@@ -981,6 +981,10 @@
         "en": "Interest / returns",
         "es": "Interés / rentabilidad"
       },
+      "cash_fee": {
+        "en": "Fee / commission",
+        "es": "Comisión"
+      },
       "withdrawal_clp": {
         "en": "CLP withdrawal",
         "es": "Retiro CLP"

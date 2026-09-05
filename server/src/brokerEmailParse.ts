@@ -63,6 +63,11 @@ export type BrokerEmailEvent = {
   /** Decimal string — share counts run to 9 decimals and must not touch a float. */
   units: string | null;
   price: number | null;
+  /**
+   * CLP leg of a USD event, when the mail states it — Racional's «Agregaste USD … a tu
+   * Billetera» body prints the pesos the dollars were bought with («con tu depósito de $X»).
+   */
+  clp_amount: number | null;
   occurred_at: string;
   subject: string;
   /** IMAP Message-ID of the source mail (null for hand-built inputs). */
@@ -144,9 +149,14 @@ type Matcher = {
   read?: (m: RegExpExecArray, snippet: string) => Partial<BrokerEmailEvent>;
 };
 
-/** Racional's snippet: "Acciones compradas 24.74186066 Precio promedio US$54.41 Monto comprado US$1346.17". */
+/**
+ * Racional's snippet: "Acciones compradas 24.74186066 Precio promedio US$54.41 Monto comprado
+ * US$1346.17". The Margin-era template renders BOTH table column headers before each value
+ * ("Acciones compradas Acciones vendidas 8.45850913 … Monto comprado Monto vendido US$4345.96")
+ * — the subject («Invertiste en …») is what says the single value is the buy column.
+ */
 const RE_RACIONAL_BODY =
-  /Acciones\s+compradas\s+([\d.,]+)\s+Precio\s+promedio\s+US\$\s*([\d.,]+)\s+Monto\s+comprado\s+US\$\s*([\d.,]+)/i;
+  /Acciones\s+compradas\s+(?:Acciones\s+vendidas\s+)?([\d.,]+)\s+Precio\s+promedio\s+US\$\s*([\d.,]+)\s+Monto\s+comprado\s+(?:Monto\s+vendido\s+)?US\$\s*([\d.,]+)/i;
 
 const FINTUAL_MATCHERS: Matcher[] = [
   {
@@ -236,11 +246,21 @@ const RACIONAL_MATCHERS: Matcher[] = [
   },
   {
     // "Agregaste USD $5.344,04 a tu Billetera" — the CLP→USD conversion, which the movements
-    // list in the app does not show at all.
+    // list in the app does not show at all. The body carries the CLP leg: «Estos dólares los
+    // compraste con tu depósito de $4.xxx.xxx, a un precio promedio de $920,39 por dólar.»
     kind: "wallet_funded",
     is_transaction: true,
     re: /^Agregaste USD \$\s*([\d.,]+) a tu Billetera/i,
-    read: (m) => ({ amount: parseChileanNumber(m[1]!), currency: "usd" }),
+    read: (m, snippet) => {
+      // Digit-terminated: the body continues «…de $4.xxx.xxx, a un precio…» and a greedy
+      // [\d.,]+ would swallow the sentence comma.
+      const clp = /con tu dep[óo]sito de \$\s*([\d.,]*\d)/i.exec(snippet);
+      return {
+        amount: parseChileanNumber(m[1]!),
+        currency: "usd" as const,
+        ...(clp ? { clp_amount: parseChileanNumber(clp[1]!) } : {}),
+      };
+    },
   },
   {
     // "Tu depósito de CLP $3.xxx.xxx está listo para invertir"
@@ -293,6 +313,7 @@ export function classifyBrokerEmail(input: BrokerEmailInput): BrokerEmailEvent {
     currency: null,
     units: null,
     price: null,
+    clp_amount: null,
     occurred_at: input.date,
     subject,
     message_id: input.message_id ?? null,

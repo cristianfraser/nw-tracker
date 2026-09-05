@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { scanBrokerEmails, type BrokerEmailInput } from "../src/brokerEmailParse.js";
+import { racionalComisionCrawlDue } from "../src/racionalMovementsImport.js";
 
 const dir = path.join(resolveCfraserCsvDir(), "broker-emails");
 const files = fs.existsSync(dir)
@@ -72,12 +73,20 @@ if (scan.unresolved.length > 0) {
   }
 }
 
+// Racional's monthly portafolio comisión sends NO e-mail — the only mail-less movement — so
+// its nudge is calendar+ledger driven instead of scan driven.
+const comision = racionalComisionCrawlDue();
+if (comision.due) {
+  console.log(`\nCalendar nudge: ${comision.reason} — racional needs a crawl.`);
+}
+const needsFetch = [...new Set([...scan.needsFetch, ...(comision.due ? ["racional"] : [])])];
+
 const decisionPath = path.join(resolveCfraserCsvDir(), ".broker-email-decision.json");
 fs.writeFileSync(
   decisionPath,
   `${JSON.stringify(
     {
-      needs_fetch: scan.needsFetch,
+      needs_fetch: needsFetch,
       importable: scan.importable.length,
       nudges: scan.nudges.length,
       scanned_files: files.map((f) => path.basename(f)),
@@ -89,8 +98,8 @@ fs.writeFileSync(
 );
 
 console.log(
-  scan.needsFetch.length === 0
+  needsFetch.length === 0
     ? "Nothing needs a browser fetch."
-    : `Needs a browser fetch: ${scan.needsFetch.join(", ")}`
+    : `Needs a browser fetch: ${needsFetch.join(", ")}`
 );
 console.log(`decision → ${decisionPath}`);

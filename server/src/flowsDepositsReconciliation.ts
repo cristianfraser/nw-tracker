@@ -1,6 +1,6 @@
 import { db } from "./db.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
-import { SAVINGS_EARNINGS_FLOW_KIND } from "./accountDeposits.js";
+import { CASH_FEE_FLOW_KIND, SAVINGS_EARNINGS_FLOW_KIND } from "./accountDeposits.js";
 import {
   computeManualDepositAssertions,
   loadBestLinkSourceByMovementId,
@@ -130,6 +130,8 @@ const NON_CAPITAL_FLOW_KINDS = new Set([
   "dividend_payout",
   // Bank-paid yield on cuenta_ahorro_vivienda (Abonos / Intereses) — P/L, not a funded deposit.
   SAVINGS_EARNINGS_FLOW_KIND,
+  // Commission charged to a cash balance — P/L cost, never a checking-funded deposit.
+  CASH_FEE_FLOW_KIND,
 ]);
 
 // AFP and AFC inflows come from payroll (pre-tax payslip deductions), not from a checking/CC

@@ -116,7 +116,7 @@ export type FetchedEmail = {
  * `<style>`/`<head>` are dropped before tags are stripped: these templates carry ~20KB of CSS
  * that would otherwise become the entire "preview".
  */
-export function mimeBodyToText(raw: string, maxChars = 600): string {
+export function mimeBodyToText(raw: string, maxChars = 2400): string {
   let text = String(raw ?? "");
 
   // Quoted-printable: soft line breaks first, then escapes.

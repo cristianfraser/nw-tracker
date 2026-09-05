@@ -47,6 +47,7 @@
     "convert:cc-payment-mirrors": "npm run convert:cc-payment-mirrors -w nw-tracker-server --",
     "fetch:racional": "npm --prefix scraper run fetch:racional --",
     "import:racional-movements": "npm run import:racional-movements -w nw-tracker-server --",
+    "import:racional-emails": "npm run import:racional-emails -w nw-tracker-server --",
     "fetch:emails": "npm --prefix scraper run fetch:emails --",
     "check:broker-emails": "npm run check:broker-emails -w nw-tracker-server --",
     "import:fintual-emails": "npm run import:fintual-emails -w nw-tracker-server --",

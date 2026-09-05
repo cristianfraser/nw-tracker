@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { markDuplicates, planRacionalMovement } from "./racionalMovementsImport.js";
+import {
+  markDuplicates,
+  planRacionalMovement,
+  racionalComisionCrawlDue,
+} from "./racionalMovementsImport.js";
 import { racionalRowToMovement } from "./racionalMovements.js";
 import type { RacionalPlannedMovement } from "./racionalMovementsImport.js";
 
@@ -119,5 +123,130 @@ describe("racionalMovementsImport duplicate detection", () => {
     } finally {
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
     }
+  });
+});
+
+describe("racional portafolio comisión (cash_fee)", () => {
+  function ensureCashAccount(importKey: string, name: string): { id: number; cleanup: () => void } {
+    const existing = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(importKey) as
+      | { id: number }
+      | undefined;
+    if (existing) return { id: existing.id, cleanup: () => {} };
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as {
+      id: number;
+    };
+    const id = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, ?, ?, ?)`)
+        .run(group.id, name, importKey, importKey).lastInsertRowid
+    );
+    return { id, cleanup: () => db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id) };
+  }
+
+  /** Synthetic caja leaf + account (matches `portfolioCajaClpAccountId`'s GLOB). */
+  function createCaja(): { accountId: number; cleanup: () => void } {
+    const leafId = Number(
+      db
+        .prepare(`INSERT INTO asset_groups (slug, label, sort_order) VALUES (?, 'vitest caja', 9999)`)
+        .run("brokerage_cash__caja_vitest__clp").lastInsertRowid
+    );
+    const accountId = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+           VALUES (?, 'vitest Caja IPSA', 'vitest-caja', 'vitest-caja-racional')`
+        )
+        .run(leafId).lastInsertRowid
+    );
+    return {
+      accountId,
+      cleanup: () => {
+        db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
+        db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+        db.prepare(`DELETE FROM asset_groups WHERE id = ?`).run(leafId);
+      },
+    };
+  }
+
+  const feeMovement = () =>
+    racionalRowToMovement({
+      title: "Comisión",
+      amount: "$2.335",
+      occurred_on: "2026-08-18",
+      kind_class: "commissions",
+    });
+
+  it("routes a CLP comisión to the portafolio caja as a cash_fee cost", () => {
+    const clp = ensureCashAccount("import:panel|kind=clp|key=clp", "vitest Racional CLP");
+    const caja = createCaja();
+    try {
+      const planned = planRacionalMovement(feeMovement());
+      expect(planned).toMatchObject({
+        account_id: caja.accountId,
+        amount: -2335,
+        currency: "clp",
+        flow_kind: "cash_fee",
+        requires_manual: null,
+      });
+    } finally {
+      caja.cleanup();
+      clp.cleanup();
+    }
+  });
+
+  it("refuses to guess when no single caja exists", () => {
+    const clp = ensureCashAccount("import:panel|kind=clp|key=clp", "vitest Racional CLP");
+    try {
+      const planned = planRacionalMovement(feeMovement());
+      expect(planned.requires_manual ?? "").toContain("caja");
+      expect(planned.flow_kind).toBe("cash_fee");
+    } finally {
+      clp.cleanup();
+    }
+  });
+
+  it("marks an already-imported comisión as a duplicate (single-leg dedupe)", () => {
+    const clp = ensureCashAccount("import:panel|kind=clp|key=clp", "vitest Racional CLP");
+    const caja = createCaja();
+    try {
+      const existing = Number(
+        db
+          .prepare(
+            `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
+             VALUES (?, -2335, 'clp', '2026-08-18', 'vitest-racional', 'cash_fee')`
+          )
+          .run(caja.accountId).lastInsertRowid
+      );
+      const [marked] = markDuplicates([planRacionalMovement(feeMovement())]);
+      expect(marked!.duplicate_of).toBe(existing);
+    } finally {
+      caja.cleanup();
+      clp.cleanup();
+    }
+  });
+
+  it("nudges a crawl from the 20th while the month's comisión is missing", () => {
+    const caja = createCaja();
+    try {
+      db.prepare(
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+         VALUES (?, 10000, 'clp', '2020-01-05', 'vitest-caja-seed')`
+      ).run(caja.accountId);
+
+      expect(racionalComisionCrawlDue("2099-05-25").due).toBe(true);
+      expect(racionalComisionCrawlDue("2099-05-15").due).toBe(false);
+
+      db.prepare(
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
+         VALUES (?, -2335, 'clp', '2099-05-18', 'vitest-racional', 'cash_fee')`
+      ).run(caja.accountId);
+      expect(racionalComisionCrawlDue("2099-05-25").due).toBe(false);
+    } finally {
+      caja.cleanup();
+    }
+  });
+
+  it("is never due without a caja account", () => {
+    expect(racionalComisionCrawlDue("2099-05-25").due).toBe(false);
   });
 });

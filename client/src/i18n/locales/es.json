@@ -291,6 +291,7 @@
       "stock_sell": "Venta acciones",
       "dividend_payout": "Dividendo",
       "savings_earnings": "Interés / rentabilidad",
+      "cash_fee": "Comisión",
       "withdrawal_clp": "Retiro CLP",
       "withdrawal_usd": "Retiro USD",
       "other": "Otro"
