@@ -44,6 +44,21 @@ export function recordSyntheticRetiroTransfer(
 }
 
 /**
+ * The transfer an earlier run synthesized from this exact mail, if any — the e-mail importer
+ * checks it before anything else so a re-read of the same Message-ID can never reach the
+ * UNIQUE insert (which would abort the whole batch transaction).
+ */
+export function syntheticRetiroMovementIdForMessageId(
+  messageId: string,
+  dbHandle: Database = db
+): number | null {
+  const row = dbHandle
+    .prepare(`SELECT movement_id FROM fintual_synthetic_retiro_transfers WHERE message_id = ?`)
+    .get(messageId) as { movement_id: number } | undefined;
+  return row?.movement_id ?? null;
+}
+
+/**
  * Stamp a synthesized retiro as confirmed by a bank feed. Called by the checking importers on
  * every `superseded_by_transfer` skip — a no-op for ordinary manual transfer legs (the usual
  * case for that skip), and an already-confirmed row keeps its first stamp.

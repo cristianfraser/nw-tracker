@@ -19,7 +19,13 @@ import { chileCalendarAddDays } from "./chileDate.js";
  *     confirmation in `fintual_synthetic_retiro_transfers` (see fintualSyntheticRetiros.ts).
  */
 
-/** How far the bank credit may sit from the e-mail's payment date. */
+/**
+ * How far AFTER the e-mail's payment date the bank credit may post. The window is one-sided:
+ * «Pagamos tu retiro» is dated the day the money left the fund, and a wire can post that day
+ * or later (14:00 cutoff → next workday), never earlier. A symmetric window let the 2026-09-01
+ * $5x.xxx retiro hijack an unrelated $5x.xxx credit dated 2026-08-28 — the real Fintual leg
+ * was not imported yet, so the earlier row was the only candidate and got rewritten in place.
+ */
 export const WITHDRAWAL_PAIR_WINDOW_DAYS = 5;
 
 /** `Pagamos tu retiro de 🏦 Reserva` → `Reserva`. */
@@ -50,12 +56,14 @@ export function fintualGoalAccountId(goalName: string): number | null {
 export type CheckingCreditMatch = { id: number; occurred_on: string };
 
 /**
- * An unpaired checking credit for this amount near this date.
+ * An unpaired checking credit for this amount dated on or after the payment date, within
+ * {@link WITHDRAWAL_PAIR_WINDOW_DAYS}.
  *
  * Restricted to single-leg rows (`from_account_id`/`to_account_id` null): a row that is already a
  * transfer has been attributed, and re-promoting it would rewrite a real relationship. Ambiguity is
  * refused rather than guessed — two candidate credits of the same amount in the window means the
- * e-mail cannot say which one it paid.
+ * e-mail cannot say which one it paid. Credits dated BEFORE the payment day are never
+ * candidates: they cannot be this retiro's money.
  */
 export function findUnpairedCheckingCredit(
   amountClp: number,
@@ -75,7 +83,7 @@ export function findUnpairedCheckingCredit(
     .all(
       checkingAccountId(),
       amountClp,
-      chileCalendarAddDays(paidOn, -windowDays),
+      paidOn,
       chileCalendarAddDays(paidOn, windowDays)
     ) as CheckingCreditMatch[];
   if (rows.length === 0) return null;
