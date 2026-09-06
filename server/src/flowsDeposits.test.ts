@@ -1,5 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildFlowsDepositsPayload, flowsDepositsNetTotalByAccount } from "./flowsDeposits.js";
+import {
+  buildFlowsDepositsPayload,
+  flowsDepositsNetTotalByAccount,
+  netDepositFlowBetween,
+} from "./flowsDeposits.js";
 import {
   totalDisplayDepositsClpForAccount,
   totalWithdrawalsClpForAccount,
@@ -66,7 +70,7 @@ describe("state contributions are P/L, not deposits", () => {
   });
 });
 
-describe("future-dated movements do not count until their date arrives", () => {
+describe("forward-posted movements count today and move to their bank date when it arrives", () => {
   let accountId: number | null = null;
 
   beforeAll(() => {
@@ -94,13 +98,26 @@ describe("future-dated movements do not count until their date arrives", () => {
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
   });
 
-  it("excludes the future event from lifetime totals, payload rows, and withdrawals", () => {
+  it("includes the forward-posted giro in totals and lists it under today with its bank date", () => {
     if (accountId == null) return;
-    expect(flowsDepositsNetTotalByAccount().get(accountId)).toBe(100_000);
-    expect(totalDisplayDepositsClpForAccount(accountId)).toBe(100_000);
-    expect(totalWithdrawalsClpForAccount(accountId)).toBe(0);
-    const rows = buildFlowsDepositsPayload().rows.filter((r) => r.account_id === accountId);
-    expect(rows.map((r) => r.amount_clp)).toEqual([100_000]);
+    const today = chileCalendarTodayYmd();
+    const postedOn = chileCalendarAddDays(today, 2);
+    // As-of-now like the balance (`displayLedgerCutoffYmd`): the giro is already money out.
+    expect(flowsDepositsNetTotalByAccount().get(accountId)).toBe(-30_000);
+    expect(totalDisplayDepositsClpForAccount(accountId)).toBe(-30_000);
+    expect(totalWithdrawalsClpForAccount(accountId)).toBe(130_000);
+    const rows = buildFlowsDepositsPayload()
+      .rows.filter((r) => r.account_id === accountId)
+      .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on));
+    expect(rows.map((r) => [r.occurred_on, r.amount_clp, r.posted_on ?? null])).toEqual([
+      ["2024-05-10", 100_000, null],
+      [today, -130_000, postedOn],
+    ]);
+    // Window legs: today's bucket carries it, a window that ends yesterday does not.
+    expect(netDepositFlowBetween(accountId, chileCalendarAddDays(today, -1), today, "clp")).toBe(-130_000);
+    expect(
+      netDepositFlowBetween(accountId, chileCalendarAddDays(today, -3), chileCalendarAddDays(today, -1), "clp")
+    ).toBe(0);
   });
 });
 

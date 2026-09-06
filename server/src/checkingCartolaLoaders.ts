@@ -4,7 +4,7 @@
  * lives in `checkingDescriptionPredicates.ts`, pairing policy in the engine.
  */
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { loadMergedDepositInflowEvents } from "./accountDeposits.js";
+import { loadMergedDepositInflowEventsBankDated } from "./accountDeposits.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import {
@@ -175,7 +175,7 @@ export function loadNetWorthCapitalOutflowCandidates(): DepositMatchCandidate[] 
   const metaById = new Map(
     accounts.map((a) => [a.account_id, { category_slug: a.category_slug, group_slug: a.group_slug }])
   );
-  const byAccount = loadMergedDepositInflowEvents(ids);
+  const byAccount = loadMergedDepositInflowEventsBankDated(ids);
   const out: DepositMatchCandidate[] = [];
   for (const [accountId, events] of byAccount) {
     const meta = metaById.get(accountId);
@@ -213,7 +213,7 @@ export function fondoReservaAccountId(): number | null {
 function loadCuentaVistaInternalTransferCredits(): DepositMatchCandidate[] {
   const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
   if (vistaId == null) return [];
-  const byAccount = loadMergedDepositInflowEvents([vistaId]);
+  const byAccount = loadMergedDepositInflowEventsBankDated([vistaId]);
   const events = byAccount.get(vistaId) ?? [];
   return events
     .filter((e) => e.amt > 0 && Number.isFinite(e.amt))
@@ -245,7 +245,7 @@ export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
   const metaById = new Map(
     accounts.map((a) => [a.account_id, { category_slug: a.category_slug, group_slug: a.group_slug }])
   );
-  const byAccount = loadMergedDepositInflowEvents(ids);
+  const byAccount = loadMergedDepositInflowEventsBankDated(ids);
   const out: DepositMatchCandidate[] = [];
   for (const [accountId, events] of byAccount) {
     const meta = metaById.get(accountId);

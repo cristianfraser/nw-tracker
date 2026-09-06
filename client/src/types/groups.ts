@@ -178,6 +178,8 @@ export type FlowsApiRow = {
   counterpart_account_id: number | null;
   counterpart_account_name: string | null;
   transfer_direction: "out" | "in" | null;
+  /** Bank date lies after today; today's balance already includes the row (badge it). */
+  forward_posted: boolean;
 };
 
 export type FlowsFilterOptions = {

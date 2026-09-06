@@ -2,15 +2,19 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxSellClpPerUsdOnOrBefore } from "./fxBidAsk.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { recordFxConversionWarning } from "./fxConversionWarnings.js";
-import { isUsdCashAccount, sumUsdThroughDate } from "./movementTransfer.js";
+import { isUsdCashAccount, sumUsdThroughDisplayDate } from "./movementTransfer.js";
 
 export { isUsdCashAccount, isUsdCashKindSlug } from "./movementTransfer.js";
 
+/**
+ * Display balance at `asOfYmd`: strict by bank date before today, every known movement from
+ * today on (a forward-posted row counts now — `displayLedgerCutoffYmd`).
+ */
 export function usdCashBalanceUsdAt(accountId: number, asOfYmd: string): number {
   if (!isUsdCashAccount(accountId)) {
     throw new Error(`account ${accountId} is not a USD cash account`);
   }
-  const balance = sumUsdThroughDate(accountId, asOfYmd);
+  const balance = sumUsdThroughDisplayDate(accountId, asOfYmd);
   return Math.round(balance * 100) / 100;
 }
 

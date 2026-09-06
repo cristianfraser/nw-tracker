@@ -1,6 +1,6 @@
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
-import { sumClpThroughDate } from "./movementTransfer.js";
+import { sumClpThroughDisplayDate } from "./movementTransfer.js";
 
 /**
  * Ledger (flows-based) CLP cash accounts: balance = Σ signed CLP movements/transfer legs
@@ -18,11 +18,15 @@ export function isClpCashAccount(accountId: number): boolean {
   return isClpCashKindSlug(accountBucketKindSlug(slug));
 }
 
+/**
+ * Display balance at `asOfYmd`: strict by bank date before today, every known movement from
+ * today on (a forward-posted row counts now — `displayLedgerCutoffYmd`).
+ */
 export function clpCashBalanceClpAt(accountId: number, asOfYmd: string): number {
   if (!isClpCashAccount(accountId)) {
     throw new Error(`account ${accountId} is not a CLP cash account`);
   }
-  return sumClpThroughDate(accountId, asOfYmd);
+  return sumClpThroughDisplayDate(accountId, asOfYmd);
 }
 
 export function clpCashBalanceLive(accountId: number): { value_clp: number; as_of_date: string } {

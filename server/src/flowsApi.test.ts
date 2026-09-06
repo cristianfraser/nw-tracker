@@ -28,6 +28,7 @@ function flowRow(over: Partial<FlowsApiRow>): FlowsApiRow {
     counterpart_account_id: null,
     counterpart_account_name: null,
     transfer_direction: null,
+    forward_posted: false,
     ...over,
   };
 }

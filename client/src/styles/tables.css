@@ -224,6 +224,11 @@ tr:hover td {
   width: 99%;
 }
 
+.flows-table__forward-posted {
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
 .flows-table td.flows-table__note {
   max-width: 0;
   overflow: hidden;

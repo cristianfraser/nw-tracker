@@ -1,10 +1,12 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import {
   isMovementTransferRow,
   signedClpDeltaForAccountMovement,
   signedUsdDeltaForAccountMovement,
   sumClpThroughDate,
+  sumClpThroughDisplayDate,
   unitsDeltaForAccountMovement,
 } from "./movementTransfer.js";
 
@@ -30,6 +32,25 @@ describe("movementTransfer", () => {
     for (const id of [fromId, toId]) {
       if (id) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
     }
+  });
+
+  it("display sums count a row the bank dates after today; strict sums stop at the date", () => {
+    if (!fromId) return;
+    const today = chileCalendarTodayYmd();
+    const yesterday = chileCalendarAddDays(today, -1);
+    const tomorrow = chileCalendarAddDays(today, 1);
+    const strictToday = sumClpThroughDate(fromId, today);
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+       VALUES (?, 40000, 'clp', ?, 'vitest-forward-posted')`
+    ).run(fromId, tomorrow);
+    // Strict: the bank date is ahead, so the row is not "through today".
+    expect(sumClpThroughDate(fromId, today)).toBe(strictToday);
+    // Display: history is untouched, today and anything later carry every known row.
+    expect(sumClpThroughDisplayDate(fromId, yesterday)).toBe(sumClpThroughDate(fromId, yesterday));
+    expect(sumClpThroughDisplayDate(fromId, today)).toBe(strictToday + 40000);
+    expect(sumClpThroughDisplayDate(fromId, tomorrow)).toBe(strictToday + 40000);
+    db.prepare(`DELETE FROM movements WHERE note = 'vitest-forward-posted'`).run();
   });
 
   it("detects transfer rows", () => {
