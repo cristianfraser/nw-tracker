@@ -34,6 +34,13 @@ export const SELECTOR = {
   openLoginPanel: 'a.btn-ingresar, a[aria-label*="sitio privado" i], a[aria-label*="panel de ingreso" i]',
   /** Dismisses the fraud-warning banner that can overlay the header. */
   closeNotice: 'a.btn-close[aria-label="Cerrar aviso"]',
+  /**
+   * Close button of a marketing modal (`div.modal-overlay[role="dialog"]`) the homepage sometimes
+   * opens on load — «Santander Arena», first seen 2026-09-05. Its overlay covers the whole page and
+   * swallows the click on the login button until it is closed. Only a dialog's own close control is
+   * matched, never an arbitrary button, so a real login prompt can't be dismissed by mistake.
+   */
+  closeModal: '[role="dialog"] button[aria-label="Cerrar modal"], [role="dialog"] button.modal-close',
   /** The embedded login frame. Fields live inside it, not in the top-level document. */
   loginFrame: "#login-frame",
   loginRut: "#rut",
@@ -55,4 +62,9 @@ export const TEXT = {
   currencyUsd: /^\s*dólares\s*$/i,
   /** A rendered cartola row; until it appears the list is still skeleton placeholders. */
   cartolaIssued: /cartola\s+emitida/i,
+  /**
+   * The «¿Necesitas más tiempo?» inactivity prompt's keep button. Its sibling is «Cerrar sesión»,
+   * which must never be matched — hence the full phrase, not a bare «sesión».
+   */
+  keepSession: /mantener\s+sesi[oó]n/i,
 } as const;

@@ -21,6 +21,14 @@ export type LaunchOptions = {
 const OFF_SCREEN_ARGS = ["--window-position=-3000,-3000"];
 
 /**
+ * After a crash (Chrome 152 crashed three nights running, 2026-08-31 → 09-04) the next launch opens
+ * a «Restore pages? Chrome didn't shut down correctly» bubble over the toolbar. It is browser UI,
+ * not page content, so it never blocks a click — but it invites a human who finds the window to
+ * restore old tabs into a scraper session. A documented switch, not one Chrome flags as unsupported.
+ */
+const COMMON_ARGS = ["--hide-crash-restore-bubble"];
+
+/**
  * Hide the automation marker without passing a command-line flag.
  *
  * Playwright drives Chrome over CDP, which sets `navigator.webdriver = true`; both banks read it,
@@ -79,7 +87,7 @@ export async function launchBrowser(opts: LaunchOptions): Promise<BrowserContext
     channel: "chrome",
     headless: opts.headless,
     // No flag Chrome considers "unsupported" — each one raises an infobar that is itself a tell.
-    args: opts.background ? OFF_SCREEN_ARGS : [],
+    args: [...COMMON_ARGS, ...(opts.background ? OFF_SCREEN_ARGS : [])],
     ignoreDefaultArgs: ["--enable-automation"],
     // Playwright disables Chromium's sandbox by default, which both weakens a browser that signs
     // into a bank and raises "You are using an unsupported command-line flag: --no-sandbox".
