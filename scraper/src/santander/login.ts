@@ -1,7 +1,40 @@
 import type { Page } from "playwright-core";
 import { APP_BASE, HOME_URL, SELECTOR } from "./routes.js";
 import { settle } from "../wait.js";
-import { logStep } from "../log.js";
+import { log, logStep } from "../log.js";
+
+/** How long the first click on the login button may wait before overlays are swept again. */
+const OPEN_PANEL_FIRST_TRY_MS = 10_000;
+/** Upper bound on overlay sweeps — a dialog that re-opens itself must not loop the run. */
+const MAX_OVERLAY_DISMISSALS = 3;
+
+function firstLine(err: unknown): string {
+  return (err instanceof Error ? err.message : String(err)).split("\n")[0] ?? "";
+}
+
+/**
+ * Close whatever sits over the homepage header before the login button is clicked: the fraud-warning
+ * banner and any marketing modal (see `SELECTOR.closeModal`). Each dismissal is logged, so a run
+ * that met a new overlay says so instead of just being slower.
+ */
+async function dismissOverlays(page: Page): Promise<void> {
+  const notice = page.locator(SELECTOR.closeNotice).first();
+  if ((await notice.count()) > 0 && (await notice.isVisible())) {
+    await notice.click();
+    log("dismissed the fraud-warning banner");
+  }
+  for (let i = 0; i < MAX_OVERLAY_DISMISSALS; i++) {
+    const close = page.locator(SELECTOR.closeModal).first();
+    if ((await close.count()) === 0 || !(await close.isVisible())) return;
+    const title = (await close.locator("xpath=ancestor::*[@role='dialog'][1]").innerText().catch(() => ""))
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !/^cerrar/i.test(line))[0];
+    await close.click();
+    log(`dismissed a modal dialog${title ? ` («${title}»)` : ""}`);
+    await page.waitForTimeout(300);
+  }
+}
 
 /** Compare RUTs regardless of the field's on-blur formatting ("123456785" ≡ "12.345.678-5"). */
 function normalizeRut(value: string): string {
@@ -50,10 +83,17 @@ export async function login(page: Page, rut: string, password: string): Promise<
   await assertNotBotBlocked(page);
 
   logStep("opening login panel");
-  // Dismiss the fraud-warning banner first — it can sit over the header and swallow the click.
-  const notice = page.locator(SELECTOR.closeNotice).first();
-  if ((await notice.count()) > 0 && (await notice.isVisible())) await notice.click();
-  await page.locator(SELECTOR.openLoginPanel).first().click();
+  await dismissOverlays(page);
+  const openPanel = page.locator(SELECTOR.openLoginPanel).first();
+  try {
+    await openPanel.click({ timeout: OPEN_PANEL_FIRST_TRY_MS });
+  } catch (err) {
+    // A modal that rendered after the first sweep intercepts the click for the whole timeout, so
+    // sweep again and retry once before giving up with the real selector error.
+    log(`login button click blocked (${firstLine(err)}) — dismissing overlays and retrying`);
+    await dismissOverlays(page);
+    await openPanel.click();
+  }
 
   const frame = page.frameLocator(SELECTOR.loginFrame);
   const rutInput = frame.locator(SELECTOR.loginRut);
