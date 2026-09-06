@@ -69,6 +69,29 @@ function flowsColumnCount(
   );
 }
 
+/**
+ * The movement's bank date, badged when that date is still ahead: the bank posts an
+ * after-cutoff transfer on the next workday, and the server already counts such a row in
+ * today's balance (`forward_posted`). Shared by the desktop cell and the mobile card so the
+ * two renderings cannot drift.
+ */
+function FlowDateCell({ row }: { row: { occurred_on: string; forward_posted: boolean } }) {
+  const { t } = useTranslation();
+  if (!row.forward_posted) return <>{row.occurred_on}</>;
+  return (
+    <>
+      {row.occurred_on}
+      <span
+        className="muted flows-table__forward-posted"
+        title={t("accountDetail.movements.forwardPostedTitle")}
+      >
+        {" · "}
+        {t("accountDetail.movements.forwardPostedBadge")}
+      </span>
+    </>
+  );
+}
+
 function FlowsMobileCard({
   row,
   labels,
@@ -97,7 +120,7 @@ function FlowsMobileCard({
   return (
     <TableMobileCard title={row.flow_type_label}>
       <TableMobileCardSection>
-        <TableMobileCardRow label={labels.date} value={row.occurred_on} />
+        <TableMobileCardRow label={labels.date} value={<FlowDateCell row={row} />} />
         {showAccountColumn ? (
           <TableMobileCardRow
             label={labels.account}
@@ -436,7 +459,9 @@ export function FlowsTable({
                 </td>
               ) : null}
               <td className="desktop-only">{row.flow_type_label}</td>
-              <td className="desktop-only">{row.occurred_on}</td>
+              <td className="desktop-only">
+                <FlowDateCell row={row} />
+              </td>
               {showFlowTickerCol ? (
                 <td className="desktop-only">{row.ticker ?? "—"}</td>
               ) : null}

@@ -12,7 +12,12 @@ import {
   type MovementAmountFields,
 } from "./movementAmounts.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
-import { signedClpDeltaForAccountMovement, sumClpThroughDate } from "./movementTransfer.js";
+import {
+  displayLedgerCutoffYmd,
+  signedClpDeltaForAccountMovement,
+  sumClpThroughDate,
+  sumClpThroughDisplayDate,
+} from "./movementTransfer.js";
 import type { MovementTransferRow } from "./movementTransfer.js";
 
 const BALANCE_CACHE_TTL_MS = 30_000;
@@ -29,37 +34,57 @@ export function clearCheckingBalanceCache(accountId?: number): void {
   }
 }
 
-/** Running CLP balance from all movements on or before `asOfYmd` (inclusive). */
+/**
+ * Running CLP balance for DISPLAY at `asOfYmd`: movements on or before that date, or every
+ * known movement when the date is Chile today or later — a row the bank dates after today
+ * (post-cutoff posting) already counts now and keeps counting once its date arrives
+ * (`displayLedgerCutoffYmd`). Reconciliation against a cartola uses the strict readers
+ * (`nonAnchorClpFlowTotals`, `checkingMovementBalanceAtMonthEnd`).
+ */
 export function checkingMovementBalanceClpAt(
   accountId: number,
   asOfYmd: string,
   dbHandle: Database = db
 ): number {
-  return sumClpThroughDate(accountId, asOfYmd, dbHandle);
+  return sumClpThroughDisplayDate(accountId, asOfYmd, dbHandle);
 }
 
-/** Cached wrapper for hot paths (API/charts); invalidated on movement writes via TTL. */
+function cachedBalance(key: string, compute: () => number): number {
+  const now = Date.now();
+  const hit = balanceCache.get(key);
+  if (hit && hit.expiresAt > now) return hit.balance;
+  const balance = compute();
+  balanceCache.set(key, { balance, expiresAt: now + BALANCE_CACHE_TTL_MS });
+  return balance;
+}
+
+/**
+ * Cached wrapper for hot paths (API/charts); invalidated on movement writes via TTL. The key
+ * carries the cutoff actually applied, so a value computed for "today" (no upper bound) is
+ * never served as that date's strict history after the day rolls over.
+ */
 export function checkingMovementBalanceClpAtCached(
   accountId: number,
   asOfYmd: string,
   dbHandle: Database = db
 ): number {
-  const key = `${accountId}|${asOfYmd}`;
-  const now = Date.now();
-  const hit = balanceCache.get(key);
-  if (hit && hit.expiresAt > now) return hit.balance;
-  const balance = checkingMovementBalanceClpAt(accountId, asOfYmd, dbHandle);
-  balanceCache.set(key, { balance, expiresAt: now + BALANCE_CACHE_TTL_MS });
-  return balance;
+  return cachedBalance(`${accountId}|${asOfYmd}|${displayLedgerCutoffYmd(asOfYmd)}`, () =>
+    checkingMovementBalanceClpAt(accountId, asOfYmd, dbHandle)
+  );
 }
 
-/** Month-end balance from movements only (not parsed cartola saldo). */
+/**
+ * Month-end balance from movements only, strictly by bank date (never the display read): the
+ * cartola month table compares it against the statement's saldo final, which is as-of the
+ * period end the bank printed.
+ */
 export function checkingMovementBalanceAtMonthEnd(
   accountId: number,
   periodMonth: string,
   dbHandle: Database = db
 ): number {
-  return checkingMovementBalanceClpAtCached(accountId, monthEndUtcYmd(periodMonth), dbHandle);
+  const asOf = monthEndUtcYmd(periodMonth);
+  return cachedBalance(`${accountId}|${asOf}|strict`, () => sumClpThroughDate(accountId, asOf, dbHandle));
 }
 
 /** Latest balance for summary cards (today in Chile). */

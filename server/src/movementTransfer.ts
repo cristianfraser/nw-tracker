@@ -1,3 +1,4 @@
+import { chileCalendarTodayYmd } from "./chileDate.js";
 /**
  * Single-row cross-account transfers (`from_account_id` → `to_account_id`, `account_id` NULL).
  */
@@ -236,6 +237,38 @@ export function sumUsdThroughDate(accountId: number, asOfYmd: string, dbHandle: 
     total += signedUsdDeltaForAccountMovement(r, accountId);
   }
   return total;
+}
+
+/** Sentinel upper bound: every known row, whatever its bank date. */
+const DISPLAY_LEDGER_NO_CUTOFF = "9999-12-31";
+
+/**
+ * Upper bound for a DISPLAY read of a ledger at `asOfYmd`.
+ *
+ * A bank posts an after-cutoff wire on the next workday, and its feed lists the row under
+ * that date before the day arrives (Santander's bank day ends at 14:00 — a Friday-afternoon
+ * transfer is dated Monday), so the ledger can hold rows dated after Chile today. History
+ * keeps those bank dates — a past day is exactly what the bank said it was — but "now" has
+ * no upper bound: a movement we already know about counts today, and it keeps counting when
+ * the calendar reaches its bank date, so a value never steps twice. The deposit-event
+ * timeline applies the same rule (`buildMergedDepositMap`), which is what keeps every
+ * flow-adjusted P/L at 0 for such a row on every day it is shown.
+ *
+ * Reconciliation readers must NOT use this: a cartola anchor or a month-end check compares
+ * against a bank document that is strictly as-of its own period end (`sumClpThroughDate`).
+ */
+export function displayLedgerCutoffYmd(asOfYmd: string): string {
+  return asOfYmd < chileCalendarTodayYmd() ? asOfYmd : DISPLAY_LEDGER_NO_CUTOFF;
+}
+
+/** `sumClpThroughDate` for display: strict before today, every known row from today on. */
+export function sumClpThroughDisplayDate(accountId: number, asOfYmd: string, dbHandle: Database = db): number {
+  return sumClpThroughDate(accountId, displayLedgerCutoffYmd(asOfYmd), dbHandle);
+}
+
+/** `sumUsdThroughDate` for display: strict before today, every known row from today on. */
+export function sumUsdThroughDisplayDate(accountId: number, asOfYmd: string, dbHandle: Database = db): number {
+  return sumUsdThroughDate(accountId, displayLedgerCutoffYmd(asOfYmd), dbHandle);
 }
 
 export function sumUnitsThroughDate(

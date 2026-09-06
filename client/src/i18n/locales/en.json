@@ -495,7 +495,9 @@
       "counterpartAccount": "Counterpart account",
       "dividendOriginAccount": "Stock paying the dividend",
       "dividendCashAccount": "USD cash account receiving the dividend",
-      "compraSourceAccount": "Source CLP account (optional)"
+      "compraSourceAccount": "Source CLP account (optional)",
+      "forwardPostedBadge": "already in balance",
+      "forwardPostedTitle": "The bank posts this movement on a later date; today's balance already includes it. It moves to that date once it arrives."
     },
     "flowDirection": {
       "label": "Inflow / Withdrawal",

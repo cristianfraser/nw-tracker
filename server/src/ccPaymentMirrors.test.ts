@@ -1,3 +1,4 @@
+import { loadMergedDepositInflowEventsBankDated } from "./accountDeposits.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./aggregationCache.js";
 import {
@@ -116,6 +117,19 @@ afterAll(() => {
   clearAggregationCache();
 });
 
+/**
+ * The checking account's net flow in April 2037 by BANK date. The fixture lives in 2037, and
+ * the display-dated timeline (`netDepositFlowBetween`) folds every forward-dated event into
+ * Chile today, so the window has to be read on the bank-dated variant to test what this
+ * suite cares about: whether the cash leg still emits its withdrawal after conversion.
+ */
+function checkingFlowApril2037(): number {
+  const events = loadMergedDepositInflowEventsBankDated([checkingId!]).get(checkingId!) ?? [];
+  return events
+    .filter((e) => e.occurred_on >= "2037-04-01" && e.occurred_on <= "2037-04-30")
+    .reduce((sum, e) => sum + e.amt, 0);
+}
+
 function myCandidates() {
   return listCcPaymentMirrorCandidates().filter((c) => c.out.account_id === checkingId);
 }
@@ -144,7 +158,7 @@ describe("convertCcPaymentMirrors", () => {
     if (checkingId == null || ccId == null) return;
 
     // Pre-conversion: the single-leg debit counts as a checking withdrawal flow.
-    expect(netDepositFlowBetween(checkingId, "2037-04-01", "2037-04-30", "clp")).toBe(-487331);
+    expect(checkingFlowApril2037()).toBe(-487331);
 
     const cands = myCandidates();
     const lineCand = cands.find((c) => c.evidence.amount_clp === 487331)!;
@@ -197,7 +211,7 @@ describe("convertCcPaymentMirrors", () => {
     // The cash side keeps its withdrawal (conversion must not turn a payment into checking P/L);
     // the card leg stays inert — CC flows come from statement evidence, not from this transfer.
     clearAggregationCache();
-    expect(netDepositFlowBetween(checkingId, "2037-04-01", "2037-04-30", "clp")).toBe(-487331);
+    expect(checkingFlowApril2037()).toBe(-487331);
     expect(netDepositFlowBetween(ccId, "2037-04-01", "2037-04-30", "clp")).toBe(0);
     // Evidence now consumed — the pair leaves the candidate list.
     expect(myCandidates().find((c) => c.evidence.amount_clp === 487331)).toBeUndefined();

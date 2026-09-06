@@ -373,7 +373,9 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
         : row?.net_capital_flow ?? 0;
     }
     // Live close is as-of-today, so the flow must be too: the base row sums the whole
-    // calendar month and a future-dated movement would read as phantom negative P/L.
+    // calendar month. Both legs read forward-posted rows as today (`displayLedgerCutoffYmd`
+    // for the balance, the display-dated events for the flow), so such a row never reads
+    // as phantom P/L in either direction.
     return netDepositFlowCurrentMonthThroughToday(accountId, unit === "usd" ? "usd" : "clp");
   })();
   const nominal = ccPerf

@@ -18,6 +18,7 @@ function row(overrides: Partial<FlowsApiRow>): FlowsApiRow {
     counterpart_account_id: null,
     counterpart_account_name: null,
     transfer_direction: null,
+    forward_posted: false,
     key: "1:movement:1",
     account_id: 1,
     account_name: "Cuenta A",
@@ -44,6 +45,7 @@ const ROWS: FlowsApiRow[] = [
     note: "traspaso",
     counterpart_account_name: "Cuenta Beta",
     transfer_direction: "in",
+    forward_posted: false,
   }),
 ];
 

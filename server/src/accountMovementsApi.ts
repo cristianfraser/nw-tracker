@@ -2,6 +2,7 @@ import { deptoPieMovementIdSet } from "./deptoDividendosLedger.js";
 import { compareFlowRowsForDisplay } from "./brokerageFlowMovement.js";
 import { movementFlowTypeFromRow, movementFlowTypeLabel } from "./movementFlowType.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import {
   accountNameForId,
@@ -32,6 +33,11 @@ export type AccountMovementApiRow = {
   counterpart_account_id: number | null;
   counterpart_account_name: string | null;
   transfer_direction: "out" | "in" | null;
+  /**
+   * `occurred_on` is after Chile today: the bank posts it later but today's balance already
+   * includes it (`displayLedgerCutoffYmd`). The row keeps its bank date; the client badges it.
+   */
+  forward_posted: boolean;
 };
 
 const movementsForAccountStmt = db.prepare(
@@ -43,6 +49,7 @@ const movementsForAccountStmt = db.prepare(
 );
 
 function mapMovementRows(accountId: number, rows: MovementTransferRow[]): AccountMovementApiRow[] {
+  const today = chileCalendarTodayYmd();
   const mapped = rows.map((r) => {
     const counterpartId = counterpartAccountIdFor(r, accountId);
     const flow_type = movementFlowTypeFromRow({
@@ -67,6 +74,7 @@ function mapMovementRows(accountId: number, rows: MovementTransferRow[]): Accoun
       counterpart_account_id: counterpartId,
       counterpart_account_name: counterpartId != null ? accountNameForId(counterpartId) : null,
       transfer_direction: transferDirectionForAccount(r, accountId),
+      forward_posted: r.occurred_on > today,
     };
   });
   return mapped.sort(compareFlowRowsForDisplay);

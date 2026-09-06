@@ -7,6 +7,7 @@ import {
   groupDailySeriesAccounts,
   type BucketDailySeries,
 } from "./dailySeries.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 import {
@@ -582,5 +583,71 @@ describe("getBucketDailySeriesCached", () => {
     invalidateMarketDataAggregations();
     const c = getBucketDailySeriesCached("vitest-daily", refs, { unit: "clp", days: 2 });
     expect(c).not.toBe(a);
+  });
+});
+
+describe("forward-posted cash movements — value and flow legs agree, P/L stays 0", () => {
+  // Real clock on purpose: the display rule (`displayLedgerCutoffYmd`) keys off Chile today.
+  // A CLP cash ledger account with a deposit dated yesterday and one the bank dates tomorrow.
+  const CASH_SLUG = "brokerage_cash__clp";
+  let cashId: number | null = null;
+
+  beforeAll(() => {
+    const group = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(CASH_SLUG) as
+      | { id: number }
+      | undefined;
+    if (!group) return;
+    cashId = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+           VALUES (?, 'Vitest · daily series forward-posted', 'vitest-daily-series-forward', 'vitest-daily-series-forward')`
+        )
+        .run(group.id).lastInsertRowid
+    );
+    const today = chileCalendarTodayYmd();
+    const ins = db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
+    );
+    ins.run(cashId, 100_000, chileCalendarAddDays(today, -1), "vitest-daily-series-forward-past");
+    ins.run(cashId, 50_000, chileCalendarAddDays(today, 1), "vitest-daily-series-forward-next");
+    clearAggregationCache();
+  });
+
+  afterAll(() => {
+    if (cashId == null) return;
+    db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(cashId);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(cashId);
+    clearAggregationCache();
+  });
+
+  it("today's point counts the forward-posted deposit as flow, not P/L; yesterday is untouched", () => {
+    if (cashId == null) return;
+    const today = chileCalendarTodayYmd();
+    const yesterday = chileCalendarAddDays(today, -1);
+    const s = getBucketDailySeries([{ account_id: cashId, bucket_slug: CASH_SLUG }], {
+      unit: "clp",
+      days: 2,
+    });
+    expect(s.points.map((p) => p.as_of_date)).toEqual([yesterday, today]);
+    const [pYesterday, pToday] = s.points;
+    expect(pYesterday!.value).toBe(100_000);
+    expect(pYesterday!.flow).toBe(100_000);
+    expect(pYesterday!.pl).toBe(0);
+    // 1xx.xxx today: the bank date is tomorrow, the money already counts — and so does its flow.
+    expect(pToday!.value).toBe(150_000);
+    expect(pToday!.flow).toBe(50_000);
+    expect(pToday!.pl).toBe(0);
+  });
+
+  it("the 1D strip cell reads the same legs: 0 P/L, not a 50% gain", () => {
+    if (cashId == null) return;
+    const { cells } = computeShortHorizonReturnCells(
+      [{ account_id: cashId, bucket_slug: CASH_SLUG }],
+      "clp"
+    );
+    const d1 = cells.find((c) => c.period === "d1");
+    expect(d1?.nominal_pl).toBe(0);
+    expect(d1?.pct).toBe(0);
   });
 });

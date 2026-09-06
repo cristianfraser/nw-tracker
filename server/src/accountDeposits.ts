@@ -36,7 +36,14 @@ import {
 
 /** Dated CLP flow toward cumulative “aportes” (positive = in, negative = out). */
 export type DepositInflowEvent = {
+  /** Display date: the movement's bank date, or Chile today when that date is still ahead. */
   occurred_on: string;
+  /**
+   * Bank posting date when it lies after Chile today. The event is already counted (dated
+   * today) and moves to this date once the calendar reaches it — the same rule the ledger
+   * balances apply (`displayLedgerCutoffYmd`), so value and flow legs always agree.
+   */
+  posted_on?: string;
   /** CLP amount for CLP display (wire CLP or reference CLP). */
   amt: number;
   /** Native USD when known (wire or USD-reference capital). */
@@ -45,6 +52,9 @@ export type DepositInflowEvent = {
 };
 
 type SortFlow = { occurred_on: string; amt: number; tie: string };
+
+/** "Today" for bank-dated timelines: no stored date ever exceeds it, so nothing is re-dated. */
+const DISPLAY_DATING_OFF = "9999-12-31";
 
 type MergedSortFlow = SortFlow & {
   amt_usd?: number | null;
@@ -197,9 +207,20 @@ function loadTransferLegSignedFlowEvents(
   return map;
 }
 
+/**
+ * How events dated after Chile today are dated in the timeline.
+ * - `display`: dated today with the bank date kept as `posted_on` — the rule every aggregate
+ *   (daily/monthly P/L, strip cells, aportes lines, deposit totals) shares with the ledger
+ *   balances (`displayLedgerCutoffYmd`), so value and flow legs never disagree.
+ * - `bank`: the bank date as stored — for reconciliation, where an event is paired with a
+ *   bank document or another movement by its real date (deposit-match candidates).
+ */
+type EventDating = "display" | "bank";
+
 function buildMergedDepositMap(
   accountIds: number[],
-  personalOnly: boolean
+  personalOnly: boolean,
+  dating: EventDating = "display"
 ): Map<number, DepositInflowEvent[]> {
   const requested = new Set(accountIds.filter((id) => id > 0));
   const mov = loadMovementSignedFlowEvents(accountIds, personalOnly);
@@ -216,6 +237,9 @@ function buildMergedDepositMap(
     ...usdCashCap.keys(),
     ...requested,
   ]);
+  // Forward-posted rows (bank date after today) are display-dated today — see
+  // `displayLedgerCutoffYmd`. They already sort last, so re-dating keeps the order.
+  const today = dating === "display" ? chileCalendarTodayYmd() : DISPLAY_DATING_OFF;
   const out = new Map<number, DepositInflowEvent[]>();
   for (const id of ids) {
     const movFlows: MergedSortFlow[] = [...(mov.get(id) ?? []), ...(transfers.get(id) ?? [])].map(
@@ -235,12 +259,16 @@ function buildMergedDepositMap(
     merged.sort((x, y) => x.occurred_on.localeCompare(y.occurred_on) || x.tie.localeCompare(y.tie));
     out.set(
       id,
-      merged.map((f) => ({
-        occurred_on: f.occurred_on,
-        amt: f.amt,
-        ...(f.amt_usd != null && Number.isFinite(f.amt_usd) ? { amt_usd: f.amt_usd } : {}),
-        ...(f.capital_kind ? { capital_kind: f.capital_kind } : {}),
-      }))
+      merged.map((f) => {
+        const forward = f.occurred_on > today;
+        return {
+          occurred_on: forward ? today : f.occurred_on,
+          amt: f.amt,
+          ...(forward ? { posted_on: f.occurred_on } : {}),
+          ...(f.amt_usd != null && Number.isFinite(f.amt_usd) ? { amt_usd: f.amt_usd } : {}),
+          ...(f.capital_kind ? { capital_kind: f.capital_kind } : {}),
+        };
+      })
     );
   }
   return out;
@@ -249,6 +277,18 @@ function buildMergedDepositMap(
 /** Full external capital (includes state APV-A bonus when tagged). */
 export function loadMergedDepositInflowEvents(accountIds: number[]): Map<number, DepositInflowEvent[]> {
   return buildMergedDepositMap(accountIds, false);
+}
+
+/**
+ * Full external capital with every event on its BANK date — forward-posted rows included as
+ * stored, never re-dated to today. For reconciliation only: pairing a fund deposit with the
+ * checking outflow that funded it, or a candidate with an asserted purchase, is a statement
+ * about real dates. Aggregates must not use this (they would disagree with the balances).
+ */
+export function loadMergedDepositInflowEventsBankDated(
+  accountIds: number[]
+): Map<number, DepositInflowEvent[]> {
+  return buildMergedDepositMap(accountIds, false, "bank");
 }
 
 /** Personal capital only (`deposit_clp` + `traspaso_bonificacion_clp`; excludes `aporte_estatal_clp`). */
@@ -309,20 +349,19 @@ export function totalStateContributionsClpForAccount(accountId: number): number 
   return getStateContributionInflowEventsForAccount(accountId).reduce((s, e) => s + e.amt, 0);
 }
 
-/** Sum events dated ≤ Chile-today: totals are as-of-today like balances, so a future-dated
- *  movement (bank-scheduled giro from a partial cartola) doesn't read as phantom P/L. */
-function sumDepositEventsThroughToday(events: DepositInflowEvent[]): number {
-  const today = chileCalendarTodayYmd();
-  return events.reduce((s, e) => (e.occurred_on > today ? s : s + e.amt), 0);
+/** Σ of a display-dated timeline: as-of-now like the balances — a row the bank posts after
+ *  today is already dated today by `buildMergedDepositMap`, so nothing is held back. */
+function sumDepositEvents(events: DepositInflowEvent[]): number {
+  return events.reduce((s, e) => s + e.amt, 0);
 }
 
 /** Net external CLP capital (movements); same sum as chart cumulative end-state. */
 export function totalDepositsClpForAccount(accountId: number): number {
-  return sumDepositEventsThroughToday(getMergedDepositInflowEventsForAccount(accountId));
+  return sumDepositEvents(getMergedDepositInflowEventsForAccount(accountId));
 }
 
 export function totalDisplayDepositsClpForAccount(accountId: number): number {
-  return sumDepositEventsThroughToday(getMergedDisplayDepositInflowEventsForAccount(accountId));
+  return sumDepositEvents(getMergedDisplayDepositInflowEventsForAccount(accountId));
 }
 
 /** Summary “Depositado”: personal capital for equity MTM stocks, full external capital otherwise. */
@@ -335,9 +374,10 @@ export function pocketDepositsClpForAccount(accountId: number): number {
 
 const wdwSumStmt = db.prepare(
   `SELECT COALESCE(SUM(ABS(${MOVEMENT_CLP_LEG_SQL})), 0) AS s FROM movements
-   WHERE account_id = ? AND ${MOVEMENT_CLP_LEG_SQL} < 0 AND occurred_on <= ?`
+   WHERE account_id = ? AND ${MOVEMENT_CLP_LEG_SQL} < 0`
 );
 
+/** Every known withdrawal, forward-posted ones included — as-of-now, like the balance. */
 export function totalWithdrawalsClpForAccount(accountId: number): number {
-  return (wdwSumStmt.get(accountId, chileCalendarTodayYmd()) as { s: number }).s;
+  return (wdwSumStmt.get(accountId) as { s: number }).s;
 }

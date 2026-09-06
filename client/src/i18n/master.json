@@ -1686,6 +1686,14 @@
       "compraSourceAccount": {
         "en": "Source CLP account (optional)",
         "es": "Cuenta CLP de origen (opcional)"
+      },
+      "forwardPostedBadge": {
+        "en": "already in balance",
+        "es": "ya en el saldo"
+      },
+      "forwardPostedTitle": {
+        "en": "The bank posts this movement on a later date; today's balance already includes it. It moves to that date once it arrives.",
+        "es": "El banco contabiliza este movimiento en una fecha posterior; el saldo de hoy ya lo incluye. Pasa a esa fecha cuando llega."
       }
     },
     "flowDirection": {

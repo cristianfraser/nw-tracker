@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import {
   checkingLedgerAnchorNote,
+  checkingMovementBalanceAtMonthEnd,
   checkingMovementBalanceClpAt,
   checkingMovementBalanceClpAtCached,
   clearCheckingAccountValuations,
@@ -314,6 +316,49 @@ describe("cartola-derived anchor with transfer legs", () => {
     } finally {
       destroySyntheticAnchorAccount(accountId);
       destroySyntheticAnchorAccount(counterpartId);
+    }
+  });
+});
+
+describe("forward-posted rows: display balance vs strict reconciliation", () => {
+  // A bank posts an after-cutoff transfer on the next workday and its feed lists the row under
+  // that date early. The display balance counts it from today (`displayLedgerCutoffYmd`); the
+  // anchor derivation and the month-end check keep bank dates, because they are compared
+  // against a cartola that is strictly as-of its period end.
+  it("counts a row dated after today in the display balance, never in the anchor or the month-end check", () => {
+    const accountId = createSyntheticAnchorAccount();
+    try {
+      const today = chileCalendarTodayYmd();
+      const month = today.slice(0, 7);
+      const monthEnd = monthEndUtcYmd(month);
+      const yesterday = chileCalendarAddDays(today, -1);
+      const nextMonthDay = chileCalendarAddDays(monthEnd, 1);
+      const ins = db.prepare(
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
+      );
+      ins.run(accountId, 50000, yesterday, "vitest-forward-past");
+      ins.run(accountId, -30000, nextMonthDay, "vitest-forward-next-month");
+      // The current month's cartola: its saldo final equals the strict walk through month-end.
+      seedCartolaImport(accountId, month, 50000);
+
+      const derived = getCartolaDerivedAnchor(accountId);
+      expect(derived).not.toBeNull();
+      // 5x.xxx − Σ(rows ≤ month-end) = 5x.xxx − 5x.xxx: the next-month row is outside the period.
+      expect(derived!.amount_clp).toBe(0);
+      upsertCheckingLedgerAnchor(accountId, {
+        amount_clp: derived!.amount_clp,
+        occurred_on: derived!.occurred_on,
+      });
+      clearCheckingBalanceCache(accountId);
+
+      expect(checkingMovementBalanceAtMonthEnd(accountId, month)).toBe(50000);
+      expect(checkingMovementBalanceClpAt(accountId, yesterday)).toBe(50000);
+      expect(checkingMovementBalanceClpAt(accountId, today)).toBe(20000);
+      expect(checkingMovementBalanceClpAtCached(accountId, today)).toBe(20000);
+      // The strict month-end value survives next to the display value in the same cache.
+      expect(checkingMovementBalanceAtMonthEnd(accountId, month)).toBe(50000);
+    } finally {
+      destroySyntheticAnchorAccount(accountId);
     }
   });
 });

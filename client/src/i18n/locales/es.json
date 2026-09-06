@@ -495,7 +495,9 @@
       "counterpartAccount": "Cuenta contraparte",
       "dividendOriginAccount": "Acción que paga el dividendo",
       "dividendCashAccount": "Cuenta USD que recibe el dividendo",
-      "compraSourceAccount": "Cuenta CLP de origen (opcional)"
+      "compraSourceAccount": "Cuenta CLP de origen (opcional)",
+      "forwardPostedBadge": "ya en el saldo",
+      "forwardPostedTitle": "El banco contabiliza este movimiento en una fecha posterior; el saldo de hoy ya lo incluye. Pasa a esa fecha cuando llega."
     },
     "flowDirection": {
       "label": "Ingreso / Retiro",

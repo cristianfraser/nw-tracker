@@ -43,7 +43,10 @@ export function depositFlowCategoryFromGroupSlug(groupSlug: string): DepositFlow
 }
 
 export type FlowDepositRow = {
+  /** Display date (bank date, or today for a forward-posted movement — see `posted_on`). */
   occurred_on: string;
+  /** Bank posting date when it lies after today: listed under today, already counted. */
+  posted_on?: string;
   category: DepositFlowCategory;
   category_label: string;
   account_id: number;
@@ -154,11 +157,9 @@ function flowsDepositsNetTotalsByAccount(opts?: {
       if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
       if (opts?.period === "month" && monthKeyFromYmd(e.occurred_on) !== currentMk) continue;
       if (opts?.period === "year" && e.occurred_on.slice(0, 4) !== currentY) continue;
-      // Every window ends at Chile-today, lifetime totals included: a future-dated event
-      // (e.g. a bank-scheduled giro in a partial cartola) must not count until its date
-      // arrives — balances walk movements ≤ today, so counting it early surfaces as
-      // phantom lifetime P/L (delta_total = value − deposits).
-      if (e.occurred_on > today) continue;
+      // Events are display-dated: a forward-posted movement already reads as today, which is
+      // also where the balances count it (`displayLedgerCutoffYmd`), so lifetime P/L
+      // (delta_total = value − deposits) stays clean without a cap here.
       const amount_clp = Math.round(e.amt);
       sumClp += amount_clp;
       const amount_usd = depositInflowEventUsd(e);
@@ -205,10 +206,11 @@ export function netDepositFlowBetween(
 }
 
 /**
- * Net capital flow for one account in the current calendar month, counting only events
- * dated ≤ Chile-today (future-dated movements inside the month don't count yet). Same
- * event source and capping as `flowsDepositsNetInPeriodByAccount("month")`, so live
- * current-month P/L reconciles with the dashboard deposits column.
+ * Net capital flow for one account in the current calendar month through Chile today. The
+ * events are display-dated, so a movement the bank posts later is already in today's
+ * bucket — the same place the live balance counts it. Same event source as
+ * `flowsDepositsNetInPeriodByAccount("month")`, so live current-month P/L reconciles with
+ * the dashboard deposits column.
  */
 export function netDepositFlowCurrentMonthThroughToday(
   accountId: number,
@@ -243,7 +245,6 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
   const accounts = listDepositFlowAccounts(false);
   const ids = accounts.map((a) => a.account_id);
   const eventsByAccount = loadMergedDisplayDepositInflowEvents(ids);
-  const today = chileCalendarTodayYmd();
 
   const rows: FlowDepositRow[] = [];
   for (const acc of accounts) {
@@ -252,13 +253,11 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
     const events = eventsByAccount.get(acc.account_id) ?? [];
     for (const e of events) {
       if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
-      // Same as-of-today convention as the net totals: a future-dated event counts
-      // once its date arrives (keeps rows, chart, and per-account totals in agreement).
-      if (e.occurred_on > today) continue;
       const amount_clp = Math.round(e.amt);
       const amount_usd = depositInflowEventUsd(e);
       rows.push({
         occurred_on: e.occurred_on,
+        ...(e.posted_on ? { posted_on: e.posted_on } : {}),
         category,
         category_label: CATEGORY_LABEL[category],
         account_id: acc.account_id,
