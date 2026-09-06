@@ -23,7 +23,19 @@ const WEIGHT_SUM_MAX = 1.01;
 /** Minimum raw ETF weight sum before normalization (excludes fund/bond sleeves). */
 const ETF_WEIGHT_SUM_MIN = 0.95;
 
-const ALLOWED_TOP_LEVEL_KEYS = new Set(["date", "etf_positions", "fund_positions", "bond_positions"]);
+/**
+ * Every top-level field the endpoint is known to carry. Anything else throws — a renamed or new
+ * sleeve must be looked at before the proxy keeps pricing off a payload it only half understands.
+ * Only `etf_positions` is read; the fund, bond and future-contract sleeves are the non-ETF remainder
+ * that `ETF_WEIGHT_SUM_MIN` bounds (`future_contract_positions` appeared 2026-09-01, empty so far).
+ */
+const ALLOWED_TOP_LEVEL_KEYS = new Set([
+  "date",
+  "etf_positions",
+  "fund_positions",
+  "bond_positions",
+  "future_contract_positions",
+]);
 
 /**
  * Fintual tickers whose bare symbol resolves to a different instrument on Yahoo.

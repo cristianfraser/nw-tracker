@@ -46,6 +46,18 @@ describe("parseManagedFundPositionsBody", () => {
     expect(parsed.raw_etf_weight_sum).toBeCloseTo(1, 6);
   });
 
+  it("allows the future_contract_positions sleeve Fintual added 2026-09 (empty or not)", () => {
+    const parsed = parseManagedFundPositionsBody({
+      date: "2026-09-03",
+      etf_positions: FIXTURE.etf_positions,
+      fund_positions: [{ weight: 0.01, fund: { asset: { ticker: "CASH" } } }],
+      bond_positions: [],
+      future_contract_positions: [],
+    });
+    expect(parsed.date).toBe("2026-09-03");
+    expect(parsed.etf_positions).toHaveLength(2);
+  });
+
   it("throws on unexpected top-level fields", () => {
     expect(() =>
       parseManagedFundPositionsBody({
