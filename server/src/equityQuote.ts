@@ -1,6 +1,6 @@
 import { db } from "./db.js";
 import { chileWallClockAt } from "./chileDate.js";
-import { priorNyseSessionYmd } from "./marketHolidays.js";
+import { isChileBusinessDay, priorNyseSessionYmd } from "./marketHolidays.js";
 import {
   isNyseRegularSessionOpen,
   nyseDisplaySessionYmd,
@@ -164,19 +164,14 @@ export function equityMarketKind(ticker: string): EquityMarketKind {
   return TICKER_MARKET[ticker] ?? "nyse";
 }
 
-function isWeekdayYmd(ymd: string): boolean {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const dow = new Date(Date.UTC(y!, m! - 1, d!)).getUTCDay();
-  return dow >= 1 && dow <= 5;
-}
-
 /**
- * Bolsa de Santiago regular session ≈ 09:30–17:05 Chile wall clock on weekdays.
+ * Bolsa de Santiago regular session ≈ 09:30–17:05 Chile wall clock on Chile business days
+ * (weekdays minus `CHILE_CLOSED_YMD`; the NYSE calendar plays no part).
  * Approximate on purpose: live rows are additionally freshness-gated by `liveQuotesMaxAgeMs`.
  */
 function isSantiagoRegularSessionOpen(now: Date): boolean {
   const cl = chileWallClockAt(now);
-  if (!isWeekdayYmd(cl.ymd)) return false;
+  if (!isChileBusinessDay(cl.ymd)) return false;
   const mins = cl.hour * 60 + cl.minute;
   return mins >= 9 * 60 + 30 && mins <= 17 * 60 + 5;
 }

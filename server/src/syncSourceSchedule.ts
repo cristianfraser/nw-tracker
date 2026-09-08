@@ -2,7 +2,10 @@ import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } fr
 import {
   CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE,
   CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE,
+  SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE,
+  SANTIAGO_EOD_SYNC_AFTER_MINUTE_CHILE,
   isCryptoEodSyncWindow,
+  isSantiagoEodSyncWindow,
 } from "./equityEodSync.js";
 import {
   isYahooFxEodSyncWindow,
@@ -194,6 +197,25 @@ function scheduleForSource(
         next_sync: next ? { ymd: next, hour: 16, minute: 5, timeZone: "America/New_York" } : null,
         next_sync_imminent: false,
         today_day_kind: nyDayKind(nowNy.ymd),
+      };
+    }
+    case "stocks_santiago": {
+      // Chile calendar only: today 17:10 while the Bolsa session is still open/closing, else the
+      // next Chile business day — Chilean holidays and weekends skip, NYSE holidays do not.
+      if (isChileBusinessDay(cl.ymd) && !isSantiagoEodSyncWindow(cl)) {
+        return {
+          next_sync: chileTimeToday(cl, SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE, SANTIAGO_EOD_SYNC_AFTER_MINUTE_CHILE),
+          next_sync_imminent: false,
+          today_day_kind: chileDayKind(cl.ymd),
+        };
+      }
+      const next = nextChileBusinessDayYmd(cl.ymd);
+      return {
+        next_sync: next
+          ? chileTimeOnYmd(next, SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE, SANTIAGO_EOD_SYNC_AFTER_MINUTE_CHILE)
+          : null,
+        next_sync_imminent: false,
+        today_day_kind: chileDayKind(cl.ymd),
       };
     }
     case "yahoo_fx_usd": {

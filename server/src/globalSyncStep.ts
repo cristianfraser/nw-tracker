@@ -12,6 +12,7 @@ import {
   isCryptoEodStale,
   isFintualSyncStale,
   isStocksNyseStale,
+  isStocksSantiagoStale,
   shouldRunSyncSource,
   type GlobalSyncSource,
 } from "./globalSyncStale.js";
@@ -57,6 +58,7 @@ export async function runSyncStepIfStale(
     const keepForcedStale =
       (source === "fintual" && isFintualSyncStale(cl, state)) ||
       (source === "stocks_nyse" && isStocksNyseStale(state, { now })) ||
+      (source === "stocks_santiago" && isStocksSantiagoStale(state, { now })) ||
       (source === "yahoo_fx_usd" && isYahooFxUsdStale({ now })) ||
       (source === "crypto_eod" && isCryptoEodStale(cl, state, { now }));
     if (!keepForcedStale) clearUserForcedStale(state, source);

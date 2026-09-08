@@ -414,6 +414,7 @@
         "sbif_utm": "Banco Central — UTM",
         "sbif_ipc": "Banco Central — CPI",
         "stocks_nyse": "Stocks — NYSE",
+        "stocks_santiago": "Stocks — Bolsa de Santiago",
         "yahoo_fx_usd": "Yahoo — USD/CLP (CLP=X EOD)",
         "crypto_eod": "Crypto"
       },

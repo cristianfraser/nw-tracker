@@ -2,20 +2,21 @@
  * In-process scheduler for external syncs.
  *
  * - While any source is stale: poll on an interval (default 15 min), sync immediately on start.
- * - When `stocks_nyse` is stale after the NYSE close window: poll every 3 min until caught up.
+ * - When `stocks_nyse` is stale after the NYSE close window, or `stocks_santiago` on the evening of
+ *   its Chile close: poll every 3 min until caught up.
  * - After a long idle gap (sleep/wake): run sync immediately on the next timer tick.
  * - When all sources are fresh: stop polling; wake at the earliest source `next_sync` wall time.
  *
  * Env:
  * - `GLOBAL_SYNC_ENABLED` — default on; set `0` to disable.
  * - `GLOBAL_SYNC_INTERVAL_MS` — poll interval while stale (default 15 minutes).
- * - `GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS` — faster poll when NYSE EOD is due but missing (default 3 minutes).
+ * - `GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS` — faster poll when a stock EOD bar is due but missing (default 3 minutes).
  * - `GLOBAL_SYNC_WAKE_GAP_MS` — idle gap that triggers an immediate sync (default 5 minutes).
  */
-import { chileWallClockNow } from "./chileDate.js";
+import { chileWallClockAt, chileWallClockNow } from "./chileDate.js";
 import { runGlobalSyncAll } from "./globalSyncAll.js";
 import { allSyncSourceStatuses, staleSyncSources, type GlobalSyncSource } from "./globalSyncStale.js";
-import { equityEodNyseSyncDue } from "./equityEodSync.js";
+import { equityEodNyseSyncDue, equityEodSantiagoSyncDue } from "./equityEodSync.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 import { syncWallTimeToMs } from "./syncSourceSchedule.js";
@@ -52,9 +53,15 @@ export function getGlobalSyncSchedulerSnapshot(): GlobalSyncSchedulerSnapshot {
   };
 }
 
-/** Poll interval while sources remain stale (NYSE EOD due uses a shorter interval). */
+/** Poll interval while sources remain stale (a stock EOD bar due this session uses a shorter interval). */
 export function pollIntervalMsForStaleSources(stale: readonly GlobalSyncSource[]): number {
-  if (stale.includes("stocks_nyse") && equityEodNyseSyncDue(new Date()) != null) {
+  const now = new Date();
+  if (stale.includes("stocks_nyse") && equityEodNyseSyncDue(now) != null) {
+    return nyseStalePollIntervalMs;
+  }
+  // Santiago: fast only on the evening of the close. Its due carries over to the last closed
+  // session, so an unlisted Chilean holiday would otherwise hit Yahoo every 3 minutes all day.
+  if (stale.includes("stocks_santiago") && equityEodSantiagoSyncDue(now) === chileWallClockAt(now).ymd) {
     return nyseStalePollIntervalMs;
   }
   return schedulerIntervalMs;

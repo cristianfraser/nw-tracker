@@ -185,9 +185,11 @@ describe("santiago (.SN) market kind + CLP quote currency", () => {
     expect(equitySessionYmdForTicker(SN_TEST, lateUtc)).toBe("2026-05-19");
   });
 
-  it("live window: Chile weekday trading hours only", () => {
+  it("live window: Chile business-day trading hours only", () => {
     const monMid = new Date("2026-05-25T11:00:00-04:00"); // Monday 11:00 Chile (NYSE holiday, irrelevant)
     expect(shouldUseLiveEquityQuote(SN_TEST, "2026-05-25", monMid)).toBe(true);
+    const chileHoliday = new Date("2026-05-21T11:00:00-04:00"); // Glorias Navales (Thursday): Bolsa closed
+    expect(shouldUseLiveEquityQuote(SN_TEST, "2026-05-21", chileHoliday)).toBe(false);
     const monPreOpen = new Date("2026-05-25T08:00:00-04:00");
     expect(shouldUseLiveEquityQuote(SN_TEST, "2026-05-25", monPreOpen)).toBe(false);
     const monEvening = new Date("2026-05-25T19:00:00-04:00");
