@@ -36,6 +36,7 @@ app.post("/api/sync/force-stale", (req, res) => {
   const source = typeof req.body?.source === "string" ? req.body.source.trim() : "";
   if (isLegacyEquityEodSyncSource(source)) {
     forceSyncSourceStale("stocks_nyse");
+    forceSyncSourceStale("stocks_santiago");
     forceSyncSourceStale("crypto_eod");
   } else if (!isGlobalSyncSource(source)) {
     res.status(400).json({ error: "invalid_source" });

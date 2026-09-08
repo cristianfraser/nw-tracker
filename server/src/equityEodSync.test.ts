@@ -7,13 +7,18 @@ import {
 import {
   CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE,
   CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE,
+  SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE,
+  SANTIAGO_EOD_SYNC_AFTER_MINUTE_CHILE,
   capCryptoEodSeriesToCompletedUtcDay,
+  capEodSeriesToMaxTradeDate,
   cryptoCompletedUtcYmd,
   cryptoEodChangeLogDates,
   cryptoEodDueUtcYmd,
   describeEquityNyseEodSyncNote,
   equityEodNyseSyncDue,
+  equityEodSantiagoSyncDue,
   isCryptoEodSyncWindow,
+  isSantiagoEodSyncWindow,
   utcYmdAtChileWallClock,
 } from "./equityEodSync.js";
 
@@ -39,6 +44,46 @@ describe("equityEodNyseSyncDue", () => {
   it("is null before 16:05 ET on trading days", () => {
     const tueMorningNy = new Date("2026-05-26T10:00:00-04:00");
     expect(equityEodNyseSyncDue(tueMorningNy)).toBeNull();
+  });
+});
+
+describe("equityEodSantiagoSyncDue (Chile calendar, never the NYSE one)", () => {
+  it("is today from 17:10 Chile on a Chile business day that is a US holiday (Labor Day 2026)", () => {
+    expect(equityEodSantiagoSyncDue(new Date("2026-09-07T17:30:00-03:00"))).toBe("2026-09-07");
+  });
+
+  it("carries over the last closed Chile session before 17:10", () => {
+    expect(equityEodSantiagoSyncDue(new Date("2026-09-07T16:00:00-03:00"))).toBe("2026-09-04");
+    expect(equityEodSantiagoSyncDue(new Date("2026-09-08T09:00:00-03:00"))).toBe("2026-09-07");
+  });
+
+  it("skips Chilean holidays and the weekend (Fiestas Patrias)", () => {
+    expect(equityEodSantiagoSyncDue(new Date("2026-09-18T20:00:00-03:00"))).toBe("2026-09-17");
+    expect(equityEodSantiagoSyncDue(new Date("2026-09-20T12:00:00-03:00"))).toBe("2026-09-17");
+  });
+
+  it("is due on Memorial Day too (NYSE closed, Bolsa open)", () => {
+    expect(equityEodSantiagoSyncDue(new Date("2026-05-25T18:00:00-04:00"))).toBe("2026-05-25");
+  });
+});
+
+describe("isSantiagoEodSyncWindow", () => {
+  it("opens at 17:10 Chile", () => {
+    expect(SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE).toBe(17);
+    expect(SANTIAGO_EOD_SYNC_AFTER_MINUTE_CHILE).toBe(10);
+    expect(isSantiagoEodSyncWindow(cl("2026-09-07", 17, 9))).toBe(false);
+    expect(isSantiagoEodSyncWindow(cl("2026-09-07", 17, 10))).toBe(true);
+    expect(isSantiagoEodSyncWindow(cl("2026-09-07", 23, 59))).toBe(true);
+  });
+});
+
+describe("capEodSeriesToMaxTradeDate", () => {
+  it("drops bars after the due session (Yahoo's in-progress daily bar)", () => {
+    const series = { dates: ["2026-09-04", "2026-09-07", "2026-09-08"], closes: [1383, 1387.4, 1390] };
+    expect(capEodSeriesToMaxTradeDate(series, "2026-09-07")).toEqual({
+      dates: ["2026-09-04", "2026-09-07"],
+      closes: [1383, 1387.4],
+    });
   });
 });
 

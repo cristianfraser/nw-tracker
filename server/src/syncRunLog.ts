@@ -10,6 +10,7 @@ export type SyncChangeGroup =
   | "sbif_ipc"
   | "fintual"
   | "stocks_nyse"
+  | "stocks_santiago"
   | "yahoo_fx_usd"
   | "crypto_eod"
   | "tickers";
@@ -109,6 +110,7 @@ const FLAT_GROUP_ORDER: SyncChangeGroup[] = [
 const SECTION_GROUPS: { group: SyncChangeGroup; title: string }[] = [
   { group: "fintual", title: "Fintual" },
   { group: "stocks_nyse", title: "NYSE stocks" },
+  { group: "stocks_santiago", title: "Santiago stocks" },
   { group: "yahoo_fx_usd", title: "Yahoo USD/CLP" },
   { group: "crypto_eod", title: "Crypto" },
   { group: "tickers", title: "Tickers" },
@@ -144,6 +146,7 @@ function formatDeltaForGroup(group: SyncChangeGroup, delta: number): string {
     case "sbif_uf":
       return formatSyncUfRate(delta);
     case "stocks_nyse":
+    case "stocks_santiago":
     case "crypto_eod":
       return formatSyncClose(delta);
     case "sbif_ipc":
@@ -176,7 +179,7 @@ export type EquityEodRow = { trade_date: string; close: number };
 
 /** Build a sync-log change when trade date or close moved forward. */
 export function equityEodSyncFieldChange(
-  group: Extract<SyncChangeGroup, "stocks_nyse" | "crypto_eod">,
+  group: Extract<SyncChangeGroup, "stocks_nyse" | "stocks_santiago" | "crypto_eod">,
   label: string,
   before: EquityEodRow | null,
   after: EquityEodRow | null

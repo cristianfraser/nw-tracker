@@ -38,6 +38,34 @@ describe("attachSyncSourceSchedule", () => {
     expect(sched.today_day_kind).toBe("holiday");
   });
 
+  it("Santiago next sync is today 17:10 Chile before the window, even on a NYSE holiday", () => {
+    const sched = attachSyncSourceSchedule("stocks_santiago", cl("2026-09-07", 15), false, false);
+    expect(sched.next_sync_imminent).toBe(false);
+    expect(sched.today_day_kind).toBe("open");
+    expect(sched.next_sync).toEqual({
+      ymd: "2026-09-07",
+      hour: 17,
+      minute: 10,
+      timeZone: "America/Santiago",
+    });
+  });
+
+  it("Santiago next sync after the window skips Fiestas Patrias and the weekend", () => {
+    const sched = attachSyncSourceSchedule("stocks_santiago", cl("2026-09-17", 20), false, false);
+    expect(sched.next_sync).toEqual({
+      ymd: "2026-09-21",
+      hour: 17,
+      minute: 10,
+      timeZone: "America/Santiago",
+    });
+  });
+
+  it("Chilean holiday is flagged on 18 de septiembre for the Santiago source", () => {
+    const sched = attachSyncSourceSchedule("stocks_santiago", cl("2026-09-18", 12), false, false);
+    expect(sched.today_day_kind).toBe("holiday");
+    expect(sched.next_sync?.ymd).toBe("2026-09-21");
+  });
+
   it("fintual next sync is tomorrow 18:00 after 18:00 today", () => {
     const sched = attachSyncSourceSchedule("fintual", cl("2026-05-25", 21, 28), false, false);
     expect(sched.next_sync_imminent).toBe(false);

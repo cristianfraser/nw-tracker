@@ -14,7 +14,9 @@ import {
   cryptoEodDueUtcYmd,
   equityCryptoEodCaughtUp,
   equityEodNyseSyncDue,
+  equityEodSantiagoSyncDue,
   equityNyseEodCaughtUp,
+  equitySantiagoEodCaughtUp,
 } from "./equityEodSync.js";
 import {
   attachSyncSourceSchedule,
@@ -63,6 +65,7 @@ export type GlobalSyncSource =
   | "sbif_utm"
   | "sbif_ipc"
   | "stocks_nyse"
+  | "stocks_santiago"
   | "yahoo_fx_usd"
   | "crypto_eod";
 
@@ -76,6 +79,7 @@ export const GLOBAL_SYNC_SOURCES: readonly GlobalSyncSource[] = [
   "sbif_utm",
   "sbif_ipc",
   "stocks_nyse",
+  "stocks_santiago",
   "yahoo_fx_usd",
   "crypto_eod",
 ] as const;
@@ -254,6 +258,20 @@ export function isStocksNyseStale(
   return false;
 }
 
+/**
+ * Bolsa de Santiago EOD missing for the due Chile session (`equityEodSantiagoSyncDue`: today from
+ * 17:10 Chile, else the last closed Chile session — carries over until the bar lands).
+ */
+export function isStocksSantiagoStale(
+  _state: GlobalSyncStateFile,
+  opts?: { force?: boolean; now?: Date }
+): boolean {
+  if (opts?.force) return true;
+  const now = opts?.now ?? new Date();
+  const due = equityEodSantiagoSyncDue(now);
+  return due != null && !equitySantiagoEodCaughtUp(due);
+}
+
 /** Crypto daily EOD missing for the UTC day due at 23:55 Chile (carries over until caught up). */
 export function isCryptoEodStale(
   cl: ChileWallClock,
@@ -337,6 +355,7 @@ function naturalStaleSyncSources(
     }
   }
   if (isStocksNyseStale(state, opts)) out.push("stocks_nyse");
+  if (isStocksSantiagoStale(state, opts)) out.push("stocks_santiago");
   if (isYahooFxUsdStale(opts)) out.push("yahoo_fx_usd");
   if (isCryptoEodStale(cl, state, opts)) out.push("crypto_eod");
   return out;
@@ -464,6 +483,11 @@ export function allSyncSourceStatuses(
   {
     const stale = isStocksNyseStale(state, { force });
     rows.push(syncSourceRow("stocks_nyse", cl, stale ? "stale" : "ok", stale));
+  }
+
+  {
+    const stale = isStocksSantiagoStale(state, { force });
+    rows.push(syncSourceRow("stocks_santiago", cl, stale ? "stale" : "ok", stale));
   }
 
   {

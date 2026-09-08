@@ -1422,6 +1422,10 @@
           "en": "Stocks — NYSE",
           "es": "Acciones — NYSE"
         },
+        "stocks_santiago": {
+          "en": "Stocks — Bolsa de Santiago",
+          "es": "Acciones — Bolsa de Santiago"
+        },
         "yahoo_fx_usd": {
           "en": "Yahoo — USD/CLP (CLP=X EOD)",
           "es": "Yahoo — USD/CLP (CLP=X EOD)"

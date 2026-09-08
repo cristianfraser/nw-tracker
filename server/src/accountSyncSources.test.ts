@@ -41,6 +41,17 @@ describe("accountSyncSources", () => {
     ).toEqual(["afp_uno"]);
   });
 
+  it("infers stocks_santiago for Bolsa de Santiago (.SN) tickers", () => {
+    expect(
+      inferSyncSourcesForAccount({
+        id: 3,
+        import_key: "import:panel|ticker=VITEST.SN|key=z",
+        equity_ticker: "VITEST.SN",
+        fund_series_key: null,
+      })
+    ).toEqual(["stocks_santiago"]);
+  });
+
   it("infers stocks_nyse and crypto_eod from equity_ticker", () => {
     expect(
       inferSyncSourcesForAccount({

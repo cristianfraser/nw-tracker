@@ -8,6 +8,7 @@ import { invalidateMarketDataAggregations } from "./aggregationCache.js";
  * - USD / EUR (Banco Central BDE): reference dólar/euro observado in `fx_daily_bcentral` / `eur_daily`.
  * - Yahoo CLP=X EOD → `fx_daily` (canonical USD/CLP for conversions) from 17:30 Chile (`yahoo_fx_usd`).
  * - NYSE stocks (SPY, VEA): Yahoo EOD after 16:05 ET on NYSE trading days (`stocks_nyse`).
+ * - Bolsa de Santiago stocks (`.SN`): Yahoo EOD from 17:10 Chile on Chile business days (`stocks_santiago`).
  * - Crypto (BTC, ETH): CoinGecko daily USD from 23:55 Chile (`crypto_eod`).
  * - UF / UTM / IPC (BDE GetSeries + SII UF gap-fill): from the 9th when DB lacks forward publication through end of next month.
  *
@@ -33,6 +34,7 @@ import {
   isCryptoEodStale,
   isSbifMonthlyStale,
   isStocksNyseStale,
+  isStocksSantiagoStale,
   isUserForcedSyncSourceStale,
   staleSyncSources,
   type GlobalSyncSource,
@@ -134,7 +136,10 @@ import {
   upsertUfRows,
   upsertUtmRows,
 } from "./sbifSyncDb.js";
-import { listWatchlistStockTickersForEodSync } from "./watchlist.js";
+import {
+  listWatchlistNyseTickersForEodSync,
+  listWatchlistSantiagoTickersForEodSync,
+} from "./watchlist.js";
 import {
   EQUITY_CRYPTO_TICKERS,
   equityEodCryptoStateYmd,
@@ -143,6 +148,7 @@ import {
   cryptoEodDueUtcYmd,
   syncCryptoEodFromCoinGecko,
   syncStocksNyseFromYahoo,
+  syncStocksSantiagoFromYahoo,
   describeEquityNyseEodSyncNote,
   type EquityEodSyncResult,
 } from "./equityEodSync.js";
@@ -792,12 +798,12 @@ function applyEquityEodResultsToChanges(
   results: EquityEodSyncResult[],
   eodBefore: Map<string, { trade_date: string; close: number } | null>,
   changes: SyncFieldChange[],
-  group: Extract<SyncChangeGroup, "stocks_nyse" | "crypto_eod">,
+  group: Extract<SyncChangeGroup, "stocks_nyse" | "stocks_santiago" | "crypto_eod">,
   logPrefix: string,
   opts?: { cryptoDueUtcYmd?: string | null; notes?: SyncStepNote[] }
 ): void {
   for (const r of results) {
-    if (group === "stocks_nyse") {
+    if (group !== "crypto_eod") {
       const note = describeEquityNyseEodSyncNote(r);
       if (note) opts?.notes?.push({ step: logPrefix, message: note });
     }
@@ -852,7 +858,7 @@ async function runStocksNyse(
     console.log("sync: NYSE stocks — skip (session EOD already in DB).");
     return;
   }
-  const stockTickers = listWatchlistStockTickersForEodSync();
+  const stockTickers = listWatchlistNyseTickersForEodSync();
   const eodBefore = snapshotEodBefore(stockTickers);
   const results = await syncStocksNyseFromYahoo({ dryRun: syncDryRun, force: FORCE, now });
   applyEquityEodResultsToChanges(results, eodBefore, changes, "stocks_nyse", "NYSE stocks", { notes });
@@ -860,6 +866,24 @@ async function runStocksNyse(
     const nyseYmd = equityEodNyseStateYmd(now);
     if (nyseYmd) state.equityEodLastNySessionYmd = nyseYmd;
   }
+}
+
+async function runStocksSantiago(
+  state: GlobalSyncStateFile,
+  changes: SyncFieldChange[],
+  notes: SyncStepNote[]
+): Promise<void> {
+  const now = new Date();
+  if (!FORCE && !isStocksSantiagoStale(state, { force: false, now })) {
+    console.log("sync: Santiago stocks — skip (session EOD already in DB).");
+    return;
+  }
+  const tickers = listWatchlistSantiagoTickersForEodSync();
+  const eodBefore = snapshotEodBefore(tickers);
+  const results = await syncStocksSantiagoFromYahoo({ dryRun: syncDryRun, force: FORCE, now });
+  applyEquityEodResultsToChanges(results, eodBefore, changes, "stocks_santiago", "Santiago stocks", {
+    notes,
+  });
 }
 
 async function runCryptoEod(
@@ -1125,6 +1149,9 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     });
     await runSyncStepIfStale("stocks_nyse", stale, "NYSE stocks", stepErrors, state!, cl, async () => {
       await runStocksNyse(state!, syncChanges, stepNotes);
+    });
+    await runSyncStepIfStale("stocks_santiago", stale, "Santiago stocks", stepErrors, state!, cl, async () => {
+      await runStocksSantiago(state!, syncChanges, stepNotes);
     });
     await runSyncStepIfStale("crypto_eod", stale, "Crypto EOD", stepErrors, state!, cl, async () => {
       await runCryptoEod(cl, state!, syncChanges);

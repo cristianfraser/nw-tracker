@@ -8,6 +8,7 @@ export type SyncSourceId =
   | "sbif_utm"
   | "sbif_ipc"
   | "stocks_nyse"
+  | "stocks_santiago"
   | "yahoo_fx_usd"
   | "crypto_eod";
 

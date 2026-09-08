@@ -2,14 +2,19 @@ import { upsertEquityDailySeries, EQUITY_DAILY_IMPORT_TICKERS } from "./brokerag
 import {
   listWatchlistCryptoTickersForEodSync,
   listWatchlistNyseTickersForEodSync,
-  listWatchlistStockTickersForEodSync,
+  listWatchlistSantiagoTickersForEodSync,
 } from "./watchlist.js";
-import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } from "./chileDate.js";
+import {
+  chileCalendarAddDays,
+  chileWallClockAt,
+  dateAtTimeZoneWallClock,
+  type ChileWallClock,
+} from "./chileDate.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { fetchCoinGeckoRecentDailyCloses } from "./equityCoinGeckoEod.js";
 import { fetchYahooNyseEodForSync, fetchYahooRecentDailyCloses, type EodCloseSeries } from "./equityYahooEod.js";
-import { isNyseTradingDay } from "./marketHolidays.js";
+import { isChileBusinessDay, isNyseTradingDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { isAfterNyseRegularClose, nyseSessionYmd, nyseWallClock, utcTodayYmd } from "./nyseSession.js";
 import { clearEquityLiveQuoteCache } from "./equityQuote.js";
 
@@ -41,6 +46,16 @@ export function equityNyseEodCaughtUp(sessionYmd: string): boolean {
   });
 }
 
+/** All Bolsa de Santiago account tickers have `equity_daily` through `chileYmd`. */
+export function equitySantiagoEodCaughtUp(chileYmd: string): boolean {
+  const tickers = listWatchlistSantiagoTickersForEodSync();
+  if (tickers.length === 0) return true;
+  return tickers.every((ticker) => {
+    const latest = latestEquityEodTradeDate(ticker);
+    return latest != null && latest >= chileYmd;
+  });
+}
+
 /** All crypto import tickers have `equity_daily` through `utcYmd`. */
 export function equityCryptoEodCaughtUp(utcYmd: string): boolean {
   return listWatchlistCryptoTickersForEodSync().every((ticker) => {
@@ -57,6 +72,35 @@ export function equityEodNyseSyncDue(now: Date = new Date()): string | null {
   if (!isNyseTradingDay(ny.ymd)) return null;
   if (!isAfterNyseRegularClose(now)) return null;
   return nyseSessionYmd(now);
+}
+
+/**
+ * Bolsa de Santiago EOD sync window (America/Santiago). The `.SN` live window in
+ * `equityQuote.ts` ends at 17:05 and the resolver then reads the stored bar, so the day's bar
+ * is due right after it.
+ */
+export const SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE = 17;
+export const SANTIAGO_EOD_SYNC_AFTER_MINUTE_CHILE = 10;
+
+export function isSantiagoEodSyncWindow(cl: ChileWallClock): boolean {
+  return (
+    cl.hour > SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE ||
+    (cl.hour === SANTIAGO_EOD_SYNC_AFTER_HOUR_CHILE && cl.minute >= SANTIAGO_EOD_SYNC_AFTER_MINUTE_CHILE)
+  );
+}
+
+/**
+ * Chile business day whose Bolsa de Santiago EOD bar must be in `equity_daily` now: today from
+ * 17:10 Chile, otherwise the last closed Chile session (carry-over — a missed evening stays due
+ * through the night and across weekends / Chilean holidays until the bar lands). The NYSE
+ * calendar plays no part: while `.SN` rode the `stocks_nyse` source, a US holiday that is a
+ * Chilean business day (2026-09-07, Labor Day) left the day's close unsynced until the next
+ * NYSE session, so the position sat on Friday's bar with a zero day change.
+ */
+export function equityEodSantiagoSyncDue(now: Date = new Date()): string | null {
+  const cl = chileWallClockAt(now);
+  if (isChileBusinessDay(cl.ymd) && isSantiagoEodSyncWindow(cl)) return cl.ymd;
+  return priorChileBusinessDayYmd(cl.ymd);
 }
 
 export function isCryptoEodSyncWindow(cl: ChileWallClock): boolean {
@@ -99,9 +143,8 @@ export function cryptoEodChangeLogDates(dueUtcYmd: string): { oldDate: string; n
   return { oldDate: chileCalendarAddDays(dueUtcYmd, -1), newDate: dueUtcYmd };
 }
 
-/** Drop in-progress UTC day bars from a daily series before crypto EOD upsert. */
-export function capCryptoEodSeriesToCompletedUtcDay(series: EodCloseSeries, now: Date = new Date()): EodCloseSeries {
-  const maxTradeDate = cryptoCompletedUtcYmd(now);
+/** Drop bars dated after `maxTradeDate` — an in-progress session must never be stored as a close. */
+export function capEodSeriesToMaxTradeDate(series: EodCloseSeries, maxTradeDate: string): EodCloseSeries {
   const dates: string[] = [];
   const closes: number[] = [];
   for (let i = 0; i < series.dates.length; i++) {
@@ -143,9 +186,17 @@ export function describeEquityNyseEodSyncNote(r: EquityEodSyncResult): string | 
   return null;
 }
 
+/** Drop in-progress UTC day bars from a daily series before crypto EOD upsert. */
+export function capCryptoEodSeriesToCompletedUtcDay(series: EodCloseSeries, now: Date = new Date()): EodCloseSeries {
+  return capEodSeriesToMaxTradeDate(series, cryptoCompletedUtcYmd(now));
+}
+
 /**
  * Upsert recent Yahoo daily closes into `equity_daily` for the given tickers.
  * NYSE tickers: only after 16:05 ET on NYSE trading days (unless `force`).
+ * Santiago tickers: bars through the due Chile session (`equityEodSantiagoSyncDue`) — Yahoo's
+ * daily series carries the in-progress bar during the session, so a forced run before the close
+ * must not store it as that day's close.
  */
 export async function syncEquityEodFromYahoo(
   tickers: readonly string[],
@@ -199,6 +250,40 @@ export async function syncEquityEodFromYahoo(
       continue;
     }
 
+    if (kind === "santiago") {
+      const dueSessionYmd = equityEodSantiagoSyncDue(now);
+      if (dueSessionYmd == null) {
+        out.push({ ticker, rows: 0, skipped: "santiago_session_not_due" });
+        continue;
+      }
+      try {
+        const series = capEodSeriesToMaxTradeDate(
+          await fetchYahooRecentDailyCloses(ticker, 21),
+          dueSessionYmd
+        );
+        const rows = dryRun ? series.dates.length : upsertEquityDailySeries(ticker, series);
+        const dbLatestDate = latestEquityEodTradeDate(ticker);
+        out.push({
+          ticker,
+          rows,
+          yahooLatestDate: series.dates[series.dates.length - 1] ?? null,
+          dueSessionYmd,
+          dbLatestDate,
+          stillMissingDueSession: dbLatestDate == null || dbLatestDate < dueSessionYmd,
+        });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        out.push({
+          ticker,
+          rows: 0,
+          skipped: msg.slice(0, 120),
+          dueSessionYmd,
+          dbLatestDate: latestEquityEodTradeDate(ticker),
+        });
+      }
+      continue;
+    }
+
     try {
       let series = await fetchYahooRecentDailyCloses(ticker, 21);
       if (kind === "crypto24") series = capCryptoEodSeriesToCompletedUtcDay(series, now);
@@ -214,12 +299,18 @@ export async function syncEquityEodFromYahoo(
   return out;
 }
 
+/** `stocks_nyse` source: NYSE-listed account tickers only (`.SN` has its own source below). */
 export function syncStocksNyseFromYahoo(
   opts?: { dryRun?: boolean; now?: Date; force?: boolean }
 ): Promise<EquityEodSyncResult[]> {
-  // NYSE + Santiago: `.SN` bars are final before NYSE close, so they piggyback this source.
-  // Stale/caught-up state stays keyed to NYSE-only tickers (see equityNyseEodCaughtUp).
-  return syncEquityEodFromYahoo(listWatchlistStockTickersForEodSync(), opts);
+  return syncEquityEodFromYahoo(listWatchlistNyseTickersForEodSync(), opts);
+}
+
+/** `stocks_santiago` source: Bolsa de Santiago tickers on the Chile calendar (`equityEodSantiagoSyncDue`). */
+export function syncStocksSantiagoFromYahoo(
+  opts?: { dryRun?: boolean; now?: Date; force?: boolean }
+): Promise<EquityEodSyncResult[]> {
+  return syncEquityEodFromYahoo(listWatchlistSantiagoTickersForEodSync(), opts);
 }
 
 /** Upsert recent CoinGecko daily USD closes into `equity_daily` for BTC-USD / ETH-USD. */
