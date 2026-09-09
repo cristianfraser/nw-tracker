@@ -1,5 +1,7 @@
 /**
- * Backfill `fx_daily` (Yahoo CLP=X EOD) from portfolio start through today.
+ * Backfill `fx_daily` (Yahoo CLP=X daily bars, weekdays) from portfolio start through today.
+ * Gap-filler only: rows already present are never revised — a day's row is the close observed at
+ * its fx day end (`forexDay.ts`), and Yahoo's daily bar is a different (London-midnight) print.
  *
  * Usage:
  *   npm run backfill:yahoo-fx-usd -w nw-tracker-server
@@ -10,7 +12,7 @@ import { chileWallClockNow } from "../src/chileDate.js";
 import { yahooChartPeriodSeconds } from "../src/equityYahooEod.js";
 import { fetchYahooFxUsdDailyCloses } from "../src/fxYahooEodSync.js";
 import { portfolioStartYmd } from "../src/portfolioStart.js";
-import { upsertFxRows } from "../src/sbifSyncDb.js";
+import { insertFxRowsIfMissing } from "../src/sbifSyncDb.js";
 
 const DRY = process.argv.includes("--dry-run");
 
@@ -33,9 +35,9 @@ async function main(): Promise<void> {
     process.stderr.write(`${y}… `);
     const { period1, period2 } = yahooChartPeriodSeconds(chunkStart, chunkEnd);
     const rows = await fetchYahooFxUsdDailyCloses(period1, period2);
-    const n = upsertFxRows(rows, DRY);
+    const n = DRY ? rows.length : insertFxRowsIfMissing(rows);
     total += n;
-    console.error(`${rows.length} rows (${n} upserted)`);
+    console.error(`${rows.length} rows (${n} inserted, existing rows kept)`);
   }
 
   console.log(`${DRY ? "[dry-run] " : ""}Done. fx_daily: ${total} row(s) from Yahoo CLP=X (from ${startYmd}).`);

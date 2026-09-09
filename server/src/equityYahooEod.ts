@@ -21,7 +21,7 @@ export type YahooLiveQuote = {
 const CHART_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-type YahooChartMeta = {
+export type YahooChartMeta = {
   regularMarketPrice?: number;
   previousClose?: number;
   chartPreviousClose?: number;
@@ -86,8 +86,8 @@ export async function fetchYahooLiveQuote(symbol: string): Promise<YahooLiveQuot
   const rt = meta?.regularMarketTime;
   const session_ymd =
     rt != null && Number.isFinite(rt)
-      ? barYmdFromUnix(symbol, rt)
-      : barYmdFromUnix(symbol, Math.floor(Date.now() / 1000));
+      ? yahooBarYmdFromUnix(symbol, rt)
+      : yahooBarYmdFromUnix(symbol, Math.floor(Date.now() / 1000));
   return { price, previous_close, session_ymd };
 }
 
@@ -101,8 +101,12 @@ export function yahooChartPeriodSeconds(firstMk: string, lastMk: string): { peri
   return { period1: p1, period2: p2 };
 }
 
-/** Bar timestamp → exchange calendar day, explicit per market kind (crypto: UTC, Santiago: Chile, NYSE: New York). */
-function barYmdFromUnix(symbol: string, sec: number): string {
+/**
+ * Bar timestamp → exchange calendar day, explicit per market kind (crypto: UTC, Santiago: Chile,
+ * NYSE and forex `=X` pairs: New York — a CLP=X print at 17:00 NY on D labels D, which is the
+ * fx-day convention `forexDay.ts` builds on).
+ */
+export function yahooBarYmdFromUnix(symbol: string, sec: number): string {
   const kind = equityMarketKind(symbol);
   if (kind === "crypto24") return new Date(sec * 1000).toISOString().slice(0, 10);
   if (kind === "santiago") return chileWallClockAt(new Date(sec * 1000)).ymd;
@@ -122,7 +126,7 @@ export function parseYahooDailyCloseSeries(symbol: string, result: YahooChartRes
     const c = close[i];
     if (c == null || !Number.isFinite(c)) continue;
     const sec = ts[i]!;
-    dates.push(barYmdFromUnix(symbol, sec));
+    dates.push(yahooBarYmdFromUnix(symbol, sec));
     closes.push(c);
   }
   if (dates.length === 0) throw new Error(`Yahoo chart empty closes for ${symbol}`);
@@ -203,8 +207,17 @@ export async function fetchYahooNyseEodForSync(
 
 /** Recent daily bars (for EOD sync). `days` calendar lookback from today. */
 export async function fetchYahooRecentDailyCloses(symbol: string, days = 14): Promise<EodCloseSeries> {
+  return (await fetchYahooRecentDailyClosesWithMeta(symbol, days)).series;
+}
+
+/** Recent daily bars plus the chart `meta` (the current quote and its time) — one request. */
+export async function fetchYahooRecentDailyClosesWithMeta(
+  symbol: string,
+  days = 14
+): Promise<{ series: EodCloseSeries; meta: YahooChartMeta | undefined }> {
   const period2 = Math.floor(Date.now() / 1000);
   const period1 = period2 - days * 86400;
-  return fetchYahooDailyCloses(symbol, period1, period2);
+  const result = await fetchYahooChart(symbol, `interval=1d&period1=${period1}&period2=${period2}`);
+  return { series: parseYahooDailyCloseSeries(symbol, result).series, meta: result.meta };
 }
 
