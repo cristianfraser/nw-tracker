@@ -1,11 +1,22 @@
 /**
- * Santander credit-card payment receipt e-mails → checking movement re-dating.
+ * Santander credit-card payment receipt e-mails → the checking → card payment in the ledger.
  *
- * A card payment made after the bank's 14:00 cutoff is dated by every bank feed (the daily
- * «últimos movimientos» xlsx AND the monthly cartola) at the NEXT WORKDAY — but the receipt
- * mail («Pago Deuda Nacional TCR» for the CLP debt, «Comprobante Pago (abono) de la deuda
- * facturada en dolares» for the USD debt) states the real payment date, when the money and the
- * card's abono actually moved. This importer re-dates the matching checking debit to that day.
+ * The receipt mail («Pago Deuda Nacional TCR» for the CLP debt, «Comprobante Pago (abono) de la
+ * deuda facturada en dolares» for the USD debt) is the bank's own confirmation of a card
+ * payment: the pesos that left checking, the payment date, the card and — for the dollar abono —
+ * the USD amount. Two things follow from it, depending on what the bank feed has delivered:
+ *
+ * - **The debit is not imported yet** (the daily «últimos movimientos» xlsx only arrives with the
+ *   nightly bank session, so a morning payment has no bank row for hours): the `pago_tarjeta`
+ *   transfer checking → card master is SYNTHESIZED from the receipt, dated the payment day, and the
+ *   card's own credit line («PAGO» / «ABONO DE DIVISAS», exactly the row the card feed will list)
+ *   is planted in the open web-paste bucket, so the checking balance, the deposits line and the
+ *   owed walk all read the payment during the day. The bank's later listings confirm rather than
+ *   duplicate: the xlsx/cartola debit dedupes as `superseded_by_transfer` (and stamps the
+ *   confirmation row `santanderSyntheticCcPayments` records), the feed's credit line lands on the
+ *   one-shot dedupe key. The mirror converter then finds no single-leg debit to pair.
+ * - **The debit is already imported** at the next workday (a payment after the 14:00 cutoff is
+ *   dated by every bank feed at the next workday): the debit is re-dated to the payment day.
  *
  * The movement's NOTE keeps the bank's date — it is the dedupe identity against the bank's own
  * frame (the daily xlsx re-lists the row under the bank date, and the cartola prints it there
@@ -22,13 +33,22 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+import { importCcWebPasteLines } from "./accountImports.js";
+import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
+import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
+import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
+import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
+import { santanderMovementRowToWebPasteLine } from "./santanderCardMovements.js";
+import {
+  recordSyntheticCcPaymentTransfer,
+  syntheticCcPaymentMovementIdForMessageId,
+} from "./santanderSyntheticCcPayments.js";
 
 export type StagedPaymentReceipt = {
   message_id: string;
@@ -104,6 +124,7 @@ export type ReceiptApplyStatus =
   | "redated"
   | "already_dated"
   | "month_straddle_keeps_bank_date"
+  | "synthesized"
   | "waiting_for_movement"
   | "ambiguous";
 
@@ -117,12 +138,100 @@ export type ReceiptApplyResult = {
 
 type CandidateRow = { id: number; occurred_on: string };
 
+/** "3476163" → "3.xxx.xxx"; "556.21" with 2 decimals → "556,21" — the feed's `Importe` conventions. */
+function santanderImporteToken(amount: number, decimals: 0 | 2): string {
+  const fixed = amount.toFixed(decimals);
+  const [intPart, fraction] = fixed.split(".");
+  const grouped = intPart!.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return fraction != null ? `${grouped},${fraction}` : grouped;
+}
+
+function ymdToDdMmYyyy(ymd: string): string {
+  const [y, m, d] = ymd.split("-");
+  return `${d}/${m}/${y}`;
+}
+
 /**
- * Apply one parsed receipt: move the matching checking debit's `occurred_on` to the payment
- * date. Matches by columns, not note text, so it works on `import:cartola-partial` rows and on
- * official cartola rows alike (receipt backlogs can arrive after the cartola).
+ * Write the payment the receipt describes when no bank row carries it yet: the checking → card
+ * transfer (the migration-169 cross-currency shape for the dollar abono — CLP from-leg = the
+ * receipt's peso equivalent, USD counter leg = the abono), its provenance row, and the card's own
+ * credit line built through the SAME converter the feed import uses, so tomorrow's feed row is
+ * byte-identical and dedupes on the one-shot key. All-or-nothing: a card that no master resolves
+ * throws (registry/config data problem — never a guess).
  */
-export function applyPaymentReceipt(receipt: ParsedPaymentReceipt): Omit<ReceiptApplyResult, "file"> {
+function synthesizeTransferFromReceipt(
+  receipt: ParsedPaymentReceipt,
+  messageId: string,
+  checkingId: number
+): { movement_id: number; card_account_id: number; card_line_planted: boolean } {
+  const last4 = receipt.card_last4;
+  if (!last4) throw new Error(`Receipt names no card — cannot synthesize its payment (${messageId})`);
+  const cardAccountId = resolveMasterAccountIdForImportCardLast4(last4);
+  if (cardAccountId == null) {
+    throw new Error(`Receipt names card ·${last4} but no credit-card master resolves it (${messageId})`);
+  }
+  const isUsd = receipt.kind === "usd";
+  if (isUsd && receipt.amount_usd == null) {
+    throw new Error(`USD receipt without a USD amount — cannot synthesize its payment (${messageId})`);
+  }
+  const note = isUsd
+    ? `Pago tarjeta espejo (divisas: comprobante ${receipt.paid_on} → abono tarjeta ·${last4} US$${receipt.amount_usd!.toFixed(2)})`
+    : `Pago tarjeta espejo (comprobante ${receipt.paid_on} → abono tarjeta ·${last4})`;
+
+  const write = db.transaction(() => {
+    const r = db
+      .prepare(
+        `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, flow_kind)
+         VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?, ?, ?)`
+      )
+      .run(
+        checkingId,
+        cardAccountId,
+        receipt.amount_clp,
+        isUsd ? receipt.amount_usd : null,
+        isUsd ? "usd" : null,
+        receipt.paid_on,
+        note,
+        FLOW_KIND_PAGO_TARJETA
+      );
+    const movementId = Number(r.lastInsertRowid);
+    recordSyntheticCcPaymentTransfer(movementId, messageId, receipt.amount_clp, receipt.paid_on);
+
+    const line = santanderMovementRowToWebPasteLine(
+      {
+        Fecha: ymdToDdMmYyyy(receipt.paid_on),
+        Descripcion: isUsd ? "ABONO DE DIVISAS" : "PAGO",
+        Comercio: null,
+        Importe: isUsd ? santanderImporteToken(receipt.amount_usd!, 2) : santanderImporteToken(receipt.amount_clp, 0),
+        DescripcionRubro: null,
+        Ciudad: null,
+        TipoBen: "Titular",
+        IndicadorDebeHaber: "H",
+      },
+      isUsd ? "usd" : "clp"
+    );
+    const planted = importCcWebPasteLines(cardAccountId, { lines: [line], errors: [] }, "cc_santander_receipt");
+    return { movement_id: movementId, card_account_id: cardAccountId, card_line_planted: planted.inserted > 0 };
+  });
+  const out = write();
+
+  clearCheckingBalanceCache(checkingId);
+  invalidateAggregationForAccountDate(checkingId, receipt.paid_on);
+  invalidateAggregationForAccountDate(cardAccountId, receipt.paid_on);
+  invalidateCcBillingDetail(cardAccountId);
+  return out;
+}
+
+/**
+ * Apply one parsed receipt: synthesize the payment when the bank has not listed the debit yet,
+ * otherwise move the matching checking debit's `occurred_on` to the payment date. Matches by
+ * columns, not note text, so it works on `import:cartola-partial` rows and on official cartola
+ * rows alike (receipt backlogs can arrive after the cartola).
+ */
+export function applyPaymentReceipt(
+  receipt: ParsedPaymentReceipt,
+  messageId: string
+): Omit<ReceiptApplyResult, "file"> {
   const checkingId = checkingAccountId();
   const target = -receipt.amount_clp;
 
@@ -159,11 +268,39 @@ export function applyPaymentReceipt(receipt: ParsedPaymentReceipt): Omit<Receipt
     .all(checkingId, target, receipt.paid_on) as CandidateRow[];
   const inWindow = rows.filter((r) => bankDateMatchesTransferDate(r.occurred_on, receipt.paid_on));
   if (inWindow.length === 0) {
+    // This exact receipt already produced a transfer (the `already` query above misses it only
+    // when that transfer was later moved) — never a second synthesis for one mail.
+    const synthesizedId = syntheticCcPaymentMovementIdForMessageId(messageId);
+    if (synthesizedId != null) {
+      return {
+        receipt,
+        status: "already_dated",
+        movement_id: synthesizedId,
+        detail: `movement ${synthesizedId} was synthesized from this receipt`,
+      };
+    }
+    // When the bank could post the debit NEXT month (the payment date's next business day
+    // crosses the boundary), a transfer dated this month would sit in a cartola period whose
+    // saldo_final still includes the money, corrupting the checking-anchor derivation — the same
+    // reason the re-date path keeps the bank date across a month boundary. Those payments wait
+    // for the bank row, as before.
+    const nextBusinessDay = nextChileBusinessDayYmd(receipt.paid_on);
+    if (nextBusinessDay == null || nextBusinessDay.slice(0, 7) !== receipt.paid_on.slice(0, 7)) {
+      return {
+        receipt,
+        status: "waiting_for_movement",
+        movement_id: null,
+        detail: "the bank may post this debit next month — waiting for its listing instead of synthesizing (checking-anchor rule)",
+      };
+    }
+    const s = synthesizeTransferFromReceipt(receipt, messageId, checkingId);
     return {
       receipt,
-      status: "waiting_for_movement",
-      movement_id: null,
-      detail: "no matching checking debit yet — will retry once the bank feed delivers it",
+      status: "synthesized",
+      movement_id: s.movement_id,
+      detail:
+        `movement ${s.movement_id}: transfer synthesized from the receipt (${receipt.amount_clp} clp → account ${s.card_account_id}); ` +
+        `card line ${s.card_line_planted ? "planted" : "already present"}`,
     };
   }
   if (inWindow.length > 1) {
@@ -199,9 +336,9 @@ export function applyPaymentReceipt(receipt: ParsedPaymentReceipt): Omit<Receipt
 }
 
 /**
- * Process every staged receipt file. Resolved receipts (re-dated, already dated, or straddle)
- * are archived to `processed/`; `waiting_for_movement` and `ambiguous` files stay staged so the
- * next run retries them. Unparsable receipts throw.
+ * Process every staged receipt file. Resolved receipts (synthesized, re-dated, already dated, or
+ * straddle) are archived to `processed/`; `waiting_for_movement` and `ambiguous` files stay
+ * staged so the next run retries them. Unparsable receipts throw.
  */
 export function importStagedPaymentReceipts(opts?: {
   dir?: string;
@@ -216,9 +353,10 @@ export function importStagedPaymentReceipts(opts?: {
       results.push({ file: path.basename(file), receipt, status: "waiting_for_movement", movement_id: null, detail: "dry run" });
       continue;
     }
-    const applied = applyPaymentReceipt(receipt);
+    const applied = applyPaymentReceipt(receipt, staged.message_id);
     results.push({ file: path.basename(file), ...applied });
     if (
+      applied.status === "synthesized" ||
       applied.status === "redated" ||
       applied.status === "already_dated" ||
       applied.status === "month_straddle_keeps_bank_date"
