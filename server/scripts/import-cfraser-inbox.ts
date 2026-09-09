@@ -45,7 +45,6 @@ import {
 } from "../src/cfraserOrganizeManifest.js";
 import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
 import { hasStagedBoletaPdfs } from "../src/liderBoletasImport.js";
-import { listStagedReceiptFiles } from "../src/santanderCcPaymentReceipts.js";
 import { importCuentaVistaCartolasFromPdfs } from "../src/cuentaVistaCartolaImport.js";
 import {
   importUltimosMovimientosInboxFiles,
@@ -288,9 +287,11 @@ function main(): void {
   // Santander CC payment receipts (staged by fetch:santander-docs): re-date checking payment
   // debits from the bank's next-workday posting date to the receipt's real payment date. Runs
   // AFTER the xlsx import so a same-run debit is re-dated in the same night.
-  if (!hasFlag("skip-checking") && listStagedReceiptFiles().length > 0) {
+  // Always runs (not only when a receipt is staged): the script also alerts on a synthesized
+  // payment whose debit no bank feed has listed — that check must not depend on new mail.
+  if (!hasFlag("skip-checking")) {
     const code = runStep(
-      `Re-date CC payments from Santander receipts${dryRun ? " (dry run)" : ""}`,
+      `CC payments from Santander receipts${dryRun ? " (dry run)" : ""}`,
       "npm",
       [
         "run",

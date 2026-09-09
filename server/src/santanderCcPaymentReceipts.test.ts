@@ -1,8 +1,29 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
+import { importCcWebPasteLines } from "./accountImports.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
+import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
+import { santanderMovementRowToWebPasteLine } from "./santanderCardMovements.js";
 import { applyPaymentReceipt, parsePaymentReceipt } from "./santanderCcPaymentReceipts.js";
+import {
+  confirmSyntheticCcPaymentForTransferLeg,
+  listOverdueUnconfirmedSyntheticCcPayments,
+  syntheticCcPaymentMovementIdForMessageId,
+} from "./santanderSyntheticCcPayments.js";
 import { prunePartialMovementsSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
+import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
+import { snapshotTables } from "./test/snapshotTables.js";
+
+// The synthesis tests plant card lines (and the revaluation they trigger) on the synthetic
+// preset's Santander master ·4321 — restore its tables so nothing leaks into later files.
+const restoreCcTables = snapshotTables([
+  "cc_statements",
+  "cc_statement_lines",
+  "cc_expense_line_categories",
+  "cc_billing_month_balances",
+  "valuations",
+  "import_batches",
+]);
 
 /** Synthetic bodies mirroring the two real receipt templates (2026-08); synthetic amounts/card. */
 const CLP_RECEIPT_TEXT =
@@ -74,7 +95,7 @@ describe("santanderCcPaymentReceipts", () => {
   it("re-dates the next-workday debit to the receipt's payment date", () => {
     // Paid Friday 2026-08-07 after cutoff; the bank feed posts it Monday 2026-08-10.
     const id = insertCheckingDebit("2026-08-10", -111222);
-    const result = applyPaymentReceipt(parsePaymentReceipt(staged(CLP_RECEIPT_TEXT)));
+    const result = applyPaymentReceipt(parsePaymentReceipt(staged(CLP_RECEIPT_TEXT)), "<vitest@test>");
     expect(result.status).toBe("redated");
     expect(result.movement_id).toBe(id);
     const row = db.prepare(`SELECT occurred_on, note FROM movements WHERE id = ?`).get(id) as {
@@ -89,8 +110,8 @@ describe("santanderCcPaymentReceipts", () => {
   it("is idempotent and refuses ambiguity", () => {
     insertCheckingDebit("2026-08-10", -111222);
     const receipt = parsePaymentReceipt(staged(CLP_RECEIPT_TEXT));
-    expect(applyPaymentReceipt(receipt).status).toBe("redated");
-    expect(applyPaymentReceipt(receipt).status).toBe("already_dated");
+    expect(applyPaymentReceipt(receipt, "<vitest@test>").status).toBe("redated");
+    expect(applyPaymentReceipt(receipt, "<vitest@test>").status).toBe("already_dated");
 
     // Two same-amount debits in the window → neither is touched.
     const a = insertCheckingDebit("2026-08-10", -333444);
@@ -98,7 +119,7 @@ describe("santanderCcPaymentReceipts", () => {
     const twin = parsePaymentReceipt(
       staged(CLP_RECEIPT_TEXT.replace("111.222", "333.444"))
     );
-    expect(applyPaymentReceipt(twin).status).toBe("ambiguous");
+    expect(applyPaymentReceipt(twin, "<vitest@test>").status).toBe("ambiguous");
     for (const id of [a, b]) {
       expect(
         (db.prepare(`SELECT occurred_on FROM movements WHERE id = ?`).get(id) as { occurred_on: string })
@@ -114,7 +135,7 @@ describe("santanderCcPaymentReceipts", () => {
     const receipt = parsePaymentReceipt(
       staged(CLP_RECEIPT_TEXT.replace("07/08/2026", "31/08/2026"))
     );
-    const result = applyPaymentReceipt(receipt);
+    const result = applyPaymentReceipt(receipt, "<vitest@test>");
     expect(result.status).toBe("month_straddle_keeps_bank_date");
   });
 
@@ -142,5 +163,116 @@ describe("santanderCcPaymentReceipts", () => {
       .prepare(`SELECT occurred_on FROM movements WHERE id = ?`)
       .get(officialId) as { occurred_on: string };
     expect(official.occurred_on).toBe("2026-08-07");
+  });
+});
+
+describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
+  // The synthetic preset's Santander master is card ·4321 (a `credit_card_master|santander|4321`
+  // account with its config row); ·9999 resolves to nothing.
+  const CLP_4321 = CLP_RECEIPT_TEXT.replace("**** **** **** 9999", "**** **** **** 4321");
+  const USD_4321 = USD_RECEIPT_TEXT.replace("*9999", "*4321");
+  const masterId = (): number => {
+    const id = resolveMasterAccountIdForImportCardLast4("4321");
+    if (id == null) throw new Error("synthetic preset master ·4321 missing from the test DB");
+    return id;
+  };
+  const created: number[] = [];
+  afterEach(() => {
+    for (const id of created.splice(0)) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+  });
+  afterAll(() => restoreCcTables());
+
+  /** The master's lines for one merchant at one amount — the preset ships its own PAGO rows. */
+  function cardLines(
+    masterId: number,
+    merchant: string,
+    absAmount: number,
+    field: "amount_clp" | "amount_usd"
+  ): { amount_clp: number; amount_usd: number | null }[] {
+    return db
+      .prepare(
+        `SELECT l.amount_clp, l.amount_usd FROM cc_statement_lines l
+         JOIN cc_statements s ON s.id = l.statement_id
+         WHERE s.account_id = ? AND l.merchant = ? AND ROUND(ABS(l.${field}), 2) = ROUND(?, 2)`
+      )
+      .all(masterId, merchant, absAmount) as { amount_clp: number; amount_usd: number | null }[];
+  }
+
+  it("writes the transfer, its provenance row and the card's PAGO line when no debit exists; the bank's later listings dedupe", () => {
+    const master = masterId();
+    const checkingId = checkingAccountId();
+    const receipt = parsePaymentReceipt(staged(CLP_4321));
+    const result = applyPaymentReceipt(receipt, "<vitest-synth-clp@test>");
+    expect(result.status).toBe("synthesized");
+    const id = result.movement_id!;
+    created.push(id);
+
+    const mv = db
+      .prepare(`SELECT from_account_id, to_account_id, amount, currency, counter_amount, occurred_on, flow_kind FROM movements WHERE id = ?`)
+      .get(id) as Record<string, unknown>;
+    expect(mv).toMatchObject({
+      from_account_id: checkingId,
+      to_account_id: master,
+      amount: 111222,
+      currency: "clp",
+      counter_amount: null,
+      occurred_on: "2026-08-07",
+      flow_kind: "pago_tarjeta",
+    });
+    expect(syntheticCcPaymentMovementIdForMessageId("<vitest-synth-clp@test>")).toBe(id);
+
+    // The card side: the same line the feed will list, stored as a credit on the card.
+    const lines = cardLines(master, "PAGO", 111222, "amount_clp");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.amount_clp).toBeLessThan(0);
+
+    // Tomorrow's feed row lands on the one-shot dedupe key — nothing inserted twice.
+    const feedRow = santanderMovementRowToWebPasteLine(
+      { Fecha: "07/08/2026", Descripcion: "PAGO", Comercio: null, Importe: "111.222", DescripcionRubro: null, Ciudad: null, TipoBen: "Titular", IndicadorDebeHaber: "H" },
+      "clp"
+    );
+    const feed = importCcWebPasteLines(master, { lines: [feedRow], errors: [] }, "cc_santander_fetch");
+    expect(feed.inserted).toBe(0);
+    expect(feed.skipped_duplicate).toBe(1);
+
+    // The bank's checking debit dedupes into the transfer leg and stamps the confirmation.
+    expect(findMatchingInternalTransferLegId(checkingId, "2026-08-07", -111222, new Set())).toBe(id);
+    expect(listOverdueUnconfirmedSyntheticCcPayments("2099-01-01").map((o) => o.movement_id)).toContain(id);
+    confirmSyntheticCcPaymentForTransferLeg(id, "2026-08-07", "ultimos_xlsx");
+    expect(listOverdueUnconfirmedSyntheticCcPayments("2099-01-01").map((o) => o.movement_id)).not.toContain(id);
+
+    // A re-read of the same receipt resolves to the existing transfer.
+    const again = applyPaymentReceipt(receipt, "<vitest-synth-clp@test>");
+    expect(again.status).toBe("already_dated");
+    expect(again.movement_id).toBe(id);
+  });
+
+  it("writes the dollar abono as the cross-currency transfer plus the ABONO DE DIVISAS line", () => {
+    const master = masterId();
+    const result = applyPaymentReceipt(parsePaymentReceipt(staged(USD_4321)), "<vitest-synth-usd@test>");
+    expect(result.status).toBe("synthesized");
+    created.push(result.movement_id!);
+    const mv = db
+      .prepare(`SELECT amount, currency, counter_amount, counter_currency FROM movements WHERE id = ?`)
+      .get(result.movement_id!) as Record<string, unknown>;
+    expect(mv).toEqual({ amount: 115733, currency: "clp", counter_amount: 123.45, counter_currency: "usd" });
+    const lines = cardLines(master, "ABONO DE DIVISAS", 123.45, "amount_usd");
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.amount_usd).toBeCloseTo(-123.45, 2);
+  });
+
+  it("waits for the bank row when the next business day falls in the next month (checking-anchor rule)", () => {
+    // Friday 2026-07-31: the bank may post the debit on Monday 08-03.
+    const receipt = parsePaymentReceipt(staged(CLP_4321.replace("07/08/2026", "31/07/2026")));
+    const result = applyPaymentReceipt(receipt, "<vitest-synth-straddle@test>");
+    expect(result.status).toBe("waiting_for_movement");
+    expect(result.movement_id).toBeNull();
+    expect(syntheticCcPaymentMovementIdForMessageId("<vitest-synth-straddle@test>")).toBeNull();
+  });
+
+  it("refuses a card no master resolves instead of guessing", () => {
+    expect(() => applyPaymentReceipt(parsePaymentReceipt(staged(CLP_RECEIPT_TEXT)), "<vitest-synth-9999@test>")).toThrow(
+      /no credit-card master/
+    );
   });
 });

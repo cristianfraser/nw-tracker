@@ -6,6 +6,8 @@ export type ImportBatchKind =
   | "cc_santander_fetch"
   /** One line per card-paid Lider boleta e-mail (the grocery-receipt importer). */
   | "cc_lider_boleta"
+  /** The card's own PAGO / ABONO DE DIVISAS line, planted from a Santander payment receipt mail. */
+  | "cc_santander_receipt"
   /** Same lines as a web paste, from the scheduled Lider «últimos movimientos» CSV drop. */
   | "cc_lider_fetch"
   | "cuenta_vista_web_paste"

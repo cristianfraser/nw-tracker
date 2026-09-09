@@ -166,6 +166,29 @@ export function mimeBodyToText(raw: string, maxChars = 2400): string {
 }
 
 /**
+ * Gmail evaluates `SINCE` in the account's zone and answers NOTHING for the calendar day a DST
+ * transition removes an hour from: `SINCE 06-Sep-2026` (Chile's 2026 spring-forward day) came
+ * back empty while `05-Sep` and `07-Sep` returned the mails — verified against the raw SEARCH
+ * replies on 2026-09-08, after the watermark had sat on that day since a Saturday-night mail and
+ * every poll for two days had been blind to a «Pagamos tu retiro». The broken day is unknowable
+ * in general, so the search starts a day before the watermark's and, when that returns nothing,
+ * is repeated from two days before: two consecutive days cannot both be transition days, and the
+ * timestamp filter downstream already drops everything the watermark has seen, so the wider
+ * window costs a few envelopes and never a message.
+ */
+export function searchSinceCandidates(since: Date): Date[] {
+  return [1, 2].map((daysBack) => new Date(since.getTime() - daysBack * 86_400_000));
+}
+
+async function searchSenderSince(client: ImapFlow, sender: string, since: Date): Promise<number[]> {
+  for (const candidate of searchSinceCandidates(since)) {
+    const found = await client.search({ from: sender, since: candidate });
+    if (Array.isArray(found) && found.length > 0) return found;
+  }
+  return [];
+}
+
+/**
  * Fetch broker mail newer than the watermark.
  *
  * `sinceDays` is a floor for the very first run (no watermark yet) so it does not walk years of
@@ -203,8 +226,8 @@ export async function fetchBrokerEmails(opts?: {
       // One search per sender: Gmail's IMAP OR syntax is awkward and this is a handful of
       // round trips on a mailbox we have already narrowed by date.
       for (const sender of BROKER_EMAIL_SENDERS) {
-        const uids = await client.search({ from: sender, since });
-        if (!uids || uids.length === 0) continue;
+        const uids = await searchSenderSince(client, sender, since);
+        if (uids.length === 0) continue;
         for await (const msg of client.fetch(uids, { envelope: true, bodyParts: ["text"] })) {
           const envelope = msg.envelope;
           if (!envelope) continue;
