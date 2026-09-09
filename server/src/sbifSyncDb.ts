@@ -60,6 +60,22 @@ export function upsertIpcRows(rows: { date: string; ipcIndex: number }[], dryRun
   return n;
 }
 
+const insertFxIfMissing = db.prepare(`
+  INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)
+  ON CONFLICT(date) DO NOTHING
+`);
+
+/**
+ * Write-once fx rows: a day's close is the quote observed at its fx day end and must never be
+ * revised by a later fetch (Yahoo's daily bars disagree with its intraday feed by up to ~0,3%,
+ * and a revision would move yesterday's P/L overnight). Returns the rows actually inserted.
+ */
+export function insertFxRowsIfMissing(rows: { date: string; clpPerUsd: number }[]): number {
+  let n = 0;
+  for (const r of rows) n += insertFxIfMissing.run(r.date, r.clpPerUsd).changes;
+  return n;
+}
+
 export function upsertFxRows(rows: { date: string; clpPerUsd: number }[], dryRun: boolean): number {
   if (dryRun) return rows.length;
   let n = 0;

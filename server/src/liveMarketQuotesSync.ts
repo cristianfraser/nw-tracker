@@ -111,7 +111,7 @@ function priorFxDailyClpPerUsd(beforeDate: string): number | null {
   )?.clp_per_usd ?? null;
 }
 
-/** Yahoo CLP=X EOD from `fx_daily` (after NYSE close / when live FX is off). */
+/** The stored `fx_daily` close (fx day ended, or weekend) mirrored into the live table. */
 function mirrorFxDailyToLiveQuotes(fetchedAt: string): { rows: number; changed: boolean } {
   const today = chileCalendarTodayYmd();
   const fx = fxRowOnOrBefore(today);
@@ -132,14 +132,17 @@ function mirrorFxDailyToLiveQuotes(fetchedAt: string): { rows: number; changed: 
   return { rows: 1, changed };
 }
 
+/**
+ * First closed tick after the fx day end writes the day's close (`fx_daily`, write-once) from the
+ * same quote the open ticks were storing — so the value readers froze on is the value history keeps.
+ */
 async function catchUpFxDailyIfMissingDueSession(now: Date): Promise<{ rows: number; error?: string }> {
   const due = yahooFxUsdSyncDue(now);
-  if (due == null) return { rows: 0 };
   const latest = maxFxDateOnOrBefore(due);
   if (latest != null && latest >= due) return { rows: 0 };
 
   try {
-    const result = await syncYahooFxUsdFromYahoo({ now, force: true });
+    const result = await syncYahooFxUsdFromYahoo({ now });
     return { rows: result.rows, error: result.skipped };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

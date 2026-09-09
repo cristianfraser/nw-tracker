@@ -6,7 +6,8 @@ import { invalidateMarketDataAggregations } from "./aggregationCache.js";
  * - Fintual goals: from 18:00 America/Santiago on business days and the last day of each non-business block
  *   (weekends/holidays); `as_of` is the fund publish date (may forward-publish before the block ends).
  * - USD / EUR (Banco Central BDE): reference dólar/euro observado in `fx_daily_bcentral` / `eur_daily`.
- * - Yahoo CLP=X EOD → `fx_daily` (canonical USD/CLP for conversions) from 17:30 Chile (`yahoo_fx_usd`).
+ * - Yahoo CLP=X → `fx_daily` (canonical USD/CLP for conversions): the day's close at the fx day end,
+ *   17:05 New York on weekdays, write-once (`yahoo_fx_usd`; `forexDay.ts`).
  * - NYSE stocks (SPY, VEA): Yahoo EOD after 16:05 ET on NYSE trading days (`stocks_nyse`).
  * - Bolsa de Santiago stocks (`.SN`): Yahoo EOD from 17:10 Chile on Chile business days (`stocks_santiago`).
  * - Crypto (BTC, ETH): CoinGecko daily USD from 23:55 Chile (`crypto_eod`).
@@ -709,27 +710,29 @@ async function runYahooFxUsd(
 ): Promise<void> {
   const now = new Date();
   if (!FORCE && !isYahooFxUsdStale({ force: false, now })) {
-    console.log("sync: Yahoo USD/CLP — skip (NYSE session EOD already in fx_daily).");
-    notes.push({ step: "Yahoo USD/CLP", message: "skip — NYSE session EOD already in fx_daily" });
+    console.log("sync: Yahoo USD/CLP — skip (fx day close already in fx_daily).");
+    notes.push({ step: "Yahoo USD/CLP", message: "skip — fx day close already in fx_daily" });
     return;
   }
   const due = yahooFxUsdSyncDue(now);
-  const beforeDate = due != null ? maxFxDateOnOrBefore(due) : maxFxDateOnOrBefore(chileWallClockNow().ymd);
+  const beforeDate = maxFxDateOnOrBefore(due);
   const prevRate = beforeDate != null ? fxClpPerUsdAt(beforeDate) ?? fxClpPerUsdOnOrBefore(beforeDate) : null;
 
-  const result = await syncYahooFxUsdFromYahoo({ dryRun: syncDryRun, now, force: FORCE });
+  const result = await syncYahooFxUsdFromYahoo({ dryRun: syncDryRun, now });
   if (result.skipped) {
     console.log(`sync: Yahoo USD/CLP — skip (${result.skipped})`);
     notes.push({ step: "Yahoo USD/CLP", message: `skip (${result.skipped})` });
     return;
   }
-  console.log(`sync: Yahoo USD/CLP — ${result.rows} row(s) (${syncDryRun ? "dry-run" : "ok"})`);
+  console.log(
+    `sync: Yahoo USD/CLP — ${result.rows} row(s)${result.used_meta_quote ? " (due day from chart quote)" : ""} (${syncDryRun ? "dry-run" : "ok"})`
+  );
   notes.push({
     step: "Yahoo USD/CLP",
-    message: `ok — ${result.rows} row(s) upserted into fx_daily; latest on or before today: ${maxFxDateAfterUpsert(chileWallClockNow()) ?? "—"}`,
+    message: `ok — ${result.rows} row(s) inserted into fx_daily (write-once); latest on or before today: ${maxFxDateAfterUpsert(chileWallClockNow()) ?? "—"}`,
   });
 
-  if (result.rows > 0 && due != null && yahooFxUsdCaughtUp(due)) {
+  if (result.rows > 0 && yahooFxUsdCaughtUp(due)) {
     const newRate = fxClpPerUsdAt(due) ?? fxClpPerUsdOnOrBefore(due);
     if (newRate != null && (prevRate == null || Math.abs(prevRate - newRate) > 1e-6)) {
       changes.push({

@@ -51,7 +51,8 @@ export function fxRowOnOrBefore(
 
 /**
  * CLP→USD for balances, charts, and dashboard `current_value_usd`.
- * Uses Yahoo CLP=X EOD in `fx_daily` (NYSE trade dates). Falls back to month-end-only rows for legacy
+ * Uses the Yahoo CLP=X close in `fx_daily` (one row per weekday, the rate at the fx day end — `forexDay.ts`).
+ * Falls back to month-end-only rows for legacy
  * Excel imports, then the earliest month-end on or after `date` when the series starts after snapshot dates.
  */
 export function fxMonthEndForBalanceUsd(date: string | null): FxRow | null {

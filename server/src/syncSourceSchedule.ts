@@ -7,15 +7,17 @@ import {
   isCryptoEodSyncWindow,
   isSantiagoEodSyncWindow,
 } from "./equityEodSync.js";
-import {
-  isYahooFxEodSyncWindow,
-  YAHOO_FX_EOD_SYNC_AFTER_HOUR_CHILE,
-  YAHOO_FX_EOD_SYNC_AFTER_MINUTE_CHILE,
-} from "./fxYahooEodSync.js";
+import { FX_DAY_END_HOUR_NY, FX_DAY_END_MINUTE_NY, fxDayEndInstant, nextWeekdayYmd } from "./forexDay.js";
 import { isFintualFundPublishDay } from "./fintualPublishDate.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import type { GlobalSyncSource } from "./globalSyncStale.js";
-import { isChileBusinessDay, isChileHoliday, isNyseHoliday, isNyseTradingDay } from "./marketHolidays.js";
+import {
+  isChileBusinessDay,
+  isChileHoliday,
+  isNyseHoliday,
+  isNyseTradingDay,
+  isWeekendYmd,
+} from "./marketHolidays.js";
 import { isAfterNyseRegularClose, nyseWallClock } from "./nyseSession.js";
 
 const SBIF_OBSERVED_STALE_AFTER_HOUR_CHILE = 18;
@@ -219,20 +221,14 @@ function scheduleForSource(
       };
     }
     case "yahoo_fx_usd": {
-      const nowMins = cl.hour * 60 + cl.minute;
-      const dueMins = YAHOO_FX_EOD_SYNC_AFTER_HOUR_CHILE * 60 + YAHOO_FX_EOD_SYNC_AFTER_MINUTE_CHILE;
-      if (!isYahooFxEodSyncWindow(cl) && nowMins < dueMins) {
-        return {
-          next_sync: chileTimeToday(cl, YAHOO_FX_EOD_SYNC_AFTER_HOUR_CHILE, YAHOO_FX_EOD_SYNC_AFTER_MINUTE_CHILE),
-          next_sync_imminent: false,
-          today_day_kind: chileDayKind(cl.ymd),
-        };
-      }
-      const tomorrow = chileCalendarAddDays(cl.ymd, 1);
+      // Due at the fx day end, 17:05 New York on weekdays (`forexDay.ts`) — every holiday is a
+      // forex day, so the day kind is weekday/weekend only.
+      const dueToday = !isWeekendYmd(cl.ymd) && instant.getTime() < fxDayEndInstant(cl.ymd).getTime();
+      const ymd = dueToday ? cl.ymd : nextWeekdayYmd(cl.ymd);
       return {
-        next_sync: chileTimeOnYmd(tomorrow, YAHOO_FX_EOD_SYNC_AFTER_HOUR_CHILE, YAHOO_FX_EOD_SYNC_AFTER_MINUTE_CHILE),
+        next_sync: { ymd, hour: FX_DAY_END_HOUR_NY, minute: FX_DAY_END_MINUTE_NY, timeZone: "America/New_York" },
         next_sync_imminent: false,
-        today_day_kind: chileDayKind(cl.ymd),
+        today_day_kind: isWeekendYmd(cl.ymd) ? "weekend" : "open",
       };
     }
     case "crypto_eod": {

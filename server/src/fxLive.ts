@@ -2,18 +2,19 @@ import { chileWallClockAt } from "./chileDate.js";
 import { fetchYahooLiveQuote } from "./equityYahooEod.js";
 import { getLatestLiveFxQuoteRow } from "./liveMarketQuotesDb.js";
 import { liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
-import { isNyseRegularSessionOpen } from "./nyseSession.js";
+import { isFxDayOpen } from "./forexDay.js";
 import { fxMonthEndForBalanceUsd, type FxRow } from "./fxRates.js";
 
 /** Yahoo chart symbol: CLP per 1 USD (tipo de cambio observado intraday). */
 export const LIVE_FX_YAHOO_SYMBOL = "CLP=X";
 
 /**
- * Use Yahoo intraday USD/CLP while NYSE regular session is open (aligned with live equity MTM).
- * After close, readers use Yahoo CLP=X EOD in `fx_daily`.
+ * Use Yahoo intraday USD/CLP while the fx day is open — a weekday before its 17:05 New York end
+ * (`forexDay.ts`; US and Chilean holidays included). After that, and on weekends, readers use the
+ * stored close in `fx_daily`, which the sync writes from the same quote the readers froze on.
  */
 export function shouldUseLiveFxQuote(now = new Date()): boolean {
-  return isNyseRegularSessionOpen(now);
+  return isFxDayOpen(now);
 }
 
 /** Fetch live CLP/USD from Yahoo (scheduler only). */
@@ -34,7 +35,8 @@ export async function fetchYahooLiveUsdClpPerUsd(now = new Date()): Promise<{
 }
 
 /**
- * FX for live MTM / marquee: Yahoo `CLP=X` while NYSE is open; else Yahoo EOD in `fx_daily`.
+ * FX for live MTM / marquee: the stored live `CLP=X` row while the fx day is open; else the
+ * `fx_daily` close on or before the date.
  */
 export function fxForLiveMtm(asOfYmd: string | null, now = new Date(), maxAgeMs = liveQuotesMaxAgeMs()): FxRow | null {
   if (shouldUseLiveFxQuote(now)) {

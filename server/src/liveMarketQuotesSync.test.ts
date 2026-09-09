@@ -64,7 +64,7 @@ afterEach(() => {
 });
 
 describe("syncAllLiveMarketQuotes", () => {
-  it("mirrors fx_daily EOD after NYSE close", async () => {
+  it("mirrors the stored fx_daily close outside the fx day (Saturday)", async () => {
     db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)`).run("2026-06-05", 910.29);
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-06T22:00:00.000Z"));
@@ -77,7 +77,7 @@ describe("syncAllLiveMarketQuotes", () => {
       vi.useRealTimers();
     }
   });
-  it("inserts Yahoo CLP=X during NYSE session", async () => {
+  it("inserts Yahoo CLP=X while the fx day is open", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-19T15:00:00.000Z"));
     try {

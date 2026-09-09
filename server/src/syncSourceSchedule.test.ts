@@ -66,6 +66,20 @@ describe("attachSyncSourceSchedule", () => {
     expect(sched.next_sync?.ymd).toBe("2026-09-21");
   });
 
+  it("fx next sync is today 17:05 New York before the day end, on any weekday", () => {
+    const sched = attachSyncSourceSchedule("yahoo_fx_usd", cl("2026-09-07", 12), false, false); // US Labor Day
+    expect(sched.today_day_kind).toBe("open");
+    expect(sched.next_sync).toEqual({ ymd: "2026-09-07", hour: 17, minute: 5, timeZone: "America/New_York" });
+  });
+
+  it("fx next sync after the day end is the next weekday, skipping the weekend", () => {
+    const fri = attachSyncSourceSchedule("yahoo_fx_usd", cl("2026-09-04", 19), false, false);
+    expect(fri.next_sync?.ymd).toBe("2026-09-07");
+    const sat = attachSyncSourceSchedule("yahoo_fx_usd", cl("2026-09-05", 12), false, false);
+    expect(sat.today_day_kind).toBe("weekend");
+    expect(sat.next_sync?.ymd).toBe("2026-09-07");
+  });
+
   it("fintual next sync is tomorrow 18:00 after 18:00 today", () => {
     const sched = attachSyncSourceSchedule("fintual", cl("2026-05-25", 21, 28), false, false);
     expect(sched.next_sync_imminent).toBe(false);
