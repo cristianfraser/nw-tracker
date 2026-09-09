@@ -105,7 +105,9 @@ for (const { parsed } of parsedFiles) {
 
   if (owner === "pdf") {
     skippedPdfOwned += 1;
-    console.log(`  matched ${diff.matched}`);
+    console.log(
+      `  matched ${diff.matched}${diff.matched_by_prefix > 0 ? ` (${diff.matched_by_prefix} by merchant prefix — the PDF layout glued a charge-type column onto the name)` : ""}`
+    );
     if (diff.only_in_json.length > 0) {
       console.log(`  only in JSON (${diff.only_in_json.length}, of which ${diff.expected_only_in_json} expected payment rows):`);
       for (const l of diff.only_in_json) console.log(`    ${l.merchant} ${l.amount} (cod ${l.cod_txs})`);

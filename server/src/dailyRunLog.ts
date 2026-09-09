@@ -95,7 +95,19 @@ export function staleDailyRunDays(nowYmd = chileCalendarTodayYmd()): number | nu
   return daysBetweenYmd(chileYmdFromStoredUtc(last), nowYmd);
 }
 
+/**
+ * A run that completed no step is a failure, never «0 step(s), all ok»: the runners record from an
+ * EXIT trap, and a run killed during its first step (2026-09-08: the scraper's Chrome closed by
+ * hand mid-fetch) reaches that trap with an empty list.
+ */
+export function runStepsSucceeded(steps: readonly DailyRunStep[]): boolean {
+  return steps.length > 0 && steps.every((s) => s.ok);
+}
+
 function formatRunStepLines(steps: readonly DailyRunStep[]): string[] {
+  if (steps.length === 0) {
+    return ["No step completed — the run ended before its first step finished (killed or crashed)."];
+  }
   const failed = steps.filter((s) => !s.ok);
   const lines: string[] = [];
   lines.push(
@@ -137,7 +149,7 @@ export function recordDailyRun(
   steps: readonly DailyRunStep[],
   opts?: { dryRun?: boolean; nowYmd?: string }
 ): RecordDailyRunResult {
-  const ok = steps.every((s) => s.ok);
+  const ok = runStepsSucceeded(steps);
   const body = formatDailyRunBody(steps, opts?.nowYmd);
   const message_id = insertAppMessage(
     ok ? "log" : "notification",
@@ -177,7 +189,7 @@ export function recordHourlyEmailRun(
   steps: readonly DailyRunStep[],
   opts: { activity: boolean; dryRun?: boolean; nowYmd?: string }
 ): RecordHourlyEmailRunResult {
-  const ok = steps.every((s) => s.ok);
+  const ok = runStepsSucceeded(steps);
   const body = formatRunStepLines(steps).join("\n");
   if (ok && !opts.activity) {
     return { ok, recorded: false, message_id: null, kind: null, body };

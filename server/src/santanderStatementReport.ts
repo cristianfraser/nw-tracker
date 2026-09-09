@@ -98,12 +98,83 @@ export type StatementDiff = {
   account_id: number | null;
   json_lines: number;
   db_lines: number | null;
+  /** Lines paired with a ledger line — exact merchant + amount, plus the prefix pairs below. */
   matched: number;
+  /** Of `matched`, those paired only by amount + merchant prefix (see `pairStatementLines`). */
+  matched_by_prefix: number;
   only_in_json: { merchant: string; amount: number; cod_txs: string }[];
   only_in_db: { merchant: string; amount: number }[];
   /** JSON-only rows that are expected: the payment row the PDF parser drops by design. */
   expected_only_in_json: number;
 };
+
+export type StatementJsonLine = { merchant: string; amount: number; cod_txs: string };
+
+export type StatementLinePairing = {
+  matched: number;
+  matched_by_prefix: number;
+  only_in_json: StatementJsonLine[];
+  only_in_db: DbLine[];
+};
+
+/**
+ * Pair the JSON rows with the ledger lines. First pass: normalized merchant + absolute amount,
+ * one-to-one. Second pass, for what is left: the PDF layout can glue the charge-type column onto
+ * the merchant — «SEG AUTO SANTANDER COMPRAS P.A.T.» for the JSON's «SEG AUTO SANTANDER», the
+ * same 2x.xxx the same day — so a leftover JSON row pairs with a leftover ledger line of the same
+ * amount whose merchant begins with the JSON merchant followed by a space. Still one-to-one, and
+ * reported apart (`matched_by_prefix`) so the diff stays honest about how each line was paired.
+ */
+export function pairStatementLines(
+  jsonLines: readonly StatementJsonLine[],
+  dbLines: readonly DbLine[]
+): StatementLinePairing {
+  const remaining = new Map<string, number>();
+  for (const line of dbLines) {
+    const key = `${line.merchant}|${Math.abs(line.amount)}`;
+    remaining.set(key, (remaining.get(key) ?? 0) + 1);
+  }
+
+  const leftover: StatementJsonLine[] = [];
+  for (const line of jsonLines) {
+    const key = `${normalizeMerchant(line.merchant)}|${Math.abs(line.amount)}`;
+    const left = remaining.get(key) ?? 0;
+    if (left > 0) remaining.set(key, left - 1);
+    else leftover.push(line);
+  }
+
+  let matchedByPrefix = 0;
+  const onlyInJson: StatementJsonLine[] = [];
+  for (const line of leftover) {
+    const merchant = normalizeMerchant(line.merchant);
+    const amount = Math.abs(line.amount);
+    const candidate = [...remaining.entries()].find(([key, count]) => {
+      if (count <= 0) return false;
+      const sep = key.lastIndexOf("|");
+      return Number(key.slice(sep + 1)) === amount && key.slice(0, sep).startsWith(`${merchant} `);
+    });
+    if (candidate) {
+      remaining.set(candidate[0], candidate[1] - 1);
+      matchedByPrefix += 1;
+    } else {
+      onlyInJson.push(line);
+    }
+  }
+
+  const onlyInDb = [...remaining.entries()]
+    .filter(([, count]) => count > 0)
+    .flatMap(([key, count]) => {
+      const sep = key.lastIndexOf("|");
+      return Array.from({ length: count }, () => ({ merchant: key.slice(0, sep), amount: Number(key.slice(sep + 1)) }));
+    });
+
+  return {
+    matched: jsonLines.length - onlyInJson.length,
+    matched_by_prefix: matchedByPrefix,
+    only_in_json: onlyInJson,
+    only_in_db: onlyInDb,
+  };
+}
 
 /**
  * Compare a parsed statement against the same statement already in the ledger.
@@ -123,27 +194,12 @@ export function diffStatementAgainstLedger(
   const statementDate = parsed.header.statement_date ?? statementDateOverride ?? null;
 
   const imported = accountId && statementDate ? loadImportedLines(accountId, statementDate, parsed.currency) : null;
-  const remaining = new Map<string, number>();
-  for (const line of imported ?? []) {
-    const key = `${line.merchant}|${Math.abs(line.amount)}`;
-    remaining.set(key, (remaining.get(key) ?? 0) + 1);
-  }
-
-  const onlyInJson: StatementDiff["only_in_json"] = [];
-  for (const line of parsed.lines) {
-    const amount = parsed.currency === "usd" ? line.amount_usd ?? 0 : line.amount_clp ?? 0;
-    const key = `${normalizeMerchant(line.merchant)}|${Math.abs(amount)}`;
-    const left = remaining.get(key) ?? 0;
-    if (left > 0) remaining.set(key, left - 1);
-    else onlyInJson.push({ merchant: line.merchant, amount, cod_txs: line.cod_txs });
-  }
-
-  const onlyInDb = [...remaining.entries()]
-    .filter(([, count]) => count > 0)
-    .flatMap(([key, count]) => {
-      const [merchant, amount] = key.split("|");
-      return Array.from({ length: count }, () => ({ merchant: merchant ?? "", amount: Number(amount) }));
-    });
+  const jsonLines: StatementJsonLine[] = parsed.lines.map((line) => ({
+    merchant: line.merchant,
+    amount: parsed.currency === "usd" ? line.amount_usd ?? 0 : line.amount_clp ?? 0,
+    cod_txs: line.cod_txs,
+  }));
+  const pairing = pairStatementLines(jsonLines, imported ?? []);
 
   return {
     file: parsed.file,
@@ -152,10 +208,11 @@ export function diffStatementAgainstLedger(
     account_id: accountId,
     json_lines: parsed.lines.length,
     db_lines: imported?.length ?? null,
-    matched: parsed.lines.length - onlyInJson.length,
-    only_in_json: onlyInJson,
-    only_in_db: onlyInDb,
-    expected_only_in_json: onlyInJson.filter((l) => l.cod_txs === NATIONAL_COD_TXS.PAYMENT).length,
+    matched: pairing.matched,
+    matched_by_prefix: pairing.matched_by_prefix,
+    only_in_json: pairing.only_in_json,
+    only_in_db: pairing.only_in_db,
+    expected_only_in_json: pairing.only_in_json.filter((l) => l.cod_txs === NATIONAL_COD_TXS.PAYMENT).length,
   };
 }
 
