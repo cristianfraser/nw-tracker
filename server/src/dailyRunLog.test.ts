@@ -53,6 +53,18 @@ describe("dailyRunLog", () => {
     expect(broken.body).toMatch(/1 of 2 step\(s\) FAILED: fetch Santander/);
   });
 
+  it("records an empty step list as a failed run, never as «all ok»", () => {
+    // A runner killed during its first step reaches its EXIT trap with nothing recorded.
+    const killed = recordDailyRun([]);
+    expect(killed.ok).toBe(false);
+    const row = db
+      .prepare(`SELECT kind, title FROM app_messages WHERE id = ?`)
+      .get(killed.message_id) as { kind: string; title: string };
+    expect(row.kind).toBe("notification");
+    expect(row.title).toBe(DAILY_RUN_FAILED_TITLE);
+    expect(killed.body).toMatch(/No step completed/);
+  });
+
   it("names every step and its duration in the body", () => {
     const body = formatDailyRunBody([
       { label: "fetch Santander", ok: true, seconds: 41.4 },

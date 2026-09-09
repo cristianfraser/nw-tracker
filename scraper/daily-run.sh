@@ -42,6 +42,7 @@ FULL_REIMPORT="${NW_TRACKER_FULL_REIMPORT:-0}"
 
 failed=0
 steps_json="[]"
+current_step=""
 
 # log / add_step / step live in run-lib.sh, shared with the hourly email-run.sh.
 source "$REPO_ROOT/scraper/run-lib.sh"
@@ -57,6 +58,7 @@ notify_failure() {
 # kind of silent failure this exists to surface).
 finish() {
   local exit_code=$?
+  record_interrupted_step
   if [[ "$DRY_RUN" == "1" ]]; then
     log "dry run — not recording an app message"
     exit "$failed"
@@ -144,6 +146,17 @@ if [[ "$DRY_RUN" == "1" ]]; then
   step "Santander movements (dry run)" npm run import:santander-movements -- --dry-run
 else
   step "Santander movements" npm run import:santander-movements
+fi
+
+# 3b. Second pass of the payment-mirror converter. The inbox pipeline ran its own before step 3,
+#     but the card's PAGO / ABONO DE DIVISAS evidence for a same-day payment only lands with the
+#     card feed step 3 imports, so a payment the receipt path did not synthesize (a manual paste,
+#     a receipt mail that never arrived) would otherwise pair only the next night. Idempotent and
+#     cheap: it converts nothing when the receipt already wrote the transfer.
+if [[ "$DRY_RUN" == "1" ]]; then
+  step "Convert CC payment mirrors after card feed (dry run)" npm run convert:cc-payment-mirrors -- --dry-run
+else
+  step "Convert CC payment mirrors after card feed" npm run convert:cc-payment-mirrors
 fi
 
 # 4. Broker e-mail is the change detector: reading it costs nothing, so it decides whether any

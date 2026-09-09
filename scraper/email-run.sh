@@ -36,6 +36,7 @@ done
 
 failed=0
 steps_json="[]"
+current_step=""
 activity=0
 
 # The daily run shares the document ledger, the broker-mail watermark and the SQLite file
@@ -60,6 +61,7 @@ TMP_DIR="$(mktemp -d)"
 finish() {
   local exit_code=$?
   rm -rf "$TMP_DIR"
+  record_interrupted_step
   if [[ "$DRY_RUN" == "1" ]]; then
     log "dry run — not recording an app message"
     exit "$failed"
