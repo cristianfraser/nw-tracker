@@ -1,4 +1,4 @@
-import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fintualPollDayCaughtUp } from "./fintualPublishDate.js";
 import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
@@ -44,14 +44,25 @@ export function isRiskyNorrisApvMtmSeries(seriesKey: string | null | undefined):
   return k != null && RISKY_NORRIS_APV_MTM_SERIES_KEYS.has(k);
 }
 
-/** Global evening Fintual sync caught up for Chile today (official cuotas in DB). */
-export function fintualGlobalSyncSettledForChileToday(now = new Date()): boolean {
-  const cl = chileWallClockAt(now);
+/**
+ * Global evening Fintual sync caught up for the Chile day `ymd` (official cuotas in DB).
+ *
+ * Keyed by a DAY, not the clock: the proxy gate asks about the NYSE session it would be
+ * tracking (`nyseWallClock(now).ymd`), never about the Chile calendar day. Chile runs ahead of
+ * New York by 0–2 hours depending on the two DST calendars, so between Chile midnight and
+ * New York midnight the Chile day has rolled while the session — already settled by that
+ * evening's poll — has not. Asking "settled for Chile today" there was false (no poll for the
+ * new day exists yet) and re-armed the proxy for the gap: 2026-09-11 00:00–01:00 the APV
+ * accounts read +286k/+129k against the official cuota polled at 22:15, snapping back at
+ * New York midnight. Unreachable while both zones sat at UTC−4; exposed by Chile's 2026-09-06
+ * spring-forward.
+ */
+export function fintualGlobalSyncSettledForChileDay(ymd: string): boolean {
   const state = loadGlobalSyncState();
   const publishYmd = state.fintualLastAppliedPublishYmd ?? state.fintualLastPublishYmd;
   const sig = state.fintualLastAppliedSig ?? state.fintualLastCheckSig;
-  if (!fintualPollDayCaughtUp(cl.ymd, publishYmd, state, sig)) return false;
-  const reconcileYmd = publishYmd ?? cl.ymd;
+  if (!fintualPollDayCaughtUp(ymd, publishYmd, state, sig)) return false;
+  const reconcileYmd = publishYmd ?? ymd;
   if (!fintualCertV2PollReconciled(reconcileYmd, state)) return false;
   return true;
 }
@@ -65,24 +76,28 @@ export function fintualGlobalSyncSettledForChileToday(now = new Date()): boolean
  * the proxy. We instead follow the proxy from that day's NYSE open, and keep the held
  * value across the overnight gap until the next session opens.
  *
- * - (A) Today is a Chile non-business day: hold from NYSE open onward (incl. after close).
+ * Framed on the NYSE session day (`nyseWallClock(now).ymd`), never the Chile calendar day —
+ * see {@link fintualGlobalSyncSettledForChileDay} for why the two differ around Chile midnight
+ * (a Saturday 00:30 Chile is still Friday's session in New York: a Chile business day, settled).
+ *
+ * - (A) The session day is a Chile non-business day: hold from NYSE open onward (incl. after
+ *       close, and across the Chile-midnight gap while New York is still on that day).
  *       Before NYSE open we don't hold — the last official cuota is still shown.
- * - (B) Today is a Chile business day, before NYSE open, and the just-closed NYSE session
- *       fell on a Chile non-business day (so Fintual still hasn't caught up to it) and
- *       tonight's sync hasn't settled — keep the held proxy until this session opens.
+ * - (B) The session day is a Chile business day, before NYSE open, and the just-closed NYSE
+ *       session fell on a Chile non-business day (so Fintual still hasn't caught up to it) and
+ *       that day's evening sync hasn't settled — keep the held proxy until this session opens.
  */
 export function inChileHolidayProxyHold(now = new Date()): boolean {
-  const nyYmd = nyseWallClock(now).ymd;
-  const today = chileCalendarTodayYmd();
+  const sessionYmd = nyseWallClock(now).ymd;
 
-  if (!isChileBusinessDay(today)) {
+  if (!isChileBusinessDay(sessionYmd)) {
     return !isBeforeNyseRegularOpen(now);
   }
 
   if (!isBeforeNyseRegularOpen(now)) return false;
-  const priorSession = priorNyseSessionYmd(nyYmd);
+  const priorSession = priorNyseSessionYmd(sessionYmd);
   if (priorSession == null || isChileBusinessDay(priorSession)) return false;
-  return !fintualGlobalSyncSettledForChileToday(now);
+  return !fintualGlobalSyncSettledForChileDay(sessionYmd);
 }
 
 /**
@@ -95,12 +110,15 @@ export function inChileHolidayProxyHold(now = new Date()): boolean {
  *   before the Fintual evening sync settles.
  */
 export function shouldUseRiskyNorrisProxyMtm(now = new Date()): boolean {
-  const nyYmd = nyseWallClock(now).ymd;
-  if (!isNyseTradingDay(nyYmd)) return false;
+  const sessionYmd = nyseWallClock(now).ymd;
+  if (!isNyseTradingDay(sessionYmd)) return false;
 
   if (inChileHolidayProxyHold(now)) return true;
 
-  if (fintualGlobalSyncSettledForChileToday(now)) return false;
+  // Settled for the SESSION day, not Chile today: after Chile midnight New York can still be
+  // on the session whose cuota the evening poll already landed — the proxy stays off until
+  // the next open (see fintualGlobalSyncSettledForChileDay).
+  if (fintualGlobalSyncSettledForChileDay(sessionYmd)) return false;
   if (isBeforeNyseRegularOpen(now)) return false;
   return true;
 }
