@@ -4,6 +4,7 @@ import { Button, Input } from "@crfrsr/ui";
 import { CartesianGrid, Line, XAxis, YAxis } from "recharts";
 import { api } from "../api";
 import { AppLineChart } from "../components/charts/AppLineChart";
+import { buildNiceYAxis, minMaxForKeys } from "../components/charts/chartLayout";
 import { ProductConfigPanel } from "../components/groceries/ProductConfigPanel";
 import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
 import { formatClp } from "../format";
@@ -227,6 +228,11 @@ export function GroceriesPage() {
       })),
     [effectivePriceMode, filteredHistory]
   );
+  // A price axis starts at 0 like every value chart; only the finite prices set the top.
+  const yScale = useMemo(() => {
+    const { max } = minMaxForKeys(chartData, ["price"]);
+    return buildNiceYAxis(0, Math.max(0, max));
+  }, [chartData]);
 
   if (error) {
     return (
@@ -521,7 +527,8 @@ export function GroceriesPage() {
                     tick={{ fill: "var(--muted)", fontSize: 10 }}
                     width={52}
                     tickFormatter={(v: number) => formatClp(v)}
-                    domain={["auto", "auto"]}
+                    domain={yScale.domain}
+                    ticks={yScale.ticks}
                   />
                   <Line type="monotone" dataKey="price" stroke="var(--accent, #2f81f7)" strokeWidth={2} dot />
                 </AppLineChart>

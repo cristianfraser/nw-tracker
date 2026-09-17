@@ -193,8 +193,11 @@ export function buildNiceYAxis(
 }
 
 /**
- * Y-axis for series with a padded band around the data range (e.g. valuations, FX).
- * When `minData >= 0`, the domain never extends below 0 (padding only shrinks toward zero).
+ * Y-axis with a padded band around the data range — **the Rates page exception** to the
+ * start-at-0 rule (`buildNiceYAxis`): a quote series (dólar, UF, EUR) is about the move, not the
+ * level, and a 0-anchored UF axis is a flat line. Every value chart (valuations, flows, P/L,
+ * prices) uses `buildNiceYAxis` instead. When `minData >= 0`, the domain never extends below 0
+ * (padding only shrinks toward zero).
  */
 export function buildNiceYAxisPositiveBand(
   minData: number,
@@ -290,10 +293,22 @@ function findYearBoundaryDate(
 
 type XAxisTickOpts = { minTickCount?: number; maxTickCount?: number; includeLastDataPoint?: boolean };
 
+/** First index ≥ `i0` that is a multiple of `stride` — the phase every stride walk starts from. */
+function firstAlignedIndex(i0: number, stride: number): number {
+  return Math.ceil(i0 / stride) * stride;
+}
+
+/** Number of stride-aligned indices (multiples of `stride`) inside `[i0, i1]`. */
+function alignedTickCount(i0: number, i1: number, stride: number): number {
+  const first = firstAlignedIndex(i0, stride);
+  return first > i1 ? 0 : 1 + Math.floor((i1 - first) / stride);
+}
+
 /**
  * Multi-year X-axis ticks at **January (December for year-end-row series)** — one marker per
  * calendar year when possible — then the first/last series dates only when there is room under
- * `maxTickCount`.
+ * `maxTickCount`. A stride of N > 1 years is phased on round years (multiples of N: 2018, 2020,
+ * … for 2; 2015, 2020, … for 5), never on whatever year the series happens to start in.
  */
 function computeYearBoundaryXAxisTicks(datesAsc: string[], opts?: XAxisTickOpts): string[] | undefined {
   const minT = Math.max(2, opts?.minTickCount ?? 4);
@@ -310,14 +325,14 @@ function computeYearBoundaryXAxisTicks(datesAsc: string[], opts?: XAxisTickOpts)
   let yearStep = 1;
   let found = false;
   for (const s of [12, 10, 8, 6, 5, 4, 3, 2, 1]) {
-    const n = 1 + Math.floor(span / s);
+    const n = alignedTickCount(y0, y1, s);
     if (n >= minT && n <= maxT) {
       yearStep = s;
       found = true;
       break;
     }
   }
-  if (!found && 1 + Math.floor(span / 1) > maxT) {
+  if (!found && 1 + span > maxT) {
     yearStep = Math.max(1, Math.ceil(span / (maxT - 1)));
   }
 
@@ -325,7 +340,7 @@ function computeYearBoundaryXAxisTicks(datesAsc: string[], opts?: XAxisTickOpts)
   const push = (d: string | undefined) => {
     if (d && !ticks.includes(d)) ticks.push(d);
   };
-  for (let y = y0; y <= y1; y += yearStep) {
+  for (let y = firstAlignedIndex(y0, yearStep); y <= y1; y += yearStep) {
     push(findYearBoundaryDate(datesAsc, y, y0));
   }
 
@@ -349,8 +364,11 @@ export function extractSortedAsOfDates(points: { as_of_date?: string | null }[])
 }
 
 /**
- * X-axis tick values at **even calendar month strides** (e.g. every 4 months from the first point),
- * so labels are evenly spaced in time instead of Recharts’ uneven category sampling.
+ * X-axis tick values at **even calendar month strides phased on January** — every stride divides
+ * 12, so a 4-month stride reads ene/may/sep whatever month the series starts in (a walk from the
+ * first data point would read abr/ago/dic for a series starting in April), and labels are evenly
+ * spaced in time instead of Recharts’ uneven category sampling. Strides of a year or more hand off
+ * to the year-boundary ticks.
  *
  * @param opts.includeLastDataPoint When true (default), append the final series date if absent so the
  *   last month is labeled (e.g. P/L combo). When false (valuation lines), omit it so the last tick stays
@@ -371,17 +389,18 @@ export function computeRegularMonthXAxisTicks(
   const span = i1 - i0;
   if (span <= 0) return [datesAsc[0]!];
 
+  // Divisors of 12 only (9 and 18 would drift off January year over year).
   let step = 1;
   let found = false;
-  for (const s of [48, 36, 24, 18, 12, 9, 6, 4, 3, 2, 1]) {
-    const n = 1 + Math.floor(span / s);
+  for (const s of [48, 36, 24, 12, 6, 4, 3, 2, 1]) {
+    const n = alignedTickCount(i0, i1, s);
     if (n >= minT && n <= maxT) {
       step = s;
       found = true;
       break;
     }
   }
-  if (!found && 1 + Math.floor(span / 1) > maxT) {
+  if (!found && 1 + span > maxT) {
     step = Math.max(1, Math.ceil(span / (maxT - 1)));
   }
 
@@ -394,7 +413,7 @@ export function computeRegularMonthXAxisTicks(
   }
 
   const ticks: string[] = [];
-  for (let t = i0; t <= i1; t += step) {
+  for (let t = firstAlignedIndex(i0, step); t <= i1; t += step) {
     const y = Math.floor(t / 12);
     const m0 = t % 12;
     const prefix = `${y}-${String(m0 + 1).padStart(2, "0")}`;
@@ -425,10 +444,14 @@ export function computeRegularYearXAxisTicks(
 /** Day strides that read as round intervals on a calendar-day axis. */
 const DAY_TICK_STRIDES = [1, 2, 3, 5, 7, 10, 14, 21, 28, 35, 42, 56, 70, 91, 120] as const;
 
-/** Month strides that read as round intervals when a daily axis is labelled by month. */
+/**
+ * Month strides that read as round intervals when a daily axis is labelled by month — divisors
+ * or multiples of 12, so phasing on the month index keeps every January (and, past a year,
+ * round years) on the axis.
+ */
 const MONTH_TICK_STRIDES = [1, 2, 3, 4, 6, 12, 24, 36, 60, 120] as const;
 
-/** Take every `stride`-th entry anchored on the LAST one, so the newest tick is always labelled. */
+/** Take every `stride`-th entry anchored on the LAST one, so the newest day is always labelled. */
 function thinFromEnd<T>(items: readonly T[], stride: number): T[] {
   const out: T[] = [];
   for (let i = items.length - 1; i >= 0; i -= stride) out.unshift(items[i]!);
@@ -438,9 +461,10 @@ function thinFromEnd<T>(items: readonly T[], stride: number): T[] {
 /**
  * Ticks for a dense **calendar-day** grid.
  *
- * Preferred form: **the first day of each month** (thinned to every Nth month when the window is
- * long), labelled `jul 25` — evenly spaced in calendar terms and self-explanatory, instead of the
- * arbitrary days an every-N-days stride lands on (`jul 23, ago 27, oct 1, …`).
+ * Preferred form: **the first day of each month** (thinned to every Nth month, phased on January,
+ * when the window is long), labelled `jul 25` — evenly spaced in calendar terms and
+ * self-explanatory, instead of the arbitrary days an every-N-days stride lands on
+ * (`jul 23, ago 27, oct 1, …`).
  *
  * A window too short to contain `minMonthTicks` month starts (30d/60d ranges) falls back to a
  * whole-day stride with day-precision labels (`withDay: true`), since one or two month boundaries
@@ -457,14 +481,18 @@ export function computeRegularDayXAxisTicks(
 
   const monthFirsts = datesAsc.filter((d) => d.slice(8, 10) === "01");
   if (monthFirsts.length >= minMonthTicks) {
-    let stride = MONTH_TICK_STRIDES[MONTH_TICK_STRIDES.length - 1]!;
+    const monthIndexes = monthFirsts.map((d) => ymdToMonthIndex(d));
+    const phased = (stride: number) =>
+      monthFirsts.filter((_, i) => monthIndexes[i] != null && monthIndexes[i]! % stride === 0);
+    let ticks = phased(MONTH_TICK_STRIDES[MONTH_TICK_STRIDES.length - 1]!);
     for (const s of MONTH_TICK_STRIDES) {
-      if (Math.ceil(monthFirsts.length / s) <= maxT) {
-        stride = s;
+      const candidate = phased(s);
+      if (candidate.length <= maxT) {
+        ticks = candidate;
         break;
       }
     }
-    return { ticks: thinFromEnd(monthFirsts, stride), withDay: false };
+    return { ticks, withDay: false };
   }
 
   const n = datesAsc.length;
