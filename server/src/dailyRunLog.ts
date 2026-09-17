@@ -6,7 +6,8 @@
  * exactly what makes a silent failure possible: the log file grows, nothing surfaces, and a
  * broken fetch can go unnoticed for weeks while the app looks healthy. So every run records an
  * `app_messages` row: `log` when everything passed, `notification` (unread badge in the app) when
- * any step failed.
+ * any step failed — and ALSO for the first clean run after a failure, so the notifications tab
+ * (which lists notifications only) shows the outage resolved instead of leaving the failure on top.
  *
  * It also reports the gap since the last successful run, which catches the failure mode a
  * per-run status cannot: a run that never happened at all (Mac asleep or off at 22:00, agent
@@ -76,6 +77,45 @@ function chileYmdFromStoredUtc(stored: string): string {
   return chileWallClockAt(parsed).ymd;
 }
 
+/** `YYYY-MM-DD HH:MM` Chile wall clock of a stored UTC timestamp — for the recovery line. */
+function chileStampFromStoredUtc(stored: string): string {
+  const parsed = new Date(`${String(stored).trim().replace(" ", "T")}Z`);
+  if (Number.isNaN(parsed.getTime())) return String(stored);
+  const wc = chileWallClockAt(parsed);
+  return `${wc.ymd} ${String(wc.hour).padStart(2, "0")}:${String(wc.minute).padStart(2, "0")}`;
+}
+
+/**
+ * The most recent run recorded under `titles`, when it was the failed one — null when the last
+ * run succeeded or none was ever recorded.
+ *
+ * A success that follows a failure is the one outcome the notifications tab could not express: a
+ * failure badges as a `notification`, a clean run is a plain `log`, and the tab lists notifications
+ * only — so a resolved outage read as unresolved forever (2026-09-11: the 22:37 «fetch Santander»
+ * failure sat on top while the 22:46 retry that fixed it was a log row nobody sees there). The
+ * recovery is therefore recorded as a notification too, under the SAME title as any clean run:
+ * the titles drive `lastDailyRunAt`, `dailyRunAlreadyRanToday` and `staleDailyRunDays`, and the
+ * kind is part of none of those reads. Only the first success after a failure qualifies — the
+ * next clean run finds a success on top and is a log again.
+ */
+function lastRunFailureToRecoverFrom(
+  titles: readonly string[],
+  failedTitle: string
+): { created_at: string } | null {
+  const row = db
+    .prepare(
+      `SELECT title, created_at FROM app_messages
+       WHERE title IN (${titles.map(() => "?").join(", ")})
+       ORDER BY created_at DESC, id DESC LIMIT 1`
+    )
+    .get(...titles) as { title: string; created_at: string } | undefined;
+  return row && row.title === failedTitle ? { created_at: row.created_at } : null;
+}
+
+function recoveryLine(failure: { created_at: string }): string {
+  return `Recovered: the previous run (${chileStampFromStoredUtc(failure.created_at)}) had failed.`;
+}
+
 function daysBetweenYmd(fromYmd: string, toYmd: string): number {
   const a = Date.parse(`${fromYmd}T00:00:00Z`);
   const b = Date.parse(`${toYmd}T00:00:00Z`);
@@ -138,26 +178,36 @@ export function formatDailyRunBody(steps: readonly DailyRunStep[], nowYmd?: stri
 export type RecordDailyRunResult = {
   ok: boolean;
   message_id: number | null;
+  kind: "log" | "notification";
+  /** `created_at` of the failed run this clean run recovered from (recorded as a notification). */
+  recovered_from: string | null;
   body: string;
 };
 
 /**
  * Record one run. A failure writes a `notification` so the app shows an unread badge; a clean run
- * writes a `log` alongside the sync/import entries.
+ * writes a `log` alongside the sync/import entries — except the first clean run after a failure,
+ * which is a `notification` under the clean title so the tab shows the failure resolved (see
+ * `lastRunFailureToRecoverFrom`).
  */
 export function recordDailyRun(
   steps: readonly DailyRunStep[],
   opts?: { dryRun?: boolean; nowYmd?: string }
 ): RecordDailyRunResult {
   const ok = runStepsSucceeded(steps);
-  const body = formatDailyRunBody(steps, opts?.nowYmd);
+  const recovery = ok
+    ? lastRunFailureToRecoverFrom([DAILY_RUN_MESSAGE_TITLE, DAILY_RUN_FAILED_TITLE], DAILY_RUN_FAILED_TITLE)
+    : null;
+  const stepsBody = formatDailyRunBody(steps, opts?.nowYmd);
+  const body = recovery ? `${stepsBody}\n\n${recoveryLine(recovery)}` : stepsBody;
+  const kind: "log" | "notification" = ok && !recovery ? "log" : "notification";
   const message_id = insertAppMessage(
-    ok ? "log" : "notification",
+    kind,
     ok ? DAILY_RUN_MESSAGE_TITLE : DAILY_RUN_FAILED_TITLE,
     body,
     opts?.dryRun ?? false
   );
-  return { ok, message_id, body };
+  return { ok, message_id, kind, recovered_from: recovery?.created_at ?? null, body };
 }
 
 export type RecordHourlyEmailRunResult = {
@@ -166,6 +216,8 @@ export type RecordHourlyEmailRunResult = {
   recorded: boolean;
   message_id: number | null;
   kind: "log" | "notification" | null;
+  /** `created_at` of the failed poll this clean poll recovered from (recorded as a notification). */
+  recovered_from: string | null;
   body: string;
 };
 
@@ -184,15 +236,27 @@ function lastHourlyEmailFailureAt(): string | null {
  * only the FIRST failure of the Chile day is a `notification` (unread badge): a persistent
  * outage badges once per day instead of hourly, and the nightly run — which executes the
  * same e-mail steps — still raises the macOS alert for anything that keeps failing.
+ *
+ * The first success after a failed poll is recorded as a `notification` even when quiet —
+ * the recovery has to reach the notifications tab, and a poll with nothing to import is the
+ * normal shape of the hour that proves the outage is over (see `lastRunFailureToRecoverFrom`).
  */
 export function recordHourlyEmailRun(
   steps: readonly DailyRunStep[],
   opts: { activity: boolean; dryRun?: boolean; nowYmd?: string }
 ): RecordHourlyEmailRunResult {
   const ok = runStepsSucceeded(steps);
-  const body = formatRunStepLines(steps).join("\n");
-  if (ok && !opts.activity) {
-    return { ok, recorded: false, message_id: null, kind: null, body };
+  const recovery = ok
+    ? lastRunFailureToRecoverFrom(
+        [HOURLY_EMAIL_RUN_MESSAGE_TITLE, HOURLY_EMAIL_RUN_FAILED_TITLE],
+        HOURLY_EMAIL_RUN_FAILED_TITLE
+      )
+    : null;
+  const lines = formatRunStepLines(steps);
+  if (recovery) lines.push("", recoveryLine(recovery));
+  const body = lines.join("\n");
+  if (ok && !opts.activity && !recovery) {
+    return { ok, recorded: false, message_id: null, kind: null, recovered_from: null, body };
   }
   let kind: "log" | "notification" = "log";
   if (!ok) {
@@ -200,6 +264,8 @@ export function recordHourlyEmailRun(
     const nowYmd = opts.nowYmd ?? chileCalendarTodayYmd();
     const alreadyFailedToday = lastFailure != null && chileYmdFromStoredUtc(lastFailure) === nowYmd;
     kind = alreadyFailedToday ? "log" : "notification";
+  } else if (recovery) {
+    kind = "notification";
   }
   const message_id = insertAppMessage(
     kind,
@@ -207,5 +273,5 @@ export function recordHourlyEmailRun(
     body,
     opts.dryRun ?? false
   );
-  return { ok, recorded: true, message_id, kind, body };
+  return { ok, recorded: true, message_id, kind, recovered_from: recovery?.created_at ?? null, body };
 }

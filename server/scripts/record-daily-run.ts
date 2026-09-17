@@ -43,7 +43,7 @@ const result = recordDailyRun(steps);
 console.log(result.body);
 console.log(
   result.message_id != null
-    ? `Recorded as app message ${result.message_id} (${result.ok ? "log" : "notification"}).`
+    ? `Recorded as app message ${result.message_id} (${result.kind}${result.recovered_from ? ", recovery" : ""}).`
     : "Not recorded."
 );
 process.exit(result.ok ? 0 : 1);

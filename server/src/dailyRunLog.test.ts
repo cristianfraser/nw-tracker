@@ -102,6 +102,29 @@ describe("dailyRunLog", () => {
     expect(lastDailyRunAt({ successOnly: true })).toBeNull();
     expect(lastDailyRunAt()).not.toBeNull();
   });
+
+  it("records the first clean run after a failure as a notification, so the tab shows the recovery", () => {
+    recordDailyRun([{ label: "fetch Santander", ok: false, seconds: 2222 }]);
+    const recovered = recordDailyRun([{ label: "fetch Santander", ok: true, seconds: 450 }]);
+    expect(recovered.ok).toBe(true);
+    expect(recovered.kind).toBe("notification");
+    expect(recovered.recovered_from).not.toBeNull();
+    const row = db
+      .prepare(`SELECT kind, title, read_at FROM app_messages WHERE id = ?`)
+      .get(recovered.message_id) as { kind: string; title: string; read_at: string | null };
+    expect(row.kind).toBe("notification");
+    expect(row.read_at).toBeNull();
+    // Same title as every clean run: the staleness and same-day-skip reads key on it.
+    expect(row.title).toBe(DAILY_RUN_MESSAGE_TITLE);
+    expect(lastDailyRunAt({ successOnly: true })).not.toBeNull();
+    expect(recovered.body).toMatch(/Recovered: the previous run \(\d{4}-\d{2}-\d{2} \d{2}:\d{2}\) had failed\./);
+
+    // The next clean run finds a success on top and is an ordinary log again.
+    const routine = recordDailyRun([{ label: "fetch Santander", ok: true, seconds: 400 }]);
+    expect(routine.kind).toBe("log");
+    expect(routine.recovered_from).toBeNull();
+    expect(routine.body).not.toContain("Recovered");
+  });
 });
 
 /**
@@ -162,6 +185,28 @@ describe("recordHourlyEmailRun", () => {
       nowYmd: "2099-01-01",
     });
     expect(nextDay.kind).toBe("notification");
+  });
+
+  it("records a quiet success after a failed poll as a notification — the recovery must reach the tab", () => {
+    recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
+    const recovered = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true, seconds: 5 }], {
+      activity: false,
+    });
+    expect(recovered.recorded).toBe(true);
+    expect(recovered.kind).toBe("notification");
+    expect(recovered.recovered_from).not.toBeNull();
+    const row = db
+      .prepare(`SELECT kind, title FROM app_messages WHERE id = ?`)
+      .get(recovered.message_id) as { kind: string; title: string };
+    expect(row.kind).toBe("notification");
+    expect(row.title).toBe(HOURLY_EMAIL_RUN_MESSAGE_TITLE);
+    expect(recovered.body).toMatch(/Recovered: the previous run/);
+
+    // Back to the quiet rule once a success is on top.
+    const quiet = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true, seconds: 5 }], {
+      activity: false,
+    });
+    expect(quiet.recorded).toBe(false);
   });
 
   it("stays invisible to the daily run's same-day skip and staleness reads", () => {
