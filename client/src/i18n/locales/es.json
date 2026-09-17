@@ -388,6 +388,8 @@
       "statusOk": "Al día",
       "statusStale": "Desactualizado",
       "statusDisabled": "No configurado",
+      "statusWaitingPublisher": "Esperando publicación",
+      "publisherLagDetail": "Última cuota {{published}} · esperada {{expected}} · revisado {{checked}}",
       "forceStale": "Marcar desactualizado",
       "forceStalePending": "Marcando…",
       "colSource": "Fuente",

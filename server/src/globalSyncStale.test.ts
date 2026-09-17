@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
-import { allSyncSourceStatuses, isFintualSyncStale, staleSyncSources } from "./globalSyncStale.js";
+import {
+  FINTUAL_PUBLISHER_LAG_MAX_POLL_AGE_MS,
+  allSyncSourceStatuses,
+  fintualPublisherLag,
+  isFintualSyncStale,
+  staleSyncSources,
+} from "./globalSyncStale.js";
 
 const cl: ChileWallClock = wallClock("2026-05-22", 20);
 
@@ -159,5 +165,83 @@ describe("isFintualSyncStale prior evening carry-over", () => {
     };
     expect(isFintualSyncStale(wedMorning, state)).toBe(false);
     expect(staleSyncSources(wedMorning, state, { bcentralConfigured: false })).not.toContain("fintual");
+  });
+});
+
+/**
+ * Publisher lag vs our own staleness. The 2026-09-15 shape: Monday's evening poll expected the
+ * 14th's cuota, Fintual had only published the 13th, and the poll kept running every 15 minutes
+ * into Tuesday — stale by the carry rule, but nothing on our side was behind.
+ */
+describe("fintualPublisherLag", () => {
+  const tuesdayMorning = wallClock("2026-09-15", 11);
+  const nowMs = Date.parse("2026-09-15T14:30:00Z");
+  const waitingOnMonday: GlobalSyncStateFile = {
+    fintualLastCheckYmd: "2026-09-14",
+    fintualLastAppliedYmd: "2026-09-14",
+    fintualLastPublishYmd: "2026-09-13",
+    fintualLastAppliedPublishYmd: "2026-09-13",
+    fintualEveningSettledYmd: "2026-09-13",
+    fintualLastCheckSig: "sig",
+    fintualLastAppliedSig: "sig",
+  };
+
+  it("classifies a recent poll that is only missing the publisher's next day as publisher lag", () => {
+    expect(isFintualSyncStale(tuesdayMorning, waitingOnMonday)).toBe(true);
+    const lag = fintualPublisherLag(tuesdayMorning, waitingOnMonday, {
+      lastCheckedAt: "2026-09-15T14:13:00Z",
+      nowMs,
+    });
+    expect(lag).toEqual({
+      expected_ymd: "2026-09-14",
+      published_ymd: "2026-09-13",
+      last_checked_at: "2026-09-15T14:13:00Z",
+    });
+  });
+
+  it("is our staleness when the poll itself is old, never ran, or was forced by hand", () => {
+    const stalePoll = new Date(nowMs - FINTUAL_PUBLISHER_LAG_MAX_POLL_AGE_MS - 1_000).toISOString();
+    expect(fintualPublisherLag(tuesdayMorning, waitingOnMonday, { lastCheckedAt: stalePoll, nowMs })).toBeNull();
+    expect(fintualPublisherLag(tuesdayMorning, waitingOnMonday, { lastCheckedAt: null, nowMs })).toBeNull();
+    const forced: GlobalSyncStateFile = { ...waitingOnMonday, userForcedStale: ["fintual"] };
+    expect(
+      fintualPublisherLag(tuesdayMorning, forced, { lastCheckedAt: "2026-09-15T14:13:00Z", nowMs })
+    ).toBeNull();
+  });
+
+  it("is our staleness when the API has published but our applied state disagrees", () => {
+    // Same-day publish, signatures differ: the DB did not take the NAV — nothing to wait for.
+    const mismatch: GlobalSyncStateFile = {
+      ...waitingOnMonday,
+      fintualLastPublishYmd: "2026-09-14",
+      fintualLastAppliedPublishYmd: "2026-09-14",
+      fintualLastCheckSig: "new",
+      fintualLastAppliedSig: "old",
+    };
+    expect(isFintualSyncStale(tuesdayMorning, mismatch)).toBe(true);
+    expect(
+      fintualPublisherLag(tuesdayMorning, mismatch, { lastCheckedAt: "2026-09-15T14:13:00Z", nowMs })
+    ).toBeNull();
+  });
+
+  it("keeps the source in `stale` (the scheduler still polls) but out of the dimming list", () => {
+    const rows = allSyncSourceStatuses(tuesdayMorning, waitingOnMonday, {
+      bcentralConfigured: true,
+      fintualLastCheckedAt: "2026-09-15T14:13:00Z",
+      nowMs,
+    });
+    const fintual = rows.find((r) => r.source === "fintual");
+    expect(fintual?.stale).toBe(true);
+    expect(fintual?.status).toBe("stale");
+    expect(fintual?.publisher_lag?.expected_ymd).toBe("2026-09-14");
+    const behind = rows.filter((r) => r.stale && r.publisher_lag == null).map((r) => r.source);
+    expect(behind).not.toContain("fintual");
+
+    const missedPoll = allSyncSourceStatuses(tuesdayMorning, waitingOnMonday, {
+      bcentralConfigured: true,
+      fintualLastCheckedAt: null,
+      nowMs,
+    }).find((r) => r.source === "fintual");
+    expect(missedPoll?.publisher_lag).toBeNull();
   });
 });

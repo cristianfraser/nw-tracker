@@ -117,13 +117,26 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
               <td>
                 <span
                   className={cn(
-                    row.status === "stale" && styles.badgeStale,
-                    row.status === "ok" && styles.badgeOk,
-                    row.status !== "stale" && row.status !== "ok" && styles.badgeMuted
+                    row.publisher_lag
+                      ? styles.badgeWaiting
+                      : row.status === "stale"
+                        ? styles.badgeStale
+                        : row.status === "ok"
+                          ? styles.badgeOk
+                          : styles.badgeMuted
                   )}
                 >
-                  {statusLabel(t, row.status)}
+                  {row.publisher_lag ? t("importSync.sync.statusWaitingPublisher") : statusLabel(t, row.status)}
                 </span>
+                {row.publisher_lag ? (
+                  <div className={cn("muted", styles.lagDetail)}>
+                    {t("importSync.sync.publisherLagDetail", {
+                      published: row.publisher_lag.published_ymd,
+                      expected: row.publisher_lag.expected_ymd,
+                      checked: formatWhen(row.publisher_lag.last_checked_at),
+                    })}
+                  </div>
+                ) : null}
               </td>
               <td className={styles.colActions}>
                 {row.status === "ok" ? (

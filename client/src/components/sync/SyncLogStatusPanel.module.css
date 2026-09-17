@@ -41,3 +41,15 @@
   color: var(--muted);
   white-space: nowrap;
 }
+
+/* Stale only because the publisher has not released the expected day yet — not an app fault. */
+.badgeWaiting {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lagDetail {
+  font-size: 0.85em;
+  margin-top: 0.15rem;
+}

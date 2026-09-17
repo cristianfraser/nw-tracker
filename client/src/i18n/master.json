@@ -1327,6 +1327,14 @@
         "en": "Not configured",
         "es": "No configurado"
       },
+      "statusWaitingPublisher": {
+        "en": "Waiting for publisher",
+        "es": "Esperando publicación"
+      },
+      "publisherLagDetail": {
+        "en": "Latest cuota {{published}} · expected {{expected}} · checked {{checked}}",
+        "es": "Última cuota {{published}} · esperada {{expected}} · revisado {{checked}}"
+      },
       "forceStale": {
         "en": "Mark stale",
         "es": "Marcar desactualizado"
