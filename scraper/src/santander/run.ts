@@ -12,6 +12,7 @@ import { setForceRefetch } from "../documentLedger.js";
 import { assertValidSteps, shouldRunStep } from "../steps.js";
 import type { RunOptions, StepResult } from "../runTypes.js";
 import { isLoggedIn, login } from "./login.js";
+import { assertLoginNotLatched } from "./loginLatch.js";
 import { fetchCardMovements, fetchCardStatements } from "./cards.js";
 import { fetchCheckingMovements } from "./checking.js";
 import { keepSessionAlive, type SessionKeepAlive } from "./sessionKeepAlive.js";
@@ -50,20 +51,38 @@ function browserIsGone(session: Session, err: unknown): boolean {
 export async function runSantander(opts: RunOptions): Promise<number> {
   assertValidSteps("santander", opts.only);
   setForceRefetch(opts.force);
-  assertRunAllowed("santander", opts.minIntervalMinutes, opts.force);
   const config = loadBankConfig("santander");
+  // Before the run guard records an attempt: a latched rejection is not a run, it is a refusal.
+  assertLoginNotLatched(config.keychain_service, config.rut, opts.force);
+  assertRunAllowed("santander", opts.minIntervalMinutes, opts.force);
   const password = readKeychainSecret(config.keychain_service, config.rut);
   const stamp = runStampNow();
   const recorder = new Recorder(opts.capture, stamp, "santander", API_HOST_FRAGMENT);
   const destDir = opts.capture ? ensureDir(path.join(recorder.captureDir ?? "", "downloads")) : resolveInboxDir();
   log(opts.capture ? `CAPTURE run — nothing goes to the inbox (${recorder.captureDir})` : `downloads → ${destDir}`);
 
+  /**
+   * Launch Chrome and log in. A login that fails must close the browser it opened: Playwright keeps
+   * the event loop alive while a browser is connected, so a leaked context turns a two-minute login
+   * failure into a process that never exits — on 2026-09-11 the bank rejected the 22:00 login, the
+   * run sat idle for hours at «FAILED: page.waitForURL», and the pipeline steps behind it (plus every
+   * hourly poll, which yields to a running daily run) never happened. The initial open sits before
+   * the try/finally that closes the session, and a failed relaunch leaked its new context the same
+   * way, so the close belongs here, next to the launch.
+   */
   const openSession = async (): Promise<Session> => {
     const context = await launchBrowser({ bank: "santander", headless: false, background: opts.background });
-    const page = await firstPage(context);
-    recorder.attach(page);
-    await login(page, config.rut, password);
-    return { context, page, keepAlive: keepSessionAlive(page) };
+    try {
+      const page = await firstPage(context);
+      recorder.attach(page);
+      await login(page, config.rut, password);
+      return { context, page, keepAlive: keepSessionAlive(page) };
+    } catch (err) {
+      await context.close().catch((closeErr: unknown) => {
+        log(`(browser context close after failed login: ${errorMessage(closeErr).split("\n")[0]})`);
+      });
+      throw err;
+    }
   };
 
   const closeSession = async (session: Session): Promise<void> => {

@@ -67,4 +67,14 @@ export const TEXT = {
    * which must never be matched — hence the full phrase, not a bare «sesión».
    */
   keepSession: /mantener\s+sesi[oó]n/i,
+  /**
+   * The toast the login panel shows over the form when the bank rejects the login. Two wordings so
+   * far: «Ocurrió un error al ingresar a tu banco en línea…» (2026-09-11, the bank's side — a manual
+   * login showed the same) and «Alguno de los datos ingresados es incorrecto. Por favor, revisa tu RUT
+   * y Clave Digital…» (2026-09-14, wrong credentials). The toast lives in the top-level page next to
+   * the `#login-frame` iframe, not inside it. The window never leaves the public site either way.
+   */
+  loginRejected: /ocurri[oó] un error al ingresar|alguno de los datos ingresados es incorrecto/i,
+  /** The wording that means the stored clave is wrong — the one that latches further logins off. */
+  loginCredentialsRejected: /alguno de los datos ingresados es incorrecto/i,
 } as const;
