@@ -23,10 +23,18 @@ export interface SyncSourceWallTime {
   timeZone: "America/Santiago" | "America/New_York";
 }
 
+/** A stale source that holds everything its publisher has: the publisher is the one behind. */
+export interface SyncPublisherLag {
+  expected_ymd: string;
+  published_ymd: string;
+  last_checked_at: string;
+}
+
 export interface SyncSourceStatusRow {
   source: SyncSourceId;
   status: SyncSourceDisplayStatus;
   stale: boolean;
+  publisher_lag: SyncPublisherLag | null;
   next_sync: SyncSourceWallTime | null;
   next_sync_imminent: boolean;
   today_day_kind: SyncSourceDayKind;
@@ -90,6 +98,8 @@ export interface GenericUniqueMerchantMutationResponse {
 export interface SyncStatusResponse {
   chile: { ymd: string; hour: number; minute: number; monthKey: string };
   stale: SyncSourceId[];
+  /** `stale` minus publisher lag — the sources whose accounts the dashboard dims. */
+  stale_behind: SyncSourceId[];
   sources: SyncSourceStatusRow[];
   scheduler: SyncSchedulerStatus;
   /** ISO-ish timestamp from latest sync log row (`app_messages`, kind=log). */

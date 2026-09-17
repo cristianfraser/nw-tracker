@@ -321,7 +321,9 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
    * Day deltas are always balance-change net of flows (no perf series exists at day grain).
    */
   const priorDayYmd = chileCalendarAddDays(today, -1);
-  const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale);
+  // `stale_behind`, not `stale`: a source waiting on its publisher (Fintual has not published
+  // the expected cuota yet, our poll is current) must not dim its accounts as if we had failed.
+  const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale_behind);
 
   /** Memoized once per listing — the mortgage master appears in one summed scope. */
   let mortgageDepositsMemo: MortgageCardDeposits | null | undefined;

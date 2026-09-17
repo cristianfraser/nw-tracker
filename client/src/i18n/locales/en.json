@@ -388,6 +388,8 @@
       "statusOk": "Up to date",
       "statusStale": "Stale",
       "statusDisabled": "Not configured",
+      "statusWaitingPublisher": "Waiting for publisher",
+      "publisherLagDetail": "Latest cuota {{published}} · expected {{expected}} · checked {{checked}}",
       "forceStale": "Mark stale",
       "forceStalePending": "Marking…",
       "colSource": "Source",

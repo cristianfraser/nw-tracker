@@ -1,7 +1,7 @@
 /**
  * Stale checks for external sync sources (no Fintual script imports — safe for `tsc` / in-server use).
  */
-import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
+import { type ChileWallClock, chileCalendarAddDays, chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
 import {
   loadGlobalSyncState,
@@ -30,9 +30,12 @@ import {
   isFintualFundPublishDay,
 } from "./fintualPublishDate.js";
 import {
+  fintualCertV2AnyHeldFundMissingDayRow,
   fintualCertV2PollReconciled,
   fintualMorningCarryPerFundUnresolved,
 } from "./fintualCertV2Reconcile.js";
+import fs from "node:fs";
+import { fintualGoalsSnapshotPath } from "../scripts/fintualApiLib.js";
 import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { isBcentralConfigured } from "./bcentralApi.js";
 import { isYahooFxUsdStale } from "./fxYahooEodSync.js";
@@ -373,10 +376,25 @@ export function staleSyncSources(
 
 export type SyncSourceDisplayStatus = "ok" | "stale" | "disabled";
 
+/**
+ * A stale source whose only missing piece is the PUBLISHER's next day: our poll ran recently and
+ * holds everything the API offers, the API just has not published the expected cuota yet.
+ */
+export type SyncPublisherLag = {
+  /** The first publish day the source is waiting for. */
+  expected_ymd: string;
+  /** The publisher's latest cuota day as of the last poll. */
+  published_ymd: string;
+  /** When the last poll ran (ISO). */
+  last_checked_at: string;
+};
+
 export type SyncSourceStatusRow = {
   source: GlobalSyncSource;
   status: SyncSourceDisplayStatus;
   stale: boolean;
+  /** Set when `stale` is the publisher's lag, not ours (see `fintualPublisherLag`). */
+  publisher_lag: SyncPublisherLag | null;
   next_sync: SyncWallTime | null;
   next_sync_imminent: boolean;
   today_day_kind: SyncSourceDayKind;
@@ -393,16 +411,85 @@ function syncSourceRow(
     source,
     status,
     stale,
+    publisher_lag: null,
     next_sync: sched.next_sync,
     next_sync_imminent: sched.next_sync_imminent,
     today_day_kind: sched.today_day_kind,
   };
 }
 
+/**
+ * How old the last Fintual poll may be for its staleness to still count as the publisher's lag.
+ * The scheduler polls every 15 minutes while any source is stale; two intervals is one missed
+ * tick of slack. Older than that, the poll itself is what is missing and we are the ones behind.
+ */
+export const FINTUAL_PUBLISHER_LAG_MAX_POLL_AGE_MS = 30 * 60 * 1000;
+
+/** `fetchedAt` of the goals snapshot `runFintual` writes on every poll — null when none exists. */
+export function readFintualLastCheckedAt(): string | null {
+  const file = fintualGoalsSnapshotPath();
+  if (!fs.existsSync(file)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as { fetchedAt?: unknown };
+    return typeof parsed.fetchedAt === "string" && Number.isFinite(Date.parse(parsed.fetchedAt))
+      ? parsed.fetchedAt
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Classify a stale Fintual source as the PUBLISHER's lag — or null when we are the ones behind.
+ *
+ * `isFintualSyncStale` deliberately keeps the source stale (and the scheduler polling) while the
+ * cuota expected for a publish day has not appeared, so that the morning carry lands whatever the
+ * fund publishes overnight (2026-08-24). But every consumer read that flag as "the app failed to
+ * sync": the notifications panel badged it and the dashboard dimmed every Fintual account at 38%
+ * opacity — on 2026-09-15 with Monday's cuota simply not published by Fintual yet, the poll running
+ * every 15 minutes, and the APV cards showing the live proxy. This is lag on the publisher's side
+ * when: the last poll is recent (`FINTUAL_PUBLISHER_LAG_MAX_POLL_AGE_MS`), nobody forced a run by
+ * hand, the API's latest published day is behind the first publish day we expect, and every held
+ * fund's bar for that published day is in the DB (a missing bar means our write is what failed).
+ * Anything else — sig mismatch, unreconciled positions, a missed poll — stays plain stale.
+ */
+export function fintualPublisherLag(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile,
+  opts: { lastCheckedAt: string | null; nowMs: number }
+): SyncPublisherLag | null {
+  if (!isFintualSyncStale(cl, state)) return null;
+  if (isUserForcedSyncSourceStale(state, "fintual")) return null;
+  const published = state.fintualLastPublishYmd?.trim();
+  if (!published || !/^\d{4}-\d{2}-\d{2}$/.test(published)) return null;
+  // The first publish day after the published one, capped at the day the source is waiting on
+  // (the carried poll day before 18:00, today after).
+  const cap = cl.hour < 18 ? state.fintualLastCheckYmd : cl.ymd;
+  if (!cap) return null;
+  let expected = chileCalendarAddDays(published, 1);
+  for (let i = 0; i < 14 && expected <= cap && !isFintualFundPublishDay(expected); i++) {
+    expected = chileCalendarAddDays(expected, 1);
+  }
+  if (expected > cap) return null;
+  if (fintualCertV2AnyHeldFundMissingDayRow(published, state)) return null;
+  const checkedMs = opts.lastCheckedAt ? Date.parse(opts.lastCheckedAt) : NaN;
+  if (!Number.isFinite(checkedMs) || opts.nowMs - checkedMs > FINTUAL_PUBLISHER_LAG_MAX_POLL_AGE_MS) {
+    return null;
+  }
+  return { expected_ymd: expected, published_ymd: published, last_checked_at: opts.lastCheckedAt as string };
+}
+
 export function allSyncSourceStatuses(
   cl: ChileWallClock,
   state: GlobalSyncStateFile,
-  opts?: { force?: boolean; forceSbif?: boolean; bcentralConfigured?: boolean }
+  opts?: {
+    force?: boolean;
+    forceSbif?: boolean;
+    bcentralConfigured?: boolean;
+    /** Last Fintual poll (ISO); undefined reads the goals snapshot, null means "never". */
+    fintualLastCheckedAt?: string | null;
+    nowMs?: number;
+  }
 ): SyncSourceStatusRow[] {
   loadRootDotenv();
   const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
@@ -421,7 +508,15 @@ export function allSyncSourceStatuses(
 
   {
     const stale = isFintualSyncStale(cl, state);
-    rows.push(syncSourceRow("fintual", cl, stale ? "stale" : "ok", stale));
+    const row = syncSourceRow("fintual", cl, stale ? "stale" : "ok", stale);
+    if (stale) {
+      row.publisher_lag = fintualPublisherLag(cl, state, {
+        lastCheckedAt:
+          opts?.fintualLastCheckedAt === undefined ? readFintualLastCheckedAt() : opts.fintualLastCheckedAt,
+        nowMs: opts?.nowMs ?? Date.now(),
+      });
+    }
+    rows.push(row);
   }
 
   {
@@ -506,17 +601,26 @@ export function allSyncSourceStatuses(
 export function syncStatusPayload(): {
   chile: ChileWallClock;
   state: GlobalSyncStateFile;
+  /** Every stale source — what the scheduler keeps polling. */
   stale: GlobalSyncSource[];
+  /**
+   * Stale sources where OUR data is behind (a missed or failed poll, a due sync not yet run) —
+   * `stale` minus publisher lag. This is the list that dims accounts; a source waiting on its
+   * publisher holds everything the publisher has, so its accounts are not behind anything.
+   */
+  stale_behind: GlobalSyncSource[];
   sources: SyncSourceStatusRow[];
 } {
   const cl = chileWallClockNow();
   const state = loadGlobalSyncState();
   const sources = allSyncSourceStatuses(cl, state);
   const stale = sources.filter((r) => r.stale).map((r) => r.source);
+  const stale_behind = sources.filter((r) => r.stale && r.publisher_lag == null).map((r) => r.source);
   return {
     chile: cl,
     state,
     stale,
+    stale_behind,
     sources,
   };
 }
