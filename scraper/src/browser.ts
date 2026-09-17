@@ -44,6 +44,47 @@ const COMMON_ARGS = ["--hide-crash-restore-bubble"];
 const HIDE_WEBDRIVER_INIT_SCRIPT = `Object.defineProperty(navigator, 'webdriver', { get: () => undefined });`;
 
 /**
+ * Keep browser-built files out of Chrome's downloader.
+ *
+ * Santander's «Descargar últimos movimientos» builds the xlsx IN the page and hands it to the
+ * browser as an \`<a download href="data:…;base64,…">\` click — no HTTP request at all (probed
+ * 2026-09-09). Chrome 152 (152.0.7977.76 → .83) crashes its browser process while handling exactly
+ * that download under CDP — SIGSEGV/SIGTRAP on CrBrowserMain, one crash report per attempt, the
+ * first with a URL fragment of the page route as the faulting address — intermittently since
+ * 2026-08-31 and twice in a row on 2026-09-09, taking every later step of the run with it. The
+ * bytes are already in the page, so the download is intercepted before Chrome sees it: the
+ * anchor's data: (or blob:, read back as a data URL) href and its \`download\` name are stashed on
+ * \`window.__nwInlineDownloads\`, where \`downloadTo\` (wait.ts) collects and writes them. Both
+ * trigger styles are covered — \`a.click()\` (prototype patch) and a dispatched MouseEvent, which
+ * is what FileSaver-style helpers use (capturing document listener). Anchors that point at a real
+ * URL are left alone and still reach Playwright's download event.
+ */
+const CAPTURE_INLINE_DOWNLOADS_INIT_SCRIPT = `(() => {
+  const stash = (window.__nwInlineDownloads = window.__nwInlineDownloads || []);
+  const isInline = (href) => typeof href === "string" && (href.startsWith("data:") || href.startsWith("blob:"));
+  const capture = (anchor) => {
+    const name = anchor.getAttribute("download") || "";
+    const href = anchor.href;
+    if (href.startsWith("data:")) { stash.push({ name, href }); return; }
+    fetch(href)
+      .then((r) => r.blob())
+      .then((blob) => new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.readAsDataURL(blob); }))
+      .then((dataUrl) => stash.push({ name, href: dataUrl }));
+  };
+  const nativeClick = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function () {
+    if (this.hasAttribute("download") && isInline(this.href)) { capture(this); return; }
+    return nativeClick.call(this);
+  };
+  document.addEventListener("click", (event) => {
+    const anchor = event.target && event.target.closest ? event.target.closest("a[download]") : null;
+    if (!anchor || !isInline(anchor.href)) return;
+    event.preventDefault();
+    capture(anchor);
+  }, true);
+})();`;
+
+/**
  * Turn off Chrome's password manager for this profile.
  *
  * Once Chrome has offered to save the bank login, it autofills the form on every later run. The
@@ -99,6 +140,7 @@ export async function launchBrowser(opts: LaunchOptions): Promise<BrowserContext
     timezoneId: "America/Santiago",
   });
   await context.addInitScript(HIDE_WEBDRIVER_INIT_SCRIPT);
+  await context.addInitScript(CAPTURE_INLINE_DOWNLOADS_INIT_SCRIPT);
   return context;
 }
 
