@@ -94,6 +94,62 @@ export async function fetchFintualWithBackoff(
   throw lastErr instanceof Error ? lastErr : new Error(`Fintual ${label}: request failed after retries`);
 }
 
+/**
+ * The site's own GraphQL endpoint (Apollo), authenticated by the `_fintual_session_cookie`
+ * session cookie only — the same cookie `GET /api/goals` uses. This replaced the classic
+ * `/api/real_assets/:id(/days)` endpoints, which as of 2026-09-14 answer 401
+ * "Bearer token seems to be missing" to X-User-Token / cookie / classic access-token auth
+ * (they moved behind a Bearer-JWT gateway with no drop-in token). The `/gql/` balance queries
+ * carry the correct fund publish DATE, which real_assets was our only source of.
+ */
+export const FINTUAL_GQL_URL = "https://fintual.cl/gql/";
+
+/**
+ * POST a GraphQL query to `/gql/` with the session cookie. Returns `data`; throws on transport
+ * failure, non-2xx, or GraphQL `errors` so a future auth/schema break surfaces (never a silent
+ * null that would let publish-date detection fall back to "yesterday").
+ */
+export async function fetchFintualGqlDocument(
+  query: string,
+  variables: Record<string, unknown>,
+  operationName: string
+): Promise<Record<string, unknown>> {
+  loadRootDotenv();
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "User-Agent": FINTUAL_FETCH_HEADERS["User-Agent"],
+    Origin: "https://fintual.cl",
+    Referer: "https://fintual.cl/f/",
+  };
+  const cookie = process.env.FINTUAL_COOKIE?.trim();
+  if (cookie) headers.Cookie = normalizeFintualCookieInput(cookie);
+  const res = await fetchFintualWithBackoff(
+    FINTUAL_GQL_URL,
+    { method: "POST", headers, body: JSON.stringify({ operationName, query, variables }) },
+    `POST /gql ${operationName}`
+  );
+  const text = await res.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`Fintual /gql ${operationName}: non-JSON HTTP ${res.status}: ${text.slice(0, 200)}`);
+  }
+  if (!res.ok) {
+    throw new Error(`Fintual /gql ${operationName}: HTTP ${res.status}: ${JSON.stringify(body).slice(0, 300)}`);
+  }
+  const errors = (body as { errors?: unknown }).errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    throw new Error(`Fintual /gql ${operationName}: ${JSON.stringify(errors).slice(0, 300)}`);
+  }
+  const data = (body as { data?: unknown }).data;
+  if (!data || typeof data !== "object") {
+    throw new Error(`Fintual /gql ${operationName}: missing data in response`);
+  }
+  return data as Record<string, unknown>;
+}
+
 export type FintualSession = {
   email: string;
   token: string;
@@ -107,6 +163,10 @@ export type FintualGoalRow = {
   name: string;
   navClp: number;
   investments?: FintualGoalInvestment[];
+  /** `attributes.goal_type` (e.g. "apv", "inbox", "investment") — dispatches the /gql balance query. */
+  goalType?: string | null;
+  /** `attributes.regime` (e.g. "a" / "b" for APV) — dispatches the /gql balance query. */
+  regime?: string | null;
 };
 
 export type FintualGoalSnapshot = {
@@ -420,8 +480,16 @@ export function parseGoalsFromResponse(json: unknown): FintualGoalRow[] {
     const id = g.id != null ? String(g.id) : "";
     const attrs = g.attributes;
     if (!attrs || typeof attrs !== "object") continue;
-    const a = attrs as { name?: unknown; nav?: unknown; investments?: unknown };
+    const a = attrs as {
+      name?: unknown;
+      nav?: unknown;
+      investments?: unknown;
+      goal_type?: unknown;
+      regime?: unknown;
+    };
     const name = typeof a.name === "string" ? a.name : "";
+    const goalType = typeof a.goal_type === "string" ? a.goal_type : null;
+    const regime = typeof a.regime === "string" ? a.regime : null;
     const investments: FintualGoalInvestment[] = [];
     if (Array.isArray(a.investments)) {
       for (const raw of a.investments) {
@@ -442,7 +510,14 @@ export function parseGoalsFromResponse(json: unknown): FintualGoalRow[] {
           ? Number(navRaw)
           : NaN;
     if (!id || !Number.isFinite(nav)) continue;
-    out.push({ id, name, navClp: nav, investments: investments.length ? investments : undefined });
+    out.push({
+      id,
+      name,
+      navClp: nav,
+      investments: investments.length ? investments : undefined,
+      goalType,
+      regime,
+    });
   }
   return out;
 }

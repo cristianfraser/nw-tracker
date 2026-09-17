@@ -447,7 +447,7 @@ async function runFintual(
     const priceLine =
       r.fundPriceClp != null ? ` · valor cuota $${formatClp(r.fundPriceClp)}` : "";
     console.log(
-      `sync: Fintual — ${r.row.name}: goals API $${formatClp(r.goalsApiNavClp)} vs real_assets $${formatClp(r.realAssetsNavClp)}${unitLine}${priceLine}`
+      `sync: Fintual — ${r.row.name}: goals API $${formatClp(r.goalsApiNavClp)} vs gql balance $${formatClp(r.realAssetsNavClp)}${unitLine}${priceLine}`
     );
   }
   const appliedRows = resolutions.map((r) => r.row);
