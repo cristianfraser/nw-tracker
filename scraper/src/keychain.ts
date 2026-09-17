@@ -27,3 +27,24 @@ export function readKeychainSecret(service: string, account: string): string {
   if (!secret) throw new Error(`Keychain item "${service}"/"${account}" is empty.`);
   return secret;
 }
+
+/**
+ * When the Keychain item was last modified — read from its attributes, without `-w`, so the secret
+ * itself never leaves the Keychain here. Null when the item is missing or the date cannot be read.
+ * `security` prints it as `"mdat"<timedate>=0x… "20260805030915Z\000"`.
+ */
+export function readKeychainItemModifiedAt(service: string, account: string): Date | null {
+  let out: string;
+  try {
+    out = execFileSync("security", ["find-generic-password", "-s", service, "-a", account], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch {
+    return null;
+  }
+  const m = /"mdat"<timedate>=\S+\s+"(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})Z/.exec(out);
+  if (!m) return null;
+  const [, y, mo, d, h, mi, s] = m;
+  return new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(s)));
+}

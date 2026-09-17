@@ -2,8 +2,21 @@ import { runSantander } from "./santander/run.js";
 import { runRacional } from "./racional/run.js";
 import type { BankName } from "./config.js";
 import type { RunOptions } from "./runTypes.js";
+import fs from "node:fs";
 import { DEFAULT_MIN_INTERVAL_MINUTES } from "./runGuard.js";
 import { log } from "./log.js";
+
+/**
+ * How long the process may linger after the run is over before it is exited by force.
+ *
+ * Playwright keeps the event loop alive for as long as a browser is connected, so a context that
+ * escaped its close — a login that threw before the session's try/finally (2026-09-11) — turns a
+ * reported failure into a process that never exits. In the unattended pipeline that is worse than any
+ * failure: `daily-run.sh` waits on the step forever and the hourly poll skips itself behind it. A
+ * clean run exits on its own the moment the loop is empty (the timer is unref'd); only a leak reaches
+ * the forced exit, and it is logged so the leak stays visible.
+ */
+const FORCED_EXIT_GRACE_MS = 10_000;
 
 const USAGE = `Usage: npm run fetch -- <santander|racional> [options]
 
@@ -60,7 +73,17 @@ async function main(): Promise<void> {
   });
 }
 
-main().catch((err: unknown) => {
-  log(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
-  process.exitCode = 1;
-});
+main()
+  .catch((err: unknown) => {
+    log(`FAILED: ${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    const timer = setTimeout(() => {
+      const code = process.exitCode ?? 0;
+      // Written synchronously: process.exit() does not wait for a pending stderr write to a pipe.
+      fs.writeSync(process.stderr.fd, `run is over but something kept the process alive — exiting with code ${code}\n`);
+      process.exit(code);
+    }, FORCED_EXIT_GRACE_MS);
+    timer.unref();
+  });

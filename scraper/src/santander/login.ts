@@ -1,12 +1,22 @@
-import type { Page } from "playwright-core";
-import { APP_BASE, HOME_URL, SELECTOR } from "./routes.js";
+import fs from "node:fs";
+import path from "node:path";
+import type { FrameLocator, Page } from "playwright-core";
+import { APP_BASE, HOME_URL, SELECTOR, TEXT } from "./routes.js";
 import { settle } from "../wait.js";
 import { log, logStep } from "../log.js";
+import { ensureDir, resolveCfraserDir } from "../paths.js";
+import { clearLoginLatch, recordCredentialsRejected } from "./loginLatch.js";
 
 /** How long the first click on the login button may wait before overlays are swept again. */
 const OPEN_PANEL_FIRST_TRY_MS = 10_000;
 /** Upper bound on overlay sweeps — a dialog that re-opens itself must not loop the run. */
 const MAX_OVERLAY_DISMISSALS = 3;
+/** How long the private app has to take over the window after the login form is submitted. */
+const LOGIN_REDIRECT_TIMEOUT_MS = 90_000;
+/** Pause between polls of the URL and of the rejection toast while that redirect is pending. */
+const LOGIN_REDIRECT_POLL_MS = 500;
+/** How much of the login frame's text the failure message quotes; the full text goes to the file. */
+const LOGIN_FAILURE_EXCERPT_CHARS = 240;
 
 function firstLine(err: unknown): string {
   return (err instanceof Error ? err.message : String(err)).split("\n")[0] ?? "";
@@ -55,6 +65,103 @@ export async function gotoRoute(page: Page, route: string): Promise<void> {
 
 export function isLoggedIn(page: Page): boolean {
   return page.url().includes("#/private/");
+}
+
+function redirectedToPrivateApp(page: Page): boolean {
+  return page.url().includes("mibanco.santander.cl");
+}
+
+/** The rejection toast's text when one is showing, else null. Looked for in the frame, then the page. */
+async function loginRejectionText(page: Page, frame: FrameLocator): Promise<string | null> {
+  for (const scope of [frame, page]) {
+    const toast = scope.getByText(TEXT.loginRejected).first();
+    // The frame is torn down when the redirect lands mid-poll; a locator error then means "no toast".
+    const text = await toast
+      .isVisible()
+      .then((visible) => (visible ? toast.innerText({ timeout: 2_000 }) : null))
+      .catch(() => null);
+    if (text) return text.replace(/\s+/g, " ").trim();
+  }
+  return null;
+}
+
+/**
+ * What a failed login leaves behind: a screenshot and the login frame's visible text, under
+ * `cfraser/scraper-diagnostics/`. The nightly run is unattended and the window is parked off-screen,
+ * so without this a failure is only ever «no redirect after 90s» — which is what 2026-09-12 and
+ * 09-13 read, two nights in a row, with the toast check silent and nothing to say what the bank had
+ * actually shown. Input values are not part of `innerText`, so the clave never reaches the file.
+ */
+async function saveLoginDiagnostics(
+  page: Page,
+  frame: FrameLocator,
+  reason: string,
+): Promise<{ base: string; frameText: string }> {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const base = path.join(ensureDir(path.join(resolveCfraserDir(), "scraper-diagnostics")), `santander-login-${stamp}`);
+  const frameText = await frame
+    .locator("body")
+    .innerText({ timeout: 2_000 })
+    .catch((err: unknown) => `(login frame unreadable: ${firstLine(err)})`);
+  const title = await page.title().catch(() => "");
+  // The rejection toast renders in the top-level page beside the iframe, so the page text is what
+  // carries it — the frame alone read «RUT Clave Ingresar» on 2026-09-14 while the toast sat next to it.
+  const pageText = await page
+    .locator("body")
+    .innerText({ timeout: 2_000 })
+    .catch((err: unknown) => `(page unreadable: ${firstLine(err)})`);
+  fs.writeFileSync(
+    `${base}.txt`,
+    [
+      `reason: ${reason}`,
+      `url: ${page.url()}`,
+      `title: ${title}`,
+      "",
+      "--- login frame text ---",
+      frameText,
+      "",
+      "--- page text ---",
+      pageText,
+      "",
+    ].join("\n"),
+  );
+  await page.screenshot({ path: `${base}.png` }).catch((err: unknown) => {
+    log(`(login screenshot failed: ${firstLine(err)})`);
+  });
+  return { base, frameText };
+}
+
+function excerpt(text: string): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return collapsed.length > LOGIN_FAILURE_EXCERPT_CHARS ? `${collapsed.slice(0, LOGIN_FAILURE_EXCERPT_CHARS)}…` : collapsed;
+}
+
+/**
+ * A successful login redirects the whole window from the public site to the private app. When the
+ * bank rejects the login it shows a toast over the form instead (`TEXT.loginRejected`) and the window
+ * stays put — which used to surface only as a 90-second navigation timeout with no hint of the cause.
+ * The toast is checked while the redirect is pending, so a rejection fails within one poll and the
+ * log carries the bank's own words; anything else ends in the timeout, and both outcomes leave the
+ * frame's text and a screenshot behind (`saveLoginDiagnostics`) so the log says what was on screen.
+ */
+async function waitForLoginRedirect(page: Page, frame: FrameLocator): Promise<void> {
+  const deadline = Date.now() + LOGIN_REDIRECT_TIMEOUT_MS;
+  while (!redirectedToPrivateApp(page)) {
+    const rejection = await loginRejectionText(page, frame);
+    if (rejection) {
+      const { base } = await saveLoginDiagnostics(page, frame, `rejected: ${rejection}`);
+      if (TEXT.loginCredentialsRejected.test(rejection)) recordCredentialsRejected(rejection);
+      throw new Error(`The bank rejected the login: «${rejection}» — evidence in ${base}.{png,txt}`);
+    }
+    if (Date.now() >= deadline) {
+      const { base, frameText } = await saveLoginDiagnostics(page, frame, "no redirect after the login form was submitted");
+      throw new Error(
+        `No redirect to the private app ${LOGIN_REDIRECT_TIMEOUT_MS / 1000}s after submitting the login form ` +
+          `(still on ${page.url()}). The login frame shows: «${excerpt(frameText)}» — evidence in ${base}.{png,txt}`,
+      );
+    }
+    await page.waitForTimeout(LOGIN_REDIRECT_POLL_MS);
+  }
 }
 
 /**
@@ -141,11 +248,11 @@ export async function login(page: Page, rut: string, password: string): Promise<
 
   await frame.locator(SELECTOR.loginSubmit).click();
 
-  // A successful login redirects the whole window from the public site to the private app.
-  await page.waitForURL((url) => url.href.includes("mibanco.santander.cl"), { timeout: 90_000 });
+  await waitForLoginRedirect(page, frame);
   await settle(page, 20_000);
   if (!isLoggedIn(page)) {
     throw new Error(`Landed on ${page.url()} after submitting — expected a /private/ route.`);
   }
   logStep("logged in");
+  clearLoginLatch("the bank accepted the login");
 }
