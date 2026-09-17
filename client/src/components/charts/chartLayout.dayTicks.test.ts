@@ -20,19 +20,33 @@ describe("computeRegularDayXAxisTicks", () => {
     expect(ticks).toEqual(["2026-02-01", "2026-03-01", "2026-04-01", "2026-05-01", "2026-06-01"]);
   });
 
-  it("thins to every Nth month start on a long window, keeping the newest tick", () => {
-    const dates = calendarDays("2020-01-01", 1200); // ~39 months
+  it("thins to every Nth month start on a long window, phased on January", () => {
+    const dates = calendarDays("2020-03-15", 1200); // mid-Mar 2020 → mid-Jun 2023, 39 month starts
     const { ticks, withDay } = computeRegularDayXAxisTicks(dates);
     expect(withDay).toBe(false);
-    expect(ticks!.length).toBeLessThanOrEqual(12);
-    // Every tick is still a month start, ascending and unique.
-    for (const tick of ticks!) expect(tick.slice(8, 10)).toBe("01");
-    expect([...ticks!].sort()).toEqual(ticks);
-    expect(new Set(ticks).size).toBe(ticks!.length);
-    // Evenly spaced in months, and the last month start in the grid is labelled.
-    expect(ticks![ticks!.length - 1]).toBe("2023-04-01");
+    // 39 month starts → a 4-month stride, on ene/may/sep — never on the window's own edges.
+    expect(ticks).toEqual([
+      "2020-05-01",
+      "2020-09-01",
+      "2021-01-01",
+      "2021-05-01",
+      "2021-09-01",
+      "2022-01-01",
+      "2022-05-01",
+      "2022-09-01",
+      "2023-01-01",
+      "2023-05-01",
+    ]);
     const labels = ticks!.map(formatMonthYearShortLabel);
     expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("keeps round years on a multi-year daily window", () => {
+    const dates = calendarDays("2011-06-10", 365 * 14); // mid-2011 → 2025: 24-month stride
+    const { ticks } = computeRegularDayXAxisTicks(dates);
+    expect(ticks!.length).toBeLessThanOrEqual(12);
+    for (const tick of ticks!) expect(tick.slice(5, 10)).toBe("01-01");
+    expect(ticks!.every((d) => Number(d.slice(0, 4)) % 2 === 0)).toBe(true);
   });
 
   it("labels a 1y window at every month start", () => {

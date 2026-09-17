@@ -23,7 +23,6 @@ import {
 import {
   AXIS_LINE_STROKE,
   buildNiceYAxis,
-  buildNiceYAxisPositiveBand,
   CHART_ANIM_MS,
   CHART_TICK_STYLE,
   computeRegularMonthXAxisTicks,
@@ -137,8 +136,6 @@ interface BlockProps {
   trimLeadingInactive?: boolean;
   /** Line colors: dashboard buckets, class-tab alignment with pie, or default. */
   colorPlan?: ChartColorPlan;
-  /** When true, Y scale is anchored at 0. Default: padded band from data min/max. */
-  yAxisMinZero?: boolean;
   /** X-axis tick labels: calendar year, month+year, or daily sessions (ISO tooltip titles). */
   xAxisGranularity?: "month" | "year" | "day";
   /** When set, Y-axis min/max uses only these series (others may render off-scale). */
@@ -355,7 +352,6 @@ export function LineChartPanel({
   includeAccumulatedLines = true,
   trimLeadingInactive = true,
   colorPlan,
-  yAxisMinZero = false,
   xAxisGranularity = "month",
   yScaleDataKeys,
   timeRange: timeRangeProp,
@@ -438,18 +434,10 @@ export function LineChartPanel({
         ? visibleSeries.filter((s) => yScaleDataKeys.includes(s.dataKey))
         : visibleSeries;
     const { min, max } = minMaxForKeys(chartData, scaleSeries.map((s) => s.dataKey));
-    if (yAxisMinZero) {
-      return buildNiceYAxis(0, Math.max(max, 0));
-    }
-    if (min >= 0 && max >= 0) {
-      const band = buildNiceYAxisPositiveBand(min, max);
-      return {
-        ...band,
-        showZeroReference: band.domain[0] === 0 && band.domain[1] > 0,
-      };
-    }
+    // App-wide rule: a value axis starts at 0 (non-negative series) or spans it (mixed-sign);
+    // a padded band around the data range would read a flat holding as a wild swing.
     return buildNiceYAxis(min, max);
-  }, [chartData, visibleSeries, yAxisMinZero, yScaleDataKeys]);
+  }, [chartData, visibleSeries, yScaleDataKeys]);
 
   const clipPlotToYDomain = Boolean(yScaleDataKeys?.length);
   const lineCurveType = clipPlotToYDomain ? "linear" : "monotone";

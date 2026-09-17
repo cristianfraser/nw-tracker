@@ -58,6 +58,55 @@ describe("computeRegularMonthXAxisTicks", () => {
     expect(ticks.some((d) => d.startsWith("2024-03"))).toBe(true);
     expect(ticks.every((d) => d.startsWith("2024-"))).toBe(true);
   });
+
+  it("phases sub-year strides on January, not on the series' first month", () => {
+    // A 3y P/L window starting in April: a walk from the first point read abr/ago/dic.
+    const dates = monthEndSeries("2024-04", "2026-09");
+    const ticks = computeRegularMonthXAxisTicks(dates)!;
+
+    expect(ticks).toEqual([
+      "2024-05-31",
+      "2024-09-30",
+      "2025-01-31",
+      "2025-05-31",
+      "2025-09-30",
+      "2026-01-31",
+      "2026-05-31",
+      "2026-09-30",
+    ]);
+  });
+
+  it("keeps every January on a 3-month stride too (ene/abr/jul/oct), whatever the start month", () => {
+    // 28 months from June: a 4-month stride would leave 7 ticks, so the 3-month one is picked.
+    const ticks = computeRegularMonthXAxisTicks(monthEndSeries("2024-06", "2026-09"), {
+      includeLastDataPoint: false,
+    })!;
+    expect(ticks).toEqual([
+      "2024-07-31",
+      "2024-10-31",
+      "2025-01-31",
+      "2025-04-30",
+      "2025-07-31",
+      "2025-10-31",
+      "2026-01-31",
+      "2026-04-30",
+      "2026-07-31",
+    ]);
+  });
+
+  it("puts a daily grid's month ticks on the first day of the phased months", () => {
+    const days: string[] = [];
+    let t = Date.parse("2025-08-01T00:00:00Z");
+    while (days.length < 800) {
+      days.push(new Date(t).toISOString().slice(0, 10));
+      t += 86_400_000;
+    }
+    const ticks = computeRegularMonthXAxisTicks(days, { includeLastDataPoint: false })!;
+    expect(ticks[0]).toBe("2025-10-01");
+    expect(ticks).toContain("2026-01-01");
+    expect(ticks).toContain("2027-01-01");
+    for (const tick of ticks) expect(tick.slice(8, 10)).toBe("01");
+  });
 });
 
 describe("computeRegularYearXAxisTicks", () => {
@@ -80,5 +129,22 @@ describe("computeRegularYearXAxisTicks", () => {
     expect(ticks).toContain("2019-01-31");
     expect(ticks).toContain("2020-12-31");
     expect(ticks).not.toContain("2018-06-30");
+  });
+
+  it("phases multi-year strides on round years", () => {
+    // 2013 → 2031: a 2-year stride marks even years, whatever year the series starts in.
+    const dates: string[] = [];
+    for (let y = 2013; y <= 2031; y++) dates.push(`${y}-01-31`, `${y}-12-31`);
+    const ticks = computeRegularYearXAxisTicks(dates, {
+      minTickCount: 8,
+      maxTickCount: 14,
+      includeLastDataPoint: false,
+    })!;
+    const years = ticks.map((d) => Number(d.slice(0, 4)));
+    expect(ticks).toContain("2014-01-31");
+    expect(ticks).toContain("2030-01-31");
+    expect(ticks).not.toContain("2015-01-31");
+    // Only the first-data-point push may sit off-phase.
+    expect(years.filter((y) => y % 2 === 1)).toEqual([2013]);
   });
 });
