@@ -1,127 +1,71 @@
 /**
- * Backfill `fund_unit_daily` for Fintual certificado v2 accounts from Fintual `real_assets` API.
+ * Reconcile `fund_unit_daily` for the Fintual cert v2 series against the OFFICIAL public serie
+ * prices (`src/fintualPublicSeriePrice.ts`): fills days no poll wrote, replaces carry-forward
+ * placeholders, corrects published bars beyond tolerance. Report-first — nothing is written
+ * without `--apply`.
  *
- *   npm run fintual:backfill-cert-fund-units -w nw-tracker-server
- *   npm run fintual:backfill-cert-fund-units -w nw-tracker-server -- --dry-run
+ *   npm run fintual:backfill-cert-fund-units -w nw-tracker-server                        # last 14 days, report
+ *   npm run fintual:backfill-cert-fund-units -w nw-tracker-server -- --from=2019-01-01   # full history, report
+ *   npm run fintual:backfill-cert-fund-units -w nw-tracker-server -- --from=… --apply
+ *   … -- --series=fintual_cert_reserva2,fintual_cert_apv_a                                # a subset
+ *
+ * Until 2026-09-14 this read `GET /api/real_assets/:id/days`; that endpoint now sits behind a
+ * Bearer-JWT gateway the session cannot mint a token for.
  */
-import { db } from "../src/db.js";
-import { fundSeriesKeyFromImportNotes } from "../src/fintualFundUnitDaily.js";
-import { matchFintualCertGoalV2 } from "../src/fintualCertV2.js";
-import { upsertFundUnitSpotPreservingHistory } from "../src/fundUnitDaily.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "../src/chileDate.js";
 import {
-  fetchFintualGoalsRaw,
-  getValidFintualSession,
-  parseGoalsFromResponse,
-} from "./fintualApiLib.js";
-import { fetchRealAssetNavHistoryByDate } from "./fintualRealAssetNav.js";
+  FINTUAL_PUBLIC_SERIE_BY_SERIES_KEY,
+  FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS,
+  fintualSeriesLabel,
+  verifyFintualSeriesAgainstOfficialPrices,
+} from "../src/fintualPublicSeriePrice.js";
 
-const dryRun = process.argv.includes("--dry-run");
-const PAGE_DELAY_MS = 1250;
-const BETWEEN_ASSETS_DELAY_MS = 1750;
-const BETWEEN_GOALS_DELAY_MS = 2500;
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function candidateAssetIds(
-  investments: { weight: number; asset_id: number }[] | undefined
-): number[] {
-  if (!investments?.length) return [];
-  const sorted = [...investments].sort((a, b) => b.weight - a.weight);
-  const uniq: number[] = [];
-  const seen = new Set<number>();
-  for (const inv of sorted) {
-    if (!Number.isFinite(inv.asset_id)) continue;
-    if (seen.has(inv.asset_id)) continue;
-    seen.add(inv.asset_id);
-    uniq.push(inv.asset_id);
-  }
-  return uniq;
+function arg(name: string): string | undefined {
+  const p = `--${name}=`;
+  const hit = process.argv.find((a) => a.startsWith(p));
+  return hit ? hit.slice(p.length) : undefined;
 }
 
-async function bestAssetHistoryByDate(
-  email: string,
-  token: string,
-  goalLabel: string,
-  investments: { weight: number; asset_id: number }[] | undefined
-): Promise<{ assetId: number; byDate: Map<string, number> } | null> {
-  const ids = candidateAssetIds(investments);
-  if (!ids.length) return null;
-  let best: { assetId: number; byDate: Map<string, number> } | null = null;
-  for (let i = 0; i < ids.length; i++) {
-    const assetId = ids[i]!;
-    console.log(`[backfill] goal=${goalLabel} candidate_asset=${assetId} (${i + 1}/${ids.length})`);
-    const byDate = await fetchRealAssetNavHistoryByDate(email, token, assetId, {
-      pageDelayMs: PAGE_DELAY_MS,
-      onRequestLog: (msg) => console.log(`[backfill] ${msg}`),
-    });
-    console.log(`[backfill] goal=${goalLabel} asset=${assetId} history_days=${byDate.size}`);
-    if (!best || byDate.size > best.byDate.size) best = { assetId, byDate };
-    if (byDate.size > 0 && ids.length > 1) {
-      // Keep scanning in case a lower-weight asset has a longer history.
-      // no-op
-    }
-    if (i < ids.length - 1) {
-      console.log(`[backfill] sleep ${BETWEEN_ASSETS_DELAY_MS}ms before next candidate asset`);
-      await sleep(BETWEEN_ASSETS_DELAY_MS);
-    }
-  }
-  return best;
-}
+const apply = process.argv.includes("--apply");
+const today = chileCalendarTodayYmd();
+const fromYmd = arg("from") ?? chileCalendarAddDays(today, -FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS);
+const toYmd = arg("to") ?? today;
+const seriesKeys = arg("series")
+  ?.split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 async function main(): Promise<void> {
-  const { email, token } = await getValidFintualSession();
-  const goals = parseGoalsFromResponse(await fetchFintualGoalsRaw(email, token));
-  const accStmt = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`);
-
-  let seriesDays = 0;
-  for (let gi = 0; gi < goals.length; gi++) {
-    const g = goals[gi]!;
-    console.log(`[backfill] goal ${gi + 1}/${goals.length} id=${g.id} name="${g.name}"`);
-    const v2Notes = matchFintualCertGoalV2(g.id, g.name);
-    const notesTargets = [v2Notes].filter((n): n is string => Boolean(n));
-    if (notesTargets.length === 0) {
-      console.log(`[backfill] skip goal ${g.id} (${g.name}): no mapped notes target`);
-      continue;
-    }
-    console.log(`[backfill] goal ${g.id} mapped targets: ${notesTargets.join(", ")}`);
-    const best = await bestAssetHistoryByDate(email, token, `${g.id}|${g.name}`, g.investments);
-    if (best == null) {
-      console.warn(`skip goal ${g.id}: no asset_id`);
-      continue;
-    }
-    const { byDate } = best;
-    for (const importNotes of notesTargets) {
-      const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
-      const acc = accStmt.get(importNotes) as { id: number } | undefined;
-      if (!seriesKey || !acc) {
-        console.warn(`skip goal ${g.id} (${g.name}): no account or series for ${importNotes}`);
-        continue;
-      }
-      let n = 0;
-      for (const [day, unitClp] of byDate) {
-        if (!dryRun) {
-          upsertFundUnitSpotPreservingHistory({
-            seriesKey,
-            observationDay: day,
-            unitValueClp: Math.round(unitClp * 10000) / 10000,
-            note: `fintual:backfill|${importNotes}`,
-            carryNote: "fintual:cert-carry-forward",
-            dryRun: false,
-          });
-        }
-        n += 1;
-      }
-      seriesDays += n;
-      console.log(`${g.name} → ${importNotes}: ${n} day(s) (${seriesKey})`);
-    }
-    if (gi < goals.length - 1) {
-      console.log(`[backfill] sleep ${BETWEEN_GOALS_DELAY_MS}ms before next goal`);
-      await sleep(BETWEEN_GOALS_DELAY_MS);
+  for (const key of seriesKeys ?? []) {
+    if (FINTUAL_PUBLIC_SERIE_BY_SERIES_KEY[key] == null) {
+      throw new Error(`unknown series ${key}; known: ${Object.keys(FINTUAL_PUBLIC_SERIE_BY_SERIES_KEY).join(", ")}`);
     }
   }
+  console.log(`[official-serie] ${fromYmd}..${toYmd} (${apply ? "APPLY" : "report only"})`);
+  const results = await verifyFintualSeriesAgainstOfficialPrices({
+    fromYmd,
+    toYmd,
+    dryRun: !apply,
+    seriesKeys,
+  });
+  let written = 0;
+  for (const r of results) {
+    const by = { filled: 0, carry_replaced: 0, corrected: 0 };
+    for (const row of r.rows) by[row.action] += 1;
+    console.log(
+      `${fintualSeriesLabel(r.seriesKey)} (${r.seriesKey}, serie ${r.serieId}): ${r.checked} official day(s), ` +
+        `${r.agreed} agree, ${by.filled} to fill, ${by.carry_replaced} carries to replace, ${by.corrected} to CORRECT`
+    );
+    for (const row of r.rows) {
+      const stored = row.storedClp != null ? `${row.storedClp} (${row.storedNote})` : "—";
+      console.log(`   ${row.day}  ${row.action.padEnd(14)} stored ${stored} → official ${row.officialClp}`);
+    }
+    written += r.rows.length;
+  }
   console.log(
-    dryRun
-      ? `[dry-run] would upsert ${seriesDays} fund_unit_daily row(s) for v2 cert accounts`
-      : `Upserted ${seriesDays} fund_unit_daily row(s) for v2 cert accounts`
+    apply
+      ? `Wrote ${written} fund_unit_daily row(s).`
+      : `[report] ${written} row(s) would be written; re-run with --apply to write them.`
   );
 }
 

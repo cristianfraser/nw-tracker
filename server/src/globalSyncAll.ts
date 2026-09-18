@@ -29,7 +29,7 @@ import {
   compareYearMonth,
 } from "./sbifMonthlyPublication.js";
 import { fetchSiiUfAfterDate } from "./ufSiiSync.js";
-import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
+import { chileCalendarAddDays, chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import {
   isCryptoEodStale,
@@ -109,9 +109,16 @@ import {
 } from "./fintualCertV2Reconcile.js";
 import {
   clearFintualRealAssetNavCaches,
+  describeFintualGoalResolution,
   formatClp,
   resolveFintualGoalNavs,
 } from "../scripts/fintualRealAssetNav.js";
+import {
+  FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS,
+  fintualOfficialSerieCorrectionErrors,
+  fintualOfficialSerieSyncChanges,
+  verifyFintualSeriesAgainstOfficialPrices,
+} from "./fintualPublicSeriePrice.js";
 import { syncRiskyNorrisComposition } from "./fintualRiskyNorrisComposition.js";
 import {
   fetchDolarAfterDate,
@@ -385,7 +392,7 @@ async function runFintual(
   cl: ReturnType<typeof chileWallClockNow>,
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[]
-): Promise<{ pending: boolean; fintualNoChange?: boolean }> {
+): Promise<{ pending: boolean; fintualNoChange?: boolean; polled?: boolean }> {
   // Pre-18:00 polls happen only as carries: an unresolved prior evening (sig/publish based), a
   // held fund whose publish-day bar is still missing (late publisher — invisible to sig checks),
   // or the user forcing the source stale from the UI («Marcar desactualizado» must always poll).
@@ -420,7 +427,7 @@ async function runFintual(
     session = await getValidFintualSession();
   } catch (e) {
     console.warn(`sync: Fintual — auth failed: ${e instanceof Error ? e.message : e}`);
-    return { pending: false };
+    return { pending: false, polled: true };
   }
 
   const raw = await fetchFintualGoalsRaw(session.email, session.token);
@@ -440,15 +447,9 @@ async function runFintual(
     clearFintualRealAssetNavCaches();
   }
   for (const r of resolutions) {
-    if (!r.mismatch || r.realAssetsNavClp == null) continue;
     if (!r.row.matchedNotes && !matchFintualCertGoalV2(String(r.row.id), r.row.name)) continue;
-    const unitLine =
-      r.units != null ? ` · cuotas ${r.units.toLocaleString("es-CL", { maximumFractionDigits: 4 })}` : "";
-    const priceLine =
-      r.fundPriceClp != null ? ` · valor cuota $${formatClp(r.fundPriceClp)}` : "";
-    console.log(
-      `sync: Fintual — ${r.row.name}: goals API $${formatClp(r.goalsApiNavClp)} vs gql balance $${formatClp(r.realAssetsNavClp)}${unitLine}${priceLine}`
-    );
+    const line = describeFintualGoalResolution(r);
+    if (line) console.log(`sync: Fintual — ${line}`);
   }
   const appliedRows = resolutions.map((r) => r.row);
   const picked = pickFintualApplySnapshot(appliedRows, overrides, pollCl, state, publishYmd);
@@ -526,6 +527,7 @@ async function runFintual(
     return {
       pending: true,
       fintualNoChange: anyMapped,
+      polled: true,
     };
   }
 
@@ -568,6 +570,7 @@ async function runFintual(
     return {
       pending: true,
       fintualNoChange: anyMapped && fintualLogChanges.length === 0,
+      polled: true,
     };
   }
 
@@ -594,7 +597,40 @@ async function runFintual(
   return {
     pending: false,
     fintualNoChange: anyMapped && fintualChanges.length === 0,
+    polled: true,
   };
+}
+
+/**
+ * Next-day verification of every Fintual serie against the OFFICIAL public prices (see
+ * `fintualPublicSeriePrice.ts`): fills days no poll wrote, replaces carry placeholders and
+ * corrects a wrong bar — loudly, as a step error, since a correction means the evening
+ * derivation was wrong. A fetch failure is a step error too, never a silent skip, but it does
+ * not undo the goals poll that just ran. Runs after every goals poll (the endpoint publishes
+ * day D on D+1, so the evening poll of D+1 is where D gets confirmed).
+ */
+async function runFintualOfficialSeriesCheck(
+  cl: ChileWallClock,
+  changes: SyncFieldChange[],
+  errors: SyncStepError[]
+): Promise<void> {
+  const fromYmd = chileCalendarAddDays(cl.ymd, -FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS);
+  let results;
+  try {
+    results = await verifyFintualSeriesAgainstOfficialPrices({ fromYmd, toYmd: cl.ymd, dryRun: syncDryRun });
+  } catch (e) {
+    errors.push({ step: "Fintual", message: `official serie price check failed: ${syncErrorMessage(e)}` });
+    return;
+  }
+  const checked = results.reduce((n, r) => n + r.checked, 0);
+  const written = results.reduce((n, r) => n + r.rows.length, 0);
+  console.log(
+    `sync: Fintual — official serie prices ${fromYmd}..${cl.ymd}: ${checked} day(s) checked, ${written} bar(s) written${syncDryRun ? " (dry-run)" : ""}.`
+  );
+  if (written === 0) return;
+  changes.push(...fintualOfficialSerieSyncChanges(results));
+  errors.push(...fintualOfficialSerieCorrectionErrors(results));
+  if (!syncDryRun) invalidateMarketDataAggregations();
 }
 
 
@@ -1133,6 +1169,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     await runSyncStepIfStale("fintual", stale, "Fintual", stepErrors, state!, cl, async () => {
       const fintualResult = await runFintual(cl, state!, syncChanges);
       if (fintualResult.fintualNoChange) logOpts.fintualNoChange = true;
+      if (fintualResult.polled) await runFintualOfficialSeriesCheck(cl, syncChanges, stepErrors);
     });
 
     await runSyncStepIfStale(

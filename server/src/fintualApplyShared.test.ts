@@ -3,6 +3,7 @@ import {
   collectFintualGoalValuationChanges,
   fintualMappedGoalsApiSignature,
   shouldRecordFintualCertFundUnit,
+  syncFintualFundUnitsFromResolutions,
 } from "../scripts/fintualApplyShared.js";
 import type { FintualGoalSnapshot } from "../scripts/fintualApiLib.js";
 import type { FintualGoalNavResolution } from "../scripts/fintualRealAssetNav.js";
@@ -65,7 +66,7 @@ describe("shouldRecordFintualCertFundUnit", () => {
 });
 
 describe("fintualMappedGoalsApiSignature", () => {
-  it("uses goals API NAV not applied real_assets NAV", () => {
+  it("uses the goals API NAV, not the applied shares valuation", () => {
     const resolutions: FintualGoalNavResolution[] = [
       {
         row: {
@@ -75,12 +76,14 @@ describe("fintualMappedGoalsApiSignature", () => {
           matchedNotes: "import:fintual|cert|key=risky_norris",
         },
         goalsApiNavClp: 10_751_884,
-        realAssetsNavClp: 11_157_014,
+        sharesValuationClp: 11_157_014,
         appliedNavClp: 11_157_014,
         units: 2696.9454,
+        fintualShares: 2696.9454,
         fundPriceClp: 4136.9078,
-        recentNavByDay: null,
+        pending: null,
         mismatch: true,
+        closureLagsPublish: false,
       },
     ];
     expect(fintualMappedGoalsApiSignature(resolutions)).toBe("2859:10751884");
@@ -120,12 +123,14 @@ describe("collectFintualGoalValuationChanges v2", () => {
       {
         row: snap.goals[0]!,
         goalsApiNavClp: 10_751_884,
-        realAssetsNavClp: 11_157_014,
+        sharesValuationClp: 11_157_014,
         appliedNavClp: 11_157_014,
         units: 2696.9454,
+        fintualShares: 2696.9454,
         fundPriceClp: 4136.9078,
-        recentNavByDay: null,
+        pending: null,
         mismatch: true,
+        closureLagsPublish: false,
       },
     ];
     try {
@@ -139,6 +144,48 @@ describe("collectFintualGoalValuationChanges v2", () => {
         `DELETE FROM fund_unit_daily
          WHERE series_key = 'fintual_cert_risky_norris' AND day = '2026-06-23' AND note = 'test:fixture'`
       ).run();
+    }
+  });
+});
+
+describe("syncFintualFundUnitsFromResolutions", () => {
+  it("writes nothing for a v2 account without a Fintual publish price (never NAV ÷ ledger cuotas)", () => {
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };
+    const notes = "import:fintual|cert|key=risky_norris";
+    const accountId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'no-price vitest', ?, ?)`)
+        .run(group.id, notes, notes).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, 1000, 'clp', '2099-03-01', 'vitest-no-price', 10)`
+    ).run(accountId);
+    db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = 'fintual_cert_risky_norris' AND day >= '2099-03-01'`).run();
+    try {
+      const resolutions: FintualGoalNavResolution[] = [
+        {
+          row: { id: "2859", name: "caca daca", navClp: 12_000, matchedNotes: notes },
+          goalsApiNavClp: 12_000, // a retiro in transit: nav ≠ shares, no price for this poll
+          sharesValuationClp: null,
+          appliedNavClp: 12_000,
+          units: 10,
+          fintualShares: null,
+          fundPriceClp: null,
+          pending: { fulfillmentDepositsClp: 0, fulfillmentWithdrawalsClp: 0, paymentWithdrawalsClp: 2_000 },
+          mismatch: false,
+          closureLagsPublish: true,
+        },
+      ];
+      expect(syncFintualFundUnitsFromResolutions(resolutions, "2099-03-02", false)).toBe(0);
+      const bar = db
+        .prepare(`SELECT 1 FROM fund_unit_daily WHERE series_key = 'fintual_cert_risky_norris' AND day = '2099-03-02'`)
+        .get();
+      expect(bar).toBeUndefined();
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+      db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = 'fintual_cert_risky_norris' AND day >= '2099-03-01'`).run();
     }
   });
 });

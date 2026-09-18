@@ -1,6 +1,6 @@
 /**
  * Evening Fintual poll: goals API balance vs certificado cuotas × fund_unit_daily must agree
- * before we treat v2 accounts as settled or write inferred cuotas without real_assets publish.
+ * before we treat v2 accounts as settled (a v2 bar is only ever written from a Fintual publish price).
  */
 import { db } from "./db.js";
 import {
@@ -9,7 +9,11 @@ import {
   matchFintualCertGoalV2,
 } from "./fintualCertV2.js";
 import { fintualGoalUnitsFromMovements } from "./fintualGoalUnits.js";
-import { fundSeriesKeyFromImportNotes, isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import {
+  fundSeriesKeyFromImportNotes,
+  isFintualCertV2ValuationNotes,
+  isFintualPublishedFundUnitNote,
+} from "./fintualFundUnitDaily.js";
 import { fintualExpectsCuotaOnPollDay } from "./fintualPublishDate.js";
 import { latestFundUnitRow } from "./fundUnitDaily.js";
 import type { ChileWallClock } from "./chileDate.js";
@@ -148,7 +152,7 @@ const stmtRecentFundUnitsBeforeDay = db.prepare(
 /**
  * The polled goals NAV reproduces (within tolerance) the account's position at a stored cuota
  * OLDER than the newest bar — i.e. Fintual's goals endpoint has not rolled to the fund's newest
- * publish yet (it lags real_assets by hours). Such a NAV is stale, not divergent: displaying it
+ * publish yet (it lags the fund publish by hours). Such a NAV is stale, not divergent: displaying it
  * would show yesterday's balance with a phantom day P/L against the fresher cuotas × px.
  */
 export function fintualGoalsNavMatchesPriorPublishPosition(
@@ -351,7 +355,7 @@ export function cleanupUnreconciledFintualCertFundUnits(
       | { unit_value_clp: number; note: string }
       | undefined;
     if (row == null) continue;
-    if (row.note.includes("real_assets:publish")) continue;
+    if (isFintualPublishedFundUnitNote(row.note)) continue;
     if (!dryRun) stmtDeleteFundUnitOnDay.run(seriesKey, publishYmd);
     removed += 1;
   }
