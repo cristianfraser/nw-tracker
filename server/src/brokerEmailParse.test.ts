@@ -86,6 +86,36 @@ describe("brokerEmailParse", () => {
     });
   });
 
+  it("parses the 2026-09-18 «Reinvertimos» DRIP fill: ticker in the subject, the trade in the body", () => {
+    const fill = classifyBrokerEmail({
+      sender: FINTUAL,
+      subject: "Reinvertimos tu dividendo de LIN",
+      snippet:
+        "Reinvertimos tu dividendo de LIN Hola Cristian Reinvertimos tu dividendo de $10,75 en LIN " +
+        "Monto invertido US $10,75 Precio de la acción US $458,38 Acciones compradas 0,023452157 " +
+        "Si tienes dudas responde este correo y te ayudamos.",
+      date: "2026-09-18T13:30:07Z",
+    });
+    expect(fill).toMatchObject({
+      kind: "buy",
+      is_transaction: true,
+      is_complete: true,
+      ticker: "LIN",
+      amount: 10.75,
+      price: 458.38,
+      currency: "usd",
+    });
+    expect(fill.units).toBe("0.023452157");
+    // A body the parser cannot read leaves the fill incomplete — a nudge, never a unit-less row.
+    const bare = classifyBrokerEmail({
+      sender: FINTUAL,
+      subject: "Reinvertimos tu dividendo de LIN",
+      snippet: "Hola Cristian, revisa tu cuenta.",
+      date: "2026-09-18T13:30:07Z",
+    });
+    expect(bare).toMatchObject({ kind: "buy", is_transaction: true, is_complete: false, ticker: "LIN" });
+  });
+
   it("keeps an amount-less dividend mail as an incomplete transaction, never a silent 'other'", () => {
     const dividend = classifyBrokerEmail({
       sender: FINTUAL,

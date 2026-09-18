@@ -197,6 +197,27 @@ const FINTUAL_MATCHERS: Matcher[] = [
     }),
   },
   {
+    // "Reinvertimos tu dividendo de LIN" — the DRIP fill since 2026-09-18 (was an «Invertiste …
+    // acciones de <fund name>» mail). Ticker in the subject; amount, price and share count in the
+    // body: «Monto invertido US $10,75 Precio de la acción US $458,38 Acciones compradas
+    // 0,023452157» — Chilean number format, the share count kept as a decimal string.
+    kind: "buy",
+    is_transaction: true,
+    re: /^Reinvertimos tu dividendo de ([A-Z][A-Z0-9.]{0,9})\s*$/i,
+    read: (m, snippet) => {
+      const amount = /Monto invertido US \$\s*([\d.,]+)/i.exec(snippet);
+      const price = /Precio de la acci[óo]n US \$\s*([\d.,]+)/i.exec(snippet);
+      const units = /Acciones compradas\s+([\d.,]+)/i.exec(snippet);
+      return {
+        ticker: m[1]!.toUpperCase(),
+        currency: "usd",
+        ...(amount ? { amount: parseChileanNumber(amount[1]!) } : {}),
+        ...(price ? { price: parseChileanNumber(price[1]!) } : {}),
+        ...(units ? { units: decimalString(units[1]!) } : {}),
+      };
+    },
+  },
+  {
     // "Invertiremos US $1,67 de tus dólares en …" — the order, not the fill. Not a movement:
     // the matching "Invertiste" arrives when it executes, and counting both would double.
     kind: "order_placed",
