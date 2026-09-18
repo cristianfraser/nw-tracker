@@ -161,13 +161,29 @@ describe("brokerEmailParse", () => {
       })
     ).toMatchObject({ kind: "portfolio_buy", amount: 3000000, currency: "clp" });
 
+    // Until 2026-09 the dividend mail named the instrument only: a nudge for the crawl.
     expect(
       classifyBrokerEmail({
         sender: RACIONAL,
         subject: "Recibiste dividendos de VEA 💸",
         date: "2026-06-23T10:46:13Z",
       })
-    ).toMatchObject({ kind: "dividend", ticker: "VEA", is_transaction: true });
+    ).toMatchObject({ kind: "dividend", ticker: "VEA", is_transaction: true, is_complete: false, amount: null });
+    // Since 2026-09-18 the subject carries the amount: complete, imports without a crawl.
+    expect(
+      classifyBrokerEmail({
+        sender: RACIONAL,
+        subject: "Recibiste USD $2,75 en dividendos de SOXX",
+        date: "2026-09-18T11:57:16Z",
+      })
+    ).toMatchObject({
+      kind: "dividend",
+      ticker: "SOXX",
+      amount: 2.75,
+      currency: "usd",
+      is_transaction: true,
+      is_complete: true,
+    });
   });
 
   it("never triggers on marketing, login alerts or statements", () => {
