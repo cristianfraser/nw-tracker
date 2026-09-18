@@ -257,7 +257,19 @@ const RACIONAL_MATCHERS: Matcher[] = [
     },
   },
   {
-    // "Recibiste dividendos de VEA 💸"
+    // "Recibiste USD $2,75 en dividendos de SOXX" — the template since 2026-09-18 carries the
+    // amount in the subject (Chilean format), so the mail is complete and imports without a crawl.
+    kind: "dividend",
+    is_transaction: true,
+    re: /^Recibiste USD \$\s*([\d.,]+) en dividendos de ([A-Z][A-Z0-9.]{0,9})/i,
+    read: (m) => ({
+      ticker: m[2]!.toUpperCase(),
+      amount: parseChileanNumber(m[1]!),
+      currency: "usd",
+    }),
+  },
+  {
+    // "Recibiste dividendos de VEA 💸" (until 2026-09) — instrument only: a nudge for the crawl.
     kind: "dividend",
     is_transaction: true,
     re: /^Recibiste dividendos de ([A-Z][A-Z0-9.]{0,9})/i,

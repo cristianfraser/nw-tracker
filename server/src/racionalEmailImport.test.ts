@@ -201,6 +201,69 @@ describe("planRacionalEmailMovements", () => {
     expect(collapsed.find((p) => p.kind === "conversion")!.requires_manual).toBeNull();
   });
 
+  it("plans a dividend from the 2026-09-18 template as equity → Racional USD, dedupes same-day, never creates a position", () => {
+    const ymd = safeYmd();
+    const iso = `${ymd}T12:00:00.000Z`;
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };
+    const holder = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key, equity_ticker)
+           VALUES (?, 'vitest VTDIV', 'vitest:racional-dividend', 'vitest:racional-dividend|VTDIV', 'VTDIV')`
+        )
+        .run(group.id).lastInsertRowid
+    );
+    try {
+      const dividend = classifyBrokerEmail({
+        sender: RACIONAL,
+        subject: "Recibiste USD $2,75 en dividendos de VTDIV",
+        date: iso,
+        message_id: "<vitest-div@test>",
+      });
+      const [planned] = planRacionalEmailMovements([dividend]);
+      expect(planned).toMatchObject({
+        kind: "dividend",
+        occurred_on: ymd,
+        amount: 2.75,
+        currency: "usd",
+        from_account_id: holder,
+        to_account_id: racionalUsd.id,
+        units_delta: null,
+        flow_kind: "dividend_payout",
+        duplicate_of: null,
+        requires_manual: null,
+      });
+
+      db.prepare(
+        `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note, flow_kind)
+         VALUES (?, ?, 2.75, 'usd', ?, 'vitest-racional-email', 'dividend_payout')`
+      ).run(holder, racionalUsd.id, ymd);
+      const [again] = planRacionalEmailMovements([dividend]);
+      expect(again!.duplicate_of).not.toBeNull();
+
+      // The old amount-less template is not planned at all (it stays a nudge for the crawl).
+      const nudge = classifyBrokerEmail({
+        sender: RACIONAL,
+        subject: "Recibiste dividendos de VTDIV 💸",
+        date: iso,
+        message_id: "<vitest-div-old@test>",
+      });
+      expect(planRacionalEmailMovements([nudge])).toEqual([]);
+
+      // A ticker nobody holds is manual — a dividend never auto-creates a position.
+      const orphan = classifyBrokerEmail({
+        sender: RACIONAL,
+        subject: "Recibiste USD $1,00 en dividendos de VTNOPE",
+        date: iso,
+        message_id: "<vitest-div-orphan@test>",
+      });
+      expect(planRacionalEmailMovements([orphan])[0]!.requires_manual).toMatch(/no account holds VTNOPE/);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE from_account_id = ? OR to_account_id = ?`).run(holder, holder);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(holder);
+    }
+  });
+
   it("defers month-straddling deposits to manual entry (cartola anchor rule)", () => {
     // Find a month-end whose next business day lands in the following month.
     let d = "2099-01-31";
