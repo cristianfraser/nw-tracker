@@ -165,7 +165,7 @@ function fintualPublishUnitSynced(
   return fundPriceClp != null && fundPriceClp > 0;
 }
 
-/** Evening fund_unit write: real_assets publish, or goals API NAV moved vs prior cuota position. */
+/** Evening fund_unit write: a Fintual publish price, or (legacy accounts) goals API NAV moved vs prior position. */
 export function shouldRecordFintualCertFundUnit(opts: {
   accountId: number;
   importNotes: string;
@@ -204,14 +204,12 @@ export function collectFintualGoalValuationChanges(
     if (isFintualCertV2ValuationNotes(target.importNotes)) {
       const priorPos = priorFintualGoalNav(target.accountId, target.importNotes, snap.asOfDate);
       const priorUnit = priorFintualPublishUnit(target.importNotes, snap.asOfDate);
+      // Without a publish price nothing is written for a v2 account (never NAV ÷ ledger cuotas:
+      // the ledger lags Fintual while cash is in transit), so the "next" unit is the stored bar.
       const nextUnit =
         resolution?.fundPriceClp != null && resolution.fundPriceClp > 0
           ? Math.round(resolution.fundPriceClp * 10000) / 10000
-          : goalsNavClp > 0 && fintualGoalUnitsFromMovements(target.accountId)
-            ? Math.round(
-                (goalsNavClp / fintualGoalUnitsFromMovements(target.accountId)!) * 10000
-              ) / 10000
-            : storedFintualPublishUnitAt(target.importNotes, snap.asOfDate);
+          : storedFintualPublishUnitAt(target.importNotes, snap.asOfDate);
       const nextPos =
         nextUnit != null && fintualGoalUnitsFromMovements(target.accountId)
           ? Math.round(fintualGoalUnitsFromMovements(target.accountId)! * nextUnit)
@@ -314,6 +312,17 @@ export function syncFintualFundUnitsFromResolutions(
     }
     for (const target of notesTargets) {
       if (!isFintualCertV2ValuationNotes(target.importNotes)) continue;
+      if (r.fundPriceClp == null || !(r.fundPriceClp > 0)) {
+        // No Fintual-priced cuota this poll (empty goal, or its closure day lags the publish
+        // day): write nothing. Inferring NAV ÷ ledger cuotas is exactly the derivation that
+        // mispriced four Reserva bars while a retiro was in transit (2026-09-17).
+        if (r.units != null && r.units > 0) {
+          console.log(
+            `sync: Fintual — no publish price for ${r.row.name} on ${asOfYmd}; fund_unit_daily untouched.`
+          );
+        }
+        continue;
+      }
       const unitsForTarget =
         target.importNotes === r.row.matchedNotes
           ? r.units
@@ -336,20 +345,14 @@ export function syncFintualFundUnitsFromResolutions(
         navClp: r.appliedNavClp,
         fundPriceClp: r.fundPriceClp,
         units: unitsForTarget,
-        recentNavByDay: r.recentNavByDay,
         dryRun,
       });
       if (!fu.recorded) continue;
       recorded += 1;
       if (!dryRun) {
-        const src =
-          r.fundPriceClp != null && r.fundPriceClp > 0 ? "publish" : "inferred";
         console.log(
-          `sync: Fintual — fund_unit_daily ${fu.unitClp} (${asOfYmd}, ${src}, ${target.importNotes})` +
-            (fu.gapDaysFilled > 0 ? `, carried ${fu.gapDaysFilled} day(s)` : "") +
-            (fu.realDaysBackfilled > 0
-              ? `, backfilled ${fu.realDaysBackfilled} real published day(s)`
-              : "")
+          `sync: Fintual — fund_unit_daily ${fu.unitClp} (${asOfYmd}, publish, ${target.importNotes})` +
+            (fu.gapDaysFilled > 0 ? `, carried ${fu.gapDaysFilled} day(s)` : "")
         );
       }
     }
@@ -574,7 +577,7 @@ export function fintualMappedNavSignature(snap: FintualGoalSnapshot): string {
   return parts.join("|");
 }
 
-/** Goals API NAV signature (evening stale / reconcile); not real_assets applied NAV. */
+/** Goals API NAV signature (evening stale / reconcile); not the applied shares valuation. */
 export function fintualMappedGoalsApiSignature(resolutions: FintualGoalNavResolution[]): string {
   const parts: string[] = [];
   for (const r of resolutions) {

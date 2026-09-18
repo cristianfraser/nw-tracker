@@ -3,7 +3,6 @@ import { assertValuationCurrencyClp } from "./valuationValue.js";
  * Append Fintual goal NAV polls to `fund_unit_daily` (marquee, rates charts).
  */
 import { fundSeriesKeyForAccount, fundSeriesKeyFromImportNotes } from "./accountFundSeriesKey.js";
-import { chileCalendarAddDays } from "./chileDate.js";
 import { db } from "./db.js";
 import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
 
@@ -112,56 +111,39 @@ export function resolveFintualUnitClp(opts: {
   return null;
 }
 
-/** Real published cuotas older than this (vs the observation day) are never backfilled. */
-export const FINTUAL_REAL_BACKFILL_WINDOW_DAYS = 14;
+/**
+ * Provenance note prefixes of a REAL published cuota. Carries and the unreconciled-inferred
+ * cleanup never touch these; the official-serie verifier (`fintualPublicSeriePrice.ts`)
+ * corrects them only beyond its tolerance.
+ * - `fintual:real_assets:publish` — the retired `GET /api/real_assets/:id` price (≤ 2026-09-14)
+ *   and the one-day graph ÷ ledger-cuotas derivation that replaced it (2026-09-16/17 bars).
+ * - `fintual:gql:shares-publish` — evening `/gql/` accrued balance: valuation ÷ Fintual's shares.
+ * - `fintual:public-serie:publish` — the official public serie price (next-day verifier).
+ */
+export const FINTUAL_PUBLISHED_FUND_UNIT_NOTE_PREFIXES = [
+  "fintual:real_assets:publish",
+  "fintual:gql:shares-publish",
+  "fintual:public-serie:publish",
+] as const;
 
-const FINTUAL_CARRY_FORWARD_NOTES = new Set([
+export const FINTUAL_GQL_SHARES_PUBLISH_NOTE_PREFIX = "fintual:gql:shares-publish";
+
+export function isFintualPublishedFundUnitNote(note: string | null | undefined): boolean {
+  if (!note) return false;
+  return FINTUAL_PUBLISHED_FUND_UNIT_NOTE_PREFIXES.some(
+    (prefix) => note === prefix || note.startsWith(`${prefix}|`)
+  );
+}
+
+/** Placeholder rows a later observation may overwrite (the previous bar carried across a gap). */
+export const FINTUAL_CARRY_FORWARD_NOTES: ReadonlySet<string> = new Set([
   "fintual:carry-forward",
   "fintual:cert-carry-forward",
   "spot:carry-forward",
 ]);
 
-const stmtFundUnitRowOnDay = db.prepare(
-  `SELECT unit_value_clp, note FROM fund_unit_daily WHERE series_key = ? AND day = ?`
-);
-
-/**
- * Write real published cuotas for recent days a poll missed (a fund that publishes after the
- * evening settled leaves its day absent, or carry-filled by the next observation). Only absent
- * days and carry-forward placeholders are (re)written — publish/cert bars are never overwritten.
- */
-function backfillRealPublishedFundUnitDays(opts: {
-  seriesKey: string;
-  recentNavByDay: ReadonlyMap<string, number>;
-  beforeYmd: string;
-  note: string;
-  dryRun: boolean;
-}): number {
-  const floorYmd = chileCalendarAddDays(opts.beforeYmd, -FINTUAL_REAL_BACKFILL_WINDOW_DAYS);
-  const days = [...opts.recentNavByDay.keys()]
-    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= floorYmd && d < opts.beforeYmd)
-    .sort();
-  let written = 0;
-  for (const day of days) {
-    const raw = opts.recentNavByDay.get(day);
-    if (raw == null || !Number.isFinite(raw) || raw <= 0) continue;
-    const px = Math.round(raw * 10000) / 10000;
-    const existing = stmtFundUnitRowOnDay.get(opts.seriesKey, day) as
-      | { unit_value_clp: number; note: string }
-      | undefined;
-    if (existing && !FINTUAL_CARRY_FORWARD_NOTES.has(existing.note)) continue;
-    if (existing && Math.abs(existing.unit_value_clp - px) <= 0.00005) continue;
-    upsertFundUnitSpotPreservingHistory({
-      seriesKey: opts.seriesKey,
-      observationDay: day,
-      unitValueClp: px,
-      note: opts.note,
-      carryNote: "fintual:carry-forward",
-      dryRun: opts.dryRun,
-    });
-    written += 1;
-  }
-  return written;
+export function isFintualCarryForwardFundUnitNote(note: string | null | undefined): boolean {
+  return note != null && FINTUAL_CARRY_FORWARD_NOTES.has(note);
 }
 
 export function recordFintualGoalFundUnitDaily(opts: {
@@ -170,14 +152,13 @@ export function recordFintualGoalFundUnitDaily(opts: {
   asOfYmd: string;
   navClp: number;
   dryRun: boolean;
+  /** Valor cuota from Fintual's own share count (evening `/gql/` accrued balance). */
   fundPriceClp?: number | null;
   units?: number | null;
-  /** Recent published cuotas by day (real_assets); heals days an earlier poll missed. */
-  recentNavByDay?: ReadonlyMap<string, number> | null;
-}): { recorded: boolean; unitClp: number | null; gapDaysFilled: number; realDaysBackfilled: number } {
+}): { recorded: boolean; unitClp: number | null; gapDaysFilled: number } {
   const seriesKey =
     fundSeriesKeyForAccount(opts.accountId) ?? fundSeriesKeyFromImportNotes(opts.importNotes);
-  if (!seriesKey) return { recorded: false, unitClp: null, gapDaysFilled: 0, realDaysBackfilled: 0 };
+  if (!seriesKey) return { recorded: false, unitClp: null, gapDaysFilled: 0 };
 
   const unitClp = resolveFintualUnitClp({
     accountId: opts.accountId,
@@ -188,24 +169,13 @@ export function recordFintualGoalFundUnitDaily(opts: {
     units: opts.units,
   });
   if (unitClp == null || unitClp <= 0) {
-    return { recorded: false, unitClp: null, gapDaysFilled: 0, realDaysBackfilled: 0 };
+    return { recorded: false, unitClp: null, gapDaysFilled: 0 };
   }
 
   const isPublish = opts.fundPriceClp != null && opts.fundPriceClp > 0;
   const note = isPublish
-    ? `fintual:real_assets:publish|${opts.importNotes}`
+    ? `${FINTUAL_GQL_SHARES_PUBLISH_NOTE_PREFIX}|${opts.importNotes}`
     : `fintual:api:goal-nav|${opts.importNotes}`;
-
-  let realDaysBackfilled = 0;
-  if (isPublish && opts.recentNavByDay && opts.recentNavByDay.size > 0) {
-    realDaysBackfilled = backfillRealPublishedFundUnitDays({
-      seriesKey,
-      recentNavByDay: opts.recentNavByDay,
-      beforeYmd: opts.asOfYmd,
-      note,
-      dryRun: opts.dryRun,
-    });
-  }
 
   const { gapDaysFilled } = upsertFundUnitSpotPreservingHistory({
     seriesKey,
@@ -216,10 +186,9 @@ export function recordFintualGoalFundUnitDaily(opts: {
     dryRun: opts.dryRun,
   });
 
-  return { recorded: true, unitClp, gapDaysFilled, realDaysBackfilled };
+  return { recorded: true, unitClp, gapDaysFilled };
 }
 
-/** Upsert historical valor cuota from certificado row hints (v2 series). */
 export function backfillFintualCertValorCuotaFromScan(
   scan: FintualCertificadoAggregateScan,
   matchGoal: GoalToImportNote,
