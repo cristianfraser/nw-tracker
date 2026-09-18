@@ -133,6 +133,10 @@ export function parseUsNumber(raw: string): number {
   return n;
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** Share counts keep their decimals as a string; Racional/Fintual print up to 9. */
 function decimalString(raw: string): string {
   const t = String(raw ?? "").trim();
@@ -160,11 +164,26 @@ const RE_RACIONAL_BODY =
 
 const FINTUAL_MATCHERS: Matcher[] = [
   {
-    // "Recibiste un dividendo de SPY por 1,67 dólares"
+    // "Recibiste un dividendo de SPY por 1,67 dólares" (template until 2026-08) — and, since
+    // the 2026-09-17 LIN mail, just "Recibiste un dividendo de LIN": the amount moved to the
+    // body («Recibiste un dividendo de LIN por US $10,75 y lo asignamos a tu cuenta»). Without
+    // an amount anywhere the event stays a transaction but incomplete (a nudge), never silent.
     kind: "dividend",
     is_transaction: true,
-    re: /^Recibiste un dividendo de ([A-Z][A-Z0-9.]{0,9}) por ([\d.,]+) d[óo]lares/i,
-    read: (m) => ({ ticker: m[1]!.toUpperCase(), amount: parseChileanNumber(m[2]!), currency: "usd" }),
+    re: /^Recibiste un dividendo de ([A-Z][A-Z0-9.]{0,9})(?: por ([\d.,]+) d[óo]lares)?\s*$/i,
+    read: (m, snippet) => {
+      const ticker = m[1]!.toUpperCase();
+      const body = new RegExp(
+        `Recibiste un dividendo de ${escapeRegExp(ticker)} por US \\$\\s*([\\d.,]+)`,
+        "i"
+      ).exec(snippet);
+      const amountRaw = m[2] ?? body?.[1];
+      return {
+        ticker,
+        currency: "usd",
+        ...(amountRaw ? { amount: parseChileanNumber(amountRaw) } : {}),
+      };
+    },
   },
   {
     // "Invertiste US $1,67 dólares en 0,002152366 acciones de State Street SPDR S&P 500 ETF Trust"

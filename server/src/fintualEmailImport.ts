@@ -20,6 +20,7 @@ import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
+import { chileWallClockAt } from "./chileDate.js";
 import { recordSyntheticRetiroTransfer } from "./fintualSyntheticRetiros.js";
 import {
   findUnpairedCheckingCredit,
@@ -73,6 +74,15 @@ export function tickerFromFundName(subject: string): string | null {
   return null;
 }
 
+/**
+ * The Chile calendar day a mail landed on — the day Fintual booked the event. Mail timestamps
+ * are UTC, and a 23:06 Chile mail (the 2026-09-17 LIN dividend) is already the next day in UTC.
+ * Same rule as the Racional importer.
+ */
+function eventChileYmd(event: BrokerEmailEvent): string {
+  return chileWallClockAt(new Date(event.occurred_at)).ymd;
+}
+
 function isoAddDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -124,7 +134,7 @@ export function pairedDividendTicker(
   batch: readonly BrokerEmailEvent[]
 ): string | null {
   if (event.kind !== "buy") return null;
-  const day = event.occurred_at.slice(0, 10);
+  const day = eventChileYmd(event);
   const match = batch.find(
     (e) =>
       e.kind === "dividend" &&
@@ -133,7 +143,7 @@ export function pairedDividendTicker(
       e.amount != null &&
       event.amount != null &&
       Math.abs(e.amount - event.amount) < 0.005 &&
-      e.occurred_at.slice(0, 10) === day
+      eventChileYmd(e) === day
   );
   return match?.ticker ?? null;
 }
@@ -142,7 +152,7 @@ export function planFintualEmailMovement(
   event: BrokerEmailEvent,
   batch: readonly BrokerEmailEvent[]
 ): FintualPlannedMovement {
-  const occurred_on = event.occurred_at.slice(0, 10);
+  const occurred_on = eventChileYmd(event);
   const base = {
     source: event,
     occurred_on,

@@ -2,7 +2,12 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fintualPollDayCaughtUp } from "./fintualPublishDate.js";
 import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
-import { isChileBusinessDay, isNyseTradingDay, priorNyseSessionYmd } from "./marketHolidays.js";
+import {
+  isChileBusinessDay,
+  isNyseTradingDay,
+  nextChileBusinessDayYmd,
+  priorNyseSessionYmd,
+} from "./marketHolidays.js";
 import {
   isBeforeNyseRegularOpen,
   isNyseRegularSessionOpen,
@@ -68,52 +73,59 @@ export function fintualGlobalSyncSettledForChileDay(ymd: string): boolean {
 }
 
 /**
- * Chile-holiday proxy hold: window where the proxy overrides Fintual's official cuota
- * because the fund value cannot reflect the live NYSE session yet.
+ * The NYSE session whose close the proxy would be holding right now: the current session once
+ * it has opened, otherwise the previous trading session (yesterday's, or Friday's on a weekend
+ * or a US holiday).
+ */
+function heldNyseSessionYmd(now: Date): string | null {
+  const sessionYmd = nyseWallClock(now).ymd;
+  if (isNyseTradingDay(sessionYmd) && !isBeforeNyseRegularOpen(now)) return sessionYmd;
+  return priorNyseSessionYmd(sessionYmd);
+}
+
+/**
+ * Chile-holiday proxy hold: the proxy overrides Fintual's official cuota while the fund value
+ * cannot reflect the NYSE session the proxy is tracking.
  *
- * On a Chile holiday that is an NYSE trading day, Fintual still publishes a *flat carry*
- * cuota (the fund didn't trade), which would otherwise mark the day "settled" and disable
- * the proxy. We instead follow the proxy from that day's NYSE open, and keep the held
- * value across the overnight gap until the next session opens.
+ * On a Chile holiday that NYSE trades, Fintual publishes a flat carry cuota for the day (the
+ * fund did not trade) and forward-publishes the whole non-business block; those bars would
+ * otherwise "settle" the day and snap the accounts back to a cuota that never saw the session.
+ * The first cuota that CAN reflect it is the next Chile business day's, so: hold while the held
+ * session (see {@link heldNyseSessionYmd}) fell on a Chile non-business day and that catch-up
+ * day's evening sync has not settled. For a Friday holiday (2026-09-18, Fiestas Patrias): live
+ * proxy from Friday's open, Friday's close held through the weekend and Monday pre-open,
+ * Monday's live session, then Monday's evening cuota settles it. Before the holiday's own open
+ * nothing is held — the last official cuota is still right. (Until 2026-09-17 the hold ended
+ * at New York midnight on the holiday, so the weekend showed the flat carries and Friday's
+ * move vanished until Monday.)
  *
  * Framed on the NYSE session day (`nyseWallClock(now).ymd`), never the Chile calendar day —
  * see {@link fintualGlobalSyncSettledForChileDay} for why the two differ around Chile midnight
- * (a Saturday 00:30 Chile is still Friday's session in New York: a Chile business day, settled).
- *
- * - (A) The session day is a Chile non-business day: hold from NYSE open onward (incl. after
- *       close, and across the Chile-midnight gap while New York is still on that day).
- *       Before NYSE open we don't hold — the last official cuota is still shown.
- * - (B) The session day is a Chile business day, before NYSE open, and the just-closed NYSE
- *       session fell on a Chile non-business day (so Fintual still hasn't caught up to it) and
- *       that day's evening sync hasn't settled — keep the held proxy until this session opens.
+ * (a Saturday 00:30 Chile is still Friday's session in New York).
  */
 export function inChileHolidayProxyHold(now = new Date()): boolean {
-  const sessionYmd = nyseWallClock(now).ymd;
-
-  if (!isChileBusinessDay(sessionYmd)) {
-    return !isBeforeNyseRegularOpen(now);
-  }
-
-  if (!isBeforeNyseRegularOpen(now)) return false;
-  const priorSession = priorNyseSessionYmd(sessionYmd);
-  if (priorSession == null || isChileBusinessDay(priorSession)) return false;
-  return !fintualGlobalSyncSettledForChileDay(sessionYmd);
+  const held = heldNyseSessionYmd(now);
+  if (held == null || isChileBusinessDay(held)) return false;
+  const catchUpYmd = nextChileBusinessDayYmd(held);
+  if (catchUpYmd == null) return false;
+  return !fintualGlobalSyncSettledForChileDay(catchUpYmd);
 }
 
 /**
  * RN proxy MTM window. Follows the live/EOD basket proxy instead of the official Fintual
  * cuota when the cuota cannot yet reflect the current NYSE session.
  *
- * - Chile-holiday hold (see {@link inChileHolidayProxyHold}) overrides the "settled" and
- *   pre-open gates: on a holiday Fintual's flat carry cuota is ignored in favor of the proxy.
+ * - Chile-holiday hold (see {@link inChileHolidayProxyHold}) comes first and overrides the
+ *   "settled", pre-open and non-trading-day gates: a weekend after a Friday holiday has no
+ *   session to trade, but Friday's close must stay on screen until Monday's cuota lands.
  * - Otherwise the normal business-day intraday window applies: NYSE trading, after open,
  *   before the Fintual evening sync settles.
  */
 export function shouldUseRiskyNorrisProxyMtm(now = new Date()): boolean {
+  if (inChileHolidayProxyHold(now)) return true;
+
   const sessionYmd = nyseWallClock(now).ymd;
   if (!isNyseTradingDay(sessionYmd)) return false;
-
-  if (inChileHolidayProxyHold(now)) return true;
 
   // Settled for the SESSION day, not Chile today: after Chile midnight New York can still be
   // on the session whose cuota the evening poll already landed — the proxy stays off until

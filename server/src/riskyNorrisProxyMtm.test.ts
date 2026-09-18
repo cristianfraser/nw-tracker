@@ -105,9 +105,11 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     vi.spyOn(chileDate, "chileCalendarTodayYmd").mockReturnValue(ymd);
   }
 
-  it("is false when NYSE is not trading today", () => {
+  it("is false when NYSE is not trading today (and the last session was a Chile business day)", () => {
     stubSettled(false);
     stubNyseTrading(false);
+    vi.spyOn(marketHolidays, "isChileBusinessDay").mockReturnValue(true);
+    vi.spyOn(marketHolidays, "priorNyseSessionYmd").mockReturnValue("2026-06-26");
     expect(shouldUseRiskyNorrisProxyMtm(new Date())).toBe(false);
   });
 
@@ -120,29 +122,30 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
   });
 
   it("is true during the session on a Chile holiday — overrides the flat settled cuota", () => {
-    // Even though Fintual published a flat carry cuota (settled = true), the holiday hold wins.
-    stubSettled(true);
+    // Fintual published a flat carry cuota for the holiday (settled for 06-29), but the first
+    // cuota that can reflect the session is Tuesday's, and that evening has not happened.
+    stubSettledForDay("2026-06-29");
     stubNyseTrading(true);
     stubToday("2026-06-29"); // Mon, Chile holiday
-    vi.spyOn(marketHolidays, "isChileBusinessDay").mockReturnValue(false);
+    vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation((ymd: string) => ymd !== "2026-06-29");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(false);
     expect(shouldUseRiskyNorrisProxyMtm(new Date())).toBe(true);
   });
 
   it("holds the proxy after close on a Chile holiday", () => {
-    stubSettled(true);
+    stubSettledForDay("2026-06-29");
     stubNyseTrading(true);
     stubToday("2026-06-29");
-    vi.spyOn(marketHolidays, "isChileBusinessDay").mockReturnValue(false);
+    vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation((ymd: string) => ymd !== "2026-06-29");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(false);
     expect(shouldUseRiskyNorrisProxyMtm(new Date())).toBe(true);
   });
 
   it("does not hold before NYSE open on the holiday itself (last official cuota shown)", () => {
-    stubSettled(true);
+    stubSettledForDay("2026-06-29");
     stubNyseTrading(true);
     stubToday("2026-06-29");
-    vi.spyOn(marketHolidays, "isChileBusinessDay").mockReturnValue(false);
+    vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation((ymd: string) => ymd !== "2026-06-29");
     vi.spyOn(nyseSession, "isBeforeNyseRegularOpen").mockReturnValue(true);
     expect(shouldUseRiskyNorrisProxyMtm(new Date())).toBe(false);
   });
@@ -189,7 +192,7 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     // Chile holiday Tue 2026-12-08 (NYSE trading; Chile UTC−3 vs New York EST UTC−5 = 2h gap):
     // the flat carry cuota settled that evening, but the held proxy must survive Wed 00:30 Chile
     // (= Tue 22:30 New York) until Wednesday's open.
-    stubSettled(true);
+    stubSettledForDay("2026-12-08"); // the holiday's flat carry settled; Wednesday's cuota cannot exist yet
     vi.spyOn(marketHolidays, "isChileBusinessDay").mockImplementation(
       (ymd: string) => ymd !== "2026-12-08"
     );
@@ -199,6 +202,38 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     expect(marketHolidays.isNyseTradingDay("2026-12-08")).toBe(true);
     expect(inChileHolidayProxyHold(now)).toBe(true);
     expect(shouldUseRiskyNorrisProxyMtm(now)).toBe(true);
+  });
+
+  it("holds Friday's close through the weekend after a Friday holiday until Monday's cuota lands", () => {
+    // Fiestas Patrias 2026-09-18 (Fri, NYSE open; Chile UTC−3, New York EDT UTC−4). Fintual
+    // forward-published flat carries for 09-18..20; only Monday's cuota can reflect Friday.
+    // Until 2026-09-17 the hold ended at New York midnight and the weekend showed the carries.
+    stubSettledForDay("2026-09-20"); // last (forward-published) cuota; Monday not polled yet
+    expect(marketHolidays.isChileBusinessDay("2026-09-18")).toBe(false);
+    expect(marketHolidays.isNyseTradingDay("2026-09-18")).toBe(true);
+    const probes: [string, boolean][] = [
+      ["2026-09-18T12:00:00Z", false], // Fri 09:00 Chile, pre-open: last official cuota
+      ["2026-09-18T14:00:00Z", true], // Fri 11:00 Chile: live session
+      ["2026-09-18T21:00:00Z", true], // Fri 18:00 Chile: held close
+      ["2026-09-19T03:30:00Z", true], // Sat 00:30 Chile, New York still on Friday
+      ["2026-09-19T18:00:00Z", true], // Sat 15:00 Chile
+      ["2026-09-20T18:00:00Z", true], // Sun 15:00 Chile
+      ["2026-09-21T05:00:00Z", true], // Mon 02:00 Chile, pre-open
+      ["2026-09-21T14:00:00Z", true], // Mon 11:00 Chile: live session
+    ];
+    for (const [iso, expected] of probes) {
+      expect(shouldUseRiskyNorrisProxyMtm(new Date(iso)), iso).toBe(expected);
+    }
+    // Monday's evening poll lands the first cuota that saw Friday's session.
+    stubSettledForDay("2026-09-21");
+    expect(inChileHolidayProxyHold(new Date("2026-09-21T05:00:00Z"))).toBe(false);
+    expect(shouldUseRiskyNorrisProxyMtm(new Date("2026-09-21T23:00:00Z"))).toBe(false); // Mon 20:00 Chile
+  });
+
+  it("does not hold on a normal weekend (Friday was a Chile business day)", () => {
+    stubSettledForDay("2026-09-11");
+    expect(shouldUseRiskyNorrisProxyMtm(new Date("2026-09-12T18:00:00Z"))).toBe(false); // Sat 15:00 Chile
+    expect(shouldUseRiskyNorrisProxyMtm(new Date("2026-09-13T18:00:00Z"))).toBe(false); // Sun 15:00 Chile
   });
 });
 
