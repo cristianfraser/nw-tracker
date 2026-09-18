@@ -66,6 +66,36 @@ describe("brokerEmailParse", () => {
     expect(buy.units).toBe("0.002152366");
   });
 
+  it("parses the 2026-09-17 LIN dividend whose subject dropped the amount (it moved to the body)", () => {
+    const dividend = classifyBrokerEmail({
+      sender: FINTUAL,
+      subject: "Recibiste un dividendo de LIN",
+      snippet:
+        "Recibiste un dividendo de Linde plc. Hola Cristian Recibiste un dividendo de LIN por US $10,75 " +
+        "y lo asignamos a tu cuenta Como el dividendo es mayor o igual a US $0,20, cuando abra el mercado " +
+        "reinvertiremos este monto en acciones de Linde plc.",
+      date: "2026-09-18T02:06:22Z",
+    });
+    expect(dividend).toMatchObject({
+      kind: "dividend",
+      is_transaction: true,
+      is_complete: true,
+      ticker: "LIN",
+      amount: 10.75,
+      currency: "usd",
+    });
+  });
+
+  it("keeps an amount-less dividend mail as an incomplete transaction, never a silent 'other'", () => {
+    const dividend = classifyBrokerEmail({
+      sender: FINTUAL,
+      subject: "Recibiste un dividendo de LIN",
+      snippet: "Hola Cristian, revisa tu cuenta.",
+      date: "2026-09-18T02:06:22Z",
+    });
+    expect(dividend).toMatchObject({ kind: "dividend", is_transaction: true, is_complete: false, ticker: "LIN", amount: null });
+  });
+
   it("does not count the pending order as a movement", () => {
     // "Invertiremos" is the instruction; "Invertiste" is the fill. Counting both would double.
     const order = classifyBrokerEmail({
