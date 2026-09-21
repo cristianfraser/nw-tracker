@@ -123,7 +123,7 @@ export type BucketDailySeries = {
 };
 
 /** Ascending list of `count` Chile calendar days ending at `endYmd` inclusive. */
-function chileCalendarDaysListEndingAt(endYmd: string, count: number): string[] {
+export function chileCalendarDaysListEndingAt(endYmd: string, count: number): string[] {
   const out = new Array<string>(count);
   for (let i = 0; i < count; i++) {
     out[count - 1 - i] = i === 0 ? endYmd : chileCalendarAddDays(endYmd, -i);

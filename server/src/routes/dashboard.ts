@@ -7,6 +7,7 @@ import {
   resolvePortfolioGroupSlugForLegacyTab,
 } from "../portfolioGroupTree.js";
 import { attachColorsToValuationPayload } from "../chartColorRgb.js";
+import { attachNetWorthAth } from "../netWorthAllTimeHigh.js";
 import {
   getDashboardValuationTimeseries,
   getGroupValuationTimeseries,
@@ -304,7 +305,7 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
     return;
   }
 
-  res.json(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)));
+  res.json(attachNetWorthAth(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)), unit));
 });
 
 /** SPY+VEA merged: monthly Δ (sum) and cumulative earnings since first month (derived). */

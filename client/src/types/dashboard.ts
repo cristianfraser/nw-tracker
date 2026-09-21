@@ -246,6 +246,22 @@ export interface ProportionalSeriesBlockDto {
   series: ProportionalSeriesLineDto[];
 }
 
+/** All-time high of a net-worth line at one grain: the peak point's date and value in the payload unit. */
+export interface NetWorthAthDto {
+  as_of_date: string;
+  value: number;
+}
+
+/** One peak per chart grain, each over the series that grain plots (see server `netWorthAllTimeHigh.ts`). */
+export interface NetWorthAthByPeriod {
+  /** Full-history daily walk (Diario). */
+  day: NetWorthAthDto | null;
+  /** Latest-dated overview point of each calendar month (Mensual). */
+  month: NetWorthAthDto | null;
+  /** Latest-dated overview point of each calendar year (Anual). */
+  year: NetWorthAthDto | null;
+}
+
 export interface TimeseriesBlock {
   accounts?: TimeseriesAccountLine[];
   lines?: {
@@ -270,7 +286,10 @@ export interface TimeseriesBlock {
 export interface ValuationTimeseriesResponse {
   unit: "clp" | "usd" | "uf";
   accounts_ex_property?: TimeseriesBlock;
-  overview?: Required<Pick<TimeseriesBlock, "lines" | "points">>;
+  overview?: Required<Pick<TimeseriesBlock, "lines" | "points">> & {
+    /** Per-grain peaks of the net-worth line (this unit); absent on placeholder / keep-prev bundles. */
+    ath?: NetWorthAthByPeriod | null;
+  };
   /** Patrimonio neto + invested (CLP) and USD milestone reference lines (CLP via FX). */
   patrimonio_usd_milestones_chart?: TimeseriesBlock;
   group_slug?: string;
@@ -322,6 +341,8 @@ export interface DashboardOverviewDailyResponse {
   primary_lines: PrimaryDailyLine[];
   /** Home composition shares at day grain (same dataKeys as the monthly block). */
   allocation_proportional?: ProportionalSeriesBlockDto;
+  /** Peak of the net-worth line (full-history daily walk, this unit); null when no day is finite. */
+  ath: NetWorthAthDto | null;
 }
 
 /** One calendar-day row of `GET /api/daily-series` (unit-converted; nulls = missing legs). */
