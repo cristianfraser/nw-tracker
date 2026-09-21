@@ -21,6 +21,7 @@ import * as marketHolidays from "./marketHolidays.js";
 import * as nyseSession from "./nyseSession.js";
 import * as fintualPublishDate from "./fintualPublishDate.js";
 import * as fintualCertV2Reconcile from "./fintualCertV2Reconcile.js";
+import * as globalSyncState from "./globalSyncState.js";
 
 const TEST_BUCKET = RISKY_NORRIS_PROXY_BUCKET;
 const COMPOSITION_DATE = "2026-06-20";
@@ -81,6 +82,13 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
       (pollYmd: string) => pollYmd === settledYmd
     );
     vi.spyOn(fintualCertV2Reconcile, "fintualCertV2PollReconciled").mockReturnValue(true);
+  }
+
+  /** The historical predicate reads only the applied publish day of the sync state. */
+  function stubAppliedPublishYmd(appliedYmd: string | null) {
+    vi.spyOn(globalSyncState, "loadGlobalSyncState").mockReturnValue(
+      appliedYmd == null ? {} : { fintualLastAppliedPublishYmd: appliedYmd }
+    );
   }
 
   function stubNyClock(ymd: string, hour: number, minute = 0) {
@@ -231,8 +239,8 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     expect(shouldUseRiskyNorrisProxyMtm(new Date("2026-09-21T23:00:00Z"))).toBe(false); // Mon 20:00 Chile
   });
 
-  it("values every day of a held block through the proxy until the catch-up cuota settles (historical marks)", () => {
-    stubSettledForDay("2026-09-20"); // forward-published flat carries through Sunday; Monday not polled
+  it("values every day of a held block through the proxy until the catch-up cuota is applied (historical marks)", () => {
+    stubAppliedPublishYmd("2026-09-20"); // forward-published flat carries through Sunday; Monday not polled
     expect(riskyNorrisProxyAppliesOnYmd("2026-09-17")).toBe(false); // Thu: business day, official bar
     expect(riskyNorrisProxyAppliesOnYmd("2026-09-18")).toBe(true); // Fri holiday: flat carry ≠ session
     expect(riskyNorrisProxyAppliesOnYmd("2026-09-19")).toBe(true); // Sat: reflects Friday's session
@@ -240,11 +248,30 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     expect(riskyNorrisProxyAppliesOnYmd("2026-09-21")).toBe(false); // Mon: its own bar reflects Friday+Monday
     // A normal weekend after a Chile business day reads the official bars.
     expect(riskyNorrisProxyAppliesOnYmd("2026-09-12")).toBe(false);
-    // Monday's evening poll settles the catch-up cuota: the block reverts to the official bars.
-    stubSettledForDay("2026-09-21");
+    // Monday's evening poll applies the catch-up cuota: the block reverts to the official bars.
+    stubAppliedPublishYmd("2026-09-21");
     for (const ymd of ["2026-09-18", "2026-09-19", "2026-09-20"]) {
       expect(riskyNorrisProxyAppliesOnYmd(ymd), ymd).toBe(false);
     }
+  });
+
+  it("keeps historical held blocks on the official bars while today's positions do not reconcile", () => {
+    // 2026-09-21 12:30: the Reserva retiro's «Pagamos» transfer sold cuotas before the evening
+    // poll re-signed, so the live settled check (caught-up + reconcile) answered false for every
+    // day it was asked about — and the per-date hold then re-valued 2025-05-01 (a Chile holiday
+    // NYSE traded) through today's basket, whose SPYM had no 2025 bar: a 500 on every daily view.
+    stubAppliedPublishYmd("2026-09-20");
+    vi.spyOn(fintualPublishDate, "fintualPollDayCaughtUp").mockReturnValue(false);
+    vi.spyOn(fintualCertV2Reconcile, "fintualCertV2PollReconciled").mockReturnValue(false);
+    expect(fintualGlobalSyncSettledForChileDay("2025-05-02")).toBe(false); // the live check is unsettled…
+    expect(riskyNorrisProxyAppliesOnYmd("2025-05-01")).toBe(false); // …but a 2025 block is long applied
+    expect(riskyNorrisProxyAppliesOnYmd("2025-09-18")).toBe(false); // Thu holiday, NYSE open, catch-up Mon 09-22
+    // The current block still holds: its catch-up cuota (Monday's) is not applied yet.
+    expect(riskyNorrisProxyAppliesOnYmd("2026-09-18")).toBe(true);
+    expect(riskyNorrisProxyAppliesOnYmd("2026-09-20")).toBe(true);
+    // A state with no applied publish day at all holds every block (nothing is in hand).
+    stubAppliedPublishYmd(null);
+    expect(riskyNorrisProxyAppliesOnYmd("2026-09-18")).toBe(true);
   });
 
   it("does not hold on a normal weekend (Friday was a Chile business day)", () => {
