@@ -34,7 +34,22 @@ describe("userForcedStale", () => {
 });
 
 describe("isFintualSyncStale non-business block", () => {
-  it("is stale on Sunday evening after Friday sync (weekend block ends Sunday)", () => {
+  it("is stale on Sunday evening when only Friday's cuota is in hand (weekend block ends Sunday)", () => {
+    const sunday = wallClock("2026-05-24", 20);
+    const state: GlobalSyncStateFile = {
+      fintualEveningSettledYmd: "2026-05-22",
+      fintualLastCheckYmd: "2026-05-22",
+      fintualLastPublishYmd: "2026-05-22",
+      fintualLastAppliedPublishYmd: "2026-05-22",
+      fintualLastCheckSig: "sig",
+      fintualLastAppliedSig: "sig",
+    };
+    expect(isFintualSyncStale(sunday, state)).toBe(true);
+  });
+
+  it("is not stale on Sunday evening when Sunday's cuota was forward-published and applied on Friday", () => {
+    // Fintual publishes a non-business block's flat carries days early; a same-day poll would
+    // fetch nothing new. (Until 2026-09-20 this case read stale — and no wake was scheduled.)
     const sunday = wallClock("2026-05-24", 20);
     const state: GlobalSyncStateFile = {
       fintualEveningSettledYmd: "2026-05-22",
@@ -44,7 +59,24 @@ describe("isFintualSyncStale non-business block", () => {
       fintualLastCheckSig: "sig",
       fintualLastAppliedSig: "sig",
     };
-    expect(isFintualSyncStale(sunday, state)).toBe(true);
+    expect(isFintualSyncStale(sunday, state)).toBe(false);
+    // Monday's cuota is not in hand: the next publish day polls as usual.
+    expect(isFintualSyncStale(wallClock("2026-05-25", 20), state)).toBe(true);
+  });
+
+  it("2026-09-20 18:08: the Fiestas Patrias block published through Sunday on Thursday", () => {
+    const state: GlobalSyncStateFile = {
+      fintualLastCheckYmd: "2026-09-17",
+      fintualLastAppliedYmd: "2026-09-17",
+      fintualLastPublishYmd: "2026-09-20",
+      fintualLastAppliedPublishYmd: "2026-09-20",
+      fintualLastCheckSig: "sig",
+      fintualLastAppliedSig: "sig",
+      fintualEveningSettledYmd: "2026-09-13",
+    };
+    expect(isFintualSyncStale(wallClock("2026-09-20", 18), state)).toBe(false);
+    expect(staleSyncSources(wallClock("2026-09-20", 18), state, { bcentralConfigured: false })).not.toContain("fintual");
+    expect(isFintualSyncStale(wallClock("2026-09-21", 18), state)).toBe(true);
   });
 
   it("is not stale on Saturday evening (block not ended)", () => {

@@ -115,11 +115,17 @@ function nextSbifMonthlyDue(cl: ChileWallClock): SyncWallTime {
   return chileTimeOnYmd(`${nextY}-${String(nextM).padStart(2, "0")}-09`, 0, 0);
 }
 
+export type SyncSourceScheduleOptions = {
+  /** `fintualLastAppliedPublishYmd` — a cuota already in hand for a day needs no poll that day. */
+  fintualAppliedPublishYmd?: string | null;
+};
+
 function scheduleForSource(
   source: GlobalSyncSource,
   cl: ChileWallClock,
   stale: boolean,
-  disabled: boolean
+  disabled: boolean,
+  opts?: SyncSourceScheduleOptions
 ): SyncSourceScheduleMeta {
   if (disabled) {
     return { next_sync: null, next_sync_imminent: false, today_day_kind: "open" };
@@ -148,23 +154,22 @@ function scheduleForSource(
       };
     }
     case "fintual": {
-      let publishYmd = isFintualFundPublishDay(cl.ymd) ? cl.ymd : nextFintualPublishDayYmd(cl.ymd);
-      if (!publishYmd) publishYmd = cl.ymd;
+      // The evening the next cuota is due: the first publish day whose 18:00 is still ahead —
+      // today before 18:00, else from tomorrow (a Sunday closing a holiday block counts). The
+      // old branch only handled "today, before 18:00" and otherwise jumped to the publish day
+      // AFTER the next one, so from Saturday it scheduled Monday and slept through Sunday's
+      // 18:00 while the stale rule flipped (2026-09-20). A cuota already applied for a day at
+      // or after that (Fintual forward-publishes a holiday block) needs no poll until the first
+      // publish day after it — the same rule `isFintualSyncStale` applies.
       const nowMins = cl.hour * 60 + cl.minute;
-      const dueMins = 18 * 60;
-      if (publishYmd === cl.ymd && nowMins < dueMins) {
-        return {
-          next_sync: chileTimeToday(cl, 18, 0),
-          next_sync_imminent: false,
-          today_day_kind: chileDayKind(cl.ymd),
-        };
+      let fromYmd = nowMins < 18 * 60 ? cl.ymd : chileCalendarAddDays(cl.ymd, 1);
+      const applied = opts?.fintualAppliedPublishYmd?.trim();
+      if (applied && /^\d{4}-\d{2}-\d{2}$/.test(applied) && applied >= fromYmd) {
+        fromYmd = chileCalendarAddDays(applied, 1);
       }
-      // "Next" must be strictly after the current poll day.
-      // `nextFintualPublishDayYmd()` includes `fromYmd` itself, so when we’re already
-      // past 18:00 we must start from the following calendar day.
-      const nextPub = nextFintualPublishDayYmd(chileCalendarAddDays(publishYmd, 1));
+      const nextPub = nextFintualPublishDayYmd(fromYmd);
       return {
-        next_sync: nextPub ? chileTimeOnYmd(nextPub, 18, 0) : chileTimeToday(cl, 18, 0),
+        next_sync: nextPub ? chileTimeOnYmd(nextPub, 18, 0) : null,
         next_sync_imminent: false,
         today_day_kind: chileDayKind(cl.ymd),
       };
@@ -270,7 +275,8 @@ export function attachSyncSourceSchedule(
   source: GlobalSyncSource,
   cl: ChileWallClock,
   stale: boolean,
-  disabled: boolean
+  disabled: boolean,
+  opts?: SyncSourceScheduleOptions
 ): SyncSourceScheduleMeta {
-  return scheduleForSource(source, cl, stale, disabled);
+  return scheduleForSource(source, cl, stale, disabled, opts);
 }
