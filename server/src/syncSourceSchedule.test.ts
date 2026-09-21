@@ -91,6 +91,28 @@ describe("attachSyncSourceSchedule", () => {
     });
   });
 
+  it("fintual wakes on a Sunday that closes a holiday block, not the day after it", () => {
+    // Sat 2026-09-19 23:55 (Fiestas Patrias 18–19): Sunday is the block's last day, a publish
+    // day. The old branch jumped to the publish day after the next one and slept until Monday
+    // while the stale rule flipped at Sunday 18:00.
+    const sched = attachSyncSourceSchedule("fintual", cl("2026-09-19", 23, 55), false, false);
+    expect(sched.next_sync).toEqual({ ymd: "2026-09-20", hour: 18, minute: 0, timeZone: "America/Santiago" });
+  });
+
+  it("fintual skips publish days whose cuota is already applied (forward-published block)", () => {
+    const opts = { fintualAppliedPublishYmd: "2026-09-20" };
+    for (const at of [cl("2026-09-17", 19, 15), cl("2026-09-19", 23, 55), cl("2026-09-20", 10), cl("2026-09-20", 19)]) {
+      expect(attachSyncSourceSchedule("fintual", at, false, false, opts).next_sync, at.ymd + " " + at.hour).toEqual({
+        ymd: "2026-09-21",
+        hour: 18,
+        minute: 0,
+        timeZone: "America/Santiago",
+      });
+    }
+    // An applied day in the past changes nothing.
+    expect(attachSyncSourceSchedule("fintual", cl("2026-09-19", 23, 55), false, false, { fintualAppliedPublishYmd: "2026-09-17" }).next_sync?.ymd).toBe("2026-09-20");
+  });
+
   it("fintual carry-over stale polls immediately before the evening window", () => {
     const sched = attachSyncSourceSchedule("fintual", cl("2026-06-10", 8), true, false);
     expect(sched.next_sync_imminent).toBe(true);

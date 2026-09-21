@@ -213,6 +213,20 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
   ) {
     return true;
   }
+  // A cuota for today that is already applied — Fintual forward-publishes a holiday block's
+  // flat carries days early (2026-09-17 published through Sunday 09-20) — leaves nothing for a
+  // same-day poll to fetch: the source is fresh while the last poll's signature is what we
+  // applied and the positions reconcile. Demanding the poll anyway dimmed every Fintual account
+  // from Sunday 18:00 on, with no wake even scheduled (see `syncSourceSchedule` «fintual»).
+  if (
+    state.fintualLastAppliedPublishYmd != null &&
+    state.fintualLastAppliedPublishYmd >= cl.ymd &&
+    state.fintualLastPublishYmd === state.fintualLastAppliedPublishYmd &&
+    state.fintualLastCheckSig != null &&
+    state.fintualLastCheckSig === state.fintualLastAppliedSig
+  ) {
+    return !fintualCertV2PollReconciled(state.fintualLastAppliedPublishYmd, state);
+  }
   if (
     state.fintualEveningSettledYmd === cl.ymd &&
     state.fintualLastCheckYmd === cl.ymd &&
@@ -404,9 +418,12 @@ function syncSourceRow(
   source: GlobalSyncSource,
   cl: ChileWallClock,
   status: SyncSourceDisplayStatus,
-  stale: boolean
+  stale: boolean,
+  state: GlobalSyncStateFile
 ): SyncSourceStatusRow {
-  const sched = attachSyncSourceSchedule(source, cl, stale, status === "disabled");
+  const sched = attachSyncSourceSchedule(source, cl, stale, status === "disabled", {
+    fintualAppliedPublishYmd: state.fintualLastAppliedPublishYmd ?? null,
+  });
   return {
     source,
     status,
@@ -500,15 +517,15 @@ export function allSyncSourceStatuses(
 
   const afpId = afpUnoAccountId();
   if (afpId == null) {
-    rows.push(syncSourceRow("afp_uno", cl, "disabled", false));
+    rows.push(syncSourceRow("afp_uno", cl, "disabled", false, state));
   } else {
     const stale = isAfpUnoSpotStale(cl, state, { force });
-    rows.push(syncSourceRow("afp_uno", cl, stale ? "stale" : "ok", stale));
+    rows.push(syncSourceRow("afp_uno", cl, stale ? "stale" : "ok", stale, state));
   }
 
   {
     const stale = isFintualSyncStale(cl, state);
-    const row = syncSourceRow("fintual", cl, stale ? "stale" : "ok", stale);
+    const row = syncSourceRow("fintual", cl, stale ? "stale" : "ok", stale, state);
     if (stale) {
       row.publisher_lag = fintualPublisherLag(cl, state, {
         lastCheckedAt:
@@ -521,23 +538,23 @@ export function allSyncSourceStatuses(
 
   {
     const stale = isFintualRnCompositionStale(cl, state);
-    rows.push(syncSourceRow("fintual_rn_composition", cl, stale ? "stale" : "ok", stale));
+    rows.push(syncSourceRow("fintual_rn_composition", cl, stale ? "stale" : "ok", stale, state));
   }
 
   const sbifFx = (source: "sbif_usd" | "sbif_eur", maxYmd: string | null, lastErrorAt?: string) => {
     if (!bde) {
-      rows.push(syncSourceRow(source, cl, "disabled", false));
+      rows.push(syncSourceRow(source, cl, "disabled", false, state));
       return;
     }
     const stale = isSbifObservedFxStale(maxYmd, cl, lastErrorAt);
-    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale));
+    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale, state));
   };
   sbifFx("sbif_usd", maxFxBcentralDateOnOrBefore(cl.ymd), state.sbifUsdLastErrorAt);
   sbifFx("sbif_eur", maxEurDateOnOrBefore(cl.ymd), state.sbifEurLastErrorAt);
 
   const sbifUfRow = (source: "sbif_uf") => {
     if (!bde) {
-      rows.push(syncSourceRow(source, cl, "disabled", false));
+      rows.push(syncSourceRow(source, cl, "disabled", false, state));
       return;
     }
     const stale =
@@ -548,51 +565,51 @@ export function allSyncSourceStatuses(
             lastSyncYmd: state.sbifUfLastSyncYmd,
           })
         : false;
-    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale));
+    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale, state));
   };
   sbifUfRow("sbif_uf");
 
   const sbifUtmRow = (source: "sbif_utm") => {
     if (!bde) {
-      rows.push(syncSourceRow(source, cl, "disabled", false));
+      rows.push(syncSourceRow(source, cl, "disabled", false, state));
       return;
     }
     const stale =
       cl.day >= 9 || forceSbif
         ? isSbifUtmStale(cl, { forceSbif, maxUtm: safeMaxUtmMonthParts() })
         : false;
-    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale));
+    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale, state));
   };
   sbifUtmRow("sbif_utm");
 
   const sbifMonthly = (source: "sbif_ipc", syncedMonth: string | undefined) => {
     if (!bde) {
-      rows.push(syncSourceRow(source, cl, "disabled", false));
+      rows.push(syncSourceRow(source, cl, "disabled", false, state));
       return;
     }
     const stale = cl.day >= 9 || forceSbif ? isSbifMonthlyStale(cl, syncedMonth, { forceSbif }) : false;
-    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale));
+    rows.push(syncSourceRow(source, cl, stale ? "stale" : "ok", stale, state));
   };
   sbifMonthly("sbif_ipc", state.sbifIpcMonth);
 
   {
     const stale = isStocksNyseStale(state, { force });
-    rows.push(syncSourceRow("stocks_nyse", cl, stale ? "stale" : "ok", stale));
+    rows.push(syncSourceRow("stocks_nyse", cl, stale ? "stale" : "ok", stale, state));
   }
 
   {
     const stale = isStocksSantiagoStale(state, { force });
-    rows.push(syncSourceRow("stocks_santiago", cl, stale ? "stale" : "ok", stale));
+    rows.push(syncSourceRow("stocks_santiago", cl, stale ? "stale" : "ok", stale, state));
   }
 
   {
     const stale = isYahooFxUsdStale({ force });
-    rows.push(syncSourceRow("yahoo_fx_usd", cl, stale ? "stale" : "ok", stale));
+    rows.push(syncSourceRow("yahoo_fx_usd", cl, stale ? "stale" : "ok", stale, state));
   }
 
   {
     const stale = isCryptoEodStale(cl, state, { force });
-    rows.push(syncSourceRow("crypto_eod", cl, stale ? "stale" : "ok", stale));
+    rows.push(syncSourceRow("crypto_eod", cl, stale ? "stale" : "ok", stale, state));
   }
 
   return applyUserForcedStaleToRows(rows, state);
