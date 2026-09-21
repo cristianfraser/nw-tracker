@@ -490,6 +490,13 @@ export function DashboardPage() {
         }
         primaryTimeRange={overviewPrefs.range}
         secondaryTimeRange={principalesPrefs.range}
+        primaryAthMarker={
+          dailyOverviewBlock
+            ? (overviewDailyData?.ath ?? null)
+            : overviewPrefs.period === "year"
+              ? (ts.overview?.ath?.year ?? null)
+              : (ts.overview?.ath?.month ?? null)
+        }
         primaryControls={
           <SurfaceControls
             period={overviewPrefs.period}

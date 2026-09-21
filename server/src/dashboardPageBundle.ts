@@ -10,6 +10,7 @@ import { buildDashboardPagePayload } from "./dashboardPagePayload.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getDashboardValuationTimeseries, type TsUnit } from "./valuationTimeseries.js";
+import { attachNetWorthAth } from "./netWorthAllTimeHigh.js";
 import { buildFxCoverageWithConversionWarnings, type FxCoverage } from "./fxCoverage.js";
 import { clearFxConversionWarnings } from "./fxConversionWarnings.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
@@ -50,7 +51,7 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
     timeHeavyAsync(HeavyWork.dashboardPayload, () => buildDashboardPagePayload(includeUsd)),
     Promise.resolve().then(() =>
       timeHeavy(HeavyWork.dashboardValuationTimeseries, () =>
-        attachColorsToValuationPayload(getDashboardValuationTimeseries(unit))
+        attachNetWorthAth(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)), unit)
       )
     ),
     Promise.resolve(fxLatestRow() ?? null),

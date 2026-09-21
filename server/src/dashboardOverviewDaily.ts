@@ -4,10 +4,16 @@ import {
 } from "./proportionalSeries.js";
 import { getAggregationCached } from "./aggregationCache.js";
 import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
-import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { DAILY_SERIES_MAX_DAYS, getBucketDailySeriesCached, totalRangeDays } from "./dailySeries.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import {
+  chileCalendarDaysListEndingAt,
+  DAILY_SERIES_MAX_DAYS,
+  getBucketDailySeriesCached,
+  totalRangeDays,
+} from "./dailySeries.js";
 import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
+import { getNetWorthAllTimeHigh, type NetWorthAthDto } from "./netWorthAllTimeHigh.js";
 import { buildDashboardBucketDailySeriesClp } from "./portfolioGroupValueAtDate.js";
 import {
   DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
@@ -63,6 +69,8 @@ export type OverviewDailyPayload = {
   /** «Cuentas principales» per-child-group daily lines (request unit), keyed by the same
    * synthetic dataKeys as the monthly `accounts_ex_property` accounts. */
   primary_lines: PrimaryDailyLine[];
+  /** All-time high of the net-worth line in the request unit (full-history daily walk, see `netWorthAllTimeHigh.ts`). */
+  ath: NetWorthAthDto | null;
 };
 
 /**
@@ -145,10 +153,7 @@ function liabilitiesClpByDate(grid: readonly string[]): Map<string, number> {
 function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPayload {
   const endYmd = chileCalendarTodayYmd();
   const count = days === 0 ? totalRangeDays(endYmd) : days;
-  const grid: string[] = new Array(count);
-  for (let i = 0; i < count; i++) {
-    grid[count - 1 - i] = i === 0 ? endYmd : chileCalendarAddDays(endYmd, -i);
-  }
+  const grid = chileCalendarDaysListEndingAt(endYmd, count);
   const byDate = buildDashboardBucketDailySeriesClp(grid);
   const liabByDate = liabilitiesClpByDate(grid);
 
@@ -231,6 +236,7 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
     patrimonio,
     primary_lines,
     allocation_proportional,
+    ath: getNetWorthAllTimeHigh(unit),
   };
 }
 

@@ -4,9 +4,11 @@ import i18n from "../../i18n";
 import type { ChartColorPlan, LineSeriesColorInput, ResolvedLineSeriesItem } from "../../chartColors";
 import { resolveLineSeriesColors } from "../../chartColors";
 import { GROUP_TAB_DEP_TOTAL } from "../../groupTabAggregation";
-import type { TimeseriesBlock } from "../../types";
+import type { NetWorthAthDto, TimeseriesBlock } from "../../types";
 import { clipChartDataToYDomain } from "../../chartTailClip";
 import { AppLineChart } from "./AppLineChart";
+import { renderAthMarker } from "./AthMarker";
+import { resolveAthMarkerRow } from "./athMarkerPlacement";
 import {
   carryForwardTrailingPendingRows,
   densifyRecordsByCalendarPeriod,
@@ -144,6 +146,13 @@ interface BlockProps {
   timeRange?: TimeRange;
   /** Per-surface Período/Rango controls, rendered right-aligned next to the title. */
   controls?: ReactNode;
+  /**
+   * All-time high of the `thickKey` line AT THIS GRAIN (server-computed; the caller picks the
+   * day / month / year peak to match `xAxisGranularity`): drawn as a small diamond on the
+   * plotted row of that date — no label, the tooltip names the point on hover. Omitted from the
+   * render when the Rango clip leaves the peak outside the window.
+   */
+  athMarker?: NetWorthAthDto | null;
 }
 
 /** Invisible underlay stroke width — wide hit target (`pointer-events: stroke`). */
@@ -356,6 +365,7 @@ export function LineChartPanel({
   yScaleDataKeys,
   timeRange: timeRangeProp,
   controls,
+  athMarker,
 }: BlockProps) {
   const timeRange = timeRangeProp ?? "total";
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
@@ -427,6 +437,14 @@ export function LineChartPanel({
   );
 
   const tailClippedKeys = block.tail_clipped_keys;
+
+  // ATH marker: the grid row that carries the peak day at this granularity (exact day / its
+  // month / its year), or none when the Rango clip left it out of the window.
+  const athPlacement = useMemo(() => {
+    if (!athMarker || !Number.isFinite(athMarker.value)) return null;
+    const row = resolveAthMarkerRow(chartData, athMarker.as_of_date, xAxisGranularity);
+    return row ? { x: row.x, value: athMarker.value } : null;
+  }, [athMarker, chartData, xAxisGranularity]);
 
   const yScale = useMemo(() => {
     const scaleSeries =
@@ -607,7 +625,20 @@ export function LineChartPanel({
                   />
                 );
               });
-              return [...hitLines, ...visLines];
+              const thickSeries = thickKey ? seriesByDataKey.get(thickKey) : undefined;
+              const athEl =
+                athPlacement && thickSeries
+                  ? renderAthMarker({
+                      x: athPlacement.x,
+                      y: athPlacement.value,
+                      color: thickSeries.stroke,
+                      opacity:
+                        focusColorIndex != null && thickSeries.colorIndex !== focusColorIndex
+                          ? DIM_LINE_OPACITY
+                          : 1,
+                    })
+                  : null;
+              return athEl ? [...hitLines, ...visLines, athEl] : [...hitLines, ...visLines];
             })()}
         </AppLineChart>
       </div>
@@ -641,6 +672,8 @@ interface Props {
   /** Per-surface Período/Rango controls per panel, rendered next to each title. */
   primaryControls?: ReactNode;
   secondaryControls?: ReactNode;
+  /** ATH marker for the primary panel's thick line (see `LineChartPanel.athMarker`). */
+  primaryAthMarker?: NetWorthAthDto | null;
   /**
    * `fullWidthStack`: one chart per row (full width). Default `twoColumn` matches legacy side-by-side on wide viewports.
    */
@@ -665,6 +698,7 @@ export function ValuationLineCharts({
   secondaryTimeRange,
   primaryControls,
   secondaryControls,
+  primaryAthMarker,
   chartLayout = "twoColumn",
 }: Props) {
   const gridClass =
@@ -682,6 +716,7 @@ export function ValuationLineCharts({
         xAxisGranularity={primaryXAxisGranularity ?? xAxisGranularity}
         timeRange={primaryTimeRange}
         controls={primaryControls}
+        athMarker={primaryAthMarker}
       />
       <LineChartPanel
         title={secondaryTitle}
