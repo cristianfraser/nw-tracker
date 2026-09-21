@@ -13,6 +13,7 @@ import {
 import {
   fintualGlobalSyncSettledForChileDay,
   inChileHolidayProxyHold,
+  riskyNorrisProxyAppliesOnYmd,
   riskyNorrisProxyCuotaForMtm,
   shouldUseRiskyNorrisProxyMtm,
 } from "./riskyNorrisProxyMtm.js";
@@ -230,6 +231,22 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
     expect(shouldUseRiskyNorrisProxyMtm(new Date("2026-09-21T23:00:00Z"))).toBe(false); // Mon 20:00 Chile
   });
 
+  it("values every day of a held block through the proxy until the catch-up cuota settles (historical marks)", () => {
+    stubSettledForDay("2026-09-20"); // forward-published flat carries through Sunday; Monday not polled
+    expect(riskyNorrisProxyAppliesOnYmd("2026-09-17")).toBe(false); // Thu: business day, official bar
+    expect(riskyNorrisProxyAppliesOnYmd("2026-09-18")).toBe(true); // Fri holiday: flat carry ≠ session
+    expect(riskyNorrisProxyAppliesOnYmd("2026-09-19")).toBe(true); // Sat: reflects Friday's session
+    expect(riskyNorrisProxyAppliesOnYmd("2026-09-20")).toBe(true); // Sun
+    expect(riskyNorrisProxyAppliesOnYmd("2026-09-21")).toBe(false); // Mon: its own bar reflects Friday+Monday
+    // A normal weekend after a Chile business day reads the official bars.
+    expect(riskyNorrisProxyAppliesOnYmd("2026-09-12")).toBe(false);
+    // Monday's evening poll settles the catch-up cuota: the block reverts to the official bars.
+    stubSettledForDay("2026-09-21");
+    for (const ymd of ["2026-09-18", "2026-09-19", "2026-09-20"]) {
+      expect(riskyNorrisProxyAppliesOnYmd(ymd), ymd).toBe(false);
+    }
+  });
+
   it("does not hold on a normal weekend (Friday was a Chile business day)", () => {
     stubSettledForDay("2026-09-11");
     expect(shouldUseRiskyNorrisProxyMtm(new Date("2026-09-12T18:00:00Z"))).toBe(false); // Sat 15:00 Chile
@@ -297,9 +314,10 @@ describe("riskyNorrisProxyCuotaForMtm APV calibration", () => {
     const holdings = loadCompositeHoldings(TEST_BUCKET);
     if (meta == null || holdings.length === 0) return;
 
-    const rnPx = riskyNorrisProxyCuotaForMtm("fintual_cert_risky_norris");
-    const apvPx = riskyNorrisProxyCuotaForMtm("fintual_cert_apv_a");
-    const proxyRnFull = proxyClpFromMeta(meta, holdings, COMPOSITION_DATE, { preferLive: false });
+    const now = new Date("2026-06-20T18:00:00Z"); // Saturday: held session = Friday 06-19
+    const rnPx = riskyNorrisProxyCuotaForMtm("fintual_cert_risky_norris", now);
+    const apvPx = riskyNorrisProxyCuotaForMtm("fintual_cert_apv_a", now);
+    const proxyRnFull = proxyClpFromMeta(meta, holdings, "2026-06-19", { preferLive: false, now });
     expect(rnPx).toBeCloseTo(proxyRnFull, 4);
     expect(apvPx / rnPx).toBeCloseTo(4200 / 4000, 4);
     expect(Math.abs(4200 / 4000 - 1)).toBeGreaterThan(APV_PROXY_NEGLIGIBLE_REL_DIFF);
@@ -308,8 +326,9 @@ describe("riskyNorrisProxyCuotaForMtm APV calibration", () => {
   it("uses shared proxy for APV when anchor spread is negligible", () => {
     vi.spyOn(chileDate, "chileCalendarTodayYmd").mockReturnValue(COMPOSITION_DATE);
     if (!seedProxyMeta(4002)) return;
-    const apvPx = riskyNorrisProxyCuotaForMtm("fintual_cert_apv_a");
-    const rnPx = riskyNorrisProxyCuotaForMtm("fintual_cert_risky_norris");
+    const now = new Date("2026-06-20T18:00:00Z");
+    const apvPx = riskyNorrisProxyCuotaForMtm("fintual_cert_apv_a", now);
+    const rnPx = riskyNorrisProxyCuotaForMtm("fintual_cert_risky_norris", now);
     expect(apvPx).toBeCloseTo(rnPx, 6);
   });
 });

@@ -39,6 +39,7 @@ import {
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import {
   isRiskyNorrisProxyMtmSeries,
+  riskyNorrisProxyAppliesOnYmd,
   riskyNorrisProxyCuotaForMtm,
   shouldUseRiskyNorrisProxyMtm,
 } from "./riskyNorrisProxyMtm.js";
@@ -93,15 +94,16 @@ function fintualCertPositionMeta(
     ),
   });
 
-  if (
-    asOfYmd === today &&
+  // Today: the live/held proxy window. A historical date: the per-date hold — a day whose
+  // official bar is a holiday flat carry the catch-up cuota has not yet superseded is valued
+  // through the same held proxy as today, so the day P/L inside a held block is 0.
+  const proxyApplies =
     !goalsCuotaUnreconciled &&
     isRiskyNorrisProxyMtmSeries(seriesKey) &&
-    shouldUseRiskyNorrisProxyMtm(now)
-  ) {
-    const proxyPx = riskyNorrisProxyCuotaForMtm(seriesKey, now);
-    px = proxyPx;
-    pxDay = today;
+    (asOfYmd === today ? shouldUseRiskyNorrisProxyMtm(now) : riskyNorrisProxyAppliesOnYmd(asOfYmd));
+  if (proxyApplies) {
+    px = riskyNorrisProxyCuotaForMtm(seriesKey, now, asOfYmd === today ? undefined : asOfYmd);
+    pxDay = asOfYmd;
   }
   const out: AccountPositionMeta = {
     ticker: displayTicker,

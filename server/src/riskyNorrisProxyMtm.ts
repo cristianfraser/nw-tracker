@@ -84,6 +84,33 @@ function heldNyseSessionYmd(now: Date): string | null {
 }
 
 /**
+ * The NYSE session a calendar date's value reflects: the date itself when NYSE traded that day,
+ * else the previous session (Friday's for a weekend day, Thursday's for a US holiday).
+ */
+function nyseSessionOnOrBefore(ymd: string): string | null {
+  return isNyseTradingDay(ymd) ? ymd : priorNyseSessionYmd(ymd);
+}
+
+/**
+ * Per-DATE form of the holiday hold, for historical marks. The official cuota stored for `ymd`
+ * cannot reflect its session when that session fell on a Chile non-business day (Fintual
+ * prints a flat carry for the whole block) and the next Chile business day's cuota — the first
+ * that can — has not settled; such a date is valued through the EOD proxy, exactly like today.
+ * Without this, Saturday's «Día» P/L read the whole Friday move a second time: today = held
+ * proxy, yesterday = the flat 09-18 bar (2026-09-19 00:07: APV-A/B +278k/+125k, then again on
+ * Sunday and Monday pre-open, then once more inside Monday's official bar). Once the catch-up
+ * cuota settles the predicate turns off and the block reads the official bars again — the same
+ * retroactive reattribution a live day already goes through at its evening settle.
+ */
+export function riskyNorrisProxyAppliesOnYmd(ymd: string): boolean {
+  const session = nyseSessionOnOrBefore(ymd);
+  if (session == null || isChileBusinessDay(session)) return false;
+  const catchUpYmd = nextChileBusinessDayYmd(session);
+  if (catchUpYmd == null || ymd >= catchUpYmd) return false;
+  return !fintualGlobalSyncSettledForChileDay(catchUpYmd);
+}
+
+/**
  * Chile-holiday proxy hold: the proxy overrides Fintual's official cuota while the fund value
  * cannot reflect the NYSE session the proxy is tracking.
  *
@@ -137,8 +164,14 @@ export function shouldUseRiskyNorrisProxyMtm(now = new Date()): boolean {
 
 /**
  * Live or EOD RN basket proxy valor cuota (CLP) for MTM. Throws when proxy is required but cannot be computed.
+ *
+ * `asOfYmd` (default Chile today) picks the day. The value is carried on the SESSION the day
+ * reflects — the live session, else the held one (Friday's on a weekend or Monday pre-open;
+ * the date's own session for a historical date, its previous one for a historical weekend day)
+ * — never on the calendar day itself, so every day of a held block values identically and the
+ * day P/L inside the block is 0 by construction.
  */
-export function riskyNorrisProxyCuotaForMtm(seriesKey: string, now = new Date()): number {
+export function riskyNorrisProxyCuotaForMtm(seriesKey: string, now = new Date(), asOfYmd?: string): number {
   if (!isRiskyNorrisProxyMtmSeries(seriesKey)) {
     throw new Error(`riskyNorrisProxyCuotaForMtm: unsupported series ${seriesKey}`);
   }
@@ -149,8 +182,14 @@ export function riskyNorrisProxyCuotaForMtm(seriesKey: string, now = new Date())
   }
 
   const today = chileCalendarTodayYmd();
-  const preferLive = isNyseRegularSessionOpen(now);
-  const proxyRn = proxyClpFromMeta(meta, holdings, today, { preferLive, now });
+  const isToday = asOfYmd == null || asOfYmd === today;
+  const preferLive = isToday && isNyseRegularSessionOpen(now);
+  const valuationYmd = preferLive
+    ? today
+    : isToday
+      ? (heldNyseSessionYmd(now) ?? today)
+      : (nyseSessionOnOrBefore(asOfYmd) ?? asOfYmd);
+  const proxyRn = proxyClpFromMeta(meta, holdings, valuationYmd, { preferLive, now });
 
   if (!isRiskyNorrisApvMtmSeries(seriesKey)) {
     return proxyRn;
