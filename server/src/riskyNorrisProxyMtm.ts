@@ -95,19 +95,33 @@ function nyseSessionOnOrBefore(ymd: string): string | null {
  * Per-DATE form of the holiday hold, for historical marks. The official cuota stored for `ymd`
  * cannot reflect its session when that session fell on a Chile non-business day (Fintual
  * prints a flat carry for the whole block) and the next Chile business day's cuota — the first
- * that can — has not settled; such a date is valued through the EOD proxy, exactly like today.
+ * that can — is not in hand yet; such a date is valued through the EOD proxy, exactly like today.
  * Without this, Saturday's «Día» P/L read the whole Friday move a second time: today = held
  * proxy, yesterday = the flat 09-18 bar (2026-09-19 00:07: APV-A/B +278k/+125k, then again on
  * Sunday and Monday pre-open, then once more inside Monday's official bar). Once the catch-up
- * cuota settles the predicate turns off and the block reads the official bars again — the same
+ * cuota is applied the predicate turns off and the block reads the official bars again — the same
  * retroactive reattribution a live day already goes through at its evening settle.
+ *
+ * "In hand" is the sync state's last APPLIED publish day reaching the catch-up day — a fact
+ * about the stored cuota series, never {@link fintualGlobalSyncSettledForChileDay}: that check
+ * also asks whether TODAY's positions reconcile with the last poll's NAV, which is false for
+ * hours whenever cash is in transit (2026-09-21 12:30: the Reserva retiro's «Pagamos» transfer
+ * sold 68,93 cuotas before the evening poll re-signed), and asking it for a 2025 catch-up day
+ * re-valued every historical Chile holiday through today's basket — silently wrong, and a
+ * thrown 500 on every daily surface where a basket ticker (SPYM, listed 2025-07) had no bar.
  */
 export function riskyNorrisProxyAppliesOnYmd(ymd: string): boolean {
   const session = nyseSessionOnOrBefore(ymd);
   if (session == null || isChileBusinessDay(session)) return false;
   const catchUpYmd = nextChileBusinessDayYmd(session);
   if (catchUpYmd == null || ymd >= catchUpYmd) return false;
-  return !fintualGlobalSyncSettledForChileDay(catchUpYmd);
+  return !fintualCatchUpCuotaApplied(catchUpYmd);
+}
+
+/** The catch-up day's official cuota has been applied to the fund-unit series. */
+function fintualCatchUpCuotaApplied(catchUpYmd: string): boolean {
+  const applied = loadGlobalSyncState().fintualLastAppliedPublishYmd;
+  return applied != null && applied >= catchUpYmd;
 }
 
 /**
