@@ -8,7 +8,7 @@ import {
   isSantiagoEodSyncWindow,
 } from "./equityEodSync.js";
 import { FX_DAY_END_HOUR_NY, FX_DAY_END_MINUTE_NY, fxDayEndInstant, nextWeekdayYmd } from "./forexDay.js";
-import { isFintualFundPublishDay } from "./fintualPublishDate.js";
+import { FINTUAL_PUBLISH_HOUR_CHILE, isFintualFundPublishDay } from "./fintualPublishDate.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
 import type { GlobalSyncSource } from "./globalSyncStale.js";
 import {
@@ -162,14 +162,15 @@ function scheduleForSource(
       // or after that (Fintual forward-publishes a holiday block) needs no poll until the first
       // publish day after it — the same rule `isFintualSyncStale` applies.
       const nowMins = cl.hour * 60 + cl.minute;
-      let fromYmd = nowMins < 18 * 60 ? cl.ymd : chileCalendarAddDays(cl.ymd, 1);
+      let fromYmd =
+        nowMins < FINTUAL_PUBLISH_HOUR_CHILE * 60 ? cl.ymd : chileCalendarAddDays(cl.ymd, 1);
       const applied = opts?.fintualAppliedPublishYmd?.trim();
       if (applied && /^\d{4}-\d{2}-\d{2}$/.test(applied) && applied >= fromYmd) {
         fromYmd = chileCalendarAddDays(applied, 1);
       }
       const nextPub = nextFintualPublishDayYmd(fromYmd);
       return {
-        next_sync: nextPub ? chileTimeOnYmd(nextPub, 18, 0) : null,
+        next_sync: nextPub ? chileTimeOnYmd(nextPub, FINTUAL_PUBLISH_HOUR_CHILE, 0) : null,
         next_sync_imminent: false,
         today_day_kind: chileDayKind(cl.ymd),
       };

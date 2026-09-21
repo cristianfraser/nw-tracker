@@ -98,8 +98,11 @@ export interface GenericUniqueMerchantMutationResponse {
 export interface SyncStatusResponse {
   chile: { ymd: string; hour: number; minute: number; monthKey: string };
   stale: SyncSourceId[];
-  /** `stale` minus publisher lag — the sources whose accounts the dashboard dims. */
-  stale_behind: SyncSourceId[];
+  /**
+   * The sources whose accounts the dashboard dims: our own staleness always, a publisher's lag
+   * only from 18:00 Chile (the cuota is overdue) until it lands.
+   */
+  stale_dimming: SyncSourceId[];
   sources: SyncSourceStatusRow[];
   scheduler: SyncSchedulerStatus;
   /** ISO-ish timestamp from latest sync log row (`app_messages`, kind=log). */
