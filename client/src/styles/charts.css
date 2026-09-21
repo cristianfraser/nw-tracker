@@ -73,12 +73,21 @@
   flex-shrink: 0;
 }
 
+/* The heading is the part that yields: it grows to keep the controls right-aligned on
+   desktop and shrinks past its longest line so a long title wraps instead of widening the
+   page (a `flex-shrink: 0` here pinned it at its unwrapped width — horizontal scroll on
+   phones). The controls never shrink, so the two selects stay on one line. */
 .chart-panel-title-row > .chart-panel-title,
 .chart-grid__col > .chart-panel-title-row > .chart-panel-title {
   margin: 0;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 1.1rem;
   font-weight: 600;
+}
+
+.chart-panel-title-row > .surface-controls {
+  flex-shrink: 0;
 }
 
 .chart-grid__col .chart-box {

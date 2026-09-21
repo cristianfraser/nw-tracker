@@ -36,7 +36,11 @@ function NavAccountsTreeNode({ node, depth = 0 }: { node: NavTreeNodeDto; depth?
   return (
     <li style={{ marginLeft: `${indentPx}px` }}>
       {prefix ? <span className="muted mono">{prefix}</span> : null}
-      {labelNode} <span className="muted mono">({node.slug})</span>
+      {labelNode}{" "}
+      {/* A slug has no break opportunity; at depth on a phone it would otherwise widen the page. */}
+      <span className="muted mono" style={{ overflowWrap: "anywhere" }}>
+        ({node.slug})
+      </span>
       {node.children.length > 0 ? (
         <ul style={{ marginTop: "0.35rem", marginLeft: 0, paddingLeft: 0, listStyle: "none" }}>
           {node.children.map((child) => (
