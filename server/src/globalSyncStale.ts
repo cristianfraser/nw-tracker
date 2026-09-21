@@ -25,6 +25,7 @@ import {
   type SyncWallTime,
 } from "./syncSourceSchedule.js";
 import {
+  FINTUAL_PUBLISH_HOUR_CHILE,
   fintualPriorEveningUnresolved,
   fintualPublishLagsPollCalendarDay,
   isFintualFundPublishDay,
@@ -205,7 +206,7 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
   // max across funds): a held v2 fund whose publish-day bar is still missing keeps the source
   // stale so the morning carry lands the value the fund published overnight.
   if (fintualMorningCarryPerFundUnresolved(cl, state)) return true;
-  if (cl.hour < 18) return false;
+  if (cl.hour < FINTUAL_PUBLISH_HOUR_CHILE) return false;
   if (!isChileBusinessDay(cl.ymd) && !isFintualFundPublishDay(cl.ymd)) return false;
   if (
     state.fintualLastPublishYmd != null &&
@@ -252,7 +253,7 @@ export function isFintualSyncStale(cl: ChileWallClock, state: GlobalSyncStateFil
   }
   const publishYmd = state.fintualLastAppliedPublishYmd ?? state.fintualLastPublishYmd ?? cl.ymd;
   if (
-    cl.hour >= 18 &&
+    cl.hour >= FINTUAL_PUBLISH_HOUR_CHILE &&
     state.fintualLastCheckYmd === cl.ymd &&
     state.fintualLastCheckSig != null &&
     state.fintualLastCheckSig === state.fintualLastAppliedSig &&
@@ -481,7 +482,7 @@ export function fintualPublisherLag(
   if (!published || !/^\d{4}-\d{2}-\d{2}$/.test(published)) return null;
   // The first publish day after the published one, capped at the day the source is waiting on
   // (the carried poll day before 18:00, today after).
-  const cap = cl.hour < 18 ? state.fintualLastCheckYmd : cl.ymd;
+  const cap = cl.hour < FINTUAL_PUBLISH_HOUR_CHILE ? state.fintualLastCheckYmd : cl.ymd;
   if (!cap) return null;
   let expected = chileCalendarAddDays(published, 1);
   for (let i = 0; i < 14 && expected <= cap && !isFintualFundPublishDay(expected); i++) {
@@ -494,6 +495,20 @@ export function fintualPublisherLag(
     return null;
   }
   return { expected_ymd: expected, published_ymd: published, last_checked_at: opts.lastCheckedAt as string };
+}
+
+/**
+ * Sources whose accounts dim at `cl`. Our own staleness (a missed or failed poll, a due sync not
+ * yet run, a signature mismatch, a forced run) always dims. A publisher's lag dims only once the
+ * cuota is OVERDUE — from `FINTUAL_PUBLISH_HOUR_CHILE` until it lands; before that the display
+ * holds everything the publisher has (pre-open, the live proxy, the post-close hold), so nothing
+ * is behind (2026-09-21). The window is wall-clock: a cuota still missing at midnight reads
+ * normal again from 00:00 and dims at 18:00 the next day, until it is applied.
+ */
+export function staleDimmingSources(rows: SyncSourceStatusRow[], cl: ChileWallClock): GlobalSyncSource[] {
+  return rows
+    .filter((r) => r.stale && (r.publisher_lag == null || cl.hour >= FINTUAL_PUBLISH_HOUR_CHILE))
+    .map((r) => r.source);
 }
 
 export function allSyncSourceStatuses(
@@ -621,23 +636,23 @@ export function syncStatusPayload(): {
   /** Every stale source — what the scheduler keeps polling. */
   stale: GlobalSyncSource[];
   /**
-   * Stale sources where OUR data is behind (a missed or failed poll, a due sync not yet run) —
-   * `stale` minus publisher lag. This is the list that dims accounts; a source waiting on its
-   * publisher holds everything the publisher has, so its accounts are not behind anything.
+   * The sources whose accounts the dashboard dims right now (`staleDimmingSources`): every stale
+   * source whose staleness is ours, plus a source waiting on its publisher once the cuota is
+   * overdue (from `FINTUAL_PUBLISH_HOUR_CHILE`). Before that hour a publisher-lag source holds
+   * everything the publisher has, so its accounts are not behind anything.
    */
-  stale_behind: GlobalSyncSource[];
+  stale_dimming: GlobalSyncSource[];
   sources: SyncSourceStatusRow[];
 } {
   const cl = chileWallClockNow();
   const state = loadGlobalSyncState();
   const sources = allSyncSourceStatuses(cl, state);
   const stale = sources.filter((r) => r.stale).map((r) => r.source);
-  const stale_behind = sources.filter((r) => r.stale && r.publisher_lag == null).map((r) => r.source);
   return {
     chile: cl,
     state,
     stale,
-    stale_behind,
+    stale_dimming: staleDimmingSources(sources, cl),
     sources,
   };
 }

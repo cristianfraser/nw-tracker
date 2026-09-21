@@ -6,6 +6,7 @@ import {
   allSyncSourceStatuses,
   fintualPublisherLag,
   isFintualSyncStale,
+  staleDimmingSources,
   staleSyncSources,
 } from "./globalSyncStale.js";
 
@@ -122,7 +123,7 @@ describe("isFintualSyncStale publish advance", () => {
   });
 });
 
-function wallClock(ymd: string, hour: number): ChileWallClock {
+function wallClock(ymd: string, hour: number, minute = 0): ChileWallClock {
   const [ys, ms, ds] = ymd.split("-");
   return {
     ymd,
@@ -130,7 +131,7 @@ function wallClock(ymd: string, hour: number): ChileWallClock {
     month: Number(ms),
     day: Number(ds),
     hour,
-    minute: 0,
+    minute,
     monthKey: ymd.slice(0, 7),
   };
 }
@@ -256,7 +257,7 @@ describe("fintualPublisherLag", () => {
     ).toBeNull();
   });
 
-  it("keeps the source in `stale` (the scheduler still polls) but out of the dimming list", () => {
+  it("keeps the source in `stale` (the scheduler still polls) but out of the dimming list before 18:00", () => {
     const rows = allSyncSourceStatuses(tuesdayMorning, waitingOnMonday, {
       bcentralConfigured: true,
       fintualLastCheckedAt: "2026-09-15T14:13:00Z",
@@ -266,14 +267,59 @@ describe("fintualPublisherLag", () => {
     expect(fintual?.stale).toBe(true);
     expect(fintual?.status).toBe("stale");
     expect(fintual?.publisher_lag?.expected_ymd).toBe("2026-09-14");
-    const behind = rows.filter((r) => r.stale && r.publisher_lag == null).map((r) => r.source);
-    expect(behind).not.toContain("fintual");
+    expect(staleDimmingSources(rows, tuesdayMorning)).not.toContain("fintual");
 
-    const missedPoll = allSyncSourceStatuses(tuesdayMorning, waitingOnMonday, {
+    // Pre-open hours are normal too: the rule is the wall clock, not the live-proxy window.
+    const preOpen = wallClock("2026-09-15", 8);
+    expect(staleDimmingSources(rows, preOpen)).not.toContain("fintual");
+
+    const missedPollRows = allSyncSourceStatuses(tuesdayMorning, waitingOnMonday, {
       bcentralConfigured: true,
       fintualLastCheckedAt: null,
       nowMs,
-    }).find((r) => r.source === "fintual");
-    expect(missedPoll?.publisher_lag).toBeNull();
+    });
+    expect(missedPollRows.find((r) => r.source === "fintual")?.publisher_lag).toBeNull();
+    expect(staleDimmingSources(missedPollRows, tuesdayMorning)).toContain("fintual");
+  });
+
+  /**
+   * 2026-09-21 18:15: Monday's cuota not published yet, poll current. Publisher lag as before —
+   * but the cuota is now OVERDUE, so the accounts dim until it lands (they read normal at 18:15
+   * before this rule, while the sync panel said «Esperando publicación»).
+   */
+  it("dims a publisher-lag source from 18:00 — the cuota is overdue", () => {
+    const mondayEvening = wallClock("2026-09-21", 18, 15);
+    const eveningNowMs = Date.parse("2026-09-21T21:15:00Z");
+    const waitingOnTonight: GlobalSyncStateFile = {
+      fintualLastCheckYmd: "2026-09-20",
+      fintualLastAppliedYmd: "2026-09-20",
+      fintualLastPublishYmd: "2026-09-20",
+      fintualLastAppliedPublishYmd: "2026-09-20",
+      fintualEveningSettledYmd: "2026-09-20",
+      fintualLastCheckSig: "sig",
+      fintualLastAppliedSig: "sig",
+    };
+    const rows = allSyncSourceStatuses(mondayEvening, waitingOnTonight, {
+      bcentralConfigured: true,
+      fintualLastCheckedAt: "2026-09-21T21:10:00Z",
+      nowMs: eveningNowMs,
+    });
+    const fintual = rows.find((r) => r.source === "fintual");
+    expect(fintual?.stale).toBe(true);
+    expect(fintual?.publisher_lag).toEqual({
+      expected_ymd: "2026-09-21",
+      published_ymd: "2026-09-20",
+      last_checked_at: "2026-09-21T21:10:00Z",
+    });
+    expect(staleDimmingSources(rows, mondayEvening)).toContain("fintual");
+
+    // A missed poll at the same hour dims as well (our staleness, as before).
+    const missedPollRows = allSyncSourceStatuses(mondayEvening, waitingOnTonight, {
+      bcentralConfigured: true,
+      fintualLastCheckedAt: null,
+      nowMs: eveningNowMs,
+    });
+    expect(missedPollRows.find((r) => r.source === "fintual")?.publisher_lag).toBeNull();
+    expect(staleDimmingSources(missedPollRows, mondayEvening)).toContain("fintual");
   });
 });
