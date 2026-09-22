@@ -108,6 +108,7 @@
     "deltaTotalSeries": "Total Δ",
     "groupAccumTitle": "Accumulated earnings (group)",
     "groupAccumHint": "One bar = the class's monthly sum. Continuous area (no per-year bands). From the first month with data.",
+    "athTooltip": "ATH · {{date}}",
     "overview": {
       "invested": "Invested"
     }

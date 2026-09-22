@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveAthMarkerRow } from "./athMarkerPlacement";
+import { athTooltipIndexTolerance, isNearAthRow, resolveAthMarkerRow } from "./athMarkerPlacement";
 
 const monthRows = [
   { as_of_date: "2026-01-31", total_nw: 10 },
@@ -29,5 +29,22 @@ describe("resolveAthMarkerRow", () => {
   it("is null when the range clip left the peak out of the window", () => {
     expect(resolveAthMarkerRow(monthRows, "2025-11-03", "month")).toBeNull();
     expect(resolveAthMarkerRow([], "2026-02-14", "month")).toBeNull();
+  });
+});
+
+describe("tooltip nearness to the ATH row", () => {
+  it("scales the tolerance with the plotted row count, never below the adjacent row", () => {
+    expect(athTooltipIndexTolerance(12)).toBe(1); // yearly
+    expect(athTooltipIndexTolerance(36)).toBe(1); // monthly, 3y
+    expect(athTooltipIndexTolerance(1096)).toBe(13); // daily, 3y
+  });
+
+  it("is symmetric around the peak and exact at the peak", () => {
+    expect(isNearAthRow(500, 500, 1096)).toBe(true);
+    expect(isNearAthRow(487, 500, 1096)).toBe(true);
+    expect(isNearAthRow(513, 500, 1096)).toBe(true);
+    expect(isNearAthRow(486, 500, 1096)).toBe(false);
+    expect(isNearAthRow(5, 3, 12)).toBe(false);
+    expect(isNearAthRow(4, 3, 12)).toBe(true);
   });
 });

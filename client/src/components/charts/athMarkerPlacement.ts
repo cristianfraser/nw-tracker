@@ -13,6 +13,20 @@ function bucketKey(ymd: string, granularity: ChartGranularity): string {
   return granularity === "day" ? ymd : granularity === "month" ? ymd.slice(0, 7) : ymd.slice(0, 4);
 }
 
+/**
+ * How many plotted rows either side of the peak count as "near" it for the tooltip's ATH line:
+ * about 1,2% of the plotted rows (≈ a dozen pixels of cursor travel on a desktop plot at any
+ * grain), never less than the adjacent row.
+ */
+export function athTooltipIndexTolerance(rowCount: number): number {
+  return Math.max(1, Math.round(rowCount * 0.012));
+}
+
+/** Whether the hovered row is near enough to the peak's row for the tooltip to show the ATH line. */
+export function isNearAthRow(hoverIndex: number, athIndex: number, rowCount: number): boolean {
+  return Math.abs(hoverIndex - athIndex) <= athTooltipIndexTolerance(rowCount);
+}
+
 /** The plotted row carrying `ymd` at this granularity, or null when the window does not include it. */
 export function resolveAthMarkerRow(
   points: readonly Record<string, string | number | null>[],
