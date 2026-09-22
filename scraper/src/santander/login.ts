@@ -220,7 +220,26 @@ export async function login(page: Page, rut: string, password: string): Promise<
     }
     await page.waitForTimeout(500);
   }
-  if (!formReady) throw new Error("Login form never appeared after opening the panel.");
+  if (!formReady) {
+    // Whether the panel produced the iframe at all is the one fact the log needs: on 2026-09-21 the
+    // click went through and this branch fired 45 s later with nothing saved, so the night was
+    // unexplainable — the frame loads from the private-app host, and a stall there looks exactly like
+    // a panel that never opened.
+    const frameElement = page.locator(SELECTOR.loginFrame).first();
+    const frameState =
+      (await frameElement.count().catch(() => 0)) === 0
+        ? "no login iframe element in the page"
+        : `login iframe present (src ${(await frameElement.getAttribute("src").catch(() => null)) ?? "unset"})`;
+    const { base, frameText } = await saveLoginDiagnostics(
+      page,
+      frame,
+      `login form never appeared after opening the panel — ${frameState}`,
+    );
+    throw new Error(
+      `Login form never appeared after opening the panel (${frameState}; still on ${page.url()}). ` +
+        `The login frame shows: «${excerpt(frameText)}» — evidence in ${base}.{png,txt}`,
+    );
+  }
 
   logStep("logging in");
 
