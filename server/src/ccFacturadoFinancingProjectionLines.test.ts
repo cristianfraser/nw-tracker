@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyCcFacturadoFinancingProjection } from "./ccFacturadoFinancingProjectionLines.js";
+import {
+  applyCcFacturadoFinancingProjection,
+  statementFacturadoClpForBillingMonth,
+} from "./ccFacturadoFinancingProjectionLines.js";
+import { db } from "./db.js";
+import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 import { aggregateGastosFromLines } from "./flowsCreditCardExpenses.js";
 import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
 import type { CcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
@@ -93,6 +98,8 @@ function buildScenario(): { lines: FlowCcExpenseLineRow[]; links: CcFacturadoFin
 const F = 1_200_000 + 1_267_034; // 2.xxx.xxx
 const T = 3 * 420_000 + 3 * 430_000; // 2.xxx.xxx
 const GAP = T - F; // 8x.xxx
+/** The financed month's closed statement: its facturado is exactly the two financed lines. */
+const FACTURADO = () => F;
 const CATS = ["supermarket", "restaurants", "bills"];
 
 function monthGastos(rows: { period_month: string; gastos_mes_clp: number }[], m: string): number {
@@ -102,7 +109,7 @@ function monthGastos(rows: { period_month: string; gastos_mes_clp: number }[], m
 describe("ccFacturadoFinancingProjection", () => {
   it("tags financed as total_only and financing as excluded", () => {
     const { lines, links } = buildScenario();
-    const out = applyCcFacturadoFinancingProjection(lines, links);
+    const out = applyCcFacturadoFinancingProjection(lines, links, FACTURADO);
     const financed = out.filter((l) => l.statement_line_id === 11 || l.statement_line_id === 12);
     expect(financed.every((l) => l.gastos_scope === "total_only")).toBe(true);
     const financing = out.filter((l) => l.purchase_key === "instA" || l.purchase_key === "instB");
@@ -112,7 +119,7 @@ describe("ccFacturadoFinancingProjection", () => {
 
   it("emits split_only projected lines: L_i/n per month + gap bills, summing to T", () => {
     const { lines, links } = buildScenario();
-    const out = applyCcFacturadoFinancingProjection(lines, links);
+    const out = applyCcFacturadoFinancingProjection(lines, links, FACTURADO);
     const projected = out.filter((l) => l.gastos_scope === "split_only");
     // 2 expenses × 3 months + gap × 3 months
     expect(projected.length).toBe(9);
@@ -137,7 +144,7 @@ describe("ccFacturadoFinancingProjection", () => {
       category_unique: true,
       purchase_key: "line-pr:12",
     });
-    const out = applyCcFacturadoFinancingProjection(lines, links);
+    const out = applyCcFacturadoFinancingProjection(lines, links, FACTURADO);
     const projected = out.filter((l) => l.gastos_scope === "split_only");
 
     const slicesOf = (sourceLineId: number) =>
@@ -152,9 +159,23 @@ describe("ccFacturadoFinancingProjection", () => {
     expect(gapLines.every((l) => l.category_statement_line_id == null)).toBe(true);
   });
 
+  it("projected slices carry the source amount as their plan-style total; gap lines none", () => {
+    const { lines, links } = buildScenario();
+    const out = applyCcFacturadoFinancingProjection(lines, links, FACTURADO);
+    const projected = out.filter((l) => l.gastos_scope === "split_only");
+    const slicesOf = (sourceLineId: number) =>
+      projected.filter((l) => l.category_statement_line_id === sourceLineId);
+    expect(slicesOf(11).length).toBe(3);
+    expect(slicesOf(11).every((l) => l.installment_total_clp === 1_200_000)).toBe(true);
+    expect(slicesOf(12).every((l) => l.installment_total_clp === 1_267_034)).toBe(true);
+    const gapLines = projected.filter((l) => l.purchase_key.startsWith("financing-proj-gap:"));
+    expect(gapLines.length).toBe(3);
+    expect(gapLines.every((l) => l.installment_total_clp == null)).toBe(true);
+  });
+
   it("total mode: facturado in June, financing suppressed", () => {
     const { lines, links } = buildScenario();
-    const out = applyCcFacturadoFinancingProjection(lines, links);
+    const out = applyCcFacturadoFinancingProjection(lines, links, FACTURADO);
     const { by_month } = aggregateGastosFromLines(out, CATS, "total");
     expect(monthGastos(by_month, "2026-06")).toBe(F);
     for (const m of MONTHS) expect(monthGastos(by_month, m)).toBe(0);
@@ -162,7 +183,7 @@ describe("ccFacturadoFinancingProjection", () => {
 
   it("cuotas mode: facturado spread across cuota months, June empty, total = T", () => {
     const { lines, links } = buildScenario();
-    const out = applyCcFacturadoFinancingProjection(lines, links);
+    const out = applyCcFacturadoFinancingProjection(lines, links, FACTURADO);
     const { by_month } = aggregateGastosFromLines(out, CATS, "split");
     expect(monthGastos(by_month, "2026-06")).toBe(0);
     const spread = MONTHS.map((m) => monthGastos(by_month, m));
@@ -215,7 +236,7 @@ describe("ccFacturadoFinancingProjection", () => {
       },
     ];
 
-    const out = applyCcFacturadoFinancingProjection(lines, links);
+    const out = applyCcFacturadoFinancingProjection(lines, links, FACTURADO);
     const projected = out.filter((l) => l.gastos_scope === "split_only");
     const mortgageProj = projected.filter((l) => l.expense_deposit_links != null);
     expect(mortgageProj.length).toBe(3);
@@ -234,11 +255,82 @@ describe("ccFacturadoFinancingProjection", () => {
     expect(monthGastos(total.by_month, "2026-06")).toBe(CARRY + SUPER);
   });
 
+  it("no closed statement for the financed month → no interest gap line", () => {
+    const { lines, links } = buildScenario();
+    const out = applyCcFacturadoFinancingProjection(lines, links, () => null);
+    const projected = out.filter((l) => l.gastos_scope === "split_only");
+    expect(projected.length).toBe(6);
+    expect(projected.some((l) => l.purchase_key.startsWith("financing-proj-gap:"))).toBe(false);
+    const { by_month } = aggregateGastosFromLines(out, CATS, "split");
+    expect(MONTHS.reduce((s, m) => s + monthGastos(by_month, m), 0)).toBe(F);
+  });
+
+  it("cuotas the financed card billed that month are not interest; a peso per cuota is rounding", () => {
+    // ·0101 August 2026: facturado 1.xxx.xxx = purchases 1.xxx.xxx + 3x.xxx of the card's own
+    // cuotas; paid by one 3-cuota Santander purchase whose cuotas sum to the facturado.
+    const PURCHASES = 1_566_160;
+    const FACT = 1_598_924;
+    const build = (cuotaAmounts: number[]) => {
+      const lines: FlowCcExpenseLineRow[] = [
+        ccLine({ statement_line_id: 31, amount_clp: PURCHASES, category_slug: "supermarket", purchase_key: "line-pr:31" }),
+      ];
+      MONTHS.forEach((m, i) => lines.push(cuota("instC", m, i + 1, cuotaAmounts[i]!)));
+      const links: CcFacturadoFinancingLink[] = [
+        { id: 2, financed_account_id: 100, financed_billing_month: "2026-06", financing: [{ account_id: 200, purchase_key: "instC" }] },
+      ];
+      return applyCcFacturadoFinancingProjection(lines, links, () => FACT);
+    };
+    const gapOf = (out: FlowCcExpenseLineRow[]) =>
+      out.filter((l) => l.purchase_key.startsWith("financing-proj-gap:")).reduce((s, l) => s + l.amount_clp, 0);
+
+    // Σ cuotas == facturado: no gap, the projected months carry the purchases only.
+    const exact = build([532_975, 532_975, 532_974]);
+    expect(gapOf(exact)).toBe(0);
+    const { by_month } = aggregateGastosFromLines(exact, CATS, "split");
+    expect(MONTHS.reduce((s, m) => s + monthGastos(by_month, m), 0)).toBe(PURCHASES);
+    // Σ cuotas == facturado + 3 (one peso per cuota): still rounding.
+    expect(gapOf(build([532_976, 532_976, 532_975]))).toBe(0);
+    // Σ cuotas == facturado + 4: interest, carried as bills.
+    expect(gapOf(build([532_976, 532_976, 532_976]))).toBe(4);
+    // Partly financed (Σ cuotas < facturado): nothing to show.
+    expect(gapOf(build([500_000, 500_000, 500_000]))).toBe(0);
+  });
+
   it("no links → lines unchanged", () => {
     const { lines } = buildScenario();
     const out = applyCcFacturadoFinancingProjection(lines, []);
     expect(out.length).toBe(lines.length);
     expect(out.some((l) => l.gastos_scope === "split_only")).toBe(false);
     expect(out.every((l) => l.gastos_scope == null)).toBe(true);
+  });
+});
+
+describe("statementFacturadoClpForBillingMonth", () => {
+  it("reads the closed CLP statement's total by statement month; buckets, USD and duplicates aside", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    expect(accountId).not.toBeNull();
+    if (accountId == null) return;
+    const tag = "vitest-facturado-financing";
+    const ins = db.prepare(
+      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, currency, monto_facturado)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    const ids: number[] = [];
+    const add = (src: string, date: string, currency: string, total: number | null, cardGroup = "A") =>
+      ids.push(Number(ins.run(accountId, cardGroup, src, date, currency, total).lastInsertRowid));
+    try {
+      add(`${tag}.pdf`, "25/08/2026", "clp", 1_598_924);
+      // Second physical copy of the same statement (filed under another card slot, as the
+      // 0113/legacy corpus is): same total, must collapse rather than double.
+      add(`${tag}.pdf`, "25/08/2026", "clp", 1_598_924, "B");
+      add(`${tag}-usd.pdf`, "25/08/2026", "usd", 100);
+      add(`import:web-paste|open|2026-09|${tag}`, "20/09/2026", "clp", 999);
+      expect(statementFacturadoClpForBillingMonth(accountId, "2026-08")).toBe(1_598_924);
+      expect(statementFacturadoClpForBillingMonth(accountId, "2026-09")).toBeNull();
+      add(`${tag}-conflict.pdf`, "26/08/2026", "clp", 1_600_000);
+      expect(() => statementFacturadoClpForBillingMonth(accountId, "2026-08")).toThrow(/different monto_facturado/);
+    } finally {
+      for (const id of ids) db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(id);
+    }
   });
 });
