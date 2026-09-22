@@ -27,7 +27,7 @@ import {
 
   resolveCcExpensePurchaseKey,
 
-  installmentLedgerTotalForIdentity,
+  installmentLedgerTotalForStatementLine,
 
   type CcExpenseCategoryRow,
 
@@ -638,7 +638,7 @@ export function buildCcExpenseLines(
 
               s.currency AS statement_currency, s.card_last4 AS primary_card_last4,
 
-              l.transaction_date, l.posting_date, l.origin_card_last4,
+              l.transaction_date, l.posting_date, l.origin_card_last4, l.parser_row_id,
 
               l.amount_clp, l.amount_usd, l.merchant, l.installment_flag,
 
@@ -687,6 +687,8 @@ export function buildCcExpenseLines(
     transaction_date: string | null;
 
     posting_date: string | null;
+
+    parser_row_id: string | null;
 
     amount_clp: number | null;
 
@@ -810,15 +812,16 @@ export function buildCcExpenseLines(
     });
     const purchaseMonth = purchaseMonthFromLine(purchaseOn, expenseMonth);
     const lineRole: CcExpenseLineRole = isInstallment ? "installment_cuota" : "purchase";
-    const installmentTotalClp =
-      isInstallment && purchaseOn && row.nro_cuota_total != null && row.nro_cuota_total > 0
-        ? installmentLedgerTotalForIdentity(
-            row.account_id,
-            purchaseOn,
-            row.nro_cuota_total,
-            row.merchant
-          )
-        : null;
+    const installmentTotalClp = isInstallment
+      ? installmentLedgerTotalForStatementLine({
+          accountId: row.account_id,
+          purchaseDateIso: purchaseOn ?? null,
+          cuotasTotales: row.nro_cuota_total,
+          merchant: row.merchant,
+          parserRowId: row.parser_row_id,
+          valorCuotaMensualClp: row.valor_cuota_mensual_clp,
+        })
+      : null;
 
     const merchantKey = normalizeCcExpenseMerchantKey(row.merchant);
 

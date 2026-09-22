@@ -8,7 +8,9 @@ import {
   countsTowardCcExpenseGastosMes,
   darkenHexColor,
   getCcExpenseCategoryBySlug,
+  installmentLedgerTotalForStatementLine,
   listCcExpenseCategories,
+  loadCcStatementLineExpenseCtx,
   listStatementLineIdsForPurchaseKey,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
@@ -717,6 +719,90 @@ function createMerchantPropagationFixture(tag: string): {
     expect(amort).toBeDefined();
     expect(amort!.chart_color).toBe(darkenHexColor(bills!.chart_color));
     expect(amort!.chart_color).not.toBe(bills!.chart_color);
+  });
+});
+
+describe("installment statement lines resolve their plan total for the purchase key", () => {
+  it("same-identity twin plans: payment row wins, printed cuota disambiguates, else legacy key", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    expect(accountId).not.toBeNull();
+    if (accountId == null) return;
+    const tag = "vitest-twin-total";
+    const merchant = "RECAUDACION VITEST TWIN";
+    const insPlan = db.prepare(
+      `INSERT INTO cc_installment_purchases (
+         account_id, card_group, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales,
+         merchant, description_merged, source
+       ) VALUES (?, 'A', ?, ?, ?, 3, ?, ?, 'pdf')`
+    );
+    // Twins: same account/date/cuotas/merchant, different totals (a facturado paid as two POS
+    // transactions). A lone plan on another date checks the plain identity tier.
+    const planA = Number(insPlan.run(accountId, `${tag}-a`, "2026-06-30", 1_200_000, merchant, merchant).lastInsertRowid);
+    const planB = Number(insPlan.run(accountId, `${tag}-b`, "2026-06-30", 1_267_034, merchant, merchant).lastInsertRowid);
+    const planC = Number(insPlan.run(accountId, `${tag}-c`, "2026-07-01", 500_000, merchant, merchant).lastInsertRowid);
+    db.prepare(
+      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to)
+       VALUES (?, 'A', ?, '25/08/2026', '24/07/2026', '25/08/2026')`
+    ).run(accountId, `${tag}.pdf`);
+    const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    const insLine = db.prepare(
+      `INSERT INTO cc_statement_lines (
+         statement_id, merchant, description_merged, amount_clp, installment_flag,
+         nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, transaction_date, parser_row_id
+       ) VALUES (?, ?, ?, ?, 1, 1, 3, ?, ?, ?)`
+    );
+    const line = (amount: number, valor: number | null, txDate: string, prid: string) =>
+      Number(insLine.run(sid, merchant, merchant, amount, valor, txDate, prid).lastInsertRowid);
+    try {
+      // Tier 1: the line's own payment row names plan A.
+      const viaPayment = line(1_200_000, 400_000, "30/06/2026", `${tag}-prid-a`);
+      db.prepare(
+        `INSERT INTO cc_installment_payments (purchase_id, pay_by_date, amount_clp, cuota_current, cuota_total, parser_row_id, statement_period_month)
+         VALUES (?, '2026-09-10', 400000, 1, 3, ?, '2026-08')`
+      ).run(planA, `${tag}-prid-a`);
+      // Tier 3: no payment row, but the printed cuota (1.xxx.xxx ÷ 3) singles out plan B.
+      const viaCuota = line(1_267_034, 422_345, "30/06/2026", `${tag}-prid-b`);
+      // Twins with neither: legacy no-total key, never a guess.
+      const ambiguous = line(1_200_000, null, "30/06/2026", `${tag}-prid-x`);
+      // Tier 2: a lone plan resolves by identity alone.
+      const lone = line(500_000, null, "01/07/2026", `${tag}-prid-c`);
+
+      expect(resolveCcExpensePurchaseKey(viaPayment)).toBe(
+        `installment-h:${accountId}:2026-06-30:3:1200000:${merchant}`
+      );
+      expect(resolveCcExpensePurchaseKey(viaCuota)).toBe(
+        `installment-h:${accountId}:2026-06-30:3:1267034:${merchant}`
+      );
+      expect(resolveCcExpensePurchaseKey(ambiguous)).toBe(
+        `installment-h:${accountId}:2026-06-30:3:${merchant}`
+      );
+      expect(resolveCcExpensePurchaseKey(lone)).toBe(
+        `installment-h:${accountId}:2026-07-01:3:500000:${merchant}`
+      );
+      // The stamped total agrees with the key on every tier.
+      expect(loadCcStatementLineExpenseCtx(viaPayment)?.installment_total_clp).toBe(1_200_000);
+      expect(loadCcStatementLineExpenseCtx(viaCuota)?.installment_total_clp).toBe(1_267_034);
+      expect(loadCcStatementLineExpenseCtx(ambiguous)?.installment_total_clp).toBeNull();
+      expect(loadCcStatementLineExpenseCtx(lone)?.installment_total_clp).toBe(500_000);
+      // The flows builder's call shape (ISO date, raw row fields) resolves the same way.
+      expect(
+        installmentLedgerTotalForStatementLine({
+          accountId,
+          purchaseDateIso: "2026-06-30",
+          cuotasTotales: 3,
+          merchant,
+          parserRowId: `${tag}-prid-a`,
+          valorCuotaMensualClp: 400_000,
+        })
+      ).toBe(1_200_000);
+    } finally {
+      db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(sid);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(sid);
+      for (const pid of [planA, planB, planC]) {
+        db.prepare(`DELETE FROM cc_installment_payments WHERE purchase_id = ?`).run(pid);
+        db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(pid);
+      }
+    }
   });
 });
 

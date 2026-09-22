@@ -665,26 +665,130 @@ export function loadCcStatementLineExpenseCtx(statementLineId: number): CcStatem
   return { ...row, installment_total_clp: installmentLedgerTotalForCtx(row) };
 }
 
-/**
- * Ledger `total_amount_clp` for an installment statement line, matched by identity
- * (account/date/cuotas/merchant). Returns null unless exactly one ledger purchase matches (so a
- * rare same-identity collision falls back to the legacy no-total key rather than guessing).
- */
+/** Ledger total for a statement cuota line — see {@link installmentLedgerTotalForStatementLine}. */
 function installmentLedgerTotalForCtx(
   ctx: Omit<CcStatementLineExpenseCtx, "installment_total_clp">
 ): number | null {
-  if (ctx.installment_flag !== 1 || ctx.nro_cuota_total == null || ctx.nro_cuota_total <= 0) {
-    return null;
+  if (ctx.installment_flag !== 1) return null;
+  return installmentLedgerTotalForStatementLine({
+    accountId: ctx.account_id,
+    purchaseDateIso:
+      parseDdMmYyToIso(ctx.transaction_date ?? "") ?? parseDdMmYyToIso(ctx.posting_date ?? ""),
+    cuotasTotales: ctx.nro_cuota_total,
+    merchant: ctx.merchant,
+    parserRowId: ctx.parser_row_id,
+    valorCuotaMensualClp: ctx.valor_cuota_mensual_clp,
+  });
+}
+
+/**
+ * Ledger `total_amount_clp` for an installment STATEMENT line, the value that puts the total
+ * segment into its `installment-h:` key. Three tiers, so two same-identity plans (same
+ * account/date/cuotas/merchant, different amount — a facturado paid as two POS transactions on
+ * the same day) still stamp the with-total key their plan-derived cuotas already carry:
+ *
+ * 1. the line's own ledger payment row (`cc_installment_payments.parser_row_id`, written when the
+ *    statement was matched to the ledger) — exact;
+ * 2. identity, when exactly one plan matches ({@link installmentLedgerTotalForIdentity});
+ * 3. among same-identity twins, the unique plan whose monthly cuota (total ÷ cuotas) is the
+ *    line's printed `valor_cuota_mensual_clp` (within 1 peso of rounding).
+ *
+ * Null otherwise → the legacy no-total key. Every caller that stamps `installment_total_clp` on a
+ * statement line must go through here, so the stamped total and the resolved key agree.
+ */
+export function installmentLedgerTotalForStatementLine(args: {
+  accountId: number;
+  purchaseDateIso: string | null;
+  cuotasTotales: number | null;
+  merchant: string | null | undefined;
+  parserRowId: string | null | undefined;
+  valorCuotaMensualClp: number | null | undefined;
+}): number | null {
+  const cuotas = args.cuotasTotales;
+  if (cuotas == null || !Number.isFinite(cuotas) || cuotas <= 0) return null;
+  const viaPayment = installmentLedgerTotalViaPaymentRow(args.accountId, args.parserRowId);
+  if (viaPayment != null) return viaPayment;
+  const merchantKey = normalizeCcExpenseMerchantKey(args.merchant);
+  if (!args.purchaseDateIso || !merchantKey) return null;
+  const totals = installmentLedgerTotalsForIdentity(
+    args.accountId,
+    args.purchaseDateIso,
+    cuotas,
+    merchantKey
+  );
+  if (totals.length === 1) return totals[0]!;
+  const valorCuota = args.valorCuotaMensualClp;
+  if (totals.length > 1 && valorCuota != null && Number.isFinite(valorCuota) && valorCuota > 0) {
+    const byCuota = totals.filter((t) => Math.abs(t / cuotas - valorCuota) <= 1);
+    if (byCuota.length === 1) return byCuota[0]!;
   }
-  const iso = parseDdMmYyToIso(ctx.transaction_date ?? "") ?? parseDdMmYyToIso(ctx.posting_date ?? "");
-  if (!iso) return null;
-  return installmentLedgerTotalForIdentity(ctx.account_id, iso, ctx.nro_cuota_total, ctx.merchant);
+  return null;
+}
+
+/**
+ * Ledger total of the plan a statement cuota line was matched to at import
+ * (`cc_installment_payments.parser_row_id`), or null when the line has no payment row (cuota-00
+ * preambles, legacy summary rows). Throws when the row points at several plans or at another
+ * account's plan: that is an inconsistent ledger, never something to guess around.
+ */
+function installmentLedgerTotalViaPaymentRow(
+  accountId: number,
+  parserRowId: string | null | undefined
+): number | null {
+  const prid = String(parserRowId ?? "").trim();
+  if (!prid || prid.startsWith("synthetic:")) return null;
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT p.id, p.account_id, p.total_amount_clp
+       FROM cc_installment_payments pay
+       JOIN cc_installment_purchases p ON p.id = pay.purchase_id
+       WHERE pay.parser_row_id = ?`
+    )
+    .all(prid) as { id: number; account_id: number; total_amount_clp: number }[];
+  if (rows.length === 0) return null;
+  if (rows.length > 1) {
+    throw new Error(
+      `cc_installment_payments.parser_row_id ${prid} maps to ${rows.length} plans (${rows
+        .map((r) => r.id)
+        .join(", ")})`
+    );
+  }
+  const plan = rows[0]!;
+  if (plan.account_id !== accountId) {
+    throw new Error(
+      `cc_installment_payments.parser_row_id ${prid} maps to plan ${plan.id} on account ${plan.account_id}, but the statement line is on account ${accountId}`
+    );
+  }
+  return Math.round(plan.total_amount_clp);
+}
+
+/** Ledger totals of every plan sharing an installment identity (account/date/cuotas/merchant). */
+function installmentLedgerTotalsForIdentity(
+  accountId: number,
+  purchaseDateIso: string,
+  cuotasTotales: number,
+  merchantKey: string
+): number[] {
+  const rows = db
+    .prepare(
+      `SELECT total_amount_clp, merchant FROM cc_installment_purchases
+       WHERE account_id = ? AND date(purchase_date) = date(?) AND cuotas_totales = ?
+       ORDER BY id`
+    )
+    .all(accountId, purchaseDateIso, cuotasTotales) as {
+    total_amount_clp: number;
+    merchant: string | null;
+  }[];
+  return rows
+    .filter((r) => normalizeCcExpenseMerchantKey(r.merchant) === merchantKey)
+    .map((r) => Math.round(r.total_amount_clp));
 }
 
 /**
  * Ledger `total_amount_clp` for an installment identity (account/date/cuotas/merchant), or null
- * unless exactly one ledger purchase matches (so same-identity collisions fall back to the legacy
- * no-total key). Used to stamp `installment_total_clp` on statement cuota lines.
+ * unless exactly one ledger purchase matches. Tier 2 of
+ * {@link installmentLedgerTotalForStatementLine}; on its own it cannot tell same-identity twins
+ * apart (a statement line has the payment row and the printed cuota for that).
  */
 export function installmentLedgerTotalForIdentity(
   accountId: number,
@@ -694,17 +798,13 @@ export function installmentLedgerTotalForIdentity(
 ): number | null {
   const merchantKey = normalizeCcExpenseMerchantKey(merchant);
   if (!purchaseDateIso || !merchantKey || cuotasTotales <= 0) return null;
-  const rows = db
-    .prepare(
-      `SELECT total_amount_clp, merchant FROM cc_installment_purchases
-       WHERE account_id = ? AND date(purchase_date) = date(?) AND cuotas_totales = ?`
-    )
-    .all(accountId, purchaseDateIso, cuotasTotales) as {
-    total_amount_clp: number;
-    merchant: string | null;
-  }[];
-  const matches = rows.filter((r) => normalizeCcExpenseMerchantKey(r.merchant) === merchantKey);
-  return matches.length === 1 ? Math.round(matches[0]!.total_amount_clp) : null;
+  const totals = installmentLedgerTotalsForIdentity(
+    accountId,
+    purchaseDateIso,
+    cuotasTotales,
+    merchantKey
+  );
+  return totals.length === 1 ? totals[0]! : null;
 }
 
 /** Statement line ids that share one installment purchase (cuotas 1..N). */
