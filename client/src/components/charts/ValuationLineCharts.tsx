@@ -8,7 +8,7 @@ import type { NetWorthAthDto, TimeseriesBlock } from "../../types";
 import { clipChartDataToYDomain } from "../../chartTailClip";
 import { AppLineChart } from "./AppLineChart";
 import { renderAthMarker } from "./AthMarker";
-import { resolveAthMarkerRow } from "./athMarkerPlacement";
+import { isNearAthRow, resolveAthMarkerRow } from "./athMarkerPlacement";
 import {
   carryForwardTrailingPendingRows,
   densifyRecordsByCalendarPeriod,
@@ -149,8 +149,9 @@ interface BlockProps {
   /**
    * All-time high of the `thickKey` line AT THIS GRAIN (server-computed; the caller picks the
    * day / month / year peak to match `xAxisGranularity`): drawn as a small diamond on the
-   * plotted row of that date — no label, the tooltip names the point on hover. Omitted from the
-   * render when the Rango clip leaves the peak outside the window.
+   * plotted row of that date — no label of its own: the docked tooltip adds an ATH line while the
+   * cursor is near that row. Omitted from the render when the Rango clip leaves the peak outside
+   * the window.
    */
   athMarker?: NetWorthAthDto | null;
 }
@@ -161,17 +162,74 @@ const LINE_HIT_STROKE_WIDTH = 24;
 /** When a series is focused (line or legend), other lines fade to this opacity. */
 const DIM_LINE_OPACITY = 0.16;
 
+/** The ATH marker's plotted row, for the tooltip's nearness test and its ATH line. */
+type AthTooltipContext = {
+  /** Category x (date) of the row carrying the peak, its index in the plotted rows, and the value. */
+  ath: { x: string; index: number; value: number };
+  /** Row index per plotted date — the tooltip only knows the hovered label. */
+  indexByDate: ReadonlyMap<string, number>;
+  rowCount: number;
+  color: string;
+};
+
+/**
+ * Footer line under the tooltip rows while the cursor is near the peak: a diamond glyph like the
+ * marker's, the peak's date framed like the tooltip title, and its value. Bright on the peak's
+ * own row, muted on the neighbouring ones — a marker that sits under a dozen daily rows would
+ * otherwise be nearly impossible to hover exactly.
+ */
+function AthTooltipFooter({
+  ctx,
+  exact,
+  displayUnit,
+  xAxisGranularity,
+}: {
+  ctx: AthTooltipContext;
+  exact: boolean;
+  displayUnit: ChartDisplayUnit;
+  xAxisGranularity: "month" | "year" | "day";
+}) {
+  const date =
+    xAxisGranularity === "day" ? ctx.ath.x : formatLineChartXTick(ctx.ath.x, xAxisGranularity);
+  const muted = exact ? "#f1f5f9" : "#94a3b8";
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginTop: 6,
+        paddingTop: 6,
+        borderTop: "1px solid #334155",
+        fontSize: 13,
+      }}
+    >
+      <svg width={10} height={10} aria-hidden style={{ flexShrink: 0 }}>
+        <path d="M5,0 L10,5 L5,10 L0,5 Z" fill={ctx.color} stroke="#f8fafc" strokeWidth={1} />
+      </svg>
+      <span style={{ color: muted }}>{i18n.t("charts.athTooltip", { date })}</span>
+      <span style={{ color: muted }}>:</span>
+      <span style={{ color: exact ? "#f1f5f9" : "#e2e8f0", fontWeight: exact ? 600 : 400 }}>
+        {formatTooltipValue(ctx.ath.value, displayUnit)}
+      </span>
+    </div>
+  );
+}
+
 /** Docked-tooltip rows with legend focus dim (value + aportes of the focused account stay bright). */
 function lineSeriesTooltipRenderContent({
   displayUnit,
   xAxisGranularity,
   focusColorIndex,
   seriesByDataKey,
+  athTooltip,
 }: {
   displayUnit: ChartDisplayUnit;
   xAxisGranularity: "month" | "year" | "day";
   focusColorIndex: number | null;
   seriesByDataKey: ReadonlyMap<string, ResolvedLineSeriesItem>;
+  /** Present when an ATH marker is plotted in the window (see {@link AthTooltipFooter}). */
+  athTooltip: AthTooltipContext | null;
 }): NonNullable<AppTooltipSpec["renderContent"]> {
   return ({ label, payload }) => {
     const dim = focusColorIndex != null;
@@ -225,7 +283,17 @@ function lineSeriesTooltipRenderContent({
       xAxisGranularity === "day"
         ? String(label)
         : formatLineChartXTick(String(label), xAxisGranularity);
-    return <ChartTooltipRows title={title} rows={rows} />;
+    const hoverIndex = athTooltip ? athTooltip.indexByDate.get(String(label)) : undefined;
+    const footer =
+      athTooltip && hoverIndex != null && isNearAthRow(hoverIndex, athTooltip.ath.index, athTooltip.rowCount) ? (
+        <AthTooltipFooter
+          ctx={athTooltip}
+          exact={hoverIndex === athTooltip.ath.index}
+          displayUnit={displayUnit}
+          xAxisGranularity={xAxisGranularity}
+        />
+      ) : undefined;
+    return <ChartTooltipRows title={title} rows={rows} footer={footer} />;
   };
 }
 
@@ -443,7 +511,7 @@ export function LineChartPanel({
   const athPlacement = useMemo(() => {
     if (!athMarker || !Number.isFinite(athMarker.value)) return null;
     const row = resolveAthMarkerRow(chartData, athMarker.as_of_date, xAxisGranularity);
-    return row ? { x: row.x, value: athMarker.value } : null;
+    return row ? { x: row.x, index: row.index, value: athMarker.value } : null;
   }, [athMarker, chartData, xAxisGranularity]);
 
   const yScale = useMemo(() => {
@@ -468,6 +536,21 @@ export function LineChartPanel({
       yScale.domain
     );
   }, [chartData, visibleSeries, yScale.domain, clipPlotToYDomain]);
+
+  // Tooltip nearness to the peak works in plotted-row indices (the tooltip only knows the
+  // hovered label); the plot rows are the densified grid, so index distance is x distance.
+  const thickSeriesForAth = thickKey ? seriesByDataKey.get(thickKey) : undefined;
+  const athTooltip = useMemo((): AthTooltipContext | null => {
+    if (!athPlacement || !thickSeriesForAth) return null;
+    const indexByDate = new Map<string, number>();
+    plotChartData.forEach((r, i) => indexByDate.set(String(r.as_of_date ?? ""), i));
+    return {
+      ath: athPlacement,
+      indexByDate,
+      rowCount: plotChartData.length,
+      color: thickSeriesForAth.stroke,
+    };
+  }, [athPlacement, plotChartData, thickSeriesForAth]);
 
   const xAxisTicks = useMemo(() => {
     const dates = extractSortedAsOfDates(chartData);
@@ -512,6 +595,7 @@ export function LineChartPanel({
               xAxisGranularity,
               focusColorIndex,
               seriesByDataKey,
+              athTooltip,
             }),
           }}
         >
@@ -625,15 +709,14 @@ export function LineChartPanel({
                   />
                 );
               });
-              const thickSeries = thickKey ? seriesByDataKey.get(thickKey) : undefined;
               const athEl =
-                athPlacement && thickSeries
+                athPlacement && thickSeriesForAth
                   ? renderAthMarker({
                       x: athPlacement.x,
                       y: athPlacement.value,
-                      color: thickSeries.stroke,
+                      color: thickSeriesForAth.stroke,
                       opacity:
-                        focusColorIndex != null && thickSeries.colorIndex !== focusColorIndex
+                        focusColorIndex != null && thickSeriesForAth.colorIndex !== focusColorIndex
                           ? DIM_LINE_OPACITY
                           : 1,
                     })

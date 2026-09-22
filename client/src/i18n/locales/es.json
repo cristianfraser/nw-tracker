@@ -108,6 +108,7 @@
     "deltaTotalSeries": "Δ total",
     "groupAccumTitle": "Accumulated earnings (grupo)",
     "groupAccumHint": "Una barra = suma mensual de la clase. Área continua (sin franjas por año). Desde el primer mes con datos.",
+    "athTooltip": "Máx. histórico · {{date}}",
     "overview": {
       "invested": "Invertido"
     }

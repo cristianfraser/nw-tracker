@@ -336,6 +336,10 @@
       "en": "One bar = the class's monthly sum. Continuous area (no per-year bands). From the first month with data.",
       "es": "Una barra = suma mensual de la clase. Área continua (sin franjas por año). Desde el primer mes con datos."
     },
+    "athTooltip": {
+      "en": "ATH · {{date}}",
+      "es": "Máx. histórico · {{date}}"
+    },
     "overview": {
       "invested": {
         "en": "Invested",
