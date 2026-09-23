@@ -115,21 +115,21 @@ lb_saved="$(saved_count "$TMP_DIR/lider-boletas.out")"
 be_msgs="$(sed -n 's/.*e-mail: \([0-9][0-9]*\) broker message(s).*/\1/p' "$TMP_DIR/broker-emails.out" 2>/dev/null | tail -1)"
 be_msgs="${be_msgs:-0}"
 
-# Imports run only when a fetch staged something new this hour. The pipeline is the same one
-# the nightly runs (organize → decrypt → parse → CC import, receipts + payment-mirror
-# conversion, cartolas, boletas), so a monthly statement PDF imports the hour it lands instead
-# of waiting for 22:00 — and it is cheap on a quiet corpus (sha-keyed parse cache, statement
-# fingerprints). The one whole-corpus stage is the boleta import (the staged dirs are the
-# permanent corpus), so it is skipped unless THIS hour staged a new boleta. Anything the gate
+# A receipt photo AirDropped into the grocery inbox is the one input no fetch stages; count it
+# so it imports within the hour instead of at 22:00.
+gr_inbox="$(find "$REPO_ROOT/cfraser/grocery-receipts/inbox" -maxdepth 1 -type f ! -name '.*' 2>/dev/null | wc -l | tr -d ' ')"
+
+# Imports run only when a fetch staged something new this hour (or a photo is waiting). The
+# pipeline is the same one the nightly runs (organize → decrypt → parse → CC import, receipts +
+# payment-mirror conversion, cartolas, grocery receipts), so a monthly statement PDF imports the
+# hour it lands instead of waiting for 22:00 — and it is cheap on a quiet corpus (sha-keyed
+# parse cache, statement fingerprints, per-receipt import stamps — the grocery stage is
+# incremental since 2026-09-06, so it no longer needs its own skip flag). Anything the gate
 # misses — a failed import, a receipt whose checking debit has not landed — is retried by the
 # nightly, whose pipeline runs unconditionally.
 if [[ "$DRY_RUN" != "1" ]]; then
-  if [[ "$sd_saved" -gt 0 || "$ls_saved" -gt 0 || "$lb_saved" -gt 0 ]]; then
-    if [[ "$lb_saved" -gt 0 ]]; then
-      step "inbox pipeline" npm run import:cfraser-inbox
-    else
-      step "inbox pipeline (no new boletas)" npm run import:cfraser-inbox -- --skip-lider-boletas
-    fi
+  if [[ "$sd_saved" -gt 0 || "$ls_saved" -gt 0 || "$lb_saved" -gt 0 || "$gr_inbox" -gt 0 ]]; then
+    step "inbox pipeline" npm run import:cfraser-inbox
   else
     log "=== inbox pipeline (skipped — nothing new staged)"
   fi

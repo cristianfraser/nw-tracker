@@ -37,6 +37,7 @@
     "import:payroll-liquidaciones": "npm run import:payroll-liquidaciones -w nw-tracker-server",
     "fetch:santander": "npm --prefix scraper run fetch:santander --",
     "fetch:santander-docs": "npm --prefix scraper run fetch:santander-docs --",
+    "fetch:fintual-docs": "npm --prefix scraper run fetch:fintual-docs --",
     "import:santander-movements": "npm run import:santander-movements -w nw-tracker-server --",
     "import:santander-statements": "npm run import:santander-statements -w nw-tracker-server --",
     "import:lider-movements": "npm run import:lider-movements -w nw-tracker-server --",
@@ -48,9 +49,10 @@
     "fetch:emails": "npm --prefix scraper run fetch:emails --",
     "check:broker-emails": "npm run check:broker-emails -w nw-tracker-server --",
     "import:fintual-emails": "npm run import:fintual-emails -w nw-tracker-server --",
+    "import:fintual-acciones": "npm run import:fintual-acciones -w nw-tracker-server --",
     "daily-run": "scraper/daily-run.sh",
     "fetch:lider-boletas": "npm --prefix scraper run fetch:lider-boletas --",
-    "import:lider-boletas": "npm run import:lider-boletas -w nw-tracker-server --",
+    "import:grocery-receipts": "npm run import:grocery-receipts -w nw-tracker-server --",
     "fetch:lider-statements": "npm --prefix scraper run fetch:lider-statements --"
   }
 }

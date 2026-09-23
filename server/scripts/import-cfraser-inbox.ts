@@ -27,7 +27,6 @@
  *   npm run import:cfraser-inbox -- --sync              # run global sync after import
  *   npm run import:cfraser-inbox -- --skip-organize
  *   npm run import:cfraser-inbox -- --skip-checking-pdf
- *   npm run import:cfraser-inbox -- --skip-lider-boletas # hourly poll: no new boleta this hour
  *
  * Legacy `--skip-checking`, `--skip-cuenta-vista`, `--skip-sync` still disable those steps.
  */
@@ -44,7 +43,8 @@ import {
   resolveCfraserOrganizeManifestPath,
 } from "../src/cfraserOrganizeManifest.js";
 import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
-import { hasStagedBoletaPdfs } from "../src/liderBoletasImport.js";
+import { hasPendingGroceryReceipts } from "../src/groceryReceiptsImport.js";
+import { listGroceryReceiptInboxFiles } from "../src/groceryReceiptsIngest.js";
 import { importCuentaVistaCartolasFromPdfs } from "../src/cuentaVistaCartolaImport.js";
 import {
   importUltimosMovimientosInboxFiles,
@@ -390,20 +390,22 @@ function main(): void {
     if (code !== 0) process.exit(code);
   }
 
-  // Lider «Boleta Digital» receipts staged by fetch:lider-boletas: parse the PDFs (fail-fast)
-  // and import — grocery receipt+items always, an open-month card line when paid with the
-  // Lider card. The staged dirs are the permanent corpus and the import re-upserts all of it,
-  // which is why the hourly e-mail poll passes --skip-lider-boletas on hours that staged no
-  // new boleta; the nightly runs it unconditionally.
-  if (hasFlag("skip-lider-boletas")) {
-    console.log("\n=== Lider boletas (skipped — --skip-lider-boletas) ===");
-  } else if (hasStagedBoletaPdfs()) {
-    const boletaArgs = ["run", "import:lider-boletas", "-w", "nw-tracker-server"];
-    if (dryRun) boletaArgs.push("--", "--dry-run");
-    const code = runStep(`Import Lider boletas${dryRun ? " (dry run)" : ""}`, "npm", boletaArgs);
-    if (code !== 0) process.exit(code);
+  let deferredFailureCode = 0;
+  // Grocery receipts: the Lider «Boleta Digital» PDFs staged by fetch:lider-boletas plus the
+  // generic cfraser/grocery-receipts/ root (photo inbox → staged) — grocery receipt+items
+  // always, an open-month card line when paid with the chain's own card. Incremental: the gate
+  // is "a photo in the inbox, or a staged dir whose parse has no current import stamp", so the
+  // hourly poll runs it unconditionally and a quiet corpus costs nothing.
+  if (listGroceryReceiptInboxFiles().length > 0 || hasPendingGroceryReceipts()) {
+    const receiptArgs = ["run", "import:grocery-receipts", "-w", "nw-tracker-server"];
+    if (dryRun) receiptArgs.push("--", "--dry-run");
+    const code = runStep(`Import grocery receipts${dryRun ? " (dry run)" : ""}`, "npm", receiptArgs);
+    // A receipt that will not parse fails the step so the nightly names it, but it is not a
+    // reason to hold back the steps below — the pipeline still exits non-zero at the end. (A
+    // new store is not a failure: the receipt is flagged and pairs with the card's own line.)
+    if (code !== 0) deferredFailureCode = code;
   } else {
-    console.log("\n=== Lider boletas (none staged) ===");
+    console.log("\n=== Grocery receipts (nothing pending) ===");
   }
 
   // Lider BCI «últimos movimientos» CSV, dropped in the inbox by its own scheduled fetch.
@@ -427,6 +429,7 @@ function main(): void {
   }
 
   console.log("\n=== import:cfraser-inbox done ===");
+  if (deferredFailureCode !== 0) process.exit(deferredFailureCode);
 }
 
 main();

@@ -1541,12 +1541,22 @@
       "colDate": "Fecha",
       "colBranch": "Sucursal",
       "colCity": "Ciudad",
+      "colSource": "Origen",
       "colTotal": "Total",
       "colCardPaid": "Tarjeta",
       "colItems": "Ítems",
       "showItems": "Ver ítems",
       "hideItems": "Ocultar ítems",
-      "none": "Aún no hay boletas importadas."
+      "none": "Aún no hay boletas importadas.",
+      "source": {
+        "lider_email": "E-mail",
+        "manual_pdf": "PDF",
+        "photo": "Foto"
+      },
+      "cardLine": {
+        "pendingBranch": "Sucursal nueva · sin línea de tarjeta",
+        "pendingBranchHint": "Aún no se conoce el nombre de comercio de esta sucursal. La primera línea de la tarjeta con el mismo día y monto (pegado, feed o estado de cuenta) empareja esta boleta y aprende el nombre del comercio."
+      }
     },
     "config": {
       "title": "Configuración del producto",

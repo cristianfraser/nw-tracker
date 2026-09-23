@@ -10,6 +10,7 @@
  * alias ones by construction.
  */
 import { db } from "./db.js";
+import type { GroceryCardLineStatus } from "./groceryBranchLearning.js";
 
 export type UnclassifiedGroup = {
   store_chain: string;
@@ -38,12 +39,16 @@ export type GroceryProductRow = {
 export type GroceryReceiptRow = {
   id: number;
   purchased_at: string;
+  /** Document that owns the row: lider_email | manual_pdf | photo (`groceryReceiptsImport.ts`). */
+  source: string;
   store_chain: string;
   branch: string;
   city: string | null;
   total_clp: number;
   card_paid_clp: number;
   payments: { method: string; amount_clp: number }[];
+  /** Card-line outcome (`groceryBranchLearning.ts`); null when none was recorded. */
+  card_line_status: GroceryCardLineStatus | null;
   item_count: number;
   classified_count: number;
 };
@@ -196,8 +201,8 @@ export function listGroceryProducts(): GroceryProductRow[] {
 export function listGroceryReceipts(): GroceryReceiptRow[] {
   const rows = db
     .prepare(
-      `SELECT r.id, r.purchased_at, r.store_chain, r.branch, r.city, r.total_clp, r.card_paid_clp,
-              r.payments_json,
+      `SELECT r.id, r.purchased_at, r.source, r.store_chain, r.branch, r.city, r.total_clp, r.card_paid_clp,
+              r.payments_json, r.card_line_status,
               (SELECT COUNT(*) FROM grocery_receipt_items i WHERE i.receipt_id = r.id) AS item_count,
               (SELECT COUNT(*) FROM grocery_receipt_items i
                 WHERE i.receipt_id = r.id AND i.product_id IS NOT NULL) AS classified_count

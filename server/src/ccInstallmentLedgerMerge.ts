@@ -30,6 +30,7 @@ import {
   statementReplaceKey,
   padCcStatementDate,
 } from "./ccStatementJsonSource.js";
+import { learnGroceryBranchesFromCardLines, type GroceryBranchLearningResult } from "./groceryBranchLearning.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import { installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
 import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
@@ -366,6 +367,8 @@ export type CcAccountImportMergeResult = {
    * the archive/cross-check there, never a second writer. */
   /** (close, currency) pairs where an incoming PDF replaced the JSON-written statement. */
   json_closes_superseded_by_pdf: string[];
+  /** Grocery receipts flagged `pending_branch` on this card that the lines just written paired with. */
+  grocery_branch_learning: GroceryBranchLearningResult;
 };
 
 /** Merge statements + installment ledger + billing (HTTP imports). */
@@ -467,6 +470,11 @@ export function mergeCcAccountFromParsedRows(
     // Statement replacement above cascaded any existing traspaso links away; rebuild them
     // from the final line set (throws on an unpairable leg, aborting the whole merge).
     relinkCcTraspasoDeudaLinksForAccount(accountId);
+    // A grocery receipt paid with this card at a branch no map names waits, flagged, for the
+    // bank's own line for its day and pesos — which this write may have just landed, from
+    // whichever source (paste textarea, nightly feed, statement PDF). Pairing it here teaches
+    // the branch's merchant string, so the next receipt at that store writes its own line.
+    const grocery_branch_learning = learnGroceryBranchesFromCardLines(accountId);
     return {
       statements,
       ledger,
@@ -475,6 +483,7 @@ export function mergeCcAccountFromParsedRows(
       web_paste_repair,
       web_paste_pdf_reconcile,
       json_closes_superseded_by_pdf,
+      grocery_branch_learning,
     };
   })();
 

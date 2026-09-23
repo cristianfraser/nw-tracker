@@ -6,6 +6,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
 import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
 import { runExpenseConsumptionBackfill161, runLegacyNoteBackfill157 } from "./legacyNoteBackfills.js";
 import { runMovementsAmountCurrency169 } from "./movementsAmountCurrency169.js";
+import { runGroceryReceiptKey178 } from "./groceryReceiptKey178.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
   SCHEMA_BASELINE_STATEMENTS,
@@ -232,6 +233,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "157_depto_payments_and_mirror_merges.sql": runLegacyNoteBackfill157,
   "161_expense_consumption_columns.sql": runExpenseConsumptionBackfill161,
   "169_movements_amount_currency.sql": runMovementsAmountCurrency169,
+  "178_grocery_receipt_key.sql": runGroceryReceiptKey178,
 };
 
 /**
@@ -241,7 +243,10 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
  * run with foreign keys off around the transaction. Their hooks must finish with a
  * PRAGMA foreign_key_check before committing.
  */
-const FOREIGN_KEYS_OFF_MIGRATIONS = new Set(["169_movements_amount_currency.sql"]);
+const FOREIGN_KEYS_OFF_MIGRATIONS = new Set([
+  "169_movements_amount_currency.sql",
+  "178_grocery_receipt_key.sql",
+]);
 
 export function runMigrations() {
   if (!fs.existsSync(migrationsDir)) {

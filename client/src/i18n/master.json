@@ -5459,6 +5459,10 @@
         "en": "City",
         "es": "Ciudad"
       },
+      "colSource": {
+        "en": "Source",
+        "es": "Origen"
+      },
       "colTotal": {
         "en": "Total",
         "es": "Total"
@@ -5482,6 +5486,30 @@
       "none": {
         "en": "No receipts imported yet.",
         "es": "Aún no hay boletas importadas."
+      },
+      "source": {
+        "lider_email": {
+          "en": "E-mail",
+          "es": "E-mail"
+        },
+        "manual_pdf": {
+          "en": "PDF",
+          "es": "PDF"
+        },
+        "photo": {
+          "en": "Photo",
+          "es": "Foto"
+        }
+      },
+      "cardLine": {
+        "pendingBranch": {
+          "en": "New store · no card line yet",
+          "es": "Sucursal nueva · sin línea de tarjeta"
+        },
+        "pendingBranchHint": {
+          "en": "No merchant name is known for this store yet. The first card line with the same day and amount (paste, feed or statement) pairs this receipt and learns the store's merchant name.",
+          "es": "Aún no se conoce el nombre de comercio de esta sucursal. La primera línea de la tarjeta con el mismo día y monto (pegado, feed o estado de cuenta) empareja esta boleta y aprende el nombre del comercio."
+        }
       }
     },
     "config": {

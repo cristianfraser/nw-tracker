@@ -26,6 +26,7 @@ server/data/fintual-goal-map.json
 
 # Local PDF parsing deps (see server/scripts/parse-cc-statement-pdfs.py)
 server/scripts/.pdf_deps/
+server/scripts/.ocr_bin/
 
 # Personal finance data (Numbers/Excel exports, certificates, local CSVs)
 cfraser/
