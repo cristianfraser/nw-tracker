@@ -771,7 +771,6 @@
       "colCloseDate": "Close date",
       "colPayBy": "Pay by",
       "colFacturadoUsd": "Billed US$",
-      "colFacturadoUsdClp": "Billed US$ (CLP)",
       "colFacturadoTotal": "Total billed",
       "colCuotaAPagar": "Payment due",
       "colProxyEarnings": "Potential earnings",
@@ -1271,7 +1270,7 @@
     "creditCard": {
       "colBillingMonth": "Month",
       "colFacturacionPayBy": "Billing cycle (pay by)",
-      "colFacturado": "Billed",
+      "colFacturado": "Billed CLP",
       "colFacturadoTotal": "Total billed",
       "lineMerchant": "Merchant",
       "manualDelete": "Delete",

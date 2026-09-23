@@ -30,6 +30,13 @@ function fmtUsd(n: number | null | undefined) {
   return formatUsdFine(n);
 }
 
+/** «US$ X ($Y)» — the USD facturado with its CLP equivalent in one cell. */
+function formatFacturadoUsdCell(row: CcFacturacionDto): string {
+  const usd = fmtUsd(row.facturado_usd);
+  if (row.facturado_usd_clp == null || !Number.isFinite(row.facturado_usd_clp)) return usd;
+  return `${usd} (${formatClp(row.facturado_usd_clp)})`;
+}
+
 function formatProxyCell(
   proxy: CcProxyFacturacionAggregate | undefined,
   inlineTicker: string
@@ -56,7 +63,6 @@ function FacturacionMobileCard({
     payBy: string;
     facturado: string;
     facturadoUsd: string;
-    facturadoUsdClp: string;
     facturadoTotal: string;
     cuotaAPagar: string;
     proxyEarnings: string;
@@ -80,11 +86,7 @@ function FacturacionMobileCard({
           label={labels.facturado}
           value={formatOrDash(row.facturado_clp, formatClp)}
         />
-        <TableMobileCardRow label={labels.facturadoUsd} value={fmtUsd(row.facturado_usd)} />
-        <TableMobileCardRow
-          label={labels.facturadoUsdClp}
-          value={formatOrDash(row.facturado_usd_clp, formatClp)}
-        />
+        <TableMobileCardRow label={labels.facturadoUsd} value={formatFacturadoUsdCell(row)} />
         <TableMobileCardRow
           label={labels.facturadoTotal}
           value={formatOrDash(row.facturado_total_clp, formatClp)}
@@ -142,7 +144,6 @@ export function CreditCardFacturacionesTable({
     payBy: t("accountDetail.creditCard.colPayBy"),
     facturado: t("account.creditCard.colFacturado"),
     facturadoUsd: t("accountDetail.creditCard.colFacturadoUsd"),
-    facturadoUsdClp: t("accountDetail.creditCard.colFacturadoUsdClp"),
     facturadoTotal: t("accountDetail.creditCard.colFacturadoTotal"),
     cuotaAPagar: t("accountDetail.creditCard.colCuotaAPagar"),
     proxyEarnings: t("accountDetail.creditCard.colProxyEarnings"),
@@ -235,7 +236,6 @@ export function CreditCardFacturacionesTable({
                 <th className="desktop-only">{t("accountDetail.creditCard.colPayBy")}</th>
                 <th className="desktop-only">{t("account.creditCard.colFacturado")}</th>
                 <th className="desktop-only">{t("accountDetail.creditCard.colFacturadoUsd")}</th>
-                <th className="desktop-only">{t("accountDetail.creditCard.colFacturadoUsdClp")}</th>
                 <th className="desktop-only">{t("account.creditCard.colFacturadoTotal")}</th>
                 <th className="desktop-only">{t("accountDetail.creditCard.colCuotaAPagar")}</th>
                 <th className="desktop-only" title={t("accountDetail.creditCard.proxyEarningsHint")}>
@@ -258,8 +258,7 @@ export function CreditCardFacturacionesTable({
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>{row.close_date}</td>
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>{row.pay_by ?? "—"}</td>
                 <td className="mono desktop-only">{formatOrDash(row.facturado_clp, formatClp)}</td>
-                <td className="mono desktop-only">{fmtUsd(row.facturado_usd)}</td>
-                <td className="mono desktop-only">{formatOrDash(row.facturado_usd_clp, formatClp)}</td>
+                <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatFacturadoUsdCell(row)}</td>
                 <td className="mono desktop-only">{formatOrDash(row.facturado_total_clp, formatClp)}</td>
                 <td className="mono desktop-only">{formatOrDash(row.cuota_a_pagar_clp, formatClp)}</td>
                 <td className="mono desktop-only">{formatProxyCell(proxy, inlineTicker)}</td>
