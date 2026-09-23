@@ -771,7 +771,6 @@
       "colCloseDate": "Fecha cierre",
       "colPayBy": "Pagar hasta",
       "colFacturadoUsd": "Facturado US$",
-      "colFacturadoUsdClp": "Facturado US$ (CLP)",
       "colFacturadoTotal": "Facturado total",
       "colCuotaAPagar": "Cuota a pagar",
       "colProxyEarnings": "Ganancia potencial",
@@ -1271,7 +1270,7 @@
     "creditCard": {
       "colBillingMonth": "Mes",
       "colFacturacionPayBy": "Facturación (pagar hasta)",
-      "colFacturado": "Facturado",
+      "colFacturado": "Facturado CLP",
       "colFacturadoTotal": "Facturado total",
       "lineMerchant": "Comercio",
       "manualDelete": "Eliminar",

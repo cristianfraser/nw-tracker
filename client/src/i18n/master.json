@@ -2697,10 +2697,6 @@
         "en": "Billed US$",
         "es": "Facturado US$"
       },
-      "colFacturadoUsdClp": {
-        "en": "Billed US$ (CLP)",
-        "es": "Facturado US$ (CLP)"
-      },
       "colFacturadoTotal": {
         "en": "Total billed",
         "es": "Facturado total"
@@ -4518,8 +4514,8 @@
         "es": "Facturación (pagar hasta)"
       },
       "colFacturado": {
-        "en": "Billed",
-        "es": "Facturado"
+        "en": "Billed CLP",
+        "es": "Facturado CLP"
       },
       "colFacturadoTotal": {
         "en": "Total billed",
