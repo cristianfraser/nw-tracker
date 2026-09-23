@@ -35,7 +35,10 @@ export type CcCardRegistry = {
   /**
    * Boleta «SUC:» header → the bank's merchant string for that store (statement convention,
    * without the `(T)` suffix). Lets a boleta-derived open-month line carry the exact dedupe
-   * key the card feed/statement will print. Unknown sucursales are reported, never guessed.
+   * key the card feed/statement will print. Hand-declared seed only: a sucursal neither this
+   * map nor the learned `grocery_branch_merchants` table names is flagged on the receipt and
+   * LEARNED from the bank's own line for the same day and amount (`groceryBranchLearning.ts`),
+   * never guessed. A declared entry that disagrees with a learned one throws at import.
    */
   boleta_sucursal_merchants: Readonly<Record<string, string>>;
 };

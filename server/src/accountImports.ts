@@ -8,6 +8,7 @@ import {
   creditCardMasterMetaForAccount,
   type CcWebPasteParseResult,
 } from "./ccWebPasteParse.js";
+import type { GroceryBranchLearningResult } from "./groceryBranchLearning.js";
 import { mergeCcAccountFromParsedRows } from "./ccInstallmentLedgerMerge.js";
 import { applyWebPasteInstallmentFirstDueNudges } from "./ccWebPasteInstallmentNudge.js";
 import { removeTruncatedMerchantDuplicateLines } from "./ccTruncatedMerchantDedupe.js";
@@ -69,6 +70,7 @@ export function importCcWebPasteLines(
       skipped_cuota_billing: 0,
       inserted_flows: [] as CcImportFlowItem[],
       skipped_flows: [] as SkippedCcImportFlowItem[],
+      grocery_branch_learning: { learned: [], ambiguous: [] } as GroceryBranchLearningResult,
       parse_errors: parsed.errors,
     };
   }
@@ -110,6 +112,7 @@ export function importCcWebPasteLines(
     ledger: merged.ledger,
     installment_first_due_nudges: firstDueNudges,
     truncated_merchant_dedupe: truncatedDedupe.removed_pairs,
+    grocery_branch_learning: merged.grocery_branch_learning,
     parse_errors: parsed.errors,
   });
 
@@ -125,6 +128,7 @@ export function importCcWebPasteLines(
     overlap_removed: merged.overlap_removed ?? 0,
     installment_first_due_nudges: firstDueNudges,
     truncated_merchant_dedupe: truncatedDedupe.removed_pairs,
+    grocery_branch_learning: merged.grocery_branch_learning,
     inserted_flows,
     skipped_flows: [
       ...skipped_flows,

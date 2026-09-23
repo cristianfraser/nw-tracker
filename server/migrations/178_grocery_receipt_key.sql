@@ -1,0 +1,11 @@
+-- grocery_receipts gains `receipt_key` — the receipt's NATURAL identity
+-- `<chain>|<receipt_number>|<YYYY-MM-DD>` (NOT NULL UNIQUE) — so one boleta reaching the
+-- pipeline through two documents (the «Boleta Digital» e-mail AND a photo of the paper copy)
+-- lands on one row. `source` / `source_key` stay as provenance of the document that currently
+-- owns the row (still UNIQUE per document); which document wins is the importer's source-rank
+-- rule (e-mail outranks photo), not the schema's.
+--
+-- The table is rebuilt (NOT NULL cannot be added by ALTER TABLE), and `grocery_receipt_items`
+-- references it ON DELETE CASCADE — so the rebuild runs in the POST_MIGRATION_HOOKS entry
+-- `groceryReceiptKey178.ts` with foreign keys OFF (FOREIGN_KEYS_OFF_MIGRATIONS in db.ts). This
+-- file is intentionally SQL-free; the hook carries the schema and the assertions.

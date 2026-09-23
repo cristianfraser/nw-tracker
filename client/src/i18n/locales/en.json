@@ -1541,12 +1541,22 @@
       "colDate": "Date",
       "colBranch": "Branch",
       "colCity": "City",
+      "colSource": "Source",
       "colTotal": "Total",
       "colCardPaid": "Card",
       "colItems": "Items",
       "showItems": "View items",
       "hideItems": "Hide items",
-      "none": "No receipts imported yet."
+      "none": "No receipts imported yet.",
+      "source": {
+        "lider_email": "E-mail",
+        "manual_pdf": "PDF",
+        "photo": "Photo"
+      },
+      "cardLine": {
+        "pendingBranch": "New store · no card line yet",
+        "pendingBranchHint": "No merchant name is known for this store yet. The first card line with the same day and amount (paste, feed or statement) pairs this receipt and learns the store's merchant name."
+      }
     },
     "config": {
       "title": "Product configuration",

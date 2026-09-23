@@ -237,9 +237,9 @@ describe("seedNavTree gated sidebar child pages", () => {
     // synthetic receipt present and assert the EDGE exists for every gated page that is on.
     db.prepare(
       `INSERT OR IGNORE INTO grocery_receipts
-         (source, source_key, receipt_number, store_chain, branch, city, purchased_at,
+         (receipt_key, source, source_key, receipt_number, store_chain, branch, city, purchased_at,
           total_clp, discount_total_clp, payments_json, card_paid_clp)
-       VALUES ('vitest', '<vitest-nav@x>', '1', 'lider', 'VITEST', NULL, '2037-01-01 10:00:00',
+       VALUES ('lider|1|2037-01-01', 'vitest', '<vitest-nav@x>', '1', 'lider', 'VITEST', NULL, '2037-01-01 10:00:00',
                1000, 0, '[]', 0)`
     ).run();
     try {

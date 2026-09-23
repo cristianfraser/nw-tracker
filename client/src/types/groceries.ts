@@ -22,15 +22,21 @@ export type GroceryProductRow = {
   last_effective_unit_price_clp: number | null;
 };
 
+/** Document that owns a receipt row — mirrors GROCERY_RECEIPT_SOURCES on the server. */
+export type GroceryReceiptSource = "lider_email" | "manual_pdf" | "photo";
+
 export type GroceryReceiptRow = {
   id: number;
   purchased_at: string;
+  source: GroceryReceiptSource;
   store_chain: string;
   branch: string;
   city: string | null;
   total_clp: number;
   card_paid_clp: number;
   payments: { method: string; amount_clp: number }[];
+  /** Card-line outcome: pending_branch = flagged, waiting for the bank's own line to pair it. */
+  card_line_status: "created" | "covered" | "pending_branch" | "matched" | null;
   item_count: number;
   classified_count: number;
 };

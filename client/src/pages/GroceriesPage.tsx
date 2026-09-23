@@ -6,6 +6,7 @@ import { api } from "../api";
 import { AppLineChart } from "../components/charts/AppLineChart";
 import { buildNiceYAxis, minMaxForKeys } from "../components/charts/chartLayout";
 import { ProductConfigPanel } from "../components/groceries/ProductConfigPanel";
+import { Pill } from "../components/ui/Pill";
 import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
 import { formatClp } from "../format";
 import type {
@@ -630,6 +631,7 @@ export function GroceriesPage() {
                 <th>{t("groceries.receipts.colDate")}</th>
                 <th>{t("groceries.receipts.colBranch")}</th>
                 <th>{t("groceries.receipts.colCity")}</th>
+                <th>{t("groceries.receipts.colSource")}</th>
                 <th className="num">{t("groceries.receipts.colTotal")}</th>
                 <th className="num">{t("groceries.receipts.colCardPaid")}</th>
                 <th className="num">{t("groceries.receipts.colItems")}</th>
@@ -663,16 +665,38 @@ export function GroceriesPage() {
                       ))}
                     </ul>
                   ) : null;
+                // Provenance of the document that owns the row (e-mail PDF, hand-saved PDF, photo).
+                const sourcePill = (
+                  <Pill size="small" label={t(`groceries.receipts.source.${r.source}`)} />
+                );
+                // A card-paid receipt at a store no map names yet: flagged, no card line of its
+                // own until the bank's line for the same day and amount pairs it.
+                const pendingBranchPill =
+                  r.card_line_status === "pending_branch" ? (
+                    <Pill
+                      size="small"
+                      label={t("groceries.receipts.cardLine.pendingBranch")}
+                      title={t("groceries.receipts.cardLine.pendingBranchHint")}
+                    />
+                  ) : null;
+                const cardPaidCell =
+                  r.card_paid_clp > 0 ? (
+                    <>
+                      {formatClp(r.card_paid_clp)}
+                      {pendingBranchPill ? <> {pendingBranchPill}</> : null}
+                    </>
+                  ) : (
+                    "—"
+                  );
                 return (
                   <Fragment key={r.id}>
                     <tr>
                       <td className="desktop-only">{isoMinute(r.purchased_at)}</td>
                       <td className="desktop-only">{r.branch}</td>
                       <td className="desktop-only muted">{r.city ?? "—"}</td>
+                      <td className="desktop-only">{sourcePill}</td>
                       <td className="desktop-only num">{formatClp(r.total_clp)}</td>
-                      <td className="desktop-only num">
-                        {r.card_paid_clp > 0 ? formatClp(r.card_paid_clp) : "—"}
-                      </td>
+                      <td className="desktop-only num">{cardPaidCell}</td>
                       <td className="desktop-only num">
                         {r.classified_count}/{r.item_count}
                       </td>
@@ -680,12 +704,16 @@ export function GroceriesPage() {
                       <td className="mobile-only">
                         <TableMobileCard title={`${isoMinute(r.purchased_at)} · ${r.branch}`}>
                           <TableMobileCardRow
+                            label={t("groceries.receipts.colSource")}
+                            value={sourcePill}
+                          />
+                          <TableMobileCardRow
                             label={t("groceries.receipts.colTotal")}
                             value={formatClp(r.total_clp)}
                           />
                           <TableMobileCardRow
                             label={t("groceries.receipts.colCardPaid")}
-                            value={r.card_paid_clp > 0 ? formatClp(r.card_paid_clp) : "—"}
+                            value={cardPaidCell}
                           />
                           <TableMobileCardRow
                             label={t("groceries.receipts.colItems")}
@@ -698,7 +726,7 @@ export function GroceriesPage() {
                     </tr>
                     {openReceiptId === r.id && itemsRow ? (
                       <tr className="desktop-only">
-                        <td colSpan={7}>{itemsRow}</td>
+                        <td colSpan={8}>{itemsRow}</td>
                       </tr>
                     ) : null}
                   </Fragment>
