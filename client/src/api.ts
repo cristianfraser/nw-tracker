@@ -15,6 +15,24 @@ function demoReadOnlyMessage(status: number, body: string): string | null {
   return i18n.t("demo.readOnly");
 }
 
+/**
+ * Route errors reach the client as `{ "error": "<message>" }` (server terminal error
+ * middleware and most explicit 4xx answers). Surface the message itself, not the JSON text;
+ * any other body shape is shown as-is.
+ */
+export function apiErrorMessage(body: string): string {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed != null && typeof parsed === "object") {
+      const error = (parsed as { error?: unknown }).error;
+      if (typeof error === "string" && error.trim() !== "") return error;
+    }
+  } catch {
+    /* not JSON: the body is the message */
+  }
+  return body;
+}
+
 function isProbablyHtml(body: string) {
   const t = body.trimStart();
   return t.startsWith("<!") || t.startsWith("<html") || t.startsWith("<");
@@ -35,7 +53,7 @@ async function jForm<T>(path: string, form: FormData, method = "POST"): Promise<
     const readOnly = demoReadOnlyMessage(res.status, trimmed);
     if (readOnly) throw new Error(readOnly);
     if (isProbablyHtml(text)) throw new Error(`${API_HINT} (HTTP ${res.status})`);
-    throw new Error(trimmed || res.statusText);
+    throw new Error(trimmed ? apiErrorMessage(trimmed) : res.statusText);
   }
   if (trimmed === "") return undefined as T;
   return JSON.parse(trimmed) as T;
@@ -67,7 +85,7 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
     if (isProbablyHtml(text)) {
       throw new Error(`${API_HINT} (HTTP ${res.status})`);
     }
-    throw new Error(trimmed || res.statusText);
+    throw new Error(trimmed ? apiErrorMessage(trimmed) : res.statusText);
   }
 
   if (res.status === 204 || trimmed === "") {
