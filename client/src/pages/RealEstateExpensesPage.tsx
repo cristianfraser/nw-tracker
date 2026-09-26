@@ -8,7 +8,8 @@ import { Table } from "../components/ui/Table";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { monthYearMetricsPeriod } from "../dashboardCardBreakdown";
-import { clipPointsToTimeRange } from "../timeRange";
+import { clipMonthsThenRollup } from "../timeRange";
+import { rollupChartPointsByYear } from "../flowsDisplay";
 import { formatClp, formatGroupedDecimalTrimmed } from "../format";
 import { expenseKindLabel, useTranslation } from "../i18n";
 import { useRealEstateExpenses } from "../queries/hooks";
@@ -131,8 +132,12 @@ export function RealEstateExpensesPage() {
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
-    const base = granularity === "year" ? data.chart_yearly : data.chart_monthly;
-    return clipPointsToTimeRange(base, timeRange);
+    // Every place and the total are flows. Months cut at the Rango start, then rolled up: the
+    // yearly chart starts with a partial first year.
+    const placeKeys = [...data.places.map((p) => p.slug), "total"];
+    return clipMonthsThenRollup(data.chart_monthly, granularity, timeRange, (rows) =>
+      rollupChartPointsByYear(rows, placeKeys)
+    );
   }, [data, granularity, timeRange]);
 
   const places = useMemo(() => data?.places ?? [], [data]);

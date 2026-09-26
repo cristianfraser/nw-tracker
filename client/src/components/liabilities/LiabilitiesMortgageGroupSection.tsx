@@ -11,7 +11,7 @@ import { DailyPerfDetailTable } from "../account/DailyPerfDetailTable";
 import { rollupPerfPointsYearly } from "../../dashboardTimeseriesYearly";
 import { buildDailyPerfComboPoints } from "../../dailyPerfCombo";
 import { useDailySeries } from "../../queries/hooks";
-import { timeRangeToDays } from "../../timeRange";
+import { clipMonthsThenRollup, timeRangeToDays } from "../../timeRange";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
@@ -112,6 +112,7 @@ export function LiabilitiesMortgageGroupSection({
     });
   }, [isDaily, dailySeries.data, monthlyPerfRows, summary.account_id]);
 
+  // Yearly combos: months cut at the combos' Rango first, then rolled up (a partial first year).
   const ytdChartPoints = useMemo(() => {
     if (!monthlyPerfRows.length) return [];
     const monthly = [...monthlyPerfRows].reverse().map((r) => ({
@@ -120,11 +121,13 @@ export function LiabilitiesMortgageGroupSection({
       ytd_nominal_pl: r.ytd_nominal_pl ?? 0,
     }));
     if (!isYearly) return monthly;
-    return rollupPerfPointsYearly(monthly, {
-      sumKeys: ["nominal_pl"],
-      ytdKey: "ytd_nominal_pl",
-    });
-  }, [monthlyPerfRows, isYearly]);
+    return clipMonthsThenRollup(monthly, "year", timeRange, (months) =>
+      rollupPerfPointsYearly(months, {
+        sumKeys: ["nominal_pl"],
+        ytdKey: "ytd_nominal_pl",
+      })
+    );
+  }, [monthlyPerfRows, isYearly, timeRange]);
 
   const accChartPoints = useMemo(() => {
     if (!monthlyPerfRows.length) return [];
@@ -134,11 +137,13 @@ export function LiabilitiesMortgageGroupSection({
       accumulated_earnings: r.cumulative_nominal_pl ?? 0,
     }));
     if (!isYearly) return monthly;
-    return rollupPerfPointsYearly(monthly, {
-      sumKeys: ["delta_month"],
-      accumKey: "accumulated_earnings",
-    });
-  }, [monthlyPerfRows, isYearly]);
+    return clipMonthsThenRollup(monthly, "year", timeRange, (months) =>
+      rollupPerfPointsYearly(months, {
+        sumKeys: ["delta_month"],
+        accumKey: "accumulated_earnings",
+      })
+    );
+  }, [monthlyPerfRows, isYearly, timeRange]);
 
   const title = sectionTitle ?? t("groupPage.pasivos.mortgageSectionTitle");
   const hint = sectionHint ?? t("groupPage.pasivos.mortgageSectionHint");

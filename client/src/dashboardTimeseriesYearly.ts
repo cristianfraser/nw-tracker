@@ -32,72 +32,33 @@ export function rollupTimeseriesBlockYearEnd(block: TimeseriesBlock): Timeseries
   return { accounts, lines, points: newPoints, referenceMilestoneByDate: block.referenceMilestoneByDate };
 }
 
-/**
- * One point per calendar year: **sums** monthly retirement/brokerage class deltas;
- * `ytd_combined` = that year’s combined total (same as `delta_combined` for each year row);
- * `accumulated_earnings` = running sum of annual combined totals from the first year.
- */
-export function rollupRetirementBrokeragePerfYearly(
-  points: Record<string, string | number | null>[]
-): Record<string, string | number | null>[] {
-  if (!points.length) return [];
-
-  const byY = new Map<number, { ret: number; brk: number }>();
-  for (const row of points) {
-    const y = calendarYearFromAsOf(String(row.as_of_date ?? ""));
-    if (y == null) continue;
-    const ret =
-      typeof row.delta_retirement === "number" && Number.isFinite(row.delta_retirement)
-        ? row.delta_retirement
-        : 0;
-    const brk =
-      typeof row.delta_brokerage === "number" && Number.isFinite(row.delta_brokerage) ? row.delta_brokerage : 0;
-    const cur = byY.get(y) ?? { ret: 0, brk: 0 };
-    cur.ret += ret;
-    cur.brk += brk;
-    byY.set(y, cur);
-  }
-
-  const years = [...byY.keys()].sort((a, b) => a - b);
-  let cumLife = 0;
-  const out: Record<string, string | number | null>[] = [];
-  for (const y of years) {
-    const { ret, brk } = byY.get(y)!;
-    const combined = ret + brk;
-    cumLife += combined;
-    out.push({
-      as_of_date: `${y}-12-31`,
-      delta_retirement: ret,
-      delta_brokerage: brk,
-      delta_combined: combined,
-      ytd_combined: combined,
-      accumulated_earnings: cumLife,
-    });
-  }
-  return out;
-}
-
 function numField(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 
 export type RollupPerfPointsYearlyOpts = {
   /** Monthly delta keys to sum within each calendar year. */
-  sumKeys: string[];
-  /** YTD area key → annual total for that year (optional). */
+  sumKeys: readonly string[];
+  /** YTD area key → the year's own total (optional). */
   ytdKey?: string;
-  /** Cumulative area key → running sum of annual totals (optional). */
+  /**
+   * Accumulated area key (optional) → the lifetime running level the monthly rows carry, taken
+   * from the year's LAST row — never re-summed from the rows, so a year whose months were cut at
+   * a Rango start keeps the full-history figure the monthly and daily views show.
+   */
   accumKey?: string;
   /** Combined Δ line / total (optional; summed when present on rows). */
   totalKey?: string;
 };
 
 /**
- * One point per calendar year: sums monthly performance deltas; optional YTD = annual total,
- * optional cumulative = running sum of annual totals (same rules as dashboard retirement/brokerage rollup).
+ * One point per calendar year from monthly P/L rows: the deltas and the total sum, YTD is the
+ * year's total, the accumulated level is sampled at year-end. The P/L combos feed it through
+ * `clipMonthsThenRollup`, so a Rango that starts mid-year gives a partial first year — its bars,
+ * total and YTD cover only the months inside the range.
  */
 export function rollupPerfPointsYearly(
-  points: Record<string, string | number | null>[],
+  points: readonly Record<string, string | number | null>[],
   opts: RollupPerfPointsYearlyOpts
 ): Record<string, string | number | null>[] {
   if (!points.length) return [];
@@ -111,7 +72,6 @@ export function rollupPerfPointsYearly(
     byYear.get(y)!.push(row);
   }
 
-  let cumLife = 0;
   const years = [...byYear.keys()].sort((a, b) => a - b);
   const out: Record<string, string | number | null>[] = [];
 
@@ -136,8 +96,15 @@ export function rollupPerfPointsYearly(
 
     if (opts.ytdKey) pt[opts.ytdKey] = deltaTotal;
     if (opts.accumKey) {
-      cumLife += deltaTotal;
-      pt[opts.accumKey] = cumLife;
+      const yearEnd = rows.reduce((a, r) =>
+        String(r.as_of_date ?? "") >= String(a.as_of_date ?? "") ? r : a
+      );
+      const level = yearEnd[opts.accumKey];
+      if (typeof level !== "number" || !Number.isFinite(level)) {
+        const day = String(yearEnd.as_of_date);
+        throw new Error(`rollupPerfPointsYearly: ${opts.accumKey} missing on the ${day} row`);
+      }
+      pt[opts.accumKey] = level;
     }
 
     out.push(pt);

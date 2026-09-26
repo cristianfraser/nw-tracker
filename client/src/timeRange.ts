@@ -51,3 +51,25 @@ export function clipPointsToTimeRange<T extends { as_of_date?: string | number |
   if (cutoff == null) return [...points];
   return points.filter((p) => String(p.as_of_date ?? "") >= cutoff);
 }
+
+/**
+ * Month/year chart rows under a Rango, in the one order every M/Y chart applies them: the
+ * MONTHLY rows are cut at the range start first ({@link clipPointsToTimeRange} — a month stays
+ * when its row date, the month-end, is on or after the cutoff), and only then does the yearly
+ * view roll the survivors up to calendar years. Every yearly chart therefore starts with a
+ * PARTIAL first year — just its months inside the range — so a yearly bar is the sum of the
+ * monthly bars it covers in the same window, and an «en el rango» total summed from the rows
+ * reads the same at both grains. Never roll up first and clip the whole-year rows after: that
+ * keeps the first year whole. Levels a rollup samples at year-end (a cumulative total) are
+ * unaffected by the cut. Tables don't come through here — they cover full history.
+ */
+export function clipMonthsThenRollup<M extends { as_of_date?: string | number | null }, Y = M>(
+  monthlyRows: readonly M[],
+  period: "month" | "year",
+  range: TimeRange,
+  rollupByYear: (monthsInRange: readonly M[]) => Y[],
+  todayYmd?: string
+): (M | Y)[] {
+  const monthsInRange = clipPointsToTimeRange(monthlyRows, range, todayYmd);
+  return period === "year" ? rollupByYear(monthsInRange) : monthsInRange;
+}

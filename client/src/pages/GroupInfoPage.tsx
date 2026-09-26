@@ -329,7 +329,7 @@ export function GroupInfoPage() {
     displayValuationBlock,
     displayGroupPerf,
     valuationIsYearly: valuationPrefs.period === "year",
-    perfIsYearly: perfPrefs.period === "year",
+    perfYearlyRange: perfPrefs.period === "year" ? perfPrefs.range : null,
     chartColorSlug,
     pieAllocationSlug,
     colorPlanGroupSlug: chartCtx?.colorPlanGroupSlug ?? "inversiones",

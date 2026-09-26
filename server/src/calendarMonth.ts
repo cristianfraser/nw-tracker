@@ -163,31 +163,6 @@ export function densifyMonthlyPoints<T extends { as_of_date: string }>(
   return allYms.map((ym) => byYm.get(ym) ?? makeEmpty(monthEndUtcYmd(ym)));
 }
 
-/**
- * Fill every year between first and last point.
- * `makeEmpty` receives a `YYYY-12-31` date string for the missing year.
- */
-export function densifyYearlyPoints<T extends { as_of_date: string }>(
-  points: readonly T[],
-  makeEmpty: (asOfDate: string) => T
-): T[] {
-  if (points.length === 0) return [];
-  const byYear = new Map<number, T>();
-  for (const p of points) {
-    const y = Number(p.as_of_date.slice(0, 4));
-    if (!Number.isFinite(y)) continue;
-    const prev = byYear.get(y);
-    if (!prev || p.as_of_date > prev.as_of_date) byYear.set(y, p);
-  }
-  const years = [...byYear.keys()].sort((a, b) => a - b);
-  if (years.length === 0) return [...points];
-  const out: T[] = [];
-  for (let y = years[0]!; y <= years[years.length - 1]!; y++) {
-    out.push(byYear.get(y) ?? makeEmpty(`${y}-12-31`));
-  }
-  return out;
-}
-
 /** Every `YYYY-MM` from `minYm` through `maxYm` inclusive. */
 export function expandYearMonthsInclusive(minYm: string, maxYm: string): string[] {
   const out: string[] = [];

@@ -133,9 +133,6 @@ function scaleDashboardDash(
             monthly_usd:
               dash.inversiones_deposits_chart.monthly_usd ??
               scaleDepositSeries(dash.inversiones_deposits_chart.monthly_clp, factor),
-            yearly_usd:
-              dash.inversiones_deposits_chart.yearly_usd ??
-              scaleDepositSeries(dash.inversiones_deposits_chart.yearly_clp, factor),
           },
         }
       : {}),

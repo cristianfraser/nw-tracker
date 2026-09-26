@@ -32,10 +32,8 @@ import {
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { allocationBucketColor } from "../chartColors";
 import { appendTrailingMovingAverage } from "../chartMovingAverage";
-import {
-  rollupRetirementBrokeragePerfYearly,
-  rollupTimeseriesBlockYearEnd,
-} from "../dashboardTimeseriesYearly";
+import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../dashboardTimeseriesYearly";
+import { rollupChartPointsByYear } from "../flowsDisplay";
 import { useTranslation } from "../i18n";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import {
@@ -45,7 +43,7 @@ import {
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
 import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
-import { timeRangeToDays } from "../timeRange";
+import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
 import { useDailySeries } from "../queries/hooks";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
@@ -64,6 +62,43 @@ const DAILY_OVERVIEW_LINE_KEYS = new Set([
   "invested",
   "liabilities",
 ]);
+
+type ComboRow = Record<string, string | number | null>;
+type DepositedPoint = { as_of_date: string; deposited: number };
+
+/** The P/L combos' yearly rows: class Δs and the combined Δ sum, accumulated is year-end. */
+function rollupCombinedPerfYearly(months: readonly ComboRow[]): ComboRow[] {
+  return rollupPerfPointsYearly(months, {
+    sumKeys: ["delta_retirement", "delta_brokerage"],
+    ytdKey: "ytd_combined",
+    accumKey: "accumulated_earnings",
+    totalKey: "delta_combined",
+  });
+}
+
+function rollupDepositedByYear(months: readonly DepositedPoint[]): DepositedPoint[] {
+  return rollupChartPointsByYear(months, ["deposited"]);
+}
+
+/** Retiro + brokerage net deposits of each row's period, joined by date (0 when none). */
+function withInversionesDeposits(
+  rows: readonly ComboRow[],
+  deposits: readonly DepositedPoint[]
+): ComboRow[] {
+  const byDate = new Map(deposits.map((p) => [p.as_of_date, p.deposited]));
+  return rows.map((row) => ({
+    ...row,
+    deposits_inversiones: byDate.get(String(row.as_of_date ?? "")) ?? 0,
+  }));
+}
+
+function withInversionesMovingAverages(rows: ComboRow[]): ComboRow[] {
+  return appendTrailingMovingAverage(
+    appendTrailingMovingAverage(rows, "delta_combined", "delta_combined_ma3"),
+    "deposits_inversiones",
+    "deposits_inversiones_ma3"
+  );
+}
 
 export function DashboardPage() {
   const { t } = useTranslation();
@@ -302,8 +337,14 @@ export function DashboardPage() {
   const retirementBrokerageForCharts = useMemo(() => {
     if (!retirementBrokeragePerfPoints.length) return [];
     if (!isYearly) return retirementBrokeragePerfPoints;
-    return rollupRetirementBrokeragePerfYearly(retirementBrokeragePerfPoints);
-  }, [retirementBrokeragePerfPoints, isYearly]);
+    // Months cut at the combos' Rango first, then rolled up: a partial first year.
+    return clipMonthsThenRollup(
+      retirementBrokeragePerfPoints,
+      "year",
+      combosPrefs.range,
+      rollupCombinedPerfYearly
+    );
+  }, [retirementBrokeragePerfPoints, isYearly, combosPrefs.range]);
 
   // Day mode P/L bars: the two invested buckets' own daily series (shared `pg:` builds, warm
   // from their group pages). Synthetic bar accounts map them onto the monthly chart's keys.
@@ -356,24 +397,48 @@ export function DashboardPage() {
 
   const retirementBrokerageAccumChart = useMemo(() => {
     const depChart = dash?.inversiones_deposits_chart;
-    const depositSeries = !depChart
+    const monthlyDeposits = !depChart
       ? []
-      : isYearly
-        ? showUsd && depChart.yearly_usd
-          ? depChart.yearly_usd
-          : depChart.yearly_clp
-        : showUsd && depChart.monthly_usd
-          ? depChart.monthly_usd
-          : depChart.monthly_clp;
-    const depByDate = new Map(depositSeries.map((p) => [p.as_of_date, p.deposited]));
-    let rows: Record<string, string | number | null>[] = retirementBrokerageForCharts.map((row) => ({
-      ...row,
-      deposits_inversiones: depByDate.get(String(row.as_of_date ?? "")) ?? 0,
-    }));
-    rows = appendTrailingMovingAverage(rows, "delta_combined", "delta_combined_ma3");
-    rows = appendTrailingMovingAverage(rows, "deposits_inversiones", "deposits_inversiones_ma3");
-    return rows;
-  }, [retirementBrokerageForCharts, dash?.inversiones_deposits_chart, isYearly, showUsd]);
+      : showUsd && depChart.monthly_usd
+        ? depChart.monthly_usd
+        : depChart.monthly_clp;
+    if (!isYearly) {
+      // The chart clips the months; the MA3 trails the full history.
+      return withInversionesMovingAverages(
+        withInversionesDeposits(retirementBrokerageForCharts, monthlyDeposits)
+      );
+    }
+    // Yearly: the deposits companion goes through the same months-then-rollup order as the P/L
+    // rows (a partial first year), while the MA3 trails the FULL-history years — a partial first
+    // year must not drag it, and the first visible years keep their trailing context, as in the
+    // monthly view.
+    const plotted = withInversionesDeposits(
+      retirementBrokerageForCharts,
+      clipMonthsThenRollup(monthlyDeposits, "year", combosPrefs.range, rollupDepositedByYear)
+    );
+    const fullYears = withInversionesMovingAverages(
+      withInversionesDeposits(
+        rollupCombinedPerfYearly(retirementBrokeragePerfPoints),
+        rollupDepositedByYear(monthlyDeposits)
+      )
+    );
+    const maByDate = new Map(fullYears.map((row) => [String(row.as_of_date ?? ""), row]));
+    return plotted.map((row) => {
+      const ma = maByDate.get(String(row.as_of_date ?? ""));
+      return {
+        ...row,
+        delta_combined_ma3: ma?.delta_combined_ma3 ?? null,
+        deposits_inversiones_ma3: ma?.deposits_inversiones_ma3 ?? null,
+      };
+    });
+  }, [
+    retirementBrokerageForCharts,
+    retirementBrokeragePerfPoints,
+    dash?.inversiones_deposits_chart,
+    isYearly,
+    showUsd,
+    combosPrefs.range,
+  ]);
 
   // Each valuation chart rolls up (or not) per its OWN period control.
   const overviewBlock = useMemo((): TimeseriesBlock | null => {

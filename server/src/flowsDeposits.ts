@@ -4,7 +4,7 @@ import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { loadMergedDisplayDepositInflowEvents, type DepositInflowEvent } from "./accountDeposits.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { densifyMonthlyPoints, densifyYearlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
+import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import {
@@ -69,10 +69,12 @@ export type FlowDepositChartPoint = {
 
 export type FlowDepositsPayload = {
   rows: FlowDepositRow[];
+  /**
+   * Monthly only: a yearly chart rolls these up client-side AFTER cutting the months at its own
+   * Rango (a partial first year), so a pre-rolled yearly block would be clipped whole instead.
+   */
   chart_monthly: FlowDepositChartPoint[];
-  chart_yearly: FlowDepositChartPoint[];
   chart_monthly_usd: FlowDepositChartPoint[];
-  chart_yearly_usd: FlowDepositChartPoint[];
   net_total_clp: number;
   net_total_usd: number | null;
   /** True when at least one non-zero row could not be converted to USD (missing `fx_daily`). */
@@ -127,11 +129,7 @@ export function depositClpToUsdAtDate(clp: number, occurredOn: string): number |
   return clpToUsdAtDate(clp, occurredOn);
 }
 
-function periodEndFromOccurredOn(occurredOn: string, granularity: "month" | "year"): string {
-  if (granularity === "year") {
-    const y = occurredOn.slice(0, 4);
-    return `${y}-12-31`;
-  }
+function monthEndFromOccurredOn(occurredOn: string): string {
   const mk = monthKeyFromYmd(occurredOn);
   return mk ? monthEndUtcYmd(mk) : occurredOn;
 }
@@ -273,10 +271,8 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
     return d !== 0 ? d : a.account_name.localeCompare(b.account_name);
   });
 
-  const chart_monthly = aggregateDepositChartPoints(rows, "month", "clp");
-  const chart_yearly = aggregateDepositChartPoints(rows, "year", "clp");
-  const chart_monthly_usd = aggregateDepositChartPoints(rows, "month", "usd");
-  const chart_yearly_usd = aggregateDepositChartPoints(rows, "year", "usd");
+  const chart_monthly = aggregateDepositChartPoints(rows, "clp");
+  const chart_monthly_usd = aggregateDepositChartPoints(rows, "usd");
 
   const by_category = {} as Record<
     DepositFlowCategory,
@@ -307,9 +303,7 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
   return {
     rows,
     chart_monthly,
-    chart_yearly,
     chart_monthly_usd,
-    chart_yearly_usd,
     by_category,
     net_total_clp,
     net_total_usd,
@@ -320,7 +314,6 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
 
 function aggregateDepositChartPoints(
   rows: readonly FlowDepositRow[],
-  granularity: "month" | "year",
   unit: "clp" | "usd"
 ): FlowDepositChartPoint[] {
   if (unit === "usd" && rows.some((r) => r.amount_clp !== 0 && r.amount_usd == null)) {
@@ -328,7 +321,7 @@ function aggregateDepositChartPoints(
   }
   const byPeriod = new Map<string, FlowDepositChartPoint>();
   for (const r of rows) {
-    const pe = periodEndFromOccurredOn(r.occurred_on, granularity);
+    const pe = monthEndFromOccurredOn(r.occurred_on);
     let pt = byPeriod.get(pe);
     if (!pt) {
       pt = {
@@ -354,7 +347,6 @@ function aggregateDepositChartPoints(
   const emptyPoint = (as_of_date: string): FlowDepositChartPoint => ({
     as_of_date, real_estate: 0, cash: 0, brokerage: 0, inversiones: 0, total: 0,
   });
-  if (granularity === "year") return densifyYearlyPoints(sorted, emptyPoint);
   return densifyMonthlyPoints(sorted, emptyPoint);
 }
 

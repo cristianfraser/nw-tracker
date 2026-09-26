@@ -53,7 +53,6 @@ function clpDashboardBundle(): DashboardBundle {
       accounts: [],
       inversiones_deposits_chart: {
         monthly_clp: [{ as_of_date: "2025-01-31", deposited: 190_000 }],
-        yearly_clp: [{ as_of_date: "2025-12-31", deposited: 950_000 }],
       },
     },
     ts: {
@@ -104,7 +103,6 @@ describe("convertDashboardBundleUnit (CLP → USD)", () => {
     const usd = convertDashboardBundleUnit(clpDashboardBundle(), "usd", RATE);
     expect(usd.dash.allocation[0]!.value_usd).toBeCloseTo(1_000, 6);
     expect(usd.dash.inversiones_deposits_chart!.monthly_usd![0]!.deposited).toBeCloseTo(200, 6);
-    expect(usd.dash.inversiones_deposits_chart!.yearly_usd![0]!.deposited).toBeCloseTo(1_000, 6);
     // dates are preserved, not scaled.
     expect(usd.ts.overview!.points[0]!.as_of_date).toBe("2025-01-31");
   });
