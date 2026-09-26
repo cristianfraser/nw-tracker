@@ -8,7 +8,7 @@
 import { billingMonthForPurchaseDate, loadCreditCardBillingConfig } from "../src/ccBillingMonth.js";
 import { ccFinancingCostClpByDate } from "../src/ccFinancingCostDaily.js";
 import { listCreditCardMasterAccountIds } from "../src/creditCardTree.js";
-import { statementSection3ChargesClpForBillingMonth } from "../src/ccStatementSection3.js";
+import { statementSection3ChargesClpForBillingMonth } from "../src/creditCardPerformancePl.js";
 
 const argIds = process.argv.slice(2).map(Number).filter((n) => Number.isFinite(n) && n > 0);
 const accountIds = argIds.length ? argIds : listCreditCardMasterAccountIds();

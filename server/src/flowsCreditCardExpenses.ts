@@ -52,9 +52,10 @@ import {
 } from "./ccInstallmentLineDedupe.js";
 
 import {
-  effectiveCcExpenseLineAmountClp,
+  effectiveCcExpenseLineAmountClpWith,
   effectiveCcExpenseLineAmountUsd,
 } from "./ccExpenseAmountClp.js";
+import { facturacionUsdRateResolver } from "./ccBillingViews.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
@@ -794,6 +795,17 @@ export function buildCcExpenseLines(
     if (!months) facturacionMonthsByAccount.set(accountId, (months = facturacionMonthByStatementDate(accountId)));
     return months;
   };
+  // A line's dollars show at the rate its facturación was paid (today's while unpaid) — the rate
+  // the facturación's row carries — so the facturación modal's lines add up to its row.
+  const usdRateResolverByAccount = new Map<number, (billingMonth: string) => number>();
+  const usdRateFor = (accountId: number, billingMonth: string): number => {
+    let resolve = usdRateResolverByAccount.get(accountId);
+    if (!resolve) {
+      resolve = facturacionUsdRateResolver(accountId, billingDetailCacheForAccount(accountId).facturaciones);
+      usdRateResolverByAccount.set(accountId, resolve);
+    }
+    return resolve(billingMonth);
+  };
 
 
 
@@ -817,7 +829,9 @@ export function buildCcExpenseLines(
 
 
 
-    const amount = effectiveCcExpenseLineAmountClp(row, statementDateIso);
+    const amount = effectiveCcExpenseLineAmountClpWith(row, (usd) =>
+      Math.round(usd * usdRateFor(row.account_id, billingMonth))
+    );
 
     if (amount == null || amount === 0) continue;
 

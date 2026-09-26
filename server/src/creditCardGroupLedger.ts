@@ -46,6 +46,17 @@ function weakerCloseSource(a: CcCloseSource, b: CcCloseSource): CcCloseSource {
   return CLOSE_SOURCE_RANK[a] <= CLOSE_SOURCE_RANK[b] ? a : b;
 }
 
+function mergedUsdRate(
+  a: CcFacturacionRow,
+  b: CcFacturacionRow
+): Pick<CcFacturacionRow, "usd_rate_clp" | "usd_rate_source"> {
+  if (a.usd_rate_clp == null) return { usd_rate_clp: b.usd_rate_clp, usd_rate_source: b.usd_rate_source };
+  if (b.usd_rate_clp == null) return { usd_rate_clp: a.usd_rate_clp, usd_rate_source: a.usd_rate_source };
+  return a.usd_rate_clp === b.usd_rate_clp && a.usd_rate_source === b.usd_rate_source
+    ? { usd_rate_clp: a.usd_rate_clp, usd_rate_source: a.usd_rate_source }
+    : { usd_rate_clp: null, usd_rate_source: null };
+}
+
 function mergeFacturaciones(ledgers: CcLedgerResponse[]): CcFacturacionRow[] {
   const byMonth = new Map<string, CcFacturacionRow>();
   for (const ledger of ledgers) {
@@ -77,6 +88,9 @@ function mergeFacturaciones(ledgers: CcLedgerResponse[]): CcFacturacionRow[] {
           prev.billing_month >= row.billing_month ? prev.close_date_iso : row.close_date_iso,
         pay_by: prev.pay_by ?? row.pay_by,
         pay_by_iso: prev.pay_by_iso ?? row.pay_by_iso,
+        // Each card's dollars are already in pesos at its own rate; a merged row names a rate only
+        // when the members agree (or just one bills in dollars).
+        ...mergedUsdRate(prev, row),
       });
     }
   }

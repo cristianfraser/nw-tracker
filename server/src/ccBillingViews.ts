@@ -5,10 +5,16 @@ import {
   listCcBillingMonthBalances,
   facturadoFromStatement,
   openMonthUsdFacturado,
+  payByFxDateIso,
   postCloseLiveBalanceAdjustmentsClp,
   type CcBillingMonthBalanceRow,
 } from "./ccBillingBalances.js";
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
+import {
+  accountHasUsdStatements,
+  facturacionUsdRatesForAccount,
+  type FacturacionUsdRateSource,
+} from "./ccFacturacionUsdRate.js";
 import { withCcOneShotScanCache } from "./ccCrossImportDedupe.js";
 import {
   statementSlotsByBillingMonth,
@@ -81,6 +87,13 @@ export type CcFacturacionRow = {
   close_date_source: CcCloseSource;
   /** Provisional month with the bank's total: what the app had estimated for it (únicos + cuotas). */
   provisional_estimate_total_clp: number | null;
+  /**
+   * The USD/CLP rate this facturación's dollar charges show at — `facturado_usd_clp` and its
+   * expense lines: the rate actually paid, today's while unpaid (`ccFacturacionUsdRate.ts`).
+   * Null on a card that never billed in dollars.
+   */
+  usd_rate_clp: number | null;
+  usd_rate_source: FacturacionUsdRateSource | null;
 };
 
 function pickSnapshotRow(
@@ -207,7 +220,7 @@ export function facturadoTotalClpForStatementSlot(
   const { pay_by_iso: payByIso } = resolveFacturacionPayBy(slot, primary);
   const facturadoUsdClp =
     facturadoUsd != null
-      ? usdToClpAtPayBy(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
+      ? usdToClpAsDebt(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
       : null;
   const total = (facturadoClp ?? 0) + (facturadoUsdClp ?? 0);
   return total > 0 ? total : null;
@@ -380,17 +393,18 @@ type ProvisionalFacturado = {
   estimate_total_clp: number;
 };
 
-function signedUsdToClpAtPayBy(usd: number, payByIso: string | null): number | null {
+function signedUsdToClpAsDebt(usd: number, payByIso: string | null): number | null {
   if (usd === 0) return 0;
-  const abs = usdToClpAtPayBy(Math.abs(usd), payByIso);
+  const abs = usdToClpAsDebt(Math.abs(usd), payByIso);
   return abs == null ? null : usd < 0 ? -abs : abs;
 }
 
 /**
  * Facturado of a provisionally closed month. When the feed observed the close, the bank already
  * stated the billed total per currency (SALDO INICIAL = «Monto total facturado», verified against
- * statements) and it replaces the app's estimate outright; the USD side is valued at the pay-by
- * like a statement's. When only the announced close has passed, the estimate stands.
+ * statements) and it replaces the app's estimate outright; the USD side is valued as debt
+ * (pay-by − 1) like a statement's — the facturaciones row then shows it at its own rate. When
+ * only the announced close has passed, the estimate stands.
  */
 function provisionalFacturado(
   accountId: number,
@@ -423,7 +437,7 @@ function provisionalFacturado(
   const facturado_clp = Math.round(feed.saldo_inicial_clp ?? 0);
   const facturado_usd = feed.saldo_inicial_usd;
   const facturado_usd_clp =
-    facturado_usd != null ? signedUsdToClpAtPayBy(facturado_usd, pay_by_iso) : null;
+    facturado_usd != null ? signedUsdToClpAsDebt(facturado_usd, pay_by_iso) : null;
   if (facturado_usd != null && facturado_usd !== 0 && facturado_usd_clp == null) {
     throw new Error(
       `Account ${accountId} ${billingMonth}: no USD/CLP rate for the pay-by ${pay_by_iso} of the ` +
@@ -727,12 +741,34 @@ function appendProjectedBillingDetailRows(
   return projected.length > 0 ? [...existing, ...projected] : existing;
 }
 
-function usdToClpAtPayBy(usd: number, payByIso: string | null): number | null {
-  if (!Number.isFinite(usd) || usd <= 0) return null;
-  const fxDate = payByIso ?? "";
-  const fx = fxMonthEndForBalanceUsd(fxDate);
+/** USD valued as debt for a facturación paid by `payByIso`: the pay-by − 1 rate (`balanceUsdFxDateIso`). */
+function usdToClpAsDebt(usd: number, payByIso: string | null): number | null {
+  if (!Number.isFinite(usd) || usd <= 0 || !payByIso) return null;
+  const fx = fxMonthEndForBalanceUsd(payByFxDateIso(payByIso));
   if (!fx?.clp_per_usd || fx.clp_per_usd <= 0) return null;
   return Math.round(usd * fx.clp_per_usd);
+}
+
+/**
+ * Re-values each facturación's dollar side at the rate it shows — the rate actually paid, today's
+ * while unpaid (`ccFacturacionUsdRate.ts`) — instead of the debt frame the builder uses (pay-by − 1,
+ * which the detalle, the owed walk and the month-end anchors keep). `facturado_clp` is untouched,
+ * so the total is its CLP side plus the re-valued dollars.
+ */
+function applyFacturacionUsdRates(accountId: number, rows: CcFacturacionRow[]): void {
+  if (!accountHasUsdStatements(accountId)) return;
+  const rates = facturacionUsdRatesForAccount(accountId, rows);
+  for (const row of rows) {
+    const rate = rates.get(row.billing_month);
+    if (!rate) throw new Error(`Account ${accountId}: no USD rate for facturación ${row.billing_month}`);
+    row.usd_rate_clp = rate.clp_per_usd;
+    row.usd_rate_source = rate.source;
+    if (row.facturado_usd == null) continue;
+    const shown = Math.round(row.facturado_usd * rate.clp_per_usd);
+    const total = (row.facturado_clp ?? 0) + shown;
+    row.facturado_usd_clp = shown;
+    row.facturado_total_clp = row.facturado_total_clp == null && total <= 0 ? null : total;
+  }
 }
 
 function isoToDdMmYyyy(iso: string): string {
@@ -798,6 +834,40 @@ export function facturacionPayByIsoResolver(
   };
 }
 
+/**
+ * The USD/CLP rate a facturación's dollar lines show at: its row's `usd_rate_clp`, so its expense
+ * lines add up to the row. A month the table has no row for yet (the open month before any bucket
+ * lands in it, while a stale bucket's leftovers already belong to it) gets the rate its open row
+ * would carry. Throws on a card that never billed in dollars (it has no rate).
+ */
+export function facturacionUsdRateResolver(
+  accountId: number,
+  facturaciones: readonly CcFacturacionRow[]
+): (billingMonth: string) => number {
+  const byMonth = new Map<string, number | null>(
+    facturaciones.map((f) => [f.billing_month, f.usd_rate_clp])
+  );
+  return (billingMonth) => {
+    if (!byMonth.has(billingMonth)) {
+      const close = closeDateForBillingMonth(accountId, billingMonth).close_iso;
+      const rates = facturacionUsdRatesForAccount(accountId, [
+        ...facturaciones,
+        {
+          billing_month: billingMonth,
+          close_date_iso: close,
+          pay_by_iso: resolveInstallmentPayByIso({ statement_date: close }),
+        },
+      ]);
+      byMonth.set(billingMonth, rates.get(billingMonth)!.clp_per_usd);
+    }
+    const rate = byMonth.get(billingMonth);
+    if (rate == null) {
+      throw new Error(`Account ${accountId}: facturación ${billingMonth} has no USD rate for its dollar lines`);
+    }
+    return rate;
+  };
+}
+
 function buildFacturacionesInner(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[]
@@ -845,7 +915,7 @@ function buildFacturacionesInner(
     const { pay_by, pay_by_iso: payByIso } = resolveFacturacionPayBy(slot, primary);
     let facturadoUsdClp =
       facturadoUsd != null
-        ? usdToClpAtPayBy(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
+        ? usdToClpAsDebt(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
         : null;
     const cuotaAPagarClp = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
     const cuotaAPagar = cuotaAPagarClp > 0 ? cuotaAPagarClp : null;
@@ -892,6 +962,8 @@ function buildFacturacionesInner(
       is_provisional_close: false,
       close_date_source: openClose?.source ?? "statement",
       provisional_estimate_total_clp: null,
+      usd_rate_clp: null,
+      usd_rate_source: null,
     });
   }
   // A provisional month with no bucket lines still closed at the bank.
@@ -906,6 +978,7 @@ function buildFacturacionesInner(
     );
   }
 
+  applyFacturacionUsdRates(accountId, out);
   out.sort((a, b) => b.billing_month.localeCompare(a.billing_month));
   return out;
 }
@@ -931,5 +1004,7 @@ function provisionalFacturacionRow(
     is_provisional_close: true,
     close_date_source: pv.close_source,
     provisional_estimate_total_clp: pv.source === "feed" ? pv.estimate_total_clp : null,
+    usd_rate_clp: null,
+    usd_rate_source: null,
   };
 }

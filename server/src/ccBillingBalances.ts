@@ -92,12 +92,19 @@ function isoAddDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** The debt frame's FX date for a facturación paid by `payByIso`: the day before (see below). */
+export function payByFxDateIso(payByIso: string): string {
+  return isoAddDays(payByIso, -1);
+}
+
 /**
- * FX date for valuing USD credit-card charges in DISPLAYED balances (facturado / balance_total /
- * detalle / graph): the facturación pay-by date minus one day. A foreign charge settles to CLP at
- * pay-by, so this locks the rate once that date passes (and floats on the latest rate before it),
- * instead of drifting with the statement-close rate. Import dedupe/matching keeps the raw
- * statement-date FX (only affects amount comparisons, not what the user sees).
+ * FX date for valuing USD credit-card charges as DEBT — the owed walk, month-end anchors, the
+ * detalle / stored balances, open-month sums, payments and financing charges: the facturación
+ * pay-by date minus one day. A foreign charge settles to CLP at pay-by, so this locks the rate
+ * once that date passes (and floats on the latest rate before it), instead of drifting with the
+ * statement-close rate. What a facturación SHOWS it cost (its row, the historial bars, its
+ * expense lines) is the rate actually paid instead — `ccFacturacionUsdRate.ts`. Import
+ * dedupe/matching keeps the raw statement-date FX (it only compares amounts).
  */
 export function balanceUsdFxDateIso(accountId: number, statementDate: string): string | null {
   const meta = stmtPayByMetaByDate.get(accountId, statementDate) as
@@ -108,7 +115,7 @@ export function balanceUsdFxDateIso(accountId: number, statementDate: string): s
     statement_date: statementDate,
     period_to: meta?.period_to ?? undefined,
   });
-  return payByIso ? isoAddDays(payByIso, -1) : parseDdMmYyToIso(statementDate);
+  return payByIso ? payByFxDateIso(payByIso) : parseDdMmYyToIso(statementDate);
 }
 
 function listRevolvingLineRowsForStatementDate(
@@ -192,7 +199,7 @@ type PostCloseLineRow = RevolvingLineRow & {
 /**
  * Section-3 bank charge (interés, comisión, impuesto) rather than consumption or a payment —
  * the same test `statementSection3ChargesClpForBillingMonth` sums for the monthly financing
- * cost, so the flow-based P/L and the financing chart agree by construction. Refunds (NOTA DE
+ * cost (at the same FX date), so the flow-based P/L and the monthly sum agree by construction. Refunds (NOTA DE
  * CREDITO, negative amounts) match the section-3 merchant patterns but are negative
  * consumption, not cost, hence the positive-amount guard on both currencies.
  */
