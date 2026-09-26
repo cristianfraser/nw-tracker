@@ -1,10 +1,13 @@
 /**
- * Delete web-paste one-shots on `open|{M}` that match PDF lines for closed month M.
+ * Settle the `open|{M}` web-paste bucket against month M's statement(s) — every currency once M is
+ * fully closed, only the arrived twin's currency before (`reconcileOpenWebPasteAfterPdfClose`) —
+ * then re-sync the card's valuation stamps from the earliest deleted line.
  *
  *   npm run repair:cc-web-paste-pdf-reconcile -w nw-tracker-server -- --account-id=32 --billing-month=2026-06
  *   npm run repair:cc-web-paste-pdf-reconcile -w nw-tracker-server -- --account-id=32 --billing-month=2026-06 --apply
  */
 import { reconcileOpenWebPasteAfterPdfClose } from "../src/ccOpenWebPastePdfReconcile.js";
+import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
 
 function readArg(name: string): string | null {
   const prefix = `--${name}=`;
@@ -26,6 +29,12 @@ function main(): void {
   }
   const dryRun = !process.argv.includes("--apply");
   const result = reconcileOpenWebPasteAfterPdfClose(accountId, billingMonth, { dryRun });
+  if (!dryRun && (result.deleted_count > 0 || result.moved_count > 0)) {
+    // The deleted lines were owed-walk evidence on their own dates: stamps after them are stale.
+    upsertCreditCardValuationsFromLedger(accountId, {
+      affectedEvidenceFromYmd: result.earliest_deleted_iso,
+    });
+  }
   console.log(JSON.stringify(result, null, 2));
   if (dryRun && result.deleted_count > 0) {
     console.log("Dry run only — pass --apply to delete matched web-paste lines.");

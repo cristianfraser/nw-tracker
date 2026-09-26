@@ -506,6 +506,31 @@ def _assign_intl_orig_and_usd_amounts(amounts: List[str]) -> Tuple[str, str]:
     return trimmed[-2], trimmed[-1]
 
 
+# An acquirer terminal code: four bare digits. Every amount on an international statement prints two
+# decimals, so a bare four-digit cell is never an amount (see `_strip_trailing_terminal_codes`).
+RE_TERMINAL_CODE_TOKEN = re.compile(r"^\d{4}$")
+
+
+def _strip_trailing_terminal_codes(amounts: List[str]) -> None:
+    """
+    Drop bare four-digit cells trailing a vertical chunk that already holds a decimal amount.
+
+    Short merchant names print their acquirer terminal code in a column of its own («CHANA 7142»,
+    «EMOVA SUBTE 4042» — Argentine acquirers, first seen on the 2026-09-24 ·0781 USD statement).
+    pdftotext's default rendering emits that column as a block after the page's LAST row, so the
+    last row's chunk ends in the page's codes: «197.450,00 136,89 5067 4551 7142» read as orig
+    4551 / US$7.142, and a later page's last row picked up «4042 4042» in place of its own US$
+    cell (which the rendering had dumped elsewhere). Stripped, the first chunk keeps its real pair
+    and the second has no US$ cell left, so the row comes from the layout rendering alone.
+    """
+    while (
+        len(amounts) > 1
+        and RE_TERMINAL_CODE_TOKEN.match(amounts[-1].replace(" ", ""))
+        and any("," in a for a in amounts[:-1])
+    ):
+        amounts.pop()
+
+
 def _strip_glued_statement_footer_cells(
     texts: List[str], amounts: List[str]
 ) -> None:
@@ -695,6 +720,7 @@ def _parse_international_vertical_chunk(
     if not amounts:
         return None
 
+    _strip_trailing_terminal_codes(amounts)
     _strip_glued_statement_footer_cells(texts, amounts)
 
     if not amounts:

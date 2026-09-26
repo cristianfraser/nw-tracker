@@ -445,6 +445,57 @@ describe("credit-card close evidence", () => {
     expect(db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(nextCycle)).toBeDefined();
   });
 
+  it("settles one twin's own currency at once and leaves the other currency for its statement", () => {
+    const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
+    const supermercado = insertBucketLine(sept, "2026-09-03", "SUPERMERCADO VITEST", 10_000);
+    const apple = insertLine(sept, { date: "01/09/2026", merchant: "APPLE.COM/BILL", usd: 13.93, key: "vitest-apple" });
+    const preAuth = insertLine(sept, { date: "30/08/2026", merchant: "KIOSCO VITEST", usd: 5, key: "vitest-kiosco" });
+    const closeDay = insertLine(sept, { date: "24/09/2026", merchant: "ANTHROPIC VITEST", usd: 20, key: "vitest-anthropic" });
+
+    // The USD statement lands hours before its CLP twin (the September 2026 ·0781 case).
+    const usd = insertStatement({
+      source: "vitest 2026-09-24 usd.pdf",
+      date: "24/09/2026",
+      from: "25/08/2026",
+      to: "24/09/2026",
+      currency: "usd",
+      monto: 20.93,
+    });
+    insertLine(usd, { date: "01/09/2026", merchant: "APPLE.COM/BILL", usd: 13.93 });
+    insertLine(usd, { date: "02/09/2026", merchant: "KIOSCO VITEST SETTLED", usd: 7 });
+
+    const first = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-09");
+    expect(first).toMatchObject({ skipped: false, currencies: ["usd"] });
+    // Dollar lines: the billed one and the pre-auth go, the close-day purchase moves to October.
+    expect(first.deleted_line_ids.sort()).toEqual([apple, preAuth].sort());
+    expect(first.earliest_deleted_iso).toBe("2026-08-30");
+    expect(first.moved_line_ids).toEqual([closeDay]);
+    // Peso lines wait for their own statement.
+    expect(merchantsIn(bucketId("2026-09"))).toEqual(["SUPERMERCADO VITEST"]);
+    expect(merchantsIn(bucketId("2026-10"))).toContain("ANTHROPIC VITEST");
+    // The month still waits for its CLP statement, and its dollars are billed once.
+    recomputeCcBillingMonthBalances(accountId);
+    const ledger = ccInstallmentsDbApiPayload(accountId);
+    const september = buildFacturaciones(accountId, ledger.months).find((f) => f.billing_month === "2026-09")!;
+    expect(september.is_open_month).toBe(false);
+    expect(september.facturado_usd).toBeCloseTo(20.93, 2);
+
+    const clp = insertStatement({
+      source: "vitest 2026-09-24 clp.pdf",
+      date: "24/09/2026",
+      from: "25/08/2026",
+      to: "24/09/2026",
+      currency: "clp",
+      monto: 10_000,
+      nextFrom: "24/09/2026",
+      nextTo: "23/10/2026",
+    });
+    insertLine(clp, { date: "03/09/2026", merchant: "SUPERMERCADO VITEST", clp: 10_000 });
+    const second = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-09");
+    expect(second).toMatchObject({ skipped: false, currencies: ["clp", "usd"], deleted_line_ids: [supermercado] });
+    expect(merchantsIn(bucketId("2026-09"))).toEqual([]);
+  });
+
   it("flags a statement that disagrees with the feed's SALDO INICIAL for the same close", () => {
     recordFeedBillingClose(accountId, {
       close_iso: "2026-09-24",
