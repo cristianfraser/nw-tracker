@@ -6,7 +6,12 @@ import { Modal } from "../../components/ui/Modal";
 import { useModalPeriodNav } from "../../periodModalNav";
 import { useFlowsCreditCardExpenses } from "../../queries/hooks";
 import { formatYmEs } from "./shared";
-import type { CcFacturacionDto, CcProxyFacturacionAggregate, CcStatementDto } from "../../types";
+import type {
+  CcFacturacionDto,
+  CcPendingCuotaPurchaseDto,
+  CcProxyFacturacionAggregate,
+  CcStatementDto,
+} from "../../types";
 import { PaginatedTable, useClientPagination } from "../../components/ui/PaginatedTable";
 import { Table } from "../../components/ui/Table";
 import { Button } from "@crfrsr/ui";
@@ -148,6 +153,48 @@ const PAGE_SIZE = 12;
 
 const billingMonthKeyOf = (row: CcFacturacionDto) => row.billing_month;
 
+/**
+ * Feed-typed cuota purchases whose count is not known yet: until it is, the app carries each one as
+ * installment debt for its full amount. Each opens its facturación's modal, where the line offers
+ * «¿cuántas cuotas?» (the ordinary line → plan conversion).
+ */
+function PendingCuotaPurchasesNotice({
+  purchases,
+  openMonth,
+}: {
+  purchases: readonly CcPendingCuotaPurchaseDto[];
+  /** Opens the facturación modal for a month; null when the month has no facturación row. */
+  openMonth: (billingMonth: string) => (() => void) | null;
+}) {
+  const { t } = useTranslation();
+  if (purchases.length === 0) return null;
+  return (
+    <div className={cn("card", styles.pendingCuotaNotice)} role="status">
+      <div className="label">{t("accountDetail.creditCard.pendingCuotaPurchasesTitle")}</div>
+      <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.pendingCuotaPurchasesHint")}</p>
+      <ul className={styles.pendingCuotaList}>
+        {purchases.map((p) => {
+          const open = openMonth(p.billing_month);
+          return (
+            <li key={p.statement_line_id}>
+              <span className="mono">{p.purchase_date}</span> · {p.merchant ?? "—"} ·{" "}
+              <span className="mono">{formatClp(p.amount_clp)}</span>
+              {open ? (
+                <>
+                  {" "}
+                  <Button variant="link" onClick={open}>
+                    {t("accountDetail.creditCard.pendingCuotaPurchasesAction")}
+                  </Button>
+                </>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 export function CreditCardFacturacionesTable({
   rows,
   statements = [],
@@ -156,6 +203,7 @@ export function CreditCardFacturacionesTable({
   extraCcOffsetsKey,
   facturacionProxy,
   proxyTickers,
+  pendingCuotaPurchases = [],
 }: {
   rows: readonly CcFacturacionDto[];
   statements?: readonly CcStatementDto[];
@@ -164,6 +212,7 @@ export function CreditCardFacturacionesTable({
   extraCcOffsetsKey: string;
   facturacionProxy?: readonly CcProxyFacturacionAggregate[];
   proxyTickers?: readonly string[];
+  pendingCuotaPurchases?: readonly CcPendingCuotaPurchaseDto[];
 }) {
   const { t } = useTranslation();
   const { data: flows } = useFlowsCreditCardExpenses();
@@ -257,8 +306,17 @@ export function CreditCardFacturacionesTable({
     labels: { prev: t("common.modalPrevPeriod"), next: t("common.modalNextPeriod") },
   });
 
+  const openMonth = useCallback(
+    (billingMonth: string) => {
+      const row = rows.find((r) => r.billing_month === billingMonth);
+      return row ? () => openFacturacion(row) : null;
+    },
+    [rows, openFacturacion]
+  );
+
   return (
     <>
+      <PendingCuotaPurchasesNotice purchases={pendingCuotaPurchases} openMonth={openMonth} />
       <PaginatedTable
         page={page}
         pageSize={PAGE_SIZE}

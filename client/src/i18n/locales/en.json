@@ -788,6 +788,14 @@
       "makeInstallmentDialogBody": "{{merchant}} · {{amount}}",
       "makeInstallmentDialogConfirm": "Confirm",
       "makeInstallmentDialogCancel": "Cancel",
+      "makeInstallmentActionPending": "How many installments?",
+      "makeInstallmentDialogPendingBody": {
+        "cuota_comercio": "The bank lists this as a «cuota comercio» purchase at its full amount without saying how many installments. The first one bills at the close after its own; the statement confirms the count either way.",
+        "precio_contado": "The bank lists this as a «precio contado» installment purchase at its full amount without saying how many installments. The first one bills at its own close; the statement confirms the count either way."
+      },
+      "pendingCuotaPurchasesTitle": "Installment purchases without a count",
+      "pendingCuotaPurchasesHint": "The card feed lists these at their full amount without the number of installments. They count as installment debt for that amount until you enter the count or the statement arrives.",
+      "pendingCuotaPurchasesAction": "Enter installments",
       "facturacionDeleteConfirmTitle": "Delete movement",
       "facturacionDeleteConfirmBody": "Delete “{{merchant}}” ({{amount}}) from this billing month? This cannot be undone.",
       "facturacionDeleteConfirmAction": "Delete",
@@ -1154,6 +1162,11 @@
         "remove": "Remove"
       },
       "installmentPurchaseTotalLabel": "Installment purchase · {{count}} installments",
+      "cuotaPurchasePendingBadge": "Installments · count?",
+      "cuotaPurchasePendingHint": {
+        "cuota_comercio": "The card feed lists this «cuota comercio» purchase at its full amount without the number of installments; its first installment bills at the next close.",
+        "precio_contado": "The card feed lists this «precio contado» installment purchase at its full amount without the number of installments; its first installment bills at this close."
+      },
       "chartTitle": "Spend by category",
       "chartStyleLabel": "View",
       "chartStyleStacked": "Stacked bars",

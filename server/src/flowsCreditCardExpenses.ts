@@ -1,3 +1,4 @@
+import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
 
 import { billingMonthForStatementDate } from "./ccBillingMonth.js";
@@ -218,6 +219,12 @@ export type FlowCcExpenseLineRow = {
 
   /** Linked net-worth deposits (investment capital + mortgage amortization splits). */
   expense_deposit_links?: ExpenseDepositLinkDto[];
+
+  /**
+   * The card feed typed this one-shot line as a purchase in cuotas whose count is not known yet
+   * (`ccFeedCuotaPurchases.ts`) — the card page asks for the count to turn it into its plan.
+   */
+  cuota_purchase_kind?: CcCuotaPurchaseKind;
 
 };
 
@@ -644,7 +651,7 @@ export function buildCcExpenseLines(
 
               l.nro_cuota_current, l.nro_cuota_total,
 
-              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd
+              l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd, l.cuota_purchase_kind
 
        FROM cc_statement_lines l
 
@@ -705,6 +712,8 @@ export function buildCcExpenseLines(
     valor_cuota_mensual_clp: number | null;
 
     valor_cuota_mensual_usd: number | null;
+
+    cuota_purchase_kind: CcCuotaPurchaseKind | null;
 
   }[];
 
@@ -942,6 +951,8 @@ export function buildCcExpenseLines(
       origin_card_last4: row.origin_card_last4,
 
       primary_card_last4: row.primary_card_last4,
+
+      ...(row.cuota_purchase_kind ? { cuota_purchase_kind: row.cuota_purchase_kind } : {}),
 
       ...(autoAdditionalCardNote ? { auto_additional_card_note: autoAdditionalCardNote } : {}),
 

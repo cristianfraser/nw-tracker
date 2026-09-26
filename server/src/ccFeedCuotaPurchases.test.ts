@@ -10,8 +10,16 @@ import {
 } from "./ccCuotaPurchaseKinds.js";
 import { santanderMovementsByAccount } from "./santanderCardMovements.js";
 import { importSantanderMovementsFile } from "./santanderMovementsImport.js";
-import { ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
-import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.js";
+import { ccInstallmentsDbApiPayload, ccLedgerMonthEndIso } from "./ccInstallmentLedgerDb.js";
+import {
+  buildBillingDetailByMonth,
+  buildFacturaciones,
+  pendingCuotaPurchaseLines,
+} from "./ccBillingViews.js";
+import { ccInstallmentDebtDailyClp } from "./ccInstallmentDebtDaily.js";
+import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
+import { convertStatementLineToInstallmentPurchase } from "./ccInstallmentManual.js";
+import { buildCcExpenseLines } from "./flowsCreditCardExpenses.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { webPasteLineDedupeKey, type CcWebPasteLine } from "./ccWebPasteParse.js";
 
@@ -275,6 +283,95 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     expect(october?.breakdown.map((b) => b.label)).toEqual(["MUNICIPALIDAD DE MAIPU"]);
     const detail = buildBillingDetailByMonth(accountId, ledger.months).find((d) => d.billing_month === "2026-09")!;
     expect(detail.cupo_en_cuotas_clp).toBe(29_990 + 189_990);
+  });
+
+  it("carries a cuota purchase of unknown count as installment debt from its date, flat until its plan", () => {
+    const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
+    insertBucketLine(sept, "2026-09-03", "SUPERMERCADO VITEST", 10_000);
+    const file = writeFeed([
+      {
+        account: BANK_ACCOUNT,
+        currency: "CLP",
+        rows: [
+          feedRow("27/08/2026", "CUOTA COMERCIO", "MUNICIPALIDAD DE MAIPU", "29.990"),
+          feedRow("27/08/2026", "IMPTO. DECRETO LEY 3475", "MUNICIPALIDAD DE MAIPU", "79"),
+          feedRow("05/09/2026", "N/CUOTAS PRECIO CONTADO", "FULLNEUMATICO QUILIN", "189.990"),
+          feedRow("03/09/2026", "COMPRA NORMAL", "SUPERMERCADO VITEST", "10.000"),
+        ],
+        saldoInicial: [saldoInicial("25/08/2026", "3.476.163")],
+      },
+      { account: BANK_ACCOUNT, currency: "USD", rows: [], saldoInicial: [saldoInicial("25/08/2026", "556,21")] },
+    ]);
+    expect(importSantanderMovementsFile(file).accounts[0]!.cuota_lines_tagged).toBe(1);
+    expect(pendingCuotaPurchaseLines(accountId)).toEqual([
+      expect.objectContaining({
+        merchant: "FULLNEUMATICO QUILIN",
+        purchase_date: "2026-09-05",
+        amount_clp: 189_990,
+        kind: "precio_contado",
+        billing_month: "2026-09",
+      }),
+    ]);
+
+    // The daily «deuda en cuotas» takes the whole principal on the purchase day, beside the
+    // Municipalidad plan (2x.xxx from 27/08), and keeps it after that plan has been paid off.
+    const walk = ccInstallmentDebtDailyClp(accountId, ["2026-08-26", "2026-09-04", "2026-09-05", "2027-06-30"])!;
+    expect(walk[0]).toBeNull();
+    expect(walk[1]).toBe(29_990);
+    expect(walk[2]! - walk[1]!).toBe(189_990);
+    expect(walk[3]).toBe(189_990);
+
+    // The monthly chart samples that walk at every month-end; the projected rows hold it flat too,
+    // so the balance line never sits under the cuota line.
+    const chart = creditCardInstallmentsResponse(accountId, {}).historial_chart ?? [];
+    expect(chart.map((p) => p.cupo_en_cuotas_clp)).toEqual(
+      ccInstallmentDebtDailyClp(accountId, chart.map((p) => ccLedgerMonthEndIso(p.month)))
+    );
+    const ledger = ccInstallmentsDbApiPayload(accountId);
+    const projected = buildBillingDetailByMonth(accountId, ledger.months).filter((d) => d.projected);
+    expect(projected.length).toBeGreaterThan(0);
+    const last = projected.reduce((a, b) => (a.billing_month > b.billing_month ? a : b));
+    expect(last).toMatchObject({ cupo_en_cuotas_clp: 189_990, balance_total_clp: 189_990 });
+  });
+
+  it("asks for the count: the line carries its type, and entering it pins the first cuota by type", () => {
+    const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
+    insertBucketLine(sept, "2026-09-03", "SUPERMERCADO VITEST", 10_000);
+    const file = writeFeed([
+      {
+        account: BANK_ACCOUNT,
+        currency: "CLP",
+        rows: [
+          // No same-day stamp tax: the count of this cuota comercio is unknown.
+          feedRow("10/09/2026", "CUOTA COMERCIO", "TIENDA VITEST", "120.000"),
+          feedRow("03/09/2026", "COMPRA NORMAL", "SUPERMERCADO VITEST", "10.000"),
+        ],
+        saldoInicial: [saldoInicial("25/08/2026", "3.476.163")],
+      },
+      { account: BANK_ACCOUNT, currency: "USD", rows: [], saldoInicial: [saldoInicial("25/08/2026", "556,21")] },
+    ]);
+    expect(importSantanderMovementsFile(file).accounts[0]!.cuota_lines_tagged).toBe(1);
+    const pending = pendingCuotaPurchaseLines(accountId);
+    expect(pending).toEqual([
+      expect.objectContaining({ kind: "cuota_comercio", amount_clp: 120_000, billing_month: "2026-09" }),
+    ]);
+    expect(creditCardInstallmentsResponse(accountId, {}).pending_cuota_purchases).toEqual(pending);
+    const lineId = pending[0]!.statement_line_id;
+    expect(buildCcExpenseLines([accountId]).find((l) => l.statement_line_id === lineId)?.cuota_purchase_kind).toBe(
+      "cuota_comercio"
+    );
+    const walkBefore = ccInstallmentDebtDailyClp(accountId, ["2026-09-09", "2026-09-10", "2026-09-30"]);
+
+    // The card page's «¿cuántas cuotas?» runs the ordinary line → plan conversion.
+    const plan = convertStatementLineToInstallmentPurchase(accountId, lineId, 4);
+    // Santander bills a cuota comercio's first cuota at the close AFTER its cycle — not the manual
+    // guess (the purchase's own cycle, September).
+    expect(
+      db.prepare(`SELECT first_due_month, cuotas_totales, total_amount_clp FROM cc_installment_purchases WHERE id = ?`).get(plan.id)
+    ).toEqual({ first_due_month: "2026-10", cuotas_totales: 4, total_amount_clp: 120_000 });
+    expect(pendingCuotaPurchaseLines(accountId)).toEqual([]);
+    // The plan takes the same contract over on the same day: the cuota line does not move.
+    expect(ccInstallmentDebtDailyClp(accountId, ["2026-09-09", "2026-09-10", "2026-09-30"])).toEqual(walkBefore);
   });
 
   it("re-pins a hand-entered plan's first cuota from the feed's type", () => {

@@ -1,5 +1,5 @@
 import type { FxConversionWarning } from "./core";
-import type { CcProxyLotResult } from "./creditCard";
+import type { CcCuotaPurchaseKind, CcProxyLotResult } from "./creditCard";
 
 export type DepositFlowCategory = "real_estate" | "cash" | "brokerage" | "inversiones";
 
@@ -177,6 +177,11 @@ export interface FlowCcExpenseLineRow {
   primary_card_last4?: string | null;
   /** Linked net-worth deposits (investment capital + mortgage amortization splits). */
   expense_deposit_links?: ExpenseDepositLinkDto[];
+  /**
+   * The card feed typed this one-shot line as a purchase in cuotas whose count is not known yet —
+   * the card page offers «¿cuántas cuotas?» on it (server `flowsCreditCardExpenses.ts`).
+   */
+  cuota_purchase_kind?: CcCuotaPurchaseKind;
 }
 
 export interface ExpenseDepositLinkDto {

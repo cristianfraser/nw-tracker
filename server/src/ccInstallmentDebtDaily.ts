@@ -9,9 +9,12 @@
  * historial chart is CLP-native like its monthly form.
  */
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { incrementalChargesClpForBillingMonth } from "./ccBillingBalances.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
-import type { CcFacturacionRow } from "./ccBillingViews.js";
+import {
+  facturadoClpFromOpenMonthStatementLines,
+  pendingCuotaPurchaseLines,
+  type CcFacturacionRow,
+} from "./ccBillingViews.js";
 import {
   computeCuotaRetirements,
   listClpCcPaymentEventsForAccount,
@@ -44,7 +47,15 @@ function ccInstallmentDebtEvents(
   accountId: number
 ): { events: { iso: string; clp: number }[]; facturaciones: CcFacturacionRow[] } | null {
   const purchases = listSchedulePurchaseEvents(accountId);
-  if (purchases.length === 0) return null;
+  // A feed-typed cuota purchase whose count is not known yet is installment debt from its purchase
+  // date like any contract, held flat: without a count no cuota can be scheduled or retired. When
+  // its plan arrives (statement, or the count entered by hand) the line goes and the plan's own
+  // purchase event takes over on the same date.
+  const pending = pendingCuotaPurchaseLines(accountId).map((p) => ({
+    iso: p.purchase_date,
+    clp: Math.round(p.amount_clp),
+  }));
+  if (purchases.length === 0 && pending.length === 0) return null;
   const { detail, facturaciones } = billingDetailCacheForAccount(accountId);
   const factByMonth = new Map(facturaciones.map((f) => [f.billing_month, f] as const));
 
@@ -73,7 +84,7 @@ function ccInstallmentDebtEvents(
   }
 
   const { drops } = computeCuotaRetirements(months, listClpCcPaymentEventsForAccount(accountId));
-  const events: { iso: string; clp: number }[] = purchases.map((p) => ({ ...p }));
+  const events: { iso: string; clp: number }[] = [...purchases.map((p) => ({ ...p })), ...pending];
   for (const d of drops) events.push({ iso: d.iso, clp: -d.clp });
   return { events, facturaciones };
 }
@@ -107,7 +118,10 @@ function calendarDaysAfter(fromYmd: string, toYmd: string): string[] {
  */
 export type CcTailClosedFacturacion = {
   payByIso: string;
-  /** The open cycle's own non-installment charges so far — the rest of the carry is the closed one's. */
+  /**
+   * The open cycle's own non-installment charges so far — the rest of the carry is the closed
+   * one's. Feed-typed cuota purchases are left out: they ride in the plan debt, not the carry.
+   */
   openCycleChargesClp: number;
 };
 
@@ -210,7 +224,7 @@ function closedFacturacionAheadOfPayBy(
   if (payByIso == null || payByIso <= todayYmd) return null;
   return {
     payByIso,
-    openCycleChargesClp: incrementalChargesClpForBillingMonth(member.accountId, openBm),
+    openCycleChargesClp: facturadoClpFromOpenMonthStatementLines(member.accountId, openBm),
   };
 }
 

@@ -67,6 +67,22 @@ export interface CcBillingDetailMonthDto {
 /** Where a facturación's close date comes from (server `ccBillingCloses.ts`). */
 export type CcCloseSource = "statement" | "feed" | "announced" | "estimated";
 
+/** How the card feed typed a purchase in cuotas (server `ccCuotaPurchaseKinds.ts`). */
+export type CcCuotaPurchaseKind = "cuota_comercio" | "precio_contado";
+
+/** A feed-typed cuota purchase still waiting for its count (server `pendingCuotaPurchaseLines`). */
+export interface CcPendingCuotaPurchaseDto {
+  statement_line_id: number;
+  merchant: string | null;
+  /** Purchase date (ISO). */
+  purchase_date: string;
+  /** Full principal (CLP). */
+  amount_clp: number;
+  kind: CcCuotaPurchaseKind;
+  /** Facturación whose open bucket holds the line (`YYYY-MM`). */
+  billing_month: string;
+}
+
 export interface CcFacturacionDto {
   billing_month: string;
   close_date: string;
@@ -265,6 +281,8 @@ export interface AccountCcInstallmentsResponse {
   billing_config?: CreditCardBillingConfigDto;
   /** Credit line snapshot for the summary cards (server-computed: config cupo, open-month balance, difference). */
   cupo?: CcCupoSnapshotDto;
+  /** Feed-typed cuota purchases still waiting for their count — the card page asks for it. */
+  pending_cuota_purchases?: CcPendingCuotaPurchaseDto[];
   /** Open facturación month for manual / web-paste (`YYYY-MM`). */
   open_billing_month?: string | null;
   /** Distinct physical card numbers billed on this master (titular first). */

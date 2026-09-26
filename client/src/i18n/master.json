@@ -2765,6 +2765,32 @@
         "en": "Cancel",
         "es": "Cancelar"
       },
+      "makeInstallmentActionPending": {
+        "en": "How many installments?",
+        "es": "¿Cuántas cuotas?"
+      },
+      "makeInstallmentDialogPendingBody": {
+        "cuota_comercio": {
+          "en": "The bank lists this as a «cuota comercio» purchase at its full amount without saying how many installments. The first one bills at the close after its own; the statement confirms the count either way.",
+          "es": "El banco la lista como compra en «cuota comercio» por su monto total, sin decir en cuántas cuotas. La primera se factura en el cierre siguiente al suyo; el estado de cuenta confirma el número de todas formas."
+        },
+        "precio_contado": {
+          "en": "The bank lists this as a «precio contado» installment purchase at its full amount without saying how many installments. The first one bills at its own close; the statement confirms the count either way.",
+          "es": "El banco la lista como compra en cuotas «precio contado» por su monto total, sin decir en cuántas cuotas. La primera se factura en su propio cierre; el estado de cuenta confirma el número de todas formas."
+        }
+      },
+      "pendingCuotaPurchasesTitle": {
+        "en": "Installment purchases without a count",
+        "es": "Compras en cuotas sin número de cuotas"
+      },
+      "pendingCuotaPurchasesHint": {
+        "en": "The card feed lists these at their full amount without the number of installments. They count as installment debt for that amount until you enter the count or the statement arrives.",
+        "es": "El feed de la tarjeta las lista por su monto total sin el número de cuotas. Cuentan como deuda en cuotas por ese monto hasta que ingreses el número o llegue el estado de cuenta."
+      },
+      "pendingCuotaPurchasesAction": {
+        "en": "Enter installments",
+        "es": "Ingresar cuotas"
+      },
       "facturacionDeleteConfirmTitle": {
         "en": "Delete movement",
         "es": "Eliminar movimiento"
@@ -4090,6 +4116,20 @@
       "installmentPurchaseTotalLabel": {
         "en": "Installment purchase · {{count}} installments",
         "es": "Compra en cuotas · {{count}} cuotas"
+      },
+      "cuotaPurchasePendingBadge": {
+        "en": "Installments · count?",
+        "es": "En cuotas · ¿cuántas?"
+      },
+      "cuotaPurchasePendingHint": {
+        "cuota_comercio": {
+          "en": "The card feed lists this «cuota comercio» purchase at its full amount without the number of installments; its first installment bills at the next close.",
+          "es": "El feed de la tarjeta lista esta compra en «cuota comercio» por su monto total sin el número de cuotas; su primera cuota se factura en el cierre siguiente."
+        },
+        "precio_contado": {
+          "en": "The card feed lists this «precio contado» installment purchase at its full amount without the number of installments; its first installment bills at this close.",
+          "es": "El feed de la tarjeta lista esta compra en cuotas «precio contado» por su monto total sin el número de cuotas; su primera cuota se factura en este cierre."
+        }
       },
       "chartTitle": {
         "en": "Spend by category",

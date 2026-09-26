@@ -9,6 +9,8 @@ import {
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
+import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
+import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
 
 export type ManualCcPurchaseInput = {
   purchase_date: string;
@@ -131,7 +133,7 @@ export function updateManualCcInstallmentPurchase(
 
 const selStatementLineForConvert = db.prepare(`
   SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.amount_clp,
-         l.installment_flag, s.account_id, s.card_group
+         l.installment_flag, l.cuota_purchase_kind, s.account_id, s.card_group
   FROM cc_statement_lines l
   JOIN cc_statements s ON s.id = l.statement_id
   WHERE l.id = ?
@@ -153,6 +155,7 @@ export function convertStatementLineToInstallmentPurchase(
         posting_date: string | null;
         amount_clp: number | null;
         installment_flag: number;
+        cuota_purchase_kind: CcCuotaPurchaseKind | null;
         account_id: number;
         card_group: string | null;
       }
@@ -187,7 +190,7 @@ export function convertStatementLineToInstallmentPurchase(
   // line would be deleted too.
   deleteStatementLinesByIds([lineId]);
 
-  return createManualCcInstallmentPurchase(
+  const created = createManualCcInstallmentPurchase(
     accountId,
     {
       purchase_date: purchaseDateIso,
@@ -198,6 +201,22 @@ export function convertStatementLineToInstallmentPurchase(
     },
     { removeSupersededOneShotLines: false }
   );
+  // A line the card feed typed as a cuota purchase (count unknown until now) knows when its first
+  // cuota bills — the rule the feed import applies to the plans it creates itself: «cuota
+  // comercio» at the close after the purchase cycle, «precio contado» at the purchase cycle's own.
+  // The manual guess (the purchase's own cycle) is right for the second only.
+  if (line.cuota_purchase_kind) {
+    db.prepare(`UPDATE cc_installment_purchases SET first_due_month = ? WHERE id = ?`).run(
+      firstCuotaBillingMonth(
+        line.cuota_purchase_kind,
+        billingMonthContainingPurchase(accountId, purchaseDateIso)
+      ),
+      created.id
+    );
+    recomputeCcBillingMonthBalances(accountId);
+    upsertCreditCardValuationsFromLedger(accountId);
+  }
+  return created;
 }
 
 export function deleteManualCcInstallmentPurchase(accountId: number, purchaseId: number): void {

@@ -85,6 +85,17 @@
   font-size: var(--font-size-caption);
 }
 
+/* Credit card: feed-typed cuota purchases still waiting for their count. */
+.pendingCuotaNotice {
+  margin-bottom: var(--space-md);
+}
+
+.pendingCuotaList {
+  margin: 0;
+  padding-left: var(--space-md);
+  font-size: var(--font-size-prose-sm);
+}
+
 /* Cards / layout blocks */
 .cardsBelow {
   margin-bottom: var(--space-md);

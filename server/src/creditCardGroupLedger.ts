@@ -275,7 +275,8 @@ export function mergeCreditCardLedgers(
     };
   }
   if (ledgers.length === 1) {
-    return { ...ledgers[0]!, account_id: 0 };
+    const { pending_cuota_purchases: _perCard, ...only } = ledgers[0]!;
+    return { ...only, account_id: 0 };
   }
 
   const associated = new Set<string>();

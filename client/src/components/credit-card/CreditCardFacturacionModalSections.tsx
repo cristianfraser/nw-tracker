@@ -196,6 +196,13 @@ export function CreditCardFacturacionModalSections({
                 ),
               })}
             </p>
+            {pendingMakeInstallment.cuota_purchase_kind ? (
+              <p style={{ margin: 0 }}>
+                {t(
+                  `accountDetail.creditCard.makeInstallmentDialogPendingBody.${pendingMakeInstallment.cuota_purchase_kind}`
+                )}
+              </p>
+            ) : null}
             <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
               <span style={{ fontSize: "0.9rem" }}>
                 {t("accountDetail.creditCard.makeInstallmentDialogCuotasLabel")}
