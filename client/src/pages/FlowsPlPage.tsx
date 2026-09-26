@@ -12,7 +12,8 @@ import {
   flowPeriodLabel,
   formatFlowMoney,
 } from "../flowsDisplay";
-import { clipPointsToTimeRange, timeRangeToDays } from "../timeRange";
+import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
+import { rollupFlowsPlChartPointsByYear } from "../flowsPlAggregate";
 import { flowsPlBucketLabel, useTranslation } from "../i18n";
 import { useFlowsPl } from "../queries/hooks";
 import type { FlowsPlAccountRow, FlowsPlBucketBlock } from "../types";
@@ -63,33 +64,26 @@ export function FlowsPlPage() {
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
-    if (isDaily) {
+    if (chartGranularity === "day") {
       // Server already windows the daily series to `days`; no client clip.
       return (displayUnit === "usd" ? data.chart_daily_usd : data.chart_daily) ?? [];
     }
-    const base =
-      displayUnit === "usd"
-        ? chartGranularity === "year"
-          ? data.chart_yearly_usd
-          : data.chart_monthly_usd
-        : chartGranularity === "year"
-          ? data.chart_yearly
-          : data.chart_monthly;
-    return clipPointsToTimeRange(base, timeRange);
-  }, [chartGranularity, data, displayUnit, isDaily, timeRange]);
+    // Months cut at the Rango start, then rolled up: the yearly chart starts with a partial
+    // first year.
+    return clipMonthsThenRollup(
+      displayUnit === "usd" ? data.chart_monthly_usd : data.chart_monthly,
+      chartGranularity,
+      timeRange,
+      rollupFlowsPlChartPointsByYear
+    );
+  }, [chartGranularity, data, displayUnit, timeRange]);
 
   /** Table rows: FULL history (no range clip), rolled to the table's own período. */
   const tableRows = useMemo(() => {
     if (!data) return [];
-    const base =
-      displayUnit === "usd"
-        ? tableGranularity === "year"
-          ? data.chart_yearly_usd
-          : data.chart_monthly_usd
-        : tableGranularity === "year"
-          ? data.chart_yearly
-          : data.chart_monthly;
-    return [...(base ?? [])].reverse();
+    const monthly = displayUnit === "usd" ? data.chart_monthly_usd : data.chart_monthly;
+    const rows = tableGranularity === "year" ? rollupFlowsPlChartPointsByYear(monthly) : monthly;
+    return [...rows].reverse();
   }, [data, displayUnit, tableGranularity]);
   const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
 

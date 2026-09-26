@@ -20,6 +20,7 @@ import {
 import { readFxLatestCache } from "../../queries/fxLatestCache";
 import { cardGroupMetricsByPeriodFromAccounts } from "../../dashboardCardBreakdown";
 import { useSurfacePrefs, type SurfacePrefsValue } from "../../surfaceDisplayPrefs";
+import { clipMonthsThenRollup } from "../../timeRange";
 import type {
   AccountCcInstallmentsResponse,
   AccountMonthlyPerformanceResponse,
@@ -70,6 +71,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const valuationPrefs = useSurfacePrefs(`account.${accountIdNum || "pending"}.valuation`, "day", "3y");
   const perfPrefs = useSurfacePrefs(`account.${accountIdNum || "pending"}.combos`, "month", "3y");
   const perfIsYearly = perfPrefs.period === "year";
+  const perfRange = perfPrefs.range;
 
   const {
     data: rawDetail,
@@ -149,6 +151,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     return filterPointsThroughAsOfDate(rows, clipEnd);
   }, [monthlyPerf?.monthly, valuationTailClipEndDate]);
 
+  // Yearly combos: months cut at the combos' Rango first, then rolled up (a partial first year).
   const ytdChartPoints = useMemo(() => {
     if (!monthlyPerfRows.length) return [];
     const monthly = [...monthlyPerfRows].reverse().map((r) => ({
@@ -157,11 +160,13 @@ export function useAccountDetailPageData(): AccountDetailPageData {
       ytd_nominal_pl: r.ytd_nominal_pl ?? 0,
     }));
     if (!perfIsYearly) return monthly;
-    return rollupPerfPointsYearly(monthly, {
-      sumKeys: ["nominal_pl"],
-      ytdKey: "ytd_nominal_pl",
-    });
-  }, [monthlyPerfRows, perfIsYearly]);
+    return clipMonthsThenRollup(monthly, "year", perfRange, (months) =>
+      rollupPerfPointsYearly(months, {
+        sumKeys: ["nominal_pl"],
+        ytdKey: "ytd_nominal_pl",
+      })
+    );
+  }, [monthlyPerfRows, perfIsYearly, perfRange]);
 
   const accChartPoints = useMemo(() => {
     if (!monthlyPerfRows.length) return [];
@@ -171,11 +176,13 @@ export function useAccountDetailPageData(): AccountDetailPageData {
       accumulated_earnings: r.cumulative_nominal_pl ?? 0,
     }));
     if (!perfIsYearly) return monthly;
-    return rollupPerfPointsYearly(monthly, {
-      sumKeys: ["delta_month"],
-      accumKey: "accumulated_earnings",
-    });
-  }, [monthlyPerfRows, perfIsYearly]);
+    return clipMonthsThenRollup(monthly, "year", perfRange, (months) =>
+      rollupPerfPointsYearly(months, {
+        sumKeys: ["delta_month"],
+        accumKey: "accumulated_earnings",
+      })
+    );
+  }, [monthlyPerfRows, perfIsYearly, perfRange]);
 
   const valuationBlockForChart = useMemo(() => {
     if (!ts?.accounts) return null;

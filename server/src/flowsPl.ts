@@ -1,12 +1,7 @@
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
-import {
-  densifyMonthlyPoints,
-  densifyYearlyPoints,
-  monthEndUtcYmd,
-  monthKeyFromYmd,
-} from "./calendarMonth.js";
+import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   getGroupConsolidatedMonthlyPerfForRows,
@@ -25,7 +20,7 @@ export const FLOWS_PL_BUCKETS = [
 export type FlowsPlBucketSlug = (typeof FLOWS_PL_BUCKETS)[number]["slug"];
 
 export type FlowsPlChartPoint = {
-  /** UTC month-end (`YYYY-12-31` for yearly rows). */
+  /** UTC month-end. */
   as_of_date: string;
   brokerage: number;
   retirement: number;
@@ -62,10 +57,12 @@ export type FlowsPlBucketBlock = {
 };
 
 export type FlowsPlPayload = {
+  /**
+   * Monthly only: the page's yearly chart rolls these up client-side AFTER cutting the months at
+   * its own Rango (a partial first year), and the year table rolls them the same way.
+   */
   chart_monthly: FlowsPlChartPoint[];
-  chart_yearly: FlowsPlChartPoint[];
   chart_monthly_usd: FlowsPlChartPoint[];
-  chart_yearly_usd: FlowsPlChartPoint[];
   /** Per-calendar-day P/L (Diario), windowed to `?days`; present only when `days` is passed. */
   chart_daily?: FlowsPlChartPoint[];
   chart_daily_usd?: FlowsPlChartPoint[];
@@ -74,10 +71,9 @@ export type FlowsPlPayload = {
 
 const ZERO_PL_EPS = 0.005;
 
-/** Per-bucket consolidated monthly P/L folded into chart points (union of periods, zero-filled). */
+/** Per-bucket consolidated monthly P/L folded into chart points (union of months, zero-filled). */
 export function assembleFlowsPlChartSeries(
-  byBucket: Record<FlowsPlBucketSlug, readonly ConsolidatedMonthlyPerfRow[]>,
-  granularity: "month" | "year"
+  byBucket: Record<FlowsPlBucketSlug, readonly ConsolidatedMonthlyPerfRow[]>
 ): FlowsPlChartPoint[] {
   const byPeriod = new Map<string, FlowsPlChartPoint>();
   for (const bucket of FLOWS_PL_BUCKETS) {
@@ -88,10 +84,7 @@ export function assembleFlowsPlChartSeries(
           `flows PL: non-finite nominal_pl for bucket ${bucket.slug} at ${row.as_of_date}`
         );
       }
-      const asOf =
-        granularity === "year"
-          ? `${row.as_of_date.slice(0, 4)}-12-31`
-          : monthEndUtcYmd(monthKeyFromYmd(row.as_of_date));
+      const asOf = monthEndUtcYmd(monthKeyFromYmd(row.as_of_date));
       let pt = byPeriod.get(asOf);
       if (!pt) {
         pt = {
@@ -111,7 +104,7 @@ export function assembleFlowsPlChartSeries(
   }
   const sorted = [...byPeriod.values()].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
   // Accounts exist for months before any P/L accrues (nulls → 0); leading all-zero
-  // periods are information-free and would drag chart timelines back for nothing.
+  // months are information-free and would drag chart timelines back for nothing.
   const firstNonZero = sorted.findIndex(
     (pt) =>
       Math.abs(pt.brokerage) >= ZERO_PL_EPS ||
@@ -128,10 +121,7 @@ export function assembleFlowsPlChartSeries(
     ytd_total: 0,
     cumulative_total: 0,
   });
-  const densified =
-    granularity === "year"
-      ? densifyYearlyPoints(trimmed, emptyPoint)
-      : densifyMonthlyPoints(trimmed, emptyPoint);
+  const densified = densifyMonthlyPoints(trimmed, emptyPoint);
   let year = "";
   let ytd = 0;
   let cumulative = 0;
@@ -326,10 +316,8 @@ export function buildFlowsPlPayload(opts?: { days?: number }): FlowsPlPayload {
       );
     }
     const payload: FlowsPlPayload = {
-      chart_monthly: assembleFlowsPlChartSeries(consolidatedClp, "month"),
-      chart_yearly: assembleFlowsPlChartSeries(consolidatedClp, "year"),
-      chart_monthly_usd: assembleFlowsPlChartSeries(consolidatedUsd, "month"),
-      chart_yearly_usd: assembleFlowsPlChartSeries(consolidatedUsd, "year"),
+      chart_monthly: assembleFlowsPlChartSeries(consolidatedClp),
+      chart_monthly_usd: assembleFlowsPlChartSeries(consolidatedUsd),
       by_bucket,
     };
     if (opts?.days != null) {

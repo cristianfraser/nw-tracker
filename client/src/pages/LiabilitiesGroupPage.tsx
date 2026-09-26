@@ -272,7 +272,7 @@ export function LiabilitiesGroupPage() {
     displayGroupPerf,
     valuationIsYearly: valuationPrefs.period === "year",
     // The main-section P/L combos are hidden on Pasivos routes (hideGroupPerf).
-    perfIsYearly: false,
+    perfYearlyRange: null,
     chartColorSlug: "liabilities",
     pieAllocationSlug: "liabilities",
     colorPlanGroupSlug: "inversiones",

@@ -18,7 +18,7 @@ import {
   formatFlowMoney,
   rollupChartPointsByYear,
 } from "../flowsDisplay";
-import { timeRangeCutoffYmd } from "../timeRange";
+import { clipMonthsThenRollup, clipPointsToTimeRange, timeRangeCutoffYmd } from "../timeRange";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
 import { CC_EXPENSE_TOTALS_EXCLUDED_SLUGS } from "../ccExpenseLineBuckets";
@@ -139,9 +139,9 @@ export function ExpensesPage() {
 
   const chartPoints = useMemo(() => {
     if (!view) return [];
-    const cutoff = timeRangeCutoffYmd(timeRange);
     if (chartGranularity === "day") {
       if (!data) return [];
+      const cutoff = timeRangeCutoffYmd(timeRange);
       const daily = aggregateGastosChartPointsByDay(
         data.lines,
         chartCategorySlugs,
@@ -177,14 +177,13 @@ export function ExpensesPage() {
       return daily;
     }
     const monthly = view.chart.chart_monthly_by_category.filter(
-      (p) =>
-        (chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth) &&
-        (cutoff == null || p.as_of_date >= cutoff)
+      (p) => chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth
     );
-    if (chartGranularity === "year") {
-      return rollupChartPointsByYear(monthly, chartCategorySlugs);
-    }
-    return monthly;
+    // Months cut at the Rango start, then rolled up: the yearly chart starts with a partial
+    // first year.
+    return clipMonthsThenRollup(monthly, chartGranularity, timeRange, (rows) =>
+      rollupChartPointsByYear(rows, chartCategorySlugs)
+    );
   }, [
     chartCategorySlugs,
     chartEndMonth,
@@ -200,16 +199,15 @@ export function ExpensesPage() {
   /** Unfiltered totals — stack order stays stable when big groups are excluded from display. */
   const chartSortPoints = useMemo(() => {
     if (!view) return [];
-    const cutoff = timeRangeCutoffYmd(timeRange);
     const monthly = view.table.chart_monthly_by_category.filter(
-      (p) =>
-        (chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth) &&
-        (cutoff == null || p.as_of_date >= cutoff)
+      (p) => chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth
     );
-    if (chartGranularity === "year") {
-      return rollupChartPointsByYear(monthly, chartCategorySlugs);
-    }
-    return monthly;
+    return clipMonthsThenRollup(
+      monthly,
+      chartGranularity === "year" ? "year" : "month",
+      timeRange,
+      (rows) => rollupChartPointsByYear(rows, chartCategorySlugs)
+    );
   }, [chartCategorySlugs, chartEndMonth, chartGranularity, view, timeRange]);
 
   /** Table rows: FULL history (no range clip), rolled to the table's own período. */
@@ -223,15 +221,16 @@ export function ExpensesPage() {
     return [...rollupExpenseMonthRowsByYear(asc)].reverse();
   }, [tableGranularity, latestNonEmptyMonth, view]);
 
-  /** "En el rango" companion follows the CHART's Rango (headline `view.total` stays full). */
+  /**
+   * "En el rango" companion follows the CHART's Rango (headline `view.total` stays full): the
+   * months the chart keeps, so it matches the bars at month and year grain alike.
+   */
   const rangeTotals = useMemo(() => {
     if (!view) return { total: 0, total_real: 0 };
-    const cutoff = timeRangeCutoffYmd(timeRange);
     let total = 0;
     let total_real = 0;
-    for (const r of view.table.by_month) {
+    for (const r of clipPointsToTimeRange(view.table.by_month, timeRange)) {
       if (latestNonEmptyMonth != null && r.period_month > latestNonEmptyMonth) continue;
-      if (cutoff != null && r.as_of_date < cutoff) continue;
       total += r.gastos_mes_clp;
       total_real += r.gastos_real_mes_clp;
     }

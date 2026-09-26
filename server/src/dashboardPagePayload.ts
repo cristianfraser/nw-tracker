@@ -132,14 +132,11 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       accounts: clientAccounts,
       liabilities_breakdown,
       deposits_by_category: depositsFlow.by_category,
+      // Monthly only: the yearly combos roll it up after cutting the months at their Rango.
       inversiones_deposits_chart: {
         monthly_clp: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly),
-        yearly_clp: inversionesBrokerageDepositsSeries(depositsFlow.chart_yearly),
         ...(includeUsd
-          ? {
-              monthly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly_usd),
-              yearly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_yearly_usd),
-            }
+          ? { monthly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly_usd) }
           : {}),
       },
       ...(includeUsd

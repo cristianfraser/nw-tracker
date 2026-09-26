@@ -13,6 +13,7 @@ import { useTranslation } from "../i18n";
 import {
   aggregateIncomeChartPointsByDay,
   aggregateIncomeFromPayload,
+  rollupIncomeChartPointsByYear,
   rollupIncomeMonthRowsByYear,
 } from "../incomeAggregates";
 import {
@@ -21,7 +22,7 @@ import {
   formatFlowMoney,
   sumChartPointsField,
 } from "../flowsDisplay";
-import { clipPointsToTimeRange } from "../timeRange";
+import { clipMonthsThenRollup, clipPointsToTimeRange } from "../timeRange";
 
 export function IncomePage() {
   const { t } = useTranslation();
@@ -53,16 +54,23 @@ export function IncomePage() {
 
   const chartPoints = useMemo(() => {
     if (!view) return [];
-    const base =
-      chartGranularity === "day"
-        ? aggregateIncomeChartPointsByDay(data!, displayUnit)
-        : chartGranularity === "year"
-          ? view.chart_yearly
-          : view.chart_monthly;
-    return clipPointsToTimeRange(base, timeRange);
+    if (chartGranularity === "day") {
+      return clipPointsToTimeRange(aggregateIncomeChartPointsByDay(data!, displayUnit), timeRange);
+    }
+    // Months cut at the Rango start, then rolled up: the yearly chart starts with a partial
+    // first year.
+    return clipMonthsThenRollup(
+      view.chart_monthly,
+      chartGranularity,
+      timeRange,
+      rollupIncomeChartPointsByYear
+    );
   }, [chartGranularity, data, displayUnit, view, timeRange]);
 
-  /** "En el rango" companion (headline `view.total` stays full history). */
+  /**
+   * "En el rango" companion (headline `view.total` stays full history): the plotted points'
+   * sum, the same at month and year grain since the yearly rows are built from the in-range months.
+   */
   const rangeTotal = useMemo(() => sumChartPointsField(chartPoints, "total"), [chartPoints]);
 
   const monthTableRows = useMemo(() => {

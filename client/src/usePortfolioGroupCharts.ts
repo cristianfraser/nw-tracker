@@ -7,6 +7,7 @@ export type GroupTabColorMaps = {
   byAccountId: Map<number, string>;
 };
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "./dashboardTimeseriesYearly";
+import { clipMonthsThenRollup, type TimeRange } from "./timeRange";
 import type {
   AssetGroupSlug,
   GroupMonthlyPerformanceResponse,
@@ -20,7 +21,11 @@ export function usePortfolioGroupCharts(opts: {
   displayGroupPerf: GroupMonthlyPerformanceResponse | null;
   /** Per-surface periods: the valuation chart and the P/L combos roll up independently. */
   valuationIsYearly: boolean;
-  perfIsYearly: boolean;
+  /**
+   * The P/L combos' Rango when they show years (their months are cut at it before the rollup:
+   * a partial first year); null while they show months or days.
+   */
+  perfYearlyRange: TimeRange | null;
   chartColorSlug: PortfolioGroupChartsColorSlug;
   pieAllocationSlug: PortfolioGroupChartsColorSlug;
   colorPlanGroupSlug: "inversiones" | "brokerage" | "retirement";
@@ -33,7 +38,7 @@ export function usePortfolioGroupCharts(opts: {
     displayValuationBlock,
     displayGroupPerf,
     valuationIsYearly,
-    perfIsYearly,
+    perfYearlyRange,
     chartColorSlug,
     pieAllocationSlug,
     colorPlanGroupSlug,
@@ -49,18 +54,20 @@ export function usePortfolioGroupCharts(opts: {
 
   const groupPerfForChart = useMemo(() => {
     if (!displayGroupPerf?.points.length) return displayGroupPerf;
-    if (!perfIsYearly) return displayGroupPerf;
+    if (perfYearlyRange == null) return displayGroupPerf;
     const barKeys = displayGroupPerf.bar_accounts.map((a) => a.bar_data_key);
     return {
       ...displayGroupPerf,
-      points: rollupPerfPointsYearly(displayGroupPerf.points, {
-        sumKeys: barKeys,
-        ytdKey: "ytd_group",
-        accumKey: "accumulated_earnings",
-        totalKey: "delta_total",
-      }),
+      points: clipMonthsThenRollup(displayGroupPerf.points, "year", perfYearlyRange, (months) =>
+        rollupPerfPointsYearly(months, {
+          sumKeys: barKeys,
+          ytdKey: "ytd_group",
+          accumKey: "accumulated_earnings",
+          totalKey: "delta_total",
+        })
+      ),
     };
-  }, [displayGroupPerf, perfIsYearly]);
+  }, [displayGroupPerf, perfYearlyRange]);
 
   const groupColorMaps: GroupTabColorMaps = useMemo(() => {
     const accLines = displayValuationBlock?.accounts;

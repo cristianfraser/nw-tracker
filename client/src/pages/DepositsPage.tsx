@@ -12,8 +12,11 @@ import {
   formatFlowMoney,
   sumChartPointsField,
 } from "../flowsDisplay";
-import { clipPointsToTimeRange } from "../timeRange";
-import { aggregateDepositChartPointsByDay } from "../flowsDepositsAggregate";
+import { clipMonthsThenRollup, clipPointsToTimeRange } from "../timeRange";
+import {
+  aggregateDepositChartPointsByDay,
+  rollupDepositChartPointsByYear,
+} from "../flowsDepositsAggregate";
 import type { DepositFlowCategory } from "../types";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
@@ -44,15 +47,14 @@ export function DepositsPage() {
         timeRange
       );
     }
-    const base =
-      displayUnit === "usd"
-        ? chartGranularity === "year"
-          ? data.chart_yearly_usd
-          : data.chart_monthly_usd
-        : chartGranularity === "year"
-          ? data.chart_yearly
-          : data.chart_monthly;
-    return clipPointsToTimeRange(base, timeRange);
+    // Months cut at the Rango start, then rolled up: the yearly chart starts with a partial
+    // first year.
+    return clipMonthsThenRollup(
+      displayUnit === "usd" ? data.chart_monthly_usd : data.chart_monthly,
+      chartGranularity,
+      timeRange,
+      rollupDepositChartPointsByYear
+    );
   }, [chartGranularity, data, displayUnit, timeRange]);
 
   const total = useMemo(() => {

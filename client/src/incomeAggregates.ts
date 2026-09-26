@@ -1,4 +1,5 @@
 import { addCalendarMonths, chileTodayYmd, monthEndUtcYmd, ymCompare } from "./calendarMonth";
+import { rollupChartPointsByYear } from "./flowsDisplay";
 import type { DisplayUnit } from "./queries/keys";
 import type {
   FlowCheckingIncomeLine,
@@ -186,7 +187,6 @@ export function aggregateIncomeFromPayload(
 ): {
   by_month: FlowIncomeMonthRow[];
   chart_monthly: FlowIncomeChartPoint[];
-  chart_yearly: FlowIncomeChartPoint[];
   total: number;
   all_rows: IncomeDisplayRow[];
 } {
@@ -270,50 +270,26 @@ export function aggregateIncomeFromPayload(
     total: m.total_clp,
   }));
 
-  const byYear = new Map<
-    string,
-    { salary: number; severance: number; parent_gift: number; other: number; total: number }
-  >();
-  for (const point of chart_monthly) {
-    const year = point.as_of_date.slice(0, 4);
-    const cur = byYear.get(year) ?? {
-      salary: 0,
-      severance: 0,
-      parent_gift: 0,
-      other: 0,
-      total: 0,
-    };
-    cur.salary += point.salary;
-    cur.severance += point.severance;
-    cur.parent_gift += point.parent_gift;
-    cur.other += point.other;
-    cur.total += point.total;
-    byYear.set(year, cur);
-  }
-
-  const chart_yearly: FlowIncomeChartPoint[] = [...byYear.keys()]
-    .sort((a, b) => a.localeCompare(b))
-    .map((year) => {
-      const sums = byYear.get(year)!;
-      return {
-        as_of_date: `${year}-12-31`,
-        salary: Math.round(sums.salary),
-        severance: Math.round(sums.severance),
-        parent_gift: Math.round(sums.parent_gift),
-        other: Math.round(sums.other),
-        total: Math.round(sums.total),
-      };
-    });
-
   const total = byMonthAsc.reduce((sum, m) => sum + m.total_clp, 0);
 
   return {
     by_month: [...byMonthThroughToday].reverse(),
     chart_monthly,
-    chart_yearly,
     total: unit === "clp" ? Math.round(total) : total,
     all_rows: buildIncomeDisplayRows(data),
   };
+}
+
+const INCOME_CHART_KEYS = ["salary", "severance", "parent_gift", "other", "total"] as const;
+
+/**
+ * Yearly income chart rows from monthly ones (every kind is a flow: it sums). The chart feeds it
+ * through `clipMonthsThenRollup`, so a Rango that starts mid-year gives a partial first year.
+ */
+export function rollupIncomeChartPointsByYear(
+  points: readonly FlowIncomeChartPoint[]
+): FlowIncomeChartPoint[] {
+  return rollupChartPointsByYear(points, INCOME_CHART_KEYS);
 }
 
 /**

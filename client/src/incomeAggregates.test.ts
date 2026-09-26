@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { aggregateIncomeFromPayload } from "./incomeAggregates";
+import { aggregateIncomeFromPayload, rollupIncomeChartPointsByYear } from "./incomeAggregates";
+import { sumChartPointsField } from "./flowsDisplay";
+import { clipMonthsThenRollup } from "./timeRange";
 import type { FlowsIncomeResponse } from "./types";
 
 const emptyWorkEarnings: Pick<
@@ -68,7 +70,7 @@ describe("aggregateIncomeFromPayload", () => {
     expect(withIncome[1]?.salary_clp).toBe(2_000_000);
     expect(withIncome[1]?.other_clp).toBe(500_000);
     expect(view.chart_monthly.filter((p) => p.total > 0)).toHaveLength(2);
-    expect(view.chart_yearly.filter((p) => p.total > 0)).toEqual([
+    expect(rollupIncomeChartPointsByYear(view.chart_monthly).filter((p) => p.total > 0)).toEqual([
       {
         as_of_date: "2025-12-31",
         salary: 2_000_000,
@@ -233,5 +235,77 @@ describe("aggregateIncomeFromPayload", () => {
     const june = view.by_month.find((m) => m.period_month === "2024-06");
     expect(june?.parent_gift_clp).toBe(500_000);
     expect(june?.other_clp).toBe(0);
+  });
+});
+
+describe("income yearly chart under a Rango (the IncomePage composition)", () => {
+  const checkingLine = (movement_id: number, received_on: string, amount_clp: number) => ({
+    movement_id,
+    account_id: 10,
+    account_label: "Corriente",
+    received_on,
+    amount_clp,
+    amount_usd: null,
+    description: "test:income-range",
+    source: "checking" as const,
+  });
+  const data: FlowsIncomeResponse = {
+    lines: [
+      checkingLine(1, "2023-03-15", 1_000_000),
+      checkingLine(2, "2023-08-10", 200_000),
+      checkingLine(3, "2023-10-05", 1_100_000),
+      checkingLine(4, "2023-12-20", 50_000),
+      checkingLine(5, "2024-05-15", 1_200_000),
+      checkingLine(6, "2026-02-15", 1_300_000),
+    ],
+    manual: [],
+    monthly_totals: {},
+    ...emptyWorkEarnings,
+    income_kind_by_movement_id: { 1: "salary", 3: "salary", 5: "salary", 6: "salary" },
+  };
+  // 3y back from 2026-09-26 is 2023-09-26: September 2023 (month-end 09-30) is the first month in.
+  const TODAY = "2026-09-26";
+
+  it("gives a partial first year: the sum of that year's months inside the range", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
+    try {
+      const view = aggregateIncomeFromPayload(data);
+      const years = clipMonthsThenRollup(
+        view.chart_monthly,
+        "year",
+        "3y",
+        rollupIncomeChartPointsByYear,
+        TODAY
+      );
+      // (2025 has no income month at all, so it has no row either way.)
+      expect(years.map((p) => p.as_of_date)).toEqual(["2023-12-31", "2024-12-31", "2026-12-31"]);
+      // Only Oct + Dec 2023 are inside the range; March and August stay out.
+      expect(years[0]).toEqual({
+        as_of_date: "2023-12-31",
+        salary: 1_100_000,
+        severance: 0,
+        parent_gift: 0,
+        other: 50_000,
+        total: 1_150_000,
+      });
+      const months = clipMonthsThenRollup(
+        view.chart_monthly,
+        "month",
+        "3y",
+        rollupIncomeChartPointsByYear,
+        TODAY
+      );
+      const monthsOf2023 = months.filter((p) => p.as_of_date.startsWith("2023-"));
+      expect(monthsOf2023.map((p) => p.as_of_date)).toEqual(["2023-10-31", "2023-12-31"]);
+      expect(years[0]!.total).toBe(sumChartPointsField(monthsOf2023, "total"));
+      // The whole year was 2_350_000 — the chart no longer shows it for a clipped year.
+      expect(rollupIncomeChartPointsByYear(view.chart_monthly)[0]!.total).toBe(2_350_000);
+      // «En el rango» reads the same at year and month grain.
+      expect(sumChartPointsField(years, "total")).toBe(sumChartPointsField(months, "total"));
+      expect(sumChartPointsField(years, "total")).toBe(1_150_000 + 1_200_000 + 1_300_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

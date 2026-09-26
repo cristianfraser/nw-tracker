@@ -63,12 +63,13 @@ export interface FlowsPlBucketBlock {
   accounts: FlowsPlAccountRow[];
 }
 
-/** `GET /api/flows/pl` — monthly net-worth P/L of the money buckets (no real estate). */
+/**
+ * `GET /api/flows/pl` — monthly net-worth P/L of the money buckets (no real estate). Years are
+ * rolled up client-side (`rollupFlowsPlChartPointsByYear`), the chart's after its Rango cut.
+ */
 export interface FlowsPlResponse {
   chart_monthly: FlowsPlChartPoint[];
-  chart_yearly: FlowsPlChartPoint[];
   chart_monthly_usd: FlowsPlChartPoint[];
-  chart_yearly_usd: FlowsPlChartPoint[];
   /** Per-calendar-day P/L (Diario), windowed to the requested `days`; present only when requested. */
   chart_daily?: FlowsPlChartPoint[];
   chart_daily_usd?: FlowsPlChartPoint[];
@@ -499,8 +500,8 @@ export interface RealEstateExpensesResponse {
   places: RealEstatePlaceDto[];
   slots: RealEstateBillSlot[];
   by_account: Record<string, RealEstateExpenseAccountBlock>;
+  /** Monthly only — the chart rolls years up after its Rango cut (`clipMonthsThenRollup`). */
   chart_monthly: FlowExpenseChartPoint[];
-  chart_yearly: FlowExpenseChartPoint[];
   total_clp: number;
 }
 
@@ -516,18 +517,19 @@ export interface RealEstateLinkCandidateDto {
   purchase_month_offset: number;
 }
 
-/** `GET /api/flows/deposits` — amounts may be negative (withdrawals). */
+/**
+ * `GET /api/flows/deposits` — amounts may be negative (withdrawals). Monthly chart blocks only:
+ * the chart rolls years up after its Rango cut (`clipMonthsThenRollup`).
+ */
 export interface FlowsDepositsResponse {
   rows: FlowDepositRow[];
   chart_monthly: FlowDepositChartPoint[];
-  chart_yearly: FlowDepositChartPoint[];
   /** Sum of all row amounts (matches dashboard “Total deposits”). */
   net_total_clp: number;
   net_total_usd: number | null;
   fx_conversion_error?: boolean;
   fx_conversion_warnings?: FxConversionWarning[];
   chart_monthly_usd: FlowDepositChartPoint[];
-  chart_yearly_usd: FlowDepositChartPoint[];
   by_category: Record<
     DepositFlowCategory,
     { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number | null }

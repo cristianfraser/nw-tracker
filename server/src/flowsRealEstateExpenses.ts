@@ -1,4 +1,4 @@
-import { densifyMonthlyPoints, densifyYearlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
+import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { db } from "./db.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
@@ -80,8 +80,11 @@ export type RealEstateExpensesPayload = {
   places: RealEstatePlaceDto[];
   slots: RealEstateBillSlot[];
   by_account: Record<string, RealEstateExpenseAccountBlock>;
+  /**
+   * Monthly only: the page's yearly chart rolls these up client-side AFTER cutting the months at
+   * its own Rango (a partial first year), so a pre-rolled yearly block would be clipped whole.
+   */
   chart_monthly: RealEstateExpenseChartPoint[];
-  chart_yearly: RealEstateExpenseChartPoint[];
   total_clp: number;
 };
 
@@ -183,15 +186,9 @@ export function createRealEstatePlace(opts: {
   };
 }
 
-function periodEndFromBillMonth(billMonth: string, granularity: "month" | "year"): string {
-  if (granularity === "year") return `${billMonth.slice(0, 4)}-12-31`;
-  return monthEndUtcYmd(billMonth);
-}
-
 function aggregateChartPoints(
   slots: readonly RealEstateBillSlot[],
-  places: readonly RealEstatePlaceRow[],
-  granularity: "month" | "year"
+  places: readonly RealEstatePlaceRow[]
 ): RealEstateExpenseChartPoint[] {
   const emptyPoint = (as_of_date: string): RealEstateExpenseChartPoint => {
     const pt: RealEstateExpenseChartPoint = { as_of_date, total: 0 };
@@ -202,7 +199,7 @@ function aggregateChartPoints(
   const byPeriod = new Map<string, RealEstateExpenseChartPoint>();
   for (const slot of slots) {
     if (slot.display_amount_clp <= 0) continue;
-    const pe = periodEndFromBillMonth(slot.bill_month, granularity);
+    const pe = monthEndUtcYmd(slot.bill_month);
     let pt = byPeriod.get(pe);
     if (!pt) {
       pt = emptyPoint(pe);
@@ -212,7 +209,6 @@ function aggregateChartPoints(
     pt.total += slot.display_amount_clp;
   }
   const sorted = [...byPeriod.values()].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
-  if (granularity === "year") return densifyYearlyPoints(sorted, emptyPoint);
   return densifyMonthlyPoints(sorted, emptyPoint);
 }
 
@@ -408,8 +404,7 @@ export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
     };
   }
 
-  const chart_monthly = aggregateChartPoints(slots, places, "month");
-  const chart_yearly = aggregateChartPoints(slots, places, "year");
+  const chart_monthly = aggregateChartPoints(slots, places);
   const total_clp = slots.reduce((s, sl) => s + sl.display_amount_clp, 0);
 
   return {
@@ -417,7 +412,6 @@ export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
     slots,
     by_account,
     chart_monthly,
-    chart_yearly,
     total_clp,
   };
 }

@@ -58,14 +58,11 @@ function perfRow(as_of_date: string, nominal_pl: number | null): AccountMonthlyP
 describe("assembleFlowsPlChartSeries", () => {
   it("unions bucket months with zero-fill and normalizes to month-end", () => {
     chileToday.ymd = "2026-06-15";
-    const points = assembleFlowsPlChartSeries(
-      {
-        brokerage: [consolidatedRow("2026-03-31", 100_000), consolidatedRow("2026-06-15", 40_000)],
-        retirement: [consolidatedRow("2026-04-30", -25_000)],
-        cash: [],
-      },
-      "month"
-    );
+    const points = assembleFlowsPlChartSeries({
+      brokerage: [consolidatedRow("2026-03-31", 100_000), consolidatedRow("2026-06-15", 40_000)],
+      retirement: [consolidatedRow("2026-04-30", -25_000)],
+      cash: [],
+    });
     expect(points.map((p) => p.as_of_date)).toEqual([
       "2026-03-31",
       "2026-04-30",
@@ -85,71 +82,43 @@ describe("assembleFlowsPlChartSeries", () => {
   });
 
   it("resets ytd_total each January while cumulative_total keeps running", () => {
-    const points = assembleFlowsPlChartSeries(
-      {
-        brokerage: [consolidatedRow("2025-12-31", 10_000), consolidatedRow("2026-01-31", 5_000)],
-        retirement: [],
-        cash: [],
-      },
-      "month"
-    );
+    const points = assembleFlowsPlChartSeries({
+      brokerage: [consolidatedRow("2025-12-31", 10_000), consolidatedRow("2026-01-31", 5_000)],
+      retirement: [],
+      cash: [],
+    });
     expect(points.map((p) => p.ytd_total)).toEqual([10_000, 5_000]);
     expect(points.map((p) => p.cumulative_total)).toEqual([10_000, 15_000]);
   });
 
-  it("rolls up years to YYYY-12-31 with per-year sums", () => {
-    const points = assembleFlowsPlChartSeries(
-      {
-        brokerage: [consolidatedRow("2024-02-29", 10_000), consolidatedRow("2024-07-31", 5_000)],
-        retirement: [consolidatedRow("2026-01-31", -3_000)],
-        cash: [],
-      },
-      "year"
-    );
-    expect(points.map((p) => p.as_of_date)).toEqual(["2024-12-31", "2025-12-31", "2026-12-31"]);
-    expect(points[0]).toMatchObject({ brokerage: 15_000, total: 15_000, ytd_total: 15_000 });
-    expect(points[1]).toMatchObject({ total: 0, ytd_total: 0, cumulative_total: 15_000 });
-    expect(points[2]).toMatchObject({
-      retirement: -3_000,
-      total: -3_000,
-      ytd_total: -3_000,
-      cumulative_total: 12_000,
-    });
-  });
-
   it("trims leading all-zero periods (accounts predate any P/L)", () => {
-    const points = assembleFlowsPlChartSeries(
-      {
-        brokerage: [
-          consolidatedRow("2016-01-31", null),
-          consolidatedRow("2016-02-29", 0),
-          consolidatedRow("2016-03-31", 50_000),
-        ],
-        retirement: [consolidatedRow("2016-01-31", null)],
-        cash: [],
-      },
-      "month"
-    );
+    const points = assembleFlowsPlChartSeries({
+      brokerage: [
+        consolidatedRow("2016-01-31", null),
+        consolidatedRow("2016-02-29", 0),
+        consolidatedRow("2016-03-31", 50_000),
+      ],
+      retirement: [consolidatedRow("2016-01-31", null)],
+      cash: [],
+    });
     expect(points.map((p) => p.as_of_date)).toEqual(["2016-03-31"]);
     expect(points[0]).toMatchObject({ brokerage: 50_000, total: 50_000 });
     expect(
-      assembleFlowsPlChartSeries(
-        { brokerage: [consolidatedRow("2016-01-31", null)], retirement: [], cash: [] },
-        "month"
-      )
+      assembleFlowsPlChartSeries({
+        brokerage: [consolidatedRow("2016-01-31", null)],
+        retirement: [],
+        cash: [],
+      })
     ).toEqual([]);
   });
 
   it("throws on non-finite nominal_pl", () => {
     expect(() =>
-      assembleFlowsPlChartSeries(
-        {
-          brokerage: [consolidatedRow("2026-03-31", Number.NaN)],
-          retirement: [],
-          cash: [],
-        },
-        "month"
-      )
+      assembleFlowsPlChartSeries({
+        brokerage: [consolidatedRow("2026-03-31", Number.NaN)],
+        retirement: [],
+        cash: [],
+      })
     ).toThrow(/non-finite/);
   });
 });
@@ -197,12 +166,7 @@ describe("buildFlowsPlPayload (test DB invariants)", () => {
     chileToday.ymd = realChileToday;
     const payload = buildFlowsPlPayload();
 
-    for (const series of [
-      payload.chart_monthly,
-      payload.chart_yearly,
-      payload.chart_monthly_usd,
-      payload.chart_yearly_usd,
-    ]) {
+    for (const series of [payload.chart_monthly, payload.chart_monthly_usd]) {
       let year = "";
       let ytd = 0;
       let cumulative = 0;

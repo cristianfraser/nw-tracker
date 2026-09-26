@@ -37,32 +37,39 @@ export function sumChartPointsField<T>(points: readonly T[], field: keyof T & st
   return sum;
 }
 
-type NumericChartPoint = {
-  as_of_date: string;
-  [key: string]: string | number;
-};
-
-/** Sum monthly chart points into calendar-year buckets (Dec 31 labels). */
-export function rollupChartPointsByYear<T extends NumericChartPoint>(
+/**
+ * Roll monthly chart points up into calendar-year buckets (Dec 31 labels). `valueKeys` are flows
+ * and sum over the year's months. `levelKeys` are running levels (a cumulative total) and take the
+ * year's LAST month instead: summing a level double counts, and a level keeps its full-history
+ * frame even when the months were cut at a Rango start first (see `clipMonthsThenRollup`).
+ */
+export function rollupChartPointsByYear<T extends { as_of_date: string }>(
   points: readonly T[],
-  valueKeys: readonly string[]
+  valueKeys: readonly (keyof T & string)[],
+  opts?: { levelKeys?: readonly (keyof T & string)[] }
 ): T[] {
-  const byYear = new Map<string, Record<string, number>>();
+  const byYear = new Map<string, { sums: Record<string, number>; last: T }>();
   for (const point of points) {
     const year = String(point.as_of_date).slice(0, 4);
-    const bucket = byYear.get(year) ?? {};
+    let bucket = byYear.get(year);
+    if (!bucket) {
+      bucket = { sums: {}, last: point };
+      byYear.set(year, bucket);
+    } else if (point.as_of_date >= bucket.last.as_of_date) {
+      bucket.last = point;
+    }
     for (const key of valueKeys) {
       const v = point[key];
       if (typeof v === "number" && Number.isFinite(v)) {
-        bucket[key] = (bucket[key] ?? 0) + v;
+        bucket.sums[key] = (bucket.sums[key] ?? 0) + v;
       }
     }
-    byYear.set(year, bucket);
   }
   return [...byYear.keys()].sort().map((year) => {
-    const sums = byYear.get(year)!;
-    const row = { as_of_date: `${year}-12-31`, ...sums } as T;
-    return row;
+    const { sums, last } = byYear.get(year)!;
+    const levels: Record<string, unknown> = {};
+    for (const key of opts?.levelKeys ?? []) levels[key] = last[key];
+    return { as_of_date: `${year}-12-31`, ...sums, ...levels } as unknown as T;
   });
 }
 

@@ -183,12 +183,13 @@ export interface DashboardResponse {
     DepositFlowCategory,
     { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number | null }
   >;
-  /** Retiro + brokerage net deposits per period (flows chart aggregation). */
+  /**
+   * Retiro + brokerage net deposits per month (flows chart aggregation); the yearly combos roll
+   * them up after their Rango cut.
+   */
   inversiones_deposits_chart?: {
     monthly_clp: { as_of_date: string; deposited: number }[];
-    yearly_clp: { as_of_date: string; deposited: number }[];
     monthly_usd?: { as_of_date: string; deposited: number }[];
-    yearly_usd?: { as_of_date: string; deposited: number }[];
   };
   /** Home bucket cards (order + bucket) from `portfolio_groups`; Patrimonio neto hero is not included. */
   dashboard_layout?: DashboardLayoutCardRow[];

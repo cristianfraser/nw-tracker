@@ -17,7 +17,7 @@ import {
   flowTableGranularity,
   formatFlowMoney,
 } from "../flowsDisplay";
-import { timeRangeCutoffYmd, timeRangeToDays } from "../timeRange";
+import { clipMonthsThenRollup, timeRangeCutoffYmd, timeRangeToDays } from "../timeRange";
 import { useTranslation } from "../i18n";
 import { useFlowsCreditCardExpenses, useFlowsDeposits, useFlowsPl, useIncome } from "../queries/hooks";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
@@ -83,12 +83,15 @@ export function FlowsOverviewPage() {
     );
   }, [deposits.data, displayUnit, expenses.data, income.data, installmentMode, isDaily, pl.data]);
 
-  /** Chart rows (M/Y): clipped to the chart's Rango, rolled to its granularity. */
+  /** Chart rows (M/Y): months cut at the chart's Rango first, then rolled to its granularity. */
   const rows = useMemo(() => {
     if (!monthRows) return [];
-    const cutoff = timeRangeCutoffYmd(timeRange);
-    const clipped = cutoff ? monthRows.filter((r) => r.as_of_date >= cutoff) : monthRows;
-    return chartGranularity === "year" ? rollupFlowsOverviewRowsByYear(clipped) : clipped;
+    return clipMonthsThenRollup(
+      monthRows,
+      chartGranularity === "year" ? "year" : "month",
+      timeRange,
+      rollupFlowsOverviewRowsByYear
+    );
   }, [chartGranularity, monthRows, timeRange]);
 
   /** What the chart plots: day rows in Diario (server-windowed P/L, client-clipped rest). */
