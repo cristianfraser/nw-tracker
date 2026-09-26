@@ -1,5 +1,6 @@
 import type { Database } from "better-sqlite3";
 import { accountBucketKindSlug } from "./accountBucket.js";
+import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { kindSlugForAccount } from "./portfolioGroupTree.js";
 import {
   CHECKING_ACCOUNTS_BUCKET,
@@ -44,10 +45,10 @@ function accountIdsOnCheckingAssetLeaves(dbHandle: Database): number[] {
       .prepare(
         `SELECT a.id FROM accounts a
          WHERE a.asset_group_id IN (${ph})
-           AND (a.notes IS NULL OR a.notes != 'import:excel|key=stocks')
+           AND (a.import_key IS NULL OR a.import_key != ?)
          ORDER BY a.id`
       )
-      .all(...groupIds) as { id: number }[]
+      .all(...groupIds, NOTE_STOCKS_LEGACY) as { id: number }[]
   ).map((r) => r.id);
 }
 

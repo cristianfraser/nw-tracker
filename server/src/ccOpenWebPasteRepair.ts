@@ -2,9 +2,9 @@ import { ymCompare } from "./calendarMonth.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
-  billingMonthForManualLedgerPurchase,
   periodToIsoForBillingMonth,
   statementCloseDdMmYyyyForBillingMonth,
+  targetBillingMonthForManualImports,
 } from "./ccManualBillingMonth.js";
 import { db } from "./db.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -72,7 +72,7 @@ function ensureOpenWebPasteStatementId(
 
 export type CcOpenWebPasteRepairResult = {
   lines_moved: number;
-  target_billing_month: string | null;
+  target_billing_month: string;
 };
 
 /**
@@ -85,15 +85,8 @@ export function repairMisplacedOpenWebPasteBuckets(
   accountId: number,
   opts?: { skipRecompute?: boolean }
 ): CcOpenWebPasteRepairResult {
-  const openBm = billingMonthForManualLedgerPurchase(accountId);
-  if (!openBm) {
-    return { lines_moved: 0, target_billing_month: null };
-  }
-
   const meta = creditCardMasterMetaForAccount(accountId);
-  if (!meta) {
-    return { lines_moved: 0, target_billing_month: openBm };
-  }
+  const openBm = targetBillingMonthForManualImports(accountId, meta.cardLast4);
 
   let linesMoved = 0;
   const targetStmtId = ensureOpenWebPasteStatementId(

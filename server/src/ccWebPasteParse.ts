@@ -239,27 +239,47 @@ export function newWebPasteBatchId(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
-const WEB_PASTE_CARD_GROUP_BY_ISSUER: Record<string, string> = {
+const WEB_PASTE_CARD_GROUP_BY_ISSUER: Readonly<Record<string, string>> = {
   santander: "santander",
   bci: "BCI",
 };
 
-function webPasteCardGroupForIssuer(issuer: string): string {
-  return WEB_PASTE_CARD_GROUP_BY_ISSUER[issuer] ?? issuer;
-}
-
+/**
+ * Web-paste card group + card last4 of a credit-card master, from structured identity only: the
+ * issuer from `accounts.import_key` (`credit_card_master|<issuer>|<key>`) and the last4 from
+ * `credit_card_account_config.card_last4` — the card identity; the import_key suffix is a stable
+ * dedupe key, not the plastic, so it is not read. Throws for an account that is not a master, an
+ * issuer with no web-paste card group, or a master without a config last4: all data problems,
+ * never "not a card".
+ */
 export function creditCardMasterMetaForAccount(accountId: number): {
   cardGroup: string;
   cardLast4: string;
-} | null {
+} {
   const row = db
-    .prepare(`SELECT notes FROM accounts WHERE id = ?`)
-    .get(accountId) as { notes: string | null } | undefined;
-  const notes = String(row?.notes ?? "");
-  const m = /^credit_card_master\|([^|]+)\|(\d{4})$/.exec(notes);
-  if (!m) return null;
-  return {
-    cardGroup: webPasteCardGroupForIssuer(m[1]!),
-    cardLast4: m[2]!,
-  };
+    .prepare(
+      `SELECT a.import_key, c.card_last4
+       FROM accounts a
+       LEFT JOIN credit_card_account_config c ON c.account_id = a.id
+       WHERE a.id = ?`
+    )
+    .get(accountId) as { import_key: string | null; card_last4: string | null } | undefined;
+  if (!row) throw new Error(`Account ${accountId} does not exist`);
+  const issuer = /^credit_card_master\|([^|]+)\|[^|]+$/.exec(String(row.import_key ?? "").trim())?.[1];
+  if (!issuer) {
+    throw new Error(
+      `Account ${accountId} is not a credit card master (import_key ${JSON.stringify(row.import_key)})`
+    );
+  }
+  const cardGroup = WEB_PASTE_CARD_GROUP_BY_ISSUER[issuer];
+  if (!cardGroup) {
+    throw new Error(`Credit card master ${accountId}: issuer "${issuer}" has no web-paste card group`);
+  }
+  const cardLast4 = String(row.card_last4 ?? "").trim();
+  if (!/^\d{4}$/.test(cardLast4)) {
+    throw new Error(
+      `Credit card master ${accountId} has no valid credit_card_account_config.card_last4 (${JSON.stringify(row.card_last4)})`
+    );
+  }
+  return { cardGroup, cardLast4 };
 }

@@ -47,6 +47,12 @@ describe("santanderStatementImport", () => {
       `DELETE FROM cc_statements WHERE account_id = ?
          AND (source_pdf LIKE 'import:santander-json|%' OR source_pdf LIKE 'vitest-json-%')`
     ).run(id);
+    // Every merge on a card master ensures the open web-paste bucket; drop the empty ones it left.
+    db.prepare(
+      `DELETE FROM cc_statements WHERE account_id = ?
+         AND source_pdf LIKE 'import:web-paste|open|%'
+         AND NOT EXISTS (SELECT 1 FROM cc_statement_lines l WHERE l.statement_id = cc_statements.id)`
+    ).run(id);
     db.prepare(
       `DELETE FROM cc_installment_purchases WHERE account_id = ?
          AND (canonical_row_id LIKE 'json-loan|%' OR canonical_row_id LIKE 'VITEST-JSON-%')`
@@ -289,7 +295,10 @@ describe("santanderStatementImport", () => {
       .get(id) as { n: number };
     expect(linesNow.n).toBe(1);
     const otherMonth = db
-      .prepare(`SELECT COUNT(*) AS n FROM cc_statements WHERE account_id = ? AND statement_date = '20/10/2026'`)
+      .prepare(
+        `SELECT COUNT(*) AS n FROM cc_statements
+         WHERE account_id = ? AND statement_date = '20/10/2026' AND source_pdf NOT LIKE 'import:web-paste%'`
+      )
       .get(id) as { n: number };
     expect(otherMonth.n).toBe(1);
   });

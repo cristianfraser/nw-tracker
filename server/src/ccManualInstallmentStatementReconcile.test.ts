@@ -195,11 +195,15 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
         .run(
           group.id,
           "Vitest · web-paste twin reconcile",
-          "credit_card_master|santander|4747",
-          "vitest-webpaste-twin-reconcile"
+          "credit_card_master|santander|vitest-webpaste-twin-reconcile",
+          "credit_card_master|santander|vitest-webpaste-twin-reconcile"
         ).lastInsertRowid
     );
     accountIds.push(accountId);
+    db.prepare(
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
+       VALUES (?, 21, 20, '4747')`
+    ).run(accountId);
 
     const statementId = Number(
       db

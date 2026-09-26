@@ -410,7 +410,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
   // card_group (e.g. 'santander'), while PDF statements keep the legacy parser groups
   // ('A'/'B'/'INTL') — those rows must still reconcile against any of the account's PDF
   // statements, or every web-paste-converted plan survives its PDF close as a duplicate.
-  const webPasteGroup = creditCardMasterMetaForAccount(accountId)?.cardGroup ?? null;
+  const webPasteGroup = creditCardMasterMetaForAccount(accountId).cardGroup;
 
   const run = db.transaction(() => {
     const manuals = listManualPurchases.all(accountId) as {
@@ -456,7 +456,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
         const manualGroup = String(manual.card_group ?? "A").trim();
         const groupCompatible =
           manualGroup === String(st.card_group ?? "A").trim() ||
-          (webPasteGroup != null && manualGroup === webPasteGroup);
+          manualGroup === webPasteGroup;
         if (!groupCompatible) continue;
         if (!isIsoInInclusivePeriod(manual.purchase_date, st.period_from, st.period_to)) continue;
 

@@ -1,4 +1,5 @@
 import { ccCardRegistry } from "./ccCardRegistry.js";
+import { cardLast4ForCreditCardAccount } from "./ccManualBillingMonth.js";
 import { db } from "./db.js";
 import { resolveMasterAccountIdForCardLast4 } from "./creditCardTree.js";
 
@@ -46,14 +47,16 @@ export function isSupersededSantanderCcMaster(accountId: number): boolean {
   return targetLast4 != null && resolveMasterAccountIdForCardLast4(targetLast4) != null;
 }
 
-/** Physical card last4s billed on one CC master (titular + distinct statement card_last4). */
+/**
+ * Physical card last4s billed on one CC master (titular + distinct statement card_last4). The
+ * titular is `credit_card_account_config.card_last4`, the card identity — a master without one
+ * is a data problem and throws.
+ */
 export function associatedCardLast4sForMaster(masterId: number): string[] {
-  const row = db
-    .prepare(`SELECT notes FROM accounts WHERE id = ?`)
-    .get(masterId) as { notes: string | null } | undefined;
-  const notes = String(row?.notes ?? "").trim();
-  const titularMatch = /^credit_card_master\|[^|]+\|(\d{4})$/.exec(notes);
-  const titular = titularMatch?.[1] ?? null;
+  const titular = cardLast4ForCreditCardAccount(masterId);
+  if (!titular) {
+    throw new Error(`Credit card master ${masterId} has no credit_card_account_config.card_last4`);
+  }
 
   const statementRows = db
     .prepare(
@@ -62,18 +65,15 @@ export function associatedCardLast4sForMaster(masterId: number): string[] {
     )
     .all(masterId) as { card_last4: string }[];
 
-  const last4s = new Set<string>();
-  if (titular) last4s.add(titular);
+  const last4s = new Set<string>([titular]);
   for (const { card_last4 } of statementRows) {
     const l4 = String(card_last4).trim();
     if (l4) last4s.add(l4);
   }
 
   return [...last4s].sort((a, b) => {
-    if (titular != null) {
-      if (a === titular && b !== titular) return -1;
-      if (b === titular && a !== titular) return 1;
-    }
+    if (a === titular && b !== titular) return -1;
+    if (b === titular && a !== titular) return 1;
     return a.localeCompare(b);
   });
 }

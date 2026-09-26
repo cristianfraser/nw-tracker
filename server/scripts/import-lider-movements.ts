@@ -35,7 +35,6 @@ if (dryRun) {
   for (const file of files) {
     const parsed = parseLiderMovementsFile(file);
     const meta = creditCardMasterMetaForAccount(parsed.accountId);
-    if (!meta) throw new Error(`Account ${parsed.accountId} is not a credit card master`);
     console.log(`${parsed.file}  → account ${parsed.accountId} (${meta.cardGroup} ·${meta.cardLast4})`);
 
     let newCount = 0;
