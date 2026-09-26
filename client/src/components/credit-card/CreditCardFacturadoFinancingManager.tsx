@@ -5,21 +5,12 @@ import { formatClp } from "../../format";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { Modal } from "../ui/Modal";
 import { Button } from "@crfrsr/ui";
+import { financingCandidatesFromLines } from "./financingCandidates";
 import {
   useCcFacturadoFinancingLinks,
   useDeleteCcFacturadoFinancingLinkMutation,
   useUpsertCcFacturadoFinancingLinkMutation,
 } from "../../queries/hooks";
-
-type FinancingCandidate = {
-  key: string; // `${account_id}|${purchase_key}`
-  account_id: number;
-  purchase_key: string;
-  merchant: string;
-  amount_clp: number;
-  purchase_month: string;
-  origin_label: string;
-};
 
 /**
  * Tooling to declare a facturado paid in cuotas via one or more installment purchases.
@@ -62,21 +53,8 @@ export function CreditCardFacturadoFinancingManager({
     return [...set].sort().reverse();
   }, [lines, financedAccountId]);
 
-  /** Installment purchases (candidate financing legs). */
-  const financingCandidates = useMemo<FinancingCandidate[]>(() => {
-    return lines
-      .filter((ln) => ln.line_role === "installment_purchase_total")
-      .map((ln) => ({
-        key: `${ln.account_id}|${ln.purchase_key}`,
-        account_id: ln.account_id,
-        purchase_key: ln.purchase_key,
-        merchant: ln.merchant ?? "",
-        amount_clp: ln.amount_clp,
-        purchase_month: ln.purchase_month,
-        origin_label: ln.origin_label,
-      }))
-      .sort((a, b) => b.purchase_month.localeCompare(a.purchase_month));
-  }, [lines]);
+  /** Installment purchases (candidate financing legs), one row per purchase key. */
+  const financingCandidates = useMemo(() => financingCandidatesFromLines(lines), [lines]);
 
   const toggleFinancing = (key: string) => {
     setSelectedFinancing((prev) => {
@@ -219,6 +197,11 @@ export function CreditCardFacturadoFinancingManager({
               />
               <span style={{ flex: 1 }}>
                 {c.merchant || "—"}
+                {c.purchase_count > 1 ? (
+                  <span className="mono" style={{ marginLeft: "0.35rem" }}>
+                    ×{c.purchase_count}
+                  </span>
+                ) : null}
                 <span className="muted" style={{ marginLeft: "0.4rem", fontSize: "0.85em" }}>
                   {formatYearMonthLabel(c.purchase_month)} · {c.origin_label}
                 </span>
