@@ -212,6 +212,7 @@ describe("purchaseFirstDueYm precedence", () => {
     matched_baseline_purchase_id: null,
     source: "manual",
     first_due_month: "2026-09",
+    twin_index: 0,
   };
 
   it("stored first_due_month outranks the manual open+1 guess", () => {

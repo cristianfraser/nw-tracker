@@ -804,6 +804,51 @@ describe("installment statement lines resolve their plan total for the purchase 
       }
     }
   });
+
+  it("twin plans of identical purchases share their total, so identity alone keys them", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    expect(accountId).not.toBeNull();
+    if (accountId == null) return;
+    const tag = "vitest-twin-same-total";
+    const merchant = "VITEST TWIN SAME TOTAL";
+    const insPlan = db.prepare(
+      `INSERT INTO cc_installment_purchases (
+         account_id, card_group, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales,
+         merchant, description_merged, source, twin_index
+       ) VALUES (?, 'A', ?, '2025-01-10', 60000, 3, ?, ?, 'pdf', ?)`
+    );
+    const plans = [0, 1, 2].map((twin) =>
+      Number(insPlan.run(accountId, `${tag}-${twin}`, merchant, merchant, twin).lastInsertRowid)
+    );
+    db.prepare(
+      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to)
+       VALUES (?, 'A', ?, '23/01/2025', '24/12/2024', '23/01/2025')`
+    ).run(accountId, `${tag}.pdf`);
+    const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    try {
+      // No payment row for this line (a cuota-00 preamble has none): identity alone decides.
+      const lineId = Number(
+        db
+          .prepare(
+            `INSERT INTO cc_statement_lines (
+               statement_id, merchant, description_merged, amount_clp, installment_flag,
+               nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, transaction_date, parser_row_id
+             ) VALUES (?, ?, ?, 60000, 1, 0, 3, 20000, '10/01/2025', ?)`
+          )
+          .run(sid, merchant, merchant, `${tag}-prid`).lastInsertRowid
+      );
+      expect(resolveCcExpensePurchaseKey(lineId)).toBe(
+        `installment-h:${accountId}:2025-01-10:3:60000:${merchant}`
+      );
+      expect(loadCcStatementLineExpenseCtx(lineId)?.installment_total_clp).toBe(60_000);
+    } finally {
+      db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(sid);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(sid);
+      for (const pid of plans) {
+        db.prepare(`DELETE FROM cc_installment_purchases WHERE id = ?`).run(pid);
+      }
+    }
+  });
 });
 
 afterAll(() => {

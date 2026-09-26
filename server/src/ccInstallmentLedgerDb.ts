@@ -46,6 +46,8 @@ type PurchaseRow = {
   source: string;
   /** Evidence-backed first-cuota month (YYYY-MM); NULL = derive it (migration 163). */
   first_due_month: string | null;
+  /** Occurrence among same-identity twin purchases, 0-based (migration 187). */
+  twin_index: number;
 };
 
 export type PaymentRow = {
@@ -566,17 +568,24 @@ function scheduledTotalRemainingByMonth(
   return out;
 }
 
+/**
+ * Logical identity of an installment plan. The twin index is part of it: identical purchases
+ * made the same day each print their own cuota line on every statement and are separate plans
+ * that differ only in `twin_index` (migration 187).
+ */
 export function installmentPurchaseLedgerDedupeKey(pr: {
   purchase_date: string;
   total_amount_clp: number;
   cuotas_totales: number;
   merchant: string | null;
+  twin_index: number;
 }): string {
   return [
     pr.purchase_date,
     String(pr.total_amount_clp),
     String(pr.cuotas_totales),
     merchantStemForInstallmentDedupe(pr.merchant),
+    String(pr.twin_index),
   ].join("\t");
 }
 
@@ -591,6 +600,7 @@ export function assertNoDuplicateInstallmentPurchaseFingerprints(
     | "total_amount_clp"
     | "cuotas_totales"
     | "merchant"
+    | "twin_index"
   >[]
 ): void {
   const byKey = new Map<string, { ids: number[]; canonical_row_ids: string[] }>();
@@ -632,6 +642,7 @@ export function dedupeInstallmentPurchaseLedgerRows<
     total_amount_clp: number;
     cuotas_totales: number;
     merchant: string | null;
+    twin_index: number;
   },
 >(purchases: readonly T[]): T[] {
   const byKey = new Map<string, T>();
@@ -669,7 +680,8 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
   const purchasesDb = db
     .prepare(
       `SELECT id, canonical_row_id, card_group, purchase_date, total_amount_clp, cuotas_totales,
-              merchant, description_merged, matched_baseline_purchase_id, source, first_due_month
+              merchant, description_merged, matched_baseline_purchase_id, source, first_due_month,
+              twin_index
        FROM cc_installment_purchases
        WHERE account_id = ?
        ORDER BY purchase_date, id`

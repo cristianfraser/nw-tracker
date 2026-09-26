@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { mergeInstallmentLedgerFromParsedRows } from "./ccInstallmentLedgerMerge.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
+import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 
 describe("mergeInstallmentLedgerFromParsedRows canonical fingerprint", () => {
   const purchaseIds: number[] = [];
@@ -15,10 +16,10 @@ describe("mergeInstallmentLedgerFromParsedRows canonical fingerprint", () => {
   });
 
   it("reuses one purchase when canonical_row_id differs but contract fingerprint matches", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|vitest-fixture' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
+    const masterId = getVitestSantanderCcMasterAccountId();
+    expect(masterId).not.toBeNull();
+    if (masterId == null) return;
+    const master = { id: masterId };
 
     const base: Partial<CcStatementCsvRecord> = {
       card_group: "A",

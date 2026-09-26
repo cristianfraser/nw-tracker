@@ -25,6 +25,7 @@ describe("ledgerInstallmentsPaid", () => {
       matched_baseline_purchase_id: null,
       source: "pdf",
       first_due_month: null,
+      twin_index: 0,
     };
 
     const payList: PaymentRow[] = Array.from({ length: 11 }, (_, idx) => ({
@@ -90,7 +91,7 @@ describe("ccInstallmentsDbApiPayload", () => {
     insPurchase.run(master.id, "dup-2", "2025-02-26", 120_000, 3, "VITEST DUP", "VITEST DUP");
     const rows = db
       .prepare(
-        `SELECT id, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales, merchant
+        `SELECT id, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
          FROM cc_installment_purchases
          WHERE account_id = ? AND canonical_row_id IN ('dup-1','dup-2') ORDER BY id`
       )
@@ -101,6 +102,7 @@ describe("ccInstallmentsDbApiPayload", () => {
       total_amount_clp: number;
       cuotas_totales: number;
       merchant: string | null;
+      twin_index: number;
     }[];
     insertedPurchaseIds.push(...rows.map((r) => r.id));
 

@@ -34,6 +34,7 @@ describe("ccCrossImportDedupe", () => {
       total_amount_clp: 492_000,
       cuotas_totales: 12,
       merchant: "MERCADOPAGO*MIBICIO",
+      twin_index: 0,
     };
     expect(
       installmentPurchaseMatchesOneShot(
@@ -70,6 +71,7 @@ describe("ccCrossImportDedupe", () => {
       total_amount_clp: 92_918,
       cuotas_totales: 6,
       merchant: "TGR",
+      twin_index: 0,
     };
     expect(
       installmentPurchaseMatchesOneShot(purchase, "TGR", "2026-06-28", 92_918)

@@ -102,4 +102,40 @@ describe("ccExpenseLineDedupe", () => {
     });
     expect(flowCcExpenseLineFingerprint(april)).not.toBe(flowCcExpenseLineFingerprint(may));
   });
+
+  function twinCuota(statementLineId: number, statementDate: string): DedupeLine {
+    return line({
+      line_role: "installment_cuota",
+      installment_flag: 1,
+      merchant_key: "VITEST TWIN SHOP",
+      purchase_on: "2025-01-10",
+      billing_month: "2025-02",
+      nro_cuota_current: 2,
+      nro_cuota_total: 3,
+      amount_clp: 20_000,
+      statement_line_id: statementLineId,
+      statement_date: statementDate,
+    });
+  }
+
+  it("keeps identical cuota lines of one statement apart (twin purchases)", () => {
+    const deduped = dedupeFlowCcExpenseLines([
+      twinCuota(11, "24/02/2025"),
+      twinCuota(12, "24/02/2025"),
+      twinCuota(13, "24/02/2025"),
+    ]);
+    expect(deduped.map((l) => l.statement_line_id).sort()).toEqual([11, 12, 13]);
+  });
+
+  it("collapses the Nth twin with the Nth rendering of the same slot elsewhere", () => {
+    // Two twins on the statement, the same two again in another rendering (another statement
+    // row for the billing month — a web-paste bucket, a re-imported copy).
+    const deduped = dedupeFlowCcExpenseLines([
+      twinCuota(11, "24/02/2025"),
+      twinCuota(12, "24/02/2025"),
+      twinCuota(21, "20/02/2025"),
+      twinCuota(22, "20/02/2025"),
+    ]);
+    expect(deduped.map((l) => l.statement_line_id).sort()).toEqual([21, 22]);
+  });
 });

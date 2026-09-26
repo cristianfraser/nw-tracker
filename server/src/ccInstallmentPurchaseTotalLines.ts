@@ -29,6 +29,7 @@ export type InstallmentPurchaseRow = {
   total_amount_clp: number;
   cuotas_totales: number;
   merchant: string | null;
+  twin_index: number;
 };
 
 function purchaseOnIso(raw: string): string {
@@ -72,11 +73,34 @@ function loadInstallmentPurchases(accountIds: number[]): InstallmentPurchaseRow[
   const ph = accountIds.map(() => "?").join(",");
   const rows = db
     .prepare(
-      `SELECT id, account_id, purchase_date, total_amount_clp, cuotas_totales, merchant
+      `SELECT id, account_id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
        FROM cc_installment_purchases WHERE account_id IN (${ph})`
     )
     .all(...accountIds) as InstallmentPurchaseRow[];
   return dedupeInstallmentPurchaseLedgerRows(rows);
+}
+
+/**
+ * How many purchase totals each amount-aware key stands for: one per twin occurrence among the
+ * ledger plans behind it (migration 187). Identical purchases made the same day keep a total
+ * each; two ledger rows for the SAME occurrence still collapse into one.
+ */
+function installmentTotalSlotsByKey(
+  purchases: readonly InstallmentPurchaseRow[]
+): Map<string, number> {
+  const twinsByKey = new Map<string, Set<number>>();
+  for (const pr of purchases) {
+    const key = `${installmentPurchaseIdentityKey(
+      pr.account_id,
+      purchaseOnIso(pr.purchase_date),
+      pr.cuotas_totales,
+      normalizeCcExpenseMerchantKey(pr.merchant)
+    )}:${Math.round(pr.total_amount_clp)}`;
+    const twins = twinsByKey.get(key) ?? new Set<number>();
+    twins.add(pr.twin_index);
+    twinsByKey.set(key, twins);
+  }
+  return new Map([...twinsByKey].map(([key, twins]) => [key, twins.size]));
 }
 
 export function purchaseLineMatchesInstallmentPurchase(
@@ -553,17 +577,18 @@ export function buildInstallmentPurchaseTotalLines(
  * Promote purchase-month statement rows to installment totals when they already
  * represent the purchase; append synthetics only when no statement row exists.
  */
-function pickPreferredInstallmentPurchaseTotal(
+/** Sort order for competing totals of one key: statement row, then non-summary, then newest line. */
+function compareInstallmentTotalPreference(
   a: FlowCcExpenseLineBeforeNotes,
   b: FlowCcExpenseLineBeforeNotes
-): FlowCcExpenseLineBeforeNotes {
-  if (a.statement_line_id > 0 && b.statement_line_id <= 0) return a;
-  if (b.statement_line_id > 0 && a.statement_line_id <= 0) return b;
+): number {
+  const aStatement = a.statement_line_id > 0;
+  const bStatement = b.statement_line_id > 0;
+  if (aStatement !== bStatement) return aStatement ? -1 : 1;
   const aSummary = isInstallmentContractSummaryMerchant(a.merchant);
   const bSummary = isInstallmentContractSummaryMerchant(b.merchant);
-  if (aSummary && !bSummary) return b;
-  if (bSummary && !aSummary) return a;
-  return a.statement_line_id >= b.statement_line_id ? a : b;
+  if (aSummary !== bSummary) return aSummary ? 1 : -1;
+  return b.statement_line_id - a.statement_line_id;
 }
 
 function dropInstallmentResumenCuotasSupersededByTotals(
@@ -583,8 +608,11 @@ function dropInstallmentResumenCuotasSupersededByTotals(
   });
 }
 
-function dedupeInstallmentPurchaseTotalLines(lines: FlowCcExpenseLineBeforeNotes[]): FlowCcExpenseLineBeforeNotes[] {
-  const totalsByKey = new Map<string, FlowCcExpenseLineBeforeNotes>();
+function dedupeInstallmentPurchaseTotalLines(
+  lines: FlowCcExpenseLineBeforeNotes[],
+  slotsByKey: ReadonlyMap<string, number>
+): FlowCcExpenseLineBeforeNotes[] {
+  const totalsByKey = new Map<string, FlowCcExpenseLineBeforeNotes[]>();
   const out: FlowCcExpenseLineBeforeNotes[] = [];
   for (const ln of lines) {
     if (ln.line_role !== "installment_purchase_total") {
@@ -599,14 +627,16 @@ function dedupeInstallmentPurchaseTotalLines(lines: FlowCcExpenseLineBeforeNotes
         ln.nro_cuota_total ?? 0,
         ln.merchant_key
       )}:${Math.round(ln.amount_clp)}`;
-    const prev = totalsByKey.get(key);
-    if (!prev) {
-      totalsByKey.set(key, ln);
-      continue;
-    }
-    totalsByKey.set(key, pickPreferredInstallmentPurchaseTotal(prev, ln));
+    const list = totalsByKey.get(key) ?? [];
+    list.push(ln);
+    totalsByKey.set(key, list);
   }
-  return [...out, ...totalsByKey.values()];
+  const kept: FlowCcExpenseLineBeforeNotes[] = [];
+  for (const [key, list] of totalsByKey) {
+    const slots = slotsByKey.get(key) ?? 1;
+    kept.push(...[...list].sort(compareInstallmentTotalPreference).slice(0, slots));
+  }
+  return [...out, ...kept];
 }
 
 export function mergeInstallmentPurchaseTotalsIntoLines(
@@ -618,22 +648,25 @@ export function mergeInstallmentPurchaseTotalsIntoLines(
   const synthetics = buildInstallmentPurchaseTotalLines(accountIds, lines, maps);
   const result = [...lines];
   const pendingSynths: FlowCcExpenseLineRowDraft[] = [];
-  const satisfiedTotalKeys = new Set<string>();
+  const slotsByKey = installmentTotalSlotsByKey(purchases);
+  const satisfiedByKey = new Map<string, number>();
 
   for (const synth of synthetics) {
     // Amount-aware key so two distinct same-merchant/same-day/same-cuotas purchases each keep
-    // their own total instead of the second being skipped as already satisfied.
+    // their own total instead of the second being skipped as already satisfied; a key holds one
+    // total per twin plan behind it.
     const synthKey = installmentTotalDedupeKey(synth);
-    if (synthKey && satisfiedTotalKeys.has(synthKey)) continue;
+    if (synthKey && (satisfiedByKey.get(synthKey) ?? 0) >= (slotsByKey.get(synthKey) ?? 1)) {
+      continue;
+    }
 
     const repIdx = findRepresentativeLineIndex(result, synth);
     if (repIdx >= 0) {
       result[repIdx] = promoteLineToInstallmentPurchaseTotal(result[repIdx]!, synth);
-      if (synthKey) satisfiedTotalKeys.add(synthKey);
-    } else if (!synthKey || !satisfiedTotalKeys.has(synthKey)) {
+    } else {
       pendingSynths.push(synth);
-      if (synthKey) satisfiedTotalKeys.add(synthKey);
     }
+    if (synthKey) satisfiedByKey.set(synthKey, (satisfiedByKey.get(synthKey) ?? 0) + 1);
   }
 
   const totalKeys = collectInstallmentTotalKeys(result);
@@ -646,6 +679,6 @@ export function mergeInstallmentPurchaseTotalsIntoLines(
   const filtered = result.filter(
     (ln) => !shouldDropPurchaseLineForInstallmentTotal(ln, totalKeys, purchases, totalLines)
   );
-  const merged = dedupeInstallmentPurchaseTotalLines([...filtered, ...pendingSynths]);
+  const merged = dedupeInstallmentPurchaseTotalLines([...filtered, ...pendingSynths], slotsByKey);
   return dropInstallmentResumenCuotasSupersededByTotals(merged);
 }

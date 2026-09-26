@@ -26,6 +26,7 @@ export type CcInstallmentPurchaseMatch = {
   total_amount_clp: number;
   cuotas_totales: number;
   merchant: string | null;
+  twin_index: number;
 };
 
 export type CcOneShotLineMatch = {
@@ -109,7 +110,7 @@ export function listInstallmentPurchasesForAccount(
 ): CcInstallmentPurchaseMatch[] {
   const rows = db
     .prepare(
-      `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant
+      `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
        FROM cc_installment_purchases WHERE account_id = ?`
     )
     .all(accountId) as CcInstallmentPurchaseMatch[];
@@ -417,7 +418,7 @@ export function removeOneShotLinesForInstallmentPurchase(
 ): CcCrossImportDedupeResult {
   const purchase = db
     .prepare(
-      `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant
+      `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
        FROM cc_installment_purchases WHERE id = ? AND account_id = ?`
     )
     .get(purchaseId, accountId) as CcInstallmentPurchaseMatch | undefined;

@@ -32,14 +32,13 @@ import path from "node:path";
 
 import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
-import { parseDdMmYyToIso } from "../src/ccInstallmentPayBy.js";
 import { importCcStatementsFromCsvRecords } from "../src/ccStatementsImport.js";
 import {
+  groupInstallmentLoanChains,
   mergeCcAccountFromParsedRows,
   mergeInstallmentLedgerFromParsedRows,
   replaceStatementKeysFromRecords,
 } from "../src/ccInstallmentLedgerMerge.js";
-import { isInstallmentContractSummaryMerchant } from "../src/ccInstallmentLineDedupe.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "../src/ccTraspasoDeudaLinks.js";
 import {
   filterUnchangedStatementRecords,
@@ -64,68 +63,6 @@ function arg(name: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(p));
   if (!hit) return undefined;
   return hit.slice(p.length);
-}
-
-function parseInt10(s: string): number | null {
-  const n = Number(String(s ?? "").replace(/\s+/g, "").replace(/\./g, "").replace(",", "."));
-  if (!Number.isFinite(n)) return null;
-  return Math.trunc(n);
-}
-
-/** Full contract principal (cuota única vs total operación en filas resumen del PDF). */
-function installmentContractAmountClp(row: Record<string, string>): number {
-  const a = parseInt10(String(row.amount_clp ?? "")) ?? 0;
-  const b = parseInt10(String(row.monto_origen_operacion_clp ?? "")) ?? 0;
-  const c = parseInt10(String(row.monto_total_a_pagar_clp ?? "")) ?? 0;
-  return Math.max(a, b, c);
-}
-
-type Agg = {
-  card_group: string;
-  canonical_row_id: string;
-  rows: Record<string, string>[];
-};
-
-/** One physical installment contract (Visa/Master may emit different canonical_row_id per statement). */
-function makeLoanKey(row: Record<string, string>): string | null {
-  const cg = String(row.card_group ?? "A").trim() || "A";
-  const iso = txDateIso(row);
-  const amt = installmentContractAmountClp(row);
-  const nt = parseInt10(String(row.nro_cuota_total ?? ""));
-  if (!iso || amt <= 0 || nt == null || nt <= 0) return null;
-  const merch =
-    String(row.merchant ?? "")
-      .trim()
-      .toUpperCase()
-      .slice(0, 96) ||
-    String(row.description_merged ?? "")
-      .trim()
-      .toUpperCase()
-      .slice(0, 96);
-  if (!merch) return null;
-  return `${cg}\t${iso}\t${amt}\t${nt}\t${merch}`;
-}
-
-function pickCanonicalForLoan(rows: Record<string, string>[]): string {
-  const ids = [
-    ...new Set(
-      rows
-        .map((r) => String(r.canonical_row_id ?? "").trim())
-        .filter(Boolean)
-    ),
-  ].sort();
-  return ids[0] ?? "unknown";
-}
-
-function stmtSortKey(statementDate: string): number {
-  const iso = parseDdMmYyToIso(statementDate);
-  if (!iso) return 0;
-  return Number(iso.replace(/-/g, ""));
-}
-
-function txDateIso(row: Record<string, string>): string | null {
-  const raw = String(row.transaction_date ?? row.posting_date ?? "").trim();
-  return parseDdMmYyToIso(raw);
 }
 
 function partitionRecordsByAccount(
@@ -339,33 +276,10 @@ function main() {
         paymentUpserts = merged.ledger.paymentUpserts;
       }
     } else {
-      const byLoan = new Map<string, Agg>();
-      for (const row of accountRecords) {
-        const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
-        if (!inst) continue;
-        if (isInstallmentContractSummaryMerchant(String(row.merchant ?? ""))) continue;
-        if (installmentContractAmountClp(row) <= 0) continue;
-        const loanKey = makeLoanKey(row);
-        if (!loanKey) continue;
-        const cg = String(row.card_group ?? "A").trim() || "A";
-        const g = byLoan.get(loanKey) ?? { card_group: cg, canonical_row_id: "", rows: [] };
-        g.rows.push(row);
-        g.canonical_row_id = pickCanonicalForLoan(g.rows);
-        byLoan.set(loanKey, g);
-      }
-      purchaseUpserts = byLoan.size;
-      for (const agg of byLoan.values()) {
-        const sorted = [...agg.rows].sort(
-          (a, b) => stmtSortKey(a.statement_date ?? "") - stmtSortKey(b.statement_date ?? "")
-        );
-        const payGroups = new Map<string, Record<string, string>[]>();
-        for (const r of sorted) {
-          const pk = `${r.source_pdf}\t${r.statement_date}`;
-          const list = payGroups.get(pk) ?? [];
-          list.push(r);
-          payGroups.set(pk, list);
-        }
-        paymentUpserts += payGroups.size;
+      const chains = groupInstallmentLoanChains(accountRecords);
+      purchaseUpserts = chains.size;
+      for (const chain of chains.values()) {
+        paymentUpserts += new Set(chain.rows.map((r) => `${r.source_pdf}\t${r.statement_date}`)).size;
       }
     }
 
