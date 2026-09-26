@@ -1178,7 +1178,12 @@ export function buildFlowsCreditCardExpensesPayload(
   const today = chileCalendarTodayYmd();
   const line_proxy: Record<number, ProxyLotResult> = {};
   for (const accountId of accountIds) {
-    const { lineProxy } = buildNormalPurchaseProxyForAccount(accountId, tickers, today);
+    const { lineProxy } = buildNormalPurchaseProxyForAccount(
+      accountId,
+      tickers,
+      today,
+      billingDetailCacheForAccount(accountId).facturaciones
+    );
     for (const [lineId, result] of lineProxy) {
       line_proxy[lineId] = result;
     }

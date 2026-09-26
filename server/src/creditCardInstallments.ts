@@ -236,6 +236,7 @@ export type CcInstallmentsResponseBase = {
 function buildInstallmentProxy(
   accountId: number,
   purchases: readonly CcInstallmentPurchaseComputed[],
+  facturaciones: readonly CcFacturacionRow[],
   tickers: string[],
   today: string
 ): { purchaseProxy: Record<number, ProxyLotResult>; facturacionProxy: ProxyFacturacionAggregate[] } {
@@ -254,8 +255,14 @@ function buildInstallmentProxy(
     }
   }
 
-  // Normal purchase lots — each withdrawal already carries its billing_month
-  const { lotResults: normalLotResults } = buildNormalPurchaseProxyForAccount(accountId, tickers, today);
+  // Normal purchase lots, dated by the same facturaciones rows the table shows. Every withdrawal,
+  // cuota or one-shot, carries the facturación that billed it.
+  const { lotResults: normalLotResults } = buildNormalPurchaseProxyForAccount(
+    accountId,
+    tickers,
+    today,
+    facturaciones
+  );
   allLotResults.push(...normalLotResults);
 
   const facturacionProxy = aggregateProxyByFacturacion(allLotResults, activeTickers);
@@ -284,6 +291,7 @@ export function creditCardInstallmentsResponse(
     const { purchaseProxy, facturacionProxy } = buildInstallmentProxy(
       accountId,
       [...db.purchases, ...db.purchases_completed],
+      facturaciones,
       tickers,
       today
     );

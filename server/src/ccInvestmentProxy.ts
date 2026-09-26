@@ -1,13 +1,19 @@
 /**
- * Investment proxy: for each CC purchase (installment or normal), simulate
- * investing the purchase amount at the first pay-by date and selling at each
- * cuota payment date. Computes "potential realized earnings" per tracked ticker.
+ * Investment proxy: for each CC purchase (installment or normal), simulate investing the
+ * purchase amount on the purchase date and selling each slice on the pay-by of the facturación
+ * that billed it. Computes "potential realized earnings" per tracked ticker, keyed by that
+ * facturación so the facturaciones table shows each gain on the row that billed the money.
  *
  * Computed overlay only — not persisted, not part of net worth.
  */
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { ufYoyAnnualRate } from "./watchlistStats.js";
+import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
+import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
+import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
+import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
+import { facturacionPayByIsoResolver, type CcFacturacionRow } from "./ccBillingViews.js";
 
 // ─── Ticker config ───────────────────────────────────────────────────────────
 
@@ -172,7 +178,10 @@ function projectPrice(lastKnownClp: number, lastRealDate: string, targetYmd: str
 
 export type ProxyLot = {
   deposit: { amount_clp: number; date: string };
-  /** Sorted ascending by date. Each entry maps to one cuota or normal-purchase payment. */
+  /**
+   * Sorted ascending by date. Each entry maps to one cuota or normal-purchase payment: `date` is
+   * the pay-by of the facturación that billed it, `billing_month` that facturación (YYYY-MM).
+   */
   withdrawals: { amount_clp: number; date: string; billing_month: string }[];
 };
 
@@ -187,6 +196,7 @@ export type ProxyLot = {
  *   appreciation; at the last cuota nothing is left invested, so it converges to Σ realized.
  * total_return_so_far_pct = total_gain_so_far_clp / purchase principal.
  * projected             = true if depositPrice or this cuota's price was projected (UF-YoY).
+ * billing_month         = the facturación that billed this slice (not its pay-by month).
  */
 export type ProxyCuotaResult = {
   pay_by_date: string;
@@ -302,24 +312,25 @@ export function computeProxyLot(
 
 // ─── Lot builders ─────────────────────────────────────────────────────────────
 
-/** YYYY-MM from an ISO date string. */
-function ymFromIso(ymd: string): string {
-  return ymd.slice(0, 7);
-}
-
 /**
  * Build a proxy lot for a DB-source installment purchase.
  * deposit date = purchase_date (the money is float from the moment you buy, same framing
  *   as normalPurchaseToLot). Depositing at the first pay_by instead made cuota 1 a
  *   zero-length float — always exactly 0 gain — and dropped the purchase → first-pay-by
  *   stretch, the longest float in the lot, from every later cuota too.
- * withdrawals = each payment statement entry, sorted by date.
- * Each withdrawal carries its billing_month (= YYYY-MM of pay_by_date).
+ * withdrawals = each cuota a statement printed, sorted by date. It is keyed by the facturación
+ *   that billed it: the month the plan schedule bills cuota N (`first_due_month` + N − 1, AGENTS.md
+ *   «One schedule framing» — the month whose «cuota a pagar» carries it). It is withdrawn on that
+ *   facturación's pay-by: the payment row's `pay_by_date`, which the import resolved the way the
+ *   facturaciones table does (`resolveInstallmentPayByIso`: printed PAGAR HASTA, else derived).
+ *   Keying by the pay-by month instead put every cuota's gain on the next facturación's row.
  */
 export function installmentPurchaseToLot(purchase: {
   purchase_date?: string;
+  first_due_month: string;
   payment_statements?: {
     pay_by_date: string;
+    cuota_current: number | null;
     amount_clp: number;
   }[];
   principal_clp: number;
@@ -332,21 +343,36 @@ export function installmentPurchaseToLot(purchase: {
   if (!purchaseDate) {
     throw new Error("ccInvestmentProxy: installment purchase has no purchase_date");
   }
-  const sorted = [...stmts].sort((a, b) => a.pay_by_date.localeCompare(b.pay_by_date));
+  const firstDueYm = parseYearMonth(purchase.first_due_month);
+  if (!firstDueYm) {
+    throw new Error(
+      `ccInvestmentProxy: installment purchase ${purchaseDate} has no valid first_due_month («${purchase.first_due_month}»)`
+    );
+  }
+  const withdrawals = stmts.map((s) => {
+    const cuota = s.cuota_current;
+    if (cuota == null || !Number.isInteger(cuota) || cuota < 1) {
+      throw new Error(`ccInvestmentProxy: installment payment of purchase ${purchaseDate} has no cuota index`);
+    }
+    const payBy = normalizeTransactionDateIso(s.pay_by_date);
+    if (!payBy) {
+      throw new Error(
+        `ccInvestmentProxy: cuota ${cuota} of purchase ${purchaseDate} has no parseable pay-by («${s.pay_by_date}»)`
+      );
+    }
+    return { amount_clp: s.amount_clp, date: payBy, billing_month: addCalendarMonths(firstDueYm, cuota - 1) };
+  });
+  withdrawals.sort((a, b) => a.date.localeCompare(b.date) || a.billing_month.localeCompare(b.billing_month));
   return {
     deposit: { amount_clp: purchase.principal_clp, date: purchaseDate },
-    withdrawals: sorted.map((s) => ({
-      amount_clp: s.amount_clp,
-      date: s.pay_by_date,
-      billing_month: ymFromIso(s.pay_by_date),
-    })),
+    withdrawals,
   };
 }
 
 /**
  * Build a proxy lot for a normal (non-installment) purchase.
  * deposit date = purchase_on (real transaction date).
- * withdrawal = facturación pay_by_iso, billing_month from statement period.
+ * withdrawal = the pay-by of the facturación that billed it (`billing_month`).
  */
 export function normalPurchaseToLot(opts: {
   amount_clp: number;
@@ -370,8 +396,9 @@ export type ProxyFacturacionAggregate = {
 /**
  * Aggregate per-cuota realized gains grouped by each cuota's own billing_month.
  *
- * Each lot carries `by_ticker[t].cuotas[]`, each with its own billing_month
- * (= YYYY-MM of pay_by_date). A 12-cuota purchase distributes across 12 months.
+ * Each lot carries `by_ticker[t].cuotas[]`, each with the facturación that billed it
+ * (`billing_month`, the key the facturaciones table looks up). A 12-cuota purchase distributes
+ * across 12 facturaciones.
  *
  * blended_return_pct = total_gain_that_month / Σ cuota_amounts_that_month
  */
@@ -420,72 +447,83 @@ export function aggregateProxyByFacturacion(
 
 const stmtNormalPurchasesForAccount = db.prepare(`
   SELECT l.id AS statement_line_id,
+         l.merchant,
          l.amount_clp,
          l.transaction_date,
          l.posting_date,
-         -- billing_month: prefer period_to, else statement_date (DD/MM/YYYY → YYYY-MM)
-         CASE
-           WHEN s.period_to IS NOT NULL AND s.period_to != ''
-           THEN substr(s.period_to, 7, 4) || '-' || substr(s.period_to, 4, 2)
-           ELSE substr(s.statement_date, 7, 4) || '-' || substr(s.statement_date, 4, 2)
-         END AS billing_month,
-         -- pay_by_iso: convert DD/MM/YYYY to YYYY-MM-DD
-         CASE
-           WHEN s.pay_by IS NOT NULL AND s.pay_by != ''
-           THEN substr(s.pay_by, 7, 4) || '-' || substr(s.pay_by, 4, 2) || '-' || substr(s.pay_by, 1, 2)
-           ELSE NULL
-         END AS pay_by_iso
+         l.cuota_purchase_kind,
+         s.statement_date
   FROM cc_statement_lines l
   JOIN cc_statements s ON s.id = l.statement_id
   WHERE s.account_id = ?
     AND l.installment_flag = 0
     AND l.amount_clp > 0
-    AND l.amount_clp IS NOT NULL
   ORDER BY l.id
 `);
 
 type NormalPurchaseRow = {
   statement_line_id: number;
+  merchant: string | null;
   amount_clp: number;
   transaction_date: string | null;
   posting_date: string | null;
-  billing_month: string;
-  pay_by_iso: string | null;
+  cuota_purchase_kind: string | null;
+  statement_date: string;
 };
 
-function isoFromDdMmYyyy(raw: string | null): string | null {
-  if (!raw) return null;
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw.trim());
-  if (!m) return raw.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
-  return `${m[3]}-${m[2]}-${m[1]}`;
-}
-
 /**
- * Build proxy lots for all normal (non-installment, positive) purchases for an account.
- * Keyed by statement_line_id. Skips lines with no purchase date or no pay_by.
+ * Build proxy lots for all normal (non-installment, positive CLP) purchases for an account.
+ * Keyed by statement_line_id.
+ *
+ * Each line belongs to the facturación its statement's lines belong to, by the one rule the
+ * facturado and the facturación modal read (`facturacionMonthByStatementDate`: the statement's own
+ * month; a stale open bucket's, the open month). It is withdrawn on that facturación's pay-by as the
+ * facturaciones table resolves it (`facturaciones`, see `facturacionPayByIsoResolver`), so the web-paste
+ * lines of the open and provisionally closed months take part: they have no printed PAGAR HASTA.
+ *
+ * Left out, as the facturado leaves them out: a line a plan supersedes (the plan's lot carries the
+ * purchase) and a feed-typed cuota purchase still waiting for its count (not billed whole at this
+ * facturación; its plan will carry it). A line with no parseable purchase date throws.
  */
 export function buildNormalPurchaseProxyForAccount(
   accountId: number,
   tickers: string[],
-  today: string
+  today: string,
+  facturaciones: readonly Pick<CcFacturacionRow, "billing_month" | "pay_by_iso">[]
 ): {
   lineProxy: Map<number, ProxyLotResult>;
   lotResults: ProxyLotResult[];
 } {
-  const rows = stmtNormalPurchasesForAccount.all(accountId) as NormalPurchaseRow[];
   const lineProxy = new Map<number, ProxyLotResult>();
   const lotResults: ProxyLotResult[] = [];
   const activeTickers = tickersWithData(tickers);
   if (activeTickers.length === 0) return { lineProxy, lotResults };
+  const rows = stmtNormalPurchasesForAccount.all(accountId) as NormalPurchaseRow[];
+  if (rows.length === 0) return { lineProxy, lotResults };
 
+  const facturacionByStatementDate = facturacionMonthByStatementDate(accountId);
+  const payByIsoFor = facturacionPayByIsoResolver(accountId, facturaciones);
+  const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
   for (const row of rows) {
-    const purchaseOn = isoFromDdMmYyyy(row.transaction_date) ?? isoFromDdMmYyyy(row.posting_date);
-    if (!purchaseOn || !row.pay_by_iso || !row.billing_month) continue;
+    if (row.cuota_purchase_kind != null || superseded.has(row.statement_line_id)) continue;
+    const purchaseOn =
+      normalizeTransactionDateIso(row.transaction_date) ?? normalizeTransactionDateIso(row.posting_date);
+    if (!purchaseOn) {
+      throw new Error(
+        `ccInvestmentProxy: statement line ${row.statement_line_id} (${row.merchant ?? "?"}) has no parseable purchase date`
+      );
+    }
+    const billingMonth = facturacionByStatementDate.get(row.statement_date);
+    if (!billingMonth) {
+      throw new Error(
+        `ccInvestmentProxy: statement line ${row.statement_line_id}'s statement (${row.statement_date}) has no facturación`
+      );
+    }
     const lot = normalPurchaseToLot({
       amount_clp: row.amount_clp,
       purchase_on: purchaseOn,
-      pay_by_iso: row.pay_by_iso,
-      billing_month: row.billing_month,
+      pay_by_iso: payByIsoFor(billingMonth),
+      billing_month: billingMonth,
     });
     const result = computeProxyLot(lot, activeTickers, today);
     lineProxy.set(row.statement_line_id, result);
