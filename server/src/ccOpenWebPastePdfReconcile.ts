@@ -54,8 +54,15 @@ function closedPeriodIsoRange(
 
 export type CcOpenWebPastePdfReconcileResult = {
   billing_month: string;
+  /**
+   * Bucket currencies settled: every line once the month is fully closed, else only the lines in
+   * a currency whose statement is in (one twin arriving before the other).
+   */
+  currencies: ("clp" | "usd")[];
   deleted_count: number;
   deleted_line_ids: number[];
+  /** Earliest purchase date among the deleted lines — evidence the owed walk must re-read from. */
+  earliest_deleted_iso: string | null;
   /** Bucket lines the statement did not bill (after its cycle) moved to the open facturación. */
   moved_count: number;
   moved_line_ids: number[];
@@ -85,6 +92,9 @@ export type CcOpenWebPastePdfReconcileResult = {
  * Lines already filed in a LATER bucket (the post-close feed moved them forward) are only
  * deleted when the statement carries them after all. Falls back to exact matching alone when the
  * statement lacks a parseable period.
+ *
+ * Before the month is fully closed (one twin in, the other pending) only the lines in the
+ * statement's own currency are settled; the rest wait for their statement.
  */
 export function reconcileOpenWebPasteAfterPdfClose(
   accountId: number,
@@ -98,32 +108,31 @@ export function reconcileOpenWebPasteAfterPdfClose(
   if (pdfStatements.length === 0) {
     return {
       billing_month: billingMonth,
+      currencies: [],
       deleted_count: 0,
       deleted_line_ids: [],
+      earliest_deleted_iso: null,
       moved_count: 0,
       moved_line_ids: [],
       skipped: true,
       skip_reason: "no_pdf_lines_for_billing_month",
     };
   }
-  // One twin alone (e.g. the USD statement arriving before the CLP one) must not supersede
-  // the open bucket — the month's web-paste lines are mostly CLP pre-auths that only the CLP
-  // PDF represents. Wait until every statement currency the account carries is imported.
+  // The month closes only once every statement currency the account carries is in, but one twin
+  // is already the bank's word on its OWN currency: settle that currency's bucket lines now and
+  // leave the others for their statement. Keeping the whole bucket until the second twin (the
+  // rule until 2026-09-26) counted the first twin's lines twice meanwhile — the September 2026
+  // ·0781 USD statement arrived hours before its CLP twin, and importing it alone read the
+  // month's dollar purchases twice (US$x.xxx,xx billed for US$x.xxx,xx).
   const fullyClosed = hasPdfStatementCloseForBillingMonth(
     statementSlotsByBillingMonth(accountId).get(billingMonth),
     accountRequiresUsdStatementClose(accountId)
   );
-  if (!fullyClosed) {
-    return {
-      billing_month: billingMonth,
-      deleted_count: 0,
-      deleted_line_ids: [],
-      moved_count: 0,
-      moved_line_ids: [],
-      skipped: true,
-      skip_reason: "billing_month_not_fully_closed",
-    };
-  }
+  const statementCurrencies = new Set<"clp" | "usd">(
+    pdfStatements.map((st) => (st.currency === "usd" ? "usd" : "clp"))
+  );
+  const settles = (line: CcStatementLineRow): boolean =>
+    fullyClosed || statementCurrencies.has(bucketLineCurrency(line));
 
   const closedPeriod = closedPeriodIsoRange(pdfStatements);
   const nextStart = nextPeriodStartIsoForBillingMonth(accountId, billingMonth, statements).iso;
@@ -140,6 +149,13 @@ export function reconcileOpenWebPasteAfterPdfClose(
 
   const toDelete: number[] = [];
   const toMove: number[] = [];
+  let earliestDeleted: string | null = null;
+  const remove = (line: CcStatementLineRow, purchaseIso: string | null): void => {
+    toDelete.push(line.id);
+    if (purchaseIso && (earliestDeleted == null || purchaseIso < earliestDeleted)) {
+      earliestDeleted = purchaseIso;
+    }
+  };
   const buckets = statements
     .map((st) => ({ st, bm: parseOpenWebPasteBillingMonth(st.source_pdf) }))
     .filter((b): b is { st: CcStatementRow; bm: string } => b.bm != null)
@@ -148,6 +164,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
     if (bm.localeCompare(billingMonth) < 0) continue;
     const laterBucket = bm !== billingMonth;
     for (const line of listCcStatementLinesForStatement(st.id)) {
+      if (!settles(line)) continue;
       const purchaseIso = linePurchaseIso(line);
       if (laterBucket) {
         // Routed past this close by the feed or the per-line router: only the statement itself
@@ -157,16 +174,16 @@ export function reconcileOpenWebPasteAfterPdfClose(
           purchaseIso != null &&
           purchaseIso >= closedPeriod.from &&
           purchaseIso <= closedPeriod.to;
-        if (nearClose && takeMatch(line)) toDelete.push(line.id);
+        if (nearClose && takeMatch(line)) remove(line, purchaseIso);
         continue;
       }
       if (takeMatch(line)) {
-        toDelete.push(line.id);
+        remove(line, purchaseIso);
         continue;
       }
       if (closedPeriod == null || purchaseIso == null) continue;
       if (purchaseIso >= closedPeriod.from && purchaseIso < nextStart) {
-        toDelete.push(line.id);
+        remove(line, purchaseIso);
       } else {
         toMove.push(line.id);
       }
@@ -187,8 +204,10 @@ export function reconcileOpenWebPasteAfterPdfClose(
 
   return {
     billing_month: billingMonth,
+    currencies: fullyClosed ? ["clp", "usd"] : [...statementCurrencies].sort(),
     deleted_count: toDelete.length,
     deleted_line_ids: toDelete,
+    earliest_deleted_iso: earliestDeleted,
     moved_count: toMove.length,
     moved_line_ids: toMove,
     skipped: false,
@@ -197,6 +216,11 @@ export function reconcileOpenWebPasteAfterPdfClose(
 }
 
 type StatementLineForMatching = { line: CcStatementLineRow; currency: "clp" | "usd" };
+
+/** A bucket line's currency: pasted / fed foreign purchases carry `amount_usd` (and 0 CLP). */
+function bucketLineCurrency(line: CcStatementLineRow): "clp" | "usd" {
+  return line.amount_usd != null && line.amount_usd !== 0 ? "usd" : "clp";
+}
 
 function statementLinesForMatching(
   pdfStatements: readonly CcStatementRow[]

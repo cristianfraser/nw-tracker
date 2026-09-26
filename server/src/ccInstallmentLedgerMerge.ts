@@ -505,7 +505,9 @@ export function mergeCcAccountFromParsedRows(
   upsertCreditCardValuationsFromLedger(accountId, {
     affectedEvidenceFromYmd: earliestIso(
       result.statements.earliestInsertedTxDate,
-      result.ledger.earliestNewPurchaseDate
+      result.ledger.earliestNewPurchaseDate,
+      // Bucket lines the statement settled are evidence removed on their own dates.
+      ...result.web_paste_pdf_reconcile.map((r) => r.earliest_deleted_iso)
     ),
   });
 
