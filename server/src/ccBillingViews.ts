@@ -30,6 +30,7 @@ import {
   provisionallyClosedBillingMonthsForAccount,
 } from "./ccManualBillingMonth.js";
 import { feedBillingCloseForMonth, type CcCloseSource } from "./ccBillingCloses.js";
+import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { listStaleOpenWebPasteStatementDates } from "./ccOpenWebPastePdfReconcile.js";
 import { parseOpenWebPasteBillingMonth } from "./ccOpenWebPasteRepair.js";
 import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
@@ -286,30 +287,72 @@ export function facturadoClpFromOpenMonthStatementLines(
 }
 
 const selCuotaPurchaseLines = db.prepare<[number]>(
-  `SELECT l.id, l.amount_clp, s.source_pdf
+  `SELECT l.id, l.merchant, l.transaction_date, l.posting_date, l.amount_clp, l.cuota_purchase_kind,
+          s.source_pdf
    FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND s.source_pdf LIKE 'import:web-paste|open|%'
-     AND l.cuota_purchase_kind IS NOT NULL`
+     AND l.cuota_purchase_kind IS NOT NULL
+   ORDER BY l.id`
 );
 
+/** A feed-typed cuota purchase still waiting for its plan: the count is not known yet. */
+export type CcPendingCuotaPurchase = {
+  statement_line_id: number;
+  merchant: string | null;
+  /** Purchase date (ISO) — installment debt from this day, like a plan's contract. */
+  purchase_date: string;
+  /** Full principal (CLP), what the feed listed. */
+  amount_clp: number;
+  kind: CcCuotaPurchaseKind;
+  /** The open-bucket facturación the line sits in (`YYYY-MM`). */
+  billing_month: string;
+};
+
 /**
- * Σ CLP of feed-typed cuota purchases still waiting for their plan (`cuota_purchase_kind`), per
- * open-bucket month. A line a plan already supersedes is excluded — the plan carries it.
+ * Feed-typed cuota purchases whose plan is not known yet (`cuota_purchase_kind`, see
+ * `ccFeedCuotaPurchases.ts`). A line a plan already supersedes is excluded — the plan carries it.
+ * One list for every reader: the cupo figures, the daily «deuda en cuotas» walk, the projected
+ * rows and the card page's «¿cuántas cuotas?» notice.
  */
-export function cuotaPurchaseLinesClpByBucketMonth(accountId: number): Map<string, number> {
+export function pendingCuotaPurchaseLines(accountId: number): CcPendingCuotaPurchase[] {
   const rows = selCuotaPurchaseLines.all(accountId) as {
     id: number;
+    merchant: string | null;
+    transaction_date: string | null;
+    posting_date: string | null;
     amount_clp: number | null;
+    cuota_purchase_kind: CcCuotaPurchaseKind;
     source_pdf: string;
   }[];
-  const out = new Map<string, number>();
-  if (rows.length === 0) return out;
+  if (rows.length === 0) return [];
   const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+  const out: CcPendingCuotaPurchase[] = [];
   for (const r of rows) {
     if (superseded.has(r.id)) continue;
     const bm = parseOpenWebPasteBillingMonth(r.source_pdf);
     if (!bm) continue;
-    out.set(bm, (out.get(bm) ?? 0) + Math.abs(r.amount_clp ?? 0));
+    const purchaseDate =
+      parseDdMmYyToIso(String(r.transaction_date ?? "")) ?? parseDdMmYyToIso(String(r.posting_date ?? ""));
+    if (!purchaseDate) {
+      throw new Error(`Cuota purchase line ${r.id} (${r.merchant ?? "?"}) has no parseable date`);
+    }
+    out.push({
+      statement_line_id: r.id,
+      merchant: r.merchant,
+      purchase_date: purchaseDate,
+      amount_clp: Math.abs(r.amount_clp ?? 0),
+      kind: r.cuota_purchase_kind,
+      billing_month: bm,
+    });
+  }
+  return out;
+}
+
+/** Σ CLP of {@link pendingCuotaPurchaseLines} per open-bucket month. */
+export function cuotaPurchaseLinesClpByBucketMonth(accountId: number): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const p of pendingCuotaPurchaseLines(accountId)) {
+    out.set(p.billing_month, (out.get(p.billing_month) ?? 0) + p.amount_clp);
   }
   return out;
 }
@@ -661,6 +704,11 @@ function appendProjectedBillingDetailRows(
   }
   if (maxProjectedYm == null) return existing;
 
+  // A cuota purchase whose count is not known yet has no schedule: it stays installment debt, flat,
+  // until its plan replaces it — the daily walk carries it the same way, so the charts agree.
+  let pendingCuotaPurchasesClp = 0;
+  for (const v of cuotaPurchaseLinesClpByBucketMonth(accountId).values()) pendingCuotaPurchasesClp += v;
+
   const projected: CcBillingDetailMonthRow[] = [];
   for (const ym of [...candidateMonths].sort(ymCompare)) {
     if (ymCompare(ym, lastDetalleYm) <= 0) continue;
@@ -668,7 +716,7 @@ function appendProjectedBillingDetailRows(
     if (existingMonths.has(ym)) continue;
     if (!monthHasProjectedData(ym)) continue;
 
-    const cupo = owedAtMonthEnd(ym);
+    const cupo = owedAtMonthEnd(ym) + pendingCuotaPurchasesClp;
     const cuotaNext = cuotaAPagarNextMesClp(ym, ledgerMonths);
     projected.push({
       billing_month: ym,

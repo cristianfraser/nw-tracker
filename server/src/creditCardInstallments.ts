@@ -1,7 +1,12 @@
 import type { CcBillingMonthBalanceRow } from "./ccBillingBalances.js";
 import { getCreditCardAccountConfig } from "./ccAccountConfig.js";
 import { listCcBillingMonthBalances } from "./ccBillingBalances.js";
-import type { CcBillingDetailMonthRow, CcFacturacionRow } from "./ccBillingViews.js";
+import {
+  pendingCuotaPurchaseLines,
+  type CcBillingDetailMonthRow,
+  type CcFacturacionRow,
+  type CcPendingCuotaPurchase,
+} from "./ccBillingViews.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { buildCreditCardFinancingPlByBillingMonth, type CcFinancingPlMonthRow } from "./creditCardPerformancePl.js";
 import type { CreditCardBillingConfig } from "./ccBillingMonth.js";
@@ -243,6 +248,11 @@ export type CcInstallmentsResponseBase = {
   billing_config?: CreditCardBillingConfig;
   /** Credit line snapshot for the summary cards — see {@link ccCupoSnapshot}. */
   cupo?: CcCupoSnapshot;
+  /**
+   * Feed-typed cuota purchases still waiting for their count (`pendingCuotaPurchaseLines`): the
+   * card page asks for it. Per card only — a merged group ledger does not carry it.
+   */
+  pending_cuota_purchases?: CcPendingCuotaPurchase[];
   open_billing_month?: string | null;
   associated_card_last4s?: string[];
   historial_chart?: CcHistorialChartPoint[];
@@ -339,6 +349,7 @@ export function creditCardInstallmentsResponse(
       financing_pl_by_month: financingPl,
       billing_config: loadCreditCardBillingConfig(accountId),
       cupo: ccCupoSnapshotForAccount(accountId, billingDetail, open_billing_month),
+      pending_cuota_purchases: pendingCuotaPurchaseLines(accountId),
       historial_chart: buildCcHistorialChartSeries(
         db.installment_history_months,
         billingDetail,
@@ -386,6 +397,7 @@ export function creditCardInstallmentsResponse(
       financing_pl_by_month: financingPl,
       billing_config: loadCreditCardBillingConfig(accountId),
       cupo: ccCupoSnapshotForAccount(accountId, billingDetail, open_billing_month),
+      pending_cuota_purchases: pendingCuotaPurchaseLines(accountId),
       historial_chart: buildCcHistorialChartSeries([], billingDetail, facturaciones),
       billing_month_chart: buildCcBillingMonthChartSeries(facturaciones, financingPl),
     };

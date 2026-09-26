@@ -327,6 +327,7 @@ function CreditCardInstallmentsSection({
                 extraCcOffsetsKey={JSON.stringify(extraOffsets)}
                 facturacionProxy={ledger.facturacion_proxy}
                 proxyTickers={ledger.proxy_tickers}
+                pendingCuotaPurchases={ledger.pending_cuota_purchases}
               />
             </>
           ) : null}

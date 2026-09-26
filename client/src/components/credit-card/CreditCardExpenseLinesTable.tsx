@@ -347,6 +347,19 @@ export function CreditCardExpenseLinesTable({
             <td className="mono">{ln.purchase_on ?? "—"}</td>
             <td>
               {ln.merchant ?? "—"}
+              {ln.cuota_purchase_kind ? (
+                <span
+                  title={t(`expenses.creditCard.cuotaPurchasePendingHint.${ln.cuota_purchase_kind}`)}
+                  style={{ marginLeft: "0.35rem" }}
+                >
+                  <Pill
+                    size="small"
+                    label={t("expenses.creditCard.cuotaPurchasePendingBadge")}
+                    backgroundColor="#92400e"
+                    hoverBackgroundColor="#b45309"
+                  />
+                </span>
+              ) : null}
               {(() => {
                 const mortgageLink = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
                 if (mortgageLink) {
@@ -439,7 +452,9 @@ export function CreditCardExpenseLinesTable({
                     disabled={makeInstallmentBusy || deleteBusy}
                     onClick={() => onMakeInstallmentLine?.(ln)}
                   >
-                    {t("accountDetail.creditCard.makeInstallmentAction")}
+                    {ln.cuota_purchase_kind
+                      ? t("accountDetail.creditCard.makeInstallmentActionPending")
+                      : t("accountDetail.creditCard.makeInstallmentAction")}
                   </Button>
                 ) : null}
                 {canDelete ? (
