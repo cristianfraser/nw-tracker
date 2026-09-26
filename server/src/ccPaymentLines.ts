@@ -9,6 +9,20 @@ export function isCcPaymentMerchant(merchant: string | null | undefined): boolea
 }
 
 /**
+ * The previous facturación's payment date printed in a statement header
+ * (`cc_statements.monto_pagado_anterior_date`, migration 166). The import stores it as ISO or
+ * not at all, so every reader of header payments — the owed walk, the cuota retirement and the
+ * payment-mirror evidence — takes it through here: anything else is bad stored state and
+ * throws rather than being re-parsed, skipped or passed on raw.
+ */
+export function requireHeaderPagoIso(statementDate: string, raw: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new Error(`cc_statements ${statementDate}: invalid monto_pagado_anterior_date ${raw}`);
+  }
+  return raw;
+}
+
+/**
  * Payment-of-billed-debt lines including the USD side's «ABONO DE DIVISAS» (substring match —
  * some formats suffix it). A traspaso-linked abono is debt reclassification, not a payment, but
  * links only exist on PDF statement lines — open-cycle (web-paste / feed) lines never carry

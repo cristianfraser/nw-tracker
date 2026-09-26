@@ -26,7 +26,8 @@
  *   leftover pesos with no closed facturación to pay are discarded.
  */
 import { cacheKeyCcBillingDetail, getAggregationCached } from "./aggregationCache.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { isCcPaymentMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
 import { db } from "./db.js";
 
 export type ClpPaymentEvent = { iso: string; clp: number };
@@ -61,37 +62,42 @@ function isoFromStatementDateLike(raw: string | null | undefined): string | null
 }
 
 /**
- * Dated CLP payments of billed debt for one CC master: PAGO / MONTO CANCELADO statement
- * lines plus header-only pagados (`monto_pagado_anterior` + printed date, migration 166).
- * Same classification as the mirror-pair evidence collector (`ccPaymentMirrors.ts`) —
- * keep the two aligned. Versions and the legacy line+header double-description of one
- * payment collapse on (date, amount), lines preferred. USD-debt abonos are excluded:
- * cuotas are CLP and a divisas payment never pays the CLP facturado.
+ * Dated CLP payments of billed debt for one CC master: payment lines (`isCcPaymentMerchant`
+ * — PAGO, MONTO CANCELADO, ABONO, the same test as the open-month sums) plus header-only
+ * pagados (`monto_pagado_anterior` + printed date, migration 166). The mirror-pair evidence
+ * collector (`ccPaymentMirrors.ts`) reads the same lines and headers through the same
+ * predicate and date readers. Versions and the legacy line+header double-description of one
+ * payment collapse on (date, amount), lines preferred. USD-debt abonos (ABONO DE DIVISAS) are
+ * not payments here: cuotas are CLP and a divisas payment never pays the CLP facturado.
  */
 export function listClpCcPaymentEventsForAccount(accountId: number): ClpPaymentEvent[] {
   return getAggregationCached(`${cacheKeyCcBillingDetail(accountId)}|clp_pago_events`, () => {
     const lineRows = db
       .prepare(
-        `SELECT l.transaction_date, l.amount_clp
+        `SELECT l.transaction_date, l.amount_clp, l.merchant
          FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
          WHERE s.account_id = ? AND s.currency = 'clp'
-           AND l.installment_flag = 0 AND l.amount_clp < 0
-           AND (UPPER(l.merchant) LIKE '%CANCELADO%' OR UPPER(l.merchant) LIKE 'PAGO%')`
+           AND l.installment_flag = 0 AND l.amount_clp < 0`
       )
-      .all(accountId) as { transaction_date: string | null; amount_clp: number }[];
+      .all(accountId) as {
+      transaction_date: string | null;
+      amount_clp: number;
+      merchant: string | null;
+    }[];
     const headerRows = db
       .prepare(
-        `SELECT monto_pagado_anterior AS amt, monto_pagado_anterior_date AS pago_iso
+        `SELECT statement_date, monto_pagado_anterior AS amt, monto_pagado_anterior_date AS pago_iso
          FROM cc_statements
          WHERE account_id = ? AND currency = 'clp'
            AND monto_pagado_anterior IS NOT NULL AND monto_pagado_anterior_date IS NOT NULL`
       )
-      .all(accountId) as { amt: number; pago_iso: string }[];
+      .all(accountId) as { statement_date: string; amt: number; pago_iso: string }[];
 
     const byKey = new Map<string, ClpPaymentEvent>();
     for (const r of lineRows) {
-      const iso = isoFromStatementDateLike(r.transaction_date);
+      if (!isCcPaymentMerchant(r.merchant)) continue;
+      const iso = normalizeTransactionDateIso(r.transaction_date);
       if (!iso) continue;
       const clp = Math.round(Math.abs(r.amount_clp));
       if (clp === 0) continue;
@@ -99,10 +105,9 @@ export function listClpCcPaymentEventsForAccount(accountId: number): ClpPaymentE
       if (!byKey.has(key)) byKey.set(key, { iso, clp });
     }
     for (const r of headerRows) {
-      const iso = isoFromStatementDateLike(r.pago_iso);
-      if (!iso) continue;
       const clp = Math.round(Math.abs(r.amt));
       if (clp === 0) continue;
+      const iso = requireHeaderPagoIso(r.statement_date, r.pago_iso);
       const key = `${iso}|${clp}`;
       if (!byKey.has(key)) byKey.set(key, { iso, clp });
     }

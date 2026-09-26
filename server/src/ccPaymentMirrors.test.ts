@@ -1,6 +1,7 @@
 import { loadMergedDepositInflowEventsBankDated } from "./accountDeposits.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./aggregationCache.js";
+import { listClpCcPaymentEventsForAccount } from "./ccCuotaRetirement.js";
 import {
   convertCcPaymentMirrors,
   listCcPaymentMirrorCandidates,
@@ -367,6 +368,86 @@ describe("convertCcPaymentMirrors", () => {
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(abonoLineId);
       db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(usdStatementId);
+      clearAggregationCache();
+    }
+  });
+});
+
+/**
+ * Both collectors of CLP payment evidence — the mirror pairing above and the cuota retirement's
+ * payment events — classify lines with `isCcPaymentMerchant` (PAGO, MONTO CANCELADO, ABONO,
+ * exact) and read header dates the way the owed walk does.
+ */
+describe("CLP payment evidence (mirror pairing and cuota retirement)", () => {
+  it("counts an ABONO line as a payment and a merchant that only starts with PAGO as none", () => {
+    if (checkingId == null || ccId == null) return;
+    const statementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency)
+           VALUES (?, 'santander', 'vitest-ccpago-abono.pdf', '23/08/2037', '23/07/2037', '23/08/2037', 'clp')`
+        )
+        .run(ccId).lastInsertRowid
+    );
+    const insLine = db.prepare(
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+       VALUES (?, ?, ?, ?, 0, ?)`
+    );
+    const abonoLineId = Number(
+      insLine.run(statementId, "05/08/2037", "ABONO", -314159, "vitest-ccpago-abono-1").lastInsertRowid
+    );
+    // A refunded charge whose merchant starts with PAGO — paying another issuer's bill is a
+    // purchase on this card, not a payment of it.
+    insLine.run(statementId, "06/08/2037", "PAGO EN LINEA PROM. CMR FALABE", -271828, "vitest-ccpago-abono-2");
+    const insOut = db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
+    );
+    const abonoOutId = Number(
+      insOut.run(checkingId, -314159, "2037-08-06", "vitest|Traspaso Internet a T. Crédito|abono")
+        .lastInsertRowid
+    );
+    const pagoPrefixOutId = Number(
+      insOut.run(checkingId, -271828, "2037-08-07", "vitest|Traspaso Internet a T. Crédito|pago-prefix")
+        .lastInsertRowid
+    );
+    cleanupMovementIds.push(abonoOutId, pagoPrefixOutId);
+    clearAggregationCache();
+
+    try {
+      const abonoCand = myCandidates().find((c) => c.out.movement_id === abonoOutId);
+      expect(abonoCand?.evidence.statement_line_id).toBe(abonoLineId);
+      expect(abonoCand?.evidence.pago_iso).toBe("2037-08-05");
+      expect(abonoCand?.blocked).toBe(false);
+      expect(myCandidates().find((c) => c.out.movement_id === pagoPrefixOutId)).toBeUndefined();
+
+      const august = listClpCcPaymentEventsForAccount(ccId).filter(
+        (e) => e.iso >= "2037-08-01" && e.iso <= "2037-08-31"
+      );
+      expect(august).toEqual([{ iso: "2037-08-05", clp: 314159 }]);
+    } finally {
+      db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
+      clearAggregationCache();
+    }
+  });
+
+  it("throws on a header payment date that is not ISO instead of re-parsing or passing it on", () => {
+    if (ccId == null) return;
+    const statementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency,
+             monto_pagado_anterior, monto_pagado_anterior_date)
+           VALUES (?, 'santander', 'vitest-ccpago-baddate.pdf', '23/09/2037', '23/08/2037', '23/09/2037', 'clp', -123457, '07/09/2037')`
+        )
+        .run(ccId).lastInsertRowid
+    );
+    clearAggregationCache();
+    try {
+      expect(() => listClpCcPaymentEventsForAccount(ccId!)).toThrow(/invalid monto_pagado_anterior_date/);
+      expect(() => listCcPaymentMirrorCandidates()).toThrow(/invalid monto_pagado_anterior_date/);
+    } finally {
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
       clearAggregationCache();
     }
   });
