@@ -9,7 +9,7 @@ import {
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../ui/TableMobileCard";
-import { formatYmEs } from "../../pages/accountDetail/shared";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 
 const PAGE_SIZE = 12;
 
@@ -48,7 +48,7 @@ function formatStockInflow(
 function formatPerfPeriodLabel(asOfDate: string, isYearly: boolean): string {
   if (isYearly) return asOfDate.slice(0, 4);
   const ym = asOfDate.slice(0, 7);
-  return formatYmEs(ym);
+  return formatYearMonthLabel(ym);
 }
 
 function rollupMonthlyPerfRowsYearly(rows: readonly PerfRow[]): PerfRow[] {

@@ -49,7 +49,10 @@ function monthShort(month1: number): string {
   return months[month1 - 1]!;
 }
 
-/** `2026-12` → `dic 2026` / `Dec 2026` (tables, month pickers). */
+/**
+ * `2026-12` → `dic 2026` / `Dec 2026` (tables, month pickers, modal titles). A full
+ * `2026-12-31` labels its month the same way.
+ */
 export function formatYearMonthLabel(ym: string): string {
   const [y, m] = ym.split("-");
   const mo = Number(m);

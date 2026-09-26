@@ -10,7 +10,7 @@ import type {
 import { formatClp, formatGroupedDecimal } from "../../format";
 import { cn } from "../../cn";
 import { Trans, useTranslation } from "../../i18n";
-import { formatYmEs } from "./shared";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 import { proxyCuotaLine } from "./creditCardProxyLine";
 import { CreditCardFacturacionesTable } from "./CreditCardFacturacionesTable";
 import {
@@ -173,7 +173,7 @@ function CreditCardInstallmentsSection({
             {opts.dueColumn !== "last" ? <td className="mono desktop-only">{formatClp(p.remaining_principal_clp)}</td> : null}
             {opts.dueColumn === "last" ? (
               <td className="mono desktop-only">
-                {p.last_paid_month ? formatYmEs(p.last_paid_month) : "—"}
+                {p.last_paid_month ? formatYearMonthLabel(p.last_paid_month) : "—"}
               </td>
             ) : null}
             <td className="mobile-only">
@@ -273,7 +273,7 @@ function CreditCardInstallmentsSection({
               <div className="label">{t("account.creditCard.nextMonthWithCharges")}</div>
               <div className={cn("value", "mono", styles.cardValueSecondary)}>
                 {ledger.totals.next_calendar_month
-                  ? `${formatYmEs(ledger.totals.next_calendar_month)} · ${formatClp(ledger.totals.next_calendar_month_total_clp ?? 0)}`
+                  ? `${formatYearMonthLabel(ledger.totals.next_calendar_month)} · ${formatClp(ledger.totals.next_calendar_month_total_clp ?? 0)}`
                   : "—"}
               </div>
             </div>
@@ -368,7 +368,7 @@ function CreditCardInstallmentsSection({
                 return (
                   <tr key={row.month}>
                     <td className="mono desktop-only">
-                      {formatYmEs(row.month)}{" "}
+                      {formatYearMonthLabel(row.month)}{" "}
                       <span className="muted">({row.pay_by_date})</span>
                     </td>
                     <td className="mono desktop-only">{formatClp(row.total_clp)}</td>
@@ -377,7 +377,7 @@ function CreditCardInstallmentsSection({
                       {renderMonthCuotasBreakdown(row.breakdown, styles.nestedList)}
                     </td>
                     <td className="mobile-only">
-                      <TableMobileCard title={`${formatYmEs(row.month)} (${row.pay_by_date})`}>
+                      <TableMobileCard title={`${formatYearMonthLabel(row.month)} (${row.pay_by_date})`}>
                         <TableMobileCardSection>
                           <TableMobileCardRow
                             label={t("account.creditCard.colMonthCuotaTotal")}

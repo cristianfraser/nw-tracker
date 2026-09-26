@@ -1,5 +1,6 @@
 import type { CardGroupMetricsPeriod } from "./dashboardCardBreakdown";
 import { formatClp, formatUsd } from "./format";
+import { formatYearMonthLabel } from "./formatDateLabel";
 import type { DisplayUnit } from "./queries/keys";
 
 export type FlowChartGranularity = "day" | "month" | "year";
@@ -65,13 +66,14 @@ export function rollupChartPointsByYear<T extends NumericChartPoint>(
   });
 }
 
+/**
+ * Period cell label for a flows table: `YYYY` at year grain, else the month name in the UI
+ * language (`dic 2026` / `Dec 2026`). Accepts `YYYY-MM` or a full `YYYY-MM-DD`. Reads the
+ * language at call time — render-time only, never cached.
+ */
 export function flowPeriodLabel(periodMonth: string, granularity: FlowChartGranularity): string {
   if (granularity === "year") return periodMonth.slice(0, 4);
   // Day grain keeps the ISO date (tables clamp to month/year, so this is a defensive branch).
   if (granularity === "day") return periodMonth.slice(0, 10);
-  const [ys, ms] = periodMonth.split("-");
-  const m = Number(ms);
-  const names = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-  const label = m >= 1 && m <= 12 ? names[m - 1]! : periodMonth;
-  return `${label} ${ys}`;
+  return formatYearMonthLabel(periodMonth);
 }

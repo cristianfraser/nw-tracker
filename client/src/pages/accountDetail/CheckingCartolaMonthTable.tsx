@@ -14,7 +14,7 @@ import {
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../../components/ui/TableMobileCard";
-import { formatYmEs } from "./shared";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 
 const MODAL_PAGE_SIZE = 20;
 
@@ -61,7 +61,7 @@ function CheckingCartolaMonthMobileCard({
   const hasMovements = row.movement_count > 0;
   const title = (
     <Button variant="link" onClick={() => onOpen(row)}>
-      {row.as_of_date} ({formatYmEs(row.period_month)})
+      {row.as_of_date} ({formatYearMonthLabel(row.period_month)})
     </Button>
   );
 
@@ -220,7 +220,7 @@ export function CheckingCartolaMonthTable({
             <tr key={row.period_month}>
               <td className="mono desktop-only">
                 <Button variant="link" onClick={() => openMonth(row)}>
-                  {row.as_of_date} ({formatYmEs(row.period_month)})
+                  {row.as_of_date} ({formatYearMonthLabel(row.period_month)})
                 </Button>
               </td>
               <td className="mono desktop-only">{fmtMoney(row.deposits_clp, hasMovements)}</td>
@@ -268,7 +268,7 @@ export function CheckingCartolaMonthTable({
         title={
           selected
             ? t("accountDetail.checking.monthModalTitle", {
-                month: formatYmEs(selected.period_month),
+                month: formatYearMonthLabel(selected.period_month),
               })
             : ""
         }

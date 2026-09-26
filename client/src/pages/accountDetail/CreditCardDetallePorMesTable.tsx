@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp, formatOrDash } from "../../format";
-import { formatYmEs } from "./shared";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 import { cn } from "../../cn";
 import styles from "../AccountDetailPage.module.css";
 import type { CcBillingDetailMonthDto } from "../../types";
@@ -40,7 +40,7 @@ function ProvisionalMark({ row }: { row: CcBillingDetailMonthDto }) {
 }
 
 function periodLabel(row: CcBillingDetailMonthDto, isYearly: boolean): string {
-  return isYearly ? row.billing_month.slice(0, 4) : formatYmEs(row.billing_month);
+  return isYearly ? row.billing_month.slice(0, 4) : formatYearMonthLabel(row.billing_month);
 }
 
 function CreditCardDetallePorMesMobileCard({
