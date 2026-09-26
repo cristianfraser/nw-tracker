@@ -9,8 +9,11 @@
  * 3. No `toLocaleString("<locale>")` for numbers. Calls with date options
  *    (dateStyle/timeStyle/weekday/…) near the call are exempt — but prefer the
  *    date conventions in AGENTS.md: ISO numerics + formatDateLabel.ts month names.
+ * 4. No month-name tables outside client/src/formatDateLabel.ts — a private
+ *    «ene … dic» table ignores the UI language; month labels go through its helpers.
+ *    Detected by the table's January entry ("ene", "enero", "Jan", "January").
  *
- * 4. Migration SQL safety (server/migrations/*.sql): the runner splits statements naively
+ * 5. Migration SQL safety (server/migrations/*.sql): the runner splits statements naively
  *    on every `;` and strips `--` comments without lexing string literals (db.ts
  *    splitMigrationStatements). Files must not contain CREATE TRIGGER, `;` or `--` inside
  *    single-quoted literals, or unterminated literals — use a POST_MIGRATION_HOOKS entry
@@ -25,7 +28,10 @@ import path from "node:path";
 const CLIENT_SRC = path.join(process.cwd(), "client", "src");
 const MIGRATIONS_DIR = path.join(process.cwd(), "server", "migrations");
 const FORMAT_TS = path.join(CLIENT_SRC, "format.ts");
+const FORMAT_DATE_LABEL_TS = path.join(CLIENT_SRC, "formatDateLabel.ts");
 const SPANISH_CHARS = /[áéíóúñÁÉÍÓÚÑ¿¡]/;
+/** The January entry of a month-name table, Spanish or English, short or full. */
+const MONTH_TABLE_ENTRY = /["'`](ene|enero|jan|january)["'`]/i;
 const DATE_OPTION_HINT = /dateStyle|timeStyle|weekday|year|month|day|hour|minute|second/;
 
 /** Blank out comments while preserving line structure (naive; good enough for a guard). */
@@ -65,6 +71,10 @@ for (const file of walk(CLIENT_SRC)) {
 
     if (file !== FORMAT_TS && /Intl\.NumberFormat/.test(line)) {
       problems.push(`${loc}: Intl.NumberFormat outside format.ts — use the format.ts helpers`);
+    }
+
+    if (file !== FORMAT_DATE_LABEL_TS && MONTH_TABLE_ENTRY.test(line)) {
+      problems.push(`${loc}: month-name table outside formatDateLabel.ts — use its helpers so the label follows the UI language`);
     }
 
     if (file !== FORMAT_TS && /toLocaleString\(\s*["']/.test(line)) {
