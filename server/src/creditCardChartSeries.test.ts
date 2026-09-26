@@ -21,6 +21,9 @@ describe("buildCcBillingMonthChartSeries", () => {
         facturado_total_clp: 4_484_823,
         cuota_a_pagar_clp: null,
         is_open_month: false,
+        is_provisional_close: false,
+        close_date_source: "statement" as const,
+        provisional_estimate_total_clp: null,
       },
     ];
     const financing: CcFinancingPlMonthRow[] = [
@@ -57,6 +60,9 @@ describe("buildCcBillingMonthChartSeries", () => {
         facturado_total_clp: 1_000_000,
         cuota_a_pagar_clp: null,
         is_open_month: false,
+        is_provisional_close: false,
+        close_date_source: "statement" as const,
+        provisional_estimate_total_clp: null,
       },
       {
         billing_month: "2025-07",
@@ -70,6 +76,9 @@ describe("buildCcBillingMonthChartSeries", () => {
         facturado_total_clp: 2_000_000,
         cuota_a_pagar_clp: null,
         is_open_month: false,
+        is_provisional_close: false,
+        close_date_source: "statement" as const,
+        provisional_estimate_total_clp: null,
       },
     ];
     const pts = buildCcBillingMonthChartSeries(facturaciones, []);
@@ -110,6 +119,9 @@ describe("buildCcHistorialChartSeries", () => {
         facturado_total_clp: 2_583_795,
         cuota_a_pagar_clp: null,
         is_open_month: false,
+        is_provisional_close: false,
+        close_date_source: "statement" as const,
+        provisional_estimate_total_clp: null,
       },
     ];
     const rows = buildCcHistorialChartSeries(
@@ -141,6 +153,9 @@ describe("buildCcHistorialChartSeries", () => {
         facturado_total_clp: 561_728,
         cuota_a_pagar_clp: 561_728,
         is_open_month: true,
+        is_provisional_close: false,
+        close_date_source: "statement" as const,
+        provisional_estimate_total_clp: null,
       },
     ];
     const rows = buildCcHistorialChartSeries(
@@ -231,5 +246,36 @@ describe("buildCcHistorialChartSeries", () => {
       expect(row?.balance_total_clp).toBeNull();
       expect(row?.installment_payments_clp).toBe(0);
     }
+  });
+
+  it("plots «deuda en cuotas» from the month-end sampler and keeps the billing frame for balances", () => {
+    // July billed 100k of cuotas at its close, paid after month-end: the table's cupo (still
+    // unbilled, 400k) pairs with facturado; the chart line (still unpaid at 31/07, 500k) is the
+    // daily line at that month-end.
+    const detalle = [
+      makeDetalle("2025-07", { total_facturado_clp: 1_000_000, cupo_en_cuotas_clp: 400_000, balance_total_clp: 1_400_000 }),
+      makeDetalle("2025-09", { total_facturado_clp: 800_000, cupo_en_cuotas_clp: 200_000, balance_total_clp: 1_000_000 }),
+    ];
+    const asked: string[][] = [];
+    const rows = buildCcHistorialChartSeries([], detalle, [], {
+      installmentDebtForMonths: (months) => {
+        asked.push([...months]);
+        return new Map<string, number | null>([
+          ["2025-07", 500_000],
+          ["2025-08", 400_000],
+          ["2025-09", null],
+        ]);
+      },
+    });
+    expect(asked).toEqual([["2025-07", "2025-08", "2025-09"]]);
+    expect(rows.map((r) => r.cupo_en_cuotas_clp)).toEqual([500_000, 400_000, null]);
+    expect(rows.map((r) => r.balance_total_clp)).toEqual([1_400_000, null, 1_000_000]);
+  });
+
+  it("keeps the billing-frame column when the sampler has no schedule", () => {
+    const rows = buildCcHistorialChartSeries([], [makeDetalle("2025-07", { cupo_en_cuotas_clp: 400_000 })], [], {
+      installmentDebtForMonths: () => null,
+    });
+    expect(rows[0]?.cupo_en_cuotas_clp).toBe(400_000);
   });
 });

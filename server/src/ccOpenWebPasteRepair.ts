@@ -2,10 +2,10 @@ import { ymCompare } from "./calendarMonth.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
-  periodToIsoForBillingMonth,
   statementCloseDdMmYyyyForBillingMonth,
   targetBillingMonthForManualImports,
 } from "./ccManualBillingMonth.js";
+import { nextPeriodStartIsoForBillingMonth } from "./ccBillingCloses.js";
 import { db } from "./db.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
@@ -76,10 +76,14 @@ export type CcOpenWebPasteRepairResult = {
 };
 
 /**
- * Move open-bucket web-paste lines dated after a month's facturación close into the
- * current open facturación bucket (post-close purchases belong on the next statement).
- * Unmatched survivors on stale `open|{M}` after a PDF close stay put; read paths attribute
- * them to the current open month (see {@link listStaleOpenWebPasteStatementDates}).
+ * Move open-bucket web-paste lines dated on/after the first day of the cycle that follows their
+ * bucket's facturación into the current open facturación bucket (post-close purchases belong on
+ * the next statement). The boundary is `nextPeriodStartIsoForBillingMonth`: the close day itself
+ * on Santander (a close-day purchase bills next month), the day after on BCI, from the statement,
+ * the feed-observed close or the announced one — so a provisionally closed month hands its
+ * post-close lines forward before its statement exists. Unmatched survivors on stale `open|{M}`
+ * after a PDF close stay put; read paths attribute them to the current open month (see
+ * {@link listStaleOpenWebPasteStatementDates}).
  */
 export function repairMisplacedOpenWebPasteBuckets(
   accountId: number,
@@ -96,18 +100,18 @@ export function repairMisplacedOpenWebPasteBuckets(
     meta.cardLast4
   );
 
-  for (const st of listCcStatementsForAccount(accountId)) {
+  const statements = listCcStatementsForAccount(accountId);
+  for (const st of statements) {
     const bucketBm = parseOpenWebPasteBillingMonth(st.source_pdf);
     if (!bucketBm) continue;
 
-    const periodTo = periodToIsoForBillingMonth(accountId, bucketBm);
-    if (!periodTo) continue;
+    const nextStart = nextPeriodStartIsoForBillingMonth(accountId, bucketBm, statements).iso;
 
     const staleBucket = ymCompare(bucketBm, openBm) < 0;
     for (const line of listCcStatementLinesForStatement(st.id)) {
       const purchaseIso = linePurchaseIso(line.transaction_date, line.posting_date);
       if (!purchaseIso) continue;
-      if (purchaseIso <= periodTo) continue;
+      if (purchaseIso < nextStart) continue;
       if (!staleBucket && bucketBm === openBm) continue;
 
       if (st.id === targetStmtId) continue;
@@ -121,4 +125,66 @@ export function repairMisplacedOpenWebPasteBuckets(
   }
 
   return { lines_moved: linesMoved, target_billing_month: openBm };
+}
+
+export type CcOpenBucketMoveResult = {
+  moved: number;
+  /** Bucket months the moved lines came from. */
+  from_billing_months: string[];
+};
+
+/**
+ * Move open-bucket lines whose one-shot key the post-close card feed still lists into
+ * `targetBillingMonth`'s bucket. After a close the feed («movimientos por facturar») lists only
+ * the next facturación's rows — a line already filed under the closed month that the feed keeps
+ * listing was NOT billed at that close (a close-day purchase, a pending authorization that settled
+ * after it), so it follows the feed forward instead of being deleted with the closed cycle when the
+ * statement arrives. Exact key match only (merchant + amount + date, `webPasteLineDedupeKey`);
+ * statement lines never move.
+ */
+export function moveOpenBucketLinesByDedupeKey(
+  accountId: number,
+  dedupeKeys: ReadonlySet<string>,
+  targetBillingMonth: string
+): CcOpenBucketMoveResult {
+  if (dedupeKeys.size === 0) return { moved: 0, from_billing_months: [] };
+  const meta = creditCardMasterMetaForAccount(accountId);
+  let targetStmtId: number | null = null;
+  let moved = 0;
+  const from = new Set<string>();
+  for (const st of listCcStatementsForAccount(accountId)) {
+    const bucketBm = parseOpenWebPasteBillingMonth(st.source_pdf);
+    if (!bucketBm || ymCompare(bucketBm, targetBillingMonth) >= 0) continue;
+    for (const line of listCcStatementLinesForStatement(st.id)) {
+      if (!line.dedupe_key || !dedupeKeys.has(line.dedupe_key)) continue;
+      targetStmtId ??= ensureOpenWebPasteStatementId(
+        accountId,
+        targetBillingMonth,
+        meta.cardGroup,
+        meta.cardLast4
+      );
+      moveLine.run(targetStmtId, line.id);
+      moved += 1;
+      from.add(bucketBm);
+    }
+  }
+  return { moved, from_billing_months: [...from].sort() };
+}
+
+/** Move the given open-bucket lines into `targetBillingMonth`'s bucket (created on demand). */
+export function moveOpenBucketLinesToBillingMonth(
+  accountId: number,
+  lineIds: readonly number[],
+  targetBillingMonth: string
+): number {
+  if (lineIds.length === 0) return 0;
+  const meta = creditCardMasterMetaForAccount(accountId);
+  const targetStmtId = ensureOpenWebPasteStatementId(
+    accountId,
+    targetBillingMonth,
+    meta.cardGroup,
+    meta.cardLast4
+  );
+  for (const id of lineIds) moveLine.run(targetStmtId, id);
+  return lineIds.length;
 }

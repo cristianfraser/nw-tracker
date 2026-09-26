@@ -28,6 +28,40 @@ function ledgerStub(
 }
 
 describe("mergeCreditCardLedgers", () => {
+  it("sums the credit line over masters and voids the total when one has no configured cupo", () => {
+    const a = ledgerStub({
+      account_id: 1,
+      open_billing_month: "2026-09",
+      cupo: { total_clp: 12_000_000, used_clp: 8_000_000, available_clp: 4_000_000, billing_month: "2026-09" },
+    });
+    const b = ledgerStub({
+      account_id: 2,
+      open_billing_month: "2026-09",
+      cupo: { total_clp: 3_000_000, used_clp: 1_000_000, available_clp: 2_000_000, billing_month: "2026-09" },
+    });
+    expect(mergeCreditCardLedgers([a, b]).cupo).toEqual({
+      total_clp: 15_000_000,
+      used_clp: 9_000_000,
+      available_clp: 6_000_000,
+      billing_month: "2026-09",
+    });
+
+    const c = ledgerStub({
+      account_id: 3,
+      open_billing_month: "2026-09",
+      cupo: { total_clp: null, used_clp: 500_000, available_clp: null, billing_month: "2026-09" },
+    });
+    expect(mergeCreditCardLedgers([a, c]).cupo).toEqual({
+      total_clp: null,
+      used_clp: 8_500_000,
+      available_clp: null,
+      billing_month: "2026-09",
+    });
+
+    // No master carries a snapshot → the group carries none either.
+    expect(mergeCreditCardLedgers([ledgerStub({ account_id: 1 }), ledgerStub({ account_id: 2 })]).cupo).toBeUndefined();
+  });
+
   it("sums facturaciones and recomputes financing YTD on merged series", () => {
     const a = ledgerStub({
       account_id: 1,
@@ -44,6 +78,9 @@ describe("mergeCreditCardLedgers", () => {
           facturado_total_clp: 100_000,
           cuota_a_pagar_clp: 50_000,
           is_open_month: false,
+          is_provisional_close: false,
+          close_date_source: "statement" as const,
+          provisional_estimate_total_clp: null,
         },
       ] satisfies CcFacturacionRow[],
       financing_pl_by_month: [
@@ -78,6 +115,9 @@ describe("mergeCreditCardLedgers", () => {
           facturado_total_clp: 80_000,
           cuota_a_pagar_clp: 20_000,
           is_open_month: false,
+          is_provisional_close: false,
+          close_date_source: "statement" as const,
+          provisional_estimate_total_clp: null,
         },
       ] satisfies CcFacturacionRow[],
       financing_pl_by_month: [
@@ -159,6 +199,30 @@ describe("mergeCreditCardLedgers", () => {
     expect(row?.as_of_kind).toBe("statement");
     expect(row?.cupo_en_cuotas_clp).toBe(30);
     expect(row?.balance_total_clp).toBe(43);
+  });
+
+  it("plots the group's «deuda en cuotas» from the month-end sampler, not the merged table column", () => {
+    const detailRow = (cupo: number): CcBillingDetailMonthRow => ({
+      billing_month: "2025-03",
+      as_of_date: "2025-03-20",
+      as_of_kind: "statement",
+      total_facturado_actual_clp: 100,
+      total_facturado_clp: 100,
+      cupo_en_cuotas_clp: cupo,
+      cuota_a_pagar_next_mes_clp: 0,
+      balance_total_clp: 100 + cupo,
+    });
+    const ledgers = [
+      ledgerStub({ account_id: 1, billing_detail_by_month: [detailRow(10)] }),
+      ledgerStub({ account_id: 2, billing_detail_by_month: [detailRow(20)] }),
+    ];
+    const merged = mergeCreditCardLedgers(ledgers, {
+      installmentDebtForMonths: (months) => new Map(months.map((m) => [m, 45] as const)),
+    });
+    expect(merged.billing_detail_by_month?.[0]?.cupo_en_cuotas_clp).toBe(30);
+    expect(merged.historial_chart?.map((p) => [p.month, p.cupo_en_cuotas_clp])).toEqual([["2025-03", 45]]);
+    // A pure merge (no sampler) plots the merged column.
+    expect(mergeCreditCardLedgers(ledgers).historial_chart?.[0]?.cupo_en_cuotas_clp).toBe(30);
   });
 });
 

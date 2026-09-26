@@ -1,25 +1,24 @@
-import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../cn";
-import { windowCcFinancingPoints, windowCcHistorialRows } from "../../chartRangeWindow";
-import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
-import { SurfaceControls } from "../ui/SurfaceControls";
-import { CcInstallmentHistoryChart } from "../charts/CcInstallmentHistoryChart";
-import { CcBillingMonthFinancingChart } from "../charts/CcBillingMonthFinancingChart";
-import { LineChartPanel } from "../charts/ValuationLineCharts";
-import { CreditCardDetallePorMesTable } from "../../pages/accountDetail/CreditCardDetallePorMesTable";
-import type { AccountCcInstallmentsResponse, TimeseriesBlock } from "../../types";
+import type { AccountCcInstallmentsResponse } from "../../types";
+import {
+  CreditCardDetalleSurface,
+  CreditCardFinancingSurface,
+  CreditCardHistorialSurface,
+  type CcSurfaceScope,
+} from "./CreditCardLedgerSurfaces";
 import { CreditCardSummaryCards } from "./CreditCardSummaryCards";
 import styles from "../../pages/AccountDetailPage.module.css";
 
 type Props = {
   ccLedger: AccountCcInstallmentsResponse;
-  displayUnit: "clp" | "usd";
-  /** Per-surface prefs id (persisted per issuer scope, e.g. `liab.cc.<slug>`). */
-  surfaceId: string;
-  valuationBlockForChart?: TimeseriesBlock | null;
-  showValuationChart?: boolean;
+  /**
+   * Portfolio-group slug of the page (Pasivos root, the credit-card group or one issuer):
+   * scopes the persisted per-surface prefs (`liab.cc.<slug>.*`) and the day-period daily-series
+   * fetch (whose CC block the server sums over the same masters as this merged ledger).
+   */
+  portfolioGroup: string;
   sectionTitle?: string;
   sectionHint?: string;
   linkTo?: string;
@@ -27,58 +26,26 @@ type Props = {
 
 export function LiabilitiesCreditCardGroupSection({
   ccLedger,
-  displayUnit,
-  surfaceId,
-  valuationBlockForChart,
-  showValuationChart = false,
+  portfolioGroup,
   sectionTitle,
   sectionHint,
   linkTo,
 }: Props) {
   const { t } = useTranslation();
-  // Paired M/Y control for the historial + financing charts (issuer-scope daily is a
-  // deferred stretch — plan D2 — so Diario is not offered here).
-  const prefs = useSurfacePrefs(surfaceId, "month", "3y");
-  const timeRange = prefs.range;
-  const isYearly = prefs.period === "year";
-  const xAxisGranularity = isYearly ? ("year" as const) : ("month" as const);
-  const ccControls = (
-    <SurfaceControls
-      period={prefs.period}
-      onPeriodChange={prefs.setPeriod}
-      periodOptions={["month", "year"]}
-      range={prefs.range}
-      onRangeChange={prefs.setRange}
-    />
-  );
-
-  const historialChartRows = ccLedger.historial_chart ?? [];
-  const financingChartPoints = ccLedger.billing_month_chart ?? [];
-  // Same shared range window as the CC account page (left-clip + 20% empty lead).
-  const windowedHistorialRows = useMemo(
-    () => windowCcHistorialRows(historialChartRows, timeRange),
-    [historialChartRows, timeRange]
-  );
-  const windowedFinancingPoints = useMemo(
-    () => windowCcFinancingPoints(financingChartPoints, timeRange),
-    [financingChartPoints, timeRange]
-  );
+  const ccScope: CcSurfaceScope = { variant: "group", portfolioGroup };
 
   const title = sectionTitle ?? t("groupPage.pasivos.creditCardSectionTitle");
   const hint = sectionHint ?? t("groupPage.pasivos.creditCardSectionHint");
 
   return (
     <section className={styles.chartBlock}>
-      <div className="chart-panel-title-row">
-        {linkTo ? (
-          <h2 className={styles.sectionTitle}>
-            <Link to={linkTo}>{title}</Link>
-          </h2>
-        ) : (
-          <h2 className={styles.sectionTitle}>{title}</h2>
-        )}
-        {ccControls}
-      </div>
+      {linkTo ? (
+        <h2 className={styles.sectionTitle}>
+          <Link to={linkTo}>{title}</Link>
+        </h2>
+      ) : (
+        <h2 className={styles.sectionTitle}>{title}</h2>
+      )}
       <p className={cn("muted", styles.proseSmTight)}>{hint}</p>
 
       <CreditCardSummaryCards ccLedger={ccLedger} />
@@ -97,68 +64,11 @@ export function LiabilitiesCreditCardGroupSection({
         </section>
       ) : null}
 
-      {ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
-        <section className={styles.chartBlock}>
-          <h3 className={styles.subsectionTitleMid}>{t("accountDetail.creditCard.historialTitle")}</h3>
-          <p className={cn("muted", styles.proseSmTight)}>
-            {t(
-              isYearly
-                ? "accountDetail.creditCard.historialHintYearly"
-                : "accountDetail.creditCard.historialHint"
-            )}
-          </p>
-          <CcInstallmentHistoryChart
-            rows={windowedHistorialRows}
-            openBillingMonth={ccLedger.open_billing_month}
-            period={prefs.period}
-          />
-        </section>
-      ) : null}
+      <CreditCardHistorialSurface ccLedger={ccLedger} scope={ccScope} />
 
-      {showValuationChart && valuationBlockForChart ? (
-        <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
-          <LineChartPanel
-            title={t("accountDetail.creditCard.valuationTitle")}
-            block={valuationBlockForChart}
-            displayUnit={displayUnit}
-            xAxisGranularity={xAxisGranularity}
-          />
-        </div>
-      ) : null}
+      <CreditCardFinancingSurface ccLedger={ccLedger} scope={ccScope} />
 
-      <h3 className={styles.sectionTitleSpaced}>{t("accountDetail.creditCard.financingSectionTitle")}</h3>
-      <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.financingSectionHint")}</p>
-      <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
-        <CcBillingMonthFinancingChart
-          title={t(
-            isYearly
-              ? "accountDetail.creditCard.financingChartTitleYearly"
-              : "accountDetail.creditCard.financingChartTitle"
-          )}
-          titleAs="h3"
-          points={windowedFinancingPoints}
-          period={prefs.period}
-        />
-      </div>
-
-      {(ccLedger.billing_detail_by_month?.length ?? 0) > 0 ? (
-        <>
-          <h3 className={styles.subsectionTitleMid}>
-            {t(isYearly ? "accountDetail.yearlyDetailTitle" : "accountDetail.monthlyDetailTitle")}
-          </h3>
-          <p className={cn("muted", styles.proseSmTight)}>
-            {t(
-              isYearly
-                ? "accountDetail.creditCard.detallePorMesBillingHintYearly"
-                : "accountDetail.creditCard.detallePorMesBillingHint"
-            )}
-          </p>
-          <CreditCardDetallePorMesTable
-            rows={ccLedger.billing_detail_by_month ?? []}
-            period={prefs.period}
-          />
-        </>
-      ) : null}
+      <CreditCardDetalleSurface ccLedger={ccLedger} scope={ccScope} />
     </section>
   );
 }

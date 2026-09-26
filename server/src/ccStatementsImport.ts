@@ -53,6 +53,15 @@ function parseOrigAmount(s: string, currency?: string): number | null {
 
 export type CcStatementCsvRecord = Record<string, string>;
 
+/** A `DD/MM/YYYY` CSV cell zero-padded, or null when empty; any other shape throws. */
+function ddMmYyyyOrNull(raw: string | undefined): string | null {
+  const t = String(raw ?? "").trim();
+  if (!t) return null;
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t);
+  if (!m) throw new Error(`Unexpected statement date "${t}" (want DD/MM/YYYY)`);
+  return `${m[1]!.padStart(2, "0")}/${m[2]!.padStart(2, "0")}/${m[3]}`;
+}
+
 export function statementKeyFromRow(row: CcStatementCsvRecord): string {
   return `${row.card_group ?? "A"}\t${row.source_pdf ?? ""}\t${row.statement_date ?? ""}`;
 }
@@ -106,7 +115,9 @@ export type CcImportSkipReason =
   /** Dropped before the merge: same line repeated within one web paste. */
   | "duplicate_in_paste"
   /** Dropped before the merge: bank's «CUOT: N OPER: M» re-listing of a cuota being billed. */
-  | "cuota_billing";
+  | "cuota_billing"
+  /** Dropped before the merge: the table's «SALDO INICIAL» row (the previous bill's total). */
+  | "saldo_inicial";
 
 export type SkippedCcImportFlowItem = CcImportFlowItem & { reason: CcImportSkipReason };
 
@@ -249,12 +260,14 @@ export function importCcStatementsMerge(
       account_id, card_group, source_pdf, statement_date, period_from, period_to, pay_by,
       card_last4, card_product, layout, currency,
       saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado,
-      monto_pagado_anterior, monto_pagado_anterior_date, import_fingerprint
+      monto_pagado_anterior, monto_pagado_anterior_date, next_period_from, next_period_to,
+      import_fingerprint
     ) VALUES (
       @account_id, @card_group, @source_pdf, @statement_date, @period_from, @period_to, @pay_by,
       @card_last4, @card_product, @layout, @currency,
       @saldo_anterior, @abono, @compras_cargos, @deuda_total, @monto_facturado,
-      @monto_pagado_anterior, @monto_pagado_anterior_date, @import_fingerprint
+      @monto_pagado_anterior, @monto_pagado_anterior_date, @next_period_from, @next_period_to,
+      @import_fingerprint
     )
   `);
 
@@ -267,6 +280,7 @@ export function importCcStatementsMerge(
       deuda_total = @deuda_total, monto_facturado = @monto_facturado,
       monto_pagado_anterior = @monto_pagado_anterior,
       monto_pagado_anterior_date = @monto_pagado_anterior_date,
+      next_period_from = @next_period_from, next_period_to = @next_period_to,
       import_fingerprint = @import_fingerprint
     WHERE id = @id
   `);
@@ -339,6 +353,9 @@ export function importCcStatementsMerge(
         const s = String(first.statement_monto_pagado_anterior_date ?? "").trim();
         return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
       })(),
+      // The printed following cycle (`ccBillingCloses.ts`), DD/MM/YYYY like period_from/to.
+      next_period_from: ddMmYyyyOrNull(first.statement_next_period_from),
+      next_period_to: ddMmYyyyOrNull(first.statement_next_period_to),
     };
     // The synthesized header PAGO is dated evidence like any line (see `normalizedPostCloseLines`),
     // so it too can contradict a stamp written after that day.

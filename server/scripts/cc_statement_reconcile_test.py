@@ -90,5 +90,32 @@ class BciSubsectionTotalsTest(unittest.TestCase):
         self.assertEqual(totals["pdf_total_operaciones"], 100000.0)
 
 
+class NextBillingPeriodTest(unittest.TestCase):
+    """«Próximo período de facturación»: the next close, printed by both issuers (synthetic text)."""
+
+    def _next(self, layout: str, full: str = "", currency: str = "clp"):
+        out = mod.extract_pdf_section_totals(
+            f"{full}\n{layout}", currency, parse_clp, parse_usd, layout_text=layout
+        )
+        return out["pdf_next_period_from"], out["pdf_next_period_to"]
+
+    def test_santander_layout_line(self) -> None:
+        layout = "PRÓXIMO PERÍODO DE FACTURACIÓN                 25/08/2026             24/09/2026\n"
+        self.assertEqual(self._next(layout), ("25/08/2026", "24/09/2026"))
+
+    def test_bci_layout_line_with_trailing_amount(self) -> None:
+        layout = "Próximo Período de Facturación      27/08/2026        26/09/2026        1.233.517\n"
+        self.assertEqual(self._next(layout), ("27/08/2026", "26/09/2026"))
+
+    def test_split_label_in_pypdf_rendering(self) -> None:
+        full = "PROXIMO PERIODO DE FACTURACION\n25/08/2026\n24/09/2026\n"
+        self.assertEqual(self._next("", full), ("25/08/2026", "24/09/2026"))
+
+    def test_absent_or_reversed_period_is_none(self) -> None:
+        self.assertEqual(self._next("PERIODO FACTURADO 23/07/2026 25/08/2026\n"), (None, None))
+        reversed_period = "PRÓXIMO PERÍODO DE FACTURACIÓN 24/09/2026 25/08/2026\n"
+        self.assertEqual(self._next(reversed_period), (None, None))
+
+
 if __name__ == "__main__":
     unittest.main()

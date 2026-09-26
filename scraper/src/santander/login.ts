@@ -9,6 +9,12 @@ import { clearLoginLatch, recordCredentialsRejected } from "./loginLatch.js";
 
 /** How long the first click on the login button may wait before overlays are swept again. */
 const OPEN_PANEL_FIRST_TRY_MS = 10_000;
+/** How long the login form has to render once the panel is open; restarts after a retried card. */
+const LOGIN_FORM_TIMEOUT_MS = 45_000;
+/** Pause between polls for the form, the private-app redirect and the connection-error card. */
+const LOGIN_FORM_POLL_MS = 500;
+/** How long the connection-error card has to leave the page after «Volver a intentar» is clicked. */
+const CONNECTION_RETRY_SETTLE_MS = 10_000;
 /** Upper bound on overlay sweeps — a dialog that re-opens itself must not loop the run. */
 const MAX_OVERLAY_DISMISSALS = 3;
 /** How long the private app has to take over the window after the login form is submitted. */
@@ -83,6 +89,19 @@ async function loginRejectionText(page: Page, frame: FrameLocator): Promise<stri
     if (text) return text.replace(/\s+/g, " ").trim();
   }
   return null;
+}
+
+/**
+ * The connection-error card's heading when the login panel is showing one, else null. The card
+ * replaces the iframe in the top-level page, so it is looked for there only.
+ */
+async function loginPanelConnectionErrorText(page: Page): Promise<string | null> {
+  const card = page.getByText(TEXT.loginPanelConnectionError).first();
+  const text = await card
+    .isVisible()
+    .then((visible) => (visible ? card.innerText({ timeout: 2_000 }) : null))
+    .catch(() => null);
+  return text ? text.replace(/\s+/g, " ").trim() : null;
 }
 
 /**
@@ -206,9 +225,14 @@ export async function login(page: Page, rut: string, password: string): Promise<
   const rutInput = frame.locator(SELECTOR.loginRut);
   const passInput = frame.locator(SELECTOR.loginPass);
 
-  // Either the form renders, or a still-valid session sends us straight into the private app.
-  const deadline = Date.now() + 45_000;
+  // Either the form renders, or a still-valid session sends us straight into the private app. The
+  // panel can also render the bank's connection-error card in place of the iframe (2026-09-25, when
+  // the frame's document failed to load right after a wake from hibernation): its «Volver a
+  // intentar» is clicked once and the wait starts over. A card that comes back after that fails the
+  // login with the bank's own words instead of running out the clock as «form never appeared».
+  let deadline = Date.now() + LOGIN_FORM_TIMEOUT_MS;
   let formReady = false;
+  let connectionRetried = false;
   while (Date.now() < deadline) {
     if (isLoggedIn(page)) {
       logStep("session still valid — skipping login");
@@ -218,7 +242,32 @@ export async function login(page: Page, rut: string, password: string): Promise<
       formReady = true;
       break;
     }
-    await page.waitForTimeout(500);
+    const connectionError = await loginPanelConnectionErrorText(page);
+    if (connectionError) {
+      if (connectionRetried) {
+        const { base } = await saveLoginDiagnostics(page, frame, `connection-error card again after «Volver a intentar»: ${connectionError}`);
+        throw new Error(
+          `The login panel reported a connection error twice: «${connectionError}» — the login frame could not be ` +
+            `loaded from the private-app host even after «Volver a intentar». Evidence in ${base}.{png,txt}`,
+        );
+      }
+      connectionRetried = true;
+      log(`login panel reported a connection error («${connectionError}») — clicking «Volver a intentar»`);
+      const retry = page.getByText(TEXT.loginPanelRetry).first();
+      await retry.click({ timeout: 5_000 }).catch(async (err: unknown) => {
+        const { base } = await saveLoginDiagnostics(page, frame, `«Volver a intentar» could not be clicked: ${firstLine(err)}`);
+        throw new Error(`The login panel's «Volver a intentar» could not be clicked (${firstLine(err)}) — evidence in ${base}.{png,txt}`);
+      });
+      // Give the retry time to replace the card; a card still there afterwards is the second one.
+      await page
+        .getByText(TEXT.loginPanelConnectionError)
+        .first()
+        .waitFor({ state: "hidden", timeout: CONNECTION_RETRY_SETTLE_MS })
+        .catch(() => undefined);
+      deadline = Date.now() + LOGIN_FORM_TIMEOUT_MS;
+      continue;
+    }
+    await page.waitForTimeout(LOGIN_FORM_POLL_MS);
   }
   if (!formReady) {
     // Whether the panel produced the iframe at all is the one fact the log needs: on 2026-09-21 the

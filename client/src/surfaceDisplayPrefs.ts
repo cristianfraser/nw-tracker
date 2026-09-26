@@ -26,6 +26,15 @@ export type SurfacePeriod = "day" | "month" | "year";
 /** Stored shape: only the fields the user has explicitly set on this surface. */
 export type StoredSurfacePrefs = { period?: SurfacePeriod; range?: TimeRange };
 
+/**
+ * M/Y-only surfaces (flow tables, the CC financing chart and detalle table): a stored `day`
+ * — a key written while the surface still offered Diario — reads as month. The stored value
+ * is left as is; the next explicit pick overwrites it.
+ */
+export function monthYearSurfacePeriod(period: SurfacePeriod): "month" | "year" {
+  return period === "year" ? "year" : "month";
+}
+
 export function parseSurfacePeriod(raw: unknown): SurfacePeriod | null {
   return raw === "day" || raw === "month" || raw === "year" ? raw : null;
 }

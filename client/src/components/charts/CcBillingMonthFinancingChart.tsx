@@ -60,8 +60,8 @@ export function CcBillingMonthFinancingChart({
   title: string;
   titleAs?: "h2" | "h3";
   points: CcBillingMonthChartPoint[];
-  /** Per-surface período (from the page's paired CC control). */
-  period: "day" | "month" | "year";
+  /** The chart's own Período control (M/Y — facturación-month flows have no day-grain form). */
+  period: "month" | "year";
 }) {
   const { t } = useTranslation();
   const compactAxis = useIsNarrowViewport();

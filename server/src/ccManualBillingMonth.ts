@@ -8,19 +8,18 @@ import {
 import { ymCompare } from "./calendarMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import {
+  closeEvidenceForBillingMonth,
+  ddMmYyyyFromIso,
+  type CcCloseSource,
+  latestFeedBillingClose,
+  nextPeriodStartIsoForBillingMonth,
+} from "./ccBillingCloses.js";
 import { db } from "./db.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 
 export function isPdfStatementSource(sourcePdf: string): boolean {
   return !String(sourcePdf ?? "").trim().startsWith("import:web-paste");
-}
-
-function isoFromPeriodField(raw: string | null | undefined): string | null {
-  const t = String(raw ?? "").trim();
-  if (!t) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  return parseDdMmYyToIso(t);
 }
 
 /**
@@ -43,6 +42,15 @@ export function accountRequiresUsdStatementClose(accountId: number): boolean {
  * (one twin arriving alone must not advance the open month).
  */
 export function lastPdfBillingMonthForAccount(accountId: number): string | null {
+  let max: string | null = null;
+  for (const bm of pdfClosedBillingMonthsForAccount(accountId)) {
+    if (!max || ymCompare(bm, max) > 0) max = bm;
+  }
+  return max;
+}
+
+/** Every facturación month an imported statement closed (same currency rule as above). */
+export function pdfClosedBillingMonthsForAccount(accountId: number): Set<string> {
   const requiresUsd = accountRequiresUsdStatementClose(accountId);
   const currenciesByMonth = new Map<string, Set<string>>();
   for (const st of listCcStatementsForAccount(accountId)) {
@@ -53,33 +61,111 @@ export function lastPdfBillingMonthForAccount(accountId: number): string | null 
     if (!currencies) currenciesByMonth.set(bm, (currencies = new Set()));
     currencies.add(st.currency);
   }
-  let max: string | null = null;
+  const closed = new Set<string>();
   for (const [bm, currencies] of currenciesByMonth) {
     if (!currencies.has("clp")) continue;
     if (requiresUsd && !currencies.has("usd")) continue;
-    if (!max || ymCompare(bm, max) > 0) max = bm;
+    closed.add(bm);
   }
-  return max;
+  return closed;
 }
 
-/** Inclusive period end (ISO) for a billing month — PDF `period_to` when present, else config cycle. */
+/**
+ * Latest facturación the BANK has closed: the latest statement-closed month, a later month whose
+ * close the card feed observed (SALDO INICIAL — see `ccBillingCloses.ts`), or a later month whose
+ * statement-announced next cycle has already started (today on/after its first day). This is what
+ * moves the open month forward. It is deliberately not what the installment schedule treats as
+ * negative evidence (`lastPdfBillingMonthForAccount`): a close without its statement says nothing
+ * about which cuotas it billed.
+ */
+export function lastClosedBillingMonthForAccount(
+  accountId: number,
+  todayIso: string = chileCalendarTodayYmd()
+): string | null {
+  const lastPdf = lastPdfBillingMonthForAccount(accountId);
+  const observed = latestFeedBillingClose(accountId)?.billing_month ?? null;
+  let last =
+    observed && (!lastPdf || ymCompare(observed, lastPdf) > 0) ? observed : lastPdf;
+  if (!last) return null;
+  // Walk forward through closes the bank announced and whose next cycle is already running.
+  // Bounded: an announcement only ever reaches the month after the latest statement.
+  const statements = listCcStatementsForAccount(accountId);
+  for (let i = 0; i < 3; i++) {
+    const candidate = addCalendarMonths(last, 1);
+    const next = nextPeriodStartIsoForBillingMonth(accountId, candidate, statements);
+    if (next.source === "estimated" || todayIso < next.iso) break;
+    last = candidate;
+  }
+  return last;
+}
+
+/**
+ * A facturación the bank has closed but whose statement is not imported yet — closed by the
+ * feed's SALDO INICIAL (billed total known) or by its announced close passing (total still the
+ * app's estimate). Line detail is pending either way; the statement supersedes it.
+ */
+export function isProvisionallyClosedBillingMonth(accountId: number, billingMonth: string): boolean {
+  return provisionallyClosedBillingMonthsForAccount(accountId).has(billingMonth);
+}
+
+/** Every provisionally closed month: after the latest statement close, up to the bank's latest. */
+export function provisionallyClosedBillingMonthsForAccount(accountId: number): Set<string> {
+  const out = new Set<string>();
+  const lastClosed = lastClosedBillingMonthForAccount(accountId);
+  if (!lastClosed) return out;
+  const lastPdf = lastPdfBillingMonthForAccount(accountId);
+  let bm = lastPdf ? addCalendarMonths(lastPdf, 1) : lastClosed;
+  while (ymCompare(bm, lastClosed) <= 0) {
+    out.add(bm);
+    bm = addCalendarMonths(bm, 1);
+  }
+  return out;
+}
+
+/**
+ * Facturación month whose cycle contains a purchase dated `purchaseIso`. A cycle runs from the
+ * first day after the previous facturación's close up to (not including) the first day after its
+ * own — `nextPeriodStartIsoForBillingMonth`, so statement, feed and announced closes and the
+ * issuer's close-day rule all apply (a Santander purchase ON the close day belongs to the next
+ * cycle). Months whose close is only the config estimate fall back to the config cycle.
+ */
+export function billingMonthContainingPurchase(accountId: number, purchaseIso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseIso)) {
+    throw new Error(`billingMonthContainingPurchase: bad date "${purchaseIso}"`);
+  }
+  const statements = listCcStatementsForAccount(accountId);
+  let bm = purchaseIso.slice(0, 7);
+  for (let i = 0; i < 4; i++) {
+    const cycleStart = nextPeriodStartIsoForBillingMonth(accountId, addCalendarMonths(bm, -1), statements).iso;
+    if (purchaseIso < cycleStart) {
+      bm = addCalendarMonths(bm, -1);
+      continue;
+    }
+    const nextCycleStart = nextPeriodStartIsoForBillingMonth(accountId, bm, statements).iso;
+    if (purchaseIso >= nextCycleStart) {
+      bm = addCalendarMonths(bm, 1);
+      continue;
+    }
+    return bm;
+  }
+  throw new Error(`Account ${accountId}: no billing cycle contains ${purchaseIso} (close evidence overlaps)`);
+}
+
+/**
+ * Close date (ISO) of a billing month from the best evidence: its statement's period end, the
+ * feed-observed close, the close the previous statement announced, or the config estimate.
+ */
 export function periodToIsoForBillingMonth(
   accountId: number,
   billingMonth: string
 ): string | null {
-  for (const st of listCcStatementsForAccount(accountId)) {
-    if (st.billing_month !== billingMonth) continue;
-    if (!isPdfStatementSource(st.source_pdf)) continue;
-    const iso = isoFromPeriodField(st.period_to);
-    if (iso) return iso;
-  }
-  const config = loadCreditCardBillingConfig(accountId);
-  return billingPeriodIsoRange(billingMonth, config)?.period_to ?? null;
+  return closeEvidenceForBillingMonth(accountId, billingMonth).close_iso;
 }
 
 /**
  * Billing month for manual imports (web paste): current open period = month after the last
- * PDF facturación, or the current calendar billing month when already past that.
+ * facturación the bank closed (statement or feed-observed), or the current calendar billing
+ * month when already past that.
  */
 export function targetBillingMonthForManualImports(
   accountId: number,
@@ -89,10 +175,10 @@ export function targetBillingMonthForManualImports(
   const currentBm =
     billingMonthForStatementDate(todayIso) ??
     todayIso.slice(0, 7);
-  const lastPdf = lastPdfBillingMonthForAccount(accountId);
-  if (!lastPdf) return currentBm;
-  const nextAfterPdf = addCalendarMonths(lastPdf, 1);
-  return ymCompare(currentBm, nextAfterPdf) >= 0 ? currentBm : nextAfterPdf;
+  const lastClosed = lastClosedBillingMonthForAccount(accountId);
+  if (!lastClosed) return currentBm;
+  const nextAfterClosed = addCalendarMonths(lastClosed, 1);
+  return ymCompare(currentBm, nextAfterClosed) >= 0 ? currentBm : nextAfterClosed;
 }
 
 /** Card last4 for a credit-card master account (`credit_card_account_config.card_last4` —
@@ -128,7 +214,13 @@ export function billingMonthForLedgerPurchase(
   return billingMonthForPurchaseDate(purchase.purchase_date, cfg);
 }
 
-/** Statement close date (DD/MM/YYYY) for a billing month — matches PDF estado de cuenta. */
+/**
+ * The `statement_date` an open web-paste bucket is keyed by: the config cycle's close for the
+ * month. It is an IDENTITY, not the displayed close — `cc_statements` is unique on
+ * (source, statement_date) and several sums group lines by statement date, so a bucket must not
+ * move onto the real close (it would share its date with the incoming statement). What the app
+ * shows as the close comes from {@link closeDateForBillingMonth}.
+ */
 export function statementCloseDdMmYyyyForBillingMonth(
   accountId: number,
   billingMonth: string
@@ -136,8 +228,19 @@ export function statementCloseDdMmYyyyForBillingMonth(
   const config = loadCreditCardBillingConfig(accountId);
   const range = billingPeriodIsoRange(billingMonth, config);
   const iso = range?.period_to ?? `${billingMonth}-20`;
-  const [y, mo, d] = iso.split("-");
-  const pad = (n: string) => n.padStart(2, "0");
-  return `${pad(d!)}/${pad(mo!)}/${y}`;
+  return ddMmYyyyFromIso(iso);
+}
+
+/**
+ * Displayed close of a billing month, with where it came from — the statement, the feed's
+ * SALDO INICIAL, the previous statement's announced next period, or (`estimated`) the config
+ * cycle when the bank has published nothing yet.
+ */
+export function closeDateForBillingMonth(
+  accountId: number,
+  billingMonth: string
+): { close_iso: string; close_ddmmyyyy: string; source: CcCloseSource } {
+  const ev = closeEvidenceForBillingMonth(accountId, billingMonth);
+  return { close_iso: ev.close_iso, close_ddmmyyyy: ddMmYyyyFromIso(ev.close_iso), source: ev.source };
 }
 

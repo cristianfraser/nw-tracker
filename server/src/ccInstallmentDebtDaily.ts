@@ -3,11 +3,13 @@
  * date, −each facturación's billed cuotas when that facturación is actually PAID (real CLP
  * payment evidence, cuotas-first — see `ccCuotaRetirement.ts`), falling back to the pay-by
  * date (`facturaciones.pay_by_iso`; ~10th of the following month when a closed statement
- * never printed one) for evidence-less months and future cycles. Serves the account page's
- * daily historial chart alongside the per-day owed walk. CLP only — the historial chart is
- * CLP-native like its monthly form.
+ * never printed one) for evidence-less months and future cycles. Serves the daily historial
+ * chart alongside the per-day owed walk — on a card's own page and, summed over the group's
+ * masters (`…ForAccounts`), on the Pasivos / credit-card group pages. CLP only — the
+ * historial chart is CLP-native like its monthly form.
  */
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { incrementalChargesClpForBillingMonth } from "./ccBillingBalances.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import type { CcFacturacionRow } from "./ccBillingViews.js";
 import {
@@ -15,7 +17,7 @@ import {
   listClpCcPaymentEventsForAccount,
   type CuotaRetirementMonth,
 } from "./ccCuotaRetirement.js";
-import { listSchedulePurchaseEvents } from "./ccInstallmentLedgerDb.js";
+import { ccLedgerMonthEndIso, listSchedulePurchaseEvents } from "./ccInstallmentLedgerDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { buildCcInstallmentDebtDailySeries } from "./creditCardChartSeries.js";
 
@@ -100,18 +102,37 @@ function calendarDaysAfter(fromYmd: string, toYmd: string): string[] {
 }
 
 /**
+ * A closed facturación still ahead of its pay-by: the part of today's carry that is its unpaid
+ * rest leaves on ITS pay-by, not the open facturación's.
+ */
+export type CcTailClosedFacturacion = {
+  payByIso: string;
+  /** The open cycle's own non-installment charges so far — the rest of the carry is the closed one's. */
+  openCycleChargesClp: number;
+};
+
+/**
  * Layer the saldo-total carry onto a future plan-debt walk. `series[0]` is the walk value at
- * `todayYmd`; `series[1..]` align with `futureDatesAsc`. The open cycle's unpaid non-installment
- * amount (`owedTodayClp − planDebtToday`, frozen at today) rides on top until it is paid on the
- * open facturación's pay-by, then the balance line coincides with the plan-debt line — the same
- * identity the monthly projected rows carry (balance_total = cupo once facturado is null).
+ * `todayYmd`; `series[1..]` align with `futureDatesAsc`. The unpaid non-installment amount
+ * (`owedTodayClp − planDebtToday`, frozen at today) rides on top until it is paid, then the
+ * balance line coincides with the plan-debt line — the same identity the monthly projected rows
+ * carry (balance_total = cupo once facturado is null).
+ *
+ * Between a close and that facturación's pay-by the carry holds two cycles: the closed one's
+ * unpaid facturado and the open cycle's new charges. With `closed`, the open cycle's charges
+ * (clamped to the carry) ride until the open pay-by and the rest leaves on the closed pay-by;
+ * without it the whole carry leaves on the open pay-by. The single drop used to hold the closed
+ * facturado a month too long — 2026-09 ·0901, closed 24/09 and due 10/10, projected ~1,xx M of
+ * September's únicos as owed until the October pay-by (10/11). A payment made early shrinks the
+ * carry and so the closed part, which is why the split reads it from today's owed.
  */
 export function buildCcInstallmentPlanTail(
   todayYmd: string,
   futureDatesAsc: readonly string[],
   events: readonly { iso: string; clp: number }[],
   owedTodayClp: number | null,
-  openPayByIso: string | null
+  openPayByIso: string | null,
+  closed: CcTailClosedFacturacion | null = null
 ): CcPlanTailPoint[] {
   if (futureDatesAsc.length === 0) return [];
   const series = buildCcInstallmentDebtDailySeries([todayYmd, ...futureDatesAsc], events);
@@ -120,35 +141,200 @@ export function buildCcInstallmentPlanTail(
     owedTodayClp != null && Number.isFinite(owedTodayClp)
       ? Math.max(0, Math.round(owedTodayClp - planDebtToday))
       : 0;
+  const openCarry =
+    closed != null ? Math.min(carry, Math.max(0, Math.round(closed.openCycleChargesClp))) : carry;
+  const closedCarry = carry - openCarry;
   return futureDatesAsc.map((d, i) => {
     const planDebt = series[i + 1] ?? 0;
-    const owedCarry = openPayByIso != null && d < openPayByIso ? carry : 0;
-    return { as_of_date: d, plan_debt_clp: planDebt, balance_clp: planDebt + owedCarry };
+    const owedOpen = openPayByIso != null && d < openPayByIso ? openCarry : 0;
+    const owedClosed = closed != null && d < closed.payByIso ? closedCarry : 0;
+    return { as_of_date: d, plan_debt_clp: planDebt, balance_clp: planDebt + owedOpen + owedClosed };
+  });
+}
+
+/** Per-master plan events plus the plan's end (the final cuota's pay-by / paid date). */
+type CcPlanTailEvents = {
+  accountId: number;
+  events: { iso: string; clp: number }[];
+  facturaciones: CcFacturacionRow[];
+  planEndYmd: string;
+};
+
+function ccPlanTailEvents(accountId: number): CcPlanTailEvents | null {
+  const loaded = ccInstallmentDebtEvents(accountId);
+  if (loaded == null) return null;
+  const planEndYmd = loaded.events.reduce((max, e) => (e.iso > max ? e.iso : max), "");
+  return { accountId, ...loaded, planEndYmd };
+}
+
+/** One master's tail over a shared future grid (owed today = its CC mark, the owed walk). */
+function ccPlanTailOnGrid(
+  member: CcPlanTailEvents,
+  todayYmd: string,
+  futureDatesAsc: readonly string[]
+): CcPlanTailPoint[] {
+  const openBm = billingMonthForManualLedgerPurchase(member.accountId);
+  const openPayByIso =
+    (openBm ? member.facturaciones.find((f) => f.billing_month === openBm)?.pay_by_iso : null) ??
+    (openBm ? tenthOfNextMonthIso(openBm) : null);
+  const owedTodayClp = accountMarkClpAtYmd(member.accountId, todayYmd)?.value_clp ?? null;
+  return buildCcInstallmentPlanTail(
+    todayYmd,
+    futureDatesAsc,
+    member.events,
+    owedTodayClp,
+    openPayByIso,
+    closedFacturacionAheadOfPayBy(member, openBm, todayYmd)
+  );
+}
+
+/**
+ * The latest facturación before the open one whose pay-by is still ahead of today (closed by its
+ * statement or provisionally), with the open cycle's charges that split the carry against it.
+ * null once that pay-by has passed: a facturado still unpaid after it has no better date than
+ * the open one's.
+ */
+function closedFacturacionAheadOfPayBy(
+  member: CcPlanTailEvents,
+  openBm: string | null,
+  todayYmd: string
+): CcTailClosedFacturacion | null {
+  if (openBm == null) return null;
+  const latestClosed = member.facturaciones
+    .filter((f) => f.billing_month < openBm)
+    .reduce<CcFacturacionRow | null>(
+      (best, f) => (best == null || f.billing_month > best.billing_month ? f : best),
+      null
+    );
+  const payByIso = latestClosed?.pay_by_iso ?? null;
+  if (payByIso == null || payByIso <= todayYmd) return null;
+  return {
+    payByIso,
+    openCycleChargesClp: incrementalChargesClpForBillingMonth(member.accountId, openBm),
+  };
+}
+
+/**
+ * Σ of index-aligned nullable daily series: null on a day where EVERY member is null (before
+ * any member's first event), else the sum of the finite members — the same `sumNullable`
+ * convention the merged monthly ledger applies per month. Throws on a length mismatch: the
+ * members must share one grid.
+ */
+export function sumNullableDailySeries(
+  members: readonly (readonly (number | null)[])[],
+  length: number
+): (number | null)[] {
+  for (const m of members) {
+    if (m.length !== length) {
+      throw new Error(`sumNullableDailySeries: member length ${m.length} != grid ${length}`);
+    }
+  }
+  const out: (number | null)[] = [];
+  for (let i = 0; i < length; i++) {
+    let sum = 0;
+    let any = false;
+    for (const m of members) {
+      const v = m[i];
+      if (typeof v === "number" && Number.isFinite(v)) {
+        sum += v;
+        any = true;
+      }
+    }
+    out.push(any ? sum : null);
+  }
+  return out;
+}
+
+/** Σ of per-master plan tails built over ONE shared future grid (throws when the grids differ). */
+export function sumCcPlanTails(tails: readonly (readonly CcPlanTailPoint[])[]): CcPlanTailPoint[] {
+  const first = tails[0];
+  if (!first) return [];
+  return first.map((p0, i) => {
+    let planDebt = 0;
+    let balance = 0;
+    for (const tail of tails) {
+      const p = tail[i];
+      if (p == null || p.as_of_date !== p0.as_of_date) {
+        throw new Error(`sumCcPlanTails: member grids differ at ${p0.as_of_date}`);
+      }
+      planDebt += p.plan_debt_clp;
+      balance += p.balance_clp;
+    }
+    return { as_of_date: p0.as_of_date, plan_debt_clp: planDebt, balance_clp: balance };
   });
 }
 
 /**
- * Future daily tail (`today+1 .. plan_end`) of the installment simulation for a CC master, so the
- * daily historial chart covers the same window as its monthly/yearly forms. `plan_end` = the last
- * scheduled cuota pay-by; null when the account has no schedule or the plan has already settled
- * (no pay-by after today). CLP only.
+ * Per-day plan debt summed over several CC masters (a Pasivos / credit-card group page):
+ * members without a schedule contribute nothing; null when NO member has one. Aligned with
+ * `datesAsc` like the single-master series.
+ */
+export function ccInstallmentDebtDailyClpForAccounts(
+  accountIds: readonly number[],
+  datesAsc: readonly string[]
+): (number | null)[] | null {
+  const members: (number | null)[][] = [];
+  for (const id of accountIds) {
+    const s = ccInstallmentDebtDailyClp(id, datesAsc);
+    if (s) members.push(s);
+  }
+  if (members.length === 0) return null;
+  return sumNullableDailySeries(members, datesAsc.length);
+}
+
+/**
+ * «Deuda en cuotas» at each billing month's calendar month-end, summed over the given masters —
+ * the daily chart's line sampled where the monthly historial plots the month. One event walk
+ * serves both sides of today: through today it is the daily line itself, after today it is the
+ * plan tail's own plan debt (the tail walks the same events), so the monthly and daily charts
+ * agree at every month-end, past or projected. `months` ascending; null when no master has an
+ * installment schedule.
+ */
+export function ccInstallmentDebtAtMonthEndsClp(
+  accountIds: readonly number[],
+  months: readonly string[]
+): Map<string, number | null> | null {
+  const series = ccInstallmentDebtDailyClpForAccounts(accountIds, months.map(ccLedgerMonthEndIso));
+  if (series == null) return null;
+  return new Map(months.map((m, i) => [m, series[i] ?? null] as const));
+}
+
+/**
+ * Future daily tail (`today+1 .. plan_end`) of the installment simulation summed over several
+ * CC masters, so a group page's daily historial covers the same window as its monthly/yearly
+ * forms. `plan_end` = the LATEST member's last scheduled cuota pay-by; null when no member has
+ * a schedule or every plan has already settled (no pay-by after today). Every member with a
+ * schedule walks the shared grid — a settled member's plan debt is 0 throughout but its open
+ * cycle's unpaid carry still rides until its own pay-by, which is what keeps the group's
+ * today→tomorrow seam continuous (its owed is part of today's summed point). Members with no
+ * schedule at all are not modeled (as on their own page, which draws no daily historial for
+ * them). CLP only.
+ */
+export function ccInstallmentPlanTailClpForAccounts(
+  accountIds: readonly number[],
+  todayYmd: string
+): CcPlanTailPoint[] | null {
+  const members: CcPlanTailEvents[] = [];
+  for (const id of accountIds) {
+    const m = ccPlanTailEvents(id);
+    if (m) members.push(m);
+  }
+  const planEnd = members.reduce((max, m) => (m.planEndYmd > max ? m.planEndYmd : max), "");
+  // Settled everywhere → no tail, and no owed-walk read for any member (today's CC mark is
+  // the one expensive leg here, so it is only resolved once a tail is actually drawn).
+  if (members.length === 0 || planEnd <= todayYmd) return null;
+  const futureDates = calendarDaysAfter(todayYmd, planEnd);
+  return sumCcPlanTails(members.map((m) => ccPlanTailOnGrid(m, todayYmd, futureDates)));
+}
+
+/**
+ * Future daily tail (`today+1 .. plan_end`) of the installment simulation for one CC master —
+ * the single-member case of {@link ccInstallmentPlanTailClpForAccounts}: null when the account
+ * has no schedule or the plan has already settled.
  */
 export function ccInstallmentPlanTailClp(
   accountId: number,
   todayYmd: string
 ): CcPlanTailPoint[] | null {
-  const loaded = ccInstallmentDebtEvents(accountId);
-  if (loaded == null) return null;
-  const { events, facturaciones } = loaded;
-  const planEnd = events.reduce((max, e) => (e.iso > max ? e.iso : max), "");
-  if (planEnd <= todayYmd) return null;
-
-  const openBm = billingMonthForManualLedgerPurchase(accountId);
-  const openPayByIso =
-    (openBm ? facturaciones.find((f) => f.billing_month === openBm)?.pay_by_iso : null) ??
-    (openBm ? tenthOfNextMonthIso(openBm) : null);
-  const owedTodayClp = accountMarkClpAtYmd(accountId, todayYmd)?.value_clp ?? null;
-
-  const futureDates = calendarDaysAfter(todayYmd, planEnd);
-  return buildCcInstallmentPlanTail(todayYmd, futureDates, events, owedTodayClp, openPayByIso);
+  return ccInstallmentPlanTailClpForAccounts([accountId], todayYmd);
 }

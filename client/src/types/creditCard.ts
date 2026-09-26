@@ -60,7 +60,12 @@ export interface CcBillingDetailMonthDto {
   balance_total_clp: number;
   /** Plan-only future month (no statement or balance evidence yet). */
   projected?: boolean;
+  /** Closed at the bank, statement not imported yet (server `isProvisionallyClosedBillingMonth`). */
+  provisional?: boolean;
 }
+
+/** Where a facturación's close date comes from (server `ccBillingCloses.ts`). */
+export type CcCloseSource = "statement" | "feed" | "announced" | "estimated";
 
 export interface CcFacturacionDto {
   billing_month: string;
@@ -75,6 +80,11 @@ export interface CcFacturacionDto {
   cuota_a_pagar_clp: number | null;
   /** True before PDF close — facturado includes únicos + cuota a pagar. */
   is_open_month: boolean;
+  /** Closed at the bank, statement pending: facturado is the bank's total or the app's estimate. */
+  is_provisional_close: boolean;
+  close_date_source: CcCloseSource;
+  /** Provisional month with the bank's total: what the app had estimated for it. */
+  provisional_estimate_total_clp: number | null;
 }
 
 export interface CcFinancingPlMonthDto {
@@ -220,6 +230,15 @@ export interface CcProxyFacturacionAggregate {
   }>;
 }
 
+export interface CcCupoSnapshotDto {
+  total_clp: number | null;
+  used_clp: number | null;
+  /** `total − used` when both are known, else null (an unconfigured cupo is not 0). */
+  available_clp: number | null;
+  /** Billing month whose balance is `used_clp` (open month, else latest closed statement). */
+  billing_month: string | null;
+}
+
 export interface AccountCcInstallmentsResponse {
   account_id: number;
   has_installment_ledger: boolean;
@@ -244,6 +263,8 @@ export interface AccountCcInstallmentsResponse {
   facturaciones?: CcFacturacionDto[];
   financing_pl_by_month?: CcFinancingPlMonthDto[];
   billing_config?: CreditCardBillingConfigDto;
+  /** Credit line snapshot for the summary cards (server-computed: config cupo, open-month balance, difference). */
+  cupo?: CcCupoSnapshotDto;
   /** Open facturación month for manual / web-paste (`YYYY-MM`). */
   open_billing_month?: string | null;
   /** Distinct physical card numbers billed on this master (titular first). */

@@ -1,18 +1,10 @@
-import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { CcInstallmentHistoryChart } from "../../components/charts/CcInstallmentHistoryChart";
-import { CcBillingMonthFinancingChart } from "../../components/charts/CcBillingMonthFinancingChart";
-import { useDailySeries } from "../../queries/hooks";
-import { timeRangeToDays } from "../../timeRange";
-import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
-import { SurfaceControls } from "../../components/ui/SurfaceControls";
 import {
-  rangeWindowStartYmd,
-  windowCcFinancingPoints,
-  windowCcHistorialRows,
-} from "../../chartRangeWindow";
-import type { CcHistorialChartPoint } from "../../types";
-import { CreditCardDetallePorMesTable } from "./CreditCardDetallePorMesTable";
+  CreditCardDetalleSurface,
+  CreditCardFinancingSurface,
+  CreditCardHistorialSurface,
+  type CcSurfaceScope,
+} from "../../components/liabilities/CreditCardLedgerSurfaces";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { CreditCardSummaryCards } from "../../components/liabilities/CreditCardSummaryCards";
 import { cn } from "../../cn";
@@ -40,74 +32,10 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     setExtraCcOffsets,
   } = data;
 
-  const historialChartRows = ccLedger.historial_chart ?? [];
-  const financingChartPoints = ccLedger.billing_month_chart ?? [];
-  // ONE paired control for the historial + financing charts — they share the range-window
-  // design (left-edge parity across D/M/Y), so their período/rango move together.
-  const ccPrefs = useSurfacePrefs(`cc.${summary.account_id}.charts`, "month", "3y");
-  const timeRange = ccPrefs.range;
-  const isYearly = ccPrefs.period === "year";
-  const isDaily = ccPrefs.period === "day";
-  const ccControls = (
-    <SurfaceControls
-      period={ccPrefs.period}
-      onPeriodChange={ccPrefs.setPeriod}
-      range={ccPrefs.range}
-      onRangeChange={ccPrefs.setRange}
-    />
-  );
-
-  // Day mode: the historial chart keeps its two lines at day grain — saldo total from the
-  // per-day owed walk and deuda en cuotas from the daily plan-debt series — with the
-  // month-frame billed/paid bars hidden. CLP always, matching the monthly historial.
-  const dailySeries = useDailySeries(
-    { accountId: summary.account_id },
-    "clp",
-    timeRangeToDays(timeRange),
-    isDaily
-  );
-  const dailyHistorialRows = useMemo((): CcHistorialChartPoint[] | null => {
-    if (!isDaily || !dailySeries.data?.points.length) return null;
-    const debt = dailySeries.data.cc_installment_debt ?? null;
-    const rows: CcHistorialChartPoint[] = dailySeries.data.points.map((pt, i) => ({
-      month: pt.as_of_date,
-      installment_payments_clp: 0,
-      facturado_clp: null,
-      cupo_en_cuotas_clp: debt?.[i] ?? null,
-      balance_total_clp: pt.value,
-    }));
-    // Extend past today with the installment-plan simulation tail so the daily window ends at
-    // the plan end, aligned with the monthly/yearly historial (both lines, CLP, no bars).
-    for (const tail of dailySeries.data.cc_plan_tail ?? []) {
-      rows.push({
-        month: tail.as_of_date,
-        installment_payments_clp: 0,
-        facturado_clp: null,
-        cupo_en_cuotas_clp: tail.plan_debt_clp,
-        balance_total_clp: tail.balance_clp,
-      });
-    }
-    // Clip the leading empty grid to the shared range window (keeps a 20% empty lead as the
-    // truncation cue; `total` starts flush at the first data day).
-    const firstData =
-      rows.find((r) => r.cupo_en_cuotas_clp != null || r.balance_total_clp != null)?.month ?? null;
-    const start = rangeWindowStartYmd(timeRange, firstData);
-    return start == null ? rows : rows.filter((r) => r.month >= start);
-  }, [isDaily, dailySeries.data, timeRange]);
-
-  // Monthly/yearly historial + financing: apply the same range window (left-clip + pad the empty
-  // 20% lead so the left edge matches the daily grid; right edge stays — the historial keeps its
-  // projected plan tail, financing has no simulation). Yearly rollup runs inside the chart
-  // components over these already-windowed rows.
-  const clippedHistorialRows = useMemo(
-    () => (isDaily ? historialChartRows : windowCcHistorialRows(historialChartRows, timeRange)),
-    [historialChartRows, isDaily, timeRange]
-  );
-
-  const clippedFinancingPoints = useMemo(
-    () => windowCcFinancingPoints(financingChartPoints, timeRange),
-    [financingChartPoints, timeRange]
-  );
+  // The historial chart, the financing chart and the detalle table each own a per-surface
+  // Período/Rango control (`cc.<id>.historial` D/M/Y, `.financing` and `.detalle` M/Y) —
+  // the same trio the Pasivos / credit-card group pages render (`CreditCardLedgerSurfaces`).
+  const ccScope: CcSurfaceScope = { variant: "account", accountId: summary.account_id };
 
   const heroClp =
     displayUnit === "usd"
@@ -135,74 +63,11 @@ export function CreditCardAccountDetailPage({ data }: Props) {
         extraCcOffsetsKey={JSON.stringify(extraCcOffsets)}
       />
 
-      {ccLedger.has_installment_ledger && historialChartRows.length > 0 ? (
-        <section className={styles.chartBlock}>
-          <div className="chart-panel-title-row">
-            <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.historialTitle")}</h2>
-            {ccControls}
-          </div>
-          <p className={cn("muted", styles.proseSmTight)}>
-            {t(
-              isDaily
-                ? "accountDetail.creditCard.historialHintDaily"
-                : isYearly
-                  ? "accountDetail.creditCard.historialHintYearly"
-                  : "accountDetail.creditCard.historialHint"
-            )}
-          </p>
-          {isDaily && dailyHistorialRows == null ? (
-            <p className="muted">{t("common.loading")}</p>
-          ) : (
-            <CcInstallmentHistoryChart
-              rows={clippedHistorialRows}
-              openBillingMonth={ccLedger.open_billing_month}
-              dailyRows={dailyHistorialRows}
-              period={ccPrefs.period}
-            />
-          )}
-        </section>
-      ) : null}
+      <CreditCardHistorialSurface ccLedger={ccLedger} scope={ccScope} />
 
-      {!isDaily ? (
-        <>
-          <div className="chart-panel-title-row">
-            <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.creditCard.financingSectionTitle")}</h2>
-            {ccControls}
-          </div>
-          <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.creditCard.financingSectionHint")}</p>
-          <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
-            <CcBillingMonthFinancingChart
-              title={t(
-                isYearly
-                  ? "accountDetail.creditCard.financingChartTitleYearly"
-                  : "accountDetail.creditCard.financingChartTitle"
-              )}
-              titleAs="h3"
-              points={clippedFinancingPoints}
-              period={ccPrefs.period}
-            />
-          </div>
-        </>
-      ) : null}
+      <CreditCardFinancingSurface ccLedger={ccLedger} scope={ccScope} />
 
-      {(ccLedger.billing_detail_by_month?.length ?? 0) > 0 ? (
-        <>
-          <h3 className={styles.subsectionTitleMid}>
-            {t(isYearly ? "accountDetail.yearlyDetailTitle" : "accountDetail.monthlyDetailTitle")}
-          </h3>
-          <p className={cn("muted", styles.proseSmTight)}>
-            {t(
-              isYearly
-                ? "accountDetail.creditCard.detallePorMesBillingHintYearly"
-                : "accountDetail.creditCard.detallePorMesBillingHint"
-            )}
-          </p>
-          <CreditCardDetallePorMesTable
-            rows={ccLedger.billing_detail_by_month ?? []}
-            period={ccPrefs.period}
-          />
-        </>
-      ) : null}
+      <CreditCardDetalleSurface ccLedger={ccLedger} scope={ccScope} />
 
       <CreditCardConfigSection accountId={summary.account_id} />
 

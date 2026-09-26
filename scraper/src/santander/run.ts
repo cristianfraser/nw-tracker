@@ -7,12 +7,14 @@ import { launchBrowser, firstPage } from "../browser.js";
 import { API_HOST_FRAGMENT, Recorder, runStampNow } from "../capture.js";
 import { ensureDir, resolveInboxDir, resolveMovementsDir, resolveStatementJsonDir } from "../paths.js";
 import { log } from "../log.js";
+import { waitForHosts } from "../network.js";
 import { assertRunAllowed } from "../runGuard.js";
 import { setForceRefetch } from "../documentLedger.js";
 import { assertValidSteps, shouldRunStep } from "../steps.js";
 import type { RunOptions, StepResult } from "../runTypes.js";
 import { isLoggedIn, login } from "./login.js";
 import { assertLoginNotLatched } from "./loginLatch.js";
+import { LOGIN_HOSTS } from "./routes.js";
 import { fetchCardMovements, fetchCardStatements } from "./cards.js";
 import { fetchCheckingMovements } from "./checking.js";
 import { keepSessionAlive, type SessionKeepAlive } from "./sessionKeepAlive.js";
@@ -69,8 +71,14 @@ export async function runSantander(opts: RunOptions): Promise<number> {
    * hourly poll, which yields to a running daily run) never happened. The initial open sits before
    * the try/finally that closes the session, and a failed relaunch leaked its new context the same
    * way, so the close belongs here, next to the launch.
+   *
+   * The bank's hosts are probed first: a run launchd fires seconds after the machine wakes from
+   * sleep (a 22:00 it slept through) can start before the network is back, and the login panel then
+   * shows the bank's connection-error card instead of the form (2026-09-25). Waiting here costs
+   * nothing on a normal night and applies to a relaunch as well.
    */
   const openSession = async (): Promise<Session> => {
+    await waitForHosts(LOGIN_HOSTS);
     const context = await launchBrowser({ bank: "santander", headless: false, background: opts.background });
     try {
       const page = await firstPage(context);
@@ -169,9 +177,9 @@ export async function runSantander(opts: RunOptions): Promise<number> {
     if (!opts.movementsOnly) {
       await step("card statements", "card-statements", async (page) => {
         const jsonDir = opts.capture ? (recorder.captureDir ?? destDir) : resolveStatementJsonDir("santander");
-        const downloads = await fetchCardStatements(page, recorder, destDir, jsonDir);
-        if (downloads.length === 0) return "no statement available";
-        return downloads.map((d) => `${d.billingMonth ?? "?"} → ${path.basename(d.file)}`).join(", ");
+        const saved = await fetchCardStatements(page, recorder, jsonDir);
+        if (saved.length === 0) return "no statement JSON in the billed view";
+        return saved.map((d) => `${d.billingMonth ?? "?"} → ${path.basename(d.file)}`).join(", ");
       });
     }
   } finally {

@@ -16,6 +16,7 @@ import {
   type CcStatementsMergeOpts,
 } from "./ccStatementsImport.js";
 import { reconcileManualInstallmentPurchasesAfterStatementImport } from "./ccManualInstallmentStatementReconcile.js";
+import { assertFeedClosesMatchStatements } from "./ccBillingCloses.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
 import {
   reconcileOpenWebPasteAfterPdfImports,
@@ -453,6 +454,10 @@ export function mergeCcAccountFromParsedRows(
       skipGlobalDedupeKeys: true,
       ...opts?.statements,
     });
+    // A statement for a close the card feed already observed must bill exactly the feed's
+    // SALDO INICIAL on the same date — two independent renderings of one number. Throws inside
+    // the transaction, so a disagreeing import writes nothing.
+    assertFeedClosesMatchStatements(accountId);
     const ledger = mergeInstallmentLedgerFromParsedRows(accountId, records, {
       replaceLedger: opts?.replaceLedger ?? false,
     });

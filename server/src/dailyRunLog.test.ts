@@ -6,7 +6,7 @@ import {
   DAILY_RUN_MESSAGE_TITLE,
   HOURLY_EMAIL_RUN_FAILED_TITLE,
   HOURLY_EMAIL_RUN_MESSAGE_TITLE,
-  dailyRunAlreadyRanToday,
+  dailyRunFinishedWithin,
   formatDailyRunBody,
   lastDailyRunAt,
   recordDailyRun,
@@ -209,11 +209,11 @@ describe("recordHourlyEmailRun", () => {
     expect(quiet.recorded).toBe(false);
   });
 
-  it("stays invisible to the daily run's same-day skip and staleness reads", () => {
+  it("stays invisible to the daily run's repeat skip and staleness reads", () => {
     recordHourlyEmailRun([{ label: "Lider boletas import", ok: true }], { activity: true });
     recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
     expect(lastDailyRunAt()).toBeNull();
-    expect(dailyRunAlreadyRanToday()).toBe(false);
+    expect(dailyRunFinishedWithin()).toBe(false);
     expect(staleDailyRunDays()).toBeNull();
   });
 });

@@ -43,6 +43,7 @@ import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
+import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import crypto from "node:crypto";
 
 /** National transaction codes this importer understands; an unknown code means an unknown
@@ -104,6 +105,9 @@ export type SantanderStatementRecordsCtx = {
   periodFrom: string;
   payBy: string | null;
   cardLast4: string | null;
+  /** Next close (FechaProxFact), zero-padded dd/mm/yyyy; the international side takes the
+   * national twin's. Stored as the statement's `next_period_to` (see `ccBillingCloses.ts`). */
+  nextClose?: string | null;
 };
 
 /**
@@ -165,6 +169,10 @@ export function buildSantanderStatementRecords(
     statement_monto_pagado_anterior:
       currency === "clp" && totalPagos != null && totalPagos > 0 ? String(-totalPagos) : "",
     statement_monto_pagado_anterior_date: currency === "clp" ? (pagadoDate ?? "") : "",
+    // Only the end is published (FechaProxFact); the cycle's first day stays whatever the PDF
+    // prints — the close-day offset is read from statements that print both.
+    statement_next_period_from: "",
+    statement_next_period_to: ctx.nextClose ?? "",
   };
 
   const occurrence = new Map<string, number>();
@@ -396,4 +404,41 @@ export function writeSantanderStatements(
     )[],
     lineCount: merged.statements.linesInserted,
   };
+}
+
+/** The `next_period_to` of the real (non-web-paste) statement for a close, if any. */
+export function statementNextPeriodTo(
+  accountId: number,
+  statementDate: string,
+  currency: "clp" | "usd"
+): string | null {
+  const row = db
+    .prepare(
+      `SELECT next_period_to FROM cc_statements
+       WHERE account_id = ? AND statement_date = ? AND currency = ?
+         AND source_pdf NOT LIKE 'import:web-paste%'
+       ORDER BY id DESC LIMIT 1`
+    )
+    .get(accountId, padCcStatementDate(statementDate), currency) as
+    | { next_period_to: string | null }
+    | undefined;
+  return row?.next_period_to ?? null;
+}
+
+/**
+ * Fill a PDF-owned statement's missing `next_period_to` from the JSON's FechaProxFact — a header
+ * field only (no lines, no reconcile), for statements whose format predates the printed line.
+ */
+export function fillStatementNextPeriodTo(
+  accountId: number,
+  statementDate: string,
+  currency: "clp" | "usd",
+  nextClose: string
+): void {
+  db.prepare(
+    `UPDATE cc_statements SET next_period_to = ?
+     WHERE account_id = ? AND statement_date = ? AND currency = ? AND next_period_to IS NULL
+       AND source_pdf NOT LIKE 'import:web-paste%'`
+  ).run(padCcStatementDate(nextClose), accountId, padCcStatementDate(statementDate), currency);
+  invalidateCcBillingDetail(accountId);
 }

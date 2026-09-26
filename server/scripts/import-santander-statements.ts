@@ -20,7 +20,9 @@ import { statementSourceOwnerForClose, padCcStatementDate } from "../src/ccState
 import {
   assertNoCardRoutingConflict,
   buildSantanderStatementRecords,
+  fillStatementNextPeriodTo,
   inheritedStatementCtx,
+  statementNextPeriodTo,
   usdStatementIsStaleEcho,
   writeSantanderStatements,
 } from "../src/santanderStatementImport.js";
@@ -103,6 +105,21 @@ for (const { parsed } of parsedFiles) {
   const statementDate = padCcStatementDate(statementDateRaw);
   const owner = statementSourceOwnerForClose(diff.account_id, statementDate, parsed.currency);
 
+  // FechaProxFact is the same printed «próximo período» end the PDF carries; a PDF-owned close
+  // gets it filled when the PDF format predates the line, and a disagreement is a problem.
+  const nextCloseRaw = parsed.header.next_close ?? nationalByAccount.get(parsed.header.account)?.header.next_close ?? null;
+  const nextClose = nextCloseRaw ? padCcStatementDate(nextCloseRaw) : null;
+  if (owner === "pdf" && nextClose && parsed.currency === "clp") {
+    const stored = statementNextPeriodTo(diff.account_id, statementDate, parsed.currency);
+    if (stored && stored !== nextClose) {
+      dirty += 1;
+      console.log(`  ✗ next close: the PDF prints ${stored}, the JSON's FechaProxFact is ${nextClose}`);
+    } else if (!stored) {
+      console.log(`  next close ${nextClose} (FechaProxFact) — ${apply ? "stored on the PDF statement" : "would be stored (--apply)"}`);
+      if (apply) fillStatementNextPeriodTo(diff.account_id, statementDate, parsed.currency, nextClose);
+    }
+  }
+
   if (owner === "pdf") {
     skippedPdfOwned += 1;
     console.log(
@@ -155,6 +172,7 @@ for (const { parsed } of parsedFiles) {
     periodFrom: ctx.periodFrom,
     payBy: payByRaw ? padCcStatementDate(payByRaw) : null,
     cardLast4: statementLast4,
+    nextClose,
   });
   console.log(
     `  → ${owner === "json" ? "JSON-owned, rewrite" : "not in ledger, write"}: ` +

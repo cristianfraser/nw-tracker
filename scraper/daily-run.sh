@@ -3,7 +3,7 @@
 # Daily EOD bank run, invoked by the LaunchAgent `com.user.nw-tracker-daily`.
 #
 #   scraper/daily-run.sh             # run now (manual trigger — always runs)
-#   scraper/daily-run.sh --scheduled # what the LaunchAgent calls: skips if today already ran
+#   scraper/daily-run.sh --scheduled # what the LaunchAgent calls: skips right behind another run
 #   scraper/daily-run.sh --dry-run   # fetch nothing, only report what the importers would do
 #
 # Must run as a LaunchAgent in the logged-in GUI session: Santander's edge blocks headless
@@ -74,12 +74,15 @@ finish() {
 }
 trap finish EXIT
 
-# A manual trigger earlier today already fetched and imported everything this run would.
+# A run that finished within the last hour (a manual trigger just before 22:00, or launchd firing
+# twice around a wake) already fetched everything this one would. Anything older is not a repeat:
+# the evening run still has the afternoon's movements to fetch — until 2026-09-26 any run earlier
+# the same day cancelled it, even the catch-up launchd fires on waking from a night asleep.
 # Only the SCHEDULED invocation skips: running it by hand is always an explicit request.
 # `trap finish` is set above, so exit early via a flag rather than plain `exit` — otherwise the
 # skip would record an app message for a run that never happened.
 if [[ "$SCHEDULED" == "1" ]]; then
-  if already_ran="$(npm run --silent check:daily-run-today -w nw-tracker-server 2>/dev/null | tail -1)"; then
+  if already_ran="$(npm run --silent check:daily-run-recent -w nw-tracker-server 2>/dev/null | tail -1)"; then
     log "skipping scheduled run — ${already_ran##*] }"
     trap - EXIT
     exit 0

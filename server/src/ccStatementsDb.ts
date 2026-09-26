@@ -22,6 +22,10 @@ export type CcStatementRow = {
   compras_cargos: number | null;
   deuda_total: number | null;
   monto_facturado: number | null;
+  /** Following cycle as printed by this statement (DD/MM/YYYY), when the format prints it —
+   * «PRÓXIMO PERÍODO DE FACTURACIÓN» / JSON FechaProxFact. See `ccBillingCloses.ts`. */
+  next_period_from: string | null;
+  next_period_to: string | null;
   billing_month: string | null;
 };
 
@@ -69,7 +73,8 @@ export function listCcStatementsForAccount(accountId: number): CcStatementRow[] 
     .prepare(
       `SELECT id, account_id, card_group, source_pdf, statement_date, period_from, period_to, pay_by,
               card_last4, card_product, layout, currency,
-              saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado
+              saldo_anterior, abono, compras_cargos, deuda_total, monto_facturado,
+              next_period_from, next_period_to
        FROM cc_statements WHERE account_id = ?
        ORDER BY statement_date DESC, card_group, source_pdf`
     )

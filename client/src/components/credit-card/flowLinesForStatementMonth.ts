@@ -49,12 +49,14 @@ export function flowLinesForBillingStatementMonth(
 /**
  * Facturación modal lines: closed months = PDF/imported statement rows only;
  * open month = web-paste únicos + ledger-deduced installment cuotas for that billing month.
+ * A provisionally closed month (closed at the bank, statement pending) has no statement lines
+ * yet, so it shows what an open month does.
  */
 export function flowLinesForFacturacionMonth(
   flowsLines: readonly FlowCcExpenseLineRow[],
   statements: readonly CcStatementDto[],
   accountId: number,
-  row: Pick<CcFacturacionDto, "billing_month" | "is_open_month">
+  row: Pick<CcFacturacionDto, "billing_month" | "is_open_month" | "is_provisional_close">
 ): FlowCcExpenseLineRow[] {
   const imported = flowLinesFromImportedStatements(
     flowsLines,
@@ -62,7 +64,7 @@ export function flowLinesForFacturacionMonth(
     accountId,
     row.billing_month
   );
-  if (!row.is_open_month) return imported;
+  if (!row.is_open_month && !row.is_provisional_close) return imported;
 
   const byKey = new Map<string, FlowCcExpenseLineRow>();
   for (const ln of imported) {

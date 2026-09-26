@@ -1,4 +1,5 @@
 import type { CcBillingMonthBalanceRow } from "./ccBillingBalances.js";
+import { getCreditCardAccountConfig } from "./ccAccountConfig.js";
 import { listCcBillingMonthBalances } from "./ccBillingBalances.js";
 import type { CcBillingDetailMonthRow, CcFacturacionRow } from "./ccBillingViews.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
@@ -21,6 +22,7 @@ import {
 } from "./creditCardChartSeries.js";
 import type { DataOrigin } from "./dataOrigin.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { ccInstallmentDebtAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
 import {
   computeProxyLot,
   getCcProxyTickers,
@@ -116,6 +118,53 @@ export type CcInstallmentsTotals = {
   next_calendar_month: string | null;
 };
 
+/**
+ * Credit line snapshot for the card's summary cards: the configured CLP cupo, the balance
+ * used on the open billing month (else the latest closed statement), and what is left.
+ * Computed here so the account page and the Pasivos group page show the same numbers.
+ */
+export type CcCupoSnapshot = {
+  total_clp: number | null;
+  used_clp: number | null;
+  /** `total − used` when both are known, else null (an unconfigured cupo is not 0). */
+  available_clp: number | null;
+  /** Billing month whose `balance_total_clp` is `used_clp` (open month, else latest statement). */
+  billing_month: string | null;
+};
+
+export function ccCupoSnapshot(
+  totalClp: number | null,
+  rows: readonly Pick<CcBillingDetailMonthRow, "billing_month" | "as_of_kind" | "balance_total_clp">[],
+  openBillingMonth: string | null
+): CcCupoSnapshot {
+  const openRow =
+    openBillingMonth != null ? rows.find((r) => r.billing_month === openBillingMonth) : undefined;
+  const latestStatement = rows
+    .filter((r) => r.as_of_kind === "statement")
+    .reduce<(typeof rows)[number] | undefined>(
+      (best, r) => (best == null || r.billing_month > best.billing_month ? r : best),
+      undefined
+    );
+  const row = openRow ?? latestStatement;
+  const used = row?.balance_total_clp ?? null;
+  const total = totalClp != null && Number.isFinite(totalClp) ? totalClp : null;
+  return {
+    total_clp: total,
+    used_clp: used,
+    available_clp: total != null && used != null ? total - used : null,
+    billing_month: row?.billing_month ?? null,
+  };
+}
+
+function ccCupoSnapshotForAccount(
+  accountId: number,
+  rows: readonly CcBillingDetailMonthRow[],
+  openBillingMonth: string | null
+): CcCupoSnapshot {
+  const cupoClp = getCreditCardAccountConfig(accountId).cupo.find((c) => c.currency === "clp")?.value ?? null;
+  return ccCupoSnapshot(cupoClp, rows, openBillingMonth);
+}
+
 export type CcInstallmentsMeta = {
   installment_purchase_count?: number;
   installment_payment_count?: number;
@@ -192,6 +241,8 @@ export type CcInstallmentsResponseBase = {
   facturaciones?: CcFacturacionRow[];
   financing_pl_by_month?: CcFinancingPlMonthRow[];
   billing_config?: CreditCardBillingConfig;
+  /** Credit line snapshot for the summary cards — see {@link ccCupoSnapshot}. */
+  cupo?: CcCupoSnapshot;
   open_billing_month?: string | null;
   associated_card_last4s?: string[];
   historial_chart?: CcHistorialChartPoint[];
@@ -287,10 +338,12 @@ export function creditCardInstallmentsResponse(
       facturaciones,
       financing_pl_by_month: financingPl,
       billing_config: loadCreditCardBillingConfig(accountId),
+      cupo: ccCupoSnapshotForAccount(accountId, billingDetail, open_billing_month),
       historial_chart: buildCcHistorialChartSeries(
         db.installment_history_months,
         billingDetail,
-        facturaciones
+        facturaciones,
+        { installmentDebtForMonths: (months) => ccInstallmentDebtAtMonthEndsClp([accountId], months) }
       ),
       billing_month_chart: buildCcBillingMonthChartSeries(facturaciones, financingPl),
       proxy_tickers: tickers,
@@ -332,6 +385,7 @@ export function creditCardInstallmentsResponse(
       facturaciones,
       financing_pl_by_month: financingPl,
       billing_config: loadCreditCardBillingConfig(accountId),
+      cupo: ccCupoSnapshotForAccount(accountId, billingDetail, open_billing_month),
       historial_chart: buildCcHistorialChartSeries([], billingDetail, facturaciones),
       billing_month_chart: buildCcBillingMonthChartSeries(facturaciones, financingPl),
     };

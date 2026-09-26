@@ -192,6 +192,8 @@ export type SantanderStatementHeader = {
   statement_date: string | null;
   period_from: string | null;
   pay_by: string | null;
+  /** Next close (FechaProxFact) — the statement PDF's printed next-period end. */
+  next_close: string | null;
   saldo_anterior: number | null;
   total_pagos: number | null;
   deuda_total: number | null;
@@ -213,6 +215,7 @@ export function nationalHeader(respuesta: Record<string, unknown>): SantanderSta
     statement_date: santanderIsoToCsvDate(String(respuesta.FechaFactActual ?? "")),
     period_from: santanderIsoToCsvDate(String(respuesta.FechaFactAnt ?? "")),
     pay_by: santanderIsoToCsvDate(String(respuesta.FechaVenc ?? "")),
+    next_close: santanderIsoToCsvDate(String(respuesta.FechaProxFact ?? "")),
     saldo_anterior: num("SaldoAnterior"),
     total_pagos: num("TotalPagos"),
     deuda_total: num("DeudaTotalFact"),

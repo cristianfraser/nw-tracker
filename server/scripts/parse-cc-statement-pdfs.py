@@ -3213,6 +3213,8 @@ CSV_COLUMNS: List[str] = [
     "statement_monto_facturado_anterior",
     "statement_monto_pagado_anterior",
     "statement_monto_pagado_anterior_date",
+    "statement_next_period_from",
+    "statement_next_period_to",
     "statement_abono",
     "statement_compras_cargos",
     "statement_deuda_total",
@@ -3237,6 +3239,8 @@ def _sync_statement_billing_headers_from_pdf(meta: Dict[str, Any]) -> None:
         ("statement_monto_facturado_anterior", "pdf_monto_facturado_anterior"),
         ("statement_monto_pagado_anterior", "pdf_monto_pagado_anterior"),
         ("statement_monto_pagado_anterior_date", "pdf_monto_pagado_anterior_date"),
+        ("statement_next_period_from", "pdf_next_period_from"),
+        ("statement_next_period_to", "pdf_next_period_to"),
         ("statement_saldo_anterior", "pdf_saldo_anterior"),
         ("statement_abono", "pdf_abono"),
         ("statement_compras_cargos", "pdf_compras_cargos"),
@@ -3319,6 +3323,8 @@ def emit_row(
         "statement_monto_pagado_anterior_date": str(
             meta.get("statement_monto_pagado_anterior_date") or ""
         ),
+        "statement_next_period_from": str(meta.get("statement_next_period_from") or ""),
+        "statement_next_period_to": str(meta.get("statement_next_period_to") or ""),
         "statement_abono": fmt_usd(meta.get("statement_abono"))
         if meta.get("currency") == "usd"
         else fmt_clp(_cell_int(meta.get("statement_abono"))),
