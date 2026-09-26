@@ -46,6 +46,7 @@ export type MovementCreateSchema = {
 
 const MOVEMENTS_UNITS_BY_CATEGORY: Record<string, { unit_label: string }> = {
   afp: { unit_label: "cuotas" },
+  afc: { unit_label: "cuotas" },
   bitcoin: { unit_label: "BTC" },
   eth: { unit_label: "ETH" },
   fintual_risky_norris: { unit_label: "cuotas" },

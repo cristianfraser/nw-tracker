@@ -1,5 +1,6 @@
 export type SyncSourceId =
   | "afp_uno"
+  | "afc_cic"
   | "fintual"
   | "fintual_rn_composition"
   | "sbif_usd"

@@ -9,6 +9,7 @@ import {
   type GlobalSyncStateFile,
 } from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
+import { afcCicAccountIds, isAfcCicStale, latestAfcCicRow } from "./afcCicSeries.js";
 
 import {
   cryptoEodDueUtcYmd,
@@ -61,6 +62,7 @@ export function isFintualRnCompositionStale(cl: ChileWallClock, state: GlobalSyn
 
 export type GlobalSyncSource =
   | "afp_uno"
+  | "afc_cic"
   | "fintual"
   | "fintual_rn_composition"
   | "sbif_usd"
@@ -75,6 +77,7 @@ export type GlobalSyncSource =
 
 export const GLOBAL_SYNC_SOURCES: readonly GlobalSyncSource[] = [
   "afp_uno",
+  "afc_cic",
   "fintual",
   "fintual_rn_composition",
   "sbif_usd",
@@ -153,6 +156,7 @@ function disabledSyncSources(
 ): Set<GlobalSyncSource> {
   const disabled = new Set<GlobalSyncSource>();
   if (afpUnoAccountId() == null) disabled.add("afp_uno");
+  if (afcCicAccountIds().length === 0) disabled.add("afc_cic");
   const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
   if (!bde) {
     disabled.add("sbif_usd");
@@ -354,6 +358,7 @@ function naturalStaleSyncSources(
 ): GlobalSyncSource[] {
   const out: GlobalSyncSource[] = [];
   if (isAfpUnoSpotStale(cl, state, opts)) out.push("afp_uno");
+  if (isAfcCicStale(cl, state, opts)) out.push("afc_cic");
   if (isFintualSyncStale(cl, state)) out.push("fintual");
   if (isFintualRnCompositionStale(cl, state)) out.push("fintual_rn_composition");
   const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
@@ -424,6 +429,7 @@ function syncSourceRow(
 ): SyncSourceStatusRow {
   const sched = attachSyncSourceSchedule(source, cl, stale, status === "disabled", {
     fintualAppliedPublishYmd: state.fintualLastAppliedPublishYmd ?? null,
+    afcCicLatestDay: source === "afc_cic" ? (latestAfcCicRow()?.day ?? null) : null,
   });
   return {
     source,
@@ -536,6 +542,13 @@ export function allSyncSourceStatuses(
   } else {
     const stale = isAfpUnoSpotStale(cl, state, { force });
     rows.push(syncSourceRow("afp_uno", cl, stale ? "stale" : "ok", stale, state));
+  }
+
+  if (afcCicAccountIds().length === 0) {
+    rows.push(syncSourceRow("afc_cic", cl, "disabled", false, state));
+  } else {
+    const stale = isAfcCicStale(cl, state, { force });
+    rows.push(syncSourceRow("afc_cic", cl, stale ? "stale" : "ok", stale, state));
   }
 
   {

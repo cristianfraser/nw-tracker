@@ -41,6 +41,25 @@ describe("accountSyncSources", () => {
     ).toEqual(["afp_uno"]);
   });
 
+  it("infers afc_cic for an account declared on the AFC CIC series", () => {
+    expect(
+      inferSyncSourcesForAccount({
+        id: 1,
+        import_key: "import:excel|key=afc",
+        equity_ticker: null,
+        fund_series_key: "afc_cic",
+      })
+    ).toEqual(["afc_cic"]);
+    expect(
+      inferSyncSourcesForAccount({
+        id: 1,
+        import_key: "import:excel|key=afc",
+        equity_ticker: null,
+        fund_series_key: null,
+      })
+    ).toEqual([]);
+  });
+
   it("infers stocks_santiago for Bolsa de Santiago (.SN) tickers", () => {
     expect(
       inferSyncSourcesForAccount({

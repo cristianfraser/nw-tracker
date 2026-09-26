@@ -1,8 +1,9 @@
 import { assertValuationCurrencyClp } from "./valuationValue.js";
 import {
-  liveAfpDisplayValueClp,
+  liveCuotaLedgerDisplayValueClp,
   liveFintualCertDisplayValueClp,
 } from "./accountPosition.js";
+import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import {
   accountUsesEquityMtm,
   computeEquityMtmClp,
@@ -52,9 +53,12 @@ function historicalMarkClpAtYmd(
   categorySlug: string,
   opts?: { import_key?: string | null; name?: string | null }
 ): AccountMarkAtYmd | null {
-  if (accountBucketKindSlug(categorySlug) === "afp") {
-    const live = liveAfpDisplayValueClp(accountId, asOfYmd);
-    if (live) return live;
+  {
+    const kind = accountBucketKindSlug(categorySlug);
+    if (isCuotaLedgerKindSlug(kind)) {
+      const live = liveCuotaLedgerDisplayValueClp(accountId, kind, asOfYmd);
+      if (live) return live;
+    }
   }
   if (opts?.import_key && isFintualCertV2ValuationNotes(opts.import_key)) {
     const live = liveFintualCertDisplayValueClp(accountId, opts.import_key, opts.name ?? null, asOfYmd);

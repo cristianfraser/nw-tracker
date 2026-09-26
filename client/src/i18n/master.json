@@ -1402,6 +1402,10 @@
           "en": "AFP UNO",
           "es": "AFP UNO"
         },
+        "afc_cic": {
+          "en": "AFC — Fondo de Cesantía (CIC) unit value",
+          "es": "AFC — valor cuota Fondo de Cesantía (CIC)"
+        },
         "fintual": {
           "en": "Fintual",
           "es": "Fintual"
@@ -1521,6 +1525,10 @@
     "positionHintAfp": {
       "en": " AFP UNO Fondo A: units from <1>movements.units_delta</1> (certificate in <2>cfraser/afp-uno-certificado-cotizaciones.csv</2> or <3>.txt</3> when running <4>import:excel</4>, or <5>npm run afp:uno:cert-sync</5>).",
       "es": " AFP UNO Fondo A: cuotas desde <1>movements.units_delta</1> (certificado en <2>cfraser/afp-uno-certificado-cotizaciones.csv</2> o <3>.txt</3> al correr <4>import:excel</4>, o <5>npm run afp:uno:cert-sync</5>)."
+    },
+    "positionHintAfc": {
+      "en": " AFC Fondo de Cesantía (CIC): units from <1>movements.units_delta</1>, priced with the Superintendencia de Pensiones daily unit value (<2>afc_cic</2>). Units derived as pesos ÷ unit value until a cartola supplies the exact count (<3>npm run afc:derive-cuotas</3>).",
+      "es": " AFC Fondo de Cesantía (CIC): cuotas desde <1>movements.units_delta</1>, valoradas con el valor cuota diario de la Superintendencia de Pensiones (<2>afc_cic</2>). Cuotas derivadas como pesos ÷ valor cuota hasta que una cartola entregue el número exacto (<3>npm run afc:derive-cuotas</3>)."
     },
     "position": {
       "title": {

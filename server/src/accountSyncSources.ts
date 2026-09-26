@@ -5,6 +5,7 @@ import {
   isFintualCertV2AccountNotes,
 } from "./fintualCertV2.js";
 import type { GlobalSyncSource } from "./globalSyncStale.js";
+import { AFC_CIC_SERIES_KEY } from "./afcCicSeries.js";
 
 export type AccountSyncSourceRow = {
   id: number;
@@ -46,6 +47,7 @@ export function inferSyncSourcesForAccount(row: AccountSyncSourceRow): GlobalSyn
   const out: GlobalSyncSource[] = [];
   if (isFintualFundAccount(row.import_key, row.fund_series_key)) out.push("fintual");
   if (row.import_key === "import:excel|key=afp") out.push("afp_uno");
+  if (row.fund_series_key?.trim() === AFC_CIC_SERIES_KEY) out.push("afc_cic");
   const ticker = row.equity_ticker?.trim();
   if (ticker) {
     const kind = equityMarketKind(ticker);

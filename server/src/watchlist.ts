@@ -51,6 +51,8 @@ const BUILTIN_INSTRUMENTS: {
   series_key: string | null;
   /** Insert only when the instrument's backing data exists; omitted = always insert (UF/USD). */
   hasBackingData?: () => boolean;
+  /** Marquee chip on first insert (default on); the rates page reads `show_in_rates` instead. */
+  show_in_marquee?: 0 | 1;
 }[] = [
   {
     slug: "uf",
@@ -76,6 +78,18 @@ const BUILTIN_INSTRUMENTS: {
     kind: "fund_unit",
     series_key: "afp_uno_cuota_a",
     hasBackingData: () => fundSeriesHasData("afp_uno_cuota_a"),
+  },
+  {
+    // AFC Fondo de Cesantía (CIC) valor cuota — rates page only: the marquee client renders a
+    // fixed set of fund chips, and a second cuota series there adds noise, not information.
+    slug: "afc_cic",
+    label: "AFC CIC",
+    label_i18n_key: null,
+    sort_order: 35,
+    kind: "fund_unit",
+    series_key: "afc_cic",
+    hasBackingData: () => fundSeriesHasData("afc_cic"),
+    show_in_marquee: 0,
   },
   {
     slug: "fintual_risky_norris",
@@ -178,6 +192,11 @@ function consolidateAfpUnoDisplaySeries(): void {
      SET show_in_rates = 1, rates_chart_title = 'UNO-A'
      WHERE slug = 'afp_uno_cuota_a'`
   ).run();
+  db.prepare(
+    `UPDATE market_display_series
+     SET show_in_rates = 1, rates_chart_title = 'AFC CIC'
+     WHERE slug = 'afc_cic'`
+  ).run();
 }
 
 /** Idempotent sync of builtin + account instruments into market_display_series. */
@@ -195,7 +214,7 @@ export function syncWatchlistFromApp(): void {
           b.sort_order,
           b.kind,
           b.series_key,
-          1,
+          b.show_in_marquee ?? 1,
           b.kind === "equity" ? b.label : null,
           "builtin"
         );

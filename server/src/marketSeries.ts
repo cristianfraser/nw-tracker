@@ -16,6 +16,7 @@ const FUND_SERIES_ORDER = [
   "fintual_risky_norris",
   "fintual_risky_norris_apv",
   "afp_uno_cuota_a",
+  "afc_cic",
 ] as const;
 
 function sortEquityTickers(tickers: string[]): string[] {

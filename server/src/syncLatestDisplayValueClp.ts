@@ -1,4 +1,4 @@
-import { liveAfpDisplayValueClp, liveFintualCertDisplayValueClp } from "./accountPosition.js";
+import { liveCuotaLedgerDisplayValueClp, liveFintualCertDisplayValueClp } from "./accountPosition.js";
 import {
   accountUsesEquityMtm,
   computeEquityMtmClpDisplaySync,
@@ -69,6 +69,13 @@ export function syncLatestDisplayValueClp(
       }
     }
   }
+  // AFC values from its cuota ledger first — the stored monthly rows are the pre-ledger
+  // benchmark, not a mark (AFP keeps its stored-first order below: its sync stamps a today
+  // row from the same cuotas × px, so the two agree).
+  if (bucketKind === "afc") {
+    const live = liveCuotaLedgerDisplayValueClp(accountId, bucketKind);
+    if (live) return live;
+  }
   const stored = latestDisplayedBalanceForAccount(accountId);
   if (stored?.value_clp != null && stored.value_clp > 0 && stored.as_of_date) {
     // Book-value carry for manual-marked accounts: stale mark + net personal flows since its
@@ -87,7 +94,7 @@ export function syncLatestDisplayValueClp(
     return { value_clp, as_of_date: stored.as_of_date };
   }
   if (bucketKind === "afp") {
-    const live = liveAfpDisplayValueClp(accountId);
+    const live = liveCuotaLedgerDisplayValueClp(accountId, bucketKind);
     if (live) return live;
   }
   if (bucketKind === "credit_card") {

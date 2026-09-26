@@ -53,6 +53,7 @@ import {
   cryptoCoinCumulativeThroughDate,
 } from "./cryptoValuation.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
+import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import {
   monthEndCloseClpForAccount,
   priorCalendarMonthKey,
@@ -746,7 +747,7 @@ function buildAccountMonthlyPerformanceUncached(
   let cumPl = 0;
   const unitsByMonthEnd = stockUnitsInflowByMonthEnd(accountId);
   const afpCuotasByMonthKey =
-    bucketSlug === "afp" ? afpPositiveCuotasInflowByMonthKey(accountId) : null;
+    isCuotaLedgerKindSlug(accountBucketKindSlug(bucketSlug)) ? afpPositiveCuotasInflowByMonthKey(accountId) : null;
   const cryptoInflowByMonthEnd =
     cryptoAssetFromCategorySlug(bucketSlug) != null ? cryptoCoinInflowByMonthEnd(accountId) : null;
   const cryptoAsset = cryptoAssetFromCategorySlug(bucketSlug);

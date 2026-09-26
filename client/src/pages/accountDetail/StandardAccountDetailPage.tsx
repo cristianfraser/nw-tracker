@@ -154,6 +154,9 @@ export function StandardAccountDetailPage({ data }: Props) {
   const showMonthlyPerformance =
     !isMovementCartolaAccount && summary.category_slug !== "cuenta_ahorro_vivienda";
   const isAfpAccount = summary.category_slug === "afp";
+  const isAfcAccount = summary.category_slug === "afc";
+  // Cuota-ledger accounts (AFP, AFC): the perf table reads contributions in cuotas.
+  const isCuotaLedgerAccount = isAfpAccount || isAfcAccount;
   const isMortgageAccount = isDeptoMortgageCategory(summary.category_slug);
   const isPropertyAccount = isDeptoPropertyCategory(summary.category_slug);
   const isDeptoAccount = isMortgageAccount || isPropertyAccount;
@@ -224,6 +227,16 @@ export function StandardAccountDetailPage({ data }: Props) {
                   3: <span className="mono" />,
                   4: <span className="mono" />,
                   5: <span className="mono" />,
+                }}
+              />
+            ) : null}
+            {isAfcAccount ? (
+              <Trans
+                i18nKey="accountDetail.positionHintAfc"
+                components={{
+                  1: <span className="mono" />,
+                  2: <span className="mono" />,
+                  3: <span className="mono" />,
                 }}
               />
             ) : null}
@@ -497,7 +510,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                   displayUnit={displayUnit}
                   period={detallePrefs.period === "year" ? "year" : "month"}
                   isMortgageAccount={isMortgageAccount}
-                  isAfpAccount={isAfpAccount}
+                  isAfpAccount={isCuotaLedgerAccount}
                   movementUnitsKind={movementUnitsKind}
                 />
               )}

@@ -11,6 +11,7 @@ import {
 import { countFundUnitRowsInRange, upsertFundUnitSpotPreservingHistory } from "./fundUnitDaily.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
+import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 
 /**
  * Cumulative AFP cuotas: Σ `movements.units_delta` on the account plus manual transfer legs.
@@ -113,14 +114,17 @@ export function revalueAfpAccountFromCuotas(opts: {
    */
   preserveExcelValues?: boolean;
 }): { updated: number; skipped: number; lines: string[] } {
-  const seriesKey = opts.seriesKey ?? AFP_UNO_CUOTA_SERIES_KEY;
   const lines: string[] = [];
   let updated = 0;
   let skipped = 0;
 
   const kind = accountKindSlugForAccountId(opts.accountId);
-  if (kind !== "afp") {
-    throw new Error(`Account ${opts.accountId} is not category "afp" (got ${kind ?? "missing"})`);
+  if (!isCuotaLedgerKindSlug(kind)) {
+    throw new Error(`Account ${opts.accountId} is not a cuota-ledger kind (afp/afc; got ${kind ?? "missing"})`);
+  }
+  const seriesKey = opts.seriesKey ?? cuotaLedgerSeriesKeyForAccount(opts.accountId, kind!);
+  if (!seriesKey) {
+    throw new Error(`Account ${opts.accountId} (${kind}) has no fund_series_key — declare the series first`);
   }
 
   const vals = db

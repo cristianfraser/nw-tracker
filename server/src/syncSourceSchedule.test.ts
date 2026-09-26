@@ -66,6 +66,22 @@ describe("attachSyncSourceSchedule", () => {
     expect(sched.next_sync?.ymd).toBe("2026-09-21");
   });
 
+  it("afc_cic next sync is today noon while the prior business day's row is still due", () => {
+    const sched = attachSyncSourceSchedule("afc_cic", cl("2026-09-22", 9), false, false, {
+      afcCicLatestDay: "2026-09-18",
+    });
+    expect(sched.next_sync).toEqual({ ymd: "2026-09-22", hour: 12, minute: 0, timeZone: "America/Santiago" });
+    expect(sched.today_day_kind).toBe("open");
+  });
+
+  it("afc_cic from a Saturday whose Friday row landed wakes on Tuesday noon", () => {
+    const sched = attachSyncSourceSchedule("afc_cic", cl("2026-09-26", 14), false, false, {
+      afcCicLatestDay: "2026-09-25",
+    });
+    expect(sched.next_sync).toEqual({ ymd: "2026-09-29", hour: 12, minute: 0, timeZone: "America/Santiago" });
+    expect(sched.today_day_kind).toBe("weekend");
+  });
+
   it("fx next sync is today 17:05 New York before the day end, on any weekday", () => {
     const sched = attachSyncSourceSchedule("yahoo_fx_usd", cl("2026-09-07", 12), false, false); // US Labor Day
     expect(sched.today_day_kind).toBe("open");
