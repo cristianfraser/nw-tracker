@@ -770,6 +770,34 @@ export function buildFacturaciones(
   return withCcOneShotScanCache(() => buildFacturacionesInner(accountId, ledgerMonths));
 }
 
+/**
+ * Each facturación's pay-by (ISO), as the facturaciones table shows it: a statement-closed month's
+ * printed PAGAR HASTA (else derived from its close), an open or provisionally closed month's 10th
+ * after its best published close. A month the table has no row for yet (the open month before any
+ * bucket or statement has landed in it, while a stale bucket's leftovers already belong to it, see
+ * `facturacionMonthByStatementDate`) resolves the way its open row would. Throws when a facturación
+ * has no resolvable pay-by, so nothing dated by it drops out silently.
+ */
+export function facturacionPayByIsoResolver(
+  accountId: number,
+  facturaciones: readonly Pick<CcFacturacionRow, "billing_month" | "pay_by_iso">[]
+): (billingMonth: string) => string {
+  const byMonth = new Map<string, string | null>(
+    facturaciones.map((f) => [f.billing_month, f.pay_by_iso])
+  );
+  return (billingMonth) => {
+    if (!byMonth.has(billingMonth)) {
+      const close = closeDateForBillingMonth(accountId, billingMonth);
+      byMonth.set(billingMonth, resolveInstallmentPayByIso({ statement_date: close.close_iso }));
+    }
+    const iso = byMonth.get(billingMonth);
+    if (!iso) {
+      throw new Error(`Account ${accountId}: facturación ${billingMonth} has no resolvable pay-by date`);
+    }
+    return iso;
+  };
+}
+
 function buildFacturacionesInner(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[]
