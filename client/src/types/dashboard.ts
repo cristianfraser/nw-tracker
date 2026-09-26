@@ -1,4 +1,5 @@
 import type { AccountPositionSnapshot, FxConversionWarning } from "./core";
+import type { CcFacturadoBarSegments } from "./creditCard";
 import type { DepositFlowCategory, FlowDepositRow } from "./flows";
 
 export interface DashboardAccountRow {
@@ -398,6 +399,11 @@ export interface DailySeriesResponse {
    * so the daily historial covers the same window as its monthly/yearly forms.
    */
   cc_plan_tail?: { as_of_date: string; plan_debt_clp: number; balance_clp: number }[];
+  /**
+   * CC scopes only: each card's facturación bar on that card's close date, same-day closes
+   * summed (ascending; a date may lie past the grid — an open month closing after the plan tail).
+   */
+  cc_facturacion_bars?: (CcFacturadoBarSegments & { as_of_date: string })[];
   /** Σ of account `deposits_acum` per day (`__group_dep_total` line). */
   deposits_acum_total?: number[];
   /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */

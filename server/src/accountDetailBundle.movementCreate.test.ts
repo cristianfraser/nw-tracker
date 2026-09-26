@@ -11,7 +11,7 @@ describe("accountDetailBundle movement_create", () => {
       .get() as { id: number } | undefined;
     if (!row) return;
 
-    const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly", {});
+    const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly");
     expect(bundle).not.toBeNull();
     expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toEqual(BROKERAGE_FLOW_KINDS);
   });
@@ -22,7 +22,7 @@ describe("accountDetailBundle movement_create", () => {
       .get() as { id: number } | undefined;
     if (!row) return;
 
-    const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly", {});
+    const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly");
     expect(bundle).not.toBeNull();
     expect(bundle!.summary.book_ledger_edit).toEqual({
       valuations: true,
@@ -43,7 +43,7 @@ describe("accountDetailBundle movement_create", () => {
       },
     });
 
-    return buildAccountDetailBundle(result.account_id, "clp", "monthly", {}).then((bundle) => {
+    return buildAccountDetailBundle(result.account_id, "clp", "monthly").then((bundle) => {
       expect(bundle).not.toBeNull();
       expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toEqual(BROKERAGE_FLOW_KINDS);
 
@@ -66,7 +66,7 @@ describe("accountDetailBundle movement_create", () => {
       .get() as { id: number } | undefined;
     if (!row) return;
 
-    const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly", {});
+    const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly");
     expect(bundle).not.toBeNull();
     expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toContain("compra_usd_venta_clp");
     expect(bundle!.summary.movement_create?.brokerage_flow_kinds).not.toContain("stock_buy");

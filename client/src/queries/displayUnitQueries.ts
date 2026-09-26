@@ -79,8 +79,6 @@ export function prefetchPortfolioGroupBundle(
   });
 }
 
-const EMPTY_CC_OFFSETS_KEY = "{}";
-
 export function prefetchAccountDetailBundle(
   queryClient: QueryClient,
   accountId: number,
@@ -88,9 +86,8 @@ export function prefetchAccountDetailBundle(
 ): Promise<void> {
   const id = String(accountId);
   return queryClient.prefetchQuery({
-    queryKey: queryKeys.accountDetail(id, unit, "monthly", EMPTY_CC_OFFSETS_KEY),
-    queryFn: () =>
-      api.accountDetailBundle(id, unit, { granularity: "monthly", extraOffsets: {} }),
+    queryKey: queryKeys.accountDetail(id, unit, "monthly"),
+    queryFn: () => api.accountDetailBundle(id, unit, { granularity: "monthly" }),
     staleTime: DISPLAY_UNIT_STALE_MS,
   });
 }

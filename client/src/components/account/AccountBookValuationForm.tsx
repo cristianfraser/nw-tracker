@@ -13,10 +13,9 @@ import {
 type Props = {
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
 };
 
-export function AccountBookValuationForm({ accountId, displayUnit, extraCcOffsetsKey }: Props) {
+export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [asOfDate, setAsOfDate] = useState("");
@@ -32,7 +31,7 @@ export function AccountBookValuationForm({ accountId, displayUnit, extraCcOffset
   const invalidate = async () => {
     await Promise.all([
       queryClient.invalidateQueries({
-        queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly", extraCcOffsetsKey),
+        queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
       }),
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),
       queryClient.invalidateQueries({ queryKey: queryKeys.dashboardNav(displayUnit) }),

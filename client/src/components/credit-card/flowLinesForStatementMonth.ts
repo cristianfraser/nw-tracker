@@ -1,77 +1,26 @@
-import { mergedFacturacionLines } from "../../pages/accountDetail/mergedFacturacionLines";
-import type { CcFacturacionDto, CcStatementDto, FlowCcExpenseLineRow } from "../../types";
-
-function flowLinesFromImportedStatements(
-  flowsLines: readonly FlowCcExpenseLineRow[],
-  statements: readonly CcStatementDto[],
-  accountId: number,
-  billingMonth: string
-): FlowCcExpenseLineRow[] {
-  const statementLineIds = new Set(
-    mergedFacturacionLines(statements, billingMonth).map((ln) => ln.id)
-  );
-  if (statementLineIds.size === 0) return [];
-
-  return flowsLines.filter((ln) => {
-    if (ln.account_id !== accountId) return false;
-    if (ln.line_role === "installment_purchase_total") return false;
-    return statementLineIds.has(ln.statement_line_id);
-  });
-}
-
-function deducedInstallmentCuotaLines(
-  flowsLines: readonly FlowCcExpenseLineRow[],
-  accountId: number,
-  billingMonth: string
-): FlowCcExpenseLineRow[] {
-  return flowsLines.filter((ln) => {
-    if (ln.account_id !== accountId) return false;
-    if (ln.line_role !== "installment_cuota") return false;
-    // Facturado-financing `split_only` slices carry the FINANCED card's account_id and the
-    // projected month, but they are Expenses-tab display derivations (a Lider facturado paid
-    // in Santander cuotas re-framed as installments) — never this card's own schedule.
-    // Scope `excluded` stays visible: the financing card's own plan cuotas are real rows.
-    if (ln.gastos_scope === "split_only") return false;
-    return ln.billing_month === billingMonth;
-  });
-}
-
-/** Flow expense rows that belong to imported statement lines for one billing month. */
-export function flowLinesForBillingStatementMonth(
-  flowsLines: readonly FlowCcExpenseLineRow[],
-  statements: readonly CcStatementDto[],
-  accountId: number,
-  billingMonth: string
-): FlowCcExpenseLineRow[] {
-  return flowLinesFromImportedStatements(flowsLines, statements, accountId, billingMonth);
-}
+import type { CcFacturacionDto, FlowCcExpenseLineRow } from "../../types";
 
 /**
- * Facturación modal lines: closed months = PDF/imported statement rows only;
- * open month = web-paste únicos + ledger-deduced installment cuotas for that billing month.
- * A provisionally closed month (closed at the bank, statement pending) has no statement lines
- * yet, so it shows what an open month does.
+ * Facturación modal lines: this card's expense rows whose `billing_month` — stamped by the server
+ * with the rule its facturado sums use — is the facturación. The client no longer re-derives which
+ * statements belong to a month (an older copy of that rule listed September 2026's bucket under
+ * October). A closed facturación lists its statements' own lines (`statement_line_id > 0`); an open
+ * or provisionally closed one has no statement cuota lines yet, so the ledger's cuotas for the month
+ * stand in — not the facturado-financing `split_only` slices, which are Expenses-tab display
+ * derivations carrying the FINANCED card's id on the financing card's months (scope `excluded`
+ * stays visible: the financing card's own plan cuotas are real rows). Synthetic installment
+ * purchase totals never belong to a facturación.
  */
 export function flowLinesForFacturacionMonth(
   flowsLines: readonly FlowCcExpenseLineRow[],
-  statements: readonly CcStatementDto[],
   accountId: number,
   row: Pick<CcFacturacionDto, "billing_month" | "is_open_month" | "is_provisional_close">
 ): FlowCcExpenseLineRow[] {
-  const imported = flowLinesFromImportedStatements(
-    flowsLines,
-    statements,
-    accountId,
-    row.billing_month
-  );
-  if (!row.is_open_month && !row.is_provisional_close) return imported;
-
-  const byKey = new Map<string, FlowCcExpenseLineRow>();
-  for (const ln of imported) {
-    byKey.set(`stmt:${ln.statement_line_id}`, ln);
-  }
-  for (const ln of deducedInstallmentCuotaLines(flowsLines, accountId, row.billing_month)) {
-    byKey.set(`cuota:${ln.statement_line_id}`, ln);
-  }
-  return [...byKey.values()];
+  const statementLinesOnly = !row.is_open_month && !row.is_provisional_close;
+  return flowsLines.filter((ln) => {
+    if (ln.account_id !== accountId || ln.billing_month !== row.billing_month) return false;
+    if (ln.line_role === "installment_purchase_total") return false;
+    if (ln.statement_line_id > 0) return true;
+    return !statementLinesOnly && ln.line_role === "installment_cuota" && ln.gastos_scope !== "split_only";
+  });
 }

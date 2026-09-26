@@ -8,10 +8,9 @@ import { cn } from "../../cn";
 type Props = {
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
 };
 
-export function AccountBookLedgerSection({ accountId, displayUnit, extraCcOffsetsKey }: Props) {
+export function AccountBookLedgerSection({ accountId, displayUnit }: Props) {
   const { t } = useTranslation();
 
   return (
@@ -21,12 +20,10 @@ export function AccountBookLedgerSection({ accountId, displayUnit, extraCcOffset
       <AccountBookValuationForm
         accountId={accountId}
         displayUnit={displayUnit}
-        extraCcOffsetsKey={extraCcOffsetsKey}
       />
       <AccountBookMovementsForm
         accountId={accountId}
         displayUnit={displayUnit}
-        extraCcOffsetsKey={extraCcOffsetsKey}
       />
     </section>
   );

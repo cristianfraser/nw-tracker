@@ -19,7 +19,6 @@ import { Button, Field, Input } from "@crfrsr/ui";
 type Props = {
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
   schema: NonNullable<AccountSummaryResponse["mortgage_payment_create"]>;
 };
 
@@ -98,7 +97,6 @@ function buildBody(
 export function MortgagePaymentForm({
   accountId,
   displayUnit,
-  extraCcOffsetsKey,
   schema,
 }: Props) {
   const { t } = useTranslation();
@@ -200,7 +198,7 @@ export function MortgagePaymentForm({
       setPreview(null);
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly", extraCcOffsetsKey),
+          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
         }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboardNav(displayUnit) }),

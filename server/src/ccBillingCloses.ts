@@ -16,8 +16,9 @@
  *    close, days before the statement e-mail — which lets the month close provisionally.
  *
  * Precedence for a billing month's close: its imported statement, then the feed observation,
- * then the announcement, then the config estimate. Only the estimate is a guess, and callers
- * that route lines by date refuse to act on it.
+ * then the announcement, then an estimate — the day of the account's latest known close carried
+ * into the month (the config cycle only for a card with no close on record). Only the estimate is
+ * a guess, and callers that decide a month has closed refuse to act on it.
  *
  * Leaf module (no billing-view imports) so `ccManualBillingMonth` can depend on it.
  */
@@ -234,19 +235,70 @@ export function closeDayOffsetDays(
 // Close evidence per billing month
 // ---------------------------------------------------------------------------------------------
 
+/** A statement's own close: its printed period end, else its statement date. */
+export function statementOwnCloseIso(st: CcStatementRow): string | null {
+  return isoFromField(st.period_to) ?? isoFromField(st.statement_date);
+}
+
 function realStatementCloseIso(
   statements: readonly CcStatementRow[],
   billingMonth: string
 ): string | null {
   for (const st of statements) {
     if (st.billing_month !== billingMonth || !isRealStatement(st)) continue;
-    const iso = isoFromField(st.period_to) ?? isoFromField(st.statement_date);
+    const iso = statementOwnCloseIso(st);
     if (iso) return iso;
   }
   return null;
 }
 
-/** Best-known close of `billingMonth`: statement → feed observation → announcement → config. */
+/**
+ * The latest close the bank has put on record for this account: an imported statement's own close
+ * (either currency), the feed-observed close, or an announced one — every announcement, or only
+ * those on or before `announcedThrough` (a future announcement is a date, not yet a close).
+ */
+export function latestKnownCloseIso(
+  accountId: number,
+  statements: readonly CcStatementRow[],
+  announcedThrough?: string
+): string | null {
+  let latest = latestFeedBillingClose(accountId)?.close_date ?? null;
+  for (const st of statements) {
+    if (!isRealStatement(st)) continue;
+    const announced = isoFromField(st.next_period_to);
+    const counted = announced != null && (announcedThrough == null || announced <= announcedThrough);
+    for (const iso of [statementOwnCloseIso(st), counted ? announced : null]) {
+      if (iso && (latest == null || iso > latest)) latest = iso;
+    }
+  }
+  return latest;
+}
+
+/**
+ * A month the bank has published nothing for yet: the day of the account's latest known close —
+ * a statement's, the feed-observed one or the latest announcement — carried into that month
+ * (clamped to its length). Issuers keep a rhythm (BCI Lider the 26th, Santander 23–25) that the
+ * config cycle cannot stand in for: the config close keys the open buckets
+ * (`statementCloseDdMmYyyyForBillingMonth`) and must stay off the real close days, so it only
+ * estimates for a card with no close on record at all.
+ */
+function estimatedCloseIso(
+  accountId: number,
+  billingMonth: string,
+  statements: readonly CcStatementRow[]
+): string {
+  const latest = latestKnownCloseIso(accountId, statements);
+  if (latest == null) {
+    const range = billingPeriodIsoRange(billingMonth, loadCreditCardBillingConfig(accountId));
+    return range?.period_to ?? `${billingMonth}-20`;
+  }
+  const [y, m] = billingMonth.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(y!, m!, 0)).getUTCDate();
+  const day = Math.min(Number(latest.slice(8, 10)), lastDay);
+  return `${billingMonth}-${String(day).padStart(2, "0")}`;
+}
+
+/** Best-known close of `billingMonth`: statement → feed observation → announcement → estimate. */
 export function closeEvidenceForBillingMonth(
   accountId: number,
   billingMonth: string,
@@ -258,14 +310,13 @@ export function closeEvidenceForBillingMonth(
   if (observed) return { close_iso: observed.close_date, source: "feed" };
   const announced = announcedCloseIsoForBillingMonth(accountId, billingMonth, statements);
   if (announced) return { close_iso: announced, source: "announced" };
-  const range = billingPeriodIsoRange(billingMonth, loadCreditCardBillingConfig(accountId));
-  return { close_iso: range?.period_to ?? `${billingMonth}-20`, source: "estimated" };
+  return { close_iso: estimatedCloseIso(accountId, billingMonth, statements), source: "estimated" };
 }
 
 /**
  * First purchase date that belongs to the facturación AFTER `billingMonth`: the statement's
  * printed next-period start when it has one, else the known close shifted by the issuer's
- * close-day offset. With only a config estimate — or no statement that prints the offset — this
+ * close-day offset. With only an estimated close — or no statement that prints the offset — this
  * falls back to the day after the close, the inclusive reading the app used before.
  */
 export function nextPeriodStartIsoForBillingMonth(

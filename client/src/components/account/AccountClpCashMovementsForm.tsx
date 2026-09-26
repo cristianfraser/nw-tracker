@@ -12,10 +12,9 @@ import { Button } from "@crfrsr/ui";
 type Props = {
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
 };
 
-export function AccountClpCashMovementsForm({ accountId, displayUnit, extraCcOffsetsKey }: Props) {
+export function AccountClpCashMovementsForm({ accountId, displayUnit }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [movements, setMovements] = useState<InitialMovementDraft[]>([]);
@@ -41,7 +40,7 @@ export function AccountClpCashMovementsForm({ accountId, displayUnit, extraCcOff
       setLastSavedCount(count);
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly", extraCcOffsetsKey),
+          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
         }),
         queryClient.invalidateQueries({ queryKey: ["accountFlows"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),

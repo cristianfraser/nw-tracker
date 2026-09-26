@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CcBillingDetailMonthRow, CcFacturacionRow } from "./ccBillingViews.js";
-import type { CcFinancingPlMonthRow } from "./creditCardPerformancePl.js";
+import type { CcHistorialChartPoint } from "./creditCardChartSeries.js";
 import {
   creditCardGroupLedgerResponse,
   mergeCreditCardLedgers,
@@ -62,7 +62,7 @@ describe("mergeCreditCardLedgers", () => {
     expect(mergeCreditCardLedgers([ledgerStub({ account_id: 1 }), ledgerStub({ account_id: 2 })]).cupo).toBeUndefined();
   });
 
-  it("sums facturaciones and recomputes financing YTD on merged series", () => {
+  it("sums facturaciones, totals and card numbers", () => {
     const a = ledgerStub({
       account_id: 1,
       facturaciones: [
@@ -83,16 +83,6 @@ describe("mergeCreditCardLedgers", () => {
           provisional_estimate_total_clp: null,
         },
       ] satisfies CcFacturacionRow[],
-      financing_pl_by_month: [
-        {
-          billing_month: "2025-01",
-          statement_charges_clp: 10_000,
-          installment_interest_clp: 5_000,
-          financing_cost_clp: 15_000,
-          ytd_financing_cost_clp: 99,
-          cumulative_financing_cost_clp: 99,
-        },
-      ] satisfies CcFinancingPlMonthRow[],
       totals: {
         total_remaining_principal_clp: 200_000,
         next_calendar_month: "2025-02",
@@ -120,24 +110,6 @@ describe("mergeCreditCardLedgers", () => {
           provisional_estimate_total_clp: null,
         },
       ] satisfies CcFacturacionRow[],
-      financing_pl_by_month: [
-        {
-          billing_month: "2025-01",
-          statement_charges_clp: 3_000,
-          installment_interest_clp: 2_000,
-          financing_cost_clp: 5_000,
-          ytd_financing_cost_clp: 88,
-          cumulative_financing_cost_clp: 88,
-        },
-        {
-          billing_month: "2025-02",
-          statement_charges_clp: 1_000,
-          installment_interest_clp: 0,
-          financing_cost_clp: 1_000,
-          ytd_financing_cost_clp: 88,
-          cumulative_financing_cost_clp: 88,
-        },
-      ] satisfies CcFinancingPlMonthRow[],
       totals: {
         total_remaining_principal_clp: 150_000,
         next_calendar_month: "2025-02",
@@ -154,14 +126,50 @@ describe("mergeCreditCardLedgers", () => {
     expect(merged.totals.next_calendar_month).toBe("2025-02");
     expect(merged.totals.next_calendar_month_total_clp).toBe(55_000);
     expect(merged.associated_card_last4s).toEqual(["4111", "4242"]);
+  });
 
-    const jan = merged.financing_pl_by_month?.find((r) => r.billing_month === "2025-01");
-    const feb = merged.financing_pl_by_month?.find((r) => r.billing_month === "2025-02");
-    expect(jan?.financing_cost_clp).toBe(20_000);
-    expect(jan?.ytd_financing_cost_clp).toBe(20_000);
-    expect(feb?.financing_cost_clp).toBe(1_000);
-    expect(feb?.ytd_financing_cost_clp).toBe(21_000);
-    expect(feb?.cumulative_financing_cost_clp).toBe(21_000);
+  it("stacks the historial's bars from each card's own bars", () => {
+    const detailRow = (overrides: Partial<CcBillingDetailMonthRow>): CcBillingDetailMonthRow => ({
+      billing_month: "2026-10",
+      as_of_date: "2026-10-01",
+      as_of_kind: "manual",
+      total_facturado_actual_clp: null,
+      total_facturado_clp: null,
+      cupo_en_cuotas_clp: 0,
+      cuota_a_pagar_next_mes_clp: 0,
+      balance_total_clp: 0,
+      ...overrides,
+    });
+    const point = (overrides: Partial<CcHistorialChartPoint>): CcHistorialChartPoint => ({
+      month: "2026-10",
+      facturado_cuotas_clp: null,
+      facturado_rest_clp: null,
+      facturado_usd_clp: null,
+      facturado_usd: null,
+      facturado_total_clp: null,
+      cupo_en_cuotas_clp: null,
+      balance_total_clp: null,
+      ...overrides,
+    });
+    const merged = mergeCreditCardLedgers([
+      ledgerStub({
+        account_id: 1,
+        billing_detail_by_month: [detailRow({ total_facturado_clp: 1_000 })],
+        historial_chart: [point({ facturado_cuotas_clp: 800, facturado_rest_clp: 200, facturado_total_clp: 1_000 })],
+      }),
+      ledgerStub({
+        account_id: 2,
+        billing_detail_by_month: [detailRow({ cuota_a_pagar_next_mes_clp: 30, projected: true })],
+        historial_chart: [point({ facturado_cuotas_clp: 30, facturado_total_clp: 30 })],
+      }),
+    ]);
+    expect(merged.historial_chart?.[0]).toMatchObject({
+      month: "2026-10",
+      facturado_cuotas_clp: 830,
+      facturado_rest_clp: 200,
+      facturado_usd_clp: null,
+      facturado_total_clp: 1_030,
+    });
   });
 
   it("uses statement as_of_kind when any account has a statement row", () => {
@@ -199,6 +207,34 @@ describe("mergeCreditCardLedgers", () => {
     expect(row?.as_of_kind).toBe("statement");
     expect(row?.cupo_en_cuotas_clp).toBe(30);
     expect(row?.balance_total_clp).toBe(43);
+  });
+
+  it("adds a projected card's cuotas to a month another card has already billed", () => {
+    const row = (overrides: Partial<CcBillingDetailMonthRow>): CcBillingDetailMonthRow => ({
+      billing_month: "2026-10",
+      as_of_date: "2026-10-01",
+      as_of_kind: "manual",
+      total_facturado_actual_clp: null,
+      total_facturado_clp: null,
+      cupo_en_cuotas_clp: 0,
+      cuota_a_pagar_next_mes_clp: 0,
+      balance_total_clp: 0,
+      ...overrides,
+    });
+    const open = row({ total_facturado_actual_clp: 1_000, total_facturado_clp: 1_000, cuota_a_pagar_next_mes_clp: 800 });
+    const projected = row({ cuota_a_pagar_next_mes_clp: 30, projected: true });
+    const merged = mergeCreditCardLedgers([
+      ledgerStub({ account_id: 1, billing_detail_by_month: [open] }),
+      ledgerStub({ account_id: 2, billing_detail_by_month: [projected] }),
+    ]).billing_detail_by_month?.[0];
+    expect(merged).toMatchObject({ total_facturado_clp: 1_030, total_facturado_actual_clp: 1_000, cuota_a_pagar_next_mes_clp: 830 });
+    expect(merged?.projected).toBeUndefined();
+    // Both only projected: nothing billed yet, the table keeps reading «≈ Σ cuotas».
+    const future = mergeCreditCardLedgers([
+      ledgerStub({ account_id: 1, billing_detail_by_month: [row({ cuota_a_pagar_next_mes_clp: 800, projected: true })] }),
+      ledgerStub({ account_id: 2, billing_detail_by_month: [projected] }),
+    ]).billing_detail_by_month?.[0];
+    expect(future).toMatchObject({ total_facturado_clp: null, cuota_a_pagar_next_mes_clp: 830, projected: true });
   });
 
   it("plots the group's «deuda en cuotas» from the month-end sampler, not the merged table column", () => {

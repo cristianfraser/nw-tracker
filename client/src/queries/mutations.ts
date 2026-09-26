@@ -89,21 +89,19 @@ export function applyCcExpenseLineCategoryPatchFromServer(
 function invalidateAccountDetailBundle(
   queryClient: ReturnType<typeof useQueryClient>,
   accountId: string | number,
-  displayUnit: DisplayUnit,
-  extraCcOffsetsKey: string
+  displayUnit: DisplayUnit
 ) {
   void queryClient.invalidateQueries({
-    queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly", extraCcOffsetsKey),
+    queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
   });
 }
 
 function invalidateAccountAndFlowQueries(
   queryClient: ReturnType<typeof useQueryClient>,
   accountId: string | number,
-  displayUnit: DisplayUnit,
-  extraCcOffsetsKey: string
+  displayUnit: DisplayUnit
 ) {
-  invalidateAccountDetailBundle(queryClient, accountId, displayUnit, extraCcOffsetsKey);
+  invalidateAccountDetailBundle(queryClient, accountId, displayUnit);
   void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
   void queryClient.invalidateQueries({ queryKey: queryKeys.flowsDeposits() });
 }
@@ -384,18 +382,12 @@ export function useDeleteCcExpenseBigGroupMutation() {
 export function useDeleteCcPurchaseMutation(opts: {
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
 }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (purchaseId: number) => api.deleteCcPurchase(opts.accountId, purchaseId),
     onSettled: () => {
-      invalidateAccountAndFlowQueries(
-        queryClient,
-        opts.accountId,
-        opts.displayUnit,
-        opts.extraCcOffsetsKey
-      );
+      invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
     },
   });
 }
@@ -403,18 +395,12 @@ export function useDeleteCcPurchaseMutation(opts: {
 export function useDeleteCcStatementLineMutation(opts: {
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
 }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (lineId: number) => api.deleteCcStatementLine(opts.accountId, lineId),
     onSettled: () => {
-      invalidateAccountAndFlowQueries(
-        queryClient,
-        opts.accountId,
-        opts.displayUnit,
-        opts.extraCcOffsetsKey
-      );
+      invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
     },
   });
 }
@@ -422,39 +408,23 @@ export function useDeleteCcStatementLineMutation(opts: {
 export function useMakeStatementLineInstallmentMutation(opts: {
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
 }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ lineId, cuotas_totales }: { lineId: number; cuotas_totales: number }) =>
       api.makeStatementLineInstallment(opts.accountId, lineId, cuotas_totales),
     onSettled: () => {
-      invalidateAccountAndFlowQueries(
-        queryClient,
-        opts.accountId,
-        opts.displayUnit,
-        opts.extraCcOffsetsKey
-      );
+      invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
     },
   });
 }
 
-export function useAccountImportMutation(opts: {
-  accountId: number;
-  displayUnit: DisplayUnit;
-  extraCcOffsetsKey?: string;
-}) {
+export function useAccountImportMutation(opts: { accountId: number; displayUnit: DisplayUnit }) {
   const queryClient = useQueryClient();
-  const extraCcOffsetsKey = opts.extraCcOffsetsKey ?? "{}";
   return useMutation({
     mutationFn: (run: () => Promise<Record<string, unknown>>) => run(),
     onSettled: () => {
-      invalidateAccountAndFlowQueries(
-        queryClient,
-        opts.accountId,
-        opts.displayUnit,
-        extraCcOffsetsKey
-      );
+      invalidateAccountAndFlowQueries(queryClient, opts.accountId, opts.displayUnit);
     },
   });
 }

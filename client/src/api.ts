@@ -207,16 +207,10 @@ export const api = {
     const qs = q.toString();
     return j<{ accounts: import("./types").AccountListRow[] }>(`/api/accounts?${qs}`);
   },
-  portfolioGroupCcLedger: (slug: string, extraOffsets?: Record<string, number>) => {
-    const q = new URLSearchParams();
-    if (extraOffsets && Object.keys(extraOffsets).length > 0) {
-      q.set("extraOffsets", JSON.stringify(extraOffsets));
-    }
-    const qs = q.toString();
-    return j<import("./types").PortfolioGroupCcLedgerResponse>(
-      `/api/portfolio-groups/${encodeURIComponent(slug)}/cc-ledger${qs ? `?${qs}` : ""}`
-    );
-  },
+  portfolioGroupCcLedger: (slug: string) =>
+    j<import("./types").PortfolioGroupCcLedgerResponse>(
+      `/api/portfolio-groups/${encodeURIComponent(slug)}/cc-ledger`
+    ),
   portfolioGroupMortgageLedger: (slug: string) =>
     j<import("./types").PortfolioGroupMortgageLedgerResponse>(
       `/api/portfolio-groups/${encodeURIComponent(slug)}/mortgage-ledger`
@@ -338,14 +332,11 @@ export const api = {
   accountDetailBundle: (
     id: string | number,
     unit: "clp" | "usd",
-    opts?: { granularity?: "monthly" | "daily"; extraOffsets?: Record<string, number> }
+    opts?: { granularity?: "monthly" | "daily" }
   ) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
     if (opts?.granularity === "daily") q.set("granularity", "daily");
-    if (opts?.extraOffsets && Object.keys(opts.extraOffsets).length > 0) {
-      q.set("extraOffsets", JSON.stringify(opts.extraOffsets));
-    }
     const qs = q.toString();
     return j<import("./types").AccountDetailBundleResponse>(
       `/api/accounts/${id}/detail-bundle${qs ? `?${qs}` : ""}`

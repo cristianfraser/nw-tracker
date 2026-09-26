@@ -31,11 +31,14 @@ function assignStatementToSlot(
 }
 
 /**
- * True when imported PDFs (not web-paste) closed this billing month: the CLP statement,
- * plus the USD twin when the account's history carries a USD stream
- * (`accountRequiresUsdStatementClose` — one twin alone must not close the month).
+ * True when every statement twin of this billing month is imported (not web-paste): the CLP
+ * statement, plus the USD one when the account's history carries a USD stream
+ * (`accountRequiresUsdStatementClose`). What a statement import may settle in the open buckets:
+ * each twin settles its own currency, both together settle everything. Not the close rule — a
+ * CLP-only month also closes once the bank has closed a later facturación
+ * (`pdfClosedBillingMonthsForAccount`), but its dollar lines still wait for a USD statement.
  */
-export function hasPdfStatementCloseForBillingMonth(
+export function hasEveryStatementTwinForBillingMonth(
   slot: CcStatementSlotByCurrency | undefined,
   requiresUsd: boolean
 ): boolean {

@@ -1,7 +1,8 @@
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
 
-import { billingMonthForStatementDate } from "./ccBillingMonth.js";
+import { isPdfStatementSource } from "./ccManualBillingMonth.js";
+import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 
 import {
@@ -144,9 +145,17 @@ export type FlowCcExpenseLineRow = {
 
   expense_month: string;
 
-  /** Facturación month for CC lines; same as expense_month for checking. */
+  /**
+   * Facturación month for CC lines (`facturacionMonthByStatementDate` — the facturado sums' rule,
+   * so the facturación modal lists exactly the lines they count); same as expense_month for
+   * checking.
+   */
 
   billing_month: string;
+
+  /** CC lines: on a web-paste / card-feed statement — the only lines the facturación modal can delete. */
+
+  web_paste?: boolean;
 
   /** Statement close (CC) or movement date (checking), ISO. */
 
@@ -641,7 +650,7 @@ export function buildCcExpenseLines(
 
     .prepare(
 
-      `SELECT l.id AS statement_line_id, s.id AS statement_id, s.account_id, s.statement_date,
+      `SELECT l.id AS statement_line_id, s.id AS statement_id, s.account_id, s.statement_date, s.source_pdf,
 
               s.currency AS statement_currency, s.card_last4 AS primary_card_last4,
 
@@ -684,6 +693,8 @@ export function buildCcExpenseLines(
     account_id: number;
 
     statement_date: string;
+
+    source_pdf: string;
 
     statement_currency: string;
 
@@ -777,6 +788,13 @@ export function buildCcExpenseLines(
 
   const lines: FlowCcExpenseLineRowDraft[] = [];
 
+  const facturacionMonthsByAccount = new Map<number, Map<string, string>>();
+  const facturacionMonthsFor = (accountId: number): Map<string, string> => {
+    let months = facturacionMonthsByAccount.get(accountId);
+    if (!months) facturacionMonthsByAccount.set(accountId, (months = facturacionMonthByStatementDate(accountId)));
+    return months;
+  };
+
 
 
   for (const row of dbLines) {
@@ -793,7 +811,7 @@ export function buildCcExpenseLines(
 
 
 
-    const billingMonth = billingMonthForStatementDate(statementDateIso);
+    const billingMonth = facturacionMonthsFor(row.account_id).get(row.statement_date);
 
     if (!billingMonth) continue;
 
@@ -915,6 +933,8 @@ export function buildCcExpenseLines(
       expense_month: expenseMonth,
 
       billing_month: billingMonth,
+
+      web_paste: !isPdfStatementSource(row.source_pdf),
 
       purchase_month: purchaseMonth,
 

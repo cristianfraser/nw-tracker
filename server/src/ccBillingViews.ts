@@ -11,7 +11,6 @@ import {
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { withCcOneShotScanCache } from "./ccCrossImportDedupe.js";
 import {
-  hasPdfStatementCloseForBillingMonth,
   statementSlotsByBillingMonth,
   type CcStatementSlotByCurrency,
 } from "./ccBillingStatementSlots.js";
@@ -24,14 +23,14 @@ import {
 } from "./ccInstallmentLedgerDb.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import {
-  accountRequiresUsdStatementClose,
   billingMonthForManualLedgerPurchase,
   closeDateForBillingMonth,
+  pdfClosedBillingMonthsForAccount,
   provisionallyClosedBillingMonthsForAccount,
 } from "./ccManualBillingMonth.js";
 import { feedBillingCloseForMonth, type CcCloseSource } from "./ccBillingCloses.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
-import { listStaleOpenWebPasteStatementDates } from "./ccOpenWebPastePdfReconcile.js";
+import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { parseOpenWebPasteBillingMonth } from "./ccOpenWebPasteRepair.js";
 import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
@@ -230,15 +229,9 @@ export function paymentAbonosClpForBillingMonth(
   billingMonth: string
 ): number {
   let sum = 0;
-  const openBm = billingMonthForManualLedgerPurchase(accountId);
-  const staleDates =
-    openBm === billingMonth
-      ? new Set(listStaleOpenWebPasteStatementDates(accountId, billingMonth))
-      : null;
-
+  const dates = new Set(statementDatesForFacturacion(accountId, billingMonth));
   for (const st of listCcStatementsForAccount(accountId)) {
-    const staleCarry = staleDates?.has(st.statement_date) === true;
-    if (!staleCarry && st.billing_month !== billingMonth) continue;
+    if (!dates.has(st.statement_date)) continue;
     const fxDateIso = balanceUsdFxDateIso(accountId, st.statement_date);
     const rows = stmtPaymentLinesForStatement.all(st.id) as {
       merchant: string | null;
@@ -498,7 +491,7 @@ function buildBillingDetailByMonthInner(
   );
   const cupoLive = liveCreditCardOutstandingClp(accountId) ?? 0;
   const slots = statementSlotsByBillingMonth(accountId);
-  const requiresUsd = accountRequiresUsdStatementClose(accountId);
+  const pdfClosed = pdfClosedBillingMonthsForAccount(accountId);
   const inactive = creditCardBillingDetailInactive(accountId);
   // Closed at the bank, statement pending: a row even without bucket lines, statement-framed.
   const provisionalMonths = inactive
@@ -555,7 +548,7 @@ function buildBillingDetailByMonthInner(
         : null;
     let totalFacturado = fromStatement ?? fromBalance;
 
-    const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot, requiresUsd);
+    const hasPdfClose = pdfClosed.has(billingMonth);
     const cuotaNext = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
     const provisional =
       !hasPdfClose && provisionalMonths.has(billingMonth)
@@ -782,8 +775,13 @@ function buildFacturacionesInner(
   ledgerMonths: CcInstallmentMonthRow[]
 ): CcFacturacionRow[] {
   const byMonth = statementSlotsByBillingMonth(accountId);
-  const requiresUsd = accountRequiresUsdStatementClose(accountId);
-  const provisionalMonths = provisionallyClosedBillingMonthsForAccount(accountId);
+  const pdfClosed = pdfClosedBillingMonthsForAccount(accountId);
+  // A card that stopped billing has no statement pending: a close it no longer bills is not a
+  // provisional facturación (the detail builder applies the same gate). Without it the retired
+  // ·0161 read December 2025 as «provisoria» for good — its November statement announced that close.
+  const provisionalMonths = creditCardBillingDetailInactive(accountId)
+    ? new Set<string>()
+    : provisionallyClosedBillingMonthsForAccount(accountId);
 
   const out: CcFacturacionRow[] = [];
   for (const [billingMonth, slot] of byMonth) {
@@ -824,7 +822,7 @@ function buildFacturacionesInner(
     const cuotaAPagarClp = cuotaAPagarNextMesClp(billingMonth, ledgerMonths);
     const cuotaAPagar = cuotaAPagarClp > 0 ? cuotaAPagarClp : null;
     let facturadoTotal = facturadoTotalClpForStatementSlot(accountId, slot);
-    const hasPdfClose = hasPdfStatementCloseForBillingMonth(slot, requiresUsd);
+    const hasPdfClose = pdfClosed.has(billingMonth);
     if (!hasPdfClose && provisionalMonths.has(billingMonth)) {
       out.push(provisionalFacturacionRow(accountId, billingMonth, cuotaAPagarClp));
       continue;

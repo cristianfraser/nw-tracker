@@ -2502,12 +2502,12 @@
         "es": "Historial"
       },
       "historialHint": {
-        "en": "Lines: installment debt still owed at each month-end (the daily view's line — a cycle's installments stay until that bill is paid, so it can exceed the Monthly detail's «installment debt», which drops them at the close that bills them) and total balance (same criteria as Monthly detail). Bars: that billing month's payment due (due the following month) and the amount billed at close. Future months: nothing billed (nothing invoiced yet) and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
-        "es": "Líneas: deuda en cuotas aún adeudada a fin de mes (la línea de la vista diaria — las cuotas de un ciclo siguen hasta que se paga esa facturación, así que puede superar la «deuda en cuotas» de Detalle por mes, que las saca en el cierre que las factura) y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros: sin facturado (aún no se factura nada) y saldo proyectado = cuotas aún adeudadas a fin de mes — las cuotas de un ciclo salen de la deuda en su pagar-hasta (~10 del mes siguiente), no en el cierre que las factura."
+        "en": "Lines: installment debt still owed at each month-end (the daily view's line — a cycle's installments stay until that bill is paid, so it can exceed the Monthly detail's «installment debt», which drops them at the close that bills them) and total balance (same criteria as Monthly detail). Bars: each close's billed total, stacked bottom to top: the CLP billed outside installments (one-off purchases and bank charges, net of credit notes), the installments it bills and the US$ billed in pesos. Future months: only the installments the plan will bill, and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
+        "es": "Líneas: deuda en cuotas aún adeudada a fin de mes (la línea de la vista diaria — las cuotas de un ciclo siguen hasta que se paga esa facturación, así que puede superar la «deuda en cuotas» de Detalle por mes, que las saca en el cierre que las factura) y balance total (mismo criterio que Detalle por mes). Barras: facturado de cada cierre, apilado de abajo hacia arriba: el facturado CLP fuera de cuotas (compras únicas y cargos del banco, neto de notas de crédito), las cuotas que factura y el facturado US$ en pesos. Meses futuros: solo las cuotas que el plan va a facturar, y saldo proyectado = cuotas aún adeudadas a fin de mes — las cuotas de un ciclo salen de la deuda en su pagar-hasta (~10 del mes siguiente), no en el cierre que las factura."
       },
       "historialHintDaily": {
-        "en": "Daily lines: total balance owed on each date (purchases raise it on the purchase date — installment plans at their full amount — and payments drop it) and the outstanding installment debt (contracts up on purchase day; each cycle's cuotas leave the day its facturación is actually paid, or on its pay-by when no payment is on record). Past today the installment plan is projected to its end (both lines meet once the open cycle is paid). Billed/paid bars are billing-month figures and hide in daily view.",
-        "es": "Líneas diarias: saldo total adeudado en cada fecha (las compras lo suben el día de la compra — las en cuotas por su monto total — y los pagos lo bajan) y la deuda en cuotas vigente (los contratos suben el día de compra; las cuotas de cada ciclo salen el día en que efectivamente se paga su facturación, o en su pagar-hasta si no hay pago registrado). Después de hoy el plan de cuotas se proyecta hasta su término (ambas líneas se juntan una vez pagado el ciclo abierto). Las barras de facturado/pagado son cifras por mes de facturación y se ocultan en la vista diaria."
+        "en": "Daily lines: total balance owed on each date (purchases raise it on the purchase date — installment plans at their full amount — and payments drop it) and the outstanding installment debt (contracts up on purchase day; each cycle's cuotas leave the day its facturación is actually paid, or on its pay-by when no payment is on record). Past today the installment plan is projected to its end (both lines meet once the open cycle is paid). Bars: each card's facturación on its close date (estimated for future months), stacked like the monthly view.",
+        "es": "Líneas diarias: saldo total adeudado en cada fecha (las compras lo suben el día de la compra — las en cuotas por su monto total — y los pagos lo bajan) y la deuda en cuotas vigente (los contratos suben el día de compra; las cuotas de cada ciclo salen el día en que efectivamente se paga su facturación, o en su pagar-hasta si no hay pago registrado). Después de hoy el plan de cuotas se proyecta hasta su término (ambas líneas se juntan una vez pagado el ciclo abierto). Barras: la facturación de cada tarjeta en su fecha de cierre (estimada en meses futuros), apilada igual que en la vista mensual."
       },
       "historialCurrentMonth": {
         "en": "Current month",
@@ -2518,28 +2518,28 @@
         "es": "Año actual"
       },
       "historialHintYearly": {
-        "en": "Lines: installment debt and total balance at each year-end (projected for future years). Bars: the year's installment payments (projected plan months included) and the total billed across the year's statement closes.",
-        "es": "Líneas: cupo en cuotas y balance total a fin de cada año (proyectado en años futuros). Barras: pagos de cuotas del año (incluye meses proyectados del plan) y facturado total de los cierres del año."
+        "en": "Lines: installment debt and total balance at each year-end (projected for future years). Bars: the year's billed totals, stacked like the monthly view (CLP, installments, US$); months not billed yet add only the plan's projected installments.",
+        "es": "Líneas: cupo en cuotas y balance total a fin de cada año (proyectado en años futuros). Barras: facturado de los cierres del año, apilado igual que en la vista mensual (CLP, cuotas, US$); los meses aún sin facturar suman solo las cuotas proyectadas del plan."
       },
       "historialEmpty": {
         "en": "No installment history for this account.",
         "es": "Sin historial de cuotas para esta cuenta."
       },
-      "chartInstallmentPaymentsMonth": {
-        "en": "Installment payments (month)",
-        "es": "Pagos de cuotas (mes)"
+      "chartFacturadoCuotasClp": {
+        "en": "Billed CLP (installments)",
+        "es": "Facturado CLP (cuotas)"
       },
-      "chartInstallmentPaymentsYear": {
-        "en": "Installment payments (year)",
-        "es": "Pagos de cuotas (año)"
+      "chartFacturadoClp": {
+        "en": "Billed CLP",
+        "es": "Facturado CLP"
       },
-      "tooltipPagosMonth": {
-        "en": "Month's payments",
-        "es": "Pagos del mes"
+      "chartFacturadoUsd": {
+        "en": "Billed US$",
+        "es": "Facturado US$"
       },
-      "tooltipPagosYear": {
-        "en": "Year's payments",
-        "es": "Pagos del año"
+      "tooltipCloseOn": {
+        "en": "Close {{date}}",
+        "es": "Cierre {{date}}"
       },
       "historialOpenMonth": {
         "en": "Open billing month",
@@ -2560,50 +2560,6 @@
       "accAreaName": {
         "en": "Accumulated earnings",
         "es": "Accumulated earnings"
-      },
-      "chartFacturadoClose": {
-        "en": "Billed (close)",
-        "es": "Facturado (cierre)"
-      },
-      "financingSectionTitle": {
-        "en": "Financing cost vs billed",
-        "es": "Coste financiero vs facturado"
-      },
-      "financingSectionHint": {
-        "en": "Same data as the Billing cycles table. Stacked bars = CLP billed + US$ billed (in CLP). Financing cost = statement interest and fees + implicit interest on installment plans with rate > 0% (0% plans contribute nothing).",
-        "es": "Mismos datos que la tabla Facturaciones. Barras apiladas = facturado CLP + facturado US$ (en CLP). Coste financiero = intereses y comisiones del estado + interés implícito de cuotas con tasa > 0% (cuotas al 0% no aportan)."
-      },
-      "financingChartTitle": {
-        "en": "Billed and financing cost by month",
-        "es": "Facturado y coste financiero por mes"
-      },
-      "financingChartTitleYearly": {
-        "en": "Billed and financing cost by year",
-        "es": "Facturado y coste financiero por año"
-      },
-      "financingChartEmpty": {
-        "en": "No billing months or financing cost to chart.",
-        "es": "Sin meses de facturación o coste financiero para graficar."
-      },
-      "financingChartTooltipHint": {
-        "en": "Billed = statement close; financing cost = what the bank charges (excludes interest-free installment purchases).",
-        "es": "Facturado = cierre del estado; coste financiero = cargo al banco (no incluye compras en cuotas sin interés)."
-      },
-      "chartFacturadoClp": {
-        "en": "Billed (CLP)",
-        "es": "Facturado (CLP)"
-      },
-      "chartFacturadoUsdClp": {
-        "en": "Billed US$ (CLP)",
-        "es": "Facturado US$ (CLP)"
-      },
-      "chartFinancingCost": {
-        "en": "Financing cost",
-        "es": "Coste financiero"
-      },
-      "chartFinancingYtd": {
-        "en": "YTD financing cost",
-        "es": "YTD coste financiero"
       },
       "flowsHint": {
         "en": "Contributions, withdrawals, and movements recorded on the account.",
@@ -4685,10 +4641,6 @@
         "en": "CSV offset (months)",
         "es": "Offset CSV (meses)"
       },
-      "colOffsetUi": {
-        "en": "UI offset (months)",
-        "es": "Offset UI (meses)"
-      },
       "colCuotaClp": {
         "en": "Installment CLP",
         "es": "Cuota CLP"
@@ -4700,10 +4652,6 @@
       "colLastPaid": {
         "en": "Last paid month",
         "es": "Mes último pago"
-      },
-      "offsetAria": {
-        "en": "Additional offset months for {{label}}",
-        "es": "Meses de offset adicionales para {{label}}"
       },
       "statementsForPurchase": {
         "en": "Statement(s) with an installment for this purchase:",

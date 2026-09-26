@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  rollupCcBillingDetailYearly,
-  rollupCcBillingMonthChartYearly,
-  rollupCcHistorialChartYearly,
-} from "./ccYearlyRollup";
-import type {
-  CcBillingDetailMonthDto,
-  CcBillingMonthChartPoint,
-  CcHistorialChartPoint,
-} from "./types";
+import { rollupCcBillingDetailYearly, rollupCcHistorialChartYearly } from "./ccYearlyRollup";
+import type { CcBillingDetailMonthDto, CcHistorialChartPoint } from "./types";
 
 function detalleRow(overrides: Partial<CcBillingDetailMonthDto>): CcBillingDetailMonthDto {
   return {
@@ -151,37 +143,58 @@ describe("rollupCcBillingDetailYearly", () => {
   });
 });
 
+function historialRow(overrides: Partial<CcHistorialChartPoint>): CcHistorialChartPoint {
+  return {
+    month: "2026-01",
+    facturado_cuotas_clp: null,
+    facturado_rest_clp: null,
+    facturado_usd_clp: null,
+    facturado_usd: null,
+    facturado_total_clp: null,
+    cupo_en_cuotas_clp: null,
+    balance_total_clp: null,
+    ...overrides,
+  };
+}
+
 describe("rollupCcHistorialChartYearly", () => {
-  it("sums bars (projected months included) and takes lines from the year's last known month", () => {
+  it("sums each bar segment (projected months included) and takes lines from the year's last known month", () => {
     const rows: CcHistorialChartPoint[] = [
-      {
+      historialRow({
         month: "2026-06",
-        installment_payments_clp: 50_000,
-        facturado_clp: 300_000,
+        facturado_cuotas_clp: 50_000,
+        facturado_rest_clp: 230_000,
+        facturado_usd_clp: 20_000,
+        facturado_usd: 21.5,
+        facturado_total_clp: 300_000,
         cupo_en_cuotas_clp: 400_000,
         balance_total_clp: 650_000,
-      },
-      {
+      }),
+      historialRow({
         month: "2026-07",
-        installment_payments_clp: 80_000,
-        facturado_clp: null,
+        facturado_cuotas_clp: 80_000,
+        facturado_rest_clp: 10_000,
+        facturado_total_clp: 90_000,
         cupo_en_cuotas_clp: 350_000,
         balance_total_clp: 600_000,
-      },
-      // Projected tail month: plan cuota, no facturado
-      {
+      }),
+      // Projected tail month: the plan's cuotas only
+      historialRow({
         month: "2026-12",
-        installment_payments_clp: 60_000,
-        facturado_clp: null,
+        facturado_cuotas_clp: 60_000,
+        facturado_total_clp: 60_000,
         cupo_en_cuotas_clp: 100_000,
         balance_total_clp: 100_000,
-      },
+      }),
     ];
     const [year] = rollupCcHistorialChartYearly(rows);
     expect(year).toEqual({
       month: "2026-12",
-      installment_payments_clp: 190_000,
-      facturado_clp: 300_000,
+      facturado_cuotas_clp: 190_000,
+      facturado_rest_clp: 240_000,
+      facturado_usd_clp: 20_000,
+      facturado_usd: 21.5,
+      facturado_total_clp: 450_000,
       cupo_en_cuotas_clp: 100_000,
       balance_total_clp: 100_000,
     });
@@ -189,72 +202,23 @@ describe("rollupCcHistorialChartYearly", () => {
 
   it("skips trailing null line values when picking the year-end stock", () => {
     const rows: CcHistorialChartPoint[] = [
-      {
+      historialRow({
         month: "2024-10",
-        installment_payments_clp: 10_000,
-        facturado_clp: 20_000,
+        facturado_cuotas_clp: 10_000,
+        facturado_rest_clp: 10_000,
+        facturado_total_clp: 20_000,
         cupo_en_cuotas_clp: 90_000,
         balance_total_clp: 95_000,
-      },
-      {
-        month: "2024-11",
-        installment_payments_clp: 0,
-        facturado_clp: null,
-        cupo_en_cuotas_clp: null,
-        balance_total_clp: null,
-      },
+      }),
+      historialRow({ month: "2024-11" }),
     ];
     const [year] = rollupCcHistorialChartYearly(rows);
     expect(year.cupo_en_cuotas_clp).toBe(90_000);
     expect(year.balance_total_clp).toBe(95_000);
   });
-});
 
-describe("rollupCcBillingMonthChartYearly", () => {
-  it("sums the flow bars and drops the YTD series", () => {
-    const points: CcBillingMonthChartPoint[] = [
-      {
-        billing_month: "2025-11",
-        facturado_clp: 100_000,
-        facturado_usd_clp: 10_000,
-        financing_cost_clp: 5_000,
-        ytd_financing_cost_clp: 40_000,
-      },
-      {
-        billing_month: "2025-12",
-        facturado_clp: 200_000,
-        facturado_usd_clp: null,
-        financing_cost_clp: 7_000,
-        ytd_financing_cost_clp: 47_000,
-      },
-    ];
-    const [year] = rollupCcBillingMonthChartYearly(points);
-    expect(year).toEqual({
-      billing_month: "2025-12",
-      facturado_clp: 300_000,
-      facturado_usd_clp: 10_000,
-      financing_cost_clp: 12_000,
-      ytd_financing_cost_clp: null,
-    });
-  });
-
-  it("keeps an all-null gap year null", () => {
-    const points: CcBillingMonthChartPoint[] = [
-      {
-        billing_month: "2023-04",
-        facturado_clp: null,
-        facturado_usd_clp: null,
-        financing_cost_clp: null,
-        ytd_financing_cost_clp: null,
-      },
-    ];
-    const [year] = rollupCcBillingMonthChartYearly(points);
-    expect(year).toEqual({
-      billing_month: "2023-12",
-      facturado_clp: null,
-      facturado_usd_clp: null,
-      financing_cost_clp: null,
-      ytd_financing_cost_clp: null,
-    });
+  it("keeps an all-null gap year's bar null", () => {
+    const [year] = rollupCcHistorialChartYearly([historialRow({ month: "2023-04" })]);
+    expect(year).toMatchObject({ month: "2023-12", facturado_cuotas_clp: null, facturado_total_clp: null });
   });
 });

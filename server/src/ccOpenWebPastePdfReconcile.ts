@@ -3,7 +3,7 @@ import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
-  hasPdfStatementCloseForBillingMonth,
+  hasEveryStatementTwinForBillingMonth,
   statementSlotsByBillingMonth,
 } from "./ccBillingStatementSlots.js";
 import {
@@ -124,7 +124,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
   // rule until 2026-09-26) counted the first twin's lines twice meanwhile — the September 2026
   // ·0781 USD statement arrived hours before its CLP twin, and importing it alone read the
   // month's dollar purchases twice (US$x.xxx,xx billed for US$x.xxx,xx).
-  const fullyClosed = hasPdfStatementCloseForBillingMonth(
+  const fullyClosed = hasEveryStatementTwinForBillingMonth(
     statementSlotsByBillingMonth(accountId).get(billingMonth),
     accountRequiresUsdStatementClose(accountId)
   );
@@ -314,6 +314,43 @@ export function listStaleOpenWebPasteStatementDates(
     if (bucketBm.localeCompare(openBillingMonth) >= 0) continue;
     if (!pdfClosed.has(bucketBm)) continue;
     dates.push(st.statement_date);
+  }
+  return dates;
+}
+
+/**
+ * The facturación each statement's lines belong to, keyed by statement date — the unit every line
+ * sum groups by (a facturación's CLP and USD twins share it): the statement's own billing month,
+ * except a stale bucket ({@link listStaleOpenWebPasteStatementDates}), whose leftovers belong to the
+ * open month. The one rule for «the lines of facturación M»: the open-month facturado and payment
+ * sums, the expense lines' `billing_month` and through it the facturación modal all read it. The
+ * client used to re-derive it with an older rule (every earlier bucket in every later month, a month
+ * «closed» by any one statement), which listed September 2026's bucket under October's modal.
+ */
+export function facturacionMonthByStatementDate(accountId: number): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const st of listCcStatementsForAccount(accountId)) {
+    if (!st.billing_month) continue;
+    const prev = out.get(st.statement_date);
+    if (prev != null && prev !== st.billing_month) {
+      throw new Error(
+        `Account ${accountId}: statements dated ${st.statement_date} belong to ${prev} and ${st.billing_month}`
+      );
+    }
+    out.set(st.statement_date, st.billing_month);
+  }
+  const openBm = billingMonthForManualLedgerPurchase(accountId);
+  if (openBm) {
+    for (const date of listStaleOpenWebPasteStatementDates(accountId, openBm)) out.set(date, openBm);
+  }
+  return out;
+}
+
+/** Statement dates whose lines belong to facturación `billingMonth` ({@link facturacionMonthByStatementDate}). */
+export function statementDatesForFacturacion(accountId: number, billingMonth: string): string[] {
+  const dates: string[] = [];
+  for (const [date, bm] of facturacionMonthByStatementDate(accountId)) {
+    if (bm === billingMonth) dates.push(date);
   }
   return dates;
 }

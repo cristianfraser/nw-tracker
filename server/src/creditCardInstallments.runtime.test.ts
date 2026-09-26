@@ -16,7 +16,7 @@ describe("creditCardInstallmentsResponse runtime", () => {
       .get() as { id: number } | undefined;
     if (!row) return;
 
-    const res = creditCardInstallmentsResponse(row.id, {});
+    const res = creditCardInstallmentsResponse(row.id);
     expect(res.has_installment_ledger).toBe(false);
     expect(res.has_imported_statements).toBe(false);
     expect(res.purchases).toEqual([]);
@@ -56,7 +56,7 @@ describe("creditCardInstallmentsResponse runtime", () => {
     const s2 = Number(insStmt.run(masterId, "import:web-paste|vitest-last4s|adicional", "5544").lastInsertRowid);
 
     try {
-      const res = creditCardInstallmentsResponse(masterId, {});
+      const res = creditCardInstallmentsResponse(masterId);
       expect(res.associated_card_last4s).toBeDefined();
       expect(res.associated_card_last4s![0]).toBe("9977");
       expect(res.associated_card_last4s).toContain("5544");

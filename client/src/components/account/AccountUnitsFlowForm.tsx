@@ -78,10 +78,9 @@ type Props = {
   /** Unit label from `movement_create.unit_label` (cuotas / BTC / ETH). */
   unitLabel: string;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
 };
 
-export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit, extraCcOffsetsKey }: Props) {
+export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [movements, setMovements] = useState<UnitsFlowDraft[]>([]);
@@ -105,7 +104,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit, extraC
       setLastSavedCount(count);
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly", extraCcOffsetsKey),
+          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
         }),
         queryClient.invalidateQueries({ queryKey: ["accountFlows"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),

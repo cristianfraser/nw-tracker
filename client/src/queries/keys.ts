@@ -50,16 +50,11 @@ export const queryKeys = {
     ["portfolioGroup", group, subgroup ?? null, unit] as const,
   groupPageShell: (portfolioGroup: string, unit: DisplayUnit) =>
     ["groupPageShell", portfolioGroup, unit] as const,
-  accountDetail: (
-    id: string,
-    unit: DisplayUnit,
-    granularity: "monthly" | "daily",
-    ccOffsetsKey: string
-  ) => ["accountDetail", id, unit, granularity, ccOffsetsKey] as const,
+  accountDetail: (id: string, unit: DisplayUnit, granularity: "monthly" | "daily") =>
+    ["accountDetail", id, unit, granularity] as const,
   accountMonthlyPerformance: (id: string, unit: DisplayUnit) =>
     ["accountMonthlyPerformance", id, unit] as const,
-  portfolioGroupCcLedger: (slug: string, ccOffsetsKey: string) =>
-    ["portfolioGroupCcLedger", slug, ccOffsetsKey] as const,
+  portfolioGroupCcLedger: (slug: string) => ["portfolioGroupCcLedger", slug] as const,
   portfolioGroupMortgageLedger: (slug: string) => ["portfolioGroupMortgageLedger", slug] as const,
   groupFlows: (slug: string, filtersKey: string) => ["groupFlows", slug, filtersKey] as const,
   accountFlows: (id: string, filtersKey: string) => ["accountFlows", id, filtersKey] as const,

@@ -4,7 +4,6 @@ import { cn } from "../../cn";
 import type { AccountCcInstallmentsResponse } from "../../types";
 import {
   CreditCardDetalleSurface,
-  CreditCardFinancingSurface,
   CreditCardHistorialSurface,
   type CcSurfaceScope,
 } from "./CreditCardLedgerSurfaces";
@@ -65,8 +64,6 @@ export function LiabilitiesCreditCardGroupSection({
       ) : null}
 
       <CreditCardHistorialSurface ccLedger={ccLedger} scope={ccScope} />
-
-      <CreditCardFinancingSurface ccLedger={ccLedger} scope={ccScope} />
 
       <CreditCardDetalleSurface ccLedger={ccLedger} scope={ccScope} />
     </section>

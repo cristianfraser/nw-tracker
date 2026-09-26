@@ -10,7 +10,7 @@ import type {
 import { formatClp, formatGroupedDecimal } from "../../format";
 import { cn } from "../../cn";
 import { Trans, useTranslation } from "../../i18n";
-import { formatYmEs, persistExtraCcOffsets } from "./shared";
+import { formatYmEs } from "./shared";
 import { proxyCuotaLine } from "./creditCardProxyLine";
 import { CreditCardFacturacionesTable } from "./CreditCardFacturacionesTable";
 import {
@@ -24,28 +24,19 @@ import {
 } from "../../components/ui/TableMobileCard";
 import { useDeleteCcPurchaseMutation } from "../../queries/hooks";
 import styles from "../AccountDetailPage.module.css";
-import { Button, Input } from "@crfrsr/ui";
+import { Button } from "@crfrsr/ui";
 
 function CreditCardInstallmentsSection({
   ledger,
-  extraOffsets,
   accountId,
-  onExtraOffsetsChange,
   displayUnit,
 }: {
   ledger: AccountCcInstallmentsResponse;
-  extraOffsets: Record<string, number>;
   accountId: number;
-  onExtraOffsetsChange: (next: Record<string, number>) => void;
   displayUnit: "clp" | "usd";
 }) {
   const { t } = useTranslation();
-  const mutationOpts = {
-    accountId,
-    displayUnit,
-    extraCcOffsetsKey: JSON.stringify(extraOffsets),
-  };
-  const deletePurchase = useDeleteCcPurchaseMutation(mutationOpts);
+  const deletePurchase = useDeleteCcPurchaseMutation({ accountId, displayUnit });
   const m = ledger.meta;
   const hasLedger = ledger.has_installment_ledger;
   const hasData =
@@ -53,7 +44,6 @@ function CreditCardInstallmentsSection({
     ledger.has_imported_statements ||
     ledger.purchases.length > 0 ||
     (ledger.purchases_completed?.length ?? 0) > 0;
-  const statements = ledger.statements ?? [];
   const facturaciones = ledger.facturaciones ?? [];
   const manualBusy = deletePurchase.isPending;
   const purchasesCompleted = ledger.purchases_completed ?? [];
@@ -135,7 +125,6 @@ function CreditCardInstallmentsSection({
         <th className="desktop-only">{t("account.creditCard.colPurchaseBillingMonth")}</th>
         {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colFirstDue")}</th> : null}
         {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetCsv")}</th> : null}
-        {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetUi")}</th> : null}
         <th className="desktop-only">{t("account.creditCard.colCuotaClp")}</th>
         {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colRemainingClp")}</th> : null}
         {dueColumn === "last" ? <th className="desktop-only">{t("account.creditCard.colLastPaid")}</th> : null}
@@ -180,25 +169,6 @@ function CreditCardInstallmentsSection({
             <td className="mono desktop-only">{p.purchase_billing_month ?? p.purchase_month ?? "—"}</td>
             {opts.dueColumn !== "last" ? <td className="mono desktop-only">{p.first_due_month}</td> : null}
             {!hasLedger ? <td className="mono desktop-only">{p.schedule_offset_months}</td> : null}
-            {!hasLedger ? (
-              <td className="desktop-only">
-                <Input
-                  size="sm"
-                  type="number"
-                  step={1}
-                  value={extraOffsets[p.purchase_id] ?? 0}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    const n = raw === "" || raw === "-" ? 0 : Math.trunc(Number(raw));
-                    const v = Number.isFinite(n) ? n : 0;
-                    const next = { ...extraOffsets, [p.purchase_id]: v };
-                    persistExtraCcOffsets(accountId, next);
-                    onExtraOffsetsChange(next);
-                  }}
-                  aria-label={t("account.creditCard.offsetAria", { label: p.label })}
-                />
-              </td>
-            ) : null}
             <td className="mono desktop-only">{formatClp(p.cuota_clp)}</td>
             {opts.dueColumn !== "last" ? <td className="mono desktop-only">{formatClp(p.remaining_principal_clp)}</td> : null}
             {opts.dueColumn === "last" ? (
@@ -219,12 +189,6 @@ function CreditCardInstallmentsSection({
                     ? () => deletePurchase.mutate(p.purchase_db_id!)
                     : undefined
                 }
-                extraOffsets={extraOffsets}
-                onExtraOffsetChange={(purchaseId, value) => {
-                  const next = { ...extraOffsets, [purchaseId]: value };
-                  persistExtraCcOffsets(accountId, next);
-                  onExtraOffsetsChange(next);
-                }}
                 purchaseProxy={
                   p.purchase_db_id != null ? ledger.purchase_proxy?.[p.purchase_db_id] : undefined
                 }
@@ -321,10 +285,8 @@ function CreditCardInstallmentsSection({
               <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.facturacionesHint")}</p>
               <CreditCardFacturacionesTable
                 rows={facturaciones}
-                statements={statements}
                 accountId={accountId}
                 displayUnit={displayUnit}
-                extraCcOffsetsKey={JSON.stringify(extraOffsets)}
                 facturacionProxy={ledger.facturacion_proxy}
                 proxyTickers={ledger.proxy_tickers}
                 pendingCuotaPurchases={ledger.pending_cuota_purchases}

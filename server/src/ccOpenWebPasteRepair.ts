@@ -48,18 +48,29 @@ const insOpenStmt = db.prepare(`
 
 const moveLine = db.prepare(`UPDATE cc_statement_lines SET statement_id = ? WHERE id = ?`);
 
+function existingOpenWebPasteStatementId(
+  accountId: number,
+  billingMonth: string,
+  cardGroup: string
+): number | null {
+  const sourcePdf = openWebPasteSourcePdf(billingMonth);
+  const statementDate = statementCloseDdMmYyyyForBillingMonth(accountId, billingMonth);
+  const existing = findOpenStmt.get(accountId, cardGroup, sourcePdf, statementDate) as
+    | { id: number }
+    | undefined;
+  return existing?.id ?? null;
+}
+
 function ensureOpenWebPasteStatementId(
   accountId: number,
   billingMonth: string,
   cardGroup: string,
   cardLast4: string
 ): number {
+  const existing = existingOpenWebPasteStatementId(accountId, billingMonth, cardGroup);
+  if (existing != null) return existing;
   const sourcePdf = openWebPasteSourcePdf(billingMonth);
   const statementDate = statementCloseDdMmYyyyForBillingMonth(accountId, billingMonth);
-  const existing = findOpenStmt.get(accountId, cardGroup, sourcePdf, statementDate) as
-    | { id: number }
-    | undefined;
-  if (existing) return existing.id;
   const r = insOpenStmt.run(
     accountId,
     cardGroup,
@@ -83,7 +94,9 @@ export type CcOpenWebPasteRepairResult = {
  * the feed-observed close or the announced one — so a provisionally closed month hands its
  * post-close lines forward before its statement exists. Unmatched survivors on stale `open|{M}`
  * after a PDF close stay put; read paths attribute them to the current open month (see
- * {@link listStaleOpenWebPasteStatementDates}).
+ * {@link listStaleOpenWebPasteStatementDates}). The open bucket is created only when a line
+ * moves into it: this runs on every card merge, and an eager create left a retired card an empty
+ * «open» facturación each month (·0161, 2026-05 → 09).
  */
 export function repairMisplacedOpenWebPasteBuckets(
   accountId: number,
@@ -93,12 +106,7 @@ export function repairMisplacedOpenWebPasteBuckets(
   const openBm = targetBillingMonthForManualImports(accountId, meta.cardLast4);
 
   let linesMoved = 0;
-  const targetStmtId = ensureOpenWebPasteStatementId(
-    accountId,
-    openBm,
-    meta.cardGroup,
-    meta.cardLast4
-  );
+  let targetStmtId = existingOpenWebPasteStatementId(accountId, openBm, meta.cardGroup);
 
   const statements = listCcStatementsForAccount(accountId);
   for (const st of statements) {
@@ -115,6 +123,7 @@ export function repairMisplacedOpenWebPasteBuckets(
       if (!staleBucket && bucketBm === openBm) continue;
 
       if (st.id === targetStmtId) continue;
+      targetStmtId ??= ensureOpenWebPasteStatementId(accountId, openBm, meta.cardGroup, meta.cardLast4);
       moveLine.run(targetStmtId, line.id);
       linesMoved += 1;
     }

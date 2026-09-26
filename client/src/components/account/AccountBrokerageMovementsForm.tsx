@@ -17,7 +17,6 @@ type Props = {
   /** Stock's quote currency from the summary DTO (present even before the first movement). */
   quoteCurrency?: StockQuoteCurrency | null;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
 };
 
 export function AccountBrokerageMovementsForm({
@@ -25,7 +24,6 @@ export function AccountBrokerageMovementsForm({
   ticker,
   quoteCurrency,
   displayUnit,
-  extraCcOffsetsKey,
 }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -52,7 +50,7 @@ export function AccountBrokerageMovementsForm({
       setLastSavedCount(count);
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly", extraCcOffsetsKey),
+          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
         }),
         queryClient.invalidateQueries({ queryKey: ["accountFlows"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),

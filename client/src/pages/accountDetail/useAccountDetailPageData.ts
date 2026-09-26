@@ -1,4 +1,4 @@
-import { useDeferredValue, useLayoutEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useParams } from "react-router-dom";
 import {
   filterPointsThroughAsOfDate,
@@ -27,7 +27,6 @@ import type {
   DashboardAccountRow,
   PeriodReturnsPayload,
 } from "../../types";
-import { CC_EXTRA_OFFSET_LS } from "./shared";
 
 type DetailBundle = NonNullable<ReturnType<typeof useAccountDetailBundle>["data"]>;
 
@@ -50,8 +49,6 @@ export type AccountDetailPageData = {
   /** Per-surface controls: valuation chart (Diario+3y) and the two P/L combos (Mensual+3y). */
   valuationPrefs: SurfacePrefsValue;
   perfPrefs: SurfacePrefsValue;
-  extraCcOffsets: Record<string, number>;
-  setExtraCcOffsets: (next: Record<string, number>) => void;
   valuationTailClipEndDate: string | null;
   monthlyPerfRows: AccountMonthlyPerformanceResponse["monthly"];
   ytdChartPoints: Record<string, string | number | null>[];
@@ -67,9 +64,7 @@ export type AccountDetailPageData = {
 
 export function useAccountDetailPageData(): AccountDetailPageData {
   const { id } = useParams();
-  const [extraCcOffsets, setExtraCcOffsets] = useState<Record<string, number>>({});
   const { displayUnit } = useDisplayPreferences();
-  const deferredCcOffsets = useDeferredValue(extraCcOffsets);
 
   const accountIdNum = id != null && Number.isFinite(Number(id)) && Number(id) > 0 ? Number(id) : 0;
   const valuationPrefs = useSurfacePrefs(`account.${accountIdNum || "pending"}.valuation`, "day", "3y");
@@ -81,7 +76,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     error: detailError,
     isPending: detailPending,
     isPlaceholderData: detailIsPlaceholder,
-  } = useAccountDetailBundle(id, displayUnit, "monthly", deferredCcOffsets);
+  } = useAccountDetailBundle(id, displayUnit, "monthly");
 
   // During a CLP↔USD switch keepPreviousData holds the prior-unit bundle; convert its
   // toggle-responsive surfaces (chart, monthly perf, header card) to the target unit so the
@@ -189,15 +184,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   }, [ts?.accounts, valuationPrefs.period]);
 
 
-  useLayoutEffect(() => {
-    if (!id) return;
-    try {
-      setExtraCcOffsets(JSON.parse(localStorage.getItem(`${CC_EXTRA_OFFSET_LS}:${id}`) || "{}"));
-    } catch {
-      setExtraCcOffsets({});
-    }
-  }, [id]);
-
   const navSelf = navSelfEarly;
 
   const accountColorRgb = useMemo(() => {
@@ -252,8 +238,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     displayUnit,
     valuationPrefs,
     perfPrefs,
-    extraCcOffsets,
-    setExtraCcOffsets,
     valuationTailClipEndDate,
     monthlyPerfRows,
     ytdChartPoints,

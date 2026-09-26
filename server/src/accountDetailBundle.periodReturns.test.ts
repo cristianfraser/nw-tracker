@@ -21,7 +21,7 @@ describe("accountDetailBundle period_returns", () => {
     const accountId = findInvestmentAccountId();
     if (accountId == null) return; // synthetic DB may lack a populated investment account
 
-    const bundle = await buildAccountDetailBundle(accountId, "clp", "monthly", {});
+    const bundle = await buildAccountDetailBundle(accountId, "clp", "monthly");
     expect(bundle?.period_returns).not.toBeNull();
     // d1/w1 lead, then the monthly windows.
     expect(bundle!.period_returns!.periods.map((c) => c.period)).toEqual([
@@ -40,7 +40,7 @@ describe("accountDetailBundle period_returns", () => {
     const nonInvestmentId = rows.map((r) => r.id).find((id) => !isInvestmentPerformanceAccount(id));
     if (nonInvestmentId == null) return;
 
-    const bundle = await buildAccountDetailBundle(nonInvestmentId, "clp", "monthly", {});
+    const bundle = await buildAccountDetailBundle(nonInvestmentId, "clp", "monthly");
     expect(bundle?.period_returns ?? null).toBeNull();
   });
 });

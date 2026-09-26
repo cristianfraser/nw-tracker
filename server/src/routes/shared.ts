@@ -4,25 +4,11 @@
  */
 import express from "express";
 import { isResolvablePortfolioGroupSlug } from "../portfolioGroupTree.js";
-import { parseExtraOffsetsJson } from "../creditCardInstallments.js";
 import { db } from "../db.js";
 
 export function accountIdFromReq(req: { params: { id?: string } }): number {
   const raw = Number(req.params.id);
   return Number.isFinite(raw) ? raw : NaN;
-}
-
-/** Parses `req.query.extraOffsets`; on malformed input sends the 400 and returns null. */
-export function extraOffsetsFromReq(
-  req: express.Request,
-  res: express.Response
-): Record<string, number> | null {
-  try {
-    return parseExtraOffsetsJson(req.query.extraOffsets);
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "invalid extraOffsets" });
-    return null;
-  }
 }
 
 export function parseProxyTickersParam(raw: unknown): string[] | null {
