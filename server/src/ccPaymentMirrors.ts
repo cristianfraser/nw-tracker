@@ -4,10 +4,11 @@
  * bank's posting-date skew (card credits the payment one to three days before the cartola
  * debits checking, which bumped the CC-netted cash bucket for the gap).
  *
- * The "in" side is statement evidence, never a movement: a PAGO/MONTO CANCELADO statement
- * line (legacy formats) or the statement's `monto_pagado_anterior` header (current format,
- * migration 166). The evidence stays untouched — the CC daily owed walk keeps reading it —
- * and the transfer's card leg is inert for CC valuation (CC balances never read movements).
+ * The "in" side is statement evidence, never a movement: a payment line (legacy formats;
+ * `isCcPaymentMerchant` — PAGO, MONTO CANCELADO, ABONO) or the statement's
+ * `monto_pagado_anterior` header (current format, migration 166). The evidence stays
+ * untouched — the CC daily owed walk keeps reading it — and the transfer's card leg is inert
+ * for CC valuation (CC balances never read movements).
  * The transfer takes the CARD's credit date (the immovable evidence side; the checking
  * cartola date is preserved as `out_occurred_on` in `movement_mirror_merges`, mirroring the
  * month-precision exception in movementMirrorConvert.ts).
@@ -26,7 +27,8 @@ import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { CC_PAYMENT_DESC_RE } from "./checkingDescriptionPredicates.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
+import { isCcPaymentMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
 import { db } from "./db.js";
 import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
@@ -89,13 +91,11 @@ function dayDiff(aIso: string, bIso: string): number {
   return Math.round((a - b) / 86_400_000);
 }
 
-function isoFromStatementDate(raw: string | null): string | null {
-  const t = String(raw ?? "").trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  return parseDdMmYyToIso(t);
-}
-
-/** Payment evidence across every CC master: PAGO lines + header payments, version-deduped. */
+/**
+ * Payment evidence across every CC master, version-deduped: CLP payment lines and header
+ * payments — the same `isCcPaymentMerchant` test and date readers as the cuota retirement's
+ * `listClpCcPaymentEventsForAccount` — plus the USD side's ABONO DE DIVISAS lines.
+ */
 function listCcPaymentEvidence(): CcPaymentEvidence[] {
   const lineRows = db
     .prepare(
@@ -104,8 +104,7 @@ function listCcPaymentEvidence(): CcPaymentEvidence[] {
        FROM cc_statement_lines l
        JOIN cc_statements s ON s.id = l.statement_id
        JOIN accounts a ON a.id = s.account_id
-       WHERE s.currency = 'clp' AND l.installment_flag = 0 AND l.amount_clp < 0
-         AND (UPPER(l.merchant) LIKE '%CANCELADO%' OR UPPER(l.merchant) LIKE 'PAGO%')`
+       WHERE s.currency = 'clp' AND l.installment_flag = 0 AND l.amount_clp < 0`
     )
     .all() as {
     line_id: number;
@@ -117,7 +116,7 @@ function listCcPaymentEvidence(): CcPaymentEvidence[] {
   }[];
   const headerRows = db
     .prepare(
-      `SELECT s.id AS statement_id, s.account_id, a.name AS account_name,
+      `SELECT s.id AS statement_id, s.account_id, a.name AS account_name, s.statement_date,
               s.monto_pagado_anterior AS amt, s.monto_pagado_anterior_date AS pago_iso
        FROM cc_statements s
        JOIN accounts a ON a.id = s.account_id
@@ -128,6 +127,7 @@ function listCcPaymentEvidence(): CcPaymentEvidence[] {
     statement_id: number;
     account_id: number;
     account_name: string;
+    statement_date: string;
     amt: number;
     pago_iso: string;
   }[];
@@ -163,7 +163,8 @@ function listCcPaymentEvidence(): CcPaymentEvidence[] {
   // dedupe by (account, date, amount) with lines preferred (the walk consumes them directly).
   const byKey = new Map<string, CcPaymentEvidence>();
   for (const r of lineRows) {
-    const iso = isoFromStatementDate(r.transaction_date);
+    if (!isCcPaymentMerchant(r.merchant)) continue;
+    const iso = normalizeTransactionDateIso(r.transaction_date);
     if (!iso) continue;
     const amount = Math.round(Math.abs(r.amount_clp));
     if (amount === 0) continue;
@@ -184,14 +185,15 @@ function listCcPaymentEvidence(): CcPaymentEvidence[] {
   for (const r of headerRows) {
     const amount = Math.round(Math.abs(r.amt));
     if (amount === 0) continue;
-    const key = `${r.account_id}|${r.pago_iso}|${amount}`;
+    const pagoIso = requireHeaderPagoIso(r.statement_date, r.pago_iso);
+    const key = `${r.account_id}|${pagoIso}|${amount}`;
     if (byKey.has(key)) continue;
     byKey.set(key, {
       cc_account_id: r.account_id,
       cc_account_name: r.account_name,
       statement_line_id: null,
       statement_id: r.statement_id,
-      pago_iso: r.pago_iso,
+      pago_iso: pagoIso,
       amount_clp: amount,
       currency: "clp",
       amount_usd: null,
@@ -199,7 +201,7 @@ function listCcPaymentEvidence(): CcPaymentEvidence[] {
     });
   }
   for (const r of usdRows) {
-    const iso = isoFromStatementDate(r.transaction_date);
+    const iso = normalizeTransactionDateIso(r.transaction_date);
     if (!iso) continue;
     const usd = Math.abs(r.amount_usd);
     if (usd === 0) continue;

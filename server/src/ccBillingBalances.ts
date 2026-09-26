@@ -35,6 +35,7 @@ import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import {
   isCcPaymentMerchant,
   isCcPaymentOrUsdDebtAbonoMerchant,
+  requireHeaderPagoIso,
 } from "./ccPaymentLines.js";
 import {
   isClpSection3FinancingChargeMerchant,
@@ -327,16 +328,12 @@ export function normalizedPostCloseLines(
     for (const s of hdrPagos) {
       const amtAbs = Math.abs(s.amt);
       if (!Number.isFinite(amtAbs) || amtAbs === 0) continue;
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(s.pago_iso)) {
-        throw new Error(
-          `cc_statements ${s.statement_date}: invalid monto_pagado_anterior_date ${s.pago_iso}`
-        );
-      }
+      const pagoIso = requireHeaderPagoIso(s.statement_date, s.pago_iso);
       const covered = lines.some(
-        (l) => l.iso === s.pago_iso && l.clp != null && Math.abs(l.clp + amtAbs) < 1
+        (l) => l.iso === pagoIso && l.clp != null && Math.abs(l.clp + amtAbs) < 1
       );
       if (covered) continue;
-      lines.push({ iso: s.pago_iso, key: `hdr-pago|${s.pago_iso}|${amtAbs}`, clp: -amtAbs });
+      lines.push({ iso: pagoIso, key: `hdr-pago|${pagoIso}|${amtAbs}`, clp: -amtAbs });
     }
 
     return lines;
