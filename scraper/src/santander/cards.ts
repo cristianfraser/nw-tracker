@@ -7,7 +7,6 @@ import { gotoRoute } from "./login.js";
 import { assertApiOk, innerResultCode, isSaldoInicialRow, pick, pickString } from "./payload.js";
 import { settle, waitForNewApiCalls } from "../wait.js";
 import { ensureDir } from "../paths.js";
-import { hasDocument, recordDocument } from "../documentLedger.js";
 import { log, logStep } from "../log.js";
 
 /** Upper bound on swiper clicks — a stop condition in case the carousel loops instead of ending. */
@@ -21,7 +20,13 @@ export type CardSlide = {
   account: string | null;
   /** `MatrizMovimientos` verbatim, minus the SALDO INICIAL row. */
   rows: unknown[];
-  droppedSaldoInicial: number;
+  /**
+   * The SALDO INICIAL row(s), verbatim and kept apart from `rows`: dated at the card's latest
+   * close and valued at that facturación's «Monto total facturado». Not a movement — importing
+   * it as one would add the previous bill a second time — but the server reads it as the close's
+   * evidence the morning after it happens, days before the statement e-mail.
+   */
+  saldoInicial: unknown[];
 };
 
 export type CardMovementsResult = {
@@ -70,13 +75,12 @@ export async function fetchCardMovements(page: Page, recorder: Recorder): Promis
     const data = pick(call.responseBody, "DATA");
     const matrix = pick(data, "MatrizMovimientos");
     const allRows = Array.isArray(matrix) ? matrix : [];
-    const rows = allRows.filter((row) => !isSaldoInicialRow(row));
     return {
       index,
       currency: pickString(entrada, "Moneda"),
       account: pickString(entrada, "Cuenta"),
-      rows,
-      droppedSaldoInicial: allRows.length - rows.length,
+      rows: allRows.filter((row) => !isSaldoInicialRow(row)),
+      saldoInicial: allRows.filter((row) => isSaldoInicialRow(row)),
     };
   });
 
@@ -99,27 +103,9 @@ export async function fetchCardMovements(page: Page, recorder: Recorder): Promis
 export type StatementDownload = {
   /** Billing period derived from "Pagar hasta: 10/MM/YYYY" — the statement bills month MM-1. */
   billingMonth: string | null;
+  /** The statement JSON saved for this view. */
   file: string;
 };
-
-/**
- * Save the statement PDF that arrived as base64 inside an `estadoDeCuenta` response.
- *
- * The bank does not serve this as a file download — the SPA renders bytes it got in JSON — so the
- * filename is ours to build. `80_<seq>_<account>_<YYYYMMDD>.pdf` is the shape the inbox organizer
- * parses, and it maps the account to a card via `cfraser/organize-identifiers.json`.
- */
-function saveStatementPdfFromBase64(base64: string, account: string, yyyymmdd: string, destDir: string): string {
-  const bytes = Buffer.from(base64, "base64");
-  if (bytes.length === 0) throw new Error("statement PDF payload decoded to zero bytes");
-  if (bytes.subarray(0, 4).toString("latin1") !== "%PDF") {
-    throw new Error("statement payload is not a PDF (missing %PDF header)");
-  }
-  const dest = path.join(ensureDir(destDir), `80_1_${account}_${yyyymmdd}.pdf`);
-  fs.writeFileSync(dest, bytes);
-  log(`saved ${path.basename(dest)} (${Math.round(bytes.length / 1024)} KB)`);
-  return dest;
-}
 
 /**
  * Save the structured statement (`estadoCuentaNacional`) alongside the PDF.
@@ -142,38 +128,28 @@ function saveStatementJson(recorder: Recorder, destDir: string): string | null {
   return dest;
 }
 
-/** Pull the statement PDF out of whichever `estadoDeCuenta` call the page just made. */
-function statementPdfFromCalls(recorder: Recorder): { base64: string; account: string; date: string } | null {
-  for (const call of [...recorder.callsFor("estadoDeCuenta")].reverse()) {
-    const data = pick(call.responseBody, "DATA");
-    const base64 = pickString(data, "imgNbs64");
-    if (!base64) continue;
-    const entrada = pick(call.requestBody, "Entrada", "INPUT");
-    const account = pickString(entrada, "Cuenta") ?? "unknown";
-    const date = pickString(entrada, "Fecha") ?? "";
-    if (!/^\d{8}$/.test(date)) continue;
-    return { base64, account, date };
-  }
-  return null;
-}
-
 /**
- * Download available credit-card statements ("Ver estado de cuenta") from the billed view.
+ * Save the statement JSON of every card and currency in the billed view («Movimientos
+ * facturados»).
  *
- * The page prints "Pagar hasta: 10/MM/YYYY"; that pay-by date belongs to the facturación of the
- * PREVIOUS month, which is the month recorded here.
+ * The page requests the statement PDF (`estadoDeCuenta`) by itself when each view loads. Its
+ * answer is logged, never waited for: until 2026-09-26 the step clicked «Ver estado de cuenta» and
+ * waited 60 s for a second request, twice per view, and none ever came — eight of the step's ten
+ * minutes, every night. The endpoint had answered every request since 2026-08 with the bank's own
+ * code 16 timeout, and the statement PDFs arrive by e-mail (`fetch:santander-docs`), so nothing
+ * here downloads one.
  */
 export async function fetchCardStatements(
   page: Page,
   recorder: Recorder,
-  destDir: string,
   jsonDir: string,
 ): Promise<StatementDownload[]> {
   logStep("credit card — statements");
   await gotoRoute(page, ROUTE.cardBilled);
   await recorder.screenshot(page, "card-billed-initial");
 
-  const downloads: StatementDownload[] = [];
+  const saved: StatementDownload[] = [];
+  const pdfCalls = { logged: 0 };
   for (let slide = 0; slide < MAX_SLIDES; slide++) {
     // The billed view carries the same Pesos/Dólares tabs as the movements view, and the USD
     // statement is its own backend call — so each currency has to be visited to be captured at all.
@@ -184,11 +160,10 @@ export async function fetchCardStatements(
           log(`${label}: no Dólares tab`);
           continue;
         }
-        downloads.push(...(await captureStatements(page, recorder, destDir, jsonDir, label)));
+        saved.push(...(await captureStatementJson(page, recorder, jsonDir, label, pdfCalls)));
       } catch (err) {
-        // One card must not cost us the others: the first card in the carousel is dormant and its
-        // statement endpoint times out bank-side, which previously aborted the step before the
-        // active card was ever reached.
+        // One card must not cost us the others: a dormant card's endpoints can time out
+        // bank-side, which must not stop the step before the active card is reached.
         log(`${label}: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`);
       }
       await recorder.screenshot(page, `card-billed-slide-${slide + 1}-${currency === "Pesos" ? "clp" : "usd"}`);
@@ -202,7 +177,7 @@ export async function fetchCardStatements(
     await next.click();
     await settle(page, 4_000);
   }
-  return downloads;
+  return saved;
 }
 
 /** Click a currency tab if it exists. Returns false when the view has no such tab. */
@@ -214,52 +189,34 @@ async function selectCurrencyTab(page: Page, label: RegExp): Promise<boolean> {
   return true;
 }
 
-/** Save the statement JSON for the current view and download every statement PDF it offers. */
-async function captureStatements(
+/** Save the statement JSON for the current view and log what the page's own PDF request got. */
+async function captureStatementJson(
   page: Page,
   recorder: Recorder,
-  destDir: string,
   jsonDir: string,
   label: string,
+  pdfCalls: { logged: number },
 ): Promise<StatementDownload[]> {
   const billingMonth = await readBillingMonth(page);
-  // The JSON is free — the page already fetched it — so it is always saved, even when the PDF for
-  // this facturación is already on disk.
   const jsonFile = saveStatementJson(recorder, jsonDir);
   if (jsonFile) log(`${label}: statement JSON → ${path.basename(jsonFile)}`);
 
-  const out: StatementDownload[] = [];
-  // A facturación's PDF never changes once issued, so ask for it exactly once.
-  const ledgerKey = `${label.split("/")[1] ?? "?"}|${billingMonth ?? "?"}`;
-  if (billingMonth && hasDocument("santander", "statement", ledgerKey)) {
-    log(`${label}: ${billingMonth} statement already fetched — skipped`);
-    return out;
+  const calls = recorder.callsFor("estadoDeCuenta");
+  for (const call of calls.slice(pdfCalls.logged)) {
+    const data = pick(call.responseBody, "DATA");
+    const hasPdf = Boolean(pickString(data, "imgNbs64"));
+    const inner = innerResultCode(call.responseBody);
+    log(
+      `${label}: the page's statement-PDF request answered ` +
+        (hasPdf
+          ? "with a PDF (not saved — statement PDFs come by e-mail)"
+          : inner
+            ? `${inner.code} — ${inner.message}`
+            : "without a PDF"),
+    );
   }
-  // Matched by text, not role: the trigger is a link on some views and a button on others.
-  const triggers = page.getByText(TEXT.viewStatement);
-  const count = await triggers.count();
-  for (let i = 0; i < count; i++) {
-    // Codigo 16 is the bank's own backend timing out ("favor intente nuevamente") — explicitly
-    // retryable, so one more attempt before giving up on this statement.
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const before = recorder.callsFor("estadoDeCuenta").length;
-      await triggers.nth(i).click();
-      if (!(await waitForNewApiCalls(recorder, "estadoDeCuenta", before, 60_000))) {
-        log(`${label}: statement request never returned (attempt ${attempt})`);
-        continue;
-      }
-      const pdf = statementPdfFromCalls(recorder);
-      if (pdf) {
-        out.push({ billingMonth, file: saveStatementPdfFromBase64(pdf.base64, pdf.account, pdf.date, destDir) });
-        if (billingMonth) recordDocument("santander", "statement", ledgerKey);
-        break;
-      }
-      const inner = innerResultCode(recorder.callsFor("estadoDeCuenta").at(-1)?.responseBody);
-      log(`${label}: no PDF in response${inner ? ` (${inner.code} — ${inner.message})` : ""} (attempt ${attempt})`);
-      if (inner?.code !== "16") break;
-    }
-  }
-  return out;
+  pdfCalls.logged = calls.length;
+  return jsonFile ? [{ billingMonth, file: jsonFile }] : [];
 }
 
 /**

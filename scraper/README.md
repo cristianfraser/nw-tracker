@@ -189,6 +189,14 @@ it. Link them in `/panel/mirror-pairs`, as with every other historical transfer.
   `403 Forbidden` on `…/party_auth_dss/v1/oauth2/token` (seen 2026-08-05 — the direct URL had
   worked until then). The flow is: `banco.santander.cl` → dismiss the notice → click Ingresar →
   fill inside `#login-frame` → the window redirects to `mibanco.santander.cl`.
+- **The login panel can answer with a connection-error card instead of the form.** When the frame's
+  document (served by `mibanco.santander.cl`) fails to load, the panel shows «No fue posible ingresar a
+  tu banco en línea — Comprueba tu conexión a internet» with a «Volver a intentar» button (2026-09-25,
+  40 s after the Mac woke from hibernation: launchd fires a slept-through 22:00 job the moment the
+  machine wakes, before the network is back). `login.ts` clicks the retry once and restarts the form
+  wait; a second card fails with the bank's words. Before Chrome is launched at all, `runSantander`
+  probes both login hosts (`network.ts`, `waitForHosts`) and waits up to 90 s for them to answer,
+  naming a recent wake in the log — a normal night pays under a second.
 - **The homepage ships in more than one markup variant.** The Ingresar control appeared as
   `a.btn-ingresar` (aria "Abrir panel de ingreso") and, minutes later on the same URL, with generic
   classes and aria "Ingresar al sitio privado" — and it hydrates late, so it can be absent from a
@@ -214,8 +222,12 @@ it. Link them in `/panel/mirror-pairs`, as with every other historical transfer.
 - **Two success codes per response.** `METADATA.STATUS` is the gateway's; the backend's own result is
   in `DATA.Informacion.Codigo` / `INFO.CODERR`. A backend timeout returns HTTP 200 + `STATUS: "0"` +
   `Codigo: "16"` — `assertApiOk` checks both, so a timeout can't pass as success.
-- **The statement PDF is base64 in JSON** (`estadoDeCuenta` → `DATA.imgNbs64`), not a file download,
-  so the fetcher writes it as `80_1_<account>_<YYYYMMDD>.pdf` — the shape the inbox organizer parses.
+- **The statement PDF is not fetched here** (2026-09-26). It would come base64 in JSON
+  (`estadoDeCuenta` → `DATA.imgNbs64`), but the endpoint has answered every request since 2026-08
+  with the bank's code 16 timeout, and the page calls it by itself as each billed view loads. The
+  step used to click «Ver estado de cuenta» and wait 60 s for a second call, twice per card and
+  currency — eight of the step's ten minutes, every night, for nothing. It now only logs the page's
+  own answer; the statement PDFs come by e-mail (`fetch:santander-docs`).
 - **`estadoCuentaNacional` is the statement as structured JSON**, saved to
   `cfraser/santander-statement-json/` alongside the PDF. It is mainframe output: amounts are
   zero-padded implied-decimal strings (`"00000002368"` = 2.368), dates are ISO, and `Pan` gives
@@ -243,9 +255,14 @@ it. Link them in `/panel/mirror-pairs`, as with every other historical transfer.
   Never rename on the way in.
 - **The profile is persistent** (`cfraser/.browser-profile-santander/`) so cookies and device trust
   survive between nightly runs. Delete it to start clean.
-- The fetcher does **not** parse amounts. It stores `MatrizMovimientos` rows verbatim (minus the
-  `SALDO INICIAL` row, which is the previous period's billed total) in
+- The fetcher does **not** parse amounts. It stores `MatrizMovimientos` rows verbatim in
   `cfraser/santander-movements/`; normalization belongs to the importer, against real captured data.
+  The `SALDO INICIAL` row is kept apart (`saldoInicial` on each slide, since 2026-09-26): it is not a
+  movement — it is the latest close's billed total, dated at that close — and the importer reads it
+  as the bank's statement that the facturación closed, days before the statement e-mail.
+- **A failed nightly fetch is retried once by the hourly poll** (`check:santander-catchup`,
+  `src/santander/catchUp.ts`): only when no fetch has succeeded since the latest 22:00 slot, no
+  catch-up was tried for it, the last attempt is 35+ minutes old and the login is not latched.
 
 ## Layout
 
@@ -254,7 +271,9 @@ it. Link them in `/panel/mirror-pairs`, as with every other historical transfer.
 | `src/main.ts` | CLI |
 | `src/santander/run.ts` | orchestrates the four steps; each reports independently |
 | `src/santander/login.ts` | RUT + Clave Digital, bot-block detection, SPA hash routing |
-| `src/santander/cards.ts` | card movements (swiper walk) + statement PDFs |
+| `src/santander/cards.ts` | card movements (swiper walk, SALDO INICIAL kept apart) + statement JSON |
+| `src/santander/catchUp.ts` | whether the hourly poll retries a failed nightly fetch (`check:santander-catchup`) |
+| `src/network.ts` | waits for the bank's hosts before Chrome launches (post-wake network) |
 | `src/santander/checking.ts` | cuenta corriente movements `.xlsx` + cartola |
 | `src/capture.ts` | API recorder / screenshots |
 | `src/keychain.ts` | reads the clave from the macOS Keychain |

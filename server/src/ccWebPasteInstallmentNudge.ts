@@ -1,10 +1,14 @@
 import { db } from "./db.js";
-import { findMatchingInstallmentPurchase } from "./ccCrossImportDedupe.js";
+import { findMatchingInstallmentPurchase, purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
 import {
   billingMonthForPurchaseDate,
   loadCreditCardBillingConfig,
 } from "./ccBillingMonth.js";
-import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import {
+  billingMonthContainingPurchase,
+  billingMonthForManualLedgerPurchase,
+} from "./ccManualBillingMonth.js";
+import { firstCuotaBillingMonth } from "./ccCuotaPurchaseKinds.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
@@ -14,6 +18,8 @@ export type CcInstallmentFirstDueNudge = {
   merchant: string | null;
   from: string | null;
   to: string;
+  /** `feed_type`: the feed's cuota type fixed the month; `open_month`: an untyped re-listing. */
+  rule: "feed_type" | "open_month";
 };
 
 const selPlanDetail = db.prepare<[number]>(
@@ -43,6 +49,14 @@ const updFirstDueMonth = db.prepare<[string, number]>(
  *   - the purchase's own billing cycle equals the open month (a stale paste in a later month
  *     won't misfire).
  * A subsequent PDF cuota-01 line still overrides the stored value at read time.
+ *
+ * **Typed feed rows (2026-09-26).** When the matched row is the plan's own purchase row from the
+ * Santander feed (principal-sized, typed «CUOTA COMERCIO» / «PRECIO CONTADO»), its type fixes the
+ * month outright — cuota comercio bills at the close after the purchase cycle, precio contado at
+ * its own (`ccCuotaPurchaseKinds.ts`) — so it pins that month and corrects an earlier pin: the
+ * open-month rule had put the 2026-08-28 «EXPRESS PLAZA L» cuota comercio plan in September. The
+ * result depends only on the purchase date, so a repeat cannot drag it; a statement cuota line
+ * still wins at read time, and a plan with statement payments is never touched.
  */
 export function applyWebPasteInstallmentFirstDueNudges(
   accountId: number,
@@ -73,6 +87,25 @@ export function applyWebPasteInstallmentFirstDueNudges(
     if (!detail) continue;
     if (detail.source !== "manual") continue;
     if (detail.payment_count > 0) continue;
+
+    if (line.cuota_purchase && purchaseAmountsMatch(match.total_amount_clp, amountClp)) {
+      const target = firstCuotaBillingMonth(
+        line.cuota_purchase.kind,
+        billingMonthContainingPurchase(accountId, match.purchase_date)
+      );
+      nudged.add(match.id);
+      if (detail.first_due_month === target) continue;
+      updFirstDueMonth.run(target, match.id);
+      nudges.push({
+        purchase_id: match.id,
+        merchant: match.merchant,
+        from: detail.first_due_month,
+        to: target,
+        rule: "feed_type",
+      });
+      continue;
+    }
+
     if (detail.first_due_month != null) continue;
     if (billingMonthForPurchaseDate(match.purchase_date, config) !== openBm) continue;
 
@@ -83,6 +116,7 @@ export function applyWebPasteInstallmentFirstDueNudges(
       merchant: match.merchant,
       from: detail.first_due_month,
       to: openBm,
+      rule: "open_month",
     });
   }
 

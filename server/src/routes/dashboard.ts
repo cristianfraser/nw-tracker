@@ -20,8 +20,7 @@ import {
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
 import { accountBucketKindSlug } from "../accountBucket.js";
-import { ccInstallmentDebtDailyClp, ccInstallmentPlanTailClp } from "../ccInstallmentDebtDaily.js";
-import { chileCalendarTodayYmd } from "../chileDate.js";
+import { ccDailyHistorialBlockForGroup, ccDailyHistorialBlockForMasters } from "../ccDailyHistorialBlock.js";
 import {
   dailyReferenceLinesForChartHost,
   deptoPropertyChartOverlayDailyLines,
@@ -186,9 +185,14 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
       portfolioGroup === "real_estate" && withRefs.accounts?.length
         ? deptoPropertyChartOverlayDailyLines(dailyDates, unit)
         : [];
+    // Pasivos root / credit-card group / issuer pages: the day-period CC historial lines
+    // (owed, plan debt, plan tail) summed over the masters the merged monthly ledger sums —
+    // CLP-native like the chart, so CLP requests only (the client asks for clp explicitly).
+    const ccDaily = unit === "clp" ? ccDailyHistorialBlockForGroup(portfolioGroup, series) : null;
     res.json({
       ...withRefs,
       ...(groupOverlays.length ? { accounts: [...withRefs.accounts!, ...groupOverlays] } : {}),
+      ...(ccDaily ?? {}),
       ...(grouped
         ? {
             grouped_accounts: grouped,
@@ -242,18 +246,14 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
       accountSeriesPayload.accounts = [...accountSeriesPayload.accounts, ...overlays];
     }
   }
-  // CC masters: attach the daily plan debt («deuda en cuotas», CLP like the historial
-  // chart) plus the future plan tail (today+1 .. plan end) so the account page's daily
-  // historial has both lines and covers the same window as its monthly/yearly forms.
-  if (accountBucketKindSlug(row.bucket_slug) === "credit_card") {
-    const debt = ccInstallmentDebtDailyClp(
-      accountId,
-      series.points.map((p) => p.as_of_date)
-    );
-    if (debt) {
-      const todayYmd = series.points.at(-1)?.as_of_date ?? chileCalendarTodayYmd();
-      const planTail = ccInstallmentPlanTailClp(accountId, todayYmd);
-      res.json({ ...accountSeriesPayload, cc_installment_debt: debt, ...(planTail ? { cc_plan_tail: planTail } : {}) });
+  // CC masters: attach the day-period historial lines — owed, plan debt («deuda en cuotas»)
+  // and the future plan tail (today+1 .. plan end) — so the account page's daily historial
+  // has both lines and covers the same window as its monthly/yearly forms. CLP-native like
+  // the chart, so CLP requests only (the client asks for clp explicitly).
+  if (accountBucketKindSlug(row.bucket_slug) === "credit_card" && unit === "clp") {
+    const ccDaily = ccDailyHistorialBlockForMasters([accountId], series);
+    if (ccDaily) {
+      res.json({ ...accountSeriesPayload, ...ccDaily });
       return;
     }
   }

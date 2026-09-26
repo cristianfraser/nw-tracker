@@ -27,6 +27,18 @@ function renderFacturado(row: CcBillingDetailMonthDto, projectedHint: string): R
   );
 }
 
+/** «provisoria» on a month closed at the bank whose statement is not imported yet. */
+function ProvisionalMark({ row }: { row: CcBillingDetailMonthDto }) {
+  const { t } = useTranslation();
+  if (!row.provisional) return null;
+  return (
+    <span className="muted" title={t("accountDetail.creditCard.provisionalCloseHint")}>
+      {" "}
+      {t("accountDetail.creditCard.provisionalClose")}
+    </span>
+  );
+}
+
 function periodLabel(row: CcBillingDetailMonthDto, isYearly: boolean): string {
   return isYearly ? row.billing_month.slice(0, 4) : formatYmEs(row.billing_month);
 }
@@ -49,6 +61,7 @@ function CreditCardDetallePorMesMobileCard({
     <>
       {periodLabel(row, isYearly)}
       {row.as_of_kind === "manual" ? <span className="muted">*</span> : null}
+      <ProvisionalMark row={row} />
     </>
   );
 
@@ -71,8 +84,8 @@ export function CreditCardDetallePorMesTable({
   period,
 }: {
   rows: readonly CcBillingDetailMonthDto[];
-  /** From the page's paired CC control: `year` renders the yearly rollup view. */
-  period: "day" | "month" | "year";
+  /** The table's own Período control (M/Y — billing detail has no day-grain form). */
+  period: "month" | "year";
 }) {
   const { t } = useTranslation();
   const isYearly = period === "year";
@@ -130,6 +143,7 @@ export function CreditCardDetallePorMesTable({
             <td className={cn("mono", "desktop-only", styles.nowrap)}>
               {periodLabel(row, isYearly)}
               {row.as_of_kind === "manual" ? <span className="muted">*</span> : null}
+              <ProvisionalMark row={row} />
             </td>
             <td className="mono desktop-only">{renderFacturado(row, projectedHint)}</td>
             <td className="mono desktop-only">{formatClp(row.cupo_en_cuotas_clp)}</td>

@@ -7,6 +7,12 @@ export const HOME_URL = "https://banco.santander.cl";
 /** Angular home-banking SPA the login redirects to. Everything below the base is hash routing. */
 export const APP_BASE = "https://mibanco.santander.cl/UI.Web.HB/Private_new/frame/";
 
+/**
+ * The hosts a login touches: the public homepage and the private-app host, which also serves the
+ * `#login-frame` document. Both must answer before Chrome is worth launching (`waitForHosts`).
+ */
+export const LOGIN_HOSTS = [new URL(HOME_URL).host, new URL(APP_BASE).host] as const;
+
 export const ROUTE = {
   login: "/public/login-frame/ing/0010",
   /** Credit card, current (unbilled) period — "no facturado". */
@@ -77,4 +83,13 @@ export const TEXT = {
   loginRejected: /ocurri[oó] un error al ingresar|alguno de los datos ingresados es incorrecto/i,
   /** The wording that means the stored clave is wrong — the one that latches further logins off. */
   loginCredentialsRejected: /alguno de los datos ingresados es incorrecto/i,
+  /**
+   * The card the login panel renders in place of the `#login-frame` iframe when the frame's document
+   * (served by the private-app host) fails to load: «No fue posible ingresar a tu banco en línea.
+   * Comprueba tu conexión a internet e inténtalo nuevamente.» over a «Volver a intentar» button.
+   * First seen 2026-09-25, 40 s after a wake from hibernation. Top-level page, like the toast.
+   */
+  loginPanelConnectionError: /no fue posible ingresar a tu banco en l[ií]nea/i,
+  /** The connection-error card's retry button. Full phrase: nothing else on the page may match. */
+  loginPanelRetry: /^\s*volver a intentar\s*$/i,
 } as const;

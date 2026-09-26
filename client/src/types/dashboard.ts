@@ -385,10 +385,16 @@ export interface DailySeriesResponse {
   grouped_proportional?: ProportionalSeriesBlockDto;
   /** Composition shares of the "Sin agrupar" bucket lines (only when they differ from grouped). */
   ungrouped_proportional?: ProportionalSeriesBlockDto;
-  /** CC masters only: per-day plan debt («deuda en cuotas», CLP), index-aligned with points. */
+  /**
+   * CC scopes only (a card's own page, or a Pasivos / credit-card group page — summed over the
+   * masters its merged monthly ledger sums; CLP requests only): per-day owed («saldo total»,
+   * CLP), index-aligned with points.
+   */
+  cc_owed?: (number | null)[];
+  /** CC scopes only: per-day plan debt («deuda en cuotas», CLP), index-aligned with points. */
   cc_installment_debt?: (number | null)[];
   /**
-   * CC masters only: future daily tail of the installment simulation (`today+1 .. plan end`, CLP),
+   * CC scopes only: future daily tail of the installment simulation (`today+1 .. plan end`, CLP),
    * so the daily historial covers the same window as its monthly/yearly forms.
    */
   cc_plan_tail?: { as_of_date: string; plan_debt_clp: number; balance_clp: number }[];

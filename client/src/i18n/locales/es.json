@@ -684,7 +684,8 @@
       "summaryStatements": "estados de cuenta: {{n}}",
       "summaryInstallmentPlans": "planes de cuotas: {{n}}",
       "summaryInstallmentPayments": "pagos de cuotas: {{n}}",
-      "summaryWarnings": "avisos: {{msgs}}"
+      "summaryWarnings": "avisos: {{msgs}}",
+      "resultSkipReasonSaldoInicial": "saldo inicial (el total de la factura anterior), no es una compra"
     },
     "checking": {
       "monthModalTitle": "Movimientos {{month}}",
@@ -715,12 +716,13 @@
     },
     "creditCard": {
       "lastFacturado": "Último facturado",
-      "nextPayment": "Próximo pago",
-      "cupoUtilizado": "Cupo utilizado",
+      "openFacturacion": "Facturación abierta",
+      "cupo": "Cupo",
+      "cupoAvailableOf": "{{available}} disponible de {{total}}",
       "deudaEnCuotas": "Deuda en cuotas",
       "saldoTotal": "Saldo total",
       "historialTitle": "Historial",
-      "historialHint": "Líneas: cupo en cuotas y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros: sin facturado (aún no se factura nada) y saldo proyectado = cuotas aún adeudadas a fin de mes — las cuotas de un ciclo salen de la deuda en su pagar-hasta (~10 del mes siguiente), no en el cierre que las factura.",
+      "historialHint": "Líneas: deuda en cuotas aún adeudada a fin de mes (la línea de la vista diaria — las cuotas de un ciclo siguen hasta que se paga esa facturación, así que puede superar la «deuda en cuotas» de Detalle por mes, que las saca en el cierre que las factura) y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros: sin facturado (aún no se factura nada) y saldo proyectado = cuotas aún adeudadas a fin de mes — las cuotas de un ciclo salen de la deuda en su pagar-hasta (~10 del mes siguiente), no en el cierre que las factura.",
       "historialHintDaily": "Líneas diarias: saldo total adeudado en cada fecha (las compras lo suben el día de la compra — las en cuotas por su monto total — y los pagos lo bajan) y la deuda en cuotas vigente (los contratos suben el día de compra; las cuotas de cada ciclo salen el día en que efectivamente se paga su facturación, o en su pagar-hasta si no hay pago registrado). Después de hoy el plan de cuotas se proyecta hasta su término (ambas líneas se juntan una vez pagado el ciclo abierto). Las barras de facturado/pagado son cifras por mes de facturación y se ocultan en la vista diaria.",
       "historialCurrentMonth": "Mes actual",
       "historialCurrentYear": "Año actual",
@@ -732,7 +734,6 @@
       "tooltipPagosYear": "Pagos del año",
       "historialOpenMonth": "Facturación abierta",
       "historialProjectionStart": "Hoy (proyección →)",
-      "valuationTitle": "Valorización y aportes",
       "ytdSection": "YTD (año calendario)",
       "accSection": "Accumulated earnings",
       "accAreaName": "Accumulated earnings",
@@ -793,7 +794,12 @@
       "facturacionDeleteConfirmCancel": "Cancelar",
       "lineColActions": "Acciones",
       "associatedCardsTitle": "Tarjetas asociadas",
-      "associatedCardsHint": "Números de tarjeta física con estados importados en esta cuenta."
+      "associatedCardsHint": "Números de tarjeta física con estados importados en esta cuenta.",
+      "closeDateEstimatedHint": "Estimada según el ciclo configurado de la tarjeta: el banco aún no publica este cierre.",
+      "closeDateAnnouncedHint": "Anunciada como próximo período de facturación en el estado de cuenta anterior.",
+      "provisionalClose": "provisoria",
+      "provisionalCloseHint": "Cerrada en el banco, estado de cuenta aún sin importar. El facturado es el total que cobró el banco (SALDO INICIAL del feed de la tarjeta) si el feed vio el cierre; si no, la estimación de la app.",
+      "provisionalEstimateHint": "La app había estimado {{amount}} para esta facturación."
     },
     "monthlyPerfIntro": "Dos gráficos: (1) P/L mensual vs <1>YTD</1> (área reinicia cada enero). (2) mismo Δ mensual con área <3>Accumulated earnings</3> (continua desde el primer mes, sin franjas por año). La tabla conserva el detalle.",
     "monthlyPerfMortgageNote": " En hipoteca, <1>P/L mes</1> = baja de saldo en CLP − pagos: negativo = coste financiero (intereses, seguros y variación UF), no la fórmula de inversión.",

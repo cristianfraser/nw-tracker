@@ -112,6 +112,50 @@ describe("flowLinesForFacturacionMonth", () => {
     const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
       billing_month: "2026-07",
       is_open_month: true,
+      is_provisional_close: false,
+    });
+    expect(scoped.map((ln) => ln.statement_line_id).sort()).toEqual([-2_000_000_042, 200]);
+  });
+
+  it("a provisionally closed month (statement pending) shows what an open month does", () => {
+    const statements: CcStatementDto[] = [
+      {
+        id: 20,
+        billing_month: "2026-07",
+        statement_date: "20/07/2026",
+        currency: "clp",
+        source_pdf: "import:web-paste|open|2026-07",
+        lines: [{ ...line({ statement_line_id: 200, line_role: "purchase" }), id: 200 }],
+      } as unknown as CcStatementDto,
+    ];
+    const flows = [
+      line({
+        statement_line_id: 200,
+        line_role: "purchase",
+        billing_month: "2026-07",
+        amount_clp: 50_000,
+      }),
+      line({
+        statement_line_id: -2_000_000_042,
+        line_role: "installment_cuota",
+        billing_month: "2026-07",
+        amount_clp: 18_660,
+        nro_cuota_current: 2,
+        nro_cuota_total: 12,
+      }),
+      line({
+        statement_line_id: -2_000_000_043,
+        line_role: "installment_cuota",
+        billing_month: "2026-08",
+        amount_clp: 18_660,
+        nro_cuota_current: 3,
+        nro_cuota_total: 12,
+      }),
+    ];
+    const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
+      billing_month: "2026-07",
+      is_open_month: false,
+      is_provisional_close: true,
     });
     expect(scoped.map((ln) => ln.statement_line_id).sort()).toEqual([-2_000_000_042, 200]);
   });
@@ -162,6 +206,7 @@ describe("flowLinesForFacturacionMonth", () => {
     const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
       billing_month: "2026-08",
       is_open_month: true,
+      is_provisional_close: false,
     });
     expect(scoped.map((ln) => ln.statement_line_id).sort()).toEqual([
       -3_000_160_000, -3_000_161_000,
@@ -191,6 +236,7 @@ describe("flowLinesForFacturacionMonth", () => {
     const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
       billing_month: "2026-06",
       is_open_month: false,
+      is_provisional_close: false,
     });
     expect(scoped.map((ln) => ln.statement_line_id)).toEqual([100]);
   });

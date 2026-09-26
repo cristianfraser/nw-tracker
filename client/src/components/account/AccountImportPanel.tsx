@@ -24,6 +24,7 @@ const SKIP_REASON_KEY: Record<string, string> = {
   installment_overlap: "accountDetail.import.resultSkipReasonInstallmentOverlap",
   duplicate_in_paste: "accountDetail.import.resultSkipReasonDuplicateInPaste",
   cuota_billing: "accountDetail.import.resultSkipReasonCuotaBilling",
+  saldo_inicial: "accountDetail.import.resultSkipReasonSaldoInicial",
   already_present: "accountDetail.import.resultSkipReasonAlreadyPresent",
   superseded_by_cartola: "accountDetail.import.resultSkipReasonSupersededByCartola",
   superseded_by_transfer: "accountDetail.import.resultSkipReasonSupersededByTransfer",

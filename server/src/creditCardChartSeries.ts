@@ -66,6 +66,19 @@ function collectHistorialBaseMonths(
   return [...months].sort((a, b) => a.localeCompare(b));
 }
 
+export type CcHistorialChartOptions = {
+  /**
+   * «Deuda en cuotas» per chart month (ascending months in, month → CLP out; null = no schedule,
+   * keep the billing frame). The monthly chart plots a month at its calendar month-end, and the
+   * detalle table's «cupo en cuotas» is the BILLING frame — a closed month's billed cuotas ride
+   * inside its facturado, so its cupo is only what is still unbilled. The daily chart's line is
+   * the PAYMENT frame: a cycle's cuotas stay until that facturación is paid. Sampling the daily
+   * walk at each month-end (`ccInstallmentDebtAtMonthEndsClp`) makes the two charts agree at every
+   * month-end; the table keeps its column, where facturado + cupo = balance.
+   */
+  installmentDebtForMonths?: (months: readonly string[]) => ReadonlyMap<string, number | null> | null;
+};
+
 /**
  * Dense historial chart series for the CC installment history chart.
  * Every interior month between min and max is included (null values for
@@ -74,7 +87,8 @@ function collectHistorialBaseMonths(
 export function buildCcHistorialChartSeries(
   hist: HistMonthPoint[],
   detalle: CcBillingDetailMonthRow[] | undefined,
-  facturaciones: CcFacturacionRow[] | undefined
+  facturaciones: CcFacturacionRow[] | undefined,
+  opts?: CcHistorialChartOptions
 ): CcHistorialChartPoint[] {
   const histByMonth = new Map(hist.map((h) => [h.month, h] as const));
   const detalleByMonth = new Map((detalle ?? []).map((d) => [d.billing_month, d] as const));
@@ -93,16 +107,19 @@ export function buildCcHistorialChartSeries(
   const minYm = sparseMonths[0]!;
   const maxYm = sparseMonths[sparseMonths.length - 1]!;
   const allMonths = expandYearMonthsInclusive(minYm, maxYm);
+  const debtByMonth = opts?.installmentDebtForMonths?.(allMonths) ?? null;
 
   return allMonths.map((month) => {
     const d = detalleByMonth.get(month);
     const h = histByMonth.get(month);
     const fact = facturacionByMonth.get(month);
     const facturado = facturadoByMonth.get(month) ?? d?.total_facturado_clp ?? null;
-    const cupo = d?.cupo_en_cuotas_clp ?? (h != null ? cupoFromHistPoint(h) : null);
+    // Billing frame: pairs with facturado for a month with no detail row's balance.
+    const billingCupo = d?.cupo_en_cuotas_clp ?? (h != null ? cupoFromHistPoint(h) : null);
+    const cupo = debtByMonth != null ? (debtByMonth.get(month) ?? null) : billingCupo;
     let balance_total_clp = d?.balance_total_clp ?? null;
-    if (balance_total_clp == null && cupo != null) {
-      balance_total_clp = (facturado ?? 0) + cupo;
+    if (balance_total_clp == null && billingCupo != null) {
+      balance_total_clp = (facturado ?? 0) + billingCupo;
     }
     const installment_payments_clp =
       fact?.cuota_a_pagar_clp ?? d?.cuota_a_pagar_next_mes_clp ?? h?.installment_payments_clp ?? 0;

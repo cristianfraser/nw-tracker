@@ -504,6 +504,8 @@ def extract_pdf_section_totals(
         "pdf_monto_facturado_anterior": None,
         "pdf_monto_pagado_anterior": None,
         "pdf_monto_pagado_anterior_date": None,
+        "pdf_next_period_from": None,
+        "pdf_next_period_to": None,
         "pdf_saldo_anterior": None,
         "pdf_abono": None,
         "pdf_compras_cargos": None,
@@ -697,6 +699,29 @@ def extract_pdf_section_totals(
                 )
                 if m3:
                     out["pdf_abono"] = parse_usd(m3.group(1))
+
+    # The following cycle, printed by current statements of both issuers: Santander «PRÓXIMO
+    # PERÍODO DE FACTURACIÓN 25/08/2026 24/09/2026» (since June 2026), BCI Lider «Próximo Período
+    # de Facturación 27/08/2026 26/09/2026 <amount>». The end is the next close; the start tells
+    # the issuer's close-day rule (Santander starts ON this close, BCI the day after). Read from
+    # the layout rendering first — pypdf can split the label from its dates. Kept DD/MM/YYYY like
+    # period_from / period_to; a start after the end is not a period and is dropped.
+    for text in (layout_text, full):
+        if not text or not text.strip():
+            continue
+        m_next = re.search(
+            r"PR[OÓ]XIMO\s+PER[IÍ]ODO\s+DE\s+FACTURACI[OÓ]N\s*:?\s*(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})",
+            text,
+            re.I,
+        )
+        if not m_next:
+            continue
+        iso_from = _cc_iso_from_ddmmyy(m_next.group(1))
+        iso_to = _cc_iso_from_ddmmyy(m_next.group(2))
+        if iso_from and iso_to and iso_from < iso_to:
+            out["pdf_next_period_from"] = m_next.group(1)
+            out["pdf_next_period_to"] = m_next.group(2)
+        break
 
     return out
 

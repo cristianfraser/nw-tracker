@@ -2364,6 +2364,10 @@
       "summaryWarnings": {
         "en": "warnings: {{msgs}}",
         "es": "avisos: {{msgs}}"
+      },
+      "resultSkipReasonSaldoInicial": {
+        "en": "opening balance (the previous bill's total), not a purchase",
+        "es": "saldo inicial (el total de la factura anterior), no es una compra"
       }
     },
     "checking": {
@@ -2473,13 +2477,17 @@
         "en": "Last billed",
         "es": "Último facturado"
       },
-      "nextPayment": {
-        "en": "Next payment",
-        "es": "Próximo pago"
+      "openFacturacion": {
+        "en": "Open billing",
+        "es": "Facturación abierta"
       },
-      "cupoUtilizado": {
-        "en": "Credit used",
-        "es": "Cupo utilizado"
+      "cupo": {
+        "en": "Credit line",
+        "es": "Cupo"
+      },
+      "cupoAvailableOf": {
+        "en": "{{available}} available of {{total}}",
+        "es": "{{available}} disponible de {{total}}"
       },
       "deudaEnCuotas": {
         "en": "Installment debt",
@@ -2494,8 +2502,8 @@
         "es": "Historial"
       },
       "historialHint": {
-        "en": "Lines: installment debt and total balance (same criteria as Monthly detail). Bars: that billing month's payment due (due the following month) and the amount billed at close. Future months: nothing billed (nothing invoiced yet) and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
-        "es": "Líneas: cupo en cuotas y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros: sin facturado (aún no se factura nada) y saldo proyectado = cuotas aún adeudadas a fin de mes — las cuotas de un ciclo salen de la deuda en su pagar-hasta (~10 del mes siguiente), no en el cierre que las factura."
+        "en": "Lines: installment debt still owed at each month-end (the daily view's line — a cycle's installments stay until that bill is paid, so it can exceed the Monthly detail's «installment debt», which drops them at the close that bills them) and total balance (same criteria as Monthly detail). Bars: that billing month's payment due (due the following month) and the amount billed at close. Future months: nothing billed (nothing invoiced yet) and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
+        "es": "Líneas: deuda en cuotas aún adeudada a fin de mes (la línea de la vista diaria — las cuotas de un ciclo siguen hasta que se paga esa facturación, así que puede superar la «deuda en cuotas» de Detalle por mes, que las saca en el cierre que las factura) y balance total (mismo criterio que Detalle por mes). Barras: cuota a pagar de esa facturación (vencimiento del mes siguiente) y facturado al cierre. Meses futuros: sin facturado (aún no se factura nada) y saldo proyectado = cuotas aún adeudadas a fin de mes — las cuotas de un ciclo salen de la deuda en su pagar-hasta (~10 del mes siguiente), no en el cierre que las factura."
       },
       "historialHintDaily": {
         "en": "Daily lines: total balance owed on each date (purchases raise it on the purchase date — installment plans at their full amount — and payments drop it) and the outstanding installment debt (contracts up on purchase day; each cycle's cuotas leave the day its facturación is actually paid, or on its pay-by when no payment is on record). Past today the installment plan is projected to its end (both lines meet once the open cycle is paid). Billed/paid bars are billing-month figures and hide in daily view.",
@@ -2540,10 +2548,6 @@
       "historialProjectionStart": {
         "en": "Today (projection →)",
         "es": "Hoy (proyección →)"
-      },
-      "valuationTitle": {
-        "en": "Valuation and contributions",
-        "es": "Valorización y aportes"
       },
       "ytdSection": {
         "en": "YTD (calendar year)",
@@ -2788,6 +2792,26 @@
       "associatedCardsHint": {
         "en": "Physical card numbers with statements imported into this account.",
         "es": "Números de tarjeta física con estados importados en esta cuenta."
+      },
+      "closeDateEstimatedHint": {
+        "en": "Estimated from the card's configured cycle: the bank has not published this close yet.",
+        "es": "Estimada según el ciclo configurado de la tarjeta: el banco aún no publica este cierre."
+      },
+      "closeDateAnnouncedHint": {
+        "en": "Announced as the next billing period by the previous statement.",
+        "es": "Anunciada como próximo período de facturación en el estado de cuenta anterior."
+      },
+      "provisionalClose": {
+        "en": "provisional",
+        "es": "provisoria"
+      },
+      "provisionalCloseHint": {
+        "en": "Closed at the bank, statement not imported yet. The facturado is the bank's billed total (the card feed's SALDO INICIAL) when the feed saw the close, otherwise the app's estimate.",
+        "es": "Cerrada en el banco, estado de cuenta aún sin importar. El facturado es el total que cobró el banco (SALDO INICIAL del feed de la tarjeta) si el feed vio el cierre; si no, la estimación de la app."
+      },
+      "provisionalEstimateHint": {
+        "en": "The app had estimated {{amount}} for this facturación.",
+        "es": "La app había estimado {{amount}} para esta facturación."
       }
     },
     "monthlyPerfIntro": {

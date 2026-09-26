@@ -61,7 +61,8 @@ export function innerResultCode(responseBody: unknown): { code: string; message:
 
 /**
  * "SALDO INICIAL" is the previous period's billed total, not a movement of this period — the one
- * row that must never reach the ledger.
+ * row that must never reach the ledger AS A LINE. The fetcher keeps it apart (`saldoInicial` on
+ * each slide): dated at the latest close, it is how the server learns a facturación closed.
  */
 export function isSaldoInicialRow(row: unknown): boolean {
   const description = pickString(row, "Descripcion") ?? "";

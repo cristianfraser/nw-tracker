@@ -413,8 +413,7 @@ export function LiabilitiesGroupPage() {
       {pageKind === "pasivos_root" && ccLedger ? (
         <LiabilitiesCreditCardGroupSection
           ccLedger={ccLedger}
-          displayUnit={displayUnit}
-          surfaceId={`liab.cc.${portfolioGroup}`}
+          portfolioGroup={portfolioGroup}
           linkTo="/liabilities/credit-card"
         />
       ) : null}
@@ -432,11 +431,7 @@ export function LiabilitiesGroupPage() {
       ) : null}
 
       {pageKind === "credit_card" && ccLedger ? (
-        <LiabilitiesCreditCardGroupSection
-          ccLedger={ccLedger}
-          displayUnit={displayUnit}
-          surfaceId={`liab.cc.${portfolioGroup}`}
-        />
+        <LiabilitiesCreditCardGroupSection ccLedger={ccLedger} portfolioGroup={portfolioGroup} />
       ) : null}
 
       {pageKind === "mortgage" && mortgageLedger ? (

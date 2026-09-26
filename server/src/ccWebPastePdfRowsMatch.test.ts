@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { plazaLyonMerchantsMatch } from "./ccCrossImportDedupe.js";
 import {
   reconcilePurchaseRowsMatch,
-  reconcileWebPastePdfRowsMatch,
   type CcReconcileRow,
 } from "./ccStatementImportReconcile.js";
 
@@ -26,7 +25,7 @@ function row(partial: Partial<CcReconcileRow> & Pick<CcReconcileRow, "merchant" 
   };
 }
 
-describe("reconcileWebPastePdfRowsMatch", () => {
+describe("reconcilePurchaseRowsMatch", () => {
   it("matches EXPRESS PLAZA L web-paste to RECAUDACION EX PLAZA LYON PDF", () => {
     const pdf = row({
       merchant: "RECAUDACION EX PLAZA LYON",
@@ -40,7 +39,7 @@ describe("reconcileWebPastePdfRowsMatch", () => {
       transaction_date: "20/06/2026",
     });
     expect(plazaLyonMerchantsMatch(pdf.merchant, web.merchant)).toBe(true);
-    expect(reconcileWebPastePdfRowsMatch(pdf, web)).toBe(true);
+    expect(reconcilePurchaseRowsMatch(pdf, web)).toBe(true);
   });
 
   it("matches PAGO web-paste to MONTO CANCELADO PDF by abs amount", () => {
@@ -54,13 +53,13 @@ describe("reconcileWebPastePdfRowsMatch", () => {
       amount_clp: -5_833_630,
       from_web_paste: true,
     });
-    expect(reconcileWebPastePdfRowsMatch(pdf, web)).toBe(true);
+    expect(reconcilePurchaseRowsMatch(pdf, web)).toBe(true);
     expect(reconcilePurchaseRowsMatch(pdf, web)).toBe(true);
   });
 
   it("does not match charges with different amounts", () => {
     const pdf = row({ merchant: "SHOP A", amount_clp: 1000, from_web_paste: false });
     const web = row({ merchant: "SHOP A", amount_clp: 2000, from_web_paste: true });
-    expect(reconcileWebPastePdfRowsMatch(pdf, web)).toBe(false);
+    expect(reconcilePurchaseRowsMatch(pdf, web)).toBe(false);
   });
 });

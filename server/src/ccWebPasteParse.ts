@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import {
   statementCloseDdMmYyyyForBillingMonth,
   targetBillingMonthForManualImports,
@@ -23,6 +24,20 @@ export type CcWebPasteLine = {
   amount_usd: number | null;
   currency: "clp" | "usd";
   raw_line: string;
+  /**
+   * Santander card feed only: this row is a purchase in cuotas (the feed types it), listed at its
+   * full principal. `cuota_count` when known — printed in the type, or read from the same-day
+   * stamp-tax row (`ccCuotaPurchaseKinds.ts`). Absent on pasted lines.
+   */
+  cuota_purchase?: CcFeedCuotaPurchase | null;
+};
+
+export type CcFeedCuotaPurchase = {
+  kind: CcCuotaPurchaseKind;
+  cuota_count: number | null;
+  count_source: "stamp_tax" | "feed_type" | null;
+  /** The paired stamp tax, when one was found (even if it did not give a count). */
+  stamp_tax_clp: number | null;
 };
 
 export type CcWebPasteParseResult = {
@@ -146,39 +161,77 @@ export function isCcCuotaBillingReferenceMerchant(merchant: string | null | unde
   return /^CUOT:\s*\d+\s*(?:OPER:\s*\d+)?$/i.test(String(merchant ?? "").trim());
 }
 
+/**
+ * The «SALDO INICIAL» row the unbilled-movements table opens with: the last closed facturación's
+ * «Monto total facturado», dated at that close. It is the close's evidence, not a purchase —
+ * importing it as a line would add the whole previous bill a second time. The feed importer
+ * reads it as the observed close (`ccBillingCloses.ts`); a pasted one is reported and skipped.
+ */
+export function isCcSaldoInicialMerchant(merchant: string | null | undefined): boolean {
+  return /^\s*SALDO\s+INICIAL\s*$/i.test(String(merchant ?? ""));
+}
+
+/**
+ * One-shot dedupe key of a pasted / fed line — the identity every re-listing of the same purchase
+ * shares, on the pasted magnitude in its own currency (USD in cents keeps re-imports idempotent).
+ */
+export function webPasteLineDedupeKey(cardGroup: string, line: CcWebPasteLine): string {
+  const dedupeAmount =
+    line.currency === "usd"
+      ? Math.round(Math.abs(line.amount_usd ?? 0) * 100)
+      : Math.abs(line.amount_clp);
+  return ccOneShotDedupeKey(cardGroup, line.merchant, dedupeAmount, line.transaction_date);
+}
+
+export type CcWebPasteRecordsOpts = {
+  /**
+   * Put every line in this facturación's bucket instead of the open month. The card feed passes
+   * the month after its own SALDO INICIAL close: everything it lists after a close is unbilled by
+   * definition, whatever the row's date says (a pending authorization that settled after the
+   * close keeps its earlier date).
+   */
+  targetBillingMonth?: string;
+};
+
 export function ccWebPasteToCsvRecords(
   accountId: number,
   cardGroup: string,
   cardLast4: string,
   batchId: string,
-  parsed: CcWebPasteLine[]
+  parsed: CcWebPasteLine[],
+  opts?: CcWebPasteRecordsOpts
 ): {
   records: CcStatementCsvRecord[];
   skipped_in_paste: CcImportFlowItem[];
   skipped_cuota_billing: CcImportFlowItem[];
+  skipped_saldo_inicial: CcImportFlowItem[];
 } {
-  const billingMonth = targetBillingMonthForManualImports(accountId, cardLast4);
-  const statementDate = statementCloseDdMmYyyyForBillingMonth(accountId, billingMonth);
+  const openBillingMonth = targetBillingMonthForManualImports(accountId, cardLast4);
   /** One open-period bucket per billing month (append on re-import via dedupe_key). */
-  const sourcePdf = `import:web-paste|open|${billingMonth}`;
+  const bucketFor = new Map<string, { sourcePdf: string; statementDate: string }>();
+  const bucket = (billingMonth: string) => {
+    let b = bucketFor.get(billingMonth);
+    if (!b) {
+      b = {
+        sourcePdf: `import:web-paste|open|${billingMonth}`,
+        statementDate: statementCloseDdMmYyyyForBillingMonth(accountId, billingMonth),
+      };
+      bucketFor.set(billingMonth, b);
+    }
+    return b;
+  };
 
   const seen = new Set<string>();
   const records: CcStatementCsvRecord[] = [];
   const skipped_in_paste: CcImportFlowItem[] = [];
   const skipped_cuota_billing: CcImportFlowItem[] = [];
+  const skipped_saldo_inicial: CcImportFlowItem[] = [];
 
   for (const line of parsed) {
+    const billingMonth = opts?.targetBillingMonth ?? openBillingMonth;
+    const { sourcePdf, statementDate } = bucket(billingMonth);
     const isUsd = line.currency === "usd";
-    // Dedupe on the pasted magnitude in its own currency (USD in cents keeps re-imports idempotent).
-    const dedupeAmount = isUsd
-      ? Math.round(Math.abs(line.amount_usd ?? 0) * 100)
-      : Math.abs(line.amount_clp);
-    const dedupe_key = ccOneShotDedupeKey(
-      cardGroup,
-      line.merchant,
-      dedupeAmount,
-      line.transaction_date
-    );
+    const dedupe_key = webPasteLineDedupeKey(cardGroup, line);
     const isRepeatInPaste = seen.has(dedupe_key);
     seen.add(dedupe_key);
 
@@ -215,6 +268,13 @@ export function ccWebPasteToCsvRecords(
       statement_deuda_total: "",
       statement_monto_facturado: "",
     };
+    // The previous facturación's total, not a purchase (the feed reads it as the observed close).
+    if (isCcSaldoInicialMerchant(line.merchant)) {
+      skipped_saldo_inicial.push(
+        ccImportFlowItemFromRow(record, ccStatementLabel(statementDate, "clp"))
+      );
+      continue;
+    }
     // Cuota-billing reference rows never import — the installment schedule already bills them.
     // Reported, not silent, so the batch summary explains parsed > inserted + skipped.
     if (isCcCuotaBillingReferenceMerchant(line.merchant)) {
@@ -232,7 +292,7 @@ export function ccWebPasteToCsvRecords(
     }
   }
 
-  return { records, skipped_in_paste, skipped_cuota_billing };
+  return { records, skipped_in_paste, skipped_cuota_billing, skipped_saldo_inicial };
 }
 
 export function newWebPasteBatchId(): string {

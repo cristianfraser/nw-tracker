@@ -564,11 +564,6 @@ export function reconcilePurchaseRowsMatch(a: CcReconcileRow, b: CcReconcileRow)
   return merchantsMatchForCrossDedupe(a.merchant, b.merchant);
 }
 
-/** Web-paste vs PDF match for post-close reconcile (charges + payments). */
-export function reconcileWebPastePdfRowsMatch(a: CcReconcileRow, b: CcReconcileRow): boolean {
-  return reconcilePurchaseRowsMatch(a, b);
-}
-
 function pickPreferredReconcilePurchase(prev: CcReconcileRow, next: CcReconcileRow): CcReconcileRow {
   const prevWeb = prev.from_web_paste === true;
   const nextWeb = next.from_web_paste === true;

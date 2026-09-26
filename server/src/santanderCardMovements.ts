@@ -1,4 +1,13 @@
-import { parseWebPasteAmountToken, type CcWebPasteLine } from "./ccWebPasteParse.js";
+import {
+  isCcCuotaBillingReferenceMerchant,
+  parseWebPasteAmountToken,
+  type CcWebPasteLine,
+} from "./ccWebPasteParse.js";
+import {
+  STAMP_TAX_FEED_TYPE,
+  cuotaCountFromStampTax,
+  cuotaPurchaseTypeFromFeedDescription,
+} from "./ccCuotaPurchaseKinds.js";
 
 /**
  * Adapter from the Santander private-API movement feed to the web-paste line shape.
@@ -24,6 +33,12 @@ export type SantanderMovementSlide = {
   currency: string | null;
   account: string | null;
   rows: unknown[];
+  /**
+   * The slide's «SALDO INICIAL» row(s), verbatim — the latest close's billed total, dated at that
+   * close. Kept apart from `rows` by the fetcher; absent on files fetched before 2026-09-26, when
+   * the fetcher still discarded it.
+   */
+  saldoInicial?: unknown[];
 };
 
 export type SantanderMovementsFile = {
@@ -80,6 +95,10 @@ export function santanderMovementRowToWebPasteLine(
   if (amount.currency !== currency) {
     throw new Error(`Amount "${token}" parsed as ${amount.currency}, expected ${currency}`);
   }
+  // The «CUOT: … OPER: …» billing references share cuota descriptions but are not purchases.
+  const cuotaType = isCcCuotaBillingReferenceMerchant(merchant)
+    ? null
+    : cuotaPurchaseTypeFromFeedDescription(row.Descripcion);
   return {
     transaction_date,
     merchant,
@@ -87,7 +106,48 @@ export function santanderMovementRowToWebPasteLine(
     amount_usd: isUsd ? amount.amount : null,
     currency,
     raw_line: [row.Fecha, row.Descripcion ?? "", merchant, row.Importe].filter(Boolean).join(" "),
+    ...(cuotaType
+      ? {
+          cuota_purchase: {
+            kind: cuotaType.kind,
+            cuota_count: cuotaType.cuota_count,
+            count_source: cuotaType.cuota_count != null ? ("feed_type" as const) : null,
+            stamp_tax_clp: null,
+          },
+        }
+      : {}),
   };
+}
+
+/**
+ * Give each «cuota comercio» purchase its count from the stamp-tax row the feed lists the same
+ * day under the same merchant. Only an unambiguous pair counts: one purchase and one tax row for
+ * that (date, merchant). A tax that gives no clean count (capped, or a tiny principal whose peso
+ * rounding hides the term) leaves the count unknown — never a guess.
+ */
+function pairStampTaxes(rows: { row: SantanderMovementRow; line: CcWebPasteLine }[]): void {
+  const key = (line: CcWebPasteLine) => `${line.transaction_date}|${line.merchant.trim().toUpperCase()}`;
+  const taxes = new Map<string, number[]>();
+  const purchases = new Map<string, CcWebPasteLine[]>();
+  for (const { row, line } of rows) {
+    if (String(row.Descripcion ?? "").trim().toUpperCase() === STAMP_TAX_FEED_TYPE) {
+      taxes.set(key(line), [...(taxes.get(key(line)) ?? []), Math.abs(line.amount_clp)]);
+    } else if (line.cuota_purchase?.kind === "cuota_comercio") {
+      purchases.set(key(line), [...(purchases.get(key(line)) ?? []), line]);
+    }
+  }
+  for (const [k, lines] of purchases) {
+    const tax = taxes.get(k);
+    if (lines.length !== 1 || tax?.length !== 1) continue;
+    const line = lines[0]!;
+    const cp = line.cuota_purchase!;
+    cp.stamp_tax_clp = tax[0]!;
+    const count = cuotaCountFromStampTax(Math.abs(line.amount_clp), tax[0]!);
+    if (count.status === "exact" && cp.cuota_count == null) {
+      cp.cuota_count = count.cuota_count;
+      cp.count_source = "stamp_tax";
+    }
+  }
 }
 
 export type SantanderAccountMovements = {
@@ -103,7 +163,7 @@ export type SantanderAccountMovements = {
  * batches, and importing them together keeps one import batch per card per run.
  */
 export function santanderMovementsByAccount(file: SantanderMovementsFile): SantanderAccountMovements[] {
-  const byAccount = new Map<string, CcWebPasteLine[]>();
+  const byAccount = new Map<string, { row: SantanderMovementRow; line: CcWebPasteLine }[]>();
   for (const slide of file.slides ?? []) {
     const account = String(slide.account ?? "").trim();
     if (!account) throw new Error("Santander movements slide has no account");
@@ -111,11 +171,80 @@ export function santanderMovementsByAccount(file: SantanderMovementsFile): Santa
     if (raw !== "clp" && raw !== "usd") {
       throw new Error(`Unexpected Santander slide currency "${slide.currency}" (want CLP or USD)`);
     }
-    const lines = byAccount.get(account) ?? [];
+    const rows = byAccount.get(account) ?? [];
     for (const row of slide.rows ?? []) {
-      lines.push(santanderMovementRowToWebPasteLine(row as SantanderMovementRow, raw));
+      const r = row as SantanderMovementRow;
+      rows.push({ row: r, line: santanderMovementRowToWebPasteLine(r, raw) });
     }
-    byAccount.set(account, lines);
+    byAccount.set(account, rows);
   }
-  return [...byAccount.entries()].map(([account, lines]) => ({ account, lines }));
+  return [...byAccount.entries()].map(([account, rows]) => {
+    pairStampTaxes(rows);
+    return { account, lines: rows.map((r) => r.line) };
+  });
+}
+
+/** One card's latest close as its feed states it: date + billed total per currency. */
+export type SantanderFeedClose = {
+  account: string;
+  close_iso: string;
+  /** Debt-positive; null when that currency's slide carried no SALDO INICIAL. */
+  saldo_inicial_clp: number | null;
+  saldo_inicial_usd: number | null;
+};
+
+/**
+ * Read each card's SALDO INICIAL rows — the feed's statement of its latest close. One row per
+ * currency slide at most, and a card's CLP and USD rows must name the same close: anything else is
+ * a shape this reader does not understand, and it throws rather than pick one.
+ *
+ * The amount keeps the feed's own sign rule: `D` (cargo) is money owed — positive here, the
+ * debt-positive convention the statements use for «Monto total facturado» — and `H` a credit
+ * balance, negative.
+ */
+export function santanderFeedClosesByAccount(file: SantanderMovementsFile): SantanderFeedClose[] {
+  const byAccount = new Map<string, SantanderFeedClose>();
+  for (const slide of file.slides ?? []) {
+    const rows = slide.saldoInicial ?? [];
+    if (rows.length === 0) continue;
+    const account = String(slide.account ?? "").trim();
+    if (!account) throw new Error("Santander movements slide has no account");
+    const currency = String(slide.currency ?? "").trim().toLowerCase();
+    if (currency !== "clp" && currency !== "usd") {
+      throw new Error(`Unexpected Santander slide currency "${slide.currency}" (want CLP or USD)`);
+    }
+    if (rows.length > 1) {
+      throw new Error(
+        `Santander ${account} ${currency} slide carries ${rows.length} SALDO INICIAL rows — expected one`
+      );
+    }
+    const row = rows[0] as SantanderMovementRow;
+    const closeIso = santanderMovementDateToIso(requireString(row.Fecha, "Fecha"));
+    const token = santanderMovementAmountToken(row, currency === "usd");
+    // A zero balance is a real close (nothing billed in that currency); the shared amount parser
+    // treats 0 as "no amount", so it is recognised here first.
+    const isZero = /^[0.,\s]+$/.test(requireString(row.Importe, "Importe"));
+    const parsed = isZero ? null : parseWebPasteAmountToken(token.replace(/^-/, ""));
+    if (!isZero && (!parsed || parsed.currency !== currency)) {
+      throw new Error(`Could not parse Santander SALDO INICIAL "${row.Importe}" (${currency})`);
+    }
+    const magnitude = isZero ? 0 : Math.abs(parsed!.amount);
+    const indicator = String(row.IndicadorDebeHaber ?? "").trim().toUpperCase();
+    const amount = indicator === "H" ? -magnitude : magnitude;
+    const prev = byAccount.get(account) ?? {
+      account,
+      close_iso: closeIso,
+      saldo_inicial_clp: null,
+      saldo_inicial_usd: null,
+    };
+    if (prev.close_iso !== closeIso) {
+      throw new Error(
+        `Santander ${account}: SALDO INICIAL rows name two closes (${prev.close_iso} and ${closeIso})`
+      );
+    }
+    if (currency === "clp") prev.saldo_inicial_clp = amount;
+    else prev.saldo_inicial_usd = amount;
+    byAccount.set(account, prev);
+  }
+  return [...byAccount.values()];
 }

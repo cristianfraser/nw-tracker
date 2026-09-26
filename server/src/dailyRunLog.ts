@@ -21,7 +21,7 @@ export const DAILY_RUN_MESSAGE_TITLE = "Daily bank run";
 export const DAILY_RUN_FAILED_TITLE = "Daily bank run failed";
 
 // The hourly e-mail poll (`scraper/email-run.sh`) records under its OWN titles: the daily
-// titles drive `dailyRunAlreadyRanToday` (the 22:00 run's same-day skip) and
+// titles drive `dailyRunFinishedWithin` (the 22:00 run's repeat skip) and
 // `staleDailyRunDays`, so an hourly row under them would silently disable the nightly bank
 // run for the day and mask a dead one.
 export const HOURLY_EMAIL_RUN_MESSAGE_TITLE = "Hourly e-mail poll";
@@ -50,17 +50,30 @@ export function lastDailyRunAt(opts?: { successOnly?: boolean }): string | null 
   return row?.created_at ?? null;
 }
 
+/** How close to the previous run the scheduled run counts as a repeat and skips itself. */
+export const DAILY_RUN_REPEAT_WINDOW_MINUTES = 60;
+
 /**
- * Did a run already happen today (Chile)?
+ * Did a run finish less than `windowMinutes` ago?
  *
- * The read side of the scheduled run's same-day skip: triggering the sync by hand should make the
- * 22:00 LaunchAgent a no-op, rather than hitting the banks a second time for movements that were
- * already imported hours earlier. Counts failed runs too — a run that failed today was still a
- * real attempt, and the nightly job silently retrying it would hide the failure the alert raised.
+ * The read side of the scheduled run's repeat skip: a 22:00 LaunchAgent run right behind a manual
+ * one (or a second launchd fire after a wake) would only log in to the banks again for the same
+ * movements. Anything older is not a repeat — until 2026-09-26 the rule was «any run earlier
+ * the same Chile day», which let a 12:55 manual run, or even the 04:21 catch-up run launchd fires
+ * when the Mac wakes from a night asleep, cancel that evening's run and leave the afternoon's
+ * card movements for the next night (2026-09-25). Counts failed runs too — a failure seconds
+ * ago was a real attempt.
  */
-export function dailyRunAlreadyRanToday(nowYmd = chileCalendarTodayYmd()): boolean {
+export function dailyRunFinishedWithin(
+  windowMinutes: number = DAILY_RUN_REPEAT_WINDOW_MINUTES,
+  now: Date = new Date()
+): boolean {
   const last = lastDailyRunAt();
-  return last != null && chileYmdFromStoredUtc(last) === nowYmd;
+  if (last == null) return false;
+  const finished = new Date(`${String(last).trim().replace(" ", "T")}Z`);
+  if (Number.isNaN(finished.getTime())) return false;
+  const ageMs = now.getTime() - finished.getTime();
+  return ageMs >= 0 && ageMs < windowMinutes * 60_000;
 }
 
 /**
@@ -94,7 +107,7 @@ function chileStampFromStoredUtc(stored: string): string {
  * only — so a resolved outage read as unresolved forever (2026-09-11: the 22:37 «fetch Santander»
  * failure sat on top while the 22:46 retry that fixed it was a log row nobody sees there). The
  * recovery is therefore recorded as a notification too, under the SAME title as any clean run:
- * the titles drive `lastDailyRunAt`, `dailyRunAlreadyRanToday` and `staleDailyRunDays`, and the
+ * the titles drive `lastDailyRunAt`, `dailyRunFinishedWithin` and `staleDailyRunDays`, and the
  * kind is part of none of those reads. Only the first success after a failure qualifies — the
  * next clean run finds a success on top and is a log again.
  */

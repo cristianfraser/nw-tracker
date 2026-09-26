@@ -91,6 +91,7 @@ describe("santanderStatementImport", () => {
       statement_date: "20/9/2026",
       period_from: null,
       pay_by: "10/10/2026",
+      next_close: null,
       saldo_anterior: null,
       total_pagos: null,
       deuda_total: null,

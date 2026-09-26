@@ -37,6 +37,7 @@
     "import:payroll-liquidaciones": "npm run import:payroll-liquidaciones -w nw-tracker-server",
     "fetch:santander": "npm --prefix scraper run fetch:santander --",
     "fetch:santander-docs": "npm --prefix scraper run fetch:santander-docs --",
+    "check:santander-catchup": "npm --prefix scraper run --silent check:santander-catchup --",
     "fetch:fintual-docs": "npm --prefix scraper run fetch:fintual-docs --",
     "import:santander-movements": "npm run import:santander-movements -w nw-tracker-server --",
     "import:santander-statements": "npm run import:santander-statements -w nw-tracker-server --",

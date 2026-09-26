@@ -684,7 +684,8 @@
       "summaryStatements": "statements: {{n}}",
       "summaryInstallmentPlans": "installment plans: {{n}}",
       "summaryInstallmentPayments": "installment payments: {{n}}",
-      "summaryWarnings": "warnings: {{msgs}}"
+      "summaryWarnings": "warnings: {{msgs}}",
+      "resultSkipReasonSaldoInicial": "opening balance (the previous bill's total), not a purchase"
     },
     "checking": {
       "monthModalTitle": "Movements {{month}}",
@@ -715,12 +716,13 @@
     },
     "creditCard": {
       "lastFacturado": "Last billed",
-      "nextPayment": "Next payment",
-      "cupoUtilizado": "Credit used",
+      "openFacturacion": "Open billing",
+      "cupo": "Credit line",
+      "cupoAvailableOf": "{{available}} available of {{total}}",
       "deudaEnCuotas": "Installment debt",
       "saldoTotal": "Total balance",
       "historialTitle": "History",
-      "historialHint": "Lines: installment debt and total balance (same criteria as Monthly detail). Bars: that billing month's payment due (due the following month) and the amount billed at close. Future months: nothing billed (nothing invoiced yet) and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
+      "historialHint": "Lines: installment debt still owed at each month-end (the daily view's line — a cycle's installments stay until that bill is paid, so it can exceed the Monthly detail's «installment debt», which drops them at the close that bills them) and total balance (same criteria as Monthly detail). Bars: that billing month's payment due (due the following month) and the amount billed at close. Future months: nothing billed (nothing invoiced yet) and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
       "historialHintDaily": "Daily lines: total balance owed on each date (purchases raise it on the purchase date — installment plans at their full amount — and payments drop it) and the outstanding installment debt (contracts up on purchase day; each cycle's cuotas leave the day its facturación is actually paid, or on its pay-by when no payment is on record). Past today the installment plan is projected to its end (both lines meet once the open cycle is paid). Billed/paid bars are billing-month figures and hide in daily view.",
       "historialCurrentMonth": "Current month",
       "historialCurrentYear": "Current year",
@@ -732,7 +734,6 @@
       "tooltipPagosYear": "Year's payments",
       "historialOpenMonth": "Open billing month",
       "historialProjectionStart": "Today (projection →)",
-      "valuationTitle": "Valuation and contributions",
       "ytdSection": "YTD (calendar year)",
       "accSection": "Accumulated earnings",
       "accAreaName": "Accumulated earnings",
@@ -793,7 +794,12 @@
       "facturacionDeleteConfirmCancel": "Cancel",
       "lineColActions": "Actions",
       "associatedCardsTitle": "Associated cards",
-      "associatedCardsHint": "Physical card numbers with statements imported into this account."
+      "associatedCardsHint": "Physical card numbers with statements imported into this account.",
+      "closeDateEstimatedHint": "Estimated from the card's configured cycle: the bank has not published this close yet.",
+      "closeDateAnnouncedHint": "Announced as the next billing period by the previous statement.",
+      "provisionalClose": "provisional",
+      "provisionalCloseHint": "Closed at the bank, statement not imported yet. The facturado is the bank's billed total (the card feed's SALDO INICIAL) when the feed saw the close, otherwise the app's estimate.",
+      "provisionalEstimateHint": "The app had estimated {{amount}} for this facturación."
     },
     "monthlyPerfIntro": "Two charts: (1) monthly P/L vs <1>YTD</1> (the area restarts every January). (2) the same monthly Δ with an <3>Accumulated earnings</3> area (continuous from the first month, no per-year bands). The table keeps the detail.",
     "monthlyPerfMortgageNote": " For the mortgage, <1>month P/L</1> = CLP balance drop − payments: negative = financing cost (interest, insurance and UF variation), not the investment formula.",

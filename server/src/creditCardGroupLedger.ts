@@ -1,11 +1,18 @@
+import type { CcCloseSource } from "./ccBillingCloses.js";
 import type { CcBillingDetailMonthRow, CcFacturacionRow } from "./ccBillingViews.js";
 import type { CcFinancingPlMonthRow } from "./creditCardPerformancePl.js";
 import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import {
   creditCardInstallmentsResponse,
   type CcInstallmentsTotals,
+  type CcCupoSnapshot,
 } from "./creditCardInstallments.js";
-import { buildCcBillingMonthChartSeries, buildCcHistorialChartSeries } from "./creditCardChartSeries.js";
+import {
+  buildCcBillingMonthChartSeries,
+  buildCcHistorialChartSeries,
+  type CcHistorialChartOptions,
+} from "./creditCardChartSeries.js";
+import { ccInstallmentDebtAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 
@@ -16,7 +23,12 @@ function sumNullable(a: number | null | undefined, b: number | null | undefined)
   return (a ?? 0) + (b ?? 0);
 }
 
-function resolveCcMasterAccountIds(portfolioGroupSlug: string): number[] {
+/**
+ * CC masters a Pasivos-side group page sums: an issuer page's config members, or every
+ * operational master for the credit-card group / Pasivos root. The daily historial block
+ * (`ccDailyHistorialBlock.ts`) reads the same list so the D↔M toggle keeps one membership.
+ */
+export function resolveCcMasterAccountIds(portfolioGroupSlug: string): number[] {
   if (getCreditCardGroupBySlug(portfolioGroupSlug)) {
     return listCreditCardGroupMasterAccountIds(portfolioGroupSlug);
   }
@@ -26,6 +38,17 @@ function resolveCcMasterAccountIds(portfolioGroupSlug: string): number[] {
     );
   }
   return [];
+}
+
+const CLOSE_SOURCE_RANK: Record<CcCloseSource, number> = {
+  statement: 3,
+  feed: 2,
+  announced: 1,
+  estimated: 0,
+};
+
+function weakerCloseSource(a: CcCloseSource, b: CcCloseSource): CcCloseSource {
+  return CLOSE_SOURCE_RANK[a] <= CLOSE_SOURCE_RANK[b] ? a : b;
 }
 
 function mergeFacturaciones(ledgers: CcLedgerResponse[]): CcFacturacionRow[] {
@@ -45,6 +68,15 @@ function mergeFacturaciones(ledgers: CcLedgerResponse[]): CcFacturacionRow[] {
         facturado_total_clp: sumNullable(prev.facturado_total_clp, row.facturado_total_clp),
         cuota_a_pagar_clp: sumNullable(prev.cuota_a_pagar_clp, row.cuota_a_pagar_clp),
         is_open_month: prev.is_open_month || row.is_open_month,
+        // Provisional while any member still awaits its statement; its estimate is only
+        // meaningful per card, so a merged month carries the Σ when every member has one.
+        is_provisional_close: prev.is_provisional_close || row.is_provisional_close,
+        provisional_estimate_total_clp:
+          prev.provisional_estimate_total_clp != null && row.provisional_estimate_total_clp != null
+            ? prev.provisional_estimate_total_clp + row.provisional_estimate_total_clp
+            : null,
+        // The weaker evidence wins, so a merged row never claims more certainty than a member.
+        close_date_source: weakerCloseSource(prev.close_date_source, row.close_date_source),
         close_date: prev.billing_month >= row.billing_month ? prev.close_date : row.close_date,
         close_date_iso:
           prev.billing_month >= row.billing_month ? prev.close_date_iso : row.close_date_iso,
@@ -83,6 +115,7 @@ function mergeBillingDetail(ledgers: CcLedgerResponse[]): CcBillingDetailMonthRo
           prev.cuota_a_pagar_next_mes_clp + row.cuota_a_pagar_next_mes_clp,
         balance_total_clp: prev.balance_total_clp + row.balance_total_clp,
         ...(prev.projected === true && row.projected === true ? { projected: true } : {}),
+        ...(prev.provisional === true || row.provisional === true ? { provisional: true } : {}),
       });
     }
   }
@@ -182,6 +215,29 @@ function mergeTotals(ledgers: CcLedgerResponse[]): CcInstallmentsTotals {
   };
 }
 
+/**
+ * Group credit line = Σ over the active masters that carry a snapshot. `total` is null as soon
+ * as one contributing master has no configured cupo (a missing limit is not 0), `used` sums what
+ * is known, and `billing_month` is the masters' common open month (null when they differ).
+ */
+function mergeCupo(ledgers: CcLedgerResponse[]): CcCupoSnapshot | undefined {
+  const active = ledgers.filter((l) => l.cupo != null && !isNavRetiredCcMaster(l.account_id));
+  if (active.length === 0) return undefined;
+  let total: number | null = 0;
+  let used: number | null = null;
+  for (const l of active) {
+    const c = l.cupo!;
+    total = total != null && c.total_clp != null ? total + c.total_clp : null;
+    if (c.used_clp != null) used = (used ?? 0) + c.used_clp;
+  }
+  return {
+    total_clp: total,
+    used_clp: used,
+    available_clp: total != null && used != null ? total - used : null,
+    billing_month: mergeOpenBillingMonth(ledgers),
+  };
+}
+
 function mergeOpenBillingMonth(ledgers: CcLedgerResponse[]): string | null {
   const active = ledgers.filter(
     (l) => l.open_billing_month != null && !isNavRetiredCcMaster(l.account_id)
@@ -191,8 +247,16 @@ function mergeOpenBillingMonth(ledgers: CcLedgerResponse[]): string | null {
   return active.every((l) => l.open_billing_month === first) ? first : null;
 }
 
-/** Merge per-master CC ledger payloads into one group-shaped response. */
-export function mergeCreditCardLedgers(ledgers: CcLedgerResponse[]): CcLedgerResponse {
+/**
+ * Merge per-master CC ledger payloads into one group-shaped response. `opts` carries the
+ * historial chart's «deuda en cuotas» for the merged months (the members' daily walks summed at
+ * each month-end — `creditCardGroupLedgerResponse` passes it; without it the merged billing-frame
+ * column is plotted).
+ */
+export function mergeCreditCardLedgers(
+  ledgers: CcLedgerResponse[],
+  opts?: CcHistorialChartOptions
+): CcLedgerResponse {
   if (ledgers.length === 0) {
     return {
       account_id: 0,
@@ -239,8 +303,14 @@ export function mergeCreditCardLedgers(ledgers: CcLedgerResponse[]): CcLedgerRes
     billing_detail_by_month,
     financing_pl_by_month,
     billing_month_chart: buildCcBillingMonthChartSeries(facturaciones, financing_pl_by_month),
-    historial_chart: buildCcHistorialChartSeries(installment_history_months, billing_detail_by_month, facturaciones),
+    historial_chart: buildCcHistorialChartSeries(
+      installment_history_months,
+      billing_detail_by_month,
+      facturaciones,
+      opts
+    ),
     open_billing_month: mergeOpenBillingMonth(ledgers),
+    cupo: mergeCupo(ledgers),
     associated_card_last4s: [...associated].sort(),
   };
 }
@@ -254,5 +324,7 @@ export function creditCardGroupLedgerResponse(
     return mergeCreditCardLedgers([]);
   }
   const ledgers = masterIds.map((id) => creditCardInstallmentsResponse(id, extraOffsets));
-  return mergeCreditCardLedgers(ledgers);
+  return mergeCreditCardLedgers(ledgers, {
+    installmentDebtForMonths: (months) => ccInstallmentDebtAtMonthEndsClp(masterIds, months),
+  });
 }

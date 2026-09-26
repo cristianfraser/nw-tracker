@@ -48,6 +48,43 @@ function formatProxyCell(
   return `${sign}${formatClp(Math.round(t.total_gain_clp))} (${t.blended_return_pct >= 0 ? "+" : ""}${formatPct(t.blended_return_pct, 1)})`;
 }
 
+/**
+ * Close date with its provenance: an estimate from the config cycle reads «≈», a close announced
+ * by the previous statement carries a hint; a statement or feed close is plain.
+ */
+function CloseDateCell({ row }: { row: CcFacturacionDto }) {
+  const { t } = useTranslation();
+  if (row.close_date_source === "estimated") {
+    return (
+      <span className="muted" title={t("accountDetail.creditCard.closeDateEstimatedHint")}>
+        ≈ {row.close_date}
+      </span>
+    );
+  }
+  if (row.close_date_source === "announced") {
+    return <span title={t("accountDetail.creditCard.closeDateAnnouncedHint")}>{row.close_date}</span>;
+  }
+  return <>{row.close_date}</>;
+}
+
+/** «provisoria» next to a month closed at the bank whose statement is not imported yet. */
+function ProvisionalMark({ row }: { row: CcFacturacionDto }) {
+  const { t } = useTranslation();
+  if (!row.is_provisional_close) return null;
+  const estimate =
+    row.provisional_estimate_total_clp != null
+      ? ` ${t("accountDetail.creditCard.provisionalEstimateHint", {
+          amount: formatClp(row.provisional_estimate_total_clp),
+        })}`
+      : "";
+  return (
+    <span className="muted" title={`${t("accountDetail.creditCard.provisionalCloseHint")}${estimate}`}>
+      {" "}
+      {t("accountDetail.creditCard.provisionalClose")}
+    </span>
+  );
+}
+
 function FacturacionMobileCard({
   row,
   proxy,
@@ -70,15 +107,18 @@ function FacturacionMobileCard({
   onOpen: (row: CcFacturacionDto) => void;
 }) {
   const title = (
-    <Button variant="link" onClick={() => onOpen(row)}>
-      {formatYmEs(row.billing_month)}
-    </Button>
+    <>
+      <Button variant="link" onClick={() => onOpen(row)}>
+        {formatYmEs(row.billing_month)}
+      </Button>
+      <ProvisionalMark row={row} />
+    </>
   );
 
   return (
     <TableMobileCard title={title}>
       <TableMobileCardSection>
-        <TableMobileCardRow label={labels.closeDate} value={row.close_date} />
+        <TableMobileCardRow label={labels.closeDate} value={<CloseDateCell row={row} />} />
         <TableMobileCardRow label={labels.payBy} value={row.pay_by ?? "—"} />
       </TableMobileCardSection>
       <TableMobileCardSection>
@@ -254,8 +294,11 @@ export function CreditCardFacturacionesTable({
                   <Button variant="link" onClick={() => openFacturacion(row)}>
                     {formatYmEs(row.billing_month)}
                   </Button>
+                  <ProvisionalMark row={row} />
                 </td>
-                <td className={cn("mono", "desktop-only", styles.nowrap)}>{row.close_date}</td>
+                <td className={cn("mono", "desktop-only", styles.nowrap)}>
+                  <CloseDateCell row={row} />
+                </td>
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>{row.pay_by ?? "—"}</td>
                 <td className="mono desktop-only">{formatOrDash(row.facturado_clp, formatClp)}</td>
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatFacturadoUsdCell(row)}</td>
