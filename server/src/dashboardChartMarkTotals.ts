@@ -1,5 +1,5 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { applyCashSavingsNwAdjustment } from "./cashEqsBucketNet.js";
+import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 
 /**
@@ -31,8 +31,9 @@ export type ChartMarkTotalAccountRow = {
 
 export type SlugMarkTotalsOpts = {
   /**
-   * Apply the net-worth cash adjustment (subtract the linked credit card owed on that date)
-   * — set for the `cash_eqs` bucket only, matching `buildDashboardBucketDailySeriesClp`.
+   * Apply the net-worth cash adjustment (`cashNetOfLinkedCreditCards`: subtract the linked
+   * credit cards' owed on that date, signed — a total in credit adds) — set for the
+   * `cash_eqs` bucket only, matching `buildDashboardBucketDailySeriesClp`.
    */
   netLinkedCreditCard?: boolean;
 };
@@ -49,7 +50,8 @@ export type SlugMarkTotalsOpts = {
  *
  * Exception: `netLinkedCreditCard` (the cash_eqs bucket) always emits, matching
  * `buildDashboardBucketDailySeriesClp` — the cash line nets the linked card at every date, so
- * a date with no cash mark but an owed card is a real (negative) value, not an absence.
+ * a date with no cash mark but a linked card balance is a real value (negative when owed,
+ * positive when in credit), not an absence.
  */
 export function slugMarkTotalsAtDatesClp(
   accounts: readonly ChartMarkTotalAccountRow[],
@@ -73,7 +75,7 @@ export function slugMarkTotalsAtDatesClp(
       }
     }
     if (opts?.netLinkedCreditCard) {
-      raw = applyCashSavingsNwAdjustment(raw, linkedCreditCardClpForCashCardAsOf(ymd));
+      raw = cashNetOfLinkedCreditCards(raw, linkedCreditCardClpForCashCardAsOf(ymd));
     } else if (!any) {
       continue;
     }

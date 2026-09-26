@@ -1,7 +1,7 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
-import { applyCashSavingsNwAdjustment } from "./cashEqsBucketNet.js";
+import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import {
   consolidatedClosingRawByDate,
@@ -100,8 +100,8 @@ function portfolioGroupValueClpAtRaw(
   if (consolidated != null) return consolidated;
   const raw = rawPortfolioGroupAccountsClpAt(bucket, asOfYmd);
   if (bucket !== "cash_eqs") return raw;
-  const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
-  return applyCashSavingsNwAdjustment(raw, cc);
+  // Unrounded like every other bucket's raw — the apportionment below rounds once.
+  return cashNetOfLinkedCreditCards(raw, linkedCreditCardClpForCashCardAsOf(asOfYmd));
 }
 
 /**
@@ -219,7 +219,7 @@ export function buildDashboardBucketDailySeriesClp(
         if (clp != null && Number.isFinite(clp)) raw += clp;
       }
       if (slug === "cash_eqs") {
-        raw = applyCashSavingsNwAdjustment(raw, linkedCreditCardClpForCashCardAsOf(ymd));
+        raw = cashNetOfLinkedCreditCards(raw, linkedCreditCardClpForCashCardAsOf(ymd));
       }
       row[slug] = Math.round(raw);
     }
@@ -256,12 +256,14 @@ export function dashboardBucketDayPriorCloses(priorDayYmd: string): {
       if (u != null && Number.isFinite(u)) rawUsd += u;
     }
     if (slug === "cash_eqs") {
-      const netDate = priorDayYmd;
-      const cc = linkedCreditCardClpForCashCardAsOf(netDate);
-      const netted = applyCashSavingsNwAdjustment(rawClp, cc);
-      const ccUsdAdj = clpToUsdForBalanceAt(netted - rawClp, netDate);
-      if (ccUsdAdj != null && Number.isFinite(ccUsdAdj)) rawUsd += ccUsdAdj;
-      rawClp = netted;
+      // Same netting as the live card (the consolidation) — a linked total in credit counts
+      // on both sides of the day delta, so it can't show up as a day change.
+      const ccClp = linkedCreditCardClpForCashCardAsOf(priorDayYmd);
+      rawClp = cashNetOfLinkedCreditCards(rawClp, ccClp);
+      const ccUsd = clpToUsdForBalanceAt(ccClp, priorDayYmd);
+      if (ccUsd != null && Number.isFinite(ccUsd)) {
+        rawUsd = cashNetOfLinkedCreditCards(rawUsd, ccUsd);
+      }
     }
     clp[slug] = Math.round(rawClp);
     usd[slug] = rawUsd;

@@ -15,11 +15,26 @@ export function syntheticCashSavingsShortfallAccountId(): number {
   return SYNTHETIC_SHORTFALL_ACCOUNT_ID;
 }
 
-/** Ahorros y reservas NW: Σ savings − linked tarjeta balance total (same as card footer). */
-export function applyCashSavingsNwAdjustment(rawSavingsClp: number, ccBalanceClp: number): number {
-  const cc = Math.round(ccBalanceClp);
-  if (cc <= 0) return Math.round(rawSavingsClp);
-  return Math.round(rawSavingsClp) - cc;
+/**
+ * The cash bucket («Efectivo» / cash_eqs) net of its linked credit cards — the ONE place the
+ * linked-card total (`linkedCreditCardClpForCashCardAsOf` / `…ByDates`) enters a cash value.
+ * Every path goes through it: the live card and its month/year/day prior closes
+ * (`portfolioGroupValueAtDate.ts`, via the group consolidation below for live/month/year),
+ * the daily series (`buildDashboardBucketDailySeriesClp`), the monthly chart totals
+ * (`slugMarkTotalsAtDatesClp`) and the daily reference overlays (`dailyReferenceLines.ts`).
+ *
+ * Signed, never clamped. The linked total is the cards' owed-on-date sum, and an overpaid
+ * card owes a NEGATIVE amount — money the bank holds for you — so a total in credit ADDS to
+ * cash. A clamp that ignored the credit on some paths while the consolidation counted it made
+ * the live card and its prior-day close disagree by exactly the credit (a phantom day change),
+ * and the daily/monthly charts disagree with the card, whenever the linked cards were net in
+ * credit.
+ *
+ * Unrounded and unit-agnostic (both legs in the caller's unit — the consolidation nets in USD
+ * too): each caller rounds once at its end, the same way it rounds every other bucket's Σ.
+ */
+export function cashNetOfLinkedCreditCards(rawCash: number, linkedCreditCardsOwed: number): number {
+  return rawCash - linkedCreditCardsOwed;
 }
 
 function convertLinkedCc(clp: number, asOf: string, unit: TsUnit): number {
@@ -70,13 +85,18 @@ export type DashboardLinkedBalanceDto = {
   route_path: string;
 };
 
-/** Tarjeta de crédito balance shown linked to the Ahorros y reservas home card. */
+/**
+ * Tarjeta de crédito balance shown linked to the Ahorros y reservas home card — the footer
+ * that explains why the card's header (`cashNetOfLinkedCreditCards`) differs from Σ savings.
+ * Shown whenever the linked total is non-zero, a total in credit too (as a negative owed):
+ * the header counts the credit, so hiding it would leave that difference unexplained.
+ */
 export function cashSavingsLinkedBalances(
   asOfYmd: string,
   includeUsd: boolean
 ): DashboardLinkedBalanceDto[] {
   const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
-  if (cc <= 0) return [];
+  if (cc === 0) return [];
   const usd = includeUsd ? clpToUsdForBalanceAt(cc, asOfYmd) : null;
   return [
     {
@@ -111,7 +131,8 @@ function priorMonthEndYmdForConsolidatedRow(asOf: string): string {
 }
 
 /**
- * Net linked tarjeta balance from consolidated cash_savings month cierres (chart NAV / bucket level).
+ * Net linked tarjeta balance from consolidated cash_savings month cierres (chart NAV / bucket
+ * level), through {@link cashNetOfLinkedCreditCards} like every other cash path.
  * Nominal P/L and net_capital_flow stay savings-only; CC is a balance offset on closing/prior only.
  */
 export function netLinkedCreditCardFromCashConsolidated(
@@ -128,11 +149,11 @@ export function netLinkedCreditCardFromCashConsolidated(
       if (prior_closing != null && Number.isFinite(prior_closing)) {
         const priorEnd = priorMonthEndYmdForConsolidatedRow(row.as_of_date);
         const linkedCcPrior = linkedCcOffsetAt(priorEnd, unit);
-        prior_closing = prior_closing - linkedCcPrior;
+        prior_closing = cashNetOfLinkedCreditCards(prior_closing, linkedCcPrior);
       }
       return {
         ...row,
-        closing_value: row.closing_value - linkedCcClose,
+        closing_value: cashNetOfLinkedCreditCards(row.closing_value, linkedCcClose),
         prior_closing,
       };
     })

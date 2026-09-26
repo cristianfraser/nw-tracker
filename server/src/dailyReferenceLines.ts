@@ -17,6 +17,7 @@
 import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { getAggregationCached } from "./aggregationCache.js";
 import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
+import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { getBucketDailySeriesCached, type DailySeriesAccountLine } from "./dailySeries.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { linkedCreditCardClpForCashCardByDates } from "./liabilityTree.js";
@@ -69,7 +70,7 @@ function sourceGroupDailyValues(
     // A cash bucket's canonical Total is CC-netted (`netLinkedCreditCardFromCashConsolidated`
     // feeds the monthly chart Total via `applyConsolidatedTotalToGroupTabBlock`), so the
     // overlay has to net too or the daily line sits a whole card balance above the monthly
-    // one. Per-date, on the daily owed convention.
+    // one. Per-date, on the daily owed convention, through the one cash netting rule.
     const ccByDate = isCashEqsNwValuationGroupSlug(sourceSlug)
       ? linkedCreditCardClpForCashCardByDates(series.points.map((p) => p.as_of_date))
       : null;
@@ -78,7 +79,10 @@ function sourceGroupDailyValues(
       if (p.value == null || !Number.isFinite(p.value)) continue;
       const ccClp = ccByDate?.get(p.as_of_date) ?? 0;
       const cc = ccClp !== 0 ? convertLegToUnit(ccClp, p.as_of_date, unit, now) : 0;
-      out.set(p.as_of_date, Number.isFinite(cc) ? p.value - cc : p.value);
+      out.set(
+        p.as_of_date,
+        Number.isFinite(cc) ? cashNetOfLinkedCreditCards(p.value, cc) : p.value
+      );
     }
     return out;
   });
