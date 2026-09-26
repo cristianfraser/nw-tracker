@@ -128,9 +128,10 @@ const DAILY_AGGREGATE_PREFIXES = ["daily.series|", "daily.overview|", "daily.ref
  * Only valid when the write cannot have moved a **historical** mark, which is exactly the
  * live-quote case: `daily.marks|` entries hold days strictly before Chile today, and a
  * historical mark reads `equity_daily` / `fx_daily` EOD only (`accountMarkClpAtYmd`'s live
- * stack is gated on `asOfYmd === today`, and `computeEquityMtmClp` only reaches
- * `fxForLiveMtm` when handed an explicit live price). Today's mark is never cached, so the
- * rebuilt aggregations still pick up the new quote.
+ * stack is gated on `asOfYmd === today`, and `fxForLiveMtm`, the live-fx reader the equity
+ * and crypto MTM helpers use, returns the live CLP=X row only for a date on or after that
+ * row's session — Chile today — so an earlier date reads the stored close). Today's mark is
+ * never cached, so the rebuilt aggregations still pick up the new quote.
  */
 export function invalidateDailyAggregates(): void {
   for (const prefix of DAILY_AGGREGATE_PREFIXES) deleteKeysMatchingPrefix(prefix);
