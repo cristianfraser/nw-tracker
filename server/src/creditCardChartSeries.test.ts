@@ -39,6 +39,8 @@ const makeFacturacion = (
   is_provisional_close: false,
   close_date_source: "statement",
   provisional_estimate_total_clp: null,
+  usd_rate_clp: null,
+  usd_rate_source: null,
   ...overrides,
 });
 

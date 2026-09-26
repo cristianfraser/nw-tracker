@@ -81,6 +81,8 @@ describe("mergeCreditCardLedgers", () => {
           is_provisional_close: false,
           close_date_source: "statement" as const,
           provisional_estimate_total_clp: null,
+          usd_rate_clp: null,
+          usd_rate_source: null,
         },
       ] satisfies CcFacturacionRow[],
       totals: {
@@ -108,6 +110,8 @@ describe("mergeCreditCardLedgers", () => {
           is_provisional_close: false,
           close_date_source: "statement" as const,
           provisional_estimate_total_clp: null,
+          usd_rate_clp: null,
+          usd_rate_source: null,
         },
       ] satisfies CcFacturacionRow[],
       totals: {
