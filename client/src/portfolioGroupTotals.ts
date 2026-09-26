@@ -71,15 +71,18 @@ export function sumDashboardRowsUsdForNavGroup(
   return sumDashboardRowsUsdForNavNode(node, accounts);
 }
 
-/** Ahorros y reservas NW total aligned with server `sumCashSavingsNwAdjusted`. */
+/**
+ * Ahorros y reservas NW total for a payload without server bucket totals (`dashPickForNavStrip`
+ * placeholder path), mirroring the server's `cashNetOfLinkedCreditCards`: the linked card
+ * balance (the `linked_balances` footer) is subtracted signed — a total in credit adds.
+ */
 export function sumCashSavingsAdjustedForNav(
   netWorthRoot: NavTreeNodeDto | null | undefined,
   accounts: DashboardAccountRow[],
   linkedCreditCardBalanceClp: number
 ): number {
   const raw = sumDashboardRowsForNavGroup(netWorthRoot, "cash_savings", accounts);
-  const cc = Math.round(linkedCreditCardBalanceClp);
-  return cc > 0 ? raw - cc : raw;
+  return raw - linkedCreditCardBalanceClp;
 }
 
 export function sumCashSavingsAdjustedUsdForNav(
@@ -92,6 +95,5 @@ export function sumCashSavingsAdjustedUsdForNav(
   if (linkedCreditCardBalanceUsd == null || !Number.isFinite(linkedCreditCardBalanceUsd)) {
     return raw;
   }
-  const cc = Math.round(linkedCreditCardBalanceUsd);
-  return cc > 0 ? raw - cc : raw;
+  return raw - linkedCreditCardBalanceUsd;
 }

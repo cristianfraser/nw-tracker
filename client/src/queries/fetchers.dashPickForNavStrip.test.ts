@@ -149,8 +149,52 @@ describe("dashPickForNavStrip USD totals", () => {
     );
 
     expect(dash.totals.brokerage_usd).toBe(2000);
+    expect(dash.totals.cash_eqs_clp).toBe(850_000);
     expect(dash.totals.cash_eqs_usd).toBe(900);
     expect(dash.totals.net_worth_usd).toBe(2900);
+  });
+
+  it("counts a linked card total in credit toward cash, like the server's netting", () => {
+    const dash = dashPickForNavStrip(
+      {
+        card_metrics_by_slug: {},
+        accounts: [
+          dashRow({
+            account_id: 2,
+            name: "Cash",
+            group_slug: "cash_savings",
+            current_value_clp: 950_000,
+            current_value_usd: 1000,
+          }),
+        ],
+        overviewPoints: [],
+        dashboard_layout: [
+          {
+            slug: "cash_eqs",
+            label: "Ahorros",
+            label_i18n_key: null,
+            sort_order: 1,
+            bucket_slug: "cash_eqs",
+            card_css: null,
+            // An overpaid card owes a negative amount: the bank holds money for you.
+            linked_balances: [
+              {
+                slug: "credit_card",
+                label: "CC",
+                label_i18n_key: "liabilities.creditCard",
+                clp: -100_000,
+                usd: -100,
+                route_path: "/liabilities/credit_card",
+              },
+            ],
+          },
+        ],
+      },
+      netWorth
+    );
+
+    expect(dash.totals.cash_eqs_clp).toBe(1_050_000);
+    expect(dash.totals.cash_eqs_usd).toBe(1100);
   });
 
   it("omits USD totals when accounts lack current_value_usd", () => {
