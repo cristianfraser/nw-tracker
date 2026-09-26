@@ -14,7 +14,7 @@ import {
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
-import { fxForLiveMtm, fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { fxForLiveMtm } from "./fxRates.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
 
 export type CryptoAsset = "BTC" | "ETH";
@@ -93,10 +93,12 @@ export function computeCryptoMtmClp(
   if (!Number.isFinite(units) || units <= 1e-12) return 0;
   const closeUsd = priceUsd ?? equityCloseEod(ticker, asOfYmd);
   if (closeUsd == null || !Number.isFinite(closeUsd)) return null;
-  const fx =
-    priceUsd != null && Number.isFinite(priceUsd)
-      ? fxForLiveMtm(asOfYmd, now)
-      : fxMonthEndForBalanceUsd(asOfYmd);
+  // The fx is `asOfYmd`'s frame whatever the price source: live CLP=X while that date's fx day
+  // is open, the stored close after it. A historical date never matches the live row's
+  // session, so it reads the stored close as before. Gating the live rate on a live PRICE
+  // valued a today mark with no fresh coin quote (the EOD-close fallback) at the previous
+  // day's stored fx while the live-quote branch used the live rate.
+  const fx = fxForLiveMtm(asOfYmd, now);
   if (!fx || fx.clp_per_usd <= 0) return null;
   const clp = units * closeUsd * fx.clp_per_usd;
   return Number.isFinite(clp) ? clp : null;
