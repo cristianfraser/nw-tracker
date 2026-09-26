@@ -268,11 +268,7 @@ export async function buildAccountDetailBundle(
     },
   };
   if (category_slug === "credit_card") {
-    try {
-      ccLedger = creditCardInstallmentsResponse(accountId, extraOffsets);
-    } catch {
-      /* keep empty */
-    }
+    ccLedger = creditCardInstallmentsResponse(accountId, extraOffsets);
   }
 
   const retirementBucketIds = leafAssetGroupIdsUnder("retirement");
