@@ -23,16 +23,13 @@ import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
-import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { dashboardBucketSlugForAccountId, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import { computePeriodReturns } from "./periodReturns.js";
 import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
-import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { equityReturnSnapshot } from "./equityReturns.js";
-import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
@@ -40,8 +37,9 @@ import {
   getAccountValuationTimeseries,
   type TsUnit,
 } from "./valuationTimeseries.js";
-import { latestValuationRowOnOrBeforeChileToday } from "./valuationLatest.js";
-import { latestValuationDisplayForAccount, buildDashboardAccountRows } from "./dashboardAccounts.js";
+import { buildDashboardAccountRows } from "./dashboardAccounts.js";
+import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { accountDisplayValue } from "./accountDisplayValue.js";
 import { totalWithdrawalsClpForAccount } from "./accountDeposits.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
@@ -142,14 +140,12 @@ export async function buildAccountDetailBundle(
       : cat.bucket_label;
 
   const deposits_clp = pocketDepositsClpForAccount(accountId);
-  let latest = await latestValuationDisplayForAccount(accountId, category_slug, {
+  // Same mark and override as the dashboard row (`accountDisplayValue`), so the header and
+  // the card cannot disagree.
+  const latest = accountMarkClpAtYmd(accountId, chileCalendarTodayYmd(), cat.bucket_slug, {
     import_key: cat.account_import_key,
     name: cat.account_name,
   });
-  if (latest == null && !isMovementBalanceCashCategory(category_slug)) {
-    const stored = latestValuationRowOnOrBeforeChileToday(accountId);
-    if (stored?.value_clp != null) latest = stored as { value_clp: number; as_of_date: string };
-  }
   const asOfCuotas = latest?.as_of_date ?? chileCalendarTodayYmd();
   const positionMeta = getAccountPositionMeta(accountId, category_slug, {
     afpCuotasAsOfYmd: isCuotaLedgerKindSlug(category_slug) ? asOfCuotas : undefined,
@@ -163,17 +159,14 @@ export async function buildAccountDetailBundle(
     latest ?? undefined,
     accountId
   );
-  let latest_valuation_clp = latest?.value_clp ?? null;
-  let latest_valuation_date = latest?.as_of_date ?? null;
-  if (
-    (isCuotaLedgerKindSlug(category_slug) ||
-      isFintualCertV2ValuationNotes(cat.account_import_key) ||
-      (accountUsesEquityMtm(accountId) && position?.value_clp != null)) &&
-    position?.value_clp != null
-  ) {
-    latest_valuation_clp = position.value_clp;
-    if (position.value_as_of != null) latest_valuation_date = position.value_as_of;
-  }
+  const { value_clp: latest_valuation_clp, as_of_date: latest_valuation_date } =
+    accountDisplayValue({
+      accountId,
+      kindSlug: category_slug,
+      importKey: cat.account_import_key,
+      mark: latest,
+      position,
+    });
 
   const accountRow = accountRowForId(accountId);
   const bundleEquityTicker = equityTickerForAccount(accountId);

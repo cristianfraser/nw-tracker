@@ -1,12 +1,7 @@
-import {
-  accountUsesEquityMtm,
-  computeLatestDisplayedEquityClp,
-} from "./brokerageEquityMtm.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { accountUsesCryptoMtm, computeCryptoMtmClpDisplaySync } from "./cryptoValuation.js";
 import {
   dashboardCardReconcilePeriodDeltas,
   reconcileDashboardCardMetrics,
@@ -17,6 +12,7 @@ import {
   type AccountCardPerformanceMetrics,
 } from "./dashboardAccountCardMetrics.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { accountDisplayValue } from "./accountDisplayValue.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { priorCloseFromPerfRows, priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
@@ -26,22 +22,13 @@ import {
   flowsDepositsNetTotalUsdByAccount,
   netDepositFlowBetween,
 } from "./flowsDeposits.js";
-import {
-  getAccountPositionMeta,
-  liveFintualCertDisplayValueClp,
-  type AccountPositionMeta,
-} from "./accountPosition.js";
+import { getAccountPositionMeta, type AccountPositionMeta } from "./accountPosition.js";
 import { flowAdjustedPctMonth } from "./periodReturns.js";
 import { MONTH_ROW_EPS } from "./accountPerformanceMonthPick.js";
-import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
-import { equityTickerForAccount } from "./accountEquityTicker.js";
-import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
-import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
-import { isUsdCashKindSlug, isUsdCashAccount } from "./movementTransfer.js";
-import { usdCashBalanceLive, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
-import { isClpCashKindSlug, clpCashBalanceLive } from "./clpCashAccounts.js";
+import { isUsdCashAccount } from "./movementTransfer.js";
+import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
 import { depositClpToUsdAtDate } from "./flowsDeposits.js";
 import { buildFxCoverageWithConversionWarnings } from "./fxCoverage.js";
@@ -69,10 +56,6 @@ import {
 import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { db } from "./db.js";
-import {
-  latestDisplayedBalanceForAccount,
-  latestValuationRowOnOrBeforeChileToday,
-} from "./valuationLatest.js";
 import { creditCardFinancingPlSummaryForDashboard } from "./creditCardPerformancePl.js";
 
 const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
@@ -171,42 +154,6 @@ function positionSnapshotFromMeta(
     value_as_of,
     value_per_unit_clp,
   };
-}
-
-export async function latestValuationDisplayForAccount(
-  accountId: number,
-  categorySlug?: string | null,
-  opts?: { import_key?: string | null; name?: string | null }
-): Promise<{ value_clp: number; as_of_date: string } | null> {
-  if (opts?.import_key && isFintualCertV2ValuationNotes(opts.import_key)) {
-    const live = liveFintualCertDisplayValueClp(accountId, opts.import_key, opts.name ?? null);
-    if (live) return live;
-  }
-  if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {
-    return checkingMovementBalanceLive(accountId);
-  }
-  if (categorySlug && isUsdCashKindSlug(categorySlug)) {
-    const live = usdCashBalanceLive(accountId);
-    return { value_clp: live.value_clp, as_of_date: live.as_of_date };
-  }
-  if (categorySlug && isClpCashKindSlug(categorySlug)) {
-    return clpCashBalanceLive(accountId);
-  }
-  const equityTicker = equityTickerForAccount(accountId);
-  if (equityTicker != null && accountUsesEquityMtm(accountId)) {
-    const eq = computeLatestDisplayedEquityClp(accountId);
-    if (eq != null) return eq;
-  }
-  const isCryptoSlug = categorySlug === "bitcoin" || categorySlug === "eth";
-  if (isCryptoSlug || accountUsesCryptoMtm(accountId)) {
-    const crypto = computeCryptoMtmClpDisplaySync(accountId);
-    if (crypto != null) return crypto;
-  }
-  const stored = latestDisplayedBalanceForAccount(accountId);
-  if (stored?.value_clp != null && stored.value_clp > 0 && stored.as_of_date) {
-    return { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
-  }
-  return null;
 }
 
 type MortgageCardDeposits = {
@@ -366,18 +313,9 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       /** Asset-group leaf slug (`real_estate__property`), not nav bucket (`real_estate`) — required for depto UF marks. */
       const markCategorySlug = leafSlug;
 
-      let v: { value_clp: number; as_of_date: string } | null = null;
-      if (trackAssetMetrics) {
-        v = accountMarkClpAtYmd(a.id, today, markCategorySlug, markOpts);
-      } else {
-        v = await latestValuationDisplayForAccount(a.id, kindSlug, markOpts);
-        if (v == null && !isMovementBalanceCashCategory(kindSlug)) {
-          const stored = latestValuationRowOnOrBeforeChileToday(a.id);
-          if (stored?.value_clp != null && stored.as_of_date) {
-            v = { value_clp: stored.value_clp, as_of_date: stored.as_of_date };
-          }
-        }
-      }
+      // Today's value is the mark for every row, liabilities included — the same function
+      // as the prior-day / month-end marks below and the account page header.
+      const v = accountMarkClpAtYmd(a.id, today, markCategorySlug, markOpts);
 
       const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd, markCategorySlug, markOpts);
       const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd, markCategorySlug, markOpts);
@@ -424,20 +362,13 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         accountName: a.name,
       });
       const position = positionSnapshotFromMeta(kindSlug, positionMeta, deposits, v ?? undefined);
-      let current_value_clp = v?.value_clp ?? null;
-      let valuation_as_of = v?.as_of_date ?? null;
-      const equityMtm =
-        equityTickerForAccount(a.id) != null && accountUsesEquityMtm(a.id);
-      if (
-        (isCuotaLedgerKindSlug(kindSlug) ||
-          isFintualCertV2ValuationNotes(a.import_key) ||
-          ((kindSlug === "bitcoin" || kindSlug === "eth") && accountUsesCryptoMtm(a.id))) &&
-        position?.value_clp != null &&
-        !equityMtm
-      ) {
-        current_value_clp = position.value_clp;
-        if (position.value_as_of != null) valuation_as_of = position.value_as_of;
-      }
+      const { value_clp: current_value_clp, as_of_date: valuation_as_of } = accountDisplayValue({
+        accountId: a.id,
+        kindSlug,
+        importKey: a.import_key,
+        mark: v,
+        position,
+      });
       const fxRow = includeUsd ? fxMonthEndForBalanceUsd(valuation_as_of ?? null) : null;
       const current_value_usd = includeUsd
         ? isUsdCashAccount(a.id)
