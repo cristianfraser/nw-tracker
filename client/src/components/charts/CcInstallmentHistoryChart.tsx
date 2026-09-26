@@ -5,6 +5,7 @@ import { useTranslation } from "../../i18n";
 import type { CcHistorialChartPoint as CcHistorialChartRow } from "../../types";
 import { rollupCcHistorialChartYearly } from "../../ccYearlyRollup";
 import { formatClp, formatUsdFine } from "../../format";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 import { AppComposedChart } from "./AppComposedChart";
 import { athTooltipIndexTolerance } from "./athMarkerPlacement";
 import { renderPeriodRefLine } from "./PeriodRefLine";
@@ -17,14 +18,6 @@ import {
   AXIS_LINE_STROKE as AXIS_STROKE,
 } from "./chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
-
-function formatYmEs(ym: string): string {
-  const [ys, ms] = ym.split("-");
-  const m = Number(ms);
-  const names = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-  const label = m >= 1 && m <= 12 ? names[m - 1] : ym;
-  return `${label} ${ys}`;
-}
 
 const CUPO_STROKE = "#f472b6";
 const BALANCE_TOTAL_STROKE = "#38bdf8";
@@ -140,7 +133,7 @@ export function CcInstallmentHistoryChart({
     return { indexByDay, barIndices, tolerance: athTooltipIndexTolerance(displayRows.length) };
   }, [isDailyMode, displayRows]);
   const periodLabel = (ym: string) =>
-    isDailyMode ? ym : isYearly ? ym.slice(0, 4) : formatYmEs(ym);
+    isDailyMode ? ym : isYearly ? ym.slice(0, 4) : formatYearMonthLabel(ym);
   const currentYm = chileTodayYmd().slice(0, 7);
   // Yearly buckets are keyed YYYY-12, so the marker lands on the year containing the ref month.
   const refMonth = isYearly

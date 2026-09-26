@@ -5,7 +5,7 @@ import { formatClp } from "../../format";
 import { useTranslation } from "../../i18n";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import type { CartolaDerivedAnchorDto, CheckingLedgerAnchorDto } from "../../types";
-import { formatYmEs } from "../../pages/accountDetail/shared";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 import { Button, Input } from "@crfrsr/ui";
 
 type Props = {
@@ -92,7 +92,7 @@ export function CheckingLedgerAnchorForm({
       {cartolaDerivedAnchor ? (
         <p className="muted" style={{ fontSize: "var(--font-size-ui)", margin: "0 0 0.75rem" }}>
           {t("accountDetail.checking.ledgerAnchorDerived", {
-            month: formatYmEs(cartolaDerivedAnchor.period_month),
+            month: formatYearMonthLabel(cartolaDerivedAnchor.period_month),
             amount: formatClp(cartolaDerivedAnchor.amount_clp),
             date: cartolaDerivedAnchor.occurred_on,
           })}

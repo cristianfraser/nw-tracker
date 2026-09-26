@@ -5,7 +5,7 @@ import { cn } from "../../cn";
 import { Modal } from "../../components/ui/Modal";
 import { useModalPeriodNav } from "../../periodModalNav";
 import { useFlowsCreditCardExpenses } from "../../queries/hooks";
-import { formatYmEs } from "./shared";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 import type {
   CcFacturacionDto,
   CcPendingCuotaPurchaseDto,
@@ -112,7 +112,7 @@ function FacturacionMobileCard({
   const title = (
     <>
       <Button variant="link" onClick={() => onOpen(row)}>
-        {formatYmEs(row.billing_month)}
+        {formatYearMonthLabel(row.billing_month)}
       </Button>
       <ProvisionalMark row={row} />
     </>
@@ -340,7 +340,7 @@ export function CreditCardFacturacionesTable({
               <tr key={row.billing_month}>
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>
                   <Button variant="link" onClick={() => openFacturacion(row)}>
-                    {formatYmEs(row.billing_month)}
+                    {formatYearMonthLabel(row.billing_month)}
                   </Button>
                   <ProvisionalMark row={row} />
                 </td>
@@ -376,7 +376,7 @@ export function CreditCardFacturacionesTable({
         title={
           selected
             ? t("accountDetail.creditCard.facturacionModalTitle", {
-                month: formatYmEs(selected.billing_month),
+                month: formatYearMonthLabel(selected.billing_month),
               })
             : ""
         }

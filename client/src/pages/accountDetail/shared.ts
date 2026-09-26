@@ -1,13 +1,5 @@
 export const MONTHLY_PERF_COLLAPSED = 12;
 
-export function formatYmEs(ym: string): string {
-  const [ys, ms] = ym.split("-");
-  const m = Number(ms);
-  const names = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
-  const label = m >= 1 && m <= 12 ? names[m - 1] : ym;
-  return `${label} ${ys}`;
-}
-
 /** Inmueble Depto (`real_estate` nav bucket or legacy `property` kind). */
 export function isDeptoPropertyCategory(categorySlug: string | null | undefined): boolean {
   return categorySlug === "property" || categorySlug === "real_estate";

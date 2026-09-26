@@ -25,6 +25,28 @@ describe("formatYearMonthLabel", () => {
     await i18n.changeLanguage("es");
   });
 
+  it("names all twelve months in each language", async () => {
+    const yearLabels = () =>
+      Array.from({ length: 12 }, (_, i) => formatYearMonthLabel(`2026-${String(i + 1).padStart(2, "0")}`));
+    // The exact Spanish labels the account-detail, flows and CC-chart tables printed before they
+    // were routed through this helper.
+    expect(yearLabels()).toEqual(
+      ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"].map((m) => `${m} 2026`)
+    );
+    await i18n.changeLanguage("en");
+    expect(yearLabels()).toEqual(
+      ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((m) => `${m} 2026`)
+    );
+    await i18n.changeLanguage("es");
+  });
+
+  it("labels the month of a full ISO date", async () => {
+    expect(formatYearMonthLabel("2026-12-31")).toBe("dic 2026");
+    await i18n.changeLanguage("en");
+    expect(formatYearMonthLabel("2026-12-31")).toBe("Dec 2026");
+    await i18n.changeLanguage("es");
+  });
+
   it("returns malformed input unchanged", () => {
     expect(formatYearMonthLabel("2026-13")).toBe("2026-13");
     expect(formatYearMonthLabel("garbage")).toBe("garbage");

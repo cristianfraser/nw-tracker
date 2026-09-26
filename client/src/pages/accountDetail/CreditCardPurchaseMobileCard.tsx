@@ -8,7 +8,7 @@ import {
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../../components/ui/TableMobileCard";
-import { formatYmEs } from "./shared";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 import { proxyCuotaLine } from "./creditCardProxyLine";
 import styles from "../AccountDetailPage.module.css";
 import { Button } from "@crfrsr/ui";
@@ -90,7 +90,7 @@ export function CreditCardPurchaseMobileCard({
         {dueColumn === "last" ? (
           <TableMobileCardRow
             label={t("account.creditCard.colLastPaid")}
-            value={purchase.last_paid_month ? formatYmEs(purchase.last_paid_month) : "—"}
+            value={purchase.last_paid_month ? formatYearMonthLabel(purchase.last_paid_month) : "—"}
           />
         ) : null}
       </TableMobileCardSection>
