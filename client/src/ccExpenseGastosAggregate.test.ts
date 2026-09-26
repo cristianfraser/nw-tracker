@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { aggregateGastosFromLines } from "./ccExpenseGastosAggregate";
-import type { FlowCcExpenseLineRow } from "./types";
+import type { ExpenseDepositLinkDto, FlowCcExpenseLineRow } from "./types";
 
 function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   const purchaseOn = partial.purchase_on ?? "2025-03-03";
@@ -137,5 +137,60 @@ describe("ccExpenseGastosAggregate", () => {
     const point = chart_monthly_by_category.find((p) => p.as_of_date.startsWith("2025-04"));
     expect(point?.food).toBe(0);
     expect(point?.fun).toBe(20_000);
+  });
+
+  it("counts a card-financed mortgage payment's carrying cost once, in either mode", () => {
+    // A financed facturado keeps the dividendo in its month for «Total» (total_only) and spreads
+    // it over the financing cuotas' months for «Por cuota» (split_only slices, each carrying its
+    // share of the mortgage link).
+    const mortgageLink = (
+      payment: number,
+      amortization: number,
+      carrying: number
+    ): ExpenseDepositLinkDto => ({
+      deposit_movement_id: 900,
+      payment_clp: payment,
+      amortization_clp: amortization,
+      carrying_clp: carrying,
+      depto_cuota: "30",
+      depto_occurred_on: "2026-08-11",
+      link_source: "auto",
+    });
+    const financed = ccLine({
+      statement_line_id: 50,
+      line_role: "purchase",
+      installment_flag: 0,
+      nro_cuota_current: null,
+      nro_cuota_total: null,
+      expense_month: "2026-08",
+      billing_month: "2026-08",
+      purchase_month: "2026-08",
+      amount_clp: 753_333,
+      category_slug: "bills",
+      gastos_scope: "total_only",
+      expense_deposit_links: [mortgageLink(753_333, 410_844, 342_489)],
+    });
+    const slices = ["2026-09", "2026-10", "2026-11"].map((month, k) =>
+      ccLine({
+        statement_line_id: -100 - k,
+        expense_month: month,
+        billing_month: month,
+        purchase_month: month,
+        nro_cuota_current: k + 1,
+        nro_cuota_total: 3,
+        amount_clp: 251_111,
+        category_slug: "bills",
+        gastos_scope: "split_only",
+        expense_deposit_links: [mortgageLink(251_111, 136_948, 114_163)],
+      })
+    );
+    const lines = [financed, ...slices];
+
+    for (const mode of ["split", "total"] as const) {
+      const agg = aggregateGastosFromLines(lines, ["bills"], mode);
+      expect(agg.total).toBe(342_489);
+      expect(agg.total_real).toBe(753_333);
+      expect(agg.total).toBe(agg.by_month.reduce((sum, m) => sum + m.gastos_mes_clp, 0));
+    }
   });
 });

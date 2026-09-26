@@ -110,7 +110,11 @@ export function rollupExpenseMonthRowsByYear(
   });
 }
 
-/** Keep in sync with server/src/flowsCreditCardExpenses.ts aggregateGastosFromLines. */
+/**
+ * Keep in sync with server/src/flowsCreditCardExpenses.ts aggregateGastosFromLines.
+ * `total` / `total_real` are the sums of the month buckets — the Expenses headline — so the
+ * headline and the table count every line by the same rule.
+ */
 export function aggregateGastosFromLines(
   lines: readonly FlowCcExpenseLineRow[],
   chartCategorySlugs: readonly string[],
@@ -121,6 +125,8 @@ export function aggregateGastosFromLines(
   by_month: FlowCcExpenseMonthRow[];
   chart_monthly: FlowCcExpenseChartPoint[];
   chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
+  total: number;
+  total_real: number;
 } {
   type MonthBucket = {
     gastos: number;
@@ -222,10 +228,14 @@ export function aggregateGastosFromLines(
   const monthsAsc = [...byMonthSum.keys()].sort(ymCompare);
   let runningGastos = 0;
   let runningGastosReal = 0;
+  let total = 0;
+  let totalReal = 0;
   const byMonthAsc: FlowCcExpenseMonthRow[] = [];
 
   for (const periodMonth of monthsAsc) {
     const bucket = byMonthSum.get(periodMonth)!;
+    total += bucket.gastos;
+    totalReal += bucket.gastosReal;
     const gastosMes = Math.round(bucket.gastos);
     const gastosRealMes = Math.round(bucket.gastosReal);
     runningGastos += gastosMes;
@@ -257,46 +267,11 @@ export function aggregateGastosFromLines(
     return point;
   });
 
-  return { by_month, chart_monthly, chart_monthly_by_category };
-}
-
-export function computeExpensesTotal(
-  lines: readonly FlowCcExpenseLineRow[],
-  mode: CcInstallmentGastosMode,
-  unit: DisplayUnit = "clp"
-): { total: number; total_real: number } {
-  let total = 0;
-  let total_real = 0;
-  for (const r of lines) {
-    const amount = expenseLineGastosAmount(r, unit);
-    if (r.nota_credito_role === "annulled_purchase" || r.nota_credito_role === "matched_nota") {
-      continue;
-    }
-    if (r.nota_credito_role === "unmatched_nota") {
-      total += amount;
-      if (amount > 0) total_real += amount;
-      continue;
-    }
-    if (amount > 0) {
-      const link = r.expense_deposit_links?.find((l) => l.depto_cuota != null);
-      const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
-      if (linkedMortgagePayment) {
-        if (
-          r.nota_credito_role !== "annulled_purchase" &&
-          r.nota_credito_role !== "matched_nota" &&
-          (r.line_role !== "installment_purchase_total" || mode === "total") &&
-          (r.line_role !== "installment_cuota" || mode === "split")
-        ) {
-          total += mortgageLinkCarryingAmount(r, link, unit);
-        }
-      } else if (countsTowardGastosMes(r, mode)) {
-        total += amount;
-      }
-      if (gastosSumMonthForLine(r, mode)) total_real += amount;
-    }
-  }
   return {
+    by_month,
+    chart_monthly,
+    chart_monthly_by_category,
     total: unit === "clp" ? Math.round(total) : total,
-    total_real: unit === "clp" ? Math.round(total_real) : total_real,
+    total_real: unit === "clp" ? Math.round(totalReal) : totalReal,
   };
 }
