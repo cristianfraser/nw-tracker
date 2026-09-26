@@ -21,6 +21,12 @@
   fill: var(--chart-band-fill);
 }
 
+/** CC historial: a surface-coloured gap between the stacked facturación segments (one hue, three shades). */
+.recharts-wrapper .cc-facturado-segment .recharts-rectangle {
+  stroke: var(--surface);
+  stroke-width: 2px;
+}
+
 .chart-grid {
   display: grid;
   grid-template-columns: 1fr;

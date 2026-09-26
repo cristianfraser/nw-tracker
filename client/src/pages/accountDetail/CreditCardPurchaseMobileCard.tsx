@@ -11,7 +11,7 @@ import {
 import { formatYmEs } from "./shared";
 import { proxyCuotaLine } from "./creditCardProxyLine";
 import styles from "../AccountDetailPage.module.css";
-import { Button, Input } from "@crfrsr/ui";
+import { Button } from "@crfrsr/ui";
 
 function PurchaseMeta({ children }: { children: ReactNode }) {
   return <div className={cn("muted", styles.purchaseMeta)}>{children}</div>;
@@ -25,8 +25,6 @@ export function CreditCardPurchaseMobileCard({
   manualDeleteLabel,
   manualBusy,
   onDeleteManual,
-  extraOffsets,
-  onExtraOffsetChange,
   purchaseProxy,
   inlineTicker,
 }: {
@@ -37,8 +35,6 @@ export function CreditCardPurchaseMobileCard({
   manualDeleteLabel: string;
   manualBusy: boolean;
   onDeleteManual?: () => void;
-  extraOffsets: Record<string, number>;
-  onExtraOffsetChange: (purchaseId: string, value: number) => void;
   purchaseProxy?: CcProxyLotResult;
   inlineTicker?: string;
 }) {
@@ -102,23 +98,6 @@ export function CreditCardPurchaseMobileCard({
       {!hasLedger ? (
         <TableMobileCardSection>
           <TableMobileCardRow label={t("account.creditCard.colOffsetCsv")} value={String(purchase.schedule_offset_months)} />
-          <TableMobileCardRow
-            label={t("account.creditCard.colOffsetUi")}
-            value={
-              <Input
-                size="sm"
-                type="number"
-                step={1}
-                value={extraOffsets[purchase.purchase_id] ?? 0}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  const n = raw === "" || raw === "-" ? 0 : Math.trunc(Number(raw));
-                  onExtraOffsetChange(purchase.purchase_id, Number.isFinite(n) ? n : 0);
-                }}
-                aria-label={t("account.creditCard.offsetAria", { label: purchase.label })}
-              />
-            }
-          />
         </TableMobileCardSection>
       ) : null}
 
@@ -170,8 +149,8 @@ export function purchaseTableColSpan(
 ): number {
   // Base desktop columns — "last": Compra, Cuotas, Principal, Fecha, Mes facturación,
   // Cuota CLP, Mes último pago; "none" swaps the último-pago column for Pagadas, Restan,
-  // 1.ª cuota, Restante CLP. Without a ledger the Tasa + Offset CSV/UI columns are added.
+  // 1.ª cuota, Restante CLP. Without a ledger the Tasa + Offset CSV columns are added.
   // +1 = the mobile-only cell.
-  const desktop = (dueColumn === "last" ? 7 : 10) + (hasLedger ? 0 : 3);
+  const desktop = (dueColumn === "last" ? 7 : 10) + (hasLedger ? 0 : 2);
   return desktop + 1;
 }

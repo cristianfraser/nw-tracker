@@ -103,15 +103,6 @@ export interface CcFacturacionDto {
   provisional_estimate_total_clp: number | null;
 }
 
-export interface CcFinancingPlMonthDto {
-  billing_month: string;
-  statement_charges_clp: number;
-  installment_interest_clp: number;
-  financing_cost_clp: number;
-  ytd_financing_cost_clp: number;
-  cumulative_financing_cost_clp: number;
-}
-
 export interface CreditCardBillingConfigDto {
   billing_cycle_start_day: number;
   billing_cycle_end_day: number | null;
@@ -197,22 +188,26 @@ export interface CcInstallmentHistoryMonthPoint {
   ledger_remaining_installments_clp?: number;
 }
 
-/** One point in the server-built dense Historial chart series. */
-export type CcHistorialChartPoint = {
-  month: string;
-  installment_payments_clp: number;
-  facturado_clp: number | null;
-  cupo_en_cuotas_clp: number | null;
-  balance_total_clp: number | null;
+/**
+ * One facturación's stacked bar (server-built): the cuotas it bills, the rest of its CLP
+ * facturado, its dollar facturado in pesos (and in dollars, for the tooltip) and their total.
+ */
+export type CcFacturadoBarSegments = {
+  /** «Facturado CLP (cuotas)» — a future month's: what the plan will bill. */
+  facturado_cuotas_clp: number | null;
+  /** «Facturado CLP»: the CLP facturado minus those cuotas (negative when credits outweigh it). */
+  facturado_rest_clp: number | null;
+  /** «Facturado US$» in pesos. */
+  facturado_usd_clp: number | null;
+  facturado_usd: number | null;
+  facturado_total_clp: number | null;
 };
 
-/** One point in the server-built dense billing-month chart series. */
-export type CcBillingMonthChartPoint = {
-  billing_month: string;
-  facturado_clp: number | null;
-  facturado_usd_clp: number | null;
-  financing_cost_clp: number | null;
-  ytd_financing_cost_clp: number | null;
+/** One point in the server-built dense Historial chart series (day mode: `month` = ISO date). */
+export type CcHistorialChartPoint = CcFacturadoBarSegments & {
+  month: string;
+  cupo_en_cuotas_clp: number | null;
+  balance_total_clp: number | null;
 };
 
 export interface CcProxyCuotaResult {
@@ -277,7 +272,6 @@ export interface AccountCcInstallmentsResponse {
   billing_month_balances?: CcBillingMonthBalanceDto[];
   billing_detail_by_month?: CcBillingDetailMonthDto[];
   facturaciones?: CcFacturacionDto[];
-  financing_pl_by_month?: CcFinancingPlMonthDto[];
   billing_config?: CreditCardBillingConfigDto;
   /** Credit line snapshot for the summary cards (server-computed: config cupo, open-month balance, difference). */
   cupo?: CcCupoSnapshotDto;
@@ -289,8 +283,6 @@ export interface AccountCcInstallmentsResponse {
   associated_card_last4s?: string[];
   /** Dense Historial chart series — interior month gaps filled with nulls. Built server-side. */
   historial_chart?: CcHistorialChartPoint[];
-  /** Dense billing-month chart series — interior month gaps filled with nulls. Built server-side. */
-  billing_month_chart?: CcBillingMonthChartPoint[];
   /** Tracked tickers for proxy earnings computation. */
   proxy_tickers?: string[];
   /** Per-installment-purchase proxy earnings, keyed by purchase_db_id. */

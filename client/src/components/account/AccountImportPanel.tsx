@@ -85,7 +85,6 @@ export type ImportSlot = TextSlot | FileSlot | MultiFileSlot;
 type Props = {
   accountId: number;
   displayUnit: "clp" | "usd";
-  extraCcOffsetsKey?: string;
   slots: ImportSlot[];
 };
 
@@ -254,11 +253,10 @@ function ImportResultView({ data }: { data: Record<string, unknown> }) {
 export function AccountImportPanel({
   accountId,
   displayUnit,
-  extraCcOffsetsKey = "{}",
   slots,
 }: Props) {
   const { t } = useTranslation();
-  const importMutation = useAccountImportMutation({ accountId, displayUnit, extraCcOffsetsKey });
+  const importMutation = useAccountImportMutation({ accountId, displayUnit });
   const [open, setOpen] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [result, setResult] = useState<Record<string, unknown> | null>(null);

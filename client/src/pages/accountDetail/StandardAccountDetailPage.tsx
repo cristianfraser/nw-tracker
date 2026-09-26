@@ -68,7 +68,6 @@ export function StandardAccountDetailPage({ data }: Props) {
     valuationBlockForChart,
     accountChartTheme,
     checkingCartolaMonths,
-    extraCcOffsets,
   } = data;
 
   const isUsdCashAccount = supportsUsdCashMovements(summary.movement_create);
@@ -81,7 +80,6 @@ export function StandardAccountDetailPage({ data }: Props) {
   const unitsFlowUnitLabel = showUnitsFlowForm
     ? summary.movement_create?.unit_label ?? "unidades"
     : null;
-  const extraCcOffsetsKey = JSON.stringify(extraCcOffsets);
 
   const valuationIsDaily = valuationPrefs.period === "day";
   const perfIsDaily = perfPrefs.period === "day";
@@ -362,7 +360,6 @@ export function StandardAccountDetailPage({ data }: Props) {
           <CheckingLedgerAnchorForm
             accountId={summary.account_id}
             displayUnit={displayUnit}
-            extraCcOffsetsKey={extraCcOffsetsKey}
             ledgerAnchor={checkingCartolaMonths?.ledger_anchor ?? null}
             cartolaDerivedAnchor={checkingCartolaMonths?.cartola_derived_anchor ?? null}
           />
@@ -515,7 +512,6 @@ export function StandardAccountDetailPage({ data }: Props) {
             <MortgagePaymentForm
               accountId={summary.account_id}
               displayUnit={displayUnit}
-              extraCcOffsetsKey={extraCcOffsetsKey}
               schema={summary.mortgage_payment_create}
             />
           ) : null}
@@ -571,7 +567,6 @@ export function StandardAccountDetailPage({ data }: Props) {
         <AccountBookLedgerSection
           accountId={summary.account_id}
           displayUnit={displayUnit}
-          extraCcOffsetsKey={extraCcOffsetsKey}
         />
       ) : null}
 
@@ -593,13 +588,11 @@ export function StandardAccountDetailPage({ data }: Props) {
             <AccountUsdCashMovementsForm
               accountId={summary.account_id}
               displayUnit={displayUnit}
-              extraCcOffsetsKey={extraCcOffsetsKey}
             />
           ) : showClpCashMovementsForm ? (
             <AccountClpCashMovementsForm
               accountId={summary.account_id}
               displayUnit={displayUnit}
-              extraCcOffsetsKey={extraCcOffsetsKey}
             />
           ) : showBrokerageMovementsForm ? (
             <AccountBrokerageMovementsForm
@@ -607,14 +600,12 @@ export function StandardAccountDetailPage({ data }: Props) {
               ticker={summary.position?.ticker ?? null}
               quoteCurrency={summary.equity_quote_currency ?? null}
               displayUnit={displayUnit}
-              extraCcOffsetsKey={extraCcOffsetsKey}
             />
           ) : showUnitsFlowForm && unitsFlowUnitLabel ? (
             <AccountUnitsFlowForm
               accountId={summary.account_id}
               unitLabel={unitsFlowUnitLabel}
               displayUnit={displayUnit}
-              extraCcOffsetsKey={extraCcOffsetsKey}
             />
           ) : null
         }

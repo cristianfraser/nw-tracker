@@ -15,6 +15,7 @@ import {
   isProvisionallyClosedBillingMonth,
   lastClosedBillingMonthForAccount,
   lastPdfBillingMonthForAccount,
+  pdfClosedBillingMonthsForAccount,
   statementCloseDdMmYyyyForBillingMonth,
 } from "./ccManualBillingMonth.js";
 import {
@@ -27,7 +28,13 @@ import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.js";
 import { importSantanderMovementsFile } from "./santanderMovementsImport.js";
 import { santanderFeedClosesByAccount } from "./santanderCardMovements.js";
-import { reconcileOpenWebPasteAfterPdfClose } from "./ccOpenWebPastePdfReconcile.js";
+import {
+  facturacionMonthByStatementDate,
+  reconcileOpenWebPasteAfterPdfClose,
+  statementDatesForFacturacion,
+} from "./ccOpenWebPastePdfReconcile.js";
+import { buildCcExpenseLines } from "./flowsCreditCardExpenses.js";
+import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { ccWebPasteToCsvRecords, webPasteLineDedupeKey, type CcWebPasteLine } from "./ccWebPasteParse.js";
 
@@ -241,6 +248,97 @@ describe("credit-card close evidence", () => {
     expect(statementCloseDdMmYyyyForBillingMonth(accountId, "2026-09")).toBe("20/09/2026");
   });
 
+  it("estimates an unpublished close on the card's latest close day, the config cycle only with none on record", () => {
+    // Latest known close: September's, announced for 24/09 — later months carry the 24th.
+    expect(closeEvidenceForBillingMonth(accountId, "2026-10")).toEqual({ close_iso: "2026-10-24", source: "estimated" });
+    expect(closeEvidenceForBillingMonth(accountId, "2027-02")).toEqual({ close_iso: "2027-02-24", source: "estimated" });
+    // A later observed close on the 31st moves the estimate, clamped to a shorter month.
+    recordFeedBillingClose(accountId, {
+      close_iso: "2026-10-31",
+      saldo_inicial_clp: 100_000,
+      saldo_inicial_usd: null,
+      source_file: "vitest",
+    });
+    expect(closeEvidenceForBillingMonth(accountId, "2026-11")).toEqual({ close_iso: "2026-11-30", source: "estimated" });
+    // The open bucket keeps the config close as its identity either way.
+    expect(statementCloseDdMmYyyyForBillingMonth(accountId, "2026-11")).toBe("20/11/2026");
+    db.prepare(`DELETE FROM cc_feed_billing_closes WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+    expect(closeEvidenceForBillingMonth(accountId, "2026-10")).toEqual({ close_iso: "2026-10-20", source: "estimated" });
+  });
+
+  it("closes a CLP-only month once the bank has closed a later facturación, never inside the twins' window", () => {
+    // July: CLP only — a dollar-quiet cycle. August's statements are later: its twin is not coming.
+    insertStatement({
+      source: "vitest 2026-07-23 clp.pdf",
+      date: "23/07/2026",
+      from: "24/06/2026",
+      to: "23/07/2026",
+      currency: "clp",
+      monto: 900_000,
+    });
+    expect(pdfClosedBillingMonthsForAccount(accountId).has("2026-07")).toBe(true);
+    expect(buildFacturaciones(accountId, []).find((f) => f.billing_month === "2026-07")).toMatchObject({
+      is_open_month: false,
+      facturado_clp: 900_000,
+    });
+    // September's CLP twin lands first: nothing later is closed, so its USD twin is still due.
+    insertStatement({
+      source: "vitest 2026-09-24 clp.pdf",
+      date: "24/09/2026",
+      from: "25/08/2026",
+      to: "24/09/2026",
+      currency: "clp",
+      monto: 1_892_666,
+      nextFrom: "24/09/2026",
+      nextTo: "24/10/2026",
+    });
+    expect(pdfClosedBillingMonthsForAccount(accountId).has("2026-09")).toBe(false);
+    expect(lastPdfBillingMonthForAccount(accountId)).toBe("2026-08");
+    // Once the October close it announced has passed, September's twin is not coming either.
+    vi.setSystemTime(new Date("2026-10-25T15:00:00Z"));
+    expect(pdfClosedBillingMonthsForAccount(accountId).has("2026-09")).toBe(true);
+    expect(lastPdfBillingMonthForAccount(accountId)).toBe("2026-09");
+  });
+
+  it("gives a card that stopped billing no provisional facturación for a close it announced", () => {
+    // Nothing billed since August and nothing owed: the announced September close has passed, but
+    // no statement is coming, so the month is not «closed, statement pending» on the card's table.
+    expect(isProvisionallyClosedBillingMonth(accountId, "2026-09")).toBe(true);
+    expect(buildFacturaciones(accountId, []).map((f) => f.billing_month)).toEqual(["2026-08"]);
+  });
+
+  it("gives each statement's lines one facturación: a stale bucket's the open month, a provisional month's bucket its own", () => {
+    // August closed by its statements; September closed at the bank, CLP statement pending; October open.
+    const aug = insertStatement({ source: "import:web-paste|open|2026-08", date: "20/08/2026", currency: "clp" });
+    const sep = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
+    const leftover = insertBucketLine(aug, "2026-08-10", "LEFTOVER VITEST", 3_000);
+    const september = insertBucketLine(sep, "2026-09-11", "PAYU VITEST", 13_993);
+    expect(Object.fromEntries(facturacionMonthByStatementDate(accountId))).toEqual({
+      "25/08/2026": "2026-08",
+      "20/08/2026": "2026-10",
+      "20/09/2026": "2026-09",
+    });
+    expect(statementDatesForFacturacion(accountId, "2026-10")).toEqual(["20/08/2026"]);
+    // The expense lines carry the same month — what the facturación modal filters on.
+    const lines = new Map(buildCcExpenseLines([accountId]).map((l) => [l.statement_line_id, l]));
+    expect(lines.get(september)).toMatchObject({ billing_month: "2026-09", web_paste: true });
+    expect(lines.get(leftover)).toMatchObject({ billing_month: "2026-10", web_paste: true });
+    // Two statements on one date in different facturaciones is a data contradiction.
+    insertStatement({ source: "vitest conflicting.pdf", date: "25/08/2026", to: "24/07/2026", currency: "clp" });
+    expect(() => facturacionMonthByStatementDate(accountId)).toThrow(/belong to 2026-0\d and 2026-0\d/);
+  });
+
+  it("creates the open bucket only when a post-close line moves into it", () => {
+    // Every card merge runs the repair; with nothing to move it must leave no empty bucket.
+    expect(repairMisplacedOpenWebPasteBuckets(accountId).lines_moved).toBe(0);
+    expect(bucketId("2026-10")).toBeNull();
+    const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
+    insertBucketLine(sept, "2026-09-25", "POSTCLOSE VITEST", 12_000);
+    expect(repairMisplacedOpenWebPasteBuckets(accountId).lines_moved).toBe(1);
+    expect(merchantsIn(bucketId("2026-10"))).toEqual(["POSTCLOSE VITEST"]);
+  });
+
   it("closes the month once its announced next cycle has started, without touching schedule evidence", () => {
     expect(lastClosedBillingMonthForAccount(accountId, "2026-09-23")).toBe("2026-08");
     expect(lastClosedBillingMonthForAccount(accountId, "2026-09-24")).toBe("2026-09");
@@ -389,7 +487,7 @@ describe("credit-card close evidence", () => {
 
   it("plots the monthly «deuda en cuotas» where the daily line sits at each month-end", () => {
     insertSeptemberPlan();
-    const chart = creditCardInstallmentsResponse(accountId, {}).historial_chart ?? [];
+    const chart = creditCardInstallmentsResponse(accountId).historial_chart ?? [];
     const line = (month: string) => chart.find((p) => p.month === month)?.cupo_en_cuotas_clp;
     // Billed on 24/09 but unpaid until 10/10: still debt at 30/09 (the table's September cupo,
     // 6x.xxx, is the billing frame — the cuota sits in its facturado there).

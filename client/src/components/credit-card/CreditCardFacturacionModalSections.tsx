@@ -21,14 +21,12 @@ export function CreditCardFacturacionModalSections({
   categories,
   accountId,
   displayUnit,
-  extraCcOffsetsKey,
   deletableLineIds,
 }: {
   bucket: FacturacionModalBucket;
   categories: readonly CcExpenseCategoryDto[];
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
   deletableLineIds: ReadonlySet<number>;
 }) {
   const { t } = useTranslation();
@@ -37,16 +35,8 @@ export function CreditCardFacturacionModalSections({
     useState<FlowCcExpenseLineRow | null>(null);
   const [cuotasInput, setCuotasInput] = useState("");
 
-  const deleteLine = useDeleteCcStatementLineMutation({
-    accountId,
-    displayUnit,
-    extraCcOffsetsKey,
-  });
-  const makeInstallment = useMakeStatementLineInstallmentMutation({
-    accountId,
-    displayUnit,
-    extraCcOffsetsKey,
-  });
+  const deleteLine = useDeleteCcStatementLineMutation({ accountId, displayUnit });
+  const makeInstallment = useMakeStatementLineInstallmentMutation({ accountId, displayUnit });
 
   const gastosSum = useMemo(() => sumLineAmountsClp(bucket.gastos), [bucket.gastos]);
   const costeFinancieroSum = useMemo(

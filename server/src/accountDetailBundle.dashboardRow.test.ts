@@ -10,7 +10,7 @@ describe("accountDetailBundle dashboard_account_row", () => {
       .get() as { id: number } | undefined;
     if (!row) return;
 
-    const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly", {});
+    const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly");
     if (!bundle?.dashboard_account_row) return;
 
     const dashRows = await buildDashboardAccountRows(false);

@@ -323,7 +323,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
 
     // The monthly chart samples that walk at every month-end; the projected rows hold it flat too,
     // so the balance line never sits under the cuota line.
-    const chart = creditCardInstallmentsResponse(accountId, {}).historial_chart ?? [];
+    const chart = creditCardInstallmentsResponse(accountId).historial_chart ?? [];
     expect(chart.map((p) => p.cupo_en_cuotas_clp)).toEqual(
       ccInstallmentDebtDailyClp(accountId, chart.map((p) => ccLedgerMonthEndIso(p.month)))
     );
@@ -355,7 +355,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     expect(pending).toEqual([
       expect.objectContaining({ kind: "cuota_comercio", amount_clp: 120_000, billing_month: "2026-09" }),
     ]);
-    expect(creditCardInstallmentsResponse(accountId, {}).pending_cuota_purchases).toEqual(pending);
+    expect(creditCardInstallmentsResponse(accountId).pending_cuota_purchases).toEqual(pending);
     const lineId = pending[0]!.statement_line_id;
     expect(buildCcExpenseLines([accountId]).find((l) => l.statement_line_id === lineId)?.cuota_purchase_kind).toBe(
       "cuota_comercio"

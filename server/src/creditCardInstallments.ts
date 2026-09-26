@@ -8,7 +8,6 @@ import {
   type CcPendingCuotaPurchase,
 } from "./ccBillingViews.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
-import { buildCreditCardFinancingPlByBillingMonth, type CcFinancingPlMonthRow } from "./creditCardPerformancePl.js";
 import type { CreditCardBillingConfig } from "./ccBillingMonth.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import {
@@ -19,12 +18,7 @@ import {
 } from "./ccStatementsDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { associatedCardLast4sForMaster } from "./ccConsolidatedCards.js";
-import {
-  buildCcHistorialChartSeries,
-  buildCcBillingMonthChartSeries,
-  type CcHistorialChartPoint,
-  type CcBillingMonthChartPoint,
-} from "./creditCardChartSeries.js";
+import { buildCcHistorialChartSeries, type CcHistorialChartPoint } from "./creditCardChartSeries.js";
 import type { DataOrigin } from "./dataOrigin.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { ccInstallmentDebtAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
@@ -200,30 +194,6 @@ export function installmentInterestClpForCuota(
   return Math.round(bal * r);
 }
 
-/** Parses the `extraOffsets` query param. Throws on malformed input — callers 400. */
-export function parseExtraOffsetsJson(raw: unknown): Record<string, number> {
-  if (raw == null || raw === "") return {};
-  let o: unknown;
-  try {
-    o = JSON.parse(String(raw));
-  } catch {
-    throw new Error("extraOffsets is not valid JSON");
-  }
-  if (!o || typeof o !== "object" || Array.isArray(o)) {
-    throw new Error("extraOffsets must be a JSON object of purchase id → month offset");
-  }
-  const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
-    const key = String(k).trim();
-    if (!key) continue;
-    const n = typeof v === "number" ? v : Number(String(v));
-    if (!Number.isFinite(n)) throw new Error(`extraOffsets["${key}"] must be a number`);
-    if (n === 0) continue;
-    out[key] = Math.trunc(n);
-  }
-  return out;
-}
-
 export type CcInstallmentsResponseBase = {
   account_id: number;
   has_installment_ledger: boolean;
@@ -244,7 +214,6 @@ export type CcInstallmentsResponseBase = {
   billing_month_balances?: CcBillingMonthBalanceRow[];
   billing_detail_by_month?: CcBillingDetailMonthRow[];
   facturaciones?: CcFacturacionRow[];
-  financing_pl_by_month?: CcFinancingPlMonthRow[];
   billing_config?: CreditCardBillingConfig;
   /** Credit line snapshot for the summary cards — see {@link ccCupoSnapshot}. */
   cupo?: CcCupoSnapshot;
@@ -256,7 +225,6 @@ export type CcInstallmentsResponseBase = {
   open_billing_month?: string | null;
   associated_card_last4s?: string[];
   historial_chart?: CcHistorialChartPoint[];
-  billing_month_chart?: CcBillingMonthChartPoint[];
   /** Tracked proxy tickers for this response. */
   proxy_tickers?: string[];
   /** Per-purchase proxy earnings, keyed by purchase_db_id. */
@@ -296,7 +264,6 @@ function buildInstallmentProxy(
 
 export function creditCardInstallmentsResponse(
   accountId: number,
-  extraOffsets: Record<string, number>,
   proxyTickers?: string[]
 ): CcInstallmentsResponseBase {
   const associated_card_last4s = associatedCardLast4sForMaster(accountId);
@@ -314,11 +281,6 @@ export function creditCardInstallmentsResponse(
     const db = bundle.payload;
     const billingDetail = bundle.detail;
     const facturaciones = bundle.facturaciones;
-    const financingPl = buildCreditCardFinancingPlByBillingMonth(
-      accountId,
-      [...db.purchases, ...db.purchases_completed],
-      extraOffsets
-    );
     const { purchaseProxy, facturacionProxy } = buildInstallmentProxy(
       accountId,
       [...db.purchases, ...db.purchases_completed],
@@ -346,7 +308,6 @@ export function creditCardInstallmentsResponse(
       billing_month_balances: listCcBillingMonthBalances(accountId),
       billing_detail_by_month: billingDetail,
       facturaciones,
-      financing_pl_by_month: financingPl,
       billing_config: loadCreditCardBillingConfig(accountId),
       cupo: ccCupoSnapshotForAccount(accountId, billingDetail, open_billing_month),
       pending_cuota_purchases: pendingCuotaPurchaseLines(accountId),
@@ -356,7 +317,6 @@ export function creditCardInstallmentsResponse(
         facturaciones,
         { installmentDebtForMonths: (months) => ccInstallmentDebtAtMonthEndsClp([accountId], months) }
       ),
-      billing_month_chart: buildCcBillingMonthChartSeries(facturaciones, financingPl),
       proxy_tickers: tickers,
       purchase_proxy: purchaseProxy,
       facturacion_proxy: facturacionProxy,
@@ -371,7 +331,6 @@ export function creditCardInstallmentsResponse(
         : 0;
     const billingDetail = bundle.detail;
     const facturaciones = bundle.facturaciones;
-    const financingPl = buildCreditCardFinancingPlByBillingMonth(accountId, [], extraOffsets);
     return {
       account_id: accountId,
       has_installment_ledger: false,
@@ -394,12 +353,10 @@ export function creditCardInstallmentsResponse(
       billing_month_balances: billing,
       billing_detail_by_month: billingDetail,
       facturaciones,
-      financing_pl_by_month: financingPl,
       billing_config: loadCreditCardBillingConfig(accountId),
       cupo: ccCupoSnapshotForAccount(accountId, billingDetail, open_billing_month),
       pending_cuota_purchases: pendingCuotaPurchaseLines(accountId),
       historial_chart: buildCcHistorialChartSeries([], billingDetail, facturaciones),
-      billing_month_chart: buildCcBillingMonthChartSeries(facturaciones, financingPl),
     };
   }
 
@@ -419,6 +376,5 @@ export function creditCardInstallmentsResponse(
       next_calendar_month_total_clp: null,
       next_calendar_month: null,
     },
-    financing_pl_by_month: [],
   };
 }

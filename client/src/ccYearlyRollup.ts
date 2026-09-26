@@ -1,16 +1,11 @@
-import type {
-  CcBillingDetailMonthDto,
-  CcBillingMonthChartPoint,
-  CcHistorialChartPoint,
-} from "./types";
+import type { CcBillingDetailMonthDto, CcHistorialChartPoint } from "./types";
 
 /**
- * Yearly rollups for the credit-card views when the global metrics period is "year".
- * Convention shared by the three views: flow metrics (facturado, coste financiero,
- * pagos de cuotas) SUM across the year's billing months — projected plan months
- * included; stock metrics (cupo en cuotas, balance total) take the year's latest
- * month, i.e. the (possibly projected) year-end value. Facturaciones stays monthly
- * by design (per-event raw data), so it has no rollup here.
+ * Yearly rollups for the credit-card views when their período is "year".
+ * Convention shared by both views: flow metrics (facturado and its cuotas) SUM across the
+ * year's billing months — projected plan months included; stock metrics (cupo en cuotas,
+ * balance total) take the year's latest month, i.e. the (possibly projected) year-end value.
+ * Facturaciones stays monthly by design (per-event raw data), so it has no rollup here.
  */
 
 function sumOrNull(values: readonly (number | null | undefined)[]): number | null {
@@ -78,34 +73,22 @@ export function rollupCcBillingDetailYearly(
   });
 }
 
-/** Historial chart: bars sum (projected plan cuotas included), lines take the year's last known value. */
+/**
+ * Historial chart: each bar segment sums (projected plan cuotas included), lines take the year's
+ * last known value.
+ */
 export function rollupCcHistorialChartYearly(
   rows: readonly CcHistorialChartPoint[]
 ): CcHistorialChartPoint[] {
   const byYear = groupByYearAsc(rows, (r) => r.month);
   return [...byYear.entries()].map(([year, months]) => ({
     month: `${year}-12`,
-    installment_payments_clp: months.reduce((s, m) => s + m.installment_payments_clp, 0),
-    facturado_clp: sumOrNull(months.map((m) => m.facturado_clp)),
+    facturado_cuotas_clp: sumOrNull(months.map((m) => m.facturado_cuotas_clp)),
+    facturado_rest_clp: sumOrNull(months.map((m) => m.facturado_rest_clp)),
+    facturado_usd_clp: sumOrNull(months.map((m) => m.facturado_usd_clp)),
+    facturado_usd: sumOrNull(months.map((m) => m.facturado_usd)),
+    facturado_total_clp: sumOrNull(months.map((m) => m.facturado_total_clp)),
     cupo_en_cuotas_clp: lastFinite(months.map((m) => m.cupo_en_cuotas_clp)),
     balance_total_clp: lastFinite(months.map((m) => m.balance_total_clp)),
-  }));
-}
-
-/**
- * Facturado / coste-financiero chart: all three bars are flows and sum per year.
- * The YTD running series is redundant at year granularity (it would equal the
- * financing-cost bar every December) and is dropped.
- */
-export function rollupCcBillingMonthChartYearly(
-  points: readonly CcBillingMonthChartPoint[]
-): CcBillingMonthChartPoint[] {
-  const byYear = groupByYearAsc(points, (p) => p.billing_month);
-  return [...byYear.entries()].map(([year, months]) => ({
-    billing_month: `${year}-12`,
-    facturado_clp: sumOrNull(months.map((m) => m.facturado_clp)),
-    facturado_usd_clp: sumOrNull(months.map((m) => m.facturado_usd_clp)),
-    financing_cost_clp: sumOrNull(months.map((m) => m.financing_cost_clp)),
-    ytd_financing_cost_clp: null,
   }));
 }

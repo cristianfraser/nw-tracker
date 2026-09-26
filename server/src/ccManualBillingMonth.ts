@@ -13,7 +13,9 @@ import {
   ddMmYyyyFromIso,
   type CcCloseSource,
   latestFeedBillingClose,
+  latestKnownCloseIso,
   nextPeriodStartIsoForBillingMonth,
+  statementOwnCloseIso,
 } from "./ccBillingCloses.js";
 import { db } from "./db.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -24,7 +26,8 @@ export function isPdfStatementSource(sourcePdf: string): boolean {
 
 /**
  * True when this account's imported PDF history carries a USD statement stream — closing a
- * facturación then requires the USD twin too. The requirement follows the imported stream,
+ * facturación then waits for the USD twin too, until the bank closes a later facturación
+ * ({@link pdfClosedBillingMonthsForAccount}). The requirement follows the imported stream,
  * not the card's nominal facilities: a card with a dormant, never-billed USD side keeps
  * closing on CLP alone until its first USD statement lands.
  */
@@ -36,10 +39,9 @@ export function accountRequiresUsdStatementClose(accountId: number): boolean {
 }
 
 /**
- * Latest fully-imported facturación month (YYYY-MM) on this master account. A month only
- * counts as closed once every statement currency the card's PDF history carries is
- * imported for it — CLP always, plus USD when {@link accountRequiresUsdStatementClose}
- * (one twin arriving alone must not advance the open month).
+ * Latest facturación month (YYYY-MM) an imported statement closed on this master account (the
+ * currency rule of {@link pdfClosedBillingMonthsForAccount}: one twin arriving alone must not
+ * advance the open month).
  */
 export function lastPdfBillingMonthForAccount(accountId: number): string | null {
   let max: string | null = null;
@@ -49,22 +51,39 @@ export function lastPdfBillingMonthForAccount(accountId: number): string | null 
   return max;
 }
 
-/** Every facturación month an imported statement closed (same currency rule as above). */
+/**
+ * Every facturación month an imported statement closed. CLP always; the USD twin too when the
+ * account carries a USD stream ({@link accountRequiresUsdStatementClose}) — the two are mailed the
+ * same day, and one arriving alone must not close the month. But a twin still missing once the
+ * bank has closed a LATER facturación (a later statement in either currency, a feed-observed close,
+ * or an announced close that has passed) is not coming: that cycle billed nothing in dollars, and
+ * the month closes on CLP alone. Without it every USD-quiet cycle stayed «open» for good — the
+ * retired ·0161's CLP-only 2025 months, which flagged those months open on the group pages too.
+ */
 export function pdfClosedBillingMonthsForAccount(accountId: number): Set<string> {
+  const statements = listCcStatementsForAccount(accountId);
   const requiresUsd = accountRequiresUsdStatementClose(accountId);
-  const currenciesByMonth = new Map<string, Set<string>>();
-  for (const st of listCcStatementsForAccount(accountId)) {
+  const latestBankClose = requiresUsd
+    ? latestKnownCloseIso(accountId, statements, chileCalendarTodayYmd())
+    : null;
+  const byMonth = new Map<string, { currencies: Set<string>; clpCloseIso: string | null }>();
+  for (const st of statements) {
     if (!isPdfStatementSource(st.source_pdf)) continue;
     const bm = st.billing_month;
     if (!bm) continue;
-    let currencies = currenciesByMonth.get(bm);
-    if (!currencies) currenciesByMonth.set(bm, (currencies = new Set()));
-    currencies.add(st.currency);
+    let month = byMonth.get(bm);
+    if (!month) byMonth.set(bm, (month = { currencies: new Set(), clpCloseIso: null }));
+    month.currencies.add(st.currency);
+    if (st.currency !== "usd") month.clpCloseIso = statementOwnCloseIso(st);
   }
   const closed = new Set<string>();
-  for (const [bm, currencies] of currenciesByMonth) {
+  for (const [bm, { currencies, clpCloseIso }] of byMonth) {
     if (!currencies.has("clp")) continue;
-    if (requiresUsd && !currencies.has("usd")) continue;
+    const twinPending =
+      requiresUsd &&
+      !currencies.has("usd") &&
+      !(clpCloseIso != null && latestBankClose != null && latestBankClose > clpCloseIso);
+    if (twinPending) continue;
     closed.add(bm);
   }
   return closed;
@@ -127,7 +146,7 @@ export function provisionallyClosedBillingMonthsForAccount(accountId: number): S
  * first day after the previous facturación's close up to (not including) the first day after its
  * own — `nextPeriodStartIsoForBillingMonth`, so statement, feed and announced closes and the
  * issuer's close-day rule all apply (a Santander purchase ON the close day belongs to the next
- * cycle). Months whose close is only the config estimate fall back to the config cycle.
+ * cycle). A month whose close is only estimated ends the day after that estimate.
  */
 export function billingMonthContainingPurchase(accountId: number, purchaseIso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseIso)) {
@@ -153,7 +172,8 @@ export function billingMonthContainingPurchase(accountId: number, purchaseIso: s
 
 /**
  * Close date (ISO) of a billing month from the best evidence: its statement's period end, the
- * feed-observed close, the close the previous statement announced, or the config estimate.
+ * feed-observed close, the close the previous statement announced, or the estimate from the
+ * account's latest close day (`closeEvidenceForBillingMonth`).
  */
 export function periodToIsoForBillingMonth(
   accountId: number,

@@ -1,5 +1,4 @@
 export const MONTHLY_PERF_COLLAPSED = 12;
-export const CC_EXTRA_OFFSET_LS = "nw-credit-card-extra-offsets";
 
 export function formatYmEs(ym: string): string {
   const [ys, ms] = ym.split("-");
@@ -36,13 +35,5 @@ export function tickerLabelFromCategory(slug: string | null | undefined): string
       return "ETH";
     default:
       return "—";
-  }
-}
-
-export function persistExtraCcOffsets(accountId: number, next: Record<string, number>) {
-  try {
-    localStorage.setItem(`${CC_EXTRA_OFFSET_LS}:${accountId}`, JSON.stringify(next));
-  } catch {
-    /* ignore */
   }
 }

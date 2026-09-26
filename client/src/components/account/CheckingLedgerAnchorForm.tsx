@@ -11,7 +11,6 @@ import { Button, Input } from "@crfrsr/ui";
 type Props = {
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
   ledgerAnchor: CheckingLedgerAnchorDto | null;
   cartolaDerivedAnchor: CartolaDerivedAnchorDto | null;
 };
@@ -19,7 +18,6 @@ type Props = {
 export function CheckingLedgerAnchorForm({
   accountId,
   displayUnit,
-  extraCcOffsetsKey,
   ledgerAnchor,
   cartolaDerivedAnchor,
 }: Props) {
@@ -44,7 +42,7 @@ export function CheckingLedgerAnchorForm({
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({
-      queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly", extraCcOffsetsKey),
+      queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
     });
   };
 

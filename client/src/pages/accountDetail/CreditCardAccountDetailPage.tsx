@@ -1,7 +1,6 @@
 import { useTranslation } from "../../i18n";
 import {
   CreditCardDetalleSurface,
-  CreditCardFinancingSurface,
   CreditCardHistorialSurface,
   type CcSurfaceScope,
 } from "../../components/liabilities/CreditCardLedgerSurfaces";
@@ -23,18 +22,11 @@ type Props = {
 
 export function CreditCardAccountDetailPage({ data }: Props) {
   const { t } = useTranslation();
-  const {
-    summary,
-    ts,
-    ccLedger,
-    displayUnit,
-    extraCcOffsets,
-    setExtraCcOffsets,
-  } = data;
+  const { summary, ts, ccLedger, displayUnit } = data;
 
-  // The historial chart, the financing chart and the detalle table each own a per-surface
-  // Período/Rango control (`cc.<id>.historial` D/M/Y, `.financing` and `.detalle` M/Y) —
-  // the same trio the Pasivos / credit-card group pages render (`CreditCardLedgerSurfaces`).
+  // The historial chart and the detalle table each own a per-surface Período control
+  // (`cc.<id>.historial` D/M/Y + Rango, `.detalle` M/Y) — the same pair the Pasivos /
+  // credit-card group pages render (`CreditCardLedgerSurfaces`).
   const ccScope: CcSurfaceScope = { variant: "account", accountId: summary.account_id };
 
   const heroClp =
@@ -57,15 +49,9 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       loading={data.contentLoading}
       showNavChildCards={false}
     >
-      <AccountImportSection
-        accountId={summary.account_id}
-        displayUnit={displayUnit}
-        extraCcOffsetsKey={JSON.stringify(extraCcOffsets)}
-      />
+      <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
 
       <CreditCardHistorialSurface ccLedger={ccLedger} scope={ccScope} />
-
-      <CreditCardFinancingSurface ccLedger={ccLedger} scope={ccScope} />
 
       <CreditCardDetalleSurface ccLedger={ccLedger} scope={ccScope} />
 
@@ -88,9 +74,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       <CreditCardDetailSections
         ledger={ccLedger}
         displayUnit={displayUnit}
-        extraOffsets={extraCcOffsets}
         accountId={summary.account_id}
-        onExtraOffsetsChange={setExtraCcOffsets}
       />
 
       <AccountFlowsSection

@@ -186,8 +186,9 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
         ? deptoPropertyChartOverlayDailyLines(dailyDates, unit)
         : [];
     // Pasivos root / credit-card group / issuer pages: the day-period CC historial lines
-    // (owed, plan debt, plan tail) summed over the masters the merged monthly ledger sums —
-    // CLP-native like the chart, so CLP requests only (the client asks for clp explicitly).
+    // (owed, plan debt, plan tail) summed over the masters the merged monthly ledger sums, plus
+    // each card's facturación bars on its close dates — CLP-native like the chart, so CLP
+    // requests only (the client asks for clp explicitly).
     const ccDaily = unit === "clp" ? ccDailyHistorialBlockForGroup(portfolioGroup, series) : null;
     res.json({
       ...withRefs,
@@ -246,10 +247,11 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
       accountSeriesPayload.accounts = [...accountSeriesPayload.accounts, ...overlays];
     }
   }
-  // CC masters: attach the day-period historial lines — owed, plan debt («deuda en cuotas»)
-  // and the future plan tail (today+1 .. plan end) — so the account page's daily historial
-  // has both lines and covers the same window as its monthly/yearly forms. CLP-native like
-  // the chart, so CLP requests only (the client asks for clp explicitly).
+  // CC masters: attach the day-period historial series — owed, plan debt («deuda en cuotas»),
+  // the future plan tail (today+1 .. plan end) and the facturación bars on their close dates —
+  // so the account page's daily historial has both lines and the bars and covers the same
+  // window as its monthly/yearly forms. CLP-native like the chart, so CLP requests only (the
+  // client asks for clp explicitly).
   if (accountBucketKindSlug(row.bucket_slug) === "credit_card" && unit === "clp") {
     const ccDaily = ccDailyHistorialBlockForMasters([accountId], series);
     if (ccDaily) {

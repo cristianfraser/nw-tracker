@@ -10,7 +10,6 @@ import type {
   CcFacturacionDto,
   CcPendingCuotaPurchaseDto,
   CcProxyFacturacionAggregate,
-  CcStatementDto,
 } from "../../types";
 import { PaginatedTable, useClientPagination } from "../../components/ui/PaginatedTable";
 import { Table } from "../../components/ui/Table";
@@ -21,7 +20,6 @@ import {
   emptyFacturacionModalBucket,
 } from "../../components/credit-card/buildFacturacionModalBucket";
 import { flowLinesForFacturacionMonth } from "../../components/credit-card/flowLinesForStatementMonth";
-import { deletableWebPasteLineIds } from "../../components/credit-card/deletableWebPasteLineIds";
 import type { DisplayUnit } from "../../queries/keys";
 import {
   TableMobileCard,
@@ -197,19 +195,15 @@ function PendingCuotaPurchasesNotice({
 
 export function CreditCardFacturacionesTable({
   rows,
-  statements = [],
   accountId,
   displayUnit,
-  extraCcOffsetsKey,
   facturacionProxy,
   proxyTickers,
   pendingCuotaPurchases = [],
 }: {
   rows: readonly CcFacturacionDto[];
-  statements?: readonly CcStatementDto[];
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
   facturacionProxy?: readonly CcProxyFacturacionAggregate[];
   proxyTickers?: readonly string[];
   pendingCuotaPurchases?: readonly CcPendingCuotaPurchaseDto[];
@@ -250,13 +244,8 @@ export function CreditCardFacturacionesTable({
 
   const scopedLines = useMemo(() => {
     if (!selected || !flows) return [];
-    return flowLinesForFacturacionMonth(
-      flows.lines,
-      statements,
-      accountId,
-      selected
-    );
-  }, [accountId, flows, selected, statements]);
+    return flowLinesForFacturacionMonth(flows.lines, accountId, selected);
+  }, [accountId, flows, selected]);
 
   const facturacionLineCount = useMemo(() => scopedLines.length, [scopedLines]);
 
@@ -265,10 +254,11 @@ export function CreditCardFacturacionesTable({
     return buildFacturacionModalBucket(scopedLines);
   }, [scopedLines, selected]);
 
-  const deletableLineIds = useMemo(() => {
-    if (!selected) return new Set<number>();
-    return deletableWebPasteLineIds(statements, selected.billing_month);
-  }, [selected, statements]);
+  // Web-paste / card-feed lines are the only ones the server lets the modal delete.
+  const deletableLineIds = useMemo(
+    () => new Set(scopedLines.filter((ln) => ln.web_paste).map((ln) => ln.statement_line_id)),
+    [scopedLines]
+  );
 
   const modalSubtitle = selected ? (
     <>
@@ -400,7 +390,6 @@ export function CreditCardFacturacionesTable({
             categories={categories}
             accountId={accountId}
             displayUnit={displayUnit}
-            extraCcOffsetsKey={extraCcOffsetsKey}
             deletableLineIds={deletableLineIds}
           />
         )}

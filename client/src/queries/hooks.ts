@@ -592,15 +592,10 @@ export function useAccountMonthlyPerformance(id: string | undefined, unit: Displ
   });
 }
 
-export function usePortfolioGroupCcLedger(
-  slug: string | undefined,
-  extraOffsets: Record<string, number> = {},
-  enabled = true
-) {
-  const ccOffsetsKey = JSON.stringify(extraOffsets);
+export function usePortfolioGroupCcLedger(slug: string | undefined, enabled = true) {
   return useQuery({
-    queryKey: queryKeys.portfolioGroupCcLedger(slug ?? "", ccOffsetsKey),
-    queryFn: () => api.portfolioGroupCcLedger(slug!, extraOffsets),
+    queryKey: queryKeys.portfolioGroupCcLedger(slug ?? ""),
+    queryFn: () => api.portfolioGroupCcLedger(slug!),
     enabled: enabled && Boolean(slug),
     ...displayUnitQueryBehavior,
   });
@@ -619,18 +614,11 @@ export function usePortfolioGroupMortgageLedger(slug: string | undefined, enable
 export function useAccountDetailBundle(
   id: string | undefined,
   unit: DisplayUnit,
-  chartGranularity: "monthly" | "daily",
-  extraCcOffsets: Record<string, number>
+  chartGranularity: "monthly" | "daily"
 ) {
-  const ccOffsetsKey = useMemo(() => JSON.stringify(extraCcOffsets), [extraCcOffsets]);
-
   return useQuery({
-    queryKey: queryKeys.accountDetail(id ?? "", unit, chartGranularity, ccOffsetsKey),
-    queryFn: () =>
-      api.accountDetailBundle(id!, unit, {
-        granularity: chartGranularity,
-        extraOffsets: extraCcOffsets,
-      }),
+    queryKey: queryKeys.accountDetail(id ?? "", unit, chartGranularity),
+    queryFn: () => api.accountDetailBundle(id!, unit, { granularity: chartGranularity }),
     enabled: Boolean(id),
     ...displayUnitQueryBehavior,
   });

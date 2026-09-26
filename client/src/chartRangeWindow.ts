@@ -1,6 +1,6 @@
 import { addCalendarMonths, chileTodayYmd } from "./calendarMonth";
 import { timeRangeCutoffYmd, timeRangeToDays, type TimeRange } from "./timeRange";
-import type { CcBillingMonthChartPoint, CcHistorialChartPoint } from "./types";
+import type { CcHistorialChartPoint } from "./types";
 
 /** Fraction of the range span kept as an empty lead before the first data as a truncation cue. */
 const LEADING_GAP_FRACTION = 0.2;
@@ -80,36 +80,16 @@ export function windowCcHistorialRows(
     (r) =>
       r.cupo_en_cuotas_clp != null ||
       r.balance_total_clp != null ||
-      r.installment_payments_clp > 0,
+      r.facturado_total_clp != null,
     (month) => ({
       month,
-      installment_payments_clp: 0,
-      facturado_clp: null,
+      facturado_cuotas_clp: null,
+      facturado_rest_clp: null,
+      facturado_usd_clp: null,
+      facturado_usd: null,
+      facturado_total_clp: null,
       cupo_en_cuotas_clp: null,
       balance_total_clp: null,
-    }),
-    todayYmd
-  );
-}
-
-/** Shared M/Y range window for a CC billing-month financing chart (`billing_month`-keyed). */
-export function windowCcFinancingPoints(
-  points: readonly CcBillingMonthChartPoint[],
-  range: TimeRange,
-  todayYmd?: string
-): CcBillingMonthChartPoint[] {
-  return windowMonthRows(
-    points,
-    range,
-    (p) => p.billing_month,
-    (p) =>
-      p.facturado_clp != null || p.facturado_usd_clp != null || p.financing_cost_clp != null,
-    (billing_month) => ({
-      billing_month,
-      facturado_clp: null,
-      facturado_usd_clp: null,
-      financing_cost_clp: null,
-      ytd_financing_cost_clp: null,
     }),
     todayYmd
   );

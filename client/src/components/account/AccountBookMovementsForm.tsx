@@ -71,10 +71,9 @@ function buildPostBody(row: BookMovementDraft): Record<string, unknown> | null {
 type Props = {
   accountId: number;
   displayUnit: DisplayUnit;
-  extraCcOffsetsKey: string;
 };
 
-export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffsetsKey }: Props) {
+export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [movements, setMovements] = useState<BookMovementDraft[]>([]);
@@ -98,7 +97,7 @@ export function AccountBookMovementsForm({ accountId, displayUnit, extraCcOffset
       setLastSavedCount(count);
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly", extraCcOffsetsKey),
+          queryKey: queryKeys.accountDetail(String(accountId), displayUnit, "monthly"),
         }),
         queryClient.invalidateQueries({ queryKey: ["accountFlows"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.dashboard(displayUnit) }),

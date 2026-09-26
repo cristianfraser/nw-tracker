@@ -100,8 +100,7 @@ function positionSnapshotFromMeta(
 export async function buildAccountDetailBundle(
   accountId: number,
   unit: TsUnit,
-  granularity: "monthly" | "daily",
-  extraOffsets: Record<string, number>
+  granularity: "monthly" | "daily"
 ) {
   const withdrawals_clp = totalWithdrawalsClpForAccount(accountId);
   const cat = db
@@ -268,7 +267,7 @@ export async function buildAccountDetailBundle(
     },
   };
   if (category_slug === "credit_card") {
-    ccLedger = creditCardInstallmentsResponse(accountId, extraOffsets);
+    ccLedger = creditCardInstallmentsResponse(accountId);
   }
 
   const retirementBucketIds = leafAssetGroupIdsUnder("retirement");

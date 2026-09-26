@@ -31,7 +31,7 @@ import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
-import { listStaleOpenWebPasteStatementDates } from "./ccOpenWebPastePdfReconcile.js";
+import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import {
   isCcPaymentMerchant,
   isCcPaymentOrUsdDebtAbonoMerchant,
@@ -404,37 +404,25 @@ export function postCloseLiveBalanceAdjustmentsClp(
 }
 
 /**
- * Σ revolving charges in a billing month (all statement closes on distinct dates). Open-month
- * only (facturado display + balance roll-forward), so payment lines — PAGO / MONTO CANCELADO /
- * ABONO DE DIVISAS — are excluded: they settle the prior facturación, not this cycle's charges.
- * Non-payment negative lines (refunds, notas de crédito) still net inside the sum.
+ * Σ revolving charges in a billing month (its statement dates, `statementDatesForFacturacion`).
+ * Open-month only (facturado display + balance roll-forward), so payment lines — PAGO / MONTO
+ * CANCELADO / ABONO DE DIVISAS — are excluded: they settle the prior facturación, not this cycle's
+ * charges. Non-payment negative lines (refunds, notas de crédito) still net inside the sum.
  */
 export function incrementalChargesClpForBillingMonth(
   accountId: number,
   billingMonth: string
 ): number {
-  const seenDates = new Set<string>();
   let sum = 0;
-  for (const st of listCcStatementsForAccount(accountId)) {
-    if (st.billing_month !== billingMonth) continue;
-    if (seenDates.has(st.statement_date)) continue;
-    seenDates.add(st.statement_date);
-    sum += sumOpenCycleChargesClpForStatementDate(accountId, st.statement_date);
-  }
-  const openBm = billingMonthForManualLedgerPurchase(accountId);
-  if (openBm === billingMonth) {
-    for (const stmtDate of listStaleOpenWebPasteStatementDates(accountId, billingMonth)) {
-      if (seenDates.has(stmtDate)) continue;
-      seenDates.add(stmtDate);
-      sum += sumOpenCycleChargesClpForStatementDate(accountId, stmtDate);
-    }
+  for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) {
+    sum += sumOpenCycleChargesClpForStatementDate(accountId, stmtDate);
   }
   return sum;
 }
 
 /**
  * Open-cycle USD (foreign) charges billed so far, in USD and CLP — used to split the open month's
- * facturado into its CLP and US$ stacked components. Mirrors the statement iteration of
+ * facturado into its CLP and US$ stacked components. Reads the same statement dates as
  * {@link incrementalChargesClpForBillingMonth} but keeps only USD-denominated lines (foreign charges
  * that carry `amount_usd` with no CLP amount, or lines on a USD statement). Payment lines (PAGO /
  * MONTO CANCELADO / ABONO DE DIVISAS) are EXCLUDED — same rule as the CLP side
@@ -455,7 +443,6 @@ export function openMonthUsdFacturado(
   billingMonth: string
 ): { usd: number; clp: number } {
   const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
-  const seenDates = new Set<string>();
   let usd = 0;
   let clp = 0;
   const addStatement = (statementDate: string) => {
@@ -477,20 +464,7 @@ export function openMonthUsdFacturado(
       if (c != null && Number.isFinite(c)) clp += c;
     }
   };
-  for (const st of listCcStatementsForAccount(accountId)) {
-    if (st.billing_month !== billingMonth) continue;
-    if (seenDates.has(st.statement_date)) continue;
-    seenDates.add(st.statement_date);
-    addStatement(st.statement_date);
-  }
-  const openBm = billingMonthForManualLedgerPurchase(accountId);
-  if (openBm === billingMonth) {
-    for (const stmtDate of listStaleOpenWebPasteStatementDates(accountId, billingMonth)) {
-      if (seenDates.has(stmtDate)) continue;
-      seenDates.add(stmtDate);
-      addStatement(stmtDate);
-    }
-  }
+  for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) addStatement(stmtDate);
   return { usd, clp };
 }
 

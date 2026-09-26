@@ -135,8 +135,10 @@ export interface FlowCcExpenseLineRow {
   account_id: number;
   /** Calendar month bucket (YYYY-MM). */
   expense_month: string;
-  /** Facturación month (CC); same as expense_month for checking. */
+  /** Facturación month (CC) — the server's facturado rule; same as expense_month for checking. */
   billing_month: string;
+  /** CC lines: on a web-paste / card-feed statement — the only lines the facturación modal can delete. */
+  web_paste?: boolean;
   /** Calendar month of purchase (YYYY-MM). */
   purchase_month: string;
   line_role: "purchase" | "installment_cuota" | "installment_purchase_total";

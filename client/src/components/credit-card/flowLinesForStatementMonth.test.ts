@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  flowLinesForBillingStatementMonth,
-  flowLinesForFacturacionMonth,
-} from "./flowLinesForStatementMonth";
-import type { CcStatementDto, FlowCcExpenseLineRow } from "../../types";
+import { flowLinesForFacturacionMonth } from "./flowLinesForStatementMonth";
+import type { FlowCcExpenseLineRow } from "../../types";
 
 function line(
   partial: Partial<FlowCcExpenseLineRow> & Pick<FlowCcExpenseLineRow, "statement_line_id">
@@ -38,19 +35,15 @@ function line(
   };
 }
 
-describe("flowLinesForBillingStatementMonth", () => {
-  it("excludes ledger fill and purchase totals not on imported statement rows", () => {
-    const statements: CcStatementDto[] = [
-      {
-        id: 10,
-        billing_month: "2026-05",
-        statement_date: "20/05/2026",
-        currency: "clp",
-        lines: [{ ...line({ statement_line_id: 100, line_role: "purchase" }), id: 100 }],
-      } as unknown as CcStatementDto,
-    ];
+const closed = (billing_month: string) => ({ billing_month, is_open_month: false, is_provisional_close: false });
+const open = (billing_month: string) => ({ billing_month, is_open_month: true, is_provisional_close: false });
+const provisional = (billing_month: string) => ({ billing_month, is_open_month: false, is_provisional_close: true });
+const ids = (lines: readonly FlowCcExpenseLineRow[]) => lines.map((ln) => ln.statement_line_id).sort((a, b) => a - b);
+
+describe("flowLinesForFacturacionMonth", () => {
+  it("lists a closed month's statement lines only — no ledger fill, no purchase totals", () => {
     const flows = [
-      line({ statement_line_id: 100, line_role: "purchase" }),
+      line({ statement_line_id: 100, billing_month: "2026-05" }),
       line({
         statement_line_id: -2_000_000_001,
         line_role: "installment_cuota",
@@ -62,36 +55,19 @@ describe("flowLinesForBillingStatementMonth", () => {
       line({
         statement_line_id: -500,
         line_role: "installment_purchase_total",
-        billing_month: "2026-02",
+        billing_month: "2026-05",
         amount_clp: 50_000,
         category_statement_line_id: 100,
         nro_cuota_total: 3,
       }),
+      line({ statement_line_id: 101, billing_month: "2026-06" }),
     ];
-    const scoped = flowLinesForBillingStatementMonth(flows, statements, 1, "2026-05");
-    expect(scoped.map((ln) => ln.statement_line_id)).toEqual([100]);
+    expect(ids(flowLinesForFacturacionMonth(flows, 1, closed("2026-05")))).toEqual([100]);
   });
-});
 
-describe("flowLinesForFacturacionMonth", () => {
-  it("open month includes deduced installment cuotas for the billing month", () => {
-    const statements: CcStatementDto[] = [
-      {
-        id: 20,
-        billing_month: "2026-07",
-        statement_date: "20/07/2026",
-        currency: "clp",
-        source_pdf: "import:web-paste|open|2026-07",
-        lines: [{ ...line({ statement_line_id: 200, line_role: "purchase" }), id: 200 }],
-      } as unknown as CcStatementDto,
-    ];
+  it("lists an open month's bucket lines with its plan cuotas", () => {
     const flows = [
-      line({
-        statement_line_id: 200,
-        line_role: "purchase",
-        billing_month: "2026-07",
-        amount_clp: 50_000,
-      }),
+      line({ statement_line_id: 200, billing_month: "2026-07", amount_clp: 50_000 }),
       line({
         statement_line_id: -2_000_000_042,
         line_role: "installment_cuota",
@@ -109,68 +85,32 @@ describe("flowLinesForFacturacionMonth", () => {
         nro_cuota_total: 12,
       }),
     ];
-    const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
-      billing_month: "2026-07",
-      is_open_month: true,
-      is_provisional_close: false,
-    });
-    expect(scoped.map((ln) => ln.statement_line_id).sort()).toEqual([-2_000_000_042, 200]);
+    expect(ids(flowLinesForFacturacionMonth(flows, 1, open("2026-07")))).toEqual([-2_000_000_042, 200]);
+    // A provisionally closed month (statement pending) shows what an open month does.
+    expect(ids(flowLinesForFacturacionMonth(flows, 1, provisional("2026-07")))).toEqual([-2_000_000_042, 200]);
   });
 
-  it("a provisionally closed month (statement pending) shows what an open month does", () => {
-    const statements: CcStatementDto[] = [
-      {
-        id: 20,
-        billing_month: "2026-07",
-        statement_date: "20/07/2026",
-        currency: "clp",
-        source_pdf: "import:web-paste|open|2026-07",
-        lines: [{ ...line({ statement_line_id: 200, line_role: "purchase" }), id: 200 }],
-      } as unknown as CcStatementDto,
-    ];
+  it("never lists another facturación's bucket lines", () => {
+    // September's bucket stays September's while its CLP statement is pending — the old client
+    // rule put every earlier bucket under the open month (September 2026 lines in October).
     const flows = [
-      line({
-        statement_line_id: 200,
-        line_role: "purchase",
-        billing_month: "2026-07",
-        amount_clp: 50_000,
-      }),
-      line({
-        statement_line_id: -2_000_000_042,
-        line_role: "installment_cuota",
-        billing_month: "2026-07",
-        amount_clp: 18_660,
-        nro_cuota_current: 2,
-        nro_cuota_total: 12,
-      }),
-      line({
-        statement_line_id: -2_000_000_043,
-        line_role: "installment_cuota",
-        billing_month: "2026-08",
-        amount_clp: 18_660,
-        nro_cuota_current: 3,
-        nro_cuota_total: 12,
-      }),
+      line({ statement_line_id: 300, billing_month: "2026-09", web_paste: true, merchant: "PAYU *UBER EA" }),
+      line({ statement_line_id: 301, billing_month: "2026-09", merchant: "USD STATEMENT LINE" }),
+      line({ statement_line_id: 400, billing_month: "2026-10", web_paste: true, merchant: "OCTOBER FEED ROW" }),
     ];
-    const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
-      billing_month: "2026-07",
-      is_open_month: false,
-      is_provisional_close: true,
-    });
-    expect(scoped.map((ln) => ln.statement_line_id).sort()).toEqual([-2_000_000_042, 200]);
+    expect(ids(flowLinesForFacturacionMonth(flows, 1, open("2026-10")))).toEqual([400]);
+    expect(ids(flowLinesForFacturacionMonth(flows, 1, provisional("2026-09")))).toEqual([300, 301]);
+  });
+
+  it("excludes other cards' lines", () => {
+    const flows = [
+      line({ statement_line_id: 500, billing_month: "2026-07" }),
+      line({ statement_line_id: 501, billing_month: "2026-07", account_id: 2 }),
+    ];
+    expect(ids(flowLinesForFacturacionMonth(flows, 1, open("2026-07")))).toEqual([500]);
   });
 
   it("open month excludes facturado-financing split_only slices (foreign display derivations)", () => {
-    const statements: CcStatementDto[] = [
-      {
-        id: 30,
-        billing_month: "2026-08",
-        statement_date: "20/08/2026",
-        currency: "clp",
-        source_pdf: "import:web-paste|open|2026-08",
-        lines: [],
-      } as unknown as CcStatementDto,
-    ];
     const flows = [
       // The card's own scheduled cuota — stays.
       line({
@@ -203,41 +143,6 @@ describe("flowLinesForFacturacionMonth", () => {
         gastos_scope: "excluded",
       }),
     ];
-    const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
-      billing_month: "2026-08",
-      is_open_month: true,
-      is_provisional_close: false,
-    });
-    expect(scoped.map((ln) => ln.statement_line_id).sort()).toEqual([
-      -3_000_160_000, -3_000_161_000,
-    ]);
-  });
-
-  it("closed month excludes deduced installment cuotas", () => {
-    const statements: CcStatementDto[] = [
-      {
-        id: 10,
-        billing_month: "2026-06",
-        statement_date: "23/06/2026",
-        currency: "clp",
-        source_pdf: "2026-06-23 foo.pdf",
-        lines: [{ ...line({ statement_line_id: 100 }), id: 100 }],
-      } as unknown as CcStatementDto,
-    ];
-    const flows = [
-      line({ statement_line_id: 100 }),
-      line({
-        statement_line_id: -2_000_000_001,
-        line_role: "installment_cuota",
-        billing_month: "2026-08",
-        amount_clp: 5000,
-      }),
-    ];
-    const scoped = flowLinesForFacturacionMonth(flows, statements, 1, {
-      billing_month: "2026-06",
-      is_open_month: false,
-      is_provisional_close: false,
-    });
-    expect(scoped.map((ln) => ln.statement_line_id)).toEqual([100]);
+    expect(ids(flowLinesForFacturacionMonth(flows, 1, open("2026-08")))).toEqual([-3_000_161_000, -3_000_160_000]);
   });
 });

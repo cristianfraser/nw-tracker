@@ -27,13 +27,13 @@ describe("accountDetailBundle credit-card ledger", () => {
 
   it("builds the card's ledger for a master with its identity", async () => {
     const id = makeMaster("vitest-bundle-config", "9937");
-    const bundle = await buildAccountDetailBundle(id, "clp", "monthly", {});
+    const bundle = await buildAccountDetailBundle(id, "clp", "monthly");
     expect(bundle?.ccLedger.associated_card_last4s).toEqual(["9937"]);
   });
 
   it("fails the bundle when the ledger cannot be built, instead of serving an empty ledger", async () => {
     const id = makeMaster("vitest-bundle-no-config", null);
-    await expect(buildAccountDetailBundle(id, "clp", "monthly", {})).rejects.toThrow(
+    await expect(buildAccountDetailBundle(id, "clp", "monthly")).rejects.toThrow(
       /credit_card_account_config\.card_last4/
     );
   });

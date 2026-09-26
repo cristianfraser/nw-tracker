@@ -6,10 +6,9 @@ import { AccountImportPanel, useAccountImportSlots } from "./AccountImportPanel"
 type Props = {
   accountId: number;
   displayUnit: "clp" | "usd";
-  extraCcOffsetsKey?: string;
 };
 
-export function AccountImportSection({ accountId, displayUnit, extraCcOffsetsKey }: Props) {
+export function AccountImportSection({ accountId, displayUnit }: Props) {
   const { t } = useTranslation();
   const { data: specs } = useQuery({
     queryKey: ["accountImportSpecs", accountId],
@@ -21,7 +20,6 @@ export function AccountImportSection({ accountId, displayUnit, extraCcOffsetsKey
     <AccountImportPanel
       accountId={accountId}
       displayUnit={displayUnit}
-      extraCcOffsetsKey={extraCcOffsetsKey}
       slots={slots}
     />
   );

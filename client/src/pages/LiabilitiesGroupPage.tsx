@@ -140,11 +140,7 @@ export function LiabilitiesGroupPage() {
         ? portfolioGroup
         : undefined;
 
-  const { data: ccLedger } = usePortfolioGroupCcLedger(
-    ccLedgerSlug,
-    {},
-    shapeEnabled && ccLedgerSlug != null
-  );
+  const { data: ccLedger } = usePortfolioGroupCcLedger(ccLedgerSlug, shapeEnabled && ccLedgerSlug != null);
   const { data: mortgageLedger } = usePortfolioGroupMortgageLedger(
     mortgageLedgerSlug,
     shapeEnabled && mortgageLedgerSlug != null
