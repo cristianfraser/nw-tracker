@@ -10,11 +10,7 @@ import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { useTranslation } from "../i18n";
-import {
-  aggregateGastosFromLines,
-  computeExpensesTotal,
-  rollupExpenseMonthRowsByYear,
-} from "../ccExpenseGastosAggregate";
+import { aggregateGastosFromLines, rollupExpenseMonthRowsByYear } from "../ccExpenseGastosAggregate";
 import { aggregateGastosChartPointsByDay } from "../ccExpenseGastosDaily";
 import {
   flowChartGranularityFromMetricsPeriod,
@@ -108,8 +104,12 @@ export function ExpensesPage() {
       excludedBigGroups,
       displayUnit
     );
-    const totals = computeExpensesTotal(data.lines, installmentMode, displayUnit);
-    return { table: tableAgg, chart: chartAgg, ...totals };
+    return {
+      table: tableAgg,
+      chart: chartAgg,
+      total: tableAgg.total,
+      total_real: tableAgg.total_real,
+    };
   }, [chartCategorySlugs, data, displayUnit, excludedBigGroups, installmentMode]);
 
   /**
