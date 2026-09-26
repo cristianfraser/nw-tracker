@@ -385,14 +385,14 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     : bucketKind === "mortgage"
       ? mortgageMonthlyNominalPl(priorClose, live, netFlow)
       : live - priorClose - netFlow;
-  const denom = priorClose + netFlow;
+  // The closed months' rule (`reanchorMonthlyPerfToCalendarMonthEnds`): a running month whose
+  // withdrawals exceed the prior close — a liquidation — charges its flows at month end
+  // instead of reading exactly −100% (or null) and poisoning every chained window.
   const pct = ccPerf
     ? ccPerf.pct
     : bucketKind === "mortgage"
       ? liabilityPctMonth(nominal, priorClose)
-      : Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom)
-        ? nominal / denom
-        : null;
+      : flowAdjustedPctMonth(nominal, priorClose, netFlow, MONTH_ROW_EPS);
 
   const mortgageUfFields =
     bucketKind === "mortgage"
@@ -886,10 +886,7 @@ function buildAccountMonthlyPerformanceUncached(
       ? liabilityPctMonth(nominal, prevClose)
       : ccPerf
         ? ccPerf.pct
-        : (() => {
-            const denom = prevClose + netFlow;
-            return Math.abs(denom) > 1e-6 && Number.isFinite(nominal / denom) ? nominal / denom : null;
-          })();
+        : flowAdjustedPctMonth(nominal, prevClose, netFlow, MONTH_ROW_EPS);
 
     const y = Number(String(p.as_of_date).slice(0, 4));
     if (!Number.isFinite(y)) {
