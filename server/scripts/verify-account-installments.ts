@@ -47,7 +47,7 @@ function main() {
 
   const rows = db
     .prepare(
-      `SELECT id, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales, merchant
+      `SELECT id, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
        FROM cc_installment_purchases WHERE account_id = ?`
     )
     .all(accountId) as {
@@ -57,6 +57,7 @@ function main() {
     total_amount_clp: number;
     cuotas_totales: number;
     merchant: string | null;
+    twin_index: number;
   }[];
   const byFp = new Map<string, number[]>();
   for (const r of rows) {

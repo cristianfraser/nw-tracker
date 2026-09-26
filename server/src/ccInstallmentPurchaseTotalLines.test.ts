@@ -147,6 +147,7 @@ describe("ccInstallmentPurchaseTotalLines merge", () => {
       total_amount_clp: 149_970,
       cuotas_totales: 3,
       merchant: "8 BITS",
+      twin_index: 0,
     };
     expect(
       purchaseLineMatchesInstallmentPurchase(

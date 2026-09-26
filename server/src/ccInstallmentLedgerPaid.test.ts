@@ -13,6 +13,7 @@ const PR = {
   matched_baseline_purchase_id: null,
   source: "pdf",
   first_due_month: null,
+  twin_index: 0,
 };
 
 function pay(overrides: { amount_clp: number; cuota_current: number | null; cuota_total: number | null }) {

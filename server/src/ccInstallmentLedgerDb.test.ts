@@ -36,6 +36,7 @@ describe("filterLedgerPurchasesForSchedule", () => {
         matched_baseline_purchase_id: null,
         source: "pdf",
         first_due_month: null,
+        twin_index: 0,
       },
       {
         id: 2,
@@ -49,6 +50,7 @@ describe("filterLedgerPurchasesForSchedule", () => {
         matched_baseline_purchase_id: null,
         source: "pdf",
         first_due_month: null,
+        twin_index: 0,
       },
     ]);
     expect(filtered).toHaveLength(1);
@@ -69,6 +71,7 @@ describe("filterLedgerPurchasesForSchedule", () => {
         matched_baseline_purchase_id: null,
         source: "pdf",
         first_due_month: null,
+        twin_index: 0,
       },
     ]);
     expect(filtered).toHaveLength(1);

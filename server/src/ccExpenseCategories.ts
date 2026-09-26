@@ -689,7 +689,8 @@ function installmentLedgerTotalForCtx(
  *
  * 1. the line's own ledger payment row (`cc_installment_payments.parser_row_id`, written when the
  *    statement was matched to the ledger) — exact;
- * 2. identity, when exactly one plan matches ({@link installmentLedgerTotalForIdentity});
+ * 2. identity, when every plan that matches carries one total
+ *    ({@link installmentLedgerTotalForIdentity}) — twin plans of identical purchases share it;
  * 3. among same-identity twins, the unique plan whose monthly cuota (total ÷ cuotas) is the
  *    line's printed `valor_cuota_mensual_clp` (within 1 peso of rounding).
  *
@@ -762,7 +763,10 @@ function installmentLedgerTotalViaPaymentRow(
   return Math.round(plan.total_amount_clp);
 }
 
-/** Ledger totals of every plan sharing an installment identity (account/date/cuotas/merchant). */
+/**
+ * Distinct ledger totals among the plans sharing an installment identity (account/date/cuotas/
+ * merchant). Twin plans of identical purchases (migration 187) share one total, and so one key.
+ */
 function installmentLedgerTotalsForIdentity(
   accountId: number,
   purchaseDateIso: string,
@@ -779,16 +783,21 @@ function installmentLedgerTotalsForIdentity(
     total_amount_clp: number;
     merchant: string | null;
   }[];
-  return rows
-    .filter((r) => normalizeCcExpenseMerchantKey(r.merchant) === merchantKey)
-    .map((r) => Math.round(r.total_amount_clp));
+  return [
+    ...new Set(
+      rows
+        .filter((r) => normalizeCcExpenseMerchantKey(r.merchant) === merchantKey)
+        .map((r) => Math.round(r.total_amount_clp))
+    ),
+  ];
 }
 
 /**
  * Ledger `total_amount_clp` for an installment identity (account/date/cuotas/merchant), or null
- * unless exactly one ledger purchase matches. Tier 2 of
- * {@link installmentLedgerTotalForStatementLine}; on its own it cannot tell same-identity twins
- * apart (a statement line has the payment row and the printed cuota for that).
+ * unless the matching plans carry exactly one total (twin plans of identical purchases share
+ * theirs). Tier 2 of {@link installmentLedgerTotalForStatementLine}; on its own it cannot tell
+ * same-identity plans with DIFFERENT totals apart (a statement line has the payment row and the
+ * printed cuota for that).
  */
 export function installmentLedgerTotalForIdentity(
   accountId: number,

@@ -32,6 +32,7 @@ describe("ledgerInstallmentsPaid statement-month timing", () => {
     matched_baseline_purchase_id: null,
     source: "pdf",
     first_due_month: null,
+    twin_index: 0,
   };
 
   it("counts 01/N on May statement as one paid when reference is May (00/N was April)", () => {
@@ -99,6 +100,7 @@ describe("planInstallmentsConsumed 00/N resumen", () => {
     matched_baseline_purchase_id: null,
     source: "pdf",
     first_due_month: null,
+    twin_index: 0,
   };
 
   it("does not reduce remaining when only 00/N appears on statement", () => {
@@ -134,6 +136,7 @@ describe("planInstallmentsConsumed 00/N resumen", () => {
       matched_baseline_purchase_id: null,
       source: "pdf",
       first_due_month: null,
+      twin_index: 0,
     };
     const payList = [
       {
@@ -219,6 +222,7 @@ describe("purchaseFirstDueYm closed-month clamp (manual plans)", () => {
     matched_baseline_purchase_id: null,
     source: "manual",
     first_due_month: null,
+    twin_index: 0,
     ...overrides,
   });
 
@@ -273,6 +277,7 @@ describe("purchaseFirstDueYm 00/N preamble", () => {
     matched_baseline_purchase_id: null,
     source: "pdf",
     first_due_month: null,
+    twin_index: 0,
   };
 
   it("anchors first indexed cuota on the statement month after the 00/03 preamble", () => {

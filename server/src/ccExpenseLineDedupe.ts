@@ -128,6 +128,32 @@ export function purchaseExpenseLinesMatchForDisplayDedupe(
   return merchantsMatchForCrossDedupe(a.merchant_key, b.merchant_key);
 }
 
+/**
+ * Occurrence of each line among the identical lines of its own statement. Identical cuota lines
+ * on ONE statement are twin purchases — the same item bought several times the same day, each in
+ * cuotas (the parser keeps them apart with `#dupN`) — so the Nth line only collapses with the
+ * Nth rendering of the same slot elsewhere (web paste, ledger payment line, a re-imported copy),
+ * never with its own siblings.
+ */
+function sameStatementOccurrences<T extends CcExpenseLineForDedupe>(
+  lines: readonly T[]
+): Map<T, number> {
+  const byStatement = new Map<string, T[]>();
+  for (const line of lines) {
+    const key = `${flowCcExpenseLineFingerprint(line)}\t${line.statement_date ?? ""}`;
+    const group = byStatement.get(key) ?? [];
+    group.push(line);
+    byStatement.set(key, group);
+  }
+  const occurrence = new Map<T, number>();
+  for (const group of byStatement.values()) {
+    [...group]
+      .sort((a, b) => a.statement_line_id - b.statement_line_id)
+      .forEach((line, n) => occurrence.set(line, n));
+  }
+  return occurrence;
+}
+
 /** Drop duplicate charges from re-imported PDFs / mixed date formats in dedupe keys. */
 export function dedupeFlowCcExpenseLines<T extends CcExpenseLineForDedupe>(
   lines: readonly T[]
@@ -139,9 +165,12 @@ export function dedupeFlowCcExpenseLines<T extends CcExpenseLineForDedupe>(
     else nonPurchases.push(line);
   }
 
+  const occurrence = sameStatementOccurrences(nonPurchases);
   const best = new Map<string, T>();
   for (const line of nonPurchases) {
-    const key = flowCcExpenseLineFingerprint(line);
+    const n = occurrence.get(line) ?? 0;
+    const fingerprint = flowCcExpenseLineFingerprint(line);
+    const key = n === 0 ? fingerprint : `${fingerprint}\t#${n}`;
     const prev = best.get(key);
     best.set(key, prev ? pickPreferredExpenseLine(prev, line) : line);
   }

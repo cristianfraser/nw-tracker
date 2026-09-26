@@ -49,9 +49,13 @@ function installmentContractAmountClp(row: CcStatementCsvRecord): number {
   return Math.max(a, b, c);
 }
 
-type Agg = {
+/** The statement rows of one installment plan: cuota N on one statement, N+1 on the next. */
+export type CcInstallmentLoanChain = {
+  loan_key: string;
   card_group: string;
   canonical_row_id: string;
+  /** Occurrence among same-identity twin purchases, 0-based ({@link groupInstallmentLoanChains}). */
+  twin_index: number;
   rows: CcStatementCsvRecord[];
 };
 
@@ -84,10 +88,109 @@ function pickCanonicalForLoan(rows: CcStatementCsvRecord[]): string {
   return ids[0] ?? "unknown";
 }
 
+/** `#dupN` suffix the parser (and the statement-JSON importer) gives the Nth same-statement twin. */
+function dedupeKeyOccurrence(row: CcStatementCsvRecord): number {
+  const m = /#dup(\d+)$/.exec(String(row.dedupe_key ?? "").trim());
+  return m ? Number(m[1]) : 0;
+}
+
+/**
+ * Installment rows grouped into one chain per plan. A plan is its loan identity (card group,
+ * purchase date, principal, cuota count, merchant stem) plus a twin index: identical purchases
+ * made the same day each print one identical cuota line on every statement, so a row's twin
+ * index is its occurrence among the same loan's same-cuota rows on its statement, ordered by
+ * the `#dupN` suffix. The twins are indistinguishable, so pairing the Nth line of one statement
+ * with the Nth line of the next is exact.
+ */
+export function groupInstallmentLoanChains(
+  records: readonly CcStatementCsvRecord[]
+): Map<string, CcInstallmentLoanChain> {
+  const byStatementCuota = new Map<string, { loanKey: string; rows: CcStatementCsvRecord[] }>();
+  for (const row of records) {
+    const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
+    if (!inst) continue;
+    if (isInstallmentContractSummaryMerchant(String(row.merchant ?? ""))) continue;
+    if (installmentContractAmountClp(row) <= 0) continue;
+    const loanKey = makeLoanKey(row);
+    if (!loanKey) continue;
+    const bucketKey = [
+      loanKey,
+      String(row.source_pdf ?? ""),
+      String(row.statement_date ?? ""),
+      String(row.nro_cuota_current ?? "").trim(),
+    ].join("\t");
+    const bucket = byStatementCuota.get(bucketKey) ?? { loanKey, rows: [] };
+    bucket.rows.push(row);
+    byStatementCuota.set(bucketKey, bucket);
+  }
+
+  const chains = new Map<string, CcInstallmentLoanChain>();
+  for (const { loanKey, rows } of byStatementCuota.values()) {
+    const ordered = [...rows].sort(
+      (a, b) =>
+        dedupeKeyOccurrence(a) - dedupeKeyOccurrence(b) ||
+        String(a.row_id ?? "").localeCompare(String(b.row_id ?? ""))
+    );
+    ordered.forEach((row, twinIndex) => {
+      const chainKey = `${loanKey}\t${twinIndex}`;
+      const chain = chains.get(chainKey) ?? {
+        loan_key: loanKey,
+        card_group: String(row.card_group ?? "A").trim() || "A",
+        canonical_row_id: "",
+        twin_index: twinIndex,
+        rows: [],
+      };
+      chain.rows.push(row);
+      chains.set(chainKey, chain);
+    });
+  }
+  for (const chain of chains.values()) chain.canonical_row_id = pickCanonicalForLoan(chain.rows);
+  return chains;
+}
+
 function stmtSortKey(statementDate: string): number {
   const iso = parseDdMmYyToIso(statementDate);
   if (!iso) return 0;
   return Number(iso.replace(/-/g, ""));
+}
+
+/**
+ * Twin plans of one purchase identity start billing on the same statement: identical purchases
+ * made the same day print their first cuota together. A twin whose first statement payment
+ * differs from its twin 0's is a misread duplicate line, or a twin set whose earlier statements
+ * were imported before twin plans existed (backfill it with
+ * `server/scripts/repair-cc-installment-twin-plans.ts`) — never a purchase of its own.
+ */
+function assertTwinPlansStartTogether(
+  accountId: number,
+  planIdsByLoan: ReadonlyMap<string, ReadonlyMap<number, number>>
+): void {
+  const firstStatementPayBy = db.prepare(
+    `SELECT MIN(pay_by_date) AS first_pay_by FROM cc_installment_payments
+     WHERE purchase_id = ? AND (parser_row_id IS NULL OR parser_row_id NOT LIKE 'synthetic:%')`
+  );
+  const firstPayBy = (purchaseId: number): string | null =>
+    (firstStatementPayBy.get(purchaseId) as { first_pay_by: string | null }).first_pay_by;
+  for (const [loanKey, planIdByTwin] of planIdsByLoan) {
+    if (planIdByTwin.size <= 1) continue;
+    const twin0 = planIdByTwin.get(0);
+    if (twin0 == null) {
+      throw new Error(
+        `installment twin plans without a twin 0 on account ${accountId}: loan=${JSON.stringify(loanKey)}`
+      );
+    }
+    const start = firstPayBy(twin0);
+    for (const [twinIndex, purchaseId] of planIdByTwin) {
+      const twinStart = firstPayBy(purchaseId);
+      if (twinStart === start) continue;
+      throw new Error(
+        `installment twin plan ${purchaseId} (twin ${twinIndex}) on account ${accountId} first bills ` +
+          `${twinStart}, its twin 0 plan ${twin0} first bills ${start}: loan=${JSON.stringify(loanKey)}. ` +
+          `Twin plans start on the same statement — a misread duplicate line, or a twin set to ` +
+          `backfill with server/scripts/repair-cc-installment-twin-plans.ts.`
+      );
+    }
+  }
 }
 
 export type CcInstallmentLedgerMergeResult = {
@@ -112,30 +215,20 @@ export function mergeInstallmentLedgerFromParsedRows(
 ): CcInstallmentLedgerMergeResult {
   const replaceLedger = opts?.replaceLedger === true;
 
-  const byLoan = new Map<string, Agg>();
-  for (const row of accountRecords) {
-    const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
-    if (!inst) continue;
-    if (isInstallmentContractSummaryMerchant(String(row.merchant ?? ""))) continue;
-    if (installmentContractAmountClp(row) <= 0) continue;
-    const loanKey = makeLoanKey(row);
-    if (!loanKey) continue;
-    const cg = String(row.card_group ?? "A").trim() || "A";
-    const g = byLoan.get(loanKey) ?? { card_group: cg, canonical_row_id: "", rows: [] };
-    g.rows.push(row);
-    g.canonical_row_id = pickCanonicalForLoan(g.rows);
-    byLoan.set(loanKey, g);
-  }
+  const byLoan = groupInstallmentLoanChains(accountRecords);
 
   const insP = db.prepare(
     `INSERT INTO cc_installment_purchases (
        account_id, card_group, canonical_row_id, dedupe_key, parser_row_id_sample, source_pdf_sample,
-       purchase_date, total_amount_clp, cuotas_totales, merchant, description_merged, matched_baseline_purchase_id, source
+       purchase_date, total_amount_clp, cuotas_totales, merchant, description_merged, matched_baseline_purchase_id, source,
+       twin_index
      ) VALUES (
        @account_id, @card_group, @canonical_row_id, @dedupe_key, @parser_row_id_sample, @source_pdf_sample,
-       @purchase_date, @total_amount_clp, @cuotas_totales, @merchant, @description_merged, @matched_baseline_purchase_id, 'pdf'
+       @purchase_date, @total_amount_clp, @cuotas_totales, @merchant, @description_merged, @matched_baseline_purchase_id, 'pdf',
+       @twin_index
      )
      ON CONFLICT(account_id, card_group, canonical_row_id) DO UPDATE SET
+       twin_index = excluded.twin_index,
        dedupe_key = COALESCE(excluded.dedupe_key, dedupe_key),
        parser_row_id_sample = COALESCE(excluded.parser_row_id_sample, parser_row_id_sample),
        source_pdf_sample = COALESCE(excluded.source_pdf_sample, source_pdf_sample),
@@ -188,7 +281,7 @@ export function mergeInstallmentLedgerFromParsedRows(
     const purchaseIdByFingerprint = new Map<string, number>();
     for (const row of db
       .prepare(
-        `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant
+        `SELECT id, purchase_date, total_amount_clp, cuotas_totales, merchant, twin_index
          FROM cc_installment_purchases WHERE account_id = ?`
       )
       .all(accountId) as {
@@ -197,13 +290,16 @@ export function mergeInstallmentLedgerFromParsedRows(
       total_amount_clp: number;
       cuotas_totales: number;
       merchant: string | null;
+      twin_index: number;
     }[]) {
       const fp = installmentPurchaseLedgerDedupeKey(row);
       const prev = purchaseIdByFingerprint.get(fp);
       if (prev == null || row.id < prev) purchaseIdByFingerprint.set(fp, row.id);
     }
 
-    for (const [loanKey, agg] of byLoan.entries()) {
+    const planIdsByLoan = new Map<string, Map<number, number>>();
+    for (const agg of byLoan.values()) {
+      const loanKey = agg.loan_key;
       const sorted = [...agg.rows].sort(
         (a, b) => stmtSortKey(a.statement_date ?? "") - stmtSortKey(b.statement_date ?? "")
       );
@@ -236,6 +332,7 @@ export function mergeInstallmentLedgerFromParsedRows(
         total_amount_clp: maxTotal,
         cuotas_totales: maxCuotas,
         merchant,
+        twin_index: agg.twin_index,
       });
       let pid = purchaseIdByFingerprint.get(fingerprint);
       if (pid == null) {
@@ -252,6 +349,7 @@ export function mergeInstallmentLedgerFromParsedRows(
           merchant,
           description_merged: String(first.description_merged ?? "").trim() || null,
           matched_baseline_purchase_id: matched_baseline,
+          twin_index: agg.twin_index,
         });
         purchaseUpserts++;
         // A contract added now consumes cupo on its OWN purchase date (see the daily walk),
@@ -291,6 +389,9 @@ export function mergeInstallmentLedgerFromParsedRows(
         });
         purchaseUpserts++;
       }
+      const planIdByTwin = planIdsByLoan.get(loanKey) ?? new Map<number, number>();
+      planIdByTwin.set(agg.twin_index, pid);
+      planIdsByLoan.set(loanKey, planIdByTwin);
 
       const payGroups = new Map<string, CcStatementCsvRecord[]>();
       for (const r of sorted) {
@@ -336,6 +437,7 @@ export function mergeInstallmentLedgerFromParsedRows(
         paymentUpserts++;
       }
     }
+    assertTwinPlansStartTogether(accountId, planIdsByLoan);
   });
 
   run();

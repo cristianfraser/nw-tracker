@@ -10,6 +10,7 @@ describe("dedupeInstallmentPurchaseLedgerRows", () => {
         total_amount_clp: 881_134,
         cuotas_totales: 12,
         merchant: "ROCA WEBPAY N/CUOTAS PRECIO",
+        twin_index: 0,
       },
       {
         id: 431,
@@ -17,6 +18,7 @@ describe("dedupeInstallmentPurchaseLedgerRows", () => {
         total_amount_clp: 881_134,
         cuotas_totales: 12,
         merchant: "ROCA WEBPAY",
+        twin_index: 0,
       },
       {
         id: 478,
@@ -24,6 +26,7 @@ describe("dedupeInstallmentPurchaseLedgerRows", () => {
         total_amount_clp: 881_134,
         cuotas_totales: 12,
         merchant: "ROCA WEBPAY",
+        twin_index: 0,
       },
     ]);
     expect(rows).toHaveLength(1);
@@ -39,6 +42,7 @@ describe("dedupeInstallmentPurchaseLedgerRows", () => {
         total_amount_clp: 54_990,
         cuotas_totales: 6,
         merchant: "MP     *MERCADO LIBRE",
+        twin_index: 0,
       },
       {
         id: 59,
@@ -46,6 +50,7 @@ describe("dedupeInstallmentPurchaseLedgerRows", () => {
         total_amount_clp: 54_990,
         cuotas_totales: 6,
         merchant: "MP    *MERCADO LIBRE",
+        twin_index: 0,
       },
     ]);
     expect(rows).toHaveLength(1);
