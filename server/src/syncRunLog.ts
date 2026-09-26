@@ -3,6 +3,7 @@ import { db } from "./db.js";
 
 export type SyncChangeGroup =
   | "afp"
+  | "afc"
   | "sbif_usd"
   | "sbif_eur"
   | "sbif_uf"
@@ -100,6 +101,7 @@ export function formatSyncIndex(n: number): string {
 
 const FLAT_GROUP_ORDER: SyncChangeGroup[] = [
   "afp",
+  "afc",
   "sbif_usd",
   "sbif_eur",
   "sbif_uf",

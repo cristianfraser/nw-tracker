@@ -1,12 +1,16 @@
 import { assertValuationCurrencyClp } from "./valuationValue.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
 import {
   afpCuotasCumulativeThroughDate,
   latestAfpUnoFundUnitRowOnOrBeforeForDisplay,
   latestFundUnitRowOnOrBefore,
 } from "./afpUnoValuation.js";
+import {
+  cuotaLedgerDisplayTicker,
+  cuotaLedgerSeriesKeyForAccount,
+  isCuotaLedgerKindSlug,
+} from "./cuotaLedgerAccounts.js";
 import {
   accountUsesCryptoMtm,
   computeCryptoMtmClp,
@@ -281,12 +285,16 @@ export function getAccountPositionMeta(
       return out;
     }
   }
-  if (categorySlug === "afp") {
+  if (isCuotaLedgerKindSlug(categorySlug)) {
+    // AFP UNO (Fondo A) and AFC (Fondo CIC): Σ cuotas × the series' valor cuota on or before
+    // the date. An `afc` account with no declared series is not modeled in cuotas yet and
+    // keeps the stored-mark path (null here).
+    const series = cuotaLedgerSeriesKeyForAccount(accountId, categorySlug);
+    if (!series) return null;
     const asOfCuotas =
       opts?.afpCuotasAsOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.afpCuotasAsOfYmd.trim())
         ? opts.afpCuotasAsOfYmd.trim()
         : chileCalendarTodayYmd();
-    const series = AFP_UNO_CUOTA_SERIES_KEY;
     let fu = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(series, asOfCuotas);
     if (fu == null) fu = latestFundUnitRowOnOrBefore(series, asOfCuotas);
     const px = fu?.unit_value_clp;
@@ -297,14 +305,15 @@ export function getAccountPositionMeta(
         `SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`
       )
       .get(accountId, asOfCuotas) as { value_clp: number; currency: string } | undefined;
-    if (stored) assertValuationCurrencyClp(stored.currency, "accountPosition afp stored");
+    if (stored) assertValuationCurrencyClp(stored.currency, "accountPosition cuota-ledger stored");
 
-    // The cuota ledger is certificate-backed (rebuilt 2026-07 from the official UNO
-    // movement certs); it IS the truth — no stored-valuation drift substitution.
+    // The cuota ledger IS the truth (AFP: certificate-backed, rebuilt 2026-07 from the official
+    // UNO movement certs; AFC: derived from pesos ÷ valor cuota until a cartola supplies the
+    // exact cuotas) — no stored-valuation drift substitution.
     const cuotas = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
 
     const out: AccountPositionMeta = {
-      ticker: "UNO-A",
+      ticker: cuotaLedgerDisplayTicker(categorySlug),
       units_kind: "shares",
       units: cuotas > 1e-9 && Number.isFinite(cuotas) ? cuotas : null,
     };
@@ -343,13 +352,15 @@ export function liveFintualCertDisplayValueClp(
   return null;
 }
 
-export function liveAfpDisplayValueClp(
+/** Live cuota-ledger mark (AFP UNO / AFC CIC): Σ cuotas × valor cuota on or before `asOfYmd`. */
+export function liveCuotaLedgerDisplayValueClp(
   accountId: number,
+  kindSlug: string,
   asOfYmd?: string
 ): { value_clp: number; as_of_date: string } | null {
   const asOf =
     asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd.trim()) ? asOfYmd.trim() : chileCalendarTodayYmd();
-  const meta = getAccountPositionMeta(accountId, "afp", { afpCuotasAsOfYmd: asOf });
+  const meta = getAccountPositionMeta(accountId, kindSlug, { afpCuotasAsOfYmd: asOf });
   const clp = meta?.afp_override_value_clp;
   const date = meta?.afp_override_value_as_of;
   if (clp != null && Number.isFinite(clp) && date) {

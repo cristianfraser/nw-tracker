@@ -409,6 +409,7 @@
       },
       "sources": {
         "afp_uno": "AFP UNO",
+        "afc_cic": "AFC — Fondo de Cesantía (CIC) unit value",
         "fintual": "Fintual",
         "fintual_rn_composition": "Risky Norris composition (proxy)",
         "sbif_usd": "Banco Central — observed dollar",
@@ -445,6 +446,7 @@
     "dayColumn": "Date",
     "positionHint": "Stocks and crypto: ticker and units (shares or coin) from movements in the database (<1>movements.units_delta</1> and import notes).",
     "positionHintAfp": " AFP UNO Fondo A: units from <1>movements.units_delta</1> (certificate in <2>cfraser/afp-uno-certificado-cotizaciones.csv</2> or <3>.txt</3> when running <4>import:excel</4>, or <5>npm run afp:uno:cert-sync</5>).",
+    "positionHintAfc": " AFC Fondo de Cesantía (CIC): units from <1>movements.units_delta</1>, priced with the Superintendencia de Pensiones daily unit value (<2>afc_cic</2>). Units derived as pesos ÷ unit value until a cartola supplies the exact count (<3>npm run afc:derive-cuotas</3>).",
     "position": {
       "title": "Position (ticker and units)",
       "colTicker": "Ticker",

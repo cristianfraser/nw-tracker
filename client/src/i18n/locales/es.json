@@ -409,6 +409,7 @@
       },
       "sources": {
         "afp_uno": "AFP UNO",
+        "afc_cic": "AFC — valor cuota Fondo de Cesantía (CIC)",
         "fintual": "Fintual",
         "fintual_rn_composition": "Composición Risky Norris (proxy)",
         "sbif_usd": "Banco Central — dólar observado",
@@ -445,6 +446,7 @@
     "dayColumn": "Fecha",
     "positionHint": "Acciones y cripto: ticker y unidades (acciones o moneda) desde movimientos en la base (<1>movements.units_delta</1> y notas de import).",
     "positionHintAfp": " AFP UNO Fondo A: cuotas desde <1>movements.units_delta</1> (certificado en <2>cfraser/afp-uno-certificado-cotizaciones.csv</2> o <3>.txt</3> al correr <4>import:excel</4>, o <5>npm run afp:uno:cert-sync</5>).",
+    "positionHintAfc": " AFC Fondo de Cesantía (CIC): cuotas desde <1>movements.units_delta</1>, valoradas con el valor cuota diario de la Superintendencia de Pensiones (<2>afc_cic</2>). Cuotas derivadas como pesos ÷ valor cuota hasta que una cartola entregue el número exacto (<3>npm run afc:derive-cuotas</3>).",
     "position": {
       "title": "Posición (ticker y cuotas)",
       "colTicker": "Ticker",

@@ -3,6 +3,7 @@ import {
   computeLatestDisplayedEquityClp,
 } from "./brokerageEquityMtm.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
+import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountUsesCryptoMtm, computeCryptoMtmClpDisplaySync } from "./cryptoValuation.js";
@@ -133,7 +134,7 @@ function positionSnapshotFromMeta(
   latest: { value_clp: number; as_of_date: string } | null | undefined
 ): DashboardAccountStats["position"] {
   if (meta == null) return null;
-  const afp = categorySlug === "afp";
+  const afp = isCuotaLedgerKindSlug(categorySlug);
   const crypto = categorySlug === "bitcoin" || categorySlug === "eth";
   const v = latest?.value_clp;
   const units = meta.units;
@@ -418,7 +419,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
           : derivedClp.prior_year_close);
       const asOfCuotas = v?.as_of_date ?? chileCalendarTodayYmd();
       const positionMeta = getAccountPositionMeta(a.id, kindSlug, {
-        afpCuotasAsOfYmd: kindSlug === "afp" ? asOfCuotas : undefined,
+        afpCuotasAsOfYmd: isCuotaLedgerKindSlug(kindSlug) ? asOfCuotas : undefined,
         accountImportKey: a.import_key,
         accountName: a.name,
       });
@@ -428,7 +429,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       const equityMtm =
         equityTickerForAccount(a.id) != null && accountUsesEquityMtm(a.id);
       if (
-        (kindSlug === "afp" ||
+        (isCuotaLedgerKindSlug(kindSlug) ||
           isFintualCertV2ValuationNotes(a.import_key) ||
           ((kindSlug === "bitcoin" || kindSlug === "eth") && accountUsesCryptoMtm(a.id))) &&
         position?.value_clp != null &&

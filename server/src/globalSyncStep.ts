@@ -18,6 +18,7 @@ import {
 } from "./globalSyncStale.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { isYahooFxUsdStale } from "./fxYahooEodSync.js";
+import { isAfcCicStale } from "./afcCicSeries.js";
 import type { SyncStepError } from "./syncRunLog.js";
 
 export function syncErrorMessage(e: unknown): string {
@@ -57,6 +58,7 @@ export async function runSyncStepIfStale(
     const now = new Date();
     const keepForcedStale =
       (source === "fintual" && isFintualSyncStale(cl, state)) ||
+      (source === "afc_cic" && isAfcCicStale(cl, state)) ||
       (source === "stocks_nyse" && isStocksNyseStale(state, { now })) ||
       (source === "stocks_santiago" && isStocksSantiagoStale(state, { now })) ||
       (source === "yahoo_fx_usd" && isYahooFxUsdStale({ now })) ||

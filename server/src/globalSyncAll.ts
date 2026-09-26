@@ -77,6 +77,7 @@ import {
 } from "./afpUnoValuation.js";
 import { fillFundUnitDailyCalendarGap, latestFundUnitRow } from "./fundUnitDaily.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
+import { syncAfcCicFromSp } from "./afcCicSeries.js";
 import {
   fetchFintualGoalsRaw,
   getValidFintualSession,
@@ -739,6 +740,48 @@ async function runSbifUsd(
   console.log(`sync: BCentral USD — ${fxN} row(s) after ${lastFx} (${syncDryRun ? "dry-run" : "ok"})`);
 }
 
+/**
+ * AFC Fondo de Cesantía (CIC) valor cuota from the Superintendencia de Pensiones' yearly CSV
+ * (`afcCicSeries.ts`): re-reads the current year (plus the previous one when its last day is
+ * missing) and upserts; a stored value the SP now prints differently is replaced and noted.
+ * No account row is written — AFC accounts value live as Σ cuotas × the series.
+ */
+async function runAfcCic(
+  cl: ReturnType<typeof chileWallClockNow>,
+  changes: SyncFieldChange[],
+  notes: SyncStepNote[]
+): Promise<void> {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), 45_000);
+  let r;
+  try {
+    r = await syncAfcCicFromSp({ cl, dryRun: syncDryRun, signal: ac.signal });
+  } finally {
+    clearTimeout(t);
+  }
+  const before = r.latest_before;
+  const after = r.latest_after;
+  if (after && (before == null || after.day !== before.day || Math.abs(after.unit_value_clp - before.unit_value_clp) > 0.00005)) {
+    changes.push({
+      group: "afc",
+      label: "AFC CIC valor cuota",
+      oldValue: before ? formatSyncClose(before.unit_value_clp) : "—",
+      newValue: formatSyncClose(after.unit_value_clp),
+      oldDate: before?.day ?? null,
+      newDate: after.day,
+    });
+  }
+  for (const x of r.restated) {
+    notes.push({
+      step: "AFC CIC",
+      message: `restated ${x.day}: ${formatSyncClose(x.previous)} → ${formatSyncClose(x.next)}`,
+    });
+  }
+  console.log(
+    `sync: AFC CIC — years=[${r.years.join(", ")}] inserted=${r.inserted} updated=${r.updated} unchanged=${r.unchanged} latest=${after?.day ?? "—"} (${syncDryRun ? "dry-run" : "ok"})`
+  );
+}
+
 async function runYahooFxUsd(
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[],
@@ -1164,6 +1207,10 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
 
     await runSyncStepIfStale("afp_uno", stale, "AFP UNO", stepErrors, state!, cl, async () => {
       await runUnoSpot(cl, state!, syncChanges);
+    });
+
+    await runSyncStepIfStale("afc_cic", stale, "AFC CIC", stepErrors, state!, cl, async () => {
+      await runAfcCic(cl, syncChanges, stepNotes);
     });
 
     await runSyncStepIfStale("fintual", stale, "Fintual", stepErrors, state!, cl, async () => {

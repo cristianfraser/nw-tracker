@@ -16,18 +16,22 @@ describe("accountDetailBundle movement_create", () => {
     expect(bundle!.summary.movement_create?.brokerage_flow_kinds).toEqual(BROKERAGE_FLOW_KINDS);
   });
 
-  it("exposes book_ledger_edit for AFC", async () => {
+  it("AFC is a cuota-ledger account: units required on creates, no book-ledger edit", async () => {
     const row = db
-      .prepare(`SELECT id FROM accounts WHERE notes LIKE 'import:excel|key=afc%' LIMIT 1`)
+      .prepare(
+        `SELECT a.id FROM accounts a
+         INNER JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug = 'afc' OR g.slug LIKE '%__afc'
+         ORDER BY a.id LIMIT 1`
+      )
       .get() as { id: number } | undefined;
     if (!row) return;
 
     const bundle = await buildAccountDetailBundle(row.id, "clp", "monthly");
     expect(bundle).not.toBeNull();
-    expect(bundle!.summary.book_ledger_edit).toEqual({
-      valuations: true,
-      movements: { units_delta: "optional" },
-    });
+    expect(bundle!.summary.movement_create?.units_delta).toBe("required");
+    expect(bundle!.summary.movement_create?.unit_label).toBe("cuotas");
+    expect(bundle!.summary.book_ledger_edit).toBeNull();
   });
 
   it("exposes brokerage_flow_kinds for panel-created stocks (leaf slug ≠ bucket)", () => {

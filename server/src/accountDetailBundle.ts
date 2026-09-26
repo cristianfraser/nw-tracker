@@ -7,6 +7,7 @@ import {
   totalStateContributionsClpForAccount,
 } from "./accountDeposits.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
@@ -55,7 +56,7 @@ function positionSnapshotFromMeta(
   accountId?: number
 ) {
   if (meta == null) return null;
-  const afp = categorySlug === "afp";
+  const afp = isCuotaLedgerKindSlug(categorySlug);
   const crypto = categorySlug === "bitcoin" || categorySlug === "eth";
   const v = latest?.value_clp;
   const units = meta.units;
@@ -151,7 +152,7 @@ export async function buildAccountDetailBundle(
   }
   const asOfCuotas = latest?.as_of_date ?? chileCalendarTodayYmd();
   const positionMeta = getAccountPositionMeta(accountId, category_slug, {
-    afpCuotasAsOfYmd: category_slug === "afp" ? asOfCuotas : undefined,
+    afpCuotasAsOfYmd: isCuotaLedgerKindSlug(category_slug) ? asOfCuotas : undefined,
     accountImportKey: cat.account_import_key,
     accountName: cat.account_name,
   });
@@ -165,7 +166,7 @@ export async function buildAccountDetailBundle(
   let latest_valuation_clp = latest?.value_clp ?? null;
   let latest_valuation_date = latest?.as_of_date ?? null;
   if (
-    (category_slug === "afp" ||
+    (isCuotaLedgerKindSlug(category_slug) ||
       isFintualCertV2ValuationNotes(cat.account_import_key) ||
       (accountUsesEquityMtm(accountId) && position?.value_clp != null)) &&
     position?.value_clp != null

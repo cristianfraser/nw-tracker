@@ -1,4 +1,5 @@
 import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } from "./chileDate.js";
+import { AFC_CIC_PUBLISH_HOUR_CHILE, afcCicNextDueYmd } from "./afcCicSeries.js";
 import {
   CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE,
   CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE,
@@ -118,6 +119,8 @@ function nextSbifMonthlyDue(cl: ChileWallClock): SyncWallTime {
 export type SyncSourceScheduleOptions = {
   /** `fintualLastAppliedPublishYmd` — a cuota already in hand for a day needs no poll that day. */
   fintualAppliedPublishYmd?: string | null;
+  /** Latest `afc_cic` row day in DB — the next wake is the first day whose expected row is beyond it. */
+  afcCicLatestDay?: string | null;
 };
 
 function scheduleForSource(
@@ -149,6 +152,17 @@ function scheduleForSource(
       const nextYmd = nextChileBusinessDayYmd(cl.ymd);
       return {
         next_sync: nextYmd ? chileTimeOnYmd(nextYmd, 0, 0) : null,
+        next_sync_imminent: false,
+        today_day_kind: chileDayKind(cl.ymd),
+      };
+    }
+    case "afc_cic": {
+      // The SP prints day D on D+1; the source is due at AFC_CIC_PUBLISH_HOUR_CHILE on the first
+      // calendar day whose prior Chile business day is beyond the latest row in DB — a Sunday
+      // whose Friday row already landed on Saturday is not a wake (`afcCicNextDueYmd`).
+      const nextYmd = afcCicNextDueYmd(cl, opts?.afcCicLatestDay ?? null);
+      return {
+        next_sync: nextYmd ? chileTimeOnYmd(nextYmd, AFC_CIC_PUBLISH_HOUR_CHILE, 0) : null,
         next_sync_imminent: false,
         today_day_kind: chileDayKind(cl.ymd),
       };

@@ -80,7 +80,8 @@ import {
   ufClpBySnapshotDatesAsc,
   ufRowOnOrBefore,
 } from "./fxRates.js";
-import { liveAfpDisplayValueClp } from "./accountPosition.js";
+import { liveCuotaLedgerDisplayValueClp } from "./accountPosition.js";
+import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import {
   chartHostSlugForValuationGroup,
@@ -635,13 +636,14 @@ function sanitizeValuationChartDateStrs(sortedAsc: string[]): string[] {
   return uniq;
 }
 
-/** Rightmost chart point for AFP = live cuotas × valor cuota (dashboard position), dated Chile today. */
-function patchAfpLiveLastPoint(
+/** Rightmost chart point for a cuota-ledger account (AFP / AFC) = live cuotas × valor cuota, dated Chile today. */
+function patchCuotaLedgerLiveLastPoint(
   accountId: number,
+  kindSlug: string,
   unit: TsUnit,
   points: Record<string, string | number | null>[]
 ): Record<string, string | number | null>[] {
-  const live = liveAfpDisplayValueClp(accountId);
+  const live = liveCuotaLedgerDisplayValueClp(accountId, kindSlug);
   if (!live) return points;
 
   const dk = String(accountId);
@@ -851,8 +853,8 @@ function patchLiveAfpMarksOnPoints(
 ): Record<string, string | number | null>[] {
   let next = points;
   for (const r of rows) {
-    if (r.bucket_slug === "afp") {
-      next = patchAfpLiveLastPoint(r.account_id, unit, next);
+    if (isCuotaLedgerKindSlug(accountBucketKindSlug(r.bucket_slug))) {
+      next = patchCuotaLedgerLiveLastPoint(r.account_id, accountBucketKindSlug(r.bucket_slug), unit, next);
     } else if (accountUsesEquityMtm(r.account_id)) {
       next = patchEquityLiveLastPoint(r.account_id, unit, next);
     } else if (accountUsesCryptoMtm(r.account_id)) {
@@ -2553,8 +2555,8 @@ export function getAccountValuationTimeseries(
 
   if (accounts.points.length > 0) {
     let points = accounts.points;
-    if (bucketKind === "afp") {
-      points = patchAfpLiveLastPoint(row.account_id, unit, points);
+    if (bucketKind != null && isCuotaLedgerKindSlug(bucketKind)) {
+      points = patchCuotaLedgerLiveLastPoint(row.account_id, bucketKind, unit, points);
     } else if (bucketKind === "property" || bucketKind === "mortgage") {
       points = patchDeptoLiveLastPoint(row.account_id, bucketKind, unit, points);
     } else if (accountUsesEquityMtm(row.account_id)) {
