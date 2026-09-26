@@ -1,4 +1,5 @@
 import { cacheKeyAccountMonthlyPerf, getAggregationCached } from "./aggregationCache.js";
+import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import {
@@ -1224,10 +1225,10 @@ export function getStocksLifetimeEarningsSeries(unit: TsUnit = "clp"): {
        FROM accounts a
        JOIN asset_groups g ON g.id = a.asset_group_id
        WHERE g.slug = 'brokerage_acciones'
-         AND (a.notes IS NULL OR a.notes != 'import:excel|key=stocks')
+         AND (a.import_key IS NULL OR a.import_key != ?)
        ORDER BY a.name`
     )
-    .all() as { account_id: number; name: string }[];
+    .all(NOTE_STOCKS_LEGACY) as { account_id: number; name: string }[];
   if (stock_accounts.length === 0) {
     return { unit, stock_accounts: [], points: [] };
   }

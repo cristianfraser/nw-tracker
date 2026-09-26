@@ -58,7 +58,6 @@ export function importCcWebPasteLines(
 ) {
   assertCreditCardAccount(accountId);
   const meta = creditCardMasterMetaForAccount(accountId);
-  if (!meta) throw new Error("Not a credit card master account");
 
   if (parsed.lines.length === 0) {
     return {

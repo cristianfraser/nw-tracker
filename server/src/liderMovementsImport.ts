@@ -145,7 +145,6 @@ export function classifyLiderLines(
   lines: readonly CcWebPasteLine[]
 ): { importable: CcWebPasteLine[]; sameDayAmount: LiderLineClassification[] } {
   const meta = creditCardMasterMetaForAccount(accountId);
-  if (!meta) throw new Error(`Account ${accountId} is not a credit card master`);
   const importable: CcWebPasteLine[] = [];
   const sameDayAmount: LiderLineClassification[] = [];
   for (const line of lines) {

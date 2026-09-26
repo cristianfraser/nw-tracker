@@ -343,14 +343,14 @@ describe("buildBillingDetailByMonth", () => {
       .get() as { id: number } | undefined;
     if (!bucket) return;
 
-    const notes = `credit_card_master|test|inactive-${Date.now()}`;
+    const importKey = `credit_card_master|santander|vitest-inactive-${Date.now()}`;
     const acctId = Number(
       db
         .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes)
-           VALUES (?, 'Vitest · inactive fixture', ?)`
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+           VALUES (?, 'Vitest · inactive fixture', ?, ?)`
         )
-        .run(bucket.id, notes).lastInsertRowid
+        .run(bucket.id, importKey, importKey).lastInsertRowid
     );
     db.prepare(
       `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)

@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
+import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { clearAggregationCache } from "./aggregationCache.js";
 import { assertHomogeneousGroupItems } from "./portfolioGroupTree.js";
 import { seedCreditCardTree } from "./seedCreditCardTree.js";
@@ -178,10 +179,10 @@ function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortSt
       `SELECT a.id
        FROM accounts a
        WHERE a.asset_group_id IN (${ph})
-         AND (a.notes IS NULL OR a.notes != 'import:excel|key=stocks')
+         AND (a.import_key IS NULL OR a.import_key != ?)
        ORDER BY a.name COLLATE NOCASE`
     )
-    .all(...leafIds) as { id: number }[];
+    .all(...leafIds, NOTE_STOCKS_LEGACY) as { id: number }[];
   rows.forEach((r, i) => {
     insertAccountChild.run(pid, r.id, sortStart + i * 10);
     db.prepare(`UPDATE accounts SET primary_portfolio_group_id = ? WHERE id = ?`).run(pid, r.id);

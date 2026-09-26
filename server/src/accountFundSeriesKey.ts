@@ -1,7 +1,7 @@
 import { db } from "./db.js";
 import { fintualCertV2SeriesKeyFromImportNotes } from "./fintualCertV2.js";
 
-/** `import:excel|key=…` or `import:fintual|cert|key=…` → rates chart series key (fallback when column unset). */
+/** `import:excel|key=…` or `import:fintual|cert|key=…` identity string → rates chart series key. */
 export function fundSeriesKeyFromImportNotes(importNotes: string): string | null {
   const v2 = fintualCertV2SeriesKeyFromImportNotes(importNotes);
   if (v2) return v2;
@@ -17,12 +17,13 @@ export function fundSeriesKeyFromImportNotes(importNotes: string): string | null
   }
 }
 
+/**
+ * The account's fund series (`accounts.fund_series_key`, written by the account ensure), or null
+ * when it is not modeled on one. The column is the state — no derivation from identity strings.
+ */
 export function fundSeriesKeyForAccount(accountId: number): string | null {
   const row = db
-    .prepare(`SELECT fund_series_key, notes FROM accounts WHERE id = ?`)
-    .get(accountId) as { fund_series_key: string | null; notes: string | null } | undefined;
-  if (!row) return null;
-  const col = row.fund_series_key?.trim();
-  if (col) return col;
-  return fundSeriesKeyFromImportNotes(row.notes ?? "");
+    .prepare(`SELECT fund_series_key FROM accounts WHERE id = ?`)
+    .get(accountId) as { fund_series_key: string | null } | undefined;
+  return row?.fund_series_key?.trim() || null;
 }

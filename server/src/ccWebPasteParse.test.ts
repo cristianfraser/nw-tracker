@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
@@ -111,7 +111,7 @@ describe("parseCcWebPasteText", () => {
 
   it("maps BCI master to BCI card_group", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|bci|4343'`)
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|bci|4343'`)
       .get() as { id: number } | undefined;
     if (!master) return;
     expect(creditCardMasterMetaForAccount(master.id)).toEqual({
@@ -122,11 +122,10 @@ describe("parseCcWebPasteText", () => {
 
   it("assigns BCI pasted lines to open bucket with BCI card_group", () => {
     const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|bci|4343'`)
+      .prepare(`SELECT id FROM accounts WHERE import_key = 'credit_card_master|bci|4343'`)
       .get() as { id: number } | undefined;
     if (!master) return;
     const meta = creditCardMasterMetaForAccount(master.id);
-    if (!meta) return;
     const { lines } = parseCcWebPasteText("11/06/2026\tENTEL HOGAR\t$21.249");
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     expect(openBm).toBeTruthy();
@@ -141,6 +140,68 @@ describe("parseCcWebPasteText", () => {
     expect(records[0]?.card_last4).toBe("4343");
     expect(records[0]?.amount_clp).toBe("21249");
     expect(records[0]?.source_pdf).toBe(openWebPasteSourcePdf(openBm!));
+  });
+});
+
+describe("creditCardMasterMetaForAccount", () => {
+  const created: number[] = [];
+  afterEach(() => {
+    for (const id of created.splice(0)) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+  });
+
+  function makeAccount(opts: { importKey: string; notes: string | null; cardLast4: string | null }): number {
+    const bucket = db
+      .prepare(`SELECT id FROM asset_groups WHERE slug IN ('credit_card', 'credit_cards__credit_card') LIMIT 1`)
+      .get() as { id: number };
+    const id = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'Vitest · master meta', ?, ?)`)
+        .run(bucket.id, opts.notes, opts.importKey).lastInsertRowid
+    );
+    created.push(id);
+    if (opts.cardLast4 != null) {
+      db.prepare(`INSERT INTO credit_card_account_config (account_id, card_last4) VALUES (?, ?)`).run(
+        id,
+        opts.cardLast4
+      );
+    }
+    return id;
+  }
+
+  it("reads the issuer from import_key and the last4 from the config row, never notes", () => {
+    const id = makeAccount({
+      importKey: "credit_card_master|bci|vitest-meta-structured",
+      notes: "credit_card_master|santander|1111",
+      cardLast4: "9933",
+    });
+    expect(creditCardMasterMetaForAccount(id)).toEqual({ cardGroup: "BCI", cardLast4: "9933" });
+  });
+
+  it("throws for an account whose import_key is not a credit card master, whatever its notes say", () => {
+    const id = makeAccount({
+      importKey: "vitest-meta-not-a-master",
+      notes: "credit_card_master|santander|9934",
+      cardLast4: "9934",
+    });
+    expect(() => creditCardMasterMetaForAccount(id)).toThrow(/is not a credit card master/);
+  });
+
+  it("throws for a master without a config last4", () => {
+    const id = makeAccount({
+      importKey: "credit_card_master|santander|vitest-meta-no-config",
+      notes: null,
+      cardLast4: null,
+    });
+    expect(() => creditCardMasterMetaForAccount(id)).toThrow(/credit_card_account_config\.card_last4/);
+  });
+
+  it("throws for an issuer with no web-paste card group", () => {
+    const id = makeAccount({
+      importKey: "credit_card_master|vitestbank|vitest-meta-issuer",
+      notes: null,
+      cardLast4: "9935",
+    });
+    expect(() => creditCardMasterMetaForAccount(id)).toThrow(/issuer "vitestbank"/);
   });
 });
 
