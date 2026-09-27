@@ -77,10 +77,22 @@ export function resolveInstallmentPayByIso(row: {
   return null;
 }
 
-/** ISO of a stored `cc_statement_lines.transaction_date` (accepts `YYYY-MM-DD` or parser `DD/MM/YYYY`). */
+/**
+ * ISO of a stored card date — a line's transaction or posting date, a statement's or a payment's
+ * date (accepts `YYYY-MM-DD` or the parsers' `DD/MM/YY(YY)`). Goes through {@link parseDdMmYyToIso},
+ * so a year jammed with MCC digits is repaired and a day or month out of range is null.
+ */
 export function normalizeTransactionDateIso(td: string | null | undefined): string | null {
   if (!td) return null;
   const t = String(td).trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
   return parseDdMmYyToIso(t);
+}
+
+/** ISO date of a statement line: its transaction date, else its posting date. */
+export function statementLineDateIso(line: {
+  transaction_date: string | null;
+  posting_date: string | null;
+}): string | null {
+  return normalizeTransactionDateIso(line.transaction_date) ?? normalizeTransactionDateIso(line.posting_date);
 }

@@ -26,7 +26,7 @@
  *   leftover pesos with no closed facturación to pay are discarded.
  */
 import { cacheKeyCcBillingDetail, getAggregationCached } from "./aggregationCache.js";
-import { normalizeTransactionDateIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { isCcPaymentMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
 import { db } from "./db.js";
 
@@ -51,15 +51,6 @@ export type CuotaRetirementResult = {
   /** Billing month → date its cuota component fully retired via payment evidence. */
   retired_on_by_month: Map<string, string>;
 };
-
-function isoFromStatementDateLike(raw: string | null | undefined): string | null {
-  const t = String(raw ?? "").trim();
-  if (!t) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  const m4 = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
-  if (m4) return `${m4[3]}-${m4[2]}-${m4[1]}`;
-  return parseDdMmYyToIso(t);
-}
 
 /**
  * Dated CLP payments of billed debt for one CC master: payment lines (`isCcPaymentMerchant`
@@ -135,7 +126,7 @@ export function clpFacturadoByCloseIso(accountId: number): Map<string, number> {
         .all(accountId) as { statement_date: string; amt: number }[];
       const out = new Map<string, number>();
       for (const r of rows) {
-        const iso = isoFromStatementDateLike(r.statement_date);
+        const iso = normalizeTransactionDateIso(r.statement_date);
         if (!iso) continue;
         if (!out.has(iso)) out.set(iso, Math.round(r.amt));
       }
