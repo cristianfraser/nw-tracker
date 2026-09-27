@@ -18,7 +18,7 @@ import {
 import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
-import { flowAdjustedPctMonth } from "./periodReturns.js";
+import { flowAdjustedPct } from "./periodReturns.js";
 import {
   monthEndCloseClpForAccount,
   monthEndCloseFromPerfRows,
@@ -432,7 +432,7 @@ export function consolidateGroupMonthlyPerf(
       const net = bucket.net_capital_flow;
       /** Same definition as {@link getGroupMonthlyPerformanceSeries} `delta_total` (Σ per-account picked nominal_pl). */
       const nominal = bucket.nominal_pl;
-      const pct = flowAdjustedPctMonth(nominal, prior ?? null, net, MONTH_ROW_EPS);
+      const pct = flowAdjustedPct(nominal, prior ?? null, net, MONTH_ROW_EPS);
       return { ...bucket, nominal_pl: nominal, pct_month: pct };
     });
 

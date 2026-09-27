@@ -57,6 +57,32 @@ describe("reanchorMonthlyPerfToCalendarMonthEnds", () => {
     expect(out[1]!.prior_closing).toBe(53_000_000);
     expect(out[1]!.nominal_pl).toBeCloseTo(100_000, 0);
   });
+
+  it("a first month (no prior close) divides by its net inflow; net withdrawals read null", () => {
+    const first = (netFlow: number): AccountMonthlyPerformanceRow => ({
+      as_of_date: "2026-05-31",
+      closing_value: 300_000,
+      prior_closing: null,
+      net_capital_flow: netFlow,
+      stock_units_inflow: 0,
+      nominal_pl: null,
+      pct_month: null,
+      ytd_nominal_pl: null,
+      cumulative_nominal_pl: null,
+      unit: "clp",
+    });
+    const opts = { accountId: 999_999, bucketSlug: "brokerage_mutual_funds", unit: "clp" as const };
+    // Deposited 2xx.xxx, closed at 3xx.xxx: +20%.
+    expect(reanchorMonthlyPerfToCalendarMonthEnds([first(250_000)], opts)[0]!.pct_month).toBeCloseTo(
+      0.2,
+      12
+    );
+    // Withdrew 5x.xxx from a balance the ledger never saw arrive: the old inline ratio read
+    // 3xx.xxx / −5x.xxx = −700%, a gain as a loss.
+    const out = reanchorMonthlyPerfToCalendarMonthEnds([first(-50_000)], opts)[0]!;
+    expect(out.nominal_pl).toBe(350_000);
+    expect(out.pct_month).toBeNull();
+  });
 });
 
 describe("getAccountMonthlyPerformance", () => {

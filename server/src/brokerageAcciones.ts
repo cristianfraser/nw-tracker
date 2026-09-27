@@ -74,7 +74,7 @@ export interface DashboardAccountStats {
   sync_stale: boolean;
   /**
    * Flow-adjusted period returns from the row's own final legs (shared
-   * `flowAdjustedPctMonth`; ratios, not %). Total = P/L acumulado ÷ lifetime deposits.
+   * `flowAdjustedPct`; ratios, not %). Total = P/L acumulado ÷ lifetime deposits.
    */
   pct_day_clp?: number | null;
   pct_month_clp?: number | null;

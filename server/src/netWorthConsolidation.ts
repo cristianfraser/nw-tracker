@@ -5,7 +5,7 @@
 
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { flowAdjustedPctMonth } from "./periodReturns.js";
+import { flowAdjustedPct } from "./periodReturns.js";
 import {
   getGroupConsolidatedMonthlyPerfForRows,
   type ConsolidatedMonthlyPerfRow,
@@ -70,7 +70,7 @@ function sumBucketConsolidatedRows(
       const prior = row.prior_closing;
       const net = row.net_capital_flow;
       const nominal = row.nominal_pl;
-      const pct = flowAdjustedPctMonth(nominal, prior ?? null, net, 0.01);
+      const pct = flowAdjustedPct(nominal, prior ?? null, net, 0.01);
       return { ...row, pct_month: pct };
     });
 

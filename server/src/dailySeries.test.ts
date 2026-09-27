@@ -238,6 +238,53 @@ describe("getBucketDailySeries — stored-valuations account with mid-window dep
     }
   });
 
+  it("a withdrawal larger than the prior close reads its gain against that close, not −100%", () => {
+    if (leafSlug == null) return;
+    const leaf = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(leafSlug) as
+      | { id: number }
+      | undefined;
+    if (!leaf) return;
+
+    const accountId = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+           VALUES (?, 'Vitest · daily series liquidation', 'vitest-daily-series-liquidation', 'vitest-daily-series-liquidation')`
+        )
+        .run(leaf.id).lastInsertRowid
+    );
+    const insVal = db.prepare(
+      `INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`
+    );
+    insVal.run(accountId, "2026-03-18", 500000);
+    insVal.run(accountId, "2026-03-24", 0);
+    // Liquidated on 03-24 with the gain on top: 520000 out of a 500000 close.
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+       VALUES (?, -520000, 'clp', '2026-03-24', 'vitest-daily-series-liquidation')`
+    ).run(accountId);
+
+    try {
+      const s = getBucketDailySeries([{ account_id: accountId, bucket_slug: leafSlug }], {
+        unit: "clp",
+        days: 6,
+        now: NOW,
+      });
+      const tue = s.points[4]!;
+      expect(tue.value).toBe(0);
+      expect(tue.flow).toBe(-520000);
+      expect(tue.pl).toBe(20000);
+      // prior + flow = −20000 is no capital base: the guard divides by the prior close.
+      expect(tue.pct).toBeCloseTo(20000 / 500000, 12);
+      // Nothing at work afterwards: no base in either frame.
+      expect(s.points[5]!.pct).toBeNull();
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+    }
+  });
+
   it("sold-out account: chart line keeps one zero then ends; points keep their true zeros", () => {
     if (leafSlug == null) return;
     const leaf = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(leafSlug) as
