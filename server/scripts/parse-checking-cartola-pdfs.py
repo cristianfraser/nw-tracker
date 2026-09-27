@@ -52,6 +52,7 @@ from cartola_layout import (
     reconcile_cartola_movements,
     strip_amounts_from_line,
 )
+from statement_values import iso_date_from_parts, parse_clp_amount, parse_dd_mm_yy_to_iso
 
 RE_AMOUNT = re.compile(r"\d{1,3}(?:\.\d{3})+")
 RE_AMOUNT_FULL = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
@@ -109,27 +110,6 @@ def tessdata_prefix() -> Optional[str]:
     return None
 
 
-def parse_clp_amount(raw: str) -> Optional[int]:
-    t = str(raw or "").strip().replace("$", "").strip()
-    if not t:
-        return None
-    t = t.replace(".", "")
-    try:
-        return int(t)
-    except ValueError:
-        return None
-
-
-def dd_mm_yyyy_to_iso(raw: str) -> Optional[str]:
-    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", str(raw or "").strip())
-    if not m:
-        return None
-    d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    if d < 1 or d > 31 or mo < 1 or mo > 12:
-        return None
-    return f"{y:04d}-{mo:02d}-{d:02d}"
-
-
 def period_month_from_hasta(hasta_iso: str) -> str:
     return hasta_iso[:7]
 
@@ -152,10 +132,7 @@ def dd_mm_to_iso(dd_mm: str, desde_iso: str, hasta_iso: str) -> Optional[str]:
     if not m:
         return None
     d, mo = int(m.group(1)), int(m.group(2))
-    y = infer_movement_year(d, mo, desde_iso, hasta_iso)
-    if d < 1 or d > 31 or mo < 1 or mo > 12:
-        return None
-    return f"{y:04d}-{mo:02d}-{d:02d}"
+    return iso_date_from_parts(d, mo, infer_movement_year(d, mo, desde_iso, hasta_iso))
 
 
 def extract_pdf_text_pdftotext(pdf_path: Path) -> Optional[str]:
@@ -190,8 +167,8 @@ def parse_period_and_saldos(flat: str) -> Tuple[Optional[str], Optional[str], Op
     if not m:
         m = re.search(r"(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})", flat)
     if m:
-        period_from = dd_mm_yyyy_to_iso(m.group(1))
-        period_to = dd_mm_yyyy_to_iso(m.group(2))
+        period_from = parse_dd_mm_yy_to_iso(m.group(1))
+        period_to = parse_dd_mm_yy_to_iso(m.group(2))
         if period_to:
             period_month = period_month_from_hasta(period_to)
 
@@ -202,9 +179,9 @@ def parse_period_and_saldos(flat: str) -> Tuple[Optional[str], Optional[str], Op
     if cm:
         cartola_no = cm.group(1)
         if not period_from:
-            period_from = dd_mm_yyyy_to_iso(cm.group(2))
+            period_from = parse_dd_mm_yy_to_iso(cm.group(2))
         if not period_to:
-            period_to = dd_mm_yyyy_to_iso(cm.group(3))
+            period_to = parse_dd_mm_yy_to_iso(cm.group(3))
         if period_to and not period_month:
             period_month = period_month_from_hasta(period_to)
 

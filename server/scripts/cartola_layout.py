@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+from statement_values import parse_clp_amount
+
 RE_AMOUNT = re.compile(r"\d{1,3}(?:\.\d{3})+")
 # Legacy cartolas sometimes show sub-10k CLP without thousand separators (e.g. "900", "566", "850").
 RE_SMALL_TRAILING = re.compile(r"\s(\d{1,4})\s*$")
@@ -42,16 +44,6 @@ class CartolaSummaryTotals:
     total_cargos_clp: int
     total_abonos_clp: int
     saldo_final_clp: int
-
-
-def parse_clp_amount(raw: str) -> Optional[int]:
-    t = str(raw or "").strip().replace(".", "")
-    if not t:
-        return None
-    try:
-        return int(t)
-    except ValueError:
-        return None
 
 
 def detect_vista_column_bounds(text: str) -> AmountColumnBounds:

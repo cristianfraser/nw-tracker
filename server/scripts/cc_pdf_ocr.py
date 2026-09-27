@@ -13,6 +13,8 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from statement_values import parse_clp_amount
+
 CC_PDF_OCR_DPI = int(os.environ.get("CC_PDF_OCR_DPI", "400"))
 
 RE_OCR_INTL_ROW = re.compile(
@@ -129,20 +131,6 @@ def parse_usd_amount_ocr(raw: str) -> Optional[float]:
         return None
 
 
-def parse_clp_amount_ocr(raw: str) -> Optional[int]:
-    t = str(raw or "").strip().replace("$", "").replace(" ", "")
-    if not t:
-        return None
-    neg = t.startswith("-")
-    t = t.lstrip("-")
-    t = t.replace(".", "")
-    try:
-        v = int(t)
-    except ValueError:
-        return None
-    return -v if neg else v
-
-
 def parse_international_usd_ocr_flat(
     flat: str,
     *,
@@ -235,14 +223,14 @@ def parse_santander_clp_ocr_flat(
             continue
         if "MOVIMIENTOS TARJETA" in merchant.upper() or "MASTERCARD $" in merchant.upper():
             continue
-        amt = parse_clp_amount_ocr(amt_raw)
+        amt = parse_clp_amount(amt_raw)
         if amt is None or compact_payment_merchant_re.match(merchant):
             continue
         add_row(fecha, merchant, amt, "ocr_compact")
 
     for m in RE_OCR_CLP_PAYMENT_AFTER.finditer(flat):
         fecha, merchant, amt_raw = m.group(1), m.group(2), m.group(3)
-        amt = parse_clp_amount_ocr(amt_raw)
+        amt = parse_clp_amount(amt_raw)
         if amt is None:
             continue
         add_row(fecha, merchant, amt, "ocr_payment")

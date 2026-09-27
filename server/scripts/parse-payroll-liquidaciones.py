@@ -41,7 +41,12 @@ PARSE_CACHE_PER_PDF_DIR = PARSE_CACHE_DIR / "per-pdf"
 PARSER_VERSION_FILES = (
     SCRIPT_DIR / "parse-payroll-liquidaciones.py",
     SCRIPT_DIR / "cc_pdf_ocr.py",
+    SCRIPT_DIR / "statement_values.py",
 )
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from statement_values import parse_clp_amount as parse_clp_amount_printed  # noqa: E402
 
 
 def parser_version_hash() -> str:
@@ -108,26 +113,28 @@ def amount_after_ocr_label(text: str, labels: Tuple[str, ...]) -> Optional[int]:
     return None
 
 
+PAYROLL_ZERO_TOKENS = frozenset({"-", "0", "0,0", "0,00", "0,0000", "00"})
+RE_CHILEAN_DECIMAL_AMOUNT = re.compile(r"\d{1,3}(?:\.\d{3})*,\d{2}")
+RE_CHILEAN_AMOUNT = re.compile(r"-?(?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d+)?")
+
+
 def parse_clp_amount(raw: str) -> Optional[int]:
+    """Payroll amounts through the shared peso parser (`statement_values.parse_clp_amount`).
+
+    Payroll providers print both Chilean amounts (3.062.633, 3.500.000,00) and US-style ones
+    (axity's 1,126,500, the OCR'd scans' 1,389,455), so a comma with no dot around it groups
+    thousands here; anything else that is not a printed amount keeps just its digits (OCR noise).
+    A printed zero reads as absent, so a label search moves on to the next label."""
     s = str(raw or "").strip()
-    if not s or s in ("-", "0", "0,0", "0,00", "0,0000", "00"):
+    if not s or s in PAYROLL_ZERO_TOKENS:
         return None
-    # 3.xxx.xxx,xx
-    m = re.fullmatch(r"(\d{1,3}(?:\.\d{3})*),(\d{2})", s)
-    if m:
-        return int(m.group(1).replace(".", ""))
-    # 1,009,422 or 2,000,001
-    if "," in s and "." not in s:
-        return int(s.replace(",", ""))
-    # 3.xxx.xxx or 2.xxx.xxx
-    if "." in s:
-        parts = s.split(".")
-        if len(parts) > 1 and all(len(p) == 3 for p in parts[1:]):
-            return int("".join(parts))
-    digits = re.sub(r"[^\d]", "", s)
-    if not digits:
-        return None
-    return int(digits)
+    if "," in s and "." not in s and not RE_CHILEAN_DECIMAL_AMOUNT.fullmatch(s):
+        s = s.replace(",", "")
+    elif not RE_CHILEAN_AMOUNT.fullmatch(s):
+        s = re.sub(r"[^\d]", "", s)
+        if not s:
+            return None
+    return parse_clp_amount_printed(s)
 
 
 def parse_uf_amount(raw: str) -> Optional[float]:

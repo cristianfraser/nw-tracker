@@ -16,6 +16,7 @@ from cc_statement_line_rules import (
     is_usd_section3_merchant,
 )
 from dataclasses import asdict, dataclass, field
+from statement_values import parse_dd_mm_yy_to_iso
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Tolerances for pdftotext rounding
@@ -561,7 +562,7 @@ def extract_pdf_section_totals(
                 if amt_c is not None and abs(float(amt_c)) == pagado_abs:
                     cancel_dates.add(m_c.group(1))
             if len(cancel_dates) == 1:
-                iso = _cc_iso_from_ddmmyy(next(iter(cancel_dates)))
+                iso = parse_dd_mm_yy_to_iso(next(iter(cancel_dates)))
                 if iso is not None:
                     out["pdf_monto_pagado_anterior_date"] = iso
         for m_total in re.finditer(
@@ -655,8 +656,8 @@ def extract_pdf_section_totals(
         )
         if not m_next:
             continue
-        iso_from = _cc_iso_from_ddmmyy(m_next.group(1))
-        iso_to = _cc_iso_from_ddmmyy(m_next.group(2))
+        iso_from = parse_dd_mm_yy_to_iso(m_next.group(1))
+        iso_to = parse_dd_mm_yy_to_iso(m_next.group(2))
         if iso_from and iso_to and iso_from < iso_to:
             out["pdf_next_period_from"] = m_next.group(1)
             out["pdf_next_period_to"] = m_next.group(2)
@@ -676,19 +677,6 @@ def merge_section_totals_into_meta(
     totals = extract_pdf_section_totals(full, currency, parse_clp, parse_usd, layout_text=layout_text)
     meta.update(totals)
     return meta
-
-
-def _cc_iso_from_ddmmyy(raw: str) -> Optional[str]:
-    m = re.fullmatch(r"(\d{2})/(\d{2})/(\d{2,4})", raw.strip())
-    if not m:
-        return None
-    dd, mm, yy = m.group(1), m.group(2), m.group(3)
-    year = int(yy)
-    if year < 100:
-        year += 2000
-    if not (1 <= int(mm) <= 12 and 1 <= int(dd) <= 31):
-        return None
-    return f"{year:04d}-{mm}-{dd}"
 
 
 def _close_enough(a: Optional[float], b: Optional[float], tol: float) -> bool:
