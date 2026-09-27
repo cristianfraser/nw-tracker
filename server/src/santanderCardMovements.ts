@@ -45,6 +45,12 @@ export type SantanderMovementSlide = {
 export type SantanderMovementsFile = {
   fetchedAt: string;
   slides: SantanderMovementSlide[];
+  /**
+   * The session's product-summary rows (`santanderBankCupo.ts`): absent on files fetched before
+   * 2026-09-27, null when the fetcher got no usable summary (`cuposError` says why).
+   */
+  cupos?: { observedAt: string; rows: unknown[] } | null;
+  cuposError?: string;
 };
 
 function requireString(value: unknown, field: string): string {

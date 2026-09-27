@@ -1,7 +1,14 @@
 import { useTranslation } from "../../i18n";
-import { formatClp } from "../../format";
-import type { AccountCcInstallmentsResponse } from "../../types";
-import { formatYearMonthLabel } from "../../formatDateLabel";
+import { formatClp, formatUsdFine } from "../../format";
+import type { AccountCcInstallmentsResponse, CcBankCupoStatusDto } from "../../types";
+import { formatDateTimeLabel, formatYearMonthLabel } from "../../formatDateLabel";
+import styles from "./CreditCardSummaryCards.module.css";
+
+type BankCupoCurrency = CcBankCupoStatusDto["currencies"][number];
+
+function formatBankAmount(n: number, currency: BankCupoCurrency["currency"]): string {
+  return currency === "clp" ? formatClp(n) : formatUsdFine(n);
+}
 
 export function CreditCardSummaryCards({
   ccLedger,
@@ -26,6 +33,18 @@ export function CreditCardSummaryCards({
   // The facturación still accumulating charges — its total is what the next statement will bill.
   const openFact = facturaciones.find((f) => f.is_open_month);
   const cupo = ccLedger.cupo;
+  const bankCupo = ccLedger.bank_cupo ?? null;
+  const bankVerdict = (c: BankCupoCurrency): string => {
+    if (c.status === "ok") return t("accountDetail.creditCard.bankCupoOk");
+    if (c.status === "indeterminate") return t("accountDetail.creditCard.bankCupoIndeterminate");
+    if (c.status === "mismatch" && c.diff != null) {
+      const sign = c.diff > 0 ? "+" : "−";
+      return t("accountDetail.creditCard.bankCupoMismatch", {
+        diff: `${sign}${formatBankAmount(Math.abs(c.diff), c.currency)}`,
+      });
+    }
+    return t("accountDetail.creditCard.bankCupoPending");
+  };
 
   const cards = (
     <>
@@ -82,6 +101,25 @@ export function CreditCardSummaryCards({
               available: formatClp(cupo.available_clp),
               total: formatClp(cupo.total_clp),
             })}
+          </div>
+        ) : null}
+        {/* The bank's own utilizado per currency from the nightly session, and the check's verdict. */}
+        {bankCupo ? (
+          <div className="muted mono" title={t("accountDetail.creditCard.bankCupoHint")}>
+            <div>
+              {t("accountDetail.creditCard.bankCupo", {
+                date: formatDateTimeLabel(new Date(bankCupo.observed_at)),
+              })}
+            </div>
+            {bankCupo.currencies.map((c) => (
+              <div
+                key={c.currency}
+                className={c.status === "mismatch" ? styles.bankMismatch : undefined}
+                title={c.reason ?? undefined}
+              >
+                {formatBankAmount(c.cupo_utilizado, c.currency)} · {bankVerdict(c)}
+              </div>
+            ))}
           </div>
         ) : null}
       </div>

@@ -46,6 +46,11 @@ const fmt = (n: number) => Math.round(n).toLocaleString("es-CL"); // convention-
 const results = importStagedSantanderMovements(dir);
 for (const result of results) {
   console.log(result.file);
+  const cupo = result.bank_cupo;
+  if (cupo.status === "missing") console.log(`  bank cupo NOT captured — ${cupo.error}`);
+  else if (cupo.status !== "absent") {
+    console.log(`  bank cupo ${cupo.status}: ${cupo.snapshots} card/currency row(s) observed ${cupo.observed_at}`);
+  }
   for (const account of result.accounts) {
     console.log(
       `  account ${account.account} (id ${account.account_id}): ` +

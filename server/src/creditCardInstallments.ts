@@ -22,6 +22,7 @@ import { buildCcHistorialChartSeries, type CcHistorialChartPoint } from "./credi
 import type { DataOrigin } from "./dataOrigin.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { ccInstallmentDebtAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
+import { latestBankCupoForAccount, type CcBankCupoStatus } from "./ccBankCupoCheck.js";
 import {
   computeProxyLot,
   getCcProxyTickers,
@@ -217,6 +218,8 @@ export type CcInstallmentsResponseBase = {
   billing_config?: CreditCardBillingConfig;
   /** Credit line snapshot for the summary cards — see {@link ccCupoSnapshot}. */
   cupo?: CcCupoSnapshot;
+  /** The bank's own cupo per currency and the nightly check's verdict (`ccBankCupoCheck.ts`). */
+  bank_cupo?: CcBankCupoStatus | null;
   /**
    * Feed-typed cuota purchases still waiting for their count (`pendingCuotaPurchaseLines`): the
    * card page asks for it. Per card only — a merged group ledger does not carry it.
@@ -312,6 +315,7 @@ export function creditCardInstallmentsResponse(
       facturaciones,
       billing_config: loadCreditCardBillingConfig(accountId),
       cupo: ccCupoSnapshotForAccount(accountId, billingDetail, open_billing_month),
+      bank_cupo: latestBankCupoForAccount(accountId),
       pending_cuota_purchases: pendingCuotaPurchaseLines(accountId),
       historial_chart: buildCcHistorialChartSeries(
         db.installment_history_months,
@@ -357,6 +361,7 @@ export function creditCardInstallmentsResponse(
       facturaciones,
       billing_config: loadCreditCardBillingConfig(accountId),
       cupo: ccCupoSnapshotForAccount(accountId, billingDetail, open_billing_month),
+      bank_cupo: latestBankCupoForAccount(accountId),
       pending_cuota_purchases: pendingCuotaPurchaseLines(accountId),
       historial_chart: buildCcHistorialChartSeries([], billingDetail, facturaciones),
     };

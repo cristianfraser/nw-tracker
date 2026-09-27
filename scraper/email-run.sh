@@ -126,6 +126,7 @@ if [[ "$DRY_RUN" != "1" ]]; then
       sa_caught_up=1
       step "Santander movements (catch-up)" npm run import:santander-movements
       step "Convert CC payment mirrors (catch-up)" npm run convert:cc-payment-mirrors
+      step "CC bank cupo check (catch-up)" npm run check:cc-bank-cupo
     fi
   else
     log "=== Santander catch-up (skipped — ${catchup_msg:-no decision})"
@@ -135,8 +136,8 @@ fi
 sd_saved="$(saved_count "$TMP_DIR/santander-docs.out")"
 ls_saved="$(saved_count "$TMP_DIR/lider-statements.out")"
 lb_saved="$(saved_count "$TMP_DIR/lider-boletas.out")"
-# fetch.ts always logs the count, zero included ("e-mail: N broker message(s)").
 fd_saved="$(saved_count "$TMP_DIR/fintual-docs.out")"
+# fetch.ts always logs the count, zero included ("e-mail: N broker message(s)").
 be_msgs="$(sed -n 's/.*e-mail: \([0-9][0-9]*\) broker message(s).*/\1/p' "$TMP_DIR/broker-emails.out" 2>/dev/null | tail -1)"
 be_msgs="${be_msgs:-0}"
 
@@ -175,7 +176,6 @@ if [[ "$DRY_RUN" != "1" ]]; then
     log "=== Fintual e-mail movements (skipped — no new broker mail)"
     log "=== Racional e-mail movements (skipped — no new broker mail)"
   fi
-fi
   # A new Acciones cartola / certificado: pair its printed dividends with the ledger's rows and
   # store the gross / withholding breakdown (the nightly re-runs it unconditionally).
   if [[ "$fd_saved" -gt 0 ]]; then
@@ -187,6 +187,7 @@ fi
   else
     log "=== Fintual Acciones dividend breakdowns (skipped — no new document)"
   fi
+fi
 
 if [[ "$sd_saved" -gt 0 || "$ls_saved" -gt 0 || "$lb_saved" -gt 0 || "$fd_saved" -gt 0 || "$be_msgs" -gt 0 || "$sa_caught_up" -eq 1 ]]; then
   activity=1

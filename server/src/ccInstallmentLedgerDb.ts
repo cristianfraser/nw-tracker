@@ -887,6 +887,35 @@ export function installmentRemainingClpByCalendarMonth(accountId: number): Map<s
   return scheduledTotalRemainingByMonth(schedulePurchases, paymentsByPurchase, accountId);
 }
 
+/**
+ * Plan cuotas no close has billed yet after facturación `billingMonth` (their billing month is
+ * later), over every plan bought through `purchasedThroughIso` — the bank's «saldo capital
+ * cuotas» frame. Unlike {@link installmentRemainingClpByCalendarMonth} there is no calendar
+ * month-end cut: a plan bought in the open cycle bills after the last close whatever calendar
+ * month it was bought in. `cuotas` counts the unbilled cuotas (each may round a peso apart from
+ * the bank's split). A null `billingMonth` (no facturación closed yet) leaves every cuota unbilled.
+ */
+export function installmentRemainderAfterFacturacionClp(
+  accountId: number,
+  billingMonth: string | null,
+  purchasedThroughIso: string
+): { amount_clp: number; cuotas: number } {
+  if (ccInstallmentLedgerRowCount(accountId) === 0) return { amount_clp: 0, cuotas: 0 };
+  const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
+  const schedules = buildSchedulesByPurchaseId(schedulePurchases, paymentsByPurchase, undefined, accountId);
+  let amount = 0;
+  let cuotas = 0;
+  for (const sched of schedules.values()) {
+    if (String(sched.purchase.purchase_date).trim() > purchasedThroughIso) continue;
+    for (let i = 0; i < sched.cuotaAmounts.length; i++) {
+      if (billingMonth && ymCompare(installmentDueYm(sched.firstDueYm, i), billingMonth) <= 0) continue;
+      amount += sched.cuotaAmounts[i]!;
+      cuotas += 1;
+    }
+  }
+  return { amount_clp: Math.round(amount), cuotas };
+}
+
 /** Live outstanding installment principal (cupo utilizado en cuotas) from PDF ledger schedules. */
 export function liveCreditCardOutstandingClp(accountId: number): number | null {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
