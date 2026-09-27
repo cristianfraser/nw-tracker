@@ -13,6 +13,12 @@ import {
 } from "./accountPeriodMarks.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import {
+  deptoPropertyPaymentEventsThroughDate,
+  mortgageSheetPaymentEventsThroughDate,
+} from "./deptoDividendosLedger.js";
+import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
+import { flowEventInUnit } from "./flowsDeposits.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 
 describe("reanchorMonthlyPerfToCalendarMonthEnds", () => {
@@ -282,6 +288,33 @@ describe("getAccountMonthlyPerformance", () => {
       usd.closing_value - usd.prior_closing - usd.net_capital_flow,
       0
     );
+  });
+});
+
+describe("depto ledger payments in the performance table", () => {
+  it("USD flows convert each payment at its own date's rate (the card's and the daily view's rule)", () => {
+    const ledger = loadDeptoLedgerFromMovements();
+    if (!ledger.length) return;
+    const today = chileCalendarTodayYmd();
+    const rows = db
+      .prepare(
+        `SELECT a.id, g.slug FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id
+         WHERE g.slug LIKE '%__mortgage' OR g.slug LIKE '%__property'`
+      )
+      .all() as { id: number; slug: string }[];
+    for (const r of rows) {
+      const monthly = getAccountMonthlyPerformance(r.id, "usd")?.monthly ?? [];
+      if (!monthly.length) continue;
+      const firstMk = monthKeyFromYmd(monthly[monthly.length - 1]!.as_of_date);
+      const events =
+        accountBucketKindSlug(r.slug) === "mortgage"
+          ? mortgageSheetPaymentEventsThroughDate(ledger, today)
+          : deptoPropertyPaymentEventsThroughDate(ledger, today);
+      const expected = events
+        .filter((e) => monthKeyFromYmd(e.occurred_on) >= firstMk)
+        .reduce((s, e) => s + flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, "usd"), 0);
+      expect(monthly.reduce((s, m) => s + m.net_capital_flow, 0)).toBeCloseTo(expected, 4);
+    }
   });
 });
 

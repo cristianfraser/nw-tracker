@@ -139,12 +139,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
           ? { monthly_usd: inversionesBrokerageDepositsSeries(depositsFlow.chart_monthly_usd) }
           : {}),
       },
-      ...(includeUsd
-        ? {
-            fx_conversion_error: depositsFlow.fx_conversion_error,
-            fx_conversion_warnings: depositsFlow.fx_conversion_warnings,
-          }
-        : {}),
+      ...(includeUsd ? { fx_conversion_warnings: depositsFlow.fx_conversion_warnings } : {}),
     };
     });
   });

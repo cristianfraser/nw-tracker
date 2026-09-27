@@ -3,7 +3,7 @@ import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { db } from "./db.js";
 import { loadEquityBrokerageCapitalSortFlows } from "./equityBrokerageCapitalFlows.js";
-import { depositInflowEventUsd } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./flowsDeposits.js";
 
 function listDepositFlowAccountIds(): number[] {
   const rows = db
@@ -44,8 +44,8 @@ export function runFxConversionWarningScan(): void {
   const eventsByAccount = loadMergedDepositInflowEvents(depositIds);
   for (const events of eventsByAccount.values()) {
     for (const e of events) {
-      if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
-      depositInflowEventUsd(e);
+      if (e.amt === 0) continue;
+      flowEventInUnit(e, "usd");
     }
   }
 

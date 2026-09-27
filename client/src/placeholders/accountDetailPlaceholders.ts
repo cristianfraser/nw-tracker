@@ -54,7 +54,6 @@ export function buildPlaceholderAccountDetailBundle(
       group_label: null,
       group_peer_count: null,
       deposits_clp: 0,
-      withdrawals_clp: 0,
       latest_valuation_clp: null,
       latest_valuation_date: null,
       position: null,

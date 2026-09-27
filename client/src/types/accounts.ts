@@ -86,7 +86,6 @@ export interface AccountSummaryResponse {
   /** Quote currency of `accounts.equity_ticker` (clp for Bolsa de Santiago `.SN`); null for non-equity accounts. */
   equity_quote_currency?: "usd" | "clp" | null;
   deposits_clp: number;
-  withdrawals_clp: number;
   latest_valuation_clp: number | null;
   latest_valuation_date: string | null;
   position: AccountPositionSnapshot | null;

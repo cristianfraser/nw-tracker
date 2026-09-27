@@ -12,15 +12,42 @@ import {
   takeFxConversionWarnings,
   type FxConversionWarning,
 } from "./fxConversionWarnings.js";
+import { clpToUsdAtPayment, ufRowOnOrBefore } from "./fxRates.js";
+import type { TsUnit } from "./valuationTimeseries.js";
 
-/** USD for a deposit event: native USD when recorded, else CLP ÷ buy FX (sign follows CLP). */
-export function depositInflowEventUsd(e: DepositInflowEvent): number | null {
-  if (e.amt === 0 || !Number.isFinite(e.amt)) return 0;
-  if (e.amt_usd != null && Number.isFinite(e.amt_usd)) {
-    const sign = Math.sign(e.amt) || Math.sign(e.amt_usd);
-    return sign * Math.abs(e.amt_usd);
+/**
+ * A deposit/flow event: every one carries its CLP leg (`amt`); USD-cash and equity capital
+ * events also carry the dollars that actually moved (`amt_usd`).
+ */
+export type FlowEvent = Pick<DepositInflowEvent, "occurred_on" | "amt" | "amt_usd">;
+
+/**
+ * One deposit/flow event in `unit`, at its own date's rate — the single conversion every
+ * deposit and flow reader shares (dashboard totals, window flows, aportes lines, the daily
+ * grid, mortgage and property payments). A leg the event carries is used as is (CLP always;
+ * USD when recorded, its sign following the CLP leg); only a missing leg converts: CLP ÷ the
+ * buy rate on or before the event date, CLP ÷ that date's UF. Unrounded — callers sum first
+ * and round once for display. A missing rate throws: a flow is never dropped from a total.
+ */
+export function flowEventInUnit(e: FlowEvent, unit: TsUnit): number {
+  if (!Number.isFinite(e.amt)) {
+    throw new Error(`flow event ${e.occurred_on}: non-finite CLP amount ${e.amt}`);
   }
-  return clpToUsdAtDate(e.amt, e.occurred_on);
+  if (e.amt === 0) return 0;
+  if (unit === "clp") return e.amt;
+  if (unit === "usd") {
+    if (e.amt_usd != null && Number.isFinite(e.amt_usd)) return Math.sign(e.amt) * Math.abs(e.amt_usd);
+    const usd = clpToUsdAtPayment(e.amt, e.occurred_on);
+    if (usd == null) {
+      throw new Error(`flow event ${e.occurred_on}: no USD rate on or before the date (${e.amt} CLP)`);
+    }
+    return usd;
+  }
+  const uf = ufRowOnOrBefore(e.occurred_on);
+  if (!uf || !(uf.clp_per_uf > 0)) {
+    throw new Error(`flow event ${e.occurred_on}: no UF on or before the date (${e.amt} CLP)`);
+  }
+  return e.amt / uf.clp_per_uf;
 }
 
 /** Big-category buckets for the flows → deposits page (matches sidebar groupings). */
@@ -53,9 +80,10 @@ export type FlowDepositRow = {
   account_name: string;
   /** Account behavior kind (`afp`, `afc`, `cuenta_corriente`, …) — see accountBucketKindSlug. */
   kind_slug: string;
+  /** Unrounded, like every deposit amount — the client rounds for display. */
   amount_clp: number;
-  /** CLP ÷ `fx_daily` on or before `occurred_on` (each event converted at its own date). */
-  amount_usd: number | null;
+  /** The event in USD at its own date's rate ({@link flowEventInUnit}). */
+  amount_usd: number;
 };
 
 export type FlowDepositChartPoint = {
@@ -76,13 +104,11 @@ export type FlowDepositsPayload = {
   chart_monthly: FlowDepositChartPoint[];
   chart_monthly_usd: FlowDepositChartPoint[];
   net_total_clp: number;
-  net_total_usd: number | null;
-  /** True when at least one non-zero row could not be converted to USD (missing `fx_daily`). */
-  fx_conversion_error: boolean;
+  net_total_usd: number;
   fx_conversion_warnings: FxConversionWarning[];
   by_category: Record<
     DepositFlowCategory,
-    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number | null }
+    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number }
   >;
 };
 
@@ -134,43 +160,32 @@ function monthEndFromOccurredOn(occurredOn: string): string {
   return mk ? monthEndUtcYmd(mk) : occurredOn;
 }
 
-function flowsDepositsNetTotalsByAccount(opts?: {
-  period?: "month" | "year";
-  includeExcludedFromGroupTotals?: boolean;
-}): { clp: Map<number, number>; usd: Map<number, number | null> } {
+function flowsDepositsNetTotalsByAccount(
+  unit: "clp" | "usd",
+  opts?: { period?: "month" | "year"; includeExcludedFromGroupTotals?: boolean }
+): Map<number, number> {
   const accounts = listDepositFlowAccounts(opts?.includeExcludedFromGroupTotals ?? false);
   const ids = accounts.map((a) => a.account_id);
   const eventsByAccount = loadMergedDisplayDepositInflowEvents(ids);
   const today = chileCalendarTodayYmd();
   const currentMk = monthKeyFromYmd(today);
   const currentY = today.slice(0, 4);
-  const clp = new Map<number, number>();
-  const usd = new Map<number, number | null>();
+  const totals = new Map<number, number>();
   for (const acc of accounts) {
     const events = eventsByAccount.get(acc.account_id) ?? [];
-    let sumClp = 0;
-    let sumUsd = 0;
-    let fxError = false;
+    let sum = 0;
     for (const e of events) {
-      if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
+      if (e.amt === 0) continue;
       if (opts?.period === "month" && monthKeyFromYmd(e.occurred_on) !== currentMk) continue;
       if (opts?.period === "year" && e.occurred_on.slice(0, 4) !== currentY) continue;
       // Events are display-dated: a forward-posted movement already reads as today, which is
       // also where the balances count it (`displayLedgerCutoffYmd`), so lifetime P/L
       // (delta_total = value − deposits) stays clean without a cap here.
-      const amount_clp = Math.round(e.amt);
-      sumClp += amount_clp;
-      const amount_usd = depositInflowEventUsd(e);
-      if (amount_usd == null || !Number.isFinite(amount_usd)) {
-        if (amount_clp !== 0) fxError = true;
-      } else {
-        sumUsd += amount_usd;
-      }
+      sum += flowEventInUnit(e, unit);
     }
-    clp.set(acc.account_id, sumClp);
-    usd.set(acc.account_id, fxError ? null : sumUsd);
+    totals.set(acc.account_id, sum);
   }
-  return { clp, usd };
+  return totals;
 }
 
 /**
@@ -191,14 +206,9 @@ export function netDepositFlowBetween(
   const events = loadMergedDisplayDepositInflowEvents([accountId]).get(accountId) ?? [];
   let sum = 0;
   for (const e of events) {
-    if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
+    if (e.amt === 0) continue;
     if (e.occurred_on <= startYmd || e.occurred_on > endYmd) continue;
-    if (unit === "usd") {
-      const usd = depositInflowEventUsd(e);
-      if (usd != null && Number.isFinite(usd)) sum += usd;
-      continue;
-    }
-    sum += e.amt;
+    sum += flowEventInUnit(e, unit);
   }
   return sum;
 }
@@ -221,20 +231,23 @@ export function netDepositFlowCurrentMonthThroughToday(
 /** Net deposits in the current calendar month or year (flows-page accounts only). */
 export function flowsDepositsNetInPeriodByAccount(period: "month" | "year"): {
   clp: Map<number, number>;
-  /** `null` = a deposit in the period had no FX row on its date (conversion impossible). */
-  usd: Map<number, number | null>;
+  usd: Map<number, number>;
 } {
-  return flowsDepositsNetTotalsByAccount({ period, includeExcludedFromGroupTotals: true });
+  const opts = { period, includeExcludedFromGroupTotals: true };
+  return {
+    clp: flowsDepositsNetTotalsByAccount("clp", opts),
+    usd: flowsDepositsNetTotalsByAccount("usd", opts),
+  };
 }
 
 /** Net capital (deposits − withdrawals) per account — same accounts as the flows deposits page. */
 export function flowsDepositsNetTotalByAccount(): Map<number, number> {
-  return flowsDepositsNetTotalsByAccount({ includeExcludedFromGroupTotals: true }).clp;
+  return flowsDepositsNetTotalsByAccount("clp", { includeExcludedFromGroupTotals: true });
 }
 
-/** Net deposits per account in USD (each event at its own FX date). Null when any event lacks FX. */
-export function flowsDepositsNetTotalUsdByAccount(): Map<number, number | null> {
-  return flowsDepositsNetTotalsByAccount({ includeExcludedFromGroupTotals: true }).usd;
+/** Net deposits per account in USD (each event at its own date's rate — `flowEventInUnit`). */
+export function flowsDepositsNetTotalUsdByAccount(): Map<number, number> {
+  return flowsDepositsNetTotalsByAccount("usd", { includeExcludedFromGroupTotals: true });
 }
 
 /** @heavy Scans deposit-flow accounts and merges inflow events for charts + net totals. */
@@ -250,9 +263,7 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
     if (!category) continue;
     const events = eventsByAccount.get(acc.account_id) ?? [];
     for (const e of events) {
-      if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
-      const amount_clp = Math.round(e.amt);
-      const amount_usd = depositInflowEventUsd(e);
+      if (e.amt === 0) continue;
       rows.push({
         occurred_on: e.occurred_on,
         ...(e.posted_on ? { posted_on: e.posted_on } : {}),
@@ -261,8 +272,8 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
         account_id: acc.account_id,
         account_name: acc.name,
         kind_slug: acc.category_slug,
-        amount_clp,
-        amount_usd: amount_usd != null && Number.isFinite(amount_usd) ? amount_usd : null,
+        amount_clp: flowEventInUnit(e, "clp"),
+        amount_usd: flowEventInUnit(e, "usd"),
       });
     }
   }
@@ -274,40 +285,24 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
   const chart_monthly = aggregateDepositChartPoints(rows, "clp");
   const chart_monthly_usd = aggregateDepositChartPoints(rows, "usd");
 
-  const by_category = {} as Record<
-    DepositFlowCategory,
-    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number | null }
-  >;
-  let fx_conversion_error = false;
+  const by_category = {} as FlowDepositsPayload["by_category"];
   for (const cat of DEPOSIT_FLOW_CATEGORIES) {
     const catRows = rows.filter((r) => r.category === cat);
-    const catFxError = catRows.some((r) => r.amount_clp !== 0 && r.amount_usd == null);
-    if (catFxError) fx_conversion_error = true;
-    const catUsd = catFxError
-      ? null
-      : catRows.reduce((s, r) => s + (r.amount_usd ?? 0), 0);
     by_category[cat] = {
       label: CATEGORY_LABEL[cat],
       rows: catRows,
       total_clp: catRows.reduce((s, r) => s + r.amount_clp, 0),
-      total_usd: catUsd,
+      total_usd: catRows.reduce((s, r) => s + r.amount_usd, 0),
     };
   }
-
-  const net_total_clp = rows.reduce((s, r) => s + r.amount_clp, 0);
-  if (rows.some((r) => r.amount_clp !== 0 && r.amount_usd == null)) fx_conversion_error = true;
-  const net_total_usd = fx_conversion_error
-    ? null
-    : rows.reduce((s, r) => s + (r.amount_usd ?? 0), 0);
 
   return {
     rows,
     chart_monthly,
     chart_monthly_usd,
     by_category,
-    net_total_clp,
-    net_total_usd,
-    fx_conversion_error,
+    net_total_clp: rows.reduce((s, r) => s + r.amount_clp, 0),
+    net_total_usd: rows.reduce((s, r) => s + r.amount_usd, 0),
     fx_conversion_warnings: takeFxConversionWarnings(),
   };
 }
@@ -316,9 +311,6 @@ function aggregateDepositChartPoints(
   rows: readonly FlowDepositRow[],
   unit: "clp" | "usd"
 ): FlowDepositChartPoint[] {
-  if (unit === "usd" && rows.some((r) => r.amount_clp !== 0 && r.amount_usd == null)) {
-    return [];
-  }
   const byPeriod = new Map<string, FlowDepositChartPoint>();
   for (const r of rows) {
     const pe = monthEndFromOccurredOn(r.occurred_on);
@@ -334,12 +326,7 @@ function aggregateDepositChartPoints(
       };
       byPeriod.set(pe, pt);
     }
-    const amt =
-      unit === "usd"
-        ? r.amount_usd != null && Number.isFinite(r.amount_usd)
-          ? r.amount_usd
-          : 0
-        : r.amount_clp;
+    const amt = unit === "usd" ? r.amount_usd : r.amount_clp;
     pt[r.category] += amt;
     pt.total += amt;
   }

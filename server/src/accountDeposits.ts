@@ -21,8 +21,11 @@ import {
 } from "./movementAmounts.js";
 
 /**
- * Canonical **external** capital for charts, “aportes netos”, rentabilidad, and “aportes acum.” (full balance):
- * the signed CLP leg on `movements` (all external flows, including APV-A state bonus).
+ * External capital: the signed CLP leg on `movements`. Charts (“aportes acum.”), the dashboard
+ * deposits, rentabilidad and the summary “Depositado” all read the PERSONAL-capital timeline
+ * ({@link loadMergedDisplayDepositInflowEvents} — every flow but the APV-A state bonus, one
+ * predicate: `movementCountsAsPersonalDeposit`); the full timeline including the bonus
+ * ({@link loadMergedDepositInflowEvents}) is informational (“Historial de aportes”, fx scans).
  *
  * Equity MTM stock accounts (post USD-cash migration): **`stock_buy` / `stock_sell`** transfer USD legs
  * converted to CLP at payment date. Legacy SPY/VEA rows still use **`deposit_clp`** / **`withdrawal_clp`**
@@ -30,8 +33,6 @@ import {
  *
  * Dividends: `dividend_payout` counts as a negative capital flow on the stock; a
  * reinvestment is a separate `stock_buy` transfer that nets it out.
- * For the personal-capital series (excludes APV-A state bonus), use
- * {@link loadMergedDisplayDepositInflowEvents} (“aportes propios acum.”).
  */
 
 /** Dated CLP flow toward cumulative “aportes” (positive = in, negative = out). */
@@ -111,11 +112,7 @@ function loadMovementSignedFlowEvents(
     if (equityMtmIds.has(r.account_id) && r.flow_kind == null) continue;
     if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
     if (r.flow_kind === SAVINGS_EARNINGS_FLOW_KIND || r.flow_kind === CASH_FEE_FLOW_KIND) continue;
-    if (personalOnly) {
-      if (movementIsStateContribution(r.flow_kind)) continue;
-      const brokerageDeposit = r.flow_kind === "deposit_clp";
-      if (!brokerageDeposit && !movementCountsAsPersonalDeposit(r.flow_kind)) continue;
-    }
+    if (personalOnly && !movementCountsAsPersonalDeposit(r.flow_kind)) continue;
     if (r.note?.includes("cripto-coin-only-wdw")) continue;
     const amt = movementClpLegOrZero(r);
     if (amt === 0 || !Number.isFinite(amt)) continue;
@@ -184,7 +181,7 @@ function loadTransferLegSignedFlowEvents(
       // leaving the account). The card leg is inert here forever — CC flows come from statement
       // evidence (`ccOwedFlowEvents.ts`), so counting the transfer too would double the payment.
       if (r.flow_kind === "pago_tarjeta" && isCreditCardAccountId(endpoint)) continue;
-      if (personalOnly && movementIsStateContribution(r.flow_kind)) continue;
+      if (personalOnly && !movementCountsAsPersonalDeposit(r.flow_kind)) continue;
       const amt = signedClpDeltaForAccountMovement(r, endpoint);
       if (amt === 0 || !Number.isFinite(amt)) continue;
       // Mirror-converted transfers carry a single date. Bucket each side's aportes event on the
@@ -298,7 +295,7 @@ export function loadMergedDisplayDepositInflowEvents(
   return buildMergedDepositMap(accountIds, true);
 }
 
-/** Same merged timeline as charts; use for audits and “Historial de aportes”. */
+/** Full external capital (state bonus included); use for audits and “Historial de aportes”. */
 export function getMergedDepositInflowEventsForAccount(accountId: number): DepositInflowEvent[] {
   if (!Number.isFinite(accountId) || accountId <= 0) return [];
   return loadMergedDepositInflowEvents([accountId]).get(accountId) ?? [];
@@ -355,29 +352,15 @@ function sumDepositEvents(events: DepositInflowEvent[]): number {
   return events.reduce((s, e) => s + e.amt, 0);
 }
 
-/** Net external CLP capital (movements); same sum as chart cumulative end-state. */
-export function totalDepositsClpForAccount(accountId: number): number {
-  return sumDepositEvents(getMergedDepositInflowEventsForAccount(accountId));
-}
-
+/** Net personal capital (the aportes timeline); same sum as the chart's cumulative end-state. */
 export function totalDisplayDepositsClpForAccount(accountId: number): number {
   return sumDepositEvents(getMergedDisplayDepositInflowEventsForAccount(accountId));
 }
 
-/** Summary “Depositado”: personal capital for equity MTM stocks, full external capital otherwise. */
+/**
+ * Summary “Depositado”: personal capital, the same timeline the chart's aportes line and the
+ * dashboard's deposits read — the APV-A state bonus is not your money in any of them.
+ */
 export function pocketDepositsClpForAccount(accountId: number): number {
-  if (accountUsesEquityMtm(accountId)) {
-    return totalDisplayDepositsClpForAccount(accountId);
-  }
-  return totalDepositsClpForAccount(accountId);
-}
-
-const wdwSumStmt = db.prepare(
-  `SELECT COALESCE(SUM(ABS(${MOVEMENT_CLP_LEG_SQL})), 0) AS s FROM movements
-   WHERE account_id = ? AND ${MOVEMENT_CLP_LEG_SQL} < 0`
-);
-
-/** Every known withdrawal, forward-posted ones included — as-of-now, like the balance. */
-export function totalWithdrawalsClpForAccount(accountId: number): number {
-  return (wdwSumStmt.get(accountId) as { s: number }).s;
+  return totalDisplayDepositsClpForAccount(accountId);
 }

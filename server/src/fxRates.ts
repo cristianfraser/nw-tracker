@@ -84,17 +84,16 @@ export function usdToClpReferenceRounded(usd: number, paymentDate: string): numb
   return roundPaymentClp(Math.abs(usd) * fx.clp_per_usd);
 }
 
-/** CLP → USD at buy rate on or before `paymentDate`; falls back to mid with warning. */
-export function clpToUsdAtPaymentRounded(clp: number, paymentDate: string): number | null {
+/**
+ * CLP → USD at buy rate on or before `paymentDate`; falls back to mid with warning. Unrounded
+ * (deposit/flow events sum these and round once for display). Null when no rate exists on or
+ * before the date.
+ */
+export function clpToUsdAtPayment(clp: number, paymentDate: string): number | null {
   if (!Number.isFinite(clp) || clp === 0) return 0;
-  const sign = Math.sign(clp);
   ensureBidAskForPaymentDate(paymentDate);
   const buy = fxBuyClpPerUsdOnOrBefore(paymentDate);
-  if (buy != null && buy > 0) {
-    const usd = Math.abs(clp) / buy;
-    const f = 10 ** DEPOSIT_CROSS_RATE_DECIMALS;
-    return sign * (Math.round(usd * f) / f);
-  }
+  if (buy != null && buy > 0) return clp / buy;
   const fx = fxRowOnOrBefore(paymentDate);
   if (!fx || fx.clp_per_usd <= 0) return null;
   recordFxConversionWarning({
@@ -102,9 +101,15 @@ export function clpToUsdAtPaymentRounded(clp: number, paymentDate: string): numb
     date: paymentDate,
     context: "clpToUsdAtPaymentRounded",
   });
-  const usd = Math.abs(clp) / fx.clp_per_usd;
+  return clp / fx.clp_per_usd;
+}
+
+/** {@link clpToUsdAtPayment} rounded to the deposit cross-rate precision. */
+export function clpToUsdAtPaymentRounded(clp: number, paymentDate: string): number | null {
+  const usd = clpToUsdAtPayment(clp, paymentDate);
+  if (usd == null) return null;
   const f = 10 ** DEPOSIT_CROSS_RATE_DECIMALS;
-  return sign * (Math.round(usd * f) / f);
+  return Math.sign(usd) * (Math.round(Math.abs(usd) * f) / f);
 }
 
 /**
