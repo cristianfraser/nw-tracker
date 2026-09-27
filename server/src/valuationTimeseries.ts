@@ -30,7 +30,6 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { isClpCashKindSlug, clpCashBalanceClpAt } from "./clpCashAccounts.js";
-import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 import {
   expandYearMonthsInclusive,
   monthEndUtcYmd,
@@ -362,8 +361,8 @@ function attachDepositSeriesKeys(
       const kind = slug ? accountBucketKindSlug(slug) : "";
       if (isMovementBalanceCashCategory(slug ?? "") || slug === "cuenta_ahorro_vivienda") return { ...t };
       if (kind && CATEGORY_NO_CHART_DEPOSIT_LINE.has(kind)) return { ...t };
-      // Ledger cash: always draw the deposited line so interest shows as P/L — CLP cash from
-      // balance − interest, USD cash from its merged deposit events (see the dep-map builder).
+      // Ledger cash: always draw the deposited line so interest shows as P/L — both kinds from
+      // their merged deposit events (see the dep-map builder).
       if (isUsdCashKindSlug(kind) || isClpCashKindSlug(kind)) {
         return { ...t, depositDataKey: `${t.dataKey}__dep` };
       }
@@ -902,29 +901,12 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   const depClpByAccAndDate = new Map<number, Map<string, number>>();
   const depUfByAccAndDate = new Map<number, Map<string, number>>();
   const depUsdByAccAndDate = new Map<number, Map<string, number>>();
+  // Every account's aportes come from its merged deposit events, each at its own date's rate —
+  // ledger cash included (USD cash since 2026-08-04, CLP cash since 2026-09-27; re-pricing the
+  // standing balance − interest at each snapshot's rate leaked the fx move on the balance held
+  // into the aportes line). A no-event month reads flow 0 and that fx move is P/L; in CLP the
+  // events sum to balance − interest.
   for (const id of allIds) {
-    const kind = accountBucketKindSlug(slugById.get(id) ?? "");
-    // CLP ledger cash: deposited = balance − cumulative interest, per snapshot date, so the
-    // value/deposit gap is exactly the interest earned (P/L) — a single-currency identity equal
-    // to the event sum. USD cash goes through the generic event cums below instead (2026-08-04):
-    // re-pricing its balance−interest at each snapshot's fx leaked fx drift into the aportes
-    // line and the monthly net flows; per-event conversion keeps a no-event month at flow 0.
-    if (isClpCashKindSlug(kind)) {
-      const clpMap = new Map<string, number>();
-      const usdMap = new Map<string, number>();
-      const ufMap = new Map<string, number>();
-      for (const d of dateStrs) {
-        const valClp = clpCashBalanceClpAt(id, d);
-        const depClp = valClp - cashInterestClpThroughDate(id, d);
-        clpMap.set(d, depClp);
-        if (unit === "usd") usdMap.set(d, convertTs(depClp, d, "usd"));
-        if (unit === "uf") ufMap.set(d, convertTs(depClp, d, "uf"));
-      }
-      depClpByAccAndDate.set(id, clpMap);
-      if (unit === "usd") depUsdByAccAndDate.set(id, usdMap);
-      if (unit === "uf") depUfByAccAndDate.set(id, ufMap);
-      continue;
-    }
     const pocketMovs = displayDepMovs.get(id) ?? [];
     depClpByAccAndDate.set(id, cumulativeDepInUnitByDate(dateStrs, pocketMovs, "clp"));
     if (unit === "uf") {
