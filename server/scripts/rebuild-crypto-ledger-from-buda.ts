@@ -13,24 +13,34 @@
  * Model — one single-leg row on the coin account per Buda event, paired 1:1 with the Buda CLP
  * buffer's existing single-leg rows (same day, same pesos), so every trade nets to zero inside
  * the crypto bucket and only money crossing Buda's edge moves the bucket's aportes:
- *   buy       +CLP paid, +coin received net of the exchange fee (FEE MODEL below)
- *   sell      −CLP received (the CSV's figure, net of the fee Buda takes in pesos), −coin sold
- *   coin_out  «Retiro → Billetera externa»: −market value of the coin sent (coin × the app's own
- *             close × fx for that day), −(coin sent + withdrawal fee). A withdrawal of capital at
- *             market, so only the fee lands in P/L.
- *   swap      a coin-for-coin order (the CSV keeps only the bought side; the paid side comes from
- *             the facts file): paid coin out / bought coin in net of fee, both legs at the market
- *             value of the coin received — bucket-neutral, the price gap is the paying coin's P/L.
- *   coin_in   a deposit of coin bought outside Buda: the sheet row recording that purchase is
- *             kept as is (facts `off_exchange`), the coin_in itself adds no row.
+ *   buy        +CLP paid, +coin received net of the exchange fee (FEE MODEL below)
+ *   sell       −CLP received (the CSV's figure, net of the fee Buda takes in pesos), −coin sold
+ *   coin_out   «Retiro → Billetera externa» that left for good (spent): −market value of the coin
+ *              sent (coin × the app's own close × fx for that day), −(coin sent + withdrawal fee).
+ *              A withdrawal of capital at market, so only the fee lands in P/L.
+ *   swap       a coin-for-coin order (the CSV keeps only the bought side; the paid side comes from
+ *              the facts file): paid coin out / bought coin in net of fee, both legs at the market
+ *              value of the coin received — bucket-neutral, the price gap is the paying coin's P/L.
+ *   round trip sends that went to another exchange or wallet and came back as a later coin_in
+ *              (facts `round_trips`). The coin sent never leaves the account — no row for the
+ *              send itself, the units stay held and marked at market — only each send's fee is
+ *              lost (`send_fee`). The coin_in adds just the net difference, returned − sent
+ *              (`round_trip_return`). Outside an open round trip the ledger equals Buda's own
+ *              wallet balance at every event date; inside one it exceeds it by exactly the coin
+ *              out (both asserted). A coin_in that closes no round trip aborts the run.
+ * Unit-only rows (`send_fee`, `round_trip_return`) move no pesos, so they carry amount 0 — nothing
+ * invented — and a P/L flow kind: `cash_fee` for coin lost, `savings_earnings` for coin gained.
+ * Every deposit reader skips both kinds (accountDeposits), the valuation counts their units
+ * (cryptoCoinCumulativeThroughDate), so their whole effect is market P/L at that day's price —
+ * the same flow kinds the AFC cartola true-ups use on a cuota ledger.
  * Buda's CLP buffer (`import:buda|key=buda_clp`) is not touched: its rows must already match the
  * CSV (checked), and budaWallet.ts / the deposits reconciliation branch on their notes.
  *
  * FEE MODEL. The export lists exchange orders («Ejecutada») at their gross coin amount; Buda took
  * its fee from the coin received, truncated to the coin's smallest unit. Quick trades
  * («Confirmada») carry the fee in the price: their amounts are what moved. What the export does
- * not show — per-order fee tiers, months pinned to the sheet's own totals, withdrawal fees, the
- * paid side of a swap, sell-alls, off-exchange purchases — lives in an untracked facts file
+ * not show — per-order fee tiers, months pinned to the sheet's own totals, fees on sends, the
+ * paid side of a swap, sell-alls, round trips — lives in an untracked facts file
  * (`cfraser/buda-ledger-facts.json`, personal data like cc-cards.json), validated here against
  * the CSV and the DB: every entry must match an event, and the ledger must close to exactly zero
  * at each listed sell-all. Shape (coin amounts as decimal strings, exactly as Buda prints them;
@@ -38,10 +48,10 @@
  *   default_taker_fee_ppm  integer, e.g. 8000 = 0,8 %
  *   order_fee_ppm          [{coin, date, amount, ppm, why}]   exchange buys at another rate
  *   month_net_pins         [{coin, month, net, why}]          a month's exchange buys net to this
- *   withdrawal_fees        [{coin, date, fee, why}]           fee on each withdrawal that day
+ *   withdrawal_fees        [{coin, date, fee, why}]           fee on each send that day
  *   swaps                  [{date, buy_coin, buy_amount, pay_coin, pay_amount, why}]
  *   closing_sells          [{coin, date, why}]                balance exactly zero after that day
- *   off_exchange           [{coin, sheet_row_date, units, amount_clp, coin_in_date, why}]
+ *   round_trips            [{coin, send_dates, return_date, why}]
  *
  * Usage (from server/):
  *   npx tsx scripts/rebuild-crypto-ledger-from-buda.ts                 # report only
@@ -50,14 +60,15 @@
  *
  * Apply runs in one IMMEDIATE transaction: it refuses unless the coin accounts hold exactly the
  * sheet rows (or exactly the rebuilt rows — then it reports «already applied»), deletes the sheet
- * rows except the kept off-exchange ones, inserts the rebuilt rows, asserts the coin balance at
- * every event date against the plan, and re-stamps the accounts' existing `valuations` rows
- * (value + units_snapshot, same dates) from the new ledger.
+ * rows, inserts the rebuilt rows, asserts the coin balance at every event date and the deposit
+ * timeline (the app's own reader) against the plan, and re-stamps the accounts' existing
+ * `valuations` rows (value + units_snapshot, same dates) from the new ledger.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { db } from "../src/db.js";
+import { getMergedDepositInflowEventsForAccount } from "../src/accountDeposits.js";
 import { chileCalendarTodayYmd } from "../src/chileDate.js";
 import { equityCloseEod } from "../src/equityQuote.js";
 import { fxForLiveMtm, fxRowOnOrBefore } from "../src/fxRates.js";
@@ -76,6 +87,9 @@ const COIN_TICKER: Record<Coin, "ETH-USD" | "BTC-USD"> = { ETH: "ETH-USD", BTC: 
 const BUFFER_KEY = "import:buda|key=buda_clp";
 const SHEET_NOTE_PREFIX = "import:excel|cripto-sheet|";
 const NEW_NOTE_PREFIX = "import:buda|coin|";
+
+/** P/L flow kinds (never capital to any deposit reader) used for the unit-only rows. */
+type PlFlowKind = "cash_fee" | "savings_earnings";
 
 /** 1 coin = 1e9 nano; Buda prints ETH to 9 decimals and BTC to 8, so nano is exact for both. */
 const NANO = 1_000_000_000n;
@@ -151,7 +165,7 @@ type Facts = {
   withdrawalFees: Map<string, bigint>; // coin|date
   swaps: { date: string; buyCoin: Coin; buyNano: bigint; payCoin: Coin; payNano: bigint; payAmount: string }[];
   closingSells: { coin: Coin; date: string }[];
-  offExchange: { coin: Coin; sheetRowDate: string; unitsNano: bigint; units: string; amountClp: number; coinInDate: string }[];
+  roundTrips: { coin: Coin; sendDates: string[]; returnDate: string }[];
 };
 
 function loadFacts(file: string): Facts {
@@ -162,7 +176,7 @@ function loadFacts(file: string): Facts {
   } catch (e) {
     fail(`facts file ${file} is not valid JSON: ${(e as Error).message}`);
   }
-  const known = new Set(["default_taker_fee_ppm", "order_fee_ppm", "month_net_pins", "withdrawal_fees", "swaps", "closing_sells", "off_exchange"]);
+  const known = new Set(["default_taker_fee_ppm", "order_fee_ppm", "month_net_pins", "withdrawal_fees", "swaps", "closing_sells", "round_trips"]);
   for (const k of Object.keys(raw)) if (!known.has(k)) fail(`facts: unknown key "${k}"`);
   const list = (key: string): Record<string, unknown>[] => {
     const v = raw[key];
@@ -184,7 +198,7 @@ function loadFacts(file: string): Facts {
     withdrawalFees: new Map(),
     swaps: [],
     closingSells: [],
-    offExchange: [],
+    roundTrips: [],
   };
   list("order_fee_ppm").forEach((e, i) => {
     const w = `facts.order_fee_ppm[${i}]`;
@@ -219,18 +233,14 @@ function loadFacts(file: string): Facts {
     const w = `facts.closing_sells[${i}]`;
     facts.closingSells.push({ coin: coin(e.coin, w), date: ymd(e.date, w) });
   });
-  list("off_exchange").forEach((e, i) => {
-    const w = `facts.off_exchange[${i}]`;
-    const units = str(e.units, w);
-    if (typeof e.amount_clp !== "number" || !Number.isInteger(e.amount_clp) || e.amount_clp <= 0) fail(`${w}: amount_clp must be a positive integer`);
-    facts.offExchange.push({
-      coin: coin(e.coin, w),
-      sheetRowDate: ymd(e.sheet_row_date, w),
-      unitsNano: parseNano(units, w),
-      units,
-      amountClp: e.amount_clp,
-      coinInDate: ymd(e.coin_in_date, w),
-    });
+  list("round_trips").forEach((e, i) => {
+    const w = `facts.round_trips[${i}]`;
+    if (!Array.isArray(e.send_dates) || e.send_dates.length === 0) fail(`${w}: send_dates must be a non-empty array`);
+    const sendDates = (e.send_dates as unknown[]).map((d, j) => ymd(d, `${w}.send_dates[${j}]`));
+    if (new Set(sendDates).size !== sendDates.length) fail(`${w}: duplicate send date`);
+    const returnDate = ymd(e.return_date, w);
+    if (sendDates.some((d) => d >= returnDate)) fail(`${w}: every send must precede the return`);
+    facts.roundTrips.push({ coin: coin(e.coin, w), sendDates, returnDate });
   });
   return facts;
 }
@@ -348,16 +358,28 @@ function checkBufferMatchesCsv(bufferId: number, rows: readonly BudaRow[]): numb
 }
 
 // ── plan ──────────────────────────────────────────────────────────────────────────────────
-type PlannedKind = "buy" | "sell" | "coin_out" | "swap_in" | "swap_out";
+type PlannedKind = "buy" | "sell" | "coin_out" | "swap_in" | "swap_out" | "send_fee" | "round_trip_return";
 type PlannedRow = {
   coin: Coin;
   occurred_on: string;
   kind: PlannedKind;
   amount: number;
   unitsNano: bigint;
+  flowKind: PlFlowKind | null;
   printed: string;
   feeText: string | null;
   note: string;
+};
+/** A balance change, in nano, on one day. */
+type CoinEvent = { coin: Coin; d: string; u: bigint };
+/** Coin out on a round trip: owned but not on Buda from `from` (inclusive) to `to` (exclusive). */
+type OpenWindow = { coin: Coin; from: string; to: string; u: bigint };
+
+type Plan = {
+  planned: PlannedRow[];
+  /** Buda's own wallet balance changes, from the export alone. */
+  wallet: CoinEvent[];
+  open: OpenWindow[];
 };
 
 function marketValueClp(coin: Coin, ymd: string, unitsNano: bigint): number {
@@ -372,8 +394,10 @@ function rowNote(kind: PlannedKind, coin: Coin, date: string, printed: string, e
   return `${NEW_NOTE_PREFIX}${kind}|coin=${coin}|day=${date}|amount=${printed}${extra}`;
 }
 
-function planCoinRows(rows: readonly BudaRow[], facts: Facts): PlannedRow[] {
+function planCoinRows(rows: readonly BudaRow[], facts: Facts): Plan {
   const live = rows.filter((r) => r.status !== "Rechazado");
+  const wallet: CoinEvent[] = [];
+  const open: OpenWindow[] = [];
 
   // Buys and swap-ins: coin received per order. Exchange orders net of the fee.
   type Buy = { row: BudaRow; coin: Coin; gross: bigint; net: bigint; exchange: boolean };
@@ -425,6 +449,7 @@ function planCoinRows(rows: readonly BudaRow[], facts: Facts): PlannedRow[] {
     const r = b.row;
     const fee = b.gross - b.net;
     const feeNote = b.exchange ? `|fee=${fmtNano(fee)}` : "";
+    wallet.push({ coin: b.coin, d: r.date, u: b.net });
     if (r.kind === "coin_swap") {
       const si = facts.swaps.findIndex((s) => s.date === r.date && s.buyCoin === b.coin && s.buyNano === b.gross);
       if (si < 0) fail(`Buda CSV line ${r.line}: no facts.swaps entry for the ${b.coin} swap on ${r.date}`);
@@ -432,12 +457,14 @@ function planCoinRows(rows: readonly BudaRow[], facts: Facts): PlannedRow[] {
       const swap = facts.swaps[si]!;
       if (swap.payCoin === b.coin) fail(`facts.swaps[${si}]: pays with the coin it buys`);
       const value = marketValueClp(b.coin, r.date, b.gross);
+      wallet.push({ coin: swap.payCoin, d: r.date, u: -swap.payNano });
       planned.push({
         coin: b.coin,
         occurred_on: r.date,
         kind: "swap_in",
         amount: value,
         unitsNano: b.net,
+        flowKind: null,
         printed: r.coinText!,
         feeText: b.exchange ? fmtNano(fee) : null,
         note: rowNote("swap_in", b.coin, r.date, r.coinText!, `${feeNote}|paid=${swap.payAmount} ${swap.payCoin}`),
@@ -448,6 +475,7 @@ function planCoinRows(rows: readonly BudaRow[], facts: Facts): PlannedRow[] {
         kind: "swap_out",
         amount: -value,
         unitsNano: -swap.payNano,
+        flowKind: null,
         printed: swap.payAmount,
         feeText: null,
         note: rowNote("swap_out", swap.payCoin, r.date, swap.payAmount, `|for=${r.coinText} ${b.coin}`),
@@ -460,6 +488,7 @@ function planCoinRows(rows: readonly BudaRow[], facts: Facts): PlannedRow[] {
       kind: "buy",
       amount: r.clp!,
       unitsNano: b.net,
+      flowKind: null,
       printed: r.coinText!,
       feeText: b.exchange ? fmtNano(fee) : null,
       note: rowNote("buy", b.coin, r.date, r.coinText!, feeNote),
@@ -469,17 +498,38 @@ function planCoinRows(rows: readonly BudaRow[], facts: Facts): PlannedRow[] {
     if (!usedSwaps.has(i)) fail(`facts.swaps[${i}] (${s.date}) matches no Buda swap`);
   });
 
+  // Round trips: each send date names one coin_out, the return date one coin_in, same coin.
+  const oneOf = (kind: BudaKind, coin: Coin, date: string, where: string): BudaRow => {
+    const hits = live.filter((r) => r.kind === kind && r.coin === coin && r.date === date);
+    if (hits.length !== 1) fail(`${where}: expected one Buda ${kind} of ${coin} on ${date}, found ${hits.length}`);
+    return hits[0]!;
+  };
+  const roundTripOfSend = new Map<BudaRow, number>();
+  const roundTripOfReturn = new Map<BudaRow, number>();
+  facts.roundTrips.forEach((t, i) => {
+    const w = `facts.round_trips[${i}]`;
+    for (const d of t.sendDates) {
+      const send = oneOf("coin_out", t.coin, d, w);
+      if (roundTripOfSend.has(send)) fail(`${w}: the ${d} send is already in another round trip`);
+      roundTripOfSend.set(send, i);
+    }
+    const back = oneOf("coin_in", t.coin, t.returnDate, w);
+    if (roundTripOfReturn.has(back)) fail(`${w}: the ${t.returnDate} return closes another round trip`);
+    roundTripOfReturn.set(back, i);
+  });
+
   const usedWithdrawalFees = new Set<string>();
-  const usedOffExchange = new Set<number>();
   for (const r of live) {
     const coin = r.coin;
     if (r.kind === "sell") {
+      wallet.push({ coin: coin!, d: r.date, u: -r.coinNano! });
       planned.push({
         coin: coin!,
         occurred_on: r.date,
         kind: "sell",
         amount: -r.clp!,
         unitsNano: -r.coinNano!,
+        flowKind: null,
         printed: r.coinText!,
         feeText: null,
         note: rowNote("sell", coin!, r.date, r.coinText!, ""),
@@ -489,29 +539,59 @@ function planCoinRows(rows: readonly BudaRow[], facts: Facts): PlannedRow[] {
       const fee = facts.withdrawalFees.get(key);
       if (fee == null) fail(`Buda CSV line ${r.line}: no facts.withdrawal_fees entry for ${key}`);
       usedWithdrawalFees.add(key);
-      planned.push({
-        coin: coin!,
-        occurred_on: r.date,
-        kind: "coin_out",
-        amount: -marketValueClp(coin!, r.date, r.coinNano!),
-        unitsNano: -(r.coinNano! + fee),
-        printed: r.coinText!,
-        feeText: fmtNano(fee),
-        note: rowNote("coin_out", coin!, r.date, r.coinText!, `|fee=${fmtNano(fee)}`),
-      });
+      wallet.push({ coin: coin!, d: r.date, u: -(r.coinNano! + fee) });
+      const trip = roundTripOfSend.get(r);
+      if (trip != null) {
+        // The coin sent stays owned: only the fee leaves the account.
+        open.push({ coin: coin!, from: r.date, to: facts.roundTrips[trip]!.returnDate, u: r.coinNano! });
+        planned.push({
+          coin: coin!,
+          occurred_on: r.date,
+          kind: "send_fee",
+          amount: 0,
+          unitsNano: -fee,
+          flowKind: "cash_fee",
+          printed: r.coinText!,
+          feeText: fmtNano(fee),
+          note: rowNote("send_fee", coin!, r.date, r.coinText!, `|fee=${fmtNano(fee)}`),
+        });
+      } else {
+        planned.push({
+          coin: coin!,
+          occurred_on: r.date,
+          kind: "coin_out",
+          amount: -marketValueClp(coin!, r.date, r.coinNano!),
+          unitsNano: -(r.coinNano! + fee),
+          flowKind: null,
+          printed: r.coinText!,
+          feeText: fmtNano(fee),
+          note: rowNote("coin_out", coin!, r.date, r.coinText!, `|fee=${fmtNano(fee)}`),
+        });
+      }
     } else if (r.kind === "coin_in") {
-      const oi = facts.offExchange.findIndex((o) => o.coin === coin && o.coinInDate === r.date && o.unitsNano === r.coinNano);
-      if (oi < 0) fail(`Buda CSV line ${r.line}: coin_in of ${coin} on ${r.date} has no facts.off_exchange purchase`);
-      if (usedOffExchange.has(oi)) fail(`facts.off_exchange[${oi}] matches two coin_ins`);
-      usedOffExchange.add(oi);
+      const trip = roundTripOfReturn.get(r);
+      if (trip == null) fail(`Buda CSV line ${r.line}: coin_in of ${coin} on ${r.date} closes no facts.round_trips entry`);
+      wallet.push({ coin: coin!, d: r.date, u: r.coinNano! });
+      const sent = [...roundTripOfSend].filter(([, t]) => t === trip).reduce((s, [send]) => s + send.coinNano!, 0n);
+      const net = r.coinNano! - sent;
+      if (net !== 0n) {
+        planned.push({
+          coin: coin!,
+          occurred_on: r.date,
+          kind: "round_trip_return",
+          amount: 0,
+          unitsNano: net,
+          flowKind: net > 0n ? "savings_earnings" : "cash_fee",
+          printed: r.coinText!,
+          feeText: null,
+          note: rowNote("round_trip_return", coin!, r.date, r.coinText!, `|sent=${fmtNano(sent)}`),
+        });
+      }
     }
   }
-  for (const k of facts.withdrawalFees.keys()) if (!usedWithdrawalFees.has(k)) fail(`facts withdrawal_fees ${k} matches no Buda withdrawal`);
-  facts.offExchange.forEach((o, i) => {
-    if (!usedOffExchange.has(i)) fail(`facts.off_exchange[${i}] matches no Buda coin_in`);
-  });
+  for (const k of facts.withdrawalFees.keys()) if (!usedWithdrawalFees.has(k)) fail(`facts withdrawal_fees ${k} matches no Buda send`);
 
-  const kindOrder: Record<PlannedKind, number> = { buy: 0, swap_in: 0, swap_out: 1, coin_out: 2, sell: 3 };
+  const kindOrder: Record<PlannedKind, number> = { buy: 0, swap_in: 0, round_trip_return: 0, swap_out: 1, send_fee: 2, coin_out: 2, sell: 3 };
   planned.sort(
     (a, b) =>
       a.coin.localeCompare(b.coin) ||
@@ -523,13 +603,21 @@ function planCoinRows(rows: readonly BudaRow[], facts: Facts): PlannedRow[] {
   for (const p of planned) {
     if (notes.has(p.note)) fail(`duplicate planned note ${p.note}`);
     notes.add(p.note);
-    if (p.amount === 0) fail(`planned row with a zero CLP amount: ${p.note}`);
+    if (p.flowKind == null && p.amount === 0) fail(`planned capital row with a zero CLP amount: ${p.note}`);
+    if (p.flowKind != null && p.amount !== 0) fail(`planned unit-only row carries pesos: ${p.note}`);
   }
-  return planned;
+  return { planned, wallet, open };
 }
 
 // ── ledger math (same rules as cryptoValuation / accountDeposits for single-leg rows) ─────
 type LedgerRow = { occurred_on: string; amount: number; units: number; countsAsFlow: boolean };
+
+/** accountDeposits' rule for a single-leg row: P/L kinds, zero amounts and coin-only notes are not capital. */
+function countsAsCapitalFlow(amount: number, flowKind: string | null, note: string | null): boolean {
+  if (flowKind === "cash_fee" || flowKind === "savings_earnings") return false;
+  if (amount === 0) return false;
+  return !(note ?? "").includes("cripto-coin-only-wdw");
+}
 
 function unitsThrough(rows: readonly LedgerRow[], ymd: string): number {
   let u = 0;
@@ -604,14 +692,14 @@ function monthsBetween(firstYmd: string, lastYmd: string): string[] {
   return out;
 }
 
-/** Exact running balance at the end of each event date, in nano. */
-function dailyBalancesNano(events: readonly { d: string; u: bigint }[]): Map<string, bigint> {
-  const byDay = new Map<string, bigint>();
-  for (const e of events) byDay.set(e.d, (byDay.get(e.d) ?? 0n) + e.u);
+/** Exact running balance at the end of every day in `days`, in nano. */
+function balancesOnDays(events: readonly { d: string; u: bigint }[], days: readonly string[]): Map<string, bigint> {
+  const sorted = [...events].sort((a, b) => a.d.localeCompare(b.d));
   const out = new Map<string, bigint>();
   let bal = 0n;
-  for (const d of [...byDay.keys()].sort()) {
-    bal += byDay.get(d)!;
+  let i = 0;
+  for (const d of [...days].sort()) {
+    while (i < sorted.length && sorted[i]!.d <= d) bal += sorted[i++]!.u;
     out.set(d, bal);
   }
   return out;
@@ -646,41 +734,48 @@ function main(): void {
   const matched = checkBufferMatchesCsv(buffer.id, csv);
   console.log(`  Buda CLP buffer (#${buffer.id}): all ${matched} peso legs match the CSV (date, kind, amount)`);
 
-  const planned = planCoinRows(csv, facts);
+  const { planned, wallet, open } = planCoinRows(csv, facts);
 
-  // Current state per coin: sheet rows (to replace), kept off-exchange rows, or rebuilt rows.
+  // Exact plan checks, by coin, at the end of every event day: never negative; the ledger is
+  // Buda's own wallet plus exactly the coin out on open round trips; zero after each sell-all.
+  const planEvents = (c: Coin) => planned.filter((p) => p.coin === c).map((p) => ({ d: p.occurred_on, u: p.unitsNano }));
+  const planBalances = {} as Record<Coin, Map<string, bigint>>;
+  for (const c of COINS) {
+    const days = [...new Set([...planEvents(c), ...wallet.filter((w) => w.coin === c)].map((e) => e.d))];
+    planBalances[c] = balancesOnDays(planEvents(c), days);
+    const walletBalances = balancesOnDays(wallet.filter((w) => w.coin === c), days);
+    for (const d of days) {
+      const bal = planBalances[c].get(d)!;
+      if (bal < 0n) fail(`${c} balance negative (${fmtNano(bal)}) at the end of ${d}`);
+      const out = open.filter((o) => o.coin === c && o.from <= d && d < o.to).reduce((s, o) => s + o.u, 0n);
+      const gap = bal - walletBalances.get(d)!;
+      if (gap !== out) fail(`${c} on ${d}: ledger − Buda wallet = ${fmtNano(gap)}, expected ${fmtNano(out)} out on round trips`);
+    }
+  }
+  for (const s of facts.closingSells) {
+    if (!planned.some((p) => p.coin === s.coin && p.kind === "sell" && p.occurred_on === s.date)) {
+      fail(`facts closing_sells ${s.coin}|${s.date} matches no sell`);
+    }
+    const bal = planBalances[s.coin].get(s.date)!;
+    if (bal !== 0n) fail(`${s.coin} does not close at the ${s.date} sell-all: ${fmtNano(bal)} left (fee model drift)`);
+  }
+
+  // Current state per coin: sheet rows (to replace) or already-rebuilt rows.
   const current = {} as Record<Coin, MovementRow[]>;
   const toDelete: MovementRow[] = [];
   const rebuiltPresent: MovementRow[] = [];
-  const kept: MovementRow[] = [];
   for (const c of COINS) {
     const acc = accounts[c];
     current[c] = movementsTouching(acc.id);
     for (const m of current[c]) {
       if (m.account_id !== acc.id) fail(`${acc.name}: transfer movement ${m.id} touches the account — not modeled here`);
-      if (m.currency !== "clp" || m.flow_kind != null || m.counter_amount != null) {
-        fail(`${acc.name}: movement ${m.id} is not a plain CLP single-leg row`);
-      }
+      if (m.currency !== "clp" || m.counter_amount != null) fail(`${acc.name}: movement ${m.id} is not a CLP single-leg row`);
       const note = m.note ?? "";
-      const offExchange = facts.offExchange.find(
-        (o) =>
-          o.coin === c &&
-          note.startsWith(`${SHEET_NOTE_PREFIX}${c}|dep|`) &&
-          m.occurred_on === o.sheetRowDate &&
-          m.amount === o.amountClp &&
-          m.units_delta != null &&
-          Math.abs(m.units_delta - nanoToNumber(o.unitsNano)) < 1e-12
-      );
-      if (offExchange) kept.push(m);
-      else if (note.startsWith(`${SHEET_NOTE_PREFIX}${c}|`)) toDelete.push(m);
+      if (note.startsWith(`${SHEET_NOTE_PREFIX}${c}|`) && m.flow_kind == null) toDelete.push(m);
       else if (note.startsWith(NEW_NOTE_PREFIX)) rebuiltPresent.push(m);
       else fail(`${acc.name}: movement ${m.id} (${m.occurred_on}) is neither a sheet row nor a rebuilt row`);
     }
   }
-  if (kept.length !== facts.offExchange.length) {
-    fail(`expected ${facts.offExchange.length} kept off-exchange sheet row(s), found ${kept.length}`);
-  }
-  const keptIds = new Set(kept.map((m) => m.id));
   if (toDelete.length > 0 && rebuiltPresent.length > 0) {
     fail(`both sheet rows and ${rebuiltPresent.length} rebuilt row(s) are present — partial state, resolve by hand`);
   }
@@ -693,34 +788,17 @@ function main(): void {
       else if (
         p.occurred_on !== m.occurred_on ||
         p.amount !== m.amount ||
+        p.flowKind !== m.flow_kind ||
         Math.abs(nanoToNumber(p.unitsNano) - (m.units_delta ?? Number.NaN)) > 1e-12
       ) {
-        drift.push(`  #${m.id} ${m.note}: stored ${m.occurred_on} ${m.amount} ${m.units_delta}`);
+        drift.push(`  #${m.id} ${m.note}: stored ${m.occurred_on} ${m.amount} ${m.units_delta} ${m.flow_kind}`);
       }
       want.delete(m.note ?? "");
     }
     for (const p of want.values()) drift.push(`  missing ${p.note}`);
     if (drift.length > 0) fail(`rebuilt rows differ from the plan:\n${drift.join("\n")}`);
-    console.log(`\nAlready applied: the coin accounts hold exactly the ${planned.length} rebuilt rows (+ ${kept.length} kept). Nothing to do.`);
+    console.log(`\nAlready applied: the coin accounts hold exactly the ${planned.length} rebuilt rows. Nothing to do.`);
     return;
-  }
-
-  // Exact plan balances: never negative at a day's end, zero right after each sell-all.
-  const planEvents = (c: Coin) => [
-    ...planned.filter((p) => p.coin === c).map((p) => ({ d: p.occurred_on, u: p.unitsNano })),
-    ...facts.offExchange.filter((o) => o.coin === c).map((o) => ({ d: o.sheetRowDate, u: o.unitsNano })),
-  ];
-  const planBalances = {} as Record<Coin, Map<string, bigint>>;
-  for (const c of COINS) {
-    planBalances[c] = dailyBalancesNano(planEvents(c));
-    for (const [d, bal] of planBalances[c]) if (bal < 0n) fail(`${c} balance negative (${fmtNano(bal)}) at the end of ${d}`);
-  }
-  for (const s of facts.closingSells) {
-    if (!planned.some((p) => p.coin === s.coin && p.kind === "sell" && p.occurred_on === s.date)) {
-      fail(`facts closing_sells ${s.coin}|${s.date} matches no sell`);
-    }
-    const bal = planBalances[s.coin].get(s.date)!;
-    if (bal !== 0n) fail(`${s.coin} does not close at the ${s.date} sell-all: ${fmtNano(bal)} left (fee model drift)`);
   }
 
   // ── report ──
@@ -729,36 +807,42 @@ function main(): void {
       occurred_on: m.occurred_on,
       amount: m.amount,
       units: m.units_delta ?? 0,
-      countsAsFlow: !(m.note ?? "").includes("cripto-coin-only-wdw"),
+      countsAsFlow: countsAsCapitalFlow(m.amount, m.flow_kind, m.note),
     }));
-  const afterRows = (c: Coin): LedgerRow[] => [
-    ...planned
+  const afterRows = (c: Coin): LedgerRow[] =>
+    planned
       .filter((p) => p.coin === c)
-      .map((p) => ({ occurred_on: p.occurred_on, amount: p.amount, units: nanoToNumber(p.unitsNano), countsAsFlow: true })),
-    ...kept
-      .filter((m) => current[c].includes(m))
-      .map((m) => ({ occurred_on: m.occurred_on, amount: m.amount, units: m.units_delta ?? 0, countsAsFlow: true })),
-  ];
+      .map((p) => ({
+        occurred_on: p.occurred_on,
+        amount: p.amount,
+        units: nanoToNumber(p.unitsNano),
+        countsAsFlow: countsAsCapitalFlow(p.amount, p.flowKind, p.note),
+      }));
 
   for (const c of COINS) {
     const acc = accounts[c];
     console.log(`\n══ ${acc.name} (#${acc.id}, ${COIN_TICKER[c]}) ══`);
-    const removed = current[c].filter((m) => !keptIds.has(m.id));
+    const removed = current[c];
     console.log(`Sheet rows removed (${removed.length}):`);
     for (const m of removed) {
       console.log(`  - #${m.id} ${m.occurred_on} ${fmtClp(m.amount)} CLP ${fmtUnits(m.units_delta ?? 0)}  ${m.note}`);
-    }
-    for (const m of current[c].filter((x) => keptIds.has(x.id))) {
-      console.log(`Kept (off-exchange purchase, reaches Buda later as a coin_in):`);
-      console.log(`  = #${m.id} ${m.occurred_on} ${fmtClp(m.amount)} CLP ${fmtUnits(m.units_delta ?? 0)}  ${m.note}`);
     }
     const mine = planned.filter((p) => p.coin === c);
     console.log(`Rebuilt rows inserted (${mine.length}):`);
     for (const p of mine) {
       console.log(
-        `  + ${p.occurred_on} ${p.kind.padEnd(8)} ${fmtClp(p.amount)} CLP ${fmtUnits(nanoToNumber(p.unitsNano))}` +
+        `  + ${p.occurred_on} ${p.kind.padEnd(17)} ${fmtClp(p.amount)} CLP ${fmtUnits(nanoToNumber(p.unitsNano))}` +
           `  balance ${fmtUnits(nanoToNumber(planBalances[c].get(p.occurred_on)!))}` +
-          `  (printed ${p.printed}${p.feeText ? `, fee ${p.feeText}` : ""})`
+          `  (printed ${p.printed}${p.feeText ? `, fee ${p.feeText}` : ""}${p.flowKind ? `, unit-only: ${p.flowKind}` : ""})`
+      );
+    }
+    for (const to of [...new Set(open.filter((x) => x.coin === c).map((x) => x.to))].sort()) {
+      const trip = open.filter((x) => x.coin === c && x.to === to);
+      const held = trip.reduce((s, x) => s + x.u, 0n);
+      const froms = trip.map((x) => x.from).sort();
+      console.log(
+        `  Round trip: ${fmtNano(held)} ${c} sent off Buda in ${trip.length} send(s) ${froms[0]} … ${froms[froms.length - 1]},` +
+          ` held in the ledger (= Buda wallet + coin out) until the ${to} return`
       );
     }
 
@@ -808,14 +892,16 @@ function main(): void {
   // ── apply ──
   const del = db.prepare(`DELETE FROM movements WHERE id = ?`);
   const ins = db.prepare(
-    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-     VALUES (?, ?, 'clp', ?, ?, ?)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+     VALUES (?, ?, 'clp', ?, ?, ?, ?)`
   );
   const restamp = db.prepare(`UPDATE valuations SET value = ?, units_snapshot = ? WHERE id = ?`);
   let restamped = 0;
   db.transaction(() => {
     for (const m of toDelete) del.run(m.id);
-    for (const p of planned) ins.run(accounts[p.coin].id, p.amount, p.occurred_on, p.note, nanoToNumber(p.unitsNano));
+    for (const p of planned) {
+      ins.run(accounts[p.coin].id, p.amount, p.occurred_on, p.note, nanoToNumber(p.unitsNano), p.flowKind);
+    }
     for (const c of COINS) {
       const id = accounts[c].id;
       for (const [d, bal] of planBalances[c]) {
@@ -823,6 +909,18 @@ function main(): void {
         if (Math.abs(stored - nanoToNumber(bal)) > 1e-9) {
           throw new Error(`${c} units through ${d}: stored ${stored}, planned ${fmtNano(bal)}`);
         }
+      }
+      // The app's own deposit timeline must see exactly the planned capital flows — nothing for
+      // the unit-only rows.
+      const want = planned
+        .filter((p) => p.coin === c && countsAsCapitalFlow(p.amount, p.flowKind, p.note))
+        .map((p) => `${p.occurred_on}|${p.amount}`)
+        .sort();
+      const got = getMergedDepositInflowEventsForAccount(id)
+        .map((e) => `${e.occurred_on}|${e.amt}`)
+        .sort();
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        throw new Error(`${c}: deposit timeline has ${got.length} events, plan has ${want.length} capital flows`);
       }
       const vals = db
         .prepare(`SELECT id, as_of_date, currency FROM valuations WHERE account_id = ? ORDER BY as_of_date`)
