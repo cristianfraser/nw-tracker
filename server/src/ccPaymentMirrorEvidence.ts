@@ -288,3 +288,42 @@ export function ccPaymentPairingsWithoutEvidence(accountId?: number): CcPaymentP
   const keys = new Set(listCcPaymentEvidenceRows(accountId).map((r) => r.key));
   return listCcPaymentPairings(accountId).filter((p) => !keys.has(p.key));
 }
+
+/** Transfer ids of the card's pairings whose payment some evidence row carries — the state a write must keep. */
+export function ccPaymentPairingIdsWithEvidence(accountId: number): Set<number> {
+  const keys = new Set(listCcPaymentEvidenceRows(accountId).map((r) => r.key));
+  return new Set(
+    listCcPaymentPairings(accountId)
+      .filter((p) => keys.has(p.key))
+      .map((p) => p.transfer_movement_id)
+  );
+}
+
+/**
+ * Throws, naming them, when a write left pairings of the card without the evidence they had before
+ * it (`before` = {@link ccPaymentPairingIdsWithEvidence} read ahead of the write): the write removed
+ * the payment the pairing mirrors — a re-parse that moved or dropped it, a deleted line — which
+ * would leave the transfer booked against nothing and let the payment be paired a second time if it
+ * came back under another date. Call it inside the write's transaction so the throw rolls the write
+ * back. A pairing that had no evidence before is not this write's doing:
+ * `listCcPaymentMirrorCandidates` refuses to pair anything while one exists.
+ */
+export function assertCcPaymentEvidenceKept(accountId: number, before: ReadonlySet<number>, what: string): void {
+  if (before.size === 0) return;
+  const lost = ccPaymentPairingsWithoutEvidence(accountId).filter((p) => before.has(p.transfer_movement_id));
+  if (lost.length === 0) return;
+  throw new Error(
+    `Account ${accountId}: ${what} removes the card evidence of ${lost.length} converted card payment(s): ` +
+      `${lost.map(describeCcPaymentPairing).join("; ")}. A pairing mirrors its payment by card, date and amount, ` +
+      `so the statement must keep printing it (as a payment line or the header's monto pagado); ` +
+      `if the payment really moved, undo the pairing (undoMirrorConversion) and convert it again.`
+  );
+}
+
+/** {@link assertCcPaymentEvidenceKept} around one write; run it inside the write's transaction. */
+export function keepingCcPaymentEvidence<T>(accountId: number, what: string, write: () => T): T {
+  const before = ccPaymentPairingIdsWithEvidence(accountId);
+  const result = write();
+  assertCcPaymentEvidenceKept(accountId, before, what);
+  return result;
+}

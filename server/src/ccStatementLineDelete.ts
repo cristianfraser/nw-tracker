@@ -1,5 +1,6 @@
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
+import { keepingCcPaymentEvidence } from "./ccPaymentMirrorEvidence.js";
 import { db } from "./db.js";
 
 function isWebPasteStatementSource(sourcePdf: string): boolean {
@@ -28,7 +29,13 @@ export function deleteCcWebPasteStatementLine(
     throw new Error("only web-paste statement lines can be deleted");
   }
 
-  const removed_count = deleteStatementLinesByIds([statementLineId]);
+  // A pasted PAGO / ABONO DE DIVISAS line can be the only evidence of a converted card payment:
+  // deleting it would leave that transfer booked against nothing, so it throws instead.
+  const removed_count = db.transaction(() =>
+    keepingCcPaymentEvidence(accountId, `deleting statement line ${statementLineId}`, () =>
+      deleteStatementLinesByIds([statementLineId])
+    )
+  )();
   if (removed_count > 0) {
     recomputeCcBillingMonthBalances(accountId);
   }

@@ -33,6 +33,7 @@ import {
 } from "./ccStatementJsonSource.js";
 import { learnGroceryBranchesFromCardLines, type GroceryBranchLearningResult } from "./groceryBranchLearning.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
+import { assertCcPaymentEvidenceKept, ccPaymentPairingIdsWithEvidence } from "./ccPaymentMirrorEvidence.js";
 import { installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
 import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { parseOptionalChileanInteger } from "./chileanNumber.js";
@@ -542,6 +543,9 @@ export function mergeCcAccountFromParsedRows(
   // All writes in one transaction so a mid-merge error (e.g. missing import) leaves
   // no partial state and a retry is a true no-op.
   const result = db.transaction((): CcAccountImportMergeResult => {
+    // The converted card payments whose evidence is on file now must still find it after the
+    // write — replaced lines, a superseded JSON close and settled bucket lines all get new rows.
+    const pairedWithEvidence = ccPaymentPairingIdsWithEvidence(accountId);
     // Inside the transaction: the JSON rows a PDF is taking over go first, so the write below
     // lands on a close with no competing statement row (lines cascade via the FK).
     deleteJsonStatementsByIds(supersededJsonStatementIds);
@@ -572,6 +576,9 @@ export function mergeCcAccountFromParsedRows(
     // Statement replacement above cascaded any existing traspaso links away; rebuild them
     // from the final line set (throws on an unpairable leg, aborting the whole merge).
     relinkCcTraspasoDeudaLinksForAccount(accountId);
+    // On the final line set (a traspaso-linked abono is no payment): throws, naming the pairings,
+    // when this import dropped a paired payment, so the whole merge writes nothing.
+    assertCcPaymentEvidenceKept(accountId, pairedWithEvidence, "this statement import");
     // A grocery receipt paid with this card at a branch no map names waits, flagged, for the
     // bank's own line for its day and pesos — which this write may have just landed, from
     // whichever source (paste textarea, nightly feed, statement PDF). Pairing it here teaches
