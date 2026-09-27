@@ -693,15 +693,30 @@ def _is_origen_column_line(line: str, merchant: str) -> bool:
     return False
 
 
+# The page counter's second cell («1 DE 2» prints as «1» and «DE 2» in the vertical rendering).
+RE_PAGE_COUNTER_CELL = re.compile(r"^DE\s+\d+$")
+# Set on a vertical row whose chunk is not one printed line (see `_merge_intl_parsed_rows`).
+VERTICAL_MULTI_LINE = "_vertical_multi_line"
+
+
 def _parse_international_vertical_chunk(
     chunk: List[str], fecha: str
 ) -> Optional[Dict[str, Any]]:
     """
     Map pdftotext vertical cells to statement columns:
     left (fecha, descripción, [origen vacío]) + right (país, monto origen, US$).
+
+    A printed line carries exactly two amounts (MONTO MONEDA ORIGEN, MONTO US$). The vertical
+    rendering loses the table rows at page breaks and section headers: it glues the page counter
+    onto a row («3», «DE 5»), dumps a page's right-hand columns after its last row, or sends a
+    row's US$ cell below the next section header. A chunk with one, three or more amounts or a
+    page counter pairs the wrong cells (a payment's origin read as a positive US$, another
+    line's US$, the page number), so its row is marked `VERTICAL_MULTI_LINE`: never a statement
+    line (the layout rendering prints every line whole).
     """
     amounts: List[str] = []
     texts: List[str] = []
+    page_counter = False
     for part in chunk:
         p = part.strip()
         if not p:
@@ -709,6 +724,7 @@ def _parse_international_vertical_chunk(
         if _is_amount_token(p):
             amounts.append(p)
         else:
+            page_counter = page_counter or bool(RE_PAGE_COUNTER_CELL.match(p))
             texts.append(p)
 
     if not amounts:
@@ -719,6 +735,7 @@ def _parse_international_vertical_chunk(
 
     if not amounts:
         return None
+    multi_line = page_counter or len(amounts) != 2
 
     orig_raw, usd_raw = _assign_intl_orig_and_usd_amounts(amounts)
     if not usd_raw:
@@ -777,7 +794,7 @@ def _parse_international_vertical_chunk(
         desc_bits.append(origen)
     desc_bits.extend([country, usd_raw])
 
-    return {
+    row: Dict[str, Any] = {
         "layout": "international_usd",
         "transaction_date": fecha,
         "posting_date": fecha,
@@ -799,6 +816,9 @@ def _parse_international_vertical_chunk(
         "foreign_currency": "USD",
         "authorization_code": "",
     }
+    if multi_line:
+        row[VERTICAL_MULTI_LINE] = True
+    return row
 
 
 def extract_meta_international(full: str, source_pdf: str) -> Dict[str, Any]:
@@ -962,10 +982,21 @@ def _parse_intl_layout_table_line(line: str) -> Optional[Dict[str, Any]]:
     parts = [p.strip() for p in re.split(r"\s{2,}", m.group(2).strip()) if p.strip()]
     if len(parts) < 4:
         return None
-    country_idx = next((i for i, p in enumerate(parts) if RE_INTL_COUNTRY.match(p)), None)
+    # PAÍS is the two-letter cell followed by the two amounts: a two-letter CIUDAD before it
+    # (an airline's city code) is not the country, and reading it as one took the origin as
+    # the US$.
+    country_idx = next(
+        (
+            i
+            for i, p in enumerate(parts)
+            if RE_INTL_COUNTRY.match(p)
+            and i + 2 < len(parts)
+            and _is_amount_token(parts[i + 1])
+            and _is_amount_token(parts[i + 2])
+        ),
+        None,
+    )
     if country_idx is None or country_idx < 1:
-        return None
-    if country_idx + 2 >= len(parts):
         return None
     merchant = parts[0]
     country = parts[country_idx]
@@ -1110,6 +1141,16 @@ def _intl_row_parse_quality(r: Dict[str, Any]) -> Tuple[int, float]:
     return (score, -usd if has_orig else usd)
 
 
+def _intl_row_replaces(r: Dict[str, Any], prev: Dict[str, Any]) -> bool:
+    """Whether `r` takes a merge slot from `prev`: a multi-line vertical row never does and any
+    other row always takes one from it; otherwise the better-parsed row, ties to the later."""
+    if r.get(VERTICAL_MULTI_LINE):
+        return False
+    if prev.get(VERTICAL_MULTI_LINE):
+        return True
+    return _intl_row_parse_quality(r) >= _intl_row_parse_quality(prev)
+
+
 def _vertical_intl_usd_amount_owned_by_layout(
     vertical_row: Dict[str, Any], layout_rows: List[Dict[str, Any]]
 ) -> bool:
@@ -1142,6 +1183,10 @@ def _merge_intl_parsed_rows(
     merchant), so it too must never merge two rows from the same extractor —
     those are distinct printed lines that happen to share a day and an amount
     (two same-price rides, consecutive airline tickets).
+
+    A `VERTICAL_MULTI_LINE` row is never kept: a row that shares its slot replaces it, and one
+    alone in its slot is dropped. It still holds its slot's place, so the surviving rows keep
+    their order — and the row ids derived from it.
     """
     kept_vertical = [
         r
@@ -1158,7 +1203,7 @@ def _merge_intl_parsed_rows(
             occurrence[base] = n + 1
             key = f"{base}|#{n}"
             prev = merged.get(key)
-            if prev is None or _intl_row_parse_quality(r) >= _intl_row_parse_quality(prev[1]):
+            if prev is None or _intl_row_replaces(r, prev[1]):
                 merged[key] = (source_idx, r)
     by_loose_usd: Dict[str, Tuple[int, Dict[str, Any]]] = {}
     bucket_occurrence: Tuple[Dict[str, int], Dict[str, int]] = ({}, {})
@@ -1188,9 +1233,9 @@ def _merge_intl_parsed_rows(
         occ[base] = n + 1
         bucket = f"{base}|#{n}"
         prev = by_loose_usd.get(bucket)
-        if prev is None or _intl_row_parse_quality(r) >= _intl_row_parse_quality(prev[1]):
+        if prev is None or _intl_row_replaces(r, prev[1]):
             by_loose_usd[bucket] = (source_idx, r)
-    return [r for _source_idx, r in by_loose_usd.values()]
+    return [r for _source_idx, r in by_loose_usd.values() if not r.get(VERTICAL_MULTI_LINE)]
 
 
 def parse_international_usd_document(
@@ -1236,7 +1281,7 @@ def parse_international_usd_document(
     if full_layout.strip():
         layout_out = _parse_international_layout_document(full_layout)
         return _merge_intl_parsed_rows(vertical_out, layout_out)
-    return vertical_out
+    return [r for r in vertical_out if not r.get(VERTICAL_MULTI_LINE)]
 
 
 def _norm_header_cell(s: str) -> str:
