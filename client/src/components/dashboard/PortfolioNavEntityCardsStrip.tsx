@@ -15,14 +15,18 @@ import {
 import {
   portfolioStripAccountChildren,
   portfolioStripGroupChildren,
+  portfolioStripSummaryHubs,
 } from "../../portfolioNavFromApi";
+import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { DashboardResponse, NavTreeNodeDto } from "../../types";
 
+type StripDash = Pick<
+  DashboardResponse,
+  "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
+>;
+
 export type PortfolioNavEntityCardsStripProps = {
-  dash: Pick<
-    DashboardResponse,
-    "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
-  >;
+  dash: StripDash;
   parentNavNode: NavTreeNodeDto;
   showUsd: boolean;
   animated?: boolean;
@@ -31,9 +35,75 @@ export type PortfolioNavEntityCardsStripProps = {
   linkedCardNavChildren?: NavTreeNodeDto[];
 };
 
+type NavSummaryCardProps = {
+  dash: StripDash;
+  node: NavTreeNodeDto;
+  label?: string;
+  to?: string;
+  showUsd: boolean;
+  animated: boolean;
+  placeholderPhase: boolean;
+};
+
 /**
- * Portfolio strip: compact parent, optional detailed group children, and — on leaf buckets —
- * one accounts summary table for the account leaves (replaced the per-account compact cards).
+ * A nav node's own summary card: the hero on the node's page, and a spread hub's card beside
+ * the hero on its parent's page — one rendering, so both show the same numbers.
+ */
+function NavSummaryCard({
+  dash,
+  node,
+  label,
+  to,
+  showUsd,
+  animated,
+  placeholderPhase,
+}: NavSummaryCardProps) {
+  const cardSlug = `grp-nav-${node.slug}-${node.node_id}`;
+  const totals = portfolioNavParentMainValue(
+    dash,
+    portfolioNavParentTitleModeForNavNode(node),
+    dashboardRowsForNavSubtree(dash.accounts, node),
+    showUsd
+  );
+  const metricsByPeriod = requireNavCardMetrics(dash, node).parent;
+  return (
+    <CompactEntityCard
+      label={label}
+      to={to}
+      showUsd={showUsd}
+      clp={totals.clp}
+      apiUsd={totals.apiUsd}
+      cardSlug={cardSlug}
+      animated={animated}
+      placeholderPhase={placeholderPhase}
+      stripInner
+      valueVariant="main"
+      valueDelta={
+        <CardValueDayPl
+          metricsByPeriod={metricsByPeriod}
+          showUsd={showUsd}
+          cardSlug={cardSlug}
+          animated={animated}
+          placeholderPhase={placeholderPhase}
+        />
+      }
+      metrics={
+        <DashboardCardGroupMetrics
+          metricsByPeriod={metricsByPeriod}
+          showUsd={showUsd}
+          cardSlug={cardSlug}
+          animated={animated}
+          placeholderPhase={placeholderPhase}
+        />
+      }
+    />
+  );
+}
+
+/**
+ * Portfolio strip: compact parent (plus a summary card per spread hub), optional detailed group
+ * children, and — on leaf buckets — one accounts summary table for the account leaves (replaced
+ * the per-account compact cards).
  */
 export function PortfolioNavEntityCardsStrip({
   dash,
@@ -43,11 +113,10 @@ export function PortfolioNavEntityCardsStrip({
   placeholderPhase = false,
   linkedCardNavChildren = [],
 }: PortfolioNavEntityCardsStripProps) {
-  const parentTitleMode = portfolioNavParentTitleModeForNavNode(parentNavNode);
-  const compactCardSlug = `grp-nav-${parentNavNode.slug}-${parentNavNode.node_id}`;
-  const parentRows = dashboardRowsForNavSubtree(dash.accounts, parentNavNode);
-  const parentTotals = portfolioNavParentMainValue(dash, parentTitleMode, parentRows, showUsd);
-  const parentMetricsByPeriod = requireNavCardMetrics(dash, parentNavNode).parent;
+  const summaryHubs = useMemo(() => portfolioStripSummaryHubs(parentNavNode), [parentNavNode]);
+  // Beside other summary cards the parent's is titled too (repeating the page title), so the
+  // cards' rows line up.
+  const parentLabel = summaryHubs.length > 0 ? resolveNavTreeLabel(parentNavNode) : undefined;
 
   const stripGroupChildren = useMemo(
     () => portfolioStripGroupChildren(parentNavNode),
@@ -94,35 +163,29 @@ export function PortfolioNavEntityCardsStrip({
       <PortfolioEntityCardsStrip
         compactStripClassName={isCashParent ? "card--cash" : undefined}
         compactSlot={
-          <CompactEntityCard
+          <NavSummaryCard
+            dash={dash}
+            node={parentNavNode}
+            label={parentLabel}
             showUsd={showUsd}
-            clp={parentTotals.clp}
-            apiUsd={parentTotals.apiUsd}
-            cardSlug={compactCardSlug}
             animated={animated}
             placeholderPhase={placeholderPhase}
-            stripInner
-            valueVariant="main"
-            valueDelta={
-              <CardValueDayPl
-                metricsByPeriod={parentMetricsByPeriod}
-                showUsd={showUsd}
-                cardSlug={compactCardSlug}
-                animated={animated}
-                placeholderPhase={placeholderPhase}
-              />
-            }
-            metrics={
-              <DashboardCardGroupMetrics
-                metricsByPeriod={parentMetricsByPeriod}
-                showUsd={showUsd}
-                cardSlug={compactCardSlug}
-                animated={animated}
-                placeholderPhase={placeholderPhase}
-              />
-            }
           />
         }
+        summarySlots={summaryHubs.map((hub) => ({
+          key: hub.node_id,
+          slot: (
+            <NavSummaryCard
+              dash={dash}
+              node={hub}
+              label={resolveNavTreeLabel(hub)}
+              to={hub.route_path?.trim() || undefined}
+              showUsd={showUsd}
+              animated={animated}
+              placeholderPhase={placeholderPhase}
+            />
+          ),
+        }))}
         detailSlots={
           showDetailSlots ? (
             <PortfolioNavChildDetailCards

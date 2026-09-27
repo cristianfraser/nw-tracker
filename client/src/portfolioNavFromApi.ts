@@ -142,10 +142,18 @@ export function dashboardBucketGroupsUnderNavHub(node: NavTreeNodeDto): Dashboar
   return out;
 }
 
+/**
+ * Hub the strip spreads into its children's cards (inversiones → brokerage + retirement).
+ * The cash_eqs hub is a dashboard bucket itself and keeps its own card.
+ */
+function isFlattenedStripHub(node: NavTreeNodeDto): boolean {
+  return isNavHubNode(node) && node.slug !== "cash_eqs";
+}
+
 /** Routable portfolio group row for a detail card (bucket, pasivos, or inversiones sub-routes). */
 export function isPortfolioStripCardNode(node: NavTreeNodeDto): boolean {
   if (!node.route_path?.trim() || isLiabilityGroupNavNode(node)) return false;
-  if (isNavHubNode(node) && node.slug !== "cash_eqs") return false;
+  if (isFlattenedStripHub(node)) return false;
   if (node.account_id != null || node.expense_account_id != null) return false;
   if (resolveDashboardBucketFromNavNode(node) != null) return true;
   if (node.asset_group_slug === "liabilities") return true;
@@ -169,11 +177,25 @@ export function isPortfolioStripAccountNode(node: NavTreeNodeDto): boolean {
 export function portfolioStripGroupChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   const out: NavTreeNodeDto[] = [];
   for (const child of root.children ?? []) {
-    if (isNavHubNode(child) && child.slug !== "cash_eqs") {
+    if (isFlattenedStripHub(child)) {
       out.push(...portfolioStripGroupChildren(child));
       continue;
     }
     if (isPortfolioStripCardNode(child)) out.push(child);
+  }
+  return out;
+}
+
+/**
+ * Hubs {@link portfolioStripGroupChildren} spreads into their children's cards, in strip order.
+ * No row-2 card carries a spread hub's own total, so the strip gives each one a summary card
+ * beside the page's own in row 1 (home: Inversiones beside Patrimonio neto).
+ */
+export function portfolioStripSummaryHubs(root: NavTreeNodeDto): NavTreeNodeDto[] {
+  const out: NavTreeNodeDto[] = [];
+  for (const child of root.children ?? []) {
+    if (!isFlattenedStripHub(child)) continue;
+    out.push(child, ...portfolioStripSummaryHubs(child));
   }
   return out;
 }

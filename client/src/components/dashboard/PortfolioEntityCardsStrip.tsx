@@ -5,7 +5,9 @@ import { DashboardCardsValueGroup } from "./DashboardCardValue";
 export type PortfolioEntityCardsStripProps = {
   /** Hero row (e.g. net worth `CompactEntityCard`). */
   compactSlot: ReactNode;
-  /** Row 2: detailed group cards. Omitted when empty — no spacer for this row. */
+  /** More summary cards beside the hero in row 1, same shell (home: the Inversiones hub). */
+  summarySlots?: readonly { key: string; slot: ReactNode }[];
+  /** Row 2: detailed group cards. Omitted when empty. */
   detailSlots?: ReactNode;
   /** Full-width accounts summary table under the cards (leaf-bucket pages). */
   accountsTableSlot?: ReactNode;
@@ -15,12 +17,24 @@ export type PortfolioEntityCardsStripProps = {
   compactStripClassName?: string;
 };
 
+/** Card chrome of the row-1 summary cards (`CompactEntityCard stripInner` renders inside). */
+const SUMMARY_SHELL = cn(
+  "portfolio-strip-compact",
+  "card",
+  "card--detail",
+  "card--detail-compact",
+  "card--detail-stretch",
+  "card--dashboard-net-worth",
+);
+
 /**
- * Dashboard-style card strip: compact parent (row 1), optional detailed group children (row 2),
- * optional full-width per-account summary table below. Same CSS grid as the home dashboard.
+ * Dashboard-style card strip: summary cards (row 1), optional detailed group children (from row
+ * 2 on desktop — see `cards.css`), optional full-width per-account summary table below. Same CSS
+ * grid as the home dashboard.
  */
 export function PortfolioEntityCardsStrip({
   compactSlot,
+  summarySlots = [],
   detailSlots,
   accountsTableSlot,
   wrapValueGroup = true,
@@ -28,19 +42,14 @@ export function PortfolioEntityCardsStrip({
 }: PortfolioEntityCardsStripProps) {
   const hasDetails = detailSlots != null && detailSlots !== false;
   const hasAccountsTable = accountsTableSlot != null && accountsTableSlot !== false;
-  const compactShell = cn(
-    "portfolio-strip-compact",
-    "card",
-    "card--detail",
-    "card--detail-compact",
-    "card--detail-stretch",
-    "card--dashboard-net-worth",
-    compactStripClassName,
-  );
   const cards = (
     <div className="cards">
-      <div className={compactShell}>{compactSlot}</div>
-      {hasDetails ? <div className="row-spacer" aria-hidden="true" /> : null}
+      <div className={cn(SUMMARY_SHELL, compactStripClassName)}>{compactSlot}</div>
+      {summarySlots.map(({ key, slot }) => (
+        <div key={key} className={SUMMARY_SHELL}>
+          {slot}
+        </div>
+      ))}
       {hasDetails ? detailSlots : null}
     </div>
   );

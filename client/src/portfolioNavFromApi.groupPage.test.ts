@@ -3,6 +3,8 @@ import type { NavTreeNodeDto } from "./types";
 import {
   findBestNavNodeForPathname,
   isPortfolioStripCardNode,
+  portfolioStripGroupChildren,
+  portfolioStripSummaryHubs,
   resolveGroupPageApiParams,
   resolveLinkedCardNavChildren,
 } from "./portfolioNavFromApi";
@@ -83,6 +85,56 @@ describe("isPortfolioStripCardNode", () => {
     expect(isPortfolioStripCardNode(navNode({ slug: "flows_income", route_path: "/flows/income" }))).toBe(
       false
     );
+  });
+});
+
+describe("portfolioStripSummaryHubs", () => {
+  const bucket = (slug: string, route_path: string) =>
+    navNode({ slug, route_path, dashboard_bucket_slug: slug });
+  const inversiones = navNode({
+    slug: "inversiones",
+    route_path: "/inversiones",
+    group_kind: "nav_bucket",
+    children: [bucket("brokerage", "/inversiones/brokerage"), bucket("retirement", "/inversiones/retiro")],
+  });
+  const cashEqs = navNode({
+    slug: "cash_eqs",
+    route_path: "/cash_eqs",
+    group_kind: "nav_bucket",
+    dashboard_bucket_slug: "cash_eqs",
+    children: [
+      navNode({ slug: "cash_savings", route_path: "/cash_eqs/savings", kind_slug: "cash_savings" }),
+    ],
+  });
+  const netWorth = navNode({
+    slug: "net_worth",
+    route_path: "/",
+    children: [bucket("real_estate", "/real_estate"), inversiones, cashEqs],
+  });
+
+  it("gives a card to exactly the hubs whose children fill row 2 in their place", () => {
+    expect(portfolioStripSummaryHubs(netWorth).map((n) => n.slug)).toEqual(["inversiones"]);
+    expect(portfolioStripGroupChildren(netWorth).map((n) => n.slug)).toEqual([
+      "real_estate",
+      "brokerage",
+      "retirement",
+      "cash_eqs",
+    ]);
+  });
+
+  it("has none on the hub's own page, whose children are buckets", () => {
+    expect(portfolioStripSummaryHubs(inversiones)).toEqual([]);
+  });
+
+  it("follows a hub spread inside a spread hub", () => {
+    const outer = navNode({
+      slug: "outer",
+      route_path: "/outer",
+      group_kind: "nav_bucket",
+      children: [inversiones],
+    });
+    const root = navNode({ slug: "net_worth", route_path: "/", children: [outer] });
+    expect(portfolioStripSummaryHubs(root).map((n) => n.slug)).toEqual(["outer", "inversiones"]);
   });
 });
 
