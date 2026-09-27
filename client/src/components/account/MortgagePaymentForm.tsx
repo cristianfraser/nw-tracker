@@ -2,7 +2,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { formatClp, formatClpUfDay, formatUfUnitsFine } from "../../format";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import {
+  formatClp,
+  formatClpUfDay,
+  formatNumberInput,
+  formatUfUnitsFine,
+  parseNumberInputOrThrow,
+} from "../../format";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import type {
   AccountSummaryResponse,
@@ -22,27 +29,25 @@ type Props = {
   schema: NonNullable<AccountSummaryResponse["mortgage_payment_create"]>;
 };
 
+/**
+ * Field parsers: null when empty or out of range; each throws the localized message when the
+ * field isn't a number (`parseNumberInput` — the decimal-separator setting reads «1.500»).
+ */
 function parseClpInput(raw: string): number | null {
-  const normalized = raw.trim().replace(/\./g, "").replace(",", ".");
-  if (!normalized) return null;
-  const n = Number(normalized);
-  return Number.isFinite(n) && n >= 0 ? n : null;
+  const n = parseNumberInputOrThrow(raw);
+  return n != null && n >= 0 ? n : null;
 }
 
-/** UF minimum installment — same Chilean "dots=thousands, comma=decimal" input, but positive. */
+/** UF minimum installment — positive. */
 function parseUfInput(raw: string): number | null {
-  const normalized = raw.trim().replace(/\./g, "").replace(",", ".");
-  if (!normalized) return null;
-  const n = Number(normalized);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  const n = parseNumberInputOrThrow(raw);
+  return n != null && n > 0 ? n : null;
 }
 
 /** Bank-stated remaining balance UF — non-negative (a final payment can land on 0). */
 function parseUfBalanceInput(raw: string): number | null {
-  const normalized = raw.trim().replace(/\./g, "").replace(",", ".");
-  if (!normalized) return null;
-  const n = Number(normalized);
-  return Number.isFinite(n) && n >= 0 ? n : null;
+  const n = parseNumberInputOrThrow(raw);
+  return n != null && n >= 0 ? n : null;
 }
 
 function buildBody(
@@ -100,12 +105,13 @@ export function MortgagePaymentForm({
   schema,
 }: Props) {
   const { t } = useTranslation();
+  const { decimalSeparator, language } = useDisplayPreferences();
   const queryClient = useQueryClient();
   const [occurredOn, setOccurredOn] = useState("");
   const [pagoClp, setPagoClp] = useState("");
   const [interesClp, setInteresClp] = useState("");
   const [incendioClp, setIncendioClp] = useState(
-    schema.default_incendio_clp != null ? String(schema.default_incendio_clp) : ""
+    schema.default_incendio_clp != null ? formatNumberInput(schema.default_incendio_clp) : ""
   );
   const [desgravamenClp, setDesgravamenClp] = useState("");
   const [useDesgravamenOverride, setUseDesgravamenOverride] = useState(false);
@@ -119,35 +125,45 @@ export function MortgagePaymentForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const previewBody = useMemo(
-    () =>
-      buildBody(
-        occurredOn,
-        pagoClp,
-        interesClp,
-        incendioClp,
-        desgravamenClp,
-        minUf,
-        amortExtClp,
-        creditoRestanteUf,
-        cuota,
-        useDesgravamenOverride,
-        useAmortExtOverride
-      ),
-    [
-      occurredOn,
-      pagoClp,
-      interesClp,
-      incendioClp,
-      desgravamenClp,
-      minUf,
-      amortExtClp,
-      creditoRestanteUf,
-      cuota,
-      useDesgravamenOverride,
-      useAmortExtOverride,
-    ]
-  );
+  // A field that isn't a number blocks the preview and names itself in `inputError`. The
+  // separator setting decides how «1.500» reads and the message is translated, so both are
+  // dependencies too.
+  const { previewBody, inputError } = useMemo(() => {
+    try {
+      return {
+        previewBody: buildBody(
+          occurredOn,
+          pagoClp,
+          interesClp,
+          incendioClp,
+          desgravamenClp,
+          minUf,
+          amortExtClp,
+          creditoRestanteUf,
+          cuota,
+          useDesgravamenOverride,
+          useAmortExtOverride
+        ),
+        inputError: null,
+      };
+    } catch (err) {
+      return { previewBody: null, inputError: err instanceof Error ? err.message : String(err) };
+    }
+  }, [
+    occurredOn,
+    pagoClp,
+    interesClp,
+    incendioClp,
+    desgravamenClp,
+    minUf,
+    amortExtClp,
+    creditoRestanteUf,
+    cuota,
+    useDesgravamenOverride,
+    useAmortExtOverride,
+    decimalSeparator,
+    language,
+  ]);
 
   useEffect(() => {
     if (!previewBody) {
@@ -164,7 +180,7 @@ export function MortgagePaymentForm({
             setPreview(res);
             setPreviewError(null);
             if (!useDesgravamenOverride) {
-              setDesgravamenClp(String(res.desgravamen_default_clp));
+              setDesgravamenClp(formatNumberInput(res.desgravamen_default_clp));
             }
           }
         })
@@ -183,7 +199,7 @@ export function MortgagePaymentForm({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!previewBody) throw new Error(t("accountDetail.mortgagePayment.invalid"));
+      if (!previewBody) throw new Error(inputError ?? t("accountDetail.mortgagePayment.invalid"));
       return api.commitMortgagePayment(accountId, previewBody);
     },
     onSuccess: async () => {
@@ -236,7 +252,7 @@ export function MortgagePaymentForm({
             onChange={(e) => setMinUf(e.target.value)}
             inputMode="decimal"
             disabled={useAmortExtOverride}
-            placeholder="11,0333"
+            placeholder={formatNumberInput(11.0333)}
           />
           <span className="muted" style={{ fontSize: "0.8rem" }}>
             {t("accountDetail.mortgagePayment.minUfHint")}
@@ -247,7 +263,7 @@ export function MortgagePaymentForm({
             value={creditoRestanteUf}
             onChange={(e) => setCreditoRestanteUf(e.target.value)}
             inputMode="decimal"
-            placeholder="1780,0001"
+            placeholder={formatNumberInput(1780.0001)}
           />
           <span className="muted" style={{ fontSize: "0.8rem" }}>
             {t("accountDetail.mortgagePayment.creditoRestanteUfHint")}
@@ -298,9 +314,9 @@ export function MortgagePaymentForm({
         </div>
       </div>
 
-      {previewError ? (
+      {(inputError ?? previewError) ? (
         <p className={cn("error", styles.errorText)} style={{ marginTop: "0.75rem" }}>
-          {previewError}
+          {inputError ?? previewError}
         </p>
       ) : null}
 

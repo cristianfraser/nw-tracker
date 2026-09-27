@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { formatNumberInput, parseNumberInput } from "../../format";
 import { useCreditCardConfig, usePatchCreditCardConfigMutation } from "../../queries/hooks";
 import type { CcCupoEntry, CreditCardConfigPatchBody } from "../../types";
 import { Button, Field, Input } from "@crfrsr/ui";
@@ -11,25 +13,17 @@ type Props = {
   accountId: number;
 };
 
-/** "1.xxx.xxx" / "1234,5" style input → number (dot thousands, comma decimal). */
-function parseAmountInput(raw: string): number | null | undefined {
-  const t = raw.trim();
-  if (t === "") return null;
-  const n = Number(t.replace(/\./g, "").replace(",", "."));
-  return Number.isFinite(n) ? n : undefined;
-}
-
-function parseCycleDayInput(raw: string): number | null | undefined {
-  const t = raw.trim();
-  if (t === "") return null;
-  const n = Number(t);
-  if (!Number.isInteger(n) || n < 1 || n > 31) return undefined;
-  return n;
+/** Whole day of month 1–31; null when empty, undefined when out of range. */
+function cycleDayFromInput(parsed: number | null): number | null | undefined {
+  if (parsed == null) return null;
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 31) return undefined;
+  return parsed;
 }
 
 /** Edit form for `credit_card_account_config` (cupo + billing cycle). */
 export function CreditCardConfigSection({ accountId }: Props) {
   const { t } = useTranslation();
+  const { decimalSeparator } = useDisplayPreferences();
   const { data, error } = useCreditCardConfig(String(accountId));
   const patchMutation = usePatchCreditCardConfigMutation(String(accountId));
 
@@ -42,15 +36,18 @@ export function CreditCardConfigSection({ accountId }: Props) {
 
   const config = data?.config;
 
+  // Prefills are written in the separator setting's convention, so a setting change re-derives them.
   useEffect(() => {
     if (!config) return;
     const clp = config.cupo.find((c) => c.currency === "clp")?.value;
     const usd = config.cupo.find((c) => c.currency === "usd")?.value;
-    setCupoClp(clp != null ? String(clp) : "");
-    setCupoUsd(usd != null ? String(usd) : "");
-    setCycleStart(String(config.billing_cycle_start_day));
-    setCycleEnd(config.billing_cycle_end_day != null ? String(config.billing_cycle_end_day) : "");
-  }, [config]);
+    setCupoClp(clp != null ? formatNumberInput(clp) : "");
+    setCupoUsd(usd != null ? formatNumberInput(usd) : "");
+    setCycleStart(formatNumberInput(config.billing_cycle_start_day));
+    setCycleEnd(
+      config.billing_cycle_end_day != null ? formatNumberInput(config.billing_cycle_end_day) : ""
+    );
+  }, [config, decimalSeparator]);
 
   if (error instanceof Error) {
     return (
@@ -64,14 +61,20 @@ export function CreditCardConfigSection({ accountId }: Props) {
 
   const onSave = () => {
     setSaved(false);
-    const clp = parseAmountInput(cupoClp);
-    const usd = parseAmountInput(cupoUsd);
-    if (clp === undefined || usd === undefined || (clp != null && (clp < 0 || !Number.isInteger(clp))) || (usd != null && usd < 0)) {
+    const inputs = [cupoClp, cupoUsd, cycleStart, cycleEnd].map((raw) => parseNumberInput(raw));
+    for (const input of inputs) {
+      if (!input.ok) {
+        setFormError(input.message);
+        return;
+      }
+    }
+    const [clp, usd, startValue, endValue] = inputs.map((input) => (input.ok ? input.value : null));
+    if ((clp != null && (clp < 0 || !Number.isInteger(clp))) || (usd != null && usd < 0)) {
       setFormError(t("accountDetail.creditCard.configInvalidCupo"));
       return;
     }
-    const start = parseCycleDayInput(cycleStart);
-    const end = parseCycleDayInput(cycleEnd);
+    const start = cycleDayFromInput(startValue);
+    const end = cycleDayFromInput(endValue);
     if (start === undefined || start === null || end === undefined) {
       setFormError(t("accountDetail.creditCard.configInvalidCycleDay"));
       return;

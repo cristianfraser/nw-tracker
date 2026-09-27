@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api";
-import { formatClp } from "../../format";
+import { formatClp, formatNumberInput, parseNumberInput } from "../../format";
 import { useTranslation } from "../../i18n";
 import { queryKeys } from "../../queries/keys";
 import type { FxBidAskGapRow } from "../../types";
@@ -52,10 +52,20 @@ export function FxBidAskGapsTable() {
   const saveRow = async (gap: FxBidAskGapRow) => {
     const draft = drafts[gap.date];
     if (!draft) return;
-    const buyRaw = draft.buy.trim();
-    const sellRaw = draft.sell.trim();
-    const buy = buyRaw ? Number(buyRaw) : gap.suggested_buy;
-    const sell = sellRaw ? Number(sellRaw) : gap.suggested_sell;
+    const buyInput = parseNumberInput(draft.buy);
+    const sellInput = parseNumberInput(draft.sell);
+    for (const input of [buyInput, sellInput]) {
+      if (!input.ok) {
+        setDrafts((prev) => ({
+          ...prev,
+          [gap.date]: { ...draft, error: input.message },
+        }));
+        return;
+      }
+    }
+    // An empty field takes the suggested value shown as its placeholder.
+    const buy = (buyInput.ok ? buyInput.value : null) ?? gap.suggested_buy;
+    const sell = (sellInput.ok ? sellInput.value : null) ?? gap.suggested_sell;
     if (
       buy == null ||
       sell == null ||
@@ -146,12 +156,13 @@ export function FxBidAskGapsTable() {
               </td>
               <td style={{ textAlign: "right" }}>
                 <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                  type="text"
+                  inputMode="decimal"
                   value={draft.buy}
                   placeholder={
-                    gap.suggested_buy != null ? String(Math.round(gap.suggested_buy * 100) / 100) : ""
+                    gap.suggested_buy != null
+                      ? formatNumberInput(Math.round(gap.suggested_buy * 100) / 100)
+                      : ""
                   }
                   onChange={(e) =>
                     setDrafts((prev) => ({
@@ -163,12 +174,13 @@ export function FxBidAskGapsTable() {
               </td>
               <td style={{ textAlign: "right" }}>
                 <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                  type="text"
+                  inputMode="decimal"
                   value={draft.sell}
                   placeholder={
-                    gap.suggested_sell != null ? String(Math.round(gap.suggested_sell * 100) / 100) : ""
+                    gap.suggested_sell != null
+                      ? formatNumberInput(Math.round(gap.suggested_sell * 100) / 100)
+                      : ""
                   }
                   onChange={(e) =>
                     setDrafts((prev) => ({

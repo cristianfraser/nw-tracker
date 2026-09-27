@@ -10,7 +10,12 @@ import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { monthYearMetricsPeriod } from "../dashboardCardBreakdown";
 import { clipMonthsThenRollup } from "../timeRange";
 import { rollupChartPointsByYear } from "../flowsDisplay";
-import { formatClp, formatGroupedDecimalTrimmed } from "../format";
+import {
+  formatClp,
+  formatGroupedDecimalTrimmed,
+  formatNumberInput,
+  parseNumberInput,
+} from "../format";
 import { expenseKindLabel, useTranslation } from "../i18n";
 import { useRealEstateExpenses } from "../queries/hooks";
 import {
@@ -85,7 +90,12 @@ export function RealEstateExpensesPage() {
   const [linkSlot, setLinkSlot] = useState<RealEstateBillSlot | null>(null);
   const [assignPlace, setAssignPlace] = useState<{ slug: string; label: string } | null>(null);
   const [addPlaceOpen, setAddPlaceOpen] = useState(false);
-  const [editing, setEditing] = useState<{ id: number; kwh: string; m3: string } | null>(null);
+  const [editing, setEditing] = useState<{
+    id: number;
+    kwh: string;
+    m3: string;
+    error: string | null;
+  } | null>(null);
   const [editingBillMonth, setEditingBillMonth] = useState<{
     id: number;
     value: string;
@@ -100,16 +110,18 @@ export function RealEstateExpensesPage() {
 
   const saveConsumption = async () => {
     if (!editing) return;
-    const parse = (s: string): number | null => {
-      const trimmed = s.trim();
-      if (!trimmed) return null;
-      const n = Number(trimmed.replace(",", "."));
-      return Number.isFinite(n) ? n : null;
-    };
+    const kwh = parseNumberInput(editing.kwh);
+    const m3 = parseNumberInput(editing.m3);
+    for (const input of [kwh, m3]) {
+      if (!input.ok) {
+        setEditing({ ...editing, error: input.message });
+        return;
+      }
+    }
     await consumptionMutation.mutateAsync({
       expense_entry_id: editing.id,
-      kwh: parse(editing.kwh),
-      m3: parse(editing.m3),
+      kwh: kwh.ok ? kwh.value : null,
+      m3: m3.ok ? m3.value : null,
     });
     setEditing(null);
   };
@@ -332,6 +344,7 @@ export function RealEstateExpensesPage() {
                             display: "flex",
                             gap: "0.35rem",
                             alignItems: "center",
+                            flexWrap: "wrap",
                             marginTop: "0.25rem",
                           }}
                         >
@@ -342,7 +355,9 @@ export function RealEstateExpensesPage() {
                                 inputMode="decimal"
                                 value={editing.kwh}
                                 placeholder="kWh"
-                                onChange={(e) => setEditing({ ...editing, kwh: e.target.value })}
+                                onChange={(e) =>
+                                  setEditing({ ...editing, kwh: e.target.value, error: null })
+                                }
                               />
                             </span>
                           ) : null}
@@ -353,7 +368,9 @@ export function RealEstateExpensesPage() {
                                 inputMode="decimal"
                                 value={editing.m3}
                                 placeholder="m³"
-                                onChange={(e) => setEditing({ ...editing, m3: e.target.value })}
+                                onChange={(e) =>
+                                  setEditing({ ...editing, m3: e.target.value, error: null })
+                                }
                               />
                             </span>
                           ) : null}
@@ -366,6 +383,11 @@ export function RealEstateExpensesPage() {
                           <Button variant="secondary" onClick={() => setEditing(null)}>
                             {t("common.cancel")}
                           </Button>
+                          {editing.error ? (
+                            <span className="error" style={{ fontSize: "0.75rem" }}>
+                              {editing.error}
+                            </span>
+                          ) : null}
                         </span>
                       ) : (
                         consumptionLabel(slot) && (
@@ -416,8 +438,9 @@ export function RealEstateExpensesPage() {
                               onClick={() =>
                                 setEditing({
                                   id: slot.expense_entry_id!,
-                                  kwh: slot.kwh != null ? String(slot.kwh) : "",
-                                  m3: slot.m3 != null ? String(slot.m3) : "",
+                                  kwh: slot.kwh != null ? formatNumberInput(slot.kwh) : "",
+                                  m3: slot.m3 != null ? formatNumberInput(slot.m3) : "",
+                                  error: null,
                                 })
                               }
                             >

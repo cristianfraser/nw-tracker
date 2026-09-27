@@ -891,7 +891,8 @@
     "cancel": "Cancel",
     "close": "Close",
     "modalPrevPeriod": "Previous period",
-    "modalNextPeriod": "Next period"
+    "modalNextPeriod": "Next period",
+    "numberInvalid": "\"{{value}}\" isn't a valid number. Use \"{{decimal}}\" for decimals and \"{{group}}\" for thousands (e.g. {{example}})."
   },
   "flows": {
     "layoutTitle": "Flows",

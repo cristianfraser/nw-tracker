@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { formatCcExpenseLineAmount } from "../../format";
+import { formatCcExpenseLineAmount, parseNumberInput } from "../../format";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import type { DisplayUnit } from "../../queries/keys";
 import { sumLineAmountsClp } from "../../ccExpenseLineBuckets";
@@ -78,11 +78,13 @@ export function CreditCardFacturacionModalSections({
     });
   };
 
-  const cuotasValue = parseInt(cuotasInput, 10);
-  const cuotasValid = Number.isFinite(cuotasValue) && cuotasValue >= 2;
+  // A whole count of at least 2; a malformed entry names itself under the field.
+  const cuotasParsed = parseNumberInput(cuotasInput);
+  const cuotasValue = cuotasParsed.ok ? cuotasParsed.value : null;
+  const cuotasValid = cuotasValue != null && Number.isInteger(cuotasValue) && cuotasValue >= 2;
 
   const handleConfirmMakeInstallment = () => {
-    if (!pendingMakeInstallment || !cuotasValid) return;
+    if (!pendingMakeInstallment || !cuotasValid || cuotasValue == null) return;
     makeInstallment.mutate(
       { lineId: pendingMakeInstallment.statement_line_id, cuotas_totales: cuotasValue },
       {
@@ -198,17 +200,22 @@ export function CreditCardFacturacionModalSections({
                 {t("accountDetail.creditCard.makeInstallmentDialogCuotasLabel")}
               </span>
               <Input
-                type="number"
-                min={2}
-                step={1}
+                type="text"
+                inputMode="numeric"
                 value={cuotasInput}
                 onChange={(e) => setCuotasInput(e.target.value)}
                 disabled={makeInstallment.isPending}
+                aria-invalid={!cuotasParsed.ok || undefined}
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && cuotasValid) handleConfirmMakeInstallment();
                 }}
               />
+              {!cuotasParsed.ok ? (
+                <span className="error" style={{ fontSize: "0.85rem" }}>
+                  {cuotasParsed.message}
+                </span>
+              ) : null}
             </label>
             <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
               <Button variant="secondary"

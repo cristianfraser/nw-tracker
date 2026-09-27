@@ -25,6 +25,7 @@ import {
   type InitialMovementDraft,
 } from "../../panelAccounts/stockAccountFormTypes";
 import { CounterpartAccountSelect } from "../account/CounterpartAccountSelect";
+import { formatNumberInput } from "../../format";
 import { Button, Field, Input } from "@crfrsr/ui";
 
 export function brokerageMovementFieldLabelStyle(): CSSProperties {
@@ -127,7 +128,7 @@ export function BrokerageMovementRowFields({
             type="text"
             inputMode="decimal"
             value={row.amountUsd}
-            placeholder={row.flowKind === "compra_usd_venta_clp" ? "3353.07" : ""}
+            placeholder={row.flowKind === "compra_usd_venta_clp" ? formatNumberInput(3353.07) : ""}
             onChange={(e) => onChange({ ...row, amountUsd: e.target.value })}
           />
         </Field>
@@ -138,7 +139,7 @@ export function BrokerageMovementRowFields({
             type="text"
             inputMode="decimal"
             value={row.unitsDelta}
-            placeholder="59.760886574"
+            placeholder={formatNumberInput(59.760886574)}
             onChange={(e) => onChange({ ...row, unitsDelta: e.target.value })}
           />
         </Field>

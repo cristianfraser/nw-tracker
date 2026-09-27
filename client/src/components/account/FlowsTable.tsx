@@ -166,7 +166,7 @@ export type FlowsFilterState = {
   /** Inclusive YYYY-MM-DD bounds (raw input values). */
   date_from: string;
   date_to: string;
-  /** Raw amount inputs; digits-only parse, exact suppresses min/max. */
+  /** Raw amount inputs, read by `parseNumberInput` (FlowsPanel); exact suppresses min/max. */
   amount_exact: string;
   amount_min: string;
   amount_max: string;
@@ -204,6 +204,7 @@ export function FlowsTable({
   filterOptions,
   filterState,
   onFilterChange,
+  amountFilterError,
 }: {
   rows: readonly FlowsApiRow[];
   total: number;
@@ -220,6 +221,8 @@ export function FlowsTable({
   filterOptions?: FlowsFilterOptions;
   filterState?: FlowsFilterState;
   onFilterChange?: (patch: Partial<FlowsFilterState>) => void;
+  /** Why a typed amount filter isn't a number (that filter is left out of the query). */
+  amountFilterError?: string | null;
 }) {
   const { t } = useTranslation();
   const showFlowTickerCol = showTickerColumn(rows);
@@ -394,6 +397,11 @@ export function FlowsTable({
             />
             {t("accountDetail.flowsPersonalOnly")}
           </label>
+        ) : null}
+        {amountFilterError ? (
+          <span className="error" style={{ flexBasis: "100%", fontSize: "0.8rem" }}>
+            {amountFilterError}
+          </span>
         ) : null}
       </div>
     ) : null;

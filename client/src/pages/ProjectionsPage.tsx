@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ProjectionsChart } from "../components/charts/ProjectionsChart";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { formatCurrency } from "../format";
+import { formatCurrency, formatNumberInput, parseNumberInput } from "../format";
 import { useProjections } from "../queries/hooks";
 import type { ProjectionParams } from "../types";
 import { Button, Field, Input } from "@crfrsr/ui";
@@ -31,18 +31,18 @@ function isInBounds(key: keyof ProjectionParams, v: number): boolean {
 }
 
 /** Assumption fields in display order. */
-const PARAM_FIELDS: { key: keyof ProjectionParams; step?: number }[] = [
-  { key: "real_return_pct", step: 0.5 },
-  { key: "monthly_aporte_clp" },
-  { key: "inflation_clp_pct", step: 0.5 },
-  { key: "inflation_usd_pct", step: 0.5 },
-  { key: "retire_return_pct", step: 0.5 },
-  { key: "end_age", step: 1 },
-  { key: "swr_pct", step: 0.5 },
-  { key: "pct_balance_pct", step: 0.5 },
-  { key: "monthly_income_clp" },
-  { key: "liquidate_other_pct", step: 5 },
-  { key: "monthly_rent_clp" },
+const PARAM_FIELDS: (keyof ProjectionParams)[] = [
+  "real_return_pct",
+  "monthly_aporte_clp",
+  "inflation_clp_pct",
+  "inflation_usd_pct",
+  "retire_return_pct",
+  "end_age",
+  "swr_pct",
+  "pct_balance_pct",
+  "monthly_income_clp",
+  "liquidate_other_pct",
+  "monthly_rent_clp",
 ];
 
 function readStoredOverrides(): Partial<ProjectionParams> {
@@ -80,13 +80,13 @@ export function ProjectionsPage() {
 
   const setParam = (key: keyof ProjectionParams, raw: string) => {
     setDrafts((prev) => ({ ...prev, [key]: raw }));
+    // A draft that isn't a number keeps the last override and shows its message (see render).
+    const parsed = parseNumberInput(raw);
+    if (!parsed.ok) return;
     setOverrides((prev) => {
       const next = { ...prev };
-      if (raw.trim() === "") delete next[key];
-      else {
-        const n = Number(raw);
-        if (Number.isFinite(n)) next[key] = n;
-      }
+      if (parsed.value == null) delete next[key];
+      else next[key] = parsed.value;
       return next;
     });
   };
@@ -133,23 +133,27 @@ export function ProjectionsPage() {
         className="flows-filters"
         style={{ display: "flex", flexWrap: "wrap", columnGap: "0.75rem", rowGap: "2.5rem" }}
       >
-        {PARAM_FIELDS.map(({ key, step }) => {
+        {PARAM_FIELDS.map((key) => {
           const raw = overrides[key];
           const invalid = raw != null && !isInBounds(key, raw);
           const [min, max] = PARAM_BOUNDS[key];
+          const draft = drafts[key];
+          const draftParsed = draft != null ? parseNumberInput(draft) : null;
+          const draftError = draftParsed != null && !draftParsed.ok ? draftParsed.message : null;
           return (
             <Field
               key={key}
               label={t(`projections.params.${key}`)}
-              error={invalid ? t("projections.invalidRange", { min, max }) : undefined}
+              error={
+                draftError ?? (invalid ? t("projections.invalidRange", { min, max }) : undefined)
+              }
             >
               <Input
-                type="number"
-                step={step ?? 1}
-                min={min}
-                max={max}
-                aria-invalid={invalid || undefined}
-                value={drafts[key] ?? String(raw ?? data.params[key])}
+                type="text"
+                // The decimal keypad has no minus key; fields that allow negatives keep the full one.
+                inputMode={min < 0 ? undefined : "decimal"}
+                aria-invalid={draftError != null || invalid || undefined}
+                value={draft ?? formatNumberInput(raw ?? data.params[key])}
                 onChange={(e) => setParam(key, e.target.value)}
                 onBlur={() => commitParam(key)}
               />

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { formatClp } from "../../format";
+import { formatClp, formatNumberInput, parseNumberInputOrThrow } from "../../format";
 import { useTranslation } from "../../i18n";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import type { CartolaDerivedAnchorDto, CheckingLedgerAnchorDto } from "../../types";
@@ -29,10 +29,10 @@ export function CheckingLedgerAnchorForm({
 
   useEffect(() => {
     if (ledgerAnchor) {
-      setAmount(String(ledgerAnchor.amount_clp));
+      setAmount(formatNumberInput(ledgerAnchor.amount_clp));
       setOccurredOn(ledgerAnchor.occurred_on);
     } else if (cartolaDerivedAnchor) {
-      setAmount(String(cartolaDerivedAnchor.amount_clp));
+      setAmount(formatNumberInput(cartolaDerivedAnchor.amount_clp));
       setOccurredOn(cartolaDerivedAnchor.occurred_on);
     } else {
       setAmount("");
@@ -48,8 +48,8 @@ export function CheckingLedgerAnchorForm({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const amount_clp = Number(amount);
-      if (!Number.isFinite(amount_clp)) {
+      const amount_clp = parseNumberInputOrThrow(amount);
+      if (amount_clp == null) {
         throw new Error(t("accountDetail.checking.ledgerAnchorAmount"));
       }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(occurredOn)) {
@@ -111,7 +111,7 @@ export function CheckingLedgerAnchorForm({
             {t("accountDetail.checking.ledgerAnchorAmount")}
           </span>
           <Input
-            type="number"
+            type="text"
             value={amount}
             onChange={(e) => {
               setAmount(e.target.value);

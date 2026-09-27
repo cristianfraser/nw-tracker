@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setDecimalSeparatorForFormatting } from "../format";
 import {
   buildBrokerageMovementPostBody,
   categorySlugFromTicker,
   emptyMovementRow,
 } from "./stockAccountFormTypes";
+
+// Amounts are read with the decimal-separator preference — pin it so tests don't depend on
+// the machine timezone that seeds it.
+beforeEach(() => setDecimalSeparatorForFormatting("comma"));
+afterEach(() => setDecimalSeparatorForFormatting("comma"));
 
 describe("stockAccountFormTypes", () => {
   it("slugifies a ticker into a category slug", () => {
@@ -57,5 +63,32 @@ describe("stockAccountFormTypes", () => {
     expect(body?.counterpart_role).toBe("from");
     expect(body?.units_delta).toBe(2282);
     expect(body?.ticker).toBe("CFIETFIPSA.SN");
+  });
+
+  it("reads an ambiguous amount with the decimal-separator setting", () => {
+    const row = {
+      ...emptyMovementRow("stock_buy"),
+      occurredOn: "2026-06-15",
+      amountUsd: "1.500",
+      unitsDelta: "0,25",
+      counterpartAccountId: 90 as const,
+    };
+    expect(buildBrokerageMovementPostBody(row, "LIN")?.amount).toBe(1500);
+    setDecimalSeparatorForFormatting("period");
+    const body = buildBrokerageMovementPostBody(row, "LIN");
+    expect(body?.amount).toBe(1.5);
+    // Unambiguous input reads the same under either setting.
+    expect(body?.units_delta).toBe(0.25);
+  });
+
+  it("throws the localized message when an amount isn't a number", () => {
+    const row = {
+      ...emptyMovementRow("stock_buy"),
+      occurredOn: "2026-06-15",
+      amountUsd: "1.50.000",
+      unitsDelta: "1",
+      counterpartAccountId: 90 as const,
+    };
+    expect(() => buildBrokerageMovementPostBody(row, "LIN")).toThrow("1.50.000");
   });
 });

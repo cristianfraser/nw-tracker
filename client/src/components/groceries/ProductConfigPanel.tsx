@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input } from "@crfrsr/ui";
 import { api } from "../../api";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { formatNumberInput, parseNumberInput } from "../../format";
 import { TableMobileCard, TableMobileCardRow } from "../ui/TableMobileCard";
 import type {
   GroceryBaseUnit,
@@ -44,21 +46,30 @@ function AliasConfigRow({
   onSaved: () => void;
 }) {
   const { t } = useTranslation();
+  const { decimalSeparator } = useDisplayPreferences();
   const [brandName, setBrandName] = useState(alias.brand_name ?? "");
   const [contentValue, setContentValue] = useState(
-    alias.content != null ? String(alias.content / CANONICAL_FACTOR[baseUnit]) : ""
+    alias.content != null ? formatNumberInput(alias.content / CANONICAL_FACTOR[baseUnit]) : ""
   );
   const [contentUnit, setContentUnit] = useState<GroceryBaseUnit>(baseUnit);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
-  // The base unit changing re-frames the prefill (content is canonical; display scale moved).
+  // The base unit changing re-frames the prefill (content is canonical; display scale moved), and
+  // the prefill is written in the separator setting's convention, so a setting change redoes it.
   useEffect(() => {
     setContentUnit(baseUnit);
-    setContentValue(alias.content != null ? String(alias.content / CANONICAL_FACTOR[baseUnit]) : "");
-  }, [alias.content, baseUnit]);
+    setContentValue(
+      alias.content != null ? formatNumberInput(alias.content / CANONICAL_FACTOR[baseUnit]) : ""
+    );
+  }, [alias.content, baseUnit, decimalSeparator]);
 
   const save = async () => {
+    const content = parseNumberInput(contentValue);
+    if (!content.ok) {
+      setNote(content.message);
+      return;
+    }
     setBusy(true);
     setNote(null);
     try {
@@ -68,15 +79,11 @@ function AliasConfigRow({
         if (trimmedBrand === "") body.brand_id = null;
         else body.brand_name = trimmedBrand;
       }
-      {
-        const raw = contentValue.trim().replace(",", ".");
-        if (raw === "") {
-          if (alias.content != null) body.content_value = null;
-        } else {
-          const value = Number(raw);
-          body.content_value = value;
-          body.content_unit = contentUnit;
-        }
+      if (content.value == null) {
+        if (alias.content != null) body.content_value = null;
+      } else {
+        body.content_value = content.value;
+        body.content_unit = contentUnit;
       }
       if (Object.keys(body).length > 0) {
         await api.groceriesUpdateAlias(alias.id, body);

@@ -1,13 +1,17 @@
 import { clpCashFlowKindAllowsCounterpart } from "./brokerageFlowKinds";
-import { type InitialMovementDraft, parseOptionalNumber } from "./stockAccountFormTypes";
+import { parseNumberInputOrThrow } from "../format";
+import { type InitialMovementDraft } from "./stockAccountFormTypes";
 
-/** Body for `POST /api/accounts/:id/movements` on a CLP ledger cash account. */
+/**
+ * Body for `POST /api/accounts/:id/movements` on a CLP ledger cash account. Throws the
+ * localized message when the amount isn't a number (see `parseNumberInput`).
+ */
 export function buildClpCashMovementPostBody(
   row: InitialMovementDraft
 ): Record<string, unknown> | null {
   const occurred_on = row.occurredOn.trim();
   if (!occurred_on) return null;
-  const amount = parseOptionalNumber(row.amountClp);
+  const amount = parseNumberInputOrThrow(row.amountClp);
   if (row.counterpartAccountId !== "" && clpCashFlowKindAllowsCounterpart(row.flowKind)) {
     if (amount == null) return null;
     // Internal transfer leg: single from/to row, direction from the flow kind
