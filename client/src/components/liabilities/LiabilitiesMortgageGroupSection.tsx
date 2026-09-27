@@ -175,7 +175,6 @@ export function LiabilitiesMortgageGroupSection({
       {monthlyPerfRows.length > 0 ? (
         <>
           <h3 className={styles.sectionTitleSpaced}>{t("groupPage.pasivos.mortgagePerfTitle")}</h3>
-          <h4 className={styles.subsectionTitleTight}>{t("accountDetail.creditCard.ytdSection")}</h4>
           <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
             <MonthlyPerformanceComboChart
               title={t("groupPage.pasivos.mortgageYtdChartTitle")}
@@ -198,8 +197,7 @@ export function LiabilitiesMortgageGroupSection({
               areaStroke={accountChartTheme.areaStroke}
             />
           </div>
-          <h4 className={styles.subsectionTitleLoose}>{t("accountDetail.creditCard.accSection")}</h4>
-          <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
+          <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockLoose)}>
             <MonthlyPerformanceComboChart
               title={t("groupPage.pasivos.mortgageAccChartTitle")}
               titleAs="h3"

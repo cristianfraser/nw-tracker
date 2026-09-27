@@ -582,11 +582,9 @@ export function DashboardPage() {
 
       {patrimonioBlock?.points.length ? (
         <>
-          <h2 style={{ marginTop: "1.75rem" }}>{t("dashboard.sections.netWorthUsdSectionTitle")}</h2>
-          <div className="chart-grid chart-grid--full-line">
+          <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
             <LineChartPanel
               title={t("dashboard.sections.netWorthUsdChartTitle")}
-              titleAs="h3"
               block={dailyPatrimonioBlock ?? patrimonioBlock}
               displayUnit="clp"
               includeAccumulatedLines={false}
@@ -613,15 +611,11 @@ export function DashboardPage() {
 
       {retirementBrokerageForCharts.length > 0 ? (
         <>
-          <h2 style={{ marginTop: "1.75rem" }}>
-            {isYearly ? t("dashboard.sections.perfSectionTitleYearly") : t("dashboard.sections.perfSectionTitleMonthly")}
-          </h2>
-          <div className="chart-grid chart-grid--full-line">
+          <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
             <MonthlyPerformanceComboChart
               title={
                 isYearly ? t("dashboard.sections.perfChartTitleYearly") : t("dashboard.sections.perfChartTitleMonthly")
               }
-              titleAs="h3"
               points={dailyRetirementBrokeragePoints ?? retirementBrokerageForCharts}
               displayUnit={displayUnit}
               xAxisGranularity={combosXAxis}
@@ -651,17 +645,13 @@ export function DashboardPage() {
               lineName={isYearly ? t("dashboard.combinedAnnualDelta") : t("dashboard.combinedMonthlyDelta")}
             />
           </div>
-          <h2 style={{ marginTop: "1.75rem" }}>
-            {isYearly ? t("dashboard.sections.accumSectionTitleYearly") : t("dashboard.sections.accumSectionTitleMonthly")}
-          </h2>
-          <div className="chart-grid chart-grid--full-line">
+          <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
             <MonthlyPerformanceComboChart
               title={
                 isYearly
                   ? t("dashboard.sections.accumEarningsChartTitleYearly")
                   : t("dashboard.sections.accumEarningsChartTitleMonthly")
               }
-              titleAs="h3"
               points={dailyRetirementBrokeragePoints ?? retirementBrokerageAccumChart}
               displayUnit={displayUnit}
               xAxisGranularity={combosXAxis}
@@ -699,7 +689,6 @@ export function DashboardPage() {
                   ? t("dashboard.sections.accumFlowsChartTitleYearly")
                   : t("dashboard.sections.accumFlowsChartTitleMonthly")
               }
-              titleAs="h3"
               points={dailyRetirementBrokeragePoints ?? retirementBrokerageAccumChart}
               displayUnit={displayUnit}
               xAxisGranularity={combosXAxis}
