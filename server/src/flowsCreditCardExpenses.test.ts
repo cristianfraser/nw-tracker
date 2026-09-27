@@ -15,6 +15,7 @@ import {
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { db } from "./db.js";
 import { flowCcExpenseLineFingerprint } from "./ccExpenseLineDedupe.js";
@@ -570,6 +571,19 @@ describe("flowsCreditCardExpenses", () => {
     );
     if (!inst) return;
     expect(inst.amount_clp).toBeLessThan(200_000);
+  });
+
+  it("lands each facturación's cuotas on the pay-by its facturaciones row shows", () => {
+    const payload = buildFlowsCreditCardExpensesPayload();
+    let rows = 0;
+    for (const accountId of payload.account_ids) {
+      for (const f of billingDetailCacheForAccount(accountId).facturaciones) {
+        expect(payload.cuota_pay_by_iso?.[`${accountId}|${f.billing_month}`]).toBe(f.pay_by_iso);
+        rows += 1;
+      }
+    }
+    expect(rows).toBeGreaterThan(0);
+    expect(Object.keys(payload.cuota_pay_by_iso ?? {})).toHaveLength(rows);
   });
 
   it("has no duplicate gastos fingerprints on credit card lines", () => {

@@ -55,7 +55,7 @@ import {
   effectiveCcExpenseLineAmountClpWith,
   effectiveCcExpenseLineAmountUsd,
 } from "./ccExpenseAmountClp.js";
-import { facturacionUsdRateResolver } from "./ccBillingViews.js";
+import { facturacionPayByIsoResolver, facturacionUsdRateResolver } from "./ccBillingViews.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
@@ -1082,27 +1082,20 @@ function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]):
 
 /**
  * `<account_id>|<billing_month>` → PAGAR HASTA (ISO) for every facturación of every CC master.
- * The gastos Diario view lands each cuota on its facturación's pay-by day; open/projected months
- * that never printed one fall back to the ~10th of the following month (same rule as the daily
- * installment-debt walk in `ccInstallmentDebtDaily.ts`).
+ * The gastos Diario view lands each cuota on its facturación's pay-by day — the one the
+ * facturaciones table shows (`facturacionPayByIsoResolver`: printed, else derived from the close;
+ * a facturación with none throws there).
  */
 function cuotaPayByIsoByAccountBillingMonth(accountIds: readonly number[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const accountId of accountIds) {
     const { facturaciones } = billingDetailCacheForAccount(accountId);
+    const payByIsoFor = facturacionPayByIsoResolver(accountId, facturaciones);
     for (const f of facturaciones) {
-      const iso = f.pay_by_iso ?? tenthOfNextMonthIso(f.billing_month);
-      if (iso) out[`${accountId}|${f.billing_month}`] = iso;
+      out[`${accountId}|${f.billing_month}`] = payByIsoFor(f.billing_month);
     }
   }
   return out;
-}
-
-/** ~10th of the month after `billingMonth` — the derived pay-by for months with no printed date. */
-function tenthOfNextMonthIso(billingMonth: string): string | null {
-  const m = /^(\d{4})-(\d{2})$/.exec(billingMonth);
-  if (!m) return null;
-  return new Date(Date.UTC(Number(m[1]), Number(m[2]), 10)).toISOString().slice(0, 10);
 }
 
 export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPayload {
