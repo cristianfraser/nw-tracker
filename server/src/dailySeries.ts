@@ -15,6 +15,7 @@ import {
   includeShortHorizonAccount,
   type ShortHorizonAccountRef,
 } from "./periodReturnsShortHorizon.js";
+import { flowAdjustedPct } from "./periodReturns.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { convertTs, type TsUnit } from "./valuationTimeseries.js";
@@ -60,7 +61,11 @@ export type DailySeriesPoint = {
   delta: number | null;
   /** Flow-adjusted P/L; `delta − flow` for assets, `−delta − flow` for debt. Null when `delta` is. */
   pl: number | null;
-  /** `pl / (capital base + flow)`; null when `pl` is null or the denominator is ~0. */
+  /**
+   * `pl` over the capital at work by the shared rule (`flowAdjustedPct`): capital base + flow,
+   * or the base alone when a withdrawal exceeds it; null when `pl` is null or no positive
+   * capital base exists.
+   */
   pct: number | null;
   /** False on weekends/shared holidays (no NYSE session AND no Chilean business day) — the
    * detalle table dims those rows; every-day assets still attribute real P/L on them. */
@@ -474,13 +479,15 @@ export function getBucketDailySeries(
     const wealthPrev = wealth[i - 1]!;
     const pl = wealthNow != null && wealthPrev != null ? wealthNow - wealthPrev - flow : null;
     // Capital base = what was at work before today's P/L: assets grow with their flows, debt
-    // grows with borrowing (the negated liability flow) — both are positive exposures.
-    const denom =
-      prev != null ? prev + toUnit(flows[i - 1]! - liabilityFlows[i - 1]!) : null;
-    const pct =
-      pl != null && denom != null && Math.abs(denom) > RETURN_EPS && Number.isFinite(pl / denom)
-        ? pl / denom
-        : null;
+    // grows with borrowing (the negated liability flow) — both are positive exposures. The
+    // guard is the monthly rows' (`flowAdjustedPct`): a day whose withdrawals exceed the prior
+    // close charges them at day end instead of dividing by a negative base.
+    const pct = flowAdjustedPct(
+      pl,
+      prev,
+      toUnit(flows[i - 1]! - liabilityFlows[i - 1]!),
+      RETURN_EPS
+    );
     points.push({
       as_of_date: ymd,
       value,

@@ -23,7 +23,7 @@ import {
   netDepositFlowBetween,
 } from "./flowsDeposits.js";
 import { getAccountPositionMeta, type AccountPositionMeta } from "./accountPosition.js";
-import { flowAdjustedPctMonth } from "./periodReturns.js";
+import { flowAdjustedPct } from "./periodReturns.js";
 import { MONTH_ROW_EPS } from "./accountPerformanceMonthPick.js";
 import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
@@ -213,7 +213,7 @@ function computeMortgageCardDeposits(
 
 /**
  * Flow-adjusted period returns from the row's FINAL legs (after the CC/mortgage P/L
- * overrides), via the shared `flowAdjustedPctMonth`. Total has no prior close, so it
+ * overrides), via the shared `flowAdjustedPct`. Total has no prior close, so it
  * reads P/L acumulado ÷ lifetime deposits (the helper's prior-less frame).
  */
 function dashboardRowPeriodPcts(
@@ -224,7 +224,7 @@ function dashboardRowPeriodPcts(
     delta: number | null | undefined,
     prior: number | null | undefined,
     flow: number | null | undefined
-  ) => flowAdjustedPctMonth(delta ?? null, prior ?? null, flow ?? 0, MONTH_ROW_EPS);
+  ) => flowAdjustedPct(delta ?? null, prior ?? null, flow ?? 0, MONTH_ROW_EPS);
   return {
     pct_day_clp: pct(row.delta_day_clp, row.prior_day_close_clp, row.deposits_day_clp),
     pct_month_clp: pct(row.delta_month_clp, row.prior_month_close_clp, row.deposits_month_clp),

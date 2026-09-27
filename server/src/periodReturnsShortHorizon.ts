@@ -2,7 +2,11 @@ import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 import { fxForLiveMtm } from "./fxRates.js";
-import type { PeriodReturnCell, PeriodReturnsPayload } from "./periodReturns.js";
+import {
+  flowAdjustedPct,
+  type PeriodReturnCell,
+  type PeriodReturnsPayload,
+} from "./periodReturns.js";
 import { convertTs, type TsUnit } from "./valuationTimeseries.js";
 
 /**
@@ -95,8 +99,9 @@ function emptyCell(
 
 /**
  * Pure flow-adjusted cell from the two value legs and the window flow (all in the display
- * unit). Return = `(V_end − V_start − flow) / (V_start + flow)`; null leg or ~0 denominator
- * → null pct (fail-fast, never a fabricated 0%).
+ * unit). Return = `(V_end − V_start − flow)` over the capital at work, by the shared rule
+ * (`flowAdjustedPct`): `V_start + flow`, or `V_start` when a withdrawal exceeds it; a null
+ * leg or no positive capital base → null pct (fail-fast, never a fabricated 0%).
  */
 export function shortHorizonCellFromLegs(
   period: PeriodReturnCell["period"],
@@ -109,12 +114,9 @@ export function shortHorizonCellFromLegs(
     return emptyCell(period, startYmd);
   }
   const nominal = vEnd - vStart - flow;
-  const denom = vStart + flow;
-  const pct =
-    Math.abs(denom) > RETURN_EPS && Number.isFinite(nominal / denom) ? nominal / denom : null;
   return {
     period,
-    pct,
+    pct: flowAdjustedPct(nominal, vStart, flow, RETURN_EPS),
     nominal_pl: Number.isFinite(nominal) ? nominal : null,
     annualized_pct: null,
     months: 0,

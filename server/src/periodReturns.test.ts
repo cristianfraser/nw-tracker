@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computePeriodReturns,
-  flowAdjustedPctMonth,
+  flowAdjustedPct,
   PERIOD_RETURN_ORDER,
   type PeriodReturnInputRow,
   type PeriodReturnKey,
@@ -135,35 +135,44 @@ describe("computePeriodReturns", () => {
   });
 });
 
-describe("flowAdjustedPctMonth", () => {
+describe("flowAdjustedPct", () => {
   const EPS = 0.01;
 
   it("ordinary months keep the flows-at-month-start frame", () => {
     // prior 1.000, deposit 500, P/L 150 → 150 / 1.500 = 10%.
-    expect(flowAdjustedPctMonth(150, 1_000, 500, EPS)).toBeCloseTo(0.1, 12);
+    expect(flowAdjustedPct(150, 1_000, 500, EPS)).toBeCloseTo(0.1, 12);
     // No flows: plain nominal / prior.
-    expect(flowAdjustedPctMonth(-50, 1_000, 0, EPS)).toBeCloseTo(-0.05, 12);
+    expect(flowAdjustedPct(-50, 1_000, 0, EPS)).toBeCloseTo(-0.05, 12);
   });
 
   it("a full-liquidation month falls back to prior instead of reading exactly −100%", () => {
     // caca daca June 2026: prior 1x.xxx.xxx, withdrawal −1x.xxx.xxx (gains withdrawn too),
     // close 0 → nominal +334.815. Old formula: 3xx.xxx / −3xx.xxx ≡ −100% (poisons every
     // chained window). Sign-guarded: +3xx.xxx / 1x.xxx.xxx ≈ +3,12%.
-    const pct = flowAdjustedPctMonth(334_815, 10_746_626, -11_081_441, EPS)!;
+    const pct = flowAdjustedPct(334_815, 10_746_626, -11_081_441, EPS)!;
     expect(pct).toBeCloseTo(334_815 / 10_746_626, 12);
     expect(pct).toBeGreaterThan(0);
   });
 
   it("null when no positive capital base exists in either frame", () => {
-    expect(flowAdjustedPctMonth(0, 0, 0, EPS)).toBeNull(); // dormant month
-    expect(flowAdjustedPctMonth(5, null, 0, EPS)).toBeNull(); // no prior, no flow
-    expect(flowAdjustedPctMonth(null, 1_000, 0, EPS)).toBeNull(); // no nominal
+    expect(flowAdjustedPct(0, 0, 0, EPS)).toBeNull(); // dormant month
+    expect(flowAdjustedPct(5, null, 0, EPS)).toBeNull(); // no prior, no flow
+    expect(flowAdjustedPct(null, 1_000, 0, EPS)).toBeNull(); // no nominal
+    expect(flowAdjustedPct(5, -1_000, 0, EPS)).toBeNull(); // negative base (a netted bucket)
+  });
+
+  it("a first period (no prior close) divides by its own net inflow; net withdrawals → null", () => {
+    // Deposited 1.000, closed at 1.100: +10%.
+    expect(flowAdjustedPct(100, null, 1_000, EPS)).toBeCloseTo(0.1, 12);
+    // Withdrew 50 from a balance the ledger never saw arrive, closed at 300 → nominal 350.
+    // The old inline ratio read 350 / −50 = −700%, a gain as a loss.
+    expect(flowAdjustedPct(350, null, -50, EPS)).toBeNull();
   });
 
   it("a liquidation month chained does not collapse the window to −100%", () => {
     const rows = [
       row("2026-05", 0.0839, 831_711),
-      row("2026-06", flowAdjustedPctMonth(334_815, 10_746_626, -11_081_441, EPS), 334_815),
+      row("2026-06", flowAdjustedPct(334_815, 10_746_626, -11_081_441, EPS), 334_815),
     ];
     const p = computePeriodReturns(rows, "clp", "2026-06-30")!;
     const ytd = cell(p, "ytd");

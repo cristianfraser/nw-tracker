@@ -10,7 +10,7 @@ import {
 } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 import { MONTH_ROW_EPS, pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
-import { flowAdjustedPctMonth } from "./periodReturns.js";
+import { flowAdjustedPct } from "./periodReturns.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { flowEventInUnit, netDepositFlowCurrentMonthThroughToday } from "./flowsDeposits.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
@@ -248,12 +248,13 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
     if (prior == null || !Number.isFinite(prior)) {
       prior_closing = null;
       nominal_pl = isMortgage ? 0 : ccPerf ? ccPerf.nominal : close - netFlow;
-      pct_month =
-        ccPerf
-          ? ccPerf.pct
-          : !isMortgage && Math.abs(netFlow) > MONTH_ROW_EPS && Number.isFinite((close - netFlow) / netFlow)
-            ? (close - netFlow) / netFlow
-            : null;
+      // No prior close: the capital at work is the month's own net inflow, by the shared rule —
+      // a first month of net withdrawals has none and reads null, not a sign-flipped %.
+      pct_month = ccPerf
+        ? ccPerf.pct
+        : isMortgage
+          ? null
+          : flowAdjustedPct(nominal_pl, null, netFlow, MONTH_ROW_EPS);
     } else {
       prior_closing = prior;
       nominal_pl = isMortgage
@@ -265,7 +266,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
         ? liabilityPctMonth(nominal_pl, prior)
         : ccPerf
           ? ccPerf.pct
-          : flowAdjustedPctMonth(nominal_pl, prior, netFlow, MONTH_ROW_EPS);
+          : flowAdjustedPct(nominal_pl, prior, netFlow, MONTH_ROW_EPS);
     }
 
     out.push({
@@ -416,7 +417,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     ? ccPerf.pct
     : bucketKind === "mortgage"
       ? liabilityPctMonth(nominal, priorClose)
-      : flowAdjustedPctMonth(nominal, priorClose, netFlow, MONTH_ROW_EPS);
+      : flowAdjustedPct(nominal, priorClose, netFlow, MONTH_ROW_EPS);
 
   const mortgageUfFields =
     bucketKind === "mortgage"
@@ -853,9 +854,9 @@ function buildAccountMonthlyPerformanceUncached(
       const nominalFirst = isMortgage ? 0 : ccFirst ? ccFirst.nominal : close - netFlowFirst;
       const pctFirst = ccFirst
         ? ccFirst.pct
-        : Math.abs(netFlowFirst) > 1e-6 && Number.isFinite(nominalFirst / netFlowFirst)
-          ? nominalFirst / netFlowFirst
-          : null;
+        : isMortgage
+          ? null
+          : flowAdjustedPct(nominalFirst, null, netFlowFirst, MONTH_ROW_EPS);
       ytdRun += nominalFirst;
       cumPl += nominalFirst;
       outAsc.push({
@@ -910,7 +911,7 @@ function buildAccountMonthlyPerformanceUncached(
       ? liabilityPctMonth(nominal, prevClose)
       : ccPerf
         ? ccPerf.pct
-        : flowAdjustedPctMonth(nominal, prevClose, netFlow, MONTH_ROW_EPS);
+        : flowAdjustedPct(nominal, prevClose, netFlow, MONTH_ROW_EPS);
 
     const y = Number(String(p.as_of_date).slice(0, 4));
     if (!Number.isFinite(y)) {
