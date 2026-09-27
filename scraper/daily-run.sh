@@ -132,6 +132,16 @@ else
   step "Lider statement e-mail" npm run fetch:lider-statements
 fi
 
+# 1d. Fintual «Acciones» documents from Gmail: the Alpaca monthly cartola (~10th of the next
+#     month) and any capital-events certificado requested in the app. Saved straight under
+#     cfraser/fintual-acciones/ (no inbox hand-off); step 4b reads them for the dividend
+#     gross / withholding breakdown the notification mails never carry.
+if [[ "$DRY_RUN" == "1" ]]; then
+  step "Fintual Acciones documents (dry run)" npm run fetch:fintual-docs -- --dry-run
+else
+  step "Fintual Acciones documents" npm run fetch:fintual-docs
+fi
+
 # 2. Inbox pipeline: organizes + parses + imports Santander statement PDFs, checking cartolas,
 #    a Fintual certificado, AND the Lider «últimos movimientos» CSV that the separate ~08:00
 #    scheduled task drops in cfraser/inbox/.
@@ -181,13 +191,21 @@ else
     step "Fintual e-mail movements (report only)" npm run import:fintual-emails
   fi
   # Deposits, CLP→USD conversions, and stock buys import straight from the mail (the
-  # conversion appears nowhere else); the crawl below stays for dividends/history.
+  # conversion appears nowhere else); the crawl below stays for dividends/history — the
+  # dividend mail states the gross, only the crawl's API gives the credited net and the tax.
   if [[ "${NW_TRACKER_RACIONAL_APPLY:-0}" == "1" ]]; then
     step "Racional e-mail movements (apply)" npm run import:racional-emails -- --apply
   else
     step "Racional e-mail movements (report only)" npm run import:racional-emails
   fi
 fi
+  # 4b. Dividend gross / withholding from the Acciones documents (step 1d), paired with the
+  #     dividend rows the mail import above booked. Fails when a printed dividend has no row.
+  if [[ "${NW_TRACKER_FINTUAL_APPLY:-0}" == "1" ]]; then
+    step "Fintual Acciones dividend breakdowns (apply)" npm run import:fintual-acciones -- --apply
+  else
+    step "Fintual Acciones dividend breakdowns (report only)" npm run import:fintual-acciones
+  fi
 
 # 5. Racional, only when the e-mail check asked for it. Report-only by default: cash in/out is
 #    withheld for mirror-pairs anyway, and a ledger disagreement should be read before it is

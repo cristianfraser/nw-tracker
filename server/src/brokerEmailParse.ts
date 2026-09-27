@@ -58,7 +58,16 @@ export type BrokerEmailEvent = {
    */
   is_complete: boolean;
   ticker: string | null;
+  /** The amount the broker actually moved. Null when the mail states only a gross figure. */
   amount: number | null;
+  /**
+   * The amount as the mail STATES it when that figure is gross of a withholding the broker
+   * never credits — informational, never bookable. Racional's «Recibiste USD $2,75 en dividendos
+   * de SOXX» is the gross dividend; the wallet received 2,34 after the 15% US withholding
+   * (found 2026-09-22 when Racional USD would not close to 0), and the mail body carries no
+   * amount at all. So the event stays a nudge for the crawl, whose API prints gross, tax and net.
+   */
+  gross_amount: number | null;
   currency: "clp" | "usd" | null;
   /** Decimal string — share counts run to 9 decimals and must not touch a float. */
   units: string | null;
@@ -278,14 +287,18 @@ const RACIONAL_MATCHERS: Matcher[] = [
     },
   },
   {
-    // "Recibiste USD $2,75 en dividendos de SOXX" — the template since 2026-09-18 carries the
-    // amount in the subject (Chilean format), so the mail is complete and imports without a crawl.
+    // "Recibiste USD $2,75 en dividendos de SOXX" — the template since 2026-09-18 carries an
+    // amount in the subject, but it is the GROSS dividend: Racional credits the net after the
+    // 15% US withholding (2,34 for that mail), and nothing in the mail says so. Booking the
+    // subject figure overstated Racional USD by every dividend's tax (2026-09-22), so the
+    // amount is kept as `gross_amount` for the record and the event stays a nudge — the crawl
+    // reads gross, tax and net from Racional's own dividends API.
     kind: "dividend",
     is_transaction: true,
     re: /^Recibiste USD \$\s*([\d.,]+) en dividendos de ([A-Z][A-Z0-9.]{0,9})/i,
     read: (m) => ({
       ticker: m[2]!.toUpperCase(),
-      amount: parseChileanNumber(m[1]!),
+      gross_amount: parseChileanNumber(m[1]!),
       currency: "usd",
     }),
   },
@@ -362,6 +375,7 @@ export function classifyBrokerEmail(input: BrokerEmailInput): BrokerEmailEvent {
     is_complete: false,
     ticker: null,
     amount: null,
+    gross_amount: null,
     currency: null,
     units: null,
     price: null,
@@ -395,7 +409,15 @@ export type BrokerEmailScan = {
   importable: BrokerEmailEvent[];
   /** Real activity the e-mail does not fully describe: the reason to open the browser. */
   nudges: BrokerEmailEvent[];
-  /** Brokers with a nudge AND a fetcher to answer it. */
+  /**
+   * Nudges a fetch has already answered: mailed before the broker's `fetchedThrough` crawl,
+   * which read the list after the movement happened and was imported with nothing left to fix.
+   * Still reported, no longer a reason to open the browser — scan files are all re-read every
+   * run, so otherwise one dividend mail asked for a crawl every night forever (the 2026-09-18
+   * and 09-22 Racional mails kept the crawl running long after both dividends were booked).
+   */
+  answered: BrokerEmailEvent[];
+  /** Brokers with an unanswered nudge AND a fetcher to answer it. */
   needsFetch: BrokerName[];
   /**
    * Nudges for brokers that have no fetcher — Fintual is e-mail-only, so an incomplete
@@ -415,6 +437,7 @@ export type BrokerEmailScan = {
 function eventRichness(e: BrokerEmailEvent): number {
   return (
     (e.amount != null ? 1 : 0) +
+    (e.gross_amount != null ? 1 : 0) +
     (e.clp_amount != null ? 1 : 0) +
     (e.units != null ? 1 : 0) +
     (e.price != null ? 1 : 0)
@@ -450,16 +473,38 @@ export function collapseBrokerEmailEventsByMessageId(
 const FETCHABLE: ReadonlySet<BrokerName> = new Set<BrokerName>(["racional"]);
 
 /**
+ * Per fetchable broker, the crawl time through which a fetch has been imported with nothing
+ * left to fix — for Racional, `clean_crawl_at` in `cfraser/.racional-import-state.json`.
+ */
+export type BrokerFetchCoverage = Partial<Record<BrokerName, string | null>>;
+
+function answeredByFetch(e: BrokerEmailEvent, fetchedThrough: BrokerFetchCoverage): boolean {
+  const through = e.broker != null ? fetchedThrough[e.broker] : null;
+  if (!through) return false;
+  const mailed = Date.parse(e.occurred_at);
+  const covered = Date.parse(through);
+  if (Number.isNaN(mailed)) throw new Error(`Broker e-mail «${e.subject}» has an unparseable date "${e.occurred_at}"`);
+  if (Number.isNaN(covered)) throw new Error(`${e.broker} fetch coverage "${through}" is not a timestamp`);
+  return mailed < covered;
+}
+
+/**
  * Scan a batch of e-mails and decide what, if anything, needs fetching.
  *
  * A broker is fetched only when it has a NUDGE — activity the e-mail proves but does not
- * describe. A day of nothing but complete e-mails (or nothing but newsletters) leaves the
- * browser closed, which is the point: every fetch costs reputation with these sites.
+ * describe — that no fetch has answered yet. A day of nothing but complete e-mails (or nothing
+ * but newsletters) leaves the browser closed, which is the point: every fetch costs reputation
+ * with these sites.
  */
-export function scanBrokerEmails(inputs: readonly BrokerEmailInput[]): BrokerEmailScan {
+export function scanBrokerEmails(
+  inputs: readonly BrokerEmailInput[],
+  fetchedThrough: BrokerFetchCoverage = {}
+): BrokerEmailScan {
   const events = inputs.map(classifyBrokerEmail);
   const transactions = events.filter((e) => e.is_transaction);
   const nudges = transactions.filter((e) => !e.is_complete);
+  const fetchable = nudges.filter((e) => e.broker != null && FETCHABLE.has(e.broker));
+  const answered = fetchable.filter((e) => answeredByFetch(e, fetchedThrough));
   return {
     events,
     transactionsByBroker: {
@@ -468,11 +513,13 @@ export function scanBrokerEmails(inputs: readonly BrokerEmailInput[]): BrokerEma
     },
     importable: transactions.filter((e) => e.is_complete),
     nudges,
+    answered,
     needsFetch: [
       ...new Set(
-        nudges
+        fetchable
+          .filter((e) => !answered.includes(e))
           .map((e) => e.broker)
-          .filter((b): b is BrokerName => b != null && FETCHABLE.has(b))
+          .filter((b): b is BrokerName => b != null)
       ),
     ],
     unresolved: nudges.filter((e) => e.broker != null && !FETCHABLE.has(e.broker)),

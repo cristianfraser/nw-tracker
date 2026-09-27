@@ -87,7 +87,10 @@ last *successful* run, so a night the agent never fired is visible too.
 
 `email-run.sh` polls Gmail at **:30 past every hour** — `fetch:santander-docs`,
 `fetch:lider-statements` (the BCI Lider «Estado de Cuenta»), `fetch:lider-boletas`,
-`fetch:emails` — and, when a fetch staged something new that hour, runs the inbox pipeline
+`fetch:fintual-docs` (Fintual's Alpaca «Cartola mensual de Acciones» and capital-events
+certificado, into `cfraser/fintual-acciones/` — the source of dividend gross / withholding,
+imported by `import:fintual-acciones`), `fetch:emails` — and, when a fetch staged something
+new that hour, runs the inbox pipeline
 (`import:cfraser-inbox`, the same one the nightly runs — every stage is incremental, the
 grocery-receipt stage since 2026-09-06 via per-receipt import stamps; a receipt photo waiting in
 `cfraser/grocery-receipts/inbox/` also counts as "something new") plus the
@@ -120,6 +123,7 @@ security add-generic-password -s nw-tracker-gmail -a "you@gmail.com" -w
 
 npm run fetch:emails                  # broker mail since the watermark → cfraser/broker-emails/
 npm run check:broker-emails           # classify + decide what needs a browser
+npm run fetch:fintual-docs -- --days=400   # Fintual Acciones PDFs (cartolas, certificados) → cfraser/fintual-acciones/
 ```
 
 Reading mail costs no bank session, no 2FA and no reputation, so it runs first and decides

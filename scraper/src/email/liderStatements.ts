@@ -32,7 +32,12 @@ import { ensureDir, resolveInboxDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 import { hasDocument, recordDocument } from "../documentLedger.js";
 import { loadBrokerEmailConfig } from "./fetch.js";
-import { normalizeMailSubject, pdfAttachmentsFromStructure, safeAttachmentName } from "./santanderDocs.js";
+import {
+  mailDocumentLedgerKey,
+  normalizeMailSubject,
+  pdfAttachmentsFromStructure,
+  safeAttachmentName,
+} from "./santanderDocs.js";
 
 export const LIDER_STATEMENT_SENDER = "estadodecuenta@correo.tarjetaliderbci.cl";
 
@@ -51,10 +56,7 @@ export function isLiderStatementAttachmentName(filename: string): boolean {
 
 /** `2026-08-28-<msgid slug>` — same shape as the boleta staging key, and for the same reason. */
 export function liderStatementLedgerKey(date: Date, messageId: string): string {
-  const idSlug = String(messageId ?? "")
-    .replace(/[^A-Za-z0-9@._-]/g, "_")
-    .slice(0, 80);
-  return `${date.toISOString().slice(0, 10)}-${idSlug}`;
+  return mailDocumentLedgerKey(date, messageId);
 }
 
 export type LiderStatementFetchResult = {

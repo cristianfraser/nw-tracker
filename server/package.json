@@ -88,6 +88,7 @@
     "check:broker-emails": "tsx scripts/check-broker-emails.ts",
     "import:fintual-emails": "tsx scripts/import-fintual-emails.ts",
     "check:daily-run-recent": "tsx scripts/daily-run-ran-recently.ts",
+    "import:fintual-acciones": "tsx scripts/import-fintual-acciones.ts",
     "import:grocery-receipts": "tsx scripts/import-grocery-receipts.ts"
   },
   "dependencies": {

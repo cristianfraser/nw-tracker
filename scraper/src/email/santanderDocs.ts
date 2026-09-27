@@ -118,6 +118,19 @@ export function htmlBodyPartFromStructure(node: MessageStructureObject | undefin
   return html ?? plain;
 }
 
+/**
+ * `2026-08-28-<msgid slug>` — a per-MAIL ledger key, for senders whose attachment names repeat
+ * (BCI reuses `155028273.pdf` every month; Fintual's `cartola_mensual_agosto.pdf` comes back
+ * every August). Each such document is its own mail, so the message id is the stable identity;
+ * the date prefix keeps the ledger readable.
+ */
+export function mailDocumentLedgerKey(date: Date, messageId: string): string {
+  const idSlug = String(messageId ?? "")
+    .replace(/[^A-Za-z0-9@._-]/g, "_")
+    .slice(0, 80);
+  return `${date.toISOString().slice(0, 10)}-${idSlug}`;
+}
+
 /** Ledger period for a message: the Chile calendar month it was sent in. */
 export function mailPeriodKey(date: Date): string {
   const chile = new Date(date.toLocaleString("en-US", { timeZone: "America/Santiago" }));
