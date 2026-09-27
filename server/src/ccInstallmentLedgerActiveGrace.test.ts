@@ -37,6 +37,30 @@ describe("installmentPurchaseShowsActive", () => {
     expect(installmentPurchaseShowsActive(settled, payList, "2026-07-13")).toBe(false);
   });
 
+  it("reads a dd/mm/yyyy pay-by through the shared parser: jammed year repaired, impossible date skipped", () => {
+    const row = {
+      id: 1,
+      purchase_id: 1,
+      statement_date: null,
+      statement_period_month: null,
+      period_to_join: null,
+      source_pdf: null,
+      amount_clp: 10_000,
+      cuota_total: null,
+    };
+    // pypdf glued MCC digits onto the year: «13/05/2511» is 13/05/25, not the year 2511.
+    expect(lastInstallmentPaymentPayByYmd([{ ...row, pay_by_date: "13/05/2511", cuota_current: 1 }])).toBe(
+      "2025-05-13"
+    );
+    // An impossible day and month never become a date; the next row decides.
+    expect(
+      lastInstallmentPaymentPayByYmd([
+        { ...row, pay_by_date: "32/13/2025", cuota_current: 2 },
+        { ...row, pay_by_date: "10/06/2025", cuota_current: 1 },
+      ])
+    ).toBe("2025-06-10");
+  });
+
   it("still treats outstanding installments as active regardless of date", () => {
     expect(
       installmentPurchaseShowsActive(

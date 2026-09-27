@@ -17,6 +17,7 @@ import {
   normalizeTransactionDateIso,
   parseDdMmYyToIso,
   resolveInstallmentPayByIso,
+  statementLineDateIso,
 } from "./ccInstallmentPayBy.js";
 import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
 import { db } from "./db.js";
@@ -191,6 +192,7 @@ function sumOpenCycleChargesClpForStatementDate(
 
 type PostCloseLineRow = RevolvingLineRow & {
   transaction_date: string | null;
+  posting_date: string | null;
   statement_date: string;
   dedupe_key: string | null;
 };
@@ -240,8 +242,8 @@ export function postCloseLiveBalanceAdjustmentClp(
 }
 
 /**
- * Normalized non-installment line stream for post-close windows (transaction-date ISO,
- * dedupe key, signed CLP), memoized in the aggregation cache under the account's
+ * Normalized non-installment line stream for post-close windows (the line's date — transaction,
+ * else posting — dedupe key, signed CLP), memoized in the aggregation cache under the account's
  * `cc.billing_detail|<id>|…` satellite key — dropped by `invalidateCcBillingDetail` with the
  * detalle cache. Daily owed-on-date evaluates one window per session, so the scan must not
  * re-run per date.
@@ -259,7 +261,7 @@ export function normalizedPostCloseLines(
       .prepare(
         `SELECT l.id, l.merchant, l.amount_clp, l.amount_usd, s.currency AS statement_currency,
                 l.installment_flag, l.valor_cuota_mensual_clp, l.valor_cuota_mensual_usd,
-                l.transaction_date, s.statement_date, l.dedupe_key
+                l.transaction_date, l.posting_date, s.statement_date, l.dedupe_key
          FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
          WHERE s.account_id = ? AND l.installment_flag = 0`
@@ -287,7 +289,8 @@ export function normalizedPostCloseLines(
     for (const r of rows) {
       if (superseded.has(r.id)) continue;
       if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
-      const iso = normalizeTransactionDateIso(r.transaction_date);
+      // Transaction date, else posting date: a line printing only its posting date used to drop out here.
+      const iso = statementLineDateIso(r);
       if (!iso) continue;
       const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
       const linkedTraspasoClp =

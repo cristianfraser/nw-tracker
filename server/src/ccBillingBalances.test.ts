@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   facturadoFromStatement,
   incrementalChargesClpForBillingMonth,
+  normalizedPostCloseLines,
   sumRevolvingChargesClpForStatementDate,
 } from "./ccBillingBalances.js";
 import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
@@ -60,5 +61,43 @@ describe("statementSlotsByBillingMonth", () => {
     const { facturado_clp } = facturadoClpUsdForStatementSlot(master.id, slot);
     expect(facturado_clp).toBeGreaterThan(100_000);
     expect(facturado_clp).not.toBeLessThan(3_000_000);
+  });
+});
+
+describe("normalizedPostCloseLines", () => {
+  let accountId = 0;
+
+  afterEach(() => {
+    db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+  });
+
+  it("dates each line by its transaction date, else its posting date", () => {
+    const group = db.prepare(`SELECT id FROM asset_groups LIMIT 1`).get() as { id: number };
+    accountId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
+        .run(group.id, "Vitest · post-close line dates", "vitest-cc-post-close-line-dates").lastInsertRowid
+    );
+    const statementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, layout, currency)
+           VALUES (?, 'A', 'vitest line dates.pdf', '24/09/2026', 'compact', 'clp')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    const insertLine = db.prepare(
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, posting_date, merchant, amount_clp, installment_flag, dedupe_key)
+       VALUES (?, ?, ?, ?, ?, 0, ?)`
+    );
+    insertLine.run(statementId, "03/09/2026", "05/09/2026", "VITEST BOTH DATES", 10_000, "vitest-both");
+    // A line that prints only its posting date used to drop out of the owed walk altogether.
+    insertLine.run(statementId, null, "07/09/2026", "VITEST POSTING ONLY", 20_000, "vitest-posting");
+    const lines = normalizedPostCloseLines(accountId).map((l) => [l.key, l.iso, l.clp]);
+    expect(lines).toEqual([
+      ["vitest-both", "2026-09-03", 10_000],
+      ["vitest-posting", "2026-09-07", 20_000],
+    ]);
   });
 });

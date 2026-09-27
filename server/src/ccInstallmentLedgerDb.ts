@@ -5,7 +5,7 @@ import {
   computeCuotaRetirements,
   listClpCcPaymentEventsForAccount,
 } from "./ccCuotaRetirement.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
@@ -73,15 +73,6 @@ export function ccLedgerMonthEndIso(ym: string): string {
   return `${ys}-${String(ms).padStart(2, "0")}-${dd}`;
 }
 
-function parseDateLikeToIso(raw: string | null | undefined): string | null {
-  const t = String(raw ?? "").trim();
-  if (!t) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  const m4 = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
-  if (m4) return `${m4[3]}-${m4[2]}-${m4[1]}`;
-  return parseDdMmYyToIso(t);
-}
-
 function ymCompare(a: string, b: string): number {
   if (a === b) return 0;
   return a < b ? -1 : 1;
@@ -117,7 +108,7 @@ export function lastInstallmentPaymentPayByYmd(payList: PaymentRow[]): string | 
   for (const p of payList) {
     const cuota = p.cuota_current ?? 0;
     if (cuota <= 0) continue;
-    const ymd = parseDateLikeToIso(p.pay_by_date);
+    const ymd = normalizeTransactionDateIso(p.pay_by_date);
     if (!ymd) continue;
     if (cuota > bestCuota) {
       bestCuota = cuota;
@@ -128,7 +119,7 @@ export function lastInstallmentPaymentPayByYmd(payList: PaymentRow[]): string | 
   }
   if (bestYmd != null) return bestYmd;
   for (const p of payList) {
-    const ymd = parseDateLikeToIso(p.pay_by_date);
+    const ymd = normalizeTransactionDateIso(p.pay_by_date);
     if (ymd && (bestYmd == null || ymd > bestYmd)) bestYmd = ymd;
   }
   return bestYmd;
@@ -859,7 +850,7 @@ function loadCancelledInstallmentPurchaseIds(
   const notaCredits: NotaCreditRow[] = [];
   for (const row of notaRows) {
     if (!isNotaDeCreditoMerchant(row.merchant)) continue;
-    const occurredIso = parseDateLikeToIso(row.occurred);
+    const occurredIso = normalizeTransactionDateIso(row.occurred);
     if (!occurredIso || !/^\d{4}-\d{2}-\d{2}$/.test(occurredIso)) continue;
     notaCredits.push({
       amountAbs: Math.abs(Math.round(row.amount_clp)),
@@ -1102,7 +1093,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   for (const pays of paymentsByPurchase.values()) {
     for (const p of pays) {
       const ym = paymentBillingMonth(p);
-      const iso = parseDateLikeToIso(p.pay_by_date);
+      const iso = normalizeTransactionDateIso(p.pay_by_date);
       if (!ym || !iso) continue;
       const cur = payByEvidenceByMonth.get(ym);
       if (cur == null || iso > cur) payByEvidenceByMonth.set(ym, iso);
@@ -1118,7 +1109,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   for (const pays of paymentsByPurchase.values()) {
     for (const p of pays) {
       const ym = paymentBillingMonth(p);
-      const closeIso = parseDateLikeToIso(p.statement_date);
+      const closeIso = normalizeTransactionDateIso(p.statement_date);
       if (!ym || !closeIso) continue;
       const cur = closeIsoByMonth.get(ym);
       if (cur == null || closeIso > cur) closeIsoByMonth.set(ym, closeIso);

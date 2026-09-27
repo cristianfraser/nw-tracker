@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { computeCuotaRetirements, type CuotaRetirementMonth } from "./ccCuotaRetirement.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { db } from "./db.js";
+import {
+  clpFacturadoByCloseIso,
+  computeCuotaRetirements,
+  type CuotaRetirementMonth,
+} from "./ccCuotaRetirement.js";
 
 const month = (over: Partial<CuotaRetirementMonth> & { month: string }): CuotaRetirementMonth => ({
   cuota_clp: 0,
@@ -138,5 +143,29 @@ describe("computeCuotaRetirements", () => {
       []
     );
     expect(drops).toEqual([]);
+  });
+});
+
+describe("clpFacturadoByCloseIso", () => {
+  let accountId = 0;
+
+  afterEach(() => {
+    db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+  });
+
+  it("keys a statement close through the shared date parser, jammed year repaired", () => {
+    const group = db.prepare(`SELECT id FROM asset_groups LIMIT 1`).get() as { id: number };
+    accountId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
+        .run(group.id, "Vitest · retirement close dates", "vitest-cc-retirement-close-dates").lastInsertRowid
+    );
+    // «25/08/2511»: MCC digits glued onto the year — the parser reads 25/08/25.
+    db.prepare(
+      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, layout, currency, monto_facturado)
+       VALUES (?, 'A', 'vitest jammed close.pdf', '25/08/2511', 'compact', 'clp', 100000)`
+    ).run(accountId);
+    expect([...clpFacturadoByCloseIso(accountId)]).toEqual([["2025-08-25", 100_000]]);
   });
 });
