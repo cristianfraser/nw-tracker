@@ -388,6 +388,14 @@ export function writeSantanderStatements(
   records: CcStatementCsvRecord[]
 ): SantanderStatementWriteResult {
   if (records.length === 0) throw new Error("writeSantanderStatements: no records");
+  // One close per call: the result names a single facturación, and the caller verifies it.
+  const closes = new Set(records.map((r) => padCcStatementDate(String(r.statement_date ?? ""))));
+  if (closes.size !== 1) {
+    throw new Error(
+      `writeSantanderStatements: records span ${closes.size} closes (${[...closes].join(", ")}) — ` +
+        `write one facturación per call`
+    );
+  }
   for (const last4 of new Set(records.map((r) => String(r.card_last4 ?? "").trim()))) {
     assertNoCardRoutingConflict(accountId, last4 || null);
   }

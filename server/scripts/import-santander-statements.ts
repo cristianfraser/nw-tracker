@@ -11,6 +11,17 @@
  * pipeline as PDFs; once JSON owns a close, later PDF imports of it are skipped by the
  * symmetric guard in `mergeCcAccountFromParsedRows` and the PDF stays the archive.
  *
+ * A facturación's two currencies pair on (account, NumExtracto) — both endpoints are asked for
+ * the same statement number — and the international one, which carries no dates of its own, is
+ * dated from its national twin. An international file with no twin is reported, never dated
+ * from another close (`assembleSantanderStatementBatch`).
+ *
+ * The staging dir only grows: the scraper writes one file per (account, extracto, endpoint) and
+ * never deletes. `--apply` moves a superseded facturación — any but its account's newest
+ * extracto, which the scraper keeps re-fetching — into `<dir>/archive/` once every statement of
+ * it is verified: diffed clean against its PDF, or written from the JSON and checked against
+ * itself. Anything else stays in place and is reported again the next run.
+ *
  * A clean report diff is: `only in JSON` containing just the payment row (CodTxs 067, which
  * the PDF parser drops by design) and `only in DB` empty.
  */
@@ -27,11 +38,16 @@ import {
   writeSantanderStatements,
 } from "../src/santanderStatementImport.js";
 import {
+  assembleSantanderStatementBatch,
   diffStatementAgainstLedger,
   listSantanderStatementFiles,
   parseSantanderStatementFile,
   resolveSantanderStatementJsonDir,
+  selectSantanderStatementGroupsToArchive,
   type ParsedSantanderStatement,
+  type SantanderStatementGroup,
+  type SantanderStatementGroupOutcomes,
+  type SantanderStatementOutcome,
 } from "../src/santanderStatementReport.js";
 import type { CcStatementCsvRecord } from "../src/ccStatementsImport.js";
 
@@ -53,66 +69,66 @@ if (files.length === 0) {
   process.exit(0);
 }
 
-const parsedFiles = files
-  .map((f) => ({ file: f, parsed: parseSantanderStatementFile(f) }))
-  .filter((x): x is { file: string; parsed: ParsedSantanderStatement } => x.parsed != null);
-
-// The international feed has no statement date of its own; take it from the national
-// statement of the same card. Two different national closes for one account in a single
-// batch would make that pairing ambiguous — import such dirs one facturación at a time.
-const nationalDateByAccount = new Map<string, string>();
-const nationalByAccount = new Map<string, ParsedSantanderStatement>();
-for (const { parsed } of parsedFiles) {
-  if (parsed.currency !== "clp" || !parsed.header.statement_date || !parsed.header.account) continue;
-  const prev = nationalDateByAccount.get(parsed.header.account);
-  if (prev && prev !== parsed.header.statement_date) {
-    throw new Error(
-      `Two national closes for account ${parsed.header.account} in one batch ` +
-        `(${prev} vs ${parsed.header.statement_date}) — international files cannot be paired; ` +
-        `import per capture dir instead`
-    );
-  }
-  nationalDateByAccount.set(parsed.header.account, parsed.header.statement_date);
-  nationalByAccount.set(parsed.header.account, parsed);
+const statements: ParsedSantanderStatement[] = [];
+for (const file of files) {
+  const parsed = parseSantanderStatementFile(file);
+  if (parsed) statements.push(parsed);
+  else console.log(`\n${path.basename(file)}\n  not a statement response (no OUTPUT) — skipped`);
+}
+const { groups, duplicates } = assembleSantanderStatementBatch(statements);
+for (const { file, copy_of } of duplicates) {
+  console.log(`\n${file}\n  identical copy of ${copy_of} (a retried fetch) — skipped`);
 }
 
 let clean = 0;
 let dirty = 0;
 let written = 0;
 let skippedPdfOwned = 0;
+let unpaired = 0;
 
-// Group writable statements per account so one facturación's currencies merge atomically
-// (a traspaso month needs both legs in one transaction for the link relinker). A capture dir
-// can hold the same statement twice (retried fetch) — first parse wins.
-const pendingWrites = new Map<number, CcStatementCsvRecord[]>();
-const queuedCloses = new Set<string>();
+type StatementReview = {
+  statement: ParsedSantanderStatement;
+  outcome: SantanderStatementOutcome;
+  /** Present on a write candidate (`pending`). */
+  write?: { accountId: number; records: CcStatementCsvRecord[] };
+};
 
-for (const { parsed } of parsedFiles) {
-  if (parsed.lines.length === 0) continue;
+/** Diff one statement against the ledger, print its report block, and build its write if any. */
+function reviewStatement(
+  parsed: ParsedSantanderStatement,
+  group: SantanderStatementGroup,
+  national: ParsedSantanderStatement
+): StatementReview {
+  if (parsed.lines.length === 0) return { statement: parsed, outcome: "empty" };
 
-  const statementDateRaw = parsed.header.statement_date ?? nationalDateByAccount.get(parsed.header.account);
+  const statementDateRaw = parsed.header.statement_date ?? group.statement_date;
   const diff = diffStatementAgainstLedger(parsed, statementDateRaw);
   const header = `${diff.file}  [${diff.currency}]  ${diff.statement_date ?? "(no statement date)"}`;
   console.log(`\n${header}`);
-  console.log(`  account_id ${diff.account_id ?? "?"} · json ${diff.json_lines} lines · ledger ${diff.db_lines ?? "not imported"}`);
+  console.log(
+    `  account_id ${diff.account_id ?? "?"} · extracto ${group.extracto} · json ${diff.json_lines} lines · ` +
+      `ledger ${diff.db_lines ?? "not imported"}`
+  );
 
   if (diff.account_id == null || !statementDateRaw) {
     dirty += 1;
     console.log("  ✗ cannot resolve account or statement date — not importable");
-    continue;
+    return { statement: parsed, outcome: "dirty" };
   }
 
   const statementDate = padCcStatementDate(statementDateRaw);
   const owner = statementSourceOwnerForClose(diff.account_id, statementDate, parsed.currency);
+  let nextCloseDisagrees = false;
 
   // FechaProxFact is the same printed «próximo período» end the PDF carries; a PDF-owned close
   // gets it filled when the PDF format predates the line, and a disagreement is a problem.
-  const nextCloseRaw = parsed.header.next_close ?? nationalByAccount.get(parsed.header.account)?.header.next_close ?? null;
+  const nextCloseRaw = parsed.header.next_close ?? national.header.next_close ?? null;
   const nextClose = nextCloseRaw ? padCcStatementDate(nextCloseRaw) : null;
   if (owner === "pdf" && nextClose && parsed.currency === "clp") {
     const stored = statementNextPeriodTo(diff.account_id, statementDate, parsed.currency);
     if (stored && stored !== nextClose) {
       dirty += 1;
+      nextCloseDisagrees = true;
       console.log(`  ✗ next close: the PDF prints ${stored}, the JSON's FechaProxFact is ${nextClose}`);
     } else if (!stored) {
       console.log(`  next close ${nextClose} (FechaProxFact) — ${apply ? "stored on the PDF statement" : "would be stored (--apply)"}`);
@@ -123,7 +139,10 @@ for (const { parsed } of parsedFiles) {
   if (owner === "pdf") {
     skippedPdfOwned += 1;
     console.log(
-      `  matched ${diff.matched}${diff.matched_by_prefix > 0 ? ` (${diff.matched_by_prefix} by merchant prefix — the PDF layout glued a charge-type column onto the name)` : ""}`
+      `  matched ${diff.matched}${diff.matched_by_prefix > 0 ? ` (${diff.matched_by_prefix} by merchant prefix — the PDF layout glued a charge-type column onto the name)` : ""}` +
+        (diff.matched_by_rendering > 0
+          ? ` (${diff.matched_by_rendering} by merchant rendering — a terminal code only the JSON prints, or punctuation)`
+          : "")
     );
     if (diff.only_in_json.length > 0) {
       console.log(`  only in JSON (${diff.only_in_json.length}, of which ${diff.expected_only_in_json} expected payment rows):`);
@@ -137,31 +156,30 @@ for (const { parsed } of parsedFiles) {
     if (unexplained === 0) {
       clean += 1;
       console.log("  ✓ PDF-owned, reconciles (only the payment row differs, as expected)");
-    } else {
-      dirty += 1;
-      console.log(`  ✗ PDF-owned, ${unexplained} unexplained line difference(s)`);
+      return { statement: parsed, outcome: nextCloseDisagrees ? "dirty" : "clean" };
     }
-    continue;
+    dirty += 1;
+    console.log(`  ✗ PDF-owned, ${unexplained} unexplained line difference(s)`);
+    return { statement: parsed, outcome: "dirty" };
   }
 
   // The international header is empty (all nulls); its pay-by and titular card come from
   // the national twin of the same facturación.
-  const national = nationalByAccount.get(parsed.header.account);
-  const payByRaw = parsed.header.pay_by ?? national?.header.pay_by ?? null;
-  const statementLast4 = parsed.header.card_last4 ?? national?.header.card_last4 ?? null;
+  const payByRaw = parsed.header.pay_by ?? national.header.pay_by ?? null;
+  const statementLast4 = parsed.header.card_last4 ?? national.header.card_last4 ?? null;
 
   try {
     assertNoCardRoutingConflict(diff.account_id, statementLast4);
   } catch (err) {
     dirty += 1;
     console.log(`  ✗ ${err instanceof Error ? err.message : String(err)}`);
-    continue;
+    return { statement: parsed, outcome: "dirty" };
   }
   // The dateless international endpoint can re-serve the last billed USD cycle on dormant
   // months; a full stale echo is expected there and must not import as new lines.
   if (parsed.currency === "usd" && usdStatementIsStaleEcho(diff.account_id, statementDate, parsed.lines)) {
     console.log("  → every USD row already exists on an earlier statement (stale echo) — not imported");
-    continue;
+    return { statement: parsed, outcome: "skipped" };
   }
 
   const ctx = inheritedStatementCtx(diff.account_id, parsed.currency, statementDate);
@@ -178,47 +196,95 @@ for (const { parsed } of parsedFiles) {
     `  → ${owner === "json" ? "JSON-owned, rewrite" : "not in ledger, write"}: ` +
       `${records.length} line(s) as ${records[0]?.source_pdf} (group ${ctx.cardGroup}, period ${ctx.periodFrom} → ${statementDate})`
   );
-  if (apply) {
-    const closeKey = `${diff.account_id}|${parsed.currency}|${statementDate}`;
-    if (queuedCloses.has(closeKey)) {
-      console.log("  (same statement already queued from an earlier file — skipped)");
-      continue;
-    }
-    queuedCloses.add(closeKey);
-    const queue = pendingWrites.get(diff.account_id) ?? [];
-    queue.push(...records);
-    pendingWrites.set(diff.account_id, queue);
-  }
+  return { statement: parsed, outcome: "pending", write: { accountId: diff.account_id, records } };
 }
 
-if (apply) {
-  for (const [accountId, records] of pendingWrites) {
-    const result = writeSantanderStatements(accountId, records);
+const outcomes = new Map<string, SantanderStatementGroupOutcomes>();
+
+// Groups run oldest extracto first per account, and each facturación is written (and verified)
+// before the next is reviewed: a later close's period_from is the previous close in the ledger,
+// which may be the one just written.
+for (const group of groups) {
+  const national = group.national;
+  if (!national) {
+    unpaired += 1;
+    console.log(`\n${group.international!.file}  [usd]  (no statement date)`);
+    console.log(
+      `  unpaired: no national statement of extracto ${group.extracto} for account ${group.account} — ` +
+        `the international feed carries no close of its own, so it is neither dated nor imported`
+    );
+    continue;
+  }
+
+  const reviews = [national, group.international]
+    .filter((s): s is ParsedSantanderStatement => s != null)
+    .map((statement) => reviewStatement(statement, group, national));
+
+  const pending = reviews.filter((r) => r.write != null);
+  if (apply && pending.length > 0) {
+    // One facturación's currencies merge together: a traspaso month needs both legs in one
+    // transaction for the link relinker.
+    const accountId = pending[0]!.write!.accountId;
+    const result = writeSantanderStatements(accountId, pending.flatMap((r) => r.write!.records));
     written += result.currencies.length;
     console.log(
       `\nWROTE account ${accountId} ${result.statementDate}: ${result.currencies.join("+")} ` +
         `(${result.lineCount} lines inserted)`
     );
     // Verify what was just written reconciles against itself.
-    for (const { parsed } of parsedFiles) {
-      if (parsed.lines.length === 0) continue;
-      const sd = parsed.header.statement_date ?? nationalDateByAccount.get(parsed.header.account);
-      const post = diffStatementAgainstLedger(parsed, sd);
-      if (post.account_id !== accountId) continue;
+    for (const review of pending) {
+      const post = diffStatementAgainstLedger(review.statement, group.statement_date);
       const unexplained = post.only_in_json.length - post.expected_only_in_json + post.only_in_db.length;
       if (unexplained !== 0) {
         throw new Error(
           `Post-write verification failed for ${post.file}: ${unexplained} unexplained difference(s)`
         );
       }
+      review.outcome = "written";
     }
     console.log("  ✓ post-write verification clean");
   }
+  outcomes.set(group.key, Object.fromEntries(reviews.map((r) => [r.statement.currency, r.outcome])));
+}
+
+const { archive, keep } = selectSantanderStatementGroupsToArchive(groups, outcomes);
+if (archive.length > 0 || keep.length > 0) console.log("");
+for (const group of keep) {
+  console.log(
+    `KEPT account ${group.account} extracto ${group.extracto} (${group.statement_date ?? "no close"}): ` +
+      `superseded, but not every statement is verified — stays in place`
+  );
+}
+if (apply && archive.length > 0) {
+  const archiveDir = path.join(dir, "archive");
+  const moves = archive.flatMap((group) =>
+    group.files.map((file) => ({ from: path.join(dir, file), to: path.join(archiveDir, file) }))
+  );
+  // Never overwrite an archived statement, and check every destination before the first move.
+  const taken = moves.filter((move) => fs.existsSync(move.to));
+  if (taken.length > 0) {
+    throw new Error(
+      `Cannot archive: ${taken.map((move) => path.relative(dir, move.to)).join(", ")} already exist(s) — a ` +
+        `statement archived earlier was staged again. Compare the copies and remove one by hand.`
+    );
+  }
+  fs.mkdirSync(archiveDir, { recursive: true });
+  for (const move of moves) fs.renameSync(move.from, move.to);
+}
+for (const group of archive) {
+  console.log(
+    `${apply ? "ARCHIVED" : "would archive (--apply)"} account ${group.account} extracto ${group.extracto} ` +
+      `(${group.statement_date}): ${group.files.join(", ")}${apply ? " → archive/" : ""}`
+  );
 }
 
 const writeSummary = apply
   ? `${written} statement(s) written`
   : "nothing written (pass --apply to write the candidates above)";
+const archiveSummary = apply
+  ? `${archive.length} superseded facturación(es) archived`
+  : `${archive.length} superseded facturación(es) to archive with --apply`;
 console.log(
-  `\n${clean} PDF-owned statement(s) reconcile, ${dirty} problem(s), ${skippedPdfOwned} PDF-owned skip(s) · ${writeSummary}`
+  `\n${clean} PDF-owned statement(s) reconcile, ${dirty} problem(s), ${skippedPdfOwned} PDF-owned skip(s), ` +
+    `${unpaired} unpaired international file(s) · ${writeSummary} · ${archiveSummary}`
 );

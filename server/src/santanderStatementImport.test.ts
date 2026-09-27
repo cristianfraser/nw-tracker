@@ -304,6 +304,22 @@ describe("santanderStatementImport", () => {
     expect(otherMonth.n).toBe(1);
   });
 
+  it("writes one facturación per call", () => {
+    const id = masterId();
+    if (id == null) return;
+    const september = buildSantanderStatementRecords("clp", [line({})], header({}), { ...CTX, accountId: id });
+    const october = buildSantanderStatementRecords(
+      "clp",
+      [line({ transaction_date: "5/10/2026" })],
+      header({ statement_date: "20/10/2026" }),
+      { ...CTX, accountId: id, statementDate: "20/10/2026", periodFrom: "20/09/2026" }
+    );
+    expect(() => writeSantanderStatements(id, [...september, ...october])).toThrow(
+      /records span 2 closes \(20\/09\/2026, 20\/10\/2026\) — write one facturación per call/
+    );
+    expect(statementSourceOwnerForClose(id, "20/09/2026", "clp")).toBe(null);
+  });
+
   it("refuses a plastic whose registry routing disagrees with the Cuenta mapping", () => {
     const id = masterId();
     if (id == null) return;
