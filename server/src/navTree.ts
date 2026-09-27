@@ -209,7 +209,7 @@ function buildNode(
         node_id: `exp.${slug}`,
         slug: `expense_${slug}`,
         label: meta?.label ?? slug,
-        label_i18n_key: `expenses.accounts.${slug}`,
+        label_i18n_key: null,
         route_path: `/flows/expenses/real_estate/${slug}`,
         active_prefix: null,
         nav_end: true,

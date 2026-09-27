@@ -391,7 +391,7 @@ export function buildRealEstateCardBreakdown(
     (a) => a.category_slug === "property" || a.bucket_slug === "real_estate__property"
   );
   const mortgageRow = mortgageAccountForPropertyRow(allAccounts ?? accounts, propertyRow);
-  const propertyName = props[0]?.name.trim().toLowerCase() ?? "depto";
+  const propertyName = props[0]!.name.trim().toLowerCase();
   const netClp = props.length ? sumClp(props, (r) => r.current_value_clp ?? 0) : 0;
   const groupUsd = props.length ? sumUsd(props) : null;
   const propertyTo =

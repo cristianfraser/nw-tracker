@@ -4078,8 +4078,8 @@
         "es": "No hay gastos emparejados con depósitos."
       },
       "mortgageDepositLinkCuota": {
-        "en": "· Depto installment {{cuota}}",
-        "es": "· Depto cuota {{cuota}}"
+        "en": "· Mortgage installment {{cuota}}",
+        "es": "· Cuota hipotecaria {{cuota}}"
       },
       "investmentDepositLink": {
         "en": "· investment deposit",
@@ -4154,20 +4154,6 @@
           "en": "Remove every purchase from the group before deleting it.",
           "es": "Quita todas las compras del grupo antes de eliminarlo."
         }
-      }
-    },
-    "accounts": {
-      "arriendo_a": {
-        "en": "Arriendo A",
-        "es": "Arriendo A"
-      },
-      "arriendo_b": {
-        "en": "Arriendo B",
-        "es": "Arriendo B"
-      },
-      "depto": {
-        "en": "Depto",
-        "es": "Depto"
       }
     },
     "kinds": {

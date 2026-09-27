@@ -1,7 +1,7 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 import { readInitialLanguage } from "../languagePreference";
-import type { DepositFlowCategory, ExpenseApartmentSlug, FlowsPlBucketSlug } from "../types";
+import type { DepositFlowCategory, FlowsPlBucketSlug } from "../types";
 import en from "./locales/en.json";
 import es from "./locales/es.json";
 
@@ -37,11 +37,6 @@ export function brokerageGroupLabel(group: BrokeragePortfolioGroup): string {
 export function dashboardBucketLabel(bucket: "real_estate" | "retirement" | "brokerage" | "cash_eqs"): string {
   if (bucket === "cash_eqs") return i18n.t("dashboard.buckets.cash_savings");
   return i18n.t(`dashboard.buckets.${bucket}`);
-}
-
-/** Deposit-flow categories: same Spanish labels as dashboard buckets (retirement deposits → Retiro). */
-export function expenseApartmentLabel(slug: ExpenseApartmentSlug): string {
-  return i18n.t(`expenses.accounts.${slug}`);
 }
 
 export function ccExpenseCategoryLabel(slug: string): string {

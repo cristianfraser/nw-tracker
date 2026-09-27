@@ -1155,7 +1155,7 @@
       "unclassifiedTableEmpty": "No unclassified expenses.",
       "depositMatchedTableTitle": "Expenses matched to deposits",
       "depositMatchedTableEmpty": "No expenses matched to deposits.",
-      "mortgageDepositLinkCuota": "· Depto installment {{cuota}}",
+      "mortgageDepositLinkCuota": "· Mortgage installment {{cuota}}",
       "investmentDepositLink": "· investment deposit",
       "bigGroups": {
         "colGroup": "Big group",
@@ -1176,11 +1176,6 @@
         "deleteConfirm": "Delete group “{{label}}”? It has {{count}} assigned purchase(s); remove them from the group before deleting.",
         "deleteBlockedHint": "Remove every purchase from the group before deleting it."
       }
-    },
-    "accounts": {
-      "arriendo_a": "Arriendo A",
-      "arriendo_b": "Arriendo B",
-      "depto": "Depto"
     },
     "kinds": {
       "gas": "Gas",
