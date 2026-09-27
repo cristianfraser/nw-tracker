@@ -138,7 +138,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     displayUnit,
     needsNavChildCards && (!hasNavSnapshotCache || bundleReady)
   );
-  const dash = navCtx ? dashPickForNavStrip(navCtx, sidebarNav?.net_worth) : null;
+  const dash = navCtx ? dashPickForNavStrip(navCtx) : null;
 
   const monthlyPerfErr: string | null = null;
 

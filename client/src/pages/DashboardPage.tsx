@@ -197,8 +197,7 @@ export function DashboardPage() {
         nw_bucket_totals: navSnapshot.nw_bucket_totals,
         card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
         overviewPoints,
-      },
-      netWorthNav
+      }
     );
   }, [netWorthNav, useRealBundle, data, navSnapshot, overviewPoints]);
 

@@ -221,6 +221,26 @@ function synthesizeMissingUsdOnNavCardMetricsBySlug(
   return out;
 }
 
+/**
+ * FX-derive missing usd bucket totals from the server's CLP ones, at the card metrics' rate:
+ * a CLP payload shown in USD displays converted server totals — the strip never sums account
+ * rows into bucket totals. Prior closes are left as they are (no card reads them).
+ */
+function synthesizeMissingUsdOnNwBucketTotals(
+  buckets: NwBucketTotals,
+  fxRate: number | null
+): NwBucketTotals {
+  if (fxRate == null || !Number.isFinite(fxRate) || fxRate <= 0) return buckets;
+  return {
+    ...buckets,
+    net_worth_usd: buckets.net_worth_usd ?? buckets.net_worth_clp / fxRate,
+    real_estate_usd: buckets.real_estate_usd ?? buckets.real_estate_clp / fxRate,
+    retirement_usd: buckets.retirement_usd ?? buckets.retirement_clp / fxRate,
+    brokerage_usd: buckets.brokerage_usd ?? buckets.brokerage_clp / fxRate,
+    cash_eqs_usd: buckets.cash_eqs_usd ?? buckets.cash_eqs_clp / fxRate,
+  };
+}
+
 /** Fill missing USD fields on CLP-only cached snapshot before perturb (USD unit switch / first USD visit). */
 export function synthesizeMissingUsdOnNavSnapshot(
   snapshot: DashboardNavSnapshotResponse,
@@ -234,6 +254,7 @@ export function synthesizeMissingUsdOnNavSnapshot(
   snapshot: CachedDashboardNavSnapshot,
   cachedFx?: FxLatest
 ): CachedDashboardNavSnapshot {
+  const fxRate = resolveSnapshotFxRate(snapshot.accounts, cachedFx);
   return {
     ...snapshot,
     ...synthesizeMissingUsdOnStripParts(
@@ -244,21 +265,25 @@ export function synthesizeMissingUsdOnNavSnapshot(
     ),
     card_metrics_by_slug: synthesizeMissingUsdOnNavCardMetricsBySlug(
       snapshot.card_metrics_by_slug,
-      resolveSnapshotFxRate(snapshot.accounts, cachedFx)
+      fxRate
     ) ?? snapshot.card_metrics_by_slug,
+    nw_bucket_totals: snapshot.nw_bucket_totals
+      ? synthesizeMissingUsdOnNwBucketTotals(snapshot.nw_bucket_totals, fxRate)
+      : snapshot.nw_bucket_totals,
   };
 }
 
 /**
  * Fill missing USD fields on a held prior-unit nav-context during a CLP→USD switch (the
- * keepPreviousData placeholder in `useDashboardNavContext`). `nw_bucket_totals` and
- * `overviewPoints` stay untouched — `dashPickForNavStrip` derives bucket USD by
- * summing the synthesized account rows, and delta paths fall back to per-account prior closes.
+ * keepPreviousData placeholder in `useDashboardNavContext`): rows, liabilities, linked
+ * balances, card metrics and the `nw_bucket_totals` the strip picks. `overviewPoints` stay
+ * untouched.
  */
 export function synthesizeMissingUsdOnDashboardNavContext(
   ctx: DashboardNavContext,
   cachedFx?: FxLatest
 ): DashboardNavContext {
+  const fxRate = resolveSnapshotFxRate(ctx.accounts, cachedFx);
   return {
     ...ctx,
     ...synthesizeMissingUsdOnStripParts(
@@ -269,8 +294,9 @@ export function synthesizeMissingUsdOnDashboardNavContext(
     ),
     card_metrics_by_slug: synthesizeMissingUsdOnNavCardMetricsBySlug(
       ctx.card_metrics_by_slug,
-      resolveSnapshotFxRate(ctx.accounts, cachedFx)
+      fxRate
     ) ?? ctx.card_metrics_by_slug,
+    nw_bucket_totals: synthesizeMissingUsdOnNwBucketTotals(ctx.nw_bucket_totals, fxRate),
   };
 }
 

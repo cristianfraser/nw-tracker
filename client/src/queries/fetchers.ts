@@ -65,37 +65,6 @@ export async function fetchDashboardNavContext(unit: DisplayUnit): Promise<Dashb
   };
 }
 
-import type { DashboardGroupSlug } from "../dashboardCardBreakdown";
-import { isDashboardNwBucketSlug } from "../portfolioDashboardBuckets";
-import { portfolioStripGroupChildren, resolveDashboardBucketFromNavNode } from "../portfolioNavFromApi";
-import { sumCashSavingsAdjustedUsdForNav, sumDashboardRowsUsdForNavNode } from "../portfolioGroupTotals";
-import type { NavTreeNodeDto } from "../types";
-
-function nwBucketTotalsUsdFromNavStrip(
-  netWorthRoot: NavTreeNodeDto | null | undefined,
-  accounts: DashboardResponse["accounts"]
-): Partial<
-  Pick<
-    DashboardResponse["totals"],
-    "real_estate_usd" | "retirement_usd" | "brokerage_usd" | "cash_eqs_usd"
-  >
-> {
-  const out: Partial<Record<DashboardGroupSlug, number>> = {};
-  if (!netWorthRoot) return {};
-  for (const child of portfolioStripGroupChildren(netWorthRoot)) {
-    const bucket = resolveDashboardBucketFromNavNode(child);
-    if (!bucket || bucket === "net_worth" || !isDashboardNwBucketSlug(bucket)) continue;
-    const usd = sumDashboardRowsUsdForNavNode(child, accounts);
-    if (usd !== undefined) out[bucket] = usd;
-  }
-  return {
-    real_estate_usd: out.real_estate,
-    retirement_usd: out.retirement,
-    brokerage_usd: out.brokerage,
-    cash_eqs_usd: out.cash_eqs,
-  };
-}
-
 function sumDepositsUsd(accounts: DashboardResponse["accounts"], include: (a: DashboardAccountRow) => boolean): number | undefined {
   let usd = 0;
   let anyUsd = false;
@@ -109,30 +78,16 @@ function sumDepositsUsd(accounts: DashboardResponse["accounts"], include: (a: Da
   return anyUsd ? usd : undefined;
 }
 
-function sumOptionalUsdParts(...parts: (number | undefined)[]): number | undefined {
-  let sum = 0;
-  let any = false;
-  for (const p of parts) {
-    if (p !== undefined && Number.isFinite(p)) {
-      sum += p;
-      any = true;
-    }
-  }
-  return any ? sum : undefined;
-}
-
 /**
- * Strip `dash` for the nav cards: bucket totals and prior closes are the server's
- * `nw_bucket_totals`. A payload fetched in CLP has no USD bucket fields — while it is held as
- * the placeholder of a CLP→USD switch, or read from the CLP snapshot cache on a first USD
- * visit — so the USD bucket totals are summed from the FX-synthesized account rows until the
- * USD payload lands.
+ * Strip `dash` for the nav cards: every bucket total and prior close is the server's
+ * `nw_bucket_totals` — account rows are never summed into them. A CLP payload shown in USD
+ * (the placeholder of a CLP→USD switch, or the CLP snapshot cache on a first USD visit) gets
+ * its USD bucket totals FX-converted by `synthesizeMissingUsdOn…` before it reaches here.
  */
 export function dashPickForNavStrip(
   ctx: Omit<DashboardNavContext, "liabilities_breakdown"> & {
     liabilities_breakdown?: DashboardResponse["liabilities_breakdown"];
-  },
-  netWorthRoot: NavTreeNodeDto | null | undefined
+  }
 ): Pick<
   DashboardResponse,
   "accounts" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
@@ -147,17 +102,8 @@ export function dashPickForNavStrip(
     .filter(include)
     .reduce((s, a) => s + (a.deposits_clp ?? 0), 0);
 
-  const linkedCcUsd =
-    ctx.dashboard_layout
-      ?.find((c) => c.slug === "cash_eqs")
-      ?.linked_balances?.find((lb) => lb.slug === "credit_card")?.usd;
-  const bucketUsd = nwBucketTotalsUsdFromNavStrip(netWorthRoot, ctx.accounts);
-  const real_estate_usd = serverBuckets.real_estate_usd ?? bucketUsd.real_estate_usd;
-  const retirement_usd = serverBuckets.retirement_usd ?? bucketUsd.retirement_usd;
-  const brokerage_usd = serverBuckets.brokerage_usd ?? bucketUsd.brokerage_usd;
-  const cash_eqs_usd =
-    serverBuckets.cash_eqs_usd ??
-    sumCashSavingsAdjustedUsdForNav(netWorthRoot, ctx.accounts, linkedCcUsd);
+  const { net_worth_usd, real_estate_usd, retirement_usd, brokerage_usd, cash_eqs_usd } =
+    serverBuckets;
   const mortgageUsd = ctx.liabilities_breakdown?.mortgage_usd;
   const creditCardUsd = ctx.liabilities_breakdown?.credit_card_usd;
   const liabilities_usd =
@@ -165,12 +111,6 @@ export function dashPickForNavStrip(
     (creditCardUsd != null && Number.isFinite(creditCardUsd))
       ? (mortgageUsd ?? 0) + (creditCardUsd ?? 0)
       : undefined;
-  const net_worth_usd = serverBuckets.net_worth_usd ?? sumOptionalUsdParts(
-    real_estate_usd,
-    retirement_usd,
-    brokerage_usd,
-    cash_eqs_usd
-  );
   const deposits_usd = sumDepositsUsd(ctx.accounts, include);
 
   return {

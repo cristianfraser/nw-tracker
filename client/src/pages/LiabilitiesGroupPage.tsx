@@ -205,10 +205,9 @@ export function LiabilitiesGroupPage() {
         nw_bucket_totals: navCtx?.nw_bucket_totals ?? navSnapshot.nw_bucket_totals,
         card_metrics_by_slug: navCtx?.card_metrics_by_slug ?? navSnapshot.card_metrics_by_slug,
         overviewPoints,
-      },
-      sidebarNav?.net_worth
+      }
     );
-  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, sidebarNav?.net_worth]);
+  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints]);
 
   // Keep the previous unit's charts on screen (FX-converted) during a CLP↔USD switch instead of
   // blinking to the flat-zero placeholder; snaps to exact when the real bundle resolves.

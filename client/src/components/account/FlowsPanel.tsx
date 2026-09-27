@@ -1,21 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
-import { parseNumberInput } from "../../format";
+import { parseFlowsAmountFilter } from "../../flowsAmountFilter";
 import { useTranslation } from "../../i18n";
 import { useGroupFlows, useAccountFlows, type FlowsQueryFilters } from "../../queries/hooks";
 import { DEFAULT_FLOWS_FILTER_STATE, FlowsTable, type FlowsFilterState } from "./FlowsTable";
 
 const PAGE_SIZE = 20;
-
-/**
- * An amount filter field as the |amount| it matches — the server compares rounded absolute legs,
- * so a typed sign is dropped. A field that isn't a number filters nothing and reports why.
- */
-function parseAmountFilter(raw: string): { value: number | undefined; error: string | null } {
-  const parsed = parseNumberInput(raw);
-  if (!parsed.ok) return { value: undefined, error: parsed.message };
-  return { value: parsed.value == null ? undefined : Math.abs(parsed.value), error: null };
-}
 
 /**
  * Extended filters shared by both panel variants (exact wins over min/max, like the server),
@@ -25,9 +15,9 @@ function extraFiltersFromState(fs: FlowsFilterState): {
   filters: Partial<FlowsQueryFilters>;
   amountError: string | null;
 } {
-  const exact = parseAmountFilter(fs.amount_exact);
-  const min = exact.value == null ? parseAmountFilter(fs.amount_min) : null;
-  const max = exact.value == null ? parseAmountFilter(fs.amount_max) : null;
+  const exact = parseFlowsAmountFilter(fs.amount_exact);
+  const min = exact.value == null ? parseFlowsAmountFilter(fs.amount_min) : null;
+  const max = exact.value == null ? parseFlowsAmountFilter(fs.amount_max) : null;
   const hasAmountFilter = exact.value != null || min?.value != null || max?.value != null;
   return {
     filters: {

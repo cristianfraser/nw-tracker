@@ -53,30 +53,6 @@ const retirementChild: NavTreeNodeDto = {
   ],
 };
 
-const netWorthRoot: NavTreeNodeDto = {
-  node_id: "nw",
-  slug: "net_worth",
-  label: "Patrimonio",
-  label_i18n_key: null,
-  route_path: "/",
-  active_prefix: "/",
-  nav_end: false,
-  show_leaf_hyphen: false,
-  account_id: null,
-  portfolio_group_id: null,
-  expense_account_id: null,
-  expense_account_slug: null,
-  asset_group_slug: "net_worth",
-  kind_slug: null,
-  dashboard_bucket_slug: "net_worth",
-  api_group: null,
-  api_subgroup: null,
-  color_rgb: null,
-  color: null,
-  group_kind: "bucket",
-  children: [retirementChild],
-};
-
 function row(p: Partial<DashboardAccountRow>): DashboardAccountRow {
   return {
     account_id: 1,
@@ -137,7 +113,7 @@ describe("loading PL placeholder repro", () => {
       card_metrics_by_slug: { retirement: { child: variant, parent: variant } },
     };
     const perturbed = perturbDashboardNavSnapshot(raw);
-    const dash = dashPickForNavStrip({ ...perturbed, overviewPoints: [] }, netWorthRoot);
+    const dash = dashPickForNavStrip({ ...perturbed, overviewPoints: [] });
     const { clp } = mainValueForNavChild(dash, retirementChild, false);
     const metrics = requireNavCardMetrics(dash, retirementChild).child.month;
     const periodPl = roundedMetricDelta(metrics, false, "period");
