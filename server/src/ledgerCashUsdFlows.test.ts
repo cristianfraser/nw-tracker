@@ -162,4 +162,23 @@ describe("CLP ledger cash and checking: USD deposits event by event", () => {
       expect(flows).toBeCloseTo(cardUsd.get(id)!, 8);
     }
   });
+
+  it("the first month carries its P/L, so lifetime P/L is the close less every flow", () => {
+    if (!clpId) return;
+    for (const [id, slug] of [
+      [clpId, clpSlug],
+      [checkingId, checkingSlug],
+    ] as const) {
+      for (const unit of ["clp", "usd"] as const) {
+        const rows = loadAccountRowsForGroupConsolidation(id, slug, unit); // newest first
+        const first = rowForMonth(rows, M1);
+        expect(first.nominal_pl).toBeCloseTo(first.closing_value - first.net_capital_flow, 8);
+        const flows = rows.reduce((s, r) => s + r.net_capital_flow, 0);
+        expect(rows[0]!.cumulative_nominal_pl).toBeCloseTo(rows[0]!.closing_value - flows, 8);
+      }
+    }
+    // Pesos: the first month's P/L is the commission charged in it.
+    const clpRows = loadAccountRowsForGroupConsolidation(clpId, clpSlug, "clp");
+    expect(rowForMonth(clpRows, M1).nominal_pl).toBe(-2_000);
+  });
 });

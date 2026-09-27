@@ -143,20 +143,22 @@ function balanceOnlyMonthlyRowsAsc(
     const close = closeAt(evalAt);
     if (!Number.isFinite(close)) continue;
     const deposited = depositedAt(evalAt);
-    // First month: flow = cumulative aportes at this date (vs 0) — same convention as
-    // the equity/AFP monthly perf builder.
+    // First month: flow = cumulative aportes at this date (vs 0) and P/L = close − that flow —
+    // same convention as the equity/AFP monthly perf builder. A null first P/L dropped the
+    // month's fx move on an event-based flow, so the lifetime P/L missed part of what the
+    // dashboard card's value − deposits counts.
     const netFlow = netFlowBetween
       ? netFlowBetween(prevEvalAt, evalAt)
       : prevDeposited != null
         ? deposited - prevDeposited
         : deposited;
-    const nominal = prevClose != null ? close - prevClose - netFlow : null;
+    const nominal = close - (prevClose ?? 0) - netFlow;
     const y = Number(asOf.slice(0, 4));
     if (Number.isFinite(y) && y !== ytdYear) {
       ytdYear = y;
       ytdRun = 0;
     }
-    const nIn = nominal != null && Number.isFinite(nominal) ? nominal : 0;
+    const nIn = Number.isFinite(nominal) ? nominal : 0;
     ytdRun += nIn;
     cumPl += nIn;
 
