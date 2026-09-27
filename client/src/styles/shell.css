@@ -88,10 +88,6 @@
 }
 
 @media (max-width: 879px) {
-  .row-spacer {
-    display: none;
-  }
-
   .layout--with-sidebar {
     display: block;
   }

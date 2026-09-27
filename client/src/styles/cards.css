@@ -4,20 +4,19 @@
   gap: 1rem;
 }
 
+/* Summary cards open the strip (the page's own, then spread hubs such as Inversiones on home). */
 .cards>.card--dashboard-net-worth,
 .cards>.portfolio-strip-compact {
-  grid-row: 1;
-  grid-column: 1;
   min-height: auto;
   background: var(--surface-emphasis);
   border-color: color-mix(in srgb, var(--border) 80%, var(--surface2) 20%);
 }
 
-.row-spacer {
-  grid-row: 1;
-  grid-column: 2 / -1;
-  pointer-events: none;
-  visibility: hidden;
+/* Desktop: the summary cards own row 1, so the first card after them starts a new row. */
+@media (min-width: 880px) {
+  .cards>.portfolio-strip-compact+:not(.portfolio-strip-compact) {
+    grid-column-start: 1;
+  }
 }
 
 .card {
