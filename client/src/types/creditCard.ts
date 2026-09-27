@@ -250,6 +250,22 @@ export interface CcCupoSnapshotDto {
   billing_month: string | null;
 }
 
+/** The bank's own cupo per currency (nightly product summary) and the check's verdict on it. */
+export interface CcBankCupoStatusDto {
+  observed_at: string;
+  currencies: {
+    currency: "clp" | "usd";
+    cupo_total: number;
+    cupo_utilizado: number;
+    cupo_disponible: number;
+    app_owed: number | null;
+    diff: number | null;
+    /** Null until `check:cc-bank-cupo` has judged the snapshot. */
+    status: "ok" | "mismatch" | "indeterminate" | null;
+    reason: string | null;
+  }[];
+}
+
 export interface AccountCcInstallmentsResponse {
   account_id: number;
   has_installment_ledger: boolean;
@@ -275,6 +291,8 @@ export interface AccountCcInstallmentsResponse {
   billing_config?: CreditCardBillingConfigDto;
   /** Credit line snapshot for the summary cards (server-computed: config cupo, open-month balance, difference). */
   cupo?: CcCupoSnapshotDto;
+  /** The bank's own cupo utilizado per currency and the nightly check's verdict (per card only). */
+  bank_cupo?: CcBankCupoStatusDto | null;
   /** Feed-typed cuota purchases still waiting for their count — the card page asks for it. */
   pending_cuota_purchases?: CcPendingCuotaPurchaseDto[];
   /** Open facturación month for manual / web-paste (`YYYY-MM`). */

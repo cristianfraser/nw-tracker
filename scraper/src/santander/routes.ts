@@ -27,6 +27,8 @@ export const ROUTE = {
 export const ENDPOINT = {
   cardMovements: "consultaUltimosMovimientos",
   cardStatement: "estadoCuentaNacional",
+  /** Every product with its balances, requested by the landing page once per login. */
+  productSummary: "cruceProductosOnline",
 } as const;
 
 export const SELECTOR = {

@@ -26,6 +26,11 @@ import {
 } from "./ccFeedCuotaPurchases.js";
 import { mirrorOpenBucketsToFeed, type CcFeedMirrorResult } from "./ccFeedMirror.js";
 import type { CcInstallmentFirstDueNudge } from "./ccWebPasteInstallmentNudge.js";
+import {
+  parseBankCupoCapture,
+  recordBankCupoCapture,
+  type BankCupoCaptureResult,
+} from "./santanderBankCupo.js";
 
 /** Where `scraper/` stages fetched movement files. */
 export function resolveSantanderMovementsDir(): string {
@@ -85,6 +90,8 @@ export type SantanderAccountImportResult = {
 export type SantanderMovementsImportResult = {
   file: string;
   accounts: SantanderAccountImportResult[];
+  /** The bank's own cupo per card and currency the same session read (`cc_bank_cupo_*`). */
+  bank_cupo: BankCupoCaptureResult;
 };
 
 /**
@@ -152,6 +159,9 @@ export function importSantanderMovementsFile(file: string): SantanderMovementsIm
   const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as SantanderMovementsFile;
   const grouped = santanderMovementsByAccount(parsed);
   const closes = new Map(santanderFeedClosesByAccount(parsed).map((c) => [c.account, c]));
+  // Validated before any write, recorded after the lines: the check compares it with the ledger
+  // this file leaves behind.
+  const bankCupo = parseBankCupoCapture(parsed);
   // A card whose feed carries only its SALDO INICIAL (no movements yet) still reports its close.
   for (const account of closes.keys()) {
     if (!grouped.some((g) => g.account === account)) grouped.push({ account, lines: [] });
@@ -209,7 +219,11 @@ export function importSantanderMovementsFile(file: string): SantanderMovementsIm
       mirror,
     });
   }
-  return { file: path.basename(file), accounts };
+  return {
+    file: path.basename(file),
+    accounts,
+    bank_cupo: recordBankCupoCapture(path.basename(file), bankCupo, closes),
+  };
 }
 
 /**

@@ -172,6 +172,14 @@ else
   step "Convert CC payment mirrors after card feed" npm run convert:cc-payment-mirrors
 fi
 
+# 3c. The bank's own cupo per card and currency, read in the same session as the feed (step 1),
+#     against what the app says each card owes after step 3's import. A mismatch fails the step
+#     and leaves a notification with both sides and the app's terms. Writes its verdicts, so it
+#     sits out dry runs.
+if [[ "$DRY_RUN" != "1" ]]; then
+  step "CC bank cupo check" npm run check:cc-bank-cupo
+fi
+
 # 4. Broker e-mail is the change detector: reading it costs nothing, so it decides whether any
 #    browser needs to open at all. Fintual's notifications describe their movements completely
 #    (amount AND share count in the subject); Racional's sometimes do not — its dividend mail
@@ -190,6 +198,13 @@ else
   else
     step "Fintual e-mail movements (report only)" npm run import:fintual-emails
   fi
+  # 4b. Dividend gross / withholding from the Acciones documents (step 1d), paired with the
+  #     dividend rows the mail import above booked. Fails when a printed dividend has no row.
+  if [[ "${NW_TRACKER_FINTUAL_APPLY:-0}" == "1" ]]; then
+    step "Fintual Acciones dividend breakdowns (apply)" npm run import:fintual-acciones -- --apply
+  else
+    step "Fintual Acciones dividend breakdowns (report only)" npm run import:fintual-acciones
+  fi
   # Deposits, CLP→USD conversions, and stock buys import straight from the mail (the
   # conversion appears nowhere else); the crawl below stays for dividends/history — the
   # dividend mail states the gross, only the crawl's API gives the credited net and the tax.
@@ -199,13 +214,6 @@ else
     step "Racional e-mail movements (report only)" npm run import:racional-emails
   fi
 fi
-  # 4b. Dividend gross / withholding from the Acciones documents (step 1d), paired with the
-  #     dividend rows the mail import above booked. Fails when a printed dividend has no row.
-  if [[ "${NW_TRACKER_FINTUAL_APPLY:-0}" == "1" ]]; then
-    step "Fintual Acciones dividend breakdowns (apply)" npm run import:fintual-acciones -- --apply
-  else
-    step "Fintual Acciones dividend breakdowns (report only)" npm run import:fintual-acciones
-  fi
 
 # 5. Racional, only when the e-mail check asked for it. Report-only by default: cash in/out is
 #    withheld for mirror-pairs anyway, and a ledger disagreement should be read before it is

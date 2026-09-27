@@ -29,10 +29,63 @@ export type CardSlide = {
   saldoInicial: unknown[];
 };
 
+/**
+ * The bank's own credit line per card and currency, as the landing page's product summary
+ * (`cruceProductosOnline`) states it: the `TCR` rows of `MATRIZCAPTACIONES`, verbatim but for a
+ * whitelist of fields (`CUPO` / `MONTOUTILIZADO` / `MONTODISPONIBLE` are 18-digit strings with two
+ * implied decimals in both currencies). The request carries the client's RUT and is never kept.
+ */
+export type CardCupos = {
+  /** When the summary arrived — about 20 s before the first movements call of the session. */
+  observedAt: string;
+  rows: Record<string, string>[];
+};
+
 export type CardMovementsResult = {
   fetchedAt: string;
   slides: CardSlide[];
+  /** Null when the session produced no usable summary; `cuposError` then says why. */
+  cupos: CardCupos | null;
+  cuposError?: string;
 };
+
+const CUPO_ROW_FIELDS = [
+  "NUMEROCONTRATO",
+  "NUMEROPAN",
+  "CODIGOMONEDA",
+  "CUPO",
+  "MONTOUTILIZADO",
+  "MONTODISPONIBLE",
+  "GLOSAESTADO",
+] as const;
+
+/**
+ * The card rows of the session's product summary. Never throws: the movements are the step's job,
+ * and a missing summary is reported in the file for the server's cupo check to fail on instead.
+ */
+export function collectCardCupos(recorder: Recorder): Pick<CardMovementsResult, "cupos" | "cuposError"> {
+  // The latest login's call: a relaunched browser logs in again and asks again.
+  const call = recorder.callsFor(ENDPOINT.productSummary).at(-1);
+  if (!call) return { cupos: null, cuposError: `the landing page made no ${ENDPOINT.productSummary} call this session` };
+  try {
+    assertApiOk(call.responseBody, ENDPOINT.productSummary);
+  } catch (err) {
+    return { cupos: null, cuposError: err instanceof Error ? err.message : String(err) };
+  }
+  const output = pick(pick(call.responseBody, "DATA"), "OUTPUT");
+  const matrix = pick(pick(pick(output, "MATRICES"), "MATRIZCAPTACIONES"), "e1");
+  const rows = (Array.isArray(matrix) ? matrix : [])
+    .filter((row) => pickString(row, "AGRUPACIONCOMERCIAL") === "TCR")
+    .map((row) => {
+      const kept: Record<string, string> = {};
+      for (const field of CUPO_ROW_FIELDS) kept[field] = pickString(row, field) ?? "";
+      return kept;
+    });
+  if (rows.length === 0) {
+    return { cupos: null, cuposError: `${ENDPOINT.productSummary} listed no credit card (TCR) rows` };
+  }
+  return { cupos: { observedAt: call.receivedAt, rows } };
+}
 
 /**
  * Click through the card carousel, collecting every `consultaUltimosMovimientos` response.
@@ -97,7 +150,13 @@ export async function fetchCardMovements(page: Page, recorder: Recorder): Promis
   for (const slide of slides) {
     log(`slide ${slide.index}: ${slide.currency ?? "?"} · ${slide.rows.length} movements`);
   }
-  return { fetchedAt: new Date().toISOString(), slides };
+  const cupos = collectCardCupos(recorder);
+  log(
+    cupos.cupos
+      ? `bank cupo: ${cupos.cupos.rows.length} card/currency row(s) observed ${cupos.cupos.observedAt}`
+      : `bank cupo NOT captured — ${cupos.cuposError}`
+  );
+  return { fetchedAt: new Date().toISOString(), slides, ...cupos };
 }
 
 export type StatementDownload = {

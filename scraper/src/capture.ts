@@ -36,6 +36,8 @@ export type ApiCall = {
   status: number;
   requestBody: unknown;
   responseBody: unknown;
+  /** When the response arrived (ISO) — the moment a snapshot endpoint's figures describe. */
+  receivedAt: string;
 };
 
 /**
@@ -87,6 +89,7 @@ export class Recorder {
       if (isThirdPartyNoise(url)) return;
     }
     const endpoint = url.split("?")[0]?.split("/").pop() ?? "unknown";
+    const receivedAt = new Date().toISOString();
     let responseBody: unknown = null;
     let requestBody: unknown = null;
     try {
@@ -101,7 +104,7 @@ export class Recorder {
     } catch {
       requestBody = response.request().postData() ?? null;
     }
-    const call: ApiCall = { endpoint, url, status: response.status(), requestBody, responseBody };
+    const call: ApiCall = { endpoint, url, status: response.status(), requestBody, responseBody, receivedAt };
     this.calls.push(call);
     log(`api ${response.status()} ${safeFileLabel(endpoint)}`);
     if (!this.dir) return;
