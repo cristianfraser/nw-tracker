@@ -454,48 +454,31 @@ const CASH_CATEGORY_KEYS: Record<string, string> = {
   cuenta_vista: "cash.cuentaVista",
 };
 
-export const CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG = "credit_card_shortfall_from_savings";
-
-export function isCashSavingsCcShortfallRow(row: { category_slug?: string | null }): boolean {
-  return row.category_slug === CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG;
-}
-
 function cashBreakdownLabel(row: DashboardAccountRow): string {
-  if (isCashSavingsCcShortfallRow(row)) {
-    return i18n.t("dashboard.cardBreakdown.creditCardShortfallFromSavings");
-  }
   if (row.category_slug && CASH_CATEGORY_KEYS[row.category_slug]) {
     return i18n.t(CASH_CATEGORY_KEYS[row.category_slug]!);
   }
   return row.name;
 }
 
-function mapCashBreakdownLine(
-  row: DashboardAccountRow,
-  linkShortfallToCreditCard: boolean
-): CardBreakdownLine {
+function mapCashBreakdownLine(row: DashboardAccountRow): CardBreakdownLine {
   return {
     label: cashBreakdownLabel(row),
     clp: row.current_value_clp ?? 0,
     usd: row.current_value_usd ?? null,
-    to:
-      isCashSavingsCcShortfallRow(row) && linkShortfallToCreditCard
-        ? liabilitiesSubgroupPath("credit_card")
-        : cashAccountPath(row),
+    to: cashAccountPath(row),
     depth: 0,
     ...accountLineMeta(row),
   };
 }
 
-/** Cash hub / home card: checking + savings accounts; no CC shortfall line or link. */
+/** Cash hub / home card: checking + savings accounts. */
 export function buildCashEqsCardBreakdown(accounts: DashboardAccountRow[]): CardBreakdownLine[] {
   const cash = valueRows(
-    accounts.filter(
-      (a) => accountBelongsToDashboardBucket(a, "cash_eqs") && !isCashSavingsCcShortfallRow(a)
-    ),
+    accounts.filter((a) => accountBelongsToDashboardBucket(a, "cash_eqs")),
     "cash_eqs"
   );
-  return sortGroupsDesc(cash.map((r) => mapCashBreakdownLine(r, false)));
+  return sortGroupsDesc(cash.map((r) => mapCashBreakdownLine(r)));
 }
 
 const LIABILITY_KEYS = {

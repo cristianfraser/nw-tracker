@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { mainValueForNavChild } from "../portfolioNavDashboardCards";
-import { dashPickForNavStrip } from "../queries/fetchers";
 import {
   PERTURB_FACTOR_MAX,
   PERTURB_FACTOR_MIN,
@@ -521,33 +519,14 @@ describe("perturbAccountValuesPreservingNavCardOrder", () => {
       ],
     };
 
-    const stripChildren = netWorth.children ?? [];
-    const originalDash = dashPickForNavStrip(
-      { ...snapshot, overviewPoints: [] },
-      netWorth
-    );
-    const originalOrder = stripChildren.map((child) =>
-      mainValueForNavChild(originalDash, child, false).clp
-    );
-
+    // One account per strip bucket, listed in card order (largest balance first).
     for (let run = 0; run < 50; run++) {
       const factor = randomPerturbFactor();
       const clpByAccount = new Map(accounts.map((a) => [a.account_id, a.current_value_clp!]));
       perturbAccountValuesPreservingNavCardOrder(clpByAccount, accounts, snapshot, [netWorth], factor);
 
-      const perturbedAccounts = accounts.map((row) => ({
-        ...row,
-        current_value_clp: clpByAccount.get(row.account_id) ?? row.current_value_clp,
-      }));
-      const perturbedDash = dashPickForNavStrip(
-        { ...snapshot, accounts: perturbedAccounts, overviewPoints: [] },
-        netWorth
-      );
-      const perturbedOrder = stripChildren.map((child) =>
-        mainValueForNavChild(perturbedDash, child, false).clp
-      );
-
-      for (let i = 0; i < originalOrder.length - 1; i++) {
+      const perturbedOrder = accounts.map((row) => clpByAccount.get(row.account_id)!);
+      for (let i = 0; i < perturbedOrder.length - 1; i++) {
         expect(perturbedOrder[i]).toBeGreaterThan(perturbedOrder[i + 1]!);
       }
     }

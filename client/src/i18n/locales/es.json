@@ -196,8 +196,7 @@
       "periodDeltaMonth": "P/L del mes",
       "periodDeltaYear": "P/L del año",
       "periodDeltaDay": "P/L del día",
-      "summaryAria": "Depósitos y Δ total y del período",
-      "creditCardShortfallFromSavings": "Cobertura tarjeta desde ahorros"
+      "summaryAria": "Depósitos y Δ total y del período"
     }
   },
   "sidebar": {

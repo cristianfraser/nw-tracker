@@ -4,10 +4,7 @@ import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
 import {
   cashNetOfLinkedCreditCards,
   cashSavingsLinkedBalances,
-  cashSavingsShortfallDashboardRow,
-  CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG,
   netLinkedCreditCardFromCashConsolidated,
-  syntheticCashSavingsShortfallAccountId,
 } from "./cashEqsBucketNet.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { dailyReferenceLinesForChartHost } from "./dailyReferenceLines.js";
@@ -42,20 +39,6 @@ describe("cashNetOfLinkedCreditCards", () => {
 
   it("leaves rounding to the caller (the consolidation nets in USD too)", () => {
     expect(cashNetOfLinkedCreditCards(1_234.56, -78.9)).toBeCloseTo(1_313.46, 9);
-  });
-});
-
-describe("cash savings NW shortfall rows", () => {
-  it("cashSavingsShortfallDashboardRow is null when shortfall is zero", () => {
-    expect(cashSavingsShortfallDashboardRow(0, "2026-01-15", false)).toBeNull();
-  });
-
-  it("appends negative shortfall breakdown when checking cannot cover CC", () => {
-    const row = cashSavingsShortfallDashboardRow(250_000, "2026-01-15", false);
-    expect(row).not.toBeNull();
-    expect(row!.account_id).toBe(syntheticCashSavingsShortfallAccountId());
-    expect(row!.current_value_clp).toBe(-250_000);
-    expect(row!.category_slug).toBe(CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG);
   });
 });
 

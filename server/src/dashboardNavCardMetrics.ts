@@ -98,12 +98,7 @@ function accountBelongsToDashboardBucket(row: CardMetricsAccountRow, bucket: str
   return placement === bucket;
 }
 
-const CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG = "credit_card_shortfall_from_savings";
 const CHECKING_ACCOUNTS_BUCKET = "cash_eqs__checking_accounts";
-
-function isCashSavingsCcShortfallRow(row: CardMetricsAccountRow): boolean {
-  return row.category_slug === CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG;
-}
 
 function isCheckingPlacementRow(row: CardMetricsAccountRow): boolean {
   const slug = row.bucket_slug ?? "";
@@ -113,13 +108,9 @@ function isCheckingPlacementRow(row: CardMetricsAccountRow): boolean {
   return row.category_slug === "cuenta_corriente" || row.category_slug === "cuenta_vista";
 }
 
-/** Savings rows whose period P/L feeds the cash_eqs bucket card (excludes checking + CC shortfall). */
+/** Savings rows whose period P/L feeds the cash_eqs bucket card (excludes checking). */
 function isCashSavingsBucketPeriodPlRow(row: CardMetricsAccountRow): boolean {
-  return (
-    accountBelongsToDashboardBucket(row, "cash_eqs") &&
-    !isCheckingPlacementRow(row) &&
-    !isCashSavingsCcShortfallRow(row)
-  );
+  return accountBelongsToDashboardBucket(row, "cash_eqs") && !isCheckingPlacementRow(row);
 }
 
 /** Bucket-card scope: counts-toward-totals rows in the bucket, or `filter` REPLACING membership. */
@@ -467,7 +458,7 @@ export type NavCardMetricsBuildInput = {
   rows: readonly CardMetricsAccountRow[];
 };
 
-/** Port of client `stripMetricsRowsForNavChild` (cash-savings node uses raw leaf ids minus shortfall). */
+/** Port of client `stripMetricsRowsForNavChild` (cash-savings node uses raw leaf ids). */
 function stripMetricsRows(
   node: NavTreeNodeDto,
   rows: readonly CardMetricsAccountRow[]
@@ -475,7 +466,7 @@ function stripMetricsRows(
   const source = isCashSavingsNavNode(node)
     ? (() => {
         const leafIds = navLeafAccountIdSet(node);
-        return rows.filter((a) => leafIds.has(a.account_id) && !isCashSavingsCcShortfallRow(a));
+        return rows.filter((a) => leafIds.has(a.account_id));
       })()
     : (() => {
         const ids = navMetricsAccountIdSet(node, rows);

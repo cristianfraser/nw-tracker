@@ -646,10 +646,6 @@
       "summaryAria": {
         "en": "Deposits and total and period Δ",
         "es": "Depósitos y Δ total y del período"
-      },
-      "creditCardShortfallFromSavings": {
-        "en": "Credit-card coverage from savings",
-        "es": "Cobertura tarjeta desde ahorros"
       }
     }
   },

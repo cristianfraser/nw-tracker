@@ -40,7 +40,6 @@ import {
   liabilitiesBreakdownClpAsOf,
   type TsUnit,
 } from "./valuationTimeseries.js";
-import { applyCashSavingsShortfallToDashboardRows } from "./cashEqsBucketNet.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
@@ -536,11 +535,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       return { ...merged, ...dashboardRowPeriodPcts(merged, includeUsd) };
     })
   );
-  return applyCashSavingsShortfallToDashboardRows(
-    rowsBuilt,
-    chileCalendarTodayYmd(),
-    includeUsd
-  );
+  return rowsBuilt;
 }
 
 /** Nav cards strip + account detail row lookup (no full dashboard totals/charts). */

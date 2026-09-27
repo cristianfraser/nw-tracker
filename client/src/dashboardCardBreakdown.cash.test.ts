@@ -1,8 +1,4 @@
 import { describe, expect, it } from "vitest";
-import {
-  buildCashEqsCardBreakdown,
-  CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG,
-} from "./dashboardCardBreakdown";
 import { buildNavCardBreakdown } from "./navCardBreakdown";
 import { navNodeFixture } from "./test/navNodeFixture";
 import type { DashboardAccountRow } from "./types";
@@ -21,13 +17,7 @@ function cashRow(
   } as DashboardAccountRow;
 }
 
-describe("cash card breakdown CC link", () => {
-  const shortfall = cashRow({
-    account_id: -950_000_001,
-    category_slug: CASH_SAVINGS_CC_SHORTFALL_CATEGORY_SLUG,
-    bucket_slug: "cash_eqs__cash_savings",
-    current_value_clp: -500_000,
-  });
+describe("cash card breakdown", () => {
   const reserva = cashRow({
     account_id: 1,
     name: "Reserva",
@@ -42,17 +32,11 @@ describe("cash card breakdown CC link", () => {
     current_value_clp: 300_000,
   });
 
-  it("omits shortfall from cash_eqs hub breakdown (no credit_card link)", () => {
-    const lines = buildCashEqsCardBreakdown([reserva, checking, shortfall]);
-    expect(lines).toHaveLength(2);
-    expect(lines.every((l) => !l.to?.includes("credit_card"))).toBe(true);
-  });
-
   /**
    * The savings card goes through the generic nav builder (no cash special case). Its single
-   * account still gets a line, and the synthetic bucket-scoped shortfall row must not.
+   * account still gets a line, and another account scoped to the same bucket must not.
    */
-  it("savings nav card lists its own account only, never the shortfall row", () => {
+  it("savings nav card lists its own account only", () => {
     const savingsNode = navNodeFixture({
       slug: "cash_savings",
       label: "Ahorros y reservas",
@@ -71,10 +55,10 @@ describe("cash card breakdown CC link", () => {
       ],
     });
 
-    const lines = buildNavCardBreakdown(savingsNode, [reserva, shortfall]);
+    const lines = buildNavCardBreakdown(savingsNode, [reserva, checking]);
 
     expect(lines).not.toBeNull();
     expect(lines!.map((l) => l.label)).toEqual(["Reserva"]);
-    expect(lines!.some((l) => l.clp === -500_000)).toBe(false);
+    expect(lines!.some((l) => l.clp === 300_000)).toBe(false);
   });
 });

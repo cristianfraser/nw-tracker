@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { roundedMetricDelta } from "../dashboardCardBreakdown";
 import { mainValueForNavChild, requireNavCardMetrics } from "../portfolioNavDashboardCards";
 import { dashPickForNavStrip } from "../queries/fetchers";
-import type { CachedDashboardNavSnapshot, DashboardAccountRow, NavTreeNodeDto } from "../types";
+import type { DashboardAccountRow, DashboardNavSnapshotResponse, NavTreeNodeDto } from "../types";
 import { perturbDashboardNavSnapshot } from "./perturbCachedAmount";
 
 const retirementChild: NavTreeNodeDto = {
@@ -99,7 +99,7 @@ function row(p: Partial<DashboardAccountRow>): DashboardAccountRow {
 }
 
 describe("loading PL placeholder repro", () => {
-  it("without nw_bucket_totals period PL stays near cached delta_month not full balance", () => {
+  it("period PL stays near the cached delta_month, not the full balance", () => {
     const periodMetrics = {
       deposits_clp: 0,
       deposits_usd: null,
@@ -115,9 +115,25 @@ describe("loading PL placeholder repro", () => {
       month: periodMetrics,
       year: periodMetrics,
     };
-    const raw: CachedDashboardNavSnapshot = {
+    const buckets = {
+      net_worth_clp: 36_076_883,
+      real_estate_clp: 0,
+      retirement_clp: 36_076_883,
+      brokerage_clp: 0,
+      cash_eqs_clp: 0,
+    };
+    const raw: DashboardNavSnapshotResponse = {
       accounts: [row({})],
       liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
+      nw_bucket_totals: {
+        ...buckets,
+        prior_closes: {
+          month_end: "2026-05-31",
+          year_end: "2025-12-31",
+          month: { ...buckets, net_worth_clp: 35_490_000, retirement_clp: 35_490_000 },
+          year: { ...buckets, net_worth_clp: 30_000_000, retirement_clp: 30_000_000 },
+        },
+      },
       card_metrics_by_slug: { retirement: { child: variant, parent: variant } },
     };
     const perturbed = perturbDashboardNavSnapshot(raw);
@@ -127,7 +143,6 @@ describe("loading PL placeholder repro", () => {
     const periodPl = roundedMetricDelta(metrics, false, "period");
     const cachedDelta = perturbed.accounts[0]!.delta_month_clp!;
 
-    expect(dash.totals.prior_closes.month_end).toBe("");
     expect(Math.abs(periodPl!)).toBeLessThan(clp * 0.1);
     expect(Math.abs(periodPl! - cachedDelta)).toBeLessThan(Math.abs(cachedDelta) * 0.5);
   });

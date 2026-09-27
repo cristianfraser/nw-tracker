@@ -1,4 +1,3 @@
-import { dashboardAccountCurrentValueClp } from "./accountGroupTotals";
 import { navAccountIdSet } from "./portfolioNavDashboardCards";
 import type { DashboardAccountRow, NavTreeNodeDto } from "./types";
 
@@ -16,22 +15,7 @@ export function findPortfolioGroupInNav(
   return null;
 }
 
-/** Sum dashboard account rows for any nav subtree (`navAccountIdSet`). */
-export function sumDashboardRowsForNavNode(
-  navNode: NavTreeNodeDto,
-  accounts: DashboardAccountRow[]
-): number {
-  const ids = navAccountIdSet(navNode);
-  let clp = 0;
-  for (const a of accounts) {
-    if (!ids.has(a.account_id)) continue;
-    if (a.exclude_from_group_totals === 1) continue;
-    clp += dashboardAccountCurrentValueClp(a);
-  }
-  return clp;
-}
-
-/** USD counterpart for nav-strip totals (null when no row has `current_value_usd`). */
+/** Σ `current_value_usd` of a nav subtree's rows (undefined when no row has one). */
 export function sumDashboardRowsUsdForNavNode(
   navNode: NavTreeNodeDto,
   accounts: DashboardAccountRow[]
@@ -50,17 +34,6 @@ export function sumDashboardRowsUsdForNavNode(
   return anyUsd ? usd : undefined;
 }
 
-/** Sum dashboard account rows for a portfolio group subtree (same model as server tree rollup). */
-export function sumDashboardRowsForNavGroup(
-  netWorthRoot: NavTreeNodeDto | null | undefined,
-  portfolioGroupSlug: string,
-  accounts: DashboardAccountRow[]
-): number {
-  const node = findPortfolioGroupInNav(netWorthRoot, portfolioGroupSlug);
-  if (!node) return 0;
-  return sumDashboardRowsForNavNode(node, accounts);
-}
-
 export function sumDashboardRowsUsdForNavGroup(
   netWorthRoot: NavTreeNodeDto | null | undefined,
   portfolioGroupSlug: string,
@@ -72,19 +45,10 @@ export function sumDashboardRowsUsdForNavGroup(
 }
 
 /**
- * Ahorros y reservas NW total for a payload without server bucket totals (`dashPickForNavStrip`
- * placeholder path), mirroring the server's `cashNetOfLinkedCreditCards`: the linked card
+ * Ahorros y reservas USD total for a CLP payload shown in USD (`dashPickForNavStrip`'s
+ * CLP→USD placeholder), mirroring the server's `cashNetOfLinkedCreditCards`: the linked card
  * balance (the `linked_balances` footer) is subtracted signed — a total in credit adds.
  */
-export function sumCashSavingsAdjustedForNav(
-  netWorthRoot: NavTreeNodeDto | null | undefined,
-  accounts: DashboardAccountRow[],
-  linkedCreditCardBalanceClp: number
-): number {
-  const raw = sumDashboardRowsForNavGroup(netWorthRoot, "cash_savings", accounts);
-  return raw - linkedCreditCardBalanceClp;
-}
-
 export function sumCashSavingsAdjustedUsdForNav(
   netWorthRoot: NavTreeNodeDto | null | undefined,
   accounts: DashboardAccountRow[],
