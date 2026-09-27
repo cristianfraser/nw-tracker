@@ -58,6 +58,8 @@ PARSE_CACHE_PER_PDF_DIR = PARSE_CACHE_DIR / "per-pdf"
 PARSE_CACHE_VERSION_FILES = (
     SCRIPT_DIR / "parse-cc-statement-pdfs.py",
     SCRIPT_DIR / "cc_statement_reconcile.py",
+    SCRIPT_DIR / "cc_statement_line_rules.py",
+    SCRIPT_DIR.parent / "src" / "ccStatementLineRules.json",
     SCRIPT_DIR / "cc_pdf_qpdf.py",
     SCRIPT_DIR / "cc_pdf_ocr.py",
 )
@@ -82,6 +84,9 @@ from cc_pdf_ocr import (  # noqa: E402
     parse_santander_clp_ocr_flat,
 )
 import cc_cards  # noqa: E402
+# One list of section-3 charge merchants for the parse (which lines are section-3 rows) and the
+# reconcile (which section a line sums into) — see cc_statement_line_rules.py.
+from cc_statement_line_rules import RE_CLP_SECTION3_CHARGE  # noqa: E402
 from cc_statement_pdf_paths import (  # noqa: E402
     is_excluded_cc_pdf_path,
     pdf_already_in_card_slot,
@@ -2432,11 +2437,6 @@ def _extract_auth(s: str) -> str:
     return m.group(1) if m else ""
 
 
-RE_CLP_SECTION3_CHARGE = re.compile(
-    r"IMPUESTOS|INTERESES|TRASPASO|COMISION|IMPTO\.|SERVICIO\s+USO\s+INTERNACIONAL|"
-    r"IVA\s+USO\s+INTERNACIONAL|NOTA\s+DE\s+CREDITO|DCTO\s+COM|ADM\|MANTENCION",
-    re.I,
-)
 RE_COMPACT_PAYMENT_MERCHANT = re.compile(r"^(PAGO|MONTO\s+CANCELADO|ABONO\b)", re.I)
 RE_COMPACT_SKIP_LINE = re.compile(
     r"MONTO\s+TOTAL\s+FACTURADO|MONTO\s+M[IÍ]NIMO|DEUDA\s+TOTAL|PAGAR\s+HASTA|"

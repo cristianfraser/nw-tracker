@@ -1,11 +1,18 @@
 import { normCcMerchant } from "./ccDedupeKey.js";
+import { CC_PAYMENT_MERCHANTS, CC_USD_DEBT_ABONO_MERCHANT } from "./ccStatementLineRules.js";
 
-/** CC statement / web-paste payment merchants (exact literals, not checking-cartola descriptions). */
-const CC_PAYMENT_MERCHANTS = new Set(["PAGO", "MONTO CANCELADO", "ABONO"]);
-
+/**
+ * CC statement / web-paste payment merchants (exact literals, not checking-cartola descriptions;
+ * the set lives in `ccStatementLineRules.json`, shared with the Python parse reconcile).
+ */
 export function isCcPaymentMerchant(merchant: string | null | undefined): boolean {
   const m = normCcMerchant(String(merchant ?? ""));
   return m.length > 0 && CC_PAYMENT_MERCHANTS.has(m);
+}
+
+/** «ABONO DE DIVISAS»: the payment of the USD debt (substring — some formats suffix it). */
+export function isCcUsdDebtAbonoMerchant(merchant: string | null | undefined): boolean {
+  return normCcMerchant(String(merchant ?? "")).includes(CC_USD_DEBT_ABONO_MERCHANT);
 }
 
 /**
@@ -34,8 +41,7 @@ export function requireHeaderPagoIso(statementDate: string, raw: string): string
 export function isCcPaymentOrUsdDebtAbonoMerchant(
   merchant: string | null | undefined
 ): boolean {
-  if (isCcPaymentMerchant(merchant)) return true;
-  return normCcMerchant(String(merchant ?? "")).includes("ABONO DE DIVISAS");
+  return isCcPaymentMerchant(merchant) || isCcUsdDebtAbonoMerchant(merchant);
 }
 
 /** Santander web UI shows charges negative / payments positive — the opposite of BCI. */
