@@ -44,6 +44,13 @@ describe("checkingCartolaParse", () => {
   it("parses Chilean amounts", () => {
     expect(parseCartolaAmount("$1.651.718")).toBe(1651718);
     expect(parseCartolaAmount("23097197")).toBe(23097197);
+    expect(parseCartolaAmount("1.234,56")).toBe(1235);
+    expect(parseCartolaAmount("1234,56")).toBe(1235);
+  });
+
+  it("reads a cell without a number as no amount", () => {
+    expect(parseCartolaAmount("")).toBeNull();
+    expect(parseCartolaAmount("SALDO")).toBeNull();
   });
 
   it("parses movements, saldos, and period from a cartola workbook", () => {

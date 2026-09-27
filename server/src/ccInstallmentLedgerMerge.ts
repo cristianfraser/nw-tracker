@@ -35,17 +35,12 @@ import { learnGroceryBranchesFromCardLines, type GroceryBranchLearningResult } f
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import { installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
 import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
-
-function parseInt10(s: string): number | null {
-  const n = Number(String(s ?? "").replace(/\s+/g, "").replace(/\./g, "").replace(",", "."));
-  if (!Number.isFinite(n)) return null;
-  return Math.trunc(n);
-}
+import { parseOptionalChileanInteger } from "./chileanNumber.js";
 
 function installmentContractAmountClp(row: CcStatementCsvRecord): number {
-  const a = parseInt10(String(row.amount_clp ?? "")) ?? 0;
-  const b = parseInt10(String(row.monto_origen_operacion_clp ?? "")) ?? 0;
-  const c = parseInt10(String(row.monto_total_a_pagar_clp ?? "")) ?? 0;
+  const a = parseOptionalChileanInteger(String(row.amount_clp ?? "")) ?? 0;
+  const b = parseOptionalChileanInteger(String(row.monto_origen_operacion_clp ?? "")) ?? 0;
+  const c = parseOptionalChileanInteger(String(row.monto_total_a_pagar_clp ?? "")) ?? 0;
   return Math.max(a, b, c);
 }
 
@@ -68,7 +63,7 @@ function makeLoanKey(row: CcStatementCsvRecord): string | null {
   const cg = String(row.card_group ?? "A").trim() || "A";
   const iso = txDateIso(row);
   const amt = installmentContractAmountClp(row);
-  const nt = parseInt10(String(row.nro_cuota_total ?? ""));
+  const nt = parseOptionalChileanInteger(String(row.nro_cuota_total ?? ""));
   if (!iso || amt <= 0 || nt == null || nt <= 0) return null;
   const merch =
     merchantStemForInstallmentDedupe(row.merchant) ||
@@ -316,7 +311,7 @@ export function mergeInstallmentLedgerFromParsedRows(
       for (const r of sorted) {
         if (isInstallmentContractSummaryMerchant(String(r.merchant ?? ""))) continue;
         maxTotal = Math.max(maxTotal, installmentContractAmountClp(r));
-        const nt = parseInt10(String(r.nro_cuota_total ?? ""));
+        const nt = parseOptionalChileanInteger(String(r.nro_cuota_total ?? ""));
         if (nt != null && nt > 0) maxCuotas = Math.max(maxCuotas, nt);
       }
       if (maxCuotas <= 0) continue;
@@ -416,11 +411,11 @@ export function mergeInstallmentLedgerFromParsedRows(
           transaction_date: chosen.transaction_date,
         });
         if (!payBy) continue;
-        const cuotaAmt = parseInt10(String(chosen.valor_cuota_mensual_clp ?? ""));
+        const cuotaAmt = parseOptionalChileanInteger(String(chosen.valor_cuota_mensual_clp ?? ""));
         if (cuotaAmt == null || cuotaAmt <= 0) continue;
         const ccRaw = String(chosen.nro_cuota_current ?? "").trim();
-        const cuota_current = ccRaw ? parseInt10(ccRaw) : null;
-        const ct = parseInt10(String(chosen.nro_cuota_total ?? ""));
+        const cuota_current = ccRaw ? parseOptionalChileanInteger(ccRaw) : null;
+        const ct = parseOptionalChileanInteger(String(chosen.nro_cuota_total ?? ""));
         const cuota_total = ct != null && ct > 0 ? ct : maxCuotas;
 
         insPay.run({

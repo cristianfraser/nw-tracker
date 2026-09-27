@@ -13,13 +13,7 @@ import {
   patchCcLineOriginCardOnDedupeHit,
 } from "./ccExpenseLineDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-
-function parseInt10(s: string): number | null {
-  const n = Number(String(s ?? "").replace(/\s+/g, "").replace(/\./g, "").replace(",", "."));
-  if (!Number.isFinite(n)) return null;
-  return Math.trunc(n);
-}
-
+import { parseOptionalChileanInteger } from "./chileanNumber.js";
 import { ccStatementRecordsFingerprint } from "./ccStatementFingerprint.js";
 
 function parseUsdAmount(s: string): number | null {
@@ -127,15 +121,15 @@ export function ccImportFlowItemFromRow(
 ): CcImportFlowItem {
   const amountClpRaw = String(row.amount_clp ?? "").trim();
   const amountUsdRaw = String(row.amount_usd ?? "").trim();
-  const cuotaCur = parseInt10(String(row.nro_cuota_current ?? "").trim() || "x");
-  const cuotaTot = parseInt10(String(row.nro_cuota_total ?? "").trim() || "x");
+  const cuotaCur = parseOptionalChileanInteger(String(row.nro_cuota_current ?? ""));
+  const cuotaTot = parseOptionalChileanInteger(String(row.nro_cuota_total ?? ""));
   const txRaw = String(row.transaction_date ?? "").trim();
   const postRaw = String(row.posting_date ?? "").trim();
   return {
     occurred_on: parseDdMmYyToIso(txRaw) ?? parseDdMmYyToIso(postRaw) ?? (txRaw || postRaw),
     description:
       String(row.merchant ?? "").trim() || String(row.description_merged ?? "").trim() || "—",
-    amount_clp: amountClpRaw ? parseInt10(amountClpRaw) : null,
+    amount_clp: parseOptionalChileanInteger(amountClpRaw),
     amount_usd: amountUsdRaw ? parseUsdAmount(amountUsdRaw) : null,
     installment: String(row.installment_flag ?? "").toLowerCase() === "true",
     cuota:
@@ -327,28 +321,29 @@ export function importCcStatementsMerge(
     // deduping a re-paste against its own bucket and against PDF lines is their whole point.
     const dedupeScanOpts = { excludeWebPasteSources: !sourcePdf.startsWith("import:web-paste") };
 
+    // An empty header cell (a total the statement does not print) stores 0, monto_facturado null.
     const header = {
       saldo_anterior:
         parseUsdAmount(String(first.statement_saldo_anterior ?? "")) ??
-        parseInt10(String(first.statement_saldo_anterior ?? "")),
+        parseOptionalChileanInteger(String(first.statement_saldo_anterior ?? "")) ?? 0,
       abono:
         parseUsdAmount(String(first.statement_abono ?? "")) ??
-        parseInt10(String(first.statement_abono ?? "")),
+        parseOptionalChileanInteger(String(first.statement_abono ?? "")) ?? 0,
       compras_cargos:
         parseUsdAmount(String(first.statement_compras_cargos ?? "")) ??
-        parseInt10(String(first.statement_compras_cargos ?? "")),
+        parseOptionalChileanInteger(String(first.statement_compras_cargos ?? "")) ?? 0,
       deuda_total:
         parseUsdAmount(String(first.statement_deuda_total ?? "")) ??
-        parseInt10(String(first.statement_deuda_total ?? "")),
+        parseOptionalChileanInteger(String(first.statement_deuda_total ?? "")) ?? 0,
       monto_facturado: (() => {
         const v =
           parseUsdAmount(String(first.statement_monto_facturado ?? "")) ??
-          parseInt10(String(first.statement_monto_facturado ?? ""));
+          parseOptionalChileanInteger(String(first.statement_monto_facturado ?? ""));
         return v != null && v > 0 ? v : null;
       })(),
       monto_pagado_anterior:
         parseUsdAmount(String(first.statement_monto_pagado_anterior ?? "")) ??
-        parseInt10(String(first.statement_monto_pagado_anterior ?? "")),
+        parseOptionalChileanInteger(String(first.statement_monto_pagado_anterior ?? "")) ?? 0,
       monto_pagado_anterior_date: (() => {
         const s = String(first.statement_monto_pagado_anterior_date ?? "").trim();
         return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
@@ -419,7 +414,8 @@ export function importCcStatementsMerge(
 
     for (const row of rows) {
       const inst = String(row.installment_flag ?? "").toLowerCase() === "true";
-      const amountClp = parseInt10(String(row.amount_clp ?? ""));
+      // An empty integer cell (a USD line's amount_clp, a one-shot's cuota columns) stores 0.
+      const amountClp = parseOptionalChileanInteger(String(row.amount_clp ?? "")) ?? 0;
       const amountUsd = parseUsdAmount(String(row.amount_usd ?? ""));
       const flowItem = ccImportFlowItemFromRow(row, statementLabel);
       let dedupeKeys = canonicalCcLineDedupeKeys(cardGroup, row);
@@ -507,9 +503,9 @@ export function importCcStatementsMerge(
         amount_clp: amountClp,
         amount_usd: amountUsd,
         installment_flag: inst ? 1 : 0,
-        nro_cuota_current: parseInt10(String(row.nro_cuota_current ?? "")),
-        nro_cuota_total: parseInt10(String(row.nro_cuota_total ?? "")),
-        valor_cuota_mensual_clp: parseInt10(String(row.valor_cuota_mensual_clp ?? "")),
+        nro_cuota_current: parseOptionalChileanInteger(String(row.nro_cuota_current ?? "")) ?? 0,
+        nro_cuota_total: parseOptionalChileanInteger(String(row.nro_cuota_total ?? "")) ?? 0,
+        valor_cuota_mensual_clp: parseOptionalChileanInteger(String(row.valor_cuota_mensual_clp ?? "")) ?? 0,
         valor_cuota_mensual_usd: parseUsdAmount(String(row.valor_cuota_mensual_usd ?? "")),
         interest_rate_text: String(row.interest_rate_text ?? "").trim() || null,
         tipo_cuota: String(row.tipo_cuota ?? "").trim() || null,

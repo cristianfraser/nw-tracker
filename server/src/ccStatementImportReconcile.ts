@@ -17,6 +17,7 @@ import {
   statementKeyFromRow,
   type CcStatementCsvRecord,
 } from "./ccStatementsImport.js";
+import { parseOptionalChileanInteger } from "./chileanNumber.js";
 
 const TOL_CLP = 1;
 const TOL_USD = 0.02;
@@ -85,8 +86,9 @@ function parseAmountNumber(s: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Parsed-statement CSV integer cell: empty reads 0; text that is not a number throws. */
 function parseInt10(s: string): number {
-  return Math.trunc(parseAmountNumber(s));
+  return parseOptionalChileanInteger(s) ?? 0;
 }
 
 function installmentCuotaCountsTowardOperaciones(row: CcReconcileRow): boolean {
