@@ -7,12 +7,12 @@ import { ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
+import { billingDetailCacheForAccount, planScheduleMonths } from "./ccBillingDetailCache.js";
+import { ccCupoFrame, type CcCupoFrame } from "./ccBillingViews.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   ccInstallmentLedgerRowCount,
   ccLedgerMonthEndIso,
-  cupoEnCuotasClpForCalendarMonth,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
 
@@ -80,7 +80,10 @@ export function creditCardBillingBalanceTotalClpAsOf(
 
 /**
  * Month-end valuation points: **balance total** per billing month (Detalle por mes / summary card),
- * not cupo en cuotas alone. Falls back to ledger cupo when no billing row exists for that month.
+ * not cupo en cuotas alone. A plan month the detalle has no row for (one after the last statement
+ * whose close the bank has not published, once the calendar has moved the open month past it) is
+ * valued at its cupo en cuotas by the detalle's own rule (`ccCupoFrame`): the plan remainder after
+ * the month, the live figure only for the open facturación — never for the calendar month.
  */
 export function ccLedgerStatementClosingPointsClp(
   accountId: number
@@ -99,11 +102,13 @@ export function ccLedgerStatementClosingPointsClp(
     ]),
   ].sort((a, b) => a.localeCompare(b));
   if (months.length === 0) return null;
+  // Built only when a month needs it (rare: every month usually has its detalle row).
+  let frame: CcCupoFrame | null = null;
+  const cupoEnCuotasClp = (ym: string): number =>
+    (frame ??= ccCupoFrame(accountId, planScheduleMonths(payload))).cupoEnCuotasClp(ym);
   return months.map((ym) => ({
     as_of_date: ccLedgerMonthEndIso(ym),
-    value_clp: Math.round(
-      balanceByMonth.get(ym) ?? cupoEnCuotasClpForCalendarMonth(accountId, ym)
-    ),
+    value_clp: Math.round(balanceByMonth.get(ym) ?? cupoEnCuotasClp(ym)),
   }));
 }
 

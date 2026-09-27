@@ -36,7 +36,7 @@ import {
 } from "./ccOpenWebPastePdfReconcile.js";
 import { buildCcExpenseLines } from "./flowsCreditCardExpenses.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
-import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
+import { listCcBillingMonthBalances, recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { ccWebPasteToCsvRecords, webPasteLineDedupeKey, type CcWebPasteLine } from "./ccWebPasteParse.js";
 
 /**
@@ -484,6 +484,31 @@ describe("credit-card close evidence", () => {
     expect(september.balance_total_clp).toBe((september.total_facturado_clp ?? 0) + 60_000);
     expect(liveCreditCardOutstandingClp(accountId)).toBe(90_000);
     expect(october.cupo_en_cuotas_clp).toBe(60_000);
+  });
+
+  it("stores the detalle's cupo and saldo in the balances snapshot, the open month's bucket included", () => {
+    insertSeptemberPlan();
+    // An October purchase already sits in the open bucket, so October has a statement slot too.
+    const october = insertStatement({ source: "import:web-paste|open|2026-10", date: "20/10/2026", currency: "clp" });
+    insertBucketLine(october, "2026-09-25", "SWITCH VITEST", 15_500);
+    recomputeCcBillingMonthBalances(accountId);
+
+    const detail = creditCardInstallmentsResponse(accountId).billing_detail_by_month ?? [];
+    const stored = listCcBillingMonthBalances(accountId);
+    expect(stored.map((r) => `${r.billing_month} ${r.as_of_kind}`).sort()).toEqual([
+      "2026-08 statement",
+      "2026-10 manual",
+      "2026-10 statement",
+    ]);
+    for (const row of stored) {
+      const d = detail.find((x) => x.billing_month === row.billing_month)!;
+      expect(row.cupo_utilizado_clp).toBe(d.cupo_en_cuotas_clp);
+      expect(row.saldo_total_clp).toBe(d.balance_total_clp);
+    }
+    // The open month's bucket row carries every cuota still unbilled — the snapshot used to store
+    // the plan remainder after October there (3x.xxx), keyed on the calendar month.
+    const octoberBucket = stored.find((r) => r.billing_month === "2026-10" && r.as_of_kind === "statement")!;
+    expect(octoberBucket.cupo_utilizado_clp).toBe(60_000);
   });
 
   it("plots the monthly «deuda en cuotas» where the daily line sits at each month-end", () => {
