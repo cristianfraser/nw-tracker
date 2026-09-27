@@ -341,3 +341,132 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
     expect(report.matched).toBe(0);
   });
 });
+
+describe("reconcile against a «compras en cuotas en el período» row (00/N, e-mailed layout)", () => {
+  const accountIds: number[] = [];
+
+  afterEach(() => {
+    for (const id of accountIds) {
+      db.prepare(`DELETE FROM cc_facturado_financing_link_purchases WHERE financing_account_id = ?`).run(id);
+      db.prepare(`DELETE FROM cc_facturado_financing_links WHERE financed_account_id = ?`).run(id);
+      db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(id);
+      db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(id);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+    }
+    accountIds.length = 0;
+  });
+
+  /**
+   * A cuota purchase of the cycle, printed on its first statement as a 00/3 row under the bank's
+   * merchant name; the statement import created its plan, and a plan hand-entered from the
+   * 15-character feed row beforehand still sits beside it. `lineAmountClp` is what the parser
+   * stored as the row amount: the principal since 2026-09, the cuota before.
+   */
+  function makeFixture(lineAmountClp: number): {
+    accountId: number;
+    statementId: number;
+    manualId: number;
+  } {
+    const group = db.prepare(`SELECT id FROM asset_groups LIMIT 1`).get() as { id: number };
+    const accountId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, ?, ?, ?)`)
+        .run(
+          group.id,
+          "Vitest · 00/N row reconcile",
+          "credit_card_master|santander|vitest-preamble-row-reconcile",
+          "credit_card_master|santander|vitest-preamble-row-reconcile"
+        ).lastInsertRowid
+    );
+    accountIds.push(accountId);
+    db.prepare(
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
+       VALUES (?, 21, 20, '4848')`
+    ).run(accountId);
+
+    const statementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, layout, currency)
+           VALUES (?, 'A', 'vitest preamble sep.pdf', '24/09/2026', '25/08/2026', '24/09/2026', 'wide', 'clp')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO cc_statement_lines (
+         statement_id, transaction_date, merchant, amount_clp, installment_flag,
+         nro_cuota_current, nro_cuota_total, valor_cuota_mensual_clp, tipo_cuota, dedupe_key, parser_row_id, raw_line
+       ) VALUES (?, '28/08/2026', 'ZTIENDA PREAMBLE SPA', ?, 1, NULL, 3, 100000, '03 CUOTAS COMERC',
+         'vitest-preamble-line', 'vitest-preamble-line', 'raw')`
+    ).run(statementId, lineAmountClp);
+    db.prepare(
+      `INSERT INTO cc_installment_purchases (
+         account_id, card_group, canonical_row_id, purchase_date, total_amount_clp,
+         cuotas_totales, merchant, source
+       ) VALUES (?, 'A', 'vitest-preamble-pdf', '2026-08-28', 300000, 3, 'ZTIENDA PREAMBLE SPA', 'pdf')`
+    ).run(accountId);
+    const manualId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_installment_purchases (
+             account_id, card_group, canonical_row_id, purchase_date, total_amount_clp,
+             cuotas_totales, merchant, source
+           ) VALUES (?, 'santander', 'vitest-preamble-manual', '2026-08-28', 300000, 3, 'ZTIENDA PREAMBL', 'manual')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    return { accountId, statementId, manualId };
+  }
+
+  it("deletes the hand-entered twin and moves its financing link to the statement plan", () => {
+    const { accountId, statementId, manualId } = makeFixture(300_000);
+    const keyFor = (merchant: string) =>
+      stableInstallmentHPurchaseKeyFromLedgerArgs({
+        accountId,
+        purchaseDateIso: "2026-08-28",
+        cuotasTotales: 3,
+        totalAmountClp: 300_000,
+        merchant,
+      })!;
+    const linkId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_facturado_financing_links (financed_account_id, financed_billing_month) VALUES (?, '2026-08')`
+        )
+        .run(accountId).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO cc_facturado_financing_link_purchases (link_id, financing_account_id, financing_purchase_key)
+       VALUES (?, ?, ?)`
+    ).run(linkId, accountId, keyFor("ZTIENDA PREAMBL"));
+
+    const result = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
+    expect(result.matched).toBe(1);
+    expect(result.deleted).toBe(1);
+    expect(db.prepare(`SELECT id FROM cc_installment_purchases WHERE id = ?`).get(manualId)).toBeFalsy();
+    const linkRow = db
+      .prepare(`SELECT financing_purchase_key FROM cc_facturado_financing_link_purchases WHERE link_id = ?`)
+      .get(linkId) as { financing_purchase_key: string };
+    expect(linkRow.financing_purchase_key).toBe(keyFor("ZTIENDA PREAMBLE SPA"));
+  });
+
+  it("fails instead of keeping both plans when the row cannot be matched", () => {
+    // The pre-fix parse (the cuota as the row amount) matches nothing, and the statement plan
+    // with the manual plan's identity would count the purchase twice.
+    const { accountId, statementId, manualId } = makeFixture(100_000);
+    expect(() => reconcileManualInstallmentPurchasesForStatements(accountId, [statementId])).toThrow(
+      /could not match — manual #\d+ «ZTIENDA PREAMBL» 2026-08-28 ↔ statement #\d+ «ZTIENDA PREAMBLE SPA»/
+    );
+    expect(db.prepare(`SELECT id FROM cc_installment_purchases WHERE id = ?`).get(manualId)).toBeTruthy();
+  });
+
+  it("leaves a manual plan no statement of the batch covers to its own statement", () => {
+    const { accountId, statementId, manualId } = makeFixture(100_000);
+    db.prepare(`UPDATE cc_statements SET period_from = '25/07/2026', period_to = '24/08/2026' WHERE id = ?`).run(
+      statementId
+    );
+    const result = reconcileManualInstallmentPurchasesForStatements(accountId, [statementId]);
+    expect(result.matched).toBe(0);
+    expect(db.prepare(`SELECT id FROM cc_installment_purchases WHERE id = ?`).get(manualId)).toBeTruthy();
+  });
+});

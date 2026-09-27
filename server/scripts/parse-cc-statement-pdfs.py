@@ -2930,7 +2930,11 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
                     "place": "",
                     "description_raw": line,
                     "merchant": desc,
-                    "amount_clp": cuota or 0,
+                    # The principal, like every other installment layout: the manual-plan
+                    # reconcile compares a stored line's amount with the plan total. The
+                    # section total sums the cuotas, but operaciones skip this layout by name;
+                    # the cuota lives in valor_cuota_mensual_clp.
+                    "amount_clp": a or 0,
                     "monto_total_a_pagar_clp": b or a or 0,
                     "monto_origen_operacion_clp": a or 0,
                     "valor_cuota_mensual_clp": cuota or "",
