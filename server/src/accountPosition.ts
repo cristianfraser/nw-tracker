@@ -272,14 +272,11 @@ export function getAccountPositionMeta(
         out.afp_override_value_clp = Math.round(mtm * 100) / 100;
         out.afp_override_value_as_of = closeRow.trade_date;
         const u = out.units;
+        // Per-unit price from the value itself — the same close at the same rate
+        // (`computeCryptoMtmClp` reads the date's fx frame, live while that fx day is open), so
+        // units × price is the value even when the coin quote is older than the date.
         if (u != null && u > 1e-12) {
-          const fx = fxRowOnOrBefore(closeRow.trade_date);
-          const pxUsd = closeRow.close;
-          if (fx && fx.clp_per_usd > 0 && Number.isFinite(pxUsd)) {
-            out.afp_override_valor_cuota_clp = Math.round(pxUsd * fx.clp_per_usd * 10000) / 10000;
-          } else {
-            out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
-          }
+          out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
         }
       }
       return out;
