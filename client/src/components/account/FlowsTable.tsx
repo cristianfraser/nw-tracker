@@ -166,7 +166,7 @@ export type FlowsFilterState = {
   /** Inclusive YYYY-MM-DD bounds (raw input values). */
   date_from: string;
   date_to: string;
-  /** Raw amount inputs, read by `parseNumberInput` (FlowsPanel); exact suppresses min/max. */
+  /** Raw amount inputs, read by `parseFlowsAmountFilter` (FlowsPanel); exact suppresses min/max. */
   amount_exact: string;
   amount_min: string;
   amount_max: string;

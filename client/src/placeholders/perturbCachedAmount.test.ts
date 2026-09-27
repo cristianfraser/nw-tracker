@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mainValueForNavChild } from "../portfolioNavDashboardCards";
+import { dashPickForNavStrip } from "../queries/fetchers";
+import { navNodeFixture } from "../test/navNodeFixture";
 import {
   PERTURB_FACTOR_MAX,
   PERTURB_FACTOR_MIN,
@@ -20,6 +23,13 @@ import type {
   DashboardNavSnapshotResponse,
   NavTreeNodeDto,
 } from "../types";
+
+/** A bucket card whose main value is the bucket total (`mainValueForNavChild`). */
+const brokerageCardNode = navNodeFixture({
+  slug: "brokerage",
+  label: "Brokerage",
+  dashboard_bucket_slug: "brokerage",
+});
 
 function dashRow(partial: Partial<DashboardAccountRow> & Pick<DashboardAccountRow, "account_id" | "name">): DashboardAccountRow {
   return {
@@ -255,6 +265,51 @@ describe("synthesizeMissingUsdOnNavSnapshot", () => {
       converted * PERTURB_FACTOR_MAX
     );
   });
+
+  it("first USD visit on the CLP cache displays converted server bucket totals, not —", () => {
+    // The row's own value disagrees with the bucket total: the card must show the server's.
+    const clpCache: DashboardNavSnapshotResponse = {
+      card_metrics_by_slug: {},
+      accounts: [dashRow({ account_id: 1, name: "A", current_value_clp: 1_000_000 })],
+      liabilities_breakdown: { mortgage_clp: 0, credit_card_clp: 0 },
+      nw_bucket_totals: {
+        net_worth_clp: 19_000_000,
+        real_estate_clp: 0,
+        retirement_clp: 0,
+        brokerage_clp: 19_000_000,
+        cash_eqs_clp: 0,
+        prior_closes: {
+          month_end: "2026-08-31",
+          year_end: "2025-12-31",
+          month: {
+            net_worth_clp: 0,
+            real_estate_clp: 0,
+            retirement_clp: 0,
+            brokerage_clp: 0,
+            cash_eqs_clp: 0,
+          },
+          year: {
+            net_worth_clp: 0,
+            real_estate_clp: 0,
+            retirement_clp: 0,
+            brokerage_clp: 0,
+            cash_eqs_clp: 0,
+          },
+        },
+      },
+    };
+
+    const shown = synthesizeMissingUsdOnNavSnapshot(clpCache, {
+      date: "2026-09-26",
+      clp_per_usd: 950,
+    });
+    const dash = dashPickForNavStrip({ ...shown, overviewPoints: [] });
+
+    expect(dash.totals.brokerage_usd).toBeCloseTo(20_000, 5);
+    expect(dash.totals.net_worth_usd).toBeCloseTo(20_000, 5);
+    // DashboardCardValue renders «—» only when apiUsd is null.
+    expect(mainValueForNavChild(dash, brokerageCardNode, true).apiUsd).toBeCloseTo(20_000, 5);
+  });
 });
 
 describe("synthesizeMissingUsdOnDashboardNavContext", () => {
@@ -332,11 +387,30 @@ describe("synthesizeMissingUsdOnDashboardNavContext", () => {
     expect(synthesized.liabilities_breakdown!.mortgage_usd).toBeCloseTo(100_000, 5);
   });
 
-  it("leaves nw_bucket_totals and overviewPoints untouched", () => {
+  it("converts nw_bucket_totals to USD at the card metrics' rate; overviewPoints untouched", () => {
     const ctx = navCtx();
     const synthesized = synthesizeMissingUsdOnDashboardNavContext(ctx);
-    expect(synthesized.nw_bucket_totals).toBe(ctx.nw_bucket_totals);
+    // Rate from row A (950), the same resolveSnapshotFxRate the card metrics use.
+    expect(synthesized.nw_bucket_totals.brokerage_usd).toBeCloseTo(12_000, 5);
+    expect(synthesized.nw_bucket_totals.net_worth_usd).toBeCloseTo(12_000, 5);
+    expect(synthesized.nw_bucket_totals.cash_eqs_usd).toBe(0);
+    expect(synthesized.nw_bucket_totals.brokerage_clp).toBe(11_400_000);
     expect(synthesized.overviewPoints).toBe(ctx.overviewPoints);
+  });
+
+  it("keeps the server's USD bucket totals when the payload has them", () => {
+    const ctx = navCtx();
+    ctx.nw_bucket_totals = { ...ctx.nw_bucket_totals, brokerage_usd: 11_111, net_worth_usd: 11_111 };
+    const synthesized = synthesizeMissingUsdOnDashboardNavContext(ctx);
+    expect(synthesized.nw_bucket_totals.brokerage_usd).toBe(11_111);
+    expect(synthesized.nw_bucket_totals.net_worth_usd).toBe(11_111);
+  });
+
+  it("CLP→USD placeholder displays converted server bucket totals, not —", () => {
+    const dash = dashPickForNavStrip(synthesizeMissingUsdOnDashboardNavContext(navCtx()));
+    expect(dash.totals.brokerage_usd).toBeCloseTo(12_000, 5);
+    // DashboardCardValue renders «—» only when apiUsd is null.
+    expect(mainValueForNavChild(dash, brokerageCardNode, true).apiUsd).toBeCloseTo(12_000, 5);
   });
 
   it("leaves USD absent when no rate is available", () => {
@@ -345,6 +419,7 @@ describe("synthesizeMissingUsdOnDashboardNavContext", () => {
     const synthesized = synthesizeMissingUsdOnDashboardNavContext(ctx);
     expect(synthesized.accounts[0]!.current_value_usd).toBeUndefined();
     expect(synthesized.liabilities_breakdown!.mortgage_usd).toBeUndefined();
+    expect(synthesized.nw_bucket_totals.brokerage_usd).toBeUndefined();
   });
 });
 
