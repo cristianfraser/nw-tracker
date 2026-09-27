@@ -28,12 +28,6 @@
   margin-bottom: var(--space-2xs);
 }
 
-.subsectionTitleLoose {
-  composes: subsectionTitle;
-  margin-top: var(--space-section);
-  margin-bottom: var(--space-2xs);
-}
-
 /* Prose / muted copy */
 .proseMuted {
   font-size: var(--font-size-prose);
@@ -101,6 +95,10 @@
 
 .chartBlockFlush {
   margin-top: 0;
+}
+
+.chartBlockLoose {
+  margin-top: var(--space-section);
 }
 
 .positionBlock {

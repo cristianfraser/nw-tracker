@@ -360,8 +360,7 @@ export function StandardAccountDetailPage({ data }: Props) {
             <p className="muted">{t("accountDetail.monthlyPerfNotEnough")}</p>
           ) : (
             <>
-              <h3 className={styles.subsectionTitleTight}>{t("accountDetail.ytdCalendarTitle")}</h3>
-              <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
+              <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
                 <MonthlyPerformanceComboChart
                   title={t("accountDetail.plMonthlyVsYtdTitle")}
                   titleAs="h3"
@@ -387,8 +386,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                   areaStroke={accountChartTheme.areaStroke}
                 />
               </div>
-              <h3 className={styles.subsectionTitleLoose}>{t("dashboard.sections.accumulatedEarnings")}</h3>
-              <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
+              <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockLoose)}>
                 <MonthlyPerformanceComboChart
                   title={t("accountDetail.monthlyDeltaAndAccumTitle")}
                   titleAs="h3"

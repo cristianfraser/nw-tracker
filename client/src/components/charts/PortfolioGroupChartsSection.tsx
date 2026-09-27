@@ -151,8 +151,7 @@ export function PortfolioGroupChartsSection({
       groupPerfForChart.points.length > 0 &&
       groupPerfBarSeries.length > 0 ? (
         <>
-          <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>{i18n.t("charts.groupPerfTitle")}</h2>
-          <div className="chart-grid chart-grid--full-line">
+          <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
             <MonthlyPerformanceComboChart
               title={i18n.t("charts.groupPerfComboTitle")}
               points={groupPerfForChart.points}
@@ -175,8 +174,7 @@ export function PortfolioGroupChartsSection({
               ]}
             />
           </div>
-          <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>{i18n.t("charts.groupAccumTitle")}</h2>
-          <div className="chart-grid chart-grid--full-line">
+          <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
             <MonthlyPerformanceComboChart
               title={i18n.t("charts.monthlyDeltaConsolidatedAccumTitle")}
               points={groupPerfForChart.points}

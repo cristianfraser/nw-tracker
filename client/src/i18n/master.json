@@ -296,10 +296,6 @@
       "en": "No valuation series for this period.",
       "es": "Sin series de valorización para este período."
     },
-    "groupPerfTitle": {
-      "en": "Monthly P/L — YTD (group)",
-      "es": "P/L mensual — YTD (grupo)"
-    },
     "groupPerfComboTitle": {
       "en": "Δ by account / subgroup, combined YTD and total Δ",
       "es": "Δ por cuenta / subgrupo, YTD combinado y Δ total"
@@ -311,10 +307,6 @@
     "deltaTotalSeries": {
       "en": "Total Δ",
       "es": "Δ total"
-    },
-    "groupAccumTitle": {
-      "en": "Accumulated earnings (group)",
-      "es": "Accumulated earnings (grupo)"
     },
     "athTooltip": {
       "en": "ATH · {{date}}",
@@ -435,21 +427,9 @@
         "en": "Net worth",
         "es": "Patrimonio neto"
       },
-      "netWorthUsdSectionTitle": {
-        "en": "Net worth, invested and US$ levels (CLP)",
-        "es": "Patrimonio neto, invested y niveles US$ (CLP)"
-      },
       "netWorthUsdChartTitle": {
         "en": "Net worth vs invested (US$ reference)",
         "es": "Patrimonio neto vs invested (referencia US$)"
-      },
-      "perfSectionTitleMonthly": {
-        "en": "Investments — monthly P/L (YTD)",
-        "es": "Inversiones — P/L mensual (YTD)"
-      },
-      "perfSectionTitleYearly": {
-        "en": "Investments — annual P/L (calendar year)",
-        "es": "Inversiones — P/L anual (año calendario)"
       },
       "perfChartTitleMonthly": {
         "en": "Monthly Δ by class, investments YTD and combined monthly Δ",
@@ -458,14 +438,6 @@
       "perfChartTitleYearly": {
         "en": "Annual Δ by class, annual investments total and combined annual Δ",
         "es": "Δ anual por clase, total anual inversiones y Δ anual combinado"
-      },
-      "accumSectionTitleMonthly": {
-        "en": "Investments — accumulated earnings",
-        "es": "Inversiones — ganancias acumuladas"
-      },
-      "accumSectionTitleYearly": {
-        "en": "Investments — accumulated (annual steps)",
-        "es": "Inversiones — acumulado (pasos anuales)"
       },
       "accumEarningsChartTitleMonthly": {
         "en": "Accumulated earnings and monthly Δ (investments)",
@@ -1468,10 +1440,6 @@
       "en": "Monthly performance (computed)",
       "es": "Rendimiento mensual (calculado)"
     },
-    "ytdCalendarTitle": {
-      "en": "YTD (calendar year)",
-      "es": "YTD (año calendario)"
-    },
     "plMonthlyVsYtdTitle": {
       "en": "Monthly P/L vs YTD",
       "es": "P/L mensual vs YTD"
@@ -2424,14 +2392,6 @@
       "historialProjectionStart": {
         "en": "Today (projection →)",
         "es": "Hoy (proyección →)"
-      },
-      "ytdSection": {
-        "en": "YTD (calendar year)",
-        "es": "YTD (año calendario)"
-      },
-      "accSection": {
-        "en": "Accumulated earnings",
-        "es": "Accumulated earnings"
       },
       "accAreaName": {
         "en": "Accumulated earnings",

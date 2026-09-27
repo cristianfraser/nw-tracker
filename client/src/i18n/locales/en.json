@@ -98,11 +98,9 @@
     "noMonthlyPl": "No monthly P/L data for this period.",
     "noExpensesInPeriod": "No expenses in this period.",
     "noValuationSeries": "No valuation series for this period.",
-    "groupPerfTitle": "Monthly P/L — YTD (group)",
     "groupPerfComboTitle": "Δ by account / subgroup, combined YTD and total Δ",
     "ytdGroupSeries": "YTD (group)",
     "deltaTotalSeries": "Total Δ",
-    "groupAccumTitle": "Accumulated earnings (group)",
     "athTooltip": "ATH · {{date}}",
     "overview": {
       "invested": "Invested"
@@ -141,14 +139,9 @@
     "sections": {
       "primaryAccountsTitle": "Main accounts",
       "overviewTitle": "Net worth",
-      "netWorthUsdSectionTitle": "Net worth, invested and US$ levels (CLP)",
       "netWorthUsdChartTitle": "Net worth vs invested (US$ reference)",
-      "perfSectionTitleMonthly": "Investments — monthly P/L (YTD)",
-      "perfSectionTitleYearly": "Investments — annual P/L (calendar year)",
       "perfChartTitleMonthly": "Monthly Δ by class, investments YTD and combined monthly Δ",
       "perfChartTitleYearly": "Annual Δ by class, annual investments total and combined annual Δ",
-      "accumSectionTitleMonthly": "Investments — accumulated earnings",
-      "accumSectionTitleYearly": "Investments — accumulated (annual steps)",
       "accumEarningsChartTitleMonthly": "Accumulated earnings and monthly Δ (investments)",
       "accumEarningsChartTitleYearly": "Accumulated earnings and annual Δ (investments)",
       "accumFlowsChartTitleMonthly": "Monthly Δ and deposits (investments)",
@@ -433,7 +426,6 @@
       "colValuePerUnit": "Value / unit (CLP)"
     },
     "monthlyPerfComputedTitle": "Monthly performance (computed)",
-    "ytdCalendarTitle": "YTD (calendar year)",
     "plMonthlyVsYtdTitle": "Monthly P/L vs YTD",
     "financingCostMonth": "Month P/L (financing cost)",
     "deltaMonthNominal": "Month Δ (nominal P/L)",
@@ -703,8 +695,6 @@
       "tooltipCloseOn": "Close {{date}}",
       "historialOpenMonth": "Open billing month",
       "historialProjectionStart": "Today (projection →)",
-      "ytdSection": "YTD (calendar year)",
-      "accSection": "Accumulated earnings",
       "accAreaName": "Accumulated earnings",
       "configTitle": "Card configuration",
       "configCardLabel": "Card",

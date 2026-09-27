@@ -98,11 +98,9 @@
     "noMonthlyPl": "Sin datos de P/L mensual para este período.",
     "noExpensesInPeriod": "Sin gastos en este período.",
     "noValuationSeries": "Sin series de valorización para este período.",
-    "groupPerfTitle": "P/L mensual — YTD (grupo)",
     "groupPerfComboTitle": "Δ por cuenta / subgrupo, YTD combinado y Δ total",
     "ytdGroupSeries": "YTD (grupo)",
     "deltaTotalSeries": "Δ total",
-    "groupAccumTitle": "Accumulated earnings (grupo)",
     "athTooltip": "Máx. histórico · {{date}}",
     "overview": {
       "invested": "Invertido"
@@ -141,14 +139,9 @@
     "sections": {
       "primaryAccountsTitle": "Cuentas principales",
       "overviewTitle": "Patrimonio neto",
-      "netWorthUsdSectionTitle": "Patrimonio neto, invested y niveles US$ (CLP)",
       "netWorthUsdChartTitle": "Patrimonio neto vs invested (referencia US$)",
-      "perfSectionTitleMonthly": "Inversiones — P/L mensual (YTD)",
-      "perfSectionTitleYearly": "Inversiones — P/L anual (año calendario)",
       "perfChartTitleMonthly": "Δ mensual por clase, YTD inversiones y Δ mensual combinado",
       "perfChartTitleYearly": "Δ anual por clase, total anual inversiones y Δ anual combinado",
-      "accumSectionTitleMonthly": "Inversiones — ganancias acumuladas",
-      "accumSectionTitleYearly": "Inversiones — acumulado (pasos anuales)",
       "accumEarningsChartTitleMonthly": "Ganancias acumuladas y Δ mensual (inversiones)",
       "accumEarningsChartTitleYearly": "Ganancias acumuladas y Δ anual (inversiones)",
       "accumFlowsChartTitleMonthly": "Δ mensual y depósitos (inversiones)",
@@ -433,7 +426,6 @@
       "colValuePerUnit": "Valor / unidad (CLP)"
     },
     "monthlyPerfComputedTitle": "Rendimiento mensual (calculado)",
-    "ytdCalendarTitle": "YTD (año calendario)",
     "plMonthlyVsYtdTitle": "P/L mensual vs YTD",
     "financingCostMonth": "P/L mes (coste financiero)",
     "deltaMonthNominal": "Δ mes (P/L nominal)",
@@ -703,8 +695,6 @@
       "tooltipCloseOn": "Cierre {{date}}",
       "historialOpenMonth": "Facturación abierta",
       "historialProjectionStart": "Hoy (proyección →)",
-      "ytdSection": "YTD (año calendario)",
-      "accSection": "Accumulated earnings",
       "accAreaName": "Accumulated earnings",
       "configTitle": "Configuración de la tarjeta",
       "configCardLabel": "Tarjeta",
