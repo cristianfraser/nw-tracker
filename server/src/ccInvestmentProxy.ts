@@ -472,8 +472,8 @@ type NormalPurchaseRow = {
 };
 
 /**
- * Build proxy lots for all normal (non-installment, positive CLP) purchases for an account.
- * Keyed by statement_line_id.
+ * Proxy lot results for all normal (non-installment, positive CLP) purchases of an account — the
+ * one-shot half of the facturación proxy (`aggregateProxyByFacturacion`).
  *
  * Each line belongs to the facturación its statement's lines belong to, by the one rule the
  * facturado and the facturación modal read (`facturacionMonthByStatementDate`: the statement's own
@@ -490,16 +490,12 @@ export function buildNormalPurchaseProxyForAccount(
   tickers: string[],
   today: string,
   facturaciones: readonly Pick<CcFacturacionRow, "billing_month" | "pay_by_iso">[]
-): {
-  lineProxy: Map<number, ProxyLotResult>;
-  lotResults: ProxyLotResult[];
-} {
-  const lineProxy = new Map<number, ProxyLotResult>();
+): ProxyLotResult[] {
   const lotResults: ProxyLotResult[] = [];
   const activeTickers = tickersWithData(tickers);
-  if (activeTickers.length === 0) return { lineProxy, lotResults };
+  if (activeTickers.length === 0) return lotResults;
   const rows = stmtNormalPurchasesForAccount.all(accountId) as NormalPurchaseRow[];
-  if (rows.length === 0) return { lineProxy, lotResults };
+  if (rows.length === 0) return lotResults;
 
   const facturacionByStatementDate = facturacionMonthByStatementDate(accountId);
   const payByIsoFor = facturacionPayByIsoResolver(accountId, facturaciones);
@@ -525,10 +521,8 @@ export function buildNormalPurchaseProxyForAccount(
       pay_by_iso: payByIsoFor(billingMonth),
       billing_month: billingMonth,
     });
-    const result = computeProxyLot(lot, activeTickers, today);
-    lineProxy.set(row.statement_line_id, result);
-    lotResults.push(result);
+    lotResults.push(computeProxyLot(lot, activeTickers, today));
   }
 
-  return { lineProxy, lotResults };
+  return lotResults;
 }

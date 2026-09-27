@@ -257,13 +257,7 @@ function buildInstallmentProxy(
 
   // Normal purchase lots, dated by the same facturaciones rows the table shows. Every withdrawal,
   // cuota or one-shot, carries the facturación that billed it.
-  const { lotResults: normalLotResults } = buildNormalPurchaseProxyForAccount(
-    accountId,
-    tickers,
-    today,
-    facturaciones
-  );
-  allLotResults.push(...normalLotResults);
+  allLotResults.push(...buildNormalPurchaseProxyForAccount(accountId, tickers, today, facturaciones));
 
   const facturacionProxy = aggregateProxyByFacturacion(allLotResults, activeTickers);
   return { purchaseProxy, facturacionProxy };

@@ -11,15 +11,6 @@ export function accountIdFromReq(req: { params: { id?: string } }): number {
   return Number.isFinite(raw) ? raw : NaN;
 }
 
-export function parseProxyTickersParam(raw: unknown): string[] | null {
-  if (raw == null || raw === "") return null;
-  const str = String(raw).trim();
-  if (!str) return null;
-  const tickers = str.split(",").map((t) => t.trim()).filter(Boolean);
-  return tickers.length > 0 ? tickers : null;
-}
-
-
 export function isKnownClassTabGroup(group: string): boolean {
   if (group === "inversiones") return true;
   if (isResolvablePortfolioGroupSlug(group)) return true;

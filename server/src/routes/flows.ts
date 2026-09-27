@@ -48,7 +48,6 @@ import {
   updateRealEstateExpenseBillMonth,
   updateRealEstateExpenseConsumption,
 } from "../realEstateExpenseMatching.js";
-import { parseProxyTickersParam } from "./shared.js";
 
 export function registerFlowsRoutes(app: express.Express): void {
 app.get("/api/flows/deposits", (_req, res) => {
@@ -233,9 +232,8 @@ app.get("/api/expenses", (_req, res) => {
   res.json({ expenses: rows });
 });
 
-app.get("/api/flows/expenses/credit-card", (req, res) => {
-  const proxyTickers = parseProxyTickersParam(req.query.proxy_tickers);
-  res.json(buildFlowsCreditCardExpensesPayload(proxyTickers ?? undefined));
+app.get("/api/flows/expenses/credit-card", (_req, res) => {
+  res.json(buildFlowsCreditCardExpensesPayload());
 });
 
 app.get("/api/flows/expenses/credit-card/financing-links", (_req, res) => {
