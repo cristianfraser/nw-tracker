@@ -33,6 +33,8 @@ from cartola_pdf_kind import (
 )
 from cartola_layout import (
     AmountColumnBounds,
+    CartolaRowDateError,
+    PdfCartolaRowDates,
     detect_vista_column_bounds,
     amounts_by_column,
     derive_month_saldo_final_clp,
@@ -42,7 +44,7 @@ from cartola_layout import (
     strip_amounts_from_line,
     trim_spurious_flavia_credit,
 )
-from statement_values import iso_date_from_parts, parse_clp_amount, parse_dd_mm_yy_to_iso
+from statement_values import parse_clp_amount, parse_dd_mm_yy_to_iso
 
 CFRASER_DIR = REPO_ROOT / "cfraser"
 
@@ -94,32 +96,6 @@ def resolve_output_json() -> Path:
     return CFRASER_DIR / "cuenta-vista-cartolas-from-pdf.json"
 
 
-def infer_movement_year(dd: int, mm: int, desde_iso: str, hasta_iso: str) -> int:
-    d0 = date.fromisoformat(desde_iso)
-    d1 = date.fromisoformat(hasta_iso)
-    candidates: List[int] = []
-    for y in (d0.year, d1.year, d0.year - 1, d1.year + 1):
-        try:
-            d = date(y, mm, dd)
-        except ValueError:
-            continue
-        if d0 <= d <= d1:
-            candidates.append(y)
-    if not candidates:
-        return d1.year
-    if len(candidates) == 1:
-        return candidates[0]
-    return max(candidates)
-
-
-def dd_mm_to_iso(dd_mm: str, desde_iso: str, hasta_iso: str) -> Optional[str]:
-    m = re.match(r"^(\d{1,2})/(\d{1,2})$", str(dd_mm or "").strip())
-    if not m:
-        return None
-    d, mo = int(m.group(1)), int(m.group(2))
-    return iso_date_from_parts(d, mo, infer_movement_year(d, mo, desde_iso, hasta_iso))
-
-
 RE_COMPACT_VISTA_LINE = re.compile(
     r"^\s*(\d{4,10})\s+(\d{2}/\d{2})\s+(\d{1,3}(?:\.\d{3})+)\s+(\d+)\s+(.+)$"
 )
@@ -131,12 +107,17 @@ def uses_compact_vista_layout(text: str) -> bool:
 
 def parse_compact_vista_movements(
     text: str,
-    period_from: str,
+    source_file: str,
+    period_from: Optional[str],
     period_to: str,
 ) -> Tuple[List[ParsedMovement], List[dict]]:
     movements: List[ParsedMovement] = []
     skipped: List[dict] = []
     section: Optional[str] = None
+    # The compact layout lists cargos and abonos in separate sections, so the year tie-break
+    # restarts at each section: an ambiguous row at a section's start raises instead of following
+    # the other section's dates. (No compact cartola is in the corpus.)
+    row_dates = PdfCartolaRowDates(source_file, period_from, period_to)
     in_table = False
     for raw_line in text.splitlines():
         if "MOVIMIENTO DE SU CUENTA" in raw_line.upper():
@@ -149,9 +130,11 @@ def parse_compact_vista_movements(
         upper = raw_line.upper()
         if "CHEQUES O CARGOS" in upper or "SUC CHEQUES" in upper:
             section = "cargo"
+            row_dates = PdfCartolaRowDates(source_file, period_from, period_to)
             continue
         if "DEPOSITOS O ABONOS" in upper or "SUC DEPOSITOS" in upper:
             section = "abono"
+            row_dates = PdfCartolaRowDates(source_file, period_from, period_to)
             continue
         if RE_SIN_MOVIMIENTOS.search(raw_line) or RE_SALDO_DIA.search(raw_line):
             continue
@@ -159,9 +142,9 @@ def parse_compact_vista_movements(
         if not m or section is None:
             continue
         document_no, dd_mm, amt_raw, branch, description = m.groups()
-        occurred_on = dd_mm_to_iso(dd_mm, period_from, period_to)
+        occurred_on = row_dates.resolve(dd_mm, raw_line)
         amt = parse_clp_amount(amt_raw)
-        if not occurred_on or amt is None:
+        if amt is None:
             continue
         description = re.sub(r"\s+", " ", description).strip()
         amount_clp = -amt if section == "cargo" else amt
@@ -180,8 +163,7 @@ def parse_compact_vista_movements(
 def parse_description_line(
     line: str,
     current_date: Optional[str],
-    desde_iso: str,
-    hasta_iso: str,
+    row_dates: PdfCartolaRowDates,
     bounds: AmountColumnBounds,
 ) -> Tuple[Optional[str], Optional[ParsedMovement], Optional[dict]]:
     line = line.rstrip()
@@ -198,10 +180,7 @@ def parse_description_line(
 
     dm = RE_DATE_LINE.match(work)
     if dm:
-        dd_mm = dm.group(1)
-        iso = dd_mm_to_iso(dd_mm, desde_iso, hasta_iso)
-        if iso:
-            occurred_on = iso
+        occurred_on = row_dates.resolve(dm.group(1), line)
         work = work[dm.end() :].lstrip()
 
     if occurred_on is None:
@@ -372,7 +351,11 @@ def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
             parse_status="error",
             parse_error=str(e),
         )
+    return parse_cartola_text(text, source_file)
 
+
+def parse_cartola_text(text: str, source_file: str) -> ParsedCartola:
+    """Parse one cartola's `pdftotext -layout` text."""
     if is_checking_cartola_text(text):
         return ParsedCartola(
             source_file=source_file,
@@ -423,14 +406,43 @@ def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
         )
 
     period_month = period_to[:7]
-
-    if uses_compact_vista_layout(text):
-        movements, skipped = parse_compact_vista_movements(
-            text, period_from or period_to, period_to
+    try:
+        movements, skipped, saldo_dia = parse_vista_rows(text, source_file, period_from, period_to)
+    except CartolaRowDateError as e:
+        return ParsedCartola(
+            source_file=source_file,
+            period_month=period_month,
+            period_from=period_from,
+            period_to=period_to,
+            saldo_inicial_clp=None,
+            saldo_final_clp=None,
+            parse_status="error",
+            parse_error=str(e),
         )
+
+    return finalize_vista_cartola(
+        source_file,
+        period_month,
+        period_from,
+        period_to,
+        text,
+        movements,
+        skipped,
+        sin_movimientos=sin_movimientos,
+        saldo_dia=saldo_dia,
+    )
+
+
+def parse_vista_rows(
+    text: str, source_file: str, period_from: Optional[str], period_to: str
+) -> Tuple[List[ParsedMovement], List[dict], List[Tuple[str, int]]]:
+    """Movements, skipped lines and Saldo Dia markers of either vista layout."""
+    if uses_compact_vista_layout(text):
+        movements, skipped = parse_compact_vista_movements(text, source_file, period_from, period_to)
         saldo_dia: List[Tuple[str, int]] = []
     else:
         column_bounds = detect_vista_column_bounds(text)
+        row_dates = PdfCartolaRowDates(source_file, period_from, period_to)
         movements = []
         skipped = []
         saldo_dia = []
@@ -473,8 +485,7 @@ def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
             current_date, mv, skip = parse_description_line(
                 raw_line,
                 current_date,
-                period_from or period_to,
-                period_to,
+                row_dates,
                 column_bounds,
             )
             if skip:
@@ -482,18 +493,7 @@ def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
             if mv is None:
                 continue
             movements.append(mv)
-
-    return finalize_vista_cartola(
-        source_file,
-        period_month,
-        period_from,
-        period_to,
-        text,
-        movements,
-        skipped,
-        sin_movimientos=sin_movimientos,
-        saldo_dia=saldo_dia,
-    )
+    return movements, skipped, saldo_dia
 
 
 def parse_only_basenames(argv: list[str]) -> set[str] | None:

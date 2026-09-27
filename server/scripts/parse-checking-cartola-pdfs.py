@@ -30,7 +30,7 @@ import subprocess
 import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -44,6 +44,8 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 from cartola_layout import (
     AmountColumnBounds,
+    CartolaRowDateError,
+    PdfCartolaRowDates,
     RE_SMALL_INLINE,
     RE_SMALL_TRAILING,
     amounts_by_column,
@@ -52,7 +54,7 @@ from cartola_layout import (
     reconcile_cartola_movements,
     strip_amounts_from_line,
 )
-from statement_values import iso_date_from_parts, parse_clp_amount, parse_dd_mm_yy_to_iso
+from statement_values import parse_clp_amount, parse_dd_mm_yy_to_iso
 
 RE_AMOUNT = re.compile(r"\d{1,3}(?:\.\d{3})+")
 RE_AMOUNT_FULL = re.compile(r"^\d{1,3}(?:\.\d{3})+$")
@@ -112,27 +114,6 @@ def tessdata_prefix() -> Optional[str]:
 
 def period_month_from_hasta(hasta_iso: str) -> str:
     return hasta_iso[:7]
-
-
-def infer_movement_year(dd: int, mm: int, desde_iso: str, hasta_iso: str) -> int:
-    d0 = date.fromisoformat(desde_iso)
-    d1 = date.fromisoformat(hasta_iso)
-    for y in (d0.year, d1.year, d0.year - 1, d1.year + 1):
-        try:
-            d = date(y, mm, dd)
-        except ValueError:
-            continue
-        if d0 <= d <= d1:
-            return y
-    return d1.year
-
-
-def dd_mm_to_iso(dd_mm: str, desde_iso: str, hasta_iso: str) -> Optional[str]:
-    m = re.match(r"^(\d{1,2})/(\d{1,2})$", str(dd_mm or "").strip())
-    if not m:
-        return None
-    d, mo = int(m.group(1)), int(m.group(2))
-    return iso_date_from_parts(d, mo, infer_movement_year(d, mo, desde_iso, hasta_iso))
 
 
 def extract_pdf_text_pdftotext(pdf_path: Path) -> Optional[str]:
@@ -293,17 +274,14 @@ def movement_from_amounts(
 
 def parse_movement_line_layout(
     line: str,
-    desde_iso: str,
-    hasta_iso: str,
+    row_dates: PdfCartolaRowDates,
     bounds: AmountColumnBounds,
 ) -> List[Movement]:
     m = RE_MOVEMENT_LINE.match(line.rstrip())
     if not m:
         return []
 
-    occurred_on = dd_mm_to_iso(m.group(1), desde_iso, hasta_iso)
-    if not occurred_on:
-        return []
+    occurred_on = row_dates.resolve(m.group(1), line)
 
     cargo, abono = amounts_by_column(line, bounds)
     if cargo is None and abono is None:
@@ -363,8 +341,7 @@ def split_document_from_description(text: str) -> Tuple[str, str]:
 
 def parse_multiline_checking_movements(
     text: str,
-    desde_iso: str,
-    hasta_iso: str,
+    row_dates: PdfCartolaRowDates,
     bounds: AmountColumnBounds,
 ) -> List[Movement]:
     """Parse stacked FECHA / SUCURSAL / DESCRIPCION rows (legacy single-page layout)."""
@@ -425,11 +402,9 @@ def parse_multiline_checking_movements(
 
         dm = RE_DATE_ONLY.match(line)
         if dm:
-            iso = dd_mm_to_iso(dm.group(1), desde_iso, hasta_iso)
-            if iso:
-                pending_date = iso
-                pending_branch = ""
-                desc_parts = []
+            pending_date = row_dates.resolve(dm.group(1), line)
+            pending_branch = ""
+            desc_parts = []
             continue
 
         if pending_date is None:
@@ -454,8 +429,7 @@ def parse_multiline_checking_movements(
 
 def parse_single_line_checking_movements(
     text: str,
-    desde_iso: str,
-    hasta_iso: str,
+    row_dates: PdfCartolaRowDates,
     bounds: AmountColumnBounds,
 ) -> List[Movement]:
     movements: List[Movement] = []
@@ -472,15 +446,14 @@ def parse_single_line_checking_movements(
             break
         if not RE_MOVEMENT_LINE.match(line):
             continue
-        for mv in parse_movement_line_layout(line, desde_iso, hasta_iso, bounds):
+        for mv in parse_movement_line_layout(line, row_dates, bounds):
             movements.append(mv)
     return movements
 
 
 def parse_ocr_word_rows(
     words: List[Tuple[float, float, str]],
-    desde_iso: str,
-    hasta_iso: str,
+    row_dates: PdfCartolaRowDates,
 ) -> List[Movement]:
     rows: Dict[float, List[Tuple[float, str]]] = defaultdict(list)
     for y, x, w in words:
@@ -499,9 +472,7 @@ def parse_ocr_word_rows(
         fecha_m = re.match(r"^(\d{2}/\d{2})", text)
         if not fecha_m:
             continue
-        occurred_on = dd_mm_to_iso(fecha_m.group(1), desde_iso, hasta_iso)
-        if not occurred_on:
-            continue
+        occurred_on = row_dates.resolve(fecha_m.group(1), text)
 
         amount_tokens: List[Tuple[float, str]] = [
             (x, w) for x, w in parts if RE_AMOUNT_FULL.match(w)
@@ -662,6 +633,30 @@ def finalize_checking_cartola(
     )
 
 
+def row_date_error_cartola(
+    source_file: str,
+    period_month: str,
+    period_from: str,
+    period_to: str,
+    cartola_no: Optional[str],
+    error: CartolaRowDateError,
+    extractor: str,
+) -> ParsedCartola:
+    return ParsedCartola(
+        source_file=source_file,
+        period_month=period_month,
+        period_from=period_from,
+        period_to=period_to,
+        saldo_inicial_clp=None,
+        saldo_final_clp=None,
+        cartola_no=cartola_no,
+        movements=[],
+        parse_status="error",
+        parse_error=str(error),
+        extractor=extractor,
+    )
+
+
 def parse_cartola_text(text: str, source_file: str, extractor: str) -> ParsedCartola:
     flat = re.sub(r"\s+", " ", text)
     period_month, period_from, period_to, saldo_inicial, saldo_final, cartola_no = (
@@ -684,12 +679,17 @@ def parse_cartola_text(text: str, source_file: str, extractor: str) -> ParsedCar
 
     movements: List[Movement] = []
     column_bounds = detect_checking_column_bounds(text)
-    movements = parse_single_line_checking_movements(
-        text, period_from, period_to, column_bounds
-    )
-    if not movements:
-        movements = parse_multiline_checking_movements(
-            text, period_from, period_to, column_bounds
+    try:
+        movements = parse_single_line_checking_movements(
+            text, PdfCartolaRowDates(source_file, period_from, period_to), column_bounds
+        )
+        if not movements:
+            movements = parse_multiline_checking_movements(
+                text, PdfCartolaRowDates(source_file, period_from, period_to), column_bounds
+            )
+    except CartolaRowDateError as e:
+        return row_date_error_cartola(
+            source_file, period_month, period_from, period_to, cartola_no, e, extractor
         )
 
     return finalize_checking_cartola(
@@ -726,7 +726,14 @@ def parse_cartola_ocr(pdf_path: Path) -> ParsedCartola:
             extractor="ocr",
         )
 
-    movements = parse_ocr_word_rows(words, period_from, period_to)
+    try:
+        movements = parse_ocr_word_rows(
+            words, PdfCartolaRowDates(pdf_path.name, period_from, period_to)
+        )
+    except CartolaRowDateError as e:
+        return row_date_error_cartola(
+            pdf_path.name, period_month, period_from, period_to, cartola_no, e, "ocr"
+        )
     return finalize_checking_cartola(
         pdf_path.name,
         period_month,

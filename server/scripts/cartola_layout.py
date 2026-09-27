@@ -1,8 +1,9 @@
-"""Shared Santander cartola layout helpers (column bounds, summary totals)."""
+"""Shared Santander cartola layout helpers (column bounds, summary totals, row dates)."""
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Dict, List, Optional, Tuple
 
 from statement_values import parse_clp_amount
@@ -180,8 +181,6 @@ def saldo_column_amount(line: str, bounds: AmountColumnBounds) -> Optional[int]:
 
 
 def _month_end_utc_ymd(month_key: str) -> str:
-    from datetime import date
-
     y, mo = int(month_key[:4]), int(month_key[5:7])
     if mo == 12:
         return date(y, 12, 31).isoformat()
@@ -218,12 +217,15 @@ def _calendar_months_span_inclusive(from_ym: str, to_ym: str) -> int:
     return count
 
 
-def effective_cartola_start_ym(from_iso: str, to_iso: str) -> Optional[str]:
-    """Non-day-1 DESDE marks the prior period boundary (not a movement month)."""
+def effective_cartola_start_ym(from_iso: str, to_iso: str) -> str:
+    """Non-day-1 DESDE marks the prior period boundary (not a movement month).
+
+    Both bounds are required: a cartola without DESDE or HASTA raises (as `effectiveCartolaStartYm`
+    in `server/src/calendarMonth.ts` does)."""
     from_ym = str(from_iso or "")[:7]
     to_ym = str(to_iso or "")[:7]
     if len(from_ym) != 7 or len(to_ym) != 7:
-        return from_ym if len(from_ym) == 7 else None
+        raise ValueError(f"cartola period needs DESDE and HASTA: {from_iso!r}..{to_iso!r}")
     if from_ym == to_ym:
         return from_ym
     if is_last_calendar_day_of_month(from_iso):
@@ -240,8 +242,6 @@ def expand_calendar_months(from_iso: str, to_iso: str) -> List[str]:
     """Inclusive YYYY-MM list from ISO date endpoints (with DESDE boundary adjustment)."""
     end_ym = str(to_iso or "")[:7]
     start_ym = effective_cartola_start_ym(from_iso, to_iso)
-    if not start_ym or len(end_ym) != 7:
-        return []
     y, m = int(start_ym[:4]), int(start_ym[5:7])
     ey, em = int(end_ym[:4]), int(end_ym[5:7])
     out: List[str] = []
@@ -254,6 +254,105 @@ def expand_calendar_months(from_iso: str, to_iso: str) -> List[str]:
             m = 1
             y += 1
     return out
+
+
+class CartolaRowDateError(ValueError):
+    """A cartola row whose DD/MM does not name one date of the statement period."""
+
+
+RE_ROW_DD_MM = re.compile(r"(\d{1,2})/(\d{1,2})", re.ASCII)
+
+
+def _period_bound(label: str, iso: Optional[str]) -> date:
+    if not iso:
+        raise CartolaRowDateError(f"cartola period {label} missing")
+    try:
+        return date.fromisoformat(iso)
+    except ValueError:
+        raise CartolaRowDateError(f"cartola period {label} is not a date: {iso!r}") from None
+
+
+def cartola_row_date_candidates(
+    day: int, month: int, desde_iso: Optional[str], hasta_iso: Optional[str]
+) -> List[str]:
+    """Every date DD/MM can be in a statement period: for each year from year(DESDE) to
+    year(HASTA), DD/MM of that year when it is a real calendar date inside [DESDE, HASTA]."""
+    d0 = _period_bound("start (DESDE)", desde_iso)
+    d1 = _period_bound("end (HASTA)", hasta_iso)
+    out: List[str] = []
+    for year in range(d0.year, d1.year + 1):
+        try:
+            d = date(year, month, day)
+        except ValueError:
+            continue
+        if d0 <= d <= d1:
+            out.append(d.isoformat())
+    return out
+
+
+def cartola_row_date(
+    day: int, month: int, desde_iso: Optional[str], hasta_iso: Optional[str]
+) -> str:
+    """The cartola year rule: a row printed as DD/MM (no year) is the one date of the statement
+    period [DESDE, HASTA] it can be. Both bounds are required; no candidate is an error, and so
+    are several (a period longer than a year). The TypeScript XLSX reader applies the same rule;
+    `server/src/test/cartolaMovementYearCases.json` is asserted by both."""
+    candidates = cartola_row_date_candidates(day, month, desde_iso, hasta_iso)
+    if len(candidates) != 1:
+        raise CartolaRowDateError(
+            f"{day:02d}/{month:02d} is {len(candidates)} dates of the period "
+            f"{desde_iso}..{hasta_iso}: {', '.join(candidates) or 'none'}"
+        )
+    return candidates[0]
+
+
+class PdfCartolaRowDates:
+    """Dates of one PDF cartola's rows, resolved in document order.
+
+    Every row takes `cartola_row_date`, except where it is ambiguous: an annual cartola prints
+    DD/MM rows that fit two years of its period (15/03/2021-31/03/2022 has two 20/03s). The PDF
+    cartolas list rows oldest first, so such a row takes the earliest candidate on or after the
+    previous row's date; the document's first row, or one with no candidate on or after the
+    previous row, raises with the file and row. Only the PDF parsers use this: the daily XLSX
+    (the TypeScript reader) never spans a year."""
+
+    def __init__(self, source_file: str, desde_iso: Optional[str], hasta_iso: Optional[str]) -> None:
+        self.source_file = source_file
+        self.desde_iso = desde_iso
+        self.hasta_iso = hasta_iso
+        self.previous: Optional[str] = None
+
+    def resolve(self, dd_mm: str, row: str) -> str:
+        where = f"{self.source_file}: row «{' '.join(str(row).split())}»"
+        m = RE_ROW_DD_MM.fullmatch(str(dd_mm or "").strip())
+        if not m:
+            raise CartolaRowDateError(f"{where}: {dd_mm!r} is not a DD/MM date")
+        try:
+            candidates = cartola_row_date_candidates(
+                int(m.group(1)), int(m.group(2)), self.desde_iso, self.hasta_iso
+            )
+        except CartolaRowDateError as e:
+            raise CartolaRowDateError(f"{where}: {e}") from None
+        if len(candidates) == 1:
+            iso = candidates[0]
+        elif not candidates:
+            raise CartolaRowDateError(
+                f"{where}: {dd_mm} is not a date of the period {self.desde_iso}..{self.hasta_iso}"
+            )
+        elif self.previous is None:
+            raise CartolaRowDateError(
+                f"{where}: {dd_mm} can be {' or '.join(candidates)} and no earlier row decides"
+            )
+        else:
+            later = [c for c in candidates if c >= self.previous]
+            if not later:
+                raise CartolaRowDateError(
+                    f"{where}: {dd_mm} can be {' or '.join(candidates)}, none on or after the "
+                    f"previous row's {self.previous}"
+                )
+            iso = later[0]
+        self.previous = iso
+        return iso
 
 
 def movement_amount(mv: object) -> int:
