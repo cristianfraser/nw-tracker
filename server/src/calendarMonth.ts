@@ -15,11 +15,17 @@ export function isLastCalendarDayOfMonth(ymd: string): boolean {
 /**
  * Effective first statement month for Santander cartola DESDE/HASTA.
  * Non-day-1 DESDE marks the prior period boundary (not a movement month).
+ * Both bounds are required: a missing one throws rather than standing in for the other.
  */
-export function effectiveCartolaStartYm(fromIso: string, toIso: string): string | null {
+export function effectiveCartolaStartYm(fromIso: string, toIso: string): string {
   const fromYm = monthKeyFromYmd(fromIso);
   const toYm = monthKeyFromYmd(toIso);
-  if (!fromYm || !toYm) return fromYm || toYm || null;
+  if (!fromYm || !toYm) {
+    throw new Error(
+      `effectiveCartolaStartYm: cartola period ${!fromYm ? "start (DESDE)" : "end (HASTA)"} missing ` +
+        `(${JSON.stringify(fromIso)}..${JSON.stringify(toIso)})`
+    );
+  }
   if (fromYm === toYm) return fromYm;
   if (isLastCalendarDayOfMonth(fromIso)) return addCalendarMonths(fromYm, 1);
   const fromDay = Number(fromIso.slice(8, 10));

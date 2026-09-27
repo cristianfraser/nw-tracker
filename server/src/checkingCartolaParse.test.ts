@@ -85,6 +85,8 @@ describe("checkingCartolaParse", () => {
   it("keeps same-day same-amount rows when document numbers differ", () => {
     const cartola = parseCheckingCartolaWorkbook(
       cartolaWorkbook([
+        ["", "", "", "", "Desde", "31/01/2024"],
+        ["", "", "", "", "Hasta", "29/02/2024"],
         ["Saldo inicial:", "$10.000.000"],
         ["Saldo final:", "$2.000.000"],
         HEADER,
@@ -105,6 +107,8 @@ describe("checkingCartolaParse", () => {
   it("keeps same-day same-amount rows without document number", () => {
     const cartola = parseCheckingCartolaWorkbook(
       cartolaWorkbook([
+        ["", "", "", "", "Desde", "30/11/2022"],
+        ["", "", "", "", "Hasta", "30/12/2022"],
         ["Saldo inicial:", "$100.000"],
         ["Saldo final:", "$98.000"],
         HEADER,
@@ -126,6 +130,8 @@ describe("checkingCartolaParse", () => {
   it("keeps duplicate doc rows when saldo requires both", () => {
     const cartola = parseCheckingCartolaWorkbook(
       cartolaWorkbook([
+        ["", "", "", "", "Desde", "31/10/2024"],
+        ["", "", "", "", "Hasta", "29/11/2024"],
         ["Saldo inicial:", "$20.000.000"],
         ["Saldo final:", "$500.000"],
         HEADER,
@@ -146,6 +152,8 @@ describe("checkingCartolaParse", () => {
   it("drops a repeated line when the saldo column only accounts for one", () => {
     const cartola = parseCheckingCartolaWorkbook(
       cartolaWorkbook([
+        ["", "", "", "", "Desde", "30/04/2025"],
+        ["", "", "", "", "Hasta", "30/05/2025"],
         ["Saldo inicial:", "$1.000.000"],
         ["Saldo final:", "$800.000"],
         HEADER,
@@ -164,6 +172,8 @@ describe("checkingCartolaParse", () => {
   it("infers missing abono from saldo column", () => {
     const cartola = parseCheckingCartolaWorkbook(
       cartolaWorkbook([
+        ["", "", "", "", "Desde", "29/02/2024"],
+        ["", "", "", "", "Hasta", "28/03/2024"],
         ["Saldo inicial:", "$500.000"],
         ["Saldo final:", "$1.500.000"],
         HEADER,
@@ -188,6 +198,8 @@ describe("checkingCartolaParse", () => {
     // Some Santander exports repeat the whole movement table 2–3× after the footer.
     const cartola = parseCheckingCartolaWorkbook(
       cartolaWorkbook([
+        ["", "", "", "", "Desde", "31/01/2023"],
+        ["", "", "", "", "Hasta", "28/02/2023"],
         ["Saldo inicial:", "$2.000.000"],
         ["Saldo final:", "$1.700.000"],
         HEADER,
@@ -213,6 +225,47 @@ describe("checkingCartolaParse", () => {
       })
     );
     expect(new Set(notes).size).toBe(cartola.movements.length);
+  });
+
+  it("dates a December row of a January cartola in December", () => {
+    const cartola = parseCheckingCartolaWorkbook(
+      cartolaWorkbook([
+        ["", "", "", "", "Desde", "30/12/2025"],
+        ["", "", "", "", "Hasta", "30/01/2026"],
+        ["Saldo inicial:", "$1.000.000"],
+        ["Saldo final:", "$700.000"],
+        HEADER,
+        ["31/12", "INTERNET", "PAGO SERVICIO BASICO", "990001", "$100.000", "", "$900.000"],
+        ["15/01", "INTERNET", "PAGO TARJETA CREDITO", "990002", "$200.000", "", "$700.000"],
+      ]),
+      "2026-01-31 Cartola de cuenta Corriente - Enero 2026.xlsx"
+    );
+    expect(cartola.period_month).toBe("2026-01");
+    expect(cartola.movements.map((m) => m.occurred_on)).toEqual(["2025-12-31", "2026-01-15"]);
+  });
+
+  it("refuses a row outside the period, or a period without its start", () => {
+    const rows = (period: unknown[][]) =>
+      cartolaWorkbook([
+        ...period,
+        ["Saldo inicial:", "$1.000.000"],
+        ["Saldo final:", "$900.000"],
+        HEADER,
+        ["15/05", "INTERNET", "PAGO SERVICIO BASICO", "990003", "$100.000", "", "$900.000"],
+      ]);
+    const file = "2024-04-30 Cartola de cuenta Corriente - Abril 2024.xlsx";
+    expect(() =>
+      parseCheckingCartolaWorkbook(
+        rows([
+          ["", "", "", "", "Desde", "29/03/2024"],
+          ["", "", "", "", "Hasta", "30/04/2024"],
+        ]),
+        file
+      )
+    ).toThrow(`${file} row 6: cartola movement 15/05 is not a date inside the period 2024-03-29..2024-04-30`);
+    expect(() =>
+      parseCheckingCartolaWorkbook(rows([["", "", "", "", "Hasta", "30/04/2024"]]), file)
+    ).toThrow("the period start (DESDE) is missing");
   });
 
   it("cartolaMovementDedupeKey treats different document numbers as distinct", () => {

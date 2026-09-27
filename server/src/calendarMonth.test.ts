@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { cartolaStatementMonths, isCartolaDesdeBoundaryPhantomMonth } from "./calendarMonth.js";
+import {
+  cartolaStatementMonths,
+  effectiveCartolaStartYm,
+  isCartolaDesdeBoundaryPhantomMonth,
+} from "./calendarMonth.js";
 
 describe("cartolaStatementMonths", () => {
   it("uses single movement month when DESDE is mid-month boundary", () => {
@@ -96,5 +100,13 @@ describe("cartolaStatementMonths", () => {
         movement_count: 3,
       })
     ).toBe(false);
+  });
+});
+
+describe("effectiveCartolaStartYm", () => {
+  it("needs both period bounds", () => {
+    expect(effectiveCartolaStartYm("2025-12-30", "2026-01-30")).toBe("2026-01");
+    expect(() => effectiveCartolaStartYm("", "2026-01-30")).toThrow(/start \(DESDE\) missing/);
+    expect(() => effectiveCartolaStartYm("2025-12-30", "")).toThrow(/end \(HASTA\) missing/);
   });
 });

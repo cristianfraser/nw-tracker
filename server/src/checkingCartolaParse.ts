@@ -3,6 +3,7 @@ import path from "node:path";
 import XLSX from "xlsx";
 import { assertCheckingCartolaSaldoIdentity } from "./checkingCartolaSaldoValidation.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
+import { cartolaMovementDateIso } from "./cartolaMovementDate.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { isChileanNumber, parseChileanNumber } from "./chileanNumber.js";
 
@@ -33,7 +34,6 @@ export type ParsedCheckingMovement = {
 
 export type CartolaSkipReason =
   | "not_movement_row"
-  | "invalid_date"
   | "no_amount"
   | "duplicate_in_cartola"
   | "end_of_table"
@@ -146,17 +146,6 @@ export function periodMonthFromCartolaFileName(fileName: string): string | null 
     }
   }
   return null;
-}
-
-function parseDdMmWithPeriodYear(ddMm: string, periodMonth: string): string | null {
-  const m = /^(\d{1,2})\/(\d{1,2})$/.exec(String(ddMm ?? "").trim());
-  if (!m) return null;
-  const d = Number(m[1]);
-  const mo = Number(m[2]);
-  const [ys] = periodMonth.split("-");
-  const y = Number(ys);
-  if (!Number.isFinite(y) || d < 1 || d > 31 || mo < 1 || mo > 12) return null;
-  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 function findLabelAmount(rows: unknown[][], label: string): number | null {
@@ -435,19 +424,14 @@ export function parseCheckingCartolaWorkbook(
     const branch = cell(row, 1);
     const description = cell(row, 2);
     const documentNo = cell(row, 3);
-    const occurredOn = parseDdMmWithPeriodYear(fecha, periodMonth);
-    if (!occurredOn) {
-      pushSkip(skipped, {
-        sheet_row: sheetRow,
-        fecha,
-        branch: branch || undefined,
-        description: description || undefined,
-        document_no: documentNo || undefined,
-        reason: "invalid_date",
-        detail: `could not resolve date in period ${periodMonth}`,
-      });
-      continue;
-    }
+    // FECHA prints no year: the one year the DESDE..HASTA period allows (throws otherwise).
+    const [day, month] = fecha.split("/").map(Number) as [number, number];
+    const occurredOn = cartolaMovementDateIso(
+      day,
+      month,
+      { desde: periodFrom, hasta: periodTo },
+      `${sourceFile} row ${sheetRow}`
+    );
 
     const cargo = parseCartolaAmount(cell(row, 4));
     const abono = parseCartolaAmount(cell(row, 5));
