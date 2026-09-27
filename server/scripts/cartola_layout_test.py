@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -197,6 +198,78 @@ class CartolaLayoutTest(unittest.TestCase):
                 "2017-10",
             ],
         )
+
+
+    def test_effective_start_month_needs_both_bounds(self) -> None:
+        with self.assertRaises(ValueError):
+            mod.effective_cartola_start_ym("", "2026-08-31")
+        with self.assertRaises(ValueError):
+            mod.effective_cartola_start_ym("2026-08-01", None)
+
+
+YEAR_CASES_PATH = SCRIPT.parents[1] / "src" / "test" / "cartolaMovementYearCases.json"
+
+
+class CartolaRowDateTest(unittest.TestCase):
+    def test_shared_case_table(self) -> None:
+        """The table the TypeScript XLSX reader asserts too (agent-shared, byte-identical)."""
+        cases = json.loads(YEAR_CASES_PATH.read_text(encoding="utf-8"))
+        self.assertTrue(cases)
+        for c in cases:
+            with self.subTest(case=c):
+                if c["expect"] is None:
+                    with self.assertRaises(mod.CartolaRowDateError):
+                        mod.cartola_row_date(c["day"], c["month"], c["desde"], c["hasta"])
+                else:
+                    self.assertEqual(
+                        mod.cartola_row_date(c["day"], c["month"], c["desde"], c["hasta"]),
+                        c["expect"],
+                    )
+
+
+class PdfCartolaRowDatesTest(unittest.TestCase):
+    """Synthetic annual period 15/03/2021-31/03/2022: DD/MM from 15/03 to 31/03 fits both years."""
+
+    def rows(self) -> "mod.PdfCartolaRowDates":
+        return mod.PdfCartolaRowDates("sintetica.pdf", "2021-03-15", "2022-03-31")
+
+    def test_unique_rows_take_the_base_rule(self) -> None:
+        rows = self.rows()
+        self.assertEqual(rows.resolve("02/04", "02/04 abono"), "2021-04-02")
+        self.assertEqual(rows.resolve("05/02", "05/02 abono"), "2022-02-05")
+
+    def test_ambiguous_row_takes_earliest_candidate_on_or_after_previous_row(self) -> None:
+        rows = self.rows()
+        rows.resolve("02/04", "02/04 abono")
+        self.assertEqual(rows.resolve("20/03", "20/03 abono"), "2022-03-20")
+        self.assertEqual(rows.resolve("20/03", "20/03 otro abono"), "2022-03-20")
+        self.assertEqual(rows.resolve("31/03", "31/03 abono"), "2022-03-31")
+
+    def test_ambiguous_first_row_raises_with_file_and_row(self) -> None:
+        with self.assertRaises(mod.CartolaRowDateError) as ctx:
+            self.rows().resolve("20/03", "20/03  Transf. de prueba")
+        self.assertIn("sintetica.pdf", str(ctx.exception))
+        self.assertIn("row «20/03 Transf. de prueba»", str(ctx.exception))
+
+    def test_ambiguous_row_before_the_previous_row_raises(self) -> None:
+        rows = self.rows()
+        rows.resolve("05/02", "05/02 abono")
+        rows.resolve("28/03", "28/03 abono")
+        with self.assertRaises(mod.CartolaRowDateError) as ctx:
+            rows.resolve("20/03", "20/03 abono")
+        self.assertIn("2022-03-28", str(ctx.exception))
+
+    def test_row_outside_the_period_raises(self) -> None:
+        rows = mod.PdfCartolaRowDates("sintetica.pdf", "2026-08-01", "2026-08-31")
+        with self.assertRaises(mod.CartolaRowDateError):
+            rows.resolve("15/09", "15/09 abono")
+        with self.assertRaises(mod.CartolaRowDateError):
+            rows.resolve("31/02", "31/02 abono")
+
+    def test_missing_period_start_raises(self) -> None:
+        rows = mod.PdfCartolaRowDates("sintetica.pdf", None, "2026-08-31")
+        with self.assertRaises(mod.CartolaRowDateError):
+            rows.resolve("15/08", "15/08 abono")
 
 
 if __name__ == "__main__":
