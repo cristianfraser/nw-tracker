@@ -7,21 +7,10 @@
  * Query: listaAFPs=UNO, listaFondos=A, fechaInicial, fechaFinal (dd/mm/yyyy)
  */
 
+import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { fetchOut } from "./httpOut.js";
 
 export const AFP_UNO_CUOTA_SERIES_KEY = "afp_uno_cuota_a";
-
-export function toDdMmYyyy(ymd: string): string | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
-  if (!m) return null;
-  return `${m[3]}/${m[2]}/${m[1]}`;
-}
-
-export function ymdFromDdMmYyyy(s: string): string | null {
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim());
-  if (!m) return null;
-  return `${m[3]}-${m[2]}-${m[1]}`;
-}
 
 export type FundUnitRow = { day: string; unit_value_clp: number; note?: string | null };
 
@@ -72,7 +61,7 @@ function pickDateStr(o: Record<string, unknown>, keys: string[]): string | null 
       const t = v.trim();
       const iso = /^(\d{4}-\d{2}-\d{2})/.exec(t);
       if (iso) return iso[1]!;
-      const dm = ymdFromDdMmYyyy(t);
+      const dm = parseDdMmYyToIso(t);
       if (dm) return dm;
     }
   }
@@ -95,9 +84,7 @@ const VALOR_CUOTA_KEYS = [
 ];
 
 function tryExtractFundUnitRow(o: Record<string, unknown>): FundUnitRow | null {
-  const day =
-    pickDateStr(o, ["fecha", "Fecha", "dia", "Dia", "day", "Day", "fechaValor", "fecha_valor"]) ??
-    (typeof o.fecha === "string" ? ymdFromDdMmYyyy(o.fecha) : null);
+  const day = pickDateStr(o, ["fecha", "Fecha", "dia", "Dia", "day", "Day", "fechaValor", "fecha_valor"]);
   let unit = pickNumber(o, VALOR_CUOTA_KEYS);
   /** Quetalmi `ObtenerCuotas` rows: `{ afp, fondo, fecha, valor, valorUf }` — CLP is `valor` (not `valorCuota`). */
   if (

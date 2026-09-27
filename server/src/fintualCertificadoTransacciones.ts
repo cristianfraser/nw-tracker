@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readCommaCsvRecords } from "./ccParsedCommaCsv.js";
+import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { type DepositFlowKind, depositFlowKindFromFintualMedio } from "./depositFlowKind.js";
 
 /** Chilean Numbers / Fintual CSV: thousands `.`, decimals `,`, optional `$`. */
@@ -19,17 +20,6 @@ export function parseFintualCertMoneyCell(raw: string | undefined): number | nul
   const n = Number(t);
   if (!Number.isFinite(n)) return null;
   return neg ? -n : n;
-}
-
-export function parseDdMmYyyyToIso(fecha: string): string | null {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(fecha ?? "").trim());
-  if (!m) return null;
-  const d = Number(m[1]);
-  const mo = Number(m[2]);
-  const y = Number(m[3]);
-  if (!Number.isFinite(d) || !Number.isFinite(mo) || !Number.isFinite(y)) return null;
-  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 export type GoalToImportNote = (goalId: string, investmentName: string) => string | null;
@@ -70,7 +60,7 @@ export function aggregateFintualCertificado(
   const reservaSaldoBestByMk = new Map<string, { lastYmd: string; saldo: number }>();
   for (const r of rows) {
     const fecha = String(r.fecha ?? "").trim();
-    const ymd = parseDdMmYyyyToIso(fecha);
+    const ymd = parseDdMmYyToIso(fecha);
     if (!ymd) continue;
     const mk = ymd.slice(0, 7);
     if (mk > maxMonth) continue;
@@ -99,7 +89,7 @@ export function aggregateFintualCertificado(
 
   for (const r of rows) {
     const fecha = String(r.fecha ?? "").trim();
-    const ymd = parseDdMmYyyyToIso(fecha);
+    const ymd = parseDdMmYyToIso(fecha);
     if (!ymd) continue;
     const mk = ymd.slice(0, 7);
     if (mk > maxMonth) continue;

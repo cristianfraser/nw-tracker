@@ -6,8 +6,8 @@ import {
   AFP_UNO_CUOTA_SERIES_KEY,
   extractFundUnitRowsFromQuetalmiJson,
   fetchQuetalmiCuotas,
-  toDdMmYyyy,
 } from "./afpQuetalmiApi.js";
+import { ddMmYyyyFromIso } from "./ccBillingCloses.js";
 import { countFundUnitRowsInRange, upsertFundUnitSpotPreservingHistory } from "./fundUnitDaily.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
@@ -341,9 +341,8 @@ export async function backfillAfpUnoCuotaQuetalmiChunks(opts: {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   while (cur <= to) {
     const chunkEnd = ymdMin(ymdAddDays(cur, chunkDays - 1), to);
-    const fi = toDdMmYyyy(cur);
-    const ff = toDdMmYyyy(chunkEnd);
-    if (!fi || !ff) throw new Error(`Invalid range ${cur} … ${chunkEnd}`);
+    const fi = ddMmYyyyFromIso(cur);
+    const ff = ddMmYyyyFromIso(chunkEnd);
     const { rows } = await upsertFundUnitsFromQuetalmiFetch({
       apiKey: opts.apiKey,
       fechaInicialDdMmYyyy: fi,

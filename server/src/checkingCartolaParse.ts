@@ -3,6 +3,7 @@ import path from "node:path";
 import XLSX from "xlsx";
 import { assertCheckingCartolaSaldoIdentity } from "./checkingCartolaSaldoValidation.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
+import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
 const SPANISH_MONTH: Record<string, number> = {
   enero: 1,
@@ -150,16 +151,6 @@ export function periodMonthFromCartolaFileName(fileName: string): string | null 
     }
   }
   return null;
-}
-
-function parseDdMmYyyy(raw: string): string | null {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(raw ?? "").trim());
-  if (!m) return null;
-  const d = Number(m[1]);
-  const mo = Number(m[2]);
-  const y = Number(m[3]);
-  if (d < 1 || d > 31 || mo < 1 || mo > 12) return null;
-  return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 function parseDdMmWithPeriodYear(ddMm: string, periodMonth: string): string | null {
@@ -392,8 +383,8 @@ export function parseCheckingCartolaWorkbook(
   let periodTo: string | null = null;
   for (const row of rows) {
     const label = cell(row, 4).toLowerCase();
-    if (label === "desde") periodFrom = parseDdMmYyyy(cell(row, 5));
-    if (label === "hasta") periodTo = parseDdMmYyyy(cell(row, 5));
+    if (label === "desde") periodFrom = parseDdMmYyToIso(cell(row, 5));
+    if (label === "hasta") periodTo = parseDdMmYyToIso(cell(row, 5));
   }
 
   if (periodTo) {

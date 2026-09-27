@@ -6,6 +6,7 @@ import { db } from "./db.js";
 import {
   closeDayOffsetDays,
   closeEvidenceForBillingMonth,
+  ddMmYyyyFromIso,
   feedCloseStatementMismatches,
   nextPeriodStartIsoForBillingMonth,
   recordFeedBillingClose,
@@ -613,5 +614,13 @@ describe("credit-card close evidence", () => {
     expect(feedCloseStatementMismatches(accountId)).toEqual([
       expect.stringMatching(/bills 1892000, the feed's SALDO INICIAL for that close is 1892666/),
     ]);
+  });
+});
+
+describe("ddMmYyyyFromIso", () => {
+  it("formats ISO as zero-padded dd/mm/yyyy and refuses anything else", () => {
+    expect(ddMmYyyyFromIso("2026-09-24")).toBe("24/09/2026");
+    expect(() => ddMmYyyyFromIso("24/09/2026")).toThrow(/expected YYYY-MM-DD/);
+    expect(() => ddMmYyyyFromIso("2026-9-24")).toThrow(/expected YYYY-MM-DD/);
   });
 });
