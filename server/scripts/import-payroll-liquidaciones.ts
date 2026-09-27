@@ -161,10 +161,62 @@ function upsertRow(row: ParsedPayrollRow, parserVersion: string): number {
   return existing.id;
 }
 
+/** Parsed fields the upsert writes (the parse's `liquido_clp` lands in `liquido`). */
+const PARSED_FIELDS = [
+  "period_month",
+  "employer_name",
+  "employer_rut",
+  "pay_period_label",
+  "base_salary_clp",
+  "colacion_clp",
+  "movilizacion_clp",
+  "gratificacion_clp",
+  "total_imponible_clp",
+  "total_no_imponible_clp",
+  "total_haberes_clp",
+  "desc_afp_clp",
+  "desc_health_clp",
+  "desc_tax_clp",
+  "desc_cesantia_clp",
+  "desc_apv_clp",
+  "desc_other_clp",
+  "total_descuentos_clp",
+  "uf_mes",
+  "utm_mes",
+  "tope_previsional_uf",
+  "tope_cesantia_uf",
+] as const;
+
+/** Dry run: every stored field the upsert would change, so a re-import after a parser fix is
+ * reviewed before it writes. */
+function reportParsedFieldChanges(rows: readonly ParsedPayrollRow[]): void {
+  const sel = db.prepare(`SELECT * FROM payroll_work_earnings WHERE source_pdf = ?`);
+  let changedRows = 0;
+  for (const row of rows) {
+    const stored = sel.get(row.source_pdf) as Record<string, unknown> | undefined;
+    if (!stored) {
+      console.log(`  new ${row.source_pdf}`);
+      changedRows += 1;
+      continue;
+    }
+    const changes: string[] = [];
+    for (const f of PARSED_FIELDS) {
+      const next = row[f] ?? null;
+      if (stored[f] !== next) changes.push(`${f} ${String(stored[f])} → ${String(next)}`);
+    }
+    if (stored.liquido !== row.liquido_clp) changes.push(`liquido ${String(stored.liquido)} → ${row.liquido_clp}`);
+    if (changes.length === 0) continue;
+    changedRows += 1;
+    console.log(`  change ${row.source_pdf}: ${changes.join("; ")}`);
+  }
+  console.log(`# dry-run: ${changedRows} of ${rows.length} row(s) would change`);
+}
+
 function main(): void {
   const dryRun = argFlag("dry-run");
   const strict = !argFlag("no-strict");
   const { parser_version, rows } = loadParsedRows();
+  if (dryRun) reportParsedFieldChanges(rows);
   const candidates = listPayrollLinkCandidates();
 
   const takenMovementIds = new Set<number>();

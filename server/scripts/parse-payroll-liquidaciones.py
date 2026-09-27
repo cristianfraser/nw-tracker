@@ -149,13 +149,44 @@ def parse_uf_amount(raw: str) -> Optional[float]:
 
 
 def amount_after_label(text: str, labels: Tuple[str, ...]) -> Optional[int]:
+    """The amount printed after a label on the label's own line.
+
+    Never the next line: a label that ends its line is a column header, and the number below it
+    belongs to whichever column starts that row (Talana's «DESCUENTO APV» header read the days
+    worked on the row below as pesos). Header columns go through `amount_in_header_column`. A
+    rate printed between the label and the amount («Isapre 7%   12,345») is not the amount."""
     for label in labels:
-        pat = rf"{re.escape(label)}(?:\s*\(LQ\))?\s+([\d.,]+)"
+        pat = rf"{re.escape(label)}(?:[ \t]*\(LQ\))?(?:[ \t]+\d+(?:[.,]\d+)?[ \t]*%)?[ \t]+([\d.,]+)"
         m = re.search(pat, text, re.IGNORECASE)
         if m:
             v = parse_clp_amount(m.group(1))
             if v is not None:
                 return v
+    return None
+
+
+def amount_in_header_column(text: str, header: str) -> Optional[int]:
+    """The amount printed under a column header, on the row below it (pdftotext -layout keeps the
+    columns aligned): the cell whose span overlaps the header's. None when no line carries the
+    header; 0 when the header's column is blank on the row below. A printed zero is 0."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        h = re.search(header, line, re.IGNORECASE)
+        if not h:
+            continue
+        row = lines[i + 1] if i + 1 < len(lines) else ""
+        cells = [c for c in re.finditer(r"\S+", row)]
+        if not cells:
+            raise ValueError(f"no value row under the {h.group(0)!r} header")
+        under = [c.group(0) for c in cells if c.start() < h.end() and c.end() > h.start()]
+        if len(under) > 1:
+            raise ValueError(f"several cells under the {h.group(0)!r} header: {under}")
+        if not under:
+            return 0
+        v = parse_clp_amount_printed(under[0])
+        if v is None:
+            raise ValueError(f"not an amount under the {h.group(0)!r} header: {under[0]!r}")
+        return v
     return None
 
 
@@ -275,7 +306,9 @@ def parse_talana_buk(text: str, period_month: str) -> Dict[str, Any]:
     desc_cesantia = amount_after_label(
         text, ("Seguro de Desempleo", "SEG CESANTIA TRABAJADOR", "Seguro De Cesantía")
     )
-    desc_apv = amount_after_label(text, ("DESCUENTO APV",))
+    # A column of the DIAS TR. … TOTAL IMPONIBLE header table (later liquidaciones spell it
+    # «DESCUENTO A.P.V.»).
+    desc_apv = amount_in_header_column(text, r"DESCUENTO A\.?P\.?V\.?")
 
     uf_m = re.search(r"VALOR UF\s+([\d.,]+)", text, re.IGNORECASE)
     uf_mes = parse_uf_amount(uf_m.group(1)) if uf_m else None
