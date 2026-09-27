@@ -26,7 +26,7 @@ import {
 } from "./accountPeriodMarks.js";
 import { fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
-import { netDepositFlowBetween } from "./flowsDeposits.js";
+import { netDepositFlowWindows } from "./flowsDeposits.js";
 import { isUsdCashKindSlug } from "./movementTransfer.js";
 import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { isClpCashKindSlug, clpCashBalanceClpAt } from "./clpCashAccounts.js";
@@ -108,11 +108,11 @@ function balanceOnlyMonthlyRowsAsc(
   closeAt: (asOf: string) => number,
   /**
    * Event-based month flow over `(prevEvalYmd, evalYmd]` (null prev = cumulative through the
-   * first month, the builder convention). USD-cash passes the merged-event window sum so its
-   * CLP flows convert per event at each event's own fx date — the deposited-delta default
-   * would re-price the standing USD deposited capital at each month-end and leak fx drift
-   * into the aportes column. Single-currency accounts keep the default (identical by ledger
-   * identity, no fx involved).
+   * first month, the builder convention). Ledger cash (USD, CLP, checking) passes its merged
+   * deposit events ({@link ledgerCashNetFlowBetween}) so each flow converts at its own date's
+   * rate — the deposited-delta default re-prices the standing balance − interest at each
+   * month-end and leaks the month's fx move into the aportes column. Only the book-valuation
+   * path keeps the default.
    */
   netFlowBetween?: (prevEvalYmd: string | null, evalYmd: string) => number
 ): AccountMonthlyPerformanceRow[] {
@@ -125,11 +125,10 @@ function balanceOnlyMonthlyRowsAsc(
   let cumPl = 0;
   const today = chileCalendarTodayYmd();
 
-  // Deposited capital = balance − cumulative interest (interest = savings_earnings = the
-  // account's only real P/L; every other balance change is a transfer/compra/deposit).
-  // Same definition the deposits view uses for cash accounts — with netFlow hardcoded to 0
-  // (the old behavior) every transfer read as phantom nominal P/L and the group's
-  // net_capital_flow diverged from Σ deposits (dashboardCardClosingReconcile).
+  // Default flow: deposited capital = balance − cumulative interest (interest = savings_earnings
+  // = the account's only real P/L; every other balance change is a transfer/compra/deposit) —
+  // with netFlow hardcoded to 0 (the old behavior) every transfer read as phantom nominal P/L
+  // and the group's net_capital_flow diverged from Σ deposits (dashboardCardClosingReconcile).
   const depositedAt = (asOf: string): number => {
     const interestClp = cashInterestClpThroughDate(accountId, asOf);
     const interest = unit === "clp" ? interestClp : convertTs(interestClp, asOf, unit);
@@ -188,6 +187,24 @@ function balanceOnlyMonthlyRowsAsc(
   return outAsc;
 }
 
+/**
+ * Month flow of a ledger cash account (USD cash since 2026-08-04; CLP cash and checking since
+ * 2026-09-27): its merged deposit events in `(prevEvalYmd, evalYmd]`, each at its own date's
+ * rate (`flowEventInUnit`) — the events the dashboard card's deposits, the daily series and
+ * the aportes line read. A month with no events reads 0; fx moves on the balance held are
+ * P/L. UF converts the window's CLP sum at the window end.
+ */
+function ledgerCashNetFlowBetween(
+  accountId: number,
+  unit: TsUnit
+): (prevEvalYmd: string | null, evalYmd: string) => number {
+  const windowFlow = netDepositFlowWindows(accountId, unit === "usd" ? "usd" : "clp");
+  return (prevEvalYmd, evalYmd) => {
+    const raw = windowFlow(prevEvalYmd ?? "0000-01-01", evalYmd);
+    return unit === "uf" ? convertTs(raw, evalYmd, "uf") : raw;
+  };
+}
+
 function usdCashMonthlyPerfRows(
   accountId: number,
   categorySlug: string,
@@ -208,11 +225,7 @@ function usdCashMonthlyPerfRows(
       const clp = usdCashBalanceClpAt(accountId, asOf);
       return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
     },
-    (prevEvalYmd, evalYmd) => {
-      const flowUnit = unit === "usd" ? "usd" : "clp";
-      const raw = netDepositFlowBetween(accountId, prevEvalYmd ?? "0000-01-01", evalYmd, flowUnit);
-      return unit === "uf" ? convertTs(raw, evalYmd, "uf") : raw;
-    }
+    ledgerCashNetFlowBetween(accountId, unit)
   );
   return [...asc].reverse();
 }
@@ -228,10 +241,17 @@ function clpCashMonthlyPerfRows(
   const today = chileCalendarTodayYmd();
   const maxD = bounds.max_d > today ? bounds.max_d : today;
   const monthEndsAsc = monthEndsBetweenInclusive(bounds.min_d, maxD);
-  const asc = balanceOnlyMonthlyRowsAsc(accountId, categorySlug, unit, monthEndsAsc, (asOf) => {
-    const clp = clpCashBalanceClpAt(accountId, asOf);
-    return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
-  });
+  const asc = balanceOnlyMonthlyRowsAsc(
+    accountId,
+    categorySlug,
+    unit,
+    monthEndsAsc,
+    (asOf) => {
+      const clp = clpCashBalanceClpAt(accountId, asOf);
+      return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
+    },
+    ledgerCashNetFlowBetween(accountId, unit)
+  );
   return [...asc].reverse();
 }
 
@@ -246,10 +266,17 @@ function movementBalanceMonthlyPerfRows(
   const today = chileCalendarTodayYmd();
   const maxD = bounds.max_d > today ? bounds.max_d : today;
   const monthEndsAsc = monthEndsBetweenInclusive(bounds.min_d, maxD);
-  const asc = balanceOnlyMonthlyRowsAsc(accountId, categorySlug, unit, monthEndsAsc, (asOf) => {
-    const clp = checkingMovementBalanceClpAtCached(accountId, asOf);
-    return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
-  });
+  const asc = balanceOnlyMonthlyRowsAsc(
+    accountId,
+    categorySlug,
+    unit,
+    monthEndsAsc,
+    (asOf) => {
+      const clp = checkingMovementBalanceClpAtCached(accountId, asOf);
+      return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
+    },
+    ledgerCashNetFlowBetween(accountId, unit)
+  );
   return [...asc].reverse();
 }
 

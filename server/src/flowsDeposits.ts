@@ -203,14 +203,27 @@ export function netDepositFlowBetween(
   endYmd: string,
   unit: "clp" | "usd"
 ): number {
+  return netDepositFlowWindows(accountId, unit)(startYmd, endYmd);
+}
+
+/**
+ * {@link netDepositFlowBetween} over many windows of one account: the merged events load once,
+ * then each call sums the events in its window `(startYmd, endYmd]`.
+ */
+export function netDepositFlowWindows(
+  accountId: number,
+  unit: "clp" | "usd"
+): (startYmd: string, endYmd: string) => number {
   const events = loadMergedDisplayDepositInflowEvents([accountId]).get(accountId) ?? [];
-  let sum = 0;
-  for (const e of events) {
-    if (e.amt === 0) continue;
-    if (e.occurred_on <= startYmd || e.occurred_on > endYmd) continue;
-    sum += flowEventInUnit(e, unit);
-  }
-  return sum;
+  return (startYmd, endYmd) => {
+    let sum = 0;
+    for (const e of events) {
+      if (e.amt === 0) continue;
+      if (e.occurred_on <= startYmd || e.occurred_on > endYmd) continue;
+      sum += flowEventInUnit(e, unit);
+    }
+    return sum;
+  };
 }
 
 /**
