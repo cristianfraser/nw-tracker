@@ -2,6 +2,7 @@ import { loadMergedDepositInflowEventsBankDated } from "./accountDeposits.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./aggregationCache.js";
 import { listClpCcPaymentEventsForAccount } from "./ccCuotaRetirement.js";
+import { ccPaymentPairingsWithoutEvidence } from "./ccPaymentMirrorEvidence.js";
 import {
   convertCcPaymentMirrors,
   listCcPaymentMirrorCandidates,
@@ -368,6 +369,132 @@ describe("convertCcPaymentMirrors", () => {
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(abonoLineId);
       db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(usdStatementId);
+      clearAggregationCache();
+    }
+  });
+});
+
+/**
+ * A converted pair keeps its evidence by the payment's card, date and amount: a statement
+ * re-import replaces the rows it was paired with, and a pasted payment line gives way to the
+ * statement header that prints the same payment.
+ */
+describe("a converted pair when its statement rows are replaced", () => {
+  const insMovement = () =>
+    db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`);
+
+  it("is never offered again after a re-import, and pairing stops once its payment is gone", () => {
+    if (checkingId == null || ccId == null) return;
+    const statementId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency)
+           VALUES (?, 'santander', 'vitest-ccpago-reimport.pdf', '22/10/2037', '23/09/2037', '22/10/2037', 'clp')`
+        )
+        .run(ccId).lastInsertRowid
+    );
+    const insLine = db.prepare(
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+       VALUES (?, '09/10/2037', 'MONTO CANCELADO', -271000, 0, 'vitest-ccpago-reimport-1')`
+    );
+    const lineId = Number(insLine.run(statementId).lastInsertRowid);
+    const firstOut = Number(
+      insMovement().run(checkingId, -271000, "2037-10-10", "vitest|Traspaso Internet a T. Crédito|reimport-1")
+        .lastInsertRowid
+    );
+    cleanupMovementIds.push(firstOut);
+    clearAggregationCache();
+    const transfers: number[] = [];
+    try {
+      const { converted } = convertCcPaymentMirrors([{ out_movement_id: firstOut, statement_line_id: lineId }]);
+      transfers.push(converted[0]!.transfer_movement_id);
+      // A second debit of the same amount, within the window of the same payment.
+      const secondOut = Number(
+        insMovement().run(checkingId, -271000, "2037-10-12", "vitest|Traspaso Internet a T. Crédito|reimport-2")
+          .lastInsertRowid
+      );
+      cleanupMovementIds.push(secondOut);
+
+      // Re-import: the statement's lines are replaced — the same payment on a new row, after a
+      // purchase line the parse now emits first.
+      db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
+      db.prepare(
+        `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+         VALUES (?, '03/10/2037', 'VITEST SHOP', 10000, 0, 'vitest-ccpago-reimport-0')`
+      ).run(statementId);
+      const reimportedId = Number(insLine.run(statementId).lastInsertRowid);
+      clearAggregationCache();
+      expect(reimportedId).not.toBe(lineId);
+      expect(ccPaymentPairingsWithoutEvidence(ccId)).toEqual([]);
+      expect(myCandidates().find((c) => c.out.movement_id === secondOut)).toBeUndefined();
+
+      // The statement stops printing the payment (a re-parse that dropped it): nothing pairs until
+      // someone looks, or the second debit would book the same payment twice if it came back.
+      db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(reimportedId);
+      clearAggregationCache();
+      expect(ccPaymentPairingsWithoutEvidence(ccId).map((p) => p.transfer_movement_id)).toEqual(transfers);
+      expect(() => listCcPaymentMirrorCandidates()).toThrow(/have no card evidence left/);
+    } finally {
+      for (const id of transfers) cleanupMovementIds.push(undoMirrorConversion(id).restored_out_id);
+      db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
+      clearAggregationCache();
+    }
+  });
+
+  it("follows a pasted payment line into the statement header that prints the same payment", () => {
+    if (checkingId == null || ccId == null) return;
+    const bucketId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, currency)
+           VALUES (?, 'santander', 'import:web-paste|vitest-ccpago-bucket', '20/11/2037', 'clp')`
+        )
+        .run(ccId).lastInsertRowid
+    );
+    const pastedId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+           VALUES (?, '09/11/2037', 'PAGO', -333000, 0, 'vitest-ccpago-bucket-1')`
+        )
+        .run(bucketId).lastInsertRowid
+    );
+    const out = Number(
+      insMovement().run(checkingId, -333000, "2037-11-10", "vitest|Traspaso Internet a T. Crédito|bucket-1")
+        .lastInsertRowid
+    );
+    cleanupMovementIds.push(out);
+    let statementId: number | null = null;
+    clearAggregationCache();
+    const transfers: number[] = [];
+    try {
+      const { converted } = convertCcPaymentMirrors([{ out_movement_id: out, statement_line_id: pastedId }]);
+      transfers.push(converted[0]!.transfer_movement_id);
+      const laterOut = Number(
+        insMovement().run(checkingId, -333000, "2037-11-12", "vitest|Traspaso Internet a T. Crédito|bucket-2")
+          .lastInsertRowid
+      );
+      cleanupMovementIds.push(laterOut);
+
+      // The statement arrives: it prints the payment in its header only, and the bucket line goes.
+      statementId = Number(
+        db
+          .prepare(
+            `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency,
+               monto_pagado_anterior, monto_pagado_anterior_date)
+             VALUES (?, 'santander', 'vitest-ccpago-bucket-close.pdf', '22/11/2037', '23/10/2037', '22/11/2037', 'clp', -333000, '2037-11-09')`
+          )
+          .run(ccId).lastInsertRowid
+      );
+      db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(pastedId);
+      clearAggregationCache();
+      expect(ccPaymentPairingsWithoutEvidence(ccId)).toEqual([]);
+      expect(myCandidates().find((c) => c.out.movement_id === laterOut)).toBeUndefined();
+    } finally {
+      for (const id of transfers) cleanupMovementIds.push(undoMirrorConversion(id).restored_out_id);
+      db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(bucketId);
+      db.prepare(`DELETE FROM cc_statements WHERE id IN (?, ?)`).run(bucketId, statementId ?? -1);
       clearAggregationCache();
     }
   });

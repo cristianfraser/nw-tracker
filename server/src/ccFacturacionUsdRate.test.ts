@@ -236,7 +236,6 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
   }
 
   const lineIds: Record<string, number> = {};
-  let augustDivisasId = 0;
 
   function linesById() {
     return new Map(buildCcExpenseLines([accountId]).map((l) => [l.statement_line_id, l]));
@@ -276,7 +275,7 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
     lineIds.augustShopUsd = insertLine("25/08/2026 usd", "10/08/2026", "VITEST USD SHOP", { usd: 500 });
     // July's US$700, paid after its close: 400 + 100 by divisas, 200 moved to the peso side.
     lineIds.abonoPaired = insertLine("25/08/2026 usd", "07/08/2026", "ABONO DE DIVISAS", { usd: -400 });
-    lineIds.abonoProRata = insertLine("25/08/2026 usd", "15/08/2026", "ABONO DE DIVISAS", { usd: -100 });
+    lineIds.abonoSecond = insertLine("25/08/2026 usd", "15/08/2026", "ABONO DE DIVISAS", { usd: -100 });
     lineIds.traspasoUsd = insertLine("25/08/2026 usd", "09/08/2026", "TRASPASO DE DEUDA INTERNACIONAL", { usd: -200 });
     // September: its own charge and credit, and the (unpaired) payment of August's dollars.
     lineIds.septemberShopUsd = insertLine("24/09/2026 usd", "10/09/2026", "VITEST USD SHOP 2", { usd: 100 });
@@ -284,9 +283,8 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
     lineIds.abonoUnpaired = insertLine("24/09/2026 usd", "08/09/2026", "ABONO DE DIVISAS", { usd: -500 });
 
     insertDivisas("2026-08-07", 372_000, 400, lineIds.abonoPaired);
-    // Paired with a line of fewer dollars than it bought: the line takes its share.
-    insertDivisas("2026-08-15", 190_000, 200, lineIds.abonoProRata);
-    augustDivisasId = insertDivisas("2026-09-08", 470_000, 500, null);
+    insertDivisas("2026-08-15", 95_000, 100, lineIds.abonoSecond);
+    insertDivisas("2026-09-08", 470_000, 500, null);
     relinkCcTraspasoDeudaLinksForAccount(accountId);
     clearAggregationCache();
   });
@@ -304,16 +302,44 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
     clearAggregationCache();
   });
 
-  it("a divisas purchase paired with the line: its pesos, pro rata on the dollars", () => {
+  it("a divisas purchase paired with the line's payment: its pesos", () => {
     const lines = linesById();
     expect(lines.get(lineIds.abonoPaired!)?.amount_clp).toBe(-372_000);
-    expect(lines.get(lineIds.abonoProRata!)?.amount_clp).toBe(-95_000);
+    expect(lines.get(lineIds.abonoSecond!)?.amount_clp).toBe(-95_000);
+  });
+
+  it("a pairing reaches its payment's line whatever statement row it recorded", () => {
+    // A re-import replaces the statement's rows: the payment comes back as a new line, and the
+    // recorded id can come back as another line (cc_statement_lines has no AUTOINCREMENT).
+    const recordedId = lineIds.abonoPaired!;
+    db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(recordedId);
+    const reimported = insertLine("25/08/2026 usd", "07/08/2026", "ABONO DE DIVISAS", { usd: -400 });
+    db.prepare(
+      `INSERT INTO cc_statement_lines (id, statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key, raw_line)
+       VALUES (?, ?, '20/08/2026', 'ABONO DE DIVISAS', 0, -50, 0, 'vitest-usd-payment|reused-id', 'vitest')`
+    ).run(recordedId, statementIds["25/08/2026 usd"]);
+    clearAggregationCache();
+    const july = buildFacturaciones(accountId, []).find((f) => f.billing_month === "2026-07")!;
+    const lines = linesById();
+    expect(reimported).not.toBe(recordedId);
+    expect(lines.get(reimported)?.amount_clp).toBe(-372_000);
+    // The row now under the recorded id is another payment: its facturación's rate, not the pairing.
+    expect(lines.get(recordedId)?.amount_clp).toBe(Math.round(-50 * july.usd_rate_clp!));
   });
 
   it("a traspaso de deuda's USD leg: minus its CLP leg", () => {
     const lines = linesById();
     expect(lines.get(lineIds.traspasoUsd!)?.amount_clp).toBe(-192_000);
     expect(lines.get(lineIds.traspasoClp!)?.amount_clp).toBe(192_000);
+  });
+
+  it("a traspaso leg keeps its own pesos beside a paired abono of the same day and dollars", () => {
+    const abono = insertLine("25/08/2026 usd", "09/08/2026", "ABONO DE DIVISAS", { usd: -200 });
+    insertDivisas("2026-08-09", 186_000, 200, abono);
+    clearAggregationCache();
+    const lines = linesById();
+    expect(lines.get(abono)?.amount_clp).toBe(-186_000);
+    expect(lines.get(lineIds.traspasoUsd!)?.amount_clp).toBe(-192_000);
   });
 
   it("otherwise the rate of the facturación it paid, not of the one whose statement prints it", () => {
@@ -333,7 +359,7 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
   it("a payment on a close day pays the facturación that closed before it", () => {
     const closeDay = insertLine("24/09/2026 usd", "25/08/2026", "ABONO DE DIVISAS", { usd: -10 });
     const july = buildFacturaciones(accountId, []).find((f) => f.billing_month === "2026-07")!;
-    expect(july.usd_rate_clp).toBe((372_000 + 190_000 + 192_000) / 800);
+    expect(july.usd_rate_clp).toBe((372_000 + 95_000 + 192_000) / 700);
     expect(linesById().get(closeDay)?.amount_clp).toBe(Math.round(-10 * july.usd_rate_clp!));
   });
 
@@ -354,10 +380,5 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
   it("throws on a payment line dated before the card's first close", () => {
     insertLine("23/07/2026 usd", "10/07/2026", "ABONO DE DIVISAS", { usd: -10 });
     expect(() => buildCcExpenseLines([accountId])).toThrow(/precedes every facturación close/);
-  });
-
-  it("throws on a pairing whose purchase is dated on another day than its line", () => {
-    pair(augustDivisasId, lineIds.abonoPaired!, "2026-09-08", 470_000);
-    expect(() => buildCcExpenseLines([accountId])).toThrow(/stale movement_mirror_merges/);
   });
 });

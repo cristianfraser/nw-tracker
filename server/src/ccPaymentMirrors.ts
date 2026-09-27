@@ -22,13 +22,20 @@
  * the converted transfer is the migration-169 cross-currency shape: CLP from-leg = the exact
  * pesos that left checking, USD counter leg = the card's abono. Traspaso-linked abonos are
  * excluded (debt reclassification, no cash).
+ *
+ * A converted pair stays tied to its evidence by the payment's card, date and amount, never by the
+ * statement row it was paired with — re-imports replace those rows (`ccPaymentMirrorEvidence.ts`).
  */
 import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { CC_PAYMENT_DESC_RE } from "./checkingDescriptionPredicates.js";
-import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
-import { isCcPaymentMerchant, requireHeaderPagoIso } from "./ccPaymentLines.js";
+import {
+  ccPaymentEvidenceKey,
+  describeCcPaymentPairing,
+  listCcPaymentEvidenceRows,
+  listCcPaymentPairings,
+} from "./ccPaymentMirrorEvidence.js";
 import { db } from "./db.js";
 import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
@@ -92,157 +99,37 @@ function dayDiff(aIso: string, bIso: string): number {
 }
 
 /**
- * Payment evidence across every CC master, version-deduped: CLP payment lines and header
- * payments — the same `isCcPaymentMerchant` test and date readers as the cuota retirement's
- * `listClpCcPaymentEventsForAccount` — plus the USD side's ABONO DE DIVISAS lines.
+ * Payment evidence across every CC master (`listCcPaymentEvidenceRows`), one entry per real-world
+ * payment: duplicate statement versions carry the same line, and legacy statements describe the
+ * same payment as BOTH a line and a header — the first row per payment key wins, lines before
+ * headers (the walk consumes them directly).
  */
-function listCcPaymentEvidence(): CcPaymentEvidence[] {
-  const lineRows = db
-    .prepare(
-      `SELECT l.id AS line_id, s.account_id, a.name AS account_name,
-              l.transaction_date, l.amount_clp, l.merchant
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       JOIN accounts a ON a.id = s.account_id
-       WHERE s.currency = 'clp' AND l.installment_flag = 0 AND l.amount_clp < 0`
-    )
-    .all() as {
-    line_id: number;
-    account_id: number;
-    account_name: string;
-    transaction_date: string | null;
-    amount_clp: number;
-    merchant: string | null;
-  }[];
-  const headerRows = db
-    .prepare(
-      `SELECT s.id AS statement_id, s.account_id, a.name AS account_name, s.statement_date,
-              s.monto_pagado_anterior AS amt, s.monto_pagado_anterior_date AS pago_iso
-       FROM cc_statements s
-       JOIN accounts a ON a.id = s.account_id
-       WHERE s.currency = 'clp'
-         AND s.monto_pagado_anterior IS NOT NULL AND s.monto_pagado_anterior_date IS NOT NULL`
-    )
-    .all() as {
-    statement_id: number;
-    account_id: number;
-    account_name: string;
-    statement_date: string;
-    amt: number;
-    pago_iso: string;
-  }[];
-
-  // USD-debt payments: the card leg is an ABONO DE DIVISAS line. Matched by the LINE's currency
-  // (amount_usd set), not the statement's — the open web-paste bucket is a CLP statement that
-  // carries the USD lines too, and the abono must be pairable the day the feed delivers it, not
-  // only after the USD PDF arrives. Traspaso-linked abonos are excluded — those reclassify USD
-  // debt onto the CLP side of the same card, no cash moved, so pairing one with a checking debit
-  // would fabricate a payment.
-  const usdRows = db
-    .prepare(
-      `SELECT l.id AS line_id, s.account_id, a.name AS account_name,
-              l.transaction_date, l.amount_usd, l.merchant
-       FROM cc_statement_lines l
-       JOIN cc_statements s ON s.id = l.statement_id
-       JOIN accounts a ON a.id = s.account_id
-       WHERE l.installment_flag = 0 AND l.amount_usd < 0
-         AND UPPER(l.merchant) LIKE '%ABONO DE DIVISAS%'
-         AND l.id NOT IN (SELECT usd_line_id FROM cc_traspaso_deuda_links)`
-    )
-    .all() as {
-    line_id: number;
-    account_id: number;
-    account_name: string;
-    transaction_date: string | null;
-    amount_usd: number;
-    merchant: string | null;
-  }[];
-
-  // One evidence entry per real-world payment: duplicate statement versions carry the same
-  // line, and legacy statements describe the same payment as BOTH a line and a header —
-  // dedupe by (account, date, amount) with lines preferred (the walk consumes them directly).
+function dedupeCcPaymentEvidence(rows: ReturnType<typeof listCcPaymentEvidenceRows>): CcPaymentEvidence[] {
   const byKey = new Map<string, CcPaymentEvidence>();
-  for (const r of lineRows) {
-    if (!isCcPaymentMerchant(r.merchant)) continue;
-    const iso = normalizeTransactionDateIso(r.transaction_date);
-    if (!iso) continue;
-    const amount = Math.round(Math.abs(r.amount_clp));
-    if (amount === 0) continue;
-    const key = `${r.account_id}|${iso}|${amount}`;
-    if (byKey.has(key)) continue;
-    byKey.set(key, {
-      cc_account_id: r.account_id,
-      cc_account_name: r.account_name,
-      statement_line_id: r.line_id,
-      statement_id: null,
-      pago_iso: iso,
-      amount_clp: amount,
-      currency: "clp",
-      amount_usd: null,
-      label: (r.merchant ?? "PAGO").trim(),
-    });
-  }
-  for (const r of headerRows) {
-    const amount = Math.round(Math.abs(r.amt));
-    if (amount === 0) continue;
-    const pagoIso = requireHeaderPagoIso(r.statement_date, r.pago_iso);
-    const key = `${r.account_id}|${pagoIso}|${amount}`;
-    if (byKey.has(key)) continue;
-    byKey.set(key, {
-      cc_account_id: r.account_id,
-      cc_account_name: r.account_name,
-      statement_line_id: null,
-      statement_id: r.statement_id,
-      pago_iso: pagoIso,
-      amount_clp: amount,
-      currency: "clp",
-      amount_usd: null,
-      label: "MONTO CANCELADO",
-    });
-  }
-  for (const r of usdRows) {
-    const iso = normalizeTransactionDateIso(r.transaction_date);
-    if (!iso) continue;
-    const usd = Math.abs(r.amount_usd);
-    if (usd === 0) continue;
-    const key = `${r.account_id}|${iso}|usd|${Math.round(usd * 100)}`;
-    if (byKey.has(key)) continue;
-    byKey.set(key, {
-      cc_account_id: r.account_id,
-      cc_account_name: r.account_name,
-      statement_line_id: r.line_id,
-      statement_id: null,
-      pago_iso: iso,
-      amount_clp: 0,
-      currency: "usd",
-      amount_usd: usd,
-      label: `${(r.merchant ?? "ABONO DE DIVISAS").trim()} US$${usd.toFixed(2)}`,
+  for (const r of rows) {
+    if (byKey.has(r.key)) continue;
+    byKey.set(r.key, {
+      cc_account_id: r.cc_account_id,
+      cc_account_name: r.cc_account_name,
+      statement_line_id: r.kind === "line" ? r.id : null,
+      statement_id: r.kind === "header" ? r.id : null,
+      pago_iso: r.pago_iso,
+      amount_clp: r.amount_clp,
+      currency: r.currency,
+      amount_usd: r.amount_usd,
+      label: r.label,
     });
   }
   return [...byKey.values()];
 }
 
-function convertedEvidenceRefs(): { lineIds: Set<number>; statementIds: Set<number> } {
-  const rows = db
-    .prepare(
-      `SELECT in_statement_line_id AS line_id, in_statement_id AS statement_id
-       FROM movement_mirror_merges
-       WHERE in_statement_line_id IS NOT NULL OR in_statement_id IS NOT NULL`
-    )
-    .all() as { line_id: number | null; statement_id: number | null }[];
-  const lineIds = new Set<number>();
-  const statementIds = new Set<number>();
-  for (const r of rows) {
-    if (r.line_id != null) lineIds.add(r.line_id);
-    if (r.statement_id != null) statementIds.add(r.statement_id);
-  }
-  return { lineIds, statementIds };
-}
-
 /**
  * Candidates: single-leg checking debits whose note matches the card-payment description,
  * paired to payment evidence by exact amount within ±4 days (nearest date wins; ambiguity
- * blocks both sides — fail closed, never guess). Already-converted evidence is excluded.
+ * blocks both sides — fail closed, never guess). Already-converted payments are excluded by the
+ * payment's key, so a re-imported statement's new rows are not offered again. Throws while a
+ * converted payment has lost its evidence: if the payment came back under another date it would
+ * look unconverted, and pairing it again would book it twice.
  */
 export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   const movements = db
@@ -270,11 +157,20 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
       CC_PAYMENT_DESC_RE.test(m.note)
   );
 
-  const converted = convertedEvidenceRefs();
-  const evidence = listCcPaymentEvidence().filter(
-    (e) =>
-      (e.statement_line_id == null || !converted.lineIds.has(e.statement_line_id)) &&
-      (e.statement_id == null || !converted.statementIds.has(e.statement_id))
+  const evidenceRows = listCcPaymentEvidenceRows();
+  const evidenceKeys = new Set(evidenceRows.map((r) => r.key));
+  const pairings = listCcPaymentPairings();
+  const lost = pairings.filter((p) => !evidenceKeys.has(p.key));
+  if (lost.length > 0) {
+    throw new Error(
+      `${lost.length} converted card payment(s) have no card evidence left: ` +
+        `${lost.map(describeCcPaymentPairing).join("; ")} — no card payment is paired until they are resolved ` +
+        `(server/scripts/repair-cc-payment-mirror-evidence-refs.ts lists them)`
+    );
+  }
+  const converted = new Set(pairings.map((p) => p.key));
+  const evidence = dedupeCcPaymentEvidence(evidenceRows).filter(
+    (e) => !converted.has(ccPaymentEvidenceKey(e))
   );
   const byAmount = new Map<number, CcPaymentEvidence[]>();
   const usdEvidence: CcPaymentEvidence[] = [];
@@ -353,7 +249,9 @@ export type ConvertedCcPaymentMirror = {
 /**
  * Converts CC-payment pairs in one all-or-nothing transaction; every ref must be a current,
  * unblocked candidate. The checking leg is deleted (snapshotted in movement_mirror_merges);
- * the statement evidence is referenced, never touched.
+ * the statement evidence is never touched. The transfer's card leg (card, credit date, card-side
+ * amount) is what ties the pair to its evidence from then on; the evidence row ids written into
+ * movement_mirror_merges only record what the conversion saw.
  */
 export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
   converted: ConvertedCcPaymentMirror[];

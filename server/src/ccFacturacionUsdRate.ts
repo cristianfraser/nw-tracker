@@ -1,6 +1,11 @@
 import { payByFxDateIso } from "./ccBillingBalances.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
+import {
+  listCcPaymentEvidenceRows,
+  listCcPaymentPairings,
+  type CcPaymentPairing,
+} from "./ccPaymentMirrorEvidence.js";
 import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
 import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
 import { chileWallClockAt } from "./chileDate.js";
@@ -160,23 +165,14 @@ export function isCcUsdPaymentLine(line: {
 
 export type CcUsdPaymentLine = { statement_line_id: number; date_iso: string | null; usd: number };
 
-const stmtDivisasPaymentsByLine = db.prepare(
-  `SELECT mm.in_statement_line_id AS line_id, m.id, m.occurred_on, m.amount AS clp, m.counter_amount AS usd
-   FROM movement_mirror_merges mm
-   INNER JOIN movements m ON m.id = mm.transfer_movement_id
-   WHERE m.flow_kind = 'pago_tarjeta' AND m.to_account_id = ?
-     AND m.currency = 'clp' AND m.counter_currency = 'usd'
-     AND mm.in_statement_line_id IS NOT NULL`
-);
-
 /**
  * The pesos a dollar payment line ({@link isCcUsdPaymentLine}) shows: what was actually paid for
  * it. It is printed on the statement after the facturación it pays, so the rate of the facturación
  * whose statement prints it is the wrong one. In order:
- * - a divisas purchase paired with the line (`movement_mirror_merges.in_statement_line_id` → the
- *   `pago_tarjeta` transfer): its pesos, pro rata when the line's dollars differ from its dollars.
- *   The pairing dates the transfer at the line's own date, so a transfer on another day means the
- *   line id no longer is the line that was paired (the column carries no foreign key) and throws;
+ * - a divisas purchase paired with the line's payment: its pesos. The line must be divisas payment
+ *   evidence (`listCcPaymentEvidenceRows`: an ABONO DE DIVISAS no traspaso claims) and the converted
+ *   payment (`listCcPaymentPairings`) the one with its card, date and dollars — whichever statement
+ *   row printed that payment when it was paired;
  * - a traspaso de deuda's USD leg (`cc_traspaso_deuda_links`): minus its CLP leg's booked pesos, as
  *   the owed walk values it;
  * - otherwise the rate of the facturación it paid ({@link facturacionPaidOn} — the window that
@@ -188,42 +184,21 @@ export function usdPaymentLineClpResolver(
   facturaciones: readonly FacturacionWindowRow[],
   facturacionRate: (billingMonth: string) => number
 ): (line: CcUsdPaymentLine) => number {
-  const divisasByLine = new Map<number, { clp: number; usd: number; dates: Set<string> }>();
-  for (const r of stmtDivisasPaymentsByLine.all(accountId) as {
-    line_id: number;
-    id: number;
-    occurred_on: string;
-    clp: number;
-    usd: number | null;
-  }[]) {
-    if (!(r.clp > 0) || r.usd == null || !(r.usd > 0)) {
-      throw new Error(`pago_tarjeta movement ${r.id}: a dollar payment needs positive pesos and dollars`);
-    }
-    const paid = divisasByLine.get(r.line_id) ?? { clp: 0, usd: 0, dates: new Set<string>() };
-    paid.clp += r.clp;
-    paid.usd += r.usd;
-    paid.dates.add(r.occurred_on);
-    divisasByLine.set(r.line_id, paid);
+  const divisasByKey = new Map<string, CcPaymentPairing>();
+  for (const p of listCcPaymentPairings(accountId)) {
+    if (p.currency === "usd") divisasByKey.set(p.key, p);
+  }
+  const divisasByLine = new Map<number, CcPaymentPairing>();
+  for (const r of listCcPaymentEvidenceRows(accountId)) {
+    const paired = r.currency === "usd" ? divisasByKey.get(r.key) : undefined;
+    if (paired) divisasByLine.set(r.id, paired);
   }
   const traspasoClpByLine = ccTraspasoLinkedClpByUsdLineId(accountId);
   const sorted = sortedByDistinctClose(facturaciones);
   return (line) => {
     const divisas = divisasByLine.get(line.statement_line_id);
+    if (divisas) return -divisas.amount_clp;
     const traspasoClp = traspasoClpByLine.get(line.statement_line_id);
-    if (divisas && traspasoClp != null) {
-      throw new Error(
-        `Account ${accountId}: statement line ${line.statement_line_id} is both a divisas payment and a traspaso de deuda`
-      );
-    }
-    if (divisas) {
-      if (divisas.dates.size !== 1 || !divisas.dates.has(line.date_iso ?? "")) {
-        throw new Error(
-          `Account ${accountId}: statement line ${line.statement_line_id} (${line.date_iso}) is paired with divisas ` +
-            `purchases dated ${[...divisas.dates].join(", ")} — a stale movement_mirror_merges.in_statement_line_id`
-        );
-      }
-      return Math.round(line.usd * (divisas.clp / divisas.usd));
-    }
     if (traspasoClp != null) return -traspasoClp;
     if (!line.date_iso) {
       throw new Error(`Account ${accountId}: dollar payment line ${line.statement_line_id} has no date`);
