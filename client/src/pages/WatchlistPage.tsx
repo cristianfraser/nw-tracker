@@ -275,7 +275,6 @@ export function WatchlistPage() {
         <Link to="/">{t("common.backToDashboard")}</Link>
       </p>
       <h1>{t("watchlist.pageTitle")}</h1>
-      <p className="muted">{t("watchlist.pageHint")}</p>
 
       <section className="watchlist-section">
         <h2>{t("watchlist.appSectionTitle")}</h2>

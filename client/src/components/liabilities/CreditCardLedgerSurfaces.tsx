@@ -1,6 +1,5 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "../../i18n";
-import { cn } from "../../cn";
 import { buildCcDailyHistorialRows } from "../../ccDailyHistorial";
 import { windowCcHistorialRows } from "../../chartRangeWindow";
 import { useDailySeries } from "../../queries/hooks";
@@ -70,7 +69,6 @@ export function CreditCardHistorialSurface({
   const prefs = useSurfacePrefs(`${surfaceIdPrefix(scope)}.historial`, "month", "3y");
   const timeRange = prefs.range;
   const isDaily = prefs.period === "day";
-  const isYearly = prefs.period === "year";
   const rows = ccLedger.historial_chart;
   const hasHistorial = ccLedger.has_installment_ledger && (rows?.length ?? 0) > 0;
 
@@ -107,15 +105,6 @@ export function CreditCardHistorialSurface({
           onRangeChange={prefs.setRange}
         />
       </div>
-      <p className={cn("muted", styles.proseSmTight)}>
-        {t(
-          isDaily
-            ? "accountDetail.creditCard.historialHintDaily"
-            : isYearly
-              ? "accountDetail.creditCard.historialHintYearly"
-              : "accountDetail.creditCard.historialHint"
-        )}
-      </p>
       {isDaily && dailyRows == null ? (
         daily.isError ? (
           <p className="error">
@@ -163,13 +152,6 @@ export function CreditCardDetalleSurface({
         </SurfaceHeading>
         <SurfaceControls period={period} onPeriodChange={prefs.setPeriod} periodOptions={MONTH_YEAR} />
       </div>
-      <p className={cn("muted", styles.proseSmTight)}>
-        {t(
-          isYearly
-            ? "accountDetail.creditCard.detallePorMesBillingHintYearly"
-            : "accountDetail.creditCard.detallePorMesBillingHint"
-        )}
-      </p>
       <CreditCardDetallePorMesTable rows={rows} period={period} />
     </>
   );

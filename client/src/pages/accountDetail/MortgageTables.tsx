@@ -14,7 +14,7 @@ import type {
 } from "../../types";
 import { formatClp, formatUfUnits, formatUfUnitsFine } from "../../format";
 import { cn } from "../../cn";
-import i18n, { Trans } from "../../i18n";
+import i18n from "../../i18n";
 import styles from "../AccountDetailPage.module.css";
 
 /** UF amount with the CLP amount as a muted sub-line (shared desktop/mobile pair cell). */
@@ -139,17 +139,6 @@ export function MortgageDividendosTable({
           ? i18n.t("accountDetail.mortgageSheet.titleMortgage")
           : i18n.t("accountDetail.mortgageSheet.titleProperty")}
       </h2>
-      <p className={cn("muted", styles.proseMuted)}>
-        <Trans
-          i18nKey="accountDetail.mortgageSheet.intro"
-          components={{ 1: <span className="mono" /> }}
-        />
-        {isMortgageView ? (
-          <Trans i18nKey="accountDetail.mortgageSheet.pieNote" components={{ 1: <strong /> }} />
-        ) : (
-          <Trans i18nKey="accountDetail.mortgageSheet.tasaNote" components={{ 1: <strong /> }} />
-        )}
-      </p>
       {m && !isMortgageView && (
         <div className={cn("cards", styles.cardsBelow)}>
           <div className="card">
@@ -284,9 +273,6 @@ export function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenario
   return (
     <>
       <h3 className={styles.subsectionTitleMid}>{i18n.t("accountDetail.mortgageSheet.referenceMinMax")}</h3>
-      <p className={cn("muted", styles.proseMutedXs)}>
-        {i18n.t("accountDetail.mortgageSheet.scenarioIntro")}
-      </p>
       <PaginatedTable page={scenarioPage} pageSize={12} total={scenarioTotal} onPageChange={setScenarioPage}>
         <Table
           tableClassName={cn("table--parallel-mobile", styles.tableScenario)}

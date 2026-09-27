@@ -23,7 +23,7 @@ import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
-import { Trans, useTranslation } from "../i18n";
+import { useTranslation } from "../i18n";
 import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
 import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFromNav";
 import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
@@ -368,8 +368,6 @@ export function GroupInfoPage() {
     return null;
   }
 
-  const isRealEstate = navMatchNode.asset_group_slug === "real_estate";
-
   return (
     <GroupInfoBase
       title={title}
@@ -386,26 +384,6 @@ export function GroupInfoPage() {
             linkedCardNavChildren,
           }
           : null
-      }
-      notice={
-        isRealEstate ? (
-          <p className="muted" style={{ marginTop: "0.75rem", maxWidth: "52rem", lineHeight: 1.45 }}>
-            <Trans
-              i18nKey="realEstate.mortgageImportNotice"
-              components={{
-                1: <strong />,
-                3: <span className="mono" />,
-                5: <strong />,
-                7: <strong />,
-                9: <strong />,
-                11: <strong />,
-                13: <strong />,
-                15: <strong />,
-                17: <strong />,
-              }}
-            />
-          </p>
-        ) : null
       }
       charts={
         <PortfolioGroupChartsSection

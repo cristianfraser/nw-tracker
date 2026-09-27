@@ -125,7 +125,6 @@ export function ProjectionsPage() {
   return (
     <main>
       <h1>{t("projections.title")}</h1>
-      <p className="muted">{t("projections.intro", { age: data.retire_age })}</p>
 
       {/* Row gap leaves room for a Field's error, which overlays rather than
           reflowing the form when a value goes out of bounds. */}
@@ -227,9 +226,6 @@ export function ProjectionsPage() {
           displayUnit={displayUnit}
         />
       </div>
-      <p className="muted" style={{ fontSize: "0.85em" }}>
-        {t("projections.footnote", { fx: Math.round(data.fx_clp_per_usd) })}
-      </p>
     </main>
   );
 }

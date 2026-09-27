@@ -152,12 +152,6 @@ export function PortfolioGroupChartsSection({
       groupPerfBarSeries.length > 0 ? (
         <>
           <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>{i18n.t("charts.groupPerfTitle")}</h2>
-          <p
-            className="muted"
-            style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}
-          >
-            {i18n.t("charts.groupPerfHint")}
-          </p>
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title={i18n.t("charts.groupPerfComboTitle")}
@@ -182,12 +176,6 @@ export function PortfolioGroupChartsSection({
             />
           </div>
           <h2 style={{ marginTop: "1.75rem", fontSize: "1.15rem" }}>{i18n.t("charts.groupAccumTitle")}</h2>
-          <p
-            className="muted"
-            style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}
-          >
-            {i18n.t("charts.groupAccumHint")}
-          </p>
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title={i18n.t("charts.monthlyDeltaConsolidatedAccumTitle")}

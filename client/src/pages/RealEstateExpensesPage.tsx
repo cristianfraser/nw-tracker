@@ -196,9 +196,6 @@ export function RealEstateExpensesPage() {
         {t("sidebar.flowsExpensesRealEstate")}
         {titleSuffix ? ` — ${titleSuffix}` : ""}
       </h2>
-      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "0.75rem" }}>
-        {t("expenses.realEstateIntro")}
-      </p>
 
       <div
         className="chart-grid chart-grid--full-line chart-grid--full-width-stack"

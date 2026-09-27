@@ -33,8 +33,6 @@ type Props = {
   accountColorRgb?: string | null;
   valuationBlockForChart?: TimeseriesBlock | null;
   showValuationChart?: boolean;
-  sectionTitle?: string;
-  sectionHint?: string;
   linkTo?: string;
 };
 
@@ -47,8 +45,6 @@ export function LiabilitiesMortgageGroupSection({
   accountColorRgb,
   valuationBlockForChart,
   showValuationChart = false,
-  sectionTitle,
-  sectionHint,
   linkTo,
 }: Props) {
   const { t } = useTranslation();
@@ -145,8 +141,7 @@ export function LiabilitiesMortgageGroupSection({
     );
   }, [monthlyPerfRows, isYearly, timeRange]);
 
-  const title = sectionTitle ?? t("groupPage.pasivos.mortgageSectionTitle");
-  const hint = sectionHint ?? t("groupPage.pasivos.mortgageSectionHint");
+  const title = t("groupPage.pasivos.mortgageSectionTitle");
 
   return (
     <section className={styles.chartBlock}>
@@ -157,7 +152,6 @@ export function LiabilitiesMortgageGroupSection({
       ) : (
         <h2 className={styles.sectionTitle}>{title}</h2>
       )}
-      <p className={cn("muted", styles.proseSmTight)}>{hint}</p>
 
       <DeptoAccountSummaryCards
         variant="mortgage"
@@ -181,7 +175,6 @@ export function LiabilitiesMortgageGroupSection({
       {monthlyPerfRows.length > 0 ? (
         <>
           <h3 className={styles.sectionTitleSpaced}>{t("groupPage.pasivos.mortgagePerfTitle")}</h3>
-          <p className={cn("muted", styles.proseMutedXs)}>{t("groupPage.pasivos.mortgagePerfHint")}</p>
           <h4 className={styles.subsectionTitleTight}>{t("accountDetail.creditCard.ytdSection")}</h4>
           <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
             <MonthlyPerformanceComboChart

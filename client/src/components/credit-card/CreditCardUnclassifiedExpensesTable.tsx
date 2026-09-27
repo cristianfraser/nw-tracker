@@ -63,9 +63,6 @@ export function CreditCardUnclassifiedExpensesTable({
           {unclassifiedGastos.length}
         </span>
       </h3>
-      <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.5rem" }}>
-        {t("expenses.creditCard.unclassifiedTableHint")}
-      </p>
       {paged.length > 1 ? (
         <div
           style={{

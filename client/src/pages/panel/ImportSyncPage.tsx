@@ -53,9 +53,6 @@ export function ImportSyncPage() {
 
   return (
     <>
-      <p className="muted" style={{ marginBottom: "1rem" }}>
-        {t("importSync.pageHint")}
-      </p>
 
       <h2 className="flow-section-title">{t("importSync.syncLogTitle")}</h2>
       {syncStatus ? <SyncLogStatusPanel status={syncStatus} /> : null}
@@ -74,9 +71,6 @@ export function ImportSyncPage() {
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
         {t("importSync.availableDocumentsTitle")}
       </h2>
-      <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.5rem" }}>
-        {t("importSync.availableDocumentsHint")}
-      </p>
       {coverage ? <AvailableDocumentsTable data={coverage} /> : null}
 
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Trans, useTranslation } from "../../i18n";
+import { useTranslation } from "../../i18n";
 import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPerformanceComboChart";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { DailyPerfDetailTable } from "../../components/account/DailyPerfDetailTable";
@@ -162,18 +162,9 @@ export function StandardAccountDetailPage({ data }: Props) {
   const isDeptoAccount = isMortgageAccount || isPropertyAccount;
   const showMortgagePaymentForm =
     isMortgageAccount && summary.mortgage_payment_create != null;
-  const showManualEntryForm =
-    showBrokerageMovementsForm ||
-    showUsdCashMovementsForm ||
-    showClpCashMovementsForm ||
-    showBookLedgerEdit ||
-    showUnitsFlowForm ||
-    showMortgagePaymentForm;
   const showPositionBlock =
     !data.contentLoading && !isMovementCartolaAccount && !isDeptoAccount && !isUsdCashAccount;
   const showEquityReturnColumns = summary.position?.dividends_clp != null;
-  const ccChartsFromParsedLedger =
-    summary.category_slug === "credit_card" && data.ccLedger.has_installment_ledger;
 
   return (
     <AccountDetailSharedLayout
@@ -213,34 +204,6 @@ export function StandardAccountDetailPage({ data }: Props) {
       {showPositionBlock ? (
         <div className={styles.positionBlock}>
           <h2 className={styles.sectionTitleCompact}>{t("accountDetail.position.title")}</h2>
-          <p className={cn("muted", styles.proseMutedXs)}>
-            <Trans
-              i18nKey="accountDetail.positionHint"
-              components={{ 1: <span className="mono" /> }}
-            />
-            {isAfpAccount ? (
-              <Trans
-                i18nKey="accountDetail.positionHintAfp"
-                components={{
-                  1: <span className="mono" />,
-                  2: <span className="mono" />,
-                  3: <span className="mono" />,
-                  4: <span className="mono" />,
-                  5: <span className="mono" />,
-                }}
-              />
-            ) : null}
-            {isAfcAccount ? (
-              <Trans
-                i18nKey="accountDetail.positionHintAfc"
-                components={{
-                  1: <span className="mono" />,
-                  2: <span className="mono" />,
-                  3: <span className="mono" />,
-                }}
-              />
-            ) : null}
-          </p>
           <Table
             header={
               <thead>
@@ -367,9 +330,6 @@ export function StandardAccountDetailPage({ data }: Props) {
       {isMovementCartolaAccount ? (
         <>
           <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.monthlyDetailTitle")}</h2>
-          <p className={cn("muted", styles.proseSmTight)}>
-            {t("accountDetail.checking.cartolaMonthHint")}
-          </p>
           <CheckingLedgerAnchorForm
             accountId={summary.account_id}
             displayUnit={displayUnit}
@@ -388,32 +348,9 @@ export function StandardAccountDetailPage({ data }: Props) {
       {showMonthlyPerformance ? (
         <>
           <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.monthlyPerfComputedTitle")}</h2>
-          <p className={cn("muted", styles.proseMutedXs)}>
-            <Trans
-              i18nKey="accountDetail.monthlyPerfIntro"
-              components={{ 1: <strong />, 3: <strong /> }}
-            />
-            {isMortgageAccount ? (
-              <Trans
-                i18nKey="accountDetail.monthlyPerfMortgageNote"
-                components={{ 1: <strong /> }}
-              />
-            ) : null}
-            {ccChartsFromParsedLedger ? (
-              <>{t("accountDetail.monthlyPerfCcLedgerNote")}</>
-            ) : (
-              <> {t("accountDetail.sameBaseAsValuation")}</>
-            )}
-            <Trans
-              i18nKey="accountDetail.monthlyPerfUnit"
-              values={{ unit: displayUnit === "usd" ? "USD" : "CLP" }}
-              components={{ 1: <strong /> }}
-            />
-          </p>
           {periodReturns != null ? (
             <>
               <h3 className={styles.subsectionTitleTight}>{t("periodReturns.title")}</h3>
-              <p className={cn("muted", styles.proseMutedXs)}>{t("periodReturns.hint")}</p>
               <PeriodReturnsTable data={periodReturns} displayUnit={displayUnit} />
             </>
           ) : null}
@@ -547,13 +484,6 @@ export function StandardAccountDetailPage({ data }: Props) {
       {depositInflows != null && depositInflows.state_contribution_events.length > 0 ? (
         <>
           <h2 className={styles.sectionTitle}>{t("accountDetail.stateContribution.title")}</h2>
-          <p className={cn("muted", styles.proseMutedXs)}>
-            <Trans
-              i18nKey="accountDetail.stateContribution.intro"
-              values={{ total: formatClp(depositInflows.state_contribution_total_clp) }}
-              components={{ 1: <span className="mono" /> }}
-            />
-          </p>
           <Table
             header={
               <thead>
@@ -584,18 +514,6 @@ export function StandardAccountDetailPage({ data }: Props) {
       ) : null}
 
       <AccountFlowsSection
-        hint={
-          <p className={cn("muted", styles.proseMutedXs)}>
-            Un solo listado por cuenta: aportes, retiros, compras, dividendos, cuotas, etc. Todo en{" "}
-            <span className="mono">movements</span> (SPY/VEA usan <span className="mono">flow_kind</span>, ticker y USD).
-            {showManualEntryForm ? null : (
-              <>
-                {" "}
-                Altas: <span className="mono">POST /api/accounts/{id}/movements</span>.
-              </>
-            )}
-          </p>
-        }
         addMovementsForm={
           showUsdCashMovementsForm ? (
             <AccountUsdCashMovementsForm

@@ -92,9 +92,6 @@ export function IncomePage() {
   return (
     <>
       <h2 className="flow-section-title">{t("sidebar.flowsIncome")}</h2>
-      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "0.75rem" }}>
-        {t("income.intro")}
-      </p>
 
       <p className="muted" style={{ marginBottom: "1rem" }}>
         {t("income.totalLabel")}{" "}
@@ -131,9 +128,6 @@ export function IncomePage() {
             periodOptions={["month", "year"]}
           />
         </div>
-        <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
-          {t("income.monthlyDetailHint")}
-        </p>
         <IncomeMonthTable
           rows={monthTableRows}
           displayUnit={displayUnit}
@@ -145,9 +139,6 @@ export function IncomePage() {
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
           {t("workEarnings.sectionTitle")}
         </h3>
-        <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
-          {t("workEarnings.sectionHint")}
-        </p>
         <WorkEarningsTable rows={data.work_earnings} displayUnit={displayUnit} />
       </section>
 
@@ -160,9 +151,6 @@ export function IncomePage() {
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
           {t("income.sectionFiltered")}
         </h3>
-        <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
-          {t("income.sectionFilteredHint")}
-        </p>
         <IncomeFilteredLinesTable rows={data.filtered_lines} displayUnit={displayUnit} />
       </section>
 
@@ -170,9 +158,6 @@ export function IncomePage() {
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
           {t("income.sectionExcluded")}
         </h3>
-        <p className="muted" style={{ fontSize: "0.9rem", marginBottom: "0.5rem" }}>
-          {t("income.sectionExcludedHint")}
-        </p>
         <IncomeExcludedLinesTable rows={data.excluded_lines} displayUnit={displayUnit} />
       </section>
     </>

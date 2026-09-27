@@ -503,8 +503,6 @@ export function LiabilitiesGroupPage() {
       }
       charts={chartsSection}
       tableAccounts={tableAccountsForPerf}
-      monthlyDetailHint={t("groupPage.monthlyDetailHintLiabilities")}
-      flowsHint={t("groupPage.flowsHintLiabilities")}
       accountsTree={
         accountsTreeRoot ? (
           <NavAccountsTree

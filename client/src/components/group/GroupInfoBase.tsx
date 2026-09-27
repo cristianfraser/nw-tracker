@@ -52,8 +52,6 @@ export type GroupInfoBaseProps = {
   toolbar?: ReactNode;
   /** Nav node + dashboard bundle for the two-row portfolio card strip. */
   portfolio?: GroupInfoPortfolioStrip | null;
-  /** Optional muted notice under cards (e.g. real estate import hint). */
-  notice?: ReactNode;
   /** Page-specific charts (valuation, P/L, allocation, …). */
   charts: ReactNode;
   /** Accounts included in monthly detail + flows tables. */
@@ -62,8 +60,6 @@ export type GroupInfoBaseProps = {
   accountsTree: ReactNode;
   /** Export button row rendered beside the accounts-in-view tree at the bottom. */
   exportSlot?: ReactNode;
-  monthlyDetailHint?: string;
-  flowsHint?: string;
   /** Dims the whole page body (title, cards, charts, tables) while bundle data is loading. */
   loading?: boolean;
   /** Skip consolidated monthly perf + flows tables (pasivos specialized layouts). */
@@ -80,13 +76,10 @@ export function GroupInfoBase({
   title,
   toolbar,
   portfolio,
-  notice,
   charts,
   tableAccounts,
   accountsTree,
   exportSlot,
-  monthlyDetailHint,
-  flowsHint,
   loading = false,
   hideConsolidatedTables = false,
   serverPaginatedMonthlyDetail = false,
@@ -187,16 +180,12 @@ export function GroupInfoBase({
             linkedCardNavChildren={portfolio.linkedCardNavChildren}
           />
         ) : null}
-        {notice}
         {charts}
         {tablesEnabled ? (
           <>
             {!serverPaginatedMonthlyDetail && periodReturns != null ? (
               <>
                 <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("periodReturns.title")}</h2>
-                <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-                  {t("periodReturns.hint")}
-                </p>
                 <PeriodReturnsTable data={periodReturns} displayUnit={displayUnit} />
               </>
             ) : null}
@@ -212,9 +201,6 @@ export function GroupInfoBase({
               </h2>
               <SurfaceControls period={tablePeriod} onPeriodChange={detallePrefs.setPeriod} />
             </div>
-            <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-              {isDaily ? t("groupPage.dailyDetailHint") : monthlyDetailHint ?? t("groupPage.monthlyDetailHint")}
-            </p>
             {isDaily ? (
               dailySeries.isError ? (
                 <p className="error">
@@ -252,9 +238,6 @@ export function GroupInfoBase({
             )}
 
             <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("groupPage.flowsTitle")}</h2>
-            <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-              {flowsHint ?? t("groupPage.flowsHint")}
-            </p>
             {tablesError ? (
               <p className="error">{tablesError}</p>
             ) : (

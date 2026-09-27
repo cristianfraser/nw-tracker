@@ -75,9 +75,6 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
 
   return (
     <>
-      <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.75rem" }}>
-        {t("importSync.genericUniqueMerchants.hint")}
-      </p>
 
       {formError ? <p className="error">{formError}</p> : null}
 

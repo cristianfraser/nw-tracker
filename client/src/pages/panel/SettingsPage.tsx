@@ -7,9 +7,6 @@ export function SettingsPage() {
 
   return (
     <>
-      <p className="muted" style={{ marginBottom: "1rem" }}>
-        {t("settings.pageHint")}
-      </p>
       <div
         className="toggle-row"
         role="radiogroup"

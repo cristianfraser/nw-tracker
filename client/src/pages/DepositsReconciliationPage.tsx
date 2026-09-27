@@ -140,9 +140,6 @@ function ManualAssertionsSection({ rows }: { rows: DepositManualAssertionRow[] }
           {formatFlowMoney(total, displayUnit)}
         </span>
       </h3>
-      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "0.5rem" }}>
-        {t("depositsReconciliation.assertedIntro")}
-      </p>
       <Table
         tableStyle={{ fontSize: "0.85rem" }}
         collapsedVisibleRows={20}
@@ -321,9 +318,6 @@ export function DepositsReconciliationPage() {
   return (
     <>
       <h2 className="flow-section-title">{t("depositsReconciliation.title")}</h2>
-      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "1.25rem" }}>
-        {t("depositsReconciliation.intro")}
-      </p>
 
       {STATUS_ORDER.map((status) => {
         const rows = rowsByStatus.get(status) ?? [];
@@ -383,9 +377,6 @@ export function DepositsReconciliationPage() {
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
         {t("depositsReconciliation.redemptionsTitle")}
       </h2>
-      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "1.25rem" }}>
-        {t("depositsReconciliation.redemptionsIntro")}
-      </p>
       {REDEMPTION_STATUS_ORDER.map((status) => {
         const rows = redemptionsByStatus.get(status) ?? [];
         const totals = data.redemptions_by_status[status];

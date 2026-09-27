@@ -20,7 +20,6 @@ type LayoutProps = {
   accountNavChildren: NonNullable<
     ReturnType<typeof import("../../portfolioNavFromApi").findNavTreeNodeByAccountId>
   >["children"];
-  heroSubtitle?: ReactNode;
   /** Extra bare cards for the strip's second row (same `.cards` grid as the hero, like group pages). */
   stripDetailSlots?: ReactNode;
   children: ReactNode;
@@ -40,7 +39,6 @@ export function AccountDetailSharedLayout({
   heroApiUsd,
   dash,
   accountNavChildren,
-  heroSubtitle,
   stripDetailSlots,
   children,
   toolbar,
@@ -103,7 +101,6 @@ export function AccountDetailSharedLayout({
           }
           detailSlots={detailSlots}
         />
-        {heroSubtitle ? <p className="muted">{heroSubtitle}</p> : null}
         {children}
         {toolbar ? (
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1.25rem" }}>
