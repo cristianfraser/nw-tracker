@@ -409,7 +409,6 @@ describe("facturación proxy on a card ledger", () => {
   let accountId = 0;
   let augustId = 0;
   let planId = 0;
-  const lineIds: Record<string, number> = {};
 
   function insertStatement(opts: {
     source: string;
@@ -449,7 +448,7 @@ describe("facturación proxy on a card ledger", () => {
     statementId: number,
     line: { date: string; merchant: string; clp: number; cuotaKind?: "precio_contado" }
   ): number {
-    const id = Number(
+    return Number(
       db
         .prepare(
           `INSERT INTO cc_statement_lines (
@@ -466,17 +465,26 @@ describe("facturación proxy on a card ledger", () => {
           line.cuotaKind ?? null
         ).lastInsertRowid
     );
-    lineIds[line.merchant] = id;
-    return id;
   }
 
   function bucket(billingMonth: string, date: string): number {
     return insertStatement({ source: `import:web-paste|open|${billingMonth}`, date });
   }
 
-  /** [billing_month, pay_by_date] of each withdrawal of a line's lot. */
+  /** [billing_month, pay_by_date] of each withdrawal of a lot. */
   function withdrawalsOf(result: ProxyLotResult | undefined): [string, string][] | undefined {
     return result?.by_ticker[SERIES]?.cuotas.map((c) => [c.billing_month, c.pay_by_date]);
+  }
+
+  /** The one-shot lots' withdrawals keyed by principal (each fixture line has its own amount). */
+  function lotsByPrincipal(results: readonly ProxyLotResult[]): Map<number, [string, string][]> {
+    const out = new Map<number, [string, string][]>();
+    for (const result of results) {
+      const principal = result.by_ticker[SERIES]!.cuotas[0]!.cuota_amount_clp;
+      if (out.has(principal)) throw new Error(`two fixture lots of ${principal}`);
+      out.set(principal, withdrawalsOf(result)!);
+    }
+    return out;
   }
 
   beforeEach(() => {
@@ -552,7 +560,6 @@ describe("facturación proxy on a card ledger", () => {
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
     db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = ?`).run(SERIES);
-    for (const k of Object.keys(lineIds)) delete lineIds[k];
   });
 
   it("keys every lot by the facturación that billed it, the open and provisional web-paste lines included", () => {
@@ -567,16 +574,16 @@ describe("facturación proxy on a card ledger", () => {
     insertLine(october, { date: "25/9/2026", merchant: "VITEST CUOTAS", clp: 90_000, cuotaKind: "precio_contado" });
 
     const facturaciones = buildFacturaciones(accountId, []);
-    const { lineProxy } = buildNormalPurchaseProxyForAccount(accountId, [SERIES], TODAY, facturaciones);
+    const lots = lotsByPrincipal(buildNormalPurchaseProxyForAccount(accountId, [SERIES], TODAY, facturaciones));
     // Closed August: the printed PAGAR HASTA; dd/mm/yy and dd/mm/yyyy rows alike.
-    expect(withdrawalsOf(lineProxy.get(lineIds["VITEST SHORT YEAR"]!))).toEqual([["2026-08", "2026-09-10"]]);
-    expect(withdrawalsOf(lineProxy.get(lineIds["VITEST LONG YEAR"]!))).toEqual([["2026-08", "2026-09-10"]]);
+    expect(lots.get(20_000)).toEqual([["2026-08", "2026-09-10"]]); // VITEST SHORT YEAR
+    expect(lots.get(11_000)).toEqual([["2026-08", "2026-09-10"]]); // VITEST LONG YEAR
     // Provisional September and open October: no printed pay-by, the table's derived one.
-    expect(withdrawalsOf(lineProxy.get(lineIds["VITEST SEPTEMBER"]!))).toEqual([["2026-09", "2026-10-10"]]);
-    expect(withdrawalsOf(lineProxy.get(lineIds["VITEST OCTOBER"]!))).toEqual([["2026-10", "2026-11-10"]]);
-    expect(withdrawalsOf(lineProxy.get(lineIds["VITEST LEFTOVER"]!))).toEqual([["2026-10", "2026-11-10"]]);
-    expect(lineProxy.has(lineIds["VITEST PLAN"]!)).toBe(false);
-    expect(lineProxy.has(lineIds["VITEST CUOTAS"]!)).toBe(false);
+    expect(lots.get(13_000)).toEqual([["2026-09", "2026-10-10"]]); // VITEST SEPTEMBER
+    expect(lots.get(4_000)).toEqual([["2026-10", "2026-11-10"]]); // VITEST OCTOBER
+    expect(lots.get(3_000)).toEqual([["2026-10", "2026-11-10"]]); // VITEST LEFTOVER
+    // No lot for the plan's pasted purchase row (3x.xxx) nor the count-less cuota purchase (9x.xxx).
+    expect([...lots.keys()].sort((a, b) => a - b)).toEqual([3_000, 4_000, 11_000, 13_000, 20_000]);
     // The pay-by dates are the ones the facturaciones table shows.
     const payBy = new Map(facturaciones.map((f) => [f.billing_month, f.pay_by_iso]));
     expect([payBy.get("2026-08"), payBy.get("2026-09"), payBy.get("2026-10")]).toEqual([
@@ -609,8 +616,8 @@ describe("facturación proxy on a card ledger", () => {
     insertLine(bucket("2026-08", "20/08/2026"), { date: "10/8/2026", merchant: "VITEST LEFTOVER", clp: 3_000 });
     const facturaciones = buildFacturaciones(accountId, []);
     expect(facturaciones.some((f) => f.billing_month === "2026-10")).toBe(false);
-    const { lineProxy } = buildNormalPurchaseProxyForAccount(accountId, [SERIES], TODAY, facturaciones);
-    expect(withdrawalsOf(lineProxy.get(lineIds["VITEST LEFTOVER"]!))).toEqual([["2026-10", "2026-11-10"]]);
+    const lots = lotsByPrincipal(buildNormalPurchaseProxyForAccount(accountId, [SERIES], TODAY, facturaciones));
+    expect(lots.get(3_000)).toEqual([["2026-10", "2026-11-10"]]); // VITEST LEFTOVER
   });
 
   it("throws on a line whose purchase date cannot be parsed instead of dropping it", () => {

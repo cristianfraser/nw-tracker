@@ -1,5 +1,5 @@
 import type { FxConversionWarning } from "./core";
-import type { CcCuotaPurchaseKind, CcProxyLotResult } from "./creditCard";
+import type { CcCuotaPurchaseKind } from "./creditCard";
 
 export type DepositFlowCategory = "real_estate" | "cash" | "brokerage" | "inversiones";
 
@@ -295,13 +295,6 @@ export interface FlowsCreditCardExpensesResponse {
   chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
   total_clp: number;
   total_real_clp: number;
-  /** Tracked tickers used to compute proxy earnings. */
-  proxy_tickers?: string[];
-  /**
-   * Investment proxy earnings for normal (non-installment) purchase lines,
-   * keyed by statement_line_id.
-   */
-  line_proxy?: Record<number, CcProxyLotResult>;
   /**
    * `<account_id>|<billing_month>` → the facturación's PAGAR HASTA date (ISO), for the Diario
    * gastos view (cuotas land on the day their facturación is paid).

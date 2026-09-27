@@ -117,12 +117,6 @@ import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
 import { loadCheckingGapDepositMirrorGastosLineDrafts } from "./flowsCheckingGapDepositMirrors.js";
 import { loadCcExpenseLineSplits } from "./ccExpenseLineSplits.js";
-import {
-  buildNormalPurchaseProxyForAccount,
-  getCcProxyTickers,
-  type ProxyLotResult,
-} from "./ccInvestmentProxy.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
 
 export { listCreditCardMasterAccountIds };
 
@@ -328,15 +322,6 @@ export type FlowsCreditCardExpensesPayload = {
   /** All positive charges. */
 
   total_real_clp: number;
-
-  /** Tracked tickers for proxy earnings. */
-  proxy_tickers?: string[];
-
-  /**
-   * Investment proxy earnings for normal (non-installment) purchase lines,
-   * keyed by statement_line_id.
-   */
-  line_proxy?: Record<number, import("./ccInvestmentProxy.js").ProxyLotResult>;
 
   /**
    * `<account_id>|<billing_month>` → the facturación's PAGAR HASTA date (ISO). The Diario
@@ -1120,9 +1105,7 @@ function tenthOfNextMonthIso(billingMonth: string): string | null {
   return new Date(Date.UTC(Number(m[1]), Number(m[2]), 10)).toISOString().slice(0, 10);
 }
 
-export function buildFlowsCreditCardExpensesPayload(
-  proxyTickers?: string[]
-): FlowsCreditCardExpensesPayload {
+export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPayload {
 
   const accountIds = listCreditCardMasterAccountIds();
 
@@ -1187,22 +1170,6 @@ export function buildFlowsCreditCardExpensesPayload(
 
   const totals = computeFlowsExpenseTotals(lines);
 
-  // Build proxy for normal purchase lines (keyed by statement_line_id)
-  const tickers = proxyTickers ?? getCcProxyTickers();
-  const today = chileCalendarTodayYmd();
-  const line_proxy: Record<number, ProxyLotResult> = {};
-  for (const accountId of accountIds) {
-    const { lineProxy } = buildNormalPurchaseProxyForAccount(
-      accountId,
-      tickers,
-      today,
-      billingDetailCacheForAccount(accountId).facturaciones
-    );
-    for (const [lineId, result] of lineProxy) {
-      line_proxy[lineId] = result;
-    }
-  }
-
   return {
 
     group_slug: primaryCreditCardExpensesGroupSlug(),
@@ -1222,10 +1189,6 @@ export function buildFlowsCreditCardExpensesPayload(
     chart_monthly_by_category,
 
     ...totals,
-
-    proxy_tickers: tickers,
-
-    line_proxy,
 
     cuota_pay_by_iso: cuotaPayByIsoByAccountBillingMonth(accountIds),
 
