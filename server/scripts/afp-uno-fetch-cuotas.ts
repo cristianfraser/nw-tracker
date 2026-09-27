@@ -15,7 +15,7 @@
  * (dry-run prints row count only after a successful parse).
  */
 import "../src/db.js";
-import { toDdMmYyyy } from "../src/afpQuetalmiApi.js";
+import { ddMmYyyyFromIso } from "../src/ccBillingCloses.js";
 import { upsertFundUnitsFromQuetalmiFetch } from "../src/afpUnoValuation.js";
 
 function arg(name: string): string | undefined {
@@ -32,12 +32,8 @@ async function main(): Promise<void> {
   }
   const fromIso = arg("from") ?? "2024-01-01";
   const toIso = arg("to") ?? new Date().toISOString().slice(0, 10);
-  const fi = toDdMmYyyy(fromIso);
-  const ff = toDdMmYyyy(toIso);
-  if (!fi || !ff) {
-    console.error("--from and --to must be YYYY-MM-DD");
-    process.exit(1);
-  }
+  const fi = ddMmYyyyFromIso(fromIso);
+  const ff = ddMmYyyyFromIso(toIso);
   const dry = !process.argv.includes("--apply");
   const { rows } = await upsertFundUnitsFromQuetalmiFetch({
     apiKey: apiKey.trim(),

@@ -35,6 +35,7 @@ import path from "node:path";
 
 import { importCcWebPasteLines } from "./accountImports.js";
 import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
+import { ddMmYyyyFromIso } from "./ccBillingCloses.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
@@ -146,11 +147,6 @@ function santanderImporteToken(amount: number, decimals: 0 | 2): string {
   return fraction != null ? `${grouped},${fraction}` : grouped;
 }
 
-function ymdToDdMmYyyy(ymd: string): string {
-  const [y, m, d] = ymd.split("-");
-  return `${d}/${m}/${y}`;
-}
-
 /**
  * Write the payment the receipt describes when no bank row carries it yet: the checking → card
  * transfer (the migration-169 cross-currency shape for the dollar abono — CLP from-leg = the
@@ -199,7 +195,7 @@ function synthesizeTransferFromReceipt(
 
     const line = santanderMovementRowToWebPasteLine(
       {
-        Fecha: ymdToDdMmYyyy(receipt.paid_on),
+        Fecha: ddMmYyyyFromIso(receipt.paid_on),
         Descripcion: isUsd ? "ABONO DE DIVISAS" : "PAGO",
         Comercio: null,
         Importe: isUsd ? santanderImporteToken(receipt.amount_usd!, 2) : santanderImporteToken(receipt.amount_clp, 0),

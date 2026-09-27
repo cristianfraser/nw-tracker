@@ -34,7 +34,7 @@ import {
   pdfClosedBillingMonthsForAccount,
   provisionallyClosedBillingMonthsForAccount,
 } from "./ccManualBillingMonth.js";
-import { feedBillingCloseForMonth, type CcCloseSource } from "./ccBillingCloses.js";
+import { ddMmYyyyFromIso, feedBillingCloseForMonth, type CcCloseSource } from "./ccBillingCloses.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { parseOpenWebPasteBillingMonth } from "./ccOpenWebPasteRepair.js";
@@ -771,11 +771,6 @@ function applyFacturacionUsdRates(accountId: number, rows: CcFacturacionRow[]): 
   }
 }
 
-function isoToDdMmYyyy(iso: string): string {
-  const [y, mo, d] = iso.split("-");
-  return `${d}/${mo}/${y}`;
-}
-
 /** Explicit PDF pay_by when present; else statement close + 10th of next month (see ccInstallmentPayBy). */
 function resolveFacturacionPayBy(
   slot: CcStatementSlotByCurrency,
@@ -796,7 +791,7 @@ function resolveFacturacionPayBy(
     period_to: primary.period_to ?? undefined,
   });
   if (!payByIso) return { pay_by: null, pay_by_iso: null };
-  return { pay_by: isoToDdMmYyyy(payByIso), pay_by_iso: payByIso };
+  return { pay_by: ddMmYyyyFromIso(payByIso), pay_by_iso: payByIso };
 }
 
 export function buildFacturaciones(
@@ -951,7 +946,7 @@ function buildFacturacionesInner(
       billing_month: billingMonth,
       close_date: openClose?.close_ddmmyyyy ?? primary.statement_date,
       close_date_iso: openClose?.close_iso ?? primary.statement_date_iso,
-      pay_by: openClose ? (openPayByIso ? isoToDdMmYyyy(openPayByIso) : null) : pay_by,
+      pay_by: openClose ? (openPayByIso ? ddMmYyyyFromIso(openPayByIso) : null) : pay_by,
       pay_by_iso: openClose ? openPayByIso : payByIso,
       facturado_clp: facturadoClp,
       facturado_usd: facturadoUsd,
@@ -993,7 +988,7 @@ function provisionalFacturacionRow(
     billing_month: billingMonth,
     close_date: pv.close_ddmmyyyy,
     close_date_iso: pv.close_iso,
-    pay_by: pv.pay_by_iso ? isoToDdMmYyyy(pv.pay_by_iso) : null,
+    pay_by: pv.pay_by_iso ? ddMmYyyyFromIso(pv.pay_by_iso) : null,
     pay_by_iso: pv.pay_by_iso,
     facturado_clp: pv.facturado_clp,
     facturado_usd: pv.facturado_usd,

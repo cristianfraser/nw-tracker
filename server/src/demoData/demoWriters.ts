@@ -17,6 +17,7 @@
  *   market series.
  */
 import { db } from "../db.js";
+import { ddMmYyyyFromIso } from "../ccBillingCloses.js";
 import { getCcExpenseCategoryBySlug, normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import {
   deptoPaymentColumnsFromPaymentRow,
@@ -230,11 +231,6 @@ function valuation(accountId: number, ymd: string, valueClp: number): void {
 
 function dayInMonth(month: DemoMonth, day: number): string {
   return `${month}-${String(day).padStart(2, "0")}`;
-}
-
-function ddmmyyyy(ymd: string): string {
-  const [y, m, d] = ymd.split("-");
-  return `${d}/${m}/${y}`;
 }
 
 /** Whole months from `a` to `b` (positive when `b` is after `a`). */
@@ -1124,7 +1120,7 @@ export function writeCreditCardMonth(
       insLedgerPayment.run(
         plan.purchaseId,
         payBy,
-        ddmmyyyy(statementDate),
+        ddMmYyyyFromIso(statementDate),
         `import:web-paste|demo|${card.last4}|${month}`,
         plan.cuotaClp,
         current,
@@ -1143,10 +1139,10 @@ export function writeCreditCardMonth(
       ccMasterId,
       card.cardGroup,
       `import:web-paste|demo|${card.last4}|${month}`,
-      ddmmyyyy(statementDate),
-      ddmmyyyy(periodFrom),
-      ddmmyyyy(periodTo),
-      ddmmyyyy(payBy),
+      ddMmYyyyFromIso(statementDate),
+      ddMmYyyyFromIso(periodFrom),
+      ddMmYyyyFromIso(periodTo),
+      ddMmYyyyFromIso(payBy),
       card.last4,
       "compact",
       "clp",
@@ -1162,7 +1158,7 @@ export function writeCreditCardMonth(
     for (const l of lines) {
       insLine.run(
         statementId,
-        ddmmyyyy(l.date),
+        ddMmYyyyFromIso(l.date),
         l.merchant,
         Math.round(l.amount),
         null,
@@ -1177,7 +1173,7 @@ export function writeCreditCardMonth(
     if (pago > 0) {
       insLine.run(
         statementId,
-        ddmmyyyy(dayInMonth(month, 8)),
+        ddMmYyyyFromIso(dayInMonth(month, 8)),
         "PAGO",
         -pago,
         null,
@@ -1196,10 +1192,10 @@ export function writeCreditCardMonth(
         ccMasterId,
         card.cardGroup,
         `import:web-paste|demo-usd|${card.last4}|${month}`,
-        ddmmyyyy(statementDate),
-        ddmmyyyy(periodFrom),
-        ddmmyyyy(periodTo),
-        ddmmyyyy(payBy),
+        ddMmYyyyFromIso(statementDate),
+        ddMmYyyyFromIso(periodFrom),
+        ddMmYyyyFromIso(periodTo),
+        ddMmYyyyFromIso(payBy),
         card.last4,
         "international_usd",
         "usd",
@@ -1215,7 +1211,7 @@ export function writeCreditCardMonth(
         const amountUsd = Math.round(jitter(rng, card.usdMonthly.meanUsd / nUsd, 0.5) * 100) / 100;
         insLine.run(
           usdStatementId,
-          ddmmyyyy(dayInMonth(prevMonth, 22 + k)),
+          ddMmYyyyFromIso(dayInMonth(prevMonth, 22 + k)),
           USD_MERCHANTS[k % USD_MERCHANTS.length]!,
           null,
           Math.max(1, amountUsd),

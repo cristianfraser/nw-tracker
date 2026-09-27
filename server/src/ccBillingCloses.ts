@@ -63,10 +63,14 @@ function daysBetweenIso(fromIso: string, toIso: string): number {
   return Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / 86_400_000);
 }
 
-/** `2026-09-24` → `24/09/2026`, the zero-padded form `cc_statements` stores. */
+/**
+ * `2026-09-24` → `24/09/2026`, the zero-padded form `cc_statements` stores — the canonical
+ * ISO → dd/mm/yyyy formatter (its inverse is `parseDdMmYyToIso`). Throws on anything else.
+ */
 export function ddMmYyyyFromIso(iso: string): string {
-  const [y, mo, d] = iso.split("-");
-  return `${d}/${mo}/${y}`;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) throw new Error(`ddMmYyyyFromIso: expected YYYY-MM-DD, got ${JSON.stringify(iso)}`);
+  return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
 function isRealStatement(st: CcStatementRow): boolean {

@@ -30,6 +30,11 @@ describe("santanderMovementDateToIso", () => {
   it("throws on an unexpected shape rather than guessing", () => {
     expect(() => santanderMovementDateToIso("2026-08-04")).toThrow(/want dd\/mm\/yyyy/);
   });
+
+  it("throws on a day or month out of range", () => {
+    expect(() => santanderMovementDateToIso("32/08/2026")).toThrow(/want dd\/mm\/yyyy/);
+    expect(() => santanderMovementDateToIso("04/13/2026")).toThrow(/want dd\/mm\/yyyy/);
+  });
 });
 
 describe("amount conventions", () => {

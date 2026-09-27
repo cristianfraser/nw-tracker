@@ -8,6 +8,7 @@ import {
   cuotaCountFromStampTax,
   cuotaPurchaseTypeFromFeedDescription,
 } from "./ccCuotaPurchaseKinds.js";
+import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
 /**
  * Adapter from the Santander private-API movement feed to the web-paste line shape.
@@ -54,9 +55,10 @@ function requireString(value: unknown, field: string): string {
 
 /** `dd/mm/yyyy` → `YYYY-MM-DD`. Throws rather than guessing at an unexpected shape. */
 export function santanderMovementDateToIso(fecha: string): string {
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fecha.trim());
-  if (!m) throw new Error(`Unexpected Santander movement date "${fecha}" (want dd/mm/yyyy)`);
-  return `${m[3]}-${m[2]}-${m[1]}`;
+  const t = fecha.trim();
+  const iso = /^\d{2}\/\d{2}\/\d{4}$/.test(t) ? parseDdMmYyToIso(t) : null;
+  if (!iso) throw new Error(`Unexpected Santander movement date "${fecha}" (want dd/mm/yyyy)`);
+  return iso;
 }
 
 /**
