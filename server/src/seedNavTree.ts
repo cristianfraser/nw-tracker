@@ -60,9 +60,6 @@ const upsertGroup = db.prepare(`
 
 const groupIdBySlug = db.prepare(`SELECT id FROM portfolio_groups WHERE slug = ?`);
 
-/** Apartments tracked on Flujos > Gastos > Inmuebles (rows in `expense_accounts`). */
-const REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS = ["arriendo_a", "arriendo_b", "depto"] as const;
-
 const deleteGroupItems = db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ?`);
 
 const deleteRetiredPortfolioGroups = db.prepare(`
@@ -189,18 +186,17 @@ function linkAccountsByAssetGroup(parentSlug: string, bucketSlug: string, sortSt
   });
 }
 
-function linkExpenseAccounts(parentSlug: string, slugs: string[]) {
+/** Links every tracked place (`expense_accounts`) under the real-estate expenses node. */
+function linkExpenseAccounts(parentSlug: string) {
   const pid = (groupIdBySlug.get(parentSlug) as { id: number }).id;
-  slugs.forEach((slug, i) => {
-    const row = db
-      .prepare(
-        `SELECT a.id FROM expense_accounts a
-         JOIN expense_groups g ON g.id = a.group_id
-         WHERE a.slug = ?`
-      )
-      .get(slug) as { id: number } | undefined;
-    if (row) insertExpenseChild.run(pid, row.id, i * 10);
-  });
+  const rows = db
+    .prepare(
+      `SELECT a.id FROM expense_accounts a
+       JOIN expense_groups g ON g.id = a.group_id
+       ORDER BY a.sort_order, a.id`
+    )
+    .all() as { id: number }[];
+  rows.forEach((row, i) => insertExpenseChild.run(pid, row.id, i * 10));
 }
 
 function rebuildRetirementNav() {
@@ -587,10 +583,9 @@ export function seedNavTree(): void {
       (
         db
           .prepare(
-            `SELECT COUNT(*) AS c FROM expense_accounts a
-             WHERE a.slug IN (${REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS.map(() => "?").join(",")})`
+            `SELECT COUNT(*) AS c FROM expense_accounts`
           )
-          .get(...REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS) as { c: number }
+          .get() as { c: number }
       ).c > 0;
     seedSidebarChildPage(hasRealEstateExpenseAccounts, {
       slug: "flows_expenses_real_estate",
@@ -638,7 +633,7 @@ export function seedNavTree(): void {
     linkGroup("flows", "flows_deposits", 20);
     linkGroup("flows", "flows_pl", 30);
     if (hasRealEstateExpenseAccounts) {
-      linkExpenseAccounts("flows_expenses_real_estate", [...REAL_ESTATE_EXPENSE_ACCOUNT_SLUGS]);
+      linkExpenseAccounts("flows_expenses_real_estate");
     }
 
     // The global /search page was folded into the flows tables (dashboard = master view);

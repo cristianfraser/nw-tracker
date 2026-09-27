@@ -320,11 +320,12 @@ function isCryptoTabEthAccountName(name: string): boolean {
   return /\beth\b/.test(n) || n.trim() === "eth";
 }
 
-/** Liabilities tab: mortgage (Depto) — deeper red-wine; “Tarjeta” uses the lighter companion. */
+/** Liabilities tab: mortgage — deeper red-wine; “Tarjeta” uses the lighter companion. */
 function isLiabilitiesMortgageAccountName(name: string): boolean {
   const n = normAccountLabel(name);
   return (
-    n === "depto" ||
+    n.includes("hipoteca") ||
+    n.includes("mortgage") ||
     n.includes("total hoja") ||
     (n.includes("pasivos") && n.includes("total"))
   );

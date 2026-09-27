@@ -1155,7 +1155,7 @@
       "unclassifiedTableEmpty": "No hay gastos sin clasificar.",
       "depositMatchedTableTitle": "Gastos emparejados con depósitos",
       "depositMatchedTableEmpty": "No hay gastos emparejados con depósitos.",
-      "mortgageDepositLinkCuota": "· Depto cuota {{cuota}}",
+      "mortgageDepositLinkCuota": "· Cuota hipotecaria {{cuota}}",
       "investmentDepositLink": "· depósito inversión",
       "bigGroups": {
         "colGroup": "Grupo grande",
@@ -1176,11 +1176,6 @@
         "deleteConfirm": "¿Eliminar el grupo «{{label}}»? Tiene {{count}} compra(s) asignadas; quítalas del grupo antes de eliminar.",
         "deleteBlockedHint": "Quita todas las compras del grupo antes de eliminarlo."
       }
-    },
-    "accounts": {
-      "arriendo_a": "Arriendo A",
-      "arriendo_b": "Arriendo B",
-      "depto": "Depto"
     },
     "kinds": {
       "gas": "Gas",

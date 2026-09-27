@@ -52,10 +52,10 @@ function requireDeptoMortgageAccount(accountId: number): void {
   const account = accountRowForId(accountId);
   if (!account) throw new Error("Account not found");
   if (accountBucketKindSlug(account.bucket_slug) !== "mortgage") {
-    throw new Error("Mortgage payments can only be logged on the Depto hipoteca account");
+    throw new Error("Mortgage payments can only be logged on the depto mortgage account");
   }
   if (account.import_key !== MORTGAGE_ACCOUNT_IMPORT_KEY) {
-    throw new Error("Mortgage payment entry is only enabled for the Depto mortgage master account");
+    throw new Error("Mortgage payment entry is only enabled for the depto mortgage master account");
   }
 }
 
