@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { formatClp } from "../../format";
+import { formatClp, parseNumberInputOrThrow } from "../../format";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import { Table } from "../ui/Table";
 import { Button, Field, Input } from "@crfrsr/ui";
@@ -41,8 +41,8 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const value_clp = Number(valueClp.replace(/\./g, "").replace(",", "."));
-      if (!Number.isFinite(value_clp)) {
+      const value_clp = parseNumberInputOrThrow(valueClp);
+      if (value_clp == null) {
         throw new Error(t("accountDetail.bookLedger.valuationValueInvalid"));
       }
       if (!/^\d{4}-\d{2}-\d{2}$/.test(asOfDate)) {

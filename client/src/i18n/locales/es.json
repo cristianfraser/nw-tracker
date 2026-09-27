@@ -891,7 +891,8 @@
     "cancel": "Cancelar",
     "close": "Cerrar",
     "modalPrevPeriod": "Período anterior",
-    "modalNextPeriod": "Período siguiente"
+    "modalNextPeriod": "Período siguiente",
+    "numberInvalid": "«{{value}}» no es un número válido. Usa «{{decimal}}» para los decimales y «{{group}}» para los miles (por ejemplo, {{example}})."
   },
   "flows": {
     "layoutTitle": "Flujos",

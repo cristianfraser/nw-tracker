@@ -1,35 +1,48 @@
 import { useCallback, useMemo, useState } from "react";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { parseNumberInput } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useGroupFlows, useAccountFlows, type FlowsQueryFilters } from "../../queries/hooks";
 import { DEFAULT_FLOWS_FILTER_STATE, FlowsTable, type FlowsFilterState } from "./FlowsTable";
 
 const PAGE_SIZE = 20;
 
-/** CLP amounts are integers; grouping separators are ignored ("1.xxx.xxx" ≡ "1325724"). */
-function parseAmountFilter(raw: string): number | undefined {
-  const digits = raw.replace(/\D/g, "");
-  if (!digits) return undefined;
-  const n = Number(digits);
-  return Number.isFinite(n) ? n : undefined;
+/**
+ * An amount filter field as the |amount| it matches — the server compares rounded absolute legs,
+ * so a typed sign is dropped. A field that isn't a number filters nothing and reports why.
+ */
+function parseAmountFilter(raw: string): { value: number | undefined; error: string | null } {
+  const parsed = parseNumberInput(raw);
+  if (!parsed.ok) return { value: undefined, error: parsed.message };
+  return { value: parsed.value == null ? undefined : Math.abs(parsed.value), error: null };
 }
 
-/** Extended filters shared by both panel variants (exact wins over min/max, like the server). */
-function extraFiltersFromState(fs: FlowsFilterState): Partial<FlowsQueryFilters> {
+/**
+ * Extended filters shared by both panel variants (exact wins over min/max, like the server),
+ * plus the first amount field that isn't a number.
+ */
+function extraFiltersFromState(fs: FlowsFilterState): {
+  filters: Partial<FlowsQueryFilters>;
+  amountError: string | null;
+} {
   const exact = parseAmountFilter(fs.amount_exact);
-  const min = exact == null ? parseAmountFilter(fs.amount_min) : undefined;
-  const max = exact == null ? parseAmountFilter(fs.amount_max) : undefined;
-  const hasAmountFilter = exact != null || min != null || max != null;
+  const min = exact.value == null ? parseAmountFilter(fs.amount_min) : null;
+  const max = exact.value == null ? parseAmountFilter(fs.amount_max) : null;
+  const hasAmountFilter = exact.value != null || min?.value != null || max?.value != null;
   return {
-    date_from: fs.date_from || undefined,
-    date_to: fs.date_to || undefined,
-    amount_exact: exact,
-    amount_min: min,
-    amount_max: max,
-    // Only meaningful alongside an amount filter; omitted otherwise so query keys stay stable.
-    amount_currency:
-      hasAmountFilter && fs.amount_currency && fs.amount_currency !== "clp"
-        ? fs.amount_currency
-        : undefined,
+    filters: {
+      date_from: fs.date_from || undefined,
+      date_to: fs.date_to || undefined,
+      amount_exact: exact.value,
+      amount_min: min?.value,
+      amount_max: max?.value,
+      // Only meaningful alongside an amount filter; omitted otherwise so query keys stay stable.
+      amount_currency:
+        hasAmountFilter && fs.amount_currency && fs.amount_currency !== "clp"
+          ? fs.amount_currency
+          : undefined,
+    },
+    amountError: exact.error ?? min?.error ?? max?.error ?? null,
   };
 }
 
@@ -56,9 +69,16 @@ function GroupFlowsPanel({
   enabled = true,
 }: GroupFlowsPanelProps & { enabled?: boolean }) {
   const { t } = useTranslation();
+  const { decimalSeparator, language } = useDisplayPreferences();
   const [page, setPage] = useState(1);
   const [filterState, setFilterState] = useState<FlowsFilterState>(DEFAULT_FLOWS_FILTER_STATE);
 
+  // The separator setting decides how a typed amount reads, and the message is translated:
+  // both key the parse.
+  const extra = useMemo(
+    () => extraFiltersFromState(filterState),
+    [filterState, decimalSeparator, language]
+  );
   const filters = useMemo(
     (): FlowsQueryFilters => ({
       page,
@@ -68,9 +88,9 @@ function GroupFlowsPanel({
       account_id: filterState.account_id ? Number(filterState.account_id) : undefined,
       bucket: filterState.bucket || undefined,
       q: filterState.q || undefined,
-      ...extraFiltersFromState(filterState),
+      ...extra.filters,
     }),
-    [page, filterState]
+    [page, filterState, extra]
   );
 
   const { data, isFetching } = useGroupFlows(groupSlug, filters, enabled);
@@ -97,6 +117,7 @@ function GroupFlowsPanel({
       filterOptions={data?.filter_options}
       filterState={filterState}
       onFilterChange={handleFilterChange}
+      amountFilterError={extra.amountError}
     />
   );
 }
@@ -108,11 +129,18 @@ function AccountFlowsPanel({
   enabled = true,
 }: AccountFlowsPanelProps & { enabled?: boolean }) {
   const { t } = useTranslation();
+  const { decimalSeparator, language } = useDisplayPreferences();
   const [page, setPage] = useState(1);
   const [filterState, setFilterState] = useState<FlowsFilterState>(DEFAULT_FLOWS_FILTER_STATE);
 
   const id = String(accountId);
 
+  // The separator setting decides how a typed amount reads, and the message is translated:
+  // both key the parse.
+  const extra = useMemo(
+    () => extraFiltersFromState(filterState),
+    [filterState, decimalSeparator, language]
+  );
   const filters = useMemo(
     (): FlowsQueryFilters => ({
       page,
@@ -121,9 +149,9 @@ function AccountFlowsPanel({
       type: filterState.type || undefined,
       q: filterState.q || undefined,
       personal_only: filterState.personal_only || undefined,
-      ...extraFiltersFromState(filterState),
+      ...extra.filters,
     }),
-    [page, filterState]
+    [page, filterState, extra]
   );
 
   const { data, isFetching } = useAccountFlows(id, filters, enabled);
@@ -153,6 +181,7 @@ function AccountFlowsPanel({
       filterOptions={data?.filter_options}
       filterState={filterStateForTable}
       onFilterChange={handleFilterChange}
+      amountFilterError={extra.amountError}
     />
   );
 }

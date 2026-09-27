@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
+import { parseNumberInputOrThrow } from "../../format";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import {
   brokerageMovementFieldLabelStyle,
@@ -35,12 +36,13 @@ function emptyRow(): BookMovementDraft {
   };
 }
 
-/** Parse a positive CLP magnitude (sign comes from the In/Out toggle, not the number). */
+/**
+ * Parse a positive CLP magnitude (sign comes from the In/Out toggle, not the number); null when
+ * empty or zero. Throws the localized message when the field isn't a number (see `parseNumberInput`).
+ */
 function parseAbsClp(raw: string): number | null {
-  const normalized = raw.trim().replace(/\./g, "").replace(",", ".");
-  if (!normalized) return null;
-  const n = Math.abs(Number(normalized));
-  return Number.isFinite(n) && n !== 0 ? n : null;
+  const n = parseNumberInputOrThrow(raw);
+  return n != null && n !== 0 ? Math.abs(n) : null;
 }
 
 function buildPostBody(row: BookMovementDraft): Record<string, unknown> | null {

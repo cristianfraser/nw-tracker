@@ -3129,6 +3129,10 @@
     "modalNextPeriod": {
       "en": "Next period",
       "es": "Período siguiente"
+    },
+    "numberInvalid": {
+      "en": "\"{{value}}\" isn't a valid number. Use \"{{decimal}}\" for decimals and \"{{group}}\" for thousands (e.g. {{example}}).",
+      "es": "«{{value}}» no es un número válido. Usa «{{decimal}}» para los decimales y «{{group}}» para los miles (por ejemplo, {{example}})."
     }
   },
   "flows": {

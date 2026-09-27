@@ -4,9 +4,13 @@ import {
   counterpartRoleForBrokerageFlowKind,
   isInterestFlowKind,
 } from "./brokerageFlowKinds";
-import { type InitialMovementDraft, parseOptionalNumber } from "./stockAccountFormTypes";
+import { parseNumberInputOrThrow } from "../format";
+import { type InitialMovementDraft } from "./stockAccountFormTypes";
 
-/** Body for `POST /api/accounts/:id/movements` on a USD cash account. */
+/**
+ * Body for `POST /api/accounts/:id/movements` on a USD cash account. Throws the localized
+ * message when a shown amount isn't a number (see `parseNumberInput`).
+ */
 export function buildUsdCashMovementPostBody(
   row: InitialMovementDraft
 ): Record<string, unknown> | null {
@@ -16,8 +20,8 @@ export function buildUsdCashMovementPostBody(
   // stale value in a hidden input isn't sent.
   const showClp = brokerageFlowKindNeedsClp(row.flowKind);
   const showUsd = brokerageFlowKindNeedsUsd(row.flowKind) || isInterestFlowKind(row.flowKind);
-  const clp = showClp ? parseOptionalNumber(row.amountClp) : null;
-  const usd = showUsd ? parseOptionalNumber(row.amountUsd) : null;
+  const clp = showClp ? parseNumberInputOrThrow(row.amountClp) : null;
+  const usd = showUsd ? parseNumberInputOrThrow(row.amountUsd) : null;
   return {
     occurred_on,
     flow_kind: row.flowKind,

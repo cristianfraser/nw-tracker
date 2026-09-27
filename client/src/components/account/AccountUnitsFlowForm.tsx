@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
+import { formatNumberInput, parseNumberInputOrThrow } from "../../format";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import {
   brokerageMovementFieldLabelStyle,
@@ -37,22 +38,13 @@ function emptyRow(): UnitsFlowDraft {
   };
 }
 
-/** Positive magnitude — thousands dots and Chilean decimals accepted; sign comes from In/Out. */
+/**
+ * Positive magnitude (sign comes from In/Out); null when empty or zero. Throws the localized
+ * message when the field isn't a number (see `parseNumberInput`).
+ */
 function parseAbs(raw: string): number | null {
-  const t = raw.trim();
-  if (!t) return null;
-  let normalized: string;
-  if (t.includes(",") && t.includes(".")) {
-    normalized = t.replace(/\./g, "").replace(",", ".");
-  } else if (t.includes(",")) {
-    normalized = t.replace(",", ".");
-  } else if ((t.match(/\./g) ?? []).length > 1) {
-    normalized = t.replace(/\./g, "");
-  } else {
-    normalized = t;
-  }
-  const n = Math.abs(Number(normalized));
-  return Number.isFinite(n) && n !== 0 ? n : null;
+  const n = parseNumberInputOrThrow(raw);
+  return n != null && n !== 0 ? Math.abs(n) : null;
 }
 
 function buildPostBody(row: UnitsFlowDraft): Record<string, unknown> | null {
@@ -179,7 +171,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
                 type="text"
                 inputMode="decimal"
                 value={row.unitsDelta}
-                placeholder="59.760886574"
+                placeholder={formatNumberInput(59.760886574)}
                 onChange={(e) => patchRow(row.id, { unitsDelta: e.target.value })}
               />
             </Field>

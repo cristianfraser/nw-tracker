@@ -1,3 +1,4 @@
+import i18n from "./i18n";
 import {
   numberLocaleForSeparator,
   readInitialDecimalSeparator,
@@ -17,11 +18,14 @@ function normalizeIntlNum(s: string): string {
  * consumes the display-preferences context, so a change re-renders the whole
  * tree and every render-time format call re-runs. Do not cache formatted
  * strings in useMemo/state without `decimalSeparator` in the deps — memoize
- * raw numbers and format at render time instead.
+ * raw numbers and format at render time instead. Number inputs read typed
+ * text with the same preference ({@link parseNumberInput}).
  */
-let numberLocale: NumberLocale = numberLocaleForSeparator(readInitialDecimalSeparator());
+let decimalSeparator: DecimalSeparator = readInitialDecimalSeparator();
+let numberLocale: NumberLocale = numberLocaleForSeparator(decimalSeparator);
 
 export function setDecimalSeparatorForFormatting(sep: DecimalSeparator): void {
+  decimalSeparator = sep;
   numberLocale = numberLocaleForSeparator(sep);
 }
 
@@ -381,3 +385,126 @@ export function formatOrDash(value: number | null | undefined, fmt: (n: number) 
   return value != null && Number.isFinite(value) ? fmt(value) : "—";
 }
 
+/**
+ * Outcome of reading a number typed into a form field ({@link parseNumberInput}): `value` is
+ * null for an empty field; `message` is the localized reason a non-empty field isn't a number.
+ */
+export type NumberInputResult =
+  | { ok: true; value: number | null }
+  | { ok: false; message: string };
+
+/** Thousands grouped with `mark`: 1–3 leading digits (no leading zero), then `mark` + 3 digits, repeated. */
+const GROUPED_INTEGER: Record<"." | ",", RegExp> = {
+  ".": /^[1-9]\d{0,2}(?:\.\d{3})+$/,
+  ",": /^[1-9]\d{0,2}(?:,\d{3})+$/,
+};
+
+/**
+ * The one parser behind every number field (amounts, units, rates, counts), so «1.500» means
+ * the same in every form. A number that can only be read one way is read that way — «1500,5»,
+ * «1.5», «1.500.000», «1,234.56», «1.234,56». Only an input that fits both conventions — a single
+ * mark followed by exactly three digits, «1.500» / «1,500» — is settled by the decimal-separator
+ * preference: 1500 when the mark is the thousands separator, 1.5 when it is the decimal mark.
+ * Anything else (letters, inner spaces, a repeated decimal mark, a broken group such as
+ * «1.50.000» or «1,2,3») is rejected with a message naming both marks. A leading `-` is read;
+ * each form keeps its own sign, integer and range rules on the value. `separator` defaults to
+ * the active preference (tests pass it explicitly).
+ */
+export function parseNumberInput(
+  raw: string,
+  separator: DecimalSeparator = decimalSeparator
+): NumberInputResult {
+  const text = raw.trim();
+  if (text === "") return { ok: true, value: null };
+  const value = readNumberText(text, separator);
+  if (value == null) return { ok: false, message: numberInputErrorMessage(text, separator) };
+  return { ok: true, value };
+}
+
+/** {@link parseNumberInput} for submit paths: the value (null when empty), or throws the message. */
+export function parseNumberInputOrThrow(raw: string): number | null {
+  const parsed = parseNumberInput(raw);
+  if (!parsed.ok) throw new Error(parsed.message);
+  return parsed.value;
+}
+
+/** Grammar of {@link parseNumberInput} on trimmed, non-empty text; null = malformed. */
+function readNumberText(text: string, separator: DecimalSeparator): number | null {
+  const negative = text.startsWith("-");
+  const body = negative ? text.slice(1) : text;
+  if (!/^[\d.,]+$/.test(body) || !/\d/.test(body)) return null;
+  const decimalMark = separator === "period" ? "." : ",";
+  const lastDot = body.lastIndexOf(".");
+  const lastComma = body.lastIndexOf(",");
+  let integerDigits: string;
+  let fractionDigits = "";
+  if (lastDot === -1 && lastComma === -1) {
+    integerDigits = body;
+  } else if (lastDot !== -1 && lastComma !== -1) {
+    // Both marks: the later one is the decimal point (once), the other groups thousands.
+    const point = lastDot > lastComma ? "." : ",";
+    const group = point === "." ? "," : ".";
+    const at = body.indexOf(point);
+    if (at !== body.lastIndexOf(point)) return null;
+    const head = body.slice(0, at);
+    fractionDigits = body.slice(at + 1);
+    if (!/^\d+$/.test(fractionDigits) || !GROUPED_INTEGER[group].test(head)) return null;
+    integerDigits = head.split(group).join("");
+  } else {
+    const mark = lastDot !== -1 ? "." : ",";
+    const parts = body.split(mark);
+    if (parts.length > 2) {
+      // A repeated mark can only group thousands.
+      if (!GROUPED_INTEGER[mark].test(body)) return null;
+      integerDigits = parts.join("");
+    } else {
+      const [head, tail] = parts as [string, string];
+      if (!/^\d+$/.test(tail)) return null;
+      const fitsGrouping = /^[1-9]\d{0,2}$/.test(head) && tail.length === 3;
+      if (fitsGrouping && mark !== decimalMark) {
+        integerDigits = head + tail;
+      } else {
+        integerDigits = head === "" ? "0" : head;
+        fractionDigits = tail;
+      }
+    }
+  }
+  const n = Number(fractionDigits ? `${integerDigits}.${fractionDigits}` : integerDigits);
+  if (!Number.isFinite(n)) return null;
+  const value = negative ? -n : n;
+  return value === 0 ? 0 : value;
+}
+
+function numberInputErrorMessage(text: string, separator: DecimalSeparator): string {
+  const decimal = separator === "period" ? "." : ",";
+  const group = separator === "period" ? "," : ".";
+  return i18n.t("common.numberInvalid", {
+    value: text,
+    decimal,
+    group,
+    example: `1${group}234${decimal}56`,
+  });
+}
+
+/**
+ * A number as a form field's text (prefills, example placeholders): the active decimal mark,
+ * no thousands grouping, every digit — the form {@link parseNumberInput} reads back exactly.
+ */
+export function formatNumberInput(n: number): string {
+  if (!Number.isFinite(n)) throw new Error(`formatNumberInput: not a finite number (${n})`);
+  const plain = plainDecimalString(n);
+  return decimalSeparator === "comma" ? plain.replace(".", ",") : plain;
+}
+
+/** `String(n)` spelled without exponent notation (1.5e-7 → "0.00000015"). */
+function plainDecimalString(n: number): string {
+  const s = String(n);
+  const m = /^(-?)(\d+)(?:\.(\d+))?e([+-]\d+)$/.exec(s);
+  if (!m) return s;
+  const [, sign, int, frac = "", exp] = m;
+  const digits = `${int}${frac}`;
+  const point = int.length + Number(exp);
+  if (point <= 0) return `${sign}0.${"0".repeat(-point)}${digits}`;
+  if (point >= digits.length) return `${sign}${digits}${"0".repeat(point - digits.length)}`;
+  return `${sign}${digits.slice(0, point)}.${digits.slice(point)}`;
+}

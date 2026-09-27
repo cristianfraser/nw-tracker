@@ -1,3 +1,4 @@
+import { parseNumberInputOrThrow } from "../format";
 import type { BrokerageFlowKind, StockQuoteCurrency } from "./brokerageFlowKinds";
 import {
   brokerageFlowKindNeedsClpForQuote,
@@ -41,24 +42,6 @@ export function emptyMovementRow(flowKind: BrokerageFlowKind = "deposit_clp"): I
   };
 }
 
-/** Accepts CLP-style thousands (3.xxx.xxx), Chilean decimal (3.353,07), or plain/dot decimal. */
-export function parseOptionalNumber(raw: string): number | null {
-  const t = raw.trim().replace(/\s/g, "");
-  if (!t) return null;
-  let normalized: string;
-  if (t.includes(",") && t.includes(".")) {
-    normalized = t.replace(/\./g, "").replace(",", ".");
-  } else if (t.includes(",") && !t.includes(".")) {
-    normalized = t.replace(",", ".");
-  } else if ((t.match(/\./g) ?? []).length > 1) {
-    normalized = t.replace(/\./g, "");
-  } else {
-    normalized = t;
-  }
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : null;
-}
-
 export function appendMovementRow(
   movements: InitialMovementDraft[],
   kind?: BrokerageFlowKind
@@ -81,7 +64,10 @@ export function removeMovementRow(
   return movements.filter((r) => r.id !== id);
 }
 
-/** Body for `POST /api/accounts/:id/movements` (brokerage accounts). */
+/**
+ * Body for `POST /api/accounts/:id/movements` (brokerage accounts). Throws the localized
+ * message when a shown number field isn't a number (see `parseNumberInput`).
+ */
 export function buildBrokerageMovementPostBody(
   row: InitialMovementDraft,
   ticker?: string | null,
@@ -94,10 +80,10 @@ export function buildBrokerageMovementPostBody(
   // input (e.g. CLP typed before switching to "compra acciones") must not be sent. A kind that
   // shows both fields (compra_usd_venta_clp) sends CLP as the amount and USD as the counter leg.
   const clp = brokerageFlowKindNeedsClpForQuote(row.flowKind, quote)
-    ? parseOptionalNumber(row.amountClp)
+    ? parseNumberInputOrThrow(row.amountClp)
     : null;
   const usd = brokerageFlowKindNeedsUsdForQuote(row.flowKind, quote)
-    ? parseOptionalNumber(row.amountUsd)
+    ? parseNumberInputOrThrow(row.amountUsd)
     : null;
   return {
     occurred_on,
@@ -112,7 +98,7 @@ export function buildBrokerageMovementPostBody(
         ? { amount: usd, currency: "usd" }
         : {}),
     ...(brokerageFlowKindShowsUnits(row.flowKind)
-      ? { units_delta: parseOptionalNumber(row.unitsDelta) }
+      ? { units_delta: parseNumberInputOrThrow(row.unitsDelta) }
       : {}),
     ...(ticker ? { ticker } : {}),
     ...(row.counterpartAccountId !== ""
