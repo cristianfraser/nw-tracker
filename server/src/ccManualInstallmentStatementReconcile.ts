@@ -82,6 +82,14 @@ const findPdfPlansForLineIdentity = db.prepare(
    WHERE account_id = ? AND date(purchase_date) = date(?) AND cuotas_totales = ? AND total_amount_clp = ?`
 );
 
+/** Statement plans with a manual plan's identity (same total and count, date ±2 days). */
+const findPdfPlansForManualIdentity = db.prepare(
+  `SELECT id, purchase_date, merchant
+   FROM cc_installment_purchases
+   WHERE account_id = ? AND source = 'pdf' AND cuotas_totales = ? AND total_amount_clp = ?
+     AND abs(julianday(purchase_date) - julianday(?)) <= 2`
+);
+
 const convertManualPurchaseToPdf = db.prepare(
   `UPDATE cc_installment_purchases
    SET source = 'pdf', source_pdf_sample = COALESCE(source_pdf_sample, ?)
@@ -381,6 +389,7 @@ export function collectStatementIdsFromImportRecords(
  * After PDF statements and installment ledger are merged: delete manual purchases that
  * duplicate a statement installment line (date + amount + merchant, purchase date inside
  * statement facturación period), and carry category assignments to the PDF-backed lines.
+ * Throws when a covered manual plan stays unmatched while a statement plan has its identity.
  */
 export function reconcileManualInstallmentPurchasesForStatements(
   accountId: number,
@@ -424,6 +433,8 @@ export function reconcileManualInstallmentPurchasesForStatements(
 
     const consumedLineIds = new Set<number>();
     const consumedManualIds = new Set<number>();
+    // Manual plans some statement of this batch covers (group + facturación period).
+    const coveredManualIds = new Set<number>();
 
     for (const stmtId of statementIds) {
       const st = loadStatementMeta.get(stmtId) as
@@ -459,6 +470,7 @@ export function reconcileManualInstallmentPurchasesForStatements(
           manualGroup === webPasteGroup;
         if (!groupCompatible) continue;
         if (!isIsoInInclusivePeriod(manual.purchase_date, st.period_from, st.period_to)) continue;
+        coveredManualIds.add(manual.id);
 
         const manualKey = stableInstallmentHPurchaseKeyFromLedgerArgs({
           accountId,
@@ -527,6 +539,35 @@ export function reconcileManualInstallmentPurchasesForStatements(
           purchaseKeyRefsRewritten += migrateManualPurchaseKeyRefs(accountId, manualKeys, pdfKey);
         }
       }
+    }
+
+    // A covered manual plan left unmatched while a statement plan carries its identity is the
+    // same purchase counted twice — in the cuota debt, the cupo and every owed-on-date surface.
+    // A 2026-09 statement printed a purchase of its cycle under the bank's merchant name with
+    // its cuota as the line amount, and the hand-entered plan stayed beside the statement's.
+    // Fail the import (this runs inside the merge transaction) instead of committing both.
+    const duplicates: string[] = [];
+    for (const manual of manuals) {
+      if (!coveredManualIds.has(manual.id) || consumedManualIds.has(manual.id)) continue;
+      const pdfPlans = findPdfPlansForManualIdentity.all(
+        accountId,
+        manual.cuotas_totales,
+        manual.total_amount_clp,
+        manual.purchase_date
+      ) as { id: number; purchase_date: string; merchant: string | null }[];
+      for (const p of pdfPlans) {
+        duplicates.push(
+          `manual #${manual.id} «${manual.merchant ?? ""}» ${manual.purchase_date} ↔ statement #${p.id} ` +
+            `«${p.merchant ?? ""}» ${p.purchase_date} (${manual.total_amount_clp} in ${manual.cuotas_totales})`
+        );
+      }
+    }
+    if (duplicates.length > 0) {
+      throw new Error(
+        `Account ${accountId}: statement installment plans duplicate manual plans the reconcile ` +
+          `could not match — ${duplicates.join("; ")}. Fix the match (or delete the manual plan) ` +
+          `before importing.`
+      );
     }
   });
 
