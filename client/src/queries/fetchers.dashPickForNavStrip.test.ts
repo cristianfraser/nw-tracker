@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dashPickForNavStrip } from "./fetchers";
+import { dashPickForNavStrip, type DashboardNavContext } from "./fetchers";
 import type { DashboardAccountRow, NavTreeNodeDto } from "../types";
 
 function dashRow(partial: Partial<DashboardAccountRow> & Pick<DashboardAccountRow, "account_id" | "name">): DashboardAccountRow {
@@ -67,7 +67,31 @@ function bucketNode(slug: string, bucket: string, accountId: number): NavTreeNod
   };
 }
 
-describe("dashPickForNavStrip USD totals", () => {
+/**
+ * `nw_bucket_totals` as the server sends it for a CLP request — no USD bucket fields. That is
+ * the payload held as the placeholder of a CLP→USD switch.
+ */
+function clpOnlyBucketTotals(
+  buckets: Pick<
+    DashboardNavContext["nw_bucket_totals"],
+    "real_estate_clp" | "retirement_clp" | "brokerage_clp" | "cash_eqs_clp"
+  >
+): DashboardNavContext["nw_bucket_totals"] {
+  const net_worth_clp =
+    buckets.real_estate_clp + buckets.retirement_clp + buckets.brokerage_clp + buckets.cash_eqs_clp;
+  return {
+    ...buckets,
+    net_worth_clp,
+    prior_closes: {
+      month_end: "2026-08-31",
+      year_end: "2025-12-31",
+      month: { ...buckets, net_worth_clp },
+      year: { ...buckets, net_worth_clp },
+    },
+  };
+}
+
+describe("dashPickForNavStrip bucket totals", () => {
   const netWorth: NavTreeNodeDto = {
     node_id: "nw",
     slug: "net_worth",
@@ -99,7 +123,65 @@ describe("dashPickForNavStrip USD totals", () => {
     ],
   };
 
-  it("derives bucket and net worth USD totals from account rows", () => {
+  it("picks the CLP totals and prior closes from nw_bucket_totals", () => {
+    const nwBucketTotals = clpOnlyBucketTotals({
+      real_estate_clp: 0,
+      retirement_clp: 0,
+      brokerage_clp: 1_900_000,
+      cash_eqs_clp: 850_000,
+    });
+    const dash = dashPickForNavStrip(
+      {
+        card_metrics_by_slug: {},
+        // Rows that don't add up to the server totals: the totals must not be re-summed.
+        accounts: [
+          dashRow({ account_id: 1, name: "Brk", group_slug: "brokerage", current_value_clp: 1 }),
+        ],
+        overviewPoints: [],
+        nw_bucket_totals: nwBucketTotals,
+      },
+      netWorth
+    );
+
+    expect(dash.totals.brokerage_clp).toBe(1_900_000);
+    expect(dash.totals.cash_eqs_clp).toBe(850_000);
+    expect(dash.totals.net_worth_clp).toBe(2_750_000);
+    expect(dash.totals.prior_closes).toBe(nwBucketTotals.prior_closes);
+  });
+
+  it("prefers the server's USD bucket totals when the payload carries them", () => {
+    const dash = dashPickForNavStrip(
+      {
+        card_metrics_by_slug: {},
+        accounts: [
+          dashRow({
+            account_id: 1,
+            name: "Brk",
+            group_slug: "brokerage",
+            current_value_clp: 1_900_000,
+            current_value_usd: 2000,
+          }),
+        ],
+        overviewPoints: [],
+        nw_bucket_totals: {
+          ...clpOnlyBucketTotals({
+            real_estate_clp: 0,
+            retirement_clp: 0,
+            brokerage_clp: 1_900_000,
+            cash_eqs_clp: 0,
+          }),
+          brokerage_usd: 1999,
+          net_worth_usd: 1999,
+        },
+      },
+      netWorth
+    );
+
+    expect(dash.totals.brokerage_usd).toBe(1999);
+    expect(dash.totals.net_worth_usd).toBe(1999);
+  });
+
+  it("derives USD bucket and net worth totals from account rows on a CLP payload", () => {
     const accounts = [
       dashRow({
         account_id: 1,
@@ -122,6 +204,12 @@ describe("dashPickForNavStrip USD totals", () => {
         card_metrics_by_slug: {},
         accounts,
         overviewPoints: [],
+        nw_bucket_totals: clpOnlyBucketTotals({
+          real_estate_clp: 0,
+          retirement_clp: 0,
+          brokerage_clp: 1_900_000,
+          cash_eqs_clp: 850_000,
+        }),
         dashboard_layout: [
           {
             // Matches the server payload: the cash card keeps the hub slug `cash_eqs`
@@ -149,15 +237,20 @@ describe("dashPickForNavStrip USD totals", () => {
     );
 
     expect(dash.totals.brokerage_usd).toBe(2000);
-    expect(dash.totals.cash_eqs_clp).toBe(850_000);
     expect(dash.totals.cash_eqs_usd).toBe(900);
     expect(dash.totals.net_worth_usd).toBe(2900);
   });
 
-  it("counts a linked card total in credit toward cash, like the server's netting", () => {
+  it("counts a linked card total in credit toward cash USD, like the server's netting", () => {
     const dash = dashPickForNavStrip(
       {
         card_metrics_by_slug: {},
+        nw_bucket_totals: clpOnlyBucketTotals({
+          real_estate_clp: 0,
+          retirement_clp: 0,
+          brokerage_clp: 0,
+          cash_eqs_clp: 1_050_000,
+        }),
         accounts: [
           dashRow({
             account_id: 2,
@@ -193,7 +286,6 @@ describe("dashPickForNavStrip USD totals", () => {
       netWorth
     );
 
-    expect(dash.totals.cash_eqs_clp).toBe(1_050_000);
     expect(dash.totals.cash_eqs_usd).toBe(1100);
   });
 
@@ -209,6 +301,12 @@ describe("dashPickForNavStrip USD totals", () => {
           }),
         ],
         overviewPoints: [],
+        nw_bucket_totals: clpOnlyBucketTotals({
+          real_estate_clp: 0,
+          retirement_clp: 0,
+          brokerage_clp: 1_900_000,
+          cash_eqs_clp: 0,
+        }),
       },
       netWorth
     );

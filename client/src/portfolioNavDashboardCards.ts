@@ -7,7 +7,6 @@ import {
   sumCurrentValueClpUsd,
   type CardBreakdownLine,
   type DashboardGroupSlug,
-  isCashSavingsCcShortfallRow,
 } from "./dashboardCardBreakdown";
 import { buildNavCardBreakdown } from "./navCardBreakdown";
 import { dashboardAccountNavLabel } from "./navAccountLabels";
@@ -118,7 +117,7 @@ function rowsForCashSavingsCard(
   navChild: NavTreeNodeDto
 ): DashboardAccountRow[] {
   const leafIds = navLeafAccountIdSet(navChild);
-  return all.filter((a) => leafIds.has(a.account_id) && !isCashSavingsCcShortfallRow(a));
+  return all.filter((a) => leafIds.has(a.account_id));
 }
 
 function cashSavingsLinkedBottomLines(

@@ -140,8 +140,8 @@ export function buildNavCardBreakdown(
   /**
    * Too few children to bucket (a single-account leaf such as Ahorros y reservas): list the
    * node's own accounts flat, the way a bucket's sole account already renders through the
-   * nesting collapse. Rows are kept to the node's own leaves so a synthetic bucket-scoped row
-   * (the cash CC shortfall) never reaches a card.
+   * nesting collapse. Rows are kept to the node's own leaves, so another account scoped to the
+   * same bucket never reaches the card.
    */
   if (childNodes.length === 0) {
     const ownIds = navAccountIdSet(navNode);

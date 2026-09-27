@@ -47,7 +47,7 @@ export interface DashboardAccountStats {
   fx_date_used: string | null;
   /** USD display could not resolve FX for balance or deposits. */
   fx_missing?: boolean;
-  /** Leaf kind slug (e.g. cuenta_corriente, cash_savings shortfall) — client filters on it. */
+  /** Leaf kind slug (e.g. cuenta_corriente, fondo_reserva) — client filters on it. */
   category_slug?: string;
   /** 1 = omitted from group/bucket totals (still listed). */
   exclude_from_group_totals?: number | null;
