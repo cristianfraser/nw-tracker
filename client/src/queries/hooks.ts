@@ -290,51 +290,54 @@ export function useRatesInstruments() {
 
 const MARKET_TICKER_MS = 60_000;
 
-export function useMarketTicker() {
+/** Marquee snapshot in the display unit (values convert server-side; the key carries the unit). */
+export function useMarketTicker(unit: DisplayUnit) {
   return useQuery({
-    queryKey: queryKeys.marketTicker(),
-    queryFn: () => api.marketTicker(),
+    queryKey: queryKeys.marketTicker(unit),
+    queryFn: () => api.marketTicker(unit),
     staleTime: MARKET_TICKER_MS,
     refetchInterval: MARKET_TICKER_MS,
   });
 }
 
-export function useWatchlist() {
+export function useWatchlist(unit: DisplayUnit) {
   return useQuery({
-    queryKey: queryKeys.watchlist(),
-    queryFn: () => api.watchlist(),
+    queryKey: queryKeys.watchlist(unit),
+    queryFn: () => api.watchlist(unit),
     staleTime: MARKET_TICKER_MS,
     refetchInterval: MARKET_TICKER_MS,
   });
+}
+
+function invalidateWatchlistQueries(queryClient: ReturnType<typeof useQueryClient>): void {
+  queryClient.invalidateQueries({ queryKey: queryKeys.watchlistAll() });
+  queryClient.invalidateQueries({ queryKey: queryKeys.marketTickerAll() });
 }
 
 export function usePatchWatchlistMarquee() {
   const queryClient = useQueryClient();
+  type Snapshot = [readonly unknown[], import("../types").WatchlistResponse | undefined][];
   return useMutation({
     mutationFn: ({ id, show_in_marquee }: { id: number; show_in_marquee: number }) =>
       api.patchWatchlistRow(id, { show_in_marquee }),
     onMutate: async ({ id, show_in_marquee }) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.watchlist() });
-      const prev = queryClient.getQueryData<import("../types").WatchlistResponse>(
-        queryKeys.watchlist()
+      // Both units' copies get the optimistic flag, whichever the page is showing.
+      await queryClient.cancelQueries({ queryKey: queryKeys.watchlistAll() });
+      const prev: Snapshot = queryClient.getQueriesData<import("../types").WatchlistResponse>({
+        queryKey: queryKeys.watchlistAll(),
+      });
+      const patchRow = (rows: import("../types").WatchlistRow[]) =>
+        rows.map((r) => (r.id === id ? { ...r, show_in_marquee } : r));
+      queryClient.setQueriesData<import("../types").WatchlistResponse>(
+        { queryKey: queryKeys.watchlistAll() },
+        (data) => (data ? { ...data, app: patchRow(data.app), manual: patchRow(data.manual) } : data)
       );
-      if (prev) {
-        const patchRow = (rows: import("../types").WatchlistRow[]) =>
-          rows.map((r) => (r.id === id ? { ...r, show_in_marquee } : r));
-        queryClient.setQueryData(queryKeys.watchlist(), {
-          app: patchRow(prev.app),
-          manual: patchRow(prev.manual),
-        });
-      }
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(queryKeys.watchlist(), ctx.prev);
+      for (const [key, data] of ctx?.prev ?? []) queryClient.setQueryData(key, data);
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.watchlist() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.marketTicker() });
-    },
+    onSettled: () => invalidateWatchlistQueries(queryClient),
   });
 }
 
@@ -342,10 +345,7 @@ export function useAddWatchlistTicker() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (ticker: string) => api.addWatchlistTicker(ticker),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.watchlist() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.marketTicker() });
-    },
+    onSuccess: () => invalidateWatchlistQueries(queryClient),
   });
 }
 
@@ -353,10 +353,7 @@ export function useDeleteWatchlistRow() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.deleteWatchlistRow(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.watchlist() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.marketTicker() });
-    },
+    onSuccess: () => invalidateWatchlistQueries(queryClient),
   });
 }
 

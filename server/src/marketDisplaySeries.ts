@@ -1,16 +1,13 @@
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
-import {
-  latestAfpUnoFundUnitRowOnOrBeforeForDisplay,
-  latestFundUnitRowOnOrBefore,
-  priorAfpUnoFundUnitRowBeforeForDisplay,
-} from "./afpUnoValuation.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
-import { equitySessionYmdForTicker, resolveEquityQuote } from "./equityQuote.js";
-import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
 import { syncWatchlistFromApp } from "./watchlist.js";
-import { compositeLiveStats, RISKY_NORRIS_PROXY_BUCKET } from "./watchlistComposite.js";
-import { displayDayPct, equityTickerDayCalendar } from "./tickerDayDisplay.js";
+import { RISKY_NORRIS_PROXY_BUCKET } from "./watchlistComposite.js";
+import {
+  watchlistStatsForRow,
+  type WatchlistDisplayUnit,
+  type WatchlistRowStats,
+} from "./watchlistStats.js";
 
 export type WatchlistSource = "builtin" | "account" | "manual";
 
@@ -43,31 +40,22 @@ export function listRatesInstrumentSeries(): MarketDisplaySeriesRow[] {
   return (stmtAll.all() as MarketDisplaySeriesRow[]).filter((r) => r.show_in_rates === 1);
 }
 
-const stmtFundUnitPriorTo = db.prepare(
-  `SELECT day, unit_value_clp FROM fund_unit_daily
-   WHERE series_key = ? AND day < ? ORDER BY day DESC LIMIT 1`
-);
-
-const stmtUfOnOrBefore = db.prepare(
-  `SELECT date, clp_per_uf FROM uf_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`
-);
-const stmtFxPriorTo = db.prepare(
-  `SELECT clp_per_usd FROM fx_daily WHERE date < ? ORDER BY date DESC LIMIT 1`
-);
-
-function percentChange(live: number, prior: number | null | undefined): number | null {
-  if (prior == null || !Number.isFinite(prior) || prior === 0 || !Number.isFinite(live)) return null;
-  return ((live - prior) / prior) * 100;
-}
+/** One marquee chip: the series' latest value in the payload's display unit and its day change. */
+export type MarketTickerValue = {
+  day: string;
+  value: number;
+  /** Currency `value` is expressed in — the payload's `unit`. */
+  currency: "usd" | "clp";
+  delta_pct: number | null;
+};
 
 export type MarketTickerEquityRow = {
   ticker: string;
   trade_date: string;
   value: number;
-  /** Exchange quote currency for `value` (CLP for Bolsa de Santiago tickers). */
+  /** Currency `value` is expressed in — the payload's `unit` (a `.SN` ticker is converted too). */
   currency: "usd" | "clp";
   delta_pct: number | null;
-  source: "live" | "eod";
 };
 
 /** Yahoo live/EOD symbols for marquee rows with show_in_marquee = 1. */
@@ -83,24 +71,41 @@ export function equityTickersForMarqueeQuotes(marqueeSeries: MarketDisplaySeries
 
 export type MarketTickerPayload = {
   chile_today: string;
-  uf: { date: string; clp_per_uf: number } | null;
+  /** Display unit every value below is expressed in (the app's CLP/USD toggle), except `usd`. */
+  unit: WatchlistDisplayUnit;
+  uf: MarketTickerValue | null;
+  /** The USD/CLP rate itself — CLP per USD in both units. */
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
-  uno_a: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
-  risky_norris: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
-  risky_norris_proxy: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
+  uno_a: MarketTickerValue | null;
+  risky_norris: MarketTickerValue | null;
+  risky_norris_proxy: MarketTickerValue | null;
   equities: MarketTickerEquityRow[];
   /** Series config used to build this payload (marquee labels / order). */
   marquee_series: MarketDisplaySeriesRow[];
 };
 
+function tickerValue(stats: WatchlistRowStats): MarketTickerValue | null {
+  if (stats.value == null || stats.as_of_date == null) return null;
+  return {
+    day: stats.as_of_date,
+    value: stats.value,
+    currency: stats.value_currency,
+    delta_pct: stats.changes?.day_pct ?? null,
+  };
+}
+
 /**
  * Marquee snapshot driven by `market_display_series` rows with `show_in_marquee = 1`.
  *
- * Day deltas are display values (`displayDayPct`): the series' real last-vs-prior change on
- * days the instrument's market is open, a hard 0 on its closed days (weekends/holidays) —
- * same convention as the watchlist 1D column.
+ * Every chip is the watchlist's own row stats (`watchlistStatsForRow`) in the requested unit,
+ * so the strip and the watchlist page cannot disagree: values convert leg by leg into `unit`
+ * and day deltas are display values (`displayDayPct`) — the real last-vs-prior change on days
+ * the instrument's market is open, a hard 0 on its closed days.
  */
-export function getMarketTickerPayloadFromDb(now = new Date()): MarketTickerPayload {
+export function getMarketTickerPayloadFromDb(
+  now = new Date(),
+  unit: WatchlistDisplayUnit = "clp"
+): MarketTickerPayload {
   syncWatchlistFromApp();
   const today = chileWallClockAt(now).ymd;
   const marquee_series = listMarqueeSeries();
@@ -114,92 +119,58 @@ export function getMarketTickerPayloadFromDb(now = new Date()): MarketTickerPayl
 
   for (const row of marquee_series) {
     if (row.kind === "uf") {
-      const ufRow = stmtUfOnOrBefore.get(today) as { date: string; clp_per_uf: number } | undefined;
-      if (ufRow != null && Number.isFinite(ufRow.clp_per_uf) && ufRow.clp_per_uf > 0) {
-        uf = { date: ufRow.date, clp_per_uf: ufRow.clp_per_uf };
-      }
+      uf = tickerValue(watchlistStatsForRow(row, now, unit));
       continue;
     }
     if (row.kind === "fx_usd") {
-      const fxRow = fxForLiveMtm(today, now) ?? fxRowOnOrBefore(today);
-      if (fxRow != null && Number.isFinite(fxRow.clp_per_usd) && fxRow.clp_per_usd > 0) {
-        const prior = (stmtFxPriorTo.get(fxRow.date) as { clp_per_usd: number } | undefined)
-          ?.clp_per_usd;
+      const stats = watchlistStatsForRow(row, now, unit);
+      if (stats.value != null && stats.as_of_date != null) {
         usd = {
-          date: fxRow.date,
-          clp_per_usd: fxRow.clp_per_usd,
-          delta_pct: displayDayPct("weekday", today, percentChange(fxRow.clp_per_usd, prior)),
+          date: stats.as_of_date,
+          clp_per_usd: stats.value,
+          delta_pct: stats.changes?.day_pct ?? null,
         };
       }
       continue;
     }
     if (row.kind === "fund_unit" && row.series_key) {
       if (row.series_key === AFP_UNO_CUOTA_SERIES_KEY || row.slug === "afp_uno_cuota_a") {
-        const fuRow = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(AFP_UNO_CUOTA_SERIES_KEY, today);
-        if (fuRow != null && Number.isFinite(fuRow.unit_value_clp) && fuRow.unit_value_clp > 0) {
-          const prior = priorAfpUnoFundUnitRowBeforeForDisplay(AFP_UNO_CUOTA_SERIES_KEY, fuRow.day);
-          uno_a = {
-            day: fuRow.day,
-            unit_value_clp: fuRow.unit_value_clp,
-            delta_pct: displayDayPct(
-              "chile",
-              today,
-              percentChange(fuRow.unit_value_clp, prior?.unit_value_clp)
-            ),
-          };
-        }
+        uno_a = tickerValue(watchlistStatsForRow(row, now, unit));
         continue;
       }
       if (
         row.series_key === "fintual_risky_norris" ||
         row.series_key === "fintual_cert_risky_norris"
       ) {
-        const riskySeries = row.series_key;
-        const rnRow = latestFundUnitRowOnOrBefore(riskySeries, today);
-        if (rnRow != null && Number.isFinite(rnRow.unit_value_clp) && rnRow.unit_value_clp > 0) {
-          const prior = (
-            stmtFundUnitPriorTo.get(riskySeries, rnRow.day) as
-              | { unit_value_clp: number }
-              | undefined
-          )?.unit_value_clp;
-          risky_norris = {
-            day: rnRow.day,
-            unit_value_clp: rnRow.unit_value_clp,
-            delta_pct: displayDayPct("chile", today, percentChange(rnRow.unit_value_clp, prior)),
-          };
-        }
+        risky_norris = tickerValue(watchlistStatsForRow(row, now, unit));
         continue;
       }
     }
     if (row.kind === "composite" && row.series_key === RISKY_NORRIS_PROXY_BUCKET) {
-      const live = compositeLiveStats(RISKY_NORRIS_PROXY_BUCKET, now);
-      if (live.value != null && live.as_of_date != null && Number.isFinite(live.value) && live.value > 0) {
-        risky_norris_proxy = {
-          day: live.as_of_date,
-          unit_value_clp: live.value,
-          delta_pct: displayDayPct("nyse", today, live.day_pct),
-        };
-      }
+      risky_norris_proxy = tickerValue(watchlistStatsForRow(row, now, unit));
       continue;
     }
   }
 
   for (const ticker of equityTickersForMarqueeQuotes(marquee_series)) {
-    const sessionYmd = equitySessionYmdForTicker(ticker, now);
-    const q = resolveEquityQuote(ticker, sessionYmd, { preferLive: true, now });
-    if (q == null || !Number.isFinite(q.price) || q.price <= 0) continue;
+    const row = marquee_series.find(
+      (r) => r.kind === "equity" && r.series_key?.trim().toUpperCase() === ticker
+    );
+    if (row == null) continue;
+    const stats = watchlistStatsForRow(row, now, unit);
+    if (stats.value == null || stats.as_of_date == null) continue;
     equities.push({
       ticker,
-      trade_date: q.trade_date,
-      value: q.price,
-      currency: q.currency,
-      delta_pct: displayDayPct(equityTickerDayCalendar(ticker), today, q.delta_pct),
-      source: q.source,
+      trade_date: stats.as_of_date,
+      value: stats.value,
+      currency: stats.value_currency,
+      delta_pct: stats.changes?.day_pct ?? null,
     });
   }
 
   return {
     chile_today: today,
+    unit,
     uf,
     usd,
     uno_a,

@@ -25,6 +25,7 @@ function equityRow(series_key: string): MarketDisplaySeriesRow {
 describe("getMarketTickerPayloadFromDb day deltas", () => {
   afterEach(() => {
     db.prepare(`DELETE FROM fx_daily WHERE date >= '2099-01-01'`).run();
+    db.prepare(`DELETE FROM uf_daily WHERE date >= '2099-01-01'`).run();
   });
 
   it("USD stays close-vs-prior-close when the latest fx row predates today (after midnight)", () => {
@@ -38,8 +39,24 @@ describe("getMarketTickerPayloadFromDb day deltas", () => {
     const payload = getMarketTickerPayloadFromDb(new Date("2099-01-07T04:00:00-03:00"));
 
     expect(payload.chile_today).toBe("2099-01-07");
+    expect(payload.unit).toBe("clp");
     expect(payload.usd?.date).toBe("2099-01-05");
     expect(payload.usd?.delta_pct).toBeCloseTo(3, 6);
+  });
+
+  it("expresses the chips in the requested unit; the USD/CLP rate stays CLP per USD", () => {
+    db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES ('2099-01-05', 950)`).run();
+    db.prepare(`INSERT INTO uf_daily (date, clp_per_uf) VALUES ('2099-01-05', 40000)`).run();
+
+    const payload = getMarketTickerPayloadFromDb(new Date("2099-01-07T04:00:00-03:00"), "usd");
+    expect(payload.unit).toBe("usd");
+    expect(payload.usd?.clp_per_usd).toBe(950);
+    if (payload.uf != null) {
+      expect(payload.uf.currency).toBe("usd");
+      expect(payload.uf.day).toBe("2099-01-05");
+      expect(payload.uf.value).toBeCloseTo(40000 / 950, 9);
+    }
+    for (const eq of payload.equities) expect(eq.currency).toBe("usd");
   });
 });
 

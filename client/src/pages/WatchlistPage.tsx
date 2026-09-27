@@ -2,6 +2,7 @@ import { FormEvent, Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import { DeltaMetricFlow } from "../components/dashboard/DeltaMetricFlow";
 import { Table } from "../components/ui/Table";
+import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatClp, formatPct, formatUsdFine } from "../format";
 import { useTranslation } from "../i18n";
 import {
@@ -232,7 +233,9 @@ function WatchlistTable({
 
 export function WatchlistPage() {
   const { t } = useTranslation();
-  const { data, isPending, error } = useWatchlist();
+  // Prices and changes follow the CLP/USD toggle (converted server-side, unit in the query key).
+  const { displayUnit } = useDisplayPreferences();
+  const { data, isPending, error } = useWatchlist(displayUnit);
   const addTicker = useAddWatchlistTicker();
   const [tickerInput, setTickerInput] = useState("");
 

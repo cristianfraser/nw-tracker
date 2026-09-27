@@ -12,13 +12,14 @@ export { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
   equityCloseEod,
   equityDisplaySessionYmd,
+  equityHeldSessionQuote,
   equityQuoteCurrency,
   equitySessionYmdForTicker,
   getLiveEquityQuoteFromDb,
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import type { EodCloseSeries } from "./equityYahooEod.js";
-import { fxForLiveMtm, fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { fxForLiveMtm } from "./fxRates.js";
 
 /** Equity symbols loaded at `import:excel` into `equity_daily` (quote-currency close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
 export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "OILK", "BTC-USD", "ETH-USD"] as const;
@@ -114,10 +115,12 @@ export function computeEquityMtmClp(
     const clp = units * close;
     return Number.isFinite(clp) ? clp : null;
   }
-  const fx =
-    price != null && Number.isFinite(price)
-      ? fxForLiveMtm(asOfYmd, now)
-      : fxMonthEndForBalanceUsd(asOfYmd);
+  // The fx is `asOfYmd`'s frame whatever the price source: live CLP=X while that day's fx
+  // day is open (a historical date never matches the live row's session, so it reads the
+  // stored close as before), the stored close after 17:05 New York. Gating the live rate on a
+  // live PRICE priced today's EOD bar at Friday's fx for the hour between the NYSE close and
+  // the fx day end — see `equityBrokeragePositionMeta`.
+  const fx = fxForLiveMtm(asOfYmd, now);
   if (!fx || fx.clp_per_usd <= 0) return null;
   const clp = units * close * fx.clp_per_usd;
   return Number.isFinite(clp) ? clp : null;
@@ -158,6 +161,16 @@ export function computeEquityMtmClpDisplaySync(
     const fromSession = computeEquityMtmClp(accountId, session, null, now);
     if (fromSession != null && Number.isFinite(fromSession) && fromSession > 0) {
       return { value_clp: fromSession, as_of_date: session };
+    }
+  }
+
+  // Post-close, pre-sync: hold the session's last stored print (= the close) rather than
+  // falling to the previous bar — see `equityHeldSessionQuote`.
+  const held = equityHeldSessionQuote(ticker, now);
+  if (held) {
+    const fromHeld = computeEquityMtmClp(accountId, session, held.price, now);
+    if (fromHeld != null && Number.isFinite(fromHeld) && fromHeld > 0) {
+      return { value_clp: fromHeld, as_of_date: session };
     }
   }
 

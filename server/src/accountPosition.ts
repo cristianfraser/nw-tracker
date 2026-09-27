@@ -17,12 +17,13 @@ import {
   cryptoCoinCumulativeThroughDate,
   type CryptoAsset,
 } from "./cryptoValuation.js";
-import { fxForLiveMtm, fxRowOnOrBefore } from "./fxRates.js";
+import { fxForLiveMtm } from "./fxRates.js";
 import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
   equityCloseEod,
+  equityHeldSessionQuote,
   equityQuoteCurrency,
   equitySessionYmdForTicker,
   getLiveEquityQuoteFromDb,
@@ -168,6 +169,16 @@ export function equityBrokeragePositionMeta(
     }
   }
 
+  // Post-close, pre-sync: today's mark holds the session's last stored print (= the close)
+  // instead of dropping to the previous bar. See `equityHeldSessionQuote`.
+  if (close == null && asOfYmd === today) {
+    const held = equityHeldSessionQuote(ticker, now);
+    if (held) {
+      close = held.price;
+      markDate = held.trade_date;
+    }
+  }
+
   if (close == null) {
     const closeRow = db
       .prepare(
@@ -191,7 +202,13 @@ export function equityBrokeragePositionMeta(
     return out;
   }
 
-  const fx = useLive ? fxForLiveMtm(asOfYmd, now) : fxRowOnOrBefore(markDate);
+  // The fx is the MARK DATE's frame: live CLP=X while that day's fx day is still open
+  // (today's live/held/EOD-bar price until 17:05 New York), the stored close after it, and
+  // the stored row for a historical bar. Pricing today's bar at `fxRowOnOrBefore(today)` —
+  // which is FRIDAY's close until the day's fx row lands at 17:05 NY — re-framed every USD
+  // holding for an hour after the NYSE close (VEA read +1,27% instead of +0,05% while the
+  // marquee showed the live rate, 2026-09-21).
+  const fx = fxForLiveMtm(markDate, now);
   if (!fx || fx.clp_per_usd <= 0) return out;
 
   const mtm = Math.round(u * close * fx.clp_per_usd * 100) / 100;

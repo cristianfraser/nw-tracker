@@ -56,6 +56,7 @@ export interface WatchlistCompositeHoldingRow {
   ticker: string;
   weight: number;
   value: number | null;
+  /** Currency `value` is expressed in — the requested display unit (the fx rate row is always CLP per USD). */
   value_currency: "usd" | "clp";
   as_of_date: string | null;
   changes: WatchlistChanges | null;
@@ -63,32 +64,45 @@ export interface WatchlistCompositeHoldingRow {
 
 export interface WatchlistRow extends MarketDisplaySeriesRow {
   value: number | null;
+  /** Currency `value` is expressed in — the requested display unit (the fx rate row is always CLP per USD). */
   value_currency: "usd" | "clp";
   as_of_date: string | null;
   changes: WatchlistChanges | null;
   composite_holdings?: WatchlistCompositeHoldingRow[];
 }
 
+/** `GET /api/watchlist?unit=` — every value and change column expressed in `unit`. */
 export interface WatchlistResponse {
+  unit: "clp" | "usd";
   app: WatchlistRow[];
   manual: WatchlistRow[];
 }
 
+/** One marquee chip: the series' latest value in the payload's `unit` and its day change. */
+export interface MarketTickerValue {
+  day: string;
+  value: number;
+  currency: "usd" | "clp";
+  delta_pct: number | null;
+}
+
+/** `GET /api/market-ticker?unit=` — the same row stats as the watchlist, in the display unit. */
 export interface MarketTickerResponse {
   chile_today: string;
-  uf: { date: string; clp_per_uf: number } | null;
+  unit: "clp" | "usd";
+  uf: MarketTickerValue | null;
+  /** The USD/CLP rate itself — CLP per USD in both units. */
   usd: { date: string; clp_per_usd: number; delta_pct: number | null } | null;
-  uno_a: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
-  risky_norris: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
-  risky_norris_proxy: { day: string; unit_value_clp: number; delta_pct: number | null } | null;
+  uno_a: MarketTickerValue | null;
+  risky_norris: MarketTickerValue | null;
+  risky_norris_proxy: MarketTickerValue | null;
   equities: {
     ticker: string;
     trade_date: string;
     value: number;
-    /** Exchange quote currency for `value` (CLP for Bolsa de Santiago tickers). */
+    /** Currency `value` is expressed in — the payload's `unit`. */
     currency: "usd" | "clp";
     delta_pct: number | null;
-    source?: "live" | "eod";
   }[];
   marquee_series?: MarketDisplaySeriesRow[];
 }

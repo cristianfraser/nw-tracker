@@ -22,6 +22,8 @@ import {
 import {
   attachSyncSourceSchedule,
   FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE,
+  FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE,
+  isFintualRnCompositionDueDay,
   type SyncSourceDayKind,
   type SyncWallTime,
 } from "./syncSourceSchedule.js";
@@ -50,13 +52,15 @@ import {
 import { isSbifUfStale, isSbifUtmStale } from "./sbifMonthlyPublication.js";
 
 /**
- * Due once per Chile business day from 10:00: stale until today's composition sync ran.
- * Weekends/holidays are never stale (nothing to re-check), and re-running when the composition
- * is unchanged is fine — the sync just re-stamps today's `fintualRnCompositionLastSyncYmd`.
+ * Due once per due day (`isFintualRnCompositionDueDay`: a Chile business day or the day after one)
+ * from 18:30: stale until that day's composition sync ran. A Sunday or a holiday after a weekend
+ * is never stale (nothing newly published to anchor on), and re-running when the composition is
+ * unchanged is fine — the sync re-anchors on the same day and re-stamps `fintualRnCompositionLastSyncYmd`.
  */
 export function isFintualRnCompositionStale(cl: ChileWallClock, state: GlobalSyncStateFile): boolean {
-  if (!isChileBusinessDay(cl.ymd)) return false;
-  if (cl.hour * 60 + cl.minute < FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE * 60) return false;
+  if (!isFintualRnCompositionDueDay(cl.ymd)) return false;
+  const dueMins = FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE * 60 + FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE;
+  if (cl.hour * 60 + cl.minute < dueMins) return false;
   return state.fintualRnCompositionLastSyncYmd?.trim() !== cl.ymd;
 }
 

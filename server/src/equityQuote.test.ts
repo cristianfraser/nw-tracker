@@ -4,8 +4,10 @@ import { clearLiveMarketQuotesForTest, insertLiveMarketQuote } from "./liveMarke
 import {
   clearEquityLiveQuoteCache,
   cryptoDisplaySessionYmd,
+  equityHeldSessionQuote,
   equityMarketKind,
   equityQuoteCurrency,
+  equitySessionClosedForDay,
   equitySessionYmdForTicker,
   getLiveEquityQuoteFromDb,
   resolveEquityQuote,
@@ -217,5 +219,86 @@ describe("santiago (.SN) market kind + CLP quote currency", () => {
     expect(() => resolveEquityQuote(SN_TEST, "2026-05-25", { preferLive: false, now })).toThrow(
       /currency mismatch/
     );
+  });
+});
+
+describe("equityHeldSessionQuote (post-close, pre-sync hold)", () => {
+  const tueAfterClose = new Date("2026-05-19T17:00:00-04:00");
+
+  function seedPrint(
+    symbol: string,
+    session: string,
+    value: number,
+    previous: number,
+    currency: "usd" | "clp" = "usd"
+  ): void {
+    insertLiveMarketQuote({
+      symbol,
+      kind: "equity",
+      currency,
+      value,
+      session_ymd: session,
+      previous_value: previous,
+      // Stale on purpose: after the close the hold does not need a fresh print.
+      fetched_at: `${session}T20:05:00.000Z`,
+    });
+  }
+
+  it("holds the session's last stored print after the NYSE close until its bar lands", () => {
+    upsertEod(TEST_TICKER, "2026-05-18", 500);
+    seedPrint(TEST_TICKER, "2026-05-19", 510, 500);
+    expect(equitySessionClosedForDay(TEST_TICKER, tueAfterClose)).toBe(true);
+
+    const held = equityHeldSessionQuote(TEST_TICKER, tueAfterClose);
+    expect(held?.price).toBe(510);
+    expect(held?.trade_date).toBe("2026-05-19");
+    expect(held?.delta_pct).toBeCloseTo(2, 5);
+
+    const q = resolveEquityQuote(TEST_TICKER, "2026-05-19", { preferLive: true, now: tueAfterClose });
+    expect(q?.source).toBe("live");
+    expect(q?.price).toBe(510);
+    // Without the hold the resolver falls to the previous bar — the 0-day-P/L gap.
+    const eod = resolveEquityQuote(TEST_TICKER, "2026-05-19", { preferLive: false, now: tueAfterClose });
+    expect(eod?.price).toBe(500);
+  });
+
+  it("yields to the session's bar once the EOD sync has written it", () => {
+    upsertEod(TEST_TICKER, "2026-05-18", 500);
+    upsertEod(TEST_TICKER, "2026-05-19", 512);
+    seedPrint(TEST_TICKER, "2026-05-19", 510, 500);
+    expect(equityHeldSessionQuote(TEST_TICKER, tueAfterClose)).toBeNull();
+    const q = resolveEquityQuote(TEST_TICKER, "2026-05-19", { preferLive: true, now: tueAfterClose });
+    expect(q?.source).toBe("eod");
+    expect(q?.price).toBe(512);
+  });
+
+  it("never holds another session's print, before the open, or for crypto", () => {
+    upsertEod(TEST_TICKER, "2026-05-18", 500);
+    seedPrint(TEST_TICKER, "2026-05-18", 505, 500); // Monday's print, Tuesday after close
+    expect(equityHeldSessionQuote(TEST_TICKER, tueAfterClose)).toBeNull();
+
+    seedPrint(TEST_TICKER, "2026-05-19", 510, 500);
+    const tuePreOpen = new Date("2026-05-19T08:00:00-04:00");
+    expect(equitySessionClosedForDay(TEST_TICKER, tuePreOpen)).toBe(false);
+    expect(equityHeldSessionQuote(TEST_TICKER, tuePreOpen)).toBeNull();
+    expect(
+      resolveEquityQuote(TEST_TICKER, "2026-05-19", { preferLive: true, now: tuePreOpen })?.price
+    ).toBe(500);
+
+    expect(equitySessionClosedForDay(BTC_TEST, tueAfterClose)).toBe(false);
+  });
+
+  it("holds a Santiago print after 17:05 Chile on a Chile business day", () => {
+    upsertEod(SN_TEST, "2026-05-22", 1300, "clp");
+    seedPrint(SN_TEST, "2026-05-25", 1326, 1300, "clp");
+    const monEvening = new Date("2026-05-25T17:30:00-04:00");
+    expect(equitySessionClosedForDay(SN_TEST, monEvening)).toBe(true);
+    const q = resolveEquityQuote(SN_TEST, "2026-05-25", { preferLive: true, now: monEvening });
+    expect(q?.source).toBe("live");
+    expect(q?.price).toBe(1326);
+    expect(q?.delta_pct).toBeCloseTo(2, 5);
+
+    const monInSession = new Date("2026-05-25T16:00:00-04:00");
+    expect(equitySessionClosedForDay(SN_TEST, monInSession)).toBe(false);
   });
 });

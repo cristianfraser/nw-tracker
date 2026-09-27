@@ -22,8 +22,32 @@ import {
 import { isAfterNyseRegularClose, nyseWallClock } from "./nyseSession.js";
 
 const SBIF_OBSERVED_STALE_AFTER_HOUR_CHILE = 18;
-/** Chile hour (inclusive) from which the daily Risky Norris composition sync is due. */
-export const FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE = 10;
+/**
+ * Chile wall time (inclusive) from which the daily Risky Norris composition sync is due. After the
+ * Fintual publish hour: the Risky Norris A serie the proxy anchors on publishes day D on D+1
+ * through the official public prices, which the sync refreshes itself, so an evening run anchors
+ * at most one session behind (the old 10:00 run found nothing newer than D−2).
+ */
+export const FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE = 18;
+export const FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE = 30;
+
+/**
+ * A day with something new to anchor on: a Chile business day (the composition may have moved and
+ * the previous business day's cuota is published), or the day after one (a Friday's cuota
+ * publishes on Saturday). A Sunday, or a holiday following a weekend, brings nothing.
+ */
+export function isFintualRnCompositionDueDay(ymd: string): boolean {
+  return isChileBusinessDay(ymd) || isChileBusinessDay(chileCalendarAddDays(ymd, -1));
+}
+
+function nextFintualRnCompositionDueYmd(ymd: string, maxSteps = 14): string | null {
+  let cur = ymd;
+  for (let i = 0; i < maxSteps; i++) {
+    cur = chileCalendarAddDays(cur, 1);
+    if (isFintualRnCompositionDueDay(cur)) return cur;
+  }
+  return null;
+}
 
 export type SyncWallTime = {
   ymd: string;
@@ -269,14 +293,16 @@ function scheduleForSource(
       };
     }
     case "fintual_rn_composition": {
-      // Due once per Chile business day at 10:00 (today if not yet reached, else next business day).
+      // Due once per due day at 18:30 (today if not yet reached, else the next due day).
       const last = loadGlobalSyncState().fintualRnCompositionLastSyncYmd?.trim();
       const nowMins = cl.hour * 60 + cl.minute;
-      const dueMins = FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE * 60;
-      const dueToday = isChileBusinessDay(cl.ymd) && nowMins < dueMins && last !== cl.ymd;
-      const nextYmd = dueToday ? cl.ymd : nextChileBusinessDayYmd(cl.ymd);
+      const dueMins = FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE * 60 + FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE;
+      const dueToday = isFintualRnCompositionDueDay(cl.ymd) && nowMins < dueMins && last !== cl.ymd;
+      const nextYmd = dueToday ? cl.ymd : nextFintualRnCompositionDueYmd(cl.ymd);
       return {
-        next_sync: nextYmd ? chileTimeOnYmd(nextYmd, FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE, 0) : null,
+        next_sync: nextYmd
+          ? chileTimeOnYmd(nextYmd, FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE, FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE)
+          : null,
         next_sync_imminent: false,
         today_day_kind: chileDayKind(cl.ymd),
       };

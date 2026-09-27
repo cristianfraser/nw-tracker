@@ -10,6 +10,7 @@ import {
   deleteManualWatchlistRow,
   getWatchlistPayload,
   patchWatchlistRow,
+  watchlistDisplayUnitParam,
 } from "../watchlist.js";
 import { isPositiveFiniteNumber, isYmdString } from "../requestValidation.js";
 
@@ -89,18 +90,19 @@ app.get("/api/market-series", (_req, res) => {
   res.json(getMarketSeriesPayload());
 });
 
-app.get("/api/market-ticker", (_req, res) => {
+// `?unit=usd` returns values and changes in USD (the app's CLP/USD toggle); default CLP.
+app.get("/api/market-ticker", (req, res) => {
   try {
-    res.json(getMarketTickerPayload());
+    res.json(getMarketTickerPayload(new Date(), watchlistDisplayUnitParam(req.query.unit)));
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "market_ticker_failed" });
   }
 });
 
 // DB-only: history depth is maintained by the live-quotes scheduler, never on request.
-app.get("/api/watchlist", (_req, res) => {
+app.get("/api/watchlist", (req, res) => {
   try {
-    res.json(getWatchlistPayload());
+    res.json(getWatchlistPayload(new Date(), watchlistDisplayUnitParam(req.query.unit)));
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "watchlist_failed" });
   }

@@ -15,7 +15,7 @@ import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountDisplayValue } from "./accountDisplayValue.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { priorCloseFromPerfRows, priorPeriodEndYmd } from "./accountPeriodMarks.js";
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
+import { fxForLiveMtm } from "./fxRates.js";
 import {
   flowsDepositsNetInPeriodByAccount,
   flowsDepositsNetTotalByAccount,
@@ -362,7 +362,12 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         mark: v,
         position,
       });
-      const fxRow = includeUsd ? fxMonthEndForBalanceUsd(valuation_as_of ?? null) : null;
+      // The USD frame of the row is the CLP mark ÷ the fx that mark was built with: the live
+      // CLP=X while the mark date's fx day is open, the stored close after (`fxForLiveMtm`
+      // reads the stored row for any earlier date). Dividing a live-fx CLP value by the
+      // stored on-or-before row understated every USD holding by the day's fx move while
+      // the fx day was open.
+      const fxRow = includeUsd ? fxForLiveMtm(valuation_as_of ?? null) : null;
       const current_value_usd = includeUsd
         ? isUsdCashAccount(a.id)
           ? usdCashBalanceUsdAt(a.id, valuation_as_of ?? today)
