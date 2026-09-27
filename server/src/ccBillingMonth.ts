@@ -1,7 +1,6 @@
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 
 function isoFromStatementField(raw: string | null | undefined): string | null {
   const t = String(raw ?? "").trim();
@@ -58,7 +57,12 @@ export function billingMonthForCcStatement(fields: {
   return null;
 }
 
-/** Inclusive billing period [from, to] ISO dates for a billing month YYYY-MM. */
+/**
+ * Inclusive billing period [from, to] ISO dates for a billing month YYYY-MM, by the config cycle —
+ * tentative. It keys the open web-paste buckets (`statementCloseDdMmYyyyForBillingMonth`) and
+ * estimates the close of a card with no close on record (`closeEvidenceForBillingMonth`); which
+ * facturación a purchase belongs to is `billingMonthContainingPurchase`, from the bank's closes.
+ */
 export function billingPeriodIsoRange(
   billingMonth: string,
   config: CreditCardBillingConfig = DEFAULT_CONFIG
@@ -76,24 +80,4 @@ export function billingPeriodIsoRange(
   const period_from = `${prevY}-${pad(prevMo)}-${pad(Math.min(startDay, 28))}`;
   const period_to = `${y}-${pad(mo)}-${pad(Math.min(endDay, 28))}`;
   return { period_from, period_to };
-}
-
-/**
- * Billing month (YYYY-MM) for a purchase date using cycle boundaries (21→20).
- * Purchases after period_to bill on the next month; before period_from on the previous.
- */
-export function billingMonthForPurchaseDate(
-  purchaseDateIso: string,
-  config?: CreditCardBillingConfig
-): string | null {
-  const iso = String(purchaseDateIso ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
-  const cfg = config ?? DEFAULT_CONFIG;
-  let bm = billingMonthForStatementDate(iso);
-  if (!bm) return null;
-  const range = billingPeriodIsoRange(bm, cfg);
-  if (!range) return bm;
-  if (iso > range.period_to) return addCalendarMonths(bm, 1);
-  if (iso < range.period_from) return addCalendarMonths(bm, -1);
-  return bm;
 }

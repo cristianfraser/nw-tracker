@@ -12,6 +12,7 @@ import {
   recordFeedBillingClose,
 } from "./ccBillingCloses.js";
 import {
+  billingMonthContainingPurchase,
   billingMonthForManualLedgerPurchase,
   isProvisionallyClosedBillingMonth,
   lastClosedBillingMonthForAccount,
@@ -338,6 +339,25 @@ describe("credit-card close evidence", () => {
     insertBucketLine(sept, "2026-09-25", "POSTCLOSE VITEST", 12_000);
     expect(repairMisplacedOpenWebPasteBuckets(accountId).lines_moved).toBe(1);
     expect(merchantsIn(bucketId("2026-10"))).toEqual(["POSTCLOSE VITEST"]);
+  });
+
+  it("puts a purchase in the bank's cycle, not the config's 21→20", () => {
+    // August closed on 25/08 and announced September's close for 24/09; Santander starts each
+    // cycle ON the previous close day.
+    expect(billingMonthContainingPurchase(accountId, "2026-08-24")).toBe("2026-08");
+    expect(billingMonthContainingPurchase(accountId, "2026-08-25")).toBe("2026-09");
+    expect(billingMonthContainingPurchase(accountId, "2026-09-22")).toBe("2026-09");
+    expect(billingMonthContainingPurchase(accountId, "2026-09-24")).toBe("2026-10");
+    // A hand-entered plan bought on 22/09 — after the config's 20th, before the real close — bills
+    // its first cuota at the 24/09 close, and the purchase table files it under September.
+    db.prepare(
+      `INSERT INTO cc_installment_purchases (
+         account_id, card_group, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales,
+         merchant, description_merged, source
+       ) VALUES (?, ?, 'vitest-close-evidence-cycle', '2026-09-22', 60000, 2, 'VITEST CYCLE', 'VITEST CYCLE', 'manual')`
+    ).run(accountId, CARD_GROUP);
+    const plan = ccInstallmentsDbApiPayload(accountId).purchases.find((p) => p.label === "VITEST CYCLE");
+    expect(plan).toMatchObject({ purchase_billing_month: "2026-09", first_due_month: "2026-09" });
   });
 
   it("closes the month once its announced next cycle has started, without touching schedule evidence", () => {

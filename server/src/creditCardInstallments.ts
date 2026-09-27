@@ -83,7 +83,7 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
   purchase_source?: "pdf" | "manual";
   /** Purchase date (YYYY-MM-DD; DB ledger only). */
   purchase_date?: string;
-  /** Facturación month the purchase falls into (billing config applied to the purchase date). */
+  /** Facturación month the purchase falls into: the bank's cycle containing the purchase date. */
   purchase_billing_month?: string | null;
 };
 

@@ -8,11 +8,12 @@ import {
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import {
+  billingMonthContainingPurchase,
   billingMonthForLedgerPurchase,
   lastPdfBillingMonthForAccount,
 } from "./ccManualBillingMonth.js";
-import { billingMonthForPurchaseDate, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import {
   isInstallmentContractSummaryMerchant,
   merchantStemForInstallmentDedupe,
@@ -223,9 +224,10 @@ export function purchaseFirstDueYm(
     // deferring it behind a cuota-00 preamble). The next statement's evidence replaces the
     // guess either way: a cuota-01 line pins the real month, a cuota-00 preamble moves the
     // anchor to statement + 1. Date-based (not "the open month at read time") so the guess
-    // does not drift forward as cycles roll while the statement is pending.
-    const cfg = loadCreditCardBillingConfig(accountId);
-    const base = storedFirstDue ?? billingMonthForPurchaseDate(pr.purchase_date, cfg);
+    // does not drift forward as cycles roll while the statement is pending. The cycle is the
+    // bank's (`billingMonthContainingPurchase`): a ·0901 purchase on the 22nd belongs to the
+    // facturación that closes on the 24th, not to the next one as the config's 20th made it.
+    const base = storedFirstDue ?? billingMonthContainingPurchase(accountId, pr.purchase_date);
     if (base) {
       // A manual plan with no statement evidence cannot first-bill inside an already
       // fully-imported facturación — that statement exists and did not bill it (reaching
@@ -913,7 +915,6 @@ export function ledgerFacturadoClpForBillingMonth(
   billingMonth: string
 ): number {
   if (ccInstallmentLedgerRowCount(accountId) === 0) return 0;
-  const config = loadCreditCardBillingConfig(accountId);
   const { purchasesRaw, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   const schedules = buildSchedulesByPurchaseId(
     purchasesRaw,
@@ -921,9 +922,10 @@ export function ledgerFacturadoClpForBillingMonth(
     billingMonth,
     accountId
   );
+  const statements = listCcStatementsForAccount(accountId);
   let sum = 0;
   for (const pr of purchasesRaw) {
-    if (billingMonthForLedgerPurchase(accountId, pr, config) !== billingMonth) continue;
+    if (billingMonthForLedgerPurchase(accountId, pr, statements) !== billingMonth) continue;
     const sched = schedules.get(pr.id);
     if (!sched) continue;
     const idx = sched.planSlotsConsumed;
@@ -1010,7 +1012,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   const nowYm = currentCalendarYm();
   const schedules = buildSchedulesByPurchaseId(purchasesRaw, paymentsByPurchase, nowYm, accountId);
 
-  const billingCfg = loadCreditCardBillingConfig(accountId);
+  const statements = listCcStatementsForAccount(accountId);
   const computed: CcInstallmentPurchaseComputed[] = [];
   for (const pr of purchasesRaw) {
     const payList = paymentsByPurchase.get(pr.id) ?? [];
@@ -1070,7 +1072,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       schedule_offset_months: 0,
       purchase_month: parseYearMonth(pr.purchase_date.slice(0, 7)),
       purchase_date: pr.purchase_date,
-      purchase_billing_month: billingMonthForPurchaseDate(pr.purchase_date, billingCfg),
+      purchase_billing_month: billingMonthContainingPurchase(accountId, pr.purchase_date, statements),
       note: pr.matched_baseline_purchase_id ? `baseline: ${pr.matched_baseline_purchase_id}` : null,
       remaining_installments,
       remaining_principal_clp,

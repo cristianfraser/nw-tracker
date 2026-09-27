@@ -4,8 +4,12 @@
  * The cuota is payable from the 11th of the cycle month through the 10th of the next month,
  * denominated in UF and charged to CLP at the UF of the pay date. UF normally rises daily, so
  * paying on the 11th is cheapest. In months where UF is flat or falling it is better to wait:
- * past the CC cierre (~20th) so the charge lands on the NEXT facturación (a month of float) at
- * the same-or-lower UF — and, if UF keeps falling into the next publication window, later still.
+ * past the CC cierre so the charge lands on the NEXT facturación (a month of float) at the
+ * same-or-lower UF — and, if UF keeps falling into the next publication window, later still.
+ * The cierre and the first day of the next cycle are the bank's (`closeDateForBillingMonth`,
+ * `nextPeriodStartIsoForBillingMonth`). The config's 21→20 cycle had put them on the 20th and
+ * the 21st, while ·0901 closes between the 22nd and the 26th: a charge paid «after the cierre» on
+ * those days still landed on the current facturación.
  *
  * This module produces the state a global toast renders. Missing FUTURE UF is a legitimate
  * "BCentral has not published it yet" state (the daily UF horizon is ~the 9th of the next month),
@@ -14,13 +18,10 @@
  */
 import { db } from "./db.js";
 import { isMortgageCcExpenseMerchant } from "./expenseDepositLinks.js";
-import {
-  billingMonthForPurchaseDate,
-  billingPeriodIsoRange,
-  loadCreditCardBillingConfig,
-} from "./ccBillingMonth.js";
+import { nextPeriodStartIsoForBillingMonth } from "./ccBillingCloses.js";
+import { billingMonthContainingPurchase, closeDateForBillingMonth } from "./ccManualBillingMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
-import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { ufClpByDateRange } from "./fxRates.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
@@ -47,9 +48,12 @@ export type MortgageUfReminderPayload = {
   /** Payable window: 11th of cycle month … 10th of the next month. */
   window_start: string | null;
   window_end: string | null;
-  /** Cierre of the facturación a day-11 payment lands on. */
+  /** Cierre of the facturación a day-11 payment lands on (the bank's close evidence). */
   cierre_iso: string | null;
-  /** First date whose charge rolls to the next facturación (cierre + 1). */
+  /**
+   * First date whose charge rolls to the next facturación: the next cycle's first day — the
+   * cierre itself on Santander, whose next cycle starts on the close day; the day after on BCI.
+   */
   pay_after_iso: string | null;
   /** Facturación the delayed (post-cierre) charge lands on. */
   next_billing_month: string | null;
@@ -248,7 +252,6 @@ export function buildMortgageUfReminder(
   } satisfies MortgageUfReminderDecisionInput;
   if (masterId == null) return hidden("no_cc_mortgage_line", emptyWindow);
 
-  const config = loadCreditCardBillingConfig(masterId);
   const card_last4 = cardLast4ForAccount(masterId);
 
   const windowFor = (cycleMonth: string) => {
@@ -268,21 +271,10 @@ export function buildMortgageUfReminder(
   const { window_start, window_end } = basePaid ? windowFor(cycle_month) : baseWindow;
   const paid = basePaid ? mortgagePaidInWindow(window_start, window_end) : basePaid;
 
-  const bm = billingMonthForPurchaseDate(window_start, config);
-  const range = bm ? billingPeriodIsoRange(bm, config) : null;
-  if (!bm || !range) {
-    // Billing config could not resolve a cierre — surface as "unavailable" rather than throwing.
-    return hidden("uf_unavailable", {
-      ...emptyWindow,
-      window_start,
-      window_end,
-      cycle_month,
-      card_last4,
-    });
-  }
-  const cierre_iso = range.period_to;
-  const pay_after_iso = chileCalendarAddDays(cierre_iso, 1);
-  const next_billing_month = billingMonthForPurchaseDate(pay_after_iso, config) ?? addCalendarMonths(bm, 1);
+  const bm = billingMonthContainingPurchase(masterId, window_start);
+  const cierre_iso = closeDateForBillingMonth(masterId, bm).close_iso;
+  const pay_after_iso = nextPeriodStartIsoForBillingMonth(masterId, bm).iso;
+  const next_billing_month = billingMonthContainingPurchase(masterId, pay_after_iso);
 
   const ufByYmd = ufClpByDateRange(window_start, window_end);
 
