@@ -1,7 +1,7 @@
 /**
  * Racional movements from notification e-mails — the incremental path that needs no browser.
  *
- * Four mail kinds become ledger rows (all others report only):
+ * Three mail kinds become ledger rows (all others report only):
  * - «Tu depósito de CLP $X está listo para invertir» → checking → Racional CLP transfer. The
  *   mail is Racional confirming the money ARRIVED, so unlike an inbound wire there is no
  *   promised-but-missing risk; the bank's own listing of the debit is absorbed later by the
@@ -15,10 +15,13 @@
  *   `createPanelAccount` path the panel uses (bare-ticker name, sibling bucket), so
  *   `accounts.equity_ticker` resolution, nav seeding and EOD/live-quote sync enrolment all
  *   happen exactly as for a hand-created position.
- * - «Recibiste USD $X en dividendos de TICKER» (template since 2026-09-18) → equity → Racional
- *   USD `dividend_payout`, no units — the shape of the crawled dividend rows. The older
- *   amount-less «Recibiste dividendos de TICKER» stays a nudge for the browser crawl (never a
- *   0-amount row), and a dividend never creates a position: a ticker with no account is manual.
+ * Dividends are deliberately NOT booked from mail. «Recibiste USD $X en dividendos de TICKER»
+ * (template since 2026-09-18) states the GROSS dividend, while Racional credits the net after
+ * the 15% US withholding and the body carries no amount — booking the subject figure left
+ * Racional USD 2,10 above the wallet on 2026-09-22 (SOXX 2,75 vs 2,34 credited, VEA 11,24 vs
+ * 9,55). Both dividend templates are therefore nudges for the browser crawl, whose dividends
+ * API prints gross, tax and net (`import:racional-movements` books the net and stores the
+ * breakdown in `movement_dividend_details`).
  *
  * Dedupe is ledger-based (scans are re-read every run, like the Fintual import): a transfer of
  * the same legs/amount on the mail's own day is the same event. Mail dates are authoritative —
@@ -46,7 +49,7 @@ const CHECKING_IMPORT_KEY = "import:excel|key=cuenta_corriente";
 
 export type RacionalEmailPlannedMovement = {
   source: BrokerEmailEvent;
-  kind: "deposit" | "conversion" | "buy" | "dividend";
+  kind: "deposit" | "conversion" | "buy";
   occurred_on: string;
   amount: number;
   currency: "clp" | "usd";
@@ -325,54 +328,6 @@ function planBuy(event: BrokerEmailEvent): RacionalEmailPlannedMovement {
   return base;
 }
 
-function planDividend(event: BrokerEmailEvent): RacionalEmailPlannedMovement {
-  const occurredOn = mailChileYmd(event);
-  const base: RacionalEmailPlannedMovement = {
-    source: event,
-    kind: "dividend",
-    occurred_on: occurredOn,
-    amount: event.amount ?? 0,
-    currency: "usd",
-    counter_amount: null,
-    counter_currency: null,
-    from_account_id: null,
-    to_account_id: null,
-    units_delta: null,
-    flow_kind: "dividend_payout",
-    note: `Racional e-mail: dividendo ${event.ticker ?? "?"} (${occurredOn})`,
-    create_account: null,
-    duplicate_of: null,
-    requires_manual: null,
-  };
-  if (!event.ticker) return { ...base, requires_manual: "dividend mail carries no ticker" };
-  if (event.amount == null || !(event.amount > 0)) {
-    return { ...base, requires_manual: "dividend mail carries no amount (old template) — needs the crawl" };
-  }
-  const racionalUsd = tryRacionalCashAccountId("usd");
-  if (racionalUsd == null) return { ...base, requires_manual: "Racional USD account not found" };
-  const holders = accountsWithEquityTicker(event.ticker);
-  if (holders.length !== 1) {
-    return {
-      ...base,
-      requires_manual:
-        holders.length === 0
-          ? `no account holds ${event.ticker} — a dividend never creates a position`
-          : `several accounts hold ${event.ticker}`,
-    };
-  }
-  base.from_account_id = holders[0]!;
-  base.to_account_id = racionalUsd;
-  const dup = sameDayDuplicateId({
-    occurred_on: occurredOn,
-    from_account_id: base.from_account_id,
-    to_account_id: racionalUsd,
-    currency: "usd",
-    amount: event.amount,
-  });
-  if (dup != null) return { ...base, duplicate_of: dup };
-  return base;
-}
-
 /** Plan the writable Racional events of a scan batch (mail order — deposit → conversion → buy). */
 export function planRacionalEmailMovements(
   events: readonly BrokerEmailEvent[]
@@ -389,9 +344,8 @@ export function planRacionalEmailMovements(
     if (e.kind === "deposit") out.push(planDeposit(e));
     else if (e.kind === "wallet_funded") out.push(planConversion(e));
     else if (e.kind === "buy") out.push(planBuy(e));
-    // An amount-less dividend (old template) stays a nudge for the browser crawl;
-    // portfolio_buy (CLP portafolio) is unmapped here.
-    else if (e.kind === "dividend" && e.is_complete) out.push(planDividend(e));
+    // A dividend mail is a nudge for the browser crawl (its subject amount is gross — see the
+    // module comment); portfolio_buy (CLP portafolio) is unmapped here.
   }
   return out;
 }

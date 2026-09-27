@@ -209,10 +209,13 @@ describe("brokerEmailParse", () => {
     ).toMatchObject({
       kind: "dividend",
       ticker: "SOXX",
-      amount: 2.75,
+      // The subject figure is the GROSS dividend (Racional credited 2,34 after the 15% US
+      // withholding), so it is recorded but never bookable: the event stays a nudge.
+      amount: null,
+      gross_amount: 2.75,
       currency: "usd",
       is_transaction: true,
-      is_complete: true,
+      is_complete: false,
     });
   });
 
@@ -301,6 +304,36 @@ describe("brokerEmailParse", () => {
     ]);
     expect(withNudge.needsFetch).toEqual(["racional"]);
     expect(withNudge.importable.map((e) => e.ticker)).toEqual(["SPY"]);
+  });
+
+  it("stops asking for a crawl once one that ran after the nudge was imported cleanly", () => {
+    // Scan files are all re-read every run, so without this a single dividend mail kept the
+    // Racional crawl running every night long after its dividend was booked.
+    const first = { sender: RACIONAL, subject: "Recibiste USD $1,23 en dividendos de VTDIVA", date: "2097-09-18T11:57:16.000Z" };
+    const second = { sender: RACIONAL, subject: "Recibiste dividendos de VTDIVB 💸", date: "2097-09-22T10:40:49.000Z" };
+    expect(scanBrokerEmails([first]).needsFetch).toEqual(["racional"]);
+    // A crawl from before the mail answers nothing.
+    expect(scanBrokerEmails([first], { racional: "2097-09-18T01:00:00.000Z" }).needsFetch).toEqual(["racional"]);
+
+    const covered = scanBrokerEmails([first, second], { racional: "2097-09-21T01:10:48.000Z" });
+    expect(covered.nudges).toHaveLength(2);
+    expect(covered.answered.map((e) => e.ticker)).toEqual(["VTDIVA"]);
+    expect(covered.needsFetch).toEqual(["racional"]); // the newer nudge still asks
+
+    const both = scanBrokerEmails([first, second], { racional: "2097-09-24T01:11:30.000Z" });
+    expect(both.answered).toHaveLength(2);
+    expect(both.needsFetch).toEqual([]);
+
+    // Coverage is per fetchable broker: Fintual's nudges stay for a human either way.
+    const fintual = scanBrokerEmails([{ sender: FINTUAL, subject: "Pagamos tu retiro de 🏦 Reserva", date: "x" }], {
+      racional: "2097-09-24T01:11:30.000Z",
+    });
+    expect(fintual.answered).toEqual([]);
+    expect(fintual.unresolved).toHaveLength(1);
+    // With coverage to compare against, an unreadable mail date fails fast.
+    expect(() => scanBrokerEmails([{ ...first, date: "x" }], { racional: "2097-09-24T01:11:30.000Z" })).toThrow(
+      /unparseable date "x"/
+    );
   });
 
   it("collapses a mail staged in several scan files to its richest parse", () => {

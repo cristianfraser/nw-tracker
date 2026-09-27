@@ -8,6 +8,7 @@ import {
   racionalRowToMovement,
   sortRacionalMovementsNewestFirst,
 } from "./racionalMovements.js";
+import { racionalApiDividendsFromResponse } from "./racionalMovements.js";
 
 /**
  * Fixtures are the real 2026-07-01 SLV purchase read out of the live app, which the ledger
@@ -96,10 +97,49 @@ describe("racionalMovements", () => {
     });
   });
 
-  it("refuses a trade with no units rather than moving cash without shares", () => {
+  it("records a trade listed without its share count as incomplete instead of refusing the row", () => {
+    // Refusing is the importer's call, and only for a trade it would have to WRITE — one the
+    // ledger already holds needs nothing from its detail view (racionalMovementsImport.test.ts).
+    const never = racionalRowToMovement({ title: "Compra SLV", amount: "US$1.346,17", movement_id: SLV_ID });
+    expect(never.units).toBeNull();
+    expect(never.incomplete).toBe("share count unknown — the crawl never opened its detail view");
+
+    const unopened = racionalRowToMovement({
+      title: "Compra VTSYN",
+      amount: "US$10,00",
+      day: "02/07",
+      occurred_on: "2099-07-02",
+      kind_class: "buy",
+      detail_status: "unopened",
+      detail_error: "not among the 10 rendered rows",
+    });
+    expect(unopened).toMatchObject({ kind: "buy", ticker: "VTSYN", units: null });
+    expect(unopened.incomplete).toBe(
+      "share count unknown — the crawl could not open its detail view (not among the 10 rendered rows)"
+    );
+
+    const opened = racionalRowToMovement({ title: "Compra SLV", amount: "US$1.346,17", movement_id: SLV_ID, detail: SLV_DETAIL });
+    expect(opened.incomplete).toBeNull();
+    // A cash row never needs its detail view.
+    expect(racionalRowToMovement({ title: "Depósito", amount: "$1.000", occurred_on: "2099-07-02" }).incomplete).toBeNull();
+  });
+
+  it("marks a dividend without a paying instrument incomplete, and refuses an inconsistent crawl flag", () => {
+    const m = racionalRowToMovement({
+      title: "Dividendo",
+      amount: "US$1,00",
+      occurred_on: "2099-07-02",
+      kind_class: "dividends",
+      detail_status: "unopened",
+      detail_error: "the list changed under the click",
+    });
+    expect(m).toMatchObject({ kind: "dividend", ticker: null });
+    expect(m.incomplete).toBe(
+      "paying instrument unknown — the crawl could not open its detail view (the list changed under the click)"
+    );
     expect(() =>
-      racionalRowToMovement({ title: "Compra SLV", amount: "US$1.346,17", movement_id: SLV_ID })
-    ).toThrow(/missing units or ticker/);
+      racionalRowToMovement({ title: "Compra VTSYN", amount: "US$10,00", occurred_on: "2099-07-02", detail_status: "unopened", detail: "Compraste …" })
+    ).toThrow(/flagged unopened but carries a detail text/);
   });
 
   it("refuses a trade whose list and detail tickers disagree", () => {
@@ -158,5 +198,95 @@ describe("racionalMovements", () => {
       mk("2026-03-01T00:00:00.000Z"),
     ]);
     expect(sorted.map((m) => m.occurred_on)).toEqual(["2026-07-01", "2026-03-01", "2026-01-05"]);
+  });
+});
+
+/**
+ * Since 2026-09-23 the crawl pairs each dividend row with its record from Racional's
+ * dividends API instead of clicking into it: the record carries the route id, the paying
+ * instrument and the gross / withholding behind the credited net.
+ */
+describe("racionalMovements — dividends API records", () => {
+  const record = {
+    id: "div_NI.vitest-uuid_VTSOX_2026-09-18T11:56:15.827Z",
+    asset_id: "VTSOX",
+    gross: 2.75,
+    withholding: 0.41,
+    net: 2.34,
+    execution_date: "2026-09-18T11:56:15.827Z",
+    is_interest: false,
+  };
+
+  it("takes a dividend row's id and instrument from its API record and carries the breakdown", () => {
+    const m = racionalRowToMovement({
+      title: "Dividendo",
+      amount: "US$2,34",
+      occurred_on: "2026-09-18",
+      kind_class: "dividends",
+      dividend: record,
+    });
+    expect(m).toMatchObject({
+      kind: "dividend",
+      ticker: "VTSOX",
+      movement_id: record.id,
+      occurred_on: "2026-09-18",
+      amount: 2.34,
+      currency: "usd",
+      dividend: record,
+    });
+  });
+
+  it("refuses a record whose net is not the row's printed amount, or attached to a non-dividend", () => {
+    expect(() =>
+      racionalRowToMovement({ title: "Dividendo", amount: "US$2,75", occurred_on: "2026-09-18", kind_class: "dividends", dividend: record })
+    ).toThrow(/prints 2\.75 usd but its API record .* credited 2\.34/);
+    expect(() =>
+      racionalRowToMovement({ title: "Depósito", amount: "$1.000", occurred_on: "2026-09-18", kind_class: "contribution", dividend: record })
+    ).toThrow(/carries a dividend record but is a deposit/);
+  });
+
+  it("parses the raw API response, flips DIVTAX positive and fails fast on a changed shape", () => {
+    const raw = {
+      dividends: [
+        {
+          id: record.id,
+          assetId: "vtsox",
+          amountUSD: 2.34,
+          DIV: 2.75,
+          DIVTAX: -0.41,
+          amount: 2.34,
+          executionDate: record.execution_date,
+          isInterest: false,
+          isRebateInterest: false,
+          isUSDDividend: true,
+        },
+        {
+          id: "int-1",
+          assetId: "USD",
+          amountUSD: 0.05,
+          DIV: 0.05,
+          DIVTAX: 0,
+          amount: 0.05,
+          executionDate: "2026-09-01T00:00:00.000Z",
+          isInterest: true,
+          isRebateInterest: false,
+          isUSDDividend: true,
+        },
+      ],
+    };
+    const parsed = racionalApiDividendsFromResponse(raw);
+    expect(parsed[0]).toEqual(record);
+    expect(parsed[1]).toMatchObject({ id: "int-1", withholding: 0, is_interest: true });
+
+    expect(() => racionalApiDividendsFromResponse({ items: [] })).toThrow(/no `dividends` array/);
+    expect(() =>
+      racionalApiDividendsFromResponse({ dividends: [{ ...raw.dividends[0], DIVTAX: undefined }] })
+    ).toThrow(/no numeric DIVTAX/);
+    expect(() =>
+      racionalApiDividendsFromResponse({ dividends: [{ ...raw.dividends[0], isUSDDividend: false }] })
+    ).toThrow(/not a USD dividend/);
+    expect(() =>
+      racionalApiDividendsFromResponse({ dividends: [{ ...raw.dividends[0], amount: 2.75 }] })
+    ).toThrow(/does not add up/);
   });
 });

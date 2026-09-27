@@ -4,12 +4,12 @@
  *   npm run import:racional-emails -w nw-tracker-server              # report only
  *   npm run import:racional-emails -w nw-tracker-server -- --apply   # write
  *
- * Report-first: deposits, CLP→USD conversions, stock buys and (since the 2026-09-18 template)
- * dividends become real ledger rows (buys
+ * Report-first: deposits, CLP→USD conversions and stock buys become real ledger rows (buys
  * carry share counts, and a first-ever ticker auto-creates its position account through the
  * panel-create path). Dedupe is ledger-based, so re-running over the same scans is idempotent.
- * The browser crawl (`import:racional-movements`) stays the source for history and for the
- * old amount-less dividend template.
+ * Dividends are never booked from mail — the subject states the gross, Racional credits the
+ * net — so the browser crawl (`import:racional-movements`) stays the source for them, as for
+ * history.
  */
 import fs from "node:fs";
 import path from "node:path";

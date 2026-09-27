@@ -102,12 +102,14 @@ if [[ "$DRY_RUN" == "1" ]]; then
   step "Santander e-mail documents (dry run)" run_tee "$TMP_DIR/santander-docs.out" npm run fetch:santander-docs -- --dry-run
   step "Lider statement e-mail (dry run)" run_tee "$TMP_DIR/lider-statements.out" npm run fetch:lider-statements -- --dry-run
   step "Lider boletas (dry run)" run_tee "$TMP_DIR/lider-boletas.out" npm run fetch:lider-boletas -- --dry-run
+  step "Fintual Acciones documents (dry run)" run_tee "$TMP_DIR/fintual-docs.out" npm run fetch:fintual-docs -- --dry-run
   # fetch:emails has no dry mode; --no-mark leaves the watermark alone (safe re-read).
   step "fetch broker e-mail (no-mark)" run_tee "$TMP_DIR/broker-emails.out" npm run fetch:emails -- --no-mark
 else
   step "Santander e-mail documents" run_tee "$TMP_DIR/santander-docs.out" npm run fetch:santander-docs
   step "Lider statement e-mail" run_tee "$TMP_DIR/lider-statements.out" npm run fetch:lider-statements
   step "Lider boletas" run_tee "$TMP_DIR/lider-boletas.out" npm run fetch:lider-boletas
+  step "Fintual Acciones documents" run_tee "$TMP_DIR/fintual-docs.out" npm run fetch:fintual-docs
   step "fetch broker e-mail" run_tee "$TMP_DIR/broker-emails.out" npm run fetch:emails
 fi
 
@@ -134,6 +136,7 @@ sd_saved="$(saved_count "$TMP_DIR/santander-docs.out")"
 ls_saved="$(saved_count "$TMP_DIR/lider-statements.out")"
 lb_saved="$(saved_count "$TMP_DIR/lider-boletas.out")"
 # fetch.ts always logs the count, zero included ("e-mail: N broker message(s)").
+fd_saved="$(saved_count "$TMP_DIR/fintual-docs.out")"
 be_msgs="$(sed -n 's/.*e-mail: \([0-9][0-9]*\) broker message(s).*/\1/p' "$TMP_DIR/broker-emails.out" 2>/dev/null | tail -1)"
 be_msgs="${be_msgs:-0}"
 
@@ -173,8 +176,19 @@ if [[ "$DRY_RUN" != "1" ]]; then
     log "=== Racional e-mail movements (skipped — no new broker mail)"
   fi
 fi
+  # A new Acciones cartola / certificado: pair its printed dividends with the ledger's rows and
+  # store the gross / withholding breakdown (the nightly re-runs it unconditionally).
+  if [[ "$fd_saved" -gt 0 ]]; then
+    if [[ "${NW_TRACKER_FINTUAL_APPLY:-0}" == "1" ]]; then
+      step "Fintual Acciones dividend breakdowns (apply)" npm run import:fintual-acciones -- --apply
+    else
+      step "Fintual Acciones dividend breakdowns (report only)" npm run import:fintual-acciones
+    fi
+  else
+    log "=== Fintual Acciones dividend breakdowns (skipped — no new document)"
+  fi
 
-if [[ "$sd_saved" -gt 0 || "$ls_saved" -gt 0 || "$lb_saved" -gt 0 || "$be_msgs" -gt 0 || "$sa_caught_up" -eq 1 ]]; then
+if [[ "$sd_saved" -gt 0 || "$ls_saved" -gt 0 || "$lb_saved" -gt 0 || "$fd_saved" -gt 0 || "$be_msgs" -gt 0 || "$sa_caught_up" -eq 1 ]]; then
   activity=1
-  log "activity this hour: santander-docs saved=$sd_saved, lider statement saved=$ls_saved, boletas saved=$lb_saved, broker mail=$be_msgs, santander catch-up=$sa_caught_up"
+  log "activity this hour: santander-docs saved=$sd_saved, lider statement saved=$ls_saved, boletas saved=$lb_saved, fintual docs saved=$fd_saved, broker mail=$be_msgs, santander catch-up=$sa_caught_up"
 fi

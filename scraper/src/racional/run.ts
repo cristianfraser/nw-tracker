@@ -10,12 +10,21 @@ import { assertRunAllowed } from "../runGuard.js";
 import { assertValidSteps, shouldRunStep } from "../steps.js";
 import { setForceRefetch } from "../documentLedger.js";
 import { login } from "./login.js";
-import { openHome, openMovements, openPositions, takeScrapedMovements } from "./steps.js";
+import {
+  openHome,
+  openMovements,
+  openPositions,
+  rawDividendsResponseFromRecorder,
+  takeScrapedMovements,
+} from "./steps.js";
 import { resolveCfraserDir } from "../paths.js";
 import type { RunOptions, StepResult } from "../runTypes.js";
 
 /**
- * Last movement the importer recorded (`cfraser/.racional-import-state.json`).
+ * The importer's crawl watermark (`cfraser/.racional-import-state.json` → `last_row_key`): the
+ * list key, in `rowKey`'s format, of the newest row it imported cleanly. A state without it (no
+ * import yet, or written before 2026-09-27, when the importer recorded a route id this crawl
+ * could never match) → null, and the crawl stages the whole rendered list.
  *
  * A plain file rather than a DB read on purpose: the scraper is deliberately not an npm
  * workspace, so it cannot import the server — the file is the contract between the two.
@@ -23,12 +32,13 @@ import type { RunOptions, StepResult } from "../runTypes.js";
 function readRacionalWatermark(): string | null {
   const file = path.join(resolveCfraserDir(), ".racional-import-state.json");
   if (!fs.existsSync(file)) return null;
+  let state: { last_row_key?: string | null };
   try {
-    const state = JSON.parse(fs.readFileSync(file, "utf8")) as { last_movement_id?: string };
-    return state.last_movement_id ?? null;
-  } catch {
-    return null;
+    state = JSON.parse(fs.readFileSync(file, "utf8")) as { last_row_key?: string | null };
+  } catch (err) {
+    throw new Error(`${file} is not valid JSON — fix or delete it (${err instanceof Error ? err.message : err})`);
   }
+  return state.last_row_key ?? null;
 }
 
 /**
@@ -80,11 +90,25 @@ export async function runRacional(opts: RunOptions): Promise<number> {
   log(`${recorder.calls.length} API call(s) → ${outFile}`);
 
   // Movements are scraped from the DOM (Firestore pushes them, so they never appear as XHR).
-  const movements = takeScrapedMovements();
-  if (movements.length > 0) {
+  // Staged whenever the movements step succeeded — an empty list on a quiet night too: it is the
+  // importer's evidence that this crawl read the list, which is what answers the e-mail nudges
+  // mailed before it (`clean_crawl_at`). A failed step stages nothing.
+  if (results.find((r) => r.name === "movements")?.ok) {
+    const movements = takeScrapedMovements();
     const movFile = path.join(outDir, `movements-${stamp}.json`);
     fs.writeFileSync(movFile, JSON.stringify(movements, null, 2));
     log(`${movements.length} movement row(s) → ${movFile}`);
+  }
+
+  // The dividends API response, verbatim, on every run that made the call: the importer pairs
+  // each record with its ledger row and stores the gross / withholding breakdown, which is
+  // also how dividends booked before the breakdown existed get theirs. Small (every dividend
+  // the account ever received, a few hundred bytes each) and idempotent on the import side.
+  const dividends = rawDividendsResponseFromRecorder(recorder);
+  if (dividends != null) {
+    const divFile = path.join(outDir, `dividends-${stamp}.json`);
+    fs.writeFileSync(divFile, JSON.stringify(dividends, null, 2));
+    log(`dividends API response → ${divFile}`);
   }
 
   log("");

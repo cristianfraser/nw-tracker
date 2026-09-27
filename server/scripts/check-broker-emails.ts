@@ -9,13 +9,16 @@
  *
  * Splitting it this way is the point of the design: reading mail is free, opening a bank
  * session is not, so the browser only runs when a notification proves there is activity the
- * e-mail itself does not describe.
+ * e-mail itself does not describe — and only until a crawl that ran after that mail has been
+ * imported with nothing left to fix (`clean_crawl_at` in `cfraser/.racional-import-state.json`,
+ * written by `import:racional-movements -- --apply`). The scans are all re-read every run, so
+ * without that one staged dividend mail asked for a crawl every night.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { scanBrokerEmails, type BrokerEmailInput } from "../src/brokerEmailParse.js";
-import { racionalComisionCrawlDue } from "../src/racionalMovementsImport.js";
+import { racionalComisionCrawlDue, readRacionalImportState } from "../src/racionalMovementsImport.js";
 
 const dir = path.join(resolveCfraserCsvDir(), "broker-emails");
 const files = fs.existsSync(dir)
@@ -37,23 +40,35 @@ for (const file of files) {
   inputs.push(...rows);
 }
 
-const scan = scanBrokerEmails(inputs);
+const racionalCleanCrawlAt = readRacionalImportState()?.clean_crawl_at ?? null;
+const scan = scanBrokerEmails(inputs, { racional: racionalCleanCrawlAt });
+const answered = new Set(scan.answered);
 console.log(`${inputs.length} broker e-mail(s) across ${files.length} scan file(s)\n`);
 
 for (const event of scan.events) {
   if (!event.is_transaction) continue;
   const money =
-    event.amount != null ? `${event.amount} ${event.currency ?? ""}`.trim() : "(no amount)";
+    event.amount != null
+      ? `${event.amount} ${event.currency ?? ""}`.trim()
+      : event.gross_amount != null
+        ? `${event.gross_amount} ${event.currency ?? ""} gross`.trim()
+        : "(no amount)";
   const units = event.units ? ` · ${event.units} units` : "";
+  const status = event.is_complete
+    ? "[complete]"
+    : answered.has(event)
+      ? `[nudge — answered by the crawl of ${racionalCleanCrawlAt}]`
+      : "[NUDGE — needs fetch]";
   console.log(
     `  ${event.occurred_at.slice(0, 10)}  ${String(event.broker).padEnd(9)} ${event.kind.padEnd(16)} ` +
-      `${money.padStart(16)}${units}  ${event.is_complete ? "[complete]" : "[NUDGE — needs fetch]"}`
+      `${money.padStart(16)}${units}  ${status}`
   );
 }
 
 const skipped = scan.events.filter((e) => !e.is_transaction).length;
 console.log(
-  `\n${scan.importable.length} importable from e-mail, ${scan.nudges.length} nudge(s), ${skipped} non-transaction message(s) ignored.`
+  `\n${scan.importable.length} importable from e-mail, ${scan.nudges.length} nudge(s) ` +
+    `(${scan.answered.length} already answered by a crawl), ${skipped} non-transaction message(s) ignored.`
 );
 
 if (scan.unrecognised.length > 0) {
@@ -89,6 +104,7 @@ fs.writeFileSync(
       needs_fetch: needsFetch,
       importable: scan.importable.length,
       nudges: scan.nudges.length,
+      answered_nudges: scan.answered.length,
       scanned_files: files.map((f) => path.basename(f)),
       decided_at: new Date().toISOString(),
     },
