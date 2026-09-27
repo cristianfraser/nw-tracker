@@ -1,5 +1,7 @@
 /** Official daily UF from SII HTML tables (valores y fechas). */
 
+import { isChileanNumber, parseChileanNumber } from "./chileanNumber.js";
+
 const SII_UF_BASE = "https://www.sii.cl/valores_y_fechas/uf";
 
 const MES_ID_TO_MONTH: Record<string, number> = {
@@ -17,11 +19,12 @@ const MES_ID_TO_MONTH: Record<string, number> = {
   mes_diciembre: 12,
 };
 
+/** A day cell, Chilean-format ("4x.xxx,xx"); null when it holds no number (a future day is blank). */
 function parseChileanUfCell(raw: string): number | null {
   const t = raw.replace(/&nbsp;/gi, " ").trim();
-  if (!t) return null;
-  const n = Number(t.replace(/\./g, "").replace(",", "."));
-  if (!Number.isFinite(n) || n < 1000 || n > 1e6) return null;
+  if (!isChileanNumber(t)) return null;
+  const n = parseChileanNumber(t);
+  if (n < 1000 || n > 1e6) return null;
   return n;
 }
 
@@ -54,7 +57,8 @@ export function parseSiiUfYearHtml(html: string, year: number): Map<string, numb
   return out;
 }
 
-async function fetchSiiUfYear(year: number): Promise<Map<string, number>> {
+/** One year's SII table (`uf{year}.htm`) → YYYY-MM-DD → CLP per UF. */
+export async function fetchSiiUfYear(year: number): Promise<Map<string, number>> {
   const url = `${SII_UF_BASE}/uf${year}.htm`;
   const res = await fetch(url, { headers: { "User-Agent": "nw-tracker-uf-fetch/1.0" } });
   if (!res.ok) throw new Error(`SII UF ${year}: HTTP ${res.status} ${url}`);

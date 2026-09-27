@@ -4,6 +4,7 @@ import XLSX from "xlsx";
 import { assertCheckingCartolaSaldoIdentity } from "./checkingCartolaSaldoValidation.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { isChileanNumber, parseChileanNumber } from "./chileanNumber.js";
 
 const SPANISH_MONTH: Record<string, number> = {
   enero: 1,
@@ -74,20 +75,14 @@ function cell(row: unknown[], i: number): string {
   return String(v).trim();
 }
 
-/** Chilean bank amounts: $1.xxx.xxx or plain digits. */
+/**
+ * Chilean bank amounts, rounded to the peso: $1.xxx.xxx, 1.234,56, 1234,56 or plain digits.
+ * Null when the cell holds no number (empty, or text in a column probed for an amount).
+ */
 export function parseCartolaAmount(raw: string): number | null {
-  const t = String(raw ?? "")
-    .trim()
-    .replace(/\$/g, "")
-    .replace(/\s+/g, "");
-  if (!t) return null;
-  const normalized =
-    /,\d{1,2}$/.test(t) && t.includes(".")
-      ? t.replace(/\./g, "").replace(",", ".")
-      : t.replace(/\./g, "");
-  const n = Number(normalized);
-  if (!Number.isFinite(n)) return null;
-  return Math.round(n);
+  const t = String(raw ?? "").replace(/\$/g, "");
+  if (!isChileanNumber(t)) return null;
+  return Math.round(parseChileanNumber(t));
 }
 
 /** Last calendar day of month (1–12) as YYYY-MM-DD. */
