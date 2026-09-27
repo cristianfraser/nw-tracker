@@ -124,6 +124,11 @@ function pickSnapshotRow(
  * without it the open row carried them on top of the provisional row that already bills them —
  * 2026-10 ·0901 read 7,xx M of cuota debt against September's 5,xx M until the September
  * statement arrived.
+ *
+ * One rule for every reader, through {@link ccCupoFrame}: the detalle, the stored
+ * `cc_billing_month_balances` snapshot (which copies the detalle's rows) and the month-end
+ * valuation fallback. The last two used to carry their own copies keyed on the calendar month —
+ * the double count above — one of them on the UTC month, which turns at 21:00 Chile.
  */
 function cupoEnCuotasForBillingMonth(
   billingMonth: string,
@@ -142,9 +147,56 @@ function cupoEnCuotasForBillingMonth(
     for (const v of pendingCuotaPurchases.values()) pending += v;
     return Math.max(0, cupoLive - provisionalBilledCuotasClp) + pending;
   }
-  // Not `cupoEnCuotasClpForCalendarMonth`: that one also swaps in the live figure for the
-  // current calendar month, which is exactly the double count described above.
   return (remainingAfterMonth.get(billingMonth) ?? 0) + (pendingCuotaPurchases.get(billingMonth) ?? 0);
+}
+
+/** What decides a card's billing months — open, provisionally closed — and each month's cupo en cuotas. */
+export type CcCupoFrame = {
+  /** The card stopped billing (`creditCardBillingDetailInactive`): no provisional months. */
+  inactive: boolean;
+  /** The open facturación (`billingMonthForManualLedgerPurchase`, from the bank's close evidence). */
+  openBillingMonth: string | null;
+  /** Closed at the bank, statement not imported yet. */
+  provisionalMonths: Set<string>;
+  /** Cupo en cuotas of a billing month ({@link cupoEnCuotasForBillingMonth}). */
+  cupoEnCuotasClp: (billingMonth: string) => number;
+};
+
+/**
+ * The cupo frame of one card. `ledgerMonths` is the plan schedule by facturación, full history
+ * (the detalle's cuota-a-pagar source): what a provisional close billed is read from it.
+ */
+export function ccCupoFrame(accountId: number, ledgerMonths: readonly CcInstallmentMonthRow[]): CcCupoFrame {
+  const inactive = creditCardBillingDetailInactive(accountId);
+  // Closed at the bank, statement pending: a row even without bucket lines, statement-framed.
+  const provisionalMonths = inactive
+    ? new Set<string>()
+    : provisionallyClosedBillingMonthsForAccount(accountId);
+  const openBillingMonth = billingMonthForManualLedgerPurchase(accountId);
+  const cupoLive = liveCreditCardOutstandingClp(accountId) ?? 0;
+  const remainingAfterMonth = installmentRemainingClpByCalendarMonth(accountId);
+  const pendingCuotaPurchases = cuotaPurchaseLinesClpByBucketMonth(accountId);
+  // Cuotas the bank billed at a close whose statement has not arrived (see the cupo rule).
+  let provisionalBilledCuotasClp = 0;
+  for (const bm of provisionalMonths) {
+    if (openBillingMonth == null || bm < openBillingMonth) {
+      provisionalBilledCuotasClp += cuotaAPagarNextMesClp(bm, ledgerMonths);
+    }
+  }
+  return {
+    inactive,
+    openBillingMonth,
+    provisionalMonths,
+    cupoEnCuotasClp: (billingMonth) =>
+      cupoEnCuotasForBillingMonth(
+        billingMonth,
+        cupoLive,
+        openBillingMonth,
+        remainingAfterMonth,
+        pendingCuotaPurchases,
+        provisionalBilledCuotasClp
+      ),
+  };
 }
 
 export type { CcStatementSlotByCurrency } from "./ccBillingStatementSlots.js";
@@ -478,7 +530,7 @@ export function billingDetailBalanceClp(
 
 function cuotaAPagarNextMesClp(
   billingMonth: string,
-  ledgerMonths: CcInstallmentMonthRow[]
+  ledgerMonths: readonly CcInstallmentMonthRow[]
 ): number {
   // Plan months are statement/facturación months: the cuotas billed at this month's close
   // (payable ~10th of the next month) live at the billing month itself. The old +1 /
@@ -503,14 +555,10 @@ function buildBillingDetailByMonthInner(
   const balances = listCcBillingMonthBalances(accountId).filter(
     (r) => r.as_of_kind !== "month_end"
   );
-  const cupoLive = liveCreditCardOutstandingClp(accountId) ?? 0;
   const slots = statementSlotsByBillingMonth(accountId);
   const pdfClosed = pdfClosedBillingMonthsForAccount(accountId);
-  const inactive = creditCardBillingDetailInactive(accountId);
-  // Closed at the bank, statement pending: a row even without bucket lines, statement-framed.
-  const provisionalMonths = inactive
-    ? new Set<string>()
-    : provisionallyClosedBillingMonthsForAccount(accountId);
+  const frame = ccCupoFrame(accountId, ledgerMonths);
+  const { inactive, provisionalMonths } = frame;
   const months = new Set<string>();
   for (const r of balances) {
     months.add(r.billing_month);
@@ -527,16 +575,7 @@ function buildBillingDetailByMonthInner(
       ? [...slots.keys()].sort((a, b) => a.localeCompare(b)).at(-1) ?? null
       : null;
 
-  const openBmRoll = billingMonthForManualLedgerPurchase(accountId);
-  const remainingAfterMonth = installmentRemainingClpByCalendarMonth(accountId);
-  const pendingCuotaPurchases = cuotaPurchaseLinesClpByBucketMonth(accountId);
-  // Cuotas the bank billed at a close whose statement has not arrived (see the cupo rule).
-  let provisionalBilledCuotasClp = 0;
-  for (const bm of provisionalMonths) {
-    if (openBmRoll == null || bm < openBmRoll) {
-      provisionalBilledCuotasClp += cuotaAPagarNextMesClp(bm, ledgerMonths);
-    }
-  }
+  const openBmRoll = frame.openBillingMonth;
   const out: CcBillingDetailMonthRow[] = [];
   for (const billingMonth of months) {
     const slot = slots.get(billingMonth);
@@ -592,14 +631,7 @@ function buildBillingDetailByMonthInner(
       snap?.as_of_date ??
       `${billingMonth}-01`;
 
-    const cupo = cupoEnCuotasForBillingMonth(
-      billingMonth,
-      cupoLive,
-      openBmRoll,
-      remainingAfterMonth,
-      pendingCuotaPurchases,
-      provisionalBilledCuotasClp
-    );
+    const cupo = frame.cupoEnCuotasClp(billingMonth);
     const balanceTotal = billingDetailBalanceClp(totalFacturado, cupo);
     out.push({
       billing_month: billingMonth,

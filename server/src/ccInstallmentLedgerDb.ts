@@ -86,8 +86,12 @@ function ymCompare(a: string, b: string): number {
   return a < b ? -1 : 1;
 }
 
+/**
+ * The current month on the Chile clock. It used to be the UTC month, which turns at 21:00 Chile
+ * on a month's last day — inside the nightly 22:00 run.
+ */
 function currentCalendarYm(): string {
-  return `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}`;
+  return chileCalendarTodayYmd().slice(0, 7);
 }
 
 /** Every calendar month from `minYm` through `maxYm` inclusive (YYYY-MM). */
@@ -474,7 +478,7 @@ function collectScheduleTimelineBounds(
   purchasesRaw: PurchaseRow[],
   schedules: Map<number, PurchaseInstallmentSchedule>
 ): { minYm: string; maxYm: string } | null {
-  const nowYm = `${new Date().getUTCFullYear()}-${String(new Date().getUTCMonth() + 1).padStart(2, "0")}`;
+  const nowYm = currentCalendarYm();
   let minYm: string | null = null;
   let maxYm: string | null = nowYm;
   for (const pr of purchasesRaw) {
@@ -888,21 +892,6 @@ export function installmentRemainingClpByCalendarMonth(accountId: number): Map<s
   if (ccInstallmentLedgerRowCount(accountId) === 0) return new Map();
   const { schedulePurchases, paymentsByPurchase } = loadLedgerPurchasesAndPayments(accountId);
   return scheduledTotalRemainingByMonth(schedulePurchases, paymentsByPurchase, accountId);
-}
-
-/**
- * Cupo en cuotas for a calendar month (YYYY-MM).
- * Current month uses {@link liveCreditCardOutstandingClp} (same as historial / detalle por mes).
- * Past months use month-end plan saldo (cuotas with due month after that month).
- */
-export function cupoEnCuotasClpForCalendarMonth(accountId: number, ym: string): number {
-  if (ccInstallmentLedgerRowCount(accountId) === 0) return 0;
-  const nowYm = currentCalendarYm();
-  if (ym === nowYm) {
-    const live = liveCreditCardOutstandingClp(accountId);
-    if (live != null && Number.isFinite(live)) return live;
-  }
-  return installmentRemainingClpByCalendarMonth(accountId).get(ym) ?? 0;
 }
 
 /** Live outstanding installment principal (cupo utilizado en cuotas) from PDF ledger schedules. */

@@ -1,11 +1,11 @@
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import {
-  cupoEnCuotasClpForCalendarMonth,
   filterLedgerPurchasesForSchedule,
   installmentRemainingClpByCalendarMonth,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
+import { ccCupoFrame } from "./ccBillingViews.js";
 import {
   latestCreditCardBillingBalanceTotalClp,
   upsertCreditCardValuationsFromLedger,
@@ -15,10 +15,9 @@ import {
   ensureVitestCreditCardFixtures,
   getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
-/** Same UTC-based current calendar month the ledger uses (avoids Chile/UTC boundary drift). */
-function utcCurrentYm(): string {
-  const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+/** The current month on the Chile clock — the one the ledger uses. */
+function chileCurrentYm(): string {
+  return chileCalendarTodayYmd().slice(0, 7);
 }
 
 describe("filterLedgerPurchasesForSchedule", () => {
@@ -84,7 +83,7 @@ describe("installment ledger cupo (synthetic)", () => {
   let accountId: number;
 
   function seedPurchase(): void {
-    const nowYm = utcCurrentYm();
+    const nowYm = chileCurrentYm();
     db.prepare(
       `INSERT INTO cc_installment_purchases (
          account_id, card_group, canonical_row_id, dedupe_key, parser_row_id_sample, source_pdf_sample,
@@ -107,7 +106,7 @@ describe("installment ledger cupo (synthetic)", () => {
 
   afterEach(cleanup);
 
-  it("current month cupo equals live outstanding; other months use plan saldo", () => {
+  it("open month cupo equals live outstanding; every other month uses the plan remainder", () => {
     ensureVitestCreditCardFixtures();
     const id = getVitestSantanderCcMasterAccountId();
     if (id == null) return;
@@ -115,17 +114,44 @@ describe("installment ledger cupo (synthetic)", () => {
     cleanup();
     seedPurchase();
 
-    const nowYm = utcCurrentYm();
     const live = liveCreditCardOutstandingClp(accountId);
     expect(live).not.toBeNull();
     expect(live!).toBeGreaterThan(0);
 
-    // Current month → live outstanding; every other scheduled month → plan saldo.
-    expect(cupoEnCuotasClpForCalendarMonth(accountId, nowYm)).toBe(live);
+    // Open facturación → live outstanding; every other scheduled month → plan remainder.
+    const frame = ccCupoFrame(accountId, []);
+    expect(frame.provisionalMonths.size).toBe(0);
+    const open = frame.openBillingMonth;
+    expect(open).not.toBeNull();
+    expect(frame.cupoEnCuotasClp(open!)).toBe(live);
     const remaining = installmentRemainingClpByCalendarMonth(accountId);
+    expect(remaining.size).toBeGreaterThan(1);
     for (const [ym, planSaldo] of remaining) {
-      const cupo = cupoEnCuotasClpForCalendarMonth(accountId, ym);
-      expect(cupo).toBe(ym === nowYm ? live : planSaldo);
+      expect(frame.cupoEnCuotasClp(ym)).toBe(ym === open ? live : planSaldo);
+    }
+  });
+
+  it("runs the schedule timeline to the current month on the Chile clock, not UTC", () => {
+    ensureVitestCreditCardFixtures();
+    const id = getVitestSantanderCcMasterAccountId();
+    if (id == null) return;
+    accountId = id;
+    cleanup();
+    // 22:00 Chile on September 30 — already October 1 in UTC.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-01T01:00:00Z"));
+    try {
+      // A plan that finished billing in May: the timeline runs on to the current month only.
+      db.prepare(
+        `INSERT INTO cc_installment_purchases (
+           account_id, card_group, canonical_row_id, purchase_date, total_amount_clp, cuotas_totales,
+           merchant, description_merged, source
+         ) VALUES (?, 'A', 'cupo-synth', '2026-03-05', 300000, 3, 'VITEST CUPO', 'VITEST CUPO', 'pdf')`
+      ).run(accountId);
+      const months = [...installmentRemainingClpByCalendarMonth(accountId).keys()];
+      expect(months.at(-1)).toBe("2026-09");
+    } finally {
+      vi.useRealTimers();
     }
   });
 

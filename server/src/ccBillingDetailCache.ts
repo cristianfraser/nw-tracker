@@ -13,6 +13,21 @@ import type { CcInstallmentMonthRow } from "./creditCardInstallments.js";
 
 type CcInstallmentsDbPayload = ReturnType<typeof ccInstallmentsDbApiPayload>;
 
+/**
+ * The plan schedule by facturación month over the full history — what the detalle and the
+ * facturaciones read each month's cuota a pagar from. `payload.months` is filtered to rows whose
+ * pay-by has not passed; building either view from it would leave past months at 0/null: flat
+ * historial bars, a wrong balance_total_clp in the detalle table, and an empty "cuota a pagar"
+ * column in facturaciones.
+ */
+export function planScheduleMonths(payload: CcInstallmentsDbPayload): CcInstallmentMonthRow[] {
+  return payload.installment_history_months.map((h) => ({
+    month: h.month,
+    total_clp: h.installment_payments_clp,
+    breakdown: [],
+  }));
+}
+
 export type CcLedgerBillingBundle = {
   /** Full ledger API payload; null when the account has no installment ledger (statements-only master). */
   payload: CcInstallmentsDbPayload | null;
@@ -38,14 +53,7 @@ export function billingDetailCacheForAccount(accountId: number): CcLedgerBilling
       } satisfies CcLedgerBillingBundle;
     }
     const payload = ccInstallmentsDbApiPayload(accountId);
-    // Build billing detail and facturaciones with the full history schedule so
-    // cuota_a_pagar_next_mes_clp / cuota_a_pagar_clp are non-zero for past billing months too.
-    // payload.months is filtered to >= nowYm; passing it to either builder would leave those
-    // lookups returning 0/null for past months — flat historial bars, wrong balance_total_clp
-    // in the detalle table, and an empty "cuota a pagar" column in facturaciones.
-    const allScheduleMonths: CcInstallmentMonthRow[] = payload.installment_history_months.map(
-      (h) => ({ month: h.month, total_clp: h.installment_payments_clp, breakdown: [] })
-    );
+    const allScheduleMonths = planScheduleMonths(payload);
     return {
       payload,
       detail: buildBillingDetailByMonth(accountId, allScheduleMonths),

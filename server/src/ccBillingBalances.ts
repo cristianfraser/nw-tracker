@@ -22,15 +22,13 @@ import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingMonthForStatementDate, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
-import {
-  installmentRemainingClpByCalendarMonth,
-  ledgerFacturadoClpForBillingMonth,
-  liveCreditCardOutstandingClp,
-} from "./ccInstallmentLedgerDb.js";
+import { ledgerFacturadoClpForBillingMonth } from "./ccInstallmentLedgerDb.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { creditCardBillingDetailInactive } from "./ccBillingInactive.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
+import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
+import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
 import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import {
   isCcPaymentMerchant,
@@ -472,26 +470,6 @@ export function openMonthUsdFacturado(
   return { usd, clp };
 }
 
-function sumNonInstallmentLinesForAccountStatementDateClp(
-  accountId: number,
-  statementDate: string
-): number {
-  return sumRevolvingLinesForAccountStatementDateClp(accountId, statementDate);
-}
-
-function sumNonInstallmentLinesClp(statementId: number): number {
-  const row = db
-    .prepare(
-      `SELECT account_id, statement_date FROM cc_statements WHERE id = ?`
-    )
-    .get(statementId) as { account_id: number; statement_date: string } | undefined;
-  if (!row) return 0;
-  return sumNonInstallmentLinesForAccountStatementDateClp(
-    row.account_id,
-    row.statement_date
-  );
-}
-
 function installmentCuotaDueForAccountStatementDateClp(
   accountId: number,
   statementDate: string
@@ -584,57 +562,27 @@ export function facturadoFromStatement(
   return { facturado_clp: clp > 0 ? clp : null, facturado_usd: null };
 }
 
-function cupoEnCuotasForBillingMonth(
-  billingMonth: string,
-  remainingByMonth: Map<string, number>,
-  cupoLive: number,
-  currentBillingMonth: string | null
-): number {
-  if (currentBillingMonth && billingMonth === currentBillingMonth) return cupoLive;
-  return remainingByMonth.get(billingMonth) ?? 0;
-}
+const updateBalanceFromDetalle = db.prepare(`
+  UPDATE cc_billing_month_balances SET cupo_utilizado_clp = ?, saldo_total_clp = ?
+  WHERE account_id = ? AND billing_month = ?
+`);
 
-function facturadoClpUsdForStatementSlotLocal(
-  accountId: number,
-  slot: import("./ccBillingStatementSlots.js").CcStatementSlotByCurrency
-): { facturado_clp: number; facturado_usd: number } {
-  const clpDerived = slot.clp
-    ? facturadoFromStatement(
-        accountId,
-        slot.clp.statement_date,
-        slot.clp,
-        slot.clp.statement_date_iso
-      )
-    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
-  const usdDerived = slot.usd
-    ? facturadoFromStatement(
-        accountId,
-        slot.usd.statement_date,
-        slot.usd,
-        slot.usd.statement_date_iso
-      )
-    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
-
-  const facturado_clp =
-    slot.clp?.monto_facturado != null && slot.clp.monto_facturado > 0
-      ? Math.round(slot.clp.monto_facturado)
-      : (clpDerived.facturado_clp ?? 0);
-  const facturado_usd =
-    slot.usd?.monto_facturado != null && slot.usd.monto_facturado > 0
-      ? slot.usd.monto_facturado
-      : (usdDerived.facturado_usd ?? 0);
-  return { facturado_clp, facturado_usd };
-}
-
+/**
+ * Rebuilds one card's stored `cc_billing_month_balances` snapshot: a row per statement slot, as
+ * of its close, and — while no statement closes it — the open facturación's row, as of today.
+ * Facturado is per currency, the slot's own (`facturadoClpUsdForStatementSlot`); `saldo_total_usd`
+ * is the USD statement's printed deuda total. Cupo en cuotas and saldo total are the detalle row
+ * the card page shows for that month (`billingDetailCacheForAccount`), so the snapshot cannot
+ * drift from it: the rebuild used to carry its own cupo rule — keyed on the calendar month, the
+ * double count `cupoEnCuotasForBillingMonth` describes — and a saldo of cupo + the statement's
+ * revolving lines net of the previous bill's payment, which read negative on paid-off months.
+ * The detalle reads these rows back (the open month's row keeps that month in the table before
+ * any line lands in it), hence the order: rows first, then the detalle built from them.
+ */
 export function recomputeCcBillingMonthBalances(accountId: number): number {
   invalidateCcBillingDetail(accountId);
-  const remainingByMonth = installmentRemainingClpByCalendarMonth(accountId);
-  const cupoLive =
-    remainingByMonth.get(billingMonthForStatementDate(chileCalendarTodayYmd()) ?? "") ??
-    liveCreditCardOutstandingClp(accountId) ??
-    0;
-  const currentBillingMonth = billingMonthForStatementDate(chileCalendarTodayYmd());
   const statements = listCcStatementsForAccount(accountId);
+  const months = new Set<string>();
   let n = 0;
 
   db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
@@ -643,18 +591,7 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
     const primary = slot.clp ?? slot.usd;
     if (!primary?.statement_date_iso) continue;
     const asOfIso = primary.statement_date_iso;
-    const { facturado_clp, facturado_usd } = facturadoClpUsdForStatementSlotLocal(
-      accountId,
-      slot
-    );
-    const cupoAtMonth = cupoEnCuotasForBillingMonth(
-      billingMonth,
-      remainingByMonth,
-      cupoLive,
-      currentBillingMonth
-    );
-    const clpStmtId = slot.clp?.id ?? primary.id;
-    const revolving = sumNonInstallmentLinesClp(clpStmtId);
+    const { facturado_clp, facturado_usd } = facturadoClpUsdForStatementSlot(accountId, slot);
     const saldo_total_usd =
       slot.usd?.deuda_total != null && slot.usd.deuda_total > 0 ? slot.usd.deuda_total : 0;
 
@@ -665,10 +602,12 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
       as_of_kind: "statement",
       facturado_clp: facturado_clp > 0 ? facturado_clp : null,
       facturado_usd: facturado_usd > 0 ? facturado_usd : null,
-      cupo_utilizado_clp: cupoAtMonth,
-      saldo_total_clp: cupoAtMonth + revolving,
+      // Set from the detalle below, once it can be built from these rows.
+      cupo_utilizado_clp: 0,
+      saldo_total_clp: 0,
       saldo_total_usd: saldo_total_usd > 0 ? saldo_total_usd : null,
     });
+    months.add(billingMonth);
     n += 1;
   }
 
@@ -686,12 +625,26 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
         as_of_kind: "manual",
         facturado_clp: null,
         facturado_usd: null,
-        cupo_utilizado_clp: cupoLive,
-        saldo_total_clp: cupoLive,
+        cupo_utilizado_clp: 0,
+        saldo_total_clp: 0,
         saldo_total_usd: null,
       });
+      months.add(openBm);
       n += 1;
     }
+  }
+
+  const detailByMonth = new Map(
+    billingDetailCacheForAccount(accountId).detail.map((r) => [r.billing_month, r])
+  );
+  for (const billingMonth of months) {
+    const row = detailByMonth.get(billingMonth);
+    if (!row) {
+      throw new Error(
+        `Account ${accountId}: stored billing month ${billingMonth} has no detalle row to take its cupo and saldo from`
+      );
+    }
+    updateBalanceFromDetalle.run(row.cupo_en_cuotas_clp, row.balance_total_clp, accountId, billingMonth);
   }
 
   return n;
