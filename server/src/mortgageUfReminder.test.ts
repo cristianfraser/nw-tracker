@@ -188,6 +188,31 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
     expect(r.mode).toBe("wait");
   });
 
+  it("takes the cierre and the next cycle's first day from the bank, not the config cycle", () => {
+    if (masterId == null) return;
+    // A Santander statement closed on 24/08 and printed the next cycle from the close day (ISO
+    // dates: the dd/mm/yyyy reader treats a year past 2038 as a jammed parser token).
+    const stmt = db
+      .prepare(
+        `INSERT INTO cc_statements (
+           account_id, card_group, source_pdf, statement_date, period_from, period_to,
+           next_period_from, next_period_to, card_last4
+         ) VALUES (?, 'vitest', 'vitest-mortgage-uf-aug.pdf', '2099-08-24', '2099-07-24', '2099-08-24',
+                   '2099-08-24', '2099-09-24', '0000')`
+      )
+      .run(masterId);
+    try {
+      const r = buildMortgageUfReminder("2099-08-11");
+      expect(r.cycle_month).toBe("2099-08");
+      // The config cycle said 20/08 and 21/08: a charge on the 21st–23rd still landed on August.
+      expect(r.cierre_iso).toBe("2099-08-24");
+      expect(r.pay_after_iso).toBe("2099-08-24");
+      expect(r.next_billing_month).toBe("2099-09");
+    } finally {
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(Number(stmt.lastInsertRowid));
+    }
+  });
+
   it("hides with uf_unavailable when the post-cierre UF is not published", () => {
     if (masterId == null) return;
     // July cycle window (2099-07-11 …) has no seeded UF rows.

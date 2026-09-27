@@ -13,12 +13,11 @@ import {
   ensureVitestCreditCardFixtures,
   getVitestSantanderCcMasterAccountId,
 } from "./test/vitestDbSeed.js";
-import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import {
-  billingMonthForPurchaseDate,
-  billingPeriodIsoRange,
-  loadCreditCardBillingConfig,
-} from "./ccBillingMonth.js";
+  billingMonthContainingPurchase,
+  billingMonthForManualLedgerPurchase,
+} from "./ccManualBillingMonth.js";
+import { billingPeriodIsoRange, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 
@@ -59,7 +58,7 @@ function purchaseDateInOpenCycle(accountId: number, openBm: string): string | nu
   const config = loadCreditCardBillingConfig(accountId);
   const range = billingPeriodIsoRange(openBm, config);
   if (!range) return null;
-  if (billingMonthForPurchaseDate(range.period_to, config) !== openBm) return null;
+  if (billingMonthContainingPurchase(accountId, range.period_to) !== openBm) return null;
   return range.period_to;
 }
 
@@ -182,7 +181,7 @@ describe("applyWebPasteInstallmentFirstDueNudges", () => {
     // A purchase three cycles before the open month resolves to a different billing month.
     const olderBm = addCalendarMonths(openBm, -3);
     const olderRange = billingPeriodIsoRange(olderBm, config);
-    if (!olderRange || billingMonthForPurchaseDate(olderRange.period_to, config) !== olderBm) return;
+    if (!olderRange || billingMonthContainingPurchase(accountId, olderRange.period_to) !== olderBm) return;
 
     const { id } = createManualCcInstallmentPurchase(accountId, {
       purchase_date: olderRange.period_to,

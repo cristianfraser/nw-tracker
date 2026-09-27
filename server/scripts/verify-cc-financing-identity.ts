@@ -5,7 +5,7 @@
  *
  * Run: npx tsx scripts/verify-cc-financing-identity.ts [accountId ...]
  */
-import { billingMonthForPurchaseDate, loadCreditCardBillingConfig } from "../src/ccBillingMonth.js";
+import { billingMonthContainingPurchase } from "../src/ccManualBillingMonth.js";
 import { ccFinancingCostClpByDate } from "../src/ccFinancingCostDaily.js";
 import { listCreditCardMasterAccountIds } from "../src/creditCardTree.js";
 import { statementSection3ChargesClpForBillingMonth } from "../src/creditCardPerformancePl.js";
@@ -15,11 +15,9 @@ const accountIds = argIds.length ? argIds : listCreditCardMasterAccountIds();
 
 let worst = 0;
 for (const accountId of accountIds) {
-  const cfg = loadCreditCardBillingConfig(accountId);
   const byMonth = new Map<string, number>();
   for (const [iso, clp] of ccFinancingCostClpByDate(accountId)) {
-    const bm = billingMonthForPurchaseDate(iso, cfg);
-    if (!bm) continue;
+    const bm = billingMonthContainingPurchase(accountId, iso);
     byMonth.set(bm, (byMonth.get(bm) ?? 0) + clp);
   }
   // Charges are dated on the day the bank charged them, so a charge posted on the cycle end

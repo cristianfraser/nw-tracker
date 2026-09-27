@@ -1,10 +1,6 @@
 import { db } from "./db.js";
 import { findMatchingInstallmentPurchase, purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
 import {
-  billingMonthForPurchaseDate,
-  loadCreditCardBillingConfig,
-} from "./ccBillingMonth.js";
-import {
   billingMonthContainingPurchase,
   billingMonthForManualLedgerPurchase,
 } from "./ccManualBillingMonth.js";
@@ -47,7 +43,8 @@ const updFirstDueMonth = db.prepare<[string, number]>(
  *   - zero rows in `cc_installment_payments` (no billed cuota to derive from yet),
  *   - `first_due_month` still NULL (write-once — a later re-paste of cuota 2 can't drag it),
  *   - the purchase's own billing cycle equals the open month (a stale paste in a later month
- *     won't misfire).
+ *     won't misfire) — the bank's cycle (`billingMonthContainingPurchase`), the same the typed
+ *     rows below read, never the config's 21→20.
  * A subsequent PDF cuota-01 line still overrides the stored value at read time.
  *
  * **Typed feed rows (2026-09-26).** When the matched row is the plan's own purchase row from the
@@ -64,7 +61,6 @@ export function applyWebPasteInstallmentFirstDueNudges(
 ): CcInstallmentFirstDueNudge[] {
   const openBm = billingMonthForManualLedgerPurchase(accountId);
   if (!openBm) return [];
-  const config = loadCreditCardBillingConfig(accountId);
 
   const nudges: CcInstallmentFirstDueNudge[] = [];
   const nudged = new Set<number>();
@@ -107,7 +103,7 @@ export function applyWebPasteInstallmentFirstDueNudges(
     }
 
     if (detail.first_due_month != null) continue;
-    if (billingMonthForPurchaseDate(match.purchase_date, config) !== openBm) continue;
+    if (billingMonthContainingPurchase(accountId, match.purchase_date) !== openBm) continue;
 
     updFirstDueMonth.run(openBm, match.id);
     nudged.add(match.id);

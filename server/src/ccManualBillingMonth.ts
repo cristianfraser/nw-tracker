@@ -1,9 +1,7 @@
 import {
-  billingMonthForPurchaseDate,
   billingMonthForStatementDate,
   billingPeriodIsoRange,
   loadCreditCardBillingConfig,
-  type CreditCardBillingConfig,
 } from "./ccBillingMonth.js";
 import { ymCompare } from "./calendarMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
@@ -18,7 +16,7 @@ import {
   statementOwnCloseIso,
 } from "./ccBillingCloses.js";
 import { db } from "./db.js";
-import { listCcStatementsForAccount } from "./ccStatementsDb.js";
+import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 
 export function isPdfStatementSource(sourcePdf: string): boolean {
   return !String(sourcePdf ?? "").trim().startsWith("import:web-paste");
@@ -147,12 +145,23 @@ export function provisionallyClosedBillingMonthsForAccount(accountId: number): S
  * own — `nextPeriodStartIsoForBillingMonth`, so statement, feed and announced closes and the
  * issuer's close-day rule all apply (a Santander purchase ON the close day belongs to the next
  * cycle). A month whose close is only estimated ends the day after that estimate.
+ *
+ * The one rule for which facturación a purchase belongs to: the manual first-cuota guess, the
+ * first cuota of a plan made from a feed-typed purchase, the web-paste first-due nudge, the
+ * purchase tables' `purchase_billing_month`, the ledger facturado projection and the mortgage UF
+ * reminder all read it. The config cycle (21→20) only stands in, through the close estimate, for
+ * a card with no close on record. It used to decide on its own for half of those callers, which
+ * put a purchase dated between the 20th and the real close (the 24th on ·0901, the 26th on ·0101)
+ * a month late. A caller resolving many purchases passes the account's `statements` once.
  */
-export function billingMonthContainingPurchase(accountId: number, purchaseIso: string): string {
+export function billingMonthContainingPurchase(
+  accountId: number,
+  purchaseIso: string,
+  statements: readonly CcStatementRow[] = listCcStatementsForAccount(accountId)
+): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseIso)) {
     throw new Error(`billingMonthContainingPurchase: bad date "${purchaseIso}"`);
   }
-  const statements = listCcStatementsForAccount(accountId);
   let bm = purchaseIso.slice(0, 7);
   for (let i = 0; i < 4; i++) {
     const cycleStart = nextPeriodStartIsoForBillingMonth(accountId, addCalendarMonths(bm, -1), statements).iso;
@@ -220,18 +229,18 @@ export function billingMonthForManualLedgerPurchase(accountId: number): string |
 
 /**
  * Billing month for a ledger purchase when projecting facturado.
- * Manual entries → open facturación; PDF entries → purchase-date cycle (21→20).
+ * Manual entries → open facturación; PDF entries → the cycle the purchase date falls in
+ * ({@link billingMonthContainingPurchase}).
  */
 export function billingMonthForLedgerPurchase(
   accountId: number,
   purchase: { purchase_date: string; source: string },
-  config?: CreditCardBillingConfig
+  statements?: readonly CcStatementRow[]
 ): string | null {
   if (purchase.source === "manual") {
     return billingMonthForManualLedgerPurchase(accountId);
   }
-  const cfg = config ?? loadCreditCardBillingConfig(accountId);
-  return billingMonthForPurchaseDate(purchase.purchase_date, cfg);
+  return billingMonthContainingPurchase(accountId, purchase.purchase_date, statements);
 }
 
 /**
