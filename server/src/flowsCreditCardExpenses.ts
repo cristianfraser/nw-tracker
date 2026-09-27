@@ -56,6 +56,11 @@ import {
   effectiveCcExpenseLineAmountUsd,
 } from "./ccExpenseAmountClp.js";
 import { facturacionPayByIsoResolver, facturacionUsdRateResolver } from "./ccBillingViews.js";
+import {
+  isCcUsdPaymentLine,
+  usdPaymentLineClpResolver,
+  type CcUsdPaymentLine,
+} from "./ccFacturacionUsdRate.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
@@ -791,6 +796,21 @@ export function buildCcExpenseLines(
     }
     return resolve(billingMonth);
   };
+  // A dollar payment pays the facturación before the statement that prints it, so it shows the
+  // pesos actually paid for it instead (`usdPaymentLineClpResolver`).
+  const usdPaymentClpResolverByAccount = new Map<number, (line: CcUsdPaymentLine) => number>();
+  const usdPaymentClpFor = (accountId: number, line: CcUsdPaymentLine): number => {
+    let resolve = usdPaymentClpResolverByAccount.get(accountId);
+    if (!resolve) {
+      resolve = usdPaymentLineClpResolver(
+        accountId,
+        billingDetailCacheForAccount(accountId).facturaciones,
+        (billingMonth) => usdRateFor(accountId, billingMonth)
+      );
+      usdPaymentClpResolverByAccount.set(accountId, resolve);
+    }
+    return resolve(line);
+  };
 
 
 
@@ -814,17 +834,23 @@ export function buildCcExpenseLines(
 
 
 
+    const purchaseOn =
+
+      isoFromDdMmYyyy(row.transaction_date) ?? isoFromDdMmYyyy(row.posting_date);
+
     const amount = effectiveCcExpenseLineAmountClpWith(row, (usd) =>
-      Math.round(usd * usdRateFor(row.account_id, billingMonth))
+      isCcUsdPaymentLine({ installment_flag: row.installment_flag, merchant: row.merchant, usd })
+        ? usdPaymentClpFor(row.account_id, {
+            statement_line_id: row.statement_line_id,
+            date_iso: purchaseOn,
+            usd,
+          })
+        : Math.round(usd * usdRateFor(row.account_id, billingMonth))
     );
 
     if (amount == null || amount === 0) continue;
 
     const amountUsd = effectiveCcExpenseLineAmountUsd(row);
-
-    const purchaseOn =
-
-      isoFromDdMmYyyy(row.transaction_date) ?? isoFromDdMmYyyy(row.posting_date);
 
     const expenseFxDate = purchaseOn ?? statementDateIso;
     const amountUsdAtExpense =
