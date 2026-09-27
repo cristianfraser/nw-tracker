@@ -1,4 +1,3 @@
-import { ccCardRegistry } from "./ccCardRegistry.js";
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
 import { canonicalCcLineDedupeKeys } from "./ccExpenseLineDedupe.js";
@@ -8,8 +7,9 @@ import {
 } from "./ccInstallmentLineDedupe.js";
 import { isCcPaymentMerchant } from "./ccPaymentLines.js";
 import {
-  isClpSection3Merchant,
-  isUsdSection3Merchant,
+  classifyCcStatementLine,
+  isCcTraspasoDeudaMerchant,
+  isGarbledUsdStatementMerchant,
 } from "./ccStatementSection3.js";
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import {
@@ -126,7 +126,11 @@ function reconcileMovementDedupeKey(row: CcReconcileRow): string {
   return pdf ? `${pdf}\t${dk}` : dk;
 }
 
-/** Sum movements the same way `cc_statement_reconcile.sum_parsed_sections` does (CLP). */
+/**
+ * Sum CLP movements by statement section. Non-installment lines are placed by
+ * `classifyCcStatementLine`, whose rules (`ccStatementLineRules.json`) the parse-time
+ * `cc_statement_reconcile.sum_parsed_sections` reads too.
+ */
 export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedSectionSums {
   const seenDedupe = new Set<string>();
   let operaciones = 0;
@@ -154,37 +158,15 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
       continue;
     }
 
-    const layout = row.parser_layout;
-    if (layout === "compact_payment_abono" || layout === "ocr_payment") {
-      midPeriodPayments += row.amount_clp;
-      continue;
-    }
-    if (layout === "compact_cargos_charge") {
-      cargos_abonos += row.amount_clp;
-      continue;
-    }
-    // BCI section-3 rows carry their own parser layout; the merchant regex below is
-    // Santander-shaped and misses BCI's forms — «IMPUESTO DL 3475» (singular) and
-    // merchant-named abonos like the 2026-06 «GLASS LIDER.CL» -3x.xxx nota. The bank nets
-    // these into Monto Total Facturado (2026-06: 2.xxx.xxx − 3x.xxx + 811 = 2.xxx.xxx
-    // exactly), so they must land in cargos_abonos; PAGOs never do.
-    if (layout === "bci_lider_cargos") {
-      if (isCcPaymentMerchant(String(row.merchant ?? ""))) {
-        midPeriodPayments += row.amount_clp;
-      } else {
-        cargos_abonos += row.amount_clp;
-      }
-      continue;
-    }
-
-    if (isClpSection3Merchant(row.merchant)) {
-      cargos_abonos += row.amount_clp;
-      continue;
-    }
-
-    if (row.amount_clp > 0) {
-      operaciones += row.amount_clp;
-    }
+    const section = classifyCcStatementLine({
+      currency: "clp",
+      merchant: row.merchant,
+      parser_layout: row.parser_layout,
+      amount: row.amount_clp,
+    });
+    if (section === "operaciones") operaciones += row.amount_clp;
+    else if (section === "cargos_abonos") cargos_abonos += row.amount_clp;
+    else if (section === "mid_period_payments") midPeriodPayments += row.amount_clp;
   }
 
   return {
@@ -196,15 +178,7 @@ export function sumParsedSectionsClp(rows: readonly CcReconcileRow[]): CcParsedS
   };
 }
 
-function isGarbledIntlPurchaseRow(row: CcReconcileRow): boolean {
-  if (row.currency !== "usd") return false;
-  const m = String(row.merchant ?? "").toUpperCase();
-  if (/\bDE\s+\d+\b/.test(m)) return true;
-  if (m.includes("MOVIMIENTOS TARJETA")) return true;
-  return ccCardRegistry().multicard_marker_tokens.some((t) => m.includes(t.toUpperCase()));
-}
-
-/** Sum movements for international USD statements (aligned with `cc_statement_reconcile.py`). */
+/** Sum movements for international USD statements (same line rules as {@link sumParsedSectionsClp}). */
 export function sumParsedSectionsUsd(rows: readonly CcReconcileRow[]): CcParsedSectionSums {
   const seenDedupe = new Set<string>();
   let operaciones = 0;
@@ -213,7 +187,7 @@ export function sumParsedSectionsUsd(rows: readonly CcReconcileRow[]): CcParsedS
 
   for (const row of rows) {
     if (row.currency !== "usd") continue;
-    if (isGarbledIntlPurchaseRow(row)) continue;
+    if (isGarbledUsdStatementMerchant(row.merchant)) continue;
     const dk = reconcileMovementDedupeKey(row);
     if (dk) {
       if (seenDedupe.has(dk)) continue;
@@ -222,15 +196,18 @@ export function sumParsedSectionsUsd(rows: readonly CcReconcileRow[]): CcParsedS
     if (row.installment_flag) continue;
 
     const amt = row.amount_usd;
-    if (isUsdSection3Merchant(row.merchant, amt)) {
+    const section = classifyCcStatementLine({
+      currency: "usd",
+      merchant: row.merchant,
+      parser_layout: row.parser_layout,
+      amount: amt,
+    });
+    if (section === "cargos_abonos") {
       cargos_abonos += amt;
-      const merchant = String(row.merchant ?? "").toUpperCase();
-      if (merchant.includes("TRASPASO") && merchant.includes("DEUDA")) {
-        traspaso_nacional += amt;
-      }
-      continue;
+      if (isCcTraspasoDeudaMerchant(row.merchant)) traspaso_nacional += amt;
+    } else if (section === "operaciones") {
+      operaciones += amt;
     }
-    if (amt > 0) operaciones += amt;
   }
 
   return {

@@ -9,22 +9,18 @@ import re
 import unicodedata
 
 import cc_cards
+from cc_statement_line_rules import (
+    classify_statement_line,
+    is_clp_section3_merchant,
+    is_traspaso_deuda_merchant,
+    is_usd_section3_merchant,
+)
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 # Tolerances for pdftotext rounding
 TOL_CLP = 1
 TOL_USD = 0.02
-
-RE_PAYMENT_MERCHANT = re.compile(r"^(PAGO|MONTO\s+CANCELADO|ABONO\b)", re.I)
-RE_CLP_SECTION3_CHARGE = re.compile(
-    r"IMPUESTOS|INTERESES|TRASPASO|COMISION|IMPTO\.|SERVICIO\s+USO\s+INTERNACIONAL|IVA\s+USO\s+INTERNACIONAL|NOTA\s+DE\s+CREDITO|DCTO\s+COM|ADM\|MANTENCION",
-    re.I,
-)
-RE_USD_SECTION3 = re.compile(
-    r"IMPUESTOS|INTERESES|TRASPASO|COMISION|ABONO\s+DE\s+DIVISAS|SERVICIO|NOTA\s+DE\s+CREDITO",
-    re.I,
-)
 
 
 def _installment_cuota_counts_toward_operaciones(row: Dict[str, Any]) -> bool:
@@ -60,20 +56,6 @@ def _is_installment_contract_summary(merchant: str, layout: str) -> bool:
     )
 
 
-def _is_garbled_intl_purchase_row(row: Dict[str, Any]) -> bool:
-    """Merged pdftotext lines (e.g. «DE 2 APPLE… Nintendo») with wrong US$ assignment."""
-    if str(row.get("currency") or "").lower() != "usd":
-        return False
-    m = str(row.get("merchant") or "").upper()
-    if re.match(r"^DE\s+\d", m):
-        return True
-    if "MOVIMIENTOS TARJETA" in m:
-        return True
-    if any(t.upper() in m for t in cc_cards.MULTICARD_MARKER_TOKENS):
-        return True
-    return False
-
-
 def _normalize_payment_merchant(merchant: str) -> str:
     u = str(merchant or "").upper()
     if "ABONO DE DIVISAS" in u:
@@ -81,27 +63,6 @@ def _normalize_payment_merchant(merchant: str) -> str:
     if "TRASPASO" in u and "DEUDA" in u:
         return "TRASPASO DEUDA"
     return u.strip()
-
-
-def _is_usd_section3_line(merchant: str, amount: float) -> bool:
-    m = _normalize_payment_merchant(merchant)
-    if m == "ABONO DE DIVISAS":
-        return True
-    if RE_PAYMENT_MERCHANT.match(m):
-        return False
-    if RE_USD_SECTION3.search(m):
-        return True
-    if "TRASPASO" in m:
-        return True
-    return amount < 0
-
-
-def _is_clp_section3_line(merchant: str) -> bool:
-    """CLP section 3 footer total sums charge lines (positive), not MONTO CANCELADO."""
-    m = str(merchant or "").strip()
-    if RE_PAYMENT_MERCHANT.match(m):
-        return False
-    return bool(RE_CLP_SECTION3_CHARGE.search(m))
 
 
 def _row_counts_for_reconcile(row: Dict[str, Any]) -> bool:
@@ -115,8 +76,8 @@ def _row_counts_for_reconcile(row: Dict[str, Any]) -> bool:
             usd = float(str(row.get("amount_usd") or "0").replace(",", "."))
         except ValueError:
             usd = 0.0
-        return _is_usd_section3_line(merchant, usd)
-    return _is_clp_section3_line(merchant)
+        return is_usd_section3_merchant(merchant, usd)
+    return is_clp_section3_merchant(merchant)
 
 
 def _iter_reconcile_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -190,16 +151,20 @@ def sum_parsed_sections(
     parse_clp: Callable[[str], Optional[int]],
     parse_usd: Callable[[str], Optional[float]],
 ) -> Dict[str, float]:
-    """Sum parsed rows by statement section (deduped within statement)."""
+    """Sum parsed rows by statement section (deduped within statement).
+
+    Non-installment lines are placed by `classify_statement_line` — the rule set the import-time
+    reconcile (`ccStatementImportReconcile.ts`) sums with."""
     operaciones = 0.0
     cargos_abonos = 0.0
     cuotas = 0.0
     traspaso_nacional = 0.0
+    mid_period_payments = 0.0
 
     for row in _iter_reconcile_rows(rows):
         currency, amount = _parse_amount_from_row(row, parse_clp, parse_usd)
         merchant = str(row.get("merchant") or "")
-        layout = str(row.get("parser_layout") or "")
+        layout = str(row.get("parser_layout") or row.get("layout") or "")
         inst = str(row.get("installment_flag") or "").lower() == "true"
 
         if inst:
@@ -212,40 +177,14 @@ def sum_parsed_sections(
                     operaciones += cuota
             continue
 
-        if currency == "usd":
-            if _is_garbled_intl_purchase_row(row):
-                continue
-            if _is_usd_section3_line(merchant, amount):
-                cargos_abonos += amount
-                if "TRASPASO" in merchant.upper() and "DEUDA" in merchant.upper():
-                    traspaso_nacional += amount
-                continue
-            if amount > 0:
-                operaciones += amount
-            continue
-
-        # CLP revolving
-        if layout in ("compact_payment_abono", "ocr_payment"):
-            continue
-        if layout == "compact_cargos_charge":
-            cargos_abonos += amount
-            continue
-        if _is_clp_section3_line(merchant):
-            cargos_abonos += amount
-            continue
-
-        if amount > 0:
+        section = classify_statement_line(currency, merchant, layout, amount)
+        if section == "operaciones":
             operaciones += amount
-
-    mid_period_payments = 0.0
-    for row in _iter_reconcile_rows(rows):
-        if str(row.get("currency") or "clp").lower() != "clp":
-            continue
-        if str(row.get("installment_flag") or "").lower() == "true":
-            continue
-        layout = str(row.get("parser_layout") or row.get("layout") or "")
-        if layout in ("compact_payment_abono", "ocr_payment"):
-            _cur, amount = _parse_amount_from_row(row, parse_clp, parse_usd)
+        elif section == "cargos_abonos":
+            cargos_abonos += amount
+            if currency == "usd" and is_traspaso_deuda_merchant(merchant):
+                traspaso_nacional += amount
+        elif section == "mid_period_payments":
             mid_period_payments += amount
 
     return {
@@ -986,8 +925,8 @@ def reconcile_statement(
                 usd = float(str(row.get("amount_usd") or "0").replace(",", "."))
             except ValueError:
                 usd = 0.0
-            return not _is_usd_section3_line(merchant, usd)
-        return not _is_clp_section3_line(merchant)
+            return not is_usd_section3_merchant(merchant, usd)
+        return not is_clp_section3_merchant(merchant)
     if len(nondup) < len(rows) and not any(_counts_toward_sections(r) for r in nondup):
         return ReconcileResult(
             source_pdf=source_pdf,

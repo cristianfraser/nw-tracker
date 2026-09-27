@@ -90,6 +90,54 @@ class BciSubsectionTotalsTest(unittest.TestCase):
         self.assertEqual(totals["pdf_total_operaciones"], 100000.0)
 
 
+def _row(merchant: str, amount: str, layout: str, currency: str = "clp", key: str = "") -> dict:
+    return {
+        "currency": currency,
+        "merchant": merchant,
+        "amount_clp": amount if currency == "clp" else "",
+        "amount_usd": amount if currency == "usd" else "",
+        "parser_layout": layout,
+        "installment_flag": "false",
+        "is_duplicate_across_statements": "false",
+        "row_id": key or f"{merchant}|{amount}",
+        "transaction_date": "05/06/26",
+    }
+
+
+class SumParsedSectionsTest(unittest.TestCase):
+    """Sums go through the shared line rules (cc_statement_line_rules.py), synthetic rows."""
+
+    def test_bci_section3_rows_net_by_layout(self) -> None:
+        sums = mod.sum_parsed_sections(
+            [
+                _row("TIENDA UNO (T)", "100000", "bci_lider_operaciones"),
+                _row("IMPUESTO DL 3475 C. CONTADO (T)", "500", "bci_lider_cargos"),
+                _row("TIENDA ONLINE (T)", "-12000", "bci_lider_cargos"),
+                _row("PAGO", "-95000", "bci_lider_cargos"),
+            ],
+            parse_clp,
+            parse_usd,
+        )
+        self.assertEqual(sums["parsed_operaciones"], 100000.0)
+        self.assertEqual(sums["parsed_cargos_abonos"], 500.0 - 12000.0)
+        self.assertEqual(sums["parsed_mid_period_payments"], -95000.0)
+
+    def test_legacy_usd_monto_cancelado_stays_out_of_section_3(self) -> None:
+        sums = mod.sum_parsed_sections(
+            [
+                _row("TIENDA EJEMPLO", "50,00", "international_usd", "usd"),
+                _row("INTERESES", "-5,25", "international_usd", "usd"),
+                _row("MONTO CANCELADO", "-1000,00", "international_usd", "usd"),
+                _row("TRASPASO DE DEUDA INTERNACIONAL", "-60,00", "international_usd", "usd"),
+            ],
+            parse_clp,
+            parse_usd,
+        )
+        self.assertEqual(sums["parsed_operaciones"], 50.0)
+        self.assertAlmostEqual(sums["parsed_cargos_abonos"], -5.25 - 60.0)
+        self.assertAlmostEqual(sums["parsed_traspaso_nacional"], -60.0)
+
+
 class NextBillingPeriodTest(unittest.TestCase):
     """«Próximo período de facturación»: the next close, printed by both issuers (synthetic text)."""
 
