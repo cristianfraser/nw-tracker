@@ -29,6 +29,7 @@ if PDF_DEPS.is_dir() and str(PDF_DEPS) not in sys.path:
 
 import cc_cards
 from cc_pdf_ocr import extract_cc_pdf_ocr_flat, peek_pdf_text_pdftotext
+from statement_values import parse_dd_mm_yy_to_iso
 
 REPO_ROOT = SCRIPT_DIR.parent.parent
 
@@ -150,7 +151,7 @@ def peek_bci_lider_meta(text: str) -> Tuple[Optional[str], Optional[str]]:
         r"PER[IÍ]ODO\s+FACTURADO\s+HASTA\s+(\d{2}/\d{2}/\d{4})", text, re.I
     )
     if m_hasta:
-        iso = _dd_mm_yyyy_to_iso(m_hasta.group(1))
+        iso = parse_dd_mm_yy_to_iso(m_hasta.group(1))
     if not iso:
         # 2026 mail-attachment template: the extraction peek dumps the header table
         # column-major — «Desde / Hasta / <desde> / <hasta> / <pagar hasta>» with the
@@ -165,25 +166,15 @@ def peek_bci_lider_meta(text: str) -> Tuple[Optional[str], Optional[str]]:
             re.I,
         )
         if m_triplet:
-            iso = _dd_mm_yyyy_to_iso(m_triplet.group(2))
+            iso = parse_dd_mm_yy_to_iso(m_triplet.group(2))
     if not iso:
         m_stmt = re.search(r"FECHA\s+ESTADO\s+DE\s+CUENTA\s+(\d{2}/\d{2}/\d{4})", text, re.I)
         if m_stmt:
-            iso = _dd_mm_yyyy_to_iso(m_stmt.group(1))
+            iso = parse_dd_mm_yy_to_iso(m_stmt.group(1))
     compact = _ascii_upper(text).replace(" ", "")
     m_l4 = re.search(r"NUMEROTARJETA[X]{8,}(\d{4})", compact)
     last4 = m_l4.group(1) if m_l4 else None
     return iso, last4
-
-
-def _dd_mm_yyyy_to_iso(raw: str) -> Optional[str]:
-    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", str(raw or "").strip())
-    if not m:
-        return None
-    d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    if not (1 <= mo <= 12 and 1 <= d <= 31):
-        return None
-    return f"{y:04d}-{mo:02d}-{d:02d}"
 
 
 def is_inbox_attachment_style_pdf(path: Path) -> bool:

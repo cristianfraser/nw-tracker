@@ -53,6 +53,7 @@ from cartola_pdf_kind import (
     is_linea_credito_cartola_text,
     peek_cartola_hasta_and_no,
 )
+from statement_values import parse_dd_mm_yy_to_iso  # noqa: E402
 from cc_pdf_qpdf import (  # noqa: E402
     ensure_readable_for_parse,
     encrypted_password_env_hint,
@@ -205,14 +206,6 @@ SPANISH_MONTH_TO_NUM: dict[str, int] = {
 }
 
 
-def dd_to_iso(raw: str) -> str | None:
-    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", str(raw or "").strip())
-    if not m:
-        return None
-    d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    return f"{y:04d}-{mo:02d}-{d:02d}"
-
-
 def iso_from_cartola_attachment_date(raw: str) -> str | None:
     """Parse 8-digit Santander inbox date (YYYYMMDD or DDMMYYYY)."""
     t = str(raw or "").strip()
@@ -339,7 +332,7 @@ def peek_meta(path: Path) -> tuple[str | None, bool, str | None]:
         re.I,
     )
     if m_period:
-        iso = dd_to_iso(m_period.group(2))
+        iso = parse_dd_mm_yy_to_iso(m_period.group(2))
         if iso:
             return iso, intl, last4
     m_stmt = re.search(
@@ -348,12 +341,12 @@ def peek_meta(path: Path) -> tuple[str | None, bool, str | None]:
         re.I,
     )
     if m_stmt:
-        iso = dd_to_iso(m_stmt.group(1))
+        iso = parse_dd_mm_yy_to_iso(m_stmt.group(1))
         if iso:
             return iso, intl, last4
     m_pay = re.search(r"PAGAR\s+HASTA\s+(\d{2}/\d{2}/\d{4})", text, re.I)
     if m_pay:
-        iso = dd_to_iso(m_pay.group(1))
+        iso = parse_dd_mm_yy_to_iso(m_pay.group(1))
         if iso:
             return iso, intl, last4
     lines = [ln.strip() for ln in text.splitlines()]
@@ -363,11 +356,11 @@ def peek_meta(path: Path) -> tuple[str | None, bool, str | None]:
                 cand = lines[j].replace(" ", "")
                 m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", cand)
                 if m:
-                    return dd_to_iso(m.group(0)), intl, last4
+                    return parse_dd_mm_yy_to_iso(m.group(0)), intl, last4
     for ln in lines:
         m = re.match(r"^(\d{2}/\d{2}/\d{4})$", ln)
         if m:
-            iso = dd_to_iso(m.group(1))
+            iso = parse_dd_mm_yy_to_iso(m.group(1))
             if iso:
                 return iso, intl, last4
     return None, intl, last4
@@ -465,9 +458,9 @@ def organize_credit_card(dry_run: bool, by_pdf: dict[str, dict[str, str]]) -> tu
             continue
         row = by_pdf.get(p.name)
         fn_iso = iso_from_santander_80_filename(p.name)
-        iso = dd_to_iso(row.get("statement_date", "")) if row else None
+        iso = parse_dd_mm_yy_to_iso(row.get("statement_date", "")) if row else None
         if row and not iso:
-            iso = dd_to_iso(row.get("period_to", ""))
+            iso = parse_dd_mm_yy_to_iso(row.get("period_to", ""))
         peek_iso, peek_intl, peek_l4 = peek_meta(p)
         if fn_iso:
             iso = fn_iso

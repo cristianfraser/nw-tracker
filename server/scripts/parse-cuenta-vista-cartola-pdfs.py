@@ -42,6 +42,7 @@ from cartola_layout import (
     strip_amounts_from_line,
     trim_spurious_flavia_credit,
 )
+from statement_values import iso_date_from_parts, parse_clp_amount, parse_dd_mm_yy_to_iso
 
 CFRASER_DIR = REPO_ROOT / "cfraser"
 
@@ -93,28 +94,6 @@ def resolve_output_json() -> Path:
     return CFRASER_DIR / "cuenta-vista-cartolas-from-pdf.json"
 
 
-def parse_clp_amount(raw: str) -> Optional[int]:
-    t = str(raw or "").strip().replace(".", "")
-    if not t:
-        return None
-    try:
-        return int(t)
-    except ValueError:
-        return None
-
-
-def dd_mm_yyyy_to_iso(raw: str) -> Optional[str]:
-    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", str(raw or "").strip())
-    if not m:
-        return None
-    d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    try:
-        date(y, mo, d)
-    except ValueError:
-        return None
-    return f"{y:04d}-{mo:02d}-{d:02d}"
-
-
 def infer_movement_year(dd: int, mm: int, desde_iso: str, hasta_iso: str) -> int:
     d0 = date.fromisoformat(desde_iso)
     d1 = date.fromisoformat(hasta_iso)
@@ -138,8 +117,7 @@ def dd_mm_to_iso(dd_mm: str, desde_iso: str, hasta_iso: str) -> Optional[str]:
     if not m:
         return None
     d, mo = int(m.group(1)), int(m.group(2))
-    y = infer_movement_year(d, mo, desde_iso, hasta_iso)
-    return f"{y:04d}-{mo:02d}-{d:02d}"
+    return iso_date_from_parts(d, mo, infer_movement_year(d, mo, desde_iso, hasta_iso))
 
 
 RE_COMPACT_VISTA_LINE = re.compile(
@@ -425,13 +403,13 @@ def parse_cartola_pdf(pdf_path: Path) -> ParsedCartola:
     period_to: Optional[str] = None
     pm = RE_PERIOD.search(text)
     if pm:
-        period_from = dd_mm_yyyy_to_iso(pm.group(1))
-        period_to = dd_mm_yyyy_to_iso(pm.group(2))
+        period_from = parse_dd_mm_yy_to_iso(pm.group(1))
+        period_to = parse_dd_mm_yy_to_iso(pm.group(2))
     if not period_to:
         dates = re.findall(r"\b(\d{2}/\d{2}/\d{4})\b", text)
         if len(dates) >= 2:
-            period_from = dd_mm_yyyy_to_iso(dates[-2])
-            period_to = dd_mm_yyyy_to_iso(dates[-1])
+            period_from = parse_dd_mm_yy_to_iso(dates[-2])
+            period_to = parse_dd_mm_yy_to_iso(dates[-1])
     if not period_to:
         return ParsedCartola(
             source_file=source_file,

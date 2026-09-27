@@ -6,6 +6,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 
+from statement_values import parse_dd_mm_yy_to_iso
+
 RE_CARTOLA_SIN_MOVIMIENTOS = re.compile(
     r"\*\*\s*CARTOLA\s+SIN\s+MOVIMIENTOS\s*\*\*", re.I
 )
@@ -15,16 +17,6 @@ RE_CARTOLA_HEADER = re.compile(
     r"0323-M-C-0[01]\s+(\d+)\s+(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})",
     re.I,
 )
-
-
-def dd_mm_yyyy_to_iso(raw: str) -> Optional[str]:
-    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", str(raw or "").strip())
-    if not m:
-        return None
-    d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    if not (1 <= mo <= 12 and 1 <= d <= 31):
-        return None
-    return f"{y:04d}-{mo:02d}-{d:02d}"
 
 
 def is_cuenta_vista_cartola_text(text: str) -> bool:
@@ -78,17 +70,17 @@ def peek_cartola_hasta_and_no(text: str) -> Tuple[Optional[str], Optional[str]]:
     cm = RE_CARTOLA_HEADER.search(re.sub(r"\s+", " ", text))
     if cm:
         cartola_no = cm.group(1)
-        period_to = dd_mm_yyyy_to_iso(cm.group(3))
+        period_to = parse_dd_mm_yy_to_iso(cm.group(3))
 
     if not period_to:
         pm = RE_PERIOD_PAIR.search(text)
         if pm:
-            period_to = dd_mm_yyyy_to_iso(pm.group(2))
+            period_to = parse_dd_mm_yy_to_iso(pm.group(2))
 
     if not period_to:
         dates = re.findall(r"\b(\d{2}/\d{2}/\d{4})\b", text)
         if len(dates) >= 2:
-            period_to = dd_mm_yyyy_to_iso(dates[-1])
+            period_to = parse_dd_mm_yy_to_iso(dates[-1])
 
     if not cartola_no:
         m = re.search(r"CARTOLA\s+(\d+)", text, re.I)

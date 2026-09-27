@@ -60,6 +60,7 @@ PARSE_CACHE_VERSION_FILES = (
     SCRIPT_DIR / "cc_statement_reconcile.py",
     SCRIPT_DIR / "cc_statement_line_rules.py",
     SCRIPT_DIR.parent / "src" / "ccStatementLineRules.json",
+    SCRIPT_DIR / "statement_values.py",
     SCRIPT_DIR / "cc_pdf_qpdf.py",
     SCRIPT_DIR / "cc_pdf_ocr.py",
 )
@@ -90,6 +91,11 @@ from cc_statement_line_rules import RE_CLP_SECTION3_CHARGE  # noqa: E402
 from cc_statement_pdf_paths import (  # noqa: E402
     is_excluded_cc_pdf_path,
     pdf_already_in_card_slot,
+)
+from statement_values import (  # noqa: E402
+    parse_clp_amount,
+    parse_dd_mm_yy_to_iso,
+    repair_jammed_year,
 )
 from cc_statement_reconcile import (  # noqa: E402
     merge_section_totals_into_meta,
@@ -376,23 +382,6 @@ def parse_one_pdf(
         "source_pdf": source_pdf,
     }
     return rows, ctx
-
-
-def parse_clp_amount(raw: str) -> Optional[int]:
-    t = str(raw or "").strip().replace("$", "").strip()
-    if not t:
-        return None
-    neg = t.startswith("-")
-    if neg:
-        t = t[1:].strip()
-    # Chilean thousands: dots separate thousands; no decimals in these statements for CLP totals
-    t = t.replace(".", "").replace(",", ".")
-    try:
-        v = float(t)
-    except ValueError:
-        return None
-    n = int(round(v))
-    return -n if neg else n
 
 
 def norm_merchant(s: str) -> str:
@@ -1347,23 +1336,16 @@ def _clp_statement_looks_wide_layout(upper: str) -> bool:
     )
 
 
-def dd_mm_yyyy_to_iso(raw: str) -> str:
-    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", str(raw or "").strip())
-    if not m:
-        return ""
-    return f"{int(m.group(3)):04d}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
-
-
-def organized_cc_pdf_iso_prefix(meta: Dict[str, Any], full: str = "") -> str:
+def organized_cc_pdf_iso_prefix(meta: Dict[str, Any], full: str = "") -> Optional[str]:
     """Filename date: BCI uses period_to (facturación month end); others use statement close."""
     if is_bci_lider_statement_text(full) or str(meta.get("card_product") or "") == "LIDER_BCI":
-        pt = dd_mm_yyyy_to_iso(str(meta.get("period_to") or ""))
+        pt = parse_dd_mm_yy_to_iso(meta.get("period_to"))
         if pt:
             return pt
-    sd = dd_mm_yyyy_to_iso(str(meta.get("statement_date") or ""))
+    sd = parse_dd_mm_yy_to_iso(meta.get("statement_date"))
     if sd:
         return sd
-    return dd_mm_yyyy_to_iso(str(meta.get("period_to") or ""))
+    return parse_dd_mm_yy_to_iso(meta.get("period_to"))
 
 
 def _statement_is_usd(meta: Dict[str, Any], parser: str = "") -> bool:
@@ -1686,25 +1668,12 @@ def extract_pdf_text(path: Path, parser: str) -> Tuple[List[str], str]:
 
 
 RE_STMT_DATE_CELL = re.compile(r"^(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{4})$")
-RE_TX_DATE = re.compile(r"^(\d{2})/(\d{2})/(\d{2}|\d{4})$")
-# pypdf merges DD/MM/YY with MCC city (e.g. 13/05/25 + 11001SANTIAG → 13/05/2511001SANTIAG).
-_TX_DATE_MAX_PLAUSIBLE_YEAR = 2038
 
 
 def normalize_tx_date(raw: str) -> str:
-    """Fix transaction/posting dates when a 2-digit year was jammed with following digits."""
-    s = str(raw or "").strip()
-    m = RE_TX_DATE.match(s)
-    if not m:
-        return s
-    d, mo, ypart = m.group(1), m.group(2), m.group(3)
-    if len(ypart) == 2:
-        return s
-    y = int(ypart)
-    if 1990 <= y <= _TX_DATE_MAX_PLAUSIBLE_YEAR:
-        return s
-    yy = int(ypart[:2])
-    return f"{d}/{mo}/{yy:02d}"
+    """Fix transaction/posting dates when a 2-digit year was jammed with following digits
+    (pypdf merges DD/MM/YY with the MCC city: 13/05/25 + 11001SANTIAG)."""
+    return repair_jammed_year(raw)
 
 
 def sanitize_parsed_rows_dates(rows: List[Dict[str, Any]]) -> None:
@@ -3061,18 +3030,13 @@ def parse_wide_document(full: str) -> List[Dict[str, Any]]:
 
 
 def _date_iso_for_dedupe(d: str) -> str:
-    t = normalize_tx_date((d or "").strip())
+    t = (d or "").strip()
     if not t:
         return ""
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", t):
-        return t
-    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})$", t)
-    if not m:
-        return t
-    day, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
-    if y < 100:
-        y += 1900 if y >= 70 else 2000
-    return f"{y:04d}-{mo:02d}-{day:02d}"
+    iso = parse_dd_mm_yy_to_iso(t)
+    if iso is None:
+        raise ValueError(f"row date is not a DD/MM/YY(YY) date: {d!r}")
+    return iso
 
 
 def row_dedupe_key(card_group: str, r: Dict[str, Any]) -> str:
