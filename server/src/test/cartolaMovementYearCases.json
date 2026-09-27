@@ -1,0 +1,12 @@
+[
+  { "desde": "2026-08-01", "hasta": "2026-08-31", "day": 15, "month": 8, "expect": "2026-08-15" },
+  { "desde": "2025-12-31", "hasta": "2026-01-31", "day": 31, "month": 12, "expect": "2025-12-31" },
+  { "desde": "2025-12-31", "hasta": "2026-01-31", "day": 15, "month": 1, "expect": "2026-01-15" },
+  { "desde": "2025-12-01", "hasta": "2025-12-31", "day": 15, "month": 1, "expect": null, "reason": "outside the period" },
+  { "desde": "2026-01-01", "hasta": "2026-01-31", "day": 31, "month": 12, "expect": null, "reason": "outside the period" },
+  { "desde": "2024-02-01", "hasta": "2024-02-29", "day": 29, "month": 2, "expect": "2024-02-29" },
+  { "desde": "2023-02-01", "hasta": "2023-02-28", "day": 29, "month": 2, "expect": null, "reason": "not a calendar date that year" },
+  { "desde": "2016-10-28", "hasta": "2017-10-31", "day": 15, "month": 3, "expect": "2017-03-15" },
+  { "desde": "2016-10-28", "hasta": "2017-10-31", "day": 30, "month": 10, "expect": null, "reason": "ambiguous: both 2016-10-30 and 2017-10-30 are inside the period" },
+  { "desde": null, "hasta": "2026-08-31", "day": 15, "month": 8, "expect": null, "reason": "period start missing" }
+]
