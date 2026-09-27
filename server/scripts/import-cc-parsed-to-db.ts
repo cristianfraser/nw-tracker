@@ -41,6 +41,10 @@ import {
 } from "../src/ccInstallmentLedgerMerge.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "../src/ccTraspasoDeudaLinks.js";
 import {
+  assertCcPaymentEvidenceKept,
+  ccPaymentPairingIdsWithEvidence,
+} from "../src/ccPaymentMirrorEvidence.js";
+import {
   filterUnchangedStatementRecords,
   groupRecordsByStatement,
 } from "../src/ccStatementFingerprint.js";
@@ -217,8 +221,16 @@ function main() {
 
     if (!dry) {
       if (replaceAccount) {
-        const st = importCcStatementsFromCsvRecords(accountId, accountRecords);
-        relinkCcTraspasoDeudaLinksForAccount(accountId);
+        // One transaction, so a reload that drops a converted payment's evidence (new statement
+        // and line ids are fine — the pairing finds its payment by card, date and amount) rolls
+        // back instead of leaving the account wiped.
+        const st = db.transaction(() => {
+          const pairedWithEvidence = ccPaymentPairingIdsWithEvidence(accountId);
+          const reloaded = importCcStatementsFromCsvRecords(accountId, accountRecords);
+          relinkCcTraspasoDeudaLinksForAccount(accountId);
+          assertCcPaymentEvidenceKept(accountId, pairedWithEvidence, "the --wipe reload");
+          return reloaded;
+        })();
         statementCount = st.statementCount;
         statementLineCount = st.linesInserted;
         linesSkippedDuplicate = st.linesSkippedDuplicate;
