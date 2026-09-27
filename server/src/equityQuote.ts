@@ -2,12 +2,13 @@ import { db } from "./db.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { isChileBusinessDay, priorNyseSessionYmd } from "./marketHolidays.js";
 import {
+  isAfterNyseRegularClose,
   isNyseRegularSessionOpen,
   nyseDisplaySessionYmd,
   nyseSessionYmd,
   utcTodayYmd,
 } from "./nyseSession.js";
-import { getLatestLiveEquityQuoteRow } from "./liveMarketQuotesDb.js";
+import { getLatestLiveEquityQuoteRow, type LiveMarketQuoteRow } from "./liveMarketQuotesDb.js";
 import { liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
 
 export type EquityMarketKind = "nyse" | "santiago" | "crypto24";
@@ -176,6 +177,25 @@ function isSantiagoRegularSessionOpen(now: Date): boolean {
   return mins >= 9 * 60 + 30 && mins <= 17 * 60 + 5;
 }
 
+/** Bolsa de Santiago session of Chile today has ended (after 17:05 Chile on a Chile business day). */
+function isAfterSantiagoRegularClose(now: Date): boolean {
+  const cl = chileWallClockAt(now);
+  if (!isChileBusinessDay(cl.ymd)) return false;
+  return cl.hour * 60 + cl.minute > 17 * 60 + 5;
+}
+
+/**
+ * The ticker's session for today has already closed (NYSE after 16:05 New York, Santiago after
+ * 17:05 Chile, both on their own trading days). Never true before the open, on the exchange's
+ * closed days, or for crypto (24/7 — its live window never ends).
+ */
+export function equitySessionClosedForDay(ticker: string, now = new Date()): boolean {
+  const kind = equityMarketKind(ticker);
+  if (kind === "crypto24") return false;
+  if (kind === "santiago") return isAfterSantiagoRegularClose(now);
+  return isAfterNyseRegularClose(now);
+}
+
 /**
  * Santiago EOD display: latest `equity_daily` bar ≤ Chile today (on-or-before absorbs
  * Chilean holidays), prior = previous stored bar.
@@ -184,13 +204,7 @@ function resolveSantiagoEodQuote(ticker: string, now: Date): ResolvedEquityQuote
   return eodQuote(ticker, chileWallClockAt(now).ymd);
 }
 
-/** Latest scheduler-persisted live quote (no Yahoo on HTTP paths). */
-export function getLiveEquityQuoteFromDb(
-  ticker: string,
-  maxAgeMs = liveQuotesMaxAgeMs()
-): ResolvedEquityQuote | null {
-  const row = getLatestLiveEquityQuoteRow(ticker, maxAgeMs);
-  if (!row) return null;
+function liveRowToQuote(ticker: string, row: LiveMarketQuoteRow): ResolvedEquityQuote {
   if (row.currency == null) {
     throw new Error(`live_market_quotes: equity row for ${ticker} has no currency`);
   }
@@ -203,6 +217,37 @@ export function getLiveEquityQuoteFromDb(
     previous_close: row.previous_value,
     delta_pct: percentChange(row.value, row.previous_value),
   };
+}
+
+/** Latest scheduler-persisted live quote (no Yahoo on HTTP paths). */
+export function getLiveEquityQuoteFromDb(
+  ticker: string,
+  maxAgeMs = liveQuotesMaxAgeMs()
+): ResolvedEquityQuote | null {
+  const row = getLatestLiveEquityQuoteRow(ticker, maxAgeMs);
+  if (!row) return null;
+  return liveRowToQuote(ticker, row);
+}
+
+/**
+ * Post-close hold (2026-09-21): between a session's close and the EOD sync landing its bar,
+ * today's quote is the session's last stored live print — Yahoo's `regularMarketPrice`
+ * re-serves the official close once the session ends, so that print IS the close until the
+ * bar exists. Without it the live gate turned off at the close and every reader fell back to
+ * the PREVIOUS bar (IPSA read a 0 day P/L from 17:05 until the 17:10 Santiago sync landed;
+ * NYSE tickers had the same gap for the minutes between 16:05 and the `stocks_nyse` run).
+ * Null before the open, on closed days, for crypto, once the session's bar is stored, or
+ * when the last stored print belongs to another session. Freshness is not required: after
+ * the close the scheduler keeps re-writing the same close, and a stale print of TODAY's
+ * session is still the best evidence there is.
+ */
+export function equityHeldSessionQuote(ticker: string, now = new Date()): ResolvedEquityQuote | null {
+  if (!equitySessionClosedForDay(ticker, now)) return null;
+  const session = equitySessionYmdForTicker(ticker, now);
+  if (eodCloseOnDate(ticker, session) != null) return null;
+  const row = getLatestLiveEquityQuoteRow(ticker, Number.POSITIVE_INFINITY);
+  if (!row || row.session_ymd !== session) return null;
+  return liveRowToQuote(ticker, row);
 }
 
 /** Whether `asOfYmd` is the active session and we should prefer stored live quotes over DB EOD. */
@@ -246,7 +291,9 @@ export function equityDisplaySessionYmd(ticker: string, now = new Date()): strin
 }
 
 /**
- * Quote-currency price for MTM / marquee: stored live quote during session when requested; otherwise last EOD.
+ * Quote-currency price for MTM / marquee: stored live quote during session when requested
+ * (after the close, the session's held print until its bar lands — `equityHeldSessionQuote`);
+ * otherwise last EOD.
  */
 export function resolveEquityQuote(
   ticker: string,
@@ -260,6 +307,10 @@ export function resolveEquityQuote(
   if (useLive) {
     const live = getLiveEquityQuoteFromDb(ticker);
     if (live) return live;
+  }
+  if (preferLive && asOfYmd >= equitySessionYmdForTicker(ticker, now)) {
+    const held = equityHeldSessionQuote(ticker, now);
+    if (held) return held;
   }
 
   const kind = equityMarketKind(ticker);

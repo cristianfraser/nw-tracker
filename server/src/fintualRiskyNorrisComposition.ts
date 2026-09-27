@@ -1,20 +1,31 @@
-import { chileWallClockNow, type ChileWallClock } from "./chileDate.js";
+import { chileCalendarAddDays, chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { ensureEquityDailyHistoryForWatchlistTickers } from "./equityDailyWatchlistBackfill.js";
 import { equityCloseEod } from "./equityQuote.js";
+import { isFintualCarryForwardFundUnitNote } from "./fintualFundUnitDaily.js";
+import {
+  FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS,
+  verifyFintualSeriesAgainstOfficialPrices,
+  type FintualSerieReconcileResult,
+} from "./fintualPublicSeriePrice.js";
 import {
   loadGlobalSyncState,
   saveGlobalSyncState,
   type GlobalSyncStateFile,
 } from "./globalSyncState.js";
+import { observadoFrameFxForDay } from "./fxObservadoFrame.js";
+import { isChileBusinessDay } from "./marketHolidays.js";
 import {
   APV_PROXY_NEGLIGIBLE_REL_DIFF,
   basketUsdForHoldings,
-  fxClpWeekdayEodOnOrBefore,
-  officialApvFundUnitOnOrBefore,
-  officialRiskyNorrisFundUnitOnOrBefore,
+  loadCompositeHoldings,
+  loadCompositeMeta,
+  OFFICIAL_APV_FUND_UNIT_SERIES_KEYS,
+  OFFICIAL_RISKY_NORRIS_FUND_UNIT_SERIES_KEYS,
+  proxyClpFromMeta,
   RISKY_NORRIS_PROXY_BUCKET,
   type CompositeHolding,
+  type CompositeMeta,
 } from "./watchlistComposite.js";
 
 export const FINTUAL_RN_MANAGED_FUND_ID = 4;
@@ -55,8 +66,11 @@ export type FintualManagedFundPositionsResponse = {
 };
 
 const stmtFundUnitOnDate = db.prepare(
-  `SELECT unit_value_clp FROM fund_unit_daily
+  `SELECT unit_value_clp, note FROM fund_unit_daily
    WHERE series_key = ? AND day = ? LIMIT 1`
+);
+const stmtSeriesHasRowOnOrBefore = db.prepare(
+  `SELECT 1 FROM fund_unit_daily WHERE series_key = ? AND day <= ? LIMIT 1`
 );
 
 const stmtDeleteHoldings = db.prepare(
@@ -136,9 +150,11 @@ export function parseManagedFundPositionsBody(body: unknown): FintualManagedFund
   return { date, etf_positions: normalized, raw_etf_weight_sum: rawSum };
 }
 
-export async function fetchRiskyNorrisComposition(): Promise<FintualManagedFundPositionsResponse> {
+export async function fetchRiskyNorrisComposition(
+  fetchImpl: typeof fetch = fetch
+): Promise<FintualManagedFundPositionsResponse> {
   const url = `${FINTUAL_INVERSIONES_API_BASE}/api/managed_funds/managed_fund_full_last_detailed_positions/${FINTUAL_RN_MANAGED_FUND_ID}`;
-  const res = await fetch(url, {
+  const res = await fetchImpl(url, {
     headers: {
       Accept: "application/json",
       "User-Agent": "nw-tracker/1.0",
@@ -174,40 +190,181 @@ export function holdingsForPricing(
   }));
 }
 
-function fundUnitClpOnOrBefore(compositionDate: string): { day: string; unit_value_clp: number } {
-  const resolved = officialRiskyNorrisFundUnitOnOrBefore(compositionDate);
-  if (resolved.day === compositionDate) {
-    return { day: resolved.day, unit_value_clp: resolved.unit_value_clp };
+/** How far back from Fintual's positions date the anchor may walk before the series is declared stale. */
+export const RN_COMPOSITION_ANCHOR_MAX_WALK_DAYS = 14;
+/**
+ * Self-check alarm: |the previous anchor's prediction − the official cuota| beyond this many
+ * basis points is a step error. Measured 2026-09-22 over 79 sessions (2026-05-27..09-17, current
+ * holdings): per-session error rmse 24 bp, p90 29 bp, nothing beyond 30 bp after June — so 30 bp
+ * would have alarmed seven times in four months. The anchor-pairing defect this check exists for
+ * read −50 bp (a Friday NYSE session Fintual carried flat over a Chile holiday, missing from the
+ * level) and −190 bp (a cuota one day older than its price base).
+ */
+export const RN_COMPOSITION_SELF_CHECK_ERROR_BP = 40;
+/**
+ * Series refreshed from the official public prices before anchoring: the Risky Norris A serie
+ * (serie 6, the anchor — the empty RN goal never publishes in the evening poll, so this is its
+ * only source) and the APV serie (serie 7) the APV/RN ratio needs on the same day.
+ */
+export const RN_COMPOSITION_REFRESH_SERIES_KEYS: readonly string[] = [
+  "fintual_cert_risky_norris",
+  "fintual_cert_apv_a",
+  "fintual_cert_apv_b",
+];
+
+export type CompositionAnchor = {
+  /**
+   * The day whose valuation the anchor cuota embeds — a Chile business day on or before Fintual's
+   * positions date carrying a published (non-carry) Risky Norris cuota. Stored as
+   * `watchlist_composite_meta.composition_date`, so the basket's price base (closes on or before
+   * it) and the fx base (that day's dólar observado) resolve on the session the cuota was priced with.
+   */
+  anchor_ymd: string;
+  series_key: string;
+  fund_unit_clp: number;
+  /** APV régimen cuota on `anchor_ymd` exactly; null only when no APV serie exists at all (demo/CI). */
+  apv_fund_unit_clp: number | null;
+  /** Fintual's positions "as of" date — the holdings' date, informational. */
+  positions_ymd: string;
+};
+
+type FundUnitRow = { unit_value_clp: number; note: string | null };
+
+function publishedFundUnitOnDay(
+  seriesKeys: readonly string[],
+  ymd: string
+): { series_key: string; unit_value_clp: number } | null {
+  for (const seriesKey of seriesKeys) {
+    const row = stmtFundUnitOnDate.get(seriesKey, ymd) as FundUnitRow | undefined;
+    if (row == null || !Number.isFinite(row.unit_value_clp) || row.unit_value_clp <= 0) continue;
+    if (isFintualCarryForwardFundUnitNote(row.note)) continue;
+    return { series_key: seriesKey, unit_value_clp: row.unit_value_clp };
   }
-  const exact = stmtFundUnitOnDate.get(resolved.series_key, compositionDate) as
-    | { unit_value_clp: number }
-    | undefined;
-  if (exact != null && Number.isFinite(exact.unit_value_clp) && exact.unit_value_clp > 0) {
-    return { day: compositionDate, unit_value_clp: exact.unit_value_clp };
+  return null;
+}
+
+function apvFundUnitOnAnchorDay(apvSeriesKeys: readonly string[], anchorYmd: string): number | null {
+  const exact = publishedFundUnitOnDay(apvSeriesKeys, anchorYmd);
+  if (exact != null) return exact.unit_value_clp;
+  for (const seriesKey of apvSeriesKeys) {
+    if (stmtSeriesHasRowOnOrBefore.get(seriesKey, anchorYmd) != null) {
+      throw new Error(
+        `Risky Norris composition: ${seriesKey} has no published cuota on anchor day ${anchorYmd} — ` +
+          `the APV/RN ratio needs both cuotas on one valuation; fill the serie (fintual:backfill-cert-fund-units) before anchoring`
+      );
+    }
   }
-  return { day: resolved.day, unit_value_clp: resolved.unit_value_clp };
+  return null;
 }
 
 /**
- * Anchor fx must describe the same moment the anchor cuota embeds — the weekday rule
- * (see fxClpWeekdayEodOnOrBefore) keeps a weekend composition_date from anchoring on
- * Yahoo's Sunday week-open bar while the anchor equity closes resolve to Friday's.
+ * Resolve the proxy's anchor for Fintual's positions date.
+ *
+ * Fintual values Risky Norris only on Chile business days: a weekend or Chile-holiday row is a
+ * flat carry of the previous business day's valuation, and a NYSE session Fintual did not value
+ * (a Chile holiday) only enters the cuota on the next business day. Anchoring on the positions
+ * date itself paired that carried cuota with the closes of a session it does not contain
+ * (2026-09-20: the 09-17 valuation under Friday 09-18's closes — Friday's +0,41% never entered
+ * the level, and the APV cards read −1,04% for a −0,49% day), and a positions date newer than the
+ * latest cuota paired an older cuota with newer closes (2026-09-21: the 09-16 cuota under 09-17's
+ * closes, −190 bp). So the anchor day is the latest Chile business day on or before the positions
+ * date that carries a published cuota; a carry-forward placeholder is skipped like a holiday. The
+ * APV cuota must exist on that exact day — the APV/RN ratio is only meaningful on one valuation —
+ * and an APV serie that exists but lacks the day is a data gap (throws), never an on-or-before
+ * substitute.
  */
-function fxClpOnOrBefore(ymd: string): number {
-  const fx = fxClpWeekdayEodOnOrBefore(ymd);
-  if (fx == null) {
-    throw new Error(`Risky Norris composition sync: no weekday fx_daily on or before ${ymd}`);
+export function resolveCompositionAnchor(
+  positionsYmd: string,
+  opts: { seriesKeys?: readonly string[]; apvSeriesKeys?: readonly string[] } = {}
+): CompositionAnchor {
+  const seriesKeys = opts.seriesKeys ?? OFFICIAL_RISKY_NORRIS_FUND_UNIT_SERIES_KEYS;
+  const apvSeriesKeys = opts.apvSeriesKeys ?? OFFICIAL_APV_FUND_UNIT_SERIES_KEYS;
+  let ymd = positionsYmd;
+  for (let step = 0; step <= RN_COMPOSITION_ANCHOR_MAX_WALK_DAYS; step++) {
+    if (isChileBusinessDay(ymd)) {
+      const rn = publishedFundUnitOnDay(seriesKeys, ymd);
+      if (rn != null) {
+        return {
+          anchor_ymd: ymd,
+          series_key: rn.series_key,
+          fund_unit_clp: rn.unit_value_clp,
+          apv_fund_unit_clp: apvFundUnitOnAnchorDay(apvSeriesKeys, ymd),
+          positions_ymd: positionsYmd,
+        };
+      }
+    }
+    ymd = chileCalendarAddDays(ymd, -1);
   }
-  return fx;
+  throw new Error(
+    `Risky Norris composition: no published Risky Norris cuota on a Chile business day within ` +
+      `${RN_COMPOSITION_ANCHOR_MAX_WALK_DAYS} days before ${positionsYmd} (${seriesKeys.join(", ")}) — fund_unit_daily stale`
+  );
+}
+
+export type CompositionSelfCheck = {
+  previous_anchor_ymd: string;
+  anchor_ymd: string;
+  /** The previous anchor's EOD prediction for `anchor_ymd`, CLP per cuota. */
+  predicted_clp: number;
+  official_clp: number;
+  /** (predicted ÷ official − 1) in basis points. */
+  error_bp: number;
+  /** |error_bp| beyond `RN_COMPOSITION_SELF_CHECK_ERROR_BP`. */
+  alarm: boolean;
+};
+
+/**
+ * What the proxy said the cuota would be on the day that now anchors it, against what Fintual
+ * printed: the previous anchor's EOD estimate for `anchor.anchor_ymd`, computed exactly as the
+ * app valued that day. Between two consecutive anchors this is the per-session proxy error
+ * (24 bp rmse); a pairing defect or a stale composition reads as a step change. Null when
+ * nothing new was published since the previous anchor (or there was none).
+ */
+export function compositionSelfCheck(
+  previous: CompositeMeta | null,
+  previousHoldings: CompositeHolding[],
+  anchor: CompositionAnchor,
+  now: Date = new Date()
+): CompositionSelfCheck | null {
+  if (previous == null || previousHoldings.length === 0) return null;
+  if (previous.composition_date >= anchor.anchor_ymd) return null;
+  const predicted = proxyClpFromMeta(previous, previousHoldings, anchor.anchor_ymd, {
+    preferLive: false,
+    now,
+  });
+  const error_bp = (predicted / anchor.fund_unit_clp - 1) * 10_000;
+  return {
+    previous_anchor_ymd: previous.composition_date,
+    anchor_ymd: anchor.anchor_ymd,
+    predicted_clp: predicted,
+    official_clp: anchor.fund_unit_clp,
+    error_bp,
+    alarm: Math.abs(error_bp) > RN_COMPOSITION_SELF_CHECK_ERROR_BP,
+  };
 }
 
 export type SyncRiskyNorrisCompositionResult = {
+  /** The anchor day (`CompositionAnchor.anchor_ymd`) — what `composition_date` now holds. */
   composition_date: string;
+  /** Fintual's positions "as of" date (the holdings' date). */
+  positions_date: string;
   tickers: string[];
   holdings_count: number;
   anchor_fund_unit_clp: number;
+  anchor_apv_fund_unit_clp: number | null;
   anchor_basket_usd: number;
   raw_etf_weight_sum: number;
+  /** The official public-serie refresh run before anchoring; `error` = fetch failed, anchored on the stored series. */
+  official_refresh: { results: FintualSerieReconcileResult[] } | { error: string };
+  self_check: CompositionSelfCheck | null;
+  /** The self-check could not be computed (e.g. a dropped ticker with no bar on the anchor day). */
+  self_check_error: string | null;
+};
+
+export type SyncRiskyNorrisCompositionOptions = {
+  /** Skip the official public-serie refresh (offline runs, tests); default on. */
+  refreshOfficialSeries?: boolean;
+  fetchImpl?: typeof fetch;
 };
 
 /**
@@ -219,36 +376,69 @@ export type SyncRiskyNorrisCompositionResult = {
  */
 export async function syncRiskyNorrisComposition(
   cl: ChileWallClock = chileWallClockNow(),
-  sharedState?: GlobalSyncStateFile
+  sharedState?: GlobalSyncStateFile,
+  opts: SyncRiskyNorrisCompositionOptions = {}
 ): Promise<SyncRiskyNorrisCompositionResult> {
-  const api = await fetchRiskyNorrisComposition();
-  const compositionDate = api.date;
-  const holdings = holdingsForPricing(api.etf_positions, compositionDate);
+  const api = await fetchRiskyNorrisComposition(opts.fetchImpl);
+  const positionsDate = api.date;
+  const holdings = holdingsForPricing(api.etf_positions, positionsDate);
   const tickers = holdings.map((h) => h.ticker);
 
   await ensureEquityDailyHistoryForWatchlistTickers(tickers, cl.ymd);
 
+  // The anchor serie publishes day D on D+1 through the official public prices only, so refresh
+  // it (and the APV serie the ratio needs) first — otherwise the anchor lags the publisher by
+  // however old the last goals poll is. A failed refresh is reported, never a reason not to
+  // re-anchor on what the DB holds (the pairing stays consistent, only older).
+  let official_refresh: SyncRiskyNorrisCompositionResult["official_refresh"];
+  if (opts.refreshOfficialSeries ?? true) {
+    try {
+      const results = await verifyFintualSeriesAgainstOfficialPrices({
+        fromYmd: chileCalendarAddDays(cl.ymd, -FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS),
+        toYmd: cl.ymd,
+        dryRun: false,
+        seriesKeys: RN_COMPOSITION_REFRESH_SERIES_KEYS,
+        fetchImpl: opts.fetchImpl,
+      });
+      official_refresh = { results };
+    } catch (e) {
+      official_refresh = { error: e instanceof Error ? e.message : String(e) };
+    }
+  } else {
+    official_refresh = { results: [] };
+  }
+
+  const anchor = resolveCompositionAnchor(positionsDate);
   for (const ticker of tickers) {
-    const close = equityCloseEod(ticker, compositionDate);
+    const close = equityCloseEod(ticker, anchor.anchor_ymd);
     if (close == null || !Number.isFinite(close) || close <= 0) {
       throw new Error(
-        `Risky Norris composition sync: missing equity_daily for ${ticker} on ${compositionDate}`
+        `Risky Norris composition sync: missing equity_daily for ${ticker} on or before ${anchor.anchor_ymd}`
       );
     }
   }
 
-  const fundUnit = fundUnitClpOnOrBefore(compositionDate);
-  // Informational snapshot only — valuation uses per-ticker relative prices (basketReturnForHoldings).
-  const anchor_basket_usd = basketUsdForHoldings(holdings, compositionDate, { preferLive: false });
-  const anchor_fx_clp = fxClpOnOrBefore(compositionDate);
+  const previous = loadCompositeMeta(RISKY_NORRIS_PROXY_BUCKET);
+  const previousHoldings = loadCompositeHoldings(RISKY_NORRIS_PROXY_BUCKET);
+  let self_check: CompositionSelfCheck | null = null;
+  let self_check_error: string | null = null;
+  try {
+    self_check = compositionSelfCheck(previous, previousHoldings, anchor);
+  } catch (e) {
+    self_check_error = e instanceof Error ? e.message : String(e);
+  }
+
+  // Informational snapshots only — valuation uses per-ticker relative prices
+  // (basketReturnForHoldings) and re-resolves the observado-frame fx at read time.
+  const anchor_basket_usd = basketUsdForHoldings(holdings, anchor.anchor_ymd, { preferLive: false });
+  const anchor_fx_clp = observadoFrameFxForDay(anchor.anchor_ymd).clp_per_usd;
   const last_sync_ymd = cl.ymd;
 
   let anchor_apv_fund_unit_clp: number | null = null;
-  const apvUnit = officialApvFundUnitOnOrBefore(compositionDate);
-  if (apvUnit != null) {
-    const relDiff = Math.abs(apvUnit.unit_value_clp - fundUnit.unit_value_clp) / fundUnit.unit_value_clp;
+  if (anchor.apv_fund_unit_clp != null) {
+    const relDiff = Math.abs(anchor.apv_fund_unit_clp - anchor.fund_unit_clp) / anchor.fund_unit_clp;
     if (relDiff >= APV_PROXY_NEGLIGIBLE_REL_DIFF) {
-      anchor_apv_fund_unit_clp = apvUnit.unit_value_clp;
+      anchor_apv_fund_unit_clp = anchor.apv_fund_unit_clp;
     }
   }
 
@@ -256,8 +446,8 @@ export async function syncRiskyNorrisComposition(
     stmtUpsertMeta.run(
       RISKY_NORRIS_PROXY_BUCKET,
       FINTUAL_RN_MANAGED_FUND_ID,
-      compositionDate,
-      fundUnit.unit_value_clp,
+      anchor.anchor_ymd,
+      anchor.fund_unit_clp,
       anchor_apv_fund_unit_clp,
       anchor_basket_usd,
       anchor_fx_clp,
@@ -278,11 +468,16 @@ export async function syncRiskyNorrisComposition(
   }
 
   return {
-    composition_date: compositionDate,
+    composition_date: anchor.anchor_ymd,
+    positions_date: positionsDate,
     tickers,
     holdings_count: holdings.length,
-    anchor_fund_unit_clp: fundUnit.unit_value_clp,
+    anchor_fund_unit_clp: anchor.fund_unit_clp,
+    anchor_apv_fund_unit_clp,
     anchor_basket_usd,
     raw_etf_weight_sum: api.raw_etf_weight_sum,
+    official_refresh,
+    self_check,
+    self_check_error,
   };
 }

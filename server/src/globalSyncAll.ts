@@ -111,7 +111,6 @@ import {
 import {
   clearFintualRealAssetNavCaches,
   describeFintualGoalResolution,
-  formatClp,
   resolveFintualGoalNavs,
 } from "../scripts/fintualRealAssetNav.js";
 import {
@@ -120,7 +119,10 @@ import {
   fintualOfficialSerieSyncChanges,
   verifyFintualSeriesAgainstOfficialPrices,
 } from "./fintualPublicSeriePrice.js";
-import { syncRiskyNorrisComposition } from "./fintualRiskyNorrisComposition.js";
+import {
+  RN_COMPOSITION_SELF_CHECK_ERROR_BP,
+  syncRiskyNorrisComposition,
+} from "./fintualRiskyNorrisComposition.js";
 import {
   fetchDolarAfterDate,
   fetchEuroAfterDate,
@@ -1157,17 +1159,52 @@ async function runFintualRnComposition(
   cl: ReturnType<typeof chileWallClockNow>,
   state: GlobalSyncStateFile,
   changes: SyncFieldChange[],
-  notes: SyncStepNote[]
+  notes: SyncStepNote[],
+  errors: SyncStepError[]
 ): Promise<void> {
+  const step = "Risky Norris composition";
   if (syncDryRun) {
     console.log("sync: Risky Norris composition — dry-run skip");
     return;
   }
   const result = await syncRiskyNorrisComposition(cl, state);
+
+  if ("error" in result.official_refresh) {
+    errors.push({
+      step,
+      message: `official serie price refresh failed (anchored on the stored series): ${result.official_refresh.error}`,
+    });
+  } else if (result.official_refresh.results.some((r) => r.rows.length > 0)) {
+    changes.push(...fintualOfficialSerieSyncChanges(result.official_refresh.results));
+    errors.push(...fintualOfficialSerieCorrectionErrors(result.official_refresh.results));
+  }
+
+  const apv =
+    result.anchor_apv_fund_unit_clp != null ? ` (APV ${formatSyncIndex(result.anchor_apv_fund_unit_clp)})` : "";
   notes.push({
-    step: "Risky Norris composition",
-    message: `${result.holdings_count} ETFs as of ${result.composition_date} (ETF sleeve ${(result.raw_etf_weight_sum * 100).toFixed(1)}% normalized); anchor cuota ${formatClp(result.anchor_fund_unit_clp)} CLP`,
+    step,
+    message:
+      `${result.holdings_count} ETFs as of ${result.positions_date} (ETF sleeve ${(result.raw_etf_weight_sum * 100).toFixed(1)}% normalized); ` +
+      `anchored ${result.composition_date} at cuota ${formatSyncIndex(result.anchor_fund_unit_clp)}${apv}`,
   });
+
+  const check = result.self_check;
+  if (check != null) {
+    const sign = check.error_bp >= 0 ? "+" : "";
+    const line =
+      `proxy self-check: the ${check.previous_anchor_ymd} anchor predicted ${formatSyncIndex(check.predicted_clp)} for ${check.anchor_ymd}, ` +
+      `official ${formatSyncIndex(check.official_clp)} (${sign}${check.error_bp.toFixed(1)} bp)`;
+    notes.push({ step, message: line });
+    if (check.alarm) {
+      errors.push({
+        step,
+        message: `${line} — beyond ${RN_COMPOSITION_SELF_CHECK_ERROR_BP} bp: check the anchor pairing (composition_date vs the cuota's session) and the composition`,
+      });
+    }
+  } else if (result.self_check_error) {
+    errors.push({ step, message: `proxy self-check unavailable: ${result.self_check_error}` });
+  }
+
   changes.push({
     group: "fintual",
     label: "Risky Norris proxy composition",
@@ -1177,7 +1214,7 @@ async function runFintualRnComposition(
     newDate: result.composition_date,
   });
   console.log(
-    `sync: Risky Norris composition — ${result.holdings_count} ETF(s) as of ${result.composition_date} (${result.tickers.join(", ")})`
+    `sync: Risky Norris composition — ${result.holdings_count} ETF(s) as of ${result.positions_date}, anchored ${result.composition_date} (${result.tickers.join(", ")})`
   );
 }
 
@@ -1227,7 +1264,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
       state!,
       cl,
       async () => {
-        await runFintualRnComposition(cl, state!, syncChanges, stepNotes);
+        await runFintualRnComposition(cl, state!, syncChanges, stepNotes, stepErrors);
       }
     );
 

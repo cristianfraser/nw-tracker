@@ -10,7 +10,11 @@ import {
   type WatchlistCompositeHoldingRow,
 } from "./watchlistCompositeHoldings.js";
 import type { MarketDisplaySeriesRow, WatchlistSource } from "./marketDisplaySeries.js";
-import { watchlistStatsForRow, type WatchlistRowStats } from "./watchlistStats.js";
+import {
+  watchlistStatsForRow,
+  type WatchlistDisplayUnit,
+  type WatchlistRowStats,
+} from "./watchlistStats.js";
 import {
   listCompositeConstituentTickers,
   loadCompositeHoldings,
@@ -20,6 +24,8 @@ import {
 
 export type { WatchlistSource } from "./marketDisplaySeries.js";
 export type { WatchlistCompositeHoldingRow } from "./watchlistCompositeHoldings.js";
+export type { WatchlistDisplayUnit } from "./watchlistStats.js";
+export { watchlistDisplayUnitParam } from "./watchlistStats.js";
 
 export type WatchlistRow = MarketDisplaySeriesRow &
   WatchlistRowStats & {
@@ -256,11 +262,15 @@ export function syncWatchlistFromApp(): void {
   })();
 }
 
-function rowToWatchlist(row: MarketDisplaySeriesRow & { source: WatchlistSource }, now: Date): WatchlistRow {
-  const stats = watchlistStatsForRow(row, now);
+function rowToWatchlist(
+  row: MarketDisplaySeriesRow & { source: WatchlistSource },
+  now: Date,
+  unit: WatchlistDisplayUnit = "clp"
+): WatchlistRow {
+  const stats = watchlistStatsForRow(row, now, unit);
   const item: WatchlistRow = { ...row, ...stats };
   if (row.kind === "composite" && row.series_key) {
-    const holdings = compositeHoldingsWithStats(row.series_key, now);
+    const holdings = compositeHoldingsWithStats(row.series_key, now, unit);
     if (holdings.length > 0) item.composite_holdings = holdings;
   }
   return item;
@@ -269,18 +279,23 @@ function rowToWatchlist(row: MarketDisplaySeriesRow & { source: WatchlistSource 
 /**
  * DB-only payload — never fetches Yahoo. History depth for the YTD/YoY stats is maintained
  * by {@link ensureWatchlistEquityHistoryDepth} on the live-quotes scheduler tick.
+ * Values and changes come back in `unit` (the app's CLP/USD toggle) — see
+ * {@link watchlistStatsForRow}; the USD/CLP rate row is the one exception.
  */
-export function getWatchlistPayload(now = new Date()): { app: WatchlistRow[]; manual: WatchlistRow[] } {
+export function getWatchlistPayload(
+  now = new Date(),
+  unit: WatchlistDisplayUnit = "clp"
+): { unit: WatchlistDisplayUnit; app: WatchlistRow[]; manual: WatchlistRow[] } {
   syncWatchlistFromApp();
   const rows = stmtSelectAll.all() as (MarketDisplaySeriesRow & { source: WatchlistSource })[];
   const app: WatchlistRow[] = [];
   const manual: WatchlistRow[] = [];
   for (const row of rows) {
-    const item = rowToWatchlist(row, now);
+    const item = rowToWatchlist(row, now, unit);
     if (row.source === "manual") manual.push(item);
     else app.push(item);
   }
-  return { app, manual };
+  return { unit, app, manual };
 }
 
 /**

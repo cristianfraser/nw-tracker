@@ -641,8 +641,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ date, buy_clp_per_usd, sell_clp_per_usd }),
     }),
-  marketTicker: () => j<import("./types").MarketTickerResponse>("/api/market-ticker"),
-  watchlist: () => j<import("./types").WatchlistResponse>("/api/watchlist"),
+  // Values come back in the display unit (server-side conversion); CLP is the default.
+  marketTicker: (unit: "clp" | "usd") =>
+    j<import("./types").MarketTickerResponse>(
+      unit === "usd" ? "/api/market-ticker?unit=usd" : "/api/market-ticker"
+    ),
+  watchlist: (unit: "clp" | "usd") =>
+    j<import("./types").WatchlistResponse>(unit === "usd" ? "/api/watchlist?unit=usd" : "/api/watchlist"),
   patchWatchlistRow: (id: number, body: { show_in_marquee?: number; sort_order?: number }) =>
     j<import("./types").WatchlistRow>(`/api/watchlist/${id}`, {
       method: "PATCH",

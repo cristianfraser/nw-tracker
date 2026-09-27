@@ -1,5 +1,4 @@
-import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
-import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import {
   equityCloseEod,
@@ -7,8 +6,8 @@ import {
   equitySessionYmdForTicker,
   resolveEquityQuote,
 } from "./equityQuote.js";
-import { fxForLiveMtm } from "./fxRates.js";
-import { nyseSessionsBack, priorNyseSessionYmd } from "./marketHolidays.js";
+import { observadoFrameFxForDay } from "./fxObservadoFrame.js";
+import { priorNyseSessionYmd } from "./marketHolidays.js";
 import { nyseDisplaySessionYmd } from "./nyseSession.js";
 
 export const RISKY_NORRIS_PROXY_BUCKET = "fintual_risky_norris_proxy";
@@ -16,26 +15,43 @@ export const RISKY_NORRIS_PROXY_BUCKET = "fintual_risky_norris_proxy";
 /** |APV−RN|/RN at composition anchor below this → one shared proxy cuota. */
 export const APV_PROXY_NEGLIGIBLE_REL_DIFF = 0.005;
 
-const OFFICIAL_FUND_UNIT_SERIES_KEYS = ["fintual_risky_norris", "fintual_cert_risky_norris"] as const;
+/** Risky Norris (serie A) valor cuota series, in lookup order — the proxy's anchor cuota. */
+export const OFFICIAL_RISKY_NORRIS_FUND_UNIT_SERIES_KEYS: readonly string[] = [
+  "fintual_risky_norris",
+  "fintual_cert_risky_norris",
+];
 
 export type CompositeMeta = {
   bucket_slug: string;
   fintual_managed_fund_id: number;
+  /**
+   * The anchor day: the Chile business day whose published cuota `anchor_fund_unit_clp` is, so
+   * the basket's price base (closes on or before it) and the fx base (its dólar observado) are the
+   * session that cuota was valued with (`resolveCompositionAnchor`). Never a weekend/holiday carry
+   * and never a day the cuota series lacks — that pairing left Friday's NYSE move (a Chile holiday
+   * Fintual carried flat) out of the level (−41 bp) and put a day-older cuota under newer closes (−190 bp).
+   */
   composition_date: string;
   anchor_fund_unit_clp: number;
   /** APV régimen valor cuota at composition_date; null when APV ≈ taxable RN. */
   anchor_apv_fund_unit_clp: number | null;
   /** Σ weight·px snapshot at composition_date — informational; valuation uses per-ticker relative prices. */
   anchor_basket_usd: number;
+  /**
+   * Observado-frame fx the composition sync resolved for composition_date — informational;
+   * valuation re-resolves both fx legs at read time (`observadoFrameFxForDay`), so a window
+   * estimate taken at sync time is superseded once the day's dólar observado is published.
+   */
   anchor_fx_clp: number;
   last_sync_ymd: string;
 };
 
-const OFFICIAL_APV_FUND_UNIT_SERIES_KEYS = [
+/** APV régimen valor cuota series, in lookup order — the APV/RN ratio's numerator on the anchor day. */
+export const OFFICIAL_APV_FUND_UNIT_SERIES_KEYS: readonly string[] = [
   "fintual_cert_apv_a",
   "fintual_cert_apv_b",
   "fintual_risky_norris_apv",
-] as const;
+];
 
 export type CompositeHolding = {
   ticker: string;
@@ -54,66 +70,6 @@ const stmtHoldings = db.prepare(
    WHERE bucket_slug = ? ORDER BY weight DESC, ticker`
 );
 
-export function officialRiskyNorrisFundUnitOnOrBefore(ymd: string): {
-  series_key: string;
-  unit_value_clp: number;
-  day: string;
-} {
-  for (const seriesKey of OFFICIAL_FUND_UNIT_SERIES_KEYS) {
-    const row = db
-      .prepare(
-        `SELECT day, unit_value_clp FROM fund_unit_daily
-         WHERE series_key = ? AND day <= ? ORDER BY day DESC LIMIT 1`
-      )
-      .get(seriesKey, ymd) as { day: string; unit_value_clp: number } | undefined;
-    if (row != null && Number.isFinite(row.unit_value_clp) && row.unit_value_clp > 0) {
-      return { series_key: seriesKey, day: row.day, unit_value_clp: row.unit_value_clp };
-    }
-  }
-  throw new Error(
-    `Risky Norris proxy: no fund_unit_daily for ${OFFICIAL_FUND_UNIT_SERIES_KEYS.join(" or ")} on or before ${ymd}`
-  );
-}
-
-export function officialApvFundUnitOnOrBefore(ymd: string): {
-  series_key: string;
-  unit_value_clp: number;
-  day: string;
-} | null {
-  for (const seriesKey of OFFICIAL_APV_FUND_UNIT_SERIES_KEYS) {
-    const row = db
-      .prepare(
-        `SELECT day, unit_value_clp FROM fund_unit_daily
-         WHERE series_key = ? AND day <= ? ORDER BY day DESC LIMIT 1`
-      )
-      .get(seriesKey, ymd) as { day: string; unit_value_clp: number } | undefined;
-    if (row != null && Number.isFinite(row.unit_value_clp) && row.unit_value_clp > 0) {
-      return { series_key: seriesKey, day: row.day, unit_value_clp: row.unit_value_clp };
-    }
-  }
-  return null;
-}
-
-const stmtFxWeekdayEodOnOrBefore = db.prepare(
-  `SELECT clp_per_usd FROM fx_daily
-   WHERE date <= ? AND strftime('%w', date) NOT IN ('0', '6')
-   ORDER BY date DESC LIMIT 1`
-);
-
-/**
- * Latest WEEKDAY-dated fx_daily bar on or before ymd — the composite frame's EOD fx.
- * Yahoo CLP=X writes Sunday-dated week-open bars that no official cuota ever embeds
- * (the Chilean fx market is closed; Fintual's weekend cuotas carry Friday's dólar), so
- * a weekend valuation date — or a weekend composition anchor — must read Friday's bar,
- * not the week-open spike. Weekday bars on NYSE holidays stay eligible: a cuota
- * published that day embeds that day's dólar even though the basket closes are Friday's.
- */
-export function fxClpWeekdayEodOnOrBefore(ymd: string): number | null {
-  const row = stmtFxWeekdayEodOnOrBefore.get(ymd) as { clp_per_usd: number } | undefined;
-  if (row == null || !Number.isFinite(row.clp_per_usd) || row.clp_per_usd <= 0) return null;
-  return row.clp_per_usd;
-}
-
 export function loadCompositeMeta(bucketSlug: string): CompositeMeta | null {
   const row = stmtMeta.get(bucketSlug) as CompositeMeta | undefined;
   return row ?? null;
@@ -126,17 +82,6 @@ export function loadCompositeHoldings(bucketSlug: string): CompositeHolding[] {
 export function listCompositeConstituentTickers(bucketSlug = RISKY_NORRIS_PROXY_BUCKET): string[] {
   const rows = loadCompositeHoldings(bucketSlug);
   return [...new Set(rows.map((r) => r.ticker.trim().toUpperCase()).filter(Boolean))];
-}
-
-function fxClpOnOrBefore(ymd: string, now: Date): number | null {
-  const today = chileCalendarTodayYmd();
-  if (ymd >= today) {
-    const live = fxForLiveMtm(today, now);
-    if (live != null && live.date <= ymd && Number.isFinite(live.clp_per_usd) && live.clp_per_usd > 0) {
-      return live.clp_per_usd;
-    }
-  }
-  return fxClpWeekdayEodOnOrBefore(ymd);
 }
 
 function priceUsdForTickerOnYmd(
@@ -231,34 +176,26 @@ export function basketReturnForHoldings(
   return factor / weightSum;
 }
 
+/**
+ * Proxy cuota at `ymd`: the anchor cuota carried by the basket's value-weighted USD return and
+ * the fx ratio, BOTH legs in the dólar observado frame (`fxObservadoFrame.ts`) — the anchor
+ * cuota embeds composition_date's interbank fx, so the ratio must be taken against that same
+ * frame or the proxy starts one afternoon's peso move away from the official value.
+ */
 export function proxyClpFromMeta(
   meta: CompositeMeta,
   holdings: CompositeHolding[],
   ymd: string,
   opts: { preferLive?: boolean; now?: Date } = {}
 ): number {
-  if (
-    !Number.isFinite(meta.anchor_fund_unit_clp) ||
-    meta.anchor_fund_unit_clp <= 0 ||
-    !Number.isFinite(meta.anchor_fx_clp) ||
-    meta.anchor_fx_clp <= 0
-  ) {
+  if (!Number.isFinite(meta.anchor_fund_unit_clp) || meta.anchor_fund_unit_clp <= 0) {
     throw new Error(`composite proxy ${ymd}: invalid anchor metadata`);
   }
+  const now = opts.now ?? new Date();
   const basketReturn = basketReturnForHoldings(holdings, meta.composition_date, ymd, opts);
-  const fx = fxClpOnOrBefore(ymd, opts.now ?? new Date());
-  if (fx == null) {
-    throw new Error(`composite proxy ${ymd}: missing FX`);
-  }
-  return meta.anchor_fund_unit_clp * basketReturn * (fx / meta.anchor_fx_clp);
-}
-
-function calendarMonthsPriorYmd(ymd: string, months: number): string {
-  const y = Number(ymd.slice(0, 4));
-  const m = Number(ymd.slice(5, 7));
-  const d = Number(ymd.slice(8, 10));
-  const dt = new Date(Date.UTC(y, m - 1 - months, d));
-  return dt.toISOString().slice(0, 10);
+  const fxAnchor = observadoFrameFxForDay(meta.composition_date, now);
+  const fx = observadoFrameFxForDay(ymd, now);
+  return meta.anchor_fund_unit_clp * basketReturn * (fx.clp_per_usd / fxAnchor.clp_per_usd);
 }
 
 /**
@@ -280,66 +217,20 @@ function tryProxyClp(
   }
 }
 
-export type CompositeStatsAnchors = {
-  day: number | null;
-  week: number | null;
-  mtd: number | null;
-  mom: number | null;
-  ytd: number | null;
-  yoy: number | null;
-  y3: number | null;
-  y5: number | null;
-  y10: number | null;
-};
-
-function yearsPriorYmd(todayYmd: string, years: number): string {
-  const y = Number(todayYmd.slice(0, 4));
-  return `${y - years}${todayYmd.slice(4)}`;
-}
-
-function yoyAnchorYmd(todayYmd: string): string {
-  return yearsPriorYmd(todayYmd, 1);
-}
-
-export function compositeStatsAnchors(
+/**
+ * EOD-framed proxy CLP value at each requested date (null where the day lacks data) — the
+ * watchlist's change anchors; the dates themselves come from `watchlistAnchorYmds`.
+ */
+export function compositeValuesAtYmds<K extends string>(
   meta: CompositeMeta,
   holdings: CompositeHolding[],
-  asOfYmd: string,
-  today: string,
+  ymds: Record<K, string | null>,
   now: Date
-): CompositeStatsAnchors {
-  const priorDay = chileCalendarAddDays(asOfYmd, -1);
-  const weekAnchor = nyseSessionsBack(asOfYmd, 5) ?? chileCalendarAddDays(asOfYmd, -7);
-  const mtdAnchor = priorPeriodEndYmd("mtd", today);
-  const ytdAnchor = priorPeriodEndYmd("ytd", today);
-  const yoyAnchor = yoyAnchorYmd(today);
-  const momAnchor = calendarMonthsPriorYmd(asOfYmd, 1);
-
-  const anchorYmds = {
-    day: priorDay,
-    week: weekAnchor,
-    mtd: mtdAnchor,
-    mom: momAnchor,
-    ytd: ytdAnchor,
-    yoy: yoyAnchor,
-    y3: yearsPriorYmd(today, 3),
-    y5: yearsPriorYmd(today, 5),
-    y10: yearsPriorYmd(today, 10),
-  };
-
-  const out: CompositeStatsAnchors = {
-    day: null,
-    week: null,
-    mtd: null,
-    mom: null,
-    ytd: null,
-    yoy: null,
-    y3: null,
-    y5: null,
-    y10: null,
-  };
-  for (const key of Object.keys(anchorYmds) as (keyof typeof anchorYmds)[]) {
-    out[key] = tryProxyClp(meta, holdings, anchorYmds[key], { preferLive: false, now });
+): Record<K, number | null> {
+  const out = {} as Record<K, number | null>;
+  for (const key of Object.keys(ymds) as K[]) {
+    const ymd = ymds[key];
+    out[key] = ymd != null ? tryProxyClp(meta, holdings, ymd, { preferLive: false, now }) : null;
   }
   return out;
 }

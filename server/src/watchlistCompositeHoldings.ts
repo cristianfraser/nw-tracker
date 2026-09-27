@@ -1,6 +1,10 @@
 import type { MarketDisplaySeriesRow } from "./marketDisplaySeries.js";
 import { loadCompositeHoldings } from "./watchlistComposite.js";
-import { watchlistStatsForRow, type WatchlistRowStats } from "./watchlistStats.js";
+import {
+  watchlistStatsForRow,
+  type WatchlistDisplayUnit,
+  type WatchlistRowStats,
+} from "./watchlistStats.js";
 
 export type WatchlistCompositeHoldingRow = WatchlistRowStats & {
   ticker: string;
@@ -25,11 +29,12 @@ function syntheticEquityRow(ticker: string): MarketDisplaySeriesRow {
 
 export function compositeHoldingsWithStats(
   bucketSlug: string,
-  now = new Date()
+  now = new Date(),
+  unit: WatchlistDisplayUnit = "clp"
 ): WatchlistCompositeHoldingRow[] {
   const holdings = loadCompositeHoldings(bucketSlug);
   return holdings.map((h) => {
-    const stats = watchlistStatsForRow(syntheticEquityRow(h.ticker), now);
+    const stats = watchlistStatsForRow(syntheticEquityRow(h.ticker), now, unit);
     return {
       ticker: h.ticker,
       weight: h.weight,

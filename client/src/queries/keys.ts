@@ -23,8 +23,11 @@ export const queryKeys = {
   accountsByPortfolioGroup: (portfolioGroup: string, unit: DisplayUnit) =>
     ["accounts", "portfolioGroup", portfolioGroup, unit] as const,
   ratesInstruments: () => ["ratesInstruments"] as const,
-  marketTicker: () => ["marketTicker"] as const,
-  watchlist: () => ["watchlist"] as const,
+  /** Prefix keys (no unit) invalidate every unit's copy at once. */
+  marketTickerAll: () => ["marketTicker"] as const,
+  marketTicker: (unit: DisplayUnit) => ["marketTicker", unit] as const,
+  watchlistAll: () => ["watchlist"] as const,
+  watchlist: (unit: DisplayUnit) => ["watchlist", unit] as const,
   marketSeries: () => ["marketSeries"] as const,
   mortgageUfReminder: () => ["mortgageUfReminder"] as const,
   fxLatest: () => ["fxLatest"] as const,

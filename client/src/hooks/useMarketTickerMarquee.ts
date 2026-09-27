@@ -49,6 +49,14 @@ function tickerLabel(ticker: string): string {
   return ticker;
 }
 
+/**
+ * The server already expressed the value in the display unit; pesos print grouped with the
+ * decimals they have (a cuota, a UF), dollars always with two.
+ */
+function formatMarqueeValue(value: number, currency: "usd" | "clp"): string {
+  return currency === "clp" ? formatGroupedDecimalTrimmed(value) : formatGroupedDecimal(value, 2);
+}
+
 type MarqueeLabels = {
   uf: string;
   usdLive: string;
@@ -73,15 +81,16 @@ function buildItemsFromSeriesConfig(
 ): TickerMarqueeItem[] {
   const items: TickerMarqueeItem[] = [];
   for (const row of series) {
-    if (row.kind === "uf" && payload.uf != null && Number.isFinite(payload.uf.clp_per_uf)) {
+    if (row.kind === "uf" && payload.uf != null && Number.isFinite(payload.uf.value)) {
       items.push({
         kind: "uf",
         label: seriesLabel(row, labels),
-        value: formatGroupedDecimalTrimmed(payload.uf.clp_per_uf),
+        value: formatMarqueeValue(payload.uf.value, payload.uf.currency),
       });
       continue;
     }
     if (row.kind === "fx_usd" && payload.usd != null && Number.isFinite(payload.usd.clp_per_usd)) {
+      // The rate itself: CLP per USD whatever the display unit.
       items.push({
         kind: "usd_live",
         label: seriesLabel(row, labels),
@@ -95,7 +104,7 @@ function buildItemsFromSeriesConfig(
       items.push({
         kind: "uno_a",
         label: seriesLabel(row, labels),
-        value: formatGroupedDecimalTrimmed(payload.uno_a.unit_value_clp),
+        value: formatMarqueeValue(payload.uno_a.value, payload.uno_a.currency),
         delta: payload.uno_a.delta_pct,
         fractionDigits: 2,
       });
@@ -105,7 +114,7 @@ function buildItemsFromSeriesConfig(
       items.push({
         kind: "risky_norris",
         label: seriesLabel(row, labels),
-        value: formatGroupedDecimalTrimmed(payload.risky_norris.unit_value_clp),
+        value: formatMarqueeValue(payload.risky_norris.value, payload.risky_norris.currency),
         delta: payload.risky_norris.delta_pct,
         fractionDigits: 2,
       });
@@ -119,7 +128,7 @@ function buildItemsFromSeriesConfig(
       items.push({
         kind: "risky_norris_proxy",
         label: seriesLabel(row, labels),
-        value: formatGroupedDecimalTrimmed(payload.risky_norris_proxy.unit_value_clp),
+        value: formatMarqueeValue(payload.risky_norris_proxy.value, payload.risky_norris_proxy.currency),
         delta: payload.risky_norris_proxy.delta_pct,
         fractionDigits: 2,
       });
@@ -131,10 +140,7 @@ function buildItemsFromSeriesConfig(
         items.push({
           kind: "equity",
           label: tickerLabel(row.series_key),
-          value:
-            eq.currency === "clp"
-              ? formatGroupedDecimalTrimmed(eq.value)
-              : formatGroupedDecimal(eq.value, 2),
+          value: formatMarqueeValue(eq.value, eq.currency),
           delta: eq.delta_pct,
           fractionDigits: 2,
         });
@@ -151,9 +157,10 @@ function buildItems(payload: MarketTickerResponse, labels: MarqueeLabels): Ticke
 
 export function useMarketTickerMarquee(): { items: TickerMarqueeItem[]; loading: boolean } {
   const { t } = useTranslation();
-  const { data: payload, isPending } = useMarketTicker();
-  // Items carry pre-formatted strings, so the memo must refresh on separator change.
-  const { decimalSeparator } = useDisplayPreferences();
+  // Items carry pre-formatted strings, so the memo must refresh on separator change; the
+  // unit is part of the query key, so a toggle refetches the strip in the other currency.
+  const { decimalSeparator, displayUnit } = useDisplayPreferences();
+  const { data: payload, isPending } = useMarketTicker(displayUnit);
 
   const labels = useMemo(
     () => ({
