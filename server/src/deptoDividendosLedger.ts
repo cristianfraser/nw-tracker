@@ -442,27 +442,6 @@ export function deptoPaymentHumanNote(
   return manual ? `${base} (manual)` : base;
 }
 
-/**
- * Σ mortgage payments in the calendar month of `asOf` with `occurred_on` ≤ `asOf`.
- * When `afterExclusive` is set, only counts payments strictly after that date (same month snapshots).
- */
-export function mortgageSheetPaymentsClpThroughDate(
-  ledger: readonly DeptoMortgageSheetRow[],
-  asOf: string,
-  afterExclusive: string | null
-): number {
-  const mk = asOf.slice(0, 7);
-  let sum = 0;
-  for (const r of ledger) {
-    if (!isDeptoMortgagePaymentCuota(r.cuota)) continue;
-    if (r.occurred_on.slice(0, 7) !== mk) continue;
-    if (afterExclusive != null && r.occurred_on <= afterExclusive) continue;
-    if (r.occurred_on > asOf) continue;
-    sum += Math.abs(r.pago_clp);
-  }
-  return sum;
-}
-
 /** Mortgage payment cash events (cuotas + prepagos; pie is property capital) with `occurred_on` ≤ `asOf`. */
 export function mortgageSheetPaymentEventsThroughDate(
   ledger: readonly DeptoMortgageSheetRow[],
@@ -479,24 +458,21 @@ export function mortgageSheetPaymentEventsThroughDate(
 }
 
 /**
- * Property capital flow: actual CLP paid in the calendar month of `asOf` (pie, cuotas, prepagos).
- * P/L compares pesos out of pocket vs UF-based net-equity marks converted to CLP at month-end.
+ * Property capital cash events (pie, cuotas, prepagos — the pesos actually paid) with
+ * `occurred_on` ≤ `asOf`. P/L compares pesos out of pocket vs UF-based net-equity marks
+ * converted to CLP at month-end.
  */
-export function deptoPropertyClpPaymentsThroughDate(
+export function deptoPropertyPaymentEventsThroughDate(
   ledger: readonly DeptoMortgageSheetRow[],
-  asOf: string,
-  afterExclusive: string | null
-): number {
-  const mk = asOf.slice(0, 7);
-  let sum = 0;
+  asOf: string
+): { occurred_on: string; pago_clp: number }[] {
+  const out: { occurred_on: string; pago_clp: number }[] = [];
   for (const r of ledger) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on)) continue;
-    if (r.occurred_on.slice(0, 7) !== mk) continue;
-    if (afterExclusive != null && r.occurred_on <= afterExclusive) continue;
     if (r.occurred_on > asOf) continue;
-    sum += Math.abs(r.pago_clp);
+    out.push({ occurred_on: r.occurred_on, pago_clp: Math.abs(r.pago_clp) });
   }
-  return sum;
+  return out;
 }
 
 /** UF día for display — always from `uf_daily`, never the duplicated sheet column. */

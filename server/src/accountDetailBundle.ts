@@ -40,7 +40,6 @@ import {
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountDisplayValue } from "./accountDisplayValue.js";
-import { totalWithdrawalsClpForAccount } from "./accountDeposits.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
 const MOVEMENT_CARTOLA_SLUGS = new Set(["cuenta_corriente", "cuenta_vista"]);
@@ -101,7 +100,6 @@ export async function buildAccountDetailBundle(
   unit: TsUnit,
   granularity: "monthly" | "daily"
 ) {
-  const withdrawals_clp = totalWithdrawalsClpForAccount(accountId);
   const cat = db
     .prepare(
       `SELECT g.slug AS bucket_slug, g.label AS bucket_label, a.name AS account_name, a.notes AS account_notes, a.import_key AS account_import_key,
@@ -178,7 +176,6 @@ export async function buildAccountDetailBundle(
     group_peer_count: cat.group_peer_count,
     equity_quote_currency: bundleEquityTicker ? equityQuoteCurrency(bundleEquityTicker) : null,
     deposits_clp,
-    withdrawals_clp,
     latest_valuation_clp,
     latest_valuation_date,
     position,

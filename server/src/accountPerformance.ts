@@ -12,14 +12,14 @@ import type { TsUnit } from "./valuationTimeseries.js";
 import { MONTH_ROW_EPS, pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
 import { flowAdjustedPctMonth } from "./periodReturns.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { netDepositFlowCurrentMonthThroughToday } from "./flowsDeposits.js";
+import { flowEventInUnit, netDepositFlowCurrentMonthThroughToday } from "./flowsDeposits.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import {
   deptoCreditoRestanteUfBySnapshotDates,
   deptoMortgageCloseClpBySnapshotDates,
-  deptoPropertyClpPaymentsThroughDate,
+  deptoPropertyPaymentEventsThroughDate,
   deptoPropertyCloseClpBySnapshotDates,
-  mortgageSheetPaymentsClpThroughDate,
+  mortgageSheetPaymentEventsThroughDate,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
@@ -94,7 +94,7 @@ function numCell(v: unknown): number | null {
   return null;
 }
 
-/** Depto sheet payments are CLP; convert to the performance series unit. */
+/** A CLP amount in the performance series unit at `asOf` (the card's financing cost). */
 function perfSheetClpFlowInUnit(clpFlow: number, asOf: string, unit: TsUnit): number {
   if (unit === "clp") return clpFlow;
   const converted = convertTs(clpFlow, asOf, unit);
@@ -106,15 +106,38 @@ function perfSheetClpFlowInUnit(clpFlow: number, asOf: string, unit: TsUnit): nu
   return converted;
 }
 
+/**
+ * Depto ledger payments in the calendar month of `asOf` (through `asOf`; only those after
+ * `afterExclusive` when set, for same-month snapshots), in the series unit — each payment at
+ * its own date's rate (`flowEventInUnit`), the same events and conversion as the mortgage card
+ * and the daily series.
+ */
+function perfLedgerPaymentsInUnit(
+  events: readonly { occurred_on: string; pago_clp: number }[],
+  asOf: string,
+  afterExclusive: string | null,
+  unit: TsUnit
+): number {
+  const mk = asOf.slice(0, 7);
+  let sum = 0;
+  for (const e of events) {
+    if (e.occurred_on.slice(0, 7) !== mk) continue;
+    if (afterExclusive != null && e.occurred_on <= afterExclusive) continue;
+    sum += flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, unit);
+  }
+  return sum;
+}
+
 function perfDeptoPropertyPaymentsInUnit(
   ledger: readonly DeptoMortgageSheetRow[],
   asOf: string,
   afterExclusive: string | null,
   unit: TsUnit
 ): number {
-  return perfSheetClpFlowInUnit(
-    deptoPropertyClpPaymentsThroughDate(ledger, asOf, afterExclusive),
+  return perfLedgerPaymentsInUnit(
+    deptoPropertyPaymentEventsThroughDate(ledger, asOf),
     asOf,
+    afterExclusive,
     unit
   );
 }
@@ -125,9 +148,10 @@ function perfMortgagePaymentsInUnit(
   afterExclusive: string | null,
   unit: TsUnit
 ): number {
-  return perfSheetClpFlowInUnit(
-    mortgageSheetPaymentsClpThroughDate(ledger, asOf, afterExclusive),
+  return perfLedgerPaymentsInUnit(
+    mortgageSheetPaymentEventsThroughDate(ledger, asOf),
     asOf,
+    afterExclusive,
     unit
   );
 }

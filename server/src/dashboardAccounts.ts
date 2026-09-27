@@ -30,7 +30,7 @@ import { syncStatusPayload } from "./globalSyncStale.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
-import { depositClpToUsdAtDate } from "./flowsDeposits.js";
+import { depositClpToUsdAtDate, flowEventInUnit } from "./flowsDeposits.js";
 import { buildFxCoverageWithConversionWarnings } from "./fxCoverage.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 import {
@@ -170,7 +170,8 @@ type MortgageCardDeposits = {
 /**
  * Aportado on mortgage cards = depto ledger payments (cuotas + prepagos; pie is property
  * capital), not the flows deposit pool — mortgage cash-in carries `flow_kind` mortgage and
- * is excluded there. Null when no ledger (demo/test installs without depto data).
+ * is excluded there. Null when no ledger (demo/test installs without depto data). USD: each
+ * payment at its own date's rate (`flowEventInUnit`), like the performance table's flow.
  */
 function computeMortgageCardDeposits(
   includeUsd: boolean,
@@ -200,18 +201,11 @@ function computeMortgageCardDeposits(
     if (inYear) year_clp += e.pago_clp;
     if (inDay) day_clp += e.pago_clp;
     if (total_usd != null) {
-      const usd = depositClpToUsdAtDate(e.pago_clp, e.occurred_on);
-      if (usd == null || !Number.isFinite(usd)) {
-        total_usd = null;
-        month_usd = null;
-        year_usd = null;
-        day_usd = null;
-      } else {
-        total_usd += usd;
-        if (inMonth && month_usd != null) month_usd += usd;
-        if (inYear && year_usd != null) year_usd += usd;
-        if (inDay && day_usd != null) day_usd += usd;
-      }
+      const usd = flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, "usd");
+      total_usd += usd;
+      if (inMonth && month_usd != null) month_usd += usd;
+      if (inYear && year_usd != null) year_usd += usd;
+      if (inDay && day_usd != null) day_usd += usd;
     }
   }
   return { total_clp, total_usd, month_clp, month_usd, year_clp, year_usd, day_clp, day_usd };

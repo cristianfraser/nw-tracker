@@ -1,7 +1,4 @@
-import {
-  loadMergedDisplayDepositInflowEvents,
-  type DepositInflowEvent,
-} from "./accountDeposits.js";
+import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { isLiabilityAccountId } from "./accountBucket.js";
 import { getAggregationCached } from "./aggregationCache.js";
 import { isCreditCardAccountId } from "./ccAccountConfig.js";
@@ -9,7 +6,7 @@ import { ccFinancingCostClpByDate } from "./ccFinancingCostDaily.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
-import { depositClpToUsdAtDate, depositInflowEventUsd } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./flowsDeposits.js";
 import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
@@ -135,8 +132,8 @@ export function chileCalendarDaysListEndingAt(endYmd: string, count: number): st
  * Per-day net capital flows for one grid. Same event source and window semantics as
  * `netDepositFlowBetween` — merged display deposit events bucketed into `(grid[i-1], grid[i]]`
  * (USD-cash accounts included since 2026-08-04, via `loadUsdCashCapitalSortFlows`). Returns
- * CLP flows for clp/uf units and native USD flows for usd (events without USD skip, as in
- * `netDepositFlowBetween`).
+ * CLP flows for clp/uf units and USD flows for usd, every event at its own date's rate
+ * (`flowEventInUnit`, as in `netDepositFlowBetween`).
  *
  * Liability accounts have no movement-based deposit events (the mortgage's cash is the depto
  * ledger, a card's is its statements), so they carry their own sources — positive when money
@@ -189,10 +186,9 @@ function gridFlows(
   };
   for (const id of regularIds) {
     for (const e of eventsById.get(id) ?? []) {
-      if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
+      if (e.amt === 0) continue;
       if (e.occurred_on <= first || e.occurred_on > last) continue;
-      const amt = flowUnit === "usd" ? usdFlowForEvent(e) : e.amt;
-      if (amt == null) continue;
+      const amt = flowEventInUnit(e, flowUnit);
       const row = rowIndexForEvent(e.occurred_on);
       flows[row] += amt;
       addFor(id, row, amt);
@@ -204,10 +200,9 @@ function gridFlows(
   // have no cash ledger; their flows are derived from the balance in `ccDerivedFlowsClp`.
   if (mortgageIds.length > 0) {
     for (const e of mortgageSheetPaymentEventsThroughDate(loadDeptoLedgerFromMovements(), last)) {
-      if (e.pago_clp === 0 || !Number.isFinite(e.pago_clp)) continue;
+      if (e.pago_clp === 0) continue;
       if (e.occurred_on <= first || e.occurred_on > last) continue;
-      const amt = flowUnit === "usd" ? depositClpToUsdAtDate(e.pago_clp, e.occurred_on) : e.pago_clp;
-      if (amt == null || !Number.isFinite(amt)) continue;
+      const amt = flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, flowUnit);
       const row = rowIndexForEvent(e.occurred_on);
       liabilityFlows[row] += amt;
       // The depto ledger is one mortgage's payment history (the loop above is gated on there
@@ -241,17 +236,12 @@ function ccDerivedFlowsClp(
   return out;
 }
 
-function usdFlowForEvent(e: DepositInflowEvent): number | null {
-  const usd = depositInflowEventUsd(e);
-  return usd != null && Number.isFinite(usd) ? usd : null;
-}
-
 /**
  * Full-history cumulative personal deposits through each grid date, per account — the
  * "aportes acum." chart companion. Same event source as {@link sessionFlows} (merged display
  * deposit events — USD-cash included since 2026-08-04), so the line's step on a deposit day
- * equals that day's flow leg. CLP for clp/uf units, native USD for usd (uf conversion happens
- * at emit time, per session date).
+ * equals that day's flow leg. CLP for clp/uf units, USD for usd — each event at its own date's
+ * rate, `flowEventInUnit` (uf conversion happens at emit time, per session date).
  */
 function accountDepositCumsOnGrid(
   accounts: readonly ShortHorizonAccountRef[],
@@ -272,10 +262,8 @@ function accountDepositCumsOnGrid(
       while (ei < events.length && events[ei]!.occurred_on <= ymd) {
         const e = events[ei]!;
         ei += 1;
-        if (e.amt === 0 || !Number.isFinite(e.amt)) continue;
-        const amt = flowUnit === "usd" ? usdFlowForEvent(e) : e.amt;
-        if (amt == null) continue;
-        cum += amt;
+        if (e.amt === 0) continue;
+        cum += flowEventInUnit(e, flowUnit);
       }
       cums[gi] = cum;
     }
@@ -385,8 +373,7 @@ export function getBucketDailySeries(
     for (let i = 1; i < grid.length; i++) {
       const clp = derived[i - 1]!;
       if (clp === 0) continue;
-      const amt = flowUnit === "usd" ? depositClpToUsdAtDate(clp, grid[i]!) : clp;
-      if (amt == null || !Number.isFinite(amt)) continue;
+      const amt = flowEventInUnit({ occurred_on: grid[i]!, amt: clp }, flowUnit);
       liabilityFlows[i - 1] += amt;
       const arr = flowsByAccount.get(accountId) ?? new Array<number>(grid.length - 1).fill(0);
       arr[i - 1] += amt;

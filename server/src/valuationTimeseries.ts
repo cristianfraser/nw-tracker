@@ -6,7 +6,7 @@ import {
   totalDisplayDepositsClpForAccount,
   type DepositInflowEvent,
 } from "./accountDeposits.js";
-import { depositInflowEventUsd } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./flowsDeposits.js";
 import { deptoAccountMarkClpAtYmd, loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import {
   accountUsesEquityMtm,
@@ -245,19 +245,6 @@ function appendGroupTabTotals(block: GroupTabValuationBlock): GroupTabValuationB
 
 type MovDep = DepositInflowEvent;
 
-/** UF per CLP at the payment date, rounded (matches “UF con 5 decimales” ledger style). */
-const DEPOSIT_CROSS_RATE_DECIMALS = 5;
-
-/** CLP → UF at `paymentDate`’s UF table row; rounded — do not re-divide cumulative CLP by later month-end UF. */
-function clpToUfAtPaymentRounded(clp: number, paymentDate: string): number | null {
-  if (!Number.isFinite(clp) || clp === 0) return 0;
-  const u = ufRowOnOrBefore(paymentDate);
-  if (!u || u.clp_per_uf <= 0) return null;
-  const uf = clp / u.clp_per_uf;
-  const f = 10 ** DEPOSIT_CROSS_RATE_DECIMALS;
-  return Math.round(uf * f) / f;
-}
-
 /** Flows through snapshot date `d` (month-end `YYYY-MM-DD`, or legacy `YYYY-MM-01` converted to month-end). */
 function depositCutoffForSnapshotRow(asOfLabel: string): string {
   const m = /^(\d{4})-(\d{2})-01$/.exec(asOfLabel);
@@ -272,7 +259,15 @@ function sortMovsChronological(movs: MovDep[]): MovDep[] {
   return [...movs].sort((a, b) => a.occurred_on.localeCompare(b.occurred_on));
 }
 
-function cumulativeDepClpByDate(datesAsc: string[], movs: MovDep[]): Map<string, number> {
+/**
+ * Cumulative deposits through each snapshot date in `unit`: each flow at its own date's rate
+ * (`flowEventInUnit` — never "cumulative CLP ÷ a later rate").
+ */
+function cumulativeDepInUnitByDate(
+  datesAsc: string[],
+  movs: MovDep[],
+  unit: TsUnit
+): Map<string, number> {
   const sorted = sortMovsChronological(movs);
   const out = new Map<string, number>();
   let i = 0;
@@ -280,44 +275,7 @@ function cumulativeDepClpByDate(datesAsc: string[], movs: MovDep[]): Map<string,
   for (const d of datesAsc) {
     const cut = depositCutoffForSnapshotRow(d);
     while (i < sorted.length && sorted[i].occurred_on <= cut) {
-      cum += sorted[i].amt;
-      i++;
-    }
-    out.set(d, cum);
-  }
-  return out;
-}
-
-/** Cumulative sum of each flow’s UF at its own payment date (no “cumulative CLP ÷ month-end UF”). */
-function cumulativeDepUfByDate(datesAsc: string[], movs: MovDep[]): Map<string, number> {
-  const sorted = sortMovsChronological(movs);
-  const out = new Map<string, number>();
-  let i = 0;
-  let cum = 0;
-  for (const d of datesAsc) {
-    const cut = depositCutoffForSnapshotRow(d);
-    while (i < sorted.length && sorted[i].occurred_on <= cut) {
-      const m = sorted[i];
-      const part = clpToUfAtPaymentRounded(m.amt, m.occurred_on);
-      if (part != null) cum += part;
-      i++;
-    }
-    out.set(d, cum);
-  }
-  return out;
-}
-
-function cumulativeDepUsdByDate(datesAsc: string[], movs: MovDep[]): Map<string, number> {
-  const sorted = sortMovsChronological(movs);
-  const out = new Map<string, number>();
-  let i = 0;
-  let cum = 0;
-  for (const d of datesAsc) {
-    const cut = depositCutoffForSnapshotRow(d);
-    while (i < sorted.length && sorted[i].occurred_on <= cut) {
-      const m = sorted[i];
-      const part = depositInflowEventUsd(m);
-      if (part != null) cum += part;
+      cum += flowEventInUnit(sorted[i], unit);
       i++;
     }
     out.set(d, cum);
@@ -968,12 +926,12 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       continue;
     }
     const pocketMovs = displayDepMovs.get(id) ?? [];
-    depClpByAccAndDate.set(id, cumulativeDepClpByDate(dateStrs, pocketMovs));
+    depClpByAccAndDate.set(id, cumulativeDepInUnitByDate(dateStrs, pocketMovs, "clp"));
     if (unit === "uf") {
-      depUfByAccAndDate.set(id, cumulativeDepUfByDate(dateStrs, pocketMovs));
+      depUfByAccAndDate.set(id, cumulativeDepInUnitByDate(dateStrs, pocketMovs, "uf"));
     }
     if (unit === "usd") {
-      depUsdByAccAndDate.set(id, cumulativeDepUsdByDate(dateStrs, pocketMovs));
+      depUsdByAccAndDate.set(id, cumulativeDepInUnitByDate(dateStrs, pocketMovs, "usd"));
     }
   }
 
