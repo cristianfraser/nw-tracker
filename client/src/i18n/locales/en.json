@@ -44,7 +44,6 @@
     "subnavAria": "Exchange rate sections",
     "tabFx": "Currencies",
     "tabTickers": "Instruments",
-    "instrumentDisplayHint": "In CLP the USD/CLP series converts dollar closes; fund unit values start in CLP and are then converted to US$ in USD mode.",
     "recentColDate": "Date",
     "recentColValue": "Value",
     "recentEmpty": "No recent data",
@@ -54,7 +53,6 @@
       "buy": "US$ buy (bid/ask)",
       "sell": "US$ sell (bid/ask)",
       "gapsTitle": "Buy/sell rates to review",
-      "gapsHint": "Rows inferred from the Yahoo mid rate (±2 CLP) or with no data on that date. Enter your broker's real rate and save.",
       "gapsEmpty": "No dates pending review for US$ buy/sell.",
       "gapsColMid": "Mid (Yahoo)",
       "gapsColSource": "Source",
@@ -71,8 +69,7 @@
   },
   "realEstate": {
     "propertyValue": "value",
-    "mortgage": "mortgage",
-    "mortgageImportNotice": "UF mortgage: export the <1>dividendos</1> sheet from Numbers to <3>cfraser/depto-dividendos.csv</3>. The import creates <5>one movement per real payment</5> (same date as at the bank), with CLP, payment UF, UF/day, remaining credit, amortization, interest, the <7>min UF</7> scenario and <9>net value</9> / <11>accumulated payment</11> totals in the note. The real-estate account page shows the table aligned to that sheet. In charts, <13>accum. contributions in CLP</13> is the sum of the pesos paid; in <15>USD</15> (if you use that view) each payment's equivalent at the payment-day rate (5 decimals) is added, without reconverting the CLP total at each month's rate. Same for <17>UF</17> in APIs that request the UF unit. Home value and liability still come from the Excel at month end."
+    "mortgage": "mortgage"
   },
   "cash": {
     "reserva": "reserve",
@@ -102,12 +99,10 @@
     "noExpensesInPeriod": "No expenses in this period.",
     "noValuationSeries": "No valuation series for this period.",
     "groupPerfTitle": "Monthly P/L — YTD (group)",
-    "groupPerfHint": "Bars per account or subgroup, YTD area (sum of monthly Δ over the calendar year), diamond = total monthly Δ. Derived.",
     "groupPerfComboTitle": "Δ by account / subgroup, combined YTD and total Δ",
     "ytdGroupSeries": "YTD (group)",
     "deltaTotalSeries": "Total Δ",
     "groupAccumTitle": "Accumulated earnings (group)",
-    "groupAccumHint": "One bar = the class's monthly sum. Continuous area (no per-year bands). From the first month with data.",
     "athTooltip": "ATH · {{date}}",
     "overview": {
       "invested": "Invested"
@@ -147,18 +142,13 @@
       "primaryAccountsTitle": "Main accounts",
       "overviewTitle": "Net worth",
       "netWorthUsdSectionTitle": "Net worth, invested and US$ levels (CLP)",
-      "netWorthUsdSectionHint": "Net worth and invested in CLP. Dashed lines: CLP equivalent of US$10k, US$50k, US$100k, US$250k and US$500k at each date's exchange rate (US$ × that day's USD/CLP). The Y axis tracks only net worth and invested; the US$ levels may fall out of scale.",
       "netWorthUsdChartTitle": "Net worth vs invested (US$ reference)",
       "perfSectionTitleMonthly": "Investments — monthly P/L (YTD)",
       "perfSectionTitleYearly": "Investments — annual P/L (calendar year)",
-      "perfSectionHintMonthly": "Bars per class (retirement / brokerage), investments YTD area and diamond = combined monthly Δ.",
-      "perfSectionHintYearly": "Bars per class (retirement / brokerage), annual investments total and diamond = combined annual Δ.",
       "perfChartTitleMonthly": "Monthly Δ by class, investments YTD and combined monthly Δ",
       "perfChartTitleYearly": "Annual Δ by class, annual investments total and combined annual Δ",
       "accumSectionTitleMonthly": "Investments — accumulated earnings",
       "accumSectionTitleYearly": "Investments — accumulated (annual steps)",
-      "accumSectionHintMonthly": "Top: accumulated earnings with monthly Δ and MA3. Bottom: monthly Δ, deposits and their MA3 (same scale).",
-      "accumSectionHintYearly": "Top: accumulated earnings with annual Δ and MA3. Bottom: annual Δ, deposits and their MA3 (same scale).",
       "accumEarningsChartTitleMonthly": "Accumulated earnings and monthly Δ (investments)",
       "accumEarningsChartTitleYearly": "Accumulated earnings and annual Δ (investments)",
       "accumFlowsChartTitleMonthly": "Monthly Δ and deposits (investments)",
@@ -184,8 +174,6 @@
     },
     "accountsTreeTitle": "Accounts",
     "accountsTreeEmpty": "No accounts yet. Open an asset tab and note the category IDs for POST /api/accounts.",
-    "monthlyDetailHint": "Totals per month (sum of net-worth accounts).",
-    "flowsHint": "Movements across all net-worth accounts, ordered by date.",
     "combinedMonthlyDelta": "Σ monthly Δ",
     "combinedAnnualDelta": "Σ annual Δ",
     "cardBreakdown": {
@@ -228,14 +216,12 @@
     "mirrorPairsTitle": "Historical mirrors"
   },
   "settings": {
-    "pageHint": "Display preferences saved in this browser.",
     "language": "Language: ",
     "languageEs": "Español",
     "languageEn": "English"
   },
   "watchlist": {
     "pageTitle": "Watchlist",
-    "pageHint": "App instruments and manually added symbols. Choose which ones to show in the top strip.",
     "appSectionTitle": "App instruments",
     "manualSectionTitle": "Manual watchlist",
     "addTickerLabel": "Add ticker",
@@ -261,7 +247,6 @@
     "riskyNorrisProxy": "Risky Norris (intraday)"
   },
   "panelAccounts": {
-    "pageHint": "Reference view: accounts and the same Net worth hierarchy as the sidebar (portfolio_groups).",
     "addAccountTitle": "New account",
     "accountsTitle": "Account list",
     "portfolioGroupsTitle": "Portfolio groups (from Net worth)",
@@ -270,7 +255,6 @@
     "colAccount": "Account",
     "colBucket": "Bucket",
     "colExclude": "Exclude from totals",
-    "excludeHint": "Checked accounts are left out of bucket totals and Liabilities. Credit cards also stop netting against Savings and reserves.",
     "colActions": "Actions",
     "colSlug": "Slug",
     "colAccounts": "N accounts",
@@ -331,7 +315,6 @@
     "detailModalClose": "Close"
   },
   "notifications": {
-    "pageHint": "Validation notices (e.g. Fintual) and other system alerts.",
     "unreadBadge": "{{count}} unread",
     "empty": "No notifications.",
     "showMore": "Show more…",
@@ -342,17 +325,14 @@
     "colRead": "Read"
   },
   "importSync": {
-    "pageHint": "Automatic sync status, run log, and coverage of imported monthly documents.",
     "syncLogTitle": "Sync log",
     "logsEmpty": "No sync entries.",
     "availableDocumentsTitle": "Available documents",
-    "availableDocumentsHint": "One row per month (from the current month backwards). Columns: accounts with a monthly statement. Cards with USD show usd and clp subcolumns under the card name. ✓ = data imported; links to the PDF when the file is on disk. ✓✗ = imported but no PDF linked. ✗ = the month's document is missing.",
     "ccStatementCurrencyClp": "CLP",
     "ccStatementCurrencyUsd": "USD",
     "availableDocumentsEmpty": "No accounts with monthly documents configured.",
     "genericUniqueMerchantsTitle": "Automatic One-off merchants",
     "genericUniqueMerchants": {
-      "hint": "Merchants tagged as One-off on import (exact name match, no prefix rules). Adding or editing applies the backfill to existing movements.",
       "colMerchant": "Merchant name",
       "colActions": "Actions",
       "empty": "No merchants configured.",
@@ -443,9 +423,6 @@
     "yearlyDetailTitle": "Yearly detail",
     "dailyDetailTitle": "Daily detail",
     "dayColumn": "Date",
-    "positionHint": "Stocks and crypto: ticker and units (shares or coin) from movements in the database (<1>movements.units_delta</1> and import notes).",
-    "positionHintAfp": " AFP UNO Fondo A: units from <1>movements.units_delta</1> (certificate in <2>cfraser/afp-uno-certificado-cotizaciones.csv</2> or <3>.txt</3> when running <4>import:excel</4>, or <5>npm run afp:uno:cert-sync</5>).",
-    "positionHintAfc": " AFC Fondo de Cesantía (CIC): units from <1>movements.units_delta</1>, priced with the Superintendencia de Pensiones daily unit value (<2>afc_cic</2>). Units derived as pesos ÷ unit value until a cartola supplies the exact count (<3>npm run afc:derive-cuotas</3>).",
     "position": {
       "title": "Position (ticker and units)",
       "colTicker": "Ticker",
@@ -456,7 +433,6 @@
       "colValuePerUnit": "Value / unit (CLP)"
     },
     "monthlyPerfComputedTitle": "Monthly performance (computed)",
-    "sameBaseAsValuation": "Same base as valuation and contributions.",
     "ytdCalendarTitle": "YTD (calendar year)",
     "plMonthlyVsYtdTitle": "Monthly P/L vs YTD",
     "financingCostMonth": "Month P/L (financing cost)",
@@ -613,12 +589,8 @@
     "mortgageSheet": {
       "titleProperty": "Mortgage / payments (apartment sheet)",
       "titleMortgage": "Mortgage payments (apartment sheet)",
-      "intro": "Table read from the mortgage book in SQLite (<1>depto_dividendos_sheet_rows</1>): every row with a CLP amount is a payment (a month can have several).",
-      "pieNote": " The <1>down payment</1> is on the property account (depto), not on the mortgage liability.",
-      "tasaNote": " The loan's annual rate in the model is <1>4.95%</1>.",
       "proxAbbrev": "next",
       "referenceMinMax": "Reference: min / max installment (UF)",
-      "scenarioIntro": "Scenarios from the apartment sheet (not movements), on mortgage-calendar dates (the 11th of each month). The first row is the next projected installment. The minimum payment (30 years) is editable in Numbers; the maximum (~80 UF) approximates paying off in 5 years at the start of the loan.",
       "cards": {
         "viviendaHoja": "Home (sheet)",
         "hipotecaTrasPie": "Mortgage after down payment",
@@ -691,7 +663,6 @@
     "checking": {
       "monthModalTitle": "Movements {{month}}",
       "monthModalClose": "Close",
-      "cartolaMonthHint": "One row per month of history. Deposits and charges = sum of ledger movements for the month (transfer legs included). Month-end balance = sum of movements (ledger). Statement balance = the closing printed on the statement (reference only). Difference = month-end balance − statement balance.",
       "cartolaMonthEmpty": "No months in movements or valuations. Run npm run import:checking-cartolas on the server.",
       "cartolaMonthImportedCount": "{{imported}} of {{total}} month(s) with an imported statement",
       "cartolaNo": "No statement",
@@ -723,11 +694,8 @@
       "deudaEnCuotas": "Installment debt",
       "saldoTotal": "Total balance",
       "historialTitle": "History",
-      "historialHint": "Lines: installment debt still owed at each month-end (the daily view's line — a cycle's installments stay until that bill is paid, so it can exceed the Monthly detail's «installment debt», which drops them at the close that bills them) and total balance (same criteria as Monthly detail). Bars: each close's billed total, stacked bottom to top: the CLP billed outside installments (one-off purchases and bank charges, net of credit notes), the installments it bills and the US$ billed in pesos. Future months: only the installments the plan will bill, and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
-      "historialHintDaily": "Daily lines: total balance owed on each date (purchases raise it on the purchase date — installment plans at their full amount — and payments drop it) and the outstanding installment debt (contracts up on purchase day; each cycle's cuotas leave the day its facturación is actually paid, or on its pay-by when no payment is on record). Past today the installment plan is projected to its end (both lines meet once the open cycle is paid). Bars: each card's facturación on its close date (estimated for future months), stacked like the monthly view.",
       "historialCurrentMonth": "Current month",
       "historialCurrentYear": "Current year",
-      "historialHintYearly": "Lines: installment debt and total balance at each year-end (projected for future years). Bars: the year's billed totals, stacked like the monthly view (CLP, installments, US$); months not billed yet add only the plan's projected installments.",
       "historialEmpty": "No installment history for this account.",
       "chartFacturadoCuotasClp": "Billed CLP (installments)",
       "chartFacturadoClp": "Billed CLP",
@@ -738,9 +706,7 @@
       "ytdSection": "YTD (calendar year)",
       "accSection": "Accumulated earnings",
       "accAreaName": "Accumulated earnings",
-      "flowsHint": "Contributions, withdrawals, and movements recorded on the account.",
       "configTitle": "Card configuration",
-      "configHint": "Credit limit and billing cycle for this card. An empty cycle end defaults to day 20.",
       "configCardLabel": "Card",
       "configCupoClpLabel": "CLP limit",
       "configCupoUsdLabel": "US$ limit",
@@ -750,15 +716,12 @@
       "configSaved": "Configuration saved.",
       "configInvalidCupo": "Invalid limit: use a number ≥ 0 (CLP without decimals) or leave the field empty.",
       "configInvalidCycleDay": "Invalid cycle day: integer between 1 and 31.",
-      "detallePorMesBillingHint": "One row per billing month. Total billed = statement close (~20th); in the open month (no PDF yet) it includes the carry-over from the previous closed month plus the month's charges, minus payments (PAGO) until the next close. Total balance = billed + installment debt still unbilled after that close.",
       "colTotalFacturado": "Total billed",
       "colTotalFacturadoProjectedHint": "Projected value: estimated payment due for this billing month (no statement close yet).",
-      "detallePorMesBillingHintYearly": "One row per calendar year of billing months. Total billed = sum of the year's statement closes; ≈ marks years with months not yet closed, counted at their estimated payment due. Installment debt and total balance = year-end values (projected for future years).",
       "colTotalFacturadoProjectedHintYearly": "Estimated value: the year includes billing months without a statement close yet, each counted at its estimated payment due.",
       "colBalanceTotal": "Total balance",
       "colCupoEnCuotas": "Installment debt",
       "facturacionesTitle": "Billing cycles",
-      "facturacionesHint": "One row per billing month (close ~20th). Payment due = charges due in the “pay by” month (~10th of the following month).",
       "colCloseDate": "Close date",
       "colPayBy": "Pay by",
       "colFacturadoUsd": "Billed US$",
@@ -792,21 +755,15 @@
       "facturacionDeleteConfirmCancel": "Cancel",
       "lineColActions": "Actions",
       "associatedCardsTitle": "Associated cards",
-      "associatedCardsHint": "Physical card numbers with statements imported into this account.",
       "closeDateEstimatedHint": "Estimated from the card's configured cycle: the bank has not published this close yet.",
       "closeDateAnnouncedHint": "Announced as the next billing period by the previous statement.",
       "provisionalClose": "provisional",
       "provisionalCloseHint": "Closed at the bank, statement not imported yet. The facturado is the bank's billed total (the card feed's SALDO INICIAL) when the feed saw the close, otherwise the app's estimate.",
       "provisionalEstimateHint": "The app had estimated {{amount}} for this facturación."
     },
-    "monthlyPerfIntro": "Two charts: (1) monthly P/L vs <1>YTD</1> (the area restarts every January). (2) the same monthly Δ with an <3>Accumulated earnings</3> area (continuous from the first month, no per-year bands). The table keeps the detail.",
-    "monthlyPerfMortgageNote": " For the mortgage, <1>month P/L</1> = CLP balance drop − payments: negative = financing cost (interest, insurance and UF variation), not the investment formula.",
-    "monthlyPerfCcLedgerNote": " This account's monthly valuations are written to the database when importing the PDF's CSV; class tabs (e.g. Liabilities) read the same table.",
-    "monthlyPerfUnit": " Unit: <1>{{unit}}</1>",
     "monthlyPerfNotEnough": "Not enough months of monthly valuation to compute changes (or the account only has one point).",
     "stateContribution": {
       "title": "APV-A state contribution",
-      "intro": "State bonus (~15% of your previous year's deposits, capped). Accumulated total: <1>{{total}}</1>",
       "colDate": "Date",
       "colAmount": "CLP amount",
       "colAccumulated": "Accumulated CLP"
@@ -814,7 +771,6 @@
   },
   "periodReturns": {
     "title": "Returns",
-    "hint": "Flow-adjusted chained returns: contributions and withdrawals do not count as gains. Each period compounds the monthly returns; the amount is the period's nominal gain or loss in the active unit.",
     "d1": "1D",
     "w1": "1W",
     "mtd": "MTD",
@@ -835,13 +791,8 @@
     "dailyDetailTitle": "Daily detail",
     "flowsTitle": "Flows",
     "flowsAccountColumn": "Account",
-    "monthlyDetailHint": "Group totals per month (sum of the child accounts).",
-    "dailyDetailHint": "One row per calendar day: closing, day deposits and day P/L (balance change net of flows vs the prior close on each account's own calendar).",
     "dailyDetailEmpty": "No daily data for this group's accounts.",
-    "monthlyDetailHintLiabilities": "Group totals per month (sum of every account under this node, including cards and the mortgage).",
     "monthlyDetailEmpty": "No monthly performance data for this group's accounts.",
-    "flowsHint": "Movements across all child accounts, ordered by date.",
-    "flowsHintLiabilities": "Movements across all accounts under this node (cards, mortgage, etc.), ordered by date.",
     "accountsTreeTitle": "Accounts in this view",
     "accountsTreeTitleLiabilities": "Groups and accounts in this view",
     "chartToggleGrouped": "Grouped",
@@ -850,12 +801,9 @@
     "accountsTreeEmpty": "No accounts in this view yet.",
     "pasivos": {
       "creditCardSectionTitle": "Credit cards",
-      "creditCardSectionHint": "Aggregated totals for every card under this node (billing cycles, installment debt, and financing cost).",
       "mortgageSectionTitle": "Mortgage",
-      "mortgageSectionHint": "Installments, balance, and financing cost from the payments spreadsheet.",
       "mortgageValuationTitle": "Valuation",
       "mortgagePerfTitle": "Monthly performance (computed)",
-      "mortgagePerfHint": "For the mortgage, month P/L = CLP amortization minus payments: negative = financing cost (interest, insurance and UF variation).",
       "mortgageYtdChartTitle": "Monthly P/L vs YTD (financing cost)",
       "mortgageAccChartTitle": "Monthly and accumulated financing cost",
       "mortgageBarMonthlyCost": "Month financing cost"
@@ -899,7 +847,6 @@
     "rangeTotalLabel": "in range",
     "overview": {
       "title": "Overview",
-      "intro": "Income versus expenses and net deposits. Mortgage payments are split with the existing breakdown: interest + insurance counts as expense and amortization as deposit (no double counting). AFP+AFC contributions (payroll deductions, they never pass through the checking account) are shown separately and do not subtract from the net; withdrawals do count because they return to the post-tax circuit. Market P/L of the money buckets is stacked as its own bar and does not enter the net.",
       "chartTitle": "Income, expenses, deposits, and P/L",
       "chartEmpty": "No flow data.",
       "income": "Income",
@@ -914,7 +861,6 @@
     },
     "pl": {
       "title": "P/L",
-      "intro": "Monthly market P/L (value change minus deposits) of the net-worth money buckets: brokerage, retirement, and cash. Real estate is excluded. Cash P/L is savings interest only — checking accounts have no market P/L.",
       "chartTitle": "Monthly P/L by bucket",
       "chartEmpty": "No P/L data.",
       "colTotal": "Total",
@@ -944,7 +890,6 @@
     }
   },
   "income": {
-    "intro": "Income from bank-statement credits in checking and cuenta vista accounts, excluding internal transfers and deposits to investments.",
     "empty": "No bank-statement income or manual entries.",
     "emptyMonths": "No income in any month.",
     "totalLabel": "All-time total:",
@@ -952,7 +897,6 @@
     "chartEmpty": "No income in this period.",
     "sectionMonthly": "Monthly summary",
     "sectionAllLines": "Line detail",
-    "monthlyDetailHint": "One row per calendar month. Salary and severance come from payslips linked to bank-statement credits; unclassified includes the rest.",
     "colIncomeKind": "Type",
     "chart": {
       "salary": "Salary",
@@ -974,7 +918,6 @@
     "excludeConfirmAction": "Exclude",
     "excludeConfirmCancel": "Cancel",
     "sectionExcluded": "Excluded from income",
-    "sectionExcludedHint": "Bank-statement credits marked as non-income. Restoring them puts them back in totals and charts.",
     "excludedEmpty": "No excluded lines.",
     "restoreLine": "Restore",
     "restoreConfirmTitle": "Restore income",
@@ -982,7 +925,6 @@
     "restoreConfirmAction": "Restore",
     "restoreConfirmCancel": "Cancel",
     "sectionFiltered": "Automatically filtered",
-    "sectionFilteredHint": "Bank-statement credits skipped by automatic rules (transfers, investment returns, etc.). Including one forces it into Income.",
     "filteredEmpty": "No automatically filtered lines.",
     "colFilterReason": "Reason",
     "includeLine": "Include",
@@ -1004,7 +946,6 @@
   },
   "workEarnings": {
     "sectionTitle": "Payslips",
-    "sectionHint": "Breakdown imported from payslip PDFs. The net pay must match a linked bank-statement credit.",
     "empty": "No payslips imported. Run the payroll parse and import.",
     "colPeriod": "Period",
     "colEmployer": "Employer",
@@ -1025,7 +966,6 @@
     }
   },
   "deposits": {
-    "intro": "Net external capital by category (positive deposits, negative withdrawals). Same timeline as the “contributions” in accounts and charts: movements plus CLP wires and brokerage withdrawals.",
     "totalLabel": "All-time total:",
     "chartTitle": "Contributions by category",
     "chartEmpty": "No deposits in this period.",
@@ -1038,7 +978,6 @@
   },
   "depositsReconciliation": {
     "title": "Deposits reconciliation",
-    "intro": "Positive movements in net-worth accounts classified by coverage in the expense ledger.",
     "colDate": "Date",
     "colAccount": "Account",
     "colCategory": "Category",
@@ -1056,7 +995,6 @@
     "emptyNoCheckingSource": "No deposits in months without a bank statement.",
     "emptyNeedsAttention": "Every deposit is linked or has no bank statement.",
     "assertedTitle": "Manually marked as Deposits — no match",
-    "assertedIntro": "Checking outflows you categorized as Deposits (asserting that an equivalent deposit exists) but without a unique candidate: with 2+ candidates it is ambiguous and nothing is guessed; with 0 the deposit is missing from the ledger.",
     "assertedEmpty": "No outflows marked as Deposits without a match.",
     "assertedLinkedSummary": "{{count}} outflow(s) manually marked as Deposits were already linked automatically.",
     "colDescription": "Description",
@@ -1071,7 +1009,6 @@
     "colUnlinked": "Unlinked",
     "colTotal": "Total",
     "redemptionsTitle": "Redemptions (net-worth outflows → account)",
-    "redemptionsIntro": "Capital that leaves a net-worth account (not checking) and returns to checking: fund redemptions, DAP maturities, withdrawals. They are linked to the checking credit that is already excluded from income.",
     "redemptionSectionLinked": "Linked to an account credit",
     "redemptionSectionNoCheckingSource": "No bank statement (month without data)",
     "redemptionSectionNeedsAttention": "Unlinked (bank statement available)",
@@ -1080,7 +1017,6 @@
     "redemptionEmptyNeedsAttention": "Every redemption is linked or has no bank statement."
   },
   "expenses": {
-    "realEstateIntro": "Per-place bills linked to the real purchases that paid them (card or checking). A bill's charge can land the same month or one or two months later; amounts use the linked purchase or, if missing, the expected value. Use “Assign purchase…” to link history purchase-first.",
     "realEstate": {
       "colLinkedPurchase": "Linked expense",
       "colLinkedMerchant": "Merchant",
@@ -1132,7 +1068,6 @@
       "real_estate": "Real estate"
     },
     "creditCard": {
-      "intro": "Expenses by the purchase's calendar month (credit card) plus checking withdrawals that count as expenses, in CLP. Opening a month shows Purchases (one-off charges and installment-purchase totals) and Installments (installments billed that month). In “Per installment” mode each installment counts in its own month; in “Total” the full amount counts in the purchase month. Internal transfers and card payments are excluded.",
       "installmentModeLabel": "Installments",
       "installmentModeSplit": "Per installment",
       "installmentModeTotal": "Total",
@@ -1192,7 +1127,6 @@
         "real_estate_amortization": "Mortgage amortization",
         "checking_internal_transfer": "Internal transfer (accounts)"
       },
-      "monthlyDetailHint": "One row per calendar month. Purchases: the purchase month (one-off charges and installment totals). Installments: the month each installment is billed. Month spend excludes “Doesn't count” and installment 0.",
       "colMonthExpense": "Month spend",
       "colMonthExpenseReal": "Real total",
       "colCumulative": "Cumulative",
@@ -1222,10 +1156,8 @@
       "purchaseNotePlaceholder": "Note…",
       "purchaseNoteAria": "Purchase note",
       "unclassifiedTableTitle": "Unclassified expenses",
-      "unclassifiedTableHint": "Uncategorized charges, ordered by amount (largest first). Assign a category here or per merchant in the month detail.",
       "unclassifiedTableEmpty": "No unclassified expenses.",
       "depositMatchedTableTitle": "Expenses matched to deposits",
-      "depositMatchedTableHint": "Charges matched to an investment deposit: checking (auto:deposit-match note) or a card linked to a Depto installment (amortization in the chart). Review possible false positives among transfers.",
       "depositMatchedTableEmpty": "No expenses matched to deposits.",
       "mortgageDepositLinkCuota": "· Depto installment {{cuota}}",
       "investmentDepositLink": "· investment deposit",
@@ -1240,7 +1172,6 @@
         "chartFilterLabel": "Exclude from chart",
         "chartFilterHint": "Chart without big groups marked as excluded; the table shows the full total.",
         "sectionTitle": "Big groups",
-        "sectionHint": "Purchases grouped by trip, remodel, or other exceptional spending. The usual category (leisure, others, etc.) stays; here you set the group to review and filter the chart.",
         "purchaseCount": "{{count}} purchases",
         "emptyGroup": "No purchases in this group.",
         "renameAction": "Rename",
@@ -1286,7 +1217,6 @@
       "manualDelete": "Delete",
       "originImportDocument": "Imported (document)",
       "originManual": "Manual",
-      "installmentsLedgerHint": "Data imported into the database from statements (installments).",
       "installmentsEmpty": "No installment plans or imported statements. Import PDFs with npm run import:cfraser-inbox or load the ledger with import:cc-parsed.",
       "installmentsTitle": "Installment plans (card)",
       "installmentsCounts": "<1>{{purchases}}</1> installment purchases, <2>{{payments}}</2> installment payments recorded.",
@@ -1295,7 +1225,6 @@
       "activePurchasesTitle": "Active purchases (pending installments)",
       "activePurchasesEmpty": "No installment purchases with a pending balance.",
       "completedPurchasesTitle": "Completed purchases (history)",
-      "completedPurchasesCaption": "Includes contracts whose total paid reached the principal (incl. the final installment in the PDF even when <1>nro_cuota_current</1> is missing on summary rows like <2>03 CUOTAS COMERC</2>).",
       "completedPurchasesEmpty": "No settled installment purchases in the ledger.",
       "colPurchase": "Purchase",
       "colInstallments": "Installments",
@@ -1331,13 +1260,11 @@
   },
   "mirrorPairs": {
     "title": "Historical mirrors",
-    "intro": "Mirror movement pairs (a withdrawal in one account + an equal deposit in another) that predate the transfer model. Converting a pair replaces it with a single transfer dated on the withdrawal day; the original notes are kept and the conversion is reversible. Deposits already linked in the reconciliation are left out. Note: if a converted statement credit counted as income, the income total drops (it is a correction).",
     "highTitle": "High confidence ({{n}})",
     "emptyHigh": "No high-confidence candidates.",
     "ambiguousTitle": "Ambiguous ({{n}})",
     "emptyAmbiguous": "No ambiguous candidates.",
     "blockedTitle": "Blocked ({{n}})",
-    "blockedIntro": "Not convertible: the checking/cuenta vista credit straddles the month boundary and would move the statement-calibrated balance.",
     "blockedReasonCheckingStraddle": "checking credit straddles the month",
     "rejectedTitle": "Rejected ({{n}})",
     "restore": "Restore",
@@ -1365,7 +1292,6 @@
     "confirmConvert": "Convert",
     "confirmCancel": "Cancel",
     "ccTitle": "Card payments ({{n}})",
-    "ccIntro": "Checking debits paired with the card's payment evidence (statement PAGO or header). Converting merges them into one transfer dated at the card's credit date; the cartola date is preserved.",
     "emptyCc": "No card-payment pairs pending.",
     "badgeSkew": "{{n}}d skew",
     "confirmCcBatchTitle": "Convert card payments",
@@ -1396,7 +1322,6 @@
   },
   "wealthPercentile": {
     "title": "Wealth percentile",
-    "intro": "Your net worth's position in each country's wealth-per-adult distribution (lognormal model calibrated with the UBS Global Wealth Databooks; CLP converted at the year-end dólar observado).",
     "chart": {
       "seriesTotal": "Total percentile (CL)",
       "seriesFinancial": "Financial percentile (CL)",
@@ -1434,20 +1359,10 @@
       "distributionYear": "* uses the latest available databook distribution ({{year}})",
       "interpolated": "† parameters interpolated 2022→2025",
       "reconstructed": "‡ own reconstruction (not an official UBS figure)"
-    },
-    "caveats": {
-      "title": "Methodology notes",
-      "tail": "The lognormal model underestimates the extreme tail (>p99.5); p99 thresholds are more reliable than any figure about the ultra-rich.",
-      "reconstruction": "Chile 2025 is an own reconstruction (BCCh + FX + UBS Gini) validated against the UBS millionaire count, not an official UBS figure.",
-      "benchmarkReconstruction": "Mexico, Brazil and Mainland China 2025 are own reconstructions from the UBS GWR 2026 Gini + millionaire counts (their means/medians fall outside the published top-30 tables).",
-      "methodologyBreak": "Pre- and post-2023 medians are not comparable due to UBS's methodology change; 2023–2024 parameters are interpolated across the break.",
-      "adults": "Percentiles are over each country's adult (20+) population; wealth is measured at the individual level (UBS assigns household wealth to adults).",
-      "fx": "CLP→USD conversion uses the year-end BCentral dólar observado (UBS end-of-period convention), not the app-wide Yahoo rate."
     }
   },
   "projections": {
     "title": "Projections",
-    "intro": "One trajectory in today's money: accumulation to age {{age}} (real return + monthly contribution on the invested portion; real estate and cash hold their real value) and then three comparable drawdown strategies. The nominal line uses the visible currency's inflation; both views (the global CLP/USD toggle) share the same real trajectory.",
     "invalidRange": "Must be between {{min}} and {{max}}",
     "reset": "Reset",
     "params": {
@@ -1478,8 +1393,7 @@
       "depletes": "depletes at age {{age}}",
       "lasts": "lasts until age {{age}}",
       "neverDepletes": "never depletes; the income varies with the balance"
-    },
-    "footnote": "USD reference levels (250k–2M) converted at the current exchange rate ({{fx}} CLP/USD) in the CLP view. The whole projected chart is in today's money except the nominal line."
+    }
   },
   "routeError": {
     "title": "This page failed to load.",
@@ -1496,10 +1410,8 @@
   },
   "groceries": {
     "title": "Groceries",
-    "intro": "Receipts from the Boleta Digital e-mails, item by item. Classify printed names into products once; price history builds on the cleaned catalog.",
     "cleaning": {
       "title": "Unclassified names",
-      "intro": "Each row is a printed name (or barcode) not yet linked to a product. Select rows and assign them to an existing product, or create one.",
       "colName": "Printed name",
       "colBarcode": "Barcode",
       "colOccurrences": "Purchases",

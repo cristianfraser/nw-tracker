@@ -104,16 +104,11 @@ export function CreditCardConfigSection({ accountId }: Props) {
   return (
     <section style={{ margin: "1.5rem 0" }}>
       <h2 className="flow-section-title">{t("accountDetail.creditCard.configTitle")}</h2>
-      <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
-        {t("accountDetail.creditCard.configHint")}
-        {config.card_last4 ? (
-          <>
-            {" "}
-            · {t("accountDetail.creditCard.configCardLabel")}{" "}
-            <span className="mono">·{config.card_last4}</span>
-          </>
-        ) : null}
-      </p>
+      {config.card_last4 ? (
+        <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+          {t("accountDetail.creditCard.configCardLabel")} <span className="mono">·{config.card_last4}</span>
+        </p>
+      ) : null}
 
       <div
         style={{

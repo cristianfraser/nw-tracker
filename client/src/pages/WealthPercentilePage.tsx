@@ -366,7 +366,6 @@ export function WealthPercentilePage() {
   return (
     <main>
       <h1>{t("wealthPercentile.title")}</h1>
-      <p className="muted">{t("wealthPercentile.intro")}</p>
 
       <label
         style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}
@@ -463,18 +462,6 @@ export function WealthPercentilePage() {
       </section>
 
       <MarkerLegend rows={data.rows} />
-
-      <section style={{ margin: "1.5rem 0" }}>
-        <h3>{t("wealthPercentile.caveats.title")}</h3>
-        <ul className="muted" style={{ fontSize: "0.85em" }}>
-          <li>{t("wealthPercentile.caveats.tail")}</li>
-          <li>{t("wealthPercentile.caveats.reconstruction")}</li>
-          <li>{t("wealthPercentile.caveats.benchmarkReconstruction")}</li>
-          <li>{t("wealthPercentile.caveats.methodologyBreak")}</li>
-          <li>{t("wealthPercentile.caveats.adults")}</li>
-          <li>{t("wealthPercentile.caveats.fx")}</li>
-        </ul>
-      </section>
 
       <section style={{ margin: "1.5rem 0" }}>
         <h3>{t("wealthPercentile.settings.title")}</h3>

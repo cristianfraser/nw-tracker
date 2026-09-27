@@ -250,9 +250,6 @@ export function ExpensesPage() {
   return (
     <>
       <h2 className="flow-section-title">{t("sidebar.flowsExpenses")}</h2>
-      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "0.75rem" }}>
-        {t("expenses.creditCard.intro")}
-      </p>
 
       <div
         className="chart-controls"
@@ -347,9 +344,6 @@ export function ExpensesPage() {
         periodOptions={["month", "year"]}
       />
       </div>
-      <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.5rem" }}>
-        {t("expenses.creditCard.monthlyDetailHint")}
-      </p>
       <GroupExpensesMonthTable
         rows={monthTableRows}
         lines={data.lines}

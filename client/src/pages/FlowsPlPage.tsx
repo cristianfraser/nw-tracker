@@ -98,9 +98,6 @@ export function FlowsPlPage() {
   return (
     <>
       <h2 className="flow-section-title">{t("flows.pl.title")}</h2>
-      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "1rem" }}>
-        {t("flows.pl.intro")}
-      </p>
 
       <div
         className="chart-grid chart-grid--full-line chart-grid--full-width-stack"

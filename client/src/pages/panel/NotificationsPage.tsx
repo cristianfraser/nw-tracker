@@ -37,9 +37,6 @@ export function NotificationsPage() {
 
   return (
     <>
-      <p className="muted" style={{ marginBottom: "1rem" }}>
-        {t("notifications.pageHint")}
-      </p>
       <MessagesTable
         rows={notifications}
         showReadAt

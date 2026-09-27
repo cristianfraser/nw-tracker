@@ -143,9 +143,6 @@ export function BigExpenseGroupsSection({
       <h3 style={{ fontSize: "1.1rem", marginBottom: "0.35rem" }}>
         {t("expenses.creditCard.bigGroups.sectionTitle")}
       </h3>
-      <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.75rem" }}>
-        {t("expenses.creditCard.bigGroups.sectionHint")}
-      </p>
       {usage.map((g) => (
         <BigGroupBlock
           key={g.slug}

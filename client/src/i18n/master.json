@@ -134,10 +134,6 @@
       "en": "Instruments",
       "es": "Instrumentos"
     },
-    "instrumentDisplayHint": {
-      "en": "In CLP the USD/CLP series converts dollar closes; fund unit values start in CLP and are then converted to US$ in USD mode.",
-      "es": "En CLP se usa la serie USD/CLP para convertir cierres en dólares; el valor cuota de fondos parte en CLP y luego se convierte a US$ en modo USD."
-    },
     "recentColDate": {
       "en": "Date",
       "es": "Fecha"
@@ -170,10 +166,6 @@
       "gapsTitle": {
         "en": "Buy/sell rates to review",
         "es": "Tipos compra/venta por revisar"
-      },
-      "gapsHint": {
-        "en": "Rows inferred from the Yahoo mid rate (±2 CLP) or with no data on that date. Enter your broker's real rate and save.",
-        "es": "Filas inferidas desde el tipo medio Yahoo (±2 CLP) o sin dato en esa fecha. Ingresa el tipo real de tu corredora y guarda."
       },
       "gapsEmpty": {
         "en": "No dates pending review for US$ buy/sell.",
@@ -221,10 +213,6 @@
     "mortgage": {
       "en": "mortgage",
       "es": "hipoteca"
-    },
-    "mortgageImportNotice": {
-      "en": "UF mortgage: export the <1>dividendos</1> sheet from Numbers to <3>cfraser/depto-dividendos.csv</3>. The import creates <5>one movement per real payment</5> (same date as at the bank), with CLP, payment UF, UF/day, remaining credit, amortization, interest, the <7>min UF</7> scenario and <9>net value</9> / <11>accumulated payment</11> totals in the note. The real-estate account page shows the table aligned to that sheet. In charts, <13>accum. contributions in CLP</13> is the sum of the pesos paid; in <15>USD</15> (if you use that view) each payment's equivalent at the payment-day rate (5 decimals) is added, without reconverting the CLP total at each month's rate. Same for <17>UF</17> in APIs that request the UF unit. Home value and liability still come from the Excel at month end.",
-      "es": "Hipoteca en UF: exporta la hoja <1>dividendos</1> de Numbers a <3>cfraser/depto-dividendos.csv</3>. El import crea <5>un movimiento por cada pago real</5> (misma fecha que en el banco), con CLP, UF del pago, UF/día, crédito restante, amortización, interés, escenario <7>min UF</7> y totales <9>valor neto</9> / <11>pago acumulado</11> en la nota. En la ficha de la cuenta inmobiliaria verás la tabla alineada a esa hoja. En los gráficos, <13>aportes acum. en CLP</13> es la suma de los pesos pagados; en <15>USD</15> (si usas esa vista) se suma el equivalente de cada pago al tipo del día del pago (5 decimales), sin reconvertir el acumulado CLP al tipo de cada mes. Lo mismo para <17>UF</17> en APIs que pidan unidad UF. Valor vivienda y pasivo siguen desde el Excel a fin de mes."
     }
   },
   "cash": {
@@ -312,10 +300,6 @@
       "en": "Monthly P/L — YTD (group)",
       "es": "P/L mensual — YTD (grupo)"
     },
-    "groupPerfHint": {
-      "en": "Bars per account or subgroup, YTD area (sum of monthly Δ over the calendar year), diamond = total monthly Δ. Derived.",
-      "es": "Barras por cuenta o subgrupo, área YTD (suma de Δ del mes en el año calendario), rombo = Δ total del mes. Derivado."
-    },
     "groupPerfComboTitle": {
       "en": "Δ by account / subgroup, combined YTD and total Δ",
       "es": "Δ por cuenta / subgrupo, YTD combinado y Δ total"
@@ -331,10 +315,6 @@
     "groupAccumTitle": {
       "en": "Accumulated earnings (group)",
       "es": "Accumulated earnings (grupo)"
-    },
-    "groupAccumHint": {
-      "en": "One bar = the class's monthly sum. Continuous area (no per-year bands). From the first month with data.",
-      "es": "Una barra = suma mensual de la clase. Área continua (sin franjas por año). Desde el primer mes con datos."
     },
     "athTooltip": {
       "en": "ATH · {{date}}",
@@ -459,10 +439,6 @@
         "en": "Net worth, invested and US$ levels (CLP)",
         "es": "Patrimonio neto, invested y niveles US$ (CLP)"
       },
-      "netWorthUsdSectionHint": {
-        "en": "Net worth and invested in CLP. Dashed lines: CLP equivalent of US$10k, US$50k, US$100k, US$250k and US$500k at each date's exchange rate (US$ × that day's USD/CLP). The Y axis tracks only net worth and invested; the US$ levels may fall out of scale.",
-        "es": "Patrimonio neto e invested en CLP. Líneas punteadas: equivalente CLP de US$10k, US$50k, US$100k, US$250k y US$500k según el tipo de cambio de cada fecha (US$ × USD/CLP del día). El eje Y sigue solo patrimonio e invested; los niveles US$ pueden quedar fuera de escala."
-      },
       "netWorthUsdChartTitle": {
         "en": "Net worth vs invested (US$ reference)",
         "es": "Patrimonio neto vs invested (referencia US$)"
@@ -474,14 +450,6 @@
       "perfSectionTitleYearly": {
         "en": "Investments — annual P/L (calendar year)",
         "es": "Inversiones — P/L anual (año calendario)"
-      },
-      "perfSectionHintMonthly": {
-        "en": "Bars per class (retirement / brokerage), investments YTD area and diamond = combined monthly Δ.",
-        "es": "Barras por clase (retiro / brokerage), área YTD de inversiones y rombo = Δ mensual combinado."
-      },
-      "perfSectionHintYearly": {
-        "en": "Bars per class (retirement / brokerage), annual investments total and diamond = combined annual Δ.",
-        "es": "Barras por clase (retiro / brokerage), total anual de inversiones y rombo = Δ anual combinado."
       },
       "perfChartTitleMonthly": {
         "en": "Monthly Δ by class, investments YTD and combined monthly Δ",
@@ -498,14 +466,6 @@
       "accumSectionTitleYearly": {
         "en": "Investments — accumulated (annual steps)",
         "es": "Inversiones — acumulado (pasos anuales)"
-      },
-      "accumSectionHintMonthly": {
-        "en": "Top: accumulated earnings with monthly Δ and MA3. Bottom: monthly Δ, deposits and their MA3 (same scale).",
-        "es": "Arriba: ganancias acumuladas con Δ mensual y MM3. Abajo: Δ mensual, depósitos y sus MM3 (misma escala)."
-      },
-      "accumSectionHintYearly": {
-        "en": "Top: accumulated earnings with annual Δ and MA3. Bottom: annual Δ, deposits and their MA3 (same scale).",
-        "es": "Arriba: ganancias acumuladas con Δ anual y MM3. Abajo: Δ anual, depósitos y sus MM3 (misma escala)."
       },
       "accumEarningsChartTitleMonthly": {
         "en": "Accumulated earnings and monthly Δ (investments)",
@@ -597,14 +557,6 @@
     "accountsTreeEmpty": {
       "en": "No accounts yet. Open an asset tab and note the category IDs for POST /api/accounts.",
       "es": "No hay cuentas aún. Abre una pestaña de activos y anota los IDs de categoría para POST /api/accounts."
-    },
-    "monthlyDetailHint": {
-      "en": "Totals per month (sum of net-worth accounts).",
-      "es": "Totales por mes (suma de cuentas de patrimonio neto)."
-    },
-    "flowsHint": {
-      "en": "Movements across all net-worth accounts, ordered by date.",
-      "es": "Movimientos de todas las cuentas de patrimonio neto, ordenados por fecha."
     },
     "combinedMonthlyDelta": {
       "en": "Σ monthly Δ",
@@ -750,10 +702,6 @@
     }
   },
   "settings": {
-    "pageHint": {
-      "en": "Display preferences saved in this browser.",
-      "es": "Preferencias de visualización guardadas en este navegador."
-    },
     "language": {
       "en": "Language: ",
       "es": "Idioma: "
@@ -771,10 +719,6 @@
     "pageTitle": {
       "en": "Watchlist",
       "es": "Watchlist"
-    },
-    "pageHint": {
-      "en": "App instruments and manually added symbols. Choose which ones to show in the top strip.",
-      "es": "Instrumentos de la app y símbolos agregados manualmente. Marca cuáles mostrar en la franja superior."
     },
     "appSectionTitle": {
       "en": "App instruments",
@@ -870,10 +814,6 @@
     }
   },
   "panelAccounts": {
-    "pageHint": {
-      "en": "Reference view: accounts and the same Net worth hierarchy as the sidebar (portfolio_groups).",
-      "es": "Vista de referencia: cuentas y la misma jerarquía de Patrimonio neto que el sidebar (portfolio_groups)."
-    },
     "addAccountTitle": {
       "en": "New account",
       "es": "Nueva cuenta"
@@ -905,10 +845,6 @@
     "colExclude": {
       "en": "Exclude from totals",
       "es": "No sumar en totales"
-    },
-    "excludeHint": {
-      "en": "Checked accounts are left out of bucket totals and Liabilities. Credit cards also stop netting against Savings and reserves.",
-      "es": "Las cuentas marcadas no entran en totales de bucket ni en Pasivos. En tarjetas de crédito, tampoco se restan del neto de Ahorros y reservas."
     },
     "colActions": {
       "en": "Actions",
@@ -1114,10 +1050,6 @@
     }
   },
   "notifications": {
-    "pageHint": {
-      "en": "Validation notices (e.g. Fintual) and other system alerts.",
-      "es": "Avisos de validación (p. ej. Fintual) y otras alertas del sistema."
-    },
     "unreadBadge": {
       "en": "{{count}} unread",
       "es": "{{count}} sin leer"
@@ -1152,10 +1084,6 @@
     }
   },
   "importSync": {
-    "pageHint": {
-      "en": "Automatic sync status, run log, and coverage of imported monthly documents.",
-      "es": "Estado del sync automático, registro de ejecuciones y cobertura de documentos mensuales importados."
-    },
     "syncLogTitle": {
       "en": "Sync log",
       "es": "Registro de sync"
@@ -1167,10 +1095,6 @@
     "availableDocumentsTitle": {
       "en": "Available documents",
       "es": "Documentos disponibles"
-    },
-    "availableDocumentsHint": {
-      "en": "One row per month (from the current month backwards). Columns: accounts with a monthly statement. Cards with USD show usd and clp subcolumns under the card name. ✓ = data imported; links to the PDF when the file is on disk. ✓✗ = imported but no PDF linked. ✗ = the month's document is missing.",
-      "es": "Una fila por mes (desde el mes actual hacia atrás). Columnas: cuentas con estado de cuenta o cartola mensual. Tarjetas con USD muestran subcolumnas usd y clp bajo el nombre de la tarjeta. ✓ = datos importados; enlace al PDF cuando el archivo está en disco. ✓✗ = importado pero sin PDF enlazado. ✗ = falta el documento del mes."
     },
     "ccStatementCurrencyClp": {
       "en": "CLP",
@@ -1189,10 +1113,6 @@
       "es": "Comercios Único automático"
     },
     "genericUniqueMerchants": {
-      "hint": {
-        "en": "Merchants tagged as One-off on import (exact name match, no prefix rules). Adding or editing applies the backfill to existing movements.",
-        "es": "Comercios que se marcan como Único al importar (coincidencia exacta del nombre, sin reglas por prefijo). Al agregar o editar se aplica el backfill a movimientos existentes."
-      },
       "colMerchant": {
         "en": "Merchant name",
         "es": "Nombre del comercio"
@@ -1514,18 +1434,6 @@
       "en": "Date",
       "es": "Fecha"
     },
-    "positionHint": {
-      "en": "Stocks and crypto: ticker and units (shares or coin) from movements in the database (<1>movements.units_delta</1> and import notes).",
-      "es": "Acciones y cripto: ticker y unidades (acciones o moneda) desde movimientos en la base (<1>movements.units_delta</1> y notas de import)."
-    },
-    "positionHintAfp": {
-      "en": " AFP UNO Fondo A: units from <1>movements.units_delta</1> (certificate in <2>cfraser/afp-uno-certificado-cotizaciones.csv</2> or <3>.txt</3> when running <4>import:excel</4>, or <5>npm run afp:uno:cert-sync</5>).",
-      "es": " AFP UNO Fondo A: cuotas desde <1>movements.units_delta</1> (certificado en <2>cfraser/afp-uno-certificado-cotizaciones.csv</2> o <3>.txt</3> al correr <4>import:excel</4>, o <5>npm run afp:uno:cert-sync</5>)."
-    },
-    "positionHintAfc": {
-      "en": " AFC Fondo de Cesantía (CIC): units from <1>movements.units_delta</1>, priced with the Superintendencia de Pensiones daily unit value (<2>afc_cic</2>). Units derived as pesos ÷ unit value until a cartola supplies the exact count (<3>npm run afc:derive-cuotas</3>).",
-      "es": " AFC Fondo de Cesantía (CIC): cuotas desde <1>movements.units_delta</1>, valoradas con el valor cuota diario de la Superintendencia de Pensiones (<2>afc_cic</2>). Cuotas derivadas como pesos ÷ valor cuota hasta que una cartola entregue el número exacto (<3>npm run afc:derive-cuotas</3>)."
-    },
     "position": {
       "title": {
         "en": "Position (ticker and units)",
@@ -1559,10 +1467,6 @@
     "monthlyPerfComputedTitle": {
       "en": "Monthly performance (computed)",
       "es": "Rendimiento mensual (calculado)"
-    },
-    "sameBaseAsValuation": {
-      "en": "Same base as valuation and contributions.",
-      "es": "Misma base que valorización y aportes."
     },
     "ytdCalendarTitle": {
       "en": "YTD (calendar year)",
@@ -2101,18 +2005,6 @@
         "en": "Mortgage payments (apartment sheet)",
         "es": "Dividendos hipoteca (hoja depto)"
       },
-      "intro": {
-        "en": "Table read from the mortgage book in SQLite (<1>depto_dividendos_sheet_rows</1>): every row with a CLP amount is a payment (a month can have several).",
-        "es": "Tabla leída desde el libro hipoteca en SQLite (<1>depto_dividendos_sheet_rows</1>): cada fila con monto CLP es un pago (puede haber varios en un mes)."
-      },
-      "pieNote": {
-        "en": " The <1>down payment</1> is on the property account (depto), not on the mortgage liability.",
-        "es": " El <1>pie</1> está en la cuenta inmueble (depto), no en el pasivo hipotecario."
-      },
-      "tasaNote": {
-        "en": " The loan's annual rate in the model is <1>4.95%</1>.",
-        "es": " La tasa anual del crédito en el modelo es <1>4,95%</1>."
-      },
       "proxAbbrev": {
         "en": "next",
         "es": "próx."
@@ -2120,10 +2012,6 @@
       "referenceMinMax": {
         "en": "Reference: min / max installment (UF)",
         "es": "Referencia: cuota mín / máx (UF)"
-      },
-      "scenarioIntro": {
-        "en": "Scenarios from the apartment sheet (not movements), on mortgage-calendar dates (the 11th of each month). The first row is the next projected installment. The minimum payment (30 years) is editable in Numbers; the maximum (~80 UF) approximates paying off in 5 years at the start of the loan.",
-        "es": "Escenarios de la hoja depto (no son movimientos), en fechas del calendario hipotecario (día 11 de cada mes). La primera fila es la próxima cuota proyectada. El pago mínimo (30 años) es editable en Numbers; el máximo (~80 UF) aproxima amortizar en 5 años al inicio del crédito."
       },
       "cards": {
         "viviendaHoja": {
@@ -2383,10 +2271,6 @@
         "en": "Close",
         "es": "Cerrar"
       },
-      "cartolaMonthHint": {
-        "en": "One row per month of history. Deposits and charges = sum of ledger movements for the month (transfer legs included). Month-end balance = sum of movements (ledger). Statement balance = the closing printed on the statement (reference only). Difference = month-end balance − statement balance.",
-        "es": "Una fila por cada mes del historial. Abonos y cargos = suma de movimientos del ledger en el mes (transferencias incluidas). Saldo fin de mes = suma de movimientos (ledger). Saldo cartola = cierre impreso en el estado (solo referencia). Diferencia = saldo fin de mes − saldo cartola."
-      },
       "cartolaMonthEmpty": {
         "en": "No months in movements or valuations. Run npm run import:checking-cartolas on the server.",
         "es": "Sin meses en movimientos ni valorizaciones. Ejecuta npm run import:checking-cartolas en el servidor."
@@ -2505,14 +2389,6 @@
         "en": "History",
         "es": "Historial"
       },
-      "historialHint": {
-        "en": "Lines: installment debt still owed at each month-end (the daily view's line — a cycle's installments stay until that bill is paid, so it can exceed the Monthly detail's «installment debt», which drops them at the close that bills them) and total balance (same criteria as Monthly detail). Bars: each close's billed total, stacked bottom to top: the CLP billed outside installments (one-off purchases and bank charges, net of credit notes), the installments it bills and the US$ billed in pesos. Future months: only the installments the plan will bill, and projected balance = installments still owed at that month-end — a cycle's installments leave the debt on their pay-by (~10th of the following month), not at the close that bills them.",
-        "es": "Líneas: deuda en cuotas aún adeudada a fin de mes (la línea de la vista diaria — las cuotas de un ciclo siguen hasta que se paga esa facturación, así que puede superar la «deuda en cuotas» de Detalle por mes, que las saca en el cierre que las factura) y balance total (mismo criterio que Detalle por mes). Barras: facturado de cada cierre, apilado de abajo hacia arriba: el facturado CLP fuera de cuotas (compras únicas y cargos del banco, neto de notas de crédito), las cuotas que factura y el facturado US$ en pesos. Meses futuros: solo las cuotas que el plan va a facturar, y saldo proyectado = cuotas aún adeudadas a fin de mes — las cuotas de un ciclo salen de la deuda en su pagar-hasta (~10 del mes siguiente), no en el cierre que las factura."
-      },
-      "historialHintDaily": {
-        "en": "Daily lines: total balance owed on each date (purchases raise it on the purchase date — installment plans at their full amount — and payments drop it) and the outstanding installment debt (contracts up on purchase day; each cycle's cuotas leave the day its facturación is actually paid, or on its pay-by when no payment is on record). Past today the installment plan is projected to its end (both lines meet once the open cycle is paid). Bars: each card's facturación on its close date (estimated for future months), stacked like the monthly view.",
-        "es": "Líneas diarias: saldo total adeudado en cada fecha (las compras lo suben el día de la compra — las en cuotas por su monto total — y los pagos lo bajan) y la deuda en cuotas vigente (los contratos suben el día de compra; las cuotas de cada ciclo salen el día en que efectivamente se paga su facturación, o en su pagar-hasta si no hay pago registrado). Después de hoy el plan de cuotas se proyecta hasta su término (ambas líneas se juntan una vez pagado el ciclo abierto). Barras: la facturación de cada tarjeta en su fecha de cierre (estimada en meses futuros), apilada igual que en la vista mensual."
-      },
       "historialCurrentMonth": {
         "en": "Current month",
         "es": "Mes actual"
@@ -2520,10 +2396,6 @@
       "historialCurrentYear": {
         "en": "Current year",
         "es": "Año actual"
-      },
-      "historialHintYearly": {
-        "en": "Lines: installment debt and total balance at each year-end (projected for future years). Bars: the year's billed totals, stacked like the monthly view (CLP, installments, US$); months not billed yet add only the plan's projected installments.",
-        "es": "Líneas: cupo en cuotas y balance total a fin de cada año (proyectado en años futuros). Barras: facturado de los cierres del año, apilado igual que en la vista mensual (CLP, cuotas, US$); los meses aún sin facturar suman solo las cuotas proyectadas del plan."
       },
       "historialEmpty": {
         "en": "No installment history for this account.",
@@ -2565,17 +2437,9 @@
         "en": "Accumulated earnings",
         "es": "Accumulated earnings"
       },
-      "flowsHint": {
-        "en": "Contributions, withdrawals, and movements recorded on the account.",
-        "es": "Aportes, retiros y movimientos registrados en la cuenta."
-      },
       "configTitle": {
         "en": "Card configuration",
         "es": "Configuración de la tarjeta"
-      },
-      "configHint": {
-        "en": "Credit limit and billing cycle for this card. An empty cycle end defaults to day 20.",
-        "es": "Cupo y ciclo de facturación de esta tarjeta. El fin de ciclo vacío usa el día 20 por defecto."
       },
       "configCardLabel": {
         "en": "Card",
@@ -2613,10 +2477,6 @@
         "en": "Invalid cycle day: integer between 1 and 31.",
         "es": "Día de ciclo inválido: entero entre 1 y 31."
       },
-      "detallePorMesBillingHint": {
-        "en": "One row per billing month. Total billed = statement close (~20th); in the open month (no PDF yet) it includes the carry-over from the previous closed month plus the month's charges, minus payments (PAGO) until the next close. Total balance = billed + installment debt still unbilled after that close.",
-        "es": "Una fila por mes de facturación. Total facturado = cierre del estado (~20); en el mes abierto (sin PDF) incluye el arrastre del mes anterior cerrado más cargos del mes, menos abonos (PAGO) hasta el próximo cierre. Balance total = facturado + deuda en cuotas aún no facturada tras ese cierre."
-      },
       "colTotalFacturado": {
         "en": "Total billed",
         "es": "Total facturado"
@@ -2624,10 +2484,6 @@
       "colTotalFacturadoProjectedHint": {
         "en": "Projected value: estimated payment due for this billing month (no statement close yet).",
         "es": "Valor proyectado: cuota a pagar estimada de esta facturación (aún sin cierre de estado)."
-      },
-      "detallePorMesBillingHintYearly": {
-        "en": "One row per calendar year of billing months. Total billed = sum of the year's statement closes; ≈ marks years with months not yet closed, counted at their estimated payment due. Installment debt and total balance = year-end values (projected for future years).",
-        "es": "Una fila por año calendario de meses de facturación. Total facturado = suma de los cierres del año; ≈ marca años con meses aún sin cierre, contados con su cuota a pagar estimada. Deuda en cuotas y balance total = valores a fin de año (proyectados en años futuros)."
       },
       "colTotalFacturadoProjectedHintYearly": {
         "en": "Estimated value: the year includes billing months without a statement close yet, each counted at its estimated payment due.",
@@ -2644,10 +2500,6 @@
       "facturacionesTitle": {
         "en": "Billing cycles",
         "es": "Facturaciones"
-      },
-      "facturacionesHint": {
-        "en": "One row per billing month (close ~20th). Payment due = charges due in the “pay by” month (~10th of the following month).",
-        "es": "Una fila por mes de facturación (cierre ~20 del mes). Cuota a pagar = cargos con vencimiento en el mes del «pagar hasta» (~10 del mes siguiente)."
       },
       "colCloseDate": {
         "en": "Close date",
@@ -2775,10 +2627,6 @@
         "en": "Associated cards",
         "es": "Tarjetas asociadas"
       },
-      "associatedCardsHint": {
-        "en": "Physical card numbers with statements imported into this account.",
-        "es": "Números de tarjeta física con estados importados en esta cuenta."
-      },
       "closeDateEstimatedHint": {
         "en": "Estimated from the card's configured cycle: the bank has not published this close yet.",
         "es": "Estimada según el ciclo configurado de la tarjeta: el banco aún no publica este cierre."
@@ -2800,22 +2648,6 @@
         "es": "La app había estimado {{amount}} para esta facturación."
       }
     },
-    "monthlyPerfIntro": {
-      "en": "Two charts: (1) monthly P/L vs <1>YTD</1> (the area restarts every January). (2) the same monthly Δ with an <3>Accumulated earnings</3> area (continuous from the first month, no per-year bands). The table keeps the detail.",
-      "es": "Dos gráficos: (1) P/L mensual vs <1>YTD</1> (área reinicia cada enero). (2) mismo Δ mensual con área <3>Accumulated earnings</3> (continua desde el primer mes, sin franjas por año). La tabla conserva el detalle."
-    },
-    "monthlyPerfMortgageNote": {
-      "en": " For the mortgage, <1>month P/L</1> = CLP balance drop − payments: negative = financing cost (interest, insurance and UF variation), not the investment formula.",
-      "es": " En hipoteca, <1>P/L mes</1> = baja de saldo en CLP − pagos: negativo = coste financiero (intereses, seguros y variación UF), no la fórmula de inversión."
-    },
-    "monthlyPerfCcLedgerNote": {
-      "en": " This account's monthly valuations are written to the database when importing the PDF's CSV; class tabs (e.g. Liabilities) read the same table.",
-      "es": " Las valorizaciones mensuales de esta cuenta se escriben en la base al importar el CSV del PDF; las pestañas de clase (p. ej. Liabilities) leen la misma tabla."
-    },
-    "monthlyPerfUnit": {
-      "en": " Unit: <1>{{unit}}</1>",
-      "es": " Unidad: <1>{{unit}}</1>"
-    },
     "monthlyPerfNotEnough": {
       "en": "Not enough months of monthly valuation to compute changes (or the account only has one point).",
       "es": "Sin suficientes meses de valorización mensual para calcular variaciones (o la cuenta solo tiene un punto)."
@@ -2824,10 +2656,6 @@
       "title": {
         "en": "APV-A state contribution",
         "es": "Aporte estatal APV-A"
-      },
-      "intro": {
-        "en": "State bonus (~15% of your previous year's deposits, capped). Accumulated total: <1>{{total}}</1>",
-        "es": "Bonificación del Estado (~15% de tus depósitos del año anterior, con tope). Total acumulado: <1>{{total}}</1>"
       },
       "colDate": {
         "en": "Date",
@@ -2847,10 +2675,6 @@
     "title": {
       "en": "Returns",
       "es": "Rentabilidad"
-    },
-    "hint": {
-      "en": "Flow-adjusted chained returns: contributions and withdrawals do not count as gains. Each period compounds the monthly returns; the amount is the period's nominal gain or loss in the active unit.",
-      "es": "Rentabilidad encadenada ajustada por flujos: los aportes y retiros no cuentan como ganancia. Cada período compone los retornos mensuales; el monto es la ganancia o pérdida nominal del período en la unidad activa."
     },
     "d1": {
       "en": "1D",
@@ -2926,33 +2750,13 @@
       "en": "Account",
       "es": "Cuenta"
     },
-    "monthlyDetailHint": {
-      "en": "Group totals per month (sum of the child accounts).",
-      "es": "Totales del grupo por mes (suma de las cuentas hijas)."
-    },
-    "dailyDetailHint": {
-      "en": "One row per calendar day: closing, day deposits and day P/L (balance change net of flows vs the prior close on each account's own calendar).",
-      "es": "Una fila por día calendario: cierre, aportes y P/L del día (variación del saldo neta de flujos vs el cierre anterior según el calendario de cada cuenta)."
-    },
     "dailyDetailEmpty": {
       "en": "No daily data for this group's accounts.",
       "es": "Sin datos diarios para las cuentas de este grupo."
     },
-    "monthlyDetailHintLiabilities": {
-      "en": "Group totals per month (sum of every account under this node, including cards and the mortgage).",
-      "es": "Totales del grupo por mes (suma de todas las cuentas bajo este nodo, incluidas tarjetas y hipoteca)."
-    },
     "monthlyDetailEmpty": {
       "en": "No monthly performance data for this group's accounts.",
       "es": "Sin datos de rendimiento mensual para las cuentas de este grupo."
-    },
-    "flowsHint": {
-      "en": "Movements across all child accounts, ordered by date.",
-      "es": "Movimientos de todas las cuentas hijas, ordenados por fecha."
-    },
-    "flowsHintLiabilities": {
-      "en": "Movements across all accounts under this node (cards, mortgage, etc.), ordered by date.",
-      "es": "Movimientos de todas las cuentas bajo este nodo (tarjetas, hipoteca, etc.), ordenados por fecha."
     },
     "accountsTreeTitle": {
       "en": "Accounts in this view",
@@ -2983,17 +2787,9 @@
         "en": "Credit cards",
         "es": "Tarjetas de crédito"
       },
-      "creditCardSectionHint": {
-        "en": "Aggregated totals for every card under this node (billing cycles, installment debt, and financing cost).",
-        "es": "Totales agregados de todas las tarjetas bajo este nodo (facturaciones, cupo en cuotas y coste financiero)."
-      },
       "mortgageSectionTitle": {
         "en": "Mortgage",
         "es": "Hipoteca"
-      },
-      "mortgageSectionHint": {
-        "en": "Installments, balance, and financing cost from the payments spreadsheet.",
-        "es": "Cuotas, saldo y coste financiero desde la planilla de dividendos."
       },
       "mortgageValuationTitle": {
         "en": "Valuation",
@@ -3002,10 +2798,6 @@
       "mortgagePerfTitle": {
         "en": "Monthly performance (computed)",
         "es": "Rendimiento mensual (calculado)"
-      },
-      "mortgagePerfHint": {
-        "en": "For the mortgage, month P/L = CLP amortization minus payments: negative = financing cost (interest, insurance and UF variation).",
-        "es": "En hipoteca, P/L mes = amortización CLP − pagos: negativo = coste financiero (intereses, seguros y variación UF)."
       },
       "mortgageYtdChartTitle": {
         "en": "Monthly P/L vs YTD (financing cost)",
@@ -3149,10 +2941,6 @@
         "en": "Overview",
         "es": "Resumen"
       },
-      "intro": {
-        "en": "Income versus expenses and net deposits. Mortgage payments are split with the existing breakdown: interest + insurance counts as expense and amortization as deposit (no double counting). AFP+AFC contributions (payroll deductions, they never pass through the checking account) are shown separately and do not subtract from the net; withdrawals do count because they return to the post-tax circuit. Market P/L of the money buckets is stacked as its own bar and does not enter the net.",
-        "es": "Ingresos versus gastos y depósitos netos. Los dividendos hipotecarios se separan con el desglose existente: interés + seguros cuenta como gasto y la amortización como depósito (sin doble conteo). Las cotizaciones AFP+AFC (descuento por planilla, nunca pasan por la cuenta corriente) se muestran aparte y no descuentan del neto; los retiros sí cuentan porque vuelven al circuito post-impuestos. El PL de mercado de los buckets se apila como barra propia y no entra en el neto."
-      },
       "chartTitle": {
         "en": "Income, expenses, deposits, and P/L",
         "es": "Ingresos, gastos, depósitos y PL"
@@ -3202,10 +2990,6 @@
       "title": {
         "en": "P/L",
         "es": "PL"
-      },
-      "intro": {
-        "en": "Monthly market P/L (value change minus deposits) of the net-worth money buckets: brokerage, retirement, and cash. Real estate is excluded. Cash P/L is savings interest only — checking accounts have no market P/L.",
-        "es": "PL de mercado mensual (cambio de valor menos depósitos) de los buckets de patrimonio: brokerage, retiro y efectivo. Inmuebles queda excluido. El PL de efectivo es solo interés de ahorro — las cuentas corrientes no tienen PL de mercado."
       },
       "chartTitle": {
         "en": "Monthly P/L by bucket",
@@ -3308,10 +3092,6 @@
     }
   },
   "income": {
-    "intro": {
-      "en": "Income from bank-statement credits in checking and cuenta vista accounts, excluding internal transfers and deposits to investments.",
-      "es": "Ingresos desde abonos de cartola en cuentas corrientes y cuenta vista, excluyendo traspasos internos y depósitos a inversiones."
-    },
     "empty": {
       "en": "No bank-statement income or manual entries.",
       "es": "Sin ingresos de cartola ni entradas manuales."
@@ -3339,10 +3119,6 @@
     "sectionAllLines": {
       "en": "Line detail",
       "es": "Detalle por línea"
-    },
-    "monthlyDetailHint": {
-      "en": "One row per calendar month. Salary and severance come from payslips linked to bank-statement credits; unclassified includes the rest.",
-      "es": "Una fila por mes calendario. Sueldo y finiquito provienen de liquidaciones vinculadas a abonos de cartola; sin clasificar incluye el resto."
     },
     "colIncomeKind": {
       "en": "Type",
@@ -3422,10 +3198,6 @@
       "en": "Excluded from income",
       "es": "Excluidos de ingresos"
     },
-    "sectionExcludedHint": {
-      "en": "Bank-statement credits marked as non-income. Restoring them puts them back in totals and charts.",
-      "es": "Abonos de cartola marcados como no ingreso. Restaurar los vuelve a incluir en totales y gráficos."
-    },
     "excludedEmpty": {
       "en": "No excluded lines.",
       "es": "Sin líneas excluidas."
@@ -3453,10 +3225,6 @@
     "sectionFiltered": {
       "en": "Automatically filtered",
       "es": "Filtrados automáticamente"
-    },
-    "sectionFilteredHint": {
-      "en": "Bank-statement credits skipped by automatic rules (transfers, investment returns, etc.). Including one forces it into Income.",
-      "es": "Abonos de cartola omitidos por reglas automáticas (traspasos, retornos de inversión, etc.). Incluir fuerza su aparición en Ingresos."
     },
     "filteredEmpty": {
       "en": "No automatically filtered lines.",
@@ -3530,10 +3298,6 @@
       "en": "Payslips",
       "es": "Liquidaciones de sueldo"
     },
-    "sectionHint": {
-      "en": "Breakdown imported from payslip PDFs. The net pay must match a linked bank-statement credit.",
-      "es": "Desglose importado desde PDFs de liquidación. El líquido debe coincidir con un abono de cartola vinculado."
-    },
     "empty": {
       "en": "No payslips imported. Run the payroll parse and import.",
       "es": "Sin liquidaciones importadas. Ejecuta parse e import de payroll."
@@ -3602,10 +3366,6 @@
     }
   },
   "deposits": {
-    "intro": {
-      "en": "Net external capital by category (positive deposits, negative withdrawals). Same timeline as the “contributions” in accounts and charts: movements plus CLP wires and brokerage withdrawals.",
-      "es": "Capital externo neto por categoría (depósitos positivos, retiros negativos). Misma línea de tiempo que los «aportes» en cuentas y gráficos: movimientos más wires CLP y retiros de brokerage."
-    },
     "totalLabel": {
       "en": "All-time total:",
       "es": "Total histórico:"
@@ -3647,10 +3407,6 @@
     "title": {
       "en": "Deposits reconciliation",
       "es": "Reconciliación de depósitos"
-    },
-    "intro": {
-      "en": "Positive movements in net-worth accounts classified by coverage in the expense ledger.",
-      "es": "Movimientos positivos en cuentas de patrimonio neto clasificados por cobertura en el libro de gastos."
     },
     "colDate": {
       "en": "Date",
@@ -3720,10 +3476,6 @@
       "en": "Manually marked as Deposits — no match",
       "es": "Marcados manualmente como Depósitos — sin match"
     },
-    "assertedIntro": {
-      "en": "Checking outflows you categorized as Deposits (asserting that an equivalent deposit exists) but without a unique candidate: with 2+ candidates it is ambiguous and nothing is guessed; with 0 the deposit is missing from the ledger.",
-      "es": "Egresos del checking que categorizaste como Depósitos (afirman que existe un depósito equivalente) pero sin un candidato único: con 2+ candidatos es ambiguo y no se adivina; con 0 falta el depósito en el libro."
-    },
     "assertedEmpty": {
       "en": "No outflows marked as Deposits without a match.",
       "es": "No hay egresos marcados como Depósitos sin match."
@@ -3780,10 +3532,6 @@
       "en": "Redemptions (net-worth outflows → account)",
       "es": "Rescates (salidas de patrimonio → cuenta)"
     },
-    "redemptionsIntro": {
-      "en": "Capital that leaves a net-worth account (not checking) and returns to checking: fund redemptions, DAP maturities, withdrawals. They are linked to the checking credit that is already excluded from income.",
-      "es": "Capital que sale de una cuenta de patrimonio (no checking) y vuelve al checking: rescates de fondos, vencimientos de DAP, retiros. Se vinculan al abono en el checking que ya se excluye de ingresos."
-    },
     "redemptionSectionLinked": {
       "en": "Linked to an account credit",
       "es": "Vinculados a ingreso de cuenta"
@@ -3810,10 +3558,6 @@
     }
   },
   "expenses": {
-    "realEstateIntro": {
-      "en": "Per-place bills linked to the real purchases that paid them (card or checking). A bill's charge can land the same month or one or two months later; amounts use the linked purchase or, if missing, the expected value. Use “Assign purchase…” to link history purchase-first.",
-      "es": "Cuentas por lugar vinculadas a las compras reales que las pagaron (tarjeta o cuenta corriente). El cargo puede caer el mismo mes o uno o dos meses después; los montos usan la compra vinculada o, si falta, el valor esperado. Usa “Asignar compra…” para vincular historia partiendo de la compra."
-    },
     "realEstate": {
       "colLinkedPurchase": {
         "en": "Linked expense",
@@ -4003,10 +3747,6 @@
       }
     },
     "creditCard": {
-      "intro": {
-        "en": "Expenses by the purchase's calendar month (credit card) plus checking withdrawals that count as expenses, in CLP. Opening a month shows Purchases (one-off charges and installment-purchase totals) and Installments (installments billed that month). In “Per installment” mode each installment counts in its own month; in “Total” the full amount counts in the purchase month. Internal transfers and card payments are excluded.",
-        "es": "Gastos por mes calendario de la compra (tarjeta de crédito) y retiros de cuenta corriente que cuentan como gasto, en CLP. Al abrir un mes: Compras (cargos únicos y total de compras en cuotas) y Cuotas (cuotas facturadas ese mes). Cuotas en modo «Por cuota» suman cada cuota en su mes; en «Total» suma el monto completo en el mes de la compra. Se excluyen transferencias internas y pagos de tarjeta."
-      },
       "installmentModeLabel": {
         "en": "Installments",
         "es": "Cuotas"
@@ -4225,10 +3965,6 @@
           "es": "Traspaso interno (cuentas)"
         }
       },
-      "monthlyDetailHint": {
-        "en": "One row per calendar month. Purchases: the purchase month (one-off charges and installment totals). Installments: the month each installment is billed. Month spend excludes “Doesn't count” and installment 0.",
-        "es": "Una fila por mes calendario. Compras: mes de la compra (cargos únicos y total en cuotas). Cuotas: mes en que se factura cada cuota. Gasto del mes excluye «No cuenta» y cuota 0."
-      },
       "colMonthExpense": {
         "en": "Month spend",
         "es": "Gasto del mes"
@@ -4345,10 +4081,6 @@
         "en": "Unclassified expenses",
         "es": "Gastos sin clasificar"
       },
-      "unclassifiedTableHint": {
-        "en": "Uncategorized charges, ordered by amount (largest first). Assign a category here or per merchant in the month detail.",
-        "es": "Cargos sin categoría, ordenados por monto (mayor primero). Asigna categoría aquí o por comercio en el detalle del mes."
-      },
       "unclassifiedTableEmpty": {
         "en": "No unclassified expenses.",
         "es": "No hay gastos sin clasificar."
@@ -4356,10 +4088,6 @@
       "depositMatchedTableTitle": {
         "en": "Expenses matched to deposits",
         "es": "Gastos emparejados con depósitos"
-      },
-      "depositMatchedTableHint": {
-        "en": "Charges matched to an investment deposit: checking (auto:deposit-match note) or a card linked to a Depto installment (amortization in the chart). Review possible false positives among transfers.",
-        "es": "Cargos emparejados con un depósito a inversión: cuenta corriente (nota auto:deposit-match) o tarjeta ligada a cuota Depto (amortización en el gráfico). Revisa posibles falsos positivos en transferencias."
       },
       "depositMatchedTableEmpty": {
         "en": "No expenses matched to deposits.",
@@ -4413,10 +4141,6 @@
         "sectionTitle": {
           "en": "Big groups",
           "es": "Grupos grandes"
-        },
-        "sectionHint": {
-          "en": "Purchases grouped by trip, remodel, or other exceptional spending. The usual category (leisure, others, etc.) stays; here you set the group to review and filter the chart.",
-          "es": "Compras agrupadas por viaje, remodelación u otro gasto excepcional. La categoría habitual (ocio, otros, etc.) se mantiene; aquí defines el grupo para revisar y filtrar el gráfico."
         },
         "purchaseCount": {
           "en": "{{count}} purchases",
@@ -4565,10 +4289,6 @@
         "en": "Manual",
         "es": "Manual"
       },
-      "installmentsLedgerHint": {
-        "en": "Data imported into the database from statements (installments).",
-        "es": "Datos importados a la base desde estados de cuenta (cuotas)."
-      },
       "installmentsEmpty": {
         "en": "No installment plans or imported statements. Import PDFs with npm run import:cfraser-inbox or load the ledger with import:cc-parsed.",
         "es": "No hay cupos en cuotas ni estados importados. Importa PDF con npm run import:cfraser-inbox o carga el ledger con import:cc-parsed."
@@ -4600,10 +4320,6 @@
       "completedPurchasesTitle": {
         "en": "Completed purchases (history)",
         "es": "Compras completadas (histórico)"
-      },
-      "completedPurchasesCaption": {
-        "en": "Includes contracts whose total paid reached the principal (incl. the final installment in the PDF even when <1>nro_cuota_current</1> is missing on summary rows like <2>03 CUOTAS COMERC</2>).",
-        "es": "Incluye contratos cuyo total pagado alcanzó el principal (incl. última cuota en el PDF aunque <1>nro_cuota_current</1> falte en filas resumen tipo <2>03 CUOTAS COMERC</2>)."
       },
       "completedPurchasesEmpty": {
         "en": "No settled installment purchases in the ledger.",
@@ -4730,10 +4446,6 @@
       "en": "Historical mirrors",
       "es": "Mirrors históricos"
     },
-    "intro": {
-      "en": "Mirror movement pairs (a withdrawal in one account + an equal deposit in another) that predate the transfer model. Converting a pair replaces it with a single transfer dated on the withdrawal day; the original notes are kept and the conversion is reversible. Deposits already linked in the reconciliation are left out. Note: if a converted statement credit counted as income, the income total drops (it is a correction).",
-      "es": "Pares de movimientos espejo (retiro en una cuenta + depósito igual en otra) anteriores al modelo de transferencias. Convertir un par lo reemplaza por una transferencia única fechada el día del retiro; las notas originales se conservan y la conversión es reversible. Los depósitos ya enlazados en la conciliación quedan fuera. Ojo: si un abono de cartola convertido contaba como ingreso, el total de ingresos baja (es una corrección)."
-    },
     "highTitle": {
       "en": "High confidence ({{n}})",
       "es": "Alta confianza ({{n}})"
@@ -4753,10 +4465,6 @@
     "blockedTitle": {
       "en": "Blocked ({{n}})",
       "es": "Bloqueados ({{n}})"
-    },
-    "blockedIntro": {
-      "en": "Not convertible: the checking/cuenta vista credit straddles the month boundary and would move the statement-calibrated balance.",
-      "es": "No convertibles: el abono en cuenta corriente/vista cruza el límite de mes y movería el saldo calibrado con la cartola."
     },
     "blockedReasonCheckingStraddle": {
       "en": "checking credit straddles the month",
@@ -4866,10 +4574,6 @@
       "en": "Card payments ({{n}})",
       "es": "Pagos de tarjeta ({{n}})"
     },
-    "ccIntro": {
-      "en": "Checking debits paired with the card's payment evidence (statement PAGO or header). Converting merges them into one transfer dated at the card's credit date; the cartola date is preserved.",
-      "es": "Cargos de la cuenta corriente emparejados con la evidencia de pago de la tarjeta (PAGO del estado de cuenta o encabezado). Convertir los une en un traspaso fechado el día del abono en la tarjeta; la fecha de la cartola se conserva."
-    },
     "emptyCc": {
       "en": "No card-payment pairs pending.",
       "es": "No hay pagos de tarjeta pendientes."
@@ -4971,10 +4675,6 @@
     "title": {
       "en": "Wealth percentile",
       "es": "Percentil de riqueza"
-    },
-    "intro": {
-      "en": "Your net worth's position in each country's wealth-per-adult distribution (lognormal model calibrated with the UBS Global Wealth Databooks; CLP converted at the year-end dólar observado).",
-      "es": "Posición de tu patrimonio en la distribución de riqueza por adulto de cada país (modelo lognormal calibrado con los UBS Global Wealth Databooks; conversión CLP al dólar observado de fin de año)."
     },
     "chart": {
       "seriesTotal": {
@@ -5091,46 +4791,12 @@
         "en": "‡ own reconstruction (not an official UBS figure)",
         "es": "‡ reconstrucción propia (no es cifra oficial de UBS)"
       }
-    },
-    "caveats": {
-      "title": {
-        "en": "Methodology notes",
-        "es": "Notas metodológicas"
-      },
-      "tail": {
-        "en": "The lognormal model underestimates the extreme tail (>p99.5); p99 thresholds are more reliable than any figure about the ultra-rich.",
-        "es": "El modelo lognormal subestima la cola extrema (>p99,5); los umbrales p99 son más confiables que cualquier cifra sobre los ultra ricos."
-      },
-      "reconstruction": {
-        "en": "Chile 2025 is an own reconstruction (BCCh + FX + UBS Gini) validated against the UBS millionaire count, not an official UBS figure.",
-        "es": "Chile 2025 es una reconstrucción propia (BCCh + tipo de cambio + Gini UBS) validada contra el conteo de millonarios de UBS, no una cifra oficial de UBS."
-      },
-      "benchmarkReconstruction": {
-        "en": "Mexico, Brazil and Mainland China 2025 are own reconstructions from the UBS GWR 2026 Gini + millionaire counts (their means/medians fall outside the published top-30 tables).",
-        "es": "México, Brasil y China continental 2025 son reconstrucciones propias a partir del Gini + conteo de millonarios del UBS GWR 2026 (sus medias/medianas quedan fuera de las tablas top-30 publicadas)."
-      },
-      "methodologyBreak": {
-        "en": "Pre- and post-2023 medians are not comparable due to UBS's methodology change; 2023–2024 parameters are interpolated across the break.",
-        "es": "Las medianas pre y post 2023 no son comparables por el cambio de metodología de UBS; los parámetros 2023–2024 están interpolados sobre ese quiebre."
-      },
-      "adults": {
-        "en": "Percentiles are over each country's adult (20+) population; wealth is measured at the individual level (UBS assigns household wealth to adults).",
-        "es": "Percentiles sobre la población adulta (20+) de cada país; la riqueza se mide a nivel individual (UBS asigna la riqueza del hogar a los adultos)."
-      },
-      "fx": {
-        "en": "CLP→USD conversion uses the year-end BCentral dólar observado (UBS end-of-period convention), not the app-wide Yahoo rate.",
-        "es": "La conversión CLP→USD usa el dólar observado del BCentral a fin de año (convención de fin de período de UBS), no la tasa Yahoo del resto de la app."
-      }
     }
   },
   "projections": {
     "title": {
       "en": "Projections",
       "es": "Proyecciones"
-    },
-    "intro": {
-      "en": "One trajectory in today's money: accumulation to age {{age}} (real return + monthly contribution on the invested portion; real estate and cash hold their real value) and then three comparable drawdown strategies. The nominal line uses the visible currency's inflation; both views (the global CLP/USD toggle) share the same real trajectory.",
-      "es": "Una trayectoria en dinero de hoy: acumulación hasta los {{age}} años (retorno real + aporte mensual sobre lo invertido; inmuebles y caja mantienen su valor real) y luego tres estrategias de retiro comparables. La línea nominal usa la inflación de la moneda visible; ambas vistas (CLP/USD del toggle global) comparten la misma trayectoria real."
     },
     "invalidRange": {
       "en": "Must be between {{min}} and {{max}}",
@@ -5243,10 +4909,6 @@
         "en": "never depletes; the income varies with the balance",
         "es": "nunca se agota; la renta varía con el saldo"
       }
-    },
-    "footnote": {
-      "en": "USD reference levels (250k–2M) converted at the current exchange rate ({{fx}} CLP/USD) in the CLP view. The whole projected chart is in today's money except the nominal line.",
-      "es": "Niveles de referencia en USD (250k–2M) convertidos al tipo de cambio actual ({{fx}} CLP/USD) en la vista CLP. Todo el gráfico proyectado está en dinero de hoy salvo la línea nominal."
     }
   },
   "routeError": {
@@ -5288,18 +4950,10 @@
       "en": "Groceries",
       "es": "Supermercado"
     },
-    "intro": {
-      "en": "Receipts from the Boleta Digital e-mails, item by item. Classify printed names into products once; price history builds on the cleaned catalog.",
-      "es": "Boletas de los correos Boleta Digital, ítem por ítem. Clasifica los nombres impresos en productos una vez; el historial de precios se construye sobre el catálogo limpio."
-    },
     "cleaning": {
       "title": {
         "en": "Unclassified names",
         "es": "Nombres sin clasificar"
-      },
-      "intro": {
-        "en": "Each row is a printed name (or barcode) not yet linked to a product. Select rows and assign them to an existing product, or create one.",
-        "es": "Cada fila es un nombre impreso (o código de barras) aún sin producto. Selecciona filas y asígnalas a un producto existente, o crea uno."
       },
       "colName": {
         "en": "Printed name",

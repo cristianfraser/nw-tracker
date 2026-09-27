@@ -111,12 +111,6 @@ export function AccountsPanelPage() {
 
   return (
     <>
-      <p className="muted" style={{ marginBottom: "1rem" }}>
-        {t("panelAccounts.pageHint")}
-      </p>
-      <p className="muted" style={{ marginBottom: "1rem" }}>
-        {t("panelAccounts.excludeHint")}
-      </p>
 
       <h2 className="flow-section-title">{t("panelAccounts.addAccountTitle")}</h2>
       <AddAccountForm netWorthRoot={netWorthNode} />

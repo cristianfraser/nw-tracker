@@ -187,7 +187,6 @@ export function MirrorPairsPanelPage() {
   return (
     <section>
       <h2>{t("mirrorPairs.title")}</h2>
-      <p className="muted">{t("mirrorPairs.intro")}</p>
       {actionError ? <p className="error">{actionError}</p> : null}
 
       <h3>{t("mirrorPairs.highTitle", { n: high.length })}</h3>
@@ -338,7 +337,6 @@ export function MirrorPairsPanelPage() {
       )}
 
       <h3>{t("mirrorPairs.ccTitle", { n: ccPairs.length })}</h3>
-      <p className="muted">{t("mirrorPairs.ccIntro")}</p>
       {ccPairs.length === 0 ? (
         <p className="muted">{t("mirrorPairs.emptyCc")}</p>
       ) : (
@@ -462,7 +460,6 @@ export function MirrorPairsPanelPage() {
       {blocked.length > 0 ? (
         <>
           <h3>{t("mirrorPairs.blockedTitle", { n: blocked.length })}</h3>
-          <p className="muted">{t("mirrorPairs.blockedIntro")}</p>
           <ul>
             {blocked.map((p) => (
               <li key={pairKey(p)} className="muted">

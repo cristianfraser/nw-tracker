@@ -583,9 +583,6 @@ export function DashboardPage() {
       {patrimonioBlock?.points.length ? (
         <>
           <h2 style={{ marginTop: "1.75rem" }}>{t("dashboard.sections.netWorthUsdSectionTitle")}</h2>
-          <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-            {t("dashboard.sections.netWorthUsdSectionHint")}
-          </p>
           <div className="chart-grid chart-grid--full-line">
             <LineChartPanel
               title={t("dashboard.sections.netWorthUsdChartTitle")}
@@ -619,9 +616,6 @@ export function DashboardPage() {
           <h2 style={{ marginTop: "1.75rem" }}>
             {isYearly ? t("dashboard.sections.perfSectionTitleYearly") : t("dashboard.sections.perfSectionTitleMonthly")}
           </h2>
-          <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-            {isYearly ? t("dashboard.sections.perfSectionHintYearly") : t("dashboard.sections.perfSectionHintMonthly")}
-          </p>
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title={
@@ -660,9 +654,6 @@ export function DashboardPage() {
           <h2 style={{ marginTop: "1.75rem" }}>
             {isYearly ? t("dashboard.sections.accumSectionTitleYearly") : t("dashboard.sections.accumSectionTitleMonthly")}
           </h2>
-          <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem", maxWidth: "58rem" }}>
-            {isYearly ? t("dashboard.sections.accumSectionHintYearly") : t("dashboard.sections.accumSectionHintMonthly")}
-          </p>
           <div className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title={
@@ -804,8 +795,6 @@ export function DashboardPage() {
       charts={dashboardCharts}
       tableAccounts={netWorthTableAccounts}
       serverPaginatedMonthlyDetail
-      monthlyDetailHint={t("dashboard.monthlyDetailHint")}
-      flowsHint={t("dashboard.flowsHint")}
       accountsTree={
         accountsTreeRoot ? (
           <NavAccountsTree

@@ -123,9 +123,6 @@ export function FxBidAskGapsTable() {
   return (
     <section className="rates-bid-ask-gaps" style={{ marginTop: "1.5rem", maxWidth: "58rem" }}>
       <h2 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("rates.fx.gapsTitle")}</h2>
-      <p className="muted" style={{ marginBottom: "0.75rem", lineHeight: 1.45, fontSize: "0.92rem" }}>
-        {t("rates.fx.gapsHint")}
-      </p>
       <Table
         header={
           <thead>

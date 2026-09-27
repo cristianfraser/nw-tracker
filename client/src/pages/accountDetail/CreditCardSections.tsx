@@ -244,7 +244,6 @@ function CreditCardInstallmentsSection({
       <h2 className={styles.sectionTitle}>{t("account.creditCard.installmentsTitle")}</h2>
       {hasLedger ? (
         <p className={cn("muted", styles.proseMuted)}>
-          {t("account.creditCard.installmentsLedgerHint")}{" "}
           {m?.installment_purchase_count != null && m?.installment_payment_count != null ? (
             <Trans
               i18nKey="account.creditCard.installmentsCounts"
@@ -282,7 +281,6 @@ function CreditCardInstallmentsSection({
           {hasLedger && facturaciones.length > 0 ? (
             <>
               <h3 className={styles.subsectionTitle}>{t("accountDetail.creditCard.facturacionesTitle")}</h3>
-              <p className={cn("muted", styles.proseSmTight)}>{t("accountDetail.creditCard.facturacionesHint")}</p>
               <CreditCardFacturacionesTable
                 rows={facturaciones}
                 accountId={accountId}
@@ -312,12 +310,6 @@ function CreditCardInstallmentsSection({
           </Table>
 
           <h3 className={styles.subsectionTitle}>{t("account.creditCard.completedPurchasesTitle")}</h3>
-          <p className={cn("muted", styles.caption)}>
-            <Trans
-              i18nKey="account.creditCard.completedPurchasesCaption"
-              components={{ 1: <span className="mono" />, 2: <span className="mono" /> }}
-            />
-          </p>
           <PaginatedTable
             key={`cc-completed-${accountId}`}
             page={completedPage}

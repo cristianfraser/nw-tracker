@@ -247,7 +247,6 @@ export function GroceriesPage() {
   return (
     <div className="page">
       <h1>{t("groceries.title")}</h1>
-      <p className="muted">{t("groceries.intro")}</p>
 
       {/* ── Cleaning workbench ─────────────────────────────────────────────── */}
       <section style={{ margin: "1.5rem 0" }}>
@@ -256,7 +255,6 @@ export function GroceriesPage() {
           <p className="muted">{t("groceries.cleaning.allClassified")}</p>
         ) : (
           <>
-            <p className="muted">{t("groceries.cleaning.intro")}</p>
             <div
               style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center", margin: "0.5rem 0" }}
             >

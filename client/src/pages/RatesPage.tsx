@@ -450,11 +450,6 @@ export function RatesPage() {
           {t("fxCoverage.syncStale")}
         </p>
       ) : null}
-      <p className="muted">
-        FX tab: reference rates and IPC index. Instruments tab: SPY, VEA, Reserva valor cuota, Risky Norris valor
-        cuota, Risky Norris APV valor cuota, UNO-A, BTC, and ETH — each in CLP (via USD/CLP) or native
-        USD per the toggle.
-      </p>
 
       <nav className="flow-subnav" aria-label={t("rates.subnavAria")}>
         <button type="button" onClick={() => setTab("fx")}>
@@ -471,11 +466,6 @@ export function RatesPage() {
 
       {tab === "fx" ? (
         <>
-          <p className="muted" style={{ marginTop: "-0.35rem", marginBottom: "1rem" }}>
-            USD, UF, and EUR are CLP per one unit of foreign currency. IPC is the stored index level (not a currency).
-            EUR comes from the variables sheet on import; IPC from optional <span className="mono">cfraser/ipc-index.csv</span>{" "}
-            (<span className="mono">date;ipc_index</span>).
-          </p>
           <div className="rates-fx-grid">
             <FxUsdClpDualChart
               timeRange={rangePrefs.range}
@@ -523,9 +513,6 @@ export function RatesPage() {
         </>
       ) : (
         <>
-          <p className="muted" style={{ marginBottom: "1rem", maxWidth: "52rem", lineHeight: 1.45 }}>
-            {t("rates.instrumentDisplayHint")}
-          </p>
 
           <div className="rates-instrument-stack">
             {instrumentSlots.map((slot) => {

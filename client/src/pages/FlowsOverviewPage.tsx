@@ -141,9 +141,6 @@ export function FlowsOverviewPage() {
   return (
     <>
       <h2 className="flow-section-title">{t("flows.overview.title")}</h2>
-      <p className="muted" style={{ maxWidth: "52rem", marginBottom: "1rem" }}>
-        {t("flows.overview.intro")}
-      </p>
 
       <div
         className="chart-grid chart-grid--full-line chart-grid--full-width-stack"
