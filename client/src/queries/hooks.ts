@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { api } from "../api";
 import {
   fetchAccountsByPortfolioGroup,
@@ -11,6 +11,7 @@ import {
 } from "./fetchers";
 import {
   hasDashboardNavSnapshotCache,
+  navSnapshotCoversNavTree,
   readDashboardNavSnapshotCache,
   writeDashboardNavSnapshotCache,
 } from "./dashboardNavSnapshotCache";
@@ -40,12 +41,17 @@ function prepareNavSnapshotForDisplay(
   return perturbDashboardNavSnapshot(prepared);
 }
 
+/** Snapshots read from localStorage (placeholders), as opposed to live server payloads. */
+const navSnapshotsFromLocalCache = new WeakSet<object>();
+
 function readNavSnapshotCacheForUnit(unit: DisplayUnit) {
   const raw =
     readDashboardNavSnapshotCache(unit) ??
     (unit === "usd" ? readDashboardNavSnapshotCache("clp") : undefined);
   if (!raw) return undefined;
-  return prepareNavSnapshotForDisplay(unit, raw);
+  const prepared = prepareNavSnapshotForDisplay(unit, raw);
+  navSnapshotsFromLocalCache.add(prepared);
+  return prepared;
 }
 
 function readGroupPageShellCacheForUnit(
@@ -133,8 +139,10 @@ const DASHBOARD_NAV_SNAPSHOT_STALE_MS = 10 * 60_000;
 
 /** Home card strip shape (accounts + layout); cached in localStorage between visits. */
 export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
+  const queryClient = useQueryClient();
+  const { data: sidebarNav } = useSidebarNav();
   const cachedStrip = hasDashboardNavSnapshotCache(unit);
-  return useQuery({
+  const query = useQuery({
     queryKey: queryKeys.dashboardNavSnapshot(unit),
     queryFn: async () => {
       const snapshot = await fetchDashboardNavSnapshot(unit);
@@ -150,6 +158,19 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     staleTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
     gcTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
   });
+  // A placeholder read from localStorage before the nav tree grew a node must never reach the
+  // cards (requireNavCardMetrics fails fast on the missing slug). Hide it and reset the query:
+  // the storage entry is already gone, so the reset fetches the live snapshot. Live payloads are
+  // never second-guessed here — a slug missing from one is a server bug and still throws.
+  const staleCachedSnapshot =
+    query.data != null &&
+    navSnapshotsFromLocalCache.has(query.data) &&
+    !navSnapshotCoversNavTree(query.data.card_metrics_by_slug, sidebarNav);
+  useEffect(() => {
+    if (!staleCachedSnapshot) return;
+    void queryClient.resetQueries({ queryKey: queryKeys.dashboardNavSnapshot(unit), exact: true });
+  }, [staleCachedSnapshot, queryClient, unit]);
+  return staleCachedSnapshot ? { ...query, data: undefined } : query;
 }
 
 export function useGroupConsolidatedTables(
