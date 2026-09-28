@@ -24,8 +24,10 @@ import {
 } from "../ccFacturadoFinancingLinksDb.js";
 import { buildFlowsCheckingIncomePayload } from "../flowsCheckingInflows.js";
 import {
+  CHECKING_INCOME_KINDS,
   type CheckingIncomeKind,
   clearCheckingIncomeForceInclude,
+  isCheckingIncomeKind,
   restoreCheckingIncomeMovement,
   upsertCheckingIncomeMovementOverride,
 } from "../flowsCheckingIncomeOverrides.js";
@@ -128,15 +130,9 @@ app.patch("/api/income/movements/:movement_id", (req, res) => {
     force_include?: boolean;
     note?: string | null;
   };
-  if (
-    body.income_kind != null &&
-    body.income_kind !== "salary" &&
-    body.income_kind !== "severance" &&
-    body.income_kind !== "other" &&
-    body.income_kind !== "parent_gift"
-  ) {
+  if (body.income_kind != null && !isCheckingIncomeKind(body.income_kind)) {
     res.status(400).json({
-      error: "income_kind must be salary, severance, other, or parent_gift",
+      error: `income_kind must be one of ${CHECKING_INCOME_KINDS.join(", ")}`,
     });
     return;
   }

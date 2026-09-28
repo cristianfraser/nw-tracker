@@ -28,7 +28,13 @@ function incomeKindForCheckingLine(
   line: FlowCheckingIncomeLine,
   data: FlowsIncomeResponse
 ): IncomeKind {
-  return data.income_kind_by_movement_id[line.movement_id] ?? "other";
+  const kind = data.income_kind_by_movement_id[line.movement_id] ?? "other";
+  if (kind === "card_reimbursement") {
+    throw new Error(
+      `card reimbursement movement ${line.movement_id} must not be an income line (server keeps it apart)`
+    );
+  }
+  return kind;
 }
 
 export function incomeAttributionMonthForCheckingLine(

@@ -28,6 +28,7 @@ import {
 import { checkingCreditMatchesBudaRetiro, loadBudaBufferAccountId } from "./budaWallet.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import {
+  loadCardReimbursementMovementIds,
   mergedIncomeKindByMovementIdRecord,
   loadExcludedCheckingIncomeMovementIds,
   loadExcludedCheckingIncomeLines,
@@ -91,6 +92,11 @@ export type FlowsCheckingIncomePayload = {
   payroll_period_by_movement_id: Record<number, string>;
   excluded_lines: FlowExcludedCheckingIncomeLine[];
   filtered_lines: FlowFilteredCheckingIncomeLine[];
+  /**
+   * Credits the user classified `card_reimbursement` (an additional cardholder paying back his
+   * charges): never income, so they are never in `lines`; newest first.
+   */
+  card_reimbursement_lines: FlowCheckingIncomeLine[];
 };
 
 type CheckingCartolaCreditWithId = {
@@ -291,6 +297,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   const budaBufferAccountId = loadBudaBufferAccountId();
 
   const excludedMovementIds = loadExcludedCheckingIncomeMovementIds();
+  const cardReimbursementMovementIds = loadCardReimbursementMovementIds();
   const forceIncludedMovementIds = loadForceIncludedCheckingIncomeMovementIds();
 
   const accountWithdrawalsByAccountId = new Map(
@@ -301,6 +308,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   for (const accountId of accountIds) {
     for (const credit of loadCheckingCartolaCreditsWithId(accountId)) {
       if (excludedMovementIds.has(credit.movement_id)) continue;
+      if (cardReimbursementMovementIds.has(credit.movement_id)) continue;
       if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
       creditsForBatching.push(credit);
     }
@@ -324,11 +332,18 @@ function computeCheckingIncome(): CheckingIncomeComputation {
 
   const lines: FlowCheckingIncomeLine[] = [];
   const filtered_lines: FlowFilteredCheckingIncomeLine[] = [];
+  const card_reimbursement_lines: FlowCheckingIncomeLine[] = [];
 
   for (const accountId of accountIds) {
     for (const credit of loadCheckingCartolaCreditsWithId(accountId)) {
       if (excludedMovementIds.has(credit.movement_id)) continue;
       if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
+      // The user's classification wins over the auto filters: a reimbursement is neither income
+      // nor a capital return, and must not consume a redemption another credit should claim.
+      if (cardReimbursementMovementIds.has(credit.movement_id)) {
+        card_reimbursement_lines.push(toCheckingIncomeLine(credit, accountLabels));
+        continue;
+      }
 
       const forceInclude = forceIncludedMovementIds.has(credit.movement_id);
       const filterReason = forceInclude
@@ -380,6 +395,12 @@ function computeCheckingIncome(): CheckingIncomeComputation {
     return b.movement_id - a.movement_id;
   });
 
+  card_reimbursement_lines.sort((a, b) => {
+    const byDate = b.received_on.localeCompare(a.received_on);
+    if (byDate !== 0) return byDate;
+    return b.movement_id - a.movement_id;
+  });
+
   const monthly_totals: Record<string, number> = {};
   for (const line of lines) {
     const month = monthKeyFromYmd(line.received_on);
@@ -397,6 +418,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
       payroll_period_by_movement_id: payrollPeriodByMovementIdRecord(),
       excluded_lines: loadExcludedCheckingIncomeLines(),
       filtered_lines,
+      card_reimbursement_lines,
     },
     consumedLedgerOutflowKeys: filterCtx.consumedCapitalReturnLedgerOutflowKeys,
   };

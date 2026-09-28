@@ -1,4 +1,9 @@
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
+import {
+  buildAdditionalCardsSummary,
+  type AdditionalCardsSummary,
+} from "./additionalCardReimbursements.js";
+import { loadCardReimbursementCredits } from "./flowsCheckingIncomeOverrides.js";
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
 
 import { isPdfStatementSource } from "./ccManualBillingMonth.js";
@@ -334,6 +339,9 @@ export type FlowsCreditCardExpensesPayload = {
    * calendars live on the server, so the client never derives these.
    */
   cuota_pay_by_iso?: Record<string, string>;
+
+  /** Additional-card charges (`no_cuenta`) vs the reimbursements paying them back. */
+  additional_cards: AdditionalCardsSummary;
 
 };
 
@@ -1137,6 +1145,7 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
     ]);
     const agg = aggregateGastosFromLines(lines, chartCategorySlugs);
     const totals = computeFlowsExpenseTotals(lines);
+    const additional_cards = buildAdditionalCardsSummary(lines, loadCardReimbursementCredits());
 
     return {
 
@@ -1153,6 +1162,8 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
       ...agg,
 
       ...totals,
+
+      additional_cards,
 
     };
 
@@ -1203,6 +1214,8 @@ export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPa
     ...totals,
 
     cuota_pay_by_iso: cuotaPayByIsoByAccountBillingMonth(accountIds),
+
+    additional_cards: buildAdditionalCardsSummary(lines, loadCardReimbursementCredits()),
 
   };
 

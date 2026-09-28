@@ -555,6 +555,8 @@ export function usePatchIncomeMovementMutation() {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
+      // A card reimbursement is set against the additional cards' charges on the Expenses page.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
     },
   });
 }

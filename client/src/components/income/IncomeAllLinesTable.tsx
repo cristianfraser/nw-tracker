@@ -105,6 +105,9 @@ export function IncomeAllLinesTable({
                       <option value="severance">{t("income.chart.severance")}</option>
                       <option value="parent_gift">{t("income.chart.parent_gift")}</option>
                       <option value="other">{t("income.chart.other")}</option>
+                      <option value="card_reimbursement">
+                        {t("income.chart.card_reimbursement")}
+                      </option>
                     </select>
                   </td>
                   <td>{t("income.originChecking")}</td>

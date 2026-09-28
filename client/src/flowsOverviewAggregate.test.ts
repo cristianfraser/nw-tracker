@@ -69,6 +69,7 @@ function incomePayload(): FlowsIncomeResponse {
     payroll_period_by_movement_id: {},
     excluded_lines: [],
     filtered_lines: [],
+    card_reimbursement_lines: [],
   };
 }
 
