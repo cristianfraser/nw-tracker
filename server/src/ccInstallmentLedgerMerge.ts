@@ -33,6 +33,11 @@ import {
 } from "./ccStatementJsonSource.js";
 import { learnGroceryBranchesFromCardLines, type GroceryBranchLearningResult } from "./groceryBranchLearning.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
+import {
+  captureCcExpenseLines,
+  rekeyCcExpenseLinesAfterImport,
+  type CcExpenseLineRekeyResult,
+} from "./ccExpenseLineRekey.js";
 import { assertCcPaymentEvidenceKept, ccPaymentPairingIdsWithEvidence } from "./ccPaymentMirrorEvidence.js";
 import { installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
 import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
@@ -468,6 +473,8 @@ export type CcAccountImportMergeResult = {
   json_closes_superseded_by_pdf: string[];
   /** Grocery receipts flagged `pending_branch` on this card that the lines just written paired with. */
   grocery_branch_learning: GroceryBranchLearningResult;
+  /** Categories, big groups, notes and splits carried from replaced lines onto their new rows. */
+  expense_line_rekey: CcExpenseLineRekeyResult;
 };
 
 /** Merge statements + installment ledger + billing (HTTP imports). */
@@ -546,6 +553,9 @@ export function mergeCcAccountFromParsedRows(
     // The converted card payments whose evidence is on file now must still find it after the
     // write — replaced lines, a superseded JSON close and settled bucket lines all get new rows.
     const pairedWithEvidence = ccPaymentPairingIdsWithEvidence(accountId);
+    // Before any line is replaced: the purchase assignments keyed by the old rows follow them
+    // onto the new ones at the end (`ccExpenseLineRekey.ts`).
+    const expenseLines = captureCcExpenseLines(accountId);
     // Inside the transaction: the JSON rows a PDF is taking over go first, so the write below
     // lands on a close with no competing statement row (lines cascade via the FK).
     deleteJsonStatementsByIds(supersededJsonStatementIds);
@@ -584,6 +594,7 @@ export function mergeCcAccountFromParsedRows(
     // whichever source (paste textarea, nightly feed, statement PDF). Pairing it here teaches
     // the branch's merchant string, so the next receipt at that store writes its own line.
     const grocery_branch_learning = learnGroceryBranchesFromCardLines(accountId);
+    const expense_line_rekey = rekeyCcExpenseLinesAfterImport(expenseLines);
     return {
       statements,
       ledger,
@@ -593,6 +604,7 @@ export function mergeCcAccountFromParsedRows(
       web_paste_pdf_reconcile,
       json_closes_superseded_by_pdf,
       grocery_branch_learning,
+      expense_line_rekey,
     };
   })();
 
