@@ -178,12 +178,14 @@ def parse_international_usd_ocr_flat(
         if not amts:
             continue
         usd_raw = f"-{amts[-1]}"
+        # The row prints … | país | origin | US$ (both unsigned on a nota); a lone amount is the US$.
+        orig_raw = amts[-2] if len(amts) >= 2 else ""
         add_row(
             build_intl_row(
                 fecha,
                 "NOTA DE CREDITO",
                 "US",
-                usd_raw,
+                orig_raw,
                 usd_raw,
             )
         )

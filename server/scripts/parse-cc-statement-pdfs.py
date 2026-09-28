@@ -93,6 +93,7 @@ from cc_statement_pdf_paths import (  # noqa: E402
     pdf_already_in_card_slot,
 )
 from statement_values import (  # noqa: E402
+    parse_chilean_decimal,
     parse_clp_amount,
     parse_dd_mm_yy_to_iso,
     repair_jammed_year,
@@ -426,7 +427,7 @@ RE_INTL_COUNTRY = re.compile(r"^[A-Z]{2}$")
 RE_AMOUNT_TOKEN = re.compile(r"^-?[\d.,]+$")
 # US$ column on international statements: comma decimals, no Chilean thousands dots (e.g. 20,81).
 RE_STATEMENT_USD_TOKEN = re.compile(r"^-?\d+,\d{1,2}$")
-# Foreign origin column often uses Chilean grouping (e.g. GBP 2x.xxx,xx = 20,604.00).
+# The origin column groups thousands like any Chilean amount (e.g. 2x.xxx,xx pesos).
 RE_CHILEAN_GROUPED_AMOUNT = re.compile(r"^-?\d{1,3}(\.\d{3})+,\d{2}$")
 # Lone vertical cell above this is MONTO MONEDA ORIGEN (pdftotext dropped MONTO US$).
 _MAX_PLAUSIBLE_INTL_LINE_USD = 150.0
@@ -436,7 +437,7 @@ def looks_like_statement_usd_token(raw: str) -> bool:
     t = str(raw or "").strip().replace(" ", "")
     if not t:
         return False
-    # MONTO MONEDA ORIGEN (CLP/GBP reference), not the US$ column.
+    # MONTO MONEDA ORIGEN, not the US$ column.
     if RE_CHILEAN_GROUPED_AMOUNT.match(t):
         return False
     if RE_STATEMENT_USD_TOKEN.match(t):
@@ -445,34 +446,6 @@ def looks_like_statement_usd_token(raw: str) -> bool:
         v = parse_usd_amount(t)
         return v is not None and abs(v) < 10_000
     return False
-
-
-def parse_foreign_origin_amount(
-    raw: str, usd_hint: Optional[float] = None
-) -> Optional[float]:
-    """
-    Parse MONTO MONEDA ORIGEN for GBP/EUR/etc.
-    pdftotext uses Chilean separators; when that yields a value far above the US$ column,
-    treat a single middle dot as decimal (20.604,00 → 20.604).
-    """
-    t = str(raw or "").strip().replace(" ", "")
-    if not t:
-        return None
-    chilean = parse_usd_amount(t)
-    if chilean is None:
-        return None
-    hint = usd_hint if usd_hint is not None and usd_hint > 0 else None
-    if hint is not None and chilean > max(500, hint * 8):
-        m = re.match(r"^(-?)(\d+)\.(\d{3}),(\d{2})$", t)
-        if m:
-            sign = -1 if m.group(1) else 1
-            try:
-                eu = float(f"{m.group(2)}.{m.group(3)}")
-            except ValueError:
-                eu = None
-            if eu is not None and eu < 100_000:
-                return sign * eu
-    return chilean
 
 
 def _assign_intl_orig_and_usd_amounts(amounts: List[str]) -> Tuple[str, str]:
@@ -584,77 +557,27 @@ def _intl_merchant_core(merchant: str, place: str = "") -> str:
                 m = " ".join(parts[:-1]).strip()
     return m or norm_merchant(merchant).split()[0]
 
-# País en columna → moneda del monto origen (columna antes del US$).
-COUNTRY_ORIGIN_CURRENCY: Dict[str, str] = {
-    "CL": "CLP",
-    "CH": "CLP",
-    "US": "CLP",
-    "GB": "GBP",
-    "UK": "GBP",
-    "DE": "EUR",
-    "FR": "EUR",
-    "ES": "EUR",
-    "IT": "EUR",
-    "NL": "EUR",
-    "BE": "EUR",
-    "PT": "EUR",
-    "IE": "EUR",
-    "AT": "EUR",
-    "CA": "CAD",
-    "AU": "AUD",
-    "NZ": "NZD",
-    "BR": "BRL",
-    "MX": "MXN",
-    "JP": "JPY",
-    "CN": "CNY",
-    "AR": "ARS",
-    "PE": "PEN",
-    "CO": "COP",
-}
 
-
-def _origin_currency_for_country(country: str) -> str:
-    c = country.upper().strip()
-    return COUNTRY_ORIGIN_CURRENCY.get(c, c)
-
-
-def _resolve_intl_orig_amounts(
-    orig_raw: str,
-    country: str,
-    usd_val: float,
-) -> Tuple[Optional[float], str, Optional[int]]:
+def _printed_origin(orig_raw: str) -> Tuple[Optional[float], str]:
     """
-    Returns (amount_orig, orig_currency, amount_clp).
-    International USD statements: billable amount is only MONTO US$ (row amount_usd).
-    MONTO MONEDA ORIGEN is stored as amount_orig for reference — never amount_clp.
+    MONTO MONEDA ORIGEN as printed: (its value, its text with whitespace removed).
+
+    The statement never prints the origin's currency. PAÍS is the merchant's country: app stores
+    and ride apps bill Chilean cards in pesos under US or NL, another ride app bills dollars under
+    ES, and a CH-coded origin is dollars or 0,00. So nothing here names a currency: the importer
+    labels it from the amounts and that day's fx (`ccOriginCurrency.ts`). The text is what the CSV
+    carries; the value only serves the extractor merge below, and is None for text that is not a
+    Chilean amount (`emit_row` refuses such a row).
+
+    International USD statements bill MONTO US$ only (the row's amount_usd); the origin is
+    reference, never amount_clp.
     """
-    orig_ccy = _origin_currency_for_country(country)
-    if not orig_raw:
-        return None, orig_ccy, None
+    text = re.sub(r"\s+", "", str(orig_raw or ""))
+    if not text:
+        return None, ""
+    return parse_chilean_decimal(text), text
 
-    if orig_ccy == "CLP":
-        orig_clp = parse_clp_amount(orig_raw)
-        orig_usd = parse_usd_amount(orig_raw)
-        if orig_clp is not None:
-            return float(orig_clp), "CLP", None
-        if orig_usd is not None:
-            return orig_usd, "USD", None
-        return None, "CLP", None
 
-    if orig_ccy == "USD":
-        orig_usd = parse_usd_amount(orig_raw)
-        orig_clp = parse_clp_amount(orig_raw)
-        if orig_usd is not None:
-            return orig_usd, "USD", None
-        if orig_clp is not None:
-            return float(orig_clp), "CLP", None
-        return None, "USD", None
-
-    # GBP, EUR, … — Chilean-grouped origin amounts; do not feed into amount_clp.
-    orig_fx = parse_foreign_origin_amount(orig_raw, usd_hint=usd_val)
-    if orig_fx is None:
-        return None, orig_ccy, None
-    return orig_fx, orig_ccy, None
 RE_ORIGEN_COLUMN = re.compile(
     r"^(WWW\.?|[A-Za-z0-9*.-]+\.(COM|NET|IO|ORG|CO|AI)\b)$",
     re.I,
@@ -783,7 +706,7 @@ def _parse_international_vertical_chunk(
                 country = c
                 break
 
-    orig_val, orig_ccy, amount_clp = _resolve_intl_orig_amounts(orig_raw, country, usd_val)
+    orig_val, orig_text = _printed_origin(orig_raw)
 
     merchant = _normalize_intl_payment_merchant(merchant)
     if _intl_merchant_is_noise(merchant):
@@ -801,10 +724,10 @@ def _parse_international_vertical_chunk(
         "place": origen,
         "description_raw": " | ".join(desc_bits),
         "merchant": merchant[:120],
-        "amount_clp": amount_clp,
+        "amount_clp": None,
         "amount_usd": usd_val,
         "amount_orig": orig_val,
-        "orig_currency": orig_ccy,
+        "amount_orig_printed": orig_text,
         "country": country,
         "monto_total_a_pagar_clp": None,
         "valor_cuota_mensual_clp": "",
@@ -933,9 +856,7 @@ def _build_intl_row(
     usd_val = parse_usd_amount(usd_raw)
     if usd_val is None:
         return None
-    orig_val, orig_ccy, amount_clp = _resolve_intl_orig_amounts(
-        orig_raw, country, usd_val
-    )
+    orig_val, orig_text = _printed_origin(orig_raw)
     desc_bits = [fecha, merchant]
     if origen:
         desc_bits.append(origen)
@@ -947,10 +868,10 @@ def _build_intl_row(
         "place": origen,
         "description_raw": " | ".join(desc_bits),
         "merchant": merchant[:120],
-        "amount_clp": amount_clp,
+        "amount_clp": None,
         "amount_usd": usd_val,
         "amount_orig": orig_val,
-        "orig_currency": orig_ccy,
+        "amount_orig_printed": orig_text,
         "country": country,
         "monto_total_a_pagar_clp": None,
         "valor_cuota_mensual_clp": "",
@@ -3293,6 +3214,18 @@ def _sync_statement_billing_headers_from_pdf(meta: Dict[str, Any]) -> None:
         meta["statement_monto_facturado"] = meta["pdf_deuda_total"]
 
 
+def _emitted_origin(pr: Dict[str, Any], source_pdf: str) -> str:
+    """The origin amount's printed text (`_printed_origin`); a line whose origin cell is not a
+    Chilean amount stops the parse instead of reaching the CSV."""
+    text = str(pr.get("amount_orig_printed") or "")
+    if text and pr.get("amount_orig") is None:
+        raise ValueError(
+            f"{source_pdf}: MONTO MONEDA ORIGEN {text!r} is not a printed amount "
+            f"({pr.get('transaction_date')} {pr.get('merchant')})"
+        )
+    return text
+
+
 def emit_row(
     *,
     card_group: str,
@@ -3343,8 +3276,10 @@ def emit_row(
         "mismatch_notes": "",
         "currency": meta.get("currency", "clp"),
         "amount_usd": fmt_usd(pr.get("amount_usd")),
-        "amount_orig": fmt_usd(pr.get("amount_orig")) if pr.get("amount_orig") is not None else "",
-        "orig_currency": pr.get("orig_currency", ""),
+        "amount_orig": _emitted_origin(pr, source_pdf),
+        # Always empty: the importer labels the origin from the amounts (`ccOriginCurrency.ts`).
+        # The column stays so national statements' records, and their fingerprints, stay put.
+        "orig_currency": "",
         "country": pr.get("country", ""),
         "statement_saldo_anterior": fmt_usd(meta.get("statement_saldo_anterior"))
         if meta.get("currency") == "usd"
