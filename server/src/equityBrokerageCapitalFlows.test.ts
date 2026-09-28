@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeAll, afterAll } from "vitest";
+import { describe, expect, it, beforeAll, afterAll, afterEach } from "vitest";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
@@ -8,7 +8,12 @@ import {
   getMergedDisplayDepositInflowEventsForAccount,
   pocketDepositsClpForAccount,
 } from "./accountDeposits.js";
-import { loadEquityBrokerageCapitalInflowEvents } from "./equityBrokerageCapitalFlows.js";
+import {
+  loadEquityBrokerageCapitalInflowEvents,
+  loadEquityBrokerageCapitalSortFlows,
+  loadUsdCashCapitalSortFlows,
+  type EquityCapitalSortFlow,
+} from "./equityBrokerageCapitalFlows.js";
 import { equityReturnSnapshot, totalDividendsClpForAccount } from "./equityReturns.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
@@ -296,12 +301,94 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });
 
-  it("shared wire across two same-day buys falls back to full reference (no guessing)", () => {
+  afterEach(() => {
+    db.prepare(`DELETE FROM movements WHERE note LIKE ?`).run(`${FIXTURE_NOTE}|wire-shared%`);
+  });
+
+  function marchSortFlows(): EquityCapitalSortFlow[] {
+    const all = loadEquityBrokerageCapitalSortFlows([stockId]).get(stockId) ?? [];
+    return all.filter((f) => f.occurred_on === "2026-03-26");
+  }
+
+  function marchCashFlows(): EquityCapitalSortFlow[] {
+    const all = loadUsdCashCapitalSortFlows([usdId]).get(usdId) ?? [];
+    return all.filter((f) => f.occurred_on === "2026-03-26");
+  }
+
+  it("one wire funding two same-day buys plus USD already held: wire pesos pro rata, uncovered dollars at reference", () => {
     if (!usdId || !stockId) return;
+    const note = `${FIXTURE_NOTE}|wire-shared`;
+    const priorDividend = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (
+             account_id, from_account_id, to_account_id, amount, currency, occurred_on, note,
+             units_delta, flow_kind, ticker
+           ) VALUES (NULL, ?, ?, 2.13, 'usd', '2026-03-10', ?, NULL, 'dividend_payout', 'VITEST')`
+        )
+        .run(stockId, usdId, note).lastInsertRowid
+    );
+    // Buys add up to the wire's dollars plus the prior dividend (40 + 16.81 = 54.68 + 2.13).
+    const wireId = insertWire(50_000, 54.68, note);
+    const buyA = insertBuy(40, 0.6, note);
+    const buyB = insertBuy(16.81, 0.3, note);
+    const total = 56.81;
+
+    const flows = marchSortFlows();
+    const byTie = new Map(flows.map((f) => [f.tie, f]));
+    const aWire = byTie.get(`t:${buyA}:wire`)!;
+    const bWire = byTie.get(`t:${buyB}:wire`)!;
+    const aResid = byTie.get(`t:${buyA}:resid`)!;
+    const bResid = byTie.get(`t:${buyB}:resid`)!;
+    expect(flows).toHaveLength(4);
+    expect(aWire.capital_kind).toBe("clp_wire");
+    expect(aWire.amt).toBe(Math.round((50_000 * 40) / total));
+    // The last buy takes the rest of the wire, so the pesos add up to it exactly.
+    expect(aWire.amt + bWire.amt).toBe(50_000);
+    expect(aWire.amt_usd! + bWire.amt_usd!).toBeCloseTo(54.68, 9);
+    const aResidUsd = 40 - (54.68 * 40) / total;
+    expect(aResid.capital_kind).toBe("usd_reference");
+    expect(aResid.amt_usd).toBeCloseTo(aResidUsd, 9);
+    expect(aResid.amt).toBe(usdToClpReferenceRounded(aResidUsd, "2026-03-26")!);
+    expect(aResid.amt_usd! + bResid.amt_usd!).toBeCloseTo(2.13, 9);
+
+    // The cash account mirrors the buys: the wire's pesos come in and go out again, and the
+    // day nets to minus the dollars the prior balance paid for, at the reference rate.
+    const cash = marchCashFlows();
+    const cashNet = cash.reduce((s, f) => s + f.amt, 0);
+    expect(cashNet).toBeCloseTo(-(aResid.amt + bResid.amt), 6);
+    const stockSum = flows.reduce((s, f) => s + f.amt, 0);
+    const cashBuyLegs = cash.filter((f) => f.tie.startsWith("t:"));
+    expect(cashBuyLegs.reduce((s, f) => s + f.amt, 0)).toBeCloseTo(-stockSum, 6);
+
+    for (const id of [priorDividend, wireId, buyA, buyB]) {
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+    }
+  });
+
+  it("one wire exactly covering two same-day buys carries no residual", () => {
+    if (!usdId || !stockId) return;
+    const note = `${FIXTURE_NOTE}|wire-shared-exact`;
+    const wireId = insertWire(50_000, 54.68, note);
+    const buyA = insertBuy(30, 0.5, note);
+    const buyB = insertBuy(24.68, 0.4, note);
+
+    const flows = marchSortFlows();
+    expect(flows).toHaveLength(2);
+    expect(flows.every((f) => f.capital_kind === "clp_wire")).toBe(true);
+    expect(flows.reduce((s, f) => s + f.amt, 0)).toBe(50_000);
+    expect(marchCashFlows().reduce((s, f) => s + f.amt, 0)).toBeCloseTo(0, 6);
+
+    for (const id of [wireId, buyA, buyB]) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+  });
+
+  it("two same-day buys needing less than the wire keep the reference rate", () => {
+    if (!usdId || !stockId) return;
+    const note = `${FIXTURE_NOTE}|wire-shared-under`;
     const ids = [
-      insertWire(50_000, 54.68, `${FIXTURE_NOTE}|wire-shared`),
-      insertBuy(55.22, 0.873613, `${FIXTURE_NOTE}|wire-shared`),
-      insertBuy(30, 0.5, `${FIXTURE_NOTE}|wire-shared`),
+      insertWire(50_000, 54.68, note),
+      insertBuy(20, 0.3, note),
+      insertBuy(10, 0.2, note),
     ];
 
     const events = marchEvents();
@@ -309,9 +396,28 @@ describe("equityBrokerageCapitalFlows fixture", () => {
     expect(events.every((e) => e.capital_kind === "usd_reference")).toBe(true);
     const amts = events.map((e) => e.amt).sort((a, b) => a - b);
     expect(amts).toEqual([
-      usdToClpReferenceRounded(30, "2026-03-26")!,
-      usdToClpReferenceRounded(55.22, "2026-03-26")!,
+      usdToClpReferenceRounded(10, "2026-03-26")!,
+      usdToClpReferenceRounded(20, "2026-03-26")!,
     ]);
+
+    for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+  });
+
+  it("a same-day buy equal to the wire owns it; the other buy keeps the reference rate", () => {
+    if (!usdId || !stockId) return;
+    const note = `${FIXTURE_NOTE}|wire-shared-owner`;
+    const ids = [
+      insertWire(50_000, 54.68, note),
+      insertBuy(54.68, 0.8, note),
+      insertBuy(10, 0.2, note),
+    ];
+
+    const events = marchEvents();
+    expect(events).toHaveLength(2);
+    const wire = events.find((e) => e.capital_kind === "clp_wire");
+    const ref = events.find((e) => e.capital_kind === "usd_reference");
+    expect(wire?.amt).toBe(50_000);
+    expect(ref?.amt).toBe(usdToClpReferenceRounded(10, "2026-03-26")!);
 
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });
