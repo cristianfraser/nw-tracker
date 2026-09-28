@@ -69,7 +69,6 @@
     "afp:uno:fetch-cuota-website": "tsx scripts/afp-uno-fetch-cuota-website.ts",
     "afp:uno:spot-from-website": "tsx scripts/afp-uno-spot-from-website.ts",
     "afp:uno:apply-valuation": "tsx scripts/afp-uno-apply-valuation.ts",
-    "crypto:apply-valuation": "tsx scripts/crypto-apply-valuation.ts",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && NW_TRACKER_TEST_DB=nw-tracker.test.db vitest run",
     "profile:dashboard": "tsx scripts/profile-dashboard.ts",

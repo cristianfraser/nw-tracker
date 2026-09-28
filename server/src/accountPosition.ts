@@ -14,6 +14,7 @@ import {
 import {
   accountUsesCryptoMtm,
   computeCryptoMtmClp,
+  requireCryptoMtmClp,
   cryptoCoinCumulativeThroughDate,
   type CryptoAsset,
 } from "./cryptoValuation.js";
@@ -278,7 +279,7 @@ export function getAccountPositionMeta(
         }
       }
 
-      const mtm = computeCryptoMtmClp(accountId, asOf);
+      const mtm = requireCryptoMtmClp(accountId, asOf);
       const closeRow = db
         .prepare(
           `SELECT trade_date, close FROM equity_daily

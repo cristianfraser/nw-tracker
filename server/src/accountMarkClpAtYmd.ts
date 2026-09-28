@@ -13,7 +13,7 @@ import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
-import { accountUsesCryptoMtm, computeCryptoMtmClp } from "./cryptoValuation.js";
+import { accountUsesCryptoMtm, requireCryptoMtmClp } from "./cryptoValuation.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
@@ -84,8 +84,7 @@ function historicalMarkClpAtYmd(
     }
   }
   if (accountUsesCryptoMtm(accountId)) {
-    const clp = computeCryptoMtmClp(accountId, asOfYmd);
-    if (clp != null && Number.isFinite(clp)) return { value_clp: clp, as_of_date: asOfYmd };
+    return { value_clp: requireCryptoMtmClp(accountId, asOfYmd), as_of_date: asOfYmd };
   }
   const deptoKind = deptoKindForBucketSlug(categorySlug);
   if (deptoKind) {

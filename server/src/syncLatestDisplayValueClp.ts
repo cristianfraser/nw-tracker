@@ -50,8 +50,14 @@ export function syncLatestDisplayValueClp(
     if (eq != null) return eq;
   }
   if (accountUsesCryptoMtm(accountId)) {
+    // Units × close × fx is crypto's only value source — no stored-row fallback below.
     const crypto = computeCryptoMtmClpDisplaySync(accountId);
-    if (crypto != null) return crypto;
+    if (crypto == null) {
+      throw new Error(
+        `crypto account ${accountId}: no coin close to mark today; crypto is valued from units × close × fx only — backfill equity_daily`
+      );
+    }
+    return crypto;
   }
   // Depto UF marks beat stored valuations for property/mortgage (same order as the
   // `accountMarkClpAtYmd` today branch) — a stale property valuation must not shadow the
