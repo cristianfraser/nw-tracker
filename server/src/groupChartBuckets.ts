@@ -87,31 +87,56 @@ function chartBucketAccountChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   return (root.children ?? []).filter(isChartBucketAccountNode);
 }
 
-/**
- * Graph ordering for account-node buckets: current valuation (today's CLP mark) descending,
- * then label. Group-node bucket order stays the hand-set nav order — only account lines are
- * valuation-ordered, matching the per-account row ordering (see groupTabOrdering.ts).
- */
-function sortAccountNodesByMarkDesc(nodes: NavTreeNodeDto[]): NavTreeNodeDto[] {
-  const today = chileCalendarTodayYmd();
-  const value = new Map<number, number>();
-  for (const n of nodes) {
-    const mark = accountMarkClpAtYmd(n.account_id!, today);
-    value.set(
-      n.account_id!,
-      mark != null && Number.isFinite(mark.value_clp) ? mark.value_clp : Number.NEGATIVE_INFINITY
-    );
+/** Today's CLP mark of a nav node: its account, or the sum over a group's subtree. */
+function navNodeMarkClp(n: NavTreeNodeDto, today: string): number {
+  const ids = n.account_id != null && n.account_id > 0 ? [n.account_id] : collectSubtreeAccountIds(n);
+  let sum = 0;
+  let any = false;
+  for (const id of ids) {
+    const mark = accountMarkClpAtYmd(id, today);
+    if (mark != null && Number.isFinite(mark.value_clp)) {
+      sum += mark.value_clp;
+      any = true;
+    }
   }
+  return any ? sum : Number.NEGATIVE_INFINITY;
+}
+
+/**
+ * Graph ordering for account-node buckets, and for the first-level children of a bucket that
+ * holds accounts beside sub-buckets: current valuation (today's CLP mark; a group's is its
+ * subtree's) descending, then label. A group-only bucket keeps the hand-set nav order —
+ * matching the per-account row ordering (see groupTabOrdering.ts).
+ */
+function sortNavNodesByMarkDesc(nodes: NavTreeNodeDto[]): NavTreeNodeDto[] {
+  const today = chileCalendarTodayYmd();
+  const value = new Map<NavTreeNodeDto, number>();
+  for (const n of nodes) value.set(n, navNodeMarkClp(n, today));
   return [...nodes].sort((a, b) => {
-    const va = value.get(a.account_id!)!;
-    const vb = value.get(b.account_id!)!;
+    const va = value.get(a)!;
+    const vb = value.get(b)!;
     if (va !== vb) return vb - va;
     return a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
   });
 }
 
+/**
+ * A bucket's first-level chart children when it holds accounts beside sub-buckets (Acciones:
+ * its stocks and the Portafolio IPSA unit) — each one line, by balance. `null` for a bucket
+ * that holds only one kind (the rules below apply there).
+ */
+function mixedChartChildren(navNode: NavTreeNodeDto): NavTreeNodeDto[] | null {
+  const groupKids = chartBucketGroupChildren(navNode);
+  const accountKids = chartBucketAccountChildren(navNode);
+  if (groupKids.length === 0 || accountKids.length === 0) return null;
+  return sortNavNodesByMarkDesc([...groupKids, ...accountKids]);
+}
+
 /** Nav nodes that each become one chart series in "Agrupado" mode (single source; client picks). */
 export function stripChartBucketNavNodes(navNode: NavTreeNodeDto): NavTreeNodeDto[] {
+  const mixed = mixedChartChildren(navNode);
+  if (mixed) return mixed;
+
   const groupKids = chartBucketGroupChildren(navNode);
   const accountKids = chartBucketAccountChildren(navNode);
 
@@ -119,14 +144,16 @@ export function stripChartBucketNavNodes(navNode: NavTreeNodeDto): NavTreeNodeDt
 
   if (groupKids.length === 1) {
     const sole = groupKids[0]!;
+    const soleMixed = mixedChartChildren(sole);
+    if (soleMixed) return soleMixed;
     const innerAccounts = chartBucketAccountChildren(sole);
-    if (innerAccounts.length >= 2) return sortAccountNodesByMarkDesc(innerAccounts);
+    if (innerAccounts.length >= 2) return sortNavNodesByMarkDesc(innerAccounts);
     const innerGroups = chartBucketGroupChildren(sole);
     if (innerGroups.length >= 2) return innerGroups;
     return [sole];
   }
 
-  if (accountKids.length >= 2) return sortAccountNodesByMarkDesc(accountKids);
+  if (accountKids.length >= 2) return sortNavNodesByMarkDesc(accountKids);
   return [];
 }
 
@@ -135,12 +162,15 @@ function navChartBucketNavNodesUngrouped(navNode: NavTreeNodeDto): NavTreeNodeDt
   const groupedKids = stripChartBucketNavNodes(navNode);
   const out: NavTreeNodeDto[] = [];
   for (const child of groupedKids) {
+    const mixed = mixedChartChildren(child);
     const innerGroups = chartBucketGroupChildren(child);
     const innerAccounts = chartBucketAccountChildren(child);
-    if (innerGroups.length >= 2) {
+    if (mixed) {
+      out.push(...mixed);
+    } else if (innerGroups.length >= 2) {
       out.push(...innerGroups);
     } else if (innerAccounts.length >= 2) {
-      out.push(...sortAccountNodesByMarkDesc(innerAccounts));
+      out.push(...sortNavNodesByMarkDesc(innerAccounts));
     } else {
       out.push(child);
     }

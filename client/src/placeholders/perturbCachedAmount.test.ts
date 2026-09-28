@@ -563,7 +563,7 @@ describe("perturbAccountValuesPreservingNavCardOrder", () => {
       month: zeroPeriod,
       year: zeroPeriod,
     };
-    const zeroEntry = { child: zeroVariant, parent: zeroVariant };
+    const zeroEntry = { child: zeroVariant, parent: zeroVariant, row_pct: { day: { clp: null, usd: null }, month: { clp: null, usd: null }, year: { clp: null, usd: null }, total: { clp: null, usd: null } } };
     const snapshot: CachedDashboardNavSnapshot = {
       card_metrics_by_slug: {
         real_estate: zeroEntry,

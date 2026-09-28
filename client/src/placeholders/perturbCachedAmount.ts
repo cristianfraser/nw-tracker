@@ -216,7 +216,7 @@ function synthesizeMissingUsdOnNavCardMetricsBySlug(
   });
   const out: DashboardResponse["card_metrics_by_slug"] = {};
   for (const [slug, entry] of Object.entries(entries)) {
-    out[slug] = { child: variant(entry.child), parent: variant(entry.parent) };
+    out[slug] = { ...entry, child: variant(entry.child), parent: variant(entry.parent) };
   }
   return out;
 }
@@ -527,7 +527,7 @@ function perturbNavCardMetricsBySlug(
   });
   const out: DashboardResponse["card_metrics_by_slug"] = {};
   for (const [slug, entry] of Object.entries(entries)) {
-    out[slug] = { child: variant(entry.child), parent: variant(entry.parent) };
+    out[slug] = { ...entry, child: variant(entry.child), parent: variant(entry.parent) };
   }
   return out;
 }

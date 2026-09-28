@@ -128,6 +128,12 @@ export function PortfolioNavEntityCardsStrip({
     [parentNavNode]
   );
 
+  /**
+   * Beside accounts a sub-bucket is one more row of the accounts table, not a detail card
+   * (Portafolio IPSA among Acciones' stocks) — a leaf of this page, sorted by balance with them.
+   */
+  const groupsAsRows = stripAccountChildren.length > 0 && stripGroupChildren.length > 0;
+
   const filteredGroupChildren = useMemo(
     () => routableNavStripChildren(stripGroupChildren),
     [stripGroupChildren]
@@ -142,15 +148,16 @@ export function PortfolioNavEntityCardsStrip({
   const accountCardChildren = useMemo(
     () => [
       ...filteredAccountChildren,
+      ...(groupsAsRows ? filteredGroupChildren : []),
       ...inactiveAccountNavLeavesWithActivity(dash, parentNavNode, stripGroupChildren),
     ],
-    [filteredAccountChildren, dash, parentNavNode, stripGroupChildren]
+    [filteredAccountChildren, groupsAsRows, filteredGroupChildren, dash, parentNavNode, stripGroupChildren]
   );
 
   /** Groups hosted from elsewhere in the tree (Efectivo ← Pasivos > tarjeta de crédito). */
   const detailChildren = useMemo(
-    () => [...filteredGroupChildren, ...linkedCardNavChildren],
-    [filteredGroupChildren, linkedCardNavChildren]
+    () => [...(groupsAsRows ? [] : filteredGroupChildren), ...linkedCardNavChildren],
+    [groupsAsRows, filteredGroupChildren, linkedCardNavChildren]
   );
 
   const showDetailSlots = detailChildren.length > 0;

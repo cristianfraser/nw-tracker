@@ -9,7 +9,22 @@ import type { NavTreeNodeDto } from "./types";
  * now aggregated server-side (see server/src/groupChartBuckets.ts); this client copy is retained
  * only for non-chart consumers (nav card breakdown coverage / counts).
  */
+/**
+ * A node's first-level children when it holds accounts beside sub-buckets (Acciones: its stocks
+ * and the Portafolio IPSA unit) — each one bucket; `null` when it holds only one kind. Mirrors
+ * the server's `mixedChartChildren` (the server also orders them by balance; consumers here
+ * sort by value themselves).
+ */
+export function mixedNavChildren(navNode: NavTreeNodeDto): NavTreeNodeDto[] | null {
+  const groupKids = portfolioStripGroupChildren(navNode);
+  const accountKids = portfolioStripAccountChildren(navNode);
+  if (groupKids.length === 0 || accountKids.length === 0) return null;
+  return [...groupKids, ...accountKids];
+}
+
 export function stripChartBucketNavNodes(navNode: NavTreeNodeDto): NavTreeNodeDto[] {
+  const mixed = mixedNavChildren(navNode);
+  if (mixed) return mixed;
   const groupKids = portfolioStripGroupChildren(navNode);
   const accountKids = portfolioStripAccountChildren(navNode);
 
@@ -17,6 +32,8 @@ export function stripChartBucketNavNodes(navNode: NavTreeNodeDto): NavTreeNodeDt
 
   if (groupKids.length === 1) {
     const sole = groupKids[0]!;
+    const soleMixed = mixedNavChildren(sole);
+    if (soleMixed) return soleMixed;
     const innerAccounts = portfolioStripAccountChildren(sole);
     if (innerAccounts.length >= 2) return innerAccounts;
     const innerGroups = portfolioStripGroupChildren(sole);

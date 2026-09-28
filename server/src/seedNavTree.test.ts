@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createPanelAccount, updatePanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { seedNavTree } from "./seedNavTree.js";
-import { assertHomogeneousGroupItems } from "./portfolioGroupTree.js";
+import { assertNavGroupItemsShape } from "./portfolioGroupTree.js";
 
 describe("seedNavTree cash_eqs hub", () => {
   it("creates nav_bucket with cash_savings and checking_accounts children", () => {
@@ -203,30 +203,48 @@ describe("seedNavTree brokerage sub-bucket move-out", () => {
   });
 });
 
-describe("assertHomogeneousGroupItems", () => {
-  it("throws when a group mixes sub-group and account items", () => {
+describe("assertNavGroupItemsShape", () => {
+  it("allows accounts beside sub-buckets but throws on an account under two groups", () => {
     seedNavTree();
-    expect(() => assertHomogeneousGroupItems()).not.toThrow();
+    expect(() => assertNavGroupItemsShape()).not.toThrow();
 
     const brokerage = db
       .prepare(`SELECT id FROM portfolio_groups WHERE slug = 'brokerage'`)
       .get() as { id: number };
-    const anyAccount = db
-      .prepare(`SELECT id FROM accounts ORDER BY id LIMIT 1`)
-      .get() as { id: number };
-    db.prepare(
+    const linked = db
+      .prepare(
+        `SELECT i.account_id AS id, a.name AS name FROM portfolio_group_items i
+         JOIN accounts a ON a.id = i.account_id
+         WHERE i.item_kind = 'account' ORDER BY i.account_id LIMIT 1`
+      )
+      .get() as { id: number; name: string };
+    const unlinked = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, import_key)
+           SELECT id, ?, ? FROM asset_groups WHERE slug = 'brokerage'`
+        )
+        .run("vitest-shape-unlinked", "vitest-shape|unlinked").lastInsertRowid
+    );
+    const ins = db.prepare(
       `INSERT INTO portfolio_group_items (group_id, item_kind, account_id, sort_order)
        VALUES (?, 'account', ?, 9999)`
-    ).run(brokerage.id, anyAccount.id);
+    );
+    const del = db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ? AND account_id = ?`);
     try {
-      expect(() => assertHomogeneousGroupItems()).toThrow(/brokerage/);
+      // A bucket holding sub-buckets and an account side by side is a valid shape.
+      ins.run(brokerage.id, unlinked);
+      expect(() => assertNavGroupItemsShape()).not.toThrow();
+      del.run(brokerage.id, unlinked);
+
+      ins.run(brokerage.id, linked.id);
+      expect(() => assertNavGroupItemsShape()).toThrow(/more than one group/);
     } finally {
-      db.prepare(`DELETE FROM portfolio_group_items WHERE group_id = ? AND account_id = ?`).run(
-        brokerage.id,
-        anyAccount.id
-      );
+      del.run(brokerage.id, linked.id);
+      del.run(brokerage.id, unlinked);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(unlinked);
     }
-    expect(() => assertHomogeneousGroupItems()).not.toThrow();
+    expect(() => assertNavGroupItemsShape()).not.toThrow();
   });
 });
 

@@ -1,8 +1,8 @@
 import { db } from "./db.js";
-import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
+import { assetGroupBySlug, assetGroupIdsInSubtree, leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { clearAggregationCache } from "./aggregationCache.js";
-import { assertHomogeneousGroupItems } from "./portfolioGroupTree.js";
+import { assertNavGroupItemsShape } from "./portfolioGroupTree.js";
 import { seedCreditCardTree } from "./seedCreditCardTree.js";
 import { seedLiabilitiesTree } from "./seedLiabilitiesTree.js";
 
@@ -226,18 +226,69 @@ function rebuildRetirementNav() {
   deleteRetiredPortfolioGroups.run();
 }
 
-/** Any non-view account in the asset-group subtree (empty buckets stay out of the nav). */
-function assetGroupSubtreeHasAccounts(bucketSlug: string): boolean {
-  const leafIds = leafAssetGroupIdsUnder(bucketSlug);
-  if (leafIds.length === 0) return false;
-  const ph = leafIds.map(() => "?").join(",");
-  const row = db
+/**
+ * Links a brokerage bucket's first-level children: the accounts on its own leaf asset groups
+ * and, as child groups, the buckets filed under it (`portfolio_groups.parent_id`) that are
+ * backed by an asset group nested inside its own — a managed portfolio under Acciones
+ * (migration 192). A nested bucket's accounts are linked there only, never here as well, so
+ * a bucket may hold accounts and sub-buckets side by side and each account sits in exactly
+ * one of them. Children are ordered by name (the sidebar's seeded order). Returns whether
+ * anything was linked.
+ */
+function linkBucketSubtree(bucketSlug: string, assetSlug: string): boolean {
+  const gid = (groupIdBySlug.get(bucketSlug) as { id: number }).id;
+  deleteGroupItems.run(gid);
+  const ownSubtree = new Set(assetGroupIdsInSubtree(assetSlug));
+  const nested = db
     .prepare(
-      `SELECT COUNT(*) AS c FROM accounts
-       WHERE asset_group_id IN (${ph})`
+      `SELECT pg.id, pg.slug, pg.label, pg.asset_group_slug
+       FROM portfolio_groups pg
+       WHERE pg.parent_id = ? AND pg.group_kind = 'bucket' AND pg.asset_group_slug IS NOT NULL
+       ORDER BY pg.sort_order, pg.id`
     )
-    .get(...leafIds) as { c: number };
-  return row.c > 0;
+    .all(gid) as { id: number; slug: string; label: string; asset_group_slug: string }[];
+
+  const children: { name: string; link: (sort: number) => void }[] = [];
+  const nestedLeafIds = new Set<number>();
+  for (const n of nested) {
+    const agId = assetGroupBySlug(n.asset_group_slug)?.id;
+    if (agId == null || !ownSubtree.has(agId) || n.asset_group_slug === assetSlug) {
+      throw new Error(
+        `seedNavTree: bucket ${n.slug} under ${bucketSlug} is backed by asset group ` +
+          `${n.asset_group_slug}, which is not nested inside ${assetSlug}`
+      );
+    }
+    for (const id of leafAssetGroupIdsUnder(n.asset_group_slug)) nestedLeafIds.add(id);
+    if (!linkBucketSubtree(n.slug, n.asset_group_slug)) continue;
+    children.push({ name: n.label, link: (sort) => insertGroupChild.run(gid, n.id, sort) });
+  }
+
+  const ownLeafIds = leafAssetGroupIdsUnder(assetSlug).filter((id) => !nestedLeafIds.has(id));
+  if (ownLeafIds.length > 0) {
+    const ph = ownLeafIds.map(() => "?").join(",");
+    const rows = db
+      .prepare(
+        `SELECT a.id, a.name
+         FROM accounts a
+         WHERE a.asset_group_id IN (${ph})
+           AND (a.import_key IS NULL OR a.import_key != ?)`
+      )
+      .all(...ownLeafIds, NOTE_STOCKS_LEGACY) as { id: number; name: string }[];
+    for (const r of rows) {
+      children.push({
+        name: r.name,
+        link: (sort) => {
+          insertAccountChild.run(gid, r.id, sort);
+          db.prepare(`UPDATE accounts SET primary_portfolio_group_id = ? WHERE id = ?`).run(gid, r.id);
+        },
+      });
+    }
+  }
+
+  children
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+    .forEach((c, i) => c.link(i * 10));
+  return children.length > 0;
 }
 
 function rebuildBrokerageNav() {
@@ -254,18 +305,17 @@ function rebuildBrokerageNav() {
     ["brokerage_cash", 30],
   ];
   for (const [slug, sort] of buckets) {
-    // Delete before the empty-bucket continue (same as rebuildRetirementNav) — an account
-    // moved OUT of a sub-bucket must drop its stale membership even if the bucket empties.
-    const gid = (groupIdBySlug.get(slug) as { id: number } | undefined)?.id;
-    if (gid != null) deleteGroupItems.run(gid);
-    if (!assetGroupSubtreeHasAccounts(slug)) continue;
+    // An account moved OUT of a sub-bucket must drop its stale membership even if the
+    // bucket empties: linkBucketSubtree clears the items before linking.
+    if (groupIdBySlug.get(slug) == null) continue;
+    if (!linkBucketSubtree(slug, slug)) continue;
     linkGroup("brokerage", slug, sort);
-    linkAccountsByAssetGroup(slug, slug, 0);
   }
   // Data-defined buckets: any other brokerage bucket backed by its own asset group — a
   // managed portfolio unit (holding + the caja its fee is charged from, migration 190) —
   // links its accounts the same way. Its members' leaves sit under its asset group, so
-  // they have already left the class buckets above.
+  // they have already left the class buckets above. A unit filed under a class bucket
+  // (migration 192) is linked by that bucket's linkBucketSubtree instead.
   const fixed = new Set(buckets.map(([slug]) => slug));
   const dataBuckets = db
     .prepare(
@@ -276,11 +326,8 @@ function rebuildBrokerageNav() {
     .all(brkId) as { slug: string; sort_order: number; asset_group_slug: string }[];
   for (const b of dataBuckets) {
     if (fixed.has(b.slug)) continue;
-    const gid = (groupIdBySlug.get(b.slug) as { id: number }).id;
-    deleteGroupItems.run(gid);
-    if (!assetGroupSubtreeHasAccounts(b.asset_group_slug)) continue;
+    if (!linkBucketSubtree(b.slug, b.asset_group_slug)) continue;
     linkGroup("brokerage", b.slug, b.sort_order);
-    linkAccountsByAssetGroup(b.slug, b.asset_group_slug, 0);
   }
 }
 
@@ -721,10 +768,14 @@ export function seedNavTree(): void {
     rebuildNetWorthDashboardLinks();
     applyDashboardBucketLayout();
   });
-  tx();
-  seedCreditCardTree();
-  seedLiabilitiesTree();
-  assertHomogeneousGroupItems();
+  // One transaction (the inner ones become savepoints): a shape violation rolls the whole
+  // seed back instead of leaving it committed behind a failed boot.
+  db.transaction(() => {
+    tx();
+    seedCreditCardTree();
+    seedLiabilitiesTree();
+    assertNavGroupItemsShape();
+  })();
   clearAggregationCache();
   console.log("nav tree: seeded sidebar portfolio_groups + liability_groups");
 }

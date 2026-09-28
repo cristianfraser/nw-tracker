@@ -366,13 +366,18 @@ export function portfolioGroupHasChildGroupItems(groupId: number): boolean {
   return row.c > 0;
 }
 
+/** True when the portfolio group holds any account item directly. */
+export function portfolioGroupHasAccountItems(groupId: number): boolean {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS c FROM portfolio_group_items
+       WHERE group_id = ? AND item_kind = 'account'`
+    )
+    .get(groupId) as { c: number };
+  return row.c > 0;
+}
+
 const HOMOGENEITY_CHECKS = [
-  {
-    table: "portfolio_group_items",
-    groupTable: "portfolio_groups",
-    groupKinds: ["group", "linked_group"],
-    leafKinds: ["account", "expense_account"],
-  },
   {
     table: "credit_card_group_items",
     groupTable: "credit_card_groups",
@@ -388,12 +393,49 @@ const HOMOGENEITY_CHECKS = [
 ] as const;
 
 /**
- * Invariant: a group's items are all group-like (sub-buckets / linked groups) XOR all
- * leaf-like (accounts / expense accounts) — never a mix. The nav seeds are the only
- * writers of these tables, so this runs at the end of every seed (boot included) and
- * throws on the first structural regression instead of letting a mixed bucket render.
+ * Invariants on the nav seeds' output — they are the only writers of these tables, so this
+ * runs at the end of every seed (boot included) and throws on the first structural regression.
+ *
+ * - Portfolio tree: a group may hold sub-buckets and accounts side by side (Acciones holds its
+ *   stocks and the Portafolio IPSA bucket), but each account sits in at most one group — a
+ *   second membership would count it twice in every per-child view. Linked groups (chart
+ *   references) and expense places never mix with anything.
+ * - Credit-card and liability trees: a group's items are all sub-groups XOR all accounts.
  */
-export function assertHomogeneousGroupItems(): void {
+export function assertNavGroupItemsShape(): void {
+  const twice = db
+    .prepare(
+      `SELECT a.name AS name, GROUP_CONCAT(g.slug, ', ') AS slugs
+       FROM portfolio_group_items i
+       JOIN portfolio_groups g ON g.id = i.group_id
+       JOIN accounts a ON a.id = i.account_id
+       WHERE i.item_kind = 'account'
+       GROUP BY i.account_id
+       HAVING COUNT(*) > 1`
+    )
+    .all() as { name: string; slugs: string }[];
+  if (twice.length > 0) {
+    throw new Error(
+      "portfolio_group_items: accounts linked under more than one group: " +
+        twice.map((r) => `${r.name} (${r.slugs})`).join("; ")
+    );
+  }
+  const mixed = db
+    .prepare(
+      `SELECT g.slug AS slug, GROUP_CONCAT(DISTINCT i.item_kind) AS kinds
+       FROM portfolio_groups g
+       JOIN portfolio_group_items i ON i.group_id = g.id
+       GROUP BY g.id
+       HAVING COUNT(DISTINCT i.item_kind) > 1
+          AND SUM(CASE WHEN i.item_kind IN ('linked_group', 'expense_account') THEN 1 ELSE 0 END) > 0`
+    )
+    .all() as { slug: string; kinds: string }[];
+  if (mixed.length > 0) {
+    throw new Error(
+      "portfolio_group_items: linked groups / expense places mixed with other items: " +
+        mixed.map((r) => `${r.slug} (${r.kinds})`).join("; ")
+    );
+  }
   for (const check of HOMOGENEITY_CHECKS) {
     const groupPh = check.groupKinds.map(() => "?").join(",");
     const leafPh = check.leafKinds.map(() => "?").join(",");
