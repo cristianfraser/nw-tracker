@@ -100,13 +100,15 @@ describe("parseCcWebPasteText", () => {
     expect(lines[1]).toMatchObject({ merchant: "APPLE.COM/BILL", currency: "usd", amount_usd: -1234.5, amount_clp: 0 });
   });
 
-  it("emits USD charges as amount_usd (charge positive) with amount_clp empty and orig_currency usd", () => {
+  it("emits USD charges as amount_usd (charge positive) with amount_clp empty and no origin", () => {
     const { lines } = parseCcWebPasteText("30/06/2026\tANTHROPIC* CLAU\t-USD99,28");
     const { records } = ccWebPasteToCsvRecords(0, "santander", "4242", "test", lines);
     const r = records.find((x) => x.merchant === "ANTHROPIC* CLAU");
     expect(r?.amount_clp).toBe(""); // no bogus CLP value
     expect(r?.amount_usd).toBe("99.28"); // Santander charge → positive
-    expect(r?.orig_currency).toBe("usd");
+    // The web table prints no origin amount, and the import labels origins itself.
+    expect(r?.amount_orig).toBeUndefined();
+    expect(r?.orig_currency).toBeUndefined();
   });
 
   it("maps BCI master to BCI card_group", () => {

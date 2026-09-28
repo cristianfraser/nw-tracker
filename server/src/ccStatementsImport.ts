@@ -14,6 +14,7 @@ import {
 } from "./ccExpenseLineDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { parseOptionalChileanInteger } from "./chileanNumber.js";
+import { ccLineOriginCurrency, parseCcOriginAmount } from "./ccOriginCurrency.js";
 import { ccStatementRecordsFingerprint } from "./ccStatementFingerprint.js";
 
 function parseUsdAmount(s: string): number | null {
@@ -27,20 +28,6 @@ function parseUsdAmount(s: string): number | null {
     t = t.replace(/,/g, "");
   }
   const n = Number(t);
-  if (!Number.isFinite(n)) return null;
-  return neg ? -n : n;
-}
-
-function parseOrigAmount(s: string, currency?: string): number | null {
-  if (currency === "usd" || String(s).includes("US$")) {
-    return parseUsdAmount(s);
-  }
-  const t = String(s ?? "").trim();
-  if (!t) return null;
-  const neg = t.startsWith("-");
-  const body = neg ? t.slice(1).trim() : t;
-  const v = body.replace(/\./g, "").replace(",", ".");
-  const n = Number(v);
   if (!Number.isFinite(n)) return null;
   return neg ? -n : n;
 }
@@ -224,6 +211,16 @@ export function importCcStatementsMerge(
   records: CcStatementCsvRecord[],
   opts?: CcStatementsMergeOpts
 ): CcStatementsMergeResult {
+  // The import labels each line's original currency (`ccOriginCurrency.ts`); a record that carries
+  // a label comes from a producer, or a parsed CSV, older than that rule. Checked before any write.
+  for (const row of records) {
+    if (String(row.orig_currency ?? "").trim()) {
+      throw new Error(
+        `CC statement import (${String(row.source_pdf ?? "").trim()}): line «${String(row.merchant ?? "").trim()}» ` +
+          `carries orig_currency "${row.orig_currency}", but origins are labeled on import — re-run parse:cc-pdfs`
+      );
+    }
+  }
   propagateCcExpenseMerchantRulesFromLegacy(accountId);
   propagateCcExpenseMerchantRulesAcrossGroup("santander");
   const categorySnap = snapshotCcExpenseCategories(accountId);
@@ -489,6 +486,10 @@ export function importCcStatementsMerge(
       }
 
       const originCardLast4 = originCardLast4FromCsvRow(row, cardLast4);
+      const lineDateIso =
+        parseDdMmYyToIso(String(row.transaction_date ?? "").trim()) ??
+        parseDdMmYyToIso(String(row.posting_date ?? "").trim());
+      const amountOrig = parseCcOriginAmount(String(row.amount_orig ?? ""));
 
       const ins = insLine.run({
         statement_id: statementId,
@@ -498,8 +499,8 @@ export function importCcStatementsMerge(
         merchant: String(row.merchant ?? "").trim() || null,
         description_merged: String(row.description_merged ?? "").trim() || null,
         country: String(row.country ?? "").trim() || null,
-        amount_orig: parseOrigAmount(String(row.amount_orig ?? ""), currency),
-        orig_currency: String(row.orig_currency ?? "").trim() || null,
+        amount_orig: amountOrig,
+        orig_currency: ccLineOriginCurrency({ amountOrig, amountUsd, dateIso: lineDateIso }),
         amount_clp: amountClp,
         amount_usd: amountUsd,
         installment_flag: inst ? 1 : 0,
@@ -522,11 +523,8 @@ export function importCcStatementsMerge(
       }
       // Earliest date this import actually ADDED evidence for — dedupe-skipped rows change
       // nothing, so re-importing the same statement contradicts no stamp.
-      const insertedIso =
-        parseDdMmYyToIso(String(row.transaction_date ?? "").trim()) ??
-        parseDdMmYyToIso(String(row.posting_date ?? "").trim());
-      if (insertedIso && (earliestInsertedTxDate == null || insertedIso < earliestInsertedTxDate)) {
-        earliestInsertedTxDate = insertedIso;
+      if (lineDateIso && (earliestInsertedTxDate == null || lineDateIso < earliestInsertedTxDate)) {
+        earliestInsertedTxDate = lineDateIso;
       }
       lineCount += 1;
       linesInserted += 1;

@@ -17,8 +17,9 @@ type MisStoredUsdLine = {
 /**
  * One-off repair for web-paste lines whose USD amount was mis-imported into `amount_clp` (truncated,
  * sign-flipped) before the parser understood the `USD` token. Re-parses `raw_line` to recover the
- * dollar amount, then stores it in `amount_usd` (+ `orig_currency='usd'`) with `amount_clp` cleared,
- * so it is FX-converted at read time like any foreign charge.
+ * dollar amount, then stores it in `amount_usd` with `amount_clp` cleared, so it is FX-converted at
+ * read time like any foreign charge. `orig_currency` stays null: a web-paste line carries no origin
+ * amount to label (`ccOriginCurrency.ts`), and a PDF or JSON line is never selected.
  */
 export function backfillWebPasteUsdLines(opts?: { dryRun?: boolean }): {
   scanned: number;
@@ -33,7 +34,6 @@ export function backfillWebPasteUsdLines(opts?: { dryRun?: boolean }): {
        JOIN cc_statements s ON s.id = l.statement_id
        WHERE s.source_pdf LIKE 'import:web-paste%'
          AND l.installment_flag = 0
-         AND (l.orig_currency IS NULL OR l.orig_currency = '')
          AND (l.amount_usd IS NULL)
          AND (l.raw_line LIKE '%USD%' OR l.raw_line LIKE '%US$%')`
     )
@@ -41,7 +41,7 @@ export function backfillWebPasteUsdLines(opts?: { dryRun?: boolean }): {
 
   const update = db.prepare(
     `UPDATE cc_statement_lines
-       SET amount_usd = @amount_usd, amount_clp = NULL, orig_currency = 'usd'
+       SET amount_usd = @amount_usd, amount_clp = NULL
      WHERE id = @id`
   );
 

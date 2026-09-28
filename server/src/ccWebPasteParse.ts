@@ -255,7 +255,6 @@ export function ccWebPasteToCsvRecords(
       merchant: line.merchant,
       amount_clp: isUsd ? "" : String(webPasteAmountClpForDb(line.amount_clp, line.merchant, cardGroup)),
       amount_usd: isUsd ? String(usdSigned) : "",
-      orig_currency: isUsd ? "usd" : "",
       installment_flag: "false",
       dedupe_key,
       raw_line: line.raw_line,

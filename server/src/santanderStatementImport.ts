@@ -41,6 +41,7 @@ import {
 } from "./ccInstallmentLedgerMerge.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { ccOriginAmountCsvCell } from "./ccOriginCurrency.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
 import { invalidateCcBillingDetail } from "./aggregationCache.js";
@@ -237,8 +238,7 @@ export function buildSantanderStatementRecords(
       merchant: line.merchant,
       description_merged: "",
       country: line.country ?? "",
-      amount_orig: line.amount_orig != null ? line.amount_orig.toFixed(2) : "",
-      orig_currency: line.orig_currency ?? "",
+      amount_orig: line.amount_orig != null ? ccOriginAmountCsvCell(line.amount_orig) : "",
       foreign_currency: "",
       amount_clp: amountClp != null ? String(amountClp) : "",
       amount_usd: line.amount_usd != null ? line.amount_usd.toFixed(2) : "",

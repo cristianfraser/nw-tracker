@@ -25,7 +25,7 @@ describe("backfillWebPasteUsdLines", () => {
     const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     stmts.push(sid);
 
-    // Mis-imported the old way: USD dumped into amount_clp, truncated + sign-flipped, no orig_currency.
+    // Mis-imported the old way: USD dumped into amount_clp, truncated + sign-flipped.
     db.prepare(
       `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, installment_flag, transaction_date, raw_line, dedupe_key)
        VALUES (?, 'ANTHROPIC* CLAU', -99, 0, '30/7/2026', '30/07/2026\tANTHROPIC* CLAU\t-USD99,28', 'vitest-usd-bf')`
@@ -40,6 +40,6 @@ describe("backfillWebPasteUsdLines", () => {
       .get(lineId) as { amount_clp: number | null; amount_usd: number | null; orig_currency: string | null };
     expect(fixed.amount_clp).toBeNull();
     expect(fixed.amount_usd).toBe(99.28); // Santander charge → positive
-    expect(fixed.orig_currency).toBe("usd");
+    expect(fixed.orig_currency).toBeNull(); // no origin amount on a web-paste line to label
   });
 });
