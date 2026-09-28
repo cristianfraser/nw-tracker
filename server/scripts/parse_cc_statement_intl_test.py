@@ -146,5 +146,61 @@ class StatementRowsTest(unittest.TestCase):
         self.assertEqual(len(rows), 2)
 
 
+class PrintedOriginTest(unittest.TestCase):
+    """MONTO MONEDA ORIGEN reaches the CSV as printed; its currency is the importer's call."""
+
+    @staticmethod
+    def _emit(row):
+        return mod.emit_row(
+            card_group="INTL",
+            source_pdf="demo usd.pdf",
+            meta={"currency": "usd"},
+            pr=row,
+            raw_line="",
+            row_id="demo-1",
+        )
+
+    def test_a_grouped_origin_is_read_whole_and_emitted_as_printed(self) -> None:
+        row = mod._parse_intl_layout_table_line(
+            "08/01/24   TIENDA DEMO          CIUDAD DEMO   GB      18.250,00      19,21"
+        )
+        assert row is not None
+        self.assertEqual(row["amount_orig"], 18250.0)
+        emitted = self._emit(row)
+        self.assertEqual(emitted["amount_orig"], "18.250,00")
+        self.assertEqual(emitted["orig_currency"], "")
+
+    def test_a_dollar_origin_keeps_its_cents(self) -> None:
+        row = mod._parse_international_vertical_chunk(["TIENDA DEMO", "US", "4,25", "4,25"], "09/01/24")
+        assert row is not None
+        self.assertEqual(row["amount_orig"], 4.25)
+        self.assertEqual(self._emit(row)["amount_orig"], "4,25")
+
+    def test_the_country_names_no_currency(self) -> None:
+        for country in ("US", "NL", "GB", "CH", "ES", "AR"):
+            with self.subTest(country=country):
+                row = mod._build_intl_row("10/01/24", "TIENDA DEMO", country, "10,00", "12,50")
+                assert row is not None
+                self.assertNotIn("orig_currency", row)
+                self.assertEqual(self._emit(row)["orig_currency"], "")
+
+    def test_an_origin_that_is_not_a_printed_amount_stops_the_parse(self) -> None:
+        row = mod._build_intl_row("11/01/24", "TIENDA DEMO", "US", "12.34", "12,34")
+        assert row is not None
+        self.assertIsNone(row["amount_orig"])
+        with self.assertRaisesRegex(ValueError, "not a printed amount"):
+            self._emit(row)
+
+    def test_an_ocr_credit_note_reads_its_printed_origin_not_the_us_amount(self) -> None:
+        flat = "05/01/24 | NOTA DE CREDITO [DEMO.COM [us | 7,50] 7,40] " + "x" * 120
+        (row,) = mod.parse_international_usd_ocr_flat(
+            flat,
+            build_intl_row=mod._build_intl_row,
+            intl_merchant_is_noise=mod._intl_merchant_is_noise,
+        )
+        self.assertEqual(row["amount_usd"], -7.4)
+        self.assertEqual(row["amount_orig"], 7.5)
+
+
 if __name__ == "__main__":
     unittest.main()
