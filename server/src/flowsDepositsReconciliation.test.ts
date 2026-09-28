@@ -164,6 +164,9 @@ describe("buildDepositsReconciliationPayload", () => {
     });
 
     it("classifies a mirrored unlinked_no_checking_source deposit as linked_synthetic", () => {
+      // Sync first: pick a deposit the link sync itself leaves unlinked, not one it is about to
+      // pair with a real checking debit that another suite's fixtures left in the DB.
+      buildFlowsCreditCardExpensesPayload();
       const before = buildDepositsReconciliationPayload();
       const candidate = before.rows.find((r) => r.status === "unlinked_no_checking_source");
       if (!candidate) return;

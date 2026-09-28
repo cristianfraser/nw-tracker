@@ -876,7 +876,8 @@ function findExactInternalCashTransferDeposit(
   deposits: readonly DepositMatchCandidate[],
   maxDayGap: number,
   withdrawalAccountId: number,
-  usedDepositKeys?: Set<string>
+  usedDepositKeys: Set<string> | undefined,
+  timing: "day" | "month_bucket"
 ): DepositMatchCandidate | null {
   const want = Math.round(Math.abs(withdrawal.amount_clp));
   if (want <= 0) return null;
@@ -887,6 +888,9 @@ function findExactInternalCashTransferDeposit(
   let bestGap = Number.POSITIVE_INFINITY;
   for (const d of deposits) {
     if (d.group_slug !== CHECKING_GASTOS_CASH_GROUP) continue;
+    if (MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES.has(d.category_slug) !== (timing === "month_bucket")) {
+      continue;
+    }
     if (!depositIsCrossAccountInternalTransfer(d, withdrawalAccountId)) continue;
     if (Math.round(d.amount_clp) !== want) continue;
     if (usedDepositKeys?.has(splittableDepositPoolKey(d))) continue;
@@ -898,6 +902,42 @@ function findExactInternalCashTransferDeposit(
     }
   }
   return best;
+}
+
+/**
+ * The internal cash-transfer deposit a checking outflow funded. Exact-date deposits come first; a
+ * month-precision deposit (cuenta de ahorro, dated only by month) is the fallback, and only when
+ * no investment deposit of the full amount sits within the day window — a month-wide match must
+ * not take a debit whose real counterpart is dated to the day (a Buda abono the day after the
+ * wire), or that deposit is left unexplained.
+ */
+function findInternalCashTransferDepositPreferringExactDays(
+  withdrawal: { occurred_on: string; amount_clp: number },
+  deposits: readonly DepositMatchCandidate[],
+  maxDayGap: number,
+  withdrawalAccountId: number,
+  usedDepositKeys: Set<string> | undefined
+): DepositMatchCandidate | null {
+  const exactDay = findExactInternalCashTransferDeposit(
+    withdrawal,
+    deposits,
+    maxDayGap,
+    withdrawalAccountId,
+    usedDepositKeys,
+    "day"
+  );
+  if (exactDay != null) return exactDay;
+  if (matchWithdrawalToInvestmentDeposit(withdrawal, deposits, maxDayGap, usedDepositKeys) != null) {
+    return null;
+  }
+  return findExactInternalCashTransferDeposit(
+    withdrawal,
+    deposits,
+    maxDayGap,
+    withdrawalAccountId,
+    usedDepositKeys,
+    "month_bucket"
+  );
 }
 
 function resolveInternalCashTransferMatch(
@@ -913,7 +953,7 @@ function resolveInternalCashTransferMatch(
   }
   const want = Math.round(Math.abs(withdrawal.amount_clp));
   if (checkingWithdrawalMayAutoMatchDeposit(withdrawal.description ?? "")) {
-    const exact = findExactInternalCashTransferDeposit(
+    const exact = findInternalCashTransferDepositPreferringExactDays(
       withdrawal,
       deposits,
       maxDayGap,
@@ -1032,7 +1072,7 @@ export function splitCheckingWithdrawalAgainstDeposits(
 
   const mayAutoMatchDeposit = checkingWithdrawalMayAutoMatchDeposit(description);
   const exactDeposit = mayAutoMatchDeposit
-    ? findExactInternalCashTransferDeposit(
+    ? findInternalCashTransferDepositPreferringExactDays(
         withdrawal,
         deposits,
         maxDayGap,
@@ -1164,6 +1204,12 @@ export function matchWithdrawalToDeposit(
 export function buildCheckingGastosLines(opts?: {
   accountId?: number;
   depositCandidates?: readonly DepositMatchCandidate[];
+  /**
+   * Deposits already claimed by an outflow. Pass one set across the checking accounts' runs so a
+   * deposit is claimed once overall — per account, a corriente and a vista debit could both pair
+   * with the same deposit.
+   */
+  usedDepositKeys?: Set<string>;
   checkingCredits?: readonly CheckingCartolaCredit[];
   merchantRules?: Map<string, string>;
   uniquePurchases?: Map<string, string>;
@@ -1194,7 +1240,7 @@ export function buildCheckingGastosLines(opts?: {
   });
 
   const lines: FlowCcExpenseLineRowDraft[] = [];
-  const usedDepositKeys = new Set<string>();
+  const usedDepositKeys = opts?.usedDepositKeys ?? new Set<string>();
 
   const pushCheckingLine = (
     row: (typeof rows)[number],

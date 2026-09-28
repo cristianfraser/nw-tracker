@@ -4,7 +4,11 @@
  * lives in `checkingDescriptionPredicates.ts`, pairing policy in the engine.
  */
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { loadMergedDepositInflowEventsBankDated } from "./accountDeposits.js";
+import {
+  loadMergedDepositInflowEventsBankDated,
+  loadMergedDepositInflowEventsBankDatedWithTransferCounter,
+  type DepositInflowEventWithCounter,
+} from "./accountDeposits.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
@@ -218,13 +222,28 @@ export function fondoReservaAccountId(): number | null {
   return row?.id ?? null;
 }
 
-function loadCuentaVistaInternalTransferCredits(): DepositMatchCandidate[] {
+/**
+ * A transfer leg whose other endpoint is a checking account is already paired with its checking
+ * outflow: the transfer row IS that outflow (a mirror-merged or hand-entered transfer). No
+ * single-leg checking debit may claim it — a same-amount debit in the window (a month for the
+ * month-precision ahorro) would otherwise pair with it, and since a transfer leg has no movement
+ * row to link, the deposit that debit really funded was left unlinked.
+ */
+function depositEventExplainedByCheckingTransfer(
+  e: DepositInflowEventWithCounter,
+  checkingIds: ReadonlySet<number>
+): boolean {
+  return e.transfer_counter_account_id != null && checkingIds.has(e.transfer_counter_account_id);
+}
+
+function loadCuentaVistaInternalTransferCredits(checkingIds: ReadonlySet<number>): DepositMatchCandidate[] {
   const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
   if (vistaId == null) return [];
-  const byAccount = loadMergedDepositInflowEventsBankDated([vistaId]);
+  const byAccount = loadMergedDepositInflowEventsBankDatedWithTransferCounter([vistaId]);
   const events = byAccount.get(vistaId) ?? [];
   return events
     .filter((e) => e.amt > 0 && Number.isFinite(e.amt))
+    .filter((e) => !depositEventExplainedByCheckingTransfer(e, checkingIds))
     .map((e) => ({
       occurred_on: e.occurred_on,
       amount_clp: Math.round(e.amt),
@@ -254,7 +273,8 @@ export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
   const metaById = new Map(
     accounts.map((a) => [a.account_id, { category_slug: a.category_slug, group_slug: a.group_slug }])
   );
-  const byAccount = loadMergedDepositInflowEventsBankDated(ids);
+  const checkingIds = new Set(listMovementBalanceCashAccountIds());
+  const byAccount = loadMergedDepositInflowEventsBankDatedWithTransferCounter(ids);
   const out: DepositMatchCandidate[] = [];
   for (const [accountId, events] of byAccount) {
     const meta = metaById.get(accountId);
@@ -262,6 +282,7 @@ export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
     const group_slug = meta?.group_slug ?? "";
     for (const e of events) {
       if (e.amt <= 0 || !Number.isFinite(e.amt)) continue;
+      if (depositEventExplainedByCheckingTransfer(e, checkingIds)) continue;
       out.push({
         occurred_on: e.occurred_on,
         amount_clp: Math.round(e.amt),
@@ -271,5 +292,5 @@ export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
       });
     }
   }
-  return [...out, ...loadCuentaVistaInternalTransferCredits()];
+  return [...out, ...loadCuentaVistaInternalTransferCredits(checkingIds)];
 }
