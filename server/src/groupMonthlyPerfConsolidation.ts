@@ -18,7 +18,7 @@ import {
 import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
-import { flowAdjustedPct } from "./periodReturns.js";
+import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import {
   monthEndCloseClpForAccount,
   monthEndCloseFromPerfRows,
@@ -75,6 +75,13 @@ export type ConsolidatedMonthlyPerfRow = {
   pct_month: number | null;
   ytd_nominal_pl: number | null;
   cumulative_nominal_pl: number | null;
+  /**
+   * Σ of the net withdrawals of the members that ended the month at zero ({@link endChargedFlow}),
+   * uncapped — `pct_month` charges them at the month end up to the group's own net withdrawal
+   * ({@link groupStartFrameFlow}). Summed again by the net-worth / inversiones consolidation,
+   * which caps the sum with its own net flow (transfers between buckets cancel there).
+   */
+  end_charged_flow: number;
 };
 
 const GROUP_TAB_VAL_TOTAL = "__group_val_total";
@@ -417,6 +424,7 @@ export function consolidateGroupMonthlyPerf(
         pct_month: null,
         ytd_nominal_pl: null,
         cumulative_nominal_pl: null,
+        end_charged_flow: 0,
       } satisfies ConsolidatedMonthlyPerfRow);
 
     if (mk !== currentMk) {
@@ -426,6 +434,7 @@ export function consolidateGroupMonthlyPerf(
     bucket.closing_value += row.closing_value;
     bucket.net_capital_flow += row.net_capital_flow;
     bucket.stock_units_inflow += row.stock_units_inflow;
+    bucket.end_charged_flow += endChargedFlow(row.net_capital_flow, row.closing_value, unit);
     if (row.nominal_pl != null && Number.isFinite(row.nominal_pl)) {
       bucket.nominal_pl = (bucket.nominal_pl ?? 0) + row.nominal_pl;
     }
@@ -460,7 +469,13 @@ export function consolidateGroupMonthlyPerf(
       const net = bucket.net_capital_flow;
       /** Same definition as {@link getGroupMonthlyPerformanceSeries} `delta_total` (Σ per-account picked nominal_pl). */
       const nominal = bucket.nominal_pl;
-      const pct = flowAdjustedPct(nominal, prior ?? null, net, bucket.closing_value, unit);
+      const pct = flowAdjustedPct(
+        nominal,
+        prior ?? null,
+        groupStartFrameFlow(net, bucket.end_charged_flow),
+        bucket.closing_value,
+        unit
+      );
       return { ...bucket, nominal_pl: nominal, pct_month: pct };
     });
 

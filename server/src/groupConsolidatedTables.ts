@@ -108,6 +108,7 @@ export function rollupConsolidatedMonthlyYearly(
     const netCapitalFlow = monthsAsc.reduce((s, r) => s + (r.net_capital_flow ?? 0), 0);
     const stockUnitsInflow = monthsAsc.reduce((s, r) => s + (r.stock_units_inflow ?? 0), 0);
     const nominalPl = monthsAsc.reduce((s, r) => s + (r.nominal_pl ?? 0), 0);
+    const endChargedFlow = monthsAsc.reduce((s, r) => s + r.end_charged_flow, 0);
 
     const pctYear =
       monthsAsc.reduce((prod, r) => {
@@ -121,6 +122,7 @@ export function rollupConsolidatedMonthlyYearly(
       net_capital_flow: netCapitalFlow,
       stock_units_inflow: stockUnitsInflow,
       nominal_pl: nominalPl,
+      end_charged_flow: endChargedFlow,
       pct_month: pctYear,
       ytd_nominal_pl: null,
       cumulative_nominal_pl: latest.cumulative_nominal_pl,

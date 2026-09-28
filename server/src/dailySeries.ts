@@ -15,7 +15,7 @@ import {
   includeShortHorizonAccount,
   type ShortHorizonAccountRef,
 } from "./periodReturnsShortHorizon.js";
-import { flowAdjustedPct } from "./periodReturns.js";
+import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { convertTs, type TsUnit } from "./valuationTimeseries.js";
@@ -463,6 +463,13 @@ export function getBucketDailySeries(
     }
   }
 
+  // Each account's share of the capital-base flow (assets +, debt −: borrowing grows the
+  // exposure), for the members that can end a day at zero on a withdrawal.
+  const baseFlowsByAccount = included.flatMap((a, ai) => {
+    const accFlows = flowsByAccount.get(a.account_id);
+    return accFlows ? [{ ai, accFlows, sign: isLiability[ai] ? -1 : 1 }] : [];
+  });
+
   const points: DailySeriesPoint[] = [];
   for (let i = 1; i < grid.length; i++) {
     const ymd = grid[i]!;
@@ -480,11 +487,25 @@ export function getBucketDailySeries(
     // grows with borrowing (the negated liability flow) — both are positive exposures. The
     // guard is the monthly rows' (`flowAdjustedPct`): a day that ends at zero, or whose
     // withdrawals exceed the prior close, charges them at day end instead of reading −100% or
-    // dividing by a negative base.
+    // dividing by a negative base — and so does each member that ends the day at zero
+    // (`endChargedFlow`), so a large member emptying beside a small one still open reads its
+    // own loss, not the loss over the small member's size.
+    let endCharged = 0;
+    for (const { ai, accFlows, sign } of baseFlowsByAccount) {
+      const baseFlow = sign * accFlows[i - 1]!;
+      if (!(baseFlow < 0)) continue;
+      const closeClp = marksByAccount[ai]![i];
+      if (closeClp == null || !Number.isFinite(closeClp)) continue;
+      endCharged += endChargedFlow(
+        toUnit(baseFlow),
+        convertLegToUnit(closeClp, ymd, unit, now),
+        unit
+      );
+    }
     const pct = flowAdjustedPct(
       pl,
       prev,
-      toUnit(flows[i - 1]! - liabilityFlows[i - 1]!),
+      groupStartFrameFlow(toUnit(flows[i - 1]! - liabilityFlows[i - 1]!), endCharged),
       value,
       unit
     );

@@ -54,6 +54,7 @@ describe("netLinkedCreditCardFromCashConsolidated", () => {
       pct_month: 0.11,
       ytd_nominal_pl: 250_000,
       cumulative_nominal_pl: 500_000,
+      end_charged_flow: 0,
     };
     const consolidated = netLinkedCreditCardFromCashConsolidated([input], "clp");
     const row = consolidated[0]!;
