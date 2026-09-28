@@ -5,6 +5,7 @@ import {
   type MovementAmountFields,
 } from "./movementAmounts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
+import { CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX } from "./checkingGapDepositMirrorKey.js";
 
 /** Deposit movement ids whose split is pure-family (self_funded_clp = 0) → reconciled with no mirror. */
 export function loadPureFamilyAhorroDepositMovementIds(): Set<number> {
@@ -44,23 +45,37 @@ export function upsertCuentaAhorroDepositSplit(
 
 /**
  * Materialize the self-funded portion of each ahorro split as a `checking_gap_deposit_mirrors` row
- * (a synthetic cuenta_corriente → ahorro internal transfer, amount = self_funded_clp). This reuses the
- * existing mirror machinery, so the split's self portion flows through `syncCheckingGapDepositMirrorLinks`
- * to a `linked_synthetic` reconciliation status. Pure-family splits (self = 0) produce no mirror.
- * Scoped strictly to ahorro-split deposit movements, so it never touches propose-script mirrors.
+ * (a synthetic cuenta_corriente → ahorro internal transfer). This reuses the existing mirror
+ * machinery, so the split's self portion flows through `syncCheckingGapDepositMirrorLinks` to a
+ * `linked_synthetic` reconciliation status. The mirror stands in for a checking debit the matcher
+ * could not find, so it carries only the self-funded pesos no real checking outflow link already
+ * explains: a split whose deposit is linked to its real cartola debit gets no mirror (it would be
+ * linked twice). Runs after the auto and asserted link passes, like the Buda abono mirrors.
+ * Pure-family splits (self = 0) produce no mirror. Scoped strictly to ahorro-split deposit
+ * movements, so it never touches propose-script mirrors.
  */
 export function syncCuentaAhorroDepositSplitMirrors(): void {
   const splits = db
     .prepare(
-      `SELECT s.deposit_movement_id, s.self_funded_clp, m.occurred_on, m.note
+      `SELECT s.deposit_movement_id, s.self_funded_clp, m.occurred_on, m.note,
+              COALESCE((
+                SELECT SUM(l.payment_clp) FROM expense_deposit_links l
+                WHERE l.deposit_movement_id = s.deposit_movement_id
+                  AND l.link_source IN ('auto', 'manual')
+                  AND substr(l.purchase_key, 1, ?) != ?
+              ), 0) AS real_linked_clp
        FROM cuenta_ahorro_deposit_splits s
        JOIN movements m ON m.id = s.deposit_movement_id`
     )
-    .all() as {
+    .all(
+      CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX.length,
+      CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX
+    ) as {
     deposit_movement_id: number;
     self_funded_clp: number;
     occurred_on: string;
     note: string | null;
+    real_linked_clp: number;
   }[];
   if (splits.length === 0) return;
 
@@ -73,9 +88,9 @@ export function syncCuentaAhorroDepositSplitMirrors(): void {
   const tx = db.transaction(() => {
     for (const s of splits) {
       del.run(s.deposit_movement_id);
-      const self = Math.round(s.self_funded_clp);
-      if (self > 0) {
-        ins.run(corrienteId, s.deposit_movement_id, self, s.occurred_on, "ahorro-split|self_funded");
+      const unexplained = Math.round(s.self_funded_clp) - Math.round(s.real_linked_clp);
+      if (unexplained > 0) {
+        ins.run(corrienteId, s.deposit_movement_id, unexplained, s.occurred_on, "ahorro-split|self_funded");
       }
     }
   });

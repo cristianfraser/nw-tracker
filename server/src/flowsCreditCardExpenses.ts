@@ -1027,10 +1027,13 @@ function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
     loadCcExpenseCategoryMaps(accountIds);
 
   const lines: FlowCcExpenseLineRowDraft[] = [];
+  // One claim set across the accounts: a deposit pairs with one checking outflow overall.
+  const usedDepositKeys = new Set<string>();
   for (const accountId of accountIds) {
     lines.push(
       ...buildCheckingGastosLines({
         accountId,
+        usedDepositKeys,
         merchantRules,
         uniquePurchases,
         uniquePurchaseModeKeys,

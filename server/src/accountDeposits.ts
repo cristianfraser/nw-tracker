@@ -52,7 +52,13 @@ export type DepositInflowEvent = {
   capital_kind?: "clp_wire" | "usd_reference";
 };
 
-type SortFlow = { occurred_on: string; amt: number; tie: string };
+type SortFlow = {
+  occurred_on: string;
+  amt: number;
+  tie: string;
+  /** Transfer legs only: the transfer's other endpoint. */
+  counter_account_id?: number;
+};
 
 /** "Today" for bank-dated timelines: no stored date ever exceeds it, so nothing is re-dated. */
 const DISPLAY_DATING_OFF = "9999-12-31";
@@ -197,7 +203,13 @@ function loadTransferLegSignedFlowEvents(
           r.occurred_on)
         : r.occurred_on;
       if (!map.has(endpoint)) map.set(endpoint, []);
-      map.get(endpoint)!.push({ occurred_on: occurredOn, amt, tie: `t:${r.id}:${endpoint}` });
+      const counter = endpoint === r.from_account_id ? r.to_account_id : r.from_account_id;
+      map.get(endpoint)!.push({
+        occurred_on: occurredOn,
+        amt,
+        tie: `t:${r.id}:${endpoint}`,
+        ...(counter != null ? { counter_account_id: counter } : {}),
+      });
     }
   }
   return map;
@@ -213,11 +225,15 @@ function loadTransferLegSignedFlowEvents(
  */
 type EventDating = "display" | "bank";
 
+/** A merged deposit event plus, for a transfer leg, the transfer's other endpoint. */
+export type DepositInflowEventWithCounter = DepositInflowEvent & { transfer_counter_account_id?: number };
+
 function buildMergedDepositMap(
   accountIds: number[],
   personalOnly: boolean,
-  dating: EventDating = "display"
-): Map<number, DepositInflowEvent[]> {
+  dating: EventDating = "display",
+  withTransferCounter = false
+): Map<number, DepositInflowEventWithCounter[]> {
   const requested = new Set(accountIds.filter((id) => id > 0));
   const mov = loadMovementSignedFlowEvents(accountIds, personalOnly);
   const transfers = loadTransferLegSignedFlowEvents(accountIds, personalOnly);
@@ -236,7 +252,7 @@ function buildMergedDepositMap(
   // Forward-posted rows (bank date after today) are display-dated today — see
   // `displayLedgerCutoffYmd`. They already sort last, so re-dating keeps the order.
   const today = dating === "display" ? chileCalendarTodayYmd() : DISPLAY_DATING_OFF;
-  const out = new Map<number, DepositInflowEvent[]>();
+  const out = new Map<number, DepositInflowEventWithCounter[]>();
   for (const id of ids) {
     const movFlows: MergedSortFlow[] = [...(mov.get(id) ?? []), ...(transfers.get(id) ?? [])].map(
       (f) => ({ ...f })
@@ -263,6 +279,9 @@ function buildMergedDepositMap(
           ...(forward ? { posted_on: f.occurred_on } : {}),
           ...(f.amt_usd != null && Number.isFinite(f.amt_usd) ? { amt_usd: f.amt_usd } : {}),
           ...(f.capital_kind ? { capital_kind: f.capital_kind } : {}),
+          ...(withTransferCounter && f.counter_account_id != null
+            ? { transfer_counter_account_id: f.counter_account_id }
+            : {}),
         };
       })
     );
@@ -285,6 +304,16 @@ export function loadMergedDepositInflowEventsBankDated(
   accountIds: number[]
 ): Map<number, DepositInflowEvent[]> {
   return buildMergedDepositMap(accountIds, false, "bank");
+}
+
+/**
+ * {@link loadMergedDepositInflowEventsBankDated} with each transfer leg's other endpoint, so the
+ * deposit matcher can leave out the legs a transfer row already pairs with their source.
+ */
+export function loadMergedDepositInflowEventsBankDatedWithTransferCounter(
+  accountIds: number[]
+): Map<number, DepositInflowEventWithCounter[]> {
+  return buildMergedDepositMap(accountIds, false, "bank", true);
 }
 
 /** Personal capital only (`deposit_clp` + `traspaso_bonificacion_clp`; excludes `aporte_estatal_clp`). */
