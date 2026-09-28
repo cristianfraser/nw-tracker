@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "./ccWebMerchantTruncation.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { cancelledInstallmentPurchaseIdsForAccount } from "./ccInstallmentLedgerDb.js";
 import {
@@ -273,29 +274,54 @@ function uniquePurchaseMapKey(accountId: number, purchaseKey: string): string {
   return `${accountId}|${purchaseKey}`;
 }
 
-/** Merchant rule for this account: exact normalized `merchant_key` match only. */
+/** The charge-type column Santander's PDF glues onto a PAT charge's merchant. */
+const GLUED_CHARGE_TYPE_SUFFIX = " COMPRAS P.A.T.";
+
+/**
+ * Rule keys that describe this line's merchant, most specific first: the name itself, the name
+ * without the PDF's glued charge-type column («SEG AUTO SANTANDER COMPRAS P.A.T.»), and its cut at
+ * the web table's width. A rule learned on a pasted or pending line carries the cut name
+ * («FULLNEUMATICO Q»), and the statement that replaces the line prints the full one — an exact
+ * match alone dropped the category the day the statement arrived.
+ */
+export function merchantRuleCandidateKeys(merchantKey: string): string[] {
+  if (!merchantKey) return [];
+  const out = [merchantKey];
+  let base = merchantKey;
+  if (base.endsWith(GLUED_CHARGE_TYPE_SUFFIX) && base.length > GLUED_CHARGE_TYPE_SUFFIX.length) {
+    base = base.slice(0, -GLUED_CHARGE_TYPE_SUFFIX.length).trimEnd();
+    out.push(base);
+  }
+  if (base.length > WEB_PASTE_MERCHANT_TRUNCATION_WIDTH) {
+    // A cut landing on a space shows as the shorter, trimmed name.
+    out.push(base.slice(0, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH).trimEnd());
+  }
+  return [...new Set(out)];
+}
+
+/** Merchant rule for this account: the first of {@link merchantRuleCandidateKeys} with a rule. */
 export function resolveMerchantCategorySlug(
   accountId: number,
   merchantKey: string,
   merchantRules: Map<string, string>
 ): string | null {
-  if (!merchantKey) return null;
-  return merchantRules.get(`${accountId}|${merchantKey}`) ?? null;
+  for (const key of merchantRuleCandidateKeys(merchantKey)) {
+    const slug = merchantRules.get(`${accountId}|${key}`);
+    if (slug) return slug;
+  }
+  return null;
 }
 
-/** Stored merchant rule keys equal to `merchantKey` (exact match). */
+/** Stored merchant rule keys that apply to this merchant ({@link merchantRuleCandidateKeys}). */
 export function merchantRuleKeysMatchingLineMerchant(
   accountId: number,
   merchantKey: string
 ): string[] {
-  if (!merchantKey) return [];
-  const row = db
-    .prepare(
-      `SELECT merchant_key FROM cc_expense_merchant_categories
-       WHERE account_id = ? AND merchant_key = ?`
-    )
-    .get(accountId, merchantKey) as { merchant_key: string } | undefined;
-  return row ? [row.merchant_key] : [];
+  const sel = db.prepare(
+    `SELECT merchant_key FROM cc_expense_merchant_categories
+     WHERE account_id = ? AND merchant_key = ?`
+  );
+  return merchantRuleCandidateKeys(merchantKey).filter((key) => sel.get(accountId, key) != null);
 }
 
 function uniquePurchaseModeKeysForResolve(

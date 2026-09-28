@@ -1,6 +1,7 @@
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
+import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
   hasEveryStatementTwinForBillingMonth,
@@ -138,12 +139,16 @@ export function reconcileOpenWebPasteAfterPdfClose(
   const nextStart = nextPeriodStartIsoForBillingMonth(accountId, billingMonth, statements).iso;
   const statementLines = statementLinesForMatching(pdfStatements);
   const used = new Set<number>();
+  // The statement line that bills each settled bucket line: its category, big group, note and
+  // splits follow it there (the merchants differ — cut at 15, glued charge-type columns).
+  const settledBy: { fromLineId: number; toLineId: number }[] = [];
   const takeMatch = (line: CcStatementLineRow): boolean => {
     const hit = statementLines.find(
       (s) => !used.has(s.line.id) && webPasteLineMatchesStatementLine(line, s)
     );
     if (!hit) return false;
     used.add(hit.line.id);
+    settledBy.push({ fromLineId: line.id, toLineId: hit.line.id });
     return true;
   };
 
@@ -191,6 +196,7 @@ export function reconcileOpenWebPasteAfterPdfClose(
   }
 
   if (!opts?.dryRun) {
+    carryCcExpenseAssignments(settledBy);
     if (toDelete.length > 0) deleteStatementLinesByIds(toDelete);
     if (toMove.length > 0) {
       const openBm = billingMonthForManualLedgerPurchase(accountId);
