@@ -1,0 +1,18 @@
+[
+  { "raw": "18.250,00", "expect": 18250 },
+  { "raw": "150.000,00", "expect": 150000 },
+  { "raw": "1.234.567,89", "expect": 1234567.89 },
+  { "raw": "4,25", "expect": 4.25 },
+  { "raw": "-12,00", "expect": -12 },
+  { "raw": "0,00", "expect": 0 },
+  { "raw": "800", "expect": 800 },
+  { "raw": "25.000", "expect": 25000 },
+  { "raw": " 1.234,5 ", "expect": 1234.5, "note": "whitespace is ignored" },
+  { "raw": "", "expect": null },
+  { "raw": "1,2,3", "expect": null },
+  { "raw": "12,", "expect": null },
+  { "raw": ",50", "expect": null },
+  { "raw": "1,234.56", "expect": null, "note": "US style" },
+  { "raw": "US$ 4,25", "expect": null },
+  { "raw": "abc", "expect": null }
+]
