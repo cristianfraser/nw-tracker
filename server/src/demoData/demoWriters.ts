@@ -1366,7 +1366,7 @@ export function writeInvestmentMonth(
     }
   }
 
-  // Crypto: wallet-style rows like the real cripto-sheet import (units in `coin=`).
+  // Crypto: single-leg rows carrying the coin units in `units_delta`.
   if (accounts.cryptoId != null) {
     if (flows.cryptoBuy > 0) {
       const fx = fxRowOnOrBefore(cryptoYmd)?.clp_per_usd;
@@ -1377,7 +1377,7 @@ export function writeInvestmentMonth(
       movementWithUnits(accounts.cryptoId, {
         amount_clp: flows.cryptoBuy,
         occurred_on: cryptoYmd,
-        note: `import:excel|cripto-sheet|BTC|dep|coin=${units}|demo`,
+        note: `Compra BTC|demo`,
         units_delta: units,
       });
     }
@@ -1387,7 +1387,7 @@ export function writeInvestmentMonth(
       movementWithUnits(accounts.cryptoId, {
         amount_clp: -flows.cryptoSell.clp,
         occurred_on: sellYmd,
-        note: `import:excel|cripto-sheet|BTC|wdw|coin=${units}|demo`,
+        note: `Venta BTC|demo`,
         units_delta: -units,
       });
     }

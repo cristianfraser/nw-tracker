@@ -200,7 +200,6 @@ export function applyFlowFilters(rows: FlowsApiRow[], filters: FlowsFilters): Fl
     }
     if (filters.personal_only) {
       if (!PERSONAL_FLOW_TYPES.has(r.flow_type)) return false;
-      if (r.note?.includes("cripto-coin-only-wdw")) return false;
     }
     return true;
   });

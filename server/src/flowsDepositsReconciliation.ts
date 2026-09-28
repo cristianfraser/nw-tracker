@@ -152,8 +152,6 @@ const DAP_ACCOUNT_KIND_SLUG = "dap";
 // money crossing the checking-bucket boundary into other net-worth buckets, not flows inside it.
 // listMovementBalanceCashAccountIds() is exactly {cuenta_corriente, cuenta_vista}.
 
-const NON_DEPOSIT_NOTE_SQL = `(m.note IS NULL OR m.note NOT LIKE '%cripto-coin-only-wdw%')`;
-
 // Coverage is decided by cuenta_corriente specifically, not the union of every movement-balance
 // cash account. cuenta_vista also holds checking-like data and can independently explain (link)
 // a deposit, but it does not capture the same transactions as cuenta_corriente — a deposit with
@@ -194,7 +192,7 @@ function loadPositiveInflowMovements(
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND (CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END) > 0
-         AND ${NON_DEPOSIT_NOTE_SQL}${budaFilter}
+         ${budaFilter}
        ORDER BY m.occurred_on, m.id`
     )
     .all(...accountIds) as RawMovementRow[];

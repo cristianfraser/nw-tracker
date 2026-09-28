@@ -1,5 +1,5 @@
 /**
- * Rebuild BTC/ETH month-end `valuations` from Σ coin units (cripto-sheet movements) × `equity_daily` × FX.
+ * Rebuild BTC/ETH month-end `valuations` from Σ coin units (`units_delta` on the crypto movements) × `equity_daily` × FX.
  *
  * Usage:
  *   npm run crypto:apply-valuation -w nw-tracker-server

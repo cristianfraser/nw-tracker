@@ -45,7 +45,6 @@ function isDepositMovementFlowType(flowType: MovementFlowType): flowType is Depo
 }
 
 export function movementFlowTypeFromRow(row: {
-  note: string | null | undefined;
   /** Signed CLP delta from the viewing account's perspective (kind-less rows are all CLP). */
   signed_clp_delta: number;
   flow_kind?: string | null;
@@ -60,15 +59,11 @@ export function movementFlowTypeFromRow(row: {
   // Flow kind is resolved at write time and stored in the column (never parsed from the note).
   if (isMortgageFlowKind(row.flow_kind)) return row.flow_kind;
   if (isDepositFlowKind(row.flow_kind)) return row.flow_kind;
-  return movementFlowTypeFromSignedClp(row.note, row.signed_clp_delta);
+  return movementFlowTypeFromSignedClp(row.signed_clp_delta);
 }
 
 /** Fallback for movements whose `flow_kind` column is unset: the sign decides. */
-export function movementFlowTypeFromSignedClp(
-  note: string | null | undefined,
-  signedClpDelta: number
-): MovementFlowType {
-  if (note?.includes("cripto-coin-only-wdw")) return "other";
+export function movementFlowTypeFromSignedClp(signedClpDelta: number): MovementFlowType {
   if (signedClpDelta < 0) return "withdrawal_clp";
   if (signedClpDelta === 0 || !Number.isFinite(signedClpDelta)) return "other";
   return DEPOSIT_FLOW_KIND_PERSONAL;

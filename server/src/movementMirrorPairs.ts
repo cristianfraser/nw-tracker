@@ -113,8 +113,7 @@ function loadEligibleLegs(): EligibleLegRow[] {
            AND m.note NOT LIKE 'import:cartola|opening|%'
            AND m.note NOT LIKE 'import:buda|%'
            AND m.note NOT LIKE 'buda-abono|%'
-           AND m.note NOT LIKE 'ahorro-split|%'
-           AND m.note NOT LIKE '%cripto-coin-only-wdw%'))
+           AND m.note NOT LIKE 'ahorro-split|%'))
          AND NOT EXISTS (SELECT 1 FROM expense_deposit_links l WHERE l.deposit_movement_id = m.id)
          AND NOT EXISTS (SELECT 1 FROM checking_gap_deposit_mirrors g WHERE g.deposit_movement_id = m.id)
          AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)
