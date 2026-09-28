@@ -18,6 +18,7 @@ function monthRow(overrides: Partial<ConsolidatedMonthlyPerfRow> & { as_of_date:
     pct_month: null,
     ytd_nominal_pl: null,
     cumulative_nominal_pl: null,
+    end_charged_flow: 0,
     ...overrides,
   };
 }

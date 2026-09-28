@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   computePeriodReturns,
+  endChargedFlow,
   flowAdjustedPct,
+  groupStartFrameFlow,
   PERIOD_RETURN_ORDER,
   type PeriodReturnInputRow,
   type PeriodReturnKey,
@@ -215,6 +217,25 @@ describe("flowAdjustedPct", () => {
     // A day that starts and ends on dust has no capital base.
     expect(flowAdjustedPct(0, 1, 0, 1, "clp")).toBeNull();
     expect(flowAdjustedPct(0.00001, 0.0012, 0, 0.00121, "usd")).toBeNull();
+  });
+
+  it("a group charges its emptied members' withdrawals at the end, up to its own net withdrawal", () => {
+    // Only a member ending at zero on a net withdrawal is charged at the end.
+    expect(endChargedFlow(-994_000, 0, "clp")).toBe(-994_000);
+    expect(endChargedFlow(-994_000, 1, "clp")).toBe(-994_000); // a peso of dust is zero
+    expect(endChargedFlow(-994_000, 2, "clp")).toBe(0);
+    expect(endChargedFlow(500, 0, "clp")).toBe(0); // emptied on a net deposit: start frame
+    expect(endChargedFlow(-5, null, "clp")).toBe(0);
+    // Big member sold off, small one still open: the withdrawal leaves the base.
+    expect(groupStartFrameFlow(-994_000, -994_000)).toBe(0);
+    // The emptied member's money went to another member: the group net (0) already cancels it.
+    expect(groupStartFrameFlow(0, -1_000_000)).toBe(0);
+    // Partly out of the group: only what left is charged at the end.
+    expect(groupStartFrameFlow(-400_000, -1_000_000)).toBe(0);
+    expect(groupStartFrameFlow(200_000, -1_000_000)).toBe(200_000);
+    // No member empties: the net flow as is.
+    expect(groupStartFrameFlow(-300_000, 0)).toBe(-300_000);
+    expect(groupStartFrameFlow(300_000, 0)).toBe(300_000);
   });
 
   it("a liquidation month chained does not collapse the window to −100%", () => {

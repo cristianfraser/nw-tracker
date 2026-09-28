@@ -3,7 +3,9 @@ import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from ".
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 import { fxForLiveMtm } from "./fxRates.js";
 import {
+  endChargedFlow,
   flowAdjustedPct,
+  groupStartFrameFlow,
   type PeriodReturnCell,
   type PeriodReturnsPayload,
 } from "./periodReturns.js";
@@ -108,7 +110,9 @@ export function shortHorizonCellFromLegs(
   vStart: number | null,
   flow: number,
   startYmd: string | null,
-  unit: TsUnit
+  unit: TsUnit,
+  /** Σ `endChargedFlow` of the accounts that ended the window at zero (see `groupStartFrameFlow`). */
+  endCharged: number
 ): PeriodReturnCell {
   if (vEnd == null || vStart == null || !Number.isFinite(vEnd) || !Number.isFinite(vStart)) {
     return emptyCell(period, startYmd);
@@ -116,7 +120,7 @@ export function shortHorizonCellFromLegs(
   const nominal = vEnd - vStart - flow;
   return {
     period,
-    pct: flowAdjustedPct(nominal, vStart, flow, vEnd, unit),
+    pct: flowAdjustedPct(nominal, vStart, groupStartFrameFlow(flow, endCharged), vEnd, unit),
     nominal_pl: Number.isFinite(nominal) ? nominal : null,
     annualized_pct: null,
     months: 0,
@@ -138,14 +142,29 @@ function shortHorizonCell(
   if (vEnd == null || vStart == null) return emptyCell(period, startYmd);
 
   const flowUnit = unit === "usd" ? "usd" : "clp";
+  const toUnit = (raw: number): number => (unit === "uf" ? convertTs(raw, endYmd, "uf") : raw);
   let flowRaw = 0;
+  // A member that ends the window at zero on a withdrawal charges it at the window end, as the
+  // daily series does (`endChargedFlow`).
+  let endCharged = 0;
   for (const a of accounts) {
     if (!includeShortHorizonAccount(a)) continue;
-    flowRaw += netDepositFlowBetween(a.account_id, startYmd, endYmd, flowUnit);
+    const accFlow = netDepositFlowBetween(a.account_id, startYmd, endYmd, flowUnit);
+    flowRaw += accFlow;
+    if (!(accFlow < 0)) continue;
+    const mark = accountMarkClpAtYmd(a.account_id, endYmd, a.bucket_slug, {
+      import_key: a.import_key ?? null,
+      name: a.name ?? null,
+    });
+    if (mark?.value_clp == null || !Number.isFinite(mark.value_clp)) continue;
+    endCharged += endChargedFlow(
+      toUnit(accFlow),
+      convertLegToUnit(mark.value_clp, endYmd, unit, now),
+      unit
+    );
   }
-  const flow = unit === "uf" ? convertTs(flowRaw, endYmd, "uf") : flowRaw;
 
-  return shortHorizonCellFromLegs(period, vEnd, vStart, flow, startYmd, unit);
+  return shortHorizonCellFromLegs(period, vEnd, vStart, toUnit(flowRaw), startYmd, unit, endCharged);
 }
 
 /** The 1D and 1W cells: today (live) vs yesterday / vs 7 calendar days ago. */

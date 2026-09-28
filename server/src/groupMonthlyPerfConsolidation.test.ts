@@ -122,6 +122,69 @@ describe("groupMonthlyPerfConsolidation", () => {
     expect(june!.nominal_pl).toBe(600);
   });
 
+  it("a member that empties carries its zero close into the group month", () => {
+    chileToday.ymd = "2026-05-15";
+    // Synthetic ids with no ledger: prior closes come from the perf rows.
+    const row = (
+      as_of_date: string,
+      prior_closing: number | null,
+      net_capital_flow: number,
+      closing_value: number
+    ) => ({
+      as_of_date,
+      closing_value,
+      prior_closing,
+      net_capital_flow,
+      stock_units_inflow: 0,
+      nominal_pl: closing_value - (prior_closing ?? 0) - net_capital_flow,
+      pct_month: null,
+      ytd_nominal_pl: null,
+      cumulative_nominal_pl: null,
+      unit: "clp" as const,
+    });
+    const group = (bigApril: ReturnType<typeof row>, smallApril: ReturnType<typeof row>) =>
+      consolidateGroupMonthlyPerf(
+        [
+          {
+            account_id: 990_001,
+            bucket_slug: "brokerage_mutual_funds",
+            monthly: [bigApril, row("2026-03-31", null, 1_000_000, 1_000_000)],
+          },
+          {
+            account_id: 990_002,
+            bucket_slug: "brokerage_mutual_funds",
+            monthly: [smallApril, row("2026-03-31", null, 10_000, 10_000)],
+          },
+        ],
+        "clp"
+      ).find((r) => r.as_of_date.startsWith("2026-04"))!;
+
+    // The big member sold off for 994.000 (−6.000), the small one gained 100: −5.900 on the
+    // 1.010.000 at work, not on the 16.000 the start frame leaves (−36,9%).
+    const emptied = group(
+      row("2026-04-30", 1_000_000, -994_000, 0),
+      row("2026-04-30", 10_000, 0, 10_100)
+    );
+    expect(emptied.end_charged_flow).toBe(-994_000);
+    expect(emptied.pct_month).toBeCloseTo(-5_900 / 1_010_000, 12);
+
+    // Emptied INTO the other member: the group net cancels the transfer and the receiver
+    // counts the money at the start, so nothing is charged at the end twice.
+    const moved = group(
+      row("2026-04-30", 1_000_000, -1_000_000, 0),
+      row("2026-04-30", 10_000, 1_000_000, 1_010_100)
+    );
+    expect(moved.pct_month).toBeCloseTo(100 / 1_010_000, 12);
+
+    // No member empties: the start frame, unchanged.
+    const ordinary = group(
+      row("2026-04-30", 1_000_000, -500_000, 499_000),
+      row("2026-04-30", 10_000, 0, 10_100)
+    );
+    expect(ordinary.end_charged_flow).toBe(0);
+    expect(ordinary.pct_month).toBeCloseTo(-900 / 510_000, 12);
+  });
+
   it("consolidateGroupMonthlyPerf sums latest per-account month closes", () => {
     chileToday.ymd = "2026-04-15";
 

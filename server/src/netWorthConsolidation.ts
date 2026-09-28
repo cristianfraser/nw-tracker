@@ -5,7 +5,7 @@
 
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { flowAdjustedPct } from "./periodReturns.js";
+import { flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import {
   getGroupConsolidatedMonthlyPerfForRows,
   type ConsolidatedMonthlyPerfRow,
@@ -42,6 +42,7 @@ function sumBucketConsolidatedRows(
           pct_month: null,
           ytd_nominal_pl: null,
           cumulative_nominal_pl: null,
+          end_charged_flow: 0,
         } satisfies ConsolidatedMonthlyPerfRow);
 
       if (mk === monthKeyFromYmd(chileCalendarTodayYmd())) {
@@ -53,6 +54,7 @@ function sumBucketConsolidatedRows(
       existing.closing_value += row.closing_value;
       existing.net_capital_flow += row.net_capital_flow;
       existing.stock_units_inflow += row.stock_units_inflow;
+      existing.end_charged_flow += row.end_charged_flow;
 
       if (row.prior_closing != null && Number.isFinite(row.prior_closing)) {
         existing.prior_closing = (existing.prior_closing ?? 0) + row.prior_closing;
@@ -71,7 +73,14 @@ function sumBucketConsolidatedRows(
       const prior = row.prior_closing;
       const net = row.net_capital_flow;
       const nominal = row.nominal_pl;
-      const pct = flowAdjustedPct(nominal, prior ?? null, net, row.closing_value, unit);
+      // Members that emptied inside a bucket keep their withdrawal charged at the month end.
+      const pct = flowAdjustedPct(
+        nominal,
+        prior ?? null,
+        groupStartFrameFlow(net, row.end_charged_flow),
+        row.closing_value,
+        unit
+      );
       return { ...row, pct_month: pct };
     });
 

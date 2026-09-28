@@ -58,6 +58,9 @@ export function zeroCloseEps(unit: TsUnit): number {
  * the start denominator being ≤ 0. Null when no positive capital base exists in either
  * frame — among them a first period (no prior close) whose flows are net withdrawals — and
  * when the close is unknown (the frame cannot be chosen).
+ *
+ * `netFlow` is the flow charged at the period START: an account's whole net flow; a group's
+ * {@link groupStartFrameFlow}.
  */
 export function flowAdjustedPct(
   nominal: number | null,
@@ -84,6 +87,36 @@ export function flowAdjustedPct(
   if (denom == null) return null;
   const pct = nominal / denom;
   return Number.isFinite(pct) ? pct : null;
+}
+
+/**
+ * The part of one member's net flow a group return may charge at the period end: all of it
+ * when the member ends at zero on a net withdrawal (the rule {@link flowAdjustedPct} applies to
+ * that member alone), else 0. Summed over the members and passed to {@link groupStartFrameFlow}.
+ */
+export function endChargedFlow(netFlow: number, close: number | null, unit: TsUnit): number {
+  if (close == null || !Number.isFinite(close) || !Number.isFinite(netFlow)) return 0;
+  return Math.abs(close) <= zeroCloseEps(unit) && netFlow <= 0 ? netFlow : 0;
+}
+
+/**
+ * The flow a GROUP return charges at the period start (the `netFlow` argument of
+ * {@link flowAdjustedPct}): its net flow minus what its emptied members withdrew
+ * (`endChargedSum`, Σ {@link endChargedFlow}), so each member's zero close carries into the
+ * group — a large member sold off at a small loss beside a small one still open used to leave
+ * the group base at about the small member's size, so the group read a loss of tens of percent
+ * while the member it came from read a fraction of one.
+ *
+ * Only money that LEFT the group is charged at the end: the end charge is capped at the group's
+ * own net withdrawal. A member emptied into another member of the group is a transfer the group
+ * net already cancels, and the receiving member counts that money at the start — charging the
+ * emptied side at the end as well would count the same capital twice.
+ *
+ * No member empties → `netFlow` unchanged, the start frame as before. A single account → its
+ * whole withdrawal when it empties, the account's own rule.
+ */
+export function groupStartFrameFlow(netFlow: number, endChargedSum: number): number {
+  return netFlow - Math.max(endChargedSum, Math.min(netFlow, 0));
 }
 
 export const PERIOD_RETURN_ORDER: readonly PeriodReturnKey[] = [
