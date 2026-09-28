@@ -22,7 +22,8 @@ import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 export const INVERSIONES_DASHBOARD_BUCKET_SLUGS = ["brokerage", "retirement"] as const;
 
 function sumBucketConsolidatedRows(
-  bucketRows: readonly ConsolidatedMonthlyPerfRow[][]
+  bucketRows: readonly ConsolidatedMonthlyPerfRow[][],
+  unit: TsUnit
 ): ConsolidatedMonthlyPerfRow[] {
   const byMonth = new Map<string, ConsolidatedMonthlyPerfRow>();
 
@@ -70,7 +71,7 @@ function sumBucketConsolidatedRows(
       const prior = row.prior_closing;
       const net = row.net_capital_flow;
       const nominal = row.nominal_pl;
-      const pct = flowAdjustedPct(nominal, prior ?? null, net, row.closing_value, 0.01);
+      const pct = flowAdjustedPct(nominal, prior ?? null, net, row.closing_value, unit);
       return { ...row, pct_month: pct };
     });
 
@@ -107,7 +108,7 @@ export function buildNetWorthConsolidatedMonthly(unit: TsUnit = "clp"): Consolid
   const bucketRows = NW_DASHBOARD_BUCKET_SLUGS.map((slug) =>
     loadBucketConsolidatedMonthly(slug, unit)
   );
-  return sumBucketConsolidatedRows(bucketRows);
+  return sumBucketConsolidatedRows(bucketRows, unit);
 }
 
 /** Inversiones nav hub: Σ brokerage + retirement bucket consolidations (same path as child group pages). */
@@ -117,6 +118,6 @@ export function buildInversionesConsolidatedMonthly(
   const bucketRows = INVERSIONES_DASHBOARD_BUCKET_SLUGS.map((slug) =>
     loadBucketConsolidatedMonthly(slug, unit)
   );
-  return sumBucketConsolidatedRows(bucketRows);
+  return sumBucketConsolidatedRows(bucketRows, unit);
 }
 

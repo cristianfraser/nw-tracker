@@ -136,76 +136,91 @@ describe("computePeriodReturns", () => {
 });
 
 describe("flowAdjustedPct", () => {
-  const EPS = 0.01;
+  // A US cent is zero in USD; the per-unit coins get their own case below.
+  const UNIT = "usd" as const;
 
   it("ordinary periods keep the flows-at-start frame", () => {
     // prior 1.000, deposit 500, P/L 150, close 1.650 → 150 / 1.500 = 10%.
-    expect(flowAdjustedPct(150, 1_000, 500, 1_650, EPS)).toBeCloseTo(0.1, 12);
+    expect(flowAdjustedPct(150, 1_000, 500, 1_650, UNIT)).toBeCloseTo(0.1, 12);
     // No flows: plain nominal / prior.
-    expect(flowAdjustedPct(-50, 1_000, 0, 950, EPS)).toBeCloseTo(-0.05, 12);
+    expect(flowAdjustedPct(-50, 1_000, 0, 950, UNIT)).toBeCloseTo(-0.05, 12);
     // A partial withdrawal that leaves money in: 25 on the 500 left at work.
-    expect(flowAdjustedPct(25, 1_000, -500, 525, EPS)).toBeCloseTo(0.05, 12);
+    expect(flowAdjustedPct(25, 1_000, -500, 525, UNIT)).toBeCloseTo(0.05, 12);
   });
 
   it("a liquidation at a loss reads the loss on the prior close, not −100%", () => {
     // prior 1.000.000, sold off for 996.000, close 0 → nominal −4.000: −0,4%. The start
     // frame divided −4.000 by 1.000.000 − 996.000 = 4.000, exactly −100% for any loss.
-    expect(flowAdjustedPct(-4_000, 1_000_000, -996_000, 0, EPS)).toBeCloseTo(-0.004, 12);
+    expect(flowAdjustedPct(-4_000, 1_000_000, -996_000, 0, UNIT)).toBeCloseTo(-0.004, 12);
   });
 
   it("a liquidation at a gain keeps dividing by the prior close", () => {
     // prior 10.000.000, withdrew 10.300.000 (the period's gains too), close 0 → +3%.
-    expect(flowAdjustedPct(300_000, 10_000_000, -10_300_000, 0, EPS)).toBeCloseTo(0.03, 12);
+    expect(flowAdjustedPct(300_000, 10_000_000, -10_300_000, 0, UNIT)).toBeCloseTo(0.03, 12);
   });
 
   it("withdrawing exactly the prior close reads 0%", () => {
     // toBe, not toBeCloseTo: the matcher reads null as 0.
-    expect(flowAdjustedPct(0, 1_000_000, -1_000_000, 0, EPS)).toBe(0);
+    expect(flowAdjustedPct(0, 1_000_000, -1_000_000, 0, UNIT)).toBe(0);
   });
 
   it("bought and sold within the period (nothing at work before it) → null", () => {
     // Bought for 1.000, sold for 990: nominal −10 on a net flow of +10.
-    expect(flowAdjustedPct(-10, null, 10, 0, EPS)).toBeNull();
+    expect(flowAdjustedPct(-10, null, 10, 0, UNIT)).toBeNull();
     // Sold for 1.010 instead: nominal +10 on a net flow of −10.
-    expect(flowAdjustedPct(10, 0, -10, 0, EPS)).toBeNull();
+    expect(flowAdjustedPct(10, 0, -10, 0, UNIT)).toBeNull();
   });
 
   it("ending at zero on a net deposit loses everything at work: exactly −100%", () => {
     // prior 1.000 plus 500 deposited, close 0 with nothing withdrawn: −1.500 on 1.500 (the
     // prior close alone would read −150%).
-    expect(flowAdjustedPct(-1_500, 1_000, 500, 0, EPS)).toBeCloseTo(-1, 12);
+    expect(flowAdjustedPct(-1_500, 1_000, 500, 0, UNIT)).toBeCloseTo(-1, 12);
   });
 
-  it("a close within eps of zero ends at zero; above it the start frame applies", () => {
-    // 0,005 left (under eps): ends at zero, so the prior close is the base.
-    expect(flowAdjustedPct(-3_999.995, 1_000_000, -996_000, 0.005, EPS)).toBeCloseTo(
+  it("a close within a cent of zero ends at zero; above it the start frame applies", () => {
+    // 0,005 left (under a cent): ends at zero, so the prior close is the base.
+    expect(flowAdjustedPct(-3_999.995, 1_000_000, -996_000, 0.005, UNIT)).toBeCloseTo(
       -3_999.995 / 1_000_000,
       12
     );
     // 1 left in: a partial liquidation, −3.999 on the 4.000 still at work.
-    expect(flowAdjustedPct(-3_999, 1_000_000, -996_000, 1, EPS)).toBeCloseTo(-3_999 / 4_000, 12);
+    expect(flowAdjustedPct(-3_999, 1_000_000, -996_000, 1, UNIT)).toBeCloseTo(-3_999 / 4_000, 12);
   });
 
   it("null when no positive capital base exists in either frame, or the close is unknown", () => {
-    expect(flowAdjustedPct(0, 0, 0, 0, EPS)).toBeNull(); // dormant period
-    expect(flowAdjustedPct(5, null, 0, 5, EPS)).toBeNull(); // no prior, no flow
-    expect(flowAdjustedPct(null, 1_000, 0, 1_000, EPS)).toBeNull(); // no nominal
-    expect(flowAdjustedPct(5, -1_000, 0, -995, EPS)).toBeNull(); // negative base (a netted bucket)
-    expect(flowAdjustedPct(5, 1_000, 0, null, EPS)).toBeNull(); // no close
+    expect(flowAdjustedPct(0, 0, 0, 0, UNIT)).toBeNull(); // dormant period
+    expect(flowAdjustedPct(5, null, 0, 5, UNIT)).toBeNull(); // no prior, no flow
+    expect(flowAdjustedPct(null, 1_000, 0, 1_000, UNIT)).toBeNull(); // no nominal
+    expect(flowAdjustedPct(5, -1_000, 0, -995, UNIT)).toBeNull(); // negative base (a netted bucket)
+    expect(flowAdjustedPct(5, 1_000, 0, null, UNIT)).toBeNull(); // no close
   });
 
   it("a first period (no prior close) divides by its own net inflow; net withdrawals → null", () => {
     // Deposited 1.000, closed at 1.100: +10%.
-    expect(flowAdjustedPct(100, null, 1_000, 1_100, EPS)).toBeCloseTo(0.1, 12);
+    expect(flowAdjustedPct(100, null, 1_000, 1_100, UNIT)).toBeCloseTo(0.1, 12);
     // Withdrew 50 from a balance the ledger never saw arrive, closed at 300 → nominal 350.
     // The old inline ratio read 350 / −50 = −700%, a gain as a loss.
-    expect(flowAdjustedPct(350, null, -50, 300, EPS)).toBeNull();
+    expect(flowAdjustedPct(350, null, -50, 300, UNIT)).toBeNull();
+  });
+
+  it("zero is the unit's coin: one peso, one cent, 0,0001 UF", () => {
+    // A peso of dust left after withdrawing the rest ends at zero in CLP…
+    expect(flowAdjustedPct(-5, 1_000_000, -999_994, 1, "clp")).toBeCloseTo(-5 / 1_000_000, 12);
+    // …and so does its USD view: the withdrawal converted at the day's rate left the day's fx
+    // move over a base of a tenth of a cent, which the start frame read as −99,9%.
+    expect(flowAdjustedPct(-0.5, 1_000, -999.4989, 0.0011, "usd")).toBeCloseTo(-0.5 / 1_000, 12);
+    expect(flowAdjustedPct(-0.00002, 1, -0.99995, 0.00003, "uf")).toBeCloseTo(-0.00002, 12);
+    // Two pesos are money: the start frame applies.
+    expect(flowAdjustedPct(-5, 1_000_000, -999_993, 2, "clp")).toBeCloseTo(-5 / 7, 12);
+    // A day that starts and ends on dust has no capital base.
+    expect(flowAdjustedPct(0, 1, 0, 1, "clp")).toBeNull();
+    expect(flowAdjustedPct(0.00001, 0.0012, 0, 0.00121, "usd")).toBeNull();
   });
 
   it("a liquidation month chained does not collapse the window to −100%", () => {
     const gain = [
       row("2026-05", 0.08, 800_000),
-      row("2026-06", flowAdjustedPct(300_000, 10_000_000, -10_300_000, 0, EPS), 300_000),
+      row("2026-06", flowAdjustedPct(300_000, 10_000_000, -10_300_000, 0, UNIT), 300_000),
     ];
     expect(cell(computePeriodReturns(gain, "clp", "2026-06-30")!, "ytd").pct).toBeCloseTo(
       1.08 * 1.03 - 1,
@@ -213,7 +228,7 @@ describe("flowAdjustedPct", () => {
     );
     const loss = [
       row("2026-05", 0.08, 800_000),
-      row("2026-06", flowAdjustedPct(-40_000, 10_000_000, -9_960_000, 0, EPS), -40_000),
+      row("2026-06", flowAdjustedPct(-40_000, 10_000_000, -9_960_000, 0, UNIT), -40_000),
     ];
     expect(cell(computePeriodReturns(loss, "clp", "2026-06-30")!, "ytd").pct).toBeCloseTo(
       1.08 * 0.996 - 1,

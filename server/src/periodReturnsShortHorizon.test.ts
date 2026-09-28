@@ -8,7 +8,7 @@ import type { PeriodReturnsPayload } from "./periodReturns.js";
 
 describe("shortHorizonCellFromLegs (pure flow-adjusted math)", () => {
   it("computes a plain return when there is no flow", () => {
-    const c = shortHorizonCellFromLegs("d1", 1100, 1000, 0, "2026-07-06");
+    const c = shortHorizonCellFromLegs("d1", 1100, 1000, 0, "2026-07-06", "clp");
     expect(c.pct).toBeCloseTo(0.1, 12);
     expect(c.nominal_pl).toBeCloseTo(100, 9);
     expect(c.annualized_pct).toBeNull();
@@ -16,33 +16,33 @@ describe("shortHorizonCellFromLegs (pure flow-adjusted math)", () => {
   });
 
   it("flow-adjusts: a deposit that fully explains the rise is a 0% return, not a gain", () => {
-    const c = shortHorizonCellFromLegs("d1", 1050, 1000, 50, "2026-07-06");
+    const c = shortHorizonCellFromLegs("d1", 1050, 1000, 50, "2026-07-06", "clp");
     expect(c.nominal_pl).toBeCloseTo(0, 9);
     expect(c.pct).toBeCloseTo(0, 12);
   });
 
   it("divides by (V_start + flow), not V_start alone", () => {
-    const c = shortHorizonCellFromLegs("w1", 1100, 1000, 50, "2026-06-30");
+    const c = shortHorizonCellFromLegs("w1", 1100, 1000, 50, "2026-06-30", "clp");
     expect(c.nominal_pl).toBeCloseTo(50, 9);
     expect(c.pct).toBeCloseTo(50 / 1050, 12);
   });
 
   it("returns a null cell when a leg is missing (no fabricated 0%)", () => {
-    const c = shortHorizonCellFromLegs("d1", null, 1000, 0, "2026-07-06");
+    const c = shortHorizonCellFromLegs("d1", null, 1000, 0, "2026-07-06", "clp");
     expect(c.pct).toBeNull();
     expect(c.nominal_pl).toBeNull();
     expect(c.months).toBe(0);
   });
 
   it("returns null pct when the denominator is ~0", () => {
-    const c = shortHorizonCellFromLegs("d1", 0, 0, 0, "2026-07-06");
+    const c = shortHorizonCellFromLegs("d1", 0, 0, 0, "2026-07-06", "clp");
     expect(c.pct).toBeNull();
   });
 
   it("a withdrawal larger than V_start charges it at window end (the monthly rows' guard)", () => {
     // Liquidated with the day's gain: 1.000 → 0 after withdrawing 1.050 → nominal +50.
     // Dividing by V_start + flow = −50 read −100%; the guard divides by V_start: +5%.
-    const c = shortHorizonCellFromLegs("d1", 0, 1000, -1050, "2026-07-06");
+    const c = shortHorizonCellFromLegs("d1", 0, 1000, -1050, "2026-07-06", "clp");
     expect(c.nominal_pl).toBeCloseTo(50, 9);
     expect(c.pct).toBeCloseTo(0.05, 12);
   });
@@ -50,13 +50,13 @@ describe("shortHorizonCellFromLegs (pure flow-adjusted math)", () => {
   it("a window that ends at zero at a loss reads the loss on V_start, not −100%", () => {
     // Sold off at a small loss: 1.000 → 0 after withdrawing 990 → nominal −10. V_start +
     // flow = 10 read −100%; ending at zero divides by V_start: −1%.
-    const c = shortHorizonCellFromLegs("d1", 0, 1000, -990, "2026-07-06");
+    const c = shortHorizonCellFromLegs("d1", 0, 1000, -990, "2026-07-06", "clp");
     expect(c.nominal_pl).toBeCloseTo(-10, 9);
     expect(c.pct).toBeCloseTo(-0.01, 12);
   });
 
   it("no positive capital base → null pct, never a sign-flipped one", () => {
-    const c = shortHorizonCellFromLegs("d1", -900, -1000, 0, "2026-07-06");
+    const c = shortHorizonCellFromLegs("d1", -900, -1000, 0, "2026-07-06", "clp");
     expect(c.nominal_pl).toBeCloseTo(100, 9);
     expect(c.pct).toBeNull();
   });
