@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { planCcLineMoves, type CcLineRef } from "./ccExpenseLineRekey.js";
-import { getCcExpenseCategoryBySlug } from "./ccExpenseCategories.js";
+import { carryCcExpenseAssignments, planCcLineMoves, type CcLineRef } from "./ccExpenseLineRekey.js";
+import {
+  getCcExpenseCategoryBySlug,
+  merchantRuleCandidateKeys,
+  resolveMerchantCategorySlug,
+} from "./ccExpenseCategories.js";
 import { importCcStatementsFromCsvRecords } from "./ccStatementsImport.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
@@ -33,10 +37,50 @@ describe("planCcLineMoves", () => {
     expect(plan.ambiguous.map((r) => r.lineId)).toEqual([3]);
   });
 
+  it("groups a count mismatch with its appeared lines, and new lines beside kept ones", () => {
+    const plan = planCcLineMoves(
+      [ref(1, "a", "S")],
+      [ref(10, "b", "S"), ref(11, "c", "S"), ref(12, "d", "K")],
+      [ref(5, "kept", "K")]
+    );
+    expect(plan.ambiguousGroups.map((g) => [g.olds.map((r) => r.lineId), g.news.map((r) => r.lineId)])).toEqual([
+      [[1], [10, 11]],
+    ]);
+    expect(plan.besideSurvivors.map((g) => [g.survivors.map((r) => r.lineId), g.news.map((r) => r.lineId)])).toEqual([
+      [[5], [12]],
+    ]);
+  });
+
   it("falls back to the one surviving line of the identity, else reports it gone", () => {
     const plan = planCcLineMoves([ref(1, "copy", "C"), ref(2, "z", "D")], [], [ref(5, "kept", "C")]);
     expect(plan.moves.map((m) => [m.from.lineId, m.to.lineId, m.by])).toEqual([[1, 5, "survivor"]]);
     expect(plan.gone.map((r) => r.lineId)).toEqual([2]);
+  });
+});
+
+describe("merchantRuleCandidateKeys", () => {
+  it("adds the name without the PDF's charge-type column and its 15-character cut", () => {
+    expect(merchantRuleCandidateKeys("FULLNEUMATICO QUILIN")).toEqual(["FULLNEUMATICO QUILIN", "FULLNEUMATICO Q"]);
+    expect(merchantRuleCandidateKeys("SEG AUTO SANTANDER COMPRAS P.A.T.")).toEqual([
+      "SEG AUTO SANTANDER COMPRAS P.A.T.",
+      "SEG AUTO SANTANDER",
+      "SEG AUTO SANTAN",
+    ]);
+    expect(merchantRuleCandidateKeys("CLINICA ALEMANA")).toEqual(["CLINICA ALEMANA"]);
+    expect(merchantRuleCandidateKeys("EMOVA SUBTE 4042 X")).toEqual(["EMOVA SUBTE 4042 X", "EMOVA SUBTE 404"]);
+  });
+
+  it("resolves a rule learned on the pasted name for the statement's full name, exact first", () => {
+    const rules = new Map([
+      ["7|FULLNEUMATICO Q", "transportation"],
+      ["7|SEG AUTO SANTANDER", "transportation"],
+      ["7|DL*GOOGLE YOUTUBE", "subscriptions"],
+      ["7|DL*GOOGLE YOUTU", "fun"],
+    ]);
+    expect(resolveMerchantCategorySlug(7, "FULLNEUMATICO QUILIN", rules)).toBe("transportation");
+    expect(resolveMerchantCategorySlug(7, "SEG AUTO SANTANDER COMPRAS P.A.T.", rules)).toBe("transportation");
+    expect(resolveMerchantCategorySlug(7, "DL*GOOGLE YOUTUBE", rules)).toBe("subscriptions");
+    expect(resolveMerchantCategorySlug(7, "FULLNEUMATICO", rules)).toBeNull();
   });
 });
 
@@ -50,7 +94,7 @@ function fixtureAccountId(): number {
 
 const BIG_GROUP = "vitest-rekey-trip";
 
-function record(rowId: string) {
+function record(rowId: string, merchant = "VITEST REKEY MERCHANT") {
   return {
     card_group: "santander",
     source_pdf: "vitest-rekey.pdf",
@@ -61,13 +105,52 @@ function record(rowId: string) {
     parser_layout: "compact",
     installment_flag: "false",
     amount_clp: "2500",
-    merchant: "VITEST REKEY MERCHANT",
+    merchant,
     transaction_date: "02/01/2025",
     row_id: rowId,
     dedupe_key: `vitest-rekey-${rowId}`,
-    raw_line: "02/01/2025 VITEST REKEY MERCHANT $2.500",
-    description_merged: "VITEST REKEY MERCHANT",
+    raw_line: `02/01/2025 ${merchant} $2.500`,
+    description_merged: merchant,
   };
+}
+
+function lineIds(accountId: number): Map<string, number> {
+  const rows = db
+    .prepare(
+      `SELECT l.id, l.parser_row_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?`
+    )
+    .all(accountId) as { id: number; parser_row_id: string }[];
+  return new Map(rows.map((r) => [r.parser_row_id, r.id]));
+}
+
+function categoryOf(accountId: number, key: string): number | null {
+  return (
+    (db.prepare(`SELECT category_id FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`).get(accountId, key) as
+      | { category_id: number }
+      | undefined)?.category_id ?? null
+  );
+}
+
+function setAssignments(accountId: number, key: string, categoryId: number, note: string): void {
+  db.prepare(`INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id) VALUES (?, ?, ?)`).run(
+    accountId,
+    key,
+    categoryId
+  );
+  db.prepare(`INSERT INTO cc_expense_purchase_big_groups (account_id, purchase_key, group_slug) VALUES (?, ?, ?)`).run(
+    accountId,
+    key,
+    BIG_GROUP
+  );
+  db.prepare(`INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, ?)`).run(accountId, key, note);
+}
+
+function noteOf(accountId: number, key: string): string | null {
+  return (
+    (db.prepare(`SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`).get(accountId, key) as
+      | { notes: string }
+      | undefined)?.notes ?? null
+  );
 }
 
 function lineId(accountId: number): number {
@@ -150,5 +233,51 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
       { line_id: newLine, amount_clp: 1500 },
       { line_id: newLine, amount_clp: 1000 },
     ]);
+  });
+
+  it("gives every line of a split re-parse the assignments the one old line carried", () => {
+    cleanup(accountId);
+    db.prepare(`INSERT INTO cc_expense_big_groups (slug, label) VALUES (?, 'vitest rekey')`).run(BIG_GROUP);
+    const fun = getCcExpenseCategoryBySlug("fun")!;
+    importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-one")]);
+    setAssignments(accountId, "line-pr:vitest-rekey-one", fun.id, "trip");
+
+    importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-two-a"), record("vitest-rekey-two-b")]);
+    for (const key of ["line-pr:vitest-rekey-two-a", "line-pr:vitest-rekey-two-b"]) {
+      expect(categoryOf(accountId, key)).toBe(fun.id);
+      expect(noteOf(accountId, key)).toBe("trip");
+    }
+    expect(categoryOf(accountId, "line-pr:vitest-rekey-one")).toBeNull();
+  });
+
+  it("copies the category, not the note, onto a new identical line beside a kept one", () => {
+    cleanup(accountId);
+    db.prepare(`INSERT INTO cc_expense_big_groups (slug, label) VALUES (?, 'vitest rekey')`).run(BIG_GROUP);
+    const fun = getCcExpenseCategoryBySlug("fun")!;
+    importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-kept")]);
+    setAssignments(accountId, "line-pr:vitest-rekey-kept", fun.id, "mine");
+
+    importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-kept"), record("vitest-rekey-sibling")]);
+    expect([...lineIds(accountId).keys()].sort()).toEqual(["vitest-rekey-kept", "vitest-rekey-sibling"]);
+    expect(categoryOf(accountId, "line-pr:vitest-rekey-kept")).toBe(fun.id);
+    expect(categoryOf(accountId, "line-pr:vitest-rekey-sibling")).toBe(fun.id);
+    expect(noteOf(accountId, "line-pr:vitest-rekey-kept")).toBe("mine");
+    expect(noteOf(accountId, "line-pr:vitest-rekey-sibling")).toBeNull();
+  });
+
+  it("carries a known pair across different merchants (a pasted line settled by its statement line)", () => {
+    cleanup(accountId);
+    db.prepare(`INSERT INTO cc_expense_big_groups (slug, label) VALUES (?, 'vitest rekey')`).run(BIG_GROUP);
+    const fun = getCcExpenseCategoryBySlug("fun")!;
+    importCcStatementsFromCsvRecords(accountId, [
+      record("vitest-rekey-cut", "VITEST REKEY ME"),
+      record("vitest-rekey-full", "VITEST SETTLED NAME"),
+    ]);
+    setAssignments(accountId, "line-pr:vitest-rekey-cut", fun.id, "pasted");
+    const ids = lineIds(accountId);
+    carryCcExpenseAssignments([{ fromLineId: ids.get("vitest-rekey-cut")!, toLineId: ids.get("vitest-rekey-full")! }]);
+    expect(categoryOf(accountId, "line-pr:vitest-rekey-full")).toBe(fun.id);
+    expect(noteOf(accountId, "line-pr:vitest-rekey-full")).toBe("pasted");
+    expect(categoryOf(accountId, "line-pr:vitest-rekey-cut")).toBeNull();
   });
 });

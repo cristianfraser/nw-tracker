@@ -40,12 +40,24 @@ export type CcLineRef = {
   identity: string;
 };
 
-export type CcLineMove = { from: CcLineRef; to: CcLineRef; by: "parser_row_id" | "identity" | "survivor" };
+export type CcLineMove = {
+  from: CcLineRef;
+  to: CcLineRef;
+  by: "parser_row_id" | "identity" | "survivor" | "fan_out" | "matched";
+  /** Copy the rows (the source also feeds other targets); the last move of a source moves them. */
+  copy?: boolean;
+  /** Carry only the category and big group (a copy onto a line that may be its own purchase). */
+  classificationOnly?: boolean;
+};
 
 export type CcLineMovePlan = {
   moves: CcLineMove[];
   /** Vanished lines whose identity group has a different number of appeared lines. */
   ambiguous: CcLineRef[];
+  /** The same, grouped with the appeared lines of their identity (id order). */
+  ambiguousGroups: { olds: CcLineRef[]; news: CcLineRef[] }[];
+  /** Appeared lines nothing vanished for, beside lines of their identity that stayed. */
+  besideSurvivors: { survivors: CcLineRef[]; news: CcLineRef[] }[];
   /** Vanished lines with no appeared line of the same identity (deleted for real). */
   gone: CcLineRef[];
 };
@@ -112,6 +124,8 @@ export function planCcLineMoves(
 ): CcLineMovePlan {
   const moves: CcLineMove[] = [];
   const ambiguous: CcLineRef[] = [];
+  const ambiguousGroups: { olds: CcLineRef[]; news: CcLineRef[] }[] = [];
+  const besideSurvivors: { survivors: CcLineRef[]; news: CcLineRef[] }[] = [];
   const gone: CcLineRef[] = [];
   const claimed = new Set<number>();
 
@@ -141,8 +155,17 @@ export function planCcLineMoves(
     return m;
   };
   const appearedByIdentity = group(appeared.filter((a) => !claimed.has(a.lineId)));
-  const survivorsByIdentity = group(survivors);
-  for (const [identity, olds] of group(rest)) {
+  // A line re-inserted under the same parser_row_id (a replaced statement) stayed, too.
+  const survivorsByIdentity = group([
+    ...survivors,
+    ...moves.filter((m) => m.by === "parser_row_id").map((m) => m.to),
+  ]);
+  const restByIdentity = group(rest);
+  for (const [identity, news] of appearedByIdentity) {
+    const kept = survivorsByIdentity.get(identity);
+    if (kept && !restByIdentity.has(identity)) besideSurvivors.push({ survivors: kept, news });
+  }
+  for (const [identity, olds] of restByIdentity) {
     const news = appearedByIdentity.get(identity) ?? [];
     const kept = survivorsByIdentity.get(identity) ?? [];
     if (news.length === 0 && kept.length === 1) {
@@ -151,11 +174,12 @@ export function planCcLineMoves(
       gone.push(...olds);
     } else if (news.length !== olds.length) {
       ambiguous.push(...olds);
+      ambiguousGroups.push({ olds, news });
     } else {
       olds.forEach((from, i) => moves.push({ from, to: news[i]!, by: "identity" }));
     }
   }
-  return { moves, ambiguous, gone };
+  return { moves, ambiguous, ambiguousGroups, besideSurvivors, gone };
 }
 
 type KeyedTable = "cc_expense_unique_purchases" | "cc_expense_purchase_big_groups" | "cc_expense_purchase_notes";
@@ -235,11 +259,13 @@ export function applyCcLineMoves(
     kept_current: 0,
     conflicts: [],
   };
-  for (const { from, to } of moves) {
+  for (const move of moves) {
+    const { from, to } = move;
     const fromKey = linePrKey(from);
     const toKey = linePrKey(to);
     if (fromKey && toKey && fromKey !== toKey && from.accountId === to.accountId) {
       for (const { table, column } of KEYED_TABLES) {
+        if (move.classificationOnly && table === "cc_expense_purchase_notes") continue;
         const get = db.prepare(`SELECT ${column} AS v FROM ${table} WHERE account_id = ? AND purchase_key = ?`);
         const stored = get.get(from.accountId, fromKey) as { v: unknown } | undefined;
         if (!stored) continue;
@@ -258,14 +284,22 @@ export function applyCcLineMoves(
           !current || (table === "cc_expense_purchase_notes" && String(current.v ?? "").trim() === "");
         if (targetEmpty) {
           if (current) db.prepare(`DELETE FROM ${table} WHERE account_id = ? AND purchase_key = ?`).run(to.accountId, toKey);
-          db.prepare(`UPDATE ${table} SET purchase_key = ? WHERE account_id = ? AND purchase_key = ?`).run(
-            toKey,
-            from.accountId,
-            fromKey
-          );
+          if (move.copy) {
+            db.prepare(`INSERT INTO ${table} (account_id, purchase_key, ${column}) VALUES (?, ?, ?)`).run(
+              to.accountId,
+              toKey,
+              stored.v
+            );
+          } else {
+            db.prepare(`UPDATE ${table} SET purchase_key = ? WHERE account_id = ? AND purchase_key = ?`).run(
+              toKey,
+              from.accountId,
+              fromKey
+            );
+          }
           out.moved[table] += 1;
         } else if (current.v === stored.v) {
-          del();
+          if (!move.copy) del();
           out.duplicates_removed += 1;
         } else if (opts?.preferStoredKeys?.has(fromKey)) {
           db.prepare(`UPDATE ${table} SET ${column} = ? WHERE account_id = ? AND purchase_key = ?`).run(
@@ -273,14 +307,14 @@ export function applyCcLineMoves(
             to.accountId,
             toKey
           );
-          del();
+          if (!move.copy) del();
           out.overridden += 1;
         } else {
           out.conflicts.push({ table, from: fromKey, to: toKey, stored: stored.v, current: current.v });
         }
       }
     }
-    if (from.lineId !== to.lineId) {
+    if (from.lineId !== to.lineId && !move.classificationOnly) {
       const splits = db
         .prepare(`SELECT COUNT(*) AS n FROM cc_expense_line_splits WHERE source = 'cc' AND line_id = ?`)
         .get(from.lineId) as { n: number };
@@ -298,14 +332,86 @@ export function applyCcLineMoves(
         });
         continue;
       }
-      db.prepare(`UPDATE cc_expense_line_splits SET line_id = ? WHERE source = 'cc' AND line_id = ?`).run(
-        to.lineId,
-        from.lineId
-      );
+      if (move.copy) {
+        db.prepare(
+          `INSERT INTO cc_expense_line_splits (source, line_id, seq, category_id, amount_clp, note)
+           SELECT source, ?, seq, category_id, amount_clp, note FROM cc_expense_line_splits
+           WHERE source = 'cc' AND line_id = ?`
+        ).run(to.lineId, from.lineId);
+      } else {
+        db.prepare(`UPDATE cc_expense_line_splits SET line_id = ? WHERE source = 'cc' AND line_id = ?`).run(
+          to.lineId,
+          from.lineId
+        );
+      }
       out.moved.cc_expense_line_splits += splits.n;
     }
   }
   return out;
+}
+
+/** What a line carries, comparable across lines (null when it carries nothing). */
+function assignmentSignature(ref: CcLineRef): string | null {
+  const key = linePrKey(ref);
+  const parts: unknown[] = [];
+  if (key) {
+    for (const { table, column } of KEYED_TABLES) {
+      const r = db
+        .prepare(`SELECT ${column} AS v FROM ${table} WHERE account_id = ? AND purchase_key = ?`)
+        .get(ref.accountId, key) as { v: unknown } | undefined;
+      parts.push(r ? ["row", r.v] : null);
+    }
+  }
+  const splits = db
+    .prepare(`SELECT seq, category_id, amount_clp, note FROM cc_expense_line_splits WHERE source = 'cc' AND line_id = ? ORDER BY seq`)
+    .all(ref.lineId);
+  parts.push(splits);
+  const sig = JSON.stringify(parts);
+  return parts.every((p) => p == null || (Array.isArray(p) && p.length === 0)) ? null : sig;
+}
+
+/**
+ * A re-parse that splits one printed line into several (or merges several into one) leaves an
+ * identity group whose counts differ. When every old line of it carries the same assignments, they
+ * belong to each new line alike: the old lines pair in order and the extra new lines get copies
+ * (extra old lines fold into the first new one). A group whose old lines disagree stays unpaired.
+ */
+export function fanOutUniformGroups(groups: readonly { olds: CcLineRef[]; news: CcLineRef[] }[]): {
+  moves: CcLineMove[];
+  fannedOut: Set<number>;
+} {
+  const moves: CcLineMove[] = [];
+  const fannedOut = new Set<number>();
+  for (const { olds, news } of groups) {
+    const sigs = olds.map(assignmentSignature);
+    if (sigs[0] == null || sigs.some((x) => x !== sigs[0])) continue;
+    const n = Math.min(olds.length, news.length);
+    // Copies first: the pairing moves below move the source rows away.
+    for (let i = n; i < news.length; i++) moves.push({ from: olds[0]!, to: news[i]!, by: "fan_out", copy: true });
+    for (let i = 0; i < n; i++) moves.push({ from: olds[i]!, to: news[i]!, by: "fan_out" });
+    for (let i = n; i < olds.length; i++) moves.push({ from: olds[i]!, to: news[0]!, by: "fan_out" });
+    for (const o of olds) fannedOut.add(o.lineId);
+  }
+  return { moves, fannedOut };
+}
+
+/**
+ * A re-parse that now prints a line twice where it kept one (the kept line's rows stay on it):
+ * the new siblings copy the category and big group every kept line of their identity carries,
+ * when they agree. Never the note or splits — an identical same-day charge can be its own purchase.
+ */
+export function copyOntoNewSiblings(groups: readonly { survivors: CcLineRef[]; news: CcLineRef[] }[]): CcLineMove[] {
+  const moves: CcLineMove[] = [];
+  for (const { survivors, news } of groups) {
+    const sigs = survivors.map(assignmentSignature);
+    if (sigs[0] == null || sigs.some((x) => x !== sigs[0])) continue;
+    for (const n of news) {
+      if (assignmentSignature(n) == null) {
+        moves.push({ from: survivors[0]!, to: n, by: "fan_out", copy: true, classificationOnly: true });
+      }
+    }
+  }
+  return moves;
 }
 
 /** Lines of an account before a re-import writes (see {@link rekeyCcExpenseLinesAfterImport}). */
@@ -347,15 +453,48 @@ export function rekeyCcExpenseLinesAfterImport(capture: CcExpenseLineCapture): C
     conflicts: [],
     unpaired: [],
   };
-  if (vanished.length === 0) return empty;
+  if (vanished.length === 0 && appeared.length === 0) return empty;
   const plan = planCcLineMoves(vanished, appeared, survivors);
   const keyedMoves = plan.moves.filter((m) => ccLineHasExpenseAssignments(m.from));
-  const applied = applyCcLineMoves(keyedMoves);
+  const fan = fanOutUniformGroups(plan.ambiguousGroups);
+  const applied = applyCcLineMoves([...keyedMoves, ...fan.moves]);
+  // After the moves: a kept line's splits have followed it to its new id by now.
+  const siblings = applyCcLineMoves(copyOntoNewSiblings(plan.besideSurvivors));
+  for (const t of Object.keys(applied.moved) as (keyof CcLineMoveApplyResult["moved"])[]) {
+    applied.moved[t] += siblings.moved[t];
+  }
+  applied.duplicates_removed += siblings.duplicates_removed;
+  applied.conflicts.push(...siblings.conflicts);
   const unpaired = [
-    ...plan.ambiguous.map((r) => ({ r, reason: "ambiguous" as const })),
+    ...plan.ambiguous.filter((r) => !fan.fannedOut.has(r.lineId)).map((r) => ({ r, reason: "ambiguous" as const })),
     ...plan.gone.map((r) => ({ r, reason: "gone" as const })),
   ]
     .filter(({ r }) => ccLineHasExpenseAssignments(r))
     .map(({ r, reason }) => ({ lineId: r.lineId, parserRowId: r.parserRowId, reason }));
   return { ...applied, unpaired };
+}
+
+/**
+ * Carries each line's assignments onto the line that replaces it, for callers that already know
+ * the pair — a pasted/fed line settled by the statement that bills it, a cut or pending re-listing
+ * dropped for its fuller twin. Their merchants differ, so identity pairing cannot find them.
+ * Call before deleting the `from` lines.
+ */
+export function carryCcExpenseAssignments(
+  pairs: readonly { fromLineId: number; toLineId: number }[]
+): CcLineMoveApplyResult | null {
+  if (pairs.length === 0) return null;
+  const ids = [...new Set(pairs.flatMap((p) => [p.fromLineId, p.toLineId]))];
+  const rows = db
+    .prepare(`${CC_LINE_REF_SELECT} WHERE l.id IN (${ids.map(() => "?").join(",")})`)
+    .all(...ids) as CcLineRefRow[];
+  const byId = new Map(rows.map((r) => [r.id, ccLineRefFromRow(r)]));
+  const moves: CcLineMove[] = [];
+  for (const p of pairs) {
+    const from = byId.get(p.fromLineId);
+    const to = byId.get(p.toLineId);
+    if (!from || !to) throw new Error(`carryCcExpenseAssignments: line ${!from ? p.fromLineId : p.toLineId} not found`);
+    if (ccLineHasExpenseAssignments(from)) moves.push({ from, to, by: "matched" });
+  }
+  return moves.length > 0 ? applyCcLineMoves(moves) : null;
 }

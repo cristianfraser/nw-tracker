@@ -50,9 +50,11 @@
 import { db } from "./db.js";
 import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
 
-/** Santander's web movements table (and the feed's pending rows) cut «Comercio» at this width. */
-export const WEB_PASTE_MERCHANT_TRUNCATION_WIDTH = 15;
+import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "./ccWebMerchantTruncation.js";
+
+export { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH };
 
 /** How far the bank may restate a transaction's date when it settles. */
 export const RESTATEMENT_WINDOW_DAYS = 4;
@@ -221,6 +223,8 @@ export function removeTruncatedMerchantDuplicateLines(
   const del = db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`);
   let removed_count = 0;
   db.transaction(() => {
+    // A category set on the cut or pending row belongs to the purchase: keep it on the fuller row.
+    carryCcExpenseAssignments(plan.map((p) => ({ fromLineId: p.line_id, toLineId: p.keep_line_id })));
     for (const id of ids) removed_count += del.run(id).changes;
   })();
 
