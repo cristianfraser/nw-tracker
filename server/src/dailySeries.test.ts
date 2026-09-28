@@ -285,6 +285,52 @@ describe("getBucketDailySeries — stored-valuations account with mid-window dep
     }
   });
 
+  it("a liquidation at a loss reads the loss against the prior close, not −100%", () => {
+    if (leafSlug == null) return;
+    const leaf = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(leafSlug) as
+      | { id: number }
+      | undefined;
+    if (!leaf) return;
+
+    const accountId = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+           VALUES (?, 'Vitest · daily series liquidation at a loss', 'vitest-daily-series-liquidation-loss', 'vitest-daily-series-liquidation-loss')`
+        )
+        .run(leaf.id).lastInsertRowid
+    );
+    const insVal = db.prepare(
+      `INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`
+    );
+    insVal.run(accountId, "2026-03-18", 500000);
+    insVal.run(accountId, "2026-03-24", 0);
+    // Sold off on 03-24 at a small loss: 490000 out of a 500000 close.
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+       VALUES (?, -490000, 'clp', '2026-03-24', 'vitest-daily-series-liquidation-loss')`
+    ).run(accountId);
+
+    try {
+      const s = getBucketDailySeries([{ account_id: accountId, bucket_slug: leafSlug }], {
+        unit: "clp",
+        days: 6,
+        now: NOW,
+      });
+      const tue = s.points[4]!;
+      expect(tue.value).toBe(0);
+      expect(tue.flow).toBe(-490000);
+      expect(tue.pl).toBe(-10000);
+      // prior + flow = 10000 = −pl read −100% for any loss; the day ends at zero, so the
+      // prior close is the base.
+      expect(tue.pct).toBeCloseTo(-10000 / 500000, 12);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+    }
+  });
+
   it("sold-out account: chart line keeps one zero then ends; points keep their true zeros", () => {
     if (leafSlug == null) return;
     const leaf = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(leafSlug) as

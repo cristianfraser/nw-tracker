@@ -100,8 +100,9 @@ function emptyCell(
 /**
  * Pure flow-adjusted cell from the two value legs and the window flow (all in the display
  * unit). Return = `(V_end − V_start − flow)` over the capital at work, by the shared rule
- * (`flowAdjustedPct`): `V_start + flow`, or `V_start` when a withdrawal exceeds it; a null
- * leg or no positive capital base → null pct (fail-fast, never a fabricated 0%).
+ * (`flowAdjustedPct`): `V_start + flow`, or `V_start` when the window ends at zero or a
+ * withdrawal exceeds it; a null leg or no positive capital base → null pct (fail-fast,
+ * never a fabricated 0%).
  */
 export function shortHorizonCellFromLegs(
   period: PeriodReturnCell["period"],
@@ -116,7 +117,7 @@ export function shortHorizonCellFromLegs(
   const nominal = vEnd - vStart - flow;
   return {
     period,
-    pct: flowAdjustedPct(nominal, vStart, flow, RETURN_EPS),
+    pct: flowAdjustedPct(nominal, vStart, flow, vEnd, RETURN_EPS),
     nominal_pl: Number.isFinite(nominal) ? nominal : null,
     annualized_pct: null,
     months: 0,

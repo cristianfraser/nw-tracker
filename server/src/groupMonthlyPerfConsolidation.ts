@@ -461,7 +461,7 @@ export function consolidateGroupMonthlyPerf(
       const net = bucket.net_capital_flow;
       /** Same definition as {@link getGroupMonthlyPerformanceSeries} `delta_total` (Σ per-account picked nominal_pl). */
       const nominal = bucket.nominal_pl;
-      const pct = flowAdjustedPct(nominal, prior ?? null, net, MONTH_ROW_EPS);
+      const pct = flowAdjustedPct(nominal, prior ?? null, net, bucket.closing_value, MONTH_ROW_EPS);
       return { ...bucket, nominal_pl: nominal, pct_month: pct };
     });
 

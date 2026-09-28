@@ -19,25 +19,46 @@ export type PeriodReturnKey = "d1" | "w1" | "mtd" | "ytd" | "y1" | "y3" | "y5" |
 
 /**
  * Flow-adjusted return over any period — a month row, a day of the daily series, the 1D/1W
- * cells, the dashboard's day/month/year: nominal P/L over the capital at work. The default
- * frame charges flows at the period START (`denom = prior + netFlow`); when a net withdrawal
- * exceeds the prior close — a liquidation withdraws the period's gains too — that
- * denominator goes ≤ 0 and the ratio is meaningless (a period closing at 0 would read
- * exactly −100% by the identity `nominal = −(prior + netFlow)`, and a gain withdrawn with
- * the capital would read as a loss). Such periods fall back to charging flows at the period
- * END (`denom = prior`). Null when no positive capital base exists in either frame — among
- * them a first period (no prior close) whose flows are net withdrawals.
+ * cells, the dashboard's day/month/year/total, an equity position's return on deposited:
+ * nominal P/L over the capital at work. The default frame charges flows at the period START
+ * (`denom = prior + netFlow`).
+ *
+ * A period that ENDS AT ZERO (`|close| ≤ eps`: a position sold off, a deposit matured, an
+ * account emptied) was emptied by a withdrawal at its end, so it charges that withdrawal at
+ * the period END and divides by the prior close: in the start frame `prior + netFlow` is
+ * then exactly `−nominal`, so a loss read −100% however small and a gain had no positive
+ * base. With nothing at work before it (no prior close: bought and sold inside the period)
+ * there is no base → null. A period that ends at zero on a net DEPOSIT keeps the start
+ * frame: that money was at work too and all of it was lost, exactly −100% (the prior close
+ * alone would read a loss beyond that).
+ *
+ * A period that does not end at zero but whose net withdrawal exceeds the prior close (a
+ * partial liquidation that takes the period's gains too) also divides by the prior close,
+ * the start denominator being ≤ 0. Null when no positive capital base exists in either
+ * frame — among them a first period (no prior close) whose flows are net withdrawals — and
+ * when the close is unknown (the frame cannot be chosen).
  */
 export function flowAdjustedPct(
   nominal: number | null,
   prior: number | null,
   netFlow: number,
+  close: number | null,
   eps: number
 ): number | null {
   if (nominal == null || !Number.isFinite(nominal)) return null;
+  if (close == null || !Number.isFinite(close)) return null;
   const priorBase = prior != null && Number.isFinite(prior) ? prior : 0;
+  const endsAtZero = Math.abs(close) <= eps;
+  if (endsAtZero && !(priorBase > eps)) return null;
   const startFrameDenom = priorBase + netFlow;
-  const denom = startFrameDenom > eps ? startFrameDenom : priorBase > eps ? priorBase : null;
+  const denom =
+    endsAtZero && netFlow <= 0
+      ? priorBase
+      : startFrameDenom > eps
+        ? startFrameDenom
+        : priorBase > eps
+          ? priorBase
+          : null;
   if (denom == null) return null;
   const pct = nominal / denom;
   return Number.isFinite(pct) ? pct : null;

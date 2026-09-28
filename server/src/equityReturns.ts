@@ -7,6 +7,7 @@
  * Total return = value − deposited.
  */
 
+import { MONTH_ROW_EPS } from "./accountPerformanceMonthPick.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
@@ -16,6 +17,7 @@ import {
   movementUsdLeg,
   type MovementAmountFields,
 } from "./movementAmounts.js";
+import { flowAdjustedPct } from "./periodReturns.js";
 
 /** Σ reference CLP of all dividends received (`dividend_payout` transfers). Informational. */
 export function totalDividendsClpForAccount(accountId: number): number {
@@ -55,12 +57,15 @@ export function equityReturnSnapshot(
   if (!accountUsesEquityMtm(accountId)) return null;
   const total_return_clp =
     valueClp != null && Number.isFinite(valueClp) ? valueClp - depositedClp : null;
-  const return_on_deposited_pct =
-    total_return_clp != null &&
-    depositedClp > 0 &&
-    Number.isFinite(total_return_clp / depositedClp)
-      ? total_return_clp / depositedClp
-      : null;
+  // Lifetime return on the capital deposited — the shared rule's prior-less frame, so a
+  // position sold off (bought and sold within its lifetime) reads null, not −100%.
+  const return_on_deposited_pct = flowAdjustedPct(
+    total_return_clp,
+    null,
+    depositedClp,
+    valueClp,
+    MONTH_ROW_EPS
+  );
   return {
     dividends_clp: totalDividendsClpForAccount(accountId),
     total_return_clp,
