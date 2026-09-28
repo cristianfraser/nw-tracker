@@ -828,7 +828,11 @@ function buildAccountMonthlyPerformanceUncached(
           )
         : monthEndCloseForPerformance(accountId, asOf, p, dk, bookAsc, exactClpByDate, unit);
     if (close == null) continue;
-    const cumDep = numCell(p[depKey]) ?? 0;
+    // A null deposit cell is a densified filler month (no valuation row, and — since the chart
+    // grid adds the month-end of every deposit event — no flow either): cumulative deposits carry.
+    // Reading it as 0 while `close` carried the last book value split one flow into a ± couplet
+    // across the gap, while the daily series (deposit events) had it right.
+    const cumDep: number = numCell(p[depKey]) ?? prevCumDep ?? 0;
 
     if (prevClose == null) {
       const y = Number(asOf.slice(0, 4));
