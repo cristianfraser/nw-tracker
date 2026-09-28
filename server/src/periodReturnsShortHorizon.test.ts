@@ -47,6 +47,14 @@ describe("shortHorizonCellFromLegs (pure flow-adjusted math)", () => {
     expect(c.pct).toBeCloseTo(0.05, 12);
   });
 
+  it("a window that ends at zero at a loss reads the loss on V_start, not −100%", () => {
+    // Sold off at a small loss: 1.000 → 0 after withdrawing 990 → nominal −10. V_start +
+    // flow = 10 read −100%; ending at zero divides by V_start: −1%.
+    const c = shortHorizonCellFromLegs("d1", 0, 1000, -990, "2026-07-06");
+    expect(c.nominal_pl).toBeCloseTo(-10, 9);
+    expect(c.pct).toBeCloseTo(-0.01, 12);
+  });
+
   it("no positive capital base → null pct, never a sign-flipped one", () => {
     const c = shortHorizonCellFromLegs("d1", -900, -1000, 0, "2026-07-06");
     expect(c.nominal_pl).toBeCloseTo(100, 9);

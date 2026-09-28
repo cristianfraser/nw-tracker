@@ -81,6 +81,18 @@ describe("live current-month % return", () => {
     expect(running.pct_month).toBeCloseTo(closed.pct_month!, 12);
   });
 
+  it("a liquidation month at a loss reads the loss on the prior close, running or closed", () => {
+    // Prior close 1.000.000; sold off for 996.000 and closes at 0 → −4.000: −0,4%, not the
+    // −100% that −4.000 ÷ (1.000.000 − 996.000) always gives.
+    const closed = closedMay(0, -996_000);
+    const running = runningMay(0, -996_000);
+
+    expect(closed.nominal_pl).toBe(-4_000);
+    expect(closed.pct_month).toBeCloseTo(-0.004, 12);
+    expect(running.nominal_pl).toBe(-4_000);
+    expect(running.pct_month).toBeCloseTo(closed.pct_month!, 12);
+  });
+
   it("withdrawing exactly the prior close reads 0%, not null", () => {
     const closed = closedMay(0, -1_000_000);
     const running = runningMay(0, -1_000_000);

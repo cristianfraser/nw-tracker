@@ -63,8 +63,8 @@ export type DailySeriesPoint = {
   pl: number | null;
   /**
    * `pl` over the capital at work by the shared rule (`flowAdjustedPct`): capital base + flow,
-   * or the base alone when a withdrawal exceeds it; null when `pl` is null or no positive
-   * capital base exists.
+   * or the base alone when the day ends at zero or a withdrawal exceeds it; null when `pl` is
+   * null or no positive capital base exists.
    */
   pct: number | null;
   /** False on weekends/shared holidays (no NYSE session AND no Chilean business day) — the
@@ -480,12 +480,14 @@ export function getBucketDailySeries(
     const pl = wealthNow != null && wealthPrev != null ? wealthNow - wealthPrev - flow : null;
     // Capital base = what was at work before today's P/L: assets grow with their flows, debt
     // grows with borrowing (the negated liability flow) — both are positive exposures. The
-    // guard is the monthly rows' (`flowAdjustedPct`): a day whose withdrawals exceed the prior
-    // close charges them at day end instead of dividing by a negative base.
+    // guard is the monthly rows' (`flowAdjustedPct`): a day that ends at zero, or whose
+    // withdrawals exceed the prior close, charges them at day end instead of reading −100% or
+    // dividing by a negative base.
     const pct = flowAdjustedPct(
       pl,
       prev,
       toUnit(flows[i - 1]! - liabilityFlows[i - 1]!),
+      value,
       RETURN_EPS
     );
     points.push({

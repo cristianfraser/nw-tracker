@@ -212,8 +212,9 @@ function computeMortgageCardDeposits(
 
 /**
  * Flow-adjusted period returns from the row's FINAL legs (after the CC/mortgage P/L
- * overrides), via the shared `flowAdjustedPct`. Total has no prior close, so it
- * reads P/L acumulado ÷ lifetime deposits (the helper's prior-less frame).
+ * overrides), via the shared `flowAdjustedPct`; every period closes at the row's current
+ * value. Total has no prior close, so it reads P/L acumulado ÷ lifetime deposits (the
+ * helper's prior-less frame).
  */
 function dashboardRowPeriodPcts(
   row: DashboardAccountStats,
@@ -222,19 +223,32 @@ function dashboardRowPeriodPcts(
   const pct = (
     delta: number | null | undefined,
     prior: number | null | undefined,
-    flow: number | null | undefined
-  ) => flowAdjustedPct(delta ?? null, prior ?? null, flow ?? 0, MONTH_ROW_EPS);
+    flow: number | null | undefined,
+    close: number | null | undefined
+  ) => flowAdjustedPct(delta ?? null, prior ?? null, flow ?? 0, close ?? null, MONTH_ROW_EPS);
+  const clp = row.current_value_clp;
+  const usd = row.current_value_usd;
   return {
-    pct_day_clp: pct(row.delta_day_clp, row.prior_day_close_clp, row.deposits_day_clp),
-    pct_month_clp: pct(row.delta_month_clp, row.prior_month_close_clp, row.deposits_month_clp),
-    pct_year_clp: pct(row.delta_year_clp, row.prior_year_close_clp, row.deposits_year_clp),
-    pct_total_clp: pct(row.delta_total_clp, null, row.deposits_clp),
+    pct_day_clp: pct(row.delta_day_clp, row.prior_day_close_clp, row.deposits_day_clp, clp),
+    pct_month_clp: pct(row.delta_month_clp, row.prior_month_close_clp, row.deposits_month_clp, clp),
+    pct_year_clp: pct(row.delta_year_clp, row.prior_year_close_clp, row.deposits_year_clp, clp),
+    pct_total_clp: pct(row.delta_total_clp, null, row.deposits_clp, clp),
     ...(includeUsd
       ? {
-          pct_day_usd: pct(row.delta_day_usd, row.prior_day_close_usd, row.deposits_day_usd),
-          pct_month_usd: pct(row.delta_month_usd, row.prior_month_close_usd, row.deposits_month_usd),
-          pct_year_usd: pct(row.delta_year_usd, row.prior_year_close_usd, row.deposits_year_usd),
-          pct_total_usd: pct(row.delta_total_usd, null, row.deposits_usd),
+          pct_day_usd: pct(row.delta_day_usd, row.prior_day_close_usd, row.deposits_day_usd, usd),
+          pct_month_usd: pct(
+            row.delta_month_usd,
+            row.prior_month_close_usd,
+            row.deposits_month_usd,
+            usd
+          ),
+          pct_year_usd: pct(
+            row.delta_year_usd,
+            row.prior_year_close_usd,
+            row.deposits_year_usd,
+            usd
+          ),
+          pct_total_usd: pct(row.delta_total_usd, null, row.deposits_usd, usd),
         }
       : {}),
   };

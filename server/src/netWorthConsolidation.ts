@@ -70,7 +70,7 @@ function sumBucketConsolidatedRows(
       const prior = row.prior_closing;
       const net = row.net_capital_flow;
       const nominal = row.nominal_pl;
-      const pct = flowAdjustedPct(nominal, prior ?? null, net, 0.01);
+      const pct = flowAdjustedPct(nominal, prior ?? null, net, row.closing_value, 0.01);
       return { ...row, pct_month: pct };
     });
 
