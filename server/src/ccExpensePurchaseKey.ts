@@ -2,6 +2,7 @@ import {
   resolveCcExpensePurchaseKey,
   stableInstallmentHPurchaseKeyFromLedgerArgs,
 } from "./ccExpenseCategories.js";
+import { checkingGapDepositMirrorPurchaseKey } from "./checkingGapDepositMirrorKey.js";
 import { checkingGastosMovementPurchaseKey } from "./flowsCheckingGastos.js";
 import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
 
@@ -33,7 +34,7 @@ export function resolvePurchaseKeyForGastosLine(
     // checking_gap_deposit_mirrors row id, encoded as a negative statement_line_id by
     // flowsCheckingGapDepositMirrors.ts. Real checking lines always carry a positive
     // movements.id, so this convention is unambiguous.
-    return `synthetic-checking-gap-mirror:${-line.statement_line_id}`;
+    return checkingGapDepositMirrorPurchaseKey(-line.statement_line_id);
   }
   if (line.statement_line_id > 0) {
     return resolveCcExpensePurchaseKey(line.statement_line_id);

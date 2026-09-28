@@ -8,8 +8,10 @@ import {
   DEPOSITS_CC_EXPENSE_SLUG,
   REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
 } from "./ccExpenseCategories.js";
+import { checkingGapDepositMirrorPurchaseKey } from "./checkingGapDepositMirrorKey.js";
 import {
   carryingClpForExpenseDepositLink,
+  computeManualDepositAssertions,
   expenseDepositLinkDto,
   findUniqueCcLineForMortgageSheetRow,
   isMortgageCcExpenseMerchant,
@@ -208,5 +210,25 @@ describe("cuota 4 Jun 2024 MUTUARIA on card 4141", () => {
     const pt = chart_monthly_by_category[0]!;
     expect(pt[BILLS_CC_EXPENSE_SLUG]).toBe(273_619);
     expect(pt[REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG]).toBe(-926_381);
+  });
+});
+
+describe("computeManualDepositAssertions", () => {
+  it("never treats a synthetic mirror line as a user-asserted deposit (it has its own direct link)", () => {
+    const mirrorLine = {
+      source: "checking" as const,
+      account_id: 1,
+      purchase_key: checkingGapDepositMirrorPurchaseKey(4242),
+      category_slug: DEPOSITS_CC_EXPENSE_SLUG,
+      amount_clp: 50_000,
+      purchase_notes: "",
+      merchant: "Mirror",
+      purchase_on: "2011-03-04",
+      occurred_on: "2011-03-04",
+    };
+    expect(computeManualDepositAssertions([mirrorLine], [])).toEqual([]);
+    // The same line on a real checking key is an assertion (unmatched here: empty pool).
+    const realLine = { ...mirrorLine, purchase_key: "checking-cartola:vitest-real-debit" };
+    expect(computeManualDepositAssertions([realLine], []).map((a) => a.deposit_movement_id)).toEqual([null]);
   });
 });

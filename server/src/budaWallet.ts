@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX } from "./checkingGapDepositMirrorKey.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import {
   NET_WORTH_CAPITAL_RETURN_MAX_DAY_GAP,
@@ -19,6 +20,8 @@ import {
 } from "./movementAmounts.js";
 
 const BUDA_ACCOUNT_IMPORT_KEY = "import:buda|key=buda_clp";
+/** Human provenance on the mirror row (never read back). */
+const BUDA_ABONO_MIRROR_NOTE = "buda-abono|self_funded";
 
 /** The Buda CLP buffer account (crypto bucket cash hub), or null if the Buda ledger isn't imported. */
 export function loadBudaBufferAccountId(): number | null {
@@ -48,10 +51,38 @@ export function loadCryptoCoinAccountIdsFundedByBuda(): Set<number> {
 }
 
 /**
+ * Buda abono deposits with no real checking outflow linked to them. The sync runs after the auto and
+ * asserted link passes, so a link from any real line (a cartola debit, never a synthetic mirror line)
+ * already names the transfer that funded the abono.
+ */
+export function listBudaAbonosWithoutRealOutflowLink(): Set<number> {
+  const budaId = loadBudaBufferAccountId();
+  if (budaId == null) return new Set();
+  const rows = db
+    .prepare(
+      `SELECT m.id FROM movements m
+       WHERE m.account_id = ? AND m.note = 'import:buda|abono' AND ${MOVEMENT_CLP_LEG_SQL} > 0
+         AND NOT EXISTS (
+           SELECT 1 FROM expense_deposit_links l
+           WHERE l.deposit_movement_id = m.id
+             AND l.link_source IN ('auto', 'manual')
+             AND substr(l.purchase_key, 1, ?) != ?)`
+    )
+    .all(
+      budaId,
+      CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX.length,
+      CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX
+    ) as { id: number }[];
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
  * Materialize a synthetic checking outflow (cuenta_corriente → Buda) for each `abono` deposit into
- * the Buda buffer. The real transfers pre-date reliable cartola coverage, so they get mirrors exactly
- * like the checking-gap deposits — turning the buffer's abonos into `linked_synthetic`. Scoped to
- * Buda abono movements, so it never touches other checking_gap_deposit_mirrors rows.
+ * the Buda buffer that no real checking outflow explains — turning it into `linked_synthetic` like
+ * the checking-gap deposits. An abono already linked to its real cartola debit gets no mirror (it
+ * would be linked twice). Existing mirror rows are kept in place (same id) when still needed, so a
+ * re-sync does not churn the ids the mirror lines' purchase keys are built from. Scoped to Buda abono
+ * movements, so it never touches other checking_gap_deposit_mirrors rows.
  */
 export function syncBudaAbonoDepositMirrors(): void {
   const budaId = loadBudaBufferAccountId();
@@ -63,17 +94,40 @@ export function syncBudaAbonoDepositMirrors(): void {
     )
     .all(budaId) as ({ id: number; occurred_on: string } & MovementAmountFields)[];
   if (abonos.length === 0) return;
+  const needsMirror = listBudaAbonosWithoutRealOutflowLink();
 
   const corrienteId = cartolaCashAccountId("cuenta_corriente");
+  const existing = db.prepare(
+    `SELECT account_id, amount_clp, occurred_on FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`
+  );
   const del = db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`);
+  const upd = db.prepare(
+    `UPDATE checking_gap_deposit_mirrors SET account_id = ?, amount_clp = ?, occurred_on = ?, note = ?
+     WHERE deposit_movement_id = ?`
+  );
   const ins = db.prepare(
     `INSERT INTO checking_gap_deposit_mirrors (account_id, deposit_movement_id, amount_clp, occurred_on, note)
      VALUES (?, ?, ?, ?, ?)`
   );
   const tx = db.transaction(() => {
     for (const a of abonos) {
-      del.run(a.id);
-      ins.run(corrienteId, a.id, Math.round(movementClpLegOrZero(a)), a.occurred_on, "buda-abono|self_funded");
+      if (!needsMirror.has(a.id)) {
+        del.run(a.id);
+        continue;
+      }
+      const amount = Math.round(movementClpLegOrZero(a));
+      const row = existing.get(a.id) as
+        | { account_id: number; amount_clp: number; occurred_on: string }
+        | undefined;
+      if (row == null) {
+        ins.run(corrienteId, a.id, amount, a.occurred_on, BUDA_ABONO_MIRROR_NOTE);
+      } else if (
+        row.account_id !== corrienteId ||
+        row.amount_clp !== amount ||
+        row.occurred_on !== a.occurred_on
+      ) {
+        upd.run(corrienteId, amount, a.occurred_on, BUDA_ABONO_MIRROR_NOTE, a.id);
+      }
     }
   });
   tx();
