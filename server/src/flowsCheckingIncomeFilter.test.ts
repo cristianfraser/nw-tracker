@@ -73,6 +73,8 @@ describe("checkingCreditMatchesMonthBucketLedgerCapitalReturn", () => {
       account_id: 80,
       category_slug: "cuenta_ahorro_vivienda",
       group_slug: "cash_eqs",
+      claim_key: "flowsCheckingIncomeFilter-75",
+      movement_id: null,
     };
     expect(
       checkingCreditMatchesMonthBucketLedgerCapitalReturn(credit, [ledgerRetiro])
@@ -103,6 +105,8 @@ describe("checkingCreditMatchesMonthBucketLedgerCapitalReturn", () => {
       account_id: 80,
       category_slug: "cuenta_ahorro_vivienda",
       group_slug: "cash_eqs",
+      claim_key: "flowsCheckingIncomeFilter-105",
+      movement_id: null,
     };
     expect(checkingCreditMatchesMonthBucketLedgerCapitalReturn(credit, [ledgerRetiro])).toBe(true);
   });
@@ -134,6 +138,8 @@ describe("checkingCreditMatchesLedgerNetWorthCapitalReturn", () => {
       account_id: 45,
       category_slug: "fintual_risky_norris",
       group_slug: "brokerage",
+      claim_key: "flowsCheckingIncomeFilter-136",
+      movement_id: null,
     };
     const consumed = new Set<string>();
     expect(
@@ -175,6 +181,8 @@ describe("checkingCreditMatchesLedgerNetWorthCapitalReturn", () => {
       account_id: 44,
       category_slug: "fondo_reserva",
       group_slug: "cash_eqs",
+      claim_key: "flowsCheckingIncomeFilter-177",
+      movement_id: null,
     };
     expect(
       checkingCreditMatchesLedgerNetWorthCapitalReturn(fintualAgfCredit, [reservaRetiro], {
@@ -212,6 +220,8 @@ describe("checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalReturn", (
       account_id: 44,
       category_slug: "fintual_risky_norris",
       group_slug: "brokerage",
+      claim_key: "flowsCheckingIncomeFilter-214",
+      movement_id: null,
     };
     const consumed = new Set<string>();
     expect(
@@ -290,6 +300,8 @@ describe("checkingCreditMatchesNetWorthCapitalReturn", () => {
       account_id: 45,
       category_slug: "fintual_risky_norris",
       group_slug: "brokerage",
+      claim_key: "flowsCheckingIncomeFilter-292",
+      movement_id: null,
     };
     expect(
       checkingCreditMatchesNetWorthCapitalReturn(fintualCredit, [], {

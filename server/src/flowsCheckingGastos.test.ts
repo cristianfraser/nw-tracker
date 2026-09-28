@@ -100,6 +100,8 @@ describe("flowsCheckingGastos", () => {
         account_id: vistaId,
         category_slug: "cuenta_vista",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-102",
+        movement_id: null,
       },
     ];
 
@@ -492,6 +494,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 1,
         category_slug: "cuenta_ahorro_vivienda",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-494",
+        movement_id: null,
       },
     ];
     const months = computeMercadoCapitalesInternalTransferMonths(0, deposits, {
@@ -539,6 +543,8 @@ describe("flowsCheckingGastos", () => {
         account_id: reservaId,
         category_slug: "fondo_reserva",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-541",
+        movement_id: null,
       },
       {
         occurred_on: "2024-03-15",
@@ -546,6 +552,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 999_999,
         category_slug: "spy",
         group_slug: "brokerage",
+        claim_key: "flowsCheckingGastos-548",
+        movement_id: null,
       },
     ];
     expect(
@@ -570,6 +578,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 23,
         category_slug: "cuenta_ahorro_vivienda",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-572",
+        movement_id: null,
       },
     ];
     expect(
@@ -626,6 +636,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 41,
         category_slug: "cuenta_vista",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-628",
+        movement_id: null,
       },
     ];
     const split = splitCheckingWithdrawalAgainstDeposits(
@@ -666,6 +678,8 @@ describe("flowsCheckingGastos", () => {
         account_id: vistaId,
         category_slug: "cuenta_vista",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-668",
+        movement_id: null,
       },
       {
         occurred_on: "2019-08-01",
@@ -673,6 +687,8 @@ describe("flowsCheckingGastos", () => {
         account_id: vistaId,
         category_slug: "cuenta_vista",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-675",
+        movement_id: null,
       },
     ];
     const split = splitCheckingWithdrawalAgainstDeposits(
@@ -707,6 +723,8 @@ describe("flowsCheckingGastos", () => {
         account_id: reservaId,
         category_slug: "fondo_reserva",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-709",
+        movement_id: null,
       },
       {
         occurred_on: "2024-11-22",
@@ -714,6 +732,8 @@ describe("flowsCheckingGastos", () => {
         account_id: reservaId,
         category_slug: "fondo_reserva",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-716",
+        movement_id: null,
       },
     ];
     const opts = {
@@ -795,6 +815,8 @@ describe("flowsCheckingGastos", () => {
         account_id: corrienteId,
         category_slug: "cuenta_corriente",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-797",
+        movement_id: null,
       },
     ];
     const splitJul2Paired = splitCheckingWithdrawalAgainstDeposits(
@@ -846,6 +868,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 99,
         category_slug: "cuenta_vista",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-848",
+        movement_id: null,
       },
       {
         occurred_on: "2017-11-30",
@@ -853,6 +877,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 99,
         category_slug: "cuenta_vista",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-855",
+        movement_id: null,
       },
     ];
     const splitNov27 = splitCheckingWithdrawalAgainstDeposits(
@@ -899,6 +925,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 10,
         category_slug: "cuenta_corriente",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-901",
+        movement_id: null,
       },
     ];
     const split = splitCheckingWithdrawalAgainstDeposits(
@@ -978,6 +1006,8 @@ describe("flowsCheckingGastos", () => {
         account_id: vistaId,
         category_slug: "cuenta_vista",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-980",
+        movement_id: null,
       },
     ];
     const split = splitCheckingWithdrawalAgainstDeposits(
@@ -1018,6 +1048,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 1,
         category_slug: "fondo_reserva",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-1020",
+        movement_id: null,
       },
     ];
     const pool = createSplittableInternalTransferPool(deposits);
@@ -1028,7 +1060,7 @@ describe("flowsCheckingGastos", () => {
     };
     expect(withdrawalMatchesInternalCashTransfer(withdrawal, deposits, 3, pool)).toBe(true);
     expect(withdrawalMatchesInternalCashTransfer(withdrawal, deposits, 3, pool)).toBe(true);
-    expect(pool.get("1|2025-01-09|10000000")).toBe(0);
+    expect(pool.get("flowsCheckingGastos-1020")).toBe(0);
   });
 
   it("does not allocate splittable reserva pool to checking wires on other days", () => {
@@ -1039,6 +1071,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 21,
         category_slug: "fondo_reserva",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-1041",
+        movement_id: null,
       },
     ];
     const pool = createSplittableInternalTransferPool(deposits);
@@ -1050,7 +1084,7 @@ describe("flowsCheckingGastos", () => {
         pool
       )
     ).toBe(false);
-    expect(pool.get("21|2025-01-09|10000000")).toBe(10_000_000);
+    expect(pool.get("flowsCheckingGastos-1041")).toBe(10_000_000);
   });
 
   it("matches Jan 2025 Fintual wires against lump-sum reserva deposit in DB", () => {
@@ -1081,6 +1115,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 23,
         category_slug: "cuenta_ahorro_vivienda",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-1083",
+        movement_id: null,
       },
       {
         occurred_on: "2023-05-02",
@@ -1088,6 +1124,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 20,
         category_slug: "fintual_risky_norris",
         group_slug: "brokerage",
+        claim_key: "flowsCheckingGastos-1090",
+        movement_id: null,
       },
     ];
     const split = splitCheckingWithdrawalAgainstDeposits(
@@ -1113,6 +1151,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 21,
         category_slug: "fondo_reserva",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-1115",
+        movement_id: null,
       },
     ];
     const split = splitCheckingWithdrawalAgainstDeposits(
@@ -1194,6 +1234,8 @@ describe("flowsCheckingGastos", () => {
         account_id: reservaId,
         category_slug: "fondo_reserva",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-1196",
+        movement_id: null,
       },
       {
         occurred_on: "2024-03-16",
@@ -1201,6 +1243,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 999_999,
         category_slug: "spy",
         group_slug: "brokerage",
+        claim_key: "flowsCheckingGastos-1203",
+        movement_id: null,
       },
     ];
     expect(
@@ -1221,6 +1265,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 1,
         category_slug: "fondo_reserva",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-1223",
+        movement_id: null,
       },
     ];
     expect(
@@ -1295,6 +1341,8 @@ describe("flowsCheckingGastos", () => {
         account_id: 1,
         category_slug: "spy",
         group_slug: "brokerage",
+        claim_key: "flowsCheckingGastos-1297",
+        movement_id: null,
       },
     ];
     expect(
@@ -1389,6 +1437,8 @@ describe("flowsCheckingGastos", () => {
           account_id: 99,
           category_slug: "cuenta_vista",
           group_slug: "cash_eqs",
+          claim_key: "flowsCheckingGastos-1391",
+          movement_id: null,
         },
       ],
       {
@@ -1427,6 +1477,8 @@ describe("flowsCheckingGastos", () => {
         account_id: vistaId,
         category_slug: "cuenta_vista",
         group_slug: "cash_eqs",
+        claim_key: "flowsCheckingGastos-1429",
+        movement_id: null,
       },
     ];
 

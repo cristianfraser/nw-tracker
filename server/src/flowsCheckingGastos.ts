@@ -340,10 +340,6 @@ export const MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES = MONTH_PRECISION_ACCOUNT
 /** Fintual reserva deposits may be merged on one day; checking wires can split against one lump sum. */
 export const SPLITTABLE_INTERNAL_TRANSFER_CATEGORIES = new Set(["fondo_reserva"]);
 
-function splittableDepositPoolKey(d: Pick<DepositMatchCandidate, "account_id" | "occurred_on" | "amount_clp">): string {
-  return `${d.account_id}|${d.occurred_on}|${d.amount_clp}`;
-}
-
 export function createSplittableInternalTransferPool(
   deposits: readonly DepositMatchCandidate[]
 ): Map<string, number> {
@@ -351,7 +347,7 @@ export function createSplittableInternalTransferPool(
   for (const d of deposits) {
     if (!SPLITTABLE_INTERNAL_TRANSFER_CATEGORIES.has(d.category_slug)) continue;
     if (d.group_slug !== CHECKING_GASTOS_CASH_GROUP) continue;
-    pool.set(splittableDepositPoolKey(d), Math.round(d.amount_clp));
+    pool.set(d.claim_key, Math.round(d.amount_clp));
   }
   return pool;
 }
@@ -853,7 +849,7 @@ function tryAllocateSplittableInternalTransferAmount(
     if (!SPLITTABLE_INTERNAL_TRANSFER_CATEGORIES.has(d.category_slug)) continue;
     if (d.group_slug !== CHECKING_GASTOS_CASH_GROUP) continue;
     if (!depositMatchesSplittableInternalTransferTiming(withdrawal, d)) continue;
-    const key = splittableDepositPoolKey(d);
+    const key = d.claim_key;
     const poolRemaining = pool.get(key);
     if (poolRemaining == null || poolRemaining <= 0) continue;
     const take = Math.min(cap, poolRemaining);
@@ -894,7 +890,7 @@ function findExactInternalCashTransferDeposit(
     }
     if (!depositIsCrossAccountInternalTransfer(d, withdrawalAccountId)) continue;
     if (Math.round(d.amount_clp) !== want) continue;
-    if (usedDepositKeys?.has(splittableDepositPoolKey(d))) continue;
+    if (usedDepositKeys?.has(d.claim_key)) continue;
     if (!depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) continue;
     const gap = daysBetweenYmd(d.occurred_on, withdrawal.occurred_on);
     if (gap < bestGap) {
@@ -962,7 +958,7 @@ function resolveInternalCashTransferMatch(
       usedDepositKeys
     );
     if (exact != null) {
-      usedDepositKeys?.add(splittableDepositPoolKey(exact));
+      usedDepositKeys?.add(exact.claim_key);
       return { matched: true, allocations: [{ deposit: exact, amount_clp: want }] };
     }
   }
@@ -1082,7 +1078,7 @@ export function splitCheckingWithdrawalAgainstDeposits(
       )
     : null;
   if (exactDeposit != null) {
-    opts.usedDepositKeys.add(splittableDepositPoolKey(exactDeposit));
+    opts.usedDepositKeys.add(exactDeposit.claim_key);
     return {
       internalClp: want,
       internalMatchedDeposits: [{ deposit: exactDeposit, amount_clp: want }],
@@ -1123,7 +1119,7 @@ export function splitCheckingWithdrawalAgainstDeposits(
 
   let investmentMatchClp = 0;
   if (investmentDeposit != null) {
-    opts.usedDepositKeys.add(splittableDepositPoolKey(investmentDeposit));
+    opts.usedDepositKeys.add(investmentDeposit.claim_key);
     investmentMatchClp = remaining;
   }
 
@@ -1194,7 +1190,7 @@ export function matchWithdrawalToDeposit(
   const want = Math.round(Math.abs(withdrawal.amount_clp));
   if (want <= 0) return null;
   for (const d of deposits) {
-    const key = splittableDepositPoolKey(d);
+    const key = d.claim_key;
     if (usedDepositKeys?.has(key)) continue;
     if (Math.round(d.amount_clp) !== want) continue;
     if (depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) return d;

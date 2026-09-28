@@ -7,6 +7,8 @@ export type DepositMatchAllocation = {
     account_id: number;
     category_slug: string;
     group_slug: string;
+    /** The deposit's movement row when it is one (twin deposits share account, day and pesos). */
+    movement_id: number | null;
   };
   amount_clp: number;
 };
@@ -18,8 +20,9 @@ export function formatAutoDepositMatchNote(
   for (const m of matches) {
     const amt = Math.round(m.amount_clp);
     if (amt <= 0) continue;
+    const mov = m.deposit.movement_id != null ? `|mov:${m.deposit.movement_id}` : "";
     segments.push(
-      `acct:${m.deposit.account_id}|date:${m.deposit.occurred_on}|amt:${amt}`
+      `acct:${m.deposit.account_id}|date:${m.deposit.occurred_on}|amt:${amt}${mov}`
     );
   }
   if (segments.length === 0) return "";
@@ -34,6 +37,8 @@ export type ParsedDepositMatchSegment = {
   account_id: number;
   occurred_on: string;
   amount_clp: number;
+  /** Present when the matcher named the deposit's movement row (notes written before carry none). */
+  movement_id: number | null;
 };
 
 export function parseAutoDepositMatchNote(note: string): ParsedDepositMatchSegment[] {
@@ -41,13 +46,14 @@ export function parseAutoDepositMatchNote(note: string): ParsedDepositMatchSegme
   if (!text.startsWith(AUTO_DEPOSIT_MATCH_NOTE_PREFIX)) return [];
   const body = text.slice(AUTO_DEPOSIT_MATCH_NOTE_PREFIX.length);
   const segments: ParsedDepositMatchSegment[] = [];
-  const re = /acct:(\d+)\|date:(\d{4}-\d{2}-\d{2})\|amt:(\d+)/g;
+  const re = /acct:(\d+)\|date:(\d{4}-\d{2}-\d{2})\|amt:(\d+)(?:\|mov:(\d+))?/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(body)) != null) {
     segments.push({
       account_id: Number(m[1]),
       occurred_on: m[2]!,
       amount_clp: Number(m[3]),
+      movement_id: m[4] != null ? Number(m[4]) : null,
     });
   }
   return segments;

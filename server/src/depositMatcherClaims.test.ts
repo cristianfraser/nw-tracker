@@ -10,6 +10,8 @@ import { loadDepositMatchCandidates, type DepositMatchCandidate } from "./checki
 import { parseAutoDepositMatchNote } from "./ccExpenseDepositMatchNotes.js";
 import { syncCuentaAhorroDepositSplitMirrors, upsertCuentaAhorroDepositSplit } from "./cuentaAhorroDepositSplits.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
+import { loadFinalizedCheckingGastosLinesReadOnly } from "./flowsCreditCardExpenses.js";
+import { tryAutoLinkExpenseDepositLine } from "./expenseDepositLinks.js";
 
 const PREFIX = "vitest-deposit-claims";
 const WIRE = "Transf. Internet a otro Bancos";
@@ -114,6 +116,8 @@ describe("month-precision deposits are the fallback", () => {
     account_id: 900_001,
     category_slug: "cuenta_ahorro_vivienda",
     group_slug: "cash_eqs",
+    claim_key: "depositMatcherClaims-116",
+    movement_id: null,
   };
   const abono: DepositMatchCandidate = {
     occurred_on: "2099-05-11",
@@ -121,6 +125,8 @@ describe("month-precision deposits are the fallback", () => {
     account_id: 900_002,
     category_slug: "buda_clp",
     group_slug: "brokerage",
+    claim_key: "depositMatcherClaims-123",
+    movement_id: null,
   };
   const split = (deposits: DepositMatchCandidate[]) =>
     splitCheckingWithdrawalAgainstDeposits(
@@ -217,5 +223,73 @@ describe("ahorro split mirrors", () => {
     link(deposit, `${PREFIX}:rest`, 200_000);
     syncCuentaAhorroDepositSplitMirrors();
     expect(mirrorAmount(deposit)).toBeUndefined();
+  });
+});
+
+describe("twin deposits are two claims", () => {
+  function claimedMovementIds(debits: readonly number[]): Map<number, number[]> {
+    const out = new Map<number, number[]>();
+    for (const line of loadFinalizedCheckingGastosLinesReadOnly()) {
+      if (!debits.includes(line.statement_line_id)) continue;
+      const ids = parseAutoDepositMatchNote(line.purchase_notes)
+        .filter((seg) => seg.account_id === ahorroId)
+        .map((seg) => seg.movement_id)
+        .filter((id): id is number => id != null);
+      if (ids.length > 0) out.set(line.statement_line_id, ids);
+    }
+    return out;
+  }
+  function linkDebits(debits: readonly number[]): void {
+    for (const line of loadFinalizedCheckingGastosLinesReadOnly()) {
+      if (debits.includes(line.statement_line_id)) tryAutoLinkExpenseDepositLine(line);
+    }
+  }
+  function linkedPurchaseKeys(depositId: number): string[] {
+    return (
+      db.prepare(`SELECT purchase_key FROM expense_deposit_links WHERE deposit_movement_id = ?`).all(depositId) as {
+        purchase_key: string;
+      }[]
+    ).map((r) => r.purchase_key);
+  }
+
+  it("two debits of the twins' pesos claim one twin each, and both link", () => {
+    if (corrienteId == null || ahorroId == null) return;
+    const twinA = insertDeposit(ahorroId, "2099-09-30", 123_456);
+    const twinB = insertDeposit(ahorroId, "2099-09-30", 123_456);
+    const debit1 = insertCartolaDebit(corrienteId, "2099-09-08", -123_456, 1);
+    const debit2 = insertCartolaDebit(corrienteId, "2099-09-15", -123_456, 2);
+
+    const claims = claimedMovementIds([debit1, debit2]);
+    expect(claims.get(debit1)).toHaveLength(1);
+    expect(claims.get(debit2)).toHaveLength(1);
+    expect([...claims.get(debit1)!, ...claims.get(debit2)!].sort((a, b) => a - b)).toEqual([twinA, twinB]);
+
+    linkDebits([debit1, debit2]);
+    expect(linkedPurchaseKeys(twinA)).toHaveLength(1);
+    expect(linkedPurchaseKeys(twinB)).toHaveLength(1);
+    expect(linkedPurchaseKeys(twinA)[0]).not.toBe(linkedPurchaseKeys(twinB)[0]);
+  });
+
+  it("one debit claims one twin; the other stays unlinked", () => {
+    if (corrienteId == null || ahorroId == null) return;
+    const twinA = insertDeposit(ahorroId, "2099-10-31", 123_457);
+    const twinB = insertDeposit(ahorroId, "2099-10-31", 123_457);
+    const debit = insertCartolaDebit(corrienteId, "2099-10-08", -123_457, 1);
+
+    const claims = claimedMovementIds([debit]);
+    expect(claims.get(debit)).toHaveLength(1);
+
+    linkDebits([debit]);
+    const linked = [twinA, twinB].filter((id) => linkedPurchaseKeys(id).length > 0);
+    expect(linked).toEqual(claims.get(debit));
+  });
+
+  it("a twin's claim identity is its movement row", () => {
+    if (ahorroId == null) return;
+    const twinA = insertDeposit(ahorroId, "2099-11-30", 123_458);
+    const twinB = insertDeposit(ahorroId, "2099-11-30", 123_458);
+    const pool = loadDepositMatchCandidates().filter((d) => d.account_id === ahorroId && d.amount_clp === 123_458);
+    expect(pool.map((d) => d.movement_id).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([twinA, twinB]);
+    expect(new Set(pool.map((d) => d.claim_key)).size).toBe(2);
   });
 });

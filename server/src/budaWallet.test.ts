@@ -14,6 +14,8 @@ const budaRetiro = (occurred_on: string, amount_clp: number): DepositMatchCandid
   account_id: BUDA_ID,
   category_slug: "buda_clp",
   group_slug: "brokerage",
+  claim_key: `${BUDA_ID}|test:${occurred_on}|${amount_clp}`,
+  movement_id: null,
 });
 
 function creditNote(occurred_on: string, amount: number, description: string): string {
