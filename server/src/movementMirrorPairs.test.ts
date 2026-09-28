@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
-import { listMirrorPairCandidates, type MirrorPairCandidate } from "./movementMirrorPairs.js";
+import { convertMirrorPairs } from "./movementMirrorConvert.js";
+import { listMirrorPairCandidates, resolveMirrorPairRef, type MirrorPairCandidate } from "./movementMirrorPairs.js";
 
 const NOTE = "vitest-mirror-pairs";
 
@@ -62,7 +63,12 @@ function cleanup() {
   db.prepare(`DELETE FROM movement_mirror_pair_rejections WHERE out_movement_id IN (
     SELECT id FROM movements WHERE note LIKE 'vitest-mirror%')`).run();
   db.prepare(`DELETE FROM expense_deposit_links WHERE purchase_key = 'vitest-mirror-link'`).run();
+  db.prepare(`DELETE FROM checking_income_movement_overrides WHERE movement_id IN (
+    SELECT m.id FROM movements m JOIN accounts a ON a.id = m.account_id WHERE a.name LIKE 'vitest-mirror-%')`).run();
   db.prepare(`DELETE FROM movements WHERE note LIKE 'vitest-mirror%'`).run();
+  // Converted transfers and cartola-noted legs go with their fixture accounts (FK cascade).
+  db.prepare(`DELETE FROM movements WHERE account_id IN (SELECT id FROM accounts WHERE name LIKE 'vitest-mirror-%')
+    OR from_account_id IN (SELECT id FROM accounts WHERE name LIKE 'vitest-mirror-%')`).run();
   db.prepare(`DELETE FROM accounts WHERE name LIKE 'vitest-mirror-%'`).run();
 }
 
@@ -319,6 +325,132 @@ describe("listMirrorPairCandidates", () => {
         expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
       } finally {
         cleanupLinks();
+      }
+    });
+  });
+
+  describe("same-amount siblings and structured exclusions", () => {
+    const cartola = (acctId: number, ymd: string, amount: number, idx: number) => ({
+      note: `import:cartola|${ymd.slice(0, 7)}|Ag|vitest mirror row|on:${ymd}|amt:${amount}|idx:${idx}`,
+      key: `checking-cartola:${acctId}:${ymd.slice(0, 7)}:${ymd}:${amount}:${idx}`,
+    });
+    const categoryId = (slug: string) =>
+      (db.prepare(`SELECT id FROM cc_expense_categories WHERE slug = ?`).get(slug) as { id: number }).id;
+
+    function cleanupEvidence() {
+      db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key LIKE ?`).run(
+        `checking-cartola:${ids.checking}:%`
+      );
+      db.prepare(
+        `DELETE FROM cc_expense_line_splits WHERE source = 'checking' AND line_id IN (
+           SELECT id FROM movements WHERE account_id = ?)`
+      ).run(ids.checking);
+      db.prepare(
+        `DELETE FROM checking_income_movement_overrides WHERE movement_id IN (
+           SELECT id FROM movements WHERE account_id IN (?, ?))`
+      ).run(ids.checking, ids.vista);
+      db.prepare(`DELETE FROM expense_deposit_links WHERE purchase_key LIKE ?`).run(
+        `checking-cartola:${ids.checking}:%`
+      );
+    }
+
+    it("a same-day same-amount sibling on the outflow account makes the pair ambiguous and is offered", () => {
+      const a = insLeg(ids.checking, -4_343_431, "2026-06-10");
+      const b = insLeg(ids.checking, -4_343_431, "2026-06-10");
+      const dep = insLeg(ids.vista, 4_343_431, "2026-06-10");
+      const candidates = listMirrorPairCandidates();
+      const p = candidates.find((c) => c.in.movement_id === dep);
+      expect(p).toBeDefined();
+      expect(p!.confidence).toBe("ambiguous");
+      // The greedy pick is only the lower id; the sibling rides along as an alternative.
+      expect(p!.out.movement_id).toBe(a);
+      expect(p!.out_alternatives.map((x) => x.leg.movement_id)).toEqual([b]);
+      expect(resolveMirrorPairRef(candidates, { out_movement_id: b, in_movement_id: dep })).toEqual({
+        out_movement_id: b,
+        in_movement_id: dep,
+        blocked: false,
+        blocked_reason: null,
+      });
+      // A leg that is no alternative of the pair is not offered.
+      expect(resolveMirrorPairRef(candidates, { out_movement_id: b, in_movement_id: a })).toBeNull();
+    });
+
+    it("the reviewer can convert the alternative sibling instead of the greedy pick", () => {
+      const a = insLeg(ids.checking, -4_545_451, "2026-06-12");
+      const b = insLeg(ids.checking, -4_545_451, "2026-06-12");
+      const dep = insLeg(ids.vista, 4_545_451, "2026-06-12");
+      const { converted } = convertMirrorPairs([{ out_movement_id: b, in_movement_id: dep }]);
+      expect(converted).toHaveLength(1);
+      expect(converted[0]!.out_movement_id).toBe(b);
+      const survivor = db.prepare(`SELECT id FROM movements WHERE id = ?`).get(a);
+      expect(survivor).toBeDefined();
+    });
+
+    it("an auto link with a same-day competitor is ambiguous; a manual link stays high", () => {
+      cleanupEvidence();
+      const one = cartola(ids.checking, "2026-06-15", -3_737_371, 0);
+      const two = cartola(ids.checking, "2026-06-15", -3_737_371, 1);
+      insLeg(ids.checking, -3_737_371, "2026-06-15", null, one.note);
+      const sibling = insLeg(ids.checking, -3_737_371, "2026-06-15", null, two.note);
+      const dep = insLeg(ids.fund, 3_737_371, "2026-06-15");
+      const link = db.prepare(
+        `INSERT INTO expense_deposit_links (account_id, purchase_key, deposit_movement_id, payment_clp, amortization_clp, link_source)
+         VALUES (?, ?, ?, 3737371, 0, ?)`
+      );
+      try {
+        link.run(ids.fund, one.key, dep, "auto");
+        let p = listMirrorPairCandidates().find((c) => c.in.movement_id === dep);
+        expect(p!.linked).toBe(true);
+        expect(p!.confidence).toBe("ambiguous");
+        expect(p!.out_alternatives.map((x) => x.leg.movement_id)).toEqual([sibling]);
+
+        db.prepare(`UPDATE expense_deposit_links SET link_source = 'manual' WHERE deposit_movement_id = ?`).run(dep);
+        p = listMirrorPairCandidates().find((c) => c.in.movement_id === dep);
+        expect(p!.confidence).toBe("high");
+        expect(p!.out_alternatives).toEqual([]);
+      } finally {
+        cleanupEvidence();
+      }
+    });
+
+    it("a credit the user classified as income is never an inflow leg", () => {
+      cleanupEvidence();
+      const out = insLeg(ids.checking, -3_535_351, "2026-06-18");
+      const dep = insLeg(ids.vista, 3_535_351, "2026-06-18");
+      try {
+        expect(pairFor(listMirrorPairCandidates(), out)).toBeDefined();
+        db.prepare(
+          `INSERT INTO checking_income_movement_overrides (movement_id, income_kind) VALUES (?, 'parent_gift')`
+        ).run(dep);
+        expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
+      } finally {
+        cleanupEvidence();
+      }
+    });
+
+    it("a checking debit categorized as spending is never an outflow leg; «deposits» stays eligible", () => {
+      cleanupEvidence();
+      const row = cartola(ids.checking, "2026-06-22", -3_333_331, 4);
+      const out = insLeg(ids.checking, -3_333_331, "2026-06-22", null, row.note);
+      insLeg(ids.vista, 3_333_331, "2026-06-22");
+      const setCategory = db.prepare(
+        `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id) VALUES (?, ?, ?)
+         ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
+      );
+      try {
+        setCategory.run(ids.checking, row.key, categoryId("deposits"));
+        expect(pairFor(listMirrorPairCandidates(), out)).toBeDefined();
+        setCategory.run(ids.checking, row.key, categoryId("others"));
+        expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
+
+        db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE purchase_key = ?`).run(row.key);
+        expect(pairFor(listMirrorPairCandidates(), out)).toBeDefined();
+        db.prepare(
+          `INSERT INTO cc_expense_line_splits (source, line_id, seq, category_id, amount_clp) VALUES ('checking', ?, 0, ?, 3333331)`
+        ).run(out, categoryId("food"));
+        expect(pairFor(listMirrorPairCandidates(), out)).toBeUndefined();
+      } finally {
+        cleanupEvidence();
       }
     });
   });

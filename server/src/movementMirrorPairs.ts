@@ -9,17 +9,24 @@
  * Pairing mirrors resolveInternalNetWorthTransfers (flowsDepositsReconciliation.ts): greedy
  * 1:1, closest gap first. Confidence "high" (batch-approvable) requires a unique match in both
  * directions, the legs inside the cartola business-day window (bankDateMatchesTransferDate —
- * so converting cannot duplicate on a cartola re-import), and no month straddle.
+ * so converting cannot duplicate on a cartola re-import), and no month straddle. An ambiguous
+ * candidate lists the competing legs (`out_alternatives` / `in_alternatives`) and any of them
+ * converts in its place (`resolveMirrorPairRef`): amount and date cannot tell same-day siblings
+ * apart, so the greedy pick between them is an id order, never evidence.
  *
  * Scope (2026-07, user-decided): plain CLP pairs, corriente↔vista pairs, and fund↔checking
  * pairs where exactly one leg carries cuotas (`units_delta` moves onto the transfer row —
  * cuota readers already add transferLegUnitsThroughDate on top of the account_id ledger).
  * AFP/AFC *inflows* are excluded (funded from pre-tax payroll, never from checking); deposits
  * already explained by expense_deposit_links stay excluded (the link records the relation and
- * gastos categorization keys off the checking row).
+ * gastos categorization keys off the checking row); so are credits the user classified as income
+ * and checking debits the user categorized as spending (structured evidence the row is not one
+ * leg of a move between own accounts).
  */
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { movementForCheckingPurchaseKey } from "./backfillCheckingAutoMatchCategories.js";
+import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
+import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
 import { MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES } from "./flowsCheckingGastos.js";
@@ -38,6 +45,19 @@ export type MirrorLegDto = {
 
 export type MirrorPairBlockedReason = "checking_inflow_month_straddle";
 
+/**
+ * Another leg that could take one side of an ambiguous pair (same amount, inside the pairing
+ * window). The reviewer sees it beside the greedy pick and may convert it instead.
+ */
+export type MirrorPairAlternative = {
+  leg: MirrorLegDto;
+  gap_days: number;
+  within_business_day_window: boolean;
+  month_straddle: boolean;
+  blocked: boolean;
+  blocked_reason: MirrorPairBlockedReason | null;
+};
+
 export type MirrorPairCandidate = {
   out: MirrorLegDto;
   in: MirrorLegDto;
@@ -55,12 +75,16 @@ export type MirrorPairCandidate = {
   /**
    * Pair comes from an existing expense_deposit_links row (auto/manual gastos match) rather
    * than the date/amount heuristic — the link *is* the evidence, so no window applies. The
-   * link row cascades away when the deposit leg is deleted at conversion.
+   * link row cascades away when the deposit leg is deleted at conversion. An auto link with a
+   * competing same-amount outflow in the window is ambiguous: the matcher picked one of them.
    */
   linked: boolean;
   /** Eligible non-rejected inflows this outflow could claim (computed before greedy consumption). */
   out_candidate_count: number;
   in_candidate_count: number;
+  /** Other outflows that could pair with this inflow, and other inflows for this outflow. */
+  out_alternatives: MirrorPairAlternative[];
+  in_alternatives: MirrorPairAlternative[];
   confidence: "high" | "ambiguous";
   blocked: boolean;
   blocked_reason: MirrorPairBlockedReason | null;
@@ -81,6 +105,18 @@ const MIRROR_INFLOW_EXCLUDED_KIND_SLUGS = new Set(["afp", "afc"]);
 /** DAP round-trips are netted on the checking side; never pair either leg (see AGENTS.md). */
 const MIRROR_EXCLUDED_KIND_SLUGS = new Set(["dap"]);
 
+/** A credit the user classified as income (salary, parent gift, force-include) is not a transfer leg. */
+const USER_CLASSIFIED_INCOME_SQL = `SELECT 1 FROM checking_income_movement_overrides o
+  WHERE o.movement_id = m.id AND o.is_excluded = 0 AND (o.income_kind IS NOT NULL OR o.force_include = 1)`;
+
+/**
+ * Expense categories that do not say an outflow was spent: no category, «unclassified»,
+ * «deposits» (paid into an investment account), the internal-transfer category and «no_cuenta».
+ * A checking debit filed under any other category (a per-purchase category or a category split)
+ * was spent, so it cannot be one leg of a transfer between own accounts.
+ */
+const NON_SPENDING_CATEGORY_SLUGS = ["unclassified", "deposits", "checking_internal_transfer", "no_cuenta"];
+
 type EligibleLegRow = {
   id: number;
   account_id: number;
@@ -96,7 +132,8 @@ type EligibleLegRow = {
  * flow_kind / USD legs (brokerage and USD-cash semantics must not be rewritten), anchor/opening
  * calibration rows, rows already explained by a link (expense_deposit_links), a synthetic
  * mirror (checking_gap_deposit_mirrors), or a payroll liquidación (payroll_work_earnings —
- * income by construction, never a transfer leg), and Buda buffer rows (budaWallet.ts).
+ * income by construction, never a transfer leg), a credit the user classified as income, and
+ * Buda buffer rows (budaWallet.ts).
  */
 function loadEligibleLegs(): EligibleLegRow[] {
   return db
@@ -117,9 +154,51 @@ function loadEligibleLegs(): EligibleLegRow[] {
          AND NOT EXISTS (SELECT 1 FROM expense_deposit_links l WHERE l.deposit_movement_id = m.id)
          AND NOT EXISTS (SELECT 1 FROM checking_gap_deposit_mirrors g WHERE g.deposit_movement_id = m.id)
          AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)
+         AND NOT EXISTS (${USER_CLASSIFIED_INCOME_SQL})
        ORDER BY m.occurred_on, m.id`
     )
     .all() as EligibleLegRow[];
+}
+
+/**
+ * Checking debits the user categorized as spending: the per-purchase category is keyed by the
+ * debit's purchase key (the key the gastos view writes it under), a category split by the movement.
+ */
+function loadSpendingCategorizedOutflowIds(
+  outs: readonly EligibleLegRow[],
+  checkingIds: ReadonlySet<number>
+): Set<number> {
+  const ph = NON_SPENDING_CATEGORY_SLUGS.map(() => "?").join(",");
+  const spendingKeys = new Set(
+    (
+      db
+        .prepare(
+          `SELECT u.purchase_key FROM cc_expense_unique_purchases u
+           JOIN cc_expense_categories c ON c.id = u.category_id
+           WHERE u.purchase_key LIKE 'checking-%' AND c.slug NOT IN (${ph})`
+        )
+        .all(...NON_SPENDING_CATEGORY_SLUGS) as { purchase_key: string }[]
+    ).map((r) => r.purchase_key)
+  );
+  const splitIds = new Set(
+    (
+      db
+        .prepare(
+          `SELECT DISTINCT s.line_id FROM cc_expense_line_splits s
+           JOIN cc_expense_categories c ON c.id = s.category_id
+           WHERE s.source = 'checking' AND c.slug NOT IN (${ph})`
+        )
+        .all(...NON_SPENDING_CATEGORY_SLUGS) as { line_id: number }[]
+    ).map((r) => r.line_id)
+  );
+  const ids = new Set<number>();
+  for (const out of outs) {
+    if (!checkingIds.has(out.account_id)) continue;
+    const key =
+      checkingCartolaStablePurchaseKey(out.account_id, out.note) ?? legacyCheckingGastosPurchaseKey(out.id);
+    if (spendingKeys.has(key) || splitIds.has(out.id)) ids.add(out.id);
+  }
+  return ids;
 }
 
 function loadRejectedPairKeys(): Set<string> {
@@ -221,25 +300,25 @@ export function mirrorLegDirectionAllowed(
   return true;
 }
 
-type LinkedLegPair = { out: EligibleLegRow; in: EligibleLegRow };
+type LinkedLegPair = { out: EligibleLegRow; in: EligibleLegRow; link_source: "auto" | "manual" };
 
 /**
  * Pairs already established by the gastos matcher: 1:1 `expense_deposit_links` rows (auto or
  * manual) whose `checking-cartola:` purchase key resolves to a real checking outflow of the
  * same rounded amount as the deposit. These deposits are excluded from the heuristic pool
- * (the link already explains them), but the known pairing converts directly — stronger
- * evidence than any date window. Synthetic links (gap mirrors) have no real outflow row and
- * partial/multi allocations cannot become one 1:1 transfer; both are skipped.
+ * (the link already explains them), but the known pairing converts directly. Synthetic links
+ * (gap mirrors) have no real outflow row and partial/multi allocations cannot become one 1:1
+ * transfer; both are skipped.
  */
 function collectLinkedLegPairs(): LinkedLegPair[] {
   const rows = db
     .prepare(
-      `SELECT purchase_key, deposit_movement_id
+      `SELECT purchase_key, deposit_movement_id, link_source
        FROM expense_deposit_links
        WHERE link_source IN ('auto', 'manual')
          AND purchase_key LIKE 'checking-cartola:%'`
     )
-    .all() as { purchase_key: string; deposit_movement_id: number }[];
+    .all() as { purchase_key: string; deposit_movement_id: number; link_source: "auto" | "manual" }[];
   const byKey = new Map<string, number>();
   const byDeposit = new Map<number, number>();
   for (const r of rows) {
@@ -255,7 +334,8 @@ function collectLinkedLegPairs(): LinkedLegPair[] {
              m.note NOT LIKE 'import:buda|%'
          AND m.note NOT LIKE 'buda-abono|%'
          AND m.note NOT LIKE 'ahorro-split|%'))
-       AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)`
+       AND NOT EXISTS (SELECT 1 FROM payroll_work_earnings p WHERE p.movement_id = m.id)
+       AND NOT EXISTS (${USER_CLASSIFIED_INCOME_SQL})`
   );
   const outMetaStmt = db.prepare(
     `SELECT m.id, m.account_id, a.name AS account_name, m.occurred_on, m.amount AS amount_clp, m.units_delta, m.note
@@ -275,21 +355,21 @@ function collectLinkedLegPairs(): LinkedLegPair[] {
     const inn = depositStmt.get(r.deposit_movement_id) as EligibleLegRow | undefined;
     if (!out || !inn) continue;
     if (Math.round(Math.abs(out.amount_clp)) !== Math.round(inn.amount_clp)) continue;
-    pairs.push({ out, in: inn });
+    pairs.push({ out, in: inn, link_source: r.link_source });
   }
   return pairs;
 }
 
-/**
- * All current mirror-pair candidates, greedily consumed 1:1 (gap asc, amount desc, ids asc).
- * Rejected combinations are skipped during enumeration, so a rejected pair's legs stay free to
- * match other partners. Candidate counts are computed on the full non-rejected match sets
- * before greedy consumption (ambiguity signal for the UI). Link-established pairs come first
- * and consume their legs before the heuristic runs.
- */
-export function listMirrorPairCandidates(): MirrorPairCandidate[] {
+type PairingContext = {
+  outs: EligibleLegRow[];
+  ins: EligibleLegRow[];
+  rejected: Set<string>;
+  checkingIds: Set<number>;
+  kindSlugFor: (accountId: number) => string | null;
+};
+
+function loadPairingContext(): PairingContext {
   const legs = loadEligibleLegs();
-  const rejected = loadRejectedPairKeys();
   const checkingIds = new Set(listMovementBalanceCashAccountIds());
   const kindSlugByAccount = new Map<number, string | null>();
   const kindSlugFor = (accountId: number): string | null => {
@@ -298,7 +378,6 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
     }
     return kindSlugByAccount.get(accountId) ?? null;
   };
-
   const outs: EligibleLegRow[] = [];
   const ins: EligibleLegRow[] = [];
   for (const leg of legs) {
@@ -309,32 +388,102 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
       ins.push(leg);
     }
   }
+  const spent = loadSpendingCategorizedOutflowIds(outs, checkingIds);
+  return {
+    outs: outs.filter((o) => !spent.has(o.id)),
+    ins,
+    rejected: loadRejectedPairKeys(),
+    checkingIds,
+    kindSlugFor,
+  };
+}
+
+/** The pairing rule for one (outflow, inflow): amount, accounts, units, window, rejection. */
+function pairingWindow(
+  ctx: PairingContext,
+  out: EligibleLegRow,
+  inn: EligibleLegRow
+): { gap: number; monthPrecision: boolean } | null {
+  if (inn.account_id === out.account_id) return null;
+  if (Math.round(inn.amount_clp) !== Math.round(Math.abs(out.amount_clp))) return null;
+  // One transfer row carries one units_delta — a pair where both legs move cuotas
+  // (fund → fund) cannot be represented; leave those as two rows.
+  if (legHasUnits(out) && legHasUnits(inn)) return null;
+  const outMonthPrecision = mirrorLegIsMonthPrecision(ctx.kindSlugFor(out.account_id));
+  const inMonthPrecision = mirrorLegIsMonthPrecision(ctx.kindSlugFor(inn.account_id));
+  const monthPrecision = outMonthPrecision || inMonthPrecision;
+  if (monthPrecision) {
+    if (!monthPrecisionPairAllowed(out, inn, outMonthPrecision, inMonthPrecision)) return null;
+  } else {
+    if (inn.occurred_on < out.occurred_on) return null;
+    if (daysBetweenYmd(out.occurred_on, inn.occurred_on) > MIRROR_PAIR_MAX_DAY_GAP) return null;
+  }
+  if (ctx.rejected.has(`${out.id}|${inn.id}`)) return null;
+  return { gap: daysBetweenYmd(out.occurred_on, inn.occurred_on), monthPrecision };
+}
+
+/**
+ * Window flags of a pair. Converting moves the inflow to the outflow date; across a month boundary
+ * that shifts the inflow account's month attribution. On checking that breaks cartola anchors/month
+ * summaries (import:cartola|anchor| saldo calibration) — hard-blocked, not just ambiguous.
+ * Exception: when the OUT leg is month-precision the transfer keeps the checking (in) leg's date,
+ * so the checking timeline is untouched.
+ */
+function pairFlags(
+  ctx: PairingContext,
+  out: EligibleLegRow,
+  inn: EligibleLegRow
+): { withinWindow: boolean; monthStraddle: boolean; blocked: boolean } {
+  const monthStraddle = monthKey(inn.occurred_on) !== monthKey(out.occurred_on);
+  const outMonthPrecision = mirrorLegIsMonthPrecision(ctx.kindSlugFor(out.account_id));
+  return {
+    withinWindow: bankDateMatchesTransferDate(inn.occurred_on, out.occurred_on),
+    monthStraddle,
+    blocked: monthStraddle && ctx.checkingIds.has(inn.account_id) && !outMonthPrecision,
+  };
+}
+
+function alternative(
+  ctx: PairingContext,
+  out: EligibleLegRow,
+  inn: EligibleLegRow,
+  side: "out" | "in",
+  opts: { blockable: boolean }
+): MirrorPairAlternative {
+  const flags = pairFlags(ctx, out, inn);
+  const blocked = opts.blockable && flags.blocked;
+  const leg = side === "out" ? out : inn;
+  return {
+    leg: toLegDto(leg, ctx.kindSlugFor(leg.account_id)),
+    gap_days: daysBetweenYmd(out.occurred_on, inn.occurred_on),
+    within_business_day_window: flags.withinWindow,
+    month_straddle: flags.monthStraddle,
+    blocked,
+    blocked_reason: blocked ? "checking_inflow_month_straddle" : null,
+  };
+}
+
+/**
+ * All current mirror-pair candidates, greedily consumed 1:1 (gap asc, amount desc, ids asc).
+ * Rejected combinations are skipped during enumeration, so a rejected pair's legs stay free to
+ * match other partners. Candidate counts and alternatives are computed on the full non-rejected
+ * match sets before greedy consumption. Link-established pairs come first and consume their legs
+ * before the heuristic runs.
+ */
+export function listMirrorPairCandidates(): MirrorPairCandidate[] {
+  const ctx = loadPairingContext();
 
   type RawPair = { out: EligibleLegRow; in: EligibleLegRow; gap: number; monthPrecision: boolean };
   const pairs: RawPair[] = [];
-  const outMatchCount = new Map<number, number>();
-  const inMatchCount = new Map<number, number>();
-  for (const out of outs) {
-    const amount = Math.round(Math.abs(out.amount_clp));
-    const outMonthPrecision = mirrorLegIsMonthPrecision(kindSlugFor(out.account_id));
-    for (const inn of ins) {
-      if (inn.account_id === out.account_id) continue;
-      if (Math.round(inn.amount_clp) !== amount) continue;
-      // One transfer row carries one units_delta — a pair where both legs move cuotas
-      // (fund → fund) cannot be represented; leave those as two rows.
-      if (legHasUnits(out) && legHasUnits(inn)) continue;
-      const inMonthPrecision = mirrorLegIsMonthPrecision(kindSlugFor(inn.account_id));
-      const monthPrecision = outMonthPrecision || inMonthPrecision;
-      if (monthPrecision) {
-        if (!monthPrecisionPairAllowed(out, inn, outMonthPrecision, inMonthPrecision)) continue;
-      } else {
-        if (inn.occurred_on < out.occurred_on) continue;
-        if (daysBetweenYmd(out.occurred_on, inn.occurred_on) > MIRROR_PAIR_MAX_DAY_GAP) continue;
-      }
-      if (rejected.has(`${out.id}|${inn.id}`)) continue;
-      pairs.push({ out, in: inn, gap: daysBetweenYmd(out.occurred_on, inn.occurred_on), monthPrecision });
-      outMatchCount.set(out.id, (outMatchCount.get(out.id) ?? 0) + 1);
-      inMatchCount.set(inn.id, (inMatchCount.get(inn.id) ?? 0) + 1);
+  const insByOut = new Map<number, EligibleLegRow[]>();
+  const outsByIn = new Map<number, EligibleLegRow[]>();
+  for (const out of ctx.outs) {
+    for (const inn of ctx.ins) {
+      const w = pairingWindow(ctx, out, inn);
+      if (!w) continue;
+      pairs.push({ out, in: inn, gap: w.gap, monthPrecision: w.monthPrecision });
+      insByOut.set(out.id, [...(insByOut.get(out.id) ?? []), inn]);
+      outsByIn.set(inn.id, [...(outsByIn.get(inn.id) ?? []), out]);
     }
   }
 
@@ -352,14 +501,22 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
 
   // Link-established pairs first: the expense_deposit_links row is the pairing evidence.
   for (const lp of collectLinkedLegPairs()) {
-    if (rejected.has(`${lp.out.id}|${lp.in.id}`)) continue;
-    const outKind = kindSlugFor(lp.out.account_id);
-    const inKind = kindSlugFor(lp.in.account_id);
+    if (ctx.rejected.has(`${lp.out.id}|${lp.in.id}`)) continue;
+    const outKind = ctx.kindSlugFor(lp.out.account_id);
+    const inKind = ctx.kindSlugFor(lp.in.account_id);
     if (!mirrorLegDirectionAllowed(outKind, lp.out.note, "out")) continue;
     if (!mirrorLegDirectionAllowed(inKind, lp.in.note, "in")) continue;
     usedOut.add(lp.out.id);
     usedIn.add(lp.in.id);
     const monthStraddle = monthKey(lp.in.occurred_on) !== monthKey(lp.out.occurred_on);
+    // An auto link is the deposit matcher's pick; a same-amount outflow inside the window is an
+    // equally good match by amount and date, so the reviewer chooses. A manual link is the user's.
+    const outAlternatives =
+      lp.link_source === "auto"
+        ? ctx.outs
+            .filter((o) => o.id !== lp.out.id && pairingWindow(ctx, o, lp.in) != null)
+            .map((o) => alternative(ctx, o, lp.in, "out", { blockable: false }))
+        : [];
     result.push({
       out: toLegDto(lp.out, outKind),
       in: toLegDto(lp.in, inKind),
@@ -370,8 +527,10 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
       // date, shifting the deposit's month attribution (e.g. cuotas count one month earlier).
       month_straddle: monthStraddle,
       out_candidate_count: 1,
-      in_candidate_count: 1,
-      confidence: monthStraddle ? "ambiguous" : "high",
+      in_candidate_count: 1 + outAlternatives.length,
+      out_alternatives: outAlternatives,
+      in_alternatives: [],
+      confidence: monthStraddle || outAlternatives.length > 0 ? "ambiguous" : "high",
       blocked: false,
       blocked_reason: null,
       linked: true,
@@ -383,39 +542,72 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
     usedOut.add(p.out.id);
     usedIn.add(p.in.id);
 
-    const withinWindow = bankDateMatchesTransferDate(p.in.occurred_on, p.out.occurred_on);
-    const monthStraddle = monthKey(p.in.occurred_on) !== monthKey(p.out.occurred_on);
-    const inIsChecking = checkingIds.has(p.in.account_id);
-    const outMonthPrecision = mirrorLegIsMonthPrecision(kindSlugFor(p.out.account_id));
-    // Converting moves the inflow to the outflow date; across a month boundary that shifts the
-    // inflow account's month attribution. On checking that breaks cartola anchors/month summaries
-    // (import:cartola|anchor| saldo calibration) — hard-blocked, not just ambiguous. Exception:
-    // when the OUT leg is month-precision the transfer keeps the checking (in) leg's date, so
-    // the checking timeline is untouched.
-    const blocked = monthStraddle && inIsChecking && !outMonthPrecision;
-    const outCount = outMatchCount.get(p.out.id) ?? 1;
-    const inCount = inMatchCount.get(p.in.id) ?? 1;
+    const flags = pairFlags(ctx, p.out, p.in);
+    const inAlternatives = (insByOut.get(p.out.id) ?? [])
+      .filter((i) => i.id !== p.in.id)
+      .map((i) => alternative(ctx, p.out, i, "in", { blockable: true }));
+    const outAlternatives = (outsByIn.get(p.in.id) ?? [])
+      .filter((o) => o.id !== p.out.id)
+      .map((o) => alternative(ctx, o, p.in, "out", { blockable: true }));
     // Month-precision pairs skip the bank-window requirement: the converted transfer carries the
     // real-day (cartola) leg's date, so cartola re-import dedupe matches same-day regardless.
     const high =
-      outCount === 1 && inCount === 1 && !monthStraddle && (p.monthPrecision || withinWindow);
+      inAlternatives.length === 0 &&
+      outAlternatives.length === 0 &&
+      !flags.monthStraddle &&
+      (p.monthPrecision || flags.withinWindow);
 
     result.push({
-      out: toLegDto(p.out, kindSlugFor(p.out.account_id)),
-      in: toLegDto(p.in, kindSlugFor(p.in.account_id)),
+      out: toLegDto(p.out, ctx.kindSlugFor(p.out.account_id)),
+      in: toLegDto(p.in, ctx.kindSlugFor(p.in.account_id)),
       gap_days: p.gap,
-      within_business_day_window: withinWindow,
+      within_business_day_window: flags.withinWindow,
       month_precision: p.monthPrecision,
-      month_straddle: monthStraddle,
-      out_candidate_count: outCount,
-      in_candidate_count: inCount,
+      month_straddle: flags.monthStraddle,
+      out_candidate_count: 1 + inAlternatives.length,
+      in_candidate_count: 1 + outAlternatives.length,
+      out_alternatives: outAlternatives,
+      in_alternatives: inAlternatives,
       confidence: high ? "high" : "ambiguous",
-      blocked,
-      blocked_reason: blocked ? "checking_inflow_month_straddle" : null,
+      blocked: flags.blocked,
+      blocked_reason: flags.blocked ? "checking_inflow_month_straddle" : null,
       linked: false,
     });
   }
   return result;
+}
+
+export type ResolvedMirrorPair = {
+  out_movement_id: number;
+  in_movement_id: number;
+  blocked: boolean;
+  blocked_reason: MirrorPairBlockedReason | null;
+};
+
+/**
+ * The convertible pair a request names: a current candidate, or one of an ambiguous candidate's
+ * alternatives in place of its greedy pick on that side. Null when the pair is not offered.
+ */
+export function resolveMirrorPairRef(
+  candidates: readonly MirrorPairCandidate[],
+  ref: { out_movement_id: number; in_movement_id: number }
+): ResolvedMirrorPair | null {
+  for (const c of candidates) {
+    if (c.out.movement_id === ref.out_movement_id && c.in.movement_id === ref.in_movement_id) {
+      return { ...ref, blocked: c.blocked, blocked_reason: c.blocked_reason };
+    }
+  }
+  for (const c of candidates) {
+    if (c.confidence !== "ambiguous") continue;
+    const alt =
+      c.in.movement_id === ref.in_movement_id
+        ? c.out_alternatives.find((a) => a.leg.movement_id === ref.out_movement_id)
+        : c.out.movement_id === ref.out_movement_id
+          ? c.in_alternatives.find((a) => a.leg.movement_id === ref.in_movement_id)
+          : undefined;
+    if (alt) return { ...ref, blocked: alt.blocked, blocked_reason: alt.blocked_reason };
+  }
+  return null;
 }
 
 /** Rejected pairs whose both legs still exist (FK cascade removes the rest), for the panel's restore list. */

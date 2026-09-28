@@ -4496,6 +4496,22 @@
       "en": "Actions",
       "es": "Acciones"
     },
+    "colAlternatives": {
+      "en": "Other candidates",
+      "es": "Otros candidatos"
+    },
+    "altOut": {
+      "en": "Other withdrawal",
+      "es": "Otro retiro"
+    },
+    "altIn": {
+      "en": "Other deposit",
+      "es": "Otro depósito"
+    },
+    "useAlternative": {
+      "en": "Convert with this one",
+      "es": "Convertir con este"
+    },
     "badgeLinked": {
       "en": "already linked in the reconciliation",
       "es": "ya enlazado en conciliación"

@@ -17,7 +17,7 @@
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { db } from "./db.js";
-import { listMirrorPairCandidates, mirrorLegIsMonthPrecision } from "./movementMirrorPairs.js";
+import { listMirrorPairCandidates, mirrorLegIsMonthPrecision, resolveMirrorPairRef } from "./movementMirrorPairs.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { requireMovementClp, type MovementAmountFields } from "./movementAmounts.js";
 
@@ -56,7 +56,8 @@ type LegRow = MovementAmountFields & {
 
 /**
  * Converts pairs in one all-or-nothing transaction. Every requested pair must be a *current*,
- * non-blocked candidate — a stale UI, a double submit, or a leg consumed by another conversion
+ * non-blocked candidate, or an alternative an ambiguous candidate offers in place of its greedy pick
+ * (`resolveMirrorPairRef`) — a stale UI, a double submit, or a leg consumed by another conversion
  * throws MirrorConvertStaleError and nothing is written.
  */
 export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: ConvertedMirrorPair[] } {
@@ -85,13 +86,11 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
   );
 
   const run = db.transaction((requested: MirrorPairRef[]): ConvertedMirrorPair[] => {
-    const candidates = new Map(
-      listMirrorPairCandidates().map((c) => [`${c.out.movement_id}|${c.in.movement_id}`, c])
-    );
+    const candidates = listMirrorPairCandidates();
     const converted: ConvertedMirrorPair[] = [];
     for (const ref of requested) {
-      const cand = candidates.get(`${ref.out_movement_id}|${ref.in_movement_id}`);
-      if (!cand) throw new MirrorConvertStaleError(ref, "not a current candidate");
+      const cand = resolveMirrorPairRef(candidates, ref);
+      if (!cand) throw new MirrorConvertStaleError(ref, "not a current candidate or alternative");
       if (cand.blocked) throw new MirrorConvertStaleError(ref, `blocked: ${cand.blocked_reason}`);
       const out = legStmt.get(ref.out_movement_id) as LegRow | undefined;
       const inn = legStmt.get(ref.in_movement_id) as LegRow | undefined;
