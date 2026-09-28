@@ -4,6 +4,7 @@ import {
   importCcStatementsMerge,
   type CcStatementCsvRecord,
 } from "./ccStatementsImport.js";
+import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 
 function row(overrides: Partial<CcStatementCsvRecord>): CcStatementCsvRecord {
@@ -223,6 +224,70 @@ describe("importCcStatementsMerge vs open web-paste bucket", () => {
     const rPaste = importCcStatementsMerge(accountId, [paste], { skipGlobalDedupeKeys: true });
     expect(rPaste.linesInserted).toBe(0);
     expect(rPaste.linesSkippedDuplicate).toBe(1);
+  });
+});
+
+describe("importCcStatementsMerge origin currency", () => {
+  // The parser writes MONTO MONEDA ORIGEN as printed and never a currency; the import labels it.
+  const usdLine = (overrides: Partial<CcStatementCsvRecord>): CcStatementCsvRecord =>
+    row({
+      source_pdf: "2031-03-20 estado de cuenta tarjeta usd 4141.pdf",
+      statement_date: "20/03/2031",
+      currency: "usd",
+      parser_layout: "international_usd",
+      transaction_date: "14/03/2031",
+      amount_clp: "",
+      statement_monto_facturado: "",
+      ...overrides,
+    });
+
+  it("stores the printed origin and labels it from the amounts and the day's fx", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+    db.prepare(
+      `DELETE FROM cc_statement_lines WHERE statement_id IN (SELECT id FROM cc_statements WHERE account_id = ?)`
+    ).run(accountId);
+    db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+    const restoreFx = overrideFxDaily([["2031-03-14", 950]]);
+    try {
+      importCcStatementsMerge(
+        accountId,
+        [
+          // Pesos from a GB-coded merchant: the old reader stored 18,25 and called it pounds.
+          usdLine({ merchant: "TIENDA PESOS", country: "GB", amount_orig: "18.250,00", amount_usd: "19,21", row_id: "o-1" }),
+          usdLine({ merchant: "TIENDA DOLARES", country: "US", amount_orig: "4,25", amount_usd: "4,25", row_id: "o-2" }),
+          usdLine({ merchant: "TIENDA REALES", country: "BR", amount_orig: "15,00", amount_usd: "2,90", row_id: "o-3" }),
+          usdLine({ merchant: "ABONO DE DIVISAS", country: "CH", amount_orig: "0,00", amount_usd: "-30,00", row_id: "o-4" }),
+        ],
+        { skipGlobalDedupeKeys: true }
+      );
+    } finally {
+      restoreFx();
+    }
+    const stored = db
+      .prepare(
+        `SELECT l.merchant, l.amount_orig, l.orig_currency FROM cc_statement_lines l
+         JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ? ORDER BY l.id`
+      )
+      .all(accountId);
+    expect(stored).toEqual([
+      { merchant: "TIENDA PESOS", amount_orig: 18250, orig_currency: "clp" },
+      { merchant: "TIENDA DOLARES", amount_orig: 4.25, orig_currency: "usd" },
+      { merchant: "TIENDA REALES", amount_orig: 15, orig_currency: null },
+      { merchant: "ABONO DE DIVISAS", amount_orig: 0, orig_currency: null },
+    ]);
+  });
+
+  it("refuses a record that carries a currency label (a producer older than the rule)", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+    expect(() =>
+      importCcStatementsMerge(
+        accountId,
+        [usdLine({ merchant: "CON ETIQUETA", amount_orig: "5,00", amount_usd: "4,95", orig_currency: "CLP", row_id: "o-5" })],
+        { skipGlobalDedupeKeys: true }
+      )
+    ).toThrow(/labeled on import/);
   });
 });
 

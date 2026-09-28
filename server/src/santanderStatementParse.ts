@@ -96,9 +96,9 @@ export type SantanderStatementLine = {
   /** CLP for national rows; null on international rows, where USD is authoritative. */
   amount_clp: number | null;
   amount_usd: number | null;
-  /** Original-currency amount on international rows. */
+  /** MontoOrigen on international rows: the amount the merchant charged. The import labels its
+   * currency from the amounts (`ccOriginCurrency.ts`); the feed does not name it. */
   amount_orig: number | null;
-  orig_currency: "clp" | "usd" | null;
   country: string | null;
   place: string | null;
   origin_card_last4: string | null;
@@ -134,7 +134,6 @@ export function nationalRowToLine(row: SantanderNationalRow): SantanderStatement
     amount_clp: isInstallment ? totalAmount : cuotaAmount,
     amount_usd: null,
     amount_orig: null,
-    orig_currency: null,
     country: null,
     place: String(row.Ciudad ?? "").trim() || null,
     origin_card_last4: originCardLast4FromPan(row.Pan),
@@ -152,17 +151,16 @@ export function nationalRowToLine(row: SantanderNationalRow): SantanderStatement
  * Convert one international (USD) row.
  *
  * `MontoTransaccion` is the billed USD and carries the direction in its trailing sign (an
- * ABONO DE DIVISAS is negative). `MontoOrigen` is the amount actually charged by the merchant: when
- * the two are equal the charge was natively USD, and when they differ the origin is the foreign
- * currency — Apple Chile billing 1x.xxx CLP settled at 14.14 USD. The PDF parser labels every
- * origin as CLP and truncates the decimals, so this is the more accurate of the two sources.
+ * ABONO DE DIVISAS is negative). `MontoOrigen` is the amount actually charged by the merchant —
+ * dollars, or the pesos of a merchant billing in Chile (1x.xxx CLP settled at 14.14 USD); like the
+ * PDF, the feed does not say which, so the import decides it from the two amounts
+ * (`ccOriginCurrency.ts`).
  */
 export function internationalRowToLine(row: SantanderInternationalRow): SantanderStatementLine {
   const usd = parseSantanderFixed(row.MontoTransaccion, 2);
   const origin = parseSantanderFixed(row.MontoOrigen, 2);
   const transaction_date = santanderIsoToCsvDate(row.FechaTxs);
   if (!transaction_date) throw new Error(`International row has no FechaTxs (${row.NombreComercio})`);
-  const nativelyUsd = Math.abs(Math.abs(origin) - Math.abs(usd)) < 0.005;
 
   return {
     transaction_date,
@@ -171,7 +169,6 @@ export function internationalRowToLine(row: SantanderInternationalRow): Santande
     amount_clp: null,
     amount_usd: usd,
     amount_orig: origin,
-    orig_currency: nativelyUsd ? "usd" : "clp",
     country: String(row.CodPais ?? "").trim() || null,
     place: String(row.CiudadComercio ?? "").trim() || null,
     origin_card_last4: originCardLast4FromPan(row.Pan),

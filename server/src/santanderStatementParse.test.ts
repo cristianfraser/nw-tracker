@@ -120,20 +120,18 @@ describe("national rows", () => {
 });
 
 describe("international rows", () => {
-  it("marks a charge as natively USD when origin equals transaction", () => {
+  it("keeps the origin beside the billed USD when the two are equal", () => {
     const line = internationalRowToLine(internationalRow());
     expect(line.amount_usd).toBeCloseTo(123.31, 2);
     expect(line.amount_orig).toBeCloseTo(123.31, 2);
-    expect(line.orig_currency).toBe("usd");
   });
 
-  it("treats a differing origin as the foreign amount", () => {
+  it("keeps a differing origin as the amount the merchant charged", () => {
     const line = internationalRowToLine(
       internationalRow({ MontoOrigen: "00001299000+", MontoTransaccion: "00000001414+" })
     );
     expect(line.amount_orig).toBeCloseTo(12990, 2);
     expect(line.amount_usd).toBeCloseTo(14.14, 2);
-    expect(line.orig_currency).toBe("clp");
   });
 
   it("carries the abono's negative direction from MontoTransaccion", () => {
@@ -146,7 +144,7 @@ describe("international rows", () => {
       })
     );
     expect(line.amount_usd).toBeCloseTo(-258.13, 2);
-    expect(line.orig_currency).toBe("usd");
+    expect(line.amount_orig).toBeCloseTo(258.13, 2);
   });
 
   it("keeps the posting date and reference the national feed lacks", () => {

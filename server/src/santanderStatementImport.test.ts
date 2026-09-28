@@ -69,7 +69,6 @@ describe("santanderStatementImport", () => {
       amount_clp: 10_000,
       amount_usd: null,
       amount_orig: null,
-      orig_currency: null,
       country: null,
       place: null,
       origin_card_last4: "0430",
@@ -181,6 +180,21 @@ describe("santanderStatementImport", () => {
       accountId: id,
     });
     expect(records[1]!.dedupe_key).toBe(`${records[0]!.dedupe_key}#dup1`);
+  });
+
+  it("writes an international origin in the CSV's Chilean style and names no currency", () => {
+    const id = masterId();
+    if (id == null) return;
+    const [rec] = buildSantanderStatementRecords(
+      "usd",
+      [line({ merchant: "TIENDA VITEST", amount_clp: null, amount_usd: 12.5, amount_orig: 11_875, cod_txs: "3000" })],
+      null,
+      { ...CTX, accountId: id }
+    );
+    expect(rec!.amount_orig).toBe("11875,00");
+    expect(rec!.amount_usd).toBe("12.50");
+    // The import labels it (`ccOriginCurrency.ts`), and refuses a record that carries a label.
+    expect(rec!.orig_currency).toBeUndefined();
   });
 
   it("throws on unknown national CodTxs and on payment/header mismatch", () => {
