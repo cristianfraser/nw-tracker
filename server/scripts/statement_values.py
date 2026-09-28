@@ -3,6 +3,9 @@
 - `parse_dd_mm_yy_to_iso` mirrors `parseDdMmYyToIso` in `server/src/ccInstallmentPayBy.ts`;
   `server/src/test/ddMmYyToIsoCases.json` is asserted by both test suites.
 - `parse_clp_amount` reads a printed peso amount.
+- `parse_chilean_decimal` reads a printed decimal amount the way `parseChileanNumber` in
+  `server/src/chileanNumber.ts` does; `server/src/test/chileanDecimalCases.json` is asserted by
+  both test suites.
 """
 from __future__ import annotations
 
@@ -82,3 +85,22 @@ def parse_clp_amount(raw: object) -> Optional[int]:
     )
     n = int(value)
     return -n if sign else n
+
+
+def parse_chilean_decimal(raw: object) -> Optional[float]:
+    """A printed decimal amount → float; None when the text is not one.
+
+    Chilean printing: dots group thousands, the comma is the decimal (`20.604,00` → 20604.0,
+    `3,99` → 3.99, `-12,00` → -12.0); whitespace is ignored. Unlike `parse_clp_amount` the
+    decimals are kept: the international statement's origin-amount column prints pesos, dollars
+    and euros alike, and which one it is is decided from the value (`ccOriginCurrency.ts`).
+
+    Stricter than `parseChileanNumber` about grouping (`12.34` is not an amount here, there it is
+    1234), so any text this reads, that one reads the same."""
+    t = re.sub(r"\s+", "", str(raw or ""))
+    m = RE_CLP_AMOUNT.fullmatch(t)
+    if not m:
+        return None
+    sign, whole, frac = m.groups()
+    value = float(Decimal(f"{whole.replace('.', '')}.{frac or '0'}"))
+    return -value if sign else value

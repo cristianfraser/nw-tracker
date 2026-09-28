@@ -16,12 +16,14 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from statement_values import (  # noqa: E402
     iso_date_from_parts,
+    parse_chilean_decimal,
     parse_clp_amount,
     parse_dd_mm_yy_to_iso,
     repair_jammed_year,
 )
 
 DATE_CASES_PATH = SCRIPT_DIR.parent / "src" / "test" / "ddMmYyToIsoCases.json"
+DECIMAL_CASES_PATH = SCRIPT_DIR.parent / "src" / "test" / "chileanDecimalCases.json"
 
 
 class SharedDateCasesTest(unittest.TestCase):
@@ -78,6 +80,29 @@ class ParseClpAmountTest(unittest.TestCase):
         for raw in ("", ".", "-", "$", "12.34", "1.2345", "1.234.5", "1,2,3", "12,", ",50", "abc", None):
             with self.subTest(raw=raw):
                 self.assertIsNone(parse_clp_amount(raw))
+
+
+class SharedChileanDecimalCasesTest(unittest.TestCase):
+    """The table `server/src/chileanDecimalCases.test.ts` asserts against `parseChileanNumber`."""
+
+    def test_every_case(self) -> None:
+        cases = json.loads(DECIMAL_CASES_PATH.read_text(encoding="utf-8"))
+        self.assertTrue(cases)
+        for c in cases:
+            with self.subTest(raw=c["raw"]):
+                self.assertEqual(parse_chilean_decimal(c["raw"]), c["expect"])
+
+
+class ParseChileanDecimalTest(unittest.TestCase):
+    def test_decimals_are_kept(self) -> None:
+        self.assertEqual(parse_chilean_decimal("39,99"), 39.99)
+        self.assertEqual(parse_chilean_decimal("2.345,6"), 2345.6)
+
+    def test_grouping_must_be_thousands(self) -> None:
+        # The TypeScript reader takes «12.34» as 1234; here it is not an amount at all.
+        for raw in ("12.34", "1.2345", "1.234.5", "12.", None):
+            with self.subTest(raw=raw):
+                self.assertIsNone(parse_chilean_decimal(raw))
 
 
 if __name__ == "__main__":
