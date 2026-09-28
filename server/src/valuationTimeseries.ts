@@ -18,7 +18,7 @@ import {
 } from "./brokerageEquityMtm.js";
 import {
   accountUsesCryptoMtm,
-  computeCryptoMtmClp,
+  requireCryptoMtmClp,
   computeCryptoMtmClpDisplaySync,
   expandSnapshotDatesForCryptoMtm,
 } from "./cryptoValuation.js";
@@ -401,8 +401,7 @@ function valuationRawClpForAccount(
     return null;
   }
   if (accountUsesCryptoMtm(accountId)) {
-    const mtm = computeCryptoMtmClp(accountId, asOf);
-    if (mtm != null) return mtm;
+    return requireCryptoMtmClp(accountId, asOf);
   }
   return byDate.get(asOf)?.get(accountId) ?? null;
 }

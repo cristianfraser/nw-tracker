@@ -48,7 +48,7 @@ import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
 import {
   accountUsesCryptoMtm,
-  computeCryptoMtmClp,
+  requireCryptoMtmClp,
   cryptoAssetFromCategorySlug,
   cryptoCoinCumulativeThroughDate,
 } from "./cryptoValuation.js";
@@ -542,13 +542,7 @@ function monthEndCloseForPerformance(
         ex != null && Number.isFinite(ex) ? ex : lastStoredBookClpOnOrBefore(asOf, bookAsc);
     }
   } else if (accountUsesCryptoMtm(accountId)) {
-    const mtm = computeCryptoMtmClp(accountId, asOf);
-    if (mtm != null) rawClp = mtm;
-    else {
-      const ex = exactClpByDate.get(asOf);
-      rawClp =
-        ex != null && Number.isFinite(ex) ? ex : lastStoredBookClpOnOrBefore(asOf, bookAsc);
-    }
+    rawClp = requireCryptoMtmClp(accountId, asOf);
   } else {
     const ex = exactClpByDate.get(asOf);
     rawClp =

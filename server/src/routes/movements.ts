@@ -10,6 +10,7 @@ import { supersedeImportedCheckingRowsForTransfer } from "../checkingTransferLeg
 import { isCheckingLedgerAnchorNote, maybeSyncCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
 import { isFiniteNumber, isYmdString } from "../requestValidation.js";
 import { accountIdFromReq } from "./shared.js";
+import { cryptoEquityTickerForAccount } from "../cryptoValuation.js";
 
 export function registerMovementsRoutes(app: express.Express): void {
 app.post("/api/accounts/:id/movements", (req, res) => {
@@ -129,6 +130,12 @@ app.post("/api/accounts/:id/valuations", (req, res) => {
   }
   if (!isFiniteNumber(value_clp)) {
     res.status(400).json({ error: "value_clp must be a finite number" });
+    return;
+  }
+  // Crypto is marked from units × close × fx only; a stored row would be read by nothing and
+  // drift from the mark (the retired `crypto:apply-valuation` rows did).
+  if (cryptoEquityTickerForAccount(accountId) != null) {
+    res.status(400).json({ error: "crypto accounts are valued from their coin units; no stored valuations" });
     return;
   }
   db.prepare(

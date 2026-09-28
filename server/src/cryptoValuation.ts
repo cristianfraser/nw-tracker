@@ -104,6 +104,26 @@ export function computeCryptoMtmClp(
   return Number.isFinite(clp) ? clp : null;
 }
 
+/**
+ * {@link computeCryptoMtmClp} for a date the account must be marked on. Crypto has no other
+ * value source (its stored `valuations` rows were retired 2026-09-28), so a missing coin close
+ * or fx row is a data gap to fill — run the crypto EOD sync / backfill — never a stored-row
+ * fallback.
+ */
+export function requireCryptoMtmClp(accountId: number, asOfYmd: string, now: Date = new Date()): number {
+  const clp = computeCryptoMtmClp(accountId, asOfYmd, null, now);
+  if (clp != null && Number.isFinite(clp)) return clp;
+  const ticker = cryptoEquityTickerForAccount(accountId);
+  if (!ticker) throw new Error(`account ${accountId} is not a crypto account`);
+  const reason =
+    equityCloseEod(ticker, asOfYmd) == null
+      ? `no ${ticker} close in equity_daily on or before ${asOfYmd}`
+      : `no USD/CLP fx for ${asOfYmd}`;
+  throw new Error(
+    `crypto account ${accountId}: cannot mark ${asOfYmd} (${reason}); crypto is valued from units × close × fx only — backfill the missing series`
+  );
+}
+
 /** Cached live crypto MTM when today's UTC session allows live quotes. */
 export function computeCryptoMtmClpCachedLive(
   accountId: number,
@@ -154,7 +174,18 @@ export function computeCryptoMtmClpDisplaySync(
   return { value_clp: c, as_of_date: md };
 }
 
+/**
+ * Chart grid for one crypto account: the month-end of every month with a movement, every
+ * month-end the coin's `equity_daily` series covers, and Chile today. The coin trades every
+ * day, so the series' last bar is today or yesterday and its month's end is usually ahead of
+ * today — that one future date (the current month-end) is the grid convention every MTM kind
+ * shares (`expandSnapshotDatesForEquityMtm`, and `sanitizeValuationChartDateStrs` keeps it);
+ * nothing later is ever emitted. Stored `valuations` rows play no part: crypto is marked from
+ * units × close × fx only, and no crypto account carries stored rows any more.
+ */
 function snapshotDatesForCryptoAccount(accountId: number, equityTicker: "BTC-USD" | "ETH-USD"): string[] {
+  const today = chileCalendarTodayYmd();
+  const currentMonthEnd = monthEndUtcYmd(monthKeyFromYmd(today));
   const s = new Set<string>();
   const movDates = db
     .prepare(
@@ -170,60 +201,10 @@ function snapshotDatesForCryptoAccount(accountId: number, equityTicker: "BTC-USD
   if (bounds?.a && bounds?.b) {
     for (const me of monthEndsBetweenInclusive(bounds.a, bounds.b)) s.add(me);
   }
-  const valDates = db
-    .prepare(`SELECT as_of_date AS d FROM valuations WHERE account_id = ?`)
-    .all(accountId) as { d: string }[];
-  for (const r of valDates) s.add(r.d);
-  const today = chileCalendarTodayYmd();
   s.add(today);
-  return [...s].filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
-}
-
-const upsertVal = db.prepare(`
-  INSERT INTO valuations (account_id, as_of_date, value, currency, units_snapshot)
-  VALUES (@account_id, @as_of_date, @value_clp, 'clp', @units_snapshot)
-  ON CONFLICT(account_id, as_of_date) DO UPDATE SET
-    value = excluded.value,
-    currency = excluded.currency,
-    units_snapshot = excluded.units_snapshot
-`);
-
-export function applyCryptoValuationsFromCoinHoldings(opts: {
-  btcAccountId?: number;
-  ethAccountId?: number;
-  dryRun?: boolean;
-}): { btcRows: number; ethRows: number } {
-  let btcRows = 0;
-  let ethRows = 0;
-
-  const applyOne = (accountId: number, asset: CryptoAsset, equityTicker: "BTC-USD" | "ETH-USD") => {
-    const dates = snapshotDatesForCryptoAccount(accountId, equityTicker);
-    let rows = 0;
-    for (const d of dates) {
-      const units = cryptoCoinCumulativeThroughDate(accountId, d, asset);
-      const value = computeCryptoMtmClp(accountId, d);
-      if (value == null || !Number.isFinite(value)) continue;
-      if (!opts.dryRun) {
-        upsertVal.run({
-          account_id: accountId,
-          as_of_date: d,
-          value_clp: Math.round(value * 100) / 100,
-          units_snapshot: units,
-        });
-      }
-      rows += 1;
-    }
-    return rows;
-  };
-
-  if (opts.btcAccountId != null) {
-    btcRows = applyOne(opts.btcAccountId, "BTC", "BTC-USD");
-  }
-  if (opts.ethAccountId != null) {
-    ethRows = applyOne(opts.ethAccountId, "ETH", "ETH-USD");
-  }
-
-  return { btcRows, ethRows };
+  return [...s]
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && (d <= today || d === currentMonthEnd))
+    .sort();
 }
 
 /** Merge timeline keys with month-ends covered by `equity_daily` for crypto accounts. */
