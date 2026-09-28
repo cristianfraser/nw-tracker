@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   buildCheckingGastosLines,
+  buildCheckingGastosLinesForAccounts,
   createSplittableInternalTransferPool,
   splitCheckingWithdrawalAgainstDeposits,
 } from "./flowsCheckingGastos.js";
@@ -147,22 +148,38 @@ describe("month-precision deposits are the fallback", () => {
 });
 
 describe("a deposit is claimed once across the checking accounts", () => {
-  it("a shared claim set lets only one of two same-amount debits pair with the deposit", () => {
+  function claimsOnAhorro(
+    lines: ReturnType<typeof buildCheckingGastosLinesForAccounts>,
+    debits: readonly number[]
+  ): number[] {
+    return lines
+      .filter(
+        (l) =>
+          debits.includes(l.statement_line_id) &&
+          parseAutoDepositMatchNote(l.auto_deposit_match_note ?? "").some((seg) => seg.account_id === ahorroId)
+      )
+      .map((l) => l.statement_line_id);
+  }
+
+  it("the earlier of two same-amount debits claims the deposit, whichever account it sits on", () => {
     if (corrienteId == null || vistaId == null || ahorroId == null) return;
     insertDeposit(ahorroId, "2099-06-30", 123_454);
     const corrienteDebit = insertCartolaDebit(corrienteId, "2099-06-10", -123_454, 1);
     const vistaDebit = insertCartolaDebit(vistaId, "2099-06-03", -123_454, 1);
-    const deposits = loadDepositMatchCandidates();
-    const usedDepositKeys = new Set<string>();
-    const lines = [corrienteId, vistaId].flatMap((accountId) =>
-      buildCheckingGastosLines({ accountId, depositCandidates: deposits, usedDepositKeys })
+    // Corriente runs first in account order; the vista debit is earlier and must win.
+    const lines = buildCheckingGastosLinesForAccounts([corrienteId, vistaId], {});
+    expect(claimsOnAhorro(lines, [corrienteDebit, vistaDebit])).toEqual([vistaDebit]);
+  });
+
+  it("per account, both debits claimed the same deposit", () => {
+    if (corrienteId == null || vistaId == null || ahorroId == null) return;
+    insertDeposit(ahorroId, "2099-08-31", 123_455);
+    const corrienteDebit = insertCartolaDebit(corrienteId, "2099-08-10", -123_455, 1);
+    const vistaDebit = insertCartolaDebit(vistaId, "2099-08-03", -123_455, 1);
+    const lines = [corrienteId, vistaId].flatMap((accountId) => buildCheckingGastosLines({ accountId }));
+    expect(claimsOnAhorro(lines, [corrienteDebit, vistaDebit]).sort((a, b) => a - b)).toEqual(
+      [corrienteDebit, vistaDebit].sort((a, b) => a - b)
     );
-    const claims = lines.filter(
-      (l) =>
-        (l.statement_line_id === corrienteDebit || l.statement_line_id === vistaDebit) &&
-        parseAutoDepositMatchNote(l.auto_deposit_match_note ?? "").some((seg) => seg.account_id === ahorroId)
-    );
-    expect(claims.map((l) => l.statement_line_id)).toEqual([corrienteDebit]);
   });
 });
 

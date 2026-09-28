@@ -100,7 +100,7 @@ export type {
   CcExpenseGastosScope,
   CcInstallmentGastosMode,
 } from "./ccExpensePeriodMonth.js";
-import { buildCheckingGastosLines } from "./flowsCheckingGastos.js";
+import { buildCheckingGastosLinesForAccounts } from "./flowsCheckingGastos.js";
 
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
@@ -1026,21 +1026,11 @@ function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
   const { merchantRules, uniquePurchases, uniquePurchaseModeKeys } =
     loadCcExpenseCategoryMaps(accountIds);
 
-  const lines: FlowCcExpenseLineRowDraft[] = [];
-  // One claim set across the accounts: a deposit pairs with one checking outflow overall.
-  const usedDepositKeys = new Set<string>();
-  for (const accountId of accountIds) {
-    lines.push(
-      ...buildCheckingGastosLines({
-        accountId,
-        usedDepositKeys,
-        merchantRules,
-        uniquePurchases,
-        uniquePurchaseModeKeys,
-      })
-    );
-  }
-  return lines;
+  return buildCheckingGastosLinesForAccounts(accountIds, {
+    merchantRules,
+    uniquePurchases,
+    uniquePurchaseModeKeys,
+  });
 }
 
 /**

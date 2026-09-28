@@ -67,6 +67,7 @@ import {
   type CheckingCartolaCredit,
   type CheckingCartolaWithdrawal,
   type CheckingCartolaWithdrawalWithAccount,
+  type CheckingGastosWithdrawalRow,
   type DepositMatchCandidate,
 } from "./checkingCartolaLoaders.js";
 
@@ -1201,20 +1202,52 @@ export function matchWithdrawalToDeposit(
   return null;
 }
 
-export function buildCheckingGastosLines(opts?: {
+type CheckingGastosLineBuilderOptions = {
   accountId?: number;
   depositCandidates?: readonly DepositMatchCandidate[];
-  /**
-   * Deposits already claimed by an outflow. Pass one set across the checking accounts' runs so a
-   * deposit is claimed once overall — per account, a corriente and a vista debit could both pair
-   * with the same deposit.
-   */
+  /** Deposits already claimed by an outflow (see {@link buildCheckingGastosLinesForAccounts}). */
   usedDepositKeys?: Set<string>;
   checkingCredits?: readonly CheckingCartolaCredit[];
   merchantRules?: Map<string, string>;
   uniquePurchases?: Map<string, string>;
   uniquePurchaseModeKeys?: Set<string>;
-}): FlowCcExpenseLineRowDraft[] {
+};
+
+export function buildCheckingGastosLines(opts?: CheckingGastosLineBuilderOptions): FlowCcExpenseLineRowDraft[] {
+  const builder = createCheckingGastosLineBuilder(opts);
+  for (const row of [...builder.rows].reverse()) builder.processRow(row);
+  return builder.lines;
+}
+
+/**
+ * Gastos lines for several checking accounts with ONE deposit claim set, the outflows taken in date
+ * order across the accounts. A deposit pairs with one outflow overall — run per account, a
+ * corriente and a vista debit could both claim it — and the earlier outflow claims first whichever
+ * account it sits on, as within one account (account order would hand a month-precision deposit to
+ * whichever account happens to run first).
+ */
+export function buildCheckingGastosLinesForAccounts(
+  accountIds: readonly number[],
+  opts: Omit<CheckingGastosLineBuilderOptions, "accountId" | "usedDepositKeys">
+): FlowCcExpenseLineRowDraft[] {
+  const depositCandidates = opts.depositCandidates ?? loadDepositMatchCandidates();
+  const checkingCredits = opts.checkingCredits ?? loadMovementBalanceCashCartolaCredits();
+  const usedDepositKeys = new Set<string>();
+  const builders = accountIds.map((accountId) =>
+    createCheckingGastosLineBuilder({ ...opts, accountId, depositCandidates, checkingCredits, usedDepositKeys })
+  );
+  const queue = builders
+    .flatMap((builder) => builder.rows.map((row) => ({ builder, row })))
+    .sort((a, b) => a.row.occurred_on.localeCompare(b.row.occurred_on) || a.row.id - b.row.id);
+  for (const { builder, row } of queue) builder.processRow(row);
+  return builders.flatMap((builder) => builder.lines);
+}
+
+function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions): {
+  rows: readonly CheckingGastosWithdrawalRow[];
+  processRow: (row: CheckingGastosWithdrawalRow) => void;
+  lines: FlowCcExpenseLineRowDraft[];
+} {
   const accountId = opts?.accountId ?? checkingAccountId();
   const deposits = opts?.depositCandidates ?? loadDepositMatchCandidates();
   const splittablePool = createSplittableInternalTransferPool(deposits);
@@ -1367,7 +1400,7 @@ export function buildCheckingGastosLines(opts?: {
     });
   };
 
-  for (const row of [...rows].reverse()) {
+  const processRow = (row: (typeof rows)[number]): void => {
     const description = cartolaDescriptionFromNote(row.note);
     if (isExcludedCheckingWithdrawal(description)) {
       // Fintual / reserva investment-funding transfers are excluded from the gastos list, but must
@@ -1396,7 +1429,7 @@ export function buildCheckingGastosLines(opts?: {
           });
         }
       }
-      continue;
+      return;
     }
     if (
       withdrawalIsReversedByDapAbono(
@@ -1404,16 +1437,16 @@ export function buildCheckingGastosLines(opts?: {
         checkingCredits
       )
     ) {
-      continue;
+      return;
     }
 
     const expenseMonth = monthKeyFromYmd(row.occurred_on);
-    if (!expenseMonth) continue;
+    if (!expenseMonth) return;
     if (
       internalMcMonths.has(expenseMonth) &&
       isMercadoCapitalesCargoDescription(description)
     ) {
-      continue;
+      return;
     }
 
     const useDepositSplit =
@@ -1440,7 +1473,7 @@ export function buildCheckingGastosLines(opts?: {
         autoMatchedDeposits:
           split.internalMatchedDeposits.length > 0 ? split.internalMatchedDeposits : undefined,
       });
-      continue;
+      return;
     }
 
     if (useDepositSplit) {
@@ -1450,7 +1483,7 @@ export function buildCheckingGastosLines(opts?: {
         withdrawalAccountId: accountId,
         withdrawalCategorySlug,
       });
-      if (split.gastosClp <= 0 && split.internalClp <= 0) continue;
+      if (split.gastosClp <= 0 && split.internalClp <= 0) return;
 
       if (split.internalClp > 0) {
         pushCheckingLine(row, split.internalClp, expenseMonth, description, {
@@ -1475,7 +1508,7 @@ export function buildCheckingGastosLines(opts?: {
     } else {
       if (checkingOutflowIsAtmWithdrawal(description)) {
         pushCheckingLine(row, Math.round(Math.abs(row.amount_clp)), expenseMonth, description);
-        continue;
+        return;
       }
       const internalMatch = resolveInternalCashTransferMatch(
         withdrawal,
@@ -1491,7 +1524,7 @@ export function buildCheckingGastosLines(opts?: {
           purchasePortion: "deposit",
           autoMatchedDeposits: internalMatch.allocations,
         });
-        continue;
+        return;
       }
       const matchedDeposit = matchWithdrawalToInvestmentDeposit(
         withdrawal,
@@ -1506,10 +1539,10 @@ export function buildCheckingGastosLines(opts?: {
             { deposit: matchedDeposit, amount_clp: Math.round(Math.abs(row.amount_clp)) },
           ],
         });
-        continue;
+        return;
       }
       pushCheckingLine(row, Math.round(Math.abs(row.amount_clp)), expenseMonth, description);
     }
-  }
-  return lines;
+  };
+  return { rows, processRow, lines };
 }
