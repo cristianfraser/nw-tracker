@@ -30,6 +30,10 @@ import {
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { syncCuentaAhorroDepositSplitMirrors } from "./cuentaAhorroDepositSplits.js";
 import { syncBudaAbonoDepositMirrors } from "./budaWallet.js";
+import {
+  checkingGapDepositMirrorPurchaseKey,
+  isCheckingGapDepositMirrorPurchaseKey,
+} from "./checkingGapDepositMirrorKey.js";
 import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
 
 export { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG };
@@ -434,13 +438,6 @@ function syncCheckingGapDepositMirrorLinks(): void {
   }
 }
 
-/** Must match the `source: "checking"`, negative-`statement_line_id` branch in
- *  ccExpensePurchaseKey.ts's resolvePurchaseKeyForGastosLine exactly — that's the purchase_key
- *  the gastos line actually resolves to once enrichFlowLinesWithPurchaseNotes runs on it. */
-export function checkingGapDepositMirrorPurchaseKey(mirrorId: number): string {
-  return `synthetic-checking-gap-mirror:${mirrorId}`;
-}
-
 function clearAutoExpenseDepositLinks(): void {
   db.prepare(`DELETE FROM expense_deposit_links WHERE link_source = 'auto'`).run();
 }
@@ -613,6 +610,10 @@ function lineIsManualDepositAssertion(line: GastosLineForExpenseDepositLink): bo
   if (line.source !== "checking") return false;
   if (line.category_slug !== DEPOSITS_CC_EXPENSE_SLUG) return false;
   if (line.amount_clp <= 0) return false;
+  // A synthetic mirror line already has its direct 1:1 link to its own deposit
+  // (syncCheckingGapDepositMirrorLinks). Asserting it again linked the deposit twice, and because
+  // mirror ids are rebuilt on every sync the second link pointed at a mirror id that no longer existed.
+  if (isCheckingGapDepositMirrorPurchaseKey(line.purchase_key)) return false;
   // Auto-matched lines carry an `auto:deposit-match|…` note and are handled by
   // tryAutoLinkExpenseDepositLine — only note-less (user-asserted) lines take this pass.
   return parseAutoDepositMatchNote(line.purchase_notes).length === 0;
