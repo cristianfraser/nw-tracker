@@ -489,6 +489,8 @@ function buildConsolidationPayloads(
   name: string;
   bucket_slug: string;
   notes: string | null;
+  /** Account identity for the month-end marks (a Fintual certificate account is valued by it). */
+  import_key: string | null;
   monthly: AccountMonthlyPerformanceRow[];
 }[] {
   const account_monthly: {
@@ -547,15 +549,11 @@ function buildGroupConsolidatedMonthlyPerfUncached(
   groupSlug: string,
   unit: TsUnit
 ): ConsolidatedMonthlyPerfRow[] {
-  const payloads = buildConsolidationPayloads(rows, groupSlug, unit);
+  // The payloads go in whole: the month-end marks need each account's `import_key` (a Fintual
+  // certificate account has no mark without it, and its prior close fell back to perf rows
+  // already in `unit`, which the USD path then divided by fx a second time).
   const consolidated = consolidateGroupMonthlyPerf(
-    payloads.map((p) => ({
-      account_id: p.account_id,
-      bucket_slug: p.bucket_slug,
-      monthly: p.monthly,
-      notes: p.notes,
-      name: p.name,
-    })),
+    buildConsolidationPayloads(rows, groupSlug, unit),
     unit
   );
   if (isCashEqsNwValuationGroupSlug(groupSlug)) {

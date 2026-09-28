@@ -35,16 +35,8 @@ function consolidateFromAccountMonthly(
   account_monthly: AccountMonthlyPayload,
   unit: TsUnit
 ): ConsolidatedMonthlyPerfRow[] {
-  return consolidateGroupMonthlyPerf(
-    account_monthly.map((p) => ({
-      account_id: p.account_id,
-      bucket_slug: p.bucket_slug,
-      monthly: p.monthly,
-      notes: p.notes,
-      name: p.name,
-    })),
-    unit
-  );
+  // Whole payloads, `import_key` included: the month-end marks are keyed by it.
+  return consolidateGroupMonthlyPerf(account_monthly, unit);
 }
 
 /** Full consolidated detalle-por-mes series for a group tab (newest first). */
