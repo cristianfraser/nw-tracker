@@ -12,8 +12,9 @@
  * with the origin amount as printed: the old reader rounded dollar origins to whole units and
  * shrank grouped amounts a thousandfold («1.xxx,00» stored as 1,xx). A damaged stored value cannot
  * be read back, so run this after that import; a PDF line it would still relabel then belongs to a
- * statement outside the corpus (quarantined under `pending-review/`, or a legacy close the parser
- * now files as a copy of another).
+ * statement outside the corpus (quarantined under `pending-review/`, or a phantom close an old
+ * parse built from a duplicate download — remove those with
+ * `remove-cc-duplicate-download-statements.ts`, which re-imports the real statement).
  *
  * `--origins-csv=<parsed CSV>` restores the printed origin of such lines first: a stored PDF line
  * whose (source_pdf, parser row id) the CSV lists takes that row's origin amount before it is
