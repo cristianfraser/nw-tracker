@@ -4,10 +4,11 @@
  * CLP-quoted stocks (Santiago `.SN`) fund from CLP cash: the transfer carries a CLP
  * amount (no USD leg) and counts as a `clp_wire` capital flow at face value.
  *
- * A buy funded by a same-day CLP wire SMALLER than the buy (wire + USD already sitting in
- * the cash account, e.g. a received dividend swept into the next purchase) splits into a
- * composite: the wire pesos count at face (`clp_wire`) and only the residual USD uses the
- * reference rate (`usd_reference`). Guarded to the unambiguous one-wire/one-buy case.
+ * A same-day CLP wire that funds one buy larger than it, or several buys together (wire +
+ * USD already sitting in the cash account, e.g. a received dividend swept into the next
+ * purchase), is shared pro rata: each buy's share of the wire pesos counts at face
+ * (`clp_wire`) and only the dollars the wire did not cover use the reference rate
+ * (`usd_reference`). Guarded to one wire on the cash account that day.
  *
  * Dividends reduce cost basis: `dividend_payout` is a negative capital flow on the stock;
  * a reinvestment is a separate `stock_buy` (+X) that nets it out. The retired single-leg
@@ -196,51 +197,91 @@ function findClpWireForStockBuy(
   return null;
 }
 
-/**
- * Buy funded by a same-day wire plus USD already in the cash account (e.g. a dividend
- * received earlier and swept into the next purchase): wire pesos at face + residual at
- * the reference rate. Fires only in the unambiguous case — the buy is a transfer, its
- * cash account has exactly ONE same-day wire, the wire is genuinely smaller than the
- * buy, and it is the only same-day buy from that cash account (a shared wire cannot be
- * attributed without guessing, so ambiguity falls back to the full reference conversion).
- */
-function partialWireCompositeFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] | null {
-  const fromId = row.from_account_id;
-  if (fromId == null || fromId <= 0) return null;
-  const usdLeg = movementUsdLeg(row);
-  if (usdLeg == null || usdLeg === 0) return null;
-  const buyUsd = Math.abs(usdLeg);
+type SameDayBuyLeg = { id: number; usd: number };
 
-  const wires = sameDayWireLegs(fromId, row.occurred_on);
-  if (wires.length !== 1) return null;
-  const wire = wires[0]!;
-  if (!(wire.usd < buyUsd - FX_WIRE_USD_TOLERANCE)) return null;
-
-  const sameDayBuys = db
+/** Same-day USD-leg `stock_buy` transfers out of cash account `fromId`, in id order. */
+function sameDayUsdBuysFromCash(fromId: number, occurredOn: string): SameDayBuyLeg[] {
+  const rows = db
     .prepare(
-      `SELECT COUNT(*) AS n FROM movements
+      `SELECT id, ${MOVEMENT_AMOUNT_COLUMNS_SQL} FROM movements
        WHERE account_id IS NULL
          AND from_account_id = ?
          AND occurred_on = ?
          AND flow_kind = 'stock_buy'
          AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
-         AND ${MOVEMENT_USD_LEG_SQL} != 0`
+         AND ${MOVEMENT_USD_LEG_SQL} != 0
+       ORDER BY id`
     )
-    .get(fromId, row.occurred_on) as { n: number };
-  if (sameDayBuys.n !== 1) return null;
+    .all(fromId, occurredOn) as (MovementAmountFields & { id: number })[];
+  return rows.map((r) => ({ id: r.id, usd: Math.abs(movementUsdLeg(r) ?? 0) }));
+}
 
-  const residUsd = buyUsd - wire.usd;
+/**
+ * A same-day wire shared pro rata by the buys it funded. Fires when the buy is a transfer
+ * whose cash account has exactly ONE same-day wire, no same-day buy from that account
+ * equals the wire (that buy owns it whole — {@link findClpWireForStockBuy}), and the
+ * same-day buys need at least the wire's dollars (the rest came from USD already held,
+ * e.g. a dividend swept into the purchase). Each buy then carries `wire.clp × buy / Σbuys`
+ * at face (`clp_wire`) plus the dollars the wire did not cover, `buy × (1 − wire.usd /
+ * Σbuys)`, at the reference rate (`usd_reference`); the last buy (by id) takes what is
+ * left of the wire's pesos and dollars, so the pieces add up to the wire exactly. Buys
+ * matching the wire within the tolerance carry no residual. A single buy SMALLER than
+ * the wire is not covered (the wire also funded something else, or some of it stayed)
+ * and keeps the reference rate.
+ *
+ * With one buy this is the wire + residual composite: the whole wire at face and
+ * `buy − wire.usd` at the reference rate. The stock side and the cash account's mirrored
+ * leg both read it, so the pesos net to zero inside the bucket and the conversion's spread
+ * lands in the stocks' cost instead of reading as a loss on the cash account.
+ */
+function wireProRataFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] | null {
+  const fromId = row.from_account_id;
+  if (fromId == null || fromId <= 0) return null;
+  const usdLeg = movementUsdLeg(row);
+  if (usdLeg == null || usdLeg === 0) return null;
+
+  const wires = sameDayWireLegs(fromId, row.occurred_on);
+  if (wires.length !== 1) return null;
+  const wire = wires[0]!;
+
+  const buys = sameDayUsdBuysFromCash(fromId, row.occurred_on);
+  const idx = buys.findIndex((b) => b.id === row.id);
+  if (idx < 0) return null;
+  if (buys.some((b) => Math.abs(b.usd - wire.usd) <= FX_WIRE_USD_TOLERANCE)) return null;
+  const totalUsd = buys.reduce((s, b) => s + b.usd, 0);
+  if (buys.length === 1) {
+    if (!(wire.usd < totalUsd - FX_WIRE_USD_TOLERANCE)) return null;
+  } else if (totalUsd < wire.usd - FX_WIRE_USD_TOLERANCE) {
+    return null;
+  }
+  const fullyCovered = Math.abs(totalUsd - wire.usd) <= FX_WIRE_USD_TOLERANCE;
+
+  let clpBefore = 0;
+  let usdBefore = 0;
+  for (let i = 0; i < idx; i += 1) {
+    clpBefore += Math.round((wire.clp * buys[i]!.usd) / totalUsd);
+    usdBefore += (wire.usd * buys[i]!.usd) / totalUsd;
+  }
+  const last = idx === buys.length - 1;
+  const buyUsd = buys[idx]!.usd;
+  const wireClp = last ? wire.clp - clpBefore : Math.round((wire.clp * buyUsd) / totalUsd);
+  const wireUsd = last ? wire.usd - usdBefore : (wire.usd * buyUsd) / totalUsd;
+
+  const wireFlow: EquityCapitalSortFlow = {
+    occurred_on: row.occurred_on,
+    amt: wireClp,
+    amt_usd: wireUsd,
+    capital_kind: "clp_wire",
+    tie: `t:${row.id}:wire`,
+  };
+  if (fullyCovered) return [wireFlow];
+
+  const residUsd = buyUsd - wireUsd;
   const residClp = usdToClpReferenceRounded(residUsd, row.occurred_on);
   if (residClp == null || !Number.isFinite(residClp) || residClp === 0) return null;
 
   return [
-    {
-      occurred_on: row.occurred_on,
-      amt: wire.clp,
-      amt_usd: wire.usd,
-      capital_kind: "clp_wire",
-      tie: `t:${row.id}:wire`,
-    },
+    wireFlow,
     {
       occurred_on: row.occurred_on,
       amt: residClp,
@@ -305,8 +346,8 @@ function stockBuyCapitalFlows(row: TransferCapitalRow): EquityCapitalSortFlow[] 
       },
     ];
   }
-  const composite = partialWireCompositeFlows(row);
-  if (composite) return composite;
+  const proRata = wireProRataFlows(row);
+  if (proRata) return proRata;
   const flow = usdReferenceFlow(row, 1);
   return flow ? [flow] : [];
 }
