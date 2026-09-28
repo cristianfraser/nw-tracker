@@ -6,6 +6,7 @@ import { BigExpenseGroupsSection } from "../components/credit-card/BigExpenseGro
 import { CreditCardUnclassifiedExpensesTable } from "../components/credit-card/CreditCardUnclassifiedExpensesTable";
 import { CreditCardDepositMatchedExpensesTable } from "../components/credit-card/CreditCardDepositMatchedExpensesTable";
 import { CreditCardFacturadoFinancingManager } from "../components/credit-card/CreditCardFacturadoFinancingManager";
+import { AdditionalCardsSection } from "../components/credit-card/AdditionalCardsSection";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
@@ -353,6 +354,8 @@ export function ExpensesPage() {
         displayUnit={displayUnit}
         periodGranularity={tableGranularity}
       />
+
+      <AdditionalCardsSection summary={data.additional_cards} displayUnit={displayUnit} />
 
       <CreditCardUnclassifiedExpensesTable
         lines={data.lines}

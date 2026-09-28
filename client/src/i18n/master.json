@@ -3124,6 +3124,10 @@
       "parent_gift": {
         "en": "Dad",
         "es": "Papá"
+      },
+      "card_reimbursement": {
+        "en": "Card reimbursement",
+        "es": "Reembolso tarjeta"
       }
     },
     "colDate": {
@@ -3275,6 +3279,18 @@
     "originManual": {
       "en": "Manual",
       "es": "Manual"
+    },
+    "sectionCardReimbursements": {
+      "en": "Additional-card reimbursements",
+      "es": "Reembolsos de tarjetas adicionales"
+    },
+    "cardReimbursementsHint": {
+      "en": "Not income: they pay back the additional cards' charges and are set against them on the Expenses page.",
+      "es": "No son ingresos: pagan los cargos de las tarjetas adicionales y se descuentan de ellos en Gastos."
+    },
+    "cardReimbursementsEmpty": {
+      "en": "No credits classified as card reimbursements.",
+      "es": "Sin abonos clasificados como reembolso de tarjeta."
     }
   },
   "workEarnings": {
@@ -4201,6 +4217,36 @@
     "chartTitle": {
       "en": "Expenses by apartment",
       "es": "Gastos por departamento"
+    },
+    "additionalCards": {
+      "title": {
+        "en": "Additional cards",
+        "es": "Tarjetas adicionales"
+      },
+      "hint": {
+        "en": "Charges made with the additional cards (not counted in your expenses) against the reimbursements received for them.",
+        "es": "Cargos de las tarjetas adicionales (no cuentan en tus gastos) frente a los reembolsos recibidos por ellos."
+      },
+      "colCharges": {
+        "en": "Charges",
+        "es": "Cargos"
+      },
+      "colReimbursements": {
+        "en": "Reimbursements",
+        "es": "Reembolsos"
+      },
+      "colNet": {
+        "en": "Net",
+        "es": "Neto"
+      },
+      "colBalance": {
+        "en": "Balance owed",
+        "es": "Saldo por cobrar"
+      },
+      "balanceLabel": {
+        "en": "Balance owed:",
+        "es": "Saldo por cobrar:"
+      }
     }
   },
   "marketTicker": {

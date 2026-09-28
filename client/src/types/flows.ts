@@ -300,6 +300,38 @@ export interface FlowsCreditCardExpensesResponse {
    * gastos view (cuotas land on the day their facturación is paid).
    */
   cuota_pay_by_iso?: Record<string, string>;
+  /** Additional-card charges (`no_cuenta`) vs the reimbursements paying them back. */
+  additional_cards: AdditionalCardsSummary;
+}
+
+/** One month / year of «Tarjetas adicionales» (server `additionalCardReimbursements.ts`). */
+export interface AdditionalCardsPeriodRow {
+  period_month: string;
+  as_of_date: string;
+  charges_clp: number;
+  charges_usd: number | null;
+  charge_count: number;
+  reimbursements_clp: number;
+  reimbursements_usd: number | null;
+  reimbursement_count: number;
+  net_clp: number;
+  net_usd: number | null;
+  balance_clp: number;
+  balance_usd: number | null;
+}
+
+export interface AdditionalCardsSummary {
+  /** Oldest first. */
+  by_month: AdditionalCardsPeriodRow[];
+  by_year: AdditionalCardsPeriodRow[];
+  totals: {
+    charges_clp: number;
+    charges_usd: number | null;
+    reimbursements_clp: number;
+    reimbursements_usd: number | null;
+    balance_clp: number;
+    balance_usd: number | null;
+  };
 }
 
 /** `GET /api/income` — cartola abonos + manual income_entries. */
@@ -366,6 +398,8 @@ export interface FlowsIncomeResponse {
   payroll_period_by_movement_id: Record<number, string>;
   excluded_lines: FlowExcludedCheckingIncomeLine[];
   filtered_lines: FlowFilteredCheckingIncomeLine[];
+  /** Credits classified `card_reimbursement`: never income, never in `lines`; newest first. */
+  card_reimbursement_lines: FlowCheckingIncomeLine[];
 }
 
 export type PayrollEarningType = "salary" | "severance";
@@ -407,7 +441,8 @@ export interface FlowWorkEarningRow {
   linked_account_label: string | null;
 }
 
-export type IncomeKind = PayrollEarningType | "other" | "parent_gift";
+/** `card_reimbursement` is not income: the server keeps those credits out of `lines`. */
+export type IncomeKind = PayrollEarningType | "other" | "parent_gift" | "card_reimbursement";
 
 export interface FlowIncomeMonthRow {
   period_month: string;

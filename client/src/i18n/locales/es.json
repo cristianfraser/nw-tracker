@@ -898,7 +898,8 @@
       "salary": "Sueldo",
       "severance": "Finiquito",
       "other": "Sin clasificar",
-      "parent_gift": "Papá"
+      "parent_gift": "Papá",
+      "card_reimbursement": "Reembolso tarjeta"
     },
     "colDate": "Fecha",
     "colPayrollPeriod": "líq. {{month}}",
@@ -938,7 +939,10 @@
     "colTotal": "Total",
     "colCumulative": "Acumulado",
     "originChecking": "Cartola",
-    "originManual": "Manual"
+    "originManual": "Manual",
+    "sectionCardReimbursements": "Reembolsos de tarjetas adicionales",
+    "cardReimbursementsHint": "No son ingresos: pagan los cargos de las tarjetas adicionales y se descuentan de ellos en Gastos.",
+    "cardReimbursementsEmpty": "Sin abonos clasificados como reembolso de tarjeta."
   },
   "workEarnings": {
     "sectionTitle": "Liquidaciones de sueldo",
@@ -1189,7 +1193,16 @@
       "mortgage": "Dividendo hipotecario"
     },
     "emptyAccount": "Sin gastos importados.",
-    "chartTitle": "Gastos por departamento"
+    "chartTitle": "Gastos por departamento",
+    "additionalCards": {
+      "title": "Tarjetas adicionales",
+      "hint": "Cargos de las tarjetas adicionales (no cuentan en tus gastos) frente a los reembolsos recibidos por ellos.",
+      "colCharges": "Cargos",
+      "colReimbursements": "Reembolsos",
+      "colNet": "Neto",
+      "colBalance": "Saldo por cobrar",
+      "balanceLabel": "Saldo por cobrar:"
+    }
   },
   "marketTicker": {
     "panelAria": "Mercado",

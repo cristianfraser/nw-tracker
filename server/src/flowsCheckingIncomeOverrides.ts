@@ -6,7 +6,25 @@ import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { incomeKindByMovementId } from "./flowsPayrollWorkEarnings.js";
 
-export type CheckingIncomeKind = "salary" | "severance" | "other" | "parent_gift";
+export const CHECKING_INCOME_KINDS = [
+  "salary",
+  "severance",
+  "other",
+  "parent_gift",
+  "card_reimbursement",
+] as const;
+
+/**
+ * `card_reimbursement` is not income: an additional cardholder paying back the charges his
+ * plastics made on the user's card (auto-tagged `no_cuenta`, out of the user's gastos). The income
+ * payload lists those credits apart (`card_reimbursement_lines`) and the expenses payload sets them
+ * against the charges (`additionalCardReimbursements.ts`).
+ */
+export type CheckingIncomeKind = (typeof CHECKING_INCOME_KINDS)[number];
+
+export function isCheckingIncomeKind(value: unknown): value is CheckingIncomeKind {
+  return typeof value === "string" && (CHECKING_INCOME_KINDS as readonly string[]).includes(value);
+}
 
 type OverrideRow = {
   movement_id: number;
@@ -48,6 +66,52 @@ export function loadCheckingIncomeKindOverrides(): Map<number, CheckingIncomeKin
     out.set(row.movement_id, row.income_kind);
   }
   return out;
+}
+
+/** Checking credits classified as additional-card reimbursements (never income). */
+export function loadCardReimbursementMovementIds(): Set<number> {
+  const rows = db
+    .prepare(
+      `SELECT movement_id FROM checking_income_movement_overrides
+       WHERE is_excluded = 0 AND income_kind = 'card_reimbursement'`
+    )
+    .all() as { movement_id: number }[];
+  return new Set(rows.map((r) => r.movement_id));
+}
+
+export type CardReimbursementCredit = {
+  movement_id: number;
+  received_on: string;
+  amount_clp: number;
+  /** CLP ÷ `fx_daily` on or before `received_on`. */
+  amount_usd: number | null;
+};
+
+/** The reimbursement credits with their CLP leg, oldest first. */
+export function loadCardReimbursementCredits(): CardReimbursementCredit[] {
+  const rows = db
+    .prepare(
+      `SELECT m.id AS movement_id, m.occurred_on AS received_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp
+       FROM checking_income_movement_overrides o
+       JOIN movements m ON m.id = o.movement_id
+       WHERE o.is_excluded = 0 AND o.income_kind = 'card_reimbursement'
+       ORDER BY m.occurred_on, m.id`
+    )
+    .all() as { movement_id: number; received_on: string; amount_clp: number }[];
+  return rows.map((row) => {
+    if (!(row.amount_clp > 0)) {
+      throw new Error(
+        `card reimbursement movement ${row.movement_id} has no positive CLP leg (${row.amount_clp})`
+      );
+    }
+    const amount_clp = Math.round(row.amount_clp);
+    return {
+      movement_id: row.movement_id,
+      received_on: row.received_on,
+      amount_clp,
+      amount_usd: clpToUsdAtDate(amount_clp, row.received_on),
+    };
+  });
 }
 
 export function mergedIncomeKindByMovementIdRecord(): Record<number, CheckingIncomeKind> {

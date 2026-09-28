@@ -898,7 +898,8 @@
       "salary": "Salary",
       "severance": "Severance",
       "other": "Unclassified",
-      "parent_gift": "Dad"
+      "parent_gift": "Dad",
+      "card_reimbursement": "Card reimbursement"
     },
     "colDate": "Date",
     "colPayrollPeriod": "payslip {{month}}",
@@ -938,7 +939,10 @@
     "colTotal": "Total",
     "colCumulative": "Cumulative",
     "originChecking": "Bank statement",
-    "originManual": "Manual"
+    "originManual": "Manual",
+    "sectionCardReimbursements": "Additional-card reimbursements",
+    "cardReimbursementsHint": "Not income: they pay back the additional cards' charges and are set against them on the Expenses page.",
+    "cardReimbursementsEmpty": "No credits classified as card reimbursements."
   },
   "workEarnings": {
     "sectionTitle": "Payslips",
@@ -1189,7 +1193,16 @@
       "mortgage": "Mortgage"
     },
     "emptyAccount": "No expenses imported.",
-    "chartTitle": "Expenses by apartment"
+    "chartTitle": "Expenses by apartment",
+    "additionalCards": {
+      "title": "Additional cards",
+      "hint": "Charges made with the additional cards (not counted in your expenses) against the reimbursements received for them.",
+      "colCharges": "Charges",
+      "colReimbursements": "Reimbursements",
+      "colNet": "Net",
+      "colBalance": "Balance owed",
+      "balanceLabel": "Balance owed:"
+    }
   },
   "marketTicker": {
     "panelAria": "Market",

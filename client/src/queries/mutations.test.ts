@@ -43,6 +43,18 @@ function sampleData(): FlowsCreditCardExpensesResponse {
     chart_monthly_by_category: [],
     total_clp: 10_000,
     total_real_clp: 10_000,
+    additional_cards: {
+      by_month: [],
+      by_year: [],
+      totals: {
+        charges_clp: 0,
+        charges_usd: 0,
+        reimbursements_clp: 0,
+        reimbursements_usd: 0,
+        balance_clp: 0,
+        balance_usd: 0,
+      },
+    },
   };
 }
 
