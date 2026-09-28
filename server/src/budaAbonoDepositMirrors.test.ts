@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { listBudaAbonosWithoutRealOutflowLink, syncBudaAbonoDepositMirrors } from "./budaWallet.js";
 import { checkingGapDepositMirrorPurchaseKey } from "./checkingGapDepositMirrorKey.js";
+import { loadDepositMatchCandidates } from "./checkingCartolaLoaders.js";
 import { db } from "./db.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 
@@ -11,6 +12,7 @@ let budaId: number | null = null;
 let createdBuda = false;
 let abonoId: number | null = null;
 let corrienteId: number | null = null;
+let coinId: number | null = null;
 
 function mirrorFor(depositId: number): { id: number; amount_clp: number } | undefined {
   return db
@@ -36,7 +38,7 @@ beforeAll(() => {
     budaId = existing.id;
   } else {
     const leaf = db
-      .prepare(`SELECT id FROM asset_groups WHERE slug LIKE 'brokerage_%' LIMIT 1`)
+      .prepare(`SELECT id FROM asset_groups WHERE slug = 'brokerage_crypto__buda_clp'`)
       .get() as { id: number } | undefined;
     if (!leaf) return;
     budaId = Number(
@@ -45,6 +47,20 @@ beforeAll(() => {
         .run(leaf.id, "Vitest · Buda CLP", BUDA_IMPORT_KEY, BUDA_IMPORT_KEY).lastInsertRowid
     );
     createdBuda = true;
+  }
+  const coinLeaf = db
+    .prepare(`SELECT id FROM asset_groups WHERE slug LIKE 'brokerage_crypto__%' AND slug != 'brokerage_crypto__buda_clp' LIMIT 1`)
+    .get() as { id: number } | undefined;
+  if (coinLeaf) {
+    coinId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, ?, ?, ?)`)
+        .run(coinLeaf.id, "Vitest · Buda-funded coin", "vitest-buda-coin", "vitest-buda-coin").lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+       VALUES (?, 123456, 'clp', '2011-03-04', 'vitest-buda-coin-buy')`
+    ).run(coinId);
   }
   abonoId = Number(
     db
@@ -61,6 +77,10 @@ afterAll(() => {
     db.prepare(`DELETE FROM expense_deposit_links WHERE deposit_movement_id = ?`).run(abonoId);
     db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`).run(abonoId);
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(abonoId);
+  }
+  if (coinId != null) {
+    db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(coinId);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(coinId);
   }
   if (createdBuda && budaId != null) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(budaId);
 });
@@ -90,5 +110,14 @@ describe("syncBudaAbonoDepositMirrors", () => {
     expect(listBudaAbonosWithoutRealOutflowLink().has(abonoId)).toBe(false);
     syncBudaAbonoDepositMirrors();
     expect(mirrorFor(abonoId)).toBeUndefined();
+  });
+});
+
+describe("matcher deposit pool with a Buda buffer", () => {
+  it("offers the abono, never the same-day coin buy it funded", () => {
+    if (abonoId == null || coinId == null) return;
+    const pool = loadDepositMatchCandidates();
+    expect(pool.some((c) => c.account_id === budaId && c.occurred_on === "2011-03-04")).toBe(true);
+    expect(pool.some((c) => c.account_id === coinId)).toBe(false);
   });
 });

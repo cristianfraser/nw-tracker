@@ -7,6 +7,7 @@ import { accountBucketKindSlug } from "./accountBucket.js";
 import { loadMergedDepositInflowEventsBankDated } from "./accountDeposits.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
+import { loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import {
   isCheckingPartialWithdrawalNote,
   parsePartialMovementNote,
@@ -133,6 +134,11 @@ export function loadCheckingGastosWithdrawalRows(accountId: number): CheckingGas
  * not be consumable as a capital return.
  */
 const MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS = new Set(["dap"]);
+// Coin accounts funded by the Buda buffer (`loadCryptoCoinAccountIdsFundedByBuda`) are left out of
+// both pools as well: a coin buy is paid from the buffer and a coin sell pays into it, so neither
+// crosses the checking boundary. The buffer's abono (money from checking) and retiro (money back)
+// are the checking-side legs; a coin buy on the same day for the same pesos would otherwise claim
+// the checking debit that funded the abono.
 
 function listDepositFlowAccounts(): { account_id: number; category_slug: string; group_slug: string }[] {
   const rows = db
@@ -166,10 +172,12 @@ export function loadNetWorthCapitalReturnLedgerOutflows(): DepositMatchCandidate
 }
 
 export function loadNetWorthCapitalOutflowCandidates(): DepositMatchCandidate[] {
+  const budaFunded = loadCryptoCoinAccountIdsFundedByBuda();
   const accounts = listDepositFlowAccounts().filter(
     (a) =>
       !isMovementBalanceCashCategory(a.category_slug) &&
-      !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug)
+      !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug) &&
+      !budaFunded.has(a.account_id)
   );
   const ids = accounts.map((a) => a.account_id);
   const metaById = new Map(
@@ -238,8 +246,9 @@ export function checkingGastosAccountCategorySlug(accountId: number): string {
 }
 
 export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
+  const budaFunded = loadCryptoCoinAccountIdsFundedByBuda();
   const accounts = listDepositFlowAccounts().filter(
-    (a) => !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug)
+    (a) => !MATCHER_EXCLUDED_ACCOUNT_KIND_SLUGS.has(a.category_slug) && !budaFunded.has(a.account_id)
   );
   const ids = accounts.map((a) => a.account_id);
   const metaById = new Map(
