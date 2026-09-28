@@ -10,7 +10,10 @@ import {
 } from "../../dashboardCardBreakdown";
 import { formatPct } from "../../format";
 import { useTranslation } from "../../i18n";
-import { dashboardRowsForNavSubtree } from "../../portfolioNavDashboardCards";
+import {
+  dashboardRowsForNavSubtree,
+  requireNavCardMetrics,
+} from "../../portfolioNavDashboardCards";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "../../types";
 import { cardDeltaFractionDigits, DepositedMetricFlow } from "./DashboardCardGroupMetrics";
@@ -24,7 +27,7 @@ import {
 } from "../ui/TableMobileCard";
 
 export type PortfolioNavAccountsSummaryTableProps = {
-  dash: Pick<DashboardResponse, "accounts">;
+  dash: Pick<DashboardResponse, "accounts" | "card_metrics_by_slug">;
   navChildren: NavTreeNodeDto[];
   showUsd: boolean;
   animated?: boolean;
@@ -41,13 +44,13 @@ type AccountTableRow = {
   clp: number;
   apiUsd: number | null;
   metricsByPeriod: CardGroupMetricsByPeriod;
-  /** The single dashboard row behind this leaf (server pct fields); null when ambiguous. */
-  single: DashboardAccountRow | null;
+  /** Per-slice % (server: the account row's pct fields, or a bucket's `row_pct`). */
+  pct: (slice: PeriodSlice, showUsd: boolean) => number | null;
   fxMissing: boolean;
   syncStale: boolean;
 };
 
-function rowPct(
+function accountRowPct(
   row: DashboardAccountRow | null,
   slice: PeriodSlice,
   showUsd: boolean
@@ -73,7 +76,8 @@ function rowPct(
  * Leaf-bucket account summary: one row per account leaf, replacing the old per-account
  * compact cards. Same 1-row client projection as the cards (dashboardRowsForNavSubtree +
  * cardGroupMetricsByPeriodFromAccounts); the % leg is the server-computed flow-adjusted
- * pct on the dashboard row. Balance carries the day P/L line under the value;
+ * pct on the dashboard row. A bucket listed beside the accounts (Portafolio IPSA among
+ * Acciones' stocks) is one row too, with the server's card metrics and `row_pct`. Balance carries the day P/L line under the value;
  * period columns (Mes/Año/Total) stack aportes and a `P/L (pct%)` line per cell.
  * Parallel desktop `<td>` / mobile `<TableMobileCard>` renderings (keep in sync).
  */
@@ -91,14 +95,23 @@ export function PortfolioNavAccountsSummaryTable({
     const built = filtered.map((child) => {
       const accountRows = dashboardRowsForNavSubtree(dash.accounts, child);
       const { clp, apiUsd } = sumCurrentValueClpUsd(accountRows, showUsd);
+      const isGroup = child.account_id == null;
+      const serverMetrics = isGroup ? requireNavCardMetrics(dash, child) : null;
+      const single = accountRows.length === 1 ? accountRows[0]! : null;
       return {
         child,
         label: resolveNavTreeLabel(child),
         routePath: child.route_path?.trim() ?? "",
         clp,
         apiUsd,
-        metricsByPeriod: cardGroupMetricsByPeriodFromAccounts(accountRows),
-        single: accountRows.length === 1 ? accountRows[0] : null,
+        metricsByPeriod: serverMetrics
+          ? serverMetrics.child
+          : cardGroupMetricsByPeriodFromAccounts(accountRows),
+        pct: (slice: PeriodSlice, usd: boolean) => {
+          if (!serverMetrics) return accountRowPct(single, slice, usd);
+          const v = serverMetrics.row_pct[slice][usd ? "usd" : "clp"];
+          return v != null && Number.isFinite(v) ? v : null;
+        },
         fxMissing: showUsd && accountRows.some((r) => r.fx_missing),
         syncStale: accountRows.length > 0 && accountRows.every((r) => r.sync_stale === true),
       };
@@ -146,7 +159,7 @@ export function PortfolioNavAccountsSummaryTable({
   return (
     <Table header={header} tableClassName="table--parallel-mobile table--accounts-summary">
       {rows.map((row) => {
-        const { metricsByPeriod, single } = row;
+        const { metricsByPeriod } = row;
         const lifetime = metricsByPeriod.month;
         const cardSlug = `nav-acc-table-${row.child.slug}-${row.child.node_id}`;
         const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, showUsd);
@@ -207,7 +220,7 @@ export function PortfolioNavAccountsSummaryTable({
         };
         /** `▲1xx.xxx (2,68%)` — P/L with the flow-adjusted period % as a parenthetical. */
         const plLine = (slice: PeriodSlice, variant: CellVariant) => {
-          const pct = rowPct(single, slice, showUsd);
+          const pct = row.pct(slice, showUsd);
           return (
             <span style={{ display: "inline-flex", alignItems: "baseline", gap: "0.3rem" }}>
               <span title={labels.pl[slice]}>

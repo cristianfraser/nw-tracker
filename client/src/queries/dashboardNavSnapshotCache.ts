@@ -39,15 +39,17 @@ export function hasDashboardNavSnapshotCache(unit: DisplayUnit): boolean {
  * Bump when cached snapshot shape changes (v5 adds `card_metrics_by_slug`; v6 extends it
  * with the liabilities nav-tree entries — v5 caches lack them and crash the Pasivos strip;
  * v7 adds the `day` period variant + day title deltas; v8 drops `title_delta` — cards
- * render all three period rows and no title Δ chip).
+ * render all three period rows and no title Δ chip; v9 adds `row_pct` — a bucket listed in
+ * its parent's accounts table reads its % from it).
  */
-const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v8";
+const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v9";
 const LEGACY_STORAGE_PREFIXES = [
   "nw:dashboard-nav-snapshot-v3",
   "nw:dashboard-nav-snapshot-v4",
   "nw:dashboard-nav-snapshot-v5",
   "nw:dashboard-nav-snapshot-v6",
   "nw:dashboard-nav-snapshot-v7",
+  "nw:dashboard-nav-snapshot-v8",
 ];
 
 /** Strip full dashboard totals to nav-snapshot bucket fields (server canonical card headers). */

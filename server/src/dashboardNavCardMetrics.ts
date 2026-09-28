@@ -21,6 +21,8 @@ import {
   resolveDashboardBucketFromNavNode as resolveDashboardBucketSlugFromNavNode,
 } from "./groupChartBuckets.js";
 import type { NavTreeNodeDto } from "./navTree.js";
+import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
+import type { TsUnit } from "./valuationTimeseries.js";
 
 export type CardMetricsPeriod = "day" | "month" | "year";
 
@@ -42,9 +44,18 @@ export type NavCardMetricsVariantDto = {
   year: CardPeriodMetricsDto;
 };
 
+/** A flow-adjusted % in both units (null = no capital base, or the unit's legs are missing). */
+export type NavCardPctDto = { clp: number | null; usd: number | null };
+
 export type NavCardMetricsDto = {
   child: NavCardMetricsVariantDto;
   parent: NavCardMetricsVariantDto;
+  /**
+   * The node's return as ONE row of its parent's accounts table (a bucket listed beside
+   * accounts — Portafolio IPSA among Acciones' stocks): over the child-variant scope, with
+   * each emptied member's withdrawal charged at the period end (`groupStartFrameFlow`).
+   */
+  row_pct: Record<CardMetricsPeriod | "total", NavCardPctDto>;
 };
 
 /** Narrow row view — the fields card metrics read from `DashboardAccountStats`. */
@@ -75,6 +86,12 @@ export type CardMetricsAccountRow = Pick<
   | "delta_day_usd"
   | "current_value_clp"
   | "current_value_usd"
+  | "prior_day_close_clp"
+  | "prior_day_close_usd"
+  | "prior_month_close_clp"
+  | "prior_month_close_usd"
+  | "prior_year_close_clp"
+  | "prior_year_close_usd"
 >;
 
 const DASHBOARD_NW_BUCKET_SLUGS = ["real_estate", "retirement", "brokerage", "cash_eqs"] as const;
@@ -312,6 +329,69 @@ function bucketCardMetrics(
     };
   }
   return base;
+}
+
+/* ------------------------------------ row % ------------------------------------- */
+
+type PctLegs = {
+  delta: number | null | undefined;
+  prior: number | null | undefined;
+  flow: number | null | undefined;
+  close: number | null | undefined;
+};
+
+/** Group flow-adjusted % over member legs (the account rule, zero closes carried per member). */
+function groupPctFromLegs(legs: readonly PctLegs[], withPrior: boolean, unit: TsUnit): number | null {
+  if (legs.length === 0) return null;
+  let nominal = 0;
+  let prior = 0;
+  let flow = 0;
+  let close = 0;
+  let endCharged = 0;
+  let anyPrior = false;
+  for (const l of legs) {
+    if (l.delta == null || !Number.isFinite(l.delta)) return null;
+    if (l.close == null || !Number.isFinite(l.close)) return null;
+    const f = l.flow != null && Number.isFinite(l.flow) ? l.flow : 0;
+    nominal += l.delta;
+    close += l.close;
+    flow += f;
+    endCharged += endChargedFlow(f, l.close, unit);
+    if (withPrior && l.prior != null && Number.isFinite(l.prior)) {
+      prior += l.prior;
+      anyPrior = true;
+    }
+  }
+  return flowAdjustedPct(nominal, anyPrior ? prior : null, groupStartFrameFlow(flow, endCharged), close, unit);
+}
+
+function rowPctForRows(rows: readonly CardMetricsAccountRow[]): NavCardMetricsDto["row_pct"] {
+  const both = (clp: PctLegs[], usd: PctLegs[], withPrior: boolean): NavCardPctDto => ({
+    clp: groupPctFromLegs(clp, withPrior, "clp"),
+    usd: groupPctFromLegs(usd, withPrior, "usd"),
+  });
+  return {
+    day: both(
+      rows.map((r) => ({ delta: r.delta_day_clp, prior: r.prior_day_close_clp, flow: r.deposits_day_clp, close: r.current_value_clp })),
+      rows.map((r) => ({ delta: r.delta_day_usd, prior: r.prior_day_close_usd, flow: r.deposits_day_usd, close: r.current_value_usd })),
+      true
+    ),
+    month: both(
+      rows.map((r) => ({ delta: r.delta_month_clp, prior: r.prior_month_close_clp, flow: r.deposits_month_clp, close: r.current_value_clp })),
+      rows.map((r) => ({ delta: r.delta_month_usd, prior: r.prior_month_close_usd, flow: r.deposits_month_usd, close: r.current_value_usd })),
+      true
+    ),
+    year: both(
+      rows.map((r) => ({ delta: r.delta_year_clp, prior: r.prior_year_close_clp, flow: r.deposits_year_clp, close: r.current_value_clp })),
+      rows.map((r) => ({ delta: r.delta_year_usd, prior: r.prior_year_close_usd, flow: r.deposits_year_usd, close: r.current_value_usd })),
+      true
+    ),
+    total: both(
+      rows.map((r) => ({ delta: r.delta_total_clp, prior: null, flow: r.deposits_clp, close: r.current_value_clp })),
+      rows.map((r) => ({ delta: r.delta_total_usd, prior: null, flow: r.deposits_usd, close: r.current_value_usd })),
+      false
+    ),
+  };
 }
 
 /* ------------------------------- nav-node helpers --------------------------------- */
@@ -558,6 +638,7 @@ export function buildNavCardMetricsBySlug(
       out[node.slug] = {
         child: childBySlug.get(node.slug)!,
         parent: parentVariantForNode(node, input, childBySlug),
+        row_pct: rowPctForRows(stripMetricsRows(node, input.rows)),
       };
     }
   }

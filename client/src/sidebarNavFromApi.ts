@@ -55,10 +55,20 @@ export function visibleNavChildren(dtos: NavTreeNodeDto[]): NavTreeNodeDto[] {
   return dtos.filter((c) => c.chart_inactive !== true);
 }
 
-function mapNode(dto: NavTreeNodeDto): SidebarNavNode {
-  const visible = visibleNavChildren(dto.children);
+/**
+ * `asLeaf`: a sub-bucket listed beside accounts (Portafolio IPSA among Acciones' stocks) shows
+ * as one entry in the seeded order, not expanded — its accounts are on its own page.
+ */
+function mapNode(dto: NavTreeNodeDto, asLeaf = false): SidebarNavNode {
+  const visible = asLeaf ? [] : visibleNavChildren(dto.children);
+  const mixed =
+    visible.some((c) => c.account_id != null) && visible.some((c) => c.account_id == null);
   const childDtos =
-    visible.length > 0 ? sortNavTreeLeavesFirst(visible).map(mapNode) : undefined;
+    visible.length === 0
+      ? undefined
+      : mixed
+        ? visible.map((c) => mapNode(c, c.account_id == null))
+        : sortNavTreeLeavesFirst(visible).map((c) => mapNode(c));
   const children = childDtos && childDtos.length > 0 ? childDtos : undefined;
   return {
     id: dto.node_id,

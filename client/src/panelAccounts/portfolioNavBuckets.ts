@@ -1,7 +1,11 @@
 import { navAccountIdSet } from "../portfolioNavDashboardCards";
 import type { NavTreeNodeDto } from "../types";
 
-/** Leaf portfolio groups (no group children) under net worth — any is a valid home for a new account. */
+/**
+ * Portfolio groups under net worth that take accounts: no group children, or accounts already
+ * beside them (Acciones: its stocks beside Portafolio IPSA). A hub of sub-buckets only never
+ * links its own accounts. Same rule as the server (`resolveBucketParentAssetSlug`).
+ */
 export function listLeafPortfolioGroupBuckets(
   netWorthRoot: NavTreeNodeDto | null
 ): { slug: string; label: string; portfolio_group_id: number }[] {
@@ -12,7 +16,8 @@ export function listLeafPortfolioGroupBuckets(
       const hasGroupChild = node.children.some(
         (c) => c.portfolio_group_id != null && c.account_id == null
       );
-      if (!hasGroupChild) {
+      const hasAccountChild = node.children.some((c) => c.account_id != null);
+      if (!hasGroupChild || hasAccountChild) {
         out.push({
           slug: node.slug,
           label: node.label,

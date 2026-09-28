@@ -133,6 +133,11 @@ export interface NavCardMetricsVariantDto {
 export interface NavCardMetricsDto {
   child: NavCardMetricsVariantDto;
   parent: NavCardMetricsVariantDto;
+  /**
+   * The node's flow-adjusted return as one row of its parent's accounts table (a bucket
+   * listed beside accounts — Portafolio IPSA among Acciones' stocks), per period and unit.
+   */
+  row_pct: Record<"day" | "month" | "year" | "total", { clp: number | null; usd: number | null }>;
 }
 
 export interface DashboardResponse {

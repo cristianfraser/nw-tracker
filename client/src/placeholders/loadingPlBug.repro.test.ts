@@ -110,7 +110,7 @@ describe("loading PL placeholder repro", () => {
           year: { ...buckets, net_worth_clp: 30_000_000, retirement_clp: 30_000_000 },
         },
       },
-      card_metrics_by_slug: { retirement: { child: variant, parent: variant } },
+      card_metrics_by_slug: { retirement: { child: variant, parent: variant, row_pct: { day: { clp: null, usd: null }, month: { clp: null, usd: null }, year: { clp: null, usd: null }, total: { clp: null, usd: null } } } },
     };
     const perturbed = perturbDashboardNavSnapshot(raw);
     const dash = dashPickForNavStrip({ ...perturbed, overviewPoints: [] });

@@ -7,7 +7,11 @@ import { clearAggregationCache } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { buildPanelAccountNotes, buildPanelCashAccountNotes } from "./panelAccountNotes.js";
-import { portfolioGroupBySlug, portfolioGroupHasChildGroupItems } from "./portfolioGroupTree.js";
+import {
+  portfolioGroupBySlug,
+  portfolioGroupHasAccountItems,
+  portfolioGroupHasChildGroupItems,
+} from "./portfolioGroupTree.js";
 import { prettyRgbTripletForAccountId } from "./chartColorRgb.js";
 import { reseedAccountSyncSources } from "./accountSyncSources.js";
 import { seedNavTree } from "./seedNavTree.js";
@@ -62,11 +66,12 @@ function resolveBucketParentAssetSlug(bucketSlug: string, verb: "create" | "move
   if (pg.group_kind === "liability_group") {
     fail(400, `cannot ${verb} accounts under a liability bucket`);
   }
-  // Buckets hold sub-buckets XOR accounts: only leaf buckets (no group-like items) take
-  // accounts. The client picker already filters to leaves; this closes the API path (an
-  // account filed under e.g. `brokerage` would never be linked into the nav and would be
-  // silently missing from bucket totals).
-  if (portfolioGroupHasChildGroupItems(pg.id)) {
+  // A bucket takes accounts when it holds no sub-buckets or already holds accounts beside
+  // them (Acciones: its stocks beside Portafolio IPSA) — those are the buckets whose seed links
+  // their own leaf asset groups. A hub of sub-buckets only (e.g. `brokerage`) never links its
+  // own leaves, so an account filed there would be missing from the nav and every total. The
+  // client picker applies the same rule; this closes the API path.
+  if (portfolioGroupHasChildGroupItems(pg.id) && !portfolioGroupHasAccountItems(pg.id)) {
     fail(400, `cannot ${verb} accounts under bucket ${bucketSlug}: it contains sub-buckets`);
   }
   const parentAssetSlug = (pg.asset_group_slug ?? "").trim() || bucketSlug;

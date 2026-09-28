@@ -96,6 +96,7 @@ function cardMetricsEntryFixture(partial?: {
   return {
     child: cardMetricsVariantFixture(partial?.child),
     parent: cardMetricsVariantFixture(partial?.parent),
+    row_pct: { day: { clp: null, usd: null }, month: { clp: null, usd: null }, year: { clp: null, usd: null }, total: { clp: null, usd: null } },
   };
 }
 
