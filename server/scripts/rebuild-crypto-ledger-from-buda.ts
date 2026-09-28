@@ -612,11 +612,10 @@ function planCoinRows(rows: readonly BudaRow[], facts: Facts): Plan {
 // ── ledger math (same rules as cryptoValuation / accountDeposits for single-leg rows) ─────
 type LedgerRow = { occurred_on: string; amount: number; units: number; countsAsFlow: boolean };
 
-/** accountDeposits' rule for a single-leg row: P/L kinds, zero amounts and coin-only notes are not capital. */
-function countsAsCapitalFlow(amount: number, flowKind: string | null, note: string | null): boolean {
+/** accountDeposits' rule for a single-leg row: P/L kinds and zero amounts are not capital. */
+function countsAsCapitalFlow(amount: number, flowKind: string | null): boolean {
   if (flowKind === "cash_fee" || flowKind === "savings_earnings") return false;
-  if (amount === 0) return false;
-  return !(note ?? "").includes("cripto-coin-only-wdw");
+  return amount !== 0;
 }
 
 function unitsThrough(rows: readonly LedgerRow[], ymd: string): number {
@@ -807,7 +806,7 @@ function main(): void {
       occurred_on: m.occurred_on,
       amount: m.amount,
       units: m.units_delta ?? 0,
-      countsAsFlow: countsAsCapitalFlow(m.amount, m.flow_kind, m.note),
+      countsAsFlow: countsAsCapitalFlow(m.amount, m.flow_kind),
     }));
   const afterRows = (c: Coin): LedgerRow[] =>
     planned
@@ -816,7 +815,7 @@ function main(): void {
         occurred_on: p.occurred_on,
         amount: p.amount,
         units: nanoToNumber(p.unitsNano),
-        countsAsFlow: countsAsCapitalFlow(p.amount, p.flowKind, p.note),
+        countsAsFlow: countsAsCapitalFlow(p.amount, p.flowKind),
       }));
 
   for (const c of COINS) {
@@ -913,7 +912,7 @@ function main(): void {
       // The app's own deposit timeline must see exactly the planned capital flows — nothing for
       // the unit-only rows.
       const want = planned
-        .filter((p) => p.coin === c && countsAsCapitalFlow(p.amount, p.flowKind, p.note))
+        .filter((p) => p.coin === c && countsAsCapitalFlow(p.amount, p.flowKind))
         .map((p) => `${p.occurred_on}|${p.amount}`)
         .sort();
       const got = getMergedDepositInflowEventsForAccount(id)

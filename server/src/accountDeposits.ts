@@ -113,7 +113,6 @@ function loadMovementSignedFlowEvents(
     if (r.flow_kind != null && BROKERAGE_NON_CASH_FLOW_KINDS.has(r.flow_kind)) continue;
     if (r.flow_kind === SAVINGS_EARNINGS_FLOW_KIND || r.flow_kind === CASH_FEE_FLOW_KIND) continue;
     if (personalOnly && !movementCountsAsPersonalDeposit(r.flow_kind)) continue;
-    if (r.note?.includes("cripto-coin-only-wdw")) continue;
     const amt = movementClpLegOrZero(r);
     if (amt === 0 || !Number.isFinite(amt)) continue;
     if (!map.has(r.account_id)) map.set(r.account_id, []);

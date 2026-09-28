@@ -53,7 +53,6 @@ function mapMovementRows(accountId: number, rows: MovementTransferRow[]): Accoun
   const mapped = rows.map((r) => {
     const counterpartId = counterpartAccountIdFor(r, accountId);
     const flow_type = movementFlowTypeFromRow({
-      note: r.note,
       signed_clp_delta: signedClpDeltaForAccountMovement(r, accountId),
       flow_kind: r.flow_kind,
       transfer_direction: transferDirectionForAccount(r, accountId),
