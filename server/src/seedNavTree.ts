@@ -262,6 +262,26 @@ function rebuildBrokerageNav() {
     linkGroup("brokerage", slug, sort);
     linkAccountsByAssetGroup(slug, slug, 0);
   }
+  // Data-defined buckets: any other brokerage bucket backed by its own asset group — a
+  // managed portfolio unit (holding + the caja its fee is charged from, migration 190) —
+  // links its accounts the same way. Its members' leaves sit under its asset group, so
+  // they have already left the class buckets above.
+  const fixed = new Set(buckets.map(([slug]) => slug));
+  const dataBuckets = db
+    .prepare(
+      `SELECT slug, sort_order, asset_group_slug FROM portfolio_groups
+       WHERE parent_id = ? AND group_kind = 'bucket' AND asset_group_slug IS NOT NULL
+       ORDER BY sort_order, id`
+    )
+    .all(brkId) as { slug: string; sort_order: number; asset_group_slug: string }[];
+  for (const b of dataBuckets) {
+    if (fixed.has(b.slug)) continue;
+    const gid = (groupIdBySlug.get(b.slug) as { id: number }).id;
+    deleteGroupItems.run(gid);
+    if (!assetGroupSubtreeHasAccounts(b.asset_group_slug)) continue;
+    linkGroup("brokerage", b.slug, b.sort_order);
+    linkAccountsByAssetGroup(b.slug, b.asset_group_slug, 0);
+  }
 }
 
 /** Idempotent full sidebar + inversiones nav tree (matches legacy layout). */
