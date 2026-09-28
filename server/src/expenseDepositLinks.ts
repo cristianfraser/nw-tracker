@@ -221,6 +221,30 @@ function findDepositMovement(
   );
 }
 
+/**
+ * The deposit movement an auto-match segment names. A segment carrying the movement id (the
+ * matcher claims each deposit movement on its own, so twin deposits — same account, day and pesos —
+ * go to different outflows) resolves to that row; it must still be a deposit of the segment's
+ * account, day and pesos, or the segment names nothing (a note saved with a since-changed row).
+ * Notes written before the id was carried resolve by account, day and pesos, as they always did.
+ */
+function findDepositMovementForSegment(segment: ParsedDepositMatchSegment): DepositMovementRow | null {
+  if (segment.movement_id == null) {
+    return findDepositMovement(segment.account_id, segment.occurred_on, segment.amount_clp);
+  }
+  const row = db
+    .prepare(
+      `SELECT id, account_id, note, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, occurred_on
+       FROM movements WHERE id = ?`
+    )
+    .get(segment.movement_id) as (DepositMovementRow & { account_id: number | null }) | undefined;
+  if (row == null) return null;
+  if (row.account_id !== segment.account_id || row.occurred_on !== segment.occurred_on) return null;
+  const clp = Math.round(movementClpLegOrZero(row));
+  if (clp <= 0 || clp !== Math.round(segment.amount_clp)) return null;
+  return row;
+}
+
 function findPropertyDepositForSheetRow(
   sheet: DeptoMortgageSheetRow
 ): (DepositMovementRow & { account_id: number }) | null {
@@ -325,7 +349,7 @@ function resolveAmortizationForSegment(
   depto_occurred_on: string;
   movement_id: number;
 } | null {
-  const movement = findDepositMovement(segment.account_id, segment.occurred_on, segment.amount_clp);
+  const movement = findDepositMovementForSegment(segment);
   if (movement == null) return null;
   const amort = resolveAmortizationForDepositMovement(movement);
   if (amort == null) return null;
@@ -549,7 +573,7 @@ export function tryAutoLinkExpenseDepositLine(line: {
     if (depositAccountDashboardGroup(seg.account_id) === "real_estate") continue;
     let movement: ReturnType<typeof findDepositMovement>;
     try {
-      movement = findDepositMovement(seg.account_id, seg.occurred_on, seg.amount_clp);
+      movement = findDepositMovementForSegment(seg);
     } catch {
       continue;
     }

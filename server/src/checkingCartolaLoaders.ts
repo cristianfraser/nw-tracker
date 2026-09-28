@@ -5,7 +5,6 @@
  */
 import { accountBucketKindSlug } from "./accountBucket.js";
 import {
-  loadMergedDepositInflowEventsBankDated,
   loadMergedDepositInflowEventsBankDatedWithTransferCounter,
   type DepositInflowEventWithCounter,
 } from "./accountDeposits.js";
@@ -42,7 +41,53 @@ export type DepositMatchCandidate = {
   account_id: number;
   category_slug: string;
   group_slug: string;
+  /**
+   * The deposit's own identity — one outflow claims it, never two, and two twin deposits (same
+   * account, day and pesos) are two claims. `<account>|<event key>` from the merged deposit timeline.
+   */
+  claim_key: string;
+  /** The movement row the deposit is, when it is a movement on the account (not a transfer leg). */
+  movement_id: number | null;
 };
+
+/** Claim identity + movement row of a merged deposit event (see {@link DepositMatchCandidate}). */
+export function depositEventClaimIdentity(
+  accountId: number,
+  e: Pick<DepositInflowEventWithCounter, "event_key">
+): { claim_key: string; movement_id: number | null } {
+  if (e.event_key == null) {
+    throw new Error(`deposit event on account ${accountId} carries no event key`);
+  }
+  const m = /^m:(\d+)$/.exec(e.event_key);
+  return { claim_key: `${accountId}|${e.event_key}`, movement_id: m ? Number(m[1]) : null };
+}
+
+/**
+ * One candidate per claim key. The cuenta vista's own credits are loaded twice (as a deposit-flow
+ * account and as an internal-transfer target) with identical fields; any other repeat, or a repeat
+ * that disagrees, is a loader bug.
+ */
+function uniqueDepositCandidatesByClaimKey(candidates: readonly DepositMatchCandidate[]): DepositMatchCandidate[] {
+  const byKey = new Map<string, DepositMatchCandidate>();
+  const out: DepositMatchCandidate[] = [];
+  for (const c of candidates) {
+    const prev = byKey.get(c.claim_key);
+    if (prev == null) {
+      byKey.set(c.claim_key, c);
+      out.push(c);
+      continue;
+    }
+    if (
+      prev.occurred_on !== c.occurred_on ||
+      prev.amount_clp !== c.amount_clp ||
+      prev.category_slug !== c.category_slug ||
+      prev.group_slug !== c.group_slug
+    ) {
+      throw new Error(`deposit claim key ${c.claim_key} loaded twice with different fields`);
+    }
+  }
+  return out;
+}
 
 export function loadCheckingCartolaCredits(accountId: number): CheckingCartolaCredit[] {
   return db
@@ -187,7 +232,7 @@ export function loadNetWorthCapitalOutflowCandidates(): DepositMatchCandidate[] 
   const metaById = new Map(
     accounts.map((a) => [a.account_id, { category_slug: a.category_slug, group_slug: a.group_slug }])
   );
-  const byAccount = loadMergedDepositInflowEventsBankDated(ids);
+  const byAccount = loadMergedDepositInflowEventsBankDatedWithTransferCounter(ids);
   const out: DepositMatchCandidate[] = [];
   for (const [accountId, events] of byAccount) {
     const meta = metaById.get(accountId);
@@ -200,6 +245,7 @@ export function loadNetWorthCapitalOutflowCandidates(): DepositMatchCandidate[] 
         account_id: accountId,
         category_slug: meta.category_slug,
         group_slug: meta.group_slug,
+        ...depositEventClaimIdentity(accountId, e),
       });
     }
   }
@@ -250,6 +296,7 @@ function loadCuentaVistaInternalTransferCredits(checkingIds: ReadonlySet<number>
       account_id: vistaId,
       category_slug: "cuenta_vista",
       group_slug: CHECKING_GASTOS_CASH_GROUP,
+      ...depositEventClaimIdentity(vistaId, e),
     }));
 }
 
@@ -289,8 +336,9 @@ export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
         account_id: accountId,
         category_slug,
         group_slug,
+        ...depositEventClaimIdentity(accountId, e),
       });
     }
   }
-  return [...out, ...loadCuentaVistaInternalTransferCredits(checkingIds)];
+  return uniqueDepositCandidatesByClaimKey([...out, ...loadCuentaVistaInternalTransferCredits(checkingIds)]);
 }

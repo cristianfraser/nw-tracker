@@ -225,8 +225,15 @@ function loadTransferLegSignedFlowEvents(
  */
 type EventDating = "display" | "bank";
 
-/** A merged deposit event plus, for a transfer leg, the transfer's other endpoint. */
-export type DepositInflowEventWithCounter = DepositInflowEvent & { transfer_counter_account_id?: number };
+/**
+ * A merged deposit event plus its identity within the account's timeline (`event_key`: `m:<id>` for
+ * a movement row on the account, `t:<id>:<endpoint>` for a transfer leg, the capital-flow keys for
+ * equity / USD-cash events) and, for a transfer leg, the transfer's other endpoint.
+ */
+export type DepositInflowEventWithCounter = DepositInflowEvent & {
+  event_key?: string;
+  transfer_counter_account_id?: number;
+};
 
 function buildMergedDepositMap(
   accountIds: number[],
@@ -279,6 +286,7 @@ function buildMergedDepositMap(
           ...(forward ? { posted_on: f.occurred_on } : {}),
           ...(f.amt_usd != null && Number.isFinite(f.amt_usd) ? { amt_usd: f.amt_usd } : {}),
           ...(f.capital_kind ? { capital_kind: f.capital_kind } : {}),
+          ...(withTransferCounter ? { event_key: f.tie } : {}),
           ...(withTransferCounter && f.counter_account_id != null
             ? { transfer_counter_account_id: f.counter_account_id }
             : {}),

@@ -13,6 +13,7 @@ describe("ccExpenseDepositMatchNotes", () => {
     account_id: 41,
     category_slug: "cuenta_vista",
     group_slug: "cash_eqs",
+    movement_id: null,
   };
 
   it("formats and parses auto deposit match notes", () => {
@@ -20,7 +21,7 @@ describe("ccExpenseDepositMatchNotes", () => {
     expect(note).toBe("auto:deposit-match|acct:41|date:2017-11-27|amt:30000");
     expect(isAutoDepositMatchedPurchaseNote(note)).toBe(true);
     expect(parseAutoDepositMatchNote(note)).toEqual([
-      { account_id: 41, occurred_on: "2017-11-27", amount_clp: 30_000 },
+      { account_id: 41, occurred_on: "2017-11-27", amount_clp: 30_000, movement_id: null },
     ]);
   });
 
