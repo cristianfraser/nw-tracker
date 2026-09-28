@@ -286,6 +286,17 @@ function main() {
         billingSnapshots = merged.ledger.billingSnapshots;
         purchaseUpserts = merged.ledger.purchaseUpserts;
         paymentUpserts = merged.ledger.paymentUpserts;
+        const rk = merged.expense_line_rekey;
+        const rkMoved = Object.values(rk.moved).reduce((a, b) => a + b, 0);
+        if (rkMoved + rk.duplicates_removed + rk.conflicts.length + rk.unpaired.length > 0) {
+          console.log(
+            `# account ${accountId}: expense assignments carried to re-imported lines: ` +
+              `${JSON.stringify(rk.moved)}, duplicates removed ${rk.duplicates_removed}, ` +
+              `conflicts ${rk.conflicts.length}, unpaired ${rk.unpaired.length}`
+          );
+          for (const c of rk.conflicts) console.log(`#   conflict ${c.table} ${c.from} → ${c.to}: stored ${String(c.stored)} vs ${String(c.current)}`);
+          for (const u of rk.unpaired) console.log(`#   unpaired (${u.reason}) line ${u.lineId} ${u.parserRowId ?? ""}`);
+        }
       }
     } else {
       const chains = groupInstallmentLoanChains(accountRecords);
