@@ -82,6 +82,54 @@ function NotesCell({ p }: { p: { out: MirrorLegDto; in: MirrorLegDto } }) {
   );
 }
 
+type MirrorPairLegs = { out: MirrorLegDto; in: MirrorLegDto };
+
+/**
+ * The competing legs of an ambiguous pair: same amount, inside the pairing window. Same-day siblings
+ * cannot be told apart by amount and date, so the offered pair is only the first by id — read the
+ * notes and convert the right one.
+ */
+function AlternativesCell({
+  p,
+  disabled,
+  onPick,
+}: {
+  p: MirrorPairCandidate;
+  disabled: boolean;
+  onPick: (pair: MirrorPairLegs) => void;
+}) {
+  const { t } = useTranslation();
+  const alts = [
+    ...p.out_alternatives.map((a) => ({ alt: a, side: "out" as const })),
+    ...p.in_alternatives.map((a) => ({ alt: a, side: "in" as const })),
+  ];
+  if (alts.length === 0) return <span className="muted">—</span>;
+  return (
+    <>
+      {alts.map(({ alt, side }) => (
+        <div key={`${side}|${alt.leg.movement_id}`} style={{ marginBottom: "0.4em" }}>
+          <span className="muted">{t(side === "out" ? "mirrorPairs.altOut" : "mirrorPairs.altIn")}:</span>{" "}
+          {alt.leg.occurred_on} <AccountCell leg={alt.leg} />{" "}
+          <span className="muted" style={{ fontSize: "0.85em", overflowWrap: "anywhere" }}>
+            {alt.leg.note ?? "—"}
+          </span>{" "}
+          {alt.blocked ? (
+            <span className="muted">{t("mirrorPairs.blockedReasonCheckingStraddle")}</span>
+          ) : (
+            <Button
+              variant="secondary"
+              disabled={disabled}
+              onClick={() => onPick(side === "out" ? { out: alt.leg, in: p.in } : { out: p.out, in: alt.leg })}
+            >
+              {t("mirrorPairs.useAlternative")}
+            </Button>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
 function AmountCell({ p }: { p: { out: MirrorLegDto } }) {
   const units = p.out.units_delta;
   return (
@@ -100,7 +148,7 @@ export function MirrorPairsPanelPage() {
   const { data, error, isPending } = useMovementMirrorCandidates();
   const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
   const [confirmBatch, setConfirmBatch] = useState(false);
-  const [confirmSingle, setConfirmSingle] = useState<MirrorPairCandidate | null>(null);
+  const [confirmSingle, setConfirmSingle] = useState<MirrorPairLegs | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   // Conversion rewrites movements — balances, flows, reconciliation, and dashboards all shift.
@@ -290,6 +338,7 @@ export function MirrorPairsPanelPage() {
                 <th className="desktop-only">{t("mirrorPairs.colAmount")}</th>
                 <th className="desktop-only">{t("mirrorPairs.colFlags")}</th>
                 <th className="desktop-only">{t("mirrorPairs.colNotes")}</th>
+                <th className="desktop-only">{t("mirrorPairs.colAlternatives")}</th>
                 <th className="desktop-only">{t("mirrorPairs.colActions")}</th>
               </tr>
             </thead>
@@ -315,6 +364,9 @@ export function MirrorPairsPanelPage() {
               <td className="desktop-only">
                 <NotesCell p={p} />
               </td>
+              <td className="desktop-only">
+                <AlternativesCell p={p} disabled={busy} onPick={setConfirmSingle} />
+              </td>
               <td className="desktop-only">{rowActions(p)}</td>
               <td className="mobile-only">
                 <TableMobileCard
@@ -328,6 +380,10 @@ export function MirrorPairsPanelPage() {
                   <TableMobileCardRow label={t("mirrorPairs.colAmount")} value={<AmountCell p={p} />} />
                   <TableMobileCardRow label={t("mirrorPairs.colFlags")} value={<PairBadges p={p} />} />
                   <TableMobileCardRow label={t("mirrorPairs.colNotes")} value={<NotesCell p={p} />} />
+                  <TableMobileCardRow
+                    label={t("mirrorPairs.colAlternatives")}
+                    value={<AlternativesCell p={p} disabled={busy} onPick={setConfirmSingle} />}
+                  />
                   <TableMobileCardRow label={t("mirrorPairs.colActions")} value={rowActions(p)} />
                 </TableMobileCard>
               </td>

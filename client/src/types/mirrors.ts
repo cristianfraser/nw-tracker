@@ -10,6 +10,16 @@ export interface MirrorLegDto {
   note: string | null;
 }
 
+/** A leg that could take one side of an ambiguous pair instead of the offered one. */
+export interface MirrorPairAlternative {
+  leg: MirrorLegDto;
+  gap_days: number;
+  within_business_day_window: boolean;
+  month_straddle: boolean;
+  blocked: boolean;
+  blocked_reason: "checking_inflow_month_straddle" | null;
+}
+
 export interface MirrorPairCandidate {
   out: MirrorLegDto;
   in: MirrorLegDto;
@@ -22,6 +32,9 @@ export interface MirrorPairCandidate {
   linked: boolean;
   out_candidate_count: number;
   in_candidate_count: number;
+  /** Other outflows that could pair with this inflow, and other inflows for this outflow. */
+  out_alternatives: MirrorPairAlternative[];
+  in_alternatives: MirrorPairAlternative[];
   confidence: "high" | "ambiguous";
   blocked: boolean;
   blocked_reason: "checking_inflow_month_straddle" | null;
