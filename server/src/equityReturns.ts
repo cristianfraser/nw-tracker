@@ -7,7 +7,6 @@
  * Total return = value − deposited.
  */
 
-import { MONTH_ROW_EPS } from "./accountPerformanceMonthPick.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { db } from "./db.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
@@ -64,7 +63,7 @@ export function equityReturnSnapshot(
     null,
     depositedClp,
     valueClp,
-    MONTH_ROW_EPS
+    "clp"
   );
   return {
     dividends_clp: totalDividendsClpForAccount(accountId),

@@ -24,7 +24,6 @@ import {
 } from "./flowsDeposits.js";
 import { getAccountPositionMeta, type AccountPositionMeta } from "./accountPosition.js";
 import { flowAdjustedPct } from "./periodReturns.js";
-import { MONTH_ROW_EPS } from "./accountPerformanceMonthPick.js";
 import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
@@ -220,35 +219,40 @@ function dashboardRowPeriodPcts(
   row: DashboardAccountStats,
   includeUsd: boolean
 ): Partial<DashboardAccountStats> {
-  const pct = (
-    delta: number | null | undefined,
-    prior: number | null | undefined,
-    flow: number | null | undefined,
-    close: number | null | undefined
-  ) => flowAdjustedPct(delta ?? null, prior ?? null, flow ?? 0, close ?? null, MONTH_ROW_EPS);
+  const pctIn =
+    (unit: TsUnit) =>
+    (
+      delta: number | null | undefined,
+      prior: number | null | undefined,
+      flow: number | null | undefined,
+      close: number | null | undefined
+    ) =>
+      flowAdjustedPct(delta ?? null, prior ?? null, flow ?? 0, close ?? null, unit);
+  const pctClp = pctIn("clp");
+  const pctUsd = pctIn("usd");
   const clp = row.current_value_clp;
   const usd = row.current_value_usd;
   return {
-    pct_day_clp: pct(row.delta_day_clp, row.prior_day_close_clp, row.deposits_day_clp, clp),
-    pct_month_clp: pct(row.delta_month_clp, row.prior_month_close_clp, row.deposits_month_clp, clp),
-    pct_year_clp: pct(row.delta_year_clp, row.prior_year_close_clp, row.deposits_year_clp, clp),
-    pct_total_clp: pct(row.delta_total_clp, null, row.deposits_clp, clp),
+    pct_day_clp: pctClp(row.delta_day_clp, row.prior_day_close_clp, row.deposits_day_clp, clp),
+    pct_month_clp: pctClp(row.delta_month_clp, row.prior_month_close_clp, row.deposits_month_clp, clp),
+    pct_year_clp: pctClp(row.delta_year_clp, row.prior_year_close_clp, row.deposits_year_clp, clp),
+    pct_total_clp: pctClp(row.delta_total_clp, null, row.deposits_clp, clp),
     ...(includeUsd
       ? {
-          pct_day_usd: pct(row.delta_day_usd, row.prior_day_close_usd, row.deposits_day_usd, usd),
-          pct_month_usd: pct(
+          pct_day_usd: pctUsd(row.delta_day_usd, row.prior_day_close_usd, row.deposits_day_usd, usd),
+          pct_month_usd: pctUsd(
             row.delta_month_usd,
             row.prior_month_close_usd,
             row.deposits_month_usd,
             usd
           ),
-          pct_year_usd: pct(
+          pct_year_usd: pctUsd(
             row.delta_year_usd,
             row.prior_year_close_usd,
             row.deposits_year_usd,
             usd
           ),
-          pct_total_usd: pct(row.delta_total_usd, null, row.deposits_usd, usd),
+          pct_total_usd: pctUsd(row.delta_total_usd, null, row.deposits_usd, usd),
         }
       : {}),
   };

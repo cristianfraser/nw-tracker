@@ -23,8 +23,6 @@ import { convertTs, type TsUnit } from "./valuationTimeseries.js";
  * unavailable leg yields a null cell, never a fake 0%.
  */
 
-const RETURN_EPS = 1e-9;
-
 export type ShortHorizonAccountRef = {
   account_id: number;
   name?: string | null;
@@ -109,7 +107,8 @@ export function shortHorizonCellFromLegs(
   vEnd: number | null,
   vStart: number | null,
   flow: number,
-  startYmd: string | null
+  startYmd: string | null,
+  unit: TsUnit
 ): PeriodReturnCell {
   if (vEnd == null || vStart == null || !Number.isFinite(vEnd) || !Number.isFinite(vStart)) {
     return emptyCell(period, startYmd);
@@ -117,7 +116,7 @@ export function shortHorizonCellFromLegs(
   const nominal = vEnd - vStart - flow;
   return {
     period,
-    pct: flowAdjustedPct(nominal, vStart, flow, vEnd, RETURN_EPS),
+    pct: flowAdjustedPct(nominal, vStart, flow, vEnd, unit),
     nominal_pl: Number.isFinite(nominal) ? nominal : null,
     annualized_pct: null,
     months: 0,
@@ -146,7 +145,7 @@ function shortHorizonCell(
   }
   const flow = unit === "uf" ? convertTs(flowRaw, endYmd, "uf") : flowRaw;
 
-  return shortHorizonCellFromLegs(period, vEnd, vStart, flow, startYmd);
+  return shortHorizonCellFromLegs(period, vEnd, vStart, flow, startYmd, unit);
 }
 
 /** The 1D and 1W cells: today (live) vs yesterday / vs 7 calendar days ago. */

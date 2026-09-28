@@ -9,7 +9,7 @@ import {
   seriesAccountIdForGroupTab,
 } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
-import { MONTH_ROW_EPS, pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
+import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
 import { flowAdjustedPct } from "./periodReturns.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { flowEventInUnit, netDepositFlowCurrentMonthThroughToday } from "./flowsDeposits.js";
@@ -254,7 +254,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
         ? ccPerf.pct
         : isMortgage
           ? null
-          : flowAdjustedPct(nominal_pl, null, netFlow, close, MONTH_ROW_EPS);
+          : flowAdjustedPct(nominal_pl, null, netFlow, close, opts.unit);
     } else {
       prior_closing = prior;
       nominal_pl = isMortgage
@@ -266,7 +266,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
         ? liabilityPctMonth(nominal_pl, prior)
         : ccPerf
           ? ccPerf.pct
-          : flowAdjustedPct(nominal_pl, prior, netFlow, close, MONTH_ROW_EPS);
+          : flowAdjustedPct(nominal_pl, prior, netFlow, close, opts.unit);
     }
 
     out.push({
@@ -418,7 +418,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     ? ccPerf.pct
     : bucketKind === "mortgage"
       ? liabilityPctMonth(nominal, priorClose)
-      : flowAdjustedPct(nominal, priorClose, netFlow, live, MONTH_ROW_EPS);
+      : flowAdjustedPct(nominal, priorClose, netFlow, live, unit);
 
   const mortgageUfFields =
     bucketKind === "mortgage"
@@ -861,7 +861,7 @@ function buildAccountMonthlyPerformanceUncached(
         ? ccFirst.pct
         : isMortgage
           ? null
-          : flowAdjustedPct(nominalFirst, null, netFlowFirst, close, MONTH_ROW_EPS);
+          : flowAdjustedPct(nominalFirst, null, netFlowFirst, close, unit);
       ytdRun += nominalFirst;
       cumPl += nominalFirst;
       outAsc.push({
@@ -916,7 +916,7 @@ function buildAccountMonthlyPerformanceUncached(
       ? liabilityPctMonth(nominal, prevClose)
       : ccPerf
         ? ccPerf.pct
-        : flowAdjustedPct(nominal, prevClose, netFlow, close, MONTH_ROW_EPS);
+        : flowAdjustedPct(nominal, prevClose, netFlow, close, unit);
 
     const y = Number(String(p.as_of_date).slice(0, 4));
     if (!Number.isFinite(y)) {

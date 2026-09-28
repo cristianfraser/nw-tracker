@@ -8,9 +8,6 @@ export type MonthlyPerfPickRow = {
   nominal_pl: number | null;
 };
 
-/** Ignore float noise when comparing money fields (CLP or converted USD). */
-export const MONTH_ROW_EPS = 0.01;
-
 /**
  * Pick one row per calendar month when multiple snapshots exist (e.g. mid-month “today” + month-end).
  * In-progress month: latest row on or before Chile today. Closed months: latest `as_of_date` in the month

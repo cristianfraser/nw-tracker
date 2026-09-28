@@ -46,8 +46,6 @@ import { convertTs, type TsUnit } from "./valuationTimeseries.js";
  * inter-mark P/L.
  */
 
-const RETURN_EPS = 1e-9;
-
 /** Sanity bound on the day window (~20 years) — parameter validation, not a product cap. */
 export const DAILY_SERIES_MAX_DAYS = 7400;
 
@@ -488,7 +486,7 @@ export function getBucketDailySeries(
       prev,
       toUnit(flows[i - 1]! - liabilityFlows[i - 1]!),
       value,
-      RETURN_EPS
+      unit
     );
     points.push({
       as_of_date: ymd,

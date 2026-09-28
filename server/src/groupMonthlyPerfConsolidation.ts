@@ -77,7 +77,6 @@ export type ConsolidatedMonthlyPerfRow = {
   cumulative_nominal_pl: number | null;
 };
 
-const MONTH_ROW_EPS = 0.01;
 const GROUP_TAB_VAL_TOTAL = "__group_val_total";
 
 function recomputeYtdAndCumulative(
@@ -461,7 +460,7 @@ export function consolidateGroupMonthlyPerf(
       const net = bucket.net_capital_flow;
       /** Same definition as {@link getGroupMonthlyPerformanceSeries} `delta_total` (Σ per-account picked nominal_pl). */
       const nominal = bucket.nominal_pl;
-      const pct = flowAdjustedPct(nominal, prior ?? null, net, bucket.closing_value, MONTH_ROW_EPS);
+      const pct = flowAdjustedPct(nominal, prior ?? null, net, bucket.closing_value, unit);
       return { ...bucket, nominal_pl: nominal, pct_month: pct };
     });
 
