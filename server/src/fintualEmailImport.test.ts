@@ -338,6 +338,60 @@ describe("fintualEmailImport", () => {
     ).toBeNull();
   });
 
+  it("books a retiro to the Fintual balance as goal → Fintual CLP, never touching checking", () => {
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as
+      | { id: number }
+      | undefined;
+    if (!group) return;
+    const mk = (name: string, importKey: string): number => {
+      const existing = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(importKey) as
+        | { id: number }
+        | undefined;
+      if (existing) return existing.id;
+      db.prepare(
+        `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+         VALUES (?, ?, 0, datetime('now'), ?)`
+      ).run(group.id, name, importKey);
+      const id = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+      createdAccounts.push(id);
+      return id;
+    };
+    const goalId = mk("vitest Reserva Disp", "import:fintual|cert|key=vitest-reserva-disp");
+    const balanceId = mk("vitest Fintual CLP", "import:panel|kind=clp|key=fintual");
+
+    const email = classifyBrokerEmail({
+      message_id: `vitest-disp-${Date.now()}`,
+      sender: FINTUAL,
+      subject: "Pagamos tu retiro de 🏦 vitest Reserva Disp",
+      snippet:
+        "Pagamos tu retiro de $100.000 El martes 29 de septiembre a las 11:00 tus $100.000 pesos " +
+        "chilenos quedaron disponibles para invertir en Fintual. Se retiró de 🏦 vitest Reserva " +
+        "Disp : $100.000 desde Fondo Mutuo Very Conservative Streep Serie A, equivalente a 68,8876 cuotas .",
+      date: "2097-09-29T14:00:33Z",
+    });
+    const planned = planFintualEmailBatch([email]);
+    expect(planned[0]).toMatchObject({
+      from_account_id: goalId,
+      to_account_id: balanceId,
+      units_delta: "68.8876",
+      occurred_on: "2097-09-29",
+      requires_manual: null,
+      duplicate_of: null,
+    });
+    expect(planned[0]!.synthesized).toBeUndefined();
+    expect(planned[0]!.promote_movement_id).toBeUndefined();
+
+    expect(applyFintualEmailMovements(planned)).toBe(1);
+    const mov = db
+      .prepare(`SELECT id, to_account_id, amount, units_delta FROM movements WHERE from_account_id = ?`)
+      .get(goalId) as { id: number; to_account_id: number; amount: number; units_delta: number };
+    created.push(mov.id);
+    expect(mov).toMatchObject({ to_account_id: balanceId, amount: 100000 });
+    expect(mov.units_delta).toBeCloseTo(68.8876, 4);
+    // A later run finds it.
+    expect(planFintualEmailBatch([email])[0]!.duplicate_of).toBe(mov.id);
+  });
+
   /**
    * A retiro paid in the morning has no checking credit to promote until the nightly xlsx
    * import — the mail alone (exact amount, payment date, goal, cuota count) is enough to write

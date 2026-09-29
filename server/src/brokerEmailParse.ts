@@ -77,6 +77,12 @@ export type BrokerEmailEvent = {
    * Billetera» body prints the pesos the dollars were bought with («con tu depósito de $X»).
    */
   clp_amount: number | null;
+  /**
+   * Where a Fintual retiro's pesos went, as the mail says: «Se pagó a tu cuenta de banco» (the
+   * bank) or «quedaron disponibles para invertir en Fintual» (the Fintual balance, kept there up
+   * to 7 days before Fintual wires it back). Null when the mail says neither.
+   */
+  paid_to: "bank" | "fintual" | null;
   occurred_at: string;
   subject: string;
   /** IMAP Message-ID of the source mail (null for hand-built inputs). */
@@ -248,10 +254,18 @@ const FINTUAL_MATCHERS: Matcher[] = [
       // reduce the goal's cuota ledger. Only trusted when the body prints exactly ONE count: a
       // goal invested across several funds would print one per fund, and a single number would
       // be wrong for all of them.
-      const cuotas = [...snippet.matchAll(/\(([\d.,]+)\s*cuotas\)/gi)];
+      // Since 2026-09-29 a retiro to the Fintual balance prints it as «… Serie A, equivalente a
+      // 68,8876 cuotas .» instead.
+      const cuotas = [...snippet.matchAll(/(?:\(|equivalente a\s+)([\d.,]+)\s*cuotas\b/gi)];
+      const paidTo = /disponibles? para invertir en Fintual/i.test(snippet)
+        ? ("fintual" as const)
+        : /cuenta de banco|Destino Cuenta/i.test(snippet)
+          ? ("bank" as const)
+          : null;
       return {
         ...(body ? { amount: parseChileanNumber(body[1]!), currency: "clp" as const } : {}),
         ...(cuotas.length === 1 ? { units: decimalString(cuotas[0]![1]!) } : {}),
+        ...(paidTo ? { paid_to: paidTo } : {}),
       };
     },
   },
@@ -380,6 +394,7 @@ export function classifyBrokerEmail(input: BrokerEmailInput): BrokerEmailEvent {
     units: null,
     price: null,
     clp_amount: null,
+    paid_to: null,
     occurred_at: input.date,
     subject,
     message_id: input.message_id ?? null,
@@ -440,7 +455,8 @@ function eventRichness(e: BrokerEmailEvent): number {
     (e.gross_amount != null ? 1 : 0) +
     (e.clp_amount != null ? 1 : 0) +
     (e.units != null ? 1 : 0) +
-    (e.price != null ? 1 : 0)
+    (e.price != null ? 1 : 0) +
+    (e.paid_to != null ? 1 : 0)
   );
 }
 
