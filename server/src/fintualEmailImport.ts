@@ -39,6 +39,16 @@ import { syntheticRetiroMovementIdForMessageId } from "./fintualSyntheticRetiros
 export const EMAIL_MATCH_WINDOW_DAYS = 5;
 
 const FINTUAL_USD_IMPORT_KEY = "import:panel|kind=usd|key=fintual_usd";
+/** «Fintual CLP (Reserva)», the Efectivo account holding pesos a retiro left in Fintual. */
+const FINTUAL_CLP_BALANCE_IMPORT_KEY = "import:panel|kind=clp|key=fintual";
+
+export function fintualClpBalanceAccountId(): number {
+  const row = db
+    .prepare(`SELECT id FROM accounts WHERE import_key = ?`)
+    .get(FINTUAL_CLP_BALANCE_IMPORT_KEY) as { id: number } | undefined;
+  if (!row) throw new Error(`No account with import_key "${FINTUAL_CLP_BALANCE_IMPORT_KEY}"`);
+  return row.id;
+}
 
 export function fintualUsdAccountId(): number {
   const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(FINTUAL_USD_IMPORT_KEY) as
@@ -224,6 +234,25 @@ export function planFintualEmailMovement(
           requires_manual: goal
             ? `no Fintual goal account named "${goal}" — cannot tell which goal paid`
             : "cannot read the goal from the subject — link it in /panel/mirror-pairs",
+        };
+      }
+      // A retiro to the Fintual balance («quedaron disponibles para invertir en Fintual»,
+      // 2026-09-29): no bank leg exists yet, so the transfer lands in the Fintual CLP balance
+      // account, in Efectivo like the goal. If Fintual wires it back after 7 days, that
+      // «Devolvimos tu saldo» mail and its bank credit are a separate movement.
+      if (event.kind === "withdrawal_paid" && event.paid_to === "fintual") {
+        if (!event.units) {
+          return {
+            ...base,
+            requires_manual:
+              "the e-mail body does not name a single cuota count — enter the retiro by hand with its cuotas",
+          };
+        }
+        return {
+          ...base,
+          from_account_id: goalAccountId,
+          to_account_id: fintualClpBalanceAccountId(),
+          units_delta: event.units,
         };
       }
       // This exact mail already produced a synthesized transfer: the strongest possible

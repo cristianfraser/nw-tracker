@@ -268,6 +268,28 @@ describe("brokerEmailParse", () => {
     });
   });
 
+  it("reads a retiro to the Fintual balance: destination and «equivalente a N cuotas»", () => {
+    // The 2026-09-29 template: the pesos stay in Fintual for up to 7 days, and the cuota count
+    // is no longer in parentheses.
+    const paid = classifyBrokerEmail({
+      sender: FINTUAL,
+      subject: "Pagamos tu retiro de 🏦 Reserva",
+      snippet:
+        "Cristian pagamos tu retiro de 🏦 Reserva Hola Cristian Pagamos tu retiro de $100.000 El " +
+        "martes 29 de septiembre a las 11:00 tus $100.000 pesos chilenos quedaron disponibles para " +
+        "invertir en Fintual. Se retiró de 🏦 Reserva : $100.000 desde Fondo Mutuo Very " +
+        "Conservative Streep Serie A, equivalente a 68,8876 cuotas . Decide cómo lo quieres invertir.",
+      date: "2026-09-29T14:00:33Z",
+    });
+    expect(paid).toMatchObject({
+      kind: "withdrawal_paid",
+      is_complete: true,
+      amount: 100000,
+      units: "68.8876",
+      paid_to: "fintual",
+    });
+  });
+
   it("never asks to fetch a broker that has no fetcher", () => {
     // Fintual is e-mail-only. An incomplete notification there is for a human to look at —
     // reporting it as "needs fetch" would ask the runner to do something that does not exist.
