@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import i18n from "./i18n";
 import {
   breakdownForNavChild,
   dashboardRowsForNavSubtree,
@@ -712,5 +713,75 @@ describe("inactiveAccountNavLeavesWithActivity", () => {
     expect(
       inactiveAccountNavLeavesWithActivity(dash, parentWithLeaf, [])
     ).toEqual([]);
+  });
+});
+
+describe("breakdownForNavChild cash_eqs hub", () => {
+  /** The hub lists its buckets with their accounts nested, like every other card, zeros hidden. */
+  it("nests accounts under their buckets and pins the linked tarjeta line", () => {
+    const hub = navNodeFixture({
+      slug: "cash_eqs",
+      label: "Efectivo",
+      group_kind: "nav_bucket",
+      dashboard_bucket_slug: "cash_eqs",
+      route_path: "/cash_eqs",
+      children: [
+        navNodeFixture({
+          slug: "cash_savings",
+          label: "Ahorros y reservas",
+          asset_group_slug: "cash_eqs__cash_savings",
+          route_path: "/cash_eqs/savings",
+          portfolio_group_id: 7,
+          kind_slug: "cash_savings",
+          children: [leafAccount(1), leafAccount(2)],
+        }),
+        navNodeFixture({
+          slug: "checking_accounts",
+          label: "Cuentas corrientes",
+          asset_group_slug: "cash_eqs__checking_accounts",
+          route_path: "/cash_eqs/checking",
+          portfolio_group_id: 8,
+          kind_slug: "checking_accounts",
+          children: [leafAccount(3), leafAccount(4)],
+        }),
+      ],
+    });
+    const rows = [
+      dashRow(1, 2_000_000, "cash_eqs__fondo_reserva", "Reserva"),
+      dashRow(2, 0, "cash_eqs__fondo_reserva", "Fintual"),
+      dashRow(3, 300_000, "cash_eqs__cuenta_corriente", "Cuenta corriente"),
+      dashRow(4, 0, "cash_eqs__cuenta_vista", "Cuenta vista"),
+    ];
+    const br = breakdownForNavChild(hub, rows, {
+      liabilities_breakdown: undefined,
+      dashboard_layout: [
+        {
+          slug: "cash_eqs",
+          label: "Efectivo",
+          label_i18n_key: null,
+          sort_order: 40,
+          bucket_slug: "cash_eqs",
+          card_css: "cash",
+          route_path: "/cash_eqs",
+          linked_balances: [
+            {
+              slug: "credit_card",
+              label: "Tarjeta",
+              label_i18n_key: "liabilities.creditCard",
+              clp: 500_000,
+              route_path: "/liabilities/credit_card",
+            },
+          ],
+        },
+      ],
+    });
+    expect(br?.lines.map((l) => [l.label, l.depth, l.clp])).toEqual([
+      ["Ahorros y reservas", 0, 2_000_000],
+      ["Reserva", 1, 2_000_000],
+      ["Cuentas corrientes", 0, 300_000],
+      ["Cuenta corriente", 1, 300_000],
+    ]);
+    expect(br?.bottomLines?.map((l) => [l.label, l.clp])).toEqual([[i18n.t("liabilities.creditCard"), 500_000]]);
+    expect(br?.pinBottom).toBe(true);
   });
 });

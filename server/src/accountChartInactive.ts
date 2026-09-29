@@ -6,6 +6,8 @@ import {
   chartInactiveFromMonthlyClosingAsc,
 } from "./accountValuationTailInactive.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
+import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 
 export {
   CHART_TRAILING_ZERO_MONTHS_KEPT,
@@ -13,13 +15,20 @@ export {
   accountInactiveByValuationTail,
 } from "./accountValuationTailInactive.js";
 
-/** Month-end closes for tail-inactive detection (performance series, else stored valuations). */
+/**
+ * Month-end closes for tail-inactive detection (performance series, else stored valuations,
+ * else today's mark). Ledger cash (checking, cuenta vista, a fund's CLP buffer) has neither a
+ * perf series nor stored valuations; without the mark an emptied one read as active forever.
+ */
 function monthEndClosingAscForInactiveCheck(accountId: number): number[] {
   const perf = getAccountMonthlyPerformance(accountId, "clp");
   if (perf?.monthly.length) {
     return [...perf.monthly].reverse().map((r) => r.closing_value);
   }
-  return loadBookValuationsAsc(accountId).map((r) => r.value_clp);
+  const stored = loadBookValuationsAsc(accountId).map((r) => r.value_clp);
+  if (stored.length) return stored;
+  const mark = accountMarkClpAtYmd(accountId, chileCalendarTodayYmd());
+  return mark ? [mark.value_clp] : [];
 }
 
 /** Credit-card masters: never tail-inactive (installment projections + retired cards). */

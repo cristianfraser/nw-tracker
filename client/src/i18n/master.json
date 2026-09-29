@@ -215,20 +215,6 @@
       "es": "hipoteca"
     }
   },
-  "cash": {
-    "reserva": {
-      "en": "reserve",
-      "es": "reserva"
-    },
-    "checkingAccount": {
-      "en": "checking account",
-      "es": "cuenta corriente"
-    },
-    "cuentaVista": {
-      "en": "cuenta vista",
-      "es": "cuenta vista"
-    }
-  },
   "creditCardGroup": {
     "santander": {
       "en": "Santander",

@@ -163,10 +163,6 @@ function mortgageAccountForPropertyRow(
   return mortgages.length === 1 ? mortgages[0] : undefined;
 }
 
-function cashAccountPath(row: DashboardAccountRow): string {
-  return accountDetailPath(row.account_id);
-}
-
 export function cardGroupMetricsFromAccounts(
   rows: DashboardAccountRow[],
   period: CardGroupMetricsPeriod
@@ -446,39 +442,6 @@ export function buildRealEstateCardBreakdown(
     }
   }
   return lines;
-}
-
-const CASH_CATEGORY_KEYS: Record<string, string> = {
-  fondo_reserva: "cash.reserva",
-  cuenta_corriente: "cash.checkingAccount",
-  cuenta_vista: "cash.cuentaVista",
-};
-
-function cashBreakdownLabel(row: DashboardAccountRow): string {
-  if (row.category_slug && CASH_CATEGORY_KEYS[row.category_slug]) {
-    return i18n.t(CASH_CATEGORY_KEYS[row.category_slug]!);
-  }
-  return row.name;
-}
-
-function mapCashBreakdownLine(row: DashboardAccountRow): CardBreakdownLine {
-  return {
-    label: cashBreakdownLabel(row),
-    clp: row.current_value_clp ?? 0,
-    usd: row.current_value_usd ?? null,
-    to: cashAccountPath(row),
-    depth: 0,
-    ...accountLineMeta(row),
-  };
-}
-
-/** Cash hub / home card: checking + savings accounts. */
-export function buildCashEqsCardBreakdown(accounts: DashboardAccountRow[]): CardBreakdownLine[] {
-  const cash = valueRows(
-    accounts.filter((a) => accountBelongsToDashboardBucket(a, "cash_eqs")),
-    "cash_eqs"
-  );
-  return sortGroupsDesc(cash.map((r) => mapCashBreakdownLine(r)));
 }
 
 const LIABILITY_KEYS = {

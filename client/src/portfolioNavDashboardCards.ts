@@ -1,6 +1,5 @@
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals";
 import {
-  buildCashEqsCardBreakdown,
   buildLiabilitiesCardBreakdown,
   buildRealEstateCardBreakdown,
   dashboardBucketMainValue,
@@ -361,10 +360,6 @@ function breakdownByAssetGroup(
       return {
         lines: buildRealEstateCardBreakdown(rows, dash.accounts),
       };
-    case "cash_eqs": {
-      const lines = buildCashEqsCardBreakdown(rows);
-      return lines.length ? { lines } : null;
-    }
     case "liabilities": {
       const lb = dash.liabilities_breakdown;
       if (!lb) return null;
@@ -417,11 +412,12 @@ export function breakdownForNavChild(
 
   const bucket = resolveDashboardBucketFromNavNode(navChild);
   if (bucket === "cash_eqs" && navChild.slug === "cash_eqs") {
-    const byCash = breakdownByAssetGroup("cash_eqs", rows, dash);
+    // The hub lists its buckets like any other card; the linked card explains its CC-netted total.
+    const lines = buildNavCardBreakdown(navChild, rows) ?? [];
     const bottomLines = cashSavingsLinkedBottomLines(dash);
-    if (!byCash?.lines.length && !bottomLines?.length) return null;
+    if (!lines.length && !bottomLines?.length) return null;
     return {
-      lines: byCash?.lines ?? [],
+      lines,
       ...(bottomLines?.length ? { bottomLines, pinBottom: true } : {}),
     };
   }

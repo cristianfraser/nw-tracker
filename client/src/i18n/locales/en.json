@@ -71,11 +71,6 @@
     "propertyValue": "value",
     "mortgage": "mortgage"
   },
-  "cash": {
-    "reserva": "reserve",
-    "checkingAccount": "checking account",
-    "cuentaVista": "cuenta vista"
-  },
   "creditCardGroup": {
     "santander": "Santander",
     "bci": "BCI"
