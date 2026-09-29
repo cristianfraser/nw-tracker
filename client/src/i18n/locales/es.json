@@ -71,11 +71,6 @@
     "propertyValue": "valor",
     "mortgage": "hipoteca"
   },
-  "cash": {
-    "reserva": "reserva",
-    "checkingAccount": "cuenta corriente",
-    "cuentaVista": "cuenta vista"
-  },
   "creditCardGroup": {
     "santander": "Santander",
     "bci": "BCI"

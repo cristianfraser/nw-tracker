@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { accountChartInactive, navBucketChartInactive } from "./accountChartInactive.js";
 import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
@@ -40,5 +40,46 @@ describe("accountChartInactive", () => {
     if (!active) return;
     expect(accountChartInactive(active.id)).toBe(false);
     expect(navBucketChartInactive([active.id])).toBe(false);
+  });
+});
+
+describe("accountChartInactive — ledger cash with no month-end closes", () => {
+  const PREFIX = "vitest-chart-inactive-ledger";
+  const created: number[] = [];
+
+  afterEach(() => {
+    for (const id of created.splice(0)) {
+      db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(id);
+      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+    }
+  });
+
+  /** A cuenta vista holding `deposits` (CLP, single-leg rows dated long ago). */
+  function vistaWith(deposits: number[]): number | null {
+    const leaf = db
+      .prepare(`SELECT id FROM asset_groups WHERE slug = 'cash_eqs__cuenta_vista'`)
+      .get() as { id: number } | undefined;
+    if (!leaf) return null;
+    const id = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
+        .run(leaf.id, "Vitest · vista", `${PREFIX}-${created.length}`).lastInsertRowid
+    );
+    created.push(id);
+    for (const amount of deposits) {
+      db.prepare(
+        `INSERT INTO movements (account_id, occurred_on, amount, currency, note)
+         VALUES (?, '2024-01-15', ?, 'clp', ?)`
+      ).run(id, amount, `${PREFIX} row`);
+    }
+    return id;
+  }
+
+  it("is inactive once emptied, active while it holds money", () => {
+    const emptied = vistaWith([500_000, -500_000]);
+    if (emptied == null) return;
+    expect(accountChartInactive(emptied)).toBe(true);
+    const holding = vistaWith([500_000]);
+    expect(accountChartInactive(holding!)).toBe(false);
   });
 });
