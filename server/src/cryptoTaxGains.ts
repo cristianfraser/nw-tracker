@@ -16,7 +16,7 @@ import { loadCryptoTaxLotEvents, type CryptoFeePolicy } from "./cryptoTaxLotEven
 import { loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { db } from "./db.js";
 import { monthBeforeYmd } from "./foreignShareTaxGains.js";
-import { loadOfficialIpcLookup, officialIpcVariationPctBetween } from "./siiOfficialIpc.js";
+import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctBetween } from "./siiOfficialIpc.js";
 import { realizeTaxLots, type TaxLotMethod } from "./taxLots.js";
 
 export type CryptoSaleTaxResult = {
@@ -41,6 +41,12 @@ export type CryptoYearTaxResult = {
   proceedsClp: number;
   /** Net result reajustado to December; positive → code 1032, negative → code 169. */
   gainDecemberClp: number;
+  /**
+   * The year's November IPC is not published yet (the current income year): the reajuste to
+   * December runs to `reajusteToMonth`, the latest published month, so it is an estimate.
+   */
+  provisional: boolean;
+  reajusteToMonth: string;
 };
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
@@ -57,7 +63,9 @@ export function cryptoTaxGainsForYear(
     const p = officialIpcVariationPctBetween(from, to, ipc);
     return roundPct ? round1(p) : p;
   };
-  const november = `${incomeYear}-11-01`;
+  const latest = latestOfficialIpcMonth();
+  const provisional = latest < `${incomeYear}-11-01`;
+  const november = provisional ? latest : `${incomeYear}-11-01`;
   const sales: CryptoSaleTaxResult[] = [];
   for (const accountId of [...loadCryptoCoinAccountIdsFundedByBuda()].sort((a, b) => a - b)) {
     const coin = (db.prepare(`SELECT equity_ticker FROM accounts WHERE id = ?`).get(accountId) as { equity_ticker: string })
@@ -94,5 +102,7 @@ export function cryptoTaxGainsForYear(
     sales,
     proceedsClp: sales.reduce((s, x) => s + x.proceedsClp, 0),
     gainDecemberClp: sales.reduce((s, x) => s + x.gainDecemberClp, 0),
+    provisional,
+    reajusteToMonth: november,
   };
 }

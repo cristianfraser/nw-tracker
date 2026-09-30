@@ -159,6 +159,12 @@ export function officialIpcVariationPctBetween(fromMonth: string, toMonth: strin
   return (factor - 1) * 100;
 }
 
+export function latestOfficialIpcMonth(): string {
+  const r = db.prepare(`SELECT MAX(month) AS m FROM ipc_official_monthly`).get() as { m: string | null };
+  if (!r.m) throw new Error("No official IPC stored — run scripts/backfill-sii-official-ipc.ts");
+  return r.m;
+}
+
 export function loadOfficialIpcLookup(): OfficialIpcLookup {
   const rows = db.prepare(`SELECT month, variation_pct, index_points FROM ipc_official_monthly`).all() as {
     month: string;

@@ -1512,7 +1512,6 @@
     "title": "Tax return (Formulario 22)",
     "subtitle": "The return as filed, what third parties informed the SII, and a draft that adds what the app knows (crypto gains, foreign dividends and share sales) with the tax recomputed. The draft must reproduce the filed tax from the filed codes before it adds anything.",
     "taxYear": "AT{{year}}",
-    "summary": "Tax (code 304): filed {{filed}}, draft {{draft}} — difference {{diff}}.",
     "paymentNote": "The payment section (reajuste, interest and surcharges) depends on when a rectification is paid; the SII computes it then.",
     "codeFallback": "Code {{code}}",
     "table": {
@@ -1572,7 +1571,8 @@
       "decemberPct": "Reajuste to Dec.",
       "gainDecember": "Gain to December",
       "totals": "Sales {{sales}}; gain to December {{gain}}.",
-      "informed": "The exchange informed sales of {{amount}} (DJ 1964)."
+      "informed": "The exchange informed sales of {{amount}} (DJ 1964).",
+      "provisional": "The reajuste to December runs to {{month}}, the latest IPC published."
     },
     "dividends": {
       "title": "Foreign dividends",
@@ -1581,7 +1581,10 @@
       "grossUsd": "Gross (US$)",
       "withholdingUsd": "Withheld (US$)",
       "grossClp": "Gross ($)",
-      "withholdingClp": "Withheld ($)"
+      "withholdingClp": "Withheld ($)",
+      "missingDetail": "pending",
+      "missingNote": "{{count}} dividend(s) without the broker's gross / withholding detail yet: left out of 1104 / 748 / 1018.",
+      "explainProvisional": "Converted at the latest dólar observado ({{rate}}) until December 31, {{year}}: code 1104 the net, 748 the tax withheld, 1018 its credit."
     },
     "foreign": {
       "title": "Foreign share and ETF sales",
@@ -1594,6 +1597,17 @@
         "usd_31dic": "No reajuste (Oficio 3748)",
         "clp_ipc": "IPC reajuste (Oficio 750)"
       }
-    }
+    },
+    "summaryFiled": "Tax (code 304) filed: {{amount}}",
+    "summaryDraft": "draft: {{amount}}",
+    "summaryDiff": "difference: {{amount}}",
+    "base": {
+      "filed": "Draft base: the filed return, with the codes the app calculates replaced.",
+      "informed": "No filed return: the draft starts from what third parties informed (DJ).",
+      "payroll": "No filed return or informed DJs: the salary comes from the {{months}} imported payslips.",
+      "none": "No filed return, informed DJs or payslips for this year: only what the app calculates."
+    },
+    "provisionalYear": "{{year}} has not closed: December's UTA, dollar and IPC are the latest published, so the draft is an estimate.",
+    "salaryIncomplete": "Payslips with contributions or totals not read ({{months}}): the salary of those months is overstated or missing."
   }
 }

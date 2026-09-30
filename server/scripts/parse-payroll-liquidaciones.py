@@ -293,8 +293,14 @@ def parse_talana_buk(text: str, period_month: str) -> Dict[str, Any]:
         text, ("Asig. Movilización", "Asignacion de Movilizacion", "Asignación de Movilización")
     )
 
+    # Talana prints the two totals as columns of the «DIAS TR. … TOTAL IMPONIBLE  TOTAL NO
+    # IMPONIBLE …» header table, the values on the row below; older layouts print them inline.
     total_imponible = amount_after_label(text, ("TOTAL IMPONIBLE",))
+    if total_imponible is None:
+        total_imponible = amount_in_header_column(text, r"TOTAL IMPONIBLE")
     total_no_imponible = amount_after_label(text, ("TOTAL NO IMPONIBLE",))
+    if total_no_imponible is None:
+        total_no_imponible = amount_in_header_column(text, r"TOTAL NO IMPONIBLE")
     total_haberes = amount_after_label(text, ("TOTAL HABERES",))
     total_descuentos = amount_after_label(text, ("TOTAL DESCUENTOS",))
 

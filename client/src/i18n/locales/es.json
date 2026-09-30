@@ -1512,7 +1512,6 @@
     "title": "Declaración de renta (Formulario 22)",
     "subtitle": "La declaración presentada, lo que terceros informaron al SII y un borrador que agrega lo que la app sabe (ganancias de cripto, dividendos y ventas de acciones extranjeras) con el impuesto recalculado. El borrador debe reproducir el impuesto presentado a partir de los códigos presentados antes de agregar nada.",
     "taxYear": "AT{{year}}",
-    "summary": "Impuesto (código 304): presentado {{filed}}, borrador {{draft}} — diferencia {{diff}}.",
     "paymentNote": "La sección de pago (reajuste, intereses y recargos) depende de cuándo se pague una rectificatoria; el SII la calcula en ese momento.",
     "codeFallback": "Código {{code}}",
     "table": {
@@ -1572,7 +1571,8 @@
       "decemberPct": "Reajuste a dic.",
       "gainDecember": "Ganancia a diciembre",
       "totals": "Ventas {{sales}}; ganancia a diciembre {{gain}}.",
-      "informed": "El exchange informó ventas por {{amount}} (DJ 1964)."
+      "informed": "El exchange informó ventas por {{amount}} (DJ 1964).",
+      "provisional": "El reajuste a diciembre llega hasta {{month}}, el último IPC publicado."
     },
     "dividends": {
       "title": "Dividendos del extranjero",
@@ -1581,7 +1581,10 @@
       "grossUsd": "Bruto (US$)",
       "withholdingUsd": "Retenido (US$)",
       "grossClp": "Bruto ($)",
-      "withholdingClp": "Retenido ($)"
+      "withholdingClp": "Retenido ($)",
+      "missingDetail": "pendiente",
+      "missingNote": "{{count}} dividendo(s) aún sin el detalle bruto / retención del corredor: quedan fuera de 1104 / 748 / 1018.",
+      "explainProvisional": "Convertidos al último dólar observado ({{rate}}) hasta el 31 de diciembre de {{year}}: código 1104 el neto, 748 el impuesto retenido, 1018 su crédito."
     },
     "foreign": {
       "title": "Ventas de acciones y ETF extranjeros",
@@ -1594,6 +1597,17 @@
         "usd_31dic": "Sin reajuste (Oficio 3748)",
         "clp_ipc": "Con reajuste IPC (Oficio 750)"
       }
-    }
+    },
+    "summaryFiled": "Impuesto (código 304) presentado: {{amount}}",
+    "summaryDraft": "borrador: {{amount}}",
+    "summaryDiff": "diferencia: {{amount}}",
+    "base": {
+      "filed": "Base del borrador: la declaración presentada, con los códigos que calcula la app reemplazados.",
+      "informed": "Sin declaración presentada: el borrador parte de lo que informaron terceros (DJ).",
+      "payroll": "Sin declaración presentada ni DJ informadas: el sueldo sale de las {{months}} liquidaciones importadas.",
+      "none": "Sin declaración, DJ ni liquidaciones para este año: solo lo que calcula la app."
+    },
+    "provisionalYear": "{{year}} no ha cerrado: la UTA, el dólar y el IPC de diciembre son los últimos publicados, así que el borrador es una estimación.",
+    "salaryIncomplete": "Liquidaciones sin cotizaciones o totales leídos ({{months}}): el sueldo de esos meses queda sobrestimado o falta."
   }
 }
