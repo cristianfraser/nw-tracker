@@ -726,6 +726,18 @@ export function seedNavTree(): void {
     });
 
     upsert({
+      slug: "tax_return",
+      label: "Declaración de renta",
+      label_i18n_key: "sidebar.taxReturn",
+      sort_order: 59,
+      route_path: "/tax-return",
+      active_prefix: "/tax-return",
+      nav_end: false,
+      show_leaf_hyphen: false,
+      sidebar_section: "link",
+    });
+
+    upsert({
       slug: "wealth_percentile",
       label: "Percentil de riqueza",
       label_i18n_key: "sidebar.wealthPercentile",

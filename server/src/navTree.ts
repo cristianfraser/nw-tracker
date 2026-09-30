@@ -371,6 +371,7 @@ export function getSidebarNavPayload(): {
   flows: NavTreeNodeDto | null;
   projections: NavTreeNodeDto | null;
   wealth_percentile: NavTreeNodeDto | null;
+  tax_return: NavTreeNodeDto | null;
   rates: NavTreeNodeDto | null;
 } {
   const linkRoots = buildNavForest("link");
@@ -386,6 +387,7 @@ export function getSidebarNavPayload(): {
     flows: flowRoots.find((n) => n.slug === "flows") ?? flowRoots[0] ?? null,
     projections: linkRoots.find((n) => n.slug === "projections") ?? null,
     wealth_percentile: linkRoots.find((n) => n.slug === "wealth_percentile") ?? null,
+    tax_return: linkRoots.find((n) => n.slug === "tax_return") ?? null,
     rates: linkRoots.find((n) => n.slug === "rates") ?? null,
   };
 }

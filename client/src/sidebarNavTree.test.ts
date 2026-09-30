@@ -81,6 +81,7 @@ describe("buildSidebarNavFromApi", () => {
       ]),
       projections: null,
       wealth_percentile: null,
+      tax_return: null,
       rates: navNode("rates", "rates"),
       net_worth: null,
     };
@@ -104,6 +105,7 @@ describe("buildSidebarNavFromApi", () => {
       flows: null,
       projections: null,
       wealth_percentile: null,
+      tax_return: null,
       rates: null,
       net_worth: null,
     };

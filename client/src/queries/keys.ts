@@ -64,4 +64,5 @@ export const queryKeys = {
   movementMirrorCandidates: () => ["movementMirrorCandidates"] as const,
   projections: (unit: string, overridesKey: string) => ["projections", unit, overridesKey] as const,
   wealthPercentile: () => ["wealth-percentile"] as const,
+  taxReturn: (taxYear: number | null) => ["tax-return", taxYear] as const,
 };

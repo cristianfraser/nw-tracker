@@ -242,11 +242,13 @@ export function AppSidebar() {
         n.id !== "rates" &&
         n.id !== "dashboard" &&
         n.id !== "projections" &&
-        n.id !== "wealth_percentile"
+        n.id !== "wealth_percentile" &&
+        n.id !== "tax_return"
     ) ?? [];
   const flowsNode = tree?.find((n) => n.id === "flows");
   const projectionsNode = tree?.find((n) => n.id === "projections");
   const wealthPercentileNode = tree?.find((n) => n.id === "wealth_percentile");
+  const taxReturnNode = tree?.find((n) => n.id === "tax_return");
   const ratesNode = tree?.find((n) => n.id === "rates");
   /** Rates has one child (watchlist): show both as flat links in this section (no expand). */
   const ratesSectionLinks = useMemo((): SidebarNavNode[] => {
@@ -361,6 +363,18 @@ export function AppSidebar() {
                   {wealthPercentileNode ? (
                     <SidebarNavItem
                       node={wealthPercentileNode}
+                      depth={0}
+                      collapsed={collapsed}
+                      onToggleCollapse={onToggleCollapse}
+                      pathname={pathname}
+                      navPayload={navPayload ?? null}
+                      displayUnit={displayUnit}
+                      onPrefetchShape={onPrefetchShape}
+                    />
+                  ) : null}
+                  {taxReturnNode ? (
+                    <SidebarNavItem
+                      node={taxReturnNode}
                       depth={0}
                       collapsed={collapsed}
                       onToggleCollapse={onToggleCollapse}

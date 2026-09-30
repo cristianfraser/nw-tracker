@@ -20,6 +20,7 @@ app.get("/api/meta/sidebar-nav", (_req, res) => {
     ...payload,
     main: annotateSidebarNavChartBuckets(payload.main),
     wealth_percentile: demoModeEnabled() ? null : payload.wealth_percentile,
+    tax_return: demoModeEnabled() ? null : payload.tax_return,
   });
 });
 

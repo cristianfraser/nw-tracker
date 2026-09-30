@@ -178,6 +178,7 @@ describe("stale nav snapshot vs a grown nav tree", () => {
       flows: null,
       projections: null,
       wealth_percentile: null,
+      tax_return: null,
       rates: null,
     };
   }
