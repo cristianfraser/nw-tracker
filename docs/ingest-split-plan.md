@@ -1,8 +1,9 @@
 # Plan: split data ingestion out of `server/` into `ingest/`
 
-Status: **Phase 0 done** (2026-09-30): server LaunchAgent (not yet switched on — the
-primary still runs in a terminal), `scraper/` → `ingest/`, `server/contracts`, the
-`/api/ingest/*` route. Phase 1 (card feed) is next.
+Status (2026-09-30): **Phase 0 done** (server LaunchAgent installed, `scraper/` → `ingest/`,
+`server/contracts`, the `/api/ingest/*` route). **Phase 1 done**: the Santander card feed goes
+through `card.unbilled_movements`; decoding lives in `ingest/src/santander/cardFeed.ts`.
+Phase 2 (server-owned schedule) is next.
 
 ## Goal
 
@@ -171,6 +172,14 @@ DB snapshot, and compare the resulting databases (byte-parity on the affected ta
   after the apply.
 - `daily-run.sh` calls the ingest command instead of `import:santander-movements`.
 - Parity check against archived `card-movements-*.json` files.
+
+Left for later phases, noted during Phase 1:
+- The payment-mirror conversion and the bank cupo check still run as their own nightly steps
+  (`convert:cc-payment-mirrors`, `check:cc-bank-cupo`) rather than inside the server after the
+  apply.
+- The server still maps a Santander account number to its card through
+  `cfraser/organize-identifiers.json`, now on the ingest request path; that mapping belongs in the
+  database.
 
 ### Phase 2 — server-owned schedule and run protocol
 

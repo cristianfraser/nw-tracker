@@ -30,6 +30,7 @@
  * (`bankDateMatchesTransferDate`).
  */
 import fs from "node:fs";
+import type { CardListingLine } from "nw-tracker-contracts";
 import path from "node:path";
 
 import { importCcWebPasteLines } from "./accountImports.js";
@@ -44,7 +45,8 @@ import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { recordBankPosting } from "./movementBankPostings.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
-import { santanderMovementRowToWebPasteLine } from "./santanderCardMovements.js";
+import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
+import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import {
   recordSyntheticCcPaymentTransfer,
   syntheticCcPaymentMovementIdForMessageId,
@@ -146,6 +148,31 @@ function santanderImporteToken(amount: number, decimals: 0 | 2): string {
 }
 
 /**
+ * The card's credit line for a receipt, exactly as the Santander feed will list the same payment
+ * (merchant «PAGO» / «ABONO DE DIVISAS», dated the payment day, the feed's raw rendering), so the
+ * feed row dedupes on the one-shot key. Mirrors `santanderMovementRowToLine` in
+ * `ingest/src/santander/cardFeed.ts` for a `Comercio`-less `H` row; a test holds the two together.
+ */
+export function santanderReceiptCardLine(receipt: {
+  paid_on: string;
+  amount_clp: number;
+  amount_usd: number | null;
+}): CardListingLine {
+  const isUsd = receipt.amount_usd != null;
+  const merchant = isUsd ? "ABONO DE DIVISAS" : "PAGO";
+  const importe = isUsd ? santanderImporteToken(receipt.amount_usd!, 2) : santanderImporteToken(receipt.amount_clp, 0);
+  const magnitude = isUsd ? Number(receipt.amount_usd!.toFixed(2)) : Math.round(receipt.amount_clp);
+  const fecha = ddMmYyyyFromIso(receipt.paid_on);
+  return {
+    date: receipt.paid_on,
+    merchant,
+    currency: isUsd ? "usd" : "clp",
+    amount: -magnitude,
+    raw_text: [fecha, merchant, merchant, importe].join(" "),
+  };
+}
+
+/**
  * Write the payment the receipt describes when no bank row carries it yet: the checking → card
  * transfer (the migration-169 cross-currency shape for the dollar abono — CLP from-leg = the
  * receipt's peso equivalent, USD counter leg = the abono), its provenance row, and the card's own
@@ -191,18 +218,13 @@ function synthesizeTransferFromReceipt(
     const movementId = Number(r.lastInsertRowid);
     recordSyntheticCcPaymentTransfer(movementId, messageId, receipt.amount_clp, receipt.paid_on);
 
-    const line = santanderMovementRowToWebPasteLine(
-      {
-        Fecha: ddMmYyyyFromIso(receipt.paid_on),
-        Descripcion: isUsd ? "ABONO DE DIVISAS" : "PAGO",
-        Comercio: null,
-        Importe: isUsd ? santanderImporteToken(receipt.amount_usd!, 2) : santanderImporteToken(receipt.amount_clp, 0),
-        DescripcionRubro: null,
-        Ciudad: null,
-        TipoBen: "Titular",
-        IndicadorDebeHaber: "H",
-      },
-      isUsd ? "usd" : "clp"
+    const line = webPasteLineFromCardListingLine(
+      creditCardMasterMetaForAccount(cardAccountId).cardGroup,
+      santanderReceiptCardLine({
+        paid_on: receipt.paid_on,
+        amount_clp: receipt.amount_clp,
+        amount_usd: isUsd ? receipt.amount_usd! : null,
+      })
     );
     const planted = importCcWebPasteLines(cardAccountId, { lines: [line], errors: [] }, "cc_santander_receipt");
     return { movement_id: movementId, card_account_id: cardAccountId, card_line_planted: planted.inserted > 0 };

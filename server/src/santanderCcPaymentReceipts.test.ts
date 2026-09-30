@@ -3,8 +3,8 @@ import { db } from "./db.js";
 import { importCcWebPasteLines } from "./accountImports.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
-import { santanderMovementRowToWebPasteLine } from "./santanderCardMovements.js";
-import { applyPaymentReceipt, parsePaymentReceipt } from "./santanderCcPaymentReceipts.js";
+import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
+import { applyPaymentReceipt, parsePaymentReceipt, santanderReceiptCardLine } from "./santanderCcPaymentReceipts.js";
 import {
   confirmSyntheticCcPaymentForTransferLeg,
   listOverdueUnconfirmedSyntheticCcPayments,
@@ -46,6 +46,30 @@ const USD_RECEIPT_TEXT =
 function staged(text: string) {
   return { message_id: "<vitest@test>", subject: "vitest", date: "2026-08-07T19:54:52Z", text };
 }
+
+/** The Santander feed's row for a 111.222 payment on 07/08/2026, as ingest decodes it. */
+const SANTANDER_FEED_PAGO_ROW = {
+  date: "2026-08-07",
+  merchant: "PAGO",
+  currency: "clp" as const,
+  amount: -111222,
+  raw_text: "07/08/2026 PAGO PAGO 111.222",
+};
+
+describe("santanderReceiptCardLine", () => {
+  it("builds the line the feed will list for the same payment", () => {
+    expect(santanderReceiptCardLine({ paid_on: "2026-08-07", amount_clp: 111222, amount_usd: null })).toEqual(
+      SANTANDER_FEED_PAGO_ROW
+    );
+    expect(santanderReceiptCardLine({ paid_on: "2026-08-07", amount_clp: 115733, amount_usd: 123.45 })).toEqual({
+      date: "2026-08-07",
+      merchant: "ABONO DE DIVISAS",
+      currency: "usd",
+      amount: -123.45,
+      raw_text: "07/08/2026 ABONO DE DIVISAS ABONO DE DIVISAS 123,45",
+    });
+  });
+});
 
 describe("santanderCcPaymentReceipts", () => {
   const created: number[] = [];
@@ -233,11 +257,10 @@ describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]!.amount_clp).toBeLessThan(0);
 
-    // Tomorrow's feed row lands on the one-shot dedupe key — nothing inserted twice.
-    const feedRow = santanderMovementRowToWebPasteLine(
-      { Fecha: "07/08/2026", Descripcion: "PAGO", Comercio: null, Importe: "111.222", DescripcionRubro: null, Ciudad: null, TipoBen: "Titular", IndicadorDebeHaber: "H" },
-      "clp"
-    );
+    // Tomorrow's feed row lands on the one-shot dedupe key — nothing inserted twice. This literal
+    // is what ingest's feed parser makes of that row (pinned by the same literal in
+    // ingest/src/santander/cardFeed.test.ts).
+    const feedRow = webPasteLineFromCardListingLine("santander", SANTANDER_FEED_PAGO_ROW);
     const feed = importCcWebPasteLines(master, { lines: [feedRow], errors: [] }, "cc_santander_fetch");
     expect(feed.inserted).toBe(0);
     expect(feed.skipped_duplicate).toBe(1);

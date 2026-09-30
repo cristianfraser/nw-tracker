@@ -1,19 +1,15 @@
-import fs from "node:fs";
-import path from "node:path";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
+import type { CardUnbilledMovementsPayload } from "nw-tracker-contracts";
 import { importCcWebPasteLines } from "./accountImports.js";
-import { masterAccountIdForSantanderAccount } from "./santanderAccountMap.js";
-import {
-  santanderFeedClosesByAccount,
-  santanderMovementsByAccount,
-  type SantanderMovementsFile,
-} from "./santanderCardMovements.js";
+import { masterAccountIdForIssuerCardAccount } from "./santanderAccountMap.js";
+import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
+import type { CcWebPasteLine } from "./ccWebPasteParse.js";
 import {
   assertFeedClosesMatchStatements,
   recordFeedBillingClose,
 } from "./ccBillingCloses.js";
 import { moveOpenBucketLinesByDedupeKey } from "./ccOpenWebPasteRepair.js";
 import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPasteParse.js";
+import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { db } from "./db.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
@@ -27,28 +23,23 @@ import {
 import { mirrorOpenBucketsToFeed, type CcFeedMirrorResult } from "./ccFeedMirror.js";
 import type { CcInstallmentFirstDueNudge } from "./ccWebPasteInstallmentNudge.js";
 import {
-  parseBankCupoCapture,
+  bankCupoCaptureFromListing,
   recordBankCupoCapture,
   type BankCupoCaptureResult,
 } from "./santanderBankCupo.js";
 
-/** Where `ingest/` stages fetched movement files. */
-export function resolveSantanderMovementsDir(): string {
-  return path.join(resolveCfraserCsvDir(), "santander-movements");
-}
+/** A card's latest close as a listing states it: date + billed total per currency (debt-positive). */
+export type CardListingClose = {
+  /** The issuer's account number. */
+  account: string;
+  close_iso: string;
+  /** Null when the listing did not state that currency. */
+  saldo_inicial_clp: number | null;
+  saldo_inicial_usd: number | null;
+};
 
-/** Fetched files, oldest first, so a backlog imports in the order it was captured. */
-export function listSantanderMovementFiles(dir = resolveSantanderMovementsDir()): string[] {
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((name) => /^card-movements-.*\.json$/.test(name))
-    .sort()
-    .map((name) => path.join(dir, name));
-}
-
-/** The close the feed's SALDO INICIAL states, as recorded for this import. */
-export type SantanderFeedCloseImport = {
+/** The close the listing states (the feed's SALDO INICIAL), as recorded for this import. */
+export type CardListingCloseImport = {
   close_iso: string;
   billing_month: string;
   /** `new` the first time this close is seen, `seen` on the daily repeats. */
@@ -67,7 +58,7 @@ export type SantanderFeedCloseImport = {
   provisional_check: { bank_total_clp: number; app_estimate_clp: number } | null;
 };
 
-export type SantanderAccountImportResult = {
+export type CardListingAccountImportResult = {
   account: string;
   account_id: number;
   lines_parsed: number;
@@ -76,7 +67,7 @@ export type SantanderAccountImportResult = {
   /** Cuota-billing reference rows (`CUOT: N OPER: M`) the feed lists at a facturación close. */
   skipped_cuota_billing: number;
   batch_id: number | null;
-  feed_close: SantanderFeedCloseImport | null;
+  feed_close: CardListingCloseImport | null;
   /** Feed cuota purchases with a known count, turned into plans (`ccFeedCuotaPurchases.ts`). */
   plans_created: CcFeedPlanCreated[];
   /** Hand-entered plans whose first cuota the feed's type moved. */
@@ -87,9 +78,10 @@ export type SantanderAccountImportResult = {
   mirror: CcFeedMirrorResult | null;
 };
 
-export type SantanderMovementsImportResult = {
-  file: string;
-  accounts: SantanderAccountImportResult[];
+export type CardUnbilledMovementsImportResult = {
+  /** The document the listing came from (the feeder's source ref, e.g. the fetched file's name). */
+  source: string;
+  accounts: CardListingAccountImportResult[];
   /** The bank's own cupo per card and currency the same session read (`cc_bank_cupo_*`). */
   bank_cupo: BankCupoCaptureResult;
 };
@@ -101,10 +93,10 @@ export type SantanderMovementsImportResult = {
  */
 function applyFeedClose(
   accountId: number,
-  close: ReturnType<typeof santanderFeedClosesByAccount>[number],
-  lines: Parameters<typeof webPasteLineDedupeKey>[1][],
+  close: CardListingClose,
+  lines: CcWebPasteLine[],
   sourceFile: string
-): Omit<SantanderFeedCloseImport, "provisional_check"> {
+): Omit<CardListingCloseImport, "provisional_check"> {
   return db.transaction(() => {
     const recorded = recordFeedBillingClose(accountId, {
       close_iso: close.close_iso,
@@ -132,7 +124,7 @@ function applyFeedClose(
 function provisionalCheck(
   accountId: number,
   billingMonth: string
-): SantanderFeedCloseImport["provisional_check"] {
+): CardListingCloseImport["provisional_check"] {
   const row = billingDetailCacheForAccount(accountId).facturaciones.find(
     (f) => f.billing_month === billingMonth
   );
@@ -144,52 +136,59 @@ function provisionalCheck(
 }
 
 /**
- * Import one fetched movements file.
+ * Apply one `card.unbilled_movements` listing (`sourceRef` = the feeder's document identity; it
+ * keys the feed close and the cupo capture, so a resend of the same document is a repeat).
  *
- * Re-importing the same file is harmless: the lines carry the same `ccOneShotDedupeKey` a manual
+ * Re-applying the same listing is harmless: the lines carry the same `ccOneShotDedupeKey` a manual
  * paste would produce, so repeats are skipped as duplicates. That is what makes a daily fetch of an
  * overlapping window (the feed returns the whole unbilled period every time) safe to run.
  *
- * Every file fetched since 2026-09-26 also carries each card's SALDO INICIAL — its latest close.
- * That close is recorded (`cc_feed_billing_closes`), and since everything a post-close feed lists
- * is unbilled by definition, every row is filed under the facturación AFTER it, and any line
- * already filed under an earlier month that the feed still lists follows it forward.
+ * A listing that states a card's latest close (the feed's SALDO INICIAL) records it
+ * (`cc_feed_billing_closes`), and since everything a post-close listing shows is unbilled by
+ * definition, every row is filed under the facturación AFTER it, and any line already filed
+ * under an earlier month that the listing still shows follows it forward.
  */
-export function importSantanderMovementsFile(file: string): SantanderMovementsImportResult {
-  const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as SantanderMovementsFile;
-  const grouped = santanderMovementsByAccount(parsed);
-  const closes = new Map(santanderFeedClosesByAccount(parsed).map((c) => [c.account, c]));
-  // Validated before any write, recorded after the lines: the check compares it with the ledger
-  // this file leaves behind.
-  const bankCupo = parseBankCupoCapture(parsed);
-  // A card whose feed carries only its SALDO INICIAL (no movements yet) still reports its close.
-  for (const account of closes.keys()) {
-    if (!grouped.some((g) => g.account === account)) grouped.push({ account, lines: [] });
+export function applyCardUnbilledMovements(
+  payload: CardUnbilledMovementsPayload,
+  sourceRef: string
+): CardUnbilledMovementsImportResult {
+  const closes = new Map<string, CardListingClose>();
+  for (const card of payload.cards) {
+    if (!card.close) continue;
+    closes.set(card.account.number, {
+      account: card.account.number,
+      close_iso: card.close.date,
+      saldo_inicial_clp: card.close.billed.clp,
+      saldo_inicial_usd: card.close.billed.usd,
+    });
   }
+  // Validated before any write, recorded after the lines: the check compares it with the ledger
+  // this listing leaves behind.
+  const bankCupo = bankCupoCaptureFromListing(payload.issuer_balances);
 
-  const accounts: SantanderAccountImportResult[] = [];
-  for (const group of grouped) {
-    const accountId = masterAccountIdForSantanderAccount(group.account);
-    const close = closes.get(group.account);
-    const feedClose = close
-      ? applyFeedClose(accountId, close, group.lines, path.basename(file))
-      : null;
+  const accounts: CardListingAccountImportResult[] = [];
+  for (const card of payload.cards) {
+    const accountId = masterAccountIdForIssuerCardAccount(card.account);
+    const { cardGroup } = creditCardMasterMetaForAccount(accountId);
+    const lines = card.lines.map((line) => webPasteLineFromCardListingLine(cardGroup, line));
+    const close = closes.get(card.account.number);
+    const feedClose = close ? applyFeedClose(accountId, close, lines, sourceRef) : null;
     // Before the lines: a plan makes its purchase row import as an installment overlap.
-    const plansCreated = createPlansForFeedCuotaPurchases(accountId, group.lines, path.basename(file));
+    const plansCreated = createPlansForFeedCuotaPurchases(accountId, lines, sourceRef);
     const result = importCcWebPasteLines(
       accountId,
-      { lines: group.lines, errors: [] },
+      { lines, errors: [] },
       "cc_santander_fetch",
       feedClose ? { targetBillingMonth: feedClose.rows_billing_month } : undefined
     );
-    const tagged = tagFeedCuotaPurchaseLines(accountId, group.lines);
+    const tagged = tagFeedCuotaPurchaseLines(accountId, lines);
     // The merge re-syncs balances and valuation points after any write; a close with nothing to
     // write (no movements, or only repeats) changed the facturación state all the same.
     if (feedClose && result.batch_id == null && (feedClose.status === "new" || feedClose.lines_moved_forward > 0)) {
       recomputeCcBillingMonthBalances(accountId);
       upsertCreditCardValuationsFromLedger(accountId);
     }
-    // Last: everything this feed lists is now on file, so what the buckets hold beyond it is
+    // Last: everything this listing shows is now on file, so what the buckets hold beyond it is
     // what the bank dropped. Only with a close (the window start) and per complete currency.
     const mirrorCurrencies = new Set<"clp" | "usd">();
     if (close?.saldo_inicial_clp != null) mirrorCurrencies.add("clp");
@@ -199,11 +198,13 @@ export function importSantanderMovementsFile(file: string): SantanderMovementsIm
         ? mirrorOpenBucketsToFeed(accountId, {
             windowStartIso: feedClose.close_iso,
             currencies: mirrorCurrencies,
-            feedLines: group.lines,
+            feedLines: lines,
           })
         : null;
+    // In-process writes do not bump data_version: drop this card's derived caches explicitly.
+    invalidateCcBillingDetail(accountId);
     accounts.push({
-      account: group.account,
+      account: card.account.number,
       account_id: accountId,
       lines_parsed: result.lines_parsed,
       inserted: result.inserted,
@@ -220,26 +221,8 @@ export function importSantanderMovementsFile(file: string): SantanderMovementsIm
     });
   }
   return {
-    file: path.basename(file),
+    source: sourceRef,
     accounts,
-    bank_cupo: recordBankCupoCapture(path.basename(file), bankCupo, closes),
+    bank_cupo: recordBankCupoCapture(sourceRef, bankCupo, closes),
   };
-}
-
-/**
- * Import every staged file, then move each into `imported/`.
- *
- * Archiving rather than deleting keeps the raw feed around: it is the only copy of what the bank
- * actually returned on a given day, and re-importing it is idempotent if it is ever needed.
- */
-export function importStagedSantanderMovements(dir = resolveSantanderMovementsDir()): SantanderMovementsImportResult[] {
-  const files = listSantanderMovementFiles(dir);
-  const results: SantanderMovementsImportResult[] = [];
-  for (const file of files) {
-    results.push(importSantanderMovementsFile(file));
-    const archive = path.join(dir, "imported");
-    fs.mkdirSync(archive, { recursive: true });
-    fs.renameSync(file, path.join(archive, path.basename(file)));
-  }
-  return results;
 }

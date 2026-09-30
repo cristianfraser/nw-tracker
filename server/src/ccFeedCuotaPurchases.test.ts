@@ -3,13 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
-import {
-  cuotaCountFromStampTax,
-  cuotaPurchaseTypeFromFeedDescription,
-  firstCuotaBillingMonth,
-} from "./ccCuotaPurchaseKinds.js";
-import { santanderMovementsByAccount } from "./santanderCardMovements.js";
-import { importSantanderMovementsFile } from "./santanderMovementsImport.js";
+import type { CardListingLine } from "nw-tracker-contracts";
+import { firstCuotaBillingMonth } from "./ccCuotaPurchaseKinds.js";
+import { applyListing, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
 import { ccInstallmentsDbApiPayload, ccLedgerMonthEndIso } from "./ccInstallmentLedgerDb.js";
 import {
   buildBillingDetailByMonth,
@@ -24,28 +20,6 @@ import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { webPasteLineDedupeKey, type CcWebPasteLine } from "./ccWebPasteParse.js";
 
 describe("feed cuota purchase rules", () => {
-  it("maps the feed's purchase types and refuses an unknown cuota type", () => {
-    expect(cuotaPurchaseTypeFromFeedDescription("CUOTA COMERCIO")).toEqual({ kind: "cuota_comercio", cuota_count: null });
-    expect(cuotaPurchaseTypeFromFeedDescription("N/CUOTAS PRECIO CONTADO")).toEqual({
-      kind: "precio_contado",
-      cuota_count: null,
-    });
-    expect(cuotaPurchaseTypeFromFeedDescription("TRES CUOTAS CONTADO")).toEqual({ kind: "precio_contado", cuota_count: 3 });
-    expect(cuotaPurchaseTypeFromFeedDescription("COMPRA NORMAL")).toBeNull();
-    expect(() => cuotaPurchaseTypeFromFeedDescription("SEIS CUOTAS SIN INTERES")).toThrow(/Unknown Santander cuota-purchase type/);
-  });
-
-  it("reads the cuota count from the stamp tax: term = cuotas + 1 months at 0,066%, capped at 0,8%", () => {
-    // Real 2026-08 purchases: Municipalidad de Maipú and the Plaza Lyon recaudación, both 3 cuotas.
-    expect(cuotaCountFromStampTax(29_990, 79)).toEqual({ status: "exact", cuota_count: 3 });
-    expect(cuotaCountFromStampTax(1_598_924, 4_221)).toEqual({ status: "exact", cuota_count: 3 });
-    expect(cuotaCountFromStampTax(100_000, 462)).toEqual({ status: "exact", cuota_count: 6 });
-    // 12 cuotas (0,858%) is past the cap: only «12 or more».
-    expect(cuotaCountFromStampTax(223_930, 1_791)).toEqual({ status: "capped" });
-    // A tiny principal whose peso rounding hides the term is not a count.
-    expect(cuotaCountFromStampTax(1_000, 3).status).toBe("inconsistent");
-  });
-
   it("bills cuota comercio at the close after the purchase cycle, precio contado at its own", () => {
     expect(firstCuotaBillingMonth("cuota_comercio", "2026-09")).toBe("2026-10");
     expect(firstCuotaBillingMonth("cuota_comercio", "2026-12")).toBe("2027-01");
@@ -57,54 +31,35 @@ const LAST4 = "9922";
 const BANK_ACCOUNT = "800099990022";
 const CARD_GROUP = "santander";
 
-function feedRow(fecha: string, descripcion: string, comercio: string | null, importe: string, dh = "D") {
-  return {
-    Fecha: fecha,
-    Descripcion: descripcion,
-    Comercio: comercio,
-    Importe: importe,
-    DescripcionRubro: null,
-    Ciudad: "SANTIAGO",
-    TipoBen: null,
-    IndicadorDebeHaber: dh,
-  };
-}
+/** Cuota annotations as a feeder sends them (decoding the bank's types is ingest's to test). */
+const COMERCIO_3: CardListingLine["cuota_purchase"] = {
+  first_cuota_bills: "next_cycle",
+  cuota_count: 3,
+  count_source: "stamp_tax",
+  stamp_tax_clp: 79,
+};
+const COMERCIO_UNKNOWN: CardListingLine["cuota_purchase"] = {
+  first_cuota_bills: "next_cycle",
+  cuota_count: null,
+  count_source: null,
+  stamp_tax_clp: null,
+};
+const CONTADO_UNKNOWN: CardListingLine["cuota_purchase"] = {
+  first_cuota_bills: "purchase_cycle",
+  cuota_count: null,
+  count_source: null,
+  stamp_tax_clp: null,
+};
 
-function saldoInicial(fecha: string, importe: string) {
-  return feedRow(fecha, "SALDO INICIAL", null, importe);
+/** The Municipalidad (known count), its stamp tax, Fullneumático (unknown) and a plain purchase. */
+function septemberLines(): CardListingLine[] {
+  return [
+    listingLine("2026-08-27", "MUNICIPALIDAD DE MAIPU", 29_990, { cuota: COMERCIO_3 }),
+    listingLine("2026-08-27", "MUNICIPALIDAD DE MAIPU", 79),
+    listingLine("2026-09-05", "FULLNEUMATICO QUILIN", 189_990, { cuota: CONTADO_UNKNOWN }),
+    listingLine("2026-09-03", "SUPERMERCADO VITEST", 10_000),
+  ];
 }
-
-describe("feed annotations", () => {
-  it("pairs a cuota comercio purchase with its same-day stamp tax, and only an unambiguous pair", () => {
-    const groups = santanderMovementsByAccount({
-      fetchedAt: "x",
-      slides: [
-        {
-          account: BANK_ACCOUNT,
-          currency: "CLP",
-          rows: [
-            feedRow("27/08/2026", "CUOTA COMERCIO", "MUNICIPALIDAD DE MAIPU", "29.990"),
-            feedRow("27/08/2026", "IMPTO. DECRETO LEY 3475", "MUNICIPALIDAD DE MAIPU", "79"),
-            feedRow("05/09/2026", "N/CUOTAS PRECIO CONTADO", "FULLNEUMATICO QUILIN", "189.990"),
-            // Two cuota purchases, one tax, same day and merchant: no count.
-            feedRow("06/09/2026", "CUOTA COMERCIO", "TIENDA DOBLE", "30.000"),
-            feedRow("06/09/2026", "CUOTA COMERCIO", "TIENDA DOBLE", "30.000"),
-            feedRow("06/09/2026", "IMPTO. DECRETO LEY 3475", "TIENDA DOBLE", "79"),
-            // A close-day billing reference shares a cuota description but is not a purchase.
-            feedRow("25/08/2026", "CUOTAS COMERCIO", "CUOT: 000000013OPER: 000024", "18.333"),
-          ],
-        },
-      ],
-    });
-    const cuota = groups[0]!.lines.filter((l) => l.cuota_purchase).map((l) => [l.merchant, l.cuota_purchase]);
-    expect(cuota).toEqual([
-      ["MUNICIPALIDAD DE MAIPU", { kind: "cuota_comercio", cuota_count: 3, count_source: "stamp_tax", stamp_tax_clp: 79 }],
-      ["FULLNEUMATICO QUILIN", { kind: "precio_contado", cuota_count: null, count_source: null, stamp_tax_clp: null }],
-      ["TIENDA DOBLE", { kind: "cuota_comercio", cuota_count: null, count_source: null, stamp_tax_clp: null }],
-      ["TIENDA DOBLE", { kind: "cuota_comercio", cuota_count: null, count_source: null, stamp_tax_clp: null }],
-    ]);
-  });
-});
 
 describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
   let accountId = 0;
@@ -168,10 +123,16 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     return db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(id) !== undefined;
   }
 
-  function writeFeed(slides: unknown[]): string {
-    const file = path.join(tmpDir, `card-movements-2026-09-20T01-00-00.json`);
-    fs.writeFileSync(file, JSON.stringify({ fetchedAt: "2026-09-20T01:00:00.000Z", slides }));
-    return file;
+  /** The listing after the 25/08 close; `usd: false` for a listing without the dollar side. */
+  function feed(lines: CardListingLine[], opts: { usd?: boolean } = {}) {
+    return applyListing(
+      listing(
+        [listingCard(BANK_ACCOUNT, lines, { date: "2026-08-25", clp: 3_476_163, usd: opts.usd === false ? null : 556.21 })],
+        undefined,
+        "2026-09-20T01:00:00.000Z"
+      ),
+      "card-movements-2026-09-20T01-00-00.json"
+    );
   }
 
   beforeEach(() => {
@@ -232,21 +193,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     const neumaticos = insertBucketLine(sept, "2026-09-05", "FULLNEUMATICO Q", 189_990);
     const super1 = insertBucketLine(sept, "2026-09-03", "SUPERMERCADO VITEST", 10_000);
 
-    const file = writeFeed([
-      {
-        account: BANK_ACCOUNT,
-        currency: "CLP",
-        rows: [
-          feedRow("27/08/2026", "CUOTA COMERCIO", "MUNICIPALIDAD DE MAIPU", "29.990"),
-          feedRow("27/08/2026", "IMPTO. DECRETO LEY 3475", "MUNICIPALIDAD DE MAIPU", "79"),
-          feedRow("05/09/2026", "N/CUOTAS PRECIO CONTADO", "FULLNEUMATICO QUILIN", "189.990"),
-          feedRow("03/09/2026", "COMPRA NORMAL", "SUPERMERCADO VITEST", "10.000"),
-        ],
-        saldoInicial: [saldoInicial("25/08/2026", "3.476.163")],
-      },
-      { account: BANK_ACCOUNT, currency: "USD", rows: [], saldoInicial: [saldoInicial("25/08/2026", "556,21")] },
-    ]);
-    const imported = importSantanderMovementsFile(file).accounts[0]!;
+    const imported = feed(septemberLines()).accounts[0]!;
 
     expect(imported.plans_created).toEqual([
       expect.objectContaining({
@@ -288,21 +235,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
   it("carries a cuota purchase of unknown count as installment debt from its date, flat until its plan", () => {
     const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
     insertBucketLine(sept, "2026-09-03", "SUPERMERCADO VITEST", 10_000);
-    const file = writeFeed([
-      {
-        account: BANK_ACCOUNT,
-        currency: "CLP",
-        rows: [
-          feedRow("27/08/2026", "CUOTA COMERCIO", "MUNICIPALIDAD DE MAIPU", "29.990"),
-          feedRow("27/08/2026", "IMPTO. DECRETO LEY 3475", "MUNICIPALIDAD DE MAIPU", "79"),
-          feedRow("05/09/2026", "N/CUOTAS PRECIO CONTADO", "FULLNEUMATICO QUILIN", "189.990"),
-          feedRow("03/09/2026", "COMPRA NORMAL", "SUPERMERCADO VITEST", "10.000"),
-        ],
-        saldoInicial: [saldoInicial("25/08/2026", "3.476.163")],
-      },
-      { account: BANK_ACCOUNT, currency: "USD", rows: [], saldoInicial: [saldoInicial("25/08/2026", "556,21")] },
-    ]);
-    expect(importSantanderMovementsFile(file).accounts[0]!.cuota_lines_tagged).toBe(1);
+    expect(feed(septemberLines()).accounts[0]!.cuota_lines_tagged).toBe(1);
     expect(pendingCuotaPurchaseLines(accountId)).toEqual([
       expect.objectContaining({
         merchant: "FULLNEUMATICO QUILIN",
@@ -337,20 +270,12 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
   it("asks for the count: the line carries its type, and entering it pins the first cuota by type", () => {
     const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
     insertBucketLine(sept, "2026-09-03", "SUPERMERCADO VITEST", 10_000);
-    const file = writeFeed([
-      {
-        account: BANK_ACCOUNT,
-        currency: "CLP",
-        rows: [
-          // No same-day stamp tax: the count of this cuota comercio is unknown.
-          feedRow("10/09/2026", "CUOTA COMERCIO", "TIENDA VITEST", "120.000"),
-          feedRow("03/09/2026", "COMPRA NORMAL", "SUPERMERCADO VITEST", "10.000"),
-        ],
-        saldoInicial: [saldoInicial("25/08/2026", "3.476.163")],
-      },
-      { account: BANK_ACCOUNT, currency: "USD", rows: [], saldoInicial: [saldoInicial("25/08/2026", "556,21")] },
+    const imported = feed([
+      // No same-day stamp tax: the count of this cuota comercio is unknown.
+      listingLine("2026-09-10", "TIENDA VITEST", 120_000, { cuota: COMERCIO_UNKNOWN }),
+      listingLine("2026-09-03", "SUPERMERCADO VITEST", 10_000),
     ]);
-    expect(importSantanderMovementsFile(file).accounts[0]!.cuota_lines_tagged).toBe(1);
+    expect(imported.accounts[0]!.cuota_lines_tagged).toBe(1);
     const pending = pendingCuotaPurchaseLines(accountId);
     expect(pending).toEqual([
       expect.objectContaining({ kind: "cuota_comercio", amount_clp: 120_000, billing_month: "2026-09" }),
@@ -386,18 +311,15 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
         )
         .run(accountId, CARD_GROUP).lastInsertRowid
     );
-    const file = writeFeed([
-      {
-        account: BANK_ACCOUNT,
-        currency: "CLP",
-        rows: [
-          feedRow("28/08/2026", "CUOTA COMERCIO", "RECAUDACION EX PLAZA LYON", "1.598.924"),
-          feedRow("28/08/2026", "IMPTO. DECRETO LEY 3475", "RECAUDACION EX PLAZA LYON", "4.221"),
-        ],
-        saldoInicial: [saldoInicial("25/08/2026", "3.476.163")],
-      },
-    ]);
-    const imported = importSantanderMovementsFile(file).accounts[0]!;
+    const imported = feed(
+      [
+        listingLine("2026-08-28", "RECAUDACION EX PLAZA LYON", 1_598_924, {
+          cuota: { first_cuota_bills: "next_cycle", cuota_count: 3, count_source: "stamp_tax", stamp_tax_clp: 4_221 },
+        }),
+        listingLine("2026-08-28", "RECAUDACION EX PLAZA LYON", 4_221),
+      ],
+      { usd: false }
+    ).accounts[0]!;
     expect(imported.plans_created).toEqual([]); // a plan already covers it
     expect(imported.first_due_nudges).toEqual([
       expect.objectContaining({ purchase_id: planId, from: "2026-09", to: "2026-10", rule: "feed_type" }),
@@ -426,20 +348,15 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
         .run(sept).lastInsertRowid
     );
 
-    const file = writeFeed([
-      {
-        account: BANK_ACCOUNT,
-        currency: "CLP",
-        rows: [
-          feedRow("07/09/2026", "COMPRAS P.A.T.", "SEG AUTO SANTANDER", "29.436"),
-          feedRow("09/09/2026", "COMPRA NORMAL", "ALMACENES BILBAO", "2.200"),
-          feedRow("12/09/2026", "COMPRA NACIONAL POR INTERNET", "PAYU *UBER TRIP", "10.499"),
-        ],
-        saldoInicial: [saldoInicial("25/08/2026", "3.476.163")],
-      },
-      // No USD slide: a failed Dólares tab must not read as «every USD purchase vanished».
-    ]);
-    const imported = importSantanderMovementsFile(file).accounts[0]!;
+    const imported = feed(
+      [
+        listingLine("2026-09-07", "SEG AUTO SANTANDER", 29_436),
+        listingLine("2026-09-09", "ALMACENES BILBAO", 2_200),
+        listingLine("2026-09-12", "PAYU *UBER TRIP", 10_499),
+      ],
+      // No dollar total: a failed Dólares tab must not read as «every USD purchase vanished».
+      { usd: false }
+    ).accounts[0]!;
     expect(imported.mirror).toMatchObject({ window_start: "2026-08-25", currencies: ["clp"] });
     expect(imported.mirror!.removed.map((r) => r.id)).toEqual([voided, restated]);
     for (const id of [settled, truncated, payment, lastCycle, usdLine]) {
@@ -458,15 +375,9 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "clp" });
     const ids: number[] = [];
     for (let i = 1; i <= 13; i++) ids.push(insertBucketLine(sept, "2026-09-10", `COMERCIO ${i}`, 1_000 + i));
-    const file = writeFeed([
-      {
-        account: BANK_ACCOUNT,
-        currency: "CLP",
-        rows: [feedRow("15/09/2026", "COMPRA NORMAL", "OTRO COMERCIO", "5.000")],
-        saldoInicial: [saldoInicial("25/08/2026", "3.476.163")],
-      },
-    ]);
-    expect(() => importSantanderMovementsFile(file)).toThrow(/no longer lists 13 open-bucket lines/);
+    expect(() => feed([listingLine("2026-09-15", "OTRO COMERCIO", 5_000)], { usd: false })).toThrow(
+      /no longer lists 13 open-bucket lines/
+    );
     for (const id of ids) expect(lineExists(id)).toBe(true);
   });
 });

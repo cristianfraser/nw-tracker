@@ -17,7 +17,9 @@
     "fetch:lider-boletas": "tsx src/email/liderBoletasMain.ts",
     "fetch:lider-statements": "tsx src/email/liderStatementsMain.ts",
     "fetch:fintual-docs": "tsx src/email/fintualDocsMain.ts",
-    "check:santander-catchup": "tsx src/santanderCatchUpMain.ts"
+    "check:santander-catchup": "tsx src/santanderCatchUpMain.ts",
+    "test": "vitest run",
+    "import:santander-movements": "tsx src/santander/importCardMovementsMain.ts"
   },
   "dependencies": {
     "imapflow": "1.6.5",
@@ -27,6 +29,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5"
   }
 }

@@ -1,10 +1,15 @@
 import type {
+  CardUnbilledMovementsApplyDetails,
   IngestEnvelope,
   IngestKindDefinition,
   IngestKindName,
   IngestPayloadOf,
   IngestResult,
 } from "nw-tracker-contracts";
+import {
+  applyCardUnbilledMovements,
+  type CardUnbilledMovementsImportResult,
+} from "./cardUnbilledMovementsApply.js";
 
 /** What a handler reports; the route adds the kind and version to make the IngestResult. */
 export type IngestApplyOutcome = Omit<IngestResult, "kind" | "schema_version">;
@@ -27,5 +32,43 @@ export interface IngestHandler<P = unknown> {
 /** One handler per contract kind — the type makes a kind without a handler a compile error. */
 export type IngestHandlerMap = { [K in IngestKindName]: IngestHandler<IngestPayloadOf<K>> };
 
-/** Empty until the first source moves (docs/ingest-split-plan.md, Phase 1). */
-export const INGEST_HANDLERS: IngestHandlerMap = {};
+/** The import result as the contract's `details` (what the feeder prints). */
+function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnbilledMovementsApplyDetails {
+  return {
+    cards: result.accounts.map((a) => ({
+      account: a.account,
+      account_id: a.account_id,
+      lines: a.lines_parsed,
+      inserted: a.inserted,
+      skipped_duplicate: a.skipped_duplicate,
+      skipped_cuota_billing: a.skipped_cuota_billing,
+      batch_id: a.batch_id,
+      close: a.feed_close
+        ? {
+            date: a.feed_close.close_iso,
+            billing_month: a.feed_close.billing_month,
+            status: a.feed_close.status,
+            billed_clp: a.feed_close.saldo_inicial_clp,
+            billed_usd: a.feed_close.saldo_inicial_usd,
+            rows_billing_month: a.feed_close.rows_billing_month,
+            lines_moved_forward: a.feed_close.lines_moved_forward,
+            provisional_check: a.feed_close.provisional_check,
+          }
+        : null,
+      plans_created: a.plans_created,
+      first_due_nudges: a.first_due_nudges,
+      cuota_lines_tagged: a.cuota_lines_tagged,
+      removed_by_mirror: a.mirror?.removed ?? null,
+    })),
+    issuer_balances: result.bank_cupo,
+  };
+}
+
+export const INGEST_HANDLERS: IngestHandlerMap = {
+  "card.unbilled_movements": {
+    apply({ payload, envelope }) {
+      const result = applyCardUnbilledMovements(payload, envelope.source.ref);
+      return { status: "applied", details: cardUnbilledDetails(result) };
+    },
+  },
+};

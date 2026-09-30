@@ -2,9 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cardUnbilledMovementsKind } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import { importSantanderMovementsFile } from "./santanderMovementsImport.js";
-import { parseSantanderBankCupoRows } from "./santanderBankCupo.js";
+import { bankCupoRowsFromListing } from "./santanderBankCupo.js";
+import { applyListing, balanceRow, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
 import { ccOwedByCurrency } from "./ccOwedByCurrency.js";
 import {
   installmentRemainderAfterFacturacionClp,
@@ -29,47 +30,8 @@ const OTHER_LAST4 = "9944";
 const BANK_ACCOUNT = "800099990033";
 const CARD_GROUP = "santander";
 
-/** 18 digits, two implied decimals — the bank's own encoding. */
-function cents(amount: number): string {
-  return String(Math.round(amount * 100)).padStart(18, "0");
-}
-
-function cupoRow(currency: "CLP" | "USD", total: number, used: number, opts?: { pan?: string; available?: number }) {
-  return {
-    NUMEROCONTRATO: BANK_ACCOUNT,
-    NUMEROPAN: opts?.pan ?? `000000000000${LAST4}`,
-    CODIGOMONEDA: currency,
-    CUPO: cents(total),
-    MONTOUTILIZADO: cents(used),
-    MONTODISPONIBLE: cents(opts?.available ?? total - used),
-    GLOSAESTADO: "VIGENTE",
-  };
-}
-
-function feedRow(fecha: string, comercio: string, importe: string) {
-  return {
-    Fecha: fecha,
-    Descripcion: "COMPRA NORMAL",
-    Comercio: comercio,
-    Importe: importe,
-    DescripcionRubro: "COMERCIO",
-    Ciudad: "SANTIAGO",
-    TipoBen: "X",
-    IndicadorDebeHaber: "D",
-  };
-}
-
-function saldoInicial(fecha: string, importe: string) {
-  return {
-    Fecha: fecha,
-    Descripcion: "SALDO INICIAL",
-    Comercio: null,
-    Importe: importe,
-    DescripcionRubro: null,
-    Ciudad: null,
-    TipoBen: null,
-    IndicadorDebeHaber: "D",
-  };
+function cupoRow(currency: "clp" | "usd", total: number, used: number, opts?: { last4?: string; available?: number }) {
+  return balanceRow(BANK_ACCOUNT, opts?.last4 ?? LAST4, currency, total, used, opts?.available ?? total - used);
 }
 
 // What the bank would say for the fixture: SALDO INICIAL + unbilled cuotas + feed rows.
@@ -109,35 +71,28 @@ describe("bank cupo check", () => {
     ).run(accountId, CARD_GROUP, `vitest-bank-cupo-${purchaseIso}`, purchaseIso, total, cuotas, `VITEST PLAN ${purchaseIso}`, firstDue);
   }
 
-  function writeFeed(name: string, cupos: unknown, cuposError?: string): string {
-    const file = path.join(tmpDir, name);
-    const body: Record<string, unknown> = {
-      fetchedAt: "2026-10-02T01:00:40.000Z",
-      slides: [
-        {
-          currency: "CLP",
-          account: BANK_ACCOUNT,
-          rows: [feedRow("25/09/2026", "VITEST TIENDA", "20.000")],
-          saldoInicial: [saldoInicial("24/09/2026", "1.500.000")],
-        },
-        {
-          currency: "USD",
-          account: BANK_ACCOUNT,
-          rows: [feedRow("26/09/2026", "VITEST APP", "12,34")],
-          saldoInicial: [saldoInicial("24/09/2026", "900,00")],
-        },
+  /** The fixture's listing: one line per currency, the 24/09 close; `balances` as the feeder reports them. */
+  function feed(balances?: Parameters<typeof listing>[1]) {
+    return listing(
+      [
+        listingCard(
+          BANK_ACCOUNT,
+          [
+            listingLine("2026-09-25", "VITEST TIENDA", 20_000),
+            listingLine("2026-09-26", "VITEST APP", 12.34, { currency: "usd" }),
+          ],
+          { date: "2026-09-24", clp: 1_500_000, usd: 900 }
+        ),
       ],
-    };
-    if (cupos !== undefined) body.cupos = cupos;
-    if (cuposError !== undefined) body.cuposError = cuposError;
-    fs.writeFileSync(file, JSON.stringify(body));
-    return file;
+      balances
+    );
   }
 
   function cupos(clpUsed = BANK_CLP_USED, usdUsed = BANK_USD_USED, observedAt = "2026-10-02T00:59:40.000Z") {
     return {
-      observedAt,
-      rows: [cupoRow("CLP", 5_000_000, clpUsed), cupoRow("USD", 5_000, usdUsed)],
+      status: "observed" as const,
+      observed_at: observedAt,
+      rows: [cupoRow("clp", 5_000_000, clpUsed), cupoRow("usd", 5_000, usdUsed)],
     };
   }
 
@@ -193,24 +148,25 @@ describe("bank cupo check", () => {
     else process.env.NW_TRACKER_ORGANIZE_IDENTIFIERS = prevIdentifiers;
   });
 
-  it("reads the bank's 18-digit two-decimal amounts in both currencies", () => {
-    const [clp, usd] = parseSantanderBankCupoRows([
-      cupoRow("CLP", 5_000_000, 1_234_567),
-      cupoRow("USD", 5_000, 912.34),
-    ]);
+  it("routes each reported balance to its card master", () => {
+    const [clp, usd] = bankCupoRowsFromListing([cupoRow("clp", 5_000_000, 1_234_567), cupoRow("usd", 5_000, 912.34)]);
     expect(clp).toMatchObject({ account_id: accountId, currency: "clp", plastic_last4: LAST4, cupo_total: 5_000_000, cupo_utilizado: 1_234_567, cupo_disponible: 3_765_433 });
     expect(usd).toMatchObject({ currency: "usd", cupo_total: 5_000, cupo_utilizado: 912.34, cupo_disponible: 4_087.66 });
   });
 
-  it("throws on a row that breaks the bank's identity, a bad amount, or a plastic routed elsewhere", () => {
-    expect(() => parseSantanderBankCupoRows([cupoRow("CLP", 5_000_000, 1_234_567, { available: 3_000_000 })])).toThrow(
-      /is not utilizado 1234567 \+ disponible 3000000/
+  it("throws on a plastic routed elsewhere and on two rows for one card and currency", () => {
+    expect(() => bankCupoRowsFromListing([cupoRow("clp", 5_000_000, 0, { last4: OTHER_LAST4 })])).toThrow(
+      /routes to card master \d+ but plastic ·9944 to \d+/
     );
-    expect(() => parseSantanderBankCupoRows([{ ...cupoRow("CLP", 1, 0), CUPO: "5.000.000" }])).toThrow(/not an 18-digit amount/);
-    expect(() =>
-      parseSantanderBankCupoRows([cupoRow("CLP", 5_000_000, 0, { pan: `000000000000${OTHER_LAST4}` })])
-    ).toThrow(/routes to card master \d+ but plastic ·9944 to \d+/);
-    expect(() => parseSantanderBankCupoRows([cupoRow("CLP", 1, 0), cupoRow("CLP", 1, 0)])).toThrow(/two clp rows/);
+    expect(() => bankCupoRowsFromListing([cupoRow("clp", 1, 0), cupoRow("clp", 1, 0)])).toThrow(/two clp rows/);
+  });
+
+  it("refuses a balance that breaks limit = used + available (the contract's check)", () => {
+    expect(
+      cardUnbilledMovementsKind.payload.safeParse(
+        feed({ status: "observed", observed_at: "2026-10-02T00:59:40.000Z", rows: [cupoRow("clp", 5_000_000, 1_234_567, { available: 3_000_000 })] })
+      ).success
+    ).toBe(false);
   });
 
   it("counts a plan bought in the open cycle whatever calendar month it was bought in", () => {
@@ -225,7 +181,7 @@ describe("bank cupo check", () => {
   });
 
   it("records the summary with the import and judges it against the app's owed per currency", () => {
-    const result = importSantanderMovementsFile(writeFeed("card-movements-vitest-ok.json", cupos()));
+    const result = applyListing(feed(cupos()), "card-movements-vitest-ok.json");
     expect(result.bank_cupo).toMatchObject({ status: "recorded", snapshots: 2, observed_at: "2026-10-02T00:59:40.000Z" });
 
     const owed = ccOwedByCurrency(accountId, "2026-10-02");
@@ -259,7 +215,7 @@ describe("bank cupo check", () => {
 
   it("flags a card the app over-counts, then reports the recovery", () => {
     // The bank owes 3xx.xxx less than the app counts — a plan the bank never had.
-    importSantanderMovementsFile(writeFeed("card-movements-vitest-1.json", cupos(BANK_CLP_USED - 300_000)));
+    applyListing(feed(cupos(BANK_CLP_USED - 300_000)), "card-movements-vitest-1.json");
     const bad = judgeLatestBankCupoCapture();
     const clp = bad.verdicts.find((v) => v.snapshot.currency === "clp")!;
     expect(clp).toMatchObject({ status: "mismatch", diff: 300_000, tolerance: 5 });
@@ -269,16 +225,14 @@ describe("bank cupo check", () => {
     expect(report).toContain("cuotas por facturar $400.000 (5)");
     expect(report).toContain("USD: bank US$912,34 · app US$912,34 · ±US$0,00 ok");
 
-    importSantanderMovementsFile(
-      writeFeed("card-movements-vitest-2.json", cupos(BANK_CLP_USED, BANK_USD_USED, "2026-10-02T12:00:00.000Z"))
-    );
+    applyListing(feed(cupos(BANK_CLP_USED, BANK_USD_USED, "2026-10-02T12:00:00.000Z")), "card-movements-vitest-2.json");
     const fixed = judgeLatestBankCupoCapture();
     expect(fixed.verdicts.every((v) => v.status === "ok")).toBe(true);
     expect(bankCupoMessageKind(fixed.verdicts)).toBe("notification");
   });
 
   it("tolerates a peso per unbilled cuota and nothing in dollars", () => {
-    importSantanderMovementsFile(writeFeed("card-movements-vitest-round.json", cupos(BANK_CLP_USED - 5, BANK_USD_USED - 0.01)));
+    applyListing(feed(cupos(BANK_CLP_USED - 5, BANK_USD_USED - 0.01)), "card-movements-vitest-round.json");
     const run = judgeLatestBankCupoCapture();
     expect(run.verdicts.map((v) => [v.snapshot.currency, v.status, v.diff])).toEqual([
       ["clp", "ok", 5],
@@ -305,8 +259,9 @@ describe("bank cupo check", () => {
   });
 
   it("records a session with no summary as a failed capture, reported once", () => {
-    const result = importSantanderMovementsFile(
-      writeFeed("card-movements-vitest-missing.json", null, "the landing page made no cruceProductosOnline call this session")
+    const result = applyListing(
+      feed({ status: "unavailable", reason: "the landing page made no cruceProductosOnline call this session" }),
+      "card-movements-vitest-missing.json"
     );
     expect(result.bank_cupo).toEqual({
       status: "missing",
@@ -318,23 +273,23 @@ describe("bank cupo check", () => {
     expect(judgeLatestBankCupoCapture().capture?.already_checked).toBe(true);
   });
 
-  it("ignores a feed fetched before the summary was kept, and re-imports idempotently", () => {
-    const legacy = importSantanderMovementsFile(writeFeed("card-movements-vitest-legacy.json", undefined));
+  it("ignores a listing without balances, and re-applies idempotently", () => {
+    const legacy = applyListing(feed(), "card-movements-vitest-legacy.json");
     expect(legacy.bank_cupo).toEqual({ status: "absent" });
 
-    const file = writeFeed("card-movements-vitest-repeat.json", cupos());
-    expect(importSantanderMovementsFile(file).bank_cupo.status).toBe("recorded");
-    expect(importSantanderMovementsFile(file).bank_cupo.status).toBe("seen");
-    writeFeed("card-movements-vitest-repeat.json", cupos(BANK_CLP_USED + 1));
-    expect(() => importSantanderMovementsFile(file)).toThrow(/already recorded differently/);
+    const ref = "card-movements-vitest-repeat.json";
+    expect(applyListing(feed(cupos()), ref).bank_cupo.status).toBe("recorded");
+    expect(applyListing(feed(cupos()), ref).bank_cupo.status).toBe("seen");
+    expect(() => applyListing(feed(cupos(BANK_CLP_USED + 1)), ref)).toThrow(/already recorded differently/);
   });
 
-  it("validates the summary before the import writes anything", () => {
-    const file = writeFeed("card-movements-vitest-bad.json", {
-      observedAt: "2026-10-02T00:59:40.000Z",
-      rows: [cupoRow("CLP", 5_000_000, 1, { available: 1 })],
-    });
-    expect(() => importSantanderMovementsFile(file)).toThrow(/is not utilizado/);
+  it("validates the balances before the import writes anything", () => {
+    expect(() =>
+      applyListing(
+        feed({ status: "observed", observed_at: "2026-10-02T00:59:40.000Z", rows: [cupoRow("clp", 5_000_000, 1, { last4: OTHER_LAST4 })] }),
+        "card-movements-vitest-bad.json"
+      )
+    ).toThrow(/routes to card master/);
     const lines = db
       .prepare(
         `SELECT COUNT(*) AS c FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ?`

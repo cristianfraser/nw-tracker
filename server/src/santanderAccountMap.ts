@@ -59,3 +59,13 @@ export function masterAccountIdForSantanderAccount(account: string): number {
   }
   return accountId;
 }
+
+/**
+ * The card master an ingested listing names (`{ issuer, number }` in `card.unbilled_movements`).
+ * Only Santander account numbers are mapped today; any other issuer is a data problem to fix,
+ * never a card to skip.
+ */
+export function masterAccountIdForIssuerCardAccount(account: { issuer: string; number: string }): number {
+  if (account.issuer === "santander") return masterAccountIdForSantanderAccount(account.number);
+  throw new Error(`No card-account mapping for issuer "${account.issuer}" (account ${account.number})`);
+}
