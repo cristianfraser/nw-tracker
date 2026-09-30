@@ -28,6 +28,8 @@ export type F22PayloadRow = {
   changed: boolean;
   /** Informed by a third party and ≠ filed. */
   informed_mismatch: boolean;
+  /** The draft's value is the app's estimate of a code a third party reports later. */
+  estimated: boolean;
 };
 
 /** Display order of the codes this taxpayer's return uses; any other stored code is appended as `other`. */
@@ -83,7 +85,9 @@ export function buildF22Payload(taxYear: number) {
     ...PAYMENT_SECTION_CODES.map((c) => [c, "payment"] as [number, F22RowSection]),
   ]);
   // A code only the draft has, at zero, says nothing (a year without crypto sales, dividends…).
-  const shown = (c: number) => d.filed?.[c] != null || d.informed[c] != null || (d.draft[c] ?? 0) !== 0;
+  const chain = new Set([158, 170, 157, 304, 305]);
+  const shown = (c: number) =>
+    d.filed?.[c] != null || d.informed[c] != null || (d.draft[c] ?? 0) !== 0 || (d.taxComputed && chain.has(c));
   for (const c of [...all]) if (!shown(c)) all.delete(c);
   const codes = [
     ...ROW_LAYOUT.map(([c]) => c).filter((c) => all.has(c)),
@@ -103,6 +107,7 @@ export function buildF22Payload(taxYear: number) {
       draft,
       changed: section !== "payment" && filed != null && draft != null && draft !== filed,
       informed_mismatch: informed != null && filed != null && informed !== filed,
+      estimated: d.estimatedCodes.includes(code),
     };
   });
   return {

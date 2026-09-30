@@ -1609,6 +1609,8 @@
     "provisionalYear": "{{year}} no ha cerrado: la UTA, el dólar y el IPC de diciembre son los últimos publicados, así que el borrador es una estimación.",
     "salaryIncomplete": "Liquidaciones sin cotizaciones o totales leídos ({{months}}): el sueldo de esos meses queda sobrestimado o falta.",
     "taxYearLabel": "Año tributario",
-    "taxYearOption": "AT{{year}} (ingresos {{income}})"
+    "taxYearOption": "AT{{year}} (ingresos {{income}})",
+    "estimatedTitle": "Estimado desde la app hasta que el tercero lo informe",
+    "estimatedNote": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC; 2025 quedó a 0,9% de lo informado por Fintual) e intereses del crédito hipotecario (2025: +1,9% vs el banco). Los reemplazan las DJ que los terceros presentan en marzo."
   }
 }

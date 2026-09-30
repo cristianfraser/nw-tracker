@@ -23,6 +23,7 @@ import { db } from "./db.js";
 import { cryptoTaxGainsForYear, type CryptoYearTaxResult } from "./cryptoTaxGains.js";
 import { foreignShareGainsForYear, type ForeignShareYearResult } from "./foreignShareTaxGains.js";
 import { informedDjAmount, type InformedDjField } from "./siiInformedDj.js";
+import { fundRedemptionGainsForYear, mortgageInterestDeduction, mortgageInterestForYear } from "./f22AppEstimates.js";
 import { payrollTaxYear, type PayrollTaxYear } from "./payrollTaxYear.js";
 import { observadoOnOrBefore } from "./usdCashTaxLotEvents.js";
 
@@ -109,6 +110,8 @@ export type F22Draft = {
   foreignShares: ForeignShareYearResult;
   /** First-category tax on foreign share gains (line 58) and its credit (code 1914) — equal, net zero. */
   foreignSharesIdpcClp: number;
+  /** Codes the draft estimated from the ledger because no third party had reported them yet. */
+  estimatedCodes: number[];
 };
 
 function latestUta(): number {
@@ -247,7 +250,30 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
   }
   if (cryptoGain < 0) draftInput[169] = (draftInput[169] ?? 0) - cryptoGain;
 
-  const taxComputed = base !== "none";
+  // Without a filed form or informed DJs, the codes third parties report in March come from the
+  // ledger too (f22AppEstimates): fund redemptions and mortgage interest.
+  const estimatedCodes: number[] = [];
+  if (base === "payroll" || base === "none") {
+    const funds = fundRedemptionGainsForYear(incomeYear);
+    if (funds.gainClp > 0) {
+      draftInput[155] = funds.gainClp;
+      draftInput[1869] = funds.gainClp;
+      estimatedCodes.push(155, 1869);
+    }
+    if (funds.lossClp > 0) {
+      draftInput[169] = (draftInput[169] ?? 0) + funds.lossClp;
+      estimatedCodes.push(169);
+    }
+    const interest = mortgageInterestForYear(incomeYear);
+    if (interest > 0) {
+      const gross = computeF22Tax(draftInput, utaClp, taxYear)[158]!;
+      draftInput[751] = interest;
+      draftInput[750] = mortgageInterestDeduction(interest, gross, utaClp);
+      estimatedCodes.push(750, 751);
+    }
+  }
+
+  const taxComputed = base !== "none" || estimatedCodes.length > 0;
   const draft = taxComputed ? computeF22Tax(draftInput, utaClp, taxYear) : draftInput;
   if (taxComputed) {
     draft[305] = draft[304]!;
@@ -277,5 +303,6 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
     dividends,
     foreignShares,
     foreignSharesIdpcClp: Math.round(foreignGain * IDPC_RATE),
+    estimatedCodes,
   };
 }

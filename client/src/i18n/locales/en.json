@@ -1609,6 +1609,8 @@
     "provisionalYear": "{{year}} has not closed: December's UTA, dollar and IPC are the latest published, so the draft is an estimate.",
     "salaryIncomplete": "Payslips with contributions or totals not read ({{months}}): the salary of those months is overstated or missing.",
     "taxYearLabel": "Tax year",
-    "taxYearOption": "AT{{year}} (income {{income}})"
+    "taxYearOption": "AT{{year}} (income {{income}})",
+    "estimatedTitle": "Estimated from the ledger until the third party reports it",
+    "estimatedNote": "≈ estimated from the ledger: fund redemptions (FIFO, IPC-reajustado cost; 2025 came within 0,9% of what Fintual reported) and mortgage interest (2025: +1,9% vs the lender). They are replaced by the DJs third parties file in March."
   }
 }

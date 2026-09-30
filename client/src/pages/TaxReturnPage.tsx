@@ -52,7 +52,10 @@ function F22Table({ rows }: { rows: TaxReturnRow[] }) {
             <td className="desktop-only">{label(r.code)}</td>
             <td className="desktop-only num">{money(r.filed)}</td>
             <td className="desktop-only num">{informed}</td>
-            <td className="desktop-only num">{money(r.draft)}</td>
+            <td className="desktop-only num" title={r.estimated ? t("taxReturn.estimatedTitle") : undefined}>
+              {r.estimated ? "≈ " : ""}
+              {money(r.draft)}
+            </td>
             <td className="desktop-only num" style={diff != null ? { color: "var(--negative)" } : undefined}>
               {diff == null ? "" : formatClp(diff)}
             </td>
@@ -60,7 +63,10 @@ function F22Table({ rows }: { rows: TaxReturnRow[] }) {
               <TableMobileCard title={`${r.code} · ${label(r.code)}`}>
                 <TableMobileCardRow label={t("taxReturn.table.filed")} value={money(r.filed)} />
                 <TableMobileCardRow label={t("taxReturn.table.informed")} value={informed} />
-                <TableMobileCardRow label={t("taxReturn.table.draft")} value={money(r.draft)} />
+                <TableMobileCardRow
+                  label={t("taxReturn.table.draft")}
+                  value={`${r.estimated ? "≈ " : ""}${money(r.draft)}`}
+                />
                 {diff != null ? (
                   <TableMobileCardRow label={t("taxReturn.table.difference")} value={formatClp(diff)} />
                 ) : null}
@@ -277,6 +283,7 @@ export function TaxReturnPage() {
               : ""}
           </p>
           <F22Table rows={data.rows} />
+          {data.rows.some((r) => r.estimated) ? <p className="muted">{t("taxReturn.estimatedNote")}</p> : null}
           <p className="muted">{t("taxReturn.paymentNote")}</p>
           <CryptoSection data={data} />
           <DividendsSection data={data} />
