@@ -19,7 +19,6 @@ import { accountIdForEquityTicker } from "./accountEquityTicker.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
-import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { recordSyntheticRetiroTransfer } from "./fintualSyntheticRetiros.js";
 import {
@@ -303,24 +302,8 @@ export function planFintualEmailMovement(
         // second row can appear later: both checking importers skip a bank credit represented
         // by a transfer leg (`findMatchingInternalTransferLegId`, signed amount + posting
         // window) — the same rule that absorbs the nightly re-listing of a PROMOTED credit —
-        // and that skip stamps the confirmation row this synthesis records.
-        //
-        // Exception: when the bank could post the credit NEXT month (the payment date's next
-        // business day crosses the boundary), a transfer dated this month would sit in a
-        // cartola period whose saldo_final excludes the money, corrupting the checking-anchor
-        // derivation — the same reason mirror-pairs hard-block month-straddle checking
-        // inflows. Those rare retiros wait for the credit and pair on a later run, as before.
-        const nextBusinessDay = nextChileBusinessDayYmd(base.occurred_on);
-        if (
-          nextBusinessDay == null ||
-          nextBusinessDay.slice(0, 7) !== base.occurred_on.slice(0, 7)
-        ) {
-          return {
-            ...base,
-            requires_manual:
-              "the bank may post this credit next month — waiting for it instead of synthesizing (checking-anchor rule)",
-          };
-        }
+        // and that skip stamps the confirmation row this synthesis records, plus the bank's
+        // posting day (`movement_bank_postings`) when it lands in the next month.
         return {
           ...base,
           from_account_id: goalAccountId,
@@ -331,16 +314,12 @@ export function planFintualEmailMovement(
       }
       // The e-mail's payment date is when the money ACTUALLY moved (cuotas sold, cash paid);
       // the credit's date is the bank's next-workday POSTING date when the wire beat the 14:00
-      // cutoff. Prefer the payment date — but only when the cartola/xlsx re-import dedupe
-      // window still reaches it (`bankDateMatchesTransferDate`) and the two dates share a
-      // month: a month-straddling early date would put the credit in a cartola period whose
-      // saldo_final excludes it, corrupting the checking anchor derivation (the same reason
-      // mirror-pairs hard-block month-straddle checking inflows).
+      // cutoff. Prefer the payment date when the bank date is its posting
+      // (`bankDateMatchesTransferDate`), across a month boundary too: the promotion keeps the
+      // bank date as the transfer's posting day on checking, which the cartola checks read.
       const paymentYmd = base.occurred_on;
       const useDate =
-        paymentYmd < match.occurred_on &&
-        paymentYmd.slice(0, 7) === match.occurred_on.slice(0, 7) &&
-        bankDateMatchesTransferDate(match.occurred_on, paymentYmd)
+        paymentYmd < match.occurred_on && bankDateMatchesTransferDate(match.occurred_on, paymentYmd)
           ? paymentYmd
           : match.occurred_on;
       return {

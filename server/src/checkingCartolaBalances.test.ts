@@ -16,8 +16,13 @@ import {
   ensureCheckingLedgerAnchor,
   getCartolaDerivedAnchor,
   getCheckingLedgerAnchor,
+  nonAnchorClpFlowTotals,
   upsertCheckingLedgerAnchor,
 } from "./checkingCartolaBalances.js";
+import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
+import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
+import { bankPostedOn, recordBankPosting } from "./movementBankPostings.js";
+import { sumClpThroughDate } from "./movementTransfer.js";
 
 const TEST_MONTH_EARLY = "2099-01";
 const TEST_MONTH_LATE = "2099-02";
@@ -316,6 +321,114 @@ describe("cartola-derived anchor with transfer legs", () => {
     } finally {
       destroySyntheticAnchorAccount(accountId);
       destroySyntheticAnchorAccount(counterpartId);
+    }
+  });
+});
+
+describe("bank posting day: a transfer the bank posted in the next month", () => {
+  // A card payment made Friday 2099-01-30 before... or after the 14:00 cutoff: the receipt dates
+  // it on the 30th (reality), the bank posts it Monday 2099-02-02 (the next cartola period). The
+  // display walk reads the 30th; the anchor, the month-end check and the month table read the
+  // posting day, so both cartolas still reconcile to the peso.
+  it("keeps the real date for display and the posting day for every cartola check", () => {
+    const accountId = createSyntheticAnchorAccount();
+    const cardId = createSyntheticAnchorAccount();
+    let transferId = 0;
+    try {
+      db.prepare(
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note)
+         VALUES (?, 500000, 'clp', ?, 'import:cartola|2099-01|1|abono')`
+      ).run(accountId, `${TEST_MONTH_EARLY}-15`);
+      transferId = Number(
+        db
+          .prepare(
+            `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note, flow_kind)
+             VALUES (?, ?, 200000, 'clp', ?, 'vitest card payment', 'pago_tarjeta')`
+          )
+          .run(accountId, cardId, `${TEST_MONTH_EARLY}-30`).lastInsertRowid
+      );
+
+      // The daily xlsx lists the debit on its posting day: deduped against the transfer, which
+      // now carries that day as its bank posting on checking.
+      const imported = importCheckingPartialMovements(accountId, [
+        { occurred_on: `${TEST_MONTH_LATE}-02`, amount_clp: -200000, description: "PAGO TARJETA", document_no: "" },
+      ]);
+      expect(imported.skipped_superseded_by_transfer).toBe(1);
+      expect(bankPostedOn(transferId, accountId)).toBe(`${TEST_MONTH_LATE}-02`);
+
+      seedCartolaImport(accountId, TEST_MONTH_EARLY, 500000);
+      seedCartolaImport(accountId, TEST_MONTH_LATE, 300000);
+      const derived = getCartolaDerivedAnchor(accountId);
+      expect(derived!.amount_clp).toBe(0);
+      upsertCheckingLedgerAnchor(accountId, {
+        amount_clp: derived!.amount_clp,
+        occurred_on: derived!.occurred_on,
+      });
+      clearCheckingBalanceCache(accountId);
+
+      // Cartola frame: January still holds the money, February pays it.
+      expect(checkingMovementBalanceAtMonthEnd(accountId, TEST_MONTH_EARLY)).toBe(500000);
+      expect(checkingMovementBalanceAtMonthEnd(accountId, TEST_MONTH_LATE)).toBe(300000);
+      expect(
+        nonAnchorClpFlowTotals(accountId, {
+          fromYmd: `${TEST_MONTH_EARLY}-01`,
+          toYmd: monthEndUtcYmd(TEST_MONTH_EARLY),
+        }).withdrawals_clp
+      ).toBe(0);
+      expect(
+        nonAnchorClpFlowTotals(accountId, {
+          fromYmd: `${TEST_MONTH_LATE}-01`,
+          toYmd: monthEndUtcYmd(TEST_MONTH_LATE),
+        }).withdrawals_clp
+      ).toBe(200000);
+      // Display walk (real dates; 2099 is "future" to the display reader, so read it strictly):
+      // the money left on the 30th.
+      expect(sumClpThroughDate(accountId, `${TEST_MONTH_EARLY}-29`)).toBe(500000);
+      expect(sumClpThroughDate(accountId, `${TEST_MONTH_EARLY}-30`)).toBe(300000);
+
+      // The monthly cartola lists the same debit again: it finds the leg by its posting day.
+      expect(
+        findMatchingInternalTransferLegId(accountId, `${TEST_MONTH_LATE}-02`, -200000, new Set())
+      ).toBe(transferId);
+    } finally {
+      if (transferId) db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferId);
+      destroySyntheticAnchorAccount(accountId);
+      destroySyntheticAnchorAccount(cardId);
+    }
+  });
+
+  it("matches a leg whose known posting day sits outside the business-day window", () => {
+    const accountId = createSyntheticAnchorAccount();
+    const cardId = createSyntheticAnchorAccount();
+    let transferId = 0;
+    try {
+      // A card payment converted from a mirror pair: dated at the card's credit (Monday), the
+      // bank posted the debit four days later.
+      transferId = Number(
+        db
+          .prepare(
+            `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note, flow_kind)
+             VALUES (?, ?, 70000, 'clp', ?, 'vitest mirror payment', 'pago_tarjeta')`
+          )
+          .run(accountId, cardId, `${TEST_MONTH_EARLY}-26`).lastInsertRowid
+      );
+      expect(findMatchingInternalTransferLegId(accountId, `${TEST_MONTH_EARLY}-30`, -70000, new Set())).toBeNull();
+      recordBankPosting(transferId, accountId, `${TEST_MONTH_EARLY}-30`);
+      expect(findMatchingInternalTransferLegId(accountId, `${TEST_MONTH_EARLY}-30`, -70000, new Set())).toBe(
+        transferId
+      );
+      // Once the posting is known, the leg no longer answers for another day.
+      expect(findMatchingInternalTransferLegId(accountId, `${TEST_MONTH_EARLY}-26`, -70000, new Set())).toBeNull();
+      // A posting on the movement's own date is stored as nothing.
+      recordBankPosting(transferId, accountId, `${TEST_MONTH_EARLY}-26`);
+      expect(
+        db.prepare(`SELECT COUNT(*) AS c FROM movement_bank_postings WHERE movement_id = ?`).get(transferId)
+      ).toEqual({ c: 0 });
+      expect(() => recordBankPosting(transferId, 999_999_999, `${TEST_MONTH_EARLY}-30`)).toThrow(/does not touch/);
+    } finally {
+      if (transferId) db.prepare(`DELETE FROM movements WHERE id = ?`).run(transferId);
+      destroySyntheticAnchorAccount(accountId);
+      destroySyntheticAnchorAccount(cardId);
     }
   });
 });

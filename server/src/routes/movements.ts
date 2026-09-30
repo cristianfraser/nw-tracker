@@ -54,6 +54,7 @@ app.post("/api/accounts/:id/movements", (req, res) => {
     const superseded =
       validated.currency === "clp"
         ? supersedeImportedCheckingRowsForTransfer(
+            id,
             validated.from_account_id,
             validated.to_account_id,
             validated.amount,

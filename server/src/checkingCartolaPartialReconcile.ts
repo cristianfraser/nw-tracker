@@ -9,6 +9,7 @@ import {
 } from "./checkingCartolaParse.js";
 import { transferCheckingGastosCategoryFromMovementToNote } from "./checkingGastosCategoryPersist.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
 import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
 
 export const PARTIAL_NOTE_PREFIX = "import:cartola-partial|";
@@ -91,11 +92,11 @@ export function partialMovementSupersededByCartola(
 ): boolean {
   const rows = dbHandle
     .prepare(
-      `SELECT note FROM movements
-       WHERE account_id = ? AND occurred_on = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
-         AND note LIKE 'import:cartola|%'`
+      `SELECT m.note FROM movements m ${BANK_POSTING_JOIN_SQL}
+       WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
+         AND m.note LIKE 'import:cartola|%'`
     )
-    .all(accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];
+    .all(accountId, accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];
   for (const row of rows) {
     // Tolerant compare — the últimos web view and the cartola render descriptions/documents
     // differently (case, truncation, markers), see partialDescriptionsMatch.
@@ -113,11 +114,11 @@ export function findMatchingCartolaMovementNoteInDb(
 ): string | null {
   const rows = dbHandle
     .prepare(
-      `SELECT note FROM movements
-       WHERE account_id = ? AND occurred_on = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
-         AND note LIKE 'import:cartola|%' AND note NOT LIKE 'import:cartola|anchor|%'`
+      `SELECT m.note FROM movements m ${BANK_POSTING_JOIN_SQL}
+       WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
+         AND m.note LIKE 'import:cartola|%' AND m.note NOT LIKE 'import:cartola|anchor|%'`
     )
-    .all(accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];
+    .all(accountId, accountId, mv.occurred_on, mv.amount_clp) as { note: string }[];
   for (const row of rows) {
     if (cartolaMovementMatchesImportedRow(mv, row.note)) return row.note;
   }
@@ -158,7 +159,8 @@ export function prunePartialMovementsSupersededByCartola(
       // A partial row whose occurred_on differs from its note's bank date was deliberately
       // re-dated (payment-receipt evidence: the real payment day, not the bank's next-workday
       // posting). The cartola prints the bank date, so the official row it just inserted must
-      // inherit the corrected date or the receipt evidence is silently lost every month.
+      // inherit the corrected date — with the bank date as its posting day — or the receipt
+      // evidence is silently lost every month.
       if (partial.occurred_on !== parsed.occurred_on) {
         const official = dbHandle
           .prepare(
@@ -170,6 +172,7 @@ export function prunePartialMovementsSupersededByCartola(
           dbHandle
             .prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`)
             .run(partial.occurred_on, official.id);
+          recordBankPosting(official.id, accountId, matchingMv.occurred_on, dbHandle);
         }
       }
     }

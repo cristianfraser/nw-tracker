@@ -163,16 +163,10 @@ function planDeposit(event: BrokerEmailEvent): RacionalEmailPlannedMovement {
   base.from_account_id = checking;
   base.to_account_id = racionalClp;
 
-  // Cartola-anchor rule (same caution as Fintual retiros): a deposit whose next business day
-  // crosses into the next month could be listed by the bank in the next cartola period.
+  // A deposit on a month's last business day may be listed by the bank in the next cartola
+  // period; the transfer keeps the mail's day and the bank row brings its posting day when it
+  // lands (`movement_bank_postings`), which is what the cartola checks read.
   const nextBiz = nextChileBusinessDayYmd(occurredOn);
-  if (nextBiz != null && nextBiz.slice(0, 7) !== occurredOn.slice(0, 7)) {
-    return {
-      ...base,
-      requires_manual:
-        "month boundary: the bank may list the debit in the next cartola period — enter by hand",
-    };
-  }
 
   const dup = sameDayDuplicateId({
     occurred_on: occurredOn,

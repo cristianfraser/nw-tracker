@@ -26,6 +26,7 @@ import { bucketSlugForAccountId } from "./accountBucket.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
+import { BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
 
 type TransferLegRow = {
   id: number;
@@ -43,9 +44,14 @@ function signedTransferLegDelta(row: TransferLegRow, accountId: number): number 
 
 /**
  * Id of an existing internal transfer leg touching `accountId` whose signed CLP delta equals
- * `amountClpSigned`, logged within the business-day window ending at the bank posting date
- * `bankDateYmd` (`[priorChileBusinessDay(bankDate), bankDate]`), and not yet claimed — else null.
- * Candidates closest to the bank date are preferred (same-day before an earlier day).
+ * `amountClpSigned` and that the bank row dated `bankDateYmd` describes, not yet claimed — else
+ * null. A leg whose bank posting on this account is already known (`movement_bank_postings`)
+ * matches only that exact day, so the monthly cartola finds the leg the daily xlsx confirmed
+ * however far its real date sits; a leg with no known posting matches inside the business-day
+ * window ending at the bank date (`[priorChileBusinessDay(bankDate), bankDate]`), across a month
+ * boundary too. Candidates closest to the bank date are preferred (same-day before an earlier day).
+ *
+ * The caller that consumes the match records the bank date with {@link claimTransferLegForBankRow}.
  */
 export function findMatchingInternalTransferLegId(
   accountId: number,
@@ -59,19 +65,33 @@ export function findMatchingInternalTransferLegId(
   const windowStart = priorChileBusinessDayYmd(bankDateYmd) ?? bankDateYmd;
   const rows = dbHandle
     .prepare(
-      `SELECT id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}
-       FROM movements
-       WHERE account_id IS NULL
-         AND (from_account_id = ? OR to_account_id = ?)
-         AND occurred_on >= ? AND occurred_on <= ?
-       ORDER BY occurred_on DESC, id DESC`
+      `SELECT m.id, m.from_account_id, m.to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}
+       FROM movements m ${BANK_POSTING_JOIN_SQL}
+       WHERE m.account_id IS NULL
+         AND (m.from_account_id = ? OR m.to_account_id = ?)
+         AND (
+           bp.posted_on = ?
+           OR (bp.posted_on IS NULL AND m.occurred_on >= ? AND m.occurred_on <= ?)
+         )
+       ORDER BY (bp.posted_on IS NOT NULL) DESC, m.occurred_on DESC, m.id DESC`
     )
-    .all(accountId, accountId, windowStart, bankDateYmd) as TransferLegRow[];
+    .all(accountId, accountId, accountId, bankDateYmd, windowStart, bankDateYmd) as TransferLegRow[];
   for (const r of rows) {
     if (consumed.has(r.id)) continue;
     if (Math.round(signedTransferLegDelta(r, accountId)) === target) return r.id;
   }
   return null;
+}
+
+/** Claim a matched transfer leg for the bank row that lists it: records the bank's posting day. */
+export function claimTransferLegForBankRow(
+  transferMovementId: number,
+  accountId: number,
+  bankDateYmd: string,
+  dbHandle: Database = db
+): void {
+  recordBankPosting(transferMovementId, accountId, bankDateYmd, dbHandle);
+  clearCheckingBalanceCache(accountId);
 }
 
 type ImportedCheckingRow = { id: number; occurred_on: string };
@@ -89,12 +109,14 @@ export function bankDateMatchesTransferDate(bankDate: string, transferDate: stri
 
 /**
  * Reverse direction: a checking bank row (web-paste / cartola) was imported *before* the matching
- * internal transfer was recorded by hand. Inserting the transfer would double-count the checking
+ * internal transfer was recorded by hand. The deleted row's date is kept as the transfer's bank
+ * posting on that account (`movement_bank_postings`). Inserting the transfer would double-count the checking
  * account, so when a transfer touching a cartola checking account is created we remove the already
  * imported bank row it supersedes — leaving the single transfer as the one representation (symmetric
  * with the import-time skip). Matching is signed amount + the same business-day window, one-to-one.
  */
 export function supersedeImportedCheckingRowsForTransfer(
+  transferMovementId: number,
   fromAccountId: number,
   toAccountId: number,
   amountClp: number,
@@ -128,6 +150,8 @@ export function supersedeImportedCheckingRowsForTransfer(
     if (!match) continue;
     del.run(match.id);
     removed_ids.push(match.id);
+    // The deleted row was the bank's listing: its date is the transfer's posting day here.
+    recordBankPosting(transferMovementId, endpoint, match.occurred_on, dbHandle);
     clearCheckingBalanceCache(endpoint);
     invalidateAggregationForAccountDate(endpoint, match.occurred_on);
   }

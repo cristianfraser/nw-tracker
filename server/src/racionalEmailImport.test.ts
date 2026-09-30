@@ -239,7 +239,7 @@ describe("planRacionalEmailMovements", () => {
     }
   });
 
-  it("defers month-straddling deposits to manual entry (cartola anchor rule)", () => {
+  it("books a deposit on the month's last business day like any other", () => {
     // Find a month-end whose next business day lands in the following month.
     let d = "2099-01-31";
     for (let i = 0; i < 24; i++) {
@@ -255,6 +255,7 @@ describe("planRacionalEmailMovements", () => {
         message_id: "<vitest-dep-eom@test>",
       }),
     ]).find((p) => p.kind === "deposit")!;
-    expect(dep.requires_manual ?? "").toContain("month boundary");
+    expect(dep.requires_manual).toBeNull();
+    expect(dep.occurred_on).toBe(d);
   });
 });

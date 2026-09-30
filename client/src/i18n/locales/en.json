@@ -1264,8 +1264,6 @@
     "emptyHigh": "No high-confidence candidates.",
     "ambiguousTitle": "Ambiguous ({{n}})",
     "emptyAmbiguous": "No ambiguous candidates.",
-    "blockedTitle": "Blocked ({{n}})",
-    "blockedReasonCheckingStraddle": "checking credit straddles the month",
     "rejectedTitle": "Rejected ({{n}})",
     "restore": "Restore",
     "selectAll": "Select all",

@@ -10,10 +10,11 @@
  * `movement_mirror_merges` (keyed by the transfer movement, ON DELETE CASCADE) so the conversion
  * is fully undoable. The transfer's note is a human summary only.
  *
- * Caveats (also surfaced in the panel copy):
- * - Ambiguous-tier pairs outside the business-day window: re-importing that cartola month can
- *   re-insert the bank leg (import dedupe window is 1 business day).
+ * Each deleted leg's date is kept as the transfer's bank posting on that leg's account
+ * (`movement_bank_postings`): the cartola files the money under that day, so re-importing the
+ * month finds the transfer by it, and the cartola month-end check reads it.
  */
+import { recordBankPosting } from "./movementBankPostings.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { db } from "./db.js";
@@ -55,8 +56,8 @@ type LegRow = MovementAmountFields & {
 };
 
 /**
- * Converts pairs in one all-or-nothing transaction. Every requested pair must be a *current*,
- * non-blocked candidate, or an alternative an ambiguous candidate offers in place of its greedy pick
+ * Converts pairs in one all-or-nothing transaction. Every requested pair must be a *current*
+ * candidate, or an alternative an ambiguous candidate offers in place of its greedy pick
  * (`resolveMirrorPairRef`) — a stale UI, a double submit, or a leg consumed by another conversion
  * throws MirrorConvertStaleError and nothing is written.
  */
@@ -91,7 +92,6 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
     for (const ref of requested) {
       const cand = resolveMirrorPairRef(candidates, ref);
       if (!cand) throw new MirrorConvertStaleError(ref, "not a current candidate or alternative");
-      if (cand.blocked) throw new MirrorConvertStaleError(ref, `blocked: ${cand.blocked_reason}`);
       const out = legStmt.get(ref.out_movement_id) as LegRow | undefined;
       const inn = legStmt.get(ref.in_movement_id) as LegRow | undefined;
       if (!out || !inn) throw new MirrorConvertStaleError(ref, "leg no longer exists");
@@ -132,6 +132,10 @@ export function convertMirrorPairs(pairs: MirrorPairRef[]): { converted: Convert
         inn.units_delta,
         inn.note
       );
+      // Each deleted leg was its account's own listing of the money: its date stays as the
+      // transfer's posting day there (a bank cartola files it under that day).
+      recordBankPosting(Number(r.lastInsertRowid), out.account_id, out.occurred_on);
+      recordBankPosting(Number(r.lastInsertRowid), inn.account_id, inn.occurred_on);
       delIncomeOverride.run(out.id);
       delIncomeOverride.run(inn.id);
       delLeg.run(out.id);

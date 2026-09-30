@@ -26,6 +26,7 @@
  * A converted pair stays tied to its evidence by the payment's card, date and amount, never by the
  * statement row it was paired with — re-imports replace those rows (`ccPaymentMirrorEvidence.ts`).
  */
+import { recordBankPosting } from "./movementBankPostings.js";
 import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
@@ -318,6 +319,9 @@ export function convertCcPaymentMirrors(refs: CcPaymentMirrorRef[]): {
         -transferClp,
         cand.evidence.label
       );
+      // The deleted checking row was the bank's listing: its date is the transfer's posting
+      // day on checking, while the transfer itself takes the card's credit date.
+      recordBankPosting(Number(r.lastInsertRowid), cand.out.account_id, cand.out.occurred_on);
       delIncomeOverride.run(cand.out.movement_id);
       delLeg.run(cand.out.movement_id);
       converted.push({

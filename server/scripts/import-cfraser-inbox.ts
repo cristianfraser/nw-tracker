@@ -306,7 +306,7 @@ function main(): void {
     console.log("\n=== Santander payment receipts (none staged) ===");
   }
 
-  // Checking↔CC payment mirrors: convert same-month unblocked pairs into pago_tarjeta
+  // Checking↔CC payment mirrors: convert unblocked pairs into pago_tarjeta
   // transfers dated at the card's credit date. Runs after the receipts step so a re-dated
   // debit converts as a same-day pair in the same night.
   if (!hasFlag("skip-checking") && !dryRun) {

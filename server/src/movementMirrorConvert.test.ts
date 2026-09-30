@@ -10,6 +10,7 @@ import {
 import { listMirrorPairCandidates } from "./movementMirrorPairs.js";
 import { sumClpThroughDate, transferLegUnitsThroughDate } from "./movementTransfer.js";
 import { loadInternalNetWorthTransferOutflowKeys } from "./flowsDepositsReconciliation.js";
+import { bankPostedOn } from "./movementBankPostings.js";
 
 const NOTE = "vitest-mirrorconv";
 
@@ -135,6 +136,23 @@ describe("convertMirrorPairs", () => {
     expect(t.units_delta).toBe(7.5);
     // fund is the from-leg → −7.5 via transfer legs, matching the deleted single leg's −7.5.
     expect(transferLegUnitsThroughDate(fundId, "2026-04-30")).toBe(unitsBefore - 7.5);
+  });
+
+  it("converts a month-straddling pair into checking; the checking leg's date stays as its posting", () => {
+    // Out Friday 2026-01-30, in on checking Monday 2026-02-02: the transfer takes the outflow
+    // date, and the cartola checks still see the credit in February.
+    const outId = insLeg(genericId, -5_050_507, "2026-01-30", null, `${NOTE}|salida-eom`);
+    const inId = insLeg(checkingId, 5_050_507, "2026-02-02", null, `${NOTE}|abono-eom`);
+    const { converted } = convertMirrorPairs([{ out_movement_id: outId, in_movement_id: inId }]);
+    const t = movement(converted[0]!.transfer_movement_id)!;
+    expect(t.occurred_on).toBe("2026-01-30");
+    expect(bankPostedOn(t.id, checkingId)).toBe("2026-02-02");
+    expect(bankPostedOn(t.id, genericId)).toBe("2026-01-30");
+    // Undo deletes the transfer, and its postings with it.
+    undoMirrorConversion(t.id);
+    expect(
+      db.prepare(`SELECT COUNT(*) AS c FROM movement_bank_postings WHERE movement_id = ?`).get(t.id)
+    ).toEqual({ c: 0 });
   });
 
   it("drops the income override of a converted leg (no cascade on that FK)", () => {

@@ -10,6 +10,7 @@ import {
   type FintualPlannedMovement,
 } from "./fintualEmailImport.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
+import { bankPostedOn } from "./movementBankPostings.js";
 
 const FINTUAL = "hola@fintual.com";
 
@@ -227,9 +228,9 @@ describe("fintualEmailImport", () => {
     expect(row.occurred_on).toBe("2026-08-07");
   });
 
-  it("keeps the bank posting date when the payment date would straddle a month boundary", () => {
-    // Paid the 31st, posted the 1st: dating the transfer in the earlier month would put the
-    // credit in a cartola period whose saldo_final excludes it, corrupting the checking anchor.
+  it("dates a month-straddling retiro on the payment day and keeps the bank date as its posting", () => {
+    // Paid the 31st, posted the 1st: the display reads August, the cartola checks read the
+    // September posting (`movement_bank_postings`).
     let checkingId: number;
     try {
       checkingId = checkingAccountId();
@@ -262,7 +263,15 @@ describe("fintualEmailImport", () => {
       }),
     ]);
     expect(planned[0]!.requires_manual).toBeNull();
-    expect(planned[0]!.occurred_on).toBe("2026-09-01");
+    expect(planned[0]!.occurred_on).toBe("2026-08-31");
+    const creditId = planned[0]!.promote_movement_id!;
+    expect(creditId).toBe(created[created.length - 1]);
+    applyFintualEmailMovements(planned);
+    expect(
+      (db.prepare(`SELECT occurred_on FROM movements WHERE id = ?`).get(creditId) as { occurred_on: string })
+        .occurred_on
+    ).toBe("2026-08-31");
+    expect(bankPostedOn(creditId, checkingId)).toBe("2026-09-01");
   });
 
   it("refuses to promote a retiro whose body names no single cuota count", () => {
@@ -517,7 +526,7 @@ describe("fintualEmailImport", () => {
     expect(planned[0]!.from_account_id).toBeNull();
   });
 
-  it("defers synthesis when the bank could post the credit next month", () => {
+  it("synthesizes on the month's last business day too", () => {
     try {
       checkingAccountId();
     } catch {
@@ -533,8 +542,8 @@ describe("fintualEmailImport", () => {
     ).run(group.id);
     createdAccounts.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
 
-    // Paid Monday the 31st: the bank may post the credit on September 1st, and a transfer dated
-    // August would sit in a cartola period whose saldo_final excludes the money.
+    // Paid Monday the 31st: the bank may post the credit on September 1st — the transfer is
+    // still dated the 31st, and the bank row brings its posting day when it lands.
     const planned = planFintualEmailBatch([
       classifyBrokerEmail({
         sender: FINTUAL,
@@ -545,9 +554,9 @@ describe("fintualEmailImport", () => {
         date: "2026-08-31T14:00:00Z",
       }),
     ]);
-    expect(planned[0]!.requires_manual).toMatch(/next month/);
-    expect(planned[0]!.synthesized).toBeUndefined();
-    expect(planned[0]!.from_account_id).toBeNull();
+    expect(planned[0]!.requires_manual).toBeNull();
+    expect(planned[0]!.synthesized).toBe(true);
+    expect(planned[0]!.occurred_on).toBe("2026-08-31");
   });
 
   /** Goal account + one unpaired checking credit; returns null on a DB without a cuenta corriente. */

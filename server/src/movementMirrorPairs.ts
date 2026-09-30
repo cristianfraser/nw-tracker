@@ -9,7 +9,10 @@
  * Pairing mirrors resolveInternalNetWorthTransfers (flowsDepositsReconciliation.ts): greedy
  * 1:1, closest gap first. Confidence "high" (batch-approvable) requires a unique match in both
  * directions, the legs inside the cartola business-day window (bankDateMatchesTransferDate —
- * so converting cannot duplicate on a cartola re-import), and no month straddle. An ambiguous
+ * so converting cannot duplicate on a cartola re-import), and no month straddle (converting moves
+ * the later leg's money into the earlier month in every display, which deserves a look). A
+ * straddle is never blocked: each deleted leg's date stays as the transfer's bank posting on its
+ * account (`movement_bank_postings`), which is what the cartola checks read. An ambiguous
  * candidate lists the competing legs (`out_alternatives` / `in_alternatives`) and any of them
  * converts in its place (`resolveMirrorPairRef`): amount and date cannot tell same-day siblings
  * apart, so the greedy pick between them is an id order, never evidence.
@@ -43,8 +46,6 @@ export type MirrorLegDto = {
   note: string | null;
 };
 
-export type MirrorPairBlockedReason = "checking_inflow_month_straddle";
-
 /**
  * Another leg that could take one side of an ambiguous pair (same amount, inside the pairing
  * window). The reviewer sees it beside the greedy pick and may convert it instead.
@@ -54,8 +55,6 @@ export type MirrorPairAlternative = {
   gap_days: number;
   within_business_day_window: boolean;
   month_straddle: boolean;
-  blocked: boolean;
-  blocked_reason: MirrorPairBlockedReason | null;
 };
 
 export type MirrorPairCandidate = {
@@ -86,8 +85,6 @@ export type MirrorPairCandidate = {
   out_alternatives: MirrorPairAlternative[];
   in_alternatives: MirrorPairAlternative[];
   confidence: "high" | "ambiguous";
-  blocked: boolean;
-  blocked_reason: MirrorPairBlockedReason | null;
 };
 
 export type RejectedMirrorPair = {
@@ -422,24 +419,11 @@ function pairingWindow(
   return { gap: daysBetweenYmd(out.occurred_on, inn.occurred_on), monthPrecision };
 }
 
-/**
- * Window flags of a pair. Converting moves the inflow to the outflow date; across a month boundary
- * that shifts the inflow account's month attribution. On checking that breaks cartola anchors/month
- * summaries (import:cartola|anchor| saldo calibration) — hard-blocked, not just ambiguous.
- * Exception: when the OUT leg is month-precision the transfer keeps the checking (in) leg's date,
- * so the checking timeline is untouched.
- */
-function pairFlags(
-  ctx: PairingContext,
-  out: EligibleLegRow,
-  inn: EligibleLegRow
-): { withinWindow: boolean; monthStraddle: boolean; blocked: boolean } {
-  const monthStraddle = monthKey(inn.occurred_on) !== monthKey(out.occurred_on);
-  const outMonthPrecision = mirrorLegIsMonthPrecision(ctx.kindSlugFor(out.account_id));
+/** Window flags of a pair: the cartola re-import window, and whether it crosses a month. */
+function pairFlags(out: EligibleLegRow, inn: EligibleLegRow): { withinWindow: boolean; monthStraddle: boolean } {
   return {
     withinWindow: bankDateMatchesTransferDate(inn.occurred_on, out.occurred_on),
-    monthStraddle,
-    blocked: monthStraddle && ctx.checkingIds.has(inn.account_id) && !outMonthPrecision,
+    monthStraddle: monthKey(inn.occurred_on) !== monthKey(out.occurred_on),
   };
 }
 
@@ -447,19 +431,15 @@ function alternative(
   ctx: PairingContext,
   out: EligibleLegRow,
   inn: EligibleLegRow,
-  side: "out" | "in",
-  opts: { blockable: boolean }
+  side: "out" | "in"
 ): MirrorPairAlternative {
-  const flags = pairFlags(ctx, out, inn);
-  const blocked = opts.blockable && flags.blocked;
+  const flags = pairFlags(out, inn);
   const leg = side === "out" ? out : inn;
   return {
     leg: toLegDto(leg, ctx.kindSlugFor(leg.account_id)),
     gap_days: daysBetweenYmd(out.occurred_on, inn.occurred_on),
     within_business_day_window: flags.withinWindow,
     month_straddle: flags.monthStraddle,
-    blocked,
-    blocked_reason: blocked ? "checking_inflow_month_straddle" : null,
   };
 }
 
@@ -515,7 +495,7 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
       lp.link_source === "auto"
         ? ctx.outs
             .filter((o) => o.id !== lp.out.id && pairingWindow(ctx, o, lp.in) != null)
-            .map((o) => alternative(ctx, o, lp.in, "out", { blockable: false }))
+            .map((o) => alternative(ctx, o, lp.in, "out"))
         : [];
     result.push({
       out: toLegDto(lp.out, outKind),
@@ -531,8 +511,6 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
       out_alternatives: outAlternatives,
       in_alternatives: [],
       confidence: monthStraddle || outAlternatives.length > 0 ? "ambiguous" : "high",
-      blocked: false,
-      blocked_reason: null,
       linked: true,
     });
   }
@@ -542,13 +520,13 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
     usedOut.add(p.out.id);
     usedIn.add(p.in.id);
 
-    const flags = pairFlags(ctx, p.out, p.in);
+    const flags = pairFlags(p.out, p.in);
     const inAlternatives = (insByOut.get(p.out.id) ?? [])
       .filter((i) => i.id !== p.in.id)
-      .map((i) => alternative(ctx, p.out, i, "in", { blockable: true }));
+      .map((i) => alternative(ctx, p.out, i, "in"));
     const outAlternatives = (outsByIn.get(p.in.id) ?? [])
       .filter((o) => o.id !== p.out.id)
-      .map((o) => alternative(ctx, o, p.in, "out", { blockable: true }));
+      .map((o) => alternative(ctx, o, p.in, "out"));
     // Month-precision pairs skip the bank-window requirement: the converted transfer carries the
     // real-day (cartola) leg's date, so cartola re-import dedupe matches same-day regardless.
     const high =
@@ -569,8 +547,6 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
       out_alternatives: outAlternatives,
       in_alternatives: inAlternatives,
       confidence: high ? "high" : "ambiguous",
-      blocked: flags.blocked,
-      blocked_reason: flags.blocked ? "checking_inflow_month_straddle" : null,
       linked: false,
     });
   }
@@ -580,8 +556,6 @@ export function listMirrorPairCandidates(): MirrorPairCandidate[] {
 export type ResolvedMirrorPair = {
   out_movement_id: number;
   in_movement_id: number;
-  blocked: boolean;
-  blocked_reason: MirrorPairBlockedReason | null;
 };
 
 /**
@@ -594,7 +568,7 @@ export function resolveMirrorPairRef(
 ): ResolvedMirrorPair | null {
   for (const c of candidates) {
     if (c.out.movement_id === ref.out_movement_id && c.in.movement_id === ref.in_movement_id) {
-      return { ...ref, blocked: c.blocked, blocked_reason: c.blocked_reason };
+      return { ...ref };
     }
   }
   for (const c of candidates) {
@@ -605,7 +579,7 @@ export function resolveMirrorPairRef(
         : c.out.movement_id === ref.out_movement_id
           ? c.in_alternatives.find((a) => a.leg.movement_id === ref.in_movement_id)
           : undefined;
-    if (alt) return { ...ref, blocked: alt.blocked, blocked_reason: alt.blocked_reason };
+    if (alt) return { ...ref };
   }
   return null;
 }

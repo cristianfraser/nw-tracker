@@ -2,7 +2,7 @@ import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
-import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
+import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
 import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
@@ -82,6 +82,7 @@ export function importCheckingPartialMovements(
       );
       if (transferLegId != null) {
         consumedTransferLegs.add(transferLegId);
+        claimTransferLegForBankRow(transferLegId, accountId, mv.occurred_on);
         // The bank listed the money a synthesized retiro / card-payment transfer promised —
         // stamp it confirmed (no-op for ordinary manual transfer legs).
         confirmSyntheticRetiroForTransferLeg(transferLegId, mv.occurred_on, "ultimos_xlsx");

@@ -35,7 +35,8 @@ import { assertCheckingCartolaSaldoIdentity, validateCartolaSaldoChain } from ".
 import { cartolaPdfIndicatesSinMovimientos } from "./cartolaSinMovimientos.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
-import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
+import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
 import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
@@ -312,11 +313,11 @@ export function importCheckingCartola(
   function countMatchingInDb(mv: ParsedCheckingMovement, periodMonth: string): number {
     const rows = dbHandle
       .prepare(
-        `SELECT note FROM movements
-         WHERE account_id = ? AND occurred_on = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
-           AND note LIKE ?`
+        `SELECT m.note FROM movements m ${BANK_POSTING_JOIN_SQL}
+         WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
+           AND m.note LIKE ?`
       )
-      .all(accountId, mv.occurred_on, mv.amount_clp, `import:cartola|${periodMonth}|%`) as {
+      .all(accountId, accountId, mv.occurred_on, mv.amount_clp, `import:cartola|${periodMonth}|%`) as {
       note: string;
     }[];
     let n = 0;
@@ -369,6 +370,7 @@ export function importCheckingCartola(
       );
       if (transferLegId != null) {
         consumedTransferLegs.add(transferLegId);
+        claimTransferLegForBankRow(transferLegId, accountId, mv.occurred_on, dbHandle);
         // The bank listed the money a synthesized retiro / card-payment transfer promised —
         // stamp it confirmed (no-op for ordinary manual transfer legs).
         confirmSyntheticRetiroForTransferLeg(transferLegId, mv.occurred_on, "cartola", dbHandle);
@@ -851,11 +853,11 @@ export function backfillMissingCheckingCartolaMovements(opts?: {
           .filter((prior) => cartolaMovementDedupeKey(prior) === cartolaMovementDedupeKey(mv)).length;
         const rows = db
           .prepare(
-            `SELECT note FROM movements
-             WHERE account_id = ? AND occurred_on = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
-               AND note LIKE ?`
+            `SELECT m.note FROM movements m ${BANK_POSTING_JOIN_SQL}
+             WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
+               AND m.note LIKE ?`
           )
-          .all(accountId, mv.occurred_on, mv.amount_clp, `import:cartola|${pm}|%`) as {
+          .all(accountId, accountId, mv.occurred_on, mv.amount_clp, `import:cartola|${pm}|%`) as {
           note: string;
         }[];
         let matchCount = 0;
