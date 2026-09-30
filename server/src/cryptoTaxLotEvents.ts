@@ -10,9 +10,16 @@
  *   overstate a later gain);
  * - `sell` closes at what it received; `swap_out` and `coin_out` close at market value (a coin
  *   exchanged or spent is disposed of at what it was worth); `send_fee` closes at zero (coin lost).
+ *
+ * Commissions ({@link CryptoFeePolicy}): the SII does not let them reduce the gain (Oficio
+ * 2208/2022), so under `excluded` — the default — a purchase's cost is what was paid less the
+ * commission and a sale's price is what was received plus it, from the exchange's own record
+ * (`crypto_trade_details`; a buy, sell or swap_in without one throws). `included` keeps the ledger's
+ * pesos (the economic view).
  */
 import { db } from "./db.js";
 import { loadCryptoMovementKinds, type CryptoMovementKind } from "./cryptoMovementKinds.js";
+import { cryptoTradeFeeClp, loadCryptoTradeDetails, type CryptoTradeDetail } from "./cryptoTradeDetails.js";
 import type { TaxLotEvent } from "./taxLots.js";
 
 export type CryptoLotTreatment = "acquire_at_amount" | "acquire_at_zero" | "dispose_at_amount" | "dispose_at_zero";
@@ -29,9 +36,18 @@ export const CRYPTO_KIND_LOT_TREATMENT: Record<CryptoMovementKind, CryptoLotTrea
 
 export type CryptoTaxLotRow = { id: number; occurred_on: string; amount: number; units_delta: number };
 
+export type CryptoFeePolicy = "excluded" | "included";
+
+/** Kinds that are trades on the exchange, so carry a commission. */
+const TRADE_KINDS: ReadonlySet<CryptoMovementKind> = new Set(["buy", "sell", "swap_in"]);
+
 export function cryptoTaxLotEventsFromRows(
   rows: readonly CryptoTaxLotRow[],
-  kinds: ReadonlyMap<number, CryptoMovementKind>
+  kinds: ReadonlyMap<number, CryptoMovementKind>,
+  fees: { policy: CryptoFeePolicy; details: ReadonlyMap<number, CryptoTradeDetail> } = {
+    policy: "included",
+    details: new Map(),
+  }
 ): TaxLotEvent[] {
   const events: TaxLotEvent[] = rows.map((r) => {
     const kind = kinds.get(r.id);
@@ -42,7 +58,13 @@ export function cryptoTaxLotEventsFromRows(
       throw new Error(`Crypto tax lots: movement ${r.id} (${kind}) moves ${r.units_delta} units`);
     }
     const units = Math.abs(r.units_delta);
-    const amount = Math.abs(r.amount);
+    let amount = Math.abs(r.amount);
+    if (fees.policy === "excluded" && TRADE_KINDS.has(kind)) {
+      const detail = fees.details.get(r.id);
+      if (!detail) throw new Error(`Crypto tax lots: trade ${r.id} (${kind}) has no exchange record — run import-buda-trade-details`);
+      const fee = cryptoTradeFeeClp(detail, r.amount, units);
+      amount = acquires ? amount - fee : amount + fee;
+    }
     if (treatment === "acquire_at_amount") return { kind: "acquire", date: r.occurred_on, movementId: r.id, units, cost: amount };
     if (treatment === "acquire_at_zero") return { kind: "acquire", date: r.occurred_on, movementId: r.id, units, cost: 0 };
     if (treatment === "dispose_at_amount") return { kind: "dispose", date: r.occurred_on, movementId: r.id, units, proceeds: amount };
@@ -53,7 +75,7 @@ export function cryptoTaxLotEventsFromRows(
 }
 
 /** Pesos throughout; throws on a transfer touching the account or a row without units or kind. */
-export function loadCryptoTaxLotEvents(accountId: number): TaxLotEvent[] {
+export function loadCryptoTaxLotEvents(accountId: number, feePolicy: CryptoFeePolicy = "excluded"): TaxLotEvent[] {
   const transfers = db
     .prepare(`SELECT COUNT(*) AS n FROM movements WHERE from_account_id = ? OR to_account_id = ?`)
     .get(accountId, accountId) as { n: number };
@@ -65,5 +87,9 @@ export function loadCryptoTaxLotEvents(accountId: number): TaxLotEvent[] {
     if (r.currency !== "clp") throw new Error(`Crypto tax lots: movement ${r.id} is in ${r.currency}`);
     if (r.units_delta == null) throw new Error(`Crypto tax lots: movement ${r.id} has no units`);
   }
-  return cryptoTaxLotEventsFromRows(rows, loadCryptoMovementKinds(rows.map((r) => r.id)));
+  const ids = rows.map((r) => r.id);
+  return cryptoTaxLotEventsFromRows(rows, loadCryptoMovementKinds(ids), {
+    policy: feePolicy,
+    details: feePolicy === "excluded" ? loadCryptoTradeDetails(ids) : new Map(),
+  });
 }
