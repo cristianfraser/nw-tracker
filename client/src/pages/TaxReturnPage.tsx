@@ -97,6 +97,7 @@ function CryptoSection({ data }: { data: TaxReturnResponse }) {
   return (
     <section style={{ margin: "1.5rem 0" }}>
       <h2>{t("taxReturn.crypto.title")}</h2>
+      {c.provisional ? <p className="muted">{t("taxReturn.crypto.provisional", { month: c.reajuste_to_month.slice(0, 7) })}</p> : null}
       <p className="muted">
         {t("taxReturn.crypto.explain", {
           method: t(`taxReturn.crypto.method.${c.method}`),
@@ -145,6 +146,8 @@ function CryptoSection({ data }: { data: TaxReturnResponse }) {
 function DividendsSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   if (data.dividends.length === 0) return null;
+  const missing = data.dividends.filter((d) => d.gross_usd == null).length;
+  const usdOrMissing = (n: number | null) => (n == null ? t("taxReturn.dividends.missingDetail") : formatUsdFine(n));
   const header = (
     <thead>
       <tr>
@@ -161,25 +164,26 @@ function DividendsSection({ data }: { data: TaxReturnResponse }) {
     <section style={{ margin: "1.5rem 0" }}>
       <h2>{t("taxReturn.dividends.title")}</h2>
       <p className="muted">
-        {t("taxReturn.dividends.explain", {
+        {t(data.provisional ? "taxReturn.dividends.explainProvisional" : "taxReturn.dividends.explain", {
           rate: `$${formatGroupedDecimal(data.year_end_observado, 2)}`,
           year: data.income_year,
         })}
       </p>
+      {missing > 0 ? <p style={{ color: "var(--negative)" }}>{t("taxReturn.dividends.missingNote", { count: missing })}</p> : null}
       <Table header={header} tableClassName="table--parallel-mobile">
         {data.dividends.map((d) => (
           <tr key={d.date}>
             <td className="desktop-only mono">{d.date}</td>
-            <td className="desktop-only num">{formatUsdFine(d.gross_usd)}</td>
-            <td className="desktop-only num">{formatUsdFine(d.withholding_usd)}</td>
-            <td className="desktop-only num">{formatClp(d.gross_clp)}</td>
-            <td className="desktop-only num">{formatClp(d.withholding_clp)}</td>
+            <td className="desktop-only num">{usdOrMissing(d.gross_usd)}</td>
+            <td className="desktop-only num">{usdOrMissing(d.withholding_usd)}</td>
+            <td className="desktop-only num">{money(d.gross_clp)}</td>
+            <td className="desktop-only num">{money(d.withholding_clp)}</td>
             <td className="mobile-only">
               <TableMobileCard title={d.date}>
-                <TableMobileCardRow label={t("taxReturn.dividends.grossUsd")} value={formatUsdFine(d.gross_usd)} />
-                <TableMobileCardRow label={t("taxReturn.dividends.withholdingUsd")} value={formatUsdFine(d.withholding_usd)} />
-                <TableMobileCardRow label={t("taxReturn.dividends.grossClp")} value={formatClp(d.gross_clp)} />
-                <TableMobileCardRow label={t("taxReturn.dividends.withholdingClp")} value={formatClp(d.withholding_clp)} />
+                <TableMobileCardRow label={t("taxReturn.dividends.grossUsd")} value={usdOrMissing(d.gross_usd)} />
+                <TableMobileCardRow label={t("taxReturn.dividends.withholdingUsd")} value={usdOrMissing(d.withholding_usd)} />
+                <TableMobileCardRow label={t("taxReturn.dividends.grossClp")} value={money(d.gross_clp)} />
+                <TableMobileCardRow label={t("taxReturn.dividends.withholdingClp")} value={money(d.withholding_clp)} />
               </TableMobileCard>
             </td>
           </tr>
@@ -260,12 +264,19 @@ export function TaxReturnPage() {
               </Button>
             ))}
           </div>
+          <p className="muted">{t(`taxReturn.base.${data.base}`, { months: data.salary.months })}</p>
+          {data.provisional ? <p className="muted">{t("taxReturn.provisionalYear", { year: data.income_year })}</p> : null}
+          {data.salary.incomplete_months.length > 0 ? (
+            <p style={{ color: "var(--negative)" }}>
+              {t("taxReturn.salaryIncomplete", { months: data.salary.incomplete_months.join(", ") })}
+            </p>
+          ) : null}
           <p>
-            {t("taxReturn.summary", {
-              filed: formatClp(data.tax_filed),
-              draft: formatClp(data.tax_draft),
-              diff: formatClp(data.tax_draft - data.tax_filed),
-            })}
+            {t("taxReturn.summaryFiled", { amount: money(data.tax_filed) })} ·{" "}
+            {t("taxReturn.summaryDraft", { amount: money(data.tax_draft) })}
+            {data.tax_filed != null && data.tax_draft != null
+              ? ` · ${t("taxReturn.summaryDiff", { amount: formatClp(data.tax_draft - data.tax_filed) })}`
+              : ""}
           </p>
           <F22Table rows={data.rows} />
           <p className="muted">{t("taxReturn.paymentNote")}</p>

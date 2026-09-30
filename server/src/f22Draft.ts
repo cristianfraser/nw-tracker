@@ -18,10 +18,12 @@
  * IDPC 25%) credited back against IGC with refund (code 1914), so they change 304 only through
  * IGC; the draft reports the IDPC lines beside it.
  */
+import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
 import { cryptoTaxGainsForYear, type CryptoYearTaxResult } from "./cryptoTaxGains.js";
 import { foreignShareGainsForYear, type ForeignShareYearResult } from "./foreignShareTaxGains.js";
 import { informedDjAmount, type InformedDjField } from "./siiInformedDj.js";
+import { payrollTaxYear, type PayrollTaxYear } from "./payrollTaxYear.js";
 import { observadoOnOrBefore } from "./usdCashTaxLotEvents.js";
 
 type IgcBracket = { upTo: number; rate: number; rebajaUta: number };
@@ -73,16 +75,32 @@ export function computeF22Tax(codes: F22Codes, utaClp: number, taxYear: number):
 export type F22DividendLine = {
   date: string;
   movementId: number;
-  grossUsd: number;
-  withholdingUsd: number;
+  /** Null while the broker document with the gross / withholding split has not been imported. */
+  grossUsd: number | null;
+  withholdingUsd: number | null;
+  netUsd: number;
 };
+
+/**
+ * Where the draft's other codes come from, in this order: the filed form, the informed DJs, the
+ * imported liquidaciones (salary codes 1098 / 161 / 162, `payrollTaxYear`), or nothing.
+ */
+export type F22DraftBase = "filed" | "informed" | "payroll" | "none";
 
 export type F22Draft = {
   taxYear: number;
   incomeYear: number;
+  /** The income year has not closed: 31-December rates and the December reajuste are the latest published. */
+  provisional: boolean;
+  base: F22DraftBase;
+  /** Whether the tax chain ran (it needs a base). */
+  taxComputed: boolean;
   utaClp: number;
   yearEndObservado: number;
-  filed: F22Codes;
+  filed: F22Codes | null;
+  salary: PayrollTaxYear;
+  /** The UTA the chain used is the latest month's, not December's (open year). */
+  utaProvisional: boolean;
   informed: Record<number, number>;
   draft: F22Codes;
   crypto: CryptoYearTaxResult;
@@ -93,21 +111,26 @@ export type F22Draft = {
   foreignSharesIdpcClp: number;
 };
 
-function utaDecember(incomeYear: number): number {
-  const r = db.prepare(`SELECT utm_clp FROM utm_daily WHERE date = ?`).get(`${incomeYear}-12-01`) as
-    | { utm_clp: number }
-    | undefined;
-  if (!r) throw new Error(`No UTM for ${incomeYear}-12 — sync sbif_utm`);
+function latestUta(): number {
+  const r = db.prepare(`SELECT utm_clp FROM utm_daily ORDER BY date DESC LIMIT 1`).get() as { utm_clp: number } | undefined;
+  if (!r) throw new Error("No UTM stored — sync sbif_utm");
   return r.utm_clp * 12;
 }
 
-function loadFiled(taxYear: number): F22Codes {
+function utaDecember(incomeYear: number): number | null {
+  const r = db.prepare(`SELECT utm_clp FROM utm_daily WHERE date = ?`).get(`${incomeYear}-12-01`) as
+    | { utm_clp: number }
+    | undefined;
+  return r ? r.utm_clp * 12 : null;
+}
+
+/** The filed return, or null when no form was imported for the year (none filed, or not yet). */
+function loadFiled(taxYear: number): F22Codes | null {
   const rows = db.prepare(`SELECT code, amount FROM sii_f22_filed WHERE tax_year = ?`).all(taxYear) as {
     code: number;
     amount: number;
   }[];
-  if (rows.length === 0) throw new Error(`No filed F22 for AT${taxYear} — run scripts/import-sii-tax-year.ts`);
-  return Object.fromEntries(rows.map((r) => [r.code, r.amount]));
+  return rows.length === 0 ? null : Object.fromEntries(rows.map((r) => [r.code, r.amount]));
 }
 
 function loadInformed(taxYear: number): Map<number, InformedDjField[]> {
@@ -147,7 +170,8 @@ function loadDividends(incomeYear: number): F22DividendLine[] {
       `SELECT m.id, m.occurred_on, m.amount, d.gross_amount, d.withholding_amount
          FROM movements m
          LEFT JOIN movement_dividend_details d ON d.movement_id = m.id
-        WHERE m.flow_kind = 'dividend_payout' AND m.currency = 'usd' AND m.occurred_on LIKE ?`
+        WHERE m.flow_kind = 'dividend_payout' AND m.currency = 'usd' AND m.occurred_on LIKE ?
+        ORDER BY m.occurred_on, m.id`
     )
     .all(`${incomeYear}-%`) as {
     id: number;
@@ -156,45 +180,80 @@ function loadDividends(incomeYear: number): F22DividendLine[] {
     gross_amount: number | null;
     withholding_amount: number | null;
   }[];
-  return rows.map((r) => {
-    if (r.gross_amount == null || r.withholding_amount == null) {
-      throw new Error(`Dividend ${r.id} (${r.occurred_on}) has no gross / withholding detail — import its broker document`);
-    }
-    return { date: r.occurred_on, movementId: r.id, grossUsd: r.gross_amount, withholdingUsd: r.withholding_amount };
-  });
+  return rows.map((r) => ({
+    date: r.occurred_on,
+    movementId: r.id,
+    grossUsd: r.gross_amount,
+    withholdingUsd: r.withholding_amount,
+    netUsd: r.amount,
+  }));
 }
 
-export function buildF22Draft(taxYear: number): F22Draft {
+export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClockNow().ymd): F22Draft {
   const incomeYear = taxYear - 1;
-  const utaClp = utaDecember(incomeYear);
+  const provisional = todayYmd <= `${incomeYear}-12-31`;
+  const decemberUta = utaDecember(incomeYear);
+  const utaProvisional = decemberUta == null;
+  const utaClp = decemberUta ?? latestUta();
   const filed = loadFiled(taxYear);
-  const recomputed = computeF22Tax(filed, utaClp, taxYear);
-  for (const c of [158, 170, 157, 136, 304]) {
-    // A code the form does not print is zero.
-    if (recomputed[c] !== (filed[c] ?? 0)) {
-      throw new Error(`F22 AT${taxYear}: the chain gives ${c} = ${recomputed[c]} but the filed form says ${filed[c]}`);
+  if (filed) {
+    if (utaProvisional) throw new Error(`F22 AT${taxYear}: a filed form but no December ${incomeYear} UTM — sync sbif_utm`);
+    const recomputed = computeF22Tax(filed, utaClp, taxYear);
+    for (const c of [158, 170, 157, 136, 304]) {
+      // A code the form does not print is zero.
+      if (recomputed[c] !== (filed[c] ?? 0)) {
+        throw new Error(`F22 AT${taxYear}: the chain gives ${c} = ${recomputed[c]} but the filed form says ${filed[c]}`);
+      }
     }
   }
   const dj = loadInformed(taxYear);
-  const yearEndObservado = observadoOnOrBefore(`${incomeYear}-12-31`);
+  const informed = informedCodes(dj);
+  const salary = payrollTaxYear(incomeYear);
+  const base: F22DraftBase = filed
+    ? "filed"
+    : Object.keys(informed).length > 0
+      ? "informed"
+      : salary.months > 0
+        ? "payroll"
+        : "none";
+  const yearEndObservado = observadoOnOrBefore(provisional ? todayYmd : `${incomeYear}-12-31`);
 
   const crypto = cryptoTaxGainsForYear(incomeYear);
   const dividends = loadDividends(incomeYear);
-  const foreignShares = foreignShareGainsForYear(incomeYear, "fifo");
+  const foreignShares = foreignShareGainsForYear(incomeYear, "fifo", todayYmd);
   const foreignGain = Math.max(0, foreignShares.totalClp[foreignShares.defaultMode]);
 
-  const draftInput: F22Codes = { ...filed };
+  const draftInput: F22Codes =
+    base === "filed"
+      ? { ...filed! }
+      : base === "informed"
+        ? { ...informed }
+        : base === "payroll"
+          ? { 1098: salary.taxablePayClp, 161: salary.taxablePayClp, 162: salary.withheldTaxClp }
+          : {};
   const cryptoGain = Math.round(crypto.gainDecemberClp);
-  draftInput[1032] = Math.max(0, cryptoGain);
+  const detailed = dividends.filter((d) => d.grossUsd != null && d.withholdingUsd != null);
+  const grossClp = detailed.reduce((s, d) => s + d.grossUsd!, 0) * yearEndObservado;
+  const taxClp = detailed.reduce((s, d) => s + d.withholdingUsd!, 0) * yearEndObservado;
+  const appCodes: F22Codes = {
+    1032: Math.max(0, cryptoGain),
+    1104: Math.round(grossClp - taxClp) + Math.round(foreignGain),
+    748: Math.round(taxClp),
+    1018: Math.round(Math.min(taxClp, FOREIGN_TAX_CREDIT_CAP * grossClp)),
+  };
+  for (const [c, v] of Object.entries(appCodes)) {
+    // A year with no base shows only what the app has; zeros would read as a declared zero.
+    if (base !== "none" || v !== 0) draftInput[Number(c)] = v;
+  }
   if (cryptoGain < 0) draftInput[169] = (draftInput[169] ?? 0) - cryptoGain;
-  const grossClp = dividends.reduce((s, d) => s + d.grossUsd, 0) * yearEndObservado;
-  const taxClp = dividends.reduce((s, d) => s + d.withholdingUsd, 0) * yearEndObservado;
-  draftInput[1104] = Math.round(grossClp - taxClp) + Math.round(foreignGain);
-  draftInput[748] = Math.round(taxClp);
-  draftInput[1018] = Math.round(Math.min(taxClp, FOREIGN_TAX_CREDIT_CAP * grossClp));
-  const draft = computeF22Tax(draftInput, utaClp, taxYear);
-  draft[305] = draft[304];
-  draft[31] = draft[304];
+
+  const taxComputed = base !== "none";
+  const draft = taxComputed ? computeF22Tax(draftInput, utaClp, taxYear) : draftInput;
+  if (taxComputed) {
+    draft[305] = draft[304]!;
+    // Code 31 is the IGC to pay; a return with a refund does not print it.
+    if (draft[304]! > 0) draft[31] = draft[304]!;
+  }
   // The payment section (reajuste art. 72, total to pay, filing-date surcharges) depends on when a
   // rectification is paid; the SII computes it then.
   for (const c of PAYMENT_SECTION_CODES) delete draft[c];
@@ -203,10 +262,15 @@ export function buildF22Draft(taxYear: number): F22Draft {
   return {
     taxYear,
     incomeYear,
+    provisional,
+    base,
+    taxComputed,
     utaClp,
+    utaProvisional,
     yearEndObservado,
     filed,
-    informed: informedCodes(dj),
+    salary,
+    informed,
     draft,
     crypto,
     cryptoInformedSalesClp: f1964 ? informedDjAmount(f1964, "MONTO", "A") : null,

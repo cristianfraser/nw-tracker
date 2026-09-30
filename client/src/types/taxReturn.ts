@@ -34,10 +34,12 @@ export type TaxReturnCryptoSale = {
 
 export type TaxReturnDividend = {
   date: string;
-  gross_usd: number;
-  withholding_usd: number;
-  gross_clp: number;
-  withholding_clp: number;
+  net_usd: number;
+  /** Null until the broker document with the gross / withholding split is imported. */
+  gross_usd: number | null;
+  withholding_usd: number | null;
+  gross_clp: number | null;
+  withholding_clp: number | null;
 };
 
 export type TaxReturnForeignShareSale = {
@@ -52,17 +54,30 @@ export type TaxReturnResponse = {
   tax_year: number;
   income_year: number;
   available_tax_years: number[];
+  provisional: boolean;
+  base: "filed" | "informed" | "payroll" | "none";
+  tax_computed: boolean;
   uta_clp: number;
+  uta_provisional: boolean;
+  salary: {
+    months: number;
+    taxable_pay_clp: number;
+    withheld_tax_clp: number;
+    incomplete_months: string[];
+    provisional: boolean;
+  };
   year_end_observado: number;
   rows: TaxReturnRow[];
-  tax_filed: number;
-  tax_draft: number;
+  tax_filed: number | null;
+  tax_draft: number | null;
   crypto: {
     method: "fifo" | "lifo" | "average";
     fee_policy: "excluded" | "included";
     informed_sales_clp: number | null;
     sales_clp: number;
     gain_december_clp: number;
+    provisional: boolean;
+    reajuste_to_month: string;
     sales: TaxReturnCryptoSale[];
   };
   dividends: TaxReturnDividend[];

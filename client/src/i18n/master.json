@@ -5310,10 +5310,6 @@
       "en": "AT{{year}}",
       "es": "AT{{year}}"
     },
-    "summary": {
-      "en": "Tax (code 304): filed {{filed}}, draft {{draft}} — difference {{diff}}.",
-      "es": "Impuesto (código 304): presentado {{filed}}, borrador {{draft}} — diferencia {{diff}}."
-    },
     "paymentNote": {
       "en": "The payment section (reajuste, interest and surcharges) depends on when a rectification is paid; the SII computes it then.",
       "es": "La sección de pago (reajuste, intereses y recargos) depende de cuándo se pague una rectificatoria; el SII la calcula en ese momento."
@@ -5526,6 +5522,10 @@
       "informed": {
         "en": "The exchange informed sales of {{amount}} (DJ 1964).",
         "es": "El exchange informó ventas por {{amount}} (DJ 1964)."
+      },
+      "provisional": {
+        "en": "The reajuste to December runs to {{month}}, the latest IPC published.",
+        "es": "El reajuste a diciembre llega hasta {{month}}, el último IPC publicado."
       }
     },
     "dividends": {
@@ -5556,6 +5556,18 @@
       "withholdingClp": {
         "en": "Withheld ($)",
         "es": "Retenido ($)"
+      },
+      "missingDetail": {
+        "en": "pending",
+        "es": "pendiente"
+      },
+      "missingNote": {
+        "en": "{{count}} dividend(s) without the broker's gross / withholding detail yet: left out of 1104 / 748 / 1018.",
+        "es": "{{count}} dividendo(s) aún sin el detalle bruto / retención del corredor: quedan fuera de 1104 / 748 / 1018."
+      },
+      "explainProvisional": {
+        "en": "Converted at the latest dólar observado ({{rate}}) until December 31, {{year}}: code 1104 the net, 748 the tax withheld, 1018 its credit.",
+        "es": "Convertidos al último dólar observado ({{rate}}) hasta el 31 de diciembre de {{year}}: código 1104 el neto, 748 el impuesto retenido, 1018 su crédito."
       }
     },
     "foreign": {
@@ -5593,6 +5605,44 @@
           "es": "Con reajuste IPC (Oficio 750)"
         }
       }
+    },
+    "summaryFiled": {
+      "en": "Tax (code 304) filed: {{amount}}",
+      "es": "Impuesto (código 304) presentado: {{amount}}"
+    },
+    "summaryDraft": {
+      "en": "draft: {{amount}}",
+      "es": "borrador: {{amount}}"
+    },
+    "summaryDiff": {
+      "en": "difference: {{amount}}",
+      "es": "diferencia: {{amount}}"
+    },
+    "base": {
+      "filed": {
+        "en": "Draft base: the filed return, with the codes the app calculates replaced.",
+        "es": "Base del borrador: la declaración presentada, con los códigos que calcula la app reemplazados."
+      },
+      "informed": {
+        "en": "No filed return: the draft starts from what third parties informed (DJ).",
+        "es": "Sin declaración presentada: el borrador parte de lo que informaron terceros (DJ)."
+      },
+      "payroll": {
+        "en": "No filed return or informed DJs: the salary comes from the {{months}} imported payslips.",
+        "es": "Sin declaración presentada ni DJ informadas: el sueldo sale de las {{months}} liquidaciones importadas."
+      },
+      "none": {
+        "en": "No filed return, informed DJs or payslips for this year: only what the app calculates.",
+        "es": "Sin declaración, DJ ni liquidaciones para este año: solo lo que calcula la app."
+      }
+    },
+    "provisionalYear": {
+      "en": "{{year}} has not closed: December's UTA, dollar and IPC are the latest published, so the draft is an estimate.",
+      "es": "{{year}} no ha cerrado: la UTA, el dólar y el IPC de diciembre son los últimos publicados, así que el borrador es una estimación."
+    },
+    "salaryIncomplete": {
+      "en": "Payslips with contributions or totals not read ({{months}}): the salary of those months is overstated or missing.",
+      "es": "Liquidaciones sin cotizaciones o totales leídos ({{months}}): el sueldo de esos meses queda sobrestimado o falta."
     }
   }
 }
