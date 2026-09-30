@@ -1,8 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import {
+  FEEDER_PARSE_FORMATS,
+  FEEDER_PARSE_PATH,
   FEEDER_RUNS_PATH,
+  feederParseRequestSchema,
   ingestRunRequestSchema,
+  type FeederParseFormat,
+  type FeederParseResult,
   type IngestRunCompletion,
   type IngestRunRequest,
   type SantanderState,
@@ -24,6 +29,8 @@ export type FeederDeps = {
   santanderState: () => SantanderState;
   log: (message: string) => void;
   token?: string | null;
+  /** Upload formats (`POST /parse/<format>`); `NotThisFormatError` from one is a 422 `not_this_format`. */
+  parse?: Partial<Record<FeederParseFormat, (content: Buffer, filename: string) => FeederParseResult>>;
 };
 
 type Running = { run_id: number | null; kind: string; started_at: string };
@@ -42,12 +49,12 @@ function tokenOk(header: string | undefined, token: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-async function readJson(req: http.IncomingMessage): Promise<unknown> {
+async function readJson(req: http.IncomingMessage, maxBytes = 64 * 1024): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > 64 * 1024) throw new Error("request body too large");
+    if (size > maxBytes) throw new Error("request body too large");
     chunks.push(chunk as Buffer);
   }
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "null");
@@ -86,6 +93,30 @@ export function createFeederServer(deps: FeederDeps): { server: http.Server; cur
       if (deps.token && !tokenOk(req.headers.authorization, deps.token)) return send(res, 401, { error: "token" });
       const url = new URL(req.url ?? "/", "http://localhost");
       if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, running: current });
+      if (req.method === "POST" && url.pathname.startsWith(`${FEEDER_PARSE_PATH}/`)) {
+        const format = decodeURIComponent(url.pathname.slice(FEEDER_PARSE_PATH.length + 1));
+        const parser = (FEEDER_PARSE_FORMATS as readonly string[]).includes(format)
+          ? deps.parse?.[format as FeederParseFormat]
+          : undefined;
+        if (!parser) return send(res, 404, { error: "unknown format", format });
+        let content: Buffer;
+        let filename: string;
+        try {
+          const body = feederParseRequestSchema.parse(await readJson(req, 40 * 1024 * 1024));
+          content = Buffer.from(body.content_base64, "base64");
+          filename = body.filename;
+        } catch (err) {
+          return send(res, 400, { error: "invalid parse request", message: err instanceof Error ? err.message : String(err) });
+        }
+        try {
+          return send(res, 200, parser(content, filename));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          const notThis = err instanceof Error && err.name === "NotThisFormatError";
+          deps.log(`parse ${format} ${filename}: ${notThis ? "not this format" : "unreadable"} — ${message}`);
+          return send(res, 422, { error: notThis ? "not_this_format" : "unreadable", message });
+        }
+      }
       if (req.method !== "POST" || url.pathname !== FEEDER_RUNS_PATH) return send(res, 404, { error: "not found" });
       let request: IngestRunRequest;
       try {

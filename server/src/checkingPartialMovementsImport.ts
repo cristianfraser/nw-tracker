@@ -5,9 +5,19 @@ import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReco
 import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
-import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
 
-export function partialMovementNote(mv: UltimosMovimientoRow): string {
+/**
+ * One row of a bank account's recent-movements listing, as the import stores it: the posting date,
+ * the bank's description, the signed peso amount, the document number ("" when the row prints none).
+ */
+export type PartialBankMovement = {
+  occurred_on: string;
+  description: string;
+  amount_clp: number;
+  document_no: string;
+};
+
+export function partialMovementNote(mv: PartialBankMovement): string {
   const desc = mv.description.replace(/\|/g, "/").slice(0, 120);
   const doc = mv.document_no ? `|doc:${mv.document_no}` : "";
   return `import:cartola-partial|${mv.occurred_on}|${mv.amount_clp}|${desc}${doc}`;
@@ -41,7 +51,7 @@ export type PartialMovementsImportResult = {
 
 export function importCheckingPartialMovements(
   accountId: number,
-  movements: UltimosMovimientoRow[]
+  movements: PartialBankMovement[]
 ): PartialMovementsImportResult {
   const ins = db.prepare(
     `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
@@ -55,7 +65,7 @@ export function importCheckingPartialMovements(
   const inserted_flows: ImportFlowItem[] = [];
   const skipped_flows: SkippedImportFlowItem[] = [];
   const consumedTransferLegs = new Set<number>();
-  const flowOf = (mv: UltimosMovimientoRow): ImportFlowItem => ({
+  const flowOf = (mv: PartialBankMovement): ImportFlowItem => ({
     occurred_on: mv.occurred_on,
     description: mv.description,
     amount_clp: mv.amount_clp,

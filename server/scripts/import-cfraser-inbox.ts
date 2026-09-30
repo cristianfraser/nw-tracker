@@ -12,8 +12,8 @@
  * cert accounts via `import:fintual-cert` at the end of the run. A Lider BCI «últimos
  * movimientos» CSV (`lider-bci-movimientos-*.csv`, dropped by its own scheduled fetch) is
  * imported through the web-paste path at the end of the run and archived. The daily checking
- * «ultimos movimientos-Cuenta Corriente.xlsx» (dropped by fetch:santander) is imported into the
- * cuenta corriente via `importCheckingRecentXlsx` and archived under
+ * «ultimos movimientos-Cuenta Corriente.xlsx» (dropped by fetch:santander) is sent to the server
+ * by ingest (`import:checking-movements`, `bank_account.movements`) and archived under
  * `cfraser/checking-ultimos-movimientos/imported/`.
  *
  * Default (credit-card inbox only): steps 1–5; skips checking, cuenta vista, sync.
@@ -46,11 +46,6 @@ import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
 import { hasPendingGroceryReceipts } from "../src/groceryReceiptsImport.js";
 import { listGroceryReceiptInboxFiles } from "../src/groceryReceiptsIngest.js";
 import { importCuentaVistaCartolasFromPdfs } from "../src/cuentaVistaCartolaImport.js";
-import {
-  importUltimosMovimientosInboxFiles,
-  listUltimosMovimientosInboxFiles,
-  formatUltimosInboxFileSummary,
-} from "../src/checkingUltimosMovimientosInbox.js";
 import { processFintualCertificadoInboxCsv } from "../src/fintualCertificadoInbox.js";
 import { listLiderMovementInboxFiles } from "../src/liderMovementsImport.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";
@@ -262,26 +257,20 @@ function main(): void {
     console.log("\n=== Import checking cartolas (skipped; pass --checking or drop cartola in inbox) ===");
   }
 
-  // Daily checking «últimos movimientos» xlsx from the web session (fetchCheckingMovements).
-  // Rows dated after today are real: Santander's bank day ends at 14:00, so wires after the
-  // cutoff post on the next workday — the monthly cartola carries the same posting date, so
-  // the incremental row dedupes against it.
-  if (!hasFlag("skip-checking") && listUltimosMovimientosInboxFiles().length > 0) {
-    console.log(`\n=== Import checking ultimos movimientos xlsx${dryRun ? " (dry run)" : ""} ===`);
-    try {
-      for (const r of importUltimosMovimientosInboxFiles({ dryRun })) {
-        console.log(`  ${formatUltimosInboxFileSummary(r)}`);
-        if (r.parse_errors.length) {
-          console.error(r.parse_errors.map((e) => `  ${r.file}: ${e}`).join("\n"));
-          process.exit(1);
-        }
-      }
-    } catch (e) {
-      console.error(e instanceof Error ? e.message : e);
-      process.exit(1);
-    }
-  } else {
-    console.log("\n=== Checking ultimos movimientos xlsx (none in inbox) ===");
+  // Daily checking «últimos movimientos» xlsx from the web session (fetchCheckingMovements):
+  // ingest decodes it and sends the rows to the server (`bank_account.movements`). Rows dated
+  // after today are real: Santander's bank day ends at 14:00, so wires after the cutoff post on
+  // the next workday — the monthly cartola carries the same posting date, so the incremental row
+  // dedupes against it.
+  if (!hasFlag("skip-checking")) {
+    const code = runStep("Checking ultimos movimientos xlsx (ingest)", "npm", [
+      "run",
+      "import:checking-movements",
+      "-w",
+      "nw-tracker-ingest",
+      ...(dryRun ? ["--", "--dry-run"] : []),
+    ]);
+    if (code !== 0) process.exit(code);
   }
 
   // Santander CC payment receipts (staged by fetch:santander-docs): re-date checking payment

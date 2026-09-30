@@ -20,12 +20,14 @@
     "check:santander-catchup": "tsx src/santanderCatchUpMain.ts",
     "test": "vitest run",
     "import:santander-movements": "tsx src/santander/importCardMovementsMain.ts",
-    "service": "tsx src/service/main.ts"
+    "service": "tsx src/service/main.ts",
+    "import:checking-movements": "tsx src/santander/importCheckingMovementsMain.ts"
   },
   "dependencies": {
     "imapflow": "1.6.5",
     "nw-tracker-contracts": "0.1.0",
     "playwright-core": "1.62.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "4.4.3"
   },
   "devDependencies": {

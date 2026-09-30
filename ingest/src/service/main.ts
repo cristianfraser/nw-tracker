@@ -12,6 +12,7 @@ import { envValue, ingestClient } from "../serverApi.js";
 import { createFeederServer, reportWithRetry } from "./feederServer.js";
 import { readSantanderState, runRequestedRun } from "../runner/runRequest.js";
 import { runnerScriptRunningOutside } from "./runnerScripts.js";
+import { PARSE_FORMATS } from "../parse/formats.js";
 
 const port = Number(process.env.INGEST_SERVICE_PORT ?? 3002);
 const client = ingestClient();
@@ -23,6 +24,7 @@ const { server } = createFeederServer({
   santanderState: readSantanderState,
   log,
   token: envValue("INGEST_TOKEN") ?? null,
+  parse: PARSE_FORMATS,
 });
 
 server.listen(port, "127.0.0.1", () => log(`ingest service listening on 127.0.0.1:${port}`));

@@ -5,8 +5,9 @@ Status (2026-09-30): **Phase 0 done** (server LaunchAgent installed, `scraper/` 
 through `card.unbilled_movements`; decoding lives in `ingest/src/santander/cardFeed.ts`.
 **Phase 2 built** (2a: the server's run scheduler, the ingest service, the run protocol; 2b: the
 runners in TypeScript, the Santander catch-up / payday decisions and the run recording in the
-server), not yet switched on: `ingest/switch-schedule.sh to-server` does it. Phase 3 (the
-remaining sources) is next.
+server), not yet switched on: `ingest/switch-schedule.sh to-server` does it. **Phase 3 in
+progress**: 1. checking «últimos movimientos» xlsx done (`bank_account.movements`, uploads via the
+service's `/parse`).
 
 ## Goal
 
@@ -204,7 +205,9 @@ for a while (Phase 4 deletes them). The original outline:
 
 In rough order (simplest separation first):
 
-1. Checking «ultimos movimientos» xlsx (`checkingUltimosMovimientosParse`).
+1. Checking «ultimos movimientos» xlsx (`checkingUltimosMovimientosParse`). **Done** —
+   `bank_account.movements`; the upload box forwards to the service's `/parse` (the mechanism the
+   other upload formats reuse).
 2. Santander payment receipts.
 3. Broker e-mails (`brokerEmailParse`) — Fintual and Racional.
 4. Racional crawl + dividends file.
