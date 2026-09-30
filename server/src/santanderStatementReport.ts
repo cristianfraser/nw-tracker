@@ -13,7 +13,7 @@ import {
   type SantanderStatementLine,
 } from "./santanderStatementParse.js";
 
-/** Where `scraper/` stages fetched statement JSON. */
+/** Where `ingest/` stages fetched statement JSON. */
 export function resolveSantanderStatementJsonDir(): string {
   return path.join(resolveCfraserCsvDir(), "santander-statement-json");
 }
@@ -28,7 +28,7 @@ export type ParsedSantanderStatement = {
   lines: SantanderStatementLine[];
 };
 
-/** `<Cuenta>-extracto-<NumExtracto>-estadoCuenta….json` — how `scraper/` names a staged statement. */
+/** `<Cuenta>-extracto-<NumExtracto>-estadoCuenta….json` — how `ingest/` names a staged statement. */
 const STAGED_FILE_IDENTITY = /^(\d+)-extracto-(\d+)-/;
 
 /**

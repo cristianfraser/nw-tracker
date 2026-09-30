@@ -3,7 +3,7 @@
 <!--
   Hourly Gmail/IMAP poll (fetch + cheap e-mail-native imports). Install with:
 
-      cp scraper/com.user.nw-tracker-email-hourly.plist ~/Library/LaunchAgents/
+      cp ingest/com.user.nw-tracker-email-hourly.plist ~/Library/LaunchAgents/
       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.nw-tracker-email-hourly.plist
 
   LaunchAgent (gui/<uid>), not a LaunchDaemon: no window server needed (pure IMAP), but the
@@ -22,7 +22,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/bin/bash</string>
-		<string>/Users/crfrsr/Projects/nw-tracker/scraper/email-run.sh</string>
+		<string>/Users/crfrsr/Projects/nw-tracker/ingest/email-run.sh</string>
 	</array>
 	<key>WorkingDirectory</key>
 	<string>/Users/crfrsr/Projects/nw-tracker</string>

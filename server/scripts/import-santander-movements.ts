@@ -1,5 +1,5 @@
 /**
- * Import credit-card movements fetched by `scraper/` into the ledger.
+ * Import credit-card movements fetched by `ingest/` into the ledger.
  *
  *   npm run import:santander-movements -w nw-tracker-server            # import + archive
  *   npm run import:santander-movements -w nw-tracker-server -- --dry-run

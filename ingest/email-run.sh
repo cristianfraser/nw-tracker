@@ -2,8 +2,8 @@
 #
 # Hourly Gmail/IMAP poll, invoked by the LaunchAgent `com.user.nw-tracker-email-hourly`.
 #
-#   scraper/email-run.sh            # run now (manual trigger)
-#   scraper/email-run.sh --dry-run  # list what the fetches would download; import nothing
+#   ingest/email-run.sh            # run now (manual trigger)
+#   ingest/email-run.sh --dry-run  # list what the fetches would download; import nothing
 #
 # Fetches ONLY what e-mail carries — Santander monthly PDFs + payment receipts, the BCI Lider
 # statement PDF, Lider boletas, broker notifications — and, when a fetch staged something new
@@ -30,7 +30,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
 # log / add_step / step, shared with daily-run.sh.
-source "$REPO_ROOT/scraper/run-lib.sh"
+source "$REPO_ROOT/ingest/run-lib.sh"
 
 DRY_RUN=0
 for arg in "$@"; do
@@ -48,7 +48,7 @@ activity=0
 # with this script, and none of them is locked — whole-file read-modify-write on the JSON
 # state files means overlapping runs lose writes. Skip the hour instead of interleaving;
 # the schedule (:30 past the hour vs 22:00) makes this a rare second line of defense.
-if pgrep -f "scraper/daily-run.sh" >/dev/null 2>&1; then
+if pgrep -f "ingest/daily-run.sh" >/dev/null 2>&1; then
   log "skipping — daily-run.sh is running"
   exit 0
 fi
@@ -116,7 +116,7 @@ else
 fi
 
 # Santander catch-up: the one bank session this poll may open — see the header and
-# `scraper/src/santander/catchUp.ts`. The decision records the attempt, so a failing fetch is
+# `ingest/src/santander/catchUp.ts`. The decision records the attempt, so a failing fetch is
 # retried once per nightly slot, never hourly.
 # Payday (2026-09-30): on the month's last Chile business day the salary lands in checking in the
 # morning, so from 09:00 the poll fetches Santander once more (`check:santander-payday-fetch`,

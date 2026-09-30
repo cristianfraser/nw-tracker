@@ -3,7 +3,7 @@
 <!--
   Daily bank fetch + import. Install with:
 
-      cp scraper/com.user.nw-tracker-daily.plist ~/Library/LaunchAgents/
+      cp ingest/com.user.nw-tracker-daily.plist ~/Library/LaunchAgents/
       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.nw-tracker-daily.plist
 
   It MUST be a LaunchAgent (gui/<uid> domain), not a LaunchDaemon: Santander's edge blocks
@@ -21,7 +21,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/bin/bash</string>
-		<string>/Users/crfrsr/Projects/nw-tracker/scraper/daily-run.sh</string>
+		<string>/Users/crfrsr/Projects/nw-tracker/ingest/daily-run.sh</string>
 		<string>--scheduled</string>
 	</array>
 	<key>WorkingDirectory</key>

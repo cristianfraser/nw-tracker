@@ -44,7 +44,7 @@ services:
     #   - nw-tracker.crfrsr.io
     # version-info.mjs first: writes version.json (commit-stamped) at repo root while
     # .git is present, so the server can report the deployed commit at /api/health.
-    buildCommand: node scripts/version-info.mjs --write version.json && npm install --include=dev && npm run build -w nw-tracker-client
+    buildCommand: node scripts/version-info.mjs --write version.json && npm install --include=dev -w nw-tracker-server -w nw-tracker-client --include-workspace-root && npm run build -w nw-tracker-client
     startCommand: npm run serve -w nw-tracker-server
     healthCheckPath: /api/health
     # Persistent disk for the visit analytics only. The synthetic demo DB

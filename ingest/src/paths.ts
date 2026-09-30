@@ -5,7 +5,7 @@ import type { BankName } from "./config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** Repo root (`nw-tracker/`), one level above `scraper/`. */
+/** Repo root (`nw-tracker/`), one level above `ingest/`. */
 export function resolveRepoRoot(): string {
   return path.resolve(__dirname, "..", "..");
 }

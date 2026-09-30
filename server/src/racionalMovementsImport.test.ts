@@ -618,7 +618,7 @@ describe("racional staged files — incomplete rows, file isolation, watermark",
       if (!m) throw new Error(`no ${fn} in ${file.pathname}`);
       return m[1]!;
     };
-    expect(returnLine(new URL("../../scraper/src/racional/steps.ts", import.meta.url), "rowKey")).toBe(
+    expect(returnLine(new URL("../../ingest/src/racional/steps.ts", import.meta.url), "rowKey")).toBe(
       returnLine(new URL("./racionalMovements.ts", import.meta.url), "racionalListRowKey")
     );
   });
