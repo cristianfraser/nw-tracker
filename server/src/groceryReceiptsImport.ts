@@ -73,6 +73,8 @@ import type { CcWebPasteLine } from "./ccWebPasteParse.js";
 import type { ImportBatchKind } from "./importBatches.js";
 import { classifyLiderLines, liderMasterAccountId } from "./liderMovementsImport.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
+import { statementLineDateIso } from "./ccInstallmentPayBy.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 
 export const GROCERY_CHAIN_LIDER = "lider";
@@ -175,7 +177,8 @@ function readStamp(dir: string): ImportStamp | null {
 
 /** A movement outcome that no later run could change; only these get stamped. */
 export function movementIsTerminal(status: GroceryReceiptImportResult["movement"]["status"]): boolean {
-  return status !== "pending_branch";
+  // Both wait for the bank's own line: an unknown branch to learn, a recent purchase to link.
+  return status !== "pending_branch" && status !== "awaiting_card_line";
 }
 
 type LiderEmailMeta = { message_id: string; subject: string; date: string; body_text: string };
@@ -187,6 +190,8 @@ export type GenericStagedMeta = {
   original_file?: string;
   original_name?: string;
   ingested_at?: string;
+  /** `YYYY-MM-DD` from a photo named `YYYY:MM:DD.<ext>` (`photoTakenOnFromName`). */
+  photo_taken_on?: string;
 };
 
 type ParsedReceiptItem = {
@@ -204,11 +209,14 @@ type ParsedReceiptItem = {
 export type ParsedReceipt = {
   /** Chain slug emitted by the parser — required in the generic root (the lider_email root is Lider by construction). */
   chain?: string;
-  boleta_number: string;
+  /** Null when the photo lost it (a torn top): the receipt is keyed on the photo instead. */
+  boleta_number: string | null;
   caja: string;
   sucursal: string;
   city: string | null;
-  purchased_at: string;
+  /** Null when the receipt prints no date and no correction declares one (`resolveReceiptFacts`). */
+  purchased_at: string | null;
+  purchase_date_source?: "printed" | "declared" | null;
   template: string;
   items: ParsedReceiptItem[];
   /** Receipt-scope rebates (Mi Club canje, whole-receipt coupons) — never product info. */
@@ -231,6 +239,13 @@ export type StagedReceipt = {
   parsed: ParsedReceipt;
   parsed_sha256: string;
   stamp: ImportStamp | null;
+  /** From meta.json — a photo named `YYYY:MM:DD.<ext>`; null otherwise. */
+  photo_taken_on: string | null;
+};
+
+/** A staged receipt whose number and purchase date are known (`resolveReceiptFacts`). */
+export type ResolvedStagedReceipt = StagedReceipt & {
+  parsed: ParsedReceipt & { boleta_number: string; purchased_at: string };
 };
 
 function readJson<T>(file: string): T {
@@ -256,7 +271,14 @@ export function listStagedReceipts(roots = defaultStagingRoots()): StagedReceipt
         if (parsed.chain != null && parsed.chain !== GROCERY_CHAIN_LIDER) {
           throw new Error(`${dir}: the Lider e-mail root holds a receipt the parser attributes to chain ${JSON.stringify(parsed.chain)}`);
         }
-        out.push({ root: root.kind, ...common, source: "lider_email", source_key: meta.message_id, chain: GROCERY_CHAIN_LIDER });
+        out.push({
+          root: root.kind,
+          ...common,
+          source: "lider_email",
+          source_key: meta.message_id,
+          chain: GROCERY_CHAIN_LIDER,
+          photo_taken_on: null,
+        });
       } else {
         const meta = readJson<Partial<GenericStagedMeta>>(metaFile);
         if (!isGroceryReceiptSource(meta.source)) {
@@ -268,7 +290,14 @@ export function listStagedReceipts(roots = defaultStagingRoots()): StagedReceipt
         if (!parsed.chain) {
           throw new Error(`${dir}: parsed.json without chain — the generic root requires the parser's chain slug`);
         }
-        out.push({ root: root.kind, ...common, source: meta.source, source_key: meta.source_key, chain: parsed.chain });
+        out.push({
+          root: root.kind,
+          ...common,
+          source: meta.source,
+          source_key: meta.source_key,
+          chain: parsed.chain,
+          photo_taken_on: meta.photo_taken_on ?? null,
+        });
       }
     }
   }
@@ -307,7 +336,7 @@ const selectByKey = db.prepare(
 );
 const selectBySourceKey = db.prepare(`SELECT id, receipt_key FROM grocery_receipts WHERE source_key = ?`);
 
-export function resolveReceiptOwnership(staged: StagedReceipt): {
+export function resolveReceiptOwnership(staged: ResolvedStagedReceipt): {
   receiptKey: string;
   resolution: ReceiptResolution;
 } {
@@ -378,6 +407,120 @@ function totalClp(parsed: ParsedReceipt): number {
   return parsed.payments.reduce((sum, p) => sum + p.amount_clp, 0);
 }
 
+/**
+ * A chain whose purchases the card data already carries (its card is not co-branded: the bank's
+ * own feed and statements list the purchase): nothing is written, the receipt is LINKED to the
+ * card line that is its purchase — same pesos, the chain's merchant name, the purchase day (or,
+ * for a receipt that prints no date, the days up to the photo) — and an undated receipt takes
+ * that line's date.
+ */
+type ChainMatchRule = {
+  /** Payment legs that are a card charge. */
+  payment_methods: readonly string[];
+  /** How the bank names the chain's stores. */
+  merchant: RegExp;
+};
+
+const CHAIN_MATCH_RULES: Readonly<Record<string, ChainMatchRule>> = {
+  jumbo: { payment_methods: ["t_credito"], merchant: /\b(JUMBO|CENCOSUD)\b/i },
+};
+
+/** A photo is taken on or up to this many days after the purchase it shows. */
+export const UNDATED_RECEIPT_LOOKBACK_DAYS = 7;
+/** A dated receipt whose card line is missing waits this long for the feed / statement to list it. */
+export const CARD_LINE_WAIT_DAYS = 45;
+
+export type CardLineMatch =
+  | { status: "matched"; account_id: number; line_date: string; merchant: string }
+  | { status: "no_card_line" | "not_card_paid" }
+  | { status: "ambiguous_card_line"; candidates: number };
+
+const selectCardLinesByAmount = db.prepare(
+  `SELECT DISTINCT s.account_id, l.transaction_date, l.posting_date, l.merchant
+   FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+   WHERE l.amount_clp = ?`
+);
+
+function ymdAddDays(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** The card line that is this purchase, in `[fromYmd, toYmd]`. */
+export function findReceiptCardLine(rule: ChainMatchRule, paidClp: number, fromYmd: string, toYmd: string): CardLineMatch {
+  if (paidClp <= 0) return { status: "not_card_paid" };
+  const seen = new Set<string>();
+  const hits: Extract<CardLineMatch, { status: "matched" }>[] = [];
+  for (const row of selectCardLinesByAmount.all(paidClp) as {
+    account_id: number;
+    transaction_date: string | null;
+    posting_date: string | null;
+    merchant: string | null;
+  }[]) {
+    const date = statementLineDateIso(row);
+    if (!date || date < fromYmd || date > toYmd || !rule.merchant.test(row.merchant ?? "")) continue;
+    // The same purchase on two statement versions (or a bucket line and its statement) is one hit.
+    const key = `${row.account_id}|${date}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    hits.push({ status: "matched", account_id: row.account_id, line_date: date, merchant: row.merchant ?? "" });
+  }
+  if (hits.length === 1) return hits[0]!;
+  return hits.length === 0 ? { status: "no_card_line" } : { status: "ambiguous_card_line", candidates: hits.length };
+}
+
+export type PurchaseDateSource = "printed" | "declared" | "card_line" | "photo";
+
+/**
+ * The receipt's identity fields where the photo lost them, and its card line. A receipt with no
+ * printed number is keyed on the photo (`photo-<sha12>` — stable across runs, so a re-import is
+ * a repeat, not a new receipt). A receipt with no date takes its card line's date (a line of the
+ * chain for the paid pesos in the week up to the photo), else the photo's own date; one with
+ * neither a date nor a dated photo name throws — declare it in the correction file.
+ */
+export function resolveReceiptFacts(staged: StagedReceipt): {
+  staged: ResolvedStagedReceipt;
+  date_source: PurchaseDateSource;
+  card_line: CardLineMatch | null;
+} {
+  const { parsed } = staged;
+  let boleta = parsed.boleta_number;
+  if (!boleta) {
+    if (staged.source !== "photo") throw new Error(`${staged.dir}: receipt without a number from a ${staged.source}`);
+    boleta = `photo-${staged.source_key.slice(0, 12)}`;
+  }
+  const rule = CHAIN_MATCH_RULES[staged.chain];
+  const paid = rule ? parsed.payments.filter((p) => rule.payment_methods.includes(p.method)).reduce((s, p) => s + p.amount_clp, 0) : 0;
+  let purchasedAt = parsed.purchased_at;
+  let dateSource: PurchaseDateSource = parsed.purchase_date_source === "declared" ? "declared" : "printed";
+  let cardLine: CardLineMatch | null = null;
+  if (purchasedAt) {
+    const day = purchasedAt.slice(0, 10);
+    cardLine = rule ? findReceiptCardLine(rule, paid, day, day) : null;
+  } else {
+    if (!staged.photo_taken_on) {
+      throw new Error(
+        `${staged.dir}: the receipt prints no date and the photo is not named YYYY:MM:DD — declare it in ocr.corrected.txt (#! purchase_date: YYYY-MM-DD)`
+      );
+    }
+    const photo = staged.photo_taken_on;
+    cardLine = rule ? findReceiptCardLine(rule, paid, ymdAddDays(photo, -UNDATED_RECEIPT_LOOKBACK_DAYS), photo) : null;
+    if (cardLine?.status === "matched") {
+      purchasedAt = `${cardLine.line_date} 00:00:00`;
+      dateSource = "card_line";
+    } else {
+      purchasedAt = `${photo} 00:00:00`;
+      dateSource = "photo";
+    }
+  }
+  return {
+    staged: { ...staged, parsed: { ...parsed, boleta_number: boleta, purchased_at: purchasedAt } },
+    date_source: dateSource,
+    card_line: cardLine,
+  };
+}
+
 // ---------------------------------------------------------------------------------------------
 // Receipt + items write
 // ---------------------------------------------------------------------------------------------
@@ -446,7 +589,7 @@ export function resolveAliasProductId(
 }
 
 function writeReceiptRow(
-  staged: StagedReceipt,
+  staged: ResolvedStagedReceipt,
   receiptKey: string,
   resolution: Exclude<ReceiptResolution, { action: "skip" }>,
   rule: ChainCardRule | undefined
@@ -539,7 +682,7 @@ function upsertReceiptItems(receiptId: number, chain: string, parsed: ParsedRece
 
 const writeReceipt = db.transaction(
   (
-    staged: StagedReceipt,
+    staged: ResolvedStagedReceipt,
     receiptKey: string,
     resolution: Exclude<ReceiptResolution, { action: "skip" }>,
     rule: ChainCardRule | undefined
@@ -574,12 +717,17 @@ export type GroceryReceiptImportResult = {
   /** replaced: the source this document displaced; skipped_duplicate: the source that owns the row. */
   other_source: GroceryReceiptSource | null;
   purchased_at: string;
+  /** Where the purchase date came from (a photo that prints none: its card line, else the photo). */
+  purchase_date_source: PurchaseDateSource;
   card_paid_clp: number;
   items: number;
   items_classified: number;
   movement:
     | { status: "created" | "duplicate" | "same_day_amount" }
     | { status: "closed_month" | "not_card_paid" | "chain_items_only" | "not_attempted" }
+    /** A linking chain (Jumbo): no card line for the purchase — waiting for it (recent), or none. */
+    | { status: "awaiting_card_line" | "no_card_line" }
+    | { status: "ambiguous_card_line"; candidates: number }
     /** Flagged: no map names the branch; the bank's own line for this day+amount will pair it. */
     | { status: "pending_branch"; branch: string }
     /** Paired with the bank's line (now or by an earlier card write); the branch is learned. */
@@ -642,8 +790,9 @@ export function importStagedGroceryReceipts(opts?: {
   };
   const results: GroceryReceiptImportResult[] = [];
 
-  for (const receipt of staged) {
-    if (!opts?.full && stampIsCurrent(receipt)) {
+  for (const stagedReceipt of staged) {
+    if (!opts?.full && stampIsCurrent(stagedReceipt)) {
+      const receipt = stagedReceipt;
       results.push({
         root: receipt.root,
         dir: receipt.dir,
@@ -653,7 +802,8 @@ export function importStagedGroceryReceipts(opts?: {
         receipt_id: receipt.stamp.receipt_id,
         receipt_status: "unchanged",
         other_source: null,
-        purchased_at: receipt.parsed.purchased_at,
+        purchased_at: receipt.parsed.purchased_at ?? `${receipt.stamp.receipt_key.split("|")[2]} 00:00:00`,
+        purchase_date_source: receipt.parsed.purchase_date_source ?? "printed",
         card_paid_clp: cardPaidClp(receipt.parsed, CHAIN_CARD_RULES[receipt.chain]),
         items: receipt.parsed.items.length,
         items_classified: (countClassified.get(receipt.stamp.receipt_id) as { c: number }).c,
@@ -661,6 +811,8 @@ export function importStagedGroceryReceipts(opts?: {
       });
       continue;
     }
+    const facts = resolveReceiptFacts(stagedReceipt);
+    const receipt = facts.staged;
     const { receiptKey, resolution } = resolveReceiptOwnership(receipt);
     const rule = CHAIN_CARD_RULES[receipt.chain];
     const paid = cardPaidClp(receipt.parsed, rule);
@@ -675,7 +827,25 @@ export function importStagedGroceryReceipts(opts?: {
     if (resolution.action === "skip") {
       movement = { status: "not_attempted" };
     } else if (!rule) {
-      movement = { status: "chain_items_only" };
+      const line = facts.card_line;
+      if (line === null) {
+        movement = { status: "chain_items_only" };
+      } else if (line.status === "matched") {
+        movement = { status: "matched", branch: receipt.parsed.sucursal, merchant: line.merchant };
+        if (!opts?.dryRun) markReceiptCardLine(receiptId, "matched", line.account_id);
+      } else if (line.status === "no_card_line") {
+        // A dated purchase the feed or statement has not listed yet keeps checking; an old one
+        // (or an undated photo, whose date is now the photo's) stops.
+        const waitFrom = ymdAddDays(chileCalendarTodayYmd(), -CARD_LINE_WAIT_DAYS);
+        movement =
+          facts.date_source !== "photo" && purchaseIso >= waitFrom
+            ? { status: "awaiting_card_line" }
+            : { status: "no_card_line" };
+      } else if (line.status === "ambiguous_card_line") {
+        movement = { status: "ambiguous_card_line", candidates: line.candidates };
+      } else {
+        movement = { status: "not_card_paid" };
+      }
     } else if (paid <= 0) {
       movement = { status: "not_card_paid" };
     } else {
@@ -767,6 +937,7 @@ export function importStagedGroceryReceipts(opts?: {
             ? resolution.owner
             : null,
       purchased_at: receipt.parsed.purchased_at,
+      purchase_date_source: facts.date_source,
       card_paid_clp: paid,
       items: receipt.parsed.items.length,
       items_classified: classified,

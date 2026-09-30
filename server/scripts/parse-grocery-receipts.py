@@ -40,7 +40,9 @@ GENERIC_ROOT = REPO_ROOT / "cfraser" / "grocery-receipts" / "staged"
 
 # 3 (2026-09): chain registry + `chain`/`text_source`/`ignored_lines` in parsed.json, OCR
 # tolerances in the Lider parser, article-count hard check.
-PARSER_VERSION = 3
+# 4 (2026-09-30): the Jumbo parser; chain by issuer name; `#!` directives; nullable
+# boleta_number / purchased_at and `purchase_date_source`.
+PARSER_VERSION = 4
 
 
 @dataclass(frozen=True)

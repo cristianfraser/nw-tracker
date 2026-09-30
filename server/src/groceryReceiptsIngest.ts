@@ -50,6 +50,23 @@ function sourceForFile(name: string): GroceryReceiptSource | null {
   return null;
 }
 
+/**
+ * The day a photo was taken, when its file is named exactly `YYYY:MM:DD.<ext>` (how the user
+ * names photos of old paper receipts); null for any other name. Recorded in meta.json at ingest
+ * and used only for a receipt that prints no date: it bounds the search for the purchase's card
+ * line (a photo is taken on or after the purchase) and is the date when none is found.
+ */
+export function photoTakenOnFromName(name: string): string | null {
+  const m = /^(\d{4}):(\d{2}):(\d{2})\.[^.]+$/.exec(name);
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const probe = new Date(Date.UTC(y, mo - 1, d));
+  if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== mo - 1 || probe.getUTCDate() !== d) {
+    throw new Error(`grocery receipt inbox: ${name} is named like a date but ${m[1]}-${m[2]}-${m[3]} is not one`);
+  }
+  return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
 function sha256File(file: string): string {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
@@ -123,12 +140,14 @@ export function ingestGroceryReceiptInbox(opts?: {
         throw new Error(`grocery receipt inbox: staged dir ${dir} already exists without a meta.json — inspect it by hand`);
       }
       fs.mkdirSync(dir, { recursive: true });
+      const photoTakenOn = source === "photo" ? photoTakenOnFromName(name) : null;
       const meta: GenericStagedMeta = {
         source,
         source_key: sha,
         original_file: originalFile,
         original_name: name,
         ingested_at: ingestedAt,
+        ...(photoTakenOn ? { photo_taken_on: photoTakenOn } : {}),
       };
       // meta first, then the document: a crash in between leaves a dir the parser reports
       // ("original_file absent on disk"), never a document without provenance.

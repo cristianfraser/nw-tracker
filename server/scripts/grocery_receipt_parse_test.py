@@ -163,15 +163,83 @@ class ChainRegistryTest(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptParseError, "no issuer RUT"):
             detect_chain("ORDEN 76134946-5 ENTREGADA\n")
 
-    def test_registered_chain_without_parser_names_itself(self) -> None:
-        with self.assertRaisesRegex(ReceiptParseError, "jumbo: receipt recognised by its issuer RUT but no parser"):
-            parse_receipt_text("JUMBO\nRUT: 81.201.000-K\n")
+    def test_jumbo_by_rut_or_by_issuer_name(self) -> None:
+        self.assertEqual(detect_chain("RUT 81201000-K\n").slug, "jumbo")
+        # A cropped photo that lost the RUT still opens a line with the issuer's name.
+        self.assertEqual(detect_chain("BOLETA\nCENCOSUD RETAIL S.A.\n").slug, "jumbo")
+        with self.assertRaisesRegex(ReceiptParseError, "is lider but the printed name is jumbo"):
+            detect_chain("RUT: 76.134.946-5\nCENCOSUD RETAIL S.A.\n")
 
     def test_unknown_rut_and_missing_rut_raise(self) -> None:
         with self.assertRaisesRegex(ReceiptParseError, "unknown chain"):
             detect_chain("RUT: 12.345.678-9")
         with self.assertRaisesRegex(ReceiptParseError, "no issuer RUT"):
             detect_chain("no rut here 12.345.678-9")
+
+
+JUMBO_TEXT = """\
+RUT 81201000-K
+BOLETA ELECTRONICA N 1234567890
+CENCOSUD RETAIL S.A.
+AV. KENNEDY 9001, LAS CONDES-SANTIAGO
+CALLE FICTICIA 100
+COMUNA FICTICIA - SANTIAGO
+2 X $1.290
+7800000000016 BEBIDA FICTICIA 2LT 2.580
+OFERTA BEBIDA -600
+0,500 KG X $4.000
+2400000001232 QUESO FICTICIO 2.000
+SUB TOTAL $  4.580
+DESCUENTOS $  600
+NETO $  3.345
+TOTAL IVA 19,00%  $  635
+TOTAL  3.980
+EFECTIVO  5.000
+VUELTO $  1.020
+************PUNTOSCENCOSUD************
+FECHA HORA LOCAL CA TRX ID
+04/01/37 17:04 1511 93 4059 341
+"""
+
+
+class JumboTemplateTest(unittest.TestCase):
+    def test_items_quantities_discounts_payments(self) -> None:
+        p = parse_receipt_text(JUMBO_TEXT)
+        self.assertEqual((p.chain, p.boleta_number, p.sucursal), ("jumbo", "1234567890", "CALLE FICTICIA 100"))
+        self.assertEqual(p.purchased_at, "2037-01-04 17:04:00")
+        self.assertEqual(p.purchase_date_source, "printed")
+        drink, cheese = p.items
+        self.assertEqual((drink.barcode, drink.qty, drink.qty_unit, drink.unit_price_clp, drink.total_clp, drink.discount_clp),
+                         ("7800000000016", "2", "un", 1290, 2580, 600))
+        self.assertEqual((cheese.qty, cheese.qty_unit, cheese.unit_price_clp, cheese.total_clp), ("0.500", "kg", 4000, 2000))
+
+    def test_totals_must_balance(self) -> None:
+        with self.assertRaisesRegex(ReceiptParseError, "SUB TOTAL prints"):
+            parse_receipt_text(JUMBO_TEXT.replace("SUB TOTAL $  4.580", "SUB TOTAL $  4.590"))
+
+    def test_bad_check_digit_raises_and_a_marked_unreadable_code_is_null(self) -> None:
+        with self.assertRaisesRegex(ReceiptParseError, "EAN-13"):
+            parse_receipt_text(JUMBO_TEXT.replace("7800000000016", "7800000000017"))
+        p = parse_receipt_text(JUMBO_TEXT.replace("7800000000016", "?"))
+        self.assertIsNone(p.items[0].barcode)
+
+
+class DirectivesTest(unittest.TestCase):
+    CROPPED = JUMBO_TEXT.replace("04/01/37 17:04", "")
+
+    def test_declared_date_fills_a_receipt_without_one(self) -> None:
+        self.assertIsNone(parse_receipt_text(self.CROPPED).purchased_at)
+        p = parse_receipt_text("#! purchase_date: 2037-01-05\n" + self.CROPPED)
+        self.assertEqual((p.purchased_at, p.purchase_date_source), ("2037-01-05 00:00:00", "declared"))
+
+    def test_declared_date_never_overrides_the_printed_one(self) -> None:
+        with self.assertRaisesRegex(ReceiptParseError, "disagrees"):
+            parse_receipt_text("#! purchase_date: 2037-01-05\n" + JUMBO_TEXT)
+        self.assertEqual(parse_receipt_text("#! purchase_date: 2037-01-04\n" + JUMBO_TEXT).purchase_date_source, "printed")
+
+    def test_unknown_directive_raises(self) -> None:
+        with self.assertRaisesRegex(ReceiptParseError, "unknown directive"):
+            parse_receipt_text("#! store: X\n" + JUMBO_TEXT)
 
 
 def _block(text: str, x: float, y: float, w: float, h: float, conf: float = 1.0) -> dict:

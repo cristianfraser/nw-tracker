@@ -37,11 +37,14 @@ class Item:
 
 @dataclass
 class Parsed:
-    boleta_number: str
+    # None when the photo lost it (a torn top): the import then keys the receipt on the photo.
+    boleta_number: str | None
     caja: str
     sucursal: str
     city: str | None
-    purchased_at: str
+    # 'YYYY-MM-DD HH:MM:SS' printed (or declared in a correction file, time 00:00:00); None when
+    # the receipt prints no date — the import resolves it (the card line, else the photo date).
+    purchased_at: str | None
     template: str
     items: list[Item]
     receipt_discounts: list[dict]
@@ -51,6 +54,8 @@ class Parsed:
     mi_club_points: int | None
     # Set by the dispatcher (`parse_receipt_text`), never by a chain parser.
     chain: str = ""
+    # 'printed' | 'declared' (a `#! purchase_date:` line in the correction file) | None.
+    purchase_date_source: str | None = None
     # Digit-less lines met inside the item section and skipped (pre-printed marketing text
     # that OCR picks up on a paper receipt). Provenance for the report — never silent.
     ignored_lines: list[str] = field(default_factory=list)

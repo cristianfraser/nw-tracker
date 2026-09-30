@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ingestGroceryReceiptInbox, listGroceryReceiptInboxFiles } from "./groceryReceiptsIngest.js";
+import { ingestGroceryReceiptInbox, listGroceryReceiptInboxFiles, photoTakenOnFromName } from "./groceryReceiptsIngest.js";
 
 describe("groceryReceiptsIngest", () => {
   const tmpDirs: string[] = [];
@@ -66,5 +66,12 @@ describe("groceryReceiptsIngest", () => {
     expect(res[0]!.status).toBe("staged");
     expect(listGroceryReceiptInboxFiles(d.inboxDir)).toEqual(["a.png"]);
     expect(fs.existsSync(d.stagedDir)).toBe(false);
+  });
+
+  it("reads the photo date only from a YYYY:MM:DD name", () => {
+    expect(photoTakenOnFromName("2019:07:21.jpeg")).toBe("2019-07-21");
+    expect(photoTakenOnFromName("IMG_1862.HEIC")).toBeNull();
+    expect(photoTakenOnFromName("2019-07-21.jpeg")).toBeNull();
+    expect(() => photoTakenOnFromName("2019:02:30.jpeg")).toThrow();
   });
 });
