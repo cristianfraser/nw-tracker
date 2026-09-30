@@ -1,6 +1,8 @@
 # Plan: split data ingestion out of `server/` into `ingest/`
 
-Status: **proposed** (2026-09-30). Nothing below is implemented yet.
+Status: **Phase 0 done** (2026-09-30): server LaunchAgent (not yet switched on — the
+primary still runs in a terminal), `scraper/` → `ingest/`, `server/contracts`, the
+`/api/ingest/*` route. Phase 1 (card feed) is next.
 
 ## Goal
 
