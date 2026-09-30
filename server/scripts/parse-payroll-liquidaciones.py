@@ -165,6 +165,21 @@ def amount_after_label(text: str, labels: Tuple[str, ...]) -> Optional[int]:
     return None
 
 
+def amount_ending_label_line(text: str, labels: Tuple[str, ...]) -> Optional[int]:
+    """The amount that ends the line a label starts in the right-hand (DESCUENTOS) column, when the
+    label is followed by a description before the amount: Dealsyte prints «Fondo De Pensiones Afp
+    Modelo 10.77%   231.332» and «Fondo De Salud Cruz Blanca Plan (3.113 Uf)   150.355», where the
+    plan's rate or UF is not the amount. The amount is the last cell, after a run of spaces."""
+    for label in labels:
+        pat = rf"{re.escape(label)}[^\n]*?\s{{2,}}([\d.]+)[ \t]*$"
+        m = re.search(pat, text, re.IGNORECASE | re.MULTILINE)
+        if m:
+            v = parse_clp_amount(m.group(1))
+            if v is not None:
+                return v
+    return None
+
+
 def amount_in_header_column(text: str, header: str) -> Optional[int]:
     """The amount printed under a column header, on the row below it (pdftotext -layout keeps the
     columns aligned): the cell whose span overlaps the header's. None when no line carries the
@@ -382,10 +397,23 @@ def parse_dealsy(text: str, period_month: str) -> Dict[str, Any]:
     total_haberes = amount_after_label(text, ("Total Haberes",))
     total_descuentos = amount_after_label(text, ("Total Descuentos",))
 
-    desc_afp = amount_after_label(text, ("Fondo De Pensiones", "Fondo de Pensiones"))
-    desc_health = amount_after_label(text, ("Fondo De Salud", "Fondo de Salud"))
+    desc_afp = amount_ending_label_line(text, ("Fondo De Pensiones",))
+    desc_health = amount_ending_label_line(text, ("Fondo De Salud",))
     desc_cesantia = amount_after_label(text, ("Seguro De Cesantía", "Seguro de Cesantía"))
     desc_tax = amount_after_label(text, ("Impuesto Único", "Impuesto Unico"))
+
+    # The slip prints the taxable base itself («Afecto impuesto único : 1.782.251»): the taxable
+    # haberes less AFP, health up to 7% of them and cesantía. Checking it proves the three
+    # deductions were read as printed.
+    afecto_m = re.search(r"Afecto impuesto [úu]nico\s*:\s*([\d.]+)", text, re.IGNORECASE)
+    if afecto_m and total_imponible is not None:
+        afecto = parse_clp_amount(afecto_m.group(1))
+        if None in (desc_afp, desc_health, desc_cesantia):
+            raise ValueError("Dealsyte slip: AFP, health or cesantía not read")
+        health = min(desc_health, round(0.07 * total_imponible))
+        derived = total_imponible - desc_afp - health - desc_cesantia
+        if afecto is not None and abs(derived - afecto) > 1:
+            raise ValueError(f"Dealsyte slip: taxable base {derived} from the deductions, printed {afecto}")
 
     uf_m = re.search(r"UF del mes\s*:\s*([\d.,]+)", text, re.IGNORECASE)
     utm_m = re.search(r"UTM de mes\s*:\s*([\d.,]+)", text, re.IGNORECASE)
@@ -640,9 +668,17 @@ def parse_unholster_scan(text: str, period_month: str) -> Dict[str, Any]:
     desc_health = amount_after_ocr_label(
         flat, ("Isapre CRUZ BLANCA", "Isapre", "Fondo De Salud", "7 % ISAPRE")
     )
-    desc_tax = amount_after_ocr_label(
-        flat, ("IMPUESTO UNICO", "Impuesto Único", "Impuesto Unico")
-    )
+    # The scans list four deductions (cesantía, AFP, isapre, «IMPUESTO $ 23,481»), so the tax is
+    # TOTAL DESCUENTOS less the other three. The OCR garbles the tax cell some months («20,1eo»,
+    # 2018-07), so the balance is the value; a tax read cleanly must equal it.
+    desc_tax = None
+    if None not in (total_descuentos, desc_cesantia, desc_afp, desc_health):
+        desc_tax = total_descuentos - desc_cesantia - desc_afp - desc_health
+        read_m = re.search(r"IMPUESTO\s*\$\s*(\d{1,3}(?:,\d{3})+)(?=\s)", flat)
+        if read_m:
+            read = parse_clp_amount(read_m.group(1).replace(",", "."))
+            if read is not None and read != desc_tax:
+                raise ValueError(f"Unholster slip: tax printed {read}, deductions give {desc_tax}")
 
     uf_m = re.search(r"Valor UF:\s*([\d.,]+)", flat, re.IGNORECASE)
 

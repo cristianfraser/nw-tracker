@@ -1511,7 +1511,6 @@
   "taxReturn": {
     "title": "Tax return (Formulario 22)",
     "subtitle": "The return as filed, what third parties informed the SII, and a draft that adds what the app knows (crypto gains, foreign dividends and share sales) with the tax recomputed. The draft must reproduce the filed tax from the filed codes before it adds anything.",
-    "taxYear": "AT{{year}}",
     "paymentNote": "The payment section (reajuste, interest and surcharges) depends on when a rectification is paid; the SII computes it then.",
     "codeFallback": "Code {{code}}",
     "table": {
@@ -1608,6 +1607,8 @@
       "none": "No filed return, informed DJs or payslips for this year: only what the app calculates."
     },
     "provisionalYear": "{{year}} has not closed: December's UTA, dollar and IPC are the latest published, so the draft is an estimate.",
-    "salaryIncomplete": "Payslips with contributions or totals not read ({{months}}): the salary of those months is overstated or missing."
+    "salaryIncomplete": "Payslips with contributions or totals not read ({{months}}): the salary of those months is overstated or missing.",
+    "taxYearLabel": "Tax year",
+    "taxYearOption": "AT{{year}} (income {{income}})"
   }
 }

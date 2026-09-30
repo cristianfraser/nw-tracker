@@ -5306,10 +5306,6 @@
       "en": "The return as filed, what third parties informed the SII, and a draft that adds what the app knows (crypto gains, foreign dividends and share sales) with the tax recomputed. The draft must reproduce the filed tax from the filed codes before it adds anything.",
       "es": "La declaración presentada, lo que terceros informaron al SII y un borrador que agrega lo que la app sabe (ganancias de cripto, dividendos y ventas de acciones extranjeras) con el impuesto recalculado. El borrador debe reproducir el impuesto presentado a partir de los códigos presentados antes de agregar nada."
     },
-    "taxYear": {
-      "en": "AT{{year}}",
-      "es": "AT{{year}}"
-    },
     "paymentNote": {
       "en": "The payment section (reajuste, interest and surcharges) depends on when a rectification is paid; the SII computes it then.",
       "es": "La sección de pago (reajuste, intereses y recargos) depende de cuándo se pague una rectificatoria; el SII la calcula en ese momento."
@@ -5643,6 +5639,14 @@
     "salaryIncomplete": {
       "en": "Payslips with contributions or totals not read ({{months}}): the salary of those months is overstated or missing.",
       "es": "Liquidaciones sin cotizaciones o totales leídos ({{months}}): el sueldo de esos meses queda sobrestimado o falta."
+    },
+    "taxYearLabel": {
+      "en": "Tax year",
+      "es": "Año tributario"
+    },
+    "taxYearOption": {
+      "en": "AT{{year}} (income {{income}})",
+      "es": "AT{{year}} (ingresos {{income}})"
     }
   }
 }

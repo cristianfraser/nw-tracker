@@ -1511,7 +1511,6 @@
   "taxReturn": {
     "title": "Declaración de renta (Formulario 22)",
     "subtitle": "La declaración presentada, lo que terceros informaron al SII y un borrador que agrega lo que la app sabe (ganancias de cripto, dividendos y ventas de acciones extranjeras) con el impuesto recalculado. El borrador debe reproducir el impuesto presentado a partir de los códigos presentados antes de agregar nada.",
-    "taxYear": "AT{{year}}",
     "paymentNote": "La sección de pago (reajuste, intereses y recargos) depende de cuándo se pague una rectificatoria; el SII la calcula en ese momento.",
     "codeFallback": "Código {{code}}",
     "table": {
@@ -1608,6 +1607,8 @@
       "none": "Sin declaración, DJ ni liquidaciones para este año: solo lo que calcula la app."
     },
     "provisionalYear": "{{year}} no ha cerrado: la UTA, el dólar y el IPC de diciembre son los últimos publicados, así que el borrador es una estimación.",
-    "salaryIncomplete": "Liquidaciones sin cotizaciones o totales leídos ({{months}}): el sueldo de esos meses queda sobrestimado o falta."
+    "salaryIncomplete": "Liquidaciones sin cotizaciones o totales leídos ({{months}}): el sueldo de esos meses queda sobrestimado o falta.",
+    "taxYearLabel": "Año tributario",
+    "taxYearOption": "AT{{year}} (ingresos {{income}})"
   }
 }
