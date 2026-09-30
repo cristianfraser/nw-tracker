@@ -7,7 +7,7 @@ import {
   type IngestResult,
   type IngestSource,
 } from "./envelope.js";
-import type { IngestKindDefinition } from "./kinds.js";
+import type { IngestKindDefinition } from "./defineKind.js";
 
 export interface IngestClientOptions {
   /** Server origin, e.g. `http://127.0.0.1:3001`. */

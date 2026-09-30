@@ -73,6 +73,15 @@ export function webPasteAmountUsdForDb(
   return webPasteSignedAmount(pasteAmount, merchant, cardGroup);
 }
 
+/**
+ * The inverse of {@link webPasteAmountClpForDb} / {@link webPasteAmountUsdForDb} for a
+ * debt-positive amount (charge +, payment / credit −): the amount as the issuer's web UI shows
+ * it, so an ingested listing line reaches the web-paste import exactly as a paste of the same row.
+ */
+export function webPasteAmountFromDebtPositive(amount: number, cardGroup?: string | null): number {
+  return isSantanderWebPasteGroup(cardGroup) ? -amount : amount;
+}
+
 function webPasteSignedAmount(
   pasteAmount: number,
   merchant?: string | null,

@@ -28,8 +28,7 @@ import {
 import { ccInstallmentDebtDailyClp } from "./ccInstallmentDebtDaily.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.js";
-import { importSantanderMovementsFile } from "./santanderMovementsImport.js";
-import { santanderFeedClosesByAccount } from "./santanderCardMovements.js";
+import { applyListing, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
 import {
   facturacionMonthByStatementDate,
   reconcileOpenWebPasteAfterPdfClose,
@@ -142,38 +141,6 @@ describe("credit-card close evidence", () => {
         merchant: string;
       }[]
     ).map((r) => r.merchant);
-  }
-
-  function writeFeed(slides: unknown[]): string {
-    const file = path.join(tmpDir, `card-movements-2026-09-25T15-55-26.json`);
-    fs.writeFileSync(file, JSON.stringify({ fetchedAt: "2026-09-25T15:56:23.387Z", slides }));
-    return file;
-  }
-
-  function feedRow(fecha: string, comercio: string, importe: string) {
-    return {
-      Fecha: fecha,
-      Descripcion: "COMPRA NORMAL",
-      Comercio: comercio,
-      Importe: importe,
-      DescripcionRubro: "COMERCIO",
-      Ciudad: "SANTIAGO",
-      TipoBen: "X",
-      IndicadorDebeHaber: "D",
-    };
-  }
-
-  function saldoInicial(fecha: string, importe: string, indicador = "D") {
-    return {
-      Fecha: fecha,
-      Descripcion: "SALDO INICIAL",
-      Comercio: null,
-      Importe: importe,
-      DescripcionRubro: null,
-      Ciudad: null,
-      TipoBen: null,
-      IndicadorDebeHaber: indicador,
-    };
   }
 
   beforeEach(() => {
@@ -368,30 +335,6 @@ describe("credit-card close evidence", () => {
     expect(lastPdfBillingMonthForAccount(accountId)).toBe("2026-08");
   });
 
-  it("reads each card's SALDO INICIAL from the feed, zero and credit balances included", () => {
-    const closes = santanderFeedClosesByAccount({
-      fetchedAt: "x",
-      slides: [
-        { account: BANK_ACCOUNT, currency: "CLP", rows: [], saldoInicial: [saldoInicial("24/09/2026", "1.892.666")] },
-        { account: BANK_ACCOUNT, currency: "USD", rows: [], saldoInicial: [saldoInicial("24/09/2026", "0,00")] },
-        { account: "800000000077", currency: "CLP", rows: [], saldoInicial: [saldoInicial("24/09/2026", "5.000", "H")] },
-      ],
-    });
-    expect(closes).toEqual([
-      { account: BANK_ACCOUNT, close_iso: "2026-09-24", saldo_inicial_clp: 1_892_666, saldo_inicial_usd: 0 },
-      { account: "800000000077", close_iso: "2026-09-24", saldo_inicial_clp: -5_000, saldo_inicial_usd: null },
-    ]);
-    expect(() =>
-      santanderFeedClosesByAccount({
-        fetchedAt: "x",
-        slides: [
-          { account: BANK_ACCOUNT, currency: "CLP", rows: [], saldoInicial: [saldoInicial("24/09/2026", "1")] },
-          { account: BANK_ACCOUNT, currency: "USD", rows: [], saldoInicial: [saldoInicial("25/08/2026", "1,00")] },
-        ],
-      })
-    ).toThrow(/two closes/);
-  });
-
   it("closes September on the feed's SALDO INICIAL and files every post-close row under October", () => {
     const sept = insertStatement({
       source: "import:web-paste|open|2026-09",
@@ -405,20 +348,20 @@ describe("credit-card close evidence", () => {
     insertBucketLine(sept, "2026-09-24", "CLINICA VITEST", 2_400);
     insertBucketLine(sept, "2026-09-22", "PENDIENTE VITEST", 7_000);
 
-    const file = writeFeed([
-      {
-        account: BANK_ACCOUNT,
-        currency: "CLP",
-        rows: [
-          feedRow("24/09/2026", "CLINICA VITEST", "2.400"),
-          feedRow("22/09/2026", "PENDIENTE VITEST", "7.000"),
-          feedRow("25/09/2026", "SWITCH VITEST", "15.500"),
-        ],
-        saldoInicial: [saldoInicial("24/09/2026", "1.892.666")],
-      },
-      { account: BANK_ACCOUNT, currency: "USD", rows: [], saldoInicial: [saldoInicial("24/09/2026", "577,34")] },
-    ]);
-    const result = importSantanderMovementsFile(file);
+    const result = applyListing(
+      listing([
+        listingCard(
+          BANK_ACCOUNT,
+          [
+            listingLine("2026-09-24", "CLINICA VITEST", 2_400),
+            listingLine("2026-09-22", "PENDIENTE VITEST", 7_000),
+            listingLine("2026-09-25", "SWITCH VITEST", 15_500),
+          ],
+          { date: "2026-09-24", clp: 1_892_666, usd: 577.34 }
+        ),
+      ]),
+      "card-movements-2026-09-25T15-55-26.json"
+    );
     const imported = result.accounts[0]!;
     expect(imported.inserted).toBe(1);
     expect(imported.feed_close).toMatchObject({

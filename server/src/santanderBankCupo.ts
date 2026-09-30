@@ -1,15 +1,12 @@
+import type { CardUnbilledMovementsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
-import { masterAccountIdForSantanderAccount } from "./santanderAccountMap.js";
-import type { SantanderFeedClose, SantanderMovementsFile } from "./santanderCardMovements.js";
+import { masterAccountIdForIssuerCardAccount } from "./santanderAccountMap.js";
 
 /**
- * The bank's own credit line per card and currency — Santander's product summary
- * (`cruceProductosOnline`), which the fetcher keeps in the card-movements file (`cupos`). One row
- * per plastic and currency: `NUMEROCONTRATO` (the bank account the feed slides name), `NUMEROPAN`,
- * `CODIGOMONEDA`, and `CUPO` / `MONTOUTILIZADO` / `MONTODISPONIBLE` as 18-digit strings with two
- * implied decimals in BOTH currencies («000000000123456700» = $1.xxx.xxx, «000000000000123456»
- * = US$x.xxx,xx). Recorded in `cc_bank_cupo_*` and compared by `ccBankCupoCheck.ts`.
+ * The issuer's own credit line per card and currency, as a `card.unbilled_movements` listing
+ * reports it (`issuer_balances`; for Santander the session's product summary). Recorded in
+ * `cc_bank_cupo_*` and compared by `ccBankCupoCheck.ts`.
  */
 export type SantanderBankCupo = {
   account_id: number;
@@ -21,63 +18,39 @@ export type SantanderBankCupo = {
   cupo_disponible: number;
 };
 
-function bankCupoCents(raw: unknown, field: string, where: string): number {
-  const text = typeof raw === "string" ? raw.trim() : "";
-  if (!/^\d{18}$/.test(text)) {
-    throw new Error(`Santander cupo ${where}: ${field} "${String(raw)}" is not an 18-digit amount`);
-  }
-  const cents = Number(text);
-  if (!Number.isSafeInteger(cents)) throw new Error(`Santander cupo ${where}: ${field} "${text}" is out of range`);
-  return cents;
-}
+type IssuerBalances = NonNullable<CardUnbilledMovementsPayload["issuer_balances"]>;
 
 /**
- * Parse the summary rows. Throws on any shape it does not understand, on a row that breaks the
- * bank's own identity (cupo = utilizado + disponible, to the cent), on a bank account and a
- * plastic that route to different card masters, and on two rows for one master and currency.
+ * Route each reported balance to its card master. Throws on a bank account and a plastic that
+ * route to different masters, and on two rows for one master and currency. (The row shape and
+ * cupo = utilizado + disponible are the contract's to check.)
  */
-export function parseSantanderBankCupoRows(rows: readonly unknown[]): SantanderBankCupo[] {
+export function bankCupoRowsFromListing(
+  rows: Extract<IssuerBalances, { status: "observed" }>["rows"]
+): SantanderBankCupo[] {
   const out: SantanderBankCupo[] = [];
   const seen = new Set<string>();
-  for (const raw of rows) {
-    const r = (raw ?? {}) as Record<string, unknown>;
-    const bankAccount = String(r.NUMEROCONTRATO ?? "").trim();
-    const pan = String(r.NUMEROPAN ?? "").trim();
-    const currency = String(r.CODIGOMONEDA ?? "").trim().toLowerCase();
-    if (!/^\d+$/.test(bankAccount)) throw new Error(`Santander cupo row has no bank account ("${bankAccount}")`);
-    if (!/^\d{4,}$/.test(pan)) throw new Error(`Santander cupo ${bankAccount}: NUMEROPAN "${pan}" is not a card number`);
-    if (currency !== "clp" && currency !== "usd") {
-      throw new Error(`Santander cupo ${bankAccount}: unexpected currency "${String(r.CODIGOMONEDA)}"`);
-    }
-    const where = `${bankAccount} ${currency}`;
-    const total = bankCupoCents(r.CUPO, "CUPO", where);
-    const used = bankCupoCents(r.MONTOUTILIZADO, "MONTOUTILIZADO", where);
-    const available = bankCupoCents(r.MONTODISPONIBLE, "MONTODISPONIBLE", where);
-    if (total !== used + available) {
-      throw new Error(
-        `Santander cupo ${where}: CUPO ${total / 100} is not utilizado ${used / 100} + disponible ${available / 100}`
-      );
-    }
-    const last4 = pan.slice(-4);
-    const accountId = masterAccountIdForSantanderAccount(bankAccount);
-    const byPlastic = resolveMasterAccountIdForImportCardLast4(last4);
+  for (const r of rows) {
+    const where = `${r.account.number} ${r.currency}`;
+    const accountId = masterAccountIdForIssuerCardAccount(r.account);
+    const byPlastic = resolveMasterAccountIdForImportCardLast4(r.card_last4);
     if (byPlastic !== accountId) {
       throw new Error(
         `Santander cupo ${where}: the bank account routes to card master ${accountId} but plastic ` +
-          `·${last4} to ${byPlastic ?? "no master"} — fix cfraser/organize-identifiers.json or cc-cards.json`
+          `·${r.card_last4} to ${byPlastic ?? "no master"} — fix cfraser/organize-identifiers.json or cc-cards.json`
       );
     }
-    const key = `${accountId}|${currency}`;
-    if (seen.has(key)) throw new Error(`Santander cupo: two ${currency} rows for card master ${accountId}`);
+    const key = `${accountId}|${r.currency}`;
+    if (seen.has(key)) throw new Error(`Santander cupo: two ${r.currency} rows for card master ${accountId}`);
     seen.add(key);
     out.push({
       account_id: accountId,
-      currency,
-      bank_account: bankAccount,
-      plastic_last4: last4,
-      cupo_total: total / 100,
-      cupo_utilizado: used / 100,
-      cupo_disponible: available / 100,
+      currency: r.currency,
+      bank_account: r.account.number,
+      plastic_last4: r.card_last4,
+      cupo_total: r.limit,
+      cupo_utilizado: r.used,
+      cupo_disponible: r.available,
     });
   }
   return out;
@@ -90,24 +63,16 @@ export type BankCupoCaptureResult =
   | { status: "missing"; error: string }
   | { status: "recorded" | "seen"; capture_id: number; observed_at: string; snapshots: number };
 
-/** What a file's `cupos` block holds, validated before the import writes anything. */
+/** What a listing's `issuer_balances` holds, validated before the import writes anything. */
 export type ParsedBankCupoCapture =
   | { status: "absent" }
   | { status: "missing"; error: string }
   | { status: "present"; observed_at: string; rows: SantanderBankCupo[] };
 
-export function parseBankCupoCapture(file: SantanderMovementsFile): ParsedBankCupoCapture {
-  if (!("cupos" in file) || file.cupos === undefined) return { status: "absent" };
-  if (file.cupos === null) {
-    const error = String(file.cuposError ?? "").trim();
-    if (!error) throw new Error("Santander movements file has cupos: null and no cuposError");
-    return { status: "missing", error };
-  }
-  const observedAt = String(file.cupos.observedAt ?? "").trim();
-  if (Number.isNaN(Date.parse(observedAt))) {
-    throw new Error(`Santander cupo capture has an unparseable observedAt "${observedAt}"`);
-  }
-  return { status: "present", observed_at: observedAt, rows: parseSantanderBankCupoRows(file.cupos.rows ?? []) };
+export function bankCupoCaptureFromListing(balances: IssuerBalances | undefined): ParsedBankCupoCapture {
+  if (balances === undefined) return { status: "absent" };
+  if (balances.status === "unavailable") return { status: "missing", error: balances.reason };
+  return { status: "present", observed_at: balances.observed_at, rows: bankCupoRowsFromListing(balances.rows) };
 }
 
 type CaptureRow = { id: number; observed_at: string | null; error: string | null };
@@ -156,14 +121,14 @@ function snapshotSignature(rows: readonly SnapshotRow[]): string {
 }
 
 /**
- * Record one feed file's summary. `feedCloses` is the SALDO INICIAL close the same file states per
+ * Record one listing's balances. `feedCloses` is the close the same listing states per
  * bank account — the close the check must share with the app. Re-importing a file is a no-op when
  * it says the same thing and throws when it does not (one file is one observation).
  */
 export function recordBankCupoCapture(
   sourceFile: string,
   parsed: ParsedBankCupoCapture,
-  feedCloses: ReadonlyMap<string, SantanderFeedClose>
+  feedCloses: ReadonlyMap<string, { close_iso: string }>
 ): BankCupoCaptureResult {
   if (parsed.status === "absent") return { status: "absent" };
   return db.transaction((): BankCupoCaptureResult => {
