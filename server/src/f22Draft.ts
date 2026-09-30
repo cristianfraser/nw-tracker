@@ -120,6 +120,12 @@ function latestUta(): number {
   return r.utm_clp * 12;
 }
 
+function ufOn(ymd: string): number {
+  const r = db.prepare(`SELECT clp_per_uf FROM uf_daily WHERE date = ?`).get(ymd) as { clp_per_uf: number } | undefined;
+  if (!r) throw new Error(`No UF for ${ymd} — backfill uf_daily`);
+  return r.clp_per_uf;
+}
+
 function utaDecember(incomeYear: number): number | null {
   const r = db.prepare(`SELECT utm_clp FROM utm_daily WHERE date = ?`).get(`${incomeYear}-12-01`) as
     | { utm_clp: number }
@@ -166,7 +172,7 @@ function informedWithDetailCodes(informed: Record<number, number>): F22Codes {
 }
 
 /** F22 codes the SII prefills from third parties' DJs (the ones this taxpayer receives). */
-function informedCodes(dj: Map<number, InformedDjField[]>): Record<number, number> {
+function informedCodes(dj: Map<number, InformedDjField[]>, incomeYear: number): Record<number, number> {
   const out: Record<number, number> = {};
   const f1887 = dj.get(1887);
   if (f1887) {
@@ -181,8 +187,22 @@ function informedCodes(dj: Map<number, InformedDjField[]>): Record<number, numbe
   const f1890 = dj.get(1890);
   // Real interest on deposits: the positive less the negative the banks report (AT2025: 303.967 − 131.957).
   if (f1890) out[152] = informedDjAmount(f1890, "Positivo", "B") - informedDjAmount(f1890, "Negativo", "C");
+  // APV régimen B deposited directly (DJ 1899, in UF; Fintual reports them in the «trabajador
+  // independiente» column): an employee deducts them in code 765 (line 18, as AT2020 / AT2021 did),
+  // in pesos at the UF of 31 December. A year with fee income (110) declares them as a worker
+  // independiente instead (AT2022: code 770), so the rebate is only computed alongside a DJ 1887.
+  const f1899 = dj.get(1899);
+  if (f1899 && f1887) {
+    const uf = ["I", "J", "K"].reduce((s, col) => {
+      const hit = f1899.find((f) => f.field.startsWith(`${col}:`));
+      return s + (hit ? informedDjAmount(f1899, hit.field.slice(hit.field.lastIndexOf(" / ") + 3), col) : 0);
+    }, 0);
+    if (uf > 0) out[765] = Math.round(uf * ufOn(`${incomeYear}-12-31`));
+  }
   const f1898 = dj.get(1898);
   if (f1898) out[750] = informedDjAmount(f1898, "Monto Actualizado de los Intereses Pagados ($) en Dividendo");
+  // A zero a third party reports says nothing the form needs (no redemptions, no withholding).
+  for (const c of Object.keys(out)) if (out[Number(c)] === 0) delete out[Number(c)];
   return out;
 }
 
@@ -229,7 +249,10 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
     }
   }
   const dj = loadInformed(taxYear);
-  const informed = informedCodes(dj);
+  const informed = informedCodes(dj, incomeYear);
+  // A return that already declared the APV as a worker independiente (code 770, AT2022) must not
+  // get it again as an employee's rebate.
+  if (filed?.[770] != null) delete informed[765];
   const salary = payrollTaxYear(incomeYear);
   const base: F22DraftBase = filed
     ? "filed"
