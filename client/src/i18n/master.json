@@ -4468,14 +4468,6 @@
       "en": "No ambiguous candidates.",
       "es": "Sin candidatos ambiguos."
     },
-    "blockedTitle": {
-      "en": "Blocked ({{n}})",
-      "es": "Bloqueados ({{n}})"
-    },
-    "blockedReasonCheckingStraddle": {
-      "en": "checking credit straddles the month",
-      "es": "abono en checking cruza el mes"
-    },
     "rejectedTitle": {
       "en": "Rejected ({{n}})",
       "es": "Rechazados ({{n}})"

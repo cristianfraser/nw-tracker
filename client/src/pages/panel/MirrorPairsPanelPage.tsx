@@ -113,17 +113,13 @@ function AlternativesCell({
           <span className="muted" style={{ fontSize: "0.85em", overflowWrap: "anywhere" }}>
             {alt.leg.note ?? "—"}
           </span>{" "}
-          {alt.blocked ? (
-            <span className="muted">{t("mirrorPairs.blockedReasonCheckingStraddle")}</span>
-          ) : (
-            <Button
-              variant="secondary"
-              disabled={disabled}
-              onClick={() => onPick(side === "out" ? { out: alt.leg, in: p.in } : { out: p.out, in: alt.leg })}
-            >
-              {t("mirrorPairs.useAlternative")}
-            </Button>
-          )}
+          <Button
+            variant="secondary"
+            disabled={disabled}
+            onClick={() => onPick(side === "out" ? { out: alt.leg, in: p.in } : { out: p.out, in: alt.leg })}
+          >
+            {t("mirrorPairs.useAlternative")}
+          </Button>
         </div>
       ))}
     </>
@@ -185,11 +181,7 @@ export function MirrorPairsPanelPage() {
   });
 
   const high = useMemo(() => (data?.pairs ?? []).filter((p) => p.confidence === "high"), [data]);
-  const ambiguous = useMemo(
-    () => (data?.pairs ?? []).filter((p) => p.confidence === "ambiguous" && !p.blocked),
-    [data]
-  );
-  const blocked = useMemo(() => (data?.pairs ?? []).filter((p) => p.blocked), [data]);
+  const ambiguous = useMemo(() => (data?.pairs ?? []).filter((p) => p.confidence === "ambiguous"), [data]);
   const rejected = data?.rejected ?? [];
 
   const ccPairs = useMemo(() => (data?.cc_payment_pairs ?? []).filter((p) => !p.blocked), [data]);
@@ -512,21 +504,6 @@ export function MirrorPairsPanelPage() {
           </p>
         </>
       )}
-
-      {blocked.length > 0 ? (
-        <>
-          <h3>{t("mirrorPairs.blockedTitle", { n: blocked.length })}</h3>
-          <ul>
-            {blocked.map((p) => (
-              <li key={pairKey(p)} className="muted">
-                <LegDates p={p} /> — {p.out.account_name} → {p.in.account_name},{" "}
-                {formatClp(Math.round(Math.abs(p.out.amount_clp)))} (
-                {t("mirrorPairs.blockedReasonCheckingStraddle")})
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
 
       {rejected.length > 0 ? (
         <>

@@ -12,6 +12,8 @@ import {
 } from "./santanderSyntheticCcPayments.js";
 import { prunePartialMovementsSupersededByCartola } from "./checkingCartolaPartialReconcile.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
+import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
+import { bankPostedOn } from "./movementBankPostings.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 
 // The synthesis tests plant card lines (and the revaluation they trigger) on the synthetic
@@ -128,15 +130,19 @@ describe("santanderCcPaymentReceipts", () => {
     }
   });
 
-  it("keeps the bank date across a month boundary", () => {
-    // Paid Monday 2026-08-31, posted Tuesday 2026-09-01 — pulling it into August would place it
-    // in a cartola period whose saldo_final excludes it (checking anchor).
-    insertCheckingDebit("2026-09-01", -111222);
+  it("re-dates across a month boundary and keeps the bank date as the posting day", () => {
+    // Paid Monday 2026-08-31, posted Tuesday 2026-09-01: the display reads August, the cartola
+    // checks read the September posting.
+    const id = insertCheckingDebit("2026-09-01", -111222);
     const receipt = parsePaymentReceipt(
       staged(CLP_RECEIPT_TEXT.replace("07/08/2026", "31/08/2026"))
     );
     const result = applyPaymentReceipt(receipt, "<vitest@test>");
-    expect(result.status).toBe("month_straddle_keeps_bank_date");
+    expect(result.status).toBe("redated");
+    expect(
+      (db.prepare(`SELECT occurred_on FROM movements WHERE id = ?`).get(id) as { occurred_on: string }).occurred_on
+    ).toBe("2026-08-31");
+    expect(bankPostedOn(id, checkingAccountId())).toBe("2026-09-01");
   });
 
   it("cartola prune carries a receipt re-date onto the official row", () => {
@@ -163,6 +169,7 @@ describe("santanderCcPaymentReceipts", () => {
       .prepare(`SELECT occurred_on FROM movements WHERE id = ?`)
       .get(officialId) as { occurred_on: string };
     expect(official.occurred_on).toBe("2026-08-07");
+    expect(bankPostedOn(officialId, checkingId)).toBe("2026-08-10");
   });
 });
 
@@ -261,13 +268,24 @@ describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
     expect(lines[0]!.amount_usd).toBeCloseTo(-123.45, 2);
   });
 
-  it("waits for the bank row when the next business day falls in the next month (checking-anchor rule)", () => {
-    // Friday 2026-07-31: the bank may post the debit on Monday 08-03.
+  it("synthesizes on the last business day too; the next month's bank row confirms it with its posting day", () => {
+    // Friday 2026-07-31: the bank may post the debit on Monday 08-03 — the payment still
+    // happened on the 31st, and the cartola checks read the posting day the bank row brings.
     const receipt = parsePaymentReceipt(staged(CLP_4321.replace("07/08/2026", "31/07/2026")));
     const result = applyPaymentReceipt(receipt, "<vitest-synth-straddle@test>");
-    expect(result.status).toBe("waiting_for_movement");
-    expect(result.movement_id).toBeNull();
-    expect(syntheticCcPaymentMovementIdForMessageId("<vitest-synth-straddle@test>")).toBeNull();
+    expect(result.status).toBe("synthesized");
+    created.push(result.movement_id!);
+    expect(syntheticCcPaymentMovementIdForMessageId("<vitest-synth-straddle@test>")).toBe(result.movement_id);
+    const checkingId = checkingAccountId();
+    const imported = importCheckingPartialMovements(checkingId, [
+      { occurred_on: "2026-08-03", amount_clp: -111222, description: "VITEST PAGO TARJETA", document_no: "" },
+    ]);
+    expect(imported.skipped_superseded_by_transfer).toBe(1);
+    expect(bankPostedOn(result.movement_id!, checkingId)).toBe("2026-08-03");
+    expect(
+      (db.prepare(`SELECT occurred_on FROM movements WHERE id = ?`).get(result.movement_id!) as { occurred_on: string })
+        .occurred_on
+    ).toBe("2026-07-31");
   });
 
   it("refuses a card no master resolves instead of guessing", () => {

@@ -15,9 +15,9 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 import {
   displayLedgerCutoffYmd,
   signedClpDeltaForAccountMovement,
-  sumClpThroughDate,
   sumClpThroughDisplayDate,
 } from "./movementTransfer.js";
+import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import type { MovementTransferRow } from "./movementTransfer.js";
 
 const BALANCE_CACHE_TTL_MS = 30_000;
@@ -74,9 +74,9 @@ export function checkingMovementBalanceClpAtCached(
 }
 
 /**
- * Month-end balance from movements only, strictly by bank date (never the display read): the
- * cartola month table compares it against the statement's saldo final, which is as-of the
- * period end the bank printed.
+ * Month-end balance from movements only, strictly by the bank's posting day (never the display
+ * read, never `occurred_on`): the cartola month table compares it against the statement's saldo
+ * final, which is as-of the period end the bank printed (`movement_bank_postings`).
  */
 export function checkingMovementBalanceAtMonthEnd(
   accountId: number,
@@ -84,7 +84,32 @@ export function checkingMovementBalanceAtMonthEnd(
   dbHandle: Database = db
 ): number {
   const asOf = monthEndUtcYmd(periodMonth);
-  return cachedBalance(`${accountId}|${asOf}|strict`, () => sumClpThroughDate(accountId, asOf, dbHandle));
+  return cachedBalance(`${accountId}|${asOf}|bank`, () =>
+    sumClpThroughBankPostedDate(accountId, asOf, dbHandle)
+  );
+}
+
+/**
+ * Running CLP balance through `asOfYmd` by the bank's posting day — the frame of a cartola.
+ * Anchor rows included (they are part of the balance); same signed, transfer-aware accounting
+ * as `sumClpThroughDate`.
+ */
+export function sumClpThroughBankPostedDate(
+  accountId: number,
+  asOfYmd: string,
+  dbHandle: Database = db
+): number {
+  const rows = dbHandle
+    .prepare(
+      `SELECT m.account_id, m.from_account_id, m.to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, m.flow_kind
+       FROM movements m ${BANK_POSTING_JOIN_SQL}
+       WHERE (m.account_id = ? OR m.from_account_id = ? OR m.to_account_id = ?)
+         AND ${BANK_POSTED_ON_SQL} <= ?`
+    )
+    .all(accountId, accountId, accountId, accountId, asOfYmd) as MovementTransferRow[];
+  let total = 0;
+  for (const r of rows) total += signedClpDeltaForAccountMovement(r, accountId);
+  return Math.round(total);
 }
 
 /** Latest balance for summary cards (today in Chile). */
@@ -247,15 +272,15 @@ export function checkingTimelineMonthKeys(
 
   for (const r of dbHandle
     .prepare(
-      `SELECT occurred_on FROM movements
-       WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
-         AND (note IS NULL OR (
-           note NOT LIKE 'import:cartola|anchor|%'
-           AND note NOT LIKE 'import:cartola|opening|%'
+      `SELECT ${BANK_POSTED_ON_SQL} AS posted_on FROM movements m ${BANK_POSTING_JOIN_SQL}
+       WHERE (m.account_id = ? OR m.from_account_id = ? OR m.to_account_id = ?)
+         AND (m.note IS NULL OR (
+           m.note NOT LIKE 'import:cartola|anchor|%'
+           AND m.note NOT LIKE 'import:cartola|opening|%'
          ))`
     )
-    .all(accountId, accountId, accountId) as { occurred_on: string }[]) {
-    const mk = monthKeyFromYmd(r.occurred_on);
+    .all(accountId, accountId, accountId, accountId) as { posted_on: string }[]) {
+    const mk = monthKeyFromYmd(r.posted_on);
     if (mk) keys.add(mk);
   }
 
@@ -341,21 +366,23 @@ export function nonAnchorClpFlowTotals(
   dbHandle: Database = db
 ): NonAnchorClpFlowTotals {
   const dateSql =
-    window.fromYmd != null ? `occurred_on >= ? AND occurred_on <= ?` : `occurred_on <= ?`;
+    window.fromYmd != null
+      ? `${BANK_POSTED_ON_SQL} >= ? AND ${BANK_POSTED_ON_SQL} <= ?`
+      : `${BANK_POSTED_ON_SQL} <= ?`;
   const dateParams =
     window.fromYmd != null ? [window.fromYmd, window.toYmd] : [window.toYmd];
   const rows = dbHandle
     .prepare(
-      `SELECT account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, flow_kind
-       FROM movements
-       WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
+      `SELECT m.account_id, m.from_account_id, m.to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, m.flow_kind
+       FROM movements m ${BANK_POSTING_JOIN_SQL}
+       WHERE (m.account_id = ? OR m.from_account_id = ? OR m.to_account_id = ?)
          AND ${dateSql}
-         AND (note IS NULL OR (
-           note NOT LIKE 'import:cartola|anchor|%'
-           AND note NOT LIKE 'import:cartola|opening|%'
+         AND (m.note IS NULL OR (
+           m.note NOT LIKE 'import:cartola|anchor|%'
+           AND m.note NOT LIKE 'import:cartola|opening|%'
          ))`
     )
-    .all(accountId, accountId, accountId, ...dateParams) as MovementTransferRow[];
+    .all(accountId, accountId, accountId, accountId, ...dateParams) as MovementTransferRow[];
   let deposits = 0;
   let withdrawals = 0;
   let net = 0;

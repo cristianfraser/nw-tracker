@@ -18,17 +18,16 @@
  * - **The debit is already imported** at the next workday (a payment after the 14:00 cutoff is
  *   dated by every bank feed at the next workday): the debit is re-dated to the payment day.
  *
- * The movement's NOTE keeps the bank's date — it is the dedupe identity against the bank's own
- * frame (the daily xlsx re-lists the row under the bank date, and the cartola prints it there
- * too), so only `occurred_on` moves. `prunePartialMovementsSupersededByCartola` carries a
- * re-dated `occurred_on` onto the official cartola row when the cartola later replaces the
- * partial, so the correction survives the monthly import.
+ * Either way the payment is dated when it happened, across a month boundary too; the bank's
+ * posting day lives in `movement_bank_postings`, which is what the cartola checks read (a
+ * payment on the 30th that the bank posts on the 1st counts in September's display and in
+ * October's cartola). The re-dated row's NOTE keeps the bank's date as well — it is the xlsx
+ * dedupe identity — and `prunePartialMovementsSupersededByCartola` carries the payment day and
+ * the posting onto the official cartola row when the cartola replaces the partial.
  *
  * Matching is deliberately narrow (same spirit as ccPaymentMirrors): single-leg checking debit,
  * exact pesos, bank date inside the posting window of the payment date
- * (`bankDateMatchesTransferDate`), same calendar month — a month-straddling payment keeps the
- * bank date, because a movement dated into the earlier month would sit in a cartola period whose
- * saldo_final excludes it and corrupt the checking anchor derivation.
+ * (`bankDateMatchesTransferDate`).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -41,8 +40,8 @@ import { checkingAccountId } from "./checkingCartolaImport.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
 import { db } from "./db.js";
-import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
+import { recordBankPosting } from "./movementBankPostings.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { santanderMovementRowToWebPasteLine } from "./santanderCardMovements.js";
@@ -124,7 +123,6 @@ export function parsePaymentReceipt(staged: StagedPaymentReceipt): ParsedPayment
 export type ReceiptApplyStatus =
   | "redated"
   | "already_dated"
-  | "month_straddle_keeps_bank_date"
   | "synthesized"
   | "waiting_for_movement"
   | "ambiguous";
@@ -275,20 +273,6 @@ export function applyPaymentReceipt(
         detail: `movement ${synthesizedId} was synthesized from this receipt`,
       };
     }
-    // When the bank could post the debit NEXT month (the payment date's next business day
-    // crosses the boundary), a transfer dated this month would sit in a cartola period whose
-    // saldo_final still includes the money, corrupting the checking-anchor derivation — the same
-    // reason the re-date path keeps the bank date across a month boundary. Those payments wait
-    // for the bank row, as before.
-    const nextBusinessDay = nextChileBusinessDayYmd(receipt.paid_on);
-    if (nextBusinessDay == null || nextBusinessDay.slice(0, 7) !== receipt.paid_on.slice(0, 7)) {
-      return {
-        receipt,
-        status: "waiting_for_movement",
-        movement_id: null,
-        detail: "the bank may post this debit next month — waiting for its listing instead of synthesizing (checking-anchor rule)",
-      };
-    }
     const s = synthesizeTransferFromReceipt(receipt, messageId, checkingId);
     return {
       receipt,
@@ -309,18 +293,10 @@ export function applyPaymentReceipt(
   }
 
   const match = inWindow[0]!;
-  if (match.occurred_on.slice(0, 7) !== receipt.paid_on.slice(0, 7)) {
-    // Cartola periods are calendar months; pulling the debit into the earlier month would break
-    // the checking anchor derivation, so the bank's posting date stands.
-    return {
-      receipt,
-      status: "month_straddle_keeps_bank_date",
-      movement_id: match.id,
-      detail: `payment ${receipt.paid_on} posted ${match.occurred_on} across a month boundary — bank date kept`,
-    };
-  }
-
-  db.prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`).run(receipt.paid_on, match.id);
+  db.transaction(() => {
+    db.prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`).run(receipt.paid_on, match.id);
+    recordBankPosting(match.id, checkingId, match.occurred_on);
+  })();
   clearCheckingBalanceCache(checkingId);
   invalidateAggregationForAccountDate(checkingId, receipt.paid_on);
   return {
@@ -332,8 +308,8 @@ export function applyPaymentReceipt(
 }
 
 /**
- * Process every staged receipt file. Resolved receipts (synthesized, re-dated, already dated, or
- * straddle) are archived to `processed/`; `waiting_for_movement` and `ambiguous` files stay
+ * Process every staged receipt file. Resolved receipts (synthesized, re-dated, already dated)
+ * are archived to `processed/`; `waiting_for_movement` and `ambiguous` files stay
  * staged so the next run retries them. Unparsable receipts throw.
  */
 export function importStagedPaymentReceipts(opts?: {
@@ -354,8 +330,7 @@ export function importStagedPaymentReceipts(opts?: {
     if (
       applied.status === "synthesized" ||
       applied.status === "redated" ||
-      applied.status === "already_dated" ||
-      applied.status === "month_straddle_keeps_bank_date"
+      applied.status === "already_dated"
     ) {
       const processedDir = path.join(dir, "processed");
       fs.mkdirSync(processedDir, { recursive: true });

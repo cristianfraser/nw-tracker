@@ -1264,8 +1264,6 @@
     "emptyHigh": "Sin candidatos de alta confianza.",
     "ambiguousTitle": "Ambiguos ({{n}})",
     "emptyAmbiguous": "Sin candidatos ambiguos.",
-    "blockedTitle": "Bloqueados ({{n}})",
-    "blockedReasonCheckingStraddle": "abono en checking cruza el mes",
     "rejectedTitle": "Rechazados ({{n}})",
     "restore": "Restaurar",
     "selectAll": "Seleccionar todos",

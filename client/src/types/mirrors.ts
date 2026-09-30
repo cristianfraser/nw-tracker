@@ -16,8 +16,6 @@ export interface MirrorPairAlternative {
   gap_days: number;
   within_business_day_window: boolean;
   month_straddle: boolean;
-  blocked: boolean;
-  blocked_reason: "checking_inflow_month_straddle" | null;
 }
 
 export interface MirrorPairCandidate {
@@ -36,8 +34,6 @@ export interface MirrorPairCandidate {
   out_alternatives: MirrorPairAlternative[];
   in_alternatives: MirrorPairAlternative[];
   confidence: "high" | "ambiguous";
-  blocked: boolean;
-  blocked_reason: "checking_inflow_month_straddle" | null;
 }
 
 export interface RejectedMirrorPair {

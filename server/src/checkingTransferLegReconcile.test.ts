@@ -5,6 +5,7 @@ import {
   supersedeImportedCheckingRowsForTransfer,
 } from "./checkingTransferLegReconcile.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
+import { bankPostedOn } from "./movementBankPostings.js";
 import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
 
 const NOTE = "vitest-transfer-dedup";
@@ -106,9 +107,23 @@ describe("reverse dedup: transfer created after the bank row was imported", () =
 
   function cleanup() {
     db.prepare(
-      `DELETE FROM movements WHERE account_id IN (SELECT id FROM accounts WHERE name IN (?, ?))`
-    ).run(CC_NAME, BRK_NAME);
+      `DELETE FROM movements
+       WHERE account_id IN (SELECT id FROM accounts WHERE name IN (?, ?))
+          OR from_account_id IN (SELECT id FROM accounts WHERE name IN (?, ?))
+          OR to_account_id IN (SELECT id FROM accounts WHERE name IN (?, ?))`
+    ).run(CC_NAME, BRK_NAME, CC_NAME, BRK_NAME, CC_NAME, BRK_NAME);
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(CC_NAME, BRK_NAME);
+  }
+
+  function insertTransfer(amount: number, occurredOn: string): number {
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note)
+           VALUES (NULL, ?, ?, ?, 'clp', ?, 'vitest transfer')`
+        )
+        .run(brokerageId, checkingId, amount, occurredOn).lastInsertRowid
+    );
   }
 
   beforeAll(() => {
@@ -136,9 +151,13 @@ describe("reverse dedup: transfer created after the bank row was imported", () =
     );
 
     // User records the transfer effective Friday (brokerage → checking, 6M).
-    const res = supersedeImportedCheckingRowsForTransfer(brokerageId, checkingId, 6_000_000, "2026-07-03");
+    const transferId = insertTransfer(6_000_000, "2026-07-03");
+    const res = supersedeImportedCheckingRowsForTransfer(transferId, brokerageId, checkingId, 6_000_000, "2026-07-03");
     expect(res.removed_ids).toContain(bankId);
     expect(db.prepare(`SELECT 1 AS o FROM movements WHERE id = ?`).get(bankId)).toBeUndefined();
+    // The deleted bank row's date stays as the transfer's posting day on checking.
+    expect(bankPostedOn(transferId, checkingId)).toBe("2026-07-06");
+    expect(bankPostedOn(transferId, brokerageId)).toBe("2026-07-03");
   });
 
   it("leaves a bank row outside the window untouched", () => {
@@ -148,7 +167,8 @@ describe("reverse dedup: transfer created after the bank row was imported", () =
         .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 1234567, 'clp', '2026-07-15', ?)`)
         .run(checkingId, "import:cartola-partial|2026-07-15|1234567|OTRO").lastInsertRowid
     );
-    const res = supersedeImportedCheckingRowsForTransfer(brokerageId, checkingId, 1_234_567, "2026-07-03");
+    const transferId = insertTransfer(1_234_567, "2026-07-03");
+    const res = supersedeImportedCheckingRowsForTransfer(transferId, brokerageId, checkingId, 1_234_567, "2026-07-03");
     expect(res.removed_ids).not.toContain(bankId);
     expect(db.prepare(`SELECT 1 AS o FROM movements WHERE id = ?`).get(bankId)).toBeDefined();
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(bankId);

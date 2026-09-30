@@ -1,3 +1,4 @@
+import { recordBankPosting } from "./movementBankPostings.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { chileCalendarAddDays } from "./chileDate.js";
@@ -106,6 +107,9 @@ export function promoteCheckingCreditToTransfer(
   unitsDelta: string | null = null,
   occurredOn: string | null = null
 ): void {
+  const before = db.prepare(`SELECT occurred_on FROM movements WHERE id = ?`).get(movementId) as
+    | { occurred_on: string }
+    | undefined;
   const changed = db
     .prepare(
       `UPDATE movements
@@ -117,4 +121,7 @@ export function promoteCheckingCreditToTransfer(
   if (changed !== 1) {
     throw new Error(`Movement ${movementId} was not an unpaired single-leg row — not promoted`);
   }
+  // The credit was the bank's listing: when the mail moves it to the payment day, its bank date
+  // stays as the transfer's posting day on checking (the cartola files it there).
+  recordBankPosting(movementId, checkingAccountId(), before!.occurred_on);
 }

@@ -107,7 +107,6 @@ describe("listMirrorPairCandidates", () => {
     expect(p!.gap_days).toBe(0);
     expect(p!.within_business_day_window).toBe(true);
     expect(p!.month_straddle).toBe(false);
-    expect(p!.blocked).toBe(false);
   });
 
   it("never pairs an inflow dated before the outflow", () => {
@@ -138,7 +137,7 @@ describe("listMirrorPairCandidates", () => {
     expect(pairFor(pairs, tue)!.confidence).toBe("ambiguous");
   });
 
-  it("month straddle is ambiguous; blocked when the inflow lands on checking", () => {
+  it("month straddle is ambiguous, and convertible even when the inflow lands on checking", () => {
     const plain = insLeg(ids.generic, -AMT.straddle, "2026-01-30");
     insLeg(ids.generic2, AMT.straddle, "2026-02-02");
     const chk = insLeg(ids.generic, -AMT.straddleChk, "2026-01-30");
@@ -147,10 +146,9 @@ describe("listMirrorPairCandidates", () => {
     const pPlain = pairFor(pairs, plain)!;
     expect(pPlain.month_straddle).toBe(true);
     expect(pPlain.confidence).toBe("ambiguous");
-    expect(pPlain.blocked).toBe(false);
     const pChk = pairFor(pairs, chk)!;
-    expect(pChk.blocked).toBe(true);
-    expect(pChk.blocked_reason).toBe("checking_inflow_month_straddle");
+    expect(pChk.month_straddle).toBe(true);
+    expect(pChk.confidence).toBe("ambiguous");
   });
 
   it("corriente↔vista pairs are eligible", () => {
@@ -253,7 +251,6 @@ describe("listMirrorPairCandidates", () => {
       expect(p!.month_precision).toBe(true);
       expect(p!.month_straddle).toBe(true);
       expect(p!.confidence).toBe("ambiguous");
-      expect(p!.blocked).toBe(false);
     });
 
     it("does not pair with a mid-previous-month or next-month outflow", () => {
@@ -273,8 +270,6 @@ describe("listMirrorPairCandidates", () => {
       expect(p).toBeDefined();
       expect(p!.month_precision).toBe(true);
       expect(p!.confidence).toBe("high");
-      // transfer will keep the checking (real-day) date, so no checking-straddle block applies
-      expect(p!.blocked).toBe(false);
     });
   });
 
@@ -368,8 +363,6 @@ describe("listMirrorPairCandidates", () => {
       expect(resolveMirrorPairRef(candidates, { out_movement_id: b, in_movement_id: dep })).toEqual({
         out_movement_id: b,
         in_movement_id: dep,
-        blocked: false,
-        blocked_reason: null,
       });
       // A leg that is no alternative of the pair is not offered.
       expect(resolveMirrorPairRef(candidates, { out_movement_id: b, in_movement_id: a })).toBeNull();
