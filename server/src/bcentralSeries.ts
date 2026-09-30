@@ -16,6 +16,18 @@ export const BCENTRAL_SERIES = {
   uf: seriesEnv("BCENTRAL_SERIES_UF", "F073.UFF.PRE.Z.D"),
   /** UTM (CLP), monthly (stored on first-of-month dates in `utm_daily`). */
   utm: seriesEnv("BCENTRAL_SERIES_UTM", "F073.UTR.PRE.Z.M"),
-  /** IPC index level (INE base), monthly. */
-  ipc: seriesEnv("BCENTRAL_SERIES_IPC", "G073.IPC.IND.2018.M"),
+} as const;
+
+/**
+ * IPC general, monthly, dated the first of the IPC month — the BCCh «empalme» (spliced) series,
+ * base 2023 = 100, which runs from 1998 to the latest published month. The base-2018 series
+ * (`G073.IPC.IND.2018.M`) stopped at 2023-12. Kept apart from {@link BCENTRAL_SERIES} because
+ * these print plain decimals («68.13588542», «-0.0207») and are read by their own parser
+ * (`fetchIpcMonthsVerified`), never the generic one.
+ */
+export const BCENTRAL_IPC_SERIES = {
+  /** Index level, base 2023 = 100. */
+  index: seriesEnv("BCENTRAL_SERIES_IPC", "G073.IPC.IND.2023.M"),
+  /** Monthly variation in percent, published beside the index; every fetch checks one against the other. */
+  variation: seriesEnv("BCENTRAL_SERIES_IPC_VARIATION", "G073.IPC.VAR.2023.M"),
 } as const;

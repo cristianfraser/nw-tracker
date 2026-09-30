@@ -4,7 +4,9 @@
  *
  * Env: `BCENTRAL_EMAIL`, `BCENTRAL_PASSWORD` (repo-root `.env`).
  */
-import { BCENTRAL_SERIES } from "./bcentralSeries.js";
+import { BCENTRAL_IPC_SERIES, BCENTRAL_SERIES } from "./bcentralSeries.js";
+import { parseUsNumber } from "./chileanNumber.js";
+import { nextIpcMonth, verifyIpcIndexAgainstVariation, type IpcIndexRow, type IpcObservation } from "./ipcSeries.js";
 import { fetchOut } from "./httpOut.js";
 import {
   acquireSbifRequestSlot,
@@ -219,25 +221,6 @@ export async function fetchUtmAfterMonth(
   return rows.map((r) => ({ date: r.date, utmClp: r.value }));
 }
 
-export async function fetchIpcAfterMonth(
-  lastMonthY: number,
-  lastMonthM: number,
-  creds: BcentralCredentials,
-  lastdateYmd?: string
-): Promise<{ date: string; ipcIndex: number }[]> {
-  const anchor = `${lastMonthY}-${String(lastMonthM).padStart(2, "0")}-01`;
-  const end = lastdateYmd ?? `${lastMonthY + 1}-12-31`;
-  const rows = await fetchSeriesAfterYmd(creds, BCENTRAL_SERIES.ipc, anchor, end);
-  const deduped = rows;
-  if (deduped.length && Math.max(...deduped.map((r) => r.value)) < 15) {
-    console.warn(
-      "bcentral: IPC values look like % variation, not index level — skipping ipc_daily upsert (use cfraser/ipc-index.csv for INE index)."
-    );
-    return [];
-  }
-  return deduped.map((r) => ({ date: r.date, ipcIndex: r.value }));
-}
-
 export async function fetchDolarYear(
   year: number,
   creds: BcentralCredentials
@@ -270,14 +253,50 @@ export async function fetchUtmYear(
   return rows.map((r) => ({ date: r.date, utmClp: r.value }));
 }
 
-export async function fetchIpcYear(
-  year: number,
-  creds: BcentralCredentials
-): Promise<{ date: string; ipcIndex: number }[]> {
-  const rows = await fetchBcentralSeries(creds, BCENTRAL_SERIES.ipc, `${year}-01-01`, `${year}-12-31`);
-  if (rows.length && Math.max(...rows.map((r) => r.value)) < 15) {
-    console.warn(`bcentral: IPC year ${year} values look like % not index — skipping`);
-    return [];
+/**
+ * A plain-decimal series (the IPC analíticos print «68.13588542», «-0.0207»), read with the one
+ * parser that style needs. Unlike {@link fetchBcentralSeries} nothing is skipped: an observation
+ * that is not «OK», has no date, or does not parse throws.
+ */
+async function fetchBcentralPlainDecimalSeries(
+  creds: BcentralCredentials,
+  timeseries: string,
+  firstdate: string,
+  lastdate: string
+): Promise<IpcObservation[]> {
+  const url = buildUrl(creds, { function: "GetSeries", timeseries, firstdate, lastdate });
+  const body = (await fetchBcentralJson(url)) as GetSeriesBody;
+  const rows: IpcObservation[] = [];
+  for (const obs of normalizeObs(body)) {
+    const date = obs.indexDateString ? bcentralIndexDateToYmd(obs.indexDateString) : null;
+    if (!date) throw new Error(`BCentral ${timeseries}: observation without a date (${JSON.stringify(obs)})`);
+    if (obs.statusCode !== "OK" || obs.value == null) {
+      throw new Error(`BCentral ${timeseries} ${date}: status ${obs.statusCode ?? "missing"}, value ${obs.value ?? "missing"}`);
+    }
+    rows.push({ date, value: parseUsNumber(obs.value) });
   }
-  return rows.map((r) => ({ date: r.date, ipcIndex: r.value }));
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * IPC index rows from `fromMonthYmd` (a first-of-month date, included — the month the first
+ * variation is measured from) through `lastdateYmd`, each month checked against the published
+ * monthly variation ({@link verifyIpcIndexAgainstVariation}).
+ */
+export async function fetchIpcMonthsVerified(
+  creds: BcentralCredentials,
+  fromMonthYmd: string,
+  lastdateYmd: string
+): Promise<IpcIndexRow[]> {
+  const index = await fetchBcentralPlainDecimalSeries(creds, BCENTRAL_IPC_SERIES.index, fromMonthYmd, lastdateYmd);
+  if (index.length === 0 || index[0]!.date !== fromMonthYmd) {
+    throw new Error(`BCentral IPC: no index for ${fromMonthYmd} (first returned: ${index[0]?.date ?? "none"})`);
+  }
+  // A monthly series returns the month a date falls in, so the variation starts at the next month.
+  const variationFrom = nextIpcMonth(fromMonthYmd);
+  const variation =
+    index.length > 1
+      ? await fetchBcentralPlainDecimalSeries(creds, BCENTRAL_IPC_SERIES.variation, variationFrom, lastdateYmd)
+      : [];
+  return verifyIpcIndexAgainstVariation(index, variation);
 }
