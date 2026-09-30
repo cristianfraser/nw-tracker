@@ -1,11 +1,11 @@
 /**
- * Racional movement rows (scraped by `scraper/`) → typed movements.
+ * Racional movement rows (scraped by `ingest/`) → typed movements.
  *
  * Racional's movements are not served by a REST call — they arrive over a Firestore realtime
  * channel — so the fetcher reads the rendered list and, for each row, the detail view. This
  * module is the pure half: raw strings in, typed records out, no DB.
  *
- * Shapes verified against the live app on 2026-08-05 (see `scraper/src/racional/routes.ts`):
+ * Shapes verified against the live app on 2026-08-05 (see `ingest/src/racional/routes.ts`):
  *   list row  : "Compra SLV" · "US$x.xxx,xx" · "01/07"
  *   detail    : "Recibiste 24,74186066 acciones de Silver Trust (SLV), a un valor de
  *                US$xx,xx por acción." + "Comisión US$x,xx" + "Orden #86365B402E0D"
@@ -290,7 +290,7 @@ export function parseRacionalDetail(detail: string | null | undefined): Racional
  * `2026-09-22|buy|US$xxx,xx`. The importer writes the newest cleanly imported row's key as the
  * crawl watermark (`last_row_key`) and the fetcher stops at the rendered row with the same key.
  *
- * The formula lives twice — here and as `rowKey` in `scraper/src/racional/steps.ts` (the
+ * The formula lives twice — here and as `rowKey` in `ingest/src/racional/steps.ts` (the
  * scraper is deliberately not a workspace and cannot import the server) — so the return line
  * must stay TEXTUALLY IDENTICAL in both; `racionalMovementsImport.test.ts` compares them. Until
  * 2026-09-27 the fetcher compared this key with the importer's `last_movement_id` (a route id,

@@ -1,5 +1,5 @@
 /**
- * Record the hourly e-mail poll's outcome (`scraper/email-run.sh`).
+ * Record the hourly e-mail poll's outcome (`ingest/email-run.sh`).
  *
  *   echo '[{"label":"fetch broker e-mail","ok":true,"seconds":5}]' \
  *     | npx tsx server/scripts/record-email-run.ts --activity=1

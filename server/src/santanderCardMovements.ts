@@ -13,7 +13,7 @@ import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 /**
  * Adapter from the Santander private-API movement feed to the web-paste line shape.
  *
- * The fetcher (`scraper/`) stores `MatrizMovimientos` rows verbatim; this turns them into the same
+ * The fetcher (`ingest/`) stores `MatrizMovimientos` rows verbatim; this turns them into the same
  * `CcWebPasteLine` a manual paste produces, so the whole existing import path — dedupe keys,
  * installment overlap handling, first-due nudges, batch logging — is reused rather than duplicated.
  */

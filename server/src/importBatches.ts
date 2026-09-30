@@ -2,7 +2,7 @@ import { db } from "./db.js";
 
 export type ImportBatchKind =
   | "cc_web_paste"
-  /** Same lines as a web paste, but fetched from the bank's own API by `scraper/`. */
+  /** Same lines as a web paste, but fetched from the bank's own API by `ingest/`. */
   | "cc_santander_fetch"
   /** One line per card-paid Lider boleta e-mail (the grocery-receipt importer). */
   | "cc_lider_boleta"

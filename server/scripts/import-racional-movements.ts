@@ -1,5 +1,5 @@
 /**
- * Import Racional movements staged by `scraper/` (`npm run fetch:racional`).
+ * Import Racional movements staged by `ingest/` (`npm run fetch:racional`).
  *
  *   npm run import:racional-movements -w nw-tracker-server              # report only
  *   npm run import:racional-movements -w nw-tracker-server -- --apply   # write

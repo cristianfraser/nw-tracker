@@ -32,7 +32,7 @@ import {
   type BankCupoCaptureResult,
 } from "./santanderBankCupo.js";
 
-/** Where `scraper/` stages fetched movement files. */
+/** Where `ingest/` stages fetched movement files. */
 export function resolveSantanderMovementsDir(): string {
   return path.join(resolveCfraserCsvDir(), "santander-movements");
 }

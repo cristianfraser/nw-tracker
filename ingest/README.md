@@ -1,16 +1,14 @@
-# scraper — bank navigator/parser
+# ingest — outside data into the app
 
-Fetches Santander movements and statements straight into `cfraser/inbox/`, so
-`npm run import:cfraser-inbox` picks them up like any other document drop. Replaces the manual
-movement entry / web-paste step.
+Reads the outside world — bank web sessions (Santander, Racional), IMAP mail (statements,
+receipts, broker notifications) and the documents they carry — and hands it to the server.
+Today it stages files under `cfraser/` for the server-side importers (`npm run
+import:cfraser-inbox`, `import:santander-movements`, …); `docs/ingest-split-plan.md` moves the
+parsing here and has the server apply canonical payloads over `/api/ingest/*`.
 
-**Not an npm workspace on purpose.** Render's build runs `npm install --include=dev` at the repo
-root; adding this to `workspaces` would pull Playwright into the hosted demo deploy. Install it
-separately:
-
-```bash
-npm install --prefix scraper
-```
+A root npm workspace (`nw-tracker-ingest`); `npm install` at the repo root installs it. The
+Render demo build installs only the server and client workspaces, so Playwright never reaches
+the hosted deploy.
 
 ## Setup (once per bank)
 
@@ -62,7 +60,7 @@ any bank UI change to see what actually happened.
 exit status is the number of failures, so one bank being down does not block the rest.
 
 ```bash
-cp scraper/com.user.nw-tracker-daily.plist ~/Library/LaunchAgents/
+cp ingest/com.user.nw-tracker-daily.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.nw-tracker-daily.plist
 launchctl kickstart -p gui/$(id -u)/com.user.nw-tracker-daily   # run once, now
 launchctl bootout gui/$(id -u)/com.user.nw-tracker-daily        # remove
@@ -71,7 +69,7 @@ launchctl bootout gui/$(id -u)/com.user.nw-tracker-daily        # remove
 Runs at **22:00** — late enough for the day's movements to post, early enough to miss the bank's
 nightly maintenance window. It **must** be a LaunchAgent in the logged-in GUI session (a
 LaunchDaemon has no window server, and headless Chrome is blocked). Log: `cfraser/daily-run.log`.
-Rehearse without touching the banks: `scraper/daily-run.sh --dry-run`.
+Rehearse without touching the banks: `ingest/daily-run.sh --dry-run`.
 
 The Lider BCI «últimos movimientos» CSV importer (`npm run import:lider-movements`, also run by the
 inbox step) still accepts a hand-dropped `lider-bci-movimientos-*.csv` in `cfraser/inbox/`; the scrape
@@ -100,7 +98,7 @@ Racional, statement JSONs. The nightly run is also the retry backstop for anythi
 but not imported.
 
 ```bash
-cp scraper/com.user.nw-tracker-email-hourly.plist ~/Library/LaunchAgents/
+cp ingest/com.user.nw-tracker-email-hourly.plist ~/Library/LaunchAgents/
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.nw-tracker-email-hourly.plist
 launchctl kickstart -p gui/$(id -u)/com.user.nw-tracker-email-hourly   # run once, now
 launchctl bootout gui/$(id -u)/com.user.nw-tracker-email-hourly        # remove

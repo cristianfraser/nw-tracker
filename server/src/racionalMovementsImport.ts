@@ -41,7 +41,7 @@ import {
   type RacionalScrapedRow,
 } from "./racionalMovements.js";
 
-/** Where `scraper/` stages fetched movement files. */
+/** Where `ingest/` stages fetched movement files. */
 export function resolveRacionalMovementsDir(): string {
   return path.join(resolveCfraserCsvDir(), "racional-movements");
 }

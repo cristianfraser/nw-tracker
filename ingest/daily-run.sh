@@ -2,9 +2,9 @@
 #
 # Daily EOD bank run, invoked by the LaunchAgent `com.user.nw-tracker-daily`.
 #
-#   scraper/daily-run.sh             # run now (manual trigger — always runs)
-#   scraper/daily-run.sh --scheduled # what the LaunchAgent calls: skips right behind another run
-#   scraper/daily-run.sh --dry-run   # fetch nothing, only report what the importers would do
+#   ingest/daily-run.sh             # run now (manual trigger — always runs)
+#   ingest/daily-run.sh --scheduled # what the LaunchAgent calls: skips right behind another run
+#   ingest/daily-run.sh --dry-run   # fetch nothing, only report what the importers would do
 #
 # Must run as a LaunchAgent in the logged-in GUI session: Santander's edge blocks headless
 # Chrome, so the fetcher parks a real window off-screen (`--background`) and still needs a
@@ -45,7 +45,7 @@ steps_json="[]"
 current_step=""
 
 # log / add_step / step live in run-lib.sh, shared with the hourly email-run.sh.
-source "$REPO_ROOT/scraper/run-lib.sh"
+source "$REPO_ROOT/ingest/run-lib.sh"
 
 notify_failure() {
   local summary="$1"

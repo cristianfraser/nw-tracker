@@ -8,7 +8,7 @@ import { resolveCfraserCsvDir, resolveCfraserInboxDir } from "./cfraserPaths.js"
 
 /**
  * «ultimos movimientos-Cuenta Corriente.xlsx» — the daily web session's checking download
- * (`fetchCheckingMovements` in scraper/src/santander/checking.ts drops it in the inbox).
+ * (`fetchCheckingMovements` in ingest/src/santander/checking.ts drops it in the inbox).
  * The browser may suffix re-downloads (` (1)`), so the match is prefix-based.
  */
 const ULTIMOS_MOVIMIENTOS_FILE_RE = /^ultimos movimientos.*\.xlsx$/i;

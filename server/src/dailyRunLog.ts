@@ -1,5 +1,5 @@
 /**
- * Outcome log for the unattended daily bank run (`scraper/daily-run.sh`, LaunchAgent
+ * Outcome log for the unattended daily bank run (`ingest/daily-run.sh`, LaunchAgent
  * `com.user.nw-tracker-daily`).
  *
  * The run is deliberately fail-soft — one bank being down must not stop the others — which is
@@ -20,7 +20,7 @@ import { db } from "./db.js";
 export const DAILY_RUN_MESSAGE_TITLE = "Daily bank run";
 export const DAILY_RUN_FAILED_TITLE = "Daily bank run failed";
 
-// The hourly e-mail poll (`scraper/email-run.sh`) records under its OWN titles: the daily
+// The hourly e-mail poll (`ingest/email-run.sh`) records under its OWN titles: the daily
 // titles drive `dailyRunFinishedWithin` (the 22:00 run's repeat skip) and
 // `staleDailyRunDays`, so an hourly row under them would silently disable the nightly bank
 // run for the day and mask a dead one.
@@ -242,7 +242,7 @@ function lastHourlyEmailFailureAt(): string | null {
 }
 
 /**
- * Record one hourly e-mail poll (`scraper/email-run.sh`).
+ * Record one hourly e-mail poll (`ingest/email-run.sh`).
  *
  * Quiet successes are not recorded — 24 no-op rows a day is noise, and the runner's log
  * file keeps the trace. A run with activity records a `log`. Failures always record, but

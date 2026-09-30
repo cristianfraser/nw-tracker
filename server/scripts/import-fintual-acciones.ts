@@ -5,7 +5,7 @@
  *   npm run import:fintual-acciones -w nw-tracker-server -- --apply   # write
  *
  * Reads every PDF under `cfraser/fintual-acciones/{cartolas,certificados}/` (staged by
- * `npm run fetch:fintual-docs` in scraper/), pairs each printed dividend with its ledger
+ * `npm run fetch:fintual-docs` in ingest/), pairs each printed dividend with its ledger
  * `dividend_payout` row and writes `movement_dividend_details`. Idempotent: a breakdown already
  * recorded from the same document is reported as such and touched only if it changed. Never
  * creates or edits a movement.
@@ -25,7 +25,7 @@ const files = listFintualAccionesFiles();
 
 if (files.cartolas.length === 0 && files.certificados.length === 0) {
   console.log(`No Fintual Acciones documents under ${resolveFintualAccionesDir()}.`);
-  console.log("Run: npm run fetch:fintual-docs (scraper/)");
+  console.log("Run: npm run fetch:fintual-docs (ingest/)");
   process.exit(0);
 }
 
