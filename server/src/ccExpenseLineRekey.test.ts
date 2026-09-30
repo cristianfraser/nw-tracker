@@ -94,7 +94,7 @@ function fixtureAccountId(): number {
 
 const BIG_GROUP = "vitest-rekey-trip";
 
-function record(rowId: string, merchant = "VITEST REKEY MERCHANT") {
+function record(rowId: string, merchant = "VITEST REKEY MERCHANT", amountClp = 2500) {
   return {
     card_group: "santander",
     source_pdf: "vitest-rekey.pdf",
@@ -104,12 +104,12 @@ function record(rowId: string, merchant = "VITEST REKEY MERCHANT") {
     card_last4: "",
     parser_layout: "compact",
     installment_flag: "false",
-    amount_clp: "2500",
+    amount_clp: String(amountClp),
     merchant,
     transaction_date: "02/01/2025",
     row_id: rowId,
     dedupe_key: `vitest-rekey-${rowId}`,
-    raw_line: `02/01/2025 ${merchant} $2.500`,
+    raw_line: `02/01/2025 ${merchant} $${amountClp}`,
     description_merged: merchant,
   };
 }
@@ -174,6 +174,7 @@ function cleanup(accountId: number): void {
   for (const t of ["cc_expense_unique_purchases", "cc_expense_purchase_big_groups", "cc_expense_purchase_notes"]) {
     db.prepare(`DELETE FROM ${t} WHERE account_id = ? AND purchase_key LIKE 'line-pr:vitest-rekey-%'`).run(accountId);
   }
+  db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key LIKE 'VITEST %'`).run(accountId);
   db.prepare(`DELETE FROM cc_expense_big_groups WHERE slug = ?`).run(BIG_GROUP);
 }
 
@@ -279,5 +280,50 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
     expect(categoryOf(accountId, "line-pr:vitest-rekey-full")).toBe(fun.id);
     expect(noteOf(accountId, "line-pr:vitest-rekey-full")).toBe("pasted");
     expect(categoryOf(accountId, "line-pr:vitest-rekey-cut")).toBeNull();
+  });
+
+  it("carries a merchant rule and a per-line category onto the statement's name (« (T)» on BCI)", () => {
+    cleanup(accountId);
+    const health = getCcExpenseCategoryBySlug("healthcare")!;
+    const bills = getCcExpenseCategoryBySlug("bills")!;
+    importCcStatementsFromCsvRecords(accountId, [
+      record("vitest-rekey-paste", "VITEST SHOP", 2501),
+      record("vitest-rekey-stmt", "VITEST SHOP (T)", 2502),
+      record("vitest-rekey-paste2", "VITEST TOKU", 2503),
+      record("vitest-rekey-stmt2", "VITEST TOKU (T)", 2504),
+    ]);
+    db.prepare(`INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id) VALUES (?, ?, ?)`).run(
+      accountId,
+      "VITEST SHOP",
+      health.id
+    );
+    const ids = lineIds(accountId);
+    db.prepare(`INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)`).run(
+      ids.get("vitest-rekey-paste2")!,
+      bills.id
+    );
+
+    const result = carryCcExpenseAssignments([
+      { fromLineId: ids.get("vitest-rekey-paste")!, toLineId: ids.get("vitest-rekey-stmt")! },
+      { fromLineId: ids.get("vitest-rekey-paste2")!, toLineId: ids.get("vitest-rekey-stmt2")! },
+    ])!;
+    expect(result.merchant_rules_copied).toEqual([
+      { account_id: accountId, from: "VITEST SHOP", to: "VITEST SHOP (T)" },
+    ]);
+    expect(result.line_categories_copied).toBe(1);
+    const rule = db
+      .prepare(`SELECT category_id FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`)
+      .get(accountId, "VITEST SHOP (T)") as { category_id: number };
+    expect(rule.category_id).toBe(health.id);
+    const line = db
+      .prepare(`SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`)
+      .get(ids.get("vitest-rekey-stmt2")!) as { category_id: number };
+    expect(line.category_id).toBe(bills.id);
+
+    // A statement name that already resolves keeps its own rule.
+    const again = carryCcExpenseAssignments([
+      { fromLineId: ids.get("vitest-rekey-paste")!, toLineId: ids.get("vitest-rekey-stmt")! },
+    ])!;
+    expect(again.merchant_rules_copied).toEqual([]);
   });
 });

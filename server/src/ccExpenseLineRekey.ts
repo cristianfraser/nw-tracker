@@ -17,6 +17,11 @@
  */
 import { db } from "./db.js";
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
+import {
+  isGenericTransferMerchantKey,
+  merchantRuleKeysMatchingLineMerchant,
+  normalizeCcExpenseMerchantKey,
+} from "./ccExpenseCategories.js";
 
 export type CcLineIdentitySource = {
   account_id: number;
@@ -474,20 +479,37 @@ export function rekeyCcExpenseLinesAfterImport(capture: CcExpenseLineCapture): C
   return { ...applied, unpaired };
 }
 
+export type CcExpenseCarryResult = {
+  /** The line-keyed rows and splits moved onto the replacing lines (null when none held any). */
+  moves: CcLineMoveApplyResult | null;
+  /** Per-line category overrides copied onto the replacing line. */
+  line_categories_copied: number;
+  /** Merchant rules added under the replacing line's merchant name. */
+  merchant_rules_copied: { account_id: number; from: string; to: string }[];
+};
+
 /**
  * Carries each line's assignments onto the line that replaces it, for callers that already know
  * the pair — a pasted/fed line settled by the statement that bills it, a cut or pending re-listing
  * dropped for its fuller twin. Their merchants differ, so identity pairing cannot find them.
  * Call before deleting the `from` lines.
+ *
+ * Besides the line-keyed rows, the replacing line gets the category its predecessor showed through
+ * the two other channels: a per-line override (keyed by line id, so it would cascade away with the
+ * deleted line) and a merchant rule. The statement prints the merchant under another name than the
+ * paste («FARMACIA CENTRAL (T)» for «FARMACIA CENTRAL» on BCI), so a rule on the pasted
+ * name stops applying the day the statement arrives; when no rule reaches the statement's name,
+ * the same rule is added under it — which also covers that merchant's later statement lines.
  */
 export function carryCcExpenseAssignments(
   pairs: readonly { fromLineId: number; toLineId: number }[]
-): CcLineMoveApplyResult | null {
+): CcExpenseCarryResult | null {
   if (pairs.length === 0) return null;
   const ids = [...new Set(pairs.flatMap((p) => [p.fromLineId, p.toLineId]))];
   const rows = db
     .prepare(`${CC_LINE_REF_SELECT} WHERE l.id IN (${ids.map(() => "?").join(",")})`)
     .all(...ids) as CcLineRefRow[];
+  const rowById = new Map(rows.map((r) => [r.id, r]));
   const byId = new Map(rows.map((r) => [r.id, ccLineRefFromRow(r)]));
   const moves: CcLineMove[] = [];
   for (const p of pairs) {
@@ -496,5 +518,43 @@ export function carryCcExpenseAssignments(
     if (!from || !to) throw new Error(`carryCcExpenseAssignments: line ${!from ? p.fromLineId : p.toLineId} not found`);
     if (ccLineHasExpenseAssignments(from)) moves.push({ from, to, by: "matched" });
   }
-  return moves.length > 0 ? applyCcLineMoves(moves) : null;
+  const out: CcExpenseCarryResult = {
+    moves: moves.length > 0 ? applyCcLineMoves(moves) : null,
+    line_categories_copied: 0,
+    merchant_rules_copied: [],
+  };
+
+  const lineCategory = db.prepare(
+    `SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`
+  );
+  const insertLineCategory = db.prepare(
+    `INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)`
+  );
+  const ruleCategory = db.prepare(
+    `SELECT category_id FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`
+  );
+  const insertRule = db.prepare(
+    `INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id) VALUES (?, ?, ?)`
+  );
+  for (const p of pairs) {
+    const from = rowById.get(p.fromLineId)!;
+    const to = rowById.get(p.toLineId)!;
+    const fromLine = lineCategory.get(from.id) as { category_id: number } | undefined;
+    if (fromLine && lineCategory.get(to.id) == null) {
+      insertLineCategory.run(to.id, fromLine.category_id);
+      out.line_categories_copied += 1;
+    }
+
+    if (from.account_id !== to.account_id) continue;
+    const fromKey = normalizeCcExpenseMerchantKey(from.merchant);
+    const toKey = normalizeCcExpenseMerchantKey(to.merchant);
+    if (!fromKey || !toKey || fromKey === toKey || isGenericTransferMerchantKey(toKey)) continue;
+    const [fromRuleKey] = merchantRuleKeysMatchingLineMerchant(from.account_id, fromKey);
+    if (fromRuleKey == null) continue;
+    if (merchantRuleKeysMatchingLineMerchant(to.account_id, toKey).length > 0) continue;
+    const rule = ruleCategory.get(from.account_id, fromRuleKey) as { category_id: number };
+    insertRule.run(to.account_id, toKey, rule.category_id);
+    out.merchant_rules_copied.push({ account_id: to.account_id, from: fromRuleKey, to: toKey });
+  }
+  return out;
 }
