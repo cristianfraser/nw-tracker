@@ -12,7 +12,7 @@ const DEFAULT_SERVER_URL = "http://127.0.0.1:3001";
  * `SERVER_URL` and `INGEST_TOKEN` from the environment, else from the repo-root `.env` the
  * server reads too (so a token set there reaches both sides). Nothing else is read from it.
  */
-function envValue(key: string): string | undefined {
+export function envValue(key: string): string | undefined {
   const fromEnv = process.env[key]?.trim();
   if (fromEnv) return fromEnv;
   const file = path.join(resolveRepoRoot(), ".env");

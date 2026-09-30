@@ -5,12 +5,14 @@ import {
   assertUniqueIngestKinds,
   findIngestKind,
   ingestEnvelopeSchema,
+  ingestRunCompletionSchema,
   type IngestErrorBody,
   type IngestKindDefinition,
   type IngestResult,
 } from "nw-tracker-contracts";
 import { ingestAuthMiddleware, type IngestAuthConfig } from "../ingestAuth.js";
 import { INGEST_HANDLERS, type IngestHandler } from "../ingestHandlers.js";
+import { completeIngestRun, ingestRunById, listRecentIngestRuns } from "../ingestRuns.js";
 import { asyncHandler } from "./shared.js";
 
 export interface IngestRoutesOptions {
@@ -49,6 +51,35 @@ export function registerIngestRoutes(app: express.Express, options: IngestRoutes
         description: k.description,
       })),
     });
+  });
+
+  // The run protocol (Phase 2): recent runs, and the feeder's report when one is over.
+  router.get("/runs", (_req, res) => {
+    res.json({ runs: listRecentIngestRuns() });
+  });
+
+  router.post("/runs/:id/complete", (req, res) => {
+    const refuse = (status: number, body: IngestErrorBody) => void res.status(status).json(body);
+    const id = Number(req.params.id);
+    const run = Number.isInteger(id) && id > 0 ? ingestRunById(id) : null;
+    if (!run) {
+      refuse(404, { error: "unknown_ingest_run", message: `No ingest run ${String(req.params.id)}` });
+      return;
+    }
+    if (run.status !== "requested" && run.status !== "lost") {
+      refuse(409, { error: "run_not_waiting", message: `Ingest run ${id} is ${run.status}, not waiting for a report` });
+      return;
+    }
+    const completion = ingestRunCompletionSchema.safeParse(req.body);
+    if (!completion.success) {
+      refuse(400, { error: "invalid_run_report", message: "Not a run report.", issues: completion.error.issues });
+      return;
+    }
+    const row = completeIngestRun(id, completion.data);
+    console.log(
+      `ingest-runs: ${row.kind} run ${row.id} ${row.status} (exit ${row.exit_code}, ${row.failed_steps ?? "?"} failed step(s))`
+    );
+    res.json({ run: row });
   });
 
   router.post(

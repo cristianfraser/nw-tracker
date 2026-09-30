@@ -3,7 +3,9 @@
 Status (2026-09-30): **Phase 0 done** (server LaunchAgent installed, `scraper/` → `ingest/`,
 `server/contracts`, the `/api/ingest/*` route). **Phase 1 done**: the Santander card feed goes
 through `card.unbilled_movements`; decoding lives in `ingest/src/santander/cardFeed.ts`.
-Phase 2 (server-owned schedule) is next.
+**Phase 2a built** (the server's run scheduler, the ingest service, the run protocol), not yet
+switched on: `ingest/switch-schedule.sh to-server` does it. Phase 2b (the runners in TypeScript,
+the Santander catch-up and payday decisions in the server) is next.
 
 ## Goal
 
@@ -182,6 +184,13 @@ Left for later phases, noted during Phase 1:
   database.
 
 ### Phase 2 — server-owned schedule and run protocol
+
+Split in two. **2a (built):** the server's scheduler decides when (22:00 nightly, missed slots on
+wake, the < 60 min repeat skip, the :30 poll), asks the ingest service, which runs the existing
+`daily-run.sh` / `email-run.sh` and reports back; `ingest/switch-schedule.sh` swaps it in for the
+timed LaunchAgents. **2b:** port the two runners to TypeScript and move the per-hour Santander
+decisions (catch-up after a failed nightly fetch, the payday morning fetch) and the run recording
+into the server. The original outline:
 
 - Ingest service (HTTP listener, `/runs`, `/parse/*`) as a KeepAlive LaunchAgent.
 - Server scheduler triggers runs; run recording moves into the server.

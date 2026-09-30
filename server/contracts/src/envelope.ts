@@ -67,6 +67,9 @@ export const INGEST_ERROR_CODES = [
   "unsupported_schema_version",
   "invalid_envelope",
   "invalid_payload",
+  "unknown_ingest_run",
+  "invalid_run_report",
+  "run_not_waiting",
 ] as const;
 
 export type IngestErrorCode = (typeof INGEST_ERROR_CODES)[number];
