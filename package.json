@@ -44,7 +44,7 @@
     "import:santander-movements": "npm run import:santander-movements -w nw-tracker-ingest --",
     "import:santander-statements": "npm run import:santander-statements -w nw-tracker-server --",
     "import:lider-movements": "npm run import:lider-movements -w nw-tracker-server --",
-    "import:santander-receipts": "npm run import:santander-receipts -w nw-tracker-server --",
+    "import:santander-receipts": "npm run import:santander-receipts -w nw-tracker-ingest --",
     "convert:cc-payment-mirrors": "npm run convert:cc-payment-mirrors -w nw-tracker-server --",
     "check:cc-bank-cupo": "npm run check:cc-bank-cupo -w nw-tracker-server --",
     "check:santander-payday-fetch": "npm run --silent check:santander-payday-fetch -w nw-tracker-server --",

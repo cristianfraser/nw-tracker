@@ -273,26 +273,28 @@ function main(): void {
     if (code !== 0) process.exit(code);
   }
 
-  // Santander CC payment receipts (staged by fetch:santander-docs): re-date checking payment
-  // debits from the bank's next-workday posting date to the receipt's real payment date. Runs
-  // AFTER the xlsx import so a same-run debit is re-dated in the same night.
-  // Always runs (not only when a receipt is staged): the script also alerts on a synthesized
-  // payment whose debit no bank feed has listed — that check must not depend on new mail.
+  // Santander CC payment receipts (staged by fetch:santander-docs): ingest sends each one
+  // (`card.payment_receipt`) and the server re-dates the checking debit from the bank's
+  // next-workday posting date to the real payment date, or synthesizes the payment when no feed
+  // has listed it yet. Runs AFTER the xlsx import so a same-run debit is re-dated the same night.
+  // Then the server's alarm for synthesized payments no bank feed ever listed — on every run,
+  // not only when a receipt is staged.
   if (!hasFlag("skip-checking")) {
-    const code = runStep(
-      `CC payments from Santander receipts${dryRun ? " (dry run)" : ""}`,
-      "npm",
-      [
-        "run",
-        "import:santander-receipts",
-        "-w",
-        "nw-tracker-server",
-        ...(dryRun ? ["--", "--dry-run"] : []),
-      ]
-    );
-    if (code !== 0) process.exit(code);
-  } else {
-    console.log("\n=== Santander payment receipts (none staged) ===");
+    const receipts = runStep(`CC payments from Santander receipts (ingest)${dryRun ? " (dry run)" : ""}`, "npm", [
+      "run",
+      "import:santander-receipts",
+      "-w",
+      "nw-tracker-ingest",
+      ...(dryRun ? ["--", "--dry-run"] : []),
+    ]);
+    if (receipts !== 0) process.exit(receipts);
+    const overdue = runStep("Synthesized card payments without a bank listing", "npm", [
+      "run",
+      "check:synthetic-cc-payments",
+      "-w",
+      "nw-tracker-server",
+    ]);
+    if (overdue !== 0) process.exit(overdue);
   }
 
   // Checking↔CC payment mirrors: convert unblocked pairs into pago_tarjeta

@@ -77,7 +77,7 @@
     "db:verify-backup": "tsx scripts/verify-db-backup.ts",
     "import:santander-statements": "tsx scripts/import-santander-statements.ts",
     "import:lider-movements": "tsx scripts/import-lider-movements.ts",
-    "import:santander-receipts": "tsx scripts/import-santander-receipts.ts",
+    "check:synthetic-cc-payments": "tsx scripts/check-synthetic-cc-payments.ts",
     "convert:cc-payment-mirrors": "tsx scripts/convert-cc-payment-mirrors.ts",
     "check:cc-bank-cupo": "tsx scripts/check-cc-bank-cupo.ts",
     "check:santander-payday-fetch": "tsx scripts/check-santander-payday-fetch.ts",
