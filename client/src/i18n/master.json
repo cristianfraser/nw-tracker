@@ -5647,6 +5647,14 @@
     "taxYearOption": {
       "en": "AT{{year}} (income {{income}})",
       "es": "AT{{year}} (ingresos {{income}})"
+    },
+    "estimatedTitle": {
+      "en": "Estimated from the ledger until the third party reports it",
+      "es": "Estimado desde la app hasta que el tercero lo informe"
+    },
+    "estimatedNote": {
+      "en": "≈ estimated from the ledger: fund redemptions (FIFO, IPC-reajustado cost; 2025 came within 0,9% of what Fintual reported) and mortgage interest (2025: +1,9% vs the lender). They are replaced by the DJs third parties file in March.",
+      "es": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC; 2025 quedó a 0,9% de lo informado por Fintual) e intereses del crédito hipotecario (2025: +1,9% vs el banco). Los reemplazan las DJ que los terceros presentan en marzo."
     }
   }
 }

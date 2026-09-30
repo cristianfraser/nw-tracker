@@ -18,6 +18,7 @@ export type TaxReturnRow = {
   draft: number | null;
   changed: boolean;
   informed_mismatch: boolean;
+  estimated: boolean;
 };
 
 export type TaxReturnCryptoSale = {
