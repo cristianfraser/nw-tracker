@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateGastosChartPointsByDay, gastosDayForLine } from "./ccExpenseGastosDaily";
-import { aggregateGastosFromLines } from "./ccExpenseGastosAggregate";
+import { gastosDayForLine } from "./ccExpenseGastosDaily";
 import type { FlowCcExpenseLineRow } from "./types";
 
 function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
@@ -33,7 +32,6 @@ function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   };
 }
 
-const SLUGS = ["unclassified"];
 // Facturación 2025-04 is paid ~10 may; 2025-05 ~10 jun; 2025-06 ~10 jul.
 const PAY_BY: Record<string, string> = {
   "32|2025-04": "2025-05-10",
@@ -60,74 +58,5 @@ describe("gastosDayForLine", () => {
   it("returns null for a cuota whose billing month has no pay-by yet", () => {
     const cuota = ccLine({ billing_month: "2099-01" });
     expect(gastosDayForLine(cuota, PAY_BY)).toBeNull();
-  });
-});
-
-describe("aggregateGastosChartPointsByDay", () => {
-  const cuotas = [
-    ccLine({ statement_line_id: 10, billing_month: "2025-04", nro_cuota_current: 1 }),
-    ccLine({ statement_line_id: 11, billing_month: "2025-05", nro_cuota_current: 2 }),
-    ccLine({ statement_line_id: 12, billing_month: "2025-06", nro_cuota_current: 3 }),
-  ];
-
-  it("buckets cuotas on pay-by days (split mode)", () => {
-    const pts = aggregateGastosChartPointsByDay(cuotas, SLUGS, "split", undefined, "clp", PAY_BY);
-    expect(pts.map((p) => p.as_of_date)).toEqual(["2025-05-10", "2025-06-10", "2025-07-10"]);
-    expect(pts[0]!.unclassified).toBe(40_000);
-  });
-
-  it("month sums are frame-shifted M→M+1 vs the monthly split chart (pay vs bank frame)", () => {
-    const monthly = aggregateGastosFromLines(cuotas, SLUGS, "split", undefined, "clp");
-    const daily = aggregateGastosChartPointsByDay(cuotas, SLUGS, "split", undefined, "clp", PAY_BY);
-
-    const dayMonthSum = (ym: string) =>
-      daily
-        .filter((p) => p.as_of_date.slice(0, 7) === ym)
-        .reduce((s, p) => s + (p.unclassified as number), 0);
-    const monthSum = (ym: string) =>
-      monthly.chart_monthly_by_category
-        .filter((p) => p.as_of_date.slice(0, 7) === ym)
-        .reduce((s, p) => s + (p.unclassified as number), 0);
-
-    // A cuota billed in M leaves the account ~10th of M+1.
-    expect(dayMonthSum("2025-05")).toBe(monthSum("2025-04"));
-    expect(dayMonthSum("2025-06")).toBe(monthSum("2025-05"));
-    expect(dayMonthSum("2025-07")).toBe(monthSum("2025-06"));
-  });
-
-  it("total mode buckets the whole purchase on its purchase day and reconciles directly", () => {
-    const lines = [
-      ...cuotas,
-      ccLine({
-        statement_line_id: -1,
-        line_role: "installment_purchase_total",
-        purchase_on: "2025-03-03",
-        expense_month: "2025-03",
-        billing_month: "2025-03",
-        amount_clp: 120_000,
-      }),
-    ];
-    const daily = aggregateGastosChartPointsByDay(lines, SLUGS, "total", undefined, "clp", PAY_BY);
-    expect(daily.map((p) => p.as_of_date)).toEqual(["2025-03-03"]);
-    expect(daily[0]!.unclassified).toBe(120_000);
-
-    const monthly = aggregateGastosFromLines(lines, SLUGS, "total", undefined, "clp");
-    const marchMonthly = monthly.chart_monthly_by_category
-      .filter((p) => p.as_of_date.slice(0, 7) === "2025-03")
-      .reduce((s, p) => s + (p.unclassified as number), 0);
-    expect(daily[0]!.unclassified).toBe(marchMonthly);
-  });
-
-  it("excludes big groups the user filtered out of the chart", () => {
-    const lines = [ccLine({ statement_line_id: 20, billing_month: "2025-04", big_group_slug: "trips" })];
-    const pts = aggregateGastosChartPointsByDay(
-      lines,
-      SLUGS,
-      "split",
-      new Set(["trips"]),
-      "clp",
-      PAY_BY
-    );
-    expect(pts).toEqual([]);
   });
 });

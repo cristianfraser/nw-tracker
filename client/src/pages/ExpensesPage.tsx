@@ -12,22 +12,29 @@ import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { useTranslation } from "../i18n";
 import { aggregateGastosFromLines, rollupExpenseMonthRowsByYear } from "../ccExpenseGastosAggregate";
-import { aggregateGastosChartPointsByDay } from "../ccExpenseGastosDaily";
+import { expenseYearMonthlyAverages } from "../expenseYearMonthlyAverage";
+import { chileTodayYmd } from "../calendarMonth";
 import {
   flowChartGranularityFromMetricsPeriod,
   flowTableGranularity,
   formatFlowMoney,
   rollupChartPointsByYear,
 } from "../flowsDisplay";
-import { clipMonthsThenRollup, clipPointsToTimeRange, timeRangeCutoffYmd } from "../timeRange";
+import { clipMonthsThenRollup, clipPointsToTimeRange, type TimeRange } from "../timeRange";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
 import { CC_EXPENSE_TOTALS_EXCLUDED_SLUGS } from "../ccExpenseLineBuckets";
 import { chartCategorySlugsForFlowsExpenses } from "../expenseDepositLinks";
 import { activeBigGroupSlugs, bigGroupsWithUsage } from "../ccExpenseBigGroupTotals";
-import type { FlowCcExpenseCategoryChartPoint, FlowCcExpenseMonthRow } from "../types";
+import type { FlowCcExpenseMonthRow } from "../types";
 
 /** Latest month (YYYY-MM) with any real spend in the given rows. */
+/** Chart Período choices: Diario is not offered on this page. */
+const EXPENSES_CHART_PERIODS = ["month", "year"] as const;
+
+/** Rangos long enough for the per-year average line to read as a trend. */
+const YEAR_AVERAGE_RANGES: ReadonlySet<TimeRange> = new Set(["3y", "5y", "10y", "total"]);
+
 function latestRealSpendMonth(rows: readonly FlowCcExpenseMonthRow[]): string | null {
   let latest: string | null = null;
   for (const row of rows) {
@@ -43,17 +50,19 @@ export function ExpensesPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const chartPrefs = useSurfacePrefs("flows.expenses.chart", "month", "3y");
-  const metricsPeriod = chartPrefs.period;
+  // A stored Diario from before it was dropped reads as Mensual.
+  const metricsPeriod: "month" | "year" = chartPrefs.period === "year" ? "year" : "month";
   const timeRange = chartPrefs.range;
   const chartControls = (
     <SurfaceControls
-      period={chartPrefs.period}
+      period={metricsPeriod}
       onPeriodChange={chartPrefs.setPeriod}
+      periodOptions={EXPENSES_CHART_PERIODS}
       range={chartPrefs.range}
       onRangeChange={chartPrefs.setRange}
     />
   );
-  const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
+  const chartGranularity = metricsPeriod;
   // The month-detail table owns its período (month/year) and always covers full history.
   const tablePrefs = useSurfacePrefs("flows.expenses.table", "month", "total");
   const tableGranularity = flowTableGranularity(
@@ -140,43 +149,6 @@ export function ExpensesPage() {
 
   const chartPoints = useMemo(() => {
     if (!view) return [];
-    if (chartGranularity === "day") {
-      if (!data) return [];
-      const cutoff = timeRangeCutoffYmd(timeRange);
-      const daily = aggregateGastosChartPointsByDay(
-        data.lines,
-        chartCategorySlugs,
-        installmentMode,
-        excludedBigGroups,
-        displayUnit,
-        data.cuota_pay_by_iso
-      ).filter((p) => cutoff == null || p.as_of_date >= cutoff);
-      if (installmentMode === "total") {
-        // Total mode has no cuota day buckets; a $0 tail point at the split-mode end day keeps
-        // the x-axis range identical to Por cuota (the densifier zero-fills the gap).
-        const splitPoints = aggregateGastosChartPointsByDay(
-          data.lines,
-          chartCategorySlugs,
-          "split",
-          excludedBigGroups,
-          displayUnit,
-          data.cuota_pay_by_iso
-        );
-        const splitEndDay =
-          splitPoints.length > 0 ? splitPoints[splitPoints.length - 1].as_of_date : null;
-        const lastDay = daily.length > 0 ? daily[daily.length - 1].as_of_date : null;
-        if (
-          splitEndDay != null &&
-          (cutoff == null || splitEndDay >= cutoff) &&
-          (lastDay == null || splitEndDay > lastDay)
-        ) {
-          const zeroTail: FlowCcExpenseCategoryChartPoint = { as_of_date: splitEndDay };
-          for (const slug of chartCategorySlugs) zeroTail[slug] = 0;
-          daily.push(zeroTail);
-        }
-      }
-      return daily;
-    }
     const monthly = view.chart.chart_monthly_by_category.filter(
       (p) => chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth
     );
@@ -185,17 +157,19 @@ export function ExpensesPage() {
     return clipMonthsThenRollup(monthly, chartGranularity, timeRange, (rows) =>
       rollupChartPointsByYear(rows, chartCategorySlugs)
     );
-  }, [
-    chartCategorySlugs,
-    chartEndMonth,
-    chartGranularity,
-    data,
-    displayUnit,
-    excludedBigGroups,
-    installmentMode,
-    view,
-    timeRange,
-  ]);
+  }, [chartCategorySlugs, chartEndMonth, chartGranularity, view, timeRange]);
+
+  /**
+   * Per-year average of the chart's monthly total, over full history (the Rango only clips
+   * where it is drawn). Monthly chart and long Rangos only.
+   */
+  const yearAverages = useMemo(() => {
+    if (!view || chartGranularity !== "month" || !YEAR_AVERAGE_RANGES.has(timeRange)) return null;
+    const monthly = view.chart.chart_monthly_by_category.filter(
+      (p) => chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth
+    );
+    return expenseYearMonthlyAverages(monthly, chartCategorySlugs, chileTodayYmd().slice(0, 7));
+  }, [chartCategorySlugs, chartEndMonth, chartGranularity, view, timeRange]);
 
   /** Unfiltered totals — stack order stays stable when big groups are excluded from display. */
   const chartSortPoints = useMemo(() => {
@@ -298,6 +272,7 @@ export function ExpensesPage() {
           categories={data.categories}
           displayUnit={displayUnit}
           xAxisGranularity={chartGranularity}
+          yearAverages={yearAverages}
         />
       </div>
       {chartFilterActive ? (
