@@ -64,6 +64,7 @@
  * timeline (the app's own reader) against the plan, and re-stamps the accounts' existing
  * `valuations` rows (value + units_snapshot, same dates) from the new ledger.
  */
+import type { CryptoMovementKind } from "../src/cryptoMovementKinds.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -359,6 +360,16 @@ function checkBufferMatchesCsv(bufferId: number, rows: readonly BudaRow[]): numb
 
 // ── plan ──────────────────────────────────────────────────────────────────────────────────
 type PlannedKind = "buy" | "sell" | "coin_out" | "swap_in" | "swap_out" | "send_fee" | "round_trip_return";
+/** Each planned row's `crypto_movement_kinds.kind` (same vocabulary, spelled out so a rename is a type error). */
+const CRYPTO_KIND_BY_PLANNED: Record<PlannedKind, CryptoMovementKind> = {
+  buy: "buy",
+  sell: "sell",
+  coin_out: "coin_out",
+  swap_in: "swap_in",
+  swap_out: "swap_out",
+  send_fee: "send_fee",
+  round_trip_return: "round_trip_return",
+};
 type PlannedRow = {
   coin: Coin;
   occurred_on: string;
@@ -894,12 +905,15 @@ function main(): void {
     `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
      VALUES (?, ?, 'clp', ?, ?, ?, ?)`
   );
+  const insKind = db.prepare(`INSERT INTO crypto_movement_kinds (movement_id, kind) VALUES (?, ?)`);
   const restamp = db.prepare(`UPDATE valuations SET value = ?, units_snapshot = ? WHERE id = ?`);
   let restamped = 0;
   db.transaction(() => {
     for (const m of toDelete) del.run(m.id);
     for (const p of planned) {
-      ins.run(accounts[p.coin].id, p.amount, p.occurred_on, p.note, nanoToNumber(p.unitsNano), p.flowKind);
+      const r = ins.run(accounts[p.coin].id, p.amount, p.occurred_on, p.note, nanoToNumber(p.unitsNano), p.flowKind);
+      // The kind is structured state (crypto_movement_kinds); the note keeps it as provenance only.
+      insKind.run(Number(r.lastInsertRowid), CRYPTO_KIND_BY_PLANNED[p.kind]);
     }
     for (const c of COINS) {
       const id = accounts[c].id;
