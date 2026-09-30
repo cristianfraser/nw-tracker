@@ -31,6 +31,7 @@ import {
 import { fetchSiiUfAfterDate } from "./ufSiiSync.js";
 import { chileCalendarAddDays, chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
+import { fetchSiiOfficialIpcYear, writeOfficialIpcMonths } from "./siiOfficialIpc.js";
 import {
   isCryptoEodStale,
   isSbifMonthlyStale,
@@ -126,7 +127,7 @@ import {
 import {
   fetchDolarAfterDate,
   fetchEuroAfterDate,
-  fetchIpcAfterMonth,
+  fetchIpcMonthsVerified,
   fetchUfAfterDate,
   fetchUtmAfterMonth,
   isBcentralNoDataError,
@@ -143,9 +144,9 @@ import {
   safeMaxUtmMonthParts,
   upsertEurRows,
   upsertFxBcentralRows,
-  upsertIpcRows,
   upsertUfRows,
   upsertUtmRows,
+  writeVerifiedIpcRows,
 } from "./sbifSyncDb.js";
 import {
   listWatchlistNyseTickersForEodSync,
@@ -1131,15 +1132,11 @@ async function runSbifIpc(
   const start = portfolioStartYmd();
   const sp = parseYmdParts(start);
   const anchor = lastParts ?? monthBeforeCalendar(sp.y, sp.m);
-  let rows: { date: string; ipcIndex: number }[] = [];
-  try {
-    rows = await fetchIpcAfterMonth(anchor.y, anchor.m, creds, cl.ymd);
-  } catch (e) {
-    if (isBcentralNoDataError(e)) {
-      console.warn(`sync: BCentral IPC — no rows after ${anchor.y}-${String(anchor.m).padStart(2, "0")} (ok if current).`);
-    } else throw e;
-  }
-  const n = upsertIpcRows(rows, syncDryRun);
+  const anchorYmd = `${anchor.y}-${String(anchor.m).padStart(2, "0")}-01`;
+  // The anchor month is fetched again: the writer checks it against the stored row, so a revised
+  // or rebased series throws instead of being spliced onto the old one.
+  const rows = await fetchIpcMonthsVerified(creds, anchorYmd, cl.ymd);
+  const n = writeVerifiedIpcRows(rows, { replace: false, dryRun: syncDryRun });
   if (n > 0) {
     const newest = rows[rows.length - 1];
     changes.push({
@@ -1149,6 +1146,27 @@ async function runSbifIpc(
       newValue: newest ? formatSyncIndex(newest.ipcIndex) : `+${n}`,
       oldDate: null,
       newDate: newest?.date?.slice(0, 10) ?? null,
+    });
+  }
+  // The INE's official variation, as the SII publishes it (the figure tax reajustes use): this
+  // year's table, plus last year's while its December is missing.
+  const officialYears = db
+    .prepare(`SELECT 1 FROM ipc_official_monthly WHERE month = ?`)
+    .get(`${cl.year - 1}-12-01`)
+    ? [cl.year]
+    : [cl.year - 1, cl.year];
+  const official = [];
+  for (const y of officialYears) official.push(...(await fetchSiiOfficialIpcYear(y)));
+  const officialResult = writeOfficialIpcMonths(official, syncDryRun);
+  if (officialResult.added > 0) {
+    const newest = official[official.length - 1]!;
+    changes.push({
+      group: "sbif_ipc",
+      label: "SII IPC oficial",
+      oldValue: "—",
+      newValue: `${newest.variationPct}%`,
+      oldDate: null,
+      newDate: newest.month,
     });
   }
   if (!syncDryRun) state.sbifIpcMonth = cl.monthKey;

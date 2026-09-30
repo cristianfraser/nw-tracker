@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { assertStoredIpcMatchesFetch, type IpcIndexRow } from "./ipcSeries.js";
 
 const upsertUf = db.prepare(`
   INSERT INTO uf_daily (date, clp_per_uf) VALUES (?, ?)
@@ -50,14 +51,32 @@ export function upsertUtmRows(rows: { date: string; utmClp: number }[], dryRun: 
   return n;
 }
 
-export function upsertIpcRows(rows: { date: string; ipcIndex: number }[], dryRun: boolean): number {
-  if (dryRun) return rows.length;
-  let n = 0;
-  for (const r of rows) {
-    upsertIpc.run(r.date, r.ipcIndex);
-    n++;
-  }
-  return n;
+/**
+ * Writes IPC rows fetched by `fetchIpcMonthsVerified`, in one transaction. `replace` deletes the
+ * whole table first (a rebase, or the pre-2026-09-29 rows the generic parser had corrupted);
+ * otherwise every fetched month already stored must match the fetch
+ * ({@link assertStoredIpcMatchesFetch}), so a revised series is never spliced onto an old one.
+ * Returns the number of months not stored before.
+ */
+export function writeVerifiedIpcRows(
+  rows: readonly IpcIndexRow[],
+  opts: { replace: boolean; dryRun: boolean }
+): number {
+  return db.transaction(() => {
+    const stored = new Map<string, number>(
+      opts.replace
+        ? []
+        : (db.prepare(`SELECT date, ipc_index FROM ipc_daily`).all() as { date: string; ipc_index: number }[]).map(
+            (r) => [r.date, r.ipc_index] as const
+          )
+    );
+    assertStoredIpcMatchesFetch(stored, rows);
+    const added = rows.filter((r) => !stored.has(r.date)).length;
+    if (opts.dryRun) return added;
+    if (opts.replace) db.prepare(`DELETE FROM ipc_daily`).run();
+    for (const r of rows) upsertIpc.run(r.date, r.ipcIndex);
+    return added;
+  })();
 }
 
 const insertFxIfMissing = db.prepare(`
