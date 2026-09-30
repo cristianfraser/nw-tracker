@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The primary app server (the one instance that runs the background jobs). Install with:
+
+      server/scripts/install-server-agent.sh
+
+  Restart after a code change with `nw-server-restart`, or:
+
+      launchctl kickstart -k gui/$(id -u)/com.user.nw-tracker-server
+
+  A LaunchAgent (gui/<uid> domain) so it starts at login and is restarted if it dies: the
+  server's scheduler owns the syncs and, once ingest runs are server-triggered, the nightly
+  bank run too — a closed terminal must not stop them. `tsx` without watch, exactly like
+  `npm run dev`: code changes need a restart. The busy port stops a second copy started by
+  hand, which also keeps a second scheduler off the database.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.user.nw-tracker-server</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/crfrsr/Projects/nw-tracker/node_modules/.bin/tsx</string>
+		<string>src/index.ts</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/crfrsr/Projects/nw-tracker/server</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<!-- A crash loop (e.g. the port is taken) retries every 10 s, not in a tight loop. -->
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>StandardOutPath</key>
+	<string>/Users/crfrsr/Projects/nw-tracker/cfraser/server.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/crfrsr/Projects/nw-tracker/cfraser/server.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<!-- launchd starts with a minimal PATH and does not load nvm; upload parsers call
+		     python3 / poppler / qpdf from Homebrew. -->
+		<key>PATH</key>
+		<string>/Users/crfrsr/.nvm/versions/node/v24.18.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>
