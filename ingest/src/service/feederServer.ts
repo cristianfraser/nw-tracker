@@ -4,8 +4,8 @@ import {
   FEEDER_RUNS_PATH,
   ingestRunRequestSchema,
   type IngestRunCompletion,
-  type IngestRunKind,
   type IngestRunRequest,
+  type SantanderState,
 } from "nw-tracker-contracts";
 
 /**
@@ -16,10 +16,12 @@ import {
  */
 
 export type FeederDeps = {
-  run: (kind: IngestRunKind, runId: number) => Promise<IngestRunCompletion>;
+  run: (request: IngestRunRequest) => Promise<IngestRunCompletion>;
   report: (runId: number, completion: IngestRunCompletion) => Promise<void>;
   /** A runner this service did not start (by hand, or a LaunchAgent still installed). */
   runningOutside: () => boolean;
+  /** The bank facts every report carries, also when the run could not start. */
+  santanderState: () => SantanderState;
   log: (message: string) => void;
   token?: string | null;
 };
@@ -58,11 +60,20 @@ export function createFeederServer(deps: FeederDeps): { server: http.Server; cur
   async function execute(request: IngestRunRequest): Promise<void> {
     let completion: IngestRunCompletion;
     try {
-      completion = await deps.run(request.kind, request.run_id);
+      completion = await deps.run(request);
     } catch (err) {
       const now = new Date().toISOString();
       deps.log(`run ${request.run_id} could not start: ${err instanceof Error ? err.message : String(err)}`);
-      completion = { started_at: current?.started_at ?? now, finished_at: now, exit_code: 127, steps: null };
+      completion = {
+        started_at: current?.started_at ?? now,
+        finished_at: now,
+        exit_code: 127,
+        steps: null,
+        dry_run: false,
+        activity: false,
+        santander: null,
+        santander_state: deps.santanderState(),
+      };
     }
     current = null;
     deps.log(`run ${request.run_id} (${request.kind}) finished — exit ${completion.exit_code}`);

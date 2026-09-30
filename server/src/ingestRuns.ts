@@ -1,4 +1,12 @@
-import type { IngestRunCompletion, IngestRunKind } from "nw-tracker-contracts";
+import {
+  santanderStateSchema,
+  type IngestRunCompletion,
+  type IngestRunKind,
+  type IngestRunRequest,
+  type SantanderState,
+} from "nw-tracker-contracts";
+import { chileWallClockAt } from "./chileDate.js";
+import { recordDailyRun, recordHourlyEmailRun, type DailyRunStep } from "./dailyRunLog.js";
 import { db } from "./db.js";
 
 /**
@@ -21,6 +29,13 @@ export type IngestRunRow = {
   failed_steps: number | null;
   steps_json: string | null;
   error: string | null;
+  santander_request: "catch-up" | "payday" | null;
+  santander_request_reason: string | null;
+  santander_outcome: "ok" | "failed" | "vetoed" | null;
+  santander_note: string | null;
+  santander_state_json: string | null;
+  activity: number | null;
+  dry_run: number | null;
 };
 
 /** A run that has not reported back after this long is written off as `lost`. */
@@ -61,10 +76,10 @@ export function sweepLostIngestRuns(now: Date): IngestRunRow[] {
   for (const row of db.prepare(`SELECT * FROM ingest_runs WHERE status = 'requested'`).all() as IngestRunRow[]) {
     const requested = parseInstant(row.requested_at);
     if (requested && now.getTime() - requested.getTime() > INGEST_RUN_TIMEOUT_MS[row.kind]) {
-      db.prepare(`UPDATE ingest_runs SET status = 'lost', error = ? WHERE id = ?`).run(
-        `no report within ${INGEST_RUN_TIMEOUT_MS[row.kind] / 60_000} min`,
-        row.id
-      );
+      const error = `no report within ${INGEST_RUN_TIMEOUT_MS[row.kind] / 60_000} min`;
+      db.prepare(`UPDATE ingest_runs SET status = 'lost', error = ? WHERE id = ?`).run(error, row.id);
+      // The run never said how it went: that is a failed run, badged like any other.
+      recordRunMessage(row.kind, [{ label: `${row.kind} run — ${error} from the ingest service`, ok: false, seconds: null }], false);
       lost.push({ ...row, status: "lost" });
     }
   }
@@ -72,16 +87,68 @@ export function sweepLostIngestRuns(now: Date): IngestRunRow[] {
 }
 
 /** Claim a slot as requested (a retry of a slot that never started reuses its row). */
-export function markIngestRunRequested(kind: IngestRunKind, slot: Date, reason: string, now: Date): number {
+export function markIngestRunRequested(
+  kind: IngestRunKind,
+  slot: Date,
+  reason: string,
+  now: Date,
+  santanderFetch: IngestRunRequest["santander_fetch"] = null
+): number {
   const row = db
     .prepare(
-      `INSERT INTO ingest_runs (kind, slot_at, status, reason, requested_at) VALUES (?, ?, 'requested', ?, ?)
+      `INSERT INTO ingest_runs (kind, slot_at, status, reason, requested_at, santander_request, santander_request_reason)
+       VALUES (?, ?, 'requested', ?, ?, ?, ?)
        ON CONFLICT (kind, slot_at) DO UPDATE SET status = 'requested', reason = excluded.reason,
-         requested_at = excluded.requested_at, error = NULL
+         requested_at = excluded.requested_at, error = NULL, santander_request = excluded.santander_request,
+         santander_request_reason = excluded.santander_request_reason
        RETURNING id`
     )
-    .get(kind, slot.toISOString(), reason, now.toISOString()) as { id: number };
+    .get(kind, slot.toISOString(), reason, now.toISOString(), santanderFetch?.mode ?? null, santanderFetch?.reason ?? null) as {
+    id: number;
+  };
   return row.id;
+}
+
+/** The feeder's bank facts from the latest run that reported them. */
+export function latestSantanderState(): SantanderState | null {
+  const row = db
+    .prepare(
+      `SELECT santander_state_json AS j FROM ingest_runs
+       WHERE santander_state_json IS NOT NULL ORDER BY finished_at DESC, id DESC LIMIT 1`
+    )
+    .get() as { j: string } | undefined;
+  return row ? santanderStateSchema.parse(JSON.parse(row.j)) : null;
+}
+
+/**
+ * Bank fetches this scheduler asked an hourly poll for that count as attempted: the poll took the
+ * run and did not decline the fetch (a run still in flight, or lost, counts — one bank login per
+ * slot is the point, and an unknown outcome may have been one).
+ */
+function attemptedFetchRequests(mode: "catch-up" | "payday"): { requested_at: string }[] {
+  return db
+    .prepare(
+      `SELECT requested_at FROM ingest_runs
+       WHERE santander_request = ? AND status IN ('requested', 'done', 'failed', 'lost')
+         AND (santander_outcome IS NULL OR santander_outcome <> 'vetoed')
+       ORDER BY requested_at DESC LIMIT 1`
+    )
+    .all(mode) as { requested_at: string }[];
+}
+
+export function lastCatchUpAttemptAt(): Date | null {
+  return parseInstant(attemptedFetchRequests("catch-up")[0]?.requested_at);
+}
+
+export function lastPaydayAttemptYmd(): string | null {
+  const at = parseInstant(attemptedFetchRequests("payday")[0]?.requested_at);
+  return at ? chileWallClockAt(at).ymd : null;
+}
+
+/** The run's app message, as `record:daily-run` / `record:email-run` wrote it for the shell runners. */
+function recordRunMessage(kind: IngestRunKind, steps: DailyRunStep[], activity: boolean): void {
+  if (kind === "nightly") recordDailyRun(steps);
+  else recordHourlyEmailRun(steps, { activity });
 }
 
 export function markIngestRunNotStarted(id: number, error: string): void {
@@ -100,8 +167,9 @@ export function ingestRunById(id: number): IngestRunRow | null {
 }
 
 /**
- * Record the feeder's report. Accepted for a requested run and, late, for one already written
- * off as lost; any other state throws (a report for a run nobody asked for is a bug).
+ * Record the feeder's report, and the run's app message from it (a dry run records none). Accepted
+ * for a requested run and, late, for one already written off as lost (whose failure message then
+ * stands beside the real one); any other state throws (a report for a run nobody asked for is a bug).
  */
 export function completeIngestRun(id: number, completion: IngestRunCompletion): IngestRunRow {
   const row = ingestRunById(id);
@@ -111,19 +179,32 @@ export function completeIngestRun(id: number, completion: IngestRunCompletion): 
   }
   const failedSteps = completion.steps ? completion.steps.filter((s) => !s.ok).length : null;
   const ok = completion.exit_code === 0 && (failedSteps ?? 0) === 0 && completion.steps != null;
-  db.prepare(
-    `UPDATE ingest_runs SET status = ?, started_at = ?, finished_at = ?, exit_code = ?, failed_steps = ?,
-       steps_json = ?, error = NULL
-     WHERE id = ?`
-  ).run(
-    ok ? "done" : "failed",
-    completion.started_at,
-    completion.finished_at,
-    completion.exit_code,
-    failedSteps,
-    completion.steps ? JSON.stringify(completion.steps) : null,
-    id
-  );
+  db.transaction(() => {
+    db.prepare(
+      `UPDATE ingest_runs SET status = ?, started_at = ?, finished_at = ?, exit_code = ?, failed_steps = ?,
+         steps_json = ?, error = NULL, santander_outcome = ?, santander_note = ?, santander_state_json = ?,
+         activity = ?, dry_run = ?
+       WHERE id = ?`
+    ).run(
+      ok ? "done" : "failed",
+      completion.started_at,
+      completion.finished_at,
+      completion.exit_code,
+      failedSteps,
+      completion.steps ? JSON.stringify(completion.steps) : null,
+      completion.santander?.outcome ?? null,
+      completion.santander?.note ?? null,
+      JSON.stringify(completion.santander_state),
+      completion.activity ? 1 : 0,
+      completion.dry_run ? 1 : 0,
+      id
+    );
+    if (!completion.dry_run) {
+      const steps: DailyRunStep[] =
+        completion.steps ?? [{ label: `runner reported no steps (exit ${completion.exit_code})`, ok: false, seconds: null }];
+      recordRunMessage(row.kind, steps, completion.activity);
+    }
+  })();
   return ingestRunById(id)!;
 }
 

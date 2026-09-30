@@ -67,10 +67,6 @@ finish() {
   local exit_code=$?
   rm -rf "$TMP_DIR"
   record_interrupted_step
-  # Run by the ingest service: hand it the step list for the server's run report.
-  if [[ -n "${INGEST_STEPS_FILE:-}" ]]; then
-    printf '%s' "$steps_json" > "$INGEST_STEPS_FILE" || true
-  fi
   if [[ "$DRY_RUN" == "1" ]]; then
     log "dry run — not recording an app message"
     exit "$failed"

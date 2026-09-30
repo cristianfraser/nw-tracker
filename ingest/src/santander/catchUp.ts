@@ -79,12 +79,28 @@ function catchUpStateFile(): string {
   return path.join(resolveCfraserDir(), ".santander-catchup.json");
 }
 
-function lastCatchUpAt(): Date | null {
+export function lastCatchUpAt(): Date | null {
   const file = catchUpStateFile();
   if (!fs.existsSync(file)) return null;
   const raw = (JSON.parse(fs.readFileSync(file, "utf8")) as { last_attempt_at?: string }).last_attempt_at;
   const at = raw ? new Date(raw) : null;
   return at && !Number.isNaN(at.getTime()) ? at : null;
+}
+
+/** The payday fetch's own marker (`check-santander-payday-fetch.ts` reads and writes the same file). */
+function paydayStateFile(): string {
+  return path.join(resolveCfraserDir(), ".santander-payday-fetch.json");
+}
+
+export function lastPaydayAttemptYmd(): string | null {
+  const file = paydayStateFile();
+  if (!fs.existsSync(file)) return null;
+  const raw = (JSON.parse(fs.readFileSync(file, "utf8")) as { last_attempt_ymd?: unknown }).last_attempt_ymd;
+  return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}
+
+export function recordPaydayAttempt(now: Date = new Date()): void {
+  fs.writeFileSync(paydayStateFile(), JSON.stringify({ last_attempt_ymd: chileWallClock(now).slice(0, 10) }, null, 2));
 }
 
 export function recordCatchUpAttempt(now: Date = new Date()): void {
