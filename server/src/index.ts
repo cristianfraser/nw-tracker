@@ -32,6 +32,7 @@ import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { registerMarketRoutes } from "./routes/market.js";
 import { registerFlowsRoutes } from "./routes/flows.js";
 import { registerSyncRoutes } from "./routes/sync.js";
+import { registerIngestRoutes } from "./routes/ingest.js";
 
 seedNavTree();
 
@@ -82,6 +83,7 @@ registerDashboardRoutes(app);
 registerMarketRoutes(app);
 registerFlowsRoutes(app);
 registerSyncRoutes(app);
+registerIngestRoutes(app);
 
 if (serveClientDistEnabled()) {
   registerClientDistStatic(app);

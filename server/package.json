@@ -98,6 +98,7 @@
     "cors": "^2.8.5",
     "express": "^5.2.1",
     "multer": "^2.1.1",
+    "nw-tracker-contracts": "0.1.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
@@ -107,6 +108,7 @@
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vitest": "^3.0.5"
+    "vitest": "^3.0.5",
+    "zod": "4.4.3"
   }
 }
