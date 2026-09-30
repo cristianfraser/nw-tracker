@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button } from "@crfrsr/ui";
 import { Table } from "../components/ui/Table";
 import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
 import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
@@ -253,17 +252,16 @@ export function TaxReturnPage() {
         q.isLoading ? <p>{t("common.loading")}</p> : null
       ) : (
         <>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", margin: "1rem 0" }}>
-            {data.available_tax_years.map((y) => (
-              <Button
-                key={y}
-                variant={y === data.tax_year ? "primary" : "secondary"}
-                onClick={() => setTaxYear(y)}
-              >
-                {t("taxReturn.taxYear", { year: y })}
-              </Button>
-            ))}
-          </div>
+          <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", margin: "1rem 0" }}>
+            <span>{t("taxReturn.taxYearLabel")}</span>
+            <select value={data.tax_year} onChange={(e) => setTaxYear(Number(e.target.value))}>
+              {data.available_tax_years.map((y) => (
+                <option key={y} value={y}>
+                  {t("taxReturn.taxYearOption", { year: y, income: y - 1 })}
+                </option>
+              ))}
+            </select>
+          </label>
           <p className="muted">{t(`taxReturn.base.${data.base}`, { months: data.salary.months })}</p>
           {data.provisional ? <p className="muted">{t("taxReturn.provisionalYear", { year: data.income_year })}</p> : null}
           {data.salary.incomplete_months.length > 0 ? (
