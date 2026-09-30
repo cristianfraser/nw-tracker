@@ -6,6 +6,7 @@ import type {
   IngestPayloadOf,
   IngestResult,
 } from "nw-tracker-contracts";
+import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 import {
   applyCardUnbilledMovements,
   type CardUnbilledMovementsImportResult,
@@ -65,6 +66,11 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "bank_account.movements": {
+    apply({ payload, envelope }) {
+      return { status: "applied", details: applyBankAccountMovements(payload, envelope.source.ref) };
+    },
+  },
   "card.unbilled_movements": {
     apply({ payload, envelope }) {
       const result = applyCardUnbilledMovements(payload, envelope.source.ref);

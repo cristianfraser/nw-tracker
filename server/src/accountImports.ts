@@ -23,14 +23,12 @@ import {
 import { parseCheckingCartolaBuffer, periodMonthFromCartolaFileName } from "./checkingCartolaParse.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { parseCuentaVistaWebPasteText } from "./cuentaVistaWebPasteParse.js";
-import { isUltimosMovimientosWorkbook, parseUltimosMovimientosRows } from "./checkingUltimosMovimientosParse.js";
 import { createImportBatch, type ImportBatchKind } from "./importBatches.js";
 import type {
   CcImportFlowItem,
   SkippedCcImportFlowItem,
 } from "./ccStatementsImport.js";
 import type { DocumentImportType } from "./accountDocumentRegistry.js";
-import XLSX from "xlsx";
 
 function assertCreditCardAccount(accountId: number): void {
   const row = db
@@ -210,11 +208,8 @@ export function importCcStatementPdfUpload(
   return { batch_id, ...result };
 }
 
-export function importCheckingRecentXlsx(
-  accountId: number,
-  buffer: Buffer,
-  filename: string
-) {
+/** Throws unless the account is the cuenta corriente (uploads into it land on the checking ledger). */
+export function assertCheckingUploadAccount(accountId: number): number {
   const checkingId = checkingAccountId();
   if (accountId !== checkingId) {
     const row = db
@@ -226,65 +221,35 @@ export function importCheckingRecentXlsx(
       throw new Error("Account is not cuenta corriente");
     }
   }
-  const effectiveId = checkingId;
+  return checkingId;
+}
 
-  const wb = XLSX.read(buffer, { type: "buffer" });
-  const sheet = wb.Sheets[wb.SheetNames[0]!]!;
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][];
-
-  let parsed;
-  if (isUltimosMovimientosWorkbook(rows)) {
-    parsed = parseUltimosMovimientosRows(rows, filename);
-  } else {
-    const cartola = parseCheckingCartolaBuffer(buffer, filename);
-    if (cartola.movements.length > 0 && cartola.period_month) {
-      const { movementsInserted, movementsSkipped, inserted_flows, skipped_flows } =
-        importCheckingCartola(effectiveId, cartola);
-      const batch_id = createImportBatch("checking_cartola_xlsx", filename, {
-        format: "cartola",
-        movements_inserted: movementsInserted,
-        movements_skipped: movementsSkipped,
-        period_month: cartola.period_month,
-      });
-      return {
-        batch_id,
-        format: "cartola" as const,
-        inserted: movementsInserted,
-        skipped_duplicate: movementsSkipped,
-        inserted_flows,
-        skipped_flows,
-        errors: cartola.skipped.map((s) => s.reason),
-      };
-    }
-    parsed = parseUltimosMovimientosRows(rows, filename);
+/**
+ * A monthly cartola uploaded as xlsx on the checking account's «recent movements» box (the
+ * ingest service said it is not an «últimos movimientos» workbook). Throws when it is no cartola
+ * either.
+ */
+export function importCheckingCartolaFromRecentXlsxUpload(accountId: number, buffer: Buffer, filename: string) {
+  const effectiveId = assertCheckingUploadAccount(accountId);
+  const cartola = parseCheckingCartolaBuffer(buffer, filename);
+  if (cartola.movements.length === 0 || !cartola.period_month) {
+    throw new Error(`${filename}: neither an «últimos movimientos» workbook nor a cartola`);
   }
-
-  const {
-    inserted,
-    skipped_duplicate,
-    skipped_superseded_by_cartola,
-    skipped_superseded_by_transfer,
-    inserted_flows,
-    skipped_flows,
-  } = importCheckingPartialMovements(effectiveId, parsed.movements);
-  const batch_id = createImportBatch("checking_recent_xlsx", filename, {
-    format: "ultimos_movimientos",
-    inserted,
-    skipped_duplicate,
-    skipped_superseded_by_cartola,
-    skipped_superseded_by_transfer,
-    errors: parsed.errors,
+  const { movementsInserted, movementsSkipped, inserted_flows, skipped_flows } = importCheckingCartola(effectiveId, cartola);
+  const batch_id = createImportBatch("checking_cartola_xlsx", filename, {
+    format: "cartola",
+    movements_inserted: movementsInserted,
+    movements_skipped: movementsSkipped,
+    period_month: cartola.period_month,
   });
   return {
     batch_id,
-    format: "ultimos_movimientos" as const,
-    inserted,
-    skipped_duplicate,
-    skipped_superseded_by_cartola,
-    skipped_superseded_by_transfer,
+    format: "cartola" as const,
+    inserted: movementsInserted,
+    skipped_duplicate: movementsSkipped,
     inserted_flows,
     skipped_flows,
-    parse_errors: parsed.errors,
+    errors: cartola.skipped.map((s) => s.reason),
   };
 }
 

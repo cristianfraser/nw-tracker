@@ -10,7 +10,7 @@ import {
 import { transferCheckingGastosCategoryFromMovementToNote } from "./checkingGastosCategoryPersist.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
-import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
+import type { PartialBankMovement } from "./checkingPartialMovementsImport.js";
 
 export const PARTIAL_NOTE_PREFIX = "import:cartola-partial|";
 
@@ -87,7 +87,7 @@ export function checkingMovementContentMatches(
 /** True when a matching `import:cartola|…` movement already exists in the ledger. */
 export function partialMovementSupersededByCartola(
   accountId: number,
-  mv: UltimosMovimientoRow,
+  mv: PartialBankMovement,
   dbHandle: Database = db
 ): boolean {
   const rows = dbHandle

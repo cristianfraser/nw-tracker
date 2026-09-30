@@ -6,14 +6,14 @@ import {
 } from "./checkingTransferLegReconcile.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { bankPostedOn } from "./movementBankPostings.js";
-import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
+import type { PartialBankMovement } from "./checkingPartialMovementsImport.js";
 
 const NOTE = "vitest-transfer-dedup";
 const A_NAME = "vitest-dedup-checking";
 const B_NAME = "vitest-dedup-brokerage";
 const DATE = "2026-07-01";
 
-function mv(amount_clp: number, description: string): UltimosMovimientoRow {
+function mv(amount_clp: number, description: string): PartialBankMovement {
   return { occurred_on: DATE, amount_clp, description, document_no: "" };
 }
 

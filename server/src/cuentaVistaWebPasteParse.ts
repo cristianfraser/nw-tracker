@@ -1,8 +1,8 @@
 import { parseCartolaAmount } from "./checkingCartolaParse.js";
-import type { UltimosMovimientoRow } from "./checkingUltimosMovimientosParse.js";
+import type { PartialBankMovement } from "./checkingPartialMovementsImport.js";
 
 export type CuentaVistaWebPasteParseResult = {
-  movements: UltimosMovimientoRow[];
+  movements: PartialBankMovement[];
   errors: string[];
 };
 
@@ -40,7 +40,7 @@ function normalizeDescription(s: string): string {
  * Invalid lines are reported in `errors` (no guessing — a line either parses fully or is rejected).
  */
 export function parseCuentaVistaWebPasteText(text: string): CuentaVistaWebPasteParseResult {
-  const movements: UltimosMovimientoRow[] = [];
+  const movements: PartialBankMovement[] = [];
   const errors: string[] = [];
   const seen = new Set<string>();
 

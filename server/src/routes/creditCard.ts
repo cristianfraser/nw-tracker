@@ -22,10 +22,14 @@ import {
   importCcWebPaste,
   importCuentaVistaWebPaste,
   importCheckingCartolaXlsx,
-  importCheckingRecentXlsx,
+  assertCheckingUploadAccount,
+  importCheckingCartolaFromRecentXlsxUpload,
 } from "../accountImports.js";
+import { bankAccountMovementsKind } from "nw-tracker-contracts";
+import { applyBankAccountMovements } from "../bankAccountMovementsApply.js";
+import { requestFeederParse } from "../ingestFeeder.js";
 import { uploadFields, uploadSingle } from "../uploadMiddleware.js";
-import { accountIdFromReq } from "./shared.js";
+import { accountIdFromReq, asyncHandler } from "./shared.js";
 
 export function registerCreditCardRoutes(app: express.Express): void {
 app.patch("/api/accounts/:id/cc-purchases/:purchaseId", (req, res) => {
@@ -180,7 +184,10 @@ app.post(
 app.post(
   "/api/accounts/:id/imports/checking-recent-xlsx",
   uploadSingle("file") as unknown as express.RequestHandler,
-  (req, res) => {
+  // The ingest service decodes the workbook (`/parse/santander.checking_xlsx`); a monthly cartola
+  // uploaded here instead (not an «últimos movimientos» workbook) stays on the server's own path
+  // until the cartolas move to ingest.
+  asyncHandler(async (req, res) => {
     const id = accountIdFromReq(req);
     const f = req.file;
     if (!f) {
@@ -188,11 +195,30 @@ app.post(
       return;
     }
     try {
-      res.json(importCheckingRecentXlsx(id, f.buffer, f.originalname));
+      assertCheckingUploadAccount(id);
+      const parsed = await requestFeederParse("santander.checking_xlsx", f.buffer, f.originalname);
+      if (parsed.status === "unavailable") {
+        res.status(503).json({ error: `The file could not be read: ${parsed.message}` });
+        return;
+      }
+      if (parsed.status === "unreadable") {
+        res.status(400).json({ error: parsed.message });
+        return;
+      }
+      if (parsed.status === "not_this_format") {
+        res.json(importCheckingCartolaFromRecentXlsxUpload(id, f.buffer, f.originalname));
+        return;
+      }
+      if (parsed.result.kind !== bankAccountMovementsKind.kind || parsed.result.schema_version !== bankAccountMovementsKind.schema_version) {
+        throw new Error(`ingest answered ${parsed.result.kind} v${parsed.result.schema_version}, not ${bankAccountMovementsKind.kind}`);
+      }
+      const payload = bankAccountMovementsKind.payload.parse(parsed.result.payload);
+      const { account_id: _accountId, ...applied } = applyBankAccountMovements(payload, f.originalname);
+      res.json({ format: "ultimos_movimientos" as const, ...applied, parse_errors: payload.rejected_rows });
     } catch (e) {
       res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
     }
-  }
+  })
 );
 
 app.post(

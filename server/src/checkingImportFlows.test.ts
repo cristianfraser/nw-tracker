@@ -7,9 +7,7 @@ import {
   importCheckingPartialMovements,
   partialMovementNote,
 } from "./checkingPartialMovementsImport.js";
-import XLSX from "xlsx";
-import { importCheckingRecentXlsx } from "./accountImports.js";
-import { formatUltimosInboxFileSummary } from "./checkingUltimosMovimientosInbox.js";
+import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 
 function testCheckingAccountId(): number | null {
   const row = db
@@ -206,20 +204,20 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
     });
     db.prepare(`DELETE FROM movements WHERE account_id = ? AND note = ?`).run(accountId, freshNote);
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(
-      wb,
-      XLSX.utils.aoa_to_sheet([
-        ["Fecha", "Detalle", "Cargo", "Abono"],
-        ["10-06-1799", "vitest-flow transf fintual", "", 87654],
-        ["11-06-1799", "vitest-flow fresh cargo", 33333, ""],
-      ])
+    // The listing as ingest sends it (decoding the bank's workbook is ingest's to test).
+    const result = applyBankAccountMovements(
+      {
+        account: { issuer: "santander", product: "checking" },
+        movements: [
+          { date: "1799-06-10", description: "vitest-flow transf fintual", currency: "clp", amount: 87654, document_no: null },
+          { date: "1799-06-11", description: "vitest-flow fresh cargo", currency: "clp", amount: -33333, document_no: null },
+        ],
+        rejected_rows: [],
+      },
+      "vitest-ultimos.xlsx"
     );
-    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
-
-    const result = importCheckingRecentXlsx(accountId, buffer, "vitest-ultimos.xlsx");
     try {
-      if (result.format !== "ultimos_movimientos") throw new Error(`wrong format ${result.format}`);
+      expect(result.account_id).toBe(accountId);
       expect(result.inserted).toBe(1);
       expect(result.skipped_duplicate).toBe(0);
       expect(result.skipped_superseded_by_transfer).toBe(1);
@@ -230,29 +228,5 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(goalId);
       db.prepare(`DELETE FROM import_batches WHERE id = ?`).run(result.batch_id);
     }
-  });
-
-  it("inbox summary line prints every non-zero skip reason", () => {
-    const base = {
-      file: "ultimos.xlsx",
-      rows_parsed: 8,
-      inserted: 1,
-      skipped_duplicate: 6,
-      skipped_superseded_by_cartola: 0,
-      skipped_superseded_by_transfer: 1,
-      parse_errors: [],
-      archived_to: null,
-    };
-    expect(formatUltimosInboxFileSummary(base)).toBe(
-      "ultimos.xlsx: 8 row(s) parsed, 1 inserted, 6 duplicate(s), 1 superseded by transfer"
-    );
-    expect(
-      formatUltimosInboxFileSummary({
-        ...base,
-        rows_parsed: 7,
-        skipped_superseded_by_transfer: 0,
-        archived_to: "/tmp/a.xlsx",
-      })
-    ).toBe("ultimos.xlsx: 7 row(s) parsed, 1 inserted, 6 duplicate(s); archived /tmp/a.xlsx");
   });
 });

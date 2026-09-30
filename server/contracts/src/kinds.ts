@@ -1,11 +1,12 @@
 import type { z } from "zod";
 import type { IngestKindDefinition } from "./defineKind.js";
+import { bankAccountMovementsKind } from "./kinds/bankAccountMovements.js";
 import { cardUnbilledMovementsKind } from "./kinds/cardUnbilledMovements.js";
 
 export { defineIngestKind, type IngestKindDefinition } from "./defineKind.js";
 
 /** Every kind the server accepts. */
-export const INGEST_KINDS = [cardUnbilledMovementsKind] as const satisfies readonly IngestKindDefinition[];
+export const INGEST_KINDS = [cardUnbilledMovementsKind, bankAccountMovementsKind] as const satisfies readonly IngestKindDefinition[];
 
 export type IngestKind = (typeof INGEST_KINDS)[number];
 export type IngestKindName = IngestKind["kind"];

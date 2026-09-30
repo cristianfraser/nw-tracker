@@ -7,6 +7,7 @@ import {
 } from "nw-tracker-contracts";
 import { insertAppMessage } from "./appMessages.js";
 import { backgroundJobsDisabled } from "./backgroundJobsEnv.js";
+import { ingestFeederHeaders, resolveIngestServiceUrl } from "./ingestFeeder.js";
 import { lastDailyRunAt } from "./dailyRunLog.js";
 import { decideIngestRun, decideSantanderFetch, type IngestSchedulerDecision } from "./ingestRunPolicy.js";
 import {
@@ -43,9 +44,6 @@ export function ingestSchedulerEnabled(env: NodeJS.ProcessEnv = process.env): bo
   return env.INGEST_SCHEDULER_ENABLED === "1" && !backgroundJobsDisabled(env);
 }
 
-export function resolveIngestServiceUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return (env.INGEST_URL?.trim() || "http://127.0.0.1:3002").replace(/\/+$/, "");
-}
 
 function storedUtc(value: string | null): Date | null {
   if (!value) return null;
@@ -66,13 +64,10 @@ export async function requestFeederRun(
   santanderFetch: IngestRunRequest["santander_fetch"],
   env: NodeJS.ProcessEnv = process.env
 ): Promise<FeederAnswer> {
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  const token = env.INGEST_TOKEN?.trim();
-  if (token) headers.authorization = `Bearer ${token}`;
   try {
     const res = await fetch(`${resolveIngestServiceUrl(env)}${FEEDER_RUNS_PATH}`, {
       method: "POST",
-      headers,
+      headers: ingestFeederHeaders(env),
       body: JSON.stringify(
         ingestRunRequestSchema.parse({ run_id: runId, kind, reason, santander_fetch: santanderFetch })
       ),
