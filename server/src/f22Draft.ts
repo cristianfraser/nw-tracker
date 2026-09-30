@@ -147,6 +147,24 @@ function loadInformed(taxYear: number): Map<number, InformedDjField[]> {
   return out;
 }
 
+/**
+ * The informed codes with the detail codes the form repeats them in (1869 = 155, 751 = 750,
+ * 161 = 1098, 1878 = 152). Over a filed base they replace what was filed: a third party's figure
+ * is what the SII checks the return against (AT2025 filed 1.327.923 of mortgage interest against
+ * the lender's 3.486.129, and no fund gain against Fintual's 1.759.346).
+ */
+function informedWithDetailCodes(informed: Record<number, number>): F22Codes {
+  const out: F22Codes = { ...informed };
+  const detail: [number, number][] = [
+    [155, 1869],
+    [750, 751],
+    [1098, 161],
+    [152, 1878],
+  ];
+  for (const [code, repeat] of detail) if (informed[code] != null) out[repeat] = informed[code]!;
+  return out;
+}
+
 /** F22 codes the SII prefills from third parties' DJs (the ones this taxpayer receives). */
 function informedCodes(dj: Map<number, InformedDjField[]>): Record<number, number> {
   const out: Record<number, number> = {};
@@ -161,7 +179,8 @@ function informedCodes(dj: Map<number, InformedDjField[]>): Record<number, numbe
     out[169] = informedDjAmount(f1894, "Menor Valor");
   }
   const f1890 = dj.get(1890);
-  if (f1890) out[152] = informedDjAmount(f1890, "Positivo", "B");
+  // Real interest on deposits: the positive less the negative the banks report (AT2025: 303.967 − 131.957).
+  if (f1890) out[152] = informedDjAmount(f1890, "Positivo", "B") - informedDjAmount(f1890, "Negativo", "C");
   const f1898 = dj.get(1898);
   if (f1898) out[750] = informedDjAmount(f1898, "Monto Actualizado de los Intereses Pagados ($) en Dividendo");
   return out;
@@ -228,7 +247,7 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
 
   const draftInput: F22Codes =
     base === "filed"
-      ? { ...filed! }
+      ? { ...filed!, ...informedWithDetailCodes(informed) }
       : base === "informed"
         ? { ...informed }
         : base === "payroll"

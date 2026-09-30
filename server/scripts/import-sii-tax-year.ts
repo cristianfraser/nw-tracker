@@ -1,7 +1,8 @@
 /**
  * Imports one año tributario's SII documents from a folder: the filed «F22 Compacto» PDF
  * (F22Compacto_*.pdf, read with `pdftotext -layout`) into `sii_f22_filed`, and every
- * DJ_<code>_<año>_<rut>.xlsx summary into `sii_informed_dj` (migration 198). The year's rows are
+ * DJ_<code>_<año>_<rut>.xlsx summary — or the «Información para declarar» page saved as .html,
+ * which holds them all — into `sii_informed_dj` (migration 198). The year's rows are
  * replaced whole. A file for another year, a second compact form, or a compact form that fails
  * its own arithmetic throws before anything is written.
  *
@@ -13,7 +14,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "../src/db.js";
 import { assertF22Identities, parseF22CompactoText } from "../src/siiF22Compacto.js";
-import { informedDjFileKey, parseInformedDjXlsx, type InformedDjField } from "../src/siiInformedDj.js";
+import {
+  informedDjFileKey,
+  parseInformedDjHtml,
+  parseInformedDjXlsx,
+  type InformedDjField,
+} from "../src/siiInformedDj.js";
 
 const APPLY = process.argv.includes("--apply");
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -23,13 +29,26 @@ if (!Number.isInteger(year) || !dir) throw new Error("--year=<año tributario> a
 
 const files = fs.readdirSync(dir).sort();
 const compact = files.filter((f) => /^F22Compacto_.*\.pdf$/.test(f));
-if (compact.length !== 1) throw new Error(`${dir}: ${compact.length} F22Compacto PDF(s), expected 1`);
-const f22File = compact[0]!;
-const f22 = parseF22CompactoText(execFileSync("pdftotext", ["-layout", path.join(dir, f22File), "-"]).toString());
-assertF22Identities(f22);
-if (!/_\d{4}_/.test(f22File) || !f22File.includes(`_${year}_`)) throw new Error(`${f22File} is not año tributario ${year}`);
+if (compact.length > 1) throw new Error(`${dir}: ${compact.length} F22Compacto PDFs, expected at most 1`);
+const f22File = compact[0] ?? null;
+const f22 = f22File
+  ? parseF22CompactoText(execFileSync("pdftotext", ["-layout", path.join(dir, f22File), "-"]).toString())
+  : null;
+if (f22File && f22) {
+  assertF22Identities(f22);
+  if (!f22File.includes(`_${year}_`)) throw new Error(`${f22File} is not año tributario ${year}`);
+}
 
 const djs: { djCode: number; file: string; fields: InformedDjField[] }[] = [];
+for (const f of files.filter((f) => f.endsWith(".html"))) {
+  const html = fs.readFileSync(path.join(dir, f), "utf8");
+  const at = /A[ñn]o Tributario\s*:[\s\S]{0,400}?(\d{4})/.exec(html.replace(/<[^>]+>/g, " "));
+  if (!at || Number(at[1]) !== year) throw new Error(`${f}: año tributario ${at?.[1] ?? "not found"}, not ${year}`);
+  for (const [djCode, fields] of parseInformedDjHtml(html)) {
+    if (djs.some((d) => d.djCode === djCode)) throw new Error(`DJ ${djCode} comes from two files in ${dir}`);
+    djs.push({ djCode, file: f, fields });
+  }
+}
 for (const f of files.filter((f) => f.endsWith(".xlsx"))) {
   const key = informedDjFileKey(f);
   if (!key) throw new Error(`${f}: not a DJ_<code>_<year>_<rut>.xlsx summary`);
@@ -37,7 +56,10 @@ for (const f of files.filter((f) => f.endsWith(".xlsx"))) {
   djs.push({ djCode: key.djCode, file: f, fields: parseInformedDjXlsx(fs.readFileSync(path.join(dir, f))) });
 }
 
-console.log(`AT${year}: ${f22.size} F22 amount code(s) from ${f22File}; ${djs.length} DJ summar(ies): ${djs.map((d) => d.djCode).join(", ")}`);
+console.log(
+  `AT${year}: ${f22 ? `${f22.size} F22 amount code(s) from ${f22File}` : "no F22 form"}; ` +
+    `${djs.length} DJ summar(ies): ${djs.map((d) => d.djCode).join(", ")}`
+);
 for (const d of djs) for (const f of d.fields) console.log(`  DJ ${d.djCode}  ${f.field} = ${f.value}`);
 
 if (!APPLY) {
@@ -47,7 +69,7 @@ if (!APPLY) {
     db.prepare(`DELETE FROM sii_f22_filed WHERE tax_year = ?`).run(year);
     db.prepare(`DELETE FROM sii_informed_dj WHERE tax_year = ?`).run(year);
     const putF22 = db.prepare(`INSERT INTO sii_f22_filed (tax_year, code, amount, source_file) VALUES (?, ?, ?, ?)`);
-    for (const [code, amount] of f22) putF22.run(year, code, amount, f22File);
+    if (f22) for (const [code, amount] of f22) putF22.run(year, code, amount, f22File);
     const putDj = db.prepare(
       `INSERT INTO sii_informed_dj (tax_year, dj_code, field, value, source_file) VALUES (?, ?, ?, ?, ?)`
     );
