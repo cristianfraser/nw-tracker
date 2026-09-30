@@ -15,6 +15,8 @@
 # One exception (2026-09-26): when no Santander web fetch has succeeded since the last 22:00
 # slot, the poll retries it ONCE for that slot (`check:santander-catchup`) — a failed or missed
 # nightly fetch otherwise left a whole day of card movements unfetched.
+# Second exception (2026-09-30): on payday — the month's last Chile business day — the poll
+# fetches Santander once from 09:00 so the salary deposit shows the same morning.
 #
 # Outcome recording is deliberately NOT record:daily-run — its titles drive the nightly
 # run's same-day skip and staleness accounting, and an hourly row would silently disable
@@ -116,20 +118,37 @@ fi
 # Santander catch-up: the one bank session this poll may open — see the header and
 # `scraper/src/santander/catchUp.ts`. The decision records the attempt, so a failing fetch is
 # retried once per nightly slot, never hourly.
+# Payday (2026-09-30): on the month's last Chile business day the salary lands in checking in the
+# morning, so from 09:00 the poll fetches Santander once more (`check:santander-payday-fetch`,
+# `server/src/santanderPaydayFetch.ts`) — movements only, the statement JSON waits for 22:00.
+# A catch-up fetch in the same hour already carries the deposit, so payday is only asked when
+# no catch-up is due.
 sa_caught_up=0
+sa_fetch_kind=""
+sa_fetch_args=(--background)
 if [[ "$DRY_RUN" != "1" ]]; then
   if catchup_msg="$(npm run --silent check:santander-catchup 2>/dev/null | tail -1)"; then
     log "$catchup_msg"
-    failed_before=$failed
-    step "fetch Santander (catch-up)" npm run fetch:santander -- --background
-    if [[ "$failed" -eq "$failed_before" ]]; then
-      sa_caught_up=1
-      step "Santander movements (catch-up)" npm run import:santander-movements
-      step "Convert CC payment mirrors (catch-up)" npm run convert:cc-payment-mirrors
-      step "CC bank cupo check (catch-up)" npm run check:cc-bank-cupo
-    fi
+    sa_fetch_kind="catch-up"
   else
     log "=== Santander catch-up (skipped — ${catchup_msg:-no decision})"
+    if payday_msg="$(npm run --silent check:santander-payday-fetch 2>/dev/null | tail -1)"; then
+      log "$payday_msg"
+      sa_fetch_kind="payday"
+      sa_fetch_args=(--background --movements-only)
+    else
+      log "=== Santander payday fetch (skipped — ${payday_msg:-no decision})"
+    fi
+  fi
+  if [[ -n "$sa_fetch_kind" ]]; then
+    failed_before=$failed
+    step "fetch Santander ($sa_fetch_kind)" npm run fetch:santander -- "${sa_fetch_args[@]}"
+    if [[ "$failed" -eq "$failed_before" ]]; then
+      sa_caught_up=1
+      step "Santander movements ($sa_fetch_kind)" npm run import:santander-movements
+      step "Convert CC payment mirrors ($sa_fetch_kind)" npm run convert:cc-payment-mirrors
+      step "CC bank cupo check ($sa_fetch_kind)" npm run check:cc-bank-cupo
+    fi
   fi
 fi
 
