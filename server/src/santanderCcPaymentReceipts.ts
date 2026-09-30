@@ -1,5 +1,7 @@
 /**
- * Santander credit-card payment receipt e-mails → the checking → card payment in the ledger.
+ * Credit-card payment receipts (`card.payment_receipt`, decoded from Santander's receipt e-mails
+ * by ingest — `ingest/src/santander/paymentReceipts.ts`) → the checking → card payment in the
+ * ledger.
  *
  * The receipt mail («Pago Deuda Nacional TCR» for the CLP debt, «Comprobante Pago (abono) de la
  * deuda facturada en dolares» for the USD debt) is the bank's own confirmation of a card
@@ -29,9 +31,11 @@
  * exact pesos, bank date inside the posting window of the payment date
  * (`bankDateMatchesTransferDate`).
  */
-import fs from "node:fs";
-import type { CardListingLine } from "nw-tracker-contracts";
-import path from "node:path";
+import type {
+  CardListingLine,
+  CardPaymentReceiptApplyDetails,
+  CardPaymentReceiptPayload,
+} from "nw-tracker-contracts";
 
 import { importCcWebPasteLines } from "./accountImports.js";
 import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
@@ -44,22 +48,12 @@ import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { recordBankPosting } from "./movementBankPostings.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import {
   recordSyntheticCcPaymentTransfer,
   syntheticCcPaymentMovementIdForMessageId,
 } from "./santanderSyntheticCcPayments.js";
-
-export type StagedPaymentReceipt = {
-  message_id: string;
-  subject: string;
-  /** ISO datetime of the mail. */
-  date: string;
-  /** Flattened body text staged by the scraper. */
-  text: string;
-};
 
 export type ParsedPaymentReceipt = {
   kind: "clp" | "usd";
@@ -71,66 +65,9 @@ export type ParsedPaymentReceipt = {
   card_last4: string | null;
 };
 
-export function receiptsStagingDir(cfraserDir = resolveCfraserCsvDir()): string {
-  return path.join(cfraserDir, "santander-payment-receipts");
-}
-
-export function listStagedReceiptFiles(dir = receiptsStagingDir()): string[] {
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((n) => /^receipt-.*\.json$/i.test(n))
-    .sort()
-    .map((n) => path.join(dir, n));
-}
-
-function ymdFromDdMmYyyy(d: string, m: string, y: string): string {
-  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-}
-
-/** "9xx.xxx" → 923815 (Chilean integer pesos; receipts carry no decimals on CLP). */
-function parseReceiptPesos(raw: string): number {
-  const n = Number(String(raw).replace(/\./g, ""));
-  if (!Number.isFinite(n) || n <= 0) throw new Error(`Unparseable pesos amount "${raw}"`);
-  return n;
-}
-
-/**
- * Parse a staged receipt. Throws on a receipt that classifies but does not parse — a template
- * change must surface as a failed step, not as a silently undated payment.
- */
-export function parsePaymentReceipt(staged: StagedPaymentReceipt): ParsedPaymentReceipt {
-  const text = staged.text.replace(/\s+/g, " ");
-  const date = /con fecha (\d{2})[/-](\d{2})[/-](\d{4})/i.exec(text);
-  if (!date) throw new Error(`Receipt without a payment date: "${staged.subject}" (${staged.message_id})`);
-  const paid_on = ymdFromDdMmYyyy(date[1]!, date[2]!, date[3]!);
-  const card = /\*[* ]*(\d{4})\b/.exec(text);
-  const card_last4 = card ? card[1]! : null;
-
-  const clp = /Monto del pago:\s*\$?\s*([\d.]+)/i.exec(text);
-  if (clp) {
-    return { kind: "clp", paid_on, amount_clp: parseReceiptPesos(clp[1]!), amount_usd: null, card_last4 };
-  }
-
-  const pesos = /Equivalente en pesos\s*\$\s*([\d.]+)/i.exec(text);
-  const usd = /Monto pagado \(abono\)\s*USD\s*([\d.,]+)/i.exec(text);
-  if (pesos) {
-    const amount_usd = usd ? Number(usd[1]!.replace(/\./g, "").replace(",", ".")) : null;
-    return { kind: "usd", paid_on, amount_clp: parseReceiptPesos(pesos[1]!), amount_usd, card_last4 };
-  }
-
-  throw new Error(`Receipt without a recognisable amount: "${staged.subject}" (${staged.message_id})`);
-}
-
-export type ReceiptApplyStatus =
-  | "redated"
-  | "already_dated"
-  | "synthesized"
-  | "waiting_for_movement"
-  | "ambiguous";
+export type ReceiptApplyStatus = CardPaymentReceiptApplyDetails["status"];
 
 export type ReceiptApplyResult = {
-  file: string;
   receipt: ParsedPaymentReceipt;
   status: ReceiptApplyStatus;
   movement_id: number | null;
@@ -244,10 +181,7 @@ function synthesizeTransferFromReceipt(
  * columns, not note text, so it works on `import:cartola-partial` rows and on official cartola
  * rows alike (receipt backlogs can arrive after the cartola).
  */
-export function applyPaymentReceipt(
-  receipt: ParsedPaymentReceipt,
-  messageId: string
-): Omit<ReceiptApplyResult, "file"> {
+export function applyPaymentReceipt(receipt: ParsedPaymentReceipt, messageId: string): ReceiptApplyResult {
   const checkingId = checkingAccountId();
   const target = -receipt.amount_clp;
 
@@ -330,34 +264,24 @@ export function applyPaymentReceipt(
 }
 
 /**
- * Process every staged receipt file. Resolved receipts (synthesized, re-dated, already dated)
- * are archived to `processed/`; `waiting_for_movement` and `ambiguous` files stay
- * staged so the next run retries them. Unparsable receipts throw.
+ * Apply one ingested `card.payment_receipt` (`messageId` = its source ref, the receipt mail's
+ * identity, which keys the synthesized payment so a resend never writes a second one).
  */
-export function importStagedPaymentReceipts(opts?: {
-  dir?: string;
-  dryRun?: boolean;
-}): ReceiptApplyResult[] {
-  const dir = opts?.dir ?? receiptsStagingDir();
-  const results: ReceiptApplyResult[] = [];
-  for (const file of listStagedReceiptFiles(dir)) {
-    const staged = JSON.parse(fs.readFileSync(file, "utf8")) as StagedPaymentReceipt;
-    const receipt = parsePaymentReceipt(staged);
-    if (opts?.dryRun) {
-      results.push({ file: path.basename(file), receipt, status: "waiting_for_movement", movement_id: null, detail: "dry run" });
-      continue;
-    }
-    const applied = applyPaymentReceipt(receipt, staged.message_id);
-    results.push({ file: path.basename(file), ...applied });
-    if (
-      applied.status === "synthesized" ||
-      applied.status === "redated" ||
-      applied.status === "already_dated"
-    ) {
-      const processedDir = path.join(dir, "processed");
-      fs.mkdirSync(processedDir, { recursive: true });
-      fs.renameSync(file, path.join(processedDir, path.basename(file)));
-    }
-  }
-  return results;
+export function applyCardPaymentReceipt(
+  payload: CardPaymentReceiptPayload,
+  messageId: string
+): CardPaymentReceiptApplyDetails {
+  // The checking account, the card routing and the planted card line are Santander's.
+  if (payload.issuer !== "santander") throw new Error(`No payment-receipt handling for issuer "${payload.issuer}"`);
+  const applied = applyPaymentReceipt(
+    {
+      kind: payload.debt_currency,
+      paid_on: payload.paid_on,
+      amount_clp: payload.amount_clp,
+      amount_usd: payload.amount_usd,
+      card_last4: payload.card_last4,
+    },
+    messageId
+  );
+  return { status: applied.status, movement_id: applied.movement_id, detail: applied.detail };
 }

@@ -225,7 +225,7 @@ export async function fetchSantanderMailDocuments(opts?: {
         }
       }
 
-      // CC payment receipts: stage {subject, date, text} JSON for the server-side parser. The
+      // CC payment receipts: stage {subject, date, text} JSON for `santander/paymentReceipts.ts`. The
       // ledger key is the message id — each payment is its own mail, so this is a stable
       // per-document identity (same rule as the attachment filenames below).
       for (const candidate of receiptCandidates) {

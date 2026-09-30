@@ -4,7 +4,12 @@ import { importCcWebPasteLines } from "./accountImports.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
-import { applyPaymentReceipt, parsePaymentReceipt, santanderReceiptCardLine } from "./santanderCcPaymentReceipts.js";
+import {
+  applyCardPaymentReceipt,
+  applyPaymentReceipt,
+  santanderReceiptCardLine,
+  type ParsedPaymentReceipt,
+} from "./santanderCcPaymentReceipts.js";
 import {
   confirmSyntheticCcPaymentForTransferLeg,
   listOverdueUnconfirmedSyntheticCcPayments,
@@ -27,24 +32,13 @@ const restoreCcTables = snapshotTables([
   "import_batches",
 ]);
 
-/** Synthetic bodies mirroring the two real receipt templates (2026-08); synthetic amounts/card. */
-const CLP_RECEIPT_TEXT =
-  "Comprobante pago deuda Nacional de Tarjeta de Credito Tu pago de Tarjeta de Credito ha sido " +
-  "realizado con exito. Estimado (a) VITEST PERSONA: Te enviamos el detalle del pago realizado " +
-  "con fecha 07/08/2026 Monto del pago: 111.222 ORIGEN Tipo de cuenta: Nº de Cuenta: " +
-  "0-000-00-00000-0 DESTINO Tarjeta: W. LIMITED VISA Nº de Tarjeta: **** **** **** 9999 " +
-  "Tipo de pago: facturado";
+/** Receipts as ingest decodes them (the mail templates are ingest's to test); synthetic values. */
+function CLP(over: Partial<ParsedPaymentReceipt> = {}): ParsedPaymentReceipt {
+  return { kind: "clp", paid_on: "2026-08-07", amount_clp: 111222, amount_usd: null, card_last4: "9999", ...over };
+}
 
-const USD_RECEIPT_TEXT =
-  "Santander Comprobante Pago de la deuda facturada en dólares Estimado (a) VITEST PERSONA: Te " +
-  "enviamos el detalle de la operación de compra de dólares para abonar o pagar tu Tarjeta de " +
-  "Crédito en dólares con fecha 07-08-2026 a las 15:54:18 hrs. Monto pagado (abono) USD 123,45 " +
-  "Origen Tipo de cuenta Cuenta Corriente N° de cuenta 0-000-00-00000-0 Destino Tarjeta " +
-  "W. LIMITED VISA N° de tarjeta *9999 Datos del pago Cantidad de Dólares USD 123,45 " +
-  "Equivalente en pesos $ 115.733 Tipo de cambio $ 937,45 Folio de la operación 000000000001";
-
-function staged(text: string) {
-  return { message_id: "<vitest@test>", subject: "vitest", date: "2026-08-07T19:54:52Z", text };
+function USD(over: Partial<ParsedPaymentReceipt> = {}): ParsedPaymentReceipt {
+  return { kind: "usd", paid_on: "2026-08-07", amount_clp: 115733, amount_usd: 123.45, card_last4: "9999", ...over };
 }
 
 /** The Santander feed's row for a 111.222 payment on 07/08/2026, as ingest decodes it. */
@@ -92,36 +86,24 @@ describe("santanderCcPaymentReceipts", () => {
     return id;
   }
 
-  it("parses the CLP receipt template", () => {
-    expect(parsePaymentReceipt(staged(CLP_RECEIPT_TEXT))).toEqual({
-      kind: "clp",
+  it("takes the canonical receipt, and only Santander's", () => {
+    const id = insertCheckingDebit("2026-08-10", -111222);
+    const payload = {
+      issuer: "santander",
       paid_on: "2026-08-07",
+      debt_currency: "clp" as const,
       amount_clp: 111222,
       amount_usd: null,
       card_last4: "9999",
-    });
-  });
-
-  it("parses the USD receipt template (peso equivalent is the checking leg)", () => {
-    expect(parsePaymentReceipt(staged(USD_RECEIPT_TEXT))).toEqual({
-      kind: "usd",
-      paid_on: "2026-08-07",
-      amount_clp: 115733,
-      amount_usd: 123.45,
-      card_last4: "9999",
-    });
-  });
-
-  it("throws on a receipt with no recognisable amount", () => {
-    expect(() =>
-      parsePaymentReceipt(staged("Te enviamos el detalle del pago realizado con fecha 07/08/2026"))
-    ).toThrow(/amount/);
+    };
+    expect(applyCardPaymentReceipt(payload, "<vitest@test>")).toMatchObject({ status: "redated", movement_id: id });
+    expect(() => applyCardPaymentReceipt({ ...payload, issuer: "otherbank" }, "<vitest@test>")).toThrow(/otherbank/);
   });
 
   it("re-dates the next-workday debit to the receipt's payment date", () => {
     // Paid Friday 2026-08-07 after cutoff; the bank feed posts it Monday 2026-08-10.
     const id = insertCheckingDebit("2026-08-10", -111222);
-    const result = applyPaymentReceipt(parsePaymentReceipt(staged(CLP_RECEIPT_TEXT)), "<vitest@test>");
+    const result = applyPaymentReceipt(CLP(), "<vitest@test>");
     expect(result.status).toBe("redated");
     expect(result.movement_id).toBe(id);
     const row = db.prepare(`SELECT occurred_on, note FROM movements WHERE id = ?`).get(id) as {
@@ -135,16 +117,14 @@ describe("santanderCcPaymentReceipts", () => {
 
   it("is idempotent and refuses ambiguity", () => {
     insertCheckingDebit("2026-08-10", -111222);
-    const receipt = parsePaymentReceipt(staged(CLP_RECEIPT_TEXT));
+    const receipt = CLP();
     expect(applyPaymentReceipt(receipt, "<vitest@test>").status).toBe("redated");
     expect(applyPaymentReceipt(receipt, "<vitest@test>").status).toBe("already_dated");
 
     // Two same-amount debits in the window → neither is touched.
     const a = insertCheckingDebit("2026-08-10", -333444);
     const b = insertCheckingDebit("2026-08-10", -333444);
-    const twin = parsePaymentReceipt(
-      staged(CLP_RECEIPT_TEXT.replace("111.222", "333.444"))
-    );
+    const twin = CLP({ amount_clp: 333444 });
     expect(applyPaymentReceipt(twin, "<vitest@test>").status).toBe("ambiguous");
     for (const id of [a, b]) {
       expect(
@@ -158,9 +138,7 @@ describe("santanderCcPaymentReceipts", () => {
     // Paid Monday 2026-08-31, posted Tuesday 2026-09-01: the display reads August, the cartola
     // checks read the September posting.
     const id = insertCheckingDebit("2026-09-01", -111222);
-    const receipt = parsePaymentReceipt(
-      staged(CLP_RECEIPT_TEXT.replace("07/08/2026", "31/08/2026"))
-    );
+    const receipt = CLP({ paid_on: "2026-08-31" });
     const result = applyPaymentReceipt(receipt, "<vitest@test>");
     expect(result.status).toBe("redated");
     expect(
@@ -200,8 +178,7 @@ describe("santanderCcPaymentReceipts", () => {
 describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
   // The synthetic preset's Santander master is card ·4321 (a `credit_card_master|santander|4321`
   // account with its config row); ·9999 resolves to nothing.
-  const CLP_4321 = CLP_RECEIPT_TEXT.replace("**** **** **** 9999", "**** **** **** 4321");
-  const USD_4321 = USD_RECEIPT_TEXT.replace("*9999", "*4321");
+
   const masterId = (): number => {
     const id = resolveMasterAccountIdForImportCardLast4("4321");
     if (id == null) throw new Error("synthetic preset master ·4321 missing from the test DB");
@@ -232,7 +209,7 @@ describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
   it("writes the transfer, its provenance row and the card's PAGO line when no debit exists; the bank's later listings dedupe", () => {
     const master = masterId();
     const checkingId = checkingAccountId();
-    const receipt = parsePaymentReceipt(staged(CLP_4321));
+    const receipt = CLP({ card_last4: "4321" });
     const result = applyPaymentReceipt(receipt, "<vitest-synth-clp@test>");
     expect(result.status).toBe("synthesized");
     const id = result.movement_id!;
@@ -279,7 +256,7 @@ describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
 
   it("writes the dollar abono as the cross-currency transfer plus the ABONO DE DIVISAS line", () => {
     const master = masterId();
-    const result = applyPaymentReceipt(parsePaymentReceipt(staged(USD_4321)), "<vitest-synth-usd@test>");
+    const result = applyPaymentReceipt(USD({ card_last4: "4321" }), "<vitest-synth-usd@test>");
     expect(result.status).toBe("synthesized");
     created.push(result.movement_id!);
     const mv = db
@@ -294,7 +271,7 @@ describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
   it("synthesizes on the last business day too; the next month's bank row confirms it with its posting day", () => {
     // Friday 2026-07-31: the bank may post the debit on Monday 08-03 — the payment still
     // happened on the 31st, and the cartola checks read the posting day the bank row brings.
-    const receipt = parsePaymentReceipt(staged(CLP_4321.replace("07/08/2026", "31/07/2026")));
+    const receipt = CLP({ card_last4: "4321", paid_on: "2026-07-31" });
     const result = applyPaymentReceipt(receipt, "<vitest-synth-straddle@test>");
     expect(result.status).toBe("synthesized");
     created.push(result.movement_id!);
@@ -312,7 +289,7 @@ describe("santanderCcPaymentReceipts — synthesis from the receipt", () => {
   });
 
   it("refuses a card no master resolves instead of guessing", () => {
-    expect(() => applyPaymentReceipt(parsePaymentReceipt(staged(CLP_RECEIPT_TEXT)), "<vitest-synth-9999@test>")).toThrow(
+    expect(() => applyPaymentReceipt(CLP(), "<vitest-synth-9999@test>")).toThrow(
       /no credit-card master/
     );
   });

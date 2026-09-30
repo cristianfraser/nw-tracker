@@ -7,7 +7,7 @@ through `card.unbilled_movements`; decoding lives in `ingest/src/santander/cardF
 runners in TypeScript, the Santander catch-up / payday decisions and the run recording in the
 server), not yet switched on: `ingest/switch-schedule.sh to-server` does it. **Phase 3 in
 progress**: 1. checking «últimos movimientos» xlsx done (`bank_account.movements`, uploads via the
-service's `/parse`).
+service's `/parse`); 2. Santander payment receipts done (`card.payment_receipt`).
 
 ## Goal
 
@@ -208,7 +208,8 @@ In rough order (simplest separation first):
 1. Checking «ultimos movimientos» xlsx (`checkingUltimosMovimientosParse`). **Done** —
    `bank_account.movements`; the upload box forwards to the service's `/parse` (the mechanism the
    other upload formats reuse).
-2. Santander payment receipts.
+2. Santander payment receipts. **Done** — `card.payment_receipt`; the overdue alarm stays a
+   server command (`check:synthetic-cc-payments`).
 3. Broker e-mails (`brokerEmailParse`) — Fintual and Racional.
 4. Racional crawl + dividends file.
 5. Santander statement JSON (`santanderStatementParse`).
