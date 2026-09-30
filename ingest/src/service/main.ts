@@ -10,15 +10,17 @@
 import { log } from "../log.js";
 import { envValue, ingestClient } from "../serverApi.js";
 import { createFeederServer, reportWithRetry } from "./feederServer.js";
-import { runnerScriptRunningOutside, runScript } from "./runScript.js";
+import { readSantanderState, runRequestedRun } from "../runner/runRequest.js";
+import { runnerScriptRunningOutside } from "./runnerScripts.js";
 
 const port = Number(process.env.INGEST_SERVICE_PORT ?? 3002);
 const client = ingestClient();
 
 const { server } = createFeederServer({
-  run: runScript,
+  run: (request) => runRequestedRun(request),
   report: (runId, completion) => reportWithRetry((id, c) => client.completeRun(id, c), runId, completion, log),
   runningOutside: runnerScriptRunningOutside,
+  santanderState: readSantanderState,
   log,
   token: envValue("INGEST_TOKEN") ?? null,
 });

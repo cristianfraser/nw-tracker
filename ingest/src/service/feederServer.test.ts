@@ -8,6 +8,16 @@ const DONE: IngestRunCompletion = {
   finished_at: "2026-09-30T01:10:00.000Z",
   exit_code: 0,
   steps: [{ label: "fetch Santander", ok: true, seconds: 600 }],
+  dry_run: false,
+  activity: false,
+  santander: { mode: "nightly", outcome: "ok", note: null },
+  santander_state: {
+    last_attempt_at: null,
+    last_success_at: null,
+    login_latched: false,
+    last_catch_up_attempt_at: null,
+    last_payday_attempt_ymd: null,
+  },
 };
 
 let close: (() => Promise<void>) | null = null;
@@ -22,12 +32,13 @@ async function start(over: Partial<FeederDeps> = {}) {
   let release: (c: IngestRunCompletion) => void = () => {};
   const runs: { kind: IngestRunKind; runId: number }[] = [];
   const feeder = createFeederServer({
-    run: (kind, runId) => {
-      runs.push({ kind, runId });
+    run: (request) => {
+      runs.push({ kind: request.kind, runId: request.run_id });
       return new Promise((resolve) => (release = resolve));
     },
     report: async (runId, completion) => void reports.push({ runId, completion }),
     runningOutside: () => false,
+    santanderState: () => DONE.santander_state,
     log: () => {},
     ...over,
   });
@@ -42,11 +53,11 @@ async function start(over: Partial<FeederDeps> = {}) {
 describe("feeder server", () => {
   it("accepts a run at once, refuses a second while it runs, and reports the first when it ends", async () => {
     const s = await start();
-    const first = await s.post({ run_id: 7, kind: "nightly", reason: "22:00 slot, on time" });
+    const first = await s.post({ run_id: 7, kind: "nightly", reason: "22:00 slot, on time", santander_fetch: null });
     expect(first.status).toBe(202);
     expect(s.runs).toEqual([{ kind: "nightly", runId: 7 }]);
 
-    const second = await s.post({ run_id: 8, kind: "hourly", reason: ":30 slot" });
+    const second = await s.post({ run_id: 8, kind: "hourly", reason: ":30 slot", santander_fetch: null });
     expect(second.status).toBe(409);
     expect(await second.json()).toMatchObject({ error: "busy", running: { run_id: 7, kind: "nightly" } });
     expect(await (await fetch(`${s.base}/health`)).json()).toMatchObject({ ok: true, running: { run_id: 7 } });
@@ -54,12 +65,12 @@ describe("feeder server", () => {
     s.finish(DONE);
     await s.feeder.idle();
     expect(s.reports).toEqual([{ runId: 7, completion: DONE }]);
-    expect((await s.post({ run_id: 8, kind: "hourly", reason: ":30 slot" })).status).toBe(202);
+    expect((await s.post({ run_id: 8, kind: "hourly", reason: ":30 slot", santander_fetch: null })).status).toBe(202);
   });
 
   it("is busy while a runner it did not start is running", async () => {
     const s = await start({ runningOutside: () => true });
-    const res = await s.post({ run_id: 7, kind: "nightly", reason: "x" });
+    const res = await s.post({ run_id: 7, kind: "nightly", reason: "x", santander_fetch: null });
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ running: { run_id: null, kind: "outside" } });
     expect(s.runs).toEqual([]);
@@ -67,9 +78,9 @@ describe("feeder server", () => {
 
   it("refuses a malformed request and a wrong token", async () => {
     const s = await start({ token: "abc" });
-    expect((await s.post({ run_id: 7, kind: "weekly", reason: "x" }, { authorization: "Bearer abc" })).status).toBe(400);
-    expect((await s.post({ run_id: 7, kind: "nightly", reason: "x" }, { authorization: "Bearer abd" })).status).toBe(401);
-    expect((await s.post({ run_id: 7, kind: "nightly", reason: "x" }, { authorization: "Bearer abc" })).status).toBe(202);
+    expect((await s.post({ run_id: 7, kind: "weekly", reason: "x", santander_fetch: null }, { authorization: "Bearer abc" })).status).toBe(400);
+    expect((await s.post({ run_id: 7, kind: "nightly", reason: "x", santander_fetch: null }, { authorization: "Bearer abd" })).status).toBe(401);
+    expect((await s.post({ run_id: 7, kind: "nightly", reason: "x", santander_fetch: null }, { authorization: "Bearer abc" })).status).toBe(202);
   });
 
   it("reports a runner that could not start as a failure", async () => {
@@ -78,7 +89,7 @@ describe("feeder server", () => {
         throw new Error("spawn /bin/bash ENOENT");
       },
     });
-    expect((await s.post({ run_id: 9, kind: "hourly", reason: "x" })).status).toBe(202);
+    expect((await s.post({ run_id: 9, kind: "hourly", reason: "x", santander_fetch: null })).status).toBe(202);
     await s.feeder.idle();
     expect(s.reports[0]).toMatchObject({ runId: 9, completion: { exit_code: 127, steps: null } });
   });

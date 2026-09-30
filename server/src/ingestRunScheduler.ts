@@ -3,14 +3,18 @@ import {
   feederBusySchema,
   ingestRunRequestSchema,
   type IngestRunKind,
+  type IngestRunRequest,
 } from "nw-tracker-contracts";
 import { insertAppMessage } from "./appMessages.js";
 import { backgroundJobsDisabled } from "./backgroundJobsEnv.js";
 import { lastDailyRunAt } from "./dailyRunLog.js";
-import { decideIngestRun, type IngestSchedulerDecision } from "./ingestRunPolicy.js";
+import { decideIngestRun, decideSantanderFetch, type IngestSchedulerDecision } from "./ingestRunPolicy.js";
 import {
   inFlightIngestRun,
   lastAnsweredSlot,
+  lastCatchUpAttemptAt,
+  lastPaydayAttemptYmd,
+  latestSantanderState,
   markIngestRunNotStarted,
   markIngestRunRequested,
   markIngestRunSkipped,
@@ -59,6 +63,7 @@ export async function requestFeederRun(
   runId: number,
   kind: IngestRunKind,
   reason: string,
+  santanderFetch: IngestRunRequest["santander_fetch"],
   env: NodeJS.ProcessEnv = process.env
 ): Promise<FeederAnswer> {
   const headers: Record<string, string> = { "content-type": "application/json" };
@@ -68,7 +73,9 @@ export async function requestFeederRun(
     const res = await fetch(`${resolveIngestServiceUrl(env)}${FEEDER_RUNS_PATH}`, {
       method: "POST",
       headers,
-      body: JSON.stringify(ingestRunRequestSchema.parse({ run_id: runId, kind, reason })),
+      body: JSON.stringify(
+        ingestRunRequestSchema.parse({ run_id: runId, kind, reason, santander_fetch: santanderFetch })
+      ),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     if (res.status === 202) return { status: "accepted" };
@@ -129,10 +136,21 @@ export async function ingestSchedulerTick(
     console.log(`ingest-runs: ${decision.kind} slot ${decision.slot.toISOString()} skipped — ${decision.reason}`);
     return { decision, run_id: null, answer: null };
   }
-  const runId = markIngestRunRequested(decision.kind, decision.slot, decision.reason, now);
-  const answer = await request(runId, decision.kind, decision.reason);
+  // An hourly poll may carry the one bank fetch the rules allow (catch-up, else payday).
+  const santanderFetch =
+    decision.kind === "hourly"
+      ? decideSantanderFetch({
+          now,
+          state: latestSantanderState(),
+          lastCatchUpAttemptAt: lastCatchUpAttemptAt(),
+          lastPaydayAttemptYmd: lastPaydayAttemptYmd(),
+        })
+      : null;
+  const runId = markIngestRunRequested(decision.kind, decision.slot, decision.reason, now, santanderFetch);
+  const answer = await request(runId, decision.kind, decision.reason, santanderFetch);
   if (answer.status === "accepted") {
-    console.log(`ingest-runs: ${decision.kind} run ${runId} started (${decision.reason})`);
+    const fetchNote = santanderFetch ? `; Santander ${santanderFetch.mode}: ${santanderFetch.reason}` : "";
+    console.log(`ingest-runs: ${decision.kind} run ${runId} started (${decision.reason}${fetchNote})`);
     return { decision, run_id: runId, answer };
   }
   markIngestRunNotStarted(runId, `${answer.status}: ${answer.detail}`);
