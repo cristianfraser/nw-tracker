@@ -8,6 +8,7 @@ import {
   type IngestSource,
 } from "./envelope.js";
 import type { IngestKindDefinition } from "./defineKind.js";
+import { INGEST_RUNS_API_PATH, ingestRunCompletionSchema, type IngestRunCompletion } from "./runs.js";
 
 export interface IngestClientOptions {
   /** Server origin, e.g. `http://127.0.0.1:3001`. */
@@ -45,38 +46,44 @@ export interface IngestClient {
     payload: z.input<S>,
     source: IngestSource
   ): Promise<IngestResult>;
+  /** Report a run the server asked for as finished. */
+  completeRun(runId: number, completion: IngestRunCompletion): Promise<void>;
 }
 
 export function createIngestClient(options: IngestClientOptions): IngestClient {
   const doFetch = options.fetch ?? fetch;
   const base = options.baseUrl.replace(/\/+$/, "");
+  /** POST a JSON body; the parsed response body, or IngestRequestError on a non-2xx answer. */
+  async function post(pathname: string, body: unknown): Promise<unknown> {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (options.token) headers.authorization = `Bearer ${options.token}`;
+    const res = await doFetch(`${base}${pathname}`, { method: "POST", headers, body: JSON.stringify(body) });
+    const text = await res.text();
+    let json: unknown = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = null;
+    }
+    if (!res.ok) {
+      const parsed = ingestErrorSchema.safeParse(json);
+      throw new IngestRequestError(res.status, parsed.success ? parsed.data : null, text);
+    }
+    return json;
+  }
   return {
     async send(kind, payload, source) {
       const checked = kind.payload.parse(payload);
-      const headers: Record<string, string> = { "content-type": "application/json" };
-      if (options.token) headers.authorization = `Bearer ${options.token}`;
-      const res = await doFetch(`${base}${INGEST_API_PATH}/${kind.kind}`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          schema_version: kind.schema_version,
-          feeder_id: options.feederId,
-          source,
-          payload: checked,
-        }),
+      const json = await post(`${INGEST_API_PATH}/${kind.kind}`, {
+        schema_version: kind.schema_version,
+        feeder_id: options.feederId,
+        source,
+        payload: checked,
       });
-      const text = await res.text();
-      let json: unknown = null;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = null;
-      }
-      if (!res.ok) {
-        const parsed = ingestErrorSchema.safeParse(json);
-        throw new IngestRequestError(res.status, parsed.success ? parsed.data : null, text);
-      }
       return ingestResultSchema.parse(json);
+    },
+    async completeRun(runId, completion) {
+      await post(`${INGEST_RUNS_API_PATH}/${runId}/complete`, ingestRunCompletionSchema.parse(completion));
     },
   };
 }

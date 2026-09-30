@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The ingest service: the local listener the server asks to run the nightly bank run and the
+  hourly e-mail poll (docs/ingest-split-plan.md, Phase 2). Installed by
+
+      ingest/switch-schedule.sh to-server
+
+  which also retires the two timed LaunchAgents it replaces. It MUST be a LaunchAgent in the GUI
+  session: Santander's edge blocks headless Chrome, so the fetcher parks a real window off-screen
+  and needs a window server. The apply flags below are the ones the timed agents carried.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.user.nw-tracker-ingest</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/crfrsr/Projects/nw-tracker/node_modules/.bin/tsx</string>
+		<string>src/service/main.ts</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/crfrsr/Projects/nw-tracker/ingest</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>StandardOutPath</key>
+	<string>/Users/crfrsr/Projects/nw-tracker/cfraser/ingest-service.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/crfrsr/Projects/nw-tracker/cfraser/ingest-service.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<!-- launchd starts with a minimal PATH; node lives under nvm, and the parse steps need
+		     poppler/qpdf from Homebrew. -->
+		<key>PATH</key>
+		<string>/Users/crfrsr/.nvm/versions/node/v24.18.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+		<key>NW_TRACKER_STATEMENT_JSON_APPLY</key>
+		<string>1</string>
+		<key>NW_TRACKER_FINTUAL_APPLY</key>
+		<string>1</string>
+		<key>NW_TRACKER_RACIONAL_APPLY</key>
+		<string>1</string>
+	</dict>
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>

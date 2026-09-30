@@ -33,6 +33,7 @@ import { registerMarketRoutes } from "./routes/market.js";
 import { registerFlowsRoutes } from "./routes/flows.js";
 import { registerSyncRoutes } from "./routes/sync.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
+import { startIngestRunScheduler } from "./ingestRunScheduler.js";
 
 seedNavTree();
 
@@ -107,5 +108,6 @@ app.listen(PORT, HOST, () => {
   startLiveMarketQuotesScheduler();
   startDbBackupScheduler();
   startDashboardCacheWarmer();
+  startIngestRunScheduler();
 });
 

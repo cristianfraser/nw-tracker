@@ -24,7 +24,13 @@ if [ "$loaded" -eq 0 ] && lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; t
 fi
 
 plutil -lint "$SRC" >/dev/null
+# INGEST_SCHEDULER_ENABLED lives only in the installed copy (ingest/switch-schedule.sh sets it):
+# a reinstall must keep it, or the bank runs would silently stop.
+scheduler="$(plutil -extract EnvironmentVariables.INGEST_SCHEDULER_ENABLED raw "$DEST" 2>/dev/null || true)"
 cp "$SRC" "$DEST"
+if [[ -n "$scheduler" ]]; then
+  plutil -replace EnvironmentVariables.INGEST_SCHEDULER_ENABLED -string "$scheduler" "$DEST"
+fi
 if [ "$loaded" -eq 1 ]; then
   launchctl bootout "$DOMAIN/$LABEL"
   # bootout returns before the job is gone; bootstrap fails with an I/O error until it is.
