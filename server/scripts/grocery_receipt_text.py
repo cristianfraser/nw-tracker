@@ -3,8 +3,11 @@
 OCR = Apple Vision through the small Swift CLI beside this module (`grocery_receipt_ocr.swift`,
 compiled on demand into `.ocr_bin/`, keyed by the source's sha256 — no Python deps, reads HEIC,
 applies EXIF orientation). Vision returns text BLOCKS with geometry, not lines, so
-`assemble_lines` rebuilds the receipt's rows: it de-skews block centres by the median text
-angle (a phone photo is never level; a 2° tilt across a row is more than a row's height),
+`assemble_lines` rebuilds the receipt's rows: it de-skews block centres by the text angle
+(a phone photo is never level; a 2° tilt across a row is more than a row's height) — the
+circular mean of the long blocks' top edges gives the direction, so a receipt shot sideways
+(Vision reads it, the EXIF says nothing) de-skews by 90° like any tilt, and a row's height is
+the block quad's own thickness, not its axis-aligned box —
 forms rows from confident blocks only, then attaches low-confidence blocks to the nearest row
 — never lets one bridge two rows (a misread `$` came back as one tall low-confidence block
 spanning two item lines) — and drops low-confidence digit-less blocks from the text (a junk
@@ -34,7 +37,9 @@ OCR_BIN_DIR = SCRIPT_DIR / ".ocr_bin"
 OCR_BIN = OCR_BIN_DIR / "grocery_receipt_ocr"
 OCR_ENGINE = "apple-vision"
 # Bump when the Swift source or the assembly rules change in a way that must re-OCR the corpus.
-OCR_ENGINE_VERSION = 1
+# 2 (2026-09-30): text angle from the quads in any direction (a photo taken sideways reads as
+# rows again), row height across the text.
+OCR_ENGINE_VERSION = 2
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff", ".webp"}
 PDF_SUFFIXES = {".pdf"}
@@ -45,8 +50,9 @@ CONF_ANCHOR = 0.5
 ROW_JOIN = 0.6
 # A low-confidence block farther than this (× median height) from every row is dropped.
 ATTACH_MAX = 1.0
-# Blocks at least this wide (normalised) vote on the text angle.
-ANGLE_MIN_WIDTH = 0.15
+# Blocks whose text runs at least this long (fraction of the image's shorter side) vote on the
+# text angle.
+ANGLE_MIN_LENGTH = 0.15
 
 
 def sha256_file(path: Path) -> str:
@@ -107,21 +113,43 @@ def ocr_image(image: Path) -> dict:
 # ---------------------------------------------------------------------------------------------
 
 
+def _pixel_vec(a: list[float], b: list[float], width: float, height: float) -> tuple[float, float]:
+    """Vector a → b in image pixels, y down (Vision's normalised points have y up)."""
+    return (b[0] - a[0]) * width, -(b[1] - a[1]) * height
+
+
 def _text_angle(blocks: list[dict], width: float, height: float) -> float:
-    """Median angle (radians, image space, y down) of the wide blocks' top edges."""
-    angles: list[float] = []
+    """Direction the text runs (radians, image space, y down). Two passes over the long blocks'
+    top edges: their circular mean finds the orientation in any direction — a photo taken
+    sideways runs at ±90°, an upside-down one at 180°, and a mean of vectors has no wrap-around
+    at ±π — then the median offset from it gives the skew, as robust to a few odd quads as a
+    plain median (a mean lets a handful of long skewed blocks tilt every row)."""
+    min_len = ANGLE_MIN_LENGTH * min(width, height)
+    edges: list[tuple[float, float]] = []
     for b in blocks:
-        if b.get("conf", 0.0) < CONF_ANCHOR or b["w"] < ANGLE_MIN_WIDTH:
+        if b.get("conf", 0.0) < CONF_ANCHOR:
             continue
         tl, tr = b.get("tl"), b.get("tr")
         if not tl or not tr:
             continue
-        dx = (tr[0] - tl[0]) * width
-        dy = -(tr[1] - tl[1]) * height  # Vision y is up; image rows go down
-        if dx <= 0:
-            continue
-        angles.append(math.atan2(dy, dx))
-    return statistics.median(angles) if angles else 0.0
+        dx, dy = _pixel_vec(tl, tr, width, height)
+        if math.hypot(dx, dy) >= min_len:
+            edges.append((dx, dy))
+    if not edges:
+        return 0.0
+    coarse = math.atan2(sum(dy for _, dy in edges), sum(dx for dx, _ in edges))
+    offsets = [math.remainder(math.atan2(dy, dx) - coarse, 2 * math.pi) for dx, dy in edges]
+    return coarse + statistics.median(offsets)
+
+
+def _thickness(b: dict, width: float, height: float) -> float:
+    """A block's extent across its text (top-left → bottom-left corner), in pixels. The
+    axis-aligned box overstates it on a rotated photo (a long line's lean widens the box), and a
+    row tolerance built on that merges neighbouring rows."""
+    tl, bl = b.get("tl"), b.get("bl")
+    if tl and bl:
+        return math.hypot(*_pixel_vec(tl, bl, width, height))
+    return b["h"] * height
 
 
 def assemble_lines(ocr: dict) -> str:
@@ -139,7 +167,7 @@ def assemble_lines(ocr: dict) -> str:
         dx, dy = px - cx0, py - cy0
         b["_cx"] = cx0 + dx * cos_t - dy * sin_t
         b["_cy"] = cy0 + dx * sin_t + dy * cos_t
-        b["_h"] = b["h"] * height
+        b["_h"] = _thickness(b, width, height)
         b["_anchor"] = b.get("conf", 0.0) >= CONF_ANCHOR
 
     anchors = [b for b in blocks if b["_anchor"]]

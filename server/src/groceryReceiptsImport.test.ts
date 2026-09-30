@@ -3,12 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
+import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 import {
   groceryReceiptKey,
   hasPendingGroceryReceipts,
   importStagedGroceryReceipts,
   listStagedReceipts,
   movementIsTerminal,
+  resolveReceiptFacts,
   resolveAliasProductId,
   type StagingRoot,
 } from "./groceryReceiptsImport.js";
@@ -34,18 +36,20 @@ type ParsedOpts = {
   description?: string;
   barcode?: string | null;
   chain?: string;
-  boletaNumber?: string;
+  /** null: the photo lost it. */
+  boletaNumber?: string | null;
+  purchasedAt?: string | null;
   payments?: { method: string; amount_clp: number }[];
 };
 
 function syntheticParsed(key: string, opts?: ParsedOpts) {
   return {
     ...(opts?.chain ? { chain: opts.chain } : {}),
-    boleta_number: opts?.boletaNumber ?? `9${key.replace(/\D/g, "")}01`,
+    boleta_number: opts?.boletaNumber === undefined ? `9${key.replace(/\D/g, "")}01` : opts.boletaNumber,
     caja: "0001",
     sucursal: "CALLE FICTICIA #123",
     city: "COMUNA FICTICIA - SANTIAGO",
-    purchased_at: "2037-01-04 20:11:22",
+    purchased_at: opts?.purchasedAt === undefined ? "2037-01-04 20:11:22" : opts.purchasedAt,
     template: "store",
     items: [
       {
@@ -84,7 +88,7 @@ function syntheticEmailStaged(root: string, key: string, opts?: ParsedOpts) {
 function syntheticPhotoStaged(
   root: string,
   key: string,
-  opts?: ParsedOpts & { sourceKey?: string; source?: string; omitChain?: boolean }
+  opts?: ParsedOpts & { sourceKey?: string; source?: string; omitChain?: boolean; photoTakenOn?: string }
 ) {
   const d = path.join(root, key);
   fs.mkdirSync(d, { recursive: true });
@@ -95,6 +99,7 @@ function syntheticPhotoStaged(
       source_key: opts?.sourceKey ?? `vitest-photo-${key}`,
       original_file: "receipt.heic",
       ingested_at: "2037-01-05T00:22:00Z",
+      ...(opts?.photoTakenOn ? { photo_taken_on: opts.photoTakenOn } : {}),
     })
   );
   const parsed = syntheticParsed(key, { chain: opts?.omitChain ? undefined : (opts?.chain ?? "lider"), ...opts });
@@ -519,5 +524,67 @@ describe("weighed items price through the product config", () => {
       db.prepare(`DELETE FROM grocery_receipts WHERE id = ?`).run(receiptId);
       db.prepare(`DELETE FROM grocery_products WHERE id = ?`).run(productId);
     }
+  });
+});
+
+describe("receipts matched to an existing card line (Jumbo)", () => {
+  const SRC = "vitest-grocery-jumbo-match";
+  const PAID = 987_653;
+  const tmpDirs: string[] = [];
+  let accountId = 0;
+
+  function cardLine(ddmmyyyy: string, merchant: string): void {
+    accountId = (db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number }).id;
+    const stmt = db
+      .prepare(
+        `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, card_last4, layout, currency)
+         VALUES (?, 'santander', ?, '20/01/2037', '01/01/2037', '19/01/2037', '4242', 'compact', 'clp')`
+      )
+      .run(accountId, `${SRC}-${ddmmyyyy}-${merchant}`);
+    db.prepare(
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, parser_row_id)
+       VALUES (?, ?, ?, ?, 0, ?)`
+    ).run(Number(stmt.lastInsertRowid), ddmmyyyy, merchant, PAID, `${SRC}-${ddmmyyyy}`);
+  }
+
+  function stagedJumbo(key: string, opts: ParsedOpts & { photoTakenOn?: string; sourceKey?: string }) {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "vitest-receipts-jumbo-"));
+    tmpDirs.push(d);
+    syntheticPhotoStaged(d, key, { chain: "jumbo", payments: [{ method: "t_credito", amount_clp: PAID }], ...opts });
+    return listStagedReceipts([{ kind: "generic", dir: d }])[0]!;
+  }
+
+  afterEach(() => {
+    for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+    db.prepare(`DELETE FROM cc_statements WHERE source_pdf LIKE ?`).run(`${SRC}%`);
+  });
+
+  it("a dated receipt pairs with the chain's line of the same day and pesos", () => {
+    cardLine("04/01/2037", "JUMBO FICTICIO");
+    cardLine("04/01/2037", "OTRA TIENDA");
+    const facts = resolveReceiptFacts(stagedJumbo("vitest-j1", {}));
+    expect(facts.card_line).toMatchObject({ status: "matched", account_id: accountId, line_date: "2037-01-04" });
+    expect(facts.date_source).toBe("printed");
+  });
+
+  it("an undated photo takes its card line's date from the week up to the photo", () => {
+    cardLine("02/01/2037", "CENCOSUD JUMBO");
+    const facts = resolveReceiptFacts(stagedJumbo("vitest-j2", { purchasedAt: null, photoTakenOn: "2037-01-05" }));
+    expect(facts.date_source).toBe("card_line");
+    expect(facts.staged.parsed.purchased_at).toBe("2037-01-02 00:00:00");
+  });
+
+  it("without a card line it keeps the photo's date; without either it throws", () => {
+    cardLine("20/12/2036", "JUMBO FICTICIO"); // more than a week before the photo
+    const facts = resolveReceiptFacts(stagedJumbo("vitest-j3", { purchasedAt: null, photoTakenOn: "2037-01-05" }));
+    expect(facts.card_line).toEqual({ status: "no_card_line" });
+    expect(facts.staged.parsed.purchased_at).toBe("2037-01-05 00:00:00");
+    expect(facts.date_source).toBe("photo");
+    expect(() => resolveReceiptFacts(stagedJumbo("vitest-j4", { purchasedAt: null }))).toThrow(/#! purchase_date/);
+  });
+
+  it("a receipt that lost its number is keyed on the photo", () => {
+    const staged = stagedJumbo("vitest-j5", { boletaNumber: null, sourceKey: "abcdef0123456789" });
+    expect(resolveReceiptFacts(staged).staged.parsed.boleta_number).toBe("photo-abcdef012345");
   });
 });
