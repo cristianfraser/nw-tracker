@@ -701,6 +701,10 @@ export const api = {
   },
   wealthPercentile: () =>
     j<import("./types").WealthPercentileResponse>("/api/wealth-percentile"),
+  taxReturn: (taxYear: number | null) =>
+    j<import("./types").TaxReturnResponse>(
+      `/api/tax-return${taxYear != null ? `?tax_year=${taxYear}` : ""}`
+    ),
   movementMirrorCandidates: () =>
     j<import("./types").MovementMirrorCandidatesResponse>("/api/movement-mirrors/candidates"),
   convertMovementMirrors: (pairs: import("./types").MirrorPairRef[]) =>

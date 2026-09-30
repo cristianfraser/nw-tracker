@@ -123,32 +123,49 @@ export function verifyOfficialIpcAgainstUf(
 }
 
 /**
- * Percentage variation of the official IPC from the end of `fromMonth` to the end of `toMonth`
- * (both first-of-month dates, from ≤ to): the monthly variations of the months after `fromMonth`
- * through `toMonth`, chained. For a crypto cost: from = the month before the purchase, to = the
- * month before the sale. Unrounded; throws when a month in between is not stored.
+ * A printed index ratio that differs from the published variation by more than this (percentage
+ * points) marks a base change: the index restarted (2019-01: −15,7 vs +0,1; 2024-01: −24,1 vs
+ * +0,7). Ordinary months differ by at most 0,1 (two-decimal index vs unrounded INE variation).
  */
-export function officialIpcVariationPctBetween(
-  fromMonth: string,
-  toMonth: string,
-  variationOf: (month: string) => number | null
-): number {
+export const IPC_BASE_CHANGE_THRESHOLD_PP = 1;
+
+export type OfficialIpcLookup = (month: string) => { variationPct: number; indexPoints: number } | null;
+
+/**
+ * Percentage variation of the official IPC from the end of `fromMonth` to the end of `toMonth`
+ * (both first-of-month dates, from ≤ to) — for a crypto cost, from = the month before the
+ * purchase, to = the month before the sale; for the year-end reajuste, to = November. As the SII
+ * computes it: the ratio of the printed index points inside one base (so January 2025 → November
+ * 2025 is 109,47 / 105,62 = 3,645%, the 3,6% of Circular 5/2026 — chaining the one-decimal
+ * variations would give 3,7%), bridged across a base change by that month's published variation.
+ * Unrounded; throws when a month in between is not stored.
+ */
+export function officialIpcVariationPctBetween(fromMonth: string, toMonth: string, lookup: OfficialIpcLookup): number {
   if (toMonth < fromMonth) throw new Error(`IPC variation: ${toMonth} is before ${fromMonth}`);
+  const at = (m: string) => {
+    const r = lookup(m);
+    if (!r) throw new Error(`IPC variation: no official IPC for ${m}`);
+    return r;
+  };
   let factor = 1;
+  let previous = at(fromMonth);
   for (let m = monthPlus(fromMonth, 1); m <= toMonth; m = monthPlus(m, 1)) {
-    const v = variationOf(m);
-    if (v == null) throw new Error(`IPC variation: no official IPC for ${m}`);
-    factor *= 1 + v / 100;
+    const cur = at(m);
+    const ratio = cur.indexPoints / previous.indexPoints;
+    const sameBase = Math.abs((ratio - 1) * 100 - cur.variationPct) <= IPC_BASE_CHANGE_THRESHOLD_PP;
+    factor *= sameBase ? ratio : 1 + cur.variationPct / 100;
+    previous = cur;
   }
   return (factor - 1) * 100;
 }
 
-export function loadOfficialIpcVariationLookup(): (month: string) => number | null {
-  const rows = db.prepare(`SELECT month, variation_pct FROM ipc_official_monthly`).all() as {
+export function loadOfficialIpcLookup(): OfficialIpcLookup {
+  const rows = db.prepare(`SELECT month, variation_pct, index_points FROM ipc_official_monthly`).all() as {
     month: string;
     variation_pct: number;
+    index_points: number;
   }[];
-  const map = new Map(rows.map((r) => [r.month, r.variation_pct] as const));
+  const map = new Map(rows.map((r) => [r.month, { variationPct: r.variation_pct, indexPoints: r.index_points }] as const));
   return (month) => map.get(month) ?? null;
 }
 

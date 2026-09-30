@@ -192,7 +192,8 @@
     "wealthPercentile": "Percentil de riqueza",
     "rates": "Tipos de cambio",
     "watchlist": "Watchlist",
-    "flowsExpensesGroceries": "Supermercado"
+    "flowsExpensesGroceries": "Supermercado",
+    "taxReturn": "Declaración de renta"
   },
   "panel": {
     "layoutTitle": "Panel de control",
@@ -1505,6 +1506,94 @@
       "merge": "Fusionar",
       "mergeConfirm": "¿Fusionar «{{source}}» con «{{target}}»? Todos sus nombres e historial de compras se traspasan aquí y «{{source}}» se elimina; no se puede deshacer.",
       "mergeDone": "Fusionado: {{items}} compra(s) traspasadas."
+    }
+  },
+  "taxReturn": {
+    "title": "Declaración de renta (Formulario 22)",
+    "subtitle": "La declaración presentada, lo que terceros informaron al SII y un borrador que agrega lo que la app sabe (ganancias de cripto, dividendos y ventas de acciones extranjeras) con el impuesto recalculado. El borrador debe reproducir el impuesto presentado a partir de los códigos presentados antes de agregar nada.",
+    "taxYear": "AT{{year}}",
+    "summary": "Impuesto (código 304): presentado {{filed}}, borrador {{draft}} — diferencia {{diff}}.",
+    "paymentNote": "La sección de pago (reajuste, intereses y recargos) depende de cuándo se pague una rectificatoria; el SII la calcula en ese momento.",
+    "codeFallback": "Código {{code}}",
+    "table": {
+      "code": "Código",
+      "concept": "Concepto",
+      "filed": "Presentado",
+      "informed": "Informado por terceros",
+      "draft": "Borrador",
+      "difference": "Diferencia"
+    },
+    "codes": {
+      "31": "Impuesto global complementario",
+      "39": "Reajuste art. 72",
+      "90": "Impuesto adeudado",
+      "91": "Total a pagar",
+      "136": "Crédito proporcional por rentas exentas",
+      "152": "Rentas exentas del IGC (art. 54 N°3)",
+      "155": "Mayor valor en rescates de fondos y enajenación de acciones (art. 17 N°8)",
+      "157": "IGC según tabla",
+      "158": "Subtotal",
+      "161": "Renta art. 42 N°1",
+      "162": "Crédito por impuesto único retenido",
+      "169": "Pérdidas en capitales mobiliarios y ganancias de capital",
+      "170": "Base imponible anual del IGC",
+      "304": "IGC determinado",
+      "305": "Resultado liquidación anual",
+      "645": "CPT positivo final",
+      "748": "Incremento por impuestos soportados en el exterior",
+      "750": "Intereses de créditos hipotecarios (art. 55 bis)",
+      "751": "Intereses pagados por créditos hipotecarios",
+      "1018": "Crédito por impuestos soportados en el exterior",
+      "1032": "Otras rentas de fuente chilena (criptoactivos)",
+      "1098": "Sueldos, pensiones y otras rentas de fuente nacional",
+      "1104": "Otras rentas de fuente extranjera",
+      "1869": "De ello: fondos mutuos, de inversión y acciones (art. 17 N°8)",
+      "1878": "Rentas art. 57 dentro de los límites"
+    },
+    "crypto": {
+      "title": "Ventas de cripto",
+      "explain": "Costo por {{method}}, {{fees}}, reajustado por el IPC oficial desde el mes anterior a cada compra al mes anterior a la venta; el resultado reajustado a diciembre (código 1032; una pérdida neta va al 169).",
+      "method": {
+        "average": "costo promedio ponderado",
+        "fifo": "FIFO",
+        "lifo": "LIFO"
+      },
+      "fees": {
+        "excluded": "sin comisiones (Oficio 2208/2022)",
+        "included": "con comisiones"
+      },
+      "date": "Fecha",
+      "coin": "Moneda",
+      "units": "Unidades",
+      "proceeds": "Precio de venta",
+      "cost": "Costo",
+      "costReajustado": "Costo reajustado",
+      "gain": "Ganancia",
+      "decemberPct": "Reajuste a dic.",
+      "gainDecember": "Ganancia a diciembre",
+      "totals": "Ventas {{sales}}; ganancia a diciembre {{gain}}.",
+      "informed": "El exchange informó ventas por {{amount}} (DJ 1964)."
+    },
+    "dividends": {
+      "title": "Dividendos del extranjero",
+      "explain": "Convertidos al dólar observado del 31 de diciembre de {{year}} ({{rate}}): código 1104 el neto, 748 el impuesto retenido, 1018 su crédito.",
+      "date": "Fecha",
+      "grossUsd": "Bruto (US$)",
+      "withholdingUsd": "Retenido (US$)",
+      "grossClp": "Bruto ($)",
+      "withholdingClp": "Retenido ($)"
+    },
+    "foreign": {
+      "title": "Ventas de acciones y ETF extranjeros",
+      "explain": "Tributan en el régimen general (el impuesto de primera categoría se descuenta del IGC). Se muestran los dos criterios del SII; el borrador usa {{mode}}, el de menor resultado.",
+      "provisional": "El año no ha cerrado: el criterio sin reajuste usa el último dólar observado.",
+      "date": "Fecha",
+      "instrument": "Instrumento",
+      "gainUsd": "Ganancia (US$)",
+      "mode": {
+        "usd_31dic": "Sin reajuste (Oficio 3748)",
+        "clp_ipc": "Con reajuste IPC (Oficio 750)"
+      }
     }
   }
 }

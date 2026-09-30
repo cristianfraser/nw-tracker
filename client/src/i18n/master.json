@@ -627,6 +627,10 @@
     "flowsExpensesGroceries": {
       "en": "Groceries",
       "es": "Supermercado"
+    },
+    "taxReturn": {
+      "en": "Tax return",
+      "es": "Declaración de renta"
     }
   },
   "panel": {
@@ -5290,6 +5294,304 @@
       "mergeDone": {
         "en": "Merged: {{items}} purchase(s) moved.",
         "es": "Fusionado: {{items}} compra(s) traspasadas."
+      }
+    }
+  },
+  "taxReturn": {
+    "title": {
+      "en": "Tax return (Formulario 22)",
+      "es": "Declaración de renta (Formulario 22)"
+    },
+    "subtitle": {
+      "en": "The return as filed, what third parties informed the SII, and a draft that adds what the app knows (crypto gains, foreign dividends and share sales) with the tax recomputed. The draft must reproduce the filed tax from the filed codes before it adds anything.",
+      "es": "La declaración presentada, lo que terceros informaron al SII y un borrador que agrega lo que la app sabe (ganancias de cripto, dividendos y ventas de acciones extranjeras) con el impuesto recalculado. El borrador debe reproducir el impuesto presentado a partir de los códigos presentados antes de agregar nada."
+    },
+    "taxYear": {
+      "en": "AT{{year}}",
+      "es": "AT{{year}}"
+    },
+    "summary": {
+      "en": "Tax (code 304): filed {{filed}}, draft {{draft}} — difference {{diff}}.",
+      "es": "Impuesto (código 304): presentado {{filed}}, borrador {{draft}} — diferencia {{diff}}."
+    },
+    "paymentNote": {
+      "en": "The payment section (reajuste, interest and surcharges) depends on when a rectification is paid; the SII computes it then.",
+      "es": "La sección de pago (reajuste, intereses y recargos) depende de cuándo se pague una rectificatoria; el SII la calcula en ese momento."
+    },
+    "codeFallback": {
+      "en": "Code {{code}}",
+      "es": "Código {{code}}"
+    },
+    "table": {
+      "code": {
+        "en": "Code",
+        "es": "Código"
+      },
+      "concept": {
+        "en": "Concept",
+        "es": "Concepto"
+      },
+      "filed": {
+        "en": "Filed",
+        "es": "Presentado"
+      },
+      "informed": {
+        "en": "Informed by third parties",
+        "es": "Informado por terceros"
+      },
+      "draft": {
+        "en": "Draft",
+        "es": "Borrador"
+      },
+      "difference": {
+        "en": "Difference",
+        "es": "Diferencia"
+      }
+    },
+    "codes": {
+      "1098": {
+        "en": "Salaries and similar income (Chilean source)",
+        "es": "Sueldos, pensiones y otras rentas de fuente nacional"
+      },
+      "161": {
+        "en": "Art. 42 N°1 income",
+        "es": "Renta art. 42 N°1"
+      },
+      "155": {
+        "en": "Gains on fund redemptions and shares (art. 17 N°8)",
+        "es": "Mayor valor en rescates de fondos y enajenación de acciones (art. 17 N°8)"
+      },
+      "1869": {
+        "en": "Of which: funds and shares (art. 17 N°8)",
+        "es": "De ello: fondos mutuos, de inversión y acciones (art. 17 N°8)"
+      },
+      "152": {
+        "en": "Income exempt from IGC (art. 54 N°3)",
+        "es": "Rentas exentas del IGC (art. 54 N°3)"
+      },
+      "1878": {
+        "en": "Art. 57 income within the limits",
+        "es": "Rentas art. 57 dentro de los límites"
+      },
+      "1032": {
+        "en": "Other Chilean-source income (crypto assets)",
+        "es": "Otras rentas de fuente chilena (criptoactivos)"
+      },
+      "1104": {
+        "en": "Other foreign-source income",
+        "es": "Otras rentas de fuente extranjera"
+      },
+      "748": {
+        "en": "Gross-up for taxes paid abroad",
+        "es": "Incremento por impuestos soportados en el exterior"
+      },
+      "169": {
+        "en": "Losses on investments and capital gains",
+        "es": "Pérdidas en capitales mobiliarios y ganancias de capital"
+      },
+      "158": {
+        "en": "Subtotal",
+        "es": "Subtotal"
+      },
+      "750": {
+        "en": "Mortgage interest (art. 55 bis)",
+        "es": "Intereses de créditos hipotecarios (art. 55 bis)"
+      },
+      "751": {
+        "en": "Mortgage interest paid",
+        "es": "Intereses pagados por créditos hipotecarios"
+      },
+      "170": {
+        "en": "Annual IGC taxable base",
+        "es": "Base imponible anual del IGC"
+      },
+      "157": {
+        "en": "IGC per table",
+        "es": "IGC según tabla"
+      },
+      "136": {
+        "en": "Proportional credit for exempt income",
+        "es": "Crédito proporcional por rentas exentas"
+      },
+      "162": {
+        "en": "Credit for employment tax withheld",
+        "es": "Crédito por impuesto único retenido"
+      },
+      "1018": {
+        "en": "Credit for taxes paid abroad",
+        "es": "Crédito por impuestos soportados en el exterior"
+      },
+      "304": {
+        "en": "IGC determined",
+        "es": "IGC determinado"
+      },
+      "305": {
+        "en": "Annual settlement result",
+        "es": "Resultado liquidación anual"
+      },
+      "31": {
+        "en": "Global complementary tax",
+        "es": "Impuesto global complementario"
+      },
+      "39": {
+        "en": "Reajuste (art. 72)",
+        "es": "Reajuste art. 72"
+      },
+      "90": {
+        "en": "Tax owed",
+        "es": "Impuesto adeudado"
+      },
+      "91": {
+        "en": "Total to pay",
+        "es": "Total a pagar"
+      },
+      "645": {
+        "en": "Final positive CPT",
+        "es": "CPT positivo final"
+      }
+    },
+    "crypto": {
+      "title": {
+        "en": "Crypto sales",
+        "es": "Ventas de cripto"
+      },
+      "explain": {
+        "en": "Cost by {{method}}, {{fees}}, reajustado by the official IPC from the month before each purchase to the month before the sale; the result reajustado to December (code 1032, a net loss goes to 169).",
+        "es": "Costo por {{method}}, {{fees}}, reajustado por el IPC oficial desde el mes anterior a cada compra al mes anterior a la venta; el resultado reajustado a diciembre (código 1032; una pérdida neta va al 169)."
+      },
+      "method": {
+        "average": {
+          "en": "weighted average cost",
+          "es": "costo promedio ponderado"
+        },
+        "fifo": {
+          "en": "FIFO",
+          "es": "FIFO"
+        },
+        "lifo": {
+          "en": "LIFO",
+          "es": "LIFO"
+        }
+      },
+      "fees": {
+        "excluded": {
+          "en": "commissions excluded (Oficio 2208/2022)",
+          "es": "sin comisiones (Oficio 2208/2022)"
+        },
+        "included": {
+          "en": "commissions included",
+          "es": "con comisiones"
+        }
+      },
+      "date": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "coin": {
+        "en": "Coin",
+        "es": "Moneda"
+      },
+      "units": {
+        "en": "Units",
+        "es": "Unidades"
+      },
+      "proceeds": {
+        "en": "Sale price",
+        "es": "Precio de venta"
+      },
+      "cost": {
+        "en": "Cost",
+        "es": "Costo"
+      },
+      "costReajustado": {
+        "en": "Reajustado cost",
+        "es": "Costo reajustado"
+      },
+      "gain": {
+        "en": "Gain",
+        "es": "Ganancia"
+      },
+      "decemberPct": {
+        "en": "Reajuste to Dec.",
+        "es": "Reajuste a dic."
+      },
+      "gainDecember": {
+        "en": "Gain to December",
+        "es": "Ganancia a diciembre"
+      },
+      "totals": {
+        "en": "Sales {{sales}}; gain to December {{gain}}.",
+        "es": "Ventas {{sales}}; ganancia a diciembre {{gain}}."
+      },
+      "informed": {
+        "en": "The exchange informed sales of {{amount}} (DJ 1964).",
+        "es": "El exchange informó ventas por {{amount}} (DJ 1964)."
+      }
+    },
+    "dividends": {
+      "title": {
+        "en": "Foreign dividends",
+        "es": "Dividendos del extranjero"
+      },
+      "explain": {
+        "en": "Converted at the dólar observado of December 31, {{year}} ({{rate}}): code 1104 the net, 748 the tax withheld, 1018 its credit.",
+        "es": "Convertidos al dólar observado del 31 de diciembre de {{year}} ({{rate}}): código 1104 el neto, 748 el impuesto retenido, 1018 su crédito."
+      },
+      "date": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "grossUsd": {
+        "en": "Gross (US$)",
+        "es": "Bruto (US$)"
+      },
+      "withholdingUsd": {
+        "en": "Withheld (US$)",
+        "es": "Retenido (US$)"
+      },
+      "grossClp": {
+        "en": "Gross ($)",
+        "es": "Bruto ($)"
+      },
+      "withholdingClp": {
+        "en": "Withheld ($)",
+        "es": "Retenido ($)"
+      }
+    },
+    "foreign": {
+      "title": {
+        "en": "Foreign share and ETF sales",
+        "es": "Ventas de acciones y ETF extranjeros"
+      },
+      "explain": {
+        "en": "Taxed under the régimen general (IDPC credited back against IGC). The two SII frames are shown; the draft uses {{mode}}, the lower result.",
+        "es": "Tributan en el régimen general (el impuesto de primera categoría se descuenta del IGC). Se muestran los dos criterios del SII; el borrador usa {{mode}}, el de menor resultado."
+      },
+      "provisional": {
+        "en": "The year has not closed: the no-reajuste frame uses the latest dólar observado.",
+        "es": "El año no ha cerrado: el criterio sin reajuste usa el último dólar observado."
+      },
+      "date": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "instrument": {
+        "en": "Instrument",
+        "es": "Instrumento"
+      },
+      "gainUsd": {
+        "en": "Gain (US$)",
+        "es": "Ganancia (US$)"
+      },
+      "mode": {
+        "usd_31dic": {
+          "en": "No reajuste (Oficio 3748)",
+          "es": "Sin reajuste (Oficio 3748)"
+        },
+        "clp_ipc": {
+          "en": "IPC reajuste (Oficio 750)",
+          "es": "Con reajuste IPC (Oficio 750)"
+        }
       }
     }
   }

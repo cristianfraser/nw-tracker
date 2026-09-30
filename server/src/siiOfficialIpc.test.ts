@@ -75,19 +75,26 @@ describe("verifyOfficialIpcAgainstUf", () => {
 });
 
 describe("officialIpcVariationPctBetween", () => {
-  const v = new Map([
-    ["2026-02-01", 0.4],
-    ["2026-03-01", 0.4],
-    ["2026-04-01", 1.3],
+  // Printed index points: base-2018 values up to 2023-12, then the base-2023 restart.
+  const rows = new Map([
+    ["2023-11-01", { variationPct: 0.7, indexPoints: 134.8 }],
+    ["2023-12-01", { variationPct: -0.5, indexPoints: 134.1 }],
+    ["2024-01-01", { variationPct: 0.7, indexPoints: 101.72 }],
+    ["2024-02-01", { variationPct: 0.6, indexPoints: 102.33 }],
   ]);
-  const of = (m: string) => v.get(m) ?? null;
+  const lookup = (m: string) => rows.get(m) ?? null;
 
-  it("chains the months after `from` through `to`", () => {
-    expect(officialIpcVariationPctBetween("2026-01-01", "2026-04-01", of)).toBeCloseTo((1.004 * 1.004 * 1.013 - 1) * 100, 10);
-    expect(officialIpcVariationPctBetween("2026-03-01", "2026-03-01", of)).toBe(0);
+  it("uses the printed index ratio inside a base", () => {
+    expect(officialIpcVariationPctBetween("2023-11-01", "2023-12-01", lookup)).toBeCloseTo((134.1 / 134.8 - 1) * 100, 10);
+  });
+
+  it("bridges a base change with the published variation", () => {
+    const expected = ((134.1 / 134.8) * 1.007 * (102.33 / 101.72) - 1) * 100;
+    expect(officialIpcVariationPctBetween("2023-11-01", "2024-02-01", lookup)).toBeCloseTo(expected, 10);
+    expect(officialIpcVariationPctBetween("2024-01-01", "2024-01-01", lookup)).toBe(0);
   });
 
   it("throws on a missing month", () => {
-    expect(() => officialIpcVariationPctBetween("2026-03-01", "2026-05-01", of)).toThrow(/2026-05-01/);
+    expect(() => officialIpcVariationPctBetween("2024-01-01", "2024-03-01", lookup)).toThrow(/2024-03-01/);
   });
 });

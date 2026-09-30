@@ -192,7 +192,8 @@
     "wealthPercentile": "Wealth percentile",
     "rates": "Exchange rates",
     "watchlist": "Watchlist",
-    "flowsExpensesGroceries": "Groceries"
+    "flowsExpensesGroceries": "Groceries",
+    "taxReturn": "Tax return"
   },
   "panel": {
     "layoutTitle": "Control panel",
@@ -1505,6 +1506,94 @@
       "merge": "Merge",
       "mergeConfirm": "Merge \"{{source}}\" into \"{{target}}\"? All of its names and purchase history move here and \"{{source}}\" is deleted; this cannot be undone.",
       "mergeDone": "Merged: {{items}} purchase(s) moved."
+    }
+  },
+  "taxReturn": {
+    "title": "Tax return (Formulario 22)",
+    "subtitle": "The return as filed, what third parties informed the SII, and a draft that adds what the app knows (crypto gains, foreign dividends and share sales) with the tax recomputed. The draft must reproduce the filed tax from the filed codes before it adds anything.",
+    "taxYear": "AT{{year}}",
+    "summary": "Tax (code 304): filed {{filed}}, draft {{draft}} — difference {{diff}}.",
+    "paymentNote": "The payment section (reajuste, interest and surcharges) depends on when a rectification is paid; the SII computes it then.",
+    "codeFallback": "Code {{code}}",
+    "table": {
+      "code": "Code",
+      "concept": "Concept",
+      "filed": "Filed",
+      "informed": "Informed by third parties",
+      "draft": "Draft",
+      "difference": "Difference"
+    },
+    "codes": {
+      "31": "Global complementary tax",
+      "39": "Reajuste (art. 72)",
+      "90": "Tax owed",
+      "91": "Total to pay",
+      "136": "Proportional credit for exempt income",
+      "152": "Income exempt from IGC (art. 54 N°3)",
+      "155": "Gains on fund redemptions and shares (art. 17 N°8)",
+      "157": "IGC per table",
+      "158": "Subtotal",
+      "161": "Art. 42 N°1 income",
+      "162": "Credit for employment tax withheld",
+      "169": "Losses on investments and capital gains",
+      "170": "Annual IGC taxable base",
+      "304": "IGC determined",
+      "305": "Annual settlement result",
+      "645": "Final positive CPT",
+      "748": "Gross-up for taxes paid abroad",
+      "750": "Mortgage interest (art. 55 bis)",
+      "751": "Mortgage interest paid",
+      "1018": "Credit for taxes paid abroad",
+      "1032": "Other Chilean-source income (crypto assets)",
+      "1098": "Salaries and similar income (Chilean source)",
+      "1104": "Other foreign-source income",
+      "1869": "Of which: funds and shares (art. 17 N°8)",
+      "1878": "Art. 57 income within the limits"
+    },
+    "crypto": {
+      "title": "Crypto sales",
+      "explain": "Cost by {{method}}, {{fees}}, reajustado by the official IPC from the month before each purchase to the month before the sale; the result reajustado to December (code 1032, a net loss goes to 169).",
+      "method": {
+        "average": "weighted average cost",
+        "fifo": "FIFO",
+        "lifo": "LIFO"
+      },
+      "fees": {
+        "excluded": "commissions excluded (Oficio 2208/2022)",
+        "included": "commissions included"
+      },
+      "date": "Date",
+      "coin": "Coin",
+      "units": "Units",
+      "proceeds": "Sale price",
+      "cost": "Cost",
+      "costReajustado": "Reajustado cost",
+      "gain": "Gain",
+      "decemberPct": "Reajuste to Dec.",
+      "gainDecember": "Gain to December",
+      "totals": "Sales {{sales}}; gain to December {{gain}}.",
+      "informed": "The exchange informed sales of {{amount}} (DJ 1964)."
+    },
+    "dividends": {
+      "title": "Foreign dividends",
+      "explain": "Converted at the dólar observado of December 31, {{year}} ({{rate}}): code 1104 the net, 748 the tax withheld, 1018 its credit.",
+      "date": "Date",
+      "grossUsd": "Gross (US$)",
+      "withholdingUsd": "Withheld (US$)",
+      "grossClp": "Gross ($)",
+      "withholdingClp": "Withheld ($)"
+    },
+    "foreign": {
+      "title": "Foreign share and ETF sales",
+      "explain": "Taxed under the régimen general (IDPC credited back against IGC). The two SII frames are shown; the draft uses {{mode}}, the lower result.",
+      "provisional": "The year has not closed: the no-reajuste frame uses the latest dólar observado.",
+      "date": "Date",
+      "instrument": "Instrument",
+      "gainUsd": "Gain (US$)",
+      "mode": {
+        "usd_31dic": "No reajuste (Oficio 3748)",
+        "clp_ipc": "IPC reajuste (Oficio 750)"
+      }
     }
   }
 }

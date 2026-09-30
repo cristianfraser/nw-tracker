@@ -748,6 +748,14 @@ export function useProjections(
   });
 }
 
+export function useTaxReturn(taxYear: number | null) {
+  return useQuery({
+    queryKey: queryKeys.taxReturn(taxYear),
+    queryFn: () => api.taxReturn(taxYear),
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useWealthPercentile() {
   return useQuery({
     queryKey: queryKeys.wealthPercentile(),
