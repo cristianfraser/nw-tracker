@@ -3841,6 +3841,10 @@
         "en": "Lines",
         "es": "Líneas"
       },
+      "chartYearAverage": {
+        "en": "Yearly average",
+        "es": "Promedio anual"
+      },
       "chartTotal": {
         "en": "Total",
         "es": "Total"

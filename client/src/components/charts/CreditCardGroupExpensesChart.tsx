@@ -13,6 +13,7 @@ import {
   EXPENSE_CHART_TOTAL_KEY,
   expenseCategoryChartPointTotal,
 } from "../../expenseDepositLinks";
+import type { ExpenseYearMonthlyAverage } from "../../expenseYearMonthlyAverage";
 import { AppComposedChart } from "./AppComposedChart";
 import { renderPeriodRefLine } from "./PeriodRefLine";
 import {
@@ -27,6 +28,9 @@ import {
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 const CHART_ANIM_MS = 90;
+const TOTAL_LINE_STROKE = "#e2e8f0";
+/** Row key carrying the year's average monthly gastos (tooltip only; drawn as segments). */
+const YEAR_AVERAGE_KEY = "__year_avg";
 
 type ExpenseChartStyle = "stacked_bar" | "line";
 
@@ -38,6 +42,7 @@ export function CreditCardGroupExpensesChart({
   categories,
   displayUnit = "clp",
   xAxisGranularity = "month",
+  yearAverages,
 }: {
   title: string;
   /** Per-surface Período/Rango controls, rendered next to the title. */
@@ -47,7 +52,12 @@ export function CreditCardGroupExpensesChart({
   categorySortPoints?: readonly FlowCcExpenseCategoryChartPoint[];
   categories: readonly CcExpenseCategoryDto[];
   displayUnit?: DisplayUnit;
-  xAxisGranularity?: "month" | "year" | "day";
+  xAxisGranularity?: "month" | "year";
+  /**
+   * Per-year average monthly gastos, drawn as one flat segment per year over its months on the
+   * axis (with a toggle). Null/absent = not offered (yearly chart, short Rango).
+   */
+  yearAverages?: ReadonlyMap<string, ExpenseYearMonthlyAverage> | null;
 }) {
   const { t } = useTranslation();
   const compactAxis = useIsNarrowViewport();
@@ -57,6 +67,7 @@ export function CreditCardGroupExpensesChart({
   );
   const [chartStyle, setChartStyle] = useState<ExpenseChartStyle>("stacked_bar");
   const [hiddenSlugs, setHiddenSlugs] = useState<Set<string>>(() => new Set());
+  const [showYearAverages, setShowYearAverages] = useState(true);
 
   const toggleSeries = useCallback((slug: string) => {
     setHiddenSlugs((prev) => {
@@ -69,32 +80,56 @@ export function CreditCardGroupExpensesChart({
 
   const barKeys = useMemo(() => bars.map((b) => b.slug), [bars]);
 
-  const displayPoints = useMemo(() => {
-    if (hiddenSlugs.size === 0) return points;
-    return points.map((row) => {
-      const next = { ...row };
+  /**
+   * The total is taken before legend-hidden categories are zeroed: hiding a category changes
+   * the stack, never the Total line (or the year averages drawn against it).
+   */
+  const densePoints = useMemo(() => {
+    const displayPoints = points.map((row) => {
+      const next: FlowCcExpenseCategoryChartPoint = {
+        ...row,
+        [EXPENSE_CHART_TOTAL_KEY]: expenseCategoryChartPointTotal(row, barKeys),
+      };
       for (const slug of hiddenSlugs) next[slug] = 0;
       return next;
     });
-  }, [points, hiddenSlugs]);
-
-  const densePoints = useMemo(() => {
-    const filled = densifyRecordsByCalendarPeriod(
+    return densifyRecordsByCalendarPeriod(
       displayPoints as unknown as Record<string, string | number | null>[],
       {
         granularity: xAxisGranularity,
         dateKey: "as_of_date",
-        fillMissing: { zeroKeys: barKeys },
+        fillMissing: { zeroKeys: [...barKeys, EXPENSE_CHART_TOTAL_KEY] },
         extendThroughYmd: chileTodayYmd(),
       }
     ) as unknown as FlowCcExpenseCategoryChartPoint[];
-    return filled.map(
-      (row): FlowCcExpenseCategoryChartPoint => ({
-        ...row,
-        [EXPENSE_CHART_TOTAL_KEY]: expenseCategoryChartPointTotal(row, barKeys),
-      })
-    );
-  }, [displayPoints, barKeys, xAxisGranularity]);
+  }, [points, hiddenSlugs, barKeys, xAxisGranularity]);
+
+  /** One flat segment per year, over that year's plotted months inside its averaged span. */
+  const yearAverageSegments = useMemo(() => {
+    if (!yearAverages) return [];
+    const byYear = new Map<string, { avg: number; first: string; last: string }>();
+    for (const row of densePoints) {
+      const ym = row.as_of_date.slice(0, 7);
+      const year = ym.slice(0, 4);
+      const entry = yearAverages.get(year);
+      if (!entry || ym < entry.fromYm || ym > entry.throughYm) continue;
+      const seg = byYear.get(year);
+      if (seg) seg.last = row.as_of_date;
+      else byYear.set(year, { avg: entry.avg, first: row.as_of_date, last: row.as_of_date });
+    }
+    return [...byYear.entries()].map(([year, seg]) => ({ year, ...seg }));
+  }, [densePoints, yearAverages]);
+
+  /** Chart rows: the dense points plus each month's year average while the line is shown. */
+  const chartRows = useMemo(() => {
+    if (!yearAverages || !showYearAverages) return densePoints;
+    return densePoints.map((row) => {
+      const ym = row.as_of_date.slice(0, 7);
+      const entry = yearAverages.get(ym.slice(0, 4));
+      if (!entry || ym < entry.fromYm || ym > entry.throughYm) return row;
+      return { ...row, [YEAR_AVERAGE_KEY]: entry.avg };
+    });
+  }, [densePoints, showYearAverages, yearAverages]);
 
   const dates = useMemo(() => extractSortedAsOfDates(densePoints), [densePoints]);
   const xAxis = useMemo(() => resolvePeriodXAxis(dates, xAxisGranularity), [dates, xAxisGranularity]);
@@ -185,25 +220,38 @@ export function CreditCardGroupExpensesChart({
             />
             {t("expenses.creditCard.chartStyleLine")}
           </label>
+          {yearAverages ? (
+            <label className="radio-pill">
+              <input
+                type="checkbox"
+                checked={showYearAverages}
+                onChange={(e) => setShowYearAverages(e.target.checked)}
+              />
+              {t("expenses.creditCard.chartYearAverage")}
+            </label>
+          ) : null}
         </div>
       </div>
       <div className="chart-box line-chart-focus-wrap" style={{ height: 280 }}>
         <AppComposedChart
-          data={densePoints}
+          data={chartRows}
           stackOffset={chartStyle === "stacked_bar" ? "sign" : undefined}
           tooltip={{
             formatValue: (v) => formatFlowMoney(v, displayUnit),
             formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
             formatName: (entry) => {
               const slug = String(entry.name ?? entry.dataKey ?? "");
-              return slug === EXPENSE_CHART_TOTAL_KEY
-                ? t("expenses.creditCard.chartTotal")
-                : ccExpenseCategoryLabel(slug);
+              if (slug === EXPENSE_CHART_TOTAL_KEY) return t("expenses.creditCard.chartTotal");
+              if (slug === YEAR_AVERAGE_KEY) return t("expenses.creditCard.chartYearAverage");
+              return ccExpenseCategoryLabel(slug);
             },
             mapPayload: (payload) =>
               payload.filter((item) => {
                 const slug = String(item.dataKey ?? "");
                 if (slug === EXPENSE_CHART_TOTAL_KEY) return true;
+                if (slug === YEAR_AVERAGE_KEY) {
+                  return typeof item.value === "number" && Number.isFinite(item.value);
+                }
                 if (hiddenSlugs.has(slug)) return false;
                 const v = item.value;
                 return typeof v === "number" && Number.isFinite(v) && v !== 0;
@@ -292,12 +340,41 @@ export function CreditCardGroupExpensesChart({
               type="monotone"
               dataKey={EXPENSE_CHART_TOTAL_KEY}
               name={EXPENSE_CHART_TOTAL_KEY}
-              stroke="#e2e8f0"
+              stroke={TOTAL_LINE_STROKE}
               strokeWidth={2}
               dot={false}
               isAnimationActive
               animationDuration={CHART_ANIM_MS}
             />
+            {yearAverages && showYearAverages ? (
+              // Invisible series: puts the year average in the tooltip; the segments draw it.
+              <Line
+                type="linear"
+                dataKey={YEAR_AVERAGE_KEY}
+                name={YEAR_AVERAGE_KEY}
+                stroke={TOTAL_LINE_STROKE}
+                strokeOpacity={0}
+                dot={false}
+                activeDot={false}
+                legendType="none"
+                isAnimationActive={false}
+              />
+            ) : null}
+            {showYearAverages
+              ? yearAverageSegments.map((seg) => (
+                  <ReferenceLine
+                    key={`year-avg-${seg.year}`}
+                    segment={[
+                      { x: seg.first, y: seg.avg },
+                      { x: seg.last, y: seg.avg },
+                    ]}
+                    stroke={TOTAL_LINE_STROKE}
+                    strokeWidth={1.5}
+                    strokeDasharray="6 4"
+                    strokeOpacity={0.85}
+                  />
+                ))
+              : null}
         </AppComposedChart>
       </div>
     </section>

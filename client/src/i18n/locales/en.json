@@ -1093,6 +1093,7 @@
       "chartStyleLabel": "View",
       "chartStyleStacked": "Stacked bars",
       "chartStyleLine": "Lines",
+      "chartYearAverage": "Yearly average",
       "chartTotal": "Total",
       "chartEmpty": "No expenses in this period.",
       "colCategory": "Category",
