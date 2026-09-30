@@ -1,12 +1,14 @@
 /**
  * A local Formulario 22 for one año tributario: the return as filed (`sii_f22_filed`), what third
- * parties informed (`sii_informed_dj`), and a draft that adds what the app knows and the filed
- * return lacks — the crypto gain (code 1032, or a loss into 169), foreign dividends (1104 net, 748
- * the foreign tax as gross-up, 1018 its credit) and foreign share / ETF sales (1104, taxed under
- * the régimen general) — and recomputes the tax with the same chain the filed form shows:
+ * parties informed (`sii_informed_dj`), and a draft in which the codes the app can state itself
+ * REPLACE what was filed — the crypto gain (code 1032, or a loss added to the filed 169), foreign
+ * dividends (1104 net, 748 the foreign tax as gross-up, 1018 its credit) and foreign share / ETF
+ * sales (added to 1104, taxed under the régimen general) — so a year that already declared them
+ * (AT2022 filed 1032) shows the correction, not a double count; then it recomputes the tax with
+ * the same chain the filed form shows:
  *
- *   158 = 1098 + 155 + 152 + 1032 + 1104 + 748 − 169      (lines 1–14 less line 17)
- *   170 = 158 − 750                                        (art. 55 bis mortgage interest)
+ *   158 = 1098 + 110 + 155 + 152 + 1032 + 1104 + 748 − 169   (lines 1–14 less line 17; 110 = fees)
+ *   170 = 158 − 750 − 765                                  (mortgage interest art. 55 bis; APV art. 42 bis)
  *   157 = IGC table on 170, in UTA of December of the income year
  *   136 = 157 × 152 / 158                                  (exempt income, art. 56 N°2)
  *   304 = 157 − 136 − 162 − 1018                           (162: the employer's IUSC withheld)
@@ -22,8 +24,10 @@ import { foreignShareGainsForYear, type ForeignShareYearResult } from "./foreign
 import { informedDjAmount, type InformedDjField } from "./siiInformedDj.js";
 import { observadoOnOrBefore } from "./usdCashTaxLotEvents.js";
 
+type IgcBracket = { upTo: number; rate: number; rebajaUta: number };
+
 /** IGC table in UTA (Ley 21.210, AT2021 onward): up to `upTo` → rate and deduction («cantidad a rebajar»). */
-export const IGC_TABLE_UTA: readonly { upTo: number; rate: number; rebajaUta: number }[] = [
+export const IGC_TABLE_UTA: readonly IgcBracket[] = [
   { upTo: 13.5, rate: 0, rebajaUta: 0 },
   { upTo: 30, rate: 0.04, rebajaUta: 0.54 },
   { upTo: 50, rate: 0.08, rebajaUta: 1.74 },
@@ -34,6 +38,9 @@ export const IGC_TABLE_UTA: readonly { upTo: number; rate: number; rebajaUta: nu
   { upTo: Infinity, rate: 0.4, rebajaUta: 38.82 },
 ];
 export const IGC_TABLE_FIRST_TAX_YEAR = 2021;
+/** AT2018–AT2020 (Ley 20.780): the same brackets up to 120 UTA, 35% above. */
+export const IGC_TABLE_UTA_AT2018: readonly IgcBracket[] = [...IGC_TABLE_UTA.slice(0, 6), { upTo: Infinity, rate: 0.35, rebajaUta: 23.32 }];
+export const IGC_TABLE_AT2018_FIRST_TAX_YEAR = 2018;
 /** Foreign tax credit cap: 35% of the foreign income's gross amount (art. 41 A). */
 export const FOREIGN_TAX_CREDIT_CAP = 0.35;
 export const IDPC_RATE = 0.25;
@@ -41,10 +48,11 @@ export const IDPC_RATE = 0.25;
 export const PAYMENT_SECTION_CODES: readonly number[] = [39, 85, 86, 87, 90, 91, 92, 93, 94, 795];
 
 export function igcTax(baseClp: number, utaClp: number, taxYear: number): number {
-  if (taxYear < IGC_TABLE_FIRST_TAX_YEAR) throw new Error(`IGC table: no table for AT${taxYear}`);
+  if (taxYear < IGC_TABLE_AT2018_FIRST_TAX_YEAR) throw new Error(`IGC table: no table for AT${taxYear}`);
+  const table = taxYear >= IGC_TABLE_FIRST_TAX_YEAR ? IGC_TABLE_UTA : IGC_TABLE_UTA_AT2018;
   if (baseClp <= 0) return 0;
   const uta = baseClp / utaClp;
-  const row = IGC_TABLE_UTA.find((r) => uta <= r.upTo)!;
+  const row = table.find((r) => uta <= r.upTo)!;
   return Math.max(0, baseClp * row.rate - row.rebajaUta * utaClp);
 }
 
@@ -54,8 +62,8 @@ export type F22Codes = Record<number, number>;
 export function computeF22Tax(codes: F22Codes, utaClp: number, taxYear: number): F22Codes {
   const v = (c: number) => codes[c] ?? 0;
   const out: F22Codes = { ...codes };
-  out[158] = Math.round(v(1098) + v(155) + v(152) + v(1032) + v(1104) + v(748) - v(169));
-  out[170] = Math.max(0, out[158] - v(750));
+  out[158] = Math.round(v(1098) + v(110) + v(155) + v(152) + v(1032) + v(1104) + v(748) - v(169));
+  out[170] = Math.max(0, out[158] - v(750) - v(765));
   out[157] = Math.round(igcTax(out[170], utaClp, taxYear));
   out[136] = out[158] > 0 ? Math.round((out[157] * v(152)) / out[158]) : 0;
   out[304] = out[157] - out[136] - v(162) - v(1018);
@@ -162,7 +170,8 @@ export function buildF22Draft(taxYear: number): F22Draft {
   const filed = loadFiled(taxYear);
   const recomputed = computeF22Tax(filed, utaClp, taxYear);
   for (const c of [158, 170, 157, 136, 304]) {
-    if (recomputed[c] !== filed[c]) {
+    // A code the form does not print is zero.
+    if (recomputed[c] !== (filed[c] ?? 0)) {
       throw new Error(`F22 AT${taxYear}: the chain gives ${c} = ${recomputed[c]} but the filed form says ${filed[c]}`);
     }
   }
@@ -176,16 +185,13 @@ export function buildF22Draft(taxYear: number): F22Draft {
 
   const draftInput: F22Codes = { ...filed };
   const cryptoGain = Math.round(crypto.gainDecemberClp);
-  if (cryptoGain >= 0) draftInput[1032] = (draftInput[1032] ?? 0) + cryptoGain;
-  else draftInput[169] = (draftInput[169] ?? 0) - cryptoGain;
+  draftInput[1032] = Math.max(0, cryptoGain);
+  if (cryptoGain < 0) draftInput[169] = (draftInput[169] ?? 0) - cryptoGain;
   const grossClp = dividends.reduce((s, d) => s + d.grossUsd, 0) * yearEndObservado;
   const taxClp = dividends.reduce((s, d) => s + d.withholdingUsd, 0) * yearEndObservado;
-  if (dividends.length > 0) {
-    draftInput[1104] = (draftInput[1104] ?? 0) + Math.round(grossClp - taxClp);
-    draftInput[748] = (draftInput[748] ?? 0) + Math.round(taxClp);
-    draftInput[1018] = (draftInput[1018] ?? 0) + Math.round(Math.min(taxClp, FOREIGN_TAX_CREDIT_CAP * grossClp));
-  }
-  if (foreignGain > 0) draftInput[1104] = (draftInput[1104] ?? 0) + Math.round(foreignGain);
+  draftInput[1104] = Math.round(grossClp - taxClp) + Math.round(foreignGain);
+  draftInput[748] = Math.round(taxClp);
+  draftInput[1018] = Math.round(Math.min(taxClp, FOREIGN_TAX_CREDIT_CAP * grossClp));
   const draft = computeF22Tax(draftInput, utaClp, taxYear);
   draft[305] = draft[304];
   draft[31] = draft[304];

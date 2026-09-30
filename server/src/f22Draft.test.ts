@@ -8,7 +8,9 @@ describe("igcTax", () => {
     expect(igcTax(10 * UTA, UTA, 2030)).toBe(0);
     // 52 UTA: 13,5% bracket, deduction 4,49 UTA.
     expect(igcTax(52 * UTA, UTA, 2030)).toBeCloseTo(52 * UTA * 0.135 - 4.49 * UTA, 6);
-    expect(() => igcTax(52 * UTA, UTA, 2019)).toThrow(/no table/);
+    expect(() => igcTax(52 * UTA, UTA, 2017)).toThrow(/no table/);
+    // Above 120 UTA: 35% (AT2018–AT2020) vs the 35% bracket of the current table up to 310 UTA.
+    expect(igcTax(200 * UTA, UTA, 2019)).toBeCloseTo(200 * UTA * 0.35 - 23.32 * UTA, 6);
   });
 });
 

@@ -33,6 +33,7 @@ describe("parseF22CompactoText", () => {
     pad(pad(lc, 8) + ll, 94 - lv.length) + lv + "   " + pad(rc, 7) + pad(rl, 186 - 104 - rv.length) + rv;
   const text = [
     "03    ROL UNICO     01     Apellido",
+    "55     Correo Electrónico",
     pad(pad("15", 8) + "Fecha Vencimiento Declaración", 86) + "04/2026    31" + " ".repeat(79) + "900",
     row("157", "IGC según tabla", "1.000", "158", "SUB TOTAL", "10.000"),
     row("750", "Intereses", "2.000", "170", "BASE IMPONIBLE", "8.000"),
