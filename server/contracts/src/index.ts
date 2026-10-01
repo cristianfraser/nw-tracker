@@ -8,3 +8,4 @@ export * from "./kinds/bankAccountMovements.js";
 export * from "./parse.js";
 export * from "./kinds/cardPaymentReceipt.js";
 export * from "./kinds/brokerNotifications.js";
+export * from "./kinds/brokerMovements.js";

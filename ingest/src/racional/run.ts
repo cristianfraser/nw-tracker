@@ -17,29 +17,8 @@ import {
   rawDividendsResponseFromRecorder,
   takeScrapedMovements,
 } from "./steps.js";
-import { resolveCfraserDir } from "../paths.js";
+import { readRacionalCrawlCursor } from "./crawlCursor.js";
 import type { RunOptions, StepResult } from "../runTypes.js";
-
-/**
- * The importer's crawl watermark (`cfraser/.racional-import-state.json` → `last_row_key`): the
- * list key, in `rowKey`'s format, of the newest row it imported cleanly. A state without it (no
- * import yet, or written before 2026-09-27, when the importer recorded a route id this crawl
- * could never match) → null, and the crawl stages the whole rendered list.
- *
- * A plain file rather than a DB read on purpose: the scraper is deliberately not an npm
- * workspace, so it cannot import the server — the file is the contract between the two.
- */
-function readRacionalWatermark(): string | null {
-  const file = path.join(resolveCfraserDir(), ".racional-import-state.json");
-  if (!fs.existsSync(file)) return null;
-  let state: { last_row_key?: string | null };
-  try {
-    state = JSON.parse(fs.readFileSync(file, "utf8")) as { last_row_key?: string | null };
-  } catch (err) {
-    throw new Error(`${file} is not valid JSON — fix or delete it (${err instanceof Error ? err.message : err})`);
-  }
-  return state.last_row_key ?? null;
-}
 
 /**
  * One pass over Racional. Steps are independent: a broken positions view keeps the movements.
@@ -75,9 +54,9 @@ export async function runRacional(opts: RunOptions): Promise<number> {
     await login(page, config.loginAccount, password);
     await openHome(page, recorder);
 
-    // The importer's watermark: crawl only back to the last movement already in the ledger.
+    // The crawl cursor: read only back to the first row of the last read the server applied.
     await step(results, "movements", opts.only, "movements", () =>
-      openMovements(page, recorder, readRacionalWatermark()),
+      openMovements(page, recorder, readRacionalCrawlCursor()?.last_row_key ?? null),
     );
     await step(results, "positions", opts.only, "positions", () => openPositions(page, recorder));
   } finally {
@@ -91,8 +70,8 @@ export async function runRacional(opts: RunOptions): Promise<number> {
 
   // Movements are scraped from the DOM (Firestore pushes them, so they never appear as XHR).
   // Staged whenever the movements step succeeded — an empty list on a quiet night too: it is the
-  // importer's evidence that this crawl read the list, which is what answers the e-mail nudges
-  // mailed before it (`clean_crawl_at`). A failed step stages nothing.
+  // server's evidence that this crawl read the list, which is what answers the e-mail nudges
+  // mailed before it (`broker_read_coverage`). A failed step stages nothing.
   if (results.find((r) => r.name === "movements")?.ok) {
     const movements = takeScrapedMovements();
     const movFile = path.join(outDir, `movements-${stamp}.json`);

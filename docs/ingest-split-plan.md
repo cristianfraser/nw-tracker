@@ -9,7 +9,7 @@ server), switched on 2026-09-30 22:06 (`ingest/switch-schedule.sh to-server`; `t
 reverts). **Phase 3 in
 progress**: 1. checking «últimos movimientos» xlsx done (`bank_account.movements`, uploads via the
 service's `/parse`); 2. Santander payment receipts done (`card.payment_receipt`); 3. broker
-e-mails done (`broker.notifications`).
+e-mails done (`broker.notifications`); 4. Racional crawl done (`broker.movements`).
 
 ## Goal
 
@@ -215,7 +215,8 @@ In rough order (simplest separation first):
 3. Broker e-mails (`brokerEmailParse`) — Fintual and Racional. **Done** — `broker.notifications`;
    the classifier lives in `ingest/src/brokers/`, bookability and the Racional crawl decision in
    the server.
-4. Racional crawl + dividends file.
+4. Racional crawl + dividends file. **Done** — `broker.movements`; ingest decodes the read and keeps
+   its crawl cursor, the server keeps its read coverage (`broker_read_coverage`).
 5. Santander statement JSON (`santanderStatementParse`).
 6. CC statement PDFs: Python parser, parse cache, per-PDF JSON, organizer, qpdf/OCR →
    ingest; merge import, reconcile gates, traspaso relink stay.

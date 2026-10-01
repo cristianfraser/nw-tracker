@@ -8,6 +8,7 @@ import type {
 } from "nw-tracker-contracts";
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
+import { applyRacionalRead } from "./racionalMovementsImport.js";
 import { applyCardPaymentReceipt } from "./santanderCcPaymentReceipts.js";
 import {
   applyCardUnbilledMovements,
@@ -68,6 +69,11 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "broker.movements": {
+    apply({ payload, envelope }) {
+      return { status: "applied", details: applyRacionalRead(payload, envelope.source.ref) };
+    },
+  },
   "broker.notifications": {
     apply({ payload }) {
       return { status: "applied", details: applyBrokerNotifications(payload) };

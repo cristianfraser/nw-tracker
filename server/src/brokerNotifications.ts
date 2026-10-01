@@ -44,7 +44,7 @@ export type RacionalFetchDecision = {
 
 /**
  * Whether the Racional browser must open: a nudge mailed after the last crawl imported with
- * nothing left to fix (`clean_crawl_at`), or the monthly portafolio comisión, which sends no mail.
+ * nothing left to fix (`broker_read_coverage`), or the monthly portafolio comisión, which sends no mail.
  * Notifications are all re-sent every run, so without the coverage check one dividend mail
  * would ask for a crawl every night (it did, 2026-09-18 → 09-27).
  */
