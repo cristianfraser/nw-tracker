@@ -43,6 +43,8 @@
 		<string>1</string>
 		<key>NW_TRACKER_RACIONAL_APPLY</key>
 		<string>1</string>
+		<key>NW_TRACKER_AFP_UNO_APPLY</key>
+		<string>1</string>
 	</dict>
 	<key>ProcessType</key>
 	<string>Background</string>

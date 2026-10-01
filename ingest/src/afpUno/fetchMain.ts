@@ -96,6 +96,18 @@ function replayHeaders(all: Record<string, string>): Record<string, string> {
   return out;
 }
 
+/** A screenshot and the page's text, for an unattended failure; returns where they went. */
+async function saveDiagnostics(page: Page, label: string): Promise<string> {
+  const base = path.join(ensureDir(path.join(resolveCfraserDir(), "scraper-diagnostics")), `${label}-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+  try {
+    await page.screenshot({ path: `${base}.png`, fullPage: true });
+    fs.writeFileSync(`${base}.txt`, `${page.url()}\n\n${await page.evaluate(() => document.body?.innerText ?? "")}`);
+    return `see ${path.relative(resolveCfraserDir(), base)}.png`;
+  } catch (err) {
+    return `no screenshot: ${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
 /**
  * Sign in and wait for the home page's own API calls. One retry, as a person would reload: the
  * site's invisible captcha sometimes rejects the first attempt and passes on a reload.
@@ -118,6 +130,8 @@ async function signInAndReadHome(page: Page, rut: string, clave: string): Promis
           respuestaTraerDetalleSaldos?: { cuentaDetalleSaldo?: { cuenta: string; fondo: ConsultaFund[] }[] };
         };
         const cco = json.respuestaTraerDetalleSaldos?.cuentaDetalleSaldo?.filter((c) => c.cuenta === "CCO") ?? [];
+        // The page also asks about the voluntary products; those answers carry no CCO.
+        if (cco.length === 0) return;
         if (cco.length !== 1 || cco[0]!.fondo.length !== 1) {
           throw new Error(`consulta: expected one CCO account in one fund, got ${JSON.stringify(cco).slice(0, 300)}`);
         }
@@ -133,7 +147,11 @@ async function signInAndReadHome(page: Page, rut: string, clave: string): Promis
       await page.goto(START_URL, { waitUntil: "domcontentloaded" });
     }
     const answer = page.waitForResponse((r) => LOGIN_RESPONSE.test(r.url()), { timeout: 60_000 });
-    if (!(await tryLogin(page, rut, clave))) throw new Error("AFP UNO: sign-in form not found on www.uno.cl");
+    // Settled by whoever awaits it below; a sign-in that throws first must not leave it unhandled.
+    answer.catch(() => undefined);
+    if (!(await tryLogin(page, rut, clave))) {
+      throw new Error(`AFP UNO: sign-in form not found on www.uno.cl (${await saveDiagnostics(page, "afp-uno-login")})`);
+    }
     const response = await answer;
     const body = (await response.json().catch(() => null)) as { codigo?: string; mensaje?: string } | null;
     if (body?.codigo === "0") break;
@@ -145,6 +163,7 @@ async function signInAndReadHome(page: Page, rut: string, clave: string): Promis
   const deadline = Date.now() + HOME_WAIT_MS;
   while ((!movements || !fund) && Date.now() < deadline) await page.waitForTimeout(500);
   if (!movements || !fund) {
+    log(`AFP UNO: ${await saveDiagnostics(page, "afp-uno-home")}`);
     throw new Error(`AFP UNO: the home page did not load its ${!movements ? "movements" : "balance"} within ${HOME_WAIT_MS / 1000} s`);
   }
   const m = movements as { list: PortalMovement[]; headers: Record<string, string> };
