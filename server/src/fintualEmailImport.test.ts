@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { classifyBrokerEmail } from "./brokerEmailParse.js";
+import { brokerNotificationsKind } from "nw-tracker-contracts";
+import { brokerNotification, fintualRetiroPaid } from "./test/brokerNotificationFixtures.js";
 import {
   applyFintualEmailMovements,
   markFintualDuplicates,
@@ -12,20 +13,24 @@ import {
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { bankPostedOn } from "./movementBankPostings.js";
 
-const FINTUAL = "hola@fintual.com";
-
 /** The real 2026-08-05 SPY pair — the movements this whole connector was built to capture. */
-const DIVIDEND = {
-  sender: FINTUAL,
+const DIVIDEND = brokerNotification({
+  kind: "dividend",
   subject: "Recibiste un dividendo de SPY por 1,67 dólares",
-  date: "2026-08-05T06:07:41Z",
-};
-const REINVEST = {
-  sender: FINTUAL,
-  subject:
-    "Invertiste US $1,67 dólares en 0,002152366 acciones de State Street SPDR S&P 500 ETF Trust",
-  date: "2026-08-05T13:33:15Z",
-};
+  occurred_at: "2026-08-05T06:07:41Z",
+  ticker: "SPY",
+  amount: 1.67,
+  currency: "usd",
+});
+const REINVEST = brokerNotification({
+  kind: "buy",
+  subject: "Invertiste US $1,67 dólares en 0,002152366 acciones de State Street SPDR S&P 500 ETF Trust",
+  occurred_at: "2026-08-05T13:33:15Z",
+  fund_name: "State Street SPDR S&P 500 ETF Trust",
+  amount: 1.67,
+  units: "0.002152366",
+  currency: "usd",
+});
 
 describe("fintualEmailImport", () => {
   const created: number[] = [];
@@ -60,24 +65,24 @@ describe("fintualEmailImport", () => {
   it("resolves a reinvestment's holding by pairing it with its dividend", () => {
     // The purchase subject names the fund, never the ticker; the dividend names the ticker.
     // Same amount, same day = the DRIP pair, which identifies the holding with no lookup table.
-    const events = [classifyBrokerEmail(DIVIDEND), classifyBrokerEmail(REINVEST)];
+    const events = [DIVIDEND, REINVEST];
     expect(events[1]!.ticker).toBeNull();
     expect(pairedDividendTicker(events[1]!, events)).toBe("SPY");
   });
 
   it("falls back to the fund-name map for an ordinary purchase", () => {
     // No dividend to pair with — e.g. "Invertiste US $2.237,19 … acciones de Linde plc".
-    expect(tickerFromFundName("Invertiste US $2.237,19 dólares en 4,16 acciones de Linde plc")).toBe("LIN");
-    expect(tickerFromFundName("… acciones de State Street SPDR S&P 500 ETF Trust")).toBe("SPY");
-    expect(tickerFromFundName("… acciones de Some Brand New Fund")).toBeNull();
+    expect(tickerFromFundName("Linde plc")).toBe("LIN");
+    expect(tickerFromFundName("State Street SPDR S&P 500 ETF Trust")).toBe("SPY");
+    expect(tickerFromFundName("Some Brand New Fund")).toBeNull();
   });
 
   it("plans the SPY pair as the ledger's own DRIP shape", () => {
     const seeded = seedFintualAccounts();
     if (!seeded) return;
     const planned = planFintualEmailBatch([
-      classifyBrokerEmail(DIVIDEND),
-      classifyBrokerEmail(REINVEST),
+      DIVIDEND,
+      REINVEST,
     ]);
     expect(planned).toHaveLength(2);
     expect(planned.every((p) => p.requires_manual == null)).toBe(true);
@@ -94,26 +99,20 @@ describe("fintualEmailImport", () => {
     expect(buy.occurred_on).toBe("2026-08-05");
   });
 
-  it("resolves the fund name even though the subject is HTML-escaped", () => {
-    // The real subject contains "S&amp;P 500", so a pattern written with a plain "&" never
-    // matched — the SPY import only worked because the dividend pairing carried it.
-    expect(
-      tickerFromFundName(
-        "Invertiste US $1,67 dólares en 0,002152366 acciones de State Street SPDR S&amp;P 500 ETF Trust"
-      )
-    ).toBe("SPY");
-  });
-
   it("prefers the fund name over the amount pairing when reinvestment is off", () => {
     // Dividend reinvestment disabled, and the cash later spent on a DIFFERENT instrument that
     // happens to cost the same on the same day. Pairing would say SPY; the subject says LIN.
     const seeded = seedFintualAccounts();
     if (!seeded) return;
-    const dividend = classifyBrokerEmail(DIVIDEND);
-    const otherBuy = classifyBrokerEmail({
-      sender: FINTUAL,
+    const dividend = DIVIDEND;
+    const otherBuy = brokerNotification({
+      kind: "buy",
       subject: "Invertiste US $1,67 dólares en 0,002 acciones de Linde plc",
-      date: "2026-08-05T14:00:00Z",
+      occurred_at: "2026-08-05T14:00:00Z",
+      fund_name: "Linde plc",
+      amount: 1.67,
+      units: "0.002",
+      currency: "usd",
     });
     // Both resolve and they disagree → refuse rather than pick one.
     const planned = planFintualEmailBatch([dividend, otherBuy]);
@@ -127,7 +126,7 @@ describe("fintualEmailImport", () => {
     const seeded = seedFintualAccounts();
     if (!seeded) return;
     // No "Invertiste" mail at all — the dividend stands alone as cash into the wallet.
-    const planned = planFintualEmailBatch([classifyBrokerEmail(DIVIDEND)]);
+    const planned = planFintualEmailBatch([DIVIDEND]);
     expect(planned).toHaveLength(1);
     expect(planned[0]).toMatchObject({
       flow_kind: "dividend_payout",
@@ -144,12 +143,7 @@ describe("fintualEmailImport", () => {
    */
   it("refuses a retiro it cannot fully resolve instead of synthesizing", () => {
     const planned = planFintualEmailBatch([
-      classifyBrokerEmail({
-        sender: FINTUAL,
-        subject: "Pagamos tu retiro de 🏦 Reserva",
-        snippet: "Pagamos tu retiro de $2.000.000 desde 🏦 Reserva",
-        date: "2026-07-08T15:13:19Z",
-      }),
+      fintualRetiroPaid({ goal: "Reserva", amount_clp: 2000000, units: null, at: "2026-07-08T15:13:19Z" }),
     ]);
     expect(planned[0]!.requires_manual).not.toBeNull();
     expect(planned[0]!.from_account_id).toBeNull();
@@ -187,17 +181,12 @@ describe("fintualEmailImport", () => {
     const creditId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     created.push(creditId);
 
-    const email = classifyBrokerEmail({
-      sender: FINTUAL,
-      subject: "Pagamos tu retiro de 🏦 vitest Reserva",
-      snippet:
-        "Se pagó a tu cuenta de banco. Hola Cristian Pagamos tu retiro de $1.300.000 El viernes 07 " +
-        "de agosto a las 15:56 pagamos tu retiro desde 🏦 vitest Reserva. Monto $1.300.000 Destino " +
-        "Cuenta 11111111 de Banco Santander El retiro se hizo desde el Fondo Mutuo Very " +
-        "Conservative Streep Serie A (900,3208 cuotas).",
-      date: "2026-08-07T19:56:08Z",
+    const email = fintualRetiroPaid({
+      goal: "vitest Reserva",
+      amount_clp: 1300000,
+      units: "900.3208",
+      at: "2026-08-07T19:56:08Z",
     });
-    expect(email.units).toBe("900.3208");
 
     const planned = planFintualEmailBatch([email]);
     expect(planned[0]).toMatchObject({
@@ -253,14 +242,7 @@ describe("fintualEmailImport", () => {
     created.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
 
     const planned = planFintualEmailBatch([
-      classifyBrokerEmail({
-        sender: FINTUAL,
-        subject: "Pagamos tu retiro de 🏦 vitest Reserva3",
-        snippet:
-          "Pagamos tu retiro de $500.000 desde 🏦 vitest Reserva3. El retiro se hizo desde el " +
-          "Fondo Mutuo Very Conservative Streep Serie A (350,25 cuotas).",
-        date: "2026-08-31T19:00:00Z",
-      }),
+      fintualRetiroPaid({ goal: "vitest Reserva3", amount_clp: 500000, units: "350.25", at: "2026-08-31T19:00:00Z" }),
     ]);
     expect(planned[0]!.requires_manual).toBeNull();
     expect(planned[0]!.occurred_on).toBe("2026-08-31");
@@ -296,16 +278,9 @@ describe("fintualEmailImport", () => {
     ).run(checkingId);
     created.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
 
-    // A multi-fund goal prints one count per fund — a single number would be wrong for all.
+    // A multi-fund goal prints one count per fund — ingest then sends no cuota count at all.
     const planned = planFintualEmailBatch([
-      classifyBrokerEmail({
-        sender: FINTUAL,
-        subject: "Pagamos tu retiro de 🏦 vitest Reserva2",
-        snippet:
-          "Pagamos tu retiro de $2.000.000 desde 🏦 vitest Reserva2. El retiro se hizo desde el " +
-          "Fondo A (100,5 cuotas) y el Fondo B (200,25 cuotas).",
-        date: "2026-08-07T19:56:08Z",
-      }),
+      fintualRetiroPaid({ goal: "vitest Reserva2", amount_clp: 2000000, units: null, at: "2026-08-07T19:56:08Z" }),
     ]);
     expect(planned[0]!.requires_manual).toMatch(/cuota/);
     expect(planned[0]!.promote_movement_id).toBeUndefined();
@@ -326,7 +301,7 @@ describe("fintualEmailImport", () => {
     created.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
 
     const planned: FintualPlannedMovement = {
-      source: classifyBrokerEmail(DIVIDEND),
+      source: DIVIDEND,
       occurred_on: "2026-08-05", // payment date, 5 days after the accrual date above
       from_account_id: from,
       to_account_id: to,
@@ -368,15 +343,12 @@ describe("fintualEmailImport", () => {
     const goalId = mk("vitest Reserva Disp", "import:fintual|cert|key=vitest-reserva-disp");
     const balanceId = mk("vitest Fintual CLP", "import:panel|kind=clp|key=fintual");
 
-    const email = classifyBrokerEmail({
-      message_id: `vitest-disp-${Date.now()}`,
-      sender: FINTUAL,
-      subject: "Pagamos tu retiro de 🏦 vitest Reserva Disp",
-      snippet:
-        "Pagamos tu retiro de $100.000 El martes 29 de septiembre a las 11:00 tus $100.000 pesos " +
-        "chilenos quedaron disponibles para invertir en Fintual. Se retiró de 🏦 vitest Reserva " +
-        "Disp : $100.000 desde Fondo Mutuo Very Conservative Streep Serie A, equivalente a 68,8876 cuotas .",
-      date: "2097-09-29T14:00:33Z",
+    const email = fintualRetiroPaid({
+      goal: "vitest Reserva Disp",
+      amount_clp: 100000,
+      units: "68.8876",
+      at: "2097-09-29T14:00:33Z",
+      paid_to: "broker_balance",
     });
     const planned = planFintualEmailBatch([email]);
     expect(planned[0]).toMatchObject({
@@ -426,16 +398,11 @@ describe("fintualEmailImport", () => {
     const goalId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     createdAccounts.push(goalId);
 
-    const email = classifyBrokerEmail({
-      message_id: `vitest-synth-${Date.now()}`,
-      sender: FINTUAL,
-      subject: "Pagamos tu retiro de 🏦 vitest Reserva Synth",
-      snippet:
-        "Se pagó a tu cuenta de banco. Hola Cristian Pagamos tu retiro de $654.321 El viernes 07 " +
-        "de agosto a las 11:17 pagamos tu retiro desde 🏦 vitest Reserva Synth. Monto $654.321 " +
-        "Destino Cuenta 11111111 de Banco Santander El retiro se hizo desde el Fondo Mutuo Very " +
-        "Conservative Streep Serie A (452,7789 cuotas).",
-      date: "2026-08-07T15:17:53Z",
+    const email = fintualRetiroPaid({
+      goal: "vitest Reserva Synth",
+      amount_clp: 654321,
+      units: "452.7789",
+      at: "2026-08-07T15:17:53Z",
     });
     const planned = planFintualEmailBatch([email]);
     expect(planned[0]).toMatchObject({
@@ -512,14 +479,7 @@ describe("fintualEmailImport", () => {
     }
 
     const planned = planFintualEmailBatch([
-      classifyBrokerEmail({
-        sender: FINTUAL,
-        subject: "Pagamos tu retiro de 🏦 vitest Reserva Amb",
-        snippet:
-          "Pagamos tu retiro de $444.555 desde 🏦 vitest Reserva Amb. El retiro se hizo desde el " +
-          "Fondo Mutuo Very Conservative Streep Serie A (300,1 cuotas).",
-        date: "2026-08-07T15:00:00Z",
-      }),
+      fintualRetiroPaid({ goal: "vitest Reserva Amb", amount_clp: 444555, units: "300.1", at: "2026-08-07T15:00:00Z" }),
     ]);
     expect(planned[0]!.requires_manual).toMatch(/several unpaired/);
     expect(planned[0]!.synthesized).toBeUndefined();
@@ -545,14 +505,7 @@ describe("fintualEmailImport", () => {
     // Paid Monday the 31st: the bank may post the credit on September 1st — the transfer is
     // still dated the 31st, and the bank row brings its posting day when it lands.
     const planned = planFintualEmailBatch([
-      classifyBrokerEmail({
-        sender: FINTUAL,
-        subject: "Pagamos tu retiro de 🏦 vitest Reserva EOM",
-        snippet:
-          "Pagamos tu retiro de $123.456 desde 🏦 vitest Reserva EOM. El retiro se hizo desde el " +
-          "Fondo Mutuo Very Conservative Streep Serie A (80,5 cuotas).",
-        date: "2026-08-31T14:00:00Z",
-      }),
+      fintualRetiroPaid({ goal: "vitest Reserva EOM", amount_clp: 123456, units: "80.5", at: "2026-08-31T14:00:00Z" }),
     ]);
     expect(planned[0]!.requires_manual).toBeNull();
     expect(planned[0]!.synthesized).toBe(true);
@@ -590,49 +543,37 @@ describe("fintualEmailImport", () => {
     return { checkingId, goalId, creditId };
   }
 
-  function retiroMail(slug: string, amountLabel: string, cuotas: string, date: string, messageId?: string) {
-    return classifyBrokerEmail({
-      message_id: messageId ?? null,
-      sender: FINTUAL,
-      subject: `Pagamos tu retiro de 🏦 vitest Reserva ${slug}`,
-      snippet:
-        `Pagamos tu retiro de $${amountLabel} desde 🏦 vitest Reserva ${slug}. El retiro se hizo ` +
-        `desde el Fondo Mutuo Very Conservative Streep Serie A (${cuotas} cuotas).`,
-      date,
+  function retiroMail(slug: string, amountClp: number, cuotas: string, at: string, messageId?: string) {
+    return fintualRetiroPaid({
+      goal: `vitest Reserva ${slug}`,
+      amount_clp: amountClp,
+      units: cuotas,
+      at,
+      ...(messageId ? { message_id: messageId } : {}),
     });
   }
 
-  it("plans one row when the same mail sits in two scan files", () => {
+  it("refuses a payload that carries the same mail twice", () => {
     // The 2026-08-31 incident: IMAP SINCE is day-granular, so the watermark message came back
     // in the next scan too. Both copies planned `promote <same credit>`; the second promote
-    // threw and rolled back the batch on every run for four days.
-    const seeded = seedGoalAndCredit("dup", 100000, "2026-08-31");
-    if (!seeded) return;
+    // threw and rolled back the batch on every run for four days. Ingest collapses copies by
+    // Message-ID; the contract refuses a payload that still repeats one.
     const id = `<vitest-dup-${Date.now()}@example>`;
-    const copy1 = retiroMail("dup", "100.000", "69,1041", "2026-08-31T15:08:35Z", id);
-    const copy2 = retiroMail("dup", "100.000", "69,1041", "2026-08-31T15:08:35Z", id);
-
-    const planned = planFintualEmailBatch([copy1, copy2]);
-    expect(planned).toHaveLength(1);
-    expect(planned[0]).toMatchObject({
-      promote_movement_id: seeded.creditId,
-      requires_manual: null,
-      duplicate_of: null,
+    const copy = retiroMail("dup", 100000, "69.1041", "2026-08-31T15:08:35Z", id);
+    const parsed = brokerNotificationsKind.payload.safeParse({
+      broker: "fintual",
+      apply: true,
+      notifications: [copy, { ...copy }],
     });
-    expect(applyFintualEmailMovements(planned)).toBe(1);
-    const row = db
-      .prepare(`SELECT from_account_id, to_account_id FROM movements WHERE id = ?`)
-      .get(seeded.creditId) as { from_account_id: number; to_account_id: number };
-    expect(row.from_account_id).toBe(seeded.goalId);
-    expect(row.to_account_id).toBe(seeded.checkingId);
+    expect(parsed.success).toBe(false);
   });
 
   it("keeps two distinct same-day retiros of the same amount apart", () => {
     // Different Message-IDs are different events even when amount, cuotas and day coincide.
     const seeded = seedGoalAndCredit("twin", 100000, "2026-08-31");
     if (!seeded) return;
-    const a = retiroMail("twin", "100.000", "69,1041", "2026-08-31T15:08:35Z", `<vitest-twin-a-${Date.now()}>`);
-    const b = retiroMail("twin", "100.000", "69,1041", "2026-08-31T15:47:56Z", `<vitest-twin-b-${Date.now()}>`);
+    const a = retiroMail("twin", 100000, "69.1041", "2026-08-31T15:08:35Z", `<vitest-twin-a-${Date.now()}>`);
+    const b = retiroMail("twin", 100000, "69.1041", "2026-08-31T15:47:56Z", `<vitest-twin-b-${Date.now()}>`);
 
     const planned = planFintualEmailBatch([a, b]);
     expect(planned).toHaveLength(2);
@@ -651,7 +592,7 @@ describe("fintualEmailImport", () => {
     const seeded = seedGoalAndCredit("early", 50000, "2026-08-28");
     if (!seeded) return;
     const planned = planFintualEmailBatch([
-      retiroMail("early", "50.000", "34,5414", "2026-09-01T15:49:25Z", `<vitest-early-${Date.now()}>`),
+      retiroMail("early", 50000, "34.5414", "2026-09-01T15:49:25Z", `<vitest-early-${Date.now()}>`),
     ]);
     expect(planned[0]!.promote_movement_id).toBeUndefined();
     // With no forward-dated candidate the mail synthesizes its own transfer (a Tuesday: next
@@ -678,7 +619,7 @@ describe("fintualEmailImport", () => {
     const seeded = seedGoalAndCredit("moved", 77777, "2026-09-20"); // credit far away: unused
     if (!seeded) return;
     const id = `<vitest-moved-${Date.now()}>`;
-    const mail = retiroMail("moved", "77.777", "55,5", "2026-08-04T15:00:00Z", id);
+    const mail = retiroMail("moved", 77777, "55.5", "2026-08-04T15:00:00Z", id);
     const first = planFintualEmailBatch([mail]);
     expect(first[0]!.synthesized).toBe(true);
     expect(applyFintualEmailMovements(first)).toBe(1);

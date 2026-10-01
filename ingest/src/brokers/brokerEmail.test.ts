@@ -6,7 +6,9 @@ import {
   parseChileanNumber,
   parseUsNumber,
   scanBrokerEmails,
-} from "./brokerEmailParse.js";
+  toBrokerNotification,
+  brokerNotificationsFromScan,
+} from "./brokerEmail.js";
 
 /**
  * Every subject here is a real message from the account (2026-03 … 2026-08), including the
@@ -15,7 +17,7 @@ import {
 const FINTUAL = "hola@fintual.com";
 const RACIONAL = "racional@racional.cl";
 
-describe("brokerEmailParse", () => {
+describe("brokerEmail", () => {
   it("only treats real broker senders as brokers", () => {
     expect(brokerFromSender(FINTUAL)).toBe("fintual");
     expect(brokerFromSender(RACIONAL)).toBe("racional");
@@ -290,72 +292,55 @@ describe("brokerEmailParse", () => {
     });
   });
 
-  it("never asks to fetch a broker that has no fetcher", () => {
-    // Fintual is e-mail-only. An incomplete notification there is for a human to look at —
-    // reporting it as "needs fetch" would ask the runner to do something that does not exist.
-    const scan = scanBrokerEmails([
-      { sender: FINTUAL, subject: "Pagamos tu retiro de 🏦 Reserva", date: "x" },
-    ]);
-    expect(scan.nudges).toHaveLength(1);
-    expect(scan.needsFetch).toEqual([]);
-    expect(scan.unresolved).toHaveLength(1);
+  it("reads the goal a retiro was paid from, emoji and all", () => {
+    const goal = (subject: string) => classifyBrokerEmail({ sender: FINTUAL, subject, date: "2026-08-07T19:56:08Z" }).goal_name;
+    expect(goal("Pagamos tu retiro de 🏦 Reserva")).toBe("Reserva");
+    expect(goal("Pagamos tu retiro de 💰 Mega Caca")).toBe("Mega Caca");
+    expect(goal("Pagamos tu retiro")).toBeNull();
   });
 
-  it("only fetches a broker that has activity its e-mail does not describe", () => {
-    // Complete e-mails are enough on their own — no browser.
-    const completeOnly = scanBrokerEmails([
-      { sender: RACIONAL, subject: "Así se movió tu plata en junio", date: "x" },
-      { sender: "newsletter@fintualist.com", subject: "Se disipa la niebla", date: "x" },
-      { sender: FINTUAL, subject: "Recibiste un dividendo de SPY por 1,67 dólares", date: "x" },
-      {
-        sender: RACIONAL,
-        subject: "Invertiste en Silver Trust ETF iShares (SLV)",
-        snippet:
-          "Acciones compradas 24.74186066 Precio promedio US$54.41 Monto comprado US$1346.17",
-        date: "x",
-      },
-    ]);
-    expect(completeOnly.importable).toHaveLength(2);
-    expect(completeOnly.nudges).toHaveLength(0);
-    expect(completeOnly.needsFetch).toEqual([]);
-
-    // A dividend nudge is what earns a fetch.
-    const withNudge = scanBrokerEmails([
-      { sender: RACIONAL, subject: "Recibiste dividendos de VEA 💸", date: "x" },
-      { sender: FINTUAL, subject: "Recibiste un dividendo de SPY por 1,67 dólares", date: "x" },
-    ]);
-    expect(withNudge.needsFetch).toEqual(["racional"]);
-    expect(withNudge.importable.map((e) => e.ticker)).toEqual(["SPY"]);
-  });
-
-  it("stops asking for a crawl once one that ran after the nudge was imported cleanly", () => {
-    // Scan files are all re-read every run, so without this a single dividend mail kept the
-    // Racional crawl running every night long after its dividend was booked.
-    const first = { sender: RACIONAL, subject: "Recibiste USD $1,23 en dividendos de VTDIVA", date: "2097-09-18T11:57:16.000Z" };
-    const second = { sender: RACIONAL, subject: "Recibiste dividendos de VTDIVB 💸", date: "2097-09-22T10:40:49.000Z" };
-    expect(scanBrokerEmails([first]).needsFetch).toEqual(["racional"]);
-    // A crawl from before the mail answers nothing.
-    expect(scanBrokerEmails([first], { racional: "2097-09-18T01:00:00.000Z" }).needsFetch).toEqual(["racional"]);
-
-    const covered = scanBrokerEmails([first, second], { racional: "2097-09-21T01:10:48.000Z" });
-    expect(covered.nudges).toHaveLength(2);
-    expect(covered.answered.map((e) => e.ticker)).toEqual(["VTDIVA"]);
-    expect(covered.needsFetch).toEqual(["racional"]); // the newer nudge still asks
-
-    const both = scanBrokerEmails([first, second], { racional: "2097-09-24T01:11:30.000Z" });
-    expect(both.answered).toHaveLength(2);
-    expect(both.needsFetch).toEqual([]);
-
-    // Coverage is per fetchable broker: Fintual's nudges stay for a human either way.
-    const fintual = scanBrokerEmails([{ sender: FINTUAL, subject: "Pagamos tu retiro de 🏦 Reserva", date: "x" }], {
-      racional: "2097-09-24T01:11:30.000Z",
+  it("names the fund a buy bought, HTML entities decoded", () => {
+    const buy = classifyBrokerEmail({
+      sender: FINTUAL,
+      subject: "Invertiste US $1,67 dólares en 0,002152366 acciones de State Street SPDR S&amp;P 500 ETF Trust",
+      date: "2026-08-05T13:33:15Z",
     });
-    expect(fintual.answered).toEqual([]);
-    expect(fintual.unresolved).toHaveLength(1);
-    // With coverage to compare against, an unreadable mail date fails fast.
-    expect(() => scanBrokerEmails([{ ...first, date: "x" }], { racional: "2097-09-24T01:11:30.000Z" })).toThrow(
-      /unparseable date "x"/
-    );
+    expect(buy.fund_name).toBe("State Street SPDR S&P 500 ETF Trust");
+  });
+
+  it("sends each broker's money mails, collapsed and oldest first, as canonical notifications", () => {
+    const scan = scanBrokerEmails([
+      { message_id: "<b>", sender: RACIONAL, subject: "Recibiste dividendos de VEA 💸", date: "2026-09-22T10:40:49.000Z" },
+      { message_id: "<a>", sender: RACIONAL, subject: "Tu depósito de CLP $1.000.000 está listo para invertir", date: "2026-09-01T12:00:00.000Z" },
+      { message_id: "<n>", sender: RACIONAL, subject: "Así se movió tu plata en junio", date: "2026-07-01T12:00:00.000Z" },
+      { message_id: "<f>", sender: FINTUAL, subject: "Recibiste un dividendo de SPY por 1,67 dólares", date: "2026-08-05T06:07:41Z" },
+    ]);
+    expect(scan.unrecognised.map((e) => e.message_id)).toEqual(["<n>"]);
+    const racional = brokerNotificationsFromScan(scan, "racional");
+    expect(racional.map((n) => [n.message_id, n.kind, n.amount])).toEqual([
+      ["<a>", "deposit", 1_000_000],
+      ["<b>", "dividend", null],
+    ]);
+    expect(brokerNotificationsFromScan(scan, "fintual")[0]).toMatchObject({
+      kind: "dividend",
+      ticker: "SPY",
+      amount: 1.67,
+      occurred_at: "2026-08-05T06:07:41.000Z",
+    });
+  });
+
+  it("names a retiro to the Fintual balance the broker's balance, and refuses a mail with no id", () => {
+    const paid = classifyBrokerEmail({
+      message_id: "<p>",
+      sender: FINTUAL,
+      subject: "Pagamos tu retiro de 🏦 Reserva",
+      snippet:
+        "Pagamos tu retiro de $100.000 El martes 29 de septiembre a las 11:00 tus $100.000 pesos chilenos " +
+        "quedaron disponibles para invertir en Fintual. … Serie A, equivalente a 68,8876 cuotas .",
+      date: "2026-09-29T14:00:33Z",
+    });
+    expect(toBrokerNotification(paid).paid_to).toBe("broker_balance");
+    expect(() => toBrokerNotification({ ...paid, message_id: null })).toThrow(/no Message-ID/);
   });
 
   it("collapses a mail staged in several scan files to its richest parse", () => {
@@ -382,5 +367,53 @@ describe("brokerEmailParse", () => {
     expect(m1.units).toBe("69.1041");
     expect(collapsed.filter((e) => e.message_id === "<m2>")).toHaveLength(1);
     expect(collapsed.filter((e) => e.message_id == null)).toHaveLength(1);
+  });
+});
+
+// Real 2026-08-25 template excerpts (amounts anonymized to synthetic values).
+const CONVERSION_SNIPPET =
+  "*** Agregaste dólares a Billetera de Stocks *** Cristian, tus $1.086,49 dólares ya están en " +
+  "tránsito a tu cuenta de inversión en Estados Unidos, y te aparecerán en tu Poder de Compra " +
+  "( https://example.test ) para invertir en Stocks. Estos dólares los compraste con tu " +
+  "depósito de $1.000.000, a un precio promedio de $920,39 por dólar.";
+
+const BUY_SNIPPET_MARGIN_ERA =
+  "*** Tu orden de compra de Vitest Semis ETF (VITSOX) *** Acciones compradas Acciones " +
+  "vendidas 2.11462728 Precio promedio US$513.8 Monto comprado Monto vendido US$1086.49 " +
+  "Comisión transacción US$0 Horario Extendido Mercado";
+
+describe("brokerEmail — 2026-08 Racional templates", () => {
+  it("parses the Margin-era buy body with interleaved column headers", () => {
+    const buy = classifyBrokerEmail({
+      sender: RACIONAL,
+      subject: "Invertiste en Vitest Semis ETF (VITSOX)",
+      snippet: BUY_SNIPPET_MARGIN_ERA,
+      date: "2026-08-25T16:45:39.000Z",
+    });
+    expect(buy).toMatchObject({
+      kind: "buy",
+      is_transaction: true,
+      is_complete: true,
+      ticker: "VITSOX",
+      amount: 1086.49,
+      price: 513.8,
+      currency: "usd",
+    });
+    expect(buy.units).toBe("2.11462728");
+  });
+
+  it("reads the conversion's CLP leg from the body (digit-terminated, sentence comma excluded)", () => {
+    const funded = classifyBrokerEmail({
+      sender: RACIONAL,
+      subject: "Agregaste USD $1.086,49 a tu Billetera",
+      snippet: CONVERSION_SNIPPET,
+      date: "2026-08-25T16:44:14.000Z",
+    });
+    expect(funded).toMatchObject({
+      kind: "wallet_funded",
+      amount: 1086.49,
+      currency: "usd",
+      clp_amount: 1_000_000,
+    });
   });
 });

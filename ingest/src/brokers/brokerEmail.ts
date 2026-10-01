@@ -1,5 +1,8 @@
+import type { BrokerNotification } from "nw-tracker-contracts";
+
 /**
- * Broker notification e-mails → typed events.
+ * Broker notification e-mails → typed events, and those events → the server's
+ * `broker.notifications` payload.
  *
  * Fintual and Racional both e-mail a notification for every real movement, and those e-mails
  * carry MORE than the app UIs expose: Fintual's subject lines contain the amount and the exact
@@ -14,6 +17,9 @@
  * Patterns below were read off real messages (2026-03 … 2026-08); anything unrecognised is
  * classified `other` and simply does not trigger anything, so a new marketing template can
  * never be mistaken for a movement.
+ *
+ * What the mail says is read here; what it means for the ledger (is it bookable, does the
+ * Racional browser need to open) is the server's call — it holds the ledger and the crawl state.
  */
 
 export type BrokerName = "fintual" | "racional";
@@ -58,6 +64,10 @@ export type BrokerEmailEvent = {
    */
   is_complete: boolean;
   ticker: string | null;
+  /** The fund a Fintual buy names («… acciones de <fund name>») — the ticker comes from it. */
+  fund_name: string | null;
+  /** The goal a Fintual retiro was paid from («Pagamos tu retiro de 🏦 Reserva» → «Reserva»). */
+  goal_name: string | null;
   /** The amount the broker actually moved. Null when the mail states only a gross figure. */
   amount: number | null;
   /**
@@ -89,7 +99,10 @@ export type BrokerEmailEvent = {
   message_id: string | null;
 };
 
-/** Fields each kind needs before it can be turned into a ledger movement. */
+/**
+ * Fields each kind needs before it can be turned into a ledger movement — for the local report
+ * only; the server applies its own rule to what it receives.
+ */
 const REQUIRED_FIELDS: Partial<Record<BrokerEmailKind, (keyof BrokerEmailEvent)[]>> = {
   dividend: ["ticker", "amount"],
   buy: ["amount", "units"],
@@ -208,6 +221,7 @@ const FINTUAL_MATCHERS: Matcher[] = [
     read: (m) => ({
       amount: parseChileanNumber(m[1]!),
       units: decimalString(m[2]!),
+      fund_name: m[3]!.trim(),
       currency: "usd",
     }),
   },
@@ -246,8 +260,8 @@ const FINTUAL_MATCHERS: Matcher[] = [
   {
     kind: "withdrawal_paid",
     is_transaction: true,
-    re: /^Pagamos tu retiro/i,
-    read: (_m, snippet) => {
+    re: /^Pagamos tu retiro(?: de\s+(.+))?$/i,
+    read: (m, snippet) => {
       const body = /Pagamos tu retiro de \$\s*([\d.,]+)/i.exec(snippet);
       // «El retiro se hizo desde el Fondo Mutuo Very Conservative Streep Serie A (900,3208
       // cuotas).» — the cuota count the goal sold, which is what lets the promoted transfer leg
@@ -262,7 +276,13 @@ const FINTUAL_MATCHERS: Matcher[] = [
         : /cuenta de banco|Destino Cuenta/i.test(snippet)
           ? ("bank" as const)
           : null;
+      // «Pagamos tu retiro de 🏦 Reserva» → «Reserva»: emoji stripped, whitespace collapsed.
+      const goal = (m[1] ?? "")
+        .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F]/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
       return {
+        ...(goal ? { goal_name: goal } : {}),
         ...(body ? { amount: parseChileanNumber(body[1]!), currency: "clp" as const } : {}),
         ...(cuotas.length === 1 ? { units: decimalString(cuotas[0]![1]!) } : {}),
         ...(paidTo ? { paid_to: paidTo } : {}),
@@ -388,6 +408,8 @@ export function classifyBrokerEmail(input: BrokerEmailInput): BrokerEmailEvent {
     is_transaction: false,
     is_complete: false,
     ticker: null,
+    fund_name: null,
+    goal_name: null,
     amount: null,
     gross_amount: null,
     currency: null,
@@ -418,28 +440,8 @@ export function classifyBrokerEmail(input: BrokerEmailInput): BrokerEmailEvent {
 
 export type BrokerEmailScan = {
   events: BrokerEmailEvent[];
-  /** Transaction e-mails per broker. */
-  transactionsByBroker: Record<BrokerName, BrokerEmailEvent[]>;
-  /** Fully-described movements — importable straight from the e-mail, no browser needed. */
-  importable: BrokerEmailEvent[];
-  /** Real activity the e-mail does not fully describe: the reason to open the browser. */
-  nudges: BrokerEmailEvent[];
-  /**
-   * Nudges a fetch has already answered: mailed before the broker's `fetchedThrough` crawl,
-   * which read the list after the movement happened and was imported with nothing left to fix.
-   * Still reported, no longer a reason to open the browser — scan files are all re-read every
-   * run, so otherwise one dividend mail asked for a crawl every night forever (the 2026-09-18
-   * and 09-22 Racional mails kept the crawl running long after both dividends were booked).
-   */
-  answered: BrokerEmailEvent[];
-  /** Brokers with an unanswered nudge AND a fetcher to answer it. */
-  needsFetch: BrokerName[];
-  /**
-   * Nudges for brokers that have no fetcher — Fintual is e-mail-only, so an incomplete
-   * notification there is something to look at by hand, not something to scrape. Reporting it
-   * as "needs fetch" would ask the runner to do something that does not exist.
-   */
-  unresolved: BrokerEmailEvent[];
+  /** Money notifications, collapsed by Message-ID (see collapseBrokerEmailEventsByMessageId). */
+  transactions: BrokerEmailEvent[];
   /**
    * Mail from a broker whose subject matched nothing. Almost always marketing — but a NEW
    * transactional template would land here too, and silently ignoring it is how a movement
@@ -485,60 +487,54 @@ export function collapseBrokerEmailEventsByMessageId(
   return [...out, ...byId.values()];
 }
 
-/** Brokers this project can actually drive a browser against. */
-const FETCHABLE: ReadonlySet<BrokerName> = new Set<BrokerName>(["racional"]);
-
-/**
- * Per fetchable broker, the crawl time through which a fetch has been imported with nothing
- * left to fix — for Racional, `clean_crawl_at` in `cfraser/.racional-import-state.json`.
- */
-export type BrokerFetchCoverage = Partial<Record<BrokerName, string | null>>;
-
-function answeredByFetch(e: BrokerEmailEvent, fetchedThrough: BrokerFetchCoverage): boolean {
-  const through = e.broker != null ? fetchedThrough[e.broker] : null;
-  if (!through) return false;
-  const mailed = Date.parse(e.occurred_at);
-  const covered = Date.parse(through);
-  if (Number.isNaN(mailed)) throw new Error(`Broker e-mail «${e.subject}» has an unparseable date "${e.occurred_at}"`);
-  if (Number.isNaN(covered)) throw new Error(`${e.broker} fetch coverage "${through}" is not a timestamp`);
-  return mailed < covered;
-}
-
-/**
- * Scan a batch of e-mails and decide what, if anything, needs fetching.
- *
- * A broker is fetched only when it has a NUDGE — activity the e-mail proves but does not
- * describe — that no fetch has answered yet. A day of nothing but complete e-mails (or nothing
- * but newsletters) leaves the browser closed, which is the point: every fetch costs reputation
- * with these sites.
- */
-export function scanBrokerEmails(
-  inputs: readonly BrokerEmailInput[],
-  fetchedThrough: BrokerFetchCoverage = {}
-): BrokerEmailScan {
+export function scanBrokerEmails(inputs: readonly BrokerEmailInput[]): BrokerEmailScan {
   const events = inputs.map(classifyBrokerEmail);
-  const transactions = events.filter((e) => e.is_transaction);
-  const nudges = transactions.filter((e) => !e.is_complete);
-  const fetchable = nudges.filter((e) => e.broker != null && FETCHABLE.has(e.broker));
-  const answered = fetchable.filter((e) => answeredByFetch(e, fetchedThrough));
   return {
     events,
-    transactionsByBroker: {
-      fintual: transactions.filter((e) => e.broker === "fintual"),
-      racional: transactions.filter((e) => e.broker === "racional"),
-    },
-    importable: transactions.filter((e) => e.is_complete),
-    nudges,
-    answered,
-    needsFetch: [
-      ...new Set(
-        fetchable
-          .filter((e) => !answered.includes(e))
-          .map((e) => e.broker)
-          .filter((b): b is BrokerName => b != null)
-      ),
-    ],
-    unresolved: nudges.filter((e) => e.broker != null && !FETCHABLE.has(e.broker)),
+    transactions: collapseBrokerEmailEventsByMessageId(events.filter((e) => e.is_transaction)),
     unrecognised: events.filter((e) => e.broker != null && e.kind === "other"),
   };
+}
+
+const NOTIFICATION_KINDS = new Set<BrokerNotification["kind"]>([
+  "dividend",
+  "buy",
+  "deposit",
+  "withdrawal_paid",
+  "cash_returned",
+  "wallet_funded",
+  "portfolio_buy",
+]);
+
+/** One money mail as the server's canonical notification. */
+export function toBrokerNotification(e: BrokerEmailEvent): BrokerNotification {
+  if (!e.message_id) throw new Error(`Broker e-mail «${e.subject}» has no Message-ID`);
+  const kind = e.kind as BrokerNotification["kind"];
+  if (!NOTIFICATION_KINDS.has(kind)) throw new Error(`Broker e-mail «${e.subject}»: ${e.kind} is not a money notification`);
+  const occurred = new Date(e.occurred_at);
+  if (Number.isNaN(occurred.getTime())) throw new Error(`Broker e-mail «${e.subject}» has an unparseable date "${e.occurred_at}"`);
+  return {
+    message_id: e.message_id,
+    occurred_at: occurred.toISOString(),
+    subject: e.subject,
+    kind,
+    ticker: e.ticker,
+    fund_name: e.fund_name,
+    goal_name: e.goal_name,
+    amount: e.amount,
+    gross_amount: e.gross_amount,
+    currency: e.currency,
+    units: e.units,
+    price: e.price,
+    clp_amount: e.clp_amount,
+    paid_to: e.paid_to === "fintual" ? "broker_balance" : e.paid_to,
+  };
+}
+
+/** Every money mail one broker has sent, oldest first. */
+export function brokerNotificationsFromScan(scan: BrokerEmailScan, broker: BrokerName): BrokerNotification[] {
+  return scan.transactions
+    .filter((e) => e.broker === broker)
+    .map(toBrokerNotification)
+    .sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
 }

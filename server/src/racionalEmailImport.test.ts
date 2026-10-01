@@ -1,23 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { classifyBrokerEmail } from "./brokerEmailParse.js";
+import { brokerNotification } from "./test/brokerNotificationFixtures.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { db } from "./db.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { planRacionalEmailMovements } from "./racionalEmailImport.js";
 
-const RACIONAL = "racional@racional.cl";
+/** Real 2026-08-25 template facts (amounts anonymized to synthetic values), as ingest reads them. */
+function deposit(at: string, messageId: string) {
+  return brokerNotification({
+    kind: "deposit",
+    subject: "Tu depósito de CLP $1.000.000 está listo para invertir",
+    occurred_at: at,
+    message_id: messageId,
+    amount: 1_000_000,
+    currency: "clp",
+  });
+}
 
-// Real 2026-08-25 template excerpts (amounts anonymized to synthetic values).
-const CONVERSION_SNIPPET =
-  "*** Agregaste dólares a Billetera de Stocks *** Cristian, tus $1.086,49 dólares ya están en " +
-  "tránsito a tu cuenta de inversión en Estados Unidos, y te aparecerán en tu Poder de Compra " +
-  "( https://example.test ) para invertir en Stocks. Estos dólares los compraste con tu " +
-  "depósito de $1.000.000, a un precio promedio de $920,39 por dólar.";
-
-const BUY_SNIPPET_MARGIN_ERA =
-  "*** Tu orden de compra de Vitest Semis ETF (VITSOX) *** Acciones compradas Acciones " +
-  "vendidas 2.11462728 Precio promedio US$513.8 Monto comprado Monto vendido US$1086.49 " +
-  "Comisión transacción US$0 Horario Extendido Mercado";
+function conversion(at: string, messageId: string, clpAmount: number | null) {
+  return brokerNotification({
+    kind: "wallet_funded",
+    subject: "Agregaste USD $1.086,49 a tu Billetera",
+    occurred_at: at,
+    message_id: messageId,
+    amount: 1086.49,
+    currency: "usd",
+    clp_amount: clpAmount,
+  });
+}
 
 /** Find-or-create an account by import_key; cleanup only removes rows this test created. */
 function ensureAccount(importKey: string, name: string): { id: number; cleanup: () => void } {
@@ -35,42 +45,6 @@ function ensureAccount(importKey: string, name: string): { id: number; cleanup: 
   );
   return { id, cleanup: () => db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id) };
 }
-
-describe("brokerEmailParse — 2026-08 Racional templates", () => {
-  it("parses the Margin-era buy body with interleaved column headers", () => {
-    const buy = classifyBrokerEmail({
-      sender: RACIONAL,
-      subject: "Invertiste en Vitest Semis ETF (VITSOX)",
-      snippet: BUY_SNIPPET_MARGIN_ERA,
-      date: "2026-08-25T16:45:39.000Z",
-    });
-    expect(buy).toMatchObject({
-      kind: "buy",
-      is_transaction: true,
-      is_complete: true,
-      ticker: "VITSOX",
-      amount: 1086.49,
-      price: 513.8,
-      currency: "usd",
-    });
-    expect(buy.units).toBe("2.11462728");
-  });
-
-  it("reads the conversion's CLP leg from the body (digit-terminated, sentence comma excluded)", () => {
-    const funded = classifyBrokerEmail({
-      sender: RACIONAL,
-      subject: "Agregaste USD $1.086,49 a tu Billetera",
-      snippet: CONVERSION_SNIPPET,
-      date: "2026-08-25T16:44:14.000Z",
-    });
-    expect(funded).toMatchObject({
-      kind: "wallet_funded",
-      amount: 1086.49,
-      currency: "usd",
-      clp_amount: 1_000_000,
-    });
-  });
-});
 
 describe("planRacionalEmailMovements", () => {
   let checking: { id: number; cleanup: () => void };
@@ -105,25 +79,18 @@ describe("planRacionalEmailMovements", () => {
   function eventsFor(ymd: string) {
     const iso = `${ymd}T16:00:00.000Z`; // 12:00 Chile — same calendar day
     return [
-      classifyBrokerEmail({
-        sender: RACIONAL,
-        subject: "Tu depósito de CLP $1.000.000 está listo para invertir",
-        date: iso,
-        message_id: "<vitest-dep@test>",
-      }),
-      classifyBrokerEmail({
-        sender: RACIONAL,
-        subject: "Agregaste USD $1.086,49 a tu Billetera",
-        snippet: CONVERSION_SNIPPET,
-        date: iso,
-        message_id: "<vitest-conv@test>",
-      }),
-      classifyBrokerEmail({
-        sender: RACIONAL,
+      deposit(iso, "<vitest-dep@test>"),
+      conversion(iso, "<vitest-conv@test>", 1_000_000),
+      brokerNotification({
+        kind: "buy",
         subject: "Invertiste en Vitest Semis ETF (VITSOX)",
-        snippet: BUY_SNIPPET_MARGIN_ERA,
-        date: iso,
+        occurred_at: iso,
         message_id: "<vitest-buy@test>",
+        ticker: "VITSOX",
+        units: "2.11462728",
+        price: 513.8,
+        amount: 1086.49,
+        currency: "usd",
       }),
     ];
   }
@@ -178,27 +145,10 @@ describe("planRacionalEmailMovements", () => {
 
   it("requires manual entry when the conversion preview lacks the CLP leg", () => {
     const ymd = safeYmd();
-    const shortPreview = classifyBrokerEmail({
-      sender: RACIONAL,
-      subject: "Agregaste USD $1.086,49 a tu Billetera",
-      snippet: "tus $1.086,49 dólares ya están en tránsito", // pre-2026-08 short capture
-      date: `${ymd}T16:00:00.000Z`,
-      message_id: "<vitest-conv-short@test>",
-    });
+    // A pre-2026-08 short capture printed no «con tu depósito de $X»: no CLP leg to book.
+    const shortPreview = conversion(`${ymd}T16:00:00.000Z`, "<vitest-conv-short@test>", null);
     const conv = planRacionalEmailMovements([shortPreview]).find((p) => p.kind === "conversion")!;
     expect(conv.requires_manual ?? "").toContain("no CLP leg");
-
-    // The same mail seen again with a full preview wins over the short copy (scan accumulation).
-    const full = classifyBrokerEmail({
-      sender: RACIONAL,
-      subject: "Agregaste USD $1.086,49 a tu Billetera",
-      snippet: CONVERSION_SNIPPET,
-      date: `${ymd}T16:00:00.000Z`,
-      message_id: "<vitest-conv-short@test>",
-    });
-    const collapsed = planRacionalEmailMovements([shortPreview, full]);
-    expect(collapsed.filter((p) => p.kind === "conversion")).toHaveLength(1);
-    expect(collapsed.find((p) => p.kind === "conversion")!.requires_manual).toBeNull();
   });
 
   it("never books a dividend from mail — both templates are nudges for the crawl", () => {
@@ -216,21 +166,25 @@ describe("planRacionalEmailMovements", () => {
     try {
       // The 2026-09-18 template states the GROSS dividend (Racional credits the net after the
       // 15% US withholding), so even with a held ticker and a subject amount nothing is planned.
-      const grossOnly = classifyBrokerEmail({
-        sender: RACIONAL,
+      const grossOnly = brokerNotification({
+        kind: "dividend",
         subject: "Recibiste USD $2,75 en dividendos de VTDIV",
-        date: iso,
+        occurred_at: iso,
         message_id: "<vitest-div@test>",
+        ticker: "VTDIV",
+        gross_amount: 2.75,
+        currency: "usd",
       });
-      expect(grossOnly).toMatchObject({ kind: "dividend", gross_amount: 2.75, amount: null, is_complete: false });
       expect(planRacionalEmailMovements([grossOnly])).toEqual([]);
 
       // The old amount-less template is not planned either.
-      const nudge = classifyBrokerEmail({
-        sender: RACIONAL,
+      const nudge = brokerNotification({
+        kind: "dividend",
         subject: "Recibiste dividendos de VTDIV 💸",
-        date: iso,
+        occurred_at: iso,
         message_id: "<vitest-div-old@test>",
+        ticker: "VTDIV",
+        currency: "usd",
       });
       expect(planRacionalEmailMovements([nudge])).toEqual([]);
     } finally {
@@ -248,12 +202,7 @@ describe("planRacionalEmailMovements", () => {
       d = chileCalendarAddDays(d, 1);
     }
     const dep = planRacionalEmailMovements([
-      classifyBrokerEmail({
-        sender: RACIONAL,
-        subject: "Tu depósito de CLP $1.000.000 está listo para invertir",
-        date: `${d}T16:00:00.000Z`,
-        message_id: "<vitest-dep-eom@test>",
-      }),
+      deposit(`${d}T16:00:00.000Z`, "<vitest-dep-eom@test>"),
     ]).find((p) => p.kind === "deposit")!;
     expect(dep.requires_manual).toBeNull();
     expect(dep.occurred_on).toBe(d);

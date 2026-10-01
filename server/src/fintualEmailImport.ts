@@ -1,5 +1,6 @@
 /**
- * Fintual notification e-mails → ledger movements.
+ * Fintual notifications (`broker.notifications`, read from Fintual's e-mails by ingest) →
+ * ledger movements.
  *
  * Fintual is e-mail-only here: there is no scraper, and its notifications describe a movement
  * completely (the subject carries the amount AND the share count), so this replaces the manual
@@ -19,19 +20,14 @@ import { accountIdForEquityTicker } from "./accountEquityTicker.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
-import { chileWallClockAt } from "./chileDate.js";
 import { recordSyntheticRetiroTransfer } from "./fintualSyntheticRetiros.js";
 import {
   findUnpairedCheckingCredit,
   fintualGoalAccountId,
-  fintualGoalFromWithdrawalSubject,
   promoteCheckingCreditToTransfer,
 } from "./fintualWithdrawalPairing.js";
-import {
-  collapseBrokerEmailEventsByMessageId,
-  normalizeSubject,
-  type BrokerEmailEvent,
-} from "./brokerEmailParse.js";
+import type { BrokerNotification } from "nw-tracker-contracts";
+import { brokerNotificationIsBookable, notificationChileYmd } from "./brokerNotifications.js";
 import { syntheticRetiroMovementIdForMessageId } from "./fintualSyntheticRetiros.js";
 
 /** Same tolerance as `fintualCertImport.CERT_MATCH_WINDOW_DAYS`, for the same reason. */
@@ -61,7 +57,8 @@ export function fintualUsdAccountId(): number {
  * Fund name → ticker, for the buy e-mails.
  *
  * A purchase subject names the fund ("… acciones de State Street SPDR S&P 500 ETF Trust") while
- * a dividend subject names the ticker. Reinvestments are resolved by pairing with their
+ * a dividend subject names the ticker (the feeder sends the name as `fund_name`). Reinvestments
+ * are resolved by pairing with their
  * dividend (below), which needs no table at all; this map only covers ordinary purchases, and
  * an unknown fund is reported rather than guessed — booking shares against the wrong holding
  * is not a recoverable mistake.
@@ -73,12 +70,9 @@ const FUND_NAME_TICKERS: [RegExp, string][] = [
   [/ProShares.*Crude|OILK/i, "OILK"],
 ];
 
-export function tickerFromFundName(subject: string): string | null {
-  // Normalise here too, not just in the classifier: the real subject carries "S&amp;P 500", so
-  // a caller passing the raw header would silently get no match.
-  const text = normalizeSubject(subject);
+export function tickerFromFundName(fundName: string): string | null {
   for (const [re, ticker] of FUND_NAME_TICKERS) {
-    if (re.test(text)) return ticker;
+    if (re.test(fundName)) return ticker;
   }
   return null;
 }
@@ -88,9 +82,7 @@ export function tickerFromFundName(subject: string): string | null {
  * are UTC, and a 23:06 Chile mail (the 2026-09-17 LIN dividend) is already the next day in UTC.
  * Same rule as the Racional importer.
  */
-function eventChileYmd(event: BrokerEmailEvent): string {
-  return chileWallClockAt(new Date(event.occurred_at)).ymd;
-}
+const eventChileYmd = notificationChileYmd;
 
 function isoAddDays(iso: string, days: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -111,7 +103,7 @@ export type FintualPlannedMovement = {
    * as `superseded_by_transfer` and stamp it confirmed.
    */
   synthesized?: boolean;
-  source: BrokerEmailEvent;
+  source: BrokerNotification;
   occurred_on: string;
   from_account_id: number | null;
   to_account_id: number | null;
@@ -139,15 +131,14 @@ const findNearbyTransfers = db.prepare(
  * holding without needing to recognise the fund's marketing name.
  */
 export function pairedDividendTicker(
-  event: BrokerEmailEvent,
-  batch: readonly BrokerEmailEvent[]
+  event: BrokerNotification,
+  batch: readonly BrokerNotification[]
 ): string | null {
   if (event.kind !== "buy") return null;
   const day = eventChileYmd(event);
   const match = batch.find(
     (e) =>
       e.kind === "dividend" &&
-      e.broker === "fintual" &&
       e.ticker != null &&
       e.amount != null &&
       event.amount != null &&
@@ -158,8 +149,8 @@ export function pairedDividendTicker(
 }
 
 export function planFintualEmailMovement(
-  event: BrokerEmailEvent,
-  batch: readonly BrokerEmailEvent[]
+  event: BrokerNotification,
+  batch: readonly BrokerNotification[]
 ): FintualPlannedMovement {
   const occurred_on = eventChileYmd(event);
   const base = {
@@ -194,7 +185,7 @@ export function planFintualEmailMovement(
       // DIFFERENT instrument that happens to cost the same, the inference points at the wrong
       // holding. So name first, pairing only when the fund is unrecognised, and a disagreement
       // between the two is refused rather than resolved by precedence.
-      const named = tickerFromFundName(event.subject);
+      const named = event.fund_name ? tickerFromFundName(event.fund_name) : null;
       const paired = pairedDividendTicker(event, batch);
       if (named && paired && named !== paired) {
         return {
@@ -208,7 +199,7 @@ export function planFintualEmailMovement(
       if (!ticker) {
         return {
           ...base,
-          requires_manual: `cannot tell which holding "${event.subject}" is — add its fund name to FUND_NAME_TICKERS`,
+          requires_manual: `cannot tell which holding "${event.subject}" is — add its fund name (${event.fund_name ?? "none stated"}) to FUND_NAME_TICKERS`,
         };
       }
       return {
@@ -225,21 +216,21 @@ export function planFintualEmailMovement(
       // first. Credit already imported → it is PROMOTED into the transfer (never a second row).
       // Credit not imported yet → the transfer is SYNTHESIZED from the mail below, and the
       // checking importers skip the bank's later listing as `superseded_by_transfer`.
-      const goal = fintualGoalFromWithdrawalSubject(event.subject);
+      const goal = event.goal_name;
       const goalAccountId = goal ? fintualGoalAccountId(goal) : null;
       if (!goalAccountId) {
         return {
           ...base,
           requires_manual: goal
             ? `no Fintual goal account named "${goal}" — cannot tell which goal paid`
-            : "cannot read the goal from the subject — link it in /panel/mirror-pairs",
+            : "the notification names no goal — link it in /panel/mirror-pairs",
         };
       }
       // A retiro to the Fintual balance («quedaron disponibles para invertir en Fintual»,
       // 2026-09-29): no bank leg exists yet, so the transfer lands in the Fintual CLP balance
       // account, in Efectivo like the goal. If Fintual wires it back after 7 days, that
       // «Devolvimos tu saldo» mail and its bank credit are a separate movement.
-      if (event.kind === "withdrawal_paid" && event.paid_to === "fintual") {
+      if (event.kind === "withdrawal_paid" && event.paid_to === "broker_balance") {
         if (!event.units) {
           return {
             ...base,
@@ -257,10 +248,8 @@ export function planFintualEmailMovement(
       // This exact mail already produced a synthesized transfer: the strongest possible
       // duplicate evidence, and checked first because `fintual_synthetic_retiro_transfers`
       // is UNIQUE on message_id — reaching the insert again would abort the whole batch.
-      if (event.message_id) {
-        const synthesized = syntheticRetiroMovementIdForMessageId(event.message_id);
-        if (synthesized != null) return { ...base, duplicate_of: synthesized };
-      }
+      const synthesized = syntheticRetiroMovementIdForMessageId(event.message_id);
+      if (synthesized != null) return { ...base, duplicate_of: synthesized };
       // Already reconciled on an earlier run (or by hand): the transfer this e-mail describes is
       // in the ledger, so it is a duplicate rather than something still waiting for its bank leg.
       const existing = findNearbyTransfers.all(
@@ -357,7 +346,7 @@ export function markFintualDuplicates(
 /**
  * Two rows in one batch that would promote the SAME checking credit cannot both be right: the
  * first rewrites the row into a transfer and the second's UPDATE matches nothing and throws,
- * rolling back the whole batch. The message-id collapse removes the duplicated-mail cause;
+ * rolling back the whole batch. Unique message ids per payload remove the duplicated-mail cause;
  * this guards the remaining one — two distinct retiro mails whose only candidate credit is
  * one and the same row — by keeping the first and sending the rest to a human.
  */
@@ -382,12 +371,11 @@ function refusePromoteCollisions(
   });
 }
 
+/** Plans every bookable notification; the rest are nudges the caller reports. */
 export function planFintualEmailBatch(
-  events: readonly BrokerEmailEvent[]
+  events: readonly BrokerNotification[]
 ): FintualPlannedMovement[] {
-  const fintual = collapseBrokerEmailEventsByMessageId(
-    events.filter((e) => e.broker === "fintual" && e.is_transaction && e.is_complete)
-  );
+  const fintual = events.filter(brokerNotificationIsBookable);
   // Oldest first so the ledger reads chronologically when applied.
   const ordered = [...fintual].sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
   return refusePromoteCollisions(
@@ -432,7 +420,7 @@ export function applyFintualEmailMovements(planned: readonly FintualPlannedMovem
         // miss cannot synthesize the same mail twice — this insert would abort the transaction.
         recordSyntheticRetiroTransfer(
           Number(info.lastInsertRowid),
-          p.source.message_id ?? `no-message-id|${p.occurred_on}|${p.amount}`,
+          p.source.message_id,
           p.amount,
           p.occurred_on
         );

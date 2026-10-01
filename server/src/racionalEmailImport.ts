@@ -1,5 +1,6 @@
 /**
- * Racional movements from notification e-mails — the incremental path that needs no browser.
+ * Racional movements from its notifications (`broker.notifications`, read from Racional's
+ * e-mails by ingest) — the incremental path that needs no browser.
  *
  * Three mail kinds become ledger rows (all others report only):
  * - «Tu depósito de CLP $X está listo para invertir» → checking → Racional CLP transfer. The
@@ -29,15 +30,12 @@
  * equal twins are the known (rare) limitation and would report as duplicates for manual entry.
  */
 import { accountsWithEquityTicker } from "./accountEquityTicker.js";
-import { chileWallClockAt } from "./chileDate.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { racionalCashAccountId } from "./racionalMovementsImport.js";
-import {
-  collapseBrokerEmailEventsByMessageId,
-  type BrokerEmailEvent,
-} from "./brokerEmailParse.js";
+import type { BrokerNotification } from "nw-tracker-contracts";
+import { notificationChileYmd } from "./brokerNotifications.js";
 
 /** Same sanity band as the CC divisas mirror tier: an implied CLP/USD far outside is a parse bug. */
 const FX_SANITY_MIN_CLP_PER_USD = 300;
@@ -48,7 +46,7 @@ const AMOUNT_TOLERANCE = 0.005;
 const CHECKING_IMPORT_KEY = "import:excel|key=cuenta_corriente";
 
 export type RacionalEmailPlannedMovement = {
-  source: BrokerEmailEvent;
+  source: BrokerNotification;
   kind: "deposit" | "conversion" | "buy";
   occurred_on: string;
   amount: number;
@@ -81,9 +79,7 @@ function tryRacionalCashAccountId(currency: "clp" | "usd"): number | null {
   }
 }
 
-function mailChileYmd(event: BrokerEmailEvent): string {
-  return chileWallClockAt(new Date(event.occurred_at)).ymd;
-}
+const mailChileYmd = notificationChileYmd;
 
 const stmtSameDayTransfers = db.prepare(
   `SELECT id, amount, counter_amount FROM movements
@@ -133,7 +129,7 @@ function racionalEquityBucketSlug(racionalUsdId: number): string | null {
   return rows.length === 1 ? rows[0]!.slug : null;
 }
 
-function planDeposit(event: BrokerEmailEvent): RacionalEmailPlannedMovement {
+function planDeposit(event: BrokerNotification): RacionalEmailPlannedMovement {
   const occurredOn = mailChileYmd(event);
   const base: RacionalEmailPlannedMovement = {
     source: event,
@@ -195,7 +191,7 @@ function planDeposit(event: BrokerEmailEvent): RacionalEmailPlannedMovement {
   return base;
 }
 
-function planConversion(event: BrokerEmailEvent): RacionalEmailPlannedMovement {
+function planConversion(event: BrokerNotification): RacionalEmailPlannedMovement {
   const occurredOn = mailChileYmd(event);
   const base: RacionalEmailPlannedMovement = {
     source: event,
@@ -250,7 +246,7 @@ function planConversion(event: BrokerEmailEvent): RacionalEmailPlannedMovement {
   return base;
 }
 
-function planBuy(event: BrokerEmailEvent): RacionalEmailPlannedMovement {
+function planBuy(event: BrokerNotification): RacionalEmailPlannedMovement {
   const occurredOn = mailChileYmd(event);
   const base: RacionalEmailPlannedMovement = {
     source: event,
@@ -322,18 +318,12 @@ function planBuy(event: BrokerEmailEvent): RacionalEmailPlannedMovement {
   return base;
 }
 
-/** Plan the writable Racional events of a scan batch (mail order — deposit → conversion → buy). */
+/** Plan the writable Racional notifications (mail order — deposit → conversion → buy). */
 export function planRacionalEmailMovements(
-  events: readonly BrokerEmailEvent[]
+  events: readonly BrokerNotification[]
 ): RacionalEmailPlannedMovement[] {
   const out: RacionalEmailPlannedMovement[] = [];
-  // Scan files accumulate and overlap; see collapseBrokerEmailEventsByMessageId. A short-preview
-  // copy of a conversion mail would otherwise report `requires_manual` forever next to its
-  // fully-parsed twin.
-  const racional = collapseBrokerEmailEventsByMessageId(
-    events.filter((e) => e.broker === "racional" && e.is_transaction)
-  );
-  const sorted = racional.sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
+  const sorted = [...events].sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
   for (const e of sorted) {
     if (e.kind === "deposit") out.push(planDeposit(e));
     else if (e.kind === "wallet_funded") out.push(planConversion(e));
