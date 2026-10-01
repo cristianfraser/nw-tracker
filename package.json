@@ -42,7 +42,7 @@
     "check:santander-catchup": "npm run --silent check:santander-catchup -w nw-tracker-ingest --",
     "fetch:fintual-docs": "npm run fetch:fintual-docs -w nw-tracker-ingest --",
     "import:santander-movements": "npm run import:santander-movements -w nw-tracker-ingest --",
-    "import:santander-statements": "npm run import:santander-statements -w nw-tracker-server --",
+    "import:santander-statements": "npm run import:santander-statements -w nw-tracker-ingest --",
     "import:lider-movements": "npm run import:lider-movements -w nw-tracker-server --",
     "import:santander-receipts": "npm run import:santander-receipts -w nw-tracker-ingest --",
     "convert:cc-payment-mirrors": "npm run convert:cc-payment-mirrors -w nw-tracker-server --",
