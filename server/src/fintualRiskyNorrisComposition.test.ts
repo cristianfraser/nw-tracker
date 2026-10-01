@@ -59,6 +59,14 @@ describe("parseManagedFundPositionsBody", () => {
     expect(parsed.etf_positions).toHaveLength(2);
   });
 
+  it("accepts an empty fx forward sleeve and throws on a filled one", () => {
+    const base = { date: "2026-09-29", etf_positions: FIXTURE.etf_positions, fund_positions: [] };
+    expect(parseManagedFundPositionsBody({ ...base, fx_forward_contract_positions: [] }).date).toBe("2026-09-29");
+    expect(() =>
+      parseManagedFundPositionsBody({ ...base, fx_forward_contract_positions: [{ weight: 0.1 }] })
+    ).toThrow(/not empty/);
+  });
+
   it("throws on unexpected top-level fields", () => {
     expect(() =>
       parseManagedFundPositionsBody({
