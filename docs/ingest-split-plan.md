@@ -9,7 +9,7 @@ server), switched on 2026-09-30 22:06 (`ingest/switch-schedule.sh to-server`; `t
 reverts). **Phase 3 in
 progress**: 1. checking «últimos movimientos» xlsx done (`bank_account.movements`, uploads via the
 service's `/parse`); 2. Santander payment receipts done (`card.payment_receipt`); 3. broker
-e-mails done (`broker.notifications`); 4. Racional crawl done (`broker.movements`). AFP UNO's certificates go through `pension_account.certificates` (2026-10-01), read nightly from the 10th until a clean import.
+e-mails done (`broker.notifications`); 4. Racional crawl done (`broker.movements`). 5. Santander statement JSON done (`card.statement`). AFP UNO's certificates go through `pension_account.certificates` (2026-10-01), read nightly from the 10th until a clean import.
 
 ## Goal
 
@@ -217,7 +217,8 @@ In rough order (simplest separation first):
    the server.
 4. Racional crawl + dividends file. **Done** — `broker.movements`; ingest decodes the read and keeps
    its crawl cursor, the server keeps its read coverage (`broker_read_coverage`).
-5. Santander statement JSON (`santanderStatementParse`).
+5. Santander statement JSON (`santanderStatementParse`). **Done** — `card.statement`; decoding, pairing
+   and archiving in ingest, ownership / cross-check / write in the server.
 6. CC statement PDFs: Python parser, parse cache, per-PDF JSON, organizer, qpdf/OCR →
    ingest; merge import, reconcile gates, traspaso relink stay.
 7. Checking and cuenta vista cartolas (Python + TS).

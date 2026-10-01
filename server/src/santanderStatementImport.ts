@@ -1,7 +1,8 @@
 /**
  * Santander statement JSON → ledger write path («JSON leads, PDF import guarded»).
  *
- * Builds `CcStatementCsvRecord` rows from the fetched statement JSON and writes them through
+ * Builds `CcStatementCsvRecord` rows from a `card.statement` (the fetched statement JSON, decoded
+ * by ingest: `ingest/src/santander/statementJson.ts`) and writes them through
  * the SAME pipeline as PDF statements (`mergeCcAccountFromParsedRows`) — reconcile gate,
  * installment ledger, web-paste supersede, traspaso links and valuation re-sync included. A
  * JSON statement is a real statement (it counts toward facturación close and open-bucket
@@ -13,11 +14,11 @@
  * `mergeCcAccountFromParsedRows` (drops PDF records for JSON-owned closes).
  *
  * Field mapping was validated empirically against the 2026-07-23 facturación (card ·0901,
- * statements 321/322) — see `santanderStatementParse.ts` for the per-field traps. Header
+ * statements 321/322) — see `ingest/src/santander/statementJson.ts` for the per-field traps. Header
  * mapping (national RESPUESTA → statement columns):
  *   - monto_facturado ← DeudaTotalFact (9xx.xxx matched the PDF-imported value exactly; it
  *     also equals TotalCompras + TotalCargosAut + TotalCargos on the same feed)
- *   - monto_pagado_anterior ← −TotalPagos, dated by the CodTxs 067 row (exact date — better
+ *   - monto_pagado_anterior ← −TotalPagos, dated by the payment row (CodTxs 067) (exact date — better
  *     than the PDF parser's single-row-match heuristic); the 067 line itself is dropped like
  *     the PDF parser does, UNLESS dropping it would leave the statement empty (dormant
  *     payment-only months keep it as a negative line, sign flipped from the feed's unsigned
@@ -28,11 +29,7 @@
  *   - The international RESPUESTA is all nulls (verified on an active card), so USD
  *     statements carry line data only; `facturadoFromStatement` falls back to line sums.
  */
-import {
-  NATIONAL_COD_TXS,
-  type SantanderStatementLine,
-  type SantanderStatementHeader,
-} from "./santanderStatementParse.js";
+import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { padCcStatementDate, santanderJsonSourcePdf } from "./ccStatementJsonSource.js";
 import {
@@ -46,10 +43,6 @@ import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
 import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import crypto from "node:crypto";
-
-/** National transaction codes this importer understands; an unknown code means an unknown
- * sign convention (amounts arrive unsigned), so the import must refuse rather than guess. */
-const KNOWN_NATIONAL_COD_TXS = new Set<string>(Object.values(NATIONAL_COD_TXS));
 
 function sha1Hex16(payload: string): string {
   return crypto.createHash("sha1").update(payload).digest("hex").slice(0, 16);
@@ -120,53 +113,39 @@ export type SantanderStatementRecordsCtx = {
  */
 export function buildSantanderStatementRecords(
   currency: "clp" | "usd",
-  lines: SantanderStatementLine[],
-  header: SantanderStatementHeader | null,
+  lines: readonly CardStatementLine[],
+  totals: Pick<CardStatementCurrency, "billed_total" | "payments_total"> | null,
   ctx: SantanderStatementRecordsCtx
 ): CcStatementCsvRecord[] {
   const sourcePdf = santanderJsonSourcePdf(currency, ctx.statementDate);
 
-  if (currency === "clp") {
-    for (const line of lines) {
-      if (!KNOWN_NATIONAL_COD_TXS.has(line.cod_txs)) {
-        throw new Error(
-          `Santander national statement ${ctx.statementDate}: unknown CodTxs "${line.cod_txs}" ` +
-            `(${line.merchant} ${line.amount_clp}) — map its sign convention before importing`
-        );
-      }
-    }
-  }
-
-  const paymentRows = currency === "clp" ? lines.filter((l) => l.cod_txs === NATIONAL_COD_TXS.PAYMENT) : [];
+  const paymentRows = currency === "clp" ? lines.filter((l) => l.kind === "payment") : [];
   const nonPaymentRows = lines.filter((l) => !paymentRows.includes(l));
-  // Payment-only months (dormant cards) keep the 067 row as a negative line — a statement
+  // Payment-only months (dormant cards) keep the payment row as a negative line — a statement
   // with zero rows would not be written at all, and the owed walk's covered-check prevents
   // double counting against the dated header.
   const keepPaymentRowsAsLines = nonPaymentRows.length === 0 && paymentRows.length > 0;
   const lineRows = keepPaymentRowsAsLines ? lines : nonPaymentRows;
 
-  const totalPagos = header?.total_pagos ?? null;
+  const totalPagos = totals?.payments_total ?? null;
   if (currency === "clp" && paymentRows.length > 0) {
-    const sum = paymentRows.reduce((acc, l) => acc + (l.amount_clp ?? 0), 0);
+    const sum = paymentRows.reduce((acc, l) => acc - l.amount, 0);
     if (totalPagos == null || Math.abs(sum - totalPagos) > 1) {
       throw new Error(
-        `Santander national statement ${ctx.statementDate}: payment rows sum ${sum} but header ` +
-          `TotalPagos is ${totalPagos ?? "missing"} — refusing to fold them into the header`
+        `Santander national statement ${ctx.statementDate}: payment rows sum ${sum} but the stated ` +
+          `payments total (TotalPagos) is ${totalPagos ?? "missing"} — refusing to fold them into the header`
       );
     }
   }
-  const pagadoDate =
-    paymentRows.length === 1 ? parseDdMmYyToIso(paymentRows[0]!.transaction_date) : null;
+  const pagadoDate = paymentRows.length === 1 ? paymentRows[0]!.transaction_date : null;
+  const billed = totals?.billed_total ?? null;
 
   const headerCols: Record<string, string> = {
     statement_saldo_anterior: "",
     statement_abono: "",
     statement_compras_cargos: "",
     statement_deuda_total: "",
-    statement_monto_facturado:
-      currency === "clp" && header?.deuda_total != null && header.deuda_total > 0
-        ? String(header.deuda_total)
-        : "",
+    statement_monto_facturado: currency === "clp" && billed != null && billed > 0 ? String(billed) : "",
     statement_monto_pagado_anterior:
       currency === "clp" && totalPagos != null && totalPagos > 0 ? String(-totalPagos) : "",
     statement_monto_pagado_anterior_date: currency === "clp" ? (pagadoDate ?? "") : "",
@@ -179,25 +158,11 @@ export function buildSantanderStatementRecords(
   const occurrence = new Map<string, number>();
   const records: CcStatementCsvRecord[] = [];
   for (const line of lineRows) {
-    const isPaymentLine = currency === "clp" && line.cod_txs === NATIONAL_COD_TXS.PAYMENT;
-    const isCreditNote = currency === "clp" && line.cod_txs === NATIONAL_COD_TXS.CREDIT_NOTE;
-    // National amounts arrive unsigned; payments and credit notas are the known-negative codes
-    // (the nota's sign is proven by the header identity — see NATIONAL_COD_TXS.CREDIT_NOTE).
-    const amountClp =
-      line.amount_clp == null
-        ? null
-        : isPaymentLine || isCreditNote
-          ? -Math.abs(line.amount_clp)
-          : line.amount_clp;
-
-    const dateIso =
-      parseDdMmYyToIso(line.transaction_date) ?? parseDdMmYyToIso(line.posting_date ?? "");
-    if (!dateIso) {
-      throw new Error(
-        `Santander statement ${ctx.statementDate}: line "${line.merchant}" has no parseable date`
-      );
-    }
-    const amountKey = currency === "usd" ? (line.amount_usd ?? 0).toFixed(2) : String(amountClp ?? 0);
+    // The record's amount for a cuota line is the purchase's total, its cuota rides apart.
+    const amountClp = currency === "clp" ? (line.installment ? line.installment.total_amount : line.amount) : null;
+    const amountUsd = currency === "usd" ? line.amount : null;
+    const dateIso = line.transaction_date;
+    const amountKey = currency === "usd" ? (amountUsd ?? 0).toFixed(2) : String(amountClp ?? 0);
     const base = `json|${sha1Hex16(
       `${ctx.cardGroup}|${currency}|${dateIso}|${normMerchantForKey(line.merchant)}|${amountKey}`
     )}`;
@@ -206,16 +171,13 @@ export function buildSantanderStatementRecords(
     const dedupeKey = n === 0 ? base : `${base}#dup${n}`;
 
     const canonical =
-      line.installment_flag &&
-      line.amount_clp != null &&
-      line.nro_cuota_total != null &&
-      line.nro_cuota_total > 0
+      line.installment && currency === "clp"
         ? resolveJsonCuotaCanonicalRowId(
             ctx.accountId,
             ctx.cardGroup,
             dateIso,
-            line.amount_clp,
-            line.nro_cuota_total,
+            line.installment.total_amount,
+            line.installment.count,
             line.merchant
           )
         : "";
@@ -231,35 +193,41 @@ export function buildSantanderStatementRecords(
       card_product: "",
       parser_layout: currency === "usd" ? "international_usd" : "compact",
       currency,
-      installment_flag: line.installment_flag ? "true" : "false",
-      transaction_date: line.transaction_date,
-      posting_date: line.posting_date ?? "",
+      installment_flag: line.installment ? "true" : "false",
+      transaction_date: isoToCsvDate(line.transaction_date),
+      posting_date: line.posting_date ? isoToCsvDate(line.posting_date) : "",
       place: line.place ?? "",
       merchant: line.merchant,
       description_merged: "",
       country: line.country ?? "",
-      amount_orig: line.amount_orig != null ? ccOriginAmountCsvCell(line.amount_orig) : "",
+      amount_orig: line.origin_amount != null ? ccOriginAmountCsvCell(line.origin_amount) : "",
       foreign_currency: "",
       amount_clp: amountClp != null ? String(amountClp) : "",
-      amount_usd: line.amount_usd != null ? line.amount_usd.toFixed(2) : "",
-      nro_cuota_current: line.nro_cuota_current != null ? String(line.nro_cuota_current) : "",
-      nro_cuota_total: line.nro_cuota_total != null ? String(line.nro_cuota_total) : "",
-      valor_cuota_mensual_clp:
-        line.valor_cuota_mensual_clp != null ? String(line.valor_cuota_mensual_clp) : "",
+      amount_usd: amountUsd != null ? amountUsd.toFixed(2) : "",
+      nro_cuota_current: line.installment ? String(line.installment.number) : "",
+      nro_cuota_total: line.installment ? String(line.installment.count) : "",
+      valor_cuota_mensual_clp: line.installment ? String(line.installment.cuota_amount) : "",
       valor_cuota_mensual_usd: "",
       interest_rate_text: "",
       tipo_cuota: "",
       authorization_code: line.authorization_code ?? "",
-      origin_card_last4: line.origin_card_last4 ?? "",
+      origin_card_last4: line.card_last4 ?? "",
       dedupe_key: dedupeKey,
       row_id: `json:${dedupeKey}`,
       canonical_row_id: canonical,
       is_duplicate_across_statements: "false",
-      raw_line: line.raw_line,
+      raw_line: line.raw_text,
       ...headerCols,
     });
   }
   return records;
+}
+
+/** `2026-07-23` → `23/7/2026`, the unpadded form statement CSV records carry for line dates. */
+export function isoToCsvDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) throw new Error(`Expected an ISO date, got "${iso}"`);
+  return `${Number(m[3])}/${Number(m[2])}/${m[1]}`;
 }
 
 const listStatementClosesForCurrency = db.prepare(
@@ -345,7 +313,7 @@ export function assertNoCardRoutingConflict(
 export function usdStatementIsStaleEcho(
   accountId: number,
   statementDate: string,
-  lines: SantanderStatementLine[]
+  lines: readonly CardStatementLine[]
 ): boolean {
   if (lines.length === 0) return false;
   // The target close's own lines are excluded so a JSON-owned rewrite never reads as an echo.
@@ -370,7 +338,7 @@ export function usdStatementIsStaleEcho(
   );
   return lines.every((line) =>
     seen.has(
-      `${parseDdMmYyToIso(line.transaction_date)}|${normMerchantForKey(line.merchant)}|${Math.abs(line.amount_usd ?? 0).toFixed(2)}`
+      `${line.transaction_date}|${normMerchantForKey(line.merchant)}|${Math.abs(line.amount).toFixed(2)}`
     )
   );
 }

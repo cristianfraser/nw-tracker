@@ -75,7 +75,6 @@
     "parse:payroll-liquidaciones": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-payroll-liquidaciones.py",
     "import:payroll-liquidaciones": "tsx scripts/import-payroll-liquidaciones.ts",
     "db:verify-backup": "tsx scripts/verify-db-backup.ts",
-    "import:santander-statements": "tsx scripts/import-santander-statements.ts",
     "import:lider-movements": "tsx scripts/import-lider-movements.ts",
     "check:synthetic-cc-payments": "tsx scripts/check-synthetic-cc-payments.ts",
     "convert:cc-payment-mirrors": "tsx scripts/convert-cc-payment-mirrors.ts",

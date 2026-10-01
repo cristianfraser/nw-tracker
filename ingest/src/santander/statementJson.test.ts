@@ -1,96 +1,185 @@
 import { describe, expect, it } from "vitest";
 import {
   assembleSantanderStatementBatch,
-  pairStatementLines,
+  internationalRowToLine,
+  nationalHeader,
+  nationalRowToLine,
+  originCardLast4FromPan,
+  parseSantanderFixed,
   parseSantanderStatementBody,
+  santanderIsoDate,
   selectSantanderStatementGroupsToArchive,
+  statementGroupPayload,
   type ParsedSantanderStatement,
+  type SantanderInternationalRow,
+  type SantanderNationalRow,
   type SantanderStatementGroupOutcomes,
-} from "./santanderStatementReport.js";
+} from "./statementJson.js";
 
-describe("pairStatementLines", () => {
-  it("pairs exact merchant+amount first, then a leftover by amount and merchant prefix", () => {
-    const pairing = pairStatementLines(
-      [
-        { merchant: "MERPAGO*CABIFY", amount: 9851, cod_txs: "001" },
-        // The bank's short name; the PDF layout stored it with the glued charge-type column.
-        { merchant: "SEG AUTO SANTANDER", amount: 29408, cod_txs: "002" },
-      ],
-      [
-        { merchant: "MERPAGO*CABIFY", amount: 9851 },
-        { merchant: "SEG AUTO SANTANDER COMPRAS P.A.T.", amount: 29408 },
-      ]
-    );
-    expect(pairing.matched).toBe(2);
-    expect(pairing.matched_by_prefix).toBe(1);
-    expect(pairing.only_in_json).toEqual([]);
-    expect(pairing.only_in_db).toEqual([]);
+function nationalRow(overrides: Partial<SantanderNationalRow> = {}): SantanderNationalRow {
+  return {
+    Pan: "250905#420050000",
+    NombreComercio: "VITEST SHOP",
+    FechaTxs: "2026-07-01",
+    MontoTxs: "0000023270",
+    NumeroCuotas: "00",
+    TotalCuotas: "00",
+    MontoCuota: "0000000000",
+    TipoCuota: "00",
+    TasaCompraCuotas: "0000000",
+    CodTxs: "000",
+    Ciudad: "SANTIAGO",
+    Microfilm: "24073006182025490901358",
+    GlosaRubroCom: "TIT",
+    ...overrides,
+  };
+}
+
+function internationalRow(overrides: Partial<SantanderInternationalRow> = {}): SantanderInternationalRow {
+  return {
+    Pan: "250905#420050000",
+    NombreComercio: "VITEST CLOUD",
+    FechaTxs: "2026-07-04",
+    FechaProceso: "2026-07-06",
+    MontoOrigen: "00000012331+",
+    MontoTransaccion: "00000012331+",
+    CodPais: "USA",
+    CiudadComercio: null,
+    NumeroReferencia: "24692166185401911234374",
+    CodTxs: "2000",
+    ...overrides,
+  };
+}
+
+describe("parseSantanderFixed", () => {
+  it("reads national amounts as integer pesos", () => {
+    expect(parseSantanderFixed("0000023270", 0)).toBe(23270);
+    expect(parseSantanderFixed("000012720000", 0)).toBe(12720000);
   });
 
-  it("never pairs by prefix across a different amount or a longer word", () => {
-    const pairing = pairStatementLines(
-      [{ merchant: "SEG", amount: 29408, cod_txs: "002" }],
-      [
-        { merchant: "SEGURO HOGAR", amount: 29408 }, // «SEG» is not a whole-word prefix of «SEGURO»
-        { merchant: "SEG AUTO SANTANDER COMPRAS P.A.T.", amount: 29409 }, // amount differs
-      ]
-    );
-    expect(pairing.matched).toBe(0);
-    expect(pairing.only_in_json).toHaveLength(1);
-    expect(pairing.only_in_db).toHaveLength(2);
+  it("reads international amounts with two implied decimals", () => {
+    expect(parseSantanderFixed("00000001414+", 2)).toBeCloseTo(14.14, 2);
+    expect(parseSantanderFixed("00001299000+", 2)).toBeCloseTo(12990, 2);
   });
 
-  it("pairs a merchant that differs only in rendering: terminal code, punctuation", () => {
-    const pairing = pairStatementLines(
-      [
-        // The JSON keeps the acquirer's terminal code the PDF parse drops…
-        { merchant: "VITEST KIOSCO 1234", amount: 12.5, cod_txs: "001" },
-        // …and prints «]» where the PDF prints «!».
-        { merchant: "VITEST ABC] 12 CENTRO", amount: 1500, cod_txs: "001" },
-      ],
-      [
-        { merchant: "VITEST KIOSCO", amount: 12.5 },
-        { merchant: "VITEST ABC! 12 CENTRO", amount: 1500 },
-      ]
-    );
-    expect(pairing.matched).toBe(2);
-    expect(pairing.matched_by_prefix).toBe(0);
-    expect(pairing.matched_by_rendering).toBe(2);
-    expect(pairing.only_in_json).toEqual([]);
-    expect(pairing.only_in_db).toEqual([]);
+  it("honours a trailing minus as the direction", () => {
+    expect(parseSantanderFixed("00000025813-", 2)).toBeCloseTo(-258.13, 2);
   });
 
-  it("never pairs by rendering across a different amount or different letters", () => {
-    const pairing = pairStatementLines(
-      [
-        { merchant: "VITEST KIOSCO 1234", amount: 12.5, cod_txs: "001" },
-        { merchant: "VITEST KIOSCOS", amount: 20, cod_txs: "001" },
-      ],
-      [
-        { merchant: "VITEST KIOSCO", amount: 12.51 }, // amount differs
-        { merchant: "VITEST KIOSCO", amount: 20 }, // «KIOSCOS» is another name
-      ]
-    );
-    expect(pairing.matched).toBe(0);
-    expect(pairing.only_in_json).toHaveLength(2);
-    expect(pairing.only_in_db).toHaveLength(2);
+  it("throws rather than guessing at an unexpected shape", () => {
+    expect(() => parseSantanderFixed("1.234", 0)).toThrow(/Unexpected/);
+  });
+});
+
+describe("dates and PAN", () => {
+  it("keeps ISO dates and treats 0001-01-01 as the null sentinel", () => {
+    expect(santanderIsoDate("2026-07-01")).toBe("2026-07-01");
+    expect(santanderIsoDate("0001-01-01")).toBeNull();
   });
 
-  it("stays one-to-one: two identical JSON rows consume two ledger lines, a third is reported", () => {
-    const pairing = pairStatementLines(
-      [
-        { merchant: "APPLE.COM/BILL", amount: 1390, cod_txs: "001" },
-        { merchant: "APPLE.COM/BILL", amount: 1390, cod_txs: "001" },
-        { merchant: "APPLE.COM/BILL", amount: 1390, cod_txs: "001" },
-      ],
-      [
-        { merchant: "APPLE.COM/BILL", amount: 1390 },
-        { merchant: "APPLE.COM/BILL", amount: 1390 },
-      ]
+  it("takes the origin card last4 from the masked PAN", () => {
+    expect(originCardLast4FromPan("250905#420050781")).toBe("0781");
+  });
+});
+
+describe("national rows", () => {
+  it("uses MontoTxs as the amount for a plain purchase", () => {
+    const line = nationalRowToLine(nationalRow());
+    expect(line).toMatchObject({ kind: "purchase", amount: 23270, installment: null, card_last4: "0000", transaction_date: "2026-07-01" });
+  });
+
+  /**
+   * The mapping most likely to be got wrong: `MontoCuota` is the TOTAL purchase and `MontoTxs` is
+   * the monthly cuota. Values mirror the CK ECOMMERCE row verified against the imported PDF
+   * (amount_clp 1xx.xxx, valor_cuota_mensual_clp 3x.xxx, cuota 1 of 3).
+   */
+  it("maps MontoCuota to the total and MontoTxs to the monthly cuota", () => {
+    const line = nationalRowToLine(
+      nationalRow({
+        CodTxs: "205",
+        NumeroCuotas: "01",
+        TotalCuotas: "03",
+        MontoCuota: "0000100474",
+        MontoTxs: "0000033491",
+      })
     );
-    expect(pairing.matched).toBe(2);
-    expect(pairing.only_in_json).toHaveLength(1);
-    expect(pairing.only_in_db).toEqual([]);
+    expect(line.kind).toBe("installment");
+    // The line bills its cuota; the purchase's total rides with the installment.
+    expect(line.amount).toBe(33491);
+    expect(line.installment).toEqual({ number: 1, count: 3, cuota_amount: 33491, total_amount: 100474 });
+  });
+
+  it("signs each code: the payment and a nota de crédito negative, the bank's charges positive", () => {
+    const pay = nationalRowToLine(nationalRow({ CodTxs: "067", NombreComercio: "MONTO CANCELADO", MontoTxs: "0002002346" }));
+    expect([pay.kind, pay.amount]).toEqual(["payment", -2002346]);
+    const nota = nationalRowToLine(nationalRow({ CodTxs: "510", NombreComercio: "NOTA DE CREDITO", MontoTxs: "0000002140" }));
+    expect([nota.kind, nota.amount]).toEqual(["credit_note", -2140]);
+    for (const code of ["002", "203", "071", "701"]) {
+      const charge = nationalRowToLine(nationalRow({ CodTxs: code, MontoTxs: "0000009882" }));
+      expect([charge.kind, charge.amount]).toEqual(["charge", 9882]);
+    }
+  });
+
+  it("refuses an unknown code: national amounts arrive unsigned", () => {
+    expect(() => nationalRowToLine(nationalRow({ CodTxs: "999" }))).toThrow(/unknown national CodTxs "999"/);
+  });
+});
+
+describe("international rows", () => {
+  it("keeps the origin beside the billed USD when the two are equal", () => {
+    const line = internationalRowToLine(internationalRow());
+    expect(line.amount).toBeCloseTo(123.31, 2);
+    expect(line.origin_amount).toBeCloseTo(123.31, 2);
+  });
+
+  it("keeps a differing origin as the amount the merchant charged", () => {
+    const line = internationalRowToLine(
+      internationalRow({ MontoOrigen: "00001299000+", MontoTransaccion: "00000001414+" })
+    );
+    expect(line.origin_amount).toBeCloseTo(12990, 2);
+    expect(line.amount).toBeCloseTo(14.14, 2);
+  });
+
+  it("carries the abono's negative direction from MontoTransaccion", () => {
+    const line = internationalRowToLine(
+      internationalRow({
+        NombreComercio: "ABONO DE DIVISAS",
+        CodTxs: "2020",
+        MontoOrigen: "00000025813+",
+        MontoTransaccion: "00000025813-",
+      })
+    );
+    expect(line.kind).toBe("credit");
+    expect(line.amount).toBeCloseTo(-258.13, 2);
+    expect(line.origin_amount).toBeCloseTo(258.13, 2);
+  });
+
+  it("keeps the posting date and reference the national feed lacks", () => {
+    const line = internationalRowToLine(internationalRow());
+    expect(line.posting_date).toBe("2026-07-06");
+    expect(line.authorization_code).toBe("24692166185401911234374");
+    expect(line.country).toBe("USA");
+  });
+});
+
+describe("nationalHeader", () => {
+  it("reads header figures as integer pesos and nulls the sentinel date", () => {
+    const header = nationalHeader({
+      Cuenta: "800000000001",
+      FechaFactActual: "2026-07-23",
+      FechaFactAnt: "0001-01-01",
+      FechaVenc: "2026-08-10",
+      SaldoAnterior: "00000002368",
+      TotalPagos: "00000002368",
+      DeudaTotalFact: "00000923815",
+      PagoMinimo: "000000000000",
+      CupoPesos: "000012720000",
+      CupoDisponible: "00012720000",
+    });
+    expect(header.close).toBe("2026-07-23");
+    expect(header.pay_by).toBe("2026-08-10");
+    expect(header.deuda_total).toBe(923815);
+    expect(header.total_pagos).toBe(2368);
   });
 });
 
@@ -203,9 +292,9 @@ describe("assembleSantanderStatementBatch", () => {
       staged(ACCOUNT, "023", "estadoCuentaNacional", nationalBody(ACCOUNT, "2026-09-24")),
     ]);
     expect(duplicates).toEqual([]);
-    expect(groups.map((g) => [g.key, g.statement_date])).toEqual([
-      [`${ACCOUNT}|022`, "25/8/2026"],
-      [`${ACCOUNT}|023`, "24/9/2026"],
+    expect(groups.map((g) => [g.key, g.close])).toEqual([
+      [`${ACCOUNT}|022`, "2026-08-25"],
+      [`${ACCOUNT}|023`, "2026-09-24"],
     ]);
     const [august, september] = groups;
     expect(august!.international!.file).toBe(`${ACCOUNT}-extracto-022-estadoCuentaInternacional.json`);
@@ -224,10 +313,10 @@ describe("assembleSantanderStatementBatch", () => {
     ]);
     const [usdOnly, clpOnly] = groups;
     expect(usdOnly!.national).toBeNull();
-    expect(usdOnly!.statement_date).toBeNull();
+    expect(usdOnly!.close).toBeNull();
     expect(usdOnly!.international!.extracto).toBe("100");
     expect(clpOnly!.international).toBeNull();
-    expect(clpOnly!.statement_date).toBe("24/11/2025");
+    expect(clpOnly!.close).toBe("2025-11-24");
   });
 
   it("collapses an identical copy from a retried fetch, keeping both files with the group", () => {
@@ -272,7 +361,7 @@ describe("assembleSantanderStatementBatch", () => {
         staged(ACCOUNT, "022", "estadoCuentaNacional", nationalBody(ACCOUNT, "2026-08-25")),
         staged(ACCOUNT, "024", "estadoCuentaNacional", nationalBody(ACCOUNT, "2026-08-25")),
       ])
-    ).toThrow(/extractos 022 and 024 both close 25\/8\/2026/);
+    ).toThrow(/extractos 022 and 024 both close 2026-08-25/);
   });
 });
 
@@ -285,7 +374,7 @@ describe("parseSantanderStatementBody", () => {
     expect(parsed.extracto).toBe("023");
     expect(parsed.currency).toBe("usd");
     expect(parsed.header.account).toBe(ACCOUNT);
-    expect(parsed.header.statement_date).toBeNull();
+    expect(parsed.header.close).toBeNull();
   });
 
   it("refuses a statement with no statement number, or one requested for another account", () => {
@@ -366,5 +455,26 @@ describe("selectSantanderStatementGroupsToArchive", () => {
     const { archive, keep } = selectSantanderStatementGroupsToArchive(groups, outcomes);
     expect(archive.map((g) => g.extracto)).toEqual(["031", "032"]);
     expect(keep.map((g) => g.extracto)).toEqual(["030", "033"]);
+  });
+});
+
+describe("statementGroupPayload", () => {
+  it("sends both currencies of a facturación, dated and carried by the national side", () => {
+    const { groups } = assembleSantanderStatementBatch([
+      staged(ACCOUNT, "022", "estadoCuentaNacional", nationalBody(ACCOUNT, "2026-08-25")),
+      staged(ACCOUNT, "022", "estadoCuentaInternacional", internationalBody(ACCOUNT)),
+    ]);
+    const payload = statementGroupPayload(groups[0]!, true)!;
+    expect(payload).toMatchObject({ account: { issuer: "santander", number: ACCOUNT }, statement_number: "022", close: "2026-08-25", apply: true });
+    expect(payload.statements.map((s) => [s.currency, s.document, s.lines.length])).toEqual([
+      ["clp", `${ACCOUNT}-extracto-022-estadoCuentaNacional.json`, 1],
+      ["usd", `${ACCOUNT}-extracto-022-estadoCuentaInternacional.json`, 1],
+    ]);
+    expect(payload.statements[1]!.billed_total).toBeNull();
+  });
+
+  it("sends nothing for an international with no national twin", () => {
+    const { groups } = assembleSantanderStatementBatch([staged(ACCOUNT, "100", "estadoCuentaInternacional", internationalBody(ACCOUNT))]);
+    expect(statementGroupPayload(groups[0]!, false)).toBeNull();
   });
 });

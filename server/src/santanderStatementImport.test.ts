@@ -16,7 +16,7 @@ import {
   usdStatementIsStaleEcho,
   writeSantanderStatements,
 } from "./santanderStatementImport.js";
-import type { SantanderStatementHeader, SantanderStatementLine } from "./santanderStatementParse.js";
+import type { CardStatementCurrency, CardStatementLine } from "nw-tracker-contracts";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
 /**
@@ -61,44 +61,26 @@ describe("santanderStatementImport", () => {
     fixtureAccountId = null;
   });
 
-  function line(partial: Partial<SantanderStatementLine>): SantanderStatementLine {
+  function line(partial: Partial<CardStatementLine>): CardStatementLine {
     return {
-      transaction_date: "5/9/2026",
+      kind: "purchase",
+      transaction_date: "2026-09-05",
       posting_date: null,
       merchant: "SUPERMERCADO VITEST",
-      amount_clp: 10_000,
-      amount_usd: null,
-      amount_orig: null,
+      amount: 10_000,
+      origin_amount: null,
       country: null,
       place: null,
-      origin_card_last4: "0430",
+      card_last4: "0430",
       authorization_code: null,
-      installment_flag: false,
-      nro_cuota_current: null,
-      nro_cuota_total: null,
-      valor_cuota_mensual_clp: null,
-      cod_txs: "000",
-      raw_line: "vitest",
+      installment: null,
+      raw_text: "vitest",
       ...partial,
     };
   }
 
-  function header(partial: Partial<SantanderStatementHeader>): SantanderStatementHeader {
-    return {
-      account: "800000000000",
-      card_last4: "0430",
-      statement_date: "20/9/2026",
-      period_from: null,
-      pay_by: "10/10/2026",
-      next_close: null,
-      saldo_anterior: null,
-      total_pagos: null,
-      deuda_total: null,
-      pago_minimo: null,
-      cupo_total: null,
-      cupo_disponible: null,
-      ...partial,
-    };
+  function totals(partial: Partial<CardStatementCurrency>): Pick<CardStatementCurrency, "billed_total" | "payments_total"> {
+    return { billed_total: null, payments_total: null, ...partial };
   }
 
   const CTX = {
@@ -116,10 +98,10 @@ describe("santanderStatementImport", () => {
       "clp",
       [
         line({}),
-        line({ merchant: "MUEBLES VITEST", amount_clp: 60_000, installment_flag: true, nro_cuota_current: 2, nro_cuota_total: 6, valor_cuota_mensual_clp: 10_000, cod_txs: "205", transaction_date: "1/4/2026" }),
-        line({ merchant: "MONTO CANCELADO", amount_clp: 7_000, cod_txs: "067", transaction_date: "8/9/2026" }),
+        line({ kind: "installment", merchant: "MUEBLES VITEST", amount: 10_000, installment: { number: 2, count: 6, cuota_amount: 10_000, total_amount: 60_000 }, transaction_date: "2026-04-01" }),
+        line({ kind: "payment", merchant: "MONTO CANCELADO", amount: -7_000, transaction_date: "2026-09-08" }),
       ],
-      header({ deuda_total: 25_000, total_pagos: 7_000 }),
+      totals({ billed_total: 25_000, payments_total: 7_000 }),
       { ...CTX, accountId: id }
     );
 
@@ -144,8 +126,8 @@ describe("santanderStatementImport", () => {
     if (id == null) return;
     const records = buildSantanderStatementRecords(
       "clp",
-      [line({ merchant: "MONTO CANCELADO", amount_clp: 2_368, cod_txs: "067", transaction_date: "23/10/2025" })],
-      header({ total_pagos: 2_368 }),
+      [line({ kind: "payment", merchant: "MONTO CANCELADO", amount: -2_368, transaction_date: "2025-10-23" })],
+      totals({ payments_total: 2_368 }),
       { ...CTX, accountId: id }
     );
     expect(records).toHaveLength(1);
@@ -160,9 +142,9 @@ describe("santanderStatementImport", () => {
       "clp",
       [
         line({}),
-        line({ merchant: "NOTA DE CREDITO", amount_clp: 2_140, cod_txs: "510", transaction_date: "5/9/2026" }),
+        line({ kind: "credit_note", merchant: "NOTA DE CREDITO", amount: -2_140, transaction_date: "2026-09-05" }),
       ],
-      header({ deuda_total: 21_130 }),
+      totals({ billed_total: 21_130 }),
       { ...CTX, accountId: id }
     );
     expect(records).toHaveLength(2);
@@ -174,8 +156,8 @@ describe("santanderStatementImport", () => {
   it("occurrence-suffixes same-statement twins", () => {
     const id = masterId();
     if (id == null) return;
-    const twin = line({ merchant: "APPLE.COM/BILL", amount_clp: 14_070 });
-    const records = buildSantanderStatementRecords("clp", [twin, { ...twin }], header({}), {
+    const twin = line({ merchant: "APPLE.COM/BILL", amount: 14_070 });
+    const records = buildSantanderStatementRecords("clp", [twin, { ...twin }], totals({}), {
       ...CTX,
       accountId: id,
     });
@@ -187,7 +169,7 @@ describe("santanderStatementImport", () => {
     if (id == null) return;
     const [rec] = buildSantanderStatementRecords(
       "usd",
-      [line({ merchant: "TIENDA VITEST", amount_clp: null, amount_usd: 12.5, amount_orig: 11_875, cod_txs: "3000" })],
+      [line({ merchant: "TIENDA VITEST", amount: 12.5, origin_amount: 11_875 })],
       null,
       { ...CTX, accountId: id }
     );
@@ -197,20 +179,14 @@ describe("santanderStatementImport", () => {
     expect(rec!.orig_currency).toBeUndefined();
   });
 
-  it("throws on unknown national CodTxs and on payment/header mismatch", () => {
+  it("throws when the payment rows do not add up to the stated payments total", () => {
     const id = masterId();
     if (id == null) return;
     expect(() =>
-      buildSantanderStatementRecords("clp", [line({ cod_txs: "999" })], header({}), {
-        ...CTX,
-        accountId: id,
-      })
-    ).toThrow(/unknown CodTxs "999"/);
-    expect(() =>
       buildSantanderStatementRecords(
         "clp",
-        [line({}), line({ merchant: "MONTO CANCELADO", amount_clp: 7_000, cod_txs: "067" })],
-        header({ total_pagos: 9_999 }),
+        [line({}), line({ kind: "payment", merchant: "MONTO CANCELADO", amount: -7_000 })],
+        totals({ payments_total: 9_999 }),
         { ...CTX, accountId: id }
       )
     ).toThrow(/TotalPagos/);
@@ -237,8 +213,8 @@ describe("santanderStatementImport", () => {
     if (id == null) return;
     const records = buildSantanderStatementRecords(
       "clp",
-      [line({}), line({ merchant: "FERRETERIA VITEST", amount_clp: 15_000, transaction_date: "6/9/2026" })],
-      header({ deuda_total: 25_000 }),
+      [line({}), line({ merchant: "FERRETERIA VITEST", amount: 15_000, transaction_date: "2026-09-06" })],
+      totals({ billed_total: 25_000 }),
       { ...CTX, accountId: id }
     );
 
@@ -321,11 +297,11 @@ describe("santanderStatementImport", () => {
   it("writes one facturación per call", () => {
     const id = masterId();
     if (id == null) return;
-    const september = buildSantanderStatementRecords("clp", [line({})], header({}), { ...CTX, accountId: id });
+    const september = buildSantanderStatementRecords("clp", [line({})], totals({}), { ...CTX, accountId: id });
     const october = buildSantanderStatementRecords(
       "clp",
-      [line({ transaction_date: "5/10/2026" })],
-      header({ statement_date: "20/10/2026" }),
+      [line({ transaction_date: "2026-10-05" })],
+      totals({}),
       { ...CTX, accountId: id, statementDate: "20/10/2026", periodFrom: "20/09/2026" }
     );
     expect(() => writeSantanderStatements(id, [...september, ...october])).toThrow(
@@ -368,12 +344,12 @@ describe("santanderStatementImport", () => {
     ).run(oldStmt);
 
     const echo = [
-      line({ merchant: "ABONO DE DIVISAS", amount_clp: null, amount_usd: -84.77, transaction_date: "31/7/2026" }),
+      line({ kind: "credit", merchant: "ABONO DE DIVISAS", amount: -84.77, transaction_date: "2026-07-31" }),
     ];
     expect(usdStatementIsStaleEcho(id, "24/11/2026", echo)).toBe(true);
     // Same merchant + amount on a NEW date is a genuine repeat charge, not an echo.
     const fresh = [
-      line({ merchant: "ABONO DE DIVISAS", amount_clp: null, amount_usd: -84.77, transaction_date: "30/9/2026" }),
+      line({ kind: "credit", merchant: "ABONO DE DIVISAS", amount: -84.77, transaction_date: "2026-09-30" }),
     ];
     expect(usdStatementIsStaleEcho(id, "24/11/2026", fresh)).toBe(false);
     // A rewrite of the SAME close never reads as an echo of itself.
