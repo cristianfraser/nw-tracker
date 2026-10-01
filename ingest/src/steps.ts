@@ -12,6 +12,8 @@ export const STEP_NAMES: Record<BankName, readonly string[]> = {
   // JSON that `card-statements` reads.
   santander: ["card-movements", "checking-movements", "card-statements"],
   racional: ["movements", "positions"],
+  // Supervised capture only, until the fetcher is built from what it records.
+  "afp-uno": ["capture"],
 } as const;
 
 /** Empty selection means "run everything". */

@@ -17,7 +17,7 @@ export type BankConfig = {
   loginAccount: string;
 };
 
-export type BankName = "santander" | "racional";
+export type BankName = "santander" | "racional" | "afp-uno";
 
 /**
  * Which identifier each bank signs in with. Santander uses the RUT; Racional is a
@@ -26,6 +26,7 @@ export type BankName = "santander" | "racional";
 export const LOGIN_IDENTIFIER: Record<BankName, "rut" | "email"> = {
   santander: "rut",
   racional: "email",
+  "afp-uno": "rut",
 } as const;
 
 export function resolveBankConfigPath(bank: BankName): string {

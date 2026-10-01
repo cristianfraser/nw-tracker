@@ -1,5 +1,6 @@
 import { runSantander } from "./santander/run.js";
 import { runRacional } from "./racional/run.js";
+import { runAfpUnoCapture } from "./afpUno/capture.js";
 import type { BankName } from "./config.js";
 import type { RunOptions } from "./runTypes.js";
 import fs from "node:fs";
@@ -18,7 +19,7 @@ import { log } from "./log.js";
  */
 const FORCED_EXIT_GRACE_MS = 10_000;
 
-const USAGE = `Usage: npm run fetch -- <santander|racional> [options]
+const USAGE = `Usage: npm run fetch -- <santander|racional|afp-uno> [options]
 
 Options:
   --capture          Save every API request/response + screenshots; keep downloads out of the inbox.
@@ -29,6 +30,7 @@ Options:
   --only=a,b         Run only these steps, so a re-test costs no extra requests.
                      santander: card-movements, checking-movements, card-statements, cartola
                      racional:  movements, positions
+                     afp-uno:   capture (supervised: --capture, no --background)
   --min-interval=N   Minimum minutes since the last run of this bank (default 30).
   --force            Run despite the interval, and re-fetch documents already recorded.
 `;
@@ -36,6 +38,7 @@ Options:
 const RUNNERS: Record<BankName, (opts: RunOptions) => Promise<number>> = {
   santander: runSantander,
   racional: runRacional,
+  "afp-uno": runAfpUnoCapture,
 };
 
 /** Read `--flag=a,b` into a trimmed list; empty when the flag is absent. */
