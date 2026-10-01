@@ -5,9 +5,11 @@ Status (2026-09-30): **Phase 0 done** (server LaunchAgent installed, `scraper/` 
 through `card.unbilled_movements`; decoding lives in `ingest/src/santander/cardFeed.ts`.
 **Phase 2 built** (2a: the server's run scheduler, the ingest service, the run protocol; 2b: the
 runners in TypeScript, the Santander catch-up / payday decisions and the run recording in the
-server), not yet switched on: `ingest/switch-schedule.sh to-server` does it. **Phase 3 in
+server), switched on 2026-09-30 22:06 (`ingest/switch-schedule.sh to-server`; `to-launchd`
+reverts). **Phase 3 in
 progress**: 1. checking «últimos movimientos» xlsx done (`bank_account.movements`, uploads via the
-service's `/parse`); 2. Santander payment receipts done (`card.payment_receipt`).
+service's `/parse`); 2. Santander payment receipts done (`card.payment_receipt`); 3. broker
+e-mails done (`broker.notifications`).
 
 ## Goal
 
@@ -210,7 +212,9 @@ In rough order (simplest separation first):
    other upload formats reuse).
 2. Santander payment receipts. **Done** — `card.payment_receipt`; the overdue alarm stays a
    server command (`check:synthetic-cc-payments`).
-3. Broker e-mails (`brokerEmailParse`) — Fintual and Racional.
+3. Broker e-mails (`brokerEmailParse`) — Fintual and Racional. **Done** — `broker.notifications`;
+   the classifier lives in `ingest/src/brokers/`, bookability and the Racional crawl decision in
+   the server.
 4. Racional crawl + dividends file.
 5. Santander statement JSON (`santanderStatementParse`).
 6. CC statement PDFs: Python parser, parse cache, per-PDF JSON, organizer, qpdf/OCR →

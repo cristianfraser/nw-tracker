@@ -7,6 +7,7 @@ import type {
   IngestResult,
 } from "nw-tracker-contracts";
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
+import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { applyCardPaymentReceipt } from "./santanderCcPaymentReceipts.js";
 import {
   applyCardUnbilledMovements,
@@ -67,6 +68,11 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "broker.notifications": {
+    apply({ payload }) {
+      return { status: "applied", details: applyBrokerNotifications(payload) };
+    },
+  },
   "card.payment_receipt": {
     apply({ payload, envelope }) {
       return { status: "applied", details: applyCardPaymentReceipt(payload, envelope.source.ref) };

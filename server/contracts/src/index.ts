@@ -7,3 +7,4 @@ export * from "./runs.js";
 export * from "./kinds/bankAccountMovements.js";
 export * from "./parse.js";
 export * from "./kinds/cardPaymentReceipt.js";
+export * from "./kinds/brokerNotifications.js";

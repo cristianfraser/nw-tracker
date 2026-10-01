@@ -84,9 +84,6 @@
     "record:daily-run": "tsx scripts/record-daily-run.ts",
     "record:email-run": "tsx scripts/record-email-run.ts",
     "import:racional-movements": "tsx scripts/import-racional-movements.ts",
-    "import:racional-emails": "tsx scripts/import-racional-emails.ts",
-    "check:broker-emails": "tsx scripts/check-broker-emails.ts",
-    "import:fintual-emails": "tsx scripts/import-fintual-emails.ts",
     "import:fintual-acciones": "tsx scripts/import-fintual-acciones.ts",
     "check:daily-run-recent": "tsx scripts/daily-run-ran-recently.ts",
     "import:grocery-receipts": "tsx scripts/import-grocery-receipts.ts"

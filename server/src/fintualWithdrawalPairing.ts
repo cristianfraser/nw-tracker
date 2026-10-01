@@ -29,18 +29,6 @@ import { chileCalendarAddDays } from "./chileDate.js";
  */
 export const WITHDRAWAL_PAIR_WINDOW_DAYS = 5;
 
-/** `Pagamos tu retiro de 🏦 Reserva` → `Reserva`. */
-export function fintualGoalFromWithdrawalSubject(subject: string): string | null {
-  const m = /pagamos tu retiro de\s+(.+)$/i.exec(String(subject ?? "").trim());
-  if (!m) return null;
-  // Strip emoji/pictographs and collapse whitespace; the goal name itself is plain text.
-  const name = m[1]!
-    .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}️]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return name || null;
-}
-
 /** Fintual goal account by its display name (the goals are the `import:fintual|cert|` accounts). */
 export function fintualGoalAccountId(goalName: string): number | null {
   const row = db
