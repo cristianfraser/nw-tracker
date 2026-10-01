@@ -9,7 +9,8 @@ import { insertAppMessage } from "./appMessages.js";
 import { backgroundJobsDisabled } from "./backgroundJobsEnv.js";
 import { ingestFeederHeaders, resolveIngestServiceUrl } from "./ingestFeeder.js";
 import { lastDailyRunAt } from "./dailyRunLog.js";
-import { decideIngestRun, decideSantanderFetch, type IngestSchedulerDecision } from "./ingestRunPolicy.js";
+import { decideAfpUnoFetch, decideIngestRun, decideSantanderFetch, type IngestSchedulerDecision } from "./ingestRunPolicy.js";
+import { lastCleanPensionImportAt } from "./pensionAccountCertificatesApply.js";
 import {
   inFlightIngestRun,
   lastAnsweredSlot,
@@ -62,6 +63,7 @@ export async function requestFeederRun(
   kind: IngestRunKind,
   reason: string,
   santanderFetch: IngestRunRequest["santander_fetch"],
+  afpUnoFetch: IngestRunRequest["afp_uno_fetch"] = null,
   env: NodeJS.ProcessEnv = process.env
 ): Promise<FeederAnswer> {
   try {
@@ -69,7 +71,7 @@ export async function requestFeederRun(
       method: "POST",
       headers: ingestFeederHeaders(env),
       body: JSON.stringify(
-        ingestRunRequestSchema.parse({ run_id: runId, kind, reason, santander_fetch: santanderFetch })
+        ingestRunRequestSchema.parse({ run_id: runId, kind, reason, santander_fetch: santanderFetch, afp_uno_fetch: afpUnoFetch })
       ),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -141,10 +143,16 @@ export async function ingestSchedulerTick(
           lastPaydayAttemptYmd: lastPaydayAttemptYmd(),
         })
       : null;
+  // A nightly reads the pension certificates from the 10th until a clean import.
+  const lastAfpImport = lastCleanPensionImportAt("afp_uno");
+  const afpUnoFetch =
+    decision.kind === "nightly" ? decideAfpUnoFetch({ now, lastCleanImportAt: lastAfpImport ? new Date(lastAfpImport) : null }) : null;
   const runId = markIngestRunRequested(decision.kind, decision.slot, decision.reason, now, santanderFetch);
-  const answer = await request(runId, decision.kind, decision.reason, santanderFetch);
+  const answer = await request(runId, decision.kind, decision.reason, santanderFetch, afpUnoFetch);
   if (answer.status === "accepted") {
-    const fetchNote = santanderFetch ? `; Santander ${santanderFetch.mode}: ${santanderFetch.reason}` : "";
+    const fetchNote =
+      (santanderFetch ? `; Santander ${santanderFetch.mode}: ${santanderFetch.reason}` : "") +
+      (afpUnoFetch ? `; AFP UNO: ${afpUnoFetch.reason}` : "");
     console.log(`ingest-runs: ${decision.kind} run ${runId} started (${decision.reason}${fetchNote})`);
     return { decision, run_id: runId, answer };
   }

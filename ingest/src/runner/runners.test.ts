@@ -29,6 +29,8 @@ const NIGHTLY: NightlyOptions = {
   fintualApply: true,
   racionalApply: true,
   racionalNeeded: () => false,
+  afpUnoFetch: null,
+  afpUnoApply: true,
 };
 
 describe("runNightly", () => {
@@ -67,6 +69,20 @@ describe("runNightly", () => {
     expect(x.steps.map((s) => s.label)).toContain("Racional movements (report only)");
     expect(result.santander).toEqual({ mode: "nightly", outcome: "failed", note: null });
     expect(x.steps.filter((s) => !s.ok).map((s) => s.label)).toEqual(["fetch Santander"]);
+  });
+
+  it("reads AFP UNO only when the server asks, writing only with the apply flag", async () => {
+    const asked = { reason: "no clean import since 2030-10-10" };
+    const { x, calls } = fakeRunner();
+    await runNightly(x, { ...NIGHTLY, afpUnoFetch: asked });
+    expect(calls).toContain("run fetch:afp-uno -- --background --apply");
+    const report = fakeRunner();
+    await runNightly(report.x, { ...NIGHTLY, afpUnoFetch: asked, afpUnoApply: false });
+    expect(report.x.steps.map((s) => s.label)).toContain("AFP UNO certificates (report only)");
+    expect(report.calls).toContain("run fetch:afp-uno -- --background");
+    const quiet = fakeRunner();
+    await runNightly(quiet.x, NIGHTLY);
+    expect(quiet.calls.some((c) => c.includes("fetch:afp-uno"))).toBe(false);
   });
 
   it("opens no bank session in a dry run", async () => {

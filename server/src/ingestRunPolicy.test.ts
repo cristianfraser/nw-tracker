@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SantanderState } from "nw-tracker-contracts";
 import {
+  decideAfpUnoFetch,
   decideIngestRun,
   decideSantanderFetch,
   hourlySlotAtOrBefore,
@@ -157,5 +158,26 @@ describe("decideSantanderFetch", () => {
     expect(
       decideSantanderFetch({ ...base, now: at("2026-09-29T12:30:00Z"), state: state({ last_success_at: "2026-09-29T01:02:00.000Z" }) })
     ).toBeNull();
+  });
+});
+
+describe("decideAfpUnoFetch", () => {
+  // Chile is UTC−3 from 2026-09-06: 22:00 Chile on day D = 01:00Z on D+1.
+  const nightOf = (ymd: string) => new Date(new Date(`${ymd}T01:00:00Z`).getTime() + 86_400_000);
+
+  it("does not read before the 10th", () => {
+    expect(decideAfpUnoFetch({ now: nightOf("2026-10-09"), lastCleanImportAt: null })).toBeNull();
+  });
+
+  it("reads every night from the 10th through the month's end until a clean import", () => {
+    expect(decideAfpUnoFetch({ now: nightOf("2026-10-10"), lastCleanImportAt: null })?.reason).toBe("no clean import since 2026-10-10");
+    expect(decideAfpUnoFetch({ now: nightOf("2026-10-31"), lastCleanImportAt: nightOf("2026-09-12") })).not.toBeNull();
+  });
+
+  it("stops after a clean import until the next 10th", () => {
+    const imported = nightOf("2026-10-12");
+    expect(decideAfpUnoFetch({ now: nightOf("2026-10-13"), lastCleanImportAt: imported })).toBeNull();
+    expect(decideAfpUnoFetch({ now: nightOf("2026-11-09"), lastCleanImportAt: imported })).toBeNull();
+    expect(decideAfpUnoFetch({ now: nightOf("2026-11-10"), lastCleanImportAt: imported })).not.toBeNull();
   });
 });

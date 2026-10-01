@@ -149,3 +149,21 @@ export function decideSantanderFetch(i: SantanderFetchInputs): { mode: Santander
   });
   return payday.due ? { mode: "payday", reason: payday.reason } : null;
 }
+
+/** The day of the month from which the pension certificates are read nightly. */
+export const AFP_UNO_FIRST_DAY_OF_MONTH = 10;
+
+/**
+ * Whether tonight's nightly reads AFP UNO's certificates. Contributions land around the 10th
+ * (fecha caja 06–12 in 2025–26) and the unemployment insurance's a week later, so from the 10th
+ * the account is read every night until a read imports new rows with nothing pending or to fix;
+ * then not again until the next 10th. A month with nothing new is read through its last day.
+ */
+export function decideAfpUnoFetch(i: { now: Date; lastCleanImportAt: Date | null }): { reason: string } | null {
+  const today = chileWallClockAt(i.now).ymd;
+  const day = Number(today.slice(8, 10));
+  if (day < AFP_UNO_FIRST_DAY_OF_MONTH) return null;
+  const fromYmd = `${today.slice(0, 8)}${String(AFP_UNO_FIRST_DAY_OF_MONTH).padStart(2, "0")}`;
+  if (i.lastCleanImportAt && chileWallClockAt(i.lastCleanImportAt).ymd >= fromYmd) return null;
+  return { reason: `no clean import since ${fromYmd}` };
+}
