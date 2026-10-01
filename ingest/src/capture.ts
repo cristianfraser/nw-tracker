@@ -50,6 +50,7 @@ export class Recorder {
   readonly calls: ApiCall[] = [];
   private readonly dir: string | null;
   private seq = 0;
+  private secrets: string[] = [];
 
   /**
    * @param hostFragment restrict recording to one API host (Santander's calls all go to one).
@@ -67,6 +68,26 @@ export class Recorder {
 
   get captureDir(): string | null {
     return this.dir;
+  }
+
+  /**
+   * Strings that must never reach a capture file — a login POST carries the password in its body.
+   * Replaced in everything recorded from here on, in memory and on disk.
+   */
+  redactSecrets(secrets: string[]): void {
+    this.secrets = secrets.filter((s) => s.length > 0);
+  }
+
+  private redact<T>(value: T): T {
+    if (this.secrets.length === 0 || value == null) return value;
+    let text = JSON.stringify(value);
+    // As JSON-escaped, and as URL-encoded (a form-encoded login body; `+` for spaces too).
+    for (const s of this.secrets) {
+      for (const form of [s, encodeURIComponent(s), encodeURIComponent(s).replace(/%20/g, "+")]) {
+        text = text.split(JSON.stringify(form).slice(1, -1)).join("«redacted»");
+      }
+    }
+    return JSON.parse(text) as T;
   }
 
   attach(page: Page): void {
@@ -104,7 +125,7 @@ export class Recorder {
     } catch {
       requestBody = response.request().postData() ?? null;
     }
-    const call: ApiCall = { endpoint, url, status: response.status(), requestBody, responseBody, receivedAt };
+    const call: ApiCall = this.redact({ endpoint, url, status: response.status(), requestBody, responseBody, receivedAt });
     this.calls.push(call);
     log(`api ${response.status()} ${safeFileLabel(endpoint)}`);
     if (!this.dir) return;
