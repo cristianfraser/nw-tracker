@@ -105,6 +105,8 @@ export async function runRequestedRun(
               statementJsonApply: envFlag("NW_TRACKER_STATEMENT_JSON_APPLY"),
               fullReimport: envFlag("NW_TRACKER_FULL_REIMPORT"),
               racionalNeeded,
+              afpUnoFetch: request.afp_uno_fetch,
+              afpUnoApply: envFlag("NW_TRACKER_AFP_UNO_APPLY"),
             })),
             activity: false,
           }

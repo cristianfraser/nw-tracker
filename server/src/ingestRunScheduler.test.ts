@@ -23,7 +23,7 @@ type Call = { runId: number; kind: IngestRunKind; reason: string; santanderFetch
 
 function fakeFeeder(answer: FeederAnswer) {
   const calls: Call[] = [];
-  const request = async (runId: number, kind: IngestRunKind, reason: string, santanderFetch: IngestRunRequest["santander_fetch"]) => {
+  const request = async (runId: number, kind: IngestRunKind, reason: string, santanderFetch: IngestRunRequest["santander_fetch"], _afpUnoFetch?: IngestRunRequest["afp_uno_fetch"]) => {
     calls.push({ runId, kind, reason, santanderFetch });
     return answer;
   };

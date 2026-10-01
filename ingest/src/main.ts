@@ -30,7 +30,8 @@ Options:
   --only=a,b         Run only these steps, so a re-test costs no extra requests.
                      santander: card-movements, checking-movements, card-statements, cartola
                      racional:  movements, positions
-                     afp-uno:   capture (supervised: --capture, no --background)
+                     afp-uno:   capture (supervised: --capture, no --background);
+                                the nightly read is npm run fetch:afp-uno
   --min-interval=N   Minimum minutes since the last run of this bank (default 30).
   --force            Run despite the interval, and re-fetch documents already recorded.
 `;

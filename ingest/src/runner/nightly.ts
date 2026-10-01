@@ -19,6 +19,10 @@ export type NightlyOptions = {
   racionalApply: boolean;
   /** The broker e-mail check named Racional (`cfraser/.broker-email-decision.json`). */
   racionalNeeded: () => boolean;
+  /** The server's request to read AFP UNO's certificates tonight, and why; null = not tonight. */
+  afpUnoFetch: { reason: string } | null;
+  /** NW_TRACKER_AFP_UNO_APPLY=1: the certificates' missing rows are written. */
+  afpUnoApply: boolean;
 };
 
 export type NightlyResult = { santander: SantanderFetchOutcome | null };
@@ -85,6 +89,17 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     await applyOrReport(x, "Racional movements", "import:racional-movements", o.racionalApply);
   } else {
     x.note("=== Racional (skipped — no e-mail said anything moved)");
+  }
+
+  // 5b. AFP UNO, when the server asks (from the 10th of a month until a clean import).
+  if (o.afpUnoFetch == null) {
+    x.note("=== AFP UNO (not tonight)");
+  } else if (o.dryRun) {
+    x.note(`=== (dry run) skipping fetch:afp-uno (${o.afpUnoFetch.reason})`);
+  } else {
+    x.note(`AFP UNO: ${o.afpUnoFetch.reason}`);
+    if (o.afpUnoApply) await x.step("AFP UNO certificates (apply)", npmRun("fetch:afp-uno", "--background", "--apply"));
+    else await x.step("AFP UNO certificates (report only)", npmRun("fetch:afp-uno", "--background"));
   }
 
   // 6. Statement JSON: cross-check, and (when enabled) write the facturaciones no PDF owns.

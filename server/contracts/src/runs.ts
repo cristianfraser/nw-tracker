@@ -36,10 +36,18 @@ export const ingestRunRequestSchema = z
       .object({ mode: z.enum(SANTANDER_FETCH_MODES), reason: z.string().min(1) })
       .strict()
       .nullable(),
+    /**
+     * Nightly only: read the pension fund manager's certificates this run, and why (from the 10th
+     * of a month until a read imports new rows cleanly). Absent = no.
+     */
+    afp_uno_fetch: z.object({ reason: z.string().min(1) }).strict().nullable().default(null),
   })
   .strict()
   .refine((r) => r.kind === "hourly" || r.santander_fetch === null, {
     message: "only an hourly run takes a santander_fetch",
+  })
+  .refine((r) => r.kind === "nightly" || r.afp_uno_fetch === null, {
+    message: "only a nightly run takes an afp_uno_fetch",
   });
 
 export type IngestRunRequest = z.infer<typeof ingestRunRequestSchema>;

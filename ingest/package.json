@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "fetch": "tsx src/main.ts",
     "fetch:racional": "tsx src/main.ts racional",
+    "fetch:afp-uno": "tsx src/afpUno/fetchMain.ts",
     "fetch:emails": "tsx src/email/main.ts",
     "fetch:santander-docs": "tsx src/email/santanderDocsMain.ts",
     "fetch:lider-boletas": "tsx src/email/liderBoletasMain.ts",

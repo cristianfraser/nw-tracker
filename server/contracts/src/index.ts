@@ -9,3 +9,4 @@ export * from "./parse.js";
 export * from "./kinds/cardPaymentReceipt.js";
 export * from "./kinds/brokerNotifications.js";
 export * from "./kinds/brokerMovements.js";
+export * from "./kinds/pensionAccountCertificates.js";

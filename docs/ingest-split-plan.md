@@ -9,7 +9,7 @@ server), switched on 2026-09-30 22:06 (`ingest/switch-schedule.sh to-server`; `t
 reverts). **Phase 3 in
 progress**: 1. checking «últimos movimientos» xlsx done (`bank_account.movements`, uploads via the
 service's `/parse`); 2. Santander payment receipts done (`card.payment_receipt`); 3. broker
-e-mails done (`broker.notifications`); 4. Racional crawl done (`broker.movements`).
+e-mails done (`broker.notifications`); 4. Racional crawl done (`broker.movements`). AFP UNO's certificates go through `pension_account.certificates` (2026-10-01), read nightly from the 10th until a clean import.
 
 ## Goal
 

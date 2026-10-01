@@ -8,6 +8,7 @@ import type {
 } from "nw-tracker-contracts";
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
+import { applyPensionAccountCertificates } from "./pensionAccountCertificatesApply.js";
 import { applyRacionalRead } from "./racionalMovementsImport.js";
 import { applyCardPaymentReceipt } from "./santanderCcPaymentReceipts.js";
 import {
@@ -69,6 +70,11 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "pension_account.certificates": {
+    apply({ payload, envelope }) {
+      return { status: "applied", details: applyPensionAccountCertificates(payload, envelope.source.ref) };
+    },
+  },
   "broker.movements": {
     apply({ payload, envelope }) {
       return { status: "applied", details: applyRacionalRead(payload, envelope.source.ref) };
