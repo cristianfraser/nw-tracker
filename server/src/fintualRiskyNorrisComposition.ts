@@ -39,6 +39,8 @@ const ETF_WEIGHT_SUM_MIN = 0.95;
  * sleeve must be looked at before the proxy keeps pricing off a payload it only half understands.
  * Only `etf_positions` is read; the fund, bond and future-contract sleeves are the non-ETF remainder
  * that `ETF_WEIGHT_SUM_MIN` bounds (`future_contract_positions` appeared 2026-09-01, empty so far).
+ * `fx_forward_contract_positions` (appeared 2026-09-30, empty) must stay empty: a currency hedge
+ * changes how the fund moves against the dollar, which the USD basket × fx proxy does not model.
  */
 const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "date",
@@ -46,7 +48,11 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "fund_positions",
   "bond_positions",
   "future_contract_positions",
+  "fx_forward_contract_positions",
 ]);
+
+/** Sleeves the proxy cannot price at all: present is fine, holding anything throws. */
+const MUST_BE_EMPTY_KEYS = ["fx_forward_contract_positions"] as const;
 
 /**
  * Fintual tickers whose bare symbol resolves to a different instrument on Yahoo.
@@ -110,6 +116,12 @@ export function parseManagedFundPositionsBody(body: unknown): FintualManagedFund
   for (const key of Object.keys(o)) {
     if (!ALLOWED_TOP_LEVEL_KEYS.has(key)) {
       throw new Error(`Fintual managed fund positions: unexpected field "${key}"`);
+    }
+  }
+  for (const key of MUST_BE_EMPTY_KEYS) {
+    const v = o[key];
+    if (v !== undefined && !(Array.isArray(v) && v.length === 0)) {
+      throw new Error(`Fintual managed fund positions: "${key}" is not empty — the proxy does not model it`);
     }
   }
   const date = typeof o.date === "string" ? o.date : "";
