@@ -81,7 +81,7 @@ for (const r of results) {
         `${r.purchased_at.slice(0, 10)} / ${r.card_paid_clp} clp (paste, feed or statement) will pair it and learn the merchant`
     );
   } else if (r.movement.status === "matched") {
-    console.log(`      paired with the card's own line — learned «${r.movement.branch}» → «${r.movement.merchant ?? "?"}»`);
+    console.log(`      paired with the card's own line «${r.movement.merchant ?? "?"}» (branch «${r.movement.branch}»)`);
   }
 }
 console.log(
