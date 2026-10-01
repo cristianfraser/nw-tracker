@@ -1,9 +1,11 @@
+import type { BrokerDividend, BrokerMovement } from "nw-tracker-contracts";
+
 /**
- * Racional movement rows (scraped by `ingest/`) → typed movements.
+ * Racional movement rows (as the crawl stages them) → canonical `broker.movements` movements.
  *
  * Racional's movements are not served by a REST call — they arrive over a Firestore realtime
- * channel — so the fetcher reads the rendered list and, for each row, the detail view. This
- * module is the pure half: raw strings in, typed records out, no DB.
+ * channel — so the crawl reads the rendered list and, for each row, the detail view. This
+ * module is the decoding half: raw strings in, canonical records out; the server plans them.
  *
  * Shapes verified against the live app on 2026-08-05 (see `ingest/src/racional/routes.ts`):
  *   list row  : "Compra SLV" · "US$x.xxx,xx" · "01/07"
@@ -69,18 +71,7 @@ export type RacionalScrapedRow = {
  * isUSDDividend, … }` — `DIV` is the gross dividend, `DIVTAX` the (negative) US withholding,
  * `amount` the net the wallet received. The list row prints the net.
  */
-export type RacionalScrapedDividend = {
-  id: string;
-  asset_id: string;
-  gross: number;
-  /** Stored positive (the API prints it negative). */
-  withholding: number;
-  net: number;
-  /** ISO instant of the credit, as the API prints it. */
-  execution_date: string;
-  /** Interest / rebate entries share the endpoint; they are not dividends. */
-  is_interest: boolean;
-};
+export type RacionalScrapedDividend = BrokerDividend;
 
 function finiteNumber(value: unknown, field: string, id: string): number {
   const n = typeof value === "number" ? value : Number(value);
@@ -149,32 +140,8 @@ const KIND_BY_CLASS: Record<string, RacionalMovementKind> = {
   dividends: "dividend",
 };
 
-export type RacionalMovement = {
-  movement_id: string;
-  kind: RacionalMovementKind;
-  /** Instrument symbol for trades/dividends; null for cash movements. */
-  ticker: string | null;
-  occurred_on: string;
-  /** Settlement timestamp, ISO with time — the ordering key for incremental crawls. */
-  occurred_at: string;
-  amount: number;
-  currency: "clp" | "usd";
-  /** Shares, as a decimal string so 8-decimal quantities never round-trip through a float. */
-  units: string | null;
-  price: number | null;
-  commission: number | null;
-  order_id: string | null;
-  raw_title: string;
-  /** Gross / withholding / net from the dividends API, when the crawl matched the row to it. */
-  dividend: RacionalScrapedDividend | null;
-  /**
-   * Why this movement cannot be WRITTEN as it stands, or null: a trade whose share count or
-   * instrument the crawl never read, a dividend without its paying position. Not an error by
-   * itself — the importer first looks for the movement in the ledger, and only one it would
-   * actually have to write fails (see `planRacionalMovementsFile`).
-   */
-  incomplete: string | null;
-};
+/** A decoded row: the canonical movement the server receives. */
+export type RacionalMovement = BrokerMovement;
 
 const KIND_BY_PREFIX: [RegExp, RacionalMovementKind][] = [
   [/^dep[óo]sito/i, "deposit"],
@@ -287,15 +254,10 @@ export function parseRacionalDetail(detail: string | null | undefined): Racional
 /**
  * The row's identity as the crawl sees it in the rendered list, before any detail route is
  * known: `<YYYY-MM-DD or dd/mm>|<movement-type class or title>|<printed amount>`, e.g.
- * `2026-09-22|buy|US$xxx,xx`. The importer writes the newest cleanly imported row's key as the
- * crawl watermark (`last_row_key`) and the fetcher stops at the rendered row with the same key.
- *
- * The formula lives twice — here and as `rowKey` in `ingest/src/racional/steps.ts` (the
- * scraper is deliberately not a workspace and cannot import the server) — so the return line
- * must stay TEXTUALLY IDENTICAL in both; `racionalMovementsImport.test.ts` compares them. Until
- * 2026-09-27 the fetcher compared this key with the importer's `last_movement_id` (a route id,
- * or a synthetic `day|kind|number`), which never matched — every crawl walked the whole
- * rendered window as «new».
+ * `2026-09-22|buy|US$xxx,xx`. The crawl cursor (`crawlCursor.ts`) holds the key of the first row
+ * of the newest read the server applied, and the crawl stops at the rendered row with the same
+ * key (`rowKey` in steps.ts is this function). Until 2026-09-27 the crawl compared this key with
+ * a route id, which never matched — every crawl walked the whole rendered window as «new».
  */
 export function racionalListRowKey(row: RacionalScrapedRow): string {
   if ((row.occurred_on ?? row.day) == null) {
@@ -393,7 +355,7 @@ export function racionalRowToMovement(row: RacionalScrapedRow): RacionalMovement
     price: detail.price,
     commission: detail.commission,
     order_id: detail.order_id,
-    raw_title: String(row.title ?? "").trim(),
+    title: String(row.title ?? "").trim(),
     dividend,
     incomplete: incompleteReason(kind, row, detail, ticker),
   };

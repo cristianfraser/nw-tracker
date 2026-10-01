@@ -3,12 +3,13 @@ import type { Recorder } from "../capture.js";
 import { MOVEMENTS_URL, SELECTOR, TEXT } from "./routes.js";
 import { settle, waitForNewApiCalls } from "../wait.js";
 import { log, logStep } from "../log.js";
+import { racionalListRowKey } from "./movements.js";
 
 /**
  * Two different extraction paths, because Racional serves the two halves differently (see
  * routes.ts): holdings come from `api.racional.cl/positions` and are picked up by the recorder
  * like any XHR, while movements are pushed over a Firestore channel and only exist in readable
- * form in the rendered DOM. The run stages both as JSON; `import:racional-movements` (server)
+ * form in the rendered DOM. The run stages both as JSON; `import:racional-movements` (ingest → server)
  * turns the movement rows into ledger rows.
  */
 
@@ -225,16 +226,10 @@ async function readRenderedRows(page: Page): Promise<RacionalMovementRow[]> {
 
 /**
  * Identity of a row as seen in the list, before its detail route is known — e.g.
- * `2026-09-22|buy|US$xxx,xx`. It is also the crawl watermark: the importer writes the key of
- * the newest row it imported cleanly as `last_row_key` (see run.ts).
- *
- * The formula lives twice — here and as `racionalListRowKey` in
- * `server/src/racionalMovements.ts` (the scraper cannot import the server) — so the return line
- * must stay TEXTUALLY IDENTICAL in both; the server test `racionalMovementsImport.test.ts`
- * compares them.
+ * `2026-09-22|buy|US$xxx,xx`; the crawl cursor holds one (see `racionalListRowKey`).
  */
 export function rowKey(row: RacionalMovementRow): string {
-  return `${row.occurred_on ?? row.day}|${row.kind_class ?? row.title}|${row.amount}`;
+  return racionalListRowKey(row);
 }
 
 /**

@@ -7,8 +7,8 @@ import {
   racionalMovementTimestamp,
   racionalRowToMovement,
   sortRacionalMovementsNewestFirst,
-} from "./racionalMovements.js";
-import { racionalApiDividendsFromResponse } from "./racionalMovements.js";
+} from "./movements.js";
+import { racionalApiDividendsFromResponse } from "./movements.js";
 
 /**
  * Fixtures are the real 2026-07-01 SLV purchase read out of the live app, which the ledger

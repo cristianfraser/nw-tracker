@@ -17,7 +17,8 @@ import {
   planRacionalEmailMovements,
   type RacionalEmailPlannedMovement,
 } from "./racionalEmailImport.js";
-import { racionalComisionCrawlDue, readRacionalImportState } from "./racionalMovementsImport.js";
+import { brokerCleanThrough } from "./brokerReadCoverage.js";
+import { racionalComisionCrawlDue } from "./racionalMovementsImport.js";
 
 /**
  * `broker.notifications`: every money notification a broker sent, planned against the ledger
@@ -138,7 +139,7 @@ export function applyBrokerNotifications(payload: BrokerNotificationsPayload): B
     incomplete: [],
     fetch: racionalFetchDecision(
       notifications,
-      readRacionalImportState()?.clean_crawl_at ?? null,
+      brokerCleanThrough("racional"),
       racionalComisionCrawlDue()
     ),
     overdue_synthetic_retiros: [],

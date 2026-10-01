@@ -49,7 +49,7 @@
     "check:cc-bank-cupo": "npm run check:cc-bank-cupo -w nw-tracker-server --",
     "check:santander-payday-fetch": "npm run --silent check:santander-payday-fetch -w nw-tracker-server --",
     "fetch:racional": "npm run fetch:racional -w nw-tracker-ingest --",
-    "import:racional-movements": "npm run import:racional-movements -w nw-tracker-server --",
+    "import:racional-movements": "npm run import:racional-movements -w nw-tracker-ingest --",
     "import:racional-emails": "npm run import:racional-emails -w nw-tracker-ingest --",
     "fetch:emails": "npm run fetch:emails -w nw-tracker-ingest --",
     "check:broker-emails": "npm run check:broker-emails -w nw-tracker-ingest --",

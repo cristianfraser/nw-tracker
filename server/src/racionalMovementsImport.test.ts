@@ -1,23 +1,19 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { BrokerMovementsPayload } from "nw-tracker-contracts";
+import { brokerCleanThrough } from "./brokerReadCoverage.js";
 import { db } from "./db.js";
 import {
   applyRacionalDividendDetails,
+  applyRacionalRead,
   markDuplicates,
-  nextRacionalImportState,
   planRacionalDividendDetails,
   planRacionalMovement,
-  planRacionalMovementsFile,
+  planRacionalMovements,
   racionalComisionCrawlDue,
-  readRacionalImportState,
-  runRacionalImport,
-  writeRacionalImportState,
 } from "./racionalMovementsImport.js";
 import { getMovementDividendDetail } from "./movementDividendDetails.js";
-import { racionalListRowKey, racionalRowToMovement } from "./racionalMovements.js";
 import type { RacionalPlannedMovement } from "./racionalMovementsImport.js";
+import { brokerMovement } from "./test/brokerMovementFixtures.js";
 
 /**
  * Duplicate detection has to survive how the ledger actually looks, which real data showed is
@@ -53,12 +49,16 @@ describe("racionalMovementsImport duplicate detection", () => {
 
   /** A planned buy with the accounts overridden, so the test needs no real Racional wiring. */
   function plannedBuy(from: number, to: number, amount: number, day = "2026-03-05"): RacionalPlannedMovement {
-    const source = racionalRowToMovement({
+    const source = brokerMovement({
+      kind: "buy",
       title: "Compra VEA",
-      amount: `US$${amount.toFixed(2).replace(".", ",")}`,
       occurred_on: day,
-      kind_class: "buy",
-      detail: `Orden #TEST Recibiste 1,00000000 acciones de Vanguard (VEA), a un valor de US$1,00 por acción.`,
+      amount,
+      currency: "usd",
+      ticker: "VEA",
+      units: "1.00000000",
+      price: 1,
+      order_id: "TEST",
     });
     return {
       source,
@@ -121,17 +121,12 @@ describe("racionalMovementsImport duplicate detection", () => {
     const accountId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
 
     try {
-      for (const [title, kindClass] of [
-        ["Depósito", "contribution"],
-        ["Retiro", undefined],
+      for (const [title, kind] of [
+        ["Depósito", "deposit"],
+        ["Retiro", "withdrawal"],
       ] as const) {
         const planned = planRacionalMovement(
-          racionalRowToMovement({
-            title,
-            amount: "$1.000.000",
-            occurred_on: "2026-07-02",
-            kind_class: kindClass,
-          })
+          brokerMovement({ kind, title, occurred_on: "2026-07-02", amount: 1_000_000, currency: "clp" })
         );
         // Its counterpart is a real bank movement that arrives via the checking importer.
         expect(planned.requires_manual).toMatch(/mirror-pairs/);
@@ -186,12 +181,7 @@ describe("racional portafolio comisión (cash_fee)", () => {
   }
 
   const feeMovement = () =>
-    racionalRowToMovement({
-      title: "Comisión",
-      amount: "$2.335",
-      occurred_on: "2026-08-18",
-      kind_class: "commissions",
-    });
+    brokerMovement({ kind: "fee", title: "Comisión", occurred_on: "2026-08-18", amount: 2335, currency: "clp" });
 
   it("routes a CLP comisión to the portafolio caja as a cash_fee cost", () => {
     const clp = ensureCashAccount("import:panel|kind=clp|key=clp", "vitest Racional CLP");
@@ -361,11 +351,11 @@ describe("racional dividend breakdowns from the dividends API file", () => {
  * pass with it. The rules now: dedupe first, fail only a row that would be written, isolate the
  * failure to its file, and never move the watermark back.
  */
-describe("racional staged files — incomplete rows, file isolation, watermark", () => {
+describe("racional reads — incomplete rows, read isolation, coverage", () => {
   const TICKER = "VTRACBUY";
   let usd: { id: number; cleanup: () => void };
   let equity: number;
-  let dir: string;
+  let coverageBefore: { clean_through: string; updated_at: string } | undefined;
 
   beforeEach(() => {
     const existing = db.prepare(`SELECT id FROM accounts WHERE import_key = 'import:panel|kind=usd|key=usd'`).get() as
@@ -393,42 +383,56 @@ describe("racional staged files — incomplete rows, file isolation, watermark",
         )
         .run(group.id, TICKER).lastInsertRowid
     );
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "racional-import-"));
+    coverageBefore = db.prepare(`SELECT clean_through, updated_at FROM broker_read_coverage WHERE broker = 'racional'`).get() as
+      | { clean_through: string; updated_at: string }
+      | undefined;
+    db.prepare(`DELETE FROM broker_read_coverage WHERE broker = 'racional'`).run();
   });
 
   afterEach(() => {
+    db.prepare(
+      `DELETE FROM movement_dividend_details WHERE movement_id IN (
+         SELECT id FROM movements WHERE occurred_on LIKE '2097-07-%'
+           AND (account_id IN (?, ?) OR from_account_id IN (?, ?) OR to_account_id IN (?, ?)))`
+    ).run(usd.id, equity, usd.id, equity, usd.id, equity);
     db.prepare(
       `DELETE FROM movements WHERE occurred_on LIKE '2097-07-%'
          AND (account_id IN (?, ?) OR from_account_id IN (?, ?) OR to_account_id IN (?, ?))`
     ).run(usd.id, equity, usd.id, equity, usd.id, equity);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(equity);
     usd.cleanup();
-    fs.rmSync(dir, { recursive: true, force: true });
+    db.prepare(`DELETE FROM broker_read_coverage WHERE broker = 'racional'`).run();
+    if (coverageBefore) {
+      db.prepare(`INSERT INTO broker_read_coverage (broker, clean_through, updated_at) VALUES ('racional', ?, ?)`).run(
+        coverageBefore.clean_through,
+        coverageBefore.updated_at
+      );
+    }
   });
 
-  /** A buy the crawl listed but could not open: no id, no detail, so no share count. */
-  const unopenedBuy = {
+  /** A buy the crawl listed but could not open: no share count. */
+  const unopenedBuy = brokerMovement({
+    kind: "buy",
     title: `Compra ${TICKER}`,
-    amount: "US$1.234,56",
-    day: "01/07",
     occurred_on: "2097-07-01",
-    kind_class: "buy",
-    detail_status: "unopened",
-    detail_error: "not among the 10 rendered rows",
-  };
-  const interest = (ymd: string, amount: string) => ({
-    title: "Intereses",
-    amount,
-    day: `${ymd.slice(8)}/${ymd.slice(5, 7)}`,
-    occurred_on: ymd,
-    kind_class: null,
+    amount: 1234.56,
+    currency: "usd",
+    ticker: TICKER,
+    incomplete: "share count unknown — the crawl could not open its detail view (not among the 10 rendered rows)",
   });
-
-  function stage(name: string, content: unknown): string {
-    const file = path.join(dir, name);
-    fs.writeFileSync(file, JSON.stringify(content));
-    return file;
-  }
+  const interest = (ymd: string, amount: number) =>
+    brokerMovement({ kind: "interest", title: "Intereses", occurred_on: ymd, amount, currency: "usd" });
+  const apiDividend = {
+    id: `div_NI.vitest-import_${TICKER}_2097-07-03T12:00:00.000Z`,
+    asset_id: TICKER,
+    gross: 1,
+    withholding: 0.15,
+    net: 0.85,
+    execution_date: "2097-07-03T12:00:00.000Z",
+    is_interest: false,
+  };
+  const read = (readAt: string, movements: BrokerMovementsPayload["movements"], dividends: BrokerMovementsPayload["dividends"] = null, apply = true) =>
+    applyRacionalRead({ broker: "racional", apply, read_at: readAt, movements, dividends }, `movements-${readAt}.json`);
 
   function seedBuy(): number {
     return Number(
@@ -457,169 +461,77 @@ describe("racional staged files — incomplete rows, file isolation, watermark",
       .prepare(`SELECT amount FROM movements WHERE account_id = ? AND occurred_on = ? AND flow_kind = 'savings_earnings'`)
       .all(usd.id, ymd);
 
-  it("plans an unopened buy the ledger already holds as already present, without throwing", () => {
+  it("plans an unopened buy the ledger already holds as already present", () => {
     const existing = seedBuy();
-    const planned = planRacionalMovementsFile(stage("movements-2097-07-02T01-00-00.json", [unopenedBuy]));
-    expect(planned.planned).toHaveLength(1);
-    expect(planned.planned[0]).toMatchObject({ duplicate_of: existing, blocked: null, conflict: null });
-    expect(planned.planned[0]!.source.incomplete).toMatch(/could not open its detail view \(not among the 10 rendered rows\)/);
+    const planned = planRacionalMovements([unopenedBuy]).planned;
+    expect(planned).toHaveLength(1);
+    expect(planned[0]).toMatchObject({ duplicate_of: existing, blocked: null, conflict: null });
   });
 
-  it("fails only the file that would have to write it — later files and the dividends pass still run", () => {
-    stage("movements-2097-07-02T01-00-00.json", [unopenedBuy, interest("2097-07-01", "US$0,05")]);
-    // A malformed file (an unmapped kind) is isolated the same way.
-    stage("movements-2097-07-02T12-00-00.json", [{ title: "Algo Nuevo", amount: "US$1,00", day: "02/07", occurred_on: "2097-07-02" }]);
-    stage("movements-2097-07-03T01-00-00.json", [interest("2097-07-02", "US$0,07")]);
-    const dividend = seedDividend();
-    stage("dividends-2097-07-03T01-00-00.json", {
-      dividends: [
-        {
-          id: `div_NI.vitest-import_${TICKER}_2097-07-03T12:00:00.000Z`,
-          assetId: TICKER,
-          DIV: 1,
-          DIVTAX: -0.15,
-          amount: 0.85,
-          amountUSD: 0.85,
-          executionDate: "2097-07-03T12:00:00.000Z",
-          isInterest: false,
-          isRebateInterest: false,
-          isUSDDividend: true,
-        },
-      ],
-    });
-
-    const lines: string[] = [];
-    const summary = runRacionalImport({
-      dir,
-      statePath: path.join(dir, "state.json"),
-      apply: true,
-      nowIso: "2097-07-03T02:00:00.000Z",
-      log: (line) => lines.push(line),
-    });
-
-    // Both failures name their file (and the row), and fail the step.
-    expect(summary.failures).toHaveLength(2);
-    expect(summary.failures[0]).toContain("movements-2097-07-02T01-00-00.json");
-    expect(summary.failures[0]).toContain(`«Compra ${TICKER}»`);
-    expect(summary.failures[0]).toMatch(/share count unknown .* no ledger movement matches it/);
-    expect(summary.failures[1]).toMatch(/movements-2097-07-02T12-00-00\.json: Unmapped Racional movement kind "Algo Nuevo"/);
-    expect(lines.join("\n")).toMatch(/NOT imported: nothing from this file is written/);
-    // Nothing from the failed file is written — not even its writable interest row…
+  it("a blocked read writes nothing and covers nothing; a later read and its dividends still apply", () => {
+    const blocked = read("2097-07-02T01:00:00.000Z", [unopenedBuy, interest("2097-07-01", 0.05)]);
+    expect(blocked.movements_blocked).toBe(true);
+    expect(blocked.problems[0]).toMatch(new RegExp(`«Compra ${TICKER}» — share count unknown .* no ledger movement matches it`));
+    // Nothing from the blocked list is written — not even its writable interest row.
     expect(interestOn("2097-07-01")).toEqual([]);
-    expect(db.prepare(`SELECT COUNT(*) AS n FROM movements WHERE to_account_id = ? AND occurred_on = '2097-07-01'`).get(equity)).toEqual({ n: 0 });
-    // …while the later file is applied and the dividends pass writes its breakdown.
+    expect(blocked).toMatchObject({ clean: false, clean_through: null, inserted: 0 });
+
+    const dividend = seedDividend();
+    const later = read("2097-07-03T01:00:00.000Z", [interest("2097-07-02", 0.07)], [apiDividend]);
+    expect(later).toMatchObject({ clean: true, problems: [], inserted: 1, breakdowns_written: 1 });
     expect(interestOn("2097-07-02")).toEqual([{ amount: 0.07 }]);
     expect(getMovementDividendDetail(dividend)).toMatchObject({ gross_amount: 1, withholding_amount: 0.15, source: "racional_api" });
-    // The watermark is the first row of the newest file that imported cleanly — in the crawler's
-    // key format — and a run with a failure answers no e-mail nudge.
-    expect(summary.state).toMatchObject({
-      last_row_key: "2097-07-02|Intereses|US$0,07",
-      watermark_file: "movements-2097-07-03T01-00-00.json",
-      clean_crawl_at: null,
-    });
-    expect(readRacionalImportState(path.join(dir, "state.json"))).toEqual(summary.state);
-  });
-
-  it("never moves the watermark back, and records the crawl a clean run covered", () => {
-    const statePath = path.join(dir, "state.json");
-    const newer = {
-      last_row_key: "2097-07-09|buy|US$9,99",
-      last_movement_id: "vitest_2097-07-09T15:00:00.000Z_9.99",
-      last_occurred_at: "2097-07-09T15:00:00.000Z",
-      watermark_file: "movements-2097-07-09T01-00-00.json",
-      clean_crawl_at: null,
-      updated_at: "2097-07-09T02:00:00.000Z",
-    };
-    writeRacionalImportState(newer, statePath);
-    seedBuy(); // the unopened buy is in the ledger: every file below is clean
-    stage("movements-2097-07-02T01-00-00.json", [unopenedBuy]);
-    stage("movements-2097-07-03T01-00-00.json", []); // a quiet crawl — it read the list, found nothing new
-
-    const summary = runRacionalImport({ dir, statePath, apply: true, nowIso: "2097-07-10T00:00:00.000Z", log: () => {} });
-    expect(summary.failures).toEqual([]);
-    expect(readRacionalImportState(statePath)).toEqual({
-      ...newer,
-      clean_crawl_at: "2097-07-03T01:00:00.000Z",
-      updated_at: "2097-07-10T00:00:00.000Z",
+    expect(brokerCleanThrough("racional")).toBe("2097-07-03T01:00:00.000Z");
+    // Sent again: everything is already there.
+    expect(read("2097-07-03T01:00:00.000Z", [interest("2097-07-02", 0.07)], [apiDividend])).toMatchObject({
+      inserted: 0,
+      duplicates: 1,
+      breakdowns_written: 0,
+      clean: true,
     });
   });
 
-  it("moves both marks forward only", () => {
-    const candidate = {
-      file: "movements-2097-07-03T01-00-00.json",
-      row_key: "2097-07-03|buy|US$1,00",
-      movement_id: "m3",
-      occurred_at: "2097-07-03T00:00:00.000Z",
-    };
-    // A state from before list keys (a route id, no file) takes any candidate.
-    const legacy = { last_movement_id: "vitest_2097-07-01T16:00:00.000Z_1", last_occurred_at: "2097-07-01T16:00:00.000Z", updated_at: "t0" };
-    expect(nextRacionalImportState(legacy, { watermark: candidate, clean_crawl_at: null }, "t1")).toMatchObject({
-      last_row_key: candidate.row_key,
-      watermark_file: candidate.file,
-      clean_crawl_at: null,
-    });
-    const current = nextRacionalImportState(null, { watermark: candidate, clean_crawl_at: "2097-07-03T01:00:00.000Z" }, "t1")!;
-    // The same crawl again, or older ones: nothing to write.
-    expect(nextRacionalImportState(current, { watermark: candidate, clean_crawl_at: "2097-07-03T01:00:00.000Z" }, "t2")).toBeNull();
-    expect(
-      nextRacionalImportState(
-        current,
-        { watermark: { ...candidate, file: "movements-2097-07-02T01-00-00.json" }, clean_crawl_at: "2097-07-02T01:00:00.000Z" },
-        "t2"
-      )
-    ).toBeNull();
-    // A newer crawl moves the watermark and keeps the recorded coverage.
-    expect(
-      nextRacionalImportState(current, { watermark: { ...candidate, file: "movements-2097-07-04T01-00-00.json", row_key: "k4" }, clean_crawl_at: null }, "t2")
-    ).toMatchObject({ last_row_key: "k4", clean_crawl_at: "2097-07-03T01:00:00.000Z", updated_at: "t2" });
+  it("moves the coverage forward only, and only for a read of the list", () => {
+    seedBuy(); // the unopened buy is in the ledger: the reads below are clean
+    read("2097-07-05T01:00:00.000Z", [unopenedBuy]);
+    read("2097-07-04T01:00:00.000Z", []); // an older quiet read arriving late
+    expect(brokerCleanThrough("racional")).toBe("2097-07-05T01:00:00.000Z");
+    // The dividends record alone says nothing about the movements a mail announced.
+    expect(read("2097-07-09T01:00:00.000Z", null, [])).toMatchObject({ clean: false });
+    // Report only covers nothing either.
+    expect(read("2097-07-10T01:00:00.000Z", [], null, false)).toMatchObject({ applied: false, clean: true });
+    expect(brokerCleanThrough("racional")).toBe("2097-07-05T01:00:00.000Z");
+  });
+
+  it("reports an unmappable movement as a problem and writes nothing from the list", () => {
+    const out = read("2097-07-06T01:00:00.000Z", [
+      interest("2097-07-06", 0.02),
+      brokerMovement({ kind: "corporate_action", title: "Evento Corporativo", occurred_on: "2097-07-06", amount: 1, currency: "usd" }),
+    ]);
+    expect(out.problems[0]).toMatch(/no ledger mapping yet/);
+    expect(out.clean).toBe(false);
+    expect(interestOn("2097-07-06")).toEqual([]);
   });
 
   it("recognises a row without its instrument by the cash leg alone, and never guesses between two", () => {
-    const file = stage("movements-2097-07-04T01-00-00.json", [
-      {
-        title: "Dividendo",
-        amount: "US$0,85",
-        day: "03/07",
-        occurred_on: "2097-07-03",
-        kind_class: "dividends",
-        detail_status: "unopened",
-        detail_error: "not among the 10 rendered rows",
-      },
-    ]);
-    expect(planRacionalMovementsFile(file).planned[0]!.blocked).toMatch(/^paying instrument unknown/);
+    const dividendRow = brokerMovement({
+      kind: "dividend",
+      title: "Dividendo",
+      occurred_on: "2097-07-03",
+      amount: 0.85,
+      currency: "usd",
+      incomplete: "paying instrument unknown — the crawl could not open its detail view (not among the 10 rendered rows)",
+    });
+    expect(planRacionalMovements([dividendRow]).planned[0]!.blocked).toMatch(/^paying instrument unknown/);
     const first = seedDividend();
-    expect(planRacionalMovementsFile(file).planned[0]).toMatchObject({ duplicate_of: first, blocked: null });
+    expect(planRacionalMovements([dividendRow]).planned[0]).toMatchObject({ duplicate_of: first, blocked: null });
     seedDividend(); // a second same-day credit of the same amount: which one would it be?
-    expect(planRacionalMovementsFile(file).planned[0]!.blocked).toMatch(/^paying instrument unknown/);
+    expect(planRacionalMovements([dividendRow]).planned[0]!.blocked).toMatch(/^paying instrument unknown/);
 
     // A buy whose title names no ticker knows only the cash it spent.
-    const buy = stage("movements-2097-07-05T01-00-00.json", [{ ...unopenedBuy, title: "Compra" }]);
-    expect(planRacionalMovementsFile(buy).planned[0]!.blocked).toMatch(/^share count and instrument unknown/);
+    const buy = { ...unopenedBuy, title: "Compra", ticker: null, incomplete: "share count and instrument unknown — the crawl could not open its detail view" };
+    expect(planRacionalMovements([buy]).planned[0]!.blocked).toMatch(/^share count and instrument unknown/);
     const existing = seedBuy();
-    expect(planRacionalMovementsFile(buy).planned[0]).toMatchObject({ duplicate_of: existing, blocked: null });
-  });
-
-  it("writes the crawler's own list key as the watermark — the formula is textually the crawler's", () => {
-    // Staged rows exactly as the crawler writes them.
-    expect(
-      racionalListRowKey({ title: "Compra VTSYN", amount: "US$797,01", day: "22/09", occurred_on: "2097-09-22", kind_class: "buy" })
-    ).toBe("2097-09-22|buy|US$797,01");
-    expect(
-      racionalListRowKey({ title: "Compra VTSYN", amount: "US$1.346,17", day: "01/07", occurred_on: null, kind_class: null })
-    ).toBe("01/07|Compra VTSYN|US$1.346,17");
-    expect(() => racionalListRowKey({ title: "Compra VTSYN", amount: "US$1,00" })).toThrow(/no list identity/);
-
-    // The fetcher compares its rendered rows with this key using `rowKey` in the scraper, which
-    // cannot import the server: the two return lines must stay identical.
-    const returnLine = (file: URL, fn: string): string => {
-      const m = new RegExp(`function ${fn}\\([^)]*\\): string \\{[\\s\\S]*?\\n  (return [^\\n]+)\\n\\}`).exec(
-        fs.readFileSync(file, "utf8")
-      );
-      if (!m) throw new Error(`no ${fn} in ${file.pathname}`);
-      return m[1]!;
-    };
-    expect(returnLine(new URL("../../ingest/src/racional/steps.ts", import.meta.url), "rowKey")).toBe(
-      returnLine(new URL("./racionalMovements.ts", import.meta.url), "racionalListRowKey")
-    );
+    expect(planRacionalMovements([buy]).planned[0]).toMatchObject({ duplicate_of: existing, blocked: null });
   });
 });
