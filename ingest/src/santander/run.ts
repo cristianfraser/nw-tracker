@@ -56,8 +56,8 @@ export async function runSantander(opts: RunOptions): Promise<number> {
   const config = loadBankConfig("santander");
   // Before the run guard records an attempt: a latched rejection is not a run, it is a refusal.
   assertLoginNotLatched(config.keychain_service, config.rut, opts.force);
-  assertRunAllowed("santander", opts.minIntervalMinutes, opts.force);
   const password = readKeychainSecret(config.keychain_service, config.rut);
+  assertRunAllowed("santander", opts.minIntervalMinutes, opts.force);
   const stamp = runStampNow();
   const recorder = new Recorder(opts.capture, stamp, "santander", API_HOST_FRAGMENT);
   const destDir = opts.capture ? ensureDir(path.join(recorder.captureDir ?? "", "downloads")) : resolveInboxDir();

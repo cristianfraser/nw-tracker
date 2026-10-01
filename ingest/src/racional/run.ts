@@ -31,9 +31,10 @@ import type { RunOptions, StepResult } from "../runTypes.js";
 export async function runRacional(opts: RunOptions): Promise<number> {
   assertValidSteps("racional", opts.only);
   setForceRefetch(opts.force);
-  assertRunAllowed("racional", opts.minIntervalMinutes, opts.force);
+  // Config and Keychain first: a setup error is not a run and must not start the guard's clock.
   const config = loadBankConfig("racional");
   const password = readKeychainSecret(config.keychain_service, config.loginAccount);
+  assertRunAllowed("racional", opts.minIntervalMinutes, opts.force);
   const stamp = runStampNow();
   // No host fragment: the API hosts are unconfirmed, so record every xhr/fetch and let the
   // third-party noise filter drop the telemetry.
