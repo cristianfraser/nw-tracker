@@ -220,9 +220,10 @@ export async function runAfpUnoCapture(opts: RunOptions): Promise<number> {
     throw new Error("AFP UNO has no fetcher yet — run the supervised capture: npm run fetch -- afp-uno --capture");
   }
   if (opts.background) throw new Error("the AFP UNO capture is supervised — run it without --background");
-  assertRunAllowed(BANK, opts.minIntervalMinutes, opts.force);
+  // Config and Keychain first: a setup error is not a run and must not start the guard's clock.
   const config = loadBankConfig(BANK);
   const clave = readKeychainSecret(config.keychain_service, config.loginAccount);
+  assertRunAllowed(BANK, opts.minIntervalMinutes, opts.force);
   const stamp = runStampNow();
   const recorder = new Recorder(true, stamp, BANK);
   recorder.redactSecrets([clave]);
