@@ -255,7 +255,8 @@ export async function runAfpUnoCapture(opts: RunOptions): Promise<number> {
     log("");
 
     const deadline = Date.now() + CAPTURE_MINUTES * 60_000;
-    while (!closed && Date.now() < deadline) {
+    // On macOS Chrome outlives its last window, so a closed window ends the run too.
+    while (!closed && context.pages().length > 0 && Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, POLL_MS));
       for (const p of context.pages()) {
         await session.snapshot(p, "poll");
