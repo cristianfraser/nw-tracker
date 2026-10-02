@@ -43,10 +43,12 @@ describe("runNightly", () => {
       "run fetch:lider-boletas",
       "run fetch:lider-statements",
       "run fetch:fintual-docs",
+      "run fetch:apple-mail",
       "run import:cfraser-inbox",
       "run import:santander-movements",
       "run convert:cc-payment-mirrors",
       "run check:cc-bank-cupo",
+      "run import:apple-mail",
       "run fetch:emails",
       "run check:broker-emails",
       "run import:fintual-emails -- --apply",
@@ -111,6 +113,7 @@ describe("runHourly", () => {
       "run fetch:lider-statements",
       "run fetch:lider-boletas",
       "run fetch:fintual-docs",
+      "run fetch:apple-mail",
       "run fetch:emails",
     ]);
     expect(notes).toContain("=== inbox pipeline (skipped — nothing new staged)");
@@ -122,7 +125,7 @@ describe("runHourly", () => {
       "fetch:emails": "e-mail: 1 broker message(s)",
     });
     expect((await runHourly(x, HOURLY)).activity).toBe(true);
-    expect(calls.slice(5)).toEqual([
+    expect(calls.slice(6)).toEqual([
       "run import:cfraser-inbox",
       "run import:fintual-emails -- --apply",
       "run import:racional-emails -- --apply",
@@ -145,7 +148,7 @@ describe("runHourly", () => {
     });
     expect(attempts).toEqual(["payday"]);
     expect(result).toEqual({ santander: { mode: "payday", outcome: "ok", note: null }, activity: true });
-    expect(calls.slice(5)).toEqual([
+    expect(calls.slice(6)).toEqual([
       "run fetch:santander -- --background --movements-only",
       "run import:santander-movements",
       "run convert:cc-payment-mirrors",

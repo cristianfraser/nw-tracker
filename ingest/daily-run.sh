@@ -142,6 +142,13 @@ else
   step "Fintual Acciones documents" npm run fetch:fintual-docs
 fi
 
+# 1e. Apple's App Store receipts and subscription notices from Gmail (step 3d reads them).
+if [[ "$DRY_RUN" == "1" ]]; then
+  step "Apple receipts e-mail (dry run)" npm run fetch:apple-mail -- --dry-run
+else
+  step "Apple receipts e-mail" npm run fetch:apple-mail
+fi
+
 # 2. Inbox pipeline: organizes + parses + imports Santander statement PDFs, checking cartolas,
 #    a Fintual certificado, AND the Lider «últimos movimientos» CSV that the separate ~08:00
 #    scheduled task drops in cfraser/inbox/.
@@ -178,6 +185,13 @@ fi
 #     sits out dry runs.
 if [[ "$DRY_RUN" != "1" ]]; then
   step "CC bank cupo check" npm run check:cc-bank-cupo
+fi
+
+# 3d. Apple's mails, once the card lines they explain are in: the app on each charge's note.
+if [[ "$DRY_RUN" == "1" ]]; then
+  step "Apple receipts → expense notes (dry run)" npm run import:apple-mail -- --dry-run
+else
+  step "Apple receipts → expense notes" npm run import:apple-mail
 fi
 
 # 4. Broker e-mail is the change detector: reading it costs nothing, so it decides whether any

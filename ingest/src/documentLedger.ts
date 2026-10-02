@@ -19,7 +19,7 @@ import type { BankName } from "./config.js";
  * session any more (its statement and boletas arrive by mail), but its documents keep
  * their own namespace so the keys never collide with a bank's.
  */
-export type DocumentSource = BankName | "lider" | "fintual";
+export type DocumentSource = BankName | "lider" | "fintual" | "apple";
 
 type Ledger = Partial<Record<DocumentSource, Record<string, string[]>>>;
 

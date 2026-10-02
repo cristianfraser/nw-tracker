@@ -43,6 +43,7 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     ["Lider statement e-mail", "fetch:lider-statements"],
     ["Lider boletas", "fetch:lider-boletas"],
     ["Fintual Acciones documents", "fetch:fintual-docs"],
+    ["Apple receipts e-mail", "fetch:apple-mail"],
   ] as const;
   const saved: number[] = [];
   for (const [label, script] of fetches) {
@@ -51,7 +52,7 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
       : await x.step(label, npmRun(script), capture);
     saved.push(savedCount(r.output));
   }
-  const [sdSaved, lsSaved, lbSaved, fdSaved] = saved as [number, number, number, number];
+  const [sdSaved, lsSaved, lbSaved, fdSaved, amSaved] = saved as [number, number, number, number, number];
   // fetch:emails has no dry mode; --no-mark leaves the watermark alone (a safe re-read).
   const broker = o.dryRun
     ? await x.step("fetch broker e-mail (no-mark)", npmRun("fetch:emails", "--no-mark"), capture)
@@ -105,13 +106,19 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     } else {
       x.note("=== Fintual Acciones dividend breakdowns (skipped — no new document)");
     }
+    if (amSaved > 0) {
+      await x.step("Apple receipts → expense notes", npmRun("import:apple-mail"));
+    } else {
+      x.note("=== Apple receipts → expense notes (skipped — no new mail)");
+    }
   }
 
-  const activity = sdSaved > 0 || lsSaved > 0 || lbSaved > 0 || fdSaved > 0 || beMsgs > 0 || caughtUp;
+  const activity = sdSaved > 0 || lsSaved > 0 || lbSaved > 0 || fdSaved > 0 || amSaved > 0 || beMsgs > 0 || caughtUp;
   if (activity) {
     x.note(
       `activity this hour: santander-docs saved=${sdSaved}, lider statement saved=${lsSaved}, ` +
-        `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, broker mail=${beMsgs}, santander fetch=${caughtUp ? 1 : 0}`
+        `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, apple mail saved=${amSaved}, broker mail=${beMsgs}, ` +
+        `santander fetch=${caughtUp ? 1 : 0}`
     );
   }
   return { santander, activity };

@@ -9,6 +9,7 @@ import type {
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { applyCardStatement } from "./cardStatementApply.js";
+import { applyMerchantPurchaseDocument } from "./merchantPurchaseDocumentApply.js";
 import { applyPensionAccountCertificates } from "./pensionAccountCertificatesApply.js";
 import { applyRacionalRead } from "./racionalMovementsImport.js";
 import { applyCardPaymentReceipt } from "./santanderCcPaymentReceipts.js";
@@ -71,6 +72,14 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "merchant.purchase_document": {
+    apply({ payload, envelope }) {
+      const outcome = applyMerchantPurchaseDocument(payload, envelope.source.ref);
+      return outcome.status === "conflict"
+        ? { status: "conflict", message: outcome.message }
+        : { status: outcome.status, details: outcome.details };
+    },
+  },
   "card.statement": {
     apply({ payload }) {
       return { status: "applied", details: applyCardStatement(payload) };
