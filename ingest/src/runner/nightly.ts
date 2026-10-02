@@ -39,13 +39,15 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     santander = { mode: "nightly", outcome: fetched.ok ? "ok" : "failed", note: null };
   }
 
-  // 1b–1d. Documents out of Gmail: Santander's monthly PDFs, Lider boletas, the BCI Lider
-  // statement, Fintual's Acciones documents. Ledger-keyed, so a no-op except when mail landed.
+  // 1b–1e. Documents out of Gmail: Santander's monthly PDFs, Lider boletas, the BCI Lider
+  // statement, Fintual's Acciones documents, Apple's receipts and subscription notices.
+  // Ledger-keyed, so a no-op except when mail landed.
   for (const [label, script] of [
     ["Santander e-mail documents", "fetch:santander-docs"],
     ["Lider boletas", "fetch:lider-boletas"],
     ["Lider statement e-mail", "fetch:lider-statements"],
     ["Fintual Acciones documents", "fetch:fintual-docs"],
+    ["Apple receipts e-mail", "fetch:apple-mail"],
   ] as const) {
     if (o.dryRun) await x.step(dry(label), npmRun(script, "--dry-run"));
     else await x.step(label, npmRun(script));
@@ -66,6 +68,10 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     await x.step("Convert CC payment mirrors after card feed", npmRun("convert:cc-payment-mirrors"));
     await x.step("CC bank cupo check", npmRun("check:cc-bank-cupo"));
   }
+
+  // 3d. Apple's mails, once the card lines they explain are in: the app on each charge's note.
+  if (o.dryRun) await x.step(dry("Apple receipts → expense notes"), npmRun("import:apple-mail", "--dry-run"));
+  else await x.step("Apple receipts → expense notes", npmRun("import:apple-mail"));
 
   // 4. Broker e-mail: the change detector, and the Fintual / Racional mail imports.
   if (o.dryRun) {
