@@ -651,7 +651,7 @@
     "checking": {
       "monthModalTitle": "Movements {{month}}",
       "monthModalClose": "Close",
-      "cartolaMonthEmpty": "No months in movements or valuations. Run npm run import:checking-cartolas on the server.",
+      "cartolaMonthEmpty": "No months in movements or valuations. Run npm run import:checking-cartolas -w nw-tracker-ingest.",
       "cartolaMonthImportedCount": "{{imported}} of {{total}} month(s) with an imported statement",
       "cartolaNo": "No statement",
       "colDeposits": "Deposits",

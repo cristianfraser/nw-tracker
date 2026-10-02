@@ -2230,8 +2230,8 @@
         "es": "Cerrar"
       },
       "cartolaMonthEmpty": {
-        "en": "No months in movements or valuations. Run npm run import:checking-cartolas on the server.",
-        "es": "Sin meses en movimientos ni valorizaciones. Ejecuta npm run import:checking-cartolas en el servidor."
+        "en": "No months in movements or valuations. Run npm run import:checking-cartolas -w nw-tracker-ingest.",
+        "es": "Sin meses en movimientos ni valorizaciones. Ejecuta npm run import:checking-cartolas -w nw-tracker-ingest."
       },
       "cartolaMonthImportedCount": {
         "en": "{{imported}} of {{total}} month(s) with an imported statement",

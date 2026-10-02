@@ -31,11 +31,11 @@
  * Legacy `--skip-checking`, `--skip-cuenta-vista`, `--skip-sync` still disable those steps.
  */
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { importCheckingCartolasFromDir } from "../src/checkingCartolaImport.js";
-import { organizeCheckingCartolaXlsxFromInbox } from "../src/checkingCartolaInbox.js";
 import {
   basenamesFromCfraserOrganizePaths,
   emptyCfraserOrganizeManifest,
@@ -45,7 +45,6 @@ import {
 import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
 import { hasPendingGroceryReceipts } from "../src/groceryReceiptsImport.js";
 import { listGroceryReceiptInboxFiles } from "../src/groceryReceiptsIngest.js";
-import { importCuentaVistaCartolasFromPdfs } from "../src/cuentaVistaCartolaImport.js";
 import { processFintualCertificadoInboxCsv } from "../src/fintualCertificadoInbox.js";
 import { listLiderMovementInboxFiles } from "../src/liderMovementsImport.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";
@@ -157,19 +156,12 @@ function main(): void {
 
   let xlsxMoved: { from: string; to: string }[] = [];
   if (!skipOrganize) {
-    console.log("\n=== Organize checking cartola xlsx (inbox → excels/) ===");
-    const xlsxOrg = organizeCheckingCartolaXlsxFromInbox({ dryRun });
-    xlsxMoved = xlsxOrg.moved;
-    for (const m of xlsxOrg.moved) {
-      console.log(`  ${m.from} -> excels/cuenta corriente/${m.to}`);
-    }
-    for (const s of xlsxOrg.skipped) {
-      console.log(`  skip ${s.file}: ${s.reason}`);
-    }
-    if (xlsxOrg.errors.length) {
-      console.error(xlsxOrg.errors.map((e) => `${e.file}: ${e.error}`).join("\n"));
-      process.exit(1);
-    }
+    const xlsxManifest = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "nw-inbox-")), "checking-xlsx.json");
+    const args = ["run", "organize:checking-cartola-xlsx", "-w", "nw-tracker-ingest", "--", `--manifest=${xlsxManifest}`];
+    if (dryRun) args.push("--dry-run");
+    const code = runStep("Organize checking cartola xlsx (inbox → excels/)", "npm", args);
+    if (code !== 0) process.exit(code);
+    xlsxMoved = (JSON.parse(fs.readFileSync(xlsxManifest, "utf8")) as { moved: { from: string; to: string }[] }).moved;
   }
 
   if (!skipParse) {
@@ -214,34 +206,15 @@ function main(): void {
     const runCheckingPdf =
       !skipCheckingPdf && (forceChecking || inboxCheckingPdfs.length > 0);
 
-    console.log("\n=== Import checking cartolas (incremental) ===");
-    if (forceChecking) {
-      console.log("  (--checking: full xlsx + pdf scan)");
-    } else {
-      if (onlyXlsxBasenames?.length) {
-        console.log(`  xlsx from inbox: ${onlyXlsxBasenames.join(", ")}`);
-      }
-      if (onlyPdfBasenames?.length) {
-        console.log(`  pdf from inbox: ${onlyPdfBasenames.join(", ")}`);
-      }
-    }
-    const result = importCheckingCartolasFromDir({
-      dryRun,
-      pdf: runCheckingPdf,
-      skipPdfParse: hasFlag("skip-checking-pdf-parse"),
-      onlyXlsxBasenames,
-      onlyPdfBasenames,
-    });
-    const imported = result.filesImported.length;
-    const skipped = result.filesSkipped.length;
-    const errs = result.errors.length;
-    console.log(
-      `  checking: ${imported} file(s) imported, ${skipped} month(s) already in DB, ${errs} error(s)`
-    );
-    if (result.errors.length) {
-      console.error(result.errors.map((e) => `${e.file}: ${e.error}`).join("\n"));
-      process.exit(1);
-    }
+    const args = ["run", "import:checking-cartolas", "-w", "nw-tracker-ingest", "--"];
+    if (forceChecking) console.log("\n  (--checking: full xlsx + pdf scan)");
+    if (onlyXlsxBasenames?.length) args.push(`--only-xlsx=${onlyXlsxBasenames.join(",")}`);
+    if (onlyPdfBasenames?.length) args.push(`--only-pdf=${onlyPdfBasenames.join(",")}`);
+    if (!runCheckingPdf) args.push("--xlsx-only");
+    if (hasFlag("skip-checking-pdf-parse")) args.push("--skip-pdf-parse");
+    if (dryRun) args.push("--dry-run");
+    const code = runStep("Import checking cartolas (incremental)", "npm", args);
+    if (code !== 0) process.exit(code);
   } else {
     console.log("\n=== Import checking cartolas (skipped; pass --checking or drop cartola in inbox) ===");
   }
@@ -315,29 +288,13 @@ function main(): void {
     (forceCuentaVista || inboxVistaPdfs.length > 0);
 
   if (runCuentaVista) {
-    console.log("\n=== Import cuenta vista cartolas (pdf) ===");
-    if (forceCuentaVista) {
-      console.log("  (--cuenta-vista: full pdf scan)");
-    } else {
-      console.log(`  pdf from inbox: ${inboxVistaPdfs.join(", ")}`);
-    }
-    const vistaResult = importCuentaVistaCartolasFromPdfs({
-      dryRun,
-      skipPdfParse: hasFlag("skip-cuenta-vista-pdf-parse"),
-      onlyPdfBasenames: forceCuentaVista ? undefined : inboxVistaPdfs,
-    });
-    const imported = vistaResult.filesImported.length;
-    const skipped = vistaResult.filesSkipped.length;
-    const errs = vistaResult.errors.length;
-    console.log(
-      `  cuenta vista: ${imported} file(s) imported, ${skipped} month(s) already in DB, ${errs} error(s)`
-    );
-    if (vistaResult.errors.length) {
-      console.error(
-        vistaResult.errors.map((e) => `${e.file}: ${e.error}`).join("\n")
-      );
-      process.exit(1);
-    }
+    const args = ["run", "import:cuenta-vista-cartolas", "-w", "nw-tracker-ingest", "--"];
+    if (forceCuentaVista) console.log("\n  (--cuenta-vista: full pdf scan)");
+    else args.push(`--only-pdf=${inboxVistaPdfs.join(",")}`);
+    if (hasFlag("skip-cuenta-vista-pdf-parse")) args.push("--skip-pdf-parse");
+    if (dryRun) args.push("--dry-run");
+    const code = runStep("Import cuenta vista cartolas (pdf)", "npm", args);
+    if (code !== 0) process.exit(code);
   } else {
     console.log(
       "\n=== Import cuenta vista cartolas (skipped; pass --cuenta-vista or drop CM cartola in inbox) ==="

@@ -207,7 +207,7 @@ class CartolaLayoutTest(unittest.TestCase):
             mod.effective_cartola_start_ym("2026-08-01", None)
 
 
-YEAR_CASES_PATH = SCRIPT.parents[1] / "src" / "test" / "cartolaMovementYearCases.json"
+YEAR_CASES_PATH = SCRIPT.parents[2] / "server" / "src" / "test" / "cartolaMovementYearCases.json"
 
 
 class CartolaRowDateTest(unittest.TestCase):

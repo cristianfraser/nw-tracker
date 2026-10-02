@@ -8,11 +8,11 @@ Uses `pdftotext -layout` when text is readable; otherwise Tesseract OCR via PyMu
 
 From repo root:
   npm run parse:checking-cartola-pdfs
-  npm run import:checking-cartolas -w nw-tracker-server -- --pdf
+  npm run import:checking-cartolas -w nw-tracker-ingest
 
-Requires: poppler (`pdftotext`), tesseract (`brew install tesseract`), pymupdf in `server/scripts/.pdf_deps`:
+Requires: poppler (`pdftotext`), tesseract (`brew install tesseract`), pymupdf in `ingest/python/.pdf_deps`:
 
-  pip3 install pypdf pymupdf -t server/scripts/.pdf_deps
+  pip3 install pypdf pymupdf -t ingest/python/.pdf_deps
 PDFs: `cfraser/cartolas-cuenta-corriente/`
 Output:
   cfraser/checking-cartolas-from-pdf.json

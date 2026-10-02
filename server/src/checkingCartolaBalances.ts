@@ -1,9 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
 import type { Database } from "better-sqlite3";
 import { db } from "./db.js";
-import { parseCheckingCartolaFile } from "./checkingCartolaParse.js";
-import { resolveCfraserCheckingCartolasDir } from "./cfraserPaths.js";
 import { isCartolaDesdeBoundaryPhantomMonth, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
@@ -160,48 +156,6 @@ export type EnsureCheckingLedgerAnchorResult = {
   occurred_on: string | null;
   anchor_period_month: string | null;
 };
-
-/**
- * Fill saldo_inicial / period_from on import rows left empty by migration 053.
- * Reads cartola PDFs from cfraser/ — import-time only; request paths must not call this
- * (they read SQLite only). The cartola import runs it before ensureCheckingLedgerAnchor.
- */
-export function backfillCheckingImportSaldoInicial(
-  accountId: number,
-  dbHandle: Database = db
-): void {
-  const rows = dbHandle
-    .prepare(
-      `SELECT period_month, source_file, saldo_inicial_clp
-       FROM checking_cartola_imports WHERE account_id = ?`
-    )
-    .all(accountId) as { period_month: string; source_file: string; saldo_inicial_clp: number | null }[];
-  const dir = resolveCfraserCheckingCartolasDir();
-  const upd = dbHandle.prepare(
-    `UPDATE checking_cartola_imports
-     SET saldo_inicial_clp = ?, period_from = ?
-     WHERE account_id = ? AND period_month = ? AND saldo_inicial_clp IS NULL`
-  );
-  for (const row of rows) {
-    if (row.saldo_inicial_clp != null) continue;
-    const filePath = path.join(dir, row.source_file);
-    if (!fs.existsSync(filePath)) continue;
-    try {
-      const cartola = parseCheckingCartolaFile(filePath);
-      upd.run(
-        cartola.saldo_inicial_clp,
-        cartola.period_from,
-        accountId,
-        row.period_month
-      );
-    } catch (e) {
-      console.warn(
-        `saldo_inicial backfill: could not parse ${filePath} for ${row.period_month}:`,
-        e instanceof Error ? e.message : e
-      );
-    }
-  }
-}
 
 export function checkingLedgerAnchorNote(periodMonth: string): string {
   return `${ANCHOR_NOTE_PREFIX}${periodMonth}|saldo final`;
@@ -512,7 +466,6 @@ export function upsertCheckingLedgerAnchor(
  * Insert or update one ledger offset from the latest cartola saldo final.
  * Amount aligns ledger at latest month-end; default date is month-end before first timeline month.
  * Reads SQLite only — safe on request paths (POST /movements via maybeSyncCheckingLedgerAnchor).
- * The cartola import runs backfillCheckingImportSaldoInicial (cfraser/ file reads) beforehand.
  */
 export function ensureCheckingLedgerAnchor(
   accountId: number,

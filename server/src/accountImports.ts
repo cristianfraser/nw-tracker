@@ -20,7 +20,10 @@ import {
   importCheckingCartola,
   isCheckingCartolaMonthImported,
 } from "./checkingCartolaImport.js";
-import { parseCheckingCartolaBuffer, periodMonthFromCartolaFileName } from "./checkingCartolaParse.js";
+import { bankAccountStatementsKind } from "nw-tracker-contracts";
+import { parsedCartolaFromStatement } from "./bankAccountStatementsApply.js";
+import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
+import { requestFeederParse } from "./ingestFeeder.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { parseCuentaVistaWebPasteText } from "./cuentaVistaWebPasteParse.js";
 import { createImportBatch, type ImportBatchKind } from "./importBatches.js";
@@ -229,9 +232,14 @@ export function assertCheckingUploadAccount(accountId: number): number {
  * ingest service said it is not an «últimos movimientos» workbook). Throws when it is no cartola
  * either.
  */
-export function importCheckingCartolaFromRecentXlsxUpload(accountId: number, buffer: Buffer, filename: string) {
+export async function importCheckingCartolaFromRecentXlsxUpload(accountId: number, buffer: Buffer, filename: string) {
   const effectiveId = assertCheckingUploadAccount(accountId);
-  const cartola = parseCheckingCartolaBuffer(buffer, filename);
+  let cartola: ParsedCheckingCartola;
+  try {
+    cartola = await parseCartolaXlsxUpload(buffer, filename);
+  } catch (err) {
+    throw new Error(`${filename}: neither an «últimos movimientos» workbook nor a cartola (${err instanceof Error ? err.message : String(err)})`);
+  }
   if (cartola.movements.length === 0 || !cartola.period_month) {
     throw new Error(`${filename}: neither an «últimos movimientos» workbook nor a cartola`);
   }
@@ -253,7 +261,24 @@ export function importCheckingCartolaFromRecentXlsxUpload(accountId: number, buf
   };
 }
 
-export function importCheckingCartolaXlsx(
+/**
+ * A monthly cartola xlsx uploaded in the app: the ingest service reads it
+ * (`POST /parse/santander.checking_cartola_xlsx`) and answers with the statement; a file it
+ * cannot read throws with its reason.
+ */
+async function parseCartolaXlsxUpload(buffer: Buffer, filename: string): Promise<ParsedCheckingCartola> {
+  const answer = await requestFeederParse("santander.checking_cartola_xlsx", buffer, filename);
+  if (answer.status === "unavailable") throw new Error(`The file could not be read: ${answer.message}`);
+  if (answer.status !== "parsed") throw new Error(answer.message);
+  if (answer.result.kind !== bankAccountStatementsKind.kind || answer.result.schema_version !== bankAccountStatementsKind.schema_version) {
+    throw new Error(`ingest answered ${answer.result.kind} v${answer.result.schema_version}, not ${bankAccountStatementsKind.kind}`);
+  }
+  const [statement] = bankAccountStatementsKind.payload.parse(answer.result.payload).statements;
+  if (!statement) throw new Error(`${filename}: no cartola in the file`);
+  return parsedCartolaFromStatement(statement);
+}
+
+export async function importCheckingCartolaXlsx(
   accountId: number,
   buffer: Buffer,
   filename: string,
@@ -264,7 +289,7 @@ export function importCheckingCartolaXlsx(
     throw new Error("Use the cuenta corriente account for cartola import");
   }
 
-  const cartola = parseCheckingCartolaBuffer(buffer, filename);
+  const cartola = await parseCartolaXlsxUpload(buffer, filename);
   if (!cartola.period_month) {
     throw new Error("Could not determine cartola period month from file name");
   }
@@ -329,4 +354,3 @@ export function importAccountDocument(
   throw new Error(`Unknown document import type: ${type}`);
 }
 
-export { periodMonthFromCartolaFileName };

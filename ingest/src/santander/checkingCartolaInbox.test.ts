@@ -6,7 +6,7 @@ import {
   canonicalCheckingCartolaXlsxFileName,
   isCheckingCartolaXlsxFileName,
   listCheckingCartolaXlsxFiles,
-} from "./checkingCartolaParse.js";
+} from "./checkingCartolaXlsx.js";
 import { organizeCheckingCartolaXlsxFromInbox } from "./checkingCartolaInbox.js";
 
 describe("checkingCartolaInbox", () => {

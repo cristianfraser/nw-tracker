@@ -2,11 +2,10 @@ import { describe, expect, it } from "vitest";
 import XLSX from "xlsx";
 import {
   cartolaMovementDedupeKey,
-  movementNote,
   parseCartolaAmount,
   parseCheckingCartolaWorkbook,
   periodMonthFromCartolaFileName,
-} from "./checkingCartolaParse.js";
+} from "./checkingCartolaXlsx.js";
 
 /**
  * Synthetic Santander-cartola workbooks (column layout: FECHA, sucursal, descripción,
@@ -21,7 +20,7 @@ function cartolaWorkbook(rows: unknown[][]): XLSX.WorkBook {
 
 const HEADER = ["FECHA", "SUCURSAL", "DESCRIPCION", "N DOCUMENTO", "CARGO", "ABONO", "SALDO"];
 
-describe("checkingCartolaParse", () => {
+describe("checkingCartolaXlsx", () => {
   it("parses period month from Spanish file name", () => {
     expect(
       periodMonthFromCartolaFileName(
@@ -217,14 +216,6 @@ describe("checkingCartolaParse", () => {
     expect(
       cartola.movements.some((m) => m.occurred_on === "2023-02-03" && m.amount_clp === -555_000)
     ).toBe(true);
-    const notes = cartola.movements.map((m, idx) =>
-      movementNote(cartola.period_month, m.branch, m.description, m.document_no, {
-        occurredOn: m.occurred_on,
-        amountClp: m.amount_clp,
-        cartolaIndex: idx,
-      })
-    );
-    expect(new Set(notes).size).toBe(cartola.movements.length);
   });
 
   it("dates a December row of a January cartola in December", () => {

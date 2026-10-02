@@ -1,9 +1,12 @@
 import {
   bankAccountMovementsKind,
+  bankAccountStatementsKind,
   type FeederParseFormat,
   type FeederParseResult,
 } from "nw-tracker-contracts";
 import { parseCardStatementPdf } from "../cards/statementPdfParse.js";
+import { statementFromParsedCartola } from "../santander/cartolas.js";
+import { parseCheckingCartolaBuffer } from "../santander/checkingCartolaXlsx.js";
 import { isUltimosMovimientosWorkbook, parseUltimosMovimientosRows, workbookRows } from "../santander/checkingMovements.js";
 
 /** The file is not what the format reads — the server may try a path of its own. */
@@ -16,6 +19,17 @@ export const PARSE_FORMATS: Readonly<
   Record<FeederParseFormat, (content: Buffer, filename: string) => FeederParseResult | Promise<FeederParseResult>>
 > = {
   "card_statement.pdf": parseCardStatementPdf,
+  // One monthly cuenta corriente cartola, as the account's own import would read it.
+  "santander.checking_cartola_xlsx": (content, filename) => {
+    const payload = bankAccountStatementsKind.payload.parse({
+      account: { issuer: "santander", product: "checking" },
+      apply: true,
+      force_reimport: false,
+      statements: [statementFromParsedCartola(parseCheckingCartolaBuffer(content, filename))],
+      unreadable: [],
+    });
+    return { kind: bankAccountStatementsKind.kind, schema_version: bankAccountStatementsKind.schema_version, payload };
+  },
   "santander.checking_xlsx": (content) => {
     const rows = workbookRows(content);
     if (!isUltimosMovimientosWorkbook(rows)) {

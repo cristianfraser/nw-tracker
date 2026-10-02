@@ -1,6 +1,6 @@
 """Copy of `server/scripts/statement_values.py` for the parsers that moved to ingest
 (docs/ingest-split-plan.md); both copies are pinned by the same case tables until the server's
-last parser goes.
+last parser (payroll) goes.
 
 Dates and peso amounts as bank and payroll documents print them — one parser for every script.
 

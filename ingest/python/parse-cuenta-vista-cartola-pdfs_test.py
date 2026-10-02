@@ -4,7 +4,7 @@
 Synthetic cartola text parses through `parse_cartola_text`; the one real-document test skips when
 the personal corpus (cfraser/, main checkout only) is absent.
 
-  python3 server/scripts/parse-cuenta-vista-cartola-pdfs_test.py
+  python3 ingest/python/parse-cuenta-vista-cartola-pdfs_test.py
 """
 from __future__ import annotations
 

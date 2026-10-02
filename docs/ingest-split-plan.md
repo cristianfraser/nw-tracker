@@ -225,7 +225,10 @@ In rough order (simplest separation first):
    by the server's merge import. Step 2 **done** — the parser, organizer and qpdf/OCR live in
    `ingest/python/`; the statement upload parses through the service (`/parse/card_statement.pdf`).
    The orchestration (`import:cfraser-inbox`) is still a server script calling ingest commands.
-7. Checking and cuenta vista cartolas (Python + TS).
+7. Checking and cuenta vista cartolas (Python + TS). **Done** — `bank_account.statements`; the xlsx
+   parser, the two PDF parsers, the inbox xlsx organizer and the commands live in ingest, the
+   period import, cuenta vista month split and anchor re-derivation stay in the server; the
+   monthly xlsx upload parses through the service (`/parse/santander.checking_cartola_xlsx`).
 8. Grocery receipts: ingest/OCR/parse → ingest; import + branch learning stay.
 9. Payroll liquidaciones.
 10. Fintual certificado, Fintual Acciones documents, AFC certificate/cartola.

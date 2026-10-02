@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
+  cartolaImportShouldReplaceExisting,
   importCheckingCartola,
   isPhantomBoundaryMonthImport,
   prunePhantomBoundaryMonthCartolaImports,
@@ -35,6 +36,47 @@ function latestSaldoFinalClp(accountId: number): number {
 }
 
 describe("checkingCartolaImport", () => {
+  it("replaces a stored month only when the new cartola carries more movements, or the stored one none", () => {
+    const accountId = testCheckingAccountId();
+    if (accountId == null) return;
+    const periodMonth = "2099-05";
+    const register = (count: number, source: string) => {
+      db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).run(accountId, periodMonth);
+      db.prepare(
+        `INSERT INTO checking_cartola_imports (account_id, period_month, source_file, movement_count) VALUES (?, ?, ?, ?)`
+      ).run(accountId, periodMonth, source, count);
+    };
+    const cartola = (count: number, source: string): ParsedCheckingCartola => ({
+      source_file: source,
+      period_month: periodMonth,
+      period_from: "2099-05-01",
+      period_to: "2099-05-31",
+      saldo_inicial_clp: 0,
+      saldo_final_clp: 0,
+      movements: Array.from({ length: count }, (_, i) => ({
+        occurred_on: "2099-05-10",
+        amount_clp: 100 + i,
+        branch: "Agustinas",
+        description: `Test ${i}`,
+        document_no: "",
+      })),
+      skipped: [],
+      notes: [],
+    });
+    try {
+      // The same document read again (an annual cartola printing «sin movimientos» for other months) stays.
+      register(3, "2099-12-31 annual.pdf");
+      expect(cartolaImportShouldReplaceExisting(accountId, cartola(3, "2099-12-31 annual.pdf"))).toBe(false);
+      expect(cartolaImportShouldReplaceExisting(accountId, cartola(2, "2099-05-31 monthly.pdf"))).toBe(false);
+      expect(cartolaImportShouldReplaceExisting(accountId, cartola(4, "2099-05-31 monthly.pdf"))).toBe(true);
+      register(0, "2099-05-31 sin movimientos.pdf");
+      expect(cartolaImportShouldReplaceExisting(accountId, cartola(1, "2099-05-31 monthly.pdf"))).toBe(true);
+      expect(cartolaImportShouldReplaceExisting(accountId, cartola(0, "2099-05-31 monthly.pdf"))).toBe(false);
+    } finally {
+      db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).run(accountId, periodMonth);
+    }
+  });
+
   it("rewriteCartolaMovementNotesPeriodMonth updates note prefixes", () => {
     const accountId = testCheckingAccountId();
     if (accountId == null) return;

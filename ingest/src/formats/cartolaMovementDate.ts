@@ -6,7 +6,7 @@
  * Exactly one candidate is the date. None means the row is outside the period (or dd/mm is not a
  * date that year), several mean the period spans more than a year so dd/mm names more than one
  * day, and a missing bound leaves nothing to decide by: all three throw. The case table both
- * languages assert is `test/cartolaMovementYearCases.json`.
+ * languages assert is `server/src/test/cartolaMovementYearCases.json`.
  */
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;

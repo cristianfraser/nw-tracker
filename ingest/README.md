@@ -275,8 +275,10 @@ and its own vendored packages in `python/.pdf_deps/` (gitignored):
 pip3 install --target python/.pdf_deps pypdf typing_extensions pymupdf
 ```
 
-`statement_values.py` and `cartola_pdf_kind.py` are copies of the server's (its cartola and payroll
-parsers still use them), pinned by the same case tables until those move. The line rules the parser
+`statement_values.py` is a copy of the server's (its payroll parser still uses it), pinned by the
+same case table until that moves. The cartola PDF parsers (`parse-checking-cartola-pdfs.py`,
+`parse-cuenta-vista-cartola-pdfs.py`, `cartola_layout.py`) write their JSON to `cfraser/`, where
+`import:checking-cartolas` / `import:cuenta-vista-cartolas` read it. The line rules the parser
 sums with are `server/contracts/data/ccStatementLineRules.json`, the ones the server's import gate reads.
 
 ## Layout
@@ -292,5 +294,6 @@ sums with are `server/contracts/data/ccStatementLineRules.json`, the ones the se
 | `src/santander/checking.ts` | cuenta corriente movements `.xlsx` + cartola |
 | `src/capture.ts` | API recorder / screenshots |
 | `src/keychain.ts` | reads the clave from the macOS Keychain |
+| `src/santander/checkingCartolaXlsx.ts`, `cartolas.ts` | monthly cartolas (xlsx + PDF JSON) → `bank_account.statements` (`import:checking-cartolas`, `import:cuenta-vista-cartolas`, `organize:checking-cartola-xlsx`), and the `santander.checking_cartola_xlsx` upload parse |
 | `src/cards/` | the parsed card statements → `card.parsed_statements` (`import:cc-statements`), and the `card_statement.pdf` upload parse |
-| `python/` | the card statement PDF parser (`parse:cc-pdfs`), the inbox organizer (`organize:inbox`), qpdf repair / OCR (`repair:cc-pdfs-qpdf`, `restore:cc-corrupt-pdfs`), `check:cc-parse`; `npm run test:python` |
+| `python/` | the card statement PDF parser (`parse:cc-pdfs`), the cartola PDF parsers (`parse:checking-cartola-pdfs`, `parse:cuenta-vista-cartola-pdfs`), the inbox organizer (`organize:inbox`), qpdf repair / OCR (`repair:cc-pdfs-qpdf`, `restore:cc-corrupt-pdfs`), `check:cc-parse`; `npm run test:python` |

@@ -7,7 +7,7 @@ Uses `pdftotext -layout`. PDFs: `cfraser/cartolas-cuenta-vista/` (or `CFRASER_CU
 
 From repo root:
   npm run parse:cuenta-vista-cartola-pdfs
-  npm run import:cuenta-vista-cartolas -w nw-tracker-server
+  npm run import:cuenta-vista-cartolas -w nw-tracker-ingest
 """
 
 from __future__ import annotations
