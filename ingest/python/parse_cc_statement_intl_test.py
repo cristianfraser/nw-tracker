@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """International (USD) statement row parsing — synthetic text only.
 
-  python3 server/scripts/parse_cc_statement_intl_test.py
+  python3 ingest/python/parse_cc_statement_intl_test.py
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 # Synthetic card registry (see ccCardsFixture.json) — never the personal cfraser/cc-cards.json.
 os.environ["NW_TRACKER_CC_CARDS"] = str(
-    Path(__file__).resolve().parents[1] / "src" / "test" / "ccCardsFixture.json"
+    Path(__file__).resolve().parents[2] / "server" / "src" / "test" / "ccCardsFixture.json"
 )
 
 SCRIPT = Path(__file__).resolve().parent / "parse-cc-statement-pdfs.py"

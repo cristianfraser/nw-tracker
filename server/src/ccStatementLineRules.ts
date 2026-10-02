@@ -1,10 +1,9 @@
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { CC_STATEMENT_LINE_RULES_PATH } from "nw-tracker-contracts";
 
 /**
  * Which part of a credit-card statement a parsed line belongs to. The rules are data in
- * `ccStatementLineRules.json`, read here and by `server/scripts/cc_statement_line_rules.py`, so
+ * `ccStatementLineRules.json` (in `server/contracts/data/`), read here and by `ingest/python/cc_statement_line_rules.py`, so
  * the import-time reconcile (`ccStatementImportReconcile.ts`) and the parse-time reconcile
  * (`cc_statement_reconcile.py`) sum a statement the same way. Both test suites assert
  * `test/ccStatementLineSectionCases.json`. The predicates built on these rules live in
@@ -47,8 +46,7 @@ const KEYS: readonly (keyof CcStatementLineRulesFile)[] = [
   "bci_section3_layouts",
 ];
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const RULES_FILE = path.join(__dirname, "ccStatementLineRules.json");
+const RULES_FILE = CC_STATEMENT_LINE_RULES_PATH;
 
 function loadRules(): CcStatementLineRulesFile {
   const data = JSON.parse(fs.readFileSync(RULES_FILE, "utf-8")) as Record<string, unknown>;

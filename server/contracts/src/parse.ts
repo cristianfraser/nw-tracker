@@ -9,8 +9,12 @@ import { z } from "zod";
  */
 export const FEEDER_PARSE_PATH = "/parse";
 
-/** The upload formats the feeder reads. `santander.checking_xlsx`: the «últimos movimientos» workbook. */
-export const FEEDER_PARSE_FORMATS = ["santander.checking_xlsx"] as const;
+/**
+ * The upload formats the feeder reads. `santander.checking_xlsx`: the «últimos movimientos»
+ * workbook; `card_statement.pdf`: a credit-card statement PDF (any issuer the parser reads), read
+ * as `card.parsed_statements`.
+ */
+export const FEEDER_PARSE_FORMATS = ["santander.checking_xlsx", "card_statement.pdf"] as const;
 export type FeederParseFormat = (typeof FEEDER_PARSE_FORMATS)[number];
 
 export const feederParseRequestSchema = z

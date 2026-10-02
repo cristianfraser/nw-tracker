@@ -3,8 +3,8 @@
 Restore PDFs falsely renamed to `-CORRUPT.pdf` after a parse cache bug, or relocate
 genuinely unreadable files to `credit-card-statements/unreadable/`.
 
-  python3 server/scripts/restore-cc-corrupt-pdfs.py
-  python3 server/scripts/restore-cc-corrupt-pdfs.py --dry-run
+  python3 ingest/python/restore-cc-corrupt-pdfs.py
+  python3 ingest/python/restore-cc-corrupt-pdfs.py --dry-run
 """
 from __future__ import annotations
 

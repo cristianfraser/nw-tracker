@@ -25,7 +25,7 @@ const casesPath = path.join(
 );
 const cases = JSON.parse(fs.readFileSync(casesPath, "utf-8")) as SectionCase[];
 
-/** The same table is asserted by `server/scripts/cc_statement_line_rules_test.py`. */
+/** The same table is asserted by `ingest/python/cc_statement_line_rules_test.py`. */
 describe("classifyCcStatementLine (shared case table)", () => {
   it.each(cases)("$currency $layout «$merchant» $amount → $section", (c) => {
     expect(

@@ -24,9 +24,10 @@ server/data/fintual-goal-map.json
 
 .venv-numbers/
 
-# Local PDF parsing deps (see server/scripts/parse-cc-statement-pdfs.py)
+# Local PDF parsing deps (see ingest/python/parse-cc-statement-pdfs.py; the cartola parsers keep server/scripts/.pdf_deps)
 server/scripts/.pdf_deps/
 server/scripts/.ocr_bin/
+ingest/python/.pdf_deps/
 
 # Personal finance data (Numbers/Excel exports, certificates, local CSVs)
 cfraser/

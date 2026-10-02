@@ -1,4 +1,5 @@
-"""Copy kept in `ingest/python/cartola_pdf_kind.py` (the inbox organizer moved there).
+"""Copy of `server/scripts/cartola_pdf_kind.py` for the inbox organizer (moved to ingest);
+the cuenta vista parser still uses the server's until cartolas move (Phase 3, item 7).
 
 Classify Santander checking vs cuenta vista (CUENTAMATICA) cartola PDF text."""
 from __future__ import annotations

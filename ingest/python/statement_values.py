@@ -1,5 +1,6 @@
-"""Copy kept in `ingest/python/statement_values.py` (the card statement parser moved there);
-both are pinned by the same case tables until this one's last user moves.
+"""Copy of `server/scripts/statement_values.py` for the parsers that moved to ingest
+(docs/ingest-split-plan.md); both copies are pinned by the same case tables until the server's
+last parser goes.
 
 Dates and peso amounts as bank and payroll documents print them — one parser for every script.
 

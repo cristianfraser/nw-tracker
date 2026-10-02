@@ -160,7 +160,7 @@ app.post(
     { name: "usd", maxCount: 1 },
     { name: "file", maxCount: 2 },
   ]) as unknown as express.RequestHandler,
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const id = accountIdFromReq(req);
     const files = req.files as Record<string, { originalname: string; buffer: Buffer }[]> | undefined;
     const uploads: { originalname: string; buffer: Buffer }[] = [];
@@ -174,11 +174,11 @@ app.post(
       return;
     }
     try {
-      res.json(importCcStatementPdfUpload(id, uploads));
+      res.json(await importCcStatementPdfUpload(id, uploads));
     } catch (e) {
       res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
     }
-  }
+  })
 );
 
 app.post(

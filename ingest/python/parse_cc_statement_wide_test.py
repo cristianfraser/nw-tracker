@@ -10,7 +10,7 @@ from pathlib import Path
 
 # Synthetic card registry (see ccCardsFixture.json) — never the personal cfraser/cc-cards.json.
 os.environ["NW_TRACKER_CC_CARDS"] = str(
-    Path(__file__).resolve().parents[1] / "src" / "test" / "ccCardsFixture.json"
+    Path(__file__).resolve().parents[2] / "server" / "src" / "test" / "ccCardsFixture.json"
 )
 
 SCRIPT = Path(__file__).resolve().parent / "parse-cc-statement-pdfs.py"
