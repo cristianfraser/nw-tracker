@@ -1,6 +1,6 @@
 """Which part of a credit-card statement a parsed line belongs to — one rule set for Python and TS.
 
-The rules live in `server/src/ccStatementLineRules.json`, read here and by
+The rules live in `server/contracts/data/ccStatementLineRules.json`, read here and by
 `server/src/ccStatementLineRules.ts`, so the parse-time reconcile (`cc_statement_reconcile.py`)
 and the import-time reconcile (`ccStatementImportReconcile.ts`) sum a statement the same way.
 `server/src/test/ccStatementLineSectionCases.json` is asserted by both test suites.
@@ -26,7 +26,7 @@ from typing import List
 
 import cc_cards
 
-RULES_PATH = Path(__file__).resolve().parent.parent / "src" / "ccStatementLineRules.json"
+RULES_PATH = Path(__file__).resolve().parents[2] / "server" / "contracts" / "data" / "ccStatementLineRules.json"
 
 _KEYS = (
     "payment_merchants",

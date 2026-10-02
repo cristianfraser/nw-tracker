@@ -4,8 +4,8 @@
 Parse Chilean Banco de Chile / Lider credit card statement PDFs into CSV extracts.
 
 Deps (workspace-local, no global pip required):
-  mkdir -p server/scripts/.pdf_deps
-  pip3 install pypdf typing_extensions -t server/scripts/.pdf_deps
+  mkdir -p ingest/python/.pdf_deps
+  pip3 install pypdf typing_extensions -t ingest/python/.pdf_deps
 
 System tools: `poppler` (`pdftotext`), `qpdf`, `tesseract` (`brew install poppler qpdf tesseract`).
 Image-scan PDFs (no text layer) are OCR'd via PyMuPDF + Tesseract (see `cc_pdf_ocr.py`).
@@ -59,7 +59,7 @@ PARSE_CACHE_VERSION_FILES = (
     SCRIPT_DIR / "parse-cc-statement-pdfs.py",
     SCRIPT_DIR / "cc_statement_reconcile.py",
     SCRIPT_DIR / "cc_statement_line_rules.py",
-    SCRIPT_DIR.parent / "src" / "ccStatementLineRules.json",
+    SCRIPT_DIR.parent.parent / "server" / "contracts" / "data" / "ccStatementLineRules.json",
     SCRIPT_DIR / "statement_values.py",
     SCRIPT_DIR / "cc_pdf_qpdf.py",
     SCRIPT_DIR / "cc_pdf_ocr.py",
@@ -3455,28 +3455,6 @@ def discover_pdf_jobs(pdfs_dir: Path) -> List[Tuple[str, Path]]:
     return jobs
 
 
-def fallback_downloads_jobs() -> List[Tuple[str, Path]]:
-    """Legacy paths when `credit-card-statements` is empty (developer machine)."""
-    jobs: List[Tuple[str, Path]] = []
-    downloads = Path.home() / "Downloads"
-    for n in range(18, 5, -1):
-        jobs.append(("A", downloads / f"estado-de-cuenta-{n}.pdf"))
-    for name in [
-        "80_9576_REDACTED_20240322.pdf",
-        "80_9827_REDACTED_20240424.pdf",
-        "80_10073_REDACTED_20240524.pdf",
-        "80_10312_REDACTED_20240624.pdf",
-        "80_10567_REDACTED_20240724.pdf",
-    ]:
-        jobs.append(("B", downloads / name))
-    for n in range(33, 18, -1):
-        jobs.append(("B", downloads / f"estado-de-cuenta-{n}.pdf"))
-    usd_pdf = downloads / "estado-de-cuenta-usd.pdf"
-    if usd_pdf.is_file():
-        jobs.append(("INTL", usd_pdf))
-    return jobs
-
-
 _LEGACY_ZERO_ROW_PDF_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2} estado de cuenta tarjeta(?:-CORRUPT)?\.pdf$",
     re.I,
@@ -3544,10 +3522,11 @@ def main() -> int:
     parser_version = parser_cache_version()
     jobs = discover_pdf_jobs(pdfs_dir)
     if not jobs:
-        jobs = fallback_downloads_jobs()
-        print(f"# pdf source: fallback ~/Downloads ({len(jobs)} candidates)")
-    else:
-        print(f"# pdf source: {pdfs_dir} ({len(jobs)} files)")
+        # No fallback directory: the parser renames the files it reads, and an empty source
+        # (a wrong CFRASER_PDFS_DIR, a checkout without cfraser/) once sent it to ~/Downloads.
+        print(f"# FAIL: no statement PDF under {pdfs_dir}", file=sys.stderr)
+        return 2
+    print(f"# pdf source: {pdfs_dir} ({len(jobs)} files)")
     if no_cache:
         print("# parse cache: disabled (--no-cache)")
     else:

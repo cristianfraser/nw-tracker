@@ -52,7 +52,6 @@ import { loadRootDotenv } from "../src/rootDotenv.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const SERVER_ROOT = path.resolve(__dirname, "..");
 
 function hasFlag(name: string): boolean {
   return process.argv.includes(`--${name}`);
@@ -119,27 +118,24 @@ function main(): void {
   }
 
   if (!skipParse) {
-    const restoreCode = runStep(
-      "Restore false -CORRUPT credit-card PDF names",
-      "python3",
-      [path.join(SERVER_ROOT, "scripts", "restore-cc-corrupt-pdfs.py")]
-    );
+    const restoreCode = runStep("Restore false -CORRUPT credit-card PDF names", "npm", [
+      "run",
+      "restore:cc-corrupt-pdfs",
+      "-w",
+      "nw-tracker-ingest",
+    ]);
     if (restoreCode !== 0) process.exit(restoreCode);
   }
 
   if (!skipQpdfRepair) {
-    const inboxDir = resolveCfraserInboxDir();
-    const pdfDeps = path.join(SERVER_ROOT, "scripts", ".pdf_deps");
-    const repairArgs = [
-      path.join(SERVER_ROOT, "scripts", "repair-cc-statement-pdfs-qpdf.py"),
-      `--dir=${inboxDir}`,
-    ];
-    const repairCode = runStep(
-      "qpdf repair unreadable credit-card PDFs (inbox before organize)",
-      "python3",
-      repairArgs,
-      { PYTHONPATH: pdfDeps }
-    );
+    const repairCode = runStep("qpdf repair unreadable credit-card PDFs (inbox before organize)", "npm", [
+      "run",
+      "repair:cc-pdfs-qpdf",
+      "-w",
+      "nw-tracker-ingest",
+      "--",
+      `--dir=${resolveCfraserInboxDir()}`,
+    ]);
     if (repairCode !== 0 && !dryRun) {
       process.exit(repairCode);
     }
@@ -150,14 +146,9 @@ function main(): void {
   let organizeManifest = emptyCfraserOrganizeManifest();
   if (!skipOrganize) {
     const manifestPath = resolveCfraserOrganizeManifestPath();
-    const organizeArgs = [
-      path.join(SERVER_ROOT, "scripts", "organize-cfraser-statement-pdfs.py"),
-      `--manifest=${manifestPath}`,
-    ];
+    const organizeArgs = ["run", "organize:inbox", "-w", "nw-tracker-ingest", "--", `--manifest=${manifestPath}`];
     if (dryRun) organizeArgs.push("--dry-run");
-    const code = runStep("Organize PDFs (cfraser/inbox → statements/)", "python3", organizeArgs, {
-      PYTHONPATH: path.join(SERVER_ROOT, "scripts", ".pdf_deps"),
-    });
+    const code = runStep("Organize PDFs (cfraser/inbox → statements/)", "npm", organizeArgs);
     if (code !== 0) process.exit(code);
     organizeManifest = loadCfraserOrganizeManifest(manifestPath);
   } else {
@@ -182,9 +173,7 @@ function main(): void {
   }
 
   if (!skipParse) {
-    const code = runStep("Parse credit-card PDFs", "npm", ["run", "parse:cc-pdfs"], {
-      PYTHONPATH: path.join(SERVER_ROOT, "scripts", ".pdf_deps"),
-    });
+    const code = runStep("Parse credit-card PDFs", "npm", ["run", "parse:cc-pdfs", "-w", "nw-tracker-ingest"]);
     if (code !== 0) {
       console.error(
         "Parse failed or left PDFs with 0 rows (see # WARN zero_rows in output). Fix parser or PDF, then retry."

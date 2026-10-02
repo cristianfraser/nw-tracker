@@ -30,7 +30,7 @@ _ids_file.close()
 os.environ["NW_TRACKER_ORGANIZE_IDENTIFIERS"] = _ids_file.name
 # Synthetic card registry too — the module imports cc_statement_pdf_paths → cc_cards.
 os.environ["NW_TRACKER_CC_CARDS"] = str(
-    Path(__file__).resolve().parents[1] / "src" / "test" / "ccCardsFixture.json"
+    Path(__file__).resolve().parents[2] / "server" / "src" / "test" / "ccCardsFixture.json"
 )
 
 SCRIPT = Path(__file__).resolve().parent / "organize-cfraser-statement-pdfs.py"

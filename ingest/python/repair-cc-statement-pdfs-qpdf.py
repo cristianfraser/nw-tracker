@@ -4,7 +4,7 @@ Run qpdf on unreadable credit-card statement PDFs under cfraser/.
 
 Usage (repo root):
   npm run repair:cc-pdfs-qpdf
-  python3 server/scripts/repair-cc-statement-pdfs-qpdf.py [--dir=...] [--dry-run]
+  python3 ingest/python/repair-cc-statement-pdfs-qpdf.py [--dir=...] [--dry-run]
 
 Also runs automatically before organize in `import:cfraser-inbox` (inbox only; skip with --skip-qpdf-repair).
 """

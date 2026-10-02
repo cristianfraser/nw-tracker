@@ -1,9 +1,8 @@
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { readCommaCsvRecords } from "./ccParsedCommaCsv.js";
+import { cardParsedStatementsKind } from "nw-tracker-contracts";
+import { requestFeederParse } from "./ingestFeeder.js";
 import { resolveCcStatementSlotDir } from "./cfraserPaths.js";
 import { db } from "./db.js";
 import {
@@ -22,10 +21,6 @@ import {
 } from "./ccStatementsImport.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { cardLast4FromParsedRow } from "./ccParsedImportAccounts.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const PARSE_SCRIPT = path.join(REPO_ROOT, "server", "scripts", "parse-cc-statement-pdfs.py");
 
 export type CcPdfUploadFile = {
   originalname: string;
@@ -62,23 +57,31 @@ export type CcStatementPdfImportResult = {
   parse_failures: string[];
 };
 
-function runParsePdfsInDir(pdfDir: string, outCsv: string): string[] {
-  const env = {
-    ...process.env,
-    CFRASER_PDFS_DIR: pdfDir,
-    CC_PARSE_OUTPUT_CSV: outCsv,
-  };
-  const r = spawnSync("python3", [PARSE_SCRIPT], {
-    cwd: REPO_ROOT,
-    env,
-    encoding: "utf8",
-    timeout: 120_000,
-  });
+/**
+ * Each uploaded PDF goes to the ingest service's card statement parser
+ * (`POST /parse/card_statement.pdf`), which answers with its lines as `card.parsed_statements`.
+ * A file it cannot read is a parse failure; the service not answering throws.
+ */
+async function parseUploadedPdfs(files: readonly { name: string; buffer: Buffer }[]): Promise<{
+  records: CcStatementCsvRecord[];
+  failures: string[];
+}> {
+  const records: CcStatementCsvRecord[] = [];
   const failures: string[] = [];
-  if (r.status !== 0) {
-    failures.push(r.stderr?.trim() || r.stdout?.trim() || `parse exit ${r.status}`);
+  for (const file of files) {
+    const answer = await requestFeederParse("card_statement.pdf", file.buffer, file.name);
+    if (answer.status === "unavailable") throw new Error(`The PDF could not be read: ${answer.message}`);
+    if (answer.status !== "parsed") {
+      failures.push(`${file.name}: ${answer.message}`);
+      continue;
+    }
+    if (answer.result.kind !== cardParsedStatementsKind.kind || answer.result.schema_version !== cardParsedStatementsKind.schema_version) {
+      throw new Error(`ingest answered ${answer.result.kind} v${answer.result.schema_version}, not ${cardParsedStatementsKind.kind}`);
+    }
+    const payload = cardParsedStatementsKind.payload.parse(answer.result.payload);
+    for (const values of payload.rows) records.push(Object.fromEntries(payload.columns.map((c, i) => [c, values[i]!])));
   }
-  return failures;
+  return { records, failures };
 }
 
 function archivePath(destDir: string, fileName: string): string {
@@ -143,16 +146,17 @@ function persistUploadedCcStatementPdfs(opts: {
   return saved;
 }
 
-export function importCcStatementPdfsForAccount(
+export async function importCcStatementPdfsForAccount(
   accountId: number,
   files: CcPdfUploadFile[]
-): CcStatementPdfImportResult {
+): Promise<CcStatementPdfImportResult> {
   if (!files.length) {
     throw new Error("At least one PDF file is required");
   }
 
+  // The uploads are kept here under their own names: `persistUploadedCcStatementPdfs` files
+  // each one in its card's statement folder once its lines are imported.
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nw-cc-pdf-"));
-  const outCsv = path.join(tmp, "parsed.csv");
   const uploadedNames: string[] = [];
 
   try {
@@ -162,12 +166,13 @@ export function importCcStatementPdfsForAccount(
       uploadedNames.push(name);
     }
 
-    const parseFailures = runParsePdfsInDir(tmp, outCsv);
-    if (!fs.existsSync(outCsv)) {
+    const parsed = await parseUploadedPdfs(files.map((f, i) => ({ name: uploadedNames[i]!, buffer: f.buffer })));
+    const parseFailures = parsed.failures;
+    if (parsed.records.length === 0) {
       throw new Error(parseFailures[0] ?? "PDF parse produced no output");
     }
 
-    const allRecords = readCommaCsvRecords(outCsv);
+    const allRecords = parsed.records;
     const records: CcStatementCsvRecord[] = [];
     const bySourcePdf = new Map<string, CcStatementCsvRecord[]>();
     // Track what the uploaded PDFs actually resolved to, for a diagnosable error.

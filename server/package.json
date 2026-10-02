@@ -29,8 +29,6 @@
     "repair:cc-usd-statements": "tsx scripts/import-missing-cc-usd-statements.ts",
     "reconcile:real-estate-links": "tsx scripts/reconcile-real-estate-expense-links.ts",
     "reconcile:cartola-partials": "tsx scripts/reconcile-cartola-partials.ts",
-    "parse:cc-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-cc-statement-pdfs.py",
-    "restore:cc-corrupt-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/restore-cc-corrupt-pdfs.py",
     "parse:checking-cartola-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-checking-cartola-pdfs.py",
     "parse:cuenta-vista-cartola-pdfs": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-cuenta-vista-cartola-pdfs.py",
     "import:cc-parsed": "tsx scripts/import-cc-parsed-to-db.ts",

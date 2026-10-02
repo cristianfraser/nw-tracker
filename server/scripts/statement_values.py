@@ -1,4 +1,7 @@
-"""Dates and peso amounts as bank and payroll documents print them — one parser for every script.
+"""Copy kept in `ingest/python/statement_values.py` (the card statement parser moved there);
+both are pinned by the same case tables until this one's last user moves.
+
+Dates and peso amounts as bank and payroll documents print them — one parser for every script.
 
 - `parse_dd_mm_yy_to_iso` mirrors `parseDdMmYyToIso` in `server/src/ccInstallmentPayBy.ts`;
   `server/src/test/ddMmYyToIsoCases.json` is asserted by both test suites.

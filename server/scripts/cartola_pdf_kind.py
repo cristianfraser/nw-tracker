@@ -1,4 +1,6 @@
-"""Classify Santander checking vs cuenta vista (CUENTAMATICA) cartola PDF text."""
+"""Copy kept in `ingest/python/cartola_pdf_kind.py` (the inbox organizer moved there).
+
+Classify Santander checking vs cuenta vista (CUENTAMATICA) cartola PDF text."""
 from __future__ import annotations
 
 import re

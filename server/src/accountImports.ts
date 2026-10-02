@@ -192,12 +192,12 @@ export function importCuentaVistaWebPaste(accountId: number, text: string) {
   };
 }
 
-export function importCcStatementPdfUpload(
+export async function importCcStatementPdfUpload(
   accountId: number,
   files: CcPdfUploadFile[]
 ) {
   assertCreditCardAccount(accountId);
-  const result = importCcStatementPdfsForAccount(accountId, files);
+  const result = await importCcStatementPdfsForAccount(accountId, files);
   // Per-line arrays stay out of the batch log — counters only.
   const { inserted_flows: _if, skipped_flows: _sf, ...batchMeta } = result;
   const batch_id = createImportBatch(

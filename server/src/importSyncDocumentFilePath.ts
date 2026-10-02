@@ -236,7 +236,7 @@ export function canonicalCcStatementPdfName(
 
 /**
  * Target filename under `cfraser/credit-card-statements/<card>/clp|usd/` after import (aligned with
- * `server/scripts/organize-cfraser-statement-pdfs.py` stems).
+ * `ingest/python/organize-cfraser-statement-pdfs.py` stems).
  */
 export function archivedCreditCardStatementPdfFileName(
   row: Record<string, string | undefined>

@@ -30,7 +30,7 @@ export type FeederDeps = {
   log: (message: string) => void;
   token?: string | null;
   /** Upload formats (`POST /parse/<format>`); `NotThisFormatError` from one is a 422 `not_this_format`. */
-  parse?: Partial<Record<FeederParseFormat, (content: Buffer, filename: string) => FeederParseResult>>;
+  parse?: Partial<Record<FeederParseFormat, (content: Buffer, filename: string) => FeederParseResult | Promise<FeederParseResult>>>;
 };
 
 type Running = { run_id: number | null; kind: string; started_at: string };
@@ -109,7 +109,7 @@ export function createFeederServer(deps: FeederDeps): { server: http.Server; cur
           return send(res, 400, { error: "invalid parse request", message: err instanceof Error ? err.message : String(err) });
         }
         try {
-          return send(res, 200, parser(content, filename));
+          return send(res, 200, await parser(content, filename));
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           const notThis = err instanceof Error && err.name === "NotThisFormatError";

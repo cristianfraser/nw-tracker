@@ -3,7 +3,7 @@
 
 The same table is asserted by `server/src/ccStatementLineRules.test.ts`.
 
-  python3 server/scripts/cc_statement_line_rules_test.py
+  python3 ingest/python/cc_statement_line_rules_test.py
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from pathlib import Path
 
 # Synthetic card registry (see ccCardsFixture.json) — never the personal cfraser/cc-cards.json.
 os.environ["NW_TRACKER_CC_CARDS"] = str(
-    Path(__file__).resolve().parents[1] / "src" / "test" / "ccCardsFixture.json"
+    Path(__file__).resolve().parents[2] / "server" / "src" / "test" / "ccCardsFixture.json"
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -24,7 +24,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import cc_statement_line_rules as rules  # noqa: E402
 
-CASES_PATH = SCRIPT_DIR.parent / "src" / "test" / "ccStatementLineSectionCases.json"
+CASES_PATH = SCRIPT_DIR.parent.parent / "server" / "src" / "test" / "ccStatementLineSectionCases.json"
 
 
 class SharedSectionCasesTest(unittest.TestCase):

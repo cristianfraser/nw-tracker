@@ -26,6 +26,8 @@ export type FeederParseAnswer =
   | { status: "unavailable"; message: string };
 
 const PARSE_TIMEOUT_MS = 60_000;
+/** A card statement PDF may need OCR; the service gives the parser 140 s. */
+const PARSE_TIMEOUT_MS_BY_FORMAT: Partial<Record<FeederParseFormat, number>> = { "card_statement.pdf": 150_000 };
 
 /**
  * Hand an uploaded file to the ingest service to decode (`POST /parse/<format>`): the server
@@ -44,7 +46,7 @@ export async function requestFeederParse(
       method: "POST",
       headers: ingestFeederHeaders(env),
       body: JSON.stringify(feederParseRequestSchema.parse({ filename, content_base64: content.toString("base64") })),
-      signal: AbortSignal.timeout(PARSE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(PARSE_TIMEOUT_MS_BY_FORMAT[format] ?? PARSE_TIMEOUT_MS),
     });
   } catch (err) {
     return {

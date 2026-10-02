@@ -266,6 +266,19 @@ it. Link them in `/panel/mirror-pairs`, as with every other historical transfer.
   `src/santander/catchUp.ts`): only when no fetch has succeeded since the latest 22:00 slot, no
   catch-up was tried for it, the last attempt is 35+ minutes old and the login is not latched.
 
+## Python (card statement PDFs, inbox organizer)
+
+`python/` holds the PDF side: it needs poppler, qpdf and tesseract (`brew install poppler qpdf tesseract`)
+and its own vendored packages in `python/.pdf_deps/` (gitignored):
+
+```
+pip3 install --target python/.pdf_deps pypdf typing_extensions pymupdf
+```
+
+`statement_values.py` and `cartola_pdf_kind.py` are copies of the server's (its cartola and payroll
+parsers still use them), pinned by the same case tables until those move. The line rules the parser
+sums with are `server/contracts/data/ccStatementLineRules.json`, the ones the server's import gate reads.
+
 ## Layout
 
 | Path | Role |
@@ -279,3 +292,5 @@ it. Link them in `/panel/mirror-pairs`, as with every other historical transfer.
 | `src/santander/checking.ts` | cuenta corriente movements `.xlsx` + cartola |
 | `src/capture.ts` | API recorder / screenshots |
 | `src/keychain.ts` | reads the clave from the macOS Keychain |
+| `src/cards/` | the parsed card statements → `card.parsed_statements` (`import:cc-statements`), and the `card_statement.pdf` upload parse |
+| `python/` | the card statement PDF parser (`parse:cc-pdfs`), the inbox organizer (`organize:inbox`), qpdf repair / OCR (`repair:cc-pdfs-qpdf`, `restore:cc-corrupt-pdfs`), `check:cc-parse`; `npm run test:python` |

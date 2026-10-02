@@ -2,7 +2,7 @@
 Tesseract OCR for image-scan Santander / BCI credit-card statement PDFs.
 
 Used when `pdftotext` / pypdf yield no readable text layer (macOS Preview saves, scans).
-Requires: poppler, tesseract, pymupdf in `server/scripts/.pdf_deps`.
+Requires: poppler, tesseract, pymupdf in `ingest/python/.pdf_deps`.
 """
 from __future__ import annotations
 

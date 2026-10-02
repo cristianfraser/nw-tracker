@@ -13,3 +13,4 @@ export * from "./kinds/pensionAccountCertificates.js";
 export * from "./kinds/cardStatement.js";
 export * from "./kinds/merchantPurchaseDocument.js";
 export * from "./kinds/cardParsedStatements.js";
+export * from "./ccStatementLineRules.js";

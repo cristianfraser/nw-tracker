@@ -14,9 +14,9 @@ Confirmed duplicates (readable PDF, classified slot already on disk) move to
 
 From repo root:
   npm run import:cfraser-inbox          # organize + parse + import (recommended)
-  python3 server/scripts/organize-cfraser-statement-pdfs.py
-  python3 server/scripts/organize-cfraser-statement-pdfs.py --dry-run
-  python3 server/scripts/organize-cfraser-statement-pdfs.py --manifest=cfraser/inbox-organize-manifest.json
+  python3 ingest/python/organize-cfraser-statement-pdfs.py
+  python3 ingest/python/organize-cfraser-statement-pdfs.py --dry-run
+  python3 ingest/python/organize-cfraser-statement-pdfs.py --manifest=cfraser/inbox-organize-manifest.json
 """
 from __future__ import annotations
 
