@@ -65,7 +65,11 @@ if (demoModeEnabled()) {
   app.use(demoVisitLogMiddleware());
   console.log("demo: /api is read-only, anonymous visit analytics enabled (DEMO_MODE=1)");
 }
-app.use(express.json({ limit: "2mb" }));
+const jsonBody = express.json({ limit: "2mb" });
+// An ingest payload can carry a whole document set (every parsed card statement is ~4 MB as
+// columns); the ingest routes take local connections only (`ingestAuth.ts`).
+const ingestJsonBody = express.json({ limit: "32mb" });
+app.use((req, res, next) => (req.path.startsWith("/api/ingest/") ? ingestJsonBody : jsonBody)(req, res, next));
 
 /** Route registration order preserves the original monolithic file's order. */
 if (demoModeEnabled()) registerDemoAnalyticsRoutes(app);

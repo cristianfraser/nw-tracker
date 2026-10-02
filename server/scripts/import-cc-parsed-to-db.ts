@@ -32,22 +32,17 @@ import path from "node:path";
 
 import { db } from "../src/db.js";
 import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
+import { applyParsedCcStatements } from "../src/ccParsedStatementsApply.js";
 import { importCcStatementsFromCsvRecords } from "../src/ccStatementsImport.js";
 import {
   groupInstallmentLoanChains,
-  mergeCcAccountFromParsedRows,
   mergeInstallmentLedgerFromParsedRows,
-  replaceStatementKeysFromRecords,
 } from "../src/ccInstallmentLedgerMerge.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "../src/ccTraspasoDeudaLinks.js";
 import {
   assertCcPaymentEvidenceKept,
   ccPaymentPairingIdsWithEvidence,
 } from "../src/ccPaymentMirrorEvidence.js";
-import {
-  filterUnchangedStatementRecords,
-  groupRecordsByStatement,
-} from "../src/ccStatementFingerprint.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
 import { cardLast4FromParsedRow, resolveImportAccountIds } from "../src/ccParsedImportAccounts.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "../src/ccConsolidatedCards.js";
@@ -57,10 +52,6 @@ import {
   type CcStatementImportAccountLog,
 } from "../src/ccStatementImportLog.js";
 
-
-function byStatementCount(records: readonly Record<string, string>[]): number {
-  return groupRecordsByStatement(records as never).size;
-}
 
 function arg(name: string): string | undefined {
   const p = `--${name}=`;
@@ -157,6 +148,20 @@ function main() {
   const accountIdFilter =
     Number.isFinite(accountIdArg) && accountIdArg > 0 ? accountIdArg : undefined;
 
+  // The merge (default) is the same apply the nightly reaches through ingest
+  // (`card.parsed_statements`); this script keeps it for manual runs and the two reload modes.
+  if (!wipe && !replaceLedgerOnly) {
+    const details = applyParsedCcStatements(records, {
+      dryRun: dry,
+      full: fullReimport,
+      accountId: accountIdFilter,
+      groupSlug: santander ? "santander" : undefined,
+    });
+    for (const line of details.report) console.log(line);
+    for (const problem of details.problems) console.error(`# FAIL: ${problem}`);
+    process.exit(details.problems.length > 0 ? 1 : 0);
+  }
+
   const { accountIds, discovery } = resolveImportAccountIds({
     records,
     accountId: accountIdFilter,
@@ -217,7 +222,6 @@ function main() {
     let billingSnapshots = 0;
     let linesSkippedDuplicate = 0;
     let linesSkippedInstallmentOverlap = 0;
-    let statementsSkippedUnchanged = 0;
 
     if (!dry) {
       if (replaceAccount) {
@@ -253,50 +257,6 @@ function main() {
         gapFilled = ledger.gapFilled;
         valuationMonthsSynced = ledger.valuationMonthsSynced;
         billingSnapshots = ledger.billingSnapshots;
-      } else {
-        // Incremental by default: only statements whose parse changed are re-imported (and
-        // therefore re-reconciled). `--full` restores the from-scratch pass, which is worth
-        // running deliberately — it is what surfaced the 8 statements now in pending-review.
-        const filtered = fullReimport
-          ? { changed: accountRecords, skippedKeys: [], fingerprintByKey: new Map<string, string>() }
-          : filterUnchangedStatementRecords(accountId, accountRecords);
-        statementsSkippedUnchanged = filtered.skippedKeys.length;
-        if (filtered.changed.length === 0) {
-          console.log(
-            `# account ${accountId}: all ${statementsSkippedUnchanged} statement(s) unchanged — skipped`
-          );
-          continue;
-        }
-        if (statementsSkippedUnchanged > 0) {
-          console.log(
-            `# account ${accountId}: ${statementsSkippedUnchanged} statement(s) unchanged, importing ${byStatementCount(filtered.changed)}`
-          );
-        }
-        const merged = mergeCcAccountFromParsedRows(accountId, filtered.changed, {
-          replaceLedger: false,
-          replaceStatementKeys: replaceStatementKeysFromRecords(filtered.changed),
-        });
-        statementCount = merged.statements.statementCount;
-        statementLineCount = merged.statements.linesInserted;
-        linesSkippedDuplicate = merged.statements.linesSkippedDuplicate;
-        linesSkippedInstallmentOverlap = merged.statements.linesSkippedInstallmentOverlap;
-        categoriesRestored += merged.statements.categoriesRestored;
-        gapFilled = merged.ledger.gapFilled;
-        valuationMonthsSynced = merged.ledger.valuationMonthsSynced;
-        billingSnapshots = merged.ledger.billingSnapshots;
-        purchaseUpserts = merged.ledger.purchaseUpserts;
-        paymentUpserts = merged.ledger.paymentUpserts;
-        const rk = merged.expense_line_rekey;
-        const rkMoved = Object.values(rk.moved).reduce((a, b) => a + b, 0);
-        if (rkMoved + rk.duplicates_removed + rk.conflicts.length + rk.unpaired.length > 0) {
-          console.log(
-            `# account ${accountId}: expense assignments carried to re-imported lines: ` +
-              `${JSON.stringify(rk.moved)}, duplicates removed ${rk.duplicates_removed}, ` +
-              `conflicts ${rk.conflicts.length}, unpaired ${rk.unpaired.length}`
-          );
-          for (const c of rk.conflicts) console.log(`#   conflict ${c.table} ${c.from} → ${c.to}: stored ${String(c.stored)} vs ${String(c.current)}`);
-          for (const u of rk.unpaired) console.log(`#   unpaired (${u.reason}) line ${u.lineId} ${u.parserRowId ?? ""}`);
-        }
       }
     } else {
       const chains = groupInstallmentLoanChains(accountRecords);

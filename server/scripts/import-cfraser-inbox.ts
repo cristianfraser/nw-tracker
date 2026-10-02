@@ -91,7 +91,6 @@ function main(): void {
   const skipQpdfRepair = hasFlag("skip-qpdf-repair");
   const skipCcImport = hasFlag("skip-cc-import");
   const skipCheckingPdf = hasFlag("skip-checking-pdf");
-  const accountId = argValue("account-id");
   const skipFintualCert = hasFlag("skip-fintual-cert");
 
   const forceChecking = hasFlag("checking");
@@ -197,15 +196,16 @@ function main(): void {
   }
 
   if (!skipCcImport) {
-    const importArgs = ["run", "import:cc-parsed", "-w", "nw-tracker-server", "--"];
+    // Ingest sends the parsed statements (`card.parsed_statements`) and the server imports the
+    // ones whose rows changed; `--full` forces the from-scratch pass that re-reconciles every
+    // statement in history (slow, but the periodic sanity check). One card account only: run
+    // `npm run import:cc-parsed -- --account-id=<id>` by hand.
+    const importArgs = ["run", "import:cc-statements", "-w", "nw-tracker-ingest", "--"];
     if (dryRun) importArgs.push("--dry-run");
-    // The CC import is incremental by default; `--full` forces the from-scratch pass that
-    // re-reconciles every statement in history (slow, but the periodic sanity check).
     if (hasFlag("full")) importArgs.push("--full");
     const csv = argValue("csv");
     if (csv) importArgs.push(`--csv=${csv}`);
-    if (accountId) importArgs.push(`--account-id=${accountId}`);
-    const code = runStep("Import parsed credit-card CSV", "npm", importArgs);
+    const code = runStep("Import parsed credit-card statements (ingest)", "npm", importArgs);
     if (code !== 0) process.exit(code);
   } else {
     console.log("\n=== Import parsed credit-card CSV (skipped) ===");
