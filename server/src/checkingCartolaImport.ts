@@ -6,9 +6,7 @@ import { reconcileCartolaPartialImports } from "./checkingCartolaPartialReconcil
 import {
   cartolaMovementDedupeKey,
   cartolaMovementMatchesImportedRow,
-  listCheckingCartolaXlsxFiles,
   movementNote,
-  parseCheckingCartolaFile,
   type ParsedCheckingCartola,
   type ParsedCheckingMovement,
 } from "./checkingCartolaParse.js";
@@ -19,20 +17,12 @@ import {
   type CheckingCartolaImportRunLog,
 } from "./checkingCartolaParseLog.js";
 import {
-  loadCheckingCartolasFromPdfJson,
-  pdfEntryToParsedCartola,
-  runParseCheckingCartolaPdfs,
-} from "./checkingCartolaPdfImport.js";
-import {
-  backfillCheckingImportSaldoInicial,
   clearCheckingAccountValuations,
   clearCheckingBalanceCache,
   ensureCheckingLedgerAnchor,
 } from "./checkingCartolaBalances.js";
-import { resolveCfraserCheckingCartolasDir } from "./cfraserPaths.js";
 import { preserveCheckingGastosCategoriesForCartolaNotes } from "./checkingGastosCategoryPersist.js";
 import { assertCheckingCartolaSaldoIdentity, validateCartolaSaldoChain } from "./checkingCartolaSaldoValidation.js";
-import { cartolaPdfIndicatesSinMovimientos } from "./cartolaSinMovimientos.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
@@ -40,8 +30,6 @@ import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from ".
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
 import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
-import type { ImportSyncDocumentAccount } from "./importSyncDocumentCoverage.js";
-import { resolveCartolaFilePath } from "./importSyncDocumentFilePath.js";
 
 export function checkingAccountId(dbHandle: Database = db): number {
   return cartolaCashAccountId("cuenta_corriente", dbHandle);
@@ -465,14 +453,12 @@ function logParseError(file: string, e: unknown): CheckingCartolaFileImportLog {
   };
 }
 
-function cartolaDocumentKindForAccount(accountId: number): ImportSyncDocumentAccount["document_kind"] {
-  if (accountId === cartolaCashAccountId("cuenta_vista")) {
-    return "cuenta_vista_cartola";
-  }
-  return "checking_cartola";
-}
-
-/** Replace a prior sin-movimientos / empty import when a new PDF has real movements. */
+/**
+ * Replace a prior import of a month when the new cartola carries more movements, or any where the
+ * stored one had none (a «sin movimientos» cartola, or an empty slice). Decided from the counts
+ * alone: the stored document's own text was read here until 2026-10-02, and an annual cartola
+ * that prints «sin movimientos» for some of its months re-imported all of them on every run.
+ */
 export function cartolaImportShouldReplaceExisting(
   accountId: number,
   cartola: ParsedCheckingCartola,
@@ -491,19 +477,9 @@ export function cartolaImportShouldReplaceExisting(
     | undefined;
   if (!row) return false;
 
-  const kind = cartolaDocumentKindForAccount(accountId);
   const newCount = cartola.movements.length;
   const oldCount = Number(row.movement_count) || 0;
-  if (newCount > oldCount) return true;
-  if (newCount > 0 && oldCount === 0) return true;
-
-  const oldPath = resolveCartolaFilePath(kind, row.source_file);
-  const newPath = resolveCartolaFilePath(kind, cartola.source_file);
-  const oldSin = oldPath ? cartolaPdfIndicatesSinMovimientos(oldPath) : false;
-  const newSin = newPath ? cartolaPdfIndicatesSinMovimientos(newPath) : false;
-  if (oldSin && !newSin && newCount > 0) return true;
-  if (oldSin && newCount > 0) return true;
-  return false;
+  return newCount > oldCount || (newCount > 0 && oldCount === 0);
 }
 
 /** Update reference saldos on an already-imported month (movements unchanged). */
@@ -665,7 +641,6 @@ export function finishCartolaImportRun(
     if (pruned.length > 0) {
       console.log(`  pruned phantom boundary month(s): ${pruned.join(", ")}`);
     }
-    backfillCheckingImportSaldoInicial(accountId);
     const anchor = ensureCheckingLedgerAnchor(accountId);
     if (anchor.inserted) {
       console.log(
@@ -708,189 +683,4 @@ export function finishCartolaImportRun(
       .filter((f) => f.status === "parse_error")
       .map((f) => ({ file: f.file, error: f.error ?? "unknown" })),
   };
-}
-
-export function importCheckingCartolasFromDir(opts: {
-  dir?: string;
-  accountId?: number;
-  wipe?: boolean;
-  dryRun?: boolean;
-  pdf?: boolean;
-  skipPdfParse?: boolean;
-  forceReimport?: boolean;
-  /** When set, import only these xlsx basenames from the cartola excels dir. */
-  onlyXlsxBasenames?: string[];
-  /** When set, parse/import only these checking PDF basenames. */
-  onlyPdfBasenames?: string[];
-}): ImportCheckingCartolasResult {
-  const dir = opts.dir ?? resolveCfraserCheckingCartolasDir();
-  const accountId = opts.accountId ?? checkingAccountId();
-  const fileLogs: CheckingCartolaFileImportLog[] = [];
-
-  if (opts.wipe && !opts.dryRun) {
-    const w = wipeCheckingAccountData(accountId);
-    console.log(
-      `Wiped cuenta corriente (account ${accountId}): ${w.movements} movement(s), ${w.valuations} valuation(s), ${w.imports} import record(s).`
-    );
-  } else if (opts.wipe && opts.dryRun) {
-    console.log(`[dry-run] Would wipe movements/valuations/imports for account ${accountId}.`);
-  }
-
-  if (!opts?.dryRun && !opts?.wipe) {
-    prunePhantomBoundaryMonthCartolaImports(accountId);
-  }
-
-  const files = listCheckingCartolaXlsxFiles(dir);
-  const xlsxFilter = opts.onlyXlsxBasenames?.length
-    ? new Set(opts.onlyXlsxBasenames)
-    : null;
-  const xlsxCartolas: { cartola: ParsedCheckingCartola; label: string }[] = [];
-  for (const filePath of files) {
-    const base = filePath.split(/[/\\]/).pop() ?? filePath;
-    if (xlsxFilter && !xlsxFilter.has(base)) continue;
-    try {
-      xlsxCartolas.push({ cartola: parseCheckingCartolaFile(filePath), label: base });
-    } catch (e) {
-      fileLogs.push(logParseError(base, e));
-    }
-  }
-  importCartolaList(accountId, xlsxCartolas, opts, fileLogs);
-
-  if (opts.pdf) {
-    try {
-      if (!opts.skipPdfParse) {
-        runParseCheckingCartolaPdfs(opts.onlyPdfBasenames);
-      }
-      const pdfData = loadCheckingCartolasFromPdfJson();
-      const pdfFilter = opts.onlyPdfBasenames?.length
-        ? new Set(opts.onlyPdfBasenames)
-        : null;
-      const pdfCartolas: { cartola: ParsedCheckingCartola; label: string }[] = [];
-      for (const entry of pdfData.cartolas) {
-        if (pdfFilter && !pdfFilter.has(entry.source_file)) continue;
-        const label = `pdf:${entry.source_file}`;
-        if (entry.parse_status !== "ok") {
-          fileLogs.push({
-            file: label,
-            period_month: entry.period_month ?? "",
-            status: "parse_error",
-            movements_parsed: entry.movements?.length ?? 0,
-            movements_imported: 0,
-            skipped_rows: entry.skipped ?? [],
-            saldo_final_clp: entry.saldo_final_clp,
-            saldo_inicial_clp: entry.saldo_inicial_clp,
-            error: entry.parse_error ?? `PDF ${entry.parse_status}`,
-          });
-          continue;
-        }
-        try {
-          pdfCartolas.push({ cartola: pdfEntryToParsedCartola(entry), label });
-        } catch (e) {
-          fileLogs.push(logParseError(label, e));
-        }
-      }
-      importCartolaList(accountId, pdfCartolas, opts, fileLogs);
-    } catch (e) {
-      fileLogs.push(logParseError("pdf", e));
-    }
-  }
-
-  return finishCartolaImportRun(accountId, opts, fileLogs);
-}
-
-/** Insert cartola movements missing from DB (same date/amount/description/doc), using new note keys. */
-export function backfillMissingCheckingCartolaMovements(opts?: {
-  accountId?: number;
-  dir?: string;
-  dryRun?: boolean;
-}): {
-  accountId: number;
-  dryRun: boolean;
-  inserted: number;
-  skipped: number;
-  byMonth: { period_month: string; inserted: number; missing_before: number }[];
-} {
-  const accountId = opts?.accountId ?? checkingAccountId();
-  const dir = opts?.dir ?? resolveCfraserCheckingCartolasDir();
-  const dryRun = !!opts?.dryRun;
-  const files = listCheckingCartolaXlsxFiles(dir);
-  let inserted = 0;
-  let skipped = 0;
-  const byMonth: { period_month: string; inserted: number; missing_before: number }[] = [];
-
-  const insMov = db.prepare(
-    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-     VALUES (?, ?, 'clp', ?, ?, NULL)`
-  );
-  const updateImportCount = db.prepare(
-    `UPDATE checking_cartola_imports
-     SET movement_count = movement_count + ?, imported_at = datetime('now')
-     WHERE account_id = ? AND period_month = ?`
-  );
-
-  const tx = db.transaction(() => {
-    for (const filePath of files) {
-      const cartola = parseCheckingCartolaFile(filePath);
-      const pm = cartola.period_month;
-      let missingBefore = 0;
-      let monthInserted = 0;
-
-      cartola.movements.forEach((mv, cartolaIndex) => {
-        const note = movementNote(pm, mv.branch, mv.description, mv.document_no, {
-          occurredOn: mv.occurred_on,
-          amountClp: mv.amount_clp,
-          cartolaIndex,
-        });
-        const existsExact = db
-          .prepare(`SELECT 1 AS o FROM movements WHERE account_id = ? AND note = ?`)
-          .get(accountId, note);
-        if (existsExact) {
-          skipped += 1;
-          return;
-        }
-        const sameKeyIndex = cartola.movements
-          .slice(0, cartolaIndex)
-          .filter((prior) => cartolaMovementDedupeKey(prior) === cartolaMovementDedupeKey(mv)).length;
-        const rows = db
-          .prepare(
-            `SELECT m.note FROM movements m ${BANK_POSTING_JOIN_SQL}
-             WHERE m.account_id = ? AND ${BANK_POSTED_ON_SQL} = ? AND ${MOVEMENT_CLP_LEG_SQL} = ?
-               AND m.note LIKE ?`
-          )
-          .all(accountId, accountId, mv.occurred_on, mv.amount_clp, `import:cartola|${pm}|%`) as {
-          note: string;
-        }[];
-        let matchCount = 0;
-        for (const r of rows) {
-          if (cartolaMovementMatchesImportedRow(mv, r.note)) matchCount += 1;
-        }
-        if (matchCount >= sameKeyIndex + 1) {
-          skipped += 1;
-          return;
-        }
-        missingBefore += 1;
-        if (!dryRun) {
-          insMov.run(accountId, mv.amount_clp, mv.occurred_on, note);
-          monthInserted += 1;
-        }
-        inserted += 1;
-      });
-
-      if (monthInserted > 0 && !dryRun) {
-        updateImportCount.run(monthInserted, accountId, pm);
-      }
-      if (missingBefore > 0) {
-        byMonth.push({
-          period_month: pm,
-          inserted: dryRun ? missingBefore : monthInserted,
-          missing_before: missingBefore,
-        });
-      }
-    }
-  });
-  tx();
-  if (!dryRun && inserted > 0) {
-    clearCheckingBalanceCache(accountId);
-  }
-  return { accountId, dryRun, inserted, skipped, byMonth };
 }

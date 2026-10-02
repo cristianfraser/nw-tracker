@@ -206,7 +206,7 @@ app.post(
         return;
       }
       if (parsed.status === "not_this_format") {
-        res.json(importCheckingCartolaFromRecentXlsxUpload(id, f.buffer, f.originalname));
+        res.json(await importCheckingCartolaFromRecentXlsxUpload(id, f.buffer, f.originalname));
         return;
       }
       if (parsed.result.kind !== bankAccountMovementsKind.kind || parsed.result.schema_version !== bankAccountMovementsKind.schema_version) {
@@ -224,7 +224,7 @@ app.post(
 app.post(
   "/api/accounts/:id/imports/checking-cartola-xlsx",
   uploadSingle("file") as unknown as express.RequestHandler,
-  (req, res) => {
+  asyncHandler(async (req, res) => {
     const id = accountIdFromReq(req);
     const f = req.file;
     if (!f) {
@@ -234,11 +234,11 @@ app.post(
     const replaceMonth =
       typeof req.query.replaceMonth === "string" ? req.query.replaceMonth : undefined;
     try {
-      res.json(importCheckingCartolaXlsx(id, f.buffer, f.originalname, { replaceMonth }));
+      res.json(await importCheckingCartolaXlsx(id, f.buffer, f.originalname, { replaceMonth }));
     } catch (e) {
       res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
     }
-  }
+  })
 );
 
 app.post(

@@ -3,11 +3,9 @@ import path from "node:path";
 import {
   canonicalCheckingCartolaXlsxFileName,
   isCheckingCartolaXlsxFileName,
-} from "./checkingCartolaParse.js";
-import {
-  resolveCfraserCheckingCartolasDir,
-  resolveCfraserInboxDir,
-} from "./cfraserPaths.js";
+} from "./checkingCartolaXlsx.js";
+import { resolveInboxDir } from "../paths.js";
+import { checkingCartolaXlsxDir } from "./cartolas.js";
 
 export type OrganizeCheckingCartolaXlsxResult = {
   moved: { from: string; to: string }[];
@@ -21,8 +19,8 @@ export function organizeCheckingCartolaXlsxFromInbox(opts?: {
   destDir?: string;
   dryRun?: boolean;
 }): OrganizeCheckingCartolaXlsxResult {
-  const inboxDir = opts?.inboxDir ?? resolveCfraserInboxDir();
-  const destDir = opts?.destDir ?? resolveCfraserCheckingCartolasDir();
+  const inboxDir = opts?.inboxDir ?? resolveInboxDir();
+  const destDir = opts?.destDir ?? checkingCartolaXlsxDir();
   const dryRun = opts?.dryRun ?? false;
   const moved: OrganizeCheckingCartolaXlsxResult["moved"] = [];
   const skipped: OrganizeCheckingCartolaXlsxResult["skipped"] = [];

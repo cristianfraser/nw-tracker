@@ -1,5 +1,5 @@
-"""Copy kept in `ingest/python/statement_values.py` (the card statement parser moved there);
-both are pinned by the same case tables until this one's last user moves.
+"""Copy kept in `ingest/python/statement_values.py` (the statement and cartola parsers moved there);
+the payroll parser still reads this one; both are pinned by the same case tables.
 
 Dates and peso amounts as bank and payroll documents print them — one parser for every script.
 

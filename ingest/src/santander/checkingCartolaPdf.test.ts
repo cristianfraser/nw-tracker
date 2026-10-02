@@ -2,32 +2,30 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { execSync } from "node:child_process";
-import { cartolaMovementDedupeKey } from "./checkingCartolaParse.js";
-import {
-  loadCheckingCartolasFromPdfJson,
-  resolveCheckingCartolasFromPdfJsonPath,
-  resolveParseCheckingCartolaPdfsScript,
-} from "./checkingCartolaPdfImport.js";
-import { resolveCfraserCheckingCartolaPdfsDir } from "./cfraserPaths.js";
+import { resolveCfraserDir, resolveRepoRoot } from "../paths.js";
+import { cartolaMovementDedupeKey, type ParsedCheckingMovement } from "./checkingCartolaXlsx.js";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");
+const REPO_ROOT = resolveRepoRoot();
+const pdfDir = path.join(resolveCfraserDir(), "cartolas-cuenta-corriente");
+type PdfJson = {
+  cartolas: { source_file: string; parse_status: string; period_month: string; period_to: string; saldo_final_clp: number; movements: ParsedCheckingMovement[] }[];
+};
 const APR_2019_PDF = "2019-04-30 cartola cuenta corriente 27.pdf";
 const MAY_2021_PDF = "2021-05-31 cartola cuenta corriente 1457.pdf";
 
-describe("checkingCartolaPdfImport", () => {
+describe("checking cartola PDFs (parse-checking-cartola-pdfs.py)", () => {
   // Shells out to parse-checking-cartola-pdfs.py over the full cartola corpus
   // (~5s warm cache) — needs more than vitest's 5s default.
   it("parses Apr 2019 and May 2021 sample cartola PDFs", () => {
-    const pdfDir = resolveCfraserCheckingCartolaPdfsDir();
     if (!fs.existsSync(path.join(pdfDir, APR_2019_PDF))) return;
 
-    const deps = path.join(REPO_ROOT, "server", "scripts", ".pdf_deps");
-    execSync(`python3 "${resolveParseCheckingCartolaPdfsScript()}"`, {
+    const deps = path.join(REPO_ROOT, "ingest", "python", ".pdf_deps");
+    execSync(`python3 "${path.join(REPO_ROOT, "ingest", "python", "parse-checking-cartola-pdfs.py")}"`, {
       cwd: REPO_ROOT,
       env: { ...process.env, PYTHONPATH: deps, CFRASER_CHECKING_CARTOLA_PDFS_DIR: pdfDir },
     });
 
-    const data = loadCheckingCartolasFromPdfJson(resolveCheckingCartolasFromPdfJsonPath());
+    const data = JSON.parse(fs.readFileSync(path.join(resolveCfraserDir(), "checking-cartolas-from-pdf.json"), "utf8")) as PdfJson;
 
     const apr2019 = data.cartolas.find((c) => c.source_file === APR_2019_PDF);
     expect(apr2019?.parse_status).toBe("ok");

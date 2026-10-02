@@ -1,4 +1,5 @@
-node_modules/
+# No trailing slash: a symlinked node_modules (worktrees) is a file to git.
+node_modules
 dist/
 build/
 *.log

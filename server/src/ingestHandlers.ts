@@ -7,6 +7,7 @@ import type {
   IngestResult,
 } from "nw-tracker-contracts";
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
+import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { applyCardStatement } from "./cardStatementApply.js";
 import { applyParsedCcStatements } from "./ccParsedStatementsApply.js";
@@ -73,6 +74,11 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "bank_account.statements": {
+    apply({ payload }) {
+      return { status: "applied", details: applyBankAccountStatements(payload) };
+    },
+  },
   "card.parsed_statements": {
     apply({ payload }) {
       const records = payload.rows.map((values) => Object.fromEntries(payload.columns.map((c, i) => [c, values[i]!])));

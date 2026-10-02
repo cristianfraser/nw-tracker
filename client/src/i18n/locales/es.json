@@ -651,7 +651,7 @@
     "checking": {
       "monthModalTitle": "Movimientos {{month}}",
       "monthModalClose": "Cerrar",
-      "cartolaMonthEmpty": "Sin meses en movimientos ni valorizaciones. Ejecuta npm run import:checking-cartolas en el servidor.",
+      "cartolaMonthEmpty": "Sin meses en movimientos ni valorizaciones. Ejecuta npm run import:checking-cartolas -w nw-tracker-ingest.",
       "cartolaMonthImportedCount": "{{imported}} de {{total}} mes(es) con cartola importada",
       "cartolaNo": "Sin cartola",
       "colDeposits": "Abonos",

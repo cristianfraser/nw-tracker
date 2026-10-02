@@ -14,7 +14,7 @@ type YearCase = {
 
 /** Shared with the Python cartola parsers, which assert the same file. */
 const cases = JSON.parse(
-  fs.readFileSync(new URL("./test/cartolaMovementYearCases.json", import.meta.url), "utf8")
+  fs.readFileSync(new URL("../../../server/src/test/cartolaMovementYearCases.json", import.meta.url), "utf8")
 ) as YearCase[];
 
 describe("cartolaMovementDateIso", () => {
