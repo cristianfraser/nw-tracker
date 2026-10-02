@@ -23,6 +23,7 @@
     "test": "vitest run",
     "import:santander-movements": "tsx src/santander/importCardMovementsMain.ts",
     "import:santander-statements": "tsx src/santander/importStatementsMain.ts",
+    "import:cc-statements": "tsx src/cards/importParsedStatementsMain.ts",
     "service": "tsx src/service/main.ts",
     "import:checking-movements": "tsx src/santander/importCheckingMovementsMain.ts",
     "import:santander-receipts": "tsx src/santander/importPaymentReceiptsMain.ts",

@@ -221,6 +221,8 @@ In rough order (simplest separation first):
    and archiving in ingest, ownership / cross-check / write in the server.
 6. CC statement PDFs: Python parser, parse cache, per-PDF JSON, organizer, qpdf/OCR →
    ingest; merge import, reconcile gates, traspaso relink stay.
+   Step 1 **done** — `card.parsed_statements` (the parser's rows, columnar) sent by ingest, applied
+   by the server's merge import. Step 2: the Python itself moves.
 7. Checking and cuenta vista cartolas (Python + TS).
 8. Grocery receipts: ingest/OCR/parse → ingest; import + branch learning stay.
 9. Payroll liquidaciones.

@@ -9,6 +9,7 @@ import type {
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { applyCardStatement } from "./cardStatementApply.js";
+import { applyParsedCcStatements } from "./ccParsedStatementsApply.js";
 import { applyMerchantPurchaseDocument } from "./merchantPurchaseDocumentApply.js";
 import { applyPensionAccountCertificates } from "./pensionAccountCertificatesApply.js";
 import { applyRacionalRead } from "./racionalMovementsImport.js";
@@ -72,6 +73,12 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "card.parsed_statements": {
+    apply({ payload }) {
+      const records = payload.rows.map((values) => Object.fromEntries(payload.columns.map((c, i) => [c, values[i]!])));
+      return { status: "applied", details: applyParsedCcStatements(records, { dryRun: !payload.apply, full: payload.full }) };
+    },
+  },
   "merchant.purchase_document": {
     apply({ payload, envelope }) {
       const outcome = applyMerchantPurchaseDocument(payload, envelope.source.ref);
