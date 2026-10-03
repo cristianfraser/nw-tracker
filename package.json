@@ -60,6 +60,7 @@
     "check:broker-emails": "npm run check:broker-emails -w nw-tracker-ingest --",
     "import:fintual-emails": "npm run import:fintual-emails -w nw-tracker-ingest --",
     "import:fintual-acciones": "npm run import:fintual-acciones -w nw-tracker-ingest --",
+    "import:fintual-cert": "npm run import:fintual-cert -w nw-tracker-ingest --",
     "daily-run": "ingest/daily-run.sh",
     "fetch:lider-boletas": "npm run fetch:lider-boletas -w nw-tracker-ingest --",
     "import:grocery-receipts": "npm run import:grocery-receipts -w nw-tracker-ingest --",

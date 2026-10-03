@@ -1,26 +1,21 @@
 /**
- * Fintual "certificado de transacciones" import (standalone).
+ * Fintual "certificado de transacciones" → the v2 cert accounts (`fund_account.transactions`).
  *
- * The certificado CSV (mailed from Fintual, installed into `cfraser/` by the inbox importer)
- * is the only source of the exact cuota amounts per flow. This module owns the v2 cert
- * accounts (`import:fintual|cert|key=…`) and rebuilds their movement rows from the CSV:
- * a scoped delete of prior `import:fintual|cert|movement` rows followed by a re-insert, so
- * manually entered movements on the same accounts are preserved and the import is idempotent.
+ * The certificado (a CSV Fintual mails on request; ingest installs it from the inbox and sends
+ * its transactions) is the only source of the exact cuota amounts per flow. This module owns the
+ * v2 cert accounts (`import:fintual|cert|key=…`) and reconciles them against it, never deleting
+ * or changing a curated movement (see `importFintualCertificado`).
  *
  * Deposit classification (personal vs APV-A state bonus) is resolved here at import time and
  * written to the `movements.flow_kind` column — never parsed from the note at runtime.
  */
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
+import type { FundAccountTransactionsApplyDetails, FundAccountTransactionsPayload } from "nw-tracker-contracts";
 import { reseedAllAccountSyncSources } from "./accountSyncSources.js";
 import { seedNavTree } from "./seedNavTree.js";
 import { DEPOSIT_FLOW_KIND_PERSONAL } from "./depositFlowKind.js";
-import {
-  aggregateFintualCertificado,
-  resolveFintualCertificadoCsvPath,
-  type FintualCertificadoAggregateScan,
-} from "./fintualCertificadoTransacciones.js";
+import { aggregateFintualCertificado, type FintualCertificadoAggregateScan } from "./fintualCertificadoTransacciones.js";
 import {
   FINTUAL_CERT_MOVEMENT_NOTE_PREFIX,
   FINTUAL_CERT_V2_ACCOUNT_NAMES,
@@ -175,7 +170,6 @@ function loadExistingFlows(accountIds: number[]): ExistingFlow[] {
 }
 
 export type FintualCertImportResult = {
-  csvPath: string;
   applied: boolean;
   accountsEnsured: number;
   /** Certificado rows covered by an existing flow (single-leg, transfer leg, or cert row). */
@@ -188,7 +182,7 @@ export type FintualCertImportResult = {
 };
 
 /**
- * Reconcile the v2 Fintual cert accounts against the installed certificado CSV.
+ * Reconcile the v2 Fintual cert accounts against the certificado's transactions.
  *
  * Non-destructive by design: existing curated movements are the source of truth and are never
  * deleted or modified. A certificado row counts as present when ANY existing flow on the account
@@ -198,28 +192,14 @@ export type FintualCertImportResult = {
  * aware: each existing flow covers at most one cert row, nearest date first. Only cert rows no
  * flow covers are reported and — when `apply` is set — added. DB flows the certificado does not
  * cover are reported for manual review.
- *
- * Throws if the CSV is absent (fail fast — run `npm run import:cfraser-inbox` to install it).
  */
-export function importFintualCertificado(opts?: {
-  maxMonth?: string;
-  apply?: boolean;
-}): FintualCertImportResult {
+export function importFintualCertificado(
+  transactions: FundAccountTransactionsPayload["transactions"],
+  opts?: { maxMonth?: string; apply?: boolean }
+): FintualCertImportResult {
   const apply = opts?.apply ?? false;
-  const cfraserDir = resolveCfraserCsvDir();
-  const csvPath = resolveFintualCertificadoCsvPath(cfraserDir);
-  if (!csvPath) {
-    throw new Error(
-      "Fintual certificado CSV not found. Install it with `npm run import:cfraser-inbox` " +
-        "(drop certificado_de_transacciones.csv in cfraser/inbox/)."
-    );
-  }
   const maxMonth = opts?.maxMonth ?? chileCalendarTodayYmd().slice(0, 7);
-
-  const scan = aggregateFintualCertificado(csvPath, maxMonth, matchFintualCertGoalV2);
-  if (!scan) {
-    throw new Error(`Fintual certificado CSV could not be parsed: ${csvPath}`);
-  }
+  const scan = aggregateFintualCertificado(transactions, maxMonth, matchFintualCertGoalV2);
   const plan = certPlanRows(scan);
 
   const reconcile = db.transaction(() => {
@@ -306,7 +286,7 @@ export function importFintualCertificado(opts?: {
 
   if (!apply) {
     // Report-only: roll back the ensureAccounts side effect so a report never writes.
-    let preview: Omit<FintualCertImportResult, "csvPath" | "applied"> = {
+    let preview: Omit<FintualCertImportResult, "applied"> = {
       accountsEnsured: 0,
       matched: 0,
       missing: [],
@@ -322,11 +302,23 @@ export function importFintualCertificado(opts?: {
     } catch (e) {
       if (!(e instanceof ROLLBACK_SENTINEL)) throw e;
     }
-    return { csvPath, applied: false, ...preview };
+    return { applied: false, ...preview };
   }
 
   const res = reconcile();
-  return { csvPath, applied: true, ...res };
+  return { applied: true, ...res };
+}
+
+export function applyFundAccountTransactions(payload: FundAccountTransactionsPayload): FundAccountTransactionsApplyDetails {
+  const res = importFintualCertificado(payload.transactions, { apply: payload.apply, maxMonth: payload.max_month ?? undefined });
+  return {
+    applied: res.applied,
+    accounts_ensured: res.accountsEnsured,
+    matched: res.matched,
+    missing: res.missing.map((m) => ({ account: m.importNote, date: m.ymd, amount_clp: m.amountClp })),
+    db_only: res.dbOnly.map((d) => ({ account: d.importNote, date: d.ymd, amount_clp: d.amountClp, kind: d.kind })),
+    fund_unit_rows: res.fundUnitRows,
+  };
 }
 
 /** Internal marker to roll back the dry-run transaction without surfacing an error. */

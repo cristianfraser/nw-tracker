@@ -8,8 +8,8 @@
  * 5. Merge-import CC rows into SQLite
  * 6. Optionally import checking / cuenta vista / sync (see flags below)
  *
- * A Fintual certificado dropped in the inbox is installed (step 0) and imported into its
- * cert accounts via `import:fintual-cert` at the end of the run. A Lider BCI «últimos
+ * A Fintual certificado dropped in the inbox is installed and reconciled against its cert
+ * accounts, report only, first thing (ingest `import:fintual-cert --from-inbox`). A Lider BCI «últimos
  * movimientos» CSV (`lider-bci-movimientos-*.csv`, dropped by its own scheduled fetch) is
  * imported through the web-paste path at the end of the run and archived. The daily checking
  * «ultimos movimientos-Cuenta Corriente.xlsx» (dropped by fetch:santander) is sent to the server
@@ -43,7 +43,6 @@ import {
   resolveCfraserOrganizeManifestPath,
 } from "../src/cfraserOrganizeManifest.js";
 import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
-import { processFintualCertificadoInboxCsv } from "../src/fintualCertificadoInbox.js";
 import { listLiderMovementInboxFiles } from "../src/liderMovementsImport.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";
 
@@ -93,23 +92,14 @@ function main(): void {
   const forceCuentaVista = hasFlag("cuenta-vista");
   const forceSync = hasFlag("sync");
 
-  let fintualCertInstalled = false;
   if (!skipFintualCert) {
-    console.log("\n=== Fintual certificado de transacciones (CSV install) ===");
-    try {
-      const r = processFintualCertificadoInboxCsv({ dryRun });
-      if (r.inboxPath) {
-        console.log(
-          `  ${r.rows} row(s) → ${r.csvPath}${r.archivedTo ? `; archived ${r.archivedTo}` : ""}`
-        );
-        fintualCertInstalled = true;
-      } else {
-        console.log("  (no certificado CSV in cfraser/inbox/)");
-      }
-    } catch (e) {
-      console.error(e instanceof Error ? e.message : e);
-      process.exit(1);
-    }
+    // A certificado dropped in the inbox is installed and reconciled against the cert accounts,
+    // report only (ingest: `import:fintual-cert --from-inbox`; nothing to do without one). Run
+    // `npm run import:fintual-cert -- --apply` to add the rows it reports missing.
+    const args = ["run", "import:fintual-cert", "-w", "nw-tracker-ingest", "--", "--from-inbox"];
+    if (dryRun) args.push("--dry-run");
+    const code = runStep("Fintual certificado de transacciones (install + reconcile, report only)", "npm", args);
+    if (code !== 0) process.exit(code);
   } else {
     console.log("\n=== Fintual certificado CSV (skipped) ===");
   }
@@ -312,17 +302,6 @@ function main(): void {
     if (code !== 0) process.exit(code);
   } else if (hasFlag("skip-sync") || !forceSync) {
     console.log("\n=== Global sync (skipped; pass --sync to run sync:all) ===");
-  }
-
-  if (fintualCertInstalled && !dryRun) {
-    // Report-only: surface certificado rows missing from the DB without changing curated data.
-    // Run `npm run import:fintual-cert -- --apply` to add them.
-    const code = runStep(
-      "Reconcile Fintual certificado vs cert accounts (report only)",
-      "npm",
-      ["run", "import:fintual-cert", "-w", "nw-tracker-server"]
-    );
-    if (code !== 0) process.exit(code);
   }
 
   let deferredFailureCode = 0;

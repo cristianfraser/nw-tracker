@@ -3,8 +3,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { readCommaCsvRecords } from "./ccParsedCommaCsv.js";
-import { resolveCfraserCsvDir, resolveCfraserInboxDir } from "./cfraserPaths.js";
+import { readCommaCsvRecords } from "../formats/commaCsv.js";
+import { resolveCfraserDir, resolveInboxDir } from "../paths.js";
 
 export const FINTUAL_CERTIFICADO_CANONICAL_NAME = "fintual-certificado-de-transacciones.csv";
 
@@ -22,7 +22,7 @@ export function fintualCertificadoArchiveDir(cfraserDir: string): string {
 }
 
 export function findFintualCertificadoInboxCsv(_cfraserDir?: string): string | null {
-  const inbox = resolveCfraserInboxDir();
+  const inbox = resolveInboxDir();
   if (!fs.existsSync(inbox)) return null;
   const exact = path.join(inbox, "certificado_de_transacciones.csv");
   if (fs.existsSync(exact)) return exact;
@@ -86,7 +86,7 @@ export function processFintualCertificadoInboxCsv(opts?: {
   cfraserDir?: string;
   dryRun?: boolean;
 }): ProcessFintualCertificadoInboxResult {
-  const cfraserDir = opts?.cfraserDir ?? resolveCfraserCsvDir();
+  const cfraserDir = opts?.cfraserDir ?? resolveCfraserDir();
   const dryRun = opts?.dryRun ?? false;
   const inboxPath = findFintualCertificadoInboxCsv(cfraserDir);
   if (!inboxPath) {

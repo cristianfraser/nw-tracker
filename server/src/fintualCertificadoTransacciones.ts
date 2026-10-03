@@ -1,26 +1,10 @@
-import fs from "node:fs";
-import path from "node:path";
-import { readCommaCsvRecords } from "./ccParsedCommaCsv.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+/**
+ * The Fintual certificado's transactions (`fund_account.transactions`, read from the CSV by
+ * ingest) → one aggregate per row with a net flow, for the cert-account reconcile
+ * (`fintualCertImport.ts`) and the valor-cuota backfill (`fintualFundUnitDaily.ts`).
+ */
+import type { FundTransaction } from "nw-tracker-contracts";
 import { type DepositFlowKind, depositFlowKindFromFintualMedio } from "./depositFlowKind.js";
-
-/** Chilean Numbers / Fintual CSV: thousands `.`, decimals `,`, optional `$`. */
-export function parseFintualCertMoneyCell(raw: string | undefined): number | null {
-  if (raw == null) return null;
-  const s = String(raw).trim();
-  if (!s) return null;
-  const neg = s.includes("(") && s.includes(")");
-  const t = s
-    .replace(/^\ufeff/, "")
-    .replace(/US\$/gi, "")
-    .replace(/[$\sUF\u00a0\u202f\u2007]/gi, "")
-    .replace(/\./g, "")
-    .replace(/,/g, ".")
-    .replace(/[()]/g, "");
-  const n = Number(t);
-  if (!Number.isFinite(n)) return null;
-  return neg ? -n : n;
-}
 
 export type GoalToImportNote = (goalId: string, investmentName: string) => string | null;
 
@@ -37,131 +21,43 @@ type Agg = {
 
 export type FintualCertificadoAggregateScan = {
   sortedAggregates: Agg[];
-  apvACutMonth: string | null;
-  apvAFirstFlowYmd: string | null;
-  apvAFirstMonthNetClp: number;
-  /** Latest certificate `Saldo Pesos Chilenos Final Día` per `YYYY-MM` for Reserva rows (Fintual SoT valuations). */
-  reservaSaldoClpByMonthKey: Map<string, number>;
 };
 
 /**
- * Parses the certificate and emits one movement per CSV row with net flow (no same-day merge).
- * Does not touch the database.
+ * One aggregate per transaction with a net flow (no same-day merge), in `maxMonth` or before,
+ * on a goal `matchGoal` knows. Does not touch the database.
  */
 export function aggregateFintualCertificado(
-  csvPath: string,
+  transactions: readonly FundTransaction[],
   maxMonth: string,
   matchGoal: GoalToImportNote
-): FintualCertificadoAggregateScan | null {
-  if (!fs.existsSync(csvPath)) return null;
-
-  const rows = readCommaCsvRecords(csvPath);
-
-  const reservaSaldoBestByMk = new Map<string, { lastYmd: string; saldo: number }>();
-  for (const r of rows) {
-    const fecha = String(r.fecha ?? "").trim();
-    const ymd = parseDdMmYyToIso(fecha);
-    if (!ymd) continue;
-    const mk = ymd.slice(0, 7);
-    if (mk > maxMonth) continue;
-    const goalId = String(r.id_inversión ?? r.id_inversion ?? "").trim();
-    if (!goalId) continue;
-    const nombre = String(r.nombre_inversión ?? r.nombre_inversion ?? "").trim();
-    if (matchGoal(goalId, nombre) !== "import:excel|key=fondo_reserva") continue;
-    const saldoRaw =
-      r.saldo_pesos_chilenos_final_dia ?? r.saldo_pesos_chilenos_final_día ?? r.saldo_pesos_final_dia ?? "";
-    const saldo = parseFintualCertMoneyCell(String(saldoRaw));
-    if (saldo == null || !Number.isFinite(saldo) || saldo <= 0) continue;
-    const prev = reservaSaldoBestByMk.get(mk);
-    if (!prev || ymd >= prev.lastYmd) {
-      reservaSaldoBestByMk.set(mk, { lastYmd: ymd, saldo });
-    }
-  }
-  const reservaSaldoClpByMonthKey = new Map<string, number>();
-  for (const [mk, v] of reservaSaldoBestByMk) {
-    reservaSaldoClpByMonthKey.set(mk, v.saldo);
-  }
-
+): FintualCertificadoAggregateScan {
   const sortedAggregates: Agg[] = [];
-
-  let apvAFirstFlowYmd: string | null = null;
-  let apvACutMonth: string | null = null;
-
-  for (const r of rows) {
-    const fecha = String(r.fecha ?? "").trim();
-    const ymd = parseDdMmYyToIso(fecha);
-    if (!ymd) continue;
-    const mk = ymd.slice(0, 7);
-    if (mk > maxMonth) continue;
-
-    const goalId = String(r.id_inversión ?? r.id_inversion ?? "").trim();
-    if (!goalId) continue;
-    const nombre = String(r.nombre_inversión ?? r.nombre_inversion ?? "").trim();
-    const importNote = matchGoal(goalId, nombre);
-    if (!importNote) continue;
-
-    const aporteClp = parseFintualCertMoneyCell(r.aporte_pesos_chilenos) ?? 0;
-    const rescateClp = parseFintualCertMoneyCell(r.rescate_pesos_chilenos) ?? 0;
-    const aporteQ = parseFintualCertMoneyCell(r.aporte_cuotas) ?? 0;
-    const rescateQ = parseFintualCertMoneyCell(r.rescate_cuotas) ?? 0;
-    const clpNet = aporteClp - rescateClp;
-    const cuotasNet = aporteQ - rescateQ;
+  for (const t of transactions) {
+    if (t.date.slice(0, 7) > maxMonth) continue;
+    const goalId = t.investment.id.trim();
+    const nombre = t.investment.name.trim();
+    if (!goalId || !matchGoal(goalId, nombre)) continue;
+    const clpNet = t.clp_in - t.clp_out;
+    const cuotasNet = t.units_in - t.units_out;
     if (clpNet === 0 && cuotasNet === 0) continue;
-
-    const medio = String(r.medio ?? "").trim();
-    const flowKind: DepositFlowKind = depositFlowKindFromFintualMedio(medio);
+    const medio = t.medio?.trim() ?? "";
     const medios = new Set<string>();
     if (medio) medios.add(medio);
-    const vqRow = parseFintualCertMoneyCell(r.valor_cuota);
     sortedAggregates.push({
-      ymd,
+      ymd: t.date,
       goalId,
       name: nombre,
-      flowKind,
+      flowKind: depositFlowKindFromFintualMedio(medio),
       clpNet,
       cuotasNet,
       medios,
-      valorCuotaHint: vqRow != null && vqRow > 0 ? vqRow : null,
+      valorCuotaHint: t.unit_value != null && t.unit_value > 0 ? t.unit_value : null,
     });
-
-    if (importNote === "import:excel|key=apv_a") {
-      if (apvAFirstFlowYmd == null || ymd < apvAFirstFlowYmd) apvAFirstFlowYmd = ymd;
-      const cm = ymd.slice(0, 7);
-      if (apvACutMonth == null || cm < apvACutMonth) apvACutMonth = cm;
-    }
   }
-
-  let apvAFirstMonthNetClp = 0;
-  if (apvACutMonth) {
-    for (const a of sortedAggregates) {
-      const note = matchGoal(a.goalId, a.name);
-      if (note !== "import:excel|key=apv_a") continue;
-      if (a.ymd.slice(0, 7) !== apvACutMonth) continue;
-      apvAFirstMonthNetClp += a.clpNet;
-    }
-  }
-
   sortedAggregates.sort((x, y) => {
     const c = x.ymd.localeCompare(y.ymd);
     return c !== 0 ? c : x.goalId.localeCompare(y.goalId);
   });
-
-  return {
-    sortedAggregates,
-    apvACutMonth,
-    apvAFirstFlowYmd,
-    apvAFirstMonthNetClp,
-    reservaSaldoClpByMonthKey,
-  };
-}
-
-export function resolveFintualCertificadoCsvPath(cfraserDir: string): string | null {
-  const env = process.env.FINTUAL_CERTIFICADO_CSV?.trim();
-  if (env) {
-    const abs = path.resolve(env);
-    if (fs.existsSync(abs)) return abs;
-  }
-  const p = path.join(cfraserDir, "fintual-certificado-de-transacciones.csv");
-  if (fs.existsSync(p)) return p;
-  return null;
+  return { sortedAggregates };
 }

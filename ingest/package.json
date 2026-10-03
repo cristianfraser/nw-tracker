@@ -47,7 +47,8 @@
     "parse:grocery-receipts": "python3 python/parse-grocery-receipts.py",
     "parse:payroll-liquidaciones": "PYTHONPATH=python/.pdf_deps python3 python/parse-payroll-liquidaciones.py",
     "import:payroll-liquidaciones": "tsx src/payroll/importPayslipsMain.ts",
-    "import:fintual-acciones": "tsx src/fintual/importAccionesMain.ts"
+    "import:fintual-acciones": "tsx src/fintual/importAccionesMain.ts",
+    "import:fintual-cert": "tsx src/fintual/importCertMain.ts"
   },
   "dependencies": {
     "imapflow": "1.6.5",

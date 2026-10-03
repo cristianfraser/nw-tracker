@@ -18,6 +18,7 @@ import { applyCardPaymentReceipt } from "./santanderCcPaymentReceipts.js";
 import { applyStoreReceipt } from "./storeReceiptApply.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";
 import { applyBrokerDividendStatement } from "./brokerDividendStatementApply.js";
+import { applyFundAccountTransactions } from "./fintualCertImport.js";
 import {
   applyCardUnbilledMovements,
   type CardUnbilledMovementsImportResult,
@@ -77,6 +78,11 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "fund_account.transactions": {
+    apply({ payload }) {
+      return { status: "applied", details: applyFundAccountTransactions(payload) };
+    },
+  },
   "broker.dividend_statement": {
     apply({ payload }) {
       return { status: "applied", details: applyBrokerDividendStatement(payload) };

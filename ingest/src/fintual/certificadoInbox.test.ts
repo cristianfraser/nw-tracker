@@ -1,14 +1,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   FINTUAL_CERTIFICADO_CANONICAL_NAME,
   findFintualCertificadoInboxCsv,
   processFintualCertificadoInboxCsv,
   validateFintualCertificadoCsv,
-} from "./fintualCertificadoInbox.js";
-import * as cfraserPaths from "./cfraserPaths.js";
+} from "./certificadoInbox.js";
 
 const NATIVE_HEADER =
   "Fecha,Hora,Id Inversión,Nombre Inversión,Nombre Fondo,Serie Fondo,Aporte Cuotas,Rescate Cuotas,Valor Cuota,Saldo Cuotas Final Dia,Aporte Pesos Chilenos,Rescate Pesos Chilenos,Medio,Saldo Pesos Chilenos Final Dia";
@@ -24,7 +23,6 @@ describe("fintualCertificadoInbox", () => {
   let prevCsvEnv: string | undefined;
 
   afterEach(() => {
-    vi.restoreAllMocks();
     if (prevInboxEnv === undefined) delete process.env.CFRASER_INBOX_DIR;
     else process.env.CFRASER_INBOX_DIR = prevInboxEnv;
     if (prevCsvEnv === undefined) delete process.env.CFRASER_CSV_DIR;
@@ -41,8 +39,6 @@ describe("fintualCertificadoInbox", () => {
     prevCsvEnv = process.env.CFRASER_CSV_DIR;
     process.env.CFRASER_INBOX_DIR = inboxDir;
     process.env.CFRASER_CSV_DIR = cfraserDir;
-    vi.spyOn(cfraserPaths, "resolveCfraserInboxDir").mockReturnValue(inboxDir);
-    vi.spyOn(cfraserPaths, "resolveCfraserCsvDir").mockReturnValue(cfraserDir);
   }
 
   it("finds exact certificado_de_transacciones.csv in inbox", () => {
