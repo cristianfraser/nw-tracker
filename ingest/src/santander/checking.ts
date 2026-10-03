@@ -19,8 +19,10 @@ export async function fetchCheckingMovements(
   logStep("cuenta corriente — movements");
   await gotoRoute(page, ROUTE.checkingMovements);
   await recorder.screenshot(page, "checking-movements");
+  // The first text match is not always the button on screen: on 2026-10-02 it resolved to a
+  // hidden copy and the click waited 45 s for it to become visible.
   return downloadTo(page, destDir, async () => {
-    await page.getByText(TEXT.downloadCheckingMovements).first().click();
+    await page.getByText(TEXT.downloadCheckingMovements).filter({ visible: true }).first().click();
   });
 }
 

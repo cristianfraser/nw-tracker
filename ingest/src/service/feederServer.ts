@@ -63,6 +63,10 @@ async function readJson(req: http.IncomingMessage, maxBytes = 64 * 1024): Promis
 export function createFeederServer(deps: FeederDeps): { server: http.Server; current: () => Running | null; idle: () => Promise<void> } {
   let current: Running | null = null;
   let finished: Promise<void> = Promise.resolve();
+  // Run ids this process has run. The server repeats a request whose answer it missed; a finished
+  // run must never start again (2026-10-02: run 50 ran twice, the second time into the bank's
+  // 30-minute guard).
+  const ran = new Set<number>();
 
   async function execute(request: IngestRunRequest): Promise<void> {
     let completion: IngestRunCompletion;
@@ -124,16 +128,20 @@ export function createFeederServer(deps: FeederDeps): { server: http.Server; cur
       } catch (err) {
         return send(res, 400, { error: "invalid run request", message: err instanceof Error ? err.message : String(err) });
       }
+      if (current?.run_id === request.run_id) return send(res, 202, { accepted: true, run_id: request.run_id });
+      if (ran.has(request.run_id)) return send(res, 409, { error: "already_ran", run_id: request.run_id });
       if (current) return send(res, 409, { error: "busy", running: current });
       if (deps.runningOutside()) {
         return send(res, 409, { error: "busy", running: { run_id: null, kind: "outside", started_at: new Date().toISOString() } });
       }
       current = { run_id: request.run_id, kind: request.kind, started_at: new Date().toISOString() };
+      ran.add(request.run_id);
       deps.log(`run ${request.run_id} (${request.kind}) accepted — ${request.reason}`);
-      finished = execute(request).catch((err) =>
-        deps.log(`run ${request.run_id}: ${err instanceof Error ? err.message : String(err)}`)
-      );
+      // Answer first: the run's synchronous start must not hold the server's request past its timeout.
       send(res, 202, { accepted: true, run_id: request.run_id });
+      finished = new Promise<void>((resolve) => setImmediate(resolve))
+        .then(() => execute(request))
+        .catch((err) => deps.log(`run ${request.run_id}: ${err instanceof Error ? err.message : String(err)}`));
     })().catch((err) => send(res, 500, { error: err instanceof Error ? err.message : String(err) }));
   });
 

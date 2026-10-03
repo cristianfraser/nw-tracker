@@ -9,7 +9,7 @@ import {
   type IngestRunRequest,
 } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import { INGEST_UNREACHABLE_TITLE, ingestSchedulerEnabled, ingestSchedulerTick, type FeederAnswer } from "./ingestRunScheduler.js";
+import { INGEST_UNREACHABLE_TITLE, ingestSchedulerEnabled, ingestSchedulerTick, requestFeederRun, type FeederAnswer } from "./ingestRunScheduler.js";
 import { completeIngestRun, ingestRunById, listRecentIngestRuns } from "./ingestRuns.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
 
@@ -97,6 +97,8 @@ describe("ingestSchedulerTick", () => {
     const down = fakeFeeder({ status: "unreachable", detail: "fetch failed — connect ECONNREFUSED" });
     const notified = new Set<string>();
     const a = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), notified, down.request);
+    // One unanswered request is not an outage yet (a timeout right after a wake): no badge.
+    expect(db.prepare(`SELECT kind FROM app_messages WHERE title = ?`).all(INGEST_UNREACHABLE_TITLE)).toEqual([]);
     const b = await ingestSchedulerTick(new Date("2099-06-11T02:00:40Z"), notified, down.request);
     expect([a.run_id, b.run_id]).toEqual([a.run_id, a.run_id]); // the same slot row, retried
     expect(ingestRunById(a.run_id!)).toMatchObject({ status: "not_started", error: expect.stringMatching(/ECONNREFUSED/) });
@@ -229,6 +231,14 @@ describe("run reports", () => {
     expect(listRecentIngestRuns(1)[0]?.id).toBe(run_id);
   });
 
+  it("takes the report of a run marked not started: the service had taken it after all", async () => {
+    const down = fakeFeeder({ status: "unreachable", detail: "The operation was aborted due to timeout" });
+    const { run_id } = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), new Set(), down.request);
+    expect(ingestRunById(run_id!)).toMatchObject({ status: "not_started" });
+    completeIngestRun(run_id!, report());
+    expect(ingestRunById(run_id!)).toMatchObject({ status: "done" });
+  });
+
   it("marks a clean run done", async () => {
     const feeder = fakeFeeder({ status: "accepted" });
     const { run_id } = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), new Set(), feeder.request);
@@ -246,6 +256,36 @@ describe("run reports", () => {
     completeIngestRun(hourly.run_id!, report({ santander: null, activity: false }));
     expect(runMessages()).toEqual([]);
     expect(ingestRunById(hourly.run_id!)).toMatchObject({ status: "done", activity: 0 });
+  });
+});
+
+describe("requestFeederRun", () => {
+  async function stubService(status: number, body: unknown): Promise<{ env: NodeJS.ProcessEnv; close: () => Promise<void> }> {
+    const app = express();
+    app.post("/runs", (_req, res) => void res.status(status).json(body));
+    const s = await new Promise<Server>((resolve) => {
+      const started: Server = app.listen(0, "127.0.0.1", () => resolve(started));
+    });
+    return {
+      env: { INGEST_URL: `http://127.0.0.1:${(s.address() as AddressInfo).port}` },
+      close: () => new Promise<void>((r) => s.close(() => r())),
+    };
+  }
+
+  it("reads the service running or having run this same run as accepted", async () => {
+    const cases: [number, unknown, FeederAnswer["status"]][] = [
+      [409, { error: "busy", running: { run_id: 50, kind: "nightly", started_at: "2099-06-11T02:33:04.679Z" } }, "accepted"],
+      [409, { error: "already_ran", run_id: 50 }, "accepted"],
+      [409, { error: "busy", running: { run_id: 49, kind: "hourly", started_at: "2099-06-11T02:30:00.000Z" } }, "busy"],
+    ];
+    for (const [status, body, expected] of cases) {
+      const svc = await stubService(status, body);
+      try {
+        expect((await requestFeederRun(50, "nightly", "x", null, null, svc.env)).status).toBe(expected);
+      } finally {
+        await svc.close();
+      }
+    }
   });
 });
 
