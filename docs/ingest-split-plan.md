@@ -229,7 +229,9 @@ In rough order (simplest separation first):
    parser, the two PDF parsers, the inbox xlsx organizer and the commands live in ingest, the
    period import, cuenta vista month split and anchor re-derivation stay in the server; the
    monthly xlsx upload parses through the service (`/parse/santander.checking_cartola_xlsx`).
-8. Grocery receipts: ingest/OCR/parse → ingest; import + branch learning stay.
+8. Grocery receipts: ingest/OCR/parse → ingest; import + branch learning stay. **Done** — `store.receipt`;
+   the inbox, OCR, parsers, staged corpus and import stamps in ingest, identity, writes, card lines
+   and branch learning in the server.
 9. Payroll liquidaciones.
 10. Fintual certificado, Fintual Acciones documents, AFC certificate/cartola.
 11. Lider BCI CSV (if still used), web paste (`ccWebPasteParse`, via `/parse`).

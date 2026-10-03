@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Parse staged grocery receipts — e-mail boleta PDFs and photos of paper receipts — into
-per-receipt parsed.json files that `groceryReceiptsImport.ts` imports.
+per-receipt parsed.json files that `import:grocery-receipts` (ingest) sends to the server.
 
 Usage (repo root):
-  python3 server/scripts/parse-grocery-receipts.py            # parse new/changed staged receipts
-  python3 server/scripts/parse-grocery-receipts.py --check    # parse everything, write nothing
-  python3 server/scripts/parse-grocery-receipts.py --force    # re-parse all
+  python3 ingest/python/parse-grocery-receipts.py            # parse new/changed staged receipts
+  python3 ingest/python/parse-grocery-receipts.py --check    # parse everything, write nothing
+  python3 ingest/python/parse-grocery-receipts.py --force    # re-parse all
   --lider-root DIR / --generic-root DIR                       # override a staging root (tests)
 
-Roots mirror `defaultStagingRoots` in groceryReceiptsImport.ts:
+Roots mirror `defaultStagingRoots` in ingest/src/grocery/stagedReceipts.ts:
   * cfraser/lider-boletas/staged/<dir>/Boleta.pdf   — fetch:lider-boletas output (Lider e-mail)
   * cfraser/grocery-receipts/staged/<dir>/meta.json — the generic root; `original_file` names
     the document (PDF or photo). A photo goes through OCR (grocery_receipt_text.py — ocr.json +

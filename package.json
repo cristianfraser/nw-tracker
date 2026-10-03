@@ -62,7 +62,7 @@
     "import:fintual-acciones": "npm run import:fintual-acciones -w nw-tracker-server --",
     "daily-run": "ingest/daily-run.sh",
     "fetch:lider-boletas": "npm run fetch:lider-boletas -w nw-tracker-ingest --",
-    "import:grocery-receipts": "npm run import:grocery-receipts -w nw-tracker-server --",
+    "import:grocery-receipts": "npm run import:grocery-receipts -w nw-tracker-ingest --",
     "fetch:lider-statements": "npm run fetch:lider-statements -w nw-tracker-ingest --"
   }
 }

@@ -43,8 +43,6 @@ import {
   resolveCfraserOrganizeManifestPath,
 } from "../src/cfraserOrganizeManifest.js";
 import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
-import { hasPendingGroceryReceipts } from "../src/groceryReceiptsImport.js";
-import { listGroceryReceiptInboxFiles } from "../src/groceryReceiptsIngest.js";
 import { processFintualCertificadoInboxCsv } from "../src/fintualCertificadoInbox.js";
 import { listLiderMovementInboxFiles } from "../src/liderMovementsImport.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";
@@ -328,21 +326,18 @@ function main(): void {
   }
 
   let deferredFailureCode = 0;
-  // Grocery receipts: the Lider «Boleta Digital» PDFs staged by fetch:lider-boletas plus the
-  // generic cfraser/grocery-receipts/ root (photo inbox → staged) — grocery receipt+items
-  // always, an open-month card line when paid with the chain's own card. Incremental: the gate
-  // is "a photo in the inbox, or a staged dir whose parse has no current import stamp", so the
-  // hourly poll runs it unconditionally and a quiet corpus costs nothing.
-  if (listGroceryReceiptInboxFiles().length > 0 || hasPendingGroceryReceipts()) {
-    const receiptArgs = ["run", "import:grocery-receipts", "-w", "nw-tracker-server"];
+  // Grocery receipts (ingest: photo inbox → staged → OCR/parse → `store.receipt`): the Lider
+  // «Boleta Digital» PDFs staged by fetch:lider-boletas plus the generic cfraser/grocery-receipts/
+  // root. Incremental: the command stops at once when no photo waits in the inbox and every
+  // staged receipt carries a current import stamp, so it runs on every pass.
+  {
+    const receiptArgs = ["run", "import:grocery-receipts", "-w", "nw-tracker-ingest"];
     if (dryRun) receiptArgs.push("--", "--dry-run");
     const code = runStep(`Import grocery receipts${dryRun ? " (dry run)" : ""}`, "npm", receiptArgs);
     // A receipt that will not parse fails the step so the nightly names it, but it is not a
     // reason to hold back the steps below — the pipeline still exits non-zero at the end. (A
     // new store is not a failure: the receipt is flagged and pairs with the card's own line.)
     if (code !== 0) deferredFailureCode = code;
-  } else {
-    console.log("\n=== Grocery receipts (nothing pending) ===");
   }
 
   // Lider BCI «últimos movimientos» CSV, dropped in the inbox by its own scheduled fetch.

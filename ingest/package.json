@@ -42,7 +42,9 @@
     "check:broker-emails": "tsx src/brokers/checkBrokerEmailsMain.ts",
     "import:fintual-emails": "tsx src/brokers/importBrokerEmailsMain.ts --broker=fintual",
     "import:racional-emails": "tsx src/brokers/importBrokerEmailsMain.ts --broker=racional",
-    "import:racional-movements": "tsx src/racional/importReadsMain.ts"
+    "import:racional-movements": "tsx src/racional/importReadsMain.ts",
+    "import:grocery-receipts": "tsx src/grocery/importReceiptsMain.ts",
+    "parse:grocery-receipts": "python3 python/parse-grocery-receipts.py"
   },
   "dependencies": {
     "imapflow": "1.6.5",

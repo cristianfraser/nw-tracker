@@ -6,7 +6,7 @@ import type { Database as DatabaseType } from "better-sqlite3";
  * the pipeline through two documents (the «Boleta Digital» e-mail and a photo of the paper
  * copy) lands on one row. `source` / `source_key` stay as provenance of the document that owns
  * the row (UNIQUE per document); which document wins is decided by the importer's source rank
- * (`groceryReceiptsImport.ts`), not here. The backfill formula below MUST equal
+ * (`storeReceiptApply.ts`), not here. The backfill formula below MUST equal
  * `groceryReceiptKey` in that module.
  *
  * Runs inside the migration transaction with foreign_keys=OFF (arranged by db.ts):

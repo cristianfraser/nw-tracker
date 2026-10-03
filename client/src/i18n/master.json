@@ -5180,11 +5180,11 @@
         "es": "Aún no hay boletas importadas."
       },
       "source": {
-        "lider_email": {
+        "email": {
           "en": "E-mail",
           "es": "E-mail"
         },
-        "manual_pdf": {
+        "pdf": {
           "en": "PDF",
           "es": "PDF"
         },

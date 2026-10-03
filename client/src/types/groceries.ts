@@ -22,8 +22,8 @@ export type GroceryProductRow = {
   last_effective_unit_price_clp: number | null;
 };
 
-/** Document that owns a receipt row — mirrors GROCERY_RECEIPT_SOURCES on the server. */
-export type GroceryReceiptSource = "lider_email" | "manual_pdf" | "photo";
+/** Document that owns a receipt row — the `store.receipt` document kinds (server/contracts). */
+export type GroceryReceiptSource = "email" | "pdf" | "photo";
 
 export type GroceryReceiptRow = {
   id: number;

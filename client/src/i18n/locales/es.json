@@ -1472,8 +1472,8 @@
       "hideItems": "Ocultar ítems",
       "none": "Aún no hay boletas importadas.",
       "source": {
-        "lider_email": "E-mail",
-        "manual_pdf": "PDF",
+        "email": "E-mail",
+        "pdf": "PDF",
         "photo": "Foto"
       },
       "cardLine": {
