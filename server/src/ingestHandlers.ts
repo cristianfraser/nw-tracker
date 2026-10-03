@@ -15,6 +15,7 @@ import { applyMerchantPurchaseDocument } from "./merchantPurchaseDocumentApply.j
 import { applyPensionAccountCertificates } from "./pensionAccountCertificatesApply.js";
 import { applyRacionalRead } from "./racionalMovementsImport.js";
 import { applyCardPaymentReceipt } from "./santanderCcPaymentReceipts.js";
+import { applyStoreReceipt } from "./storeReceiptApply.js";
 import {
   applyCardUnbilledMovements,
   type CardUnbilledMovementsImportResult,
@@ -74,6 +75,11 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "store.receipt": {
+    apply({ payload }) {
+      return { status: "applied", details: applyStoreReceipt(payload) };
+    },
+  },
   "bank_account.statements": {
     apply({ payload }) {
       return { status: "applied", details: applyBankAccountStatements(payload) };

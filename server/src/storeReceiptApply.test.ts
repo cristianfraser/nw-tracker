@@ -1,19 +1,15 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, afterEach, it } from "vitest";
+import { storeReceiptKind, type StoreReceiptPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 import {
+  applyStoreReceipt,
   groceryReceiptKey,
-  hasPendingGroceryReceipts,
-  importStagedGroceryReceipts,
-  listStagedReceipts,
+  incomingReceiptFromPayload,
   movementIsTerminal,
-  resolveReceiptFacts,
   resolveAliasProductId,
-  type StagingRoot,
-} from "./groceryReceiptsImport.js";
+  resolveReceiptFacts,
+} from "./storeReceiptApply.js";
 import {
   canonicalContent,
   groceryProductHistory,
@@ -27,89 +23,63 @@ import {
 
 /**
  * Receipt/items/classification/identity behavior, movement-free: synthetic receipts paid
- * EFECTIVO (or on a chain without a card rule) skip the card-movement branch entirely, so no CC
- * master fixture is needed. Movement gating itself is exercised by the real pipeline
- * (closed-month/paid gates are thin date/amount guards).
+ * EFECTIVO (or on a chain without a card rule) skip the card-line branch entirely, so no CC
+ * master fixture is needed.
  */
 
-type ParsedOpts = {
+type ReceiptOpts = {
   description?: string;
   barcode?: string | null;
   chain?: string;
   /** null: the photo lost it. */
-  boletaNumber?: string | null;
+  number?: string | null;
   purchasedAt?: string | null;
-  payments?: { method: string; amount_clp: number }[];
+  payments?: { method: string; amount: number }[];
+  document?: "email" | "pdf" | "photo";
+  docKey?: string;
+  photoTakenOn?: string;
+  apply?: boolean;
 };
 
-function syntheticParsed(key: string, opts?: ParsedOpts) {
-  return {
-    ...(opts?.chain ? { chain: opts.chain } : {}),
-    boleta_number: opts?.boletaNumber === undefined ? `9${key.replace(/\D/g, "")}01` : opts.boletaNumber,
-    caja: "0001",
-    sucursal: "CALLE FICTICIA #123",
-    city: "COMUNA FICTICIA - SANTIAGO",
-    purchased_at: opts?.purchasedAt === undefined ? "2037-01-04 20:11:22" : opts.purchasedAt,
-    template: "store",
-    items: [
-      {
-        position: 0,
-        barcode: opts?.barcode === undefined ? "7801234567890" : opts.barcode,
-        description: opts?.description ?? "LECHE VITEST 1L",
-        qty: "2",
-        qty_unit: "un",
-        unit_price_clp: 1500,
-        total_clp: 3000,
-        discount_clp: 500,
-        discount_labels: ["RF Lleve N x $"],
-      },
-    ],
-    payments: opts?.payments ?? [{ method: "efectivo", amount_clp: 2500 }],
-    total_printed_clp: 2500,
-    articles_declared: 2,
-    mi_club_points: null,
-    parser_version: 1,
-  };
+/** A `store.receipt` as ingest sends it; `key` names the synthetic document. */
+function receiptPayload(key: string, opts: ReceiptOpts = {}): StoreReceiptPayload {
+  const document = opts.document ?? "email";
+  return storeReceiptKind.payload.parse({
+    apply: opts.apply ?? true,
+    document: {
+      kind: document,
+      key: opts.docKey ?? (document === "email" ? `<${key}@vitest>` : `vitest-photo-${key}`),
+      photo_taken_on: opts.photoTakenOn ?? null,
+    },
+    receipt: {
+      chain: opts.chain ?? "lider",
+      number: opts.number === undefined ? `9${key.replace(/\D/g, "")}01` : opts.number,
+      branch: "CALLE FICTICIA #123",
+      city: "COMUNA FICTICIA - SANTIAGO",
+      purchased_at: opts.purchasedAt === undefined ? "2037-01-04 20:11:22" : opts.purchasedAt,
+      purchase_date_source: opts.purchasedAt === null ? null : "printed",
+      items: [
+        {
+          position: 0,
+          barcode: opts.barcode === undefined ? "7801234567890" : opts.barcode,
+          description: opts.description ?? "LECHE VITEST 1L",
+          qty: "2",
+          qty_unit: "un",
+          unit_price: 1500,
+          total: 3000,
+          discount: 500,
+          discount_labels: ["RF Lleve N x $"],
+        },
+      ],
+      receipt_discounts: [],
+      payments: opts.payments ?? [{ method: "efectivo", amount: 2500 }],
+      loyalty_points: null,
+    },
+  });
 }
 
-/** lider_email root: Boleta.pdf + the e-mail's meta (message id) + parsed.json, as the fetcher and parser leave them. */
-function syntheticEmailStaged(root: string, key: string, opts?: ParsedOpts) {
-  const d = path.join(root, key);
-  fs.mkdirSync(d, { recursive: true });
-  fs.writeFileSync(path.join(d, "Boleta.pdf"), "");
-  fs.writeFileSync(
-    path.join(d, "meta.json"),
-    JSON.stringify({ message_id: `<${key}@vitest>`, subject: "Boleta Digital Lider", date: "2037-01-05T00:22:00Z", body_text: "" })
-  );
-  fs.writeFileSync(path.join(d, "parsed.json"), JSON.stringify(syntheticParsed(key, opts)));
-}
-
-/** generic root: explicit {source, source_key} meta + parsed.json carrying the parser's chain. */
-function syntheticPhotoStaged(
-  root: string,
-  key: string,
-  opts?: ParsedOpts & { sourceKey?: string; source?: string; omitChain?: boolean; photoTakenOn?: string }
-) {
-  const d = path.join(root, key);
-  fs.mkdirSync(d, { recursive: true });
-  fs.writeFileSync(
-    path.join(d, "meta.json"),
-    JSON.stringify({
-      source: opts?.source ?? "photo",
-      source_key: opts?.sourceKey ?? `vitest-photo-${key}`,
-      original_file: "receipt.heic",
-      ingested_at: "2037-01-05T00:22:00Z",
-      ...(opts?.photoTakenOn ? { photo_taken_on: opts.photoTakenOn } : {}),
-    })
-  );
-  const parsed = syntheticParsed(key, { chain: opts?.omitChain ? undefined : (opts?.chain ?? "lider"), ...opts });
-  fs.writeFileSync(path.join(d, "parsed.json"), JSON.stringify(parsed));
-}
-
-describe("groceryReceiptsImport", () => {
-  const tmpDirs: string[] = [];
+describe("store.receipt apply", () => {
   afterEach(() => {
-    for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
     db.prepare(
       `DELETE FROM grocery_receipt_items WHERE receipt_id IN (
          SELECT id FROM grocery_receipts WHERE source_key LIKE '<vitest-%' OR source_key LIKE 'vitest-photo-%')`
@@ -119,50 +89,29 @@ describe("groceryReceiptsImport", () => {
     db.prepare(`DELETE FROM grocery_products WHERE name LIKE 'vitest %'`).run();
   });
 
-  function tmpRoot(kind: StagingRoot["kind"]): StagingRoot {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), `vitest-receipts-${kind}-`));
-    tmpDirs.push(d);
-    return { kind, dir: d };
-  }
-
   function receiptRow(id: number) {
     return db
       .prepare(`SELECT receipt_key, source, source_key, store_chain, card_paid_clp FROM grocery_receipts WHERE id = ?`)
       .get(id) as { receipt_key: string; source: string; source_key: string; store_chain: string; card_paid_clp: number };
   }
 
-  it("imports an e-mail receipt with items, idempotently, under its natural key", () => {
-    const email = tmpRoot("lider_email");
-    syntheticEmailStaged(email.dir, "vitest-a");
-    const first = importStagedGroceryReceipts({ roots: [email] });
-    expect(first).toHaveLength(1);
-    expect(first[0]!.receipt_status).toBe("inserted");
-    expect(first[0]!.source).toBe("lider_email");
-    expect(first[0]!.movement.status).toBe("not_card_paid");
-    expect(first[0]!.items).toBe(1);
-    expect(first[0]!.receipt_key).toBe(groceryReceiptKey("lider", "901", "2037-01-04 20:11:22"));
-    expect(receiptRow(first[0]!.receipt_id)).toMatchObject({
+  it("imports an e-mailed receipt with items, idempotently, under its natural key", () => {
+    const first = applyStoreReceipt(receiptPayload("vitest-a"));
+    expect(first).toMatchObject({ receipt_status: "inserted", items: 1, final: true });
+    expect(first.movement.status).toBe("not_card_paid");
+    expect(first.receipt_key).toBe(groceryReceiptKey("lider", "901", "2037-01-04 20:11:22"));
+    expect(receiptRow(first.receipt_id)).toMatchObject({
       receipt_key: "lider|901|2037-01-04",
-      source: "lider_email",
+      source: "email",
       source_key: "<vitest-a@vitest>",
     });
-
-    // Stamped: a re-run touches nothing; --full re-upserts.
-    const again = importStagedGroceryReceipts({ roots: [email] });
-    expect(again[0]!.receipt_id).toBe(first[0]!.receipt_id);
-    expect(again[0]!.receipt_status).toBe("unchanged");
-    expect(again[0]!.items_classified).toBe(0);
-    expect(fs.existsSync(path.join(email.dir, "vitest-a", "imported.json"))).toBe(true);
-    expect(hasPendingGroceryReceipts([email])).toBe(false);
-    const full = importStagedGroceryReceipts({ roots: [email], full: true });
-    expect(full[0]!.receipt_status).toBe("updated");
-    const rows = db
-      .prepare(`SELECT COUNT(*) AS c FROM grocery_receipt_items WHERE receipt_id = ?`)
-      .get(first[0]!.receipt_id) as { c: number };
+    const again = applyStoreReceipt(receiptPayload("vitest-a"));
+    expect(again).toMatchObject({ receipt_id: first.receipt_id, receipt_status: "updated" });
+    const rows = db.prepare(`SELECT COUNT(*) AS c FROM grocery_receipt_items WHERE receipt_id = ?`).get(first.receipt_id) as { c: number };
     expect(rows.c).toBe(1);
     const receipt = db
       .prepare(`SELECT branch, city, purchased_at, total_clp, discount_total_clp, card_paid_clp FROM grocery_receipts WHERE id = ?`)
-      .get(first[0]!.receipt_id) as Record<string, unknown>;
+      .get(first.receipt_id) as Record<string, unknown>;
     expect(receipt).toMatchObject({
       branch: "CALLE FICTICIA #123",
       city: "COMUNA FICTICIA - SANTIAGO",
@@ -173,14 +122,17 @@ describe("groceryReceiptsImport", () => {
     });
   });
 
-  it("a photo of a paper receipt imports from the generic root with photo provenance", () => {
-    const photos = tmpRoot("generic");
-    syntheticPhotoStaged(photos.dir, "vitest-p1");
-    const res = importStagedGroceryReceipts({ roots: [photos] });
-    expect(res).toHaveLength(1);
-    expect(res[0]).toMatchObject({ root: "generic", source: "photo", chain: "lider", receipt_status: "inserted" });
-    expect(res[0]!.movement.status).toBe("not_card_paid");
-    expect(receiptRow(res[0]!.receipt_id)).toMatchObject({
+  it("a dry run reports and writes nothing", () => {
+    const res = applyStoreReceipt(receiptPayload("vitest-dry", { apply: false }));
+    expect(res).toMatchObject({ receipt_status: "inserted", receipt_id: -1 });
+    expect(db.prepare(`SELECT 1 FROM grocery_receipts WHERE source_key = '<vitest-dry@vitest>'`).get()).toBeUndefined();
+  });
+
+  it("a photo of a paper receipt imports with photo provenance", () => {
+    const res = applyStoreReceipt(receiptPayload("vitest-p1", { document: "photo" }));
+    expect(res).toMatchObject({ chain: "lider", receipt_status: "inserted" });
+    expect(res.movement.status).toBe("not_card_paid");
+    expect(receiptRow(res.receipt_id)).toMatchObject({
       receipt_key: "lider|9101|2037-01-04",
       source: "photo",
       source_key: "vitest-photo-vitest-p1",
@@ -189,98 +141,57 @@ describe("groceryReceiptsImport", () => {
   });
 
   it("e-mail outranks photo: the e-mail takes the row over, a later photo is skipped", () => {
-    const email = tmpRoot("lider_email");
-    const photos = tmpRoot("generic");
-    const boletaNumber = "000123456789";
-    syntheticPhotoStaged(photos.dir, "vitest-twin", { boletaNumber });
-    const fromPhoto = importStagedGroceryReceipts({ roots: [photos] });
-    expect(fromPhoto[0]!.receipt_status).toBe("inserted");
-    const id = fromPhoto[0]!.receipt_id;
+    const number = "000123456789";
+    const fromPhoto = applyStoreReceipt(receiptPayload("vitest-twin", { document: "photo", number }));
+    expect(fromPhoto.receipt_status).toBe("inserted");
+    const id = fromPhoto.receipt_id;
 
-    syntheticEmailStaged(email.dir, "vitest-twin-mail", { boletaNumber });
-    const fromEmail = importStagedGroceryReceipts({ roots: [email] });
-    expect(fromEmail[0]).toMatchObject({ receipt_id: id, receipt_status: "replaced", other_source: "photo" });
+    const fromEmail = applyStoreReceipt(receiptPayload("vitest-twin-mail", { number }));
+    expect(fromEmail).toMatchObject({ receipt_id: id, receipt_status: "replaced", other_document: "photo" });
     expect(receiptRow(id)).toMatchObject({
-      receipt_key: `lider|${boletaNumber}|2037-01-04`,
-      source: "lider_email",
+      receipt_key: `lider|${number}|2037-01-04`,
+      source: "email",
       source_key: "<vitest-twin-mail@vitest>",
     });
     const items = db.prepare(`SELECT COUNT(*) AS c FROM grocery_receipt_items WHERE receipt_id = ?`).get(id) as { c: number };
     expect(items.c).toBe(1);
 
-    // The photo re-imports (it stays staged forever): its stamp said "owner", it no longer is,
-    // so it re-runs once — reported as skipped, never written — and the e-mail is stamped.
-    const photoAgain = importStagedGroceryReceipts({ roots: [photos, email] });
-    const photoRes = photoAgain.find((r) => r.source === "photo")!;
-    expect(photoRes).toMatchObject({ receipt_id: id, receipt_status: "skipped_duplicate", other_source: "lider_email" });
-    expect(photoRes.movement.status).toBe("not_attempted");
+    const photoAgain = applyStoreReceipt(receiptPayload("vitest-twin", { document: "photo", number }));
+    expect(photoAgain).toMatchObject({ receipt_id: id, receipt_status: "skipped_duplicate", other_document: "email", final: true });
+    expect(photoAgain.movement.status).toBe("not_attempted");
     expect(receiptRow(id).source_key).toBe("<vitest-twin-mail@vitest>");
-    expect(photoAgain.find((r) => r.source === "lider_email")!.receipt_status).toBe("unchanged");
-    // Third run: both stamped, nothing to do.
-    expect(importStagedGroceryReceipts({ roots: [photos, email] }).map((r) => r.receipt_status)).toEqual(["unchanged", "unchanged"]);
-    expect((db.prepare(`SELECT COUNT(*) AS c FROM grocery_receipts WHERE receipt_key = ?`).get(`lider|${boletaNumber}|2037-01-04`) as { c: number }).c).toBe(1);
+    expect((db.prepare(`SELECT COUNT(*) AS c FROM grocery_receipts WHERE receipt_key = ?`).get(`lider|${number}|2037-01-04`) as { c: number }).c).toBe(1);
   });
 
   it("two photos of one receipt: the first writer keeps the row, the second is skipped", () => {
-    const photos = tmpRoot("generic");
-    const boletaNumber = "000987654321";
-    syntheticPhotoStaged(photos.dir, "vitest-shot-1", { boletaNumber, sourceKey: "vitest-photo-sha-1" });
-    syntheticPhotoStaged(photos.dir, "vitest-shot-2", { boletaNumber, sourceKey: "vitest-photo-sha-2" });
-    const res = importStagedGroceryReceipts({ roots: [photos] });
-    expect(res.map((r) => r.receipt_status)).toEqual(["inserted", "skipped_duplicate"]);
-    expect(res[1]!.other_source).toBe("photo");
-    expect(receiptRow(res[0]!.receipt_id).source_key).toBe("vitest-photo-sha-1");
-    // Re-running is stable: the same document keeps the row (no ping-pong between the two keys).
-    const again = importStagedGroceryReceipts({ roots: [photos], full: true });
-    expect(again.map((r) => r.receipt_status)).toEqual(["updated", "skipped_duplicate"]);
-    expect(importStagedGroceryReceipts({ roots: [photos] }).map((r) => r.receipt_status)).toEqual(["unchanged", "unchanged"]);
+    const number = "000987654321";
+    const a = applyStoreReceipt(receiptPayload("vitest-shot-1", { document: "photo", number }));
+    const b = applyStoreReceipt(receiptPayload("vitest-shot-2", { document: "photo", number }));
+    expect([a.receipt_status, b.receipt_status]).toEqual(["inserted", "skipped_duplicate"]);
+    expect(b.other_document).toBe("photo");
+    // Stable: the same document keeps the row (no ping-pong between the two keys).
+    expect(applyStoreReceipt(receiptPayload("vitest-shot-1", { document: "photo", number })).receipt_status).toBe("updated");
+    expect(applyStoreReceipt(receiptPayload("vitest-shot-2", { document: "photo", number })).receipt_status).toBe("skipped_duplicate");
+    expect(receiptRow(a.receipt_id).source_key).toBe("vitest-photo-vitest-shot-1");
   });
 
   it("a chain without a card rule stores items only, whatever card paid", () => {
-    const photos = tmpRoot("generic");
-    syntheticPhotoStaged(photos.dir, "vitest-jumbo", {
-      chain: "vitest-chain",
-      payments: [{ method: "tarjeta_otra", amount_clp: 2500 }],
-    });
-    const res = importStagedGroceryReceipts({ roots: [photos] });
-    expect(res[0]!.movement.status).toBe("chain_items_only");
-    expect(res[0]!.card_paid_clp).toBe(0);
-    expect(receiptRow(res[0]!.receipt_id)).toMatchObject({ store_chain: "vitest-chain", card_paid_clp: 0 });
-    expect(res[0]!.receipt_key.startsWith("vitest-chain|")).toBe(true);
+    const res = applyStoreReceipt(
+      receiptPayload("vitest-other", { document: "photo", chain: "vitest-chain", payments: [{ method: "tarjeta_otra", amount: 2500 }] })
+    );
+    expect(res.movement.status).toBe("chain_items_only");
+    expect(res.card_paid).toBe(0);
+    expect(receiptRow(res.receipt_id)).toMatchObject({ store_chain: "vitest-chain", card_paid_clp: 0 });
+    expect(res.receipt_key.startsWith("vitest-chain|")).toBe(true);
   });
 
-  it("the generic root fails fast on an unknown source or a chain-less parse", () => {
-    const badSource = tmpRoot("generic");
-    syntheticPhotoStaged(badSource.dir, "vitest-bad-src", { source: "scan" });
-    expect(() => listStagedReceipts([badSource])).toThrow(/source must be one of/);
-
-    const noChain = tmpRoot("generic");
-    syntheticPhotoStaged(noChain.dir, "vitest-no-chain", { omitChain: true });
-    expect(() => listStagedReceipts([noChain])).toThrow(/without chain/);
+  it("the payload refuses a photo date on a document that is not a photo", () => {
+    expect(() => receiptPayload("vitest-bad", { document: "email", photoTakenOn: "2037-01-05" })).toThrow(/only a photo/);
   });
 
-  it("hasPendingGroceryReceipts: a document without a parse or without a current stamp is pending", () => {
-    const email = tmpRoot("lider_email");
-    const photos = tmpRoot("generic");
-    expect(hasPendingGroceryReceipts([email, photos])).toBe(false);
-    syntheticPhotoStaged(photos.dir, "vitest-gate");
-    expect(hasPendingGroceryReceipts([email, photos])).toBe(true);
-    expect(hasPendingGroceryReceipts([email])).toBe(false);
-    importStagedGroceryReceipts({ roots: [photos] });
-    expect(hasPendingGroceryReceipts([photos])).toBe(false);
-    // A parse that changed under a stamp is pending again.
-    fs.rmSync(path.join(photos.dir, "vitest-gate", "parsed.json"));
-    syntheticPhotoStaged(photos.dir, "vitest-gate", { description: "LECHE VITEST NUEVA" });
-    expect(hasPendingGroceryReceipts([photos])).toBe(true);
-    // A staged document with no parse yet (the parser has not run) is pending.
-    const d = path.join(email.dir, "vitest-gate-mail");
-    fs.mkdirSync(d, { recursive: true });
-    fs.writeFileSync(path.join(d, "Boleta.pdf"), "");
-    expect(hasPendingGroceryReceipts([email])).toBe(true);
-  });
-
-  it("only terminal movement outcomes are stamped", () => {
+  it("only final movement outcomes are stamped by the feeder", () => {
     expect(movementIsTerminal("pending_branch")).toBe(false);
+    expect(movementIsTerminal("awaiting_card_line")).toBe(false);
     expect(movementIsTerminal("matched")).toBe(true);
     for (const s of ["created", "duplicate", "same_day_amount", "closed_month", "not_card_paid", "chain_items_only", "not_attempted"] as const) {
       expect(movementIsTerminal(s)).toBe(true);
@@ -290,51 +201,37 @@ describe("groceryReceiptsImport", () => {
   it("classifies via barcode alias first, and re-import preserves the stamp", () => {
     db.prepare(`INSERT INTO grocery_products (name) VALUES ('vitest leche')`).run();
     const productId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
-    db.prepare(
-      `INSERT INTO grocery_product_aliases (store_chain, barcode, product_id) VALUES ('lider', '7801234567890', ?)`
-    ).run(productId);
+    db.prepare(`INSERT INTO grocery_product_aliases (store_chain, barcode, product_id) VALUES ('lider', '7801234567890', ?)`).run(productId);
 
-    const email = tmpRoot("lider_email");
-    syntheticEmailStaged(email.dir, "vitest-b");
-    const res = importStagedGroceryReceipts({ roots: [email] });
-    expect(res[0]!.items_classified).toBe(1);
+    const res = applyStoreReceipt(receiptPayload("vitest-b"));
+    expect(res.items_classified).toBe(1);
     const item = db
       .prepare(`SELECT product_id, product_source FROM grocery_receipt_items WHERE receipt_id = ?`)
-      .get(res[0]!.receipt_id) as { product_id: number; product_source: string };
-    expect(item.product_id).toBe(productId);
-    expect(item.product_source).toBe("alias");
+      .get(res.receipt_id) as { product_id: number; product_source: string };
+    expect(item).toEqual({ product_id: productId, product_source: "alias" });
 
     // Alias later removed: the stamp survives a re-import (history is stamped, not derived).
     db.prepare(`DELETE FROM grocery_product_aliases WHERE product_id = ?`).run(productId);
-    importStagedGroceryReceipts({ roots: [email], full: true });
-    const after = db
-      .prepare(`SELECT product_id FROM grocery_receipt_items WHERE receipt_id = ?`)
-      .get(res[0]!.receipt_id) as { product_id: number };
+    applyStoreReceipt(receiptPayload("vitest-b"));
+    const after = db.prepare(`SELECT product_id FROM grocery_receipt_items WHERE receipt_id = ?`).get(res.receipt_id) as { product_id: number };
     expect(after.product_id).toBe(productId);
   });
 
   it("a changed printed description sends the item back to unclassified on re-import", () => {
     db.prepare(`INSERT INTO grocery_products (name) VALUES ('vitest leche 2')`).run();
     const productId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
-    db.prepare(
-      `INSERT INTO grocery_product_aliases (store_chain, description, product_id) VALUES ('lider', 'LECHE VITEST 1L', ?)`
-    ).run(productId);
+    db.prepare(`INSERT INTO grocery_product_aliases (store_chain, description, product_id) VALUES ('lider', 'LECHE VITEST 1L', ?)`).run(productId);
 
-    const email = tmpRoot("lider_email");
-    syntheticEmailStaged(email.dir, "vitest-c", { barcode: null });
-    const res = importStagedGroceryReceipts({ roots: [email] });
-    expect(res[0]!.items_classified).toBe(1);
+    const res = applyStoreReceipt(receiptPayload("vitest-c", { barcode: null }));
+    expect(res.items_classified).toBe(1);
 
     // Parser fix renames the line → the old stamp must not silently survive under new text.
     db.prepare(`DELETE FROM grocery_product_aliases WHERE product_id = ?`).run(productId);
-    fs.rmSync(path.join(email.dir, "vitest-c"), { recursive: true });
-    syntheticEmailStaged(email.dir, "vitest-c", { barcode: null, description: "LECHE VITEST LITRO" });
-    importStagedGroceryReceipts({ roots: [email] });
+    applyStoreReceipt(receiptPayload("vitest-c", { barcode: null, description: "LECHE VITEST LITRO" }));
     const after = db
       .prepare(`SELECT product_id, description FROM grocery_receipt_items WHERE receipt_id = ?`)
-      .get(res[0]!.receipt_id) as { product_id: number | null; description: string };
-    expect(after.description).toBe("LECHE VITEST LITRO");
-    expect(after.product_id).toBeNull();
+      .get(res.receipt_id) as { product_id: number | null; description: string };
+    expect(after).toEqual({ product_id: null, description: "LECHE VITEST LITRO" });
   });
 
   it("resolveAliasProductId prefers barcode over description", () => {
@@ -342,12 +239,8 @@ describe("groceryReceiptsImport", () => {
     const byCode = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
     db.prepare(`INSERT INTO grocery_products (name) VALUES ('vitest por-nombre')`).run();
     const byName = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
-    db.prepare(
-      `INSERT INTO grocery_product_aliases (store_chain, barcode, product_id) VALUES ('vitest-chain', '111', ?)`
-    ).run(byCode);
-    db.prepare(
-      `INSERT INTO grocery_product_aliases (store_chain, description, product_id) VALUES ('vitest-chain', 'X', ?)`
-    ).run(byName);
+    db.prepare(`INSERT INTO grocery_product_aliases (store_chain, barcode, product_id) VALUES ('vitest-chain', '111', ?)`).run(byCode);
+    db.prepare(`INSERT INTO grocery_product_aliases (store_chain, description, product_id) VALUES ('vitest-chain', 'X', ?)`).run(byName);
     expect(resolveAliasProductId("vitest-chain", "111", "X")).toBe(byCode);
     expect(resolveAliasProductId("vitest-chain", null, "X")).toBe(byName);
     expect(resolveAliasProductId("vitest-chain", "999", "Y")).toBeNull();
@@ -530,7 +423,6 @@ describe("weighed items price through the product config", () => {
 describe("receipts matched to an existing card line (Jumbo)", () => {
   const SRC = "vitest-grocery-jumbo-match";
   const PAID = 987_653;
-  const tmpDirs: string[] = [];
   let accountId = 0;
 
   function cardLine(ddmmyyyy: string, merchant: string): void {
@@ -547,44 +439,42 @@ describe("receipts matched to an existing card line (Jumbo)", () => {
     ).run(Number(stmt.lastInsertRowid), ddmmyyyy, merchant, PAID, `${SRC}-${ddmmyyyy}`);
   }
 
-  function stagedJumbo(key: string, opts: ParsedOpts & { photoTakenOn?: string; sourceKey?: string }) {
-    const d = fs.mkdtempSync(path.join(os.tmpdir(), "vitest-receipts-jumbo-"));
-    tmpDirs.push(d);
-    syntheticPhotoStaged(d, key, { chain: "jumbo", payments: [{ method: "t_credito", amount_clp: PAID }], ...opts });
-    return listStagedReceipts([{ kind: "generic", dir: d }])[0]!;
+  function jumbo(key: string, opts: ReceiptOpts = {}) {
+    return incomingReceiptFromPayload(
+      receiptPayload(key, { document: "photo", chain: "jumbo", payments: [{ method: "t_credito", amount: PAID }], ...opts })
+    );
   }
 
   afterEach(() => {
-    for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
     db.prepare(`DELETE FROM cc_statements WHERE source_pdf LIKE ?`).run(`${SRC}%`);
   });
 
   it("a dated receipt pairs with the chain's line of the same day and pesos", () => {
     cardLine("04/01/2037", "JUMBO FICTICIO");
     cardLine("04/01/2037", "OTRA TIENDA");
-    const facts = resolveReceiptFacts(stagedJumbo("vitest-j1", {}));
+    const facts = resolveReceiptFacts(jumbo("vitest-j1"));
     expect(facts.card_line).toMatchObject({ status: "matched", account_id: accountId, line_date: "2037-01-04" });
     expect(facts.date_source).toBe("printed");
   });
 
   it("an undated photo takes its card line's date from the week up to the photo", () => {
     cardLine("02/01/2037", "CENCOSUD JUMBO");
-    const facts = resolveReceiptFacts(stagedJumbo("vitest-j2", { purchasedAt: null, photoTakenOn: "2037-01-05" }));
+    const facts = resolveReceiptFacts(jumbo("vitest-j2", { purchasedAt: null, photoTakenOn: "2037-01-05" }));
     expect(facts.date_source).toBe("card_line");
     expect(facts.staged.parsed.purchased_at).toBe("2037-01-02 00:00:00");
   });
 
   it("without a card line it keeps the photo's date; without either it throws", () => {
     cardLine("20/12/2036", "JUMBO FICTICIO"); // more than a week before the photo
-    const facts = resolveReceiptFacts(stagedJumbo("vitest-j3", { purchasedAt: null, photoTakenOn: "2037-01-05" }));
+    const facts = resolveReceiptFacts(jumbo("vitest-j3", { purchasedAt: null, photoTakenOn: "2037-01-05" }));
     expect(facts.card_line).toEqual({ status: "no_card_line" });
     expect(facts.staged.parsed.purchased_at).toBe("2037-01-05 00:00:00");
     expect(facts.date_source).toBe("photo");
-    expect(() => resolveReceiptFacts(stagedJumbo("vitest-j4", { purchasedAt: null }))).toThrow(/#! purchase_date/);
+    expect(() => resolveReceiptFacts(jumbo("vitest-j4", { purchasedAt: null }))).toThrow(/#! purchase_date/);
   });
 
   it("a receipt that lost its number is keyed on the photo", () => {
-    const staged = stagedJumbo("vitest-j5", { boletaNumber: null, sourceKey: "abcdef0123456789" });
-    expect(resolveReceiptFacts(staged).staged.parsed.boleta_number).toBe("photo-abcdef012345");
+    const facts = resolveReceiptFacts(jumbo("vitest-j5", { number: null, docKey: "abcdef0123456789" }));
+    expect(facts.staged.parsed.boleta_number).toBe("photo-abcdef012345");
   });
 });

@@ -2,9 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { ingestGroceryReceiptInbox, listGroceryReceiptInboxFiles, photoTakenOnFromName } from "./groceryReceiptsIngest.js";
+import { ingestGroceryReceiptInbox, listGroceryReceiptInboxFiles, photoTakenOnFromName } from "./inbox.js";
 
-describe("groceryReceiptsIngest", () => {
+describe("grocery receipt inbox", () => {
   const tmpDirs: string[] = [];
   afterEach(() => {
     for (const d of tmpDirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
@@ -32,8 +32,8 @@ describe("groceryReceiptsIngest", () => {
     expect(meta.source_key).toMatch(/^[0-9a-f]{64}$/);
     expect(fs.readFileSync(path.join(d.stagedDir, heic.dir, "receipt.heic"), "utf8")).toBe("photo-bytes-a");
     const pdf = res[1] as Extract<(typeof res)[number], { status: "staged" }>;
-    expect(pdf.source).toBe("manual_pdf");
-    expect(pdf.dir).toMatch(/-manual_pdf-/);
+    expect(pdf.source).toBe("pdf");
+    expect(pdf.dir).toMatch(/-pdf-/);
     expect(listGroceryReceiptInboxFiles(d.inboxDir)).toEqual([]);
   });
 

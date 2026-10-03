@@ -1472,8 +1472,8 @@
       "hideItems": "Hide items",
       "none": "No receipts imported yet.",
       "source": {
-        "lider_email": "E-mail",
-        "manual_pdf": "PDF",
+        "email": "E-mail",
+        "pdf": "PDF",
         "photo": "Photo"
       },
       "cardLine": {

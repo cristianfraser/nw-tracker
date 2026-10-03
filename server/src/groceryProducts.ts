@@ -39,7 +39,7 @@ export type GroceryProductRow = {
 export type GroceryReceiptRow = {
   id: number;
   purchased_at: string;
-  /** Document that owns the row: lider_email | manual_pdf | photo (`groceryReceiptsImport.ts`). */
+  /** Document that owns the row: email | pdf | photo (`storeReceiptApply.ts`). */
   source: string;
   store_chain: string;
   branch: string;

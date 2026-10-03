@@ -1,14 +1,14 @@
 /**
  * Grocery receipt inbox → staging: photos of paper receipts (and hand-saved receipt PDFs)
  * dropped in `cfraser/grocery-receipts/inbox/` become staged dirs the parser
- * (`parse-grocery-receipts.py`) and the importer (`groceryReceiptsImport.ts`) understand.
+ * (`parse-grocery-receipts.py`) and the import (`stagedReceipts.ts`) understand.
  *
  * One staged dir per DOCUMENT, keyed by the file's sha256 — the document's identity, whatever
  * its name: `staged/<date>-<source>-<sha12>/` holding the original as `receipt.<ext>` plus
  * meta.json `{source, source_key, original_file, original_name, ingested_at}`. `<date>` is the
  * file's modification date (the capture date when AirDrop preserved it) — ordering only; the
  * receipt's own printed datetime is the truth and is parsed later. Source: images → `photo`,
- * PDFs → `manual_pdf` (a boleta PDF saved by hand; the Lider e-mail fetcher has its own root).
+ * PDFs → `pdf` (a boleta PDF saved by hand; the Lider e-mail fetcher has its own root).
  *
  * Fail-closed: any other file in the inbox is an ERROR and nothing is moved — a stray document
  * must never vanish into staging half-processed. An exact duplicate of an already-staged
@@ -18,19 +18,19 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
-import { groceryReceiptsStagedDir, type GenericStagedMeta, type GroceryReceiptSource } from "./groceryReceiptsImport.js";
+import { resolveCfraserDir } from "../paths.js";
+import { groceryReceiptsStagedDir, type GenericStagedMeta, type GenericStagedSource } from "./stagedReceipts.js";
 
 export const RECEIPT_IMAGE_SUFFIXES: ReadonlySet<string> = new Set([
   ".jpg", ".jpeg", ".png", ".heic", ".heif", ".tif", ".tiff", ".webp",
 ]);
 export const RECEIPT_PDF_SUFFIXES: ReadonlySet<string> = new Set([".pdf"]);
 
-export function groceryReceiptsInboxDir(cfraserDir = resolveCfraserCsvDir()): string {
+export function groceryReceiptsInboxDir(cfraserDir = resolveCfraserDir()): string {
   return path.join(cfraserDir, "grocery-receipts", "inbox");
 }
 
-export function groceryReceiptsDuplicatesDir(cfraserDir = resolveCfraserCsvDir()): string {
+export function groceryReceiptsDuplicatesDir(cfraserDir = resolveCfraserDir()): string {
   return path.join(cfraserDir, "grocery-receipts", "duplicates");
 }
 
@@ -43,10 +43,10 @@ export function listGroceryReceiptInboxFiles(inboxDir = groceryReceiptsInboxDir(
     .sort();
 }
 
-function sourceForFile(name: string): GroceryReceiptSource | null {
+function sourceForFile(name: string): GenericStagedSource | null {
   const ext = path.extname(name).toLowerCase();
   if (RECEIPT_IMAGE_SUFFIXES.has(ext)) return "photo";
-  if (RECEIPT_PDF_SUFFIXES.has(ext)) return "manual_pdf";
+  if (RECEIPT_PDF_SUFFIXES.has(ext)) return "pdf";
   return null;
 }
 
@@ -90,7 +90,7 @@ function stagedSourceKeys(stagedDir: string): Map<string, string> {
 }
 
 export type IngestResult =
-  | { file: string; status: "staged"; source: GroceryReceiptSource; dir: string }
+  | { file: string; status: "staged"; source: GenericStagedSource; dir: string }
   | { file: string; status: "duplicate"; of: string; parked: string };
 
 export function ingestGroceryReceiptInbox(opts?: {

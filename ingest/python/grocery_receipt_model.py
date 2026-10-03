@@ -1,6 +1,6 @@
 """Shared shapes for grocery receipt parsers (one module per chain, dispatched by
 `grocery_receipt_parse.py`). Chain parsers return a `Parsed`; the CLI serialises it to the
-staged dir's parsed.json, which `groceryReceiptsImport.ts` reads."""
+staged dir's parsed.json, which `ingest/src/grocery/stagedReceipts.ts` reads."""
 from __future__ import annotations
 
 import re

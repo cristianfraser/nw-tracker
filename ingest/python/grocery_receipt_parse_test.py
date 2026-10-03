@@ -1,7 +1,7 @@
 """Unit tests for the grocery receipt parser modules — synthetic texts only (a real boleta
 carries the user's name and part of their RUT).
 
-  python3 server/scripts/grocery_receipt_parse_test.py
+  python3 ingest/python/grocery_receipt_parse_test.py
 """
 from __future__ import annotations
 

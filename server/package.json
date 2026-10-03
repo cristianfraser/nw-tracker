@@ -75,8 +75,7 @@
     "record:daily-run": "tsx scripts/record-daily-run.ts",
     "record:email-run": "tsx scripts/record-email-run.ts",
     "import:fintual-acciones": "tsx scripts/import-fintual-acciones.ts",
-    "check:daily-run-recent": "tsx scripts/daily-run-ran-recently.ts",
-    "import:grocery-receipts": "tsx scripts/import-grocery-receipts.ts"
+    "check:daily-run-recent": "tsx scripts/daily-run-ran-recently.ts"
   },
   "dependencies": {
     "@types/multer": "^2.1.0",
