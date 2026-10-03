@@ -70,6 +70,8 @@ export const INGEST_ERROR_CODES = [
   "unknown_ingest_run",
   "invalid_run_report",
   "run_not_waiting",
+  "unknown_ingest_task",
+  "invalid_task_request",
 ] as const;
 
 export type IngestErrorCode = (typeof INGEST_ERROR_CODES)[number];

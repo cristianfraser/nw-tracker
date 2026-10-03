@@ -6,13 +6,17 @@ import {
   findIngestKind,
   ingestEnvelopeSchema,
   ingestRunCompletionSchema,
+  ingestTaskRequestSchema,
+  INGEST_TASK_NAMES,
   type IngestErrorBody,
+  type IngestTaskName,
   type IngestKindDefinition,
   type IngestResult,
 } from "nw-tracker-contracts";
 import { ingestAuthMiddleware, type IngestAuthConfig } from "../ingestAuth.js";
 import { INGEST_HANDLERS, type IngestHandler } from "../ingestHandlers.js";
 import { completeIngestRun, ingestRunById, listRecentIngestRuns } from "../ingestRuns.js";
+import { runIngestTask } from "../ingestTasks.js";
 import { asyncHandler } from "./shared.js";
 
 export interface IngestRoutesOptions {
@@ -80,6 +84,23 @@ export function registerIngestRoutes(app: express.Express, options: IngestRoutes
       `ingest-runs: ${row.kind} run ${row.id} ${row.status} (exit ${row.exit_code}, ${row.failed_steps ?? "?"} failed step(s))`
     );
     res.json({ run: row });
+  });
+
+  // Server tasks a feeder run asks for (Phase 4): the run's steps that work on the server's data.
+  router.post("/tasks/:task", (req, res) => {
+    const task = String(req.params.task);
+    if (!(INGEST_TASK_NAMES as readonly string[]).includes(task)) {
+      res.status(404).json({ error: "unknown_ingest_task", message: `Unknown ingest task: ${task}` } satisfies IngestErrorBody);
+      return;
+    }
+    const request = ingestTaskRequestSchema.safeParse(req.body ?? {});
+    if (!request.success) {
+      res.status(400).json({ error: "invalid_task_request", message: "Not a task request.", issues: request.error.issues } satisfies IngestErrorBody);
+      return;
+    }
+    const result = runIngestTask(task as IngestTaskName, request.data);
+    console.log(`ingest-tasks: ${task}${request.data.dry_run ? " (dry run)" : ""} — ${result.ok ? "ok" : "FAILED"}`);
+    res.json(result);
   });
 
   router.post(

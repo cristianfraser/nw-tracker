@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   basenamesFromCfraserOrganizePaths,
   emptyCfraserOrganizeManifest,
-} from "./cfraserOrganizeManifest.js";
+} from "./organizeManifest.js";
 
 describe("cfraserOrganizeManifest", () => {
   it("extracts pdf basenames from manifest paths", () => {

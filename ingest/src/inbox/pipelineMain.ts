@@ -1,50 +1,50 @@
 /**
- * Inbox pipeline for new files dropped under `cfraser/inbox/`:
+ * Inbox pipeline for new files dropped under `cfraser/inbox/` (an ingest command since Phase 4;
+ * it was the server script `import-cfraser-inbox.ts`). Every step is an ingest command that reads
+ * documents and sends them to the server, or a server task it asks for over the API — this
+ * process never opens the database.
  *
+ * 0. A Fintual certificado dropped in the inbox: install + reconcile, report only
+ *    (`import:fintual-cert --from-inbox`).
  * 1. qpdf repair on inbox PDFs only
- * 2. Organize inbox PDFs → credit-card / cartola folders (writes inbox manifest)
- * 3. Organize checking cartola `.xlsx` from inbox → `excels/cuenta corriente/`
+ * 2. Organize inbox PDFs → credit-card / cartola folders (writes the inbox manifest)
+ * 3. Organize checking cartola `.xlsx` from the inbox → `excels/cuenta corriente/`
  * 4. Parse credit-card PDFs (per-PDF cache) → merged CSV
- * 5. Merge-import CC rows into SQLite
- * 6. Optionally import checking / cuenta vista / sync (see flags below)
- *
- * A Fintual certificado dropped in the inbox is installed and reconciled against its cert
- * accounts, report only, first thing (ingest `import:fintual-cert --from-inbox`). The daily checking
- * «ultimos movimientos-Cuenta Corriente.xlsx» (dropped by fetch:santander) is sent to the server
- * by ingest (`import:checking-movements`, `bank_account.movements`) and archived under
- * `cfraser/checking-ultimos-movimientos/imported/`.
- *
- * Default (credit-card inbox only): steps 1–5; skips checking, cuenta vista, sync.
- * Checking / cuenta vista run only when inbox filed PDFs or xlsx this run, unless forced.
+ * 5. Send the parsed statements (`card.parsed_statements`)
+ * 6. Checking cartolas (when the inbox filed one, or `--checking`), the daily «ultimos
+ *    movimientos» xlsx, the card-payment receipts, then the server tasks
+ *    `synthetic_cc_payments_check` and `cc_payment_mirrors`
+ * 7. Cuenta vista cartolas (when the inbox filed one, or `--cuenta-vista`)
+ * 8. Grocery receipts
  *
  * Usage (repo root):
  *   npm run import:cfraser-inbox
  *   npm run import:cfraser-inbox -- --dry-run
  *   npm run import:cfraser-inbox -- --checking          # full checking cartola import
  *   npm run import:cfraser-inbox -- --cuenta-vista      # full cuenta vista import
- *   npm run import:cfraser-inbox -- --sync              # run global sync after import
+ *   npm run import:cfraser-inbox -- --full              # re-import every card statement
  *   npm run import:cfraser-inbox -- --skip-organize
  *   npm run import:cfraser-inbox -- --skip-checking-pdf
  *
- * Legacy `--skip-checking`, `--skip-cuenta-vista`, `--skip-sync` still disable those steps.
+ * `--skip-checking`, `--skip-cuenta-vista` disable those steps. Market data is not this
+ * pipeline's: the server's own scheduler syncs what is stale (the old `--sync` flag is gone).
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
+import type { IngestTaskName } from "nw-tracker-contracts";
+import { resolveInboxDir, resolveRepoRoot } from "../paths.js";
+import { loadRootDotenv } from "../rootDotenv.js";
+import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import {
   basenamesFromCfraserOrganizePaths,
   emptyCfraserOrganizeManifest,
   loadCfraserOrganizeManifest,
   resolveCfraserOrganizeManifestPath,
-} from "../src/cfraserOrganizeManifest.js";
-import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
-import { loadRootDotenv } from "../src/rootDotenv.js";
+} from "./organizeManifest.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const REPO_ROOT = resolveRepoRoot();
 
 function hasFlag(name: string): boolean {
   return process.argv.includes(`--${name}`);
@@ -55,10 +55,8 @@ function argValue(name: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(eq));
   if (hit) return hit.slice(eq.length);
   const idx = process.argv.indexOf(`--${name}`);
-  if (idx >= 0 && process.argv[idx + 1] && !process.argv[idx + 1].startsWith("--")) {
-    return process.argv[idx + 1];
-  }
-  return undefined;
+  const next = idx >= 0 ? process.argv[idx + 1] : undefined;
+  return next && !next.startsWith("--") ? next : undefined;
 }
 
 function runStep(label: string, cmd: string, args: string[], env?: NodeJS.ProcessEnv): number {
@@ -75,7 +73,20 @@ function runStep(label: string, cmd: string, args: string[], env?: NodeJS.Proces
   return r.status ?? 1;
 }
 
-function main(): void {
+/** A server task as a step: its report, and 1 when it fails or the server cannot be reached. */
+async function runTaskStep(label: string, task: IngestTaskName, dryRun: boolean): Promise<number> {
+  console.log(`\n=== ${label} ===`);
+  try {
+    const result = await ingestClient().runTask(task, { dry_run: dryRun });
+    for (const line of result.report) (result.ok ? console.log : console.error)(line);
+    return result.ok ? 0 : 1;
+  } catch (err) {
+    console.error(`FAILED — ${describeIngestFailure(err)}`);
+    return 1;
+  }
+}
+
+async function main(): Promise<void> {
   loadRootDotenv();
   const dryRun = hasFlag("dry-run");
   const skipOrganize = hasFlag("skip-organize");
@@ -87,7 +98,6 @@ function main(): void {
 
   const forceChecking = hasFlag("checking");
   const forceCuentaVista = hasFlag("cuenta-vista");
-  const forceSync = hasFlag("sync");
 
   if (!skipFintualCert) {
     // A certificado dropped in the inbox is installed and reconciled against the cert accounts,
@@ -118,7 +128,7 @@ function main(): void {
       "-w",
       "nw-tracker-ingest",
       "--",
-      `--dir=${resolveCfraserInboxDir()}`,
+      `--dir=${resolveInboxDir()}`,
     ]);
     if (repairCode !== 0 && !dryRun) {
       process.exit(repairCode);
@@ -235,35 +245,15 @@ function main(): void {
       ...(dryRun ? ["--", "--dry-run"] : []),
     ]);
     if (receipts !== 0) process.exit(receipts);
-    const overdue = runStep("Synthesized card payments without a bank listing", "npm", [
-      "run",
-      "check:synthetic-cc-payments",
-      "-w",
-      "nw-tracker-server",
-    ]);
+    const overdue = await runTaskStep("Synthesized card payments without a bank listing", "synthetic_cc_payments_check", false);
     if (overdue !== 0) process.exit(overdue);
   }
 
   // Checking↔CC payment mirrors: convert unblocked pairs into pago_tarjeta
   // transfers dated at the card's credit date. Runs after the receipts step so a re-dated
   // debit converts as a same-day pair in the same night.
-  if (!hasFlag("skip-checking") && !dryRun) {
-    const code = runStep("Convert CC payment mirrors", "npm", [
-      "run",
-      "convert:cc-payment-mirrors",
-      "-w",
-      "nw-tracker-server",
-    ]);
-    if (code !== 0) process.exit(code);
-  } else if (dryRun) {
-    const code = runStep("Convert CC payment mirrors (dry run)", "npm", [
-      "run",
-      "convert:cc-payment-mirrors",
-      "-w",
-      "nw-tracker-server",
-      "--",
-      "--dry-run",
-    ]);
+  if (!hasFlag("skip-checking")) {
+    const code = await runTaskStep(`Convert CC payment mirrors${dryRun ? " (dry run)" : ""}`, "cc_payment_mirrors", dryRun);
     if (code !== 0) process.exit(code);
   }
 
@@ -286,21 +276,6 @@ function main(): void {
     );
   }
 
-  if (!dryRun && forceSync && !hasFlag("skip-sync")) {
-    console.log(
-      "\n(Global sync below only refreshes Fintual/SBIF/equity — not bank PDFs. 'Stale: none' / 'No changes' is normal.)"
-    );
-    const code = runStep("Global sync (reconciliation)", "npm", [
-      "run",
-      "sync:all",
-      "-w",
-      "nw-tracker-server",
-    ]);
-    if (code !== 0) process.exit(code);
-  } else if (hasFlag("skip-sync") || !forceSync) {
-    console.log("\n=== Global sync (skipped; pass --sync to run sync:all) ===");
-  }
-
   let deferredFailureCode = 0;
   // Grocery receipts (ingest: photo inbox → staged → OCR/parse → `store.receipt`): the Lider
   // «Boleta Digital» PDFs staged by fetch:lider-boletas plus the generic cfraser/grocery-receipts/
@@ -320,4 +295,4 @@ function main(): void {
   if (deferredFailureCode !== 0) process.exit(deferredFailureCode);
 }
 
-main();
+await main();
