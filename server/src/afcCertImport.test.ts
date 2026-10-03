@@ -8,8 +8,8 @@ import {
   applyAfcCertImport,
   applyAfcWithdrawalUnits,
   groupAfcContributions,
-  parseAfcCartola,
-  parseAfcCotizacionesCertificate,
+  type AfcCartola,
+  type AfcCotizacionesCertificate,
   planAfcCartolaTrueUps,
   planAfcCertImport,
   planAfcWithdrawalUnits,
@@ -17,115 +17,112 @@ import {
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { leafAssetGroupIdForKindSlug } from "./assetGroupTree.js";
 
-// Synthetic layout text (pdftotext -layout shapes: inline «Mes YYYY», the month/year split around
-// a data line, an employer name wrapped onto its own lines). Amounts are made up.
-const CERT_TEXT = [
-  "                                                                    N° de folio TEST-0000",
-  "Certificado de cotizaciones previsionales acreditadas de Cuenta Individual por Cesantía",
-  "AFC CHILE S.A. certifica que la Cuenta Individual de Cesantía, perteneciente al afiliado(a) VITEST PERSON,",
-  "RUT 11.111.111-1, registra en el periodo comprendido entre OCTUBRE/2002 - SEPTIEMBRE/2099, las siguientes cotizaciones pagadas",
-  "a:",
-  "                    RUT                                          Renta           Monto          Fecha de",
-  "   Período                             Razón Social",
-  "                  Empleador                                    Imponible        Cotizado          pago",
-  "   Enero 2099     11.111.111-1   EMPRESA UNO SPA                  $1.000.000          $6.000   10/02/2099",
-  "   Enero 2099     11.111.111-1   EMPRESA UNO SPA                  $1.000.000         $16.000   10/02/2099",
-  "  Septiembre",
-  "                  22.222.222-2   EMPRESA DOS LIMITADA             $2.000.000         $12.000   10/10/2099",
-  "     2099",
-  "  Septiembre",
-  "                  22.222.222-2   EMPRESA DOS LIMITADA             $2.000.000         $32.000   10/10/2099",
-  "     2099",
-  "  Noviembre     44.444.444-4   EMPRESA CUATRO SA                  $300.000           $1.000   09/12/2099",
-  "     2099",
-  "                                   EMPRESA TRES",
-  "  Octubre 2099    33.333.333-3                                    $500.000           $3.000   12/11/2099",
-  "                                         LIMITADA",
-  "                                                                         TOTAL                $70.000",
-  "Se extiende el presente certificado a petición del interesado(a), para los fines que estime conveniente.",
-  "",
-].join("\n");
+// What ingest's parser reads from its synthetic certificate and cartola text
+// (ingest/src/afc/documents.test.ts holds the text and the parser's own tests). Amounts are made up.
+const CERT: AfcCotizacionesCertificate = {
+  "legs": [
+    {
+      "period_ym": "2099-01",
+      "employer_rut": "11.111.111-1",
+      "employer": "EMPRESA UNO SPA",
+      "renta_imponible_clp": 1000000,
+      "amount_clp": 6000,
+      "pay_ymd": "2099-02-10"
+    },
+    {
+      "period_ym": "2099-01",
+      "employer_rut": "11.111.111-1",
+      "employer": "EMPRESA UNO SPA",
+      "renta_imponible_clp": 1000000,
+      "amount_clp": 16000,
+      "pay_ymd": "2099-02-10"
+    },
+    {
+      "period_ym": "2099-09",
+      "employer_rut": "22.222.222-2",
+      "employer": "EMPRESA DOS LIMITADA",
+      "renta_imponible_clp": 2000000,
+      "amount_clp": 12000,
+      "pay_ymd": "2099-10-10"
+    },
+    {
+      "period_ym": "2099-09",
+      "employer_rut": "22.222.222-2",
+      "employer": "EMPRESA DOS LIMITADA",
+      "renta_imponible_clp": 2000000,
+      "amount_clp": 32000,
+      "pay_ymd": "2099-10-10"
+    },
+    {
+      "period_ym": "2099-11",
+      "employer_rut": "44.444.444-4",
+      "employer": "EMPRESA CUATRO SA",
+      "renta_imponible_clp": 300000,
+      "amount_clp": 1000,
+      "pay_ymd": "2099-12-09"
+    },
+    {
+      "period_ym": "2099-10",
+      "employer_rut": "33.333.333-3",
+      "employer": "",
+      "renta_imponible_clp": 500000,
+      "amount_clp": 3000,
+      "pay_ymd": "2099-11-12"
+    }
+  ],
+  "total_clp": 70000
+};
 
-const CARTOLA_TEXT = [
-  "  Estado cuatrimestral",
-  "  de su Cuenta Individual por Cesantía.",
-  "  período del 1 de Septiembre al 31 de Diciembre de 2099",
-  "SR(A): VITEST PERSON",
-  "    1. Saldo inicial",
-  " Al 31-08-2099                                                                 (1) $100.000",
-  "    2. Ingresos",
-  "  Total de cotizaciones                 Otros ingresos        Ganancia          Total ingresos (2)",
-  " $48.000                               $0                    $0                $48.000",
-  "    3. Egresos",
-  "  Total comisiones                      Otros egresos         Uso de la Cuenta Individual   Total egresos (3)",
-  " $500                                  $0                    $60.000                       $60.500",
-  "    Saldo final",
-  " Al 31-12-2099                                                                 (1+2-3) $87.500",
-  "    Detalle de cotizaciones",
-  " Razón social empleador                            Mes de pago                    Cotización mensual",
-  " EMPRESA DOS LIMITADA                              Octubre-2099                          $44.000",
-  " EMPRESA TRES LIMITADA                             Noviembre-2099                         $3.000",
-  " EMPRESA CUATRO SA                                 Diciembre-2099                         $1.000",
-  "                                                                       Total                  $48.000",
-  "                                                                     Beneficios del Fondo de Cesantía",
-  "",
-].join("\n");
+const CARTOLA: AfcCartola = {
+  "period_from_ymd": "2099-09-01",
+  "period_to_ymd": "2099-12-31",
+  "saldo_inicial_ymd": "2099-08-31",
+  "saldo_inicial_clp": 100000,
+  "cotizaciones_clp": 48000,
+  "otros_ingresos_clp": 0,
+  "ganancia_clp": 0,
+  "total_ingresos_clp": 48000,
+  "comisiones_clp": 500,
+  "otros_egresos_clp": 0,
+  "uso_cuenta_clp": 60000,
+  "total_egresos_clp": 60500,
+  "saldo_final_ymd": "2099-12-31",
+  "saldo_final_clp": 87500,
+  "detalle": [
+    {
+      "employer": "EMPRESA DOS LIMITADA",
+      "pay_month_ym": "2099-10",
+      "amount_clp": 44000
+    },
+    {
+      "employer": "EMPRESA TRES LIMITADA",
+      "pay_month_ym": "2099-11",
+      "amount_clp": 3000
+    },
+    {
+      "employer": "EMPRESA CUATRO SA",
+      "pay_month_ym": "2099-12",
+      "amount_clp": 1000
+    }
+  ]
+};
 
-describe("AFC certificado de cotizaciones — parser", () => {
-  it("parses every leg with its período and pay date, checks the printed TOTAL", () => {
-    const cert = parseAfcCotizacionesCertificate(CERT_TEXT);
-    expect(cert.total_clp).toBe(70000);
-    expect(cert.legs.map((l) => [l.period_ym, l.pay_ymd, l.amount_clp, l.employer])).toEqual([
-      ["2099-01", "2099-02-10", 6000, "EMPRESA UNO SPA"],
-      ["2099-01", "2099-02-10", 16000, "EMPRESA UNO SPA"],
-      ["2099-09", "2099-10-10", 12000, "EMPRESA DOS LIMITADA"],
-      ["2099-09", "2099-10-10", 32000, "EMPRESA DOS LIMITADA"],
-      ["2099-11", "2099-12-09", 1000, "EMPRESA CUATRO SA"],
-      ["2099-10", "2099-11-12", 3000, ""],
-    ]);
-    expect(cert.legs[0]!.renta_imponible_clp).toBe(1000000);
-    expect(cert.legs[0]!.employer_rut).toBe("11.111.111-1");
-  });
+/** A copy with one leg's amount and the printed TOTAL raised by a peso. */
+function certWithChangedLeg(): AfcCotizacionesCertificate {
+  const legs = CERT.legs.map((l) => ({ ...l }));
+  legs[1]!.amount_clp += 1;
+  return { legs, total_clp: CERT.total_clp + 1 };
+}
 
+describe("AFC contributions", () => {
   it("collapses the two legs of a período into one contribution per pay date", () => {
-    const groups = groupAfcContributions(parseAfcCotizacionesCertificate(CERT_TEXT).legs);
+    const groups = groupAfcContributions(CERT.legs);
     expect(groups.map((g) => [g.period_ym, g.pay_ymd, g.amount_clp, g.legs.length])).toEqual([
       ["2099-01", "2099-02-10", 22000, 2],
       ["2099-09", "2099-10-10", 44000, 2],
       ["2099-10", "2099-11-12", 3000, 1],
       ["2099-11", "2099-12-09", 1000, 1],
     ]);
-  });
-
-  it("fails fast on a TOTAL that does not match, or a cotización without a período", () => {
-    expect(() => parseAfcCotizacionesCertificate(CERT_TEXT.replace("$70.000", "$70.001"))).toThrow(/TOTAL/);
-    const orphan = CERT_TEXT.replace("  Septiembre\n                  22.222.222-2   EMPRESA DOS LIMITADA             $2.000.000         $12.000", "                  22.222.222-2   EMPRESA DOS LIMITADA             $2.000.000         $12.000");
-    expect(() => parseAfcCotizacionesCertificate(orphan)).toThrow(/without a período/);
-  });
-});
-
-describe("AFC estado cuatrimestral — parser", () => {
-  it("reads the period, both saldos, the totals and the detalle, and checks the printed identities", () => {
-    const c = parseAfcCartola(CARTOLA_TEXT);
-    expect(c.period_from_ymd).toBe("2099-09-01");
-    expect(c.period_to_ymd).toBe("2099-12-31");
-    expect(c.saldo_inicial_ymd).toBe("2099-08-31");
-    expect(c.saldo_inicial_clp).toBe(100000);
-    expect(c.saldo_final_ymd).toBe("2099-12-31");
-    expect(c.saldo_final_clp).toBe(87500);
-    expect(c.cotizaciones_clp).toBe(48000);
-    expect(c.comisiones_clp).toBe(500);
-    expect(c.uso_cuenta_clp).toBe(60000);
-    expect(c.detalle).toEqual([
-      { employer: "EMPRESA DOS LIMITADA", pay_month_ym: "2099-10", amount_clp: 44000 },
-      { employer: "EMPRESA TRES LIMITADA", pay_month_ym: "2099-11", amount_clp: 3000 },
-      { employer: "EMPRESA CUATRO SA", pay_month_ym: "2099-12", amount_clp: 1000 },
-    ]);
-  });
-
-  it("throws when the saldo identity or the detalle sum is broken", () => {
-    expect(() => parseAfcCartola(CARTOLA_TEXT.replace("(1+2-3) $87.500", "(1+2-3) $87.400"))).toThrow(/saldo final/);
-    expect(() => parseAfcCartola(CARTOLA_TEXT.replace("$3.000\n", "$3.001\n"))).toThrow(/detalle/);
   });
 });
 
@@ -178,7 +175,7 @@ describe("AFC ledger rebuild (test DB)", () => {
   });
 
   it("imports the certificate at pay-date valor cuota, replacing the excel contributions; re-runs are idempotent", () => {
-    const cert = parseAfcCotizacionesCertificate(CERT_TEXT);
+    const cert = CERT;
     const plan = planAfcCertImport(accountId, cert);
     expect(plan.items.map((i) => [i.status, i.units])).toEqual([
       ["insert", 5.5],
@@ -207,7 +204,7 @@ describe("AFC ledger rebuild (test DB)", () => {
     expect(again.excel_contribution_rows).toEqual([]);
 
     // A changed printed amount is a mismatch, never an overwrite.
-    const changed = parseAfcCotizacionesCertificate(CERT_TEXT.replace("$16.000", "$16.001").replace("$70.000", "$70.001"));
+    const changed = certWithChangedLeg();
     const mismatch = planAfcCertImport(accountId, changed);
     expect(mismatch.items[0]!.status).toBe("mismatch");
     expect(applyAfcCertImport(mismatch, { replaceExcelContributions: false }).mismatches).toBe(1);
@@ -219,7 +216,7 @@ describe("AFC ledger rebuild (test DB)", () => {
     expect(applyAfcWithdrawalUnits(w)).toBe(1);
     expect(afpCuotasCumulativeThroughDate(accountId, "2099-12-31")).toBe(2.5);
 
-    const cartola = parseAfcCartola(CARTOLA_TEXT);
+    const cartola = CARTOLA;
     const plan = planAfcCartolaTrueUps(accountId, cartola);
     expect(plan.ledger_cotizaciones_clp).toBe(48000);
     // Inicial: saldo 100.000 ÷ 4000 = 25 cuotas vs the 5,5 in the ledger → +19,5 (7x.xxx, yield-like).
@@ -240,9 +237,14 @@ describe("AFC ledger rebuild (test DB)", () => {
   });
 
   it("refuses a cartola whose cotizaciones are not all in the ledger", () => {
-    const cartola = parseAfcCartola(
-      CARTOLA_TEXT.replaceAll("$48.000", "$49.000").replace("$3.000\n", "$4.000\n").replace("(1+2-3) $87.500", "(1+2-3) $88.500")
-    );
+    // One more peso-thousand of cotizaciones than the ledger holds (the detalle's second row).
+    const cartola: AfcCartola = {
+      ...CARTOLA,
+      cotizaciones_clp: 49000,
+      total_ingresos_clp: 49000,
+      saldo_final_clp: 88500,
+      detalle: CARTOLA.detalle.map((d, i) => (i === 1 ? { ...d, amount_clp: 4000 } : d)),
+    };
     expect(() => planAfcCartolaTrueUps(accountId, cartola)).toThrow(/import the certificate first/);
   });
 

@@ -1,7 +1,8 @@
 /**
- * AFC (Fondo de Cesantía, Cuenta Individual) documents → the account's cuota ledger.
+ * AFC (Fondo de Cesantía, Cuenta Individual) documents → the account's cuota ledger
+ * (`unemployment_fund.documents`; ingest's `afc/documents.ts` reads the PDFs).
  *
- * Two documents from the AFC sucursal virtual, both `pdftotext -layout` text:
+ * Two documents from the AFC sucursal virtual:
  *
  * 1. **Certificado de cotizaciones previsionales acreditadas** — every cotización with período,
  *    empleador, renta imponible, monto and the exact **fecha de pago**, two legs per período
@@ -26,53 +27,11 @@
  * overwritten. Report-first: `planAfcCertImport` / `planAfcCartolaTrueUps` compute, `apply…`
  * write.
  */
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
+import type { UnemploymentFundDocumentsApplyDetails, UnemploymentFundDocumentsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { AFC_CIC_SERIES_KEY } from "./afcCicSeries.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { fundUnitClpOnOrBefore } from "./fundUnitDaily.js";
-
-const SPANISH_MONTHS: Record<string, number> = {
-  enero: 1,
-  febrero: 2,
-  marzo: 3,
-  abril: 4,
-  mayo: 5,
-  junio: 6,
-  julio: 7,
-  agosto: 8,
-  septiembre: 9,
-  setiembre: 9,
-  octubre: 10,
-  noviembre: 11,
-  diciembre: 12,
-};
-
-function normalizeWord(s: string): string {
-  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
-}
-
-/** `Septiembre` → 9, or null when the word is not a Spanish month name. */
-export function spanishMonthNumber(word: string): number | null {
-  return SPANISH_MONTHS[normalizeWord(word)] ?? null;
-}
-
-function parseClpInteger(raw: string): number {
-  const s = raw.trim().replace(/^\$/, "").replace(/\./g, "");
-  if (!/^-?\d+$/.test(s)) throw new Error(`afc: unparsable CLP amount «${raw}»`);
-  return Number(s);
-}
-
-function ymd(year: number, month: number, day: number): string {
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-export function pdfTextLayout(filePath: string): string {
-  const abs = filePath.trim();
-  if (!abs || !fs.existsSync(abs)) throw new Error(`afc: file not found: ${filePath}`);
-  return execFileSync("pdftotext", ["-layout", abs, "-"], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
-}
 
 // ---------------------------------------------------------------------------------------------
 // Certificado de cotizaciones
@@ -94,113 +53,6 @@ export type AfcCotizacionesCertificate = {
   legs: AfcCotizacionLeg[];
   total_clp: number;
 };
-
-const RUT_RE = /\d{1,3}(?:\.\d{3})*-[\dkK]/;
-const DATA_LINE_RE = new RegExp(
-  `^\\s*(?:([A-Za-zÁÉÍÓÚáéíóúñÑ]+)(?:\\s+(\\d{4}))?)?\\s*(${RUT_RE.source})\\s+(.*?)\\s*\\$([\\d.]+)\\s+\\$([\\d.]+)\\s+(\\d{2})/(\\d{2})/(\\d{4})\\s*$`
-);
-const BARE_MONTH_RE = /^\s*([A-Za-zÁÉÍÓÚáéíóúñÑ]+)\s*$/;
-const BARE_YEAR_RE = /^\s*(\d{4})\s*$/;
-const TOTAL_RE = /^\s*TOTAL\s+\$([\d.]+)\s*$/;
-
-/**
- * Parse the certificate text. Fail-fast: every line that carries a RUT + amounts + date must
- * parse with a período (its own «Mes YYYY» prefix, or the month/year the layout printed on the
- * surrounding lines), the `TOTAL` line must exist and equal Σ montos, and every leg must be a
- * positive amount. A layout change surfaces as a thrown error, never as a skipped cotización.
- */
-export function parseAfcCotizacionesCertificate(text: string): AfcCotizacionesCertificate {
-  const lines = text.split(/\r?\n/);
-  const legs: AfcCotizacionLeg[] = [];
-  let total: number | null = null;
-  let pendingMonth: number | null = null;
-  let pendingPeriod: string | null = null;
-  let awaitingYear: AfcCotizacionLeg[] = [];
-  let inTable = false;
-  for (const raw of lines) {
-    const line = raw.replace(/\s+$/, "");
-    if (!line.trim()) continue;
-    if (/Fecha de\s*$/.test(line) || /^\s*Período\b/.test(line)) {
-      inTable = true;
-      continue;
-    }
-    const total_m = TOTAL_RE.exec(line);
-    if (total_m) {
-      total = parseClpInteger(total_m[1]!);
-      inTable = false;
-      continue;
-    }
-    if (!inTable) continue;
-    const dm = DATA_LINE_RE.exec(line);
-    if (dm) {
-      const [, monthWord, yearStr, rut, employer, renta, monto, dd, mm, yyyy] = dm;
-      const leg: AfcCotizacionLeg = {
-        period_ym: "",
-        employer_rut: rut!,
-        employer: (employer ?? "").trim(),
-        renta_imponible_clp: parseClpInteger(renta!),
-        amount_clp: parseClpInteger(monto!),
-        pay_ymd: ymd(Number(yyyy), Number(mm), Number(dd)),
-      };
-      if (leg.amount_clp <= 0) throw new Error(`afc: non-positive cotización «${line.trim()}»`);
-      if (monthWord && yearStr) {
-        const mo = spanishMonthNumber(monthWord);
-        if (mo == null) throw new Error(`afc: unknown month «${monthWord}» in «${line.trim()}»`);
-        leg.period_ym = `${yearStr}-${String(mo).padStart(2, "0")}`;
-        pendingMonth = null;
-        pendingPeriod = null;
-      } else if (monthWord) {
-        // «Septiembre <data…>» with the year printed on the next line.
-        const mo = spanishMonthNumber(monthWord);
-        if (mo == null) throw new Error(`afc: unknown month «${monthWord}» in «${line.trim()}»`);
-        if (awaitingYear.length > 0) throw new Error(`afc: month «${monthWord}» before the previous período's year`);
-        pendingMonth = mo;
-        pendingPeriod = null;
-        awaitingYear.push(leg);
-      } else if (pendingPeriod) {
-        leg.period_ym = pendingPeriod;
-      } else if (pendingMonth != null) {
-        awaitingYear.push(leg);
-      } else {
-        throw new Error(`afc: cotización line without a período «${line.trim()}»`);
-      }
-      legs.push(leg);
-      continue;
-    }
-    const ym_ = BARE_YEAR_RE.exec(line);
-    if (ym_) {
-      if (pendingMonth == null) throw new Error(`afc: stray year line «${line.trim()}»`);
-      const period = `${ym_[1]}-${String(pendingMonth).padStart(2, "0")}`;
-      if (awaitingYear.length > 0) {
-        for (const l of awaitingYear) l.period_ym = period;
-        awaitingYear = [];
-        pendingMonth = null;
-      } else {
-        pendingPeriod = period;
-      }
-      continue;
-    }
-    const bm = BARE_MONTH_RE.exec(line);
-    if (bm) {
-      const mo = spanishMonthNumber(bm[1]!);
-      if (mo != null) {
-        if (awaitingYear.length > 0) throw new Error(`afc: month «${bm[1]}» before the previous período's year`);
-        pendingMonth = mo;
-        pendingPeriod = null;
-      }
-      // Any other bare word is an employer-name fragment the layout wrapped — ignored.
-      continue;
-    }
-    // Employer fragments with several words / punctuation — ignored likewise.
-  }
-  if (awaitingYear.length > 0) throw new Error("afc: certificate ended with cotizaciones awaiting their year");
-  if (legs.length === 0) throw new Error("afc: no cotizaciones parsed — layout changed?");
-  if (total == null) throw new Error("afc: TOTAL line missing");
-  const sum = legs.reduce((a, l) => a + l.amount_clp, 0);
-  if (sum !== total) throw new Error(`afc: Σ cotizaciones ${sum} ≠ printed TOTAL ${total}`);
-  for (const l of legs) if (!/^\d{4}-\d{2}$/.test(l.period_ym)) throw new Error("afc: leg without período");
-  return { legs, total_clp: total };
-}
 
 export type AfcContribution = {
   period_ym: string;
@@ -487,103 +339,6 @@ export type AfcCartola = {
   detalle: { employer: string; pay_month_ym: string; amount_clp: number }[];
 };
 
-const PERIOD_RE = /per[ií]odo del (\d{1,2}) de ([A-Za-zÁÉÍÓÚáéíóúñÑ]+) al (\d{1,2}) de ([A-Za-zÁÉÍÓÚáéíóúñÑ]+) de (\d{4})/i;
-const SALDO_INICIAL_RE = /Al (\d{2})-(\d{2})-(\d{4})\s+\(1\)\s+\$([\d.]+)/;
-const SALDO_FINAL_RE = /Al (\d{2})-(\d{2})-(\d{4})\s+\(1\+2-3\)\s+\$([\d.]+)/;
-const AMOUNTS_RE = /\$-?[\d.]+/g;
-const DETALLE_ROW_RE = /^\s*(.+?)\s{2,}([A-Za-zÁÉÍÓÚáéíóúñÑ]+)-(\d{4})\s+\$([\d.]+)\s*$/;
-
-function monthOrThrow(word: string): number {
-  const mo = spanishMonthNumber(word);
-  if (mo == null) throw new Error(`afc cartola: unknown month «${word}»`);
-  return mo;
-}
-
-/** Parse the cuatrimestral cartola; every printed identity is checked, a mismatch throws. */
-export function parseAfcCartola(text: string): AfcCartola {
-  const lines = text.split(/\r?\n/).map((l) => l.replace(/\s+$/, ""));
-  const joined = lines.join("\n");
-  const pm = PERIOD_RE.exec(joined);
-  if (!pm) throw new Error("afc cartola: período line not found");
-  const year = Number(pm[5]);
-  const period_from_ymd = ymd(year, monthOrThrow(pm[2]!), Number(pm[1]));
-  const period_to_ymd = ymd(year, monthOrThrow(pm[4]!), Number(pm[3]));
-  const si = SALDO_INICIAL_RE.exec(joined);
-  const sf = SALDO_FINAL_RE.exec(joined);
-  if (!si) throw new Error("afc cartola: saldo inicial not found");
-  if (!sf) throw new Error("afc cartola: saldo final not found");
-  const saldo_inicial_ymd = ymd(Number(si[3]), Number(si[2]), Number(si[1]));
-  const saldo_final_ymd = ymd(Number(sf[3]), Number(sf[2]), Number(sf[1]));
-  const saldo_inicial_clp = parseClpInteger(si[4]!);
-  const saldo_final_clp = parseClpInteger(sf[4]!);
-
-  const amountsAfter = (headerRe: RegExp, count: number, what: string): number[] => {
-    const idx = lines.findIndex((l) => headerRe.test(l));
-    if (idx < 0) throw new Error(`afc cartola: «${what}» header not found`);
-    for (let i = idx + 1; i < Math.min(lines.length, idx + 4); i++) {
-      const found = lines[i]!.match(AMOUNTS_RE);
-      if (found && found.length >= count) return found.slice(0, count).map(parseClpInteger);
-    }
-    throw new Error(`afc cartola: ${count} amounts under «${what}» not found`);
-  };
-  const [cotizaciones_clp, otros_ingresos_clp, ganancia_clp, total_ingresos_clp] = amountsAfter(
-    /Total de cotizaciones/,
-    4,
-    "Total de cotizaciones"
-  ) as [number, number, number, number];
-  const [comisiones_clp, otros_egresos_clp, uso_cuenta_clp, total_egresos_clp] = amountsAfter(
-    /Total comisiones/,
-    4,
-    "Total comisiones"
-  ) as [number, number, number, number];
-
-  const detalle: AfcCartola["detalle"] = [];
-  const dStart = lines.findIndex((l) => /Detalle de cotizaciones/.test(l));
-  if (dStart < 0) throw new Error("afc cartola: «Detalle de cotizaciones» not found");
-  for (let i = dStart + 1; i < lines.length; i++) {
-    const l = lines[i]!;
-    if (/^\s*Total\s+\$/.test(l) || /Beneficios del Fondo/.test(l)) break;
-    const dm = DETALLE_ROW_RE.exec(l);
-    if (!dm) continue;
-    detalle.push({
-      employer: dm[1]!.trim(),
-      pay_month_ym: `${dm[3]}-${String(monthOrThrow(dm[2]!)).padStart(2, "0")}`,
-      amount_clp: parseClpInteger(dm[4]!),
-    });
-  }
-
-  if (cotizaciones_clp + otros_ingresos_clp + ganancia_clp !== total_ingresos_clp) {
-    throw new Error("afc cartola: ingresos do not add up to the printed total");
-  }
-  if (comisiones_clp + otros_egresos_clp + uso_cuenta_clp !== total_egresos_clp) {
-    throw new Error("afc cartola: egresos do not add up to the printed total");
-  }
-  if (saldo_inicial_clp + total_ingresos_clp - total_egresos_clp !== saldo_final_clp) {
-    throw new Error("afc cartola: saldo final ≠ inicial + ingresos − egresos");
-  }
-  const detalleSum = detalle.reduce((a, d) => a + d.amount_clp, 0);
-  if (detalleSum !== cotizaciones_clp) {
-    throw new Error(`afc cartola: Σ detalle ${detalleSum} ≠ Total de cotizaciones ${cotizaciones_clp}`);
-  }
-  return {
-    period_from_ymd,
-    period_to_ymd,
-    saldo_inicial_ymd,
-    saldo_inicial_clp,
-    cotizaciones_clp,
-    otros_ingresos_clp,
-    ganancia_clp,
-    total_ingresos_clp,
-    comisiones_clp,
-    otros_egresos_clp,
-    uso_cuenta_clp,
-    total_egresos_clp,
-    saldo_final_ymd,
-    saldo_final_clp,
-    detalle,
-  };
-}
-
 export function afcCartolaTrueUpNoteKey(which: "inicial" | "final", dayYmd: string): string {
   return `AFC ajuste cartola — saldo ${which} ${dayYmd}`;
 }
@@ -705,4 +460,162 @@ export function applyAfcCartolaTrueUps(plan: AfcCartolaPlan): { inserted: number
     }
   })();
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The ingest kind: both documents → the rebuild, with its report
+// ---------------------------------------------------------------------------------------------
+
+export function afcCertificateFromPayload(c: UnemploymentFundDocumentsPayload["certificate"]): AfcCotizacionesCertificate {
+  return {
+    legs: c.legs.map((l) => ({
+      period_ym: l.period_month,
+      employer_rut: l.employer_rut,
+      employer: l.employer,
+      renta_imponible_clp: l.taxable_income,
+      amount_clp: l.amount,
+      pay_ymd: l.paid_on,
+    })),
+    total_clp: c.total,
+  };
+}
+
+export function afcCartolaFromPayload(s: UnemploymentFundDocumentsPayload["statements"][number]): AfcCartola {
+  return {
+    period_from_ymd: s.period_from,
+    period_to_ymd: s.period_to,
+    saldo_inicial_ymd: s.opening.date,
+    saldo_inicial_clp: s.opening.balance,
+    cotizaciones_clp: s.contributions,
+    otros_ingresos_clp: s.other_income,
+    ganancia_clp: s.gain,
+    total_ingresos_clp: s.total_income,
+    comisiones_clp: s.commissions,
+    otros_egresos_clp: s.other_outflows,
+    uso_cuenta_clp: s.account_use,
+    total_egresos_clp: s.total_outflows,
+    saldo_final_ymd: s.closing.date,
+    saldo_final_clp: s.closing.balance,
+    detalle: s.detail.map((d) => ({ employer: d.employer, pay_month_ym: d.pay_month, amount_clp: d.amount })),
+  };
+}
+
+function fmt(n: number): string {
+  return Math.round(n).toLocaleString("en-US"); // convention-ok: import report text
+}
+
+class Rollback extends Error {}
+
+function resolveAfcAccountId(explicit: number | null): number {
+  if (explicit != null) return explicit;
+  const rows = db.prepare(`SELECT id FROM accounts WHERE fund_series_key = ? ORDER BY id`).all(AFC_CIC_SERIES_KEY) as { id: number }[];
+  if (rows.length !== 1) throw new Error(`expected one account on ${AFC_CIC_SERIES_KEY}, found ${rows.length}; send the account id`);
+  return rows[0]!.id;
+}
+
+/**
+ * Rebuild / reconcile the AFC cuota ledger from the documents, in one transaction: (1) the
+ * certificate's contributions (insert / update units / mismatch), optionally deleting the
+ * excel-era contribution rows the certificate supersedes and the ids listed; (2) units on every
+ * withdrawal (pay-date valor cuota, or the closing −Σ when the account's stored valuation reads
+ * 0 right after); (3) one true-up per cartola boundary; (4) closing withdrawals re-measured after
+ * them; (5) checks on the resulting ledger. Without `apply` the transaction is ROLLED BACK after
+ * the report, so the report shows the exact post-import ledger and nothing is written.
+ */
+export function applyUnemploymentFundDocuments(payload: UnemploymentFundDocumentsPayload): UnemploymentFundDocumentsApplyDetails {
+  const report: string[] = [];
+  const log = (line: string) => report.push(line);
+  const accountId = resolveAfcAccountId(payload.account_id);
+  const cert = afcCertificateFromPayload(payload.certificate);
+  const replaceExcel = payload.options.replace_excel_rows;
+  const dropIds = payload.options.drop_movement_ids;
+  log(`Certificado de cotizaciones: ${cert.legs.length} legs, total ${fmt(cert.total_clp)} CLP`);
+  try {
+    db.transaction(() => {
+      const plan = planAfcCertImport(accountId, cert);
+      const counts = { insert: 0, unchanged: 0, update_units: 0, mismatch: 0 };
+      log(`\n[1] Contributions — account ${accountId}, series ${plan.series_key}`);
+      log("status         período  pago         pesos       px       cuotas  employer");
+      for (const it of plan.items) {
+        counts[it.status] += 1;
+        const c = it.contribution;
+        log(
+          `${it.status.padEnd(14)} ${c.period_ym}  ${c.pay_ymd}  ${fmt(c.amount_clp).padStart(9)}  ${it.px.toFixed(2).padStart(8)}  ${it.units.toFixed(4).padStart(9)}  ${c.employer}${it.detail ? `  (${it.detail})` : ""}`
+        );
+      }
+      log(`→ insert ${counts.insert}, unchanged ${counts.unchanged}, update units ${counts.update_units}, mismatch ${counts.mismatch}`);
+      if (plan.excel_contribution_rows.length > 0) {
+        log(
+          `\nExcel-era contribution rows (import:excel|afc-flow, amount > 0): ${plan.excel_contribution_rows.length}, ` +
+            `${fmt(plan.excel_contribution_rows.reduce((a, m) => a + m.amount, 0))} CLP — ${replaceExcel ? "DELETED (superseded by the certificate)" : "kept (pass --replace-excel-rows to delete)"}`
+        );
+      }
+      if (plan.excel_other_rows.length > 0) {
+        log(`\nExcel-era non-contribution rows (kept unless listed in --drop-ids):`);
+        for (const m of plan.excel_other_rows) {
+          log(`  id ${m.id}  ${m.occurred_on}  ${fmt(m.amount).padStart(12)}  ${dropIds.includes(m.id) ? "DROP" : "keep"}  ${m.note ?? ""}`);
+        }
+      }
+      const r1 = applyAfcCertImport(plan, { replaceExcelContributions: replaceExcel, dropIds });
+      log(`→ wrote: inserted ${r1.inserted}, units updated ${r1.units_updated}, deleted ${r1.deleted}, mismatches skipped ${r1.mismatches}`);
+
+      const withdrawals = (label: string, quiet: boolean) => {
+        const wplan = planAfcWithdrawalUnits(accountId);
+        log(`\n${label} — ${wplan.length}`);
+        for (const w of wplan) {
+          if (quiet && w.status === "unchanged") continue;
+          log(
+            `${w.status.padEnd(10)} id ${w.movement.id}  ${w.movement.occurred_on}  ${fmt(Math.abs(w.movement.amount)).padStart(12)}  px ${w.px.toFixed(2)}  cuotas ${w.units_abs.toFixed(4)}${w.closes_position ? "  (closes the position)" : ""}`
+          );
+        }
+        log(`→ units set on ${applyAfcWithdrawalUnits(wplan)} withdrawal(s)`);
+      };
+      withdrawals("[2] Withdrawals", false);
+
+      for (const statement of payload.statements) {
+        const cartola = afcCartolaFromPayload(statement);
+        log(
+          `\n[3] Cartola ${cartola.period_from_ymd}..${cartola.period_to_ymd}: saldo ${cartola.saldo_inicial_ymd} ${fmt(cartola.saldo_inicial_clp)} → ${cartola.saldo_final_ymd} ${fmt(cartola.saldo_final_clp)}; ` +
+            `cotizaciones ${fmt(cartola.cotizaciones_clp)}, ganancia ${fmt(cartola.ganancia_clp)}, comisiones ${fmt(cartola.comisiones_clp)}`
+        );
+        const cplan = planAfcCartolaTrueUps(accountId, cartola);
+        for (const t of cplan.trueups) {
+          log(
+            `${t.status.padEnd(10)} saldo ${t.which.padEnd(7)} ${t.day_ymd}  target ${t.target_units.toFixed(4)} cuotas, ledger ${t.ledger_units.toFixed(4)} → true-up ${t.units.toFixed(4)} cuotas = ${fmt(t.amount_clp)} CLP (${t.flow_kind ?? "—"})`
+          );
+        }
+        const r3 = applyAfcCartolaTrueUps(cplan);
+        log(`→ true-ups: inserted ${r3.inserted}, updated ${r3.updated}, deleted ${r3.deleted}`);
+      }
+      if (payload.statements.length > 0) withdrawals("[4] Withdrawals after the true-ups (changed rows only)", true);
+
+      log(`\n[5] Resulting ledger checks`);
+      const stored = db
+        .prepare(`SELECT as_of_date, value FROM valuations WHERE account_id = ? ORDER BY as_of_date`)
+        .all(accountId) as { as_of_date: string; value: number }[];
+      const diffs: number[] = [];
+      for (const v of stored) {
+        const px = fundUnitClpOnOrBefore(AFC_CIC_SERIES_KEY, v.as_of_date);
+        if (px == null) continue;
+        const derived = Math.round(afpCuotasCumulativeThroughDate(accountId, v.as_of_date) * px);
+        if (v.value > 0) diffs.push((derived - v.value) / v.value);
+      }
+      if (diffs.length > 0) {
+        const abs = diffs.map(Math.abs).sort((a, b) => a - b);
+        log(
+          `stored excel month-ends vs ledger × valor cuota: n=${diffs.length}, median |diff| ${(abs[Math.floor(abs.length / 2)]! * 100).toFixed(2)}%, max |diff| ${(abs[abs.length - 1]! * 100).toFixed(2)}%`
+        );
+      }
+      const last = db
+        .prepare(`SELECT occurred_on FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ? ORDER BY date(occurred_on) DESC, id DESC LIMIT 1`)
+        .get(accountId, accountId, accountId) as { occurred_on: string } | undefined;
+      if (last) log(`cuotas after the last movement (${last.occurred_on}): ${afpCuotasCumulativeThroughDate(accountId, last.occurred_on).toFixed(4)}`);
+      if (!payload.apply) throw new Rollback("report only");
+    })();
+    log(`\nAPPLIED.`);
+  } catch (e) {
+    if (!(e instanceof Rollback)) throw e;
+    log(`\nREPORT ONLY — every change above was rolled back. Re-run with --apply to write.`);
+  }
+  return { applied: payload.apply, account_id: accountId, report };
 }
