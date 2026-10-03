@@ -17,6 +17,7 @@ import { applyRacionalRead } from "./racionalMovementsImport.js";
 import { applyCardPaymentReceipt } from "./santanderCcPaymentReceipts.js";
 import { applyStoreReceipt } from "./storeReceiptApply.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";
+import { applyBrokerDividendStatement } from "./brokerDividendStatementApply.js";
 import {
   applyCardUnbilledMovements,
   type CardUnbilledMovementsImportResult,
@@ -76,6 +77,11 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "broker.dividend_statement": {
+    apply({ payload }) {
+      return { status: "applied", details: applyBrokerDividendStatement(payload) };
+    },
+  },
   "employment.payslips": {
     apply({ payload }) {
       return { status: "applied", details: applyEmploymentPayslips(payload) };

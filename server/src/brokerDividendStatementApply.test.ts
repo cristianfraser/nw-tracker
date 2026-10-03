@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { applyFintualDividendDetails, planFintualDividendDetails } from "./fintualAccionesImport.js";
+import { applyFintualDividendDetails, planFintualDividendDetails } from "./brokerDividendStatementApply.js";
 import { getMovementDividendDetail } from "./movementDividendDetails.js";
 
 /**
@@ -9,7 +9,7 @@ import { getMovementDividendDetail } from "./movementDividendDetails.js";
  * match is instrument + net + ±5 days, and anything the ledger lacks or holds twice is a
  * conflict rather than a guess.
  */
-describe("fintualAccionesImport pairing", () => {
+describe("broker.dividend_statement pairing", () => {
   const created: number[] = [];
 
   afterEach(() => {
@@ -45,6 +45,7 @@ describe("fintualAccionesImport pairing", () => {
     position_qty: 1.027327209,
     record_date: "2026-06-18",
     withholding_rate_pct: 15,
+    withholding_jurisdiction: "US",
     tax_country: "CHL",
     ...over,
   });
