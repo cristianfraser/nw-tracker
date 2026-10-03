@@ -5,7 +5,7 @@ import { loadBankConfig } from "../config.js";
 import { readKeychainSecret } from "../keychain.js";
 import { launchBrowser, firstPage } from "../browser.js";
 import { API_HOST_FRAGMENT, Recorder, runStampNow } from "../capture.js";
-import { ensureDir, resolveInboxDir, resolveMovementsDir, resolveStatementJsonDir } from "../paths.js";
+import { ensureDir, resolveCfraserDir, resolveInboxDir, resolveMovementsDir, resolveStatementJsonDir } from "../paths.js";
 import { log } from "../log.js";
 import { waitForHosts } from "../network.js";
 import { assertRunAllowed } from "../runGuard.js";
@@ -134,6 +134,7 @@ export async function runSantander(opts: RunOptions): Promise<number> {
       } catch (err) {
         const detail = errorMessage(err);
         log(`✗ ${name}: ${detail}`);
+        if (!session.page.isClosed()) await saveStepDiagnostics(session.page, stepName, detail);
         const stack = err instanceof Error ? err.stack : undefined;
         if (!browserIsGone(session, err) || relaunches >= MAX_BROWSER_RELAUNCHES) {
           results.push({ name, ok: false, detail, stack });
@@ -205,4 +206,26 @@ export async function runSantander(opts: RunOptions): Promise<number> {
     log("Next: npm run import:cfraser-inbox");
   }
   return failed === 0 ? 0 : 1;
+}
+
+/**
+ * What a failed step leaves behind: a screenshot and the page's visible text under
+ * `cfraser/scraper-diagnostics/`, as a failed login does. The window is parked off-screen, so the
+ * error alone («element is not visible», 2026-10-02 checking movements) says nothing about what
+ * the bank showed. Never throws: a diagnostic must not replace the step's own error.
+ */
+async function saveStepDiagnostics(page: Page, stepName: string, reason: string): Promise<void> {
+  try {
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const base = path.join(ensureDir(path.join(resolveCfraserDir(), "scraper-diagnostics")), `santander-${stepName}-${stamp}`);
+    const pageText = await page
+      .locator("body")
+      .innerText({ timeout: 2_000 })
+      .catch((err: unknown) => `(page unreadable: ${errorMessage(err)})`);
+    fs.writeFileSync(`${base}.txt`, [`reason: ${reason}`, `url: ${page.url()}`, "", "--- page text ---", pageText, ""].join("\n"));
+    await page.screenshot({ path: `${base}.png`, fullPage: true, timeout: 10_000 });
+    log(`  diagnostics: ${base}.png / .txt`);
+  } catch (err) {
+    log(`  (step diagnostics failed: ${errorMessage(err)})`);
+  }
 }

@@ -168,13 +168,14 @@ export function ingestRunById(id: number): IngestRunRow | null {
 
 /**
  * Record the feeder's report, and the run's app message from it (a dry run records none). Accepted
- * for a requested run and, late, for one already written off as lost (whose failure message then
- * stands beside the real one); any other state throws (a report for a run nobody asked for is a bug).
+ * for a requested run; for one marked not started (the feeder took the request but its answer was
+ * lost — a timeout); and, late, for one already written off as lost (whose failure message then
+ * stands beside the real one). Any other state throws (a report for a run nobody asked for is a bug).
  */
 export function completeIngestRun(id: number, completion: IngestRunCompletion): IngestRunRow {
   const row = ingestRunById(id);
   if (!row) throw new Error(`No ingest run ${id}`);
-  if (row.status !== "requested" && row.status !== "lost") {
+  if (row.status !== "requested" && row.status !== "not_started" && row.status !== "lost") {
     throw new Error(`Ingest run ${id} is ${row.status}, not waiting for a report`);
   }
   const failedSteps = completion.steps ? completion.steps.filter((s) => !s.ok).length : null;

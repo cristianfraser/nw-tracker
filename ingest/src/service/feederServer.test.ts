@@ -68,6 +68,22 @@ describe("feeder server", () => {
     expect((await s.post({ run_id: 8, kind: "hourly", reason: ":30 slot", santander_fetch: null })).status).toBe(202);
   });
 
+  it("never runs a run id twice: a repeated request is answered, not run again", async () => {
+    const s = await start();
+    const request = { run_id: 50, kind: "nightly", reason: "22:00 slot", santander_fetch: null };
+    expect((await s.post(request)).status).toBe(202);
+    // The server's first answer timed out; it asks again with the same id while the run is going.
+    expect((await s.post(request)).status).toBe(202);
+    expect(s.runs).toEqual([{ kind: "nightly", runId: 50 }]);
+    s.finish(DONE);
+    await s.feeder.idle();
+    const again = await s.post(request);
+    expect(again.status).toBe(409);
+    expect(await again.json()).toEqual({ error: "already_ran", run_id: 50 });
+    expect(s.runs).toHaveLength(1);
+    expect(s.reports).toHaveLength(1);
+  });
+
   it("is busy while a runner it did not start is running", async () => {
     const s = await start({ runningOutside: () => true });
     const res = await s.post({ run_id: 7, kind: "nightly", reason: "x", santander_fetch: null });

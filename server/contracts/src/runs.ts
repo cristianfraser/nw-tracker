@@ -4,7 +4,11 @@ import { z } from "zod";
  * The run protocol (docs/ingest-split-plan.md, Phase 2): the server decides WHEN a feeder runs
  * and asks it to; the feeder answers at once and reports back when the run is over.
  *
- *   server → feeder  POST <feeder>/runs                          IngestRunRequest → 202 | 409 busy
+ *   server → feeder  POST <feeder>/runs                          IngestRunRequest → 202 | 409 busy | 409 already_ran
+ *
+ * A request is idempotent per run id: the server cannot tell a request the feeder never got from
+ * one whose answer it missed (a timeout right after a wake), so it asks again with the same id.
+ * The run in progress answers 202 again; a finished one answers `already_ran`, never runs twice.
  *   feeder → server  POST /api/ingest/runs/<run_id>/complete     IngestRunCompletion
  */
 
@@ -60,6 +64,11 @@ export const feederBusySchema = z
       .object({ run_id: z.number().int().positive().nullable(), kind: z.string(), started_at: z.iso.datetime({ offset: true }) })
       .strict(),
   })
+  .strict();
+
+/** 409 body: the feeder already ran this run id; its report is on the way (or was delivered). */
+export const feederAlreadyRanSchema = z
+  .object({ error: z.literal("already_ran"), run_id: z.number().int().positive() })
   .strict();
 
 export const ingestRunStepSchema = z

@@ -1,5 +1,6 @@
 import {
   FEEDER_RUNS_PATH,
+  feederAlreadyRanSchema,
   feederBusySchema,
   ingestRunRequestSchema,
   type IngestRunKind,
@@ -84,7 +85,11 @@ export async function requestFeederRun(
       } catch {
         parsed = null;
       }
+      // The feeder is running, or already ran, THIS run: the answer to an earlier request with
+      // the same id was lost (a timeout), and its report will come.
+      if (feederAlreadyRanSchema.safeParse(parsed).success) return { status: "accepted" };
       const busy = feederBusySchema.safeParse(parsed);
+      if (busy.success && busy.data.running.run_id === runId) return { status: "accepted" };
       return {
         status: "busy",
         detail: busy.success
@@ -158,7 +163,11 @@ export async function ingestSchedulerTick(
   }
   markIngestRunNotStarted(runId, `${answer.status}: ${answer.detail}`);
   const slotKey = `${decision.kind}|${decision.slot.toISOString()}`;
-  if (answer.status === "unreachable" && decision.kind === "nightly" && !notifiedSlots.has(slotKey)) {
+  // A timeout right after a wake is usually the feeder answering late; the next tick (same run id)
+  // sorts it out, so only a second unreachable answer for the slot raises the notification.
+  const firstUnreachable = answer.status === "unreachable" && !notifiedSlots.has(`unreachable|${slotKey}`);
+  if (answer.status === "unreachable") notifiedSlots.add(`unreachable|${slotKey}`);
+  if (answer.status === "unreachable" && !firstUnreachable && decision.kind === "nightly" && !notifiedSlots.has(slotKey)) {
     notifiedSlots.add(slotKey);
     insertAppMessage(
       "notification",
