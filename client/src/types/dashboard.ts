@@ -281,7 +281,9 @@ export interface TimeseriesBlock {
   points: Record<string, string | number | null>[];
   /** Server: portfolio group color (or resolver fallback) for synthetic aggregated lines; keys like `"-203"`. */
   synthetic_group_color_rgb?: Record<string, string>;
-  /** FX-backed USD milestone CLP levels for chart anchor dates (month/year prior period ends). */
+  /** Unit the block's values are in, when the block states its own (patrimonio chart). */
+  unit?: "clp" | "usd" | "uf";
+  /** USD milestone levels (in the block's unit) for chart anchor dates (month/year prior period ends). */
   referenceMilestoneByDate?: Record<string, Record<string, number | null>>;
   /** Server tail-clip: last visible date when every data series ends early (x-axis stops here). */
   chart_end_ymd?: string;
@@ -297,7 +299,7 @@ export interface ValuationTimeseriesResponse {
     /** Per-grain peaks of the net-worth line (this unit); absent on placeholder / keep-prev bundles. */
     ath?: NetWorthAthByPeriod | null;
   };
-  /** Patrimonio neto + invested (CLP) and USD milestone reference lines (CLP via FX). */
+  /** Patrimonio neto + invested and USD milestone reference lines, in the block's `unit`. */
   patrimonio_usd_milestones_chart?: TimeseriesBlock;
   group_slug?: string;
   /** Whole class tab: all accounts on one line chart (+ deposit lines) */
@@ -325,7 +327,7 @@ export interface DashboardOverviewDailyPoint {
   cash_eqs: number | null;
 }
 
-/** One day of the «Patrimonio neto vs invested» chart (always CLP): total_nw + invested +
+/** One day of the «Patrimonio neto vs invested» chart (request unit): total_nw + invested +
  * per-day USD milestone levels, same keys as the monthly `patrimonio_usd_milestones_chart`. */
 export type PatrimonioDailyPoint = Record<string, string | number | null>;
 
@@ -342,7 +344,7 @@ export interface DashboardOverviewDailyResponse {
   days: number;
   end_ymd: string;
   points: DashboardOverviewDailyPoint[];
-  /** «Patrimonio neto vs invested» daily points (CLP). */
+  /** «Patrimonio neto vs invested» daily points (request unit). */
   patrimonio: PatrimonioDailyPoint[];
   /** «Cuentas principales» per-child-group daily lines (request unit). */
   primary_lines: PrimaryDailyLine[];

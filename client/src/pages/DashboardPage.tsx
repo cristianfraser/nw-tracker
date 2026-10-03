@@ -12,6 +12,7 @@ import {
   prefetchDashboardNavSnapshot,
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
+import type { DisplayUnit } from "../queries/keys";
 import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
   nwBucketTotalsFromDashTotals,
@@ -271,12 +272,19 @@ export function DashboardPage() {
     return { accounts, points };
   }, [principalesIsDaily, principalesDailyData, ts?.accounts_ex_property]);
 
-  // Day mode: «Patrimonio neto vs invested» swaps to daily points (always CLP). Borrow the
-  // monthly block's line + milestone metadata; only the points change.
+  // Day mode: «Patrimonio neto vs invested» swaps to daily points (in the daily payload's
+  // unit). Borrow the monthly block's line metadata; its milestone anchors only while both
+  // payloads are in the same unit (a held prior-unit monthly block would mix units).
   const dailyPatrimonioBlock = useMemo(() => {
     const src = ts?.patrimonio_usd_milestones_chart;
     if (!patrimonioIsDaily || !patrimonioDailyData?.patrimonio?.length || !src) return null;
-    return { ...src, points: patrimonioDailyData.patrimonio };
+    const { referenceMilestoneByDate, ...rest } = src;
+    return {
+      ...rest,
+      ...(src.unit === patrimonioDailyData.unit ? { referenceMilestoneByDate } : {}),
+      unit: patrimonioDailyData.unit,
+      points: patrimonioDailyData.patrimonio,
+    };
   }, [patrimonioIsDaily, patrimonioDailyData, ts?.patrimonio_usd_milestones_chart]);
 
   /** Union of retirement + brokerage group monthly Δ; YTD and cumulative on combined monthly Δ. */
@@ -457,8 +465,17 @@ export function DashboardPage() {
   const patrimonioBlock = useMemo(() => {
     const src = ts?.patrimonio_usd_milestones_chart;
     if (!src) return null;
-    return patrimonioPrefs.period === "year" ? rollupTimeseriesBlockYearEnd(src) : src;
+    return patrimonioPrefs.period === "year"
+      ? { ...rollupTimeseriesBlockYearEnd(src), unit: src.unit }
+      : src;
   }, [ts?.patrimonio_usd_milestones_chart, patrimonioPrefs.period]);
+  // The block carries its own unit: a held prior-unit block keeps rendering in that unit until
+  // the new one lands (the zero placeholder has none and takes the toggle's).
+  const patrimonioShown = dailyPatrimonioBlock ?? patrimonioBlock;
+  const patrimonioUnit: DisplayUnit =
+    patrimonioShown?.unit === "usd" || patrimonioShown?.unit === "clp"
+      ? patrimonioShown.unit
+      : displayUnit;
 
   const bucketColorBySlug = useMemo(() => {
     const m = new Map<string, string>();
@@ -585,8 +602,8 @@ export function DashboardPage() {
           <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
             <LineChartPanel
               title={t("dashboard.sections.netWorthUsdChartTitle")}
-              block={dailyPatrimonioBlock ?? patrimonioBlock}
-              displayUnit="clp"
+              block={patrimonioShown!}
+              displayUnit={patrimonioUnit}
               includeAccumulatedLines={false}
               trimLeadingInactive={false}
               colorPlan={{ kind: "dashboard-patrimonio-usd" }}

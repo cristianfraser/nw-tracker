@@ -19,7 +19,7 @@ import {
   DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
   listAccountsForGroupTab,
   listDashboardPrimaryPortfolioGroupSpecs,
-  milestoneClpFieldsForDate,
+  milestoneFieldsForDate,
 } from "./valuationTimeseries.js";
 
 /**
@@ -47,9 +47,9 @@ export type OverviewDailyPoint = {
 };
 
 /**
- * One day of the «Patrimonio neto vs invested (referencia US$)» chart — always CLP (the
- * chart is CLP regardless of display unit): net worth + invested levels plus the USD
- * milestone reference levels (US$ × that day's fx). Same field set as the monthly
+ * One day of the «Patrimonio neto vs invested (referencia US$)» chart in the request unit:
+ * net worth + invested levels plus the USD milestone reference levels (the US$ amount in
+ * that unit on that day — flat in USD). Same field set as the monthly
  * `patrimonio_usd_milestones_chart` points, so the client reuses that block's line metadata.
  */
 export type PatrimonioDailyPoint = Record<string, string | number | null>;
@@ -62,7 +62,7 @@ export type OverviewDailyPayload = {
   days: number;
   end_ymd: string;
   points: OverviewDailyPoint[];
-  /** «Patrimonio neto vs invested» daily points (CLP). */
+  /** «Patrimonio neto vs invested» daily points (request unit). */
   patrimonio: PatrimonioDailyPoint[];
   /** Composition shares for the home pie-replacement chart (same dataKeys as the monthly block). */
   allocation_proportional: ProportionalSeriesBlock;
@@ -184,17 +184,14 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
     };
   });
 
-  // «Patrimonio neto vs invested» — always CLP: net worth + invested levels plus the per-day
-  // USD milestone reference levels (US$ × that day's fx). Reuses the CLP bucket values.
-  const patrimonio: PatrimonioDailyPoint[] = grid.map((ymd) => {
-    const row = byDate.get(ymd)!;
-    return {
-      as_of_date: ymd,
-      total_nw: row.net_worth,
-      invested: row.retirement + row.brokerage,
-      ...milestoneClpFieldsForDate(ymd),
-    };
-  });
+  // «Patrimonio neto vs invested» in the request unit: the overview's own net worth +
+  // invested (so both charts agree) plus the per-day USD milestone levels in that unit.
+  const patrimonio: PatrimonioDailyPoint[] = points.map((p) => ({
+    as_of_date: p.as_of_date,
+    total_nw: p.net_worth,
+    invested: p.invested,
+    ...milestoneFieldsForDate(p.as_of_date, unit),
+  }));
 
   const cashNettedClpByDate = new Map(grid.map((ymd) => [ymd, byDate.get(ymd)!.cash_eqs]));
   const primary_lines = buildPrimaryDailyLines(unit, days, grid, cashNettedClpByDate);

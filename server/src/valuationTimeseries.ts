@@ -1251,21 +1251,33 @@ function capChartDatesThroughChileToday(datesAsc: string[]): string[] {
   return datesAsc.filter((d) => d <= today);
 }
 
-/** USD notionals for patrimonio chart reference lines (CLP = USD × FX on or before each date). */
+/** USD notionals for patrimonio chart reference lines (each date's level in the chart's unit). */
 const PATRIMONIO_USD_MILESTONE_AMOUNTS = [50_000, 100_000, 250_000, 300_000, 500_000] as const;
 
 function usdMilestoneDataKey(usd: number): string {
   return usd >= 1000 ? `usd_${usd / 1000}k` : `usd_${usd}`;
 }
 
-function appendUsdMilestoneClpFields(
+/**
+ * A USD amount expressed in `unit` on `asOfYmd`. USD is the amount itself (flat lines); any
+ * other unit converts the amount at that date's rate — a unit with its own direct USD rate
+ * (e.g. EUR/USD) takes it here, never a cross through CLP. Null when the rate is missing.
+ */
+function usdMilestoneLevelInUnit(usd: number, asOfYmd: string, unit: TsUnit): number | null {
+  if (unit === "usd") return usd;
+  const fx = fxMonthEndForBalanceUsd(asOfYmd);
+  if (!fx || fx.clp_per_usd <= 0) return null;
+  const v = convertTs(usd * fx.clp_per_usd, asOfYmd, unit);
+  return Number.isFinite(v) ? v : null;
+}
+
+function appendUsdMilestoneFields(
   row: Record<string, string | number | null>,
-  asOfYmd: string
+  asOfYmd: string,
+  unit: TsUnit
 ): void {
   for (const usd of PATRIMONIO_USD_MILESTONE_AMOUNTS) {
-    const fx = fxMonthEndForBalanceUsd(asOfYmd);
-    row[usdMilestoneDataKey(usd)] =
-      fx != null && fx.clp_per_usd > 0 ? usd * fx.clp_per_usd : null;
+    row[usdMilestoneDataKey(usd)] = usdMilestoneLevelInUnit(usd, asOfYmd, unit);
   }
 }
 
@@ -1307,9 +1319,12 @@ function priorCalendarPeriodEndYmdChart(
   return lastDayOfMonthYmdChart(addCalendarMonthsChart(ym, -1));
 }
 
-export function milestoneClpFieldsForDate(asOfYmd: string): Record<string, number | null> {
+export function milestoneFieldsForDate(
+  asOfYmd: string,
+  unit: TsUnit
+): Record<string, number | null> {
   const row: Record<string, string | number | null> = {};
-  appendUsdMilestoneClpFields(row, asOfYmd);
+  appendUsdMilestoneFields(row, asOfYmd, unit);
   const out: Record<string, number | null> = {};
   for (const usd of PATRIMONIO_USD_MILESTONE_AMOUNTS) {
     const key = usdMilestoneDataKey(usd);
@@ -1321,13 +1336,14 @@ export function milestoneClpFieldsForDate(asOfYmd: string): Record<string, numbe
 
 /** FX-backed milestone levels for month/year anchor dates before the first overview point. */
 function buildReferenceMilestoneAnchorsByDate(
-  firstOverviewYmd: string
+  firstOverviewYmd: string,
+  unit: TsUnit
 ): Record<string, Record<string, number | null>> {
   const out: Record<string, Record<string, number | null>> = {};
   for (const granularity of ["month", "year"] as const) {
     const anchorDate = priorCalendarPeriodEndYmdChart(firstOverviewYmd, granularity);
     if (!anchorDate || anchorDate >= firstOverviewYmd) continue;
-    out[anchorDate] = milestoneClpFieldsForDate(anchorDate);
+    out[anchorDate] = milestoneFieldsForDate(anchorDate, unit);
   }
   return out;
 }
@@ -1335,45 +1351,49 @@ function buildReferenceMilestoneAnchorsByDate(
 /** Leading month-end row with USD milestone reference lines only (data series get client zero anchors). */
 function prependPatrimonioUsdMilestoneAnchorPoints(
   points: Record<string, string | number | null>[],
-  firstOverviewYmd: string
+  firstOverviewYmd: string,
+  unit: TsUnit
 ): Record<string, string | number | null>[] {
   const anchorDate = priorCalendarPeriodEndYmdChart(firstOverviewYmd, "month");
   if (!anchorDate || anchorDate >= firstOverviewYmd) return points;
   const byDate = new Map(points.map((p) => [String(p.as_of_date), { ...p }]));
   const existing = byDate.get(anchorDate);
   if (existing) {
-    appendUsdMilestoneClpFields(existing, anchorDate);
+    appendUsdMilestoneFields(existing, anchorDate, unit);
     byDate.set(anchorDate, existing);
   } else {
     const row: Record<string, string | number | null> = { as_of_date: anchorDate };
-    appendUsdMilestoneClpFields(row, anchorDate);
+    appendUsdMilestoneFields(row, anchorDate, unit);
     byDate.set(anchorDate, row);
   }
   return [...byDate.values()].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
 }
 
 /**
- * Patrimonio neto + invested (CLP) with USD milestone reference lines (always CLP; FX per date).
+ * Patrimonio neto + invested with USD milestone reference lines, all in `unit`: the two data
+ * series are the overview's own points in that unit (so this chart and the overview agree),
+ * the milestones the USD notionals at each date's rate — flat in USD.
  * Y-axis on the client uses only the two `data` series; milestones may extend above the scale.
  */
-function buildPatrimonioUsdMilestoneChartBlockFromOverviewClp(
-  overviewClp: Record<string, string | number | null>[]
-): GroupTabValuationBlock {
-  const firstOverviewYmd = overviewClp.length
-    ? [...overviewClp].map((r) => String(r.as_of_date)).sort((a, b) => a.localeCompare(b))[0]!
+function buildPatrimonioUsdMilestoneChartBlock(
+  overview: Record<string, string | number | null>[],
+  unit: TsUnit
+): GroupTabValuationBlock & { unit: TsUnit } {
+  const firstOverviewYmd = overview.length
+    ? [...overview].map((r) => String(r.as_of_date)).sort((a, b) => a.localeCompare(b))[0]!
     : "";
-  const points = overviewClp.map((row) => {
+  const points = overview.map((row) => {
     const d = String(row.as_of_date);
     const out: Record<string, string | number | null> = {
       as_of_date: d,
       total_nw: row.total_nw ?? null,
       invested: row.invested ?? null,
     };
-    appendUsdMilestoneClpFields(out, d);
+    appendUsdMilestoneFields(out, d, unit);
     return out;
   });
   const withAnchor = firstOverviewYmd
-    ? prependPatrimonioUsdMilestoneAnchorPoints(points, firstOverviewYmd)
+    ? prependPatrimonioUsdMilestoneAnchorPoints(points, firstOverviewYmd, unit)
     : points;
   const lines: NonNullable<GroupTabValuationBlock["lines"]> = [
     {
@@ -1395,9 +1415,9 @@ function buildPatrimonioUsdMilestoneChartBlockFromOverviewClp(
     })),
   ];
   const referenceMilestoneByDate = firstOverviewYmd
-    ? buildReferenceMilestoneAnchorsByDate(firstOverviewYmd)
+    ? buildReferenceMilestoneAnchorsByDate(firstOverviewYmd, unit)
     : undefined;
-  return { accounts: [], lines, points: withAnchor, referenceMilestoneByDate };
+  return { unit, accounts: [], lines, points: withAnchor, referenceMilestoneByDate };
 }
 
 /** Overview + primary chart blocks from `portfolio_groups` net-worth buckets (one TS build). */
@@ -1405,7 +1425,6 @@ function buildDashboardOverviewSlice(unit: TsUnit): {
   accounts_ex_property: { accounts: AccountLine[]; points: Record<string, string | number | null>[] };
   overview: { lines: ReturnType<typeof buildDashboardOverviewLines>; points: Record<string, string | number | null>[] };
   chartDates: string[];
-  overviewPointsClp: Record<string, string | number | null>[];
 } {
   const clpTotals = buildDashboardPortfolioGroupTotalsClp();
   const totalsBySlug =
@@ -1416,16 +1435,10 @@ function buildDashboardOverviewSlice(unit: TsUnit): {
   const accountsExProperty = buildDashboardPrimaryFromTotals(unit, chartDates, totalsBySlug);
   const totalsBySlugClp = clpTotals.totalsBySlug;
   const overviewPoints = buildOverviewDisplayPointsFromPortfolioTotals(chartDates, unit, totalsBySlugClp);
-  const overviewPointsClp = buildOverviewDisplayPointsFromPortfolioTotals(
-    chartDates,
-    "clp",
-    totalsBySlugClp
-  );
   return {
     accounts_ex_property: accountsExProperty,
     overview: { lines: buildDashboardOverviewLines(), points: overviewPoints },
     chartDates,
-    overviewPointsClp,
   };
 }
 
@@ -1849,9 +1862,10 @@ export function getDashboardValuationTimeseries(unit: TsUnit) {
 
 function getDashboardValuationTimeseriesInner(unit: TsUnit) {
   const slice = buildDashboardOverviewSlice(unit);
-  const overviewClp = slice.overviewPointsClp;
-  const patrimonio_usd_milestones_chart =
-    buildPatrimonioUsdMilestoneChartBlockFromOverviewClp(overviewClp);
+  const patrimonio_usd_milestones_chart = buildPatrimonioUsdMilestoneChartBlock(
+    slice.overview.points,
+    unit
+  );
 
   const assetKeys = new Set(["real_estate", "retirement", "brokerage", "cash"]);
   const allocation_proportional = buildProportionalFromPoints(
