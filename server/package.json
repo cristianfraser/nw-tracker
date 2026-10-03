@@ -49,7 +49,6 @@
     "backfill:bcentral-uf": "tsx scripts/backfill-bcentral-uf.ts",
     "backfill:afc-cic": "tsx scripts/backfill-afc-cic.ts",
     "afc:derive-cuotas": "tsx scripts/afc-cuota-ledger-derive.ts",
-    "import:afc-cert": "tsx scripts/import-afc-cert.ts",
     "backfill:watchlist-equity-history": "tsx scripts/backfill-watchlist-equity-history.ts",
     "probe:bcentral-series": "tsx scripts/probe-bcentral-series.ts",
     "sync:equity-eod": "tsx scripts/sync-equity-eod.ts",

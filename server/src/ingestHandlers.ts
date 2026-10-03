@@ -19,6 +19,7 @@ import { applyStoreReceipt } from "./storeReceiptApply.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";
 import { applyBrokerDividendStatement } from "./brokerDividendStatementApply.js";
 import { applyFundAccountTransactions } from "./fintualCertImport.js";
+import { applyUnemploymentFundDocuments } from "./afcCertImport.js";
 import {
   applyCardUnbilledMovements,
   type CardUnbilledMovementsImportResult,
@@ -78,6 +79,11 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
 }
 
 export const INGEST_HANDLERS: IngestHandlerMap = {
+  "unemployment_fund.documents": {
+    apply({ payload }) {
+      return { status: "applied", details: applyUnemploymentFundDocuments(payload) };
+    },
+  },
   "fund_account.transactions": {
     apply({ payload }) {
       return { status: "applied", details: applyFundAccountTransactions(payload) };
