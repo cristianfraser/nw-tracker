@@ -1,13 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import {
-  classifyLiderLines,
-  findLedgerLineSameDayAndAmount,
-  isLiderMovementsFilename,
-} from "./liderMovementsImport.js";
+import { classifyLiderLines, findLedgerLineSameDayAndAmount } from "./liderCardLines.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
 
-describe("liderMovementsImport", () => {
+describe("liderCardLines", () => {
   const created: number[] = [];
 
   afterEach(() => {
@@ -51,13 +47,6 @@ describe("liderMovementsImport", () => {
       ...partial,
     };
   }
-
-  it("recognises the scheduled fetcher's filenames", () => {
-    expect(isLiderMovementsFilename("lider-bci-movimientos-2026-08-05.csv")).toBe(true);
-    expect(isLiderMovementsFilename("lider_bci_movimientos_2026-08-05.csv")).toBe(true);
-    expect(isLiderMovementsFilename("certificado_de_transacciones.csv")).toBe(false);
-    expect(isLiderMovementsFilename("80_1_800000000901_20260723.pdf")).toBe(false);
-  });
 
   it("matches an existing ledger line by day+amount regardless of merchant text", () => {
     const id = masterId();

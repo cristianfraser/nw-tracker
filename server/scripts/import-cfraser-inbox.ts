@@ -9,9 +9,7 @@
  * 6. Optionally import checking / cuenta vista / sync (see flags below)
  *
  * A Fintual certificado dropped in the inbox is installed and reconciled against its cert
- * accounts, report only, first thing (ingest `import:fintual-cert --from-inbox`). A Lider BCI «últimos
- * movimientos» CSV (`lider-bci-movimientos-*.csv`, dropped by its own scheduled fetch) is
- * imported through the web-paste path at the end of the run and archived. The daily checking
+ * accounts, report only, first thing (ingest `import:fintual-cert --from-inbox`). The daily checking
  * «ultimos movimientos-Cuenta Corriente.xlsx» (dropped by fetch:santander) is sent to the server
  * by ingest (`import:checking-movements`, `bank_account.movements`) and archived under
  * `cfraser/checking-ultimos-movimientos/imported/`.
@@ -43,7 +41,6 @@ import {
   resolveCfraserOrganizeManifestPath,
 } from "../src/cfraserOrganizeManifest.js";
 import { resolveCfraserInboxDir } from "../src/cfraserPaths.js";
-import { listLiderMovementInboxFiles } from "../src/liderMovementsImport.js";
 import { loadRootDotenv } from "../src/rootDotenv.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -317,26 +314,6 @@ function main(): void {
     // reason to hold back the steps below — the pipeline still exits non-zero at the end. (A
     // new store is not a failure: the receipt is flagged and pairs with the card's own line.)
     if (code !== 0) deferredFailureCode = code;
-  }
-
-  // Lider BCI «últimos movimientos» CSV, dropped in the inbox by its own scheduled fetch.
-  // Same shape as a manual web paste, so it goes through the web-paste import path; the file is
-  // archived to cfraser/lider-movements/imported/ once read.
-  if (listLiderMovementInboxFiles().length > 0) {
-    const code = runStep(
-      `Import Lider movements CSV${dryRun ? " (dry run)" : ""}`,
-      "npm",
-      [
-        "run",
-        "import:lider-movements",
-        "-w",
-        "nw-tracker-server",
-        ...(dryRun ? ["--", "--dry-run"] : []),
-      ]
-    );
-    if (code !== 0) process.exit(code);
-  } else {
-    console.log("\n=== Lider movements CSV (none in inbox) ===");
   }
 
   console.log("\n=== import:cfraser-inbox done ===");

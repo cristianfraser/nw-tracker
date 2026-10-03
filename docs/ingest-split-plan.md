@@ -237,7 +237,8 @@ In rough order (simplest separation first):
 10. Fintual certificado, Fintual Acciones documents, AFC certificate/cartola. Acciones documents **done** —
    `broker.dividend_statement`; certificado **done** — `fund_account.transactions`; AFC **done** —
    `unemployment_fund.documents`.
-11. Lider BCI CSV (if still used), web paste (`ccWebPasteParse`, via `/parse`).
+11. Lider BCI CSV (if still used), web paste (`ccWebPasteParse`, via `/parse`). Lider CSV **retired**
+   (no file since 2026-08-07; the importer is gone, its card-line helpers stay for the receipts).
 
 ### Phase 4 — cleanup
 

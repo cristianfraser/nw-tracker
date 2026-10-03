@@ -56,7 +56,7 @@ import { lastPdfBillingMonthForAccount, periodToIsoForBillingMonth } from "./ccM
 import { importCcWebPasteLines } from "./accountImports.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
 import type { ImportBatchKind } from "./importBatches.js";
-import { classifyLiderLines, liderMasterAccountId } from "./liderMovementsImport.js";
+import { classifyLiderLines, liderMasterAccountId } from "./liderCardLines.js";
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
