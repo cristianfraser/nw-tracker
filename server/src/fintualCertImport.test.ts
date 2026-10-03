@@ -1,7 +1,5 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { FundTransaction } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { importFintualCertificado } from "./fintualCertImport.js";
 import { FINTUAL_CERT_V2_ACCOUNT_NAMES } from "./fintualCertV2.js";
@@ -22,36 +20,39 @@ function cleanupCertData(): void {
   }
 }
 
+/** A certificado row in the CSV's column order (fecha,id,nombre,aporte $,rescate $,aporte q,rescate q,medio,valor cuota). */
+function tx(line: string): FundTransaction {
+  const [fecha, id, name, clpIn, clpOut, qIn, qOut, medio, vq] = line.split(",");
+  const [d, m, y] = fecha!.split("/");
+  return {
+    date: `${y}-${m}-${d}`,
+    investment: { id: id!, name: name! },
+    medio: medio || null,
+    clp_in: Number(clpIn),
+    clp_out: Number(clpOut),
+    units_in: Number(qIn),
+    units_out: Number(qOut),
+    unit_value: vq ? Number(vq) : null,
+  };
+}
+
 describe("importFintualCertificado", () => {
-  let tmpDir: string | null = null;
+  let current: FundTransaction[] = [];
 
   afterEach(() => {
-    delete process.env.FINTUAL_CERTIFICADO_CSV;
-    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
-    tmpDir = null;
+    current = [];
     cleanupCertData();
   });
 
-  function writeCsv(lines: string[]): string {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fintual-cert-import-"));
-    const csvPath = path.join(tmpDir, "certificado.csv");
-    fs.writeFileSync(
-      csvPath,
-      [
-        "fecha,id_inversión,nombre_inversión,aporte_pesos_chilenos,rescate_pesos_chilenos,aporte_cuotas,rescate_cuotas,medio,valor_cuota",
-        ...lines,
-      ].join("\n"),
-      "utf8"
-    );
-    process.env.FINTUAL_CERTIFICADO_CSV = csvPath;
-    return csvPath;
+  function writeCsv(lines: string[]): void {
+    current = lines.map(tx);
   }
 
   it("report-only never writes: no accounts or movements created", () => {
     cleanupCertData();
     writeCsv(["10/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,50000"]);
 
-    const res = importFintualCertificado({ maxMonth: "2099-12" });
+    const res = importFintualCertificado(current, { maxMonth: "2099-12" });
     expect(res.applied).toBe(false);
     expect(res.missing).toHaveLength(1);
     // Nothing was persisted — the report rolls back its account-ensure.
@@ -65,7 +66,7 @@ describe("importFintualCertificado", () => {
       "15/03/2025,16749,mega caca APV-A,400000,0,10,0,Deposito CL,40000",
     ]);
 
-    const res = importFintualCertificado({ maxMonth: "2099-12", apply: true });
+    const res = importFintualCertificado(current, { maxMonth: "2099-12", apply: true });
     expect(res.applied).toBe(true);
     expect(res.missing).toHaveLength(2);
     expect(res.dbOnly).toHaveLength(0);
@@ -88,14 +89,14 @@ describe("importFintualCertificado", () => {
     cleanupCertData();
     writeCsv(["10/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,50000"]);
 
-    const first = importFintualCertificado({ maxMonth: "2099-12", apply: true });
+    const first = importFintualCertificado(current, { maxMonth: "2099-12", apply: true });
     expect(first.missing).toHaveLength(1);
     expect(first.matched).toBe(0);
 
     const reservaId = certAccountId("import:fintual|cert|key=reserva2")!;
     const firstId = (db.prepare("SELECT id FROM movements WHERE account_id = ?").get(reservaId) as { id: number }).id;
 
-    const second = importFintualCertificado({ maxMonth: "2099-12", apply: true });
+    const second = importFintualCertificado(current, { maxMonth: "2099-12", apply: true });
     expect(second.matched).toBe(1);
     expect(second.missing).toHaveLength(0);
 
@@ -114,7 +115,7 @@ describe("importFintualCertificado", () => {
       "20/02/2025,1164983,Reserva,0,2000000,0,40,Transferencia electronica,50000",
     ]);
     // Ensure the account exists, then curate the two flows as transfer legs.
-    importFintualCertificado({ maxMonth: "2099-12", apply: true });
+    importFintualCertificado(current, { maxMonth: "2099-12", apply: true });
     const reservaId = certAccountId("import:fintual|cert|key=reserva2")!;
     db.prepare("DELETE FROM movements WHERE account_id = ?").run(reservaId);
     const counterpartId = (
@@ -127,7 +128,7 @@ describe("importFintualCertificado", () => {
       "INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta) VALUES (NULL, ?, ?, 2000000, 'clp', '2025-02-21', 'manual rescate', 40)"
     ).run(reservaId, counterpartId);
 
-    const res = importFintualCertificado({ maxMonth: "2099-12" });
+    const res = importFintualCertificado(current, { maxMonth: "2099-12" });
     expect(res.matched).toBe(2);
     expect(res.missing).toHaveLength(0);
     expect(res.dbOnly).toHaveLength(0);
@@ -139,7 +140,7 @@ describe("importFintualCertificado", () => {
   it("never touches curated rows: an edited amount is reported, not overwritten", () => {
     cleanupCertData();
     writeCsv(["10/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,50000"]);
-    importFintualCertificado({ maxMonth: "2099-12", apply: true });
+    importFintualCertificado(current, { maxMonth: "2099-12", apply: true });
 
     const reservaId = certAccountId("import:fintual|cert|key=reserva2")!;
     const curatedId = (db.prepare("SELECT id FROM movements WHERE account_id = ?").get(reservaId) as { id: number }).id;
@@ -147,7 +148,7 @@ describe("importFintualCertificado", () => {
     db.prepare("UPDATE movements SET amount = 5100000 WHERE id = ?").run(curatedId);
 
     // Report-only: both sides of the disagreement are surfaced, nothing is written.
-    const res = importFintualCertificado({ maxMonth: "2099-12" });
+    const res = importFintualCertificado(current, { maxMonth: "2099-12" });
     expect(res.missing.some((m) => m.amountClp === 5000000)).toBe(true);
     expect(res.dbOnly.some((d) => d.amountClp === 5100000)).toBe(true);
     const edited = db.prepare("SELECT amount FROM movements WHERE id = ?").get(curatedId) as { amount: number };

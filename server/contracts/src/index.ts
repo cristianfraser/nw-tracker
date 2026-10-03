@@ -18,3 +18,4 @@ export * from "./kinds/bankAccountStatements.js";
 export * from "./kinds/storeReceipt.js";
 export * from "./kinds/employmentPayslips.js";
 export * from "./kinds/brokerDividendStatement.js";
+export * from "./kinds/fundAccountTransactions.js";

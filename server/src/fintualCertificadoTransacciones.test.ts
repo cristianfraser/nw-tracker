@@ -1,40 +1,42 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { FundTransaction } from "nw-tracker-contracts";
 import { aggregateFintualCertificado } from "./fintualCertificadoTransacciones.js";
 
 const matchReserva: (goalId: string) => string | null = (goalId) =>
   goalId === "1164983" ? "import:excel|key=fondo_reserva" : null;
 
-describe("aggregateFintualCertificado", () => {
-  let tmpDir: string;
+function deposit(over: Partial<FundTransaction> = {}): FundTransaction {
+  return {
+    date: "2025-01-09",
+    investment: { id: "1164983", name: " Reserva" },
+    medio: "Transferencia electronica",
+    clp_in: 5_000_000,
+    clp_out: 0,
+    units_in: 100,
+    units_out: 0,
+    unit_value: 1000,
+    ...over,
+  };
+}
 
-  afterEach(() => {
-    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+describe("aggregateFintualCertificado", () => {
+  it("keeps multiple same-day reserva deposits as separate rows", () => {
+    const scan = aggregateFintualCertificado([deposit(), deposit()], "2099-12", (goalId) => matchReserva(goalId));
+    expect(scan.sortedAggregates).toHaveLength(2);
+    expect(scan.sortedAggregates.every((a) => a.ymd === "2025-01-09" && a.clpNet === 5_000_000 && a.name === "Reserva")).toBe(true);
   });
 
-  it("keeps multiple same-day reserva deposits as separate rows", () => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "fintual-cert-"));
-    const csvPath = path.join(tmpDir, "cert.csv");
-    fs.writeFileSync(
-      csvPath,
+  it("leaves out unknown goals, months after the cut and rows with no net flow", () => {
+    const scan = aggregateFintualCertificado(
       [
-        "fecha,id_inversión,nombre_inversión,aporte_pesos_chilenos,rescate_pesos_chilenos,aporte_cuotas,rescate_cuotas,medio,valor_cuota",
-        "09/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,1000",
-        "09/01/2025,1164983,Reserva,5000000,0,100,0,Transferencia electronica,1000",
-      ].join("\n"),
-      "utf8"
+        deposit({ investment: { id: "999", name: "Otra" } }),
+        deposit({ date: "2100-01-02" }),
+        deposit({ clp_out: 5_000_000, units_out: 100 }),
+        deposit({ unit_value: null }),
+      ],
+      "2099-12",
+      (goalId) => matchReserva(goalId)
     );
-
-    const scan = aggregateFintualCertificado(csvPath, "2099-12", (goalId, _name) =>
-      matchReserva(goalId)
-    );
-    expect(scan).not.toBeNull();
-    const reserva = scan!.sortedAggregates.filter(
-      (a) => matchReserva(a.goalId) === "import:excel|key=fondo_reserva"
-    );
-    expect(reserva).toHaveLength(2);
-    expect(reserva.every((a) => a.ymd === "2025-01-09" && a.clpNet === 5_000_000)).toBe(true);
+    expect(scan.sortedAggregates.map((a) => a.valorCuotaHint)).toEqual([null]);
   });
 });
