@@ -90,7 +90,7 @@ describe("convertDashboardBundleUnit (CLP → USD)", () => {
     expect(usd.ts.unit).toBe("usd");
     expect(usd.ts.overview!.points[0]!.total_nw).toBeCloseTo(1_000, 6);
     expect(usd.ts.accounts_ex_property!.points[0]!["1"]).toBeCloseTo(1_000, 6);
-    // patrimonio_usd_milestones_chart is always CLP — must NOT be scaled.
+    // patrimonio_usd_milestones_chart keeps its own unit — must NOT be scaled.
     expect(usd.ts.patrimonio_usd_milestones_chart!.points[0]!["ref:250k"]).toBe(250_000);
     expect(usd.ts.patrimonio_usd_milestones_chart!.points[0]!.total_nw).toBe(1_000);
 

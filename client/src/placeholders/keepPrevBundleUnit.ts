@@ -20,7 +20,8 @@ import { synthesizeMissingUsdOnDashboardAccountRows } from "./perturbCachedAmoun
  * to the flat-zero placeholder bundle. The real bundle snaps in exact once it resolves.
  *
  * Only monetary point-series are scaled; the patrimonio USD-milestones chart is left untouched
- * (it is always CLP and toggle-independent — scaling it would corrupt the milestone levels).
+ * (it carries its own `unit` and keeps rendering in it — scaling at one rate would bend the
+ * milestone lines, which are flat in USD and per-day-fx in CLP).
  */
 
 const DATE_KEY = "as_of_date";
@@ -92,7 +93,8 @@ function scaleValuationTs(
       ? { accounts_in_group: scaleBlock(ts.accounts_in_group, factor) }
       : {}),
     // group_allocation_proportional passes through the spread untouched — shares are
-    // unit-invariant. patrimonio_usd_milestones_chart is intentionally left as-is (always CLP).
+    // unit-invariant. patrimonio_usd_milestones_chart is left as-is: it
+    // carries its own `unit` and keeps rendering in it until the new-unit bundle lands.
   };
 }
 

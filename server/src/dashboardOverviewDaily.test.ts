@@ -9,7 +9,7 @@ import { getDashboardValuationTimeseries } from "./valuationTimeseries.js";
  * (phase 2a) — agree with the monthly chart at shared month-ends.
  */
 describe("getDashboardOverviewDaily — phase 3 blocks", () => {
-  it("carries patrimonio (CLP + milestones) and primary_lines, aligned to points", () => {
+  it("carries patrimonio (request unit + milestones) and primary_lines, aligned to points", () => {
     const d = getDashboardOverviewDaily("clp", 90);
     expect(d.points.length).toBeGreaterThan(0);
 
@@ -68,6 +68,26 @@ describe("getDashboardOverviewDaily — phase 3 blocks", () => {
           expect(Math.abs(nd - nm)).toBeLessThan(2);
         }
       }
+    }
+  });
+
+  it("patrimonio follows the request unit: USD values, flat USD milestones", () => {
+    const d = getDashboardOverviewDaily("usd", 90);
+    const m = getDashboardValuationTimeseries("usd");
+    expect(m.patrimonio_usd_milestones_chart.unit).toBe("usd");
+    for (const p of [...d.patrimonio, ...m.patrimonio_usd_milestones_chart.points]) {
+      expect(p.usd_50k).toBe(50_000);
+      expect(p.usd_500k).toBe(500_000);
+    }
+    // Value lines are the overview's own USD points.
+    d.patrimonio.forEach((p, i) => {
+      expect(p.total_nw).toBe(d.points[i]!.net_worth);
+      expect(p.invested).toBe(d.points[i]!.invested);
+    });
+    const overviewByDate = new Map(m.overview.points.map((p) => [String(p.as_of_date), p]));
+    for (const p of m.patrimonio_usd_milestones_chart.points) {
+      const o = overviewByDate.get(String(p.as_of_date));
+      if (o) expect(p.total_nw).toBe(o.total_nw ?? null);
     }
   });
 });
