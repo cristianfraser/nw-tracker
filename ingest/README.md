@@ -71,10 +71,9 @@ nightly maintenance window. It **must** be a LaunchAgent in the logged-in GUI se
 LaunchDaemon has no window server, and headless Chrome is blocked). Log: `cfraser/daily-run.log`.
 Rehearse without touching the banks: `ingest/daily-run.sh --dry-run`.
 
-The Lider BCI «últimos movimientos» CSV importer (`npm run import:lider-movements`, also run by the
-inbox step) still accepts a hand-dropped `lider-bci-movimientos-*.csv` in `cfraser/inbox/`; the scrape
-that used to drop it retired on 2026-08-07 — the Boleta Digital and statement e-mails replaced it, and
-the Lider web fetcher was removed from this package on 2026-09-05.
+The Lider BCI «últimos movimientos» CSV is gone: the scrape that dropped it retired on 2026-08-07 (the
+Boleta Digital and statement e-mails replaced it), the Lider web fetcher was removed from this package
+on 2026-09-05, and the CSV importer on 2026-10-03.
 
 Every run writes an app message: a plain `log` when all steps passed, a **`notification`** (badged
 unread in the app) plus a macOS alert when any step failed. The message body names each step, its
