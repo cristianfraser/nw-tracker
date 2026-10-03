@@ -7,50 +7,38 @@ import {
   ccWebPasteToCsvRecords,
   creditCardMasterMetaForAccount,
   isCcCuotaBillingReferenceMerchant,
-  parseCcWebPasteText,
+  webPasteLinesFromPastedListing,
 } from "./ccWebPasteParse.js";
 
-const SAMPLE = `20/05/2026 		ARAMCO 	-$1.990 		
-19/05/2026 		JUMBO COSTANERA CENTER 	-$32.399 		
-		MP*MICOCACOLA 	-$46.360 		
-07/05/2026 		PAGO 		+$5.570.527`;
+/** Lines as the ingest service reads a paste (signed as the issuer's table prints them). */
+function pasted(rows: [date: string, merchant: string, amount: number, currency?: "clp" | "usd"][]) {
+  return webPasteLinesFromPastedListing({
+    lines: rows.map(([date, merchant, amount, currency]) => ({
+      date,
+      merchant,
+      amount,
+      currency: currency ?? "clp",
+      raw_line: `${date}\t${merchant}\t${amount}`,
+    })),
+    errors: [],
+  }).lines;
+}
 
-const BCI_SAMPLE = `11/06/2026\tTOKU *METLIFE HIPOTE\t\t$1.795.575
-11/06/2026\tENTEL HOGAR\t\t$21.249`;
+/** A Santander paste: charges negative, the payment positive. */
+const SANTANDER_LINES = pasted([
+  ["2026-05-20", "ARAMCO", -1990],
+  ["2026-05-19", "JUMBO COSTANERA CENTER", -32399],
+  ["2026-05-19", "MP*MICOCACOLA", -46360],
+  ["2026-05-07", "PAGO", 5570527],
+]);
 
-describe("parseCcWebPasteText", () => {
-  it("parses dated rows and merchants without date on continuation lines", () => {
-    const { lines, errors } = parseCcWebPasteText(SAMPLE);
-    expect(errors).toEqual([]);
-    expect(lines.length).toBe(4);
-    expect(lines[0]).toMatchObject({
-      transaction_date: "2026-05-20",
-      merchant: "ARAMCO",
-      amount_clp: -1990,
-    });
-    expect(lines[1]).toMatchObject({
-      transaction_date: "2026-05-19",
-      merchant: "JUMBO COSTANERA CENTER",
-      amount_clp: -32399,
-    });
-    expect(lines[2]).toMatchObject({
-      transaction_date: "2026-05-19",
-      merchant: "MP*MICOCACOLA",
-      amount_clp: -46360,
-    });
-    expect(lines[3]).toMatchObject({
-      transaction_date: "2026-05-07",
-      merchant: "PAGO",
-      amount_clp: 5570527,
-    });
-  });
-
+describe("ccWebPasteToCsvRecords", () => {
   it("assigns pasted lines to open billing month after last PDF", () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242'`)
       .get() as { id: number } | undefined;
     if (!master) return;
-    const { lines } = parseCcWebPasteText("19/05/2026\tSHOP\t-$10.000");
+    const lines = pasted([["2026-05-19", "SHOP", -10000]]);
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     expect(openBm).toBeTruthy();
     const { records } = ccWebPasteToCsvRecords(master.id, "santander", "4242", "test", lines);
@@ -59,14 +47,14 @@ describe("parseCcWebPasteText", () => {
   });
 
   it("dedupe keys match one-shot PDF formula for charges", () => {
-    const { lines } = parseCcWebPasteText("19/05/2026\tSHOP\t-$10.000");
+    const lines = pasted([["2026-05-19", "SHOP", -10000]]);
     const line = lines[0]!;
     const key = ccOneShotDedupeKey("santander", line.merchant, Math.abs(line.amount_clp), line.transaction_date);
     expect(key).toHaveLength(16);
   });
 
   it("stores charges positive and payments negative in CSV records", () => {
-    const { lines } = parseCcWebPasteText(SAMPLE);
+    const lines = SANTANDER_LINES;
     const { records } = ccWebPasteToCsvRecords(0, "santander", "4242", "test", lines);
     const charge = records.find((r) => r.merchant === "ARAMCO");
     const pago = records.find((r) => r.merchant === "PAGO");
@@ -74,34 +62,8 @@ describe("parseCcWebPasteText", () => {
     expect(pago?.amount_clp).toBe("-5570527");
   });
 
-  it("parses BCI-style positive charge amounts", () => {
-    const { lines, errors } = parseCcWebPasteText(BCI_SAMPLE);
-    expect(errors).toEqual([]);
-    expect(lines).toHaveLength(2);
-    expect(lines[0]).toMatchObject({
-      transaction_date: "2026-06-11",
-      merchant: "TOKU *METLIFE HIPOTE",
-      amount_clp: 1795575,
-    });
-    expect(lines[1]).toMatchObject({
-      transaction_date: "2026-06-11",
-      merchant: "ENTEL HOGAR",
-      amount_clp: 21249,
-    });
-  });
-
-  it("parses USD charges into amount_usd with Chilean decimals and preserved sign", () => {
-    const { lines, errors } = parseCcWebPasteText(
-      "30/06/2026\tANTHROPIC* CLAU\t-USD99,28\n25/06/2026\tAPPLE.COM/BILL\t-US$1.234,50"
-    );
-    expect(errors).toEqual([]);
-    expect(lines).toHaveLength(2);
-    expect(lines[0]).toMatchObject({ merchant: "ANTHROPIC* CLAU", currency: "usd", amount_usd: -99.28, amount_clp: 0 });
-    expect(lines[1]).toMatchObject({ merchant: "APPLE.COM/BILL", currency: "usd", amount_usd: -1234.5, amount_clp: 0 });
-  });
-
   it("emits USD charges as amount_usd (charge positive) with amount_clp empty and no origin", () => {
-    const { lines } = parseCcWebPasteText("30/06/2026\tANTHROPIC* CLAU\t-USD99,28");
+    const lines = pasted([["2026-06-30", "ANTHROPIC* CLAU", -99.28, "usd"]]);
     const { records } = ccWebPasteToCsvRecords(0, "santander", "4242", "test", lines);
     const r = records.find((x) => x.merchant === "ANTHROPIC* CLAU");
     expect(r?.amount_clp).toBe(""); // no bogus CLP value
@@ -128,7 +90,7 @@ describe("parseCcWebPasteText", () => {
       .get() as { id: number } | undefined;
     if (!master) return;
     const meta = creditCardMasterMetaForAccount(master.id);
-    const { lines } = parseCcWebPasteText("11/06/2026\tENTEL HOGAR\t$21.249");
+    const lines = pasted([["2026-06-11", "ENTEL HOGAR", 21249]]);
     const openBm = billingMonthForManualLedgerPurchase(master.id);
     expect(openBm).toBeTruthy();
     const { records } = ccWebPasteToCsvRecords(
@@ -233,13 +195,11 @@ describe("isCcCuotaBillingReferenceMerchant", () => {
 
 describe("cuota-billing rows in ccWebPasteToCsvRecords", () => {
   it("routes CUOT reference rows to skipped_cuota_billing, keeps real purchases", () => {
-    const { lines } = parseCcWebPasteText(
-      [
-        "25/08/2026\tCUOT: 000000009OPER: 000032\t-$139.583",
-        "25/08/2026\tCUOT: 000000001OPER: 000053\t-$400.000",
-        "25/08/2026\tJUMBO COSTANERA CENTER\t-$32.399",
-      ].join("\n")
-    );
+    const lines = pasted([
+      ["2026-08-25", "CUOT: 000000009OPER: 000032", -139583],
+      ["2026-08-25", "CUOT: 000000001OPER: 000053", -400000],
+      ["2026-08-25", "JUMBO COSTANERA CENTER", -32399],
+    ]);
     expect(lines).toHaveLength(3);
     const { records, skipped_cuota_billing } = ccWebPasteToCsvRecords(
       0,

@@ -238,7 +238,8 @@ In rough order (simplest separation first):
    `broker.dividend_statement`; certificado **done** — `fund_account.transactions`; AFC **done** —
    `unemployment_fund.documents`.
 11. Lider BCI CSV (if still used), web paste (`ccWebPasteParse`, via `/parse`). Lider CSV **retired**
-   (no file since 2026-08-07; the importer is gone, its card-line helpers stay for the receipts).
+   (no file since 2026-08-07; the importer is gone, its card-line helpers stay for the receipts). Web paste
+   **done** — `POST /parse/card.web_paste` → `card.pasted_listing` (a parse-only result).
 
 ### Phase 4 — cleanup
 

@@ -20,3 +20,4 @@ export * from "./kinds/employmentPayslips.js";
 export * from "./kinds/brokerDividendStatement.js";
 export * from "./kinds/fundAccountTransactions.js";
 export * from "./kinds/unemploymentFundDocuments.js";
+export * from "./pastedListing.js";

@@ -1,15 +1,55 @@
-import { afterEach, describe, expect, it } from "vitest";
+import type { AddressInfo } from "node:net";
+import type { Server } from "node:http";
+import express from "express";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { CARD_PASTED_LISTING, type CardPastedListing } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { importCcWebPaste } from "./accountImports.js";
 
 const BCI_PASTE = `11/06/2026\tVITEST BCI WEB PASTE\t$9.999
 11/06/2026\tVITEST BCI WEB PASTE\t$9.999`;
 
+/** What the ingest service reads from BCI_PASTE (its own tests cover the reading). */
+const BCI_LISTING: CardPastedListing = {
+  lines: [1, 2].map(() => ({
+    date: "2026-06-11",
+    merchant: "VITEST BCI WEB PASTE",
+    amount: 9999,
+    currency: "clp" as const,
+    raw_line: "11/06/2026\tVITEST BCI WEB PASTE\t$9.999",
+  })),
+  errors: [],
+};
+
 describe("importCcWebPaste", () => {
   let insertedLineId: number | null = null;
   let insertedStmtId: number | null = null;
+  let stub: Server | null = null;
+  let parsedTexts: string[] = [];
+  const previousUrl = process.env.INGEST_URL;
+
+  // A stand-in ingest service: answers the paste format with BCI_LISTING.
+  beforeAll(async () => {
+    const app = express();
+    app.use(express.json({ limit: "1mb" }));
+    app.post("/parse/card.web_paste", (req, res) => {
+      parsedTexts.push(Buffer.from(String(req.body.content_base64), "base64").toString("utf8"));
+      res.json({ ...CARD_PASTED_LISTING, payload: BCI_LISTING });
+    });
+    stub = await new Promise<Server>((resolve) => {
+      const s: Server = app.listen(0, "127.0.0.1", () => resolve(s));
+    });
+    process.env.INGEST_URL = `http://127.0.0.1:${(stub.address() as AddressInfo).port}`;
+  });
+  afterAll(async () => {
+    if (previousUrl === undefined) delete process.env.INGEST_URL;
+    else process.env.INGEST_URL = previousUrl;
+    const s = stub;
+    if (s) await new Promise<void>((r) => s.close(() => r()));
+  });
 
   afterEach(() => {
+    parsedTexts = [];
     if (insertedLineId != null) {
       db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(insertedLineId);
       insertedLineId = null;
@@ -25,7 +65,7 @@ describe("importCcWebPaste", () => {
     }
   });
 
-  it("rejects non credit-card master accounts", () => {
+  it("rejects non credit-card master accounts", async () => {
     const checking = db
       .prepare(
         `SELECT a.id FROM accounts a
@@ -34,18 +74,19 @@ describe("importCcWebPaste", () => {
       )
       .get() as { id: number } | undefined;
     if (!checking) return;
-    expect(() => importCcWebPaste(checking.id, "01/01/2026\tSHOP\t-$100")).toThrow(
-      /not a credit card/i
-    );
+    await expect(importCcWebPaste(checking.id, "01/01/2026\tSHOP\t-$100")).rejects.toThrow(/not a credit card/i);
+    // Refused before the paste ever reaches the service.
+    expect(parsedTexts).toEqual([]);
   });
 
-  it("imports web paste for BCI master account", () => {
+  it("imports web paste for BCI master account", async () => {
     const master = db
       .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|bci|4343'`)
       .get() as { id: number } | undefined;
     if (!master) return;
 
-    const result = importCcWebPaste(master.id, BCI_PASTE);
+    const result = await importCcWebPaste(master.id, BCI_PASTE);
+    expect(parsedTexts).toEqual([BCI_PASTE]);
     expect(result.inserted).toBeGreaterThanOrEqual(1);
     // Per-line outcome arrays (parity with checking imports): the inserted line plus the
     // in-paste repeat of the same line, each with date/description/amount detail.

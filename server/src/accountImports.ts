@@ -4,8 +4,8 @@ import { importCcStatementPdfsForAccount, type CcPdfUploadFile } from "./ccState
 import {
   ccWebPasteToCsvRecords,
   newWebPasteBatchId,
-  parseCcWebPasteText,
   creditCardMasterMetaForAccount,
+  webPasteLinesFromPastedListing,
   type CcWebPasteParseResult,
   type CcWebPasteRecordsOpts,
 } from "./ccWebPasteParse.js";
@@ -20,7 +20,7 @@ import {
   importCheckingCartola,
   isCheckingCartolaMonthImported,
 } from "./checkingCartolaImport.js";
-import { bankAccountStatementsKind } from "nw-tracker-contracts";
+import { bankAccountStatementsKind, CARD_PASTED_LISTING, cardPastedListingSchema } from "nw-tracker-contracts";
 import { parsedCartolaFromStatement } from "./bankAccountStatementsApply.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
 import { requestFeederParse } from "./ingestFeeder.js";
@@ -146,9 +146,20 @@ export function importCcWebPasteLines(
   };
 }
 
-/** Manual paste from the account page: parse the pasted text, then import it. */
-export function importCcWebPaste(accountId: number, text: string) {
-  return importCcWebPasteLines(accountId, parseCcWebPasteText(text));
+/**
+ * Manual paste from the account page: the ingest service reads the pasted text
+ * (`POST /parse/card.web_paste` → `card.pasted_listing`), then the lines import into this card.
+ * The account is checked first, so a paste on the wrong account never reaches the service.
+ */
+export async function importCcWebPaste(accountId: number, text: string) {
+  creditCardMasterMetaForAccount(accountId);
+  const answer = await requestFeederParse("card.web_paste", Buffer.from(text, "utf8"), "paste.txt");
+  if (answer.status === "unavailable") throw new Error(`The paste could not be read: ${answer.message}`);
+  if (answer.status !== "parsed") throw new Error(answer.message);
+  if (answer.result.kind !== CARD_PASTED_LISTING.kind || answer.result.schema_version !== CARD_PASTED_LISTING.schema_version) {
+    throw new Error(`ingest answered ${answer.result.kind} v${answer.result.schema_version}, not ${CARD_PASTED_LISTING.kind}`);
+  }
+  return importCcWebPasteLines(accountId, webPasteLinesFromPastedListing(cardPastedListingSchema.parse(answer.result.payload)));
 }
 
 function assertCuentaVistaAccount(accountId: number): void {

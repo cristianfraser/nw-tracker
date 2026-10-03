@@ -5,6 +5,7 @@ import {
   type FeederParseResult,
 } from "nw-tracker-contracts";
 import { parseCardStatementPdf } from "../cards/statementPdfParse.js";
+import { parseCardWebPaste } from "../cards/webPaste.js";
 import { statementFromParsedCartola } from "../santander/cartolas.js";
 import { parseCheckingCartolaBuffer } from "../santander/checkingCartolaXlsx.js";
 import { isUltimosMovimientosWorkbook, parseUltimosMovimientosRows, workbookRows } from "../santander/checkingMovements.js";
@@ -19,6 +20,8 @@ export const PARSE_FORMATS: Readonly<
   Record<FeederParseFormat, (content: Buffer, filename: string) => FeederParseResult | Promise<FeederParseResult>>
 > = {
   "card_statement.pdf": parseCardStatementPdf,
+  // Text pasted from a card issuer's web table (a parse-only result: the server knows the card).
+  "card.web_paste": parseCardWebPaste,
   // One monthly cuenta corriente cartola, as the account's own import would read it.
   "santander.checking_cartola_xlsx": (content, filename) => {
     const payload = bankAccountStatementsKind.payload.parse({

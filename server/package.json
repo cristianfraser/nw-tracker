@@ -12,7 +12,6 @@
     "backfill:generic-transfer-unique": "tsx -e \"import { backfillGenericTransferUniquePurchases } from './src/ccExpenseGenericTransferBackfill.ts'; console.log(backfillGenericTransferUniquePurchases())\"",
     "backfill:checking-auto-match-categories": "tsx -e \"import { backfillCheckingAutoMatchCategories } from './src/backfillCheckingAutoMatchCategories.ts'; console.log(backfillCheckingAutoMatchCategories())\"",
     "backfill:additional-card-no-cuenta": "tsx -e \"import { backfillAdditionalCardNoCuenta } from './src/backfillAdditionalCardNoCuenta.ts'; console.log(backfillAdditionalCardNoCuenta())\"",
-    "backfill:web-paste-usd": "tsx -e \"import { backfillWebPasteUsdLines } from './src/ccWebPasteUsdBackfill.ts'; console.log(backfillWebPasteUsdLines())\"",
     "import:cfraser-inbox": "tsx scripts/import-cfraser-inbox.ts",
     "repair:cc-metadata": "tsx scripts/repair-cc-statement-metadata.ts",
     "repair:cc-web-paste-pdf-reconcile": "tsx scripts/repair-cc-web-paste-pdf-reconcile.ts",
