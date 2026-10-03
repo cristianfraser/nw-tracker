@@ -49,7 +49,9 @@
     "import:payroll-liquidaciones": "tsx src/payroll/importPayslipsMain.ts",
     "import:fintual-acciones": "tsx src/fintual/importAccionesMain.ts",
     "import:fintual-cert": "tsx src/fintual/importCertMain.ts",
-    "import:afc-cert": "tsx src/afc/importDocumentsMain.ts"
+    "import:afc-cert": "tsx src/afc/importDocumentsMain.ts",
+    "server-task": "tsx src/serverTaskMain.ts",
+    "import:cfraser-inbox": "tsx src/inbox/pipelineMain.ts"
   },
   "dependencies": {
     "imapflow": "1.6.5",

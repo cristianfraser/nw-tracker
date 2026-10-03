@@ -1,9 +1,10 @@
+/**
+ * The inbox organizer's manifest (`organize:inbox --manifest=…`): which PDFs it filed this run, so
+ * the pipeline imports just those.
+ */
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, "..", "..");
+import { resolveCfraserDir } from "../paths.js";
 
 export type CfraserOrganizeManifest = {
   cuenta_vista_pdfs: string[];
@@ -12,7 +13,7 @@ export type CfraserOrganizeManifest = {
 };
 
 export function resolveCfraserOrganizeManifestPath(): string {
-  return path.join(REPO_ROOT, "cfraser", "inbox-organize-manifest.json");
+  return path.join(resolveCfraserDir(), "inbox-organize-manifest.json");
 }
 
 export function emptyCfraserOrganizeManifest(): CfraserOrganizeManifest {

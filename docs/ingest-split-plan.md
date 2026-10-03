@@ -224,7 +224,7 @@ In rough order (simplest separation first):
    Step 1 **done** — `card.parsed_statements` (the parser's rows, columnar) sent by ingest, applied
    by the server's merge import. Step 2 **done** — the parser, organizer and qpdf/OCR live in
    `ingest/python/`; the statement upload parses through the service (`/parse/card_statement.pdf`).
-   The orchestration (`import:cfraser-inbox`) is still a server script calling ingest commands.
+   The orchestration (`import:cfraser-inbox`) moved to ingest in Phase 4.
 7. Checking and cuenta vista cartolas (Python + TS). **Done** — `bank_account.statements`; the xlsx
    parser, the two PDF parsers, the inbox xlsx organizer and the commands live in ingest, the
    period import, cuenta vista month split and anchor re-derivation stay in the server; the
@@ -241,13 +241,22 @@ In rough order (simplest separation first):
    (no file since 2026-08-07; the importer is gone, its card-line helpers stay for the receipts). Web paste
    **done** — `POST /parse/card.web_paste` → `card.pasted_listing` (a parse-only result).
 
-### Phase 4 — cleanup
+### Phase 4 — cleanup **(done 2026-10-03)**
 
-- `import:cfraser-inbox` becomes an ingest command that parses and posts.
-- Delete the `server/scripts` entry points that became endpoints; Python parsers and
-  `.pdf_deps` live under `ingest/`.
-- Parser tests move with the parsers (no DB needed); apply tests stay in the server.
-- AGENTS.md / PARSERS.md updated per source as each moves, not at the end.
+- `import:cfraser-inbox` is an ingest command (`ingest/src/inbox/pipelineMain.ts`): every step is an
+  ingest command or a server task — it never opens the database. Its `--sync` flag went: the
+  server's scheduler syncs market data.
+- The run steps that work on the server's data are **server tasks** (`POST /api/ingest/tasks/<task>`,
+  `contracts/tasks.ts`): `cc_payment_mirrors`, `synthetic_cc_payments_check`,
+  `cc_bank_cupo_check`, called through `npm run server-task -w nw-tracker-ingest`. The root scripts
+  `convert:cc-payment-mirrors`, `check:synthetic-cc-payments`, `check:cc-bank-cupo` point there, so
+  both runners and the shell fallback kept their commands; the server scripts that ran them as
+  second database writers are gone.
+- Python parsers and `.pdf_deps` live under `ingest/python/`; `server/scripts/` holds no Python.
+- Parser tests moved with the parsers; apply tests stay in the server.
+- What still runs as a server process outside the server: the market-data syncs and repair /
+  backfill tools (below), `import:cc-parsed` for its manual reload modes, and the shell fallback's
+  `record:*` / `check:*` commands (only in `switch-schedule.sh to-launchd` mode).
 
 ## Stays in the server
 
@@ -267,12 +276,11 @@ In rough order (simplest separation first):
 4. `scraper/` is renamed `ingest/`.
 5. The primary server runs as a LaunchAgent; `nw-server-restart` restarts it.
 
-## Open questions
+## Open questions (settled 2026-10-03)
 
-- Payload transport for large documents (a CC statement's lines, a receipt photo for
-  `/parse`): JSON body limits (`express.json` is 2 MB today) vs a staged-file reference
-  the server may read. Leaning: JSON for payloads, multipart for raw `/parse` inputs.
-- Where a failed apply leaves the document: ingest keeps it staged and retries next run
-  (today's behavior), or a server-side quarantine list.
-- Whether the web-paste box needs a preview step (parse → show → apply) now that parsing
-  is a round trip to ingest.
+- Payload transport: JSON for payloads (ingest routes accept 32 MB; the whole parsed card corpus
+  is ~4 MB), base64 JSON for raw `/parse` inputs (the statement PDFs, the cartola xlsx, the paste).
+- A failed apply: ingest keeps the document staged and sends it again next run (receipts,
+  certificates, crawls, grocery receipts all do); no server-side quarantine.
+- The paste box has no preview step: the paste is read by the service and imported in one call,
+  and its batch log lists every skip.
