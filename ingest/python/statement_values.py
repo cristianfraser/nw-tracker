@@ -1,8 +1,4 @@
-"""Copy of `server/scripts/statement_values.py` for the parsers that moved to ingest
-(docs/ingest-split-plan.md); both copies are pinned by the same case tables until the server's
-last parser (payroll) goes.
-
-Dates and peso amounts as bank and payroll documents print them — one parser for every script.
+"""Dates and peso amounts as bank and payroll documents print them — one parser for every script.
 
 - `parse_dd_mm_yy_to_iso` mirrors `parseDdMmYyToIso` in `server/src/ccInstallmentPayBy.ts`;
   `server/src/test/ddMmYyToIsoCases.json` is asserted by both test suites.

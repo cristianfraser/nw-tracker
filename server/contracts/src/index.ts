@@ -16,3 +16,4 @@ export * from "./kinds/cardParsedStatements.js";
 export * from "./ccStatementLineRules.js";
 export * from "./kinds/bankAccountStatements.js";
 export * from "./kinds/storeReceipt.js";
+export * from "./kinds/employmentPayslips.js";

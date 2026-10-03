@@ -26,7 +26,6 @@ server/data/fintual-goal-map.json
 .venv-numbers/
 
 # Local PDF parsing deps and the compiled receipt OCR helper (no trailing slash: a worktree links them)
-server/scripts/.pdf_deps
 ingest/python/.pdf_deps
 ingest/python/.ocr_bin
 

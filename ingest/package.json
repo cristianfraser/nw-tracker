@@ -44,7 +44,9 @@
     "import:racional-emails": "tsx src/brokers/importBrokerEmailsMain.ts --broker=racional",
     "import:racional-movements": "tsx src/racional/importReadsMain.ts",
     "import:grocery-receipts": "tsx src/grocery/importReceiptsMain.ts",
-    "parse:grocery-receipts": "python3 python/parse-grocery-receipts.py"
+    "parse:grocery-receipts": "python3 python/parse-grocery-receipts.py",
+    "parse:payroll-liquidaciones": "PYTHONPATH=python/.pdf_deps python3 python/parse-payroll-liquidaciones.py",
+    "import:payroll-liquidaciones": "tsx src/payroll/importPayslipsMain.ts"
   },
   "dependencies": {
     "imapflow": "1.6.5",

@@ -2,7 +2,7 @@
 
 The ``test_*`` functions read personal OCR scans and skip without them; ``HeaderColumnTest``
 is synthetic and runs anywhere:
-  python3 server/scripts/parse-payroll-liquidaciones_test.py
+  python3 ingest/python/parse-payroll-liquidaciones_test.py
 """
 
 from __future__ import annotations
