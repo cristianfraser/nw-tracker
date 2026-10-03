@@ -13,9 +13,15 @@ export const FEEDER_PARSE_PATH = "/parse";
  * The upload formats the feeder reads. `santander.checking_xlsx`: the «últimos movimientos»
  * workbook; `card_statement.pdf`: a credit-card statement PDF (any issuer the parser reads), read
  * as `card.parsed_statements`; `santander.checking_cartola_xlsx`: a monthly cuenta corriente cartola,
- * read as `bank_account.statements`.
+ * read as `bank_account.statements`; `card.web_paste`: text pasted from a card issuer's web table
+ * (UTF-8), read as a `card.pasted_listing` (`pastedListing.ts`, a parse-only result).
  */
-export const FEEDER_PARSE_FORMATS = ["santander.checking_xlsx", "card_statement.pdf", "santander.checking_cartola_xlsx"] as const;
+export const FEEDER_PARSE_FORMATS = [
+  "santander.checking_xlsx",
+  "card_statement.pdf",
+  "santander.checking_cartola_xlsx",
+  "card.web_paste",
+] as const;
 export type FeederParseFormat = (typeof FEEDER_PARSE_FORMATS)[number];
 
 export const feederParseRequestSchema = z

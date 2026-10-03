@@ -1,11 +1,11 @@
 import crypto from "node:crypto";
+import type { CardPastedListing } from "nw-tracker-contracts";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import {
   statementCloseDdMmYyyyForBillingMonth,
   targetBillingMonthForManualImports,
 } from "./ccManualBillingMonth.js";
 import { ccOneShotDedupeKey, normCcMerchant } from "./ccDedupeKey.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { webPasteAmountClpForDb, webPasteAmountUsdForDb } from "./ccPaymentLines.js";
 import { db } from "./db.js";
 import {
@@ -45,107 +45,24 @@ export type CcWebPasteParseResult = {
   errors: string[];
 };
 
-/** USD indicators the bank web-UI uses in the amount column (`USD`, `US$`, `U$`, `U$S`). */
-const USD_TOKEN_RE = /US\$|USD|U\$S?/i;
-const AMOUNT_RE = /([+-]?)\$?([\d.,]+)/;
-
-export type WebPasteAmount = { amount: number; currency: "clp" | "usd" };
-
 /**
- * Parse a pasted amount token → signed magnitude + currency.
- * A `USD` / `US$` token marks a dollar charge parsed with Chilean decimals (`99,28` → `99.28`);
- * otherwise the value is CLP with `.` as thousands separator (`1.990` → `1990`).
+ * A paste the ingest service read (`card.pasted_listing`, `POST /parse/card.web_paste`) → the
+ * import's line shape: merchants normalized the way every card source's are (`normCcMerchant`),
+ * amounts still signed as the issuer's table prints them (`webPasteAmountClpForDb` /
+ * `webPasteAmountUsdForDb` apply the issuer's rule when the lines are stored).
  */
-export function parseWebPasteAmountToken(raw: string): WebPasteAmount | null {
-  const t = String(raw ?? "").trim();
-  if (!t) return null;
-  const isUsd = USD_TOKEN_RE.test(t);
-  const cleaned = t.replace(/\s+/g, "").replace(USD_TOKEN_RE, "");
-  const m = AMOUNT_RE.exec(cleaned);
-  if (!m) return null;
-  const sign = m[1] === "-" ? -1 : 1;
-  if (isUsd) {
-    const num = Number(m[2]!.replace(/\./g, "").replace(",", "."));
-    if (!Number.isFinite(num) || num === 0) return null;
-    return { amount: sign * num, currency: "usd" };
-  }
-  const n = Number(m[2]!.replace(/[.,]/g, ""));
-  if (!Number.isFinite(n) || n === 0) return null;
-  return { amount: sign * Math.round(n), currency: "clp" };
-}
-
-function parseDateToken(raw: string): string | null {
-  const t = raw.trim();
-  if (!t) return null;
-  return parseDdMmYyToIso(t);
-}
-
-/**
- * Parse Santander “últimos movimientos” paste from the bank website.
- * Date may appear once per day; following lines inherit that date.
- */
-export function parseCcWebPasteText(text: string): CcWebPasteParseResult {
-  const lines: CcWebPasteLine[] = [];
-  const errors: string[] = [];
-  let currentDate: string | null = null;
-
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-
-    const parts = line.split(/\t+/).map((p) => p.trim()).filter(Boolean);
-    if (parts.length === 0) continue;
-
-    let idx = 0;
-    const maybeDate = parseDateToken(parts[0]!);
-    if (maybeDate) {
-      currentDate = maybeDate;
-      idx = 1;
-    }
-
-    if (!currentDate) {
-      errors.push(`Sin fecha para línea: ${line.slice(0, 80)}`);
-      continue;
-    }
-
-    let merchant = "";
-    let amountRaw = "";
-    if (parts.length - idx >= 2) {
-      merchant = parts[idx]!;
-      amountRaw = parts[idx + 1]!;
-    } else if (parts.length - idx === 1) {
-      const only = parts[idx]!;
-      const amtAtEnd = /\s+([+-]?\s*(?:US\$|USD|U\$S?)?\s*\$?[\d.,]+)\s*$/i.exec(only);
-      if (amtAtEnd) {
-        merchant = only.slice(0, amtAtEnd.index).trim();
-        amountRaw = amtAtEnd[1]!;
-      } else {
-        merchant = only;
-      }
-    }
-
-    if (!merchant) {
-      errors.push(`Sin comercio: ${line.slice(0, 80)}`);
-      continue;
-    }
-
-    const parsedAmount = parseWebPasteAmountToken(amountRaw);
-    if (parsedAmount == null) {
-      errors.push(`Monto inválido (${amountRaw || "vacío"}): ${merchant}`);
-      continue;
-    }
-
-    lines.push({
-      transaction_date: currentDate,
-      merchant: normCcMerchant(merchant),
-      amount_clp: parsedAmount.currency === "clp" ? parsedAmount.amount : 0,
-      amount_usd: parsedAmount.currency === "usd" ? parsedAmount.amount : null,
-      currency: parsedAmount.currency,
-      raw_line: line,
-    });
-  }
-
-  return { lines, errors };
+export function webPasteLinesFromPastedListing(listing: CardPastedListing): CcWebPasteParseResult {
+  return {
+    lines: listing.lines.map((l) => ({
+      transaction_date: l.date,
+      merchant: normCcMerchant(l.merchant),
+      amount_clp: l.currency === "clp" ? l.amount : 0,
+      amount_usd: l.currency === "usd" ? l.amount : null,
+      currency: l.currency,
+      raw_line: l.raw_line,
+    })),
+    errors: listing.errors,
+  };
 }
 
 /**

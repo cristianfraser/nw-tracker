@@ -125,19 +125,22 @@ app.get("/api/accounts/:id/import-specs", (req, res) => {
   });
 });
 
-app.post("/api/accounts/:id/imports/cc-web-paste", (req, res) => {
-  const id = accountIdFromReq(req);
-  const text = typeof req.body?.text === "string" ? req.body.text : "";
-  if (!text.trim()) {
-    res.status(400).json({ error: "text is required" });
-    return;
-  }
-  try {
-    res.json(importCcWebPaste(id, text));
-  } catch (e) {
-    res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
-  }
-});
+app.post(
+  "/api/accounts/:id/imports/cc-web-paste",
+  asyncHandler(async (req, res) => {
+    const id = accountIdFromReq(req);
+    const text = typeof req.body?.text === "string" ? req.body.text : "";
+    if (!text.trim()) {
+      res.status(400).json({ error: "text is required" });
+      return;
+    }
+    try {
+      res.json(await importCcWebPaste(id, text));
+    } catch (e) {
+      res.status(400).json({ error: e instanceof Error ? e.message : "import failed" });
+    }
+  })
+);
 
 app.post("/api/accounts/:id/imports/cuenta-vista-web-paste", (req, res) => {
   const id = accountIdFromReq(req);
