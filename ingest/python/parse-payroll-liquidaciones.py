@@ -7,7 +7,7 @@ System tools: poppler (`pdftotext`), tesseract + pymupdf for image scans (see `c
 
 From repo root:
   npm run parse:payroll-liquidaciones
-  npm run import:payroll-liquidaciones -w nw-tracker-server
+  npm run import:payroll-liquidaciones   (ingest: sends the parse to the server as employment.payslips)
 
 Cache: cfraser/payroll-parsing-output/per-pdf/<sha256>.json
 Flags: --no-cache, --force-reparse, --skip=rel/path.pdf (repeatable)

@@ -15,8 +15,8 @@ const cases = JSON.parse(fs.readFileSync(casesPath, "utf-8")) as DecimalCase[];
 
 /**
  * The card parser reads the printed origin amount through `parse_chilean_decimal`
- * (`server/scripts/statement_values.py`) and the import reads the same CSV text with this function;
- * `server/scripts/statement_values_test.py` asserts the same table. (The Python reader is stricter
+ * (`ingest/python/statement_values.py`) and the import reads the same CSV text with this function;
+ * `ingest/python/statement_values_test.py` asserts the same table. (The Python reader is stricter
  * about grouping — «12.34» is no amount there — so the table holds only text both read alike.)
  */
 describe("parseChileanNumber (shared case table)", () => {

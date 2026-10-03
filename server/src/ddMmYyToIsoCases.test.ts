@@ -14,8 +14,8 @@ const casesPath = path.join(
 const cases = JSON.parse(fs.readFileSync(casesPath, "utf-8")) as DateCase[];
 
 /**
- * The Python parsers read dates through `parse_dd_mm_yy_to_iso` (`server/scripts/statement_values.py`),
- * which mirrors this function; `server/scripts/statement_values_test.py` asserts the same table.
+ * The Python parsers read dates through `parse_dd_mm_yy_to_iso` (`ingest/python/statement_values.py`),
+ * which mirrors this function; `ingest/python/statement_values_test.py` asserts the same table.
  */
 describe("parseDdMmYyToIso (shared case table)", () => {
   it.each(cases)("«$raw» → $expect", (c) => {

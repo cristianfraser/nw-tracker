@@ -63,8 +63,6 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && NW_TRACKER_TEST_DB=nw-tracker.test.db vitest run",
     "profile:dashboard": "tsx scripts/profile-dashboard.ts",
-    "parse:payroll-liquidaciones": "PYTHONPATH=scripts/.pdf_deps python3 scripts/parse-payroll-liquidaciones.py",
-    "import:payroll-liquidaciones": "tsx scripts/import-payroll-liquidaciones.ts",
     "db:verify-backup": "tsx scripts/verify-db-backup.ts",
     "import:lider-movements": "tsx scripts/import-lider-movements.ts",
     "check:synthetic-cc-payments": "tsx scripts/check-synthetic-cc-payments.ts",
