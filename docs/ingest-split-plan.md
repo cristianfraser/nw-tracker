@@ -234,7 +234,8 @@ In rough order (simplest separation first):
    and branch learning in the server.
 9. Payroll liquidaciones. **Done** — `employment.payslips`; the parser in ingest, the upsert and the
    deposit pairing in the server; no Python is left in `server/scripts/`.
-10. Fintual certificado, Fintual Acciones documents, AFC certificate/cartola.
+10. Fintual certificado, Fintual Acciones documents, AFC certificate/cartola. Acciones documents **done** —
+   `broker.dividend_statement`.
 11. Lider BCI CSV (if still used), web paste (`ccWebPasteParse`, via `/parse`).
 
 ### Phase 4 — cleanup

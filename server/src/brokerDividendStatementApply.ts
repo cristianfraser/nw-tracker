@@ -1,5 +1,7 @@
 /**
- * Fintual «Acciones» documents → dividend breakdowns (`movement_dividend_details`).
+ * `broker.dividend_statement` → dividend breakdowns (`movement_dividend_details`). The feeder
+ * (ingest: `fintual/accionesDocs.ts`) reads Fintual's «Acciones» documents — the Alpaca monthly
+ * cartola and the certificado de eventos de capital — and sends what each prints.
  *
  * The ledger already holds every Fintual dividend as a `dividend_payout` transfer (equity →
  * Fintual USD) booked from the notification mail or the certificado CSV at the NET amount the
@@ -15,18 +17,10 @@
  * CONFLICT that fails the step: a dividend the broker paid and the ledger lacks is exactly what
  * must not pass as an ok log line. Sweep interest is reported, not booked.
  */
-import fs from "node:fs";
-import path from "node:path";
+import type { BrokerDividendStatementApplyDetails, BrokerDividendStatementPayload } from "nw-tracker-contracts";
 import { accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { db } from "./db.js";
-import { resolveCfraserCsvDir } from "./cfraserPaths.js";
-import {
-  parseAlpacaMonthlyStatementText,
-  parseFintualAccionesCertificadoText,
-  pdfLayoutText,
-  type AlpacaCashInterest,
-} from "./fintualAccionesDocs.js";
 import {
   DIVIDEND_DETAIL_SOURCE_RANK,
   getMovementDividendDetail,
@@ -42,26 +36,6 @@ export const FINTUAL_DIVIDEND_MATCH_WINDOW_DAYS = 5;
 
 /** Each printed amount is rounded to the cent; gross − tax and the ledger's net can differ by one. */
 const AMOUNT_TOLERANCE = 0.015;
-
-export function resolveFintualAccionesDir(): string {
-  return path.join(resolveCfraserCsvDir(), "fintual-acciones");
-}
-
-export function listFintualAccionesFiles(root = resolveFintualAccionesDir()): {
-  cartolas: string[];
-  certificados: string[];
-} {
-  const list = (sub: string): string[] => {
-    const dir = path.join(root, sub);
-    if (!fs.existsSync(dir)) return [];
-    return fs
-      .readdirSync(dir)
-      .filter((n) => n.toLowerCase().endsWith(".pdf"))
-      .sort()
-      .map((n) => path.join(dir, n));
-  };
-  return { cartolas: list("cartolas"), certificados: list("certificados") };
-}
 
 export function fintualUsdAccountId(): number {
   const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(FINTUAL_USD_IMPORT_KEY) as
@@ -82,6 +56,8 @@ export type PrintedDividend = {
   position_qty?: number | null;
   record_date?: string | null;
   withholding_rate_pct?: number | null;
+  /** Who withheld the tax, when the document names it. */
+  withholding_jurisdiction?: string | null;
   tax_country?: string | null;
 };
 
@@ -111,9 +87,7 @@ function detailInput(movementId: number, plan: FintualDividendDetailPlan): Movem
     withholding_amount: p.withholding,
     currency: "usd",
     withholding_rate_pct: p.withholding_rate_pct ?? null,
-    // Alpaca's «NRA Withheld» is IRS nonresident-alien withholding; the certificado only says
-    // «impuestos», so the jurisdiction is recorded only where the document names it.
-    withholding_jurisdiction: plan.source === "fintual_cartola" && p.withholding > 0 ? "US" : null,
+    withholding_jurisdiction: p.withholding_jurisdiction ?? null,
     tax_residency_country: p.tax_country ?? null,
     per_share_amount: p.per_share ?? null,
     position_qty: p.position_qty ?? null,
@@ -195,62 +169,6 @@ export function planFintualDividendDetails(
   });
 }
 
-export type FintualAccionesFilePlan = {
-  file: string;
-  kind: "cartola" | "certificado";
-  /** Statement period (cartola) or issue date (certificado). */
-  label: string;
-  plans: FintualDividendDetailPlan[];
-  /** Sweep interest lines (cartola only) — reported, never booked here. */
-  interest: AlpacaCashInterest[];
-};
-
-export function planFintualAccionesFile(
-  file: string,
-  kind: FintualAccionesFilePlan["kind"],
-  accounts?: { holderFor: (ticker: string) => number[]; fintualUsd: number }
-): FintualAccionesFilePlan {
-  const name = path.basename(file);
-  const text = pdfLayoutText(file);
-  if (kind === "cartola") {
-    const statement = parseAlpacaMonthlyStatementText(text);
-    const printed: PrintedDividend[] = statement.dividends.map((d) => ({
-      date: d.trade_date,
-      symbol: d.symbol,
-      gross: d.gross,
-      withholding: d.withholding,
-      net: d.net,
-      per_share: d.per_share,
-      position_qty: d.position_qty,
-      record_date: d.record_date,
-      withholding_rate_pct: d.withholding_rate_pct,
-      tax_country: d.tax_country,
-    }));
-    return {
-      file: name,
-      kind,
-      label: statement.period_ym,
-      plans: planFintualDividendDetails(printed, "fintual_cartola", name, accounts),
-      interest: statement.interest,
-    };
-  }
-  const cert = parseFintualAccionesCertificadoText(text);
-  const printed: PrintedDividend[] = cert.dividends.map((d) => ({
-    date: d.date,
-    symbol: d.symbol,
-    gross: d.gross,
-    withholding: d.tax,
-    net: d.net,
-  }));
-  return {
-    file: name,
-    kind,
-    label: cert.issued_on,
-    plans: planFintualDividendDetails(printed, "fintual_certificado", name, accounts),
-    interest: [],
-  };
-}
-
 export function applyFintualDividendDetails(
   plans: readonly FintualDividendDetailPlan[]
 ): { movement_id: number; outcome: DividendDetailUpsertOutcome }[] {
@@ -263,4 +181,21 @@ export function applyFintualDividendDetails(
     }
   })();
   return out;
+}
+
+export function applyBrokerDividendStatement(payload: BrokerDividendStatementPayload): BrokerDividendStatementApplyDetails {
+  const source = payload.document.kind === "monthly_statement" ? "fintual_cartola" : "fintual_certificado";
+  const plans = planFintualDividendDetails(payload.dividends, source, payload.document.name);
+  const outcomes = new Map<number, string>();
+  if (payload.apply) for (const o of applyFintualDividendDetails(plans)) outcomes.set(o.movement_id, o.outcome);
+  return {
+    applied: payload.apply,
+    dividends: plans.map((plan, i) => ({
+      dividend: payload.dividends[i]!,
+      movement_id: plan.movement_id,
+      already_recorded: plan.already_recorded,
+      conflict: plan.conflict,
+      outcome: plan.movement_id != null && plan.conflict == null ? (outcomes.get(plan.movement_id) ?? null) : null,
+    })),
+  };
 }

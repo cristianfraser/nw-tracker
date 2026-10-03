@@ -1,7 +1,7 @@
 /**
  * Fintual «Acciones» documents → typed records. Pure text parsing, no DB.
  *
- * Two PDFs, both fetched from Gmail by `scraper` (`fetch:fintual-docs`) into
+ * Two PDFs, both fetched from Gmail by `fetch:fintual-docs` into
  * `cfraser/fintual-acciones/`, both read as `pdftotext -layout` text:
  *
  *  - **Alpaca monthly statement** («Cartola mensual de Acciones», ~the 10th of the next month).
@@ -20,7 +20,7 @@
  */
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import { parseChileanNumber, parseUsNumber } from "./chileanNumber.js";
+import { parseChileanNumber, parseUsNumber } from "../formats/chileanNumber.js";
 
 export function pdfLayoutText(filePath: string): string {
   const abs = String(filePath ?? "").trim();
