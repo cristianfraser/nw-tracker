@@ -9,12 +9,15 @@
  * the exact post-import ledger and writes nothing. Exit status: non-zero when a document does not
  * parse, or the server refuses it or is down.
  */
+import path from "node:path";
 import { unemploymentFundDocumentsKind, type UnemploymentFundDocumentsApplyDetails } from "nw-tracker-contracts";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import { parseAfcCartola, parseAfcCotizacionesCertificate, pdfTextLayout, unemploymentFundDocumentsPayload } from "./documents.js";
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const args = (name: string) => process.argv.filter((a) => a.startsWith(`--${name}=`)).map((a) => a.slice(name.length + 3));
+/** npm runs this from ingest/: a relative path is relative to where the command was typed (INIT_CWD). */
+const fromCaller = (p: string) => path.resolve(process.env.INIT_CWD ?? process.cwd(), p);
 
 async function main(): Promise<number> {
   const certPath = arg("cert");
@@ -23,8 +26,8 @@ async function main(): Promise<number> {
     return 2;
   }
   const payload = unemploymentFundDocumentsPayload(
-    parseAfcCotizacionesCertificate(pdfTextLayout(certPath)),
-    args("cartola").map((p) => parseAfcCartola(pdfTextLayout(p))),
+    parseAfcCotizacionesCertificate(pdfTextLayout(fromCaller(certPath))),
+    args("cartola").map((p) => parseAfcCartola(pdfTextLayout(fromCaller(p)))),
     {
       apply: process.argv.includes("--apply"),
       accountId: arg("account-id") != null ? Number(arg("account-id")) : null,
