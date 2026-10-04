@@ -10,7 +10,6 @@ import {
 import { buildNavCardBreakdown } from "./navCardBreakdown";
 import { dashboardAccountNavLabel } from "./navAccountLabels";
 import i18n from "./i18n";
-import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import { DASHBOARD_NET_WORTH_BUCKET_SLUGS } from "./portfolioDashboardBuckets";
 import { collectNavBucketCoverageKeys } from "./navChartBuckets";
 import {
@@ -370,30 +369,6 @@ function breakdownByAssetGroup(
   }
 }
 
-function breakdownByNavSlug(
-  slug: string,
-  _rows: DashboardAccountRow[],
-  dash: BreakdownDash
-): NavChildBreakdownResult | null {
-  /** No `liabilities_credit_card` case: its issuer children carry the breakdown (Santander, BCI). */
-  if (slug === "liabilities_mortgage") {
-    const lb = dash.liabilities_breakdown;
-    if (!lb || lb.mortgage_clp <= 0) return null;
-    return {
-      lines: [
-        {
-          label: i18n.t("liabilities.mortgage"),
-          clp: lb.mortgage_clp,
-          usd: lb.mortgage_usd ?? null,
-          depth: 0,
-          to: liabilitiesSubgroupPath("mortgage"),
-        },
-      ],
-    };
-  }
-  return null;
-}
-
 export function isCashSavingsNavNode(node: NavTreeNodeDto): boolean {
   if (node.slug === "cash_savings") return true;
   const dash = node.dashboard_bucket_slug?.trim();
@@ -407,9 +382,6 @@ export function breakdownForNavChild(
   rows: DashboardAccountRow[],
   dash: BreakdownDash
 ): NavChildBreakdownResult | null {
-  const bySlug = breakdownByNavSlug(navChild.slug, rows, dash);
-  if (bySlug) return bySlug;
-
   const bucket = resolveDashboardBucketFromNavNode(navChild);
   if (bucket === "cash_eqs" && navChild.slug === "cash_eqs") {
     // The hub lists its buckets like any other card; the linked card explains its CC-netted total.
