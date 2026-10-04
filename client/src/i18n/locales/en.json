@@ -99,7 +99,8 @@
     "athTooltip": "ATH · {{date}}",
     "overview": {
       "invested": "Invested"
-    }
+    },
+    "mortgageCoverage": "Mortgage coverage"
   },
   "dashboard": {
     "chartGranularityLabel": "Period:",

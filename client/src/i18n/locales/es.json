@@ -99,7 +99,8 @@
     "athTooltip": "Máx. histórico · {{date}}",
     "overview": {
       "invested": "Invertido"
-    }
+    },
+    "mortgageCoverage": "Cobertura de la hipoteca"
   },
   "dashboard": {
     "chartGranularityLabel": "Período:",

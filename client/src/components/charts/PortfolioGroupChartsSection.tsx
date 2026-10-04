@@ -26,6 +26,7 @@ export function PortfolioGroupChartsSection({
   proportionalXAxisGranularity = "month",
   proportionalTimeRange,
   proportionalControls,
+  proportionalReplacement,
   displayUnit,
   xAxisGranularity,
   chartColorSlug,
@@ -56,6 +57,8 @@ export function PortfolioGroupChartsSection({
   proportionalXAxisGranularity?: "day" | "month" | "year";
   proportionalTimeRange?: TimeRange;
   proportionalControls?: ReactNode;
+  /** Drawn in the composition chart's place (Pasivos: the mortgage coverage chart). */
+  proportionalReplacement?: ReactNode;
   displayUnit: ChartDisplayUnit;
   xAxisGranularity: "month" | "year";
   chartColorSlug: PortfolioGroupChartsColorSlug;
@@ -125,23 +128,24 @@ export function PortfolioGroupChartsSection({
               : undefined
           }
         />
-        {chartSeriesCount > 1 && (
-          <ProportionalAreaChart
-            title={i18n.t("charts.currentValueByAccount")}
-            block={proportionalBlock}
-            xAxisGranularity={proportionalXAxisGranularity}
-            timeRange={proportionalTimeRange}
-            controls={proportionalControls}
-            colorFor={(line) =>
-              groupTabPieSliceFill(
-                chartColorSlug,
-                groupColorMaps,
-                line.account_id ?? Number(line.dataKey),
-                { allocationBucketSlug: pieAllocationSlug }
-              )
-            }
-          />
-        )}
+        {proportionalReplacement ??
+          (chartSeriesCount > 1 && (
+            <ProportionalAreaChart
+              title={i18n.t("charts.currentValueByAccount")}
+              block={proportionalBlock}
+              xAxisGranularity={proportionalXAxisGranularity}
+              timeRange={proportionalTimeRange}
+              controls={proportionalControls}
+              colorFor={(line) =>
+                groupTabPieSliceFill(
+                  chartColorSlug,
+                  groupColorMaps,
+                  line.account_id ?? Number(line.dataKey),
+                  { allocationBucketSlug: pieAllocationSlug }
+                )
+              }
+            />
+          ))}
       </div>
 
       {chartControls}

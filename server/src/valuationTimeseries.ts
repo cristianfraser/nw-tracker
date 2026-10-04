@@ -99,6 +99,7 @@ import {
   getGroupConsolidatedMonthlyPerfForRows,
 } from "./groupMonthlyPerfConsolidation.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
+import { buildReferenceCoverage, sumKeysPerRow } from "./referenceCoverage.js";
 import { applyTrailingZeroTailClipToBlock } from "./timeseriesTailClip.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
@@ -1805,6 +1806,40 @@ function groupTabValuationTotalByDate(
   return groupTabValuationTotalFromBuilt(getGroupValuationTimeseries(groupSlug, unit, tabSubgroup));
 }
 
+/**
+ * Mortgage coverage by the chart host's reference lines (`referenceCoverage.ts`), on the
+ * block's own dates: the mortgage accounts' plotted balance against each overlay line. Null
+ * when the page holds no mortgage (Efectivo hosts a reference line too) or no date has both.
+ */
+function mortgageCoverageFromBlock(
+  block: GroupTabValuationBlock,
+  rows: readonly GroupTabAccountRow[],
+  groupSlug: string,
+  chartHostSlug: string
+): ProportionalSeriesBlock | null {
+  const mortgageKeys = rows
+    .filter((r) => accountBucketKindSlug(r.bucket_slug) === "mortgage")
+    .map((r) => String(seriesAccountIdForGroupTab(r, groupSlug)));
+  if (!mortgageKeys.length) return null;
+  const defs = listReferenceGroupsForChartHost(chartHostSlug);
+  if (!defs.length) return null;
+  const points = block.points;
+  return buildReferenceCoverage(
+    points.map((p) => String(p.as_of_date)),
+    sumKeysPerRow(points, mortgageKeys),
+    defs.map((d) => ({
+      dataKey: d.dataKey,
+      name: d.label,
+      ...(d.label_i18n_key ? { name_i18n_key: d.label_i18n_key } : {}),
+      ...(d.color_rgb ? { color_rgb: d.color_rgb } : {}),
+      values: points.map((p) => {
+        const v = p[d.dataKey];
+        return typeof v === "number" && Number.isFinite(v) ? v : null;
+      }),
+    }))
+  );
+}
+
 /** Reference overlay lines for a chart host (e.g. Pasivos root tab). */
 function appendChartHostReferenceOverlays(
   block: GroupTabValuationBlock,
@@ -2305,8 +2340,10 @@ function getGroupValuationTimeseriesInnerUncached(
     ) as unknown as GroupTabValuationBlock;
   }
   const chartHostSlug = chartHostSlugForValuationGroup(groupSlug, tabSubgroup);
+  let reference_coverage: ProportionalSeriesBlock | null = null;
   if (chartHostSlug && accounts_in_group.points.length > 0) {
     accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, chartHostSlug, unit);
+    reference_coverage = mortgageCoverageFromBlock(accounts_in_group, rows, groupSlug, chartHostSlug);
   }
   if (groupSlug === "real_estate") {
     const propertyRows = rows.filter((x) => accountBucketKindSlug(x.bucket_slug) === "property");
@@ -2375,6 +2412,7 @@ function getGroupValuationTimeseriesInnerUncached(
     group_slug: groupSlug,
     accounts_in_group: applyTrailingZeroTailClipToBlock(accounts_in_group),
     group_allocation_proportional,
+    ...(reference_coverage ? { reference_coverage } : {}),
     ...grouped,
   };
 }

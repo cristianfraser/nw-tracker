@@ -3,6 +3,7 @@ import { useEffect, useMemo } from "react";
 import { Navigate, useLocation, useParams } from "react-router-dom";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
+import { CoverageLineChart } from "../components/charts/CoverageLineChart";
 import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
 import { LiabilitiesCreditCardGroupSection } from "../components/liabilities/LiabilitiesCreditCardGroupSection";
 import { LiabilitiesMortgageGroupSection } from "../components/liabilities/LiabilitiesMortgageGroupSection";
@@ -302,6 +303,13 @@ export function LiabilitiesGroupPage() {
     }
     return daily.proportional ?? null;
   }, [proportionalIsDaily, proportionalDailySeries.data, chartCtx?.liabilitiesGrouped]);
+  // Pasivos root: the composition chart's slot shows the mortgage coverage instead (server
+  // block present only where the page has a mortgage and reference lines), on the same controls.
+  const coverageBlock = ts?.reference_coverage
+    ? proportionalIsDaily
+      ? (proportionalDailySeries.data?.reference_coverage ?? null)
+      : ts.reference_coverage
+    : null;
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily) return null;
     const daily = dailySeries.data;
@@ -371,6 +379,26 @@ export function LiabilitiesGroupPage() {
           dailyProportionalBlock ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
         }
         proportionalTimeRange={proportionalPrefs.range}
+        proportionalReplacement={
+          ts?.reference_coverage ? (
+            <CoverageLineChart
+              title={t("charts.mortgageCoverage")}
+              block={coverageBlock}
+              xAxisGranularity={
+                proportionalIsDaily ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
+              }
+              timeRange={proportionalPrefs.range}
+              controls={
+                <SurfaceControls
+                  period={proportionalPrefs.period}
+                  onPeriodChange={proportionalPrefs.setPeriod}
+                  range={proportionalPrefs.range}
+                  onRangeChange={proportionalPrefs.setRange}
+                />
+              }
+            />
+          ) : undefined
+        }
         proportionalControls={
           <SurfaceControls
             period={proportionalPrefs.period}

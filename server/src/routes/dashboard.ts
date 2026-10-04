@@ -19,13 +19,13 @@ import {
 } from "../accountPerformance.js";
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
-import { accountBucketKindSlug } from "../accountBucket.js";
+import { accountBucketKindSlug, bucketSlugForAccountId } from "../accountBucket.js";
 import { ccDailyHistorialBlockForGroup, ccDailyHistorialBlockForMasters } from "../ccDailyHistorialBlock.js";
 import {
   dailyReferenceLinesForChartHost,
   deptoPropertyChartOverlayDailyLines,
 } from "../dailyReferenceLines.js";
-import { chartHostSlugForValuationGroup } from "../portfolioGroupReference.js";
+import { chartHostSlugForValuationGroup, listReferenceGroupsForChartHost } from "../portfolioGroupReference.js";
 import {
   DAILY_SERIES_MAX_DAYS,
   getBucketDailySeriesCached,
@@ -34,6 +34,7 @@ import {
 import { resolveGroupDailySeries } from "../groupDailySeries.js";
 import { db } from "../db.js";
 import { buildProportionalFromValueArrays } from "../proportionalSeries.js";
+import { buildReferenceCoverage, sumAlignedValues } from "../referenceCoverage.js";
 import {
   buildLiabilitiesChartBucketPlan,
   buildNavChartBucketPlan,
@@ -165,9 +166,39 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     // `deposit_cums_raw` is builder-internal (feeds the grouped-bucket aportes below) —
     // never serialized.
     const { deposit_cums_raw: _rawDeps, ...seriesPayload } = series;
+    // Mortgage coverage by the same overlays (Pasivos), the daily twin of the monthly
+    // `reference_coverage` block.
+    const mortgageLines = (series.accounts ?? []).filter(
+      (l) => l.account_id > 0 && accountBucketKindSlug(bucketSlugForAccountId(l.account_id) ?? "") === "mortgage"
+    );
+    const referenceCoverage =
+      chartHost && referenceLines?.length && mortgageLines.length
+        ? buildReferenceCoverage(
+            dailyDates,
+            sumAlignedValues(
+              mortgageLines.map((l) => l.values),
+              dailyDates.length
+            ),
+            listReferenceGroupsForChartHost(chartHost).flatMap((d) => {
+              const line = referenceLines.find((r) => r.dataKey === d.dataKey);
+              return line
+                ? [
+                    {
+                      dataKey: d.dataKey,
+                      name: d.label,
+                      ...(d.label_i18n_key ? { name_i18n_key: d.label_i18n_key } : {}),
+                      ...(d.color_rgb ? { color_rgb: d.color_rgb } : {}),
+                      values: line.values,
+                    },
+                  ]
+                : [];
+            })
+          )
+        : null;
     const withRefs = {
       ...(referenceLines?.length ? { ...seriesPayload, reference_lines: referenceLines } : seriesPayload),
       ...(proportional ? { proportional } : {}),
+      ...(referenceCoverage ? { reference_coverage: referenceCoverage } : {}),
     };
     const bucketLines = (bucketPlan: ChartBucketPlan | null) => {
       if (!bucketPlan) return null;
