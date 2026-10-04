@@ -2789,6 +2789,10 @@
     "uf": {
       "en": "UF",
       "es": "UF"
+    },
+    "dap": {
+      "en": "Term deposit (UF + {{rate}})",
+      "es": "DAP (UF + {{rate}})"
     }
   },
   "groupPage": {

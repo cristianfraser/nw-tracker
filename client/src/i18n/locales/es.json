@@ -800,7 +800,8 @@
     "mortgage": "Hipoteca (UF + {{rate}})",
     "spy": "S&P 500 (SPY)",
     "riskyNorris": "Risky Norris",
-    "uf": "UF"
+    "uf": "UF",
+    "dap": "DAP (UF + {{rate}})"
   },
   "groupPage": {
     "notFound": "No se encontró la vista de grupo para esta ruta.",

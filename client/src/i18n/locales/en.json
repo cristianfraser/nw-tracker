@@ -800,7 +800,8 @@
     "mortgage": "Mortgage (UF + {{rate}})",
     "spy": "S&P 500 (SPY)",
     "riskyNorris": "Risky Norris",
-    "uf": "UF"
+    "uf": "UF",
+    "dap": "Term deposit (UF + {{rate}})"
   },
   "groupPage": {
     "notFound": "No group view found for this route.",
