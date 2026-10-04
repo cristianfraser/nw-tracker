@@ -12,6 +12,7 @@ import {
 } from "./chileDate.js";
 import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
+import { insertEquityDividendsIfMissing } from "./equityDividends.js";
 import { fetchCoinGeckoRecentDailyCloses } from "./equityCoinGeckoEod.js";
 import { fetchYahooNyseEodForSync, fetchYahooRecentDailyCloses, type EodCloseSeries } from "./equityYahooEod.js";
 import { isChileBusinessDay, isNyseTradingDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
@@ -170,11 +171,14 @@ export type EquityEodSyncResult = {
   usedMetaClose?: boolean;
   /** NYSE: due session still missing from DB after upsert. */
   stillMissingDueSession?: boolean;
+  /** NYSE: a fetched dividend disagreed with the stored one (`equity_dividends` is write-once). */
+  dividendError?: string;
 };
 
 /** Sync-log note when NYSE EOD fetch did not fully catch up. */
 export function describeEquityNyseEodSyncNote(r: EquityEodSyncResult): string | null {
   if (r.skipped) return `${r.ticker}: skip (${r.skipped})`;
+  if (r.dividendError) return `${r.ticker}: dividends (${r.dividendError})`;
   if (r.usedMetaClose && r.dueSessionYmd) {
     return `${r.ticker}: chart meta close for ${r.dueSessionYmd}`;
   }
@@ -227,10 +231,19 @@ export async function syncEquityEodFromYahoo(
       try {
         const fetch = await fetchYahooNyseEodForSync(ticker, { dueSessionYmd, now, days: 21 });
         const rows = dryRun ? fetch.series.dates.length : upsertEquityDailySeries(ticker, fetch.series);
+        let dividendError: string | undefined;
+        if (!dryRun) {
+          try {
+            insertEquityDividendsIfMissing(ticker, fetch.dividends);
+          } catch (e) {
+            dividendError = (e instanceof Error ? e.message : String(e)).slice(0, 160);
+          }
+        }
         const dbLatestDate = latestEquityEodTradeDate(ticker);
         out.push({
           ticker,
           rows,
+          ...(dividendError ? { dividendError } : {}),
           yahooLatestDate: fetch.yahooLatestDate,
           dueSessionYmd: fetch.dueSessionYmd,
           usedMetaClose: fetch.usedMetaClose,

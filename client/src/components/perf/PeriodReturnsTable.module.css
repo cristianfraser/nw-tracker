@@ -40,6 +40,38 @@
   font-variant-numeric: tabular-nums;
 }
 
+.delta {
+  white-space: nowrap;
+  font-size: var(--font-size-card-meta-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.pending {
+  opacity: 0.4;
+}
+
+/* Comparison mode: a leading row-label column (Real / the benchmark select). */
+.compare {
+  min-width: 46rem;
+}
+
+.corner {
+  width: 11.5rem;
+}
+
+.rowHead {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.benchmarkSelect {
+  max-width: 100%;
+  font-size: 0.75rem;
+}
+
 .up {
   color: var(--positive);
 }
@@ -134,5 +166,37 @@
   .table th:last-child,
   .table tbody tr td:last-child {
     border-bottom: none;
+  }
+}
+
+/*
+ * Comparison mode on mobile: three columns (period | real | benchmark) and a header row with the
+ * row labels. Each cell carries its own grid position (`--r` / `--c`, set inline by the
+ * component), so the per-index rules above are overridden here — declared after them, same
+ * specificity plus one class.
+ */
+@media (max-width: 879px) {
+  .table.compare {
+    grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .table.compare .corner {
+    width: auto;
+  }
+
+  .table.compare th,
+  .table.compare tbody tr td {
+    grid-row: var(--r);
+    grid-column: var(--c);
+  }
+
+  .table.compare .rowHead {
+    justify-content: flex-end;
+    text-align: right;
+    min-width: 0;
+  }
+
+  .table.compare .benchmarkSelect {
+    width: 100%;
   }
 }

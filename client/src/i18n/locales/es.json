@@ -774,7 +774,18 @@
     "annualized": "anualizado",
     "insufficientHistory": "Historial insuficiente para este período",
     "windowTitle": "Desde {{start}} · {{months}} meses",
-    "windowTitleDate": "Desde {{start}}"
+    "windowTitleDate": "Desde {{start}}",
+    "actual": "Real",
+    "compareWith": "Comparar con",
+    "delta": "Δ {{amount}}",
+    "shadowTitle": "Los mismos aportes y retiros, en las mismas fechas, invertidos en {{benchmark}} desde {{start}}. Δ = tu ganancia − la suya.",
+    "benchmarkUnavailable": "{{benchmark}} no tiene historia para este período"
+  },
+  "benchmarks": {
+    "mortgage": "Hipoteca (UF + {{rate}})",
+    "spy": "S&P 500 (SPY)",
+    "riskyNorris": "Risky Norris",
+    "uf": "UF"
   },
   "groupPage": {
     "notFound": "No se encontró la vista de grupo para esta ruta.",
