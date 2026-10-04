@@ -64,7 +64,10 @@ describe("mortgage prepayment comparison", () => {
     }
     expect(r.totals.extra).toBe(6_000_000);
     expect(r.totals.delta).toBeCloseTo(r.totals.invested_value! - r.totals.prepaid_value!, 6);
-    expect(r.totals.prepaid_mw_pct!).toBeGreaterThan(r.totals.invested_mw_pct!);
+    expect(r.totals.irr_annualized).toBe(true);
+    // Prepaying earns the UF plus 4,95%: its IRR beats the UF alone by about that rate.
+    const excess = (1 + r.totals.prepaid_irr_pct!) / (1 + r.totals.invested_irr_pct!) - 1;
+    expect(excess).toBeCloseTo(0.0495, 3);
   });
 
   it("is null for an account without payments above the minimum", () => {

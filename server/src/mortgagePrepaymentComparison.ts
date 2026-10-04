@@ -1,9 +1,9 @@
-import { averageCapitalAtWork, levelInUnit } from "./benchmarkComparison.js";
+import { levelInUnit } from "./benchmarkComparison.js";
 import { benchmarkLevelSeries, getBenchmark, type BenchmarkRow } from "./benchmarkLevels.js";
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { flowEventInUnit } from "./flowsDeposits.js";
-import { zeroCloseEps } from "./periodReturns.js";
+import { windowIrr } from "./irr.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 /**
@@ -35,9 +35,10 @@ export type PrepaymentTotals = {
   prepaid_value: number | null;
   invested_value: number | null;
   delta: number | null;
-  /** Money-weighted gain on each side: (value − extra) ÷ the average capital at work. */
-  prepaid_mw_pct: number | null;
-  invested_mw_pct: number | null;
+  /** Each side's internal rate of return on the extra payments; annualized when `irr_annualized`. */
+  prepaid_irr_pct: number | null;
+  invested_irr_pct: number | null;
+  irr_annualized: boolean;
 };
 
 export type MortgagePrepaymentComparison = {
@@ -120,13 +121,18 @@ export function computeMortgagePrepaymentComparison(input: {
   const prepaidValue = sum((r) => r.prepaid_value);
   const investedValue = sum((r) => r.invested_value);
   // The window opens the day before the first payment, so that payment is inside it.
-  const capital = averageCapitalAtWork(
-    0,
-    chileCalendarAddDays(rows[0]!.date, -1),
-    todayYmd,
-    rows.map((r) => ({ ymd: r.date, amount: r.extra })),
-    zeroCloseEps(unit)
-  );
+  const irr = (value: number | null) =>
+    value == null
+      ? null
+      : windowIrr(
+          0,
+          chileCalendarAddDays(rows[0]!.date, -1),
+          todayYmd,
+          rows.map((r) => ({ ymd: r.date, amount: r.extra })),
+          value
+        );
+  const prepaidIrr = irr(prepaidValue);
+  const investedIrr = irr(investedValue);
 
   return {
     unit,
@@ -139,8 +145,9 @@ export function computeMortgagePrepaymentComparison(input: {
       prepaid_value: prepaidValue,
       invested_value: investedValue,
       delta: prepaidValue != null && investedValue != null ? investedValue - prepaidValue : null,
-      prepaid_mw_pct: capital != null && prepaidValue != null ? (prepaidValue - extra) / capital : null,
-      invested_mw_pct: capital != null && investedValue != null ? (investedValue - extra) / capital : null,
+      prepaid_irr_pct: prepaidIrr?.pct ?? null,
+      invested_irr_pct: investedIrr?.pct ?? null,
+      irr_annualized: (prepaidIrr ?? investedIrr)?.annualized ?? false,
     },
   };
 }

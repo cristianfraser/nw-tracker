@@ -770,8 +770,7 @@
       "colPrepaid": "Prepaid, today",
       "colInvested": "Invested, today",
       "colDelta": "Δ",
-      "totalLabel": "All payments",
-      "mw": "{{pct}} MWR"
+      "totalLabel": "All payments"
     }
   },
   "periodReturns": {
@@ -793,8 +792,9 @@
     "delta": "Δ {{amount}}",
     "shadowTitle": "The same deposits and withdrawals, on the same days, invested in {{benchmark}} from {{start}}. Δ = your P/L − its P/L.",
     "benchmarkUnavailable": "{{benchmark}} has no history for this period",
-    "moneyWeighted": "{{pct}} MWR",
-    "moneyWeightedTitle": "Money-weighted return: P/L ÷ the average money invested over the period (each deposit or withdrawal counted for the part of the period it was in). The same denominator in both rows."
+    "irr": "{{pct}} IRR",
+    "irrAnnual": "{{pct}} IRR/yr",
+    "irrTitle": "Internal rate of return of the money: the rate that turns the starting value and every deposit and withdrawal, on their dates, into the value at the end. Yearly on periods of a year or more, over the period on shorter ones. Blank when no single rate fits the flows."
   },
   "benchmarks": {
     "mortgage": "Mortgage (UF + {{rate}})",

@@ -55,9 +55,14 @@ export function MortgagePrepaymentSection({
 
   const money = (n: number | null) =>
     n == null ? "—" : displayUnit === "usd" ? formatUsdFine(n) : formatClp(n);
-  const mw = (pct: number | null) =>
-    pct == null ? null : (
-      <span className="muted"> · {t("accountDetail.prepayments.mw", { pct: formatPct(pct * 100) })}</span>
+  const irr = (pct: number | null) =>
+    pct == null || data == null ? null : (
+      <span className="muted" title={t("periodReturns.irrTitle")}>
+        {" · "}
+        {t(data.totals.irr_annualized ? "periodReturns.irrAnnual" : "periodReturns.irr", {
+          pct: formatPct(pct * 100),
+        })}
+      </span>
     );
   const labels = {
     date: t("accountDetail.prepayments.colDate"),
@@ -109,11 +114,11 @@ export function MortgagePrepaymentSection({
             <td className="mono desktop-only">{money(totals.extra)}</td>
             <td className="mono desktop-only">
               {money(totals.prepaid_value)}
-              {mw(totals.prepaid_mw_pct)}
+              {irr(totals.prepaid_irr_pct)}
             </td>
             <td className="mono desktop-only">
               {money(totals.invested_value)}
-              {mw(totals.invested_mw_pct)}
+              {irr(totals.invested_irr_pct)}
             </td>
             <td className="mono desktop-only" style={{ ...toneStyle(totals.delta), fontWeight: 600 }}>
               {money(totals.delta)}
@@ -129,7 +134,7 @@ export function MortgagePrepaymentSection({
                     value={
                       <>
                         {money(totals.prepaid_value)}
-                        {mw(totals.prepaid_mw_pct)}
+                        {irr(totals.prepaid_irr_pct)}
                       </>
                     }
                   />
@@ -138,7 +143,7 @@ export function MortgagePrepaymentSection({
                     value={
                       <>
                         {money(totals.invested_value)}
-                        {mw(totals.invested_mw_pct)}
+                        {irr(totals.invested_irr_pct)}
                       </>
                     }
                   />

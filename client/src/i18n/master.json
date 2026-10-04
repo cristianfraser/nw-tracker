@@ -2684,10 +2684,6 @@
       "totalLabel": {
         "en": "All payments",
         "es": "Todos los pagos"
-      },
-      "mw": {
-        "en": "{{pct}} MWR",
-        "es": "{{pct}} MWR"
       }
     }
   },
@@ -2764,13 +2760,17 @@
       "en": "{{benchmark}} has no history for this period",
       "es": "{{benchmark}} no tiene historia para este período"
     },
-    "moneyWeighted": {
-      "en": "{{pct}} MWR",
-      "es": "{{pct}} MWR"
+    "irr": {
+      "en": "{{pct}} IRR",
+      "es": "{{pct}} TIR"
     },
-    "moneyWeightedTitle": {
-      "en": "Money-weighted return: P/L ÷ the average money invested over the period (each deposit or withdrawal counted for the part of the period it was in). The same denominator in both rows.",
-      "es": "Rentabilidad ponderada por dinero: ganancia ÷ el dinero invertido en promedio durante el período (cada aporte o retiro cuenta por la parte del período en que estuvo). El mismo denominador en ambas filas."
+    "irrAnnual": {
+      "en": "{{pct}} IRR/yr",
+      "es": "{{pct}} TIR anual"
+    },
+    "irrTitle": {
+      "en": "Internal rate of return of the money: the rate that turns the starting value and every deposit and withdrawal, on their dates, into the value at the end. Yearly on periods of a year or more, over the period on shorter ones. Blank when no single rate fits the flows.",
+      "es": "Tasa interna de retorno del dinero: la tasa que convierte el valor inicial y cada aporte y retiro, en sus fechas, en el valor final. Anual en períodos de un año o más, del período en los más cortos. En blanco cuando ninguna tasa única calza con los flujos."
     }
   },
   "benchmarks": {

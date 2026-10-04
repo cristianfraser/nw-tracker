@@ -770,8 +770,7 @@
       "colPrepaid": "Prepagado, hoy",
       "colInvested": "Invertido, hoy",
       "colDelta": "Δ",
-      "totalLabel": "Todos los pagos",
-      "mw": "{{pct}} MWR"
+      "totalLabel": "Todos los pagos"
     }
   },
   "periodReturns": {
@@ -793,8 +792,9 @@
     "delta": "Δ {{amount}}",
     "shadowTitle": "Los mismos aportes y retiros, en las mismas fechas, invertidos en {{benchmark}} desde {{start}}. Δ = tu ganancia − la suya.",
     "benchmarkUnavailable": "{{benchmark}} no tiene historia para este período",
-    "moneyWeighted": "{{pct}} MWR",
-    "moneyWeightedTitle": "Rentabilidad ponderada por dinero: ganancia ÷ el dinero invertido en promedio durante el período (cada aporte o retiro cuenta por la parte del período en que estuvo). El mismo denominador en ambas filas."
+    "irr": "{{pct}} TIR",
+    "irrAnnual": "{{pct}} TIR anual",
+    "irrTitle": "Tasa interna de retorno del dinero: la tasa que convierte el valor inicial y cada aporte y retiro, en sus fechas, en el valor final. Anual en períodos de un año o más, del período en los más cortos. En blanco cuando ninguna tasa única calza con los flujos."
   },
   "benchmarks": {
     "mortgage": "Hipoteca (UF + {{rate}})",

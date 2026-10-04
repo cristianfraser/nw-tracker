@@ -40,7 +40,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.moneyWeighted {
+.irr {
   white-space: nowrap;
   font-size: var(--font-size-card-meta-sm);
   color: var(--muted);
