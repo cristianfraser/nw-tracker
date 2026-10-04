@@ -703,6 +703,14 @@ export const api = {
     j<import("./types").WealthPercentileResponse>("/api/wealth-percentile"),
   benchmarks: () =>
     j<{ benchmarks: import("./types").BenchmarkOption[] }>("/api/benchmarks"),
+  mortgagePrepaymentComparison: (accountId: number, benchmark: string, unit: "clp" | "usd") =>
+    j<import("./types").MortgagePrepaymentComparison | null>(
+      `/api/mortgage-prepayment-comparison?${new URLSearchParams({
+        account_id: String(accountId),
+        benchmark,
+        unit,
+      }).toString()}`
+    ),
   benchmarkComparison: (
     scope: { accountId: number } | { portfolioGroup: string },
     benchmark: string,

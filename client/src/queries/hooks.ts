@@ -764,6 +764,22 @@ export function useBenchmarks() {
   });
 }
 
+/** The mortgage's payments above the minimum, prepaid vs invested in a benchmark. */
+export function useMortgagePrepaymentComparison(
+  accountId: number,
+  benchmark: string,
+  unit: DisplayUnit,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: queryKeys.mortgagePrepaymentComparison(accountId, benchmark, unit),
+    queryFn: () => api.mortgagePrepaymentComparison(accountId, benchmark, unit),
+    enabled,
+    staleTime: DISPLAY_UNIT_STALE_MS,
+    refetchInterval: DISPLAY_UNIT_STALE_MS,
+  });
+}
+
 /** The Rentabilidad comparison row for an account or a group page. */
 export function useBenchmarkComparison(
   scope: { accountId: number } | { portfolioGroup: string },

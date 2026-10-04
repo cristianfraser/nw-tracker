@@ -2643,6 +2643,52 @@
         "en": "Accumulated CLP",
         "es": "Acumulado CLP"
       }
+    },
+    "prepayments": {
+      "title": {
+        "en": "Prepayments vs investing",
+        "es": "Prepagos vs invertir"
+      },
+      "hint": {
+        "en": "Every peso paid above the minimum cuota (the prepagos and the extra in each payment), followed to today two ways: prepaid, it grows at the mortgage's rate, {{mortgage}}, the interest it saves; invested on the same day in the benchmark, it grows with it. Δ = invested − prepaid; green means investing would have come out ahead so far. Before tax on both sides.",
+        "es": "Cada peso pagado sobre la cuota mínima (los prepagos y lo extra de cada pago), seguido hasta hoy de dos formas: prepagado, crece a la tasa de la hipoteca, {{mortgage}}, los intereses que ahorra; invertido el mismo día en la referencia, crece con ella. Δ = invertido − prepagado; verde significa que invertir habría resultado mejor hasta ahora. Antes de impuestos en ambos lados."
+      },
+      "compareWith": {
+        "en": "Invested in",
+        "es": "Invertido en"
+      },
+      "colDate": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "colCuota": {
+        "en": "Payment",
+        "es": "Pago"
+      },
+      "colExtra": {
+        "en": "Above minimum",
+        "es": "Sobre el mínimo"
+      },
+      "colPrepaid": {
+        "en": "Prepaid, today",
+        "es": "Prepagado, hoy"
+      },
+      "colInvested": {
+        "en": "Invested, today",
+        "es": "Invertido, hoy"
+      },
+      "colDelta": {
+        "en": "Δ",
+        "es": "Δ"
+      },
+      "totalLabel": {
+        "en": "All payments",
+        "es": "Todos los pagos"
+      },
+      "mw": {
+        "en": "{{pct}} MWR",
+        "es": "{{pct}} MWR"
+      }
     }
   },
   "periodReturns": {

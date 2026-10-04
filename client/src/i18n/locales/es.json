@@ -759,6 +759,19 @@
       "colDate": "Fecha",
       "colAmount": "Monto CLP",
       "colAccumulated": "Acumulado CLP"
+    },
+    "prepayments": {
+      "title": "Prepagos vs invertir",
+      "hint": "Cada peso pagado sobre la cuota mínima (los prepagos y lo extra de cada pago), seguido hasta hoy de dos formas: prepagado, crece a la tasa de la hipoteca, {{mortgage}}, los intereses que ahorra; invertido el mismo día en la referencia, crece con ella. Δ = invertido − prepagado; verde significa que invertir habría resultado mejor hasta ahora. Antes de impuestos en ambos lados.",
+      "compareWith": "Invertido en",
+      "colDate": "Fecha",
+      "colCuota": "Pago",
+      "colExtra": "Sobre el mínimo",
+      "colPrepaid": "Prepagado, hoy",
+      "colInvested": "Invertido, hoy",
+      "colDelta": "Δ",
+      "totalLabel": "Todos los pagos",
+      "mw": "{{pct}} MWR"
     }
   },
   "periodReturns": {
