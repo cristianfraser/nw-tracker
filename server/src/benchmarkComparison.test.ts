@@ -156,7 +156,7 @@ describe("seeded benchmarks", () => {
     const all = listBenchmarks();
     expect(all[0]?.slug).toBe("mortgage");
     expect(all.map((b) => b.kind).sort()).toEqual(
-      ["equity_with_dividends", "fund_unit", "index_plus_rate", "index_plus_rate"].sort()
+      ["equity_with_dividends", "fund_unit", "index_plus_rate", "index_plus_rate", "index_plus_rate"].sort()
     );
   });
 

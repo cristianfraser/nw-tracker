@@ -11,6 +11,7 @@ const BENCHMARK_LABEL_KEYS: ReadonlySet<string> = new Set([
   "benchmarks.spy",
   "benchmarks.riskyNorris",
   "benchmarks.uf",
+  "benchmarks.dap",
 ]);
 
 /** A benchmark's display name, its rate (UF + x%) formatted at render time. */
