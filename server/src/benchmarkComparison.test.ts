@@ -4,6 +4,7 @@ import { shadowOverWindow } from "./benchmarkComparison.js";
 import {
   benchmarkLevelSeries,
   getBenchmark,
+  chainDailyReturns,
   listBenchmarks,
   totalReturnFactors,
   type BenchmarkRow,
@@ -85,6 +86,23 @@ describe("shadowOverWindow", () => {
   });
 });
 
+describe("chainDailyReturns", () => {
+  it("starts at 1 the day before the first return; days without one are flat", () => {
+    const r = chainDailyReturns([
+      { as_of_date: "2026-01-01", pct: null },
+      { as_of_date: "2026-01-02", pct: null },
+      { as_of_date: "2026-01-03", pct: 0.1 },
+      { as_of_date: "2026-01-04", pct: null },
+      { as_of_date: "2026-01-05", pct: -0.5 },
+    ]);
+    expect(r.dates).toEqual(["2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05"]);
+    expect(r.levels[0]).toBe(1);
+    expect(r.levels[1]).toBeCloseTo(1.1);
+    expect(r.levels[2]).toBeCloseTo(1.1);
+    expect(r.levels[3]).toBeCloseTo(0.55);
+  });
+});
+
 describe("totalReturnFactors", () => {
   it("reinvests each dividend at its ex-date close, net of withholding", () => {
     const f = totalReturnFactors(
@@ -116,6 +134,7 @@ describe("benchmark levels (synthetic ticker)", () => {
     series_key: null,
     index_key: null,
     rate_pct: null,
+    portfolio_group_slug: null,
     sort_order: 0,
   };
   const cleanup = () => {
@@ -134,7 +153,7 @@ describe("benchmark levels (synthetic ticker)", () => {
     ins.run(TICKER, "2020-01-06", 100);
     insertEquityDividendsIfMissing(TICKER, [{ ex_date: "2020-01-03", amount: 2 }]);
 
-    const s = benchmarkLevelSeries(bench, "2099-01-01");
+    const s = benchmarkLevelSeries(bench, "2099-01-01", new Date(), "clp");
     expect(s.currency).toBe("usd");
     expect(s.first_ymd).toBe("2020-01-02");
     expect(s.levelAt("2020-01-01")).toBeNull();
@@ -156,7 +175,17 @@ describe("seeded benchmarks", () => {
     const all = listBenchmarks();
     expect(all[0]?.slug).toBe("mortgage");
     expect(all.map((b) => b.kind).sort()).toEqual(
-      ["equity_with_dividends", "fund_unit", "index_plus_rate", "index_plus_rate", "index_plus_rate"].sort()
+      [
+        "equity_with_dividends",
+        "fund_unit",
+        "index_plus_rate",
+        "index_plus_rate",
+        "index_plus_rate",
+        "portfolio_group",
+        "portfolio_group",
+        "portfolio_group",
+        "portfolio_group",
+      ].sort()
     );
   });
 
@@ -167,8 +196,8 @@ describe("seeded benchmarks", () => {
       .prepare(`SELECT MIN(date) AS a, MAX(date) AS b FROM uf_daily`)
       .get() as { a: string | null; b: string | null };
     if (row.a == null || row.b == null) return;
-    const m = benchmarkLevelSeries(mortgage, "2099-01-01");
-    const u = benchmarkLevelSeries(uf, "2099-01-01");
+    const m = benchmarkLevelSeries(mortgage, "2099-01-01", new Date(), "clp");
+    const u = benchmarkLevelSeries(uf, "2099-01-01", new Date(), "clp");
     const a = row.a;
     const b = row.b;
     const days = (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000;

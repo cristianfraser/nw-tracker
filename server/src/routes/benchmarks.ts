@@ -2,6 +2,7 @@
 import express from "express";
 import { benchmarkComparisonForAccount, benchmarkComparisonForGroup } from "../benchmarkComparison.js";
 import { getBenchmark, listBenchmarks } from "../benchmarkLevels.js";
+import { db } from "../db.js";
 import { computeMortgagePrepaymentComparison } from "../mortgagePrepaymentComparison.js";
 import {
   isInvestmentPerformanceGroupSlug,
@@ -13,13 +14,34 @@ import { isKnownClassTabGroup } from "./shared.js";
 
 export function registerBenchmarkRoutes(app: express.Express): void {
   app.get("/api/benchmarks", (_req, res) => {
-    res.json({
-      benchmarks: listBenchmarks().map((b) => ({
-        slug: b.slug,
-        label_i18n_key: b.label_i18n_key,
-        rate_pct: b.rate_pct,
-      })),
+    // A `portfolio_group` row is named by its group, and is offered only while the group exists.
+    type BenchmarkOptionDto = {
+      slug: string;
+      kind: string;
+      label_i18n_key: string | null;
+      /** A `portfolio_group` row's group label (used when it has no i18n key). */
+      label?: string;
+      rate_pct: number | null;
+    };
+    const benchmarks = listBenchmarks().flatMap((b): BenchmarkOptionDto[] => {
+      if (b.kind !== "portfolio_group") {
+        return [{ slug: b.slug, kind: b.kind, label_i18n_key: b.label_i18n_key, rate_pct: b.rate_pct }];
+      }
+      const group = db
+        .prepare(`SELECT label, label_i18n_key FROM portfolio_groups WHERE slug = ?`)
+        .get(b.portfolio_group_slug!) as { label: string; label_i18n_key: string | null } | undefined;
+      if (!group) return [];
+      return [
+        {
+          slug: b.slug,
+          kind: b.kind,
+          label_i18n_key: group.label_i18n_key,
+          label: group.label,
+          rate_pct: null,
+        },
+      ];
     });
+    res.json({ benchmarks });
   });
 
   /**

@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { benchmarkOptionLabel } from "../../benchmarkLabels";
+import { BenchmarkSelectOptions, benchmarkOptionLabel } from "../../benchmarkLabels";
 import { cn } from "../../cn";
 import { formatClp, formatPct, formatUsdFine } from "../../format";
 import { useTranslation } from "../../i18n";
@@ -150,11 +150,7 @@ export function PeriodReturnsTable({
               value={comparison.selected}
               onChange={(e) => comparison.onSelect(e.target.value)}
             >
-              {comparison.options.map((o) => (
-                <option key={o.slug} value={o.slug}>
-                  {benchmarkLabel(o)}
-                </option>
-              ))}
+              <BenchmarkSelectOptions t={t} options={comparison.options} />
             </select>
           </th>
           {data.periods.map((cell, i) => {

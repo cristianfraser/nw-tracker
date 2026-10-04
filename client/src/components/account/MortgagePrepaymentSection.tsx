@@ -1,4 +1,4 @@
-import { benchmarkOptionLabel } from "../../benchmarkLabels";
+import { BenchmarkSelectOptions, benchmarkOptionLabel } from "../../benchmarkLabels";
 import { cn } from "../../cn";
 import { formatClp, formatPct, formatUsdFine } from "../../format";
 import { useTranslation } from "../../i18n";
@@ -81,17 +81,22 @@ export function MortgagePrepaymentSection({
         <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem" }}>
           <span className="muted">{t("accountDetail.prepayments.compareWith")}</span>
           <select value={selected} onChange={(e) => setBenchmark(e.target.value)}>
-            {options.map((o) => (
-              <option key={o.slug} value={o.slug}>
-                {benchmarkOptionLabel(t, o)}
-              </option>
-            ))}
+            <BenchmarkSelectOptions t={t} options={options} />
           </select>
         </label>
       </div>
       <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
         {t("accountDetail.prepayments.hint", { mortgage: benchmarkOptionLabel(t, mortgage) })}
       </p>
+      {totals && data && totals.covered_payments < data.rows.length && totals.covered_from ? (
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
+          {t("accountDetail.prepayments.coveredFrom", {
+            date: totals.covered_from,
+            covered: totals.covered_payments,
+            total: data.rows.length,
+          })}
+        </p>
+      ) : null}
       {totals ? (
         <Table
           tableClassName="table--parallel-mobile"
@@ -110,7 +115,7 @@ export function MortgagePrepaymentSection({
           }
         >
           <tr>
-            <td className="muted desktop-only">{data!.rows.length}</td>
+            <td className="muted desktop-only">{totals.covered_payments}</td>
             <td className="mono desktop-only">{money(totals.extra)}</td>
             <td className="mono desktop-only">
               {money(totals.prepaid_value)}
@@ -125,7 +130,7 @@ export function MortgagePrepaymentSection({
             </td>
             <td className="mobile-only">
               <TableMobileCard
-                title={`${t("accountDetail.prepayments.totalLabel")} (${data!.rows.length})`}
+                title={`${t("accountDetail.prepayments.totalLabel")} (${totals.covered_payments})`}
               >
                 <TableMobileCardSection>
                   <TableMobileCardRow label={labels.extra} value={money(totals.extra)} />

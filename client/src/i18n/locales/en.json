@@ -763,7 +763,7 @@
     },
     "prepayments": {
       "title": "Prepayments vs investing",
-      "hint": "Every peso paid above the minimum cuota (the prepagos and the extra in each payment), followed to today two ways: prepaid, it grows at the mortgage's rate, {{mortgage}}, the interest it saves; invested on the same day in the benchmark, it grows with it. Δ = invested − prepaid; green means investing would have come out ahead so far. Before tax on both sides.",
+      "hint": "Every peso paid above the minimum cuota (the prepagos and the extra in each payment), followed to today two ways: prepaid, it grows at the mortgage's rate, {{mortgage}}, the interest it saves; invested on the same day in the benchmark, it grows with it. Δ = invested − prepaid; green means investing would have come out ahead so far. Before tax on both sides. Your own portfolios earn their own time-weighted return — what each peso held there made, picks included (APV: without its tax benefit or the early-withdrawal penalty).",
       "compareWith": "Invested in",
       "colDate": "Date",
       "colCuota": "Payment",
@@ -771,7 +771,8 @@
       "colPrepaid": "Prepaid, today",
       "colInvested": "Invested, today",
       "colDelta": "Δ",
-      "totalLabel": "All payments"
+      "totalLabel": "All payments",
+      "coveredFrom": "Totals from {{date}} ({{covered}} of {{total}} payments): earlier payments predate this portfolio."
     }
   },
   "periodReturns": {
@@ -802,7 +803,8 @@
     "spy": "S&P 500 (SPY)",
     "riskyNorris": "Risky Norris",
     "uf": "UF",
-    "dap": "Term deposit (UF + {{rate}})"
+    "dap": "Term deposit (UF + {{rate}})",
+    "ownPortfolios": "Your portfolios"
   },
   "groupPage": {
     "notFound": "No group view found for this route.",
