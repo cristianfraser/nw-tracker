@@ -162,7 +162,7 @@ export type PeriodReturnInputRow = {
 };
 
 /** `YYYY-MM` shifted by `delta` calendar months. */
-function addMonths(monthKey: string, delta: number): string {
+export function addMonths(monthKey: string, delta: number): string {
   const [ys, ms] = monthKey.split("-");
   const y = Number(ys);
   const m = Number(ms);
@@ -176,7 +176,7 @@ function addMonths(monthKey: string, delta: number): string {
 }
 
 /** Inclusive calendar-month span between two month keys (a <= b). */
-function monthSpanInclusive(a: string, b: string): number {
+export function monthSpanInclusive(a: string, b: string): number {
   const [ay, am] = a.split("-").map(Number);
   const [by, bm] = b.split("-").map(Number);
   return (by - ay) * 12 + (bm - am) + 1;
@@ -237,7 +237,7 @@ function chainWindow(
 }
 
 /** Annualize a cumulative fraction over `elapsedMonths`; only meaningful for windows > 12 months. */
-function annualize(pct: number | null, elapsedMonths: number): number | null {
+export function annualize(pct: number | null, elapsedMonths: number): number | null {
   if (pct == null || elapsedMonths <= 12 || !Number.isFinite(pct) || pct <= -1) return null;
   return Math.pow(1 + pct, 12 / elapsedMonths) - 1;
 }

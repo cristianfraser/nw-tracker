@@ -25,3 +25,21 @@ export function resolveGroupDailySeries(
     includeAccounts: true,
   });
 }
+
+/**
+ * One account's daily series under the scope key its own page uses (`account:<id>`), so the
+ * account page's day view and its Rentabilidad share one build. Excluded-from-totals accounts
+ * still get theirs.
+ */
+export function resolveAccountDailySeries(
+  row: { account_id: number; name: string | null; bucket_slug: string; import_key: string | null },
+  unit: TsUnit,
+  days: number
+): BucketDailySeries {
+  return getBucketDailySeriesCached(`account:${row.account_id}`, [{ ...row, exclude_from_group_totals: 0 }], {
+    unit,
+    days,
+    includeAccounts: true,
+  });
+}
+

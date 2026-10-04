@@ -3,9 +3,11 @@ import { setAggregationInvalidationListener } from "./aggregationCache.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { db } from "./db.js";
+import { warmRentabilidadDailySeries } from "./rentabilidadDailyWarm.js";
 
 /**
- * Proactive dashboard cache warmer: rebuilds the page-bundle aggregation caches in the
+ * Proactive dashboard cache warmer: rebuilds the page-bundle aggregation caches, then the
+ * full-history daily series behind every Rentabilidad table (`rentabilidadDailyWarm.ts`), in the
  * background so interactive requests never pay a cold build.
  *
  * Triggers:
@@ -49,8 +51,13 @@ async function runWarm(reason: string): Promise<void> {
     const t0 = performance.now();
     await buildDashboardPageBundle("clp");
     await buildDashboardPageBundle("usd");
+    const tBundles = performance.now();
+    const scopes = await warmRentabilidadDailySeries();
     lastWarmedDataVersion = currentDataVersion();
-    console.log(`cache-warm: dashboard caches warmed (${reason}) in ${(performance.now() - t0).toFixed(0)}ms`);
+    console.log(
+      `cache-warm: dashboard caches warmed (${reason}) in ${(tBundles - t0).toFixed(0)}ms; ` +
+        `${scopes} Rentabilidad daily series in ${(performance.now() - tBundles).toFixed(0)}ms`
+    );
   } catch (e) {
     console.error(`cache-warm: failed (${reason}) — ${e instanceof Error ? e.message : e}`);
   } finally {

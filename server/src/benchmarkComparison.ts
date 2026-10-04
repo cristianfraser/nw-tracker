@@ -12,6 +12,7 @@ import {
 } from "./benchmarkLevels.js";
 import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import {
+  addMonths,
   computePeriodReturns,
   type PeriodReturnKey,
   type PeriodReturnsPayload,
@@ -154,10 +155,6 @@ export function levelInUnit(
   };
 }
 
-function prevMonthKey(mk: string): string {
-  const [y, m] = mk.split("-").map(Number);
-  return m === 1 ? `${y! - 1}-12` : `${y}-${String(m! - 1).padStart(2, "0")}`;
-}
 
 function daysBetween(a: string, b: string): number {
   return (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000;
@@ -214,7 +211,7 @@ export function computeBenchmarkComparison(input: {
       if (!priorByMonth.has(cell.window_start_month)) {
         throw new Error(`benchmark comparison: no monthly row for ${cell.window_start_month}`);
       }
-      startYmd = monthEndUtcYmd(prevMonthKey(cell.window_start_month));
+      startYmd = monthEndUtcYmd(addMonths(cell.window_start_month, -1));
       vStart = priorByMonth.get(cell.window_start_month) ?? 0;
     } else {
       return empty;
