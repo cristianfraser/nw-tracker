@@ -13,6 +13,7 @@ import {
 import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import {
   computePeriodReturns,
+  zeroCloseEps,
   type PeriodReturnKey,
   type PeriodReturnsPayload,
 } from "./periodReturns.js";
@@ -53,6 +54,13 @@ export type BenchmarkComparisonCell = {
   shadow_pl: number | null;
   /** Real P/L − shadow P/L (positive: the real money did better). */
   delta_pl: number | null;
+  /**
+   * Money-weighted returns over the window: P/L ÷ the average capital at work
+   * ({@link averageCapitalAtWork}). One denominator for both, so they always rank the way
+   * `delta_pl` does. The real one needs no benchmark level.
+   */
+  real_mw_pct: number | null;
+  shadow_mw_pct: number | null;
   /** Day the benchmark return is measured from (the first flow when the window starts empty). */
   window_start_date: string | null;
 };
@@ -109,6 +117,30 @@ export function shadowOverWindow(
     shadow_pl: units * lEnd - vStart - flowSum,
     base_ymd: baseYmd,
   };
+}
+
+/**
+ * Modified Dietz denominator: the start value plus each flow weighted by the share of the window
+ * it was invested ((end − day) ÷ (end − start)). A window that starts empty runs from its first
+ * flow. Null when the window has no length or no positive capital (withdrawals outweigh it).
+ */
+export function averageCapitalAtWork(
+  vStart: number,
+  startYmd: string,
+  endYmd: string,
+  flows: readonly ShadowFlow[],
+  eps: number
+): number | null {
+  const inWindow = flows.filter((f) => f.ymd > startYmd && f.ymd <= endYmd && f.amount !== 0);
+  let baseYmd = startYmd;
+  if (vStart === 0 && inWindow.length > 0) {
+    baseYmd = inWindow.reduce((min, f) => (f.ymd < min ? f.ymd : min), inWindow[0]!.ymd);
+  }
+  const span = daysBetween(baseYmd, endYmd);
+  if (!(span > 0)) return null;
+  let capital = vStart;
+  for (const f of inWindow) capital += f.amount * (daysBetween(f.ymd, endYmd) / span);
+  return capital > eps ? capital : null;
 }
 
 /** The benchmark's native level converted to `unit` on its own day (live fx today). */
@@ -187,6 +219,8 @@ export function computeBenchmarkComparison(input: {
       benchmark_annualized_pct: null,
       shadow_pl: null,
       delta_pl: null,
+      real_mw_pct: null,
+      shadow_mw_pct: null,
       window_start_date: null,
     };
     let startYmd: string;
@@ -205,8 +239,10 @@ export function computeBenchmarkComparison(input: {
     }
     if (vStart == null || !Number.isFinite(vStart)) return { ...empty, window_start_date: startYmd };
 
+    const capital = averageCapitalAtWork(vStart, startYmd, todayYmd, flows, zeroCloseEps(unit));
+    const realMw = capital != null && cell.nominal_pl != null ? cell.nominal_pl / capital : null;
     const s = shadowOverWindow(vStart, startYmd, todayYmd, flows, level);
-    if (s == null) return { ...empty, window_start_date: startYmd };
+    if (s == null) return { ...empty, real_mw_pct: realMw, window_start_date: startYmd };
     // Annualized on exactly the cells the real row annualizes, over the days the benchmark
     // return actually spans.
     const days = daysBetween(s.base_ymd, todayYmd);
@@ -220,6 +256,8 @@ export function computeBenchmarkComparison(input: {
       benchmark_annualized_pct: annualized,
       shadow_pl: s.shadow_pl,
       delta_pl: cell.nominal_pl != null ? cell.nominal_pl - s.shadow_pl : null,
+      real_mw_pct: realMw,
+      shadow_mw_pct: capital != null ? s.shadow_pl / capital : null,
       window_start_date: s.base_ymd,
     };
   });

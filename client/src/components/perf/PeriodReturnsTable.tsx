@@ -62,7 +62,8 @@ export type BenchmarkComparisonProps = {
  * Rentabilidad — chained flow-adjusted returns, one column per period (%, nominal amount,
  * annualized where it applies), in the payload's order. With `comparison`, a second row shows
  * a selectable benchmark: its return over the same window, what the same flows would have made
- * there (shadow P/L) and Δ = real P/L − that, all server-computed. Static (no NumberFlow): it
+ * there (shadow P/L) and Δ = real P/L − that, and both rows gain a money-weighted % (P/L ÷ the
+ * average capital at work, one denominator, so it ranks the way Δ does) — all server-computed. Static (no NumberFlow): it
  * refetches wholesale on unit toggle. Formats at render time (decimal-separator convention).
  * One markup for both viewports — narrow screens flip it to one row per period (CSS).
  */
@@ -102,6 +103,13 @@ export function PeriodReturnsTable({
   const selectedOption = comparison?.options.find((o) => o.slug === comparison.selected);
   const selectedLabel = selectedOption ? benchmarkLabel(selectedOption) : "";
 
+  const moneyWeighted = (pct: number | null | undefined) =>
+    pct != null ? (
+      <div className={styles.moneyWeighted} title={t("periodReturns.moneyWeightedTitle")}>
+        {t("periodReturns.moneyWeighted", { pct: formatPct(pct * 100) })}
+      </div>
+    ) : null;
+
   const benchByPeriod = new Map<PeriodReturnKey, BenchmarkComparisonCell>();
   for (const c of comparison?.data?.periods ?? []) benchByPeriod.set(c.period, c);
 
@@ -134,6 +142,7 @@ export function PeriodReturnsTable({
             {cell.nominal_pl != null ? (
               <div className={styles.nominal}>{formatNominal(cell.nominal_pl)}</div>
             ) : null}
+            {moneyWeighted(benchByPeriod.get(cell.period)?.real_mw_pct)}
             {cell.annualized_pct != null ? (
               <div className={styles.annualized}>
                 {formatPct(cell.annualized_pct * 100)} {t("periodReturns.annualized")}
@@ -180,6 +189,7 @@ export function PeriodReturnsTable({
                 {b?.shadow_pl != null ? (
                   <div className={styles.nominal}>{formatNominal(b.shadow_pl)}</div>
                 ) : null}
+                {moneyWeighted(b?.shadow_mw_pct)}
                 {b?.benchmark_annualized_pct != null ? (
                   <div className={styles.annualized}>
                     {formatPct(b.benchmark_annualized_pct * 100)} {t("periodReturns.annualized")}

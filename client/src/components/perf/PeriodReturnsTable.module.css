@@ -40,6 +40,13 @@
   font-variant-numeric: tabular-nums;
 }
 
+.moneyWeighted {
+  white-space: nowrap;
+  font-size: var(--font-size-card-meta-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .delta {
   white-space: nowrap;
   font-size: var(--font-size-card-meta-sm);
