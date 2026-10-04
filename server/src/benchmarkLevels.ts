@@ -1,5 +1,7 @@
 import { db } from "./db.js";
 import { resolveEquityQuote } from "./equityQuote.js";
+import { resolveGroupDailySeries } from "./groupDailySeries.js";
+import type { TsUnit } from "./valuationTimeseries.js";
 
 /**
  * Benchmarks for the Rentabilidad comparison (`benchmarks`, migration 207) and their daily
@@ -11,28 +13,35 @@ import { resolveEquityQuote } from "./equityQuote.js";
  *   each dividend at its ex-date close, net of the withholding a holder in Chile suffers.
  * - `fund_unit`: a `fund_unit_daily` series (a fund's valor cuota already includes everything).
  * - `index_plus_rate`: an index (UF) compounded at a fixed yearly rate, day by day.
+ * - `portfolio_group`: one of the user's own groups — its time-weighted return, each day's
+ *   flow-adjusted `pct` from the group's daily series chained, in the display unit (so its
+ *   level is already in that unit). It starts the day before the group's first return; a
+ *   later day without one (the group held nothing) is flat.
  *
  * A date before the series' first observation has no level (null). A date inside the series
  * reads the observation on or before it; one older than {@link MAX_CARRY_DAYS} throws — a
  * stale series, not a weekend.
  */
 
-export type BenchmarkKind = "equity_with_dividends" | "fund_unit" | "index_plus_rate";
+export type BenchmarkKind = "equity_with_dividends" | "fund_unit" | "index_plus_rate" | "portfolio_group";
 
 export type BenchmarkRow = {
   slug: string;
   kind: BenchmarkKind;
-  label_i18n_key: string;
+  /** Null for `portfolio_group` rows: they are named by their group. */
+  label_i18n_key: string | null;
   ticker: string | null;
   withholding_pct: number | null;
   series_key: string | null;
   index_key: "uf" | null;
   rate_pct: number | null;
+  portfolio_group_slug: string | null;
   sort_order: number;
 };
 
 export type BenchmarkLevelSeries = {
-  currency: "clp" | "usd";
+  /** The level's unit: a market series' quote currency, or the display unit (`portfolio_group`). */
+  currency: TsUnit;
   /** First date with a level; null when the series has no data at all. */
   first_ymd: string | null;
   /** Level on `ymd` (null before `first_ymd`). `today` reads a live price where one applies. */
@@ -44,7 +53,8 @@ export const MAX_CARRY_DAYS = 10;
 export function listBenchmarks(): BenchmarkRow[] {
   return db
     .prepare(
-      `SELECT slug, kind, label_i18n_key, ticker, withholding_pct, series_key, index_key, rate_pct, sort_order
+      `SELECT slug, kind, label_i18n_key, ticker, withholding_pct, series_key, index_key, rate_pct,
+              portfolio_group_slug, sort_order
        FROM benchmarks ORDER BY sort_order, slug`
     )
     .all() as BenchmarkRow[];
@@ -236,12 +246,47 @@ function indexPlusRateLevels(b: BenchmarkRow): BenchmarkLevelSeries {
   };
 }
 
+/**
+ * A time-weighted level from daily returns: it starts at 1 on the day before the first return
+ * and multiplies in each later one; a day without a return (nothing held) is flat. Pure.
+ */
+export function chainDailyReturns(
+  points: readonly { as_of_date: string; pct: number | null }[]
+): { dates: string[]; levels: number[] } {
+  const dates: string[] = [];
+  const levels: number[] = [];
+  let level = 1;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]!;
+    const has = p.pct != null && Number.isFinite(p.pct);
+    if (dates.length === 0) {
+      if (!has || i === 0) continue;
+      dates.push(points[i - 1]!.as_of_date);
+      levels.push(level);
+    }
+    if (has) level *= 1 + p.pct!;
+    dates.push(p.as_of_date);
+    levels.push(level);
+  }
+  return { dates, levels };
+}
+
+function portfolioGroupLevels(b: BenchmarkRow, unit: TsUnit): BenchmarkLevelSeries {
+  const series = resolveGroupDailySeries(b.portfolio_group_slug!, unit, 0);
+  const { dates, levels } = chainDailyReturns(series?.points ?? []);
+  if (dates.length === 0) return { currency: unit, first_ymd: null, levelAt: () => null };
+  return { currency: unit, first_ymd: dates[0]!, levelAt: stepSeries(b.slug, dates, levels) };
+}
+
 export function benchmarkLevelSeries(
   b: BenchmarkRow,
   todayYmd: string,
-  now: Date = new Date()
+  now: Date,
+  unit: TsUnit
 ): BenchmarkLevelSeries {
   switch (b.kind) {
+    case "portfolio_group":
+      return portfolioGroupLevels(b, unit);
     case "equity_with_dividends":
       return equityLevels(b, todayYmd, now);
     case "fund_unit":

@@ -763,7 +763,7 @@
     },
     "prepayments": {
       "title": "Prepagos vs invertir",
-      "hint": "Cada peso pagado sobre la cuota mínima (los prepagos y lo extra de cada pago), seguido hasta hoy de dos formas: prepagado, crece a la tasa de la hipoteca, {{mortgage}}, los intereses que ahorra; invertido el mismo día en la referencia, crece con ella. Δ = invertido − prepagado; verde significa que invertir habría resultado mejor hasta ahora. Antes de impuestos en ambos lados.",
+      "hint": "Cada peso pagado sobre la cuota mínima (los prepagos y lo extra de cada pago), seguido hasta hoy de dos formas: prepagado, crece a la tasa de la hipoteca, {{mortgage}}, los intereses que ahorra; invertido el mismo día en la referencia, crece con ella. Δ = invertido − prepagado; verde significa que invertir habría resultado mejor hasta ahora. Antes de impuestos en ambos lados. Tus portafolios rinden su propia rentabilidad ponderada por tiempo — lo que ganó cada peso que estuvo ahí, con tus elecciones incluidas (APV: sin su beneficio tributario ni la penalidad por retiro anticipado).",
       "compareWith": "Invertido en",
       "colDate": "Fecha",
       "colCuota": "Pago",
@@ -771,7 +771,8 @@
       "colPrepaid": "Prepagado, hoy",
       "colInvested": "Invertido, hoy",
       "colDelta": "Δ",
-      "totalLabel": "Todos los pagos"
+      "totalLabel": "Todos los pagos",
+      "coveredFrom": "Totales desde {{date}} ({{covered}} de {{total}} pagos): los pagos anteriores son de antes de este portafolio."
     }
   },
   "periodReturns": {
@@ -802,7 +803,8 @@
     "spy": "S&P 500 (SPY)",
     "riskyNorris": "Risky Norris",
     "uf": "UF",
-    "dap": "DAP (UF + {{rate}})"
+    "dap": "DAP (UF + {{rate}})",
+    "ownPortfolios": "Tus portafolios"
   },
   "groupPage": {
     "notFound": "No se encontró la vista de grupo para esta ruta.",

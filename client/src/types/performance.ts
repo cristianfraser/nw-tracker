@@ -20,7 +20,11 @@ export interface PeriodReturnCell {
 
 export interface BenchmarkOption {
   slug: string;
-  label_i18n_key: string;
+  /** `portfolio_group`: one of the user's own groups (its time-weighted return). */
+  kind: "equity_with_dividends" | "fund_unit" | "index_plus_rate" | "portfolio_group";
+  /** A group row: its nav label key, or null (then `label`). */
+  label_i18n_key: string | null;
+  label?: string;
   /** `index_plus_rate` benchmarks: the yearly rate (for the label); null otherwise. */
   rate_pct: number | null;
 }
@@ -42,7 +46,7 @@ export interface BenchmarkComparisonCell {
 
 export interface BenchmarkComparisonPayload {
   unit: "clp" | "usd" | "uf";
-  benchmark: { slug: string; label_i18n_key: string };
+  benchmark: { slug: string };
   as_of_date: string;
   benchmark_first_date: string | null;
   periods: BenchmarkComparisonCell[];
@@ -63,10 +67,13 @@ export interface PrepaymentRow {
 export interface MortgagePrepaymentComparison {
   unit: "clp" | "usd" | "uf";
   account_id: number;
-  benchmark: { slug: string; label_i18n_key: string };
+  benchmark: { slug: string };
   as_of_date: string;
   rows: PrepaymentRow[];
   totals: {
+    /** Payments the totals include — those the benchmark's history reaches. */
+    covered_payments: number;
+    covered_from: string | null;
     extra: number;
     prepaid_value: number | null;
     invested_value: number | null;

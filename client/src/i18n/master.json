@@ -2654,8 +2654,8 @@
         "es": "Prepagos vs invertir"
       },
       "hint": {
-        "en": "Every peso paid above the minimum cuota (the prepagos and the extra in each payment), followed to today two ways: prepaid, it grows at the mortgage's rate, {{mortgage}}, the interest it saves; invested on the same day in the benchmark, it grows with it. Δ = invested − prepaid; green means investing would have come out ahead so far. Before tax on both sides.",
-        "es": "Cada peso pagado sobre la cuota mínima (los prepagos y lo extra de cada pago), seguido hasta hoy de dos formas: prepagado, crece a la tasa de la hipoteca, {{mortgage}}, los intereses que ahorra; invertido el mismo día en la referencia, crece con ella. Δ = invertido − prepagado; verde significa que invertir habría resultado mejor hasta ahora. Antes de impuestos en ambos lados."
+        "en": "Every peso paid above the minimum cuota (the prepagos and the extra in each payment), followed to today two ways: prepaid, it grows at the mortgage's rate, {{mortgage}}, the interest it saves; invested on the same day in the benchmark, it grows with it. Δ = invested − prepaid; green means investing would have come out ahead so far. Before tax on both sides. Your own portfolios earn their own time-weighted return — what each peso held there made, picks included (APV: without its tax benefit or the early-withdrawal penalty).",
+        "es": "Cada peso pagado sobre la cuota mínima (los prepagos y lo extra de cada pago), seguido hasta hoy de dos formas: prepagado, crece a la tasa de la hipoteca, {{mortgage}}, los intereses que ahorra; invertido el mismo día en la referencia, crece con ella. Δ = invertido − prepagado; verde significa que invertir habría resultado mejor hasta ahora. Antes de impuestos en ambos lados. Tus portafolios rinden su propia rentabilidad ponderada por tiempo — lo que ganó cada peso que estuvo ahí, con tus elecciones incluidas (APV: sin su beneficio tributario ni la penalidad por retiro anticipado)."
       },
       "compareWith": {
         "en": "Invested in",
@@ -2688,6 +2688,10 @@
       "totalLabel": {
         "en": "All payments",
         "es": "Todos los pagos"
+      },
+      "coveredFrom": {
+        "en": "Totals from {{date}} ({{covered}} of {{total}} payments): earlier payments predate this portfolio.",
+        "es": "Totales desde {{date}} ({{covered}} de {{total}} pagos): los pagos anteriores son de antes de este portafolio."
       }
     }
   },
@@ -2797,6 +2801,10 @@
     "dap": {
       "en": "Term deposit (UF + {{rate}})",
       "es": "DAP (UF + {{rate}})"
+    },
+    "ownPortfolios": {
+      "en": "Your portfolios",
+      "es": "Tus portafolios"
     }
   },
   "groupPage": {

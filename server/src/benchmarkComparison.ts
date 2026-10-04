@@ -69,7 +69,7 @@ export type BenchmarkComparisonCell = {
 
 export type BenchmarkComparisonPayload = {
   unit: TsUnit;
-  benchmark: { slug: string; label_i18n_key: string };
+  benchmark: { slug: string };
   as_of_date: string;
   /** First day the benchmark has a level (null: no data). */
   benchmark_first_date: string | null;
@@ -133,9 +133,12 @@ export function levelInUnit(
     const native = series.levelAt(ymd);
     let out: number | null = null;
     if (native != null) {
-      if (series.currency === "usd" && unit === "usd") {
+      if (series.currency === unit) {
         out = native;
       } else {
+        if (series.currency !== "clp" && series.currency !== "usd") {
+          throw new Error(`benchmark: a level in ${series.currency} cannot be shown in ${unit}`);
+        }
         let clp = native;
         if (series.currency === "usd") {
           const fx = fxForLiveMtm(ymd, now);
@@ -174,7 +177,7 @@ export function computeBenchmarkComparison(input: {
   const now = input.now ?? new Date();
   const { unit, benchmark, real } = input;
   const todayYmd = chileWallClockAt(now).ymd;
-  const series = benchmarkLevelSeries(benchmark, todayYmd, now);
+  const series = benchmarkLevelSeries(benchmark, todayYmd, now, unit);
   const level = levelInUnit(series, unit, now);
 
   const accounts = input.accounts.filter(includeShortHorizonAccount);
@@ -255,7 +258,7 @@ export function computeBenchmarkComparison(input: {
 
   return {
     unit,
-    benchmark: { slug: benchmark.slug, label_i18n_key: benchmark.label_i18n_key },
+    benchmark: { slug: benchmark.slug },
     as_of_date: todayYmd,
     benchmark_first_date: series.first_ymd,
     periods,

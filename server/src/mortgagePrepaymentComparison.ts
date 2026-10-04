@@ -31,6 +31,10 @@ export type PrepaymentRow = {
 };
 
 export type PrepaymentTotals = {
+  /** Payments the totals include: those the benchmark's history reaches (all of them, usually). */
+  covered_payments: number;
+  covered_from: string | null;
+  /** Σ extra over the covered payments. */
   extra: number;
   prepaid_value: number | null;
   invested_value: number | null;
@@ -44,7 +48,7 @@ export type PrepaymentTotals = {
 export type MortgagePrepaymentComparison = {
   unit: TsUnit;
   account_id: number;
-  benchmark: { slug: string; label_i18n_key: string };
+  benchmark: { slug: string };
   as_of_date: string;
   rows: PrepaymentRow[];
   totals: PrepaymentTotals;
@@ -84,8 +88,8 @@ export function computeMortgagePrepaymentComparison(input: {
   const todayYmd = chileWallClockAt(now).ymd;
   const mortgage = getBenchmark("mortgage");
   if (!mortgage) throw new Error("benchmarks: no `mortgage` row");
-  const prepaidLevel = levelInUnit(benchmarkLevelSeries(mortgage, todayYmd, now), unit, now);
-  const investedLevel = levelInUnit(benchmarkLevelSeries(benchmark, todayYmd, now), unit, now);
+  const prepaidLevel = levelInUnit(benchmarkLevelSeries(mortgage, todayYmd, now, unit), unit, now);
+  const investedLevel = levelInUnit(benchmarkLevelSeries(benchmark, todayYmd, now, unit), unit, now);
 
   const grow = (level: (ymd: string) => number | null, amount: number, date: string): number | null => {
     const from = level(date);
@@ -108,27 +112,24 @@ export function computeMortgagePrepaymentComparison(input: {
     };
   });
 
-  const sum = (pick: (r: PrepaymentRow) => number | null): number | null => {
-    let total = 0;
-    for (const r of rows) {
-      const v = pick(r);
-      if (v == null) return null;
-      total += v;
-    }
-    return total;
-  };
-  const extra = sum((r) => r.extra)!;
-  const prepaidValue = sum((r) => r.prepaid_value);
-  const investedValue = sum((r) => r.invested_value);
-  // The window opens the day before the first payment, so that payment is inside it.
+  // Totals cover the payments the benchmark reaches: one that predates the benchmark's history
+  // (your Acciones began after the first prepayments) is listed with no invested value and left
+  // out of both sides of the totals, so they still compare like with like.
+  const covered = rows.filter((r) => r.prepaid_value != null && r.invested_value != null);
+  const sum = (pick: (r: PrepaymentRow) => number): number =>
+    covered.reduce((total, r) => total + pick(r), 0);
+  const extra = sum((r) => r.extra);
+  const prepaidValue = covered.length ? sum((r) => r.prepaid_value!) : null;
+  const investedValue = covered.length ? sum((r) => r.invested_value!) : null;
+  // The window opens the day before the first covered payment, so that payment is inside it.
   const irr = (value: number | null) =>
     value == null
       ? null
       : windowIrr(
           0,
-          chileCalendarAddDays(rows[0]!.date, -1),
+          chileCalendarAddDays(covered[0]!.date, -1),
           todayYmd,
-          rows.map((r) => ({ ymd: r.date, amount: r.extra })),
+          covered.map((r) => ({ ymd: r.date, amount: r.extra })),
           value
         );
   const prepaidIrr = irr(prepaidValue);
@@ -137,10 +138,12 @@ export function computeMortgagePrepaymentComparison(input: {
   return {
     unit,
     account_id: accountId,
-    benchmark: { slug: benchmark.slug, label_i18n_key: benchmark.label_i18n_key },
+    benchmark: { slug: benchmark.slug },
     as_of_date: todayYmd,
     rows,
     totals: {
+      covered_payments: covered.length,
+      covered_from: covered[0]?.date ?? null,
       extra,
       prepaid_value: prepaidValue,
       invested_value: investedValue,
