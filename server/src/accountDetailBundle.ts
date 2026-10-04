@@ -28,6 +28,8 @@ import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { dashboardBucketSlugForAccountId, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import { computePeriodReturns } from "./periodReturns.js";
 import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
+import { withDailyChainedReturns } from "./periodReturnsDaily.js";
+import { resolveAccountDailySeries } from "./groupDailySeries.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { equityReturnSnapshot } from "./equityReturns.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
@@ -287,15 +289,31 @@ export async function buildAccountDetailBundle(
     monthly_performance != null &&
     monthly_performance.monthly.length > 0 &&
     isInvestmentPerformanceAccount(accountId)
-      ? withShortHorizonCells(computePeriodReturns(monthly_performance.monthly, unit), [
-          {
-            account_id: accountId,
-            name: cat.account_name,
-            bucket_slug: cat.bucket_slug,
-            import_key: cat.account_import_key,
-            exclude_from_group_totals: 0,
-          },
-        ], unit)
+      ? withShortHorizonCells(
+          withDailyChainedReturns(
+            computePeriodReturns(monthly_performance.monthly, unit),
+            resolveAccountDailySeries(
+              {
+                account_id: accountId,
+                name: cat.account_name,
+                bucket_slug: cat.bucket_slug,
+                import_key: cat.account_import_key,
+              },
+              unit,
+              0
+            ).points
+          ),
+          [
+            {
+              account_id: accountId,
+              name: cat.account_name,
+              bucket_slug: cat.bucket_slug,
+              import_key: cat.account_import_key,
+              exclude_from_group_totals: 0,
+            },
+          ],
+          unit
+        )
       : null;
 
   const dashboard_account_row = await withPortfolioGroupIndex(async () => {

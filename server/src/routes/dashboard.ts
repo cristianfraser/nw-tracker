@@ -28,10 +28,9 @@ import {
 import { chartHostSlugForValuationGroup, listReferenceGroupsForChartHost } from "../portfolioGroupReference.js";
 import {
   DAILY_SERIES_MAX_DAYS,
-  getBucketDailySeriesCached,
   groupDailySeriesAccounts,
 } from "../dailySeries.js";
-import { resolveGroupDailySeries } from "../groupDailySeries.js";
+import { resolveAccountDailySeries, resolveGroupDailySeries } from "../groupDailySeries.js";
 import { db } from "../db.js";
 import { buildProportionalFromValueArrays } from "../proportionalSeries.js";
 import { buildReferenceCoverage, sumAlignedValues } from "../referenceCoverage.js";
@@ -257,11 +256,7 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     return;
   }
   // Excluded-from-totals accounts still get their own daily series on their page.
-  const series = getBucketDailySeriesCached(
-    `account:${accountId}`,
-    [{ ...row, exclude_from_group_totals: 0 }],
-    { unit, days, includeAccounts: true }
-  );
+  const series = resolveAccountDailySeries(row, unit, days);
   const { deposit_cums_raw: _rawDepsAcct, ...accountSeriesPayload } = series;
   // Property account page: the monthly block carries synthetic «hipoteca»/«valor» reference
   // lines beside the property line — emit their daily twins (matched by account id in the

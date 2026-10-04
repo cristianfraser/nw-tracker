@@ -143,6 +143,42 @@ export function chileCalendarDaysListEndingAt(endYmd: string, count: number): st
  * goes into the debt. `liabilityFlows` returns them separately because the P/L identity
  * subtracts them from a *falling* balance.
  */
+/**
+ * Grid days a member's money was in the bucket without a value: a run of days with no mark that
+ * money entered (a flow inside the run) and that ends in a mark later on — e.g. an AFP whose first
+ * contributions predate its first valuation. The bucket sums only the members that have a mark,
+ * so on those days it would count the money in and not its value (−79% on the day it arrived,
+ * +358% on the day the value appeared). Flags the run and the day the mark appears; the caller
+ * gives those days no return. A member that was never valued (not yet open) or is no longer
+ * valued (closed, the run never ends) is not flagged. `flows[g − 1]` is grid day g's flow, as
+ * `gridFlows` builds it. Pure; exported for tests.
+ */
+export function unvaluedMemberDays(
+  marks: readonly (number | null)[],
+  flows: readonly number[] | undefined
+): boolean[] {
+  const out = new Array<boolean>(marks.length).fill(false);
+  const has = (g: number) => marks[g] != null && Number.isFinite(marks[g]!);
+  let g = 0;
+  while (g < marks.length) {
+    if (has(g)) {
+      g += 1;
+      continue;
+    }
+    const start = g;
+    while (g < marks.length && !has(g)) g += 1;
+    const end = g - 1; // last unmarked day of the run
+    if (g >= marks.length) break; // never valued again
+    let moneyIn = false;
+    for (let d = Math.max(start, 1); d <= end; d++) {
+      if ((flows?.[d - 1] ?? 0) !== 0) moneyIn = true;
+    }
+    if (!moneyIn) continue;
+    for (let d = start; d <= end + 1; d++) out[d] = true;
+  }
+  return out;
+}
+
 function gridFlows(
   accounts: readonly ShortHorizonAccountRef[],
   sessions: readonly string[],
@@ -470,6 +506,13 @@ export function getBucketDailySeries(
     return accFlows ? [{ ai, accFlows, sign: isLiability[ai] ? -1 : 1 }] : [];
   });
 
+  // Days a member held money without a value give the bucket no return (`unvaluedMemberDays`).
+  const unvalued = new Array<boolean>(grid.length).fill(false);
+  included.forEach((a, ai) => {
+    const flagged = unvaluedMemberDays(marksByAccount[ai]!, flowsByAccount.get(a.account_id));
+    for (let g = 0; g < grid.length; g++) if (flagged[g]) unvalued[g] = true;
+  });
+
   const points: DailySeriesPoint[] = [];
   for (let i = 1; i < grid.length; i++) {
     const ymd = grid[i]!;
@@ -482,7 +525,10 @@ export function getBucketDailySeries(
     // for an asset-only bucket this is exactly `delta − flow`.
     const wealthNow = wealth[i]!;
     const wealthPrev = wealth[i - 1]!;
-    const pl = wealthNow != null && wealthPrev != null ? wealthNow - wealthPrev - flow : null;
+    const pl =
+      wealthNow != null && wealthPrev != null && !unvalued[i]
+        ? wealthNow - wealthPrev - flow
+        : null;
     // Capital base = what was at work before today's P/L: assets grow with their flows, debt
     // grows with borrowing (the negated liability flow) — both are positive exposures. The
     // guard is the monthly rows' (`flowAdjustedPct`): a day that ends at zero, or whose

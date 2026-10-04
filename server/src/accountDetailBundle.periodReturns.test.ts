@@ -4,6 +4,8 @@ import { computePeriodReturns, PERIOD_RETURN_ORDER } from "./periodReturns.js";
 import { isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { db } from "./db.js";
+import { resolveAccountDailySeries } from "./groupDailySeries.js";
+import { withDailyChainedReturns } from "./periodReturnsDaily.js";
 
 /** First investment account (brokerage/retirement) that has monthly perf rows. */
 function findInvestmentAccountId(): number | null {
@@ -30,8 +32,18 @@ describe("accountDetailBundle period_returns", () => {
       ...PERIOD_RETURN_ORDER,
     ]);
 
-    // The monthly tail is exactly the pure chained builder over the same monthly rows.
-    const expected = computePeriodReturns(bundle!.monthly_performance!.monthly, "clp")!;
+    // The month windows are the monthly builder's windows and pesos, their % chained from the
+    // account's own daily returns.
+    const acc = db
+      .prepare(
+        `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug, a.import_key
+         FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
+      )
+      .get(accountId) as { account_id: number; name: string; bucket_slug: string; import_key: string | null };
+    const expected = withDailyChainedReturns(
+      computePeriodReturns(bundle!.monthly_performance!.monthly, "clp"),
+      resolveAccountDailySeries(acc, "clp", 0).points
+    )!;
     expect(bundle!.period_returns!.periods.slice(2)).toEqual(expected.periods);
   });
 
