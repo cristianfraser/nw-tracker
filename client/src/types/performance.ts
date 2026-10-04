@@ -33,6 +33,9 @@ export interface BenchmarkComparisonCell {
   shadow_pl: number | null;
   /** Real P/L − shadow P/L. */
   delta_pl: number | null;
+  /** Money-weighted returns: P/L ÷ the average capital at work (same denominator for both). */
+  real_mw_pct: number | null;
+  shadow_mw_pct: number | null;
   window_start_date: string | null;
 }
 

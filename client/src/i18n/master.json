@@ -2717,6 +2717,14 @@
     "benchmarkUnavailable": {
       "en": "{{benchmark}} has no history for this period",
       "es": "{{benchmark}} no tiene historia para este período"
+    },
+    "moneyWeighted": {
+      "en": "{{pct}} MWR",
+      "es": "{{pct}} MWR"
+    },
+    "moneyWeightedTitle": {
+      "en": "Money-weighted return: P/L ÷ the average money invested over the period (each deposit or withdrawal counted for the part of the period it was in). The same denominator in both rows.",
+      "es": "Rentabilidad ponderada por dinero: ganancia ÷ el dinero invertido en promedio durante el período (cada aporte o retiro cuenta por la parte del período en que estuvo). El mismo denominador en ambas filas."
     }
   },
   "benchmarks": {

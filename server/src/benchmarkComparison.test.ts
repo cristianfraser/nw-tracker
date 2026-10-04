@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { shadowOverWindow } from "./benchmarkComparison.js";
+import { averageCapitalAtWork, shadowOverWindow } from "./benchmarkComparison.js";
 import {
   benchmarkLevelSeries,
   getBenchmark,
@@ -82,6 +82,48 @@ describe("shadowOverWindow", () => {
     expect(
       shadowOverWindow(100, "2026-01-31", "2026-02-28", [{ ymd: "2026-02-10", amount: 1 }], level)
     ).toBeNull();
+  });
+});
+
+describe("averageCapitalAtWork", () => {
+  it("weights each flow by the share of the window it was invested", () => {
+    // 10-day window: 100 all along, +99 for the last 5 days, −20 for the last 2.
+    const c = averageCapitalAtWork(
+      100,
+      "2026-01-01",
+      "2026-01-11",
+      [
+        { ymd: "2026-01-06", amount: 99 },
+        { ymd: "2026-01-09", amount: -20 },
+      ],
+      0.01
+    );
+    expect(c).toBeCloseTo(100 + 99 * 0.5 - 20 * 0.2);
+  });
+
+  it("an empty start runs from the first flow", () => {
+    expect(
+      averageCapitalAtWork(0, "2025-12-31", "2026-01-11", [{ ymd: "2026-01-01", amount: 50 }], 0.01)
+    ).toBeCloseTo(50);
+  });
+
+  it("is null without positive capital or without a window", () => {
+    expect(
+      averageCapitalAtWork(10, "2026-01-01", "2026-01-11", [{ ymd: "2026-01-02", amount: -50 }], 0.01)
+    ).toBeNull();
+    expect(averageCapitalAtWork(10, "2026-01-11", "2026-01-11", [], 0.01)).toBeNull();
+  });
+
+  it("the money-weighted example: a 10% loss on $1, then a 10% gain on $100", () => {
+    // 2-period example (−1% time-weighted, +$9,89): the money-weighted % is clearly positive.
+    const c = averageCapitalAtWork(
+      1,
+      "2026-01-01",
+      "2026-03-01",
+      [{ ymd: "2026-01-31", amount: 99 }],
+      0.01
+    )!;
+    expect(9.89 / c).toBeGreaterThan(0.15);
   });
 });
 

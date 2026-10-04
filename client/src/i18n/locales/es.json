@@ -779,7 +779,9 @@
     "compareWith": "Comparar con",
     "delta": "Δ {{amount}}",
     "shadowTitle": "Los mismos aportes y retiros, en las mismas fechas, invertidos en {{benchmark}} desde {{start}}. Δ = tu ganancia − la suya.",
-    "benchmarkUnavailable": "{{benchmark}} no tiene historia para este período"
+    "benchmarkUnavailable": "{{benchmark}} no tiene historia para este período",
+    "moneyWeighted": "{{pct}} MWR",
+    "moneyWeightedTitle": "Rentabilidad ponderada por dinero: ganancia ÷ el dinero invertido en promedio durante el período (cada aporte o retiro cuenta por la parte del período en que estuvo). El mismo denominador en ambas filas."
   },
   "benchmarks": {
     "mortgage": "Hipoteca (UF + {{rate}})",
