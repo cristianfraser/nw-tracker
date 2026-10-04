@@ -303,6 +303,10 @@
         "en": "Invested",
         "es": "Invertido"
       }
+    },
+    "mortgageCoverage": {
+      "en": "Mortgage coverage",
+      "es": "Cobertura de la hipoteca"
     }
   },
   "dashboard": {

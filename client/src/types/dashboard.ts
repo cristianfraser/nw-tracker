@@ -313,6 +313,8 @@ export interface ValuationTimeseriesResponse {
   /** Pasivos grouped bucket block + shares (single mode — no Agrupado toggle). */
   liab_grouped_block?: TimeseriesBlock;
   liab_grouped_proportional?: ProportionalSeriesBlockDto;
+  /** Pasivos: each reference line («Disponible», «Disponible total») ÷ the mortgage balance (fraction). */
+  reference_coverage?: ProportionalSeriesBlockDto;
 }
 
 /** One NYSE-session point of `GET /api/dashboard/overview-daily` (values in the request unit). */
@@ -394,6 +396,8 @@ export interface DailySeriesResponse {
   grouped_proportional?: ProportionalSeriesBlockDto;
   /** Composition shares of the "Sin agrupar" bucket lines (only when they differ from grouped). */
   ungrouped_proportional?: ProportionalSeriesBlockDto;
+  /** Pasivos: the day-grain twin of the monthly `reference_coverage`. */
+  reference_coverage?: ProportionalSeriesBlockDto;
   /**
    * CC scopes only (a card's own page, or a Pasivos / credit-card group page — summed over the
    * masters its merged monthly ledger sums; CLP requests only): per-day owed («saldo total»,
