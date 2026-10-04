@@ -52,8 +52,8 @@ export type BenchmarkComparisonProps = {
  * Rentabilidad — chained flow-adjusted returns, one column per period (%, nominal amount,
  * annualized where it applies), in the payload's order. With `comparison`, a second row shows
  * a selectable benchmark: its return over the same window, what the same flows would have made
- * there (shadow P/L) and Δ = real P/L − that, and both rows gain a money-weighted % (P/L ÷ the
- * average capital at work, one denominator, so it ranks the way Δ does) — all server-computed. Static (no NumberFlow): it
+ * there (shadow P/L) and Δ = real P/L − that, and both rows gain the money's IRR (yearly
+ * on windows of a year or more) — all server-computed. Static (no NumberFlow): it
  * refetches wholesale on unit toggle. Formats at render time (decimal-separator convention).
  * One markup for both viewports — narrow screens flip it to one row per period (CSS).
  */
@@ -88,10 +88,12 @@ export function PeriodReturnsTable({
   const selectedOption = comparison?.options.find((o) => o.slug === comparison.selected);
   const selectedLabel = selectedOption ? benchmarkLabel(selectedOption) : "";
 
-  const moneyWeighted = (pct: number | null | undefined) =>
+  const irr = (pct: number | null | undefined, annualized: boolean | undefined) =>
     pct != null ? (
-      <div className={styles.moneyWeighted} title={t("periodReturns.moneyWeightedTitle")}>
-        {t("periodReturns.moneyWeighted", { pct: formatPct(pct * 100) })}
+      <div className={styles.irr} title={t("periodReturns.irrTitle")}>
+        {t(annualized ? "periodReturns.irrAnnual" : "periodReturns.irr", {
+          pct: formatPct(pct * 100),
+        })}
       </div>
     ) : null;
 
@@ -127,7 +129,10 @@ export function PeriodReturnsTable({
             {cell.nominal_pl != null ? (
               <div className={styles.nominal}>{formatNominal(cell.nominal_pl)}</div>
             ) : null}
-            {moneyWeighted(benchByPeriod.get(cell.period)?.real_mw_pct)}
+            {irr(
+              benchByPeriod.get(cell.period)?.real_irr_pct,
+              benchByPeriod.get(cell.period)?.irr_annualized
+            )}
             {cell.annualized_pct != null ? (
               <div className={styles.annualized}>
                 {formatPct(cell.annualized_pct * 100)} {t("periodReturns.annualized")}
@@ -174,7 +179,7 @@ export function PeriodReturnsTable({
                 {b?.shadow_pl != null ? (
                   <div className={styles.nominal}>{formatNominal(b.shadow_pl)}</div>
                 ) : null}
-                {moneyWeighted(b?.shadow_mw_pct)}
+                {irr(b?.shadow_irr_pct, b?.irr_annualized)}
                 {b?.benchmark_annualized_pct != null ? (
                   <div className={styles.annualized}>
                     {formatPct(b.benchmark_annualized_pct * 100)} {t("periodReturns.annualized")}

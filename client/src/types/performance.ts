@@ -33,9 +33,10 @@ export interface BenchmarkComparisonCell {
   shadow_pl: number | null;
   /** Real P/L − shadow P/L. */
   delta_pl: number | null;
-  /** Money-weighted returns: P/L ÷ the average capital at work (same denominator for both). */
-  real_mw_pct: number | null;
-  shadow_mw_pct: number | null;
+  /** IRR of the real money and of its shadow: yearly when `irr_annualized`, else over the window. */
+  real_irr_pct: number | null;
+  shadow_irr_pct: number | null;
+  irr_annualized: boolean;
   window_start_date: string | null;
 }
 
@@ -70,8 +71,10 @@ export interface MortgagePrepaymentComparison {
     prepaid_value: number | null;
     invested_value: number | null;
     delta: number | null;
-    prepaid_mw_pct: number | null;
-    invested_mw_pct: number | null;
+    /** Each side's IRR on the extra payments; yearly when `irr_annualized`. */
+    prepaid_irr_pct: number | null;
+    invested_irr_pct: number | null;
+    irr_annualized: boolean;
   };
 }
 
