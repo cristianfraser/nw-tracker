@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { benchmarkOptionLabel } from "../../benchmarkLabels";
 import { cn } from "../../cn";
 import { formatClp, formatPct, formatUsdFine } from "../../format";
 import { useTranslation } from "../../i18n";
@@ -25,17 +26,6 @@ const PERIOD_LABEL_KEY: Record<PeriodReturnKey, string> = {
   y5: "periodReturns.y5",
   total: "periodReturns.total",
 };
-
-/**
- * The label keys the server's `benchmarks` rows name (`label_i18n_key`, migration 207). A row
- * whose key is not here has no translation: adding a benchmark means adding its label too.
- */
-const BENCHMARK_LABEL_KEYS: ReadonlySet<string> = new Set([
-  "benchmarks.mortgage",
-  "benchmarks.spy",
-  "benchmarks.riskyNorris",
-  "benchmarks.uf",
-]);
 
 /** Every Rentabilidad table compares against the mortgage until the user picks another. */
 const DEFAULT_BENCHMARK = "mortgage";
@@ -94,12 +84,7 @@ export function PeriodReturnsTable({
     return t("periodReturns.insufficientHistory");
   };
 
-  const benchmarkLabel = (o: BenchmarkOption): string => {
-    if (!BENCHMARK_LABEL_KEYS.has(o.label_i18n_key)) {
-      throw new Error(`benchmark ${o.slug}: no translation for ${o.label_i18n_key}`);
-    }
-    return t(o.label_i18n_key, { rate: o.rate_pct != null ? formatPct(o.rate_pct) : "" });
-  };
+  const benchmarkLabel = (o: BenchmarkOption): string => benchmarkOptionLabel(t, o);
   const selectedOption = comparison?.options.find((o) => o.slug === comparison.selected);
   const selectedLabel = selectedOption ? benchmarkLabel(selectedOption) : "";
 

@@ -2,6 +2,7 @@
 import express from "express";
 import { benchmarkComparisonForAccount, benchmarkComparisonForGroup } from "../benchmarkComparison.js";
 import { getBenchmark, listBenchmarks } from "../benchmarkLevels.js";
+import { computeMortgagePrepaymentComparison } from "../mortgagePrepaymentComparison.js";
 import {
   isInvestmentPerformanceGroupSlug,
   isResolvablePortfolioGroupSlug,
@@ -63,5 +64,24 @@ export function registerBenchmarkRoutes(app: express.Express): void {
       return;
     }
     res.json(benchmarkComparisonForGroup(tabSlug, benchmark, unit));
+  });
+
+  /**
+   * `?account_id=<mortgage account>&benchmark=<slug>&unit=clp|usd`: the mortgage's payments above
+   * the minimum, prepaid vs invested in the benchmark. `null` body: no such payments.
+   */
+  app.get("/api/mortgage-prepayment-comparison", (req, res) => {
+    const benchmark = getBenchmark(typeof req.query.benchmark === "string" ? req.query.benchmark : "");
+    if (!benchmark) {
+      res.status(400).json({ error: "unknown benchmark" });
+      return;
+    }
+    const id = Number(req.query.account_id);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "invalid account_id" });
+      return;
+    }
+    const unit = req.query.unit === "usd" ? ("usd" as const) : ("clp" as const);
+    res.json(computeMortgagePrepaymentComparison({ accountId: id, benchmark, unit }));
   });
 }

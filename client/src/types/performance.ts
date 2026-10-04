@@ -47,6 +47,34 @@ export interface BenchmarkComparisonPayload {
   periods: BenchmarkComparisonCell[];
 }
 
+export interface PrepaymentRow {
+  date: string;
+  /** The mortgage ledger's cuota label: a cuota number, or `prepago N`. */
+  cuota: string;
+  /** Paid above the minimum cuota. */
+  extra: number;
+  prepaid_value: number | null;
+  invested_value: number | null;
+  /** Invested − prepaid (positive: investing would have come out ahead). */
+  delta: number | null;
+}
+
+export interface MortgagePrepaymentComparison {
+  unit: "clp" | "usd" | "uf";
+  account_id: number;
+  benchmark: { slug: string; label_i18n_key: string };
+  as_of_date: string;
+  rows: PrepaymentRow[];
+  totals: {
+    extra: number;
+    prepaid_value: number | null;
+    invested_value: number | null;
+    delta: number | null;
+    prepaid_mw_pct: number | null;
+    invested_mw_pct: number | null;
+  };
+}
+
 export interface PeriodReturnsPayload {
   unit: "clp" | "usd" | "uf";
   as_of_date: string;

@@ -759,6 +759,19 @@
       "colDate": "Date",
       "colAmount": "CLP amount",
       "colAccumulated": "Accumulated CLP"
+    },
+    "prepayments": {
+      "title": "Prepayments vs investing",
+      "hint": "Every peso paid above the minimum cuota (the prepagos and the extra in each payment), followed to today two ways: prepaid, it grows at the mortgage's rate, {{mortgage}}, the interest it saves; invested on the same day in the benchmark, it grows with it. Δ = invested − prepaid; green means investing would have come out ahead so far. Before tax on both sides.",
+      "compareWith": "Invested in",
+      "colDate": "Date",
+      "colCuota": "Payment",
+      "colExtra": "Above minimum",
+      "colPrepaid": "Prepaid, today",
+      "colInvested": "Invested, today",
+      "colDelta": "Δ",
+      "totalLabel": "All payments",
+      "mw": "{{pct}} MWR"
     }
   },
   "periodReturns": {

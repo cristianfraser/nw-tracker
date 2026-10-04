@@ -23,6 +23,7 @@ import { AccountClpCashMovementsForm } from "../../components/account/AccountClp
 import { AccountUnitsFlowForm } from "../../components/account/AccountUnitsFlowForm";
 import { AccountBookLedgerSection } from "../../components/account/AccountBookLedgerSection";
 import { MortgagePaymentForm } from "../../components/account/MortgagePaymentForm";
+import { MortgagePrepaymentSection } from "../../components/account/MortgagePrepaymentSection";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import {
   supportsBrokerageMovements,
@@ -474,6 +475,9 @@ export function StandardAccountDetailPage({ data }: Props) {
           />
           {mortgageLedger.payment_scenarios && mortgageLedger.payment_scenarios.length > 0 ? (
             <DeptoPaymentScenarioTable rows={mortgageLedger.payment_scenarios} />
+          ) : null}
+          {isMortgageAccount ? (
+            <MortgagePrepaymentSection accountId={summary.account_id} displayUnit={displayUnit} />
           ) : null}
         </>
       ) : isDeptoAccount ? (
