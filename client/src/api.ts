@@ -701,6 +701,20 @@ export const api = {
   },
   wealthPercentile: () =>
     j<import("./types").WealthPercentileResponse>("/api/wealth-percentile"),
+  benchmarks: () =>
+    j<{ benchmarks: import("./types").BenchmarkOption[] }>("/api/benchmarks"),
+  benchmarkComparison: (
+    scope: { accountId: number } | { portfolioGroup: string },
+    benchmark: string,
+    unit: "clp" | "usd"
+  ) => {
+    const qs = new URLSearchParams({ benchmark, unit });
+    if ("accountId" in scope) qs.set("account_id", String(scope.accountId));
+    else qs.set("portfolio_group", scope.portfolioGroup);
+    return j<import("./types").BenchmarkComparisonPayload | null>(
+      `/api/benchmark-comparison?${qs.toString()}`
+    );
+  },
   taxReturn: (taxYear: number | null) =>
     j<import("./types").TaxReturnResponse>(
       `/api/tax-return${taxYear != null ? `?tax_year=${taxYear}` : ""}`

@@ -18,6 +18,32 @@ export interface PeriodReturnCell {
   window_start_date?: string | null;
 }
 
+export interface BenchmarkOption {
+  slug: string;
+  label_i18n_key: string;
+  /** `index_plus_rate` benchmarks: the yearly rate (for the label); null otherwise. */
+  rate_pct: number | null;
+}
+
+export interface BenchmarkComparisonCell {
+  period: PeriodReturnKey;
+  benchmark_pct: number | null;
+  benchmark_annualized_pct: number | null;
+  /** P/L of the shadow portfolio (the same flows on the same days, in the benchmark). */
+  shadow_pl: number | null;
+  /** Real P/L − shadow P/L. */
+  delta_pl: number | null;
+  window_start_date: string | null;
+}
+
+export interface BenchmarkComparisonPayload {
+  unit: "clp" | "usd" | "uf";
+  benchmark: { slug: string; label_i18n_key: string };
+  as_of_date: string;
+  benchmark_first_date: string | null;
+  periods: BenchmarkComparisonCell[];
+}
+
 export interface PeriodReturnsPayload {
   unit: "clp" | "usd" | "uf";
   as_of_date: string;

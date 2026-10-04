@@ -10,7 +10,7 @@ import { useDailySeries } from "../../queries/hooks";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { PageTitleRow } from "../layout/PageTitleRow";
-import { PeriodReturnsTable } from "../perf/PeriodReturnsTable";
+import { PeriodReturnsWithBenchmark } from "../perf/PeriodReturnsTable";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useTranslation } from "../../i18n";
@@ -183,10 +183,15 @@ export function GroupInfoBase({
         {charts}
         {tablesEnabled ? (
           <>
-            {!serverPaginatedMonthlyDetail && periodReturns != null ? (
+            {!serverPaginatedMonthlyDetail && periodReturns != null && portfolio?.groupSlug ? (
               <>
                 <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("periodReturns.title")}</h2>
-                <PeriodReturnsTable data={periodReturns} displayUnit={displayUnit} />
+                <PeriodReturnsWithBenchmark
+                  data={periodReturns}
+                  displayUnit={displayUnit}
+                  scope={{ portfolioGroup: portfolio.groupSlug }}
+                  surfaceId={`group.${portfolio.groupSlug}.returns`}
+                />
               </>
             ) : null}
             <div className="chart-panel-title-row" style={{ marginTop: "2rem" }}>

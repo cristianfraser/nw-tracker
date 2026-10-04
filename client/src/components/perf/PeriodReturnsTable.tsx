@@ -1,7 +1,17 @@
+import type { CSSProperties } from "react";
 import { cn } from "../../cn";
 import { formatClp, formatPct, formatUsdFine } from "../../format";
 import { useTranslation } from "../../i18n";
-import type { PeriodReturnCell, PeriodReturnKey, PeriodReturnsPayload } from "../../types";
+import { useBenchmarkComparison, useBenchmarks } from "../../queries/hooks";
+import { useSurfaceBenchmark } from "../../surfaceDisplayPrefs";
+import type {
+  BenchmarkComparisonCell,
+  BenchmarkComparisonPayload,
+  BenchmarkOption,
+  PeriodReturnCell,
+  PeriodReturnKey,
+  PeriodReturnsPayload,
+} from "../../types";
 import { Table } from "../ui/Table";
 import styles from "./PeriodReturnsTable.module.css";
 
@@ -16,27 +26,58 @@ const PERIOD_LABEL_KEY: Record<PeriodReturnKey, string> = {
   total: "periodReturns.total",
 };
 
-function toneClass(pct: number | null): string | undefined {
-  if (pct == null || !Number.isFinite(pct) || pct === 0) return undefined;
-  return pct > 0 ? styles.up : styles.down;
+/**
+ * The label keys the server's `benchmarks` rows name (`label_i18n_key`, migration 207). A row
+ * whose key is not here has no translation: adding a benchmark means adding its label too.
+ */
+const BENCHMARK_LABEL_KEYS: ReadonlySet<string> = new Set([
+  "benchmarks.mortgage",
+  "benchmarks.spy",
+  "benchmarks.riskyNorris",
+  "benchmarks.uf",
+]);
+
+/** Every Rentabilidad table compares against the mortgage until the user picks another. */
+const DEFAULT_BENCHMARK = "mortgage";
+
+function toneClass(n: number | null): string | undefined {
+  if (n == null || !Number.isFinite(n) || n === 0) return undefined;
+  return n > 0 ? styles.up : styles.down;
 }
 
+/** Grid placement for the flipped (mobile) layout; ignored by the desktop table. */
+function cellPos(row: number, col: number): CSSProperties {
+  return { "--r": row, "--c": col } as CSSProperties;
+}
+
+export type BenchmarkComparisonProps = {
+  options: readonly BenchmarkOption[];
+  selected: string;
+  onSelect: (slug: string) => void;
+  /** Null while loading, or while it is in another unit than the table. */
+  data: BenchmarkComparisonPayload | null;
+};
+
 /**
- * Rentabilidad — chained flow-adjusted returns, one column per period and a single row of
- * values (%, nominal amount, annualized where it applies), in the payload's order. Static
- * (no NumberFlow): it refetches wholesale on unit toggle. Each cell's `title` carries the
- * window the period covers. Formats at render time (decimal-separator convention).
- * One rendering for both viewports — narrow screens scroll the row inside `.table-wrap`.
+ * Rentabilidad — chained flow-adjusted returns, one column per period (%, nominal amount,
+ * annualized where it applies), in the payload's order. With `comparison`, a second row shows
+ * a selectable benchmark: its return over the same window, what the same flows would have made
+ * there (shadow P/L) and Δ = real P/L − that, all server-computed. Static (no NumberFlow): it
+ * refetches wholesale on unit toggle. Formats at render time (decimal-separator convention).
+ * One markup for both viewports — narrow screens flip it to one row per period (CSS).
  */
 export function PeriodReturnsTable({
   data,
   displayUnit,
+  comparison,
 }: {
   data: PeriodReturnsPayload;
   displayUnit: "clp" | "usd";
+  comparison?: BenchmarkComparisonProps;
 }) {
   const { t } = useTranslation();
   const formatNominal = displayUnit === "usd" ? formatUsdFine : formatClp;
+  const compare = comparison != null;
 
   const cellTitle = (cell: PeriodReturnCell): string => {
     if (cell.pct == null) return t("periodReturns.insufficientHistory");
@@ -52,11 +93,24 @@ export function PeriodReturnsTable({
     return t("periodReturns.insufficientHistory");
   };
 
+  const benchmarkLabel = (o: BenchmarkOption): string => {
+    if (!BENCHMARK_LABEL_KEYS.has(o.label_i18n_key)) {
+      throw new Error(`benchmark ${o.slug}: no translation for ${o.label_i18n_key}`);
+    }
+    return t(o.label_i18n_key, { rate: o.rate_pct != null ? formatPct(o.rate_pct) : "" });
+  };
+  const selectedOption = comparison?.options.find((o) => o.slug === comparison.selected);
+  const selectedLabel = selectedOption ? benchmarkLabel(selectedOption) : "";
+
+  const benchByPeriod = new Map<PeriodReturnKey, BenchmarkComparisonCell>();
+  for (const c of comparison?.data?.periods ?? []) benchByPeriod.set(c.period, c);
+
   const header = (
     <thead>
       <tr>
-        {data.periods.map((cell) => (
-          <th key={cell.period} className={styles.head}>
+        {compare ? <th className={styles.corner} style={cellPos(1, 1)} /> : null}
+        {data.periods.map((cell, i) => (
+          <th key={cell.period} className={styles.head} style={cellPos(i + 2, 1)}>
             {t(PERIOD_LABEL_KEY[cell.period])}
           </th>
         ))}
@@ -65,10 +119,15 @@ export function PeriodReturnsTable({
   );
 
   return (
-    <Table header={header} tableClassName={styles.table}>
+    <Table header={header} tableClassName={cn(styles.table, compare && styles.compare)}>
       <tr>
-        {data.periods.map((cell) => (
-          <td key={cell.period} title={cellTitle(cell)}>
+        {compare ? (
+          <th scope="row" className={styles.rowHead} style={cellPos(1, 2)}>
+            {t("periodReturns.actual")}
+          </th>
+        ) : null}
+        {data.periods.map((cell, i) => (
+          <td key={cell.period} title={cellTitle(cell)} style={cellPos(i + 2, 2)}>
             <div className={cn(styles.pct, toneClass(cell.pct))}>
               {cell.pct == null ? "—" : formatPct(cell.pct * 100)}
             </div>
@@ -83,6 +142,101 @@ export function PeriodReturnsTable({
           </td>
         ))}
       </tr>
+      {comparison ? (
+        <tr>
+          <th scope="row" className={styles.rowHead} style={cellPos(1, 3)}>
+            <select
+              className={styles.benchmarkSelect}
+              aria-label={t("periodReturns.compareWith")}
+              value={comparison.selected}
+              onChange={(e) => comparison.onSelect(e.target.value)}
+            >
+              {comparison.options.map((o) => (
+                <option key={o.slug} value={o.slug}>
+                  {benchmarkLabel(o)}
+                </option>
+              ))}
+            </select>
+          </th>
+          {data.periods.map((cell, i) => {
+            const b = benchByPeriod.get(cell.period);
+            const title =
+              b?.benchmark_pct == null
+                ? t("periodReturns.benchmarkUnavailable", { benchmark: selectedLabel })
+                : t("periodReturns.shadowTitle", {
+                    benchmark: selectedLabel,
+                    start: b.window_start_date ?? "—",
+                  });
+            return (
+              <td
+                key={cell.period}
+                title={comparison.data ? title : undefined}
+                className={cn(comparison.data == null && styles.pending)}
+                style={cellPos(i + 2, 3)}
+              >
+                <div className={cn(styles.pct, toneClass(b?.benchmark_pct ?? null))}>
+                  {b?.benchmark_pct == null ? "—" : formatPct(b.benchmark_pct * 100)}
+                </div>
+                {b?.shadow_pl != null ? (
+                  <div className={styles.nominal}>{formatNominal(b.shadow_pl)}</div>
+                ) : null}
+                {b?.benchmark_annualized_pct != null ? (
+                  <div className={styles.annualized}>
+                    {formatPct(b.benchmark_annualized_pct * 100)} {t("periodReturns.annualized")}
+                  </div>
+                ) : null}
+                {b?.delta_pl != null ? (
+                  <div className={cn(styles.delta, toneClass(b.delta_pl))}>
+                    {t("periodReturns.delta", { amount: formatNominal(b.delta_pl) })}
+                  </div>
+                ) : null}
+              </td>
+            );
+          })}
+        </tr>
+      ) : null}
     </Table>
+  );
+}
+
+/**
+ * The Rentabilidad table with its benchmark row: the choice is remembered per surface
+ * (`<pageKey>.returns`), default the mortgage. A stored slug the server no longer lists falls
+ * back to the default.
+ */
+export function PeriodReturnsWithBenchmark({
+  data,
+  displayUnit,
+  scope,
+  surfaceId,
+}: {
+  data: PeriodReturnsPayload;
+  displayUnit: "clp" | "usd";
+  scope: { accountId: number } | { portfolioGroup: string };
+  surfaceId: string;
+}) {
+  const { benchmark, setBenchmark } = useSurfaceBenchmark(surfaceId, DEFAULT_BENCHMARK);
+  const benchmarks = useBenchmarks();
+  const options = benchmarks.data?.benchmarks ?? [];
+  const selected = options.some((o) => o.slug === benchmark) ? benchmark : DEFAULT_BENCHMARK;
+  const comparison = useBenchmarkComparison(
+    scope,
+    selected,
+    displayUnit,
+    options.some((o) => o.slug === selected)
+  );
+  const cmp = comparison.data;
+  return (
+    <PeriodReturnsTable
+      data={data}
+      displayUnit={displayUnit}
+      comparison={{
+        options,
+        selected,
+        onSelect: setBenchmark,
+        data:
+          cmp != null && cmp.unit === displayUnit && cmp.benchmark.slug === selected ? cmp : null,
+      }}
+    />
   );
 }

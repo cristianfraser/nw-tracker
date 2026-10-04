@@ -48,6 +48,7 @@
     "backfill:afc-cic": "tsx scripts/backfill-afc-cic.ts",
     "afc:derive-cuotas": "tsx scripts/afc-cuota-ledger-derive.ts",
     "backfill:watchlist-equity-history": "tsx scripts/backfill-watchlist-equity-history.ts",
+    "backfill:equity-dividends": "tsx scripts/backfill-equity-dividends.ts",
     "probe:bcentral-series": "tsx scripts/probe-bcentral-series.ts",
     "sync:equity-eod": "tsx scripts/sync-equity-eod.ts",
     "prune:future-month-end-valuations": "tsx scripts/prune-future-month-end-valuations.ts",

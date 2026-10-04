@@ -2697,6 +2697,44 @@
     "windowTitleDate": {
       "en": "From {{start}}",
       "es": "Desde {{start}}"
+    },
+    "actual": {
+      "en": "Actual",
+      "es": "Real"
+    },
+    "compareWith": {
+      "en": "Compare with",
+      "es": "Comparar con"
+    },
+    "delta": {
+      "en": "Δ {{amount}}",
+      "es": "Δ {{amount}}"
+    },
+    "shadowTitle": {
+      "en": "The same deposits and withdrawals, on the same days, invested in {{benchmark}} from {{start}}. Δ = your P/L − its P/L.",
+      "es": "Los mismos aportes y retiros, en las mismas fechas, invertidos en {{benchmark}} desde {{start}}. Δ = tu ganancia − la suya."
+    },
+    "benchmarkUnavailable": {
+      "en": "{{benchmark}} has no history for this period",
+      "es": "{{benchmark}} no tiene historia para este período"
+    }
+  },
+  "benchmarks": {
+    "mortgage": {
+      "en": "Mortgage (UF + {{rate}})",
+      "es": "Hipoteca (UF + {{rate}})"
+    },
+    "spy": {
+      "en": "S&P 500 (SPY)",
+      "es": "S&P 500 (SPY)"
+    },
+    "riskyNorris": {
+      "en": "Risky Norris",
+      "es": "Risky Norris"
+    },
+    "uf": {
+      "en": "UF",
+      "es": "UF"
     }
   },
   "groupPage": {

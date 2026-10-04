@@ -32,7 +32,12 @@ export type YahooChartResult = {
   meta?: YahooChartMeta;
   timestamp?: number[];
   indicators?: { quote?: Array<{ close?: (number | null)[] }> };
+  /** Present when the query asks for `events=div`. */
+  events?: { dividends?: Record<string, { amount?: number; date?: number }> };
 };
+
+/** One cash dividend per share, keyed by its ex-date, in the symbol's quote currency. */
+export type YahooDividend = { ex_date: string; amount: number };
 
 export type YahooDailyCloseParse = {
   series: EodCloseSeries;
@@ -42,6 +47,7 @@ export type YahooDailyCloseParse = {
 
 export type YahooNyseEodFetch = {
   series: EodCloseSeries;
+  dividends: YahooDividend[];
   yahooLatestDate: string | null;
   dueSessionYmd: string;
   usedMetaClose: boolean;
@@ -134,6 +140,44 @@ export function parseYahooDailyCloseSeries(symbol: string, result: YahooChartRes
   return { series: { dates, closes }, yahooLatestDate };
 }
 
+/** Dividends from a chart result fetched with `events=div` (ascending by ex-date). */
+export function parseYahooDividends(symbol: string, result: YahooChartResult): YahooDividend[] {
+  const raw = result.events?.dividends;
+  if (raw == null) return [];
+  const out: YahooDividend[] = [];
+  for (const [key, d] of Object.entries(raw)) {
+    const sec = d.date ?? Number(key);
+    const amount = d.amount;
+    if (!Number.isFinite(sec) || amount == null || !Number.isFinite(amount) || amount <= 0) {
+      throw new Error(`Yahoo dividend for ${symbol}: unreadable entry ${JSON.stringify({ key, d })}`);
+    }
+    out.push({ ex_date: yahooBarYmdFromUnix(symbol, sec), amount });
+  }
+  out.sort((a, b) => a.ex_date.localeCompare(b.ex_date));
+  for (let i = 1; i < out.length; i++) {
+    if (out[i]!.ex_date === out[i - 1]!.ex_date) {
+      throw new Error(`Yahoo dividends for ${symbol}: two on ${out[i]!.ex_date}`);
+    }
+  }
+  return out;
+}
+
+/** Daily closes and dividends over [period1, period2] in one chart request. */
+export async function fetchYahooDailyClosesAndDividends(
+  symbol: string,
+  period1Sec: number,
+  period2Sec: number
+): Promise<{ series: EodCloseSeries; dividends: YahooDividend[] }> {
+  const result = await fetchYahooChart(
+    symbol,
+    `interval=1d&events=div&period1=${period1Sec}&period2=${period2Sec}`
+  );
+  return {
+    series: parseYahooDailyCloseSeries(symbol, result).series,
+    dividends: parseYahooDividends(symbol, result),
+  };
+}
+
 /**
  * When Yahoo's daily series omits today's close (null bar after the bell), use chart `meta.regularMarketPrice`
  * for the due NYSE session when `regularMarketTime` matches that session.
@@ -189,15 +233,17 @@ export async function fetchYahooNyseEodForSync(
   const period1 = period2 - days * 86400;
   const result = await fetchYahooChart(
     symbol,
-    `interval=1d&period1=${period1}&period2=${period2}`
+    `interval=1d&events=div&period1=${period1}&period2=${period2}`
   );
   const parsed = parseYahooDailyCloseSeries(symbol, result);
+  const dividends = parseYahooDividends(symbol, result);
   const enriched = enrichNyseEodSeriesFromMeta(parsed.series, result.meta, opts.dueSessionYmd);
   const yahooLatestDate = enriched.series.dates[enriched.series.dates.length - 1] ?? null;
   const stillMissingDueSession =
     yahooLatestDate == null || yahooLatestDate < opts.dueSessionYmd;
   return {
     series: enriched.series,
+    dividends,
     yahooLatestDate,
     dueSessionYmd: opts.dueSessionYmd,
     usedMetaClose: enriched.usedMetaClose,

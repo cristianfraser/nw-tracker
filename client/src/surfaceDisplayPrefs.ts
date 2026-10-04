@@ -24,7 +24,7 @@ export const SURFACE_PREFS_LS_PREFIX = "nw-tracker.surface.";
 export type SurfacePeriod = "day" | "month" | "year";
 
 /** Stored shape: only the fields the user has explicitly set on this surface. */
-export type StoredSurfacePrefs = { period?: SurfacePeriod; range?: TimeRange };
+export type StoredSurfacePrefs = { period?: SurfacePeriod; range?: TimeRange; benchmark?: string };
 
 /**
  * M/Y-only surfaces (flow tables, the CC financing chart and detalle table): a stored `day`
@@ -55,6 +55,7 @@ export function parseStoredSurfacePrefs(raw: string | null): StoredSurfacePrefs 
   if (period != null) out.period = period;
   const range = parseTimeRange(typeof rec.range === "string" ? rec.range : null);
   if (range != null) out.range = range;
+  if (typeof rec.benchmark === "string" && rec.benchmark !== "") out.benchmark = rec.benchmark;
   return out;
 }
 
@@ -139,4 +140,33 @@ export function useSurfacePrefs(
     setPeriod,
     setRange,
   };
+}
+
+/**
+ * The benchmark a Rentabilidad table compares against, per surface (`<pageKey>.returns`).
+ * The stored slug is only a preference: the caller checks it against the listed benchmarks.
+ */
+export function useSurfaceBenchmark(
+  surfaceId: string,
+  defaultBenchmark: string
+): { benchmark: string; setBenchmark: (slug: string) => void } {
+  const [state, setState] = useState(() => ({
+    surfaceId,
+    stored: readStoredSurfacePrefs(surfaceId),
+  }));
+
+  let stored = state.stored;
+  if (state.surfaceId !== surfaceId) {
+    stored = readStoredSurfacePrefs(surfaceId);
+    setState({ surfaceId, stored });
+  }
+
+  const setBenchmark = useCallback(
+    (slug: string) => {
+      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, { benchmark: slug }) });
+    },
+    [surfaceId]
+  );
+
+  return { benchmark: stored.benchmark ?? defaultBenchmark, setBenchmark };
 }

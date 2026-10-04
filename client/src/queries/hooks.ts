@@ -756,6 +756,31 @@ export function useTaxReturn(taxYear: number | null) {
   });
 }
 
+export function useBenchmarks() {
+  return useQuery({
+    queryKey: queryKeys.benchmarks(),
+    queryFn: () => api.benchmarks(),
+    staleTime: Infinity,
+  });
+}
+
+/** The Rentabilidad comparison row for an account or a group page. */
+export function useBenchmarkComparison(
+  scope: { accountId: number } | { portfolioGroup: string },
+  benchmark: string,
+  unit: DisplayUnit,
+  enabled: boolean
+) {
+  const scopeKey = "accountId" in scope ? `a:${scope.accountId}` : `g:${scope.portfolioGroup}`;
+  return useQuery({
+    queryKey: queryKeys.benchmarkComparison(scopeKey, benchmark, unit),
+    queryFn: () => api.benchmarkComparison(scope, benchmark, unit),
+    enabled,
+    staleTime: DISPLAY_UNIT_STALE_MS,
+    refetchInterval: DISPLAY_UNIT_STALE_MS,
+  });
+}
+
 export function useWealthPercentile() {
   return useQuery({
     queryKey: queryKeys.wealthPercentile(),

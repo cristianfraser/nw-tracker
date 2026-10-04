@@ -1,5 +1,6 @@
 import { listDistinctEquityTickersForSync } from "./accountEquityTicker.js";
 import { invalidateMarketDataAggregations } from "./aggregationCache.js";
+import { listBenchmarkEquityTickers } from "./benchmarkLevels.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { ensureEquityDailyHistoryForWatchlistTickers } from "./equityDailyWatchlistBackfill.js";
@@ -176,7 +177,10 @@ export function listWatchlistEquitySeriesKeys(): string[] {
 /** NYSE-only tickers — drives the stocks_nyse caught-up/stale state (`.SN` has its own source). */
 export function listWatchlistNyseTickersForEodSync(): string[] {
   syncWatchlistFromApp();
-  return listWatchlistEquitySeriesKeys().filter((t) => equityMarketKind(t) === "nyse");
+  // Benchmark tickers (the Rentabilidad comparison) need their closes and dividends kept current
+  // whether or not anything holds or watches them.
+  const tickers = new Set([...listWatchlistEquitySeriesKeys(), ...listBenchmarkEquityTickers()]);
+  return [...tickers].filter((t) => equityMarketKind(t) === "nyse");
 }
 
 /** Bolsa de Santiago tickers — drives the stocks_santiago caught-up/stale state (Chile calendar). */

@@ -774,7 +774,18 @@
     "annualized": "annualized",
     "insufficientHistory": "Not enough history for this period",
     "windowTitle": "From {{start}} · {{months}} months",
-    "windowTitleDate": "From {{start}}"
+    "windowTitleDate": "From {{start}}",
+    "actual": "Actual",
+    "compareWith": "Compare with",
+    "delta": "Δ {{amount}}",
+    "shadowTitle": "The same deposits and withdrawals, on the same days, invested in {{benchmark}} from {{start}}. Δ = your P/L − its P/L.",
+    "benchmarkUnavailable": "{{benchmark}} has no history for this period"
+  },
+  "benchmarks": {
+    "mortgage": "Mortgage (UF + {{rate}})",
+    "spy": "S&P 500 (SPY)",
+    "riskyNorris": "Risky Norris",
+    "uf": "UF"
   },
   "groupPage": {
     "notFound": "No group view found for this route.",
