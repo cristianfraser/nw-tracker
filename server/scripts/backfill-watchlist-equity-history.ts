@@ -10,6 +10,11 @@
  *   npm run backfill:watchlist-equity-history -w nw-tracker-server
  *   npm run backfill:watchlist-equity-history -w nw-tracker-server -- --years 11
  *   npm run backfill:watchlist-equity-history -w nw-tracker-server -- --dry-run
+ *   npm run backfill:watchlist-equity-history -w nw-tracker-server -- --ticker=DX-Y.NYB
+ *
+ * Without `--ticker` every watchlist ticker is re-written from Yahoo — crypto included,
+ * whose stored closes otherwise come from CoinGecko. Pass `--ticker=` (repeatable) to deepen
+ * only a newly added symbol.
  */
 import "../src/db.js";
 import { upsertEquityDailySeries } from "../src/brokerageEquityMtm.js";
@@ -19,6 +24,9 @@ import { utcTodayYmd } from "../src/nyseSession.js";
 import { listWatchlistEquitySeriesKeys, syncWatchlistFromApp } from "../src/watchlist.js";
 
 const DRY = process.argv.includes("--dry-run");
+const ONLY_TICKERS = process.argv
+  .filter((a) => a.startsWith("--ticker="))
+  .map((a) => a.slice("--ticker=".length).trim().toUpperCase());
 
 function parseYears(): number {
   const i = process.argv.indexOf("--years");
@@ -36,7 +44,13 @@ async function main(): Promise<void> {
   const years = parseYears();
   const days = Math.ceil(years * 366);
   syncWatchlistFromApp();
-  const tickers = listWatchlistEquitySeriesKeys().filter((t) => equityMarketKind(t) !== "santiago");
+  const watched = listWatchlistEquitySeriesKeys();
+  for (const t of ONLY_TICKERS) {
+    if (!watched.includes(t)) throw new Error(`--ticker=${t} is not on the watchlist`);
+  }
+  const tickers = watched.filter(
+    (t) => equityMarketKind(t) !== "santiago" && (ONLY_TICKERS.length === 0 || ONLY_TICKERS.includes(t))
+  );
 
   console.log(
     `Backfill ${years}y Yahoo EOD into equity_daily for ${tickers.length} watchlist ticker(s)${DRY ? " [dry-run]" : ""}…`
