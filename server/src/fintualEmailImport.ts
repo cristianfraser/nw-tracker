@@ -34,8 +34,8 @@ import { syntheticRetiroMovementIdForMessageId } from "./fintualSyntheticRetiros
 export const EMAIL_MATCH_WINDOW_DAYS = 5;
 
 const FINTUAL_USD_IMPORT_KEY = "import:panel|kind=usd|key=fintual_usd";
-/** «Fintual CLP (Reserva)», the Efectivo account holding pesos a retiro left in Fintual. */
-const FINTUAL_CLP_BALANCE_IMPORT_KEY = "import:panel|kind=clp|key=fintual";
+/** «Fintual CLP», the Efectivo account holding Fintual's peso balance (a retiro left in Fintual). */
+const FINTUAL_CLP_BALANCE_IMPORT_KEY = "import:panel|kind=clp|key=fintual_clp";
 
 export function fintualClpBalanceAccountId(): number {
   const row = db
