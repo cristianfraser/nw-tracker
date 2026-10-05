@@ -341,7 +341,7 @@ describe("fintualEmailImport", () => {
       return id;
     };
     const goalId = mk("vitest Reserva Disp", "import:fintual|cert|key=vitest-reserva-disp");
-    const balanceId = mk("vitest Fintual CLP", "import:panel|kind=clp|key=fintual");
+    const balanceId = mk("vitest Fintual CLP", "import:panel|kind=clp|key=fintual_clp");
 
     const email = fintualRetiroPaid({
       goal: "vitest Reserva Disp",
