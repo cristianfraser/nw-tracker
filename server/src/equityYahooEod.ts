@@ -6,6 +6,7 @@
 import { chileWallClockAt } from "./chileDate.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { fetchOut } from "./httpOut.js";
+import { isWeekendYmd } from "./marketHolidays.js";
 import { nyseYmdFromUnix } from "./nyseSession.js";
 
 export type EodCloseSeries = { dates: string[]; closes: number[] };
@@ -26,6 +27,14 @@ export type YahooChartMeta = {
   previousClose?: number;
   chartPreviousClose?: number;
   regularMarketTime?: number;
+  /** ISO code of the quote currency (`USD`, `CLP`, …); null on dead listings. */
+  currency?: string | null;
+  /** `EQUITY`, `ETF`, `INDEX`, `CRYPTOCURRENCY`, `FUTURE`, … */
+  instrumentType?: string;
+  exchangeTimezoneName?: string;
+  fullExchangeName?: string;
+  longName?: string;
+  shortName?: string;
 };
 
 export type YahooChartResult = {
@@ -78,6 +87,11 @@ async function fetchYahooChart(symbol: string, query: string): Promise<YahooChar
   return result;
 }
 
+/** The chart `meta` alone: what Yahoo says the symbol is, and its current quote. */
+export async function fetchYahooChartMeta(symbol: string): Promise<YahooChartMeta> {
+  return (await fetchYahooChart(symbol, "interval=1d&range=5d")).meta ?? {};
+}
+
 /** Intraday / regular-hours quote from chart `meta` (same API as EOD history). */
 export async function fetchYahooLiveQuote(symbol: string): Promise<YahooLiveQuote> {
   const result = await fetchYahooChart(symbol, "interval=1d&range=1d");
@@ -119,7 +133,12 @@ export function yahooBarYmdFromUnix(symbol: string, sec: number): string {
   return nyseYmdFromUnix(sec);
 }
 
-/** Parse daily OHLC series from a Yahoo chart result (drops bars with null close). */
+/**
+ * Parse daily OHLC series from a Yahoo chart result (drops bars with null close). A symbol on
+ * the NYSE calendar never has a weekend bar: an instrument that trades nearly around the clock
+ * (the ICE dollar index `DX-Y.NYB`) opens Sunday evening, and the in-progress quote Yahoo
+ * appends then is dated Sunday — its own Sunday bars carry no close.
+ */
 export function parseYahooDailyCloseSeries(symbol: string, result: YahooChartResult): YahooDailyCloseParse {
   const ts = result.timestamp;
   const close = result.indicators?.quote?.[0]?.close;
@@ -128,11 +147,13 @@ export function parseYahooDailyCloseSeries(symbol: string, result: YahooChartRes
   }
   const dates: string[] = [];
   const closes: number[] = [];
+  const nyseCalendar = equityMarketKind(symbol) === "nyse";
   for (let i = 0; i < ts.length; i++) {
     const c = close[i];
     if (c == null || !Number.isFinite(c)) continue;
-    const sec = ts[i]!;
-    dates.push(yahooBarYmdFromUnix(symbol, sec));
+    const ymd = yahooBarYmdFromUnix(symbol, ts[i]!);
+    if (nyseCalendar && isWeekendYmd(ymd)) continue;
+    dates.push(ymd);
     closes.push(c);
   }
   if (dates.length === 0) throw new Error(`Yahoo chart empty closes for ${symbol}`);

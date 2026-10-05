@@ -8,8 +8,8 @@ import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from ".
 import { db } from "./db.js";
 import {
   equityCloseEod,
-  equityQuoteCurrency,
   equityMarketKind,
+  marketQuoteCurrency,
   equitySessionYmdForTicker,
   resolveEquityQuote,
 } from "./equityQuote.js";
@@ -67,8 +67,11 @@ export type WatchlistChanges = {
 
 export type WatchlistRowStats = {
   value: number | null;
-  /** Currency `value` is expressed in — the requested display unit, except the fx rate row (always CLP per USD). */
-  value_currency: "usd" | "clp";
+  /**
+   * Currency `value` is expressed in — the requested display unit, except the fx rate row
+   * (always CLP per USD) and an index (`none`: its level is points in both units).
+   */
+  value_currency: "usd" | "clp" | "none";
   as_of_date: string | null;
   changes: WatchlistChanges | null;
 };
@@ -78,7 +81,7 @@ type DatedValue = { value: number | null; ymd: string };
 
 /** A series' stats in its own quote currency, before display-unit conversion. */
 type NativeRowStats = {
-  quote_currency: "usd" | "clp";
+  quote_currency: "usd" | "clp" | "none";
   value: number;
   as_of_date: string;
   /** Day anchor: the prior value and the calendar day its fx leg is read at. */
@@ -158,9 +161,11 @@ function toDisplayUnit(
   today: string,
   now: Date
 ): WatchlistRowStats {
+  // An index level has no currency: the same points in both units.
+  const valueCurrency = native.quote_currency === "none" ? "none" : unit;
   const convert = (dv: DatedValue): number | null => {
     if (dv.value == null || !Number.isFinite(dv.value)) return null;
-    if (unit === native.quote_currency) return dv.value;
+    if (native.quote_currency === "none" || unit === native.quote_currency) return dv.value;
     const fx = fxValueOnOrBefore(dv.ymd, today, now);
     if (fx == null || fx <= 0) return null;
     return native.quote_currency === "usd" ? dv.value * fx : dv.value / fx;
@@ -174,7 +179,7 @@ function toDisplayUnit(
 
   return {
     value,
-    value_currency: unit,
+    value_currency: valueCurrency,
     as_of_date: native.as_of_date,
     changes: {
       day_pct:
@@ -200,7 +205,7 @@ function nativeForEquity(row: MarketDisplaySeriesRow, today: string, now: Date):
   const weekYmd =
     equityMarketKind(ticker) === "nyse" ? nyseSessionsBack(asOf, 5) : chileCalendarAddDays(asOf, -7);
   return {
-    quote_currency: equityQuoteCurrency(ticker),
+    quote_currency: marketQuoteCurrency(ticker),
     value: q.price,
     as_of_date: asOf,
     day_prior: { value: q.previous_close, ymd: chileCalendarAddDays(asOf, -1) },

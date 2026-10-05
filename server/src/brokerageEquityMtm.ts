@@ -14,6 +14,7 @@ import {
   equityDisplaySessionYmd,
   equityHeldSessionQuote,
   equityQuoteCurrency,
+  marketQuoteCurrency,
   equitySessionYmdForTicker,
   getLiveEquityQuoteFromDb,
   shouldUseLiveEquityQuote,
@@ -30,7 +31,7 @@ const insEod = db.prepare(
 );
 
 export function upsertEquityDailySeries(ticker: string, series: EodCloseSeries): number {
-  const currency = equityQuoteCurrency(ticker);
+  const currency = marketQuoteCurrency(ticker);
   let n = 0;
   for (let i = 0; i < series.dates.length; i++) {
     const d = series.dates[i]!;

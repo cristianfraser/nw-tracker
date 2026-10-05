@@ -28,6 +28,16 @@ describe("parseYahooDailyCloseSeries", () => {
     expect(parsed.series.dates).toEqual(["2024-06-17"]);
     expect(parsed.series.closes).toEqual([600.1]);
   });
+
+  it("drops the Sunday-evening quote of an index that trades around the clock", () => {
+    const sec = (iso: string) => Math.floor(new Date(iso).getTime() / 1000);
+    // ICE dollar index: Friday's bar, then the in-progress quote of Sunday 22:18 New York.
+    const parsed = parseYahooDailyCloseSeries(
+      "DX-Y.NYB",
+      chartResult([sec("2026-10-02T04:00:00Z"), sec("2026-10-05T02:18:44Z")], [101.93, 102.135])
+    );
+    expect(parsed.series.dates).toEqual(["2026-10-02"]);
+  });
 });
 
 describe("enrichNyseEodSeriesFromMeta", () => {

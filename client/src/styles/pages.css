@@ -103,10 +103,41 @@ h2.flow-section-title {
   margin-bottom: 1rem;
 }
 
-.watchlist-add-form label {
+.watchlist-symbol-option {
+  height: 100%;
+}
+
+.watchlist-symbol-option__symbol {
+  flex: 0 0 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.watchlist-symbol-option__detail {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  min-width: 0;
+}
+
+.watchlist-symbol-option__name,
+.watchlist-symbol-option__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchlist-symbol-option__meta {
+  font-size: 0.75rem;
+}
+
+.watchlist-table__fetch-error {
+  display: block;
+  min-width: 16rem;
+  max-width: 28rem;
+  font-size: 0.75rem;
+  color: var(--negative);
+  white-space: normal;
 }
 
 .watchlist-table-wrap {

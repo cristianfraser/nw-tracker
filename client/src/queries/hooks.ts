@@ -330,6 +330,20 @@ export function useWatchlist(unit: DisplayUnit) {
   });
 }
 
+/**
+ * Yahoo's matches for the watchlist add box. `query` is the caller's debounced text; nothing
+ * is asked until it has a character.
+ */
+export function useWatchlistSymbolSearch(query: string) {
+  const q = query.trim();
+  return useQuery({
+    queryKey: queryKeys.watchlistSymbolSearch(q),
+    queryFn: () => api.searchWatchlistSymbols(q),
+    enabled: q.length > 0,
+    staleTime: 5 * 60_000,
+  });
+}
+
 function invalidateWatchlistQueries(queryClient: ReturnType<typeof useQueryClient>): void {
   queryClient.invalidateQueries({ queryKey: queryKeys.watchlistAll() });
   queryClient.invalidateQueries({ queryKey: queryKeys.marketTickerAll() });

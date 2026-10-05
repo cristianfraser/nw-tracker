@@ -3,6 +3,7 @@ import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { fetchYahooRecentDailyCloses } from "./equityYahooEod.js";
+import { clearMarketSymbolFetchError, recordMarketSymbolFetchError } from "./marketSymbols.js";
 
 /** Calendar lookback for watchlist YTD/YoY anchors (≈14 months). */
 export const WATCHLIST_EQUITY_HISTORY_DAYS = 400;
@@ -54,15 +55,18 @@ export async function ensureEquityDailyHistoryForWatchlist(
   if (historyAttemptYmdByTicker.get(sym) === todayYmd) return false;
   historyAttemptYmdByTicker.set(sym, todayYmd);
 
+  let series;
   try {
-    const series = await fetchYahooRecentDailyCloses(sym, WATCHLIST_EQUITY_HISTORY_DAYS);
-    upsertEquityDailySeries(sym, series);
-    return true;
+    series = await fetchYahooRecentDailyCloses(sym, WATCHLIST_EQUITY_HISTORY_DAYS);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("HTTP 404")) return false;
-    throw e;
+    // Recorded for the watchlist row, not thrown: one symbol Yahoo cannot serve must not stop
+    // the backfill of every ticker after it.
+    recordMarketSymbolFetchError(sym, "history", e instanceof Error ? e.message : String(e));
+    return false;
   }
+  upsertEquityDailySeries(sym, series);
+  clearMarketSymbolFetchError(sym, "history");
+  return true;
 }
 
 /** Returns how many tickers got a Yahoo history backfill (0 = everything already deep enough). */

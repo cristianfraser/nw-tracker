@@ -45,7 +45,7 @@ export type MarketTickerValue = {
   day: string;
   value: number;
   /** Currency `value` is expressed in — the payload's `unit`. */
-  currency: "usd" | "clp";
+  currency: "usd" | "clp" | "none";
   delta_pct: number | null;
 };
 
@@ -53,8 +53,8 @@ export type MarketTickerEquityRow = {
   ticker: string;
   trade_date: string;
   value: number;
-  /** Currency `value` is expressed in — the payload's `unit` (a `.SN` ticker is converted too). */
-  currency: "usd" | "clp";
+  /** Currency `value` is expressed in — the payload's `unit` (a `.SN` ticker is converted too; an index is `none`). */
+  currency: "usd" | "clp" | "none";
   delta_pct: number | null;
 };
 

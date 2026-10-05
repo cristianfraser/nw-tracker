@@ -698,13 +698,37 @@
       "en": "Add ticker",
       "es": "Agregar ticker"
     },
-    "addTickerPlaceholder": {
-      "en": "E.g. QQQ",
-      "es": "Ej. QQQ"
+    "adding": {
+      "en": "Adding…",
+      "es": "Agregando…"
     },
-    "addTickerSubmit": {
-      "en": "Add",
-      "es": "Agregar"
+    "searchPlaceholder": {
+      "en": "Search Yahoo: symbol or name (e.g. QQQ, dollar index)",
+      "es": "Buscar en Yahoo: símbolo o nombre (ej. QQQ, dollar index)"
+    },
+    "searchPrompt": {
+      "en": "Type a symbol or a name.",
+      "es": "Escribe un símbolo o un nombre."
+    },
+    "searchNoResults": {
+      "en": "Yahoo has no matches.",
+      "es": "Yahoo no tiene coincidencias."
+    },
+    "searchError": {
+      "en": "The search failed.",
+      "es": "La búsqueda falló."
+    },
+    "alreadyListed": {
+      "en": "already listed",
+      "es": "ya está en la lista"
+    },
+    "fetchErrorLive": {
+      "en": "Quote failed",
+      "es": "Falló la cotización"
+    },
+    "fetchErrorHistory": {
+      "en": "History failed",
+      "es": "Falló el historial"
     },
     "removeTicker": {
       "en": "Remove",

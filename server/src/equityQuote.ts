@@ -10,6 +10,7 @@ import {
 } from "./nyseSession.js";
 import { getLatestLiveEquityQuoteRow, type LiveMarketQuoteRow } from "./liveMarketQuotesDb.js";
 import { liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
+import { marketSymbol, type MarketQuoteCurrency } from "./marketSymbols.js";
 
 export type EquityMarketKind = "nyse" | "santiago" | "crypto24";
 
@@ -24,20 +25,36 @@ const TICKER_MARKET: Record<string, EquityMarketKind> = {
 export type EquityQuoteCurrency = "usd" | "clp";
 
 /**
- * Quote currency for a Yahoo symbol — the currency the exchange prints the price in.
- * `.SN` (Bolsa de Santiago) quotes in CLP; everything else we track quotes in USD.
- * Single source of truth: sync writers stamp this into `equity_daily.currency` /
- * `live_market_quotes.currency`, and readers fail fast on a stored mismatch.
+ * Quote currency for a Yahoo symbol — the currency the exchange prints the price in, or `none`
+ * for an index level. A symbol checked against Yahoo when it was added to the watchlist reads
+ * its `market_symbols` row; any other ticker keeps the suffix rule: `.SN` (Bolsa de Santiago)
+ * quotes in CLP, everything else in USD. Single source of truth: sync writers stamp this into
+ * `equity_daily.currency` / `live_market_quotes.currency`, and readers fail fast on a stored
+ * mismatch.
+ */
+export function marketQuoteCurrency(ticker: string): MarketQuoteCurrency {
+  const registered = marketSymbol(ticker);
+  if (registered != null) return registered.quote_currency;
+  return ticker.toUpperCase().endsWith(".SN") ? "clp" : "usd";
+}
+
+/**
+ * {@link marketQuoteCurrency} for a price that is money — a holding, a trade, a dividend, a
+ * composite constituent. An index has no currency to value it in, so it throws.
  */
 export function equityQuoteCurrency(ticker: string): EquityQuoteCurrency {
-  return ticker.toUpperCase().endsWith(".SN") ? "clp" : "usd";
+  const currency = marketQuoteCurrency(ticker);
+  if (currency === "none") {
+    throw new Error(`${ticker} is an index (its level has no currency), not something that can be held or priced in money`);
+  }
+  return currency;
 }
 
 export type EquityQuoteSource = "live" | "eod";
 
 export type ResolvedEquityQuote = {
   price: number;
-  currency: EquityQuoteCurrency;
+  currency: MarketQuoteCurrency;
   trade_date: string;
   source: EquityQuoteSource;
   previous_close: number | null;
@@ -64,8 +81,8 @@ function utcCalendarPrevYmd(ymd: string): string {
   return new Date(Date.UTC(y!, m! - 1, d! - 1)).toISOString().slice(0, 10);
 }
 
-function requireStoredQuoteCurrency(ticker: string, stored: string): EquityQuoteCurrency {
-  const expected = equityQuoteCurrency(ticker);
+function requireStoredQuoteCurrency(ticker: string, stored: string): MarketQuoteCurrency {
+  const expected = marketQuoteCurrency(ticker);
   if (stored !== expected) {
     throw new Error(
       `equity quote currency mismatch for ${ticker}: stored '${stored}', expected '${expected}' (fix equity_daily/live_market_quotes rows)`
@@ -124,7 +141,7 @@ function sessionPairEodQuote(
     null;
   return {
     price,
-    currency: equityQuoteCurrency(ticker),
+    currency: marketQuoteCurrency(ticker),
     trade_date: tradeDate,
     source: "eod",
     previous_close: priorFromStmt ?? null,
@@ -161,6 +178,8 @@ function resolveCryptoEodQuote(ticker: string, now: Date): ResolvedEquityQuote |
 }
 
 export function equityMarketKind(ticker: string): EquityMarketKind {
+  const registered = marketSymbol(ticker);
+  if (registered != null) return registered.market_kind;
   if (ticker.toUpperCase().endsWith(".SN")) return "santiago";
   return TICKER_MARKET[ticker] ?? "nyse";
 }

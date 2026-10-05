@@ -5,6 +5,13 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { ensureEquityDailyHistoryForWatchlistTickers } from "./equityDailyWatchlistBackfill.js";
 import { equityMarketKind } from "./equityQuote.js";
+import {
+  latestMarketSymbolFetchError,
+  registerMarketSymbol,
+  reloadMarketSymbols,
+  type MarketSymbolFetchError,
+  type MarketSymbolRow,
+} from "./marketSymbols.js";
 import { notifyGlobalSyncScheduler } from "./globalSyncScheduler.js";
 import {
   compositeHoldingsWithStats,
@@ -16,6 +23,7 @@ import {
   type WatchlistDisplayUnit,
   type WatchlistRowStats,
 } from "./watchlistStats.js";
+import { searchYahooSymbols, verifyYahooSymbol, type YahooSymbolSearchResult } from "./yahooSymbols.js";
 import {
   listCompositeConstituentTickers,
   loadCompositeHoldings,
@@ -31,6 +39,8 @@ export { watchlistDisplayUnitParam } from "./watchlistStats.js";
 export type WatchlistRow = MarketDisplaySeriesRow &
   WatchlistRowStats & {
     composite_holdings?: WatchlistCompositeHoldingRow[];
+    /** An equity row's latest Yahoo fetch failure (live quote or history), null once a fetch succeeds. */
+    fetch_error: MarketSymbolFetchError | null;
   };
 
 const stmtFundUnitHasData = db.prepare(
@@ -272,7 +282,9 @@ function rowToWatchlist(
   unit: WatchlistDisplayUnit = "clp"
 ): WatchlistRow {
   const stats = watchlistStatsForRow(row, now, unit);
-  const item: WatchlistRow = { ...row, ...stats };
+  const fetch_error =
+    row.kind === "equity" && row.series_key?.trim() ? latestMarketSymbolFetchError(row.series_key.trim()) : null;
+  const item: WatchlistRow = { ...row, ...stats, fetch_error };
   if (row.kind === "composite" && row.series_key) {
     const holdings = compositeHoldingsWithStats(row.series_key, now, unit);
     if (holdings.length > 0) item.composite_holdings = holdings;
@@ -291,6 +303,7 @@ export function getWatchlistPayload(
   unit: WatchlistDisplayUnit = "clp"
 ): { unit: WatchlistDisplayUnit; app: WatchlistRow[]; manual: WatchlistRow[] } {
   syncWatchlistFromApp();
+  reloadMarketSymbols();
   const rows = stmtSelectAll.all() as (MarketDisplaySeriesRow & { source: WatchlistSource })[];
   const app: WatchlistRow[] = [];
   const manual: WatchlistRow[] = [];
@@ -344,7 +357,8 @@ export function patchWatchlistRow(
   return rowToWatchlist(updated, new Date());
 }
 
-const TICKER_RE = /^[A-Z0-9][A-Z0-9.-]{0,19}$/;
+/** Yahoo's own symbol shapes: letters, digits, `.` / `-` (`DX-Y.NYB`), `=` (`GC=F`), a leading `^` for indices. */
+const TICKER_RE = /^\^?[A-Z0-9][A-Z0-9.=-]{0,19}$/;
 
 export function normalizeManualWatchlistTicker(raw: string): string {
   const ticker = raw.trim().toUpperCase();
@@ -354,34 +368,33 @@ export function normalizeManualWatchlistTicker(raw: string): string {
   return ticker;
 }
 
-export function addManualWatchlistTicker(tickerRaw: string): WatchlistRow {
-  const ticker = normalizeManualWatchlistTicker(tickerRaw);
+function assertNotOnWatchlist(ticker: string): void {
   const existing = stmtEquityBySeriesKey.get(ticker) as { id: number } | undefined;
-  if (existing != null) {
+  const slugTaken = db.prepare(`SELECT 1 FROM market_display_series WHERE slug = ?`).get(equitySlug(ticker));
+  if (existing != null || slugTaken) {
     throw new Error(`ticker ${ticker} is already on the watchlist`);
   }
+}
+
+/**
+ * Adds a symbol Yahoo has already been asked about ({@link verifyYahooSymbol}): its quote
+ * currency and market are recorded in `market_symbols`, so the sync stores its prices and the
+ * watchlist reads them on the right calendar and in the right currency (or none, for an index).
+ */
+export function addManualWatchlistTicker(symbol: MarketSymbolRow): WatchlistRow {
+  const ticker = normalizeManualWatchlistTicker(symbol.ticker);
   const slug = equitySlug(ticker);
-  const slugTaken = db.prepare(`SELECT 1 FROM market_display_series WHERE slug = ?`).get(slug);
-  if (slugTaken) {
-    throw new Error(`ticker ${ticker} is already on the watchlist`);
-  }
-  const maxSort =
-    (db
-      .prepare(
-        `SELECT COALESCE(MAX(sort_order), 0) AS m FROM market_display_series WHERE source = 'manual'`
-      )
-      .get() as { m: number }).m ?? 0;
-  stmtInsert.run(
-    slug,
-    ticker,
-    null,
-    maxSort + 10,
-    "equity",
-    ticker,
-    1,
-    ticker,
-    "manual"
-  );
+  db.transaction(() => {
+    assertNotOnWatchlist(ticker);
+    const maxSort =
+      (db
+        .prepare(
+          `SELECT COALESCE(MAX(sort_order), 0) AS m FROM market_display_series WHERE source = 'manual'`
+        )
+        .get() as { m: number }).m ?? 0;
+    registerMarketSymbol({ ...symbol, ticker });
+    stmtInsert.run(slug, ticker, null, maxSort + 10, "equity", ticker, 1, ticker, "manual");
+  })();
   // Missing EOD for new tickers surfaces as natural stocks_nyse / crypto_eod stale — no userForcedStale pin.
   notifyGlobalSyncScheduler();
   const row = db
@@ -392,6 +405,30 @@ export function addManualWatchlistTicker(tickerRaw: string): WatchlistRow {
     )
     .get(slug) as MarketDisplaySeriesRow & { source: WatchlistSource };
   return rowToWatchlist(row, new Date());
+}
+
+/** The add box's path: refuse a symbol already listed before asking Yahoo, then add what Yahoo confirms. */
+export async function addManualWatchlistTickerFromYahoo(
+  raw: string,
+  verify: (ticker: string) => Promise<MarketSymbolRow> = verifyYahooSymbol
+): Promise<WatchlistRow> {
+  const ticker = normalizeManualWatchlistTicker(raw);
+  assertNotOnWatchlist(ticker);
+  return addManualWatchlistTicker(await verify(ticker));
+}
+
+export type WatchlistSymbolSearchResult = YahooSymbolSearchResult & { on_watchlist: boolean };
+
+/** Yahoo's matches for what the user typed, each marked when it is already on the watchlist. */
+export async function searchWatchlistSymbols(
+  query: string,
+  search: (q: string) => Promise<YahooSymbolSearchResult[]> = searchYahooSymbols
+): Promise<WatchlistSymbolSearchResult[]> {
+  const results = await search(query);
+  return results.map((r) => ({
+    ...r,
+    on_watchlist: stmtEquityBySeriesKey.get(r.symbol) != null,
+  }));
 }
 
 export function deleteManualWatchlistRow(id: number): void {
