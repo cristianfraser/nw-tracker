@@ -41,12 +41,25 @@ export type CardCupos = {
   rows: Record<string, string>[];
 };
 
+/**
+ * The same summary's deposit accounts — `CCC` (cuenta corriente, peso or dollar) and `CCM` (cuenta
+ * vista) rows, whitelisted like the card rows; `MONTODISPONIBLE` is the balance (18 digits, two
+ * implied decimals).
+ */
+export type DepositAccountBalances = {
+  observedAt: string;
+  rows: Record<string, string>[];
+};
+
 export type CardMovementsResult = {
   fetchedAt: string;
   slides: CardSlide[];
   /** Null when the session produced no usable summary; `cuposError` then says why. */
   cupos: CardCupos | null;
   cuposError?: string;
+  /** Null when the summary had no deposit account; `accountsError` then says why. */
+  accounts: DepositAccountBalances | null;
+  accountsError?: string;
 };
 
 const CUPO_ROW_FIELDS = [
@@ -85,6 +98,41 @@ export function collectCardCupos(recorder: Recorder): Pick<CardMovementsResult, 
     return { cupos: null, cuposError: `${ENDPOINT.productSummary} listed no credit card (TCR) rows` };
   }
   return { cupos: { observedAt: call.receivedAt, rows } };
+}
+
+const DEPOSIT_ROW_FIELDS = [
+  "NUMEROCONTRATO",
+  "AGRUPACIONCOMERCIAL",
+  "CODIGOMONEDA",
+  "MONTODISPONIBLE",
+  "GLOSACORTA",
+  "GLOSAESTADO",
+] as const;
+
+/** The deposit-account rows of the session's product summary. Never throws, like the card rows. */
+export function collectDepositBalances(
+  recorder: Recorder
+): Pick<CardMovementsResult, "accounts" | "accountsError"> {
+  const call = recorder.callsFor(ENDPOINT.productSummary).at(-1);
+  if (!call) return { accounts: null, accountsError: `the landing page made no ${ENDPOINT.productSummary} call this session` };
+  try {
+    assertApiOk(call.responseBody, ENDPOINT.productSummary);
+  } catch (err) {
+    return { accounts: null, accountsError: err instanceof Error ? err.message : String(err) };
+  }
+  const output = pick(pick(call.responseBody, "DATA"), "OUTPUT");
+  const matrix = pick(pick(pick(output, "MATRICES"), "MATRIZCAPTACIONES"), "e1");
+  const rows = (Array.isArray(matrix) ? matrix : [])
+    .filter((row) => ["CCC", "CCM"].includes(pickString(row, "AGRUPACIONCOMERCIAL") ?? ""))
+    .map((row) => {
+      const kept: Record<string, string> = {};
+      for (const field of DEPOSIT_ROW_FIELDS) kept[field] = pickString(row, field) ?? "";
+      return kept;
+    });
+  if (rows.length === 0) {
+    return { accounts: null, accountsError: `${ENDPOINT.productSummary} listed no deposit account (CCC/CCM) rows` };
+  }
+  return { accounts: { observedAt: call.receivedAt, rows } };
 }
 
 /**
@@ -156,7 +204,13 @@ export async function fetchCardMovements(page: Page, recorder: Recorder): Promis
       ? `bank cupo: ${cupos.cupos.rows.length} card/currency row(s) observed ${cupos.cupos.observedAt}`
       : `bank cupo NOT captured — ${cupos.cuposError}`
   );
-  return { fetchedAt: new Date().toISOString(), slides, ...cupos };
+  const accounts = collectDepositBalances(recorder);
+  log(
+    accounts.accounts
+      ? `bank balances: ${accounts.accounts.rows.length} deposit account row(s) observed`
+      : `bank balances NOT captured — ${accounts.accountsError}`
+  );
+  return { fetchedAt: new Date().toISOString(), slides, ...cupos, ...accounts };
 }
 
 export type StatementDownload = {

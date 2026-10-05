@@ -7,6 +7,7 @@ import type {
   IngestResult,
 } from "nw-tracker-contracts";
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
+import { applyBankAccountBalances } from "./bankAccountBalances.js";
 import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { applyCardStatement } from "./cardStatementApply.js";
@@ -146,6 +147,12 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
   "card.payment_receipt": {
     apply({ payload, envelope }) {
       return { status: "applied", details: applyCardPaymentReceipt(payload, envelope.source.ref) };
+    },
+  },
+  "bank_account.balances": {
+    apply({ payload, envelope }) {
+      const { duplicate, details } = applyBankAccountBalances(payload, envelope.source.ref);
+      return { status: duplicate ? "duplicate" : "applied", details };
     },
   },
   "bank_account.movements": {
