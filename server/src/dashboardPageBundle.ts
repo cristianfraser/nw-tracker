@@ -44,28 +44,31 @@ export function buildDashboardPageBundle(unit: TsUnit): Promise<DashboardPageBun
   });
 }
 
+/** Let queued I/O (a request, a health check) run before the next heavy piece. */
+const nextMacrotask = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+/**
+ * The pieces run one after another with a macrotask between them: each is synchronous work on
+ * the one thread, and chained as microtasks they would hold the event loop for the whole
+ * bundle (a cold build takes many seconds — long enough for a host's health check to fail).
+ */
 async function buildDashboardPageBundleInner(unit: TsUnit) {
   clearFxConversionWarnings();
   const includeUsd = unit === "usd";
-  const [dash, tsRaw, fx, retirementPerf, brokeragePerf] = await Promise.all([
-    timeHeavyAsync(HeavyWork.dashboardPayload, () => buildDashboardPagePayload(includeUsd)),
-    Promise.resolve().then(() =>
-      timeHeavy(HeavyWork.dashboardValuationTimeseries, () =>
-        attachNetWorthAth(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)), unit)
-      )
-    ),
-    Promise.resolve(fxLatestRow() ?? null),
-    Promise.resolve().then(() =>
-      timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
-        getGroupMonthlyPerformanceSeries("retirement", unit)
-      )
-    ),
-    Promise.resolve().then(() =>
-      timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
-        getGroupMonthlyPerformanceSeries("brokerage", unit)
-      )
-    ),
-  ]);
+  const dash = await timeHeavyAsync(HeavyWork.dashboardPayload, () => buildDashboardPagePayload(includeUsd));
+  await nextMacrotask();
+  const tsRaw = timeHeavy(HeavyWork.dashboardValuationTimeseries, () =>
+    attachNetWorthAth(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)), unit)
+  );
+  await nextMacrotask();
+  const fx = fxLatestRow() ?? null;
+  const retirementPerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
+    getGroupMonthlyPerformanceSeries("retirement", unit)
+  );
+  await nextMacrotask();
+  const brokeragePerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
+    getGroupMonthlyPerformanceSeries("brokerage", unit)
+  );
 
   return {
     dash,

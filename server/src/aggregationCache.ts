@@ -1,6 +1,8 @@
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { applyPendingMarkInputChanges, setMarkInputsChangedListener } from "./markInputChanges.js";
+import { clearMarkSeries } from "./markSeriesStore.js";
 import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
 import { buildPortfolioGroupIndex } from "./portfolioGroupIndex.js";
@@ -32,6 +34,9 @@ function currentDbDataVersion(): number {
 }
 
 function ensureCacheFreshForChileDay(): void {
+  // Marks a write moved (any connection — the database logs it) are trimmed, and the daily
+  // aggregations built on them dropped through the listener below, before anything is served.
+  applyPendingMarkInputChanges();
   const today = chileCalendarTodayYmd();
   const dataVersion = currentDbDataVersion();
   if (cacheDayYmd !== today || cacheDbDataVersion !== dataVersion) {
@@ -59,8 +64,10 @@ export function setAggregationInvalidationListener(listener: (() => void) | null
   invalidationListener = listener;
 }
 
+/** Drop everything cached, the per-account mark series included (a full rebuild follows). */
 export function clearAggregationCache(): void {
   cache.clear();
+  clearMarkSeries();
   rollupSlugsByAccountId = null;
   invalidationListener?.();
 }
@@ -138,19 +145,35 @@ export function invalidateDailyAggregates(): void {
 }
 
 /**
- * Drop every cached daily entry — aggregations **and** per-account mark series. The default
- * for anything that touches stored evidence (movements, valuations, statements) or historical
- * market data (EOD closes, fx/UF rows), since those move historical marks.
- *
- * Mark series are dropped for **all** accounts, not just the written one: an account's marks
- * can depend on another account's rows (the depto property and mortgage accounts share one
- * ledger; deposit-carry flows follow transfer legs), and there is no dependency map to make
- * a narrower drop provably correct. Writes are rare next to live-quote ticks, which keep
- * their marks via {@link invalidateDailyAggregates}.
+ * Drop every cached daily aggregation after a write. The per-account mark series are NOT
+ * dropped here: they live in `markSeriesStore.ts`, and the database itself logs which account
+ * (or every account) a write moved and from which date (`markInputChanges.ts`, applied on the
+ * next read), so each series loses only the days the write can have changed.
  */
 export function invalidateDailySeries(): void {
+  applyPendingMarkInputChanges();
   deleteKeysMatchingPrefix("daily.");
 }
+
+// Marks were trimmed: drop what was built on them, and the input memos a mark rebuild reads
+// (the depto ledger, a card's normalized line streams, the checking balance memo) so the
+// rebuilt days read the new rows even when the writer did not invalidate them itself.
+setMarkInputsChangedListener((change) => {
+  deleteKeysMatchingPrefix("daily.");
+  deleteKeysMatchingPrefix("depto.ledger|");
+  if (change.all) {
+    deleteKeysMatchingPrefix("cc.billing_detail|");
+    clearCheckingBalanceCache();
+  } else {
+    for (const id of change.accountIds) {
+      cache.delete(cacheKeyCcBillingDetail(id));
+      deleteKeysMatchingPrefix(`${cacheKeyCcBillingDetail(id)}|`);
+      clearCheckingBalanceCache(id);
+    }
+  }
+  invalidateDashboardPageBundle();
+  invalidationListener?.();
+});
 
 /**
  * Drop the cached CC billing detail (ledger months + detalle por mes) for one account, or for

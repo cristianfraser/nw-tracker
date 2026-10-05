@@ -3,6 +3,7 @@ import { setAggregationInvalidationListener } from "./aggregationCache.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { db } from "./db.js";
+import { pruneMarkInputChanges } from "./markInputChanges.js";
 import { warmRentabilidadDailySeries } from "./rentabilidadDailyWarm.js";
 
 /**
@@ -97,6 +98,9 @@ export function startDashboardCacheWarmer(): void {
   if (started) return;
   started = true;
 
+  // The mark-change log only needs to outlive the slowest reader's gap; older rows go.
+  const pruned = pruneMarkInputChanges();
+  if (pruned > 0) console.log(`cache-warm: pruned ${pruned} mark-input change rows older than 7 days`);
   setAggregationInvalidationListener(() => scheduleWarm("invalidation"));
   scheduleMidnightWarm();
   pollTimer = setInterval(() => {
