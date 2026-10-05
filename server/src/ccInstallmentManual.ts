@@ -7,6 +7,7 @@ import {
   upsertUniqueCat,
 } from "./ccCrossImportDedupe.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
+import { applyFacturadoFinancingLinks } from "./ccFacturadoFinancingAuto.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
@@ -75,6 +76,9 @@ export function createManualCcInstallmentPurchase(
   // The contract consumes cupo on its purchase date, so stamps written after it are stale.
   upsertCreditCardValuationsFromLedger(accountId, { affectedEvidenceFromYmd: purchaseDate });
   recomputeCcBillingMonthBalances(accountId);
+  // A hand-entered plan, or a tagged feed purchase given its count, may be the one that paid
+  // another card's facturado.
+  applyFacturadoFinancingLinks();
 
   return { id: purchaseId, canonical_row_id: canonical };
 }

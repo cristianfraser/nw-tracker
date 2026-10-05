@@ -33,6 +33,7 @@ import {
 } from "./ccStatementJsonSource.js";
 import { learnGroceryBranchesFromCardLines, type GroceryBranchLearningResult } from "./groceryBranchLearning.js";
 import { matchMerchantExpenseNotes } from "./merchantExpenseNotes.js";
+import { applyFacturadoFinancingLinks, type FacturadoFinancingApplyResult } from "./ccFacturadoFinancingAuto.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import {
   captureCcExpenseLines,
@@ -478,6 +479,9 @@ export type CcAccountImportMergeResult = {
   merchant_expense_notes: number;
   /** Categories, big groups, notes and splits carried from replaced lines onto their new rows. */
   expense_line_rekey: CcExpenseLineRekeyResult;
+  /** Facturados another card's cuota purchases paid, linked and their PAGO planted after this
+   * write (`ccFacturadoFinancingAuto.ts`); null when it ran inside an outer pass. */
+  facturado_financing?: FacturadoFinancingApplyResult | null;
 };
 
 /** Merge statements + installment ledger + billing (HTTP imports). */
@@ -634,6 +638,10 @@ export function mergeCcAccountFromParsedRows(
       ...result.web_paste_pdf_reconcile.map((r) => r.earliest_deleted_iso)
     ),
   });
+  // This write may have landed the cuota purchase that paid another card's facturado (the feed's
+  // plan, a statement's), or the statement that facturado closed on: link them, and plant the
+  // paid card's PAGO when no feed of its own will show it.
+  result.facturado_financing = applyFacturadoFinancingLinks();
 
   return result;
 }
