@@ -68,6 +68,47 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
     );
   });
 
+  it("partial import stores the bank's own charges as cash_fee, other debits without a kind", () => {
+    const accountId = testCheckingAccountId();
+    if (accountId == null) return;
+
+    const fee = {
+      occurred_on: "1799-05-27",
+      amount_clp: -27_794,
+      description: "COM.MANTENCION PLAN",
+      document_no: "",
+    };
+    const interest = {
+      occurred_on: "1799-05-03",
+      amount_clp: -39,
+      description: "Intereses Línea de Crédito",
+      document_no: "",
+    };
+    const spend = {
+      occurred_on: "1799-05-20",
+      amount_clp: -33_333,
+      description: "vitest-flow ordinary debit",
+      document_no: "",
+    };
+    const notes = [fee, interest, spend].map(partialMovementNote);
+    const del = () =>
+      db.prepare(`DELETE FROM movements WHERE account_id = ? AND note IN (?, ?, ?)`).run(accountId, ...notes);
+    del();
+
+    importCheckingPartialMovements(accountId, [fee, interest, spend]);
+    const kinds = notes.map(
+      (note) =>
+        (
+          db.prepare(`SELECT flow_kind FROM movements WHERE account_id = ? AND note = ?`).get(accountId, note) as {
+            flow_kind: string | null;
+          }
+        ).flow_kind
+    );
+    expect(kinds).toEqual(["cash_fee", "cash_fee", null]);
+
+    del();
+  });
+
   it("partial import reports superseded_by_cartola flows", () => {
     const accountId = testCheckingAccountId();
     if (accountId == null) return;

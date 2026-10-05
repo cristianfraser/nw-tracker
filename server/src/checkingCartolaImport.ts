@@ -30,6 +30,7 @@ import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from ".
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
 import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
+import { checkingMovementFlowKind } from "./checkingBankCharges.js";
 
 export function checkingAccountId(dbHandle: Database = db): number {
   return cartolaCashAccountId("cuenta_corriente", dbHandle);
@@ -275,8 +276,8 @@ export function importCheckingCartola(
   }
 
   const insMov = dbHandle.prepare(
-    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-     VALUES (?, ?, 'clp', ?, ?, NULL)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+     VALUES (?, ?, 'clp', ?, ?, NULL, ?)`
   );
   const markImported = dbHandle.prepare(
     `INSERT INTO checking_cartola_imports (
@@ -368,7 +369,13 @@ export function importCheckingCartola(
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_transfer" });
         return;
       }
-      insMov.run(accountId, mv.amount_clp, mv.occurred_on, note);
+      insMov.run(
+        accountId,
+        mv.amount_clp,
+        mv.occurred_on,
+        note,
+        checkingMovementFlowKind(mv.description, mv.amount_clp)
+      );
       movementsInserted += 1;
       inserted_flows.push(flowOf(mv));
     });
