@@ -1,12 +1,14 @@
 /**
  * Acceptance check for the CC financing-P/L model: per billing month, the flow-derived P/L
  * (Σ of the daily series' `pl` over the month's transaction dates) must equal the negative of
- * the statement's section-3 charges — the same number the financing chart shows.
+ * the statement's section-3 charges plus the interest inside installment plans printed with a
+ * positive rate (`ccInstallmentInterest.ts`).
  *
  * Run: npx tsx scripts/verify-cc-financing-identity.ts [accountId ...]
  */
 import { billingMonthContainingPurchase } from "../src/ccManualBillingMonth.js";
 import { ccFinancingCostClpByDate } from "../src/ccFinancingCostDaily.js";
+import { ccInstallmentInterestForAccount } from "../src/ccInstallmentInterest.js";
 import { listCreditCardMasterAccountIds } from "../src/creditCardTree.js";
 import { statementSection3ChargesClpForBillingMonth } from "../src/creditCardPerformancePl.js";
 
@@ -35,6 +37,7 @@ for (const accountId of accountIds) {
     derivedTotal += Math.round(byMonth.get(bm) ?? 0);
     metricTotal += statementSection3ChargesClpForBillingMonth(accountId, bm);
   }
+  for (const plan of ccInstallmentInterestForAccount(accountId)) metricTotal += plan.interest_clp;
   const diff = derivedTotal - metricTotal;
   worst = Math.max(worst, Math.abs(diff));
   console.log(

@@ -173,28 +173,6 @@ export type CcInstallmentsMeta = {
 };
 
 
-/** Interest portion of cuota at 0-based installment index (0% APR → 0). */
-export function installmentInterestClpForCuota(
-  principal: number,
-  annualPct: number,
-  installmentCount: number,
-  installmentIndex: number,
-  cuota: number
-): number {
-  if (annualPct <= 0 || principal <= 0 || installmentCount <= 0 || cuota <= 0) return 0;
-  if (installmentIndex < 0 || installmentIndex >= installmentCount) return 0;
-  const r = annualPct / 100 / 12;
-  let bal = principal;
-  for (let i = 0; i < installmentIndex; i++) {
-    if (bal <= 0) return 0;
-    const interest = bal * r;
-    const princPart = cuota - interest;
-    bal = Math.max(0, bal - princPart);
-  }
-  if (bal <= 0) return 0;
-  return Math.round(bal * r);
-}
-
 export type CcInstallmentsResponseBase = {
   account_id: number;
   has_installment_ledger: boolean;
