@@ -5,6 +5,7 @@ import { partialMovementSupersededByCartola } from "./checkingCartolaPartialReco
 import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
+import { checkingMovementFlowKind } from "./checkingBankCharges.js";
 
 /**
  * One row of a bank account's recent-movements listing, as the import stores it: the posting date,
@@ -54,8 +55,8 @@ export function importCheckingPartialMovements(
   movements: PartialBankMovement[]
 ): PartialMovementsImportResult {
   const ins = db.prepare(
-    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
-     VALUES (?, ?, 'clp', ?, ?, NULL)`
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+     VALUES (?, ?, 'clp', ?, ?, NULL, ?)`
   );
 
   let inserted = 0;
@@ -101,7 +102,13 @@ export function importCheckingPartialMovements(
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_transfer" });
         continue;
       }
-      ins.run(accountId, mv.amount_clp, mv.occurred_on, note);
+      ins.run(
+        accountId,
+        mv.amount_clp,
+        mv.occurred_on,
+        note,
+        checkingMovementFlowKind(mv.description, mv.amount_clp)
+      );
       inserted += 1;
       inserted_flows.push(flowOf(mv));
     }
