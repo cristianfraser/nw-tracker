@@ -8,6 +8,8 @@ export type ImportBatchKind =
   | "cc_lider_boleta"
   /** The card's own PAGO / ABONO DE DIVISAS line, planted from a Santander payment receipt mail. */
   | "cc_santander_receipt"
+  /** A card's PAGO, planted when cuota purchases on another card paid its facturado. */
+  | "cc_financing_payment"
   /** Same lines as a web paste, from the scheduled Lider «últimos movimientos» CSV drop. */
   | "cc_lider_fetch"
   | "cuenta_vista_web_paste"

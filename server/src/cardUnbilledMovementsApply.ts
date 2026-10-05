@@ -1,5 +1,6 @@
 import type { CardUnbilledMovementsPayload } from "nw-tracker-contracts";
 import { importCcWebPasteLines } from "./accountImports.js";
+import { applyFacturadoFinancingLinks } from "./ccFacturadoFinancingAuto.js";
 import { masterAccountIdForIssuerCardAccount } from "./santanderAccountMap.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
@@ -220,6 +221,9 @@ export function applyCardUnbilledMovements(
       mirror,
     });
   }
+  // Tagged cuota purchases (count unknown) are marked after their card's write: one more pass,
+  // so a facturado one of them paid gets its PAGO tonight rather than at the next card write.
+  applyFacturadoFinancingLinks();
   return {
     source: sourceRef,
     accounts,
