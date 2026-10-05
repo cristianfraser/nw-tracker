@@ -9,7 +9,13 @@ import {
   type GlobalSyncStateFile,
 } from "./globalSyncState.js";
 import { loadRootDotenv } from "./rootDotenv.js";
-import { afcCicAccountIds, isAfcCicStale, latestAfcCicRow } from "./afcCicSeries.js";
+import {
+  AFC_CIC_PUBLISH_HOUR_CHILE,
+  afcCicAccountIds,
+  afcCicExpectedYmd,
+  isAfcCicStale,
+  latestAfcCicRow,
+} from "./afcCicSeries.js";
 
 import {
   cryptoEodDueUtcYmd,
@@ -447,11 +453,11 @@ function syncSourceRow(
 }
 
 /**
- * How old the last Fintual poll may be for its staleness to still count as the publisher's lag.
+ * How old a source's last poll may be for its staleness to still count as the publisher's lag.
  * The scheduler polls every 15 minutes while any source is stale; two intervals is one missed
  * tick of slack. Older than that, the poll itself is what is missing and we are the ones behind.
  */
-export const FINTUAL_PUBLISHER_LAG_MAX_POLL_AGE_MS = 30 * 60 * 1000;
+export const PUBLISHER_LAG_MAX_POLL_AGE_MS = 30 * 60 * 1000;
 
 /** `fetchedAt` of the goals snapshot `runFintual` writes on every poll — null when none exists. */
 export function readFintualLastCheckedAt(): string | null {
@@ -476,7 +482,7 @@ export function readFintualLastCheckedAt(): string | null {
  * sync": the notifications panel badged it and the dashboard dimmed every Fintual account at 38%
  * opacity — on 2026-09-15 with Monday's cuota simply not published by Fintual yet, the poll running
  * every 15 minutes, and the APV cards showing the live proxy. This is lag on the publisher's side
- * when: the last poll is recent (`FINTUAL_PUBLISHER_LAG_MAX_POLL_AGE_MS`), nobody forced a run by
+ * when: the last poll is recent (`PUBLISHER_LAG_MAX_POLL_AGE_MS`), nobody forced a run by
  * hand, the API's latest published day is behind the first publish day we expect, and every held
  * fund's bar for that published day is in the DB (a missing bar means our write is what failed).
  * Anything else — sig mismatch, unreconciled positions, a missed poll — stays plain stale.
@@ -501,23 +507,57 @@ export function fintualPublisherLag(
   if (expected > cap) return null;
   if (fintualCertV2AnyHeldFundMissingDayRow(published, state)) return null;
   const checkedMs = opts.lastCheckedAt ? Date.parse(opts.lastCheckedAt) : NaN;
-  if (!Number.isFinite(checkedMs) || opts.nowMs - checkedMs > FINTUAL_PUBLISHER_LAG_MAX_POLL_AGE_MS) {
+  if (!Number.isFinite(checkedMs) || opts.nowMs - checkedMs > PUBLISHER_LAG_MAX_POLL_AGE_MS) {
     return null;
   }
   return { expected_ymd: expected, published_ymd: published, last_checked_at: opts.lastCheckedAt as string };
 }
 
 /**
+ * Classify a stale AFC CIC source as the PUBLISHER's lag — or null when we are the ones behind.
+ *
+ * `isAfcCicStale` waits on the last Chile business day's valor cuota from noon the day after, and
+ * the Superintendencia de Pensiones is sometimes days late printing it: on 2026-10-05 its CSV still
+ * ended at Thursday 10-01 while every 15-minute poll since Saturday noon read the whole year
+ * unchanged, and the sync panel called that «stale» like a failed fetch. This is lag on the
+ * publisher's side when: nobody forced a run, the last fetch is recent
+ * (`PUBLISHER_LAG_MAX_POLL_AGE_MS`), the DB holds the last day the CSV printed (else our write is
+ * what failed), and that day is still before the expected one.
+ */
+export function afcCicPublisherLag(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile,
+  opts: { latestDbDay: string | null; nowMs: number }
+): SyncPublisherLag | null {
+  if (isUserForcedSyncSourceStale(state, "afc_cic")) return null;
+  const published = state.afcCicLastPublishedYmd?.trim();
+  if (!published || !/^\d{4}-\d{2}-\d{2}$/.test(published)) return null;
+  if (opts.latestDbDay == null || opts.latestDbDay < published) return null;
+  const expected = afcCicExpectedYmd(cl.ymd);
+  if (published >= expected) return null;
+  const checkedAt = state.afcCicLastCheckedAt ?? null;
+  const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
+  if (!Number.isFinite(checkedMs) || opts.nowMs - checkedMs > PUBLISHER_LAG_MAX_POLL_AGE_MS) return null;
+  return { expected_ymd: expected, published_ymd: published, last_checked_at: checkedAt as string };
+}
+
+/** The Chile hour from which a source's publisher lag counts as overdue (see `staleDimmingSources`). */
+function publisherLagOverdueHourChile(source: GlobalSyncSource): number {
+  return source === "afc_cic" ? AFC_CIC_PUBLISH_HOUR_CHILE : FINTUAL_PUBLISH_HOUR_CHILE;
+}
+
+/**
  * Sources whose accounts dim at `cl`. Our own staleness (a missed or failed poll, a due sync not
  * yet run, a signature mismatch, a forced run) always dims. A publisher's lag dims only once the
- * cuota is OVERDUE — from `FINTUAL_PUBLISH_HOUR_CHILE` until it lands; before that the display
- * holds everything the publisher has (pre-open, the live proxy, the post-close hold), so nothing
- * is behind (2026-09-21). The window is wall-clock: a cuota still missing at midnight reads
- * normal again from 00:00 and dims at 18:00 the next day, until it is applied.
+ * cuota is OVERDUE — from the source's publish hour (Fintual 18:00, AFC 12:00) until it lands;
+ * before that the display holds everything the publisher has (pre-open, the live proxy, the
+ * post-close hold), so nothing is behind (2026-09-21). The window is wall-clock: a cuota still
+ * missing at midnight reads normal again from 00:00 and dims from the publish hour the next day,
+ * until it is applied.
  */
 export function staleDimmingSources(rows: SyncSourceStatusRow[], cl: ChileWallClock): GlobalSyncSource[] {
   return rows
-    .filter((r) => r.stale && (r.publisher_lag == null || cl.hour >= FINTUAL_PUBLISH_HOUR_CHILE))
+    .filter((r) => r.stale && (r.publisher_lag == null || cl.hour >= publisherLagOverdueHourChile(r.source)))
     .map((r) => r.source);
 }
 
@@ -552,7 +592,14 @@ export function allSyncSourceStatuses(
     rows.push(syncSourceRow("afc_cic", cl, "disabled", false, state));
   } else {
     const stale = isAfcCicStale(cl, state, { force });
-    rows.push(syncSourceRow("afc_cic", cl, stale ? "stale" : "ok", stale, state));
+    const row = syncSourceRow("afc_cic", cl, stale ? "stale" : "ok", stale, state);
+    if (stale && !force) {
+      row.publisher_lag = afcCicPublisherLag(cl, state, {
+        latestDbDay: latestAfcCicRow()?.day ?? null,
+        nowMs: opts?.nowMs ?? Date.now(),
+      });
+    }
+    rows.push(row);
   }
 
   {
@@ -655,7 +702,7 @@ export function syncStatusPayload(): {
   /**
    * The sources whose accounts the dashboard dims right now (`staleDimmingSources`): every stale
    * source whose staleness is ours, plus a source waiting on its publisher once the cuota is
-   * overdue (from `FINTUAL_PUBLISH_HOUR_CHILE`). Before that hour a publisher-lag source holds
+   * overdue (from its publish hour: Fintual 18:00, AFC 12:00). Before that hour a publisher-lag source holds
    * everything the publisher has, so its accounts are not behind anything.
    */
   stale_dimming: GlobalSyncSource[];

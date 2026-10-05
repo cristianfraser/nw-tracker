@@ -251,6 +251,8 @@ export function afcCicNextDueYmd(cl: ChileWallClock, latestDay: string | null): 
 
 export type AfcCicSyncResult = AfcCicUpsertResult & {
   years: number[];
+  /** Latest day the fetched CSVs print — the SP's own publication frontier (null: none printed). */
+  published_ymd: string | null;
   latest_before: { day: string; unit_value_clp: number } | null;
   latest_after: { day: string; unit_value_clp: number } | null;
 };
@@ -273,13 +275,15 @@ export async function syncAfcCicFromSp(opts: {
   }
   years.push(year);
   const totals: AfcCicUpsertResult = { inserted: 0, updated: 0, unchanged: 0, restated: [] };
+  let published_ymd: string | null = null;
   for (const y of years) {
     const rows = await fetchSpCesantiaYear(y, { signal: opts.signal });
+    for (const row of rows) if (published_ymd == null || row.day > published_ymd) published_ymd = row.day;
     const r = upsertAfcCicRows(rows, { dryRun: opts.dryRun, note: `sp:cesantia-csv|year=${y}` });
     totals.inserted += r.inserted;
     totals.updated += r.updated;
     totals.unchanged += r.unchanged;
     totals.restated.push(...r.restated);
   }
-  return { ...totals, years, latest_before, latest_after: opts.dryRun ? latest_before : latestAfcCicRow() };
+  return { ...totals, years, published_ymd, latest_before, latest_after: opts.dryRun ? latest_before : latestAfcCicRow() };
 }

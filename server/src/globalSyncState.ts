@@ -35,6 +35,10 @@ export type GlobalSyncStateFile = {
   sbifEurLastErrorAt?: string;
   /** Last NYSE session date we synced EOD for SPY/VEA. */
   equityEodLastNySessionYmd?: string;
+  /** ISO time of the last successful AFC CIC fetch from the SP (see `afcCicPublisherLag`). */
+  afcCicLastCheckedAt?: string;
+  /** Latest day the SP's CSV printed at that fetch. */
+  afcCicLastPublishedYmd?: string;
   /** Last UTC day we synced crypto EOD. */
   equityEodLastCryptoUtcYmd?: string;
   /** Chile day of last successful Risky Norris proxy composition sync. */

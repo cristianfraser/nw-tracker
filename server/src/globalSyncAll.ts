@@ -751,6 +751,7 @@ async function runSbifUsd(
  */
 async function runAfcCic(
   cl: ReturnType<typeof chileWallClockNow>,
+  state: GlobalSyncStateFile,
   changes: SyncFieldChange[],
   notes: SyncStepNote[]
 ): Promise<void> {
@@ -761,6 +762,11 @@ async function runAfcCic(
     r = await syncAfcCicFromSp({ cl, dryRun: syncDryRun, signal: ac.signal });
   } finally {
     clearTimeout(t);
+  }
+  if (!syncDryRun) {
+    state.afcCicLastCheckedAt = new Date().toISOString();
+    if (r.published_ymd) state.afcCicLastPublishedYmd = r.published_ymd;
+    else delete state.afcCicLastPublishedYmd;
   }
   const before = r.latest_before;
   const after = r.latest_after;
@@ -1265,7 +1271,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     });
 
     await runSyncStepIfStale("afc_cic", stale, "AFC CIC", stepErrors, state!, cl, async () => {
-      await runAfcCic(cl, syncChanges, stepNotes);
+      await runAfcCic(cl, state!, syncChanges, stepNotes);
     });
 
     await runSyncStepIfStale("fintual", stale, "Fintual", stepErrors, state!, cl, async () => {
