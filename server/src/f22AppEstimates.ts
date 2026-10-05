@@ -15,15 +15,15 @@
  */
 import { db } from "./db.js";
 import { monthBeforeYmd } from "./foreignShareTaxGains.js";
-import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctBetween } from "./siiOfficialIpc.js";
+import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctWithStandIn } from "./siiOfficialIpc.js";
 import { realizeTaxLots, type TaxLotEvent } from "./taxLots.js";
 
 type Pct = (fromMonth: string, toMonth: string) => number;
 
 function yearEndPct(): { pct: Pct; toMonth: (incomeYear: number) => string } {
-  const ipc = loadOfficialIpcLookup();
   const latest = latestOfficialIpcMonth();
-  const pct: Pct = (a, b) => (a >= b ? 0 : Math.max(0, Math.round(officialIpcVariationPctBetween(a, b, ipc) * 10) / 10));
+  const ipcBetween = officialIpcVariationPctWithStandIn(loadOfficialIpcLookup(), latest);
+  const pct: Pct = (a, b) => (a >= b ? 0 : Math.max(0, Math.round(ipcBetween(a, b) * 10) / 10));
   return { pct, toMonth: (y) => (latest < `${y}-11-01` ? latest : `${y}-11-01`) };
 }
 
