@@ -7,10 +7,8 @@ import {
 import { listCcStatementLinesForStatement, listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
-import {
-  type CcInstallmentPurchaseComputed,
-  installmentInterestClpForCuota,
-} from "./creditCardInstallments.js";
+import type { CcInstallmentPurchaseComputed } from "./creditCardInstallments.js";
+import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import {
   ccInstallmentLedgerRowCount,
   ccInstallmentsDbApiPayload,
@@ -67,26 +65,17 @@ export type CcFinancingPlMonthRow = {
   cumulative_financing_cost_clp: number;
 };
 
+/** Installment interest of the plans bought in `billingMonth` (`ccInstallmentInterest.ts`). */
 function installmentInterestClpForBillingMonth(
+  accountId: number,
   purchases: readonly CcInstallmentPurchaseComputed[],
   billingMonth: string
 ): number {
+  const interestById = new Map(ccInstallmentInterestForAccount(accountId).map((p) => [p.purchase_id, p.interest_clp]));
   let sum = 0;
   for (const p of purchases) {
-    if (p.annual_interest_pct <= 0) continue;
-    const off = p.schedule_offset_months;
-    const paid = Math.min(Math.max(0, p.installments_paid), p.installment_count);
-    for (let i = paid; i < p.installment_count; i++) {
-      const dueMonth = addCalendarMonths(p.first_due_month, i + off);
-      if (dueMonth !== billingMonth) continue;
-      sum += installmentInterestClpForCuota(
-        p.principal_clp,
-        p.annual_interest_pct,
-        p.installment_count,
-        i,
-        p.cuota_clp
-      );
-    }
+    if (p.purchase_db_id == null || p.purchase_billing_month !== billingMonth) continue;
+    sum += interestById.get(p.purchase_db_id) ?? 0;
   }
   return sum;
 }
@@ -100,6 +89,7 @@ function collectBillingMonths(
     if (st.billing_month) months.add(st.billing_month);
   }
   for (const p of purchases) {
+    if (p.purchase_billing_month) months.add(p.purchase_billing_month);
     const off = p.schedule_offset_months;
     for (let i = 0; i < p.installment_count; i++) {
       months.add(addCalendarMonths(p.first_due_month, i + off));
@@ -124,7 +114,7 @@ export function buildCreditCardFinancingPlByBillingMonth(
 
   for (const billingMonth of months) {
     const statement_charges_clp = statementSection3ChargesClpForBillingMonth(accountId, billingMonth);
-    const installment_interest_clp = installmentInterestClpForBillingMonth(allPurchases, billingMonth);
+    const installment_interest_clp = installmentInterestClpForBillingMonth(accountId, allPurchases, billingMonth);
     const financing_cost_clp = statement_charges_clp + installment_interest_clp;
 
     const y = Number(billingMonth.slice(0, 4));

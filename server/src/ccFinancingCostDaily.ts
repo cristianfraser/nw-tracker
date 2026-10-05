@@ -1,7 +1,8 @@
 /**
  * What a credit card actually COSTS, per day: the section-3 bank charges (intereses,
  * comisiones, impuestos) from the same statement evidence that drives the owed walk, dated on
- * the day they were charged.
+ * the day they were charged, and the interest inside installment plans' cuotas, dated on the
+ * purchase date (`ccInstallmentInterest.ts`).
  *
  * This is the card's P/L. Everything else that moves an owed balance — buying (borrowing),
  * paying, and the corrections the evidence anchors apply to our reconstruction of both — is
@@ -22,6 +23,7 @@
  * between two accounts of one bucket, it does not add or remove any.
  */
 import { normalizedPostCloseLines } from "./ccBillingBalances.js";
+import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 
 /**
  * CLP financing cost per transaction date (positive = cost), deduped by the owed walk's keys
@@ -38,6 +40,9 @@ export function ccFinancingCostClpByDate(accountId: number): Map<string, number>
     if (!l.financing) continue;
     if (l.clp == null || !Number.isFinite(l.clp) || l.clp === 0) continue;
     byDate.set(l.iso, (byDate.get(l.iso) ?? 0) + l.clp);
+  }
+  for (const plan of ccInstallmentInterestForAccount(accountId)) {
+    byDate.set(plan.iso, (byDate.get(plan.iso) ?? 0) + plan.interest_clp);
   }
   return byDate;
 }
