@@ -11,13 +11,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  bankAccountBalancesKind,
   cardUnbilledMovementsKind,
+  type BankAccountBalancesApplyDetails,
   type CardUnbilledMovementsApplyDetails,
 } from "nw-tracker-contracts";
 import { log } from "../log.js";
 import { resolveMovementsDir } from "../paths.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
-import { santanderCardFeedPayload, type SantanderMovementsFile } from "./cardFeed.js";
+import { santanderAccountBalances, santanderCardFeedPayload, type SantanderMovementsFile } from "./cardFeed.js";
 
 const dryRun = process.argv.includes("--dry-run");
 const dir = resolveMovementsDir("santander");
@@ -96,7 +98,10 @@ async function main(): Promise<number> {
     const raw = JSON.parse(fs.readFileSync(file, "utf8")) as SantanderMovementsFile;
     // Validated here too, so a decoding problem names the file before any request.
     const payload = cardUnbilledMovementsKind.payload.parse(santanderCardFeedPayload(raw));
+    const balances = santanderAccountBalances(raw);
+    const balancesPayload = balances.payload ? bankAccountBalancesKind.payload.parse(balances.payload) : null;
     console.log(name);
+    if (!balancesPayload) console.log(`  bank balances: none — ${balances.reason}`);
     if (!client) {
       for (const card of payload.cards) {
         const byCurrency = card.lines.reduce<Record<string, number>>((acc, line) => {
@@ -116,6 +121,21 @@ async function main(): Promise<number> {
         ...(Number.isNaN(Date.parse(raw.fetchedAt)) ? {} : { fetched_at: raw.fetchedAt }),
       });
       printDetails(result.details as CardUnbilledMovementsApplyDetails);
+      if (balancesPayload) {
+        const sentBalances = await client.send(bankAccountBalancesKind, balancesPayload, {
+          channel: "web_session",
+          ref: name,
+          label: name,
+          fetched_at: balancesPayload.observed_at,
+        });
+        const d = sentBalances.details as BankAccountBalancesApplyDetails;
+        for (const k of d.known) {
+          console.log(`  bank balance: account ${k.account_id} ${k.currency.toUpperCase()} ${k.balance}`);
+        }
+        if (d.unknown.length > 0) {
+          console.log(`  bank balances not declared on any account: ${d.unknown.map((u) => `${u.label} (${u.currency})`).join(", ")}`);
+        }
+      }
     } catch (err) {
       log(`FAILED ${name}: ${describeIngestFailure(err)}`);
       return 1;

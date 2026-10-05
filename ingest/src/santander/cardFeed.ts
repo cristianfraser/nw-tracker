@@ -1,3 +1,4 @@
+import type { BankAccountBalancesPayload } from "nw-tracker-contracts";
 import type {
   CardListingLine,
   CardUnbilledMovementsPayload,
@@ -47,6 +48,12 @@ export type SantanderMovementsFile = {
    */
   cupos?: { observedAt: string; rows: unknown[] } | null;
   cuposError?: string;
+  /**
+   * The same summary's deposit-account rows: absent on files fetched before 2026-10-05, null when
+   * the summary listed none (`accountsError` says why).
+   */
+  accounts?: { observedAt: string; rows: unknown[] } | null;
+  accountsError?: string;
 };
 
 const ISSUER = "santander";
@@ -300,4 +307,54 @@ export function santanderCardFeedPayload(file: SantanderMovementsFile): CardUnbi
     }),
     ...(issuerBalances ? { issuer_balances: issuerBalances } : {}),
   };
+}
+
+const DEPOSIT_PRODUCTS: Readonly<Record<string, "checking" | "demand_deposit">> = {
+  CCC: "checking",
+  CCM: "demand_deposit",
+};
+
+/**
+ * The deposit accounts of the session's product summary as a `bank_account.balances` payload:
+ * `MONTODISPONIBLE` is the balance (18 digits, two implied decimals — the peso cuenta corriente's
+ * matched its ledger to the peso on 2026-08-05). Null when the file predates the field or the
+ * summary had none (`reason` says which); throws on any row it does not understand.
+ */
+export function santanderAccountBalances(
+  file: SantanderMovementsFile
+): { payload: BankAccountBalancesPayload | null; reason: string | null } {
+  if (!("accounts" in file) || file.accounts === undefined) {
+    return { payload: null, reason: "file predates deposit-account balances" };
+  }
+  if (file.accounts === null) {
+    const reason = String(file.accountsError ?? "").trim();
+    if (!reason) throw new Error("Santander movements file has accounts: null and no accountsError");
+    return { payload: null, reason };
+  }
+  const observedAt = String(file.accounts.observedAt ?? "").trim();
+  if (Number.isNaN(Date.parse(observedAt))) {
+    throw new Error(`Santander balances capture has an unparseable observedAt "${observedAt}"`);
+  }
+  const accounts = (file.accounts.rows ?? []).map((raw) => {
+    const r = (raw ?? {}) as Record<string, unknown>;
+    const number = String(r.NUMEROCONTRATO ?? "").trim();
+    const group = String(r.AGRUPACIONCOMERCIAL ?? "").trim();
+    const currency = String(r.CODIGOMONEDA ?? "").trim().toLowerCase();
+    if (!/^\d+$/.test(number)) throw new Error(`Santander balance row has no account number ("${number}")`);
+    const product = DEPOSIT_PRODUCTS[group];
+    if (!product) throw new Error(`Santander balance ${number}: unexpected product group "${group}"`);
+    if (currency !== "clp" && currency !== "usd") {
+      throw new Error(`Santander balance ${number}: unexpected currency "${String(r.CODIGOMONEDA)}"`);
+    }
+    const cents = bankCupoCents(r.MONTODISPONIBLE, "MONTODISPONIBLE", `${number} ${currency}`);
+    return {
+      number,
+      product,
+      currency: currency as "clp" | "usd",
+      balance: cents / 100,
+      label: String(r.GLOSACORTA ?? "").trim() || group,
+      status: String(r.GLOSAESTADO ?? "").trim() || "?",
+    };
+  });
+  return { payload: { issuer: ISSUER, observed_at: observedAt, accounts }, reason: null };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cardUnbilledMovementsKind } from "nw-tracker-contracts";
 import {
+  santanderAccountBalances,
   santanderCardFeedPayload,
   santanderIssuerBalances,
   santanderMovementDateToIso,
@@ -236,5 +237,42 @@ describe("santanderIssuerBalances", () => {
     });
     expect(() => santanderIssuerBalances(file([], { cupos: null }))).toThrow(/no cuposError/);
     expect(santanderIssuerBalances(file([]))).toBeUndefined();
+  });
+});
+
+describe("santanderAccountBalances", () => {
+  const cents = (amount: number) => String(Math.round(amount * 100)).padStart(18, "0");
+  const depositRow = (group: string, currency: string, balance: number, number = "005199990001") => ({
+    NUMEROCONTRATO: number,
+    AGRUPACIONCOMERCIAL: group,
+    CODIGOMONEDA: currency,
+    MONTODISPONIBLE: cents(balance),
+    GLOSACORTA: group === "CCM" ? "CTA VISTA VITEST" : "CTA CORRIENTE VITEST",
+    GLOSAESTADO: "ACTIVA",
+  });
+  const withAccounts = (rows: unknown[]) =>
+    file([], { accounts: { observedAt: "2026-10-05T01:02:03.000Z", rows } });
+
+  it("reads checking and vista balances in both currencies", () => {
+    const out = santanderAccountBalances(
+      withAccounts([depositRow("CCC", "USD", 1216.99), depositRow("CCC", "CLP", 413_441, "000099990002"), depositRow("CCM", "CLP", 0, "007099990003")])
+    );
+    expect(out.reason).toBeNull();
+    expect(out.payload).toEqual({
+      issuer: "santander",
+      observed_at: "2026-10-05T01:02:03.000Z",
+      accounts: [
+        { number: "005199990001", product: "checking", currency: "usd", balance: 1216.99, label: "CTA CORRIENTE VITEST", status: "ACTIVA" },
+        { number: "000099990002", product: "checking", currency: "clp", balance: 413_441, label: "CTA CORRIENTE VITEST", status: "ACTIVA" },
+        { number: "007099990003", product: "demand_deposit", currency: "clp", balance: 0, label: "CTA VISTA VITEST", status: "ACTIVA" },
+      ],
+    });
+  });
+
+  it("says why when there is nothing to send, and throws on a row it does not understand", () => {
+    expect(santanderAccountBalances(file([])).reason).toMatch(/predates/);
+    expect(santanderAccountBalances(file([], { accounts: null, accountsError: "no summary" })).reason).toBe("no summary");
+    expect(() => santanderAccountBalances(withAccounts([depositRow("XYZ", "CLP", 1)]))).toThrow(/product group/);
+    expect(() => santanderAccountBalances(withAccounts([{ ...depositRow("CCC", "CLP", 1), MONTODISPONIBLE: "12" }]))).toThrow(/18-digit/);
   });
 });

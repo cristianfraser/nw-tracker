@@ -7,6 +7,11 @@
  */
 import type { IngestTaskName, IngestTaskResult } from "nw-tracker-contracts";
 import { insertAppMessage } from "./appMessages.js";
+import {
+  bankBalanceMessageKind,
+  formatBankBalanceReport,
+  judgeLatestBankAccountBalances,
+} from "./bankAccountBalances.js";
 import { bankCupoMessageKind, formatBankCupoReport, judgeLatestBankCupoCapture } from "./ccBankCupoCheck.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "./ccPaymentMirrors.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -94,10 +99,33 @@ function ccBankCupoCheck(o: TaskOptions): TaskOutcome {
   };
 }
 
+const BALANCE_TITLE = "Bank account balance";
+
+/**
+ * The balance the bank states for each declared deposit account (`bankAccountBalances.ts`) against
+ * its ledger. Runs inside the cupo check step: both read the same product summary of the same
+ * session. Fails on a fresh mismatch; notifies on a new, changed or cleared one.
+ */
+function bankAccountBalanceCheck(o: TaskOptions): TaskOutcome {
+  const verdicts = judgeLatestBankAccountBalances({ recheck: o.recheck });
+  const report = formatBankBalanceReport(verdicts);
+  const fresh = verdicts.some((v) => v.fresh);
+  if (fresh) insertAppMessage(bankBalanceMessageKind(verdicts), BALANCE_TITLE, report);
+  const failed = verdicts.some((v) => v.fresh && v.status === "mismatch");
+  return { ok: !failed, report: [report, ...(fresh || verdicts.length === 0 ? [] : ["(already judged — nothing new)"])] };
+}
+
+/** The card cupo check and the deposit-account balance check: one product summary, one step. */
+function bankSummaryChecks(o: TaskOptions): TaskOutcome {
+  const cupo = ccBankCupoCheck(o);
+  const balances = bankAccountBalanceCheck(o);
+  return { ok: cupo.ok && balances.ok, report: [...cupo.report, "", ...balances.report] };
+}
+
 export const INGEST_TASKS: Readonly<Record<IngestTaskName, (o: TaskOptions) => TaskOutcome>> = {
   cc_payment_mirrors: ccPaymentMirrors,
   synthetic_cc_payments_check: syntheticCcPaymentsCheck,
-  cc_bank_cupo_check: ccBankCupoCheck,
+  cc_bank_cupo_check: bankSummaryChecks,
 };
 
 export function runIngestTask(task: IngestTaskName, o: TaskOptions): IngestTaskResult {
