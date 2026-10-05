@@ -13,7 +13,6 @@ function row(partial: Partial<CardMetricsAccountRow> & { account_id: number }): 
     group_slug: "brokerage",
     bucket_slug: "brokerage",
     dashboard_bucket_slug: "brokerage",
-    category_slug: "stock",
     chart_inactive: false,
     exclude_from_group_totals: 0,
     deposits_clp: 0,
@@ -220,7 +219,6 @@ describe("buildNavCardMetricsBySlug", () => {
       group_slug: "liabilities",
       bucket_slug: "liabilities__credit_card",
       dashboard_bucket_slug: "",
-      category_slug: "credit_card",
       deposits_clp: 0,
       delta_month_clp: -12_000,
       current_value_clp: -500_000,
@@ -250,25 +248,31 @@ describe("buildNavCardMetricsBySlug", () => {
     expect(liab.parent.month.delta_period_clp).toBe(-12_000);
   });
 
-  it("cash_eqs bucket delta_period comes from savings rows only (checking excluded)", () => {
+  it("cash_eqs bucket delta_period sums every cash row, checking included", () => {
     const cashRows = [
       row({
         account_id: 21,
         group_slug: "cash_eqs",
         bucket_slug: "cash_eqs__cash_savings",
         dashboard_bucket_slug: "cash_eqs",
-        category_slug: "cash_savings",
         deposits_clp: 100,
         delta_month_clp: 4,
       }),
       row({
         account_id: 22,
         group_slug: "cash_eqs",
-        bucket_slug: "cash_eqs__checking_accounts",
+        bucket_slug: "cash_eqs__cuenta_corriente",
         dashboard_bucket_slug: "cash_eqs",
-        category_slug: "cuenta_corriente",
         deposits_clp: 50,
-        delta_month_clp: 1000,
+        delta_month_clp: 0,
+      }),
+      row({
+        account_id: 23,
+        group_slug: "cash_eqs",
+        bucket_slug: "cash_eqs__checking_accounts__vitest_bank__usd",
+        dashboard_bucket_slug: "cash_eqs",
+        deposits_clp: 0,
+        delta_month_clp: 30,
       }),
     ];
     const cashTree = navNode({
@@ -281,14 +285,9 @@ describe("buildNavCardMetricsBySlug", () => {
         }),
       ],
     });
-    const out = buildNavCardMetricsBySlug({
-      ...input,
-      navRoots: [cashTree],
-      rows: cashRows,
-    });
+    const out = buildNavCardMetricsBySlug({ ...input, navRoots: [cashTree], rows: cashRows });
     const cash = out.cash_savings!;
-    // deposits: whole cash_eqs bucket (both rows); delta_period: savings row only
     expect(cash.child.month.deposits_clp).toBe(150);
-    expect(cash.child.month.delta_period_clp).toBe(4);
+    expect(cash.child.month.delta_period_clp).toBe(34);
   });
 });
