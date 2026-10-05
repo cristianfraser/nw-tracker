@@ -1,5 +1,6 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { getAggregationCached, setAggregationCached } from "./aggregationCache.js";
+import { applyPendingMarkInputChanges } from "./markInputChanges.js";
+import { getMarkSeries, markSeriesKey, setMarkSeries, type CachedMarkSeries } from "./markSeriesStore.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 
 /**
@@ -15,11 +16,12 @@ import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
  * always computed. That split is what lets a live-quote tick keep the whole cache: no
  * historical mark reads `live_market_quotes` (see `invalidateDailyAggregates`).
  *
- * Entries live in the aggregation cache under `daily.marks|<accountId>|<bucketSlug>`, so they
- * clear at Chile day rollover and when another process commits a write, exactly like every
- * other cached aggregation. The series **extends** in both directions as wider windows are
- * requested (a 90-day view pays 90 days; a later "total" view pays only the missing prefix),
- * which is why this module writes through {@link setAggregationCached}.
+ * Entries live in their own store (`markSeriesStore.ts`), not the aggregation cache: a past
+ * day's mark does not change when the calendar day does, so they survive the Chile day
+ * rollover, and a write trims only the series it touches, from the date it touches
+ * (`markInputChanges.ts` — the database names what changed). The series **extends** in both
+ * directions as wider windows are requested (a 90-day view pays 90 days; a later "total" view
+ * pays only the missing prefix; the day after a rollover pays only the new day).
  *
  * Values are `value_clp` only — `accountMarkClpAtYmd` also returns the evidence date
  * (`as_of_date`, which can predate the requested day), and callers that need it must keep
@@ -33,14 +35,6 @@ export type MarkSeriesAccountRef = {
   name?: string | null;
 };
 
-type CachedMarkSeries = {
-  /** First cached day (inclusive). */
-  start_ymd: string;
-  /** Last cached day (inclusive); always < Chile today. */
-  end_ymd: string;
-  /** CLP marks indexed from `start_ymd`; null where the account has no valid mark. */
-  values: (number | null)[];
-};
 
 const MS_PER_DAY = 86_400_000;
 
@@ -94,8 +88,8 @@ function assertSeriesAligned(series: CachedMarkSeries, account: MarkSeriesAccoun
 function cacheKey(account: MarkSeriesAccountRef): string {
   // Bucket slug is part of the identity: it selects the valuation branch inside
   // `accountMarkClpAtYmd`, and the same account can reach this module from group tabs that
-  // label it differently. The trailing delimiter keeps account 16 out of 0161's keys.
-  return `daily.marks|${account.account_id}|${account.bucket_slug}`;
+  // label it differently.
+  return markSeriesKey(account.account_id, account.bucket_slug);
 }
 
 /**
@@ -108,11 +102,11 @@ function cachedSeriesCovering(
   endYmd: string
 ): CachedMarkSeries {
   const key = cacheKey(account);
-  const cached = getAggregationCached<CachedMarkSeries>(key, () => ({
-    start_ymd: startYmd,
-    end_ymd: endYmd,
-    values: buildRange(account, startYmd, endYmd),
-  }));
+  let cached = getMarkSeries(key);
+  if (!cached) {
+    cached = { start_ymd: startYmd, end_ymd: endYmd, values: buildRange(account, startYmd, endYmd) };
+    setMarkSeries(key, cached);
+  }
   assertSeriesAligned(cached, account);
   const needsPrefix = startYmd < cached.start_ymd;
   const needsSuffix = endYmd > cached.end_ymd;
@@ -130,7 +124,7 @@ function cachedSeriesCovering(
     values: [...prefix, ...cached.values, ...suffix],
   };
   assertSeriesAligned(extended, account);
-  setAggregationCached(key, extended);
+  setMarkSeries(key, extended);
   return extended;
 }
 
@@ -155,6 +149,8 @@ export function accountMarkClpSeriesOnGrid(
     );
   }
 
+  // Trim whatever the database says changed since the last read before serving any of it.
+  applyPendingMarkInputChanges();
   const today = chileCalendarTodayYmd();
   const out = new Array<number | null>(grid.length);
   const cacheableEnd = last < today ? last : chileCalendarAddDays(today, -1);

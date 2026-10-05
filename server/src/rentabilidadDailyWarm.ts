@@ -5,7 +5,8 @@ import { isInvestmentPerformanceAccount, isInvestmentPerformanceGroupSlug } from
 /**
  * The full-history daily series every Rentabilidad table chains (`periodReturnsDaily.ts`) and the
  * own-portfolio benchmarks read: each investment group page and each investment account, in CLP
- * (the default display unit; USD builds on first use). Built one scope per macrotask, so
+ * and USD (the per-account marks are shared by both units, so USD adds only its own sums and
+ * conversions). Built one scope per macrotask, so
  * requests interleave with the warm instead of waiting behind all of it. A scope already cached
  * costs nothing; after a live-quote tick only today's marks recompute.
  */
@@ -29,14 +30,16 @@ export async function warmRentabilidadDailySeries(): Promise<number> {
 
   let scopes = 0;
   const yieldToRequests = () => new Promise<void>((resolve) => setImmediate(resolve));
-  for (const slug of groups) {
-    await yieldToRequests();
-    if (resolveGroupDailySeries(slug, "clp", 0)) scopes += 1;
-  }
-  for (const a of accounts) {
-    await yieldToRequests();
-    resolveAccountDailySeries(a, "clp", 0);
-    scopes += 1;
+  for (const unit of ["clp", "usd"] as const) {
+    for (const slug of groups) {
+      await yieldToRequests();
+      if (resolveGroupDailySeries(slug, unit, 0)) scopes += 1;
+    }
+    for (const a of accounts) {
+      await yieldToRequests();
+      resolveAccountDailySeries(a, unit, 0);
+      scopes += 1;
+    }
   }
   return scopes;
 }
