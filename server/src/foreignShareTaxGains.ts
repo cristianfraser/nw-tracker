@@ -17,7 +17,7 @@
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
 import { loadEquityTaxLotEvents } from "./equityTaxLotEvents.js";
-import { loadOfficialIpcLookup, officialIpcVariationPctBetween } from "./siiOfficialIpc.js";
+import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctWithStandIn } from "./siiOfficialIpc.js";
 import { realizeTaxLots, type TaxLotDisposal, type TaxLotMethod } from "./taxLots.js";
 import { observadoOnOrBefore } from "./usdCashTaxLotEvents.js";
 
@@ -107,8 +107,7 @@ export function foreignShareGainsForYear(
   const provisional = todayYmd <= yearEnd;
   const yearEndObservadoDate = provisional ? latestObservadoDate() : yearEnd;
   const yearEndObservado = observadoOnOrBefore(yearEndObservadoDate);
-  const ipc = loadOfficialIpcLookup();
-  const ipcBetween = (a: string, b: string) => officialIpcVariationPctBetween(a, b, ipc);
+  const ipcBetween = officialIpcVariationPctWithStandIn(loadOfficialIpcLookup(), latestOfficialIpcMonth());
   const disposals: ForeignShareDisposalResult[] = [];
   for (const a of foreignEquityAccounts()) {
     const { events } = loadEquityTaxLotEvents(a.id);

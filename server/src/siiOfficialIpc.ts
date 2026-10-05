@@ -159,6 +159,18 @@ export function officialIpcVariationPctBetween(fromMonth: string, toMonth: strin
   return (factor - 1) * 100;
 }
 
+/**
+ * `officialIpcVariationPctBetween` for an income year that has not closed: a month after the latest
+ * published one (the INE publishes month M on the 8th of M+1) reads as that latest month — the same
+ * stand-in the year-end reajuste uses while November is pending. A missing month inside the
+ * published range still throws.
+ */
+export function officialIpcVariationPctWithStandIn(lookup: OfficialIpcLookup, latestMonth: string) {
+  const clamp = (m: string) => (m > latestMonth ? latestMonth : m);
+  return (fromMonth: string, toMonth: string): number =>
+    officialIpcVariationPctBetween(clamp(fromMonth), clamp(toMonth), lookup);
+}
+
 export function latestOfficialIpcMonth(): string {
   const r = db.prepare(`SELECT MAX(month) AS m FROM ipc_official_monthly`).get() as { m: string | null };
   if (!r.m) throw new Error("No official IPC stored — run scripts/backfill-sii-official-ipc.ts");
