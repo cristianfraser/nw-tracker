@@ -1,7 +1,7 @@
 import { listWatchlistEquitySeriesKeys, syncWatchlistFromApp } from "./watchlist.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { equityMarketKind, equityQuoteCurrency } from "./equityQuote.js";
+import { equityMarketKind, marketQuoteCurrency } from "./equityQuote.js";
 import { fetchYahooLiveQuote } from "./equityYahooEod.js";
 import { fetchYahooLiveUsdClpPerUsd, shouldUseLiveFxQuote } from "./fxLive.js";
 import { syncYahooFxUsdFromYahoo, yahooFxUsdSyncDue } from "./fxYahooEodSync.js";
@@ -17,6 +17,11 @@ import {
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 import { maxFxDateOnOrBefore } from "./sbifSyncDb.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
+import {
+  clearMarketSymbolFetchError,
+  recordMarketSymbolFetchError,
+  reloadMarketSymbols,
+} from "./marketSymbols.js";
 
 const stmtEodPrior = db.prepare(
   `SELECT close FROM equity_daily WHERE ticker = ? AND trade_date < ? ORDER BY trade_date DESC LIMIT 1`
@@ -90,15 +95,17 @@ async function syncOneEquityLiveQuote(ticker: string, fetchedAt: string): Promis
       symbol: ticker.toUpperCase(),
       kind: "equity",
       value: live.price,
-      currency: equityQuoteCurrency(ticker),
+      currency: marketQuoteCurrency(ticker),
       session_ymd: live.session_ymd,
       previous_value: prior,
       fetched_at: fetchedAt,
     };
     insertLiveMarketQuote(row);
+    clearMarketSymbolFetchError(ticker, "live");
     return { ticker, ok: true, changed };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
+    recordMarketSymbolFetchError(ticker, "live", msg);
     return { ticker, ok: false, error: msg.slice(0, 200) };
   }
 }
@@ -206,6 +213,8 @@ async function syncLiveFxQuote(
  */
 export async function syncAllLiveMarketQuotes(now = new Date()): Promise<LiveMarketQuotesSyncResult> {
   const fetchedAt = now.toISOString();
+  // A symbol added through another process (the primary server vs a script) must quote in its registered currency.
+  reloadMarketSymbols();
   const tickers = equityTickersForLiveSync();
   const equities: LiveQuoteSyncTickerResult[] = [];
   for (const ticker of tickers) {

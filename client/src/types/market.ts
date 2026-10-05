@@ -57,18 +57,32 @@ export interface WatchlistCompositeHoldingRow {
   weight: number;
   value: number | null;
   /** Currency `value` is expressed in — the requested display unit (the fx rate row is always CLP per USD). */
-  value_currency: "usd" | "clp";
+  value_currency: "usd" | "clp" | "none";
   as_of_date: string | null;
   changes: WatchlistChanges | null;
 }
 
 export interface WatchlistRow extends MarketDisplaySeriesRow {
   value: number | null;
-  /** Currency `value` is expressed in — the requested display unit (the fx rate row is always CLP per USD). */
-  value_currency: "usd" | "clp";
+  /**
+   * Currency `value` is expressed in — the requested display unit, except the fx rate row
+   * (always CLP per USD) and an index (`none`: points in both units).
+   */
+  value_currency: "usd" | "clp" | "none";
   as_of_date: string | null;
   changes: WatchlistChanges | null;
   composite_holdings?: WatchlistCompositeHoldingRow[];
+  /** An equity row's latest Yahoo fetch failure; null once a fetch succeeds. */
+  fetch_error: { stage: "live" | "history"; message: string; failed_at: string } | null;
+}
+
+/** `GET /api/watchlist/search?q=` — Yahoo's matches for what was typed in the add box. */
+export interface WatchlistSymbolSearchResult {
+  symbol: string;
+  name: string | null;
+  exchange: string | null;
+  type: string | null;
+  on_watchlist: boolean;
 }
 
 /** `GET /api/watchlist?unit=` — every value and change column expressed in `unit`. */
@@ -82,7 +96,7 @@ export interface WatchlistResponse {
 export interface MarketTickerValue {
   day: string;
   value: number;
-  currency: "usd" | "clp";
+  currency: "usd" | "clp" | "none";
   delta_pct: number | null;
 }
 
@@ -100,8 +114,8 @@ export interface MarketTickerResponse {
     ticker: string;
     trade_date: string;
     value: number;
-    /** Currency `value` is expressed in — the payload's `unit`. */
-    currency: "usd" | "clp";
+    /** Currency `value` is expressed in — the payload's `unit`; `none` for an index (points). */
+    currency: "usd" | "clp" | "none";
     delta_pct: number | null;
   }[];
   marquee_series?: MarketDisplaySeriesRow[];

@@ -28,6 +28,7 @@ export const queryKeys = {
   marketTicker: (unit: DisplayUnit) => ["marketTicker", unit] as const,
   watchlistAll: () => ["watchlist"] as const,
   watchlist: (unit: DisplayUnit) => ["watchlist", unit] as const,
+  watchlistSymbolSearch: (q: string) => ["watchlist-symbol-search", q] as const,
   marketSeries: () => ["marketSeries"] as const,
   mortgageUfReminder: () => ["mortgageUfReminder"] as const,
   fxLatest: () => ["fxLatest"] as const,

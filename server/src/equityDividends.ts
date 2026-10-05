@@ -15,6 +15,8 @@ export function insertEquityDividendsIfMissing(
   ticker: string,
   dividends: readonly YahooDividend[]
 ): { inserted: number } {
+  // An index pays nothing, and its level has no currency to stamp a dividend with.
+  if (dividends.length === 0) return { inserted: 0 };
   const currency = equityQuoteCurrency(ticker);
   const get = db.prepare(`SELECT amount FROM equity_dividends WHERE ticker = ? AND ex_date = ?`);
   const ins = db.prepare(

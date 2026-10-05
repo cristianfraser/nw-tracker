@@ -53,7 +53,8 @@ function tickerLabel(ticker: string): string {
  * The server already expressed the value in the display unit; pesos print grouped with the
  * decimals they have (a cuota, a UF), dollars always with two.
  */
-function formatMarqueeValue(value: number, currency: "usd" | "clp"): string {
+/** An index (`none`) reads as its level with two decimals, like a USD price. */
+function formatMarqueeValue(value: number, currency: "usd" | "clp" | "none"): string {
   return currency === "clp" ? formatGroupedDecimalTrimmed(value) : formatGroupedDecimal(value, 2);
 }
 

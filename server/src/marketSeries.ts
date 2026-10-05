@@ -92,8 +92,11 @@ export function getMarketSeriesPayload(): {
   const eurRows = db.prepare(`SELECT date, clp_per_eur FROM eur_daily ORDER BY date ASC`).all() as EurR[];
   const ipcRows = db.prepare(`SELECT date, ipc_index FROM ipc_daily ORDER BY date ASC`).all() as IpcR[];
   const utmRows = db.prepare(`SELECT date, utm_clp FROM utm_daily ORDER BY date ASC`).all() as UtmR[];
+  // Index levels (currency `none`) are points, not prices with a CLP/USD frame.
   const eqRows = db
-    .prepare(`SELECT ticker, trade_date AS date, close FROM equity_daily ORDER BY ticker, trade_date ASC`)
+    .prepare(
+      `SELECT ticker, trade_date AS date, close FROM equity_daily WHERE currency != 'none' ORDER BY ticker, trade_date ASC`
+    )
     .all() as EqR[];
   const fuRows = db
     .prepare(`SELECT series_key, day, unit_value_clp FROM fund_unit_daily ORDER BY series_key, day ASC`)

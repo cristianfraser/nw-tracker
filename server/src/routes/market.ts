@@ -6,12 +6,14 @@ import { chileCalendarTodayYmd } from "../chileDate.js";
 import { getMarketSeriesPayload } from "../marketSeries.js";
 import { getMarketTickerPayload } from "../marketTicker.js";
 import {
-  addManualWatchlistTicker,
+  addManualWatchlistTickerFromYahoo,
   deleteManualWatchlistRow,
   getWatchlistPayload,
   patchWatchlistRow,
+  searchWatchlistSymbols,
   watchlistDisplayUnitParam,
 } from "../watchlist.js";
+import { asyncHandler } from "./shared.js";
 import { isPositiveFiniteNumber, isYmdString } from "../requestValidation.js";
 
 export function registerMarketRoutes(app: express.Express): void {
@@ -123,20 +125,40 @@ app.patch("/api/watchlist/:id", (req, res) => {
   }
 });
 
-app.post("/api/watchlist", (req, res) => {
-  const ticker = typeof req.body?.ticker === "string" ? req.body.ticker : "";
-  if (!ticker.trim()) {
-    res.status(400).json({ error: "ticker required" });
-    return;
-  }
-  try {
-    res.status(201).json(addManualWatchlistTicker(ticker));
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "watchlist_add_failed";
-    const status = msg.includes("already") ? 409 : 400;
-    res.status(status).json({ error: msg });
-  }
-});
+// The two Yahoo calls on a request path: the user's own typing and add, never a display read.
+app.get(
+  "/api/watchlist/search",
+  asyncHandler(async (req, res) => {
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (!q) {
+      res.json({ results: [] });
+      return;
+    }
+    try {
+      res.json({ results: await searchWatchlistSymbols(q) });
+    } catch (e) {
+      res.status(502).json({ error: e instanceof Error ? e.message : "watchlist_search_failed" });
+    }
+  })
+);
+
+app.post(
+  "/api/watchlist",
+  asyncHandler(async (req, res) => {
+    const ticker = typeof req.body?.ticker === "string" ? req.body.ticker : "";
+    if (!ticker.trim()) {
+      res.status(400).json({ error: "ticker required" });
+      return;
+    }
+    try {
+      res.status(201).json(await addManualWatchlistTickerFromYahoo(ticker));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "watchlist_add_failed";
+      const status = msg.includes("already") ? 409 : 400;
+      res.status(status).json({ error: msg });
+    }
+  })
+);
 
 app.delete("/api/watchlist/:id", (req, res) => {
   const id = Number(req.params.id);

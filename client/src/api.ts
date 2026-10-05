@@ -653,6 +653,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  searchWatchlistSymbols: (q: string) =>
+    j<{ results: import("./types").WatchlistSymbolSearchResult[] }>(
+      `/api/watchlist/search?q=${encodeURIComponent(q)}`
+    ),
   addWatchlistTicker: (ticker: string) =>
     j<import("./types").WatchlistRow>("/api/watchlist", {
       method: "POST",

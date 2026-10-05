@@ -11,7 +11,7 @@ export type LiveMarketQuoteRow = {
   kind: LiveMarketQuoteKind;
   value: number;
   /** Quote currency for equity rows; NULL for fx-rate rows (enforced by table CHECK). */
-  currency: "usd" | "clp" | null;
+  currency: "usd" | "clp" | "none" | null;
   session_ymd: string;
   previous_value: number | null;
   fetched_at: string;

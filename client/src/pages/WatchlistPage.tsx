@@ -1,18 +1,19 @@
-import { FormEvent, Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { DeltaMetricFlow } from "../components/dashboard/DeltaMetricFlow";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { formatClp, formatPct, formatUsdFine } from "../format";
+import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
 import { useTranslation } from "../i18n";
 import {
   useAddWatchlistTicker,
   useDeleteWatchlistRow,
   usePatchWatchlistMarquee,
   useWatchlist,
+  useWatchlistSymbolSearch,
 } from "../queries/hooks";
-import type { WatchlistRow } from "../types";
-import { Button, Input } from "@crfrsr/ui";
+import type { WatchlistRow, WatchlistSymbolSearchResult } from "../types";
+import { Button, Combobox, CommandItem } from "@crfrsr/ui";
 
 function symbolLabel(row: WatchlistRow, t: (key: string) => string): string {
   if (row.label_i18n_key) {
@@ -25,7 +26,92 @@ function symbolLabel(row: WatchlistRow, t: (key: string) => string): string {
 
 function formatPriceRow(row: Pick<WatchlistRow, "value" | "value_currency">): string {
   if (row.value == null || !Number.isFinite(row.value)) return "—";
+  // An index level is points, not money: no currency sign.
+  if (row.value_currency === "none") return formatGroupedDecimal(row.value, 2);
   return row.value_currency === "usd" ? formatUsdFine(row.value) : formatClp(row.value);
+}
+
+/** Why an equity row has no (or a stale) price: its last Yahoo fetch failed. */
+function FetchErrorNote({ error }: { error: NonNullable<WatchlistRow["fetch_error"]> }) {
+  const { t } = useTranslation();
+  const label = error.stage === "live" ? t("watchlist.fetchErrorLive") : t("watchlist.fetchErrorHistory");
+  return (
+    <span className="watchlist-table__fetch-error" role="note">
+      {label}: {error.message} ({error.failed_at.slice(0, 16).replace("T", " ")} UTC)
+    </span>
+  );
+}
+
+const SEARCH_DEBOUNCE_MS = 300;
+
+/** The add box: Yahoo's matches for what is typed; picking one adds it (the server checks it again). */
+function AddSymbolCombobox() {
+  const { t } = useTranslation();
+  const addTicker = useAddWatchlistTicker();
+  const [search, setSearch] = useState("");
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [search]);
+  const results = useWatchlistSymbolSearch(debounced);
+  const options = debounced ? (results.data?.results ?? []) : [];
+  const waiting = search.trim() !== debounced || results.isFetching;
+
+  const emptyMessage = !search.trim()
+    ? t("watchlist.searchPrompt")
+    : results.isError
+      ? results.error instanceof Error
+        ? results.error.message
+        : t("watchlist.searchError")
+      : t("watchlist.searchNoResults");
+
+  return (
+    <div className="watchlist-add-form">
+      <Combobox<WatchlistSymbolSearchResult>
+        options={options}
+        filteredOptions={options}
+        isLoading={waiting && search.trim().length > 0}
+        searchValue={search}
+        onSearchChange={setSearch}
+        onSelect={(option) => {
+          if (!option.on_watchlist) addTicker.mutate(option.symbol);
+        }}
+        trigger={
+          <Button type="button" variant="outline" disabled={addTicker.isPending}>
+            {addTicker.isPending ? t("watchlist.adding") : t("watchlist.addTickerLabel")}
+          </Button>
+        }
+        placeholder={t("watchlist.searchPlaceholder")}
+        emptyMessage={emptyMessage}
+        loadingMessage={t("common.loading")}
+        popoverWidth="26rem"
+        estimateItemSize={44}
+        renderOption={(option, _index, onSelect) => (
+          <CommandItem
+            value={option.symbol}
+            onSelect={onSelect}
+            disabled={option.on_watchlist}
+            className="watchlist-symbol-option"
+          >
+            <span className="watchlist-symbol-option__symbol mono">{option.symbol}</span>
+            <span className="watchlist-symbol-option__detail">
+              <span className="watchlist-symbol-option__name">{option.name ?? "—"}</span>
+              <span className="watchlist-symbol-option__meta muted">
+                {[option.type, option.exchange].filter(Boolean).join(" · ")}
+                {option.on_watchlist ? ` · ${t("watchlist.alreadyListed")}` : ""}
+              </span>
+            </span>
+          </CommandItem>
+        )}
+      />
+      {addTicker.isError ? (
+        <p className="error" role="alert">
+          {addTicker.error instanceof Error ? addTicker.error.message : t("watchlist.addError")}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function PctCell({
@@ -56,7 +142,9 @@ function watchlistTr({
   showActionsColumn,
   sortSeed,
 }: {
-  row: Pick<WatchlistRow, "value" | "value_currency" | "changes">;
+  row: Pick<WatchlistRow, "value" | "value_currency" | "changes"> & {
+    fetch_error?: WatchlistRow["fetch_error"];
+  };
   symbol: string;
   symbolClassName?: string;
   marquee?: React.ReactNode;
@@ -80,7 +168,10 @@ function watchlistTr({
       data-sort-y10={changes?.y10_pct ?? ""}
     >
       <td className="watchlist-table__marquee">{marquee ?? null}</td>
-      <td className={symbolClassName ?? "watchlist-table__symbol mono"}>{symbol}</td>
+      <td className={symbolClassName ?? "watchlist-table__symbol mono"}>
+        {symbol}
+        {row.fetch_error ? <FetchErrorNote error={row.fetch_error} /> : null}
+      </td>
       <td className="watchlist-table__num mono">{formatPriceRow(row)}</td>
       <td className="watchlist-table__num">
         <PctCell value={changes?.day_pct ?? null} seedId={sortSeed} col="day" />
@@ -236,18 +327,6 @@ export function WatchlistPage() {
   // Prices and changes follow the CLP/USD toggle (converted server-side, unit in the query key).
   const { displayUnit } = useDisplayPreferences();
   const { data, isPending, error } = useWatchlist(displayUnit);
-  const addTicker = useAddWatchlistTicker();
-  const [tickerInput, setTickerInput] = useState("");
-
-  const onAdd = (e: FormEvent) => {
-    e.preventDefault();
-    const raw = tickerInput.trim();
-    if (!raw) return;
-    addTicker.mutate(raw, {
-      onSuccess: () => setTickerInput(""),
-    });
-  };
-
   if (error) {
     return (
       <main>
@@ -286,27 +365,7 @@ export function WatchlistPage() {
 
       <section className="watchlist-section">
         <h2>{t("watchlist.manualSectionTitle")}</h2>
-        <form className="watchlist-add-form" onSubmit={onAdd}>
-          <label>
-            <span>{t("watchlist.addTickerLabel")}</span>
-            <Input
-              type="text"
-              value={tickerInput}
-              onChange={(e) => setTickerInput(e.target.value)}
-              placeholder={t("watchlist.addTickerPlaceholder")}
-              autoCapitalize="characters"
-              spellCheck={false}
-            />
-          </label>
-          <Button type="submit" disabled={addTicker.isPending || !tickerInput.trim()}>
-            {t("watchlist.addTickerSubmit")}
-          </Button>
-        </form>
-        {addTicker.isError ? (
-          <p className="error" role="alert">
-            {addTicker.error instanceof Error ? addTicker.error.message : t("watchlist.addError")}
-          </p>
-        ) : null}
+        <AddSymbolCombobox />
         <WatchlistTable rows={data.manual} showActions />
       </section>
     </main>
