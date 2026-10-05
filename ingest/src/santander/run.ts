@@ -18,6 +18,7 @@ import { LOGIN_HOSTS } from "./routes.js";
 import { fetchCardMovements, fetchCardStatements } from "./cards.js";
 import { fetchCheckingMovements } from "./checking.js";
 import { keepSessionAlive, type SessionKeepAlive } from "./sessionKeepAlive.js";
+import { statementsDueToday } from "./statementSchedule.js";
 
 /**
  * How many times one run may relaunch Chrome after it dies mid-session.
@@ -175,7 +176,14 @@ export async function runSantander(opts: RunOptions): Promise<number> {
       return path.basename(file);
     });
 
-    if (!opts.movementsOnly) {
+    // A facturación's statement only exists after its close: skip the tabs until one is due.
+    const statementsSchedule = statementsDueToday(resolveStatementJsonDir("santander"));
+    const statementsForced = opts.force || opts.capture || opts.only.includes("card-statements");
+    if (!opts.movementsOnly && !statementsSchedule.due && !statementsForced && shouldRunStep(opts.only, "card-statements")) {
+      log(`card statements skipped — ${statementsSchedule.reason}`);
+      results.push({ name: "card statements", ok: true, detail: `skipped — ${statementsSchedule.reason}` });
+    }
+    if (!opts.movementsOnly && (statementsSchedule.due || statementsForced)) {
       await step("card statements", "card-statements", async (page) => {
         const jsonDir = opts.capture ? (recorder.captureDir ?? destDir) : resolveStatementJsonDir("santander");
         const saved = await fetchCardStatements(page, recorder, jsonDir);
