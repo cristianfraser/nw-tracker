@@ -65,7 +65,6 @@ export type CardMetricsAccountRow = Pick<
   | "group_slug"
   | "bucket_slug"
   | "dashboard_bucket_slug"
-  | "category_slug"
   | "chart_inactive"
   | "exclude_from_group_totals"
   | "deposits_clp"
@@ -113,21 +112,6 @@ function accountBelongsToDashboardBucket(row: CardMetricsAccountRow, bucket: str
   }
   const placement = row.bucket_slug ?? row.group_slug;
   return placement === bucket;
-}
-
-const CHECKING_ACCOUNTS_BUCKET = "cash_eqs__checking_accounts";
-
-function isCheckingPlacementRow(row: CardMetricsAccountRow): boolean {
-  const slug = row.bucket_slug ?? "";
-  if (slug === CHECKING_ACCOUNTS_BUCKET || slug.startsWith(`${CHECKING_ACCOUNTS_BUCKET}__`)) {
-    return true;
-  }
-  return row.category_slug === "cuenta_corriente" || row.category_slug === "cuenta_vista";
-}
-
-/** Savings rows whose period P/L feeds the cash_eqs bucket card (excludes checking). */
-function isCashSavingsBucketPeriodPlRow(row: CardMetricsAccountRow): boolean {
-  return accountBelongsToDashboardBucket(row, "cash_eqs") && !isCheckingPlacementRow(row);
 }
 
 /** Bucket-card scope: counts-toward-totals rows in the bucket, or `filter` REPLACING membership. */
@@ -300,35 +284,17 @@ export function sumCardMetrics(parts: readonly CardPeriodMetricsDto[]): CardPeri
 /* -------------------------------- bucket metrics ---------------------------------- */
 
 
-/** Port of client `cardGroupMetricsForDashboardBucket` (incl. cash_eqs savings-P/L override). */
+/** Port of client `cardGroupMetricsForDashboardBucket`. */
 function bucketCardMetrics(
   rows: readonly CardMetricsAccountRow[],
   bucket: DashboardNwBucketSlug,
   period: CardMetricsPeriod,
   filter?: (row: CardMetricsAccountRow) => boolean
 ): CardPeriodMetricsDto {
-  const base = cardMetricsFromRows(
+  return cardMetricsFromRows(
     rows.filter((a) => accountInDashboardGroupScope(a, bucket, filter)),
     period
   );
-  if (bucket === "cash_eqs") {
-    const savingsRows = rows.filter(
-      (a) => isCashSavingsBucketPeriodPlRow(a) && accountInDashboardGroupScope(a, "cash_eqs", filter)
-    );
-    const savingsPl = cardMetricsFromRows(savingsRows, period);
-    return {
-      ...base,
-      delta_period_clp:
-        savingsPl.delta_period_clp != null && Number.isFinite(savingsPl.delta_period_clp)
-          ? Math.round(savingsPl.delta_period_clp)
-          : null,
-      delta_period_usd:
-        savingsPl.delta_period_usd != null && Number.isFinite(savingsPl.delta_period_usd)
-          ? Math.round(savingsPl.delta_period_usd)
-          : null,
-    };
-  }
-  return base;
 }
 
 /* ------------------------------------ row % ------------------------------------- */
