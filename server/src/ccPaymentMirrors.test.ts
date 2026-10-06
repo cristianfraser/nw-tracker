@@ -153,6 +153,51 @@ describe("listCcPaymentMirrorCandidates", () => {
     expect(hdrCand.evidence.statement_line_id).toBeNull();
     expect(hdrCand.evidence.pago_iso).toBe("2037-05-07");
   });
+
+  it("offers a debit from any account under Checking accounts (the cuenta vista too), none from elsewhere", () => {
+    if (checkingId == null || ccId == null || lineStatementId == null) return;
+    const leaf = (slug: string) =>
+      (db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as { id: number } | undefined)?.id;
+    const vistaLeaf = leaf("cash_eqs__cuenta_vista");
+    const savingsLeaf = leaf("cash_eqs__cash_savings");
+    if (vistaLeaf == null || savingsLeaf == null) return;
+    const mkAccount = (groupId: number, key: string) =>
+      Number(
+        db
+          .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
+          .run(groupId, `Vitest · ${key}`, key).lastInsertRowid
+      );
+    const vistaId = mkAccount(vistaLeaf, "vitest-ccpago-vista");
+    const savingsId = mkAccount(savingsLeaf, "vitest-ccpago-savings");
+    const lineIds = [211_111, 322_222].map((amount, i) =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+             VALUES (?, ?, 'MONTO CANCELADO', ?, 0, ?)`
+          )
+          .run(lineStatementId, `1${5 + i}/04/2037`, -amount, `vitest-ccpago-line-x${i}`).lastInsertRowid
+      )
+    );
+    const ins = db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
+    );
+    ins.run(vistaId, -211_111, "2037-04-16", "vitest|Traspaso Internet a T. Crédito|vista");
+    ins.run(savingsId, -322_222, "2037-04-17", "vitest|Traspaso Internet a T. Crédito|savings");
+    clearAggregationCache();
+    try {
+      const cands = listCcPaymentMirrorCandidates();
+      expect(cands.filter((c) => c.out.account_id === vistaId).map((c) => [c.evidence.amount_clp, c.blocked])).toEqual([
+        [211_111, false],
+      ]);
+      expect(cands.filter((c) => c.out.account_id === savingsId)).toEqual([]);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE account_id IN (?, ?)`).run(vistaId, savingsId);
+      db.prepare(`DELETE FROM cc_statement_lines WHERE id IN (?, ?)`).run(...lineIds);
+      db.prepare(`DELETE FROM accounts WHERE id IN (?, ?)`).run(vistaId, savingsId);
+      clearAggregationCache();
+    }
+  });
 });
 
 describe("convertCcPaymentMirrors", () => {
