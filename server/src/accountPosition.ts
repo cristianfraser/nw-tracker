@@ -304,12 +304,12 @@ export function getAccountPositionMeta(
     // AFP UNO (Fondo A) and AFC (Fondo CIC): Σ cuotas × the series' valor cuota on or before
     // the date. An `afc` account with no declared series is not modeled in cuotas yet and
     // keeps the stored-mark path (null here).
-    const series = cuotaLedgerSeriesKeyForAccount(accountId, categorySlug);
-    if (!series) return null;
     const asOfCuotas =
       opts?.afpCuotasAsOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.afpCuotasAsOfYmd.trim())
         ? opts.afpCuotasAsOfYmd.trim()
         : chileCalendarTodayYmd();
+    const series = cuotaLedgerSeriesKeyForAccount(accountId, categorySlug, asOfCuotas);
+    if (!series) return null;
     let fu = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(series, asOfCuotas);
     if (fu == null) fu = latestFundUnitRowOnOrBefore(series, asOfCuotas);
     const px = fu?.unit_value_clp;

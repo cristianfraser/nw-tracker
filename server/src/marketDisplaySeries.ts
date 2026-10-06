@@ -1,4 +1,4 @@
-import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
+import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { syncWatchlistFromApp } from "./watchlist.js";

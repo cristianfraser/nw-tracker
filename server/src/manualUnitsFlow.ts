@@ -6,7 +6,7 @@
  * the units. The two must agree — a mismatch means the valor cuota or one of the inputs is wrong.
  */
 import { accountKindSlugForAccountId } from "./accountBucket.js";
-import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
+import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { cryptoEquityTickerForAccount } from "./cryptoValuation.js";
 import { equityCloseEod } from "./equityQuote.js";
 import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";

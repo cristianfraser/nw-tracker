@@ -25,7 +25,7 @@ function payload(movements: PensionMovement[], balance: number): PensionAccountC
       to_period: "2030-07",
       rows: [
         { period: "2030-03", description: "COTIZACION NORMAL", paid_on: "2030-04-10", pesos: 50_000, cuotas: 50, valor_cuota: 1000, payer_rut: EMPLOYER, fund: "A" },
-        { period: "2030-04", description: "COTIZACION NORMAL", paid_on: "2030-05-12", pesos: 40_400, cuotas: 40, valor_cuota: 1010, payer_rut: EMPLOYER, fund: "A" },
+        { period: "2030-04", description: "COTIZACION NORMAL", paid_on: "2030-05-10", pesos: 40_400, cuotas: 40, valor_cuota: 1010, payer_rut: EMPLOYER, fund: "A" },
       ],
     },
     movements: { folio: "F2", issued_on: "2030-07-19", from_period: "2030-03", to_period: "2030-07", rows: movements },
@@ -41,32 +41,38 @@ const MOVEMENTS = [
   mv("2030-04", "credit", "110101", 40_400, 40, 1010),
   mv("2030-05", "credit", "111138", 20_400, 20, 1020, INSURER),
 ];
+// The display series, one row per calendar day: 1010 first shows on Monday 2030-05-13 and is
+// carried over Friday's close into the weekend (a repeated value is one run, not an ambiguity).
 const SERIES = [
-  { day: "2030-05-12", unit_value_clp: 1015 },
-  { day: "2030-05-20", unit_value_clp: 1020 },
+  { day: "2030-04-12", unit_value_clp: 1000 },
+  { day: "2030-04-13", unit_value_clp: 1000 },
+  { day: "2030-04-14", unit_value_clp: 1001 },
+  { day: "2030-05-13", unit_value_clp: 1010 },
+  { day: "2030-05-14", unit_value_clp: 1010 },
+  { day: "2030-05-15", unit_value_clp: 1010 },
+  { day: "2030-05-22", unit_value_clp: 1020 },
 ];
 const LEDGER: PensionLedgerRow[] = [
   { id: 1, occurred_on: "2029-12-10", amount: 100_000, units_delta: 100 },
-  { id: 2, occurred_on: "2030-04-10", amount: 50_000, units_delta: 50 },
+  { id: 2, occurred_on: "2030-04-12", amount: 50_150, units_delta: 50.15 },
 ];
 
 describe("planPensionCertificates", () => {
-  it("dates a contribution by fecha caja, an insurance one by its valor cuota's day, and nets the rest per período", () => {
+  it("dates every row by the day its price first shows, netting the rows of one day", () => {
     const plan = planPensionCertificates(payload(MOVEMENTS, 210.15), LEDGER, SERIES);
     expect(plan.problems).toEqual([]);
     expect(plan.rows.map((r) => [r.kind, r.occurred_on, r.pesos, r.cuotas, r.state, r.movement_id])).toEqual([
-      ["contribution", "2030-04-10", 50_000, 50, "present", 2],
-      ["adjustment", "2030-04-10", 150, 0.15, "new", null],
-      ["contribution", "2030-05-12", 40_400, 40, "new", null],
-      ["insurance_contribution", "2030-05-20", 20_400, 20, "new", null],
+      ["contribution", "2030-04-12", 50_150, 50.15, "present", 2],
+      ["contribution", "2030-05-13", 40_400, 40, "new", null],
+      ["insurance_contribution", "2030-05-22", 20_400, 20, "new", null],
     ]);
     expect(plan.ledger_cuotas_after).toBe(210.15);
   });
 
-  it("leaves an insurance contribution pending while its valor cuota is not in the series", () => {
-    const plan = planPensionCertificates(payload(MOVEMENTS, 999), LEDGER, SERIES.slice(0, 1));
+  it("leaves a row pending while its price is not in the series", () => {
+    const plan = planPensionCertificates(payload(MOVEMENTS, 999), LEDGER, SERIES.slice(0, 6));
     const pending = plan.rows.filter((r) => r.state === "pending");
-    expect(pending.map((r) => [r.kind, r.occurred_on])).toEqual([["insurance_contribution", null]]);
+    expect(pending.map((r) => [r.kind, r.occurred_on, r.cuotas])).toEqual([["adjustment", null, 20]]);
     // The stated balance is not checked while a row is pending.
     expect(plan.problems).toEqual([]);
   });
@@ -82,20 +88,33 @@ describe("planPensionCertificates", () => {
     expect(plan.problems).toEqual(["movement 3 (2030-05-15, 5 cuotas) is inside the certificate's window but not on it"]);
   });
 
-  it("fails on a present row whose pesos differ, and on a withdrawal", () => {
-    const ledger = [LEDGER[0]!, { ...LEDGER[1]!, amount: 49_999 }];
-    const withdrawal = [...MOVEMENTS, mv("2030-06", "debit", "122774", 10_000, 10, 1000, EMPLOYER)];
-    const plan = planPensionCertificates(payload(withdrawal, 210.15), ledger, SERIES);
+  it("fails on a present row whose pesos differ", () => {
+    const ledger = [LEDGER[0]!, { ...LEDGER[1]!, amount: 50_149 }];
+    const plan = planPensionCertificates(payload(MOVEMENTS, 210.15), ledger, SERIES);
     expect(plan.rows.find((r) => r.movement_id === 2)?.state).toBe("conflict");
     expect(plan.problems).toEqual([
-      "período 2030-06: a withdrawal (code 122774) — enter it by hand with the bank's date",
-      "período 2030-03 contribution on 2030-04-10: certificate 50000 pesos, the ledger has 49999 pesos (movement 2)",
+      "período 2030-03 contribution on 2030-04-12: certificate 50150 pesos, the ledger has 50149 pesos (movement 2)",
     ]);
   });
 
+  it("matches a withdrawal on its own row, its provisions cancelling, and never writes one", () => {
+    const moves = [
+      ...MOVEMENTS,
+      mv("2030-05", "debit", "122776", 10_200, 10, 1020),
+      mv("2030-05", "credit", "112777", 10_200, 10, 1020),
+      mv("2030-05", "debit", "122774", 10_200, 10, 1020),
+    ];
+    const missing = planPensionCertificates(payload(moves, 200.15), LEDGER, SERIES);
+    expect(missing.problems).toContain("período 2030-05: a withdrawal of 10 cuotas on 2030-05-22 is not in the ledger — enter it by hand");
+    const ledger = [...LEDGER, { id: 4, occurred_on: "2030-05-22", amount: -10_200, units_delta: -10 }];
+    const present = planPensionCertificates(payload(moves, 200.15), ledger, SERIES);
+    expect(present.problems).toEqual([]);
+    expect(present.rows.find((r) => r.kind === "withdrawal")).toMatchObject({ state: "present", movement_id: 4 });
+  });
+
   it("fails on a contribution the contributions certificate does not list", () => {
-    const moves = [...MOVEMENTS, mv("2030-06", "credit", "110101", 30_000, 30, 1000)];
-    const plan = planPensionCertificates(payload(moves, 210.15), LEDGER, SERIES);
+    const moves = [...MOVEMENTS, mv("2030-06", "credit", "110101", 30_000, 30, 1001)];
+    const plan = planPensionCertificates(payload(moves, 240.15), LEDGER, SERIES);
     expect(plan.problems).toEqual(["período 2030-06: the contribution of 30000 pesos (30 cuotas) is not on the contributions certificate"]);
   });
 });
