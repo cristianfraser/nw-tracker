@@ -33,6 +33,7 @@ import {
   ccPurchaseSourceLegacyFromOrigin,
   dataOriginFromCcPurchaseSource,
 } from "./dataOrigin.js";
+import { ccInstallmentInterestBillingEvents, ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 
 type PurchaseRow = {
   id: number;
@@ -724,17 +725,29 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
   return { purchasesRaw, paymentsByPurchase, cancelledPurchaseIds, schedulePurchases };
 }
 
-/** Schedule purchases as daily plan-debt events: +full contract value on the purchase date. */
+/**
+ * Schedule purchases as daily plan-debt events: +the contract value on the purchase date — its
+ * principal for a plan the statements print with interest, whose interest then bills cuota by
+ * cuota at each statement close (`ccInstallmentInterestBillingEvents`), as the bank counts it.
+ */
 export function listSchedulePurchaseEvents(accountId: number): { iso: string; clp: number }[] {
   const { schedulePurchases } = loadLedgerPurchasesAndPayments(accountId);
-  return schedulePurchases
-    .filter(
-      (p) =>
-        /^\d{4}-\d{2}-\d{2}$/.test(String(p.purchase_date ?? "")) &&
-        Number.isFinite(p.total_amount_clp) &&
-        p.total_amount_clp > 0
-    )
-    .map((p) => ({ iso: String(p.purchase_date), clp: Math.round(p.total_amount_clp) }));
+  const interest = new Map(ccInstallmentInterestForAccount(accountId).map((p) => [p.purchase_id, p] as const));
+  const scheduled = schedulePurchases.filter(
+    (p) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(String(p.purchase_date ?? "")) &&
+      Number.isFinite(p.total_amount_clp) &&
+      p.total_amount_clp > 0
+  );
+  const events = scheduled.map((p) => ({
+    iso: String(p.purchase_date),
+    clp: interest.get(p.id)?.principal_clp ?? Math.round(p.total_amount_clp),
+  }));
+  const scheduledIds = new Set(scheduled.map((p) => p.id));
+  if ([...interest.keys()].some((id) => scheduledIds.has(id))) {
+    events.push(...ccInstallmentInterestBillingEvents(accountId, scheduledIds));
+  }
+  return events;
 }
 
 /** Plan cuota breakdown keyed by calendar due month (YYYY-MM). */

@@ -14,7 +14,9 @@
  * derived flow (−Δowed + financing) at the principal.
  */
 import { cacheKeyCcBillingDetail, getAggregationCached } from "./aggregationCache.js";
-import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
+import { normalizeTransactionDateIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { closeDateForBillingMonth } from "./ccManualBillingMonth.js";
+import { addCalendarMonths } from "./ccYearMonth.js";
 import { db } from "./db.js";
 
 export type CcInstallmentInterest = {
@@ -93,4 +95,61 @@ export function ccInstallmentInterestForAccount(accountId: number): CcInstallmen
     }
     return out;
   });
+}
+
+/**
+ * When a plan's interest becomes debt, cuota by cuota: each cuota bills its share of the interest
+ * (the total split evenly, the remainder on the last cuota) at the close of the statement that
+ * bills it — the printed close for a billed cuota, the projected close of its month for one not
+ * billed yet. The bank's owed counts a plan's principal from the purchase and each cuota's interest
+ * once billed, so the «deuda en cuotas» walk adds the principal on the purchase date
+ * (`listSchedulePurchaseEvents`) and these events after; the retirement still removes whole cuotas,
+ * so principal + interest − cuotas nets to zero.
+ */
+export function ccInstallmentInterestBillingEvents(
+  accountId: number,
+  onlyPurchaseIds?: ReadonlySet<number>
+): { iso: string; clp: number }[] {
+  const plans = ccInstallmentInterestForAccount(accountId).filter(
+    (p) => onlyPurchaseIds == null || onlyPurchaseIds.has(p.purchase_id)
+  );
+  if (plans.length === 0) return [];
+  const rowsStmt = db.prepare(
+    `SELECT cuota_current, cuota_total, statement_date, statement_period_month
+     FROM cc_installment_payments
+     WHERE purchase_id = ? AND cuota_current IS NOT NULL AND cuota_current >= 1`
+  );
+  const out: { iso: string; clp: number }[] = [];
+  for (const plan of plans) {
+    const rows = rowsStmt.all(plan.purchase_id) as {
+      cuota_current: number;
+      cuota_total: number;
+      statement_date: string | null;
+      statement_period_month: string | null;
+    }[];
+    if (rows.length === 0) throw new Error(`installment plan ${plan.purchase_id}: printed interest but no billed cuota`);
+    const n = rows[0]!.cuota_total;
+    const anchor = rows[0]!;
+    if (!anchor.statement_period_month) {
+      throw new Error(`installment plan ${plan.purchase_id}: cuota ${anchor.cuota_current} has no statement month`);
+    }
+    const closeByCuota = new Map<number, string>();
+    for (const r of rows) {
+      const iso = r.statement_date ? parseDdMmYyToIso(r.statement_date) : null;
+      if (!iso) throw new Error(`installment plan ${plan.purchase_id}: cuota ${r.cuota_current} has no statement close`);
+      closeByCuota.set(r.cuota_current, iso);
+    }
+    for (let k = 1; k <= n; k++) {
+      const share = Math.round((plan.interest_clp * k) / n) - Math.round((plan.interest_clp * (k - 1)) / n);
+      if (share === 0) continue;
+      const iso =
+        closeByCuota.get(k) ??
+        closeDateForBillingMonth(
+          accountId,
+          addCalendarMonths(anchor.statement_period_month, k - anchor.cuota_current)
+        ).close_iso;
+      out.push({ iso, clp: share });
+    }
+  }
+  return out;
 }
