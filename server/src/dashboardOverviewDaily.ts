@@ -197,14 +197,9 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
   const primary_lines = buildPrimaryDailyLines(unit, days, grid, cashNettedClpByDate);
 
   // Composition shares (pie-replacement chart, day grain) — same dataKeys as the monthly
-  // `allocation_proportional` block so the client pairs colors/labels identically.
+  // `allocation_proportional` block and the same stack order (bottom to top), so the client
+  // pairs colors/labels identically.
   const allocation_proportional = buildProportionalFromValueArrays(grid, [
-    {
-      dataKey: "real_estate",
-      name: "Inmuebles",
-      name_i18n_key: "dashboard.buckets.real_estate",
-      values: points.map((p) => p.real_estate),
-    },
     {
       dataKey: "retirement",
       name: "Retiro",
@@ -222,6 +217,12 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
       name: "Ahorros y reservas",
       name_i18n_key: "dashboard.buckets.cash_eqs",
       values: points.map((p) => p.cash_eqs),
+    },
+    {
+      dataKey: "real_estate",
+      name: "Inmuebles",
+      name_i18n_key: "dashboard.buckets.real_estate",
+      values: points.map((p) => p.real_estate),
     },
   ]);
 

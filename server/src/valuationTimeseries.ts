@@ -1902,11 +1902,17 @@ function getDashboardValuationTimeseriesInner(unit: TsUnit) {
     unit
   );
 
-  const assetKeys = new Set(["real_estate", "retirement", "brokerage", "cash"]);
+  // Stack order, bottom to top (the chart stacks in series order): retiro, brokerage,
+  // efectivo, inmuebles — inmuebles on top.
+  const allocationStackOrder = ["retirement", "brokerage", "cash", "real_estate"];
   const allocation_proportional = buildProportionalFromPoints(
     slice.overview.points,
     slice.overview.lines
-      .filter((l) => l.valueSeriesType === "data" && assetKeys.has(l.dataKey))
+      .filter((l) => l.valueSeriesType === "data" && allocationStackOrder.includes(l.dataKey))
+      .sort(
+        (a, b) =>
+          allocationStackOrder.indexOf(a.dataKey) - allocationStackOrder.indexOf(b.dataKey)
+      )
       .map((l) => ({
         dataKey: l.dataKey,
         name: l.name,
