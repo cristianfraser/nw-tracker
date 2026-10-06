@@ -1,3 +1,4 @@
+import { afpUnoNextDue } from "./afpUnoOfficialSync.js";
 import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } from "./chileDate.js";
 import { AFC_CIC_PUBLISH_HOUR_CHILE, afcCicNextDueYmd } from "./afcCicSeries.js";
 import {
@@ -145,6 +146,8 @@ export type SyncSourceScheduleOptions = {
   fintualAppliedPublishYmd?: string | null;
   /** Latest `afc_cic` row day in DB — the next wake is the first day whose expected row is beyond it. */
   afcCicLatestDay?: string | null;
+  /** Latest UNO Fondo A official day in DB — the next wake is when a later one is due. */
+  afpUnoLatestOfficialDay?: string | null;
 };
 
 function scheduleForSource(
@@ -173,9 +176,11 @@ function scheduleForSource(
 
   switch (source) {
     case "afp_uno": {
-      const nextYmd = nextChileBusinessDayYmd(cl.ymd);
+      // The SP publishes business day D's value at ~19:00 on the next business day
+      // (`afpUnoOfficialSync.ts`): the wake is the first such hour whose due day is not stored.
+      const next = afpUnoNextDue(cl, opts?.afpUnoLatestOfficialDay ?? null);
       return {
-        next_sync: nextYmd ? chileTimeOnYmd(nextYmd, 0, 0) : null,
+        next_sync: next ? chileTimeOnYmd(next.ymd, next.hour, 0) : null,
         next_sync_imminent: false,
         today_day_kind: chileDayKind(cl.ymd),
       };

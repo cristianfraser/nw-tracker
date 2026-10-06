@@ -5,10 +5,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export type GlobalSyncStateFile = {
-  unoLastSpotYmd?: string;
-  /** Last AFP spot unit row written (for carry-forward if DB is sparse). */
-  afpLastUnitDay?: string;
-  afpLastUnitClp?: number;
+  /** ISO time of the last successful AFP UNO fetch from the SP (see `afpUnoPublisherLag`). */
+  afpUnoLastCheckedAt?: string;
+  /** Latest day the SP printed a UNO Fondo A value at that fetch. */
+  afpUnoLastPublishedYmd?: string;
   /** Last Chile calendar day we applied Fintual NAV (after 18:00 policy). */
   fintualLastAppliedYmd?: string;
   /** Fund cuota publish date (`as_of_date`) at last apply — may be before poll calendar day. */

@@ -16,7 +16,6 @@ const cl: ChileWallClock = wallClock("2026-05-22", 20);
 describe("userForcedStale", () => {
   it("marks an ok source stale in status and scheduler lists", () => {
     const state: GlobalSyncStateFile = {
-      unoLastSpotYmd: cl.ymd,
       fintualEveningSettledYmd: cl.ymd,
       fintualLastCheckYmd: cl.ymd,
       fintualLastPublishYmd: cl.ymd,

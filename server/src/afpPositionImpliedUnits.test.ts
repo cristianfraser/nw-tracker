@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
-import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
+import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 
 describe("AFP position units", () => {
   it("uses the cuota ledger even when a stored valuation disagrees (ledger is the truth)", () => {

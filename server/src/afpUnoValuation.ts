@@ -2,14 +2,7 @@ import { assertValuationCurrencyClp } from "./valuationValue.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import {
-  AFP_UNO_CUOTA_SERIES_KEY,
-  extractFundUnitRowsFromQuetalmiJson,
-  fetchQuetalmiCuotas,
-} from "./afpQuetalmiApi.js";
-import { ddMmYyyyFromIso } from "./ccBillingCloses.js";
-import { countFundUnitRowsInRange, upsertFundUnitSpotPreservingHistory } from "./fundUnitDaily.js";
-import { portfolioStartYmd } from "./portfolioStart.js";
+import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 
@@ -50,7 +43,7 @@ export function latestFundUnitRowOnOrBefore(
 const AFP_CERT_FUND_UNIT_SCRATCH = "afp-cert:monto/cuotas_delta";
 
 /**
- * Prefer a **quoted** valor-cuota (Quetalmi, uno.cl, CSV, etc.) over certificate scratch rows
+ * Prefer a **quoted** valor cuota (the official series) over certificate scratch rows
  * (`monto/cuotas` per movement line can be wrong for display).
  */
 export function latestAfpUnoFundUnitRowOnOrBeforeForDisplay(
@@ -122,10 +115,13 @@ export function revalueAfpAccountFromCuotas(opts: {
   if (!isCuotaLedgerKindSlug(kind)) {
     throw new Error(`Account ${opts.accountId} is not a cuota-ledger kind (afp/afc; got ${kind ?? "missing"})`);
   }
-  const seriesKey = opts.seriesKey ?? cuotaLedgerSeriesKeyForAccount(opts.accountId, kind!);
-  if (!seriesKey) {
-    throw new Error(`Account ${opts.accountId} (${kind}) has no fund_series_key — declare the series first`);
-  }
+  const seriesKeyAt = (ymd: string): string => {
+    const key = opts.seriesKey ?? cuotaLedgerSeriesKeyForAccount(opts.accountId, kind!, ymd);
+    if (!key) {
+      throw new Error(`Account ${opts.accountId} (${kind}) has no fund_series_key — declare the series first`);
+    }
+    return key;
+  };
 
   const vals = db
     .prepare(
@@ -162,7 +158,7 @@ export function revalueAfpAccountFromCuotas(opts: {
       continue;
     }
 
-    const px = latestFundUnitClpOnOrBefore(seriesKey, v.as_of_date);
+    const px = latestFundUnitClpOnOrBefore(seriesKeyAt(v.as_of_date), v.as_of_date);
     if (px == null || units <= 0) {
       lines.push(`${v.as_of_date}\tunits=${units.toFixed(4)}\tpx=—\tskip`);
       skipped += 1;
@@ -212,26 +208,8 @@ export function upsertAfpSpotValuation(opts: {
   return { as_of_date: asOf, value_clp, units, px };
 }
 
-/** One `fund_unit_daily` row (e.g. spot from [uno.cl](https://www.uno.cl/))); preserves daily history. */
-export function upsertFundUnitDailyRow(opts: {
-  seriesKey?: string;
-  day: string;
-  unit_value_clp: number;
-  note: string;
-  dryRun: boolean;
-}): { gapDaysFilled: number } {
-  return upsertFundUnitSpotPreservingHistory({
-    seriesKey: opts.seriesKey ?? AFP_UNO_CUOTA_SERIES_KEY,
-    observationDay: opts.day,
-    unitValueClp: opts.unit_value_clp,
-    note: opts.note,
-    carryNote: "afp:carry-forward",
-    dryRun: opts.dryRun,
-  });
-}
-
 /**
- * Spot valuation using an explicit valor cuota (e.g. same-day [uno.cl](https://www.uno.cl/) when DB series lags).
+ * Spot valuation at an explicit valor cuota (the display series' value shown on the day).
  */
 export function upsertAfpSpotValuationWithExplicitPx(opts: {
   accountId: number;
@@ -256,138 +234,4 @@ export function upsertAfpSpotValuationWithExplicitPx(opts: {
     ).run(opts.accountId, asOf, value_clp, units);
   }
   return { as_of_date: asOf, value_clp, units, px };
-}
-
-export async function upsertFundUnitsFromQuetalmiFetch(opts: {
-  apiKey: string;
-  fechaInicialDdMmYyyy: string;
-  fechaFinalDdMmYyyy: string;
-  dryRun: boolean;
-  /**
-   * When true, an empty parse (no daily rows in range) returns `{ rows: 0 }` instead of throwing.
-   * Use for chunked historical backfill where some windows predate AFP UNO Fondo A coverage.
-   */
-  allowEmpty?: boolean;
-}): Promise<{ rows: number }> {
-  const raw = await fetchQuetalmiCuotas({
-    apiKey: opts.apiKey,
-    listaAFPs: "UNO",
-    listaFondos: "A",
-    fechaInicialDdMmYyyy: opts.fechaInicialDdMmYyyy,
-    fechaFinalDdMmYyyy: opts.fechaFinalDdMmYyyy,
-  });
-  const extracted = extractFundUnitRowsFromQuetalmiJson(raw);
-  if (extracted.length === 0) {
-    if (opts.allowEmpty) return { rows: 0 };
-    const keys = raw != null && typeof raw === "object" ? Object.keys(raw as object).join(",") : typeof raw;
-    throw new Error(
-      `Could not parse any fund-unit rows from API response (top-level keys: ${keys}). ` +
-        `Inspect JSON shape and extend extractFundUnitRowsFromQuetalmiJson in afpQuetalmiApi.ts`
-    );
-  }
-  const ins = db.prepare(
-    `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?,?,?,?)
-     ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
-  );
-  let n = 0;
-  for (const r of extracted) {
-    if (opts.dryRun) {
-      n += 1;
-      continue;
-    }
-    ins.run(AFP_UNO_CUOTA_SERIES_KEY, r.day, r.unit_value_clp, r.note ?? "quetalmiafp");
-    n += 1;
-  }
-  return { rows: n };
-}
-
-function ymdAddDays(ymd: string, deltaDays: number): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
-  if (!m) throw new Error(`Invalid YYYY-MM-DD: ${ymd}`);
-  const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + deltaDays, 12, 0, 0, 0);
-  const d = new Date(t);
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-}
-
-function ymdMin(a: string, b: string): string {
-  return a <= b ? a : b;
-}
-
-/**
- * Chunked Quetalmi fetch into `fund_unit_daily` (`afp_uno_cuota_a`) for market “rates” / charts.
- * Windows with no parsed rows are skipped when `allowEmpty` is used per chunk (API may have no UNO Fondo A data yet).
- */
-export async function backfillAfpUnoCuotaQuetalmiChunks(opts: {
-  apiKey: string;
-  fromYmd: string;
-  toYmd: string;
-  chunkDays?: number;
-  dryRun: boolean;
-  /** Pause between HTTP calls (rate courtesy). Default 250ms. */
-  delayMs?: number;
-  /** Optional log line per chunk: `(chunkStart, chunkEnd, rows)` */
-  onChunk?: (startYmd: string, endYmd: string, rows: number) => void;
-}): Promise<{ totalRows: number; chunks: number; emptyChunks: number }> {
-  const chunkDays = Math.max(1, Math.floor(opts.chunkDays ?? 180));
-  const delayMs = opts.delayMs ?? 250;
-  let totalRows = 0;
-  let chunks = 0;
-  let emptyChunks = 0;
-  let cur = opts.fromYmd.trim();
-  const to = opts.toYmd.trim();
-  if (cur > to) {
-    throw new Error(`fromYmd (${cur}) must be <= toYmd (${to})`);
-  }
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  while (cur <= to) {
-    const chunkEnd = ymdMin(ymdAddDays(cur, chunkDays - 1), to);
-    const fi = ddMmYyyyFromIso(cur);
-    const ff = ddMmYyyyFromIso(chunkEnd);
-    const { rows } = await upsertFundUnitsFromQuetalmiFetch({
-      apiKey: opts.apiKey,
-      fechaInicialDdMmYyyy: fi,
-      fechaFinalDdMmYyyy: ff,
-      dryRun: opts.dryRun,
-      allowEmpty: true,
-    });
-    chunks += 1;
-    totalRows += rows;
-    if (rows === 0) emptyChunks += 1;
-    opts.onChunk?.(cur, chunkEnd, rows);
-    cur = ymdAddDays(chunkEnd, 1);
-    if (cur <= to && delayMs > 0) await sleep(delayMs);
-  }
-  return { totalRows, chunks, emptyChunks };
-}
-
-const AFP_QUETALMI_MIN_ROWS_RECENT = 45;
-const AFP_QUETALMI_RECENT_DAYS = 365;
-
-/** Backfill recent AFP history from Quetalmi when `fund_unit_daily` is almost empty. */
-export async function ensureAfpUnoQuetalmiRecentHistory(opts: {
-  apiKey: string;
-  dryRun: boolean;
-}): Promise<{ ran: boolean; totalRows: number }> {
-  const today = chileCalendarTodayYmd();
-  const from = portfolioStartYmd();
-  const recentFrom =
-    from > ymdAddDays(today, -AFP_QUETALMI_RECENT_DAYS) ? from : ymdAddDays(today, -AFP_QUETALMI_RECENT_DAYS);
-  const count = countFundUnitRowsInRange(AFP_UNO_CUOTA_SERIES_KEY, recentFrom, today);
-  if (count >= AFP_QUETALMI_MIN_ROWS_RECENT) {
-    return { ran: false, totalRows: 0 };
-  }
-  console.log(
-    `sync: AFP UNO — Quetalmi backfill (${count} rows in last ${AFP_QUETALMI_RECENT_DAYS}d, fetching ${recentFrom}…${today})`
-  );
-  const { totalRows } = await backfillAfpUnoCuotaQuetalmiChunks({
-    apiKey: opts.apiKey,
-    fromYmd: recentFrom,
-    toYmd: today,
-    chunkDays: 120,
-    dryRun: opts.dryRun,
-    onChunk: (a, b, rows) => {
-      if (rows > 0) console.log(`sync: AFP UNO — Quetalmi ${a}…${b}: ${rows} row(s)`);
-    },
-  });
-  return { ran: true, totalRows };
 }

@@ -1,6 +1,12 @@
 /**
  * Stale checks for external sync sources (no Fintual script imports — safe for `tsc` / in-server use).
  */
+import {
+  AFP_UNO_PUBLISH_HOUR_CHILE,
+  afpUnoExpectedOfficialDay,
+  isAfpUnoOfficialStale,
+  latestOfficialUnoDay,
+} from "./afpUnoOfficialSync.js";
 import { type ChileWallClock, chileCalendarAddDays, chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
 import {
@@ -199,15 +205,40 @@ function afpUnoAccountId(): number | null {
   return row?.id ?? null;
 }
 
+/**
+ * Stale = the official value due by now (`afpUnoExpectedOfficialDay`: the business day before the
+ * latest business day whose 19:00 has passed) is not stored. Never stale without the account.
+ */
 export function isAfpUnoSpotStale(
   cl: ChileWallClock,
-  state: GlobalSyncStateFile,
+  _state: GlobalSyncStateFile,
   opts?: { force?: boolean }
 ): boolean {
-  if (opts?.force) return afpUnoAccountId() != null;
   if (afpUnoAccountId() == null) return false;
-  if (!isChileBusinessDay(cl.ymd)) return false;
-  return state.unoLastSpotYmd !== cl.ymd;
+  if (opts?.force) return true;
+  return isAfpUnoOfficialStale(cl, latestOfficialUnoDay());
+}
+
+/**
+ * Classify a stale AFP UNO source as the Superintendencia's lag — or null when we are the ones
+ * behind. Same rule as {@link afcCicPublisherLag}: nobody forced a run, the last fetch is recent,
+ * the DB holds the latest UNO day the SP printed, and that day is still before the expected one.
+ */
+export function afpUnoPublisherLag(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile,
+  opts: { latestDbDay: string | null; nowMs: number }
+): SyncPublisherLag | null {
+  if (isUserForcedSyncSourceStale(state, "afp_uno")) return null;
+  const published = state.afpUnoLastPublishedYmd?.trim();
+  if (!published || !/^\d{4}-\d{2}-\d{2}$/.test(published)) return null;
+  if (opts.latestDbDay == null || opts.latestDbDay < published) return null;
+  const expected = afpUnoExpectedOfficialDay(cl);
+  if (published >= expected) return null;
+  const checkedAt = state.afpUnoLastCheckedAt ?? null;
+  const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
+  if (!Number.isFinite(checkedMs) || opts.nowMs - checkedMs > PUBLISHER_LAG_MAX_POLL_AGE_MS) return null;
+  return { expected_ymd: expected, published_ymd: published, last_checked_at: checkedAt as string };
 }
 
 /**
@@ -440,6 +471,7 @@ function syncSourceRow(
   const sched = attachSyncSourceSchedule(source, cl, stale, status === "disabled", {
     fintualAppliedPublishYmd: state.fintualLastAppliedPublishYmd ?? null,
     afcCicLatestDay: source === "afc_cic" ? (latestAfcCicRow()?.day ?? null) : null,
+    afpUnoLatestOfficialDay: source === "afp_uno" ? latestOfficialUnoDay() : null,
   });
   return {
     source,
@@ -543,7 +575,9 @@ export function afcCicPublisherLag(
 
 /** The Chile hour from which a source's publisher lag counts as overdue (see `staleDimmingSources`). */
 function publisherLagOverdueHourChile(source: GlobalSyncSource): number {
-  return source === "afc_cic" ? AFC_CIC_PUBLISH_HOUR_CHILE : FINTUAL_PUBLISH_HOUR_CHILE;
+  if (source === "afc_cic") return AFC_CIC_PUBLISH_HOUR_CHILE;
+  if (source === "afp_uno") return AFP_UNO_PUBLISH_HOUR_CHILE;
+  return FINTUAL_PUBLISH_HOUR_CHILE;
 }
 
 /**
@@ -585,7 +619,14 @@ export function allSyncSourceStatuses(
     rows.push(syncSourceRow("afp_uno", cl, "disabled", false, state));
   } else {
     const stale = isAfpUnoSpotStale(cl, state, { force });
-    rows.push(syncSourceRow("afp_uno", cl, stale ? "stale" : "ok", stale, state));
+    const row = syncSourceRow("afp_uno", cl, stale ? "stale" : "ok", stale, state);
+    if (stale && !force) {
+      row.publisher_lag = afpUnoPublisherLag(cl, state, {
+        latestDbDay: latestOfficialUnoDay(),
+        nowMs: opts?.nowMs ?? Date.now(),
+      });
+    }
+    rows.push(row);
   }
 
   if (afcCicAccountIds().length === 0) {

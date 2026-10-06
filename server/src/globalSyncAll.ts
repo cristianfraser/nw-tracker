@@ -2,7 +2,8 @@ import { assertValuationCurrencyClp } from "./valuationValue.js";
 import { invalidateMarketDataAggregations } from "./aggregationCache.js";
 /**
  * Orchestrates external syncs with Chile-time rules:
- * - AFP UNO spot: once per Chile business day (skipped on weekends / `CHILE_CLOSED_YMD` holidays).
+ * - AFP UNO (Fondo A): the Superintendencia's official valor cuota, day D's value due from 19:00 Chile
+ *   on the next business day and shown from that day (`afpUnoOfficialSync.ts`).
  * - Fintual goals: from 18:00 America/Santiago on business days and the last day of each non-business block
  *   (weekends/holidays); `as_of` is the fund publish date (may forward-publish before the block ends).
  * - USD / EUR (Banco Central BDE): reference dólar/euro observado in `fx_daily_bcentral` / `eur_daily`.
@@ -70,14 +71,9 @@ import {
   type GlobalSyncStateFile,
 } from "./globalSyncState.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
-import { fetchUnoClFondoAValorCuota } from "./afpUnoWebsiteCuota.js";
-import {
-  upsertFundUnitDailyRow,
-  upsertAfpSpotValuationWithExplicitPx,
-  ensureAfpUnoQuetalmiRecentHistory,
-} from "./afpUnoValuation.js";
-import { fillFundUnitDailyCalendarGap, latestFundUnitRow } from "./fundUnitDaily.js";
-import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpQuetalmiApi.js";
+import { syncAfpUnoFromSp } from "./afpUnoOfficialSync.js";
+import { latestFundUnitRowOnOrBefore, upsertAfpSpotValuationWithExplicitPx } from "./afpUnoValuation.js";
+import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { syncAfcCicFromSp } from "./afcCicSeries.js";
 import {
   fetchFintualGoalsRaw,
@@ -276,120 +272,68 @@ function maxEurDateAfterUpsert(cl: ChileWallClock): string | null {
   return maxEurDateOnOrBefore(cl.ymd);
 }
 
-async function runUnoSpot(
+/**
+ * AFP UNO Fondo A valor cuota from the Superintendencia de Pensiones (`afpUnoOfficialSync.ts`):
+ * stores every AFP's official fund A values, re-derives UNO's display rows and stamps today's
+ * AFP valuation at the value shown today. A restated value is replaced and noted.
+ */
+async function runAfpUno(
   cl: ReturnType<typeof chileWallClockNow>,
   state: GlobalSyncStateFile,
-  changes: SyncFieldChange[]
+  changes: SyncFieldChange[],
+  notes: SyncStepNote[]
 ): Promise<void> {
-  if (!FORCE && !isChileBusinessDay(cl.ymd)) {
-    console.log(`sync: AFP UNO — skip (Chile non-business day ${cl.ymd}).`);
-    return;
-  }
-  if (!FORCE && state.unoLastSpotYmd === cl.ymd) {
-    console.log("sync: AFP UNO — skip (already ran today Chile).");
-    return;
-  }
   const row = db
     .prepare(`SELECT id FROM accounts WHERE import_key = 'import:excel|key=afp'`)
     .get() as { id: number } | undefined;
-  if (!row) {
-    console.warn("sync: AFP UNO — no account notes=import:excel|key=afp");
-    return;
-  }
+  if (!row) throw new Error("sync: AFP UNO — no account with import_key import:excel|key=afp");
+  const before = latestFundUnitRowOnOrBefore(AFP_UNO_CUOTA_SERIES_KEY, cl.ymd);
   const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(), 45_000);
-  let parsed;
+  const t = setTimeout(() => ac.abort(), 60_000);
+  let r;
   try {
-    parsed = await fetchUnoClFondoAValorCuota({ signal: ac.signal });
+    r = await syncAfpUnoFromSp({ cl, dryRun: syncDryRun, signal: ac.signal });
   } finally {
     clearTimeout(t);
   }
-  const asOf = cl.ymd;
-  const fundUnitDay = parsed.quote_day_ymd ?? asOf;
-  const px = parsed.unit_value_clp;
-
+  if (!syncDryRun) {
+    state.afpUnoLastCheckedAt = new Date().toISOString();
+    if (r.published_ymd) state.afpUnoLastPublishedYmd = r.published_ymd;
+  }
+  for (const x of r.official_restated) {
+    notes.push({ step: "AFP UNO", message: `official ${x.day} restated: ${formatSyncClose(x.previous)} → ${formatSyncClose(x.next)}` });
+  }
+  for (const x of r.display_restated) {
+    notes.push({ step: "AFP UNO", message: `shown ${x.day} restated: ${formatSyncClose(x.previous)} → ${formatSyncClose(x.next)}` });
+  }
+  const shown = r.latest_display ?? before;
+  if (!shown) throw new Error("sync: AFP UNO — no valor cuota shown on or before today");
   const prevVal = db
     .prepare(`SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`)
-    .get(row.id, asOf) as { value_clp: number; currency: string } | undefined;
+    .get(row.id, cl.ymd) as { value_clp: number; currency: string } | undefined;
   if (prevVal) assertValuationCurrencyClp(prevVal.currency, "globalSyncAll afp valuation");
-
-  const anchorDay = state.afpLastUnitDay;
-  const anchorPx = state.afpLastUnitClp;
-  if (
-    anchorDay &&
-    anchorPx != null &&
-    Number.isFinite(anchorPx) &&
-    anchorPx > 0 &&
-    anchorDay < fundUnitDay &&
-    Math.abs(anchorPx - px) > 0.005
-  ) {
-    const fromDb = latestFundUnitRow(AFP_UNO_CUOTA_SERIES_KEY);
-    const gapFrom =
-      fromDb && fromDb.day < anchorDay ? fromDb.day : anchorDay;
-    const filled = fillFundUnitDailyCalendarGap({
-      seriesKey: AFP_UNO_CUOTA_SERIES_KEY,
-      fromDayExclusive: gapFrom,
-      toDayExclusive: fundUnitDay,
-      unitValueClp: anchorPx,
-      note: "afp:state-carry-forward",
-      dryRun: syncDryRun,
-    });
-    if (filled > 0) {
-      console.log(`sync: AFP UNO — filled ${filled} day(s) with prior px=${anchorPx} before ${fundUnitDay}`);
-    }
-  }
-
-  const { gapDaysFilled } = upsertFundUnitDailyRow({
-    day: fundUnitDay,
-    unit_value_clp: px,
-    note: `uno.cl:homepage|Fondo-A|${parsed.raw_price_fragment}|sync:all`,
-    dryRun: syncDryRun,
-  });
   const marked = upsertAfpSpotValuationWithExplicitPx({
     accountId: row.id,
-    asOfYmd: asOf,
-    px,
+    asOfYmd: cl.ymd,
+    px: shown.unit_value_clp,
     dryRun: syncDryRun,
   });
-  const prevRounded =
-    prevVal?.value_clp != null && Number.isFinite(prevVal.value_clp)
-      ? Math.round(prevVal.value_clp)
-      : null;
-  const nextRounded =
-    marked?.value_clp != null && Number.isFinite(marked.value_clp)
-      ? Math.round(marked.value_clp)
-      : null;
-  if (
-    nextRounded != null &&
-    (prevRounded == null || Math.abs(prevRounded - nextRounded) > 1)
-  ) {
-    const prior = priorAccountValuation(row.id, asOf);
+  const prevRounded = prevVal?.value_clp != null ? Math.round(prevVal.value_clp) : null;
+  const nextRounded = marked?.value_clp != null ? Math.round(marked.value_clp) : null;
+  if (nextRounded != null && (prevRounded == null || Math.abs(prevRounded - nextRounded) > 1)) {
+    const prior = priorAccountValuation(row.id, cl.ymd);
     changes.push({
       group: "afp",
       label: "AFP UNO",
       oldValue: prior != null ? formatSyncClp(Math.round(prior.value_clp)) : "—",
       newValue: formatSyncClp(nextRounded),
       oldDate: prior?.as_of_date ?? null,
-      newDate: fundUnitDay,
+      newDate: cl.ymd,
     });
   }
-  if (!syncDryRun) {
-    state.unoLastSpotYmd = cl.ymd;
-    state.afpLastUnitDay = fundUnitDay;
-    state.afpLastUnitClp = px;
-  }
   console.log(
-    `sync: AFP UNO — spot px=${px} fund_unit_day=${fundUnitDay} gap_filled=${gapDaysFilled} (${syncDryRun ? "dry-run" : "ok"})`
+    `sync: AFP UNO — years=[${r.years.join(", ")}] published=${r.published_ymd ?? "—"} shown=${shown.unit_value_clp} display_written=${r.display_written} (${syncDryRun ? "dry-run" : "ok"})`
   );
-
-  const qKey = process.env.QUETALMIAFP_APIKEY?.trim() ?? "";
-  if (qKey) {
-    try {
-      await ensureAfpUnoQuetalmiRecentHistory({ apiKey: qKey, dryRun: syncDryRun });
-    } catch (e) {
-      console.warn(`sync: AFP UNO — Quetalmi backfill skipped: ${e instanceof Error ? e.message : e}`);
-    }
-  }
 }
 
 async function runFintual(
@@ -1267,7 +1211,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     );
 
     await runSyncStepIfStale("afp_uno", stale, "AFP UNO", stepErrors, state!, cl, async () => {
-      await runUnoSpot(cl, state!, syncChanges);
+      await runAfpUno(cl, state!, syncChanges, stepNotes);
     });
 
     await runSyncStepIfStale("afc_cic", stale, "AFC CIC", stepErrors, state!, cl, async () => {

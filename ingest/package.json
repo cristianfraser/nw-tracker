@@ -14,6 +14,7 @@
     "fetch:racional": "tsx src/main.ts racional",
     "fetch:afp-uno": "tsx src/afpUno/fetchMain.ts",
     "fetch:buk-payslips": "tsx src/buk/fetchMain.ts",
+    "parse:afp-uno-certificate": "tsx src/afpUno/parseCertificateMain.ts",
     "fetch:emails": "tsx src/email/main.ts",
     "fetch:santander-docs": "tsx src/email/santanderDocsMain.ts",
     "fetch:lider-boletas": "tsx src/email/liderBoletasMain.ts",
