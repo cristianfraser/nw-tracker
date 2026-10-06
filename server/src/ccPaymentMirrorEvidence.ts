@@ -84,6 +84,21 @@ const stmtHeaderPayments = db.prepare(
      AND (@account_id IS NULL OR s.account_id = @account_id)`
 );
 
+// The dated legs of a header payment the statement printed without a date (migration 213), each on
+// the statement row of its close (the lowest id when the statement has several copies). A leg whose
+// close has no CLP statement any more is bad stored state: listed with a null statement, and
+// `listCcPaymentEvidenceRows` throws on it.
+const stmtHeaderLegs = db.prepare(
+  `SELECT g.id AS leg_id, g.account_id, a.name AS account_name, g.statement_close_iso, g.paid_on, g.amount_clp,
+          (SELECT MIN(s.id) FROM cc_statements s
+            WHERE s.account_id = g.account_id AND s.currency = 'clp'
+              AND s.statement_date = substr(g.statement_close_iso, 9, 2) || '/' || substr(g.statement_close_iso, 6, 2) || '/' || substr(g.statement_close_iso, 1, 4)
+              AND s.source_pdf NOT LIKE 'import:web-paste%') AS statement_id
+   FROM cc_header_payment_legs g
+   JOIN accounts a ON a.id = g.account_id
+   WHERE (@account_id IS NULL OR g.account_id = @account_id)`
+);
+
 // Matched by the LINE's currency (amount_usd set), not the statement's — the open web-paste bucket
 // is a CLP statement that carries the USD lines too, and an abono must be pairable the day the feed
 // delivers it. Traspaso-linked abonos are not payments: they reclassify USD debt onto the CLP side
@@ -101,8 +116,8 @@ const stmtUsdAbonoLines = db.prepare(
 );
 
 /**
- * Every row carrying a card payment, on one card or all of them: CLP payment lines and header
- * payments — the same `isCcPaymentMerchant` test and date readers as the cuota retirement's
+ * Every row carrying a card payment, on one card or all of them: CLP payment lines, dated header
+ * payments and the dated legs of undated ones (`cc_header_payment_legs`) — the same `isCcPaymentMerchant` test and date readers as the cuota retirement's
  * `listClpCcPaymentEventsForAccount` — then the USD side's ABONO DE DIVISAS lines. Lines come before
  * headers, so a reader keeping the first row per key prefers the line.
  */
@@ -162,6 +177,34 @@ export function listCcPaymentEvidenceRows(accountId?: number): CcPaymentEvidence
       amount_clp: amount,
       amount_usd: null,
       label: "MONTO CANCELADO",
+    });
+  }
+  for (const r of stmtHeaderLegs.all(params) as {
+    leg_id: number;
+    account_id: number;
+    account_name: string;
+    statement_close_iso: string;
+    paid_on: string;
+    amount_clp: number;
+    statement_id: number | null;
+  }[]) {
+    if (r.statement_id == null) {
+      throw new Error(
+        `header payment leg ${r.leg_id} (card ${r.account_id}, ${r.paid_on} ${r.amount_clp}): no CLP statement closes on ${r.statement_close_iso}`
+      );
+    }
+    push({
+      kind: "header",
+      id: r.statement_id,
+      statement_id: r.statement_id,
+      source_pdf: "",
+      cc_account_id: r.account_id,
+      cc_account_name: r.account_name,
+      pago_iso: r.paid_on,
+      currency: "clp",
+      amount_clp: r.amount_clp,
+      amount_usd: null,
+      label: "MONTO CANCELADO (header leg)",
     });
   }
   for (const r of stmtUsdAbonoLines.all(params) as {

@@ -200,6 +200,51 @@ describe("listCcPaymentMirrorCandidates", () => {
   });
 });
 
+describe("an undated header payment's legs", () => {
+  it("pair each leg's debit and count as dated payments for the cuota retirement", () => {
+    if (checkingId == null || ccId == null) return;
+    // A statement whose header payment (1.000.000) has no date: two transfers paid it.
+    const stmtId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency,
+             monto_pagado_anterior)
+           VALUES (?, 'santander', 'vitest-ccpago-legs.pdf', '24/06/2037', '25/05/2037', '24/06/2037', 'clp', -1000000)`
+        )
+        .run(ccId).lastInsertRowid
+    );
+    const insLeg = db.prepare(
+      `INSERT INTO cc_header_payment_legs (account_id, statement_close_iso, paid_on, amount_clp, source)
+       VALUES (?, '2037-06-24', ?, ?, 'bank_debit')`
+    );
+    insLeg.run(ccId, "2037-06-03", 400_000);
+    insLeg.run(ccId, "2037-06-10", 600_000);
+    const ins = db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
+    );
+    const d1 = Number(ins.run(checkingId, -400_000, "2037-06-03", "vitest|Traspaso Internet a T. Crédito|leg1").lastInsertRowid);
+    const d2 = Number(ins.run(checkingId, -600_000, "2037-06-10", "vitest|Traspaso Internet a T. Crédito|leg2").lastInsertRowid);
+    clearAggregationCache();
+    try {
+      const cands = listCcPaymentMirrorCandidates().filter((c) => c.out.movement_id === d1 || c.out.movement_id === d2);
+      expect(cands.map((c) => [c.evidence.statement_id, c.evidence.amount_clp, c.skew_days, c.blocked])).toEqual([
+        [stmtId, 400_000, 0, false],
+        [stmtId, 600_000, 0, false],
+      ]);
+      const events = listClpCcPaymentEventsForAccount(ccId).filter((e) => e.iso.startsWith("2037-06"));
+      expect(events).toEqual([
+        { iso: "2037-06-03", clp: 400_000 },
+        { iso: "2037-06-10", clp: 600_000 },
+      ]);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE id IN (?, ?)`).run(d1, d2);
+      db.prepare(`DELETE FROM cc_header_payment_legs WHERE account_id = ?`).run(ccId);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(stmtId);
+      clearAggregationCache();
+    }
+  });
+});
+
 describe("convertCcPaymentMirrors", () => {
   it("converts to a transfer on the card date, flow-neutral, and undo restores the leg", () => {
     if (checkingId == null || ccId == null) return;

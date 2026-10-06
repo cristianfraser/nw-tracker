@@ -50,6 +50,7 @@ const MATCH_WINDOW_DAYS = 4;
  * with a card abono of a very different size.
  */
 const DIVISAS_DESC_RE = /COMPRA\s+DE\s+DIVISAS/i;
+const LINEA_CREDITO_PAYMENT_DESC_RE = /TRASPASO(?:\s+\w+)*\s+A\s+L[IÍ]NEA\s+CR[EÉ]DITO/i;
 const DIVISAS_IMPLIED_FX_MIN = 300;
 const DIVISAS_IMPLIED_FX_MAX = 2000;
 
@@ -127,8 +128,8 @@ function dedupeCcPaymentEvidence(rows: ReturnType<typeof listCcPaymentEvidenceRo
 /**
  * Candidates: single-leg debits on any account under Checking accounts whose note matches the
  * card-payment description, paired to payment evidence by exact amount within ±4 days (nearest
- * date wins; ambiguity blocks both sides — fail closed, never guess). Already-converted payments are excluded by the
- * payment's key, so a re-imported statement's new rows are not offered again. Throws while a
+ * date wins; ambiguity blocks both sides — fail closed, never guess). Already-converted payments
+ * are excluded by the payment's key, so a re-imported statement's new rows are not offered again. Throws while a
  * converted payment has lost its evidence: if the payment came back under another date it would
  * look unconverted, and pairing it again would book it twice.
  */
@@ -155,7 +156,13 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   // 2019 and 2024, and those debits were never offered while this read the cuenta corriente only.
   const checkingIds = new Set(accountIdsUnderCheckingAccounts());
   const outs = movements.filter(
-    (m) => checkingIds.has(m.account_id) && m.note != null && CC_PAYMENT_DESC_RE.test(m.note)
+    (m) =>
+      checkingIds.has(m.account_id) &&
+      m.note != null &&
+      CC_PAYMENT_DESC_RE.test(m.note) &&
+      // Paying the overdraft line is not a card payment (the shared description pattern keeps it:
+      // for checking gastos it is an internal transfer all the same).
+      !LINEA_CREDITO_PAYMENT_DESC_RE.test(m.note)
   );
 
   const evidenceRows = listCcPaymentEvidenceRows();
@@ -214,7 +221,9 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
     picked.push({ out, ev: near[0]!.e, skew: near[0]!.d });
   }
   const evidenceClaims = new Map<string, number>();
-  const evKey = (e: CcPaymentEvidence) => `${e.statement_line_id ?? ""}|${e.statement_id ?? ""}`;
+  // One piece of evidence is one payment (card, date, currency, amount — the key the evidence list
+  // is deduplicated on), not one statement row: a statement's header can carry several dated legs.
+  const evKey = (e: CcPaymentEvidence) => ccPaymentEvidenceKey(e);
   for (const p of picked) {
     evidenceClaims.set(evKey(p.ev), (evidenceClaims.get(evKey(p.ev)) ?? 0) + 1);
   }
