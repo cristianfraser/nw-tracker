@@ -296,6 +296,8 @@ export function importCcStatementsMerge(
   let statementCount = 0;
   let lineCount = 0;
   let linesInserted = 0;
+  /** Lines this call wrote, per statement: never fuzzy duplicates of one another (`oneShotLineFuzzyMatchExists`). */
+  const insertedLineIdsByStatement = new Map<number, Set<number>>();
   let linesSkippedDuplicate = 0;
   let linesSkippedFuzzyDuplicate = 0;
   let linesSkippedInstallmentOverlap = 0;
@@ -478,7 +480,10 @@ export function importCcStatementsMerge(
         const isSameStatementTwin = dedupeKeys.some((k) => k.includes("#dup"));
         if (
           !isSameStatementTwin &&
-          oneShotLineFuzzyMatchExists(accountId, merchant, purchaseDateIso, amountClp, dedupeScanOpts)
+          oneShotLineFuzzyMatchExists(accountId, merchant, purchaseDateIso, amountClp, {
+            ...dedupeScanOpts,
+            excludeLineIds: insertedLineIdsByStatement.get(statementId),
+          })
         ) {
           linesSkippedFuzzyDuplicate += 1;
           skipped_flows.push({ ...flowItem, reason: "fuzzy_duplicate" });
@@ -517,6 +522,9 @@ export function importCcStatementsMerge(
         origin_card_last4: originCardLast4,
       });
       const statementLineId = Number(ins.lastInsertRowid);
+      const writtenHere = insertedLineIdsByStatement.get(statementId) ?? new Set<number>();
+      writtenHere.add(statementLineId);
+      insertedLineIdsByStatement.set(statementId, writtenHere);
       if (
         maybeApplyAdditionalCardNoCuenta(accountId, statementLineId, originCardLast4, cardLast4)
       ) {

@@ -1016,6 +1016,28 @@ def reconcile_statement(
             parsed.get("parsed_operaciones"),
             required=True,
         )
+    # No lost lines: on a Santander peso statement read from its text, the parsed operaciones
+    # may not fall short of the printed «TOTAL OPERACIONES». The check above is off whenever the
+    # period had a payment (nearly always), and its 3% band let the parser drop 13 ·0161 charges
+    # named «PAGO FACIL» / «PAGOS.FLOW.CL …» unnoticed (2020-12 → 2023-09). Only a shortfall fails:
+    # a parse that counts more is the line classifier setting a refund aside, which the printed
+    # total nets. An OCR'd scan (flat text, no line breaks) is exempt — its known gaps are OCR's.
+    ocr_flat = "\n" not in full.strip() and len(full) > 400
+    if santander_clp and op_pdf is not None and float(op_pdf) >= 0 and not ocr_flat:
+        parsed_op = float(parsed.get("parsed_operaciones") or 0)
+        shortfall = float(op_pdf) - parsed_op
+        ok = shortfall <= TOL_CLP
+        checks.append(
+            ReconcileCheck(
+                code="operaciones_shortfall",
+                ok=ok,
+                expected=float(op_pdf),
+                actual=parsed_op,
+                delta=-shortfall,
+            )
+        )
+        if not ok:
+            issue_codes.append("operaciones_shortfall")
     cargos_required = pdf_totals.get("pdf_total_cargos_abonos") is not None
     if is_bci_lider_statement(full):
         # Section-3 PAGO rows ARE emitted since 2026-07 (the walk needs their dates), but the

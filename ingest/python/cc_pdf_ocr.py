@@ -197,7 +197,7 @@ def parse_santander_clp_ocr_flat(
     flat: str,
     *,
     compact_row_from_parts,
-    compact_payment_merchant_re,
+    is_printed_payment,
 ) -> List[Dict[str, object]]:
     out: List[Dict[str, object]] = []
     seen: set[Tuple[str, int, str]] = set()
@@ -226,7 +226,7 @@ def parse_santander_clp_ocr_flat(
         if "MOVIMIENTOS TARJETA" in merchant.upper() or "MASTERCARD $" in merchant.upper():
             continue
         amt = parse_clp_amount(amt_raw)
-        if amt is None or compact_payment_merchant_re.match(merchant):
+        if amt is None or is_printed_payment(merchant, amt):
             continue
         add_row(fecha, merchant, amt, "ocr_compact")
 

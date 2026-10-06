@@ -126,6 +126,28 @@ describe("importCcStatementsMerge fuzzy dedup", () => {
   });
 });
 
+describe("importCcStatementsMerge same-statement lines", () => {
+  it("keeps two lines one statement prints, even when their merchants fuzzy-match", () => {
+    const accountId = getVitestSantanderCcMasterAccountId();
+    if (accountId == null) return;
+    db.prepare(
+      `DELETE FROM cc_statement_lines WHERE statement_id IN (SELECT id FROM cc_statements WHERE account_id = ?)`
+    ).run(accountId);
+    db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
+
+    const a = row({ merchant: "CAFE DEMO", amount_clp: "890", transaction_date: "08/06/2024", row_id: "cafe-1" });
+    const b = row({
+      merchant: "CAFE DEMO LAS CONDES",
+      amount_clp: "890",
+      transaction_date: "08/06/2024",
+      row_id: "cafe-2",
+    });
+    const r = importCcStatementsMerge(accountId, [a, b], { skipGlobalDedupeKeys: true });
+    expect(r.linesInserted).toBe(2);
+    expect(r.linesSkippedFuzzyDuplicate).toBe(0);
+  });
+});
+
 describe("importCcStatementsMerge vs open web-paste bucket", () => {
   // Regression for the 2026-08 ·0101 facturación: 9 statement rows were skipped as
   // duplicates of open web-paste bucket lines, and the merge's supersede then deleted

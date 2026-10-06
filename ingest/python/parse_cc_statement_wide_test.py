@@ -72,5 +72,29 @@ class WidePeriodicSummaryRowTest(unittest.TestCase):
         self.assertFalse(cc_statement_reconcile._installment_cuota_counts_toward_operaciones(row))
 
 
+class PrintedPaymentTest(unittest.TestCase):
+    """A bill paid WITH the card (positive) is a charge, not a payment to the card (synthetic)."""
+
+    def test_payment_names_and_signs(self) -> None:
+        self.assertTrue(mod._is_printed_payment("PAGO", -95000))
+        self.assertTrue(mod._is_printed_payment("MONTO CANCELADO", -799289))
+        self.assertTrue(mod._is_printed_payment("PAGO TARJETA", -1000))
+        self.assertFalse(mod._is_printed_payment("PAGO FACIL", 88800))
+        self.assertFalse(mod._is_printed_payment("PAGOS.FLOW.CL (WEB)", 125716))
+        self.assertFalse(mod._is_printed_payment("TIENDA DEMO", -5000))
+
+    def test_compact_payment_line_leaves_a_positive_pago_facil_alone(self) -> None:
+        self.assertIsNone(mod._try_parse_compact_payment_line("02/08/36 PAGO FACIL $ 88.800"))
+        pay = mod._try_parse_compact_payment_line("01/08/36 MONTO CANCELADO $ -79.928")
+        self.assertIsNotNone(pay)
+        self.assertEqual(pay["amount_clp"], -79928)
+
+    def test_compact_purchase_row_keeps_a_positive_pago_facil(self) -> None:
+        row = {"merchant": "PAGO FACIL", "place": "SANTIAGO", "description_raw": "", "amount_clp": 88800}
+        self.assertFalse(mod._compact_should_skip_purchase_row(row))
+        paid = {"merchant": "PAGO", "place": "", "description_raw": "", "amount_clp": -88800}
+        self.assertTrue(mod._compact_should_skip_purchase_row(paid))
+
+
 if __name__ == "__main__":
     unittest.main()

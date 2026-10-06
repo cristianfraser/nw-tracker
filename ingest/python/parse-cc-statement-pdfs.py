@@ -87,7 +87,7 @@ from cc_pdf_ocr import (  # noqa: E402
 import cc_cards  # noqa: E402
 # One list of section-3 charge merchants for the parse (which lines are section-3 rows) and the
 # reconcile (which section a line sums into) — see cc_statement_line_rules.py.
-from cc_statement_line_rules import RE_CLP_SECTION3_CHARGE  # noqa: E402
+from cc_statement_line_rules import RE_CLP_SECTION3_CHARGE, is_payment_merchant  # noqa: E402
 from cc_statement_pdf_paths import (  # noqa: E402
     is_excluded_cc_pdf_path,
     pdf_already_in_card_slot,
@@ -1579,7 +1579,7 @@ def parse_clp_document(
         ocr_rows = parse_santander_clp_ocr_flat(
             flat_ocr,
             compact_row_from_parts=_compact_row_from_parts,
-            compact_payment_merchant_re=RE_COMPACT_PAYMENT_MERCHANT,
+            is_printed_payment=_is_printed_payment,
         )
         if ocr_rows:
             return _finish_clp_parsed_rows(ocr_rows)
@@ -1603,7 +1603,7 @@ def parse_clp_document(
                     "description_raw": r.get("description_raw", ""),
                 }
             )
-            and not RE_COMPACT_PAYMENT_MERCHANT.match(str(r.get("merchant") or ""))
+            and not _is_printed_payment(str(r.get("merchant") or ""), _row_amount_clp(r))
         ]
         merged = _merge_santander_clp_row_lists(compact_rows, wide_rows)
         if merged:
@@ -2373,6 +2373,28 @@ def _extract_auth(s: str) -> str:
 
 
 RE_COMPACT_PAYMENT_MERCHANT = re.compile(r"^(PAGO|MONTO\s+CANCELADO|ABONO\b)", re.I)
+
+
+def _is_printed_payment(merchant: str, amount: Optional[float]) -> bool:
+    """A payment to the card: exactly PAGO / MONTO CANCELADO / ABONO, or a line opening with one of
+    those words that prints negative. «PAGO FACIL», «PAGOS.FLOW.CL (WEB)», «PAGOS.F*COMUNIDAD …»,
+    «PAGOS MASIVOS …» are bills paid WITH the card: they print positive, and treating them as
+    payments dropped 13 ·0161 charges (2020-12 → 2023-09) from the parse."""
+    if not RE_COMPACT_PAYMENT_MERCHANT.match(merchant):
+        return False
+    if is_payment_merchant(merchant):
+        return True
+    return amount is not None and amount < 0
+
+
+def _row_amount_clp(row: Dict[str, Any]) -> Optional[float]:
+    v = row.get("amount_clp")
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 RE_COMPACT_SKIP_LINE = re.compile(
     r"MONTO\s+TOTAL\s+FACTURADO|MONTO\s+M[IÍ]NIMO|DEUDA\s+TOTAL|PAGAR\s+HASTA|"
     r"NUMERO\s+TARJETA|INFORMACION\s+DE\s+PAGO|CHEQUE|EFECTIVO|TIMBRE",
@@ -2487,7 +2509,7 @@ def _compact_should_skip_purchase_row(row: Dict[str, Any]) -> bool:
         r"MONTO\s+(TOTAL|M[IÍ]NIMO|CANCELADO)", combined
     ):
         return True
-    if RE_COMPACT_PAYMENT_MERCHANT.match(merchant):
+    if _is_printed_payment(merchant, _row_amount_clp(row)):
         return True
     return False
 
@@ -2574,10 +2596,10 @@ def _try_parse_compact_payment_line(line: str) -> Optional[Dict[str, Any]]:
         m.group(4).strip(),
     )
     merchant = (tail or place_chunk or "").strip()
-    if not RE_COMPACT_PAYMENT_MERCHANT.match(merchant):
-        return None
     amt = parse_clp_amount(amt_raw)
     if amt is None or amt == 0:
+        return None
+    if not _is_printed_payment(merchant, amt):
         return None
     signed = -abs(int(amt))
     return _compact_row_from_parts(

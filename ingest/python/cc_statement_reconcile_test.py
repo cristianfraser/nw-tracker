@@ -165,5 +165,54 @@ class NextBillingPeriodTest(unittest.TestCase):
         self.assertEqual(self._next(reversed_period), (None, None))
 
 
+class OperacionesShortfallTest(unittest.TestCase):
+    """A Santander peso statement read from its text may not lose printed lines (synthetic)."""
+
+    SOURCE = "2036-08-24 estado de cuenta tarjeta 4141.pdf"  # a primary card of the fixture registry
+
+    def _full(self) -> str:
+        return "\n".join(
+            [
+                "MONTO FACTURADO A PAGAR (PERIODO ANTERIOR)                 $ 61.816",
+                "MONTO PAGADO PERIODO ANTERIOR                              $ -79.928",
+                "SALDO ADEUDADO FINAL PERIODO ANTERIOR                      $ -18.112",
+                "1. TOTAL OPERACIONES                                       $ 11.097",
+                "SANTIAGO        02/08/2036 TIENDA DEMO                     $ 2.217",
+                "SANTIAGO        03/08/2036 PAGO FACIL                      $ 8.880",
+                "MONTO TOTAL FACTURADO A PAGAR                              $ 92.862",
+            ]
+        )
+
+    def _check(self, rows, full):
+        result = mod.reconcile_statement(
+            self.SOURCE, {"currency": "clp"}, rows, full, parse_clp, parse_usd, layout_text=full
+        )
+        return next(c for c in result.checks if c.code == "operaciones_shortfall")
+
+    def test_a_dropped_charge_fails(self) -> None:
+        check = self._check([_row("TIENDA DEMO", "2217", "wide_master_simple", key="a")], self._full())
+        self.assertFalse(check.ok)
+        self.assertEqual(check.delta, -8880.0)
+
+    def test_every_printed_line_passes(self) -> None:
+        rows = [
+            _row("TIENDA DEMO", "2217", "wide_master_simple", key="a"),
+            _row("PAGO FACIL", "8880", "wide_master_simple", key="b"),
+        ]
+        self.assertTrue(self._check(rows, self._full()).ok)
+
+    def test_an_ocr_scan_is_not_checked(self) -> None:
+        flat = " ".join(self._full().split("\n")) + " " + "x" * 400
+        result = mod.reconcile_statement(
+            self.SOURCE,
+            {"currency": "clp"},
+            [_row("TIENDA DEMO", "2217", "wide_master_simple", key="a")],
+            flat,
+            parse_clp,
+            parse_usd,
+        )
+        self.assertFalse(any(c.code == "operaciones_shortfall" for c in result.checks))
+
+
 if __name__ == "__main__":
     unittest.main()
