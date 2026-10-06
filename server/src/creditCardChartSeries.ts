@@ -174,15 +174,16 @@ function barOf(p: CcFacturadoBarSegments): CcFacturadoBarSegments {
 
 export type CcHistorialChartOptions = {
   /**
-   * «Deuda en cuotas» per chart month (ascending months in, month → CLP out; null = no schedule,
-   * keep the billing frame). The monthly chart plots a month at its calendar month-end, and the
-   * detalle table's «cupo en cuotas» is the BILLING frame — a closed month's billed cuotas ride
-   * inside its facturado, so its cupo is only what is still unbilled. The daily chart's line is
-   * the PAYMENT frame: a cycle's cuotas stay until that facturación is paid. Sampling the daily
-   * walk at each month-end (`ccInstallmentDebtAtMonthEndsClp`) makes the two charts agree at every
-   * month-end; the table keeps its column, where facturado + cupo = balance.
+   * Both lines per chart month, read from the daily data (ascending months in; null = no data,
+   * keep the billing frame): «saldo total» and «deuda en cuotas» on the month's last day, today
+   * for the current month (`ccHistorialLinesAtMonthEndsClp`), so the monthly chart shows what the
+   * daily chart shows on that day. The detalle table keeps the BILLING frame — a closed month's
+   * billed cuotas ride inside its facturado, facturado + cupo = balance — while the daily line is
+   * the PAYMENT frame, where a cycle's cuotas stay until that facturación is paid.
    */
-  installmentDebtForMonths?: (months: readonly string[]) => ReadonlyMap<string, number | null> | null;
+  linesForMonths?: (
+    months: readonly string[]
+  ) => ReadonlyMap<string, { balance_clp: number | null; plan_debt_clp: number | null }> | null;
   /**
    * A group's member cards' own series: the group's bar for a month is the Σ of its cards' bars,
    * never split again from merged facturaciones — a month one card has billed (or opened) while
@@ -213,7 +214,7 @@ export function buildCcHistorialChartSeries(
   const minYm = sparseMonths[0]!;
   const maxYm = sparseMonths[sparseMonths.length - 1]!;
   const allMonths = expandYearMonthsInclusive(minYm, maxYm);
-  const debtByMonth = opts?.installmentDebtForMonths?.(allMonths) ?? null;
+  const linesByMonth = opts?.linesForMonths?.(allMonths) ?? null;
 
   let memberBarByMonth: Map<string, CcFacturadoBarSegments> | null = null;
   if (opts?.memberSeries) {
@@ -241,9 +242,10 @@ export function buildCcHistorialChartSeries(
       : null;
     // Billing frame: pairs with facturado for a month with no detail row's balance.
     const billingCupo = d?.cupo_en_cuotas_clp ?? (h != null ? cupoFromHistPoint(h) : null);
-    const cupo = debtByMonth != null ? (debtByMonth.get(month) ?? null) : billingCupo;
-    let balance_total_clp = d?.balance_total_clp ?? null;
-    if (balance_total_clp == null && billingCupo != null) {
+    const lines = linesByMonth?.get(month);
+    const cupo = linesByMonth != null ? (lines?.plan_debt_clp ?? null) : billingCupo;
+    let balance_total_clp = linesByMonth != null ? (lines?.balance_clp ?? null) : (d?.balance_total_clp ?? null);
+    if (linesByMonth == null && balance_total_clp == null && billingCupo != null) {
       balance_total_clp = (facturadoTotal ?? 0) + billingCupo;
     }
     const bar = memberBarByMonth

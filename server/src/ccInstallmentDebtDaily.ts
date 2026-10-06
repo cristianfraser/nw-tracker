@@ -296,21 +296,50 @@ export function ccInstallmentDebtDailyClpForAccounts(
   return sumNullableDailySeries(members, datesAsc.length);
 }
 
+export type CcHistorialMonthLines = { balance_clp: number | null; plan_debt_clp: number | null };
+
 /**
- * «Deuda en cuotas» at each billing month's calendar month-end, summed over the given masters —
- * the daily chart's line sampled where the monthly historial plots the month. One event walk
- * serves both sides of today: through today it is the daily line itself, after today it is the
- * plan tail's own plan debt (the tail walks the same events), so the monthly and daily charts
- * agree at every month-end, past or projected. `months` ascending; null when no master has an
- * installment schedule.
+ * The monthly historial's two lines, read from the daily data the day chart draws, summed over
+ * the given masters: «saldo total» (the owed walk) and «deuda en cuotas» (the plan-debt walk) on
+ * each month's last day — today for the current calendar month — so the monthly and daily charts
+ * show the same numbers on the same day and the cuota line can never sit above the saldo in one
+ * and not the other. Days after today come from the plan tail (`ccInstallmentPlanTailClpForAccounts`,
+ * which continues the owed walk until the last pay-by; after it, the plan debt). `months`
+ * ascending; null when no master has an owed value or a schedule on any sampled day.
  */
-export function ccInstallmentDebtAtMonthEndsClp(
+export function ccHistorialLinesAtMonthEndsClp(
   accountIds: readonly number[],
-  months: readonly string[]
-): Map<string, number | null> | null {
-  const series = ccInstallmentDebtDailyClpForAccounts(accountIds, months.map(ccLedgerMonthEndIso));
-  if (series == null) return null;
-  return new Map(months.map((m, i) => [m, series[i] ?? null] as const));
+  months: readonly string[],
+  todayYmd: string
+): Map<string, CcHistorialMonthLines> | null {
+  const currentYm = todayYmd.slice(0, 7);
+  const dates = months.map((m) => (m === currentYm ? todayYmd : ccLedgerMonthEndIso(m)));
+  // The plan-debt walk is defined on every day, future ones included (a tagged cuota purchase of
+  // unknown count stays flat after every plan has settled).
+  const debt = ccInstallmentDebtDailyClpForAccounts(accountIds, dates);
+  const tail = dates.some((d) => d > todayYmd) ? ccInstallmentPlanTailClpForAccounts(accountIds, todayYmd) : null;
+  const tailByDate = new Map((tail ?? []).map((p) => [p.as_of_date, p] as const));
+
+  const out = new Map<string, CcHistorialMonthLines>();
+  let any = false;
+  months.forEach((m, i) => {
+    const d = dates[i]!;
+    const planDebt = debt?.[i] ?? null;
+    let balance: number | null = null;
+    if (d <= todayYmd) {
+      for (const id of accountIds) {
+        const v = accountMarkClpAtYmd(id, d)?.value_clp;
+        if (v != null && Number.isFinite(v)) balance = (balance ?? 0) + v;
+      }
+    } else {
+      // The tail's saldo, which continues the owed walk until the last pay-by; past it every
+      // facturación is paid and what is still owed is the plan debt.
+      balance = tailByDate.get(d)?.balance_clp ?? planDebt;
+    }
+    if (balance != null || planDebt != null) any = true;
+    out.set(m, { balance_clp: balance != null ? Math.round(balance) : null, plan_debt_clp: planDebt });
+  });
+  return any ? out : null;
 }
 
 /**

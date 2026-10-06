@@ -206,35 +206,38 @@ describe("buildCcHistorialChartSeries", () => {
     ).toThrow(/no CLP facturado/);
   });
 
-  it("plots «deuda en cuotas» from the month-end sampler and keeps the billing frame for balances", () => {
+  it("plots both lines from the daily data the sampler returns, never from the billing frame", () => {
     // July billed 100k of cuotas at its close, paid after month-end: the table's cupo (still
-    // unbilled, 400k) pairs with facturado; the chart line (still unpaid at 31/07, 500k) is the
-    // daily line at that month-end.
+    // unbilled, 400k) pairs with facturado; the chart lines are the daily values at 31/07.
     const detalle = [
       makeDetalle("2025-07", { cupo_en_cuotas_clp: 400_000, balance_total_clp: 1_400_000 }),
       makeDetalle("2025-09", { cupo_en_cuotas_clp: 200_000, balance_total_clp: 1_000_000 }),
     ];
     const asked: string[][] = [];
     const rows = buildCcHistorialChartSeries([], detalle, [], {
-      installmentDebtForMonths: (months) => {
+      linesForMonths: (months) => {
         asked.push([...months]);
-        return new Map<string, number | null>([
-          ["2025-07", 500_000],
-          ["2025-08", 400_000],
-          ["2025-09", null],
+        return new Map([
+          ["2025-07", { balance_clp: 1_500_000, plan_debt_clp: 500_000 }],
+          ["2025-08", { balance_clp: 900_000, plan_debt_clp: 400_000 }],
+          ["2025-09", { balance_clp: null, plan_debt_clp: null }],
         ]);
       },
     });
     expect(asked).toEqual([["2025-07", "2025-08", "2025-09"]]);
     expect(rows.map((r) => r.cupo_en_cuotas_clp)).toEqual([500_000, 400_000, null]);
-    expect(rows.map((r) => r.balance_total_clp)).toEqual([1_400_000, null, 1_000_000]);
+    expect(rows.map((r) => r.balance_total_clp)).toEqual([1_500_000, 900_000, null]);
   });
 
-  it("keeps the billing-frame column when the sampler has no schedule", () => {
-    const rows = buildCcHistorialChartSeries([], [makeDetalle("2025-07", { cupo_en_cuotas_clp: 400_000 })], [], {
-      installmentDebtForMonths: () => null,
-    });
+  it("keeps the billing-frame columns when the sampler has no data", () => {
+    const rows = buildCcHistorialChartSeries(
+      [],
+      [makeDetalle("2025-07", { cupo_en_cuotas_clp: 400_000, balance_total_clp: 1_400_000 })],
+      [],
+      { linesForMonths: () => null }
+    );
     expect(rows[0]?.cupo_en_cuotas_clp).toBe(400_000);
+    expect(rows[0]?.balance_total_clp).toBe(1_400_000);
   });
 
   it("sums a group's bars from its cards' own series, never from the merged facturaciones", () => {

@@ -257,10 +257,12 @@ describe("mergeCreditCardLedgers", () => {
       ledgerStub({ account_id: 2, billing_detail_by_month: [detailRow(20)] }),
     ];
     const merged = mergeCreditCardLedgers(ledgers, {
-      installmentDebtForMonths: (months) => new Map(months.map((m) => [m, 45] as const)),
+      linesForMonths: (months) => new Map(months.map((m) => [m, { balance_clp: 160, plan_debt_clp: 45 }] as const)),
     });
     expect(merged.billing_detail_by_month?.[0]?.cupo_en_cuotas_clp).toBe(30);
-    expect(merged.historial_chart?.map((p) => [p.month, p.cupo_en_cuotas_clp])).toEqual([["2025-03", 45]]);
+    expect(merged.historial_chart?.map((p) => [p.month, p.cupo_en_cuotas_clp, p.balance_total_clp])).toEqual([
+      ["2025-03", 45, 160],
+    ]);
     // A pure merge (no sampler) plots the merged column.
     expect(mergeCreditCardLedgers(ledgers).historial_chart?.[0]?.cupo_en_cuotas_clp).toBe(30);
   });

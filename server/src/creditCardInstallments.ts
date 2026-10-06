@@ -21,7 +21,7 @@ import { associatedCardLast4sForMaster } from "./ccConsolidatedCards.js";
 import { buildCcHistorialChartSeries, type CcHistorialChartPoint } from "./creditCardChartSeries.js";
 import type { DataOrigin } from "./dataOrigin.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { ccInstallmentDebtAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
+import { ccHistorialLinesAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
 import { latestBankCupoForAccount, type CcBankCupoStatus } from "./ccBankCupoCheck.js";
 import {
   computeProxyLot,
@@ -299,7 +299,7 @@ export function creditCardInstallmentsResponse(
         db.installment_history_months,
         billingDetail,
         facturaciones,
-        { installmentDebtForMonths: (months) => ccInstallmentDebtAtMonthEndsClp([accountId], months) }
+        { linesForMonths: (months) => ccHistorialLinesAtMonthEndsClp([accountId], months, today) }
       ),
       proxy_tickers: tickers,
       purchase_proxy: purchaseProxy,
