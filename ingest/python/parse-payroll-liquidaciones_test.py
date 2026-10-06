@@ -90,5 +90,40 @@ class HeaderColumnTest(unittest.TestCase):
         self.assertEqual(mod.amount_after_label(text, ("FONASA INP", "Isapre")), 12345)
 
 
+BUK_TEXT = """Liquidación de Sueldo
+Empleador: Ejemplo Software SpA (76.000.000-k)
+Mes: Septiembre 2030
+Sr(a): Persona, Ejemplo                Tipo Contrato: Indefinido          Previsión: Uno (10.46%)
+RUT: 11.111.111-1                      Inicio Contrato: 01 enero 2030     UF: $ 40.000,50
+Sueldo Base: $ 2.000.000
+               HABERES IMPONIBLES          $ 2.100.000          DESCUENTOS LEGALES      $ 457.000
+    Sueldo Base                            $ 2.000.000    Cotiz. Previ. Obligatoria     $ 210.000
+    Gratificación                            $ 100.000    Cotiz. Salud Obligatoria      $ 147.000
+                                                          Adicional Salud                $ 10.000
+               HABERES NO IMPONIBLES         $ 150.000
+                                                          Impuesto Único                 $ 90.000
+    Colación                                  $ 100.000
+    Movilización                               $ 50.000           OTROS DESCUENTOS          $0
+                      TOTAL HABERES $ 2.250.000                     TOTAL DESCUENTOS $ 457.000
+                                  LÍQUIDO A RECIBIR: $ 1.793.000
+                                                  buk.cl
+"""
+
+
+class BukLayoutTest(unittest.TestCase):
+    def test_reads_every_field(self) -> None:
+        self.assertEqual(mod.detect_format(BUK_TEXT), "buk")
+        p = mod.parse_buk(BUK_TEXT, "2030-09")
+        self.assertEqual(
+            (p["employer_name"], p["employer_rut"], p["base_salary_clp"], p["desc_health_clp"], p["liquido_clp"], p["uf_mes"]),
+            ("Ejemplo Software SpA", "76.000.000-K", 2_000_000, 157_000, 1_793_000, 40000.5),
+        )
+        self.assertEqual((p["desc_cesantia_clp"], p["desc_other_clp"], p["total_no_imponible_clp"]), (0, 0, 150_000))
+
+    def test_lines_that_do_not_add_up_fail(self) -> None:
+        with self.assertRaisesRegex(ValueError, "líquido"):
+            mod.parse_buk(BUK_TEXT.replace("$ 1.793.000", "$ 1.793.001"), "2030-09")
+
+
 if __name__ == "__main__":
     unittest.main()

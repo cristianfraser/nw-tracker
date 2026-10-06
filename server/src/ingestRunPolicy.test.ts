@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SantanderState } from "nw-tracker-contracts";
 import {
   decideAfpUnoFetch,
+  decidePayslipsRun,
   decideIngestRun,
   decideSantanderFetch,
   hourlySlotAtOrBefore,
@@ -179,5 +180,34 @@ describe("decideAfpUnoFetch", () => {
     expect(decideAfpUnoFetch({ now: nightOf("2026-10-13"), lastCleanImportAt: imported })).toBeNull();
     expect(decideAfpUnoFetch({ now: nightOf("2026-11-09"), lastCleanImportAt: imported })).toBeNull();
     expect(decideAfpUnoFetch({ now: nightOf("2026-11-10"), lastCleanImportAt: imported })).not.toBeNull();
+  });
+});
+
+describe("decidePayslipsRun", () => {
+  // Chile is UTC−3 from 2026-09-06: 22:00 Chile on day D = 01:00Z on D+1.
+  const nightOf = (ymd: string) => new Date(new Date(`${ymd}T01:00:00Z`).getTime() + 86_400_000);
+
+  it("reads the portal from the 1st through the 15th while last month's payslip is missing", () => {
+    const latest = { period: "2026-09", paired: true };
+    expect(decidePayslipsRun({ now: nightOf("2026-11-01"), latest })).toEqual({ fetch: true, reason: "no payslip for 2026-10 yet" });
+    expect(decidePayslipsRun({ now: nightOf("2026-11-15"), latest })?.fetch).toBe(true);
+    expect(decidePayslipsRun({ now: nightOf("2026-11-16"), latest })).toBeNull();
+    expect(decidePayslipsRun({ now: nightOf("2026-11-01"), latest: null })?.fetch).toBe(true);
+  });
+
+  it("reads January's for December across the year", () => {
+    expect(decidePayslipsRun({ now: nightOf("2027-01-03"), latest: { period: "2026-11", paired: true } })?.reason).toBe(
+      "no payslip for 2026-12 yet"
+    );
+  });
+
+  it("imports alone while the newest payslip waits for its deposit, then stops", () => {
+    expect(decidePayslipsRun({ now: nightOf("2026-10-06"), latest: { period: "2026-09", paired: false } })).toEqual({
+      fetch: false,
+      reason: "payslip 2026-09 has no deposit paired yet",
+    });
+    expect(decidePayslipsRun({ now: nightOf("2026-10-06"), latest: { period: "2026-09", paired: true } })).toBeNull();
+    // An old unpaired payslip (the 2017 ones no deposit pays) never keeps the import running.
+    expect(decidePayslipsRun({ now: nightOf("2026-10-20"), latest: { period: "2026-08", paired: false } })).toBeNull();
   });
 });

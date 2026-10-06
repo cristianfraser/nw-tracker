@@ -23,6 +23,9 @@ export type NightlyOptions = {
   afpUnoFetch: { reason: string } | null;
   /** NW_TRACKER_AFP_UNO_APPLY=1: the certificates' missing rows are written. */
   afpUnoApply: boolean;
+  /** The server's request to import the payslips tonight (reading the payroll portal first when
+   *  `fetch`), and why; null = not tonight. */
+  payslips: { fetch: boolean; reason: string } | null;
 };
 
 export type NightlyResult = { santander: SantanderFetchOutcome | null };
@@ -106,6 +109,20 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     x.note(`AFP UNO: ${o.afpUnoFetch.reason}`);
     if (o.afpUnoApply) await x.step("AFP UNO certificates (apply)", npmRun("fetch:afp-uno", "--background", "--apply"));
     else await x.step("AFP UNO certificates (report only)", npmRun("fetch:afp-uno", "--background"));
+  }
+
+  // 5c. Payslips, when the server asks: the portal from the 1st until last month's payslip is in,
+  // the import alone while the newest one waits for its deposit (the cartola pairs it).
+  if (o.payslips == null) {
+    x.note("=== payslips (not tonight)");
+  } else if (o.dryRun) {
+    x.note(`=== (dry run) skipping payslips (${o.payslips.reason})`);
+  } else {
+    x.note(`payslips: ${o.payslips.reason}`);
+    if (o.payslips.fetch) await x.step("fetch Buk payslips", npmRun("fetch:buk-payslips", "--background"));
+    await x.step("parse payslips", npmRun("parse:payroll-liquidaciones"));
+    // Not strict: an unpaired payslip is the normal state until the month's cartola arrives.
+    await x.step("import payslips", npmRun("import:payroll-liquidaciones", "--no-strict"));
   }
 
   // 6. Statement JSON: cross-check, and (when enabled) write the facturaciones no PDF owns.

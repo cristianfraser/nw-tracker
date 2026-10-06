@@ -167,3 +167,32 @@ export function decideAfpUnoFetch(i: { now: Date; lastCleanImportAt: Date | null
   if (i.lastCleanImportAt && chileWallClockAt(i.lastCleanImportAt).ymd >= fromYmd) return null;
   return { reason: `no clean import since ${fromYmd}` };
 }
+
+/** The last day of a month on which the nightly still looks for the previous month's payslip. */
+export const PAYSLIP_FETCH_LAST_DAY_OF_MONTH = 15;
+
+/**
+ * Whether tonight's nightly reads the employer's payroll portal, imports the payslips, or both.
+ * The liquidación of month M is published around its last business day (payday), so from the 1st
+ * of M+1 through the 15th the portal is read every night until M's payslip is stored — a month
+ * whose payslip never appears (no job) costs fifteen reads, then the nightly stops asking. The
+ * import alone runs while the newest payslip has no deposit paired: pairing reads the monthly
+ * cartola, which lands days after the payslip, so the import pairs it the night the cartola does.
+ */
+export function decidePayslipsRun(i: {
+  now: Date;
+  /** Newest stored payslip: its period (YYYY-MM) and whether a deposit is paired with it. */
+  latest: { period: string; paired: boolean } | null;
+}): { fetch: boolean; reason: string } | null {
+  const today = chileWallClockAt(i.now).ymd;
+  const day = Number(today.slice(8, 10));
+  const [y, m] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
+  const previous = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+  if (day <= PAYSLIP_FETCH_LAST_DAY_OF_MONTH && (i.latest == null || i.latest.period < previous)) {
+    return { fetch: true, reason: `no payslip for ${previous} yet` };
+  }
+  if (i.latest && !i.latest.paired && i.latest.period >= previous) {
+    return { fetch: false, reason: `payslip ${i.latest.period} has no deposit paired yet` };
+  }
+  return null;
+}

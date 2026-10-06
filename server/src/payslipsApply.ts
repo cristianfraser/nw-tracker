@@ -194,3 +194,18 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
   })();
   return details;
 }
+
+/** The newest stored payslip (latest period; a period's severance and salary count as one), and
+ * whether every payslip of that period has a deposit paired — what the nightly schedule reads. */
+export function latestPayslip(): { period: string; paired: boolean } | null {
+  const row = db
+    .prepare(
+      `SELECT period_month AS period, MIN(movement_id IS NOT NULL) AS paired
+         FROM payroll_work_earnings
+        GROUP BY period_month
+        ORDER BY period_month DESC
+        LIMIT 1`
+    )
+    .get() as { period: string; paired: number } | undefined;
+  return row ? { period: row.period, paired: row.paired === 1 } : null;
+}

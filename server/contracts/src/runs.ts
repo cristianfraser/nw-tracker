@@ -45,6 +45,11 @@ export const ingestRunRequestSchema = z
      * of a month until a read imports new rows cleanly). Absent = no.
      */
     afp_uno_fetch: z.object({ reason: z.string().min(1) }).strict().nullable().default(null),
+    /**
+     * Nightly only: import the payslips this run, and first read the payroll portal when `fetch`
+     * (from the 1st of a month until the previous month's payslip is stored). Absent = no.
+     */
+    payslips: z.object({ fetch: z.boolean(), reason: z.string().min(1) }).strict().nullable().default(null),
   })
   .strict()
   .refine((r) => r.kind === "hourly" || r.santander_fetch === null, {
@@ -52,6 +57,9 @@ export const ingestRunRequestSchema = z
   })
   .refine((r) => r.kind === "nightly" || r.afp_uno_fetch === null, {
     message: "only a nightly run takes an afp_uno_fetch",
+  })
+  .refine((r) => r.kind === "nightly" || r.payslips === null, {
+    message: "only a nightly run takes payslips",
   });
 
 export type IngestRunRequest = z.infer<typeof ingestRunRequestSchema>;
