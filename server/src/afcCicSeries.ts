@@ -81,7 +81,9 @@ function stripAccents(s: string): string {
  * Parse one yearly CSV. Fail-fast: the two header lines must match the known layout (a
  * template change must surface, never a silently mis-mapped column), every data row must
  * carry an ISO date and five columns, dates must be strictly ascending, and every valor
- * cuota must be positive.
+ * cuota must be positive. The SP adds a day's row before it fills the values (2026-10-06: the
+ * 10-05 row sat empty for the afternoon), so trailing rows with every value cell empty are
+ * not published yet and are left out; an empty or partly filled row anywhere else throws.
  */
 export function parseSpCesantiaCsv(text: string): SpCesantiaRow[] {
   const lines = text
@@ -100,6 +102,7 @@ export function parseSpCesantiaCsv(text: string): SpCesantiaRow[] {
   }
   const rows: SpCesantiaRow[] = [];
   let prevDay = "";
+  let unpublishedLine: string | null = null;
   for (const line of lines.slice(2)) {
     const cells = line.split(";").map((c) => c.trim());
     if (cells.length !== 5) throw new Error(`afc_cic: row with ${cells.length} cells «${line}»`);
@@ -107,6 +110,11 @@ export function parseSpCesantiaCsv(text: string): SpCesantiaRow[] {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error(`afc_cic: row without ISO date «${line}»`);
     if (day <= prevDay) throw new Error(`afc_cic: dates not ascending at «${line}»`);
     prevDay = day;
+    if (cells.slice(1).every((c) => c === "")) {
+      unpublishedLine = line;
+      continue;
+    }
+    if (unpublishedLine != null) throw new Error(`afc_cic: empty row «${unpublishedLine}» before a published one`);
     const row: SpCesantiaRow = {
       day,
       cic_valor_cuota: parseChileanDecimal(cells[1]!),

@@ -62,6 +62,15 @@ describe("afc_cic — Superintendencia de Pensiones CSV", () => {
     expect(parseSpCesantiaCsv(accented)).toHaveLength(3);
   });
 
+  it("leaves out trailing rows the SP added before filling their values", () => {
+    const pending = SAMPLE_CSV.replace("\r\n\r\n", "\r\n") + "2026-01-04;;;;\r\n";
+    expect(parseSpCesantiaCsv(pending).map((r) => r.day)).toEqual(["2026-01-01", "2026-01-02", "2026-01-03"]);
+    const gap = SAMPLE_CSV.replace("2026-01-02;4.051,04;10811508015009;4.940,42;3506064659931", "2026-01-02;;;;");
+    expect(() => parseSpCesantiaCsv(gap)).toThrow(/before a published one/);
+    const partial = SAMPLE_CSV.replace("2026-01-03;4.051,04;10811508015009", "2026-01-03;;");
+    expect(() => parseSpCesantiaCsv(partial)).toThrow(/unparsable/);
+  });
+
   it("fails fast on a changed header, a short row, or non-ascending dates", () => {
     expect(() => parseSpCesantiaCsv(SAMPLE_CSV.replace("Valor del Patrimonio;Valor Cuota", "Patrimonio;Valor Cuota"))).toThrow(
       /column header/
