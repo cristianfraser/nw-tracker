@@ -309,7 +309,7 @@ export function shouldSkipOneShotStatementImport(
 }
 
 const dbOneShotCandidates = db.prepare<[number, number]>(
-  `SELECT l.merchant, l.transaction_date, l.posting_date
+  `SELECT l.id, l.merchant, l.transaction_date, l.posting_date
    FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND l.installment_flag = 0 AND l.amount_clp = ?`
@@ -320,7 +320,7 @@ const dbOneShotCandidates = db.prepare<[number, number]>(
 // never count as "already imported" — the 2026-08 ·0101 facturación lost 9 purchases
 // (1.xxx.xxx CLP) to exactly that skip+delete pair. `NOT LIKE` mirrors `isWebPasteSource`.
 const dbOneShotCandidatesNoWebPaste = db.prepare<[number, number]>(
-  `SELECT l.merchant, l.transaction_date, l.posting_date
+  `SELECT l.id, l.merchant, l.transaction_date, l.posting_date
    FROM cc_statement_lines l
    JOIN cc_statements s ON s.id = l.statement_id
    WHERE s.account_id = ? AND l.installment_flag = 0 AND l.amount_clp = ?
@@ -330,22 +330,29 @@ const dbOneShotCandidatesNoWebPaste = db.prepare<[number, number]>(
 /**
  * Returns true when an existing one-shot line has the same date, same CLP amount, and a
  * fuzzy-matching merchant — catches re-imports where the bank truncated the merchant name.
+ * `excludeLineIds`: the lines this import has written into the same statement. Two lines one
+ * statement prints are two charges, so a line written from it a moment ago is never the same
+ * purchase: «CASTANO 890» and «CASTANO LAS CONDES 890» of 08/09/2017 are both on the 22/09/2017
+ * ·0274 statement, which only adds up with both. A line already on file (a re-import of the
+ * statement) still counts.
  */
 export function oneShotLineFuzzyMatchExists(
   accountId: number,
   merchant: string | null,
   purchaseDateIso: string | null,
   amountClp: number,
-  opts?: { excludeWebPasteSources?: boolean }
+  opts?: { excludeWebPasteSources?: boolean; excludeLineIds?: ReadonlySet<number> }
 ): boolean {
   if (!purchaseDateIso || amountClp <= 0) return false;
   const stmt = opts?.excludeWebPasteSources ? dbOneShotCandidatesNoWebPaste : dbOneShotCandidates;
   const rows = stmt.all(accountId, amountClp) as {
+    id: number;
     merchant: string | null;
     transaction_date: string | null;
     posting_date: string | null;
   }[];
   for (const row of rows) {
+    if (opts?.excludeLineIds?.has(row.id)) continue;
     const rowDateIso = purchaseDateIsoFromLine(row.transaction_date, row.posting_date);
     if (rowDateIso !== purchaseDateIso) continue;
     if (merchantsMatchForCrossDedupe(row.merchant, merchant)) return true;

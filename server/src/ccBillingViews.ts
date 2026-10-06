@@ -7,7 +7,7 @@ import {
   facturadoFromStatement,
   openMonthUsdFacturado,
   payByFxDateIso,
-  postCloseLiveBalanceAdjustmentsClp,
+  unbilledAtMonthEndAdjustmentsClp,
   type CcBillingMonthBalanceRow,
 } from "./ccBillingBalances.js";
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
@@ -37,7 +37,7 @@ import {
 } from "./ccManualBillingMonth.js";
 import { ddMmYyyyFromIso, feedBillingCloseForMonth, type CcCloseSource } from "./ccBillingCloses.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
-import { statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
+import { facturacionMonthByStatementDate, statementDatesForFacturacion } from "./ccOpenWebPastePdfReconcile.js";
 import { parseOpenWebPasteBillingMonth } from "./ccOpenWebPasteRepair.js";
 import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
@@ -682,10 +682,11 @@ function buildBillingDetailByMonthInner(
   const statementRows = withProjected.filter(
     (row) => row.as_of_kind === "statement" && /^\d{4}-\d{2}-\d{2}$/.test(row.as_of_date)
   );
-  const adjustments = postCloseLiveBalanceAdjustmentsClp(
+  const adjustments = unbilledAtMonthEndAdjustmentsClp(
     accountId,
+    facturacionMonthByStatementDate(accountId),
     statementRows.map((row) => ({
-      closeIso: row.as_of_date,
+      billingMonth: row.billing_month,
       monthEndIso: ccLedgerMonthEndIso(row.billing_month),
     }))
   );

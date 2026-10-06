@@ -1,8 +1,10 @@
+import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   cacheKeyCcBillingDetail,
   getAggregationCached,
   invalidateCcBillingDetail,
 } from "./aggregationCache.js";
+import { ddMmYyyyFromIso } from "./ccBillingCloses.js";
 import {
   effectiveCcExpenseLineAmountClp,
   effectiveCcExpenseLineAmountUsd,
@@ -253,9 +255,20 @@ export function postCloseLiveBalanceAdjustmentClp(
  * balance walk ignores the flag — but `ccOwedFlowEvents.ts` withholds them from the flow leg
  * so that a card's P/L is exactly its cost of financing.
  */
-export function normalizedPostCloseLines(
-  accountId: number
-): { iso: string; key: string; clp: number | null; financing?: boolean }[] {
+export type PostCloseStreamEntry = {
+  iso: string;
+  key: string;
+  clp: number | null;
+  financing?: boolean;
+  /**
+   * `statement_date` (dd/mm/yyyy) of the statement row it sits on — a statement, an open bucket,
+   * or the statement whose header carries the payment; null for an installment purchase event.
+   * Which facturación that is, is `facturacionMonthByStatementDate`'s call.
+   */
+  statement_date: string | null;
+};
+
+export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntry[] {
   return getAggregationCached(`${cacheKeyCcBillingDetail(accountId)}|postclose_lines`, () => {
     const rows = db
       .prepare(
@@ -285,7 +298,7 @@ export function normalizedPostCloseLines(
 
     // clp stays null when FX/amount is unresolvable — the line still consumes its dedupe key
     // inside a window (same as the single-window loop did).
-    const lines: { iso: string; key: string; clp: number | null; financing?: boolean }[] = [];
+    const lines: PostCloseStreamEntry[] = [];
     for (const r of rows) {
       if (superseded.has(r.id)) continue;
       if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
@@ -307,6 +320,7 @@ export function normalizedPostCloseLines(
         key,
         clp: clp != null && Number.isFinite(clp) ? clp : null,
         ...(isFinancingChargeLine(r) ? { financing: true } : {}),
+        statement_date: r.statement_date,
       });
     }
 
@@ -334,7 +348,27 @@ export function normalizedPostCloseLines(
         (l) => l.iso === pagoIso && l.clp != null && Math.abs(l.clp + amtAbs) < 1
       );
       if (covered) continue;
-      lines.push({ iso: pagoIso, key: `hdr-pago|${pagoIso}|${amtAbs}`, clp: -amtAbs });
+      lines.push({
+        iso: pagoIso,
+        key: `hdr-pago|${pagoIso}|${amtAbs}`,
+        clp: -amtAbs,
+        statement_date: s.statement_date,
+      });
+    }
+
+    // The dated legs of header payments a statement printed without a date (migration 213):
+    // payments like the dated ones above, which the walk and the month-end anchors otherwise
+    // never subtracted. A leg is the bank-debit remainder of its header, never a printed line.
+    const legs = db
+      .prepare(`SELECT statement_close_iso, paid_on, amount_clp FROM cc_header_payment_legs WHERE account_id = ?`)
+      .all(accountId) as { statement_close_iso: string; paid_on: string; amount_clp: number }[];
+    for (const g of legs) {
+      lines.push({
+        iso: g.paid_on,
+        key: `hdr-leg|${g.statement_close_iso}|${g.paid_on}|${g.amount_clp}`,
+        clp: -g.amount_clp,
+        statement_date: ddMmYyyyFromIso(g.statement_close_iso),
+      });
     }
 
     return lines;
@@ -351,7 +385,7 @@ export function normalizedPostCloseLines(
  */
 export function normalizedInstallmentPurchaseEvents(
   accountId: number
-): { iso: string; key: string; clp: number }[] {
+): { iso: string; key: string; clp: number; statement_date: null }[] {
   return getAggregationCached(
     `${cacheKeyCcBillingDetail(accountId)}|instpurchase_events`,
     () => {
@@ -361,13 +395,13 @@ export function normalizedInstallmentPurchaseEvents(
            WHERE account_id = ? AND purchase_date IS NOT NULL AND total_amount_clp IS NOT NULL`
         )
         .all(accountId) as { id: number; purchase_date: string; total_amount_clp: number }[];
-      const events: { iso: string; key: string; clp: number }[] = [];
+      const events: { iso: string; key: string; clp: number; statement_date: null }[] = [];
       for (const pu of purchases) {
         const iso = normalizeTransactionDateIso(pu.purchase_date);
         if (!iso) continue;
         const amt = Math.round(pu.total_amount_clp);
         if (!Number.isFinite(amt) || amt === 0) continue;
-        events.push({ iso, key: `inst-purchase|${pu.id}`, clp: amt });
+        events.push({ iso, key: `inst-purchase|${pu.id}`, clp: amt, statement_date: null });
       }
       return events;
     }
@@ -403,6 +437,62 @@ export function postCloseLiveBalanceAdjustmentsClp(
       if (seen.has(l.key)) continue;
       seen.add(l.key);
       if (l.clp != null) sum += l.clp;
+    }
+    return sum;
+  });
+}
+
+/**
+ * What a closed facturación's month-end owes beyond its statement: every charge and payment dated
+ * on or before the month-end that a later facturación bills, or none yet. Picked by billing, not by
+ * date: a Santander purchase dated the close day bills next month (its next cycle starts ON the
+ * close day), and a purchase dated days before the close can bill a statement late (·0161,
+ * 21/02/2023 → March); a date window starting the day after the close left both out of the
+ * month-end anchor, and the daily walk, which resets to the anchor, carried the shortfall to the
+ * next one. A line's facturación is its statement row's (`billedMonthByStatementDate`, from
+ * `facturacionMonthByStatementDate`, so a provisional month's bucket is billed by that month and a
+ * stale bucket by the open one); a line on several statement versions counts as billed by the
+ * earliest. A line dated two cycles or more before its statement is backdated and left out. The daily walk's window starts at its anchor's date, not at a close
+ * (`postCloseLiveBalanceAdjustmentsClp`).
+ */
+export function unbilledAtMonthEndAdjustmentsClp(
+  accountId: number,
+  billedMonthByStatementDate: ReadonlyMap<string, string>,
+  windows: readonly { billingMonth: string; monthEndIso: string }[]
+): number[] {
+  if (windows.length === 0) return [];
+  const entries = normalizedPostCloseLines(accountId);
+  const closeByMonth = new Map<string, string>();
+  for (const [date, bm] of billedMonthByStatementDate) {
+    const iso = parseDdMmYyToIso(date);
+    if (!iso) throw new Error(`Account ${accountId}: unreadable statement date ${date}`);
+    const prev = closeByMonth.get(bm);
+    if (prev == null || iso > prev) closeByMonth.set(bm, iso);
+  }
+  const firstBilled = new Map<string, string | null>();
+  for (const e of entries) {
+    let bm: string | null = null;
+    if (e.statement_date != null) {
+      bm = billedMonthByStatementDate.get(e.statement_date) ?? null;
+      if (bm == null) throw new Error(`Account ${accountId}: no facturación for statement date ${e.statement_date}`);
+    }
+    const prev = firstBilled.get(e.key);
+    if (!firstBilled.has(e.key) || (bm != null && (prev == null || bm < prev))) firstBilled.set(e.key, bm);
+  }
+  return windows.map((w) => {
+    const seen = new Set<string>();
+    let sum = 0;
+    for (const e of entries) {
+      if (e.iso > w.monthEndIso || seen.has(e.key)) continue;
+      const billed = firstBilled.get(e.key) ?? null;
+      if (billed != null && billed <= w.billingMonth) continue;
+      // Dated two or more cycles before the statement that billed it: a backdated posting (a nota
+      // de crédito carries the original purchase's date), not a late one. When it moved the debt
+      // is unknown, so it enters at that statement's own figure, as before.
+      const twoBack = billed != null ? closeByMonth.get(addCalendarMonths(billed, -2)) : undefined;
+      if (twoBack != null && e.iso <= twoBack) continue;
+      seen.add(e.key);
+      if (e.clp != null) sum += e.clp;
     }
     return sum;
   });

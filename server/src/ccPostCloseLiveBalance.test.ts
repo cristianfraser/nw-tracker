@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
+import { postCloseLiveBalanceAdjustmentClp, unbilledAtMonthEndAdjustmentsClp } from "./ccBillingBalances.js";
+import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
 /**
@@ -61,5 +62,69 @@ describe("postCloseLiveBalanceAdjustmentClp", () => {
     if (id == null) return;
     expect(postCloseLiveBalanceAdjustmentClp(id, "2026-07-31", "2026-07-26")).toBe(0);
     expect(postCloseLiveBalanceAdjustmentClp(id, "", "2026-07-31")).toBe(0);
+  });
+});
+
+/**
+ * A closed month's month-end owes what a later facturación bills: a Santander purchase dated the
+ * close day (its next cycle starts on the close day) and a purchase posted late, never a credit
+ * note backdated to a purchase two cycles earlier.
+ */
+describe("unbilledAtMonthEndAdjustmentsClp", () => {
+  const created: number[] = [];
+
+  afterEach(() => {
+    for (const sid of created.splice(0)) {
+      db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(sid);
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(sid);
+    }
+  });
+
+  function masterId(): number | null {
+    const row = db
+      .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+      .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
+    return row?.id ?? null;
+  }
+
+  function statement(accountId: number, close: string): number {
+    db.prepare(
+      `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to)
+       VALUES (?, 'vitest', ?, ?, ?, ?)`
+    ).run(accountId, `vitest-unbilled-${close}.pdf`, close, close, close);
+    const sid = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    created.push(sid);
+    return sid;
+  }
+
+  function line(statementId: number, txnIso: string, merchant: string, amountClp: number): void {
+    db.prepare(
+      `INSERT INTO cc_statement_lines (statement_id, merchant, amount_clp, installment_flag, transaction_date, dedupe_key)
+       VALUES (?, ?, ?, 0, ?, ?)`
+    ).run(statementId, merchant, amountClp, txnIso, `vitest-ub-${statementId}-${txnIso}-${amountClp}`);
+  }
+
+  it("counts close-day and late-posted purchases, not a backdated nota", () => {
+    const id = masterId();
+    expect(id).not.toBeNull();
+    if (id == null) return;
+    const july = statement(id, "20/07/2036");
+    const aug = statement(id, "20/08/2036");
+    const oct = statement(id, "20/10/2036");
+    line(july, "2036-07-10", "BILLED IN JULY", 99_000);
+    line(aug, "2036-07-20", "CLOSE DAY", 30_000);
+    line(aug, "2036-07-18", "POSTED LATE", 15_000);
+    line(aug, "2036-08-02", "AFTER MONTH END", 7_000);
+    line(oct, "2036-07-05", "NOTA DE CREDITO", -50_000);
+    invalidateCcBillingDetail(id);
+    const months = new Map([
+      ["20/07/2036", "2036-07"],
+      ["20/08/2036", "2036-08"],
+      ["20/10/2036", "2036-10"],
+    ]);
+    const [julyEnd] = unbilledAtMonthEndAdjustmentsClp(id, months, [
+      { billingMonth: "2036-07", monthEndIso: "2036-07-31" },
+    ]);
+    expect(julyEnd).toBe(30_000 + 15_000);
   });
 });
