@@ -123,14 +123,20 @@ function noteSchedulerActivity(): number {
   return gapMs;
 }
 
-function earliestNextWakeMs(): number | null {
+/**
+ * Earliest wall time a source becomes due. `skip` leaves out sources already stale: while the
+ * poll loop runs for them, the fresh sources' due times still need their own wake, or a stock
+ * EOD due at 16:05 New York waits for the next 15-minute poll (2026-10-06: AFP/AFC stale all
+ * afternoon, the NYSE bars landed at the 17:11 Chile tick instead of 17:05).
+ */
+function earliestNextWakeMs(skip: ReadonlySet<string> = new Set()): number | null {
   loadRootDotenv();
   const cl = chileWallClockNow();
   const state = loadGlobalSyncState();
   const rows = allSyncSourceStatuses(cl, state);
   let min: number | null = null;
   for (const row of rows) {
-    if (row.status === "disabled") continue;
+    if (row.status === "disabled" || skip.has(row.source)) continue;
     if (row.next_sync_imminent) return Date.now();
     if (row.next_sync) {
       const ms = syncWallTimeToMs(row.next_sync);
@@ -152,6 +158,16 @@ function scheduleWakeTimer(atMs: number | null): void {
     wakeTimerHandle = null;
     void rescheduleGlobalSyncScheduler();
   }, delay);
+}
+
+/** While polling for stale sources: tick when a fresh source falls due before the next poll. */
+function scheduleFreshSourceWake(atMs: number): void {
+  clearWakeTimer();
+  scheduleNextCheckAt(atMs);
+  wakeTimerHandle = setTimeout(() => {
+    wakeTimerHandle = null;
+    void schedulerTick();
+  }, Math.max(0, atMs - Date.now()));
 }
 
 function runGlobalSyncInProcess(): Promise<number> {
@@ -215,7 +231,14 @@ export async function rescheduleGlobalSyncScheduler(): Promise<void> {
     } else {
       ensurePollInterval(intervalMs);
     }
-    scheduleNextCheckAt(Date.now() + intervalMs);
+    const nextPollMs = Date.now() + intervalMs;
+    const freshWakeMs = earliestNextWakeMs(new Set(stale));
+    if (freshWakeMs != null && freshWakeMs > Date.now() && freshWakeMs < nextPollMs) {
+      scheduleFreshSourceWake(freshWakeMs);
+    } else {
+      clearWakeTimer();
+      scheduleNextCheckAt(nextPollMs);
+    }
     return;
   }
   stopPollLoop();

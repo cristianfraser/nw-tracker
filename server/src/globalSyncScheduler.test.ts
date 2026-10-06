@@ -4,6 +4,7 @@ const staleSyncSources = vi.fn<() => string[]>(() => []);
 const allSyncSourceStatuses = vi.fn(
   () =>
     [] as {
+      source?: string;
       status: string;
       next_sync_imminent: boolean;
       next_sync: { ymd: string; hour: number; minute: number; timeZone: "America/Santiago" } | null;
@@ -125,6 +126,24 @@ describe("globalSyncScheduler", () => {
     runGlobalSyncAll.mockClear();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(runGlobalSyncAll).not.toHaveBeenCalled();
+  });
+
+  it("while polling for a stale source, wakes when a fresh source falls due before the next poll", async () => {
+    process.env.GLOBAL_SYNC_INTERVAL_MS = "900000";
+    staleSyncSources.mockReturnValue(["afp_uno"]);
+    allSyncSourceStatuses.mockReturnValue([
+      { source: "afp_uno", status: "stale", next_sync_imminent: true, next_sync: null },
+      {
+        source: "stocks_nyse",
+        status: "ok",
+        next_sync_imminent: false,
+        next_sync: { ymd: "2026-05-27", hour: 10, minute: 5, timeZone: "America/Santiago" as const },
+      },
+    ]);
+    startGlobalSyncScheduler();
+    await vi.waitFor(() => expect(runGlobalSyncAll).toHaveBeenCalledTimes(1));
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(runGlobalSyncAll).toHaveBeenCalledTimes(2);
   });
 
   it("notify starts polling when force-stale while idle", async () => {
