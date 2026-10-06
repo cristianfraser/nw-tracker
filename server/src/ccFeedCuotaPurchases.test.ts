@@ -1,3 +1,4 @@
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -257,9 +258,15 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     // The monthly chart samples that walk at every month-end; the projected rows hold it flat too,
     // so the balance line never sits under the cuota line.
     const chart = creditCardInstallmentsResponse(accountId).historial_chart ?? [];
+    const today = chileCalendarTodayYmd();
     expect(chart.map((p) => p.cupo_en_cuotas_clp)).toEqual(
-      ccInstallmentDebtDailyClp(accountId, chart.map((p) => ccLedgerMonthEndIso(p.month)))
+      ccInstallmentDebtDailyClp(
+        accountId,
+        chart.map((p) => (p.month === today.slice(0, 7) ? today : ccLedgerMonthEndIso(p.month)))
+      )
     );
+    // Past the last pay-by the saldo is what is still owed in cuotas: the tagged purchase.
+    expect(chart.at(-1)).toMatchObject({ cupo_en_cuotas_clp: 189_990, balance_total_clp: 189_990 });
     const ledger = ccInstallmentsDbApiPayload(accountId);
     const projected = buildBillingDetailByMonth(accountId, ledger.months).filter((d) => d.projected);
     expect(projected.length).toBeGreaterThan(0);

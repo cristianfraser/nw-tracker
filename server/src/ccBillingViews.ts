@@ -2,6 +2,7 @@ import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   balanceUsdFxDateIso,
   incrementalChargesClpForBillingMonth,
+  installmentPurchasesClpAfter,
   listCcBillingMonthBalances,
   facturadoFromStatement,
   openMonthUsdFacturado,
@@ -647,7 +648,8 @@ function buildBillingDetailByMonthInner(
   }
 
   // Roll the most-recently-closed month's balance into the open month.
-  // Balance = priorClosedBalance + (charges this cycle − payments this cycle).
+  // Balance = priorClosedBalance + (charges this cycle + cuota plans bought after its calendar
+  // month-end − payments this cycle) — the same events the daily owed walk adds.
   // This means: before any PAGO row is imported, open month mirrors the closed balance.
   if (openBmRoll && !inactive) {
     const openIdx = out.findIndex((r) => r.billing_month === openBmRoll);
@@ -657,7 +659,8 @@ function buildBillingDetailByMonthInner(
         .sort((a, b) => b.billing_month.localeCompare(a.billing_month))[0];
       if (priorClosed) {
         const netCharges =
-          incrementalChargesClpForBillingMonth(accountId, openBmRoll) -
+          incrementalChargesClpForBillingMonth(accountId, openBmRoll) +
+          installmentPurchasesClpAfter(accountId, ccLedgerMonthEndIso(priorClosed.billing_month)) -
           paymentAbonosClpForBillingMonth(accountId, openBmRoll);
         out[openIdx]!.balance_total_clp = Math.round(priorClosed.balance_total_clp + netCharges);
       }

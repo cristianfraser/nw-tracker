@@ -7,7 +7,8 @@ import {
   type CcCupoSnapshot,
 } from "./creditCardInstallments.js";
 import { buildCcHistorialChartSeries, type CcHistorialChartOptions } from "./creditCardChartSeries.js";
-import { ccInstallmentDebtAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
+import { ccHistorialLinesAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 
@@ -304,6 +305,6 @@ export function creditCardGroupLedgerResponse(portfolioGroupSlug: string): CcLed
   }
   const ledgers = masterIds.map((id) => creditCardInstallmentsResponse(id));
   return mergeCreditCardLedgers(ledgers, {
-    installmentDebtForMonths: (months) => ccInstallmentDebtAtMonthEndsClp(masterIds, months),
+    linesForMonths: (months) => ccHistorialLinesAtMonthEndsClp(masterIds, months, chileCalendarTodayYmd()),
   });
 }

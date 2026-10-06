@@ -426,6 +426,24 @@ export function incrementalChargesClpForBillingMonth(
 }
 
 /**
+ * Installment plans bought after `afterIso` (exclusive), at the value the owed walk adds them
+ * (`normalizedInstallmentPurchaseEvents`: the plan's total on its purchase date). The open month's
+ * balance roll-forward adds them beside the cycle's lines: a cuota purchase is debt from the day
+ * it is made, and once a line becomes a plan it leaves the line sums (a converted or feed-created
+ * plan supersedes its purchase row). The bound is the closed month's CALENDAR month-end, not its
+ * close: that month's balance already carries every plan bought through its month-end (its cupo
+ * is the plan remainder by calendar month), so a plan bought between the close and the month-end
+ * (·0101, 28/09/2026) is already in it.
+ */
+export function installmentPurchasesClpAfter(accountId: number, afterIso: string): number {
+  let sum = 0;
+  for (const e of normalizedInstallmentPurchaseEvents(accountId)) {
+    if (e.iso > afterIso) sum += e.clp;
+  }
+  return sum;
+}
+
+/**
  * Open-cycle USD (foreign) charges billed so far, in USD and CLP — used to split the open month's
  * facturado into its CLP and US$ stacked components. Reads the same statement dates as
  * {@link incrementalChargesClpForBillingMonth} but keeps only USD-denominated lines (foreign charges
