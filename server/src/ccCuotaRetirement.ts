@@ -55,7 +55,8 @@ export type CuotaRetirementResult = {
 /**
  * Dated CLP payments of billed debt for one CC master: payment lines (`isCcPaymentMerchant`
  * — PAGO, MONTO CANCELADO, ABONO, the same test as the open-month sums) plus header-only
- * pagados (`monto_pagado_anterior` + printed date, migration 166). The mirror-pair evidence
+ * pagados (`monto_pagado_anterior` + printed date, migration 166) and the dated legs of the
+ * header pagados printed without a date (`cc_header_payment_legs`, migration 213). The mirror-pair evidence
  * collector (`ccPaymentMirrors.ts`) reads the same lines and headers through the same
  * predicate and date readers. Versions and the legacy line+header double-description of one
  * payment collapse on (date, amount), lines preferred. USD-debt abonos (ABONO DE DIVISAS) are
@@ -85,6 +86,11 @@ export function listClpCcPaymentEventsForAccount(accountId: number): ClpPaymentE
       )
       .all(accountId) as { statement_date: string; amt: number; pago_iso: string }[];
 
+    // The dated legs of header payments the statement printed undated (migration 213).
+    const legRows = db
+      .prepare(`SELECT paid_on, amount_clp FROM cc_header_payment_legs WHERE account_id = ?`)
+      .all(accountId) as { paid_on: string; amount_clp: number }[];
+
     const byKey = new Map<string, ClpPaymentEvent>();
     for (const r of lineRows) {
       if (!isCcPaymentMerchant(r.merchant)) continue;
@@ -101,6 +107,10 @@ export function listClpCcPaymentEventsForAccount(accountId: number): ClpPaymentE
       const iso = requireHeaderPagoIso(r.statement_date, r.pago_iso);
       const key = `${iso}|${clp}`;
       if (!byKey.has(key)) byKey.set(key, { iso, clp });
+    }
+    for (const r of legRows) {
+      const key = `${r.paid_on}|${r.amount_clp}`;
+      if (!byKey.has(key)) byKey.set(key, { iso: r.paid_on, clp: r.amount_clp });
     }
     return [...byKey.values()].sort((a, b) => a.iso.localeCompare(b.iso));
   });
