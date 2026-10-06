@@ -156,24 +156,23 @@ export function prunePartialMovementsSupersededByCartola(
         cartolaNote,
         dbHandle
       );
-      // A partial row whose occurred_on differs from its note's bank date was deliberately
-      // re-dated (payment-receipt evidence: the real payment day, not the bank's next-workday
-      // posting). The cartola prints the bank date, so the official row it just inserted must
-      // inherit the corrected date — with the bank date as its posting day — or the receipt
-      // evidence is silently lost every month.
-      if (partial.occurred_on !== parsed.occurred_on) {
-        const official = dbHandle
-          .prepare(
-            `SELECT id FROM movements
-             WHERE account_id = ? AND note = ? AND occurred_on = ? LIMIT 1`
-          )
-          .get(accountId, cartolaNote, matchingMv.occurred_on) as { id: number } | undefined;
-        if (official) {
-          dbHandle
-            .prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`)
-            .run(partial.occurred_on, official.id);
+      const official = dbHandle
+        .prepare(
+          `SELECT id FROM movements
+           WHERE account_id = ? AND note = ? AND occurred_on = ? LIMIT 1`
+        )
+        .get(accountId, cartolaNote, matchingMv.occurred_on) as { id: number } | undefined;
+      if (official) {
+        // A partial row whose occurred_on differs from its note's bank date was deliberately
+        // re-dated (payment-receipt evidence: the real payment day, not the bank's next-workday
+        // posting). The cartola prints the bank date, so the official row it just inserted must
+        // inherit the corrected date — with the bank date as its posting day — or the receipt
+        // evidence is silently lost every month.
+        if (partial.occurred_on !== parsed.occurred_on) {
+          dbHandle.prepare(`UPDATE movements SET occurred_on = ? WHERE id = ?`).run(partial.occurred_on, official.id);
           recordBankPosting(official.id, accountId, matchingMv.occurred_on, dbHandle);
         }
+        carryMovementKeyedIncomeState(partial.id, official.id, dbHandle);
       }
     }
     del.run(partial.id);
@@ -181,6 +180,17 @@ export function prunePartialMovementsSupersededByCartola(
   }
 
   return { removed: removed_ids.length, removed_ids };
+}
+
+/**
+ * What hangs off a daily row by its id and must survive the cartola replacing it: the payslip it
+ * paid (paired the day the salary lands) and the user's income classification. Both reference
+ * movements without a cascade, so a row still carrying either cannot be deleted — moving them is
+ * what lets the prune run. An official row that already carries its own throws (two claims).
+ */
+function carryMovementKeyedIncomeState(fromId: number, toId: number, dbHandle: Database): void {
+  dbHandle.prepare(`UPDATE payroll_work_earnings SET movement_id = ? WHERE movement_id = ?`).run(toId, fromId);
+  dbHandle.prepare(`UPDATE checking_income_movement_overrides SET movement_id = ? WHERE movement_id = ?`).run(toId, fromId);
 }
 
 /** Prune superseded partial rows and refresh balance/aggregation caches when needed. */

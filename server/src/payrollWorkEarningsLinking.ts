@@ -1,6 +1,10 @@
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
+import { parsePartialMovementNote, PARTIAL_NOTE_PREFIX } from "./checkingCartolaPartialReconcile.js";
 import { db } from "./db.js";
+import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
+import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import type { FlowCheckingIncomeLine } from "./flowsCheckingInflows.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
 
@@ -99,13 +103,60 @@ function loadCartolaNotesByMovementId(
   return out;
 }
 
+/**
+ * Credits from the daily «últimos movimientos» feed that no monthly cartola has superseded yet.
+ * Income lines read cartola rows only, but the salary lands in the feed the day it is paid and
+ * the cartola a week or more later; pairing the payslip with the daily row means it is linked the
+ * night it arrives. When the cartola supersedes the row, the prune carries the link onto the
+ * official row (`prunePartialMovementsSupersededByCartola`).
+ */
+function loadDailyFeedCredits(): PayrollLinkCandidate[] {
+  const accountIds = listMovementBalanceCashAccountIds();
+  if (accountIds.length === 0) return [];
+  const rows = db
+    .prepare(
+      `SELECT m.id, m.account_id, m.occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, m.note, a.name AS account_label
+         FROM movements m JOIN accounts a ON a.id = m.account_id
+        WHERE m.account_id IN (${accountIds.map(() => "?").join(", ")})
+          AND ${MOVEMENT_CLP_LEG_SQL} > 0
+          AND m.note LIKE ?`
+    )
+    .all(...accountIds, `${PARTIAL_NOTE_PREFIX}%`) as {
+    id: number;
+    account_id: number;
+    occurred_on: string;
+    amount_clp: number;
+    note: string;
+    account_label: string;
+  }[];
+  return rows.map((r) => {
+    const parsed = parsePartialMovementNote(r.note);
+    if (!parsed) throw new Error(`daily feed movement ${r.id}: unreadable note ${r.note}`);
+    const amount_clp = Math.round(r.amount_clp);
+    return {
+      movement_id: r.id,
+      account_id: r.account_id,
+      account_label: r.account_label,
+      received_on: r.occurred_on,
+      amount_clp,
+      amount_usd: clpToUsdAtDate(amount_clp, r.occurred_on),
+      description: parsed.description,
+      source: "checking" as const,
+      cartola_note: r.note,
+    };
+  });
+}
+
 export function listPayrollLinkCandidates(): PayrollLinkCandidate[] {
   const lines = buildFlowsCheckingIncomePayload().lines;
   const notes = loadCartolaNotesByMovementId(lines.map((l) => l.movement_id));
-  return lines.map((line) => ({
-    ...line,
-    cartola_note: notes.get(line.movement_id) ?? null,
-  }));
+  return [
+    ...lines.map((line) => ({
+      ...line,
+      cartola_note: notes.get(line.movement_id) ?? null,
+    })),
+    ...loadDailyFeedCredits(),
+  ];
 }
 
 export type PayrollAutoLinkResult =

@@ -40,6 +40,9 @@ const RUNNERS: Record<BankName, (opts: RunOptions) => Promise<number>> = {
   santander: runSantander,
   racional: runRacional,
   "afp-uno": runAfpUnoCapture,
+  buk: async () => {
+    throw new Error("buk has no session steps — run npm run fetch:buk-payslips");
+  },
 };
 
 /** Read `--flag=a,b` into a trimmed list; empty when the flag is absent. */

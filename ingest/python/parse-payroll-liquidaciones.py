@@ -258,6 +258,8 @@ def detect_format(text: str) -> str:
         .replace("Ú", "U")
         .replace("Ñ", "N")
     )
+    if "LIQUIDACION DE SUELDO" in normalized and "LIQUIDO A RECIBIR" in normalized and "BUK.CL" in normalized:
+        return "buk"
     if "LIQUIDACION DE REMUNERACIONES" in normalized and (
         "SUELDO GANADO" in normalized or "DETALLE DE HABERES" in normalized
     ):
@@ -711,11 +713,98 @@ def parse_unholster_scan(text: str, period_month: str) -> Dict[str, Any]:
     }
 
 
+def buk_amount(text: str, label: str, required: bool = True) -> Optional[int]:
+    """«Label   $ 1.234.567» on the label's own line (Buk prints «$0» for an empty section).
+    A printed zero is 0 here, not absent: every label read is one the layout always prints."""
+    m = re.search(rf"{label}:?[ \t]+\$[ \t]*(\d{{1,3}}(?:\.\d{{3}})*|0)\b", text, re.IGNORECASE | re.MULTILINE)
+    if not m:
+        if required:
+            raise ValueError(f"Buk liquidación: no amount after {label!r}")
+        return None
+    v = parse_clp_amount_printed(m.group(1))
+    if v is None:
+        raise ValueError(f"Buk liquidación: not an amount after {label!r}: {m.group(1)!r}")
+    return v
+
+
+def parse_buk(text: str, period_month: str) -> Dict[str, Any]:
+    """Buk's «Liquidación de Sueldo» (Webdox, 2026-09 →): two columns, HABERES on the left (imponibles,
+    then no imponibles) and DESCUENTOS on the right, every amount as «$ 1.234.567». The section
+    totals must equal their lines and haberes − descuentos the líquido, or the parse fails."""
+    emp_m = re.search(r"Empleador:\s*(.+?)\s*\(([\d.]+-[\dkK])\)", text)
+    if not emp_m:
+        raise ValueError("Buk liquidación: no «Empleador: name (RUT)» line")
+    mes_m = re.search(r"^\s*Mes:\s*(\S+ \d{4})", text, re.MULTILINE)
+
+    base = buk_amount(text, r"^[ \t]+Sueldo Base")  # the month's prorated base; the header's is the contract's
+    gratificacion = buk_amount(text, r"Gratificaci[oó]n", required=False) or 0
+    colacion = buk_amount(text, r"Colaci[oó]n", required=False) or 0
+    movilizacion = buk_amount(text, r"Movilizaci[oó]n", required=False) or 0
+    conectividad = buk_amount(text, r"Conectividad", required=False) or 0
+    total_imponible = buk_amount(text, r"HABERES IMPONIBLES")
+    total_no_imponible = buk_amount(text, r"HABERES NO IMPONIBLES")
+    total_haberes = buk_amount(text, r"TOTAL HABERES")
+
+    desc_afp = buk_amount(text, r"Cotiz\. Previ\. Obligatoria")
+    # Health = the legal 7% plus the Isapre plan's excess («Adicional Salud»): what was paid.
+    desc_health = buk_amount(text, r"Cotiz\. Salud Obligatoria") + (buk_amount(text, r"Adicional Salud", required=False) or 0)
+    desc_tax = buk_amount(text, r"Impuesto [UÚ]nico", required=False) or 0
+    desc_cesantia = buk_amount(text, r"Seguro (?:de )?Cesant[ií]a", required=False) or 0
+    desc_apv = buk_amount(text, r"A\.?P\.?V\.?", required=False) or 0
+    legales = buk_amount(text, r"DESCUENTOS LEGALES")
+    otros = buk_amount(text, r"OTROS DESCUENTOS")
+    total_descuentos = buk_amount(text, r"TOTAL DESCUENTOS")
+    liquido = buk_amount(text, r"L[IÍ]QUIDO A RECIBIR")
+
+    checks = [
+        ("imponibles", base + gratificacion, total_imponible),
+        ("no imponibles", colacion + movilizacion + conectividad, total_no_imponible),
+        ("haberes", total_imponible + total_no_imponible, total_haberes),
+        ("descuentos legales", desc_afp + desc_health + desc_tax + desc_cesantia + desc_apv, legales),
+        ("descuentos", legales + otros, total_descuentos),
+        ("líquido", total_haberes - total_descuentos, liquido),
+    ]
+    for name, parts, printed in checks:
+        if parts != printed:
+            raise ValueError(f"Buk liquidación: {name} lines add to {parts:,}, printed {printed:,}")
+
+    uf_m = re.search(r"UF:\s*\$\s*([\d.,]+)", text)
+    return {
+        "format": "buk",
+        "period_month": period_month,
+        "employer_name": emp_m.group(1).strip(),
+        "employer_rut": emp_m.group(2).upper(),
+        "pay_period_label": mes_m.group(1) if mes_m else period_month,
+        "earning_type": "salary",
+        "base_salary_clp": base,
+        "colacion_clp": colacion,
+        "movilizacion_clp": movilizacion,
+        "gratificacion_clp": gratificacion,
+        "total_imponible_clp": total_imponible,
+        "total_no_imponible_clp": total_no_imponible,
+        "total_haberes_clp": total_haberes,
+        "desc_afp_clp": desc_afp,
+        "desc_health_clp": desc_health,
+        "desc_tax_clp": desc_tax,
+        "desc_cesantia_clp": desc_cesantia,
+        "desc_apv_clp": desc_apv,
+        "desc_other_clp": otros,
+        "total_descuentos_clp": total_descuentos,
+        "liquido_clp": liquido,
+        "uf_mes": parse_uf_amount(uf_m.group(1)) if uf_m else None,
+        "utm_mes": None,
+        "tope_previsional_uf": None,
+        "tope_cesantia_uf": None,
+    }
+
+
 def parse_payroll_pdf(path: Path) -> Dict[str, Any]:
     text = extract_payroll_pdf_text(path)
     period_month = period_month_from_path(path)
     fmt = detect_format(text)
-    if fmt == "talana_buk":
+    if fmt == "buk":
+        parsed = parse_buk(text, period_month)
+    elif fmt == "talana_buk":
         parsed = parse_talana_buk(text, period_month)
     elif fmt == "dealsy":
         parsed = parse_dealsy(text, period_month)

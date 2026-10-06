@@ -187,6 +187,68 @@ describe("checkingCartolaPartialReconcile", () => {
     );
   });
 
+  it("moves a payslip link and an income classification onto the cartola row", () => {
+    const accountId = testCheckingAccountId();
+    if (accountId == null) return;
+    const periodMonth = "1801-09";
+    const occurredOn = "1801-09-30";
+    const amountClp = 1_234_567;
+    const description = "0076000000K REMUNERACIONES SEPTIEMBRE 1801";
+    const partialNote = partialMovementNote({ occurred_on: occurredOn, amount_clp: amountClp, description, document_no: "" });
+    const sourcePdf = "vitest/liquidaciones/1801-09.pdf";
+    const cleanup = () => {
+      db.prepare(`DELETE FROM payroll_work_earnings WHERE source_pdf = ?`).run(sourcePdf);
+      db.prepare(
+        `DELETE FROM checking_income_movement_overrides WHERE movement_id IN (
+           SELECT id FROM movements WHERE account_id = ? AND (note = ? OR note LIKE ?))`
+      ).run(accountId, partialNote, `import:cartola|${periodMonth}|%`);
+      db.prepare(`DELETE FROM checking_cartola_imports WHERE account_id = ? AND period_month = ?`).run(accountId, periodMonth);
+      db.prepare(`DELETE FROM movements WHERE account_id = ? AND (note = ? OR note LIKE ?)`).run(
+        accountId,
+        partialNote,
+        `import:cartola|${periodMonth}|%`
+      );
+    };
+    cleanup();
+
+    const partialId = Number(
+      db
+        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`)
+        .run(accountId, amountClp, occurredOn, partialNote).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO payroll_work_earnings (period_month, employer_name, liquido, source_pdf, movement_id, link_source)
+       VALUES (?, 'Vitest Employer', ?, ?, ?, 'auto')`
+    ).run(periodMonth, amountClp, sourcePdf, partialId);
+    db.prepare(`INSERT INTO checking_income_movement_overrides (movement_id, income_kind) VALUES (?, 'salary')`).run(partialId);
+
+    try {
+      const { partialsRemoved } = importCheckingCartola(accountId, {
+        source_file: "vitest-partial-payslip.xlsx",
+        period_month: periodMonth,
+        period_from: "1801-09-01",
+        period_to: "1801-09-30",
+        saldo_inicial_clp: 0,
+        saldo_final_clp: amountClp,
+        movements: [{ occurred_on: occurredOn, amount_clp: amountClp, branch: "Agustinas", description, document_no: "" }],
+        skipped: [],
+        notes: [],
+      });
+      expect(partialsRemoved).toBe(1);
+      const official = db
+        .prepare(`SELECT id FROM movements WHERE account_id = ? AND note LIKE ?`)
+        .get(accountId, `import:cartola|${periodMonth}|%`) as { id: number };
+      expect(
+        db.prepare(`SELECT movement_id FROM payroll_work_earnings WHERE source_pdf = ?`).get(sourcePdf)
+      ).toEqual({ movement_id: official.id });
+      expect(
+        db.prepare(`SELECT income_kind FROM checking_income_movement_overrides WHERE movement_id = ?`).get(official.id)
+      ).toEqual({ income_kind: "salary" });
+    } finally {
+      cleanup();
+    }
+  });
+
   it("reconciles partial rows on skipped cartola re-import", () => {
     const accountId = testCheckingAccountId();
     if (accountId == null) return;
