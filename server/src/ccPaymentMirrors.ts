@@ -28,8 +28,8 @@
  */
 import { recordBankPosting } from "./movementBankPostings.js";
 import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
-import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
 import { CC_PAYMENT_DESC_RE } from "./checkingDescriptionPredicates.js";
 import {
   ccPaymentEvidenceKey,
@@ -125,9 +125,9 @@ function dedupeCcPaymentEvidence(rows: ReturnType<typeof listCcPaymentEvidenceRo
 }
 
 /**
- * Candidates: single-leg checking debits whose note matches the card-payment description,
- * paired to payment evidence by exact amount within ±4 days (nearest date wins; ambiguity
- * blocks both sides — fail closed, never guess). Already-converted payments are excluded by the
+ * Candidates: single-leg debits on any account under Checking accounts whose note matches the
+ * card-payment description, paired to payment evidence by exact amount within ±4 days (nearest
+ * date wins; ambiguity blocks both sides — fail closed, never guess). Already-converted payments are excluded by the
  * payment's key, so a re-imported statement's new rows are not offered again. Throws while a
  * converted payment has lost its evidence: if the payment came back under another date it would
  * look unconverted, and pairing it again would book it twice.
@@ -151,11 +151,11 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
     occurred_on: string;
     note: string | null;
   } & MovementAmountFields)[];
+  // Any account under Checking accounts can pay a card: the cuenta vista did, nine times between
+  // 2019 and 2024, and those debits were never offered while this read the cuenta corriente only.
+  const checkingIds = new Set(accountIdsUnderCheckingAccounts());
   const outs = movements.filter(
-    (m) =>
-      accountKindSlugForAccountId(m.account_id) === "cuenta_corriente" &&
-      m.note != null &&
-      CC_PAYMENT_DESC_RE.test(m.note)
+    (m) => checkingIds.has(m.account_id) && m.note != null && CC_PAYMENT_DESC_RE.test(m.note)
   );
 
   const evidenceRows = listCcPaymentEvidenceRows();
