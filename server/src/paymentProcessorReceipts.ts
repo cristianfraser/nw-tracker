@@ -56,22 +56,36 @@ function hash(row: ReceiptRow): string {
     .digest("hex");
 }
 
-/** Stores the receipts; a receipt already stored must state the same. */
+type StoredCharge = { amount: number; installments: number | null };
+
+const loadCharges = () =>
+  db.prepare(`SELECT amount, installments FROM payment_receipt_charges WHERE message_id = ? ORDER BY position`);
+
+/** Stores the receipts; a receipt already stored must state the same, its charges included. */
 export function storePaymentProcessorReceipts(payload: PaymentProcessorReceiptsPayload): { received: number; new_receipts: number } {
   const existing = db.prepare(`SELECT ${COLUMNS.join(", ")} FROM payment_processor_receipts WHERE message_id = ?`);
   const insert = db.prepare(
     `INSERT INTO payment_processor_receipts (${COLUMNS.join(", ")}) VALUES (${COLUMNS.map((c) => `@${c}`).join(", ")})`
   );
+  const insertCharge = db.prepare(
+    `INSERT INTO payment_receipt_charges (message_id, position, amount, installments) VALUES (?, ?, ?, ?)`
+  );
+  const charges = loadCharges();
   return db.transaction(() => {
     let added = 0;
     for (const r of payload.receipts) {
       const row = receiptRow(r);
       const old = existing.get(r.message_id) as ReceiptRow | undefined;
       if (old) {
-        if (hash(old) !== hash(row)) throw new Error(`payment receipt ${r.message_id} was already stored with other content`);
+        const oldCharges = JSON.stringify(charges.all(r.message_id) as StoredCharge[]);
+        const newCharges = JSON.stringify((r.charges ?? []).map((c) => ({ amount: c.amount, installments: c.installments })));
+        if (hash(old) !== hash(row) || oldCharges !== newCharges) {
+          throw new Error(`payment receipt ${r.message_id} was already stored with other content`);
+        }
         continue;
       }
       insert.run(row);
+      (r.charges ?? []).forEach((c, i) => insertCharge.run(r.message_id, i + 1, c.amount, c.installments));
       added++;
     }
     return { received: payload.receipts.length, new_receipts: added };
@@ -92,23 +106,37 @@ export type PaymentReceiptDto = {
   paid_at_chile: string;
   statement_descriptor: string | null;
   installments: number | null;
+  /** Which of a split payment's charges this line is (null when the payment was one charge). */
+  charge: { position: number; of: number } | null;
   /** Inferred (a subscription's billing cycle, a monthly run), not read off a receipt. */
   guess: boolean;
   /** What the link rests on («receipt 2026-05-02», «subscription renewal notice», «monthly run»). */
   basis: string | null;
 };
 
-export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis"> & {
+export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge"> & {
   message_id: string;
-  amount: number;
+  /** Null when the document states none: it pairs by its day and the charge's name. */
+  amount: number | null;
   currency: "clp" | "usd";
+  /** The separate charges the payment was taken as; absent or empty = one charge of `amount`. */
+  charges?: StoredCharge[];
 };
 
 export function loadPaymentProcessorReceipts(): StoredPaymentReceipt[] {
   const rows = db
     .prepare(`SELECT ${COLUMNS.join(", ")} FROM payment_processor_receipts ORDER BY paid_at_chile, message_id`)
     .all() as ReceiptRow[];
+  const chargesByReceipt = new Map<string, StoredCharge[]>();
+  for (const c of db
+    .prepare(`SELECT message_id, amount, installments FROM payment_receipt_charges ORDER BY message_id, position`)
+    .all() as (StoredCharge & { message_id: string })[]) {
+    const list = chargesByReceipt.get(c.message_id) ?? [];
+    list.push({ amount: c.amount, installments: c.installments });
+    chargesByReceipt.set(c.message_id, list);
+  }
   return rows.map((r) => ({
+    charges: chargesByReceipt.get(String(r.message_id)) ?? [],
     message_id: String(r.message_id),
     processor: String(r.processor),
     payee: String(r.payee_name),
@@ -119,7 +147,7 @@ export function loadPaymentProcessorReceipts(): StoredPaymentReceipt[] {
     paid_at_chile: String(r.paid_at_chile),
     statement_descriptor: (r.statement_descriptor as string | null) ?? null,
     installments: (r.installments as number | null) ?? null,
-    amount: Number(r.amount),
+    amount: r.amount == null ? null : Number(r.amount),
     currency: receiptCurrency(r),
   }));
 }
@@ -151,16 +179,49 @@ export type ReceiptCandidateLine = {
 const PROCESSOR_MERCHANT_HINT: Record<string, RegExp> = {
   flow: /FLOW/i,
   pago_facil: /PAGO\s*FACIL/i,
+  mercadolibre: /MERCADO\s*LIBRE|MERCADO\s*PAGO|MERPAGO|^MP\s*\*/i,
 };
 
 /**
- * Whether a line carries the receipt's amount: the same pesos, or for a dollar receipt the same
+ * How a shop's own charges read on a statement, for a document that states no amount: the line
+ * must carry this name. Stricter than the hint above — «MERPAGO*STREAT BURGER» is MercadoPago at a
+ * restaurant, not a MercadoLibre order; an order reads «MP *MERCADO LIBRE», «MERPAGO*MERCADOLIBRE»
+ * or «MERCADOPAGO*2PRODUCTOS» (an order from several sellers).
+ */
+const STATEMENT_NAME_FOR_AMOUNTLESS: Record<string, RegExp> = {
+  mercadolibre: /MERCADO\s*LIBRE|\*\s*\d+\s*PRODUCTOS\b/i,
+};
+
+/**
+ * A MercadoPago charge named after the seller («MERCADOPAGO *JIOR», «MERPAGO*NUEVOGENESISSPA»,
+ * since 2024): its name after the «*» is the start of a seller the document names (letters and
+ * digits only, at least four).
+ */
+const SELLER_NAMED_CHARGE: Record<string, RegExp> = {
+  mercadolibre: /^(?:MERCADO\s*PAGO|MERPAGO|MP)\s*\*\s*(.+)$/i,
+};
+
+const lettersAndDigits = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+function chargeNamesSeller(r: StoredPaymentReceipt, merchant: string): boolean {
+  const tail = SELLER_NAMED_CHARGE[r.processor]?.exec(merchant.trim())?.[1];
+  if (!tail) return false;
+  const name = lettersAndDigits(tail);
+  if (name.length < 4) return false;
+  return r.payee.split(",").some((seller) => {
+    const s = lettersAndDigits(seller);
+    return s.length >= 4 && (s.startsWith(name) || name.startsWith(s));
+  });
+}
+
+/**
+ * Whether a line carries a charge of the receipt: the same pesos, or for a dollar receipt the same
  * dollars to the cent. A dollar receipt never pairs with a peso-only line: within a few percent of
  * the day's rate, any purchase of the week could fit.
  */
-function sameAmount(r: StoredPaymentReceipt, l: ReceiptCandidateLine): boolean {
-  if (r.currency === "clp") return (l.principal_clp ?? l.amount_clp) === r.amount;
-  return l.amount_usd != null && Math.abs(l.amount_usd - r.amount) < 0.005;
+function sameAmount(r: StoredPaymentReceipt, amount: number, l: ReceiptCandidateLine): boolean {
+  if (r.currency === "clp") return (l.principal_clp ?? l.amount_clp) === amount;
+  return l.amount_usd != null && Math.abs(l.amount_usd - amount) < 0.005;
 }
 
 /** A line may be dated the day before the receipt (a mail sent after midnight) up to a few days after. */
@@ -172,16 +233,27 @@ function dayDiff(a: string, b: string): number {
 }
 
 /**
- * Pairs each receipt with the one expense line it paid: same pesos (an installment purchase's total
- * line for a split payment), or for a dollar receipt the same dollars to the cent, dated from the day before the payment to five days after. Receipts go
- * in payment order and each line is taken once, so identical payments pair in order. Among the
- * lines left, the nearest day wins, then a line whose merchant names the processor; a tie that
- * remains is reported and left unpaired.
+ * Pairs each receipt with the expense line it paid, or a split payment (`charges`) with one line per
+ * charge, all or none. A receipt stating no amount pairs last, with the lines its shop's statement
+ * name (`STATEMENT_NAME_FOR_AMOUNTLESS`) or one of its sellers (`SELLER_NAMED_CHARGE`) marks on the
+ * nearest day. Otherwise: same pesos (an installment purchase's total line for a charge in cuotas), or
+ * for a dollar receipt the same dollars to the cent, dated from the day before the payment to five
+ * days after. Receipts go in payment order and each line is taken once, so identical payments pair
+ * in order. Among the lines left, the nearest day wins, then a line whose merchant names the
+ * processor; a tie that remains is reported and leaves the receipt unpaired.
  */
 export function matchPaymentReceipts(
   receipts: readonly StoredPaymentReceipt[],
   lines: readonly ReceiptCandidateLine[]
-): { byPurchaseKey: Map<string, StoredPaymentReceipt>; unpaired: Record<string, number>; ambiguous: string[] } {
+): {
+  byPurchaseKey: Map<string, StoredPaymentReceipt>;
+  /** For a split payment's lines: which charge each is. */
+  chargeByPurchaseKey: Map<string, { position: number; of: number }>;
+  /** Receipts paired (a split payment counts once). */
+  receiptsPaired: number;
+  unpaired: Record<string, number>;
+  ambiguous: string[];
+} {
   const candidates = new Map<string, ReceiptCandidateLine>();
   for (const l of lines) {
     if (l.source !== "cc" && l.source !== "checking") continue;
@@ -191,37 +263,99 @@ export function matchPaymentReceipts(
   }
   const taken = new Set<string>();
   const byPurchaseKey = new Map<string, StoredPaymentReceipt>();
+  const chargeByPurchaseKey = new Map<string, { position: number; of: number }>();
+  let receiptsPaired = 0;
   const unpaired: Record<string, number> = {};
   const ambiguous: string[] = [];
   const sorted = [...receipts].sort((a, b) => a.paid_at_chile.localeCompare(b.paid_at_chile) || a.message_id.localeCompare(b.message_id));
-  for (const r of sorted) {
+
+  /** The line one charge of `r` was taken as, or why there is none. */
+  function lineFor(r: StoredPaymentReceipt, amount: number, claimed: ReadonlySet<string>): ReceiptCandidateLine | "none" | string {
     const paidOn = r.paid_at_chile.slice(0, 10);
     const hint = PROCESSOR_MERCHANT_HINT[r.processor];
     const fits = [...candidates.values()]
-      .filter((l) => !taken.has(l.purchase_key) && sameAmount(r, l))
+      .filter((l) => !taken.has(l.purchase_key) && !claimed.has(l.purchase_key) && sameAmount(r, amount, l))
       .map((l) => ({ l, d: dayDiff(l.purchase_on!, paidOn) }))
       .filter((c) => c.d >= -DAYS_BEFORE && c.d <= DAYS_AFTER)
       .map((c) => ({ ...c, rank: Math.abs(c.d) * 2 + (hint?.test(c.l.merchant ?? "") ? 0 : 1) }))
       .sort((a, b) => a.rank - b.rank);
-    if (fits.length === 0) {
-      unpaired.no_line = (unpaired.no_line ?? 0) + 1;
-      continue;
-    }
+    if (fits.length === 0) return "none";
     const best = fits.filter((f) => f.rank === fits[0]!.rank);
     // Lines that differ only by key are twins (two identical charges): they pair in order.
     const twins = best.every(
       (f) => f.l.purchase_on === best[0]!.l.purchase_on && f.l.merchant === best[0]!.l.merchant && f.l.source === best[0]!.l.source
     );
     if (best.length > 1 && !twins) {
-      ambiguous.push(`${r.paid_at_chile} ${r.processor} → ${r.payee} ${r.amount}: ${best.map((f) => `${f.l.purchase_on} ${f.l.merchant}`).join(" | ")}`);
+      return `${r.paid_at_chile} ${r.processor} → ${r.payee} ${amount}: ${best.map((f) => `${f.l.purchase_on} ${f.l.merchant}`).join(" | ")}`;
+    }
+    return best[0]!.l;
+  }
+
+  const pair = (r: StoredPaymentReceipt, picks: readonly ReceiptCandidateLine[]) => {
+    receiptsPaired++;
+    picks.forEach((pick, i) => {
+      taken.add(pick.purchase_key);
+      byPurchaseKey.set(pick.purchase_key, r);
+      if (picks.length > 1) chargeByPurchaseKey.set(pick.purchase_key, { position: i + 1, of: picks.length });
+    });
+  };
+
+  for (const r of sorted) {
+    if (r.amount == null) continue;
+    const parts = r.charges && r.charges.length > 0 ? r.charges.map((c) => c.amount) : [r.amount];
+    const claimed = new Set<string>();
+    const picks: ReceiptCandidateLine[] = [];
+    let failure: "none" | string | null = null;
+    for (const amount of parts) {
+      const pick = lineFor(r, amount, claimed);
+      if (typeof pick === "string") {
+        failure = pick;
+        break;
+      }
+      claimed.add(pick.purchase_key);
+      picks.push(pick);
+    }
+    if (failure === "none") {
+      unpaired.no_line = (unpaired.no_line ?? 0) + 1;
+      continue;
+    }
+    if (failure != null) {
+      ambiguous.push(failure);
       unpaired.ambiguous = (unpaired.ambiguous ?? 0) + 1;
       continue;
     }
-    const pick = best[0]!.l;
-    taken.add(pick.purchase_key);
-    byPurchaseKey.set(pick.purchase_key, r);
+    pair(r, picks);
   }
-  return { byPurchaseKey, unpaired, ambiguous };
+
+  // Receipts stating no amount, once every amount has claimed its lines: the lines left on the
+  // nearest day that carry the shop's own statement name, all of them (an order charged per seller).
+  const amountless = sorted
+    .filter((r) => r.amount == null)
+    .map((r) => {
+      const name = STATEMENT_NAME_FOR_AMOUNTLESS[r.processor];
+      if (!name) throw new Error(`payment receipt ${r.message_id}: ${r.processor} states no amount and has no statement name to pair by`);
+      const paidOn = r.paid_at_chile.slice(0, 10);
+      const fits = [...candidates.values()]
+        .filter((l) => !taken.has(l.purchase_key) && (name.test(l.merchant ?? "") || chargeNamesSeller(r, l.merchant ?? "")))
+        .map((l) => ({ l, d: dayDiff(l.purchase_on!, paidOn) }))
+        .filter((c) => c.d >= -DAYS_BEFORE && c.d <= DAYS_AFTER);
+      const nearest = Math.min(...fits.map((f) => Math.abs(f.d)));
+      return { r, lines: fits.filter((f) => Math.abs(f.d) === nearest).map((f) => f.l) };
+    });
+  for (const a of amountless) {
+    if (a.lines.length === 0) {
+      unpaired.no_line = (unpaired.no_line ?? 0) + 1;
+      continue;
+    }
+    const rivals = amountless.filter((b) => b !== a && b.lines.some((l) => a.lines.includes(l)));
+    if (rivals.length > 0) {
+      ambiguous.push(`${a.r.paid_at_chile} ${a.r.processor} → ${a.r.payee} (no amount): shares ${a.lines.map((l) => `${l.purchase_on} ${l.merchant}`).join(" | ")} with ${rivals.length} other`);
+      unpaired.ambiguous = (unpaired.ambiguous ?? 0) + 1;
+      continue;
+    }
+    pair(a.r, [...a.lines].sort((x, y) => x.purchase_key.localeCompare(y.purchase_key)));
+  }
+  return { byPurchaseKey, chargeByPurchaseKey, receiptsPaired, unpaired, ambiguous };
 }
 
 const PROCESSOR_NAMES: Record<string, string> = {
@@ -234,12 +368,13 @@ const PROCESSOR_NAMES: Record<string, string> = {
   eventbrite: "Eventbrite",
   micoca_cola: "miCoca-Cola",
   dynavap: "DynaVap",
+  mercadolibre: "Mercado Libre",
 };
 
 /** Sources that are the shop's own order confirmation rather than a processor's receipt. */
-const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap"]);
+const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre"]);
 
-function receiptDto(r: StoredPaymentReceipt): PaymentReceiptDto {
+function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: number } | null = null): PaymentReceiptDto {
   const name = PROCESSOR_NAMES[r.processor];
   if (!name) throw new Error(`payment receipt ${r.message_id}: unknown processor ${r.processor}`);
   return {
@@ -253,6 +388,7 @@ function receiptDto(r: StoredPaymentReceipt): PaymentReceiptDto {
     paid_at_chile: r.paid_at_chile,
     statement_descriptor: r.statement_descriptor,
     installments: r.installments,
+    charge,
     guess: false,
     basis: null,
   };
@@ -275,8 +411,9 @@ export function matchPaymentReceiptsToExpenseLines(lines: readonly (ReceiptCandi
   for (const [k, n] of Object.entries(orders.unpaired)) unpaired[k] = (unpaired[k] ?? 0) + n;
   return {
     byPurchaseKey: new Map([...receipts.byPurchaseKey, ...orders.byPurchaseKey]),
-    /** Documents paired (a charge with both a receipt and an order counts both). */
-    paired: receipts.byPurchaseKey.size + orders.byPurchaseKey.size,
+    chargeByPurchaseKey: new Map([...receipts.chargeByPurchaseKey, ...orders.chargeByPurchaseKey]),
+    /** Documents paired (a charge with both a receipt and an order counts both; a split payment once). */
+    paired: receipts.receiptsPaired + orders.receiptsPaired,
     unpaired,
     ambiguous: [...receipts.ambiguous, ...orders.ambiguous],
   };
@@ -302,6 +439,7 @@ export function withPaymentReceipts<L extends ReceiptCandidateLine & { account_i
       paid_at_chile: link.date,
       statement_descriptor: null,
       installments: null,
+      charge: null,
       guess: link.guess,
       basis: link.basis,
     });
@@ -310,11 +448,11 @@ export function withPaymentReceipts<L extends ReceiptCandidateLine & { account_i
     const r = l.source === "cc" ? appStore.get(`${l.account_id}|${l.purchase_key}`) : undefined;
     return r ? { ...l, payment_receipt: r } : l;
   });
-  const { byPurchaseKey } = matchPaymentReceiptsToExpenseLines(named.filter((l) => !("payment_receipt" in l)));
+  const { byPurchaseKey, chargeByPurchaseKey } = matchPaymentReceiptsToExpenseLines(named.filter((l) => !("payment_receipt" in l)));
   return named.map((l) => {
     if ("payment_receipt" in l) return l;
     const r = byPurchaseKey.get(l.purchase_key);
-    return r ? { ...l, payment_receipt: receiptDto(r) } : l;
+    return r ? { ...l, payment_receipt: receiptDto(r, chargeByPurchaseKey.get(l.purchase_key) ?? null) } : l;
   });
 }
 

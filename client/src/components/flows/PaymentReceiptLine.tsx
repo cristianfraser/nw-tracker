@@ -15,6 +15,7 @@ export function PaymentReceiptLine({ receipt }: { receipt: PaymentReceipt | unde
     r.payee_rut ? `RUT ${r.payee_rut}` : null,
     r.payee_email,
     r.order_ref ? `#${r.order_ref}` : null,
+    r.charge ? `${r.charge.position}/${r.charge.of}` : null,
     r.paid_at_chile,
     r.basis,
   ]
@@ -23,6 +24,7 @@ export function PaymentReceiptLine({ receipt }: { receipt: PaymentReceipt | unde
   return (
     <div className="muted" style={{ fontSize: "0.85em" }} title={detail}>
       {r.guess ? "≈" : "→"} {r.payee}
+      {r.charge ? ` · ${r.charge.position}/${r.charge.of}` : null}
       {r.concept ? <span style={{ marginLeft: "0.35rem", fontStyle: "italic" }}>«{r.concept}»</span> : null}
     </div>
   );

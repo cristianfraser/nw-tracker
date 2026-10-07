@@ -323,3 +323,55 @@ describe("DynaVap order mails (dollars)", () => {
     expect(dynavap.decode(mail("info@dynavap.com", "DynaVap - Order Status Changed to Shipped", "2036-01-01 10:00", "x"))).toBeNull();
   });
 });
+
+describe("MercadoLibre order mails", () => {
+  const ml = shop("mercadolibre");
+  const order = (subject: string, text: string) => ml.decode(mail("info@mercadolibre.cl", subject, "2036-06-04 10:15", text));
+
+  it("reads one charge in cuotas and names the seller", () => {
+    const r = order(
+      "Compraste Termoventilador Uno",
+      "Pagaste $ 55.470 6x $ 9.245 sin intereses con tarjeta de crédito Visa terminada en 1234 Información del vendedor TIENDA UNO SPA RUT: 765432109 Válido como boleta"
+    )!;
+    expect(r).toMatchObject({
+      processor: "mercadolibre",
+      payee: { name: "TIENDA UNO SPA", rut: "765432109" },
+      amount: 55470,
+      installments: 6,
+      charges: null,
+      concept: "Termoventilador Uno",
+      payment_method: "Visa crédito ·1234",
+      paid_at_chile: "2036-06-04 10:15",
+    });
+  });
+
+  it("reads an order from two sellers as two charges that add up to the total", () => {
+    const r = order(
+      "Compraste 2 productos",
+      "Pagaste $ 15.725 1x $ 8.865 y 1x $ 6.860 con tarjeta de crédito Visa terminada en 1234 Información del vendedor TIENDA UNO RUT: 111111111 TIENDA DOS RUT: 222222222 Válido como boleta"
+    )!;
+    expect(r.charges).toEqual([
+      { amount: 8865, installments: null },
+      { amount: 6860, installments: null },
+    ]);
+    expect(r.payee).toMatchObject({ name: "TIENDA UNO, TIENDA DOS", rut: null });
+  });
+
+  it("reads a mail with no amount (2026 on) and one with no seller (before mid-2024)", () => {
+    expect(order("Compraste Colgador", "Información del vendedor TIENDA UNO RUT: 111111111 Ver en mis compras")).toMatchObject({
+      amount: null,
+      installments: null,
+      payee: { name: "TIENDA UNO" },
+    });
+    expect(order("Compraste Bálsamo", "Pagaste $ 13.174 con tarjeta de crédito Visa terminada en 1234 Ver en mis compras")).toMatchObject({
+      amount: 13174,
+      payee: { name: "Mercado Libre", rut: null },
+    });
+  });
+
+  it("throws when the charges do not add up, or the mail states neither a payment nor a seller", () => {
+    expect(() => order("Compraste X", "Pagaste $ 15.000 1x $ 8.865 y 1x $ 6.860 con tarjeta Ver en mis compras")).toThrow(/add up/);
+    expect(() => order("Compraste X", "Gracias por tu compra")).toThrow(/neither/);
+    expect(order("Tu envío está en camino", "…")).toBeNull();
+  });
+});
