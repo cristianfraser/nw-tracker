@@ -23,6 +23,7 @@ import {
   upsertCcFacturadoFinancingLink,
 } from "../ccFacturadoFinancingLinksDb.js";
 import { buildFlowsCheckingIncomePayload } from "../flowsCheckingInflows.js";
+import { transferCounterpartiesByMovementSide, withTransferCounterparties } from "../bankTransferNotices.js";
 import {
   CHECKING_INCOME_KINDS,
   type CheckingIncomeKind,
@@ -75,7 +76,15 @@ app.get("/api/flows/deposits/reconciliation", (_req, res) => {
 });
 
 app.get("/api/income", (_req, res) => {
-  res.json(buildFlowsCheckingIncomePayload());
+  const payload = buildFlowsCheckingIncomePayload();
+  const counterparties = transferCounterpartiesByMovementSide();
+  res.json({
+    ...payload,
+    lines: withTransferCounterparties(payload.lines, counterparties),
+    excluded_lines: withTransferCounterparties(payload.excluded_lines, counterparties),
+    filtered_lines: withTransferCounterparties(payload.filtered_lines, counterparties),
+    card_reimbursement_lines: withTransferCounterparties(payload.card_reimbursement_lines, counterparties),
+  });
 });
 
 app.patch("/api/work-earnings/:id", (req, res) => {

@@ -290,3 +290,58 @@ export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayl
     };
   }).immediate();
 }
+
+/** A bank movement's counterparty as its transfer mail states it (expenses and income pages). */
+export type TransferCounterpartyDto = {
+  /** `out`: the client paid them; `in`: they paid the client; `own`: between the client's accounts. */
+  direction: "out" | "in" | "own";
+  name: string | null;
+  rut: string | null;
+  bank: string | null;
+  account_type: string | null;
+  account_number: string | null;
+  email: string | null;
+  comment: string | null;
+  /** When the mail was sent (Chile clock). */
+  sent_at_chile: string;
+};
+
+/** `<movement_id>|<account_id>` → the counterparty of every bank movement side a mail describes. */
+export function transferCounterpartiesByMovementSide(): Map<string, TransferCounterpartyDto> {
+  const rows = db
+    .prepare(
+      `SELECT t.movement_id, t.account_id, n.kind, n.sent_at_chile, n.comment,
+              n.from_name, n.from_rut, n.from_bank, n.from_account_type, n.from_account_number, n.from_email,
+              n.to_name, n.to_rut, n.to_bank, n.to_account_type, n.to_account_number, n.to_email
+       FROM movement_transfer_notices t JOIN bank_transfer_notices n USING (message_id)`
+    )
+    .all() as Record<string, string | number | null>[];
+  const out = new Map<string, TransferCounterpartyDto>();
+  for (const r of rows) {
+    const incoming = r.kind === "incoming";
+    const side = incoming ? "from" : "to";
+    out.set(`${r.movement_id}|${r.account_id}`, {
+      direction: r.kind === "between_own_products" ? "own" : incoming ? "in" : "out",
+      name: r[`${side}_name`] as string | null,
+      rut: r[`${side}_rut`] as string | null,
+      bank: r[`${side}_bank`] as string | null,
+      account_type: r[`${side}_account_type`] as string | null,
+      account_number: r[`${side}_account_number`] as string | null,
+      email: r[`${side}_email`] as string | null,
+      comment: r.comment as string | null,
+      sent_at_chile: String(r.sent_at_chile),
+    });
+  }
+  return out;
+}
+
+/** Income-style lines (`movement_id` + `account_id`) with their counterparty attached where a mail names it. */
+export function withTransferCounterparties<T extends { movement_id: number; account_id: number }>(
+  lines: readonly T[],
+  byMovementSide: ReadonlyMap<string, TransferCounterpartyDto> = transferCounterpartiesByMovementSide()
+): (T & { transfer_counterparty?: TransferCounterpartyDto })[] {
+  return lines.map((l) => {
+    const counterparty = byMovementSide.get(`${l.movement_id}|${l.account_id}`);
+    return counterparty ? { ...l, transfer_counterparty: counterparty } : l;
+  });
+}

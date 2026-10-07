@@ -1,3 +1,4 @@
+import { transferCounterpartiesByMovementSide, type TransferCounterpartyDto } from "./bankTransferNotices.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import {
   buildAdditionalCardsSummary,
@@ -239,6 +240,8 @@ export type FlowCcExpenseLineRow = {
    * (`ccFeedCuotaPurchases.ts`) — the card page asks for the count to turn it into its plan.
    */
   cuota_purchase_kind?: CcCuotaPurchaseKind;
+  /** Checking lines: who the transfer went to, as Santander's mail states it. */
+  transfer_counterparty?: TransferCounterpartyDto;
 
 };
 
@@ -1104,7 +1107,17 @@ function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]):
   syncExpenseDepositLinksFromGastosLines(withNotes);
   const withGroups = enrichFlowLinesWithBigGroups(withNotes);
   const withOrigin = enrichFlowLinesWithOriginLabels(withGroups);
-  return enrichFlowLinesWithExpenseDepositLinks(withOrigin);
+  return enrichFlowLinesWithTransferCounterparties(enrichFlowLinesWithExpenseDepositLinks(withOrigin));
+}
+
+/** A checking line's counterparty (statement_line_id is the movement id for checking lines). */
+function enrichFlowLinesWithTransferCounterparties(lines: FlowCcExpenseLineRow[]): FlowCcExpenseLineRow[] {
+  const byMovementSide = transferCounterpartiesByMovementSide();
+  return lines.map((l) => {
+    if (l.source !== "checking") return l;
+    const counterparty = byMovementSide.get(`${l.statement_line_id}|${l.account_id}`);
+    return counterparty ? { ...l, transfer_counterparty: counterparty } : l;
+  });
 }
 
 /**
