@@ -214,8 +214,8 @@ describe("an undated header payment's legs", () => {
         .run(ccId).lastInsertRowid
     );
     const insLeg = db.prepare(
-      `INSERT INTO cc_header_payment_legs (account_id, statement_close_iso, paid_on, amount_clp, source)
-       VALUES (?, '2037-06-24', ?, ?, 'bank_debit')`
+      `INSERT INTO cc_header_payment_legs (account_id, statement_close_iso, currency, paid_on, amount, source)
+       VALUES (?, '2037-06-24', 'clp', ?, ?, 'bank_debit')`
     );
     insLeg.run(ccId, "2037-06-03", 400_000);
     insLeg.run(ccId, "2037-06-10", 600_000);

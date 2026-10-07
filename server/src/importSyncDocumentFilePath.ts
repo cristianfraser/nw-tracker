@@ -336,7 +336,7 @@ export function requireCcStatementPdfPath(
   return abs;
 }
 
-/** Fail when any imported PDF statement row has invalid `source_pdf` or no on-disk file. */
+/** Fail when any statement from the PDF corpus (`isCcStatementPdfSource`) has an invalid `source_pdf` or no on-disk file. */
 export function assertAllCcStatementPdfsResolvable(): void {
   const rows = db
     .prepare(
@@ -344,8 +344,6 @@ export function assertAllCcStatementPdfsResolvable(): void {
               s.card_last4
        FROM cc_statements s
        JOIN accounts a ON a.id = s.account_id
-       WHERE trim(s.source_pdf) != ''
-         AND s.source_pdf NOT LIKE 'import:web-paste%'
        ORDER BY s.account_id, s.source_pdf`
     )
     .all() as {
@@ -360,6 +358,7 @@ export function assertAllCcStatementPdfsResolvable(): void {
 
   const errors: string[] = [];
   for (const row of rows) {
+    if (!isCcStatementPdfSource(row.source_pdf)) continue;
     try {
       requireCcStatementPdfPath(row.source_pdf, row);
     } catch (e) {

@@ -14,7 +14,9 @@ function isoFromPeriodField(raw: string | null | undefined): string | null {
 /** Real imported statement PDF (excludes web-paste / manual movement buckets). */
 export function isCcStatementPdfSource(sourcePdf: string | null | undefined): boolean {
   const t = String(sourcePdf ?? "").trim();
-  return t.length > 0 && !t.startsWith("import:web-paste");
+  // `import:<kind>|…` came from outside the PDF corpus: a web paste, the Santander statement JSON,
+  // statements rebuilt from mails (`import:santander-mail|`), the CMR card's mailed PDFs (`import:cmr|`).
+  return t.length > 0 && !t.startsWith("import:");
 }
 
 /** `YYYY-MM` from `credit_card_statements.period_to` (billing cycle end). */

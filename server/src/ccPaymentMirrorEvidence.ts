@@ -85,13 +85,13 @@ const stmtHeaderPayments = db.prepare(
 );
 
 // The dated legs of a header payment the statement printed without a date (migration 213), each on
-// the statement row of its close (the lowest id when the statement has several copies). A leg whose
-// close has no CLP statement any more is bad stored state: listed with a null statement, and
+// the statement row of its close in its currency (the lowest id when the statement has several
+// copies; dollar legs since migration 218). A leg whose close has no statement any more is bad stored state: listed with a null statement, and
 // `listCcPaymentEvidenceRows` throws on it.
 const stmtHeaderLegs = db.prepare(
-  `SELECT g.id AS leg_id, g.account_id, a.name AS account_name, g.statement_close_iso, g.paid_on, g.amount_clp,
+  `SELECT g.id AS leg_id, g.account_id, a.name AS account_name, g.statement_close_iso, g.currency, g.paid_on, g.amount,
           (SELECT MIN(s.id) FROM cc_statements s
-            WHERE s.account_id = g.account_id AND s.currency = 'clp'
+            WHERE s.account_id = g.account_id AND s.currency = g.currency
               AND s.statement_date = substr(g.statement_close_iso, 9, 2) || '/' || substr(g.statement_close_iso, 6, 2) || '/' || substr(g.statement_close_iso, 1, 4)
               AND s.source_pdf NOT LIKE 'import:web-paste%') AS statement_id
    FROM cc_header_payment_legs g
@@ -184,13 +184,14 @@ export function listCcPaymentEvidenceRows(accountId?: number): CcPaymentEvidence
     account_id: number;
     account_name: string;
     statement_close_iso: string;
+    currency: "clp" | "usd";
     paid_on: string;
-    amount_clp: number;
+    amount: number;
     statement_id: number | null;
   }[]) {
     if (r.statement_id == null) {
       throw new Error(
-        `header payment leg ${r.leg_id} (card ${r.account_id}, ${r.paid_on} ${r.amount_clp}): no CLP statement closes on ${r.statement_close_iso}`
+        `header payment leg ${r.leg_id} (card ${r.account_id}, ${r.paid_on} ${r.amount} ${r.currency}): no ${r.currency.toUpperCase()} statement closes on ${r.statement_close_iso}`
       );
     }
     push({
@@ -201,10 +202,10 @@ export function listCcPaymentEvidenceRows(accountId?: number): CcPaymentEvidence
       cc_account_id: r.account_id,
       cc_account_name: r.account_name,
       pago_iso: r.paid_on,
-      currency: "clp",
-      amount_clp: r.amount_clp,
-      amount_usd: null,
-      label: "MONTO CANCELADO (header leg)",
+      currency: r.currency,
+      amount_clp: r.currency === "clp" ? r.amount : 0,
+      amount_usd: r.currency === "usd" ? r.amount : null,
+      label: r.currency === "usd" ? `ABONO DE DIVISAS US$${r.amount.toFixed(2)} (header leg)` : "MONTO CANCELADO (header leg)",
     });
   }
   for (const r of stmtUsdAbonoLines.all(params) as {

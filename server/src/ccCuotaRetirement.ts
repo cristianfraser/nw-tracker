@@ -88,7 +88,7 @@ export function listClpCcPaymentEventsForAccount(accountId: number): ClpPaymentE
 
     // The dated legs of header payments the statement printed undated (migration 213).
     const legRows = db
-      .prepare(`SELECT paid_on, amount_clp FROM cc_header_payment_legs WHERE account_id = ?`)
+      .prepare(`SELECT paid_on, amount AS amount_clp FROM cc_header_payment_legs WHERE account_id = ? AND currency = 'clp'`)
       .all(accountId) as { paid_on: string; amount_clp: number }[];
 
     const byKey = new Map<string, ClpPaymentEvent>();
