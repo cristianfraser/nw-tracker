@@ -51,6 +51,24 @@ export type TaxReturnForeignShareSale = {
   result_clp: { usd_31dic: number; clp_ipc: number };
 };
 
+export type TaxReturnLossOffsetSource = "crypto" | "foreign_shares" | "foreign_dividends" | "funds_interest";
+
+/** Gains and losses that offset each other within one year, and what is left on either side. */
+export type TaxReturnOffsetBalance = {
+  gains_clp: number;
+  losses_clp: number;
+  deducted_clp: number;
+  unused_loss_clp: number;
+  taxed_gain_clp: number;
+  /** IGC at stake for the unused loss or the taxed gain; null without a tax chain. */
+  tax_effect_clp: number | null;
+};
+
+/** The year's code-169 pool (F22 line 17): losses deduct only from these gains, in the same year. */
+export type TaxReturnLossOffset = TaxReturnOffsetBalance & {
+  parts: { source: TaxReturnLossOffsetSource; gain_clp: number; loss_clp: number }[];
+};
+
 export type TaxReturnResponse = {
   tax_year: number;
   income_year: number;
@@ -82,6 +100,9 @@ export type TaxReturnResponse = {
     sales: TaxReturnCryptoSale[];
   };
   dividends: TaxReturnDividend[];
+  loss_offset: TaxReturnLossOffset;
+  /** Foreign share sales netted among themselves: a loss offsets nothing else. */
+  foreign_share_offset: TaxReturnOffsetBalance;
   foreign_shares: {
     default_mode: "usd_31dic" | "clp_ipc";
     provisional: boolean;

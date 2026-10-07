@@ -79,6 +79,49 @@ function F22Table({ rows }: { rows: TaxReturnRow[] }) {
   );
 }
 
+/**
+ * A year's offset balance: the code-169 pool (F22 line 17: crypto, fund and interest losses
+ * against those gains and foreign income) or the foreign share sales, whose loss offsets only
+ * other foreign share gains. Shown when a loss is left over, or, in the open year, when a gain
+ * could still be offset by realizing a loss.
+ */
+function LossOffsetHint({ data, kind }: { data: TaxReturnResponse; kind: "pool" | "foreign" }) {
+  const { t } = useTranslation();
+  const o = kind === "pool" ? data.loss_offset : data.foreign_share_offset;
+  const k = (key: string) => `taxReturn.lossOffset.${kind === "foreign" ? `foreign${key[0].toUpperCase()}${key.slice(1)}` : key}`;
+  const year = data.income_year;
+  const tax = o.tax_effect_clp != null && o.tax_effect_clp > 0 ? formatClp(o.tax_effect_clp) : null;
+  let text: string | null = null;
+  if (o.unused_loss_clp > 0) {
+    const amount = formatClp(o.unused_loss_clp);
+    text = data.provisional
+      ? `${t(k("unusedOpen"), { year, amount })}${tax ? ` ${t("taxReturn.lossOffset.unusedOpenTax", { tax })}` : ""}`
+      : t(k("unusedClosed"), { year, amount });
+  } else if (data.provisional && o.taxed_gain_clp > 0) {
+    const amount = formatClp(o.taxed_gain_clp);
+    const effect = tax
+      ? ` ${t("taxReturn.lossOffset.taxedOpenTax", { tax })}`
+      : o.tax_effect_clp === 0
+        ? ` ${t("taxReturn.lossOffset.taxedOpenNoTax")}`
+        : "";
+    text = `${t(k("taxedOpen"), { year, amount })}${effect}`;
+  }
+  if (text == null) return null;
+  const parts =
+    kind === "pool"
+      ? data.loss_offset.parts
+          .filter((p) => p.gain_clp !== 0 || p.loss_clp !== 0)
+          .map((p) => `${t(`taxReturn.lossOffset.source.${p.source}`)} ${formatClp(p.gain_clp - p.loss_clp)}`)
+          .join(" · ")
+      : "";
+  return (
+    <p style={o.unused_loss_clp > 0 ? { color: "var(--negative)" } : undefined}>
+      {text}
+      {parts ? <span className="muted"> {t("taxReturn.lossOffset.breakdown", { parts })}</span> : null}
+    </p>
+  );
+}
+
 function CryptoSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   const c = data.crypto;
@@ -144,6 +187,7 @@ function CryptoSection({ data }: { data: TaxReturnResponse }) {
           ? ` ${t("taxReturn.crypto.informed", { amount: formatClp(c.informed_sales_clp) })}`
           : ""}
       </p>
+      <LossOffsetHint data={data} kind="pool" />
     </section>
   );
 }
@@ -194,6 +238,7 @@ function DividendsSection({ data }: { data: TaxReturnResponse }) {
           </tr>
         ))}
       </Table>
+      <LossOffsetHint data={data} kind="pool" />
     </section>
   );
 }
@@ -239,6 +284,7 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
           </tr>
         ))}
       </Table>
+      <LossOffsetHint data={data} kind="foreign" />
     </section>
   );
 }
@@ -285,6 +331,9 @@ export function TaxReturnPage() {
           <F22Table rows={data.rows} />
           {data.rows.some((r) => r.estimated) ? <p className="muted">{t("taxReturn.estimatedNote")}</p> : null}
           <p className="muted">{t("taxReturn.paymentNote")}</p>
+          {data.crypto.sales.length === 0 && data.dividends.length === 0 && data.foreign_shares.sales.length === 0 ? (
+            <LossOffsetHint data={data} kind="pool" />
+          ) : null}
           <CryptoSection data={data} />
           <DividendsSection data={data} />
           <ForeignSharesSection data={data} />
