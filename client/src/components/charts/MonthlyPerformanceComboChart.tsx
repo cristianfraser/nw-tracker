@@ -1,4 +1,4 @@
-import { Area, Bar, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
+import { Area, Bar, DefaultLegendContent, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo, type ReactNode } from "react";
 import { lightenStrokeForAccumulated } from "../../chartColors";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
@@ -7,7 +7,7 @@ import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import i18n from "../../i18n";
 import { AppComposedChart } from "./AppComposedChart";
-import { hasBandableBarGroups } from "./chartBandEdges";
+import type { ChartTooltipEntry } from "./ChartTooltip";
 import {
   AXIS_LINE_STROKE,
   buildNiceYAxis,
@@ -16,10 +16,13 @@ import {
   formatTooltipValue,
   minMaxForKeys,
   moneyYAxisProps,
+  rechartsMoneyYAxisWidth,
   resolvePeriodXAxis,
   type ChartDisplayUnit,
 } from "./chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
+
+const BAR_MAX_SIZE = 28;
 
 const CHART_ANIM_MS = 90;
 
@@ -80,7 +83,40 @@ export type MonthlyPlLineSeries = {
   strokeWidth?: number;
   strokeDasharray?: string;
   showDot?: boolean;
+  /**
+   * `dataKey` of the bar this line belongs to (e.g. its moving average). The legend and the
+   * tooltip list the line right after that bar instead of after every bar.
+   */
+  pairsWithBar?: string;
 };
+
+/**
+ * Legend/tooltip rank of each series key when some line pairs with a bar: every bar followed by
+ * its paired lines, then the unpaired lines. Null when nothing pairs, so the render order stands.
+ * Keys not ranked here (the area) keep their place ahead of the ranked ones.
+ */
+function pairedSeriesRank(
+  bars: MonthlyPlBarSeries[],
+  lines: MonthlyPlLineSeries[]
+): Map<string, number> | null {
+  if (!lines.some((l) => l.pairsWithBar != null)) return null;
+  const order: string[] = [];
+  for (const b of bars) {
+    order.push(b.dataKey);
+    for (const l of lines) if (l.pairsWithBar === b.dataKey) order.push(l.dataKey);
+  }
+  for (const l of lines) if (!order.includes(l.dataKey)) order.push(l.dataKey);
+  return new Map(order.map((k, i) => [k, i]));
+}
+
+function sortBySeriesRank<T extends { dataKey?: unknown }>(
+  entries: readonly T[],
+  rank: Map<string, number> | null
+): T[] {
+  if (!rank) return [...entries];
+  const r = (e: T) => rank.get(String(e.dataKey)) ?? -1;
+  return [...entries].sort((a, b) => r(a) - r(b));
+}
 
 function diamondDotFill(stroke: string): string {
   const lightened = lightenStrokeForAccumulated(stroke);
@@ -175,6 +211,11 @@ export function MonthlyPerformanceComboChart({
     [allLineSeries, rangedPoints]
   );
 
+  const seriesRank = useMemo(
+    () => pairedSeriesRank(visibleBarSeries, resolvedLineSeries),
+    [visibleBarSeries, resolvedLineSeries]
+  );
+
   const densePoints = useMemo(
     () =>
       densifyRecordsByCalendarPeriod(rangedPoints, {
@@ -226,38 +267,41 @@ export function MonthlyPerformanceComboChart({
     );
   }
 
+  // The YTD area renders as two year-parity stripe series; merge whichever stripe is hit back into
+  // a single row labeled as the area.
+  const mergeAreaStripes = (payload: ChartTooltipEntry[]): ChartTooltipEntry[] => {
+    const stripeHit = payload.find(
+      (e) => isAreaStripeDataKey(e.dataKey) && typeof e.value === "number" && Number.isFinite(e.value)
+    );
+    const rest = payload.filter((e) => !isAreaStripeDataKey(e.dataKey));
+    return stripeHit != null
+      ? [
+          ...rest,
+          {
+            ...stripeHit,
+            dataKey: areaKey ?? "",
+            name: areaName ?? "",
+            color: areaStroke ?? "#64748b",
+          },
+        ]
+      : rest;
+  };
+
   return (
     <div className="chart-grid__col">
       <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} />
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={plotPoints}
-          groupedBars={hasBandableBarGroups(visibleBarSeries.length, densePoints.length)}
+          barGroup={{
+            count: visibleBarSeries.length,
+            maxBarSize: BAR_MAX_SIZE,
+            yAxisWidth: rechartsMoneyYAxisWidth(displayUnit, compactAxis),
+          }}
           tooltip={{
             formatValue: (v) => formatTooltipValue(v, displayUnit),
             formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
-            // The YTD area renders as two year-parity stripe series; merge whichever stripe is
-            // hit back into a single row labeled as the area.
-            mapPayload: (payload) => {
-              const stripeHit = payload.find(
-                (e) =>
-                  isAreaStripeDataKey(e.dataKey) &&
-                  typeof e.value === "number" &&
-                  Number.isFinite(e.value)
-              );
-              const rest = payload.filter((e) => !isAreaStripeDataKey(e.dataKey));
-              return stripeHit != null
-                ? [
-                    ...rest,
-                    {
-                      ...stripeHit,
-                      dataKey: areaKey ?? "",
-                      name: areaName ?? "",
-                      color: areaStroke ?? "#64748b",
-                    },
-                  ]
-                : rest;
-            },
+            mapPayload: (payload) => sortBySeriesRank(mergeAreaStripes(payload), seriesRank),
             cursor: true,
           }}
         >
@@ -281,6 +325,12 @@ export function MonthlyPerformanceComboChart({
             <Legend
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
               formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
+              content={({ ref: _ref, ...legend }) => (
+                <DefaultLegendContent
+                  {...legend}
+                  payload={sortBySeriesRank(legend.payload ?? [], seriesRank)}
+                />
+              )}
             />
             {areaKey && areaFill && areaStroke && areaName ? (
               alternateYearAreaStripes ? (
@@ -336,7 +386,7 @@ export function MonthlyPerformanceComboChart({
                 fill={b.color}
                 isAnimationActive
                 animationDuration={CHART_ANIM_MS}
-                maxBarSize={28}
+                maxBarSize={BAR_MAX_SIZE}
               />
             ))}
             {resolvedLineSeries.map((l) => (
