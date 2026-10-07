@@ -101,10 +101,8 @@ export const merchantPurchaseDocumentKind = defineIngestKind({
 export type MerchantPurchaseDocument = MerchantPurchaseDocumentPayload["documents"][number];
 export type MerchantPurchaseDocumentPayload = z.infer<typeof merchantPurchaseDocumentKind.payload>;
 
-/** `details` of an applied `merchant.purchase_document`: what the expense-note matcher did. */
+/** `details` of an applied `merchant.purchase_document`: which charges its receipts name. */
 export type MerchantPurchaseDocumentApplyDetails = {
-  /** Expense notes written by this run (on any line, not only this document's). */
-  notes_written: { account_id: number; date: string; note: string; basis: string }[];
   /** The card charge each receipt of this source paired with; null while it waits for one. */
   receipt_lines: ({ account_id: number; date: string } | null)[];
   /** Receipts whose app could not be named (the item names only a product). */

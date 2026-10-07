@@ -2,8 +2,9 @@ import type { PaymentReceipt } from "../../types/flows";
 
 /**
  * Who a processor charge («PAGOS.FLOW.CL», «PAGO FACIL») actually paid, under its description:
- * «→ payee · concept», like a transfer's counterparty. The full receipt (processor, order, RUT,
- * e-mail, when it was paid) is in the tooltip. Data only, nothing to translate.
+ * «→ payee «concept»», like a transfer's counterparty; an inferred one (a subscription's cycle, a
+ * monthly run) reads «≈ payee». The full receipt (processor, order, RUT, e-mail, when it was paid,
+ * what the link rests on) is in the tooltip. Data only, nothing to translate.
  */
 export function PaymentReceiptLine({ receipt }: { receipt: PaymentReceipt | undefined }) {
   if (!receipt) return null;
@@ -15,12 +16,13 @@ export function PaymentReceiptLine({ receipt }: { receipt: PaymentReceipt | unde
     r.payee_email,
     r.order_ref ? `#${r.order_ref}` : null,
     r.paid_at_chile,
+    r.basis,
   ]
     .filter(Boolean)
     .join("\n");
   return (
     <div className="muted" style={{ fontSize: "0.85em" }} title={detail}>
-      → {r.payee}
+      {r.guess ? "≈" : "→"} {r.payee}
       {r.concept ? <span style={{ marginLeft: "0.35rem", fontStyle: "italic" }}>«{r.concept}»</span> : null}
     </div>
   );

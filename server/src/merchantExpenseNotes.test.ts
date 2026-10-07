@@ -4,7 +4,7 @@ import { importCcWebPasteLines } from "./accountImports.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
-import { APP_STORE_MERCHANT, matchMerchantExpenseNotes, onBillingCycle, shortAppLabel } from "./merchantExpenseNotes.js";
+import { APP_STORE_MERCHANT, deriveMerchantChargeLinks, onBillingCycle, shortAppLabel } from "./merchantExpenseNotes.js";
 import { applyMerchantPurchaseDocument } from "./merchantPurchaseDocumentApply.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { snapshotTables } from "./test/snapshotTables.js";
@@ -66,6 +66,12 @@ describe("merchantExpenseNotes", () => {
     (db.prepare(`SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`).get(accountId, key) as
       | { notes: string }
       | undefined)?.notes ?? null;
+
+  /** The charge's name as the expense lines show it: «label», or «≈ label» when inferred. */
+  const named = (key: string, today = TODAY, account = accountId): string | null => {
+    const l = deriveMerchantChargeLinks({ merchant: MERCHANT, today }).links.find((x) => x.account_id === account && x.key === key);
+    return l ? `${l.guess ? "≈ " : ""}${l.label}` : null;
+  };
 
   const receipt = (issuedOn: string, items: { app: string | null; product?: string | null; amount: number; renews?: boolean; icon?: string }[]): MerchantPurchaseDocument => ({
     type: "receipt",
@@ -139,9 +145,9 @@ describe("merchantExpenseNotes", () => {
     const result = send(receipt("2037-02-10", [{ app: "Example Chat - Meet People", product: "Boost", amount: 12990 }]));
     expect(result.status).toBe("applied");
     send(receipt("2037-02-12", [{ app: "Example Game: Towers", product: "Gems", amount: 4990 }]));
-    expect(note(pesos)).toBe("example chat");
-    expect(note(dollars)).toBe("example game");
-    expect(note(unrelated)).toBeNull();
+    expect(named(pesos)).toBe("example chat");
+    expect(named(dollars)).toBe("example game");
+    expect(named(unrelated)).toBeNull();
   });
 
   it("reuses an existing note the app's name starts with", () => {
@@ -149,35 +155,43 @@ describe("merchantExpenseNotes", () => {
     db.prepare(`INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'example')`).run(accountId, old);
     const k = line("2037-02-16", { pesos: 6100 });
     send(receipt("2037-02-15", [{ app: "Example Dating App: Meet", amount: 6100 }]));
-    expect(note(k)).toBe("example");
+    expect(named(k)).toBe("example");
   });
 
   it("pairs each receipt with one charge, a charge on or after the receipt first", () => {
     const before = line("2037-03-04", { pesos: 7000 });
     const after = line("2037-03-06", { pesos: 7000 });
     send(receipt("2037-03-05", [{ app: "Example Chat", amount: 7000 }]));
-    expect(note(after)).toBe("example chat");
-    expect(note(before)).toBeNull();
+    expect(named(after)).toBe("example chat");
+    expect(named(before)).toBeNull();
   });
 
-  it("never overwrites a note, and a rerun writes nothing", () => {
+  it("writes no note: a note the user wrote stays, and the charge is still named", () => {
     const k = line("2037-04-02", { pesos: 9000 });
     db.prepare(`INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'mine')`).run(accountId, k);
+    const other = line("2037-04-12", { pesos: 9100 });
     send(receipt("2037-04-01", [{ app: "Example Chat", amount: 9000 }]));
+    send(receipt("2037-04-11", [{ app: "Example Chat", amount: 9100 }]));
     expect(note(k)).toBe("mine");
-    expect(matchMerchantExpenseNotes({ apply: true, merchant: MERCHANT, today: TODAY }).notes_written).toEqual([]);
+    expect(note(other)).toBeNull();
+    // The page shows the app's printed name; the label follows the user's note.
+    const links = deriveMerchantChargeLinks({ merchant: MERCHANT, today: TODAY }).links;
+    expect(links.filter((l) => l.key === k || l.key === other).map((l) => [l.name, l.guess])).toEqual([
+      ["Example Chat", false],
+      ["Example Chat", false],
+    ]);
   });
 
   it("takes a product-only item's app from another receipt with the same artwork, else reports it", () => {
-    const named = line("2037-05-03", { pesos: 2000 });
+    const withApp = line("2037-05-03", { pesos: 2000 });
     const productOnly = line("2037-05-11", { pesos: 7190 });
     const unknown = line("2037-05-20", { pesos: 3500 });
     send(receipt("2037-05-02", [{ app: "Example Chat", product: "Boost", amount: 2000, icon: "a/b/chat" }]));
     send(receipt("2037-05-10", [{ app: null, product: "1 Boost", amount: 7190, icon: "a/b/chat" }]));
     const last = send(receipt("2037-05-19", [{ app: null, product: "Gold Pass", amount: 3500, icon: "a/b/other" }]));
-    expect(note(named)).toBe("example chat");
-    expect(note(productOnly)).toBe("example chat");
-    expect(note(unknown)).toBeNull();
+    expect(named(withApp)).toBe("example chat");
+    expect(named(productOnly)).toBe("example chat");
+    expect(named(unknown)).toBeNull();
     expect(last.status === "applied" && last.details.unresolved).toEqual([{ issued_on: "2037-05-19", products: ["Gold Pass"] }]);
   });
 
@@ -186,9 +200,9 @@ describe("merchantExpenseNotes", () => {
     const renewal = line("2037-04-26", { usd: 4.5 }); // dollars only, 4.500 pesos ≈ 4.490
     const offCycle = line("2037-04-10", { pesos: 4490 });
     send(receipt("2037-01-24", [{ app: "Example Music", product: "Membership", amount: 4490, renews: true }]));
-    expect(note(first)).toBe("example music");
-    expect(note(renewal)).toBe("example music");
-    expect(note(offCycle)).toBeNull();
+    expect(named(first)).toBe("example music");
+    expect(named(renewal)).toBe("≈ example music");
+    expect(named(offCycle)).toBeNull();
 
     // Another app at the same price, billing on the same day of the month.
     const both = line("2037-07-25", { pesos: 4490 });
@@ -206,7 +220,7 @@ describe("merchantExpenseNotes", () => {
       card_last4: "0000",
     });
     // Example Radio's anchor (30 days) is nearer than Example Music's charges (90 days).
-    expect(note(both)).toBe("guess: example radio");
+    expect(named(both)).toBe("≈ example radio");
   });
 
   it("takes a new price from the day it starts, and carries a hand note to the next month's charge", () => {
@@ -225,31 +239,29 @@ describe("merchantExpenseNotes", () => {
       expires_on: null,
       card_last4: null,
     });
-    expect(note(early)).toBeNull();
-    expect(note(raised)).toBe("example music");
+    expect(named(early)).toBeNull();
+    expect(named(raised)).toBe("≈ example music");
 
     const handNoted = line("2037-09-03", { pesos: 3300 });
     db.prepare(`INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'example tv')`).run(accountId, handNoted);
     const next = line("2037-10-04", { pesos: 3300 });
-    expect(matchMerchantExpenseNotes({ apply: true, merchant: MERCHANT, today: TODAY }).notes_written.map((n) => n.basis)).toEqual(["monthly run"]);
-    expect(note(next)).toBe("example tv");
+    expect(deriveMerchantChargeLinks({ merchant: MERCHANT, today: TODAY }).links.find((l) => l.key === next)?.basis).toBe("monthly run");
+    expect(named(next)).toBe("≈ example tv");
   });
 
   it("waits out the receipt window before a cadence note, and never runs a month from a one-off purchase", () => {
     send(receipt("2037-01-24", [{ app: "Example Music", amount: 4490, renews: true }]));
     const anchor = line("2037-01-25", { pesos: 4490 });
     const recent = line("2037-02-25", { pesos: 4490 });
-    expect(matchMerchantExpenseNotes({ apply: true, merchant: MERCHANT, today: "2037-02-28" }).notes_written.map((n) => n.date)).toEqual(["2037-01-25"]);
-    expect(note(anchor)).toBe("example music");
-    expect(note(recent)).toBeNull();
-    expect(matchMerchantExpenseNotes({ apply: true, merchant: MERCHANT, today: "2037-03-03" }).notes_written.map((n) => n.date)).toEqual(["2037-02-25"]);
+    expect(named(anchor, "2037-02-28")).toBe("example music");
+    expect(named(recent, "2037-02-28")).toBeNull();
+    expect(named(recent, "2037-03-03")).toBe("≈ example music");
 
     const boost = line("2037-03-11", { pesos: 7000 });
     send(receipt("2037-03-10", [{ app: "Example Chat", product: "Boost", amount: 7000 }]));
     const nextMonth = line("2037-04-11", { pesos: 7000 });
-    matchMerchantExpenseNotes({ apply: true, merchant: MERCHANT, today: TODAY });
-    expect(note(boost)).toBe("example chat");
-    expect(note(nextMonth)).toBeNull();
+    expect(named(boost)).toBe("example chat");
+    expect(named(nextMonth)).toBeNull();
   });
 
   it("names the charge when the card feed brings it after the receipt", () => {
@@ -267,10 +279,7 @@ describe("merchantExpenseNotes", () => {
     const lineId = (
       db.prepare(`SELECT id FROM cc_statement_lines WHERE raw_line = 'vitest apple paste'`).get() as { id: number }
     ).id;
-    const notes = db
-      .prepare(`SELECT notes FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`)
-      .get(master, resolveCcExpensePurchaseKey(lineId)) as { notes: string } | undefined;
-    expect(notes?.notes).toBe("example chat");
+    expect(named(resolveCcExpensePurchaseKey(lineId), TODAY, master)).toBe("example chat");
   });
 
   it("stores a source once: a resend is a duplicate, a different payload a conflict", () => {

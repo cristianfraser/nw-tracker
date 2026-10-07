@@ -1,11 +1,12 @@
 /**
- * App Store charges get the app's name as their expense note.
+ * App Store charges are named by the app they paid for.
  *
  * A card statement names every App Store charge the same way («APPLE.COM/BILL»); Apple's own
  * mails say what each one bought. `merchant.purchase_document` stores them (receipts with their
  * items, subscription notices with their price and billing dates — migration 204), and this
- * module writes the app onto the charges, only where the charge has no note yet: a note someone
- * wrote is never touched, and a rerun writes nothing new.
+ * module derives, every time the expense lines are built, which app each charge paid for: a link
+ * the expenses page shows under the charge like a payment processor's receipt
+ * (`paymentProcessorReceipts.ts`). Nothing is written; the expense notes are the user's own.
  *
  * Three kinds of evidence, strongest first:
  * 1. **Receipt.** A receipt pairs 1:1 with the charge on the card it names (its account), for
@@ -24,9 +25,9 @@
  * 3. **Monthly run.** A charge one month (26–35 days, day of month ± 3) after a noted charge of
  *    the same amount on the same card takes that note — unless that charge's receipt was a
  *    one-off purchase (a boost bought again a month later is no renewal).
- * One candidate app writes its name; several write «guess: <nearest>». Kinds 2 and 3 wait until
- * the receipt window has passed (a charge more than five days old): a receipt that arrives after
- * its charge still claims it first, and a note once written is never replaced.
+ * Kinds 2 and 3 are inferences and the link says so (`guess`); several candidate apps name the
+ * nearest. They wait until the receipt window has passed (a charge more than five days old), so a
+ * receipt that arrives after its charge claims it first.
  *
  * Labels: an app keeps the note its receipt-paired charges already carry («iCloud+» → «icloud»,
  * the majority among plain notes); else its printed name cut at the first « - », «: », «, » or
@@ -65,6 +66,7 @@ type Charge = {
   /** Pesos, or the dollars at the day's rate; null when neither can be had. */
   clp: number | null;
   note: string | null;
+  link: MerchantChargeLink | null;
 };
 
 type ReceiptItem = { app: string | null; product: string | null; amount: number; renews: boolean; period: Period | null; iconKey: string | null };
@@ -90,13 +92,27 @@ type Notice = {
   validBefore: string | null;
 };
 
-export type MerchantNoteWritten = { account_id: number; key: string; date: string; note: string; basis: string };
+/** Which app a charge paid for, as the documents show it. */
+export type MerchantChargeLink = {
+  account_id: number;
+  key: string;
+  date: string;
+  /** Short, lowercase, as an expense note would name it («grindr»). */
+  label: string;
+  /** The app's printed name(s) («Grindr - Gay Dating & Chat»). */
+  name: string;
+  /** What the receipt's items bought («Boost»), when it says. */
+  concept: string | null;
+  basis: string;
+  /** Inferred from a subscription's cycle or a monthly run, not from a receipt. */
+  guess: boolean;
+};
 
-export type MerchantExpenseNotesResult = {
-  notes_written: MerchantNoteWritten[];
+export type MerchantChargeLinksResult = {
+  links: MerchantChargeLink[];
   /** Each receipt's charge, by the receipt's source ref; absent = still waiting for one. */
   receipt_charges: Map<string, { account_id: number; date: string }[]>;
-  /** Receipts paired with an unnoted charge whose app no document names. */
+  /** Receipts paired with a charge whose app no document names. */
   unresolved: { source_ref: string; issued_on: string; products: string[] }[];
 };
 
@@ -209,7 +225,7 @@ function loadCharges(): Charge[] {
       seen.usd ??= usd;
       continue;
     }
-    byKey.set(mapKey, { accountId: r.account_id, key, date, pesos, usd, clp: null, note: notes.get(mapKey) ?? null });
+    byKey.set(mapKey, { accountId: r.account_id, key, date, pesos, usd, clp: null, note: notes.get(mapKey) ?? null, link: null });
   }
   const charges = [...byKey.values()];
   for (const c of charges) {
@@ -294,19 +310,15 @@ function loadNotices(merchant: string): Notice[] {
 
 // ---------------------------------------------------------------------------------------------
 
-/**
- * Writes the app behind every App Store charge that has no note yet and some document explains.
- * With `apply: false` it only reports what it would write.
- */
-export function matchMerchantExpenseNotes(opts: {
-  apply: boolean;
+/** Names every App Store charge some document explains (see the module comment). */
+export function deriveMerchantChargeLinks(opts?: {
   merchant?: string;
-  /** Chile today by default; charges within the receipt window of it get receipt notes only. */
+  /** Chile today by default; charges within the receipt window of it get receipt links only. */
   today?: string;
-}): MerchantExpenseNotesResult {
-  const merchant = opts.merchant ?? APP_STORE_MERCHANT;
-  const today = opts.today ?? chileWallClockAt(new Date()).ymd;
-  const result: MerchantExpenseNotesResult = { notes_written: [], receipt_charges: new Map(), unresolved: [] };
+}): MerchantChargeLinksResult {
+  const merchant = opts?.merchant ?? APP_STORE_MERCHANT;
+  const today = opts?.today ?? chileWallClockAt(new Date()).ymd;
+  const result: MerchantChargeLinksResult = { links: [], receipt_charges: new Map(), unresolved: [] };
   const hasDocuments = db.prepare(`SELECT 1 FROM merchant_document_sources WHERE merchant = ? LIMIT 1`).get(merchant);
   if (!hasDocuments) return result;
 
@@ -371,9 +383,18 @@ export function matchMerchantExpenseNotes(opts: {
     return prefix ?? short;
   };
 
-  const write = (c: Charge, note: string, basis: string): void => {
-    c.note = note;
-    result.notes_written.push({ account_id: c.accountId, key: c.key, date: c.date, note, basis });
+  const link = (c: Charge, apps: string[], labels: string[], concept: string | null, basis: string, guess: boolean): void => {
+    c.link = {
+      account_id: c.accountId,
+      key: c.key,
+      date: c.date,
+      label: labels.join(" + "),
+      name: apps.join(" + "),
+      concept,
+      basis,
+      guess,
+    };
+    result.links.push(c.link);
   };
 
   // 2. Receipt-paired charges.
@@ -383,7 +404,6 @@ export function matchMerchantExpenseNotes(opts: {
     const list = result.receipt_charges.get(r.sourceRef) ?? [];
     list.push({ account_id: c.accountId, date: c.date });
     result.receipt_charges.set(r.sourceRef, list);
-    if (c.note) continue;
     const apps = r.items.map(itemApp);
     if (apps.some((a) => a == null)) {
       result.unresolved.push({
@@ -393,11 +413,13 @@ export function matchMerchantExpenseNotes(opts: {
       });
       continue;
     }
-    write(c, [...new Set(apps.map((a) => label(a!)))].join(" + "), `receipt ${r.issuedOn}`);
+    const named = [...new Set(apps as string[])];
+    const products = [...new Set(r.items.map((i) => i.product).filter((x): x is string => !!x))];
+    link(c, named, [...new Set(named.map(label))], products.length > 0 ? products.join(" + ") : null, `receipt ${r.issuedOn}`, false);
   }
 
   // 3. Cadence evidence: subscription receipts' charges and notices.
-  type Evidence = { label: string; accountId: number | null; price: number; currency: "clp" | "usd"; period: Period; anchor: string; validFrom: string | null; validBefore: string | null; basis: string };
+  type Evidence = { app: string; label: string; accountId: number | null; price: number; currency: "clp" | "usd"; period: Period; anchor: string; validFrom: string | null; validBefore: string | null; basis: string };
   const evidence: Evidence[] = [];
   for (const [ri, ci] of chargeOfReceipt) {
     const r = receipts[ri]!;
@@ -406,6 +428,7 @@ export function matchMerchantExpenseNotes(opts: {
     const app = itemApp(item);
     if (!item.renews || app == null) continue;
     evidence.push({
+      app,
       label: label(app),
       accountId: charges[ci]!.accountId,
       price: item.amount,
@@ -419,7 +442,7 @@ export function matchMerchantExpenseNotes(opts: {
   }
   for (const n of notices) {
     for (const anchor of n.anchors) {
-      evidence.push({ label: label(n.app), accountId: n.accountId, price: n.price, currency: n.currency, period: n.period, anchor, validFrom: n.validFrom, validBefore: n.validBefore, basis: `subscription ${n.notice} notice` });
+      evidence.push({ app: n.app, label: label(n.app), accountId: n.accountId, price: n.price, currency: n.currency, period: n.period, anchor, validFrom: n.validFrom, validBefore: n.validBefore, basis: `subscription ${n.notice} notice` });
     }
   }
 
@@ -428,12 +451,12 @@ export function matchMerchantExpenseNotes(opts: {
   for (const [ri, ci] of chargeOfReceipt) if (receipts[ri]!.items.every((i) => !i.renews)) oneOff.add(ci);
 
   charges.forEach((c, ci) => {
-    if (c.note || receiptOfCharge.has(ci) || c.clp == null) return;
+    if (receiptOfCharge.has(ci) || c.clp == null) return;
     if (days(c.date, today) <= RECEIPT_DAYS_AFTER) return;
-    const found = new Map<string, { distance: number; basis: string; guess: boolean }>();
-    const offer = (lbl: string, distance: number, basis: string, guess: boolean): void => {
+    const found = new Map<string, { app: string; distance: number; basis: string }>();
+    const offer = (lbl: string, app: string, distance: number, basis: string): void => {
       const seen = found.get(lbl);
-      if (!seen || distance < seen.distance) found.set(lbl, { distance, basis, guess });
+      if (!seen || distance < seen.distance) found.set(lbl, { app, distance, basis });
     };
     for (const e of evidence) {
       if (e.accountId != null && e.accountId !== c.accountId) continue;
@@ -443,38 +466,27 @@ export function matchMerchantExpenseNotes(opts: {
       if (distance > CADENCE_WINDOW_DAYS) continue;
       if (amountsAgree(c, e.price, e.currency, CADENCE_FX_TOLERANCE) == null) continue;
       if (!onBillingCycle(c.date, e.anchor, e.period)) continue;
-      offer(e.label, distance, e.basis, false);
+      offer(e.label, e.app, distance, e.basis);
     }
     // 4. The same charge a month earlier, already noted.
     for (let pi = ci - 1; pi >= 0; pi--) {
       const p = charges[pi]!;
       const gap = days(p.date, c.date);
       if (gap > 35) break;
-      if (gap < 26 || p.accountId !== c.accountId || !p.note || p.clp == null || oneOff.has(pi)) continue;
+      // The earlier charge's name: its link, else a note the user wrote.
+      const prevLabel = p.link?.label ?? (p.note && !p.note.startsWith(GUESS_PREFIX) ? p.note : null);
+      if (gap < 26 || p.accountId !== c.accountId || !prevLabel || p.clp == null || oneOff.has(pi)) continue;
       const dom = Math.abs(Number(p.date.slice(8)) - Number(c.date.slice(8)));
       if (Math.min(dom, 31 - dom) > CADENCE_DAYS) continue;
       const same =
         p.pesos != null && c.pesos != null ? p.pesos === c.pesos : Math.abs(p.clp - c.clp) / p.clp <= CADENCE_FX_TOLERANCE;
       if (!same) continue;
-      const guess = p.note.startsWith(GUESS_PREFIX);
-      offer(guess ? p.note.slice(GUESS_PREFIX.length) : p.note, gap, "monthly run", guess);
+      offer(prevLabel, p.link?.name ?? prevLabel, gap, "monthly run");
     }
     if (found.size === 0) return;
     const ranked = [...found.entries()].sort((a, b) => a[1].distance - b[1].distance || a[0].localeCompare(b[0]));
     const [best, how] = ranked[0]!;
-    const uncertain = found.size > 1 || how.guess;
-    write(c, uncertain ? `${GUESS_PREFIX}${best}` : best, found.size > 1 ? `ambiguous: ${ranked.map((r) => r[0]).join(" / ")}` : how.basis);
+    link(c, [how.app], [best], null, found.size > 1 ? `ambiguous: ${ranked.map((r) => r[0]).join(" / ")}` : how.basis, true);
   });
-
-  if (opts.apply && result.notes_written.length > 0) {
-    const insert = db.prepare(
-      `INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes, updated_at)
-       VALUES (?, ?, ?, datetime('now'))
-       ON CONFLICT(account_id, purchase_key) DO NOTHING`
-    );
-    db.transaction(() => {
-      for (const n of result.notes_written) insert.run(n.account_id, n.key, n.note);
-    })();
-  }
   return result;
 }

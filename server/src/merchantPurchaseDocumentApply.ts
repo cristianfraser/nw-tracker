@@ -1,12 +1,12 @@
 /**
  * `merchant.purchase_document`: stores a merchant's receipt or subscription notices (migration
- * 204) and runs the expense-note matcher, which writes the app onto the card charges they
- * explain (`merchantExpenseNotes.ts`). One source (a mail) is stored once: a resend with the same
+ * 204) and reports which card charge each receipt names (`merchantExpenseNotes.ts`, which the
+ * expense lines read to name every App Store charge). One source (a mail) is stored once: a resend with the same
  * payload is a duplicate, one with a different payload a conflict — nothing is overwritten.
  */
 import type { MerchantPurchaseDocumentApplyDetails, MerchantPurchaseDocumentPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import { matchMerchantExpenseNotes } from "./merchantExpenseNotes.js";
+import { deriveMerchantChargeLinks } from "./merchantExpenseNotes.js";
 
 export type MerchantPurchaseDocumentOutcome =
   | { status: "applied" | "duplicate"; details: MerchantPurchaseDocumentApplyDetails }
@@ -74,13 +74,12 @@ export function applyMerchantPurchaseDocument(
       return { status: "conflict", message: `${sourceRef} is already stored with different contents` };
     }
     if (!stored) storeDocuments(payload, sourceRef, payloadJson);
-    const matched = matchMerchantExpenseNotes({ apply: true, merchant: payload.merchant, today: opts?.today });
+    const matched = deriveMerchantChargeLinks({ merchant: payload.merchant, today: opts?.today });
     const receiptCharges = matched.receipt_charges.get(sourceRef) ?? [];
     const receipts = payload.documents.filter((d) => d.type === "receipt").length;
     return {
       status: stored ? "duplicate" : "applied",
       details: {
-        notes_written: matched.notes_written.map((n) => ({ account_id: n.account_id, date: n.date, note: n.note, basis: n.basis })),
         receipt_lines: Array.from({ length: receipts }, (_, i) => receiptCharges[i] ?? null),
         unresolved: matched.unresolved.map((u) => ({ issued_on: u.issued_on, products: u.products })),
       },

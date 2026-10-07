@@ -27,7 +27,8 @@ async function main(): Promise<number> {
   }
   const client = dryRun ? null : ingestClient();
   let failed = 0;
-  const notes: MerchantPurchaseDocumentApplyDetails["notes_written"] = [];
+  let paired = 0;
+  let waiting = 0;
   const unresolved = new Map<string, MerchantPurchaseDocumentApplyDetails["unresolved"][number]>();
   for (const file of files) {
     const staged = JSON.parse(fs.readFileSync(file, "utf8")) as StagedAppleMail;
@@ -65,7 +66,10 @@ async function main(): Promise<number> {
       }
       const details = result.details as MerchantPurchaseDocumentApplyDetails | undefined;
       if (details) {
-        notes.push(...details.notes_written);
+        for (const l of details.receipt_lines) {
+          if (l) paired++;
+          else waiting++;
+        }
         for (const u of details.unresolved) unresolved.set(`${u.issued_on}|${u.products.join("|")}`, u);
       }
     } catch (err) {
@@ -77,9 +81,9 @@ async function main(): Promise<number> {
     fs.renameSync(file, path.join(processed, path.basename(file)));
     log(`  ${status.padEnd(9)} ${staged.date.slice(0, 10)}  ${staged.subject}`);
   }
-  for (const n of notes) console.log(`  note  ${n.date}  account ${n.account_id}  «${n.note}»  (${n.basis})`);
+  if (paired + waiting > 0) console.log(`  receipts: ${paired} paired with their charge, ${waiting} waiting for one`);
   for (const u of unresolved.values()) console.log(`  app not named: receipt ${u.issued_on} — ${u.products.join(", ")}`);
-  console.log(`Summary: ${files.length - failed} sent, ${notes.length} note(s) written, ${failed} failed`);
+  console.log(`Summary: ${files.length - failed} sent, ${failed} failed`);
   return failed > 0 ? 1 : 0;
 }
 

@@ -82,9 +82,9 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   if (o.dryRun) await x.step(dry("Payment receipt mails"), npmRun("import:payment-receipt-mails", "--dry-run"));
   else await x.step("Payment receipt mails", npmRun("import:payment-receipt-mails"));
 
-  // 3d. Apple's mails, once the card lines they explain are in: the app on each charge's note.
-  if (o.dryRun) await x.step(dry("Apple receipts → expense notes"), npmRun("import:apple-mail", "--dry-run"));
-  else await x.step("Apple receipts → expense notes", npmRun("import:apple-mail"));
+  // 3d. Apple's mails, once the card lines they explain are in: which app each charge paid for.
+  if (o.dryRun) await x.step(dry("Apple receipts"), npmRun("import:apple-mail", "--dry-run"));
+  else await x.step("Apple receipts", npmRun("import:apple-mail"));
 
   // 4. Broker e-mail: the change detector, and the Fintual / Racional mail imports.
   if (o.dryRun) {
