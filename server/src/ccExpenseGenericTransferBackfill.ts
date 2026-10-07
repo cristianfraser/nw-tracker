@@ -12,6 +12,7 @@ import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
 import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
+import { CC_ISSUER_SLUGS } from "./ccIssuers.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 
@@ -98,8 +99,7 @@ export function backfillGenericTransferUniquePurchases(): {
 
   let merchant_rules_removed = 0;
   const accountIds = new Set<number>([
-    ...listCreditCardGroupMasterAccountIds("santander"),
-    ...listCreditCardGroupMasterAccountIds("bci"),
+    ...CC_ISSUER_SLUGS.flatMap((slug) => listCreditCardGroupMasterAccountIds(slug)),
   ]);
   if (checkingId != null) accountIds.add(checkingId);
 

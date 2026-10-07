@@ -62,7 +62,7 @@ export function isCheckingGastosWithdrawalNote(note: string | null | undefined):
 
 export const INTERNAL_TRANSFER_RE = /CRISTIAN\s+FRASER\s*-\s*SANTANDER/i;
 export const CC_PAYMENT_DESC_RE =
-  /MONTO\s+CANCELADO|PAGO\s+.*TARJETA|TARJETA\s+DE\s+CR[EÉ]DITO|PAGO\s+TARJETA|TRASPASO(?:\s+\w+)*\s+A\s+T\.?\s*CR[EÉ]DITO|TRASPASO(?:\s+\w+)*\s+A\s+L[IÍ]NEA\s+CR[EÉ]DITO|(?:EGRESO\s+POR\s+)?COMPRA\s+DE\s+DIVISAS/i;
+  /MONTO\s+CANCELADO|PAGO\s+.*TARJETA|TARJETA\s+DE\s+CR[EÉ]DITO|PAGO\s+TARJETA|TRASPASO(?:\s+\w+)*\s+A\s+T\.?\s*CR[EÉ]DITO|TRASPASO(?:\s+\w+)*\s+A\s+L[IÍ]NEA\s+CR[EÉ]DITO|(?:EGRESO\s+POR\s+)?COMPRA\s+DE\s+DIVISAS|PAGO\s+EN\s+L[IÍ]NEA\s+(?:PROM\.?\s+)?CMR\b/i;
 /** Own Santander account transfers (not spending). */
 export const OWN_SANTANDER_TRANSFER_RE = /TRASPASO(?:\s+\w+)*\s+A\s+CUENTAM[AÁ]TICA/i;
 /** Transfers to cuenta vista (CUENTAMATICA / vale vista), e.g. AFP 10% retiros. */

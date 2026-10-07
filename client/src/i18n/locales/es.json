@@ -73,7 +73,8 @@
   },
   "creditCardGroup": {
     "santander": "Santander",
-    "bci": "BCI"
+    "bci": "BCI",
+    "cmr": "CMR Falabella"
   },
   "liabilities": {
     "mortgage": "hipoteca",

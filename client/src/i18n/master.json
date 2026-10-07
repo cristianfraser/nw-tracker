@@ -223,6 +223,10 @@
     "bci": {
       "en": "BCI",
       "es": "BCI"
+    },
+    "cmr": {
+      "en": "CMR Falabella",
+      "es": "CMR Falabella"
     }
   },
   "liabilities": {
