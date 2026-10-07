@@ -19,7 +19,7 @@ import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 import { db } from "./db.js";
 import { flowCcExpenseLineFingerprint } from "./ccExpenseLineDedupe.js";
-import { buildFlowsCreditCardExpensesPayload, resolveExpenseMonth } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload, resolveExpenseMonth } from "./flowsExpenses.js";
 import { gastosSumMonthForLine, lineCountsTowardGastosSum } from "./ccExpensePeriodMonth.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
@@ -68,7 +68,7 @@ describe("resolveExpenseMonth", () => {
   });
 });
 
-describe("flowsCreditCardExpenses", () => {
+describe("flowsExpenses", () => {
   const SRC_ADDITIONAL_FIXTURE = "import:web-paste|vitest-flows-additional-card";
 
   function cleanupAdditionalFixture(): void {
@@ -92,7 +92,7 @@ describe("flowsCreditCardExpenses", () => {
   afterEach(() => cleanupAdditionalFixture());
 
   it("listCreditCardMasterAccountIds drives the gastos payload", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const allowed = new Set(listCreditCardMasterAccountIds());
     for (const id of payload.account_ids) {
       expect(allowed.has(id)).toBe(true);
@@ -104,7 +104,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("shows one installment purchase total per contract in compras month (feb 2025 ROCA)", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const rocaTotals = payload.lines.filter(
       (ln) =>
         ln.line_role === "installment_purchase_total" &&
@@ -134,7 +134,7 @@ describe("flowsCreditCardExpenses", () => {
     ).c;
     if (raw === 0) return;
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     expect(payload.account_ids).toContain(id4242);
     const cc4242 = payload.lines.filter(
       (ln) => ln.source === "cc" && ln.account_id === id4242 && ln.amount_clp > 0
@@ -167,7 +167,7 @@ describe("flowsCreditCardExpenses", () => {
       .run(statementId, parserRowId, `vitest-addl-dedupe-${parserRowId}`);
     const lineId = Number(line.lastInsertRowid);
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const found = payload.lines.find((ln) => ln.source === "cc" && ln.statement_line_id === lineId);
     expect(found).toBeDefined();
     expect(found!.category_slug).toBe(NO_CUENTA_CC_EXPENSE_SLUG);
@@ -212,7 +212,7 @@ describe("flowsCreditCardExpenses", () => {
        ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = NULL`
     ).run(accountId, purchaseKey);
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const found = payload.lines.find((ln) => ln.source === "cc" && ln.statement_line_id === lineId);
     expect(found).toBeDefined();
 
@@ -221,7 +221,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("never auto-tags installment contracts as no_cuenta for adicional cuotas", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const adicionalInstallment = payload.lines.find(
       (ln) =>
         ln.source === "cc" &&
@@ -235,7 +235,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("keeps user unique category on installment contract when an adicional cuota exists", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const titularCuota = payload.lines.find(
       (ln) =>
         ln.source === "cc" &&
@@ -267,7 +267,7 @@ describe("flowsCreditCardExpenses", () => {
         categorySlug: "others",
       });
 
-      const after = buildFlowsCreditCardExpensesPayload();
+      const after = buildFlowsExpensesPayload();
       const contractLines = after.lines.filter(
         (ln) =>
           ln.source === "cc" &&
@@ -301,7 +301,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("clear_category on installment contract stays unclassified after rebuild", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const titularCuota = payload.lines.find(
       (ln) =>
         ln.source === "cc" &&
@@ -342,7 +342,7 @@ describe("flowsCreditCardExpenses", () => {
       });
 
       for (let i = 0; i < 2; i++) {
-        const after = buildFlowsCreditCardExpensesPayload();
+        const after = buildFlowsExpensesPayload();
         const contractLines = after.lines.filter(
           (ln) =>
             ln.source === "cc" &&
@@ -376,7 +376,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("builds monthly rows with cumulative gastos when statement lines exist", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     expect(payload.group_slug).toBe("credit_cards");
     if (payload.by_month.length === 0) return;
 
@@ -409,7 +409,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("groups installment lines by billing month, not purchase month", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const installmentLines = payload.lines.filter(
       (ln) =>
         ln.source === "cc" &&
@@ -435,7 +435,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("does not count installment purchase totals toward gastos in split mode", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const totals = payload.lines.filter(
       (ln) => ln.line_role === "installment_purchase_total" && ln.amount_clp > 0
     );
@@ -452,13 +452,13 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("includes checking gastos lines when cuenta corriente is configured", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const checking = payload.lines.filter((ln) => ln.source === "checking");
     expect(checking.length).toBeGreaterThan(0);
   });
 
   it("gastos_mes_clp reflects NOTA DE CREDITO pairing and unmatched adjustments", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     for (const row of payload.by_month) {
       const monthLines = payload.lines.filter(
         (ln) => gastosSumMonthForLine(ln, "split") === row.period_month
@@ -490,7 +490,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("annuls APPLE purchase when a matching NOTA DE CREDITO appears later", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const apple = payload.lines.find(
       (ln) => ln.merchant === "APPLE.COM CL" && ln.nota_credito_role === "annulled_purchase"
     );
@@ -545,7 +545,7 @@ describe("flowsCreditCardExpenses", () => {
       .all(...accountIds) as { id: number }[];
     if (usdOnlyIds.length === 0) return;
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const included = new Set(payload.lines.map((ln) => ln.statement_line_id));
     const matched = usdOnlyIds.filter((r) => included.has(r.id));
     expect(matched.length).toBeGreaterThan(usdOnlyIds.length * 0.5);
@@ -561,7 +561,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("installment lines in payload use cuota amount, not full purchase", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const inst = payload.lines.find(
       (ln) =>
         ln.installment_flag === 1 &&
@@ -574,7 +574,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("lands each facturación's cuotas on the pay-by its facturaciones row shows", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     let rows = 0;
     for (const accountId of payload.account_ids) {
       for (const f of billingDetailCacheForAccount(accountId).facturaciones) {
@@ -587,7 +587,7 @@ describe("flowsCreditCardExpenses", () => {
   });
 
   it("has no duplicate gastos fingerprints on credit card lines", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const seen = new Set<string>();
     for (const ln of payload.lines.filter(
       (l) =>

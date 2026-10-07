@@ -22,7 +22,7 @@
  *   npx tsx scripts/link-buda-abonos-behind-stale-categories.ts --apply
  */
 import { db } from "../src/db.js";
-import { buildFlowsCreditCardExpensesPayload } from "../src/flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
 import { buildDepositsReconciliationPayload } from "../src/flowsDepositsReconciliation.js";
 import {
   CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX,
@@ -178,7 +178,7 @@ class RollBack extends Error {}
 try {
   db.transaction(() => {
     const initial = readState();
-    buildFlowsCreditCardExpensesPayload(); // runs syncExpenseDepositLinksFromGastosLines
+    buildFlowsExpensesPayload(); // runs syncExpenseDepositLinksFromGastosLines
     const synced = readState();
     report("Link sync with the current matcher (before any category change)", initial, synced);
 
@@ -202,7 +202,7 @@ try {
         throw new Error(`category row for ${r.purchaseKey} changed under the script`);
       }
     }
-    buildFlowsCreditCardExpensesPayload();
+    buildFlowsExpensesPayload();
     const after = readState();
     report("After the category change", synced, after);
 

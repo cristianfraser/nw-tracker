@@ -36,7 +36,7 @@ import {
   isMercadoCapitalesCargoDescription,
   stripCheckingBranchPrefix,
 } from "./checkingDescriptionPredicates.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
   isAutoDepositMatchedPurchaseNote,
   parseAutoDepositMatchNote,
@@ -1313,7 +1313,7 @@ describe("flowsCheckingGastos", () => {
   });
 
   it("assigns category to checking gastos movement when present in DB", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const line = payload.lines.find((ln) => ln.source === "checking" && ln.amount_clp > 0);
     if (!line) return;
 
@@ -1325,7 +1325,7 @@ describe("flowsCheckingGastos", () => {
       categorySlug: "fun",
     });
 
-    const after = buildFlowsCreditCardExpensesPayload();
+    const after = buildFlowsExpensesPayload();
     const updated = after.lines.find(
       (ln) => ln.source === "checking" && ln.statement_line_id === line.statement_line_id
     );

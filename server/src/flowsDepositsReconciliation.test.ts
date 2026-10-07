@@ -6,7 +6,7 @@ import {
   type DepositRedemptionRow,
 } from "./flowsDepositsReconciliation.js";
 import { loadBestLinkSourceByMovementId } from "./expenseDepositLinks.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
@@ -166,7 +166,7 @@ describe("buildDepositsReconciliationPayload", () => {
     it("classifies a mirrored unlinked_no_checking_source deposit as linked_synthetic", () => {
       // Sync first: pick a deposit the link sync itself leaves unlinked, not one it is about to
       // pair with a real checking debit that another suite's fixtures left in the DB.
-      buildFlowsCreditCardExpensesPayload();
+      buildFlowsExpensesPayload();
       const before = buildDepositsReconciliationPayload();
       const candidate = before.rows.find((r) => r.status === "unlinked_no_checking_source");
       if (!candidate) return;
@@ -191,7 +191,7 @@ describe("buildDepositsReconciliationPayload", () => {
         "vitest-fixture-mirror"
       );
 
-      buildFlowsCreditCardExpensesPayload();
+      buildFlowsExpensesPayload();
 
       const after = buildDepositsReconciliationPayload();
       const row = after.rows.find((r) => r.movement_id === candidate.movement_id);
@@ -239,7 +239,7 @@ describe("buildDepositsReconciliationPayload", () => {
       db.prepare(`DELETE FROM cuenta_ahorro_deposit_splits WHERE note = ?`).run("vitest-fixture-split");
       db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE note = ?`).run("ahorro-split|self_funded");
       db.prepare(`DELETE FROM expense_deposit_links WHERE link_source = 'synthetic'`).run();
-      buildFlowsCreditCardExpensesPayload();
+      buildFlowsExpensesPayload();
     });
 
     it("marks a self-funded split as linked_synthetic and a pure-family split as resolved_family_funded", async () => {
@@ -249,13 +249,13 @@ describe("buildDepositsReconciliationPayload", () => {
 
       // Self-funded portion → partial mirror → linked_synthetic.
       upsertCuentaAhorroDepositSplit(deposit.movement_id, Math.round(deposit.amount_clp / 2), "vitest-fixture-split");
-      buildFlowsCreditCardExpensesPayload();
+      buildFlowsExpensesPayload();
       let row = buildDepositsReconciliationPayload().rows.find((r) => r.movement_id === deposit.movement_id);
       expect(row?.status).toBe("linked_synthetic");
 
       // Pure-family (self = 0) → no mirror → resolved_family_funded.
       upsertCuentaAhorroDepositSplit(deposit.movement_id, 0, "vitest-fixture-split");
-      buildFlowsCreditCardExpensesPayload();
+      buildFlowsExpensesPayload();
       row = buildDepositsReconciliationPayload().rows.find((r) => r.movement_id === deposit.movement_id);
       expect(row?.status).toBe("resolved_family_funded");
     });

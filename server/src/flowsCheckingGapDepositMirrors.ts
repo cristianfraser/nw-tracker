@@ -7,7 +7,7 @@ import {
 import { depositFlowCategoryFromGroupSlug } from "./flowsDeposits.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import { db } from "./db.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 
 const MIRROR_MERCHANT_LABEL = "Mirror sintético (cartola faltante)";
 

@@ -22,7 +22,7 @@
  *   npx tsx scripts/remove-redundant-deposit-mirror-links.ts --apply
  */
 import { db } from "../src/db.js";
-import { buildFlowsCreditCardExpensesPayload } from "../src/flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
 import { buildDepositsReconciliationPayload } from "../src/flowsDepositsReconciliation.js";
 import {
   CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX,
@@ -99,7 +99,7 @@ class RollBack extends Error {}
 try {
   db.transaction(() => {
     const before = readState();
-    buildFlowsCreditCardExpensesPayload(); // runs syncExpenseDepositLinksFromGastosLines
+    buildFlowsExpensesPayload(); // runs syncExpenseDepositLinksFromGastosLines
     const after = readState();
     const changes = report(before, after);
     if (!apply) throw new RollBack();

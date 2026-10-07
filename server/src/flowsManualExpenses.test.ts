@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
   normalizeManualExpenseNote,
   validateManualExpenseCategorySlug,
@@ -41,7 +41,7 @@ describe("flowsManualExpenses", () => {
     const id = Number(r.lastInsertRowid);
     insertedIds.push(id);
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const line = payload.lines.find((ln) => ln.source === "manual" && ln.statement_line_id === id);
     expect(line).toBeDefined();
     expect(line?.category_slug).toBe("supermarket");

@@ -3,7 +3,7 @@ import { api } from "../api";
 import type {
   FlowCcExpenseLineRow,
   FlowCcExpenseLineSource,
-  FlowsCreditCardExpensesResponse,
+  FlowsExpensesResponse,
 } from "../types";
 import {
   expenseLineCategoryTargetId,
@@ -42,9 +42,9 @@ function findCcExpenseCategoryPatchAnchor(
 }
 
 export function applyCcExpenseLineCategoryPatch(
-  data: FlowsCreditCardExpensesResponse | undefined,
+  data: FlowsExpensesResponse | undefined,
   vars: PatchCcExpenseLineCategoryVars
-): FlowsCreditCardExpensesResponse | undefined {
+): FlowsExpensesResponse | undefined {
   if (!data) return data;
   const anchorLine = findCcExpenseCategoryPatchAnchor(data.lines, vars.lineId, vars.source);
   return {
@@ -62,14 +62,14 @@ export function applyCcExpenseLineCategoryPatch(
 }
 
 export function applyCcExpenseLineCategoryPatchFromServer(
-  data: FlowsCreditCardExpensesResponse | undefined,
+  data: FlowsExpensesResponse | undefined,
   opts: {
     accountId: number;
     purchaseKey: string;
     category_slug: string;
     unique: boolean;
   }
-): FlowsCreditCardExpensesResponse | undefined {
+): FlowsExpensesResponse | undefined {
   if (!data) return data;
   return {
     ...data,
@@ -102,13 +102,13 @@ function invalidateAccountAndFlowQueries(
   displayUnit: DisplayUnit
 ) {
   invalidateAccountDetailBundle(queryClient, accountId, displayUnit);
-  void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
   void queryClient.invalidateQueries({ queryKey: queryKeys.flowsDeposits() });
 }
 
 export function usePatchCcExpenseLineCategoryMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsCreditCardExpenses();
+  const queryKey = queryKeys.flowsExpenses();
 
   return useMutation({
     mutationFn: (vars: PatchCcExpenseLineCategoryVars) =>
@@ -120,14 +120,14 @@ export function usePatchCcExpenseLineCategoryMutation() {
       }),
     onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<FlowsCreditCardExpensesResponse>(queryKey);
-      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) =>
+      const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
+      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
         applyCcExpenseLineCategoryPatch(old, vars)
       );
       return { previous };
     },
     onSuccess: (result, vars) => {
-      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) => {
+      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
         if (!old) return old;
         const anchor = findCcExpenseCategoryPatchAnchor(old.lines, vars.lineId, vars.source);
         if (anchor && result.purchase_key) {
@@ -166,9 +166,9 @@ export type PatchCcExpensePurchaseNoteVars = {
 };
 
 export function applyCcExpensePurchaseNotePatch(
-  data: FlowsCreditCardExpensesResponse | undefined,
+  data: FlowsExpensesResponse | undefined,
   vars: PatchCcExpensePurchaseNoteVars & { purchase_key: string }
-): FlowsCreditCardExpensesResponse | undefined {
+): FlowsExpensesResponse | undefined {
   if (!data) return data;
   return {
     ...data,
@@ -183,21 +183,21 @@ export function applyCcExpensePurchaseNotePatch(
 
 export function usePatchCcExpensePurchaseNoteMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsCreditCardExpenses();
+  const queryKey = queryKeys.flowsExpenses();
 
   return useMutation({
     mutationFn: (vars: PatchCcExpensePurchaseNoteVars) =>
       api.patchCcExpensePurchaseNote(vars),
     onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<FlowsCreditCardExpensesResponse>(queryKey);
+      const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
       const purchaseKey = vars.purchase_key ?? "";
       if (purchaseKey) {
-        queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) =>
+        queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
           applyCcExpensePurchaseNotePatch(old, { ...vars, purchase_key: purchaseKey })
         );
       } else if (vars.statement_line_id != null && vars.statement_line_id > 0) {
-        queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) => {
+        queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
           if (!old) return old;
           return {
             ...old,
@@ -216,7 +216,7 @@ export function usePatchCcExpensePurchaseNoteMutation() {
       return { previous };
     },
     onSuccess: (result) => {
-      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) =>
+      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
         applyCcExpensePurchaseNotePatch(old, {
           account_id: result.account_id,
           purchase_key: result.purchase_key,
@@ -244,9 +244,9 @@ export type PutCcExpensePurchaseBigGroupVars = {
 };
 
 export function applyCcExpensePurchaseBigGroupPatch(
-  data: FlowsCreditCardExpensesResponse | undefined,
+  data: FlowsExpensesResponse | undefined,
   vars: PutCcExpensePurchaseBigGroupVars
-): FlowsCreditCardExpensesResponse | undefined {
+): FlowsExpensesResponse | undefined {
   if (!data) return data;
   return {
     ...data,
@@ -261,21 +261,21 @@ export function applyCcExpensePurchaseBigGroupPatch(
 
 export function usePutCcExpensePurchaseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsCreditCardExpenses();
+  const queryKey = queryKeys.flowsExpenses();
 
   return useMutation({
     mutationFn: (vars: PutCcExpensePurchaseBigGroupVars) =>
       api.putCcExpensePurchaseBigGroup(vars),
     onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<FlowsCreditCardExpensesResponse>(queryKey);
-      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) =>
+      const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
+      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
         applyCcExpensePurchaseBigGroupPatch(old, vars)
       );
       return { previous };
     },
     onSuccess: (result) => {
-      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) =>
+      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
         applyCcExpensePurchaseBigGroupPatch(old, {
           account_id: result.account_id,
           purchase_key: result.purchase_key,
@@ -293,12 +293,12 @@ export function usePutCcExpensePurchaseBigGroupMutation() {
 
 export function useCreateCcExpenseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsCreditCardExpenses();
+  const queryKey = queryKeys.flowsExpenses();
 
   return useMutation({
     mutationFn: (label: string) => api.createCcExpenseBigGroup(label),
     onSuccess: (group) => {
-      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) => {
+      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
         if (!old) return old;
         if (old.big_groups.some((g) => g.slug === group.slug)) return old;
         return {
@@ -317,15 +317,15 @@ export function useCreateCcExpenseBigGroupMutation() {
 
 export function useRenameCcExpenseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsCreditCardExpenses();
+  const queryKey = queryKeys.flowsExpenses();
 
   return useMutation({
     mutationFn: (vars: { slug: string; label: string }) =>
       api.renameCcExpenseBigGroup(vars.slug, vars.label),
     onMutate: async (vars) => {
       await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<FlowsCreditCardExpensesResponse>(queryKey);
-      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) => {
+      const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
+      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
         if (!old) return old;
         return {
           ...old,
@@ -349,14 +349,14 @@ export function useRenameCcExpenseBigGroupMutation() {
 
 export function useDeleteCcExpenseBigGroupMutation() {
   const queryClient = useQueryClient();
-  const queryKey = queryKeys.flowsCreditCardExpenses();
+  const queryKey = queryKeys.flowsExpenses();
 
   return useMutation({
     mutationFn: (slug: string) => api.deleteCcExpenseBigGroup(slug),
     onMutate: async (slug) => {
       await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<FlowsCreditCardExpensesResponse>(queryKey);
-      queryClient.setQueryData<FlowsCreditCardExpensesResponse>(queryKey, (old) => {
+      const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
+      queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
         if (!old) return old;
         return {
           ...old,
@@ -556,7 +556,7 @@ export function usePatchIncomeMovementMutation() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
       // A card reimbursement is set against the additional cards' charges on the Expenses page.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
     },
   });
 }
@@ -590,7 +590,7 @@ export function useUpsertCcFacturadoFinancingLinkMutation() {
       financing: { account_id: number; purchase_key: string }[];
     }) => api.upsertCcFacturadoFinancingLink(body),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.ccFacturadoFinancingLinks() });
     },
   });
@@ -601,7 +601,7 @@ export function useDeleteCcFacturadoFinancingLinkMutation() {
   return useMutation({
     mutationFn: (id: number) => api.deleteCcFacturadoFinancingLink(id),
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsCreditCardExpenses() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.ccFacturadoFinancingLinks() });
     },
   });

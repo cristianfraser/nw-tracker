@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import {
   allowedPurchaseMonthsForBill,
   billMonthFromSpentOn,

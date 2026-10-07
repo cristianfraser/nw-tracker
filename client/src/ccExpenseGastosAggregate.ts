@@ -111,7 +111,7 @@ export function rollupExpenseMonthRowsByYear(
 }
 
 /**
- * Keep in sync with server/src/flowsCreditCardExpenses.ts aggregateGastosFromLines.
+ * Keep in sync with server/src/flowsExpenses.ts aggregateGastosFromLines.
  * `total` / `total_real` are the sums of the month buckets — the Expenses headline — so the
  * headline and the table count every line by the same rule.
  */

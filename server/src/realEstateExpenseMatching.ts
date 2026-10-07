@@ -4,8 +4,8 @@ import { countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
 import { lineCountsTowardGastosSum } from "./ccExpensePeriodMonth.js";
 import { purchaseCountsAfterNotaPairing } from "./ccNotaDeCreditoPairing.js";
 import { db } from "./db.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
   merchantMatchesExpectation,
   REAL_ESTATE_LINKABLE_KINDS,
@@ -60,7 +60,7 @@ export function isGastosLineEligibleForRealEstateLink(line: FlowCcExpenseLineRow
 }
 
 export function loadGastosLinesForRealEstateMatching(): FlowCcExpenseLineRow[] {
-  const payload = buildFlowsCreditCardExpensesPayload();
+  const payload = buildFlowsExpensesPayload();
   return payload.lines.filter(isGastosLineEligibleForRealEstateLink);
 }
 

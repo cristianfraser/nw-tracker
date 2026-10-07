@@ -567,8 +567,8 @@ export const api = {
     }),
   deleteRealEstateExpenseEntry: (expenseEntryId: number) =>
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}`, { method: "DELETE" }),
-  flowsCreditCardExpenses: () =>
-    j<import("./types").FlowsCreditCardExpensesResponse>("/api/flows/expenses/credit-card"),
+  flowsExpenses: () =>
+    j<import("./types").FlowsExpensesResponse>("/api/flows/expenses/credit-card"),
   assignCcExpenseLineCategory: (
     lineId: number,
     body: {

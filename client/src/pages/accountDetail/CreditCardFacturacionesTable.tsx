@@ -4,7 +4,7 @@ import { formatClp, formatOrDash, formatPct, formatUsdFine } from "../../format"
 import { cn } from "../../cn";
 import { Modal } from "../../components/ui/Modal";
 import { useModalPeriodNav } from "../../periodModalNav";
-import { useFlowsCreditCardExpenses } from "../../queries/hooks";
+import { useFlowsExpenses } from "../../queries/hooks";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import type {
   CcFacturacionDto,
@@ -209,7 +209,7 @@ export function CreditCardFacturacionesTable({
   pendingCuotaPurchases?: readonly CcPendingCuotaPurchaseDto[];
 }) {
   const { t } = useTranslation();
-  const { data: flows } = useFlowsCreditCardExpenses();
+  const { data: flows } = useFlowsExpenses();
   const categories = flows?.categories ?? [];
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<CcFacturacionDto | null>(null);

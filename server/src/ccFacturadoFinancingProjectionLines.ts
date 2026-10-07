@@ -11,7 +11,7 @@ import {
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { isPdfStatementSource } from "./ccManualBillingMonth.js";
 import { db } from "./db.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
 /**
  * Facturado-financing projection.

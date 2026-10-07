@@ -11,7 +11,7 @@ import {
 } from "./ccExpenseCategories.js";
 import { purchaseAmountsMatch } from "./ccCrossImportDedupe.js";
 import { merchantStemForInstallmentDedupe } from "./ccInstallmentLineDedupe.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import type { CcExpenseLineRole } from "./ccExpensePeriodMonth.js";
 import { db } from "./db.js";

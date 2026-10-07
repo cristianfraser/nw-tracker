@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
   buildInstallmentPaymentGastosLines,
   installmentPaymentGastosLineId,
 } from "./ccInstallmentPaymentGastosLines.js";
 import { normalizeCcExpenseMerchantKey } from "./ccExpenseCategories.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 
 describe("ccInstallmentPaymentGastosLines", () => {
   it("does not duplicate cuotas already present on statement PDF lines", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const serviteca = payload.lines.filter((ln) => (ln.merchant ?? "").includes("SERVITECA DACSA"));
     const cuotas = serviteca.filter((ln) => ln.line_role === "installment_cuota");
     if (cuotas.length === 0) return;
@@ -119,7 +119,7 @@ describe("ccInstallmentPaymentGastosLines", () => {
     ).c;
     if (payLines === 0) return;
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const cuotas4242 = payload.lines.filter(
       (ln) =>
         ln.source === "cc" &&

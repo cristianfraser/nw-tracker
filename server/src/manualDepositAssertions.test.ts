@@ -4,7 +4,7 @@ import { checkingAccountId } from "./checkingCartolaImport.js";
 import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
 import { DEPOSITS_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
 import { buildDepositsReconciliationPayload } from "./flowsDepositsReconciliation.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 
 /**
  * Task: a checking outflow the user manually categorized as `deposits` asserts that a matching
@@ -106,7 +106,7 @@ describe("manual deposits-category assertions", () => {
     }
     fixtureKeys.length = 0;
     // Re-sync so no auto link points at deleted movements.
-    buildFlowsCreditCardExpensesPayload();
+    buildFlowsExpensesPayload();
   });
 
   it("auto-links a manually-asserted outflow when a unique candidate deposit exists", () => {
@@ -120,7 +120,7 @@ describe("manual deposits-category assertions", () => {
       9974001
     );
 
-    buildFlowsCreditCardExpensesPayload();
+    buildFlowsExpensesPayload();
 
     const link = db
       .prepare(
@@ -150,7 +150,7 @@ describe("manual deposits-category assertions", () => {
       9974002
     );
 
-    buildFlowsCreditCardExpensesPayload();
+    buildFlowsExpensesPayload();
 
     const link = db
       .prepare(`SELECT 1 FROM expense_deposit_links WHERE purchase_key = ?`)
@@ -177,7 +177,7 @@ describe("manual deposits-category assertions", () => {
       9974003
     );
 
-    buildFlowsCreditCardExpensesPayload();
+    buildFlowsExpensesPayload();
 
     const payload = buildDepositsReconciliationPayload();
     const assertion = payload.manual_assertions.find((a) => a.purchase_key === purchaseKey);
@@ -197,7 +197,7 @@ describe("manual deposits-category assertions", () => {
       9974005
     );
 
-    buildFlowsCreditCardExpensesPayload();
+    buildFlowsExpensesPayload();
 
     const payload = buildDepositsReconciliationPayload();
     const depositRow = payload.rows.find((r) => r.movement_id === depositId);

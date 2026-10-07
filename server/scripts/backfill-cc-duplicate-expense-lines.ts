@@ -8,7 +8,7 @@ import { deleteStatementLinesByIds } from "../src/ccCrossImportDedupe.js";
 import { dedupeFlowCcExpenseLines } from "../src/ccExpenseLineDedupe.js";
 import { recomputeCcBillingMonthBalances } from "../src/ccBillingBalances.js";
 import { listCreditCardGroupMasterAccountIds } from "../src/creditCardTree.js";
-import { buildCcExpenseLines } from "../src/flowsCreditCardExpenses.js";
+import { buildCcExpenseLines } from "../src/flowsExpenses.js";
 import { upsertCreditCardValuationsFromLedger } from "../src/ccCreditCardValuations.js";
 
 const apply = process.argv.includes("--apply");

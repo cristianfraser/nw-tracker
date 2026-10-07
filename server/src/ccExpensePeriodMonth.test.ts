@@ -8,8 +8,8 @@ import {
   periodMonthsForGastosLine,
   purchaseModalLines,
 } from "./ccExpensePeriodMonth.js";
-import { aggregateGastosFromLines } from "./flowsCreditCardExpenses.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import { aggregateGastosFromLines } from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
 function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   const expenseMonth = partial.expense_month ?? "2024-03";

@@ -47,7 +47,7 @@ export const queryKeys = {
   realEstateUnlinkedPurchases: (params: Record<string, string>) =>
     ["realEstateUnlinkedPurchases", params] as const,
   realEstatePropertyAccounts: () => ["realEstatePropertyAccounts"] as const,
-  flowsCreditCardExpenses: () => ["flowsCreditCardExpenses"] as const,
+  flowsExpenses: () => ["flowsExpenses"] as const,
   creditCardConfig: (accountId: string) => ["creditCardConfig", accountId] as const,
   ccFacturadoFinancingLinks: () => ["ccFacturadoFinancingLinks"] as const,
   portfolioGroup: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>

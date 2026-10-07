@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { buildInstallmentPlanGastosLines } from "./ccInstallmentPlanGastosLines.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 
 describe("ccInstallmentPlanGastosLines", () => {
   it("emits scheduled cuotas for pay-by months not yet on statement PDFs", () => {
@@ -12,7 +12,7 @@ describe("ccInstallmentPlanGastosLines", () => {
     )?.id;
     if (!accountId) return;
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const aug = payload.lines.filter(
       (ln) =>
         ln.account_id === accountId &&
@@ -41,7 +41,7 @@ describe("ccInstallmentPlanGastosLines", () => {
     )?.id;
     if (!accountId) return;
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const june = payload.lines.filter(
       (ln) =>
         ln.account_id === accountId &&
@@ -68,7 +68,7 @@ describe("ccInstallmentPlanGastosLines", () => {
     )?.id;
     if (!accountId) return;
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const blund = payload.lines.find(
       (ln) =>
         ln.account_id === accountId &&

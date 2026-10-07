@@ -195,7 +195,7 @@ export interface FlowCcExpenseLineRow {
   expense_deposit_links?: ExpenseDepositLinkDto[];
   /**
    * The card feed typed this one-shot line as a purchase in cuotas whose count is not known yet —
-   * the card page offers «¿cuántas cuotas?» on it (server `flowsCreditCardExpenses.ts`).
+   * the card page offers «¿cuántas cuotas?» on it (server `flowsExpenses.ts`).
    */
   cuota_purchase_kind?: CcCuotaPurchaseKind;
   transfer_counterparty?: TransferCounterparty;
@@ -298,7 +298,7 @@ export interface DepositsReconciliationPayload {
 }
 
 /** `GET /api/flows/expenses/credit-card` — Pasivos tarjeta de crédito (grupo, líneas de estado de cuenta). */
-export interface FlowsCreditCardExpensesResponse {
+export interface FlowsExpensesResponse {
   group_slug: string;
   account_ids: number[];
   categories: CcExpenseCategoryDto[];

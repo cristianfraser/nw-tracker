@@ -5,7 +5,7 @@ import {
   computeManualDepositAssertions,
   loadBestLinkSourceByMovementId,
 } from "./expenseDepositLinks.js";
-import { loadFinalizedCheckingGastosLinesReadOnly } from "./flowsCreditCardExpenses.js";
+import { loadFinalizedCheckingGastosLinesReadOnly } from "./flowsExpenses.js";
 import { depositFlowCategoryFromGroupSlug, listDepositFlowAccounts, type DepositFlowCategory } from "./flowsDeposits.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";

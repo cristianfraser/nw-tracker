@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useFlowsCreditCardExpenses } from "../queries/hooks";
+import { useFlowsExpenses } from "../queries/hooks";
 import { CreditCardGroupExpensesChart } from "../components/charts/CreditCardGroupExpensesChart";
 import { GroupExpensesMonthTable } from "../components/credit-card/GroupExpensesMonthTable";
 import { BigExpenseGroupsSection } from "../components/credit-card/BigExpenseGroupsSection";
@@ -68,7 +68,7 @@ export function ExpensesPage() {
   const tableGranularity = flowTableGranularity(
     flowChartGranularityFromMetricsPeriod(tablePrefs.period)
   );
-  const { data, error } = useFlowsCreditCardExpenses();
+  const { data, error } = useFlowsExpenses();
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 

@@ -4,7 +4,7 @@ import {
 } from "./ccExpenseCategories.js";
 import { checkingGapDepositMirrorPurchaseKey } from "./checkingGapDepositMirrorKey.js";
 import { checkingGastosMovementPurchaseKey } from "./flowsCheckingGastos.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
 /** Stable purchase identity (installment-h / line-pr / line-fallback), shared with categories and notes. */
 export function resolvePurchaseKeyForGastosLine(

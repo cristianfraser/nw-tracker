@@ -19,7 +19,7 @@ import {
 } from "../flowsDisplay";
 import { clipMonthsThenRollup, timeRangeCutoffYmd, timeRangeToDays } from "../timeRange";
 import { useTranslation } from "../i18n";
-import { useFlowsCreditCardExpenses, useFlowsDeposits, useFlowsPl, useIncome } from "../queries/hooks";
+import { useFlowsExpenses, useFlowsDeposits, useFlowsPl, useIncome } from "../queries/hooks";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 
 const PAGE_SIZE = 12;
@@ -50,7 +50,7 @@ export function FlowsOverviewPage() {
   const { installmentMode } = useCcInstallmentGastosMode();
 
   const income = useIncome();
-  const expenses = useFlowsCreditCardExpenses();
+  const expenses = useFlowsExpenses();
   const deposits = useFlowsDeposits();
   // Day mode needs the server's per-day bucket P/L for the overview's P/L leg.
   const pl = useFlowsPl(isDaily ? timeRangeToDays(timeRange) : undefined);

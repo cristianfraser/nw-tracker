@@ -5,8 +5,8 @@ import {
 } from "./ccFacturadoFinancingProjectionLines.js";
 import { db } from "./db.js";
 import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
-import { aggregateGastosFromLines } from "./flowsCreditCardExpenses.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import { aggregateGastosFromLines } from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import type { CcFacturadoFinancingLink } from "./ccFacturadoFinancingLinksDb.js";
 
 function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {

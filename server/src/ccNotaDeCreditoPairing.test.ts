@@ -5,7 +5,7 @@ import {
   NOTA_DE_CREDITO_MATCH_MIN_CLP,
   pairNotaDeCreditoAnnulments,
 } from "./ccNotaDeCreditoPairing.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
 function ccLine(
   overrides: Partial<FlowCcExpenseLineRow> & Pick<FlowCcExpenseLineRow, "statement_line_id" | "amount_clp">
