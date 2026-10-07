@@ -45,12 +45,26 @@ function setObservado(date: string, value: number): void {
   ).run(date, value);
 }
 
+/** Removes a publication the fixture's window must not contain (restored afterwards like `setObservado`). */
+function clearObservado(date: string): void {
+  if (!observadoBackup.has(date)) {
+    const prior = db.prepare(`SELECT clp_per_usd FROM fx_daily_bcentral WHERE date = ?`).get(date) as
+      | { clp_per_usd: number }
+      | undefined;
+    observadoBackup.set(date, prior?.clp_per_usd ?? null);
+  }
+  db.prepare(`DELETE FROM fx_daily_bcentral WHERE date = ?`).run(date);
+}
+
 afterEach(() => {
   for (const [date, prior] of observadoBackup) {
     if (prior == null) {
       db.prepare(`DELETE FROM fx_daily_bcentral WHERE date = ?`).run(date);
     } else {
-      db.prepare(`UPDATE fx_daily_bcentral SET clp_per_usd = ? WHERE date = ?`).run(prior, date);
+      db.prepare(
+        `INSERT INTO fx_daily_bcentral (date, clp_per_usd) VALUES (?, ?)
+         ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd`
+      ).run(date, prior);
     }
   }
   observadoBackup.clear();
@@ -304,6 +318,9 @@ function seedWeekendAnchorFixture(): void {
     }
   }
   setObservado(WA_FRI, 890); // Friday's publication = Thursday's trades — must not be read for Friday
+  // The bank publishes nothing on a weekend; the synthetic test DB's calendar-day series does.
+  clearObservado(WA_SAT);
+  clearObservado(WA_SUN);
   setObservado(WA_MON, 900); // Monday's publication = Friday's trades
   setObservado(WA_TUE, 905); // Tuesday's publication = Monday's trades
 

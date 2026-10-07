@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { db } from "./db.js";
 import {
   closeDayOffsetDays,
@@ -335,7 +335,33 @@ describe("credit-card close evidence", () => {
     expect(lastPdfBillingMonthForAccount(accountId)).toBe("2026-08");
   });
 
+  /**
+   * One dólar for every day of [from, to], restored afterwards. A facturación's dollars are worth
+   * the rate the bank was paid (today's while unpaid) on its row and the pay-by − 1 rate as debt,
+   * so a test equating the two must give both days the same rate rather than inherit the test
+   * DB's series.
+   */
+  function pinFx(fromIso: string, toIso: string, clpPerUsd: number): () => void {
+    const prior = db.prepare(`SELECT date, clp_per_usd FROM fx_daily WHERE date BETWEEN ? AND ?`).all(fromIso, toIso) as {
+      date: string;
+      clp_per_usd: number;
+    }[];
+    const upsert = db.prepare(
+      `INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET clp_per_usd = excluded.clp_per_usd`
+    );
+    for (let d = fromIso; d <= toIso; d = new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)) {
+      upsert.run(d, clpPerUsd);
+    }
+    return () => {
+      db.prepare(`DELETE FROM fx_daily WHERE date BETWEEN ? AND ?`).run(fromIso, toIso);
+      for (const r of prior) upsert.run(r.date, r.clp_per_usd);
+    };
+  }
+
   it("closes September on the feed's SALDO INICIAL and files every post-close row under October", () => {
+    // September's pay-by falls around 10/10; today (faked) is 26/09.
+    const restoreFx = pinFx("2026-09-20", "2026-10-15", 950);
+    onTestFinished(restoreFx);
     const sept = insertStatement({
       source: "import:web-paste|open|2026-09",
       date: "20/09/2026",
