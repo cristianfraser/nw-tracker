@@ -203,7 +203,10 @@ export function matchPaymentReceipts(
   return { byPurchaseKey, unpaired, ambiguous };
 }
 
-const PROCESSOR_NAMES: Record<string, string> = { flow: "Flow", pago_facil: "Pago Fácil" };
+const PROCESSOR_NAMES: Record<string, string> = { flow: "Flow", pago_facil: "Pago Fácil", shopify: "Shopify" };
+
+/** Sources that are the shop's own order confirmation rather than a processor's receipt. */
+const ORDER_CONFIRMATION_SOURCES = new Set(["shopify"]);
 
 function receiptDto(r: StoredPaymentReceipt): PaymentReceiptDto {
   const name = PROCESSOR_NAMES[r.processor];
@@ -226,8 +229,26 @@ function receiptDto(r: StoredPaymentReceipt): PaymentReceiptDto {
 
 /** Every line of a paired purchase (its cuotas too) carries the receipt. */
 /** The stored receipts paired with the expense lines, as the expenses page shows them. */
+/**
+ * The stored documents paired with the expense lines, as the expenses page shows them. A shop's
+ * order confirmation and the processor's receipt for the same payment both describe one charge,
+ * so the two are paired separately; where both land on a line, the order (it names the shop and
+ * the items) is the one shown.
+ */
 export function matchPaymentReceiptsToExpenseLines(lines: readonly (ReceiptCandidateLine & { account_id: number })[]) {
-  return matchPaymentReceipts(loadPaymentProcessorReceipts(), withInterestPlanPrincipals(lines));
+  const all = loadPaymentProcessorReceipts();
+  const candidates = withInterestPlanPrincipals(lines);
+  const receipts = matchPaymentReceipts(all.filter((r) => !ORDER_CONFIRMATION_SOURCES.has(r.processor)), candidates);
+  const orders = matchPaymentReceipts(all.filter((r) => ORDER_CONFIRMATION_SOURCES.has(r.processor)), candidates);
+  const unpaired: Record<string, number> = { ...receipts.unpaired };
+  for (const [k, n] of Object.entries(orders.unpaired)) unpaired[k] = (unpaired[k] ?? 0) + n;
+  return {
+    byPurchaseKey: new Map([...receipts.byPurchaseKey, ...orders.byPurchaseKey]),
+    /** Documents paired (a charge with both a receipt and an order counts both). */
+    paired: receipts.byPurchaseKey.size + orders.byPurchaseKey.size,
+    unpaired,
+    ambiguous: [...receipts.ambiguous, ...orders.ambiguous],
+  };
 }
 
 /**

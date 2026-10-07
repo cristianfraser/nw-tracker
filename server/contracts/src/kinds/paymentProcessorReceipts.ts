@@ -9,7 +9,7 @@ export const processorReceiptSchema = z
     message_id: text,
     /** When the processor sent it, on the Chile clock: `YYYY-MM-DD HH:MM`. */
     sent_at_chile: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/),
-    /** Who processed the payment (`flow`, `pago_facil`, …). */
+    /** Who mailed it: a payment processor (`flow`, `pago_facil`) or a shop platform's order confirmation (`shopify`). */
     processor: z.string().regex(/^[a-z][a-z0-9_]*$/),
     /** Who was paid, as the receipt names them. */
     payee: z
@@ -39,8 +39,9 @@ export const processorReceiptSchema = z
 export type ProcessorReceipt = z.infer<typeof processorReceiptSchema>;
 
 /**
- * Receipts payment processors mailed the client: who each card or bank charge actually paid. The
- * server stores them; pairing with the charges is derived when the expense lines are built.
+ * Receipts payment processors mailed the client, and shops' order confirmations: who each card or
+ * bank charge actually paid, for what. The server stores them; pairing with the charges is derived
+ * when the expense lines are built.
  */
 export const paymentProcessorReceiptsKind = defineIngestKind({
   kind: "payment.processor_receipts",

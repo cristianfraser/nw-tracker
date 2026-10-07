@@ -1,18 +1,22 @@
 /**
- * Payment processors' receipt mails → canonical `payment.processor_receipts` receipts.
+ * Payment processors' receipts and shops' order confirmations → canonical
+ * `payment.processor_receipts` receipts.
  *
- * A card or checking line names the processor, not the shop («PAGOS.FLOW.CL (WEB)», «PAGO FACIL»);
- * the processor's receipt names who was paid, for what, the amount and the time. One decoder per
- * sender; a sender's mails that are not a receipt (an invoice still to pay, a subscription sign-up)
- * decode to null, and a receipt this decoder cannot read throws.
+ * A card or checking line names the processor, not the shop («PAGOS.FLOW.CL (WEB)», «PAGO FACIL»,
+ * «MERCADOPAGO*…»); the processor's receipt, or the shop's own order confirmation, names who was
+ * paid, for what, the amount and the time. One decoder per sender (or, for a shop platform many
+ * shops mail from, per layout); a mail that is not a receipt (an invoice still to pay, a
+ * subscription sign-up) decodes to null, and a receipt this decoder cannot read throws.
  */
 import type { ProcessorReceipt } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/santanderMailArchive.js";
 
 export type PaymentProcessor = {
   slug: string;
-  /** IMAP FROM match. */
-  from: string;
+  /** IMAP FROM match… */
+  from?: string;
+  /** …or a Gmail search query (a platform many shops mail from). */
+  gmraw?: string;
   /** The subjects that may be a receipt (envelope filter). */
   wantSubject: (subject: string) => boolean;
   decode: (mail: ArchivedMail) => ProcessorReceipt | null;
@@ -92,9 +96,61 @@ function decodePagoFacil(mail: ArchivedMail): ProcessorReceipt | null {
   };
 }
 
+const SHOPIFY_ORDER_SUBJECT = /^(?:\[[^\]]+\]\s*)?Confirmaci[oó]n de pedido\b/i;
+
+/**
+ * A Shopify shop's «Confirmación de pedido» (the layout every Shopify store mails, from its own
+ * domain or from t.shopifyemail.com): the shop, the items and the total in pesos.
+ */
+function decodeShopifyOrder(mail: ArchivedMail): ProcessorReceipt | null {
+  if (!SHOPIFY_ORDER_SUBJECT.test(mail.subject) || !/Resumen del pedido/.test(mail.text)) return null;
+  const t = mail.text;
+  const ref = need(t, /Pedido (#?[A-Za-z]*\d+)/, "order number", mail)(1);
+  const total = need(t, /\bTotal \$([\d.]+) CLP\b/, "total in CLP", mail)(1);
+  // The shop: the subject's bracket, else what the mail prints before «Pedido #…», else the
+  // sender's display name.
+  const bracket = mail.subject.match(/^\[([^\]]+)\]/)?.[1];
+  const before = t
+    .slice(0, t.indexOf(`Pedido ${ref}`))
+    .replace(/\S*Gracias por tu compra!/g, "")
+    .trim();
+  const shop = (bracket ?? (before || mail.from_name || ""))
+    .replace(/[^\p{L}\p{N}\s.&'-]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!shop) throw new Error(`${mail.sent_at_chile} «${mail.subject}»: no shop name`);
+  const summary = need(t, /Resumen del pedido (.+?) Subtotal /, "order summary", mail)(1);
+  const items = summary
+    .replace(/\((?:-?\$[\d.]+(?: CLP)?)\)/g, " ")
+    .split(/-?\$-?[\d.]+(?: CLP)?/)
+    .map((x) => x.replace(/Default Title/g, "").replace(/\s+/g, " ").trim())
+    .filter((x) => x && !/^(Descuento|Gratis|PROMO)\b/i.test(x));
+  const method = t.match(/(?:M[ée]todo de pago|\bPago) (.+?)(?: \$[\d.]+| M[ée]todo de env[ií]o| Si tienes| Este email|$)/)?.[1]?.trim() || null;
+  return {
+    message_id: mail.message_id,
+    sent_at_chile: mail.sent_at_chile,
+    processor: "shopify",
+    payee: { name: shop, rut: null, email: null },
+    amount: chileanPesos(total),
+    currency: "clp",
+    paid_at_chile: mail.sent_at_chile,
+    order_ref: ref,
+    concept: items.length > 0 ? items.join(" · ").slice(0, 300) : null,
+    statement_descriptor: null,
+    payment_method: method,
+    installments: null,
+  };
+}
+
 export const PAYMENT_PROCESSORS: readonly PaymentProcessor[] = [
   { slug: "flow", from: "flow.cl", wantSubject: (s) => /flow/i.test(s), decode: decodeFlow },
   { slug: "pago_facil", from: "pagofacil.cl", wantSubject: (s) => PAGO_FACIL_RECEIPT_SUBJECT.test(s), decode: decodePagoFacil },
+  {
+    slug: "shopify",
+    gmraw: '"Confirmación de pedido" "Resumen del pedido"',
+    wantSubject: (s) => SHOPIFY_ORDER_SUBJECT.test(s),
+    decode: decodeShopifyOrder,
+  },
 ];
 
 export function decodePaymentReceiptMail(processor: PaymentProcessor, mail: ArchivedMail): ProcessorReceipt | null {
