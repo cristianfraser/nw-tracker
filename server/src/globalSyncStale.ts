@@ -207,7 +207,7 @@ function afpUnoAccountId(): number | null {
 
 /**
  * Stale = the official value due by now (`afpUnoExpectedOfficialDay`: the business day before the
- * latest business day whose 19:00 has passed) is not stored. Never stale without the account.
+ * latest business day whose 18:00 has passed) is not stored. Never stale without the account.
  */
 export function isAfpUnoSpotStale(
   cl: ChileWallClock,

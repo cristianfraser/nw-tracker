@@ -25,8 +25,12 @@ import {
 /** Business days between an official day and the day it shows (the SP publishes D on D+1). */
 export const AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS = 1;
 
-/** Chile hour from which the previous business day's official value is expected. */
-export const AFP_UNO_PUBLISH_HOUR_CHILE = 19;
+/**
+ * Chile hour from which the previous business day's official value is expected: 18:00, the same
+ * hour as Fintual's cuota (`FINTUAL_PUBLISH_HOUR_CHILE`), so both funds turn stale and dim
+ * together. The SP prints the value ~18:30–18:50, so the source waits as publisher lag until it lands.
+ */
+export const AFP_UNO_PUBLISH_HOUR_CHILE = 18;
 
 const UNO = "uno";
 const FUND = "A" as const;
@@ -35,7 +39,7 @@ const DISPLAY_REWRITE_DAYS = 60;
 
 /**
  * The business day whose official value must be in DB at `cl`: the business day before the
- * latest business day whose publish hour has passed (today from 19:00, else the business day
+ * latest business day whose publish hour has passed (today from 18:00, else the business day
  * before today).
  */
 export function afpUnoExpectedOfficialDay(cl: ChileWallClock): string {

@@ -176,8 +176,8 @@ function scheduleForSource(
 
   switch (source) {
     case "afp_uno": {
-      // The SP publishes business day D's value at ~19:00 on the next business day
-      // (`afpUnoOfficialSync.ts`): the wake is the first such hour whose due day is not stored.
+      // Business day D's value is due from 18:00 on the next business day (`afpUnoOfficialSync.ts`):
+      // the wake is the first such hour whose due day is not stored.
       const next = afpUnoNextDue(cl, opts?.afpUnoLatestOfficialDay ?? null);
       return {
         next_sync: next ? chileTimeOnYmd(next.ymd, next.hour, 0) : null,
