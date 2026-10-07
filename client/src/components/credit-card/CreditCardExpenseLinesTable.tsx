@@ -1,3 +1,4 @@
+import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { useCallback } from "react";
 import { useTranslation, ccExpenseCategoryLabel } from "../../i18n";
 import { useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
@@ -347,6 +348,7 @@ export function CreditCardExpenseLinesTable({
             <td className="mono">{ln.purchase_on ?? "—"}</td>
             <td>
               {ln.merchant ?? "—"}
+              <TransferCounterpartyLine counterparty={ln.transfer_counterparty} />
               {ln.cuota_purchase_kind ? (
                 <span
                   title={t(`expenses.creditCard.cuotaPurchasePendingHint.${ln.cuota_purchase_kind}`)}

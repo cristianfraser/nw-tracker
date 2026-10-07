@@ -1,3 +1,4 @@
+import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
@@ -84,7 +85,10 @@ export function IncomeAllLinesTable({
                   <td className="mono">
                     {formatFlowMoney(incomeCartolaAmount(row, displayUnit), displayUnit)}
                   </td>
-                  <td>{row.description}</td>
+                  <td>
+                    {row.description}
+                    {row.kind === "checking" ? <TransferCounterpartyLine counterparty={row.transfer_counterparty} /> : null}
+                  </td>
                   <td>
                     <Link to={`/account/${row.account_id}`}>{row.account_label}</Link>
                   </td>

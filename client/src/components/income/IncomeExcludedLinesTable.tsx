@@ -1,3 +1,4 @@
+import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
@@ -57,7 +58,10 @@ export function IncomeExcludedLinesTable({
               <td className="mono">
                 {formatFlowMoney(excludedLineAmount(row, displayUnit), displayUnit)}
               </td>
-              <td>{row.description}</td>
+              <td>
+                {row.description}
+                <TransferCounterpartyLine counterparty={row.transfer_counterparty} />
+              </td>
               <td>
                 <Link to={`/account/${row.account_id}`}>{row.account_label}</Link>
               </td>

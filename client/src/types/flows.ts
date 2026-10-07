@@ -130,6 +130,19 @@ export interface CcFacturadoFinancingLink {
   financing: { account_id: number; purchase_key: string }[];
 }
 
+/** Who a bank transfer went to or came from, as the bank's mail states it (server: bankTransferNotices.ts). */
+export interface TransferCounterparty {
+  direction: "out" | "in" | "own";
+  name: string | null;
+  rut: string | null;
+  bank: string | null;
+  account_type: string | null;
+  account_number: string | null;
+  email: string | null;
+  comment: string | null;
+  sent_at_chile: string;
+}
+
 export interface FlowCcExpenseLineRow {
   source: FlowCcExpenseLineSource;
   statement_line_id: number;
@@ -185,6 +198,7 @@ export interface FlowCcExpenseLineRow {
    * the card page offers «¿cuántas cuotas?» on it (server `flowsCreditCardExpenses.ts`).
    */
   cuota_purchase_kind?: CcCuotaPurchaseKind;
+  transfer_counterparty?: TransferCounterparty;
 }
 
 export interface ExpenseDepositLinkDto {
@@ -345,6 +359,7 @@ export interface FlowCheckingIncomeLine {
   amount_usd: number | null;
   description: string;
   source: "checking";
+  transfer_counterparty?: TransferCounterparty;
 }
 
 export interface FlowExcludedCheckingIncomeLine {
@@ -357,6 +372,7 @@ export interface FlowExcludedCheckingIncomeLine {
   amount_usd: number | null;
   description: string;
   note: string | null;
+  transfer_counterparty?: TransferCounterparty;
 }
 
 export type IncomeAutoFilterReason =
@@ -376,6 +392,7 @@ export interface FlowFilteredCheckingIncomeLine {
   amount_usd: number | null;
   description: string;
   filter_reason: IncomeAutoFilterReason;
+  transfer_counterparty?: TransferCounterparty;
 }
 
 export interface FlowManualIncomeLine {
