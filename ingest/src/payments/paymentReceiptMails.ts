@@ -558,6 +558,113 @@ function decodeMercadoLibreOrder(mail: ArchivedMail): ProcessorReceipt | null {
   };
 }
 
+// ─── Amazon: one charge per shipment ─────────────────────────────────────────
+
+/** A shipment's mail: «… has shipped», «Shipped: "…"», «Your Amazon.com order has shipped (#…)». */
+const AMAZON_SHIPMENT_SUBJECT = /\bhas shipped\b|^Shipped: /i;
+
+/**
+ * Amazon charges the card once per shipment, in dollars, the day it ships, for the shipment's
+ * total — not the order total, which counts an import-fee deposit and items that ship (and are
+ * charged) separately. So the receipt is the shipping mail: «Shipment Total: $94.79» (2013),
+ * «SHIPMENT TOTAL $45.22» (2017–2021), «Shipment total $29.20» (2024), «Total $20.86» (the
+ * «Shipped: "…"» layout, 2025 on). What shipped: the items the mail lists (2013, 2025 on), else
+ * the item the subject quotes; the 2020–2021 mails name none.
+ */
+function decodeAmazonShipment(mail: ArchivedMail): ProcessorReceipt | null {
+  if (!AMAZON_SHIPMENT_SUBJECT.test(mail.subject)) return null;
+  const t = decodeEntities(mail.text).replace(/\s+/g, " ");
+  const ref = need(t, /Order #[^\d]{0,4}(\d{3}-\d{7}-\d{7})/, "order number", mail)(1);
+  const total =
+    t.match(/Shipment total:? \$ ?([\d,]+\.\d{2})/i) ?? (/^Shipped: /i.test(mail.subject) ? t.match(/ Total \$ ?([\d,]+\.\d{2})/) : null);
+  if (!total) fail(mail, "no shipment total");
+  const amount = printedDollars(total[1]!.replace(/,/g, ""));
+  // A shipment the order had already paid for (a replacement, a gift card): nothing charged.
+  if (amount === 0) return null;
+  let items = [...t.matchAll(/(?<=(?:Track package|Quantity: \d+ \$ \d+ \d+) )(.+?) Quantity: (\d+) \$ \d+ \d+/g)].map(
+    (m) => `${m[1]!.trim()} × ${m[2]}`
+  );
+  if (items.length === 0) {
+    items = [...t.matchAll(/(?:Shipment Details|\$[\d,]+\.\d{2}) (.+?) Sold by /g)].map((m) => m[1]!.trim());
+  }
+  if (items.length === 0) {
+    const quoted = /"(.+?)"( and \d+ more items?)?/.exec(mail.subject);
+    if (quoted) items = [`${quoted[1]}${quoted[2] ?? ""}`];
+  }
+  return {
+    message_id: mail.message_id,
+    sent_at_chile: mail.sent_at_chile,
+    processor: "amazon",
+    payee: { name: "Amazon.com", rut: null, email: null },
+    amount,
+    currency: "usd",
+    // Mailed when the shipment leaves, the day the card is charged.
+    paid_at_chile: mail.sent_at_chile,
+    order_ref: ref,
+    concept: concept(items),
+    statement_descriptor: null,
+    payment_method: null,
+    installments: null,
+    charges: null,
+  };
+}
+
+/** An order's confirmation: «Your Amazon.com order of …», «Amazon.com order of …», «Ordered: "…"». */
+const AMAZON_ORDER_SUBJECT = /^(?:Your )?Amazon\.com order\b(?!.*\bhas shipped\b)|^Ordered: /i;
+
+/**
+ * Amazon's order confirmation: «Order Total: $38.93» (to 2025-03), «Total $43.58» («Ordered: "…"»,
+ * 2025 on). What the card is charged is the shipments' totals (`decodeAmazonShipment`); the server
+ * reads an order's confirmation only when none of its shipments pairs — a gift-card balance pays
+ * part of a shipment, an order shipped with no mail.
+ */
+function decodeAmazonOrder(mail: ArchivedMail): ProcessorReceipt | null {
+  if (!AMAZON_ORDER_SUBJECT.test(mail.subject)) return null;
+  const t = decodeEntities(mail.text).replace(/\s+/g, " ");
+  const ref = need(t, /Order #[^\d]{0,4}(\d{3}-\d{7}-\d{7})/, "order number", mail)(1);
+  // 2013: the confirmation is priced by Amazon's currency converter («Order Total: CLP 42.538») and
+  // holds several orders; their shipment mails state the dollars charged.
+  if (/Order Total: CLP /.test(t)) return null;
+  const total =
+    t.match(/Order Total: \$ ?([\d,]+\.\d{2})/) ??
+    (/^Ordered: /i.test(mail.subject) ? t.match(/ (?:Grand Total:|Total) \$ ?([\d,]+\.\d{2})/) : null);
+  if (!total) fail(mail, "no order total");
+  const amount = printedDollars(total[1]!.replace(/,/g, ""));
+  if (amount === 0) return null;
+  let items = [...t.matchAll(/(?<=(?:View or edit order|Quantity: \d+ \$ \d+ \d+) )(.+?) Quantity: (\d+) \$ \d+ \d+/g)].map(
+    (m) => `${m[1]!.trim()} × ${m[2]}`
+  );
+  if (items.length === 0) {
+    // «… View or manage order OXO Good Grips 3 Piece Sili... Qty : 1 …»: the name is what follows
+    // the block's last label before its «Qty :».
+    const chunks = t.split(/ Qty : (\d+)/);
+    for (let i = 1; i < chunks.length; i += 2) {
+      const before = chunks[i - 1]!;
+      const name = before.split(/View or manage order |Order Total: \$[\d,.]+ |Region Metropolitana /).pop()!.trim();
+      items.push(`${name} × ${chunks[i]}`);
+    }
+  }
+  if (items.length === 0) {
+    const quoted = /order of "?(.+?)"?(?: and (\d+) more item\(?s?\)?)?\.?$/.exec(mail.subject);
+    if (quoted) items = [`${quoted[1]}${quoted[2] ? ` and ${quoted[2]} more` : ""}`];
+  }
+  return {
+    message_id: mail.message_id,
+    sent_at_chile: mail.sent_at_chile,
+    processor: "amazon_order",
+    payee: { name: "Amazon.com", rut: null, email: null },
+    amount,
+    currency: "usd",
+    paid_at_chile: mail.sent_at_chile,
+    order_ref: ref,
+    concept: concept(items),
+    statement_descriptor: null,
+    payment_method: null,
+    installments: null,
+    charges: null,
+  };
+}
+
 export const PAYMENT_PROCESSORS: readonly PaymentProcessor[] = [
   { slug: "flow", from: "flow.cl", wantSubject: (s) => /flow/i.test(s), decode: decodeFlow },
   { slug: "pago_facil", from: "pagofacil.cl", wantSubject: (s) => PAGO_FACIL_RECEIPT_SUBJECT.test(s), decode: decodePagoFacil },
@@ -585,6 +692,18 @@ export const PAYMENT_PROCESSORS: readonly PaymentProcessor[] = [
     decode: decodeMiCocaColaOrder,
   },
   { slug: "dynavap", from: "dynavap.com", wantSubject: (x) => DYNAVAP_ORDER_SUBJECT.test(x), decode: decodeDynavap },
+  {
+    slug: "amazon",
+    gmraw: "from:(ship-confirm@amazon.com OR shipment-tracking@amazon.com)",
+    wantSubject: (x) => AMAZON_SHIPMENT_SUBJECT.test(x),
+    decode: decodeAmazonShipment,
+  },
+  {
+    slug: "amazon_order",
+    from: "auto-confirm@amazon.com",
+    wantSubject: (x) => AMAZON_ORDER_SUBJECT.test(x),
+    decode: decodeAmazonOrder,
+  },
   {
     slug: "mercadolibre",
     gmraw: "from:mercadolibre subject:Compraste",
