@@ -33,6 +33,24 @@ function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
 }
 
 describe("ccExpenseGastosAggregate", () => {
+  it("a refund counts, negatively, in its category and the month — never as an abono", () => {
+    const purchase = ccLine({
+      statement_line_id: 1, line_role: "purchase", installment_flag: 0, nro_cuota_current: 0, nro_cuota_total: 0,
+      expense_month: "2025-04", billing_month: "2025-04", purchase_on: "2025-04-05", amount_clp: 100_000, category_slug: "fun",
+    });
+    const refund = ccLine({
+      source: "checking", statement_line_id: 2, line_role: "purchase", installment_flag: 0, nro_cuota_current: 0,
+      nro_cuota_total: 0, expense_month: "2025-04", billing_month: "2025-04", purchase_on: "2025-04-10",
+      amount_clp: -30_000, category_slug: "fun", purchase_key: "checking-mv:2", checking_refund: true,
+    });
+    const agg = aggregateGastosFromLines([purchase, refund], ["fun"], "split");
+    const april = agg.by_month.find((m) => m.period_month === "2025-04")!;
+    expect(april.gastos_mes_clp).toBe(70_000);
+    expect(april.abonos_mes_clp).toBe(0);
+    expect(agg.chart_monthly_by_category.find((p) => p.as_of_date.startsWith("2025-04"))?.fun).toBe(70_000);
+  });
+
+
   it("split mode sums cuotas in billing months; total mode sums purchase in purchase month", () => {
     const lines = [
       ccLine({
