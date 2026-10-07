@@ -19,9 +19,9 @@ export const processorReceiptSchema = z
         email: text.nullable(),
       })
       .strict(),
-    /** As printed; pesos are whole. */
+    /** As printed; pesos are whole, dollars to the cent. */
     amount: z.number().positive(),
-    currency: z.enum(["clp"]),
+    currency: z.enum(["clp", "usd"]),
     /** When the payment went through, on the Chile clock: `YYYY-MM-DD HH:MM`. */
     paid_at_chile: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/),
     order_ref: text.nullable(),
@@ -34,7 +34,10 @@ export const processorReceiptSchema = z
     installments: z.number().int().min(2).nullable(),
   })
   .strict()
-  .refine((r) => r.currency !== "clp" || Number.isInteger(r.amount), { message: "pesos must be whole" });
+  .refine((r) => r.currency !== "clp" || Number.isInteger(r.amount), { message: "pesos must be whole" })
+  .refine((r) => r.currency !== "usd" || Math.abs(r.amount * 100 - Math.round(r.amount * 100)) < 1e-6, {
+    message: "dollars are to the cent",
+  });
 
 export type ProcessorReceipt = z.infer<typeof processorReceiptSchema>;
 
@@ -45,8 +48,9 @@ export type ProcessorReceipt = z.infer<typeof processorReceiptSchema>;
  */
 export const paymentProcessorReceiptsKind = defineIngestKind({
   kind: "payment.processor_receipts",
-  schema_version: 1,
-  description: "Payment processors' receipts: who each charge paid, for what.",
+  // v2 (2026-10-07): a receipt may be in dollars (`currency: "usd"`).
+  schema_version: 2,
+  description: "Payment processors' receipts and shops' order confirmations: who each charge paid, for what.",
   payload: z
     .object({ receipts: z.array(processorReceiptSchema) })
     .strict()

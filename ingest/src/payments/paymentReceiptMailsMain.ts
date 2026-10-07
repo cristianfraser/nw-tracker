@@ -1,6 +1,6 @@
 /**
  * Send payment processors' receipt mails (Flow, Pago Fácil) and shops' order confirmations
- * (Shopify) to the server as `payment.processor_receipts`: who each charge actually paid.
+ * (Shopify, Calvin Klein, adidas, Club Dominó, Eventbrite, miCoca-Cola, DynaVap) to the server as `payment.processor_receipts`: who each charge actually paid.
  *
  *   npm run import:payment-receipt-mails -w nw-tracker-ingest                       # the last 45 days, fetched now
  *   npm run import:payment-receipt-mails -w nw-tracker-ingest -- --days=400

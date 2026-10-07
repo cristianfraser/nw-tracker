@@ -4,6 +4,9 @@ import { PAYMENT_PROCESSORS } from "./paymentReceiptMails.js";
 const flow = PAYMENT_PROCESSORS.find((p) => p.slug === "flow")!;
 const pagoFacil = PAYMENT_PROCESSORS.find((p) => p.slug === "pago_facil")!;
 const shopify = PAYMENT_PROCESSORS.find((p) => p.slug === "shopify")!;
+const shop = (slug: string) => PAYMENT_PROCESSORS.find((p) => p.slug === slug)!;
+const eventbrite = shop("eventbrite");
+const micoca = shop("micoca_cola");
 const mail = (from: string, subject: string, sent: string, text: string) => ({ message_id: `<${sent}@test>`, sent_at_chile: sent, from, subject, text });
 
 describe("payment receipt mails", () => {
@@ -95,5 +98,228 @@ describe("payment receipt mails", () => {
     })!;
     expect(sender).toMatchObject({ payee: { name: "Tienda Tres" }, concept: "(PREVENTA) Juego NSW × 1", payment_method: "Checkout mercado pago" });
     expect(shopify.decode(mail("persona@example.com", "Re: Confirmación de pedido #1", "2036-01-01 10:00", "Resumen del pedido x Subtotal $1 Total $1 CLP"))).toBeNull();
+  });
+});
+
+describe("shop order confirmations: Calvin Klein, adidas, Club Dominó", () => {
+  it("reads Calvin Klein's order: Total after the discount, items at the price paid", () => {
+    const r = shop("calvin_klein").decode(
+      mail(
+        "calvinkleinchile@aswgr.com",
+        "Tu pedido ha sido realizado exitosamente. | Calvin Klein",
+        "2036-06-01 01:17",
+        "PEDIDO CONFIRMADO ¡Hola Persona! Gracias por comprar en CalvinKlein.cl Tu pedido 1000000000001-01 fue confirmado. Resumen del Pedido Pantalón Uno TALLA:L Cant. 1 TALLA:L Ver producto $ 24.493 Pack Dos TALLA:M Cant. 2 TALLA:M Ver producto $ 47.988 Subtotal: $ 100.000 Descuento: $ -27.519 Total: $ 72.481 Detalles de la Compra Nombre Cliente Persona Ejemplo Método de Pago Webpay Valor: $ 72.481 GRACIAS"
+      )
+    )!;
+    expect(r).toMatchObject({
+      processor: "calvin_klein",
+      payee: { name: "Calvin Klein" },
+      amount: 72481,
+      order_ref: "1000000000001-01",
+      concept: "Pantalón Uno × 1 L · Pack Dos × 2 M",
+      payment_method: "Webpay",
+      paid_at_chile: "2036-06-01 01:17",
+    });
+  });
+
+  it("reads adidas's order in both layouts and skips its shipping mails", () => {
+    const adidas = shop("adidas");
+    const old = adidas.decode(
+      mail(
+        "adidas@cl-info.adidas.com",
+        "Persona, hemos recibido tu pedido",
+        "2036-02-11 21:53",
+        "HEMOS RECIBIDO TU PEDIDO Número de orden: ACL00000001 Buenas noticias RESUMEN DEL PEDIDO Detalles Del Envío Persona Calle Uno 1 Via: Standard Datos De Facturación Persona Calle Uno 1 Via: Master Card Resumen Del Pedido Productos $60.000 Código Promocional -$9.000 Entrega GRATIS Tax $8.143 Total $51.000 (impuestos incluidos) Ahorro total $9.000 TU PEDIDO Polera Uno $25.500 $30.000 Color: Black Talla: M Cantidad: 1 Artículo N°: AB1234 Gorro Dos $25.500 Color: White Talla: L Cantidad: 1 Artículo N°: CD5678 HABLA CON NOSOTROS ¿Qué probabilidad"
+      )
+    )!;
+    expect(old).toMatchObject({ amount: 51000, order_ref: "ACL00000001", concept: "Polera Uno × 1 · Gorro Dos × 1", payment_method: "Master Card" });
+    const twice = "Fecha de creación de la orden jueves, junio 4 Número de pedido ACL00000002 En proceso En tránsito Entregado Zapatilla Tres $69.990 Talla: L / Cantidad: 1 Color: Black Consultar pedido";
+    const neu = adidas.decode(
+      mail(
+        "adidas@cl-info.adidas.com",
+        "Gracias por tu pedido, Persona",
+        "2036-06-03 20:28",
+        `Gracias por tu pedido ${twice} ${twice} Forma de pago Forma de pago Tarjeta De Crédito/ Débito Total Total Artículos $ 69.990 Envío Free Total $ 69.990 (impuestos incluidos)`
+      )
+    )!;
+    expect(neu).toMatchObject({ amount: 69990, order_ref: "ACL00000002", concept: "Zapatilla Tres × 1 L", payment_method: "Tarjeta De Crédito/ Débito" });
+    expect(adidas.decode(mail("adidas@cl-info.adidas.com", "Tu pedido está en camino", "2036-06-04 19:08", "Número de pedido ACL00000002"))).toBeNull();
+  });
+
+  it("reads Club Dominó's comprobante with the order's own time and the tip in the total", () => {
+    const r = shop("club_domino").decode(
+      mail(
+        "noresponder@clubdomino.domino.cl",
+        "¡Pedido Confirmado! - Club Dominó",
+        "2036-05-26 16:14",
+        "¡Hola, Persona! Hemos recibido tu pedido. Comprobante # ABCD123-45678 Sucursal Uno mar., 6 may. 2036 en 16:13 Calle Uno 100, Santiago, Chile 1 Completo Italiano Papas (+$2.000) $5.000 Puntos obtenidos 70 Subtotal $7.000 Propina $700 Descuento -$1.000 Total $6.700 visa 0000"
+      )
+    )!;
+    expect(r).toMatchObject({
+      processor: "club_domino",
+      payee: { name: "Club Dominó Sucursal Uno" },
+      amount: 6700,
+      paid_at_chile: "2036-05-06 16:13",
+      order_ref: "ABCD123-45678",
+      concept: "1 Completo Italiano Papas",
+      payment_method: "visa 0000",
+    });
+  });
+
+  it("throws on an order mail without its total or number, and on a peso amount with cents", () => {
+    expect(() =>
+      shop("calvin_klein").decode(mail("calvinkleinchile@aswgr.com", "Tu pedido ha sido realizado exitosamente. | Calvin Klein", "2036-01-01 10:00", "Tu pedido 1-01 fue confirmado. Resumen del Pedido X Subtotal: $ 1"))
+    ).toThrow(/total/);
+    expect(() => shop("adidas").decode(mail("adidas@cl-info.adidas.com", "Gracias por tu pedido, Persona", "2036-01-01 10:00", "Total $ 1.000 (impuestos incluidos)"))).toThrow(/order number/);
+    expect(() =>
+      shop("club_domino").decode(
+        mail("x@clubdomino.domino.cl", "¡Pedido Confirmado!", "2036-01-01 10:00", "Comprobante # A-1 Sucursal lun., 5 may. 2036 en 10:00 Calle, Chile 1 Item $1.000 Subtotal $1.000 Total $1.000,50")
+      )
+    ).toThrow(/centavos/);
+    expect(shop("club_domino").decode(mail("domino@news.domino.cl", "Vuelve hoy: 30% OFF", "2036-01-01 10:00", "promo"))).toBeNull();
+  });
+});
+
+describe("Eventbrite order confirmations", () => {
+  const paid = (total: string) =>
+    mail(
+      "noreply@order.eventbrite.com",
+      "Order Confirmation for Feria Uno 2036",
+      "2036-03-04 18:20",
+      `Eventbrite Your Tickets for Feria Uno 2036 Ana, you've got tickets! Feria Uno 2036 2 x General Order total: ${total} Saturday, March 8, 2036 Questions about this event? Contact the organizer View event details Order Summary Order #99887766554 - March 4, 2036 Ana Pérez 2 x General CLP$12.000 Fees CLP$1.500 View and manage your order in your Eventbrite account.`
+    );
+
+  it("reads a paid order in pesos, the total with fees", () => {
+    const r = eventbrite.decode(paid("CLP$25.500"))!;
+    expect(r).toMatchObject({
+      processor: "eventbrite",
+      payee: { name: "Eventbrite" },
+      amount: 25500,
+      currency: "clp",
+      paid_at_chile: "2036-03-04 18:20",
+      order_ref: "99887766554",
+      concept: "Feria Uno 2036 · 2 x General",
+    });
+  });
+
+  it("names the organizer when the mail prints one", () => {
+    const r = eventbrite.decode(
+      mail(
+        "orders@eventbrite.com",
+        "Your Tickets for Charla Dos",
+        "2036-04-12 15:33",
+        "Hi Ana, this is your order confirmation for Charla Dos Organized by Club Ejemplo Here are your tickets Order Summary April 12, 2036 Order #: 123456789 Order total: CLP$ 8.000 This order is subject to Eventbrite Terms"
+      )
+    )!;
+    expect(r).toMatchObject({ payee: { name: "Club Ejemplo" }, amount: 8000, order_ref: "123456789", concept: "Charla Dos" });
+  });
+
+  it("skips free orders (nothing was charged)", () => {
+    expect(eventbrite.decode(paid("Free"))).toBeNull();
+    expect(
+      eventbrite.decode(
+        mail("noreply@order.eventbrite.com", "Seus ingressos para festa", "2036-02-08 23:09", "festa 1 x ingresso Total do pedido: Gratuito Resumo de pedido Pedido #1 Pedido gratuito Ana 1 x General Admission R$ 0,00")
+      )
+    ).toBeNull();
+    expect(
+      eventbrite.decode(
+        mail("orders@eventbrite.com", "Your Tickets for Charla Tres", "2036-04-12 15:33", "this is your order confirmation for Charla Tres Organized by Club Ejemplo Order Summary Order #: 1 Name Type Quantity Ana Admission Ticket 1")
+      )
+    ).toBeNull();
+    expect(eventbrite.decode(mail("noreply@event.eventbrite.com", "Nosotros estamos tristes de verte ir", "2036-01-01 10:00", "Order total: CLP$1.000"))).toBeNull();
+  });
+
+  it("throws on a paid order not in pesos, or without a total", () => {
+    expect(() => eventbrite.decode(paid("US$25.50"))).toThrow(/not pesos/);
+    expect(() => eventbrite.decode(paid("$25.500"))).toThrow(/not pesos/);
+    expect(() => eventbrite.decode(paid("CLP$25.500,50"))).toThrow(/centavos/);
+    expect(() =>
+      eventbrite.decode(mail("noreply@order.eventbrite.com", "Order Confirmation for X", "2036-01-01 10:00", "X 1 x General Order Summary Order #5 Ana 1 x General CLP$5.000"))
+    ).toThrow(/without an order total/);
+  });
+});
+
+describe("miCoca-Cola order confirmations", () => {
+  it("reads the current «Hemos recibido tu pedido … con éxito!» layout", () => {
+    const r = micoca.decode(
+      mail(
+        "contacto@micoca-cola.cl",
+        "Hemos recibido tu pedido 9990001112223-01 con éxito!",
+        "2036-09-26 12:30",
+        "¡Hola Ana! Tu pago fue aprobado y tu compra ha sido confirmada Detalles del pedido Nº 9990001112223-01 Fecha de compra 26/09/2036 Recibe Ana Pérez Dirección Calle Uno 1, Santiago. Tipo de entrega Despacho a domicilio Medio de pago Visa Producto(s) Refill Bebida Retornable 24 x 237 ml. (No incluye envases) Cantidad: 2 $ 10.590 Vaso Transparente 495 ml. Cantidad: 2 $ 1.990 Subtotal: 25.160 Descuentos: -.800 Despacho: 3.490 Total: 27.850"
+      )
+    )!;
+    expect(r).toMatchObject({
+      processor: "micoca_cola",
+      payee: { name: "miCoca-Cola.cl" },
+      amount: 27850,
+      paid_at_chile: "2036-09-26 12:30",
+      order_ref: "9990001112223-01",
+      concept: "Refill Bebida Retornable 24 x 237 ml. (No incluye envases) · Vaso Transparente 495 ml.",
+      payment_method: "Visa",
+    });
+  });
+
+  it("reads the 2020 «Pago Aprobado» layout with ungrouped amounts", () => {
+    const r = micoca.decode(
+      mail(
+        "contacto@micoca-cola.cl",
+        "Pago Aprobado - Pedido N°: 9990001112224-01",
+        "2036-03-29 00:30",
+        "Hola Ana, ¡El pago de tu pedido ha sido aprobado! Pedido nº: 9990001112224-01 Fecha de compra: 29/03/2036 Medio de Pago: Mastercard Datos de entrega: Recibe: Ana Detalle del Pedido Refill 8 Bebida 2,0 lt. 1 X $ 7790 Starter Kit Bebida 24 x 237 ml. 1 X $ 9490 Subtotal $ 17280 Descuentos $ -930 Despacho $ 1495 Total $ 17845 www.example.com"
+      )
+    )!;
+    expect(r).toMatchObject({ amount: 17845, order_ref: "9990001112224-01", payment_method: "Mastercard", concept: "Refill 8 Bebida 2,0 lt. · Starter Kit Bebida 24 x 237 ml." });
+  });
+
+  it("skips an order still waiting for its payment, and status mails", () => {
+    expect(
+      micoca.decode(
+        mail(
+          "contacto@micoca-cola.cl",
+          "Hemos recibido tu pedido de Refill 8 Bebida...  y 1 item(s)  con éxito!",
+          "2036-03-29 00:30",
+          "Recibimos tu pedido nº: 9990001112224 Medio de Pago: Mastercard Estamos esperando la confirmación del pago. Detalle del Pedido Refill 1 x $7790 Subtotal $ 7790 Descuentos $ 0 Despacho $ 1495 Total $ 9285"
+        )
+      )
+    ).toBeNull();
+    expect(micoca.decode(mail("contacto@micoca-cola.cl", "Pedido preparado y facturado", "2036-06-05 09:42", "Pedido nº: 1 Total $ 100"))).toBeNull();
+    expect(micoca.decode(mail("contacto@micoca-cola.cl", "Tu pedido de Refill...  y 2 item(s)  fue CANCELADO.", "2036-06-24 13:33", "Total $ 29.260"))).toBeNull();
+  });
+
+  it("throws when the total does not add up or is missing", () => {
+    const subject = "Hemos recibido tu pedido 9990001112225-01 con éxito!";
+    const head = "Tu pago fue aprobado Detalles del pedido Nº 9990001112225-01 Medio de pago Visa Producto(s) Refill Cantidad: 1 $ 9.890 ";
+    expect(() => micoca.decode(mail("contacto@micoca-cola.cl", subject, "2036-01-01 10:00", `${head}Subtotal: 9.890 Descuentos: 0 Despacho: 3.490 Total: 9.890`))).toThrow(/≠/);
+    expect(() => micoca.decode(mail("contacto@micoca-cola.cl", subject, "2036-01-01 10:00", `${head}Subtotal: 9.890 Descuentos: 0 Despacho: 3.490`))).toThrow(/no Total/);
+  });
+});
+
+describe("DynaVap order mails (dollars)", () => {
+  const dynavap = shop("dynavap");
+  it("reads the 2018–19 order confirmation: total in dollars, items without codes or coupon prices", () => {
+    const r = dynavap.decode(
+      mail(
+        "info@dynavap.com",
+        "DynaVap - Order Confirmation",
+        "2036-03-15 20:24",
+        'DynaVap - Order Confirmation Dear Persona, Thank you … Order Summary Order Date: 03/15/2036 PM 06:23 (GMT-6) Order Number: 031536ab Item Description Qty Price VCM 113-73-15-00.b The New "M" Coupon: X20 1 $ 70.00 $ 56 ATL-31 Torch Dos 2 $ 12.00 $ 9.6 Order Subtotal $ 82.00 $ 65.60 Coupon Value $ 16.40 Shipping Charges $ 13.00 Payment Method(s) Used: Credit Card Order Total $ 78.60 As always'
+      )
+    )!;
+    expect(r).toMatchObject({ processor: "dynavap", currency: "usd", amount: 78.6, order_ref: "031536ab", concept: 'The New "M" × 1 · Torch Dos × 2', payment_method: "Credit Card" });
+  });
+
+  it("reads the 2020 receipt with item codes, and throws without a total", () => {
+    const r = dynavap.decode(
+      mail(
+        "noreply@dynavap.com",
+        "Thank you for your order with DynaVap",
+        "2036-03-30 00:13",
+        'Receipt Thank you for your order. Order Summary: Merchant DynaVap Order # 1234567890 Date Sun 29 Mar 2036 Payment Method xxxx xxxx xxxx 0000 Order Total $45.50 Items Item Price Qty Total Subtotal: $40.00 Shipping & Handling $5.50 Order Total: $45.50 Ring Kit Code : POT-1 Weight : 0.004 LBS $5.00 2 $10.00 The "M" Code : VCM 853-73-15-00.c Weight : 0.2 LBS 1 $30.00'
+      )
+    )!;
+    expect(r).toMatchObject({ amount: 45.5, currency: "usd", order_ref: "1234567890", concept: 'Ring Kit × 2 · The "M" × 1', payment_method: "card 0000" });
+    expect(() => dynavap.decode(mail("info@dynavap.com", "DynaVap - Order Confirmation", "2036-01-01 10:00", "Order Number: 1 Item Description Qty Price"))).toThrow(/order total/);
+    expect(dynavap.decode(mail("info@dynavap.com", "DynaVap - Order Status Changed to Shipped", "2036-01-01 10:00", "x"))).toBeNull();
   });
 });
