@@ -21,6 +21,8 @@ import { mortgagePaymentCreateSchemaForAccount } from "./mortgagePaymentCreate.j
 import { accountRowForId } from "./accountRowForMovement.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
+import { equityBrokerHoldings } from "./equityBrokerHoldings.js";
+import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
@@ -159,6 +161,14 @@ export async function buildAccountDetailBundle(
     latest ?? undefined,
     accountId
   );
+  // One account per ticker whatever the broker: the split by the cash account that paid.
+  const positionWithBrokers =
+    position != null && position.units_kind === "shares" && accountUsesEquityMtm(accountId)
+      ? {
+          ...position,
+          brokers: equityBrokerHoldings(accountId, chileCalendarTodayYmd(), position.value_clp),
+        }
+      : position;
   const { value_clp: latest_valuation_clp, as_of_date: latest_valuation_date } =
     accountDisplayValue({
       accountId,
@@ -180,7 +190,7 @@ export async function buildAccountDetailBundle(
     deposits_clp,
     latest_valuation_clp,
     latest_valuation_date,
-    position,
+    position: positionWithBrokers,
     movement_create: accountRow ? movementCreateSchemaForAccount(accountRow) : null,
     book_ledger_edit: bookLedgerEditSchemaForAccount(accountId),
     mortgage_payment_create: mortgagePaymentCreateSchemaForAccount(accountId),

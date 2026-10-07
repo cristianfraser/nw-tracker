@@ -772,6 +772,15 @@
       "colDelta": "Δ",
       "totalLabel": "All payments",
       "coveredFrom": "Totals from {{date}} ({{covered}} of {{total}} payments): earlier payments predate this portfolio."
+    },
+    "brokerHoldings": {
+      "title": "Holdings by cash account",
+      "hint": "The same ticker held at several brokers: the shares split by the cash account that paid for them.",
+      "colAccount": "Cash account",
+      "colUnits": "Units",
+      "colShare": "Share",
+      "colValue": "Value today (CLP)",
+      "noCashAccount": "No cash account"
     }
   },
   "periodReturns": {
@@ -1637,6 +1646,24 @@
     "taxYearLabel": "Tax year",
     "taxYearOption": "AT{{year}} (income {{income}})",
     "estimatedTitle": "Estimated from the ledger until the third party reports it",
-    "estimatedNote": "≈ estimated from the ledger: fund redemptions (FIFO, IPC-reajustado cost; 2025 came within 0,9% of what Fintual reported) and mortgage interest (2025: +1,9% vs the lender). They are replaced by the DJs third parties file in March."
+    "estimatedNote": "≈ estimated from the ledger: fund redemptions (FIFO, IPC-reajustado cost; 2025 came within 0,9% of what Fintual reported) and mortgage interest (2025: +1,9% vs the lender). They are replaced by the DJs third parties file in March.",
+    "lossOffset": {
+      "unusedOpen": "Uncompensated loss in {{year}}: {{amount}}. Gains up to {{amount}} in the same pool (crypto, funds, interest, foreign shares or dividends) realized by {{year}}-12-31 would pay no tax.",
+      "unusedOpenTax": "Without the loss they would cost ≈ {{tax}} of IGC. Losses do not carry over to the next year.",
+      "unusedClosed": "{{amount}} of loss went uncompensated in {{year}}: the pool had no gains to absorb it, and losses do not carry over.",
+      "taxedOpen": "Uncompensated gain in {{year}}: {{amount}}. Realizing crypto or fund losses of up to {{amount}} by {{year}}-12-31 would offset it (a foreign share loss would not).",
+      "taxedOpenTax": "That would save ≈ {{tax}} of IGC.",
+      "breakdown": "Code 169 pool: {{parts}}.",
+      "source": {
+        "crypto": "crypto",
+        "foreign_shares": "foreign shares",
+        "foreign_dividends": "foreign dividends",
+        "funds_interest": "funds and interest"
+      },
+      "taxedOpenNoTax": "With the income recorded so far it pays no IGC.",
+      "foreignUnusedOpen": "Foreign share loss in {{year}}: {{amount}}. It offsets only foreign share gains of the same year, not salary, funds or crypto: selling foreign shares at a gain of up to {{amount}} by {{year}}-12-31 would pay no tax.",
+      "foreignUnusedClosed": "{{amount}} of foreign share loss went unused in {{year}}: it offsets only foreign share gains of the same year and does not carry over.",
+      "foreignTaxedOpen": "Foreign share gain in {{year}}: {{amount}}. Selling foreign shares, crypto or funds at a loss of up to {{amount}} by {{year}}-12-31 would offset it."
+    }
   }
 }

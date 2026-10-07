@@ -166,6 +166,8 @@ export function StandardAccountDetailPage({ data }: Props) {
   const showPositionBlock =
     !data.contentLoading && !isMovementCartolaAccount && !isDeptoAccount && !isUsdCashAccount;
   const showEquityReturnColumns = summary.position?.dividends_clp != null;
+  // Shown only when the ticker is held through more than one cash account (broker).
+  const brokerHoldings = summary.position?.brokers ?? [];
 
   return (
     <AccountDetailSharedLayout
@@ -278,6 +280,37 @@ export function StandardAccountDetailPage({ data }: Props) {
               ) : null}
             </tr>
           </Table>
+          {brokerHoldings.length >= 2 ? (
+            <>
+              <h3 className={cn(styles.sectionTitleCompact, styles.marginTopBase)}>
+                {t("accountDetail.brokerHoldings.title")}
+              </h3>
+              <p className="muted">{t("accountDetail.brokerHoldings.hint")}</p>
+              <Table
+                header={
+                  <thead>
+                    <tr>
+                      <th>{t("accountDetail.brokerHoldings.colAccount")}</th>
+                      <th>{t("accountDetail.brokerHoldings.colUnits")}</th>
+                      <th>{t("accountDetail.brokerHoldings.colShare")}</th>
+                      <th>{t("accountDetail.brokerHoldings.colValue")}</th>
+                    </tr>
+                  </thead>
+                }
+              >
+                {brokerHoldings.map((h) => (
+                  <tr key={h.cash_account_id ?? "none"}>
+                    <td>{h.cash_account_name ?? t("accountDetail.brokerHoldings.noCashAccount")}</td>
+                    <td className="mono">
+                      {formatInstrumentUnits(h.units, summary.position?.units_kind ?? "shares")}
+                    </td>
+                    <td className="mono">{formatPct(h.share * 100)}</td>
+                    <td className="mono">{h.value_clp != null ? formatClp(h.value_clp) : "—"}</td>
+                  </tr>
+                ))}
+              </Table>
+            </>
+          ) : null}
         </div>
       ) : null}
 

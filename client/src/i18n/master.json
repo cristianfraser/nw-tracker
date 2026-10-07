@@ -2689,6 +2689,36 @@
         "en": "Totals from {{date}} ({{covered}} of {{total}} payments): earlier payments predate this portfolio.",
         "es": "Totales desde {{date}} ({{covered}} de {{total}} pagos): los pagos anteriores son de antes de este portafolio."
       }
+    },
+    "brokerHoldings": {
+      "title": {
+        "en": "Holdings by cash account",
+        "es": "Tenencia por cuenta de origen"
+      },
+      "hint": {
+        "en": "The same ticker held at several brokers: the shares split by the cash account that paid for them.",
+        "es": "El mismo ticker en varios brókeres: las acciones según la cuenta de caja que las pagó."
+      },
+      "colAccount": {
+        "en": "Cash account",
+        "es": "Cuenta de caja"
+      },
+      "colUnits": {
+        "en": "Units",
+        "es": "Unidades"
+      },
+      "colShare": {
+        "en": "Share",
+        "es": "Proporción"
+      },
+      "colValue": {
+        "en": "Value today (CLP)",
+        "es": "Valor hoy (CLP)"
+      },
+      "noCashAccount": {
+        "en": "No cash account",
+        "es": "Sin cuenta de caja"
+      }
     }
   },
   "periodReturns": {
@@ -5747,6 +5777,66 @@
     "estimatedNote": {
       "en": "≈ estimated from the ledger: fund redemptions (FIFO, IPC-reajustado cost; 2025 came within 0,9% of what Fintual reported) and mortgage interest (2025: +1,9% vs the lender). They are replaced by the DJs third parties file in March.",
       "es": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC; 2025 quedó a 0,9% de lo informado por Fintual) e intereses del crédito hipotecario (2025: +1,9% vs el banco). Los reemplazan las DJ que los terceros presentan en marzo."
+    },
+    "lossOffset": {
+      "unusedOpen": {
+        "en": "Uncompensated loss in {{year}}: {{amount}}. Gains up to {{amount}} in the same pool (crypto, funds, interest, foreign shares or dividends) realized by {{year}}-12-31 would pay no tax.",
+        "es": "Pérdida sin compensar en {{year}}: {{amount}}. Ganancias de hasta {{amount}} en el mismo grupo (cripto, fondos, intereses, acciones o dividendos extranjeros) realizadas antes del {{year}}-12-31 no pagarían impuesto."
+      },
+      "unusedOpenTax": {
+        "en": "Without the loss they would cost ≈ {{tax}} of IGC. Losses do not carry over to the next year.",
+        "es": "Sin la pérdida costarían ≈ {{tax}} de IGC. Las pérdidas no se arrastran al año siguiente."
+      },
+      "unusedClosed": {
+        "en": "{{amount}} of loss went uncompensated in {{year}}: the pool had no gains to absorb it, and losses do not carry over.",
+        "es": "{{amount}} de pérdida quedaron sin compensar en {{year}}: el grupo no tenía ganancias para absorberla, y las pérdidas no se arrastran."
+      },
+      "taxedOpen": {
+        "en": "Uncompensated gain in {{year}}: {{amount}}. Realizing crypto or fund losses of up to {{amount}} by {{year}}-12-31 would offset it (a foreign share loss would not).",
+        "es": "Ganancia sin compensar en {{year}}: {{amount}}. Realizar pérdidas en cripto o fondos de hasta {{amount}} antes del {{year}}-12-31 la compensaría (una pérdida en acciones extranjeras no)."
+      },
+      "taxedOpenTax": {
+        "en": "That would save ≈ {{tax}} of IGC.",
+        "es": "Eso ahorraría ≈ {{tax}} de IGC."
+      },
+      "breakdown": {
+        "en": "Code 169 pool: {{parts}}.",
+        "es": "Grupo del código 169: {{parts}}."
+      },
+      "source": {
+        "crypto": {
+          "en": "crypto",
+          "es": "cripto"
+        },
+        "foreign_shares": {
+          "en": "foreign shares",
+          "es": "acciones extranjeras"
+        },
+        "foreign_dividends": {
+          "en": "foreign dividends",
+          "es": "dividendos extranjeros"
+        },
+        "funds_interest": {
+          "en": "funds and interest",
+          "es": "fondos e intereses"
+        }
+      },
+      "taxedOpenNoTax": {
+        "en": "With the income recorded so far it pays no IGC.",
+        "es": "Con los ingresos registrados hasta ahora no paga IGC."
+      },
+      "foreignUnusedOpen": {
+        "en": "Foreign share loss in {{year}}: {{amount}}. It offsets only foreign share gains of the same year, not salary, funds or crypto: selling foreign shares at a gain of up to {{amount}} by {{year}}-12-31 would pay no tax.",
+        "es": "Pérdida en acciones extranjeras en {{year}}: {{amount}}. Solo compensa ganancias en acciones extranjeras del mismo año, no sueldo, fondos ni cripto: vender acciones extranjeras con ganancia de hasta {{amount}} antes del {{year}}-12-31 no pagaría impuesto."
+      },
+      "foreignUnusedClosed": {
+        "en": "{{amount}} of foreign share loss went unused in {{year}}: it offsets only foreign share gains of the same year and does not carry over.",
+        "es": "{{amount}} de pérdida en acciones extranjeras quedaron sin usar en {{year}}: solo compensa ganancias en acciones extranjeras del mismo año y no se arrastra."
+      },
+      "foreignTaxedOpen": {
+        "en": "Foreign share gain in {{year}}: {{amount}}. Selling foreign shares, crypto or funds at a loss of up to {{amount}} by {{year}}-12-31 would offset it.",
+        "es": "Ganancia en acciones extranjeras en {{year}}: {{amount}}. Vender acciones extranjeras, cripto o fondos con pérdida de hasta {{amount}} antes del {{year}}-12-31 la compensaría."
+      }
     }
   }
 }
