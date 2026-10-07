@@ -402,5 +402,7 @@ describe("Amazon shipment and order mails", () => {
       order.decode(m('Your Amazon.com order of "KES Bathroom Shelf Tempered..." and 1 more item.', "Ship to: Cristian Santiago, Region Metropolitana Order # 114-1740488-6053012 View or manage order OXO Good Grips 3 Piece Sili... Qty : 1 Arriving: March 24 Ship to: Cristian Santiago, Region Metropolitana Order # 114-1740488-6053012 View or manage order KES Bathroom Shelf Tempered... Qty : 1 Order Total: $72.10")),
     ).toMatchObject({ amount: 72.1, concept: "OXO Good Grips 3 Piece Sili... × 1 · KES Bathroom Shelf Tempered... × 1" });
     expect(order.decode(m("Amazon.com order of Clea (Alexandria Quartet).", "Order # 109-8207594-6525020 Order Total: CLP 18.413"))).toBeNull();
+    expect(order.decode(m('Your Amazon.com order of "Hygie Rinse..." and 2 more item(s) has been canceled.', "…"))).toBeNull();
+    expect(order.decode(m("Your Amazon.com Order #114-6110261-6152233", "…"))).toBeNull();
   });
 });

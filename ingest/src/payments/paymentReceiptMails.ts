@@ -609,8 +609,11 @@ function decodeAmazonShipment(mail: ArchivedMail): ProcessorReceipt | null {
   };
 }
 
-/** An order's confirmation: «Your Amazon.com order of …», «Amazon.com order of …», «Ordered: "…"». */
-const AMAZON_ORDER_SUBJECT = /^(?:Your )?Amazon\.com order\b(?!.*\bhas shipped\b)|^Ordered: /i;
+/**
+ * An order's confirmation: «Your Amazon.com order of …», «Amazon.com order of …», «Your Amazon.com
+ * order #…», «Ordered: "…"» — never a cancellation, nor customer service's «Your Amazon.com Order».
+ */
+const AMAZON_ORDER_SUBJECT = /^(?:Your )?Amazon\.com order(?: of | #|$)(?!.*\bhas (?:shipped|been cancell?ed)\b)|^Ordered: /;
 
 /**
  * Amazon's order confirmation: «Order Total: $38.93» (to 2025-03), «Total $43.58» («Ordered: "…"»,
