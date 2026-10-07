@@ -30,9 +30,14 @@ export type SantanderArchivedMail = {
 
 /** The subjects that state a movement; marketing and notices are left out. */
 const TRANSACTIONAL_SUBJECT =
-  /^(Comprobante|Aviso de transferencia|Aviso de Transferencias?|Transferencia|Compra de divisas|Paga tu estado de cuenta)/i;
+  /^(Comprobante|Aviso de transferencia|Aviso de Transferencias?|Transferencia|Compra de divisas|Pago Deuda Nacional)/i;
 
-/** The card's monthly facturado notice, sent under several marketing subjects. */
+/**
+ * The card's monthly facturado notice, sent under several marketing subjects («Paga tu deuda
+ * nacional en cuotas», «¡Paga tu Tarjeta de Crédito en cuotas!»…): a subject that may carry it is
+ * downloaded, and kept only when its text states the facturado.
+ */
+const FACTURADO_SUBJECT = /paga (tu|la)\b.*(cuotas|deuda|estado de cuenta)/i;
 const FACTURADO_TEXT = /monto total facturado/i;
 
 const chileClock = new Intl.DateTimeFormat("sv-SE", {
@@ -75,6 +80,8 @@ function decodedBodyText(source: Buffer): string {
 export async function archiveSantanderMails(opts: {
   fromYmd: string;
   toYmd: string;
+  /** File name under `cfraser/santander-mail-archive/` (default `<from>_<to>.json`). */
+  fileName?: string;
 }): Promise<{ file: string; count: number }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.fromYmd) || !/^\d{4}-\d{2}-\d{2}$/.test(opts.toYmd)) {
     throw new Error(`--from / --to must be YYYY-MM-DD (got ${opts.fromYmd} / ${opts.toYmd})`);
@@ -100,8 +107,14 @@ export async function archiveSantanderMails(opts: {
       since.setUTCDate(since.getUTCDate() - 1);
       const before = new Date(`${opts.toYmd}T00:00:00Z`);
       before.setUTCDate(before.getUTCDate() + 2);
-      const uids = (await client.search({ from: "santander.cl", since, before })) || [];
-      for await (const msg of client.fetch(uids as number[], { envelope: true, source: true, uid: true })) {
+      const uids = ((await client.search({ from: "santander.cl", since, before })) || []) as number[];
+      // Envelopes first: only a transactional subject (or a possible facturado notice) is downloaded.
+      const wanted: number[] = [];
+      for await (const msg of client.fetch(uids, { envelope: true, uid: true })) {
+        const subject = String(msg.envelope?.subject ?? "").trim();
+        if (TRANSACTIONAL_SUBJECT.test(subject) || FACTURADO_SUBJECT.test(subject)) wanted.push(msg.uid);
+      }
+      for await (const msg of client.fetch(wanted, { envelope: true, source: true, uid: true }, { uid: true })) {
         const subject = String(msg.envelope?.subject ?? "").trim();
         const date = msg.envelope?.date;
         if (!date) throw new Error(`mail ${msg.uid} «${subject}» has no date`);
@@ -126,7 +139,7 @@ export async function archiveSantanderMails(opts: {
   }
   mails.sort((a, b) => a.sent_at_chile.localeCompare(b.sent_at_chile));
   const dir = ensureDir(path.join(resolveCfraserDir(), "santander-mail-archive"));
-  const file = path.join(dir, `${opts.fromYmd}_${opts.toYmd}.json`);
+  const file = path.join(dir, opts.fileName ?? `${opts.fromYmd}_${opts.toYmd}.json`);
   fs.writeFileSync(file, `${JSON.stringify(mails, null, 2)}\n`);
   log(`e-mail: ${mails.length} transactional mail(s) → ${file}`);
   return { file, count: mails.length };

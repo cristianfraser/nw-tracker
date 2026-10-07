@@ -72,6 +72,11 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     await x.step("CC bank cupo check", npmRun("check:cc-bank-cupo"));
   }
 
+  // 3c'. Santander's transfer mails of the last weeks: who each checking transfer went to or came
+  // from (the checking rows of the day are in by now; a later row pairs on a later night).
+  if (o.dryRun) await x.step(dry("Santander transfer mails"), npmRun("import:santander-transfer-mails", "--dry-run"));
+  else await x.step("Santander transfer mails", npmRun("import:santander-transfer-mails"));
+
   // 3d. Apple's mails, once the card lines they explain are in: the app on each charge's note.
   if (o.dryRun) await x.step(dry("Apple receipts → expense notes"), npmRun("import:apple-mail", "--dry-run"));
   else await x.step("Apple receipts → expense notes", npmRun("import:apple-mail"));

@@ -2,6 +2,7 @@ import type { z } from "zod";
 import type { IngestKindDefinition } from "./defineKind.js";
 import { bankAccountMovementsKind } from "./kinds/bankAccountMovements.js";
 import { bankAccountBalancesKind } from "./kinds/bankAccountBalances.js";
+import { bankAccountTransferNoticesKind } from "./kinds/bankAccountTransferNotices.js";
 import { bankAccountStatementsKind } from "./kinds/bankAccountStatements.js";
 import { brokerMovementsKind } from "./kinds/brokerMovements.js";
 import { brokerNotificationsKind } from "./kinds/brokerNotifications.js";
@@ -20,7 +21,7 @@ import { unemploymentFundDocumentsKind } from "./kinds/unemploymentFundDocuments
 export { defineIngestKind, type IngestKindDefinition } from "./defineKind.js";
 
 /** Every kind the server accepts. */
-export const INGEST_KINDS = [cardUnbilledMovementsKind, bankAccountMovementsKind, cardPaymentReceiptKind, brokerNotificationsKind, brokerMovementsKind, pensionAccountCertificatesKind, cardStatementKind, merchantPurchaseDocumentKind, cardParsedStatementsKind, bankAccountStatementsKind, storeReceiptKind, employmentPayslipsKind, brokerDividendStatementKind, fundAccountTransactionsKind, unemploymentFundDocumentsKind, bankAccountBalancesKind] as const satisfies readonly IngestKindDefinition[];
+export const INGEST_KINDS = [cardUnbilledMovementsKind, bankAccountMovementsKind, cardPaymentReceiptKind, brokerNotificationsKind, brokerMovementsKind, pensionAccountCertificatesKind, cardStatementKind, merchantPurchaseDocumentKind, cardParsedStatementsKind, bankAccountStatementsKind, storeReceiptKind, employmentPayslipsKind, brokerDividendStatementKind, fundAccountTransactionsKind, unemploymentFundDocumentsKind, bankAccountBalancesKind, bankAccountTransferNoticesKind] as const satisfies readonly IngestKindDefinition[];
 
 export type IngestKind = (typeof INGEST_KINDS)[number];
 export type IngestKindName = IngestKind["kind"];

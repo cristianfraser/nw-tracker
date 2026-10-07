@@ -6,6 +6,7 @@ export * from "./kinds/cardUnbilledMovements.js";
 export * from "./runs.js";
 export * from "./kinds/bankAccountMovements.js";
 export * from "./kinds/bankAccountBalances.js";
+export * from "./kinds/bankAccountTransferNotices.js";
 export * from "./parse.js";
 export * from "./kinds/cardPaymentReceipt.js";
 export * from "./kinds/brokerNotifications.js";
