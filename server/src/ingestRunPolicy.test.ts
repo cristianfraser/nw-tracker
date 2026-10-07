@@ -163,24 +163,8 @@ describe("decideSantanderFetch", () => {
 });
 
 describe("decideAfpUnoFetch", () => {
-  // Chile is UTC−3 from 2026-09-06: 22:00 Chile on day D = 01:00Z on D+1.
-  const nightOf = (ymd: string) => new Date(new Date(`${ymd}T01:00:00Z`).getTime() + 86_400_000);
-
-  it("reads before the 10th to check the balance", () => {
-    expect(decideAfpUnoFetch({ now: nightOf("2026-10-09"), lastCleanImportAt: null }).reason).toBe("nightly balance check against the website");
-  });
-
-  it("reads every night from the 10th through the month's end until a clean import", () => {
-    expect(decideAfpUnoFetch({ now: nightOf("2026-10-10"), lastCleanImportAt: null })?.reason).toBe("no clean import since 2026-10-10");
-    expect(decideAfpUnoFetch({ now: nightOf("2026-10-31"), lastCleanImportAt: nightOf("2026-09-12") })).not.toBeNull();
-  });
-
-  it("after a clean import only checks the balance until the next 10th", () => {
-    const imported = nightOf("2026-10-12");
-    const check = "nightly balance check against the website";
-    expect(decideAfpUnoFetch({ now: nightOf("2026-10-13"), lastCleanImportAt: imported }).reason).toBe(check);
-    expect(decideAfpUnoFetch({ now: nightOf("2026-11-09"), lastCleanImportAt: imported }).reason).toBe(check);
-    expect(decideAfpUnoFetch({ now: nightOf("2026-11-10"), lastCleanImportAt: imported }).reason).toBe("no clean import since 2026-11-10");
+  it("reads every night", () => {
+    expect(decideAfpUnoFetch().reason).toBe("nightly: the website's balance against the ledger");
   });
 });
 

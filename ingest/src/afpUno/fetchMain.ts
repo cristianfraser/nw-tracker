@@ -1,9 +1,14 @@
 /**
- * Read AFP UNO's mandatory account and send it to the server as one
- * `pension_account.certificates`:
+ * Read AFP UNO's mandatory account (the nightly, every night):
  *
  *   npm run fetch:afp-uno -w nw-tracker-ingest                          # report only
  *   npm run fetch:afp-uno -w nw-tracker-ingest -- --apply --background  # write (the nightly)
+ *   … -- --certificates                                                 # read them regardless
+ *
+ * The home page's balance goes to the server first (`pension_account.balance`). When its cuotas
+ * equal the ledger's, the server checks the stated pesos against the app's value and that is
+ * the read. When they differ, something moved, and the two certificates are read and sent as one
+ * `pension_account.certificates`, which says what and writes it.
  *
  * The private site signs in from www.uno.cl (RUT + clave; the page's own invisible reCAPTCHA
  * makes its token — nothing here touches it) and its home page then calls the portal's JSON
@@ -25,7 +30,9 @@ import fs from "node:fs";
 import path from "node:path";
 import type { APIRequestContext, Page } from "playwright-core";
 import {
+  pensionAccountBalanceKind,
   pensionAccountCertificatesKind,
+  type PensionAccountBalanceApplyDetails,
   type PensionAccountCertificatesApplyDetails,
   type PensionAccountCertificatesPayload,
 } from "nw-tracker-contracts";
@@ -51,6 +58,8 @@ const CERTIFICATE_PERIODS = 12;
 const apply = process.argv.includes("--apply");
 const background = process.argv.includes("--background");
 const force = process.argv.includes("--force");
+/** Read the certificates even when the stated cuotas equal the ledger's. */
+const forceCertificates = process.argv.includes("--certificates");
 
 type PortalMovement = {
   periodoCotizacion: string;
@@ -194,14 +203,44 @@ function printDetails(d: PensionAccountCertificatesApplyDetails): void {
     );
   }
   console.log(`  balance: stated ${d.balance.stated_cuotas.toFixed(4)} cuotas, ledger after this read ${d.balance.ledger_cuotas_after.toFixed(4)}`);
-  const v = d.value_check;
+  printValueCheck(d.value_check);
+  if (d.applied) console.log(`  → ${d.inserted} row(s) written`);
+  for (const p of d.problems) console.log(`  PROBLEM: ${p}`);
+}
+
+function balancePayload(home: HomeRead, readAt: Date) {
+  return {
+    provider: "afp_uno" as const,
+    product: "mandatory" as const,
+    fund: home.fund.tipo,
+    read_at: readAt.toISOString(),
+    balance: { cuotas: home.fund.saldoCuota, valor_cuota: home.fund.valorCuota, pesos: home.fund.saldo },
+    recent_movements: recentMovements(home),
+  };
+}
+
+function recentMovements(home: HomeRead) {
+  return home.movements.map((m) => ({
+    credited_on: yyyymmddToIso(m.fechaAcreditacion),
+    period: yyyymmToPeriod(m.periodoCotizacion),
+    code: m.codigoMovimiento,
+    description: m.descripcionMovimiento,
+    pesos: parseChileanNumber(m.valorMilesMovimiento),
+    cuotas: parseChileanNumber(m.valorCuotasMovimiento),
+  }));
+}
+
+function printValueCheck(v: PensionAccountCertificatesApplyDetails["value_check"]) {
   console.log(
     v.status === "waiting"
       ? `  value: website ${v.site_pesos} pesos — ${v.detail}`
       : `  value: website ${v.site_pesos} pesos (${v.site_cuotas} × ${v.site_valor_cuota}), app ${v.app_pesos} on ${v.app_day} — ${v.status}${v.status === "mismatch" ? ` (${v.diff_clp})` : ""}`
   );
-  if (d.applied) console.log(`  → ${d.inserted} row(s) written`);
-  for (const p of d.problems) console.log(`  PROBLEM: ${p}`);
+}
+
+function printBalance(b: PensionAccountBalanceApplyDetails) {
+  console.log(`\nAFP UNO balance: website ${b.stated_cuotas.toFixed(4)} cuotas, ledger ${b.ledger_cuotas.toFixed(4)}`);
+  if (b.value_check) printValueCheck(b.value_check);
 }
 
 async function main(): Promise<number> {
@@ -224,6 +263,30 @@ async function main(): Promise<number> {
     const page = await firstPage(context);
     home = await signInAndReadHome(page, config.rut, clave);
     log(`AFP UNO: signed in — ${home.fund.saldoCuota} cuotas in fund ${home.fund.tipo}, ${home.movements.length} recent movement(s)`);
+    // The stated cuotas decide whether the certificates are read: anything that moved cuotas
+    // changes them. Equal, the server checks the stated pesos against the app's value instead.
+    let balance: PensionAccountBalanceApplyDetails;
+    try {
+      const result = await ingestClient().send(pensionAccountBalanceKind, balancePayload(home, readAt), {
+        channel: "web_session",
+        ref: `afp-uno-balance-${readAt.toISOString().replace(/[:.]/g, "-")}`,
+        fetched_at: readAt.toISOString(),
+      });
+      balance = result.details as PensionAccountBalanceApplyDetails;
+    } catch (err) {
+      console.log(`AFP UNO: FAILED — ${describeIngestFailure(err)}`);
+      return 1;
+    }
+    printBalance(balance);
+    if (!balance.certificates_needed && !forceCertificates) {
+      for (const p of balance.problems) console.log(`  PROBLEM: ${p}`);
+      return balance.problems.length > 0 ? 1 : 0;
+    }
+    log(
+      balance.certificates_needed
+        ? `AFP UNO: the website states ${balance.stated_cuotas} cuotas, the ledger ${balance.ledger_cuotas} — reading the certificates`
+        : "AFP UNO: reading the certificates (--certificates)"
+    );
     contributionsPdf = await certificatePdf(context.request, home.headers, "cotizaciones", {
       TipoProducto: "CCO",
       numPeriodos: String(CERTIFICATE_PERIODS),
@@ -258,14 +321,7 @@ async function main(): Promise<number> {
     apply,
     read_at: readAt.toISOString(),
     balance: { cuotas: home.fund.saldoCuota, valor_cuota: home.fund.valorCuota, pesos: home.fund.saldo },
-    recent_movements: home.movements.map((m) => ({
-      credited_on: yyyymmddToIso(m.fechaAcreditacion),
-      period: yyyymmToPeriod(m.periodoCotizacion),
-      code: m.codigoMovimiento,
-      description: m.descripcionMovimiento,
-      pesos: parseChileanNumber(m.valorMilesMovimiento),
-      cuotas: parseChileanNumber(m.valorCuotasMovimiento),
-    })),
+    recent_movements: recentMovements(home),
     contributions,
     movements,
   });

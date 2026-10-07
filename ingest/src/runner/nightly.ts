@@ -110,15 +110,15 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     x.note("=== Racional (skipped — no e-mail said anything moved)");
   }
 
-  // 5b. AFP UNO, when the server asks (from the 10th of a month until a clean import).
+  // 5b. AFP UNO, every night: the balance, and the certificates when its cuotas moved.
   if (o.afpUnoFetch == null) {
     x.note("=== AFP UNO (not tonight)");
   } else if (o.dryRun) {
     x.note(`=== (dry run) skipping fetch:afp-uno (${o.afpUnoFetch.reason})`);
   } else {
     x.note(`AFP UNO: ${o.afpUnoFetch.reason}`);
-    if (o.afpUnoApply) await x.step("AFP UNO certificates (apply)", npmRun("fetch:afp-uno", "--background", "--apply"));
-    else await x.step("AFP UNO certificates (report only)", npmRun("fetch:afp-uno", "--background"));
+    if (o.afpUnoApply) await x.step("AFP UNO (apply)", npmRun("fetch:afp-uno", "--background", "--apply"));
+    else await x.step("AFP UNO (report only)", npmRun("fetch:afp-uno", "--background"));
   }
 
   // 5c. Payslips, when the server asks: the portal from the 1st until last month's payslip is in,
