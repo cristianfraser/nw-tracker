@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TransferNotice } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import { applyBankTransferNotices, mailMovementForNotice, TRANSFER_NOTICE_MOVEMENT_MAX_AGE_DAYS } from "./bankTransferNotices.js";
+import {
+  applyBankTransferNotices,
+  landingAccountFor,
+  mailMovementForNotice,
+  TRANSFER_NOTICE_MOVEMENT_MAX_AGE_DAYS,
+} from "./bankTransferNotices.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { listCheckingMovements } from "./checkingCartolaLoaders.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
@@ -45,25 +50,55 @@ function outgoing(day: string, amount: number, to: Partial<TransferNotice["to"]>
 
 describe("mailMovementForNotice", () => {
   const tracked = new Map([["99999991", 22], ["555", 41]]);
-  const counterparties = { byRut: new Map([["333333333", new Set([100])]]), byNumber: new Map<string, Set<number>>() };
+  const counterparties = {
+    byRut: new Map([["333333333", new Set([44, 100])]]),
+    byNumber: new Map([["888", new Set([80])], ["999", new Set([32])]]),
+  };
+  const info = new Map([
+    [44, { import_key: "import:fintual|cert|key=goal", is_card: false }],
+    [100, { import_key: "import:panel|kind=clp|key=fintual_clp", is_card: false }],
+    [80, { import_key: "import:excel|key=ahorro", is_card: false }],
+    [32, { import_key: "credit_card_master|x|1", is_card: true }],
+  ]);
+  const landing = (a: ReadonlySet<number>) => landingAccountFor(a, info);
   const base = outgoing("2030-10-07", 1000, {});
-  const tracked22 = { ...base, from: { ...base.from, account_number: "99999991" } };
+  const from22 = { ...base, from: { ...base.from, account_number: "99999991" } };
+  const plan = (n: TransferNotice) => mailMovementForNotice(n, tracked, counterparties, landing);
 
   it("writes a third-party payment as a debit and an incoming transfer as a credit", () => {
-    expect(mailMovementForNotice(tracked22, tracked, counterparties)).toEqual({ account_id: 22, amount: -1000 });
-    expect(mailMovementForNotice({ ...incoming("2030-10-07", 1000), to: { ...base.to, account_number: "99999991" } }, tracked, counterparties)).toEqual({
+    expect(plan(from22)).toEqual({ kind: "single", account_id: 22, amount: -1000 });
+    expect(plan({ ...incoming("2030-10-07", 1000), to: { ...base.to, account_number: "99999991" } })).toEqual({
+      kind: "single",
       account_id: 22,
       amount: 1000,
     });
   });
 
-  it("leaves to the broker's own mail a payment to an account the app holds, and to the feeds an own transfer", () => {
-    expect(mailMovementForNotice({ ...tracked22, to: { ...tracked22.to, rut: "33.333.333-3" } }, tracked, counterparties)).toBeNull();
-    expect(mailMovementForNotice({ ...tracked22, to: { ...tracked22.to, account_number: "555" } }, tracked, counterparties)).toBeNull();
-    expect(mailMovementForNotice({ ...tracked22, kind: "between_own_products" }, tracked, counterparties)).toBeNull();
-    expect(mailMovementForNotice({ ...tracked22, kind: "schedule_created" }, tracked, counterparties)).toBeNull();
-    // From an account the app does not track: nothing to write.
-    expect(mailMovementForNotice(base, new Map([["555", 41]]), counterparties)).toBeNull();
+  it("writes a transfer between two numbered accounts once, whichever kind the mail is", () => {
+    const own = { ...from22, kind: "between_own_products" as const, to: { ...from22.to, account_number: "555" } };
+    expect(plan(own)).toEqual({ kind: "transfer", from_account_id: 22, to_account_id: 41, amount: 1000, checking_account_id: 22 });
+    expect(plan({ ...own, kind: "outgoing" })).toEqual(plan(own));
+    // To an own product the app has no number for (the línea de crédito): left to the feed.
+    expect(plan({ ...own, to: { ...own.to, account_number: "123" } })).toBeNull();
+  });
+
+  it("lands a payment to a known counterparty in its peso balance account, and leaves card payments to their receipts", () => {
+    expect(plan({ ...from22, to: { ...from22.to, rut: "33.333.333-3" } })).toEqual({
+      kind: "transfer",
+      from_account_id: 22,
+      to_account_id: 100,
+      amount: 1000,
+      checking_account_id: 22,
+    });
+    expect(plan({ ...from22, to: { ...from22.to, account_number: "888" } })).toMatchObject({ kind: "transfer", to_account_id: 80 });
+    expect(plan({ ...from22, to: { ...from22.to, account_number: "999" } })).toBeNull();
+    expect(landingAccountFor(new Set([44]), info)).toBe(44);
+    expect(landingAccountFor(new Set([44, 32]), info)).toBeNull();
+  });
+
+  it("writes nothing for a scheduled-transfer notice or from an account the app does not number", () => {
+    expect(plan({ ...from22, kind: "schedule_created" })).toBeNull();
+    expect(plan(base)).toBeNull();
   });
 });
 
@@ -178,12 +213,34 @@ describe("movements written from transfer mails", () => {
     ).toMatchObject({ inserted: 0, skipped_superseded_by_mail: 1 });
   });
 
-  it("leaves a payment to the fund manager to the fund's own mail", () => {
-    const fund = db.prepare(`SELECT id FROM accounts WHERE id <> ? ORDER BY id LIMIT 1`).get(account) as { id: number };
+  it("writes a payment to the fund manager as a transfer into its balance account, confirmed by the feed's transfer-leg rule", () => {
+    const fund = db
+      .prepare(`SELECT id FROM accounts WHERE id <> ? AND id NOT IN (SELECT account_id FROM credit_card_account_config) ORDER BY id LIMIT 1`)
+      .get(account) as { id: number };
     db.prepare(`INSERT INTO transfer_counterparty_accounts (rut, account_id) VALUES ('33.333.333-3', ?)`).run(fund.id);
     try {
       const notice = outgoing(today, 700_000, { name: "FONDO VITEST", rut: "33.333.333-3" });
+      const [written] = applyBankTransferNotices({ issuer: "santander", notices: [notice] }).synthesized;
+      expect(written).toMatchObject({ account_id: account, amount: -700_000 });
+      expect(db.prepare(`SELECT account_id, from_account_id, to_account_id, amount FROM movements WHERE id = ?`).get(written!.movement_id)).toEqual({
+        account_id: null,
+        from_account_id: account,
+        to_account_id: fund.id,
+        amount: 700_000,
+      });
+      // Re-sent: the transfer is the bank row that notice describes.
       expect(applyBankTransferNotices({ issuer: "santander", notices: [notice] }).synthesized).toEqual([]);
+      const bankDay = chileCalendarAddDays(today, 1);
+      expect(
+        importCheckingPartialMovements(account, [
+          { occurred_on: bankDay, description: "VITEST TN Transf a FONDO", amount_clp: -700_000, document_no: "" },
+        ])
+      ).toMatchObject({ inserted: 0, skipped_superseded_by_transfer: 1 });
+      expect(db.prepare(`SELECT confirmed_on, confirmed_source FROM transfer_notice_movements WHERE message_id = ?`).get(notice.message_id)).toEqual({
+        confirmed_on: bankDay,
+        confirmed_source: "ultimos_xlsx",
+      });
+      expect(listOverdueTransferNoticeMovements(chileCalendarAddDays(today, 30)).some((o) => o.movement_id === written!.movement_id)).toBe(false);
     } finally {
       db.prepare(`DELETE FROM transfer_counterparty_accounts WHERE rut = '33.333.333-3'`).run();
     }

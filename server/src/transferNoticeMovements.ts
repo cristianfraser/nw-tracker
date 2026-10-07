@@ -77,6 +77,27 @@ export function confirmTransferNoticeMovement(
     .run(bankDateYmd, source, bankDescription, movementId);
 }
 
+/**
+ * A transfer written from a mail (to the fund, between own accounts) is skipped by the importers'
+ * transfer-leg rule, which records the posting day itself; this stamps the confirmation. A no-op
+ * for any other transfer leg.
+ */
+export function confirmTransferNoticeMovementForTransferLeg(
+  movementId: number,
+  bankDateYmd: string,
+  source: TransferNoticeMovementConfirmSource,
+  bankDescription: string,
+  dbHandle: Database = db
+): void {
+  dbHandle
+    .prepare(
+      `UPDATE transfer_notice_movements
+       SET confirmed_on = ?, confirmed_source = ?, bank_description = ?
+       WHERE movement_id = ? AND confirmed_on IS NULL`
+    )
+    .run(bankDateYmd, source, bankDescription, movementId);
+}
+
 /** Last day a bank listing is still on time: the mail's day + the grace business days. */
 export function transferNoticeMovementDeadlineYmd(noticeDateYmd: string): string | null {
   let cur: string | null = noticeDateYmd;
