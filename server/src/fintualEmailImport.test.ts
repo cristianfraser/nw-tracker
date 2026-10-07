@@ -308,6 +308,9 @@ describe("fintualEmailImport", () => {
       account_id: null,
       amount: 1.67,
       currency: "usd",
+      counter_amount: null,
+      counter_currency: null,
+      create_account: null,
       units_delta: null,
       flow_kind: "dividend_payout",
       note: "vitest",
@@ -632,5 +635,152 @@ describe("fintualEmailImport", () => {
     const again = planFintualEmailBatch([mail]);
     expect(again[0]!.duplicate_of).toBe(mov.id);
     expect(applyFintualEmailMovements(again)).toBe(0);
+  });
+
+  /** Fintual CLP / USD balance accounts, reusing the test DB's when present. */
+  function fintualBalanceAccounts(): { clp: number; usd: number } | null {
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number } | undefined;
+    if (!group) return null;
+    const mk = (name: string, importKey: string): number => {
+      const existing = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(importKey) as { id: number } | undefined;
+      if (existing) return existing.id;
+      db.prepare(
+        `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, import_key)
+         VALUES (?, ?, 0, datetime('now'), ?)`
+      ).run(group.id, name, importKey);
+      const id = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+      createdAccounts.push(id);
+      return id;
+    };
+    return {
+      clp: mk("vitest Fintual CLP", "import:panel|kind=clp|key=fintual_clp"),
+      usd: mk("vitest Fintual USD", "import:panel|kind=usd|key=fintual_usd"),
+    };
+  }
+
+  it("books «Recibimos tu depósito» as checking → Fintual CLP, once", () => {
+    const accounts = fintualBalanceAccounts();
+    if (!accounts) return;
+    const mail = brokerNotification({
+      kind: "deposit",
+      subject: "Recibimos tu depósito",
+      occurred_at: "2097-10-07T14:24:12Z",
+      amount: 700000,
+      currency: "clp",
+    });
+    const planned = planFintualEmailBatch([mail]);
+    expect(planned[0]).toMatchObject({
+      from_account_id: checkingAccountId(),
+      to_account_id: accounts.clp,
+      amount: 700000,
+      currency: "clp",
+      occurred_on: "2097-10-07",
+      requires_manual: null,
+      duplicate_of: null,
+    });
+    expect(applyFintualEmailMovements(planned)).toBe(1);
+    const mov = db
+      .prepare(`SELECT id FROM movements WHERE from_account_id = ? AND to_account_id = ? AND occurred_on = '2097-10-07'`)
+      .get(checkingAccountId(), accounts.clp) as { id: number };
+    created.push(mov.id);
+    expect(planFintualEmailBatch([mail])[0]!.duplicate_of).toBe(mov.id);
+  });
+
+  it("leaves a deposit whose bank debit is already imported for a human", () => {
+    const accounts = fintualBalanceAccounts();
+    if (!accounts) return;
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, -700000, 'clp', '2097-10-08', 'vitest debit')`
+    ).run(checkingAccountId());
+    const debitId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    created.push(debitId);
+    const planned = planFintualEmailBatch([
+      brokerNotification({ kind: "deposit", subject: "Recibimos tu depósito", occurred_at: "2097-10-07T20:00:00Z", amount: 700000, currency: "clp" }),
+    ]);
+    expect(planned[0]!.requires_manual).toMatch(new RegExp(`movement ${debitId}`));
+  });
+
+  it("books «Compraste dólares» as Fintual CLP → Fintual USD with the dollars as counter leg", () => {
+    const accounts = fintualBalanceAccounts();
+    if (!accounts) return;
+    const mail = brokerNotification({
+      kind: "wallet_funded",
+      subject: "Compraste dólares",
+      occurred_at: "2097-10-07T14:24:53Z",
+      amount: 711.05,
+      clp_amount: 700000,
+      price: 984.46,
+      currency: "usd",
+    });
+    const planned = planFintualEmailBatch([mail]);
+    expect(planned[0]).toMatchObject({
+      from_account_id: accounts.clp,
+      to_account_id: accounts.usd,
+      amount: 700000,
+      currency: "clp",
+      counter_amount: 711.05,
+      counter_currency: "usd",
+      flow_kind: "compra_usd_venta_clp",
+      requires_manual: null,
+    });
+    expect(applyFintualEmailMovements(planned)).toBe(1);
+    const mov = db
+      .prepare(`SELECT id, counter_amount, counter_currency FROM movements WHERE from_account_id = ? AND to_account_id = ? AND occurred_on = '2097-10-07'`)
+      .get(accounts.clp, accounts.usd) as { id: number; counter_amount: number; counter_currency: string };
+    created.push(mov.id);
+    expect(mov).toMatchObject({ counter_amount: 711.05, counter_currency: "usd" });
+    expect(planFintualEmailBatch([mail])[0]!.duplicate_of).toBe(mov.id);
+    // A mail missing the pesos is never booked at a guessed rate.
+    const noPesos = planFintualEmailBatch([{ ...mail, message_id: "<vitest-no-pesos@test>", clp_amount: null }]);
+    expect(noPesos[0]!.requires_manual).toMatch(/both the dollars and the pesos/);
+  });
+
+  it("maps the Invesco semiconductor fund to SOXQ and plans its account when none exists", () => {
+    expect(tickerFromFundName("Invesco PHLX Semiconductor ETF")).toBe("SOXQ");
+    const accounts = fintualBalanceAccounts();
+    if (!accounts) return;
+    if (db.prepare(`SELECT 1 FROM accounts WHERE equity_ticker = 'SOXQ'`).get()) return;
+    const buy = brokerNotification({
+      kind: "buy",
+      subject: "Invertiste US $789,51 dólares en 7,713961329 acciones de Invesco PHLX Semiconductor ETF",
+      occurred_at: "2097-10-07T14:27:31Z",
+      fund_name: "Invesco PHLX Semiconductor ETF",
+      amount: 789.51,
+      units: "7.713961329",
+      currency: "usd",
+    });
+    const pg = db.prepare(`SELECT id, slug FROM portfolio_groups WHERE group_kind = 'bucket' ORDER BY id LIMIT 1`).get() as
+      | { id: number; slug: string }
+      | undefined;
+    const bucketOfFintualStocks = db
+      .prepare(
+        `SELECT COUNT(DISTINCT a.primary_portfolio_group_id) AS n FROM movements m JOIN accounts a ON a.id = m.to_account_id
+         WHERE m.from_account_id = ? AND m.units_delta IS NOT NULL AND a.equity_ticker IS NOT NULL`
+      )
+      .get(accounts.usd) as { n: number };
+    if (!pg || bucketOfFintualStocks.n !== 0) return;
+    // No Fintual stock yet → no bucket to put it in: a human creates the position.
+    expect(planFintualEmailBatch([buy])[0]!.requires_manual).toMatch(/no single bucket/);
+    // One Fintual stock in a bucket → the new ticker is planned there.
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };
+    db.prepare(
+      `INSERT INTO accounts (asset_group_id, name, exclude_from_group_totals, created_at, equity_ticker, primary_portfolio_group_id)
+       VALUES (?, 'vitest XYZQ', 0, datetime('now'), 'XYZQ', ?)`
+    ).run(group.id, pg.id);
+    const stockId = (db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id;
+    db.prepare(
+      `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, units_delta, flow_kind, note)
+       VALUES (?, ?, 10, 'usd', '2097-10-01', 1, 'stock_buy', 'vitest buy')`
+    ).run(accounts.usd, stockId);
+    created.push((db.prepare(`SELECT last_insert_rowid() AS id`).get() as { id: number }).id);
+    createdAccounts.unshift(stockId);
+    const planned = planFintualEmailBatch([buy]);
+    expect(planned[0]).toMatchObject({
+      from_account_id: accounts.usd,
+      to_account_id: null,
+      create_account: { ticker: "SOXQ", bucket_slug: pg.slug },
+      units_delta: "7.713961329",
+      requires_manual: null,
+    });
   });
 });
