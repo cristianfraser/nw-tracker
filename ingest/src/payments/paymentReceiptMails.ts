@@ -67,6 +67,7 @@ function decodeFlow(mail: ArchivedMail): ProcessorReceipt | null {
     statement_descriptor: descriptor,
     payment_method: method,
     installments: null,
+    charges: null,
   };
 }
 
@@ -93,6 +94,7 @@ function decodePagoFacil(mail: ArchivedMail): ProcessorReceipt | null {
     statement_descriptor: null,
     payment_method: method,
     installments: cuotas != null && Number(cuotas) > 1 ? Number(cuotas) : null,
+    charges: null,
   };
 }
 
@@ -139,6 +141,7 @@ function decodeShopifyOrder(mail: ArchivedMail): ProcessorReceipt | null {
     statement_descriptor: null,
     payment_method: method,
     installments: null,
+    charges: null,
   };
 }
 
@@ -202,6 +205,7 @@ function decodeCalvinKlein(mail: ArchivedMail): ProcessorReceipt | null {
     statement_descriptor: null,
     payment_method: t.match(/M[ée]todo de Pago (.+?) Valor:/i)?.[1]?.trim() || null,
     installments: null,
+    charges: null,
   };
 }
 
@@ -255,6 +259,7 @@ function decodeAdidas(mail: ArchivedMail): ProcessorReceipt | null {
     statement_descriptor: null,
     payment_method: method,
     installments: null,
+    charges: null,
   };
 }
 
@@ -303,6 +308,7 @@ function decodeClubDomino(mail: ArchivedMail): ProcessorReceipt | null {
     statement_descriptor: null,
     payment_method: method,
     installments: null,
+    charges: null,
   };
 }
 
@@ -367,6 +373,7 @@ function decodeEventbriteOrder(mail: ArchivedMail): ProcessorReceipt | null {
     statement_descriptor: null,
     payment_method: null,
     installments: null,
+    charges: null,
   };
 }
 
@@ -422,6 +429,7 @@ function decodeMiCocaColaOrder(mail: ArchivedMail): ProcessorReceipt | null {
     statement_descriptor: null,
     payment_method: method,
     installments: null,
+    charges: null,
   };
 }
 
@@ -473,6 +481,80 @@ function decodeDynavap(mail: ArchivedMail): ProcessorReceipt | null {
     statement_descriptor: null,
     payment_method: card ? `card ${card}` : /Payment Method\(s\) Used: Credit Card/.test(t) ? "Credit Card" : null,
     installments: null,
+    charges: null,
+  };
+}
+
+const MERCADOLIBRE_ORDER_SUBJECT = /^Compraste\b/i;
+
+/** Numeric HTML entities («cr&#xE9;dito»): the 2020–2022 mails reach the archive text with them. */
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * MercadoLibre's «Compraste <product>» mail: what was bought (the subject: the product, or the first
+ * one «… y N productos más»), from whom (every seller with its RUT) and, until 2025, what was paid
+ * and how it was charged: «Pagaste $ 15.725 1x $ 8.865 y 1x $ 6.860 con tarjeta de crédito Visa
+ * terminada en 0901» — one card charge per «Nx» term (an order from several sellers is charged once
+ * per seller), a term with N > 1 a charge in N cuotas («6x $ 4.641 17 sin intereses», the cents
+ * after the space); no term («Con tarjeta de crédito …») is one charge of the whole. Since 2026 the
+ * mail states no amount: the receipt then carries none and pairs by its day and the charge's name.
+ */
+function decodeMercadoLibreOrder(mail: ArchivedMail): ProcessorReceipt | null {
+  const product = /^Compraste\s+(.+)$/i.exec(mail.subject.trim())?.[1]?.trim();
+  if (!product) return null;
+  const t = decodeEntities(mail.text).replace(/\s+/g, " ");
+  // The sellers block came in mid-2024; earlier mails name no seller.
+  const sellers = /Información del vendedor (.+?) (?:Válido como boleta|Ver en mis compras|Ver detalle)/.exec(t)?.[1];
+  const named = sellers ? [...sellers.matchAll(/(.+?) RUT: ?([0-9]+[0-9kK])\b ?/g)].map((m) => ({ name: m[1]!.trim(), rut: m[2]! })) : [];
+  if (sellers && named.length === 0) fail(mail, `unreadable sellers «${sellers}»`);
+  const paid = /Pagaste \$ ?([\d.]+) (.*?) (?:Información del vendedor|Válido como boleta|Ver en mis compras)/.exec(t);
+  if (!paid && named.length === 0) fail(mail, "neither a payment nor a seller");
+  let amount: number | null = null;
+  let installments: number | null = null;
+  let charges: ProcessorReceipt["charges"] = null;
+  let method: string | null = null;
+  if (paid) {
+    amount = printedPesos(paid[1]!);
+    const how = paid[2]!;
+    const card = /tarjeta de (cr[eé]dito|d[eé]bito) (\S+) terminada en (\d{4})/i.exec(how);
+    method = card ? `${card[2]} ${card[1]!.toLowerCase()} ·${card[3]}` : how.trim() || null;
+    const terms = [...how.matchAll(/(\d+)x \$ ?([\d.]+)(?: (\d{2}))?(?! ?\d)/g)].map((m) => {
+      const count = Number(m[1]);
+      const unit = printedPesos(m[2]!) + (m[3] ? Number(m[3]) / 100 : 0);
+      return { count, total: Math.round(count * unit) };
+    });
+    if (terms.length === 1) {
+      if (Math.abs(terms[0]!.total - amount) > terms[0]!.count) fail(mail, `«${how}» does not make $${amount}`);
+      if (terms[0]!.count > 1) installments = terms[0]!.count;
+    } else if (terms.length > 1) {
+      charges = terms.map((x) => ({ amount: x.total, installments: x.count > 1 ? x.count : null }));
+      const sum = charges.reduce((s, c) => s + c.amount, 0);
+      if (sum !== amount) fail(mail, `charges «${how}» add up to $${sum}, not $${amount}`);
+    }
+  }
+  return {
+    message_id: mail.message_id,
+    sent_at_chile: mail.sent_at_chile,
+    processor: "mercadolibre",
+    payee: {
+      name: named.length > 0 ? named.map((n) => n.name).join(", ") : "Mercado Libre",
+      rut: named.length === 1 ? named[0]!.rut : null,
+      email: null,
+    },
+    amount,
+    currency: "clp",
+    paid_at_chile: mail.sent_at_chile,
+    order_ref: null,
+    concept: product,
+    statement_descriptor: null,
+    payment_method: method,
+    installments,
+    charges,
   };
 }
 
@@ -503,6 +585,12 @@ export const PAYMENT_PROCESSORS: readonly PaymentProcessor[] = [
     decode: decodeMiCocaColaOrder,
   },
   { slug: "dynavap", from: "dynavap.com", wantSubject: (x) => DYNAVAP_ORDER_SUBJECT.test(x), decode: decodeDynavap },
+  {
+    slug: "mercadolibre",
+    gmraw: "from:mercadolibre subject:Compraste",
+    wantSubject: (x) => MERCADOLIBRE_ORDER_SUBJECT.test(x),
+    decode: decodeMercadoLibreOrder,
+  },
 ];
 
 export function decodePaymentReceiptMail(processor: PaymentProcessor, mail: ArchivedMail): ProcessorReceipt | null {

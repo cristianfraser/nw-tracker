@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { matchPaymentReceipts, type ReceiptCandidateLine, type StoredPaymentReceipt } from "./paymentProcessorReceipts.js";
+import { afterEach, describe, expect, it } from "vitest";
+import type { PaymentProcessorReceiptsPayload } from "nw-tracker-contracts";
+import { db } from "./db.js";
+import {
+  loadPaymentProcessorReceipts,
+  matchPaymentReceipts,
+  storePaymentProcessorReceipts,
+  type ReceiptCandidateLine,
+  type StoredPaymentReceipt,
+} from "./paymentProcessorReceipts.js";
 
 const receipt = (id: string, paidAt: string, amount: number, processor = "flow"): StoredPaymentReceipt => ({
   message_id: id,
@@ -86,5 +94,80 @@ describe("matchPaymentReceipts", () => {
       ]
     );
     expect([...byPurchaseKey.keys()]).toEqual(["dollars"]);
+  });
+
+  it("pairs a split payment's charges all or none, each with its own line", () => {
+    const split = { ...receipt("ml", "2036-04-10 12:00", 15725, "mercadolibre"), charges: [{ amount: 8865, installments: null }, { amount: 6860, installments: null }] };
+    const { byPurchaseKey, chargeByPurchaseKey, receiptsPaired } = matchPaymentReceipts(
+      [split],
+      [line("a", "2036-04-10", 8865, "MERCADOPAGO *SELLERA"), line("b", "2036-04-11", 6860, "MERCADOPAGO *SELLERB"), line("whole", "2036-04-10", 15725, "X")]
+    );
+    expect(receiptsPaired).toBe(1);
+    expect(byPurchaseKey.has("whole")).toBe(false);
+    expect(chargeByPurchaseKey.get("a")).toEqual({ position: 1, of: 2 });
+    expect(chargeByPurchaseKey.get("b")).toEqual({ position: 2, of: 2 });
+
+    const half = matchPaymentReceipts([split], [line("a", "2036-04-10", 8865, "MERCADOPAGO *SELLERA")]);
+    expect(half.byPurchaseKey.size).toBe(0);
+    expect(half.unpaired).toEqual({ no_line: 1 });
+  });
+
+  it("pairs a receipt with no amount by the store's name or a seller's on the nearest day, after the amounts", () => {
+    const amountless = (id: string, paidAt: string, payee = "Mercado Libre") => ({ ...receipt(id, paidAt, 0, "mercadolibre"), amount: null, payee });
+    const { byPurchaseKey, ambiguous } = matchPaymentReceipts(
+      [amountless("n", "2036-01-20 10:00"), amountless("s", "2036-02-03 10:00", "Tienda Uno SpA"), receipt("amt", "2036-01-20 09:00", 5000, "mercadolibre")],
+      [
+        line("taken", "2036-01-20", 5000, "MP *MERCADO LIBRE"),
+        line("near", "2036-01-21", 74387, "MP *MERCADO LIBRE"),
+        line("far", "2036-01-24", 1000, "MERCADOPAGO*MERCADOLIBRE"),
+        line("in-person", "2036-01-20", 9000, "MERPAGO*STREAT BURGER"),
+        line("seller", "2036-02-03", 22970, "MERCADOPAGO *TIENDAUNO"),
+      ]
+    );
+    expect(ambiguous).toEqual([]);
+    expect(byPurchaseKey.get("taken")?.message_id).toBe("amt");
+    expect(byPurchaseKey.get("near")?.message_id).toBe("n");
+    expect(byPurchaseKey.has("far")).toBe(false);
+    expect(byPurchaseKey.has("in-person")).toBe(false);
+    expect(byPurchaseKey.get("seller")?.message_id).toBe("s");
+  });
+});
+
+describe("storePaymentProcessorReceipts", () => {
+  const ID = "<vitest-ml-split@test>";
+  afterEach(() => {
+    db.prepare(`DELETE FROM payment_processor_receipts WHERE message_id = ?`).run(ID);
+  });
+  const payload = (charges: { amount: number; installments: number | null }[]): PaymentProcessorReceiptsPayload => ({
+    receipts: [
+      {
+        message_id: ID,
+        sent_at_chile: "2036-04-10 12:00",
+        processor: "mercadolibre",
+        payee: { name: "A, B", rut: null, email: null },
+        amount: 15725,
+        currency: "clp",
+        paid_at_chile: "2036-04-10 12:00",
+        order_ref: null,
+        concept: "Producto",
+        statement_descriptor: null,
+        payment_method: null,
+        installments: null,
+        charges,
+      },
+    ],
+  });
+
+  it("stores a split payment's charges and refuses a resend that states other charges", () => {
+    const charges = [
+      { amount: 8865, installments: null },
+      { amount: 6860, installments: 3 },
+    ];
+    expect(storePaymentProcessorReceipts(payload(charges))).toEqual({ received: 1, new_receipts: 1 });
+    expect(storePaymentProcessorReceipts(payload(charges)).new_receipts).toBe(0);
+    expect(loadPaymentProcessorReceipts().find((r) => r.message_id === ID)?.charges).toEqual(charges);
+    expect(() =>
+      storePaymentProcessorReceipts(payload([{ amount: 8865, installments: null }, { amount: 6860, installments: null }]))
+    ).toThrow(/other content/);
   });
 });
