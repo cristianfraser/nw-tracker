@@ -1,13 +1,28 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp, formatUsdFine } from "../../format";
-import type { AccountCcInstallmentsResponse, CcBankCupoStatusDto } from "../../types";
-import { formatDateTimeLabel, formatYearMonthLabel } from "../../formatDateLabel";
-import styles from "./CreditCardSummaryCards.module.css";
+import type { AccountCcInstallmentsResponse, CcFacturacionDto } from "../../types";
+import { formatYearMonthLabel } from "../../formatDateLabel";
 
-type BankCupoCurrency = CcBankCupoStatusDto["currencies"][number];
-
-function formatBankAmount(n: number, currency: BankCupoCurrency["currency"]): string {
-  return currency === "clp" ? formatClp(n) : formatUsdFine(n);
+/** «total · month», then the CLP facturado and the dollar facturado with its pesos. */
+function FacturacionCardBody({ fact, note }: { fact: CcFacturacionDto | undefined; note?: ReactNode }) {
+  if (!fact) return <div className="value mono">—</div>;
+  return (
+    <>
+      <div className="value mono">
+        {fact.facturado_total_clp != null ? formatClp(fact.facturado_total_clp) : "—"}{" "}
+        <span className="muted">· {formatYearMonthLabel(fact.billing_month)}</span>
+        {note}
+      </div>
+      <div className="muted mono">{fact.facturado_clp != null ? formatClp(fact.facturado_clp) : "—"}</div>
+      {fact.facturado_usd != null ? (
+        <div className="muted mono">
+          {formatUsdFine(fact.facturado_usd)}
+          {fact.facturado_usd_clp != null ? ` (${formatClp(fact.facturado_usd_clp)})` : ""}
+        </div>
+      ) : null}
+    </>
+  );
 }
 
 export function CreditCardSummaryCards({
@@ -29,56 +44,41 @@ export function CreditCardSummaryCards({
   const currentRow =
     (openBm ? detalle.find((r) => r.billing_month === openBm) : undefined) ?? latestClosed;
   const facturaciones = ccLedger.facturaciones ?? [];
-  const latestFact = facturaciones[0];
   // The facturación still accumulating charges — its total is what the next statement will bill.
   const openFact = facturaciones.find((f) => f.is_open_month);
+  // Facturaciones are sorted descending: the first closed one is the last billed.
+  const lastFact = facturaciones.find((f) => !f.is_open_month);
   const cupo = ccLedger.cupo;
+  // The bank states each currency's cupo (nightly product summary); without it, the app's CLP cupo.
   const bankCupo = ccLedger.bank_cupo ?? null;
-  const bankVerdict = (c: BankCupoCurrency): string => {
-    if (c.status === "ok") return t("accountDetail.creditCard.bankCupoOk");
-    if (c.status === "indeterminate") return t("accountDetail.creditCard.bankCupoIndeterminate");
-    if (c.status === "mismatch" && c.diff != null) {
-      const sign = c.diff > 0 ? "+" : "−";
-      return t("accountDetail.creditCard.bankCupoMismatch", {
-        diff: `${sign}${formatBankAmount(Math.abs(c.diff), c.currency)}`,
-      });
-    }
-    return t("accountDetail.creditCard.bankCupoPending");
-  };
+  const cupoLines: { key: string; available: string; total: string }[] = bankCupo
+    ? bankCupo.currencies.map((c) => {
+        const fmt = c.currency === "clp" ? formatClp : formatUsdFine;
+        return { key: c.currency, available: fmt(c.cupo_disponible), total: fmt(c.cupo_total) };
+      })
+    : cupo?.available_clp != null && cupo.total_clp != null
+      ? [{ key: "clp", available: formatClp(cupo.available_clp), total: formatClp(cupo.total_clp) }]
+      : [];
 
   const cards = (
     <>
       <div className="card">
+        <div className="label">{t("accountDetail.creditCard.openFacturacion")}</div>
+        <FacturacionCardBody fact={openFact} />
+      </div>
+      <div className="card">
         <div className="label">{t("accountDetail.creditCard.lastFacturado")}</div>
-        <div className="value mono">
-          {latestClosed?.total_facturado_clp != null
-            ? formatClp(latestClosed.total_facturado_clp)
-            : latestFact?.facturado_total_clp != null
-              ? formatClp(latestFact.facturado_total_clp)
-              : "—"}
-        </div>
-        {latestClosed ? (
-          <div className="muted mono">
-            {latestClosed.billing_month} ({formatYearMonthLabel(latestClosed.billing_month)})
-            {latestClosed.provisional ? (
-              <span title={t("accountDetail.creditCard.provisionalCloseHint")}>
+        <FacturacionCardBody
+          fact={lastFact}
+          note={
+            lastFact?.is_provisional_close ? (
+              <span className="muted" title={t("accountDetail.creditCard.provisionalCloseHint")}>
                 {" "}
                 · {t("accountDetail.creditCard.provisionalClose")}
               </span>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-      <div className="card">
-        <div className="label">{t("accountDetail.creditCard.openFacturacion")}</div>
-        <div className="value mono">
-          {openFact?.facturado_total_clp != null ? formatClp(openFact.facturado_total_clp) : "—"}
-        </div>
-        {openFact ? (
-          <div className="muted mono">
-            {openFact.billing_month} ({formatYearMonthLabel(openFact.billing_month)})
-          </div>
-        ) : null}
+            ) : null
+          }
+        />
       </div>
       <div className="card">
         <div className="label">{t("accountDetail.creditCard.deudaEnCuotas")}</div>
@@ -94,34 +94,12 @@ export function CreditCardSummaryCards({
       </div>
       <div className="card">
         <div className="label">{t("accountDetail.creditCard.cupo")}</div>
-        <div className="value mono">{cupo?.used_clp != null ? formatClp(cupo.used_clp) : "—"}</div>
-        {cupo?.available_clp != null && cupo.total_clp != null ? (
-          <div className="muted mono">
-            {t("accountDetail.creditCard.cupoAvailableOf", {
-              available: formatClp(cupo.available_clp),
-              total: formatClp(cupo.total_clp),
-            })}
+        {cupoLines.length === 0 ? <div className="value mono">—</div> : null}
+        {cupoLines.map((line, i) => (
+          <div key={line.key} className={i === 0 ? "value mono" : "muted mono"}>
+            {line.available} / {line.total}
           </div>
-        ) : null}
-        {/* The bank's own utilizado per currency from the nightly session, and the check's verdict. */}
-        {bankCupo ? (
-          <div className="muted mono" title={t("accountDetail.creditCard.bankCupoHint")}>
-            <div>
-              {t("accountDetail.creditCard.bankCupo", {
-                date: formatDateTimeLabel(new Date(bankCupo.observed_at)),
-              })}
-            </div>
-            {bankCupo.currencies.map((c) => (
-              <div
-                key={c.currency}
-                className={c.status === "mismatch" ? styles.bankMismatch : undefined}
-                title={c.reason ?? undefined}
-              >
-                {formatBankAmount(c.cupo_utilizado, c.currency)} · {bankVerdict(c)}
-              </div>
-            ))}
-          </div>
-        ) : null}
+        ))}
       </div>
     </>
   );

@@ -2359,34 +2359,6 @@
         "en": "Credit line",
         "es": "Cupo"
       },
-      "cupoAvailableOf": {
-        "en": "{{available}} available of {{total}}",
-        "es": "{{available}} disponible de {{total}}"
-      },
-      "bankCupo": {
-        "en": "Bank {{date}}",
-        "es": "Banco {{date}}"
-      },
-      "bankCupoHint": {
-        "en": "The bank's own cupo utilizado per currency, read in the nightly bank session, against what the app says the card owes in that currency: the last closed facturación, the cuotas not billed yet and the lines after it. A mismatch fails the nightly run.",
-        "es": "El cupo utilizado del propio banco por moneda, leído en la sesión nocturna, contra lo que la app dice que la tarjeta debe en esa moneda: la última facturación cerrada, las cuotas por facturar y las líneas posteriores. Una diferencia hace fallar la corrida nocturna."
-      },
-      "bankCupoOk": {
-        "en": "matches",
-        "es": "coincide"
-      },
-      "bankCupoMismatch": {
-        "en": "app {{diff}}",
-        "es": "app {{diff}}"
-      },
-      "bankCupoIndeterminate": {
-        "en": "not comparable",
-        "es": "no comparable"
-      },
-      "bankCupoPending": {
-        "en": "not checked yet",
-        "es": "sin revisar"
-      },
       "deudaEnCuotas": {
         "en": "Installment debt",
         "es": "Deuda en cuotas"
