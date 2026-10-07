@@ -138,6 +138,16 @@ describe("checkPensionStatedValue", () => {
     expect(r.check.status).toBe("match");
   });
 
+  it("pairs the website's value with the app's on the day it shows, whatever the read's hour", () => {
+    // 2030-07-17 22:00: the app already shows 07-17's price, the website still 07-16's.
+    const appValue = (day: string) => 200 * series.find((s) => s.day === day)!.unit_value_clp;
+    const evening = checkPensionStatedValue(stated, series, "2030-07-17", appValue);
+    expect(evening.check).toMatchObject({ status: "match", app_day: "2030-07-16" });
+    // 2030-07-18 00:01: the website has caught up to 07-17's price.
+    const night = checkPensionStatedValue({ cuotas: 200, valor_cuota: 1020.25, pesos: 204_050 }, series, "2030-07-18", appValue);
+    expect(night.check).toMatchObject({ status: "match", app_day: "2030-07-17" });
+  });
+
   it("flags a cuota residue worth more than a peso", () => {
     const r = checkPensionStatedValue(stated, series, "2030-07-17", () => 200.0002 * 1010.5 + 1);
     expect(r.check.status).toBe("mismatch");
