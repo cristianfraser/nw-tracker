@@ -5,7 +5,7 @@
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
-import { buildF22Draft, PAYMENT_SECTION_CODES } from "./f22Draft.js";
+import { buildF22Draft, PAYMENT_SECTION_CODES, type F22OffsetBalance } from "./f22Draft.js";
 
 export type F22RowSection =
   | "income"
@@ -75,6 +75,17 @@ export function availableF22TaxYears(todayYmd: string = chileWallClockNow().ymd)
 
 export function filedTaxYears(): number[] {
   return (db.prepare(`SELECT DISTINCT tax_year FROM sii_f22_filed`).all() as { tax_year: number }[]).map((r) => r.tax_year);
+}
+
+function offsetBalancePayload(o: F22OffsetBalance) {
+  return {
+    gains_clp: o.gainsClp,
+    losses_clp: o.lossesClp,
+    deducted_clp: o.deductedClp,
+    unused_loss_clp: o.unusedLossClp,
+    taxed_gain_clp: o.taxedGainClp,
+    tax_effect_clp: o.taxEffectClp,
+  };
 }
 
 export function buildF22Payload(taxYear: number) {
@@ -158,6 +169,11 @@ export function buildF22Payload(taxYear: number) {
       gross_clp: x.grossUsd == null ? null : x.grossUsd * d.yearEndObservado,
       withholding_clp: x.withholdingUsd == null ? null : x.withholdingUsd * d.yearEndObservado,
     })),
+    loss_offset: {
+      parts: d.lossOffset.parts.map((x) => ({ source: x.source, gain_clp: x.gainClp, loss_clp: x.lossClp })),
+      ...offsetBalancePayload(d.lossOffset),
+    },
+    foreign_share_offset: offsetBalancePayload(d.foreignShareOffset),
     foreign_shares: {
       default_mode: d.foreignShares.defaultMode,
       provisional: d.foreignShares.provisional,

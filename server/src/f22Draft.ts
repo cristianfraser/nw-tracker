@@ -17,6 +17,14 @@
  * what makes its additions trustworthy. Foreign share gains also bear first-category tax (line 58,
  * IDPC 25%) credited back against IGC with refund (code 1914), so they change 304 only through
  * IGC; the draft reports the IDPC lines beside it.
+ *
+ * Losses (code 169) are deducted only from the gains of line 17's codes ({@link CAPITAL_LOSS_POOL_CODES}),
+ * never from salary, and only in their own year; the draft caps 169 at that pool and reports what
+ * is left on either side ({@link F22LossOffset}). A foreign share loss is not a 169 loss: 169
+ * takes only losses of art. 20 N°2 and art. 17 N°8 operations (SII Suplemento Tributario, line
+ * «Pérdida en operaciones de capitales mobiliarios», letter B), and art. 41 B excludes foreign
+ * investments from art. 17 N°8. It nets only against the year's other foreign share gains, and a
+ * negative total is declared as zero (as Fintual and Racional instruct); {@link F22OffsetBalance}.
  */
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
@@ -73,6 +81,50 @@ export function computeF22Tax(codes: F22Codes, utaClp: number, taxYear: number):
   return out;
 }
 
+/**
+ * The income a code-169 loss may be deducted from: F22 line 17, «Pérdida en operaciones de
+ * capitales mobiliarios y ganancias de capital según códigos 105, 155, 152, 1032, 1891, 1104, 1058
+ * y 1987 (arts. 54 N° 1 y 62 LIR)», limited to the codes the chain above sums — the others never
+ * appear on this taxpayer's returns. 1104 is in it: a fund or crypto loss is deducted from foreign
+ * dividends and foreign share gains too (the reverse does not hold, see the header).
+ */
+export const CAPITAL_LOSS_POOL_CODES: readonly number[] = [155, 152, 1032, 1104];
+
+export function capitalLossPoolClp(codes: F22Codes): number {
+  return CAPITAL_LOSS_POOL_CODES.reduce((s, c) => s + Math.max(0, codes[c] ?? 0), 0);
+}
+
+/** 169 capped at the pool (observation G60: a larger deduction is excessive). */
+export function capCapitalLosses(codes: F22Codes): F22Codes {
+  const out: F22Codes = { ...codes };
+  const pool = capitalLossPoolClp(codes);
+  if ((out[169] ?? 0) > pool) out[169] = pool;
+  return out;
+}
+
+export type F22LossOffsetSource = "crypto" | "foreign_shares" | "foreign_dividends" | "funds_interest";
+
+/** Gains and losses that offset each other within one year, and what is left on either side. */
+export type F22OffsetBalance = {
+  gainsClp: number;
+  lossesClp: number;
+  deductedClp: number;
+  /** Losses the pool's gains do not absorb; lost when the year ends. */
+  unusedLossClp: number;
+  /** Gains no loss offsets; taxed. */
+  taxedGainClp: number;
+  /**
+   * The IGC at stake, null without a tax chain: for an unused loss, what a pool gain of that size
+   * would cost without it; for a taxed gain, what a loss of that size would save.
+   */
+  taxEffectClp: number | null;
+};
+
+/** The year's code-169 pool, with what each source put in. */
+export type F22LossOffset = F22OffsetBalance & {
+  parts: { source: F22LossOffsetSource; gainClp: number; lossClp: number }[];
+};
+
 export type F22DividendLine = {
   date: string;
   movementId: number;
@@ -112,6 +164,9 @@ export type F22Draft = {
   foreignSharesIdpcClp: number;
   /** Codes the draft estimated from the ledger because no third party had reported them yet. */
   estimatedCodes: number[];
+  lossOffset: F22LossOffset;
+  /** Foreign share sales netted among themselves (a loss offsets nothing else). */
+  foreignShareOffset: F22OffsetBalance;
 };
 
 function latestUta(): number {
@@ -282,7 +337,8 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
   const crypto = cryptoTaxGainsForYear(incomeYear);
   const dividends = loadDividends(incomeYear);
   const foreignShares = foreignShareGainsForYear(incomeYear, "fifo", todayYmd);
-  const foreignGain = Math.max(0, foreignShares.totalClp[foreignShares.defaultMode]);
+  const foreignResult = Math.round(foreignShares.totalClp[foreignShares.defaultMode]);
+  const foreignGain = Math.max(0, foreignResult);
 
   const draftInput: F22Codes =
     base === "filed"
@@ -303,9 +359,10 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
   const detailed = dividends.filter((d) => d.grossUsd != null && d.withholdingUsd != null);
   const grossClp = detailed.reduce((s, d) => s + d.grossUsd!, 0) * yearEndObservado;
   const taxClp = detailed.reduce((s, d) => s + d.withholdingUsd!, 0) * yearEndObservado;
+  const dividendsNetClp = Math.round(grossClp - taxClp);
   const appCodes: F22Codes = {
     1032: Math.max(0, cryptoGain),
-    1104: Math.round(grossClp - taxClp) + Math.round(foreignGain),
+    1104: dividendsNetClp + foreignGain,
     748: Math.round(taxClp),
     1018: Math.round(Math.min(taxClp, FOREIGN_TAX_CREDIT_CAP * grossClp)),
   };
@@ -313,11 +370,17 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
     // A year with no base shows only what the app has; zeros would read as a declared zero.
     if (base !== "none" || v !== 0) draftInput[Number(c)] = v;
   }
-  if (cryptoGain < 0) draftInput[169] = (draftInput[169] ?? 0) - cryptoGain;
+  const declaredLossClp = draftInput[169] ?? 0;
+  const addLoss = (clp: number) => {
+    if (clp > 0) draftInput[169] = (draftInput[169] ?? 0) + clp;
+  };
+  addLoss(-cryptoGain);
 
   // Without a filed form or informed DJs, the codes third parties report in March come from the
   // ledger too (f22AppEstimates): fund redemptions and mortgage interest.
   const estimatedCodes: number[] = [];
+  let fundLossClp = 0;
+  let mortgageInterest = 0;
   if (base === "payroll" || base === "none") {
     const funds = fundRedemptionGainsForYear(incomeYear);
     if (funds.gainClp > 0) {
@@ -326,25 +389,87 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
       estimatedCodes.push(155, 1869);
     }
     if (funds.lossClp > 0) {
-      draftInput[169] = (draftInput[169] ?? 0) + funds.lossClp;
+      fundLossClp = funds.lossClp;
+      addLoss(funds.lossClp);
       estimatedCodes.push(169);
     }
-    const interest = mortgageInterestForYear(incomeYear);
-    if (interest > 0) {
-      const gross = computeF22Tax(draftInput, utaClp, taxYear)[158]!;
-      draftInput[751] = interest;
-      draftInput[750] = mortgageInterestDeduction(interest, gross, utaClp);
-      estimatedCodes.push(750, 751);
-    }
+    mortgageInterest = mortgageInterestForYear(incomeYear);
+    if (mortgageInterest > 0) estimatedCodes.push(750, 751);
   }
 
+  // Losses capped at the pool, then the mortgage interest, whose deduction depends on the gross.
+  const finish = (input: F22Codes): F22Codes => {
+    const out = capCapitalLosses(input);
+    if (mortgageInterest > 0) {
+      out[751] = mortgageInterest;
+      out[750] = mortgageInterestDeduction(mortgageInterest, computeF22Tax(out, utaClp, taxYear)[158]!, utaClp);
+    }
+    return out;
+  };
   const taxComputed = base !== "none" || estimatedCodes.length > 0;
-  const draft = taxComputed ? computeF22Tax(draftInput, utaClp, taxYear) : draftInput;
+  const draft = taxComputed ? computeF22Tax(finish(draftInput), utaClp, taxYear) : finish(draftInput);
   if (taxComputed) {
     draft[305] = draft[304]!;
     // Code 31 is the IGC to pay; a return with a refund does not print it.
     if (draft[304]! > 0) draft[31] = draft[304]!;
   }
+
+  const gainsClp = capitalLossPoolClp(draftInput);
+  const lossesClp = draftInput[169] ?? 0;
+  const deductedClp = Math.min(gainsClp, lossesClp);
+  const unusedLossClp = lossesClp - deductedClp;
+  const taxedGainClp = gainsClp - deductedClp;
+  const taxOf = (input: F22Codes) => computeF22Tax(finish(input), utaClp, taxYear)[304]!;
+  let taxEffectClp: number | null = null;
+  if (taxComputed && unusedLossClp > 0) {
+    const withGain = { ...draftInput, 1032: (draftInput[1032] ?? 0) + unusedLossClp };
+    taxEffectClp = taxOf({ ...withGain, 169: deductedClp }) - taxOf(withGain);
+  } else if (taxComputed && taxedGainClp > 0) {
+    taxEffectClp = draft[304]! - taxOf({ ...draftInput, 169: lossesClp + taxedGainClp });
+  }
+  const lossOffset: F22LossOffset = {
+    parts: [
+      { source: "crypto", gainClp: Math.max(0, cryptoGain), lossClp: Math.max(0, -cryptoGain) },
+      { source: "foreign_shares", gainClp: foreignGain, lossClp: 0 },
+      { source: "foreign_dividends", gainClp: Math.max(0, dividendsNetClp), lossClp: 0 },
+      {
+        source: "funds_interest",
+        gainClp: Math.max(0, draftInput[155] ?? 0) + Math.max(0, draftInput[152] ?? 0),
+        lossClp: declaredLossClp + fundLossClp,
+      },
+    ],
+    gainsClp,
+    lossesClp,
+    deductedClp,
+    unusedLossClp,
+    taxedGainClp,
+    taxEffectClp,
+  };
+
+  const mode = foreignShares.defaultMode;
+  const foreignGainsClp = Math.round(
+    foreignShares.disposals.reduce((s, x) => s + Math.max(0, x.resultClp[mode]), 0)
+  );
+  const foreignLossesClp = foreignGainsClp - foreignResult;
+  const foreignDeductedClp = Math.min(foreignGainsClp, foreignLossesClp);
+  const foreignUnusedLossClp = foreignLossesClp - foreignDeductedClp;
+  const foreignTaxedGainClp = foreignGainsClp - foreignDeductedClp;
+  let foreignTaxEffectClp: number | null = null;
+  if (taxComputed && foreignUnusedLossClp > 0) {
+    foreignTaxEffectClp =
+      taxOf({ ...draftInput, 1104: (draftInput[1104] ?? 0) + foreignUnusedLossClp }) - draft[304]!;
+  } else if (taxComputed && foreignTaxedGainClp > 0) {
+    foreignTaxEffectClp =
+      draft[304]! - taxOf({ ...draftInput, 1104: (draftInput[1104] ?? 0) - foreignTaxedGainClp });
+  }
+  const foreignShareOffset: F22OffsetBalance = {
+    gainsClp: foreignGainsClp,
+    lossesClp: foreignLossesClp,
+    deductedClp: foreignDeductedClp,
+    unusedLossClp: foreignUnusedLossClp,
+    taxedGainClp: foreignTaxedGainClp,
+    taxEffectClp: foreignTaxEffectClp,
+  };
   // The payment section (reajuste art. 72, total to pay, filing-date surcharges) depends on when a
   // rectification is paid; the SII computes it then.
   for (const c of PAYMENT_SECTION_CODES) delete draft[c];
@@ -369,5 +494,7 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
     foreignShares,
     foreignSharesIdpcClp: Math.round(foreignGain * IDPC_RATE),
     estimatedCodes,
+    lossOffset,
+    foreignShareOffset,
   };
 }

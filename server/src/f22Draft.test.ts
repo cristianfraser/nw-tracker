@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeF22Tax, igcTax } from "./f22Draft.js";
+import { capCapitalLosses, capitalLossPoolClp, computeF22Tax, igcTax } from "./f22Draft.js";
 
 const UTA = 800_000;
 
@@ -31,5 +31,19 @@ describe("computeF22Tax", () => {
     const withMore = computeF22Tax({ ...base, 1032: 1_000_000, 1104: 8_500, 748: 1_500, 1018: 1_500 }, UTA, 2030);
     expect(withMore[158]! - plain[158]!).toBe(1_010_000);
     expect(withMore[304]! - plain[304]!).toBe(Math.round(withMore[157]! - plain[157]!) - 1_500);
+  });
+});
+
+describe("capCapitalLosses", () => {
+  it("caps 169 at the line-17 pool, foreign income included, never against salary", () => {
+    const codes = { 1098: 30_000_000, 1032: 100_000, 1104: 50_000, 169: 400_000 };
+    expect(capitalLossPoolClp(codes)).toBe(150_000);
+    expect(capCapitalLosses(codes)[169]).toBe(150_000);
+    expect(computeF22Tax(capCapitalLosses(codes), 800_000, 2026)[158]).toBe(30_000_000);
+  });
+
+  it("leaves a loss the pool absorbs untouched", () => {
+    const codes = { 155: 8_700_462, 169: 3_453 };
+    expect(capCapitalLosses(codes)[169]).toBe(3_453);
   });
 });
