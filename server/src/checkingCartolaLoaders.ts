@@ -96,7 +96,7 @@ export function loadCheckingCartolaCredits(accountId: number): CheckingCartolaCr
        FROM movements
        WHERE account_id = ?
          AND ${MOVEMENT_CLP_LEG_SQL} > 0
-         AND note LIKE 'import:cartola|%'
+         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:santander-mail|%')
          AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on, id`
     )
@@ -125,7 +125,7 @@ export function loadCheckingCartolaWithdrawals(accountId: number): CheckingCarto
        FROM movements
        WHERE account_id = ?
          AND ${MOVEMENT_CLP_LEG_SQL} < 0
-         AND note LIKE 'import:cartola|%'
+         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:santander-mail|%')
          AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on, id`
     )
@@ -157,7 +157,8 @@ export function loadCheckingGastosWithdrawalRows(accountId: number): CheckingGas
        FROM movements
        WHERE account_id = ?
          AND ${MOVEMENT_CLP_LEG_SQL} < 0
-         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%')
+         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%'
+              OR note LIKE 'import:santander-mail|%')
          AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on DESC, id DESC`
     )
