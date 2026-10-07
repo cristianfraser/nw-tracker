@@ -118,6 +118,39 @@ describe("brokerEmail", () => {
     expect(bare).toMatchObject({ kind: "buy", is_transaction: true, is_complete: false, ticker: "LIN" });
   });
 
+  it("parses the 2026-10 «Recibimos tu depósito» mail: a wire waiting in the Fintual balance", () => {
+    const deposit = classifyBrokerEmail({
+      sender: FINTUAL,
+      subject: "Recibimos tu depósito",
+      snippet:
+        "Decide cómo lo quieres invertir. Hola Cristian Recibimos tus $700.000 Decide cómo los " +
+        "quieres invertir. Si no lo haces dentro de los próximos 7 días, devolveremos el depósito",
+      date: "2026-10-07T14:24:12Z",
+    });
+    expect(deposit).toMatchObject({ kind: "deposit", is_complete: true, amount: 700000, currency: "clp" });
+    const bare = classifyBrokerEmail({ sender: FINTUAL, subject: "Recibimos tu depósito", snippet: "Hola", date: "2026-10-07T14:24:12Z" });
+    expect(bare).toMatchObject({ kind: "deposit", is_transaction: true, is_complete: false, amount: null });
+  });
+
+  it("parses «Compraste dólares»: dollars bought, pesos paid and the rate", () => {
+    const fx = classifyBrokerEmail({
+      sender: FINTUAL,
+      subject: "Compraste dólares",
+      snippet:
+        "Hola Cristian Compraste US $ 711,05 El miércoles 7 de octubre a las 11:24 con tus $700.000 " +
+        "pesos chilenos compraste US $ 711,05 a un tipo de cambio de $984,46 CLP/USD. Todo esto",
+      date: "2026-10-07T14:24:53Z",
+    });
+    expect(fx).toMatchObject({
+      kind: "wallet_funded",
+      is_complete: true,
+      amount: 711.05,
+      clp_amount: 700000,
+      price: 984.46,
+      currency: "usd",
+    });
+  });
+
   it("keeps an amount-less dividend mail as an incomplete transaction, never a silent 'other'", () => {
     const dividend = classifyBrokerEmail({
       sender: FINTUAL,

@@ -290,6 +290,39 @@ const FINTUAL_MATCHERS: Matcher[] = [
     },
   },
   {
+    // "Recibimos tu depósito" (since 2026-10): a wire landed in the Fintual balance, waiting to be
+    // invested («Recibimos tus $700.000 Decide cómo los quieres invertir. Si no lo haces dentro de
+    // los próximos 7 días, devolveremos el depósito…»). The amount is only in the body.
+    // Digit-terminated: the sentence may run straight on after the amount.
+    kind: "deposit",
+    is_transaction: true,
+    re: /^Recibimos tu dep[óo]sito\s*$/i,
+    read: (_m, snippet) => {
+      const body = /Recibimos tus \$\s*([\d.,]*\d)/i.exec(snippet);
+      return body ? { amount: parseChileanNumber(body[1]!), currency: "clp" as const } : {};
+    },
+  },
+  {
+    // "Compraste dólares": pesos of the Fintual balance converted to dollars — «Compraste US $
+    // 711,05 El miércoles 7 de octubre a las 11:24 con tus $700.000 pesos chilenos compraste US $
+    // 711,05 a un tipo de cambio de $984,46 CLP/USD». The same event as Racional's «Agregaste USD
+    // … a tu Billetera»: dollars bought (amount), the pesos paid (clp_amount), the rate (price).
+    kind: "wallet_funded",
+    is_transaction: true,
+    re: /^Compraste d[óo]lares\s*$/i,
+    read: (_m, snippet) => {
+      const usd = /Compraste US \$\s*([\d.,]*\d)/i.exec(snippet);
+      const clp = /con tus \$\s*([\d.,]*\d) pesos/i.exec(snippet);
+      const rate = /tipo de cambio de \$\s*([\d.,]*\d)/i.exec(snippet);
+      return {
+        currency: "usd" as const,
+        ...(usd ? { amount: parseChileanNumber(usd[1]!) } : {}),
+        ...(clp ? { clp_amount: parseChileanNumber(clp[1]!) } : {}),
+        ...(rate ? { price: parseChileanNumber(rate[1]!) } : {}),
+      };
+    },
+  },
+  {
     kind: "cash_returned",
     is_transaction: true,
     re: /^Devolvimos tu saldo/i,

@@ -16,7 +16,8 @@
  * detection therefore matches within the same ±5-day window `fintualCertImport` uses, so an
  * e-mail-dated row and a certificado-dated one for the same event recognise each other.
  */
-import { accountIdForEquityTicker } from "./accountEquityTicker.js";
+import { accountIdForEquityTicker, accountsWithEquityTicker } from "./accountEquityTicker.js";
+import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { bankDateMatchesTransferDate } from "./checkingTransferLegReconcile.js";
@@ -68,6 +69,7 @@ const FUND_NAME_TICKERS: [RegExp, string][] = [
   [/Linde/i, "LIN"],
   [/Cameco/i, "CCJ"],
   [/ProShares.*Crude|OILK/i, "OILK"],
+  [/Invesco PHLX Semiconductor ETF/i, "SOXQ"],
 ];
 
 export function tickerFromFundName(fundName: string): string | null {
@@ -110,12 +112,45 @@ export type FintualPlannedMovement = {
   account_id: number | null;
   amount: number;
   currency: "clp" | "usd";
+  /** The dollars of a peso → dollar conversion (`compra_usd_venta_clp`); null otherwise. */
+  counter_amount: number | null;
+  counter_currency: "usd" | null;
+  /**
+   * A buy of a ticker no account holds yet: the apply creates the stock account first, in the
+   * bucket the other Fintual stocks sit in (one account per ticker, whatever the broker).
+   */
+  create_account: { ticker: string; bucket_slug: string } | null;
   units_delta: string | null;
   flow_kind: string | null;
   note: string;
   duplicate_of: number | null;
   requires_manual: string | null;
 };
+
+/** Same band as the Racional conversion: a rate outside it is a misread mail, not a trade. */
+const FX_SANITY_MIN_CLP_PER_USD = 300;
+const FX_SANITY_MAX_CLP_PER_USD = 2000;
+
+const findSingleLegCheckingDebit = db.prepare(
+  `SELECT id FROM movements
+   WHERE account_id = ? AND from_account_id IS NULL AND to_account_id IS NULL
+     AND currency = 'clp' AND ABS(amount + ?) <= 0.5
+     AND occurred_on BETWEEN ? AND ?`
+);
+
+/** The bucket every stock Fintual USD has bought sits in, when there is exactly one. */
+function fintualEquityBucketSlug(): string | null {
+  const rows = db
+    .prepare(
+      `SELECT DISTINCT pg.slug AS slug
+       FROM movements m
+       JOIN accounts a ON a.id = m.to_account_id
+       JOIN portfolio_groups pg ON pg.id = a.primary_portfolio_group_id
+       WHERE m.from_account_id = ? AND m.units_delta IS NOT NULL AND a.equity_ticker IS NOT NULL`
+    )
+    .all(fintualUsdAccountId()) as { slug: string }[];
+  return rows.length === 1 ? rows[0]!.slug : null;
+}
 
 const findNearbyTransfers = db.prepare(
   `SELECT id, occurred_on, amount FROM movements
@@ -161,6 +196,9 @@ export function planFintualEmailMovement(
     account_id: null as number | null,
     amount: event.amount ?? 0,
     currency: (event.currency ?? "usd") as "clp" | "usd",
+    counter_amount: null as number | null,
+    counter_currency: null as "usd" | null,
+    create_account: null as { ticker: string; bucket_slug: string } | null,
     units_delta: null as string | null,
     flow_kind: null as string | null,
     note: `Fintual · ${event.subject}`.slice(0, 300),
@@ -202,13 +240,73 @@ export function planFintualEmailMovement(
           requires_manual: `cannot tell which holding "${event.subject}" is — add its fund name (${event.fund_name ?? "none stated"}) to FUND_NAME_TICKERS`,
         };
       }
-      return {
+      const buyBase = { ...base, from_account_id: fintualUsdAccountId(), units_delta: event.units, flow_kind: "stock_buy" };
+      const holders = accountsWithEquityTicker(ticker);
+      if (holders.length > 1) {
+        return { ...buyBase, requires_manual: `ticker ${ticker} matches ${holders.length} accounts — resolve first` };
+      }
+      if (holders.length === 1) return { ...buyBase, to_account_id: holders[0]! };
+      const bucket = fintualEquityBucketSlug();
+      if (!bucket) {
+        return {
+          ...buyBase,
+          requires_manual:
+            `no account for ticker ${ticker} and no single bucket the Fintual stocks sit in — ` +
+            "create the position in the panel first",
+        };
+      }
+      return { ...buyBase, create_account: { ticker, bucket_slug: bucket } };
+    }
+    case "deposit": {
+      // «Recibimos tu depósito»: a wire from checking landed in the Fintual balance, to be
+      // invested from there (or returned after 7 days). Written from the mail, like Racional's
+      // deposit; the bank's listing of the debit dedupes against this transfer's checking leg
+      // (`superseded_by_transfer`) and brings its posting day.
+      const checking = checkingAccountId();
+      const balance = fintualClpBalanceAccountId();
+      const depositBase = { ...base, currency: "clp" as const, from_account_id: checking, to_account_id: balance };
+      if (event.currency !== "clp") {
+        return { ...depositBase, requires_manual: `deposit in ${event.currency ?? "no currency"} — only peso deposits are mapped` };
+      }
+      // The bank feed may already list the debit as a plain row (mail read after the nightly
+      // import): a second row would count the money twice, so that one is for a human to convert.
+      const existingDebit = findSingleLegCheckingDebit.get(
+        checking,
+        base.amount,
+        occurred_on,
+        isoAddDays(occurred_on, EMAIL_MATCH_WINDOW_DAYS)
+      ) as { id: number } | undefined;
+      if (existingDebit) {
+        return {
+          ...depositBase,
+          requires_manual:
+            `checking already lists this debit as movement ${existingDebit.id} — convert it to a ` +
+            "transfer instead of writing a second row",
+        };
+      }
+      return depositBase;
+    }
+    case "wallet_funded": {
+      // «Compraste dólares»: pesos of the Fintual balance → dollars, the shape of the hand-entered
+      // compras (CLP from-leg, USD counter leg).
+      const fxBase = {
         ...base,
-        from_account_id: fintualUsdAccountId(),
-        to_account_id: accountIdForEquityTicker(ticker),
-        units_delta: event.units,
-        flow_kind: "stock_buy",
+        amount: event.clp_amount ?? 0,
+        currency: "clp" as const,
+        counter_amount: event.amount,
+        counter_currency: "usd" as const,
+        from_account_id: fintualClpBalanceAccountId(),
+        to_account_id: fintualUsdAccountId(),
+        flow_kind: "compra_usd_venta_clp",
       };
+      if (event.amount == null || event.clp_amount == null) {
+        return { ...fxBase, requires_manual: "the mail does not state both the dollars and the pesos — enter the compra by hand" };
+      }
+      const impliedFx = event.clp_amount / event.amount;
+      if (impliedFx < FX_SANITY_MIN_CLP_PER_USD || impliedFx > FX_SANITY_MAX_CLP_PER_USD) {
+        return { ...fxBase, requires_manual: `implied fx ${impliedFx.toFixed(2)} CLP/USD is outside the sanity band` };
+      }
+      return fxBase;
     }
     case "withdrawal_paid":
     case "cash_returned": {
@@ -384,15 +482,34 @@ export function planFintualEmailBatch(
 }
 
 const insTransfer = db.prepare(
-  `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
-   VALUES (@from_account_id, @to_account_id, @amount, @currency, @occurred_on, @note, @units_delta, @flow_kind)`
+  `INSERT INTO movements (from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, units_delta, flow_kind)
+   VALUES (@from_account_id, @to_account_id, @amount, @currency, @counter_amount, @counter_currency, @occurred_on, @note, @units_delta, @flow_kind)`
 );
 
 export function applyFintualEmailMovements(planned: readonly FintualPlannedMovement[]): number {
   const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
   db.transaction(() => {
     for (const p of writable) {
-      if (p.from_account_id == null || p.to_account_id == null) continue;
+      let toAccountId = p.to_account_id;
+      if (p.create_account) {
+        // Re-checked here: an earlier buy in this batch may already have created it.
+        const holders = accountsWithEquityTicker(p.create_account.ticker);
+        if (holders.length > 1) throw new Error(`ticker ${p.create_account.ticker} became ambiguous during apply`);
+        toAccountId =
+          holders[0] ??
+          createPanelAccount({
+            account: {
+              account_type: "equity",
+              name: p.create_account.ticker,
+              bucket_slug: p.create_account.bucket_slug,
+              ticker: p.create_account.ticker,
+              exclude_from_group_totals: false,
+            },
+          }).account_id;
+      }
+      if (p.from_account_id == null || toAccountId == null) {
+        throw new Error(`planned ${p.source.kind} on ${p.occurred_on} has unresolved legs`);
+      }
       // A withdrawal that found its bank leg rewrites that row instead of inserting: the money is
       // already in the ledger once, and a second row would be the double count this avoids.
       if (p.promote_movement_id != null) {
@@ -407,9 +524,11 @@ export function applyFintualEmailMovements(planned: readonly FintualPlannedMovem
       }
       const info = insTransfer.run({
         from_account_id: p.from_account_id,
-        to_account_id: p.to_account_id,
+        to_account_id: toAccountId,
         amount: p.amount,
         currency: p.currency,
+        counter_amount: p.counter_amount,
+        counter_currency: p.counter_currency,
         occurred_on: p.occurred_on,
         note: p.note,
         units_delta: p.units_delta,

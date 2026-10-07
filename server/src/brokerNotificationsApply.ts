@@ -37,11 +37,13 @@ function fintualRow(p: FintualPlannedMovement): BrokerNotificationPlanRow {
       ? "duplicate"
       : p.requires_manual != null
         ? "manual"
-        : p.synthesized
-          ? "synthesized"
-          : p.promote_movement_id != null
-            ? "promoted"
-            : "new";
+        : p.create_account
+          ? "creates_account"
+          : p.synthesized
+            ? "synthesized"
+            : p.promote_movement_id != null
+              ? "promoted"
+              : "new";
   const detail =
     p.duplicate_of != null
       ? `already in the ledger as movement ${p.duplicate_of}`
@@ -50,7 +52,11 @@ function fintualRow(p: FintualPlannedMovement): BrokerNotificationPlanRow {
           ? "synthesized from the mail; the bank's listing of the credit will dedupe as superseded_by_transfer"
           : p.promote_movement_id != null
             ? `checking credit ${p.promote_movement_id} becomes the transfer`
-            : null);
+            : p.create_account
+              ? `creates the ${p.create_account.ticker} position in ${p.create_account.bucket_slug}`
+              : p.counter_amount != null
+                ? `US$${p.counter_amount} counter leg`
+                : null);
   return {
     occurred_on: p.occurred_on,
     kind: p.source.kind,
