@@ -172,7 +172,7 @@ export function aggregateGastosFromLines(
 
     if (sumMonth) {
       const sumBucket = touchBucket(sumMonth);
-      if (amount > 0) {
+      if (amount > 0 || ln.checking_refund === true) {
         sumBucket.gastosReal += amount;
         const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
         const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);

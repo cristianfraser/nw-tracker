@@ -10,6 +10,7 @@ import { sortNavTreeLeavesFirst, type SidebarNavNode } from "./sidebarNavTree";
  */
 export const SERVER_NAV_LABEL_I18N_KEYS = [
   "creditCardGroup.bci",
+  "creditCardGroup.cmr",
   "creditCardGroup.santander",
   "dashboard.buckets.cash_eqs",
   "dashboard.buckets.cash_savings",

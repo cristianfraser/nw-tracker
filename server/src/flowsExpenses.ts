@@ -613,7 +613,8 @@ function computeFlowsExpenseTotals(
       if (r.amount_clp > 0) total_real_clp += r.amount_clp;
       continue;
     }
-    if (r.amount_clp <= 0) continue;
+    // A refund (`checking_refund`) counts, negatively, in its category.
+    if (r.amount_clp <= 0 && r.checking_refund !== true) continue;
     const link = r.expense_deposit_links?.find((l) => l.depto_cuota != null);
     const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
     const countsCategory = linkedMortgagePayment

@@ -97,7 +97,7 @@ export function isInstallmentCuotaZeroLine(line: {
   return line.installment_flag === 1 && line.nro_cuota_current === 0;
 }
 
-/** Positive lines that count toward gasto del mes for the active installment mode. */
+/** Positive lines, and refunds, that count toward gasto del mes for the active installment mode. */
 export function countsTowardGastosMes(
   line: FlowCcExpenseLineRow,
   mode: CcInstallmentGastosMode = "split"
@@ -107,7 +107,8 @@ export function countsTowardGastosMes(
   }
   // Small fee adjustments affect gastos totals only (see aggregateGastosFromLines), not compras/cuotas UI.
   if (line.nota_credito_role === "unmatched_nota") return false;
-  if (line.amount_clp <= 0) return false;
+  // A refund (`checking_refund`) is spending coming back: it counts, negatively, in its category.
+  if (line.amount_clp <= 0 && line.checking_refund !== true) return false;
   if (isCcExpenseTotalsExcludedSlug(line.category_slug)) return false;
   if (isInstallmentCuotaZeroLine(line)) return false;
   const scope = line.gastos_scope ?? "both";
@@ -132,7 +133,7 @@ export function countsTowardComprasModal(
 
 /** Negative lines shown in the «Abonos» modal section (excludes NOTA DE CREDITO handling). */
 export function countsTowardAbonosMes(line: FlowCcExpenseLineRow): boolean {
-  if (line.amount_clp >= 0) return false;
+  if (line.amount_clp >= 0 || line.checking_refund === true) return false;
   if (line.nota_credito_role === "matched_nota" || line.nota_credito_role === "unmatched_nota") {
     return false;
   }
