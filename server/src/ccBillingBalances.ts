@@ -296,6 +296,29 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       }
       return fxDateByStatementDate.get(statementDate) ?? null;
     };
+    // A dollar payment pays the facturación that closed before it, whose debt the month-end anchor
+    // values at that facturación's debt fx: valued at its own statement's fx instead, the payment of
+    // a large dollar debt read the month's fx move as owed (·0161 2021-11: 3.xxx,xx USD at 839 vs the
+    // debt at 803, −1xx.xxx between the anchor and the walk). Same pairing as `facturacionPaidOn`.
+    const usdCloses = (
+      db
+        .prepare(
+          `SELECT DISTINCT statement_date FROM cc_statements
+           WHERE account_id = ? AND currency = 'usd' AND source_pdf NOT LIKE 'import:web-paste%'`
+        )
+        .all(accountId) as { statement_date: string }[]
+    )
+      .map((r) => ({ date: r.statement_date, iso: parseDdMmYyToIso(r.statement_date) }))
+      .filter((r): r is { date: string; iso: string } => r.iso != null)
+      .sort((a, b) => a.iso.localeCompare(b.iso));
+    const paidFacturacionStatementDate = (paymentIso: string): string | null => {
+      let hit: string | null = null;
+      for (const c of usdCloses) {
+        if (c.iso < paymentIso) hit = c.date;
+        else break;
+      }
+      return hit;
+    };
 
     // A linked traspaso-de-deuda USD abono carries minus its CLP twin's booked pesos — the
     // pair is one debt reclassification and must net to exactly zero, never an fx estimate.
@@ -322,12 +345,14 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
       const linkedTraspasoClp =
         r.statement_currency === "usd" ? traspasoClpByUsdLineId.get(r.id) : undefined;
+      const usdPayment = (r.amount_usd ?? 0) < 0 && isCcPaymentOrUsdDebtAbonoMerchant(r.merchant);
+      const paidStatementDate = usdPayment ? paidFacturacionStatementDate(iso) : null;
       const clp =
         linkedTraspasoClp != null
           ? -linkedTraspasoClp
           : effectiveCcExpenseLineAmountClp(
               { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
-              fxDateFor(r.statement_date)
+              fxDateFor(paidStatementDate ?? r.statement_date)
             );
       lines.push({
         iso,
@@ -373,8 +398,8 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
     // The dated legs of header payments a statement printed without a date (migration 213):
     // payments like the dated ones above, which the walk and the month-end anchors otherwise
     // never subtracted. A leg is the bank-debit remainder of its header, never a printed line.
-    // A dollar leg (migration 218: an old international statement's header abono) is valued like
-    // the dollar lines of its statement, at that statement's debt fx.
+    // A dollar leg (migration 218: an old international statement's header abono) is a dollar
+    // payment like the lines above, valued at the debt fx of the facturación it paid.
     const legs = db
       .prepare(`SELECT statement_close_iso, currency, paid_on, amount FROM cc_header_payment_legs WHERE account_id = ?`)
       .all(accountId) as { statement_close_iso: string; currency: "clp" | "usd"; paid_on: string; amount: number }[];
@@ -382,7 +407,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       const statementDate = ddMmYyyyFromIso(g.statement_close_iso);
       let clp: number | null = g.amount;
       if (g.currency === "usd") {
-        const fxIso = fxDateFor(statementDate);
+        const fxIso = fxDateFor(paidFacturacionStatementDate(g.paid_on) ?? statementDate);
         const fx = fxIso ? fxMonthEndForBalanceUsd(fxIso)?.clp_per_usd : null;
         clp = fx != null && fx > 0 ? g.amount * fx : null;
       }
