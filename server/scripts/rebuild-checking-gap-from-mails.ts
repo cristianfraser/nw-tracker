@@ -244,6 +244,8 @@ const fmt = (n: number) => Math.round(n).toLocaleString("es-CL");
 const ddmmyyyy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const sentDay = (m: Mail) => m.sent_at_chile.slice(0, 10);
 const mailRef = (m: Mail) => `correo Santander ${m.sent_at_chile}`;
+/** A corriente row's note: the document prefix `listCheckingMovements` reads, the mail's time, the description. */
+const mailNote = (m: Mail, description: string) => `import:santander-mail|${m.sent_at_chile}|${description}`;
 
 const insSingle = db.prepare(
   `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
@@ -253,7 +255,7 @@ const setCategory = db.prepare(
    ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
 );
 function single(accountId: number, amount: number, m: Mail, note: string, postedOn: string): number {
-  const id = Number(insSingle.run(accountId, amount, sentDay(m), `${note} (${mailRef(m)})`).lastInsertRowid);
+  const id = Number(insSingle.run(accountId, amount, sentDay(m), mailNote(m, note)).lastInsertRowid);
   if (postedOn !== sentDay(m)) recordBankPosting(id, accountId, postedOn);
   return id;
 }
@@ -287,7 +289,7 @@ const tx = db.transaction(() => {
         CORRIENTE,
         -vistaSigned,
         posted,
-        `${e.from === VISTA ? "Traspaso Internet desde Cta. Vista" : "Traspaso Internet a Cta. Vista"} (${mailRef(e.mail)})`
+        mailNote(e.mail, e.from === VISTA ? "Traspaso Internet desde Cta. Vista" : "Traspaso Internet a Cta. Vista")
       ).lastInsertRowid
     );
     corrienteFlows.push({ posted, amount: -vistaSigned, what: "vista" });
@@ -321,12 +323,12 @@ const tx = db.transaction(() => {
     if (account !== CORRIENTE || !inGap(posted)) continue;
     if (e.kind === "card_payment") {
       if (e.last4 !== plan.accounts.card.last4) throw new Error(`${e.mail.sent_at_chile}: payment to card ${e.last4}`);
-      insSingle.run(CORRIENTE, -e.amount, posted, `Traspaso Internet a T. Crédito (${mailRef(e.mail)})`);
+      insSingle.run(CORRIENTE, -e.amount, posted, mailNote(e.mail, "Traspaso Internet a T. Crédito"));
       cardDebits.push({ kind: "clp", mail: e.mail, amount: e.amount });
       corrienteFlows.push({ posted, amount: -e.amount, what: "card" });
       count("card payments", e.amount);
     } else if (e.kind === "divisas") {
-      insSingle.run(CORRIENTE, -e.pesos, posted, `Egreso por Compra de Divisas US$${e.usd.toFixed(2)} (${mailRef(e.mail)})`);
+      insSingle.run(CORRIENTE, -e.pesos, posted, mailNote(e.mail, `Egreso por Compra de Divisas US$${e.usd.toFixed(2)}`));
       cardDebits.push({ kind: "usd", mail: e.mail, amount: e.pesos, usd: e.usd });
       corrienteFlows.push({ posted, amount: -e.pesos, what: "divisas" });
       count("divisas", e.pesos);
@@ -369,7 +371,7 @@ const tx = db.transaction(() => {
       CORRIENTE,
       residual,
       plan.residual_on,
-      `Ajuste: movimientos ${plan.gap.from} a ${plan.gap.to} sin correo (cartolas perdidas; saldo ${fmt(plan.opening_clp)} → ${fmt(plan.closing_clp)}, reconstruido de correos)`
+      `import:santander-mail|residual|Ajuste: movimientos ${plan.gap.from} a ${plan.gap.to} sin correo (cartolas perdidas; saldo ${fmt(plan.opening_clp)} → ${fmt(plan.closing_clp)}, reconstruido de correos)`
   );
   say(
     `corriente: opening ${fmt(plan.opening_clp)} + mailed ${fmt(net)} = ${fmt(plan.opening_clp + net)}; closing ${fmt(plan.closing_clp)} → residual ${fmt(residual)} (replaces lump ${plan.lump_movement_id}: ${fmt(lump.amount)})`
