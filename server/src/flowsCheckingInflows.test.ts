@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
+import { partialMovementNote } from "./checkingPartialMovementsImport.js";
 import {
   buildFlowsCheckingIncomePayload,
 } from "./flowsCheckingInflows.js";
@@ -163,6 +164,36 @@ describe("flowsCheckingInflows", () => {
     expect(line?.description).toContain("REMUNERACIONES");
 
     deleteCheckingMovements([creditId]);
+  });
+
+  it("lists a daily-feed credit as income before its cartola, and once only after it", () => {
+    const corrienteId = checkingAccountId();
+    const partialNote = partialMovementNote({
+      occurred_on: "2099-07-31",
+      amount_clp: 2_222_222,
+      description: "0076000000K REMUNERACIONES JULIO 2099",
+      document_no: "",
+    });
+    const partialId = Number(
+      db
+        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 2222222, 'clp', '2099-07-31', ?)`)
+        .run(corrienteId, partialNote).lastInsertRowid
+    );
+    try {
+      const before = buildFlowsCheckingIncomePayload().lines.filter((l) => l.amount_clp === 2_222_222);
+      expect(before.map((l) => [l.movement_id, l.description])).toEqual([[partialId, "0076000000K REMUNERACIONES JULIO 2099"]]);
+
+      // The cartola row lands but the daily row was not pruned (a re-import that skipped the month).
+      const cartolaId = insertCheckingCartolaCredit(corrienteId, "2099-07-31", 2_222_222, "0076000000K REMUNERACIONES JULIO 2099", {
+        cartolaMonth: "2099-07",
+        idx: 9998701,
+      });
+      const after = buildFlowsCheckingIncomePayload().lines.filter((l) => l.amount_clp === 2_222_222);
+      expect(after.map((l) => l.movement_id)).toEqual([cartolaId]);
+      deleteCheckingMovements([cartolaId]);
+    } finally {
+      deleteCheckingMovements([partialId]);
+    }
   });
 
   it("includes REMUNERACION abono even when same-day traspaso to vista pairs by amount", () => {
