@@ -10,8 +10,9 @@
  * never refreshed) and 0–5 leftover lines on the A row, which the walk and the month-end anchors
  * then counted twice (2018-02-22: the MONTO CANCELADO −1xx.xxx on both).
  *
- * A stale copy: a statement row with no import fingerprint whose file and close have a
- * fingerprinted row under another card group, the file being in the current parse. Inside one
+ * A stale copy: a statement row whose card group is not the one the current parse gives its file
+ * and close, while a row under the parse's group exists (2019-07-24 ·0113: the B copy carried a
+ * fingerprint from a later import and the A row only the MONTO CANCELADO −1xx.xxx again). Inside one
  * IMMEDIATE transaction this deletes the stale rows and re-imports their twins in full from the
  * parse through `mergeCcAccountFromParsedRows`, carrying categories, notes, big groups and splits
  * from the deleted lines to the new ones (`ccExpenseLineRekey.ts`) and failing when a paired card
@@ -54,7 +55,11 @@ type StatementRow = {
 };
 
 const records = readCommaCsvRecords(csvPath);
-const parsedFiles = new Set(records.map((r) => String(r.source_pdf ?? "").trim()));
+const parsedGroups = new Map<string, Set<string>>();
+for (const r of records) {
+  const key = `${String(r.source_pdf ?? "").trim()}\t${String(r.statement_date ?? "").trim()}`;
+  parsedGroups.set(key, (parsedGroups.get(key) ?? new Set()).add(String(r.card_group ?? "").trim()));
+}
 
 const statements = db
   .prepare(
@@ -63,13 +68,15 @@ const statements = db
   )
   .all() as StatementRow[];
 const identity = (s: StatementRow) => `${s.account_id}\t${s.source_pdf}\t${s.statement_date}\t${s.currency}`;
-const fingerprinted = new Map<string, StatementRow>();
-for (const s of statements) if (s.import_fingerprint != null) fingerprinted.set(identity(s), s);
+const groupsOf = (s: StatementRow) => parsedGroups.get(`${s.source_pdf}\t${s.statement_date}`);
+/** The row under the parse's own group, per statement identity. */
+const parseGroupRow = new Map<string, StatementRow>();
+for (const s of statements) if (groupsOf(s)?.has(s.card_group)) parseGroupRow.set(identity(s), s);
 
 const stale = statements.filter((s) => {
-  if (s.import_fingerprint != null || !parsedFiles.has(s.source_pdf)) return false;
-  const twin = fingerprinted.get(identity(s));
-  return twin != null && twin.card_group !== s.card_group;
+  const groups = groupsOf(s);
+  if (groups == null || groups.has(s.card_group)) return false;
+  return parseGroupRow.has(identity(s));
 });
 
 const lineStats = db.prepare(
@@ -83,7 +90,7 @@ for (const s of stale) byAccount.set(s.account_id, [...(byAccount.get(s.account_
 
 const tx = db.transaction(() => {
   for (const [accountId, rows] of byAccount) {
-    const twins = rows.map((s) => fingerprinted.get(identity(s))!);
+    const twins = rows.map((s) => parseGroupRow.get(identity(s))!);
     const twinFiles = new Set(twins.map((t) => `${t.source_pdf}\t${t.statement_date}`));
     const accountRecords = records.filter((r) => {
       const acc = resolveMasterAccountIdForImportCardLast4(cardLast4FromParsedRow(r));
@@ -104,7 +111,7 @@ const tx = db.transaction(() => {
 
     console.log(`\naccount ${accountId}: ${rows.length} stale copies, ${accountRecords.length} parsed lines re-imported`);
     for (const s of rows) {
-      const twin = fingerprinted.get(identity(s))!;
+      const twin = parseGroupRow.get(identity(s))!;
       const now = db
         .prepare(
           `SELECT id FROM cc_statements WHERE account_id = ? AND source_pdf = ? AND statement_date = ? AND currency = ?`
