@@ -90,7 +90,17 @@ describe("row mapping", () => {
       currency: "clp",
       amount: -111222,
       raw_text: "07/08/2026 PAGO PAGO 111.222",
+      holder: "titular",
     });
+  });
+});
+
+describe("holder", () => {
+  it("reads TipoBen: the holder's card, an additional card, or not stated on a pending row", () => {
+    expect(santanderMovementRowToLine(row({ TipoBen: "Titular" }), "clp").holder).toBe("titular");
+    expect(santanderMovementRowToLine(row({ TipoBen: "Adicional" }), "clp").holder).toBe("additional");
+    expect(santanderMovementRowToLine(row({ TipoBen: null }), "clp")).not.toHaveProperty("holder");
+    expect(() => santanderMovementRowToLine(row({ TipoBen: "Otro" }), "clp")).toThrow(/TipoBen/);
   });
 });
 

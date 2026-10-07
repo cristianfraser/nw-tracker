@@ -51,6 +51,11 @@ export const cardListingLineSchema = z
     /** The row exactly as the source rendered it (provenance; never matched on). */
     raw_text: z.string().min(1),
     cuota_purchase: cuotaPurchaseSchema.optional(),
+    /**
+     * Whose plastic made the movement, when the listing says: the account holder's card or an
+     * additional cardholder's. Absent when the listing does not state it (a pending authorization).
+     */
+    holder: z.enum(["titular", "additional"]).optional(),
   })
   .strict()
   .superRefine((line, ctx) => {

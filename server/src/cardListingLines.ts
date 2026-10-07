@@ -25,6 +25,7 @@ export function webPasteLineFromCardListingLine(cardGroup: string, line: CardLis
     amount_usd: line.currency === "usd" ? pasted : null,
     currency: line.currency,
     raw_line: line.raw_text,
+    ...(line.holder ? { holder: line.holder } : {}),
     ...(cp
       ? {
           cuota_purchase: {

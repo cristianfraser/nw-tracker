@@ -106,6 +106,8 @@ export function santanderReceiptCardLine(receipt: {
     currency: isUsd ? "usd" : "clp",
     amount: -magnitude,
     raw_text: [fecha, merchant, merchant, importe].join(" "),
+    // The feed lists every payment as the holder's.
+    holder: "titular",
   };
 }
 

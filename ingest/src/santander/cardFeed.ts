@@ -109,6 +109,15 @@ function debtSign(row: SantanderMovementRow): 1 | -1 {
   return indicator === "D" ? 1 : -1;
 }
 
+/** `TipoBen`: whose plastic made the movement. Null on a pending authorization; anything else throws. */
+function santanderHolder(tipoBen: string | null): CardListingLine["holder"] {
+  if (tipoBen == null) return undefined;
+  const t = tipoBen.trim().toLowerCase();
+  if (t === "titular") return "titular";
+  if (t === "adicional") return "additional";
+  throw new Error(`Unexpected Santander TipoBen "${tipoBen}" (want Titular or Adicional)`);
+}
+
 /** The «CUOT: <cuota №> OPER: <plan №>» rows the feed lists at a close: cuota billings, not purchases. */
 function isCuotaBillingReference(merchant: string): boolean {
   return /^CUOT:\s*\d+\s*(?:OPER:\s*\d+)?$/i.test(merchant.trim());
@@ -127,6 +136,7 @@ export function santanderMovementRowToLine(
   const sign = debtSign(row);
   const magnitude = santanderImporteMagnitude(importe, currency);
   if (magnitude == null) throw new Error(`Santander movement "${merchant}" has a zero amount`);
+  const holder = santanderHolder(row.TipoBen);
   const cuotaType = isCuotaBillingReference(merchant)
     ? null
     : cuotaPurchaseTypeFromFeedDescription(row.Descripcion);
@@ -136,6 +146,7 @@ export function santanderMovementRowToLine(
     currency,
     amount: sign * magnitude,
     raw_text: [row.Fecha, row.Descripcion ?? "", merchant, row.Importe].filter(Boolean).join(" "),
+    ...(holder ? { holder } : {}),
     ...(cuotaType
       ? {
           cuota_purchase: {

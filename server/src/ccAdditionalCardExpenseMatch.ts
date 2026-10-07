@@ -127,6 +127,47 @@ export function isAdditionalCardExpenseLine(
   return additionalCardLast4s.includes(origin);
 }
 
+/**
+ * The additional cardholder's card currently in use on a card account: the additional origin of
+ * the account's latest statement that printed one (web-paste buckets left out — their origin is
+ * this function's own answer). A listing that only says «additional» (the Santander feed) is
+ * stored under it; a new plastic takes over once its first statement prints it, and the statement
+ * then replaces the bucket's lines anyway. Throws when the account has none on record or two
+ * share the latest statement: an «additional» line must never be stored as the holder's own.
+ */
+export function activeAdditionalCardLast4ForAccount(
+  accountId: number,
+  additionalCardLast4s: readonly string[] = ccCardRegistry().additional_card_last4s,
+  dbHandle: Database = db
+): string {
+  if (additionalCardLast4s.length === 0) {
+    throw new Error(`Card account ${accountId}: a line is marked additional, but no additional card is configured`);
+  }
+  const rows = dbHandle
+    .prepare(
+      `WITH dated AS (
+         SELECT l.origin_card_last4 AS origin,
+                substr(s.statement_date, 7, 4) || '-' || substr(s.statement_date, 4, 2) || '-' ||
+                  substr(s.statement_date, 1, 2) AS close_iso
+         FROM cc_statement_lines l
+         JOIN cc_statements s ON s.id = l.statement_id
+         WHERE s.account_id = ?
+           AND s.source_pdf NOT LIKE 'import:web-paste%'
+           AND l.origin_card_last4 IN (SELECT value FROM json_each(?))
+       )
+       SELECT DISTINCT origin FROM dated WHERE close_iso = (SELECT MAX(close_iso) FROM dated)`
+    )
+    .all(accountId, JSON.stringify(additionalCardLast4s)) as { origin: string }[];
+  if (rows.length !== 1) {
+    throw new Error(
+      rows.length === 0
+        ? `Card account ${accountId}: a line is marked additional, but no statement of this account prints an additional card`
+        : `Card account ${accountId}: its latest statement prints several additional cards (${rows.map((r) => r.origin).join(", ")})`
+    );
+  }
+  return rows[0]!.origin;
+}
+
 export function formatAutoAdditionalCardNote(opts: {
   originLast4: string;
   primaryLast4: string;

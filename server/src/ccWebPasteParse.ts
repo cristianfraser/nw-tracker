@@ -7,6 +7,7 @@ import {
 } from "./ccManualBillingMonth.js";
 import { ccOneShotDedupeKey, normCcMerchant } from "./ccDedupeKey.js";
 import { webPasteAmountClpForDb, webPasteAmountUsdForDb } from "./ccPaymentLines.js";
+import { activeAdditionalCardLast4ForAccount } from "./ccAdditionalCardExpenseMatch.js";
 import { db } from "./db.js";
 import {
   ccImportFlowItemFromRow,
@@ -30,6 +31,12 @@ export type CcWebPasteLine = {
    * stamp-tax row (`ccCuotaPurchaseKinds.ts`). Absent on pasted lines.
    */
   cuota_purchase?: CcFeedCuotaPurchase | null;
+  /**
+   * Card feed only: whose plastic made the movement, when the feed says. An `additional` line is
+   * stored with the account's additional card as its origin, so it is tagged `additional_card` on
+   * import like the statement's line will be. Absent on pasted lines and pending authorizations.
+   */
+  holder?: "titular" | "additional";
 };
 
 export type CcFeedCuotaPurchase = {
@@ -138,6 +145,9 @@ export function ccWebPasteToCsvRecords(
     return b;
   };
 
+  let additionalLast4: string | null = null;
+  const additionalCardLast4 = () => (additionalLast4 ??= activeAdditionalCardLast4ForAccount(accountId));
+
   const seen = new Set<string>();
   const records: CcStatementCsvRecord[] = [];
   const skipped_in_paste: CcImportFlowItem[] = [];
@@ -183,6 +193,7 @@ export function ccWebPasteToCsvRecords(
       statement_compras_cargos: "",
       statement_deuda_total: "",
       statement_monto_facturado: "",
+      ...(line.holder === "additional" ? { origin_card_last4: additionalCardLast4() } : {}),
     };
     // The previous facturación's total, not a purchase (the feed reads it as the observed close).
     if (isCcSaldoInicialMerchant(line.merchant)) {
