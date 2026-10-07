@@ -6,7 +6,7 @@ import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from ".
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
 import { checkingMovementFlowKind } from "./checkingBankCharges.js";
-import { confirmTransferNoticeCredit, findTransferNoticeCreditForBankRow } from "./transferNoticeCredits.js";
+import { confirmTransferNoticeMovement, findTransferNoticeMovementForBankRow } from "./transferNoticeMovements.js";
 
 /**
  * One row of a bank account's recent-movements listing, as the import stores it: the posting date,
@@ -38,7 +38,7 @@ export type SkippedImportFlowReason =
   | "duplicate"
   | "superseded_by_cartola"
   | "superseded_by_transfer"
-  /** A credit already written from the transfer's mail (`transfer_notice_credits`). */
+  /** A credit already written from the transfer's mail (`transfer_notice_movements`). */
   | "superseded_by_mail"
   | "already_present";
 
@@ -71,7 +71,7 @@ export function importCheckingPartialMovements(
   const inserted_flows: ImportFlowItem[] = [];
   const skipped_flows: SkippedImportFlowItem[] = [];
   const consumedTransferLegs = new Set<number>();
-  const consumedMailCredits = new Set<number>();
+  const consumedMailMovements = new Set<number>();
   const flowOf = (mv: PartialBankMovement): ImportFlowItem => ({
     occurred_on: mv.occurred_on,
     description: mv.description,
@@ -110,10 +110,10 @@ export function importCheckingPartialMovements(
       }
       // Already written from the transfer's mail during the day: keep that row (the mail's day is
       // when the money arrived) and record the bank's day as its posting day.
-      const mailCreditId = findTransferNoticeCreditForBankRow(accountId, mv.occurred_on, mv.amount_clp, consumedMailCredits);
-      if (mailCreditId != null) {
-        consumedMailCredits.add(mailCreditId);
-        confirmTransferNoticeCredit(mailCreditId, accountId, mv.occurred_on, "ultimos_xlsx", mv.description);
+      const mailMovementId = findTransferNoticeMovementForBankRow(accountId, mv.occurred_on, mv.amount_clp, consumedMailMovements);
+      if (mailMovementId != null) {
+        consumedMailMovements.add(mailMovementId);
+        confirmTransferNoticeMovement(mailMovementId, accountId, mv.occurred_on, "ultimos_xlsx", mv.description);
         skipped_superseded_by_mail += 1;
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_mail" });
         continue;

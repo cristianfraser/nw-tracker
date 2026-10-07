@@ -21,7 +21,7 @@ import type { BankAccountTransferNoticesApplyDetails, BankAccountTransferNotices
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { listOverdueTransferNoticeCredits } from "./transferNoticeCredits.js";
+import { listOverdueTransferNoticeMovements } from "./transferNoticeMovements.js";
 
 const WINDOW_DAYS = 6;
 
@@ -61,6 +61,14 @@ function addDays(ymd: string, n: number): string {
   const d = new Date(`${ymd}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+/** The app accounts a transfer's counterparty is (`transfer_counterparty_accounts`). */
+export function counterpartyAccountsOf(counterparties: CounterpartyAccounts, p: TransferNotice["to"]): ReadonlySet<number> {
+  const out = new Set<number>();
+  for (const a of counterparties.byRut.get(normalizeRut(p.rut)) ?? []) out.add(a);
+  for (const a of counterparties.byNumber.get(digits(p.account_number)) ?? []) out.add(a);
+  return out;
 }
 
 export function matchTransferNotices(
@@ -116,12 +124,7 @@ export function matchTransferNotices(
     return tied[0]!;
   }
 
-  const accountsOf = (p: TransferNotice["to"]): ReadonlySet<number> => {
-    const out = new Set<number>();
-    for (const a of counterparties.byRut.get(normalizeRut(p.rut)) ?? []) out.add(a);
-    for (const a of counterparties.byNumber.get(digits(p.account_number)) ?? []) out.add(a);
-    return out;
-  };
+  const accountsOf = (p: TransferNotice["to"]) => counterpartyAccountsOf(counterparties, p);
 
   const ordered = [...notices].sort((a, b) => a.sent_at_chile.localeCompare(b.sent_at_chile) || a.message_id.localeCompare(b.message_id));
   for (const n of ordered) {
@@ -243,8 +246,8 @@ function trackedAccounts(): Map<string, number> {
   return out;
 }
 
-/** How old a mail may be and still have its credit written: past this, the bank feed decides. */
-export const TRANSFER_NOTICE_CREDIT_MAX_AGE_DAYS = 3;
+/** How old a mail may be and still have its movement written: past this, the bank feed decides. */
+export const TRANSFER_NOTICE_MOVEMENT_MAX_AGE_DAYS = 3;
 
 const MAILER_NOTE_PREFIX: Record<string, string> = {
   santander: "import:santander-mail|",
@@ -252,14 +255,18 @@ const MAILER_NOTE_PREFIX: Record<string, string> = {
 };
 
 /**
- * The note of a credit written from a mail, in the mail-rebuilt family
- * (`import:<issuer>-mail|<mail time>|<description>`, see `isMailRebuiltCheckingNote`).
+ * The note of a movement written from a mail, in the mail-rebuilt family
+ * (`import:<issuer>-mail|<mail time>|<description>`, see `isMailRebuiltCheckingNote`), worded like
+ * the rows rebuilt from the same mails for the lost 2019 months: «Transf a <payee> (<bank>)».
  */
-export function transferNoticeCreditNote(issuer: string, n: TransferNotice): string {
+export function transferNoticeMovementNote(issuer: string, n: TransferNotice): string {
   const prefix = MAILER_NOTE_PREFIX[issuer];
   if (!prefix) throw new Error(`no note prefix for transfer mails from "${issuer}"`);
-  const who = n.from.name ?? "?";
-  const description = `Transf. de ${who}${n.comment ? ` — ${n.comment}` : ""}`.replace(/\|/g, "/");
+  const head =
+    n.kind === "incoming"
+      ? `Transf. de ${n.from.name ?? "?"}`
+      : `Transf a ${n.to.name ?? "?"}${n.to.bank ? ` (${n.to.bank})` : ""}`;
+  const description = `${head}${n.comment ? ` — ${n.comment}` : ""}`.replace(/\|/g, "/");
   return `${prefix}${n.sent_at_chile}|${description}`;
 }
 
@@ -296,45 +303,67 @@ function rowNotice(r: Record<string, unknown>): TransferNotice {
 const hash = (row: Record<string, unknown>) => createHash("sha256").update(JSON.stringify(row)).digest("hex");
 
 /**
- * Stores the notices (a resent notice must state the same; a different one throws) and rebuilds
- * every pairing from all stored notices of the issuer, so a bank row that lands after its mail
- * pairs on the next apply.
+ * The checking-account movement a mail describes on its own, or null when it must wait for the
+ * bank: an incoming transfer's credit, or a payment to a third party's debit. A payment to someone
+ * the app holds an account for (the fund manager, the broker) is a transfer into that account,
+ * which the broker's own mail writes («Recibimos tu depósito», Racional's deposit mail); writing it
+ * here too would race that mail. A transfer between two tracked accounts is mailed twice (the
+ * receipt and the recipient's notice) and is left to the banks' feeds.
  */
+export function mailMovementForNotice(
+  n: TransferNotice,
+  tracked: ReadonlyMap<string, number>,
+  counterparties: CounterpartyAccounts
+): { account_id: number; amount: number } | null {
+  const fromAcct = tracked.get(digits(n.from.account_number)) ?? null;
+  const toAcct = tracked.get(digits(n.to.account_number)) ?? null;
+  if (n.kind === "incoming") return toAcct == null ? null : { account_id: toAcct, amount: n.amount };
+  if (n.kind !== "outgoing" || fromAcct == null || toAcct != null) return null;
+  if (counterpartyAccountsOf(counterparties, n.to).size > 0) return null;
+  return { account_id: fromAcct, amount: -n.amount };
+}
+
 /**
- * Incoming transfers mailed in the last few days whose bank row has not arrived: their credit is
- * written from the mail, dated the day it was sent. Never twice for one mail (the record outlives
- * its movement), never for a notice the matcher found ambiguous, never for an older one.
+ * Transfers mailed in the last few days whose bank row has not arrived: their movement is written
+ * from the mail (`mailMovementForNotice`), dated the day it was sent. Never twice for one mail (the
+ * record outlives its movement), never for a notice the matcher found ambiguous, never for an older one.
  */
-function writeCreditsFromMails(
+function writeMovementsFromMails(
   stored: readonly { issuer: string; notice: TransferNotice }[],
   match: TransferNoticeMatch,
   tracked: ReadonlyMap<string, number>,
+  counterparties: CounterpartyAccounts,
   todayYmd: string
 ): BankAccountTransferNoticesApplyDetails["synthesized"] {
   const waiting = new Set(match.unpaired_notices.filter((u) => u.reason === NO_BANK_ROW_YET).map((u) => u.message_id));
-  const oldest = chileCalendarAddDays(todayYmd, -TRANSFER_NOTICE_CREDIT_MAX_AGE_DAYS);
-  const known = db.prepare(`SELECT 1 FROM transfer_notice_credits WHERE message_id = ?`);
+  const oldest = chileCalendarAddDays(todayYmd, -TRANSFER_NOTICE_MOVEMENT_MAX_AGE_DAYS);
+  const known = db.prepare(`SELECT 1 FROM transfer_notice_movements WHERE message_id = ?`);
   const insMovement = db.prepare(
     `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
   );
-  const insCredit = db.prepare(
-    `INSERT INTO transfer_notice_credits (message_id, movement_id, account_id, amount, notice_date) VALUES (?, ?, ?, ?, ?)`
+  const insRecord = db.prepare(
+    `INSERT INTO transfer_notice_movements (message_id, movement_id, account_id, amount, notice_date) VALUES (?, ?, ?, ?, ?)`
   );
   const out: BankAccountTransferNoticesApplyDetails["synthesized"] = [];
   for (const { issuer, notice: n } of stored) {
-    if (n.kind !== "incoming" || !waiting.has(n.message_id)) continue;
+    if (!waiting.has(n.message_id)) continue;
     const day = n.sent_at_chile.slice(0, 10);
     if (day < oldest || day > todayYmd || known.get(n.message_id)) continue;
-    const account = tracked.get(digits(n.to.account_number));
-    if (account == null) continue;
-    const movementId = Number(insMovement.run(account, n.amount, day, transferNoticeCreditNote(issuer, n)).lastInsertRowid);
-    insCredit.run(n.message_id, movementId, account, n.amount, day);
-    clearCheckingBalanceCache(account);
-    out.push({ message_id: n.message_id, movement_id: movementId, account_id: account, date: day, amount: n.amount });
+    const mv = mailMovementForNotice(n, tracked, counterparties);
+    if (mv == null) continue;
+    const movementId = Number(insMovement.run(mv.account_id, mv.amount, day, transferNoticeMovementNote(issuer, n)).lastInsertRowid);
+    insRecord.run(n.message_id, movementId, mv.account_id, mv.amount, day);
+    clearCheckingBalanceCache(mv.account_id);
+    out.push({ message_id: n.message_id, movement_id: movementId, account_id: mv.account_id, date: day, amount: mv.amount });
   }
   return out;
 }
 
+/**
+ * Stores the notices (a resent notice must state the same; a different one throws), rebuilds every
+ * pairing from all stored notices of every mailer, so a bank row that lands after its mail pairs on
+ * the next apply, and writes the movements fresh mails describe that no bank feed lists yet.
+ */
 export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayload): BankAccountTransferNoticesApplyDetails {
   const existing = db.prepare(`SELECT * FROM bank_transfer_notices WHERE message_id = ?`);
   const insert = db.prepare(
@@ -364,8 +393,8 @@ export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayl
     const matchAll = () => matchTransferNotices(notices, tracked, loadTransferCandidateLegs([...new Set(tracked.values())]), counterparties);
     let match = matchAll();
     const today = chileCalendarTodayYmd();
-    const synthesized = writeCreditsFromMails(stored, match, tracked, today);
-    // The credits just written are the bank rows those notices describe.
+    const synthesized = writeMovementsFromMails(stored, match, tracked, counterparties, today);
+    // The movements just written are the bank rows those notices describe.
     if (synthesized.length > 0) match = matchAll();
     db.prepare(`DELETE FROM movement_transfer_notices`).run();
     const pair = db.prepare(`INSERT INTO movement_transfer_notices (movement_id, account_id, message_id) VALUES (?, ?, ?)`);
@@ -377,7 +406,7 @@ export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayl
       unpaired: match.unpaired,
       ambiguous: match.ambiguous,
       synthesized,
-      overdue: listOverdueTransferNoticeCredits(today),
+      overdue: listOverdueTransferNoticeMovements(today),
     };
   }).immediate();
 }

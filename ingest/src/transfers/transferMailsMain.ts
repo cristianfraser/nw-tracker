@@ -1,8 +1,9 @@
 /**
  * Send the banks' transfer mails to the server as `bank_account.transfer_notices`: who each
  * transfer went to or came from. The server stores the notices, pairs each with its bank row, and
- * writes the credit of an incoming transfer whose bank row has not arrived yet (the checking feed
- * only comes with the 22:00 bank session).
+ * writes the movement of a fresh transfer whose bank row has not arrived yet — an incoming
+ * transfer's credit, a payment to a third party's debit (the checking feed only comes with the
+ * 22:00 bank session).
  *
  * Two mailers: Santander, about the client's own transfers and some incoming ones, and Banco de
  * Chile, which mails the recipient of a transfer its clients send (the user's father's wires).
@@ -13,7 +14,7 @@
  *   … -- --dry-run                                                      # decode + report only
  *
  * Each fetched window is staged as `cfraser/<issuer>-mail-archive/recent.json` (overwritten each
- * run). A mail that does not decode fails the step; the rest still go. A credit written from a
+ * run). A mail that does not decode fails the step; the rest still go. A movement written from a
  * mail that no bank feed has listed two business days on also fails it.
  */
 import fs from "node:fs";
@@ -97,7 +98,7 @@ async function runSource(source: Source, file: string): Promise<number> {
     const d = result.details as BankAccountTransferNoticesApplyDetails;
     log(`server: ${d.new_notices} new, ${d.paired} notice(s) paired with a bank row; unpaired ${JSON.stringify(d.unpaired)}`);
     for (const a of d.ambiguous.slice(0, 20)) log(`  ambiguous: ${a}`);
-    for (const s of d.synthesized) log(`  credit written from the mail: movement ${s.movement_id}, ${s.date} $${s.amount} on account ${s.account_id}`);
+    for (const s of d.synthesized) log(`  movement written from the mail: ${s.movement_id}, ${s.date} $${s.amount} on account ${s.account_id}`);
     for (const o of d.overdue) {
       log(`OVERDUE: movement ${o.movement_id} ($${o.amount}, mailed ${o.date}) — no bank feed has listed it by ${o.deadline}`);
     }
