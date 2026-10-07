@@ -24,6 +24,8 @@ export type SantanderArchivedMail = {
   /** Sending time on the Chile clock, `YYYY-MM-DD HH:MM`. */
   sent_at_chile: string;
   from: string;
+  /** The sender's display name («Konko Active»), when the mail names one. */
+  from_name?: string;
   subject: string;
   text: string;
 };
@@ -85,8 +87,10 @@ export type ArchivedMail = SantanderArchivedMail;
  * `wantSubject` accepts is downloaded; `keep` may still drop a mail by its text.
  */
 export async function archiveMails(opts: {
-  /** The sender, as IMAP FROM matches it (an address or a domain). */
-  from: string;
+  /** The sender, as IMAP FROM matches it (an address or a domain)… */
+  from?: string;
+  /** …or a Gmail search query, for mails many senders send in one layout. */
+  gmraw?: string;
   label: string;
   fromYmd: string;
   toYmd: string;
@@ -120,7 +124,9 @@ export async function archiveMails(opts: {
       since.setUTCDate(since.getUTCDate() - 1);
       const before = new Date(`${opts.toYmd}T00:00:00Z`);
       before.setUTCDate(before.getUTCDate() + 2);
-      const uids = ((await client.search({ from: opts.from, since, before })) || []) as number[];
+      if (!opts.from === !opts.gmraw) throw new Error("archiveMails takes exactly one of from / gmraw");
+      const query = opts.gmraw ? { gmraw: opts.gmraw, since, before } : { from: opts.from, since, before };
+      const uids = ((await client.search(query)) || []) as number[];
       const wanted: number[] = [];
       for await (const msg of client.fetch(uids, { envelope: true, uid: true })) {
         if (opts.wantSubject(String(msg.envelope?.subject ?? "").trim())) wanted.push(msg.uid);
@@ -136,6 +142,7 @@ export async function archiveMails(opts: {
           message_id: String(msg.envelope?.messageId ?? `uid-${msg.uid}`),
           sent_at_chile: sent,
           from: String(msg.envelope?.from?.[0]?.address ?? ""),
+          ...(msg.envelope?.from?.[0]?.name ? { from_name: String(msg.envelope.from[0].name) } : {}),
           subject,
           text: decodedBodyText(msg.source),
         };

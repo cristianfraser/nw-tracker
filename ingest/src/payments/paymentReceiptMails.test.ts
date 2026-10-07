@@ -3,6 +3,7 @@ import { PAYMENT_PROCESSORS } from "./paymentReceiptMails.js";
 
 const flow = PAYMENT_PROCESSORS.find((p) => p.slug === "flow")!;
 const pagoFacil = PAYMENT_PROCESSORS.find((p) => p.slug === "pago_facil")!;
+const shopify = PAYMENT_PROCESSORS.find((p) => p.slug === "shopify")!;
 const mail = (from: string, subject: string, sent: string, text: string) => ({ message_id: `<${sent}@test>`, sent_at_chile: sent, from, subject, text });
 
 describe("payment receipt mails", () => {
@@ -62,5 +63,37 @@ describe("payment receipt mails", () => {
     expect(() =>
       pagoFacil.decode(mail("no-reply@sys.pagofacil.cl", "Tu comprobante de pedido #1", "2036-01-01 10:00", "El pago por el pedido #1 en X ha sido procesado Monto Total $10.50"))
     ).toThrow(/whole-peso/);
+  });
+
+  it("reads a Shopify shop's order confirmation: the shop from the bracket, the text or the sender", () => {
+    const fromText = shopify.decode({
+      ...mail(
+        "contacto@tienda.example",
+        "Confirmación de pedido K2430",
+        "2036-07-02 17:51",
+        "Tienda Uno Pedido K2430 ¡Gracias por tu compra! Hola, estamos preparando tu pedido. Resumen del pedido SHORT DOS × 1 M $24.990 Descuento ABC -$2.499 Subtotal $22.491 Envíos $2.990 Impuestos $4.068 Total $25.481 CLP Información del cliente … Métodos de pago Pago fácil_webpayplus — $25.481"
+      ),
+    })!;
+    expect(fromText).toMatchObject({ processor: "shopify", payee: { name: "Tienda Uno" }, amount: 25481, order_ref: "K2430", concept: "SHORT DOS × 1 M" });
+    const bracket = shopify.decode(
+      mail(
+        "store+1@t.shopifyemail.com",
+        "[CARNES DOS 🥩] Confirmación de pedido #81701",
+        "2036-06-12 20:29",
+        "¡Gracias por tu compra! Pedido #81701 ¡Gracias por tu compra! Resumen del pedido Filete | 2,0 Kg x 1 Default Title $51.980 Descuento (450881) $-15.594 Subtotal $36.386 Envío $3.990 Total $40.376 CLP Información del cliente"
+      )
+    )!;
+    expect(bracket).toMatchObject({ payee: { name: "CARNES DOS" }, amount: 40376, order_ref: "#81701", concept: "Filete | 2,0 Kg x 1" });
+    const sender = shopify.decode({
+      ...mail(
+        "store+2@t.shopifyemail.com",
+        "Confirmación de pedido #6822",
+        "2036-05-14 16:14",
+        "¡Gracias por tu compra! Pedido #6822 ¡Gracias por tu compra! Resumen del pedido (PREVENTA) Juego NSW × 1 $54.990 Subtotal $54.990 Retiro $0 Impuestos $8.780 Total $54.990 CLP Pago Checkout mercado pago Si tienes alguna pregunta"
+      ),
+      from_name: "Tienda Tres",
+    })!;
+    expect(sender).toMatchObject({ payee: { name: "Tienda Tres" }, concept: "(PREVENTA) Juego NSW × 1", payment_method: "Checkout mercado pago" });
+    expect(shopify.decode(mail("persona@example.com", "Re: Confirmación de pedido #1", "2036-01-01 10:00", "Resumen del pedido x Subtotal $1 Total $1 CLP"))).toBeNull();
   });
 });

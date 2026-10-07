@@ -1,11 +1,11 @@
 /**
- * Send payment processors' receipt mails (Flow, Pago Fácil) to the server as
- * `payment.processor_receipts`: who each «PAGOS.FLOW.CL» / «PAGO FACIL» charge actually paid.
+ * Send payment processors' receipt mails (Flow, Pago Fácil) and shops' order confirmations
+ * (Shopify) to the server as `payment.processor_receipts`: who each charge actually paid.
  *
  *   npm run import:payment-receipt-mails -w nw-tracker-ingest                       # the last 45 days, fetched now
  *   npm run import:payment-receipt-mails -w nw-tracker-ingest -- --days=400
  *   npm run import:payment-receipt-mails -w nw-tracker-ingest -- --from=2015-01-01 --to=2026-10-06
- *   … -- --archive=<a.json>,<b.json>                                               # staged archives instead
+ *   … -- --archive=<flow-x.json>,<shopify-y.json>                                  # staged archives (named <processor>-…)
  *   … -- --dry-run                                                                 # decode + report only
  *
  * Each processor's fetched window is staged as `cfraser/payment-receipt-mails/<processor>-<from>_<to>.json`
@@ -31,18 +31,22 @@ function chileToday(): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" }).format(new Date());
 }
 
-function processorForMail(mail: ArchivedMail): PaymentProcessor {
-  const p = PAYMENT_PROCESSORS.find((x) => mail.from.toLowerCase().endsWith(x.from));
-  if (!p) throw new Error(`no payment processor sends from ${mail.from}`);
+type TaggedMail = { processor: PaymentProcessor; mail: ArchivedMail };
+
+/** An archive's processor, from its file name (`<processor>-…json`). */
+function processorForFile(file: string): PaymentProcessor {
+  const base = file.split("/").pop() ?? file;
+  const p = PAYMENT_PROCESSORS.find((x) => base.startsWith(`${x.slug}-`));
+  if (!p) throw new Error(`${base}: an archive is named <processor>-… (${PAYMENT_PROCESSORS.map((x) => x.slug).join(", ")})`);
   return p;
 }
 
-async function stagedMails(): Promise<{ mails: ArchivedMail[]; ref: string }> {
+async function stagedMails(): Promise<{ mails: TaggedMail[]; ref: string }> {
   const archives = arg("archive");
   if (archives) {
     const files = archives.split(",");
     return {
-      mails: files.flatMap((f) => JSON.parse(fs.readFileSync(f, "utf8")) as ArchivedMail[]),
+      mails: files.flatMap((f) => (JSON.parse(fs.readFileSync(f, "utf8")) as ArchivedMail[]).map((mail) => ({ processor: processorForFile(f), mail }))),
       ref: files.map((f) => f.split("/").pop()).join(","),
     };
   }
@@ -56,10 +60,10 @@ async function stagedMails(): Promise<{ mails: ArchivedMail[]; ref: string }> {
     from.setUTCDate(from.getUTCDate() - days);
     fromYmd = from.toISOString().slice(0, 10);
   }
-  const mails: ArchivedMail[] = [];
+  const mails: TaggedMail[] = [];
   for (const p of PAYMENT_PROCESSORS) {
     const { file } = await archiveMails({
-      from: p.from,
+      ...(p.gmraw ? { gmraw: p.gmraw } : { from: p.from }),
       label: `${p.slug} receipts`,
       fromYmd,
       toYmd,
@@ -67,7 +71,7 @@ async function stagedMails(): Promise<{ mails: ArchivedMail[]; ref: string }> {
       dir: "payment-receipt-mails",
       fileName: windowed ? `${p.slug}-recent.json` : `${p.slug}-${fromYmd}_${toYmd}.json`,
     });
-    mails.push(...(JSON.parse(fs.readFileSync(file, "utf8")) as ArchivedMail[]));
+    mails.push(...(JSON.parse(fs.readFileSync(file, "utf8")) as ArchivedMail[]).map((mail) => ({ processor: p, mail })));
   }
   return { mails, ref: `${fromYmd}_${toYmd}` };
 }
@@ -76,9 +80,9 @@ async function main(): Promise<number> {
   const { mails, ref } = await stagedMails();
   const receipts = new Map<string, ProcessorReceipt>();
   let failed = 0;
-  for (const mail of mails) {
+  for (const { processor, mail } of mails) {
     try {
-      const r = processorForMail(mail).decode(mail);
+      const r = processor.decode(mail);
       if (r) receipts.set(r.message_id, r);
     } catch (err) {
       log(`UNDECODABLE ${mail.sent_at_chile} «${mail.subject}»: ${err instanceof Error ? err.message : String(err)}`);

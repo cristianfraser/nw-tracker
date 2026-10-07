@@ -171,7 +171,7 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
       const match = matchPaymentReceiptsToExpenseLines(buildFlowsExpensesPayload().lines);
       return {
         status: stored.new_receipts === 0 ? "duplicate" : "applied",
-        details: { ...stored, paired: match.byPurchaseKey.size, unpaired: match.unpaired, ambiguous: match.ambiguous },
+        details: { ...stored, paired: match.paired, unpaired: match.unpaired, ambiguous: match.ambiguous },
       };
     },
   },
