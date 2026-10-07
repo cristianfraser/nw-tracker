@@ -34,7 +34,7 @@ import {
   checkingGapDepositMirrorPurchaseKey,
   isCheckingGapDepositMirrorPurchaseKey,
 } from "./checkingGapDepositMirrorKey.js";
-import type { FlowCcExpenseLineRow } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
 export { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG };
 

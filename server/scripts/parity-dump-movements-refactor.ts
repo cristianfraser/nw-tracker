@@ -19,7 +19,7 @@ async function main() {
   const { buildFlowsPlPayload } = await import("../src/flowsPl.js");
   const { buildDepositsReconciliationPayload } = await import("../src/flowsDepositsReconciliation.js");
   const { buildFlowsCheckingIncomePayload } = await import("../src/flowsCheckingInflows.js");
-  const { buildFlowsCreditCardExpensesPayload } = await import("../src/flowsCreditCardExpenses.js");
+  const { buildFlowsExpensesPayload } = await import("../src/flowsExpenses.js");
   const { buildGroupFlows } = await import("../src/flowsApi.js");
   const { getGroupValuationTimeseries } = await import("../src/valuationTimeseries.js");
   const { getGroupMonthlyPerformanceSeries } = await import("../src/accountPerformance.js");
@@ -40,7 +40,7 @@ async function main() {
   grab("flows_pl", () => buildFlowsPlPayload());
   grab("deposits_reconciliation", () => buildDepositsReconciliationPayload());
   grab("income", () => buildFlowsCheckingIncomePayload());
-  grab("cc_expenses", () => buildFlowsCreditCardExpensesPayload());
+  grab("cc_expenses", () => buildFlowsExpensesPayload());
   grab("overview_daily_90", () => getDashboardOverviewDaily("clp", 90));
   for (const slug of ["brokerage", "cash_savings", "retirement_afp_afc", "liabilities"]) {
     grab(`group_ts_${slug}`, () =>

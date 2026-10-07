@@ -3,9 +3,9 @@ import {
   applyCcExpenseLineCategoryPatch,
   applyCcExpenseLineCategoryPatchFromServer,
 } from "./mutations";
-import type { FlowsCreditCardExpensesResponse } from "../types";
+import type { FlowsExpensesResponse } from "../types";
 
-function sampleData(): FlowsCreditCardExpensesResponse {
+function sampleData(): FlowsExpensesResponse {
   return {
     group_slug: "pasivos",
     account_ids: [32],
@@ -81,7 +81,7 @@ describe("applyCcExpenseLineCategoryPatch", () => {
   });
 
   it("patches by category_statement_line_id anchor (installment total row)", () => {
-    const data: FlowsCreditCardExpensesResponse = {
+    const data: FlowsExpensesResponse = {
       ...sampleData(),
       lines: [
         {
@@ -110,7 +110,7 @@ describe("applyCcExpenseLineCategoryPatch", () => {
   });
 
   it("does not patch cc line when source is checking (id collision)", () => {
-    const data: FlowsCreditCardExpensesResponse = {
+    const data: FlowsExpensesResponse = {
       ...sampleData(),
       lines: [
         { ...sampleData().lines[0], source: "cc", statement_line_id: 999, category_unique: false },
@@ -134,7 +134,7 @@ describe("applyCcExpenseLineCategoryPatch", () => {
   });
 
   it("applyCcExpenseLineCategoryPatchFromServer updates all lines with purchase_key", () => {
-    const data: FlowsCreditCardExpensesResponse = {
+    const data: FlowsExpensesResponse = {
       ...sampleData(),
       lines: [
         { ...sampleData().lines[0], statement_line_id: 10, purchase_key: "pk-a", category_unique: false },

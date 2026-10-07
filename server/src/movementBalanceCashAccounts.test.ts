@@ -4,7 +4,7 @@ import {
   listMovementBalanceCashAccountIds,
 } from "./movementBalanceCashAccounts.js";
 import { kindSlugForAccount } from "./portfolioGroupTree.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 
 describe("movementBalanceCashAccounts", () => {
   it("lists corriente and vista accounts under checking_accounts bucket", () => {
@@ -28,7 +28,7 @@ describe("movementBalanceCashAccounts", () => {
   it("includes checking gastos lines in expenses payload when cartola withdrawals exist", () => {
     const ids = listMovementBalanceCashAccountIds();
     if (ids.length === 0) return;
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const checkingLines = payload.lines.filter((l) => l.source === "checking");
     if (checkingLines.length === 0) return;
     expect(checkingLines.every((l) => ids.includes(l.account_id))).toBe(true);

@@ -16,7 +16,7 @@ import {
 import { ccInstallmentDebtDailyClp } from "./ccInstallmentDebtDaily.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { convertStatementLineToInstallmentPurchase } from "./ccInstallmentManual.js";
-import { buildCcExpenseLines } from "./flowsCreditCardExpenses.js";
+import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { webPasteLineDedupeKey, type CcWebPasteLine } from "./ccWebPasteParse.js";
 

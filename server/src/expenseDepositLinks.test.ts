@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateGastosFromLines,
   type FlowCcExpenseLineRow,
-} from "./flowsCreditCardExpenses.js";
+} from "./flowsExpenses.js";
 import {
   BILLS_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,

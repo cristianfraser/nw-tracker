@@ -16,7 +16,7 @@ import { aggregateIncomeChartPointsByDay, aggregateIncomeFromPayload } from "./i
 import type { DisplayUnit } from "./queries/keys";
 import type {
   FlowCcExpenseLineRow,
-  FlowsCreditCardExpensesResponse,
+  FlowsExpensesResponse,
   FlowsDepositsResponse,
   FlowsIncomeResponse,
   FlowsPlResponse,
@@ -102,7 +102,7 @@ function latestNonEmptyGastosMonth(
 
 export function aggregateFlowsOverview(
   income: FlowsIncomeResponse,
-  ccExpenses: Pick<FlowsCreditCardExpensesResponse, "lines">,
+  ccExpenses: Pick<FlowsExpensesResponse, "lines">,
   deposits: Pick<FlowsDepositsResponse, "rows" | "fx_conversion_error">,
   pl: Pick<FlowsPlResponse, "chart_monthly" | "chart_monthly_usd">,
   installmentMode: CcInstallmentGastosMode = "split",
@@ -216,7 +216,7 @@ export function aggregateFlowsOverview(
  */
 export function aggregateFlowsOverviewByDay(
   income: FlowsIncomeResponse,
-  ccExpenses: Pick<FlowsCreditCardExpensesResponse, "lines" | "cuota_pay_by_iso">,
+  ccExpenses: Pick<FlowsExpensesResponse, "lines" | "cuota_pay_by_iso">,
   deposits: Pick<FlowsDepositsResponse, "rows" | "fx_conversion_error">,
   plDaily: readonly { as_of_date: string; total: number }[],
   installmentMode: CcInstallmentGastosMode = "split",

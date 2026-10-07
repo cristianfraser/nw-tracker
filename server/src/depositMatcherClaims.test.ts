@@ -10,7 +10,7 @@ import { loadDepositMatchCandidates, type DepositMatchCandidate } from "./checki
 import { parseAutoDepositMatchNote } from "./ccExpenseDepositMatchNotes.js";
 import { syncCuentaAhorroDepositSplitMirrors, upsertCuentaAhorroDepositSplit } from "./cuentaAhorroDepositSplits.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
-import { loadFinalizedCheckingGastosLinesReadOnly } from "./flowsCreditCardExpenses.js";
+import { loadFinalizedCheckingGastosLinesReadOnly } from "./flowsExpenses.js";
 import { tryAutoLinkExpenseDepositLine } from "./expenseDepositLinks.js";
 
 const PREFIX = "vitest-deposit-claims";

@@ -4,7 +4,7 @@ import { db } from "./db.js";
 import {
   expandLineSplitsInDrafts,
   type FlowCcExpenseLineRowDraft,
-} from "./flowsCreditCardExpenses.js";
+} from "./flowsExpenses.js";
 
 /** Synthetic line id far above any real statement line (vitest fixture, cleaned up below). */
 const VITEST_LINE_ID = 987_654_321;

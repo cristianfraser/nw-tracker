@@ -24,7 +24,7 @@ import {
 import { listCreditCardGroupMasterAccountIds, listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db } from "./db.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
   createManualCcInstallmentPurchase,
   deleteManualCcInstallmentPurchase,
@@ -379,7 +379,7 @@ describe("ccExpenseCategories", () => {
   });
 
   it("can enable unique purchase mode before a category is chosen", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const allowed = new Set(listCreditCardMasterAccountIds());
     const line = payload.lines.find(
       (ln) => ln.amount_clp > 0 && ln.statement_line_id > 0 && allowed.has(ln.account_id)
@@ -394,7 +394,7 @@ describe("ccExpenseCategories", () => {
     expect(result.category_slug).toBe("unclassified");
     expect(result.purchase_key).toMatch(/^(line-pr:|installment-h:|installment-pr:)/);
 
-    const after = buildFlowsCreditCardExpensesPayload();
+    const after = buildFlowsExpensesPayload();
     const updated = after.lines.find((ln) => ln.statement_line_id === line.statement_line_id);
     expect(updated?.category_unique).toBe(true);
     expect(updated?.category_slug).toBe("unclassified");
@@ -470,7 +470,7 @@ function createMerchantPropagationFixture(tag: string): {
         categorySlug: "supermarket",
       });
 
-      const after = buildFlowsCreditCardExpensesPayload();
+      const after = buildFlowsExpensesPayload();
       const sameMerchant = after.lines.filter(
         (ln) => ln.account_id === fx.accountId && ln.merchant_key === merchantKey
       );
@@ -486,7 +486,7 @@ function createMerchantPropagationFixture(tag: string): {
         categorySlug: "others",
       });
 
-      const uniqueAfter = buildFlowsCreditCardExpensesPayload();
+      const uniqueAfter = buildFlowsExpensesPayload();
       const onlyLine = uniqueAfter.lines.find((ln) => ln.statement_line_id === target);
       expect(onlyLine?.category_slug).toBe("others");
       expect(onlyLine?.category_unique).toBe(true);
@@ -528,7 +528,7 @@ function createMerchantPropagationFixture(tag: string): {
       expect(cleared.category_slug).toBe("unclassified");
       expect(cleared.unique).toBe(true);
 
-      const after = buildFlowsCreditCardExpensesPayload();
+      const after = buildFlowsExpensesPayload();
       const updated = after.lines.find((ln) => ln.statement_line_id === target);
       expect(updated?.category_unique).toBe(true);
       expect(updated?.category_slug).toBe("unclassified");
@@ -549,7 +549,7 @@ function createMerchantPropagationFixture(tag: string): {
   });
 
   it("clear_category on non-unique purchase removes merchant rule", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const allowed = new Set(listCreditCardMasterAccountIds());
     const line = payload.lines.find(
       (ln) => ln.amount_clp > 0 && ln.statement_line_id > 0 && !!ln.merchant && allowed.has(ln.account_id)
@@ -577,7 +577,7 @@ function createMerchantPropagationFixture(tag: string): {
       clearCategory: true,
     });
 
-    const afterMerchantClear = buildFlowsCreditCardExpensesPayload();
+    const afterMerchantClear = buildFlowsExpensesPayload();
     for (const ln of afterMerchantClear.lines.filter(
       (p) =>
         p.account_id === line.account_id &&
@@ -590,7 +590,7 @@ function createMerchantPropagationFixture(tag: string): {
   });
 
   it("installment cuotas share purchase_key; Único check/uncheck applies to every cuota", () => {
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const inst = payload.lines.find(
       (ln) =>
         ln.source === "cc" &&
@@ -628,7 +628,7 @@ function createMerchantPropagationFixture(tag: string): {
     expect(checkOnly.purchase_key).toBe(purchaseKey);
     expect(checkOnly.unique).toBe(true);
 
-    const afterCheck = buildFlowsCreditCardExpensesPayload();
+    const afterCheck = buildFlowsExpensesPayload();
     for (const lineId of cuotaLineIds) {
       const ln = afterCheck.lines.find((l) => l.statement_line_id === lineId);
       expect(ln?.category_unique).toBe(true);
@@ -640,7 +640,7 @@ function createMerchantPropagationFixture(tag: string): {
       categorySlug: "fun",
     });
 
-    const afterCategory = buildFlowsCreditCardExpensesPayload();
+    const afterCategory = buildFlowsExpensesPayload();
     for (const lineId of cuotaLineIds) {
       const ln = afterCategory.lines.find((l) => l.statement_line_id === lineId);
       expect(ln?.category_slug).toBe("fun");
@@ -653,7 +653,7 @@ function createMerchantPropagationFixture(tag: string): {
       categorySlug: "fun",
     });
 
-    const afterUncheck = buildFlowsCreditCardExpensesPayload();
+    const afterUncheck = buildFlowsExpensesPayload();
     for (const lineId of cuotaLineIds) {
       const ln = afterUncheck.lines.find((l) => l.statement_line_id === lineId);
       expect(ln?.category_slug).toBe("fun");

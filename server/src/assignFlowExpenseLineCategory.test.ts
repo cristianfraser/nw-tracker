@@ -3,7 +3,7 @@ import { db } from "./db.js";
 import { ccStatementLineBelongsToCreditCardGroup } from "./ccExpenseCategories.js";
 import { assignFlowExpenseLineCategory } from "./assignFlowExpenseLineCategory.js";
 import { checkingGastosMovementBelongs } from "./flowsCheckingGastos.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 
 describe("assignFlowExpenseLineCategory", () => {
   it("disambiguates id collision between checking movement and cc statement line", () => {
@@ -59,7 +59,7 @@ describe("assignFlowExpenseLineCategory", () => {
     });
 
     try {
-      const payload = buildFlowsCreditCardExpensesPayload();
+      const payload = buildFlowsExpensesPayload();
       const mc = payload.lines.find(
         (ln) => ln.source === "checking" && ln.statement_line_id === 999
       );

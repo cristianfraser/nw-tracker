@@ -5,7 +5,7 @@ import { checkingCartolaStablePurchaseKey } from "./checkingCartolaParse.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { buildDepositsReconciliationPayload } from "./flowsDepositsReconciliation.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import { seedNavTree } from "./seedNavTree.js";
 
 /**
@@ -127,7 +127,7 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
   afterEach(() => {
     cleanupFixtureRows();
     // Re-sync the auto links so no expense_deposit_links row points at deleted movements.
-    buildFlowsCreditCardExpensesPayload();
+    buildFlowsExpensesPayload();
   });
 
   afterAll(() => {
@@ -259,7 +259,7 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
     );
 
     // Gastos build runs the matcher and syncs expense_deposit_links.
-    buildFlowsCreditCardExpensesPayload();
+    buildFlowsExpensesPayload();
 
     const payload = buildDepositsReconciliationPayload();
     const depositRow = payload.rows.find((r) => r.movement_id === bufferIn);

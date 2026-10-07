@@ -16,7 +16,7 @@ import {
   renameCcExpenseBigGroup,
   setCcExpensePurchaseBigGroup,
 } from "../ccExpenseBigGroups.js";
-import { buildFlowsCreditCardExpensesPayload } from "../flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "../flowsExpenses.js";
 import {
   deleteCcFacturadoFinancingLink,
   listCcFacturadoFinancingLinks,
@@ -238,7 +238,7 @@ app.get("/api/expenses", (_req, res) => {
 });
 
 app.get("/api/flows/expenses/credit-card", (_req, res) => {
-  res.json(buildFlowsCreditCardExpensesPayload());
+  res.json(buildFlowsExpensesPayload());
 });
 
 app.get("/api/flows/expenses/credit-card/financing-links", (_req, res) => {

@@ -34,7 +34,7 @@ import {
   reconcileOpenWebPasteAfterPdfClose,
   statementDatesForFacturacion,
 } from "./ccOpenWebPastePdfReconcile.js";
-import { buildCcExpenseLines } from "./flowsCreditCardExpenses.js";
+import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { repairMisplacedOpenWebPasteBuckets } from "./ccOpenWebPasteRepair.js";
 import { listCcBillingMonthBalances, recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { ccWebPasteToCsvRecords, webPasteLineDedupeKey, type CcWebPasteLine } from "./ccWebPasteParse.js";

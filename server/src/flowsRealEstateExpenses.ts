@@ -5,7 +5,7 @@ import { numericCuota } from "./mortgagePaymentCompute.js";
 import type {
   FlowCcExpenseLineRow,
   FlowCcExpenseLineSource,
-} from "./flowsCreditCardExpenses.js";
+} from "./flowsExpenses.js";
 import { merchantMatchesExpectation } from "./realEstateExpenseMerchants.js";
 import {
   billMonthFromSpentOn,

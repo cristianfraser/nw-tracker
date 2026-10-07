@@ -4,7 +4,7 @@ import { clearAggregationCache } from "./aggregationCache.js";
 import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.js";
 import { facturacionUsdRates, usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
-import { buildCcExpenseLines } from "./flowsCreditCardExpenses.js";
+import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 
 describe("facturacionUsdRates", () => {

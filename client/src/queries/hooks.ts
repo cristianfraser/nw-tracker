@@ -564,10 +564,10 @@ export function useRealEstatePropertyAccounts(enabled: boolean) {
   });
 }
 
-export function useFlowsCreditCardExpenses() {
+export function useFlowsExpenses() {
   return useQuery({
-    queryKey: queryKeys.flowsCreditCardExpenses(),
-    queryFn: () => api.flowsCreditCardExpenses(),
+    queryKey: queryKeys.flowsExpenses(),
+    queryFn: () => api.flowsExpenses(),
   });
 }
 

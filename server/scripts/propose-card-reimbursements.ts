@@ -29,7 +29,7 @@ import {
   type ReimbursementChargeInput,
   type ReimbursementCreditInput,
 } from "../src/additionalCardReimbursements.js";
-import { buildFlowsCreditCardExpensesPayload } from "../src/flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
 import {
   loadCardReimbursementCredits,
   upsertCheckingIncomeMovementOverride,
@@ -141,7 +141,7 @@ try {
       else proposed.push(r);
     }
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const chargeLines = payload.lines.filter(isAdditionalCardChargeLine);
     const charges: ReimbursementChargeInput[] = chargeLines.map((l) => {
       const date = l.purchase_on ?? l.occurred_on;

@@ -1,6 +1,6 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { countsTowardCcExpenseGastosMes } from "./ccExpenseCategories.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 
 /** Below this CLP amount, NOTA DE CREDITO is an unmatched gastos adjustment (no purchase match). At or above, unmatched lines are abonos. */
 export const NOTA_DE_CREDITO_MATCH_MIN_CLP = 10_000;

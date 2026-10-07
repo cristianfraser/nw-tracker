@@ -10,7 +10,7 @@ import {
   propagateCcExpenseMerchantRulesFromLegacy,
 } from "../src/ccExpenseCategoryPersist.js";
 import { listCreditCardGroupMasterAccountIds } from "../src/creditCardTree.js";
-import { buildFlowsCreditCardExpensesPayload } from "../src/flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
 
 function main() {
   const accountIds = listCreditCardGroupMasterAccountIds("santander");
@@ -23,13 +23,13 @@ function main() {
     .prepare(`DELETE FROM cc_expense_unique_purchases WHERE category_id IS NULL`)
     .run().changes;
 
-  const before = buildFlowsCreditCardExpensesPayload();
+  const before = buildFlowsExpensesPayload();
   let unclassBefore = 0;
   for (const l of before.lines) {
     if (l.amount_clp > 0 && l.category_slug === "unclassified") unclassBefore += l.amount_clp;
   }
 
-  const after = buildFlowsCreditCardExpensesPayload();
+  const after = buildFlowsExpensesPayload();
   let unclassAfter = 0;
   for (const l of after.lines) {
     if (l.amount_clp > 0 && l.category_slug === "unclassified") unclassAfter += l.amount_clp;

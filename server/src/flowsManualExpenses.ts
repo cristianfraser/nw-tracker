@@ -6,7 +6,7 @@ import {
 } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
-import type { FlowCcExpenseLineRowDraft } from "./flowsCreditCardExpenses.js";
+import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 
 const EXCEL_TOTAL_CATEGORY = "Total mensual (Gasto)";
 

@@ -308,7 +308,7 @@ export type FlowCcExpenseCategoryChartPoint = {
 
 
 
-export type FlowsCreditCardExpensesPayload = {
+export type FlowsExpensesPayload = {
 
   /** `credit_card_groups.slug` (e.g. santander). */
 
@@ -1138,7 +1138,7 @@ function cuotaPayByIsoByAccountBillingMonth(accountIds: readonly number[]): Reco
   return out;
 }
 
-export function buildFlowsCreditCardExpensesPayload(): FlowsCreditCardExpensesPayload {
+export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
 
   const accountIds = listCreditCardMasterAccountIds();
 

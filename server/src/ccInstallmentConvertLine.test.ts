@@ -4,7 +4,7 @@ import {
   convertStatementLineToInstallmentPurchase,
   createManualCcInstallmentPurchase,
 } from "./ccInstallmentManual.js";
-import { buildCcExpenseLines } from "./flowsCreditCardExpenses.js";
+import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { loadCcExpenseCategoryMaps } from "./ccExpenseCategories.js";
 import { mergeInstallmentPurchaseTotalsIntoLines } from "./ccInstallmentPurchaseTotalLines.js";
 import {

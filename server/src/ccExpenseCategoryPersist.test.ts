@@ -11,7 +11,7 @@ import {
   normalizeCcExpenseMerchantKey,
 } from "./ccExpenseCategories.js";
 import { importCcStatementsFromCsvRecords } from "./ccStatementsImport.js";
-import { buildFlowsCreditCardExpensesPayload } from "./flowsCreditCardExpenses.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
 /**
@@ -180,7 +180,7 @@ describe("ccExpenseCategoryPersist", () => {
     );
     expect(after).toBe("fun");
 
-    const payload = buildFlowsCreditCardExpensesPayload();
+    const payload = buildFlowsExpensesPayload();
     const hit = payload.lines.find((ln) => ln.statement_line_id === line.id);
     if (hit && normalizeCcExpenseMerchantKey(hit.merchant) === merchantKey) {
       expect(hit.category_slug).toBe("fun");
