@@ -19,9 +19,9 @@ import {
 } from "./flowsCheckingGastos.js";
 import {
   fondoReservaAccountId,
-  loadCheckingCartolaCredits,
+  loadCheckingCredits,
   loadDepositMatchCandidates,
-  type CheckingCartolaCredit,
+  type CheckingCredit,
   type DepositMatchCandidate,
 } from "./checkingCartolaLoaders.js";
 import {
@@ -159,7 +159,7 @@ describe("flowsCheckingGastos", () => {
   });
 
   it("treats DAP-reversed MC cargos as non-gastos (March 2024 doc pairing)", () => {
-    const credits: CheckingCartolaCredit[] = [
+    const credits: CheckingCredit[] = [
       {
         occurred_on: "2024-03-11",
         amount_clp: 30_621_285,
@@ -224,7 +224,7 @@ describe("flowsCheckingGastos", () => {
   });
 
   it("treats long-window DAP maturity as non-gasto (Aug 2024 doc 8818234)", () => {
-    const credits: CheckingCartolaCredit[] = [
+    const credits: CheckingCredit[] = [
       {
         occurred_on: "2024-09-09",
         amount_clp: 903_255,
@@ -397,7 +397,7 @@ describe("flowsCheckingGastos", () => {
 
   it("excludes DAP-reversed MC cargos from checking gastos lines", () => {
     const corrienteId = checkingAccountId();
-    const checkingCredits: CheckingCartolaCredit[] = [
+    const checkingCredits: CheckingCredit[] = [
       {
         occurred_on: "2099-03-11",
         amount_clp: 30_621_285,
@@ -1386,7 +1386,7 @@ describe("flowsCheckingGastos", () => {
     expect(checkingGastosMovementBelongs(Number(depositId)).ok).toBe(false);
     expect(checkingGastosMovementBelongs(Number(withdrawalId)).ok).toBe(false);
 
-    const credits = loadCheckingCartolaCredits(accountId);
+    const credits = loadCheckingCredits(accountId);
     expect(credits.some((c) => c.note === checkingLedgerAnchorNote("2099-02"))).toBe(false);
 
     deleteCheckingMovements([Number(depositId), Number(withdrawalId)]);

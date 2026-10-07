@@ -29,7 +29,7 @@ import {
   isCheckingGapDepositMirrorPurchaseKey,
 } from "../src/checkingGapDepositMirrorKey.js";
 import { listBudaAbonosWithoutRealOutflowLink } from "../src/budaWallet.js";
-import { loadCheckingGastosWithdrawalRows } from "../src/checkingCartolaLoaders.js";
+import { listCheckingMovements } from "../src/checkingCartolaLoaders.js";
 import { daysBetweenYmd } from "../src/checkingDescriptionPredicates.js";
 import { checkingGastosMovementPurchaseKey } from "../src/flowsCheckingGastos.js";
 import { listMovementBalanceCashAccountIds } from "../src/movementBalanceCashAccounts.js";
@@ -120,7 +120,7 @@ function planRepairs(): { repairs: Repair[]; skipped: string[] } {
     return { id, occurred_on: r.occurred_on, amount: Math.round(movementClpLegOrZero(r)) };
   });
   const debits = listMovementBalanceCashAccountIds().flatMap((accountId) =>
-    loadCheckingGastosWithdrawalRows(accountId).map((row) => ({ ...row, account_id: accountId }))
+    listCheckingMovements(accountId, "out").map((row) => ({ ...row, account_id: accountId }))
   );
   const categoryStmt = db.prepare(
     `SELECT c.slug FROM cc_expense_unique_purchases u

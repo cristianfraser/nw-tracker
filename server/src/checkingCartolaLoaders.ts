@@ -25,15 +25,28 @@ import {
   listMovementBalanceCashAccountIds,
 } from "./movementBalanceCashAccounts.js";
 
-export type CheckingCartolaCredit = {
+/**
+ * A checking account's movement as the bank listed it. Which document listed it — the monthly
+ * cartola, or the daily «últimos movimientos» feed until that month's cartola replaces the row —
+ * is decided by `listCheckingMovements` alone: consumers ask for the account's inflows or
+ * outflows, never for a source.
+ */
+export type CheckingMovementRow = {
+  id: number;
   occurred_on: string;
   amount_clp: number;
   note: string | null;
 };
 
-export type CheckingCartolaWithdrawal = CheckingCartolaCredit;
+export type CheckingCredit = {
+  occurred_on: string;
+  amount_clp: number;
+  note: string | null;
+};
 
-export type CheckingCartolaWithdrawalWithAccount = CheckingCartolaWithdrawal & { account_id: number };
+export type CheckingWithdrawal = CheckingCredit;
+
+export type CheckingWithdrawalWithAccount = CheckingWithdrawal & { account_id: number };
 
 export type DepositMatchCandidate = {
   occurred_on: string;
@@ -89,26 +102,54 @@ function uniqueDepositCandidatesByClaimKey(candidates: readonly DepositMatchCand
   return out;
 }
 
-export function loadCheckingCartolaCredits(accountId: number): CheckingCartolaCredit[] {
-  return db
+/**
+ * Every movement the bank listed on a checking account, inflows («in») or outflows («out»),
+ * oldest first: the cartola's rows, the daily feed's rows its cartola has not replaced yet, and
+ * the rows rebuilt from the bank's own mails for months whose cartola is lost
+ * (`import:santander-mail|…`, `scripts/rebuild-checking-gap-from-mails.ts`).
+ * The cartola import deletes the daily rows it supersedes (carrying what hangs off them, see
+ * `prunePartialMovementsSupersededByCartola`); a daily row whose cartola row exists but was not
+ * pruned (a re-import that skipped the month) is left out here, so a movement never counts twice.
+ * The opening-balance anchor and hand-made rows are not bank movements.
+ */
+export function listCheckingMovements(accountId: number, direction: "in" | "out"): CheckingMovementRow[] {
+  const rows = db
     .prepare(
-      `SELECT occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
+      `SELECT id, occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
        FROM movements
        WHERE account_id = ?
-         AND ${MOVEMENT_CLP_LEG_SQL} > 0
-         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:santander-mail|%')
+         AND ${MOVEMENT_CLP_LEG_SQL} ${direction === "in" ? ">" : "<"} 0
+         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%'
+              OR note LIKE 'import:santander-mail|%')
          AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on, id`
     )
-    .all(accountId) as CheckingCartolaCredit[];
+    .all(accountId) as CheckingMovementRow[];
+  return rows.filter((row) => {
+    if (!isCheckingPartialWithdrawalNote(row.note)) return true;
+    const parsed = parsePartialMovementNote(String(row.note ?? ""));
+    if (!parsed) throw new Error(`checking movement ${row.id}: unreadable daily-feed note ${row.note}`);
+    return !partialMovementSupersededByCartola(accountId, parsed);
+  });
 }
 
-export function loadMovementBalanceCashCartolaCredits(
-  accountIds = listMovementBalanceCashAccountIds()
-): CheckingCartolaCredit[] {
-  const out: CheckingCartolaCredit[] = [];
+/** Whether a movement is a credit the bank listed on a checking account (see `listCheckingMovements`). */
+export function isCheckingCredit(movementId: number): boolean {
+  const row = db.prepare(`SELECT account_id FROM movements WHERE id = ?`).get(movementId) as
+    | { account_id: number | null }
+    | undefined;
+  if (row?.account_id == null) return false;
+  return listCheckingMovements(row.account_id, "in").some((m) => m.id === movementId);
+}
+
+export function loadCheckingCredits(accountId: number): CheckingCredit[] {
+  return listCheckingMovements(accountId, "in").map(({ occurred_on, amount_clp, note }) => ({ occurred_on, amount_clp, note }));
+}
+
+export function loadMovementBalanceCashCredits(accountIds = listMovementBalanceCashAccountIds()): CheckingCredit[] {
+  const out: CheckingCredit[] = [];
   for (const accountId of accountIds) {
-    out.push(...loadCheckingCartolaCredits(accountId));
+    out.push(...loadCheckingCredits(accountId));
   }
   out.sort((a, b) => {
     const d = a.occurred_on.localeCompare(b.occurred_on);
@@ -118,63 +159,18 @@ export function loadMovementBalanceCashCartolaCredits(
   return out;
 }
 
-export function loadCheckingCartolaWithdrawals(accountId: number): CheckingCartolaWithdrawal[] {
-  return db
-    .prepare(
-      `SELECT occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
-       FROM movements
-       WHERE account_id = ?
-         AND ${MOVEMENT_CLP_LEG_SQL} < 0
-         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:santander-mail|%')
-         AND note NOT LIKE 'import:cartola|anchor|%'
-       ORDER BY occurred_on, id`
-    )
-    .all(accountId) as CheckingCartolaWithdrawal[];
+export function loadCheckingWithdrawals(accountId: number): CheckingWithdrawal[] {
+  return listCheckingMovements(accountId, "out").map(({ occurred_on, amount_clp, note }) => ({ occurred_on, amount_clp, note }));
 }
 
-export function loadAllCheckingCartolaWithdrawals(): CheckingCartolaWithdrawalWithAccount[] {
-  const out: CheckingCartolaWithdrawalWithAccount[] = [];
+export function loadAllCheckingWithdrawals(): CheckingWithdrawalWithAccount[] {
+  const out: CheckingWithdrawalWithAccount[] = [];
   for (const accountId of listMovementBalanceCashAccountIds()) {
-    for (const row of loadCheckingCartolaWithdrawals(accountId)) {
+    for (const row of loadCheckingWithdrawals(accountId)) {
       out.push({ ...row, account_id: accountId });
     }
   }
   return out;
-}
-
-export type CheckingGastosWithdrawalRow = {
-  id: number;
-  occurred_on: string;
-  amount_clp: number;
-  note: string | null;
-};
-
-/** Cartola + non-superseded partial withdrawals for gastos (partial excluded when official cartola exists). */
-export function loadCheckingGastosWithdrawalRows(accountId: number): CheckingGastosWithdrawalRow[] {
-  const rows = db
-    .prepare(
-      `SELECT id, occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
-       FROM movements
-       WHERE account_id = ?
-         AND ${MOVEMENT_CLP_LEG_SQL} < 0
-         AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%'
-              OR note LIKE 'import:santander-mail|%')
-         AND note NOT LIKE 'import:cartola|anchor|%'
-       ORDER BY occurred_on DESC, id DESC`
-    )
-    .all(accountId) as CheckingGastosWithdrawalRow[];
-
-  return rows.filter((row) => {
-    if (!isCheckingPartialWithdrawalNote(row.note)) return true;
-    const parsed = parsePartialMovementNote(String(row.note ?? ""));
-    if (!parsed) return false;
-    return !partialMovementSupersededByCartola(accountId, {
-      occurred_on: parsed.occurred_on,
-      amount_clp: parsed.amount_clp,
-      description: parsed.description,
-      document_no: parsed.document_no,
-    });
-  });
 }
 
 /**

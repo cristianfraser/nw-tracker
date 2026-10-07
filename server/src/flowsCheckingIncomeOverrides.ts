@@ -1,4 +1,5 @@
 import { db } from "./db.js";
+import { isCheckingCredit } from "./checkingCartolaLoaders.js";
 import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
@@ -130,18 +131,9 @@ export function mergedIncomeKindByMovementIdRecord(): Record<number, CheckingInc
   return out;
 }
 
-export function assertCheckingCartolaCreditMovement(movementId: number): void {
-  const row = db
-    .prepare(
-      `SELECT id FROM movements
-       WHERE id = ?
-         AND ${MOVEMENT_CLP_LEG_SQL} > 0
-         AND note LIKE 'import:cartola|%'
-         AND note NOT LIKE 'import:cartola|anchor|%'`
-    )
-    .get(movementId) as { id: number } | undefined;
-  if (!row) {
-    throw new Error(`movement ${movementId} is not a checking cartola credit`);
+export function assertCheckingCreditMovement(movementId: number): void {
+  if (!isCheckingCredit(movementId)) {
+    throw new Error(`movement ${movementId} is not a checking credit`);
   }
 }
 
@@ -154,7 +146,7 @@ export function upsertCheckingIncomeMovementOverride(
     note?: string | null;
   }
 ): OverrideRow {
-  assertCheckingCartolaCreditMovement(movementId);
+  assertCheckingCreditMovement(movementId);
 
   const existing = db
     .prepare(

@@ -3,9 +3,9 @@
  * classifies them `income_kind = 'card_reimbursement'` (never income; set against the charges in
  * the expenses payload's «Tarjetas adicionales» summary).
  *
- * The payer is named by the caller, never guessed: `--payer-note-token=<token>` picks cartola
- * credits whose bank description carries it (the payer's RUT as the cartola prints it — this
- * one-off tool may read cartola notes; runtime never does), or `--movement-ids=` lists them
+ * The payer is named by the caller, never guessed: `--payer-note-token=<token>` picks checking
+ * credits whose bank description carries it (the payer's RUT as the bank prints it — this
+ * one-off tool may read bank notes; runtime never does), or `--movement-ids=` lists them
  * outright. Credits already classified salary / severance / parent_gift, excluded from income, or
  * above `--max-amount` (gifts are large round wires) are reported and left alone.
  *
@@ -34,7 +34,8 @@ import {
   loadCardReimbursementCredits,
   upsertCheckingIncomeMovementOverride,
 } from "../src/flowsCheckingIncomeOverrides.js";
-import { MOVEMENT_CLP_LEG_SQL } from "../src/movementAmounts.js";
+import { listCheckingMovements } from "../src/checkingCartolaLoaders.js";
+import { listMovementBalanceCashAccountIds } from "../src/movementBalanceCashAccounts.js";
 
 function arg(name: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -74,53 +75,27 @@ type CreditRow = {
   is_excluded: number | null;
 };
 
-const CREDIT_SELECT = `SELECT m.id, m.occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, m.note,
-         o.income_kind, o.is_excluded
-       FROM movements m
-       LEFT JOIN checking_income_movement_overrides o ON o.movement_id = m.id`;
 
+/** The checking accounts' credits (whatever bank document listed them), with their classification. */
 function loadCredits(): CreditRow[] {
+  const overrides = db.prepare(
+    `SELECT income_kind, is_excluded FROM checking_income_movement_overrides WHERE movement_id = ?`
+  );
+  const all: CreditRow[] = listMovementBalanceCashAccountIds()
+    .flatMap((accountId) => listCheckingMovements(accountId, "in"))
+    .map((m) => {
+      const o = overrides.get(m.id) as { income_kind: string | null; is_excluded: number | null } | undefined;
+      return { id: m.id, occurred_on: m.occurred_on, amount_clp: m.amount_clp, note: String(m.note ?? ""), income_kind: o?.income_kind ?? null, is_excluded: o?.is_excluded ?? null };
+    });
   if (explicitIds.length > 0) {
-    const rows = db
-      .prepare(`${CREDIT_SELECT} WHERE m.id IN (${explicitIds.map(() => "?").join(",")})`)
-      .all(...explicitIds) as CreditRow[];
-    const found = new Set(rows.map((r) => r.id));
-    const missing = explicitIds.filter((id) => !found.has(id));
-    if (missing.length > 0) throw new Error(`movements not found: ${missing.join(", ")}`);
-    for (const r of rows) {
-      if (!r.note?.startsWith("import:cartola|") || r.note.startsWith("import:cartola|anchor|")) {
-        throw new Error(`movement ${r.id} is not a checking cartola credit`);
-      }
-      if (!(r.amount_clp > 0)) throw new Error(`movement ${r.id} is not a credit`);
-    }
-    return rows.sort((a, b) => a.occurred_on.localeCompare(b.occurred_on) || a.id - b.id);
+    const byId = new Map(all.map((r) => [r.id, r]));
+    const missing = explicitIds.filter((id) => !byId.has(id));
+    if (missing.length > 0) throw new Error(`not checking credits: ${missing.join(", ")}`);
+    return explicitIds.map((id) => byId.get(id)!).sort((a, b) => a.occurred_on.localeCompare(b.occurred_on) || a.id - b.id);
   }
-  return db
-    .prepare(
-      `${CREDIT_SELECT}
-       WHERE m.note LIKE 'import:cartola|%'
-         AND m.note NOT LIKE 'import:cartola|anchor|%'
-         AND instr(m.note, ?) > 0
-         AND ${MOVEMENT_CLP_LEG_SQL} > 0
-         AND m.occurred_on >= ?
-       ORDER BY m.occurred_on, m.id`
-    )
-    .all(token, from) as CreditRow[];
-}
-
-function loadPendingPartialRows(): { id: number; occurred_on: string; amount_clp: number }[] {
-  if (token == null || token === "") return [];
-  return db
-    .prepare(
-      `SELECT m.id, m.occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp
-       FROM movements m
-       WHERE m.note LIKE 'import:cartola-partial|%'
-         AND instr(m.note, ?) > 0
-         AND ${MOVEMENT_CLP_LEG_SQL} > 0
-         AND m.occurred_on >= ?
-       ORDER BY m.occurred_on, m.id`
-    )
-    .all(token, from) as { id: number; occurred_on: string; amount_clp: number }[];
+  return all
+    .filter((r) => r.occurred_on >= from && r.note.includes(token!))
+    .sort((a, b) => a.occurred_on.localeCompare(b.occurred_on) || a.id - b.id);
 }
 
 const fmt = (n: number) => Math.round(n).toLocaleString("es-CL"); // convention-ok: script console output
@@ -200,12 +175,6 @@ try {
         console.log(`  ${row.occurred_on}  ${String(row.id).padStart(6)}  ${fmt(row.amount_clp).padStart(10)}  ${why}`);
       }
     }
-    const partial = loadPendingPartialRows();
-    if (partial.length) {
-      console.log("\nNot yet on a cartola (daily-xlsx rows; re-run after the monthly cartola import):");
-      for (const r of partial) console.log(`  ${r.occurred_on}  ${String(r.id).padStart(6)}  ${fmt(r.amount_clp).padStart(10)}`);
-    }
-
     let written = 0;
     for (const r of proposed) {
       if (r.income_kind === "card_reimbursement") continue;

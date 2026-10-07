@@ -1,7 +1,6 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
 import { db } from "./db.js";
-import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
   checkingCreditMatchesAfpRetiroReturn,
@@ -16,8 +15,9 @@ import {
 } from "./flowsCheckingGastos.js";
 import {
   loadAfpRetiroOutflowCandidates,
-  loadAllCheckingCartolaWithdrawals,
-  loadCheckingCartolaWithdrawals,
+  listCheckingMovements,
+  loadAllCheckingWithdrawals,
+  loadCheckingWithdrawals,
   loadDepositMatchCandidates,
   loadNetWorthCapitalReturnLedgerOutflows,
 } from "./checkingCartolaLoaders.js";
@@ -99,7 +99,7 @@ export type FlowsCheckingIncomePayload = {
   card_reimbursement_lines: FlowCheckingIncomeLine[];
 };
 
-type CheckingCartolaCreditWithId = {
+type CheckingCreditWithId = {
   movement_id: number;
   account_id: number;
   occurred_on: string;
@@ -107,18 +107,14 @@ type CheckingCartolaCreditWithId = {
   note: string | null;
 };
 
-function loadCheckingCartolaCreditsWithId(accountId: number): CheckingCartolaCreditWithId[] {
-  return db
-    .prepare(
-      `SELECT id AS movement_id, account_id, occurred_on, ${MOVEMENT_CLP_LEG_SQL} AS amount_clp, note
-       FROM movements
-       WHERE account_id = ?
-         AND ${MOVEMENT_CLP_LEG_SQL} > 0
-         AND note LIKE 'import:cartola|%'
-         AND note NOT LIKE 'import:cartola|anchor|%'
-       ORDER BY occurred_on, id`
-    )
-    .all(accountId) as CheckingCartolaCreditWithId[];
+function loadCheckingCreditsWithId(accountId: number): CheckingCreditWithId[] {
+  return listCheckingMovements(accountId, "in").map((m) => ({
+    movement_id: m.id,
+    account_id: accountId,
+    occurred_on: m.occurred_on,
+    amount_clp: m.amount_clp,
+    note: m.note,
+  }));
 }
 
 function loadAccountLabels(accountIds: readonly number[]): Map<number, string> {
@@ -150,8 +146,8 @@ function loadManualIncomeEntries(): FlowManualIncomeLine[] {
 }
 
 type IncomeFilterContext = {
-  accountWithdrawalsByAccountId: Map<number, ReturnType<typeof loadCheckingCartolaWithdrawals>>;
-  allWithdrawals: ReturnType<typeof loadAllCheckingCartolaWithdrawals>;
+  accountWithdrawalsByAccountId: Map<number, ReturnType<typeof loadCheckingWithdrawals>>;
+  allWithdrawals: ReturnType<typeof loadAllCheckingWithdrawals>;
   deposits: ReturnType<typeof loadDepositMatchCandidates>;
   splittablePool: Map<string, number>;
   afpOutflows: ReturnType<typeof loadAfpRetiroOutflowCandidates>;
@@ -164,7 +160,7 @@ type IncomeFilterContext = {
 };
 
 function classifyCheckingCreditForIncome(
-  credit: CheckingCartolaCreditWithId,
+  credit: CheckingCreditWithId,
   ctx: IncomeFilterContext
 ): IncomeAutoFilterReason | null {
   if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) {
@@ -205,7 +201,7 @@ function classifyCheckingCreditForIncome(
 
   const accountWithdrawals =
     ctx.accountWithdrawalsByAccountId.get(credit.account_id) ??
-    loadCheckingCartolaWithdrawals(credit.account_id);
+    loadCheckingWithdrawals(credit.account_id);
 
   if (creditIsReversingMercadoCapitalesCargo(credit, accountWithdrawals)) {
     return "mercado_capitales_reversal";
@@ -253,7 +249,7 @@ function classifyCheckingCreditForIncome(
 }
 
 function toCheckingIncomeLine(
-  credit: CheckingCartolaCreditWithId,
+  credit: CheckingCreditWithId,
   accountLabels: Map<number, string>
 ): FlowCheckingIncomeLine {
   const amount_clp = Math.round(credit.amount_clp);
@@ -291,7 +287,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   const accountLabels = loadAccountLabels(accountIds);
   const deposits = loadDepositMatchCandidates();
   const splittablePool = createSplittableInternalTransferPool(deposits);
-  const allWithdrawals = loadAllCheckingCartolaWithdrawals();
+  const allWithdrawals = loadAllCheckingWithdrawals();
   const afpOutflows = loadAfpRetiroOutflowCandidates();
   const ledgerCapitalOutflows = loadNetWorthCapitalReturnLedgerOutflows();
   const budaBufferAccountId = loadBudaBufferAccountId();
@@ -301,12 +297,12 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   const forceIncludedMovementIds = loadForceIncludedCheckingIncomeMovementIds();
 
   const accountWithdrawalsByAccountId = new Map(
-    accountIds.map((accountId) => [accountId, loadCheckingCartolaWithdrawals(accountId)])
+    accountIds.map((accountId) => [accountId, loadCheckingWithdrawals(accountId)])
   );
 
-  const creditsForBatching: CheckingCartolaCreditWithId[] = [];
+  const creditsForBatching: CheckingCreditWithId[] = [];
   for (const accountId of accountIds) {
-    for (const credit of loadCheckingCartolaCreditsWithId(accountId)) {
+    for (const credit of loadCheckingCreditsWithId(accountId)) {
       if (excludedMovementIds.has(credit.movement_id)) continue;
       if (cardReimbursementMovementIds.has(credit.movement_id)) continue;
       if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
@@ -335,7 +331,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   const card_reimbursement_lines: FlowCheckingIncomeLine[] = [];
 
   for (const accountId of accountIds) {
-    for (const credit of loadCheckingCartolaCreditsWithId(accountId)) {
+    for (const credit of loadCheckingCreditsWithId(accountId)) {
       if (excludedMovementIds.has(credit.movement_id)) continue;
       if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
       // The user's classification wins over the auto filters: a reimbursement is neither income
@@ -376,7 +372,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   // through the same matcher purely for its key-consumption side effect, after the income pass so an
   // excluded credit never pre-empts a redemption that a real income inflow should claim.
   for (const accountId of accountIds) {
-    for (const credit of loadCheckingCartolaCreditsWithId(accountId)) {
+    for (const credit of loadCheckingCreditsWithId(accountId)) {
       if (!excludedMovementIds.has(credit.movement_id)) continue;
       if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
       classifyCheckingCreditForIncome(credit, filterCtx);

@@ -59,15 +59,15 @@ import {
 } from "./checkingDescriptionPredicates.js";
 import {
   checkingGastosAccountCategorySlug,
-  loadCheckingCartolaCredits,
-  loadCheckingCartolaWithdrawals,
-  loadCheckingGastosWithdrawalRows,
+  loadCheckingCredits,
+  loadCheckingWithdrawals,
+  listCheckingMovements,
   loadDepositMatchCandidates,
-  loadMovementBalanceCashCartolaCredits,
-  type CheckingCartolaCredit,
-  type CheckingCartolaWithdrawal,
-  type CheckingCartolaWithdrawalWithAccount,
-  type CheckingGastosWithdrawalRow,
+  loadMovementBalanceCashCredits,
+  type CheckingCredit,
+  type CheckingMovementRow,
+  type CheckingWithdrawal,
+  type CheckingWithdrawalWithAccount,
   type DepositMatchCandidate,
 } from "./checkingCartolaLoaders.js";
 
@@ -145,7 +145,7 @@ export function checkingGastosMovementBelongs(movementId: number): {
   if (
     withdrawalIsReversedByDapAbono(
       { occurred_on: row.occurred_on, amount_clp: row.amount_clp, note: row.note },
-      loadMovementBalanceCashCartolaCredits()
+      loadMovementBalanceCashCredits()
     )
   ) {
     return { ok: false };
@@ -389,12 +389,12 @@ export function computeMercadoCapitalesInternalTransferMonths(
   accountId: number,
   depositCandidates: readonly DepositMatchCandidate[],
   opts?: {
-    checkingWithdrawals?: readonly CheckingCartolaWithdrawal[];
-    checkingCredits?: readonly CheckingCartolaCredit[];
+    checkingWithdrawals?: readonly CheckingWithdrawal[];
+    checkingCredits?: readonly CheckingCredit[];
   }
 ): Set<string> {
-  const withdrawals = opts?.checkingWithdrawals ?? loadCheckingCartolaWithdrawals(accountId);
-  const credits = opts?.checkingCredits ?? loadCheckingCartolaCredits(accountId);
+  const withdrawals = opts?.checkingWithdrawals ?? loadCheckingWithdrawals(accountId);
+  const credits = opts?.checkingCredits ?? loadCheckingCredits(accountId);
 
   const mcByMonth = new Map<string, number>();
   for (const row of withdrawals) {
@@ -430,7 +430,7 @@ export function computeMercadoCapitalesInternalTransferMonths(
  */
 export function withdrawalIsReversedByDapAbono(
   withdrawal: { occurred_on: string; amount_clp: number; note: string | null },
-  checkingCredits: readonly CheckingCartolaCredit[],
+  checkingCredits: readonly CheckingCredit[],
   maxDayGap = DAP_ABONO_MAX_DAY_GAP
 ): boolean {
   const desc = cartolaDescriptionFromNote(withdrawal.note);
@@ -455,8 +455,8 @@ export function withdrawalIsReversedByDapAbono(
  * DAP ABONADO / COBRO VVISTA credit that pairs with a Mercado Capitales cargo (product return, not income).
  */
 export function creditIsReversingMercadoCapitalesCargo(
-  credit: CheckingCartolaCredit,
-  checkingWithdrawals: readonly CheckingCartolaWithdrawal[],
+  credit: CheckingCredit,
+  checkingWithdrawals: readonly CheckingWithdrawal[],
   maxDayGap = DAP_ABONO_MAX_DAY_GAP
 ): boolean {
   const creditDesc = cartolaDescriptionFromNote(credit.note);
@@ -481,7 +481,7 @@ export function creditIsReversingMercadoCapitalesCargo(
 export function checkingCreditMatchesInternalWithdrawal(
   credit: { occurred_on: string; amount_clp: number; note: string | null },
   creditAccountId: number,
-  checkingWithdrawals: readonly CheckingCartolaWithdrawalWithAccount[],
+  checkingWithdrawals: readonly CheckingWithdrawalWithAccount[],
   deposits: readonly DepositMatchCandidate[],
   splittablePool: Map<string, number>,
   maxDayGap = 3
@@ -545,7 +545,7 @@ export function netWorthCapitalLedgerOutflowPairKey(o: DepositMatchCandidate): s
 
 function checkingCreditMatchesCheckingOutflowCapitalReturn(
   credit: { occurred_on: string; amount_clp: number; note?: string | null },
-  checkingWithdrawals: readonly CheckingCartolaWithdrawalWithAccount[],
+  checkingWithdrawals: readonly CheckingWithdrawalWithAccount[],
   opts: {
     maxDayGap: number;
     consumedWithdrawalKeys?: Set<string>;
@@ -748,7 +748,7 @@ export function checkingFintualIncomingWireBatchMatchesLedgerNetWorthCapitalRetu
  */
 export function checkingCreditMatchesNetWorthCapitalReturn(
   credit: { occurred_on: string; amount_clp: number; note?: string | null },
-  checkingWithdrawals: readonly CheckingCartolaWithdrawalWithAccount[],
+  checkingWithdrawals: readonly CheckingWithdrawalWithAccount[],
   opts?: {
     maxDayGap?: number;
     consumedWithdrawalKeys?: Set<string>;
@@ -1203,7 +1203,7 @@ type CheckingGastosLineBuilderOptions = {
   depositCandidates?: readonly DepositMatchCandidate[];
   /** Deposits already claimed by an outflow (see {@link buildCheckingGastosLinesForAccounts}). */
   usedDepositKeys?: Set<string>;
-  checkingCredits?: readonly CheckingCartolaCredit[];
+  checkingCredits?: readonly CheckingCredit[];
   merchantRules?: Map<string, string>;
   uniquePurchases?: Map<string, string>;
   uniquePurchaseModeKeys?: Set<string>;
@@ -1227,7 +1227,7 @@ export function buildCheckingGastosLinesForAccounts(
   opts: Omit<CheckingGastosLineBuilderOptions, "accountId" | "usedDepositKeys">
 ): FlowCcExpenseLineRowDraft[] {
   const depositCandidates = opts.depositCandidates ?? loadDepositMatchCandidates();
-  const checkingCredits = opts.checkingCredits ?? loadMovementBalanceCashCartolaCredits();
+  const checkingCredits = opts.checkingCredits ?? loadMovementBalanceCashCredits();
   const usedDepositKeys = new Set<string>();
   const builders = accountIds.map((accountId) =>
     createCheckingGastosLineBuilder({ ...opts, accountId, depositCandidates, checkingCredits, usedDepositKeys })
@@ -1240,14 +1240,14 @@ export function buildCheckingGastosLinesForAccounts(
 }
 
 function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions): {
-  rows: readonly CheckingGastosWithdrawalRow[];
-  processRow: (row: CheckingGastosWithdrawalRow) => void;
+  rows: readonly CheckingMovementRow[];
+  processRow: (row: CheckingMovementRow) => void;
   lines: FlowCcExpenseLineRowDraft[];
 } {
   const accountId = opts?.accountId ?? checkingAccountId();
   const deposits = opts?.depositCandidates ?? loadDepositMatchCandidates();
   const splittablePool = createSplittableInternalTransferPool(deposits);
-  const checkingCredits = opts?.checkingCredits ?? loadMovementBalanceCashCartolaCredits();
+  const checkingCredits = opts?.checkingCredits ?? loadMovementBalanceCashCredits();
   const withdrawalCategorySlug = checkingGastosAccountCategorySlug(accountId);
   const categoryMaps =
     opts?.merchantRules != null
@@ -1261,7 +1261,8 @@ function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions
   /** NULL-category Único rows from DB — do not treat in-request generic Único registration as cleared. */
   const userClearedUniqueAtLoad = new Set(uniquePurchaseModeKeys);
 
-  const rows = loadCheckingGastosWithdrawalRows(accountId);
+  // Newest first, as the gastos lines are listed.
+  const rows = listCheckingMovements(accountId, "out").reverse();
 
   const internalMcMonths = computeMercadoCapitalesInternalTransferMonths(accountId, deposits, {
     checkingWithdrawals: rows,
