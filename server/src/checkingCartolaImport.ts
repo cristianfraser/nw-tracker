@@ -28,7 +28,11 @@ import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
-import { confirmTransferNoticeMovement, findTransferNoticeMovementForBankRow } from "./transferNoticeMovements.js";
+import {
+  confirmTransferNoticeMovement,
+  confirmTransferNoticeMovementForTransferLeg,
+  findTransferNoticeMovementForBankRow,
+} from "./transferNoticeMovements.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
 import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
 import { checkingMovementFlowKind } from "./checkingBankCharges.js";
@@ -362,10 +366,11 @@ export function importCheckingCartola(
       if (transferLegId != null) {
         consumedTransferLegs.add(transferLegId);
         claimTransferLegForBankRow(transferLegId, accountId, mv.occurred_on, dbHandle);
-        // The bank listed the money a synthesized retiro / card-payment transfer promised —
+        // The bank listed the money a synthesized retiro / card-payment / transfer-mail transfer promised —
         // stamp it confirmed (no-op for ordinary manual transfer legs).
         confirmSyntheticRetiroForTransferLeg(transferLegId, mv.occurred_on, "cartola", dbHandle);
         confirmSyntheticCcPaymentForTransferLeg(transferLegId, mv.occurred_on, "cartola", dbHandle);
+        confirmTransferNoticeMovementForTransferLeg(transferLegId, mv.occurred_on, "cartola", mv.description, dbHandle);
         movementsSkipped += 1;
         movementsSupersededByTransfer += 1;
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_transfer" });

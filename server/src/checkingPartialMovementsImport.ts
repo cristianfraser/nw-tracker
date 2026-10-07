@@ -6,7 +6,11 @@ import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from ".
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
 import { checkingMovementFlowKind } from "./checkingBankCharges.js";
-import { confirmTransferNoticeMovement, findTransferNoticeMovementForBankRow } from "./transferNoticeMovements.js";
+import {
+  confirmTransferNoticeMovement,
+  confirmTransferNoticeMovementForTransferLeg,
+  findTransferNoticeMovementForBankRow,
+} from "./transferNoticeMovements.js";
 
 /**
  * One row of a bank account's recent-movements listing, as the import stores it: the posting date,
@@ -100,10 +104,11 @@ export function importCheckingPartialMovements(
       if (transferLegId != null) {
         consumedTransferLegs.add(transferLegId);
         claimTransferLegForBankRow(transferLegId, accountId, mv.occurred_on);
-        // The bank listed the money a synthesized retiro / card-payment transfer promised —
+        // The bank listed the money a synthesized retiro / card-payment / transfer-mail transfer promised —
         // stamp it confirmed (no-op for ordinary manual transfer legs).
         confirmSyntheticRetiroForTransferLeg(transferLegId, mv.occurred_on, "ultimos_xlsx");
         confirmSyntheticCcPaymentForTransferLeg(transferLegId, mv.occurred_on, "ultimos_xlsx");
+        confirmTransferNoticeMovementForTransferLeg(transferLegId, mv.occurred_on, "ultimos_xlsx", mv.description);
         skipped_superseded_by_transfer += 1;
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_transfer" });
         continue;

@@ -265,7 +265,9 @@ export function transferNoticeMovementNote(issuer: string, n: TransferNotice): s
   const head =
     n.kind === "incoming"
       ? `Transf. de ${n.from.name ?? "?"}`
-      : `Transf a ${n.to.name ?? "?"}${n.to.bank ? ` (${n.to.bank})` : ""}`;
+      : n.kind === "between_own_products"
+        ? "Transferencia entre productos"
+        : `Transf a ${n.to.name ?? "?"}${n.to.bank ? ` (${n.to.bank})` : ""}`;
   const description = `${head}${n.comment ? ` — ${n.comment}` : ""}`.replace(/\|/g, "/");
   return `${prefix}${n.sent_at_chile}|${description}`;
 }
@@ -302,25 +304,65 @@ function rowNotice(r: Record<string, unknown>): TransferNotice {
 
 const hash = (row: Record<string, unknown>) => createHash("sha256").update(JSON.stringify(row)).digest("hex");
 
+/** What a mail writes: one side on a checking account, or a transfer between two accounts. */
+export type MailMovement =
+  | { kind: "single"; account_id: number; amount: number }
+  | { kind: "transfer"; from_account_id: number; to_account_id: number; amount: number; checking_account_id: number };
+
 /**
- * The checking-account movement a mail describes on its own, or null when it must wait for the
- * bank: an incoming transfer's credit, or a payment to a third party's debit. A payment to someone
- * the app holds an account for (the fund manager, the broker) is a transfer into that account,
- * which the broker's own mail writes («Recibimos tu depósito», Racional's deposit mail); writing it
- * here too would race that mail. A transfer between two tracked accounts is mailed twice (the
- * receipt and the recipient's notice) and is left to the banks' feeds.
+ * The account a payment to a known counterparty lands in (`transfer_counterparty_accounts`): its
+ * only account, or among several the one peso balance account (Fintual → «Fintual CLP», Racional →
+ * «Racional CLP»), where the money waits before it is invested. Null when a card is among them
+ * (card payments are written from their payment receipts) or no single landing account exists.
+ */
+export function landingAccountFor(
+  accounts: ReadonlySet<number>,
+  info: ReadonlyMap<number, { import_key: string | null; is_card: boolean }>
+): number | null {
+  const ids = [...accounts];
+  if (ids.length === 0 || ids.some((id) => info.get(id)?.is_card)) return null;
+  if (ids.length === 1) return ids[0]!;
+  const balances = ids.filter((id) => (info.get(id)?.import_key ?? "").startsWith("import:panel|kind=clp|"));
+  return balances.length === 1 ? balances[0]! : null;
+}
+
+/**
+ * The movement a mail describes on its own, or null when it must wait for the bank:
+ *  - an incoming transfer: a credit on the account it names;
+ *  - a transfer between two numbered accounts (corriente ↔ vista, «Transferencia entre
+ *    productos»): a transfer between them, written once — the bank mails one notice per transfer
+ *    (a transfer to an own account at another bank is mailed twice, the second as an incoming
+ *    notice to an account the app has no number for, which writes nothing);
+ *  - a payment to a known counterparty (the fund manager, the broker, the BancoEstado ahorro): a
+ *    transfer into its landing account (`landingAccountFor`). The broker's own mail («Recibimos tu
+ *    depósito», Racional's deposit mail) writes the same transfer and recognizes this one, and the
+ *    other way around;
+ *  - a payment to anyone else: a debit.
+ * Pesos are signed for the checking side (+ in, − out).
  */
 export function mailMovementForNotice(
   n: TransferNotice,
   tracked: ReadonlyMap<string, number>,
-  counterparties: CounterpartyAccounts
-): { account_id: number; amount: number } | null {
+  counterparties: CounterpartyAccounts,
+  landing: (accounts: ReadonlySet<number>) => number | null
+): MailMovement | null {
   const fromAcct = tracked.get(digits(n.from.account_number)) ?? null;
   const toAcct = tracked.get(digits(n.to.account_number)) ?? null;
-  if (n.kind === "incoming") return toAcct == null ? null : { account_id: toAcct, amount: n.amount };
-  if (n.kind !== "outgoing" || fromAcct == null || toAcct != null) return null;
-  if (counterpartyAccountsOf(counterparties, n.to).size > 0) return null;
-  return { account_id: fromAcct, amount: -n.amount };
+  if (n.kind === "schedule_created") return null;
+  if (n.kind === "incoming") return toAcct == null ? null : { kind: "single", account_id: toAcct, amount: n.amount };
+  if (fromAcct == null) return null;
+  if (toAcct != null) {
+    return toAcct === fromAcct
+      ? null
+      : { kind: "transfer", from_account_id: fromAcct, to_account_id: toAcct, amount: n.amount, checking_account_id: fromAcct };
+  }
+  if (n.kind === "between_own_products") return null;
+  const known = counterpartyAccountsOf(counterparties, n.to);
+  if (known.size === 0) return { kind: "single", account_id: fromAcct, amount: -n.amount };
+  const target = landing(known);
+  return target == null
+    ? null
+    : { kind: "transfer", from_account_id: fromAcct, to_account_id: target, amount: n.amount, checking_account_id: fromAcct };
 }
 
 /**
@@ -335,6 +377,20 @@ function writeMovementsFromMails(
   counterparties: CounterpartyAccounts,
   todayYmd: string
 ): BankAccountTransferNoticesApplyDetails["synthesized"] {
+  const info = new Map(
+    (
+      db
+        .prepare(
+          `SELECT a.id, a.import_key, EXISTS (SELECT 1 FROM credit_card_account_config c WHERE c.account_id = a.id) AS is_card
+           FROM accounts a WHERE a.id IN (SELECT account_id FROM transfer_counterparty_accounts)`
+        )
+        .all() as { id: number; import_key: string | null; is_card: number }[]
+    ).map((r) => [r.id, { import_key: r.import_key, is_card: r.is_card === 1 }])
+  );
+  const landing = (accounts: ReadonlySet<number>) => landingAccountFor(accounts, info);
+  const insTransfer = db.prepare(
+    `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note) VALUES (?, ?, ?, 'clp', ?, ?)`
+  );
   const waiting = new Set(match.unpaired_notices.filter((u) => u.reason === NO_BANK_ROW_YET).map((u) => u.message_id));
   const oldest = chileCalendarAddDays(todayYmd, -TRANSFER_NOTICE_MOVEMENT_MAX_AGE_DAYS);
   const known = db.prepare(`SELECT 1 FROM transfer_notice_movements WHERE message_id = ?`);
@@ -349,12 +405,21 @@ function writeMovementsFromMails(
     if (!waiting.has(n.message_id)) continue;
     const day = n.sent_at_chile.slice(0, 10);
     if (day < oldest || day > todayYmd || known.get(n.message_id)) continue;
-    const mv = mailMovementForNotice(n, tracked, counterparties);
+    const mv = mailMovementForNotice(n, tracked, counterparties, landing);
     if (mv == null) continue;
-    const movementId = Number(insMovement.run(mv.account_id, mv.amount, day, transferNoticeMovementNote(issuer, n)).lastInsertRowid);
-    insRecord.run(n.message_id, movementId, mv.account_id, mv.amount, day);
-    clearCheckingBalanceCache(mv.account_id);
-    out.push({ message_id: n.message_id, movement_id: movementId, account_id: mv.account_id, date: day, amount: mv.amount });
+    const note = transferNoticeMovementNote(issuer, n);
+    // A transfer is recorded on its checking side: that account's feed is the one that confirms it.
+    const [account, signed, movementId] =
+      mv.kind === "single"
+        ? [mv.account_id, mv.amount, Number(insMovement.run(mv.account_id, mv.amount, day, note).lastInsertRowid)]
+        : [
+            mv.checking_account_id,
+            mv.checking_account_id === mv.from_account_id ? -mv.amount : mv.amount,
+            Number(insTransfer.run(mv.from_account_id, mv.to_account_id, mv.amount, day, note).lastInsertRowid),
+          ];
+    insRecord.run(n.message_id, movementId, account, signed, day);
+    for (const a of mv.kind === "single" ? [mv.account_id] : [mv.from_account_id, mv.to_account_id]) clearCheckingBalanceCache(a);
+    out.push({ message_id: n.message_id, movement_id: movementId, account_id: account, date: day, amount: signed });
   }
   return out;
 }

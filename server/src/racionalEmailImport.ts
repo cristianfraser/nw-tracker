@@ -32,6 +32,7 @@
 import { accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { db } from "./db.js";
+import { chileCalendarAddDays } from "./chileDate.js";
 import { nextChileBusinessDayYmd } from "./marketHolidays.js";
 import { racionalCashAccountId } from "./racionalMovementsImport.js";
 import type { BrokerNotification } from "nw-tracker-contracts";
@@ -85,6 +86,18 @@ const stmtSameDayTransfers = db.prepare(
   `SELECT id, amount, counter_amount FROM movements
    WHERE occurred_on = ? AND from_account_id = ? AND to_account_id = ? AND currency = ?`
 );
+
+const stmtRecentTransfers = db.prepare(
+  `SELECT id, amount FROM movements
+   WHERE occurred_on BETWEEN ? AND ? AND from_account_id = ? AND to_account_id = ? AND currency = ?`
+);
+
+/**
+ * Days before the deposit mail the wire may have been written from Santander's own receipt
+ * (`transfer_notice_movements`): the bank mails the receipt the moment the wire leaves, Racional
+ * its mail once the money is credited, which can be the next business day.
+ */
+const DEPOSIT_WIRE_LEAD_DAYS = 5;
 
 const stmtSingleLegChecking = db.prepare(
   `SELECT id FROM movements
@@ -164,14 +177,18 @@ function planDeposit(event: BrokerNotification): RacionalEmailPlannedMovement {
   // lands (`movement_bank_postings`), which is what the cartola checks read.
   const nextBiz = nextChileBusinessDayYmd(occurredOn);
 
-  const dup = sameDayDuplicateId({
-    occurred_on: occurredOn,
-    from_account_id: checking,
-    to_account_id: racionalClp,
-    currency: "clp",
-    amount: event.amount,
-  });
-  if (dup != null) return { ...base, duplicate_of: dup };
+  // Already written: a re-sent mail, or the wire written from Santander's receipt before this mail.
+  const amount = event.amount;
+  const dup = (
+    stmtRecentTransfers.all(
+      chileCalendarAddDays(occurredOn, -DEPOSIT_WIRE_LEAD_DAYS),
+      occurredOn,
+      checking,
+      racionalClp,
+      "clp"
+    ) as { id: number; amount: number }[]
+  ).find((r) => Math.abs(Number(r.amount) - amount) <= AMOUNT_TOLERANCE);
+  if (dup) return { ...base, duplicate_of: dup.id };
 
   // The bank feed may already have listed the debit as a plain single-leg row (mail lagging a
   // day). Writing the transfer would then double-count — the existing row must be converted.
