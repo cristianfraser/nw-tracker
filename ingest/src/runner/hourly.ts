@@ -30,9 +30,9 @@ export function savedCount(output: string): number {
   return all.length > 0 ? Number(all.at(-1)![1]) : 0;
 }
 
-/** Credits the transfer-mail import wrote from a mail this run («credit written from the mail»). */
-export function mailCreditCount(output: string): number {
-  return [...output.matchAll(/credit written from the mail/g)].length;
+/** Movements the transfer-mail import wrote from a mail this run («movement written from the mail»). */
+export function mailMovementCount(output: string): number {
+  return [...output.matchAll(/movement written from the mail/g)].length;
 }
 
 /** fetch.ts always logs the count, zero included: «e-mail: N broker message(s)». */
@@ -118,20 +118,20 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     }
   }
 
-  // Every hour: a transfer to the user's checking account is mailed the moment it is made, and
-  // its credit is written from the mail until the 22:00 bank feed lists it.
+  // Every hour: a transfer to or from the user's checking account is mailed the moment it is made,
+  // and its movement is written from the mail until the 22:00 bank feed lists it.
   const transfers = o.dryRun
     ? await x.step("Transfer mails (dry run)", npmRun("import:transfer-mails", "--days=2", "--dry-run"), capture)
     : await x.step("Transfer mails", npmRun("import:transfer-mails", "--days=2"), capture);
-  const credits = mailCreditCount(transfers.output);
+  const mailMovements = mailMovementCount(transfers.output);
 
   const activity =
-    sdSaved > 0 || lsSaved > 0 || lbSaved > 0 || fdSaved > 0 || amSaved > 0 || beMsgs > 0 || caughtUp || credits > 0;
+    sdSaved > 0 || lsSaved > 0 || lbSaved > 0 || fdSaved > 0 || amSaved > 0 || beMsgs > 0 || caughtUp || mailMovements > 0;
   if (activity) {
     x.note(
       `activity this hour: santander-docs saved=${sdSaved}, lider statement saved=${lsSaved}, ` +
         `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, apple mail saved=${amSaved}, broker mail=${beMsgs}, ` +
-        `santander fetch=${caughtUp ? 1 : 0}, credits from transfer mails=${credits}`
+        `santander fetch=${caughtUp ? 1 : 0}, movements from transfer mails=${mailMovements}`
     );
   }
   return { santander, activity };

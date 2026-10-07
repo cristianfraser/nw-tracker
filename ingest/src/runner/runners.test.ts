@@ -154,10 +154,10 @@ describe("runHourly", () => {
     ]);
   });
 
-  it("counts a credit written from a transfer mail as activity", async () => {
+  it("counts a movement written from a transfer mail as activity", async () => {
     const { x } = fakeRunner({
       "fetch:emails": "e-mail: 0 broker message(s)",
-      "import:transfer-mails": "  credit written from the mail: movement 9, 2030-10-07 $29597 on account 22",
+      "import:transfer-mails": "  movement written from the mail: 9, 2030-10-07 $29597 on account 22",
     });
     expect((await runHourly(x, HOURLY)).activity).toBe(true);
   });

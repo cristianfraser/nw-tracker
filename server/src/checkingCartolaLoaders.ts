@@ -107,7 +107,7 @@ function uniqueDepositCandidatesByClaimKey(candidates: readonly DepositMatchCand
  * oldest first: the cartola's rows, the daily feed's rows its cartola has not replaced yet, and
  * the rows rebuilt from the bank's own mails for months whose cartola is lost
  * (`import:santander-mail|…`, `import:mach-mail|…`; `isMailRebuiltCheckingNote`), and incoming
- * transfers' credits written from their mails before the feed lists them (`transfer_notice_credits`).
+ * transfers' credits written from their mails before the feed lists them (`transfer_notice_movements`).
  * The cartola import deletes the daily rows it supersedes (carrying what hangs off them, see
  * `prunePartialMovementsSupersededByCartola`); a daily row whose cartola row exists but was not
  * pruned (a re-import that skipped the month) is left out here, so a movement never counts twice.

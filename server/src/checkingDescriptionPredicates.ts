@@ -46,7 +46,7 @@ export function isInvestmentDepositTarget(groupSlug: string): boolean {
  * "standin" …>|<description>` — the Santander cuenta corriente's lost months
  * (scripts/rebuild-checking-gap-from-mails.ts), the MACH account, which never had statements
  * (scripts/build-mach-account-from-mails.ts), and an incoming transfer's credit written from its
- * mail before the bank feed lists it (`transfer_notice_credits`; Santander or Banco de Chile).
+ * mail before the bank feed lists it (`transfer_notice_movements`; Santander or Banco de Chile).
  */
 export const MAIL_REBUILT_NOTE_PREFIXES = ["import:santander-mail|", "import:mach-mail|", "import:bancochile-mail|"] as const;
 
