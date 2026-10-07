@@ -213,11 +213,14 @@ export function dapAbonoAmountMatchesCargo(cargoAmount: number, abonoAmount: num
   return abono <= Math.round(cargo * (1 + maxPremium));
 }
 
-/** Parse withdrawal description from official cartola or partial import notes. */
+/** Parse withdrawal description from official cartola, partial import or mail-rebuilt notes. */
 export function cartolaDescriptionFromNote(note: string | null | undefined): string {
   const n = String(note ?? "").trim();
   const partial = parsePartialMovementNote(n);
   if (partial) return partial.description;
+  // `import:santander-mail|<mail time or "residual">|<description>` (scripts/rebuild-checking-gap-from-mails.ts).
+  const mail = /^import:santander-mail\|[^|]*\|(.*)$/.exec(n);
+  if (mail) return mail[1]!.trim();
   if (!n.startsWith("import:cartola|")) return n;
   const rest = n.slice("import:cartola|".length);
   const firstBar = rest.indexOf("|");
