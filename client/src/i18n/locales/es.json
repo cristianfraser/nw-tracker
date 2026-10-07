@@ -1170,8 +1170,6 @@
       "modalSectionExcludedHint": "Cuota 0, total de compra en cuotas (modo Por cuota), categoría No cuenta / Depósitos, y notas de crédito. No suman al gasto del mes.",
       "modalSectionEmpty": "Sin movimientos.",
       "lineColSource": "Origen",
-      "lineColOriginCard": "Tarjeta",
-      "originCardAdditional": "{{last4}} (adicional)",
       "sourceCreditCard": "Tarjeta",
       "sourceChecking": "Cuenta corriente",
       "lineColStatementClose": "Cierre estado",
