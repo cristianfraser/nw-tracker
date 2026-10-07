@@ -1170,8 +1170,6 @@
       "modalSectionExcludedHint": "Installment 0, installment-purchase totals (Per-installment mode), the Doesn't count / Deposits categories, and credit notes. They do not add to the month's spend.",
       "modalSectionEmpty": "No movements.",
       "lineColSource": "Origin",
-      "lineColOriginCard": "Card",
-      "originCardAdditional": "{{last4}} (additional)",
       "sourceCreditCard": "Credit card",
       "sourceChecking": "Checking account",
       "lineColStatementClose": "Statement close",

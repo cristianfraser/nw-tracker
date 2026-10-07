@@ -30,15 +30,6 @@ function lineCategorySlug(line: FlowCcExpenseLineRow): string {
   return line.category_slug === "unclassified" ? "" : line.category_slug;
 }
 
-function expenseLineOriginCardDisplay(line: FlowCcExpenseLineRow): string | null {
-  if (line.source !== "cc") return null;
-  const origin = line.origin_card_last4?.trim();
-  const primary = line.primary_card_last4?.trim();
-  if (!origin) return null;
-  if (primary && origin === primary) return null;
-  return origin;
-}
-
 /** Calendar-month modal order: purchase date, then statement close, then amount. */
 export function sortCreditCardExpenseLinesByStatement(
   a: FlowCcExpenseLineRow,
@@ -264,7 +255,6 @@ export function CreditCardExpenseLinesTable({
               <th className={categoryStyles.selectCol} aria-label={t("expenses.creditCard.colSelect")} />
             ) : null}
             <th data-sort-key="source">{t("expenses.creditCard.lineColSource")}</th>
-            <th data-sort-key="origin-card">{t("expenses.creditCard.lineColOriginCard")}</th>
             <th data-sort-key="statement" data-sort-type="date">
               {t("expenses.creditCard.lineColStatementClose")}
             </th>
@@ -310,14 +300,12 @@ export function CreditCardExpenseLinesTable({
         const showNoteInput =
           Boolean(ln.purchase_key) &&
           (isCc || (enableCheckingNotes && ln.source === "checking"));
-        const originCard = expenseLineOriginCardDisplay(ln);
         const rowSelected = showRowSelection && selection.isSelected(ln);
         return (
           <tr
             key={`${ln.source}-${ln.statement_line_id}-${ln.purchase_key}`}
             className={rowSelected ? categoryStyles.rowSelected : undefined}
             data-sort-source={ln.origin_label}
-            data-sort-origin-card={originCard ?? ""}
             data-sort-statement={ln.occurred_on}
             data-sort-purchase={ln.purchase_on ?? ""}
             data-sort-merchant={ln.merchant ?? ""}
@@ -339,11 +327,6 @@ export function CreditCardExpenseLinesTable({
               </td>
             ) : null}
             <td className="mono">{ln.origin_label}</td>
-            <td className="mono muted">
-              {originCard
-                ? t("expenses.creditCard.originCardAdditional", { last4: originCard })
-                : "—"}
-            </td>
             <td className="mono">{isCc ? ln.statement_date : "—"}</td>
             <td className="mono">{ln.purchase_on ?? "—"}</td>
             <td>

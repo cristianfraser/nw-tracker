@@ -4131,14 +4131,6 @@
         "en": "Origin",
         "es": "Origen"
       },
-      "lineColOriginCard": {
-        "en": "Card",
-        "es": "Tarjeta"
-      },
-      "originCardAdditional": {
-        "en": "{{last4}} (additional)",
-        "es": "{{last4}} (adicional)"
-      },
       "sourceCreditCard": {
         "en": "Credit card",
         "es": "Tarjeta"
