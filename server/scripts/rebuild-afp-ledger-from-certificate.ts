@@ -139,11 +139,30 @@ const dated: DatedCertificateRow[] = located
   .map(({ afp, official_day, ...r }) => ({ ...r, factor: factor.get(afp)!, day: afpDisplayDayForOfficialDay(official_day, LAG) }));
 const shaped = shapePensionLedgerRows(dated);
 if (shaped.pending.length > 0) throw new Error(`rows with no visible day: ${JSON.stringify(shaped.pending)}`);
+// The earlier AFPs' rows, converted at the transfer ratio and rounded to 4 decimals, must add up
+// to exactly the cuotas UNO credited at the transfer-in (111,3702 vs 111,37 left the ledger
+// 0,0002 cuotas — ~20 pesos — above UNO's stated balance). The rounding residue goes on the last
+// row before the transfer-in.
+{
+  const unoIn = hops.find((h) => h.to === "uno");
+  if (unoIn) {
+    const inDay = afpDisplayDayForOfficialDay(unoIn.in.official_day, LAG);
+    const before = shaped.rows.filter((r) => r.occurred_on < inDay);
+    const residue = round4(unoIn.in.cuotas - before.reduce((s, r) => s + r.cuotas, 0));
+    if (Math.abs(residue) >= 0.005) throw new Error(`earlier AFPs' rows miss UNO's transfer-in by ${residue} cuotas`);
+    const last = before.at(-1);
+    if (!last) throw new Error("no ledger row before UNO's transfer-in");
+    if (residue !== 0) {
+      console.log(`rounding residue ${residue} cuotas put on ${last.occurred_on} (${last.cuotas} → ${round4(last.cuotas + residue)})`);
+      last.cuotas = round4(last.cuotas + residue);
+    }
+  }
+}
 const ledgerCuotas = shaped.rows.reduce((s, r) => s + r.cuotas, 0);
 const certNet = located
   .filter((r) => r.afp === "uno")
   .reduce((s, r) => s + (r.direction === "credit" ? r.cuotas : -r.cuotas), 0);
-if (Math.abs(ledgerCuotas - certNet) >= 0.01) throw new Error(`ledger ${ledgerCuotas.toFixed(4)} cuotas ≠ certificate ${certNet.toFixed(4)}`);
+if (Math.abs(ledgerCuotas - certNet) >= 0.00005) throw new Error(`ledger ${ledgerCuotas.toFixed(4)} cuotas ≠ certificate ${certNet.toFixed(4)}`);
 console.log(`ledger: ${shaped.rows.length} rows, ${ledgerCuotas.toFixed(4)} UNO cuotas (certificate ${certNet.toFixed(2)})`);
 
 // ---- 5. series ----
@@ -248,7 +267,7 @@ try {
 
 function verifyAndReport(accountId: number) {
   const cuotas = afpCuotasCumulativeThroughDate(accountId, today);
-  if (Math.abs(cuotas - certNet) >= 0.01) throw new Error(`after the rebuild the ledger holds ${cuotas} cuotas, not ${certNet}`);
+  if (Math.abs(cuotas - certNet) >= 0.00005) throw new Error(`after the rebuild the ledger holds ${cuotas} cuotas, not ${certNet}`);
   const monthEnds = db
     .prepare(`SELECT as_of_date, value FROM valuations WHERE account_id = ? AND as_of_date <= ? ORDER BY as_of_date`)
     .all(accountId, today) as { as_of_date: string; value: number }[];

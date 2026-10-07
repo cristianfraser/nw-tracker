@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PensionAccountCertificatesPayload, PensionMovement } from "nw-tracker-contracts";
-import { planPensionCertificates, type PensionLedgerRow } from "./pensionAccountCertificatesApply.js";
+import { checkPensionStatedValue, planPensionCertificates, type PensionLedgerRow } from "./pensionAccountCertificatesApply.js";
 
 const EMPLOYER = "11.111.111-1";
 const INSURER = "22.222.222-2";
@@ -79,7 +79,7 @@ describe("planPensionCertificates", () => {
 
   it("fails when the ledger total would not be the stated balance", () => {
     const plan = planPensionCertificates(payload(MOVEMENTS, 211), LEDGER, SERIES);
-    expect(plan.problems).toEqual(["the ledger would hold 210.15 cuotas; the fund manager states 211.00"]);
+    expect(plan.problems).toEqual(["the ledger would hold 210.1500 cuotas; the fund manager states 211.0000"]);
   });
 
   it("fails on a ledger row inside the window that the certificate does not list", () => {
@@ -116,5 +116,44 @@ describe("planPensionCertificates", () => {
     const moves = [...MOVEMENTS, mv("2030-06", "credit", "110101", 30_000, 30, 1001)];
     const plan = planPensionCertificates(payload(moves, 240.15), LEDGER, SERIES);
     expect(plan.problems).toEqual(["período 2030-06: the contribution of 30000 pesos (30 cuotas) is not on the contributions certificate"]);
+  });
+});
+
+describe("checkPensionStatedValue", () => {
+  const series = [
+    { day: "2030-07-15", unit_value_clp: 1000 },
+    { day: "2030-07-16", unit_value_clp: 1010.5 },
+    { day: "2030-07-17", unit_value_clp: 1020.25 },
+  ];
+  const stated = { cuotas: 200, valor_cuota: 1010.5, pesos: 202_100 };
+
+  it("matches when the app builds the website's pesos on the day that valor cuota shows", () => {
+    const days: string[] = [];
+    const r = checkPensionStatedValue(stated, series, "2030-07-17", (day) => {
+      days.push(day);
+      return 200 * 1010.5;
+    });
+    expect(days).toEqual(["2030-07-16"]);
+    expect(r.problems).toEqual([]);
+    expect(r.check.status).toBe("match");
+  });
+
+  it("flags a cuota residue worth more than a peso", () => {
+    const r = checkPensionStatedValue(stated, series, "2030-07-17", () => 200.0002 * 1010.5 + 1);
+    expect(r.check.status).toBe("mismatch");
+    expect(r.problems[0]).toContain("the app builds 202101 on 2030-07-16");
+  });
+
+  it("waits while the app's series lacks the website's valor cuota", () => {
+    const r = checkPensionStatedValue({ ...stated, valor_cuota: 1030, pesos: 206_000 }, series, "2030-07-17", () => {
+      throw new Error("not called");
+    });
+    expect(r.check.status).toBe("waiting");
+    expect(r.problems).toEqual([]);
+  });
+
+  it("flags website figures that do not add up", () => {
+    const r = checkPensionStatedValue({ ...stated, pesos: 202_200 }, series, "2030-07-17", () => 202_100);
+    expect(r.problems[0]).toContain("the website's own figures disagree");
   });
 });

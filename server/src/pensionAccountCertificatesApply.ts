@@ -3,7 +3,9 @@ import type {
   PensionAccountCertificatesPayload,
   PensionExpectedRow,
 } from "nw-tracker-contracts";
+import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { db } from "./db.js";
 import {
@@ -33,6 +35,12 @@ import {
 
 const AFP_ACCOUNT_IMPORT_KEY = "import:excel|key=afp";
 const CUOTA_TOLERANCE = 0.005;
+/**
+ * The ledger carries cuotas to 4 decimals and the fund manager states its balance to 2, so a
+ * total that is right equals the stated one at 4 decimals. A residue of 0,0002 cuotas is ~20
+ * pesos at a 100.000 valor cuota — a row-matching tolerance would hide it.
+ */
+const BALANCE_TOLERANCE = 0.00005;
 
 export type PensionLedgerRow = { id: number; occurred_on: string; amount: number; units_delta: number };
 export type PensionSeriesRow = { day: string; unit_value_clp: number };
@@ -44,13 +52,84 @@ export type PensionPlan = {
   ledger_cuotas_after: number;
 };
 
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+function round4(n: number): number {
+  return Math.round(n * 10000) / 10000;
 }
 
 function expectedRow(r: ShapedLedgerRow): Omit<PensionExpectedRow, "state" | "movement_id" | "detail"> {
   return { period: r.periods.join(","), kind: r.kind, occurred_on: r.occurred_on, pesos: r.pesos, cuotas: r.cuotas };
+}
+
+/**
+ * What the fund manager's website shows against what the app builds. The site states its balance
+ * as cuotas × valor cuota = pesos; the app values the account at the day that valor cuota shows
+ * in its own series. The two must agree to the peso (1 of rounding): a residue in the ledger's
+ * cuotas, a price the app carries on another day, or a different price all show up here.
+ * A valor cuota the app's series does not carry yet (the SP publishes late) is `waiting`, not a
+ * problem: the next read compares it.
+ */
+export type PensionValueCheck = PensionAccountCertificatesApplyDetails["value_check"];
+
+export const PENSION_VALUE_TOLERANCE_CLP = 1;
+const VALUE_LOOKBACK_DAYS = 30;
+
+export function checkPensionStatedValue(
+  stated: { cuotas: number; valor_cuota: number; pesos: number },
+  series: readonly PensionSeriesRow[],
+  today: string,
+  /** The app's value of the account on a day, including the rows this read would write. */
+  appValueAt: (day: string) => number
+): { check: PensionValueCheck; problems: string[] } {
+  const problems: string[] = [];
+  const siteProduct = stated.cuotas * stated.valor_cuota;
+  if (Math.abs(siteProduct - stated.pesos) > PENSION_VALUE_TOLERANCE_CLP) {
+    problems.push(
+      `the website's own figures disagree: ${stated.cuotas} cuotas × ${stated.valor_cuota} = ${Math.round(siteProduct)}, it states ${stated.pesos} pesos`
+    );
+  }
+  const day = firstVisibleDayOfValue(
+    series,
+    stated.valor_cuota,
+    chileCalendarAddDays(today, -VALUE_LOOKBACK_DAYS),
+    chileCalendarAddDays(today, 1)
+  );
+  if (day == null) {
+    const last = series.at(-1);
+    return {
+      check: {
+        status: "waiting",
+        site_pesos: stated.pesos,
+        site_valor_cuota: stated.valor_cuota,
+        site_cuotas: stated.cuotas,
+        app_day: null,
+        app_pesos: null,
+        diff_clp: null,
+        detail: `valor cuota ${stated.valor_cuota} is not in the app's series yet (latest ${last?.unit_value_clp ?? "none"} on ${last?.day ?? "—"})`,
+      },
+      problems,
+    };
+  }
+  const appPesos = appValueAt(day);
+  const diff = appPesos - stated.pesos;
+  const matches = Math.abs(diff) <= PENSION_VALUE_TOLERANCE_CLP;
+  if (!matches) {
+    problems.push(
+      `the website states ${stated.pesos} pesos (${stated.cuotas} cuotas × ${stated.valor_cuota}); the app builds ${Math.round(appPesos)} on ${day}, the day that valor cuota shows (${diff > 0 ? "+" : ""}${Math.round(diff)})`
+    );
+  }
+  return {
+    check: {
+      status: matches ? "match" : "mismatch",
+      site_pesos: stated.pesos,
+      site_valor_cuota: stated.valor_cuota,
+      site_cuotas: stated.cuotas,
+      app_day: day,
+      app_pesos: Math.round(appPesos * 100) / 100,
+      diff_clp: Math.round(diff * 100) / 100,
+      detail: null,
+    },
+    problems,
+  };
 }
 
 /** What the certificates call for, against the ledger. Pure: the caller reads the rows. */
@@ -131,11 +210,11 @@ export function planPensionCertificates(
   const pendingCount = shaped.pending.length;
   const ledgerCuotas = ledger.reduce((s, l) => s + l.units_delta, 0);
   const ledgerAfter = ledgerCuotas + out.filter((r) => r.state === "new").reduce((s, r) => s + r.cuotas, 0);
-  if (pendingCount === 0 && Math.abs(ledgerAfter - payload.balance.cuotas) >= CUOTA_TOLERANCE) {
-    problems.push(`the ledger would hold ${ledgerAfter.toFixed(2)} cuotas; the fund manager states ${payload.balance.cuotas.toFixed(2)}`);
+  if (pendingCount === 0 && Math.abs(ledgerAfter - payload.balance.cuotas) >= BALANCE_TOLERANCE) {
+    problems.push(`the ledger would hold ${ledgerAfter.toFixed(4)} cuotas; the fund manager states ${payload.balance.cuotas.toFixed(4)}`);
   }
   out.sort((a, b) => (a.occurred_on ?? "9999").localeCompare(b.occurred_on ?? "9999"));
-  return { rows: out, problems, ledger_cuotas: round2(ledgerCuotas), ledger_cuotas_after: round2(ledgerAfter) };
+  return { rows: out, problems, ledger_cuotas: round4(ledgerCuotas), ledger_cuotas_after: round4(ledgerAfter) };
 }
 
 function afpAccountId(): number {
@@ -171,8 +250,17 @@ export function applyPensionAccountCertificates(
     throw new Error(`pension: no account mapped for ${payload.provider} ${payload.product}`);
   }
   const accountId = afpAccountId();
-  const plan = planPensionCertificates(payload, loadLedger(accountId), loadSeries(payload.movements.from_period));
+  const series = loadSeries(payload.movements.from_period);
+  const plan = planPensionCertificates(payload, loadLedger(accountId), series);
   const fresh = plan.rows.filter((r) => r.state === "new");
+  const value = checkPensionStatedValue(payload.balance, series, chileCalendarTodayYmd(), (day) => {
+    const mark = accountMarkClpAtYmd(accountId, day)?.value_clp;
+    if (mark == null) throw new Error(`pension: account ${accountId} has no value on ${day}`);
+    const px = [...series].reverse().find((s) => s.day <= day)!.unit_value_clp;
+    const freshCuotas = fresh.filter((r) => r.occurred_on! <= day).reduce((s, r) => s + r.cuotas, 0);
+    return mark + freshCuotas * px;
+  });
+  plan.problems.push(...value.problems);
   const write = payload.apply && plan.problems.length === 0;
   let inserted = 0;
   db.transaction(() => {
@@ -213,6 +301,7 @@ export function applyPensionAccountCertificates(
     rows: plan.rows,
     inserted,
     balance: { stated_cuotas: payload.balance.cuotas, ledger_cuotas_after: plan.ledger_cuotas_after },
+    value_check: value.check,
     pending: plan.rows.filter((r) => r.state === "pending").length,
     problems: plan.problems,
   };
