@@ -74,4 +74,17 @@ describe("matchPaymentReceipts", () => {
     );
     expect(byPurchaseKey.get("plan")?.message_id).toBe("a");
   });
+
+  it("pairs a dollar order with the same dollars to the cent, never with pesos", () => {
+    const usd = { ...receipt("d", "2036-06-11 21:44", 139.35, "dynavap"), currency: "usd" as const };
+    const { byPurchaseKey } = matchPaymentReceipts(
+      [usd],
+      [
+        line("pesos", "2036-06-12", 139, "DYNAVAP LLC"),
+        line("cents-off", "2036-06-12", 128000, "DYNAVAP LLC", { amount_usd: 139.3 }),
+        line("dollars", "2036-06-12", 128500, "DYNAVAP LLC", { amount_usd: 139.35 }),
+      ]
+    );
+    expect([...byPurchaseKey.keys()]).toEqual(["dollars"]);
+  });
 });

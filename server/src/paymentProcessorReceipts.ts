@@ -98,7 +98,11 @@ export type PaymentReceiptDto = {
   basis: string | null;
 };
 
-export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis"> & { message_id: string; amount: number; currency: "clp" };
+export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis"> & {
+  message_id: string;
+  amount: number;
+  currency: "clp" | "usd";
+};
 
 export function loadPaymentProcessorReceipts(): StoredPaymentReceipt[] {
   const rows = db
@@ -116,8 +120,13 @@ export function loadPaymentProcessorReceipts(): StoredPaymentReceipt[] {
     statement_descriptor: (r.statement_descriptor as string | null) ?? null,
     installments: (r.installments as number | null) ?? null,
     amount: Number(r.amount),
-    currency: "clp",
+    currency: receiptCurrency(r),
   }));
+}
+
+function receiptCurrency(r: ReceiptRow): "clp" | "usd" {
+  if (r.currency !== "clp" && r.currency !== "usd") throw new Error(`payment receipt ${r.message_id}: currency ${r.currency}`);
+  return r.currency;
 }
 
 /** The expense-line fields the pairing reads. */
@@ -125,6 +134,8 @@ export type ReceiptCandidateLine = {
   source: string;
   purchase_key: string;
   amount_clp: number;
+  /** A dollar charge's dollars (the card's dollar side). */
+  amount_usd?: number | null;
   /** The purchase's own day (a card line's transaction date). */
   purchase_on: string | null;
   merchant: string | null;
@@ -142,6 +153,16 @@ const PROCESSOR_MERCHANT_HINT: Record<string, RegExp> = {
   pago_facil: /PAGO\s*FACIL/i,
 };
 
+/**
+ * Whether a line carries the receipt's amount: the same pesos, or for a dollar receipt the same
+ * dollars to the cent. A dollar receipt never pairs with a peso-only line: within a few percent of
+ * the day's rate, any purchase of the week could fit.
+ */
+function sameAmount(r: StoredPaymentReceipt, l: ReceiptCandidateLine): boolean {
+  if (r.currency === "clp") return (l.principal_clp ?? l.amount_clp) === r.amount;
+  return l.amount_usd != null && Math.abs(l.amount_usd - r.amount) < 0.005;
+}
+
 /** A line may be dated the day before the receipt (a mail sent after midnight) up to a few days after. */
 const DAYS_BEFORE = 1;
 const DAYS_AFTER = 5;
@@ -152,7 +173,7 @@ function dayDiff(a: string, b: string): number {
 
 /**
  * Pairs each receipt with the one expense line it paid: same pesos (an installment purchase's total
- * line for a split payment), dated from the day before the payment to five days after. Receipts go
+ * line for a split payment), or for a dollar receipt the same dollars to the cent, dated from the day before the payment to five days after. Receipts go
  * in payment order and each line is taken once, so identical payments pair in order. Among the
  * lines left, the nearest day wins, then a line whose merchant names the processor; a tie that
  * remains is reported and left unpaired.
@@ -177,7 +198,7 @@ export function matchPaymentReceipts(
     const paidOn = r.paid_at_chile.slice(0, 10);
     const hint = PROCESSOR_MERCHANT_HINT[r.processor];
     const fits = [...candidates.values()]
-      .filter((l) => !taken.has(l.purchase_key) && (l.principal_clp ?? l.amount_clp) === r.amount)
+      .filter((l) => !taken.has(l.purchase_key) && sameAmount(r, l))
       .map((l) => ({ l, d: dayDiff(l.purchase_on!, paidOn) }))
       .filter((c) => c.d >= -DAYS_BEFORE && c.d <= DAYS_AFTER)
       .map((c) => ({ ...c, rank: Math.abs(c.d) * 2 + (hint?.test(c.l.merchant ?? "") ? 0 : 1) }))
@@ -203,10 +224,20 @@ export function matchPaymentReceipts(
   return { byPurchaseKey, unpaired, ambiguous };
 }
 
-const PROCESSOR_NAMES: Record<string, string> = { flow: "Flow", pago_facil: "Pago Fácil", shopify: "Shopify" };
+const PROCESSOR_NAMES: Record<string, string> = {
+  flow: "Flow",
+  pago_facil: "Pago Fácil",
+  shopify: "Shopify",
+  calvin_klein: "Calvin Klein",
+  adidas: "adidas",
+  club_domino: "Club Dominó",
+  eventbrite: "Eventbrite",
+  micoca_cola: "miCoca-Cola",
+  dynavap: "DynaVap",
+};
 
 /** Sources that are the shop's own order confirmation rather than a processor's receipt. */
-const ORDER_CONFIRMATION_SOURCES = new Set(["shopify"]);
+const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap"]);
 
 function receiptDto(r: StoredPaymentReceipt): PaymentReceiptDto {
   const name = PROCESSOR_NAMES[r.processor];
