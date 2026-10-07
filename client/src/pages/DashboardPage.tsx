@@ -694,9 +694,10 @@ export function DashboardPage() {
                   name: isYearly
                     ? t("dashboard.sections.ma3DeltaCombinedYearly")
                     : t("dashboard.sections.ma3DeltaCombinedMonthly"),
-                  stroke: "#38bdf8",
+                  stroke: "#0ea5e9",
                   strokeWidth: 1.5,
                   showDot: false,
+                  pairsWithBar: "delta_combined",
                 },
               ]}
             />
@@ -733,18 +734,20 @@ export function DashboardPage() {
                   name: isYearly
                     ? t("dashboard.sections.ma3DeltaCombinedYearly")
                     : t("dashboard.sections.ma3DeltaCombinedMonthly"),
-                  stroke: "#38bdf8",
+                  stroke: "#0ea5e9",
                   strokeWidth: 1.5,
                   showDot: false,
+                  pairsWithBar: "delta_combined",
                 },
                 {
                   dataKey: "deposits_inversiones_ma3",
                   name: isYearly
                     ? t("dashboard.sections.ma3DepositsInversionesYearly")
                     : t("dashboard.sections.ma3DepositsInversionesMonthly"),
-                  stroke: "#a78bfa",
+                  stroke: "#8b5cf6",
                   strokeWidth: 1.5,
                   showDot: false,
+                  pairsWithBar: "deposits_inversiones",
                 },
               ]}
             />

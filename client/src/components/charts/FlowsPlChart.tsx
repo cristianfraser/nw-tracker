@@ -8,7 +8,6 @@ import type { DisplayUnit } from "../../queries/keys";
 import { flowsPlBucketLabel, useTranslation } from "../../i18n";
 import type { FlowsPlBucketSlug, FlowsPlChartPoint } from "../../types";
 import { AppComposedChart } from "./AppComposedChart";
-import { hasBandableBarGroups } from "./chartBandEdges";
 import {
   AXIS_LINE_STROKE,
   buildNiceYAxis,
@@ -16,9 +15,12 @@ import {
   extractSortedAsOfDates,
   minMaxForKeys,
   moneyYAxisProps,
+  rechartsMoneyYAxisWidth,
   resolvePeriodXAxis,
 } from "./chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
+
+const BAR_MAX_SIZE = 22;
 
 const CHART_ANIM_MS = 90;
 
@@ -77,7 +79,11 @@ export function FlowsPlChart({
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={[...points]}
-          groupedBars={hasBandableBarGroups(PL_CHART_BUCKETS.length, points.length)}
+          barGroup={{
+            count: PL_CHART_BUCKETS.length,
+            maxBarSize: BAR_MAX_SIZE,
+            yAxisWidth: rechartsMoneyYAxisWidth(displayUnit, compactAxis),
+          }}
           tooltip={{
             formatValue: (v) => formatFlowMoney(v, displayUnit),
             formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
@@ -113,7 +119,7 @@ export function FlowsPlChart({
                 fill={b.color}
                 isAnimationActive
                 animationDuration={CHART_ANIM_MS}
-                maxBarSize={22}
+                maxBarSize={BAR_MAX_SIZE}
               />
             ))}
             <Line
