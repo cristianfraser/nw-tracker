@@ -1,4 +1,6 @@
 import type {
+  PensionAccountBalanceApplyDetails,
+  PensionAccountBalancePayload,
   PensionAccountCertificatesApplyDetails,
   PensionAccountCertificatesPayload,
   PensionExpectedRow,
@@ -307,13 +309,45 @@ export function applyPensionAccountCertificates(
   };
 }
 
-/** The latest read that wrote new rows with nothing to fix, as its ISO instant. */
-export function lastCleanPensionImportAt(provider: "afp_uno"): string | null {
-  const row = db
-    .prepare(
-      `SELECT MAX(read_at) AS at FROM pension_account_reads
-        WHERE provider = ? AND applied = 1 AND inserted > 0 AND pending = 0 AND problems_json = '[]'`
-    )
-    .get(provider) as { at: string | null };
-  return row.at;
+/**
+ * The nightly balance read (`pension_account.balance`). The stated cuotas against the ledger's
+ * decide whether the certificates must be read: anything that moves cuotas — a contribution, a
+ * commission, a withdrawal — changes them. With the cuotas equal, the stated pesos are checked
+ * against the app's value (`checkPensionStatedValue`); a difference there is a price or framing
+ * error the certificates cannot explain, so it fails the step.
+ */
+export function applyPensionAccountBalance(payload: PensionAccountBalancePayload): PensionAccountBalanceApplyDetails {
+  if (payload.provider !== "afp_uno" || payload.product !== "mandatory") {
+    throw new Error(`pension: no account mapped for ${payload.provider} ${payload.product}`);
+  }
+  const accountId = afpAccountId();
+  const ledgerCuotas = round4(loadLedger(accountId).reduce((s, l) => s + l.units_delta, 0));
+  const certificatesNeeded = Math.abs(ledgerCuotas - payload.balance.cuotas) >= BALANCE_TOLERANCE;
+  if (certificatesNeeded) {
+    return {
+      account_id: accountId,
+      stated_cuotas: payload.balance.cuotas,
+      ledger_cuotas: ledgerCuotas,
+      certificates_needed: true,
+      value_check: null,
+      problems: [],
+    };
+  }
+  const today = chileCalendarTodayYmd();
+  const series = db
+    .prepare(`SELECT day, unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day >= ? ORDER BY day`)
+    .all(AFP_UNO_CUOTA_SERIES_KEY, chileCalendarAddDays(today, -60)) as PensionSeriesRow[];
+  const value = checkPensionStatedValue(payload.balance, series, today, (day) => {
+    const mark = accountMarkClpAtYmd(accountId, day)?.value_clp;
+    if (mark == null) throw new Error(`pension: account ${accountId} has no value on ${day}`);
+    return mark;
+  });
+  return {
+    account_id: accountId,
+    stated_cuotas: payload.balance.cuotas,
+    ledger_cuotas: ledgerCuotas,
+    certificates_needed: false,
+    value_check: value.check,
+    problems: value.problems,
+  };
 }

@@ -11,7 +11,6 @@ import { backgroundJobsDisabled } from "./backgroundJobsEnv.js";
 import { ingestFeederHeaders, resolveIngestServiceUrl } from "./ingestFeeder.js";
 import { lastDailyRunAt } from "./dailyRunLog.js";
 import { decideAfpUnoFetch, decideIngestRun, decidePayslipsRun, decideSantanderFetch, type IngestSchedulerDecision } from "./ingestRunPolicy.js";
-import { lastCleanPensionImportAt } from "./pensionAccountCertificatesApply.js";
 import { latestPayslip } from "./payslipsApply.js";
 import {
   inFlightIngestRun,
@@ -150,10 +149,8 @@ export async function ingestSchedulerTick(
           lastPaydayAttemptYmd: lastPaydayAttemptYmd(),
         })
       : null;
-  // Every nightly reads AFP UNO: the balance check runs each night, new rows are expected from the 10th.
-  const lastAfpImport = lastCleanPensionImportAt("afp_uno");
-  const afpUnoFetch =
-    decision.kind === "nightly" ? decideAfpUnoFetch({ now, lastCleanImportAt: lastAfpImport ? new Date(lastAfpImport) : null }) : null;
+  // Every nightly reads AFP UNO's balance; the read fetches the certificates when its cuotas moved.
+  const afpUnoFetch = decision.kind === "nightly" ? decideAfpUnoFetch() : null;
   // A nightly reads the payroll portal from the 1st until last month's payslip is stored, and
   // re-imports while the newest payslip waits for its deposit.
   const payslips = decision.kind === "nightly" ? decidePayslipsRun({ now, latest: latestPayslip() }) : null;

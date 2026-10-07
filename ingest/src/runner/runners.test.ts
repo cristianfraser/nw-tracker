@@ -83,7 +83,7 @@ describe("runNightly", () => {
     expect(calls).toContain("run fetch:afp-uno -- --background --apply");
     const report = fakeRunner();
     await runNightly(report.x, { ...NIGHTLY, afpUnoFetch: asked, afpUnoApply: false });
-    expect(report.x.steps.map((s) => s.label)).toContain("AFP UNO certificates (report only)");
+    expect(report.x.steps.map((s) => s.label)).toContain("AFP UNO (report only)");
     expect(report.calls).toContain("run fetch:afp-uno -- --background");
     const quiet = fakeRunner();
     await runNightly(quiet.x, NIGHTLY);
