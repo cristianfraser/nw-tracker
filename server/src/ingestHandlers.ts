@@ -8,6 +8,7 @@ import type {
 } from "nw-tracker-contracts";
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 import { applyBankAccountBalances } from "./bankAccountBalances.js";
+import { applyBankTransferNotices } from "./bankTransferNotices.js";
 import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { applyCardStatement } from "./cardStatementApply.js";
@@ -153,6 +154,12 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
     apply({ payload, envelope }) {
       const { duplicate, details } = applyBankAccountBalances(payload, envelope.source.ref);
       return { status: duplicate ? "duplicate" : "applied", details };
+    },
+  },
+  "bank_account.transfer_notices": {
+    apply({ payload }) {
+      const details = applyBankTransferNotices(payload);
+      return { status: details.new_notices === 0 ? "duplicate" : "applied", details };
     },
   },
   "bank_account.movements": {
