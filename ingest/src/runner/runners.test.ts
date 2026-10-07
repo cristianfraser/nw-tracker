@@ -50,6 +50,7 @@ describe("runNightly", () => {
       "run convert:cc-payment-mirrors",
       "run check:cc-bank-cupo",
       "run import:santander-transfer-mails",
+      "run import:payment-receipt-mails",
       "run import:apple-mail",
       "run fetch:emails",
       "run check:broker-emails",

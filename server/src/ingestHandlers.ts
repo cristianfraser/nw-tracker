@@ -9,6 +9,8 @@ import type {
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 import { applyBankAccountBalances } from "./bankAccountBalances.js";
 import { applyBankTransferNotices } from "./bankTransferNotices.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
+import { matchPaymentReceiptsToExpenseLines, storePaymentProcessorReceipts } from "./paymentProcessorReceipts.js";
 import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { applyCardStatement } from "./cardStatementApply.js";
@@ -160,6 +162,17 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
     apply({ payload }) {
       const details = applyBankTransferNotices(payload);
       return { status: details.new_notices === 0 ? "duplicate" : "applied", details };
+    },
+  },
+  "payment.processor_receipts": {
+    apply({ payload }) {
+      const stored = storePaymentProcessorReceipts(payload);
+      // The pairing is derived when the expense lines are built; report what the page will show.
+      const match = matchPaymentReceiptsToExpenseLines(buildFlowsExpensesPayload().lines);
+      return {
+        status: stored.new_receipts === 0 ? "duplicate" : "applied",
+        details: { ...stored, paired: match.byPurchaseKey.size, unpaired: match.unpaired, ambiguous: match.ambiguous },
+      };
     },
   },
   "bank_account.movements": {

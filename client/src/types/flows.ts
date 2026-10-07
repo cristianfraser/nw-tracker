@@ -143,6 +143,20 @@ export interface TransferCounterparty {
   sent_at_chile: string;
 }
 
+/** Who a charge actually paid, from the payment processor's receipt (server: paymentProcessorReceipts.ts). */
+export interface PaymentReceipt {
+  processor: string;
+  processor_name: string;
+  payee: string;
+  payee_rut: string | null;
+  payee_email: string | null;
+  concept: string | null;
+  order_ref: string | null;
+  paid_at_chile: string;
+  statement_descriptor: string | null;
+  installments: number | null;
+}
+
 export interface FlowCcExpenseLineRow {
   source: FlowCcExpenseLineSource;
   statement_line_id: number;
@@ -199,6 +213,7 @@ export interface FlowCcExpenseLineRow {
    */
   cuota_purchase_kind?: CcCuotaPurchaseKind;
   transfer_counterparty?: TransferCounterparty;
+  payment_receipt?: PaymentReceipt;
 }
 
 export interface ExpenseDepositLinkDto {

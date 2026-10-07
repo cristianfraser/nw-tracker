@@ -77,6 +77,11 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   if (o.dryRun) await x.step(dry("Santander transfer mails"), npmRun("import:santander-transfer-mails", "--dry-run"));
   else await x.step("Santander transfer mails", npmRun("import:santander-transfer-mails"));
 
+  // 3c''. Payment processors' receipts (Flow, Pago Fácil): who a «PAGOS.FLOW.CL» / «PAGO FACIL»
+  // charge actually paid. The card lines they pair with are in by now.
+  if (o.dryRun) await x.step(dry("Payment receipt mails"), npmRun("import:payment-receipt-mails", "--dry-run"));
+  else await x.step("Payment receipt mails", npmRun("import:payment-receipt-mails"));
+
   // 3d. Apple's mails, once the card lines they explain are in: the app on each charge's note.
   if (o.dryRun) await x.step(dry("Apple receipts → expense notes"), npmRun("import:apple-mail", "--dry-run"));
   else await x.step("Apple receipts → expense notes", npmRun("import:apple-mail"));
