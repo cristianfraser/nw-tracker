@@ -41,10 +41,23 @@ export function isInvestmentDepositTarget(groupSlug: string): boolean {
   return INVESTMENT_DEPOSIT_GROUPS.has(groupSlug);
 }
 
+/**
+ * A movement rebuilt from an issuer's mails where no statement survives:
+ * `import:<issuer>-mail|<mail time or "residual" / "standin" …>|<description>` — the Santander
+ * cuenta corriente's lost months (scripts/rebuild-checking-gap-from-mails.ts) and the MACH account,
+ * which never had statements (scripts/build-mach-account-from-mails.ts).
+ */
+export const MAIL_REBUILT_NOTE_PREFIXES = ["import:santander-mail|", "import:mach-mail|"] as const;
+
+export function isMailRebuiltCheckingNote(note: string | null | undefined): boolean {
+  const n = String(note ?? "").trim();
+  return MAIL_REBUILT_NOTE_PREFIXES.some((p) => n.startsWith(p));
+}
+
 export function isCheckingGastosWithdrawalNote(note: string | null | undefined): boolean {
   const n = String(note ?? "").trim();
   if (!n || isCheckingLedgerAnchorNote(n)) return false;
-  return n.startsWith("import:cartola|") || isCheckingPartialWithdrawalNote(n);
+  return n.startsWith("import:cartola|") || isCheckingPartialWithdrawalNote(n) || isMailRebuiltCheckingNote(n);
 }
 
 export const INTERNAL_TRANSFER_RE = /CRISTIAN\s+FRASER\s*-\s*SANTANDER/i;
@@ -218,8 +231,8 @@ export function cartolaDescriptionFromNote(note: string | null | undefined): str
   const n = String(note ?? "").trim();
   const partial = parsePartialMovementNote(n);
   if (partial) return partial.description;
-  // `import:santander-mail|<mail time or "residual">|<description>` (scripts/rebuild-checking-gap-from-mails.ts).
-  const mail = /^import:santander-mail\|[^|]*\|(.*)$/.exec(n);
+  // `import:<issuer>-mail|<mail time or marker>|<description>` (see `isMailRebuiltCheckingNote`).
+  const mail = /^import:(?:santander|mach)-mail\|[^|]*\|(.*)$/.exec(n);
   if (mail) return mail[1]!.trim();
   if (!n.startsWith("import:cartola|")) return n;
   const rest = n.slice("import:cartola|".length);

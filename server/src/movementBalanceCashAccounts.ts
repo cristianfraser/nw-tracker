@@ -8,7 +8,10 @@ import {
 } from "./assetGroupTree.js";
 import { db } from "./db.js";
 
-/** Behavior kinds for cartola checking (corriente + vista), not the `checking_accounts` nav bucket. */
+/**
+ * Behavior kinds for cartola checking (corriente + vista), not the `checking_accounts` nav bucket.
+ * `listMovementBalanceCashAccountIds` also takes peso (`clp`) accounts filed under Checking accounts.
+ */
 export const MOVEMENT_BALANCE_CASH_CATEGORY_SLUGS = new Set([
   "cuenta_corriente",
   "cuenta_vista",
@@ -156,10 +159,15 @@ export function listMovementBalanceCashAccountIds(dbHandle: Database = db): numb
   ).map((r) => r.id);
   for (const id of legacyTopLevel) ids.add(id);
 
+  // A peso account filed under Checking accounts with no cartola (MACH, rebuilt from its mails):
+  // its movements are bank movements too, read by the same gastos / income / deposit readers.
+  const underChecking = new Set(accountIdsUnderCheckingAccounts(dbHandle));
+  for (const id of underChecking) ids.add(id);
+
   return [...ids]
     .filter((id) => {
       const k = kindSlugForAccount(id);
-      return k != null && isMovementBalanceCashKindSlug(k);
+      return k != null && (isMovementBalanceCashKindSlug(k) || (k === "clp" && underChecking.has(id)));
     })
     .sort((a, b) => a - b);
 }

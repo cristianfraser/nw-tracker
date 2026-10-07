@@ -23,6 +23,7 @@ import {
   upsertCcFacturadoFinancingLink,
 } from "../ccFacturadoFinancingLinksDb.js";
 import { buildFlowsCheckingIncomePayload } from "../flowsCheckingInflows.js";
+import { markCheckingExpenseRefund, unmarkCheckingExpenseRefund } from "../checkingExpenseRefunds.js";
 import { transferCounterpartiesByMovementSide, withTransferCounterparties } from "../bankTransferNotices.js";
 import {
   CHECKING_INCOME_KINDS,
@@ -83,7 +84,7 @@ app.get("/api/income", (_req, res) => {
     lines: withTransferCounterparties(payload.lines, counterparties),
     excluded_lines: withTransferCounterparties(payload.excluded_lines, counterparties),
     filtered_lines: withTransferCounterparties(payload.filtered_lines, counterparties),
-    card_reimbursement_lines: withTransferCounterparties(payload.card_reimbursement_lines, counterparties),
+    refund_lines: withTransferCounterparties(payload.refund_lines, counterparties),
   });
 });
 
@@ -211,6 +212,33 @@ app.post("/api/income/movements/:movement_id/force-include", (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
   }
+});
+
+/** Marks a checking credit as a refund of spending (out of income, a negative gastos line). */
+app.post("/api/income/movements/:movement_id/refund", (req, res) => {
+  const movementId = Number(req.params.movement_id);
+  if (!Number.isFinite(movementId) || movementId <= 0) {
+    res.status(400).json({ error: "invalid movement_id" });
+    return;
+  }
+  const slug = (req.body as { category_slug?: unknown } | undefined)?.category_slug;
+  try {
+    markCheckingExpenseRefund(movementId, typeof slug === "string" && slug.trim() ? slug.trim() : undefined);
+    res.json({ ok: true, movement_id: movementId });
+  } catch (e) {
+    const err = e as Error & { status?: number };
+    res.status(err.status ?? 400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/income/movements/:movement_id/refund", (req, res) => {
+  const movementId = Number(req.params.movement_id);
+  if (!Number.isFinite(movementId) || movementId <= 0) {
+    res.status(400).json({ error: "invalid movement_id" });
+    return;
+  }
+  unmarkCheckingExpenseRefund(movementId);
+  res.json({ ok: true, movement_id: movementId });
 });
 
 app.post("/api/income/movements/:movement_id/restore", (req, res) => {

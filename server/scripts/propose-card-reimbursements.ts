@@ -1,7 +1,7 @@
 /**
  * Proposes which checking credits are an additional cardholder paying back his card charges, and
- * classifies them `income_kind = 'card_reimbursement'` (never income; set against the charges in
- * the expenses payload's «Tarjetas adicionales» summary).
+ * marks them refunds in `additional_card` (`checkingExpenseRefunds.ts`: never income, a negative
+ * gastos line netting the charges; the «Tarjetas adicionales» summary shows both sides).
  *
  * The payer is named by the caller, never guessed: `--payer-note-token=<token>` picks checking
  * credits whose bank description carries it (the payer's RUT as the bank prints it — this
@@ -10,7 +10,7 @@
  * above `--max-amount` (gifts are large round wires) are reported and left alone.
  *
  * Charges are the expenses payload's own additional-card lines (`isAdditionalCardChargeLine`: the
- * cardholder's plastics, left in `no_cuenta`). Each credit is matched to the charges it paid —
+ * cardholder's plastics, left in `additional_card`). Each credit is matched to the charges it paid —
  * the oldest unpaid ones summing to it exactly, else any set from the preceding `--window-days`,
  * else FIFO (partially) — and the running balance (charges − reimbursements) is printed by month.
  *
@@ -31,9 +31,9 @@ import {
 } from "../src/additionalCardReimbursements.js";
 import { buildFlowsExpensesPayload } from "../src/flowsExpenses.js";
 import {
-  loadCardReimbursementCredits,
-  upsertCheckingIncomeMovementOverride,
-} from "../src/flowsCheckingIncomeOverrides.js";
+  loadCheckingExpenseRefunds,
+  markCheckingExpenseRefund,
+} from "../src/checkingExpenseRefunds.js";
 import { listCheckingMovements } from "../src/checkingCartolaLoaders.js";
 import { listMovementBalanceCashAccountIds } from "../src/movementBalanceCashAccounts.js";
 
@@ -110,7 +110,7 @@ try {
     for (const r of credits) {
       if (excludeIds.has(r.id)) skipped.push({ row: r, why: "--exclude-ids" });
       else if (r.is_excluded === 1) skipped.push({ row: r, why: "excluded from income" });
-      else if (r.income_kind != null && r.income_kind !== "other" && r.income_kind !== "card_reimbursement") {
+      else if (r.income_kind != null && r.income_kind !== "other") {
         skipped.push({ row: r, why: `classified ${r.income_kind}` });
       } else if (r.amount_clp > maxAmount) skipped.push({ row: r, why: `above --max-amount` });
       else proposed.push(r);
@@ -125,8 +125,8 @@ try {
     const notas = charges.filter((c) => c.amount_clp < 0);
 
     // Reimbursements already classified by hand take part in the matching too.
-    const already = loadCardReimbursementCredits().filter(
-      (c) => !proposed.some((p) => p.id === c.movement_id)
+    const already = loadCheckingExpenseRefunds().filter(
+      (c) => c.category_slug === "additional_card" && !proposed.some((p) => p.id === c.movement_id)
     );
     const matchCredits: ReimbursementCreditInput[] = [
       ...proposed.map((r) => ({ movement_id: r.id, date: r.occurred_on, amount_clp: Math.round(r.amount_clp) })),
@@ -138,14 +138,14 @@ try {
     });
 
     console.log(
-      `Additional-card charges (no_cuenta): ${charges.length} lines, ${fmt(
+      `Additional-card charges (additional_card): ${charges.length} lines, ${fmt(
         charges.reduce((s, c) => s + c.amount_clp, 0)
       )} CLP` + (notas.length ? ` (incl. ${notas.length} credit notes ${fmt(notas.reduce((s, c) => s + c.amount_clp, 0))})` : "")
     );
     console.log(
       `Payer credits found: ${credits.length}; proposed: ${proposed.length} (${fmt(
         proposed.reduce((s, r) => s + r.amount_clp, 0)
-      )} CLP); already card_reimbursement elsewhere: ${already.length}; skipped: ${skipped.length}\n`
+      )} CLP); already refunds: ${already.length}; skipped: ${skipped.length}\n`
     );
 
     console.log("Per credit (date  movement  amount  match  charges  outstanding-before  note):");
@@ -176,13 +176,14 @@ try {
       }
     }
     let written = 0;
+    const refunds = new Set(loadCheckingExpenseRefunds().map((c) => c.movement_id));
     for (const r of proposed) {
-      if (r.income_kind === "card_reimbursement") continue;
-      upsertCheckingIncomeMovementOverride(r.id, { income_kind: "card_reimbursement" });
+      if (refunds.has(r.id)) continue;
+      markCheckingExpenseRefund(r.id, "additional_card");
       written += 1;
     }
 
-    const summary = buildAdditionalCardsSummary(payload.lines, loadCardReimbursementCredits());
+    const summary = buildAdditionalCardsSummary(buildFlowsExpensesPayload().lines);
     console.log("\nBy month after classification (charges  reimbursements  net  balance):");
     for (const row of summary.by_month) {
       console.log(
@@ -194,9 +195,9 @@ try {
       `  total     ${fmt(summary.totals.charges_clp).padStart(10)}  ${fmt(summary.totals.reimbursements_clp).padStart(10)}  ` +
         `balance ${fmt(summary.totals.balance_clp)}`
     );
-    console.log(`\nOverrides to write: ${written}`);
+    console.log(`\nRefunds to mark: ${written}`);
     if (!apply) throw new RollBack();
-    console.log(`Applied (${written} override(s) written).`);
+    console.log(`Applied (${written} refund(s) marked).`);
   })();
 } catch (e) {
   if (!(e instanceof RollBack)) throw e;

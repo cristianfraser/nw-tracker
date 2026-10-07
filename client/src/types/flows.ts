@@ -217,6 +217,8 @@ export interface FlowCcExpenseLineRow {
   cuota_purchase_kind?: CcCuotaPurchaseKind;
   transfer_counterparty?: TransferCounterparty;
   payment_receipt?: PaymentReceipt;
+  /** A checking credit marked as a refund: a negative line in its category. */
+  checking_refund?: true;
 }
 
 export interface ExpenseDepositLinkDto {
@@ -433,8 +435,8 @@ export interface FlowsIncomeResponse {
   payroll_period_by_movement_id: Record<number, string>;
   excluded_lines: FlowExcludedCheckingIncomeLine[];
   filtered_lines: FlowFilteredCheckingIncomeLine[];
-  /** Credits classified `card_reimbursement`: never income, never in `lines`; newest first. */
-  card_reimbursement_lines: FlowCheckingIncomeLine[];
+  /** Credits marked as refunds of spending: never income; each a negative gastos line in its category. Newest first. */
+  refund_lines: (FlowCheckingIncomeLine & { category_slug: string })[];
 }
 
 export type PayrollEarningType = "salary" | "severance";
@@ -476,8 +478,7 @@ export interface FlowWorkEarningRow {
   linked_account_label: string | null;
 }
 
-/** `card_reimbursement` is not income: the server keeps those credits out of `lines`. */
-export type IncomeKind = PayrollEarningType | "other" | "parent_gift" | "card_reimbursement";
+export type IncomeKind = PayrollEarningType | "other" | "parent_gift";
 
 export interface FlowIncomeMonthRow {
   period_month: string;

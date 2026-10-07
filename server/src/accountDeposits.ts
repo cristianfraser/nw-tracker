@@ -182,10 +182,10 @@ function loadTransferLegSignedFlowEvents(
     for (const endpoint of [r.from_account_id, r.to_account_id]) {
       if (endpoint == null || !requested.has(endpoint)) continue;
       if (equityMtmIds.has(endpoint) || usdCashIds.has(endpoint)) continue;
-      // Checking→CC payment mirrors: only the CASH side emits (its withdrawal is real capital
-      // leaving the account). The card leg is inert here forever — CC flows come from statement
-      // evidence (`ccOwedFlowEvents.ts`), so counting the transfer too would double the payment.
-      if (r.flow_kind === "pago_tarjeta" && isCreditCardAccountId(endpoint)) continue;
+      // A transfer touching a card (a payment to it, a load paid with it): only the CASH side emits.
+      // The card leg is inert here forever — CC flows come from statement evidence
+      // (`ccOwedFlowEvents.ts`), so counting the transfer too would double the movement.
+      if (isCreditCardAccountId(endpoint)) continue;
       if (personalOnly && !movementCountsAsPersonalDeposit(r.flow_kind)) continue;
       const amt = signedClpDeltaForAccountMovement(r, endpoint);
       if (amt === 0 || !Number.isFinite(amt)) continue;

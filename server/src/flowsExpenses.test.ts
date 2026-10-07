@@ -8,7 +8,7 @@ import {
 } from "vitest";
 import {
   legacyInstallmentHPurchaseKey,
-  NO_CUENTA_CC_EXPENSE_SLUG,
+  ADDITIONAL_CARD_CC_EXPENSE_SLUG,
   assignCcExpenseLineCategory,
   countsTowardCcExpenseGastosMes,
   getCcExpenseCategoryBySlug,
@@ -142,7 +142,7 @@ describe("flowsExpenses", () => {
     expect(cc4242.length).toBeGreaterThan(0);
   });
 
-  it("auto-tags adicional-card lines as no_cuenta + unique in the payload", () => {
+  it("auto-tags adicional-card lines as additional_card + unique in the payload", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
     const parserRowId = `vitest-addl-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -170,13 +170,13 @@ describe("flowsExpenses", () => {
     const payload = buildFlowsExpensesPayload();
     const found = payload.lines.find((ln) => ln.source === "cc" && ln.statement_line_id === lineId);
     expect(found).toBeDefined();
-    expect(found!.category_slug).toBe(NO_CUENTA_CC_EXPENSE_SLUG);
+    expect(found!.category_slug).toBe(ADDITIONAL_CARD_CC_EXPENSE_SLUG);
     expect(found!.category_unique).toBe(true);
     expect(found!.origin_card_last4).toBe("4999");
     expect(found!.primary_card_last4).toBe("4242");
   });
 
-  it("does not force additional-card no_cuenta when the user cleared unique category", () => {
+  it("does not force the additional_card category when the user cleared unique category", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
     const parserRowId = `vitest-addl-${randomUUID().replace(/-/g, "").slice(0, 12)}`;
@@ -202,8 +202,8 @@ describe("flowsExpenses", () => {
     const lineId = Number(line.lastInsertRowid);
 
     const purchaseKey = resolveCcExpensePurchaseKey(lineId);
-    const noCuentaId = getCcExpenseCategoryBySlug(NO_CUENTA_CC_EXPENSE_SLUG)?.id;
-    expect(noCuentaId).toBeTruthy();
+    const additionalCardId = getCcExpenseCategoryBySlug(ADDITIONAL_CARD_CC_EXPENSE_SLUG)?.id;
+    expect(additionalCardId).toBeTruthy();
 
     // Simulate user-cleared unique: category_id NULL exists in DB at load.
     db.prepare(
@@ -216,11 +216,11 @@ describe("flowsExpenses", () => {
     const found = payload.lines.find((ln) => ln.source === "cc" && ln.statement_line_id === lineId);
     expect(found).toBeDefined();
 
-    // We should not override to no_cuenta when the user explicitly cleared unique.
-    expect(found!.category_slug).not.toBe(NO_CUENTA_CC_EXPENSE_SLUG);
+    // We should not override to additional_card when the user explicitly cleared unique.
+    expect(found!.category_slug).not.toBe(ADDITIONAL_CARD_CC_EXPENSE_SLUG);
   });
 
-  it("never auto-tags installment contracts as no_cuenta for adicional cuotas", () => {
+  it("never auto-tags installment contracts as additional_card for adicional cuotas", () => {
     const payload = buildFlowsExpensesPayload();
     const adicionalInstallment = payload.lines.find(
       (ln) =>
@@ -231,7 +231,7 @@ describe("flowsExpenses", () => {
         ln.origin_card_last4 !== ln.primary_card_last4
     );
     if (!adicionalInstallment) return;
-    expect(adicionalInstallment.category_slug).not.toBe(NO_CUENTA_CC_EXPENSE_SLUG);
+    expect(adicionalInstallment.category_slug).not.toBe(ADDITIONAL_CARD_CC_EXPENSE_SLUG);
   });
 
   it("keeps user unique category on installment contract when an adicional cuota exists", () => {

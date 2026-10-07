@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { IncomeMonthlyChart } from "../components/charts/IncomeMonthlyChart";
 import { IncomeAllLinesTable } from "../components/income/IncomeAllLinesTable";
-import { IncomeCardReimbursementLinesTable } from "../components/income/IncomeCardReimbursementLinesTable";
+import { IncomeRefundLinesTable } from "../components/income/IncomeRefundLinesTable";
 import { IncomeExcludedLinesTable } from "../components/income/IncomeExcludedLinesTable";
 import { IncomeFilteredLinesTable } from "../components/income/IncomeFilteredLinesTable";
 import { IncomeMonthTable } from "../components/income/IncomeMonthTable";
@@ -150,15 +150,12 @@ export function IncomePage() {
 
       <section style={{ marginTop: "1.5rem" }}>
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
-          {t("income.sectionCardReimbursements")}
+          {t("income.sectionRefunds")}
         </h3>
         <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
-          {t("income.cardReimbursementsHint")}
+          {t("income.refundsHint")}
         </p>
-        <IncomeCardReimbursementLinesTable
-          rows={data.card_reimbursement_lines}
-          displayUnit={displayUnit}
-        />
+        <IncomeRefundLinesTable rows={data.refund_lines} displayUnit={displayUnit} />
       </section>
 
       <section style={{ marginTop: "1.5rem" }}>

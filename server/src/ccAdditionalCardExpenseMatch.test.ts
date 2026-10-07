@@ -45,7 +45,7 @@ describe("ccAdditionalCardExpenseMatch", () => {
     );
   });
 
-  it("does not apply adicional no_cuenta to installment contract lines", () => {
+  it("does not apply the adicional category to installment contract lines", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
 

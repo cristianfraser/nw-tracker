@@ -145,7 +145,7 @@ export type CcStatementsMergeResult = {
   linesSkippedInstallmentOverlap: number;
   /** Existing lines whose origin_card_last4 was updated on dedupe skip. */
   linesOriginCardPatched: number;
-  /** Adicional-card lines auto-tagged Único + no_cuenta during import. */
+  /** Adicional-card lines auto-tagged Único + additional_card during import. */
   additionalCardCategoriesApplied: number;
   categoriesRestored: number;
   /**

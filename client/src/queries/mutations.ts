@@ -555,7 +555,20 @@ export function usePatchIncomeMovementMutation() {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
-      // A card reimbursement is set against the additional cards' charges on the Expenses page.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
+    },
+  });
+}
+
+/** Marks a checking credit as a refund of spending, or (`refund: false`) returns it to income. */
+export function useIncomeRefundMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { movement_id: number; refund: boolean }) =>
+      vars.refund ? api.markIncomeRefund(vars.movement_id) : api.unmarkIncomeRefund(vars.movement_id),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.income() });
+      // A refund is a negative line on the Expenses page.
       void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
     },
   });

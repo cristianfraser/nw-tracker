@@ -3,7 +3,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { backfillAdditionalCardNoCuenta } from "./backfillAdditionalCardNoCuenta.js";
 import { AUTO_ADDITIONAL_CARD_NOTE_PREFIX } from "./ccAdditionalCardExpenseMatch.js";
 import {
-  NO_CUENTA_CC_EXPENSE_SLUG,
+  ADDITIONAL_CARD_CC_EXPENSE_SLUG,
   getCcExpenseCategoryBySlug,
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
@@ -24,7 +24,7 @@ function cleanup(): void {
 describe("backfillAdditionalCardNoCuenta", () => {
   afterEach(() => cleanup());
 
-  it("UPSERTs no_cuenta unique purchase and auto note for adicional lines", () => {
+  it("UPSERTs additional_card unique purchase and auto note for adicional lines", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
 
@@ -48,7 +48,7 @@ describe("backfillAdditionalCardNoCuenta", () => {
       .run(statementId, parserRowId);
     const lineId = Number(line.lastInsertRowid);
     const purchaseKey = resolveCcExpensePurchaseKey(lineId);
-    const noCuentaId = getCcExpenseCategoryBySlug(NO_CUENTA_CC_EXPENSE_SLUG)?.id;
+    const additionalCardId = getCcExpenseCategoryBySlug(ADDITIONAL_CARD_CC_EXPENSE_SLUG)?.id;
 
     const result = backfillAdditionalCardNoCuenta();
     expect(result.scanned).toBeGreaterThanOrEqual(1);
@@ -60,7 +60,7 @@ describe("backfillAdditionalCardNoCuenta", () => {
          WHERE account_id = ? AND purchase_key = ?`
       )
       .get(accountId, purchaseKey) as { category_id: number } | undefined;
-    expect(unique?.category_id).toBe(noCuentaId);
+    expect(unique?.category_id).toBe(additionalCardId);
 
     const note = db
       .prepare(

@@ -1,5 +1,6 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
+import { loadCheckingExpenseRefunds } from "./checkingExpenseRefunds.js";
 import { db } from "./db.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
@@ -28,7 +29,6 @@ import {
 import { checkingCreditMatchesBudaRetiro, loadBudaBufferAccountId } from "./budaWallet.js";
 import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import {
-  loadCardReimbursementMovementIds,
   mergedIncomeKindByMovementIdRecord,
   loadExcludedCheckingIncomeMovementIds,
   loadExcludedCheckingIncomeLines,
@@ -93,10 +93,10 @@ export type FlowsCheckingIncomePayload = {
   excluded_lines: FlowExcludedCheckingIncomeLine[];
   filtered_lines: FlowFilteredCheckingIncomeLine[];
   /**
-   * Credits the user classified `card_reimbursement` (an additional cardholder paying back his
-   * charges): never income, so they are never in `lines`; newest first.
+   * Credits marked as refunds of spending (`checkingExpenseRefunds.ts`): never income, so they are
+   * never in `lines`; each is a negative gastos line in its category. Newest first.
    */
-  card_reimbursement_lines: FlowCheckingIncomeLine[];
+  refund_lines: (FlowCheckingIncomeLine & { category_slug: string })[];
 };
 
 type CheckingCreditWithId = {
@@ -293,7 +293,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   const budaBufferAccountId = loadBudaBufferAccountId();
 
   const excludedMovementIds = loadExcludedCheckingIncomeMovementIds();
-  const cardReimbursementMovementIds = loadCardReimbursementMovementIds();
+  const refundCategoryByMovementId = new Map(loadCheckingExpenseRefunds().map((r) => [r.movement_id, r.category_slug]));
   const forceIncludedMovementIds = loadForceIncludedCheckingIncomeMovementIds();
 
   const accountWithdrawalsByAccountId = new Map(
@@ -304,7 +304,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
   for (const accountId of accountIds) {
     for (const credit of loadCheckingCreditsWithId(accountId)) {
       if (excludedMovementIds.has(credit.movement_id)) continue;
-      if (cardReimbursementMovementIds.has(credit.movement_id)) continue;
+      if (refundCategoryByMovementId.has(credit.movement_id)) continue;
       if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
       creditsForBatching.push(credit);
     }
@@ -328,16 +328,17 @@ function computeCheckingIncome(): CheckingIncomeComputation {
 
   const lines: FlowCheckingIncomeLine[] = [];
   const filtered_lines: FlowFilteredCheckingIncomeLine[] = [];
-  const card_reimbursement_lines: FlowCheckingIncomeLine[] = [];
+  const refund_lines: (FlowCheckingIncomeLine & { category_slug: string })[] = [];
 
   for (const accountId of accountIds) {
     for (const credit of loadCheckingCreditsWithId(accountId)) {
       if (excludedMovementIds.has(credit.movement_id)) continue;
       if (credit.note != null && isCheckingLedgerAnchorNote(credit.note)) continue;
-      // The user's classification wins over the auto filters: a reimbursement is neither income
-      // nor a capital return, and must not consume a redemption another credit should claim.
-      if (cardReimbursementMovementIds.has(credit.movement_id)) {
-        card_reimbursement_lines.push(toCheckingIncomeLine(credit, accountLabels));
+      // The user's classification wins over the auto filters: a refund is neither income nor a
+      // capital return, and must not consume a redemption another credit should claim.
+      const refundCategory = refundCategoryByMovementId.get(credit.movement_id);
+      if (refundCategory != null) {
+        refund_lines.push({ ...toCheckingIncomeLine(credit, accountLabels), category_slug: refundCategory });
         continue;
       }
 
@@ -391,7 +392,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
     return b.movement_id - a.movement_id;
   });
 
-  card_reimbursement_lines.sort((a, b) => {
+  refund_lines.sort((a, b) => {
     const byDate = b.received_on.localeCompare(a.received_on);
     if (byDate !== 0) return byDate;
     return b.movement_id - a.movement_id;
@@ -414,7 +415,7 @@ function computeCheckingIncome(): CheckingIncomeComputation {
       payroll_period_by_movement_id: payrollPeriodByMovementIdRecord(),
       excluded_lines: loadExcludedCheckingIncomeLines(),
       filtered_lines,
-      card_reimbursement_lines,
+      refund_lines,
     },
     consumedLedgerOutflowKeys: filterCtx.consumedCapitalReturnLedgerOutflowKeys,
   };

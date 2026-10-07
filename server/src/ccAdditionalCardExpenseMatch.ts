@@ -2,7 +2,7 @@ import type { Database } from "better-sqlite3";
 import { ccCardRegistry } from "./ccCardRegistry.js";
 import { db } from "./db.js";
 import {
-  NO_CUENTA_CC_EXPENSE_SLUG,
+  ADDITIONAL_CARD_CC_EXPENSE_SLUG,
   getCcExpenseCategoryBySlug,
   loadCcStatementLineExpenseCtx,
   resolveCcExpensePurchaseKey,
@@ -14,7 +14,7 @@ import {
 
 export const AUTO_ADDITIONAL_CARD_NOTE_PREFIX = "auto:additional-card";
 
-/** User chose Sin clasificar — do not re-apply adicional-card / auto no_cuenta on reload. */
+/** User chose Sin clasificar — do not re-apply the adicional-card auto category on reload. */
 export const USER_DECLINED_AUTO_CATEGORY_PREFIX = "auto:user-declined-auto-category";
 
 export function isUserDeclinedAutoCategoryNote(note: string): boolean {
@@ -168,9 +168,9 @@ export type ApplyAdditionalCardNoCuentaResult = {
   skippedUserCleared: boolean;
   /** Unique purchase already has a category (user or prior auto) — never overwrite. */
   skippedExistingCategory: boolean;
-  /** User cleared to Sin clasificar — do not re-apply auto no_cuenta (one-shot only). */
+  /** User cleared to Sin clasificar — do not re-apply the auto category (one-shot only). */
   skippedUserDeclinedAuto: boolean;
-  /** Installment contracts — adicional no_cuenta never applies; use line-level cuota rules. */
+  /** Installment contracts — the adicional auto category never applies; use line-level cuota rules. */
   skippedInstallment: boolean;
   notesUpdated: boolean;
   purchaseKey: string;
@@ -271,9 +271,9 @@ export function applyAdditionalCardNoCuentaForLine(opts: {
     }
   }
 
-  const noCuenta = getCcExpenseCategoryBySlug(NO_CUENTA_CC_EXPENSE_SLUG);
-  if (!noCuenta) {
-    throw new Error("no_cuenta expense category missing; run migrations first");
+  const additionalCard = getCcExpenseCategoryBySlug(ADDITIONAL_CARD_CC_EXPENSE_SLUG);
+  if (!additionalCard) {
+    throw new Error("additional_card expense category missing; run migrations first");
   }
 
   dbHandle
@@ -282,7 +282,7 @@ export function applyAdditionalCardNoCuentaForLine(opts: {
        VALUES (?, ?, ?)
        ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
     )
-    .run(opts.accountId, purchaseKey, noCuenta.id);
+    .run(opts.accountId, purchaseKey, additionalCard.id);
 
   const autoNote = formatAutoAdditionalCardNote({ originLast4: origin, primaryLast4: primary });
   const existing = getCcExpensePurchaseNote(opts.accountId, purchaseKey);

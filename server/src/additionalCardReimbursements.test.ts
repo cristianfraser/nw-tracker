@@ -8,12 +8,10 @@ import {
   type AdditionalCardChargeLineInput,
 } from "./additionalCardReimbursements.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
-import {
-  deleteCheckingIncomeMovementOverride,
-  isCheckingIncomeKind,
-  loadCardReimbursementCredits,
-  upsertCheckingIncomeMovementOverride,
-} from "./flowsCheckingIncomeOverrides.js";
+import { isCheckingIncomeKind } from "./flowsCheckingIncomeOverrides.js";
+import { markCheckingExpenseRefund, unmarkCheckingExpenseRefund } from "./checkingExpenseRefunds.js";
+import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
+import { assignFlowExpenseLineCategory } from "./assignFlowExpenseLineCategory.js";
 
 // Synthetic registry (vitest.config.ts): primary 0781-style cards, additional card 4999.
 const ADDITIONAL = "4999";
@@ -26,7 +24,7 @@ function chargeLine(
     source: "cc",
     origin_card_last4: ADDITIONAL,
     primary_card_last4: PRIMARY,
-    category_slug: "no_cuenta",
+    category_slug: "additional_card",
     line_role: "purchase",
     amount_usd_at_expense: patch.amount_clp / 1000,
     ...patch,
@@ -34,7 +32,7 @@ function chargeLine(
 }
 
 describe("isAdditionalCardChargeLine", () => {
-  it("counts only the additional cardholder's lines left in no_cuenta, as they bill", () => {
+  it("counts only the additional cardholder's lines left in additional_card, as they bill", () => {
     expect(isAdditionalCardChargeLine(chargeLine({ expense_month: "2099-01", amount_clp: 5_000 }))).toBe(true);
     // The user's own card, or his own successor plastic, is his spend.
     expect(
@@ -81,10 +79,11 @@ describe("buildAdditionalCardsSummary", () => {
         chargeLine({ expense_month: "2099-01", amount_clp: 4_000 }),
         chargeLine({ expense_month: "2099-01", amount_clp: -1_000 }), // nota de crédito
         chargeLine({ expense_month: "2099-01", amount_clp: 99_000, category_slug: "food" }),
-      ],
-      [
-        { movement_id: 1, received_on: "2099-01-03", amount_clp: 10_000, amount_usd: 10 },
-        { movement_id: 2, received_on: "2099-02-10", amount_clp: 7_000, amount_usd: 7 },
+        // The cardholder's wires: refund lines in the category.
+        chargeLine({ expense_month: "2099-01", amount_clp: -10_000, source: "checking", origin_card_last4: null, primary_card_last4: null }),
+        chargeLine({ expense_month: "2099-02", amount_clp: -7_000, source: "checking", origin_card_last4: null, primary_card_last4: null }),
+        // Another category's refund is not his.
+        chargeLine({ expense_month: "2099-02", amount_clp: -3_000, source: "checking", category_slug: "food", origin_card_last4: null, primary_card_last4: null }),
       ]
     );
     expect(
@@ -111,10 +110,9 @@ describe("buildAdditionalCardsSummary", () => {
   });
 
   it("reports a null USD figure when a line has no USD equivalent", () => {
-    const summary = buildAdditionalCardsSummary(
-      [chargeLine({ expense_month: "2099-01", amount_clp: 1_000, amount_usd_at_expense: null })],
-      []
-    );
+    const summary = buildAdditionalCardsSummary([
+      chargeLine({ expense_month: "2099-01", amount_clp: 1_000, amount_usd_at_expense: null }),
+    ]);
     expect(summary.by_month[0]!.charges_usd).toBeNull();
     expect(summary.totals.balance_usd).toBeNull();
   });
@@ -178,31 +176,45 @@ function insertCartolaCredit(occurredOn: string, amountClp: number, idx: number)
   return Number(ins.lastInsertRowid);
 }
 
-describe("card_reimbursement income kind", () => {
-  it("is a valid kind", () => {
-    expect(isCheckingIncomeKind("card_reimbursement")).toBe(true);
-    expect(isCheckingIncomeKind("reimbursement")).toBe(false);
+describe("checking credits as expense refunds", () => {
+  it("is no income kind any more", () => {
+    expect(isCheckingIncomeKind("card_reimbursement")).toBe(false);
   });
 
-  it("moves the credit out of income into card_reimbursement_lines", () => {
+  it("moves a refund out of income into a negative gastos line in its category", () => {
     const movementId = insertCartolaCredit("2099-05-12", 12_340, 993101);
     try {
       const before = buildFlowsCheckingIncomePayload();
       expect(before.lines.some((l) => l.movement_id === movementId)).toBe(true);
-      expect(before.card_reimbursement_lines.some((l) => l.movement_id === movementId)).toBe(false);
 
-      upsertCheckingIncomeMovementOverride(movementId, { income_kind: "card_reimbursement" });
+      markCheckingExpenseRefund(movementId, "food");
       const after = buildFlowsCheckingIncomePayload();
       expect(after.lines.some((l) => l.movement_id === movementId)).toBe(false);
       expect(after.filtered_lines.some((l) => l.movement_id === movementId)).toBe(false);
-      const line = after.card_reimbursement_lines.find((l) => l.movement_id === movementId);
-      expect(line?.amount_clp).toBe(12_340);
+      expect(after.refund_lines.find((l) => l.movement_id === movementId)).toMatchObject({ amount_clp: 12_340, category_slug: "food" });
       expect(after.monthly_totals["2099-05"] ?? 0).toBe((before.monthly_totals["2099-05"] ?? 0) - 12_340);
 
-      const credit = loadCardReimbursementCredits().find((c) => c.movement_id === movementId);
-      expect(credit).toMatchObject({ received_on: "2099-05-12", amount_clp: 12_340 });
+      const line = () => buildFlowsExpensesPayload().lines.find((l) => l.source === "checking" && l.statement_line_id === movementId);
+      expect(line()).toMatchObject({ amount_clp: -12_340, category_slug: "food", expense_month: "2099-05", checking_refund: true });
+
+      // The expenses page edits a refund's category like any line's.
+      assignFlowExpenseLineCategory({ lineId: movementId, source: "checking", unique: true, categorySlug: "fun" });
+      expect(line()?.category_slug).toBe("fun");
+
+      unmarkCheckingExpenseRefund(movementId);
+      expect(line()).toBeUndefined();
+      expect(buildFlowsCheckingIncomePayload().lines.some((l) => l.movement_id === movementId)).toBe(true);
     } finally {
-      deleteCheckingIncomeMovementOverride(movementId);
+      unmarkCheckingExpenseRefund(movementId);
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(movementId);
+    }
+  });
+
+  it("refuses a debit", () => {
+    const movementId = insertCartolaCredit("2099-05-13", -5_000, 993102);
+    try {
+      expect(() => markCheckingExpenseRefund(movementId, "food")).toThrow(/not a checking credit/);
+    } finally {
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(movementId);
     }
   });
