@@ -180,6 +180,8 @@ const PROCESSOR_MERCHANT_HINT: Record<string, RegExp> = {
   flow: /FLOW/i,
   pago_facil: /PAGO\s*FACIL/i,
   mercadolibre: /MERCADO\s*LIBRE|MERCADO\s*PAGO|MERPAGO|^MP\s*\*/i,
+  amazon: /AMAZON|AMZN/i,
+  amazon_order: /AMAZON|AMZN/i,
 };
 
 /**
@@ -223,6 +225,13 @@ function sameAmount(r: StoredPaymentReceipt, amount: number, l: ReceiptCandidate
   if (r.currency === "clp") return (l.principal_clp ?? l.amount_clp) === amount;
   return l.amount_usd != null && Math.abs(l.amount_usd - amount) < 0.005;
 }
+
+/**
+ * Documents that summarize an order whose charges another source states one by one: read only for
+ * an order none of whose charges paired (Amazon's order confirmation vs its shipment mails).
+ */
+const ORDER_SUMMARY_OF: Record<string, string> = { amazon_order: "amazon" };
+const ORDER_SUMMARY_DAYS_AFTER = 30;
 
 /** A line may be dated the day before the receipt (a mail sent after midnight) up to a few days after. */
 const DAYS_BEFORE = 1;
@@ -270,13 +279,18 @@ export function matchPaymentReceipts(
   const sorted = [...receipts].sort((a, b) => a.paid_at_chile.localeCompare(b.paid_at_chile) || a.message_id.localeCompare(b.message_id));
 
   /** The line one charge of `r` was taken as, or why there is none. */
-  function lineFor(r: StoredPaymentReceipt, amount: number, claimed: ReadonlySet<string>): ReceiptCandidateLine | "none" | string {
+  function lineFor(
+    r: StoredPaymentReceipt,
+    amount: number,
+    claimed: ReadonlySet<string>,
+    daysAfter = DAYS_AFTER
+  ): ReceiptCandidateLine | "none" | string {
     const paidOn = r.paid_at_chile.slice(0, 10);
     const hint = PROCESSOR_MERCHANT_HINT[r.processor];
     const fits = [...candidates.values()]
       .filter((l) => !taken.has(l.purchase_key) && !claimed.has(l.purchase_key) && sameAmount(r, amount, l))
       .map((l) => ({ l, d: dayDiff(l.purchase_on!, paidOn) }))
-      .filter((c) => c.d >= -DAYS_BEFORE && c.d <= DAYS_AFTER)
+      .filter((c) => c.d >= -DAYS_BEFORE && c.d <= daysAfter)
       .map((c) => ({ ...c, rank: Math.abs(c.d) * 2 + (hint?.test(c.l.merchant ?? "") ? 0 : 1) }))
       .sort((a, b) => a.rank - b.rank);
     if (fits.length === 0) return "none";
@@ -300,8 +314,9 @@ export function matchPaymentReceipts(
     });
   };
 
+  const noLine: StoredPaymentReceipt[] = [];
   for (const r of sorted) {
-    if (r.amount == null) continue;
+    if (r.amount == null || ORDER_SUMMARY_OF[r.processor]) continue;
     const parts = r.charges && r.charges.length > 0 ? r.charges.map((c) => c.amount) : [r.amount];
     const claimed = new Set<string>();
     const picks: ReceiptCandidateLine[] = [];
@@ -316,7 +331,7 @@ export function matchPaymentReceipts(
       picks.push(pick);
     }
     if (failure === "none") {
-      unpaired.no_line = (unpaired.no_line ?? 0) + 1;
+      noLine.push(r);
       continue;
     }
     if (failure != null) {
@@ -325,6 +340,59 @@ export function matchPaymentReceipts(
       continue;
     }
     pair(r, picks);
+  }
+
+  // Shipments of one order that no line carries one by one: the shop may have charged them together
+  // (Amazon charged two shipments of 2025-09-16/17 as one), so they pair with one line of their sum,
+  // dated from their latest.
+  const byOrder = new Map<string, StoredPaymentReceipt[]>();
+  for (const r of noLine) {
+    if (r.order_ref == null || (r.charges?.length ?? 0) > 0) continue;
+    const key = `${r.processor}|${r.currency}|${r.order_ref}`;
+    byOrder.set(key, [...(byOrder.get(key) ?? []), r]);
+  }
+  const combined = new Set<StoredPaymentReceipt>();
+  for (const members of byOrder.values()) {
+    if (members.length < 2) continue;
+    const latest = members[members.length - 1]!;
+    const sum = Math.round(members.reduce((t, m) => t + m.amount!, 0) * 100) / 100;
+    const together: StoredPaymentReceipt = {
+      ...latest,
+      amount: sum,
+      concept: members.map((m) => m.concept).filter((c): c is string => c != null).join(" · ") || null,
+    };
+    const pick = lineFor(together, sum, new Set());
+    if (pick === "none") continue;
+    if (typeof pick === "string") {
+      ambiguous.push(pick);
+      continue;
+    }
+    pair(together, [pick]);
+    receiptsPaired += members.length - 1;
+    for (const m of members) combined.add(m);
+  }
+  for (const r of noLine) {
+    if (!combined.has(r)) unpaired.no_line = (unpaired.no_line ?? 0) + 1;
+  }
+
+  // An order's confirmation stands in for its shipments only when none of them paired: the card
+  // was charged the order total (a gift-card balance paid part of a shipment), or a shipment had no
+  // mail. An order a shipment already accounts for is not a missing pairing.
+  const pairedOrders = new Set([...byPurchaseKey.values()].filter((r) => r.order_ref != null).map((r) => `${r.processor}|${r.order_ref}`));
+  for (const r of sorted) {
+    const of = ORDER_SUMMARY_OF[r.processor];
+    if (!of || r.amount == null) continue;
+    if (pairedOrders.has(`${of}|${r.order_ref}`)) continue;
+    // Charged when the order ships, which may be weeks after it was placed.
+    const pick = lineFor(r, r.amount, new Set(), ORDER_SUMMARY_DAYS_AFTER);
+    if (pick === "none") {
+      unpaired.no_line = (unpaired.no_line ?? 0) + 1;
+    } else if (typeof pick === "string") {
+      ambiguous.push(pick);
+      unpaired.ambiguous = (unpaired.ambiguous ?? 0) + 1;
+    } else {
+      pair(r, [pick]);
+    }
   }
 
   // Receipts stating no amount, once every amount has claimed its lines: the lines left on the
@@ -369,10 +437,12 @@ const PROCESSOR_NAMES: Record<string, string> = {
   micoca_cola: "miCoca-Cola",
   dynavap: "DynaVap",
   mercadolibre: "Mercado Libre",
+  amazon: "Amazon",
+  amazon_order: "Amazon",
 };
 
 /** Sources that are the shop's own order confirmation rather than a processor's receipt. */
-const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre"]);
+const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre", "amazon", "amazon_order"]);
 
 function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: number } | null = null): PaymentReceiptDto {
   const name = PROCESSOR_NAMES[r.processor];

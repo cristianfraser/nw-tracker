@@ -133,6 +133,41 @@ describe("matchPaymentReceipts", () => {
   });
 });
 
+describe("matchPaymentReceipts: shipments and order confirmations", () => {
+  const usd = (id: string, paidAt: string, amount: number, processor: string, order: string, concept: string | null = null): StoredPaymentReceipt => ({
+    ...receipt(id, paidAt, amount, processor),
+    currency: "usd",
+    order_ref: order,
+    concept,
+  });
+  const usdLine = (key: string, on: string, dollars: number) => line(key, on, Math.round(dollars * 900), "AMAZON MKTPL*X1", { amount_usd: dollars });
+
+  it("pairs shipments of one order that no line carries alone with one line of their sum", () => {
+    const { byPurchaseKey, receiptsPaired, unpaired } = matchPaymentReceipts(
+      [usd("s1", "2036-09-16 14:49", 26.08, "amazon", "114-1", "A"), usd("s2", "2036-09-17 05:23", 28.53, "amazon", "114-1", "B")],
+      [usdLine("both", "2036-09-17", 54.61)]
+    );
+    expect(byPurchaseKey.get("both")).toMatchObject({ amount: 54.61, concept: "A · B", order_ref: "114-1" });
+    expect(receiptsPaired).toBe(2);
+    expect(unpaired).toEqual({});
+  });
+
+  it("reads an order confirmation only for an order none of whose shipments paired, up to 30 days on", () => {
+    const { byPurchaseKey, unpaired } = matchPaymentReceipts(
+      [
+        usd("o1", "2036-03-01 10:00", 50, "amazon_order", "114-1"),
+        usd("s1", "2036-03-03 10:00", 50, "amazon", "114-1"),
+        usd("o2", "2036-04-01 10:00", 43.58, "amazon_order", "114-2"),
+        usd("s2", "2036-04-02 10:00", 143.58, "amazon", "114-2"),
+      ],
+      [usdLine("ship", "2036-03-03", 50), usdLine("gift-card", "2036-04-20", 43.58)]
+    );
+    expect(byPurchaseKey.get("ship")?.message_id).toBe("s1");
+    expect(byPurchaseKey.get("gift-card")?.message_id).toBe("o2");
+    expect(unpaired).toEqual({ no_line: 1 }); // the 143.58 shipment; o1 is not missing a line
+  });
+});
+
 describe("storePaymentProcessorReceipts", () => {
   const ID = "<vitest-ml-split@test>";
   afterEach(() => {
