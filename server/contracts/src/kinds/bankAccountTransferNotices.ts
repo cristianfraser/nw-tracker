@@ -81,4 +81,8 @@ export type BankAccountTransferNoticesApplyDetails = {
   unpaired: Record<string, number>;
   /** Mails whose candidate bank rows the matcher could not tell apart (left unpaired). */
   ambiguous: string[];
+  /** Credits written from an incoming transfer's mail because no bank feed lists it yet. */
+  synthesized: { message_id: string; movement_id: number; account_id: number; date: string; amount: number }[];
+  /** Such credits no bank feed has listed by their deadline: the promised money never appeared. */
+  overdue: { message_id: string; movement_id: number; date: string; amount: number; deadline: string | null }[];
 };

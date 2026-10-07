@@ -28,6 +28,7 @@ import { cartolaCashAccountId } from "./movementBalanceCashAccounts.js";
 import { BANK_POSTED_ON_SQL, BANK_POSTING_JOIN_SQL } from "./movementBankPostings.js";
 import { claimTransferLegForBankRow, findMatchingInternalTransferLegId } from "./checkingTransferLegReconcile.js";
 import { confirmSyntheticRetiroForTransferLeg } from "./fintualSyntheticRetiros.js";
+import { confirmTransferNoticeCredit, findTransferNoticeCreditForBankRow } from "./transferNoticeCredits.js";
 import { confirmSyntheticCcPaymentForTransferLeg } from "./santanderSyntheticCcPayments.js";
 import type { ImportFlowItem, SkippedImportFlowItem } from "./checkingPartialMovementsImport.js";
 import { checkingMovementFlowKind } from "./checkingBankCharges.js";
@@ -328,6 +329,7 @@ export function importCheckingCartola(
     amount_clp: mv.amount_clp,
   });
   const consumedTransferLegs = new Set<number>();
+  const consumedMailCredits = new Set<number>();
   const tx = dbHandle.transaction(() => {
     cartola.movements.forEach((mv, cartolaIndex) => {
       const note = movementNote(cartola.period_month, mv.branch, mv.description, mv.document_no, {
@@ -367,6 +369,22 @@ export function importCheckingCartola(
         movementsSkipped += 1;
         movementsSupersededByTransfer += 1;
         skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_transfer" });
+        return;
+      }
+      // Already written from the transfer's mail (and likely confirmed by the daily feed already).
+      const mailCreditId = findTransferNoticeCreditForBankRow(
+        accountId,
+        mv.occurred_on,
+        mv.amount_clp,
+        consumedMailCredits,
+        dbHandle
+      );
+      if (mailCreditId != null) {
+        consumedMailCredits.add(mailCreditId);
+        confirmTransferNoticeCredit(mailCreditId, accountId, mv.occurred_on, "cartola", mv.description, dbHandle);
+        movementsSkipped += 1;
+        movementsSupersededByTransfer += 1;
+        skipped_flows.push({ ...flowOf(mv), reason: "superseded_by_mail" });
         return;
       }
       insMov.run(

@@ -18,7 +18,10 @@
  */
 import { createHash } from "node:crypto";
 import type { BankAccountTransferNoticesApplyDetails, BankAccountTransferNoticesPayload, TransferNotice } from "nw-tracker-contracts";
+import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
+import { listOverdueTransferNoticeCredits } from "./transferNoticeCredits.js";
 
 const WINDOW_DAYS = 6;
 
@@ -41,9 +44,14 @@ export type CounterpartyAccounts = { byRut: ReadonlyMap<string, ReadonlySet<numb
 
 export const normalizeRut = (rut: string | null) => (rut ?? "").replace(/[^0-9kK]/g, "").toUpperCase().replace(/^0+/, "");
 
+/** Why a notice paired with nothing (the keys of `unpaired`). */
+export const NO_BANK_ROW_YET = "no bank row (yet)";
+
 export type TransferNoticeMatch = {
   pairs: TransferNoticePair[];
   unpaired: Record<string, number>;
+  /** Every unpaired notice with its reason. */
+  unpaired_notices: { message_id: string; reason: string }[];
   ambiguous: string[];
 };
 
@@ -74,8 +82,13 @@ export function matchTransferNotices(
   }
   const pairs: TransferNoticePair[] = [];
   const unpaired: Record<string, number> = {};
+  const unpaired_notices: { message_id: string; reason: string }[] = [];
   const ambiguous: string[] = [];
-  const skip = (reason: string) => (unpaired[reason] = (unpaired[reason] ?? 0) + 1);
+  let current = "";
+  const skip = (reason: string) => {
+    unpaired[reason] = (unpaired[reason] ?? 0) + 1;
+    unpaired_notices.push({ message_id: current, reason });
+  };
 
   /** The leg a notice describes on `account`, or a reason it has none. */
   function find(
@@ -112,6 +125,7 @@ export function matchTransferNotices(
 
   const ordered = [...notices].sort((a, b) => a.sent_at_chile.localeCompare(b.sent_at_chile) || a.message_id.localeCompare(b.message_id));
   for (const n of ordered) {
+    current = n.message_id;
     if (n.kind === "schedule_created") {
       skip("scheduled-transfer notice (no money moved)");
       continue;
@@ -164,7 +178,7 @@ export function matchTransferNotices(
     }
     if (failed) {
       for (const c of chosen) claimed.delete(legKey(c));
-      skip(failed === "ambiguous" ? "ambiguous" : "no bank row (yet)");
+      skip(failed === "ambiguous" ? "ambiguous" : NO_BANK_ROW_YET);
       continue;
     }
     for (const c of chosen) {
@@ -172,7 +186,7 @@ export function matchTransferNotices(
       pairs.push({ message_id: n.message_id, movement_id: c.movement_id, account_id: c.account_id });
     }
   }
-  return { pairs, unpaired, ambiguous };
+  return { pairs, unpaired, unpaired_notices, ambiguous };
 }
 
 /** Every bank movement leg on the given accounts (the opening-balance anchor aside), in pesos. */
@@ -211,11 +225,42 @@ function loadCounterpartyAccounts(): CounterpartyAccounts {
   return { byRut, byNumber };
 }
 
-function trackedAccountsFor(issuer: string): Map<string, number> {
+/**
+ * Every peso account the app knows the number of, whichever bank holds it: a notice is about the
+ * account it names, and the bank that mailed it need not hold that account (Banco de Chile mails
+ * the recipient of its clients' transfers to a Santander account).
+ */
+function trackedAccounts(): Map<string, number> {
   const rows = db
-    .prepare(`SELECT account_id, number FROM bank_account_numbers WHERE issuer = ? AND currency = 'clp'`)
-    .all(issuer) as { account_id: number; number: string }[];
-  return new Map(rows.map((r) => [digits(r.number), r.account_id]));
+    .prepare(`SELECT account_id, number FROM bank_account_numbers WHERE currency = 'clp'`)
+    .all() as { account_id: number; number: string }[];
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const key = digits(r.number);
+    if (out.has(key) && out.get(key) !== r.account_id) throw new Error(`bank account number ${r.number} names two accounts`);
+    out.set(key, r.account_id);
+  }
+  return out;
+}
+
+/** How old a mail may be and still have its credit written: past this, the bank feed decides. */
+export const TRANSFER_NOTICE_CREDIT_MAX_AGE_DAYS = 3;
+
+const MAILER_NOTE_PREFIX: Record<string, string> = {
+  santander: "import:santander-mail|",
+  bancochile: "import:bancochile-mail|",
+};
+
+/**
+ * The note of a credit written from a mail, in the mail-rebuilt family
+ * (`import:<issuer>-mail|<mail time>|<description>`, see `isMailRebuiltCheckingNote`).
+ */
+export function transferNoticeCreditNote(issuer: string, n: TransferNotice): string {
+  const prefix = MAILER_NOTE_PREFIX[issuer];
+  if (!prefix) throw new Error(`no note prefix for transfer mails from "${issuer}"`);
+  const who = n.from.name ?? "?";
+  const description = `Transf. de ${who}${n.comment ? ` — ${n.comment}` : ""}`.replace(/\|/g, "/");
+  return `${prefix}${n.sent_at_chile}|${description}`;
 }
 
 const COLUMNS = [
@@ -255,6 +300,41 @@ const hash = (row: Record<string, unknown>) => createHash("sha256").update(JSON.
  * every pairing from all stored notices of the issuer, so a bank row that lands after its mail
  * pairs on the next apply.
  */
+/**
+ * Incoming transfers mailed in the last few days whose bank row has not arrived: their credit is
+ * written from the mail, dated the day it was sent. Never twice for one mail (the record outlives
+ * its movement), never for a notice the matcher found ambiguous, never for an older one.
+ */
+function writeCreditsFromMails(
+  stored: readonly { issuer: string; notice: TransferNotice }[],
+  match: TransferNoticeMatch,
+  tracked: ReadonlyMap<string, number>,
+  todayYmd: string
+): BankAccountTransferNoticesApplyDetails["synthesized"] {
+  const waiting = new Set(match.unpaired_notices.filter((u) => u.reason === NO_BANK_ROW_YET).map((u) => u.message_id));
+  const oldest = chileCalendarAddDays(todayYmd, -TRANSFER_NOTICE_CREDIT_MAX_AGE_DAYS);
+  const known = db.prepare(`SELECT 1 FROM transfer_notice_credits WHERE message_id = ?`);
+  const insMovement = db.prepare(
+    `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
+  );
+  const insCredit = db.prepare(
+    `INSERT INTO transfer_notice_credits (message_id, movement_id, account_id, amount, notice_date) VALUES (?, ?, ?, ?, ?)`
+  );
+  const out: BankAccountTransferNoticesApplyDetails["synthesized"] = [];
+  for (const { issuer, notice: n } of stored) {
+    if (n.kind !== "incoming" || !waiting.has(n.message_id)) continue;
+    const day = n.sent_at_chile.slice(0, 10);
+    if (day < oldest || day > todayYmd || known.get(n.message_id)) continue;
+    const account = tracked.get(digits(n.to.account_number));
+    if (account == null) continue;
+    const movementId = Number(insMovement.run(account, n.amount, day, transferNoticeCreditNote(issuer, n)).lastInsertRowid);
+    insCredit.run(n.message_id, movementId, account, n.amount, day);
+    clearCheckingBalanceCache(account);
+    out.push({ message_id: n.message_id, movement_id: movementId, account_id: account, date: day, amount: n.amount });
+  }
+  return out;
+}
+
 export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayload): BankAccountTransferNoticesApplyDetails {
   const existing = db.prepare(`SELECT * FROM bank_transfer_notices WHERE message_id = ?`);
   const insert = db.prepare(
@@ -273,12 +353,21 @@ export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayl
       insert.run(row);
       added++;
     }
-    const tracked = trackedAccountsFor(payload.issuer);
-    const notices = (db.prepare(`SELECT * FROM bank_transfer_notices WHERE issuer = ?`).all(payload.issuer) as Record<string, unknown>[]).map(rowNotice);
-    const match = matchTransferNotices(notices, tracked, loadTransferCandidateLegs([...new Set(tracked.values())]), loadCounterpartyAccounts());
-    db.prepare(
-      `DELETE FROM movement_transfer_notices WHERE message_id IN (SELECT message_id FROM bank_transfer_notices WHERE issuer = ?)`
-    ).run(payload.issuer);
+    // Every mailer's notices pair together: two mails can describe one bank row.
+    const tracked = trackedAccounts();
+    const stored = (db.prepare(`SELECT * FROM bank_transfer_notices`).all() as Record<string, unknown>[]).map((r) => ({
+      issuer: String(r.issuer),
+      notice: rowNotice(r),
+    }));
+    const notices = stored.map((s) => s.notice);
+    const counterparties = loadCounterpartyAccounts();
+    const matchAll = () => matchTransferNotices(notices, tracked, loadTransferCandidateLegs([...new Set(tracked.values())]), counterparties);
+    let match = matchAll();
+    const today = chileCalendarTodayYmd();
+    const synthesized = writeCreditsFromMails(stored, match, tracked, today);
+    // The credits just written are the bank rows those notices describe.
+    if (synthesized.length > 0) match = matchAll();
+    db.prepare(`DELETE FROM movement_transfer_notices`).run();
     const pair = db.prepare(`INSERT INTO movement_transfer_notices (movement_id, account_id, message_id) VALUES (?, ?, ?)`);
     for (const p of match.pairs) pair.run(p.movement_id, p.account_id, p.message_id);
     return {
@@ -287,6 +376,8 @@ export function applyBankTransferNotices(payload: BankAccountTransferNoticesPayl
       paired: new Set(match.pairs.map((p) => p.message_id)).size,
       unpaired: match.unpaired,
       ambiguous: match.ambiguous,
+      synthesized,
+      overdue: listOverdueTransferNoticeCredits(today),
     };
   }).immediate();
 }

@@ -134,9 +134,11 @@ export function stagedCheckingMovementFiles(dir = resolveInboxDir()): string[] {
 
 /** One line per file with every non-zero skip reason (a row absorbed by a transfer leg included). */
 export function formatCheckingFileSummary(file: string, d: BankAccountMovementsApplyDetails, archivedTo: string | null): string {
-  const parsed = d.inserted + d.skipped_duplicate + d.skipped_superseded_by_cartola + d.skipped_superseded_by_transfer;
+  const parsed =
+    d.inserted + d.skipped_duplicate + d.skipped_superseded_by_cartola + d.skipped_superseded_by_transfer + d.skipped_superseded_by_mail;
   const parts = [`${d.inserted} inserted`, `${d.skipped_duplicate} duplicate(s)`];
   if (d.skipped_superseded_by_cartola > 0) parts.push(`${d.skipped_superseded_by_cartola} superseded by cartola`);
   if (d.skipped_superseded_by_transfer > 0) parts.push(`${d.skipped_superseded_by_transfer} superseded by transfer`);
+  if (d.skipped_superseded_by_mail > 0) parts.push(`${d.skipped_superseded_by_mail} already entered from its transfer mail`);
   return `${file}: ${parsed} row(s) parsed, ${parts.join(", ")}${archivedTo ? `; archived ${archivedTo}` : ""}`;
 }

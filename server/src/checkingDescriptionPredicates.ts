@@ -42,12 +42,13 @@ export function isInvestmentDepositTarget(groupSlug: string): boolean {
 }
 
 /**
- * A movement rebuilt from an issuer's mails where no statement survives:
- * `import:<issuer>-mail|<mail time or "residual" / "standin" …>|<description>` — the Santander
- * cuenta corriente's lost months (scripts/rebuild-checking-gap-from-mails.ts) and the MACH account,
- * which never had statements (scripts/build-mach-account-from-mails.ts).
+ * A movement written from an issuer's mails: `import:<issuer>-mail|<mail time or "residual" /
+ * "standin" …>|<description>` — the Santander cuenta corriente's lost months
+ * (scripts/rebuild-checking-gap-from-mails.ts), the MACH account, which never had statements
+ * (scripts/build-mach-account-from-mails.ts), and an incoming transfer's credit written from its
+ * mail before the bank feed lists it (`transfer_notice_credits`; Santander or Banco de Chile).
  */
-export const MAIL_REBUILT_NOTE_PREFIXES = ["import:santander-mail|", "import:mach-mail|"] as const;
+export const MAIL_REBUILT_NOTE_PREFIXES = ["import:santander-mail|", "import:mach-mail|", "import:bancochile-mail|"] as const;
 
 export function isMailRebuiltCheckingNote(note: string | null | undefined): boolean {
   const n = String(note ?? "").trim();
@@ -232,7 +233,7 @@ export function cartolaDescriptionFromNote(note: string | null | undefined): str
   const partial = parsePartialMovementNote(n);
   if (partial) return partial.description;
   // `import:<issuer>-mail|<mail time or marker>|<description>` (see `isMailRebuiltCheckingNote`).
-  const mail = /^import:(?:santander|mach)-mail\|[^|]*\|(.*)$/.exec(n);
+  const mail = /^import:(?:santander|mach|bancochile)-mail\|[^|]*\|(.*)$/.exec(n);
   if (mail) return mail[1]!.trim();
   if (!n.startsWith("import:cartola|")) return n;
   const rest = n.slice("import:cartola|".length);
