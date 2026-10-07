@@ -2,7 +2,7 @@
   "payment_merchants": ["PAGO", "MONTO CANCELADO", "ABONO"],
   "usd_debt_abono_merchant": "ABONO DE DIVISAS",
   "traspaso_deuda_tokens": ["TRASPASO", "DEUDA"],
-  "clp_section3_charge_pattern": "IMPUESTOS|INTERESES|TRASPASO|COMISION|IMPTO\\.|SERVICIO\\s+USO\\s+INTERNACIONAL|IVA\\s+USO\\s+INTERNACIONAL|NOTA\\s+DE\\s+CREDITO|DCTO\\s+COM|ADM\\|MANTENCION",
+  "clp_section3_charge_pattern": "IMPUESTOS|INTERESES|TRASPASO|COMISION|IMPTO\\.|SERVICIO\\s+USO\\s+INTERNACIONAL|IVA\\s+USO\\s+INTERNACIONAL|SERVICIO\\s+ADMINISTRACION|IMPUESTO\\s+ITE|NOTA\\s+DE\\s+CREDITO|DCTO\\s+COM|ADM\\|MANTENCION",
   "usd_section3_pattern": "IMPUESTOS|INTERESES|TRASPASO|COMISION|ABONO\\s+DE\\s+DIVISAS|SERVICIO|NOTA\\s+DE\\s+CREDITO",
   "usd_garbled_merchant_pattern": "\\bDE\\s+\\d+\\b",
   "usd_garbled_merchant_markers": ["MOVIMIENTOS TARJETA"],

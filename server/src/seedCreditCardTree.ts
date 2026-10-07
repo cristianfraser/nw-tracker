@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
 import { invalidateLinkedCreditCardAggregationCache } from "./aggregationCache.js";
+import { CC_ISSUERS, ccMasterImportKeyPrefix } from "./ccIssuers.js";
 
 const upsertGroup = db.prepare(`
   INSERT INTO credit_card_groups (parent_id, slug, label, sort_order, label_i18n_key, route_path)
@@ -27,27 +28,15 @@ function issuerGroupRoutePath(slug: string): string {
   return `/liabilities/credit-card/${slug}`;
 }
 
-const CC_ISSUER_GROUPS = [
-  {
-    slug: "santander",
-    label: "Santander",
-    sort_order: 0,
-    label_i18n_key: "creditCardGroup.santander",
-    notesLike: "credit_card_master|santander|%",
-  },
-  {
-    slug: "bci",
-    label: "BCI",
-    sort_order: 10,
-    label_i18n_key: "creditCardGroup.bci",
-    notesLike: "credit_card_master|bci|%",
-  },
-] as const;
-
 /** Idempotent credit card issuer groups → master accounts (one per card_last4). */
 export function seedCreditCardTree(): void {
   const tx = db.transaction(() => {
-    for (const g of CC_ISSUER_GROUPS) {
+    for (const g of CC_ISSUERS) {
+      const masters = db
+        .prepare(`SELECT id FROM accounts WHERE import_key LIKE ? ORDER BY import_key`)
+        .all(`${ccMasterImportKeyPrefix(g.slug)}%`) as { id: number }[];
+      // An issuer without a card gets no page (the demo has no CMR card).
+      if (masters.length === 0 && !groupIdBySlug.get(g.slug)) continue;
       upsertGroup.run({
         parent_id: null,
         slug: g.slug,
@@ -59,10 +48,6 @@ export function seedCreditCardTree(): void {
 
       const groupId = (groupIdBySlug.get(g.slug) as { id: number }).id;
       deleteGroupItems.run(groupId);
-
-      const masters = db
-        .prepare(`SELECT id FROM accounts WHERE import_key LIKE ? ORDER BY import_key`)
-        .all(g.notesLike) as { id: number }[];
 
       let sort = 0;
       for (const { id } of masters) {

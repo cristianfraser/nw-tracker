@@ -530,7 +530,9 @@ describe("flowsCheckingGastos", () => {
     expect(isExcludedCheckingWithdrawal("TRASPASO A FINTUAL")).toBe(false);
     expect(isExcludedCheckingWithdrawal("TRASPASO A FONDO RESERVA")).toBe(true);
     expect(isExcludedCheckingWithdrawal("DEPOSITO A RESERVA FINTUAL")).toBe(true);
-    expect(isExcludedCheckingWithdrawal("PAGO EN LINEA PROM. CMR FALABE")).toBe(false);
+    // CMR is a card (·0876): paying it is a card payment like any other.
+    expect(isExcludedCheckingWithdrawal("PAGO EN LINEA PROM. CMR FALABE")).toBe(true);
+    expect(isExcludedCheckingWithdrawal("PAGO EN LINEA CMR FALABELLA")).toBe(true);
   });
 
   it("treats checking outflows paired with cash/efectivo deposits as internal", () => {
@@ -948,7 +950,7 @@ describe("flowsCheckingGastos", () => {
     expect(split.investmentDeposit).toBeNull();
   });
 
-  it("treats Jul 2019 CMR Falabella payment as gastos despite same-day vista traspaso credit", () => {
+  it("never pairs a CMR card payment with a same-day vista traspaso credit, and keeps it out of gastos", () => {
     const vistaId = 99;
     const split = splitCheckingWithdrawalAgainstDeposits(
       {
@@ -966,7 +968,6 @@ describe("flowsCheckingGastos", () => {
     );
     expect(split.internalClp).toBe(0);
     expect(split.gastosClp).toBe(365_970);
-    expect(isExcludedCheckingWithdrawal("PAGO EN LINEA PROM. CMR FALABE")).toBe(false);
 
     const vistaIdReal = cartolaCashAccountIdOptional("cuenta_vista");
     if (vistaIdReal == null) return;
@@ -989,10 +990,8 @@ describe("flowsCheckingGastos", () => {
         },
       ],
     });
-    const hit = lines.find((l) => l.statement_line_id === movId);
-    expect(hit?.amount_clp).toBe(365_970);
-    expect(hit?.category_slug).not.toBe("deposits");
-    expect(hit?.checking_purchase_portion).toBeUndefined();
+    // A card payment: the card's lines carry the spending.
+    expect(lines.find((l) => l.statement_line_id === movId)).toBeUndefined();
     deleteCheckingMovements([movId]);
   });
 
