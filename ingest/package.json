@@ -17,6 +17,7 @@
     "parse:afp-uno-certificate": "tsx src/afpUno/parseCertificateMain.ts",
     "fetch:emails": "tsx src/email/main.ts",
     "fetch:santander-docs": "tsx src/email/santanderDocsMain.ts",
+    "fetch:santander-mail-archive": "tsx src/email/santanderMailArchiveMain.ts",
     "fetch:lider-boletas": "tsx src/email/liderBoletasMain.ts",
     "fetch:lider-statements": "tsx src/email/liderStatementsMain.ts",
     "fetch:fintual-docs": "tsx src/email/fintualDocsMain.ts",
