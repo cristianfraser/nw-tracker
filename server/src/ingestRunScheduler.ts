@@ -150,7 +150,7 @@ export async function ingestSchedulerTick(
           lastPaydayAttemptYmd: lastPaydayAttemptYmd(),
         })
       : null;
-  // A nightly reads the pension certificates from the 10th until a clean import.
+  // Every nightly reads AFP UNO: the balance check runs each night, new rows are expected from the 10th.
   const lastAfpImport = lastCleanPensionImportAt("afp_uno");
   const afpUnoFetch =
     decision.kind === "nightly" ? decideAfpUnoFetch({ now, lastCleanImportAt: lastAfpImport ? new Date(lastAfpImport) : null }) : null;
