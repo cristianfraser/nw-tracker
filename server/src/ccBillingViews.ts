@@ -225,15 +225,7 @@ export function facturadoClpUsdForStatementSlot(
       )
     : { facturado_clp: null as number | null, facturado_usd: null as number | null };
 
-  const facturado_clp =
-    slot.clp?.monto_facturado != null && slot.clp.monto_facturado > 0
-      ? Math.round(slot.clp.monto_facturado)
-      : (clpDerived.facturado_clp ?? 0);
-  const facturado_usd =
-    slot.usd?.monto_facturado != null && slot.usd.monto_facturado > 0
-      ? slot.usd.monto_facturado
-      : (usdDerived.facturado_usd ?? 0);
-  return { facturado_clp, facturado_usd };
+  return { facturado_clp: clpDerived.facturado_clp ?? 0, facturado_usd: usdDerived.facturado_usd ?? 0 };
 }
 
 /** CLP+USD facturado for a billing month from imported statements (header or line-derived). */
@@ -261,22 +253,18 @@ export function facturadoTotalClpForStatementSlot(
       )
     : { facturado_clp: null as number | null, facturado_usd: null as number | null };
 
-  const facturadoClp =
-    slot.clp?.monto_facturado != null && slot.clp.monto_facturado > 0
-      ? Math.round(slot.clp.monto_facturado)
-      : clpDerived.facturado_clp;
-  const facturadoUsd =
-    slot.usd?.monto_facturado != null && slot.usd.monto_facturado > 0
-      ? slot.usd.monto_facturado
-      : usdDerived.facturado_usd;
+  const facturadoClp = clpDerived.facturado_clp;
+  const facturadoUsd = usdDerived.facturado_usd;
 
   const { pay_by_iso: payByIso } = resolveFacturacionPayBy(slot, primary);
   const facturadoUsdClp =
     facturadoUsd != null
       ? usdToClpAsDebt(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
       : null;
-  const total = (facturadoClp ?? 0) + (facturadoUsdClp ?? 0);
-  return total > 0 ? total : null;
+  // A statement in credit bills a negative amount (`statementHeaderFacturado`): the total may be
+  // 0 or below, and is still what the statements billed.
+  if (facturadoClp == null && facturadoUsdClp == null) return null;
+  return (facturadoClp ?? 0) + (facturadoUsdClp ?? 0);
 }
 
 const stmtPaymentLinesForStatement = db.prepare(`
@@ -779,7 +767,7 @@ function appendProjectedBillingDetailRows(
 
 /** USD valued as debt for a facturación paid by `payByIso`: the pay-by − 1 rate (`balanceUsdFxDateIso`). */
 function usdToClpAsDebt(usd: number, payByIso: string | null): number | null {
-  if (!Number.isFinite(usd) || usd <= 0 || !payByIso) return null;
+  if (!Number.isFinite(usd) || !payByIso) return null;
   const fx = fxMonthEndForBalanceUsd(payByFxDateIso(payByIso));
   if (!fx?.clp_per_usd || fx.clp_per_usd <= 0) return null;
   return Math.round(usd * fx.clp_per_usd);
@@ -934,14 +922,8 @@ function buildFacturacionesInner(
         )
       : { facturado_clp: null as number | null, facturado_usd: null as number | null };
 
-    let facturadoClp =
-      slot.clp?.monto_facturado != null && slot.clp.monto_facturado > 0
-        ? Math.round(slot.clp.monto_facturado)
-        : clpDerived.facturado_clp;
-    let facturadoUsd =
-      slot.usd?.monto_facturado != null && slot.usd.monto_facturado > 0
-        ? slot.usd.monto_facturado
-        : usdDerived.facturado_usd;
+    let facturadoClp = clpDerived.facturado_clp;
+    let facturadoUsd = usdDerived.facturado_usd;
 
     const { pay_by, pay_by_iso: payByIso } = resolveFacturacionPayBy(slot, primary);
     let facturadoUsdClp =

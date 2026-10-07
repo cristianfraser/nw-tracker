@@ -455,7 +455,7 @@ const tx = db.transaction(() => {
   closes.slice(1).forEach((close, i) => {
     const from = closes[i]!;
     const next = closes[i + 2] ?? cs.next.close;
-    const src = `reconstruido de correos: ${close} estado de cuenta tarjeta ${last4}`;
+    const src = `import:santander-mail|reconstruido de correos: ${close} estado de cuenta tarjeta ${last4}`;
     const payBy = addDays(close, cs.pay_by_days);
     const paid = paidIn.get(close) ?? 0;
     const clpId = Number(

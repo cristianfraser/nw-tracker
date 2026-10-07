@@ -268,6 +268,13 @@ export type PostCloseStreamEntry = {
   statement_date: string | null;
 };
 
+/** Two calendar months before a close: a line dated on or before it, billed at that close, is backdated. */
+function backdatedPostingCutoffIso(closeIso: string): string {
+  const ym = addCalendarMonths(closeIso.slice(0, 7), -2);
+  const lastDay = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).getUTCDate();
+  return `${ym}-${String(Math.min(Number(closeIso.slice(8, 10)), lastDay)).padStart(2, "0")}`;
+}
+
 export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntry[] {
   return getAggregationCached(`${cacheKeyCcBillingDetail(accountId)}|postclose_lines`, () => {
     const rows = db
@@ -303,8 +310,15 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
       if (superseded.has(r.id)) continue;
       if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
       // Transaction date, else posting date: a line printing only its posting date used to drop out here.
-      const iso = statementLineDateIso(r);
+      let iso = statementLineDateIso(r);
       if (!iso) continue;
+      // Dated two cycles or more before the statement that billed it: a backdated posting (a nota de
+      // crédito carries the original purchase's date — ·0161's −4xx.xxx dated 22/02/2018 on the
+      // June statement, −3xx.xxx dated 18/06/2020 on August's). It entered the debt in that
+      // statement's cycle, so the walk and the month-end anchors both take it at that close;
+      // dated at the purchase, the walk had counted it months before any anchor did.
+      const closeIso = parseDdMmYyToIso(r.statement_date);
+      if (closeIso && iso <= backdatedPostingCutoffIso(closeIso)) iso = closeIso;
       const key = r.dedupe_key ?? `${iso}|${r.merchant}|${r.amount_clp}|${r.amount_usd}`;
       const linkedTraspasoClp =
         r.statement_currency === "usd" ? traspasoClpByUsdLineId.get(r.id) : undefined;
@@ -359,15 +373,24 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
     // The dated legs of header payments a statement printed without a date (migration 213):
     // payments like the dated ones above, which the walk and the month-end anchors otherwise
     // never subtracted. A leg is the bank-debit remainder of its header, never a printed line.
+    // A dollar leg (migration 218: an old international statement's header abono) is valued like
+    // the dollar lines of its statement, at that statement's debt fx.
     const legs = db
-      .prepare(`SELECT statement_close_iso, paid_on, amount_clp FROM cc_header_payment_legs WHERE account_id = ?`)
-      .all(accountId) as { statement_close_iso: string; paid_on: string; amount_clp: number }[];
+      .prepare(`SELECT statement_close_iso, currency, paid_on, amount FROM cc_header_payment_legs WHERE account_id = ?`)
+      .all(accountId) as { statement_close_iso: string; currency: "clp" | "usd"; paid_on: string; amount: number }[];
     for (const g of legs) {
+      const statementDate = ddMmYyyyFromIso(g.statement_close_iso);
+      let clp: number | null = g.amount;
+      if (g.currency === "usd") {
+        const fxIso = fxDateFor(statementDate);
+        const fx = fxIso ? fxMonthEndForBalanceUsd(fxIso)?.clp_per_usd : null;
+        clp = fx != null && fx > 0 ? g.amount * fx : null;
+      }
       lines.push({
         iso: g.paid_on,
-        key: `hdr-leg|${g.statement_close_iso}|${g.paid_on}|${g.amount_clp}`,
-        clp: -g.amount_clp,
-        statement_date: ddMmYyyyFromIso(g.statement_close_iso),
+        key: `hdr-leg|${g.statement_close_iso}|${g.currency === "usd" ? "usd|" : ""}${g.paid_on}|${g.amount}`,
+        clp: clp != null ? -clp : null,
+        statement_date: statementDate,
       });
     }
 
@@ -452,7 +475,8 @@ export function postCloseLiveBalanceAdjustmentsClp(
  * next one. A line's facturación is its statement row's (`billedMonthByStatementDate`, from
  * `facturacionMonthByStatementDate`, so a provisional month's bucket is billed by that month and a
  * stale bucket by the open one); a line on several statement versions counts as billed by the
- * earliest. A line dated two cycles or more before its statement is backdated and left out. The daily walk's window starts at its anchor's date, not at a close
+ * earliest. A backdated line carries its statement's close as its date (`normalizedPostCloseLines`),
+ * so it is billed by then and never counts here. The daily walk's window starts at its anchor's date, not at a close
  * (`postCloseLiveBalanceAdjustmentsClp`).
  */
 export function unbilledAtMonthEndAdjustmentsClp(
@@ -462,13 +486,6 @@ export function unbilledAtMonthEndAdjustmentsClp(
 ): number[] {
   if (windows.length === 0) return [];
   const entries = normalizedPostCloseLines(accountId);
-  const closeByMonth = new Map<string, string>();
-  for (const [date, bm] of billedMonthByStatementDate) {
-    const iso = parseDdMmYyToIso(date);
-    if (!iso) throw new Error(`Account ${accountId}: unreadable statement date ${date}`);
-    const prev = closeByMonth.get(bm);
-    if (prev == null || iso > prev) closeByMonth.set(bm, iso);
-  }
   const firstBilled = new Map<string, string | null>();
   for (const e of entries) {
     let bm: string | null = null;
@@ -486,11 +503,6 @@ export function unbilledAtMonthEndAdjustmentsClp(
       if (e.iso > w.monthEndIso || seen.has(e.key)) continue;
       const billed = firstBilled.get(e.key) ?? null;
       if (billed != null && billed <= w.billingMonth) continue;
-      // Dated two or more cycles before the statement that billed it: a backdated posting (a nota
-      // de crédito carries the original purchase's date), not a late one. When it moved the debt
-      // is unknown, so it enters at that statement's own figure, as before.
-      const twoBack = billed != null ? closeByMonth.get(addCalendarMonths(billed, -2)) : undefined;
-      if (twoBack != null && e.iso <= twoBack) continue;
       seen.add(e.key);
       if (e.clp != null) sum += e.clp;
     }
@@ -634,18 +646,24 @@ function installmentCuotaDueForAccountStatementDateClp(
 }
 
 /** Header monto_facturado when present; otherwise Σ revolving lines + installment cuotas on that close. */
+/**
+ * What a statement's header says it billed: «Monto total facturado a pagar» as printed, whatever
+ * the sign — a period that ended in credit bills a negative amount (·0161: the peso statement of
+ * 2018-06-25, −2xx.xxx, and six dollar ones), one with nothing to pay 0. Null only when the
+ * statement prints none (open buckets, web pastes), which falls back to its lines. Reading ≤ 0 as
+ * «no header» had left every credit out of the month-end anchors.
+ */
+export function statementHeaderFacturado(stmt: { monto_facturado: number | null }): number | null {
+  return stmt.monto_facturado != null && Number.isFinite(stmt.monto_facturado) ? stmt.monto_facturado : null;
+}
+
 export function facturadoFromStatement(
   accountId: number,
   statementDate: string,
   stmt: { currency: string; monto_facturado: number | null; source_pdf?: string | null },
   fxDate: string
 ): { facturado_clp: number | null; facturado_usd: number | null } {
-  const headerMonto =
-    stmt.monto_facturado != null &&
-    Number.isFinite(stmt.monto_facturado) &&
-    stmt.monto_facturado > 0
-      ? stmt.monto_facturado
-      : null;
+  const headerMonto = statementHeaderFacturado(stmt);
   if (headerMonto != null) {
     if (stmt.currency === "usd") {
       const fx = fxMonthEndForBalanceUsd(balanceUsdFxDateIso(accountId, statementDate))?.clp_per_usd;

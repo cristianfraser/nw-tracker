@@ -145,7 +145,7 @@ export function buildSantanderStatementRecords(
     statement_abono: "",
     statement_compras_cargos: "",
     statement_deuda_total: "",
-    statement_monto_facturado: currency === "clp" && billed != null && billed > 0 ? String(billed) : "",
+    statement_monto_facturado: currency === "clp" && billed != null ? String(billed) : "",
     statement_monto_pagado_anterior:
       currency === "clp" && totalPagos != null && totalPagos > 0 ? String(-totalPagos) : "",
     statement_monto_pagado_anterior_date: currency === "clp" ? (pagadoDate ?? "") : "",

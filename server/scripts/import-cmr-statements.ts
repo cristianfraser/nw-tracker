@@ -195,7 +195,7 @@ const tx = db.transaction(() => {
   for (const s of statements) {
     const paid = s.lines.filter(isPayment).reduce((t, l) => t + l.amount, 0);
     const statementId = Number(
-      insStatement.run(card, s.file.replace(/\.txt$/, ".pdf"), s.period_to, s.period_from, s.period_to, s.pay_by,
+      insStatement.run(card, `import:cmr|${s.file.replace(/\.txt$/, ".pdf")}`, s.period_to, s.period_from, s.period_to, s.pay_by,
         plan.last4, previous, paid, s.billed - previous - paid, s.billed, s.billed, s.next_from, s.next_to).lastInsertRowid
     );
     s.lines.forEach((l, n) => {

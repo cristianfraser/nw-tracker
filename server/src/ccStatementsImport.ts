@@ -339,7 +339,9 @@ export function importCcStatementsMerge(
         const v =
           parseUsdAmount(String(first.statement_monto_facturado ?? "")) ??
           parseOptionalChileanInteger(String(first.statement_monto_facturado ?? ""));
-        return v != null && v > 0 ? v : null;
+        // As printed, whatever the sign: a period that ended in credit bills a negative amount,
+        // one with nothing to pay 0 (`statementHeaderFacturado`).
+        return v ?? null;
       })(),
       monto_pagado_anterior:
         parseUsdAmount(String(first.statement_monto_pagado_anterior ?? "")) ??

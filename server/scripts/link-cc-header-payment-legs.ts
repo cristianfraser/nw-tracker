@@ -172,8 +172,8 @@ const tx = db.transaction(() => {
   }
 
   const insLeg = db.prepare(
-    `INSERT INTO cc_header_payment_legs (account_id, statement_close_iso, paid_on, amount_clp, source)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO cc_header_payment_legs (account_id, statement_close_iso, currency, paid_on, amount, source)
+     VALUES (?, ?, 'clp', ?, ?, ?)`
   );
   for (const leg of legs) {
     insLeg.run(leg.account_id, leg.close, leg.paid_on, leg.amount, leg.source);
