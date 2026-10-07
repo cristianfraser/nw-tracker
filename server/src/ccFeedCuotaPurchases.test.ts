@@ -18,6 +18,7 @@ import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { convertStatementLineToInstallmentPurchase } from "./ccInstallmentManual.js";
 import { buildCcExpenseLines } from "./flowsExpenses.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
+import { resolveCcExpensePurchaseKey } from "./ccExpenseCategories.js";
 import { webPasteLineDedupeKey, type CcWebPasteLine } from "./ccWebPasteParse.js";
 
 describe("feed cuota purchase rules", () => {
@@ -178,6 +179,8 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     db.prepare(`DELETE FROM cc_feed_billing_closes WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ?`).run(accountId);
+    db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM import_batches WHERE raw_text LIKE ?`).run(`%"account_id":${accountId},%`);
     db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(accountId);
@@ -185,6 +188,54 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
     if (prevIdentifiers == null) delete process.env.NW_TRACKER_ORGANIZE_IDENTIFIERS;
     else process.env.NW_TRACKER_ORGANIZE_IDENTIFIERS = prevIdentifiers;
+  });
+
+  /** Category slug and origin of the bucket line the feed wrote for this merchant. */
+  function storedLine(merchant: string): { origin: string | null; slug: string | null } {
+    const line = db
+      .prepare(
+        `SELECT l.id, l.origin_card_last4 AS origin FROM cc_statement_lines l
+         JOIN cc_statements s ON s.id = l.statement_id
+         WHERE s.account_id = ? AND l.merchant = ?`
+      )
+      .get(accountId, merchant) as { id: number; origin: string | null };
+    const cat = db
+      .prepare(
+        `SELECT c.slug FROM cc_expense_unique_purchases u
+         JOIN cc_expense_categories c ON c.id = u.category_id
+         WHERE u.account_id = ? AND u.purchase_key = ?`
+      )
+      .get(accountId, resolveCcExpensePurchaseKey(line.id)) as
+      | { slug: string }
+      | undefined;
+    return { origin: line.origin, slug: cat?.slug ?? null };
+  }
+
+  it("stores a feed line the additional cardholder made under the active additional card, tagged additional_card", () => {
+    // Synthetic registry: 4999 is the additional card; the August statement printed it.
+    const aug = db
+      .prepare(`SELECT id FROM cc_statements WHERE account_id = ? AND currency = 'clp'`)
+      .get(accountId) as { id: number };
+    db.prepare(
+      `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, origin_card_last4)
+       VALUES (?, '10/08/2026', 'VITEST ADICIONAL AGOSTO', 5000, 0, '4999')`
+    ).run(aug.id);
+
+    feed([
+      { ...listingLine("2026-09-10", "VITEST ADICIONAL", 20_400), holder: "additional" },
+      { ...listingLine("2026-09-10", "VITEST TITULAR", 11_960), holder: "titular" },
+      listingLine("2026-09-10", "VITEST PENDIENTE", 7_000),
+    ]);
+
+    expect(storedLine("VITEST ADICIONAL")).toEqual({ origin: "4999", slug: "additional_card" });
+    expect(storedLine("VITEST TITULAR")).toEqual({ origin: LAST4, slug: null });
+    expect(storedLine("VITEST PENDIENTE")).toEqual({ origin: LAST4, slug: null });
+  });
+
+  it("refuses an additional line on a card no statement shows an additional card for", () => {
+    expect(() => feed([{ ...listingLine("2026-09-10", "VITEST ADICIONAL", 20_400), holder: "additional" }])).toThrow(
+      /no statement of this account prints an additional card/
+    );
   });
 
   it("turns known-count cuota purchases into plans, tags the rest, and bills neither in full", () => {

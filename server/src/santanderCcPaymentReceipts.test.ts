@@ -48,6 +48,7 @@ const SANTANDER_FEED_PAGO_ROW = {
   currency: "clp" as const,
   amount: -111222,
   raw_text: "07/08/2026 PAGO PAGO 111.222",
+  holder: "titular" as const,
 };
 
 describe("santanderReceiptCardLine", () => {
@@ -61,6 +62,7 @@ describe("santanderReceiptCardLine", () => {
       currency: "usd",
       amount: -123.45,
       raw_text: "07/08/2026 ABONO DE DIVISAS ABONO DE DIVISAS 123,45",
+      holder: "titular",
     });
   });
 });
