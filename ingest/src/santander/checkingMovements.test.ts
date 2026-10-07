@@ -72,6 +72,7 @@ describe("formatCheckingFileSummary", () => {
     skipped_duplicate: 6,
     skipped_superseded_by_cartola: 0,
     skipped_superseded_by_transfer: 1,
+    skipped_superseded_by_mail: 0,
     inserted_flows: [],
     skipped_flows: [],
   };

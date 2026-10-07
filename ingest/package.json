@@ -18,7 +18,7 @@
     "fetch:emails": "tsx src/email/main.ts",
     "fetch:santander-docs": "tsx src/email/santanderDocsMain.ts",
     "fetch:santander-mail-archive": "tsx src/email/santanderMailArchiveMain.ts",
-    "import:santander-transfer-mails": "tsx src/santander/transferMailsMain.ts",
+    "import:transfer-mails": "tsx src/transfers/transferMailsMain.ts",
     "import:payment-receipt-mails": "tsx src/payments/paymentReceiptMailsMain.ts",
     "fetch:lider-boletas": "tsx src/email/liderBoletasMain.ts",
     "fetch:lider-statements": "tsx src/email/liderStatementsMain.ts",

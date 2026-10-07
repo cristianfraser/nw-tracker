@@ -56,6 +56,8 @@ export type BankAccountMovementsApplyDetails = {
   skipped_duplicate: number;
   skipped_superseded_by_cartola: number;
   skipped_superseded_by_transfer: number;
+  /** Credits already written from the transfer's mail during the day. */
+  skipped_superseded_by_mail: number;
   inserted_flows: { occurred_on: string; description: string; amount_clp: number }[];
   skipped_flows: { occurred_on: string; description: string; amount_clp: number; reason: string }[];
 };

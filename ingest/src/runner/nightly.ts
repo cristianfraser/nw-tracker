@@ -74,8 +74,8 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
 
   // 3c'. Santander's transfer mails of the last weeks: who each checking transfer went to or came
   // from (the checking rows of the day are in by now; a later row pairs on a later night).
-  if (o.dryRun) await x.step(dry("Santander transfer mails"), npmRun("import:santander-transfer-mails", "--dry-run"));
-  else await x.step("Santander transfer mails", npmRun("import:santander-transfer-mails"));
+  if (o.dryRun) await x.step(dry("Transfer mails"), npmRun("import:transfer-mails", "--dry-run"));
+  else await x.step("Transfer mails", npmRun("import:transfer-mails"));
 
   // 3c''. Payment processors' receipts (Flow, Pago Fácil): who a «PAGOS.FLOW.CL» / «PAGO FACIL»
   // charge actually paid. The card lines they pair with are in by now.

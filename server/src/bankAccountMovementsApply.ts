@@ -35,6 +35,7 @@ export function applyBankAccountMovements(
     skipped_duplicate: result.skipped_duplicate,
     skipped_superseded_by_cartola: result.skipped_superseded_by_cartola,
     skipped_superseded_by_transfer: result.skipped_superseded_by_transfer,
+    skipped_superseded_by_mail: result.skipped_superseded_by_mail,
     errors: payload.rejected_rows,
   });
   return { account_id: accountId, batch_id, ...result };

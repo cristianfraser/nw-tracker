@@ -49,7 +49,7 @@ describe("runNightly", () => {
       "run import:santander-movements",
       "run convert:cc-payment-mirrors",
       "run check:cc-bank-cupo",
-      "run import:santander-transfer-mails",
+      "run import:transfer-mails",
       "run import:payment-receipt-mails",
       "run import:apple-mail",
       "run fetch:emails",
@@ -135,6 +135,7 @@ describe("runHourly", () => {
       "run fetch:fintual-docs",
       "run fetch:apple-mail",
       "run fetch:emails",
+      "run import:transfer-mails -- --days=2",
     ]);
     expect(notes).toContain("=== inbox pipeline (skipped — nothing new staged)");
   });
@@ -149,7 +150,16 @@ describe("runHourly", () => {
       "run import:cfraser-inbox",
       "run import:fintual-emails -- --apply",
       "run import:racional-emails -- --apply",
+      "run import:transfer-mails -- --days=2",
     ]);
+  });
+
+  it("counts a credit written from a transfer mail as activity", async () => {
+    const { x } = fakeRunner({
+      "fetch:emails": "e-mail: 0 broker message(s)",
+      "import:transfer-mails": "  credit written from the mail: movement 9, 2030-10-07 $29597 on account 22",
+    });
+    expect((await runHourly(x, HOURLY)).activity).toBe(true);
   });
 
   it("runs a photo waiting in the grocery inbox through the pipeline", async () => {
@@ -174,6 +184,7 @@ describe("runHourly", () => {
       "run convert:cc-payment-mirrors",
       "run check:cc-bank-cupo",
       "run import:cfraser-inbox",
+      "run import:transfer-mails -- --days=2",
     ]);
   });
 
