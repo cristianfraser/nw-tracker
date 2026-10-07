@@ -77,10 +77,23 @@ function decodedBodyText(source: Buffer): string {
   return mimeBodyToText(entityText(source.toString("latin1")), 8000).replace(/\s+/g, " ").trim();
 }
 
-export async function archiveSantanderMails(opts: {
+export type ArchivedMail = SantanderArchivedMail;
+
+/**
+ * Stage one sender's mails for a date range as `{message_id, sent_at_chile, from, subject, text}`,
+ * oldest first, under `cfraser/<dir>/<fileName>`. Envelopes are read first and only a subject
+ * `wantSubject` accepts is downloaded; `keep` may still drop a mail by its text.
+ */
+export async function archiveMails(opts: {
+  /** The sender, as IMAP FROM matches it (an address or a domain). */
+  from: string;
+  label: string;
   fromYmd: string;
   toYmd: string;
-  /** File name under `cfraser/santander-mail-archive/` (default `<from>_<to>.json`). */
+  wantSubject: (subject: string) => boolean;
+  keep?: (mail: ArchivedMail) => boolean;
+  /** Folder under `cfraser/`. */
+  dir: string;
   fileName?: string;
 }): Promise<{ file: string; count: number }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.fromYmd) || !/^\d{4}-\d{2}-\d{2}$/.test(opts.toYmd)) {
@@ -94,9 +107,9 @@ export async function archiveSantanderMails(opts: {
     auth: { user: config.address, pass: readKeychainSecret(config.keychain_service, config.address) },
     logger: false,
   });
-  logStep(`e-mail — Santander transactional mails ${opts.fromYmd} → ${opts.toYmd}`);
+  logStep(`e-mail — ${opts.label} ${opts.fromYmd} → ${opts.toYmd}`);
   await client.connect();
-  const mails: SantanderArchivedMail[] = [];
+  const mails: ArchivedMail[] = [];
   try {
     const allMail = (await client.list()).find((b) => b.specialUse === "\\All");
     if (!allMail) throw new Error("No All Mail folder on this account");
@@ -107,12 +120,10 @@ export async function archiveSantanderMails(opts: {
       since.setUTCDate(since.getUTCDate() - 1);
       const before = new Date(`${opts.toYmd}T00:00:00Z`);
       before.setUTCDate(before.getUTCDate() + 2);
-      const uids = ((await client.search({ from: "santander.cl", since, before })) || []) as number[];
-      // Envelopes first: only a transactional subject (or a possible facturado notice) is downloaded.
+      const uids = ((await client.search({ from: opts.from, since, before })) || []) as number[];
       const wanted: number[] = [];
       for await (const msg of client.fetch(uids, { envelope: true, uid: true })) {
-        const subject = String(msg.envelope?.subject ?? "").trim();
-        if (TRANSACTIONAL_SUBJECT.test(subject) || FACTURADO_SUBJECT.test(subject)) wanted.push(msg.uid);
+        if (opts.wantSubject(String(msg.envelope?.subject ?? "").trim())) wanted.push(msg.uid);
       }
       for await (const msg of client.fetch(wanted, { envelope: true, source: true, uid: true }, { uid: true })) {
         const subject = String(msg.envelope?.subject ?? "").trim();
@@ -121,15 +132,15 @@ export async function archiveSantanderMails(opts: {
         const sent = chileClock.format(date).replace(",", "");
         if (sent.slice(0, 10) < opts.fromYmd || sent.slice(0, 10) > opts.toYmd) continue;
         if (!msg.source) throw new Error(`mail ${msg.uid} «${subject}» came without its source`);
-        const text = decodedBodyText(msg.source);
-        if (!TRANSACTIONAL_SUBJECT.test(subject) && !FACTURADO_TEXT.test(text)) continue;
-        mails.push({
+        const mail: ArchivedMail = {
           message_id: String(msg.envelope?.messageId ?? `uid-${msg.uid}`),
           sent_at_chile: sent,
           from: String(msg.envelope?.from?.[0]?.address ?? ""),
           subject,
-          text,
-        });
+          text: decodedBodyText(msg.source),
+        };
+        if (opts.keep && !opts.keep(mail)) continue;
+        mails.push(mail);
       }
     } finally {
       lock.release();
@@ -138,9 +149,27 @@ export async function archiveSantanderMails(opts: {
     await client.logout();
   }
   mails.sort((a, b) => a.sent_at_chile.localeCompare(b.sent_at_chile));
-  const dir = ensureDir(path.join(resolveCfraserDir(), "santander-mail-archive"));
+  const dir = ensureDir(path.join(resolveCfraserDir(), opts.dir));
   const file = path.join(dir, opts.fileName ?? `${opts.fromYmd}_${opts.toYmd}.json`);
   fs.writeFileSync(file, `${JSON.stringify(mails, null, 2)}\n`);
-  log(`e-mail: ${mails.length} transactional mail(s) → ${file}`);
+  log(`e-mail: ${mails.length} mail(s) → ${file}`);
   return { file, count: mails.length };
+}
+
+export async function archiveSantanderMails(opts: {
+  fromYmd: string;
+  toYmd: string;
+  /** File name under `cfraser/santander-mail-archive/` (default `<from>_<to>.json`). */
+  fileName?: string;
+}): Promise<{ file: string; count: number }> {
+  return archiveMails({
+    from: "santander.cl",
+    label: "Santander transactional mails",
+    fromYmd: opts.fromYmd,
+    toYmd: opts.toYmd,
+    wantSubject: (subject) => TRANSACTIONAL_SUBJECT.test(subject) || FACTURADO_SUBJECT.test(subject),
+    keep: (mail) => TRANSACTIONAL_SUBJECT.test(mail.subject) || FACTURADO_TEXT.test(mail.text),
+    dir: "santander-mail-archive",
+    fileName: opts.fileName,
+  });
 }
