@@ -39,6 +39,16 @@ export interface AccountPositionSnapshot {
   dividends_clp?: number;
   total_return_clp?: number | null;
   return_on_deposited_pct?: number | null;
+  /** Stock accounts: the shares split by the cash account that paid for them (one account per ticker, any broker). */
+  brokers?: EquityBrokerHolding[];
+}
+
+export interface EquityBrokerHolding {
+  cash_account_id: number | null;
+  cash_account_name: string | null;
+  units: number;
+  share: number;
+  value_clp: number | null;
 }
 
 export interface FxCoverage {

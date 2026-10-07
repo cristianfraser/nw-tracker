@@ -772,6 +772,15 @@
       "colDelta": "Δ",
       "totalLabel": "Todos los pagos",
       "coveredFrom": "Totales desde {{date}} ({{covered}} de {{total}} pagos): los pagos anteriores son de antes de este portafolio."
+    },
+    "brokerHoldings": {
+      "title": "Tenencia por cuenta de origen",
+      "hint": "El mismo ticker en varios brókeres: las acciones según la cuenta de caja que las pagó.",
+      "colAccount": "Cuenta de caja",
+      "colUnits": "Unidades",
+      "colShare": "Proporción",
+      "colValue": "Valor hoy (CLP)",
+      "noCashAccount": "Sin cuenta de caja"
     }
   },
   "periodReturns": {
@@ -1637,6 +1646,24 @@
     "taxYearLabel": "Año tributario",
     "taxYearOption": "AT{{year}} (ingresos {{income}})",
     "estimatedTitle": "Estimado desde la app hasta que el tercero lo informe",
-    "estimatedNote": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC; 2025 quedó a 0,9% de lo informado por Fintual) e intereses del crédito hipotecario (2025: +1,9% vs el banco). Los reemplazan las DJ que los terceros presentan en marzo."
+    "estimatedNote": "≈ estimado desde la app: rescates de fondos (FIFO, costo reajustado por IPC; 2025 quedó a 0,9% de lo informado por Fintual) e intereses del crédito hipotecario (2025: +1,9% vs el banco). Los reemplazan las DJ que los terceros presentan en marzo.",
+    "lossOffset": {
+      "unusedOpen": "Pérdida sin compensar en {{year}}: {{amount}}. Ganancias de hasta {{amount}} en el mismo grupo (cripto, fondos, intereses, acciones o dividendos extranjeros) realizadas antes del {{year}}-12-31 no pagarían impuesto.",
+      "unusedOpenTax": "Sin la pérdida costarían ≈ {{tax}} de IGC. Las pérdidas no se arrastran al año siguiente.",
+      "unusedClosed": "{{amount}} de pérdida quedaron sin compensar en {{year}}: el grupo no tenía ganancias para absorberla, y las pérdidas no se arrastran.",
+      "taxedOpen": "Ganancia sin compensar en {{year}}: {{amount}}. Realizar pérdidas en cripto o fondos de hasta {{amount}} antes del {{year}}-12-31 la compensaría (una pérdida en acciones extranjeras no).",
+      "taxedOpenTax": "Eso ahorraría ≈ {{tax}} de IGC.",
+      "breakdown": "Grupo del código 169: {{parts}}.",
+      "source": {
+        "crypto": "cripto",
+        "foreign_shares": "acciones extranjeras",
+        "foreign_dividends": "dividendos extranjeros",
+        "funds_interest": "fondos e intereses"
+      },
+      "taxedOpenNoTax": "Con los ingresos registrados hasta ahora no paga IGC.",
+      "foreignUnusedOpen": "Pérdida en acciones extranjeras en {{year}}: {{amount}}. Solo compensa ganancias en acciones extranjeras del mismo año, no sueldo, fondos ni cripto: vender acciones extranjeras con ganancia de hasta {{amount}} antes del {{year}}-12-31 no pagaría impuesto.",
+      "foreignUnusedClosed": "{{amount}} de pérdida en acciones extranjeras quedaron sin usar en {{year}}: solo compensa ganancias en acciones extranjeras del mismo año y no se arrastra.",
+      "foreignTaxedOpen": "Ganancia en acciones extranjeras en {{year}}: {{amount}}. Vender acciones extranjeras, cripto o fondos con pérdida de hasta {{amount}} antes del {{year}}-12-31 la compensaría."
+    }
   }
 }
