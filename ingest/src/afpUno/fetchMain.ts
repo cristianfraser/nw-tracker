@@ -193,7 +193,13 @@ function printDetails(d: PensionAccountCertificatesApplyDetails): void {
       `  ${r.occurred_on ?? "(pending)"}  ${r.period}  ${r.kind.padEnd(22)} ${String(r.pesos).padStart(9)} clp ${r.cuotas.toFixed(2).padStart(7)} cuotas  [${r.state}${id}]${r.detail ? ` ${r.detail}` : ""}`
     );
   }
-  console.log(`  balance: stated ${d.balance.stated_cuotas.toFixed(2)} cuotas, ledger after this read ${d.balance.ledger_cuotas_after.toFixed(2)}`);
+  console.log(`  balance: stated ${d.balance.stated_cuotas.toFixed(4)} cuotas, ledger after this read ${d.balance.ledger_cuotas_after.toFixed(4)}`);
+  const v = d.value_check;
+  console.log(
+    v.status === "waiting"
+      ? `  value: website ${v.site_pesos} pesos — ${v.detail}`
+      : `  value: website ${v.site_pesos} pesos (${v.site_cuotas} × ${v.site_valor_cuota}), app ${v.app_pesos} on ${v.app_day} — ${v.status}${v.status === "mismatch" ? ` (${v.diff_clp})` : ""}`
+  );
   if (d.applied) console.log(`  → ${d.inserted} row(s) written`);
   for (const p of d.problems) console.log(`  PROBLEM: ${p}`);
 }

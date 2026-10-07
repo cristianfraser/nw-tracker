@@ -123,6 +123,20 @@ export type PensionAccountCertificatesApplyDetails = {
   inserted: number;
   /** The fund manager's balance and the ledger's, after the rows this read would write. */
   balance: { stated_cuotas: number; ledger_cuotas_after: number };
+  /**
+   * The website's balance in pesos against the app's value on the day the site's valor cuota
+   * shows in the app: match / mismatch (to 1 peso), or waiting while the app lacks that price.
+   */
+  value_check: {
+    status: "match" | "mismatch" | "waiting";
+    site_pesos: number;
+    site_valor_cuota: number;
+    site_cuotas: number;
+    app_day: string | null;
+    app_pesos: number | null;
+    diff_clp: number | null;
+    detail: string | null;
+  };
   /** Rows waiting on something (a valor cuota not published yet): the read is not complete. */
   pending: number;
   /** Data errors that fail the step and keep anything from being written. */
