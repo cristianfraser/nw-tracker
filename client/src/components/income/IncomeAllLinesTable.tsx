@@ -11,7 +11,10 @@ import {
   incomeKindLabel,
   incomeManualAmount,
 } from "../../incomeAggregates";
-import { usePatchIncomeMovementMutation } from "../../queries/mutations";
+import { useIncomeRefundMutation, usePatchIncomeMovementMutation } from "../../queries/mutations";
+
+/** The type select's «refund of spending» choice (not an income kind: it moves the credit to the expenses). */
+const REFUND_OPTION = "__refund";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { Table } from "../ui/Table";
@@ -28,6 +31,7 @@ export function IncomeAllLinesTable({
 }) {
   const { t } = useTranslation();
   const patchIncomeMovement = usePatchIncomeMovementMutation();
+  const incomeRefund = useIncomeRefundMutation();
   const [excludeTarget, setExcludeTarget] = useState<{
     movement_id: number;
     description: string;
@@ -95,8 +99,12 @@ export function IncomeAllLinesTable({
                   <td>
                     <select
                       value={row.income_kind}
-                      disabled={patchIncomeMovement.isPending}
+                      disabled={patchIncomeMovement.isPending || incomeRefund.isPending}
                       onChange={(e) => {
+                        if (e.target.value === REFUND_OPTION) {
+                          incomeRefund.mutate({ movement_id: row.movement_id, refund: true });
+                          return;
+                        }
                         const income_kind = e.target.value as IncomeKind;
                         patchIncomeMovement.mutate({
                           movement_id: row.movement_id,
@@ -109,9 +117,7 @@ export function IncomeAllLinesTable({
                       <option value="severance">{t("income.chart.severance")}</option>
                       <option value="parent_gift">{t("income.chart.parent_gift")}</option>
                       <option value="other">{t("income.chart.other")}</option>
-                      <option value="card_reimbursement">
-                        {t("income.chart.card_reimbursement")}
-                      </option>
+                      <option value={REFUND_OPTION}>{t("income.markRefund")}</option>
                     </select>
                   </td>
                   <td>{t("income.originChecking")}</td>

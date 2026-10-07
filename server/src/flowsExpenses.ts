@@ -5,7 +5,6 @@ import {
   buildAdditionalCardsSummary,
   type AdditionalCardsSummary,
 } from "./additionalCardReimbursements.js";
-import { loadCardReimbursementCredits } from "./flowsCheckingIncomeOverrides.js";
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
 
 import { isPdfStatementSource } from "./ccManualBillingMonth.js";
@@ -26,7 +25,7 @@ import {
 
   normalizeCcExpenseMerchantKey,
 
-  NO_CUENTA_CC_EXPENSE_SLUG,
+  ADDITIONAL_CARD_CC_EXPENSE_SLUG,
 
   primaryCreditCardExpensesGroupSlug,
 
@@ -69,6 +68,8 @@ import {
   type CcUsdPaymentLine,
 } from "./ccFacturacionUsdRate.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
+import { loadCheckingExpenseRefunds } from "./checkingExpenseRefunds.js";
+import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
 
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
@@ -243,6 +244,8 @@ export type FlowCcExpenseLineRow = {
   cuota_purchase_kind?: CcCuotaPurchaseKind;
   /** Checking lines: who the transfer went to, as Santander's mail states it. */
   transfer_counterparty?: TransferCounterpartyDto;
+  /** A checking credit marked as a refund (`checkingExpenseRefunds.ts`): a negative line in its category. */
+  checking_refund?: true;
   /** The payment processor's receipt for this charge: who it paid, for what (`paymentProcessorReceipts.ts`). */
   payment_receipt?: PaymentReceiptDto;
 
@@ -949,9 +952,9 @@ export function buildCcExpenseLines(
         skipIfUserCleared: true,
       });
       if (additionalCard.applied) {
-        resolvedCategorySlug = NO_CUENTA_CC_EXPENSE_SLUG;
+        resolvedCategorySlug = ADDITIONAL_CARD_CC_EXPENSE_SLUG;
         categoryUnique = true;
-        uniquePurchases.set(purchaseMapKey, NO_CUENTA_CC_EXPENSE_SLUG);
+        uniquePurchases.set(purchaseMapKey, ADDITIONAL_CARD_CC_EXPENSE_SLUG);
         const origin = String(row.origin_card_last4 ?? "").trim();
         const primary = String(row.primary_card_last4 ?? "").trim();
         const note = formatAutoAdditionalCardNote({ originLast4: origin, primaryLast4: primary });
@@ -1040,10 +1043,49 @@ function loadCheckingGastosLinesForExpenses(): FlowCcExpenseLineRowDraft[] {
   const { merchantRules, uniquePurchases, uniquePurchaseModeKeys } =
     loadCcExpenseCategoryMaps(accountIds);
 
-  return buildCheckingGastosLinesForAccounts(accountIds, {
-    merchantRules,
-    uniquePurchases,
-    uniquePurchaseModeKeys,
+  return [
+    ...buildCheckingGastosLinesForAccounts(accountIds, {
+      merchantRules,
+      uniquePurchases,
+      uniquePurchaseModeKeys,
+    }),
+    ...checkingExpenseRefundLineDrafts(),
+  ];
+}
+
+/**
+ * Each refund (`checkingExpenseRefunds.ts`) is a negative gastos line in its category, dated the day
+ * the money arrived, so the category nets what was spent against what came back.
+ */
+function checkingExpenseRefundLineDrafts(): FlowCcExpenseLineRowDraft[] {
+  return loadCheckingExpenseRefunds().map((r) => {
+    const month = monthKeyFromYmd(r.received_on);
+    const description = cartolaDescriptionFromNote(r.note);
+    return {
+      source: "checking",
+      statement_line_id: r.movement_id,
+      account_id: r.account_id,
+      expense_month: month,
+      billing_month: month,
+      purchase_month: month,
+      line_role: "purchase",
+      occurred_on: r.received_on,
+      purchase_on: r.received_on,
+      statement_date: "",
+      amount_clp: -r.amount_clp,
+      amount_usd: null,
+      amount_usd_at_expense: expenseGastosAmountUsdAtDate(-r.amount_clp, null, r.received_on),
+      merchant: description || null,
+      installment_flag: 0,
+      nro_cuota_current: null,
+      nro_cuota_total: null,
+      merchant_key: normalizeCcExpenseMerchantKey(description),
+      category_slug: r.category_slug,
+      category_unique: true,
+      origin_card_last4: null,
+      primary_card_last4: null,
+      checking_refund: true,
+    };
   });
 }
 
@@ -1161,7 +1203,7 @@ export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
     ]);
     const agg = aggregateGastosFromLines(lines, chartCategorySlugs);
     const totals = computeFlowsExpenseTotals(lines);
-    const additional_cards = buildAdditionalCardsSummary(lines, loadCardReimbursementCredits());
+    const additional_cards = buildAdditionalCardsSummary(lines);
 
     return {
 
@@ -1231,7 +1273,7 @@ export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
 
     cuota_pay_by_iso: cuotaPayByIsoByAccountBillingMonth(accountIds),
 
-    additional_cards: buildAdditionalCardsSummary(lines, loadCardReimbursementCredits()),
+    additional_cards: buildAdditionalCardsSummary(lines),
 
   };
 

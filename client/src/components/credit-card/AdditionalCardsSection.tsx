@@ -28,8 +28,8 @@ function pick(clp: number, usd: number | null, unit: DisplayUnit, what: string):
 }
 
 /**
- * «Tarjetas adicionales»: the additional cards' charges (auto `no_cuenta`, not the user's gastos)
- * against the credits classified `card_reimbursement`, per month or year, with the running
+ * «Tarjetas adicionales»: the additional cards' charges (auto `additional_card`, counted in gastos)
+ * against the refunds in that category, per month or year, with the running
  * balance owed. Every figure is the server's (`payload.additional_cards`); this only picks.
  */
 export function AdditionalCardsSection({

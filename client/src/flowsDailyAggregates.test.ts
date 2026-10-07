@@ -95,7 +95,7 @@ describe("aggregateIncomeChartPointsByDay", () => {
     payroll_period_by_movement_id: {},
     excluded_lines: [],
     filtered_lines: [],
-    card_reimbursement_lines: [],
+    refund_lines: [],
   };
 
   it("buckets income by the arrival day (not payroll-month attribution)", () => {

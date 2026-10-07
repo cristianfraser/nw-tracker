@@ -488,6 +488,13 @@ export const api = {
       `/api/income/movements/${movementId}/force-include`,
       { method: "POST" }
     ),
+  markIncomeRefund: (movementId: number, categorySlug?: string) =>
+    j<{ ok: true; movement_id: number }>(`/api/income/movements/${movementId}/refund`, {
+      method: "POST",
+      body: JSON.stringify(categorySlug ? { category_slug: categorySlug } : {}),
+    }),
+  unmarkIncomeRefund: (movementId: number) =>
+    j<{ ok: true; movement_id: number }>(`/api/income/movements/${movementId}/refund`, { method: "DELETE" }),
   restoreIncomeMovement: (movementId: number) =>
     j<{ ok: true; movement_id: number }>(
       `/api/income/movements/${movementId}/restore`,

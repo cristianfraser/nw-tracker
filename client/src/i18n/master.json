@@ -3248,10 +3248,6 @@
       "parent_gift": {
         "en": "Dad",
         "es": "Papá"
-      },
-      "card_reimbursement": {
-        "en": "Card reimbursement",
-        "es": "Reembolso tarjeta"
       }
     },
     "colDate": {
@@ -3404,17 +3400,29 @@
       "en": "Manual",
       "es": "Manual"
     },
-    "sectionCardReimbursements": {
-      "en": "Additional-card reimbursements",
-      "es": "Reembolsos de tarjetas adicionales"
+    "sectionRefunds": {
+      "en": "Refunds of spending",
+      "es": "Reembolsos de gastos"
     },
-    "cardReimbursementsHint": {
-      "en": "Not income: they pay back the additional cards' charges and are set against them on the Expenses page.",
-      "es": "No son ingresos: pagan los cargos de las tarjetas adicionales y se descuentan de ellos en Gastos."
+    "refundsHint": {
+      "en": "Not income: money paying back spending (a shared expense, an additional card's charges). Each is a negative line in its category on the Expenses page, where its category is set.",
+      "es": "No son ingresos: dinero que devuelve un gasto (un gasto compartido, los cargos de una tarjeta adicional). Cada uno es una línea negativa en su categoría en Gastos, donde se asigna la categoría."
     },
-    "cardReimbursementsEmpty": {
-      "en": "No credits classified as card reimbursements.",
-      "es": "Sin abonos clasificados como reembolso de tarjeta."
+    "refundsEmpty": {
+      "en": "No credits marked as refunds.",
+      "es": "Sin abonos marcados como reembolso."
+    },
+    "markRefund": {
+      "en": "Refund of spending",
+      "es": "Reembolso de gasto"
+    },
+    "backToIncome": {
+      "en": "Back to income",
+      "es": "Volver a ingresos"
+    },
+    "colRefundCategory": {
+      "en": "Expense category",
+      "es": "Categoría de gasto"
     }
   },
   "workEarnings": {
@@ -4035,6 +4043,10 @@
         "no_cuenta": {
           "en": "Doesn't count",
           "es": "No cuenta"
+        },
+        "additional_card": {
+          "en": "Additional card",
+          "es": "Tarjeta adicional"
         },
         "bills": {
           "en": "Bills and utilities",

@@ -106,7 +106,7 @@ function uniqueDepositCandidatesByClaimKey(candidates: readonly DepositMatchCand
  * Every movement the bank listed on a checking account, inflows («in») or outflows («out»),
  * oldest first: the cartola's rows, the daily feed's rows its cartola has not replaced yet, and
  * the rows rebuilt from the bank's own mails for months whose cartola is lost
- * (`import:santander-mail|…`, `scripts/rebuild-checking-gap-from-mails.ts`).
+ * (`import:santander-mail|…`, `import:mach-mail|…`; `isMailRebuiltCheckingNote`).
  * The cartola import deletes the daily rows it supersedes (carrying what hangs off them, see
  * `prunePartialMovementsSupersededByCartola`); a daily row whose cartola row exists but was not
  * pruned (a re-import that skipped the month) is left out here, so a movement never counts twice.
@@ -120,7 +120,7 @@ export function listCheckingMovements(accountId: number, direction: "in" | "out"
        WHERE account_id = ?
          AND ${MOVEMENT_CLP_LEG_SQL} ${direction === "in" ? ">" : "<"} 0
          AND (note LIKE 'import:cartola|%' OR note LIKE 'import:cartola-partial|%'
-              OR note LIKE 'import:santander-mail|%')
+              OR note LIKE 'import:santander-mail|%' OR note LIKE 'import:mach-mail|%')
          AND note NOT LIKE 'import:cartola|anchor|%'
        ORDER BY occurred_on, id`
     )

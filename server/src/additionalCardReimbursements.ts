@@ -2,17 +2,16 @@
  * Additional-card spending vs the reimbursements paying it back («Tarjetas adicionales»).
  *
  * An additional cardholder's charges on the user's card (origin in the registry's
- * `additional_card_last4s`) are auto-tagged `no_cuenta`: they are not the user's gastos. The
- * cardholder pays them back by wires into checking, which the user classifies
- * `income_kind = 'card_reimbursement'` (never income). This module sets one against the other so
- * the two visibly offset: per month / year, charges − reimbursements and the running balance owed.
+ * `additional_card_last4s`) are auto-tagged `additional_card`. The cardholder pays them back by wires
+ * into checking, which are refunds in that category (`checkingExpenseRefunds.ts`): negative gastos
+ * lines, so the category itself nets to what he still owes. This section shows the two sides per
+ * month / year: charges, reimbursements, net and the running balance owed.
  *
  * `matchCardReimbursements` is the matcher behind the report-first proposal script
  * (`server/scripts/propose-card-reimbursements.ts`); nothing on a request path reads it.
  */
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
-import { NO_CUENTA_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
-import type { CardReimbursementCredit } from "./flowsCheckingIncomeOverrides.js";
+import { ADDITIONAL_CARD_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
 
 /** The fields of a gastos line (`FlowCcExpenseLineRow`) the summary reads. */
 export type AdditionalCardChargeLineInput = {
@@ -63,16 +62,21 @@ export type AdditionalCardsSummary = {
 
 /**
  * A charge the additional cardholder owes: an additional-card CC line the user left in
- * `no_cuenta`, counted the way it bills (one-shots and cuotas; never an installment purchase
+ * `additional_card`, counted the way it bills (one-shots and cuotas; never an installment purchase
  * total, which only the «Total» gastos mode shows). A line the user recategorized is his own spend.
  */
 export function isAdditionalCardChargeLine(line: AdditionalCardChargeLineInput): boolean {
   if (line.source !== "cc") return false;
   if (!isAdditionalCardExpenseLine(line.origin_card_last4, line.primary_card_last4)) return false;
-  if (line.category_slug !== NO_CUENTA_CC_EXPENSE_SLUG) return false;
+  if (line.category_slug !== ADDITIONAL_CARD_CC_EXPENSE_SLUG) return false;
   if (line.line_role === "installment_purchase_total") return false;
   if (line.gastos_scope === "excluded" || line.gastos_scope === "total_only") return false;
   return true;
+}
+
+/** A reimbursement: a checking refund line (negative) in `additional_card`. */
+export function isAdditionalCardReimbursementLine(line: AdditionalCardChargeLineInput): boolean {
+  return line.source === "checking" && line.category_slug === ADDITIONAL_CARD_CC_EXPENSE_SLUG && line.amount_clp < 0;
 }
 
 type Bucket = {
@@ -137,11 +141,8 @@ function periodRows(
   });
 }
 
-/** Charges bucket by their gastos month, reimbursements by the day the wire arrived. */
-export function buildAdditionalCardsSummary(
-  lines: readonly AdditionalCardChargeLineInput[],
-  reimbursements: readonly CardReimbursementCredit[]
-): AdditionalCardsSummary {
+/** Charges and reimbursements, each by its gastos month (a reimbursement's is the day it arrived). */
+export function buildAdditionalCardsSummary(lines: readonly AdditionalCardChargeLineInput[]): AdditionalCardsSummary {
   const byMonth = new Map<string, Bucket>();
   const touch = (ym: string): Bucket => {
     if (!/^\d{4}-\d{2}$/.test(ym)) throw new Error(`invalid additional-card period month: ${ym}`);
@@ -153,17 +154,17 @@ export function buildAdditionalCardsSummary(
     return b;
   };
   for (const line of lines) {
-    if (!isAdditionalCardChargeLine(line)) continue;
-    const b = touch(line.expense_month);
-    b.charges_clp += line.amount_clp;
-    b.charges_usd = addUsd(b.charges_usd, line.amount_usd_at_expense);
-    b.charge_count += 1;
-  }
-  for (const credit of reimbursements) {
-    const b = touch(credit.received_on.slice(0, 7));
-    b.reimbursements_clp += credit.amount_clp;
-    b.reimbursements_usd = addUsd(b.reimbursements_usd, credit.amount_usd);
-    b.reimbursement_count += 1;
+    if (isAdditionalCardChargeLine(line)) {
+      const b = touch(line.expense_month);
+      b.charges_clp += line.amount_clp;
+      b.charges_usd = addUsd(b.charges_usd, line.amount_usd_at_expense);
+      b.charge_count += 1;
+    } else if (isAdditionalCardReimbursementLine(line)) {
+      const b = touch(line.expense_month);
+      b.reimbursements_clp -= line.amount_clp;
+      b.reimbursements_usd = addUsd(b.reimbursements_usd, line.amount_usd_at_expense == null ? null : -line.amount_usd_at_expense);
+      b.reimbursement_count += 1;
+    }
   }
 
   const byYear = new Map<string, Bucket>();

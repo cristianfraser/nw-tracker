@@ -11,14 +11,14 @@ const emptyWorkEarnings: Pick<
   | "payroll_period_by_movement_id"
   | "excluded_lines"
   | "filtered_lines"
-  | "card_reimbursement_lines"
+  | "refund_lines"
 > = {
   work_earnings: [],
   income_kind_by_movement_id: {},
   payroll_period_by_movement_id: {},
   excluded_lines: [],
   filtered_lines: [],
-  card_reimbursement_lines: [],
+  refund_lines: [],
 };
 
 describe("aggregateIncomeFromPayload", () => {
@@ -204,7 +204,7 @@ describe("aggregateIncomeFromPayload", () => {
       payroll_period_by_movement_id: {},
       excluded_lines: [],
       filtered_lines: [],
-      card_reimbursement_lines: [],
+      refund_lines: [],
     };
 
     const clpView = aggregateIncomeFromPayload(data, "clp");
@@ -212,28 +212,6 @@ describe("aggregateIncomeFromPayload", () => {
 
     const usdView = aggregateIncomeFromPayload(data, "usd");
     expect(usdView.by_month.find((m) => m.period_month === "2021-02")?.salary_clp).toBe(4450);
-  });
-
-  it("refuses a card reimbursement among the income lines (the server keeps them apart)", () => {
-    const data: FlowsIncomeResponse = {
-      lines: [
-        {
-          movement_id: 98,
-          account_id: 10,
-          account_label: "Corriente",
-          received_on: "2024-06-10",
-          amount_clp: 12_340,
-          amount_usd: null,
-          description: "Transf.",
-          source: "checking",
-        },
-      ],
-      manual: [],
-      monthly_totals: {},
-      ...emptyWorkEarnings,
-      income_kind_by_movement_id: { 98: "card_reimbursement" },
-    };
-    expect(() => aggregateIncomeFromPayload(data)).toThrow(/card reimbursement/);
   });
 
   it("buckets parent_gift separately from other", () => {

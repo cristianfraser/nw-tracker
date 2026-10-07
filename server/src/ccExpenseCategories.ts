@@ -22,6 +22,9 @@ export const UNCLASSIFIED_CC_EXPENSE_SLUG = "unclassified";
 /** Excluded from gasto del mes, acumulado, chart stacks, and page total. */
 export const NO_CUENTA_CC_EXPENSE_SLUG = "no_cuenta";
 
+/** An additional cardholder's charges: counted in gastos, netted by his refunds (migration 217). */
+export const ADDITIONAL_CARD_CC_EXPENSE_SLUG = "additional_card";
+
 /** Internal transfers to investments — same exclusion bucket as no_cuenta. */
 export const DEPOSITS_CC_EXPENSE_SLUG = "deposits";
 

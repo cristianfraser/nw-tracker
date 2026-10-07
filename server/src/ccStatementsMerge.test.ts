@@ -3,7 +3,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { importCcStatementsMerge } from "./ccStatementsImport.js";
 import {
-  NO_CUENTA_CC_EXPENSE_SLUG,
+  ADDITIONAL_CARD_CC_EXPENSE_SLUG,
   getCcExpenseCategoryBySlug,
   resolveCcExpensePurchaseKey,
 } from "./ccExpenseCategories.js";
@@ -150,7 +150,7 @@ describe("importCcStatementsMerge", () => {
     }
   });
 
-  it("patches origin_card_last4 on dedupe skip and applies no_cuenta for adicional lines", () => {
+  it("patches origin_card_last4 on dedupe skip and applies additional_card for adicional lines", () => {
     const accountId = getVitestSantanderCcMasterAccountId();
     if (accountId == null) return;
 
@@ -189,14 +189,14 @@ describe("importCcStatementsMerge", () => {
         )
         .get(accountId, rowId) as { id: number; origin_card_last4: string | null };
       const purchaseKey = resolveCcExpensePurchaseKey(line.id);
-      const noCuentaId = getCcExpenseCategoryBySlug(NO_CUENTA_CC_EXPENSE_SLUG)?.id;
+      const additionalCardId = getCcExpenseCategoryBySlug(ADDITIONAL_CARD_CC_EXPENSE_SLUG)?.id;
       const unique = db
         .prepare(
           `SELECT category_id FROM cc_expense_unique_purchases
            WHERE account_id = ? AND purchase_key = ?`
         )
         .get(accountId, purchaseKey) as { category_id: number } | undefined;
-      expect(unique?.category_id).toBe(noCuentaId);
+      expect(unique?.category_id).toBe(additionalCardId);
 
       db.prepare(`UPDATE cc_statement_lines SET origin_card_last4 = NULL WHERE id = ?`).run(line.id);
 

@@ -6,7 +6,12 @@ import {
 import {
   assignCheckingGastosMovementCategory,
   checkingGastosMovementBelongs,
+  checkingGastosMovementPurchaseKey,
 } from "./flowsCheckingGastos.js";
+import { isCheckingExpenseRefund, setCheckingExpenseRefundCategory } from "./checkingExpenseRefunds.js";
+import { normalizeCcExpenseMerchantKey } from "./ccExpenseCategories.js";
+import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
+import { db } from "./db.js";
 import { purchaseIdFromPlanGastosLineId } from "./ccInstallmentPlanGastosLines.js";
 
 export type FlowExpenseLineCategorySource = "cc" | "checking" | "manual";
@@ -36,6 +41,19 @@ export function assignFlowExpenseLineCategory(opts: {
       categorySlug: opts.categorySlug ?? null,
       clearCategory: opts.clearCategory,
     });
+  }
+
+  // A refund's category lives on the refund (`checkingExpenseRefunds.ts`); it is always its own.
+  if (opts.source === "checking" && isCheckingExpenseRefund(opts.lineId)) {
+    const slug = opts.clearCategory ? "unclassified" : (opts.categorySlug ?? "unclassified");
+    setCheckingExpenseRefundCategory(opts.lineId, slug);
+    const note = (db.prepare(`SELECT note FROM movements WHERE id = ?`).get(opts.lineId) as { note: string | null }).note;
+    return {
+      category_slug: slug,
+      unique: true,
+      merchant_key: normalizeCcExpenseMerchantKey(cartolaDescriptionFromNote(note)),
+      purchase_key: checkingGastosMovementPurchaseKey(opts.lineId),
+    };
   }
 
   const checking = checkingGastosMovementBelongs(opts.lineId);

@@ -16,6 +16,11 @@ export const FLOW_KIND_PAGO_CUOTA_HIPOTECARIO = "pago_cuota_hipotecario" as cons
 /** Checking→CC payment mirror transfer (ccPaymentMirrors.ts) — internal to the CC-netted cash bucket. */
 export const FLOW_KIND_PAGO_TARJETA = "pago_tarjeta" as const;
 export const FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO = "prepago_parcial_hipotecario" as const;
+/**
+ * Card → own cash account load (a MACH top-up paid with the card): the card leg is inert, as for
+ * `pago_tarjeta` — card flows come from statement evidence — and the cash leg is its deposit.
+ */
+export const FLOW_KIND_CARGA_TARJETA = "carga_tarjeta" as const;
 
 export type MortgageFlowKind =
   | typeof FLOW_KIND_PAGO_CUOTA_HIPOTECARIO
@@ -26,6 +31,7 @@ export type MovementFlowType =
   | MortgageFlowKind
   | BrokerageFlowKind
   | typeof FLOW_KIND_PAGO_TARJETA
+  | typeof FLOW_KIND_CARGA_TARJETA
   | "withdrawal_clp"
   | "other";
 
@@ -53,6 +59,7 @@ export function movementFlowTypeFromRow(row: {
   if (row.transfer_direction === "out" || row.transfer_direction === "in") {
     if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
     if (row.flow_kind === FLOW_KIND_PAGO_TARJETA) return FLOW_KIND_PAGO_TARJETA;
+    if (row.flow_kind === FLOW_KIND_CARGA_TARJETA) return FLOW_KIND_CARGA_TARJETA;
     return row.transfer_direction === "out" ? "withdrawal_clp" : "deposit_clp";
   }
   if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
@@ -77,6 +84,7 @@ export function movementFlowTypeLabel(flowType: MovementFlowType): string {
   if (label === "withdrawal_clp") return "Retiro";
   if (label === FLOW_KIND_PAGO_CUOTA_HIPOTECARIO) return "Pago cuota hipotecario";
   if (label === FLOW_KIND_PAGO_TARJETA) return "Pago tarjeta";
+  if (label === FLOW_KIND_CARGA_TARJETA) return "Carga desde tarjeta";
   if (label === FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO) return "Prepago parcial hipotecario";
   if (isDepositMovementFlowType(flowType)) {
     return depositFlowKindLabel(flowType);
