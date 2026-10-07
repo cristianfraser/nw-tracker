@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import type { PaymentProcessorReceiptsPayload, ProcessorReceipt } from "nw-tracker-contracts";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { db } from "./db.js";
+import { deriveMerchantChargeLinks } from "./merchantExpenseNotes.js";
 
 const COLUMNS = [
   "message_id",
@@ -91,9 +92,13 @@ export type PaymentReceiptDto = {
   paid_at_chile: string;
   statement_descriptor: string | null;
   installments: number | null;
+  /** Inferred (a subscription's billing cycle, a monthly run), not read off a receipt. */
+  guess: boolean;
+  /** What the link rests on («receipt 2026-05-02», «subscription renewal notice», «monthly run»). */
+  basis: string | null;
 };
 
-export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name"> & { message_id: string; amount: number; currency: "clp" };
+export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis"> & { message_id: string; amount: number; currency: "clp" };
 
 export function loadPaymentProcessorReceipts(): StoredPaymentReceipt[] {
   const rows = db
@@ -214,6 +219,8 @@ function receiptDto(r: StoredPaymentReceipt): PaymentReceiptDto {
     paid_at_chile: r.paid_at_chile,
     statement_descriptor: r.statement_descriptor,
     installments: r.installments,
+    guess: false,
+    basis: null,
   };
 }
 
@@ -223,12 +230,37 @@ export function matchPaymentReceiptsToExpenseLines(lines: readonly (ReceiptCandi
   return matchPaymentReceipts(loadPaymentProcessorReceipts(), withInterestPlanPrincipals(lines));
 }
 
+/**
+ * Every line whose purchase a document explains carries it: an App Store charge its app
+ * (`merchantExpenseNotes.ts`), any other charge its payment processor's receipt.
+ */
 export function withPaymentReceipts<L extends ReceiptCandidateLine & { account_id: number }>(
   lines: L[]
 ): (L & { payment_receipt?: PaymentReceiptDto })[] {
-  const { byPurchaseKey } = matchPaymentReceiptsToExpenseLines(lines);
-  if (byPurchaseKey.size === 0) return lines;
-  return lines.map((l) => {
+  const appStore = new Map<string, PaymentReceiptDto>();
+  for (const link of deriveMerchantChargeLinks().links) {
+    appStore.set(`${link.account_id}|${link.key}`, {
+      processor: "app_store",
+      processor_name: "App Store",
+      payee: link.name,
+      payee_rut: null,
+      payee_email: null,
+      concept: link.concept,
+      order_ref: null,
+      paid_at_chile: link.date,
+      statement_descriptor: null,
+      installments: null,
+      guess: link.guess,
+      basis: link.basis,
+    });
+  }
+  const named = lines.map((l) => {
+    const r = l.source === "cc" ? appStore.get(`${l.account_id}|${l.purchase_key}`) : undefined;
+    return r ? { ...l, payment_receipt: r } : l;
+  });
+  const { byPurchaseKey } = matchPaymentReceiptsToExpenseLines(named.filter((l) => !("payment_receipt" in l)));
+  return named.map((l) => {
+    if ("payment_receipt" in l) return l;
     const r = byPurchaseKey.get(l.purchase_key);
     return r ? { ...l, payment_receipt: receiptDto(r) } : l;
   });

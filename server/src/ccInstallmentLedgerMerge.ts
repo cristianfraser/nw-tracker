@@ -32,7 +32,6 @@ import {
   padCcStatementDate,
 } from "./ccStatementJsonSource.js";
 import { learnGroceryBranchesFromCardLines, type GroceryBranchLearningResult } from "./groceryBranchLearning.js";
-import { matchMerchantExpenseNotes } from "./merchantExpenseNotes.js";
 import { applyFacturadoFinancingLinks, type FacturadoFinancingApplyResult } from "./ccFacturadoFinancingAuto.js";
 import { relinkCcTraspasoDeudaLinksForAccount } from "./ccTraspasoDeudaLinks.js";
 import {
@@ -475,8 +474,6 @@ export type CcAccountImportMergeResult = {
   json_closes_superseded_by_pdf: string[];
   /** Grocery receipts flagged `pending_branch` on this card that the lines just written paired with. */
   grocery_branch_learning: GroceryBranchLearningResult;
-  /** App Store expense notes the merchant documents wrote after this write. */
-  merchant_expense_notes: number;
   /** Categories, big groups, notes and splits carried from replaced lines onto their new rows. */
   expense_line_rekey: CcExpenseLineRekeyResult;
   /** Facturados another card's cuota purchases paid, linked and their PAGO planted after this
@@ -602,10 +599,6 @@ export function mergeCcAccountFromParsedRows(
     // the branch's merchant string, so the next receipt at that store writes its own line.
     const grocery_branch_learning = learnGroceryBranchesFromCardLines(accountId);
     const expense_line_rekey = rekeyCcExpenseLinesAfterImport(expenseLines);
-    // An App Store charge this write landed may be one a stored receipt or subscription
-    // explains (the receipt mail usually arrives first): name its app on the expense note. After
-    // the rekey, so a re-imported line's carried note counts as already written.
-    const merchant_expense_notes = matchMerchantExpenseNotes({ apply: true }).notes_written.length;
     return {
       statements,
       ledger,
@@ -616,7 +609,6 @@ export function mergeCcAccountFromParsedRows(
       json_closes_superseded_by_pdf,
       grocery_branch_learning,
       expense_line_rekey,
-      merchant_expense_notes,
     };
   })();
 

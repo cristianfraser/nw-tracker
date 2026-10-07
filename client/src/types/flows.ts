@@ -155,6 +155,9 @@ export interface PaymentReceipt {
   paid_at_chile: string;
   statement_descriptor: string | null;
   installments: number | null;
+  /** Inferred from a subscription's cycle or a monthly run, not read off a receipt. */
+  guess: boolean;
+  basis: string | null;
 }
 
 export interface FlowCcExpenseLineRow {

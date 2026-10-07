@@ -107,9 +107,9 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
       x.note("=== Fintual Acciones dividend breakdowns (skipped — no new document)");
     }
     if (amSaved > 0) {
-      await x.step("Apple receipts → expense notes", npmRun("import:apple-mail"));
+      await x.step("Apple receipts", npmRun("import:apple-mail"));
     } else {
-      x.note("=== Apple receipts → expense notes (skipped — no new mail)");
+      x.note("=== Apple receipts (skipped — no new mail)");
     }
   }
 
