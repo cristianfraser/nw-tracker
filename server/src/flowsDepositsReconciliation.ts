@@ -19,6 +19,7 @@ import { isUsdCashAccount } from "./movementTransfer.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import { loadPureFamilyAhorroDepositMovementIds } from "./cuentaAhorroDepositSplits.js";
+import { loadF22RefundMovements } from "./f22Settlements.js";
 import { loadBudaBufferAccountId, loadCryptoCoinAccountIdsFundedByBuda } from "./budaWallet.js";
 import { movementIsStateContribution } from "./depositFlowKind.js";
 import {
@@ -38,6 +39,7 @@ export type DepositReconciliationStatus =
   | "linked"
   | "linked_synthetic"
   | "resolved_family_funded"
+  | "resolved_tax_refund"
   | "resolved_internal_transfer"
   | "unlinked_no_checking_source"
   | "unlinked_checking_present";
@@ -64,6 +66,7 @@ export type DepositReconciliationByMonth = {
   linked_clp: number;
   linked_synthetic_clp: number;
   resolved_family_funded_clp: number;
+  resolved_tax_refund_clp: number;
   resolved_internal_transfer_clp: number;
   unlinked_no_checking_source_clp: number;
   unlinked_checking_present_clp: number;
@@ -319,6 +322,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
 
   const linkSourceByMovementId = loadBestLinkSourceByMovementId();
   const pureFamilyAhorroMovementIds = loadPureFamilyAhorroDepositMovementIds();
+  const taxRefundMovementIds = new Set(loadF22RefundMovements().map((r) => r.movement_id));
   const checkingMonths = loadCuentaCorrienteMonthsWithData();
 
   const movements = loadPositiveInflowMovements(nonUsdIds, budaBufferId);
@@ -348,6 +352,10 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     let status: DepositReconciliationStatus;
     if (linkSource === "auto" || linkSource === "manual") {
       status = "linked";
+    } else if (taxRefundMovementIds.has(m.id)) {
+      // A tax refund paid by the Tesorería straight into this account (f22_settlements): income
+      // from outside, never a checking outflow.
+      status = "resolved_tax_refund";
     } else if (pureFamilyAhorroMovementIds.has(m.id)) {
       // cuenta_ahorro deposit that is a family gift — the split marks self = 0
       // (`cuenta_ahorro_deposit_splits` is the single source of funding truth). Checked BEFORE
@@ -506,6 +514,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     linked: emptyTotals(),
     linked_synthetic: emptyTotals(),
     resolved_family_funded: emptyTotals(),
+    resolved_tax_refund: emptyTotals(),
     resolved_internal_transfer: emptyTotals(),
     unlinked_no_checking_source: emptyTotals(),
     unlinked_checking_present: emptyTotals(),
@@ -530,6 +539,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
         linked_clp: 0,
         linked_synthetic_clp: 0,
         resolved_family_funded_clp: 0,
+        resolved_tax_refund_clp: 0,
         resolved_internal_transfer_clp: 0,
         unlinked_no_checking_source_clp: 0,
         unlinked_checking_present_clp: 0,
@@ -541,6 +551,7 @@ export function buildDepositsReconciliationPayload(): DepositReconciliationPaylo
     if (r.status === "linked") pt.linked_clp += r.amount_clp;
     else if (r.status === "linked_synthetic") pt.linked_synthetic_clp += r.amount_clp;
     else if (r.status === "resolved_family_funded") pt.resolved_family_funded_clp += r.amount_clp;
+    else if (r.status === "resolved_tax_refund") pt.resolved_tax_refund_clp += r.amount_clp;
     else if (r.status === "resolved_internal_transfer") pt.resolved_internal_transfer_clp += r.amount_clp;
     else if (r.status === "unlinked_no_checking_source") pt.unlinked_no_checking_source_clp += r.amount_clp;
     else pt.unlinked_checking_present_clp += r.amount_clp;

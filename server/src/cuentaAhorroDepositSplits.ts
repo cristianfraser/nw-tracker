@@ -52,7 +52,9 @@ export function upsertCuentaAhorroDepositSplit(
  * explains: a split whose deposit is linked to its real cartola debit gets no mirror (it would be
  * linked twice). Runs after the auto and asserted link passes, like the Buda abono mirrors.
  * Pure-family splits (self = 0) produce no mirror. Scoped strictly to ahorro-split deposit
- * movements, so it never touches propose-script mirrors.
+ * movements, so it never touches propose-script mirrors. A deposit that is a tax refund the
+ * Tesorería paid into the account (`f22_settlements`) came from outside: it gets no mirror, and one
+ * written before it was linked is removed.
  */
 export function syncCuentaAhorroDepositSplitMirrors(): void {
   const splits = db
@@ -65,7 +67,10 @@ export function syncCuentaAhorroDepositSplitMirrors(): void {
                   AND substr(l.purchase_key, 1, ?) != ?
               ), 0) AS real_linked_clp
        FROM cuenta_ahorro_deposit_splits s
-       JOIN movements m ON m.id = s.deposit_movement_id`
+       JOIN movements m ON m.id = s.deposit_movement_id
+       WHERE NOT EXISTS (
+         SELECT 1 FROM f22_settlements f WHERE f.kind = 'refund' AND f.movement_id = s.deposit_movement_id
+       )`
     )
     .all(
       CHECKING_GAP_DEPOSIT_MIRROR_PURCHASE_KEY_PREFIX.length,
@@ -77,6 +82,10 @@ export function syncCuentaAhorroDepositSplitMirrors(): void {
     note: string | null;
     real_linked_clp: number;
   }[];
+  db.prepare(
+    `DELETE FROM checking_gap_deposit_mirrors WHERE deposit_movement_id IN (
+       SELECT movement_id FROM f22_settlements WHERE kind = 'refund' AND movement_id IS NOT NULL)`
+  ).run();
   if (splits.length === 0) return;
 
   const corrienteId = cartolaCashAccountId("cuenta_corriente");

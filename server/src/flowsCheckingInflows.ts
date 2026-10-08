@@ -36,6 +36,7 @@ import {
   type CheckingIncomeKind,
   type FlowExcludedCheckingIncomeLine,
 } from "./flowsCheckingIncomeOverrides.js";
+import { loadF22RefundMovements } from "./f22Settlements.js";
 import {
   loadPayrollWorkEarnings,
   payrollPeriodByMovementIdRecord,
@@ -364,6 +365,25 @@ function computeCheckingIncome(): CheckingIncomeComputation {
 
       lines.push(toCheckingIncomeLine(credit, accountLabels));
     }
+  }
+
+  // A tax refund the Tesorería paid outside checking (e.g. cashed at BancoEstado and deposited into
+  // the savings account) is income too; one paid into checking is already a credit above.
+  const checkingAccountIds = new Set(accountIds);
+  const outsideRefunds = loadF22RefundMovements().filter((r) => !checkingAccountIds.has(r.account_id));
+  const refundAccountLabels = loadAccountLabels([...new Set(outsideRefunds.map((r) => r.account_id))]);
+  for (const r of outsideRefunds) {
+    const amount_clp = Math.round(r.amount);
+    lines.push({
+      movement_id: r.movement_id,
+      account_id: r.account_id,
+      account_label: refundAccountLabels.get(r.account_id) ?? String(r.account_id),
+      received_on: r.occurred_on,
+      amount_clp,
+      amount_usd: clpToUsdAtDate(amount_clp, r.occurred_on),
+      description: `F22 AT${r.tax_year}`,
+      source: "checking",
+    });
   }
 
   // Income-excluded credits are still real money returning to checking — e.g. a cuenta_ahorro

@@ -3718,6 +3718,10 @@
       "en": "Family contributions (no own outflow)",
       "es": "Aportes de familia (sin flujo propio)"
     },
+    "sectionResolvedTaxRefund": {
+      "en": "Tax refunds paid into the account (no own outflow)",
+      "es": "Devoluciones de impuestos pagadas en la cuenta (sin flujo propio)"
+    },
     "sectionResolvedInternalTransfer": {
       "en": "Internal transfer between accounts (not through checking)",
       "es": "Traspaso interno entre cuentas (sin pasar por checking)"
@@ -3741,6 +3745,10 @@
     "emptyResolvedFamilyFunded": {
       "en": "No deposits marked as family contributions.",
       "es": "No hay depósitos marcados como aporte familiar."
+    },
+    "emptyResolvedTaxRefund": {
+      "en": "No deposits are tax refunds.",
+      "es": "Ningún depósito es una devolución de impuestos."
     },
     "emptyResolvedInternalTransfer": {
       "en": "No internal transfers between net-worth accounts.",
@@ -3793,6 +3801,10 @@
     "colResolvedFamilyFunded": {
       "en": "Family contribution",
       "es": "Aporte familiar"
+    },
+    "colResolvedTaxRefund": {
+      "en": "Tax refund",
+      "es": "Devolución de impuestos"
     },
     "colResolvedInternalTransfer": {
       "en": "Internal transfer",
@@ -6129,6 +6141,14 @@
         "paymentCard": {
           "en": "Paid with the card",
           "es": "Pagado con la tarjeta"
+        },
+        "offset_kept": {
+          "en": "Kept by the Tesorería for the AT{{year}} debt",
+          "es": "Compensada por la Tesorería con la deuda AT{{year}}"
+        },
+        "offset_paid": {
+          "en": "Paid with the AT{{year}} refund (Tesorería offset)",
+          "es": "Pagado con la devolución AT{{year}} (compensación de la Tesorería)"
         }
       }
     }

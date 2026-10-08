@@ -17,6 +17,7 @@ const STATUS_ORDER: DepositReconciliationStatus[] = [
   "unlinked_no_checking_source",
   "resolved_internal_transfer",
   "resolved_family_funded",
+  "resolved_tax_refund",
   "linked_synthetic",
   "linked",
 ];
@@ -29,6 +30,8 @@ function statusSectionKey(status: DepositReconciliationStatus): string {
       return "depositsReconciliation.sectionLinkedSynthetic";
     case "resolved_family_funded":
       return "depositsReconciliation.sectionResolvedFamilyFunded";
+    case "resolved_tax_refund":
+      return "depositsReconciliation.sectionResolvedTaxRefund";
     case "resolved_internal_transfer":
       return "depositsReconciliation.sectionResolvedInternalTransfer";
     case "unlinked_no_checking_source":
@@ -46,6 +49,8 @@ function statusEmptyKey(status: DepositReconciliationStatus): string {
       return "depositsReconciliation.emptyLinkedSynthetic";
     case "resolved_family_funded":
       return "depositsReconciliation.emptyResolvedFamilyFunded";
+    case "resolved_tax_refund":
+      return "depositsReconciliation.emptyResolvedTaxRefund";
     case "resolved_internal_transfer":
       return "depositsReconciliation.emptyResolvedInternalTransfer";
     case "unlinked_no_checking_source":
@@ -351,6 +356,7 @@ export function DepositsReconciliationPage() {
                 <th>{t("depositsReconciliation.colLinked")}</th>
                 <th>{t("depositsReconciliation.colLinkedSynthetic")}</th>
                 <th>{t("depositsReconciliation.colResolvedFamilyFunded")}</th>
+                <th>{t("depositsReconciliation.colResolvedTaxRefund")}</th>
                 <th>{t("depositsReconciliation.colResolvedInternalTransfer")}</th>
                 <th>{t("depositsReconciliation.colNoChecking")}</th>
                 <th>{t("depositsReconciliation.colUnlinked")}</th>
@@ -365,6 +371,7 @@ export function DepositsReconciliationPage() {
               <td className="mono">{formatFlowMoney(pt.linked_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.linked_synthetic_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.resolved_family_funded_clp, displayUnit)}</td>
+              <td className="mono">{formatFlowMoney(pt.resolved_tax_refund_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.resolved_internal_transfer_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.unlinked_no_checking_source_clp, displayUnit)}</td>
               <td className="mono">{formatFlowMoney(pt.unlinked_checking_present_clp, displayUnit)}</td>

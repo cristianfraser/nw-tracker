@@ -1063,12 +1063,14 @@
     "sectionLinked": "Vinculados a gasto",
     "sectionLinkedSynthetic": "Vinculados (mirror sintético — cartola faltante)",
     "sectionResolvedFamilyFunded": "Aportes de familia (sin flujo propio)",
+    "sectionResolvedTaxRefund": "Devoluciones de impuestos pagadas en la cuenta (sin flujo propio)",
     "sectionResolvedInternalTransfer": "Traspaso interno entre cuentas (sin pasar por checking)",
     "sectionNoCheckingSource": "Sin cartola (mes sin datos)",
     "sectionNeedsAttention": "Sin vincular (cartola disponible)",
     "emptyLinked": "No hay depósitos vinculados.",
     "emptyLinkedSynthetic": "No hay mirrors sintéticos generados.",
     "emptyResolvedFamilyFunded": "No hay depósitos marcados como aporte familiar.",
+    "emptyResolvedTaxRefund": "Ningún depósito es una devolución de impuestos.",
     "emptyResolvedInternalTransfer": "No hay traspasos internos entre cuentas de patrimonio.",
     "emptyNoCheckingSource": "No hay depósitos en meses sin cartola.",
     "emptyNeedsAttention": "Todos los depósitos están vinculados o sin cartola.",
@@ -1082,6 +1084,7 @@
     "colLinked": "Vinculado",
     "colLinkedSynthetic": "Vinculado (sintético)",
     "colResolvedFamilyFunded": "Aporte familiar",
+    "colResolvedTaxRefund": "Devolución de impuestos",
     "colResolvedInternalTransfer": "Traspaso interno",
     "colNoChecking": "Sin cartola",
     "colUnlinked": "Sin vincular",
@@ -1749,7 +1752,9 @@
         "refund": "Devolución de la Tesorería",
         "payment": "Pago desde la cuenta",
         "refundCard": "Devolución a la tarjeta",
-        "paymentCard": "Pagado con la tarjeta"
+        "paymentCard": "Pagado con la tarjeta",
+        "offset_kept": "Compensada por la Tesorería con la deuda AT{{year}}",
+        "offset_paid": "Pagado con la devolución AT{{year}} (compensación de la Tesorería)"
       }
     }
   }
