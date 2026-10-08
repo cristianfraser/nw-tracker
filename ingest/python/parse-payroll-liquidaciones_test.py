@@ -213,5 +213,54 @@ class PayslipLinesTest(unittest.TestCase):
         self.assertIn(("descuento", None, "IMPUESTO", 20_000), got)
 
 
+DT_FINIQUITO = """
+                                   Empleador(a): EJEMPLO SOFTWARE SPA RUT: 76.000.000-K
+                                 FINIQUITO LABORAL
+Con fecha 15/03/2030, entre EJEMPLO SOFTWARE SPA ...
+PAGOS:
+  - N° de días de vacaciones (feriado anual y proporcional) 10,50
+  - Indemnización por vacaciones (feriado anual y proporcional) $ 500.000
+  - Indemnización por años de servicio $ 2.000.000
+  - Horas extraordinarias $ 0
+  - Remuneración del último mes trabajado pendiente $ 300.000
+  - Viáticos$ 0
+TOTAL PAGOS BRUTOS: $ 2.800.000
+DESCUENTOS:
+  - Cotizaciones de seguridad Social $ 60.000
+  - Impuestos $ 1.000
+  - Anticipo de sueldo $ 0
+TOTAL DESCUENTOS: $ 61.000
+SUBTOTAL LIQUIDO: $ 2.739.000
+REAJUSTES E INTERESES: $ 0
+SUMA LÍQUIDA A PAGAR: $ 2.739.000
+"""
+
+
+class FiniquitoTest(unittest.TestCase):
+    def test_dt_form_lists_every_non_zero_concept(self) -> None:
+        self.assertEqual(mod.detect_format(DT_FINIQUITO), "dt_finiquito")
+        r = mod.parse_dt_finiquito(DT_FINIQUITO, "2030-03")
+        self.assertEqual((r["earning_type"], r["employer_rut"], r["pay_period_label"], r["liquido_clp"], r["desc_tax_clp"]),
+                         ("severance", "76.000.000-K", "Finiquito 15/03/2030", 2_739_000, 1_000))
+        self.assertEqual([(l["side"], l["amount"]) for l in r["lines"]],
+                         [("haber", 500_000), ("haber", 2_000_000), ("haber", 300_000), ("descuento", 60_000), ("descuento", 1_000)])
+
+    def test_dt_form_that_does_not_add_up_fails(self) -> None:
+        with self.assertRaisesRegex(ValueError, "pagos lines add up"):
+            mod.parse_dt_finiquito(DT_FINIQUITO.replace("$ 2.000.000", "$ 2.000.001"), "2030-03")
+
+    def test_scanned_finiquito(self) -> None:
+        ocr = ("FINIQUITO DE CONTRATO DE TRABAJO En Santiago, a 2 de Marzo de 2030, entre EJEMPLO SOFTWARE SPA, "
+               "RUT N76.000.000-K, representada ... | HABERES E zi Indemnizacion convencional $1.000.000.- ' ' : "
+               "Total liquido a pagar $1.000.000.- | El Trabajador declara")
+        self.assertEqual(mod.detect_format(ocr), "finiquito_scan")
+        r = mod.parse_finiquito_scan(ocr, "2030-03")
+        self.assertEqual(r["lines"], [{"side": "haber", "section": None, "label": "Indemnizacion convencional", "amount": 1_000_000}])
+        self.assertEqual((r["employer_name"], r["liquido_clp"]), ("EJEMPLO SOFTWARE SPA", 1_000_000))
+
+    def test_second_document_of_a_month(self) -> None:
+        self.assertEqual(mod.period_month_from_path(Path("2030/2030-03-finiquito.pdf")), "2030-03")
+
+
 if __name__ == "__main__":
     unittest.main()

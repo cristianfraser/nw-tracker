@@ -235,7 +235,8 @@ def extract_liquido_a_pagar(text: str) -> int:
 
 
 def period_month_from_path(path: Path) -> str:
-    m = re.search(r"(\d{4})-(\d{2})\.pdf$", path.name, re.IGNORECASE)
+    """«2018-03.pdf», or «2026-04-finiquito.pdf» for a second document of the month."""
+    m = re.search(r"(\d{4})-(\d{2})(?:-[a-z0-9-]+)?\.pdf$", path.name, re.IGNORECASE)
     if not m:
         raise ValueError(f"cannot infer period_month from filename: {path.name}")
     return f"{m.group(1)}-{m.group(2)}"
@@ -258,6 +259,10 @@ def detect_format(text: str) -> str:
         .replace("Ú", "U")
         .replace("Ñ", "N")
     )
+    if "FINIQUITO LABORAL" in normalized and "TOTAL PAGOS BRUTOS" in normalized:
+        return "dt_finiquito"
+    if "FINIQUITO DE CONTRATO DE TRABAJO" in normalized:
+        return "finiquito_scan"
     if "LIQUIDACION DE SUELDO" in normalized and "LIQUIDO A RECIBIR" in normalized and "BUK.CL" in normalized:
         return "buk"
     if "LIQUIDACION DE REMUNERACIONES" in normalized and (
@@ -1043,6 +1048,119 @@ def extract_payslip_lines(text: str, fmt: str, parsed: Dict[str, Any]) -> List[D
     return lines
 
 
+def finiquito_row(fmt: str, period_month: str, employer_name: str, employer_rut: Optional[str], label: str,
+                  haberes: int, descuentos: int, tax: Optional[int], liquido: int) -> Dict[str, Any]:
+    """A finiquito as a payslip of kind severance: its totals; every line is in `lines`."""
+    return {
+        "format": fmt,
+        "period_month": period_month,
+        "employer_name": employer_name,
+        "employer_rut": employer_rut,
+        "pay_period_label": label,
+        "earning_type": "severance",
+        "base_salary_clp": None,
+        "colacion_clp": None,
+        "movilizacion_clp": None,
+        "gratificacion_clp": None,
+        "total_imponible_clp": None,
+        "total_no_imponible_clp": None,
+        "total_haberes_clp": haberes,
+        "desc_afp_clp": None,
+        "desc_health_clp": None,
+        "desc_tax_clp": tax,
+        "desc_cesantia_clp": None,
+        "desc_apv_clp": None,
+        "desc_other_clp": None,
+        "total_descuentos_clp": descuentos,
+        "liquido_clp": liquido,
+        "uf_mes": None,
+        "utm_mes": None,
+        "tope_previsional_uf": None,
+        "tope_cesantia_uf": None,
+    }
+
+
+def _finiquito_items(block: str, side: str) -> List[Dict[str, Any]]:
+    """«- Label $ 1.234.567» rows (a «$ 0» concept is printed for every item the form lists, and
+    is not a line)."""
+    lines: List[Dict[str, Any]] = []
+    for m in re.finditer(r"^\s*-\s*(.+?)\s*\$\s*([\d.]+)\s*$", block, re.MULTILINE):
+        amount = parse_clp_amount_printed(m.group(2))
+        if amount is None:
+            raise ValueError(f"finiquito: not an amount: {m.group(0)!r}")
+        if amount != 0:
+            lines.append({"side": side, "section": None, "label": m.group(1).strip(), "amount": amount})
+    return lines
+
+
+def parse_dt_finiquito(text: str, period_month: str) -> Dict[str, Any]:
+    """The Dirección del Trabajo's electronic finiquito: PAGOS and DESCUENTOS lists («- Concepto $
+    amount»), TOTAL PAGOS BRUTOS, TOTAL DESCUENTOS, SUBTOTAL LIQUIDO, REAJUSTES E INTERESES and SUMA
+    LÍQUIDA A PAGAR. Every sum must hold."""
+    emp_m = re.search(r"Empleador\(a\):\s*(.+?)\s+RUT:\s*([\d.]+-[\dkK])", text)
+    if not emp_m:
+        raise ValueError("finiquito: no «Empleador(a): name RUT: …» line")
+    date_m = re.search(r"Con fecha (\d{2}/\d{2}/\d{4})", text)
+
+    def total(label: str) -> int:
+        m = re.search(rf"{label}:?\s*\$\s*([\d.]+)", text, re.IGNORECASE)
+        if not m:
+            raise ValueError(f"finiquito: no {label}")
+        v = parse_clp_amount_printed(m.group(1))
+        return 0 if v is None else v
+
+    pagos_m = re.search(r"PAGOS:(.*?)TOTAL PAGOS BRUTOS", text, re.DOTALL)
+    desc_m = re.search(r"DESCUENTOS:(.*?)TOTAL DESCUENTOS", text, re.DOTALL)
+    if not pagos_m or not desc_m:
+        raise ValueError("finiquito: no PAGOS / DESCUENTOS lists")
+    haberes = _finiquito_items(pagos_m.group(1), "haber")
+    descuentos = _finiquito_items(desc_m.group(1), "descuento")
+    pagos, desc_total = total("TOTAL PAGOS BRUTOS"), total("TOTAL DESCUENTOS")
+    subtotal, reajustes, liquido = total("SUBTOTAL L[IÍ]QUIDO"), total("REAJUSTES E INTERESES"), total("SUMA L[IÍ]QUIDA A PAGAR")
+    if reajustes:
+        haberes.append({"side": "haber", "section": None, "label": "Reajustes e intereses", "amount": reajustes})
+        pagos += reajustes
+    _check("pagos", sum(l["amount"] for l in haberes), pagos)
+    _check("descuentos", sum(l["amount"] for l in descuentos), desc_total)
+    _check("subtotal líquido", pagos - reajustes - desc_total, subtotal)
+    _check("suma líquida", pagos - desc_total, liquido)
+    tax = sum(l["amount"] for l in descuentos if re.match(r"impuesto", l["label"], re.IGNORECASE)) or None
+    row = finiquito_row("dt_finiquito", period_month, emp_m.group(1).strip(), emp_m.group(2).upper(),
+                        f"Finiquito {date_m.group(1)}" if date_m else f"Finiquito {period_month}",
+                        pagos, desc_total, tax, liquido)
+    row["lines"] = haberes + descuentos
+    return row
+
+
+def parse_finiquito_scan(text: str, period_month: str) -> Dict[str, Any]:
+    """A notarial finiquito scanned to an image (OCR'd): «entre <EMPLEADOR>, RUT …», a HABERES list
+    («Concepto $amount.-») closed by «Total liquido a pagar $amount.-», and DESCUENTOS when printed."""
+    flat = re.sub(r"\s+", " ", text)
+    emp_m = re.search(r"entre ([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑ0-9 .&-]+?(?:SPA|S\.A\.|LTDA))\s*,\s*RUT\s*N?\S*?\s*([\d.]+-[\dkK])", flat)
+    if not emp_m:
+        raise ValueError("finiquito scan: no «entre EMPLEADOR, RUT …»")
+    date_m = re.search(r"En Santiago, a (\d{1,2} de [A-Za-z]+ de \d{4})", flat)
+    body = re.search(r"HABERES(.*?)Total l[ií]quido a pagar\s*\$\s*([\d.]+)", flat, re.IGNORECASE)
+    if not body:
+        raise ValueError("finiquito scan: no HABERES … Total líquido a pagar")
+    lines: List[Dict[str, Any]] = []
+    for side_block, side in ((body.group(1), "haber"),):
+        # A label starts at a capitalised word of three letters or more (OCR leaves stray marks).
+        for m in re.finditer(r"\b([A-ZÁÉÍÓÚÑ][a-záéíóúñ]{2,}(?: [A-Za-záéíóúñ]+)*)\s*\$\s*([\d.]+)", side_block):
+            amount = parse_clp_amount_printed(m.group(2).rstrip("."))
+            lines.append({"side": side, "section": None, "label": m.group(1).strip(), "amount": amount})
+    liquido = parse_clp_amount_printed(body.group(2).rstrip("."))
+    if not lines or liquido is None:
+        raise ValueError("finiquito scan: no lines or no total")
+    haberes = sum(l["amount"] for l in lines)
+    _check("haberes − descuentos (líquido)", haberes, liquido)
+    row = finiquito_row("finiquito_scan", period_month, emp_m.group(1).strip(), emp_m.group(2).upper(),
+                        f"Finiquito {date_m.group(1)}" if date_m else f"Finiquito {period_month}",
+                        haberes, 0, None, liquido)
+    row["lines"] = lines
+    return row
+
+
 def parse_payroll_pdf(path: Path) -> Dict[str, Any]:
     text = extract_payroll_pdf_text(path)
     period_month = period_month_from_path(path)
@@ -1059,9 +1177,16 @@ def parse_payroll_pdf(path: Path) -> Dict[str, Any]:
         parsed = parse_axity(text, period_month)
     elif fmt == "unholster_scan":
         parsed = parse_unholster_scan(text, period_month)
+    elif fmt == "dt_finiquito":
+        parsed = parse_dt_finiquito(text, period_month)
+    elif fmt == "finiquito_scan":
+        parsed = parse_finiquito_scan(text, period_month)
     else:
         raise ValueError(f"unsupported format: {fmt}")
-    parsed["lines"] = extract_payslip_lines(text, fmt, parsed)
+    if "lines" not in parsed:
+        parsed["lines"] = extract_payslip_lines(text, fmt, parsed)
+    for i, line in enumerate(parsed["lines"]):
+        line["position"] = i
     parsed["source_pdf"] = rel_source_pdf(path)
     return parsed
 

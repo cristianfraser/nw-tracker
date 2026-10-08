@@ -25,6 +25,8 @@ describe("payslip line kinds", () => {
     expect(payslipLineKind("haber", "Indemnización por años de servicio")).toBe("indemnity_years_of_service");
     expect(payslipLineKind("haber", "Indemnización sustitutiva del aviso previo")).toBe("indemnity_notice");
     expect(payslipLineKind("descuento", "Cotizaciones de seguridad Social")).toBe("social_security");
+    expect(payslipLineKind("haber", "Honorarios (contrato en USD)")).toBe("contractor_fee");
+    expect(payslipLineKind("descuento", "Comisión de transferencia")).toBe("transfer_fee");
   });
 
   it("an unknown label fails", () => {

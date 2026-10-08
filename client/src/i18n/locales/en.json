@@ -1168,7 +1168,8 @@
         "real_estate_amortization": "Mortgage amortization",
         "checking_internal_transfer": "Internal transfer (accounts)",
         "taxes": "Taxes",
-        "pension_fees": "Pension fund fees"
+        "pension_fees": "Pension fund fees",
+        "fees": "Fees"
       },
       "colMonthExpense": "Month spend",
       "colMonthExpenseReal": "Real total",
