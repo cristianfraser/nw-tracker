@@ -289,6 +289,63 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
   );
 }
 
+function SettlementSection({ data }: { data: TaxReturnResponse }) {
+  const { t } = useTranslation();
+  const s = data.settlement;
+  if (!s || !s.expected) return null;
+  const header = (
+    <thead>
+      <tr>
+        <th className="desktop-only">{t("taxReturn.settlement.colDate")}</th>
+        <th className="desktop-only">{t("taxReturn.settlement.colAccount")}</th>
+        <th className="desktop-only">{t("taxReturn.settlement.colDescription")}</th>
+        <th className="desktop-only num">{t("taxReturn.settlement.colAmount")}</th>
+        <th className="mobile-only" aria-hidden="true" />
+      </tr>
+    </thead>
+  );
+  return (
+    <section style={{ margin: "1.5rem 0" }}>
+      <h2>{t("taxReturn.settlement.title")}</h2>
+      <p>
+        {t(`taxReturn.settlement.expected.${s.expected.kind}`, { amount: formatClp(s.expected.amount) })}
+        {s.links.length === 0 ? (
+          <span style={{ color: "var(--negative)" }}> · {t("taxReturn.settlement.notLinked")}</span>
+        ) : (
+          <>
+            {" · "}
+            {t(`taxReturn.settlement.settled.${s.expected.kind}`, { amount: formatClp(s.settled) })}
+            {s.difference != null && s.difference !== 0
+              ? ` · ${t(`taxReturn.settlement.difference.${s.expected.kind}`, { amount: formatClp(s.difference) })}`
+              : ""}
+          </>
+        )}
+      </p>
+      {s.links.length > 0 ? (
+        <Table header={header} tableClassName="table--parallel-mobile">
+          {s.links.map((l) => (
+            <tr key={`${l.account_id}-${l.occurred_on}-${l.amount}`}>
+              <td className="desktop-only mono">{l.occurred_on}</td>
+              <td className="desktop-only">{l.account_name}</td>
+              <td className="desktop-only">{t(`taxReturn.settlement.link.${l.kind}${l.movement_id == null ? "Card" : ""}`)}</td>
+              <td className="desktop-only num">{formatClp(l.amount)}</td>
+              <td className="mobile-only">
+                <TableMobileCard title={`${l.occurred_on} · ${l.account_name}`}>
+                  <TableMobileCardRow
+                    label={t("taxReturn.settlement.colDescription")}
+                    value={t(`taxReturn.settlement.link.${l.kind}${l.movement_id == null ? "Card" : ""}`)}
+                  />
+                  <TableMobileCardRow label={t("taxReturn.settlement.colAmount")} value={formatClp(l.amount)} />
+                </TableMobileCard>
+              </td>
+            </tr>
+          ))}
+        </Table>
+      ) : null}
+    </section>
+  );
+}
+
 function PayrollWithholdingSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   const w = data.payroll_withholding;
@@ -391,6 +448,7 @@ export function TaxReturnPage() {
           {data.crypto.sales.length === 0 && data.dividends.length === 0 && data.foreign_shares.sales.length === 0 ? (
             <LossOffsetHint data={data} kind="pool" />
           ) : null}
+          <SettlementSection data={data} />
           <PayrollWithholdingSection data={data} />
           <CryptoSection data={data} />
           <DividendsSection data={data} />

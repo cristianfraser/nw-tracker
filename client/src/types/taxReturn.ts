@@ -86,6 +86,13 @@ export type TaxReturnResponse = {
     provisional: boolean;
   };
   year_end_observado: number;
+  /** How the filed form was settled: its refund or payment against the linked bank movements. */
+  settlement: {
+    expected: { kind: "refund" | "payment"; amount: number } | null;
+    links: { kind: "refund" | "payment"; account_id: number; account_name: string; movement_id: number | null; occurred_on: string; amount: number; description: string }[];
+    settled: number;
+    difference: number | null;
+  } | null;
   /** The year's salary payslips: tax withheld vs the monthly table on each payslip's taxable amount. */
   payroll_withholding: {
     income_year: number;

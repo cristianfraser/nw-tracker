@@ -4,6 +4,7 @@
  */
 import { chileWallClockNow } from "./chileDate.js";
 import { buildPayslipChecks, payrollWithholdingMonths, payrollWithholdingYear } from "./payslipChecks.js";
+import { f22Settlement } from "./f22Settlements.js";
 import { db } from "./db.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { buildF22Draft, PAYMENT_SECTION_CODES, type F22OffsetBalance } from "./f22Draft.js";
@@ -139,6 +140,7 @@ export function buildF22Payload(taxYear: number) {
       provisional: d.salary.provisional,
     },
     year_end_observado: d.yearEndObservado,
+    settlement: f22Settlement(d.taxYear, d.filed),
     payroll_withholding: (() => {
       const checks = buildPayslipChecks();
       return { ...payrollWithholdingYear(d.incomeYear, checks), months: payrollWithholdingMonths(d.incomeYear, checks) };
