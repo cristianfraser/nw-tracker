@@ -47,7 +47,8 @@ import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
 import { useDailySeries } from "../queries/hooks";
-import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import type { TimeseriesBlock } from "../types";
 
@@ -110,6 +111,7 @@ export function DashboardPage() {
   const patrimonioPrefs = useSurfacePrefs("home.patrimonio", "day", "3y");
   const combosPrefs = useSurfacePrefs("home.combos", "month", "3y");
   const allocationPrefs = useSurfacePrefs("home.proportional", "month", "total");
+  const compositionView = useSurfaceCompositionView("home.proportional");
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
   const navStillLoading = (navPending || navFetching) && sidebarNav == null;
   const pageTitle = resolveNetWorthGroupLabel(sidebarNav);
@@ -230,11 +232,28 @@ export function DashboardPage() {
     timeRangeToDays(patrimonioPrefs.range),
     patrimonioIsDaily
   );
+  // The value map replaces the composition chart; only the real bundle carries it.
+  const valueMapRoot = useMemo(
+    () =>
+      useRealBundle && data
+        ? valueMapRootForPage(data.dash.value_map, "net_worth", displayUnit)
+        : null,
+    [useRealBundle, data, displayUnit]
+  );
+  // While a unit switch or refetch loads, the map keeps the last data it drew (old unit).
+  const heldValueMap = useHeldValueMap(
+    "net_worth",
+    valueMapRoot,
+    useRealBundle ? data?.dash.value_map_color_bounds : undefined,
+    displayUnit
+  );
+  // Net worth always has group children: the selected view is shown whatever is loading.
+  const valueMapShown = compositionView.view === "map";
   const allocationIsDaily = allocationPrefs.period === "day";
   const { data: allocationDailyData } = useDashboardOverviewDaily(
     displayUnit,
     timeRangeToDays(allocationPrefs.range),
-    allocationIsDaily
+    allocationIsDaily && !valueMapShown
   );
   const dailyOverviewBlock = useMemo(() => {
     if (!overviewIsDaily || !overviewDailyData?.points.length || !ts?.overview) return null;
@@ -534,7 +553,6 @@ export function DashboardPage() {
   const allocationBlock = allocationIsDaily
     ? (allocationDailyData?.allocation_proportional ?? null)
     : (ts.allocation_proportional ?? null);
-  const allocationColorSlug = (dataKey: string) => (dataKey === "cash" ? "cash_eqs" : dataKey);
 
   // The three P/L combo charts share ONE control (`home.combos`) — same state, rendered on each title.
   const combosXAxis = dailyRetirementBrokeragePoints
@@ -756,30 +774,40 @@ export function DashboardPage() {
       ) : null}
 
       <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
-        <ProportionalAreaChart
-          title={t("dashboard.allocation.title")}
-          block={allocationBlock}
-          xAxisGranularity={
-            allocationIsDaily && allocationBlock
-              ? "day"
-              : allocationPrefs.period === "year"
-                ? "year"
-                : "month"
-          }
-          timeRange={allocationPrefs.range}
-          controls={
-            <SurfaceControls
-              period={allocationPrefs.period}
-              onPeriodChange={allocationPrefs.setPeriod}
-              range={allocationPrefs.range}
-              onRangeChange={allocationPrefs.setRange}
-            />
-          }
-          colorFor={(line) => {
-            const slug = allocationColorSlug(line.dataKey);
-            return bucketColorBySlug.get(slug) ?? allocationBucketColor(slug, line.color_rgb);
-          }}
-        />
+        {valueMapShown ? (
+          <ValueMapPanel
+            surfaceId="home.map"
+            view={compositionView.view}
+            onViewChange={compositionView.setView}
+            root={heldValueMap.root}
+            bounds={heldValueMap.bounds}
+            unit={heldValueMap.unit}
+          />
+        ) : (
+          <ProportionalAreaChart
+            title={t("dashboard.allocation.title")}
+            block={allocationBlock}
+            xAxisGranularity={
+              allocationIsDaily && allocationBlock
+                ? "day"
+                : allocationPrefs.period === "year"
+                  ? "year"
+                  : "month"
+            }
+            timeRange={allocationPrefs.range}
+            controls={
+              <SurfaceControls
+                view={compositionView.view}
+                onViewChange={compositionView.setView}
+                period={allocationPrefs.period}
+                onPeriodChange={allocationPrefs.setPeriod}
+                range={allocationPrefs.range}
+                onRangeChange={allocationPrefs.setRange}
+              />
+            }
+            colorFor={(line) => allocationBucketColor(line.dataKey, line.color_rgb)}
+          />
+        )}
       </div>
     </>
   );

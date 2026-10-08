@@ -69,16 +69,18 @@ export function buildDisplayValuationBlock(
   return g ?? ts.accounts_in_group ?? null;
 }
 
+/**
+ * Composition shares: the page's direct children (the server's grouped buckets) whatever the
+ * Agrupado toggle says; leaf pages have no bucket block and show their accounts.
+ */
 export function buildDisplayProportional(
   ts: ValuationTimeseriesResponse,
-  ctx: GroupPageChartContext,
-  grouped: boolean
+  ctx: GroupPageChartContext
 ): ProportionalSeriesBlockDto | null {
   if (ctx.liabilitiesGrouped) {
     return ts.liab_grouped_proportional ?? ts.group_allocation_proportional ?? null;
   }
-  const g = ts.nav_grouped_proportional?.[grouped ? "grouped" : "ungrouped"];
-  return g ?? ts.group_allocation_proportional ?? null;
+  return ts.nav_grouped_proportional ?? ts.group_allocation_proportional ?? null;
 }
 
 export function buildDisplayGroupPerf(

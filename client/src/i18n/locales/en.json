@@ -1760,5 +1760,24 @@
         "offset_paid": "Paid with the AT{{year}} refund (Tesorería offset)"
       }
     }
+  },
+  "valueMap": {
+    "viewLabel": "View:",
+    "viewComposition": "Composition",
+    "viewMap": "Map",
+    "title": "Map",
+    "periodLabel": "Return:",
+    "period": {
+      "day": "Day",
+      "month": "Month",
+      "year": "Year"
+    },
+    "tooltip": {
+      "value": "Value",
+      "return": "Return",
+      "pl": "P/L"
+    },
+    "empty": "No holdings to map.",
+    "ariaLabel": "Value map. Size is current value, colour is return."
   }
 }

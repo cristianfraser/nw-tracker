@@ -247,7 +247,7 @@ export function LiabilitiesGroupPage() {
 
   const displayProportional = useMemo(() => {
     if (!ts?.group_allocation_proportional || !chartCtx || !navMatchNode) return null;
-    return buildDisplayProportional(ts, chartCtx, false);
+    return buildDisplayProportional(ts, chartCtx);
   }, [ts, chartCtx, navMatchNode]);
 
   const displayGroupPerf = useMemo(() => {

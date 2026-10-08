@@ -102,7 +102,7 @@ describe("grouped skeleton from navNode.chart_buckets", () => {
     expect(last.nav_crypto).toBe(0);
     expect(last.__group_val_total).toBe(0);
 
-    const shares = bundle.ts.nav_grouped_proportional?.grouped;
+    const shares = bundle.ts.nav_grouped_proportional;
     expect(shares?.series.map((s) => s.dataKey)).toEqual(["nav_crypto", "nav_mutual_funds"]);
     expect(shares?.series[0]?.values[0]).toBeCloseTo(0.5);
 

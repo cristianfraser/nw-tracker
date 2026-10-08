@@ -6164,5 +6164,63 @@
         }
       }
     }
+  },
+  "valueMap": {
+    "viewLabel": {
+      "en": "View:",
+      "es": "Vista:"
+    },
+    "viewComposition": {
+      "en": "Composition",
+      "es": "Composición"
+    },
+    "viewMap": {
+      "en": "Map",
+      "es": "Mapa"
+    },
+    "title": {
+      "en": "Map",
+      "es": "Mapa"
+    },
+    "periodLabel": {
+      "en": "Return:",
+      "es": "Retorno:"
+    },
+    "period": {
+      "day": {
+        "en": "Day",
+        "es": "Día"
+      },
+      "month": {
+        "en": "Month",
+        "es": "Mes"
+      },
+      "year": {
+        "en": "Year",
+        "es": "Año"
+      }
+    },
+    "tooltip": {
+      "value": {
+        "en": "Value",
+        "es": "Valor"
+      },
+      "return": {
+        "en": "Return",
+        "es": "Retorno"
+      },
+      "pl": {
+        "en": "P/L",
+        "es": "P/L"
+      }
+    },
+    "empty": {
+      "en": "No holdings to map.",
+      "es": "No hay posiciones para mostrar."
+    },
+    "ariaLabel": {
+      "en": "Value map. Size is current value, colour is return.",
+      "es": "Mapa de valor. El tamaño es el valor actual y el color el retorno."
+    }
   }
 }

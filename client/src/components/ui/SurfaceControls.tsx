@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { useTranslation } from "../../i18n";
 import { parseTimeRange, TIME_RANGE_OPTIONS, type TimeRange } from "../../timeRange";
-import type { SurfacePeriod } from "../../surfaceDisplayPrefs";
+import type { SurfaceCompositionView, SurfacePeriod } from "../../surfaceDisplayPrefs";
 
 const ALL_PERIODS: readonly SurfacePeriod[] = ["day", "month", "year"];
 
@@ -11,7 +11,18 @@ const PERIOD_LABEL_KEYS: Record<SurfacePeriod, string> = {
   year: "dashboard.yearly",
 };
 
+const RETURN_PERIOD_LABEL_KEYS: Record<SurfacePeriod, string> = {
+  day: "valueMap.period.day",
+  month: "valueMap.period.month",
+  year: "valueMap.period.year",
+};
+
 export type SurfaceControlsProps = {
+  /** Composition panels with a value map: the Composición / Mapa switch (offered first). */
+  view?: SurfaceCompositionView;
+  onViewChange?: (v: SurfaceCompositionView) => void;
+  /** `return` = the value map's Día/Mes/Año return window; default = chart granularity. */
+  periodKind?: "granularity" | "return";
   period?: SurfacePeriod;
   onPeriodChange?: (p: SurfacePeriod) => void;
   /** Restrict the offered periods (e.g. month/year-only surfaces). Default: all three. */
@@ -28,6 +39,9 @@ export type SurfaceControlsProps = {
  * toolbar keys — translate at render, never cache.
  */
 export function SurfaceControls({
+  view,
+  onViewChange,
+  periodKind = "granularity",
   period,
   onPeriodChange,
   periodOptions = ALL_PERIODS,
@@ -49,9 +63,26 @@ export function SurfaceControls({
         ...style,
       }}
     >
+      {view != null && onViewChange ? (
+        <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+          <span className="muted">{t("valueMap.viewLabel")}</span>
+          <select
+            value={view}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "composition" || v === "map") onViewChange(v);
+            }}
+          >
+            <option value="composition">{t("valueMap.viewComposition")}</option>
+            <option value="map">{t("valueMap.viewMap")}</option>
+          </select>
+        </label>
+      ) : null}
       {period != null && onPeriodChange ? (
         <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-          <span className="muted">{t("dashboard.chartGranularityLabel")}</span>
+          <span className="muted">
+            {t(periodKind === "return" ? "valueMap.periodLabel" : "dashboard.chartGranularityLabel")}
+          </span>
           <select
             value={period}
             onChange={(e) => {
@@ -61,7 +92,7 @@ export function SurfaceControls({
           >
             {periodOptions.map((p) => (
               <option key={p} value={p}>
-                {t(PERIOD_LABEL_KEYS[p])}
+                {t((periodKind === "return" ? RETURN_PERIOD_LABEL_KEYS : PERIOD_LABEL_KEYS)[p])}
               </option>
             ))}
           </select>

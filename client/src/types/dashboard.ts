@@ -140,6 +140,29 @@ export interface NavCardMetricsDto {
   row_pct: Record<"day" | "month" | "year" | "total", { clp: number | null; usd: number | null }>;
 }
 
+/** One tile / frame of the server-built value map (`value_map`). Mirror of server `NavValueMapNodeDto`. */
+export interface NavValueMapNodeDto {
+  kind: "group" | "account";
+  /** Group slug, or `account_<id>` for an account tile. */
+  slug: string;
+  account_id: number | null;
+  label: string;
+  label_i18n_key: string | null;
+  route_path: string;
+  value_clp: number;
+  value_usd: number | null;
+  pct: Record<"day" | "month" | "year", { clp: number | null; usd: number | null }>;
+  pl: Record<"day" | "month" | "year", { clp: number | null; usd: number | null }>;
+  /** The nav group has group children (a frame). False for tiles. */
+  frame: boolean;
+  children?: NavValueMapNodeDto[];
+  /** Leaf groups: their accounts (> 0); the page opens its first-level leaves into them. */
+  leaf_accounts?: NavValueMapNodeDto[];
+}
+
+/** Full colour at ±bound (fractions), fixed per period by the server. */
+export type NavValueMapColorBounds = Record<"day" | "month" | "year", number>;
+
 export interface DashboardResponse {
   totals: {
     net_worth_clp: number;
@@ -170,6 +193,9 @@ export interface DashboardResponse {
   accounts: DashboardAccountRow[];
   /** Server-computed nav card metrics keyed by portfolio-group slug. */
   card_metrics_by_slug: Record<string, NavCardMetricsDto>;
+  /** Net-worth value map (treemap) tree and its fixed colour bounds. */
+  value_map?: NavValueMapNodeDto;
+  value_map_color_bounds?: NavValueMapColorBounds;
   liabilities_breakdown?: {
     mortgage_clp: number;
     credit_card_clp: number;
@@ -309,7 +335,7 @@ export interface ValuationTimeseriesResponse {
   allocation_proportional?: ProportionalSeriesBlockDto;
   /** Server-side "Agrupado" bucket blocks (built pre-clip; totals identical to accounts_in_group). */
   nav_grouped_blocks?: { grouped?: TimeseriesBlock; ungrouped?: TimeseriesBlock };
-  nav_grouped_proportional?: { grouped?: ProportionalSeriesBlockDto; ungrouped?: ProportionalSeriesBlockDto };
+  nav_grouped_proportional?: ProportionalSeriesBlockDto;
   /** Pasivos grouped bucket block + shares (single mode — no Agrupado toggle). */
   liab_grouped_block?: TimeseriesBlock;
   liab_grouped_proportional?: ProportionalSeriesBlockDto;
@@ -394,8 +420,6 @@ export interface DailySeriesResponse {
   proportional?: ProportionalSeriesBlockDto;
   /** Composition shares of the grouped bucket lines (when the page has bucket nodes). */
   grouped_proportional?: ProportionalSeriesBlockDto;
-  /** Composition shares of the "Sin agrupar" bucket lines (only when they differ from grouped). */
-  ungrouped_proportional?: ProportionalSeriesBlockDto;
   /** Pasivos: the day-grain twin of the monthly `reference_coverage`. */
   reference_coverage?: ProportionalSeriesBlockDto;
   /**

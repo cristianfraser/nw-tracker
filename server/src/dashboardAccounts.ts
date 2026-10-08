@@ -43,6 +43,7 @@ import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
+import { buildNavValueMapPayload } from "./navValueMap.js";
 import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
@@ -603,6 +604,7 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
     dashboard_layout,
     nw_bucket_totals,
     card_metrics_by_slug,
+    ...buildNavValueMapPayload(rowsBuilt, includeUsd),
     chart_shape: getDashboardChartShape(),
   };
 }
@@ -628,6 +630,8 @@ async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) 
     dashboard_layout: nav.dashboard_layout,
     nw_bucket_totals: nav.nw_bucket_totals,
     card_metrics_by_slug: nav.card_metrics_by_slug,
+    value_map: nav.value_map,
+    value_map_color_bounds: nav.value_map_color_bounds,
     overview: ts,
     fx_coverage: includeUsd ? buildFxCoverageWithConversionWarnings() : null,
   };
