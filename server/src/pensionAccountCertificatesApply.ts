@@ -226,17 +226,25 @@ function afpAccountId(): number {
   return row.id;
 }
 
+/**
+ * The account's cuota rows, signed as they move the account: single-leg rows as stored, and a
+ * transfer leg (a withdrawal paid to a bank account) with its pesos and cuotas negative when the
+ * money leaves, positive when it arrives — a transfer stores both unsigned.
+ */
 function loadLedger(accountId: number): PensionLedgerRow[] {
-  const legs = db
-    .prepare(`SELECT COUNT(*) AS n FROM movements WHERE from_account_id = ? OR to_account_id = ?`)
-    .get(accountId, accountId) as { n: number };
-  if (legs.n > 0) throw new Error(`pension: account ${accountId} has transfer legs — the certificate reconcile reads single-leg rows only`);
   return db
     .prepare(
       `SELECT id, occurred_on, amount, COALESCE(units_delta, 0) AS units_delta FROM movements
-        WHERE account_id = ? AND currency = 'clp' ORDER BY occurred_on, id`
+        WHERE account_id = ? AND currency = 'clp'
+       UNION ALL
+       SELECT id, occurred_on,
+              CASE WHEN from_account_id = ? THEN -amount ELSE amount END AS amount,
+              CASE WHEN from_account_id = ? THEN -ABS(COALESCE(units_delta, 0)) ELSE ABS(COALESCE(units_delta, 0)) END AS units_delta
+         FROM movements
+        WHERE account_id IS NULL AND currency = 'clp' AND (from_account_id = ? OR to_account_id = ?)
+        ORDER BY occurred_on, id`
     )
-    .all(accountId) as PensionLedgerRow[];
+    .all(accountId, accountId, accountId, accountId, accountId) as PensionLedgerRow[];
 }
 
 function loadSeries(fromPeriod: string): PensionSeriesRow[] {
