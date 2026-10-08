@@ -6,6 +6,7 @@ import { IncomeExcludedLinesTable } from "../components/income/IncomeExcludedLin
 import { IncomeFilteredLinesTable } from "../components/income/IncomeFilteredLinesTable";
 import { IncomeMonthTable } from "../components/income/IncomeMonthTable";
 import { WorkEarningsTable } from "../components/income/WorkEarningsTable";
+import { PayrollBreakdownSection } from "../components/income/PayrollBreakdownSection";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
@@ -135,6 +136,8 @@ export function IncomePage() {
           periodGranularity={tableGranularity}
         />
       </section>
+
+      <PayrollBreakdownSection breakdown={data.payroll_breakdown} displayUnit={displayUnit} />
 
       <section style={{ marginBottom: "1.5rem" }}>
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>

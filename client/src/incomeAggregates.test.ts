@@ -12,6 +12,7 @@ const emptyWorkEarnings: Pick<
   | "excluded_lines"
   | "filtered_lines"
   | "refund_lines"
+  | "payroll_breakdown"
 > = {
   work_earnings: [],
   income_kind_by_movement_id: {},
@@ -19,6 +20,7 @@ const emptyWorkEarnings: Pick<
   excluded_lines: [],
   filtered_lines: [],
   refund_lines: [],
+  payroll_breakdown: { payslips: [], months: [], years: [] },
 };
 
 describe("aggregateIncomeFromPayload", () => {
@@ -205,6 +207,7 @@ describe("aggregateIncomeFromPayload", () => {
       excluded_lines: [],
       filtered_lines: [],
       refund_lines: [],
+      payroll_breakdown: { payslips: [], months: [], years: [] },
     };
 
     const clpView = aggregateIncomeFromPayload(data, "clp");

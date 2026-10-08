@@ -3435,6 +3435,94 @@
     "colRefundCategory": {
       "en": "Expense category",
       "es": "Categoría de gasto"
+    },
+    "payroll": {
+      "chartTitle": {
+        "en": "Gross vs net pay",
+        "es": "Bruto vs líquido"
+      },
+      "tableTitle": {
+        "en": "Gross pay, deductions and net pay",
+        "es": "Bruto, descuentos y líquido"
+      },
+      "colPeriod": {
+        "en": "Period",
+        "es": "Período"
+      },
+      "fields": {
+        "gross": {
+          "en": "Gross pay",
+          "es": "Bruto"
+        },
+        "gross_taxable": {
+          "en": "Taxable pay",
+          "es": "Imponible"
+        },
+        "gross_non_taxable": {
+          "en": "Non-taxable allowances",
+          "es": "No imponible"
+        },
+        "gross_indemnities": {
+          "en": "Indemnities",
+          "es": "Indemnizaciones"
+        },
+        "gross_contractor": {
+          "en": "Contractor fees",
+          "es": "Honorarios"
+        },
+        "pension": {
+          "en": "Pension (10 %)",
+          "es": "AFP (10 %)"
+        },
+        "pension_commission": {
+          "en": "AFP commission",
+          "es": "Comisión AFP"
+        },
+        "health": {
+          "en": "Health",
+          "es": "Salud"
+        },
+        "unemployment": {
+          "en": "Unemployment insurance",
+          "es": "Cesantía"
+        },
+        "income_tax": {
+          "en": "Income tax",
+          "es": "Impuesto"
+        },
+        "voluntary_pension": {
+          "en": "Voluntary pension (APV)",
+          "es": "APV"
+        },
+        "social_security": {
+          "en": "Contributions (finiquito)",
+          "es": "Cotizaciones (finiquito)"
+        },
+        "insurance": {
+          "en": "Life insurance",
+          "es": "Seguro de vida"
+        },
+        "fees": {
+          "en": "Fees",
+          "es": "Comisiones"
+        },
+        "advance": {
+          "en": "Advances",
+          "es": "Anticipos"
+        },
+        "other_deductions": {
+          "en": "Other deductions",
+          "es": "Otros descuentos"
+        },
+        "deductions": {
+          "en": "Deductions",
+          "es": "Descuentos"
+        },
+        "net": {
+          "en": "Net pay",
+          "es": "Líquido"
+        }
+      }
     }
   },
   "workEarnings": {
