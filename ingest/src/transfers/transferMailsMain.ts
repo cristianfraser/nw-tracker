@@ -16,6 +16,11 @@
  * Each fetched window is staged as `cfraser/<issuer>-mail-archive/recent.json` (overwritten each
  * run). A mail that does not decode fails the step; the rest still go. A movement written from a
  * mail that no bank feed has listed two business days on also fails it.
+ *
+ * Then the dollar wires into the client's accounts (`bank_account.incoming_wires`): Banco
+ * Security's copy of the MT103 it sent and Santander's «orden de pago recibida». The server pairs
+ * them with the broker's withdrawal request and books the transfer and its fee
+ * (`--issuer=wires` runs only these). A request past its pay day with no wire fails the step.
  */
 import fs from "node:fs";
 import {
@@ -28,6 +33,7 @@ import { archiveMails, archiveSantanderMails } from "../email/santanderMailArchi
 import { log } from "../log.js";
 import { decodeTransferMail } from "../santander/transferMails.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
+import { runIncomingWires } from "../wires/incomingWiresStep.js";
 
 type ArchivedMail = { message_id: string; sent_at_chile: string; subject: string; text: string };
 
@@ -112,7 +118,9 @@ async function runSource(source: Source, file: string): Promise<number> {
 async function main(): Promise<number> {
   const issuer = arg("issuer");
   const sources = issuer ? SOURCES.filter((s) => s.issuer === issuer) : SOURCES;
-  if (sources.length === 0) throw new Error(`--issuer must be one of ${SOURCES.map((s) => s.issuer).join(", ")}`);
+  if (sources.length === 0 && issuer !== "wires") {
+    throw new Error(`--issuer must be one of ${[...SOURCES.map((s) => s.issuer), "wires"].join(", ")}`);
+  }
   const archive = arg("archive");
   if (archive && sources.length !== 1) throw new Error("--archive needs --issuer");
   const days = Number(arg("days") ?? "21");
@@ -125,6 +133,7 @@ async function main(): Promise<number> {
     const file = archive ?? (await source.fetch(from.toISOString().slice(0, 10), to)).file;
     failed += await runSource(source, file);
   }
+  if (!issuer || issuer === "wires") failed += await runIncomingWires(from.toISOString().slice(0, 10), to, dryRun);
   return failed > 0 ? 1 : 0;
 }
 

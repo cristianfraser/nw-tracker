@@ -18,6 +18,7 @@ import {
   type RacionalEmailPlannedMovement,
 } from "./racionalEmailImport.js";
 import { brokerCleanThrough } from "./brokerReadCoverage.js";
+import { bookIncomingWires, storeWithdrawalRequests, withdrawalRequestFromNotification } from "./incomingWires.js";
 import { racionalComisionCrawlDue } from "./racionalMovementsImport.js";
 
 /**
@@ -110,10 +111,16 @@ function invalidateWritten(rows: readonly { from_account_id: number | null; to_a
 export function applyBrokerNotifications(payload: BrokerNotificationsPayload): BrokerNotificationsApplyDetails {
   const { broker, apply, notifications } = payload;
   if (broker === "fintual") {
-    const planned = planFintualEmailBatch(notifications);
+    // A requested withdrawal is not a movement: it is kept until the wire's own mail arrives.
+    const planned = planFintualEmailBatch(notifications.filter((n) => n.kind !== "withdrawal_requested"));
     const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
     const written = apply ? applyFintualEmailMovements(planned) : 0;
     if (apply) invalidateWritten(writable);
+    const requests = notifications
+      .filter((n) => n.kind === "withdrawal_requested" && brokerNotificationIsBookable(n))
+      .map((n) => withdrawalRequestFromNotification(n, "fintual"));
+    if (apply) storeWithdrawalRequests(requests);
+    const usdWithdrawals = bookIncomingWires({ apply, extraRequests: apply ? [] : requests });
     return {
       broker,
       applied: apply,
@@ -130,6 +137,7 @@ export function applyBrokerNotifications(payload: BrokerNotificationsPayload): B
         amount_clp: o.amount_clp,
         deadline: o.deadline ?? null,
       })),
+      usd_withdrawals: usdWithdrawals,
     };
   }
   const planned = planRacionalEmailMovements(notifications);
@@ -149,5 +157,6 @@ export function applyBrokerNotifications(payload: BrokerNotificationsPayload): B
       racionalComisionCrawlDue()
     ),
     overdue_synthetic_retiros: [],
+    usd_withdrawals: null,
   };
 }

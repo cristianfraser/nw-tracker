@@ -3,6 +3,7 @@ import type { IngestKindDefinition } from "./defineKind.js";
 import { bankAccountMovementsKind } from "./kinds/bankAccountMovements.js";
 import { bankAccountBalancesKind } from "./kinds/bankAccountBalances.js";
 import { bankAccountTransferNoticesKind } from "./kinds/bankAccountTransferNotices.js";
+import { bankAccountIncomingWiresKind } from "./kinds/bankAccountIncomingWires.js";
 import { paymentProcessorReceiptsKind } from "./kinds/paymentProcessorReceipts.js";
 import { bankAccountStatementsKind } from "./kinds/bankAccountStatements.js";
 import { brokerMovementsKind } from "./kinds/brokerMovements.js";
@@ -24,7 +25,7 @@ import { unemploymentFundDocumentsKind } from "./kinds/unemploymentFundDocuments
 export { defineIngestKind, type IngestKindDefinition } from "./defineKind.js";
 
 /** Every kind the server accepts. */
-export const INGEST_KINDS = [cardUnbilledMovementsKind, bankAccountMovementsKind, cardPaymentReceiptKind, brokerNotificationsKind, brokerMovementsKind, pensionAccountCertificatesKind, pensionAccountBalanceKind, cardStatementKind, merchantPurchaseDocumentKind, cardParsedStatementsKind, bankAccountStatementsKind, storeReceiptKind, employmentPayslipsKind, brokerDividendStatementKind, fundAccountTransactionsKind, unemploymentFundDocumentsKind, bankAccountBalancesKind, bankAccountTransferNoticesKind, paymentProcessorReceiptsKind, payrollParametersKind] as const satisfies readonly IngestKindDefinition[];
+export const INGEST_KINDS = [cardUnbilledMovementsKind, bankAccountMovementsKind, cardPaymentReceiptKind, brokerNotificationsKind, brokerMovementsKind, pensionAccountCertificatesKind, pensionAccountBalanceKind, cardStatementKind, merchantPurchaseDocumentKind, cardParsedStatementsKind, bankAccountStatementsKind, storeReceiptKind, employmentPayslipsKind, brokerDividendStatementKind, fundAccountTransactionsKind, unemploymentFundDocumentsKind, bankAccountBalancesKind, bankAccountTransferNoticesKind, bankAccountIncomingWiresKind, paymentProcessorReceiptsKind, payrollParametersKind] as const satisfies readonly IngestKindDefinition[];
 
 export type IngestKind = (typeof INGEST_KINDS)[number];
 export type IngestKindName = IngestKind["kind"];
