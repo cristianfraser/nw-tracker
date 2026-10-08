@@ -37,6 +37,7 @@ export type F22PayloadRow = {
 /** Display order of the codes this taxpayer's return uses; any other stored code is appended as `other`. */
 const ROW_LAYOUT: readonly [number, F22RowSection][] = [
   [1098, "income"],
+  [110, "income"],
   [161, "memo"],
   [155, "income"],
   [1869, "memo"],
@@ -54,7 +55,9 @@ const ROW_LAYOUT: readonly [number, F22RowSection][] = [
   [136, "credit"],
   [162, "credit"],
   [1018, "credit"],
+  [198, "credit"],
   [304, "result"],
+  [900, "result"],
   [305, "result"],
   [31, "result"],
 ];

@@ -409,7 +409,7 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
   const taxComputed = base !== "none" || estimatedCodes.length > 0;
   const draft = taxComputed ? computeF22Tax(finish(draftInput), utaClp, taxYear) : finish(draftInput);
   if (taxComputed) {
-    draft[305] = draft[304]!;
+    draft[305] = draft[304]! - (draft[198] ?? 0) + (draft[900] ?? 0);
     // Code 31 is the IGC to pay; a return with a refund does not print it.
     if (draft[304]! > 0) draft[31] = draft[304]!;
   }
