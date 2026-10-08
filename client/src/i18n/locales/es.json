@@ -1168,7 +1168,8 @@
         "real_estate_amortization": "Amortización hipoteca",
         "checking_internal_transfer": "Traspaso interno (cuentas)",
         "taxes": "Impuestos",
-        "pension_fees": "Comisiones AFP"
+        "pension_fees": "Comisiones AFP",
+        "fees": "Comisiones"
       },
       "colMonthExpense": "Gasto del mes",
       "colMonthExpenseReal": "Total real",

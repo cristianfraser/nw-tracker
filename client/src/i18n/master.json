@@ -4123,6 +4123,10 @@
         "pension_fees": {
           "en": "Pension fund fees",
           "es": "Comisiones AFP"
+        },
+        "fees": {
+          "en": "Fees",
+          "es": "Comisiones"
         }
       },
       "colMonthExpense": {

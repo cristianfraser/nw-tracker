@@ -17,6 +17,8 @@ export const PAYSLIP_HABER_KINDS = [
   "indemnity_notice",
   "indemnity_years_of_service",
   "indemnity_voluntary",
+  /** A contractor's fee (the 2021 USD contract, paid without payslips). */
+  "contractor_fee",
 ] as const;
 
 export const PAYSLIP_DESCUENTO_KINDS = [
@@ -35,6 +37,8 @@ export const PAYSLIP_DESCUENTO_KINDS = [
   "advance",
   /** A finiquito's contributions printed as one amount (pension + health + unemployment). */
   "social_security",
+  /** A transfer fee taken from the pay before it arrived. */
+  "transfer_fee",
 ] as const;
 
 export type PayslipLineKind = (typeof PAYSLIP_HABER_KINDS)[number] | (typeof PAYSLIP_DESCUENTO_KINDS)[number];
@@ -52,6 +56,7 @@ const RULES: readonly Rule[] = [
   { side: "haber", pattern: /^indemnizacion sustitutiva del aviso previo/, kind: "indemnity_notice" },
   { side: "haber", pattern: /^indemnizacion por anos de servicio/, kind: "indemnity_years_of_service" },
   { side: "haber", pattern: /^indemnizacion (convencional|pactada|voluntaria)/, kind: "indemnity_voluntary" },
+  { side: "haber", pattern: /^honorarios/, kind: "contractor_fee" },
 
   { side: "descuento", pattern: /adicional (isapre|salud)/, kind: "health_additional" },
   { side: "descuento", pattern: /^(descuento afp|afp|cotizacion obligatoria afp|cotiz\. previ\. obligatoria|a\.f\.p\. .*|fondo de pensiones.*)$/, kind: "pension" },
@@ -62,6 +67,7 @@ const RULES: readonly Rule[] = [
   { side: "descuento", pattern: /^seguro vida/, kind: "life_insurance" },
   { side: "descuento", pattern: /^anticipo/, kind: "advance" },
   { side: "descuento", pattern: /^cotizaciones de seguridad social/, kind: "social_security" },
+  { side: "descuento", pattern: /^comision (de )?transferencia/, kind: "transfer_fee" },
 ];
 
 /** The label as the rules read it. */
