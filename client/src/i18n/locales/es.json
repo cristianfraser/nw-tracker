@@ -981,7 +981,32 @@
     "refundsEmpty": "Sin abonos marcados como reembolso.",
     "markRefund": "Reembolso de gasto",
     "backToIncome": "Volver a ingresos",
-    "colRefundCategory": "Categoría de gasto"
+    "colRefundCategory": "Categoría de gasto",
+    "payroll": {
+      "chartTitle": "Bruto vs líquido",
+      "tableTitle": "Bruto, descuentos y líquido",
+      "colPeriod": "Período",
+      "fields": {
+        "gross": "Bruto",
+        "gross_taxable": "Imponible",
+        "gross_non_taxable": "No imponible",
+        "gross_indemnities": "Indemnizaciones",
+        "gross_contractor": "Honorarios",
+        "pension": "AFP (10 %)",
+        "pension_commission": "Comisión AFP",
+        "health": "Salud",
+        "unemployment": "Cesantía",
+        "income_tax": "Impuesto",
+        "voluntary_pension": "APV",
+        "social_security": "Cotizaciones (finiquito)",
+        "insurance": "Seguro de vida",
+        "fees": "Comisiones",
+        "advance": "Anticipos",
+        "other_deductions": "Otros descuentos",
+        "deductions": "Descuentos",
+        "net": "Líquido"
+      }
+    }
   },
   "workEarnings": {
     "sectionTitle": "Liquidaciones de sueldo",

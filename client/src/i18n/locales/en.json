@@ -981,7 +981,32 @@
     "refundsEmpty": "No credits marked as refunds.",
     "markRefund": "Refund of spending",
     "backToIncome": "Back to income",
-    "colRefundCategory": "Expense category"
+    "colRefundCategory": "Expense category",
+    "payroll": {
+      "chartTitle": "Gross vs net pay",
+      "tableTitle": "Gross pay, deductions and net pay",
+      "colPeriod": "Period",
+      "fields": {
+        "gross": "Gross pay",
+        "gross_taxable": "Taxable pay",
+        "gross_non_taxable": "Non-taxable allowances",
+        "gross_indemnities": "Indemnities",
+        "gross_contractor": "Contractor fees",
+        "pension": "Pension (10 %)",
+        "pension_commission": "AFP commission",
+        "health": "Health",
+        "unemployment": "Unemployment insurance",
+        "income_tax": "Income tax",
+        "voluntary_pension": "Voluntary pension (APV)",
+        "social_security": "Contributions (finiquito)",
+        "insurance": "Life insurance",
+        "fees": "Fees",
+        "advance": "Advances",
+        "other_deductions": "Other deductions",
+        "deductions": "Deductions",
+        "net": "Net pay"
+      }
+    }
   },
   "workEarnings": {
     "sectionTitle": "Payslips",

@@ -96,6 +96,7 @@ describe("aggregateIncomeChartPointsByDay", () => {
     excluded_lines: [],
     filtered_lines: [],
     refund_lines: [],
+    payroll_breakdown: { payslips: [], months: [], years: [] },
   };
 
   it("buckets income by the arrival day (not payroll-month attribution)", () => {

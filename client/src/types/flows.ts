@@ -441,6 +441,50 @@ export interface FlowsIncomeResponse {
   filtered_lines: FlowFilteredCheckingIncomeLine[];
   /** Credits marked as refunds of spending: never income; each a negative gastos line in its category. Newest first. */
   refund_lines: (FlowCheckingIncomeLine & { category_slug: string })[];
+  /** Gross pay → deductions → net pay from the payslips' lines (server-built). */
+  payroll_breakdown: PayrollBreakdownPayload;
+}
+
+export const PAYROLL_BREAKDOWN_FIELDS = [
+  "gross",
+  "gross_taxable",
+  "gross_non_taxable",
+  "gross_indemnities",
+  "gross_contractor",
+  "pension",
+  "pension_commission",
+  "health",
+  "unemployment",
+  "income_tax",
+  "voluntary_pension",
+  "social_security",
+  "insurance",
+  "fees",
+  "advance",
+  /** Insurance + fees + a finiquito's combined contributions + advances: the deductions with no column of their own. */
+  "other_deductions",
+  "deductions",
+  "net",
+] as const;
+export type PayrollBreakdownField = (typeof PAYROLL_BREAKDOWN_FIELDS)[number];
+export type PayrollBreakdownValues = Record<PayrollBreakdownField, { clp: number; usd: number }>;
+export interface PayrollBreakdownRow {
+  /** YYYY-MM (month rows) or YYYY (year rows). */
+  period: string;
+  payslips: number;
+  values: PayrollBreakdownValues;
+}
+export interface PayrollBreakdownPayload {
+  payslips: {
+    payslip_id: number;
+    period_month: string;
+    employer_name: string;
+    earning_type: PayrollEarningType;
+    origin: "document" | "rebuilt";
+    values: PayrollBreakdownValues;
+  }[];
+  months: PayrollBreakdownRow[];
+  years: PayrollBreakdownRow[];
 }
 
 export type PayrollEarningType = "salary" | "severance";

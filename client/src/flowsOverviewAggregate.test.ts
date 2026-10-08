@@ -70,6 +70,7 @@ function incomePayload(): FlowsIncomeResponse {
     excluded_lines: [],
     filtered_lines: [],
     refund_lines: [],
+    payroll_breakdown: { payslips: [], months: [], years: [] },
   };
 }
 
