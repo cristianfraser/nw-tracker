@@ -71,6 +71,22 @@ describe("getDashboardOverviewDaily — phase 3 blocks", () => {
     }
   });
 
+  it("composition lines (one level below the big buckets) agree between daily and monthly at a month-end", () => {
+    const d = getDashboardOverviewDaily("clp", 0).allocation_proportional;
+    const m = getDashboardValuationTimeseries("clp").allocation_proportional;
+    expect(d.series.map((x) => x.dataKey)).toEqual(m.series.map((x) => x.dataKey));
+    expect(m.series.length).toBeGreaterThan(3);
+    const dayIdx = new Map(d.dates.map((date, i) => [date, i]));
+    const mi = m.dates.map((date, i) => ({ date, i })).filter((x) => dayIdx.has(x.date)).at(-2);
+    if (!mi) return;
+    for (const ms of m.series) {
+      const ds = d.series.find((x) => x.dataKey === ms.dataKey)!;
+      const a = ds.values[dayIdx.get(mi.date)!] ?? 0;
+      const b = ms.values[mi.i] ?? 0;
+      expect(Math.abs(a - b)).toBeLessThan(1e-6);
+    }
+  });
+
   it("patrimonio follows the request unit: USD values, flat USD milestones", () => {
     const d = getDashboardOverviewDaily("usd", 90);
     const m = getDashboardValuationTimeseries("usd");

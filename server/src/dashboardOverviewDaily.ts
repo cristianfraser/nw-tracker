@@ -1,7 +1,11 @@
 import {
-  buildProportionalFromValueArrays,
   type ProportionalSeriesBlock,
 } from "./proportionalSeries.js";
+import {
+  buildCompositionBlock,
+  compositionLineSpecsFromNavTree,
+  compositionValuesOnGridClp,
+} from "./dashboardComposition.js";
 import { getAggregationCached } from "./aggregationCache.js";
 import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -196,35 +200,14 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
   const cashNettedClpByDate = new Map(grid.map((ymd) => [ymd, byDate.get(ymd)!.cash_eqs]));
   const primary_lines = buildPrimaryDailyLines(unit, days, grid, cashNettedClpByDate);
 
-  // Composition shares (pie-replacement chart, day grain) — same dataKeys as the monthly
-  // `allocation_proportional` block and the same stack order (bottom to top), so the client
-  // pairs colors/labels identically.
-  const allocation_proportional = buildProportionalFromValueArrays(grid, [
-    {
-      dataKey: "retirement",
-      name: "Retiro",
-      name_i18n_key: "dashboard.cards.retirement",
-      values: points.map((p) => p.retirement),
-    },
-    {
-      dataKey: "brokerage",
-      name: "Brokerage",
-      name_i18n_key: "dashboard.cards.brokerage",
-      values: points.map((p) => p.brokerage),
-    },
-    {
-      dataKey: "cash",
-      name: "Ahorros y reservas",
-      name_i18n_key: "dashboard.buckets.cash_eqs",
-      values: points.map((p) => p.cash_eqs),
-    },
-    {
-      dataKey: "real_estate",
-      name: "Inmuebles",
-      name_i18n_key: "dashboard.buckets.real_estate",
-      values: points.map((p) => p.real_estate),
-    },
-  ]);
+  // Composition shares (day grain): the same lines and marks as the monthly block, sampled
+  // daily (shares are unit-invariant, so the CLP marks serve both units).
+  const compositionSpecs = compositionLineSpecsFromNavTree((slug) => listAccountsForGroupTab(slug));
+  const allocation_proportional = buildCompositionBlock(
+    grid,
+    compositionSpecs,
+    compositionValuesOnGridClp(compositionSpecs, grid)
+  );
 
   return {
     unit,

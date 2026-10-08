@@ -102,7 +102,7 @@ function isDashboardNwBucketSlug(slug: string): slug is DashboardNwBucketSlug {
 
 /* ------------------------------- row predicates ---------------------------------- */
 
-function accountCountsTowardGroupTotals(row: CardMetricsAccountRow): boolean {
+export function accountCountsTowardGroupTotals(row: CardMetricsAccountRow): boolean {
   return row.exclude_from_group_totals !== 1;
 }
 
@@ -316,6 +316,16 @@ function groupPctFromLegs(legs: readonly PctLegs[], withPrior: boolean, unit: Ts
   let endCharged = 0;
   let anyPrior = false;
   for (const l of legs) {
+    // An empty member (no value, no prior value, no flow) has no return to report and no
+    // weight in the group's: its missing delta must not blank the whole group's %.
+    if (
+      l.delta == null &&
+      l.close === 0 &&
+      (l.prior == null || l.prior === 0) &&
+      (l.flow == null || l.flow === 0)
+    ) {
+      continue;
+    }
     if (l.delta == null || !Number.isFinite(l.delta)) return null;
     if (l.close == null || !Number.isFinite(l.close)) return null;
     const f = l.flow != null && Number.isFinite(l.flow) ? l.flow : 0;
@@ -331,7 +341,7 @@ function groupPctFromLegs(legs: readonly PctLegs[], withPrior: boolean, unit: Ts
   return flowAdjustedPct(nominal, anyPrior ? prior : null, groupStartFrameFlow(flow, endCharged), close, unit);
 }
 
-function rowPctForRows(rows: readonly CardMetricsAccountRow[]): NavCardMetricsDto["row_pct"] {
+export function rowPctForRows(rows: readonly CardMetricsAccountRow[]): NavCardMetricsDto["row_pct"] {
   const both = (clp: PctLegs[], usd: PctLegs[], withPrior: boolean): NavCardPctDto => ({
     clp: groupPctFromLegs(clp, withPrior, "clp"),
     usd: groupPctFromLegs(usd, withPrior, "usd"),
@@ -382,7 +392,7 @@ function usesFullDashboardBucketTotals(node: NavTreeNodeDto): DashboardNwBucketS
 }
 
 /** Port of client `isCashSavingsNavNode`. */
-function isCashSavingsNavNode(node: NavTreeNodeDto): boolean {
+export function isCashSavingsNavNode(node: NavTreeNodeDto): boolean {
   if (node.slug === "cash_savings") return true;
   const dash = node.dashboard_bucket_slug?.trim();
   if (dash === "cash_eqs" && node.slug !== "cash_eqs") return true;
@@ -399,7 +409,7 @@ function dashboardBucketGroupsUnderNavHub(node: NavTreeNodeDto): DashboardNwBuck
   return out;
 }
 
-function navLeafAccountIdSet(node: NavTreeNodeDto): Set<number> {
+export function navLeafAccountIdSet(node: NavTreeNodeDto): Set<number> {
   const idSet = new Set<number>();
   const visit = (n: NavTreeNodeDto) => {
     if (n.account_id != null && n.account_id > 0) idSet.add(n.account_id);
@@ -450,7 +460,7 @@ function accountInNavMetricsScope(
 }
 
 /** Port of client `navMetricsAccountIdSet`. */
-function navMetricsAccountIdSet(
+export function navMetricsAccountIdSet(
   node: NavTreeNodeDto,
   rows: readonly CardMetricsAccountRow[]
 ): Set<number> {
@@ -505,7 +515,7 @@ export type NavCardMetricsBuildInput = {
 };
 
 /** Port of client `stripMetricsRowsForNavChild` (cash-savings node uses raw leaf ids). */
-function stripMetricsRows(
+export function stripMetricsRows(
   node: NavTreeNodeDto,
   rows: readonly CardMetricsAccountRow[]
 ): CardMetricsAccountRow[] {

@@ -160,12 +160,9 @@ function placeholderGroupedTsFields(
       ...(cb.grouped?.length ? { grouped: zeroBucketBlock(cb.grouped, firstMonth) } : {}),
       ...(cb.ungrouped?.length ? { ungrouped: zeroBucketBlock(cb.ungrouped, firstMonth) } : {}),
     },
-    nav_grouped_proportional: {
-      ...(cb.grouped?.length ? { grouped: equalSharesForBuckets(cb.grouped, firstMonth) } : {}),
-      ...(cb.ungrouped?.length
-        ? { ungrouped: equalSharesForBuckets(cb.ungrouped, firstMonth) }
-        : {}),
-    },
+    ...(cb.grouped?.length
+      ? { nav_grouped_proportional: equalSharesForBuckets(cb.grouped, firstMonth) }
+      : {}),
   };
 }
 

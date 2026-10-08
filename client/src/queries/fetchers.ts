@@ -44,6 +44,8 @@ export type DashboardNavContext = {
   dashboard_layout?: DashboardResponse["dashboard_layout"];
   nw_bucket_totals: DashboardNavContextResponse["nw_bucket_totals"];
   card_metrics_by_slug: DashboardResponse["card_metrics_by_slug"];
+  value_map?: DashboardResponse["value_map"];
+  value_map_color_bounds?: DashboardResponse["value_map_color_bounds"];
   overviewPoints: Record<string, string | number | null>[];
 };
 
@@ -61,6 +63,8 @@ export async function fetchDashboardNavContext(unit: DisplayUnit): Promise<Dashb
     dashboard_layout: nav.dashboard_layout,
     nw_bucket_totals: nav.nw_bucket_totals,
     card_metrics_by_slug: nav.card_metrics_by_slug,
+    value_map: nav.value_map,
+    value_map_color_bounds: nav.value_map_color_bounds,
     overviewPoints: nav.overview?.points ?? [],
   };
 }

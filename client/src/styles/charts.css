@@ -112,3 +112,116 @@
   margin: 0;
   padding: 1rem 0;
 }
+
+.value-treemap {
+  position: relative;
+  width: 100%;
+  height: var(--chart-panel-height);
+  min-height: 320px;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--card-radius);
+}
+
+.value-treemap__c--up {
+  background: color-mix(in srgb, var(--treemap-up) var(--treemap-mix), var(--treemap-neutral));
+}
+
+.value-treemap__c--down {
+  background: color-mix(in srgb, var(--treemap-down) var(--treemap-mix), var(--treemap-neutral));
+}
+
+.value-treemap__c--flat {
+  background: var(--treemap-neutral);
+}
+
+.value-treemap__tile,
+.value-treemap__frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--bg);
+}
+
+.value-treemap__tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.15rem;
+  color: var(--treemap-label);
+  font-size: var(--font-size-caption);
+  line-height: 1.15;
+  text-align: center;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.value-treemap__tile--row {
+  flex-direction: row;
+  gap: 0.35rem;
+}
+
+.value-treemap__tile--row .value-treemap__name {
+  min-width: 0;
+}
+
+.value-treemap__frame {
+  background: transparent;
+  border-color: var(--border);
+  pointer-events: none;
+}
+
+.value-treemap__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.4rem;
+  box-sizing: border-box;
+  color: var(--treemap-label);
+  font-size: var(--font-size-card-meta);
+  font-weight: 600;
+  cursor: pointer;
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+.value-treemap__tile:hover,
+.value-treemap__header:hover,
+.value-treemap__tile:focus-visible,
+.value-treemap__header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.value-treemap__name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.value-treemap__pct {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.value-treemap__tooltip {
+  position: absolute;
+  z-index: 2;
+  min-width: 11rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  color: var(--text);
+  font-size: var(--font-size-caption);
+  pointer-events: none;
+}
+
+.value-treemap__tooltip-title {
+  margin-bottom: 0.2rem;
+  font-weight: 600;
+}

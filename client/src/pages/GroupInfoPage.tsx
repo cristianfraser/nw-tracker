@@ -49,7 +49,8 @@ import {
 import { buildDailyValuationBlock } from "../dailySeriesChart";
 import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
 import { timeRangeToDays } from "../timeRange";
-import { useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 /** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
 export function GroupInfoPage() {
@@ -80,6 +81,9 @@ export function GroupInfoPage() {
     `group.${portfolioGroup || "pending"}.proportional`,
     "month",
     "total"
+  );
+  const compositionView = useSurfaceCompositionView(
+    `group.${portfolioGroup || "pending"}.proportional`
   );
   const valuationIsDaily = valuationPrefs.period === "day";
   const perfIsDaily = perfPrefs.period === "day";
@@ -159,6 +163,24 @@ export function GroupInfoPage() {
     pathnameUsesDashboardNavContext(pathname) && (!hasNavSnapshotCache || bundleReady);
   const { data: navCtx } = useDashboardNavContext(displayUnit, navCtxEnabled);
   const overviewPoints = navCtx?.overviewPoints ?? [];
+  // The value map replaces the composition chart when this page's node has group children;
+  // only the real nav-context payload carries it (a cached snapshot's values are placeholders).
+  const valueMapRoot = useMemo(
+    () => valueMapRootForPage(navCtx?.value_map, portfolioGroup, displayUnit),
+    [navCtx?.value_map, portfolioGroup, displayUnit]
+  );
+  // A page whose nav node has group children offers the map (leaf groups do not); the
+  // selected view is shown whatever is loading, holding the last data it drew (old unit).
+  const valueMapEligible = Boolean(
+    navMatchNode?.children?.some((c) => c.account_id == null && c.expense_account_id == null)
+  );
+  const heldValueMap = useHeldValueMap(
+    portfolioGroup,
+    valueMapRoot,
+    navCtx?.value_map_color_bounds,
+    displayUnit
+  );
+  const valueMapShown = valueMapEligible && compositionView.view === "map";
 
   const accounts =
     useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
@@ -257,20 +279,17 @@ export function GroupInfoPage() {
     { portfolioGroup: portfolioGroup || undefined },
     displayUnit,
     timeRangeToDays(proportionalPrefs.range),
-    proportionalIsDaily && portfolioGroup !== ""
+    proportionalIsDaily && !valueMapShown && portfolioGroup !== ""
   );
   const dailyProportionalBlock = useMemo(() => {
     if (!proportionalIsDaily) return null;
     const daily = proportionalDailySeries.data;
     if (!daily) return null;
-    // `ungrouped_*` is only emitted when it differs from the grouped payload — absence with
-    // a grouped payload present means both modes resolve to the same buckets (leaf pages).
-    const bucketProportional = groupedToggleOn
-      ? daily.grouped_proportional
-      : daily.ungrouped_proportional ?? daily.grouped_proportional;
-    if (bucketProportional?.series.length) return bucketProportional;
+    // Composition is always the page's direct children (the grouped buckets), whatever the
+    // Agrupado toggle says; leaf pages carry no bucket block and fall back to their accounts.
+    if (daily.grouped_proportional?.series.length) return daily.grouped_proportional;
     return daily.proportional ?? null;
-  }, [proportionalIsDaily, proportionalDailySeries.data, groupedToggleOn]);
+  }, [proportionalIsDaily, proportionalDailySeries.data]);
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily) return null;
     const daily = dailySeries.data;
@@ -291,8 +310,8 @@ export function GroupInfoPage() {
 
   const displayProportional = useMemo(() => {
     if (!ts?.group_allocation_proportional || !chartCtx) return null;
-    return buildDisplayProportional(ts, chartCtx, groupedToggleOn);
-  }, [ts, chartCtx, groupedToggleOn]);
+    return buildDisplayProportional(ts, chartCtx);
+  }, [ts, chartCtx]);
 
   const displayGroupPerf = useMemo(() => {
     if (!chartCtx) return groupPerfRaw;
@@ -396,8 +415,22 @@ export function GroupInfoPage() {
             dailyProportionalBlock ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
           }
           proportionalTimeRange={proportionalPrefs.range}
+          proportionalReplacement={
+            valueMapShown ? (
+              <ValueMapPanel
+                surfaceId={`group.${portfolioGroup}.map`}
+                view={compositionView.view}
+                onViewChange={compositionView.setView}
+                root={heldValueMap.root}
+                bounds={heldValueMap.bounds}
+                unit={heldValueMap.unit}
+              />
+            ) : undefined
+          }
           proportionalControls={
             <SurfaceControls
+              view={valueMapEligible ? compositionView.view : undefined}
+              onViewChange={valueMapEligible ? compositionView.setView : undefined}
               period={proportionalPrefs.period}
               onPeriodChange={proportionalPrefs.setPeriod}
               range={proportionalPrefs.range}

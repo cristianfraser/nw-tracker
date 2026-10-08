@@ -1760,5 +1760,24 @@
         "offset_paid": "Pagado con la devolución AT{{year}} (compensación de la Tesorería)"
       }
     }
+  },
+  "valueMap": {
+    "viewLabel": "Vista:",
+    "viewComposition": "Composición",
+    "viewMap": "Mapa",
+    "title": "Mapa",
+    "periodLabel": "Retorno:",
+    "period": {
+      "day": "Día",
+      "month": "Mes",
+      "year": "Año"
+    },
+    "tooltip": {
+      "value": "Valor",
+      "return": "Retorno",
+      "pl": "P/L"
+    },
+    "empty": "No hay posiciones para mostrar.",
+    "ariaLabel": "Mapa de valor. El tamaño es el valor actual y el color el retorno."
   }
 }

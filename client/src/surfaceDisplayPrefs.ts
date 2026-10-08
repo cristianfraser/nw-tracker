@@ -24,7 +24,15 @@ export const SURFACE_PREFS_LS_PREFIX = "nw-tracker.surface.";
 export type SurfacePeriod = "day" | "month" | "year";
 
 /** Stored shape: only the fields the user has explicitly set on this surface. */
-export type StoredSurfacePrefs = { period?: SurfacePeriod; range?: TimeRange; benchmark?: string };
+export type StoredSurfacePrefs = {
+  period?: SurfacePeriod;
+  range?: TimeRange;
+  benchmark?: string;
+  /** Composition panels: `map` swaps the share chart for the value treemap. */
+  view?: SurfaceCompositionView;
+};
+
+export type SurfaceCompositionView = "composition" | "map";
 
 /**
  * M/Y-only surfaces (flow tables, the CC financing chart and detalle table): a stored `day`
@@ -56,6 +64,7 @@ export function parseStoredSurfacePrefs(raw: string | null): StoredSurfacePrefs 
   const range = parseTimeRange(typeof rec.range === "string" ? rec.range : null);
   if (range != null) out.range = range;
   if (typeof rec.benchmark === "string" && rec.benchmark !== "") out.benchmark = rec.benchmark;
+  if (rec.view === "composition" || rec.view === "map") out.view = rec.view;
   return out;
 }
 
@@ -169,4 +178,33 @@ export function useSurfaceBenchmark(
   );
 
   return { benchmark: stored.benchmark ?? defaultBenchmark, setBenchmark };
+}
+
+/**
+ * Composition panel view (`<pageKey>.proportional`): the share chart (default) or the value
+ * treemap. Stored beside that surface's Período/Rango, which only the share chart uses.
+ */
+export function useSurfaceCompositionView(surfaceId: string): {
+  view: SurfaceCompositionView;
+  setView: (v: SurfaceCompositionView) => void;
+} {
+  const [state, setState] = useState(() => ({
+    surfaceId,
+    stored: readStoredSurfacePrefs(surfaceId),
+  }));
+
+  let stored = state.stored;
+  if (state.surfaceId !== surfaceId) {
+    stored = readStoredSurfacePrefs(surfaceId);
+    setState({ surfaceId, stored });
+  }
+
+  const setView = useCallback(
+    (v: SurfaceCompositionView) => {
+      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, { view: v }) });
+    },
+    [surfaceId]
+  );
+
+  return { view: stored.view ?? "composition", setView };
 }

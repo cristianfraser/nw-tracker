@@ -56,3 +56,10 @@
   background-color: var(--bg);
   color: var(--text);
 }
+/* Value map (treemap): tile hues blended with the neutral by return intensity. */
+:root {
+  --treemap-neutral: #3a4655;
+  --treemap-up: #15803d;
+  --treemap-down: #b91c1c;
+  --treemap-label: #f8fafc;
+}

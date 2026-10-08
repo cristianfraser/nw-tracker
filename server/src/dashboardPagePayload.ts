@@ -1,6 +1,7 @@
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
+import { buildNavValueMapPayload } from "./navValueMap.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
 import { buildFlowsDepositsPayload, inversionesBrokerageDepositsSeries } from "./flowsDeposits.js";
@@ -120,6 +121,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       },
       dashboard_layout: layoutCards,
       card_metrics_by_slug,
+      ...buildNavValueMapPayload(rowsBuilt, includeUsd),
       allocation: [...byGroup.entries()]
         .filter(([slug]) => DASHBOARD_ASSET_METRIC_GROUPS.has(slug))
         .map(([slug, v]) => ({

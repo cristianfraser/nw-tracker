@@ -233,10 +233,6 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
       ...(ungrouped
         ? {
             ungrouped_accounts: ungrouped,
-            ungrouped_proportional: buildProportionalFromValueArrays(
-              dailyDates,
-              shareLines(ungrouped)
-            ),
           }
         : {}),
     });

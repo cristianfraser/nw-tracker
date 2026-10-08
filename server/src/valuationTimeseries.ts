@@ -92,6 +92,11 @@ import {
   buildProportionalFromPoints,
   type ProportionalSeriesBlock,
 } from "./proportionalSeries.js";
+import {
+  buildCompositionBlock,
+  compositionLineSpecsFromNavTree,
+  compositionValuesAtDatesClp,
+} from "./dashboardComposition.js";
 import { slugMarkTotalsAtDatesClp } from "./dashboardChartMarkTotals.js";
 import {
   applyConsolidatedTotalToGroupTabBlock,
@@ -1426,6 +1431,8 @@ function buildDashboardOverviewSlice(unit: TsUnit): {
   accounts_ex_property: { accounts: AccountLine[]; points: Record<string, string | number | null>[] };
   overview: { lines: ReturnType<typeof buildDashboardOverviewLines>; points: Record<string, string | number | null>[] };
   chartDates: string[];
+  /** Composition shares at the chart dates (lazy: only the home bundle pays for its marks). */
+  composition: () => ProportionalSeriesBlock;
 } {
   const clpTotals = buildDashboardPortfolioGroupTotalsClp();
   const totalsBySlug =
@@ -1440,6 +1447,11 @@ function buildDashboardOverviewSlice(unit: TsUnit): {
     accounts_ex_property: accountsExProperty,
     overview: { lines: buildDashboardOverviewLines(), points: overviewPoints },
     chartDates,
+    composition: () => {
+      const specs = compositionLineSpecsFromNavTree((slug) => listAccountsForGroupTab(slug));
+      const values = compositionValuesAtDatesClp(specs, chartDates, clpTotals.totalsBySlug);
+      return buildCompositionBlock(chartDates, specs, values);
+    },
   };
 }
 
@@ -1902,24 +1914,8 @@ function getDashboardValuationTimeseriesInner(unit: TsUnit) {
     unit
   );
 
-  // Stack order, bottom to top (the chart stacks in series order): retiro, brokerage,
-  // efectivo, inmuebles — inmuebles on top.
-  const allocationStackOrder = ["retirement", "brokerage", "cash", "real_estate"];
-  const allocation_proportional = buildProportionalFromPoints(
-    slice.overview.points,
-    slice.overview.lines
-      .filter((l) => l.valueSeriesType === "data" && allocationStackOrder.includes(l.dataKey))
-      .sort(
-        (a, b) =>
-          allocationStackOrder.indexOf(a.dataKey) - allocationStackOrder.indexOf(b.dataKey)
-      )
-      .map((l) => ({
-        dataKey: l.dataKey,
-        name: l.name,
-        ...(l.name_i18n_key != null ? { name_i18n_key: l.name_i18n_key } : {}),
-        ...(l.color_rgb != null ? { color_rgb: l.color_rgb } : {}),
-      }))
-  );
+  // Lines one level below the big buckets of the nav tree (shares are unit-invariant).
+  const allocation_proportional = slice.composition();
 
   return {
     unit,
@@ -2243,7 +2239,8 @@ function buildProportionalFromBlock(block: GroupTabValuationBlock): Proportional
 
 type GroupedChartPayload = {
   nav_grouped_blocks?: { grouped?: GroupTabValuationBlock; ungrouped?: GroupTabValuationBlock };
-  nav_grouped_proportional?: { grouped?: ProportionalSeriesBlock; ungrouped?: ProportionalSeriesBlock };
+  /** Composition: the page's direct children (the Agrupado buckets), whatever the toggle says. */
+  nav_grouped_proportional?: ProportionalSeriesBlock;
   liab_grouped_block?: GroupTabValuationBlock;
   liab_grouped_proportional?: ProportionalSeriesBlock;
 };
@@ -2279,7 +2276,7 @@ function buildGroupedChartPayload(
     const block = applyTrailingZeroTailClipToBlock(aggregated);
     const mode = grouped ? "grouped" : "ungrouped";
     (out.nav_grouped_blocks ??= {})[mode] = block;
-    (out.nav_grouped_proportional ??= {})[mode] = buildProportionalFromBlock(aggregated);
+    if (grouped) out.nav_grouped_proportional = buildProportionalFromBlock(aggregated);
   }
   return out;
 }
