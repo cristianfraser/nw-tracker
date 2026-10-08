@@ -5733,6 +5733,18 @@
         "en": "Credit for taxes paid abroad",
         "es": "Crédito por impuestos soportados en el exterior"
       },
+      "110": {
+        "en": "Fees (honorarios) income",
+        "es": "Rentas de honorarios (art. 42 N°2)"
+      },
+      "198": {
+        "en": "Tax withheld from fees",
+        "es": "Retenciones de honorarios"
+      },
+      "900": {
+        "en": "Pension contributions charged on fees",
+        "es": "Cargo por cotizaciones previsionales"
+      },
       "304": {
         "en": "IGC determined",
         "es": "IGC determinado"

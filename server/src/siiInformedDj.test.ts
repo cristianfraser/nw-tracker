@@ -45,4 +45,10 @@ describe("parseF22CompactoText", () => {
     expect(Object.fromEntries(codes)).toEqual({ 31: 900, 157: 1000, 158: 10000, 750: 2000, 170: 8000, 304: 900, 305: 900 });
     expect(() => assertF22Identities(codes)).not.toThrow();
   });
+
+  it("the result is 304 less the fee retentions (198) plus the pension charge on them (900)", () => {
+    const codes = new Map([[158, 100], [170, 100], [304, -756], [198, 903], [900, 854], [305, -805]]);
+    expect(() => assertF22Identities(codes)).not.toThrow();
+    expect(() => assertF22Identities(new Map([...codes, [305, -756]]))).toThrow(/305 = 304 − 198 \+ 900/);
+  });
 });
