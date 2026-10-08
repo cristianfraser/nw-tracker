@@ -11,6 +11,7 @@
  */
 import type { EmploymentPayslipsApplyDetails, EmploymentPayslipsPayload, Payslip, PayslipLine } from "nw-tracker-contracts";
 import { db } from "./db.js";
+import { payslipLineKind } from "./payslipLineKinds.js";
 import { findPayrollAutoLinkMovement, listPayrollLinkCandidates } from "./payrollWorkEarningsLinking.js";
 
 const UPSERT_SQL = `
@@ -131,10 +132,10 @@ const COMPARED = [
   "tope_cesantia_uf",
 ] as const;
 
-type StoredLine = Pick<PayslipLine, "position" | "side" | "section" | "label" | "amount">;
+type StoredLine = Pick<PayslipLine, "position" | "side" | "section" | "label" | "amount"> & { kind: string | null };
 
 function lineKey(l: StoredLine): string {
-  return `${l.position}|${l.side}|${l.section ?? ""}|${l.label}|${l.amount}`;
+  return `${l.position}|${l.side}|${l.section ?? ""}|${l.label}|${l.amount}|${l.kind ?? ""}`;
 }
 
 export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): EmploymentPayslipsApplyDetails {
@@ -142,12 +143,14 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
   const selectStored = db.prepare(`SELECT * FROM payroll_work_earnings WHERE source_pdf = ?`);
   const upsert = db.prepare(UPSERT_SQL);
   const selectLines = db.prepare(
-    `SELECT position, side, section, label, amount FROM payslip_lines WHERE payslip_id = ? ORDER BY position`
+    `SELECT position, side, section, label, amount, kind FROM payslip_lines WHERE payslip_id = ? ORDER BY position`
   );
   const deleteLines = db.prepare(`DELETE FROM payslip_lines WHERE payslip_id = ?`);
   const insertLine = db.prepare(
-    `INSERT INTO payslip_lines (payslip_id, position, side, section, label, amount) VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO payslip_lines (payslip_id, position, side, section, label, amount, kind) VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
+  // Every line's kind is decided before anything is written: an unknown label fails the import.
+  const kinds = new Map(payload.payslips.map((p) => [p.document, p.lines.map((l) => payslipLineKind(l.side, l.label))]));
   const setLink = db.prepare(`UPDATE payroll_work_earnings SET movement_id = ?, link_source = 'auto' WHERE source_pdf = ?`);
 
   const changes: string[] = [];
@@ -164,7 +167,8 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
       );
       if (diff.length > 0) changes.push(`change ${p.document}: ${diff.join("; ")}`);
       const storedLines = (selectLines.all(stored.id) as StoredLine[]).map(lineKey).join("\n");
-      if (storedLines !== p.lines.map(lineKey).join("\n")) {
+      const nextKinds = kinds.get(p.document)!;
+      if (storedLines !== p.lines.map((l, i) => lineKey({ ...l, kind: nextKinds[i]! })).join("\n")) {
         changes.push(`lines ${p.document}: ${storedLines === "" ? "none stored" : "differ"} → ${p.lines.length} line(s)`);
       }
     }
@@ -197,7 +201,8 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
       if (!dryRun) {
         if (!stored) throw new Error(`payslips: ${p.document} not stored after the upsert`);
         deleteLines.run(stored.id);
-        for (const l of p.lines) insertLine.run(stored.id, l.position, l.side, l.section, l.label, l.amount);
+        const lineKinds = kinds.get(p.document)!;
+        p.lines.forEach((l, i) => insertLine.run(stored.id, l.position, l.side, l.section, l.label, l.amount, lineKinds[i]));
       }
       if (stored?.link_source === "manual" && stored.movement_id != null) {
         taken.add(stored.movement_id);

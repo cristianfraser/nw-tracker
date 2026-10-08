@@ -13,7 +13,7 @@ const LINES: Payslip["lines"] = [
   { position: 4, side: "descuento", section: "legal", label: "Isapre 7%", amount: 70_000 },
   { position: 5, side: "descuento", section: "legal", label: "Impuesto Unico", amount: 10_000 },
   { position: 6, side: "descuento", section: "legal", label: "Seguro de cesantía", amount: 6_000 },
-  { position: 7, side: "descuento", section: "other", label: "Cuota sindical", amount: 83 },
+  { position: 7, side: "descuento", section: "other", label: "Anticipo de sueldo", amount: 83 },
 ];
 
 function lines() {
@@ -92,7 +92,7 @@ describe("employment.payslips apply", () => {
 
   it("a re-import replaces the stored lines", () => {
     apply(payslip());
-    const relabelled = LINES.map((l) => (l.position === 7 ? { ...l, label: "Aporte sindical" } : l));
+    const relabelled = LINES.map((l) => (l.position === 7 ? { ...l, label: "Anticipo Aguinaldo" } : l));
     apply(payslip({ lines: relabelled }));
     expect(lines()).toEqual(relabelled);
   });
@@ -104,6 +104,19 @@ describe("employment.payslips apply", () => {
     const d = apply(payslip({ pay_period_label: "Enero de 2099" }));
     expect(d).toMatchObject({ linked: 1, unmatched: [] });
     expect(stored()).toMatchObject({ pay_period_label: "Enero de 2099", movement_id: movementId, link_source: "manual", earning_type: "severance" });
+  });
+
+  it("stores each line's kind, and a label no rule covers fails the import before anything is written", () => {
+    apply(payslip());
+    const kinds = db
+      .prepare(`SELECT l.kind FROM payslip_lines l JOIN payroll_work_earnings p ON p.id = l.payslip_id WHERE p.source_pdf = ? ORDER BY l.position`)
+      .all(DOC)
+      .map((r) => (r as { kind: string }).kind);
+    expect(kinds).toEqual(["base_salary", "allowance", "allowance", "pension", "health", "income_tax", "unemployment", "advance"]);
+    const unknown = LINES.map((l) => (l.position === 7 ? { ...l, label: "Cuota sindical" } : l));
+    expect(() => apply(payslip({ pay_period_label: "Otro", lines: unknown }))).toThrow(/no kind for the descuento «Cuota sindical»/);
+    expect(stored()).toMatchObject({ pay_period_label: "Enero 2099" });
+    expect(lines()).toEqual(LINES);
   });
 
   it("the payload refuses a document sent twice", () => {

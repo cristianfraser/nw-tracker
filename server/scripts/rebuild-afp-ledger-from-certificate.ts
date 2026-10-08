@@ -38,6 +38,7 @@ import { afpCuotasCumulativeThroughDate, revalueAfpAccountFromCuotas } from "../
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "../src/chileDate.js";
 import { isChileBusinessDay } from "../src/marketHolidays.js";
 import { db } from "../src/db.js";
+import { recordContributionPeriods } from "../src/pensionContributionPeriods.js";
 import { accountMarkClpAtYmd } from "../src/accountMarkClpAtYmd.js";
 import {
   TRANSFER_CODES,
@@ -245,7 +246,8 @@ const write = () => {
     `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta) VALUES (?, ?, 'clp', ?, ?, ?)`
   );
   for (const r of shaped.rows) {
-    insert.run(account.id, r.pesos, r.occurred_on, `${pensionLedgerNote(r)} | certificado ${cert.folio}`, r.cuotas);
+    const res = insert.run(account.id, r.pesos, r.occurred_on, `${pensionLedgerNote(r)} | certificado ${cert.folio}`, r.cuotas);
+    if (r.kind !== "withdrawal") recordContributionPeriods(Number(res.lastInsertRowid), r.periods);
   }
   const reval = revalueAfpAccountFromCuotas({ accountId: account.id, dryRun: false });
   console.log(`stored month-ends re-valued: ${reval.updated} (skipped ${reval.skipped})`);

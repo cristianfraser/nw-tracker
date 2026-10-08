@@ -10,6 +10,7 @@ import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { db } from "./db.js";
+import { recordContributionPeriods } from "./pensionContributionPeriods.js";
 import {
   CONTRIBUTION_CODE,
   certificateRowPriceWindow,
@@ -274,6 +275,7 @@ export function applyPensionAccountCertificates(
         const note = pensionLedgerNote({ kind: r.kind as ShapedLedgerRow["kind"], periods: r.period.split(","), occurred_on: r.occurred_on!, pesos: r.pesos, cuotas: r.cuotas });
         const res = insert.run(accountId, r.pesos, r.occurred_on, note, r.cuotas);
         r.movement_id = Number(res.lastInsertRowid);
+        recordContributionPeriods(r.movement_id, r.period.split(","));
         inserted += 1;
       }
     }
