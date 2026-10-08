@@ -854,3 +854,13 @@ describe("installment statement lines resolve their plan total for the purchase 
 afterAll(() => {
   wipeVitestCcFixtureData();
 });
+
+describe("expense subcategories", () => {
+  it("lists the payroll subcategories under «Cuentas y servicios» and top-level categories without a parent", () => {
+    const bySlug = new Map(listCcExpenseCategories().map((c) => [c.slug, c]));
+    expect(bySlug.get("taxes")?.parent_slug).toBe("bills");
+    expect(bySlug.get("pension_fees")?.parent_slug).toBe("bills");
+    expect(bySlug.get("bills")?.parent_slug).toBeNull();
+    expect(getCcExpenseCategoryBySlug("taxes")).toMatchObject({ slug: "taxes", parent_slug: "bills" });
+  });
+});

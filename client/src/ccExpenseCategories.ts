@@ -26,16 +26,56 @@ function categoryPickerSortKey(slug: string): [number, string] {
   return [1, ccExpenseCategoryLabel(slug)];
 }
 
+/** Picker order; each subcategory right after its parent, A–Z among siblings. */
 export function sortCcExpenseCategoriesByLabel(
   categories: readonly CcExpenseCategoryDto[]
 ): CcExpenseCategoryDto[] {
   const locale = displayLocale();
-  return [...categories].sort((a, b) => {
+  const byLabel = (a: CcExpenseCategoryDto, b: CcExpenseCategoryDto) => {
     const [ga, la] = categoryPickerSortKey(a.slug);
     const [gb, lb] = categoryPickerSortKey(b.slug);
     if (ga !== gb) return ga - gb;
     return la.localeCompare(lb, locale, { sensitivity: "base" });
-  });
+  };
+  const present = new Set(categories.map((c) => c.slug));
+  const top = categories.filter((c) => c.parent_slug == null || !present.has(c.parent_slug)).sort(byLabel);
+  const out: CcExpenseCategoryDto[] = [];
+  for (const parent of top) {
+    out.push(parent);
+    out.push(...categories.filter((c) => c.parent_slug === parent.slug).sort(byLabel));
+  }
+  return out;
+}
+
+/** A category's label in a picker: «Parent › Child» for a subcategory. */
+export function ccExpenseCategoryPathLabel(category: Pick<CcExpenseCategoryDto, "slug" | "parent_slug">): string {
+  return category.parent_slug == null
+    ? ccExpenseCategoryLabel(category.slug)
+    : `${ccExpenseCategoryLabel(category.parent_slug)} › ${ccExpenseCategoryLabel(category.slug)}`;
+}
+
+/** Which level the expenses chart groups spend by. */
+export type CcExpenseCategoryLevel = "category" | "subcategory";
+
+/**
+ * The slug a line's spend is grouped under at a level: at «category» a subcategory's spend folds
+ * into its parent; at «subcategory» every category is its own.
+ */
+export function ccExpenseCategorySlugAtLevel(
+  categories: readonly CcExpenseCategoryDto[],
+  level: CcExpenseCategoryLevel
+): (slug: string) => string {
+  if (level === "subcategory") return (slug) => slug;
+  const parentOf = new Map(categories.filter((c) => c.parent_slug != null).map((c) => [c.slug, c.parent_slug!]));
+  return (slug) => parentOf.get(slug) ?? slug;
+}
+
+/** The categories the chart stacks at a level (at «category», only the top-level ones). */
+export function ccExpenseCategoriesAtLevel(
+  categories: readonly CcExpenseCategoryDto[],
+  level: CcExpenseCategoryLevel
+): CcExpenseCategoryDto[] {
+  return level === "subcategory" ? [...categories] : categories.filter((c) => c.parent_slug == null);
 }
 /** Category pills, row selects, and bulk assign (excludes Sin clasificar). */
 export function assignableCcExpenseCategories(

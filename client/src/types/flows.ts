@@ -109,6 +109,8 @@ export interface CcExpenseCategoryDto {
   label_i18n_key: string | null;
   sort_order: number;
   chart_color: string;
+  /** The parent category's slug for a subcategory (one level deep); null for a top-level category. */
+  parent_slug: string | null;
 }
 
 export interface CcExpenseBigGroupDto {

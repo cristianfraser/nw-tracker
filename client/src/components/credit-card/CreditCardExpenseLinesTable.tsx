@@ -10,7 +10,7 @@ import { Pill } from "../ui/Pill";
 import {
   expenseLineCategoryTargetId,
 } from "../../ccExpenseLineBuckets";
-import { assignableCcExpenseCategories } from "../../ccExpenseCategories";
+import { assignableCcExpenseCategories, ccExpenseCategoryPathLabel } from "../../ccExpenseCategories";
 import { ExpensePurchaseNoteInput } from "./ExpensePurchaseNoteInput";
 import { ExpenseBigGroupSelect } from "./ExpenseBigGroupSelect";
 import { useAssignCcExpenseLineCategory } from "../../queries/hooks";
@@ -126,7 +126,7 @@ function ExpenseLineCategoryControls({
           <Pill
             size="small"
             uppercase={false}
-            label={ccExpenseCategoryLabel(activeCategory.slug)}
+            label={ccExpenseCategoryPathLabel(activeCategory)}
             backgroundColor={activeCategory.chart_color}
             hoverBackgroundColor={pillHoverColor(activeCategory.chart_color)}
             clearable
@@ -147,10 +147,10 @@ function ExpenseLineCategoryControls({
                 key={c.slug}
                 size="small"
                 uppercase={false}
-                label={ccExpenseCategoryLabel(c.slug)}
+                label={ccExpenseCategoryPathLabel(c)}
                 backgroundColor={c.chart_color}
                 hoverBackgroundColor={pillHoverColor(c.chart_color)}
-                aria-label={ccExpenseCategoryLabel(c.slug)}
+                aria-label={ccExpenseCategoryPathLabel(c)}
                 onClick={() => {
                   if (rowPending) return;
                   persistCategory(c.slug);
@@ -175,7 +175,7 @@ function ExpenseLineCategoryControls({
         <option value="">{ccExpenseCategoryLabel("unclassified")}</option>
         {assignable.map((c) => (
           <option key={c.slug} value={c.slug}>
-            {ccExpenseCategoryLabel(c.slug)}
+            {ccExpenseCategoryPathLabel(c)}
           </option>
         ))}
       </select>
