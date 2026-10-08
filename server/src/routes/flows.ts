@@ -626,7 +626,7 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
     category_slug?: string;
     unique?: boolean;
     clear_category?: boolean;
-    source?: "cc" | "checking" | "manual";
+    source?: "cc" | "checking" | "manual" | "payslip";
   };
   const categorySlug = body.category_slug != null ? String(body.category_slug).trim() : "";
   const unique = !!body.unique;
@@ -634,6 +634,10 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
   try {
     if (body.source === "manual") {
       res.status(400).json({ error: "manual expense entries are not editable" });
+      return;
+    }
+    if (body.source === "payslip") {
+      res.status(400).json({ error: "payslip deductions have a fixed category" });
       return;
     }
     if (lineId < 0) {

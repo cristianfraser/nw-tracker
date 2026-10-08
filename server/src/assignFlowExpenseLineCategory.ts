@@ -14,7 +14,7 @@ import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
 import { db } from "./db.js";
 import { purchaseIdFromPlanGastosLineId } from "./ccInstallmentPlanGastosLines.js";
 
-export type FlowExpenseLineCategorySource = "cc" | "checking" | "manual";
+export type FlowExpenseLineCategorySource = "cc" | "checking" | "manual" | "payslip";
 
 export function assignFlowExpenseLineCategory(opts: {
   lineId: number;
@@ -31,6 +31,9 @@ export function assignFlowExpenseLineCategory(opts: {
 } {
   if (opts.source === "manual") {
     throw new Error("manual expense entries are not editable");
+  }
+  if (opts.source === "payslip") {
+    throw new Error("payslip deductions have a fixed category");
   }
 
   if (opts.lineId < 0) {

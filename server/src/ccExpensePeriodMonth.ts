@@ -12,7 +12,7 @@ export type CcExpenseLineRole = "purchase" | "installment_cuota" | "installment_
 export type CcExpenseGastosScope = "both" | "total_only" | "split_only" | "excluded";
 
 export type GastosPeriodLine = {
-  source: "cc" | "checking" | "manual";
+  source: "cc" | "checking" | "manual" | "payslip";
   expense_month: string;
   billing_month: string;
   purchase_month: string;

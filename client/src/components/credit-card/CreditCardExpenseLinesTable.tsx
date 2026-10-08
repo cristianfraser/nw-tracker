@@ -301,7 +301,9 @@ export function CreditCardExpenseLinesTable({
         const showNoteInput =
           Boolean(ln.purchase_key) &&
           (isCc || (enableCheckingNotes && ln.source === "checking"));
-        const rowSelected = showRowSelection && selection.isSelected(ln);
+        // A payslip deduction's category is the deduction's own: no picker, no bulk select, no group.
+        const fixedCategory = ln.source === "payslip";
+        const rowSelected = showRowSelection && !fixedCategory && selection.isSelected(ln);
         return (
           <tr
             key={`${ln.source}-${ln.statement_line_id}-${ln.purchase_key}`}
@@ -317,14 +319,16 @@ export function CreditCardExpenseLinesTable({
           >
             {showRowSelection ? (
               <td className={categoryStyles.selectCol}>
-                <input
-                  type="checkbox"
-                  checked={rowSelected}
-                  aria-label={t("expenses.creditCard.selectRowAria", {
-                    merchant: ln.merchant ?? ln.origin_label,
-                  })}
-                  onChange={() => selection.toggleLine(ln)}
-                />
+                {fixedCategory ? null : (
+                  <input
+                    type="checkbox"
+                    checked={rowSelected}
+                    aria-label={t("expenses.creditCard.selectRowAria", {
+                      merchant: ln.merchant ?? ln.origin_label,
+                    })}
+                    onChange={() => selection.toggleLine(ln)}
+                  />
+                )}
               </td>
             ) : null}
             <td className="mono">{ln.origin_label}</td>
@@ -397,16 +401,25 @@ export function CreditCardExpenseLinesTable({
             </td>
             {showCategoryControls ? (
               <td>
-                <ExpenseLineCategoryControls
-                  line={ln}
-                  categories={categories}
-                  variant={categoryControlVariant}
-                />
+                {fixedCategory ? (
+                  <span className="muted">
+                    {(() => {
+                      const c = categories.find((x) => x.slug === ln.category_slug);
+                      return c ? ccExpenseCategoryPathLabel(c) : ln.category_slug;
+                    })()}
+                  </span>
+                ) : (
+                  <ExpenseLineCategoryControls
+                    line={ln}
+                    categories={categories}
+                    variant={categoryControlVariant}
+                  />
+                )}
               </td>
             ) : null}
             {showBigGroupControls ? (
               <td>
-                {ln.purchase_key ? (
+                {ln.purchase_key && !fixedCategory ? (
                   <ExpenseBigGroupSelect
                     accountId={ln.account_id}
                     purchaseKey={ln.purchase_key}
