@@ -1027,7 +1027,21 @@
     "linkSource": {
       "auto": "auto",
       "manual": "manual"
-    }
+    },
+    "colChecks": "Revisión",
+    "checksOk": "OK",
+    "checksDifferences": "{{count}} diferencia(s)",
+    "checkDetail": "{{check}}: esperado {{expected}}, liquidación {{printed}}",
+    "rebuilt": "reconstruida",
+    "checks": {
+      "taxable_base": "Imponible (tope)",
+      "pension": "AFP (tasa publicada)",
+      "health_minimum": "Salud (≥ 7 %)",
+      "unemployment": "Cesantía",
+      "income_tax": "Impuesto (tabla mensual)",
+      "pension_credited": "AFP acreditada (10 % + empleador)"
+    },
+    "checksPending": "pendiente (parámetros aún no publicados)"
   },
   "deposits": {
     "totalLabel": "Total histórico:",
@@ -1701,6 +1715,16 @@
       "foreignUnusedOpen": "Pérdida en acciones extranjeras en {{year}}: {{amount}}. Solo compensa ganancias en acciones extranjeras del mismo año, no sueldo, fondos ni cripto: vender acciones extranjeras con ganancia de hasta {{amount}} antes del {{year}}-12-31 no pagaría impuesto.",
       "foreignUnusedClosed": "{{amount}} de pérdida en acciones extranjeras quedaron sin usar en {{year}}: solo compensa ganancias en acciones extranjeras del mismo año y no se arrastra.",
       "foreignTaxedOpen": "Ganancia en acciones extranjeras en {{year}}: {{amount}}. Vender acciones extranjeras, cripto o fondos con pérdida de hasta {{amount}} antes del {{year}}-12-31 la compensaría."
+    },
+    "payroll": {
+      "title": "Impuesto retenido en liquidaciones",
+      "explain": "El impuesto retenido de cada liquidación contra la tabla mensual sobre su propia renta tributable (salud descontada hasta el 7 % legal). Una diferencia es del empleador; la declaración anual la ajusta.",
+      "summary": "Retenido {{withheld}} · según tabla {{byTable}} · diferencia {{difference}}",
+      "colMonth": "Mes",
+      "colWithheld": "Retenido",
+      "colTable": "Según tabla",
+      "colDifference": "Diferencia",
+      "rebuilt": "reconstruida"
     }
   }
 }

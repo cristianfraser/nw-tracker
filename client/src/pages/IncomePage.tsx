@@ -143,7 +143,7 @@ export function IncomePage() {
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
           {t("workEarnings.sectionTitle")}
         </h3>
-        <WorkEarningsTable rows={data.work_earnings} displayUnit={displayUnit} />
+        <WorkEarningsTable rows={data.work_earnings} displayUnit={displayUnit} checks={data.payslip_checks} />
       </section>
 
       <section>

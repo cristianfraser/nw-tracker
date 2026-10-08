@@ -71,6 +71,7 @@ function incomePayload(): FlowsIncomeResponse {
     filtered_lines: [],
     refund_lines: [],
     payroll_breakdown: { payslips: [], months: [], years: [] },
+    payslip_checks: [],
   };
 }
 

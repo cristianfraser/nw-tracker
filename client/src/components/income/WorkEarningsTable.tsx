@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
-import type { FlowWorkEarningRow, PayrollEarningType } from "../../types";
+import type { FlowWorkEarningRow, PayrollEarningType, PayslipChecksRow } from "../../types";
 import { workEarningLiquidoDisplayAmount } from "../../incomeAggregates";
 import { usePatchWorkEarningMutation } from "../../queries/mutations";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
@@ -18,9 +18,12 @@ function formatOptionalClp(value: number | null, displayUnit: DisplayUnit): stri
 export function WorkEarningsTable({
   rows,
   displayUnit = "clp",
+  checks = [],
 }: {
   rows: readonly FlowWorkEarningRow[];
   displayUnit?: DisplayUnit;
+  /** Each salary payslip recomputed from the month's legal parameters (server-built). */
+  checks?: readonly PayslipChecksRow[];
 }) {
   const { t } = useTranslation();
   const patchWorkEarning = usePatchWorkEarningMutation();
@@ -31,6 +34,7 @@ export function WorkEarningsTable({
   );
 
   const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE);
+  const checksById = useMemo(() => new Map(checks.map((c) => [c.payslip_id, c])), [checks]);
 
   if (rows.length === 0) {
     return <p className="muted">{t("workEarnings.empty")}</p>;
@@ -54,6 +58,7 @@ export function WorkEarningsTable({
               <th>{t("workEarnings.colLiquido")}</th>
               <th>{t("workEarnings.colType")}</th>
               <th>{t("workEarnings.colInflow")}</th>
+              <th>{t("workEarnings.colChecks")}</th>
             </tr>
           </thead>
         }
@@ -104,6 +109,29 @@ export function WorkEarningsTable({
               ) : (
                 <span className="muted">{t("workEarnings.unlinked")}</span>
               )}
+            </td>
+            <td>
+              {(() => {
+                const c = checksById.get(row.id);
+                if (!c) return <span className="muted">—</span>;
+                if (c.pending) return <span className="muted">{t("workEarnings.checksPending")}</span>;
+                if (c.differences.length === 0) return <span className="muted">{t("workEarnings.checksOk")}</span>;
+                const detail = c.differences
+                  .map((d) =>
+                    t("workEarnings.checkDetail", {
+                      check: t(`workEarnings.checks.${d.check}`),
+                      expected: formatFlowMoney(d.expected, "clp"),
+                      printed: formatFlowMoney(d.printed, "clp"),
+                    })
+                  )
+                  .join("\n");
+                return (
+                  <span title={detail} style={{ color: "var(--negative)", cursor: "help" }}>
+                    {t("workEarnings.checksDifferences", { count: c.differences.length })}
+                    {c.origin === "rebuilt" ? <span className="muted"> ({t("workEarnings.rebuilt")})</span> : null}
+                  </span>
+                );
+              })()}
             </td>
           </tr>
         ))}

@@ -131,6 +131,8 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     x.note(`payslips: ${o.payslips.reason}`);
     if (o.payslips.fetch) await x.step("fetch Buk payslips", npmRun("fetch:buk-payslips", "--background"));
     await x.step("parse payslips", npmRun("parse:payroll-liquidaciones"));
+    // The months' legal parameters the payslip checks read (Previred; only new months are fetched).
+    await x.step("payroll parameters", npmRun("import:previred-indicators"));
     // Not strict: an unpaired payslip is the normal state until the month's cartola arrives.
     await x.step("import payslips", npmRun("import:payroll-liquidaciones", "--no-strict"));
   }

@@ -1161,6 +1161,28 @@ def parse_finiquito_scan(text: str, period_month: str) -> Dict[str, Any]:
     return row
 
 
+AFP_NAMES = ("planvital", "modelo", "uno", "capital", "cuprum", "habitat", "provida")
+
+
+def detect_pension_fund(text: str, fmt: str) -> Optional[str]:
+    """The AFP the payslip's pension contribution went to, as each layout names it; None for a
+    finiquito (it names none). A salary payslip that names none fails."""
+    if fmt in ("dt_finiquito", "finiquito_scan"):
+        return None
+    names = "|".join(AFP_NAMES)
+    patterns = (
+        rf"A\.F\.P\.\s*({names})\b",  # Nuevo Chile, Unholster scans, Axity
+        rf"Fondo De Pensiones Afp ({names})\b",  # Dealsyte
+        rf"Previsi[oó]n:\s*({names})\b",  # Buk
+        rf"^\s*AFP\s+COTIZACI[OÓ]N[^\n]*\n\s*({names})\b",  # Talana: the cell under the AFP header
+    )
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE | re.MULTILINE)
+        if m:
+            return m.group(1).lower()
+    raise ValueError("payslip: no AFP named")
+
+
 def parse_payroll_pdf(path: Path) -> Dict[str, Any]:
     text = extract_payroll_pdf_text(path)
     period_month = period_month_from_path(path)
@@ -1185,6 +1207,7 @@ def parse_payroll_pdf(path: Path) -> Dict[str, Any]:
         raise ValueError(f"unsupported format: {fmt}")
     if "lines" not in parsed:
         parsed["lines"] = extract_payslip_lines(text, fmt, parsed)
+    parsed["pension_fund"] = detect_pension_fund(text, fmt)
     for i, line in enumerate(parsed["lines"]):
         line["position"] = i
     parsed["source_pdf"] = rel_source_pdf(path)

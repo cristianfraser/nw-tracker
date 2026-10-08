@@ -93,9 +93,10 @@ describe("runNightly", () => {
   it("imports payslips when the server asks, reading the portal only when told to fetch", async () => {
     const fetched = fakeRunner();
     await runNightly(fetched.x, { ...NIGHTLY, payslips: { fetch: true, reason: "no payslip for 2030-09 yet" } });
-    expect(fetched.calls.filter((c) => /buk|payroll/.test(c))).toEqual([
+    expect(fetched.calls.filter((c) => /buk|payroll|previred/.test(c))).toEqual([
       "run fetch:buk-payslips -- --background",
       "run parse:payroll-liquidaciones",
+      "run import:previred-indicators",
       "run import:payroll-liquidaciones -- --no-strict",
     ]);
     const importOnly = fakeRunner();

@@ -27,6 +27,7 @@ type Line = { side: Side; section: Section; label: string; amount: number };
 
 type NewPayslip = {
   document: string;
+  pension_fund: string | null;
   period_month: string;
   employer: { name: string; rut: string | null };
   pay_period_label: string;
@@ -38,6 +39,8 @@ type NewPayslip = {
 
 type Plan = {
   basis: Record<string, string>;
+  /** document → the AFP the rebuilt payslip's contribution went to (null: none). */
+  pension_fund: Record<string, string | null>;
   usd_transfer_fee: number;
   new_payslips: NewPayslip[];
   advances: { document: string; movement_id: number }[];
@@ -174,7 +177,12 @@ const writeLines = (payslipId: number, lines: readonly Line[]) => {
 db.transaction(() => {
   for (const d of derived) {
     writeLines(d.row.id, d.lines);
-    db.prepare(`UPDATE payroll_work_earnings SET rebuilt_basis = ? WHERE id = ?`).run(plan.basis[d.row.source_pdf], d.row.id);
+    if (!(d.row.source_pdf in plan.pension_fund)) throw new Error(`${d.row.source_pdf}: no pension_fund in the plan`);
+    db.prepare(`UPDATE payroll_work_earnings SET rebuilt_basis = ?, pension_fund = ? WHERE id = ?`).run(
+      plan.basis[d.row.source_pdf],
+      plan.pension_fund[d.row.source_pdf],
+      d.row.id
+    );
   }
   for (const p of plan.new_payslips) {
     const by = (kind: string) => {
@@ -205,18 +213,19 @@ db.transaction(() => {
       source_pdf: p.document,
       movement_id: p.deposit_movement_id,
       rebuilt_basis: p.basis,
+      pension_fund: p.pension_fund,
     };
     db.prepare(
       `INSERT INTO payroll_work_earnings (
          period_month, employer_name, employer_rut, pay_period_label, earning_type, base_salary_clp, gratificacion_clp,
          total_imponible_clp, total_no_imponible_clp, total_haberes_clp, desc_afp_clp, desc_health_clp, desc_tax_clp,
          desc_cesantia_clp, total_descuentos_clp, liquido, liquido_currency, source_pdf, parse_version, movement_id,
-         link_source, origin, rebuilt_basis
+         link_source, origin, rebuilt_basis, pension_fund
        ) VALUES (
          @period_month, @employer_name, @employer_rut, @pay_period_label, @earning_type, @base_salary_clp, @gratificacion_clp,
          @total_imponible_clp, @total_no_imponible_clp, @total_haberes_clp, @desc_afp_clp, @desc_health_clp, @desc_tax_clp,
          @desc_cesantia_clp, @total_descuentos_clp, @liquido, 'clp', @source_pdf, 'rebuilt', @movement_id,
-         'manual', 'rebuilt', @rebuilt_basis
+         'manual', 'rebuilt', @rebuilt_basis, @pension_fund
        )
        ON CONFLICT(source_pdf) DO UPDATE SET
          period_month = excluded.period_month, employer_name = excluded.employer_name, employer_rut = excluded.employer_rut,
@@ -227,7 +236,8 @@ db.transaction(() => {
          desc_health_clp = excluded.desc_health_clp, desc_tax_clp = excluded.desc_tax_clp,
          desc_cesantia_clp = excluded.desc_cesantia_clp, total_descuentos_clp = excluded.total_descuentos_clp,
          liquido = excluded.liquido, movement_id = excluded.movement_id, link_source = 'manual',
-         origin = 'rebuilt', rebuilt_basis = excluded.rebuilt_basis, imported_at = datetime('now')`
+         origin = 'rebuilt', rebuilt_basis = excluded.rebuilt_basis, pension_fund = excluded.pension_fund,
+         imported_at = datetime('now')`
     ).run(fields);
     const id = (db.prepare(`SELECT id FROM payroll_work_earnings WHERE source_pdf = ?`).get(p.document) as { id: number }).id;
     writeLines(id, p.lines);

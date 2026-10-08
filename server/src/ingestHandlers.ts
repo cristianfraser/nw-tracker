@@ -21,6 +21,7 @@ import { applyRacionalRead } from "./racionalMovementsImport.js";
 import { applyCardPaymentReceipt } from "./santanderCcPaymentReceipts.js";
 import { applyStoreReceipt } from "./storeReceiptApply.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";
+import { applyPayrollParameters } from "./payrollParametersApply.js";
 import { applyBrokerDividendStatement } from "./brokerDividendStatementApply.js";
 import { applyFundAccountTransactions } from "./fintualCertImport.js";
 import { applyUnemploymentFundDocuments } from "./afcCertImport.js";
@@ -130,6 +131,11 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
   "card.statement": {
     apply({ payload }) {
       return { status: "applied", details: applyCardStatement(payload) };
+    },
+  },
+  "payroll.parameters": {
+    apply({ payload }) {
+      return { status: "applied", details: applyPayrollParameters(payload) };
     },
   },
   "pension_account.balance": {

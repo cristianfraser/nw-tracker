@@ -36,6 +36,7 @@ export type ParsedPayrollRow = {
   tope_cesantia_uf: number | null;
   format?: string;
   lines?: PayslipLine[];
+  pension_fund?: string | null;
 };
 
 export type PayrollParseIndex = { parser_version?: string; rows?: ParsedPayrollRow[]; failures?: unknown[] | number };
@@ -62,6 +63,7 @@ export function payslipFromParsedRow(r: ParsedPayrollRow): Payslip {
     employer: { name: r.employer_name, rut: r.employer_rut },
     pay_period_label: r.pay_period_label,
     kind: r.earning_type ?? "salary",
+    pension_fund: r.pension_fund ?? null,
     earnings: {
       base_salary: r.base_salary_clp,
       meal_allowance: r.colacion_clp,

@@ -1,6 +1,6 @@
 # Payroll: every payslip line, gross vs net, and payroll costs as expenses
 
-Status: plan (2026-10-07). Personal figures and the month-by-month evidence live in
+Status: phases 1–7 done (2026-10-07 → 08); see AGENTS.md «Ingest API» → `employment.payslips` for what was built. Personal figures and the month-by-month evidence live in
 the untracked `cfraser/payroll-plan-data.md`; this file stays free of personal data.
 
 ## Goal

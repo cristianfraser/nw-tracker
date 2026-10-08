@@ -52,6 +52,7 @@
     "parse:grocery-receipts": "python3 python/parse-grocery-receipts.py",
     "parse:payroll-liquidaciones": "PYTHONPATH=python/.pdf_deps python3 python/parse-payroll-liquidaciones.py",
     "import:payroll-liquidaciones": "tsx src/payroll/importPayslipsMain.ts",
+    "import:previred-indicators": "tsx src/payroll/importPreviredIndicatorsMain.ts",
     "import:fintual-acciones": "tsx src/fintual/importAccionesMain.ts",
     "import:fintual-cert": "tsx src/fintual/importCertMain.ts",
     "import:afc-cert": "tsx src/afc/importDocumentsMain.ts",

@@ -1,6 +1,7 @@
 /** Flows: deposits, income, work earnings, expenses (manual, CC, real estate). Split verbatim from index.ts; paths unchanged. */
 import express from "express";
 import { buildPayrollBreakdown } from "../payrollBreakdown.js";
+import { buildPayslipChecks } from "../payslipChecks.js";
 import { db } from "../db.js";
 import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsPayload } from "../flowsDeposits.js";
@@ -87,6 +88,7 @@ app.get("/api/income", (_req, res) => {
     filtered_lines: withTransferCounterparties(payload.filtered_lines, counterparties),
     refund_lines: withTransferCounterparties(payload.refund_lines, counterparties),
     payroll_breakdown: buildPayrollBreakdown(),
+    payslip_checks: buildPayslipChecks(),
   });
 });
 

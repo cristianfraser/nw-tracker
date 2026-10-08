@@ -14,6 +14,7 @@ export * from "./kinds/brokerNotifications.js";
 export * from "./kinds/brokerMovements.js";
 export * from "./kinds/pensionAccountCertificates.js";
 export * from "./kinds/pensionAccountBalance.js";
+export * from "./kinds/payrollParameters.js";
 export * from "./kinds/cardStatement.js";
 export * from "./kinds/merchantPurchaseDocument.js";
 export * from "./kinds/cardParsedStatements.js";

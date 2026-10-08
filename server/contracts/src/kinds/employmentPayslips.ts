@@ -38,6 +38,8 @@ export const payslipSchema = z
     pay_period_label: z.string().min(1).max(200).nullable(),
     /** `severance`: a finiquito. */
     kind: z.enum(["salary", "severance"]),
+    /** The AFP the pension contribution went to, as the payslip names it (lowercase); null when it names none. */
+    pension_fund: z.string().regex(/^[a-z]+$/).nullable().optional(),
     /** Haberes as printed; null when the payslip prints no such line (or it was not read). */
     earnings: z
       .object({

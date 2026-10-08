@@ -22,7 +22,7 @@ INSERT INTO payroll_work_earnings (
   desc_afp_clp, desc_health_clp, desc_tax_clp, desc_cesantia_clp, desc_apv_clp, desc_other_clp,
   total_descuentos_clp, liquido, liquido_currency,
   uf_mes, utm_mes, tope_previsional_uf, tope_cesantia_uf,
-  source_pdf, parse_version, movement_id, link_source
+  source_pdf, parse_version, movement_id, link_source, pension_fund
 ) VALUES (
   @period_month, @employer_name, @employer_rut, @pay_period_label, @earning_type,
   @base_salary_clp, @colacion_clp, @movilizacion_clp, @gratificacion_clp,
@@ -30,7 +30,7 @@ INSERT INTO payroll_work_earnings (
   @desc_afp_clp, @desc_health_clp, @desc_tax_clp, @desc_cesantia_clp, @desc_apv_clp, @desc_other_clp,
   @total_descuentos_clp, @liquido, 'clp',
   @uf_mes, @utm_mes, @tope_previsional_uf, @tope_cesantia_uf,
-  @source_pdf, @parse_version, NULL, NULL
+  @source_pdf, @parse_version, NULL, NULL, @pension_fund
 )
 ON CONFLICT(source_pdf) DO UPDATE SET
   period_month = excluded.period_month,
@@ -62,6 +62,7 @@ ON CONFLICT(source_pdf) DO UPDATE SET
   tope_previsional_uf = excluded.tope_previsional_uf,
   tope_cesantia_uf = excluded.tope_cesantia_uf,
   parse_version = excluded.parse_version,
+  pension_fund = excluded.pension_fund,
   imported_at = datetime('now'),
   movement_id = CASE
     WHEN payroll_work_earnings.link_source = 'manual' THEN payroll_work_earnings.movement_id
@@ -102,6 +103,7 @@ function payslipRow(p: Payslip, parserVersion: string) {
     tope_cesantia_uf: p.indices.unemployment_cap_uf,
     source_pdf: p.document,
     parse_version: parserVersion,
+    pension_fund: p.pension_fund ?? null,
   };
 }
 
@@ -130,6 +132,7 @@ const COMPARED = [
   "utm_mes",
   "tope_previsional_uf",
   "tope_cesantia_uf",
+  "pension_fund",
 ] as const;
 
 type StoredLine = Pick<PayslipLine, "position" | "side" | "section" | "label" | "amount"> & { kind: string | null };
