@@ -1166,7 +1166,9 @@
         "others": "Otros",
         "deposits": "Depósitos (a inversiones)",
         "real_estate_amortization": "Amortización hipoteca",
-        "checking_internal_transfer": "Traspaso interno (cuentas)"
+        "checking_internal_transfer": "Traspaso interno (cuentas)",
+        "taxes": "Impuestos",
+        "pension_fees": "Comisiones AFP"
       },
       "colMonthExpense": "Gasto del mes",
       "colMonthExpenseReal": "Total real",
@@ -1218,7 +1220,10 @@
         "deleteAction": "Eliminar grupo",
         "deleteConfirm": "¿Eliminar el grupo «{{label}}»? Tiene {{count}} compra(s) asignadas; quítalas del grupo antes de eliminar.",
         "deleteBlockedHint": "Quita todas las compras del grupo antes de eliminarlo."
-      }
+      },
+      "categoryLevelLabel": "Agrupar por",
+      "categoryLevelCategory": "Categorías",
+      "categoryLevelSubcategory": "Subcategorías"
     },
     "kinds": {
       "gas": "Gas",

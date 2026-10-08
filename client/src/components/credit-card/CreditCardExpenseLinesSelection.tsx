@@ -6,10 +6,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useTranslation, ccExpenseCategoryLabel } from "../../i18n";
+import { useTranslation } from "../../i18n";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { expenseLineCategoryTargetId } from "../../ccExpenseLineBuckets";
-import { assignableCcExpenseCategories } from "../../ccExpenseCategories";
+import { assignableCcExpenseCategories, ccExpenseCategoryPathLabel } from "../../ccExpenseCategories";
 import {
   useAssignCcExpenseLineCategory,
   useCreateCcExpenseBigGroupMutation,
@@ -244,7 +244,7 @@ export function CreditCardExpenseLinesBulkFooter({
           </option>
           {assignable.map((c) => (
             <option key={c.slug} value={c.slug}>
-              {ccExpenseCategoryLabel(c.slug)}
+              {ccExpenseCategoryPathLabel(c)}
             </option>
           ))}
         </select>

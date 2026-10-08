@@ -77,7 +77,20 @@ export type CcExpenseCategoryRow = {
   label_i18n_key: string | null;
   sort_order: number;
   chart_color: string;
+  /** The parent category's slug for a subcategory (one level deep); null for a top-level category. */
+  parent_slug: string | null;
 };
+
+const CATEGORY_COLUMNS_SQL = `c.id, c.slug, c.label, c.label_i18n_key, c.sort_order, c.chart_color, p.slug AS parent_slug,
+       p.parent_id AS parent_parent_id`;
+
+function categoryRow(r: CcExpenseCategoryRow & { parent_parent_id: number | null }): CcExpenseCategoryRow {
+  if (r.parent_parent_id != null) {
+    throw new Error(`expense category ${r.slug}: its parent ${r.parent_slug} is itself a subcategory (one level only)`);
+  }
+  const { parent_parent_id: _ignored, ...row } = r;
+  return row;
+}
 
 export function normalizeCcExpenseMerchantKey(merchant: string | null | undefined): string {
   const t = String(merchant ?? "").trim().replace(/\s+/g, " ");
@@ -178,22 +191,22 @@ function enrichCcExpenseCategoryChartColors(
 export function listCcExpenseCategories(): CcExpenseCategoryRow[] {
   const rows = db
     .prepare(
-      `SELECT id, slug, label, label_i18n_key, sort_order, chart_color
-       FROM cc_expense_categories
-       ORDER BY sort_order, id`
+      `SELECT ${CATEGORY_COLUMNS_SQL}
+       FROM cc_expense_categories c LEFT JOIN cc_expense_categories p ON p.id = c.parent_id
+       ORDER BY c.sort_order, c.id`
     )
-    .all() as CcExpenseCategoryRow[];
-  return enrichCcExpenseCategoryChartColors(rows);
+    .all() as (CcExpenseCategoryRow & { parent_parent_id: number | null })[];
+  return enrichCcExpenseCategoryChartColors(rows.map(categoryRow));
 }
 
 export function getCcExpenseCategoryBySlug(slug: string): CcExpenseCategoryRow | null {
   const row = db
     .prepare(
-      `SELECT id, slug, label, label_i18n_key, sort_order, chart_color
-       FROM cc_expense_categories WHERE slug = ?`
+      `SELECT ${CATEGORY_COLUMNS_SQL}
+       FROM cc_expense_categories c LEFT JOIN cc_expense_categories p ON p.id = c.parent_id WHERE c.slug = ?`
     )
-    .get(slug) as CcExpenseCategoryRow | undefined;
-  return row ?? null;
+    .get(slug) as (CcExpenseCategoryRow & { parent_parent_id: number | null }) | undefined;
+  return row ? categoryRow(row) : null;
 }
 
 export function loadCcExpenseCategoryMaps(accountIds: readonly number[]): {

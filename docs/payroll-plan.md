@@ -97,6 +97,24 @@ memory. The SII's monthly «Impuesto Único de Segunda Categoría» table (UTM b
 the yearly Global Complementario table (already in `f22Draft.ts`) move to data tables
 checked against the SII's published pages.
 
+### Employer pension contribution (pension reform, from 2025-08)
+
+Since August 2025 the employer pays a contribution of its own, part of it into the worker's AFP
+account (0,1 % of the taxable base at the start), and the rate rises in steps over the coming
+years. It is not on the payslip (the worker's 10 % and the commission are); it shows up only as
+AFP credits above 10 % of the base. Handling:
+
+- **Rate from the parameters, never hardcoded:** `payroll_parameters` gets the employer's
+  individual-account rate per month, fetched with the rest (Previred's indicators publish it), so
+  each step is picked up when it happens.
+- **Treated like the AFC employer share:** a deposit into the AFP account together with the
+  worker's 10 % (it is already inside the credited pesos), not income, not an expense.
+- **Check:** the AFP credited for a month is expected to be 10 % + the employer rate of the capped
+  base; the difference is recorded (phase 7), never refused. The commission is unaffected (it is
+  the payslip's AFP line − 10 %).
+- Any part of the employer contribution that goes to the social-insurance fund rather than the
+  individual account is not the worker's money and is not tracked.
+
 ### Recorded differences (`payslip_checks`)
 
 Per payslip: expected vs printed for taxable base (min(pay, cap × UF)), AFP mandatory,

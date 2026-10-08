@@ -1166,7 +1166,9 @@
         "others": "Others",
         "deposits": "Deposits (to investments)",
         "real_estate_amortization": "Mortgage amortization",
-        "checking_internal_transfer": "Internal transfer (accounts)"
+        "checking_internal_transfer": "Internal transfer (accounts)",
+        "taxes": "Taxes",
+        "pension_fees": "Pension fund fees"
       },
       "colMonthExpense": "Month spend",
       "colMonthExpenseReal": "Real total",
@@ -1218,7 +1220,10 @@
         "deleteAction": "Delete group",
         "deleteConfirm": "Delete group “{{label}}”? It has {{count}} assigned purchase(s); remove them from the group before deleting.",
         "deleteBlockedHint": "Remove every purchase from the group before deleting it."
-      }
+      },
+      "categoryLevelLabel": "Group by",
+      "categoryLevelCategory": "Categories",
+      "categoryLevelSubcategory": "Subcategories"
     },
     "kinds": {
       "gas": "Gas",

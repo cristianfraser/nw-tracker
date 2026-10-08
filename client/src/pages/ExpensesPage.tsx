@@ -22,6 +22,8 @@ import {
 } from "../flowsDisplay";
 import { clipMonthsThenRollup, clipPointsToTimeRange, type TimeRange } from "../timeRange";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
+import { useCcExpenseCategoryLevel } from "../useCcExpenseCategoryLevel";
+import { ccExpenseCategoriesAtLevel, ccExpenseCategorySlugAtLevel } from "../ccExpenseCategories";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
 import { CC_EXPENSE_TOTALS_EXCLUDED_SLUGS } from "../ccExpenseLineBuckets";
 import { chartCategorySlugsForFlowsExpenses } from "../expenseDepositLinks";
@@ -70,16 +72,29 @@ export function ExpensesPage() {
   );
   const { data, error } = useFlowsExpenses();
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
+  const { categoryLevel, setCategoryLevel } = useCcExpenseCategoryLevel();
+
+  /** The chart's categories at the chosen level: at «Categorías» a subcategory folds into its parent. */
+  const chartCategories = useMemo(
+    () => ccExpenseCategoriesAtLevel(data?.categories ?? [], categoryLevel),
+    [categoryLevel, data?.categories]
+  );
+  const chartLines = useMemo(() => {
+    if (!data) return [];
+    const slugAt = ccExpenseCategorySlugAtLevel(data.categories, categoryLevel);
+    return data.lines.map((l) => {
+      const slug = slugAt(l.category_slug);
+      return slug === l.category_slug ? l : { ...l, category_slug: slug };
+    });
+  }, [categoryLevel, data]);
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const chartCategorySlugs = useMemo(
     () =>
       chartCategorySlugsForFlowsExpenses(
-        (data?.categories ?? [])
-          .map((c) => c.slug)
-          .filter((slug) => !CC_EXPENSE_TOTALS_EXCLUDED_SLUGS.has(slug))
+        chartCategories.map((c) => c.slug).filter((slug) => !CC_EXPENSE_TOTALS_EXCLUDED_SLUGS.has(slug))
       ),
-    [data?.categories]
+    [chartCategories]
   );
 
   const activeBigGroups = useMemo(
@@ -101,14 +116,14 @@ export function ExpensesPage() {
   const view = useMemo(() => {
     if (!data) return null;
     const tableAgg = aggregateGastosFromLines(
-      data.lines,
+      chartLines,
       chartCategorySlugs,
       installmentMode,
       undefined,
       displayUnit
     );
     const chartAgg = aggregateGastosFromLines(
-      data.lines,
+      chartLines,
       chartCategorySlugs,
       installmentMode,
       excludedBigGroups,
@@ -120,7 +135,7 @@ export function ExpensesPage() {
       total: tableAgg.total,
       total_real: tableAgg.total_real,
     };
-  }, [chartCategorySlugs, data, displayUnit, excludedBigGroups, installmentMode]);
+  }, [chartCategorySlugs, chartLines, data, displayUnit, excludedBigGroups, installmentMode]);
 
   /**
    * Latest month (YYYY-MM) with any real spend in the CURRENT mode. Table rows beyond this are
@@ -255,6 +270,25 @@ export function ExpensesPage() {
           />
           {t("expenses.creditCard.installmentModeTotal")}
         </label>
+        <span className="label-inline">{t("expenses.creditCard.categoryLevelLabel")}</span>
+        <label className="radio-pill">
+          <input
+            type="radio"
+            name="cc-expense-category-level"
+            checked={categoryLevel === "category"}
+            onChange={() => setCategoryLevel("category")}
+          />
+          {t("expenses.creditCard.categoryLevelCategory")}
+        </label>
+        <label className="radio-pill">
+          <input
+            type="radio"
+            name="cc-expense-category-level"
+            checked={categoryLevel === "subcategory"}
+            onChange={() => setCategoryLevel("subcategory")}
+          />
+          {t("expenses.creditCard.categoryLevelSubcategory")}
+        </label>
         <span style={{ marginLeft: "auto" }}>
           <CreditCardFacturadoFinancingManager lines={data.lines} />
         </span>
@@ -269,7 +303,7 @@ export function ExpensesPage() {
           title={t("expenses.creditCard.chartTitle")}
           points={chartPoints}
           categorySortPoints={chartSortPoints}
-          categories={data.categories}
+          categories={chartCategories}
           displayUnit={displayUnit}
           xAxisGranularity={chartGranularity}
           yearAverages={yearAverages}

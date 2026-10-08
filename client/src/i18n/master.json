@@ -4115,6 +4115,14 @@
         "checking_internal_transfer": {
           "en": "Internal transfer (accounts)",
           "es": "Traspaso interno (cuentas)"
+        },
+        "taxes": {
+          "en": "Taxes",
+          "es": "Impuestos"
+        },
+        "pension_fees": {
+          "en": "Pension fund fees",
+          "es": "Comisiones AFP"
         }
       },
       "colMonthExpense": {
@@ -4314,6 +4322,18 @@
           "en": "Remove every purchase from the group before deleting it.",
           "es": "Quita todas las compras del grupo antes de eliminarlo."
         }
+      },
+      "categoryLevelLabel": {
+        "en": "Group by",
+        "es": "Agrupar por"
+      },
+      "categoryLevelCategory": {
+        "en": "Categories",
+        "es": "Categorías"
+      },
+      "categoryLevelSubcategory": {
+        "en": "Subcategories",
+        "es": "Subcategorías"
       }
     },
     "kinds": {
