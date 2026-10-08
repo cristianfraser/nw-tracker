@@ -49,7 +49,7 @@ const RULES: readonly Rule[] = [
   { side: "haber", pattern: /^sueldo (ganado|base|del mes|de \d+ dias)$|^remuneracion del ultimo mes/, kind: "base_salary" },
   { side: "haber", pattern: /gratif/, kind: "gratification" },
   { side: "haber", pattern: /^aguinaldo$|^bonos?$/, kind: "bonus" },
-  { side: "haber", pattern: /colacion|movilizacion|teletrabajo|conectividad/, kind: "allowance" },
+  { side: "haber", pattern: /colacion|movilizacion|teletrabajo|conectividad|^asignaciones no imponibles/, kind: "allowance" },
   { side: "haber", pattern: /^seguro vida/, kind: "life_insurance_benefit" },
   { side: "haber", pattern: /inasistencia/, kind: "absence" },
   { side: "haber", pattern: /^indemnizacion por vacaciones/, kind: "vacation_pay" },
