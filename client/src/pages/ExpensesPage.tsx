@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useFlowsExpenses } from "../queries/hooks";
+import { useFlowsExpenses, useFlowsExpensesGastos } from "../queries/hooks";
 import { CreditCardGroupExpensesChart } from "../components/charts/CreditCardGroupExpensesChart";
 import { GroupExpensesMonthTable } from "../components/credit-card/GroupExpensesMonthTable";
 import { BigExpenseGroupsSection } from "../components/credit-card/BigExpenseGroupsSection";
@@ -11,9 +11,6 @@ import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { useTranslation } from "../i18n";
-import { aggregateGastosFromLines, rollupExpenseMonthRowsByYear } from "../ccExpenseGastosAggregate";
-import { expenseYearMonthlyAverages } from "../expenseYearMonthlyAverage";
-import { chileTodayYmd } from "../calendarMonth";
 import {
   flowChartGranularityFromMetricsPeriod,
   flowTableGranularity,
@@ -23,29 +20,15 @@ import {
 import { clipMonthsThenRollup, clipPointsToTimeRange, type TimeRange } from "../timeRange";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 import { useCcExpenseCategoryLevel } from "../useCcExpenseCategoryLevel";
-import { ccExpenseCategoriesAtLevel, ccExpenseCategorySlugAtLevel } from "../ccExpenseCategories";
+import { ccExpenseCategoriesAtLevel } from "../ccExpenseCategories";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
-import { CC_EXPENSE_TOTALS_EXCLUDED_SLUGS } from "../ccExpenseLineBuckets";
-import { chartCategorySlugsForFlowsExpenses } from "../expenseDepositLinks";
 import { activeBigGroupSlugs, bigGroupsWithUsage } from "../ccExpenseBigGroupTotals";
-import type { FlowCcExpenseMonthRow } from "../types";
 
-/** Latest month (YYYY-MM) with any real spend in the given rows. */
 /** Chart Período choices: Diario is not offered on this page. */
 const EXPENSES_CHART_PERIODS = ["month", "year"] as const;
 
 /** Rangos long enough for the per-year average line to read as a trend. */
 const YEAR_AVERAGE_RANGES: ReadonlySet<TimeRange> = new Set(["3y", "5y", "10y", "total"]);
-
-function latestRealSpendMonth(rows: readonly FlowCcExpenseMonthRow[]): string | null {
-  let latest: string | null = null;
-  for (const row of rows) {
-    if (row.gastos_real_mes_clp !== 0 && (latest == null || row.period_month > latest)) {
-      latest = row.period_month;
-    }
-  }
-  return latest;
-}
 
 /** Tarjeta de crédito (grupo Pasivos): líneas de estado de cuenta, todos los signos. */
 export function ExpensesPage() {
@@ -79,23 +62,6 @@ export function ExpensesPage() {
     () => ccExpenseCategoriesAtLevel(data?.categories ?? [], categoryLevel),
     [categoryLevel, data?.categories]
   );
-  const chartLines = useMemo(() => {
-    if (!data) return [];
-    const slugAt = ccExpenseCategorySlugAtLevel(data.categories, categoryLevel);
-    return data.lines.map((l) => {
-      const slug = slugAt(l.category_slug);
-      return slug === l.category_slug ? l : { ...l, category_slug: slug };
-    });
-  }, [categoryLevel, data]);
-  const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
-
-  const chartCategorySlugs = useMemo(
-    () =>
-      chartCategorySlugsForFlowsExpenses(
-        chartCategories.map((c) => c.slug).filter((slug) => !CC_EXPENSE_TOTALS_EXCLUDED_SLUGS.has(slug))
-      ),
-    [chartCategories]
-  );
 
   const activeBigGroups = useMemo(
     () => (data ? activeBigGroupSlugs(data.lines) : []),
@@ -104,6 +70,12 @@ export function ExpensesPage() {
 
   const { excludedBigGroups, isExcluded, toggleExcluded } =
     useCcExpenseExcludedBigGroups(activeBigGroups);
+  const excludedBigGroupList = useMemo(() => [...excludedBigGroups], [excludedBigGroups]);
+  // The default exclusion is every big group the lines carry: wait for them before asking.
+  const gastos = useFlowsExpensesGastos(displayUnit, excludedBigGroupList, data != null);
+  const loadError = error ?? gastos.error;
+  const err =
+    loadError instanceof Error ? loadError.message : loadError ? t("common.loadFailed") : null;
 
   const bigGroupUsage = useMemo(
     () =>
@@ -113,103 +85,37 @@ export function ExpensesPage() {
     [data, installmentMode]
   );
 
-  const view = useMemo(() => {
-    if (!data) return null;
-    const tableAgg = aggregateGastosFromLines(
-      chartLines,
-      chartCategorySlugs,
-      installmentMode,
-      undefined,
-      displayUnit
-    );
-    const chartAgg = aggregateGastosFromLines(
-      chartLines,
-      chartCategorySlugs,
-      installmentMode,
-      excludedBigGroups,
-      displayUnit
-    );
-    return {
-      table: tableAgg,
-      chart: chartAgg,
-      total: tableAgg.total,
-      total_real: tableAgg.total_real,
-    };
-  }, [chartCategorySlugs, chartLines, data, displayUnit, excludedBigGroups, installmentMode]);
-
-  /**
-   * Latest month (YYYY-MM) with any real spend in the CURRENT mode. Table rows beyond this are
-   * dropped so the table doesn't show an empty future tail — installment cuota lines create
-   * future month buckets that are $0 in Total mode; Cuotas mode keeps them (real gastos).
-   */
-  const latestNonEmptyMonth = useMemo(
-    () => (view ? latestRealSpendMonth(view.table.by_month) : null),
-    [view]
-  );
-
-  /**
-   * Chart x-axis end month is mode-INDEPENDENT: Total mode keeps the split-mode tail (future
-   * months that only carry projected cuotas — $0 buckets under Total) so toggling
-   * Total ↔ Por cuota never shrinks the x-axis range.
-   */
-  const chartEndMonth = useMemo(() => {
-    if (!data || installmentMode === "split") return latestNonEmptyMonth;
-    const splitEnd = latestRealSpendMonth(
-      aggregateGastosFromLines(data.lines, [], "split", undefined, displayUnit).by_month
-    );
-    return splitEnd != null && (latestNonEmptyMonth == null || splitEnd > latestNonEmptyMonth)
-      ? splitEnd
-      : latestNonEmptyMonth;
-  }, [data, displayUnit, installmentMode, latestNonEmptyMonth]);
+  /** The server's precomputed view for this installment mode and category level, in this unit. */
+  const view = gastos.data?.views[`${installmentMode}|${categoryLevel}`] ?? null;
 
   const chartPoints = useMemo(() => {
     if (!view) return [];
-    const monthly = view.chart.chart_monthly_by_category.filter(
-      (p) => chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth
-    );
     // Months cut at the Rango start, then rolled up: the yearly chart starts with a partial
     // first year.
-    return clipMonthsThenRollup(monthly, chartGranularity, timeRange, (rows) =>
-      rollupChartPointsByYear(rows, chartCategorySlugs)
+    return clipMonthsThenRollup(view.chart_monthly_by_category, chartGranularity, timeRange, (rows) =>
+      rollupChartPointsByYear(rows, view.chart_category_slugs)
     );
-  }, [chartCategorySlugs, chartEndMonth, chartGranularity, view, timeRange]);
+  }, [chartGranularity, view, timeRange]);
 
-  /**
-   * Per-year average of the chart's monthly total, over full history (the Rango only clips
-   * where it is drawn). Monthly chart and long Rangos only.
-   */
-  const yearAverages = useMemo(() => {
-    if (!view || chartGranularity !== "month" || !YEAR_AVERAGE_RANGES.has(timeRange)) return null;
-    const monthly = view.chart.chart_monthly_by_category.filter(
-      (p) => chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth
-    );
-    return expenseYearMonthlyAverages(monthly, chartCategorySlugs, chileTodayYmd().slice(0, 7));
-  }, [chartCategorySlugs, chartEndMonth, chartGranularity, view, timeRange]);
+  /** Per-year averages (full history, server-built): monthly chart and long Rangos only. */
+  const yearAverages =
+    view && chartGranularity === "month" && YEAR_AVERAGE_RANGES.has(timeRange)
+      ? view.year_averages
+      : null;
 
   /** Unfiltered totals — stack order stays stable when big groups are excluded from display. */
   const chartSortPoints = useMemo(() => {
     if (!view) return [];
-    const monthly = view.table.chart_monthly_by_category.filter(
-      (p) => chartEndMonth == null || p.as_of_date.slice(0, 7) <= chartEndMonth
-    );
     return clipMonthsThenRollup(
-      monthly,
+      view.chart_sort_monthly_by_category ?? view.chart_monthly_by_category,
       chartGranularity === "year" ? "year" : "month",
       timeRange,
-      (rows) => rollupChartPointsByYear(rows, chartCategorySlugs)
+      (rows) => rollupChartPointsByYear(rows, view.chart_category_slugs)
     );
-  }, [chartCategorySlugs, chartEndMonth, chartGranularity, view, timeRange]);
+  }, [chartGranularity, view, timeRange]);
 
-  /** Table rows: FULL history (no range clip), rolled to the table's own período. */
-  const monthTableRows = useMemo(() => {
-    if (!view) return [];
-    const bounded = view.table.by_month.filter(
-      (r) => latestNonEmptyMonth == null || r.period_month <= latestNonEmptyMonth
-    );
-    if (tableGranularity === "month") return bounded;
-    const asc = [...bounded].reverse();
-    return [...rollupExpenseMonthRowsByYear(asc)].reverse();
-  }, [tableGranularity, latestNonEmptyMonth, view]);
+  /** Table rows: FULL history (no range clip), at the table's own período. */
+  const monthTableRows = view ? (tableGranularity === "month" ? view.by_month : view.by_year) : [];
 
   /**
    * "En el rango" companion follows the CHART's Rango (headline `view.total` stays full): the
@@ -219,13 +125,12 @@ export function ExpensesPage() {
     if (!view) return { total: 0, total_real: 0 };
     let total = 0;
     let total_real = 0;
-    for (const r of clipPointsToTimeRange(view.table.by_month, timeRange)) {
-      if (latestNonEmptyMonth != null && r.period_month > latestNonEmptyMonth) continue;
+    for (const r of clipPointsToTimeRange(view.by_month, timeRange)) {
       total += r.gastos_mes_clp;
       total_real += r.gastos_real_mes_clp;
     }
     return { total, total_real };
-  }, [latestNonEmptyMonth, view, timeRange]);
+  }, [view, timeRange]);
 
   const chartFilterActive = bigGroupUsage.some((g) => isExcluded(g.slug));
 

@@ -38,11 +38,6 @@ function sampleData(): FlowsExpensesResponse {
         origin_label: "4242",
       },
     ],
-    by_month: [],
-    chart_monthly: [],
-    chart_monthly_by_category: [],
-    total_clp: 10_000,
-    total_real_clp: 10_000,
     additional_cards: {
       by_month: [],
       by_year: [],

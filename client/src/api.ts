@@ -576,6 +576,13 @@ export const api = {
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}`, { method: "DELETE" }),
   flowsExpenses: () =>
     j<import("./types").FlowsExpensesResponse>("/api/flows/expenses/credit-card"),
+  flowsExpensesGastos: (unit: "clp" | "usd", excludedBigGroups: readonly string[]) => {
+    const q = new URLSearchParams({ unit });
+    if (excludedBigGroups.length > 0) q.set("exclude_big_groups", [...excludedBigGroups].sort().join(","));
+    return j<import("./types").FlowsExpensesGastosResponse>(
+      `/api/flows/expenses/credit-card/gastos?${q.toString()}`
+    );
+  },
   assignCcExpenseLineCategory: (
     lineId: number,
     body: {

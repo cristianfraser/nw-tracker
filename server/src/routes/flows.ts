@@ -19,6 +19,7 @@ import {
   setCcExpensePurchaseBigGroup,
 } from "../ccExpenseBigGroups.js";
 import { buildFlowsExpensesPayload } from "../flowsExpenses.js";
+import { buildFlowsExpensesGastosPayload } from "../flowsExpensesGastos.js";
 import {
   deleteCcFacturadoFinancingLink,
   listCcFacturadoFinancingLinks,
@@ -271,6 +272,21 @@ app.get("/api/expenses", (_req, res) => {
 
 app.get("/api/flows/expenses/credit-card", (_req, res) => {
   res.json(buildFlowsExpensesPayload());
+});
+
+app.get("/api/flows/expenses/credit-card/gastos", (req, res) => {
+  const unitRaw = String(req.query.unit ?? "clp");
+  if (unitRaw !== "clp" && unitRaw !== "usd") {
+    res.status(400).json({ error: `unit must be clp or usd, got ${unitRaw}` });
+    return;
+  }
+  const excluded = new Set(
+    String(req.query.exclude_big_groups ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+  );
+  res.json(buildFlowsExpensesGastosPayload(unitRaw, excluded));
 });
 
 app.get("/api/flows/expenses/credit-card/financing-links", (_req, res) => {

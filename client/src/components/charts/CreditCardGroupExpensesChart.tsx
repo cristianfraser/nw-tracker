@@ -7,13 +7,16 @@ import { chileTodayYmd } from "../../calendarMonth";
 import { formatFlowMoney } from "../../flowsDisplay";
 import type { DisplayUnit } from "../../queries/keys";
 import { ccExpenseCategoryLabel, useTranslation } from "../../i18n";
-import type { CcExpenseCategoryDto, FlowCcExpenseCategoryChartPoint } from "../../types";
+import type {
+  CcExpenseCategoryDto,
+  ExpenseYearMonthlyAverage,
+  FlowCcExpenseCategoryChartPoint,
+} from "../../types";
 import { chartCcExpenseCategories } from "../../ccExpenseCategories";
 import {
   EXPENSE_CHART_TOTAL_KEY,
   expenseCategoryChartPointTotal,
 } from "../../expenseDepositLinks";
-import type { ExpenseYearMonthlyAverage } from "../../expenseYearMonthlyAverage";
 import { AppComposedChart } from "./AppComposedChart";
 import { renderPeriodRefLine } from "./PeriodRefLine";
 import {
@@ -57,7 +60,7 @@ export function CreditCardGroupExpensesChart({
    * Per-year average monthly gastos, drawn as one flat segment per year over its months on the
    * axis (with a toggle). Null/absent = not offered (yearly chart, short Rango).
    */
-  yearAverages?: ReadonlyMap<string, ExpenseYearMonthlyAverage> | null;
+  yearAverages?: Readonly<Record<string, ExpenseYearMonthlyAverage>> | null;
 }) {
   const { t } = useTranslation();
   const compactAxis = useIsNarrowViewport();
@@ -111,8 +114,8 @@ export function CreditCardGroupExpensesChart({
     for (const row of densePoints) {
       const ym = row.as_of_date.slice(0, 7);
       const year = ym.slice(0, 4);
-      const entry = yearAverages.get(year);
-      if (!entry || ym < entry.fromYm || ym > entry.throughYm) continue;
+      const entry = yearAverages[year];
+      if (!entry || ym < entry.from_ym || ym > entry.through_ym) continue;
       const seg = byYear.get(year);
       if (seg) seg.last = row.as_of_date;
       else byYear.set(year, { avg: entry.avg, first: row.as_of_date, last: row.as_of_date });
@@ -125,8 +128,8 @@ export function CreditCardGroupExpensesChart({
     if (!yearAverages || !showYearAverages) return densePoints;
     return densePoints.map((row) => {
       const ym = row.as_of_date.slice(0, 7);
-      const entry = yearAverages.get(ym.slice(0, 4));
-      if (!entry || ym < entry.fromYm || ym > entry.throughYm) return row;
+      const entry = yearAverages[ym.slice(0, 4)];
+      if (!entry || ym < entry.from_ym || ym > entry.through_ym) return row;
       return { ...row, [YEAR_AVERAGE_KEY]: entry.avg };
     });
   }, [densePoints, showYearAverages, yearAverages]);

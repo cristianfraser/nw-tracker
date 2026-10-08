@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  aggregateGastosFromLines,
-  type FlowCcExpenseLineRow,
-} from "./flowsExpenses.js";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { aggregateGastosFromLines } from "./flowsExpensesGastos.js";
 import {
   BILLS_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { api } from "../api";
 import {
@@ -568,6 +568,20 @@ export function useFlowsExpenses() {
   return useQuery({
     queryKey: queryKeys.flowsExpenses(),
     queryFn: () => api.flowsExpenses(),
+  });
+}
+
+/** Gastos by month / category for every installment mode × category level; the page picks one. */
+export function useFlowsExpensesGastos(
+  unit: DisplayUnit,
+  excludedBigGroups: readonly string[],
+  enabled = true
+) {
+  return useQuery({
+    queryKey: queryKeys.flowsExpensesGastos(unit, excludedBigGroups),
+    queryFn: () => api.flowsExpensesGastos(unit, excludedBigGroups),
+    placeholderData: keepPreviousData,
+    enabled,
   });
 }
 
