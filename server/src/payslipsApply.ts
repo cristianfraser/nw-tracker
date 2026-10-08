@@ -6,9 +6,10 @@
  * keeps a hand-made pairing (`link_source = 'manual'`) and the earning type set with it. Pairing
  * (`findPayrollAutoLinkMovement`) runs over the whole set in the order sent, so a deposit already
  * taken — by hand, or by an earlier payslip of the set — is never taken twice. A payslip no
- * deposit pays (or several could) is reported; it stays stored unpaired.
+ * deposit pays (or several could) is reported; it stays stored unpaired. Its printed lines
+ * (`payslip_lines`) are replaced as a whole on every import.
  */
-import type { EmploymentPayslipsApplyDetails, EmploymentPayslipsPayload, Payslip } from "nw-tracker-contracts";
+import type { EmploymentPayslipsApplyDetails, EmploymentPayslipsPayload, Payslip, PayslipLine } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import { findPayrollAutoLinkMovement, listPayrollLinkCandidates } from "./payrollWorkEarningsLinking.js";
 
@@ -130,10 +131,23 @@ const COMPARED = [
   "tope_cesantia_uf",
 ] as const;
 
+type StoredLine = Pick<PayslipLine, "position" | "side" | "section" | "label" | "amount">;
+
+function lineKey(l: StoredLine): string {
+  return `${l.position}|${l.side}|${l.section ?? ""}|${l.label}|${l.amount}`;
+}
+
 export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): EmploymentPayslipsApplyDetails {
   const dryRun = !payload.apply;
   const selectStored = db.prepare(`SELECT * FROM payroll_work_earnings WHERE source_pdf = ?`);
   const upsert = db.prepare(UPSERT_SQL);
+  const selectLines = db.prepare(
+    `SELECT position, side, section, label, amount FROM payslip_lines WHERE payslip_id = ? ORDER BY position`
+  );
+  const deleteLines = db.prepare(`DELETE FROM payslip_lines WHERE payslip_id = ?`);
+  const insertLine = db.prepare(
+    `INSERT INTO payslip_lines (payslip_id, position, side, section, label, amount) VALUES (?, ?, ?, ?, ?, ?)`
+  );
   const setLink = db.prepare(`UPDATE payroll_work_earnings SET movement_id = ?, link_source = 'auto' WHERE source_pdf = ?`);
 
   const changes: string[] = [];
@@ -149,6 +163,10 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
         (f) => `${f} ${String(stored[f])} → ${String(next[f] ?? null)}`
       );
       if (diff.length > 0) changes.push(`change ${p.document}: ${diff.join("; ")}`);
+      const storedLines = (selectLines.all(stored.id) as StoredLine[]).map(lineKey).join("\n");
+      if (storedLines !== p.lines.map(lineKey).join("\n")) {
+        changes.push(`lines ${p.document}: ${storedLines === "" ? "none stored" : "differ"} → ${p.lines.length} line(s)`);
+      }
     }
   }
 
@@ -173,7 +191,14 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
   db.transaction(() => {
     for (const p of payload.payslips) {
       if (!dryRun) upsert.run(payslipRow(p, payload.parser_version));
-      const stored = selectStored.get(p.document) as { movement_id: number | null; link_source: string | null } | undefined;
+      const stored = selectStored.get(p.document) as
+        | { id: number; movement_id: number | null; link_source: string | null }
+        | undefined;
+      if (!dryRun) {
+        if (!stored) throw new Error(`payslips: ${p.document} not stored after the upsert`);
+        deleteLines.run(stored.id);
+        for (const l of p.lines) insertLine.run(stored.id, l.position, l.side, l.section, l.label, l.amount);
+      }
       if (stored?.link_source === "manual" && stored.movement_id != null) {
         taken.add(stored.movement_id);
         details.linked += 1;

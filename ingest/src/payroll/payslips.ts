@@ -4,7 +4,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import type { EmploymentPayslipsPayload, Payslip } from "nw-tracker-contracts";
+import type { EmploymentPayslipsPayload, Payslip, PayslipLine } from "nw-tracker-contracts";
 import { resolveCfraserDir } from "../paths.js";
 
 /** One payslip as the parser writes it. */
@@ -35,6 +35,7 @@ export type ParsedPayrollRow = {
   tope_previsional_uf: number | null;
   tope_cesantia_uf: number | null;
   format?: string;
+  lines?: PayslipLine[];
 };
 
 export type PayrollParseIndex = { parser_version?: string; rows?: ParsedPayrollRow[]; failures?: unknown[] | number };
@@ -54,6 +55,7 @@ export function readPayrollParseIndex(file = payrollParseIndexPath()): { parser_
 }
 
 export function payslipFromParsedRow(r: ParsedPayrollRow): Payslip {
+  if (!r.lines?.length) throw new Error(`${r.source_pdf}: no lines in the parse — re-run parse:payroll-liquidaciones`);
   return {
     document: r.source_pdf,
     period_month: r.period_month,
@@ -79,6 +81,7 @@ export function payslipFromParsedRow(r: ParsedPayrollRow): Payslip {
       total: r.total_descuentos_clp,
     },
     net_pay: r.liquido_clp,
+    lines: r.lines.map((l) => ({ position: l.position, side: l.side, section: l.section, label: l.label, amount: l.amount })),
     indices: { uf: r.uf_mes, utm: r.utm_mes, pension_cap_uf: r.tope_previsional_uf, unemployment_cap_uf: r.tope_cesantia_uf },
   };
 }
