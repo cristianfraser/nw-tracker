@@ -19,12 +19,20 @@ import {
 } from "../flowsDisplay";
 import { clipMonthsThenRollup, timeRangeCutoffYmd, timeRangeToDays } from "../timeRange";
 import { useTranslation } from "../i18n";
-import { useFlowsExpenses, useFlowsDeposits, useFlowsPl, useIncome } from "../queries/hooks";
+import {
+  useFlowsExpenses,
+  useFlowsExpensesGastos,
+  useFlowsDeposits,
+  useFlowsPl,
+  useIncome,
+} from "../queries/hooks";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 
 const PAGE_SIZE = 12;
 
 /** Flows master page (/flows): income line vs expenses/deposits stacked bars + month detail. */
+const NO_EXCLUDED_BIG_GROUPS: readonly string[] = [];
+
 export function FlowsOverviewPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -51,24 +59,28 @@ export function FlowsOverviewPage() {
 
   const income = useIncome();
   const expenses = useFlowsExpenses();
+  const gastos = useFlowsExpensesGastos(displayUnit, NO_EXCLUDED_BIG_GROUPS);
   const deposits = useFlowsDeposits();
   // Day mode needs the server's per-day bucket P/L for the overview's P/L leg.
   const pl = useFlowsPl(isDaily ? timeRangeToDays(timeRange) : undefined);
 
-  const error = income.error ?? expenses.error ?? deposits.error ?? pl.error;
+  const error = income.error ?? expenses.error ?? gastos.error ?? deposits.error ?? pl.error;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const monthRows = useMemo(() => {
-    if (!income.data || !expenses.data || !deposits.data || !pl.data) return null;
+    if (!income.data || !expenses.data || !gastos.data || !deposits.data || !pl.data) return null;
+    // Gasto del mes is level-independent: either category level's view carries the same months.
+    const gastosView = gastos.data.views[`${installmentMode}|subcategory`];
+    if (gastosView == null) throw new Error(`missing gastos view ${installmentMode}|subcategory`);
     return aggregateFlowsOverview(
       income.data,
-      expenses.data,
+      { lines: expenses.data.lines, gastos_by_month: gastosView.by_month },
       deposits.data,
       pl.data,
       installmentMode,
       displayUnit
     );
-  }, [deposits.data, displayUnit, expenses.data, income.data, installmentMode, pl.data]);
+  }, [deposits.data, displayUnit, expenses.data, gastos.data, income.data, installmentMode, pl.data]);
 
   /** Day composite (Diario chart only); the detail table below stays month/year. */
   const dayRows = useMemo(() => {

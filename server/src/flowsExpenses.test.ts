@@ -23,6 +23,14 @@ import { buildFlowsExpensesPayload, resolveExpenseMonth } from "./flowsExpenses.
 import { gastosSumMonthForLine, lineCountsTowardGastosSum } from "./ccExpensePeriodMonth.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
+import { buildFlowsExpensesGastosViews, gastosViewKey } from "./flowsExpensesGastos.js";
+
+/** The Expenses page's Por cuota view at the subcategory level (every category its own), in CLP. */
+function splitView(payload: ReturnType<typeof buildFlowsExpensesPayload>) {
+  return buildFlowsExpensesGastosViews(payload.lines, payload.categories, "clp", new Set(), "2099-01").views[
+    gastosViewKey("split", "subcategory")
+  ]!;
+}
 
 describe("effectiveCcExpenseLineAmountClp", () => {
   it("uses valor_cuota_mensual_clp for installment lines", () => {
@@ -378,9 +386,10 @@ describe("flowsExpenses", () => {
   it("builds monthly rows with cumulative gastos when statement lines exist", () => {
     const payload = buildFlowsExpensesPayload();
     expect(payload.group_slug).toBe("credit_cards");
-    if (payload.by_month.length === 0) return;
+    const byMonth = splitView(payload).by_month;
+    if (byMonth.length === 0) return;
 
-    const asc = [...payload.by_month].reverse();
+    const asc = [...byMonth].reverse();
     let expected = 0;
     for (const row of asc) {
       expected += row.gastos_mes_clp;
@@ -389,22 +398,11 @@ describe("flowsExpenses", () => {
       expect(row.as_of_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     }
 
-    // chart_monthly is densified (server/src/calendarMonth.ts densifyMonthlyPoints): it fills
-    // every interior calendar month between the first and last by_month entry, even months with
-    // zero gastos lines (and thus no by_month row). chart_monthly is therefore >= by_month in
-    // length; every by_month row's gastos_clp must be reflected in the matching chart point, and
-    // every chart-only month must be a real activity gap (zero gastos, not in by_month).
+    // The chart stacks run on the same month rows.
+    const view = splitView(payload);
     const byMonthMap = new Map(asc.map((r) => [r.period_month, r]));
-    const chartByMonth = new Map(payload.chart_monthly.map((p) => [p.as_of_date.slice(0, 7), p]));
-    expect(chartByMonth.size).toBeGreaterThanOrEqual(byMonthMap.size);
-    for (const [month, row] of byMonthMap) {
-      const point = chartByMonth.get(month);
-      expect(point).toBeDefined();
-      expect(point!.gastos_clp).toBe(row.gastos_mes_clp);
-    }
-    for (const [month, point] of chartByMonth) {
-      if (byMonthMap.has(month)) continue;
-      expect(point.gastos_clp).toBe(0);
+    for (const point of view.chart_monthly_by_category) {
+      expect(byMonthMap.has(point.as_of_date.slice(0, 7))).toBe(true);
     }
   });
 
@@ -459,12 +457,18 @@ describe("flowsExpenses", () => {
 
   it("gastos_mes_clp reflects NOTA DE CREDITO pairing and unmatched adjustments", () => {
     const payload = buildFlowsExpensesPayload();
-    for (const row of payload.by_month) {
+    for (const row of splitView(payload).by_month) {
       const monthLines = payload.lines.filter(
         (ln) => gastosSumMonthForLine(ln, "split") === row.period_month
       );
       const sumPositive = monthLines
-        .filter((ln) => ln.amount_clp > 0 && ln.nota_credito_role !== "annulled_purchase")
+        .filter(
+          (ln) =>
+            (ln.amount_clp > 0 || ln.checking_refund === true) &&
+            ln.nota_credito_role !== "annulled_purchase" &&
+            ln.nota_credito_role !== "matched_nota" &&
+            ln.nota_credito_role !== "unmatched_nota"
+        )
         .reduce((s, ln) => s + ln.amount_clp, 0);
       const sumCounted = monthLines.reduce((s, ln) => {
         if (ln.nota_credito_role === "annulled_purchase" || ln.nota_credito_role === "matched_nota") {
@@ -475,7 +479,10 @@ describe("flowsExpenses", () => {
           installment_flag: ln.installment_flag,
           nro_cuota_current: ln.nro_cuota_current,
         });
-        if (ln.amount_clp > 0 && lineCountsTowardGastosSum(ln, "split", countsCategory)) {
+        if (
+          (ln.amount_clp > 0 || ln.checking_refund === true) &&
+          lineCountsTowardGastosSum(ln, "split", countsCategory)
+        ) {
           // Mortgage-linked lines contribute only the carrying portion (deuda amortization
           // is tracked separately), matching the production aggregateGastosFromLines logic.
           const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
@@ -520,10 +527,10 @@ describe("flowsExpenses", () => {
       .map((ln) => ln.statement_line_id);
     expect(novCountedIds).not.toContain(apple.statement_line_id);
 
-    const dec = payload.by_month.find((m) => m.period_month === "2024-12");
+    const dec = splitView(payload).by_month.find((m) => m.period_month === "2024-12");
     expect(dec).toBeDefined();
     const decAbonosFromLines = payload.lines
-      .filter((ln) => ln.expense_month === "2024-12" && ln.amount_clp < 0)
+      .filter((ln) => ln.expense_month === "2024-12" && ln.amount_clp < 0 && ln.checking_refund !== true)
       .filter((ln) => ln.nota_credito_role !== "matched_nota" && ln.nota_credito_role !== "unmatched_nota")
       .reduce((s, ln) => s + ln.amount_clp, 0);
     expect(dec!.abonos_mes_clp).toBe(Math.round(decAbonosFromLines));
@@ -549,7 +556,7 @@ describe("flowsExpenses", () => {
     const included = new Set(payload.lines.map((ln) => ln.statement_line_id));
     const matched = usdOnlyIds.filter((r) => included.has(r.id));
     expect(matched.length).toBeGreaterThan(usdOnlyIds.length * 0.5);
-    expect(payload.total_clp).toBeGreaterThan(0);
+    expect(splitView(payload).total).toBeGreaterThan(0);
     const usdIncludedClp = payload.lines
       .filter(
         (ln) =>

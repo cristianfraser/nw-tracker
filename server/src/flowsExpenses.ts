@@ -5,7 +5,7 @@ import {
   buildAdditionalCardsSummary,
   type AdditionalCardsSummary,
 } from "./additionalCardReimbursements.js";
-import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd, ymCompare } from "./calendarMonth.js";
+import { monthKeyFromYmd } from "./calendarMonth.js";
 
 import { isPdfStatementSource } from "./ccManualBillingMonth.js";
 import { facturacionMonthByStatementDate } from "./ccOpenWebPastePdfReconcile.js";
@@ -13,9 +13,7 @@ import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 
 import {
 
-  countsTowardCcExpenseGastosMes,
 
-  isCcExpenseTotalsExcludedSlug,
 
   categoryUniqueForExpenseLine,
 
@@ -85,8 +83,6 @@ import {
 import { dedupeFlowCcExpenseLines } from "./ccExpenseLineDedupe.js";
 import {
   enrichLinesWithNotaDeCreditoPairing,
-  pairNotaDeCreditoAnnulments,
-  purchaseCountsAfterNotaPairing,
   type NotaDeCreditoRole,
 } from "./ccNotaDeCreditoPairing.js";
 import { buildInstallmentPaymentGastosLines } from "./ccInstallmentPaymentGastosLines.js";
@@ -96,10 +92,6 @@ import { applyCcFacturadoFinancingProjection } from "./ccFacturadoFinancingProje
 import {
   type CcExpenseLineRole,
   type CcExpenseGastosScope,
-  type CcInstallmentGastosMode,
-  gastosSumMonthForLine,
-  lineCountsTowardGastosSum,
-  periodMonthsForGastosLine,
   purchaseMonthFromLine,
 } from "./ccExpensePeriodMonth.js";
 
@@ -112,12 +104,7 @@ import { buildCheckingGastosLinesForAccounts } from "./flowsCheckingGastos.js";
 
 import { listMovementBalanceCashAccountIds } from "./movementBalanceCashAccounts.js";
 import {
-  BILLS_CC_EXPENSE_SLUG,
-  chartCategorySlugsForFlowsExpenses,
   enrichFlowLinesWithExpenseDepositLinks,
-  expenseDepositAmortizationChartAmount,
-  hasSplittableMortgageExpenseDepositLink,
-  REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
   syncExpenseDepositLinksFromGastosLines,
   type ExpenseDepositLinkDto,
 } from "./expenseDepositLinks.js";
@@ -329,19 +316,7 @@ export type FlowsExpensesPayload = {
 
   lines: FlowCcExpenseLineRow[];
 
-  by_month: FlowCcExpenseMonthRow[];
-
-  chart_monthly: FlowCcExpenseChartPoint[];
-
-  chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
-
-  /** Positive charges excluding `no_cuenta`. */
-
-  total_clp: number;
-
-  /** All positive charges. */
-
-  total_real_clp: number;
+  /** Gastos by month / category: `GET /api/flows/expenses/credit-card/gastos` (`flowsExpensesGastos.ts`). */
 
   /**
    * `<account_id>|<billing_month>` → the facturación's PAGAR HASTA date (ISO). The Diario
@@ -386,257 +361,6 @@ export function resolveExpenseMonth(
 }
 
 
-
-type MonthBucket = {
-
-  gastos: number;
-
-  gastosReal: number;
-
-  abonos: number;
-
-  line_count: number;
-
-};
-
-
-
-export function aggregateGastosFromLines(
-
-  lines: readonly FlowCcExpenseLineRow[],
-
-  chartCategorySlugs: readonly string[],
-
-  mode: CcInstallmentGastosMode = "split",
-
-  excludedBigGroupSlugs?: ReadonlySet<string>
-
-): {
-
-  by_month: FlowCcExpenseMonthRow[];
-
-  chart_monthly: FlowCcExpenseChartPoint[];
-
-  chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
-
-} {
-
-  const byMonthSum = new Map<string, MonthBucket>();
-
-  const byMonthCategory = new Map<string, Map<string, number>>();
-
-
-
-  const touchBucket = (month: string): MonthBucket => {
-    const existing = byMonthSum.get(month);
-    if (existing) return existing;
-    const fresh: MonthBucket = { gastos: 0, gastosReal: 0, abonos: 0, line_count: 0 };
-    byMonthSum.set(month, fresh);
-    return fresh;
-  };
-
-  const pairing = pairNotaDeCreditoAnnulments(lines);
-
-  for (const ln of lines) {
-    const sumMonth = gastosSumMonthForLine(ln, mode);
-    const amount = ln.amount_clp;
-    const lineId = ln.statement_line_id;
-    const countsCategory = countsTowardCcExpenseGastosMes(ln.category_slug, {
-      installment_flag: ln.installment_flag,
-      nro_cuota_current: ln.nro_cuota_current,
-    });
-
-    if (pairing.annulledPurchaseIds.has(lineId) || pairing.matchedNotaIds.has(lineId)) {
-      for (const periodMonth of periodMonthsForGastosLine(ln)) {
-        touchBucket(periodMonth).line_count += 1;
-      }
-      continue;
-    }
-
-    if (pairing.unmatchedNotaIds.has(lineId)) {
-      if (sumMonth) {
-        touchBucket(sumMonth).gastos += amount;
-      }
-      for (const periodMonth of periodMonthsForGastosLine(ln)) {
-        touchBucket(periodMonth).line_count += 1;
-      }
-      continue;
-    }
-
-    if (sumMonth) {
-      const sumBucket = touchBucket(sumMonth);
-      if (amount > 0) {
-        sumBucket.gastosReal += amount;
-        const link = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
-        const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
-        if (linkedMortgagePayment) {
-          if (
-            ln.nota_credito_role !== "annulled_purchase" &&
-            ln.nota_credito_role !== "matched_nota" &&
-            lineCountsTowardGastosSum(ln, mode, true)
-          ) {
-            sumBucket.gastos += link.carrying_clp;
-            const skipChartCategory =
-              ln.big_group_slug != null &&
-              excludedBigGroupSlugs?.has(ln.big_group_slug) === true;
-            if (!skipChartCategory) {
-              const catBucket = byMonthCategory.get(sumMonth) ?? new Map<string, number>();
-              if (link.carrying_clp > 0) {
-                catBucket.set(
-                  BILLS_CC_EXPENSE_SLUG,
-                  (catBucket.get(BILLS_CC_EXPENSE_SLUG) ?? 0) + link.carrying_clp
-                );
-              }
-              catBucket.set(
-                REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
-                (catBucket.get(REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG) ?? 0) +
-                  expenseDepositAmortizationChartAmount(link.amortization_clp)
-              );
-              byMonthCategory.set(sumMonth, catBucket);
-            }
-          }
-        } else if (
-          purchaseCountsAfterNotaPairing(ln) &&
-          lineCountsTowardGastosSum(ln, mode, countsCategory)
-        ) {
-          sumBucket.gastos += amount;
-          const skipChartCategory =
-            ln.big_group_slug != null &&
-            excludedBigGroupSlugs?.has(ln.big_group_slug) === true;
-          if (!skipChartCategory) {
-            const catBucket = byMonthCategory.get(sumMonth) ?? new Map<string, number>();
-            catBucket.set(ln.category_slug, (catBucket.get(ln.category_slug) ?? 0) + amount);
-            byMonthCategory.set(sumMonth, catBucket);
-          }
-        }
-      } else {
-        sumBucket.abonos += amount;
-      }
-    }
-
-    for (const periodMonth of periodMonthsForGastosLine(ln)) {
-      touchBucket(periodMonth).line_count += 1;
-    }
-  }
-
-
-
-  const monthsAsc = [...byMonthSum.keys()].sort(ymCompare);
-
-  let runningGastos = 0;
-
-  let runningGastosReal = 0;
-
-  const byMonthAsc: FlowCcExpenseMonthRow[] = [];
-
-  for (const periodMonth of monthsAsc) {
-
-    const bucket = byMonthSum.get(periodMonth)!;
-
-    const gastosMes = Math.round(bucket.gastos);
-
-    const gastosRealMes = Math.round(bucket.gastosReal);
-
-    runningGastos += gastosMes;
-
-    runningGastosReal += gastosRealMes;
-
-    byMonthAsc.push({
-
-      period_month: periodMonth,
-
-      as_of_date: monthEndUtcYmd(periodMonth),
-
-      gastos_mes_clp: gastosMes,
-
-      gastos_real_mes_clp: gastosRealMes,
-
-      abonos_mes_clp: Math.round(bucket.abonos),
-
-      gastos_acumulado_clp: Math.round(runningGastos),
-
-      gastos_real_acumulado_clp: Math.round(runningGastosReal),
-
-      line_count: bucket.line_count,
-
-    });
-
-  }
-
-
-
-  const by_month = [...byMonthAsc].reverse();
-
-  const chart_monthly_sparse: FlowCcExpenseChartPoint[] = byMonthAsc.map((m) => ({
-    as_of_date: m.as_of_date,
-    gastos_clp: m.gastos_mes_clp,
-  }));
-  const chart_monthly = densifyMonthlyPoints(
-    chart_monthly_sparse,
-    (as_of_date) => ({ as_of_date, gastos_clp: 0 })
-  );
-
-  const chart_monthly_by_category_sparse: FlowCcExpenseCategoryChartPoint[] = byMonthAsc.map((m) => {
-    const point: FlowCcExpenseCategoryChartPoint = { as_of_date: m.as_of_date };
-    const catSums = byMonthCategory.get(m.period_month) ?? new Map<string, number>();
-    for (const slug of chartCategorySlugs) {
-      point[slug] = Math.round(catSums.get(slug) ?? 0);
-    }
-    return point;
-  });
-  const chart_monthly_by_category = densifyMonthlyPoints(
-    chart_monthly_by_category_sparse,
-    (as_of_date) => {
-      const pt: FlowCcExpenseCategoryChartPoint = { as_of_date };
-      for (const slug of chartCategorySlugs) pt[slug] = 0;
-      return pt;
-    }
-  );
-
-  return { by_month, chart_monthly, chart_monthly_by_category };
-
-}
-
-
-
-function computeFlowsExpenseTotals(
-  lines: readonly FlowCcExpenseLineRow[],
-  mode: CcInstallmentGastosMode = "split"
-): { total_clp: number; total_real_clp: number } {
-  let total_clp = 0;
-  let total_real_clp = 0;
-  for (const r of lines) {
-    if (r.nota_credito_role === "annulled_purchase" || r.nota_credito_role === "matched_nota") {
-      continue;
-    }
-    if (r.nota_credito_role === "unmatched_nota") {
-      total_clp += r.amount_clp;
-      if (r.amount_clp > 0) total_real_clp += r.amount_clp;
-      continue;
-    }
-    // A refund (`checking_refund`) counts, negatively, in its category.
-    if (r.amount_clp <= 0 && r.checking_refund !== true) continue;
-    const link = r.expense_deposit_links?.find((l) => l.depto_cuota != null);
-    const linkedMortgagePayment = hasSplittableMortgageExpenseDepositLink(link);
-    const countsCategory = linkedMortgagePayment
-      ? true
-      : countsTowardCcExpenseGastosMes(r.category_slug, {
-          installment_flag: r.installment_flag,
-          nro_cuota_current: r.nro_cuota_current,
-        });
-    const countsAfterNota = linkedMortgagePayment
-      ? r.nota_credito_role !== "annulled_purchase" &&
-        r.nota_credito_role !== "matched_nota"
-      : purchaseCountsAfterNotaPairing(r);
-    if (countsAfterNota && lineCountsTowardGastosSum(r, mode, countsCategory)) {
-      total_clp += linkedMortgagePayment ? link.carrying_clp : r.amount_clp;
-    }
-    if (gastosSumMonthForLine(r, mode)) {
-      total_real_clp += r.amount_clp;
-    }
-  }
-  return { total_clp: Math.round(total_clp), total_real_clp: Math.round(total_real_clp) };
-}
 
 
 
@@ -1185,102 +909,38 @@ function cuotaPayByIsoByAccountBillingMonth(accountIds: readonly number[]): Reco
   return out;
 }
 
-export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
-
-  const accountIds = listCreditCardMasterAccountIds();
-
-  const categories = listCcExpenseCategories();
-
-  const chartCategorySlugs = chartCategorySlugsForFlowsExpenses(
-    categories.map((c) => c.slug).filter((slug) => !isCcExpenseTotalsExcludedSlug(slug))
-  );
-
-
-
+/** Every gastos line the Expenses page lists: card, checking, manual, mirror and payslip lines. */
+export function buildFlowsExpenseLines(accountIds: readonly number[] = listCreditCardMasterAccountIds()): FlowCcExpenseLineRow[] {
   if (accountIds.length === 0) {
-    const lines = finalizeFlowExpenseLines([
+    return finalizeFlowExpenseLines([
       ...loadCheckingGastosLinesForExpenses(),
       ...loadManualExpenseGastosLineDrafts(),
       ...loadCheckingGapDepositMirrorGastosLineDrafts(),
       ...loadPayslipExpenseLineDrafts(),
     ]);
-    const agg = aggregateGastosFromLines(lines, chartCategorySlugs);
-    const totals = computeFlowsExpenseTotals(lines);
-    const additional_cards = buildAdditionalCardsSummary(lines);
-
-    return {
-
-      group_slug: primaryCreditCardExpensesGroupSlug(),
-
-      account_ids: [],
-
-      categories,
-
-      big_groups: listCcExpenseBigGroups(),
-
-      lines: lines,
-
-      ...agg,
-
-      ...totals,
-
-      additional_cards,
-
-    };
-
   }
-
-
-
-  const ccLines = buildCcExpenseLines(accountIds);
+  const ccLines = buildCcExpenseLines([...accountIds]);
   const checkingLines = loadCheckingGastosLinesForExpenses();
-  const manualLines = loadManualExpenseGastosLineDrafts();
-  const mirrorLines = loadCheckingGapDepositMirrorGastosLineDrafts();
-  const lines = applyCcFacturadoFinancingProjection(
+  return applyCcFacturadoFinancingProjection(
     finalizeFlowExpenseLines([
       ...enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines]),
-      ...manualLines,
-      ...mirrorLines,
+      ...loadManualExpenseGastosLineDrafts(),
+      ...loadCheckingGapDepositMirrorGastosLineDrafts(),
       ...loadPayslipExpenseLineDrafts(),
     ])
   );
-
-  const { by_month, chart_monthly, chart_monthly_by_category } = aggregateGastosFromLines(
-
-    lines,
-
-    chartCategorySlugs
-
-  );
-
-  const totals = computeFlowsExpenseTotals(lines);
-
-  return {
-
-    group_slug: primaryCreditCardExpensesGroupSlug(),
-
-    account_ids: accountIds,
-
-    categories,
-
-    big_groups: listCcExpenseBigGroups(),
-
-    lines,
-
-    by_month,
-
-    chart_monthly,
-
-    chart_monthly_by_category,
-
-    ...totals,
-
-    cuota_pay_by_iso: cuotaPayByIsoByAccountBillingMonth(accountIds),
-
-    additional_cards: buildAdditionalCardsSummary(lines),
-
-  };
-
 }
 
-
+export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
+  const accountIds = listCreditCardMasterAccountIds();
+  const lines = buildFlowsExpenseLines(accountIds);
+  return {
+    group_slug: primaryCreditCardExpensesGroupSlug(),
+    account_ids: accountIds,
+    categories: listCcExpenseCategories(),
+    big_groups: listCcExpenseBigGroups(),
+    lines,
+    ...(accountIds.length > 0 ? { cuota_pay_by_iso: cuotaPayByIsoByAccountBillingMonth(accountIds) } : {}),
+    additional_cards: buildAdditionalCardsSummary(lines),
+  };
+}

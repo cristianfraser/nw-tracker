@@ -328,11 +328,6 @@ export interface FlowsExpensesResponse {
   categories: CcExpenseCategoryDto[];
   big_groups: CcExpenseBigGroupDto[];
   lines: FlowCcExpenseLineRow[];
-  by_month: FlowCcExpenseMonthRow[];
-  chart_monthly: FlowCcExpenseChartPoint[];
-  chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
-  total_clp: number;
-  total_real_clp: number;
   /**
    * `<account_id>|<billing_month>` → the facturación's PAGAR HASTA date (ISO), for the Diario
    * gastos view (cuotas land on the day their facturación is paid).
@@ -340,6 +335,40 @@ export interface FlowsExpensesResponse {
   cuota_pay_by_iso?: Record<string, string>;
   /** Additional-card charges (`no_cuenta`) vs the reimbursements paying them back. */
   additional_cards: AdditionalCardsSummary;
+}
+
+/** One calendar year's average monthly gastos and the months it covers (YYYY-MM, inclusive). */
+export interface ExpenseYearMonthlyAverage {
+  from_ym: string;
+  through_ym: string;
+  avg: number;
+}
+
+/** One installment mode × category level of the Expenses page (server `flowsExpensesGastos.ts`). */
+export interface FlowsExpensesGastosView {
+  /** The chart's stack keys, in stack order. */
+  chart_category_slugs: string[];
+  /** Full-history headline (unrounded in USD). */
+  total: number;
+  total_real: number;
+  /** Newest first, through the latest month with real spend in this mode. */
+  by_month: FlowCcExpenseMonthRow[];
+  /** The same rows rolled up to calendar years, newest first. */
+  by_year: FlowCcExpenseMonthRow[];
+  /** Monthly stacks, oldest first, through the chart's end month, excluded big groups left out. */
+  chart_monthly_by_category: FlowCcExpenseCategoryChartPoint[];
+  /** The stacks with every big group (stable stack order). Absent = `chart_monthly_by_category`. */
+  chart_sort_monthly_by_category?: FlowCcExpenseCategoryChartPoint[];
+  /** Per-year average of the chart's monthly total, keyed by year (YYYY), over full history. */
+  year_averages: Record<string, ExpenseYearMonthlyAverage>;
+}
+
+/** `GET /api/flows/expenses/credit-card/gastos?unit=&exclude_big_groups=`. */
+export interface FlowsExpensesGastosResponse {
+  unit: "clp" | "usd";
+  excluded_big_groups: string[];
+  /** Keyed `<split|total>|<category|subcategory>`. */
+  views: Record<string, FlowsExpensesGastosView>;
 }
 
 /** One month / year of «Tarjetas adicionales» (server `additionalCardReimbursements.ts`). */

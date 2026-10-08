@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 const LS_KEY = "nw-tracker.ccExpenseExcludedBigGroups";
 
@@ -42,16 +42,26 @@ export function useCcExpenseExcludedBigGroups(activeSlugs: readonly string[]): {
   toggleExcluded: (slug: string) => void;
 } {
   const activeKey = useMemo(() => [...activeSlugs].sort().join("|"), [activeSlugs]);
-  const [excluded, setExcluded] = useState<Set<string>>(() => defaultExcludedForActive(activeSlugs));
+  const [state, setState] = useState(() => ({
+    activeKey,
+    excluded: defaultExcludedForActive(activeSlugs),
+  }));
+  // Re-derived in the same render the active groups change (not in an effect): the gastos
+  // request is keyed on this set, and a render with the stale set would ask the server twice.
+  let current = state;
+  if (state.activeKey !== activeKey) {
+    current = { activeKey, excluded: defaultExcludedForActive(activeSlugs) };
+    setState(current);
+  }
+  const excluded = current.excluded;
 
-  useEffect(() => {
-    setExcluded(defaultExcludedForActive(activeSlugs));
-  }, [activeKey, activeSlugs]);
-
-  const persist = useCallback((next: Set<string>) => {
-    setExcluded(next);
-    writeStoredExcluded(next);
-  }, []);
+  const persist = useCallback(
+    (next: Set<string>) => {
+      setState({ activeKey, excluded: next });
+      writeStoredExcluded(next);
+    },
+    [activeKey]
+  );
 
   const isExcluded = useCallback((slug: string) => excluded.has(slug), [excluded]);
 

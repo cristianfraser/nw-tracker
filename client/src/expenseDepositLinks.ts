@@ -1,20 +1,3 @@
-import { REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG } from "./ccExpenseLineBuckets";
-
-export function chartCategorySlugsForFlowsExpenses(
-  categorySlugs: readonly string[]
-): string[] {
-  const out = new Set(categorySlugs);
-  out.add(REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG);
-  return [...out];
-}
-
-/** Chart stack only: principal renders below the x-axis as a negative bar segment. */
-export function expenseDepositAmortizationChartAmount(amortizationClp: number): number {
-  const amt = Math.round(amortizationClp);
-  if (amt <= 0) return 0;
-  return -amt;
-}
-
 const CHART_TOTAL_KEY = "total";
 
 /** Sum visible category segments; negative amortization counts as positive spend. */

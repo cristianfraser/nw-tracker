@@ -1,10 +1,5 @@
 import { addCalendarMonths, chileTodayYmd, monthEndUtcYmd, ymCompare } from "./calendarMonth";
-import {
-  aggregateGastosFromLines,
-  expenseLineGastosAmount,
-  hasSplittableMortgageExpenseDepositLink,
-  mortgageLinkCarryingAmount,
-} from "./ccExpenseGastosAggregate";
+
 import { gastosDayForLine } from "./ccExpenseGastosDaily";
 import { countsTowardGastosMes } from "./ccExpenseLineBuckets";
 import {
@@ -16,11 +11,55 @@ import { aggregateIncomeChartPointsByDay, aggregateIncomeFromPayload } from "./i
 import type { DisplayUnit } from "./queries/keys";
 import type {
   FlowCcExpenseLineRow,
+  FlowCcExpenseMonthRow,
   FlowsExpensesResponse,
   FlowsDepositsResponse,
   FlowsIncomeResponse,
   FlowsPlResponse,
 } from "./types";
+
+function hasSplittableMortgageExpenseDepositLink(
+  link:
+    | {
+        payment_clp: number;
+        amortization_clp: number;
+        carrying_clp: number;
+      }
+    | undefined
+): link is { payment_clp: number; amortization_clp: number; carrying_clp: number } {
+  return (
+    link != null &&
+    link.amortization_clp > 0 &&
+    link.carrying_clp > 0 &&
+    link.carrying_clp < link.payment_clp
+  );
+}
+
+function expenseLineGastosAmount(line: FlowCcExpenseLineRow, unit: DisplayUnit): number {
+  if (unit === "usd") {
+    if (line.amount_usd_at_expense == null) {
+      throw new Error(
+        `missing amount_usd_at_expense for expense line ${line.source}:${line.statement_line_id}`
+      );
+    }
+    return line.amount_usd_at_expense;
+  }
+  return line.amount_clp;
+}
+
+/** Carrying (interés + seguros) share of a mortgage-linked payment, in the display unit. */
+function mortgageLinkCarryingAmount(
+  line: FlowCcExpenseLineRow,
+  link: { payment_clp: number; carrying_clp: number },
+  unit: DisplayUnit
+): number {
+  if (unit === "usd") {
+    // Same FX date as the payment line: allocate the line's USD by the carrying CLP share.
+    return expenseLineGastosAmount(line, unit) * (link.carrying_clp / link.payment_clp);
+  }
+  return link.carrying_clp;
+}
+
 
 export type FlowsOverviewMonthRow = {
   period_month: string;
@@ -110,9 +149,18 @@ function latestNonEmptyGastosMonth(
   return latest;
 }
 
+/** Gasto del mes per month, from the server's gastos view (`useFlowsExpensesGastos`). */
+export type FlowsOverviewGastosMonth = Pick<
+  FlowCcExpenseMonthRow,
+  "period_month" | "gastos_mes_clp" | "gastos_real_mes_clp"
+>;
+
 export function aggregateFlowsOverview(
   income: FlowsIncomeResponse,
-  ccExpenses: Pick<FlowsExpensesResponse, "lines">,
+  ccExpenses: Pick<FlowsExpensesResponse, "lines"> & {
+    /** The server view's month rows for this installment mode, in this unit. */
+    gastos_by_month: readonly FlowsOverviewGastosMonth[];
+  },
   deposits: Pick<FlowsDepositsResponse, "rows" | "fx_conversion_error">,
   pl: Pick<FlowsPlResponse, "chart_monthly" | "chart_monthly_usd">,
   installmentMode: CcInstallmentGastosMode = "split",
@@ -139,9 +187,8 @@ export function aggregateFlowsOverview(
     touch(row.period_month).income += row.total_clp;
   }
 
-  const gastos = aggregateGastosFromLines(ccExpenses.lines, [], installmentMode, undefined, unit);
-  const latestGastosMonth = latestNonEmptyGastosMonth(gastos.by_month);
-  for (const row of gastos.by_month) {
+  const latestGastosMonth = latestNonEmptyGastosMonth(ccExpenses.gastos_by_month);
+  for (const row of ccExpenses.gastos_by_month) {
     if (latestGastosMonth != null && row.period_month > latestGastosMonth) continue;
     touch(row.period_month).expenses += row.gastos_mes_clp;
   }

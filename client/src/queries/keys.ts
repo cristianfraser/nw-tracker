@@ -48,6 +48,10 @@ export const queryKeys = {
     ["realEstateUnlinkedPurchases", params] as const,
   realEstatePropertyAccounts: () => ["realEstatePropertyAccounts"] as const,
   flowsExpenses: () => ["flowsExpenses"] as const,
+  /** Nested under `flowsExpenses()`: every invalidation of the lines refetches the gastos views too. */
+  flowsExpensesGastosAll: () => ["flowsExpenses", "gastos"] as const,
+  flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[]) =>
+    ["flowsExpenses", "gastos", unit, [...excludedBigGroups].sort().join(",")] as const,
   creditCardConfig: (accountId: string) => ["creditCardConfig", accountId] as const,
   ccFacturadoFinancingLinks: () => ["ccFacturadoFinancingLinks"] as const,
   portfolioGroup: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>

@@ -8,7 +8,7 @@ import {
   periodMonthsForGastosLine,
   purchaseModalLines,
 } from "./ccExpensePeriodMonth.js";
-import { aggregateGastosFromLines } from "./flowsExpenses.js";
+import { aggregateGastosFromLines } from "./flowsExpensesGastos.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 
 function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {

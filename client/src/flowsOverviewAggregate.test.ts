@@ -105,6 +105,13 @@ const marchDeposits = {
 
 const noPl = { chart_monthly: [], chart_monthly_usd: [] };
 
+/** The server gastos view's month row (its aggregation is tested in server flowsExpensesGastos.test.ts). */
+function gastosMonth(period_month: string, gastos_mes_clp: number, gastos_real_mes_clp = gastos_mes_clp) {
+  return { period_month, gastos_mes_clp, gastos_real_mes_clp };
+}
+/** One mortgageLine(): 1.000.000 paid, 400.000 of it carrying (the gasto). */
+const MORTGAGE_MARCH = [gastosMonth("2024-03", 400_000, 1_000_000)];
+
 function plPoint(overrides: Partial<import("./types").FlowsPlChartPoint> = {}) {
   return {
     as_of_date: "2024-03-31",
@@ -134,8 +141,8 @@ describe("aggregateFlowsOverview", () => {
       origin_label: "Liquidación",
       expense_deposit_links: [],
     });
-    const base = aggregateFlowsOverview(incomePayload(), { lines: [] }, marchDeposits, noPl);
-    const withDeduction = aggregateFlowsOverview(incomePayload(), { lines: [deduction] }, marchDeposits, noPl);
+    const base = aggregateFlowsOverview(incomePayload(), { lines: [], gastos_by_month: [] }, marchDeposits, noPl);
+    const withDeduction = aggregateFlowsOverview(incomePayload(), { lines: [deduction], gastos_by_month: [gastosMonth("2024-03", 80_000)] }, marchDeposits, noPl);
     const before = base.find((r) => r.period_month === "2024-03")!;
     const after = withDeduction.find((r) => r.period_month === "2024-03")!;
     expect(after.expenses - before.expenses).toBe(80_000);
@@ -150,7 +157,7 @@ describe("aggregateFlowsOverview", () => {
   it("splits a linked mortgage payment: carrying → expenses, amortización → deposits", () => {
     const rows = aggregateFlowsOverview(
       incomePayload(),
-      { lines: [mortgageLine()] },
+      { lines: [mortgageLine()], gastos_by_month: MORTGAGE_MARCH },
       marchDeposits,
       noPl
     );
@@ -169,7 +176,7 @@ describe("aggregateFlowsOverview", () => {
   it("subtracts carrying once when two lines share the same link", () => {
     const rows = aggregateFlowsOverview(
       incomePayload(),
-      { lines: [mortgageLine(), mortgageLine({ statement_line_id: 2 })] },
+      { lines: [mortgageLine(), mortgageLine({ statement_line_id: 2 })], gastos_by_month: [gastosMonth("2024-03", 800_000, 2_000_000)] },
       marchDeposits,
       noPl
     );
@@ -203,7 +210,7 @@ describe("aggregateFlowsOverview", () => {
       });
     const lines = [original, projection(1), projection(2)];
     for (const mode of ["split", "total"] as const) {
-      const rows = aggregateFlowsOverview(incomePayload(), { lines }, marchDeposits, noPl, mode);
+      const rows = aggregateFlowsOverview(incomePayload(), { lines, gastos_by_month: MORTGAGE_MARCH }, marchDeposits, noPl, mode);
       const march = rows.find((r) => r.period_month === "2024-03")!;
       expect(march.deposits).toBe(1_500_000 - 400_000);
     }
@@ -215,7 +222,7 @@ describe("aggregateFlowsOverview", () => {
     expect(() =>
       aggregateFlowsOverview(
         income,
-        { lines: [] },
+        { lines: [], gastos_by_month: [] },
         { ...marchDeposits, fx_conversion_error: true },
         noPl,
         "split",
@@ -227,7 +234,7 @@ describe("aggregateFlowsOverview", () => {
   it("splits pre-tax AFP/AFC cotizaciones out of post-tax deposits and net", () => {
     const rows = aggregateFlowsOverview(
       incomePayload(),
-      { lines: [] },
+      { lines: [], gastos_by_month: [] },
       {
         rows: [
           ...marchDeposits.rows,
@@ -261,7 +268,7 @@ describe("aggregateFlowsOverview", () => {
   it("rolls up months into calendar years with matching totals", () => {
     const rows = aggregateFlowsOverview(
       incomePayload(),
-      { lines: [mortgageLine()] },
+      { lines: [mortgageLine()], gastos_by_month: MORTGAGE_MARCH },
       marchDeposits,
       noPl
     );
@@ -283,7 +290,7 @@ describe("aggregateFlowsOverview", () => {
       ],
       chart_monthly_usd: [plPoint({ brokerage: 300, total: 300 })],
     };
-    const rows = aggregateFlowsOverview(incomePayload(), { lines: [] }, marchDeposits, pl);
+    const rows = aggregateFlowsOverview(incomePayload(), { lines: [], gastos_by_month: [] }, marchDeposits, pl);
     const march = rows.find((r) => r.period_month === "2024-03");
     expect(march!.pl).toBe(300_000);
     expect(march!.net).toBe(march!.income - march!.expenses - march!.deposits);
@@ -294,7 +301,7 @@ describe("aggregateFlowsOverview", () => {
     usdIncome.lines[0]!.amount_usd = 2_000;
     const usdRows = aggregateFlowsOverview(
       usdIncome,
-      { lines: [] },
+      { lines: [], gastos_by_month: [] },
       {
         rows: marchDeposits.rows.map((r) => ({ ...r, amount_usd: r.amount_clp / 1000 })),
       },
@@ -314,7 +321,7 @@ describe("aggregateFlowsOverview", () => {
       ],
       chart_monthly_usd: [],
     };
-    const rows = aggregateFlowsOverview(incomePayload(), { lines: [] }, marchDeposits, pl);
+    const rows = aggregateFlowsOverview(incomePayload(), { lines: [], gastos_by_month: [] }, marchDeposits, pl);
     const years = rollupFlowsOverviewRowsByYear(rows);
     const y2024 = years.find((r) => r.period_month === "2024-12");
     expect(y2024!.pl).toBe(125_000);
@@ -356,7 +363,7 @@ describe("aggregateFlowsOverviewByDay", () => {
     const pl = [{ as_of_date: "2024-03-20", total: 75_000 }];
 
     const dayRows = aggregateFlowsOverviewByDay(income, { lines }, marchDeposits, pl);
-    const monthRows = aggregateFlowsOverview(income, { lines }, marchDeposits, {
+    const monthRows = aggregateFlowsOverview(income, { lines, gastos_by_month: MORTGAGE_MARCH }, marchDeposits, {
       chart_monthly: [plPoint({ total: 75_000 })],
       chart_monthly_usd: [],
     });

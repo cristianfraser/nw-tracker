@@ -119,7 +119,7 @@ export function usePatchCcExpenseLineCategoryMutation() {
         ...(vars.clear_category ? { clear_category: true } : {}),
       }),
     onMutate: async (vars) => {
-      await queryClient.cancelQueries({ queryKey });
+      await queryClient.cancelQueries({ queryKey, exact: true });
       const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
       queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
         applyCcExpenseLineCategoryPatch(old, vars)
@@ -189,7 +189,7 @@ export function usePatchCcExpensePurchaseNoteMutation() {
     mutationFn: (vars: PatchCcExpensePurchaseNoteVars) =>
       api.patchCcExpensePurchaseNote(vars),
     onMutate: async (vars) => {
-      await queryClient.cancelQueries({ queryKey });
+      await queryClient.cancelQueries({ queryKey, exact: true });
       const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
       const purchaseKey = vars.purchase_key ?? "";
       if (purchaseKey) {
@@ -267,7 +267,7 @@ export function usePutCcExpensePurchaseBigGroupMutation() {
     mutationFn: (vars: PutCcExpensePurchaseBigGroupVars) =>
       api.putCcExpensePurchaseBigGroup(vars),
     onMutate: async (vars) => {
-      await queryClient.cancelQueries({ queryKey });
+      await queryClient.cancelQueries({ queryKey, exact: true });
       const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
       queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
         applyCcExpensePurchaseBigGroupPatch(old, vars)
@@ -282,6 +282,10 @@ export function usePutCcExpensePurchaseBigGroupMutation() {
           group_slug: result.group_slug,
         })
       );
+    },
+    onSettled: () => {
+      // The gastos views leave excluded big groups out of the chart: recompute them.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpensesGastosAll() });
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
@@ -323,7 +327,7 @@ export function useRenameCcExpenseBigGroupMutation() {
     mutationFn: (vars: { slug: string; label: string }) =>
       api.renameCcExpenseBigGroup(vars.slug, vars.label),
     onMutate: async (vars) => {
-      await queryClient.cancelQueries({ queryKey });
+      await queryClient.cancelQueries({ queryKey, exact: true });
       const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
       queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
         if (!old) return old;
@@ -354,7 +358,7 @@ export function useDeleteCcExpenseBigGroupMutation() {
   return useMutation({
     mutationFn: (slug: string) => api.deleteCcExpenseBigGroup(slug),
     onMutate: async (slug) => {
-      await queryClient.cancelQueries({ queryKey });
+      await queryClient.cancelQueries({ queryKey, exact: true });
       const previous = queryClient.getQueryData<FlowsExpensesResponse>(queryKey);
       queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) => {
         if (!old) return old;
