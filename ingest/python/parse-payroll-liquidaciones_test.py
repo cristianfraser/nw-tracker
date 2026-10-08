@@ -125,5 +125,93 @@ class BukLayoutTest(unittest.TestCase):
             mod.parse_buk(BUK_TEXT.replace("$ 1.793.000", "$ 1.793.001"), "2030-09")
 
 
+def lines_of(text: str, fmt: str, parsed: dict) -> list:
+    return [(l["side"], l["section"], l["label"], l["amount"]) for l in mod.extract_payslip_lines(text, fmt, parsed)]
+
+
+# Two-column layout with printed subtotals (Nuevo Chile style; synthetic values).
+SUBTOTAL_TEXT = """
+HABERES                                                      DESCUENTOS
+Sueldo del Mes                      1,000,000                AFP                                  110,000
+Gratificación Mensual                 100,000                Isapre 7%                             77,000
+Total Haberes Imponibles            1,100,000                Seguro de cesantía                     6,600
+                                                             Impuesto Unico                        10,000
+                                                             Total descuentos legales             203,600
+Movilización                           50,000                Anticipo Aguinaldo                    20,000
+Total Haberes No Imponibles            50,000                Total Otros Descuentos                20,000
+Total Haberes                       1,150,000                Total Descuentos                    223,600
+                                                             Alcance Líquido                   926,400
+"""
+
+# Talana: no section subtotal among the lines, amounts with «,00», a right-only row.
+TALANA_TEXT = """
+                       DETALLE DE HABERES                                               DETALLE DE DESCUENTOS
+  Sueldo Ganado                                     1.000.000,00       Descuento AFP                                   110.000,00
+  Seguro Vida Costo Empresa                            10.000,00       Cotizacion Salud                                 77.000,00
+                                                                       Seguro Vida Costo Empresa                         9.000,00
+  Asig. Colación                                       40.000,00
+         TOTAL HABERES                              1.050.000,00            TOTAL DESCUENTOS                           196.000,00
+"""
+
+
+class PayslipLinesTest(unittest.TestCase):
+    def test_reads_both_columns_with_their_sections(self) -> None:
+        got = lines_of(SUBTOTAL_TEXT, "nuevo_chile", {"liquido_clp": 926_400})
+        self.assertEqual(
+            got,
+            [
+                ("haber", "imponible", "Sueldo del Mes", 1_000_000),
+                ("haber", "imponible", "Gratificación Mensual", 100_000),
+                ("haber", "no_imponible", "Movilización", 50_000),
+                ("descuento", "legal", "AFP", 110_000),
+                ("descuento", "legal", "Isapre 7%", 77_000),
+                ("descuento", "legal", "Seguro de cesantía", 6_600),
+                ("descuento", "legal", "Impuesto Unico", 10_000),
+                ("descuento", "other", "Anticipo Aguinaldo", 20_000),
+            ],
+        )
+
+    def test_a_missed_line_fails(self) -> None:
+        text = SUBTOTAL_TEXT.replace("Anticipo Aguinaldo                    20,000", "")
+        with self.assertRaisesRegex(ValueError, "lines add up"):
+            mod.extract_payslip_lines(text, "nuevo_chile", {"liquido_clp": 926_400})
+
+    def test_haberes_minus_descuentos_must_be_the_net_pay(self) -> None:
+        with self.assertRaisesRegex(ValueError, "líquido"):
+            mod.extract_payslip_lines(SUBTOTAL_TEXT, "nuevo_chile", {"liquido_clp": 926_401})
+
+    def test_talana_non_taxable_lines_are_the_trailing_ones_adding_up_to_its_total(self) -> None:
+        got = lines_of(TALANA_TEXT, "talana_buk", {"liquido_clp": 854_000, "total_no_imponible_clp": 40_000})
+        self.assertEqual(
+            got,
+            [
+                ("haber", "imponible", "Sueldo Ganado", 1_000_000),
+                ("haber", "imponible", "Seguro Vida Costo Empresa", 10_000),
+                ("haber", "no_imponible", "Asig. Colación", 40_000),
+                ("descuento", None, "Descuento AFP", 110_000),
+                ("descuento", None, "Cotizacion Salud", 77_000),
+                ("descuento", None, "Seguro Vida Costo Empresa", 9_000),
+            ],
+        )
+
+    def test_buk_right_column_left_of_its_header(self) -> None:
+        got = lines_of(BUK_TEXT, "buk", {"liquido_clp": 1_793_000})
+        self.assertEqual([g[2] for g in got if g[0] == "descuento"], ["Cotiz. Previ. Obligatoria", "Cotiz. Salud Obligatoria", "Adicional Salud", "Impuesto Único"])
+        self.assertEqual({g[1] for g in got if g[0] == "descuento"}, {"legal"})
+
+    def test_ocr_scan_reads_a_negative_haber_and_derives_a_missing_total(self) -> None:
+        flat = (
+            "HABERES IMPONIBLES SUELDO DE 30 DIAS $ 1,000,000 1 DiA(S) DE INASISTENCIA $ (30,000) "
+            "TOTAL IMPONIBLES $ 970,000 NO IMPONIBLES COLACION $ 50,000 TOTAL NO IMPONIBLES $ 50,000 "
+            "TOTALHABERES $ —___ DESCUENTOS A.F.P. MODELO 10.77% $ 100,000 IMPUESTO $ 2o,1eo "
+            "TOTAL DESCUENTOS $ 120,000 TOTALAPAGAR $ 900,000"
+        )
+        parsed = {"liquido_clp": 900_000, "total_haberes_clp": None, "total_imponible_clp": 970_000,
+                  "total_no_imponible_clp": 50_000, "total_descuentos_clp": 120_000, "desc_tax_clp": 20_000}
+        got = lines_of(flat, "unholster_scan", parsed)
+        self.assertIn(("haber", "imponible", "1 DiA(S) DE INASISTENCIA", -30_000), got)
+        self.assertIn(("descuento", None, "IMPUESTO", 20_000), got)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -798,6 +798,251 @@ def parse_buk(text: str, period_month: str) -> Dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------------------------
+# Every printed line
+# ---------------------------------------------------------------------------------------------
+#
+# A payslip's HABERES and DESCUENTOS are read line by line, as printed: `{side, section, label,
+# amount}`. The parse fails unless the lines add up to every total the payslip prints and haberes −
+# descuentos = líquido, since a line that is missed or misread breaks one of those sums.
+
+AMOUNT_TOKEN = r"(?:\d{1,3}(?:[.,]\d{3})+(?:,\d{2})?|\d+(?:,\d{2})?)"
+RE_LINE_AMOUNT = re.compile(rf"^\$?\s*({AMOUNT_TOKEN})$")
+RE_LINE_LABEL_AMOUNT = re.compile(rf"^(.*?\S)\s*:?\s+\$\s*({AMOUNT_TOKEN})$")
+
+# Totals and subtotals are read as checks, never as lines. Each maps to what it closes.
+HABER_TOTAL_LABELS: Tuple[Tuple[str, str], ...] = (
+    (r"(?:sub\s*)?total\s+haberes\s+no\s+imponibles?", "no_imponible"),
+    (r"haberes\s+no\s+imponibles?", "no_imponible_header"),
+    (r"(?:sub\s*)?total\s+(?:haberes\s+)?imponibles?", "imponible"),
+    (r"haberes\s+imponibles?", "imponible_header"),
+    (r"total\s+haberes", "total"),
+)
+DESCUENTO_TOTAL_LABELS: Tuple[Tuple[str, str], ...] = (
+    (r"total\s+descuentos\s+legales", "legal"),
+    (r"descuentos\s+legales", "legal_header"),
+    (r"total\s+otros\s+descuentos", "other"),
+    (r"otros\s+descuentos", "other_header"),
+    (r"total\s+descuentos", "total"),
+    (r"alcance\s+l[ií]quido|l[ií]quido\s+a\s+pag(?:o|ar)|sueldo\s+l[ií]quido|l[ií]quido\s+a\s+recibir", "net"),
+)
+
+
+def _total_kind(label: str, table: Tuple[Tuple[str, str], ...]) -> Optional[str]:
+    for pat, kind in table:
+        if re.fullmatch(pat, label.strip(), re.IGNORECASE):
+            return kind
+    return None
+
+
+def _line_amount(raw: str) -> int:
+    """A printed line amount; «(46,639)» (a deduction printed among the haberes) is negative."""
+    tok = raw.replace("$", "").strip()
+    sign = 1
+    if tok.startswith("(") and tok.endswith(")"):
+        sign, tok = -1, tok[1:-1].strip()
+    if tok == "0":
+        return 0
+    v = parse_clp_amount(tok)
+    if v is None:
+        raise ValueError(f"payslip line: not an amount: {raw!r}")
+    return sign * v
+
+
+def _row_cells(line: str) -> List[Tuple[int, str, int, int]]:
+    """(column, label, amount, end column) cells of one printed row: chunks separated by 2+ spaces,
+    a label chunk followed by an amount chunk, or one chunk ending in «$ amount»."""
+    chunks = [(m.start(), m.group(0)) for m in re.finditer(r"\S+(?: \S+)*", line)]
+    cells: List[Tuple[int, str, int, int]] = []
+    pending: Optional[Tuple[int, str]] = None
+    for col, chunk in chunks:
+        if RE_LINE_AMOUNT.match(chunk):
+            if pending is not None:
+                cells.append((pending[0], pending[1], _line_amount(chunk), col + len(chunk)))
+                pending = None
+            continue
+        m = RE_LINE_LABEL_AMOUNT.match(chunk)
+        if m and re.search(r"[A-Za-zÁÉÍÓÚÑáéíóúñ]", m.group(1)):
+            cells.append((col, m.group(1).rstrip(":").strip(), _line_amount(m.group(2)), col + len(chunk)))
+            pending = None
+            continue
+        if chunk.strip("-– ") == "":
+            continue
+        pending = (col, chunk.rstrip(":").strip())
+    return cells
+
+
+def _check(name: str, parts: int, printed: Optional[int]) -> None:
+    if printed is not None and parts != printed:
+        raise ValueError(f"payslip lines: {name} lines add up to {parts:,}, printed {printed:,}")
+
+
+def extract_column_lines(text: str, parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Lines of the two-column layouts (Nuevo Chile, Dealsyte, Axity, Talana/Buk, Buk): the block
+    from the first row that carries both HABERES and DESCUENTOS to the row carrying both totals.
+    The right column starts after the first two-cell row's left amount (a right-hand header can
+    sit further right than its own lines: Buk)."""
+    rows = text.splitlines()
+    start = next(
+        (i for i, r in enumerate(rows) if re.search(r"HABERES", r, re.IGNORECASE) and re.search(r"DESCUENTOS", r, re.IGNORECASE)),
+        None,
+    )
+    if start is None:
+        raise ValueError("payslip lines: no HABERES / DESCUENTOS header row")
+    split_x: Optional[int] = None
+    haberes: List[Dict[str, Any]] = []
+    descuentos: List[Dict[str, Any]] = []
+    totals: Dict[str, int] = {}
+    haber_section: Optional[str] = None
+    desc_section: Optional[str] = None
+    pending_haber: List[Dict[str, Any]] = []
+    pending_desc: List[Dict[str, Any]] = []
+    ended = False
+    for row in rows[start:]:
+        cells = _row_cells(row)
+        if not cells:
+            continue
+        if split_x is None:
+            if len(cells) < 2:
+                continue
+            split_x = cells[0][3] + 1
+        for col, label, amount, _end in cells:
+            right = col >= split_x
+            if not right:
+                kind = _total_kind(label, HABER_TOTAL_LABELS)
+                if kind is None:
+                    line = {"side": "haber", "section": haber_section, "label": label, "amount": amount}
+                    haberes.append(line)
+                    if haber_section is None:
+                        pending_haber.append(line)
+                elif kind.endswith("_header"):
+                    haber_section = kind[: -len("_header")]
+                    totals[haber_section] = amount
+                elif kind in ("imponible", "no_imponible"):
+                    for line in pending_haber:
+                        line["section"] = kind
+                    pending_haber = []
+                    totals[kind] = amount
+                    if kind == "imponible":
+                        haber_section = None
+                else:
+                    totals["haberes"] = amount
+            else:
+                kind = _total_kind(label, DESCUENTO_TOTAL_LABELS)
+                if kind is None:
+                    line = {"side": "descuento", "section": desc_section, "label": label, "amount": amount}
+                    descuentos.append(line)
+                    if desc_section is None:
+                        pending_desc.append(line)
+                elif kind.endswith("_header"):
+                    desc_section = kind[: -len("_header")]
+                    totals[desc_section] = amount
+                elif kind in ("legal", "other"):
+                    for line in pending_desc:
+                        line["section"] = kind
+                    pending_desc = []
+                    totals[kind] = amount
+                elif kind == "total":
+                    totals["descuentos"] = amount
+                    ended = True
+        if ended and "haberes" in totals:
+            break
+    if "haberes" not in totals or "descuentos" not in totals:
+        raise ValueError("payslip lines: no TOTAL HABERES / TOTAL DESCUENTOS row")
+    # A layout that closes the taxable section but prints no non-taxable subtotal (Dealsyte):
+    # what follows the taxable subtotal is non-taxable.
+    if pending_haber and "imponible" in totals:
+        for line in pending_haber:
+            line["section"] = "no_imponible"
+    lines = haberes + descuentos
+    _check_lines(lines, totals, parsed)
+    return lines
+
+
+def _check_lines(lines: List[Dict[str, Any]], totals: Dict[str, int], parsed: Dict[str, Any]) -> None:
+    hab = [l for l in lines if l["side"] == "haber"]
+    des = [l for l in lines if l["side"] == "descuento"]
+    _check("haberes", sum(l["amount"] for l in hab), totals.get("haberes"))
+    _check("descuentos", sum(l["amount"] for l in des), totals.get("descuentos"))
+    _check("haberes − descuentos (líquido)", totals["haberes"] - totals["descuentos"], parsed["liquido_clp"])
+    for section in ("no_imponible", "legal", "other"):
+        if section in totals:
+            _check(section, sum(l["amount"] for l in lines if l["section"] == section), totals[section])
+    # The taxable total can be capped (a payslip above the cap prints the capped base), so only a
+    # taxable total above the lines' sum is an error.
+    if "imponible" in totals:
+        parts = sum(l["amount"] for l in hab if l["section"] == "imponible")
+        if parts < totals["imponible"]:
+            raise ValueError(f"payslip lines: taxable lines add up to {parts:,}, printed {totals['imponible']:,}")
+
+
+def assign_talana_sections(lines: List[Dict[str, Any]], parsed: Dict[str, Any]) -> None:
+    """Talana prints no section subtotal among the lines; TOTAL NO IMPONIBLE is a header cell. The
+    non-taxable lines are the trailing haberes adding up to it; the rest are taxable."""
+    hab = [l for l in lines if l["side"] == "haber"]
+    target = parsed.get("total_no_imponible_clp") or 0
+    acc, k = 0, len(hab)
+    while acc < target and k > 0:
+        k -= 1
+        acc += hab[k]["amount"]
+    if acc != target:
+        raise ValueError(f"payslip lines: no trailing haberes add up to TOTAL NO IMPONIBLE {target:,}")
+    for i, l in enumerate(hab):
+        l["section"] = "no_imponible" if i >= k else "imponible"
+
+
+def extract_unholster_lines(flat: str, parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The OCR'd Unholster scans: «LABEL [rate%] $ amount» runs between the section headers. The tax
+    cell is sometimes garbled, so its amount is the balance the parser already derived."""
+    def items(segment: str) -> List[Tuple[str, str]]:
+        return [
+            (m.group(1).strip(), m.group(2))
+            for m in re.finditer(r"((?:\d+\s+)?[A-Z][^$§]*?)\s*[$§]\s*(\([\d,]+\)|[\d,]+[a-z]*\d*)", segment)
+        ]
+
+    def between(a: str, b: str) -> str:
+        m = re.search(rf"{a}(.*?){b}", flat, re.IGNORECASE | re.DOTALL)
+        if not m:
+            raise ValueError(f"Unholster lines: no {a} … {b} section")
+        return m.group(1)
+
+    lines: List[Dict[str, Any]] = []
+    for label, raw in items(between(r"HABERES IMPONIBLES", r"TOTAL\s*IMPONIBLES")):
+        lines.append({"side": "haber", "section": "imponible", "label": label, "amount": _line_amount(raw)})
+    for label, raw in items(between(r"\bNO IMPONIBLES", r"TOTAL NO IMPONIBLES")):
+        lines.append({"side": "haber", "section": "no_imponible", "label": label, "amount": _line_amount(raw)})
+    for label, raw in items(between(r"\bDESCUENTOS", r"TOTAL DESCUENTOS")):
+        if re.match(r"IMPUESTO", label, re.IGNORECASE):
+            amount = parsed["desc_tax_clp"]
+        else:
+            amount = _line_amount(raw)
+        lines.append({"side": "descuento", "section": None, "label": label, "amount": amount})
+    # The scan's TOTAL HABERES cell is sometimes unreadable (2018-08); it is the two subtotals.
+    haberes = parsed["total_haberes_clp"]
+    if haberes is None and None not in (parsed["total_imponible_clp"], parsed["total_no_imponible_clp"]):
+        haberes = parsed["total_imponible_clp"] + parsed["total_no_imponible_clp"]
+    totals = {
+        "haberes": haberes,
+        "descuentos": parsed["total_descuentos_clp"],
+        "imponible": parsed["total_imponible_clp"],
+        "no_imponible": parsed["total_no_imponible_clp"],
+    }
+    _check_lines(lines, totals, parsed)
+    return lines
+
+
+def extract_payslip_lines(text: str, fmt: str, parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
+    if fmt == "unholster_scan":
+        lines = extract_unholster_lines(normalize_ocr_payroll_text(text), parsed)
+    else:
+        lines = extract_column_lines(text, parsed)
+        if fmt == "talana_buk":
+            assign_talana_sections(lines, parsed)
+    for i, line in enumerate(lines):
+        line["position"] = i
+    return lines
+
+
 def parse_payroll_pdf(path: Path) -> Dict[str, Any]:
     text = extract_payroll_pdf_text(path)
     period_month = period_month_from_path(path)
@@ -816,6 +1061,7 @@ def parse_payroll_pdf(path: Path) -> Dict[str, Any]:
         parsed = parse_unholster_scan(text, period_month)
     else:
         raise ValueError(f"unsupported format: {fmt}")
+    parsed["lines"] = extract_payslip_lines(text, fmt, parsed)
     parsed["source_pdf"] = rel_source_pdf(path)
     return parsed
 

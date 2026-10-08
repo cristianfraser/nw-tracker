@@ -11,6 +11,23 @@ import { defineIngestKind } from "../defineKind.js";
 const pesos = z.number().int();
 const periodMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 
+/**
+ * One line of the payslip as printed: a haber (earning) or a descuento (deduction), in the section
+ * the payslip puts it when it shows one (taxable / non-taxable earnings, legal / other deductions).
+ * The label is the payslip's own; an amount can be negative (an absence printed among the earnings).
+ */
+export const payslipLineSchema = z
+  .object({
+    position: z.number().int().nonnegative(),
+    side: z.enum(["haber", "descuento"]),
+    section: z.enum(["imponible", "no_imponible", "legal", "other"]).nullable(),
+    label: z.string().min(1).max(200),
+    amount: pesos,
+  })
+  .strict();
+
+export type PayslipLine = z.infer<typeof payslipLineSchema>;
+
 export const payslipSchema = z
   .object({
     /** The document it came from (its path under the feeder's archive): the payslip's identity. */
@@ -47,6 +64,11 @@ export const payslipSchema = z
       .strict(),
     /** Líquido a pagar: what reached the account. */
     net_pay: pesos,
+    /**
+     * Every printed line, in order. The haberes add up to `earnings.total` and the descuentos to
+     * `deductions.total` (when printed), and haberes − descuentos is `net_pay`.
+     */
+    lines: z.array(payslipLineSchema).min(1),
     /** The month's indices the payslip prints (UF, UTM, contribution caps in UF). */
     indices: z
       .object({
@@ -57,14 +79,31 @@ export const payslipSchema = z
       })
       .strict(),
   })
-  .strict();
+  .strict()
+  .superRefine((p, ctx) => {
+    const sum = (side: PayslipLine["side"]) => p.lines.filter((l) => l.side === side).reduce((s, l) => s + l.amount, 0);
+    const haberes = sum("haber");
+    const descuentos = sum("descuento");
+    if (new Set(p.lines.map((l) => l.position)).size !== p.lines.length) {
+      ctx.addIssue({ code: "custom", message: `${p.document}: a line position appears twice` });
+    }
+    if (p.earnings.total != null && haberes !== p.earnings.total) {
+      ctx.addIssue({ code: "custom", message: `${p.document}: haberes lines add up to ${haberes}, total ${p.earnings.total}` });
+    }
+    if (p.deductions.total != null && descuentos !== p.deductions.total) {
+      ctx.addIssue({ code: "custom", message: `${p.document}: descuentos lines add up to ${descuentos}, total ${p.deductions.total}` });
+    }
+    if (haberes - descuentos !== p.net_pay) {
+      ctx.addIssue({ code: "custom", message: `${p.document}: haberes − descuentos = ${haberes - descuentos}, net pay ${p.net_pay}` });
+    }
+  });
 
 export type Payslip = z.infer<typeof payslipSchema>;
 
 export const employmentPayslipsKind = defineIngestKind({
   kind: "employment.payslips",
-  schema_version: 1,
-  description: "Payslips (liquidaciones de sueldo): earnings, deductions and net pay per month and employer.",
+  schema_version: 2,
+  description: "Payslips (liquidaciones de sueldo): every printed line, earnings, deductions and net pay per month and employer.",
   payload: z
     .object({
       /** False: report what the import would change, write nothing. */
@@ -93,6 +132,7 @@ export type EmploymentPayslipsApplyDetails = {
   unmatched: { document: string; net_pay: number; period_month: string }[];
   /** Several deposits could pay it; none was chosen. */
   ambiguous: { document: string; movement_ids: number[] }[];
-  /** Dry run: each stored field the import would change, per payslip («new <document>» for a payslip not stored yet). */
+  /** Dry run: each stored field the import would change, per payslip («new <document>» for a payslip not stored yet;
+   * «lines <document>: …» when its printed lines differ from the stored ones). */
   changes: string[];
 };

@@ -31,6 +31,14 @@ const ROW: ParsedPayrollRow = {
   tope_previsional_uf: 87.8,
   tope_cesantia_uf: null,
   format: "talana_buk",
+  lines: [
+    { position: 0, side: "haber", section: "imponible", label: "Sueldo Ganado", amount: 1000 },
+    { position: 1, side: "haber", section: "no_imponible", label: "Asig. Colación", amount: 10 },
+    { position: 2, side: "haber", section: "no_imponible", label: "Asig. Movilización", amount: 20 },
+    { position: 3, side: "descuento", section: null, label: "Descuento AFP", amount: 110 },
+    { position: 4, side: "descuento", section: null, label: "Cotizacion Salud", amount: 70 },
+    { position: 5, side: "descuento", section: null, label: "Seguro de Desempleo", amount: 6 },
+  ],
 };
 
 const dirs: string[] = [];
@@ -60,6 +68,21 @@ describe("payroll parse index → employment.payslips", () => {
       net_pay: 844,
       indices: { uf: 40000.5, utm: null, pension_cap_uf: 87.8 },
     });
+    expect(payload.payslips[0]!.lines).toHaveLength(6);
+  });
+
+  it("the contract refuses lines that do not add up to the payslip's totals", () => {
+    const parse = (row: ParsedPayrollRow) =>
+      employmentPayslipsKind.payload.safeParse(payslipsPayload({ parser_version: "abc", rows: [row] }, false));
+    expect(parse(ROW).success).toBe(true);
+    const short = { ...ROW, lines: ROW.lines!.slice(0, -1) };
+    expect(JSON.stringify(parse(short).error?.issues)).toMatch(/descuentos lines add up to 180, total 186/);
+    const noTotals = { ...short, total_descuentos_clp: null };
+    expect(JSON.stringify(parse(noTotals).error?.issues)).toMatch(/haberes − descuentos = 850, net pay 844/);
+  });
+
+  it("refuses a parse without lines", () => {
+    expect(() => payslipsPayload({ parser_version: "abc", rows: [{ ...ROW, lines: [] }] }, false)).toThrow(/no lines/);
   });
 
   it("refuses an index with failures or without payslips", () => {
