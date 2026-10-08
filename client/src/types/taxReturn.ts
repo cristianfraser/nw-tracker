@@ -89,7 +89,17 @@ export type TaxReturnResponse = {
   /** How the filed form was settled: its refund or payment against the linked bank movements. */
   settlement: {
     expected: { kind: "refund" | "payment"; amount: number } | null;
-    links: { kind: "refund" | "payment"; account_id: number; account_name: string; movement_id: number | null; occurred_on: string; amount: number; description: string }[];
+    links: {
+      kind: "refund" | "payment" | "offset_kept" | "offset_paid";
+      account_id: number | null;
+      account_name: string | null;
+      movement_id: number | null;
+      /** An offset's other tax year: the debt it paid (`offset_kept`) or the refund that paid it (`offset_paid`). */
+      other_tax_year: number | null;
+      occurred_on: string;
+      amount: number;
+      description: string;
+    }[];
     settled: number;
     difference: number | null;
   } | null;

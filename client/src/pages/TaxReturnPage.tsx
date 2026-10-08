@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Table } from "../components/ui/Table";
 import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
@@ -289,6 +290,15 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
   );
 }
 
+type SettlementLink = NonNullable<TaxReturnResponse["settlement"]>["links"][number];
+
+function settlementLinkLabel(t: TFunction, l: SettlementLink): string {
+  if (l.kind === "offset_kept" || l.kind === "offset_paid") {
+    return t(`taxReturn.settlement.link.${l.kind}`, { year: l.other_tax_year });
+  }
+  return t(`taxReturn.settlement.link.${l.kind}${l.movement_id == null ? "Card" : ""}`);
+}
+
 function SettlementSection({ data }: { data: TaxReturnResponse }) {
   const { t } = useTranslation();
   const s = data.settlement;
@@ -324,17 +334,14 @@ function SettlementSection({ data }: { data: TaxReturnResponse }) {
       {s.links.length > 0 ? (
         <Table header={header} tableClassName="table--parallel-mobile">
           {s.links.map((l) => (
-            <tr key={`${l.account_id}-${l.occurred_on}-${l.amount}`}>
+            <tr key={`${l.kind}-${l.account_id}-${l.occurred_on}-${l.amount}`}>
               <td className="desktop-only mono">{l.occurred_on}</td>
-              <td className="desktop-only">{l.account_name}</td>
-              <td className="desktop-only">{t(`taxReturn.settlement.link.${l.kind}${l.movement_id == null ? "Card" : ""}`)}</td>
+              <td className="desktop-only">{l.account_name ?? "—"}</td>
+              <td className="desktop-only">{settlementLinkLabel(t, l)}</td>
               <td className="desktop-only num">{formatClp(l.amount)}</td>
               <td className="mobile-only">
-                <TableMobileCard title={`${l.occurred_on} · ${l.account_name}`}>
-                  <TableMobileCardRow
-                    label={t("taxReturn.settlement.colDescription")}
-                    value={t(`taxReturn.settlement.link.${l.kind}${l.movement_id == null ? "Card" : ""}`)}
-                  />
+                <TableMobileCard title={l.account_name ? `${l.occurred_on} · ${l.account_name}` : l.occurred_on}>
+                  <TableMobileCardRow label={t("taxReturn.settlement.colDescription")} value={settlementLinkLabel(t, l)} />
                   <TableMobileCardRow label={t("taxReturn.settlement.colAmount")} value={formatClp(l.amount)} />
                 </TableMobileCard>
               </td>

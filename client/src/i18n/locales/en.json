@@ -1063,12 +1063,14 @@
     "sectionLinked": "Linked to an expense",
     "sectionLinkedSynthetic": "Linked (synthetic mirror — missing bank statement)",
     "sectionResolvedFamilyFunded": "Family contributions (no own outflow)",
+    "sectionResolvedTaxRefund": "Tax refunds paid into the account (no own outflow)",
     "sectionResolvedInternalTransfer": "Internal transfer between accounts (not through checking)",
     "sectionNoCheckingSource": "No bank statement (month without data)",
     "sectionNeedsAttention": "Unlinked (bank statement available)",
     "emptyLinked": "No linked deposits.",
     "emptyLinkedSynthetic": "No synthetic mirrors generated.",
     "emptyResolvedFamilyFunded": "No deposits marked as family contributions.",
+    "emptyResolvedTaxRefund": "No deposits are tax refunds.",
     "emptyResolvedInternalTransfer": "No internal transfers between net-worth accounts.",
     "emptyNoCheckingSource": "No deposits in months without a bank statement.",
     "emptyNeedsAttention": "Every deposit is linked or has no bank statement.",
@@ -1082,6 +1084,7 @@
     "colLinked": "Linked",
     "colLinkedSynthetic": "Linked (synthetic)",
     "colResolvedFamilyFunded": "Family contribution",
+    "colResolvedTaxRefund": "Tax refund",
     "colResolvedInternalTransfer": "Internal transfer",
     "colNoChecking": "No statement",
     "colUnlinked": "Unlinked",
@@ -1749,7 +1752,9 @@
         "refund": "Tesorería refund",
         "payment": "Payment from the account",
         "refundCard": "Refund to the card",
-        "paymentCard": "Paid with the card"
+        "paymentCard": "Paid with the card",
+        "offset_kept": "Kept by the Tesorería for the AT{{year}} debt",
+        "offset_paid": "Paid with the AT{{year}} refund (Tesorería offset)"
       }
     }
   }

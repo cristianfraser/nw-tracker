@@ -3,9 +3,11 @@
  * Tesorería's refund credit (a checking credit «DEV IMPUESTO» from April of the tax year, of the
  * refund the form states plus its inflation adjustment, at most 6 %) or the payment (a card line
  * «SII» / «F22 RENTA» / «TGR», or a checking debit, of exactly the amount the form says to pay, in
- * April–June). Report-first; --apply writes the unique proposals and every --extra.
+ * April–June). Report-first; --apply writes the unique proposals, every --extra and every --offset
+ * (a refund the Tesorería kept to pay another year's debt, «compensación»: no account).
  *
- *   npx tsx scripts/link-f22-settlements.ts [--extra=<year>:<refund|payment>:<account id>:<YYYY-MM-DD>:<pesos>[:<movement id>],…] [--apply]
+ *   npx tsx scripts/link-f22-settlements.ts [--extra=<year>:<refund|payment>:<account id>:<YYYY-MM-DD>:<pesos>[:<movement id>],…]
+ *     [--offset=<refund year>:<debt year>:<YYYY-MM-DD>:<pesos>,…] [--apply]
  *
  * Descriptions are read here, once, to propose; the app reads the stored link.
  */
@@ -20,8 +22,18 @@ function isoDay(raw: string): string {
 
 const apply = process.argv.includes("--apply");
 const extras = (process.argv.find((a) => a.startsWith("--extra="))?.slice(8) ?? "").split(",").filter(Boolean);
+const offsets = (process.argv.find((a) => a.startsWith("--offset="))?.slice(9) ?? "").split(",").filter(Boolean);
 
-type Link = { tax_year: number; kind: "refund" | "payment"; account_id: number; movement_id: number | null; occurred_on: string; amount: number; description: string };
+type Link = {
+  tax_year: number;
+  kind: "refund" | "payment" | "offset";
+  account_id: number | null;
+  movement_id: number | null;
+  offset_tax_year: number | null;
+  occurred_on: string;
+  amount: number;
+  description: string;
+};
 
 const filed = db.prepare(`SELECT tax_year, code, amount FROM sii_f22_filed WHERE code IN (87, 91, 305)`).all() as {
   tax_year: number;
@@ -47,7 +59,7 @@ for (const y of years) {
       .all(refund, refund * 1.06, `${y}-04-01`, `${y}-12-31`) as { id: number; account_id: number; occurred_on: string; amount: number; note: string }[];
     if (rows.length === 1) {
       const r = rows[0]!;
-      proposals.push({ tax_year: y, kind: "refund", account_id: r.account_id, movement_id: r.id, occurred_on: r.occurred_on, amount: r.amount, description: `Devolución de impuesto (Tesorería), F22 ${refund}` });
+      proposals.push({ tax_year: y, kind: "refund", account_id: r.account_id, movement_id: r.id, offset_tax_year: null, occurred_on: r.occurred_on, amount: r.amount, description: `Devolución de impuesto (Tesorería), F22 ${refund}` });
       report.push(`AT${y} refund ${refund} → movement ${r.id} ${r.occurred_on} ${r.amount} (adjustment ${r.amount - refund})`);
     } else report.push(`AT${y} refund ${refund}: ${rows.length} candidate(s) — use --extra`);
   } else {
@@ -65,7 +77,7 @@ for (const y of years) {
     if (inWindow.length === 1) {
       const c = inWindow[0]!;
       const day = isoDay(c.transaction_date);
-      proposals.push({ tax_year: y, kind: "payment", account_id: c.account_id, movement_id: null, occurred_on: day, amount: pay, description: `Pago F22 con tarjeta («${c.merchant}»)` });
+      proposals.push({ tax_year: y, kind: "payment", account_id: c.account_id, movement_id: null, offset_tax_year: null, occurred_on: day, amount: pay, description: `Pago F22 con tarjeta («${c.merchant}»)` });
       report.push(`AT${y} payment ${pay} → card account ${c.account_id} ${day}`);
     } else report.push(`AT${y} payment ${pay}: ${inWindow.length} card candidate(s) — use --extra`);
   }
@@ -80,11 +92,29 @@ for (const e of extras) {
     kind,
     account_id: Number(account),
     movement_id: movement ? Number(movement) : null,
+    offset_tax_year: null,
     occurred_on: day!,
     amount: Number(pesos),
     description: kind === "refund" ? "Devolución de impuesto (indicada a mano)" : "Pago F22 (indicado a mano)",
   });
   report.push(`AT${y} ${kind} (extra) → account ${account} ${day} ${pesos}${movement ? ` movement ${movement}` : ""}`);
+}
+
+for (const o of offsets) {
+  const [refundYear, debtYear, day, pesos] = o.split(":");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day ?? "")) throw new Error(`--offset ${o}: bad date`);
+  if (!(Number(pesos) > 0) || Number(refundYear) === Number(debtYear)) throw new Error(`--offset ${o}: bad years or pesos`);
+  proposals.push({
+    tax_year: Number(refundYear),
+    kind: "offset",
+    account_id: null,
+    movement_id: null,
+    offset_tax_year: Number(debtYear),
+    occurred_on: day!,
+    amount: Number(pesos),
+    description: `Compensación de la Tesorería: devolución AT${refundYear} aplicada a la deuda AT${debtYear}`,
+  });
+  report.push(`AT${refundYear} refund kept for AT${debtYear}'s debt → ${day} ${pesos}`);
 }
 
 for (const line of report) console.log(line);
@@ -94,8 +124,8 @@ if (!apply) {
 }
 db.transaction(() => {
   const ins = db.prepare(
-    `INSERT OR IGNORE INTO f22_settlements (tax_year, kind, account_id, movement_id, occurred_on, amount, description)
-     VALUES (@tax_year, @kind, @account_id, @movement_id, @occurred_on, @amount, @description)`
+    `INSERT OR IGNORE INTO f22_settlements (tax_year, kind, account_id, movement_id, offset_tax_year, occurred_on, amount, description)
+     VALUES (@tax_year, @kind, @account_id, @movement_id, @offset_tax_year, @occurred_on, @amount, @description)`
   );
   for (const p of proposals) {
     if (p.movement_id != null) {
