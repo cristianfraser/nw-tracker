@@ -24,6 +24,7 @@ export function expenseLineOriginLabel(
   names: Map<number, string>
 ): string {
   if (source === "manual") return "Manual";
+  if (source === "payslip") return "Liquidación";
   if (source === "cc") {
     const last4 = cardLast4ForCreditCardAccount(accountId);
     if (last4) return last4;

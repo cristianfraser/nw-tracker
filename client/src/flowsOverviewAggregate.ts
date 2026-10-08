@@ -26,7 +26,7 @@ export type FlowsOverviewMonthRow = {
   period_month: string;
   /** Month-end date (chart x key). */
   as_of_date: string;
-  /** Cartola abonos + manual income (payroll-month attribution). */
+  /** Cartola abonos + manual income (payroll-month attribution) + the payroll deductions counted as gastos. */
   income: number;
   /** Gastos del mes — linked mortgage payments count only interest + insurance (carrying). */
   expenses: number;
@@ -47,6 +47,16 @@ export type FlowsOverviewMonthRow = {
   /** income − expenses − deposits (post-tax). */
   net: number;
 };
+
+/** Payslip deductions counted as gastos (health, AFP commission, tax, fees): taken from gross pay. */
+function payslipGastosLines(lines: readonly FlowCcExpenseLineRow[]): FlowCcExpenseLineRow[] {
+  return lines.filter(
+    (ln) =>
+      ln.source === "payslip" &&
+      ln.amount_clp > 0 &&
+      countsTowardGastosMes(ln)
+  );
+}
 
 /** Payroll-deducted pre-tax deposit kinds — money that never passes through checking. */
 const PRE_TAX_DEPOSIT_KIND_SLUGS = new Set(["afp", "afc"]);
@@ -134,6 +144,12 @@ export function aggregateFlowsOverview(
   for (const row of gastos.by_month) {
     if (latestGastosMonth != null && row.period_month > latestGastosMonth) continue;
     touch(row.period_month).expenses += row.gastos_mes_clp;
+  }
+  // Payroll deductions counted as gastos never reached the account: income here is the net pay
+  // received plus them (gross less the pension savings), so `net` does not count them twice.
+  for (const ln of payslipGastosLines(ccExpenses.lines)) {
+    if (latestGastosMonth != null && ln.expense_month > latestGastosMonth) continue;
+    touch(ln.expense_month).income += expenseLineGastosAmount(ln, unit);
   }
 
   if (unit === "usd" && deposits.fx_conversion_error) {
@@ -240,6 +256,10 @@ export function aggregateFlowsOverviewByDay(
 
   for (const point of aggregateIncomeChartPointsByDay(income, unit)) {
     touch(point.as_of_date).income += point.total;
+  }
+  for (const ln of payslipGastosLines(ccExpenses.lines)) {
+    const day = gastosDayForLine(ln, ccExpenses.cuota_pay_by_iso);
+    if (day) touch(day).income += expenseLineGastosAmount(ln, unit);
   }
 
   for (const ln of ccExpenses.lines) {

@@ -118,6 +118,34 @@ function plPoint(overrides: Partial<import("./types").FlowsPlChartPoint> = {}) {
 }
 
 describe("aggregateFlowsOverview", () => {
+  it("a payslip deduction counted as a gasto is added back to income: net does not move", () => {
+    const deduction = mortgageLine({
+      source: "payslip",
+      statement_line_id: 7_001,
+      account_id: 0,
+      category_slug: "healthcare",
+      amount_clp: 80_000,
+      amount_usd_at_expense: 90,
+      occurred_on: "2024-03-29",
+      purchase_on: "2024-03-29",
+      merchant: "Cotizacion Salud · EMPLEADOR",
+      purchase_key: "payslip:7001",
+      origin_label: "Liquidación",
+      expense_deposit_links: [],
+    });
+    const base = aggregateFlowsOverview(incomePayload(), { lines: [] }, marchDeposits, noPl);
+    const withDeduction = aggregateFlowsOverview(incomePayload(), { lines: [deduction] }, marchDeposits, noPl);
+    const before = base.find((r) => r.period_month === "2024-03")!;
+    const after = withDeduction.find((r) => r.period_month === "2024-03")!;
+    expect(after.expenses - before.expenses).toBe(80_000);
+    expect(after.income - before.income).toBe(80_000);
+    expect(after.net).toBe(before.net);
+    const daily = aggregateFlowsOverviewByDay(incomePayload(), { lines: [deduction], cuota_pay_by_iso: {} }, marchDeposits, []);
+    const day = daily.find((r) => r.as_of_date === "2024-03-29")!;
+    expect(day.income).toBe(80_000);
+    expect(day.expenses).toBe(80_000);
+  });
+
   it("splits a linked mortgage payment: carrying → expenses, amortización → deposits", () => {
     const rows = aggregateFlowsOverview(
       incomePayload(),

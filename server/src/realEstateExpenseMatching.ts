@@ -44,6 +44,8 @@ export type RealEstateLinkRow = {
 };
 
 export function isGastosLineEligibleForRealEstateLink(line: FlowCcExpenseLineRow): boolean {
+  // A payroll deduction is never what paid a place's bill.
+  if (line.source === "payslip") return false;
   if (line.nota_credito_role === "annulled_purchase" || line.nota_credito_role === "matched_nota") {
     return false;
   }

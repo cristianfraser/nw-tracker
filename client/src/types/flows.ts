@@ -119,7 +119,7 @@ export interface CcExpenseBigGroupDto {
   sort_order: number;
 }
 
-export type FlowCcExpenseLineSource = "cc" | "checking" | "manual";
+export type FlowCcExpenseLineSource = "cc" | "checking" | "manual" | "payslip";
 
 /** Installment-mode scope override; default `both`. See ccExpensePeriodMonth.ts. */
 export type CcFacturadoFinancingGastosScope = "both" | "total_only" | "split_only" | "excluded";

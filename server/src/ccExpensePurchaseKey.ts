@@ -24,6 +24,9 @@ export function resolvePurchaseKeyForGastosLine(
   if (line.source === "manual" && line.statement_line_id > 0) {
     return `manual:${line.statement_line_id}`;
   }
+  if (line.source === "payslip") {
+    return `payslip:${line.statement_line_id}`;
+  }
   if (line.source === "checking" && line.statement_line_id > 0) {
     return checkingGastosMovementPurchaseKey(
       line.statement_line_id,

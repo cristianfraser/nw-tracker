@@ -15,7 +15,7 @@ import { ADDITIONAL_CARD_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
 
 /** The fields of a gastos line (`FlowCcExpenseLineRow`) the summary reads. */
 export type AdditionalCardChargeLineInput = {
-  source: "cc" | "checking" | "manual";
+  source: "cc" | "checking" | "manual" | "payslip";
   origin_card_last4: string | null;
   primary_card_last4: string | null;
   category_slug: string;

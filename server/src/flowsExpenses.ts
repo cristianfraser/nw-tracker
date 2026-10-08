@@ -128,6 +128,7 @@ export { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
 
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
+import { loadPayslipExpenseLineDrafts } from "./payslipExpenseLines.js";
 import { loadCheckingGapDepositMirrorGastosLineDrafts } from "./flowsCheckingGapDepositMirrors.js";
 import { loadCcExpenseLineSplits } from "./ccExpenseLineSplits.js";
 
@@ -135,7 +136,7 @@ export { listCreditCardMasterAccountIds };
 
 
 
-export type FlowCcExpenseLineSource = "cc" | "checking" | "manual";
+export type FlowCcExpenseLineSource = "cc" | "checking" | "manual" | "payslip";
 
 
 
@@ -1201,6 +1202,7 @@ export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
       ...loadCheckingGastosLinesForExpenses(),
       ...loadManualExpenseGastosLineDrafts(),
       ...loadCheckingGapDepositMirrorGastosLineDrafts(),
+      ...loadPayslipExpenseLineDrafts(),
     ]);
     const agg = aggregateGastosFromLines(lines, chartCategorySlugs);
     const totals = computeFlowsExpenseTotals(lines);
@@ -1239,6 +1241,7 @@ export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
       ...enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines]),
       ...manualLines,
       ...mirrorLines,
+      ...loadPayslipExpenseLineDrafts(),
     ])
   );
 
