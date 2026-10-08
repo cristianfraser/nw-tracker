@@ -24,6 +24,7 @@ import { resolveCfraserDir } from "../paths.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import { brokerNotificationsFromScan } from "./brokerEmail.js";
 import { readStagedBrokerEmails } from "./stagedScans.js";
+import { logWireBookings } from "../wires/incomingWiresStep.js";
 
 const brokerArg = /^--broker=(fintual|racional)$/.exec(process.argv.find((a) => a.startsWith("--broker=")) ?? "");
 if (!brokerArg) throw new Error("usage: importBrokerEmailsMain.ts --broker=fintual|racional [--apply]");
@@ -101,7 +102,9 @@ async function main(): Promise<number> {
         `feed; verify the checking credit and delete the transfer if the money never arrived`
     );
   }
-  return details.overdue_synthetic_retiros.length > 0 ? 1 : 0;
+  // Dollar withdrawals Fintual confirmed, and the wires that paid them (`bank_account.incoming_wires`).
+  const overdueWithdrawal = details.usd_withdrawals ? logWireBookings(details.usd_withdrawals, details.applied) : false;
+  return details.overdue_synthetic_retiros.length > 0 || overdueWithdrawal ? 1 : 0;
 }
 
 process.exitCode = await main();

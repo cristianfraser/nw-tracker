@@ -9,6 +9,7 @@ import type {
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 import { applyBankAccountBalances } from "./bankAccountBalances.js";
 import { applyBankTransferNotices } from "./bankTransferNotices.js";
+import { applyIncomingWires } from "./incomingWires.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import { matchPaymentReceiptsToExpenseLines, storePaymentProcessorReceipts } from "./paymentProcessorReceipts.js";
 import { applyBankAccountStatements } from "./bankAccountStatementsApply.js";
@@ -173,6 +174,12 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
     apply({ payload }) {
       const details = applyBankTransferNotices(payload);
       return { status: details.new_notices === 0 ? "duplicate" : "applied", details };
+    },
+  },
+  "bank_account.incoming_wires": {
+    apply({ payload }) {
+      const details = applyIncomingWires(payload);
+      return { status: details.new_notices === 0 && details.bookings.booked.length === 0 ? "duplicate" : "applied", details };
     },
   },
   "payment.processor_receipts": {

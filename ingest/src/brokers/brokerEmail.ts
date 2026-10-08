@@ -93,6 +93,10 @@ export type BrokerEmailEvent = {
    * to 7 days before Fintual wires it back). Null when the mail says neither.
    */
   paid_to: "bank" | "fintual" | null;
+  /** The account number a requested withdrawal is to be wired to («Cuenta 5105313120 del Banco …»). */
+  destination_account: string | null;
+  /** The day the broker says it will pay a requested withdrawal (`YYYY-MM-DD`). */
+  due_on: string | null;
   occurred_at: string;
   subject: string;
   /** IMAP Message-ID of the source mail (null for hand-built inputs). */
@@ -111,6 +115,7 @@ const REQUIRED_FIELDS: Partial<Record<BrokerEmailKind, (keyof BrokerEmailEvent)[
   portfolio_buy: ["amount"],
   withdrawal_paid: ["amount"],
   cash_returned: ["amount"],
+  withdrawal_requested: ["amount", "gross_amount", "destination_account", "due_on"],
 };
 
 function isComplete(event: BrokerEmailEvent): boolean {
@@ -173,12 +178,34 @@ function decimalString(raw: string): string {
   return t;
 }
 
+/**
+ * A Fintual dollar amount: comma decimal, the thousands grouped by a dot, a comma or nothing —
+ * the same mail has printed «US $1138,53» and «US $1,138,53».
+ */
+export function parseFintualDollars(raw: string): number {
+  const m = /^(\d{1,3}(?:[.,]\d{3})+|\d+),(\d{2})$/.exec(String(raw ?? "").trim());
+  if (!m) throw new Error(`Unparseable Fintual dollar amount "${raw}"`);
+  return Number(`${m[1]!.replace(/[.,]/g, "")}.${m[2]}`);
+}
+
+const chileDay = new Intl.DateTimeFormat("sv-SE", { timeZone: "America/Santiago" });
+
+/** The first day on or after `fromYmd` whose day of the month is `day` («Se pagará el jueves 08»). */
+export function nextDayOfMonth(fromYmd: string, day: number): string {
+  const d = new Date(`${fromYmd}T00:00:00Z`);
+  for (let i = 0; i <= 31; i++) {
+    if (d.getUTCDate() === day) return d.toISOString().slice(0, 10);
+    d.setUTCDate(d.getUTCDate() + 1);
+  }
+  throw new Error(`No day ${day} within a month of ${fromYmd}`);
+}
+
 type Matcher = {
   kind: BrokerEmailKind;
   is_transaction: boolean;
   re: RegExp;
   /** Pull fields out of the subject match plus the snippet. */
-  read?: (m: RegExpExecArray, snippet: string) => Partial<BrokerEmailEvent>;
+  read?: (m: RegExpExecArray, snippet: string, date: string) => Partial<BrokerEmailEvent>;
 };
 
 /**
@@ -257,6 +284,45 @@ const FINTUAL_MATCHERS: Matcher[] = [
   // The request is not money moving — the matching "Pagamos" is. Amounts for these live in the
   // body ("Pagamos tu retiro de $2.000.000"), not the subject.
   { kind: "withdrawal_requested", is_transaction: false, re: /^Pediste retirar/i },
+  {
+    // "Retiro en dólares confirmado" (2026-10-05): a dollar withdrawal Fintual will wire to a bank
+    // account, cancellable until the day before. «Recibirás US $1138,53 Retiraste desde Dólares
+    // US $1148,53 Comisión US $10,00 Cuenta 5105313120 del Banco Santander Chile Solicitado el
+    // lunes 05 de octubre a las 19:22 Se pagará el jueves 08 antes de las 18:00». No mail says
+    // when it was paid: the server keeps it until the banks' mails about the wire arrive.
+    kind: "withdrawal_requested",
+    is_transaction: true,
+    re: /^Retiro en d[óo]lares confirmado/i,
+    read: (_m, snippet, date) => {
+      const net = /Recibir[áa]s US \$\s*([\d.,]*\d)/i.exec(snippet);
+      const gross = /Retiraste desde D[óo]lares US \$\s*([\d.,]*\d)/i.exec(snippet);
+      const fee = /Comisi[óo]n US \$\s*([\d.,]*\d)/i.exec(snippet);
+      const account = /Cuenta (\d+) del Banco/i.exec(snippet);
+      const payDay = /Se pagar[áa] el \S+ (\d{1,2})\b/i.exec(snippet);
+      // A mail missing any of these, or whose figures do not add up, stays incomplete: the server
+      // lists it for a human instead of booking a wire against it. Never thrown — one odd mail
+      // must not stop every other broker mail from importing.
+      if (!net || !gross || !fee || !account || !payDay) return { currency: "usd" as const };
+      let amount: number, gross_amount: number, feeAmount: number;
+      try {
+        [amount, gross_amount, feeAmount] = [net, gross, fee].map((x) => parseFintualDollars(x[1]!)) as [number, number, number];
+      } catch {
+        return { currency: "usd" as const };
+      }
+      if (Math.round(gross_amount * 100) - Math.round(feeAmount * 100) !== Math.round(amount * 100)) {
+        return { currency: "usd" as const, gross_amount };
+      }
+      const sent = new Date(date);
+      if (Number.isNaN(sent.getTime())) return { currency: "usd" as const };
+      return {
+        amount,
+        gross_amount,
+        currency: "usd" as const,
+        destination_account: account[1]!,
+        due_on: nextDayOfMonth(chileDay.format(sent), Number(payDay[1]!)),
+      };
+    },
+  },
   {
     kind: "withdrawal_paid",
     is_transaction: true,
@@ -450,6 +516,8 @@ export function classifyBrokerEmail(input: BrokerEmailInput): BrokerEmailEvent {
     price: null,
     clp_amount: null,
     paid_to: null,
+    destination_account: null,
+    due_on: null,
     occurred_at: input.date,
     subject,
     message_id: input.message_id ?? null,
@@ -464,7 +532,7 @@ export function classifyBrokerEmail(input: BrokerEmailInput): BrokerEmailEvent {
       ...base,
       kind: matcher.kind,
       is_transaction: matcher.is_transaction,
-      ...(matcher.read ? matcher.read(m, snippet) : {}),
+      ...(matcher.read ? matcher.read(m, snippet, input.date) : {}),
     };
     return { ...event, is_complete: isComplete(event) };
   }
@@ -491,7 +559,9 @@ function eventRichness(e: BrokerEmailEvent): number {
     (e.clp_amount != null ? 1 : 0) +
     (e.units != null ? 1 : 0) +
     (e.price != null ? 1 : 0) +
-    (e.paid_to != null ? 1 : 0)
+    (e.paid_to != null ? 1 : 0) +
+    (e.destination_account != null ? 1 : 0) +
+    (e.due_on != null ? 1 : 0)
   );
 }
 
@@ -537,6 +607,7 @@ const NOTIFICATION_KINDS = new Set<BrokerNotification["kind"]>([
   "cash_returned",
   "wallet_funded",
   "portfolio_buy",
+  "withdrawal_requested",
 ]);
 
 /** One money mail as the server's canonical notification. */
@@ -561,6 +632,7 @@ export function toBrokerNotification(e: BrokerEmailEvent): BrokerNotification {
     price: e.price,
     clp_amount: e.clp_amount,
     paid_to: e.paid_to === "fintual" ? "broker_balance" : e.paid_to,
+    ...(kind === "withdrawal_requested" ? { destination_account: e.destination_account, due_on: e.due_on } : {}),
   };
 }
 

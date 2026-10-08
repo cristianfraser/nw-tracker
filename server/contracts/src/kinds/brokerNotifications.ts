@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { defineIngestKind } from "../defineKind.js";
+import type { IncomingWireBookingReport } from "./bankAccountIncomingWires.js";
 
 /**
  * One broker notification about money that moved, as the notification states it. Each field
@@ -23,6 +24,10 @@ export const brokerNotificationSchema = z
       "cash_returned",
       "wallet_funded",
       "portfolio_buy",
+      // A withdrawal the broker confirmed and will wire (Fintual's «Retiro en dólares
+      // confirmado»): not money moving yet. The server keeps it until the wire's own mail
+      // arrives (`bank_account.incoming_wires`) and books both together.
+      "withdrawal_requested",
     ]),
     ticker: z.string().regex(/^[A-Z][A-Z0-9.]{0,9}$/).nullable(),
     /** The fund a buy names when it names no ticker («… acciones de <fund name>»). */
@@ -41,6 +46,10 @@ export const brokerNotificationSchema = z
     clp_amount: z.number().positive().nullable(),
     /** Where a withdrawal's pesos went: a bank account, or the broker's own cash balance. */
     paid_to: z.enum(["bank", "broker_balance"]).nullable(),
+    /** The account number a requested withdrawal is to be wired to, as printed. */
+    destination_account: z.string().regex(/^\d+$/).nullable().optional(),
+    /** The day the broker says it will pay a requested withdrawal. */
+    due_on: z.iso.date().nullable().optional(),
   })
   .strict();
 
@@ -96,4 +105,6 @@ export type BrokerNotificationsApplyDetails = {
   fetch: { needed: boolean; reasons: string[]; nudges: number; answered: number } | null;
   /** Fintual only: retiros synthesized from a mail whose bank credit never appeared. */
   overdue_synthetic_retiros: { movement_id: number; paid_on: string; amount_clp: number; deadline: string | null }[];
+  /** Fintual only: requested dollar withdrawals and the wires that paid them. */
+  usd_withdrawals: IncomingWireBookingReport | null;
 };
