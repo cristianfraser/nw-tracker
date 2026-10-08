@@ -289,6 +289,63 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
   );
 }
 
+function PayrollWithholdingSection({ data }: { data: TaxReturnResponse }) {
+  const { t } = useTranslation();
+  const w = data.payroll_withholding;
+  if (w.payslips === 0) return null;
+  const header = (
+    <thead>
+      <tr>
+        <th className="desktop-only">{t("taxReturn.payroll.colMonth")}</th>
+        <th className="desktop-only num">{t("taxReturn.payroll.colWithheld")}</th>
+        <th className="desktop-only num">{t("taxReturn.payroll.colTable")}</th>
+        <th className="desktop-only num">{t("taxReturn.payroll.colDifference")}</th>
+        <th className="mobile-only" aria-hidden="true" />
+      </tr>
+    </thead>
+  );
+  const differs = (d: number) => Math.abs(d) > 1;
+  return (
+    <section style={{ margin: "1.5rem 0" }}>
+      <h2>{t("taxReturn.payroll.title")}</h2>
+      <p className="muted">{t("taxReturn.payroll.explain")}</p>
+      <p>
+        {t("taxReturn.payroll.summary", {
+          withheld: formatClp(w.withheld),
+          byTable: formatClp(w.by_table),
+          difference: formatClp(w.difference),
+        })}
+      </p>
+      <Table header={header} tableClassName="table--parallel-mobile">
+        {w.months.map((m) => {
+          const label = `${m.period_month}${m.origin === "rebuilt" ? ` (${t("taxReturn.payroll.rebuilt")})` : ""}`;
+          const style = differs(m.difference) ? { color: "var(--negative)" } : undefined;
+          return (
+            <tr key={m.payslip_id}>
+              <td className="desktop-only mono">{label}</td>
+              <td className="desktop-only num">{formatClp(m.withheld)}</td>
+              <td className="desktop-only num">{formatClp(m.by_table)}</td>
+              <td className="desktop-only num" style={style}>
+                {differs(m.difference) ? formatClp(m.difference) : "—"}
+              </td>
+              <td className="mobile-only">
+                <TableMobileCard title={label}>
+                  <TableMobileCardRow label={t("taxReturn.payroll.colWithheld")} value={formatClp(m.withheld)} />
+                  <TableMobileCardRow label={t("taxReturn.payroll.colTable")} value={formatClp(m.by_table)} />
+                  <TableMobileCardRow
+                    label={t("taxReturn.payroll.colDifference")}
+                    value={differs(m.difference) ? formatClp(m.difference) : "—"}
+                  />
+                </TableMobileCard>
+              </td>
+            </tr>
+          );
+        })}
+      </Table>
+    </section>
+  );
+}
+
 export function TaxReturnPage() {
   const { t } = useTranslation();
   const [taxYear, setTaxYear] = useState<number | null>(null);
@@ -334,6 +391,7 @@ export function TaxReturnPage() {
           {data.crypto.sales.length === 0 && data.dividends.length === 0 && data.foreign_shares.sales.length === 0 ? (
             <LossOffsetHint data={data} kind="pool" />
           ) : null}
+          <PayrollWithholdingSection data={data} />
           <CryptoSection data={data} />
           <DividendsSection data={data} />
           <ForeignSharesSection data={data} />

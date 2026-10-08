@@ -1027,7 +1027,21 @@
     "linkSource": {
       "auto": "auto",
       "manual": "manual"
-    }
+    },
+    "colChecks": "Checks",
+    "checksOk": "OK",
+    "checksDifferences": "{{count}} difference(s)",
+    "checkDetail": "{{check}}: expected {{expected}}, payslip {{printed}}",
+    "rebuilt": "rebuilt",
+    "checks": {
+      "taxable_base": "Taxable base (cap)",
+      "pension": "AFP (published rate)",
+      "health_minimum": "Health (≥ 7 %)",
+      "unemployment": "Unemployment insurance",
+      "income_tax": "Income tax (monthly table)",
+      "pension_credited": "AFP credited (10 % + employer)"
+    },
+    "checksPending": "pending (parameters not published yet)"
   },
   "deposits": {
     "totalLabel": "All-time total:",
@@ -1701,6 +1715,16 @@
       "foreignUnusedOpen": "Foreign share loss in {{year}}: {{amount}}. It offsets only foreign share gains of the same year, not salary, funds or crypto: selling foreign shares at a gain of up to {{amount}} by {{year}}-12-31 would pay no tax.",
       "foreignUnusedClosed": "{{amount}} of foreign share loss went unused in {{year}}: it offsets only foreign share gains of the same year and does not carry over.",
       "foreignTaxedOpen": "Foreign share gain in {{year}}: {{amount}}. Selling foreign shares, crypto or funds at a loss of up to {{amount}} by {{year}}-12-31 would offset it."
+    },
+    "payroll": {
+      "title": "Tax withheld from salary",
+      "explain": "Each payslip's withheld tax against the monthly table applied to its own taxable amount (health deducted up to the legal 7 %). A difference is the employer's; the annual return settles it.",
+      "summary": "Withheld {{withheld}} · by the table {{byTable}} · difference {{difference}}",
+      "colMonth": "Month",
+      "colWithheld": "Withheld",
+      "colTable": "By the table",
+      "colDifference": "Difference",
+      "rebuilt": "rebuilt"
     }
   }
 }

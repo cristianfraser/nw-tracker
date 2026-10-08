@@ -3595,6 +3595,56 @@
         "en": "manual",
         "es": "manual"
       }
+    },
+    "colChecks": {
+      "en": "Checks",
+      "es": "Revisión"
+    },
+    "checksOk": {
+      "en": "OK",
+      "es": "OK"
+    },
+    "checksDifferences": {
+      "en": "{{count}} difference(s)",
+      "es": "{{count}} diferencia(s)"
+    },
+    "checkDetail": {
+      "en": "{{check}}: expected {{expected}}, payslip {{printed}}",
+      "es": "{{check}}: esperado {{expected}}, liquidación {{printed}}"
+    },
+    "rebuilt": {
+      "en": "rebuilt",
+      "es": "reconstruida"
+    },
+    "checks": {
+      "taxable_base": {
+        "en": "Taxable base (cap)",
+        "es": "Imponible (tope)"
+      },
+      "pension": {
+        "en": "AFP (published rate)",
+        "es": "AFP (tasa publicada)"
+      },
+      "health_minimum": {
+        "en": "Health (≥ 7 %)",
+        "es": "Salud (≥ 7 %)"
+      },
+      "unemployment": {
+        "en": "Unemployment insurance",
+        "es": "Cesantía"
+      },
+      "income_tax": {
+        "en": "Income tax (monthly table)",
+        "es": "Impuesto (tabla mensual)"
+      },
+      "pension_credited": {
+        "en": "AFP credited (10 % + employer)",
+        "es": "AFP acreditada (10 % + empleador)"
+      }
+    },
+    "checksPending": {
+      "en": "pending (parameters not published yet)",
+      "es": "pendiente (parámetros aún no publicados)"
     }
   },
   "deposits": {
@@ -5972,6 +6022,40 @@
       "foreignTaxedOpen": {
         "en": "Foreign share gain in {{year}}: {{amount}}. Selling foreign shares, crypto or funds at a loss of up to {{amount}} by {{year}}-12-31 would offset it.",
         "es": "Ganancia en acciones extranjeras en {{year}}: {{amount}}. Vender acciones extranjeras, cripto o fondos con pérdida de hasta {{amount}} antes del {{year}}-12-31 la compensaría."
+      }
+    },
+    "payroll": {
+      "title": {
+        "en": "Tax withheld from salary",
+        "es": "Impuesto retenido en liquidaciones"
+      },
+      "explain": {
+        "en": "Each payslip's withheld tax against the monthly table applied to its own taxable amount (health deducted up to the legal 7 %). A difference is the employer's; the annual return settles it.",
+        "es": "El impuesto retenido de cada liquidación contra la tabla mensual sobre su propia renta tributable (salud descontada hasta el 7 % legal). Una diferencia es del empleador; la declaración anual la ajusta."
+      },
+      "summary": {
+        "en": "Withheld {{withheld}} · by the table {{byTable}} · difference {{difference}}",
+        "es": "Retenido {{withheld}} · según tabla {{byTable}} · diferencia {{difference}}"
+      },
+      "colMonth": {
+        "en": "Month",
+        "es": "Mes"
+      },
+      "colWithheld": {
+        "en": "Withheld",
+        "es": "Retenido"
+      },
+      "colTable": {
+        "en": "By the table",
+        "es": "Según tabla"
+      },
+      "colDifference": {
+        "en": "Difference",
+        "es": "Diferencia"
+      },
+      "rebuilt": {
+        "en": "rebuilt",
+        "es": "reconstruida"
       }
     }
   }

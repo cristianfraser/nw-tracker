@@ -97,7 +97,7 @@ type PayslipRow = {
   paid_on: string | null;
 };
 
-type LineRow = { payslip_id: number; side: "haber" | "descuento"; kind: PayslipLineKind | null; amount: number };
+type LineRow = { payslip_id: number; side: "haber" | "descuento"; section: string | null; kind: PayslipLineKind | null; amount: number };
 
 function zero(): PayrollBreakdownValues {
   return Object.fromEntries(PAYROLL_BREAKDOWN_FIELDS.map((f) => [f, { clp: 0, usd: 0 }])) as PayrollBreakdownValues;
@@ -115,8 +115,13 @@ function nativeBreakdown(p: PayslipRow, lines: readonly LineRow[]): Record<Payro
   for (const l of lines) {
     if (l.kind == null) throw new Error(`payslip ${p.id}: a line without a kind — re-run the payslip import`);
     if (l.side === "haber") {
-      const g = GROSS_GROUP[l.kind];
+      let g = GROSS_GROUP[l.kind];
       if (!g) throw new Error(`payslip ${p.id}: the haber kind ${l.kind} has no gross group`);
+      // Taxable or not as the payslip prints it (Talana's teletrabajo allowance is taxable).
+      if (g === "gross_taxable" || g === "gross_non_taxable") {
+        if (l.section === "imponible") g = "gross_taxable";
+        else if (l.section === "no_imponible") g = "gross_non_taxable";
+      }
       v[g] += l.amount;
       v.gross += l.amount;
     } else {
@@ -153,7 +158,7 @@ export function buildPayrollBreakdown(): PayrollBreakdownPayload {
     )
     .all() as PayslipRow[];
   const linesBy = new Map<number, LineRow[]>();
-  for (const l of db.prepare(`SELECT payslip_id, side, kind, amount FROM payslip_lines ORDER BY payslip_id, position`).all() as LineRow[]) {
+  for (const l of db.prepare(`SELECT payslip_id, side, section, kind, amount FROM payslip_lines ORDER BY payslip_id, position`).all() as LineRow[]) {
     const list = linesBy.get(l.payslip_id) ?? [];
     list.push(l);
     linesBy.set(l.payslip_id, list);

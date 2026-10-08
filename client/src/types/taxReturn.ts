@@ -86,6 +86,16 @@ export type TaxReturnResponse = {
     provisional: boolean;
   };
   year_end_observado: number;
+  /** The year's salary payslips: tax withheld vs the monthly table on each payslip's taxable amount. */
+  payroll_withholding: {
+    income_year: number;
+    payslips: number;
+    withheld: number;
+    by_table: number;
+    difference: number;
+    months_with_differences: string[];
+    months: { payslip_id: number; period_month: string; origin: "document" | "rebuilt"; withheld: number; by_table: number; difference: number }[];
+  };
   rows: TaxReturnRow[];
   tax_filed: number | null;
   tax_draft: number | null;

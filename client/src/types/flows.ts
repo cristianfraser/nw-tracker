@@ -443,6 +443,27 @@ export interface FlowsIncomeResponse {
   refund_lines: (FlowCheckingIncomeLine & { category_slug: string })[];
   /** Gross pay → deductions → net pay from the payslips' lines (server-built). */
   payroll_breakdown: PayrollBreakdownPayload;
+  /** Each salary payslip recomputed from the month's legal parameters vs what it printed (server-built). */
+  payslip_checks: PayslipChecksRow[];
+}
+
+export type PayslipCheckName = "taxable_base" | "pension" | "health_minimum" | "unemployment" | "income_tax" | "pension_credited";
+export interface PayslipCheck {
+  check: PayslipCheckName;
+  expected: number;
+  printed: number;
+  difference: number;
+}
+export interface PayslipChecksRow {
+  payslip_id: number;
+  period_month: string;
+  pension_fund: string | null;
+  origin: "document" | "rebuilt";
+  checks: PayslipCheck[];
+  /** The checks off by more than a peso. */
+  differences: PayslipCheck[];
+  /** The month's parameters are not published yet. */
+  pending: boolean;
 }
 
 export const PAYROLL_BREAKDOWN_FIELDS = [

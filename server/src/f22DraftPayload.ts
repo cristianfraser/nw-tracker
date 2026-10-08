@@ -3,6 +3,7 @@
  * only labels and formats them), plus the detail behind the draft's additions.
  */
 import { chileWallClockNow } from "./chileDate.js";
+import { buildPayslipChecks, payrollWithholdingMonths, payrollWithholdingYear } from "./payslipChecks.js";
 import { db } from "./db.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { buildF22Draft, PAYMENT_SECTION_CODES, type F22OffsetBalance } from "./f22Draft.js";
@@ -138,6 +139,10 @@ export function buildF22Payload(taxYear: number) {
       provisional: d.salary.provisional,
     },
     year_end_observado: d.yearEndObservado,
+    payroll_withholding: (() => {
+      const checks = buildPayslipChecks();
+      return { ...payrollWithholdingYear(d.incomeYear, checks), months: payrollWithholdingMonths(d.incomeYear, checks) };
+    })(),
     rows,
     tax_filed: d.filed ? (d.filed[304] ?? 0) : null,
     tax_draft: d.taxComputed ? (d.draft[304] ?? 0) : null,
