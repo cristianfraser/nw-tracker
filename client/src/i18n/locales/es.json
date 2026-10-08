@@ -1725,6 +1725,32 @@
       "colTable": "Según tabla",
       "colDifference": "Diferencia",
       "rebuilt": "reconstruida"
+    },
+    "settlement": {
+      "title": "Liquidación del F22",
+      "expected": {
+        "refund": "Devolución solicitada {{amount}}",
+        "payment": "Impuesto a pagar {{amount}}"
+      },
+      "settled": {
+        "refund": "recibida {{amount}}",
+        "payment": "pagado {{amount}}"
+      },
+      "difference": {
+        "refund": "reajuste {{amount}}",
+        "payment": "diferencia {{amount}}"
+      },
+      "notLinked": "sin movimiento bancario enlazado",
+      "colDate": "Fecha",
+      "colAccount": "Cuenta",
+      "colDescription": "Descripción",
+      "colAmount": "Monto",
+      "link": {
+        "refund": "Devolución de la Tesorería",
+        "payment": "Pago desde la cuenta",
+        "refundCard": "Devolución a la tarjeta",
+        "paymentCard": "Pagado con la tarjeta"
+      }
     }
   }
 }

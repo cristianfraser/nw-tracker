@@ -6057,6 +6057,80 @@
         "en": "rebuilt",
         "es": "reconstruida"
       }
+    },
+    "settlement": {
+      "title": {
+        "en": "Settlement",
+        "es": "Liquidación del F22"
+      },
+      "expected": {
+        "refund": {
+          "en": "Refund requested {{amount}}",
+          "es": "Devolución solicitada {{amount}}"
+        },
+        "payment": {
+          "en": "Tax to pay {{amount}}",
+          "es": "Impuesto a pagar {{amount}}"
+        }
+      },
+      "settled": {
+        "refund": {
+          "en": "received {{amount}}",
+          "es": "recibida {{amount}}"
+        },
+        "payment": {
+          "en": "paid {{amount}}",
+          "es": "pagado {{amount}}"
+        }
+      },
+      "difference": {
+        "refund": {
+          "en": "inflation adjustment {{amount}}",
+          "es": "reajuste {{amount}}"
+        },
+        "payment": {
+          "en": "difference {{amount}}",
+          "es": "diferencia {{amount}}"
+        }
+      },
+      "notLinked": {
+        "en": "no bank movement linked yet",
+        "es": "sin movimiento bancario enlazado"
+      },
+      "colDate": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "colAccount": {
+        "en": "Account",
+        "es": "Cuenta"
+      },
+      "colDescription": {
+        "en": "Description",
+        "es": "Descripción"
+      },
+      "colAmount": {
+        "en": "Amount",
+        "es": "Monto"
+      },
+      "link": {
+        "refund": {
+          "en": "Tesorería refund",
+          "es": "Devolución de la Tesorería"
+        },
+        "payment": {
+          "en": "Payment from the account",
+          "es": "Pago desde la cuenta"
+        },
+        "refundCard": {
+          "en": "Refund to the card",
+          "es": "Devolución a la tarjeta"
+        },
+        "paymentCard": {
+          "en": "Paid with the card",
+          "es": "Pagado con la tarjeta"
+        }
+      }
     }
   }
 }

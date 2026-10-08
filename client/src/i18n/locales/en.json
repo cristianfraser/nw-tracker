@@ -1725,6 +1725,32 @@
       "colTable": "By the table",
       "colDifference": "Difference",
       "rebuilt": "rebuilt"
+    },
+    "settlement": {
+      "title": "Settlement",
+      "expected": {
+        "refund": "Refund requested {{amount}}",
+        "payment": "Tax to pay {{amount}}"
+      },
+      "settled": {
+        "refund": "received {{amount}}",
+        "payment": "paid {{amount}}"
+      },
+      "difference": {
+        "refund": "inflation adjustment {{amount}}",
+        "payment": "difference {{amount}}"
+      },
+      "notLinked": "no bank movement linked yet",
+      "colDate": "Date",
+      "colAccount": "Account",
+      "colDescription": "Description",
+      "colAmount": "Amount",
+      "link": {
+        "refund": "Tesorería refund",
+        "payment": "Payment from the account",
+        "refundCard": "Refund to the card",
+        "paymentCard": "Paid with the card"
+      }
     }
   }
 }
