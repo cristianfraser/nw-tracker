@@ -29,6 +29,7 @@
  */
 import type { UnemploymentFundDocumentsApplyDetails, UnemploymentFundDocumentsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
+import { recordContributionPeriods } from "./pensionContributionPeriods.js";
 import { AFC_CIC_SERIES_KEY } from "./afcCicSeries.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { fundUnitClpOnOrBefore } from "./fundUnitDaily.js";
@@ -232,7 +233,8 @@ export function applyAfcCertImport(
     }
     for (const it of plan.items) {
       if (it.status === "insert") {
-        stmtInsertContribution.run(plan.account_id, it.contribution.amount_clp, it.contribution.pay_ymd, afcContributionNote(it.contribution), it.units);
+        const res = stmtInsertContribution.run(plan.account_id, it.contribution.amount_clp, it.contribution.pay_ymd, afcContributionNote(it.contribution), it.units);
+        recordContributionPeriods(Number(res.lastInsertRowid), [it.contribution.period_ym]);
         out.inserted += 1;
       } else if (it.status === "update_units") {
         stmtUpdateUnits.run(it.units, it.existing_id);
@@ -240,6 +242,8 @@ export function applyAfcCertImport(
       } else if (it.status === "mismatch") {
         out.mismatches += 1;
       }
+      // A contribution already on file records its month too (rows written before the table).
+      if (it.existing_id != null && it.status !== "mismatch") recordContributionPeriods(it.existing_id, [it.contribution.period_ym]);
     }
   })();
   return out;

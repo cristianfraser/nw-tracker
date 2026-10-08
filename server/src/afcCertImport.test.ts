@@ -198,6 +198,15 @@ describe("AFC ledger rebuild (test DB)", () => {
       ["2099-12-09", 1000, 0.25],
     ]);
     expect(rows[0]!.note.startsWith(afcContributionNoteKey("2099-01", "2099-02-10"))).toBe(true);
+    const periods = db
+      .prepare(
+        `SELECT m.occurred_on, p.period_month FROM pension_contribution_periods p JOIN movements m ON m.id = p.movement_id
+          WHERE m.account_id = ? ORDER BY m.occurred_on`
+      )
+      .all(accountId)
+      .map((r) => Object.values(r as object));
+    expect(periods).toHaveLength(4);
+    expect(periods[0]).toEqual(["2099-02-10", "2099-01"]);
 
     const again = planAfcCertImport(accountId, cert);
     expect(again.items.every((i) => i.status === "unchanged")).toBe(true);
