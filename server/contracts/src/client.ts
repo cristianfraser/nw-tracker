@@ -10,6 +10,11 @@ import {
 import type { IngestKindDefinition } from "./defineKind.js";
 import { INGEST_RUNS_API_PATH, ingestRunCompletionSchema, type IngestRunCompletion } from "./runs.js";
 import {
+  CC_MANUAL_PAYMENT_TASK,
+  ccManualPaymentRequestSchema,
+  ccManualPaymentResultSchema,
+  type CcManualPaymentRequest,
+  type CcManualPaymentResult,
   INGEST_TASKS_API_PATH,
   ingestTaskRequestSchema,
   ingestTaskResultSchema,
@@ -58,6 +63,8 @@ export interface IngestClient {
   completeRun(runId: number, completion: IngestRunCompletion): Promise<void>;
   /** Ask the server to run one of its tasks (`tasks.ts`); resolves with its report. */
   runTask(task: IngestTaskName, request?: IngestTaskRequest): Promise<IngestTaskResult>;
+  /** Record a card payment entered by hand (`tasks.ts`, `cc_manual_payment`). */
+  recordManualCardPayment(request: CcManualPaymentRequest): Promise<CcManualPaymentResult>;
 }
 
 export function createIngestClient(options: IngestClientOptions): IngestClient {
@@ -98,6 +105,10 @@ export function createIngestClient(options: IngestClientOptions): IngestClient {
     async runTask(task, request = {}) {
       const json = await post(`${INGEST_TASKS_API_PATH}/${task}`, ingestTaskRequestSchema.parse(request));
       return ingestTaskResultSchema.parse(json);
+    },
+    async recordManualCardPayment(request) {
+      const json = await post(`${INGEST_TASKS_API_PATH}/${CC_MANUAL_PAYMENT_TASK}`, ccManualPaymentRequestSchema.parse(request));
+      return ccManualPaymentResultSchema.parse(json);
     },
   };
 }

@@ -19,6 +19,11 @@ import {
   parseOpenWebPasteBillingMonth,
 } from "./ccOpenWebPasteRepair.js";
 import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
+import {
+  confirmManualPaymentForPlanted,
+  listPlantedPaymentLines,
+  plantedPaymentMatchesStatementLine,
+} from "./ccPlantedPayments.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import {
   listCcStatementLinesForStatement,
@@ -142,13 +147,22 @@ export function reconcileOpenWebPasteAfterPdfClose(
   // The statement line that bills each settled bucket line: its category, big group, note and
   // splits follow it there (the merchants differ — cut at 15, glued charge-type columns).
   const settledBy: { fromLineId: number; toLineId: number }[] = [];
+  // A payment the app planted (receipt, entered by hand) may print under another wording and a
+  // few days later: it matches by currency, amount and window (ccPlantedPayments.ts).
+  const planted = new Map(listPlantedPaymentLines(accountId).map((p) => [p.line_id, p]));
+  const plantedConfirmations: { lineId: number; merchant: string }[] = [];
   const takeMatch = (line: CcStatementLineRow): boolean => {
+    const plantedRow = planted.get(line.id);
     const hit = statementLines.find(
-      (s) => !used.has(s.line.id) && webPasteLineMatchesStatementLine(line, s)
+      (s) =>
+        !used.has(s.line.id) &&
+        (webPasteLineMatchesStatementLine(line, s) ||
+          (plantedRow != null && plantedPaymentMatchesStatementLine(plantedRow, s.line, s.currency)))
     );
     if (!hit) return false;
     used.add(hit.line.id);
     settledBy.push({ fromLineId: line.id, toLineId: hit.line.id });
+    if (plantedRow) plantedConfirmations.push({ lineId: line.id, merchant: String(hit.line.merchant ?? "") });
     return true;
   };
 
@@ -197,6 +211,12 @@ export function reconcileOpenWebPasteAfterPdfClose(
 
   if (!opts?.dryRun) {
     carryCcExpenseAssignments(settledBy);
+    // A planted payment the statement prints is confirmed; one deleted unmatched is not (the
+    // manual payment's overdue check then surfaces it).
+    const deleting = new Set(toDelete);
+    for (const c of plantedConfirmations) {
+      if (deleting.has(c.lineId)) confirmManualPaymentForPlanted(planted.get(c.lineId)!, c.merchant);
+    }
     if (toDelete.length > 0) deleteStatementLinesByIds(toDelete);
     if (toMove.length > 0) {
       const openBm = billingMonthForManualLedgerPurchase(accountId);

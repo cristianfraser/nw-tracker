@@ -57,6 +57,7 @@
     "import:fintual-cert": "tsx src/fintual/importCertMain.ts",
     "import:afc-cert": "tsx src/afc/importDocumentsMain.ts",
     "server-task": "tsx src/serverTaskMain.ts",
+    "cc:manual-payment": "tsx src/ccManualPaymentMain.ts",
     "import:cfraser-inbox": "tsx src/inbox/pipelineMain.ts"
   },
   "dependencies": {

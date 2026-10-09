@@ -13,6 +13,7 @@ import type { GroceryBranchLearningResult } from "./groceryBranchLearning.js";
 import { mergeCcAccountFromParsedRows } from "./ccInstallmentLedgerMerge.js";
 import { applyWebPasteInstallmentFirstDueNudges } from "./ccWebPasteInstallmentNudge.js";
 import { removeTruncatedMerchantDuplicateLines } from "./ccTruncatedMerchantDedupe.js";
+import { replacePlantedPaymentLinesFromImport, type PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import {
@@ -74,6 +75,7 @@ export function importCcWebPasteLines(
       inserted_flows: [] as CcImportFlowItem[],
       skipped_flows: [] as SkippedCcImportFlowItem[],
       grocery_branch_learning: { learned: [], ambiguous: [] } as GroceryBranchLearningResult,
+      planted_payments: { replaced: [], confirmed_in_place: [], ambiguous: [], removed_from_date: null } as PlantedPaymentMatchResult,
       parse_errors: parsed.errors,
     };
   }
@@ -98,9 +100,15 @@ export function importCcWebPasteLines(
   // widths, so the one-shot key cannot collapse them; this runs after every write (either source)
   // and drops the truncated re-listing once its fuller twin exists.
   const truncatedDedupe = removeTruncatedMerchantDuplicateLines(accountId);
-  if (truncatedDedupe.removed_count > 0) {
+  // A payment the app planted before the bank listed it (receipt mail, entered by hand): the
+  // bank's own line for the same money replaces it, whatever its wording (ccPlantedPayments.ts).
+  const plantedPayments = replacePlantedPaymentLinesFromImport(accountId, records, batchKind);
+  const removedFrom = [truncatedDedupe.removed_from_date, plantedPayments.removed_from_date]
+    .filter((d): d is string => d != null)
+    .sort()[0];
+  if (truncatedDedupe.removed_count > 0 || plantedPayments.replaced.length > 0) {
     upsertCreditCardValuationsFromLedger(accountId, {
-      affectedEvidenceFromYmd: truncatedDedupe.removed_from_date,
+      affectedEvidenceFromYmd: removedFrom ?? null,
     });
     recomputeCcBillingMonthBalances(accountId);
   }
@@ -117,6 +125,7 @@ export function importCcWebPasteLines(
     ledger: merged.ledger,
     installment_first_due_nudges: firstDueNudges,
     truncated_merchant_dedupe: truncatedDedupe.removed_pairs,
+    planted_payments: plantedPayments,
     grocery_branch_learning: merged.grocery_branch_learning,
     parse_errors: parsed.errors,
   });
@@ -134,6 +143,7 @@ export function importCcWebPasteLines(
     overlap_removed: merged.overlap_removed ?? 0,
     installment_first_due_nudges: firstDueNudges,
     truncated_merchant_dedupe: truncatedDedupe.removed_pairs,
+    planted_payments: plantedPayments,
     grocery_branch_learning: merged.grocery_branch_learning,
     inserted_flows,
     skipped_flows: [

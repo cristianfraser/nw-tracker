@@ -17,6 +17,7 @@ import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "./ccPaym
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { listOverdueUnconfirmedSyntheticCcPayments } from "./santanderSyntheticCcPayments.js";
+import { listOverdueUnconfirmedManualCardPayments } from "./ccManualPayments.js";
 
 type TaskOptions = { dry_run: boolean; recheck: boolean };
 type TaskOutcome = Omit<IngestTaskResult, "task">;
@@ -54,18 +55,33 @@ function ccPaymentMirrors(o: TaskOptions): TaskOutcome {
   return { ok: true, report };
 }
 
-/** Card payments synthesized from a receipt whose checking debit no bank feed listed by the deadline. */
+/**
+ * Card payments synthesized from a receipt whose checking debit no bank feed listed by the
+ * deadline, and card payments entered by hand whose card line no bank listing confirmed.
+ */
 function syntheticCcPaymentsCheck(): TaskOutcome {
-  const overdue = listOverdueUnconfirmedSyntheticCcPayments(chileCalendarTodayYmd());
-  if (overdue.length === 0) return { ok: true, report: ["No synthesized card payment is overdue."] };
+  const today = chileCalendarTodayYmd();
+  const overdue = listOverdueUnconfirmedSyntheticCcPayments(today);
+  const manual = listOverdueUnconfirmedManualCardPayments(today);
+  if (overdue.length === 0 && manual.length === 0) {
+    return { ok: true, report: ["No synthesized or hand-entered card payment is overdue."] };
+  }
   return {
     ok: false,
-    report: overdue.map(
-      (o) =>
-        `⚠ synthesized card payment movement ${o.movement_id} (paid ${o.paid_on}, $${o.amount_clp}) has no bank ` +
-        `listing by ${o.deadline ?? o.paid_on} — the debit its receipt describes never appeared in any bank ` +
-        `feed; verify the checking account and delete the transfer if the money never left`
-    ),
+    report: [
+      ...overdue.map(
+        (o) =>
+          `⚠ synthesized card payment movement ${o.movement_id} (paid ${o.paid_on}, $${o.amount_clp}) has no bank ` +
+          `listing by ${o.deadline ?? o.paid_on} — the debit its receipt describes never appeared in any bank ` +
+          `feed; verify the checking account and delete the transfer if the money never left`
+      ),
+      ...manual.map(
+        (m) =>
+          `⚠ hand-entered card payment ${m.manual_payment_id} (movement ${m.transfer_movement_id}, card ` +
+          `${m.card_account_id}, ${m.amount} ${m.currency} paid ${m.paid_on}) has no bank listing by ` +
+          `${m.deadline ?? m.paid_on} — no card line confirmed it; check the card's movements`
+      ),
+    ],
   };
 }
 
