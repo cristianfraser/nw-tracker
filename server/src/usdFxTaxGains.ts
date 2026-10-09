@@ -33,25 +33,23 @@
 import { monthBeforeYmd } from "./foreignShareTaxGains.js";
 import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctWithStandIn, type OfficialIpcLookup } from "./siiOfficialIpc.js";
 import type { TaxLotDisposal, TaxLotSlice } from "./taxLots.js";
-import type { UsdFxPosture, UsdPurchaseCost } from "./usdCashTaxLotEvents.js";
+import {
+  usdCashTaxDisposals,
+  type UsdFxDisposal,
+  type UsdFxDisposalTag,
+  type UsdFxPosture,
+  type UsdPurchaseCost,
+} from "./usdCashTaxLotEvents.js";
+
+export type { UsdFxDisposal, UsdFxDisposalTag };
 
 export type UsdFxRoute = "idpc_1901" | "igc_1032";
 
-export type UsdFxDisposalTag = "realized" | "deferred" | "fee";
-
-/**
- * One disposal as `usdCashTaxDisposals` (`usdCashTaxLotEvents`) emits it: a tax-lot disposal of a
- * USD cash account — units are dollars, proceeds and cost pesos — tagged with what the posture
- * makes of it. Structurally the loader's `UsdFxDisposal`; stated here so this module and its
- * tests depend on the shape, not on that module's export.
- */
-export type UsdFxDisposal = TaxLotDisposal & { accountId: number; tag: UsdFxDisposalTag };
-
 /**
  * The first-category rate the F22 draft applies (`IDPC_RATE` in `f22Draft.ts`, 25%, the one the
- * foreign shares' 1914 path uses). Duplicated here, not imported: `f22Draft` will import this module
- * (Phase 3), and a leaf tax module must not pull the whole draft graph in. `usdFxTaxGains.test.ts`
- * asserts the two are equal.
+ * foreign shares' 1914 path uses). Duplicated here, not imported: `f22Draft` imports this module,
+ * and a leaf tax module must not pull the whole draft graph in. `usdFxTaxGains.test.ts` asserts
+ * the two are equal.
  */
 export const USD_FX_IDPC_RATE = 0.25;
 
@@ -140,14 +138,14 @@ export type UsdFxTaxGainsOptions = {
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
 /**
- * `load` is the lot walk — `usdCashTaxDisposals` from `usdCashTaxLotEvents` once the shared walk
- * lands (Phase 1 of `docs/tax-usd-lots-plan.md`); the F22 draft passes it, tests pass synthetic
- * disposals.
+ * `load` is the lot walk — `usdCashTaxDisposals` from `usdCashTaxLotEvents` over every USD cash
+ * account of the DB by default; the F22 draft takes the same default (or an injected loader), tests
+ * pass synthetic disposals.
  */
 export function usdFxTaxGainsForYear(
   incomeYear: number,
   opts: UsdFxTaxGainsOptions,
-  load: UsdFxDisposalLoader
+  load: UsdFxDisposalLoader = usdCashTaxDisposals
 ): UsdFxYearTaxResult {
   const { posture, purchaseCost, route } = opts;
   const roundPct = opts.roundPct ?? true;

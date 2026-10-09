@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { informedDjAmount, informedDjFileKey, parseInformedDjSheet } from "./siiInformedDj.js";
+import { informedDjAmount, informedDjFileKey, informedDjSectionAmounts, parseInformedDjSheet } from "./siiInformedDj.js";
 import { parseF22CompactoText, assertF22Identities } from "./siiF22Compacto.js";
 
 describe("parseInformedDjSheet", () => {
@@ -49,6 +49,26 @@ describe("parseF22CompactoText", () => {
   it("the result is 304 less the fee retentions (198) plus the pension charge on them (900)", () => {
     const codes = new Map([[158, 100], [170, 100], [304, -756], [198, 903], [900, 854], [305, -805]]);
     expect(() => assertF22Identities(codes)).not.toThrow();
-    expect(() => assertF22Identities(new Map([...codes, [305, -756]]))).toThrow(/305 = 304 − 198 \+ 900/);
+    expect(() => assertF22Identities(new Map([...codes, [305, -756]]))).toThrow(/305 = 304 \+ 1830 − 198 \+ 900/);
+  });
+
+  it("the result adds art. 107's 10% impuesto único (1830) to 304", () => {
+    const codes = new Map([[158, 100], [170, 100], [304, 407_751], [1830, 18_000], [305, 425_751]]);
+    expect(() => assertF22Identities(codes)).not.toThrow();
+    expect(() => assertF22Identities(new Map([...codes, [305, 407_751]]))).toThrow(/305 = 304 \+ 1830/);
+  });
+});
+
+describe("informedDjSectionAmounts", () => {
+  it("lists every field under a header segment, whatever its own label says", () => {
+    const fields = parseInformedDjSheet([
+      ["Montos", "", "", ""],
+      ["AFECTAS", "", "EXENTAS", ""],
+      ["Con crédito", "Sin crédito", "Exentas", "Otro"],
+      ["1.000", "250", "7", "3"],
+    ]);
+    expect(informedDjSectionAmounts(fields, "AFECTAS").map((x) => x.amount)).toEqual([1000, 250]);
+    // The last segment is a column's own label, not a section.
+    expect(() => informedDjSectionAmounts(fields, "Exentas")).toThrow(/no field under «Exentas»/);
   });
 });

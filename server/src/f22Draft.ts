@@ -2,21 +2,31 @@
  * A local Formulario 22 for one año tributario: the return as filed (`sii_f22_filed`), what third
  * parties informed (`sii_informed_dj`), and a draft in which the codes the app can state itself
  * REPLACE what was filed — the crypto gain (code 1032, or a loss added to the filed 169), foreign
- * dividends (1104 net, 748 the foreign tax as gross-up, 1018 its credit) and foreign share / ETF
- * sales (added to 1104, taxed under the régimen general) — so a year that already declared them
- * (AT2022 filed 1032) shows the correction, not a double count; then it recomputes the tax with
- * the same chain the filed form shows:
+ * dividends (1104 net, 748 the foreign tax as gross-up, 1018 its credit), foreign share / ETF
+ * sales (added to 1104, taxed under the régimen general) and the art. 107 instruments' sales
+ * (recuadro N°4: 1809 / 1813 → 1816, línea 66: 1829 / 1830, `art107TaxGains`) — so a year that
+ * already declared them (AT2022 filed 1032) shows the correction, not a double count; then it
+ * recomputes the tax with the same chain the filed form shows:
  *
- *   158 = 1098 + 110 + 155 + 152 + 1032 + 1104 + 748 − 169   (lines 1–14 less line 17; 110 = fees)
+ *   158 = 1098 + 110 + 105 + 155 + 152 + 1032 + 1104 + 748 + 1901 − 169   (lines 1–14 less line 17; 110 = fees)
  *   170 = 158 − 750 − 765                                  (mortgage interest art. 55 bis; APV art. 42 bis)
  *   157 = IGC table on 170, in UTA of December of the income year
  *   136 = 157 × 152 / 158                                  (exempt income, art. 56 N°2)
- *   304 = 157 − 136 − 162 − 1018                           (162: the employer's IUSC withheld)
+ *   304 = 157 − 136 − 162 − 1018 − 610                     (162: the employer's IUSC withheld; 610: IDPC credit)
+ *   305 = 304 + 1830 − 198 + 900                           (1830: art. 107's 10% impuesto único, outside IGC)
+ *
+ * 105 is a domestic dividend afecto al IGC (línea 2): an art. 107 fund's distributions, from DJ
+ * 1922 when the custodian reported them, else estimated from the cash credited.
  *
  * The chain must reproduce the filed 304 from the filed codes alone, or the draft throws — that is
  * what makes its additions trustworthy. Foreign share gains also bear first-category tax (line 58,
  * IDPC 25%) credited back against IGC with refund (code 1914), so they change 304 only through
- * IGC; the draft reports the IDPC lines beside it.
+ * IGC; the draft reports the IDPC lines beside it. The exchange result on the dollars bought with
+ * pesos (`usdFxTaxGains`) takes the same path under its default route: art. 20 N°5 income in line
+ * 58 d), code 1901, with IDPC at {@link IDPC_RATE} credited back in line 5 (`usdFxIdpcClp`,
+ * reported beside, net zero), so it changes 304 only through 158; a loss on that route offsets
+ * nothing here and is reported. The alternative route adds it to 1032 and a loss to 169 like the
+ * crypto result ({@link USD_FX_DEFAULT_ROUTE}). Report-only: `estimatedCodes` carries its codes.
  *
  * Losses (code 169) are deducted only from the gains of line 17's codes ({@link CAPITAL_LOSS_POOL_CODES}),
  * never from salary, and only in their own year; the draft caps 169 at that pool and reports what
@@ -28,12 +38,25 @@
  */
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
+import {
+  art107DistributionsForYear,
+  art107ForTaxYear,
+  type Art107Distribution,
+  type Art107TaxYear,
+} from "./art107TaxGains.js";
 import { cryptoTaxGainsForYear, type CryptoYearTaxResult } from "./cryptoTaxGains.js";
 import { foreignShareGainsForYear, type ForeignShareYearResult } from "./foreignShareTaxGains.js";
-import { informedDjAmount, type InformedDjField } from "./siiInformedDj.js";
+import { informedDjAmount, informedDjSectionAmounts, type InformedDjField } from "./siiInformedDj.js";
 import { fundRedemptionGainsForYear, mortgageInterestDeduction, mortgageInterestForYear } from "./f22AppEstimates.js";
 import { payrollTaxYear, type PayrollTaxYear } from "./payrollTaxYear.js";
-import { observadoOnOrBefore } from "./usdCashTaxLotEvents.js";
+import { observadoOnOrBefore, type UsdFxPosture, type UsdPurchaseCost } from "./usdCashTaxLotEvents.js";
+import {
+  USD_FX_IDPC_RATE,
+  usdFxTaxGainsForYear,
+  type UsdFxDisposalLoader,
+  type UsdFxRoute,
+  type UsdFxYearTaxResult,
+} from "./usdFxTaxGains.js";
 
 type IgcBracket = { upTo: number; rate: number; rebajaUta: number };
 
@@ -55,6 +78,17 @@ export const IGC_TABLE_AT2018_FIRST_TAX_YEAR = 2018;
 /** Foreign tax credit cap: 35% of the foreign income's gross amount (art. 41 A). */
 export const FOREIGN_TAX_CREDIT_CAP = 0.35;
 export const IDPC_RATE = 0.25;
+/**
+ * How the exchange result on dollars bought with pesos is drafted (`usdFxTaxGains`): the route it
+ * takes on the form (art. 20 N°5 income in line 58 d), code 1901, IDPC credited back — the AT2026
+ * instructions' line for it; `igc_1032` would reuse the crypto codes), when a dollar is sold
+ * (Oficio 2573/2022: spending dollars on an instrument sells them) and what a purchase cost
+ * (the oficio's dólar observado of the purchase day). Parameters of {@link buildF22Draft}, so a
+ * later UI switch is a parameter change; report-only until the user files them.
+ */
+export const USD_FX_DEFAULT_ROUTE: UsdFxRoute = "idpc_1901";
+export const USD_FX_DEFAULT_POSTURE: UsdFxPosture = "oficio_2573";
+export const USD_FX_DEFAULT_PURCHASE_COST: UsdPurchaseCost = "observado";
 /** Codes of the payment section, which the draft leaves to the SII. */
 export const PAYMENT_SECTION_CODES: readonly number[] = [39, 85, 86, 87, 90, 91, 92, 93, 94, 795];
 
@@ -73,11 +107,11 @@ export type F22Codes = Record<number, number>;
 export function computeF22Tax(codes: F22Codes, utaClp: number, taxYear: number): F22Codes {
   const v = (c: number) => codes[c] ?? 0;
   const out: F22Codes = { ...codes };
-  out[158] = Math.round(v(1098) + v(110) + v(155) + v(152) + v(1032) + v(1104) + v(748) - v(169));
+  out[158] = Math.round(v(1098) + v(110) + v(105) + v(155) + v(152) + v(1032) + v(1104) + v(748) + v(1901) - v(169));
   out[170] = Math.max(0, out[158] - v(750) - v(765));
   out[157] = Math.round(igcTax(out[170], utaClp, taxYear));
   out[136] = out[158] > 0 ? Math.round((out[157] * v(152)) / out[158]) : 0;
-  out[304] = out[157] - out[136] - v(162) - v(1018);
+  out[304] = out[157] - out[136] - v(162) - v(1018) - v(610);
   return out;
 }
 
@@ -86,9 +120,12 @@ export function computeF22Tax(codes: F22Codes, utaClp: number, taxYear: number):
  * capitales mobiliarios y ganancias de capital según códigos 105, 155, 152, 1032, 1891, 1104, 1058
  * y 1987 (arts. 54 N° 1 y 62 LIR)», limited to the codes the chain above sums — the others never
  * appear on this taxpayer's returns. 1104 is in it: a fund or crypto loss is deducted from foreign
- * dividends and foreign share gains too (the reverse does not hold, see the header).
+ * dividends and foreign share gains too (the reverse does not hold, see the header); so is 105, an
+ * art. 107 fund's distributions. Art. 107 sale results are not: they net only among themselves,
+ * and neither is 1901 (art. 20 N°5 income taxed in first category, line 58 d): a loss on the
+ * dollars' exchange result under that route is lost, never a 169 candidate.
  */
-export const CAPITAL_LOSS_POOL_CODES: readonly number[] = [155, 152, 1032, 1104];
+export const CAPITAL_LOSS_POOL_CODES: readonly number[] = [105, 155, 152, 1032, 1104];
 
 export function capitalLossPoolClp(codes: F22Codes): number {
   return CAPITAL_LOSS_POOL_CODES.reduce((s, c) => s + Math.max(0, codes[c] ?? 0), 0);
@@ -102,7 +139,7 @@ export function capCapitalLosses(codes: F22Codes): F22Codes {
   return out;
 }
 
-export type F22LossOffsetSource = "crypto" | "foreign_shares" | "foreign_dividends" | "funds_interest";
+export type F22LossOffsetSource = "crypto" | "foreign_shares" | "foreign_dividends" | "funds_interest" | "usd_fx";
 
 /** Gains and losses that offset each other within one year, and what is left on either side. */
 export type F22OffsetBalance = {
@@ -167,7 +204,33 @@ export type F22Draft = {
   lossOffset: F22LossOffset;
   /** Foreign share sales netted among themselves (a loss offsets nothing else). */
   foreignShareOffset: F22OffsetBalance;
+  /** Art. 107 instruments' sales and the codes they give (1809 … 1830). */
+  art107: Art107TaxYear;
+  /** The art. 107 instruments' distributions (dividends afectos al IGC) and their sum, behind the 105 estimate. */
+  art107Distributions: Art107Distribution[];
+  art107DistributionsClp: number;
+  /** DJ 1891's «Monto Total Ventas» (the broker's sales of shares and cuotas); null without the DJ. */
+  art107InformedSalesClp: number | null;
+  /** DJ 1922's art. 107 difference (section B1, actualizada); null without the DJ. */
+  art107InformedResultClp: number | null;
+  /** The exchange result on the dollars bought with pesos, under the route and posture the draft took (report-only). */
+  usdFx: UsdFxYearTaxResult;
+  /** Route `idpc_1901`: first-category tax on 1901 (line 58 d) and its line-5 credit — equal, net zero; 0 on the other route. */
+  usdFxIdpcClp: number;
 };
+
+/** What {@link buildF22Draft} may be told beyond the year: the dollars' exchange-result parameters and its loader (tests). */
+export type F22DraftOptions = {
+  usdFx?: {
+    route?: UsdFxRoute;
+    posture?: UsdFxPosture;
+    purchaseCost?: UsdPurchaseCost;
+    /** The tax-lot disposals; the DB walk (`usdCashTaxDisposals`) unless injected. */
+    load?: UsdFxDisposalLoader;
+  };
+};
+
+const zeroToNull = (n: number): number | null => (n === 0 ? null : n);
 
 function latestUta(): number {
   const r = db.prepare(`SELECT utm_clp FROM utm_daily ORDER BY date DESC LIMIT 1`).get() as { utm_clp: number } | undefined;
@@ -245,6 +308,42 @@ function apvRegimeBDeductionClp(dj: Map<number, InformedDjField[]>, incomeYear: 
   return uf > 0 ? Math.round(Math.min(uf, APV_ANNUAL_CAP_UF) * ufOn(`${incomeYear}-12-31`)) : null;
 }
 
+/** DJ 1922 section B1: the difference on cuotas of funds that meet art. 107 (actualizada). */
+const DJ1922_ART107_DIFFERENCE =
+  "Diferencia Obtenida en el Rescate o Enajenación de Cuotas de Fondos de Inversión que cumplen requisitos Art.107 LIR (Actualizada)";
+/** DJ 1922 section B3's header for the distributions afectas al IGC (four columns under it). */
+const DJ1922_IGC_DISTRIBUTIONS =
+  "DIVIDENDOS, REMESAS O DISTRIBUCIONES AFECTAS A LOS IMPUESTOS GLOBAL COMPLEMENTARIO Y/O IMPUESTO ADICIONAL";
+/** DJ 1922 section B4's header, spelled as the SII prints it. */
+const DJ1922_CREDITS = "Créditos para Impuestos Global Completmentario o Adicional";
+
+/**
+ * What DJ 1922 (the fund custodian's report) informs for the F22:
+ * - 1813 ← section B1, «Diferencia Obtenida en el Rescate o Enajenación de Cuotas de Fondos de
+ *   Inversión que cumplen requisitos Art.107 LIR (Actualizada)» (one column, column M);
+ * - 105 ← section B3, the sum of the columns under «DIVIDENDOS, REMESAS O DISTRIBUCIONES AFECTAS A
+ *   LOS IMPUESTOS GLOBAL COMPLEMENTARIO Y/O IMPUESTO ADICIONAL» (R–U: con crédito por IDPC
+ *   generado desde 2017, hasta 2016 — worded «generados» or «acumulados» by year —, por IDPC
+ *   voluntario, sin derecho a crédito): all of it is afecta al IGC, the columns differ only in the
+ *   credit they carry. The block's other columns (exentas, tributación cumplida, INR, impuesto
+ *   único, devoluciones de capital) are not IGC income and are not read.
+ * Section B4's credits (code 610) are not read: no single field is that credit — fifteen columns
+ * (AI–AW) split it by origin year, restitución and right to a refund, which the F22 treats apart.
+ * A DJ that informs any of them throws, so a return is never drafted without a credit it carries.
+ */
+export function informedDj1922Codes(fields: readonly InformedDjField[]): Record<number, number> {
+  const credits = informedDjSectionAmounts(fields, DJ1922_CREDITS).filter((c) => c.amount !== 0);
+  if (credits.length > 0) {
+    throw new Error(
+      `DJ 1922: IGC credits informed in ${credits.map((c) => c.field.slice(0, c.field.indexOf(":"))).join(", ")} — map them to the F22 credit codes before drafting`
+    );
+  }
+  return {
+    1813: informedDjAmount(fields, DJ1922_ART107_DIFFERENCE),
+    105: informedDjSectionAmounts(fields, DJ1922_IGC_DISTRIBUTIONS).reduce((s, x) => s + x.amount, 0),
+  };
+}
+
 /** F22 codes the SII prefills from third parties' DJs (the ones this taxpayer receives). */
 function informedCodes(dj: Map<number, InformedDjField[]>, incomeYear: number): Record<number, number> {
   const out: Record<number, number> = {};
@@ -268,6 +367,8 @@ function informedCodes(dj: Map<number, InformedDjField[]>, incomeYear: number): 
   if (apv != null && f1887) out[765] = apv;
   const f1898 = dj.get(1898);
   if (f1898) out[750] = informedDjAmount(f1898, "Monto Actualizado de los Intereses Pagados ($) en Dividendo");
+  const f1922 = dj.get(1922);
+  if (f1922) Object.assign(out, informedDj1922Codes(f1922));
   // A zero a third party reports says nothing the form needs (no redemptions, no withholding).
   for (const c of Object.keys(out)) if (out[Number(c)] === 0) delete out[Number(c)];
   return out;
@@ -298,8 +399,16 @@ function loadDividends(incomeYear: number): F22DividendLine[] {
   }));
 }
 
-export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClockNow().ymd): F22Draft {
+export function buildF22Draft(
+  taxYear: number,
+  todayYmd: string = chileWallClockNow().ymd,
+  options: F22DraftOptions = {}
+): F22Draft {
   const incomeYear = taxYear - 1;
+  const usdFxRoute = options.usdFx?.route ?? USD_FX_DEFAULT_ROUTE;
+  const usdFxPosture = options.usdFx?.posture ?? USD_FX_DEFAULT_POSTURE;
+  const usdFxPurchaseCost = options.usdFx?.purchaseCost ?? USD_FX_DEFAULT_PURCHASE_COST;
+  if (USD_FX_IDPC_RATE !== IDPC_RATE) throw new Error("usdFxTaxGains: its IDPC rate differs from the draft's");
   const provisional = todayYmd <= `${incomeYear}-12-31`;
   const decemberUta = utaDecember(incomeYear);
   const utaProvisional = decemberUta == null;
@@ -339,6 +448,19 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
   const foreignShares = foreignShareGainsForYear(incomeYear, "fifo", todayYmd);
   const foreignResult = Math.round(foreignShares.totalClp[foreignShares.defaultMode]);
   const foreignGain = Math.max(0, foreignResult);
+  const art107 = art107ForTaxYear(taxYear, "fifo", todayYmd, loadFiled);
+  const art107Distributions = art107DistributionsForYear(incomeYear);
+  const art107DistributionsClp = Math.round(art107Distributions.reduce((s, x) => s + x.amountClp, 0));
+  const usdFx = usdFxTaxGainsForYear(
+    incomeYear,
+    { posture: usdFxPosture, purchaseCost: usdFxPurchaseCost, route: usdFxRoute },
+    options.usdFx?.load
+  );
+  // The route decides the codes: 1901 (+ IDPC beside) or the crypto's 1032 / 169.
+  const usdFx1901 = usdFx.codes[1901] ?? 0;
+  const usdFx1032 = usdFx.codes[1032] ?? 0;
+  const usdFxLoss = usdFx.codes.loss169 ?? 0;
+  const usdFxIdpcClp = usdFx.codes.idpcClp ?? 0;
 
   const draftInput: F22Codes =
     base === "filed"
@@ -361,10 +483,12 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
   const taxClp = detailed.reduce((s, d) => s + d.withholdingUsd!, 0) * yearEndObservado;
   const dividendsNetClp = Math.round(grossClp - taxClp);
   const appCodes: F22Codes = {
-    1032: Math.max(0, cryptoGain),
+    1032: Math.max(0, cryptoGain) + usdFx1032,
     1104: dividendsNetClp + foreignGain,
     748: Math.round(taxClp),
     1018: Math.round(Math.min(taxClp, FOREIGN_TAX_CREDIT_CAP * grossClp)),
+    1901: usdFx1901,
+    ...art107.codes,
   };
   for (const [c, v] of Object.entries(appCodes)) {
     // A year with no base shows only what the app has; zeros would read as a declared zero.
@@ -375,10 +499,15 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
     if (clp > 0) draftInput[169] = (draftInput[169] ?? 0) + clp;
   };
   addLoss(-cryptoGain);
+  addLoss(usdFxLoss);
 
   // Without a filed form or informed DJs, the codes third parties report in March come from the
   // ledger too (f22AppEstimates): fund redemptions and mortgage interest.
   const estimatedCodes: number[] = [];
+  // The dollars' exchange result is the app's own reading of the lots, not yet filed anywhere.
+  if (usdFx1901 > 0) estimatedCodes.push(1901);
+  if (usdFx1032 > 0) estimatedCodes.push(1032);
+  if (usdFxLoss > 0) estimatedCodes.push(169);
   let fundLossClp = 0;
   let mortgageInterest = 0;
   if (base === "payroll" || base === "none") {
@@ -396,6 +525,13 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
     mortgageInterest = mortgageInterestForYear(incomeYear);
     if (mortgageInterest > 0) estimatedCodes.push(750, 751);
   }
+  // An art. 107 fund's distributions are dividends afectos al IGC (línea 2, code 105): the DJ 1922
+  // figure (or the filed one) when there is one, else the cash credited as an estimate — the IDPC
+  // credit they carry (610) comes only with the DJ / the fund's certificate (see informedDj1922Codes).
+  if (draftInput[105] == null && art107DistributionsClp > 0) {
+    draftInput[105] = art107DistributionsClp;
+    estimatedCodes.push(105);
+  }
 
   // Losses capped at the pool, then the mortgage interest, whose deduction depends on the gross.
   const finish = (input: F22Codes): F22Codes => {
@@ -409,7 +545,7 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
   const taxComputed = base !== "none" || estimatedCodes.length > 0;
   const draft = taxComputed ? computeF22Tax(finish(draftInput), utaClp, taxYear) : finish(draftInput);
   if (taxComputed) {
-    draft[305] = draft[304]! - (draft[198] ?? 0) + (draft[900] ?? 0);
+    draft[305] = draft[304]! + (draft[1830] ?? 0) - (draft[198] ?? 0) + (draft[900] ?? 0);
     // Code 31 is the IGC to pay; a return with a refund does not print it.
     if (draft[304]! > 0) draft[31] = draft[304]!;
   }
@@ -434,9 +570,13 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
       { source: "foreign_dividends", gainClp: Math.max(0, dividendsNetClp), lossClp: 0 },
       {
         source: "funds_interest",
-        gainClp: Math.max(0, draftInput[155] ?? 0) + Math.max(0, draftInput[152] ?? 0),
+        // 105 (an art. 107 fund's distributions) is fund income too.
+        gainClp:
+          Math.max(0, draftInput[155] ?? 0) + Math.max(0, draftInput[152] ?? 0) + Math.max(0, draftInput[105] ?? 0),
         lossClp: declaredLossClp + fundLossClp,
       },
+      // Only the `igc_1032` route puts the dollars' exchange result in the pool; under 1901 it is apart.
+      { source: "usd_fx", gainClp: usdFx1032, lossClp: usdFxLoss },
     ],
     gainsClp,
     lossesClp,
@@ -475,6 +615,8 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
   for (const c of PAYMENT_SECTION_CODES) delete draft[c];
 
   const f1964 = dj.get(1964);
+  const f1891 = dj.get(1891);
+  const f1922 = dj.get(1922);
   return {
     taxYear,
     incomeYear,
@@ -496,5 +638,13 @@ export function buildF22Draft(taxYear: number, todayYmd: string = chileWallClock
     estimatedCodes,
     lossOffset,
     foreignShareOffset,
+    art107,
+    art107Distributions,
+    art107DistributionsClp,
+    // A zero a third party reports says nothing (no sales, no difference): null, like informedCodes.
+    art107InformedSalesClp: f1891 ? zeroToNull(informedDjAmount(f1891, "Monto Total Ventas")) : null,
+    art107InformedResultClp: f1922 ? zeroToNull(informedDjAmount(f1922, DJ1922_ART107_DIFFERENCE)) : null,
+    usdFx,
+    usdFxIdpcClp,
   };
 }

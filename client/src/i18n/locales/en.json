@@ -1617,6 +1617,7 @@
       "39": "Reajuste (art. 72)",
       "90": "Tax owed",
       "91": "Total to pay",
+      "105": "Dividends taxable under the IGC (line 2)",
       "110": "Fees (honorarios) income",
       "136": "Proportional credit for exempt income",
       "152": "Income exempt from IGC (art. 54 N°3)",
@@ -1630,6 +1631,7 @@
       "198": "Tax withheld from fees",
       "304": "IGC determined",
       "305": "Annual settlement result",
+      "610": "IDPC credit with right to refund (line 48)",
       "645": "Final positive CPT",
       "748": "Gross-up for taxes paid abroad",
       "750": "Mortgage interest (art. 55 bis)",
@@ -1639,8 +1641,16 @@
       "1032": "Other Chilean-source income (crypto assets)",
       "1098": "Salaries and similar income (Chilean source)",
       "1104": "Other foreign-source income",
+      "1809": "Shares: gain or loss (art. 107 N°1)",
+      "1813": "Fund units: gain or loss (art. 107 N°2)",
+      "1814": "Net result under art. 107",
+      "1815": "Carried-forward loss, updated (art. 107)",
+      "1816": "Taxable base or loss under art. 107",
+      "1829": "Art. 107 base (line 66)",
+      "1830": "10% single tax on the art. 107 base (line 66)",
       "1869": "Of which: funds and shares (art. 17 N°8)",
-      "1878": "Art. 57 income within the limits"
+      "1878": "Art. 57 income within the limits",
+      "1901": "Income taxed under IDPC, art. 20 N°5 (exchange result on dollars; line 58 d)"
     },
     "crypto": {
       "title": "Crypto sales",
@@ -1691,6 +1701,54 @@
         "clp_ipc": "IPC reajuste (Oficio 750)"
       }
     },
+    "art107": {
+      "title": "Art. 107 LIR: fund and share sales",
+      "explain": "Sales of fund units and shares on the exchange are taxed under art. 107 LIR. The mayor valor pays a flat 10% single tax (impuesto único) on sales from 2022-09-02 through 2026-12-31, and is ingreso no renta before 2022-09-02 and from {{inrFrom}}: no tax and no effect on the IGC. Lots are sold {{method}}; a loss offsets only other art. 107 gains.",
+      "lotMethod": {
+        "fifo": "oldest first (FIFO)",
+        "lifo": "newest first (LIFO)",
+        "average": "at average cost"
+      },
+      "costExplain": "The draft takes {{option}}, the resident cost option with the lower result. Both results are shown: the choice is irrevocable once the return is filed.",
+      "option": {
+        "cost_paid": "the pesos actually paid, reajustados by IPC",
+        "close_dec31": "the 31 December close of the purchase year, reajustado by IPC"
+      },
+      "closeStandIn": "The 31 December close is the stored daily close, a stand-in for the CMF's official closing price (precio de cierre oficial); a dash means no close is stored for that lot.",
+      "date": "Date",
+      "instrument": "Instrument",
+      "units": "Units",
+      "proceeds": "Sale price",
+      "costPaid": "Cost paid",
+      "costReajustado": "Cost reajustado",
+      "closeDec31": "31 Dec. close",
+      "result": "Result",
+      "regime": "Regime",
+      "kind": {
+        "fund": "fund",
+        "share": "share"
+      },
+      "regimeLabel": {
+        "tax_10pct": "10% single tax",
+        "inr": "Ingreso no renta"
+      },
+      "totals": "Results of the sales under the 10% regime: {{costPaid}} with the cost paid, {{closeDec31}} with the 31 December close.",
+      "explainInr": "Sales before 2022-09-02 and from {{inrFrom}} are ingreso no renta: they are listed with their result, but enter no code and no tax.",
+      "carriedLoss": "Carried-forward loss (1815): {{amount}}.",
+      "carriedLossSource": {
+        "filed": "Taken from the filed return of the previous year.",
+        "app": "Taken from the app's own result for the previous year, as no return is on file."
+      },
+      "summary": "Net result (1814) {{result}}; taxable base (1816) {{base}}; 10% single tax (1830) {{tax}}, added to the settlement (305).",
+      "informedSales": "DJ 1891 reports sales of {{amount}} for these units.",
+      "informedResult": "DJ 1922 reports an art. 107 result of {{amount}} (B1, actualizada).",
+      "distributionsTitle": "Fund distributions",
+      "distributionsExplain": "Distributions are not art. 107: they are dividends taxable under the IGC, declared in line 2 (code 105) with the IDPC credit (code 610). The amount is the cash the fund credited, an estimate that DJ 1922 B3 replaces once it is imported.",
+      "colAccount": "Account",
+      "colAmount": "Amount",
+      "distributionsTotal": "Total distributions {{amount}}.",
+      "provisional": "The year has not closed: the IPC runs to the latest published month, so the reajustes and the carried loss are provisional."
+    },
     "summaryFiled": "Tax (code 304) filed: {{amount}}",
     "summaryDraft": "draft: {{amount}}",
     "summaryDiff": "difference: {{amount}}",
@@ -1717,7 +1775,8 @@
         "crypto": "crypto",
         "foreign_shares": "foreign shares",
         "foreign_dividends": "foreign dividends",
-        "funds_interest": "funds and interest"
+        "funds_interest": "funds and interest",
+        "usd_fx": "exchange differences"
       },
       "taxedOpenNoTax": "With the income recorded so far it pays no IGC.",
       "foreignUnusedOpen": "Foreign share loss in {{year}}: {{amount}}. It offsets only foreign share gains of the same year, not salary, funds or crypto: selling foreign shares at a gain of up to {{amount}} by {{year}}-12-31 would pay no tax.",
@@ -1761,6 +1820,44 @@
         "offset_kept": "Kept by the Tesorería for the AT{{year}} debt",
         "offset_paid": "Paid with the AT{{year}} refund (Tesorería offset)"
       }
+    },
+    "usdFx": {
+      "title": "Exchange differences (dollars bought with pesos)",
+      "explain": "The dollars held in cash are tax lots (FIFO per account): each outflow realizes the difference between the dólar observado of the day it left and of the day it was bought, cost without reajuste (Oficio 2390/2021); the result is reajustado to December. Posture: {{posture}}. Cost: {{cost}}. Route: {{route}}.",
+      "estimateNote": "Report only: the app's own reading of the lots, not filed anywhere yet.",
+      "provisional": "The reajuste to December runs to {{month}}, the latest IPC published.",
+      "posture": {
+        "oficio_2573": "Oficio 2573/2022 — spending dollars on an instrument sells them",
+        "oficio_2390": "Oficio 2390/2021 — only dollars paid to a third party or converted back to pesos",
+        "none": "none — only a reconversion to pesos"
+      },
+      "costOption": {
+        "observado": "dólar observado of the purchase day",
+        "pesos_paid": "the pesos actually paid"
+      },
+      "route": {
+        "idpc_1901": "art. 20 N°5 income, line 58 d) code 1901, IDPC credited back in line 5",
+        "igc_1032": "code 1032 like the crypto gain, a loss into 169"
+      },
+      "date": "Date",
+      "account": "Account",
+      "usd": "US$",
+      "purchaseDates": "Bought on",
+      "proceeds": "Proceeds",
+      "cost": "Cost",
+      "result": "Result",
+      "decemberPct": "IPC to December",
+      "resultDecember": "Result at December",
+      "totals": "Result of the year: {{result}} nominal, {{resultDecember}} reajustado to December.",
+      "feesTitle": "Fees charged in dollars",
+      "feesExplain": "Their cost is lost: not a deductible loss for a persona natural (SII FAQ citing Oficio 1474/2020; Oficio 2208/2022).",
+      "costLost": "Cost lost",
+      "feesTotal": "Fees: {{amount}} of cost lost.",
+      "deferredTotal": "Deferred under this posture ({{count}} outflows): {{amount}} that the other posture would realize.",
+      "codes1901": "Code 1901: {{amount}} · IDPC (line 58 d) {{idpc}}, credited back in line 5 — net zero on the result.",
+      "lossLost1901": "A loss on this route offsets only other art. 20 N°5 income and is otherwise lost: no code.",
+      "codes1032": "Code 1032: {{amount}}, added to the crypto gain.",
+      "loss169": "Loss of {{amount}} into code 169 (within the line-17 pool)."
     }
   },
   "valueMap": {

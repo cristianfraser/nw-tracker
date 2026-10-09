@@ -14,6 +14,7 @@
  * A year's default is the frame with the lower result (a smaller gain, or a larger loss) —
  * both are published SII positions; the other is always reported beside it.
  */
+import { art107InstrumentKind } from "./art107Instruments.js";
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
 import { loadEquityTaxLotEvents } from "./equityTaxLotEvents.js";
@@ -87,15 +88,21 @@ function latestObservadoDate(): string {
   return r.d;
 }
 
-/** Foreign equity accounts: a ticker, not a crypto pair, trading in dollars. */
+/**
+ * Foreign equity accounts: a ticker, not a crypto pair, trading in dollars. An art. 107 instrument
+ * (a Chilean fund or share, `art107Instruments`) never is, whatever it trades in: its sales are
+ * taxed apart (`art107TaxGains`).
+ */
 function foreignEquityAccounts(): { id: number; name: string }[] {
   const rows = db
     .prepare(
-      `SELECT id, name FROM accounts
+      `SELECT id, name, equity_ticker FROM accounts
         WHERE COALESCE(equity_ticker, '') <> '' AND equity_ticker NOT LIKE '%-USD'`
     )
-    .all() as { id: number; name: string }[];
-  return rows.filter((a) => loadEquityTaxLotEvents(a.id).currency === "usd");
+    .all() as { id: number; name: string; equity_ticker: string }[];
+  return rows
+    .filter((a) => art107InstrumentKind(a.equity_ticker) == null && loadEquityTaxLotEvents(a.id).currency === "usd")
+    .map(({ id, name }) => ({ id, name }));
 }
 
 export function foreignShareGainsForYear(
