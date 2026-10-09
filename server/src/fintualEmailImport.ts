@@ -487,9 +487,25 @@ const insTransfer = db.prepare(
 );
 
 export function applyFintualEmailMovements(planned: readonly FintualPlannedMovement[]): number {
+  return applyFintualEmailMovementsWithIds(planned).written;
+}
+
+/**
+ * {@link applyFintualEmailMovements}, also returning the movement each planned row stands for
+ * after the apply, index-aligned with `planned`: the inserted row, the promoted credit, the
+ * matched duplicate; null for a row left for a human.
+ */
+export function applyFintualEmailMovementsWithIds(planned: readonly FintualPlannedMovement[]): {
+  written: number;
+  movement_ids: (number | null)[];
+} {
+  const movement_ids: (number | null)[] = planned.map((p) =>
+    p.requires_manual != null ? null : (p.duplicate_of ?? null)
+  );
   const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
   db.transaction(() => {
-    for (const p of writable) {
+    for (const [index, p] of planned.entries()) {
+      if (p.duplicate_of != null || p.requires_manual != null) continue;
       let toAccountId = p.to_account_id;
       if (p.create_account) {
         // Re-checked here: an earlier buy in this batch may already have created it.
@@ -520,6 +536,7 @@ export function applyFintualEmailMovements(planned: readonly FintualPlannedMovem
           p.units_delta,
           p.occurred_on
         );
+        movement_ids[index] = p.promote_movement_id;
         continue;
       }
       const info = insTransfer.run({
@@ -534,6 +551,7 @@ export function applyFintualEmailMovements(planned: readonly FintualPlannedMovem
         units_delta: p.units_delta,
         flow_kind: p.flow_kind,
       });
+      movement_ids[index] = Number(info.lastInsertRowid);
       if (p.synthesized) {
         // Provenance + confirmation state. `message_id` is UNIQUE, so even a duplicate-guard
         // miss cannot synthesize the same mail twice — this insert would abort the transaction.
@@ -546,5 +564,5 @@ export function applyFintualEmailMovements(planned: readonly FintualPlannedMovem
       }
     }
   })();
-  return writable.length;
+  return { written: writable.length, movement_ids };
 }
