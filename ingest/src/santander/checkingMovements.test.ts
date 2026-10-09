@@ -10,13 +10,17 @@ function workbook(rows: unknown[][]): Buffer {
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
-const HEADER = ["Fecha", "Detalle", "Cargo", "Abono"];
+const HEADER = ["Fecha", "Detalle", "Monto cargo ($)", "Monto abono ($)", "Saldo ($)"];
+// Synthetic, formatted as the bank prints it; the payload carries its digits.
+const ACCOUNT_LINE = ["Cuenta Corriente: 0-099-00-11223-3"];
+const ACCOUNT_NUMBER = "009900112233";
 
 describe("santanderCheckingMovementsPayload", () => {
   it("reads cargos as debits and abonos as credits, with the document number that leads a row", () => {
     const payload = santanderCheckingMovementsPayload(
       workbook([
-        ["Movimientos"],
+        ["Holder Name"],
+        ACCOUNT_LINE,
         HEADER,
         ["29-09-2026", "0012345678  Transf a   Fintual", "$ 150.000", ""],
         ["30-09-2026", "Remuneracion", "", "1.234.567"],
@@ -26,7 +30,7 @@ describe("santanderCheckingMovementsPayload", () => {
     );
     expect(bankAccountMovementsKind.payload.safeParse(payload).success).toBe(true);
     expect(payload).toEqual({
-      account: { issuer: "santander", product: "checking" },
+      account: { issuer: "santander", product: "checking", number: ACCOUNT_NUMBER },
       movements: [
         { date: "2026-09-29", description: "0012345678 Transf a Fintual", currency: "clp", amount: -150000, document_no: "0012345678" },
         { date: "2026-09-30", description: "Remuneracion", currency: "clp", amount: 1234567, document_no: null },
@@ -39,6 +43,7 @@ describe("santanderCheckingMovementsPayload", () => {
   it("drops a row repeated in the same download and reports rows it cannot read", () => {
     const payload = santanderCheckingMovementsPayload(
       workbook([
+        ACCOUNT_LINE,
         HEADER,
         ["29-09-2026", "Compra", "1.000", ""],
         ["29-09-2026", "Compra", "1.000", ""],
@@ -47,20 +52,46 @@ describe("santanderCheckingMovementsPayload", () => {
       ])
     );
     expect(payload.movements).toHaveLength(1);
-    expect(payload.rejected_rows).toEqual(["Fila 4: fecha inválida (2026-09-29)", "Fila 5: sin monto cargo ni abono (Sin monto)"]);
+    expect(payload.rejected_rows).toEqual(["Fila 5: fecha inválida (2026-09-29)", "Fila 6: sin monto cargo ni abono (Sin monto)"]);
   });
 
   it("refuses a workbook without the Fecha / Detalle header", () => {
     expect(() => santanderCheckingMovementsPayload(workbook([["Fecha", "Monto"]]))).toThrow(/Not a Santander/);
+  });
+
+  it("refuses the dollar account's workbook (USD amount headers) instead of sending its rows as pesos", () => {
+    expect(() =>
+      santanderCheckingMovementsPayload(
+        workbook([
+          ["Holder Name"],
+          ["Cuenta Corriente: 0-099-00-44556-6"],
+          ["Fecha", "Detalle", "Monto cargo (USD)", "Monto abono (USD)", "Saldo (USD)"],
+          ["29-09-2026", "Abono", "", "1.000,50"],
+        ])
+      )
+    ).toThrow(/Not the peso cuenta corriente.*Monto cargo \(USD\)/);
+  });
+
+  it("refuses a workbook that names no account number above its header", () => {
+    expect(() => santanderCheckingMovementsPayload(workbook([["Holder Name"], HEADER, ["29-09-2026", "Compra", "1.000", ""]]))).toThrow(
+      /names no account number/
+    );
+    expect(() => santanderCheckingMovementsPayload(workbook([["Cuenta Corriente: "], HEADER, ["29-09-2026", "Compra", "1.000", ""]]))).toThrow(
+      /names no account number/
+    );
   });
 });
 
 describe("the upload format", () => {
   it("answers the payload of bank_account.movements, or not_this_format", () => {
     const parse = PARSE_FORMATS["santander.checking_xlsx"];
-    const ok = parse(workbook([HEADER, ["29-09-2026", "Compra", "1.000", ""]]), "u.xlsx");
-    expect(ok).toMatchObject({ kind: "bank_account.movements", schema_version: 1 });
+    const ok = parse(workbook([ACCOUNT_LINE, HEADER, ["29-09-2026", "Compra", "1.000", ""]]), "u.xlsx");
+    expect(ok).toMatchObject({ kind: "bank_account.movements", schema_version: 1, payload: { account: { number: ACCOUNT_NUMBER } } });
     expect(() => parse(workbook([["CARTOLA"], ["Saldo"]]), "cartola.xlsx")).toThrow(NotThisFormatError);
+    // The dollar account's listing has the header but is not this account: unreadable, not another format.
+    const usdHeader = ["Fecha", "Detalle", "Monto cargo (USD)", "Monto abono (USD)", "Saldo (USD)"];
+    expect(() => parse(workbook([ACCOUNT_LINE, usdHeader, ["29-09-2026", "Compra", "1,00", ""]]), "u.xlsx")).toThrow(/Not the peso/);
+    expect(() => parse(workbook([ACCOUNT_LINE, usdHeader]), "u.xlsx")).not.toThrow(NotThisFormatError);
   });
 });
 

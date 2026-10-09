@@ -15,6 +15,14 @@ export type BankConfig = {
   keychain_service: string;
   /** Login username AND Keychain account: the RUT or the e-mail, per bank. */
   loginAccount: string;
+  /**
+   * Santander only, optional: the dollar cuenta corriente's account number (digits only, as the
+   * bank prints it in a contract id — leading zeros allowed) — `"usd_checking_account_number"` in
+   * `cfraser/santander-fetch.json`. The `checking-usd-movements` step identifies that account's
+   * transactions call by this number in the REQUEST BODY, never by what is on screen. Null when
+   * the file does not declare one: the step then reports itself as not reached.
+   */
+  usd_checking_account_number: string | null;
 };
 
 export type BankName = "santander" | "racional" | "afp-uno" | "buk";
@@ -55,7 +63,19 @@ export function loadBankConfig(bank: BankName): BankConfig {
   }
   const keychain_service = String(cfg.keychain_service ?? `nw-tracker-${bank}`).trim();
   assertKeychainServiceBelongsToBank(bank, keychain_service, file);
-  return { rut, email, keychain_service, loginAccount };
+  const usd_checking_account_number = readOptionalAccountNumber(cfg, "usd_checking_account_number", file);
+  return { rut, email, keychain_service, loginAccount, usd_checking_account_number };
+}
+
+/** An optional account-number field: absent → null; present → digits only, else the file is wrong. */
+function readOptionalAccountNumber(cfg: Partial<BankConfig>, key: "usd_checking_account_number", file: string): string | null {
+  const raw = cfg[key];
+  if (raw === undefined || raw === null || raw === "") return null;
+  const value = String(raw).trim();
+  if (!/^\d{4,}$/.test(value)) {
+    throw new Error(`${file} "${key}" must be the account number's digits only (leading zeros allowed), got ${JSON.stringify(value)}.`);
+  }
+  return value;
 }
 
 /**

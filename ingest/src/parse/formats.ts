@@ -8,7 +8,7 @@ import { parseCardStatementPdf } from "../cards/statementPdfParse.js";
 import { parseCardWebPaste } from "../cards/webPaste.js";
 import { statementFromParsedCartola } from "../santander/cartolas.js";
 import { parseCheckingCartolaBuffer } from "../santander/checkingCartolaXlsx.js";
-import { isUltimosMovimientosWorkbook, parseUltimosMovimientosRows, workbookRows } from "../santander/checkingMovements.js";
+import { isUltimosMovimientosWorkbook, ultimosMovimientosPayload, workbookRows } from "../santander/checkingMovements.js";
 
 /** The file is not what the format reads — the server may try a path of its own. */
 export class NotThisFormatError extends Error {
@@ -38,10 +38,10 @@ export const PARSE_FORMATS: Readonly<
     if (!isUltimosMovimientosWorkbook(rows)) {
       throw new NotThisFormatError("not a Santander «ultimos movimientos» workbook (no Fecha / Detalle header)");
     }
-    const payload = bankAccountMovementsKind.payload.parse({
-      account: { issuer: "santander", product: "checking" },
-      ...parseUltimosMovimientosRows(rows),
-    });
+    // A listing with the Fecha / Detalle header that is not the peso account's (the dollar
+    // account's «(USD)» headers, no account line) throws a plain error: `unreadable`, not a
+    // format the server may try elsewhere.
+    const payload = bankAccountMovementsKind.payload.parse(ultimosMovimientosPayload(rows));
     return { kind: bankAccountMovementsKind.kind, schema_version: bankAccountMovementsKind.schema_version, payload };
   },
 };

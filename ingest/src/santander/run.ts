@@ -4,8 +4,8 @@ import type { BrowserContext, Page } from "playwright-core";
 import { loadBankConfig } from "../config.js";
 import { readKeychainSecret } from "../keychain.js";
 import { launchBrowser, firstPage } from "../browser.js";
-import { API_HOST_FRAGMENT, Recorder, runStampNow } from "../capture.js";
-import { ensureDir, resolveCfraserDir, resolveInboxDir, resolveMovementsDir, resolveStatementJsonDir } from "../paths.js";
+import { Recorder, SANTANDER_API_HOST_FRAGMENTS, runStampNow } from "../capture.js";
+import { ensureDir, resolveInboxDir, resolveMovementsDir, resolveStatementJsonDir } from "../paths.js";
 import { log } from "../log.js";
 import { waitForHosts } from "../network.js";
 import { assertRunAllowed } from "../runGuard.js";
@@ -17,6 +17,8 @@ import { assertLoginNotLatched } from "./loginLatch.js";
 import { LOGIN_HOSTS } from "./routes.js";
 import { fetchCardMovements, fetchCardStatements } from "./cards.js";
 import { fetchCheckingMovements } from "./checking.js";
+import { fetchCheckingUsdMovements } from "./checkingUsd.js";
+import { BROWSER_GONE_PATTERN, errorMessage, saveStepDiagnostics } from "./stepSupport.js";
 import { keepSessionAlive, type SessionKeepAlive } from "./sessionKeepAlive.js";
 import { statementsDueToday } from "./statementSchedule.js";
 
@@ -33,13 +35,6 @@ import { statementsDueToday } from "./statementSchedule.js";
 const MAX_BROWSER_RELAUNCHES = 1;
 
 type Session = { context: BrowserContext; page: Page; keepAlive: SessionKeepAlive };
-
-/** Playwright's wording when the page, context or browser process is gone (crash included). */
-const BROWSER_GONE_PATTERN = /Target page, context or browser has been closed|Target crashed|Browser closed|browser has been closed/i;
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 function browserIsGone(session: Session, err: unknown): boolean {
   return session.page.isClosed() || BROWSER_GONE_PATTERN.test(errorMessage(err));
@@ -60,7 +55,7 @@ export async function runSantander(opts: RunOptions): Promise<number> {
   const password = readKeychainSecret(config.keychain_service, config.rut);
   assertRunAllowed("santander", opts.minIntervalMinutes, opts.force);
   const stamp = runStampNow();
-  const recorder = new Recorder(opts.capture, stamp, "santander", API_HOST_FRAGMENT);
+  const recorder = new Recorder(opts.capture, stamp, "santander", SANTANDER_API_HOST_FRAGMENTS);
   const destDir = opts.capture ? ensureDir(path.join(recorder.captureDir ?? "", "downloads")) : resolveInboxDir();
   log(opts.capture ? `CAPTURE run — nothing goes to the inbox (${recorder.captureDir})` : `downloads → ${destDir}`);
 
@@ -176,6 +171,11 @@ export async function runSantander(opts: RunOptions): Promise<number> {
       return path.basename(file);
     });
 
+    // Capture only, after the peso download so it cannot disturb it: the dollar account's
+    // transactions call, verbatim, for a decoder to be written from. Report-only by design — the
+    // function answers «USD account not reached: …» instead of throwing (a dead browser excepted).
+    await step("checking USD movements", "checking-usd-movements", (page) => fetchCheckingUsdMovements(page, config, stamp));
+
     // A facturación's statement only exists after its close: skip the tabs until one is due.
     const statementsSchedule = statementsDueToday(resolveStatementJsonDir("santander"));
     const statementsForced = opts.force || opts.capture || opts.only.includes("card-statements");
@@ -214,26 +214,4 @@ export async function runSantander(opts: RunOptions): Promise<number> {
     log("Next: npm run import:cfraser-inbox");
   }
   return failed === 0 ? 0 : 1;
-}
-
-/**
- * What a failed step leaves behind: a screenshot and the page's visible text under
- * `cfraser/scraper-diagnostics/`, as a failed login does. The window is parked off-screen, so the
- * error alone («element is not visible», 2026-10-02 checking movements) says nothing about what
- * the bank showed. Never throws: a diagnostic must not replace the step's own error.
- */
-async function saveStepDiagnostics(page: Page, stepName: string, reason: string): Promise<void> {
-  try {
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const base = path.join(ensureDir(path.join(resolveCfraserDir(), "scraper-diagnostics")), `santander-${stepName}-${stamp}`);
-    const pageText = await page
-      .locator("body")
-      .innerText({ timeout: 2_000 })
-      .catch((err: unknown) => `(page unreadable: ${errorMessage(err)})`);
-    fs.writeFileSync(`${base}.txt`, [`reason: ${reason}`, `url: ${page.url()}`, "", "--- page text ---", pageText, ""].join("\n"));
-    await page.screenshot({ path: `${base}.png`, fullPage: true, timeout: 10_000 });
-    log(`  diagnostics: ${base}.png / .txt`);
-  } catch (err) {
-    log(`  (step diagnostics failed: ${errorMessage(err)})`);
-  }
 }

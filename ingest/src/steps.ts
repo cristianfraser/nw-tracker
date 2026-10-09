@@ -9,8 +9,9 @@ import type { BankName } from "./config.js";
 export const STEP_NAMES: Record<BankName, readonly string[]> = {
   // The monthly cartola PDF and the statement PDF both come from Gmail now
   // (`fetch:santander-docs`); the web session is scoped to daily movements plus the facturación
-  // JSON that `card-statements` reads.
-  santander: ["card-movements", "checking-movements", "card-statements"],
+  // JSON that `card-statements` reads. `checking-usd-movements` is a capture-only probe of the
+  // dollar account's transactions call (report-only, never fails the run).
+  santander: ["card-movements", "checking-movements", "checking-usd-movements", "card-statements"],
   racional: ["movements", "positions"],
   // Supervised capture only, until the fetcher is built from what it records.
   "afp-uno": ["capture"],
