@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp, formatOrDash, formatPct, formatUsdFine } from "../../format";
 import { cn } from "../../cn";
+import { Loadable } from "../../components/ui/Loadable";
 import { Modal } from "../../components/ui/Modal";
 import { useModalPeriodNav } from "../../periodModalNav";
 import { useFlowsExpenses } from "../../queries/hooks";
@@ -209,7 +210,7 @@ export function CreditCardFacturacionesTable({
   pendingCuotaPurchases?: readonly CcPendingCuotaPurchaseDto[];
 }) {
   const { t } = useTranslation();
-  const { data: flows } = useFlowsExpenses();
+  const { data: flows, isPending: flowsPending } = useFlowsExpenses();
   const categories = flows?.categories ?? [];
   const [modalOpen, setModalOpen] = useState(false);
   const [selected, setSelected] = useState<CcFacturacionDto | null>(null);
@@ -382,7 +383,10 @@ export function CreditCardFacturacionesTable({
         }
         subtitle={modalSubtitle}
       >
-        {facturacionLineCount === 0 ? (
+        {flowsPending ? (
+          // The lines are not in yet: an empty dimmed body, never the «no lines» copy.
+          <Loadable loading />
+        ) : facturacionLineCount === 0 ? (
           <p className="muted">{t("accountDetail.creditCard.facturacionModalEmpty")}</p>
         ) : (
           <CreditCardFacturacionModalSections

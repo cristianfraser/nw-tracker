@@ -7,6 +7,7 @@ import type { DisplayUnit } from "../../queries/keys";
 import type { FlowExcludedCheckingIncomeLine } from "../../types";
 import { useRestoreIncomeMovementMutation } from "../../queries/mutations";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { loadableClass } from "../ui/Loadable";
 import { Button } from "@crfrsr/ui";
 
 function excludedLineAmount(line: FlowExcludedCheckingIncomeLine, unit: DisplayUnit): number {
@@ -22,9 +23,11 @@ function excludedLineAmount(line: FlowExcludedCheckingIncomeLine, unit: DisplayU
 export function IncomeExcludedLinesTable({
   rows,
   displayUnit = "clp",
+  loading,
 }: {
   rows: readonly FlowExcludedCheckingIncomeLine[];
   displayUnit?: DisplayUnit;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const restoreIncomeMovement = useRestoreIncomeMovementMutation();
@@ -34,13 +37,13 @@ export function IncomeExcludedLinesTable({
     received_on: string;
   } | null>(null);
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !loading) {
     return <p className="muted">{t("income.excludedEmpty")}</p>;
   }
 
   return (
     <>
-      <table className="data-table" style={{ fontSize: "0.85rem" }}>
+      <table className={loadableClass(loading, "data-table")} style={{ fontSize: "0.85rem" }}>
         <thead>
           <tr>
             <th>{t("income.colDate")}</th>

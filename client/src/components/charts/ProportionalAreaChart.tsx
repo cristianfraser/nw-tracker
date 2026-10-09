@@ -14,6 +14,8 @@ import {
   extractSortedAsOfDates,
 } from "./chartLayout";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
+import { ChartEmptyState } from "./ChartEmptyState";
+import { loadableClass } from "../ui/Loadable";
 import type { ProportionalSeriesBlockDto, ProportionalSeriesLineDto } from "../../types";
 
 const Y_TICKS = [0, 0.25, 0.5, 0.75, 1];
@@ -32,16 +34,20 @@ export function ProportionalAreaChart({
   xAxisGranularity,
   timeRange,
   colorFor,
+  loading,
 }: {
   title: string;
   titleAs?: "h2" | "h3";
   controls?: ReactNode;
+  /** Null/undefined + `loading` = the pending frame; null/undefined + not loading = the «no data» copy. */
   block: ProportionalSeriesBlockDto | null | undefined;
   xAxisGranularity: "day" | "month" | "year";
   /** Per-surface Rango for the M/Y clip (daily payloads arrive server-windowed). */
   timeRange?: TimeRange;
   /** Series color, from the caller's existing maps (bucket palette / group color maps). */
   colorFor: (line: ProportionalSeriesLineDto, index: number) => string;
+  /** The block is not in yet (or is held prior data): dim the panel, no «no data» copy. */
+  loading?: boolean;
 }) {
   const allSeries = block?.series ?? [];
 
@@ -91,15 +97,15 @@ export function ProportionalAreaChart({
 
   if (!rows.length || !visibleSeries.length) {
     return (
-      <div className="chart-grid__col">
+      <div className={loadableClass(loading, "chart-grid__col")}>
         <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} />
-        <p className="empty muted">{i18n.t("charts.noValuationSeries")}</p>
+        <ChartEmptyState loading={loading} message={i18n.t("charts.noValuationSeries")} />
       </div>
     );
   }
 
   return (
-    <div className="chart-grid__col">
+    <div className={loadableClass(loading, "chart-grid__col")}>
       <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} />
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart

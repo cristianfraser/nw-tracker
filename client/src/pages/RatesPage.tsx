@@ -16,6 +16,7 @@ import { timeRangeCutoffYmd, type TimeRange } from "../timeRange";
 const FX_USD_DUAL_SERIES_KEYS = ["yahoo", "bcentral", "buy", "sell"] as const;
 const SINGLE_VALUE_SERIES_KEYS = ["value"] as const;
 import { Table } from "../components/ui/Table";
+import { loadableClass } from "../components/ui/Loadable";
 import { formatClp, formatGroupedDecimal, formatUsdFine } from "../format";
 import type { MarketSeriesPoint } from "../types";
 import { buildNiceYAxisPositiveBand } from "../components/charts/chartLayout";
@@ -94,12 +95,14 @@ function RatesRecentEntriesTable({
   colDate,
   colValue,
   emptyLabel,
+  loading,
 }: {
   data: readonly { date: string; value: number }[];
   valueFormatter: (n: number) => string;
   colDate: string;
   colValue: string;
   emptyLabel: string;
+  loading?: boolean;
 }) {
   const rows = lastSeriesEntries(data);
   return (
@@ -117,11 +120,13 @@ function RatesRecentEntriesTable({
         }
       >
         {rows.length === 0 ? (
-          <tr>
-            <td colSpan={2} className="muted">
-              {emptyLabel}
-            </td>
-          </tr>
+          loading ? null : (
+            <tr>
+              <td colSpan={2} className="muted">
+                {emptyLabel}
+              </td>
+            </tr>
+          )
         ) : (
           rows.map((r) => (
             <tr key={r.date}>
@@ -188,6 +193,7 @@ function FxUsdClpDualChart({
   recentColDate,
   recentColValue,
   recentEmptyLabel,
+  loading,
 }: {
   yahooData: { date: string; value: number }[];
   bcentralData: { date: string; value: number }[];
@@ -201,6 +207,7 @@ function FxUsdClpDualChart({
   recentColValue: string;
   recentEmptyLabel: string;
   timeRange: TimeRange;
+  loading?: boolean;
 }) {
   const merged = useMemo(
     () => mergeFxUsdDualSeries(yahooData, bcentralData, buyData, sellData),
@@ -250,22 +257,27 @@ function FxUsdClpDualChart({
       colDate={recentColDate}
       colValue={recentColValue}
       emptyLabel={recentEmptyLabel}
+      loading={loading}
     />
   );
 
   if (yahooData.length === 0 && bcentralData.length === 0) {
     return (
-      <section className="rates-chart-card">
+      <section className={loadableClass(loading, "rates-chart-card")}>
         <h3 className="rates-chart-card__title">USD / CLP</h3>
         <p className="muted rates-chart-card__note">CLP per US$1</p>
-        <p className="muted rates-chart-card__empty">No data</p>
+        {loading ? (
+          <div className="rates-chart-card__plot" aria-busy="true" />
+        ) : (
+          <p className="muted rates-chart-card__empty">No data</p>
+        )}
         {recentTable}
       </section>
     );
   }
 
   return (
-    <section className="rates-chart-card">
+    <section className={loadableClass(loading, "rates-chart-card")}>
       <h3 className="rates-chart-card__title">USD / CLP</h3>
       <p className="muted rates-chart-card__note">CLP per US$1</p>
       <div className="rates-chart-card__plot">
@@ -308,6 +320,7 @@ function MiniLineChart({
   recentColDate,
   recentColValue,
   recentEmptyLabel,
+  loading,
 }: {
   title: string;
   footnote?: string;
@@ -318,6 +331,7 @@ function MiniLineChart({
   recentColValue: string;
   recentEmptyLabel: string;
   timeRange: TimeRange;
+  loading?: boolean;
 }) {
   const denseData = useMemo(() => {
     const cutoff = timeRangeCutoffYmd(timeRange);
@@ -350,21 +364,26 @@ function MiniLineChart({
       colDate={recentColDate}
       colValue={recentColValue}
       emptyLabel={recentEmptyLabel}
+      loading={loading}
     />
   );
 
   if (data.length === 0) {
     return (
-      <section className="rates-chart-card">
+      <section className={loadableClass(loading, "rates-chart-card")}>
         <h3 className="rates-chart-card__title">{title}</h3>
         {footnote ? <p className="muted rates-chart-card__note">{footnote}</p> : null}
-        <p className="muted rates-chart-card__empty">No data</p>
+        {loading ? (
+          <div className="rates-chart-card__plot" aria-busy="true" />
+        ) : (
+          <p className="muted rates-chart-card__empty">No data</p>
+        )}
         {recentTable}
       </section>
     );
   }
   return (
-    <section className="rates-chart-card">
+    <section className={loadableClass(loading, "rates-chart-card")}>
       <h3 className="rates-chart-card__title">{title}</h3>
       {footnote ? <p className="muted rates-chart-card__note">{footnote}</p> : null}
       <div className="rates-chart-card__plot">
@@ -388,7 +407,7 @@ export function RatesPage() {
   const { displayUnit } = useDisplayPreferences();
   // Range-only per-surface control (rates are daily-native): one Rango for every panel.
   const rangePrefs = useSurfacePrefs("rates.range", "month", "1y");
-  const { data: payload, error } = useMarketSeries();
+  const { data: payload, error, isPending: seriesPending } = useMarketSeries();
   const { data: syncStatus } = useSyncStatus();
   const { data: ratesInstruments } = useRatesInstruments();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
@@ -426,25 +445,13 @@ export function RatesPage() {
     );
   }
 
-  if (!payload) {
-    return (
-      <main>
-        <p className="muted">
-          <Link to="/">{t("common.backToDashboard")}</Link>
-        </p>
-        <h1>{t("rates.pageTitle")}</h1>
-        <p className="muted">{t("common.loading")}</p>
-      </main>
-    );
-  }
-
   return (
     <main>
       <p className="muted">
         <Link to="/">{t("common.backToDashboard")}</Link>
       </p>
       <h1>{t("rates.pageTitle")}</h1>
-      <FxCoverageBanner coverage={payload.fx_coverage} />
+      <FxCoverageBanner coverage={payload?.fx_coverage} />
       {fxSyncStale ? (
         <p className="error" role="alert" style={{ maxWidth: "58rem", marginBottom: "1rem" }}>
           {t("fxCoverage.syncStale")}
@@ -480,6 +487,7 @@ export function RatesPage() {
               recentColDate={recentColDate}
               recentColValue={recentColValue}
               recentEmptyLabel={recentEmptyLabel}
+              loading={seriesPending}
             />
             <MiniLineChart
               timeRange={rangePrefs.range}
@@ -489,6 +497,7 @@ export function RatesPage() {
               yUnit="clp"
               valueFormatter={formatClp}
               {...recentTableProps}
+              loading={seriesPending}
             />
             <MiniLineChart
               timeRange={rangePrefs.range}
@@ -498,6 +507,7 @@ export function RatesPage() {
               yUnit="index"
               valueFormatter={formatIpcIndex}
               {...recentTableProps}
+              loading={seriesPending}
             />
             <MiniLineChart
               timeRange={rangePrefs.range}
@@ -507,6 +517,7 @@ export function RatesPage() {
               yUnit="clp"
               valueFormatter={formatClp}
               {...recentTableProps}
+              loading={seriesPending}
             />
           </div>
           <FxBidAskGapsTable />
@@ -529,6 +540,7 @@ export function RatesPage() {
                   yUnit={axis}
                   valueFormatter={fmt}
                   {...recentTableProps}
+                  loading={seriesPending}
                 />
               );
             })}

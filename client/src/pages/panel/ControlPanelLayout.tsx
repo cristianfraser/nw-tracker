@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../cn";
@@ -20,7 +21,10 @@ export function ControlPanelLayout() {
           </NavLink>
         ))}
       </nav>
-      <Outlet />
+      {/* A direct load of a tab keeps this heading and the tabs while the tab's chunk loads. */}
+      <Suspense fallback={null}>
+        <Outlet />
+      </Suspense>
     </main>
   );
 }

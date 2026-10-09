@@ -27,10 +27,6 @@ export function NotificationsPage() {
           ? t("common.loadFailed")
           : null;
 
-  if (notificationsPending) {
-    return <p className="muted">{t("common.loading")}</p>;
-  }
-
   if (err) {
     return <p className="error">{err}</p>;
   }
@@ -47,6 +43,7 @@ export function NotificationsPage() {
         colTitle={t("notifications.colTitle")}
         colDetail={t("notifications.colDetail")}
         colRead={t("notifications.colRead")}
+        loading={notificationsPending}
       />
     </>
   );

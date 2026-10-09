@@ -6,6 +6,7 @@ import { api } from "../../api";
 import { formatClp, formatGroupedDecimalTrimmed } from "../../format";
 import { useMovementMirrorCandidates } from "../../queries/hooks";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
+import { loadableClass } from "../../components/ui/Loadable";
 import { Table } from "../../components/ui/Table";
 import { TableMobileCard, TableMobileCardRow } from "../../components/ui/TableMobileCard";
 import { Button } from "@crfrsr/ui";
@@ -192,7 +193,6 @@ export function MirrorPairsPanelPage() {
   const selectedHigh = high.filter((p) => !unchecked.has(pairKey(p)));
   const busy = convert.isPending || reject.isPending || unreject.isPending || convertCc.isPending;
 
-  if (isPending) return <p className="muted">{t("common.loading")}</p>;
   if (error) {
     return <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>;
   }
@@ -225,12 +225,12 @@ export function MirrorPairsPanelPage() {
   );
 
   return (
-    <section>
+    <section className={loadableClass(isPending)}>
       <h2>{t("mirrorPairs.title")}</h2>
       {actionError ? <p className="error">{actionError}</p> : null}
 
       <h3>{t("mirrorPairs.highTitle", { n: high.length })}</h3>
-      {high.length === 0 ? (
+      {high.length === 0 && !isPending ? (
         <p className="muted">{t("mirrorPairs.emptyHigh")}</p>
       ) : (
         <>
@@ -317,7 +317,7 @@ export function MirrorPairsPanelPage() {
       )}
 
       <h3>{t("mirrorPairs.ambiguousTitle", { n: ambiguous.length })}</h3>
-      {ambiguous.length === 0 ? (
+      {ambiguous.length === 0 && !isPending ? (
         <p className="muted">{t("mirrorPairs.emptyAmbiguous")}</p>
       ) : (
         <Table
@@ -385,7 +385,7 @@ export function MirrorPairsPanelPage() {
       )}
 
       <h3>{t("mirrorPairs.ccTitle", { n: ccPairs.length })}</h3>
-      {ccPairs.length === 0 ? (
+      {ccPairs.length === 0 && !isPending ? (
         <p className="muted">{t("mirrorPairs.emptyCc")}</p>
       ) : (
         <>

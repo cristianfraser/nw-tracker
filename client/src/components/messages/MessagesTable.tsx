@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AppMessageRow } from "../../api";
 import { formatDateTimeLabel } from "../../formatDateLabel";
+import { loadableClass } from "../ui/Loadable";
 import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
 import { Button } from "@crfrsr/ui";
@@ -85,6 +86,7 @@ export function MessagesTable({
   colTitle,
   colDetail,
   colRead,
+  loading,
 }: {
   rows: AppMessageRow[];
   showReadAt: boolean;
@@ -95,9 +97,11 @@ export function MessagesTable({
   colTitle: string;
   colDetail: string;
   colRead: string;
+  loading?: boolean;
 }) {
   return (
     <Table
+      wrapClassName={loadableClass(loading)}
       collapsedVisibleRows={5}
       showMoreLabel={showMoreLabel}
       showLessLabel={showLessLabel}
@@ -113,11 +117,13 @@ export function MessagesTable({
       }
     >
       {rows.length === 0 ? (
-        <tr>
-          <td colSpan={showReadAt ? 4 : 3} className="muted">
-            {emptyLabel}
-          </td>
-        </tr>
+        loading ? null : (
+          <tr>
+            <td colSpan={showReadAt ? 4 : 3} className="muted">
+              {emptyLabel}
+            </td>
+          </tr>
+        )
       ) : (
         rows.map((r) => (
           <tr key={r.id}>

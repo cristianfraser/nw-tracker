@@ -1,8 +1,6 @@
 import type { ReactNode } from "react";
-import { LineChartPanel } from "./ValuationLineCharts";
-import { ProportionalAreaChart } from "./ProportionalAreaChart";
+import { LineChartPanel, MonthlyPerformanceComboChart, ProportionalAreaChart } from "./lazyCharts";
 import type { ChartDisplayUnit } from "./chartLayout";
-import { MonthlyPerformanceComboChart } from "./MonthlyPerformanceComboChart";
 import { groupTabPieSliceFill } from "../../chartColors";
 import { cn } from "../../cn";
 import i18n from "../../i18n";
@@ -16,6 +14,9 @@ type PerfBarSeries = {
   name: string;
   color: string;
 };
+
+/** The valuation chart's frame when the page has no block yet (cold nav: no node to chart). */
+const EMPTY_VALUATION_BLOCK: TimeseriesBlock = { accounts: [], points: [] };
 
 export function PortfolioGroupChartsSection({
   accountsEmpty,
@@ -47,6 +48,10 @@ export function PortfolioGroupChartsSection({
   perfTimeRange,
   valuationControls,
   perfControls,
+  loading = false,
+  valuationLoading = loading,
+  proportionalLoading = loading,
+  perfLoading = loading,
 }: {
   accountsEmpty: boolean;
   accountsEmptyMessage: string;
@@ -85,8 +90,17 @@ export function PortfolioGroupChartsSection({
   /** Per-surface Período/Rango controls (the two P/L combos share `perfControls`). */
   valuationControls?: ReactNode;
   perfControls?: ReactNode;
+  /**
+   * The page bundle is a placeholder or held prior data: every chart dims, an empty account
+   * list is not read as «no accounts» yet, and the P/L combos stay mounted.
+   */
+  loading?: boolean;
+  /** Per-chart overrides (a Diario series still loading); default `loading`. */
+  valuationLoading?: boolean;
+  proportionalLoading?: boolean;
+  perfLoading?: boolean;
 }) {
-  if (accountsEmpty) {
+  if (accountsEmpty && !loading) {
     return (
       <p className="empty muted" style={{ marginTop: "1rem" }}>
         {accountsEmptyMessage}
@@ -94,8 +108,10 @@ export function PortfolioGroupChartsSection({
     );
   }
 
-  if (!valuationBlockForChart) return null;
-
+  const valuationBlock = valuationBlockForChart ?? EMPTY_VALUATION_BLOCK;
+  // Only the loaded bundle can say the group has no P/L; a placeholder keeps the combos' frames.
+  const perfAbsent =
+    !loading && (!groupPerfForChart?.points.length || groupPerfBarSeries.length === 0);
   const includeDeposits = chartCtx?.showGroupedToggle ? showValuationDeposits : true;
 
   return (
@@ -106,7 +122,7 @@ export function PortfolioGroupChartsSection({
       >
         <LineChartPanel
           title={i18n.t("charts.valuationAndDeposits")}
-          block={valuationBlockForChart}
+          block={valuationBlock}
           displayUnit={displayUnit}
           xAxisGranularity={valuationXAxisGranularity ?? xAxisGranularity}
           timeRange={valuationTimeRange}
@@ -119,14 +135,15 @@ export function PortfolioGroupChartsSection({
                 ? ("liabilities" as typeof colorPlanGroupSlug)
                 : colorPlanGroupSlug,
             brokerageSubgroup: chartCtx?.brokerageSubgroup,
-            accounts: valuationBlockForChart.accounts ?? [],
+            accounts: valuationBlock.accounts ?? [],
             groupTotalColorRgb: groupColorRgb,
           }}
           thickKey={
-            valuationBlockForChart.accounts?.some((a) => a.dataKey === "__group_val_total")
+            valuationBlock.accounts?.some((a) => a.dataKey === "__group_val_total")
               ? "__group_val_total"
               : undefined
           }
+          loading={valuationLoading}
         />
         {proportionalReplacement ??
           (chartSeriesCount > 1 && (
@@ -136,6 +153,7 @@ export function PortfolioGroupChartsSection({
               xAxisGranularity={proportionalXAxisGranularity}
               timeRange={proportionalTimeRange}
               controls={proportionalControls}
+              loading={proportionalLoading}
               colorFor={(line) =>
                 groupTabPieSliceFill(
                   chartColorSlug,
@@ -150,15 +168,12 @@ export function PortfolioGroupChartsSection({
 
       {chartControls}
 
-      {!hideGroupPerf &&
-      groupPerfForChart &&
-      groupPerfForChart.points.length > 0 &&
-      groupPerfBarSeries.length > 0 ? (
+      {!hideGroupPerf && !perfAbsent ? (
         <>
           <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
             <MonthlyPerformanceComboChart
               title={i18n.t("charts.groupPerfComboTitle")}
-              points={groupPerfForChart.points}
+              points={groupPerfForChart?.points ?? []}
               displayUnit={displayUnit}
               xAxisGranularity={perfXAxisGranularity ?? xAxisGranularity}
               timeRange={perfTimeRange}
@@ -176,12 +191,13 @@ export function PortfolioGroupChartsSection({
                   showDot: true,
                 },
               ]}
+              loading={perfLoading}
             />
           </div>
           <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
             <MonthlyPerformanceComboChart
               title={i18n.t("charts.monthlyDeltaConsolidatedAccumTitle")}
-              points={groupPerfForChart.points}
+              points={groupPerfForChart?.points ?? []}
               displayUnit={displayUnit}
               xAxisGranularity={perfXAxisGranularity ?? xAxisGranularity}
               timeRange={perfTimeRange}
@@ -198,6 +214,7 @@ export function PortfolioGroupChartsSection({
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
               alternateYearAreaStripes={false}
+              loading={perfLoading}
             />
           </div>
         </>

@@ -240,6 +240,7 @@
     "colActions": "Actions",
     "marqueeAria": "Show in marquee",
     "emptyManual": "No manual symbols.",
+    "emptyApp": "No app instruments.",
     "addError": "Could not add the ticker.",
     "riskyNorrisProxy": "Risky Norris (intraday)"
   },
@@ -835,7 +836,6 @@
     "pasivos": {
       "creditCardSectionTitle": "Credit cards",
       "mortgageSectionTitle": "Mortgage",
-      "mortgageValuationTitle": "Valuation",
       "mortgagePerfTitle": "Monthly performance (computed)",
       "mortgageYtdChartTitle": "Monthly P/L vs YTD (financing cost)",
       "mortgageAccChartTitle": "Monthly and accumulated financing cost",
@@ -1415,6 +1415,7 @@
   },
   "wealthPercentile": {
     "title": "Wealth percentile",
+    "empty": "No percentile data.",
     "chart": {
       "seriesTotal": "Total percentile (CL)",
       "seriesFinancial": "Financial percentile (CL)",
@@ -1456,6 +1457,7 @@
   },
   "projections": {
     "title": "Projections",
+    "noChartData": "No projection data.",
     "invalidRange": "Must be between {{min}} and {{max}}",
     "reset": "Reset",
     "params": {
@@ -1765,7 +1767,6 @@
     "viewLabel": "View:",
     "viewComposition": "Composition",
     "viewMap": "Map",
-    "title": "Map",
     "periodLabel": "Return:",
     "period": {
       "day": "Day",

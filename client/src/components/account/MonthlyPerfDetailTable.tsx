@@ -180,6 +180,7 @@ export function MonthlyPerfDetailTable({
   showStockInflowsColumn = true,
   serverPagination,
   period,
+  loading = false,
 }: {
   rows: readonly PerfRow[];
   displayUnit: "clp" | "usd";
@@ -195,6 +196,8 @@ export function MonthlyPerfDetailTable({
   serverPagination?: MonthlyPerfServerPagination;
   /** Per-surface table período (from the table's own control). */
   period: "month" | "year";
+  /** The rows are a placeholder or held prior data: the table dims (callers pass the placeholder rows). */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const isYearly = period === "year";
@@ -278,7 +281,7 @@ export function MonthlyPerfDetailTable({
       pageSize={PAGE_SIZE}
       total={total}
       onPageChange={setPage}
-      loading={serverPagination?.loading ?? false}
+      loading={loading || (serverPagination?.loading ?? false)}
     >
       <Table
         key={`monthly-detail-page-${page}-${period}`}

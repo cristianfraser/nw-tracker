@@ -7,6 +7,7 @@ import type { DisplayUnit } from "../../queries/keys";
 import type { FlowFilteredCheckingIncomeLine, IncomeAutoFilterReason } from "../../types";
 import { useForceIncludeIncomeMovementMutation } from "../../queries/mutations";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { loadableClass } from "../ui/Loadable";
 import { Button } from "@crfrsr/ui";
 
 function excludedLineAmount(line: FlowFilteredCheckingIncomeLine, unit: DisplayUnit): number {
@@ -29,9 +30,11 @@ function filterReasonLabel(
 export function IncomeFilteredLinesTable({
   rows,
   displayUnit = "clp",
+  loading,
 }: {
   rows: readonly FlowFilteredCheckingIncomeLine[];
   displayUnit?: DisplayUnit;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const forceInclude = useForceIncludeIncomeMovementMutation();
@@ -41,13 +44,13 @@ export function IncomeFilteredLinesTable({
     received_on: string;
   } | null>(null);
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !loading) {
     return <p className="muted">{t("income.filteredEmpty")}</p>;
   }
 
   return (
     <>
-      <table className="data-table" style={{ fontSize: "0.85rem" }}>
+      <table className={loadableClass(loading, "data-table")} style={{ fontSize: "0.85rem" }}>
         <thead>
           <tr>
             <th>{t("income.colDate")}</th>

@@ -2,8 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../cn";
-import { MonthlyPerformanceComboChart } from "../charts/MonthlyPerformanceComboChart";
-import { LineChartPanel } from "../charts/ValuationLineCharts";
+import { MonthlyPerformanceComboChart } from "../charts/lazyCharts";
 import { DeptoAccountSummaryCards } from "../../pages/accountDetail/DeptoAccountSummaryCards";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "../../pages/accountDetail/MortgageTables";
 import { MonthlyPerfDetailTable } from "../account/MonthlyPerfDetailTable";
@@ -14,13 +13,13 @@ import { useDailySeries } from "../../queries/hooks";
 import { clipMonthsThenRollup, timeRangeToDays } from "../../timeRange";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
+import { loadableClass } from "../ui/Loadable";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
 import type {
   AccountMonthlyPerformanceRow,
   AccountMortgageLedgerResponse,
   AccountSummaryResponse,
   DashboardAccountRow,
-  TimeseriesBlock,
 } from "../../types";
 import styles from "../../pages/AccountDetailPage.module.css";
 
@@ -31,9 +30,11 @@ type Props = {
   summary: Pick<AccountSummaryResponse, "latest_valuation_clp" | "account_id">;
   accountDashRow: DashboardAccountRow | null;
   accountColorRgb?: string | null;
-  valuationBlockForChart?: TimeseriesBlock | null;
-  showValuationChart?: boolean;
   linkTo?: string;
+  /** `mortgageLedger` is an empty placeholder while the ledger loads: the section dims. */
+  loading?: boolean;
+  /** `monthlyPerfRows` are not in yet (or are the previous unit's): the P/L block dims, never reads as empty. */
+  perfLoading?: boolean;
 };
 
 export function LiabilitiesMortgageGroupSection({
@@ -43,9 +44,9 @@ export function LiabilitiesMortgageGroupSection({
   summary,
   accountDashRow,
   accountColorRgb,
-  valuationBlockForChart,
-  showValuationChart = false,
   linkTo,
+  loading = false,
+  perfLoading = false,
 }: Props) {
   const { t } = useTranslation();
   // One control for the section's two P/L combos (shared on both root + mortgage pages —
@@ -142,9 +143,12 @@ export function LiabilitiesMortgageGroupSection({
   }, [monthlyPerfRows, isYearly, timeRange]);
 
   const title = t("groupPage.pasivos.mortgageSectionTitle");
+  // Diario combos show the monthly points, dimmed, until the daily series is this unit's.
+  const combosLoading =
+    perfLoading || (isDaily && (dailySeries.isPending || dailySeries.isPlaceholderData));
 
   return (
-    <section className={styles.chartBlock}>
+    <section className={loadableClass(loading, styles.chartBlock)}>
       {linkTo ? (
         <h2 className={styles.sectionTitle}>
           <Link to={linkTo}>{title}</Link>
@@ -161,18 +165,7 @@ export function LiabilitiesMortgageGroupSection({
         accountDashRow={accountDashRow}
       />
 
-      {showValuationChart && valuationBlockForChart ? (
-        <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
-          <LineChartPanel
-            title={t("groupPage.pasivos.mortgageValuationTitle")}
-            block={valuationBlockForChart}
-            displayUnit={displayUnit}
-            xAxisGranularity={xAxisGranularity}
-          />
-        </div>
-      ) : null}
-
-      {monthlyPerfRows.length > 0 ? (
+      {monthlyPerfRows.length > 0 || perfLoading ? (
         <>
           <h3 className={styles.sectionTitleSpaced}>{t("groupPage.pasivos.mortgagePerfTitle")}</h3>
           <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
@@ -195,6 +188,7 @@ export function LiabilitiesMortgageGroupSection({
               areaName="YTD"
               areaFill={accountChartTheme.areaFill}
               areaStroke={accountChartTheme.areaStroke}
+              loading={combosLoading}
             />
           </div>
           <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockLoose)}>
@@ -218,6 +212,7 @@ export function LiabilitiesMortgageGroupSection({
               areaFill={accountChartTheme.areaFill}
               areaStroke={accountChartTheme.areaStroke}
               alternateYearAreaStripes={false}
+              loading={combosLoading}
             />
           </div>
           <div className="chart-panel-title-row">
@@ -233,15 +228,12 @@ export function LiabilitiesMortgageGroupSection({
             <SurfaceControls period={detallePrefs.period} onPeriodChange={detallePrefs.setPeriod} />
           </div>
           {tableIsDaily ? (
-            detalleDailySeries.data ? (
-              <DailyPerfDetailTable
-                series={detalleDailySeries.data}
-                displayUnit={displayUnit}
-                dimClosedDays
-              />
-            ) : (
-              <p className="muted">{t("common.loading")}</p>
-            )
+            <DailyPerfDetailTable
+              series={detalleDailySeries.data}
+              displayUnit={displayUnit}
+              dimClosedDays
+              loading={detalleDailySeries.isPending || detalleDailySeries.isPlaceholderData}
+            />
           ) : (
             <MonthlyPerfDetailTable
               rows={monthlyPerfRows}
@@ -249,6 +241,7 @@ export function LiabilitiesMortgageGroupSection({
               period={detallePrefs.period === "year" ? "year" : "month"}
               isMortgageAccount
               showStockInflowsColumn={false}
+              loading={perfLoading}
             />
           )}
         </>
@@ -261,7 +254,7 @@ export function LiabilitiesMortgageGroupSection({
             <DeptoPaymentScenarioTable rows={mortgageLedger.payment_scenarios} />
           ) : null}
         </>
-      ) : (
+      ) : loading ? null : (
         <p className="muted">{t("account.creditCard.mortgageSheetEmpty")}</p>
       )}
     </section>

@@ -5,6 +5,7 @@ import type { SyncSourceDisplayStatus, SyncStatusResponse } from "../../types";
 import { cn } from "../../cn";
 import { useSyncForceStaleMutation } from "../../queries/hooks";
 import { formatDateTimeLabel } from "../../formatDateLabel";
+import { loadableClass } from "../ui/Loadable";
 import { Table } from "../ui/Table";
 import { formatDayKindLabel, formatNextSyncLabel } from "./formatSyncSchedule";
 import styles from "./SyncLogStatusPanel.module.css";
@@ -58,7 +59,13 @@ function statusLabel(
   return t("importSync.sync.statusOk");
 }
 
-export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
+export function SyncLogStatusPanel({
+  status,
+  loading,
+}: {
+  status: SyncStatusResponse | undefined;
+  loading?: boolean;
+}) {
   const { t } = useTranslation();
   const forceStale = useSyncForceStaleMutation();
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -68,7 +75,9 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
     return () => window.clearInterval(id);
   }, []);
 
+  // No status yet: dashes, never «never synced» or «scheduler off» (those are answers, not loading).
   const lastLine = useMemo(() => {
+    if (!status) return "—";
     if (!status.last_sync_at) return t("importSync.sync.lastSyncNever");
     const atMs = parseCreatedAtMs(status.last_sync_at);
     if (Number.isNaN(atMs)) return t("importSync.sync.lastSyncNever");
@@ -76,9 +85,10 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
       time: formatWhen(status.last_sync_at),
       ago: formatAgoEs(nowMs - atMs),
     });
-  }, [status.last_sync_at, nowMs, t]);
+  }, [status, nowMs, t]);
 
   const nextLine = useMemo(() => {
+    if (!status) return "—";
     const sched = status.scheduler;
     if (!sched.enabled) return t("importSync.sync.schedulerOff");
     if (sched.in_flight) return t("importSync.sync.inFlight");
@@ -89,10 +99,10 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
       time: formatWhen(sched.next_check_at),
       remaining,
     });
-  }, [status.scheduler, nowMs, t]);
+  }, [status, nowMs, t]);
 
   return (
-    <div className={styles.panel}>
+    <div className={loadableClass(loading, styles.panel)}>
       <p className={cn("muted", styles.scheduleLine)}>{lastLine}</p>
       <p className={cn("muted", styles.scheduleLine)}>{nextLine}</p>
       <div className={styles.tableWrap}>
@@ -109,7 +119,7 @@ export function SyncLogStatusPanel({ status }: { status: SyncStatusResponse }) {
             </thead>
           }
         >
-          {status.sources.map((row) => (
+          {(status?.sources ?? []).map((row) => (
             <tr key={row.source}>
               <td>{t(`importSync.sync.sources.${row.source}`)}</td>
               <td className="muted">{formatNextSyncLabel(row, t)}</td>

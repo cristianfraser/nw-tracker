@@ -15,6 +15,8 @@ import {
   resolvePeriodXAxis,
 } from "./chartLayout";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
+import { ChartEmptyState } from "./ChartEmptyState";
+import { loadableClass } from "../ui/Loadable";
 import type { ProportionalSeriesBlockDto } from "../../types";
 
 /**
@@ -29,12 +31,16 @@ export function CoverageLineChart({
   block,
   xAxisGranularity,
   timeRange,
+  loading,
 }: {
   title: string;
   controls?: ReactNode;
+  /** Null/undefined + `loading` = the pending frame; null/undefined + not loading = the «no data» copy. */
   block: ProportionalSeriesBlockDto | null | undefined;
   xAxisGranularity: "day" | "month" | "year";
   timeRange?: TimeRange;
+  /** The block is not in yet (or is held prior data): dim the panel, no «no data» copy. */
+  loading?: boolean;
 }) {
   const series = block?.series ?? [];
 
@@ -86,15 +92,15 @@ export function CoverageLineChart({
 
   if (!rows.length || !series.length) {
     return (
-      <div className="chart-grid__col">
+      <div className={loadableClass(loading, "chart-grid__col")}>
         <ChartPanelTitleRow title={title} controls={controls} />
-        <p className="empty muted">{i18n.t("charts.noValuationSeries")}</p>
+        <ChartEmptyState loading={loading} message={i18n.t("charts.noValuationSeries")} />
       </div>
     );
   }
 
   return (
-    <div className="chart-grid__col">
+    <div className={loadableClass(loading, "chart-grid__col")}>
       <ChartPanelTitleRow title={title} controls={controls} />
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart

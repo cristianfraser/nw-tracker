@@ -5,6 +5,7 @@ import { AddAccountForm } from "../../components/panel/AddAccountForm";
 import { AccountExcludeFromTotalsToggle } from "../../components/panel/AccountExcludeFromTotalsToggle";
 import { EditAccountModal } from "../../components/panel/EditAccountModal";
 import { EntityColorPicker } from "../../components/dashboard/EntityColorPicker";
+import { Loadable, loadableClass } from "../../components/ui/Loadable";
 import { Table } from "../../components/ui/Table";
 import { api } from "../../api";
 import { queryKeys } from "../../queries/keys";
@@ -81,9 +82,6 @@ export function AccountsPanelPage() {
           : null;
 
   const netWorthNode = useMemo(() => panelTreeData?.net_worth ?? null, [panelTreeData]);
-  if (accountsPending || panelTreePending) {
-    return <p className="muted">{t("common.loading")}</p>;
-  }
 
   if (err) {
     return <p className="error">{err}</p>;
@@ -113,12 +111,15 @@ export function AccountsPanelPage() {
     <>
 
       <h2 className="flow-section-title">{t("panelAccounts.addAccountTitle")}</h2>
-      <AddAccountForm netWorthRoot={netWorthNode} />
+      <Loadable loading={panelTreePending}>
+        <AddAccountForm netWorthRoot={netWorthNode} />
+      </Loadable>
 
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
         {t("panelAccounts.accountsTitle")}
       </h2>
       <Table
+        wrapClassName={loadableClass(accountsPending)}
         header={
           <thead>
             <tr>
@@ -132,11 +133,13 @@ export function AccountsPanelPage() {
         }
       >
         {accounts.length === 0 ? (
-          <tr>
-            <td colSpan={5} className="muted">
-              {t("panelAccounts.emptyAccounts")}
-            </td>
-          </tr>
+          accountsPending ? null : (
+            <tr>
+              <td colSpan={5} className="muted">
+                {t("panelAccounts.emptyAccounts")}
+              </td>
+            </tr>
+          )
         ) : (
           accounts.map((a) => (
             <tr key={a.id}>
@@ -178,6 +181,7 @@ export function AccountsPanelPage() {
         {t("panelAccounts.portfolioGroupsTitle")}
       </h2>
       <Table
+        wrapClassName={loadableClass(panelTreePending)}
         header={
           <thead>
             <tr>
@@ -192,11 +196,13 @@ export function AccountsPanelPage() {
         }
       >
         {!netWorthNode ? (
-          <tr>
-            <td colSpan={6} className="muted">
-              {t("panelAccounts.emptyTree")}
-            </td>
-          </tr>
+          panelTreePending ? null : (
+            <tr>
+              <td colSpan={6} className="muted">
+                {t("panelAccounts.emptyTree")}
+              </td>
+            </tr>
+          )
         ) : (
           <PortfolioGroupTableRows node={netWorthNode} />
         )}
@@ -207,7 +213,7 @@ export function AccountsPanelPage() {
       </h2>
       {netWorthNode ? (
         <NavAccountsTree root={netWorthNode} />
-      ) : (
+      ) : panelTreePending ? null : (
         <p className="muted">{t("panelAccounts.emptyTree")}</p>
       )}
 

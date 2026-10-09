@@ -17,6 +17,8 @@ import { chileTodayYmd } from "../../calendarMonth";
 import { timeRangeCutoffYmd, type TimeRange } from "../../timeRange";
 import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
+import { ChartEmptyState } from "./ChartEmptyState";
+import { loadableClass } from "../ui/Loadable";
 import {
   coerceKeptTrailingZeroMonth,
   prependInitialZeroAnchorsOnBlock,
@@ -154,6 +156,11 @@ interface BlockProps {
    * the window.
    */
   athMarker?: NetWorthAthDto | null;
+  /**
+   * The block is a placeholder or held prior data: the panel dims itself and, with nothing to
+   * plot, draws an empty chart box instead of the «no valuation series» copy.
+   */
+  loading?: boolean;
 }
 
 /** Invisible underlay stroke width — wide hit target (`pointer-events: stroke`). */
@@ -434,6 +441,7 @@ export function LineChartPanel({
   timeRange: timeRangeProp,
   controls,
   athMarker,
+  loading,
 }: BlockProps) {
   const timeRange = timeRangeProp ?? "total";
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
@@ -562,9 +570,9 @@ export function LineChartPanel({
 
   if (!chartData.length || !visibleSeries.length) {
     return (
-      <div className="chart-grid__col">
+      <div className={loadableClass(loading, "chart-grid__col")}>
         {title ? <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} /> : null}
-        <p className="empty muted">{i18n.t("charts.noValuationSeries")}</p>
+        <ChartEmptyState loading={loading} message={i18n.t("charts.noValuationSeries")} />
       </div>
     );
   }
@@ -577,7 +585,7 @@ export function LineChartPanel({
   const chartMargin = RECHARTS_MONEY_CHART_MARGIN;
 
   return (
-    <div className="chart-grid__col">
+    <div className={loadableClass(loading, "chart-grid__col")}>
       {title ? <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} /> : null}
       <div
         className="chart-box line-chart-focus-wrap"
@@ -761,6 +769,8 @@ interface Props {
    * `fullWidthStack`: one chart per row (full width). Default `twoColumn` matches legacy side-by-side on wide viewports.
    */
   chartLayout?: "twoColumn" | "fullWidthStack";
+  /** Both panels hold placeholder or prior data: they dim and skip the empty copy. */
+  loading?: boolean;
 }
 
 export function ValuationLineCharts({
@@ -783,6 +793,7 @@ export function ValuationLineCharts({
   secondaryControls,
   primaryAthMarker,
   chartLayout = "twoColumn",
+  loading,
 }: Props) {
   const gridClass =
     chartLayout === "fullWidthStack" ? "chart-grid chart-grid--full-width-stack" : "chart-grid";
@@ -800,6 +811,7 @@ export function ValuationLineCharts({
         timeRange={primaryTimeRange}
         controls={primaryControls}
         athMarker={primaryAthMarker}
+        loading={loading}
       />
       <LineChartPanel
         title={secondaryTitle}
@@ -811,6 +823,7 @@ export function ValuationLineCharts({
         xAxisGranularity={secondaryXAxisGranularity ?? xAxisGranularity}
         timeRange={secondaryTimeRange}
         controls={secondaryControls}
+        loading={loading}
       />
     </div>
   );

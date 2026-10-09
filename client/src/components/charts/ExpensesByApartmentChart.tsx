@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
+import { ChartEmptyState } from "./ChartEmptyState";
+import { loadableClass } from "../ui/Loadable";
 import { Bar, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { formatClp } from "../../format";
@@ -29,6 +31,7 @@ export function ExpensesByApartmentChart({
   places,
   xAxisGranularity = "month",
   accountFilter,
+  loading,
 }: {
   title: string;
   /** Per-surface Período/Rango controls, rendered next to the title. */
@@ -39,6 +42,7 @@ export function ExpensesByApartmentChart({
   xAxisGranularity?: "month" | "year";
   /** When set, only these places contribute to stacked bars (total line still full). */
   accountFilter?: readonly ExpenseApartmentSlug[];
+  loading?: boolean;
 }) {
   const compactAxis = useIsNarrowViewport();
   const bars = useMemo(() => {
@@ -77,7 +81,7 @@ export function ExpensesByApartmentChart({
     return (
       <div className="chart-grid__col">
         <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
-        <p className="empty muted">{i18n.t("charts.noExpensesInPeriod")}</p>
+        <ChartEmptyState loading={loading} message={i18n.t("charts.noExpensesInPeriod")} />
       </div>
     );
   }
@@ -85,7 +89,7 @@ export function ExpensesByApartmentChart({
   return (
     <div className="chart-grid__col">
       <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
-      <div className="chart-box line-chart-focus-wrap">
+      <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")}>
         <AppComposedChart
           data={densePoints}
           tooltip={{

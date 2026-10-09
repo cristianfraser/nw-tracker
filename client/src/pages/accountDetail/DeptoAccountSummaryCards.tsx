@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
-import { cn } from "../../cn";
+import { loadableClass } from "../../components/ui/Loadable";
 import type {
   AccountMortgageLedgerResponse,
   AccountMonthlyPerformanceRow,
@@ -44,6 +44,7 @@ export function DeptoAccountSummaryCards({
   summary,
   monthlyPerfRows,
   accountDashRow,
+  loading = false,
 }: {
   variant: "mortgage" | "property";
   ledger: AccountMortgageLedgerResponse;
@@ -51,6 +52,8 @@ export function DeptoAccountSummaryCards({
     Partial<Pick<AccountSummaryResponse, "deposits_clp">>;
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[];
   accountDashRow: DashboardAccountRow | null;
+  /** The ledger is a placeholder or held prior data: the cards dim (empty values read «—»). */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -80,7 +83,7 @@ export function DeptoAccountSummaryCards({
 
   if (variant === "mortgage" && mortgageData) {
     return (
-      <div className={cn("cards", styles.cardsBelow, styles.positionBlock)}>
+      <div className={loadableClass(loading, "cards", styles.cardsBelow, styles.positionBlock)}>
         <div className="card">
           <div className="label">{t("accountDetail.deptoSummary.mortgage.currentBalance")}</div>
           <div className="value">
@@ -110,7 +113,7 @@ export function DeptoAccountSummaryCards({
 
   if (variant === "property" && propertyData) {
     return (
-      <div className={cn("cards", styles.cardsBelow, styles.positionBlock)}>
+      <div className={loadableClass(loading, "cards", styles.cardsBelow, styles.positionBlock)}>
         <div className="card">
           <div className="label">{t("accountDetail.deptoSummary.property.value")}</div>
           <div className="value">

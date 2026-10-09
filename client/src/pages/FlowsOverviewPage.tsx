@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { FlowsOverviewChart } from "../components/charts/FlowsOverviewChart";
 import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
 import { Table } from "../components/ui/Table";
+import { loadableClass } from "../components/ui/Loadable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
@@ -66,6 +67,16 @@ export function FlowsOverviewPage() {
 
   const error = income.error ?? expenses.error ?? gastos.error ?? deposits.error ?? pl.error;
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
+  // Any of the five still pending (or holding a prior window/unit): the page renders its frame
+  // with zero totals and no rows, dimmed.
+  const loading =
+    !income.data ||
+    !expenses.data ||
+    !gastos.data ||
+    !deposits.data ||
+    !pl.data ||
+    gastos.isPlaceholderData ||
+    pl.isPlaceholderData;
 
   const monthRows = useMemo(() => {
     if (!income.data || !expenses.data || !gastos.data || !deposits.data || !pl.data) return null;
@@ -127,10 +138,7 @@ export function FlowsOverviewPage() {
   );
 
   /** Headline totals stay full history; `rangeTotals` (shown when Rango ≠ Todo) follow the chart. */
-  const fullTotals = useMemo(
-    () => (monthRows ? flowsOverviewTotals(monthRows) : null),
-    [monthRows]
-  );
+  const fullTotals = useMemo(() => flowsOverviewTotals(monthRows ?? []), [monthRows]);
   const rangeTotals = useMemo(() => flowsOverviewTotals(chartRows), [chartRows]);
 
   /** Table rows: FULL history (no range clip), rolled to the table's own período. */
@@ -144,10 +152,6 @@ export function FlowsOverviewPage() {
 
   if (err) {
     return <p className="error">{err}</p>;
-  }
-
-  if (!monthRows || !fullTotals) {
-    return <p className="muted">{t("common.loading")}</p>;
   }
 
   return (
@@ -164,6 +168,7 @@ export function FlowsOverviewPage() {
           points={chartPoints}
           xAxisGranularity={chartGranularity}
           displayUnit={displayUnit}
+          loading={loading}
         />
       </div>
 
@@ -175,7 +180,10 @@ export function FlowsOverviewPage() {
           periodOptions={["month", "year"]}
         />
       </div>
-      <p className="muted" style={{ marginBottom: timeRange !== "total" ? "0.35rem" : "0.75rem", fontSize: "0.85rem" }}>
+      <p
+        className={loadableClass(loading, "muted")}
+        style={{ marginBottom: timeRange !== "total" ? "0.35rem" : "0.75rem", fontSize: "0.85rem" }}
+      >
         {t("flows.overview.totalsLabel")}{" "}
         <span className="mono" style={{ color: "var(--text)" }}>
           {t("flows.overview.income")} {formatFlowMoney(fullTotals.income, displayUnit)}
@@ -202,7 +210,7 @@ export function FlowsOverviewPage() {
         </span>
       </p>
       {timeRange !== "total" ? (
-        <p className="muted" style={{ marginBottom: "0.75rem", fontSize: "0.8rem" }}>
+        <p className={loadableClass(loading, "muted")} style={{ marginBottom: "0.75rem", fontSize: "0.8rem" }}>
           {t("flows.rangeTotalLabel")}:{" "}
           <span className="mono">
             {t("flows.overview.income")} {formatFlowMoney(rangeTotals.income, displayUnit)}
@@ -226,7 +234,7 @@ export function FlowsOverviewPage() {
         </p>
       ) : null}
 
-      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
+      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
         <Table
           header={
             <thead>

@@ -7,6 +7,7 @@ import { incomeCartolaAmount } from "../../incomeAggregates";
 import type { DisplayUnit } from "../../queries/keys";
 import type { FlowCheckingIncomeLine } from "../../types";
 import { useIncomeRefundMutation } from "../../queries/mutations";
+import { loadableClass } from "../ui/Loadable";
 
 /**
  * Credits marked as refunds of spending (someone paying back a shared expense, an additional
@@ -16,19 +17,21 @@ import { useIncomeRefundMutation } from "../../queries/mutations";
 export function IncomeRefundLinesTable({
   rows,
   displayUnit = "clp",
+  loading,
 }: {
   rows: readonly (FlowCheckingIncomeLine & { category_slug: string })[];
   displayUnit?: DisplayUnit;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const incomeRefund = useIncomeRefundMutation();
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !loading) {
     return <p className="muted">{t("income.refundsEmpty")}</p>;
   }
 
   return (
-    <table className="data-table" style={{ fontSize: "0.85rem" }}>
+    <table className={loadableClass(loading, "data-table")} style={{ fontSize: "0.85rem" }}>
       <thead>
         <tr>
           <th>{t("income.colDate")}</th>

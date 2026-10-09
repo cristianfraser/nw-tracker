@@ -5,6 +5,8 @@ import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { clipPointsToTimeRange, type TimeRange } from "../../timeRange";
 import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
+import { ChartEmptyState } from "./ChartEmptyState";
+import { loadableClass } from "../ui/Loadable";
 import i18n from "../../i18n";
 import { AppComposedChart } from "./AppComposedChart";
 import type { ChartTooltipEntry } from "./ChartTooltip";
@@ -160,6 +162,7 @@ export function MonthlyPerformanceComboChart({
   xAxisGranularity = "month",
   timeRange: timeRangeProp,
   controls,
+  loading,
 }: {
   title: string;
   titleAs?: "h2" | "h3";
@@ -179,6 +182,11 @@ export function MonthlyPerformanceComboChart({
   timeRange?: TimeRange;
   /** Per-surface Período/Rango controls, rendered right-aligned next to the title. */
   controls?: ReactNode;
+  /**
+   * The points are a placeholder or held prior data: the chart dims itself and, with no points,
+   * draws an empty chart box instead of the «no monthly P/L» copy.
+   */
+  loading?: boolean;
 }) {
   const compactAxis = useIsNarrowViewport();
   const timeRange = timeRangeProp ?? "total";
@@ -260,9 +268,9 @@ export function MonthlyPerformanceComboChart({
 
   if (!points.length) {
     return (
-      <div className="chart-grid__col">
+      <div className={loadableClass(loading, "chart-grid__col")}>
         <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} />
-        <p className="empty muted">{i18n.t("charts.noMonthlyPl")}</p>
+        <ChartEmptyState loading={loading} message={i18n.t("charts.noMonthlyPl")} />
       </div>
     );
   }
@@ -288,7 +296,7 @@ export function MonthlyPerformanceComboChart({
   };
 
   return (
-    <div className="chart-grid__col">
+    <div className={loadableClass(loading, "chart-grid__col")}>
       <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} />
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart

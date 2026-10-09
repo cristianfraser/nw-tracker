@@ -3,6 +3,7 @@ import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
 import type { CheckingCartolaMonthRowDto } from "../../types";
 import { Table } from "../../components/ui/Table";
+import { loadableClass } from "../../components/ui/Loadable";
 import { Modal } from "../../components/ui/Modal";
 import { Button } from "@crfrsr/ui";
 import { FlowsTable } from "../../components/account/FlowsTable";
@@ -113,11 +114,14 @@ export function CheckingCartolaMonthTable({
   accountId,
   importedMonthCount,
   collapsedVisibleRows = 12,
+  loading = false,
 }: {
   rows: readonly CheckingCartolaMonthRowDto[];
   accountId: number;
   importedMonthCount: number;
   collapsedVisibleRows?: number;
+  /** The months are not in yet (or are held prior data): the table dims; with no rows it shows its header only, never the empty copy. */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const hidden = Math.max(0, rows.length - collapsedVisibleRows);
@@ -179,19 +183,22 @@ export function CheckingCartolaMonthTable({
     cartolaNo: t("accountDetail.checking.cartolaNo"),
   };
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !loading) {
     return <p className="muted">{t("accountDetail.checking.cartolaMonthEmpty")}</p>;
   }
 
   return (
     <>
-      <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.5rem" }}>
-        {t("accountDetail.checking.cartolaMonthImportedCount", {
-          imported: importedMonthCount,
-          total: rows.length,
-        })}
-      </p>
+      {rows.length === 0 ? null : (
+        <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.5rem" }}>
+          {t("accountDetail.checking.cartolaMonthImportedCount", {
+            imported: importedMonthCount,
+            total: rows.length,
+          })}
+        </p>
+      )}
       <Table
+        wrapClassName={loadableClass(loading)}
         collapsedVisibleRows={collapsedVisibleRows}
         showMoreLabel={t("table.showMoreMonths", { count: hidden })}
         showLessLabel={t("table.showLessMonths")}

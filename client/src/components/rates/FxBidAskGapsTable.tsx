@@ -5,6 +5,7 @@ import { formatClp, formatNumberInput, parseNumberInput } from "../../format";
 import { useTranslation } from "../../i18n";
 import { queryKeys } from "../../queries/keys";
 import type { FxBidAskGapRow } from "../../types";
+import { loadableClass } from "../ui/Loadable";
 import { Table } from "../ui/Table";
 import { Button, Input } from "@crfrsr/ui";
 
@@ -108,20 +109,21 @@ export function FxBidAskGapsTable() {
     }
   };
 
-  if (loading) {
-    return <p className="muted">{t("common.loading")}</p>;
-  }
-
   if (loadError) {
     return <p className="error">{loadError}</p>;
   }
 
-  if (gaps.length === 0) {
+  // Loading keeps the frame (heading + header, rows once there are some) dimmed; the empty copy is
+  // for a gap list that loaded empty.
+  if (!loading && gaps.length === 0) {
     return <p className="muted">{t("rates.fx.gapsEmpty")}</p>;
   }
 
   return (
-    <section className="rates-bid-ask-gaps" style={{ marginTop: "1.5rem", maxWidth: "58rem" }}>
+    <section
+      className={loadableClass(loading, "rates-bid-ask-gaps")}
+      style={{ marginTop: "1.5rem", maxWidth: "58rem" }}
+    >
       <h2 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("rates.fx.gapsTitle")}</h2>
       <Table
         header={

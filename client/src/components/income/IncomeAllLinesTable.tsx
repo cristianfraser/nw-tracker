@@ -25,9 +25,11 @@ const PAGE_SIZE = 15;
 export function IncomeAllLinesTable({
   rows,
   displayUnit = "clp",
+  loading,
 }: {
   rows: readonly IncomeDisplayRow[];
   displayUnit?: DisplayUnit;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const patchIncomeMovement = usePatchIncomeMovementMutation();
@@ -50,13 +52,13 @@ export function IncomeAllLinesTable({
 
   const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE);
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !loading) {
     return <p className="muted">{t("income.empty")}</p>;
   }
 
   return (
     <>
-      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
+      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
         <Table
           tableStyle={{ fontSize: "0.85rem" }}
           header={

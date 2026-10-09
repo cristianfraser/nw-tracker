@@ -9,6 +9,8 @@ import { clipPointsToTimeRange } from "../../timeRange";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { ChartPanelTitleRow } from "../charts/ChartPanelTitleRow";
+import { ChartEmptyState } from "../charts/ChartEmptyState";
+import { loadableClass } from "../ui/Loadable";
 import { AppComposedChart } from "../charts/AppComposedChart";
 import {
   AXIS_LINE_STROKE,
@@ -24,6 +26,9 @@ import { Table } from "../ui/Table";
 
 const CHART_ANIM_MS = 90;
 const PAGE_SIZE = 12;
+
+/** Stands in for the server payload while it loads: the frame renders with no rows. */
+const EMPTY_BREAKDOWN: PayrollBreakdownPayload = { payslips: [], months: [], years: [] };
 
 /** Stacked bottom to top: what reached the account, then what was taken from gross pay. */
 const STACK: readonly { field: PayrollBreakdownField; color: string }[] = [
@@ -62,15 +67,19 @@ function periodEndYmd(period: string): string {
 /**
  * «Bruto vs líquido»: each payroll month's (or year's) gross pay as net pay plus every deduction,
  * and the same figures as a table. Built by the server (`payroll_breakdown`); this only picks the
- * display unit and the period.
+ * display unit and the period. While `loading` it renders its frame dimmed; once loaded it
+ * is absent when there is no payslip.
  */
 export function PayrollBreakdownSection({
-  breakdown,
+  breakdown: loadedBreakdown,
   displayUnit,
+  loading,
 }: {
-  breakdown: PayrollBreakdownPayload;
+  breakdown?: PayrollBreakdownPayload;
   displayUnit: DisplayUnit;
+  loading?: boolean;
 }) {
+  const breakdown = loadedBreakdown ?? EMPTY_BREAKDOWN;
   const { t } = useTranslation();
   const compactAxis = useIsNarrowViewport();
   const chartPrefs = useSurfacePrefs("income.payroll.chart", "month", "3y");
@@ -108,7 +117,7 @@ export function PayrollBreakdownSection({
   );
   const { page, setPage, pageRows, total } = useClientPagination(tableRows, PAGE_SIZE);
 
-  if (breakdown.months.length === 0) return null;
+  if (breakdown.months.length === 0 && !loading) return null;
 
   return (
     <section style={{ marginBottom: "1.5rem" }}>
@@ -127,7 +136,10 @@ export function PayrollBreakdownSection({
               />
             }
           />
-          <div className="chart-box line-chart-focus-wrap" style={{ height: 300 }}>
+          {points.length === 0 ? (
+            <ChartEmptyState loading={loading} message={t("income.chartEmpty")} boxStyle={{ height: 300 }} />
+          ) : (
+          <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")} style={{ height: 300 }}>
             <AppComposedChart
               data={points}
               tooltip={{
@@ -177,6 +189,7 @@ export function PayrollBreakdownSection({
               />
             </AppComposedChart>
           </div>
+          )}
         </section>
       </div>
 
@@ -184,7 +197,7 @@ export function PayrollBreakdownSection({
         <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t("income.payroll.tableTitle")}</h3>
         <SurfaceControls period={tablePrefs.period} onPeriodChange={tablePrefs.setPeriod} periodOptions={["month", "year"]} />
       </div>
-      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
+      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
         <Table
           tableStyle={{ fontSize: "0.85rem" }}
           header={

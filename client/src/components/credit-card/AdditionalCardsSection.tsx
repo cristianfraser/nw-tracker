@@ -9,6 +9,7 @@ import type { DisplayUnit } from "../../queries/keys";
 import type { AdditionalCardsPeriodRow, AdditionalCardsSummary } from "../../types";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
+import { loadableClass } from "../ui/Loadable";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { Table } from "../ui/Table";
 import {
@@ -18,6 +19,20 @@ import {
 } from "../ui/TableMobileCard";
 
 const PAGE_SIZE = 12;
+
+/** Stands in for the server summary while it loads: the frame renders with zero totals. */
+const EMPTY_SUMMARY: AdditionalCardsSummary = {
+  by_month: [],
+  by_year: [],
+  totals: {
+    charges_clp: 0,
+    charges_usd: 0,
+    reimbursements_clp: 0,
+    reimbursements_usd: 0,
+    balance_clp: 0,
+    balance_usd: 0,
+  },
+};
 
 function pick(clp: number, usd: number | null, unit: DisplayUnit, what: string): number {
   if (unit === "usd") {
@@ -31,14 +46,19 @@ function pick(clp: number, usd: number | null, unit: DisplayUnit, what: string):
  * «Tarjetas adicionales»: the additional cards' charges (auto `additional_card`, counted in gastos)
  * against the refunds in that category, per month or year, with the running
  * balance owed. Every figure is the server's (`payload.additional_cards`); this only picks.
+ * Absent once loaded when there is no additional-card activity; while `loading` it renders its
+ * frame with zero totals, dimmed.
  */
 export function AdditionalCardsSection({
-  summary,
+  summary: loadedSummary,
   displayUnit,
+  loading,
 }: {
-  summary: AdditionalCardsSummary;
+  summary?: AdditionalCardsSummary;
   displayUnit: DisplayUnit;
+  loading?: boolean;
 }) {
+  const summary = loadedSummary ?? EMPTY_SUMMARY;
   const { t } = useTranslation();
   const prefs = useSurfacePrefs("flows.expenses.additionalCards", "month", "total");
   const granularity = flowTableGranularity(flowChartGranularityFromMetricsPeriod(prefs.period));
@@ -46,7 +66,7 @@ export function AdditionalCardsSection({
   const newestFirst = [...rows].reverse();
   const { page, setPage, pageRows, total } = useClientPagination(newestFirst, PAGE_SIZE);
 
-  if (summary.by_month.length === 0) return null;
+  if (summary.by_month.length === 0 && !loading) return null;
 
   const money = (row: AdditionalCardsPeriodRow, field: "charges" | "reimbursements" | "net" | "balance") =>
     formatFlowMoney(
@@ -65,7 +85,7 @@ export function AdditionalCardsSection({
       <div className="chart-panel-title-row" style={{ marginBottom: "0.35rem" }}>
         <h3 style={{ fontSize: "1.1rem", margin: 0 }}>
           {t("expenses.additionalCards.title")}
-          <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
             {t("expenses.additionalCards.balanceLabel")}{" "}
             {formatFlowMoney(
               pick(
@@ -87,7 +107,7 @@ export function AdditionalCardsSection({
       <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
         {t("expenses.additionalCards.hint")}
       </p>
-      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
+      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
         <Table
           tableStyle={{ fontSize: "0.85rem" }}
           header={

@@ -6,6 +6,7 @@ import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
+import { loadableClass } from "../components/ui/Loadable";
 import {
   flowChartGranularityFromMetricsPeriod,
   flowTableGranularity,
@@ -59,8 +60,12 @@ export function FlowsPlPage() {
   );
   const isDaily = chartGranularity === "day";
   // Day mode fetches the server-windowed per-day P/L; M/Y keep the days-less payload.
-  const { data, error } = useFlowsPl(isDaily ? timeRangeToDays(timeRange) : undefined);
+  const { data, error, isPending, isPlaceholderData } = useFlowsPl(
+    isDaily ? timeRangeToDays(timeRange) : undefined
+  );
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
+  // Pending, or holding the prior Diario window while the new one loads: dimmed.
+  const loading = isPending || isPlaceholderData;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
@@ -91,10 +96,6 @@ export function FlowsPlPage() {
     return <p className="error">{err}</p>;
   }
 
-  if (!data) {
-    return <p className="muted">{t("common.loading")}</p>;
-  }
-
   return (
     <>
       <h2 className="flow-section-title">{t("flows.pl.title")}</h2>
@@ -109,6 +110,7 @@ export function FlowsPlPage() {
           points={chartPoints}
           xAxisGranularity={chartGranularity}
           displayUnit={displayUnit}
+          loading={loading}
         />
       </div>
 
@@ -120,7 +122,7 @@ export function FlowsPlPage() {
           periodOptions={["month", "year"]}
         />
       </div>
-      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
+      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
         <Table
           header={
             <thead>
@@ -156,16 +158,17 @@ export function FlowsPlPage() {
       <h3 style={{ fontSize: "1.05rem", margin: "1.5rem 0 0.35rem" }}>
         {t("flows.pl.breakdownTitle")}
       </h3>
-      {data.by_bucket.map((block) => (
+      {(data?.by_bucket ?? []).map((block) => (
         <section key={block.slug} style={{ marginBottom: "1.5rem" }}>
           <h4 style={{ fontSize: "0.95rem", marginBottom: "0.35rem" }}>
             {flowsPlBucketLabel(block.slug)}
-            <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+            <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
               {formatFlowMoney(bucketTotal(block, "total_cumulative", displayUnit), displayUnit)}
             </span>
           </h4>
           <Table
             tableStyle={{ fontSize: "0.85rem" }}
+            wrapClassName={loadableClass(loading)}
             header={
               <thead>
                 <tr>

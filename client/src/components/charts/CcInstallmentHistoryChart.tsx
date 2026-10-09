@@ -18,6 +18,7 @@ import {
   AXIS_LINE_STROKE as AXIS_STROKE,
 } from "./chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
+import { loadableClass } from "../ui/Loadable";
 
 const CUPO_STROKE = "#f472b6";
 const BALANCE_TOTAL_STROKE = "#38bdf8";
@@ -98,6 +99,7 @@ export function CcInstallmentHistoryChart({
   openBillingMonth,
   dailyRows,
   period,
+  loading,
 }: {
   rows: CcHistorialChartRow[];
   openBillingMonth?: string | null;
@@ -105,6 +107,11 @@ export function CcInstallmentHistoryChart({
   dailyRows?: CcHistorialChartRow[] | null;
   /** Per-surface período (from the page's paired CC control). */
   period: "day" | "month" | "year";
+  /**
+   * The rows are a placeholder or held prior data: the chart dims itself, and with no rows it
+   * draws an empty chart box at the chart's size instead of the «no historial» line.
+   */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const compactAxis = useIsNarrowViewport();
@@ -154,6 +161,16 @@ export function CcInstallmentHistoryChart({
   }, [displayRows]);
 
   if (rows.length === 0) {
+    // Same box (size and margin) as the real chart, so nothing jumps when the rows arrive.
+    if (loading) {
+      return (
+        <div
+          className={loadableClass(loading, "chart-box chart-box--pending")}
+          style={{ height: 280, marginTop: "0.35rem" }}
+          aria-busy="true"
+        />
+      );
+    }
     return <p className="muted empty">{t("accountDetail.creditCard.historialEmpty")}</p>;
   }
 
@@ -197,7 +214,10 @@ export function CcInstallmentHistoryChart({
   );
 
   return (
-    <div className="chart-box line-chart-focus-wrap" style={{ height: 280, marginTop: "0.35rem" }}>
+    <div
+      className={loadableClass(loading, "chart-box line-chart-focus-wrap")}
+      style={{ height: 280, marginTop: "0.35rem" }}
+    >
         <AppComposedChart
           data={displayRows}
           margin={{ ...RECHARTS_MONEY_CHART_MARGIN, left: 4, right: 8, bottom: 4 }}

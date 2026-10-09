@@ -5,6 +5,7 @@ import { useTranslation } from "../../i18n";
 import { useBenchmarks, useMortgagePrepaymentComparison } from "../../queries/hooks";
 import { useSurfaceBenchmark } from "../../surfaceDisplayPrefs";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
+import { loadableClass } from "../ui/Loadable";
 import { Table } from "../ui/Table";
 import { TableMobileCard, TableMobileCardRow, TableMobileCardSection } from "../ui/TableMobileCard";
 
@@ -50,8 +51,11 @@ export function MortgagePrepaymentSection({
     raw != null && raw.unit === displayUnit && raw.benchmark.slug === selected ? raw : null;
   const newestFirst = data ? [...data.rows].reverse() : [];
   const { page, setPage, pageRows, total } = useClientPagination(newestFirst, PAGE_SIZE);
+  // Benchmarks or the comparison still in flight: the section frames itself (title, selector,
+  // table header) dimmed. Absence stays hidden: the server's null comparison or no mortgage benchmark.
+  const loading = benchmarks.isPending || query.isLoading;
 
-  if (raw === null || !mortgage) return null;
+  if (raw === null || (!mortgage && !loading)) return null;
 
   const money = (n: number | null) =>
     n == null ? "—" : displayUnit === "usd" ? formatUsdFine(n) : formatClp(n);
@@ -75,7 +79,7 @@ export function MortgagePrepaymentSection({
   const totals = data?.totals;
 
   return (
-    <section style={{ marginTop: "2rem" }}>
+    <section className={loadableClass(loading)} style={{ marginTop: "2rem" }}>
       <div className="chart-panel-title-row" style={{ marginBottom: "0.35rem" }}>
         <h2 style={{ margin: 0, fontSize: "1.15rem" }}>{t("accountDetail.prepayments.title")}</h2>
         <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem" }}>
@@ -85,9 +89,11 @@ export function MortgagePrepaymentSection({
           </select>
         </label>
       </div>
-      <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
-        {t("accountDetail.prepayments.hint", { mortgage: benchmarkOptionLabel(t, mortgage) })}
-      </p>
+      {mortgage ? (
+        <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
+          {t("accountDetail.prepayments.hint", { mortgage: benchmarkOptionLabel(t, mortgage) })}
+        </p>
+      ) : null}
       {totals && data && totals.covered_payments < data.rows.length && totals.covered_from ? (
         <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
           {t("accountDetail.prepayments.coveredFrom", {

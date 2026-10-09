@@ -108,6 +108,7 @@ export function GroupExpensesMonthTable({
   installmentMode,
   displayUnit = "clp",
   periodGranularity = "month",
+  loading,
 }: {
   rows: readonly FlowCcExpenseMonthRow[];
   lines: readonly FlowCcExpenseLineRow[];
@@ -116,6 +117,7 @@ export function GroupExpensesMonthTable({
   installmentMode: CcInstallmentGastosMode;
   displayUnit?: DisplayUnit;
   periodGranularity?: FlowChartGranularity;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const [modalOpen, setModalOpen] = useState(false);
@@ -184,13 +186,13 @@ export function GroupExpensesMonthTable({
     labels: { prev: t("common.modalPrevPeriod"), next: t("common.modalNextPeriod") },
   });
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !loading) {
     return <p className="muted">{t("expenses.creditCard.emptyMonths")}</p>;
   }
 
   return (
     <>
-      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
+      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
         <Table
           tableClassName="table--parallel-mobile"
           header={

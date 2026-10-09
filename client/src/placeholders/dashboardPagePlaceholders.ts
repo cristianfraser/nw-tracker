@@ -6,6 +6,10 @@ import type {
   DashboardChartShapeLine,
   DashboardResponse,
   GroupMonthlyPerformanceResponse,
+  NavCardMetricsDto,
+  NavCardPeriodMetricsDto,
+  NavTreeNodeDto,
+  SidebarNavResponse,
   TimeseriesBlock,
   ValuationTimeseriesResponse,
 } from "../types";
@@ -120,8 +124,8 @@ export function buildPlaceholderDashboardDash(unit: DisplayUnit): DashboardRespo
       : {}),
   };
   return {
-    // Empty map: the strip never mounts from the placeholder dash (dashForStrip is
-    // null until a nav snapshot exists), charts/allocation ignore it.
+    // Empty map: the strip never mounts from this dash (a cold strip mounts from
+    // `buildPlaceholderNavStripDash`); charts/allocation ignore it.
     card_metrics_by_slug: {},
     totals: {
       net_worth_clp: 0,
@@ -156,6 +160,70 @@ export function buildPlaceholderDashboardDash(unit: DisplayUnit): DashboardRespo
       ...(includeUsd ? { value_usd: 1 } : {}),
     })),
     accounts: [],
+  };
+}
+
+/** The card strip's slice of the dashboard payload (`GroupInfoPortfolioStrip.dash`). */
+export type NavStripDash = Pick<
+  DashboardResponse,
+  "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
+>;
+
+function zeroNavCardPeriodMetrics(unit: DisplayUnit): NavCardPeriodMetricsDto {
+  const usd = unit === "usd" ? 0 : null;
+  return {
+    deposits_clp: 0,
+    deposits_usd: usd,
+    delta_total_clp: 0,
+    delta_total_usd: usd,
+    deposits_period_clp: 0,
+    deposits_period_usd: usd,
+    delta_period_clp: 0,
+    delta_period_usd: usd,
+  };
+}
+
+function zeroNavCardMetrics(unit: DisplayUnit): NavCardMetricsDto {
+  const variant = () => ({
+    day: zeroNavCardPeriodMetrics(unit),
+    month: zeroNavCardPeriodMetrics(unit),
+    year: zeroNavCardPeriodMetrics(unit),
+  });
+  const noPct = () => ({ clp: null, usd: null });
+  return {
+    child: variant(),
+    parent: variant(),
+    row_pct: { day: noPct(), month: noPct(), year: noPct(), total: noPct() },
+  };
+}
+
+/**
+ * The card strip before any nav snapshot or nav-context exists (cold cache): built from the
+ * sidebar nav alone. Every group node a strip can draw — the net-worth tree and every main root,
+ * Pasivos included (the cash page hosts its credit-card cards) — gets a zero card-metrics entry,
+ * which is what `requireNavCardMetrics` asks for; totals are zero and there are no account rows.
+ * The strip mounts in its placeholder phase and spins once to the real values.
+ */
+export function buildPlaceholderNavStripDash(nav: SidebarNavResponse, unit: DisplayUnit): NavStripDash {
+  const card_metrics_by_slug: Record<string, NavCardMetricsDto> = {};
+  const visit = (n: NavTreeNodeDto) => {
+    if (n.account_id == null && n.expense_account_id == null && !card_metrics_by_slug[n.slug]) {
+      card_metrics_by_slug[n.slug] = zeroNavCardMetrics(unit);
+    }
+    for (const c of n.children ?? []) visit(c);
+  };
+  for (const root of [nav.net_worth, ...nav.main]) {
+    if (root) visit(root);
+  }
+  return {
+    accounts: [],
+    totals: buildPlaceholderDashboardDash(unit).totals,
+    liabilities_breakdown: {
+      mortgage_clp: 0,
+      credit_card_clp: 0,
+      ...(unit === "usd" ? { mortgage_usd: 0, credit_card_usd: 0 } : {}),
+    },
+    card_metrics_by_slug,
   };
 }
 

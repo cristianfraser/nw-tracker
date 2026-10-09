@@ -6,8 +6,9 @@ import { useDailySeries } from "../../queries/hooks";
 import { monthYearSurfacePeriod, useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { timeRangeToDays } from "../../timeRange";
 import type { AccountCcInstallmentsResponse } from "../../types";
-import { CcInstallmentHistoryChart } from "../charts/CcInstallmentHistoryChart";
+import { CcInstallmentHistoryChart } from "../charts/lazyCharts";
 import { SurfaceControls } from "../ui/SurfaceControls";
+import { Loadable, loadableClass } from "../ui/Loadable";
 import { CreditCardDetallePorMesTable } from "../../pages/accountDetail/CreditCardDetallePorMesTable";
 import styles from "../../pages/AccountDetailPage.module.css";
 
@@ -55,14 +56,19 @@ function surfaceIdPrefix(scope: CcSurfaceScope): string {
  * «Historial» — saldo total + deuda en cuotas lines over the stacked facturación bars (cuotas,
  * rest of CLP, US$). D/M/Y + Rango. Day mode swaps in the daily-series CC block (owed walk, plan
  * debt, plan tail and each card's bar on its close day — fetched in CLP for this scope). Renders
- * nothing without an installment ledger, like before.
+ * nothing without an installment ledger, like before — unless the host is still `loading` its
+ * ledger bundle (a placeholder says nothing about absence): then the frame (title row + pending
+ * chart box) renders dimmed.
  */
 export function CreditCardHistorialSurface({
   ccLedger,
   scope,
+  loading,
 }: {
   ccLedger: AccountCcInstallmentsResponse;
   scope: CcSurfaceScope;
+  /** The host's ledger bundle is still a placeholder: dim the surface, never gate it away. */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const heading = HEADINGS[scope.variant].historial;
@@ -92,10 +98,10 @@ export function CreditCardHistorialSurface({
     [rows, isDaily, timeRange]
   );
 
-  if (!hasHistorial) return null;
+  if (!hasHistorial && !loading) return null;
 
   return (
-    <section className={styles.chartBlock}>
+    <section className={loadableClass(loading, styles.chartBlock)}>
       <div className="chart-panel-title-row">
         <SurfaceHeading heading={heading}>{t("accountDetail.creditCard.historialTitle")}</SurfaceHeading>
         <SurfaceControls
@@ -105,22 +111,20 @@ export function CreditCardHistorialSurface({
           onRangeChange={prefs.setRange}
         />
       </div>
-      {isDaily && dailyRows == null ? (
-        daily.isError ? (
-          <p className="error">
-            {daily.error instanceof Error ? daily.error.message : t("common.loadFailed")}
-          </p>
-        ) : (
-          <p className="muted">
-            {daily.data ? t("accountDetail.creditCard.historialEmpty") : t("common.loading")}
-          </p>
-        )
+      {isDaily && dailyRows == null && daily.isError ? (
+        <p className="error">
+          {daily.error instanceof Error ? daily.error.message : t("common.loadFailed")}
+        </p>
+      ) : isDaily && dailyRows == null && daily.data && !daily.isPlaceholderData ? (
+        // Loaded, and the server states there is no daily series: a real absence.
+        <p className="muted">{t("accountDetail.creditCard.historialEmpty")}</p>
       ) : (
         <CcInstallmentHistoryChart
           rows={windowedRows}
           openBillingMonth={ccLedger.open_billing_month}
           dailyRows={dailyRows}
           period={prefs.period}
+          loading={loading || (isDaily && dailyRows == null)}
         />
       )}
     </section>
@@ -131,9 +135,12 @@ export function CreditCardHistorialSurface({
 export function CreditCardDetalleSurface({
   ccLedger,
   scope,
+  loading,
 }: {
   ccLedger: AccountCcInstallmentsResponse;
   scope: CcSurfaceScope;
+  /** The host's ledger bundle is still a placeholder: dim the surface, never gate it away. */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const heading = HEADINGS[scope.variant].detalle;
@@ -142,10 +149,10 @@ export function CreditCardDetalleSurface({
   const isYearly = period === "year";
   const rows = ccLedger.billing_detail_by_month ?? [];
 
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !loading) return null;
 
   return (
-    <>
+    <Loadable loading={Boolean(loading)}>
       <div className="chart-panel-title-row">
         <SurfaceHeading heading={heading}>
           {t(isYearly ? "accountDetail.yearlyDetailTitle" : "accountDetail.monthlyDetailTitle")}
@@ -153,6 +160,6 @@ export function CreditCardDetalleSurface({
         <SurfaceControls period={period} onPeriodChange={prefs.setPeriod} periodOptions={MONTH_YEAR} />
       </div>
       <CreditCardDetallePorMesTable rows={rows} period={period} />
-    </>
+    </Loadable>
   );
 }

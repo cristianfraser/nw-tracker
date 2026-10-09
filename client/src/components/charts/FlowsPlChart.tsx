@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
+import { ChartEmptyState } from "./ChartEmptyState";
+import { loadableClass } from "../ui/Loadable";
 import { Bar, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { allocationBucketColor } from "../../chartColors";
@@ -36,6 +38,7 @@ export function FlowsPlChart({
   points,
   xAxisGranularity = "month",
   displayUnit = "clp",
+  loading,
 }: {
   title: string;
   /** Per-surface Período/Rango controls, rendered next to the title. */
@@ -43,6 +46,7 @@ export function FlowsPlChart({
   points: readonly FlowsPlChartPoint[];
   xAxisGranularity?: "month" | "year" | "day";
   displayUnit?: DisplayUnit;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const compactAxis = useIsNarrowViewport();
@@ -68,7 +72,7 @@ export function FlowsPlChart({
     return (
       <div className="chart-grid__col">
         <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
-        <p className="empty muted">{t("flows.pl.chartEmpty")}</p>
+        <ChartEmptyState loading={loading} message={t("flows.pl.chartEmpty")} />
       </div>
     );
   }
@@ -76,7 +80,7 @@ export function FlowsPlChart({
   return (
     <div className="chart-grid__col">
       <ChartPanelTitleRow title={title} titleAs="h2" controls={controls} />
-      <div className="chart-box line-chart-focus-wrap">
+      <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")}>
         <AppComposedChart
           data={[...points]}
           barGroup={{

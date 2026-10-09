@@ -83,15 +83,14 @@ function GroupFlowsPanel({
     [page, filterState, extra]
   );
 
-  const { data, isFetching } = useGroupFlows(groupSlug, filters, enabled);
+  const { data, isFetching, isPending } = useGroupFlows(groupSlug, filters, enabled);
 
   const handleFilterChange = useCallback((patch: Partial<FlowsFilterState>) => {
     setFilterState((prev) => ({ ...prev, ...patch }));
     setPage(1);
   }, []);
 
-  if (!data && !isFetching) return null;
-
+  // Disabled by the caller (the group is not named yet) or not loaded yet: the table frame, dimmed.
   return (
     <FlowsTable
       rows={data?.rows ?? []}
@@ -99,7 +98,7 @@ function GroupFlowsPanel({
       page={data?.page ?? page}
       pageSize={PAGE_SIZE}
       onPageChange={setPage}
-      loading={isFetching}
+      loading={isPending || isFetching}
       showAccountColumn
       showUnitsColumn={showUnitsColumn}
       emptyMessage={t("accountDetail.flowsEmpty")}

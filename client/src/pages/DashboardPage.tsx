@@ -1,8 +1,11 @@
 import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { LineChartPanel, ValuationLineCharts } from "../components/charts/ValuationLineCharts";
-import { MonthlyPerformanceComboChart } from "../components/charts/MonthlyPerformanceComboChart";
-import { ProportionalAreaChart } from "../components/charts/ProportionalAreaChart";
+import {
+  LineChartPanel,
+  MonthlyPerformanceComboChart,
+  ProportionalAreaChart,
+  ValuationLineCharts,
+} from "../components/charts/lazyCharts";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { ExportToolbarButton } from "../components/export/ExportModal";
@@ -13,7 +16,7 @@ import {
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import type { DisplayUnit } from "../queries/keys";
-import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
+import { isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
   nwBucketTotalsFromDashTotals,
   writeDashboardNavSnapshotCache,
@@ -39,10 +42,12 @@ import { useTranslation } from "../i18n";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import {
   buildPlaceholderDashboardBundle,
+  buildPlaceholderNavStripDash,
   chartShapeFromLoadedDashboardBundle,
 } from "../placeholders/dashboardPagePlaceholders";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
+import { DASHBOARD_COLD_STRIP } from "../coldPageShape";
 import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
@@ -113,7 +118,9 @@ export function DashboardPage() {
   const allocationPrefs = useSurfacePrefs("home.proportional", "month", "total");
   const compositionView = useSurfaceCompositionView("home.proportional");
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
-  const navStillLoading = (navPending || navFetching) && sidebarNav == null;
+  // «Load failed» only once the nav has answered without a net-worth tree; until then the page
+  // renders its shell (static title, placeholder charts), dimmed.
+  const navSettled = !navPending && !navFetching;
   const pageTitle = resolveNetWorthGroupLabel(sidebarNav);
   const netWorthNav = sidebarNav?.net_worth ?? null;
 
@@ -122,8 +129,8 @@ export function DashboardPage() {
     [netWorthNav, displayUnit]
   );
 
-  const { data: navSnapshot, isPending: navSnapshotPending } = useDashboardNavSnapshot(displayUnit);
-  const { data: shapeAccounts, isPending: accountsShapePending } = useAccountsByPortfolioGroup(
+  const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit);
+  const { data: shapeAccounts } = useAccountsByPortfolioGroup(
     NET_WORTH_PORTFOLIO_GROUP,
     displayUnit,
     Boolean(netWorthNav)
@@ -162,7 +169,6 @@ export function DashboardPage() {
   // bundle resolves. `isPlaceholderData` here means the query key (unit) changed with prior data held.
   const keepPrevBundle = useMemo(() => {
     if (!isPlaceholderData || !bundleReady || !data) return null;
-    if (data.ts.unit === (displayUnit === "usd" ? "usd" : "clp")) return data;
     const rate = resolveClpPerUsdForKeepPrev(data.fx, readFxLatestCache());
     if (rate == null) return null;
     return convertDashboardBundleUnit(data, displayUnit, rate);
@@ -189,9 +195,15 @@ export function DashboardPage() {
 
   const overviewPoints = ts?.overview?.points ?? [];
 
+  // No snapshot yet (cold cache): a zero strip from the sidebar nav, in its placeholder phase.
+  const placeholderStripDash = useMemo(
+    () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null),
+    [sidebarNav, displayUnit]
+  );
   const dashForStrip = useMemo(() => {
-    if (!netWorthNav || !navSnapshot) return null;
+    if (!netWorthNav) return null;
     if (useRealBundle && data) return data.dash;
+    if (!navSnapshot) return placeholderStripDash;
     return dashPickForNavStrip(
       {
         accounts: navSnapshot.accounts,
@@ -202,7 +214,7 @@ export function DashboardPage() {
         overviewPoints,
       }
     );
-  }, [netWorthNav, useRealBundle, data, navSnapshot, overviewPoints]);
+  }, [netWorthNav, useRealBundle, data, navSnapshot, overviewPoints, placeholderStripDash]);
 
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
@@ -217,21 +229,24 @@ export function DashboardPage() {
 
   // Day view: each of the three valuation charts swaps to daily series from its own
   // overview-daily fetch (surfaces that agree on the range dedupe into one request).
-  const { data: overviewDailyData } = useDashboardOverviewDaily(
+  const overviewDaily = useDashboardOverviewDaily(
     displayUnit,
     timeRangeToDays(overviewPrefs.range),
     overviewIsDaily
   );
-  const { data: principalesDailyData } = useDashboardOverviewDaily(
+  const overviewDailyData = overviewDaily.data;
+  const principalesDaily = useDashboardOverviewDaily(
     displayUnit,
     timeRangeToDays(principalesPrefs.range),
     principalesIsDaily
   );
-  const { data: patrimonioDailyData } = useDashboardOverviewDaily(
+  const principalesDailyData = principalesDaily.data;
+  const patrimonioDaily = useDashboardOverviewDaily(
     displayUnit,
     timeRangeToDays(patrimonioPrefs.range),
     patrimonioIsDaily
   );
+  const patrimonioDailyData = patrimonioDaily.data;
   // The value map replaces the composition chart; only the real bundle carries it.
   const valueMapRoot = useMemo(
     () =>
@@ -250,11 +265,22 @@ export function DashboardPage() {
   // Net worth always has group children: the selected view is shown whatever is loading.
   const valueMapShown = compositionView.view === "map";
   const allocationIsDaily = allocationPrefs.period === "day";
-  const { data: allocationDailyData } = useDashboardOverviewDaily(
+  const allocationDaily = useDashboardOverviewDaily(
     displayUnit,
     timeRangeToDays(allocationPrefs.range),
     allocationIsDaily && !valueMapShown
   );
+  const allocationDailyData = allocationDaily.data;
+  // A Diario chart shows the monthly block (or its frame), dimmed, until its daily payload is
+  // this unit's; the bundle's own loading dims every chart.
+  const dailyLoading = (on: boolean, q: { isPending: boolean; isPlaceholderData: boolean }) =>
+    on && (q.isPending || q.isPlaceholderData);
+  const valuationChartsLoading =
+    contentLoading ||
+    dailyLoading(overviewIsDaily, overviewDaily) ||
+    dailyLoading(principalesIsDaily, principalesDaily);
+  const patrimonioLoading = contentLoading || dailyLoading(patrimonioIsDaily, patrimonioDaily);
+  const allocationLoading = contentLoading || dailyLoading(allocationIsDaily, allocationDaily);
   const dailyOverviewBlock = useMemo(() => {
     if (!overviewIsDaily || !overviewDailyData?.points.length || !ts?.overview) return null;
     const lines = ts.overview.lines.filter((l) => DAILY_OVERVIEW_LINE_KEYS.has(String(l.dataKey)));
@@ -386,6 +412,10 @@ export function DashboardPage() {
     timeRangeToDays(combosPrefs.range),
     combosIsDaily
   );
+  const combosLoading =
+    contentLoading ||
+    dailyLoading(combosIsDaily, retirementDaily) ||
+    dailyLoading(combosIsDaily, brokerageDaily);
   const dailyRetirementBrokeragePoints = useMemo(() => {
     if (!combosIsDaily) return null;
     const ret = retirementDaily.data;
@@ -520,18 +550,6 @@ export function DashboardPage() {
     [netWorthNav, shapeAccounts, navShell?.accounts]
   );
 
-  if (navStillLoading) {
-    return (
-      <main>
-        <p className="muted">{t("common.loading")}</p>
-      </main>
-    );
-  }
-
-  if (isPageShapeLoading(accountsShapePending, shapeAccounts, navSnapshotPending, navSnapshot)) {
-    return null;
-  }
-
   if (err) {
     return (
       <main>
@@ -540,7 +558,9 @@ export function DashboardPage() {
     );
   }
 
-  if (!netWorthNav || !overviewBlock || !principalesBlock) {
+  // The blocks are always on hand (placeholder, held or real bundle); the nav only counts once
+  // it has answered.
+  if ((!netWorthNav && navSettled) || !overviewBlock || !principalesBlock) {
     return (
       <main>
         <p className="muted">{t("common.loadFailed")}</p>
@@ -613,6 +633,7 @@ export function DashboardPage() {
           />
         }
         chartLayout="fullWidthStack"
+        loading={valuationChartsLoading}
       />
 
       {patrimonioBlock?.points.length ? (
@@ -639,6 +660,7 @@ export function DashboardPage() {
                 />
               }
               yScaleDataKeys={["total_nw", "invested"]}
+              loading={patrimonioLoading}
             />
           </div>
         </>
@@ -678,6 +700,7 @@ export function DashboardPage() {
               areaStroke="#64748b"
               lineKey="delta_combined"
               lineName={isYearly ? t("dashboard.combinedAnnualDelta") : t("dashboard.combinedMonthlyDelta")}
+              loading={combosLoading}
             />
           </div>
           <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
@@ -706,6 +729,7 @@ export function DashboardPage() {
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
               alternateYearAreaStripes={false}
+              loading={combosLoading}
               lineSeries={dailyRetirementBrokeragePoints ? [] : [
                 {
                   dataKey: "delta_combined_ma3",
@@ -730,6 +754,7 @@ export function DashboardPage() {
               xAxisGranularity={combosXAxis}
               timeRange={combosPrefs.range}
               controls={combosControls}
+              loading={combosLoading}
               barSeries={[
                 {
                   dataKey: "delta_combined",
@@ -776,12 +801,14 @@ export function DashboardPage() {
       <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
         {valueMapShown ? (
           <ValueMapPanel
+            title={t("dashboard.allocation.title")}
             surfaceId="home.map"
             view={compositionView.view}
             onViewChange={compositionView.setView}
             root={heldValueMap.root}
             bounds={heldValueMap.bounds}
             unit={heldValueMap.unit}
+            loading={contentLoading}
           />
         ) : (
           <ProportionalAreaChart
@@ -806,6 +833,7 @@ export function DashboardPage() {
               />
             }
             colorFor={(line) => allocationBucketColor(line.dataKey, line.color_rgb)}
+            loading={allocationLoading}
           />
         )}
       </div>
@@ -829,6 +857,7 @@ export function DashboardPage() {
             }
           : null
       }
+      coldStripShape={DASHBOARD_COLD_STRIP}
       charts={dashboardCharts}
       tableAccounts={netWorthTableAccounts}
       serverPaginatedMonthlyDetail

@@ -16,6 +16,42 @@ export const DISPLAY_UNIT_STALE_MS = 5 * 60_000;
 /** Align with server `LIVE_QUOTES_INTERVAL_MS` (default 5 min) so account marks refresh after scheduler ticks. */
 const LIVE_DASHBOARD_REFETCH_MS = 5 * 60_000;
 
+/**
+ * keepPreviousData scoped to one entity. The held payload is offered only while the first
+ * `entityKeyLength` elements of the query key are unchanged: a unit, period, range, page or
+ * filter change keeps the previous data on screen (the page converts or dims it), while a
+ * different group, account or scope starts from its placeholder. Bare `keepPreviousData` is
+ * key-agnostic — account A → account B rendered A's bundle under B's title while B loaded.
+ */
+export function keepPreviousDataSameEntity(queryKey: readonly unknown[], entityKeyLength: number) {
+  // Generic in the data type so react-query instantiates it per call site (the hook's TData).
+  return <TData,>(
+    previousData: TData | undefined,
+    previousQuery: { queryKey: readonly unknown[] } | undefined
+  ): TData | undefined => {
+    if (previousData === undefined || !previousQuery) return undefined;
+    const prevKey = previousQuery.queryKey;
+    for (let i = 0; i < entityKeyLength; i++) {
+      if (!Object.is(prevKey[i], queryKey[i])) return undefined;
+    }
+    return previousData;
+  };
+}
+
+/**
+ * Query options for the display-unit payloads (bundles, series, tables, flows): warm for five
+ * minutes, refetched on the live-quote cadence, and previous data held only across same-entity
+ * key changes (see {@link keepPreviousDataSameEntity}).
+ */
+export function displayUnitQueryBehaviorFor(queryKey: readonly unknown[], entityKeyLength: number) {
+  return {
+    staleTime: DISPLAY_UNIT_STALE_MS,
+    refetchInterval: LIVE_DASHBOARD_REFETCH_MS,
+    placeholderData: keepPreviousDataSameEntity(queryKey, entityKeyLength),
+  };
+}
+
+/** Key-agnostic variant for queries whose key carries no entity (unit or window only). */
 export const displayUnitQueryBehavior = {
   staleTime: DISPLAY_UNIT_STALE_MS,
   refetchInterval: LIVE_DASHBOARD_REFETCH_MS,

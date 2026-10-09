@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useFlowsDepositsReconciliation } from "../queries/hooks";
 import { Table } from "../components/ui/Table";
+import { loadableClass } from "../components/ui/Loadable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useTranslation, depositFlowCategoryLabel } from "../i18n";
 import { formatFlowMoney } from "../flowsDisplay";
@@ -65,11 +66,13 @@ function ReconciliationSection({
   rows,
   totalClp,
   totalUsd,
+  loading,
 }: {
   status: DepositReconciliationStatus;
   rows: DepositReconciliationRow[];
   totalClp: number;
   totalUsd: number | null;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -79,7 +82,7 @@ function ReconciliationSection({
     <section style={{ marginBottom: "1.5rem" }}>
       <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
         {t(statusSectionKey(status))}
-        <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
         </span>
       </h3>
@@ -88,6 +91,7 @@ function ReconciliationSection({
         collapsedVisibleRows={20}
         showMoreLabel={t("notifications.showMore")}
         showLessLabel={t("table.showLess")}
+        wrapClassName={loadableClass(loading)}
         header={
           <thead>
             <tr>
@@ -99,7 +103,7 @@ function ReconciliationSection({
           </thead>
         }
       >
-        {rows.length === 0 ? (
+        {rows.length === 0 && !loading ? (
           <tr>
             <td colSpan={4} className="muted">
               {t(statusEmptyKey(status))}
@@ -125,7 +129,13 @@ function ReconciliationSection({
   );
 }
 
-function ManualAssertionsSection({ rows }: { rows: DepositManualAssertionRow[] }) {
+function ManualAssertionsSection({
+  rows,
+  loading,
+}: {
+  rows: DepositManualAssertionRow[];
+  loading?: boolean;
+}) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const unmatched = rows.filter((r) => r.status === "asserted_unmatched");
@@ -141,7 +151,7 @@ function ManualAssertionsSection({ rows }: { rows: DepositManualAssertionRow[] }
     <section style={{ marginBottom: "1.5rem" }}>
       <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
         {t("depositsReconciliation.assertedTitle")}
-        <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
         </span>
       </h3>
@@ -150,6 +160,7 @@ function ManualAssertionsSection({ rows }: { rows: DepositManualAssertionRow[] }
         collapsedVisibleRows={20}
         showMoreLabel={t("notifications.showMore")}
         showLessLabel={t("table.showLess")}
+        wrapClassName={loadableClass(loading)}
         header={
           <thead>
             <tr>
@@ -162,7 +173,7 @@ function ManualAssertionsSection({ rows }: { rows: DepositManualAssertionRow[] }
           </thead>
         }
       >
-        {unmatched.length === 0 ? (
+        {unmatched.length === 0 && !loading ? (
           <tr>
             <td colSpan={5} className="muted">
               {t("depositsReconciliation.assertedEmpty")}
@@ -232,11 +243,13 @@ function RedemptionSection({
   rows,
   totalClp,
   totalUsd,
+  loading,
 }: {
   status: DepositRedemptionStatus;
   rows: DepositRedemptionRow[];
   totalClp: number;
   totalUsd: number | null;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -246,7 +259,7 @@ function RedemptionSection({
     <section style={{ marginBottom: "1.5rem" }}>
       <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
         {t(redemptionSectionKey(status))}
-        <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
         </span>
       </h3>
@@ -255,6 +268,7 @@ function RedemptionSection({
         collapsedVisibleRows={20}
         showMoreLabel={t("notifications.showMore")}
         showLessLabel={t("table.showLess")}
+        wrapClassName={loadableClass(loading)}
         header={
           <thead>
             <tr>
@@ -266,7 +280,7 @@ function RedemptionSection({
           </thead>
         }
       >
-        {rows.length === 0 ? (
+        {rows.length === 0 && !loading ? (
           <tr>
             <td colSpan={4} className="muted">
               {t(redemptionEmptyKey(status))}
@@ -302,19 +316,18 @@ export function DepositsReconciliationPage() {
     return <p className="error">{err}</p>;
   }
 
-  if (!data) {
-    return <p className="muted">{t("common.loading")}</p>;
-  }
+  // The frame renders with every section header, zero totals and no rows until the payload arrives.
+  const loading = !data;
 
   const rowsByStatus = new Map<DepositReconciliationStatus, DepositReconciliationRow[]>();
-  for (const r of data.rows) {
+  for (const r of data?.rows ?? []) {
     const arr = rowsByStatus.get(r.status) ?? [];
     arr.push(r);
     rowsByStatus.set(r.status, arr);
   }
 
   const redemptionsByStatus = new Map<DepositRedemptionStatus, DepositRedemptionRow[]>();
-  for (const r of data.redemptions) {
+  for (const r of data?.redemptions ?? []) {
     const arr = redemptionsByStatus.get(r.status) ?? [];
     arr.push(r);
     redemptionsByStatus.set(r.status, arr);
@@ -326,19 +339,19 @@ export function DepositsReconciliationPage() {
 
       {STATUS_ORDER.map((status) => {
         const rows = rowsByStatus.get(status) ?? [];
-        const totals = data.by_status[status];
         return (
           <ReconciliationSection
             key={status}
             status={status}
             rows={rows}
-            totalClp={totals.total_clp}
-            totalUsd={totals.total_usd}
+            totalClp={data ? data.by_status[status].total_clp : 0}
+            totalUsd={data ? data.by_status[status].total_usd : null}
+            loading={loading}
           />
         );
       })}
 
-      <ManualAssertionsSection rows={data.manual_assertions ?? []} />
+      <ManualAssertionsSection rows={data?.manual_assertions ?? []} loading={loading} />
 
       <section style={{ marginBottom: "1.5rem" }}>
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
@@ -349,6 +362,7 @@ export function DepositsReconciliationPage() {
           collapsedVisibleRows={24}
           showMoreLabel={t("notifications.showMore")}
           showLessLabel={t("table.showLess")}
+          wrapClassName={loadableClass(loading)}
           header={
             <thead>
               <tr>
@@ -365,7 +379,7 @@ export function DepositsReconciliationPage() {
             </thead>
           }
         >
-          {data.by_month.map((pt) => (
+          {(data?.by_month ?? []).map((pt) => (
             <tr key={pt.month}>
               <td className="mono">{pt.month}</td>
               <td className="mono">{formatFlowMoney(pt.linked_clp, displayUnit)}</td>
@@ -386,14 +400,14 @@ export function DepositsReconciliationPage() {
       </h2>
       {REDEMPTION_STATUS_ORDER.map((status) => {
         const rows = redemptionsByStatus.get(status) ?? [];
-        const totals = data.redemptions_by_status[status];
         return (
           <RedemptionSection
             key={status}
             status={status}
             rows={rows}
-            totalClp={totals.total_clp}
-            totalUsd={totals.total_usd}
+            totalClp={data ? data.redemptions_by_status[status].total_clp : 0}
+            totalUsd={data ? data.redemptions_by_status[status].total_usd : null}
+            loading={loading}
           />
         );
       })}

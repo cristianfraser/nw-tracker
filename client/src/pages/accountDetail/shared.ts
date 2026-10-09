@@ -29,3 +29,17 @@ export function tickerLabelFromCategory(slug: string | null | undefined): string
       return "—";
   }
 }
+
+/**
+ * Whether the account can have the Rentabilidad table, judged by its card row's NW bucket (the
+ * server only computes `period_returns` under brokerage / retirement; liabilities and the other
+ * buckets carry none). Used only to decide if the table is framed while the bundle loads; once
+ * loaded, the payload's `null` is the authority. An account whose card row is not known yet may
+ * have it.
+ */
+export function mayHavePeriodReturns(
+  row: { dashboard_bucket_slug?: string | null } | null | undefined
+): boolean {
+  if (!row) return true;
+  return row.dashboard_bucket_slug === "brokerage" || row.dashboard_bucket_slug === "retirement";
+}

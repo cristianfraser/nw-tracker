@@ -13,8 +13,10 @@ import { chartStrokeFromRgbTriplet } from "../../chartColors";
 import { findNavTreeNodeByAccountId } from "../../portfolioNavFromApi";
 import i18n from "../../i18n";
 import { buildPlaceholderAccountDetailBundle } from "../../placeholders/accountDetailPlaceholders";
+import { buildPlaceholderNavStripDash } from "../../placeholders/dashboardPagePlaceholders";
 import {
   convertAccountDetailBundleUnit,
+  convertPeriodReturnsUnit,
   resolveClpPerUsdForKeepPrev,
 } from "../../placeholders/keepPrevBundleUnit";
 import { readFxLatestCache } from "../../queries/fxLatestCache";
@@ -33,9 +35,13 @@ type DetailBundle = NonNullable<ReturnType<typeof useAccountDetailBundle>["data"
 
 export type AccountDetailPageData = {
   id: string | undefined;
+  /**
+   * The bundle is not in yet, or is held prior-unit data being converted: the page keeps its
+   * layout and dims (the category-keyed frames come from the placeholder, see
+   * `placeholderCategorySlug`).
+   */
   contentLoading: boolean;
   err: string | null;
-  monthlyPerfErr: string | null;
   summary: NonNullable<DetailBundle["summary"]>;
   ts: NonNullable<DetailBundle["ts"]>;
   depositInflows: DetailBundle["depositInflows"];
@@ -44,8 +50,11 @@ export type AccountDetailPageData = {
   checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
   invNavAccounts: DetailBundle["invNavAccounts"]["accounts"];
   dash: ReturnType<typeof dashPickForNavStrip> | null;
+  /** `dash` is the nav-tree zero frame (nav-context not in yet): its cards are in the placeholder phase. */
+  dashIsPlaceholder: boolean;
   monthlyPerf: AccountMonthlyPerformanceResponse | null;
-  periodReturns: PeriodReturnsPayload | null;
+  /** undefined while the bundle loads; null is the server stating the account has no period returns. */
+  periodReturns: PeriodReturnsPayload | null | undefined;
   displayUnit: "clp" | "usd";
   /** Per-surface controls: valuation chart (Diario+3y) and the two P/L combos (Mensual+3y). */
   valuationPrefs: SurfacePrefsValue;
@@ -88,14 +97,38 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     if (rawDetail.ts && rawDetail.ts.unit === (displayUnit === "usd" ? "usd" : "clp")) return rawDetail;
     const rate = resolveClpPerUsdForKeepPrev(undefined, readFxLatestCache());
     if (rate == null) return rawDetail;
-    return convertAccountDetailBundleUnit(rawDetail, displayUnit, rate);
+    const converted = convertAccountDetailBundleUnit(rawDetail, displayUnit, rate);
+    // The Rentabilidad table stays on screen (dimmed) while the target unit loads, so its money
+    // cells convert too.
+    return converted.period_returns
+      ? {
+          ...converted,
+          period_returns: convertPeriodReturnsUnit(converted.period_returns, displayUnit, rate),
+        }
+      : converted;
   }, [detailIsPlaceholder, rawDetail, displayUnit]);
   const { data: sidebarNav } = useSidebarNav();
   const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit);
 
+  const navSelfEarly = useMemo(() => {
+    if (accountIdNum <= 0) return null;
+    return findNavTreeNodeByAccountId(sidebarNav?.main ?? [], accountIdNum);
+  }, [sidebarNav?.main, accountIdNum]);
+  // What the client already knows about the account (its nav node, its card row in the cached nav
+  // snapshot): the placeholder takes its category and name from there, so category-keyed sections
+  // frame the right page from first paint.
+  const placeholderDashRow = useMemo(
+    () => navSnapshot?.accounts.find((a) => a.account_id === accountIdNum) ?? null,
+    [navSnapshot, accountIdNum]
+  );
+
   const placeholder = useMemo(
-    () => buildPlaceholderAccountDetailBundle(accountIdNum > 0 ? accountIdNum : 1, displayUnit),
-    [accountIdNum, displayUnit]
+    () =>
+      buildPlaceholderAccountDetailBundle(accountIdNum > 0 ? accountIdNum : 1, displayUnit, {
+        navNode: navSelfEarly,
+        dashRow: placeholderDashRow,
+      }),
+    [accountIdNum, displayUnit, navSelfEarly, placeholderDashRow]
   );
 
   const err =
@@ -113,7 +146,8 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     detail.ccLedger != null &&
     detail.invNavAccounts?.accounts != null;
 
-  const contentLoading = detailPending || !bundleReady;
+  // `detailIsPlaceholder` = prior-unit data of this same account held while the new unit loads.
+  const contentLoading = detailPending || detailIsPlaceholder || !bundleReady;
 
   const summary = detail?.summary ?? placeholder.summary;
   const ts: NonNullable<DetailBundle["ts"]> = detail?.ts ?? placeholder.ts!;
@@ -122,14 +156,9 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const ccLedger = (detail?.ccLedger ?? placeholder.ccLedger) as AccountCcInstallmentsResponse;
   const invNavAccounts = detail?.invNavAccounts?.accounts ?? placeholder.invNavAccounts.accounts;
   const monthlyPerf = detail?.monthly_performance ?? placeholder.monthly_performance;
-  const periodReturns = detail?.period_returns ?? null;
+  const periodReturns = detail?.period_returns;
   const checkingCartolaMonths = detail?.checkingCartolaMonths ?? null;
 
-  const accountIdForNav = accountIdNum > 0 ? accountIdNum : summary.account_id;
-  const navSelfEarly = useMemo(() => {
-    if (!Number.isFinite(accountIdForNav) || accountIdForNav <= 0) return null;
-    return findNavTreeNodeByAccountId(sidebarNav?.main ?? [], accountIdForNav);
-  }, [sidebarNav?.main, accountIdForNav]);
   const needsNavChildCards =
     (navSelfEarly?.children?.filter((c) => c.route_path?.trim()).length ?? 0) > 0;
 
@@ -138,9 +167,12 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     displayUnit,
     needsNavChildCards && (!hasNavSnapshotCache || bundleReady)
   );
-  const dash = navCtx ? dashPickForNavStrip(navCtx) : null;
-
-  const monthlyPerfErr: string | null = null;
+  const realDash = navCtx ? dashPickForNavStrip(navCtx) : null;
+  // Nav-context not in yet: the strip's zero frame from the nav tree (cards in their placeholder phase).
+  const dash =
+    realDash ??
+    (needsNavChildCards && sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null);
+  const dashIsPlaceholder = realDash == null && dash != null;
 
   // Tail clip runs server-side; the block carries the clipped x-range when the account ended early.
   const valuationTailClipEndDate = ts?.accounts?.chart_end_ymd ?? null;
@@ -231,7 +263,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     id,
     contentLoading: err != null ? false : contentLoading,
     err,
-    monthlyPerfErr,
     summary,
     ts,
     depositInflows,
@@ -240,6 +271,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     checkingCartolaMonths,
     invNavAccounts,
     dash,
+    dashIsPlaceholder,
     monthlyPerf,
     periodReturns,
     displayUnit,

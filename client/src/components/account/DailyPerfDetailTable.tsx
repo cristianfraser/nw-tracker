@@ -29,10 +29,13 @@ export function DailyPerfDetailTable({
   series,
   displayUnit,
   dimClosedDays = false,
+  loading = false,
 }: {
   series: DailySeriesResponse | null | undefined;
   displayUnit: "clp" | "usd";
   dimClosedDays?: boolean;
+  /** The series is not in yet (or is held prior data): the table dims; with no rows it shows its header only, never the empty copy. */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -56,7 +59,7 @@ export function DailyPerfDetailTable({
     pct: t("accountDetail.perf.pctDay"),
   };
 
-  if (!rowsDesc.length) {
+  if (!rowsDesc.length && !loading) {
     return <p className="muted">{t("groupPage.dailyDetailEmpty")}</p>;
   }
 
@@ -74,7 +77,7 @@ export function DailyPerfDetailTable({
   );
 
   return (
-    <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
+    <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
       <Table
         key={`daily-detail-page-${page}`}
         header={header}
