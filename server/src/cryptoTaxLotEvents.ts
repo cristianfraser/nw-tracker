@@ -11,8 +11,10 @@
  * - `sell` closes at what it received; `swap_out` and `coin_out` close at market value (a coin
  *   exchanged or spent is disposed of at what it was worth); `send_fee` closes at zero (coin lost).
  *
- * Commissions ({@link CryptoFeePolicy}): the SII does not let them reduce the gain (Oficio
- * 2208/2022), so under `excluded` — the default — a purchase's cost is what was paid less the
+ * Commissions ({@link CryptoFeePolicy}): the SII does not let a persona natural sin contabilidad
+ * deduct them (its crypto FAQ, citing Oficio 1474/2020; Oficio 2208/2022 restates that the
+ * final-tax bases «no contemplan la deducción de estos gastos»), so under `excluded` — the
+ * default — a purchase's cost is what was paid less the
  * commission and a sale's price is what was received plus it, from the exchange's own record
  * (`crypto_trade_details`; a buy, sell or swap_in without one throws). `included` keeps the ledger's
  * pesos (the economic view).
