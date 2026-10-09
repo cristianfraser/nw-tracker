@@ -8,6 +8,12 @@ export const issuerBankAccountSchema = z
     issuer: z.string().regex(/^[a-z][a-z0-9_]*$/),
     /** `checking`: the cuenta corriente. */
     product: z.enum(["checking"]),
+    /**
+     * The account number the document itself names (digits only, leading zeros as printed), when
+     * it names one — a listing of the wrong account must be refused, not filed under the mapped
+     * one. Optional, so payloads from before 2026-10-09 stay valid (no version bump).
+     */
+    number: z.string().regex(/^\d+$/).optional(),
   })
   .strict();
 

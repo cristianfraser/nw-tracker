@@ -6,8 +6,20 @@ import { ensureDir, resolveCaptureDir } from "./paths.js";
 import type { BankName } from "./config.js";
 import { log } from "./log.js";
 
-/** Santander's private-banking API host — every data call the SPA makes goes here. */
+/** Santander's private-banking API host (Tibco) — most data calls the SPA makes go here. */
 export const API_HOST_FRAGMENT = "api-dsk.santander.cl";
+
+/**
+ * Santander's Apigee host: the checking-account transactions call
+ * (`/account_balances_transactions_and_withholdings_retail/v1/current-accounts/transactions`)
+ * goes here since the SPA switched it off Tibco; the Tibco twin (`mvtosYDeposiDocCtas`) is its
+ * fallback. Recorded alongside the Tibco host since 2026-10-09 so the dollar account's rows can
+ * be captured. Headers are never recorded (the Apigee call carries a bearer token).
+ */
+export const OPENBANKING_HOST_FRAGMENT = "openbanking.santander.cl";
+
+/** Every host a Santander session's data calls go to. */
+export const SANTANDER_API_HOST_FRAGMENTS = [API_HOST_FRAGMENT, OPENBANKING_HOST_FRAGMENT] as const;
 
 /**
  * Third-party traffic to ignore when recording without a host filter.
@@ -52,8 +64,10 @@ export class Recorder {
   private seq = 0;
   private secrets: string[] = [];
 
+  private readonly hostFragments: readonly string[] | null;
+
   /**
-   * @param hostFragment restrict recording to one API host (Santander's calls all go to one).
+   * @param hostFragments restrict recording to these API hosts (Santander's calls go to two).
    *   Omit to record every XHR/fetch instead — the right default when the bank's API hosts are not
    *   yet known, which is exactly the situation a first capture run is meant to resolve.
    */
@@ -61,9 +75,15 @@ export class Recorder {
     readonly captureEnabled: boolean,
     runStamp: string,
     bank: BankName,
-    private readonly hostFragment?: string,
+    hostFragments?: string | readonly string[],
   ) {
     this.dir = captureEnabled ? ensureDir(path.join(resolveCaptureDir(bank), runStamp)) : null;
+    this.hostFragments = hostFragments === undefined ? null : typeof hostFragments === "string" ? [hostFragments] : hostFragments;
+  }
+
+  /** Whether a response from `url` is recorded under this recorder's host filter (no filter: every URL). */
+  recordsUrl(url: string): boolean {
+    return this.hostFragments === null || this.hostFragments.some((fragment) => url.includes(fragment));
   }
 
   get captureDir(): string | null {
@@ -102,8 +122,8 @@ export class Recorder {
 
   private async record(response: Response): Promise<void> {
     const url = response.url();
-    if (this.hostFragment) {
-      if (!url.includes(this.hostFragment)) return;
+    if (this.hostFragments !== null) {
+      if (!this.recordsUrl(url)) return;
     } else {
       const kind = response.request().resourceType();
       if (kind !== "xhr" && kind !== "fetch") return;

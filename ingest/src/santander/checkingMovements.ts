@@ -12,7 +12,15 @@ import { isChileanNumber, parseChileanNumber } from "../formats/chileanNumber.js
 /**
  * Santander's «ultimos movimientos-Cuenta Corriente.xlsx» (the checking account's recent
  * movements, downloaded by `fetch:santander`, or uploaded on the card page) → a
- * `bank_account.movements` payload. Columns: Fecha (dd-mm-yyyy) · Detalle · Cargo · Abono.
+ * `bank_account.movements` payload. Rows: the holder's name · `<product>: <account number>` ·
+ * the header «Fecha · Detalle · Monto cargo ($) · Monto abono ($) · Saldo ($)» · the movements
+ * (Fecha dd-mm-yyyy).
+ *
+ * Only the PESO account's workbook is accepted (2026-10-09): the bank's dollar cuenta corriente
+ * downloads under the same name with «Monto cargo (USD)» headers, and every row used to be sent
+ * as pesos into the peso account. The headers must be the «($)» ones and row 2 must carry an
+ * account number, which travels in the payload for the server to check against the account it
+ * maps the listing to.
  */
 
 function cell(row: unknown[], i: number): string {
@@ -50,6 +58,47 @@ function isHeader(row: unknown[]): boolean {
   return cell(row, 0).toLowerCase() === "fecha" && cell(row, 1).toLowerCase() === "detalle";
 }
 
+/** The amount headers of the peso workbook; the dollar account's read «Monto cargo (USD)». */
+const PESO_CARGO_HEADER = /^monto\s+cargo\s*\(\$\)$/i;
+const PESO_ABONO_HEADER = /^monto\s+abono\s*\(\$\)$/i;
+/** Row 2: `<product name>: <account number as the bank formats it>`, e.g. «Cuenta Corriente: 0-000-00-00000-0». */
+const ACCOUNT_LINE = /^([^:]+):\s*([\d\s-]+)$/;
+
+export type UltimosMovimientosHeader = {
+  /** Index of the «Fecha / Detalle» header row. */
+  headerRow: number;
+  /** The account number row 2 names, digits only (leading zeros as printed). */
+  accountNumber: string;
+  /** The product name row 2 names («Cuenta Corriente»). */
+  productLabel: string;
+};
+
+/**
+ * The workbook's identity, or an error naming what is wrong: the amount headers must be the peso
+ * «($)» ones, and the line above the header must name an account number.
+ */
+export function readUltimosMovimientosHeader(rows: unknown[][]): UltimosMovimientosHeader {
+  const headerRow = rows.findIndex((row) => Array.isArray(row) && isHeader(row));
+  if (headerRow < 0) throw new Error("Not a Santander «ultimos movimientos» workbook (no Fecha / Detalle header)");
+  const header = rows[headerRow] as unknown[];
+  const cargo = cell(header, 2);
+  const abono = cell(header, 3);
+  if (!PESO_CARGO_HEADER.test(cargo) || !PESO_ABONO_HEADER.test(abono)) {
+    throw new Error(
+      `Not the peso cuenta corriente's «ultimos movimientos» workbook: amount headers are «${cargo}» / «${abono}», expected «Monto cargo ($)» / «Monto abono ($)» (a dollar account's listing is refused here)`,
+    );
+  }
+  const accountLine = rows
+    .slice(0, headerRow)
+    .map((row) => (Array.isArray(row) ? cell(row, 0) : ""))
+    .map((text) => ACCOUNT_LINE.exec(text))
+    .find((m): m is RegExpExecArray => m !== null && m[2]!.replace(/\D/g, "").length > 0);
+  if (!accountLine) {
+    throw new Error("Santander «ultimos movimientos» workbook names no account number above its header (expected «<product>: <number>»)");
+  }
+  return { headerRow, accountNumber: accountLine[2]!.replace(/\D/g, ""), productLabel: accountLine[1]!.trim() };
+}
+
 export function workbookRows(buffer: Buffer): unknown[][] {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const sheetName = wb.SheetNames[0];
@@ -68,11 +117,11 @@ export type UltimosMovimientosParse = {
   rejected_rows: string[];
 };
 
+/** The movements below the header. Throws through `readUltimosMovimientosHeader` on a workbook that is not the peso account's. */
 export function parseUltimosMovimientosRows(rows: unknown[][]): UltimosMovimientosParse {
   const movements: BankAccountMovement[] = [];
   const rejected: string[] = [];
-  const headerRow = rows.findIndex((row) => Array.isArray(row) && isHeader(row));
-  if (headerRow < 0) return { movements, rejected_rows: ["No se encontró fila de encabezados Fecha/Detalle"] };
+  const { headerRow } = readUltimosMovimientosHeader(rows);
 
   const seen = new Set<string>();
   const push = (date: string, description: string, amount: number, document_no: string | null) => {
@@ -110,14 +159,19 @@ export function parseUltimosMovimientosRows(rows: unknown[][]): UltimosMovimient
   return { movements, rejected_rows: rejected };
 }
 
-/** The whole workbook as one payload; throws when it is not an «últimos movimientos» workbook. */
-export function santanderCheckingMovementsPayload(buffer: Buffer): BankAccountMovementsPayload {
-  const rows = workbookRows(buffer);
-  if (!isUltimosMovimientosWorkbook(rows)) {
-    throw new Error("Not a Santander «ultimos movimientos» workbook (no Fecha / Detalle header)");
-  }
+/**
+ * The rows as one payload; throws when they are not the peso account's «últimos movimientos»
+ * workbook. The account number row 2 names rides along for the server to check.
+ */
+export function ultimosMovimientosPayload(rows: unknown[][]): BankAccountMovementsPayload {
+  const { accountNumber } = readUltimosMovimientosHeader(rows);
   const parsed = parseUltimosMovimientosRows(rows);
-  return { account: { issuer: "santander", product: "checking" }, ...parsed };
+  return { account: { issuer: "santander", product: "checking", number: accountNumber }, ...parsed };
+}
+
+/** The whole workbook as one payload; throws when it is not the peso account's «últimos movimientos» workbook. */
+export function santanderCheckingMovementsPayload(buffer: Buffer): BankAccountMovementsPayload {
+  return ultimosMovimientosPayload(workbookRows(buffer));
 }
 
 /** The browser may suffix a re-download (` (1)`), so the match is prefix-based. */
