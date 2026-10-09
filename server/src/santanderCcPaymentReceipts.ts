@@ -49,7 +49,8 @@ import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { recordBankPosting } from "./movementBankPostings.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
-import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
+import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPasteParse.js";
+import { recordPlantedPaymentLine } from "./ccPlantedPayments.js";
 import {
   recordSyntheticCcPaymentTransfer,
   syntheticCcPaymentMovementIdForMessageId,
@@ -157,8 +158,9 @@ function synthesizeTransferFromReceipt(
     const movementId = Number(r.lastInsertRowid);
     recordSyntheticCcPaymentTransfer(movementId, messageId, receipt.amount_clp, receipt.paid_on);
 
+    const cardGroup = creditCardMasterMetaForAccount(cardAccountId).cardGroup;
     const line = webPasteLineFromCardListingLine(
-      creditCardMasterMetaForAccount(cardAccountId).cardGroup,
+      cardGroup,
       santanderReceiptCardLine({
         paid_on: receipt.paid_on,
         amount_clp: receipt.amount_clp,
@@ -166,6 +168,18 @@ function synthesizeTransferFromReceipt(
       })
     );
     const planted = importCcWebPasteLines(cardAccountId, { lines: [line], errors: [] }, "cc_santander_receipt");
+    // Registered as planted: a bank listing under other wording replaces it (ccPlantedPayments.ts).
+    recordPlantedPaymentLine(
+      cardAccountId,
+      "cc_santander_receipt",
+      {
+        currency: isUsd ? "usd" : "clp",
+        amount: isUsd ? Number(receipt.amount_usd!.toFixed(2)) : Math.round(receipt.amount_clp),
+        paid_on: receipt.paid_on,
+      },
+      webPasteLineDedupeKey(cardGroup, line),
+      planted.inserted > 0
+    );
     return { movement_id: movementId, card_account_id: cardAccountId, card_line_planted: planted.inserted > 0 };
   });
   const out = write();

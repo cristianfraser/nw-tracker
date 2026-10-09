@@ -187,6 +187,15 @@ export type CardUnbilledMovementsApplyDetails = {
     }[];
     first_due_nudges: { purchase_id: number; merchant: string | null; from: string | null; to: string; rule: string }[];
     cuota_lines_tagged: number;
+    /**
+     * Payment lines the app had planted (receipt, entered by hand) that the bank's own listing of
+     * the same money replaced, or carried as is; ambiguous pairings left alone.
+     */
+    planted_payments: {
+      replaced: { planted_line_id: number; bank_line_merchant: string; bank_line_date: string; amount: number; currency: "clp" | "usd" }[];
+      confirmed_in_place: { planted_line_id: number; bank_line_merchant: string; amount: number; currency: "clp" | "usd" }[];
+      ambiguous: { bank_line_merchant: string; bank_line_date: string; amount: number; currency: "clp" | "usd"; planted_line_ids: number[] }[];
+    };
     /** Open-cycle lines the listing no longer shows, removed; null when no currency was mirrored. */
     removed_by_mirror:
       | { id: number; date: string; merchant: string | null; amount_clp: number | null; amount_usd: number | null }[]

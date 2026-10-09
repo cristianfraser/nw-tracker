@@ -40,6 +40,7 @@ import {
 import { db } from "./db.js";
 import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
+import { PLANTED_PAYMENT_WINDOW_DAYS } from "./ccPlantedPayments.js";
 
 const MATCH_WINDOW_DAYS = 4;
 
@@ -133,6 +134,29 @@ function dedupeCcPaymentEvidence(rows: ReturnType<typeof listCcPaymentEvidenceRo
  * converted payment has lost its evidence: if the payment came back under another date it would
  * look unconverted, and pairing it again would book it twice.
  */
+/**
+ * Card evidence a hand-entered card payment (`cc_manual_payments`) accounts for: same card,
+ * currency and amount, dated from its payment day to the planted-line window's end
+ * (`ccPlantedPayments.ts`).
+ */
+function manualPaymentEvidenceClaim(): (e: CcPaymentEvidence) => boolean {
+  const rows = db
+    .prepare(`SELECT card_account_id, currency, amount, paid_on FROM cc_manual_payments`)
+    .all() as { card_account_id: number; currency: "clp" | "usd"; amount: number; paid_on: string }[];
+  if (rows.length === 0) return () => false;
+  return (e) =>
+    rows.some((r) => {
+      if (r.card_account_id !== e.cc_account_id || r.currency !== e.currency) return false;
+      const amount = e.currency === "usd" ? e.amount_usd : e.amount_clp;
+      if (amount == null) return false;
+      const same =
+        e.currency === "usd" ? Math.round(amount * 100) === Math.round(r.amount * 100) : Math.round(amount) === Math.round(r.amount);
+      if (!same) return false;
+      const gap = (Date.parse(`${e.pago_iso}T00:00:00Z`) - Date.parse(`${r.paid_on}T00:00:00Z`)) / 86_400_000;
+      return gap >= 0 && gap <= PLANTED_PAYMENT_WINDOW_DAYS;
+    });
+}
+
 export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
   const movements = db
     .prepare(
@@ -177,8 +201,11 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
     );
   }
   const converted = new Set(pairings.map((p) => p.key));
+  // A card payment entered by hand already has its transfer (from the account that paid): its
+  // card line — planted, or the bank's line that replaced it — is not evidence for a checking debit.
+  const claimedByManualPayment = manualPaymentEvidenceClaim();
   const evidence = dedupeCcPaymentEvidence(evidenceRows).filter(
-    (e) => !converted.has(ccPaymentEvidenceKey(e))
+    (e) => !converted.has(ccPaymentEvidenceKey(e)) && !claimedByManualPayment(e)
   );
   const byAmount = new Map<number, CcPaymentEvidence[]>();
   const usdEvidence: CcPaymentEvidence[] = [];

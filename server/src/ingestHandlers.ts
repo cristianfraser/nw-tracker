@@ -78,6 +78,22 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
       plans_created: a.plans_created,
       first_due_nudges: a.first_due_nudges,
       cuota_lines_tagged: a.cuota_lines_tagged,
+      planted_payments: {
+        replaced: a.planted_payments.replaced.map((r) => ({
+          planted_line_id: r.planted_line_id,
+          bank_line_merchant: r.bank_line_merchant,
+          bank_line_date: r.bank_line_date,
+          amount: r.amount,
+          currency: r.currency,
+        })),
+        confirmed_in_place: a.planted_payments.confirmed_in_place.map((r) => ({
+          planted_line_id: r.planted_line_id,
+          bank_line_merchant: r.bank_line_merchant,
+          amount: r.amount,
+          currency: r.currency,
+        })),
+        ambiguous: a.planted_payments.ambiguous,
+      },
       removed_by_mirror: a.mirror?.removed ?? null,
     })),
     issuer_balances: result.bank_cupo,

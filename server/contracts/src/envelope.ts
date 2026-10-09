@@ -72,6 +72,8 @@ export const INGEST_ERROR_CODES = [
   "run_not_waiting",
   "unknown_ingest_task",
   "invalid_task_request",
+  /** A task request the server checked and refused (e.g. a transfer that cannot be adopted). */
+  "task_refused",
 ] as const;
 
 export type IngestErrorCode = (typeof INGEST_ERROR_CODES)[number];

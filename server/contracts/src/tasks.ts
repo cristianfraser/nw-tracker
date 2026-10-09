@@ -39,3 +39,38 @@ export const ingestTaskResultSchema = z
   .strict();
 
 export type IngestTaskResult = z.infer<typeof ingestTaskResultSchema>;
+
+/**
+ * Record a card payment entered by hand (paid at a branch, from a dollar account — no receipt
+ * mail): `POST /api/ingest/tasks/cc_manual_payment`. The server writes (or adopts) the
+ * `pago_tarjeta` transfer and plants the card's credit line until the bank lists the payment.
+ */
+export const CC_MANUAL_PAYMENT_TASK = "cc_manual_payment";
+
+export const ccManualPaymentRequestSchema = z
+  .object({
+    from_account_id: z.number().int().positive(),
+    card_account_id: z.number().int().positive(),
+    amount: z.number().positive(),
+    currency: z.enum(["clp", "usd"]),
+    paid_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    note: z.string().min(1).nullable().optional(),
+    /** Adopt this existing `pago_tarjeta` transfer instead of writing one. */
+    existing_transfer_movement_id: z.number().int().positive().nullable().optional(),
+  })
+  .strict();
+
+export type CcManualPaymentRequest = z.infer<typeof ccManualPaymentRequestSchema>;
+
+export const ccManualPaymentResultSchema = z
+  .object({
+    status: z.enum(["recorded", "already_recorded"]),
+    manual_payment_id: z.number().int(),
+    transfer_movement_id: z.number().int(),
+    card_line: z.enum(["planted", "already_planted", "bank_line_on_file", "fuzzy_twin_on_file"]),
+    planted_line_id: z.number().int().nullable(),
+    detail: z.string(),
+  })
+  .strict();
+
+export type CcManualPaymentResult = z.infer<typeof ccManualPaymentResultSchema>;

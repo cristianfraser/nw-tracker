@@ -8,6 +8,8 @@ import {
   ingestRunCompletionSchema,
   ingestTaskRequestSchema,
   INGEST_TASK_NAMES,
+  CC_MANUAL_PAYMENT_TASK,
+  ccManualPaymentRequestSchema,
   type IngestErrorBody,
   type IngestTaskName,
   type IngestKindDefinition,
@@ -17,6 +19,7 @@ import { ingestAuthMiddleware, type IngestAuthConfig } from "../ingestAuth.js";
 import { INGEST_HANDLERS, type IngestHandler } from "../ingestHandlers.js";
 import { completeIngestRun, ingestRunById, listRecentIngestRuns } from "../ingestRuns.js";
 import { runIngestTask } from "../ingestTasks.js";
+import { recordManualCardPayment } from "../ccManualPayments.js";
 import { asyncHandler } from "./shared.js";
 
 export interface IngestRoutesOptions {
@@ -87,6 +90,24 @@ export function registerIngestRoutes(app: express.Express, options: IngestRoutes
   });
 
   // Server tasks a feeder run asks for (Phase 4): the run's steps that work on the server's data.
+  // A card payment entered by hand (ccManualPayments.ts): its own typed body, so before `:task`.
+  router.post(`/tasks/${CC_MANUAL_PAYMENT_TASK}`, (req, res) => {
+    const request = ccManualPaymentRequestSchema.safeParse(req.body ?? {});
+    if (!request.success) {
+      res.status(400).json({ error: "invalid_task_request", message: "Not a manual card payment.", issues: request.error.issues } satisfies IngestErrorBody);
+      return;
+    }
+    let result: ReturnType<typeof recordManualCardPayment>;
+    try {
+      result = recordManualCardPayment(request.data);
+    } catch (err) {
+      res.status(422).json({ error: "task_refused", message: err instanceof Error ? err.message : String(err) } satisfies IngestErrorBody);
+      return;
+    }
+    console.log(`ingest-tasks: ${CC_MANUAL_PAYMENT_TASK} — ${result.detail}`);
+    res.json(result);
+  });
+
   router.post("/tasks/:task", (req, res) => {
     const task = String(req.params.task);
     if (!(INGEST_TASK_NAMES as readonly string[]).includes(task)) {

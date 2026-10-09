@@ -59,6 +59,25 @@ function printDetails(details: CardUnbilledMovementsApplyDetails): void {
     if (card.cuota_lines_tagged > 0) {
       console.log(`    ${card.cuota_lines_tagged} cuota purchase line(s) tagged (count unknown until the statement)`);
     }
+    const money = (amount: number, currency: "clp" | "usd") =>
+      currency === "usd" ? `US$${amount.toFixed(2)}` : `$${fmt(amount)}`;
+    // Older servers do not send it.
+    const planted = card.planted_payments ?? { replaced: [], confirmed_in_place: [], ambiguous: [] };
+    for (const r of planted.replaced) {
+      console.log(
+        `    planted payment line ${r.planted_line_id} replaced by the bank's ${r.bank_line_date} ` +
+          `${r.bank_line_merchant} ${money(r.amount, r.currency)}`
+      );
+    }
+    for (const r of planted.confirmed_in_place) {
+      console.log(`    planted payment line ${r.planted_line_id} confirmed by the bank (${r.bank_line_merchant} ${money(r.amount, r.currency)})`);
+    }
+    for (const r of planted.ambiguous) {
+      console.log(
+        `    AMBIGUOUS planted payment: bank ${r.bank_line_date} ${r.bank_line_merchant} ${money(r.amount, r.currency)} ` +
+          `fits planted line(s) ${r.planted_line_ids.join(", ")} — nothing replaced`
+      );
+    }
     for (const r of card.removed_by_mirror ?? []) {
       console.log(
         `    no longer listed by the bank, removed: ${r.date} ${r.merchant} ` +

@@ -22,6 +22,7 @@ import {
   type CcFeedPlanCreated,
 } from "./ccFeedCuotaPurchases.js";
 import { mirrorOpenBucketsToFeed, type CcFeedMirrorResult } from "./ccFeedMirror.js";
+import type { PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
 import type { CcInstallmentFirstDueNudge } from "./ccWebPasteInstallmentNudge.js";
 import {
   bankCupoCaptureFromListing,
@@ -77,6 +78,8 @@ export type CardListingAccountImportResult = {
   cuota_lines_tagged: number;
   /** Lines the bank no longer lists, removed (`ccFeedMirror.ts`); null when the feed had no close. */
   mirror: CcFeedMirrorResult | null;
+  /** Planted payment lines the listing replaced or confirmed (`ccPlantedPayments.ts`). */
+  planted_payments: PlantedPaymentMatchResult;
 };
 
 export type CardUnbilledMovementsImportResult = {
@@ -219,6 +222,7 @@ export function applyCardUnbilledMovements(
       first_due_nudges: result.installment_first_due_nudges ?? [],
       cuota_lines_tagged: tagged.length,
       mirror,
+      planted_payments: result.planted_payments,
     });
   }
   // Tagged cuota purchases (count unknown) are marked after their card's write: one more pass,
