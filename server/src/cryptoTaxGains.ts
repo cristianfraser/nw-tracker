@@ -1,7 +1,8 @@
 /**
  * A year's crypto gain as the SII taxes it for a persona natural (art. 17 N°8 m), IGC only,
  * Formulario 22 code 1032; a net loss goes to code 169):
- * - cost = what each purchase cost, less its commission (Oficio 2208/2022; see
+ * - cost = what each purchase cost, less its commission (no deduction for a persona natural sin
+ *   contabilidad: the SII's crypto FAQ citing Oficio 1474/2020, restated by Oficio 2208/2022; see
  *   `cryptoTaxLotEvents`), «reajustado de acuerdo al porcentaje de variación experimentado por el
  *   índice de precios al consumidor entre el mes anterior a la adquisición y el mes anterior al de
  *   la enajenación» — the official IPC (`ipc_official_monthly`);

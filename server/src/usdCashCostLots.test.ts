@@ -205,6 +205,27 @@ describe("usdOutflowPesoCostByMovement", () => {
     expect(cost.lots.map((l) => [l.source, l.usd])).toEqual([["purchase", 100], ["purchase", 50]]);
   });
 
+  it("prices a partly spent moved batch at the older purchase rate first, one lot per carried slice", () => {
+    const fintualUsd = account("Fintual USD", "brokerage_cash__usd");
+    const fintualClp = account("Fintual CLP", "brokerage_cash__clp");
+    const santanderUsd = account("Santander USD", "cash_eqs__usd");
+    const card = account("card", "credit_cards__credit_card");
+    movement({ date: "2097-08-01", from: fintualClp, to: fintualUsd, amount: 90_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
+    movement({ date: "2097-08-02", from: fintualClp, to: fintualUsd, amount: 100_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
+    // The whole batch moves to the bank account, then 150 of its 200 dollars pay the card.
+    const wire = movement({ date: "2097-08-03", from: fintualUsd, to: santanderUsd, amount: 200, currency: "usd" });
+    const payment = movement({ date: "2097-08-04", from: santanderUsd, to: card, amount: 150, currency: "usd", flow_kind: "pago_tarjeta" });
+    const costs = usdOutflowPesoCostByMovement();
+    expect(costs.get(wire)!.clp).toBeCloseTo(190_000, 6);
+    expect(costs.get(wire)!.lots.map((l) => [l.source, l.usd, l.clp])).toEqual([["purchase", 100, 90_000], ["purchase", 100, 100_000]]);
+    const cost = costs.get(payment)!;
+    expect(cost.clp).toBeCloseTo(140_000, 6);
+    expect(cost.lots.map((l) => [l.source, l.usd, l.clp, l.movement_id])).toEqual([
+      ["own_transfer", 100, 90_000, wire],
+      ["own_transfer", 50, 50_000, wire],
+    ]);
+  });
+
   it("lets a timeless day's arrivals fund its spending, whatever the ids", () => {
     const usd = account("USD cash", "cash_eqs__usd");
     const clp = account("CLP cash", "brokerage_cash__clp");
