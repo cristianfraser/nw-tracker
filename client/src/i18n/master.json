@@ -5780,6 +5780,46 @@
       "645": {
         "en": "Final positive CPT",
         "es": "CPT positivo final"
+      },
+      "105": {
+        "en": "Dividends taxable under the IGC (line 2)",
+        "es": "Dividendos afectos al IGC (línea 2)"
+      },
+      "610": {
+        "en": "IDPC credit with right to refund (line 48)",
+        "es": "Crédito IDPC con derecho a devolución (línea 48)"
+      },
+      "1809": {
+        "en": "Shares: gain or loss (art. 107 N°1)",
+        "es": "Acciones: mayor o menor valor (art. 107 N°1)"
+      },
+      "1813": {
+        "en": "Fund units: gain or loss (art. 107 N°2)",
+        "es": "Cuotas de fondos mutuos y de inversión: mayor o menor valor (art. 107 N°2)"
+      },
+      "1814": {
+        "en": "Net result under art. 107",
+        "es": "Resultado neto art. 107"
+      },
+      "1815": {
+        "en": "Carried-forward loss, updated (art. 107)",
+        "es": "Pérdida de arrastre actualizada (art. 107)"
+      },
+      "1816": {
+        "en": "Taxable base or loss under art. 107",
+        "es": "Base imponible o pérdida art. 107"
+      },
+      "1829": {
+        "en": "Art. 107 base (line 66)",
+        "es": "Base art. 107 (línea 66)"
+      },
+      "1830": {
+        "en": "10% single tax on the art. 107 base (line 66)",
+        "es": "Impuesto único 10% sobre la base art. 107 (línea 66)"
+      },
+      "1901": {
+        "en": "Income taxed under IDPC, art. 20 N°5 (exchange result on dollars; line 58 d)",
+        "es": "Rentas afectas al IDPC, art. 20 N°5 (diferencia de cambio en dólares; línea 58 d)"
       }
     },
     "crypto": {
@@ -5942,6 +5982,162 @@
         }
       }
     },
+    "art107": {
+      "title": {
+        "en": "Art. 107 LIR: fund and share sales",
+        "es": "Art. 107 LIR: ventas de fondos y acciones"
+      },
+      "explain": {
+        "en": "Sales of fund units and shares on the exchange are taxed under art. 107 LIR. The mayor valor pays a flat 10% single tax (impuesto único) on sales from 2022-09-02 through 2026-12-31, and is ingreso no renta before 2022-09-02 and from {{inrFrom}}: no tax and no effect on the IGC. Lots are sold {{method}}; a loss offsets only other art. 107 gains.",
+        "es": "Las ventas en bolsa de cuotas de fondos y de acciones tributan bajo el art. 107 LIR. El mayor valor paga un impuesto único de 10% en las ventas desde el 2022-09-02 hasta el 2026-12-31, y es ingreso no renta antes del 2022-09-02 y desde el {{inrFrom}}: sin impuesto y sin efecto en el IGC. Los lotes se venden {{method}}; una pérdida solo compensa otras ganancias del art. 107."
+      },
+      "lotMethod": {
+        "fifo": {
+          "en": "oldest first (FIFO)",
+          "es": "primero los más antiguos (FIFO)"
+        },
+        "lifo": {
+          "en": "newest first (LIFO)",
+          "es": "primero los más recientes (LIFO)"
+        },
+        "average": {
+          "en": "at average cost",
+          "es": "a costo promedio"
+        }
+      },
+      "costExplain": {
+        "en": "The draft takes {{option}}, the resident cost option with the lower result. Both results are shown: the choice is irrevocable once the return is filed.",
+        "es": "El borrador toma {{option}}, la opción de costo de residente de menor resultado. Se muestran ambos resultados: la elección es irrevocable una vez presentada la declaración."
+      },
+      "option": {
+        "cost_paid": {
+          "en": "the pesos actually paid, reajustados by IPC",
+          "es": "los pesos efectivamente pagados, reajustados por IPC"
+        },
+        "close_dec31": {
+          "en": "the 31 December close of the purchase year, reajustado by IPC",
+          "es": "el cierre al 31 de diciembre del año de compra, reajustado por IPC"
+        }
+      },
+      "closeStandIn": {
+        "en": "The 31 December close is the stored daily close, a stand-in for the CMF's official closing price (precio de cierre oficial); a dash means no close is stored for that lot.",
+        "es": "El cierre al 31 de diciembre es el cierre diario guardado, un sustituto del precio de cierre oficial de la CMF; un guion significa que no hay cierre guardado para ese lote."
+      },
+      "date": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "instrument": {
+        "en": "Instrument",
+        "es": "Instrumento"
+      },
+      "units": {
+        "en": "Units",
+        "es": "Unidades"
+      },
+      "proceeds": {
+        "en": "Sale price",
+        "es": "Precio de venta"
+      },
+      "costPaid": {
+        "en": "Cost paid",
+        "es": "Costo pagado"
+      },
+      "costReajustado": {
+        "en": "Cost reajustado",
+        "es": "Costo reajustado"
+      },
+      "closeDec31": {
+        "en": "31 Dec. close",
+        "es": "Cierre 31 dic."
+      },
+      "result": {
+        "en": "Result",
+        "es": "Resultado"
+      },
+      "regime": {
+        "en": "Regime",
+        "es": "Régimen"
+      },
+      "kind": {
+        "fund": {
+          "en": "fund",
+          "es": "fondo"
+        },
+        "share": {
+          "en": "share",
+          "es": "acción"
+        }
+      },
+      "regimeLabel": {
+        "tax_10pct": {
+          "en": "10% single tax",
+          "es": "10% único"
+        },
+        "inr": {
+          "en": "Ingreso no renta",
+          "es": "Ingreso no renta"
+        }
+      },
+      "totals": {
+        "en": "Results of the sales under the 10% regime: {{costPaid}} with the cost paid, {{closeDec31}} with the 31 December close.",
+        "es": "Resultados de las ventas bajo el régimen de 10%: {{costPaid}} con el costo pagado, {{closeDec31}} con el cierre al 31 de diciembre."
+      },
+      "explainInr": {
+        "en": "Sales before 2022-09-02 and from {{inrFrom}} are ingreso no renta: they are listed with their result, but enter no code and no tax.",
+        "es": "Las ventas anteriores al 2022-09-02 y desde el {{inrFrom}} son ingreso no renta: se listan con su resultado, pero no entran en ningún código ni en el impuesto."
+      },
+      "carriedLoss": {
+        "en": "Carried-forward loss (1815): {{amount}}.",
+        "es": "Pérdida de arrastre (1815): {{amount}}."
+      },
+      "carriedLossSource": {
+        "filed": {
+          "en": "Taken from the filed return of the previous year.",
+          "es": "Tomada de la declaración presentada del año anterior."
+        },
+        "app": {
+          "en": "Taken from the app's own result for the previous year, as no return is on file.",
+          "es": "Tomada del resultado de la app del año anterior, pues no hay declaración presentada."
+        }
+      },
+      "summary": {
+        "en": "Net result (1814) {{result}}; taxable base (1816) {{base}}; 10% single tax (1830) {{tax}}, added to the settlement (305).",
+        "es": "Resultado neto (1814) {{result}}; base imponible (1816) {{base}}; impuesto único 10% (1830) {{tax}}, que se suma a la liquidación (305)."
+      },
+      "informedSales": {
+        "en": "DJ 1891 reports sales of {{amount}} for these units.",
+        "es": "La DJ 1891 informa ventas por {{amount}} de estas cuotas."
+      },
+      "informedResult": {
+        "en": "DJ 1922 reports an art. 107 result of {{amount}} (B1, actualizada).",
+        "es": "La DJ 1922 informa un resultado art. 107 de {{amount}} (B1, actualizada)."
+      },
+      "distributionsTitle": {
+        "en": "Fund distributions",
+        "es": "Distribuciones del fondo"
+      },
+      "distributionsExplain": {
+        "en": "Distributions are not art. 107: they are dividends taxable under the IGC, declared in line 2 (code 105) with the IDPC credit (code 610). The amount is the cash the fund credited, an estimate that DJ 1922 B3 replaces once it is imported.",
+        "es": "Las distribuciones no son del art. 107: son dividendos afectos al IGC, que se declaran en la línea 2 (código 105) con el crédito IDPC (código 610). El monto es el efectivo que abonó el fondo, una estimación que la DJ 1922 B3 reemplaza una vez importada."
+      },
+      "colAccount": {
+        "en": "Account",
+        "es": "Cuenta"
+      },
+      "colAmount": {
+        "en": "Amount",
+        "es": "Monto"
+      },
+      "distributionsTotal": {
+        "en": "Total distributions {{amount}}.",
+        "es": "Total distribuciones {{amount}}."
+      },
+      "provisional": {
+        "en": "The year has not closed: the IPC runs to the latest published month, so the reajustes and the carried loss are provisional.",
+        "es": "El año no ha cerrado: el IPC llega hasta el último mes publicado, así que los reajustes y la pérdida de arrastre son provisorios."
+      }
+    },
     "summaryFiled": {
       "en": "Tax (code 304) filed: {{amount}}",
       "es": "Impuesto (código 304) presentado: {{amount}}"
@@ -6037,6 +6233,10 @@
         "funds_interest": {
           "en": "funds and interest",
           "es": "fondos e intereses"
+        },
+        "usd_fx": {
+          "en": "exchange differences",
+          "es": "diferencias de cambio"
         }
       },
       "taxedOpenNoTax": {
@@ -6170,6 +6370,134 @@
           "en": "Paid with the AT{{year}} refund (Tesorería offset)",
           "es": "Pagado con la devolución AT{{year}} (compensación de la Tesorería)"
         }
+      }
+    },
+    "usdFx": {
+      "title": {
+        "en": "Exchange differences (dollars bought with pesos)",
+        "es": "Diferencias de cambio (dólares comprados con pesos)"
+      },
+      "explain": {
+        "en": "The dollars held in cash are tax lots (FIFO per account): each outflow realizes the difference between the dólar observado of the day it left and of the day it was bought, cost without reajuste (Oficio 2390/2021); the result is reajustado to December. Posture: {{posture}}. Cost: {{cost}}. Route: {{route}}.",
+        "es": "Los dólares en caja son lotes tributarios (FIFO por cuenta): cada salida realiza la diferencia entre el dólar observado del día en que salieron y el del día de compra, costo sin reajuste (Oficio 2390/2021); el resultado se reajusta a diciembre. Criterio: {{posture}}. Costo: {{cost}}. Vía: {{route}}."
+      },
+      "estimateNote": {
+        "en": "Report only: the app's own reading of the lots, not filed anywhere yet.",
+        "es": "Solo informativo: la lectura de los lotes que hace la app, aún no declarada en ninguna parte."
+      },
+      "provisional": {
+        "en": "The reajuste to December runs to {{month}}, the latest IPC published.",
+        "es": "El reajuste a diciembre llega hasta {{month}}, el último IPC publicado."
+      },
+      "posture": {
+        "oficio_2573": {
+          "en": "Oficio 2573/2022 — spending dollars on an instrument sells them",
+          "es": "Oficio 2573/2022 — usar los dólares en un instrumento es venderlos"
+        },
+        "oficio_2390": {
+          "en": "Oficio 2390/2021 — only dollars paid to a third party or converted back to pesos",
+          "es": "Oficio 2390/2021 — solo los dólares pagados a un tercero o vueltos a pesos"
+        },
+        "none": {
+          "en": "none — only a reconversion to pesos",
+          "es": "ninguno — solo una reconversión a pesos"
+        }
+      },
+      "costOption": {
+        "observado": {
+          "en": "dólar observado of the purchase day",
+          "es": "dólar observado del día de compra"
+        },
+        "pesos_paid": {
+          "en": "the pesos actually paid",
+          "es": "los pesos efectivamente pagados"
+        }
+      },
+      "route": {
+        "idpc_1901": {
+          "en": "art. 20 N°5 income, line 58 d) code 1901, IDPC credited back in line 5",
+          "es": "renta del art. 20 N°5, línea 58 d) código 1901, IDPC con crédito en la línea 5"
+        },
+        "igc_1032": {
+          "en": "code 1032 like the crypto gain, a loss into 169",
+          "es": "código 1032 como la ganancia cripto, una pérdida al 169"
+        }
+      },
+      "date": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "account": {
+        "en": "Account",
+        "es": "Cuenta"
+      },
+      "usd": {
+        "en": "US$",
+        "es": "US$"
+      },
+      "purchaseDates": {
+        "en": "Bought on",
+        "es": "Comprados el"
+      },
+      "proceeds": {
+        "en": "Proceeds",
+        "es": "Valor de salida"
+      },
+      "cost": {
+        "en": "Cost",
+        "es": "Costo"
+      },
+      "result": {
+        "en": "Result",
+        "es": "Resultado"
+      },
+      "decemberPct": {
+        "en": "IPC to December",
+        "es": "IPC a diciembre"
+      },
+      "resultDecember": {
+        "en": "Result at December",
+        "es": "Resultado a diciembre"
+      },
+      "totals": {
+        "en": "Result of the year: {{result}} nominal, {{resultDecember}} reajustado to December.",
+        "es": "Resultado del año: {{result}} nominal, {{resultDecember}} reajustado a diciembre."
+      },
+      "feesTitle": {
+        "en": "Fees charged in dollars",
+        "es": "Comisiones cobradas en dólares"
+      },
+      "feesExplain": {
+        "en": "Their cost is lost: not a deductible loss for a persona natural (SII FAQ citing Oficio 1474/2020; Oficio 2208/2022).",
+        "es": "Su costo se pierde: no es una pérdida deducible para una persona natural (FAQ del SII citando el Oficio 1474/2020; Oficio 2208/2022)."
+      },
+      "costLost": {
+        "en": "Cost lost",
+        "es": "Costo perdido"
+      },
+      "feesTotal": {
+        "en": "Fees: {{amount}} of cost lost.",
+        "es": "Comisiones: {{amount}} de costo perdido."
+      },
+      "deferredTotal": {
+        "en": "Deferred under this posture ({{count}} outflows): {{amount}} that the other posture would realize.",
+        "es": "Diferido bajo este criterio ({{count}} salidas): {{amount}} que el otro criterio realizaría."
+      },
+      "codes1901": {
+        "en": "Code 1901: {{amount}} · IDPC (line 58 d) {{idpc}}, credited back in line 5 — net zero on the result.",
+        "es": "Código 1901: {{amount}} · IDPC (línea 58 d) {{idpc}}, con crédito en la línea 5 — neto cero en el resultado."
+      },
+      "lossLost1901": {
+        "en": "A loss on this route offsets only other art. 20 N°5 income and is otherwise lost: no code.",
+        "es": "Una pérdida por esta vía solo se compensa con otras rentas del art. 20 N°5 y, si no, se pierde: sin código."
+      },
+      "codes1032": {
+        "en": "Code 1032: {{amount}}, added to the crypto gain.",
+        "es": "Código 1032: {{amount}}, sumado a la ganancia cripto."
+      },
+      "loss169": {
+        "en": "Loss of {{amount}} into code 169 (within the line-17 pool).",
+        "es": "Pérdida de {{amount}} al código 169 (dentro del pool de la línea 17)."
       }
     }
   },

@@ -63,6 +63,24 @@ export function informedDjAmount(
   return parseChileanNumber(hits[0]!.value);
 }
 
+/**
+ * Every field under the header `section` (one segment of the header path, not its last), with its
+ * amount: a DJ that splits one figure over several columns (DJ 1922 prints the distributions
+ * afectas al IGC in four, by the credit they carry, and words some of them differently from year
+ * to year). Throws when no field is under it.
+ */
+export function informedDjSectionAmounts(
+  fields: readonly InformedDjField[],
+  section: string
+): { field: string; amount: number }[] {
+  const hits = fields.filter((f) => {
+    const path = f.field.slice(f.field.indexOf(": ") + 2).split(" / ");
+    return path.slice(0, -1).includes(section);
+  });
+  if (hits.length === 0) throw new Error(`DJ summary: no field under «${section}»`);
+  return hits.map((f) => ({ field: f.field, amount: parseChileanNumber(f.value) }));
+}
+
 function htmlText(raw: string): string {
   return raw
     .replace(/<[^>]+>/g, " ")

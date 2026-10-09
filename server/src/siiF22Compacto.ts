@@ -77,8 +77,13 @@ export function assertF22Identities(codes: ReadonlyMap<number, number>): void {
   };
   const checks: [string, number, number][] = [
     // Retentions on fees (198) are credited and the pension contributions charged on them (900)
-    // are taken from them before the result.
-    ["305 = 304 − 198 + 900", need(305), need(304) - (codes.get(198) ?? 0) + (codes.get(900) ?? 0)],
+    // are taken from them before the result; art. 107's 10% impuesto único (línea 66, 1830) adds
+    // to it beside the IGC.
+    [
+      "305 = 304 + 1830 − 198 + 900",
+      need(305),
+      need(304) + (codes.get(1830) ?? 0) - (codes.get(198) ?? 0) + (codes.get(900) ?? 0),
+    ],
     ["170 = 158 − 750 − 765", need(170), need(158) - (codes.get(750) ?? 0) - (codes.get(765) ?? 0)],
   ];
   if (codes.has(91)) checks.push(["91 = 90 + 39", need(91), need(90) + (codes.get(39) ?? 0)]);

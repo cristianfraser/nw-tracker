@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Loadable, loadableClass } from "../components/ui/Loadable";
+import { Pill } from "../components/ui/Pill";
 import { Table } from "../components/ui/Table";
 import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
 import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
@@ -10,8 +11,8 @@ import type { TaxReturnResponse, TaxReturnRow } from "../types";
 
 /** Codes with a label in master.json (`taxReturn.codes.<code>`); others show «Código N». */
 const LABELLED_CODES = new Set([
-  31, 39, 90, 91, 136, 152, 155, 157, 158, 161, 162, 169, 170, 304, 305, 748, 750, 751, 1018, 1032, 1098, 1104, 1869, 1878,
-  645,
+  31, 39, 90, 91, 105, 136, 152, 155, 157, 158, 161, 162, 169, 170, 304, 305, 610, 748, 750, 751, 1018, 1032, 1098, 1104,
+  1809, 1813, 1814, 1815, 1816, 1829, 1830, 1869, 1878, 645, 1901,
 ]);
 
 const money = (n: number | null) => (n == null ? "—" : formatClp(n));
@@ -291,6 +292,285 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
   );
 }
 
+/**
+ * Art. 107 LIR: fund units and shares sold on the exchange. Sales through 2026 pay a flat 10%
+ * single tax on the mayor valor (codes 1809 / 1813 → 1814, carried loss 1815, base 1816, line 66
+ * 1829 / 1830); from 2027 they are ingreso no renta and only listed. The fund's distributions are
+ * dividends afectos al IGC (codes 105 / 610). Server: art107TaxGains.ts, f22Draft.ts.
+ */
+function Art107Section({ data }: { data: TaxReturnResponse }) {
+  const { t } = useTranslation();
+  const a = data.art107;
+  if (!a) return null;
+  const carried = a.carried_loss_clp !== 0;
+  const informed = a.informed_sales_clp != null || a.informed_result_clp != null;
+  if (a.sales.length === 0 && a.distributions.length === 0 && !carried && !informed) return null;
+  const taxed = a.sales.some((s) => s.regime === "tax_10pct");
+  const hasInr = a.sales.some((s) => s.regime === "inr");
+  const salesHeader = (
+    <thead>
+      <tr>
+        <th className="desktop-only">{t("taxReturn.art107.date")}</th>
+        <th className="desktop-only">{t("taxReturn.art107.instrument")}</th>
+        <th className="desktop-only num">{t("taxReturn.art107.units")}</th>
+        <th className="desktop-only num">{t("taxReturn.art107.proceeds")}</th>
+        <th className="desktop-only num">{t("taxReturn.art107.costPaid")}</th>
+        <th className="desktop-only num">{t("taxReturn.art107.costReajustado")}</th>
+        <th className="desktop-only num">{t("taxReturn.art107.closeDec31")}</th>
+        <th className="desktop-only num">{t("taxReturn.art107.result")}</th>
+        <th className="desktop-only">{t("taxReturn.art107.regime")}</th>
+        <th className="mobile-only" aria-hidden="true" />
+      </tr>
+    </thead>
+  );
+  const distributionsHeader = (
+    <thead>
+      <tr>
+        <th className="desktop-only">{t("taxReturn.dividends.date")}</th>
+        <th className="desktop-only">{t("taxReturn.art107.colAccount")}</th>
+        <th className="desktop-only num">{t("taxReturn.art107.colAmount")}</th>
+        <th className="mobile-only" aria-hidden="true" />
+      </tr>
+    </thead>
+  );
+  return (
+    <section style={{ margin: "1.5rem 0" }}>
+      <h2>{t("taxReturn.art107.title")}</h2>
+      {a.provisional ? <p className="muted">{t("taxReturn.art107.provisional")}</p> : null}
+      <p className="muted">
+        {t("taxReturn.art107.explain", { inrFrom: a.inr_from, method: t(`taxReturn.art107.lotMethod.${a.lot_method}`) })}
+      </p>
+      {hasInr ? <p className="muted">{t("taxReturn.art107.explainInr", { inrFrom: a.inr_from })}</p> : null}
+      {a.sales.length > 0 ? (
+        <>
+          <p className="muted">
+            {t("taxReturn.art107.costExplain", { option: t(`taxReturn.art107.option.${a.default_option}`) })}{" "}
+            {t("taxReturn.art107.closeStandIn")}
+          </p>
+          <Table header={salesHeader} tableClassName="table--parallel-mobile">
+            {a.sales.map((s, i) => {
+              const kind = t(`taxReturn.art107.kind.${s.kind}`);
+              const regime = <Pill size="small" uppercase={false}>{t(`taxReturn.art107.regimeLabel.${s.regime}`)}</Pill>;
+              const result = s.result_clp[a.default_option];
+              return (
+                <tr key={`${s.date}-${s.account_name}-${i}`} style={{ opacity: s.regime === "inr" ? 0.7 : undefined }}>
+                  <td className="desktop-only mono">{s.date}</td>
+                  <td className="desktop-only">
+                    {s.account_name} <span className="muted">{kind}</span>
+                  </td>
+                  <td className="desktop-only num">{formatGroupedDecimal(s.units, 0, 4)}</td>
+                  <td className="desktop-only num">{formatClp(s.proceeds_clp)}</td>
+                  <td className="desktop-only num">{formatClp(s.cost_clp)}</td>
+                  <td className="desktop-only num">{formatClp(s.cost_reajustado_clp)}</td>
+                  <td className="desktop-only num">{money(s.cost_close_dec31_clp)}</td>
+                  <td className="desktop-only num">{money(result)}</td>
+                  <td className="desktop-only">{regime}</td>
+                  <td className="mobile-only">
+                    <TableMobileCard title={`${s.date} · ${s.account_name} · ${kind}`}>
+                      <TableMobileCardRow label={t("taxReturn.art107.units")} value={formatGroupedDecimal(s.units, 0, 4)} />
+                      <TableMobileCardRow label={t("taxReturn.art107.proceeds")} value={formatClp(s.proceeds_clp)} />
+                      <TableMobileCardRow label={t("taxReturn.art107.costPaid")} value={formatClp(s.cost_clp)} />
+                      <TableMobileCardRow label={t("taxReturn.art107.costReajustado")} value={formatClp(s.cost_reajustado_clp)} />
+                      <TableMobileCardRow label={t("taxReturn.art107.closeDec31")} value={money(s.cost_close_dec31_clp)} />
+                      <TableMobileCardRow label={t("taxReturn.art107.result")} value={money(result)} />
+                      <TableMobileCardRow label={t("taxReturn.art107.regime")} value={regime} />
+                    </TableMobileCard>
+                  </td>
+                </tr>
+              );
+            })}
+          </Table>
+          {taxed ? (
+            <p>
+              {t("taxReturn.art107.totals", {
+                costPaid: formatClp(a.totals_clp.cost_paid),
+                closeDec31: money(a.totals_clp.close_dec31),
+              })}
+            </p>
+          ) : null}
+        </>
+      ) : null}
+      {carried ? (
+        <p>
+          {t("taxReturn.art107.carriedLoss", { amount: formatClp(a.carried_loss_clp) })}
+          {a.carried_loss_source != null ? ` ${t(`taxReturn.art107.carriedLossSource.${a.carried_loss_source}`)}` : ""}
+        </p>
+      ) : null}
+      {taxed || carried ? (
+        <p>
+          {t("taxReturn.art107.summary", {
+            result: formatClp(a.result_clp),
+            base: formatClp(a.base_clp),
+            tax: formatClp(a.tax_clp),
+          })}
+        </p>
+      ) : null}
+      {a.informed_sales_clp != null ? (
+        <p className="muted">{t("taxReturn.art107.informedSales", { amount: formatClp(a.informed_sales_clp) })}</p>
+      ) : null}
+      {a.informed_result_clp != null ? (
+        <p className="muted">{t("taxReturn.art107.informedResult", { amount: formatClp(a.informed_result_clp) })}</p>
+      ) : null}
+      {a.distributions.length > 0 ? (
+        <>
+          <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("taxReturn.art107.distributionsTitle")}</h3>
+          <p className="muted">{t("taxReturn.art107.distributionsExplain")}</p>
+          <Table header={distributionsHeader} tableClassName="table--parallel-mobile">
+            {a.distributions.map((d, i) => (
+              <tr key={`${d.date}-${d.account_name}-${i}`}>
+                <td className="desktop-only mono">{d.date}</td>
+                <td className="desktop-only">{d.account_name}</td>
+                <td className="desktop-only num">{formatClp(d.amount_clp)}</td>
+                <td className="mobile-only">
+                  <TableMobileCard title={`${d.date} · ${d.account_name}`}>
+                    <TableMobileCardRow label={t("taxReturn.art107.colAmount")} value={formatClp(d.amount_clp)} />
+                  </TableMobileCard>
+                </td>
+              </tr>
+            ))}
+          </Table>
+          <p>{t("taxReturn.art107.distributionsTotal", { amount: formatClp(a.distributions_clp) })}</p>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * The exchange result on the dollars bought with pesos: each realized outflow (date, dollars, the
+ * lots' purchase dates, proceeds and cost at the dólar observado, result and its December
+ * reajuste), the fees whose cost is lost, the deferred total, the posture and the route, and the
+ * codes the route gives (1901 + IDPC credited back, or 1032 / 169). Report-only. Server:
+ * usdFxTaxGains.ts, f22Draft.ts.
+ */
+function UsdFxSection({ data }: { data: TaxReturnResponse }) {
+  const { t } = useTranslation();
+  const f = data.usd_fx;
+  if (!f) return null;
+  if (f.disposals.length === 0 && f.fees.length === 0 && f.deferred.length === 0) return null;
+  const header = (
+    <thead>
+      <tr>
+        <th className="desktop-only">{t("taxReturn.usdFx.date")}</th>
+        <th className="desktop-only">{t("taxReturn.usdFx.account")}</th>
+        <th className="desktop-only num">{t("taxReturn.usdFx.usd")}</th>
+        <th className="desktop-only">{t("taxReturn.usdFx.purchaseDates")}</th>
+        <th className="desktop-only num">{t("taxReturn.usdFx.proceeds")}</th>
+        <th className="desktop-only num">{t("taxReturn.usdFx.cost")}</th>
+        <th className="desktop-only num">{t("taxReturn.usdFx.result")}</th>
+        <th className="desktop-only num">{t("taxReturn.usdFx.decemberPct")}</th>
+        <th className="desktop-only num">{t("taxReturn.usdFx.resultDecember")}</th>
+        <th className="mobile-only" aria-hidden="true" />
+      </tr>
+    </thead>
+  );
+  const feesHeader = (
+    <thead>
+      <tr>
+        <th className="desktop-only">{t("taxReturn.usdFx.date")}</th>
+        <th className="desktop-only">{t("taxReturn.usdFx.account")}</th>
+        <th className="desktop-only num">{t("taxReturn.usdFx.usd")}</th>
+        <th className="desktop-only num">{t("taxReturn.usdFx.costLost")}</th>
+        <th className="mobile-only" aria-hidden="true" />
+      </tr>
+    </thead>
+  );
+  const codes =
+    f.route === "idpc_1901" ? (
+      f.codes[1901] != null && f.codes.idpc_clp != null ? (
+        <p>{t("taxReturn.usdFx.codes1901", { amount: formatClp(f.codes[1901]), idpc: formatClp(f.codes.idpc_clp) })}</p>
+      ) : f.result_december_clp < 0 ? (
+        <p style={{ color: "var(--negative)" }}>{t("taxReturn.usdFx.lossLost1901")}</p>
+      ) : null
+    ) : f.codes[1032] != null ? (
+      <p>{t("taxReturn.usdFx.codes1032", { amount: formatClp(f.codes[1032]) })}</p>
+    ) : f.codes.loss169 != null ? (
+      <p>{t("taxReturn.usdFx.loss169", { amount: formatClp(f.codes.loss169) })}</p>
+    ) : null;
+  return (
+    <section style={{ margin: "1.5rem 0" }}>
+      <h2>{t("taxReturn.usdFx.title")}</h2>
+      <p className="muted">
+        {t("taxReturn.usdFx.explain", {
+          posture: t(`taxReturn.usdFx.posture.${f.posture}`),
+          cost: t(`taxReturn.usdFx.costOption.${f.purchase_cost}`),
+          route: t(`taxReturn.usdFx.route.${f.route}`),
+        })}
+      </p>
+      <p className="muted">{t("taxReturn.usdFx.estimateNote")}</p>
+      {f.provisional ? <p className="muted">{t("taxReturn.usdFx.provisional", { month: f.reajuste_to_month.slice(0, 7) })}</p> : null}
+      {f.disposals.length > 0 ? (
+        <>
+          <Table header={header} tableClassName="table--parallel-mobile">
+            {f.disposals.map((s, i) => {
+              const bought = s.purchase_dates.join(", ");
+              return (
+                <tr key={`${s.date}-${s.account_name}-${i}`}>
+                  <td className="desktop-only mono">{s.date}</td>
+                  <td className="desktop-only">{s.account_name}</td>
+                  <td className="desktop-only num">{formatUsdFine(s.usd)}</td>
+                  <td className="desktop-only mono">{bought}</td>
+                  <td className="desktop-only num">{formatClp(s.proceeds_clp)}</td>
+                  <td className="desktop-only num">{formatClp(s.cost_clp)}</td>
+                  <td className="desktop-only num">{formatClp(s.gain_clp)}</td>
+                  <td className="desktop-only num">{formatPct(s.december_pct, 1)}</td>
+                  <td className="desktop-only num">{formatClp(s.gain_december_clp)}</td>
+                  <td className="mobile-only">
+                    <TableMobileCard title={`${s.date} · ${s.account_name}`}>
+                      <TableMobileCardRow label={t("taxReturn.usdFx.usd")} value={formatUsdFine(s.usd)} />
+                      <TableMobileCardRow label={t("taxReturn.usdFx.purchaseDates")} value={bought} />
+                      <TableMobileCardRow label={t("taxReturn.usdFx.proceeds")} value={formatClp(s.proceeds_clp)} />
+                      <TableMobileCardRow label={t("taxReturn.usdFx.cost")} value={formatClp(s.cost_clp)} />
+                      <TableMobileCardRow label={t("taxReturn.usdFx.result")} value={formatClp(s.gain_clp)} />
+                      <TableMobileCardRow label={t("taxReturn.usdFx.decemberPct")} value={formatPct(s.december_pct, 1)} />
+                      <TableMobileCardRow label={t("taxReturn.usdFx.resultDecember")} value={formatClp(s.gain_december_clp)} />
+                    </TableMobileCard>
+                  </td>
+                </tr>
+              );
+            })}
+          </Table>
+          <p>
+            {t("taxReturn.usdFx.totals", {
+              result: formatClp(f.result_clp),
+              resultDecember: formatClp(f.result_december_clp),
+            })}
+          </p>
+        </>
+      ) : null}
+      {codes}
+      {f.fees.length > 0 ? (
+        <>
+          <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("taxReturn.usdFx.feesTitle")}</h3>
+          <p className="muted">{t("taxReturn.usdFx.feesExplain")}</p>
+          <Table header={feesHeader} tableClassName="table--parallel-mobile">
+            {f.fees.map((x, i) => (
+              <tr key={`${x.date}-${x.account_name}-${i}`}>
+                <td className="desktop-only mono">{x.date}</td>
+                <td className="desktop-only">{x.account_name}</td>
+                <td className="desktop-only num">{formatUsdFine(x.usd)}</td>
+                <td className="desktop-only num">{formatClp(x.cost_lost_clp)}</td>
+                <td className="mobile-only">
+                  <TableMobileCard title={`${x.date} · ${x.account_name}`}>
+                    <TableMobileCardRow label={t("taxReturn.usdFx.usd")} value={formatUsdFine(x.usd)} />
+                    <TableMobileCardRow label={t("taxReturn.usdFx.costLost")} value={formatClp(x.cost_lost_clp)} />
+                  </TableMobileCard>
+                </td>
+              </tr>
+            ))}
+          </Table>
+          <p>{t("taxReturn.usdFx.feesTotal", { amount: formatClp(f.fees_lost_clp) })}</p>
+        </>
+      ) : null}
+      {f.deferred.length > 0 ? (
+        <p className="muted">
+          {t("taxReturn.usdFx.deferredTotal", { count: f.deferred.length, amount: formatClp(f.deferred_clp) })}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 type SettlementLink = NonNullable<TaxReturnResponse["settlement"]>["links"][number];
 
 function settlementLinkLabel(t: TFunction, l: SettlementLink): string {
@@ -469,6 +749,8 @@ export function TaxReturnPage() {
               <CryptoSection data={data} />
               <DividendsSection data={data} />
               <ForeignSharesSection data={data} />
+              <Art107Section data={data} />
+              <UsdFxSection data={data} />
             </>
           ) : null}
         </Loadable>
