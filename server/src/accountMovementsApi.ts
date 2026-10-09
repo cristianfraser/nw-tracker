@@ -56,6 +56,7 @@ function mapMovementRows(accountId: number, rows: MovementTransferRow[]): Accoun
       signed_clp_delta: signedClpDeltaForAccountMovement(r, accountId),
       flow_kind: r.flow_kind,
       transfer_direction: transferDirectionForAccount(r, accountId),
+      currency: r.currency,
     });
     return {
       id: r.id!,

@@ -33,6 +33,8 @@ export type MovementFlowType =
   | typeof FLOW_KIND_PAGO_TARJETA
   | typeof FLOW_KIND_CARGA_TARJETA
   | "withdrawal_clp"
+  | "withdrawal_usd"
+  | "deposit_usd"
   | "other";
 
 function isMortgageFlowKind(flowKind: string | null | undefined): flowKind is MortgageFlowKind {
@@ -51,15 +53,19 @@ function isDepositMovementFlowType(flowType: MovementFlowType): flowType is Depo
 }
 
 export function movementFlowTypeFromRow(row: {
-  /** Signed CLP delta from the viewing account's perspective (kind-less rows are all CLP). */
+  /** Signed CLP delta from the viewing account's perspective (kind-less single-leg rows are all CLP). */
   signed_clp_delta: number;
   flow_kind?: string | null;
   transfer_direction?: "out" | "in" | null;
+  /** The movement's own currency: a kind-less transfer is named in it (a dollar transfer is not «CLP»). */
+  currency: string;
 }): MovementFlowType {
   if (row.transfer_direction === "out" || row.transfer_direction === "in") {
     if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
     if (row.flow_kind === FLOW_KIND_PAGO_TARJETA) return FLOW_KIND_PAGO_TARJETA;
     if (row.flow_kind === FLOW_KIND_CARGA_TARJETA) return FLOW_KIND_CARGA_TARJETA;
+    if (row.currency === "usd") return row.transfer_direction === "out" ? "withdrawal_usd" : "deposit_usd";
+    if (row.currency !== "clp") throw new Error(`No flow type for a kind-less ${row.currency} transfer`);
     return row.transfer_direction === "out" ? "withdrawal_clp" : "deposit_clp";
   }
   if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
@@ -82,6 +88,7 @@ export function movementFlowTypeLabel(flowType: MovementFlowType): string {
   }
   const label = flowType as string;
   if (label === "withdrawal_clp") return "Retiro";
+  if (label === "deposit_usd") return "Depósito USD";
   if (label === FLOW_KIND_PAGO_CUOTA_HIPOTECARIO) return "Pago cuota hipotecario";
   if (label === FLOW_KIND_PAGO_TARJETA) return "Pago tarjeta";
   if (label === FLOW_KIND_CARGA_TARJETA) return "Carga desde tarjeta";
