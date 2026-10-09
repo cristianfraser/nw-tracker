@@ -12,6 +12,8 @@ import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { fxForLiveMtm } from "./fxLive.js";
+import { isUsdCashAccount } from "./movementTransfer.js";
+import { usdOutflowPesoCostByMovement } from "./usdCashCostLots.js";
 
 /**
  * `paid` = the rate the facturación's dollar debt was actually paid at; `live` = still unpaid and
@@ -109,6 +111,13 @@ const stmtDivisasPayments = db.prepare(
      AND currency = 'clp' AND counter_currency = 'usd'`
 );
 
+const stmtDollarPayments = db.prepare(
+  `SELECT id, from_account_id, occurred_on AS date_iso, amount AS usd
+   FROM movements
+   WHERE flow_kind = 'pago_tarjeta' AND to_account_id = ? AND account_id IS NULL
+     AND currency = 'usd' AND counter_currency IS NULL`
+);
+
 const stmtTraspasoPayments = db.prepare(
   `SELECT t.id, l.transaction_date, t.amount_clp AS clp, t.amount_usd AS usd
    FROM cc_traspaso_deuda_links t
@@ -119,8 +128,10 @@ const stmtTraspasoPayments = db.prepare(
 /**
  * A card's dollar debt payments: the divisas purchases paired with its ABONO DE DIVISAS lines
  * (`pago_tarjeta` transfers with a USD counter leg — the pesos that left checking and the
- * dollars the card was credited) and the traspasos de deuda (the bank moving the dollar debt to
- * the peso side at its own rate, `cc_traspaso_deuda_links`).
+ * dollars the card was credited), the payments made in dollars from a USD cash account
+ * (`pago_tarjeta` with `currency = 'usd'` and no counter leg: the pesos those dollars cost, traced
+ * by `usdCashCostLots.ts`) and the traspasos de deuda (the bank moving the dollar debt to the peso
+ * side at its own rate, `cc_traspaso_deuda_links`).
  */
 export function usdDebtPaymentsForAccount(accountId: number): UsdDebtPayment[] {
   const out: UsdDebtPayment[] = [];
@@ -134,6 +145,26 @@ export function usdDebtPaymentsForAccount(accountId: number): UsdDebtPayment[] {
       throw new Error(`pago_tarjeta movement ${r.id}: a dollar payment needs positive pesos and dollars`);
     }
     out.push({ date_iso: r.date_iso, clp: r.clp, usd: r.usd });
+  }
+  const dollarPayments = stmtDollarPayments.all(accountId) as {
+    id: number;
+    from_account_id: number | null;
+    date_iso: string;
+    usd: number;
+  }[];
+  if (dollarPayments.length > 0) {
+    const costs = usdOutflowPesoCostByMovement();
+    for (const r of dollarPayments) {
+      if (r.from_account_id == null || !isUsdCashAccount(r.from_account_id)) {
+        throw new Error(`pago_tarjeta movement ${r.id}: a payment in dollars must leave a USD cash account`);
+      }
+      const cost = costs.get(r.id);
+      if (!cost) throw new Error(`pago_tarjeta movement ${r.id}: the dollar cost tracer did not price it`);
+      if (Math.round(cost.usd * 100) !== Math.round(r.usd * 100) || !(r.usd > 0)) {
+        throw new Error(`pago_tarjeta movement ${r.id}: priced US$${cost.usd} for a US$${r.usd} payment`);
+      }
+      out.push({ date_iso: r.date_iso, clp: cost.clp, usd: r.usd });
+    }
   }
   for (const r of stmtTraspasoPayments.all(accountId) as {
     id: number;

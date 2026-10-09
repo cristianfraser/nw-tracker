@@ -7,7 +7,7 @@ import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { brokerNotificationIsBookable, racionalFetchDecision } from "./brokerNotifications.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
-  applyFintualEmailMovements,
+  applyFintualEmailMovementsWithIds,
   planFintualEmailBatch,
   type FintualPlannedMovement,
 } from "./fintualEmailImport.js";
@@ -20,6 +20,7 @@ import {
 import { brokerCleanThrough } from "./brokerReadCoverage.js";
 import { bookIncomingWires, storeWithdrawalRequests, withdrawalRequestFromNotification } from "./incomingWires.js";
 import { racionalComisionCrawlDue } from "./racionalMovementsImport.js";
+import { recordMovementEventTime } from "./movementEventTimes.js";
 
 /**
  * `broker.notifications`: every money notification a broker sent, planned against the ledger
@@ -114,8 +115,22 @@ export function applyBrokerNotifications(payload: BrokerNotificationsPayload): B
     // A requested withdrawal is not a movement: it is kept until the wire's own mail arrives.
     const planned = planFintualEmailBatch(notifications.filter((n) => n.kind !== "withdrawal_requested"));
     const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
-    const written = apply ? applyFintualEmailMovements(planned) : 0;
-    if (apply) invalidateWritten(writable);
+    let written = 0;
+    let eventTimesStamped = 0;
+    if (apply) {
+      const applied = applyFintualEmailMovementsWithIds(planned);
+      written = applied.written;
+      // The mail's send time orders the movement within its day (`movement_event_times`): a
+      // re-sent mail stamps the movement it matched too, and an existing stamp is kept.
+      for (const [index, movementId] of applied.movement_ids.entries()) {
+        if (movementId == null) continue;
+        const source = planned[index]!.source;
+        if (recordMovementEventTime(movementId, source.occurred_at, "broker_mail", source.message_id)) {
+          eventTimesStamped += 1;
+        }
+      }
+      invalidateWritten(writable);
+    }
     const requests = notifications
       .filter((n) => n.kind === "withdrawal_requested" && brokerNotificationIsBookable(n))
       .map((n) => withdrawalRequestFromNotification(n, "fintual"));
@@ -138,6 +153,7 @@ export function applyBrokerNotifications(payload: BrokerNotificationsPayload): B
         deadline: o.deadline ?? null,
       })),
       usd_withdrawals: usdWithdrawals,
+      event_times_stamped: eventTimesStamped,
     };
   }
   const planned = planRacionalEmailMovements(notifications);

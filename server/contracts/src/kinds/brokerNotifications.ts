@@ -107,4 +107,6 @@ export type BrokerNotificationsApplyDetails = {
   overdue_synthetic_retiros: { movement_id: number; paid_on: string; amount_clp: number; deadline: string | null }[];
   /** Fintual only: requested dollar withdrawals and the wires that paid them. */
   usd_withdrawals: IncomingWireBookingReport | null;
+  /** Fintual only: movements stamped with their mail's send time (`movement_event_times`). */
+  event_times_stamped?: number;
 };
