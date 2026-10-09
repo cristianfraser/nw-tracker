@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
+import { ChartEmptyState } from "./ChartEmptyState";
+import { loadableClass } from "../ui/Loadable";
 import { Bar, Legend, Line, ReferenceLine, XAxis, YAxis } from "recharts";
 import { useCallback, useMemo, useState } from "react";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
@@ -46,6 +48,7 @@ export function CreditCardGroupExpensesChart({
   displayUnit = "clp",
   xAxisGranularity = "month",
   yearAverages,
+  loading,
 }: {
   title: string;
   /** Per-surface Período/Rango controls, rendered next to the title. */
@@ -61,6 +64,7 @@ export function CreditCardGroupExpensesChart({
    * axis (with a toggle). Null/absent = not offered (yearly chart, short Rango).
    */
   yearAverages?: Readonly<Record<string, ExpenseYearMonthlyAverage>> | null;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const compactAxis = useIsNarrowViewport();
@@ -182,7 +186,7 @@ export function CreditCardGroupExpensesChart({
     return (
       <section className="chart-panel">
         <ChartPanelTitleRow title={title} titleAs="h3" controls={controls} />
-        <p className="empty muted">{t("expenses.creditCard.chartEmpty")}</p>
+        <ChartEmptyState loading={loading} message={t("expenses.creditCard.chartEmpty")} boxStyle={{ height: 280 }} />
       </section>
     );
   }
@@ -235,7 +239,7 @@ export function CreditCardGroupExpensesChart({
           ) : null}
         </div>
       </div>
-      <div className="chart-box line-chart-focus-wrap" style={{ height: 280 }}>
+      <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")} style={{ height: 280 }}>
         <AppComposedChart
           data={chartRows}
           stackOffset={chartStyle === "stacked_bar" ? "sign" : undefined}

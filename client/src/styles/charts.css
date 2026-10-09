@@ -1,6 +1,6 @@
 .chart-box {
   margin-top: 1rem;
-  padding: 1rem;
+  padding: 0.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -116,11 +116,9 @@
 .value-treemap {
   position: relative;
   width: 100%;
-  height: var(--chart-panel-height);
-  min-height: 320px;
+  height: 100%;
   overflow: hidden;
-  background: var(--surface);
-  border-radius: var(--card-radius);
+  border-radius: 6px;
 }
 
 .value-treemap__c--up {
@@ -224,4 +222,9 @@
 .value-treemap__tooltip-title {
   margin-bottom: 0.2rem;
   font-weight: 600;
+}
+
+/* A chart's loading frame (ChartEmptyState): the box at chart size with nothing drawn in it. */
+.chart-box--pending {
+  background: var(--surface);
 }

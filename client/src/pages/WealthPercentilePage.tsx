@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
 import { AppLineChart } from "../components/charts/AppLineChart";
+import { ChartEmptyState } from "../components/charts/ChartEmptyState";
 import { minMaxForKeys } from "../components/charts/chartLayout";
 import { percentileLogAxisFor, topPercentOf } from "../components/charts/percentileLogAxis";
+import { Loadable, loadableClass } from "../components/ui/Loadable";
 import { Table } from "../components/ui/Table";
 import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -94,9 +96,11 @@ function rowsDescOf(rows: readonly WealthPercentileYearRow[]): WealthPercentileY
 function MyDataTable({
   rows,
   countries,
+  loading,
 }: {
   rows: readonly WealthPercentileYearRow[];
   countries: readonly WealthBenchmarkCountry[];
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -124,7 +128,7 @@ function MyDataTable({
   );
 
   return (
-    <Table header={header} tableClassName="table--parallel-mobile">
+    <Table header={header} tableClassName="table--parallel-mobile" wrapClassName={loadableClass(loading)}>
       {rowsDescOf(rows).map((row) => {
         const yearLabel = `${row.year}${yearMarkers(row)}`;
         return (
@@ -198,11 +202,13 @@ function CountryDataTable({
   currentNwUsd,
   currentFinNwUsd,
   countries,
+  loading,
 }: {
   rows: readonly WealthPercentileYearRow[];
   currentNwUsd: number;
   currentFinNwUsd: number;
   countries: readonly WealthBenchmarkCountry[];
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -227,7 +233,7 @@ function CountryDataTable({
   );
 
   return (
-    <Table header={header} tableClassName="table--parallel-mobile">
+    <Table header={header} tableClassName="table--parallel-mobile" wrapClassName={loadableClass(loading)}>
       {rowsDescOf(rows).map((row) => {
         const yearLabel = `${row.year}${yearMarkers(row)}`;
         return (
@@ -290,6 +296,7 @@ export function WealthPercentilePage() {
     loadEnabledBenchmarks
   );
   const { data, error, isPending } = useWealthPercentile();
+  const loading = isPending;
 
   const toggleBenchmark = (country: WealthBenchmarkCountry) => {
     setEnabledBenchmarks((prev) => {
@@ -341,7 +348,6 @@ export function WealthPercentilePage() {
     [logChartPoints, chartSeriesKeys]
   );
 
-  if (isPending && !data) return <p className="muted">{t("common.loading")}</p>;
   if (error) {
     return (
       <main>
@@ -349,10 +355,10 @@ export function WealthPercentilePage() {
       </main>
     );
   }
-  if (!data) return null;
 
+  const rows = data?.rows ?? [];
   // Dimming baseline + column order both come from the latest row (current year, valued as of today).
-  const latestRow = data.rows.length ? data.rows.reduce((m, r) => (r.year > m.year ? r : m)) : null;
+  const latestRow = rows.length ? rows.reduce((m, r) => (r.year > m.year ? r : m)) : null;
   const currentNwUsd = latestRow?.net_worth_usd ?? 0;
   const currentFinNwUsd = latestRow?.fin_net_worth_usd ?? 0;
   // Enabled benchmark columns ordered by today's percentile, highest first (easiest country → hardest).
@@ -382,86 +388,91 @@ export function WealthPercentilePage() {
         </select>
       </label>
 
-      <div style={{ width: "100%", height: 320 }}>
-        <AppLineChart
-          data={scaleMode === "log" ? logChartPoints : chartPoints}
-          tooltip={{
-            formatValue: (v) =>
-              formatGroupedDecimal(scaleMode === "log" ? 100 - Number(v) : Number(v), 1),
-            formatLabel: (l) => String(l),
-          }}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey="year" tick={{ fill: "var(--muted)", fontSize: 10 }} minTickGap={20} />
-          {scaleMode === "log" ? (
-            <YAxis
-              scale="log"
-              reversed
-              domain={logAxis.domain}
-              ticks={logAxis.ticks}
-              allowDataOverflow
-              tickFormatter={(v: number) => {
-                const p = 100 - v;
-                return formatGroupedDecimal(p, Number.isInteger(p) ? 0 : 1);
-              }}
-              tick={{ fill: "var(--muted)", fontSize: 10 }}
-              width={34}
-            />
-          ) : (
-            <YAxis
-              domain={[0, 100]}
-              ticks={[0, 25, 50, 75, 100]}
-              tick={{ fill: "var(--muted)", fontSize: 10 }}
-              width={30}
-            />
-          )}
-          <Legend />
-          <Line
-            type="monotone"
-            dataKey="total"
-            name={t("wealthPercentile.chart.seriesTotal")}
-            stroke={CL_TOTAL_STROKE}
-            strokeWidth={2}
-            dot={false}
-          />
-          <Line
-            type="monotone"
-            dataKey="financial"
-            name={t("wealthPercentile.chart.seriesFinancial")}
-            stroke={CL_FINANCIAL_STROKE}
-            strokeWidth={2}
-            dot={false}
-          />
-          {benchmarkOrder.map((c) => (
+      {chartPoints.length === 0 ? (
+        <ChartEmptyState loading={loading} message={t("wealthPercentile.empty")} />
+      ) : (
+        <Loadable loading={loading} style={{ width: "100%", height: 320 }}>
+          <AppLineChart
+            data={scaleMode === "log" ? logChartPoints : chartPoints}
+            tooltip={{
+              formatValue: (v) =>
+                formatGroupedDecimal(scaleMode === "log" ? 100 - Number(v) : Number(v), 1),
+              formatLabel: (l) => String(l),
+            }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="year" tick={{ fill: "var(--muted)", fontSize: 10 }} minTickGap={20} />
+            {scaleMode === "log" ? (
+              <YAxis
+                scale="log"
+                reversed
+                domain={logAxis.domain}
+                ticks={logAxis.ticks}
+                allowDataOverflow
+                tickFormatter={(v: number) => {
+                  const p = 100 - v;
+                  return formatGroupedDecimal(p, Number.isInteger(p) ? 0 : 1);
+                }}
+                tick={{ fill: "var(--muted)", fontSize: 10 }}
+                width={34}
+              />
+            ) : (
+              <YAxis
+                domain={[0, 100]}
+                ticks={[0, 25, 50, 75, 100]}
+                tick={{ fill: "var(--muted)", fontSize: 10 }}
+                width={30}
+              />
+            )}
+            <Legend />
             <Line
-              key={c}
               type="monotone"
-              dataKey={c.toLowerCase()}
-              name={t("wealthPercentile.chart.seriesBenchmark", { country: c })}
-              stroke={BENCHMARK_STROKE[c]}
-              strokeWidth={1.5}
+              dataKey="total"
+              name={t("wealthPercentile.chart.seriesTotal")}
+              stroke={CL_TOTAL_STROKE}
+              strokeWidth={2}
               dot={false}
             />
-          ))}
-        </AppLineChart>
-      </div>
+            <Line
+              type="monotone"
+              dataKey="financial"
+              name={t("wealthPercentile.chart.seriesFinancial")}
+              stroke={CL_FINANCIAL_STROKE}
+              strokeWidth={2}
+              dot={false}
+            />
+            {benchmarkOrder.map((c) => (
+              <Line
+                key={c}
+                type="monotone"
+                dataKey={c.toLowerCase()}
+                name={t("wealthPercentile.chart.seriesBenchmark", { country: c })}
+                stroke={BENCHMARK_STROKE[c]}
+                strokeWidth={1.5}
+                dot={false}
+              />
+            ))}
+          </AppLineChart>
+        </Loadable>
+      )}
 
       <section style={{ margin: "1.5rem 0" }}>
         <h2>{t("wealthPercentile.tables.myData")}</h2>
-        <MyDataTable rows={data.rows} countries={benchmarkOrder} />
+        <MyDataTable rows={rows} countries={benchmarkOrder} loading={loading} />
       </section>
 
       <section style={{ margin: "1.5rem 0" }}>
         <h2>{t("wealthPercentile.tables.countryData")}</h2>
         <CountryDataTable
-          rows={data.rows}
+          rows={rows}
           currentNwUsd={currentNwUsd}
           currentFinNwUsd={currentFinNwUsd}
           countries={benchmarkOrder}
+          loading={loading}
         />
       </section>
 
-      <MarkerLegend rows={data.rows} />
+      <MarkerLegend rows={rows} />
 
       <section style={{ margin: "1.5rem 0" }}>
         <h3>{t("wealthPercentile.settings.title")}</h3>

@@ -4,6 +4,7 @@ import { cn } from "../../cn";
 import { formatClp, formatPct, formatUsdFine } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useBenchmarkComparison, useBenchmarks } from "../../queries/hooks";
+import { placeholderPeriodReturnsPayload } from "../../placeholders/periodReturnsPlaceholder";
 import { useSurfaceBenchmark } from "../../surfaceDisplayPrefs";
 import type {
   BenchmarkComparisonCell,
@@ -13,6 +14,7 @@ import type {
   PeriodReturnKey,
   PeriodReturnsPayload,
 } from "../../types";
+import { loadableClass } from "../ui/Loadable";
 import { Table } from "../ui/Table";
 import styles from "./PeriodReturnsTable.module.css";
 
@@ -56,17 +58,25 @@ export type BenchmarkComparisonProps = {
  * on windows of a year or more) — all server-computed. Static (no NumberFlow): it
  * refetches wholesale on unit toggle. Formats at render time (decimal-separator convention).
  * One markup for both viewports — narrow screens flip it to one row per period (CSS).
+ *
+ * `data` is null only while the payload loads (callers pass null with `loading`, never as a
+ * server-stated absence — that gate stays on the caller): the table then renders its frame from
+ * `placeholderPeriodReturnsPayload` with «—» cells, dimmed.
  */
 export function PeriodReturnsTable({
-  data,
+  data: dataProp,
   displayUnit,
   comparison,
+  loading,
 }: {
-  data: PeriodReturnsPayload;
+  data: PeriodReturnsPayload | null;
   displayUnit: "clp" | "usd";
   comparison?: BenchmarkComparisonProps;
+  /** The payload is not in yet (or is held prior data): the table dims. */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
+  const data = dataProp ?? placeholderPeriodReturnsPayload(displayUnit);
   const formatNominal = displayUnit === "usd" ? formatUsdFine : formatClp;
   const compare = comparison != null;
 
@@ -114,7 +124,11 @@ export function PeriodReturnsTable({
   );
 
   return (
-    <Table header={header} tableClassName={cn(styles.table, compare && styles.compare)}>
+    <Table
+      header={header}
+      tableClassName={cn(styles.table, compare && styles.compare)}
+      wrapClassName={loadableClass(loading)}
+    >
       <tr>
         {compare ? (
           <th scope="row" className={styles.rowHead} style={cellPos(1, 2)}>
@@ -122,7 +136,7 @@ export function PeriodReturnsTable({
           </th>
         ) : null}
         {data.periods.map((cell, i) => (
-          <td key={cell.period} title={cellTitle(cell)} style={cellPos(i + 2, 2)}>
+          <td key={cell.period} title={loading ? undefined : cellTitle(cell)} style={cellPos(i + 2, 2)}>
             <div className={cn(styles.pct, toneClass(cell.pct))}>
               {cell.pct == null ? "—" : formatPct(cell.pct * 100)}
             </div>
@@ -166,7 +180,7 @@ export function PeriodReturnsTable({
               <td
                 key={cell.period}
                 title={comparison.data ? title : undefined}
-                className={cn(comparison.data == null && styles.pending)}
+                className={cn(comparison.data == null && !loading && styles.pending)}
                 style={cellPos(i + 2, 3)}
               >
                 <div className={cn(styles.pct, toneClass(b?.benchmark_pct ?? null))}>
@@ -198,18 +212,22 @@ export function PeriodReturnsTable({
 /**
  * The Rentabilidad table with its benchmark row: the choice is remembered per surface
  * (`<pageKey>.returns`), default the mortgage. A stored slug the server no longer lists falls
- * back to the default.
+ * back to the default. `data` is null only while the payload loads (see {@link PeriodReturnsTable});
+ * the benchmark comparison is not fetched until the payload is in, and its row reads «—».
  */
 export function PeriodReturnsWithBenchmark({
   data,
   displayUnit,
   scope,
   surfaceId,
+  loading,
 }: {
-  data: PeriodReturnsPayload;
+  data: PeriodReturnsPayload | null;
   displayUnit: "clp" | "usd";
   scope: { accountId: number } | { portfolioGroup: string };
   surfaceId: string;
+  /** The payload is not in yet (or is held prior data): the table dims. */
+  loading?: boolean;
 }) {
   const { benchmark, setBenchmark } = useSurfaceBenchmark(surfaceId, DEFAULT_BENCHMARK);
   const benchmarks = useBenchmarks();
@@ -219,19 +237,22 @@ export function PeriodReturnsWithBenchmark({
     scope,
     selected,
     displayUnit,
-    options.some((o) => o.slug === selected)
+    !loading && data != null && options.some((o) => o.slug === selected)
   );
   const cmp = comparison.data;
   return (
     <PeriodReturnsTable
       data={data}
       displayUnit={displayUnit}
+      loading={loading}
       comparison={{
         options,
         selected,
         onSelect: setBenchmark,
         data:
-          cmp != null && cmp.unit === displayUnit && cmp.benchmark.slug === selected ? cmp : null,
+          !loading && cmp != null && cmp.unit === displayUnit && cmp.benchmark.slug === selected
+            ? cmp
+            : null,
       }}
     />
   );

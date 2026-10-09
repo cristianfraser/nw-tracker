@@ -6,6 +6,7 @@ import { useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSele
 import { formatCcExpenseLineAmount, formatClp } from "../../format";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { Table } from "../ui/Table";
+import { loadableClass } from "../ui/Loadable";
 import { Pill } from "../ui/Pill";
 import {
   expenseLineCategoryTargetId,
@@ -204,6 +205,7 @@ export function CreditCardExpenseLinesTable({
   onMakeInstallmentLine,
   makeInstallmentBusyLineId,
   enableCheckingNotes = false,
+  loading,
 }: {
   lines: readonly FlowCcExpenseLineRow[];
   categories: readonly CcExpenseCategoryDto[];
@@ -225,12 +227,14 @@ export function CreditCardExpenseLinesTable({
   makeInstallmentBusyLineId?: number;
   /** Show note inputs for cuenta corriente (checking) rows — expenses tab only. */
   enableCheckingNotes?: boolean;
+  /** Lines still loading: the header renders with no rows (not the empty label), dimmed. */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const selection = useCreditCardExpenseLinesSelection();
   const showRowSelection = showCategoryControls && selection != null;
 
-  if (lines.length === 0) {
+  if (lines.length === 0 && !loading) {
     return <p className="muted" style={{ marginBottom: "1rem" }}>{emptyLabel}</p>;
   }
 
@@ -243,6 +247,7 @@ export function CreditCardExpenseLinesTable({
     <Table
       tableClassName={tableStyles.tableCompact}
       tableStyle={{ marginBottom: "1.25rem" }}
+      wrapClassName={loading ? loadableClass(true) : undefined}
       collapsedVisibleRows={collapsedVisibleRows}
       showMoreLabel={
         showMoreLabel ??

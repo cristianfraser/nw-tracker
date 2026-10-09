@@ -53,7 +53,7 @@ export function useGroupInfoConsolidatedTables(
   displayUnit: DisplayUnit,
   enabled: boolean
 ) {
-  const { data, isPending, isError, error } = useGroupConsolidatedTables(
+  const { data, isPending, isPlaceholderData, isError, error } = useGroupConsolidatedTables(
     portfolioGroupSlug,
     displayUnit,
     enabled
@@ -70,11 +70,14 @@ export function useGroupInfoConsolidatedTables(
     [data, displayUnit]
   );
 
-  const periodReturns = useMemo(
-    () =>
-      data?.period_returns ? periodReturnsForDisplay(data.period_returns, displayUnit) : null,
-    [data?.period_returns, displayUnit]
-  );
+  // undefined = not here yet (pending, disabled, or held prior-unit data with no FX rate):
+  // callers render the table frame dimmed. null = the server sends none (or the fetch failed):
+  // callers leave the table out.
+  const periodReturns = useMemo((): PeriodReturnsPayload | null | undefined => {
+    if (!data) return isError ? null : undefined;
+    if (!data.period_returns) return null;
+    return periodReturnsForDisplay(data.period_returns, displayUnit) ?? undefined;
+  }, [data, isError, displayUnit]);
 
   const tableFlags = useMemo(() => {
     const slugs = _accounts.map((a) => a.category_slug);
@@ -88,6 +91,8 @@ export function useGroupInfoConsolidatedTables(
     periodReturns,
     tableFlags,
     tablesLoading,
+    /** The payload on hand is the previous unit's (held while the new one loads). */
+    tablesHeld: isPlaceholderData,
     tablesError: isError
       ? error instanceof Error
         ? error.message

@@ -7,6 +7,7 @@ import {
   type CcSurfaceScope,
 } from "./CreditCardLedgerSurfaces";
 import { CreditCardSummaryCards } from "./CreditCardSummaryCards";
+import { loadableClass } from "../ui/Loadable";
 import styles from "../../pages/AccountDetailPage.module.css";
 
 type Props = {
@@ -18,12 +19,15 @@ type Props = {
    */
   portfolioGroup: string;
   linkTo?: string;
+  /** `ccLedger` is an empty placeholder while the merged ledger loads: the section dims. */
+  loading?: boolean;
 };
 
 export function LiabilitiesCreditCardGroupSection({
   ccLedger,
   portfolioGroup,
   linkTo,
+  loading = false,
 }: Props) {
   const { t } = useTranslation();
   const ccScope: CcSurfaceScope = { variant: "group", portfolioGroup };
@@ -31,7 +35,7 @@ export function LiabilitiesCreditCardGroupSection({
   const title = t("groupPage.pasivos.creditCardSectionTitle");
 
   return (
-    <section className={styles.chartBlock}>
+    <section className={loadableClass(loading, styles.chartBlock)}>
       {linkTo ? (
         <h2 className={styles.sectionTitle}>
           <Link to={linkTo}>{title}</Link>
@@ -55,9 +59,9 @@ export function LiabilitiesCreditCardGroupSection({
         </section>
       ) : null}
 
-      <CreditCardHistorialSurface ccLedger={ccLedger} scope={ccScope} />
+      <CreditCardHistorialSurface ccLedger={ccLedger} scope={ccScope} loading={loading} />
 
-      <CreditCardDetalleSurface ccLedger={ccLedger} scope={ccScope} />
+      <CreditCardDetalleSurface ccLedger={ccLedger} scope={ccScope} loading={loading} />
     </section>
   );
 }

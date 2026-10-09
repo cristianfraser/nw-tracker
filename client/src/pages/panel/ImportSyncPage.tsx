@@ -43,10 +43,6 @@ export function ImportSyncPage() {
               ? t("common.loadFailed")
               : null;
 
-  if (logsPending || syncStatusPending || coveragePending || genericMerchantsPending) {
-    return <p className="muted">{t("common.loading")}</p>;
-  }
-
   if (err) {
     return <p className="error">{err}</p>;
   }
@@ -55,7 +51,7 @@ export function ImportSyncPage() {
     <>
 
       <h2 className="flow-section-title">{t("importSync.syncLogTitle")}</h2>
-      {syncStatus ? <SyncLogStatusPanel status={syncStatus} /> : null}
+      <SyncLogStatusPanel status={syncStatus} loading={syncStatusPending} />
       <MessagesTable
         rows={logs}
         showReadAt={false}
@@ -66,19 +62,21 @@ export function ImportSyncPage() {
         colTitle={t("importSync.colTitle")}
         colDetail={t("importSync.colDetail")}
         colRead={t("importSync.colRead")}
+        loading={logsPending}
       />
 
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
         {t("importSync.availableDocumentsTitle")}
       </h2>
-      {coverage ? <AvailableDocumentsTable data={coverage} /> : null}
+      <AvailableDocumentsTable data={coverage} loading={coveragePending} />
 
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
         {t("importSync.genericUniqueMerchantsTitle")}
       </h2>
-      {genericMerchants ? (
-        <GenericUniqueMerchantsPanel merchants={genericMerchants.merchants} />
-      ) : null}
+      <GenericUniqueMerchantsPanel
+        merchants={genericMerchants?.merchants ?? []}
+        loading={genericMerchantsPending}
+      />
     </>
   );
 }

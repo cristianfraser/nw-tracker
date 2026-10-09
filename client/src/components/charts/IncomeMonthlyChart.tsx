@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
+import { ChartEmptyState } from "./ChartEmptyState";
+import { loadableClass } from "../ui/Loadable";
 import { Bar, Legend, Line, XAxis, YAxis } from "recharts";
 import { useMemo } from "react";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
@@ -34,6 +36,7 @@ export function IncomeMonthlyChart({
   points,
   xAxisGranularity = "month",
   displayUnit = "clp",
+  loading,
 }: {
   title: string;
   /** Per-surface Período/Rango controls, rendered next to the title. */
@@ -41,6 +44,7 @@ export function IncomeMonthlyChart({
   points: readonly FlowIncomeChartPoint[];
   xAxisGranularity?: "month" | "year" | "day";
   displayUnit?: DisplayUnit;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const compactAxis = useIsNarrowViewport();
@@ -79,7 +83,7 @@ export function IncomeMonthlyChart({
     return (
       <section className="chart-panel">
         <ChartPanelTitleRow title={title} titleAs="h3" controls={controls} />
-        <p className="empty muted">{t("income.chartEmpty")}</p>
+        <ChartEmptyState loading={loading} message={t("income.chartEmpty")} boxStyle={{ height: 280 }} />
       </section>
     );
   }
@@ -87,7 +91,7 @@ export function IncomeMonthlyChart({
   return (
     <section className="chart-panel">
       <ChartPanelTitleRow title={title} titleAs="h3" controls={controls} />
-      <div className="chart-box line-chart-focus-wrap" style={{ height: 280 }}>
+      <div className={loadableClass(loading, "chart-box line-chart-focus-wrap")} style={{ height: 280 }}>
         <AppComposedChart
           data={densePoints}
           tooltip={{

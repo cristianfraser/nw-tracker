@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
+import { loadableClass } from "../ui/Loadable";
 import { formatClp } from "../../format";
 import { expenseKindLabel, useTranslation } from "../../i18n";
 import { useRealEstateLinkCandidates } from "../../queries/hooks";
@@ -57,15 +58,14 @@ export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
       }
       closeAriaLabel={t("expenses.realEstate.linkModalClose")}
     >
-      {isLoading ? (
-        <p className="muted">{t("common.loading")}</p>
-      ) : err ? (
+      {!isLoading && err ? (
         <p className="error">{err}</p>
-      ) : candidates.length === 0 ? (
+      ) : !isLoading && candidates.length === 0 ? (
         <p className="muted">{t("expenses.realEstate.noCandidates")}</p>
       ) : (
         <Table
           tableStyle={{ fontSize: "0.85rem" }}
+          wrapClassName={loadableClass(isLoading)}
           header={
             <thead>
               <tr>

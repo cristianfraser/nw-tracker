@@ -12,10 +12,12 @@ export function IncomeMonthTable({
   rows,
   displayUnit = "clp",
   periodGranularity = "month",
+  loading,
 }: {
   rows: readonly FlowIncomeMonthRow[];
   displayUnit?: DisplayUnit;
   periodGranularity?: FlowChartGranularity;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -26,12 +28,12 @@ export function IncomeMonthTable({
 
   const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE);
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !loading) {
     return <p className="muted">{t("income.emptyMonths")}</p>;
   }
 
   return (
-    <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
+    <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
       <Table
         header={
           <thead>

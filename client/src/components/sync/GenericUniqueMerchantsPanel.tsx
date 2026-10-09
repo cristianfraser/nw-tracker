@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { Loadable } from "../ui/Loadable";
 import { Table } from "../ui/Table";
 import type { ExpenseGenericUniqueMerchantRow } from "../../types";
 import { Button, Input } from "@crfrsr/ui";
@@ -11,9 +12,10 @@ import {
 
 type Props = {
   merchants: ExpenseGenericUniqueMerchantRow[];
+  loading?: boolean;
 };
 
-export function GenericUniqueMerchantsPanel({ merchants }: Props) {
+export function GenericUniqueMerchantsPanel({ merchants, loading }: Props) {
   const { t } = useTranslation();
   const createMutation = useCreateGenericUniqueMerchantMutation();
   const updateMutation = useUpdateGenericUniqueMerchantMutation();
@@ -74,7 +76,7 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
     createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
 
   return (
-    <>
+    <Loadable loading={Boolean(loading)}>
 
       {formError ? <p className="error">{formError}</p> : null}
 
@@ -89,11 +91,13 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
         }
       >
         {merchants.length === 0 ? (
-          <tr>
-            <td colSpan={2} className="muted">
-              {t("importSync.genericUniqueMerchants.empty")}
-            </td>
-          </tr>
+          loading ? null : (
+            <tr>
+              <td colSpan={2} className="muted">
+                {t("importSync.genericUniqueMerchants.empty")}
+              </td>
+            </tr>
+          )
         ) : (
           merchants.map((row) => (
             <tr key={row.id}>
@@ -169,6 +173,6 @@ export function GenericUniqueMerchantsPanel({ merchants }: Props) {
             : t("importSync.genericUniqueMerchants.add")}
         </Button>
       </form>
-    </>
+    </Loadable>
   );
 }

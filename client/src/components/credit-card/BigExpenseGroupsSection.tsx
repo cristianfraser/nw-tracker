@@ -10,6 +10,7 @@ import {
 } from "../../queries/hooks";
 import { CreditCardExpenseLinesTable } from "./CreditCardExpenseLinesTable";
 import { Button } from "@crfrsr/ui";
+import { loadableClass } from "../ui/Loadable";
 
 function BigGroupBlock({
   slug,
@@ -120,6 +121,7 @@ export function BigExpenseGroupsSection({
   installmentMode,
   isExcluded,
   toggleExcluded,
+  loading,
 }: {
   lines: readonly FlowCcExpenseLineRow[];
   categories: readonly CcExpenseCategoryDto[];
@@ -127,6 +129,7 @@ export function BigExpenseGroupsSection({
   installmentMode: CcInstallmentGastosMode;
   isExcluded: (slug: string) => boolean;
   toggleExcluded: (slug: string) => void;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const usage = useMemo(
@@ -134,12 +137,13 @@ export function BigExpenseGroupsSection({
     [bigGroups, installmentMode, lines]
   );
 
-  if (usage.length === 0) {
+  // Absent only once the lines have loaded and carry no big group; while loading, the title frame.
+  if (usage.length === 0 && !loading) {
     return null;
   }
 
   return (
-    <section style={{ marginTop: "2rem", marginBottom: "1.5rem" }}>
+    <section className={loadableClass(loading)} style={{ marginTop: "2rem", marginBottom: "1.5rem" }}>
       <h3 style={{ fontSize: "1.1rem", marginBottom: "0.35rem" }}>
         {t("expenses.creditCard.bigGroups.sectionTitle")}
       </h3>

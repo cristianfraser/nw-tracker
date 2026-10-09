@@ -21,12 +21,14 @@ import {
 } from "../portfolioNavFromApi";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
+import { GROUP_COLD_STRIP } from "../coldPageShape";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
 import { useTranslation } from "../i18n";
 import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
 import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFromNav";
 import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
+import { buildPlaceholderNavStripDash } from "../placeholders/dashboardPagePlaceholders";
 import {
   convertPortfolioGroupBundleUnit,
   resolveClpPerUsdForKeepPrev,
@@ -36,7 +38,7 @@ import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
 import { hasDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCache";
 import { queryKeys } from "../queries/keys";
-import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
+import { isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
   useAccountsByPortfolioGroup,
   useDailySeries,
@@ -59,7 +61,9 @@ export function GroupInfoPage() {
 
   const { displayUnit } = useDisplayPreferences();
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
-  const navStillLoading = (navPending || navFetching) && sidebarNav == null;
+  // «Not found» only once the nav has answered without this route; until then the page renders
+  // its shell (empty title, placeholder charts), dimmed.
+  const navSettled = !navPending && !navFetching;
   const hasNavSnapshotCache = hasDashboardNavSnapshotCache(displayUnit);
 
   const navMatchNode = useMemo(
@@ -96,11 +100,8 @@ export function GroupInfoPage() {
 
   const queryClient = useQueryClient();
   const shapeEnabled = Boolean(navMatchNode && portfolioGroup);
-  const { data: navSnapshot, isPending: navSnapshotPending } = useDashboardNavSnapshot(
-    displayUnit,
-    shapeEnabled
-  );
-  const { data: shapeAccounts, isPending: accountsShapePending } = useAccountsByPortfolioGroup(
+  const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit, shapeEnabled);
+  const { data: shapeAccounts } = useAccountsByPortfolioGroup(
     portfolioGroup,
     displayUnit,
     shapeEnabled
@@ -161,7 +162,11 @@ export function GroupInfoPage() {
 
   const navCtxEnabled =
     pathnameUsesDashboardNavContext(pathname) && (!hasNavSnapshotCache || bundleReady);
-  const { data: navCtx } = useDashboardNavContext(displayUnit, navCtxEnabled);
+  const {
+    data: navCtx,
+    isPending: navCtxPending,
+    isPlaceholderData: navCtxHeld,
+  } = useDashboardNavContext(displayUnit, navCtxEnabled);
   const overviewPoints = navCtx?.overviewPoints ?? [];
   // The value map replaces the composition chart when this page's node has group children;
   // only the real nav-context payload carries it (a cached snapshot's values are placeholders).
@@ -181,6 +186,8 @@ export function GroupInfoPage() {
     displayUnit
   );
   const valueMapShown = valueMapEligible && compositionView.view === "map";
+  // The map comes from nav-context, not the bundle: dim while that payload is not this unit's yet.
+  const valueMapLoading = navCtxPending || navCtxHeld;
 
   const accounts =
     useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
@@ -203,8 +210,15 @@ export function GroupInfoPage() {
     queryClient.setQueryData(queryKeys.groupPageShell(portfolioGroup, displayUnit), nextShell);
   }, [bundleReady, data, navCtx, navMatchNode, portfolioGroup, displayUnit, queryClient]);
 
+  // No snapshot yet: nav-context alone, else a zero strip from the sidebar nav (cold cache).
+  const placeholderStripDash = useMemo(
+    () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null),
+    [sidebarNav, displayUnit]
+  );
+  const stripIsPlaceholder = navMatchNode != null && !navSnapshot && !navCtx;
   const dashForStrip = useMemo(() => {
-    if (!navMatchNode || !navSnapshot) return null;
+    if (!navMatchNode) return null;
+    if (!navSnapshot) return navCtx ? dashPickForNavStrip(navCtx) : placeholderStripDash;
     const accountsForDash = useRealBundle && navCtx ? navCtx.accounts : navSnapshot.accounts;
     return dashPickForNavStrip(
       {
@@ -217,13 +231,13 @@ export function GroupInfoPage() {
         overviewPoints,
       }
     );
-  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints]);
+  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, placeholderStripDash]);
 
   // Keep the previous unit's charts on screen (FX-converted) during a CLP↔USD switch instead of
-  // blinking to the flat-zero placeholder; snaps to exact when the real bundle resolves.
+  // blinking to the flat-zero placeholder; snaps to exact when the real bundle resolves. Held
+  // data is only ever this group's (entity-scoped keep-previous), so it is the other unit's.
   const keepPrevBundle = useMemo(() => {
     if (!isPlaceholderData || !bundleReady || !data) return null;
-    if (data.ts.unit === (displayUnit === "usd" ? "usd" : "clp")) return data;
     const rate = resolveClpPerUsdForKeepPrev(undefined, readFxLatestCache());
     if (rate == null) return null;
     return convertPortfolioGroupBundleUnit(data, displayUnit, rate);
@@ -358,16 +372,11 @@ export function GroupInfoPage() {
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
   const showUsd = displayUnit === "usd";
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
+  // A Diario chart shows the monthly block, dimmed, until its daily series is this unit's.
+  const dailyLoading = (q: { isPending: boolean; isPlaceholderData: boolean }) =>
+    q.isPending || q.isPlaceholderData;
 
-  if (navStillLoading) {
-    return (
-      <main>
-        <p className="muted">{t("common.loading")}</p>
-      </main>
-    );
-  }
-
-  if (!navMatchNode || !portfolioGroup) {
+  if (navSettled && (!navMatchNode || !portfolioGroup)) {
     return (
       <main>
         <p className="error">{t("groupPage.notFound")}</p>
@@ -383,16 +392,12 @@ export function GroupInfoPage() {
     );
   }
 
-  if (isPageShapeLoading(accountsShapePending, shapeAccounts, navSnapshotPending, navSnapshot)) {
-    return null;
-  }
-
   return (
     <GroupInfoBase
       title={title}
       loading={contentLoading}
       portfolio={
-        dashForStrip
+        navMatchNode && dashForStrip
           ? {
             navNode: navMatchNode,
             groupSlug: portfolioGroup,
@@ -400,12 +405,20 @@ export function GroupInfoPage() {
             overviewPoints,
             showUsd,
             animated: true,
+            placeholderPhase: stripIsPlaceholder || undefined,
             linkedCardNavChildren,
           }
           : null
       }
+      coldStripShape={GROUP_COLD_STRIP}
       charts={
         <PortfolioGroupChartsSection
+          loading={contentLoading}
+          valuationLoading={contentLoading || (valuationIsDaily && dailyLoading(dailySeries))}
+          proportionalLoading={
+            contentLoading || (proportionalIsDaily && dailyLoading(proportionalDailySeries))
+          }
+          perfLoading={contentLoading || (perfIsDaily && dailyLoading(perfDailySeries))}
           accountsEmpty={accounts.length === 0}
           accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
           chartSeriesCount={chartSeriesCount}
@@ -418,12 +431,14 @@ export function GroupInfoPage() {
           proportionalReplacement={
             valueMapShown ? (
               <ValueMapPanel
+                title={t("charts.currentValueByAccount")}
                 surfaceId={`group.${portfolioGroup}.map`}
                 view={compositionView.view}
                 onViewChange={compositionView.setView}
                 root={heldValueMap.root}
                 bounds={heldValueMap.bounds}
                 unit={heldValueMap.unit}
+                loading={valueMapLoading}
               />
             ) : undefined
           }
@@ -472,7 +487,7 @@ export function GroupInfoPage() {
             dailyGroupPerfPoints ? "day" : perfPrefs.period === "year" ? "year" : "month"
           }
           groupTotalStroke={charts.groupTotalStroke}
-          groupColorRgb={navMatchNode.color_rgb}
+          groupColorRgb={navMatchNode?.color_rgb}
           chartCtx={chartCtx}
           showValuationDeposits={showValuationDeposits}
           chartControls={

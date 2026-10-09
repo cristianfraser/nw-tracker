@@ -14,7 +14,7 @@ import { queryKeys } from "../../queries/keys";
 import { prefetchPageShapeForPath } from "../../queries/prefetchPageShape";
 import { useMessagesUnreadCount, useSidebarNav } from "../../queries/hooks";
 import type { SidebarNavResponse } from "../../types";
-import { buildSidebarNavFromApi } from "../../sidebarNavFromApi";
+import { buildSidebarNavFromApi, resolveNetWorthGroupLabel } from "../../sidebarNavFromApi";
 import {
   collectAncestorIdsToExpand,
   sidebarNodeMatchesPath,
@@ -209,6 +209,20 @@ export function AppSidebar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navPayload, language]);
 
+  // First-ever visit (no cached tree): only the home link, until the tree arrives. Labelled like
+  // the real dashboard node (`language` is a dep for the same reason as the tree's).
+  const coldDashboardNode = useMemo(
+    (): SidebarNavNode => ({
+      id: "dashboard",
+      label: resolveNetWorthGroupLabel(null),
+      to: "/",
+      end: true,
+      showLeafHyphen: false,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [language]
+  );
+
   useEffect(() => {
     if (!tree) return;
     const expandIds = collectAncestorIdsToExpand(tree, pathname);
@@ -312,7 +326,21 @@ export function AppSidebar() {
         <div className={styles.navInner}>
           <div className={styles.navScroll}>
             {!tree ? (
-              <p className={cn(styles.loading, "muted")}>{t("common.loading")}</p>
+              <>
+                <ul className={styles.list}>
+                  <SidebarNavItem
+                    node={coldDashboardNode}
+                    depth={0}
+                    collapsed={collapsed}
+                    onToggleCollapse={onToggleCollapse}
+                    pathname={pathname}
+                    navPayload={null}
+                    displayUnit={displayUnit}
+                    onPrefetchShape={onPrefetchShape}
+                  />
+                </ul>
+                <div className={styles.separator} role="separator" />
+              </>
             ) : (
               <>
                 <ul className={styles.list}>

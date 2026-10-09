@@ -1,16 +1,3 @@
-import type { AccountListRow, CachedDashboardNavSnapshot } from "../types";
-
-/** Block first paint only when neither accounts nor nav snapshot shape exists yet. */
-export function isPageShapeLoading(
-  accountsPending: boolean,
-  accounts: AccountListRow[] | undefined,
-  navSnapshotPending: boolean,
-  navSnapshot: CachedDashboardNavSnapshot | undefined
-): boolean {
-  if (accounts !== undefined || navSnapshot !== undefined) return false;
-  return accountsPending || navSnapshotPending;
-}
-
 /** Dim page body while bundle loads, including display-unit switch with prior-unit placeholder data. */
 export function isBundleContentLoading(opts: {
   isPending: boolean;

@@ -5,6 +5,7 @@ import { formatCurrency, formatPct } from "../../format";
 import type { SurfacePeriod } from "../../surfaceDisplayPrefs";
 import type { NavValueMapColorBounds, NavValueMapNodeDto } from "../../types";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
+import { loadableClass } from "../ui/Loadable";
 import { layoutTreemap, type Placed } from "./treemapLayout";
 
 type Unit = "clp" | "usd";
@@ -84,6 +85,7 @@ export function ValueTreemap({
   bounds,
   period,
   unit,
+  loading,
 }: {
   title: string;
   titleAs?: "h2" | "h3";
@@ -93,6 +95,8 @@ export function ValueTreemap({
   bounds: NavValueMapColorBounds | null;
   period: SurfacePeriod;
   unit: Unit;
+  /** The map is not in yet or is held prior data: the panel dims; the empty box shows no message. */
+  loading?: boolean;
 }) {
   const navigate = useNavigate();
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -137,7 +141,9 @@ export function ValueTreemap({
 
   const go = (n: NavValueMapNodeDto) => navigate(n.route_path);
 
-  if (root && !mapRoot) {
+  // A payload with no tile in this unit is a real absence only once loaded; while loading the
+  // empty box below stands in.
+  if (root && !mapRoot && !loading) {
     return (
       <div className="chart-grid__col">
         <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} />
@@ -150,105 +156,108 @@ export function ValueTreemap({
   const tooltipValue = tooltipNode ? unitValue(tooltipNode, unit) : null;
 
   return (
-    <div className="chart-grid__col">
+    <div className={loadableClass(loading, "chart-grid__col")}>
       <ChartPanelTitleRow title={title} titleAs={titleAs} controls={controls} />
-      <div
-        ref={boxRef}
-        className="value-treemap"
-        role="group"
-        aria-label={i18n.t("valueMap.ariaLabel")}
-        onMouseLeave={() => setHover(null)}
-      >
-        {flat.map((p) => {
-          const dto = p.node.dto;
-          const pct = pctOf(dto);
-          const { className, style } = colorStyle(treemapIntensity(pct, bound));
-          const isFrame = p.node.children != null;
-          const name = nodeLabel(dto);
-          const pctText = formatPct(pct == null ? null : pct * 100);
-          const box: CSSProperties = {
-            left: p.rect.x,
-            top: p.rect.y,
-            width: p.rect.w,
-            height: p.rect.h,
-          };
-          const onMove = (e: React.MouseEvent) => {
-            const r = boxRef.current?.getBoundingClientRect();
-            if (!r) return;
-            setHover({ node: dto, x: e.clientX - r.left, y: e.clientY - r.top });
-          };
-          const interaction = {
-            role: "link" as const,
-            tabIndex: 0,
-            "aria-label": `${name} ${pctText}`,
-            onClick: () => go(dto),
-            onKeyDown: (e: React.KeyboardEvent) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                go(dto);
-              }
-            },
-            onMouseMove: onMove,
-          };
-          if (isFrame) {
+      {/* Same container as the composition chart it replaces (`.chart-box`). */}
+      <div className="chart-box">
+        <div
+          ref={boxRef}
+          className="value-treemap"
+          role="group"
+          aria-label={i18n.t("valueMap.ariaLabel")}
+          onMouseLeave={() => setHover(null)}
+        >
+          {flat.map((p) => {
+            const dto = p.node.dto;
+            const pct = pctOf(dto);
+            const { className, style } = colorStyle(treemapIntensity(pct, bound));
+            const isFrame = p.node.children != null;
+            const name = nodeLabel(dto);
+            const pctText = formatPct(pct == null ? null : pct * 100);
+            const box: CSSProperties = {
+              left: p.rect.x,
+              top: p.rect.y,
+              width: p.rect.w,
+              height: p.rect.h,
+            };
+            const onMove = (e: React.MouseEvent) => {
+              const r = boxRef.current?.getBoundingClientRect();
+              if (!r) return;
+              setHover({ node: dto, x: e.clientX - r.left, y: e.clientY - r.top });
+            };
+            const interaction = {
+              role: "link" as const,
+              tabIndex: 0,
+              "aria-label": `${name} ${pctText}`,
+              onClick: () => go(dto),
+              onKeyDown: (e: React.KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  go(dto);
+                }
+              },
+              onMouseMove: onMove,
+            };
+            if (isFrame) {
+              return (
+                <div key={`f:${dto.slug}`} className="value-treemap__frame" style={box}>
+                  {p.header > 0 ? (
+                    <div
+                      className={`value-treemap__header ${className}`}
+                      style={{ ...style, height: p.header }}
+                      {...interaction}
+                    >
+                      <span className="value-treemap__name">{name}</span>
+                      <span className="value-treemap__pct">{pctText}</span>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+            const showLabel = p.rect.w >= MIN_LABEL_W && p.rect.h >= MIN_LABEL_H;
+            const rowLabel = p.rect.h < MIN_STACKED_LABEL_H;
             return (
-              <div key={`f:${dto.slug}`} className="value-treemap__frame" style={box}>
-                {p.header > 0 ? (
-                  <div
-                    className={`value-treemap__header ${className}`}
-                    style={{ ...style, height: p.header }}
-                    {...interaction}
-                  >
+              <div
+                key={`t:${dto.slug}`}
+                className={`value-treemap__tile ${rowLabel ? "value-treemap__tile--row" : ""} ${className}`}
+                style={{ ...style, ...box }}
+                {...interaction}
+              >
+                {showLabel ? (
+                  <>
                     <span className="value-treemap__name">{name}</span>
                     <span className="value-treemap__pct">{pctText}</span>
-                  </div>
+                  </>
                 ) : null}
               </div>
             );
-          }
-          const showLabel = p.rect.w >= MIN_LABEL_W && p.rect.h >= MIN_LABEL_H;
-          const rowLabel = p.rect.h < MIN_STACKED_LABEL_H;
-          return (
+          })}
+          {hover && tooltipNode && tooltipValue != null ? (
             <div
-              key={`t:${dto.slug}`}
-              className={`value-treemap__tile ${rowLabel ? "value-treemap__tile--row" : ""} ${className}`}
-              style={{ ...style, ...box }}
-              {...interaction}
+              className="value-treemap__tooltip"
+              style={{
+                left: hover.x > size.w - 230 ? hover.x - 220 : hover.x + 14,
+                top: Math.min(Math.max(hover.y - 8, 0), Math.max(size.h - 96, 0)),
+              }}
             >
-              {showLabel ? (
-                <>
-                  <span className="value-treemap__name">{name}</span>
-                  <span className="value-treemap__pct">{pctText}</span>
-                </>
-              ) : null}
+              <div className="value-treemap__tooltip-title">{nodeLabel(tooltipNode)}</div>
+              <div>
+                <span className="muted">{i18n.t("valueMap.tooltip.value")}</span>{" "}
+                {formatCurrency(tooltipValue, unit)}
+              </div>
+              <div>
+                <span className="muted">{i18n.t("valueMap.tooltip.return")}</span>{" "}
+                {formatPct(pctOf(tooltipNode) == null ? null : pctOf(tooltipNode)! * 100)}
+              </div>
+              <div>
+                <span className="muted">{i18n.t("valueMap.tooltip.pl")}</span>{" "}
+                {tooltipNode.pl[period][unit] == null
+                  ? "—"
+                  : formatCurrency(tooltipNode.pl[period][unit]!, unit)}
+              </div>
             </div>
-          );
-        })}
-        {hover && tooltipNode && tooltipValue != null ? (
-          <div
-            className="value-treemap__tooltip"
-            style={{
-              left: hover.x > size.w - 230 ? hover.x - 220 : hover.x + 14,
-              top: Math.min(Math.max(hover.y - 8, 0), Math.max(size.h - 96, 0)),
-            }}
-          >
-            <div className="value-treemap__tooltip-title">{nodeLabel(tooltipNode)}</div>
-            <div>
-              <span className="muted">{i18n.t("valueMap.tooltip.value")}</span>{" "}
-              {formatCurrency(tooltipValue, unit)}
-            </div>
-            <div>
-              <span className="muted">{i18n.t("valueMap.tooltip.return")}</span>{" "}
-              {formatPct(pctOf(tooltipNode) == null ? null : pctOf(tooltipNode)! * 100)}
-            </div>
-            <div>
-              <span className="muted">{i18n.t("valueMap.tooltip.pl")}</span>{" "}
-              {tooltipNode.pl[period][unit] == null
-                ? "—"
-                : formatCurrency(tooltipNode.pl[period][unit]!, unit)}
-            </div>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
     </div>
   );

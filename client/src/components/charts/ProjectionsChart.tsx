@@ -1,7 +1,9 @@
 import { CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
 import { AppLineChart } from "./AppLineChart";
+import { ChartEmptyState } from "./ChartEmptyState";
 import { moneyYAxisProps, type ChartDisplayUnit } from "./chartLayout";
 import { formatCurrency } from "../../format";
+import { useTranslation } from "../../i18n";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
 export type ProjectionChartLine = {
@@ -29,14 +31,20 @@ export function ProjectionsChart({
   namedLines,
   milestoneLines,
   displayUnit,
+  loading,
 }: {
   points: Record<string, string | number | null>[];
   namedLines: readonly ProjectionChartLine[];
   /** Constant USD milestone reference series; drawn thin, dashed, and unlabeled. */
   milestoneLines: readonly ProjectionChartLine[];
   displayUnit: ChartDisplayUnit;
+  loading?: boolean;
 }) {
+  const { t } = useTranslation();
   const compactAxis = useIsNarrowViewport();
+  if (points.length === 0) {
+    return <ChartEmptyState loading={loading} message={t("projections.noChartData")} />;
+  }
   return (
     <AppLineChart
       data={points}

@@ -7,6 +7,7 @@ import type {
   ImportSyncDocumentCell,
   ImportSyncDocumentCoverageResponse,
 } from "../../types";
+import { loadableClass } from "../ui/Loadable";
 import { Table } from "../ui/Table";
 import {
   availableDocumentsColumnsHaveSplit,
@@ -214,20 +215,24 @@ function AccountHeaderLink({
 
 export function AvailableDocumentsTable({
   data,
+  loading,
 }: {
-  data: ImportSyncDocumentCoverageResponse;
+  data: ImportSyncDocumentCoverageResponse | undefined;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
-  const { months, accounts, cells } = data;
+  const { months, accounts, cells } = data ?? { months: [], accounts: [], cells: [] };
   const columns = buildAvailableDocumentsColumns(accounts);
 
-  if (accounts.length === 0) {
+  // Loading with no accounts yet keeps the (month-only) header; the empty copy is for a loaded matrix.
+  if (accounts.length === 0 && !loading) {
     return <p className="muted">{t("importSync.availableDocumentsEmpty")}</p>;
   }
 
   return (
     <Table
       tableClassName={styles.matrixTable}
+      wrapClassName={loadableClass(loading)}
       wrapStyle={{ marginTop: "0.5rem" }}
       header={<DocumentsTableHeader columns={columns} t={t} />}
     >

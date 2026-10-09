@@ -7,6 +7,7 @@ import type {
 } from "../../types";
 import { isUnclassifiedPendingGasto } from "../../ccExpenseLineBuckets";
 import { Button } from "@crfrsr/ui";
+import { loadableClass } from "../ui/Loadable";
 import {
   CreditCardExpenseLinesTable,
   sortCreditCardExpenseLinesByAmountDesc,
@@ -22,10 +23,12 @@ export function CreditCardUnclassifiedExpensesTable({
   lines,
   categories,
   bigGroups = [],
+  loading,
 }: {
   lines: readonly FlowCcExpenseLineRow[];
   categories: readonly CcExpenseCategoryDto[];
   bigGroups?: readonly CcExpenseBigGroupDto[];
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -59,7 +62,7 @@ export function CreditCardUnclassifiedExpensesTable({
     <section style={{ marginTop: "2rem" }}>
       <h3 style={{ fontSize: "1.1rem", marginBottom: "0.35rem" }}>
         {t("expenses.creditCard.unclassifiedTableTitle")}
-        <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {unclassifiedGastos.length}
         </span>
       </h3>
@@ -111,6 +114,7 @@ export function CreditCardUnclassifiedExpensesTable({
           showCategoryControls
           categoryControlVariant="pills"
           enableCheckingNotes
+          loading={loading}
         />
         <CreditCardExpenseLinesSelectionPageFooter categories={categories} />
       </CreditCardExpenseLinesSelectionProvider>

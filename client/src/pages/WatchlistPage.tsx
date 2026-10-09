@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { DeltaMetricFlow } from "../components/dashboard/DeltaMetricFlow";
+import { loadableClass } from "../components/ui/Loadable";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
@@ -209,23 +210,26 @@ function WatchlistTable({
   rows,
   showActions,
   expandCompositeHoldings,
+  loading,
 }: {
   rows: WatchlistRow[];
   showActions?: boolean;
   expandCompositeHoldings?: boolean;
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const patchMarquee = usePatchWatchlistMarquee();
   const deleteRow = useDeleteWatchlistRow();
 
-  if (rows.length === 0) {
-    return showActions ? <p className="muted">{t("watchlist.emptyManual")}</p> : null;
+  // Loading with no rows yet keeps the header and says nothing: the empty copy is for a loaded list.
+  if (rows.length === 0 && !loading) {
+    return <p className="muted">{showActions ? t("watchlist.emptyManual") : t("watchlist.emptyApp")}</p>;
   }
 
   return (
     <Table
       tableClassName="watchlist-table"
-      wrapClassName="watchlist-table-wrap"
+      wrapClassName={loadableClass(loading, "watchlist-table-wrap")}
       header={
         <thead>
           <tr>
@@ -326,7 +330,9 @@ export function WatchlistPage() {
   const { t } = useTranslation();
   // Prices and changes follow the CLP/USD toggle (converted server-side, unit in the query key).
   const { displayUnit } = useDisplayPreferences();
-  const { data, isPending, error } = useWatchlist(displayUnit);
+  const { data, isPending, isPlaceholderData, error } = useWatchlist(displayUnit);
+  // Pending, or the held rows of the other display unit while this unit's load.
+  const loading = isPending || isPlaceholderData;
   if (error) {
     return (
       <main>
@@ -335,18 +341,6 @@ export function WatchlistPage() {
         </p>
         <h1>{t("watchlist.pageTitle")}</h1>
         <p className="error">{error instanceof Error ? error.message : String(error)}</p>
-      </main>
-    );
-  }
-
-  if (isPending || !data) {
-    return (
-      <main>
-        <p className="muted">
-          <Link to="/">{t("common.backToDashboard")}</Link>
-        </p>
-        <h1>{t("watchlist.pageTitle")}</h1>
-        <p className="muted">{t("common.loading")}</p>
       </main>
     );
   }
@@ -360,13 +354,13 @@ export function WatchlistPage() {
 
       <section className="watchlist-section">
         <h2>{t("watchlist.appSectionTitle")}</h2>
-        <WatchlistTable rows={data.app} expandCompositeHoldings />
+        <WatchlistTable rows={data?.app ?? []} expandCompositeHoldings loading={loading} />
       </section>
 
       <section className="watchlist-section">
         <h2>{t("watchlist.manualSectionTitle")}</h2>
         <AddSymbolCombobox />
-        <WatchlistTable rows={data.manual} showActions />
+        <WatchlistTable rows={data?.manual ?? []} showActions loading={loading} />
       </section>
     </main>
   );

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Modal } from "../ui/Modal";
 import { Table } from "../ui/Table";
+import { loadableClass } from "../ui/Loadable";
 import { addCalendarMonths } from "../../calendarMonth";
 import { formatClp } from "../../format";
 import { expenseKindLabel, useTranslation } from "../../i18n";
@@ -154,15 +155,14 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
         </Button>
       </div>
 
-      {isLoading ? (
-        <p className="muted">{t("common.loading")}</p>
-      ) : err ? (
+      {!isLoading && err ? (
         <p className="error">{err}</p>
-      ) : purchases.length === 0 ? (
+      ) : !isLoading && purchases.length === 0 ? (
         <p className="muted">{t("expenses.realEstate.noUnlinkedPurchases")}</p>
       ) : (
         <Table
           tableStyle={{ fontSize: "0.85rem" }}
+          wrapClassName={loadableClass(isLoading)}
           header={
             <thead>
               <tr>

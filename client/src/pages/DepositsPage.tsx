@@ -6,6 +6,7 @@ import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
+import { loadableClass } from "../components/ui/Loadable";
 import { useTranslation, depositFlowCategoryLabel } from "../i18n";
 import {
   flowChartGranularityFromMetricsPeriod,
@@ -38,6 +39,8 @@ export function DepositsPage() {
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
   const { data, error } = useFlowsDeposits();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
+  // The frame renders with a zero total and empty category tables until the payload arrives.
+  const loading = !data;
 
   const chartPoints = useMemo(() => {
     if (!data) return [];
@@ -79,10 +82,6 @@ export function DepositsPage() {
     return <p className="error">{err}</p>;
   }
 
-  if (!data) {
-    return <p className="muted">{t("common.loading")}</p>;
-  }
-
   return (
     <>
       <h2 className="flow-section-title">{t("sidebar.flowsDeposits")}</h2>
@@ -90,7 +89,7 @@ export function DepositsPage() {
         <Link to="reconciliation">{t("depositsReconciliation.title")}</Link>
       </p>
 
-      <p className="muted" style={{ marginBottom: "1rem" }}>
+      <p className={loadableClass(loading, "muted")} style={{ marginBottom: "1rem" }}>
         {t("deposits.totalLabel")}{" "}
         <span className="mono" style={{ color: "var(--text)" }}>
           {formatFlowMoney(total, displayUnit)}
@@ -110,14 +109,14 @@ export function DepositsPage() {
           points={chartPoints}
           xAxisGranularity={chartGranularity}
           displayUnit={displayUnit}
+          loading={loading}
         />
       </div>
 
       {CATEGORY_ORDER.map((cat) => {
-        const block = data.by_category[cat];
         // Tables include full history (the chart's Rango only scopes the chart + its
         // companion total); the section subtotal equals the server subtotal.
-        const blockRows = block.rows;
+        const blockRows = data ? data.by_category[cat].rows : [];
         const blockTotal = blockRows.reduce(
           (s, r) => s + (displayUnit === "usd" ? r.amount_usd ?? 0 : r.amount_clp),
           0
@@ -126,7 +125,7 @@ export function DepositsPage() {
           <section key={cat} style={{ marginBottom: "1.5rem" }}>
             <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
               {depositFlowCategoryLabel(cat)}
-              <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+              <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
                 {formatFlowMoney(blockTotal, displayUnit)}
               </span>
             </h3>
@@ -135,6 +134,7 @@ export function DepositsPage() {
               collapsedVisibleRows={15}
               showMoreLabel={t("notifications.showMore")}
               showLessLabel={t("table.showLess")}
+              wrapClassName={loadableClass(loading)}
               header={
                 <thead>
                   <tr>
@@ -146,7 +146,7 @@ export function DepositsPage() {
                 </thead>
               }
             >
-              {blockRows.length === 0 ? (
+              {blockRows.length === 0 && !loading ? (
                 <tr>
                   <td colSpan={4} className="muted">
                     {t("deposits.emptyCategory")}

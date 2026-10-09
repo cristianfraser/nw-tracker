@@ -5,6 +5,7 @@ import { RealEstateAddPlaceModal } from "../components/real-estate/RealEstateAdd
 import { RealEstateAssignPurchaseModal } from "../components/real-estate/RealEstateAssignPurchaseModal";
 import { RealEstateExpenseLinkModal } from "../components/real-estate/RealEstateExpenseLinkModal";
 import { Table } from "../components/ui/Table";
+import { loadableClass } from "../components/ui/Loadable";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { monthYearMetricsPeriod } from "../dashboardCardBreakdown";
@@ -179,16 +180,15 @@ export function RealEstateExpensesPage() {
     return <p className="error">{err}</p>;
   }
 
-  if (!data) {
-    return <p className="muted">{t("common.loading")}</p>;
-  }
+  // The frame renders with a zero total and no place sections until the payload arrives.
+  const loading = !data;
 
   const titleSuffix =
-    accountSlug != null ? (data.by_account[accountSlug]?.label ?? accountSlug) : null;
+    accountSlug != null && data ? (data.by_account[accountSlug]?.label ?? accountSlug) : null;
 
   const groupTotal = accountSlug
-    ? (data.by_account[accountSlug]?.total_clp ?? 0)
-    : data.total_clp;
+    ? (data?.by_account[accountSlug]?.total_clp ?? 0)
+    : (data?.total_clp ?? 0);
 
   return (
     <>
@@ -208,13 +208,14 @@ export function RealEstateExpensesPage() {
           places={places}
           xAxisGranularity={granularity}
           accountFilter={accountFilter}
+          loading={loading}
         />
       </div>
 
       <section style={{ marginBottom: "1.75rem" }}>
         <h3 style={{ fontSize: "1.1rem", marginBottom: "0.75rem" }}>
           {t("expenses.groups.real_estate")}
-          <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
             {formatClp(groupTotal)}
           </span>
           {!accountSlug ? (
@@ -463,7 +464,7 @@ export function RealEstateExpensesPage() {
             </Table>
           </div>
         ))}
-        {sections.length === 0 ? (
+        {sections.length === 0 && !loading ? (
           <p className="muted">{t("expenses.emptyAccount")}</p>
         ) : null}
       </section>

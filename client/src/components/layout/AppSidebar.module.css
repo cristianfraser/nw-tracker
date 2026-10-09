@@ -41,12 +41,6 @@
   flex-shrink: 0;
 }
 
-.loading {
-  padding: 0.5rem 1rem;
-  font-size: 0.85rem;
-  margin: 0;
-}
-
 .list,
 .sublist {
   list-style: none;

@@ -16,7 +16,11 @@ import {
   writeDashboardNavSnapshotCache,
 } from "./dashboardNavSnapshotCache";
 import { readFxLatestCache } from "./fxLatestCache";
-import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehavior } from "./displayUnitQueries";
+import {
+  DISPLAY_UNIT_STALE_MS,
+  displayUnitQueryBehavior,
+  displayUnitQueryBehaviorFor,
+} from "./displayUnitQueries";
 import { queryKeys, type DisplayUnit } from "./keys";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import {
@@ -73,7 +77,7 @@ export function useDashboardBundle(unit: DisplayUnit, enabled = true) {
     queryKey: queryKeys.dashboard(unit),
     queryFn: () => fetchDashboardBundle(unit),
     enabled,
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.dashboard(unit), 1),
   });
 }
 
@@ -83,7 +87,7 @@ export function useDashboardOverviewDaily(unit: DisplayUnit, days: number, enabl
     queryKey: queryKeys.dashboardOverviewDaily(unit, days),
     queryFn: () => api.dashboardOverviewDaily(unit, days),
     enabled,
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.dashboardOverviewDaily(unit, days), 1),
   });
 }
 
@@ -103,7 +107,7 @@ export function useDailySeries(
     queryKey: queryKeys.dailySeries(scopeKey, unit, days),
     queryFn: () => api.dailySeries(unit, scope, days),
     enabled: enabled && scopeKey !== "",
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.dailySeries(scopeKey, unit, days), 2),
   });
 }
 
@@ -154,7 +158,7 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     // With a cached strip this query never refetches; freshness relies on DashboardPage
     // re-writing the cache from the live page bundle (writeDashboardNavSnapshotCache there).
     enabled: enabled && !cachedStrip,
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.dashboardNavSnapshot(unit), 1),
     staleTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
     gcTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
   });
@@ -182,7 +186,7 @@ export function useGroupConsolidatedTables(
     queryKey: queryKeys.groupConsolidatedTables(portfolioGroup, undefined, unit),
     queryFn: () => api.groupConsolidatedTables(portfolioGroup, unit),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.groupConsolidatedTables(portfolioGroup, undefined, unit), 2),
   });
 }
 
@@ -199,7 +203,7 @@ export function useGroupConsolidatedMonthlyPage(
     queryKey: queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page),
     queryFn: () => api.groupConsolidatedMonthly(portfolioGroup, unit, { page, pageSize, period }),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page), 2),
   });
 }
 
@@ -213,7 +217,7 @@ export function useAccountsByPortfolioGroup(
     queryKey: queryKeys.accountsByPortfolioGroup(portfolioGroup, unit),
     queryFn: () => fetchAccountsByPortfolioGroup(portfolioGroup, unit),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.accountsByPortfolioGroup(portfolioGroup, unit), 3),
     staleTime: DISPLAY_UNIT_STALE_MS,
     gcTime: DISPLAY_UNIT_STALE_MS,
   });
@@ -230,7 +234,7 @@ export function usePortfolioGroupBundle(opts: {
     queryKey: queryKeys.portfolioGroup(portfolio_group, undefined, unit),
     queryFn: () => fetchPortfolioGroupBundle({ portfolio_group, unit }, queryClient),
     enabled: enabled && Boolean(portfolio_group),
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroup(portfolio_group, undefined, unit), 2),
   });
 }
 
@@ -264,7 +268,7 @@ export function useGroupPageShell(opts: {
     },
     initialDataUpdatedAt: cachedShell ? Date.now() : undefined,
     enabled: enabled && Boolean(portfolioGroup && navNode) && !cachedShell,
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.groupPageShell(portfolioGroup, unit), 2),
     staleTime: GROUP_PAGE_SHELL_STALE_MS,
     gcTime: GROUP_PAGE_SHELL_STALE_MS,
   });
@@ -318,6 +322,7 @@ export function useMarketTicker(unit: DisplayUnit) {
     queryFn: () => api.marketTicker(unit),
     staleTime: MARKET_TICKER_MS,
     refetchInterval: MARKET_TICKER_MS,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -327,6 +332,7 @@ export function useWatchlist(unit: DisplayUnit) {
     queryFn: () => api.watchlist(unit),
     staleTime: MARKET_TICKER_MS,
     refetchInterval: MARKET_TICKER_MS,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -516,6 +522,7 @@ export function useFlowsPl(days?: number) {
   return useQuery({
     queryKey: queryKeys.flowsPl(days),
     queryFn: () => api.flowsPl(days),
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -634,7 +641,7 @@ export function useAccountMonthlyPerformance(id: string | undefined, unit: Displ
     queryKey: queryKeys.accountMonthlyPerformance(id ?? "", unit),
     queryFn: () => api.accountMonthlyPerformance(id!, unit),
     enabled: Boolean(id),
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.accountMonthlyPerformance(id ?? "", unit), 2),
   });
 }
 
@@ -643,7 +650,7 @@ export function usePortfolioGroupCcLedger(slug: string | undefined, enabled = tr
     queryKey: queryKeys.portfolioGroupCcLedger(slug ?? ""),
     queryFn: () => api.portfolioGroupCcLedger(slug!),
     enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupCcLedger(slug ?? ""), 2),
   });
 }
 
@@ -652,7 +659,7 @@ export function usePortfolioGroupMortgageLedger(slug: string | undefined, enable
     queryKey: queryKeys.portfolioGroupMortgageLedger(slug ?? ""),
     queryFn: () => api.portfolioGroupMortgageLedger(slug!),
     enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.portfolioGroupMortgageLedger(slug ?? ""), 2),
   });
 }
 
@@ -666,7 +673,7 @@ export function useAccountDetailBundle(
     queryKey: queryKeys.accountDetail(id ?? "", unit, chartGranularity),
     queryFn: () => api.accountDetailBundle(id!, unit, { granularity: chartGranularity }),
     enabled: Boolean(id),
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.accountDetail(id ?? "", unit, chartGranularity), 2),
   });
 }
 
@@ -728,7 +735,7 @@ export function useGroupFlows(slug: string, filters: FlowsQueryFilters, enabled 
         amount_currency: filters.amount_currency,
       }),
     enabled: enabled && Boolean(slug),
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.groupFlows(slug, filtersKey), 2),
   });
 }
 
@@ -752,7 +759,7 @@ export function useAccountFlows(id: string | undefined, filters: FlowsQueryFilte
         amount_currency: filters.amount_currency,
       }),
     enabled: enabled && Boolean(id),
-    ...displayUnitQueryBehavior,
+    ...displayUnitQueryBehaviorFor(queryKeys.accountFlows(id ?? "", filtersKey), 2),
   });
 }
 

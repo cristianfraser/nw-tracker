@@ -1,6 +1,7 @@
 import { type CSSProperties, type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { Button } from "@crfrsr/ui";
+import { loadableClass } from "./Loadable";
 
 /**
  * Client-side pagination state + page slice. Pass the full sorted array; get back the current page's rows.
@@ -124,7 +125,7 @@ export function PaginatedTable({
         </div>
       ) : null}
 
-      <div style={{ opacity: loading ? 0.5 : 1, transition: "opacity 0.15s" }}>{children}</div>
+      <div className={loadableClass(loading)}>{children}</div>
     </div>
   );
 }

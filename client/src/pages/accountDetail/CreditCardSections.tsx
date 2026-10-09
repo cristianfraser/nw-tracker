@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { Table } from "../../components/ui/Table";
+import { Loadable } from "../../components/ui/Loadable";
 import { PaginatedTable } from "../../components/ui/PaginatedTable";
 import type {
   AccountCcInstallmentsResponse,
@@ -30,20 +31,25 @@ function CreditCardInstallmentsSection({
   ledger,
   accountId,
   displayUnit,
+  loading = false,
 }: {
   ledger: AccountCcInstallmentsResponse;
   accountId: number;
   displayUnit: "clp" | "usd";
+  /** The ledger is a placeholder or held prior data: the section keeps its frame, dimmed, with no «empty» copy. */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const deletePurchase = useDeleteCcPurchaseMutation({ accountId, displayUnit });
   const m = ledger.meta;
-  const hasLedger = ledger.has_installment_ledger;
   const hasData =
-    hasLedger ||
+    ledger.has_installment_ledger ||
     ledger.has_imported_statements ||
     ledger.purchases.length > 0 ||
     (ledger.purchases_completed?.length ?? 0) > 0;
+  // A placeholder ledger (loading, nothing in it) states no installment ledger yet: frame the
+  // ledger layout, not the legacy columns.
+  const hasLedger = ledger.has_installment_ledger || (loading && !hasData);
   const facturaciones = ledger.facturaciones ?? [];
   const manualBusy = deletePurchase.isPending;
   const purchasesCompleted = ledger.purchases_completed ?? [];
@@ -240,9 +246,9 @@ function CreditCardInstallmentsSection({
   }, [purchasesCompletedSorted, completedPage]);
 
   return (
-    <>
+    <Loadable loading={loading}>
       <h2 className={styles.sectionTitle}>{t("account.creditCard.installmentsTitle")}</h2>
-      {hasLedger ? (
+      {ledger.has_installment_ledger ? (
         <p className={cn("muted", styles.proseMuted)}>
           {m?.installment_purchase_count != null && m?.installment_payment_count != null ? (
             <Trans
@@ -259,7 +265,7 @@ function CreditCardInstallmentsSection({
           ) : null}
         </p>
       ) : null}
-      {!hasData ? (
+      {!hasData && !loading ? (
         <p className={cn("muted", styles.marginBottomBase)}>{t("account.creditCard.installmentsEmpty")}</p>
       ) : (
         <>
@@ -278,7 +284,7 @@ function CreditCardInstallmentsSection({
             </div>
           </div>
 
-          {hasLedger && facturaciones.length > 0 ? (
+          {(ledger.has_installment_ledger && facturaciones.length > 0) || loading ? (
             <>
               <h3 className={styles.subsectionTitle}>{t("accountDetail.creditCard.facturacionesTitle")}</h3>
               <CreditCardFacturacionesTable
@@ -299,11 +305,13 @@ function CreditCardInstallmentsSection({
             header={purchaseTableHeader("none")}
           >
             {ledger.purchases.length === 0 ? (
-              <tr>
-                <td colSpan={purchaseTableColSpan(hasLedger, "none")} className="muted">
-                  {t("account.creditCard.activePurchasesEmpty")}
-                </td>
-              </tr>
+              loading ? null : (
+                <tr>
+                  <td colSpan={purchaseTableColSpan(hasLedger, "none")} className="muted">
+                    {t("account.creditCard.activePurchasesEmpty")}
+                  </td>
+                </tr>
+              )
             ) : (
               renderPurchaseRows(purchasesActiveSorted, { dueColumn: "none" })
             )}
@@ -323,11 +331,13 @@ function CreditCardInstallmentsSection({
               header={purchaseTableHeader("last")}
             >
               {purchasesCompletedSorted.length === 0 ? (
-                <tr>
-                  <td colSpan={purchaseTableColSpan(hasLedger, "last")} className="muted">
-                    {t("account.creditCard.completedPurchasesEmpty")}
-                  </td>
-                </tr>
+                loading ? null : (
+                  <tr>
+                    <td colSpan={purchaseTableColSpan(hasLedger, "last")} className="muted">
+                      {t("account.creditCard.completedPurchasesEmpty")}
+                    </td>
+                  </tr>
+                )
               ) : (
                 renderPurchaseRows(completedPageRows, { dueColumn: "last" })
               )}
@@ -350,11 +360,13 @@ function CreditCardInstallmentsSection({
             }
           >
             {ledger.months.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="muted">
-                  {t("account.creditCard.monthCuotasEmpty")}
-                </td>
-              </tr>
+              loading ? null : (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    {t("account.creditCard.monthCuotasEmpty")}
+                  </td>
+                </tr>
+              )
             ) : (
               ledger.months.map((row) => {
                 return (
@@ -397,7 +409,7 @@ function CreditCardInstallmentsSection({
           </Table>
         </>
       )}
-    </>
+    </Loadable>
   );
 }
 

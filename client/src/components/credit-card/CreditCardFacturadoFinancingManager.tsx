@@ -5,6 +5,7 @@ import { formatClp } from "../../format";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { Modal } from "../ui/Modal";
 import { Button } from "@crfrsr/ui";
+import { loadableClass } from "../ui/Loadable";
 import { financingCandidatesFromLines } from "./financingCandidates";
 import {
   useCcFacturadoFinancingLinks,
@@ -18,8 +19,11 @@ import {
  */
 export function CreditCardFacturadoFinancingManager({
   lines,
+  loading,
 }: {
   lines: readonly FlowCcExpenseLineRow[];
+  /** The expense lines are still loading: the candidate list is empty and dimmed. */
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -28,6 +32,7 @@ export function CreditCardFacturadoFinancingManager({
   const [selectedFinancing, setSelectedFinancing] = useState<Set<string>>(new Set());
 
   const links = useCcFacturadoFinancingLinks();
+  const linksLoading = links.isPending;
   const upsert = useUpsertCcFacturadoFinancingLinkMutation();
   const del = useDeleteCcFacturadoFinancingLinkMutation();
 
@@ -137,6 +142,8 @@ export function CreditCardFacturadoFinancingManager({
               </li>
             ))}
           </ul>
+        ) : linksLoading ? (
+          <ul className={loadableClass(true)} style={{ listStyle: "none", padding: 0, margin: "0 0 1.25rem" }} />
         ) : (
           <p className="muted" style={{ marginBottom: "1.25rem" }}>
             {t("expenses.creditCard.financing.none")}
@@ -184,7 +191,10 @@ export function CreditCardFacturadoFinancingManager({
         <p className="label-inline" style={{ marginBottom: "0.35rem" }}>
           {t("expenses.creditCard.financing.financingLabel")}
         </p>
-        <ul style={{ listStyle: "none", padding: 0, margin: "0 0 1rem", maxHeight: "16rem", overflowY: "auto" }}>
+        <ul
+          className={loadableClass(loading)}
+          style={{ listStyle: "none", padding: 0, margin: "0 0 1rem", maxHeight: "16rem", overflowY: "auto" }}
+        >
           {financingCandidates.map((c) => (
             <label
               key={c.key}

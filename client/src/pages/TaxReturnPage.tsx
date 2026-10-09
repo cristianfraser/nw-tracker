@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { Loadable, loadableClass } from "../components/ui/Loadable";
 import { Table } from "../components/ui/Table";
 import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
 import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
@@ -21,7 +22,7 @@ function useCodeLabel() {
     LABELLED_CODES.has(code) ? t(`taxReturn.codes.${code}`) : t("taxReturn.codeFallback", { code });
 }
 
-function F22Table({ rows }: { rows: TaxReturnRow[] }) {
+function F22Table({ rows, loading }: { rows: TaxReturnRow[]; loading?: boolean }) {
   const { t } = useTranslation();
   const label = useCodeLabel();
   const header = (
@@ -38,7 +39,7 @@ function F22Table({ rows }: { rows: TaxReturnRow[] }) {
     </thead>
   );
   return (
-    <Table header={header} tableClassName="table--parallel-mobile">
+    <Table header={header} tableClassName="table--parallel-mobile" wrapClassName={loadableClass(loading)}>
       {rows.map((r) => {
         const diff = r.changed ? (r.draft ?? 0) - (r.filed ?? 0) : null;
         const strong = r.section === "subtotal" || r.section === "result";
@@ -415,52 +416,62 @@ export function TaxReturnPage() {
   const [taxYear, setTaxYear] = useState<number | null>(null);
   const q = useTaxReturn(taxYear);
   const data = q.data;
+  // First load, or the previous year's return held while the chosen year's loads.
+  const loading = q.isPending || q.isPlaceholderData;
 
   return (
     <div className="page">
       <h1>{t("taxReturn.title")}</h1>
       <p className="muted">{t("taxReturn.subtitle")}</p>
       {q.isError ? <p className="error">{(q.error as Error).message}</p> : null}
-      {!data ? (
-        q.isLoading ? <p>{t("common.loading")}</p> : null
-      ) : (
-        <>
+      {q.isError && !data ? null : (
+        <Loadable loading={loading}>
           <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", margin: "1rem 0" }}>
             <span>{t("taxReturn.taxYearLabel")}</span>
-            <select value={data.tax_year} onChange={(e) => setTaxYear(Number(e.target.value))}>
-              {data.available_tax_years.map((y) => (
+            <select
+              value={taxYear ?? data?.tax_year ?? ""}
+              disabled={loading}
+              onChange={(e) => setTaxYear(Number(e.target.value))}
+            >
+              {(data?.available_tax_years ?? []).map((y) => (
                 <option key={y} value={y}>
                   {t("taxReturn.taxYearOption", { year: y, income: y - 1 })}
                 </option>
               ))}
             </select>
           </label>
-          <p className="muted">{t(`taxReturn.base.${data.base}`, { months: data.salary.months })}</p>
-          {data.provisional ? <p className="muted">{t("taxReturn.provisionalYear", { year: data.income_year })}</p> : null}
-          {data.salary.incomplete_months.length > 0 ? (
+          {data ? <p className="muted">{t(`taxReturn.base.${data.base}`, { months: data.salary.months })}</p> : null}
+          {data?.provisional ? <p className="muted">{t("taxReturn.provisionalYear", { year: data.income_year })}</p> : null}
+          {data && data.salary.incomplete_months.length > 0 ? (
             <p style={{ color: "var(--negative)" }}>
               {t("taxReturn.salaryIncomplete", { months: data.salary.incomplete_months.join(", ") })}
             </p>
           ) : null}
           <p>
-            {t("taxReturn.summaryFiled", { amount: money(data.tax_filed) })} ·{" "}
-            {t("taxReturn.summaryDraft", { amount: money(data.tax_draft) })}
-            {data.tax_filed != null && data.tax_draft != null
+            {t("taxReturn.summaryFiled", { amount: money(data?.tax_filed ?? null) })} ·{" "}
+            {t("taxReturn.summaryDraft", { amount: money(data?.tax_draft ?? null) })}
+            {data && data.tax_filed != null && data.tax_draft != null
               ? ` · ${t("taxReturn.summaryDiff", { amount: formatClp(data.tax_draft - data.tax_filed) })}`
               : ""}
           </p>
-          <F22Table rows={data.rows} />
-          {data.rows.some((r) => r.estimated) ? <p className="muted">{t("taxReturn.estimatedNote")}</p> : null}
+          <F22Table rows={data?.rows ?? []} loading={loading} />
+          {data?.rows.some((r) => r.estimated) ? <p className="muted">{t("taxReturn.estimatedNote")}</p> : null}
           <p className="muted">{t("taxReturn.paymentNote")}</p>
-          {data.crypto.sales.length === 0 && data.dividends.length === 0 && data.foreign_shares.sales.length === 0 ? (
-            <LossOffsetHint data={data} kind="pool" />
+          {/* The sections below are server-decided absences; they wait for the response so no
+              explanatory copy shows up for a year that has not loaded. */}
+          {data ? (
+            <>
+              {data.crypto.sales.length === 0 && data.dividends.length === 0 && data.foreign_shares.sales.length === 0 ? (
+                <LossOffsetHint data={data} kind="pool" />
+              ) : null}
+              <SettlementSection data={data} />
+              <PayrollWithholdingSection data={data} />
+              <CryptoSection data={data} />
+              <DividendsSection data={data} />
+              <ForeignSharesSection data={data} />
+            </>
           ) : null}
-          <SettlementSection data={data} />
-          <PayrollWithholdingSection data={data} />
-          <CryptoSection data={data} />
-          <DividendsSection data={data} />
-          <ForeignSharesSection data={data} />
-        </>
+        </Loadable>
       )}
     </div>
   );

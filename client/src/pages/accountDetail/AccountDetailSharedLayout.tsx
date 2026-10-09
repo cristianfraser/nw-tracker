@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import { cn } from "../../cn";
 import { CompactEntityCard } from "../../components/dashboard/CompactEntityCard";
 import { CardValueDayPl, DashboardCardGroupMetrics } from "../../components/dashboard/DashboardCardGroupMetrics";
 import { PortfolioEntityCardsStrip } from "../../components/dashboard/PortfolioEntityCardsStrip";
 import { PortfolioNavChildDetailCards } from "../../components/dashboard/PortfolioNavChildDetailCards";
 import { PageTitleRow } from "../../components/layout/PageTitleRow";
+import { loadableClass } from "../../components/ui/Loadable";
 import type { cardGroupMetricsByPeriodFromAccounts } from "../../dashboardCardBreakdown";
 import type { dashPickForNavStrip } from "../../queries/fetchers";
 import styles from "../AccountDetailPage.module.css";
@@ -25,6 +25,7 @@ type LayoutProps = {
   children: ReactNode;
   /** Rendered right-aligned at the bottom of the page (e.g. Export button). */
   toolbar?: ReactNode;
+  /** The page data is not in (or is held prior-unit data): the body dims and the cards sit in their placeholder phase. */
   loading?: boolean;
   /** Nav child dashboard cards (second strip row). Off for leaf pages that never show them (e.g. credit card). */
   showNavChildCards?: boolean;
@@ -67,7 +68,7 @@ export function AccountDetailSharedLayout({
   return (
     <main>
       <PageTitleRow title={title} />
-      <div className={cn(styles.contentShell, loading && styles.contentShellLoading)}>
+      <div className={loadableClass(loading, styles.contentShell)}>
         <PortfolioEntityCardsStrip
           compactSlot={
             <CompactEntityCard

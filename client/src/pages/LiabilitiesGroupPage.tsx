@@ -3,7 +3,7 @@ import { useEffect, useMemo } from "react";
 import { Navigate, useLocation, useParams } from "react-router-dom";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
-import { CoverageLineChart } from "../components/charts/CoverageLineChart";
+import { CoverageLineChart } from "../components/charts/lazyCharts";
 import { PortfolioGroupChartsSection } from "../components/charts/PortfolioGroupChartsSection";
 import { LiabilitiesCreditCardGroupSection } from "../components/liabilities/LiabilitiesCreditCardGroupSection";
 import { LiabilitiesMortgageGroupSection } from "../components/liabilities/LiabilitiesMortgageGroupSection";
@@ -23,12 +23,15 @@ import {
 } from "../portfolioNavFromApi";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
+import { GROUP_COLD_STRIP } from "../coldPageShape";
 import { usePortfolioGroupCharts } from "../usePortfolioGroupCharts";
 import { useTranslation } from "../i18n";
 import { pathnameUsesDashboardNavContext } from "../dashboardNavContextRoutes";
 import { prefetchPortfolioGroupBundle } from "../queries/displayUnitQueries";
 import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFromNav";
 import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
+import { buildPlaceholderNavStripDash } from "../placeholders/dashboardPagePlaceholders";
+import { emptyCcLedger, emptyMortgageLedger } from "../placeholders/accountDetailPlaceholders";
 import {
   convertPortfolioGroupBundleUnit,
   resolveClpPerUsdForKeepPrev,
@@ -38,7 +41,7 @@ import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
 import { hasDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCache";
 import { queryKeys } from "../queries/keys";
-import { isBundleContentLoading, isPageShapeLoading, useRealBundleForContent } from "../queries/pageShapeReady";
+import { isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
 import { timeRangeToDays } from "../timeRange";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
@@ -68,7 +71,9 @@ export function LiabilitiesGroupPage() {
 
   const { displayUnit } = useDisplayPreferences();
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
-  const navStillLoading = (navPending || navFetching) && sidebarNav == null;
+  // Redirect away only once the nav has answered without this route; until then the page
+  // renders its shell (empty title, placeholder charts), dimmed.
+  const navSettled = !navPending && !navFetching;
   const hasNavSnapshotCache = hasDashboardNavSnapshotCache(displayUnit);
 
   const navMatchNode = useMemo(() => {
@@ -98,11 +103,8 @@ export function LiabilitiesGroupPage() {
         ? "liabilities_mortgage"
         : "liabilities");
   const shapeEnabled = Boolean(navMatchNode);
-  const { data: navSnapshot, isPending: navSnapshotPending } = useDashboardNavSnapshot(
-    displayUnit,
-    shapeEnabled
-  );
-  const { data: shapeAccounts, isPending: accountsShapePending } = useAccountsByPortfolioGroup(
+  const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit, shapeEnabled);
+  const { data: shapeAccounts } = useAccountsByPortfolioGroup(
     portfolioGroup,
     displayUnit,
     shapeEnabled
@@ -141,11 +143,15 @@ export function LiabilitiesGroupPage() {
         ? portfolioGroup
         : undefined;
 
-  const { data: ccLedger } = usePortfolioGroupCcLedger(ccLedgerSlug, shapeEnabled && ccLedgerSlug != null);
-  const { data: mortgageLedger } = usePortfolioGroupMortgageLedger(
-    mortgageLedgerSlug,
-    shapeEnabled && mortgageLedgerSlug != null
+  const { data: ccLedger, isPending: ccLedgerQueryPending } = usePortfolioGroupCcLedger(
+    ccLedgerSlug,
+    shapeEnabled && ccLedgerSlug != null
   );
+  const { data: mortgageLedger, isPending: mortgageLedgerQueryPending } =
+    usePortfolioGroupMortgageLedger(mortgageLedgerSlug, shapeEnabled && mortgageLedgerSlug != null);
+  // A section mounts while its ledger loads (empty ledger, dimmed); a failed fetch leaves it out.
+  const ccLedgerPending = ccLedgerSlug != null && ccLedgerQueryPending;
+  const mortgageLedgerPending = mortgageLedgerSlug != null && mortgageLedgerQueryPending;
 
   useEffect(() => {
     if (!navMatchNode) return;
@@ -194,8 +200,15 @@ export function LiabilitiesGroupPage() {
     queryClient.setQueryData(queryKeys.groupPageShell(portfolioGroup, displayUnit), nextShell);
   }, [bundleReady, data, navCtx, navMatchNode, portfolioGroup, displayUnit, queryClient]);
 
+  // No snapshot yet: nav-context alone, else a zero strip from the sidebar nav (cold cache).
+  const placeholderStripDash = useMemo(
+    () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null),
+    [sidebarNav, displayUnit]
+  );
+  const stripIsPlaceholder = navMatchNode != null && !navSnapshot && !navCtx;
   const dashForStrip = useMemo(() => {
-    if (!navMatchNode || !navSnapshot) return null;
+    if (!navMatchNode) return null;
+    if (!navSnapshot) return navCtx ? dashPickForNavStrip(navCtx) : placeholderStripDash;
     const accountsForDash = useRealBundle && navCtx ? navCtx.accounts : navSnapshot.accounts;
     return dashPickForNavStrip(
       {
@@ -208,13 +221,13 @@ export function LiabilitiesGroupPage() {
         overviewPoints,
       }
     );
-  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints]);
+  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, placeholderStripDash]);
 
   // Keep the previous unit's charts on screen (FX-converted) during a CLP↔USD switch instead of
-  // blinking to the flat-zero placeholder; snaps to exact when the real bundle resolves.
+  // blinking to the flat-zero placeholder; snaps to exact when the real bundle resolves. Held
+  // data is only ever this group's (entity-scoped keep-previous), so it is the other unit's.
   const keepPrevBundle = useMemo(() => {
     if (!isPlaceholderData || !bundleReady || !data) return null;
-    if (data.ts.unit === (displayUnit === "usd" ? "usd" : "clp")) return data;
     const rate = resolveClpPerUsdForKeepPrev(undefined, readFxLatestCache());
     if (rate == null) return null;
     return convertPortfolioGroupBundleUnit(data, displayUnit, rate);
@@ -339,7 +352,15 @@ export function LiabilitiesGroupPage() {
     return undefined;
   }, [mortgageAccount, mortgageLedger?.account_id]);
 
-  const { data: mortgagePerf } = useAccountMonthlyPerformance(mortgageOperationalId, displayUnit);
+  const {
+    data: mortgagePerf,
+    isPending: mortgagePerfPending,
+    isPlaceholderData: mortgagePerfHeld,
+  } = useAccountMonthlyPerformance(mortgageOperationalId, displayUnit);
+  // No id yet only while the ledger that would name it loads; after that, no id = no mortgage.
+  const mortgagePerfLoading = mortgageOperationalId
+    ? mortgagePerfPending || mortgagePerfHeld
+    : mortgageLedgerPending;
 
   const mortgageDashRow = useMemo(() => {
     if (!mortgageOperationalId) return null;
@@ -367,9 +388,18 @@ export function LiabilitiesGroupPage() {
     );
   }, [mortgageAccount, ts?.accounts_in_group?.accounts, navMatchNode?.color_rgb]);
 
+  // A Diario chart shows the monthly block, dimmed, until its daily series is this unit's.
+  const dailyLoading = (q: { isPending: boolean; isPlaceholderData: boolean }) =>
+    q.isPending || q.isPlaceholderData;
+  const proportionalLoading =
+    contentLoading || (proportionalIsDaily && dailyLoading(proportionalDailySeries));
+
   const chartsSection = (
     <>
       <PortfolioGroupChartsSection
+        loading={contentLoading}
+        valuationLoading={contentLoading || (valuationIsDaily && dailyLoading(dailySeries))}
+        proportionalLoading={proportionalLoading}
         accountsEmpty={accounts.length === 0}
         accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
         chartSeriesCount={chartSeriesCount}
@@ -396,6 +426,7 @@ export function LiabilitiesGroupPage() {
                   onRangeChange={proportionalPrefs.setRange}
                 />
               }
+              loading={proportionalLoading}
             />
           ) : undefined
         }
@@ -433,38 +464,47 @@ export function LiabilitiesGroupPage() {
         hideGroupPerf
       />
 
-      {pageKind === "pasivos_root" && ccLedger ? (
+      {pageKind === "pasivos_root" && (ccLedger || ccLedgerPending) ? (
         <LiabilitiesCreditCardGroupSection
-          ccLedger={ccLedger}
+          ccLedger={ccLedger ?? emptyCcLedger(0)}
           portfolioGroup={portfolioGroup}
           linkTo="/liabilities/credit-card"
+          loading={ccLedgerPending}
         />
       ) : null}
 
-      {pageKind === "pasivos_root" && mortgageLedger ? (
+      {pageKind === "pasivos_root" && (mortgageLedger || mortgageLedgerPending) ? (
         <LiabilitiesMortgageGroupSection
-          mortgageLedger={mortgageLedger}
+          mortgageLedger={mortgageLedger ?? emptyMortgageLedger(0)}
           displayUnit={displayUnit}
           monthlyPerfRows={mortgagePerf?.monthly ?? []}
           summary={mortgageSummary}
           accountDashRow={mortgageDashRow}
           accountColorRgb={mortgageColorRgb}
           linkTo="/liabilities/mortgage"
+          loading={mortgageLedgerPending}
+          perfLoading={mortgagePerfLoading}
         />
       ) : null}
 
-      {pageKind === "credit_card" && ccLedger ? (
-        <LiabilitiesCreditCardGroupSection ccLedger={ccLedger} portfolioGroup={portfolioGroup} />
+      {pageKind === "credit_card" && (ccLedger || ccLedgerPending) ? (
+        <LiabilitiesCreditCardGroupSection
+          ccLedger={ccLedger ?? emptyCcLedger(0)}
+          portfolioGroup={portfolioGroup}
+          loading={ccLedgerPending}
+        />
       ) : null}
 
-      {pageKind === "mortgage" && mortgageLedger ? (
+      {pageKind === "mortgage" && (mortgageLedger || mortgageLedgerPending) ? (
         <LiabilitiesMortgageGroupSection
-          mortgageLedger={mortgageLedger}
+          mortgageLedger={mortgageLedger ?? emptyMortgageLedger(0)}
           displayUnit={displayUnit}
           monthlyPerfRows={mortgagePerf?.monthly ?? []}
           summary={mortgageSummary}
           accountDashRow={mortgageDashRow}
           accountColorRgb={mortgageColorRgb}
+          loading={mortgageLedgerPending}
+          perfLoading={mortgagePerfLoading}
         />
       ) : null}
     </>
@@ -478,19 +518,12 @@ export function LiabilitiesGroupPage() {
     return <Navigate to="/liabilities" replace />;
   }
 
-  if (navStillLoading) {
-    return (
-      <main>
-        <p className="muted">{t("common.loading")}</p>
-      </main>
-    );
-  }
-
-  if (!navMatchNode) {
+  if (!navMatchNode && navSettled) {
     return <Navigate to="/" replace />;
   }
 
   if (
+    navMatchNode &&
     issuerParam != null &&
     issuerParam !== "" &&
     (navMatchNode.slug !== issuerParam || navMatchNode.asset_group_slug !== "credit_cards")
@@ -506,17 +539,13 @@ export function LiabilitiesGroupPage() {
     );
   }
 
-  if (isPageShapeLoading(accountsShapePending, shapeAccounts, navSnapshotPending, navSnapshot)) {
-    return null;
-  }
-
   return (
     <GroupInfoBase
       title={title}
       loading={contentLoading}
       hideConsolidatedTables
       portfolio={
-        dashForStrip
+        navMatchNode && dashForStrip
           ? {
               navNode: navMatchNode,
               groupSlug: portfolioGroup,
@@ -525,10 +554,12 @@ export function LiabilitiesGroupPage() {
               overviewPoints,
               showUsd,
               animated: true,
+              placeholderPhase: stripIsPlaceholder || undefined,
               linkedCardNavChildren,
             }
           : null
       }
+      coldStripShape={GROUP_COLD_STRIP}
       charts={chartsSection}
       tableAccounts={tableAccountsForPerf}
       accountsTree={

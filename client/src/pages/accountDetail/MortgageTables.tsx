@@ -115,10 +115,13 @@ function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
 export function MortgageDividendosTable({
   ledger,
   variant = "property",
+  loading = false,
 }: {
   ledger: AccountMortgageLedgerResponse;
   /** `property` = inmueble (incl. pie); `mortgage` = pasivo (solo cuotas / prepagos). */
   variant?: "property" | "mortgage";
+  /** The ledger is a placeholder: the meta cards show their frame («—») instead of waiting for `meta`. */
+  loading?: boolean;
 }) {
   const m = ledger.meta;
   const isMortgageView = variant === "mortgage";
@@ -139,29 +142,29 @@ export function MortgageDividendosTable({
           ? i18n.t("accountDetail.mortgageSheet.titleMortgage")
           : i18n.t("accountDetail.mortgageSheet.titleProperty")}
       </h2>
-      {m && !isMortgageView && (
+      {(m || loading) && !isMortgageView && (
         <div className={cn("cards", styles.cardsBelow)}>
           <div className="card">
             <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.viviendaHoja")}</div>
             <div className="value mono">
-              {m.valor_vivienda_uf != null ? formatUfUnits(m.valor_vivienda_uf) : "—"}
+              {m?.valor_vivienda_uf != null ? formatUfUnits(m.valor_vivienda_uf) : "—"}
             </div>
           </div>
           <div className="card">
             <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.hipotecaTrasPie")}</div>
             <div className="value mono">
-              {m.hipoteca_tras_pie_uf != null ? formatUfUnits(m.hipoteca_tras_pie_uf) : "—"}
+              {m?.hipoteca_tras_pie_uf != null ? formatUfUnits(m.hipoteca_tras_pie_uf) : "—"}
             </div>
           </div>
           <div className="card">
             <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.pieClpUf")}</div>
             <div className={cn("value", "mono", styles.cardValueSecondary)}>
-              {m.pie_clp != null ? formatClp(m.pie_clp) : "—"} · {formatUfUnitsFine(m.pie_uf)}
+              {m?.pie_clp != null ? formatClp(m.pie_clp) : "—"} · {m ? formatUfUnitsFine(m.pie_uf) : "—"}
             </div>
           </div>
           <div className="card">
             <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.filasDePago")}</div>
-            <div className="value mono">{m.row_count}</div>
+            <div className="value mono">{m?.row_count ?? "—"}</div>
           </div>
         </div>
       )}
@@ -262,13 +265,20 @@ function DeptoPaymentScenarioMobileCard({ row }: { row: DeptoPaymentScenarioRow 
   );
 }
 
-export function DeptoPaymentScenarioTable({ rows }: { rows: DeptoPaymentScenarioRow[] }) {
+export function DeptoPaymentScenarioTable({
+  rows,
+  loading = false,
+}: {
+  rows: DeptoPaymentScenarioRow[];
+  /** The scenarios are a placeholder: the table shows its header only instead of vanishing. */
+  loading?: boolean;
+}) {
   const rowsDisplay = useMemo(() => [...rows].reverse(), [rows]);
 
   const { page: scenarioPage, setPage: setScenarioPage, pageRows: scenarioPageRows, total: scenarioTotal } =
     useClientPagination(rowsDisplay, 12);
 
-  if (!rows.length) return null;
+  if (!rows.length && !loading) return null;
 
   return (
     <>

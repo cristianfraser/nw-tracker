@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useTranslation } from "../../i18n";
-import { MonthlyPerformanceComboChart } from "../../components/charts/MonthlyPerformanceComboChart";
+import { LineChartPanel, MonthlyPerformanceComboChart } from "../../components/charts/lazyCharts";
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { DailyPerfDetailTable } from "../../components/account/DailyPerfDetailTable";
 import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
@@ -14,7 +14,7 @@ import { PeriodReturnsWithBenchmark } from "../../components/perf/PeriodReturnsT
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
 import { Table } from "../../components/ui/Table";
-import { LineChartPanel } from "../../components/charts/ValuationLineCharts";
+import { Loadable } from "../../components/ui/Loadable";
 import { formatClp, formatGroupedDecimal, formatInstrumentUnits, formatPct } from "../../format";
 import { cn } from "../../cn";
 import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
@@ -41,6 +41,7 @@ import {
   MONTHLY_PERF_COLLAPSED,
   isDeptoMortgageCategory,
   isDeptoPropertyCategory,
+  mayHavePeriodReturns,
   movementUnitsKind,
   tickerLabelFromCategory,
 } from "./shared";
@@ -61,7 +62,6 @@ export function StandardAccountDetailPage({ data }: Props) {
     displayUnit,
     valuationPrefs,
     perfPrefs,
-    monthlyPerfErr,
     monthlyPerfRows,
     periodReturns,
     ytdChartPoints,
@@ -71,8 +71,14 @@ export function StandardAccountDetailPage({ data }: Props) {
     checkingCartolaMonths,
   } = data;
 
-  const isUsdCashAccount = supportsUsdCashMovements(summary.movement_create);
-  const showUsdCashMovementsForm = isUsdCashAccount;
+  // The page data is not in (or is held prior-unit data): sections render their frame, dimmed.
+  const loading = data.contentLoading;
+  // Capability forms (movement_create / book_ledger_edit / mortgage_payment_create) stay hidden
+  // until the bundle states them: a wrong form is worse than a late one.
+  const usdCashCapability = supportsUsdCashMovements(summary.movement_create);
+  // The USD-cash frame needs no capability: the placeholder's category (`usd`) is enough to draw it.
+  const isUsdCashAccount = usdCashCapability || (loading && summary.category_slug === "usd");
+  const showUsdCashMovementsForm = usdCashCapability;
   const showClpCashMovementsForm = supportsClpCashMovements(summary.movement_create);
   const showBrokerageMovementsForm =
     supportsBrokerageMovements(summary.movement_create) && !isUsdCashAccount && !showClpCashMovementsForm;
@@ -114,6 +120,12 @@ export function StandardAccountDetailPage({ data }: Props) {
     if (!valuationIsDaily) return null;
     return buildDailyValuationBlock(dailySeries.data, valuationBlockForChart ?? ts.accounts);
   }, [valuationIsDaily, dailySeries.data, valuationBlockForChart, ts.accounts]);
+  // A Diario surface also waits on its own daily series (first fetch or a held prior one).
+  const valuationLoading =
+    loading || (valuationIsDaily && (dailySeries.isPending || dailySeries.isPlaceholderData));
+  const perfLoading =
+    loading || (perfIsDaily && (perfDailySeries.isPending || perfDailySeries.isPlaceholderData));
+  const detalleDailyLoading = detalleDailySeries.isPending || detalleDailySeries.isPlaceholderData;
   const valuationControls = (
     <SurfaceControls
       period={valuationPrefs.period}
@@ -163,8 +175,11 @@ export function StandardAccountDetailPage({ data }: Props) {
   const isDeptoAccount = isMortgageAccount || isPropertyAccount;
   const showMortgagePaymentForm =
     isMortgageAccount && summary.mortgage_payment_create != null;
-  const showPositionBlock =
-    !data.contentLoading && !isMovementCartolaAccount && !isDeptoAccount && !isUsdCashAccount;
+  const showPositionBlock = !isMovementCartolaAccount && !isDeptoAccount && !isUsdCashAccount;
+  const showPeriodReturns =
+    periodReturns === undefined
+      ? mayHavePeriodReturns(data.accountDashRow)
+      : periodReturns !== null;
   const showEquityReturnColumns = summary.position?.dividends_clp != null;
   // Shown only when the ticker is held through more than one cash account (broker).
   const brokerHoldings = summary.position?.brokers ?? [];
@@ -188,24 +203,24 @@ export function StandardAccountDetailPage({ data }: Props) {
       }
       dash={data.dash}
       accountNavChildren={data.accountNavChildren}
-      loading={data.contentLoading}
+      loading={loading || data.dashIsPlaceholder}
     >
-      {(isMovementCartolaAccount || isAfpAccount) && (
-        <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
-      )}
+      {/* Self-gates on the server's import specs (a capability): hidden until they arrive. */}
+      <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
 
-      {isDeptoAccount && !data.contentLoading ? (
+      {isDeptoAccount ? (
         <DeptoAccountSummaryCards
           variant={isMortgageAccount ? "mortgage" : "property"}
           ledger={mortgageLedger}
           summary={summary}
           monthlyPerfRows={monthlyPerfRows}
           accountDashRow={data.accountDashRow}
+          loading={loading}
         />
       ) : null}
 
       {showPositionBlock ? (
-        <div className={styles.positionBlock}>
+        <Loadable loading={loading} className={styles.positionBlock}>
           <h2 className={styles.sectionTitleCompact}>{t("accountDetail.position.title")}</h2>
           <Table
             header={
@@ -311,11 +326,11 @@ export function StandardAccountDetailPage({ data }: Props) {
               </Table>
             </>
           ) : null}
-        </div>
+        </Loadable>
       ) : null}
 
-      {isUsdCashAccount && !data.contentLoading ? (
-        <div className={styles.positionBlock}>
+      {isUsdCashAccount ? (
+        <Loadable loading={loading} className={styles.positionBlock}>
           <h2 className={styles.sectionTitleCompact}>{t("accountDetail.usdCash.positionTitle")}</h2>
           <Table
             header={
@@ -344,7 +359,7 @@ export function StandardAccountDetailPage({ data }: Props) {
               </td>
             </tr>
           </Table>
-        </div>
+        </Loadable>
       ) : null}
 
       <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
@@ -358,23 +373,28 @@ export function StandardAccountDetailPage({ data }: Props) {
           timeRange={valuationPrefs.range}
           controls={valuationControls}
           trimLeadingInactive={!isMovementCartolaAccount}
+          loading={valuationLoading}
         />
       </div>
 
       {isMovementCartolaAccount ? (
         <>
           <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.monthlyDetailTitle")}</h2>
-          <CheckingLedgerAnchorForm
-            accountId={summary.account_id}
-            displayUnit={displayUnit}
-            ledgerAnchor={checkingCartolaMonths?.ledger_anchor ?? null}
-            cartolaDerivedAnchor={checkingCartolaMonths?.cartola_derived_anchor ?? null}
-          />
+          {/* An edit form whose copy reads «no cartola» on empty anchors: hidden until they are known. */}
+          {loading && checkingCartolaMonths == null ? null : (
+            <CheckingLedgerAnchorForm
+              accountId={summary.account_id}
+              displayUnit={displayUnit}
+              ledgerAnchor={checkingCartolaMonths?.ledger_anchor ?? null}
+              cartolaDerivedAnchor={checkingCartolaMonths?.cartola_derived_anchor ?? null}
+            />
+          )}
           <CheckingCartolaMonthTable
             rows={checkingCartolaMonths?.rows ?? []}
             accountId={summary.account_id}
             importedMonthCount={checkingCartolaMonths?.imported_months.length ?? 0}
             collapsedVisibleRows={MONTHLY_PERF_COLLAPSED}
+            loading={loading}
           />
         </>
       ) : null}
@@ -382,20 +402,20 @@ export function StandardAccountDetailPage({ data }: Props) {
       {showMonthlyPerformance ? (
         <>
           <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.monthlyPerfComputedTitle")}</h2>
-          {periodReturns != null ? (
+          {/* undefined = still loading (the table frames itself unless the card row's bucket rules it out); null = the server states none. */}
+          {showPeriodReturns ? (
             <>
               <h3 className={styles.subsectionTitleTight}>{t("periodReturns.title")}</h3>
               <PeriodReturnsWithBenchmark
-                data={periodReturns}
+                data={periodReturns ?? null}
                 displayUnit={displayUnit}
                 scope={{ accountId: summary.account_id }}
                 surfaceId={`account.${summary.account_id}.returns`}
+                loading={loading}
               />
             </>
           ) : null}
-          {monthlyPerfErr ? (
-            <p className={cn("error", styles.errorText)}>{monthlyPerfErr}</p>
-          ) : monthlyPerfRows.length === 0 ? (
+          {monthlyPerfRows.length === 0 && !loading ? (
             <p className="muted">{t("accountDetail.monthlyPerfNotEnough")}</p>
           ) : (
             <>
@@ -423,6 +443,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                   areaName="YTD"
                   areaFill={accountChartTheme.areaFill}
                   areaStroke={accountChartTheme.areaStroke}
+                  loading={perfLoading}
                 />
               </div>
               <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockLoose)}>
@@ -450,6 +471,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                   areaFill={accountChartTheme.areaFill}
                   areaStroke={accountChartTheme.areaStroke}
                   alternateYearAreaStripes={false}
+                  loading={perfLoading}
                 />
               </div>
               <div className="chart-panel-title-row">
@@ -468,15 +490,12 @@ export function StandardAccountDetailPage({ data }: Props) {
                 />
               </div>
               {isDaily ? (
-                detalleDailySeries.data ? (
-                  <DailyPerfDetailTable
-                    series={detalleDailySeries.data}
-                    displayUnit={displayUnit}
-                    dimClosedDays
-                  />
-                ) : (
-                  <p className="muted">{t("common.loading")}</p>
-                )
+                <DailyPerfDetailTable
+                  series={detalleDailySeries.data}
+                  displayUnit={displayUnit}
+                  dimClosedDays
+                  loading={detalleDailyLoading}
+                />
               ) : (
                 <MonthlyPerfDetailTable
                   key={`${id}-${displayUnit}-mp-detail`}
@@ -486,6 +505,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                   isMortgageAccount={isMortgageAccount}
                   isAfpAccount={isCuotaLedgerAccount}
                   movementUnitsKind={movementUnitsKind}
+                  loading={loading}
                 />
               )}
             </>
@@ -493,8 +513,10 @@ export function StandardAccountDetailPage({ data }: Props) {
         </>
       ) : null}
 
-      {mortgageLedger.has_sheet_rows && mortgageLedger.rows.length > 0 ? (
-        <>
+      {/* While the ledger loads a depto account shows its tables' frame (no «sheet empty» copy). */}
+      {(mortgageLedger.has_sheet_rows && mortgageLedger.rows.length > 0) ||
+      (loading && isDeptoAccount) ? (
+        <Loadable loading={loading}>
           {showMortgagePaymentForm && summary.mortgage_payment_create ? (
             <MortgagePaymentForm
               accountId={summary.account_id}
@@ -505,14 +527,16 @@ export function StandardAccountDetailPage({ data }: Props) {
           <MortgageDividendosTable
             ledger={mortgageLedger}
             variant={isMortgageAccount ? "mortgage" : "property"}
+            loading={loading}
           />
-          {mortgageLedger.payment_scenarios && mortgageLedger.payment_scenarios.length > 0 ? (
-            <DeptoPaymentScenarioTable rows={mortgageLedger.payment_scenarios} />
+          {(mortgageLedger.payment_scenarios && mortgageLedger.payment_scenarios.length > 0) ||
+          loading ? (
+            <DeptoPaymentScenarioTable rows={mortgageLedger.payment_scenarios ?? []} loading={loading} />
           ) : null}
           {isMortgageAccount ? (
             <MortgagePrepaymentSection accountId={summary.account_id} displayUnit={displayUnit} />
           ) : null}
-        </>
+        </Loadable>
       ) : isDeptoAccount ? (
         !mortgageLedger.has_sheet_rows ? (
           <p className={cn("muted", styles.marginTopBase)}>
@@ -521,8 +545,10 @@ export function StandardAccountDetailPage({ data }: Props) {
         ) : null
       ) : null}
 
-      {depositInflows != null && depositInflows.state_contribution_events.length > 0 ? (
-        <>
+      {/* The state bonus only exists on APV accounts: while loading they show the table's frame. */}
+      {depositInflows.state_contribution_events.length > 0 ||
+      (loading && summary.category_slug === "apv") ? (
+        <Loadable loading={loading}>
           <h2 className={styles.sectionTitle}>{t("accountDetail.stateContribution.title")}</h2>
           <Table
             header={
@@ -543,7 +569,7 @@ export function StandardAccountDetailPage({ data }: Props) {
               </tr>
             ))}
           </Table>
-        </>
+        </Loadable>
       ) : null}
 
       {showBookLedgerEdit ? (

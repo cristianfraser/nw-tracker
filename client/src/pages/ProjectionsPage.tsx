@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ProjectionsChart } from "../components/charts/ProjectionsChart";
+import { Loadable, loadableClass } from "../components/ui/Loadable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { formatCurrency, formatNumberInput, parseNumberInput } from "../format";
 import { useProjections } from "../queries/hooks";
-import type { ProjectionParams } from "../types";
+import type { ProjectionParams, ProjectionsResponse } from "../types";
 import { Button, Field, Input } from "@crfrsr/ui";
 
 const LS_KEY = "nw-tracker.projections.overrides";
@@ -45,6 +46,19 @@ const PARAM_FIELDS: (keyof ProjectionParams)[] = [
   "monthly_rent_clp",
 ];
 
+/** Summary figures while the first load has nothing to show: zeros, dimmed, never a guess. */
+const EMPTY_SUMMARY: ProjectionsResponse["summary"] = {
+  balance_at_retire: 0,
+  invested_at_retire: 0,
+  total_at_retire: 0,
+  monthly_rent: 0,
+  swr_monthly_income: 0,
+  pct_balance_initial_monthly_income: 0,
+  fixed_monthly_income: 0,
+  swr_depletion_age: null,
+  fixed_income_depletion_age: null,
+};
+
 function readStoredOverrides(): Partial<ProjectionParams> {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -73,6 +87,9 @@ export function ProjectionsPage() {
     return out;
   }, [overrides]);
   const { data, error, isPending } = useProjections(displayUnit, validOverrides);
+  // The form is inert only until the first response (an edit keeps the previous data on screen);
+  // the summary and chart also dim while the other display unit's numbers are held.
+  const resultsLoading = isPending || (data != null && data.unit !== displayUnit);
 
   useEffect(() => {
     localStorage.setItem(LS_KEY, JSON.stringify(overrides));
@@ -110,7 +127,6 @@ export function ProjectionsPage() {
     [data]
   );
 
-  if (isPending && !data) return <p className="muted">{t("common.loading")}</p>;
   if (error) {
     return (
       <main>
@@ -118,9 +134,8 @@ export function ProjectionsPage() {
       </main>
     );
   }
-  if (!data) return null;
 
-  const s = data.summary;
+  const s = data?.summary ?? EMPTY_SUMMARY;
 
   return (
     <main>
@@ -128,7 +143,8 @@ export function ProjectionsPage() {
 
       {/* Row gap leaves room for a Field's error, which overlays rather than
           reflowing the form when a value goes out of bounds. */}
-      <div
+      <Loadable
+        loading={isPending}
         className="flows-filters"
         style={{ display: "flex", flexWrap: "wrap", columnGap: "0.75rem", rowGap: "2.5rem" }}
       >
@@ -139,6 +155,7 @@ export function ProjectionsPage() {
           const draft = drafts[key];
           const draftParsed = draft != null ? parseNumberInput(draft) : null;
           const draftError = draftParsed != null && !draftParsed.ok ? draftParsed.message : null;
+          const effective = raw ?? data?.params[key];
           return (
             <Field
               key={key}
@@ -152,7 +169,7 @@ export function ProjectionsPage() {
                 // The decimal keypad has no minus key; fields that allow negatives keep the full one.
                 inputMode={min < 0 ? undefined : "decimal"}
                 aria-invalid={draftError != null || invalid || undefined}
-                value={draft ?? formatNumberInput(raw ?? data.params[key])}
+                value={draft ?? (effective != null ? formatNumberInput(effective) : "")}
                 onChange={(e) => setParam(key, e.target.value)}
                 onBlur={() => commitParam(key)}
               />
@@ -170,18 +187,18 @@ export function ProjectionsPage() {
             {t("projections.reset")}
           </Button>
         </div>
-      </div>
+      </Loadable>
 
-      <section style={{ margin: "1rem 0" }}>
+      <section className={loadableClass(resultsLoading)} style={{ margin: "1rem 0" }}>
         <p>
-          <strong>{t("projections.summary.balanceAtRetire", { age: data.retire_age })}:</strong>{" "}
+          <strong>{t("projections.summary.balanceAtRetire", { age: data?.retire_age ?? "—" })}:</strong>{" "}
           {t("projections.summary.investedLabel")} {money(s.invested_at_retire)} ·{" "}
           {t("projections.summary.totalLabel")} {money(s.total_at_retire)}{" "}
           <span className="muted">
             ({t("projections.summary.todaysMoney")};{" "}
             {t("projections.summary.potDescription", {
               pot: money(s.balance_at_retire),
-              pct: validOverrides.liquidate_other_pct ?? data.params.liquidate_other_pct,
+              pct: validOverrides.liquidate_other_pct ?? data?.params.liquidate_other_pct ?? "—",
             })}
             )
           </span>
@@ -190,17 +207,17 @@ export function ProjectionsPage() {
           <p className="muted">{t("projections.summary.rentIncluded", { amount: money(s.monthly_rent) })}</p>
         ) : null}
         <p>
-          <strong>{t("projections.summary.swr", { pct: validOverrides.swr_pct ?? data.params.swr_pct })}:</strong>{" "}
+          <strong>{t("projections.summary.swr", { pct: validOverrides.swr_pct ?? data?.params.swr_pct ?? "—" })}:</strong>{" "}
           {t("projections.summary.income", { amount: money(s.swr_monthly_income) })}{" "}
           {s.swr_depletion_age != null ? (
             <span className="error">{t("projections.summary.depletes", { age: s.swr_depletion_age })}</span>
           ) : (
-            <span className="muted">{t("projections.summary.lasts", { age: validOverrides.end_age ?? data.params.end_age })}</span>
+            <span className="muted">{t("projections.summary.lasts", { age: validOverrides.end_age ?? data?.params.end_age ?? "—" })}</span>
           )}
         </p>
         <p>
           <strong>
-            {t("projections.summary.pctBalance", { pct: validOverrides.pct_balance_pct ?? data.params.pct_balance_pct })}:
+            {t("projections.summary.pctBalance", { pct: validOverrides.pct_balance_pct ?? data?.params.pct_balance_pct ?? "—" })}:
           </strong>{" "}
           {t("projections.summary.initialIncome", { amount: money(s.pct_balance_initial_monthly_income) })}{" "}
           <span className="muted">{t("projections.summary.neverDepletes")}</span>
@@ -213,19 +230,20 @@ export function ProjectionsPage() {
               {t("projections.summary.depletes", { age: s.fixed_income_depletion_age })}
             </span>
           ) : (
-            <span className="muted">{t("projections.summary.lasts", { age: validOverrides.end_age ?? data.params.end_age })}</span>
+            <span className="muted">{t("projections.summary.lasts", { age: validOverrides.end_age ?? data?.params.end_age ?? "—" })}</span>
           )}
         </p>
       </section>
 
-      <div style={{ width: "100%", height: 420 }}>
+      <Loadable loading={resultsLoading} style={{ width: "100%", height: 420 }}>
         <ProjectionsChart
           points={chartPoints}
           namedLines={namedLines}
           milestoneLines={milestoneLines}
           displayUnit={displayUnit}
+          loading={resultsLoading}
         />
-      </div>
+      </Loadable>
     </main>
   );
 }

@@ -798,6 +798,10 @@
       "en": "No manual symbols.",
       "es": "Sin símbolos manuales."
     },
+    "emptyApp": {
+      "en": "No app instruments.",
+      "es": "Sin instrumentos de la app."
+    },
     "addError": {
       "en": "Could not add the ticker.",
       "es": "No se pudo agregar el ticker."
@@ -2911,10 +2915,6 @@
         "en": "Mortgage",
         "es": "Hipoteca"
       },
-      "mortgageValuationTitle": {
-        "en": "Valuation",
-        "es": "Valorización"
-      },
       "mortgagePerfTitle": {
         "en": "Monthly performance (computed)",
         "es": "Rendimiento mensual (calculado)"
@@ -5018,6 +5018,10 @@
       "en": "Wealth percentile",
       "es": "Percentil de riqueza"
     },
+    "empty": {
+      "en": "No percentile data.",
+      "es": "Sin datos de percentil."
+    },
     "chart": {
       "seriesTotal": {
         "en": "Total percentile (CL)",
@@ -5139,6 +5143,10 @@
     "title": {
       "en": "Projections",
       "es": "Proyecciones"
+    },
+    "noChartData": {
+      "en": "No projection data.",
+      "es": "Sin datos de proyección."
     },
     "invalidRange": {
       "en": "Must be between {{min}} and {{max}}",
@@ -6175,10 +6183,6 @@
       "es": "Composición"
     },
     "viewMap": {
-      "en": "Map",
-      "es": "Mapa"
-    },
-    "title": {
       "en": "Map",
       "es": "Mapa"
     },

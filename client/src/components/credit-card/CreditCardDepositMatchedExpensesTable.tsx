@@ -3,6 +3,7 @@ import { isAutoDepositMatchedPurchaseNote } from "../../ccExpenseDepositMatchNot
 import { useTranslation } from "../../i18n";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { Button } from "@crfrsr/ui";
+import { loadableClass } from "../ui/Loadable";
 import {
   CreditCardExpenseLinesTable,
   sortCreditCardExpenseLinesByAmountDesc,
@@ -21,9 +22,11 @@ function isDepositLinkedExpenseLine(line: FlowCcExpenseLineRow): boolean {
 export function CreditCardDepositMatchedExpensesTable({
   lines,
   categories,
+  loading,
 }: {
   lines: readonly FlowCcExpenseLineRow[];
   categories: readonly CcExpenseCategoryDto[];
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -62,7 +65,7 @@ export function CreditCardDepositMatchedExpensesTable({
     <section style={{ marginTop: "2rem" }}>
       <h3 style={{ fontSize: "1.1rem", marginBottom: "0.35rem" }}>
         {t("expenses.creditCard.depositMatchedTableTitle")}
-        <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {depositMatched.length}
         </span>
       </h3>
@@ -112,6 +115,7 @@ export function CreditCardDepositMatchedExpensesTable({
           showCategoryControls
           categoryControlVariant="pills"
           enableCheckingNotes
+          loading={loading}
         />
         <CreditCardExpenseLinesSelectionPageFooter categories={categories} />
       </CreditCardExpenseLinesSelectionProvider>

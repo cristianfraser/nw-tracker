@@ -19,11 +19,13 @@ export function WorkEarningsTable({
   rows,
   displayUnit = "clp",
   checks = [],
+  loading,
 }: {
   rows: readonly FlowWorkEarningRow[];
   displayUnit?: DisplayUnit;
   /** Each salary payslip recomputed from the month's legal parameters (server-built). */
   checks?: readonly PayslipChecksRow[];
+  loading?: boolean;
 }) {
   const { t } = useTranslation();
   const patchWorkEarning = usePatchWorkEarningMutation();
@@ -36,12 +38,12 @@ export function WorkEarningsTable({
   const { page, setPage, pageRows, total } = useClientPagination(sortedRows, PAGE_SIZE);
   const checksById = useMemo(() => new Map(checks.map((c) => [c.payslip_id, c])), [checks]);
 
-  if (rows.length === 0) {
+  if (rows.length === 0 && !loading) {
     return <p className="muted">{t("workEarnings.empty")}</p>;
   }
 
   return (
-    <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
+    <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
       <Table
         tableStyle={{ fontSize: "0.85rem" }}
         header={

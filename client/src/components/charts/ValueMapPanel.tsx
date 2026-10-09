@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { SurfaceControls } from "../ui/SurfaceControls";
-import i18n from "../../i18n";
 import {
   useSurfacePrefs,
   type SurfaceCompositionView,
@@ -14,13 +13,17 @@ import { ValueTreemap } from "./ValueTreemap";
  * apply to a point-in-time map.
  */
 export function ValueMapPanel({
+  title,
   surfaceId,
   view,
   onViewChange,
   root,
   bounds,
   unit,
+  loading,
 }: {
+  /** The composition chart's title: the map takes its place in the same panel. */
+  title: string;
   surfaceId: string;
   view: SurfaceCompositionView;
   onViewChange: (v: SurfaceCompositionView) => void;
@@ -28,11 +31,13 @@ export function ValueMapPanel({
   root: NavValueMapNodeDto | null;
   bounds: NavValueMapColorBounds | null;
   unit: "clp" | "usd";
+  /** The payload is pending or held prior data: the map dims (empty box when `root` is null). */
+  loading?: boolean;
 }) {
   const prefs = useSurfacePrefs(surfaceId, "day", "total");
   return (
     <ValueTreemap
-      title={i18n.t("valueMap.title")}
+      title={title}
       controls={
         <SurfaceControls
           view={view}
@@ -46,6 +51,7 @@ export function ValueMapPanel({
       bounds={bounds}
       period={prefs.period}
       unit={unit}
+      loading={loading}
     />
   );
 }

@@ -161,7 +161,7 @@ export function useMarketTickerMarquee(): { items: TickerMarqueeItem[]; loading:
   // Items carry pre-formatted strings, so the memo must refresh on separator change; the
   // unit is part of the query key, so a toggle refetches the strip in the other currency.
   const { decimalSeparator, displayUnit } = useDisplayPreferences();
-  const { data: payload, isPending } = useMarketTicker(displayUnit);
+  const { data: payload, isPending, isPlaceholderData } = useMarketTicker(displayUnit);
 
   const labels = useMemo(
     () => ({
@@ -178,5 +178,6 @@ export function useMarketTickerMarquee(): { items: TickerMarqueeItem[]; loading:
     [payload, labels, decimalSeparator]
   );
 
-  return { items, loading: isPending };
+  // Loading = nothing yet (first load) or the other unit's strip held while this unit's loads.
+  return { items, loading: isPending || isPlaceholderData };
 }

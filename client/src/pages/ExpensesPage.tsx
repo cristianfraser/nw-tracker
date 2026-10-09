@@ -10,6 +10,7 @@ import { AdditionalCardsSection } from "../components/credit-card/AdditionalCard
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
+import { loadableClass } from "../components/ui/Loadable";
 import { useTranslation } from "../i18n";
 import {
   flowChartGranularityFromMetricsPeriod,
@@ -134,12 +135,13 @@ export function ExpensesPage() {
 
   const chartFilterActive = bigGroupUsage.some((g) => isExcluded(g.slug));
 
+  // Two flags: the expense lines (sections below the table) and the gastos view (chart, month
+  // table, totals), which waits for the lines and holds the prior view across an exclusion change.
+  const linesLoading = !data;
+  const gastosLoading = !data || !view || gastos.isPlaceholderData;
+
   if (err) {
     return <p className="error">{err}</p>;
-  }
-
-  if (!data || !view) {
-    return <p className="muted">{t("common.loading")}</p>;
   }
 
   return (
@@ -195,7 +197,7 @@ export function ExpensesPage() {
           {t("expenses.creditCard.categoryLevelSubcategory")}
         </label>
         <span style={{ marginLeft: "auto" }}>
-          <CreditCardFacturadoFinancingManager lines={data.lines} />
+          <CreditCardFacturadoFinancingManager lines={data?.lines ?? []} loading={linesLoading} />
         </span>
       </div>
 
@@ -212,6 +214,7 @@ export function ExpensesPage() {
           displayUnit={displayUnit}
           xAxisGranularity={chartGranularity}
           yearAverages={yearAverages}
+          loading={gastosLoading}
         />
       </div>
       {chartFilterActive ? (
@@ -221,12 +224,13 @@ export function ExpensesPage() {
       ) : null}
 
       <BigExpenseGroupsSection
-        lines={data.lines}
-        categories={data.categories}
-        bigGroups={data.big_groups ?? []}
+        lines={data?.lines ?? []}
+        categories={data?.categories ?? []}
+        bigGroups={data?.big_groups ?? []}
         installmentMode={installmentMode}
         isExcluded={isExcluded}
         toggleExcluded={toggleExcluded}
+        loading={linesLoading}
       />
 
       <div className="chart-panel-title-row" style={{ marginBottom: "0.5rem" }}>
@@ -236,9 +240,12 @@ export function ExpensesPage() {
             ? "accountDetail.yearlyDetailTitle"
             : "accountDetail.monthlyDetailTitle"
         )}
-        <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
-          {formatFlowMoney(view.total, displayUnit)}
-          {view.total_real !== view.total ? (
+        <span
+          className={loadableClass(gastosLoading, "muted mono")}
+          style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}
+        >
+          {formatFlowMoney(view?.total ?? 0, displayUnit)}
+          {view && view.total_real !== view.total ? (
             <>
               {" · "}
               {t("expenses.creditCard.colMonthExpenseReal")}:{" "}
@@ -261,23 +268,33 @@ export function ExpensesPage() {
       </div>
       <GroupExpensesMonthTable
         rows={monthTableRows}
-        lines={data.lines}
-        categories={data.categories}
-        bigGroups={data.big_groups ?? []}
+        lines={data?.lines ?? []}
+        categories={data?.categories ?? []}
+        bigGroups={data?.big_groups ?? []}
         installmentMode={installmentMode}
         displayUnit={displayUnit}
         periodGranularity={tableGranularity}
+        loading={gastosLoading}
       />
 
-      <AdditionalCardsSection summary={data.additional_cards} displayUnit={displayUnit} />
+      <AdditionalCardsSection
+        summary={data?.additional_cards}
+        displayUnit={displayUnit}
+        loading={linesLoading}
+      />
 
       <CreditCardUnclassifiedExpensesTable
-        lines={data.lines}
-        categories={data.categories}
-        bigGroups={data.big_groups ?? []}
+        lines={data?.lines ?? []}
+        categories={data?.categories ?? []}
+        bigGroups={data?.big_groups ?? []}
+        loading={linesLoading}
       />
 
-      <CreditCardDepositMatchedExpensesTable lines={data.lines} categories={data.categories} />
+      <CreditCardDepositMatchedExpensesTable
+        lines={data?.lines ?? []}
+        categories={data?.categories ?? []}
+        loading={linesLoading}
+      />
     </>
   );
 }

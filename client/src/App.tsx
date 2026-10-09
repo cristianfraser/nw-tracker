@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactElement } from "react";
+import { Suspense, type ComponentType, type ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
@@ -7,26 +7,31 @@ import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { MortgageUfReminderToast } from "./components/layout/MortgageUfReminderToast";
 import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
 import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
-import { useTranslation } from "./i18n";
 import { useDemoPageviewBeacon } from "./demoAnalytics";
 import { useEnsureFxLatestCache } from "./queries/useEnsureFxLatestCache";
 import { useChileDayRolloverInvalidation } from "./queries/useChileDayRolloverInvalidation";
 import { useDocumentTitleFromH1 } from "./useDocumentTitleFromH1";
 import { useFaviconFromRoute } from "./useFaviconFromRoute";
 import { PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
+import { DashboardPage } from "./pages/DashboardPage";
+import { GroupInfoPage } from "./pages/GroupInfoPage";
+import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
+import { AccountDetailPage } from "./pages/AccountDetailPage";
+import { FlowsLayout } from "./pages/FlowsLayout";
+import { ControlPanelLayout } from "./pages/panel/ControlPanelLayout";
+import { lazyChunk, lazyComponent, useIdleChunkPrefetch } from "./lazyChunks";
 
-// Route-level code splitting: each page (and its chart/table deps, notably recharts)
-// loads on first navigation instead of shipping in one bundle. Pages use named
-// exports, hence the `.then` remapping.
+// Code splitting. The pages a session opens first — dashboard, group, liabilities and account
+// pages, and the flows and panel layouts — are in the main bundle, so a document load paints
+// the page's own layout at once, never a loading text. The chart engine they would drag in
+// (recharts) is one lazy chunk their charts load behind a frame (components/charts/lazyCharts.tsx).
+// Every other page is its own chunk, and all chunks are prefetched in idle time after the first
+// paint (lazyChunks.ts). Pages use named exports, hence the remapping.
 const lazyPage = <T extends Record<string, unknown>, K extends keyof T>(
   load: () => Promise<T>,
   name: K
-) => lazy(async () => ({ default: (await load())[name] as React.ComponentType }));
+) => lazyComponent(lazyChunk(load), (module) => module[name] as ComponentType);
 
-const AccountDetailPage = lazyPage(() => import("./pages/AccountDetailPage"), "AccountDetailPage");
-const GroupInfoPage = lazyPage(() => import("./pages/GroupInfoPage"), "GroupInfoPage");
-const LiabilitiesGroupPage = lazyPage(() => import("./pages/LiabilitiesGroupPage"), "LiabilitiesGroupPage");
-const DashboardPage = lazyPage(() => import("./pages/DashboardPage"), "DashboardPage");
 const DepositsPage = lazyPage(() => import("./pages/DepositsPage"), "DepositsPage");
 const DepositsReconciliationPage = lazyPage(
   () => import("./pages/DepositsReconciliationPage"),
@@ -38,11 +43,9 @@ const RealEstateExpensesPage = lazyPage(
   "RealEstateExpensesPage"
 );
 const GroceriesPage = lazyPage(() => import("./pages/GroceriesPage"), "GroceriesPage");
-const FlowsLayout = lazyPage(() => import("./pages/FlowsLayout"), "FlowsLayout");
 const FlowsOverviewPage = lazyPage(() => import("./pages/FlowsOverviewPage"), "FlowsOverviewPage");
 const FlowsPlPage = lazyPage(() => import("./pages/FlowsPlPage"), "FlowsPlPage");
 const IncomePage = lazyPage(() => import("./pages/IncomePage"), "IncomePage");
-const ControlPanelLayout = lazyPage(() => import("./pages/panel/ControlPanelLayout"), "ControlPanelLayout");
 const AccountsPanelPage = lazyPage(() => import("./pages/panel/AccountsPanelPage"), "AccountsPanelPage");
 const ImportSyncPage = lazyPage(() => import("./pages/panel/ImportSyncPage"), "ImportSyncPage");
 const NotificationsPage = lazyPage(() => import("./pages/panel/NotificationsPage"), "NotificationsPage");
@@ -85,7 +88,6 @@ export default function App() {
  */
 function AppTree() {
   useDisplayPreferences();
-  const { t } = useTranslation();
   // Tab title follows the page heading.
   useDocumentTitleFromH1();
   // Tab icon follows the route (bucket/account color halves, flows/settings shapes).
@@ -96,6 +98,8 @@ function AppTree() {
   useEnsureFxLatestCache();
   // Refetch day-baked payloads right after Chile midnight instead of waiting out staleTime.
   useChileDayRolloverInvalidation();
+  // Import the lazy chunks (charts first, then the other pages) once the browser is idle.
+  useIdleChunkPrefetch();
 
   return (
     <div className="layout layout--with-sidebar">
@@ -108,7 +112,10 @@ function AppTree() {
           <AppDisplayPreferencesBar />
           <div className="content">
           <RouteErrorBoundary>
-          <Suspense fallback={<p className="muted">{t("common.loading")}</p>}>
+          {/* Blank, and reached only by a direct load of a lazy page's URL before its chunk arrives:
+              an in-app navigation is a transition (v7_startTransition) that keeps the previous
+              page meanwhile, and once the idle prefetch has run nothing suspends at all. */}
+          <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/inversiones/*" element={<GroupInfoPage />} />

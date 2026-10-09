@@ -211,6 +211,7 @@ export function FlowsTable({
   page: number;
   pageSize: number;
   onPageChange: (page: number) => void;
+  /** Rows pending or held prior data: the table dims; with no rows yet it shows its header only, not the empty message. */
   loading?: boolean;
   showAccountColumn?: boolean;
   /** Off for consolidated group tables (mixed instruments). */
@@ -447,7 +448,7 @@ export function FlowsTable({
         tableClassName="table--parallel-mobile flows-table"
         tableStyle={{ whiteSpace: "nowrap" }}
       >
-        {rows.length === 0 ? (
+        {rows.length === 0 && loading ? null : rows.length === 0 ? (
           <tr>
             <td colSpan={colSpan} className="muted">
               {hasActiveFilter

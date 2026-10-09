@@ -1,5 +1,4 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { cn } from "../../cn";
 import { FlowsPanel } from "../account/FlowsPanel";
 import {
   MONTHLY_PERF_DETAIL_PAGE_SIZE,
@@ -9,9 +8,12 @@ import { DailyPerfDetailTable } from "../account/DailyPerfDetailTable";
 import { useDailySeries } from "../../queries/hooks";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
+import { Loadable } from "../ui/Loadable";
 import { PageTitleRow } from "../layout/PageTitleRow";
 import { PeriodReturnsWithBenchmark } from "../perf/PeriodReturnsTable";
+import { PlaceholderCardsStrip } from "../dashboard/PlaceholderCardsStrip";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
+import type { ColdStripShape } from "../../coldPageShape";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useTranslation } from "../../i18n";
 import { useGroupConsolidatedMonthlyPage } from "../../queries/hooks";
@@ -37,9 +39,10 @@ export type GroupInfoPortfolioStrip = {
   overviewPoints: Record<string, string | number | null>[];
   showUsd: boolean;
   animated?: boolean;
-  /** When false, the strip is omitted (e.g. group page before valuation data is ready). Default true. */
-  enabled?: boolean;
-  /** While bundle loads: static placeholder values, then one spin to final. */
+  /**
+   * Static placeholder values, then one spin to final; the strip also dims. Defaults to the
+   * page's `loading`; a page passes true when `dash` is a placeholder of its own (cold strip).
+   */
   placeholderPhase?: boolean;
   /** Nodes for `navNode.linked_card_slugs`, resolved against the sidebar nav by the page. */
   linkedCardNavChildren?: NavTreeNodeDto[];
@@ -52,6 +55,8 @@ export type GroupInfoBaseProps = {
   toolbar?: ReactNode;
   /** Nav node + dashboard bundle for the two-row portfolio card strip. */
   portfolio?: GroupInfoPortfolioStrip | null;
+  /** First-ever visit (no nav tree yet, `portfolio` null): the blank card skeleton to draw instead. */
+  coldStripShape?: ColdStripShape;
   /** Page-specific charts (valuation, P/L, allocation, …). */
   charts: ReactNode;
   /** Accounts included in monthly detail + flows tables. */
@@ -76,6 +81,7 @@ export function GroupInfoBase({
   title,
   toolbar,
   portfolio,
+  coldStripShape,
   charts,
   tableAccounts,
   accountsTree,
@@ -93,19 +99,25 @@ export function GroupInfoBase({
     "total"
   );
   const tablePeriod = detallePrefs.period;
-  const tablesEnabled =
-    !hideConsolidatedTables &&
-    (tableAccounts.length > 0 || (loading && Boolean(portfolio?.groupSlug)));
+  // The tables always mount (each part has its own empty copy); a page with no group slug yet
+  // (cold nav) shows their frames until it has one.
+  const tablesEnabled = !hideConsolidatedTables;
   // Table queries start in parallel with the page bundle (not gated on `loading`);
   // placeholder rows hold the layout until the first page of data resolves.
   const tablesFetchEnabled = tablesEnabled && Boolean(portfolio?.groupSlug);
-  const { consolidatedMonthlyPerf, periodReturns, tableFlags, tablesLoading, tablesError } =
-    useGroupInfoConsolidatedTables(
-      portfolio?.groupSlug ?? "",
-      tableAccounts,
-      displayUnit,
-      tablesFetchEnabled && !serverPaginatedMonthlyDetail
-    );
+  const {
+    consolidatedMonthlyPerf,
+    periodReturns,
+    tableFlags,
+    tablesLoading,
+    tablesHeld,
+    tablesError,
+  } = useGroupInfoConsolidatedTables(
+    portfolio?.groupSlug ?? "",
+    tableAccounts,
+    displayUnit,
+    tablesFetchEnabled && !serverPaginatedMonthlyDetail
+  );
 
   // Page state is tied to the period it was set under: a month↔year toggle changes the
   // row count, so the derived page snaps back to 1 without an effect (no stale-page fetch).
@@ -132,7 +144,7 @@ export function GroupInfoBase({
     isDaily && tablesFetchEnabled
   );
 
-  const showPortfolioStrip = portfolio != null && portfolio.enabled !== false;
+  const stripPlaceholderPhase = portfolio?.placeholderPhase ?? loading;
   const placeholderMonthlyRows = useMemo(() => buildPlaceholderConsolidatedMonthlyRows(), []);
 
   // During a CLP↔USD switch the held prior-unit page converts via FX (keep-previous), so the
@@ -152,6 +164,11 @@ export function GroupInfoBase({
     tablesLoading,
     placeholderRows: placeholderMonthlyRows,
   });
+  // Placeholder rows (returned by identity) or held prior-unit / prior-page data: the table dims
+  // and never reads as empty.
+  const monthlyLoading =
+    monthlyRows === placeholderMonthlyRows ||
+    (serverPaginatedMonthlyDetail ? serverMonthly.isPlaceholderData : tablesHeld);
 
   const monthlyError = serverPaginatedMonthlyDetail
     ? serverMonthly.isError
@@ -165,32 +182,38 @@ export function GroupInfoBase({
 
   return (
     <main className={mainClassName}>
-      <div
-        className={cn(pageShellStyles.contentShell, loading && pageShellStyles.contentShellLoading)}
-      >
+      <Loadable loading={loading} className={pageShellStyles.contentShell}>
         <PageTitleRow title={title} />
         {toolbar}
-        {showPortfolioStrip ? (
-          <PortfolioNavEntityCardsStrip
-            dash={portfolio.dash}
-            parentNavNode={portfolio.navNode}
-            showUsd={portfolio.showUsd}
-            animated={portfolio.animated}
-            placeholderPhase={portfolio.placeholderPhase ?? loading}
-            linkedCardNavChildren={portfolio.linkedCardNavChildren}
-          />
+        {portfolio ? (
+          <Loadable loading={stripPlaceholderPhase}>
+            <PortfolioNavEntityCardsStrip
+              dash={portfolio.dash}
+              parentNavNode={portfolio.navNode}
+              showUsd={portfolio.showUsd}
+              animated={portfolio.animated}
+              placeholderPhase={stripPlaceholderPhase}
+              linkedCardNavChildren={portfolio.linkedCardNavChildren}
+            />
+          </Loadable>
+        ) : coldStripShape ? (
+          <Loadable loading>
+            <PlaceholderCardsStrip {...coldStripShape} />
+          </Loadable>
         ) : null}
         {charts}
         {tablesEnabled ? (
           <>
-            {!serverPaginatedMonthlyDetail && periodReturns != null && portfolio?.groupSlug ? (
+            {/* undefined = still loading (frame, dimmed — also before the nav names the group); null = the server sends none. */}
+            {!serverPaginatedMonthlyDetail && periodReturns !== null ? (
               <>
                 <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("periodReturns.title")}</h2>
                 <PeriodReturnsWithBenchmark
-                  data={periodReturns}
+                  data={periodReturns ?? null}
                   displayUnit={displayUnit}
-                  scope={{ portfolioGroup: portfolio.groupSlug }}
-                  surfaceId={`group.${portfolio.groupSlug}.returns`}
+                  scope={{ portfolioGroup: portfolio?.groupSlug ?? "" }}
+                  surfaceId={`group.${portfolio?.groupSlug || "pending"}.returns`}
+                  loading={periodReturns === undefined || tablesHeld}
                 />
               </>
             ) : null}
@@ -213,20 +236,23 @@ export function GroupInfoBase({
                     ? dailySeries.error.message
                     : t("common.loadFailedTables")}
                 </p>
-              ) : dailySeries.data ? (
-                <DailyPerfDetailTable series={dailySeries.data} displayUnit={displayUnit} />
               ) : (
-                <p className="muted">{t("common.loading")}</p>
+                <DailyPerfDetailTable
+                  series={dailySeries.data}
+                  displayUnit={displayUnit}
+                  loading={dailySeries.isPending || dailySeries.isPlaceholderData}
+                />
               )
             ) : monthlyError ? (
               <p className="error">{monthlyError}</p>
-            ) : monthlyRows.length > 0 ? (
+            ) : monthlyRows.length > 0 || monthlyLoading ? (
               <MonthlyPerfDetailTable
                 rows={monthlyRows}
                 displayUnit={displayUnit}
                 period={monthYearMetricsPeriod(tablePeriod)}
                 isMortgageAccount={tableFlags.isMortgageAccount}
                 showStockInflowsColumn={false}
+                loading={monthlyLoading}
                 serverPagination={
                   serverPaginatedMonthlyDetail && !loading && serverMonthly.data != null
                     ? {
@@ -261,7 +287,7 @@ export function GroupInfoBase({
           </div>
         ) : null}
         {accountsTree}
-      </div>
+      </Loadable>
     </main>
   );
 }

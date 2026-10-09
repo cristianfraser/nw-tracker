@@ -50,9 +50,9 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     >
       <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
 
-      <CreditCardHistorialSurface ccLedger={ccLedger} scope={ccScope} />
+      <CreditCardHistorialSurface ccLedger={ccLedger} scope={ccScope} loading={data.contentLoading} />
 
-      <CreditCardDetalleSurface ccLedger={ccLedger} scope={ccScope} />
+      <CreditCardDetalleSurface ccLedger={ccLedger} scope={ccScope} loading={data.contentLoading} />
 
       <CreditCardConfigSection accountId={summary.account_id} />
 
@@ -73,6 +73,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
         ledger={ccLedger}
         displayUnit={displayUnit}
         accountId={summary.account_id}
+        loading={data.contentLoading}
       />
 
       <AccountFlowsSection

@@ -1,24 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  isBundleContentLoading,
-  isPageShapeLoading,
-  useRealBundleForContent,
-} from "./pageShapeReady";
-
-describe("isPageShapeLoading", () => {
-  it("blocks only when both shape sources are still missing", () => {
-    expect(isPageShapeLoading(true, undefined, true, undefined)).toBe(true);
-  });
-
-  it("does not block when accounts exist even if nav snapshot is pending", () => {
-    expect(isPageShapeLoading(true, undefined, false, { accounts: [], card_metrics_by_slug: {} })).toBe(false);
-    expect(isPageShapeLoading(false, [], true, undefined)).toBe(false);
-  });
-
-  it("unblocks when both have data", () => {
-    expect(isPageShapeLoading(false, [], false, { accounts: [], card_metrics_by_slug: {} })).toBe(false);
-  });
-});
+import { isBundleContentLoading, useRealBundleForContent } from "./pageShapeReady";
 
 describe("isBundleContentLoading", () => {
   it("dims during unit switch with placeholder bundle", () => {

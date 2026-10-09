@@ -1,0 +1,15 @@
+/*
+ * Blank rows at the height of the real ones: their numbers are number-flow elements, which pad
+ * their digits (the spin mask) beyond the font's line — 0.5rem on the balance, 0.25rem on the
+ * metric rows — so a bare line of text would make the skeleton shorter than the strip it holds
+ * the place of.
+ */
+.blankValue {
+  display: block;
+  min-height: calc(var(--dashboard-card-primary-value-font-size) + 0.5rem);
+}
+
+.blankMetric {
+  display: block;
+  min-height: calc(var(--font-size-card-meta) + 0.25rem);
+}

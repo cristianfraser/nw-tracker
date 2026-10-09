@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { loadableClass } from "../ui/Loadable";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { formatNumberInput, parseNumberInput } from "../../format";
 import { useCreditCardConfig, usePatchCreditCardConfigMutation } from "../../queries/hooks";
@@ -57,7 +58,9 @@ export function CreditCardConfigSection({ accountId }: Props) {
       </section>
     );
   }
-  if (!config) return null;
+  // The config is always present once loaded (the server defaults a missing row): `!config` only
+  // means pending, so the form frames itself empty, dimmed and inert until it arrives.
+  const pending = !config;
 
   const onSave = () => {
     setSaved(false);
@@ -102,9 +105,9 @@ export function CreditCardConfigSection({ accountId }: Props) {
   };
 
   return (
-    <section style={{ margin: "1.5rem 0" }}>
+    <section className={loadableClass(pending)} style={{ margin: "1.5rem 0" }}>
       <h2 className="flow-section-title">{t("accountDetail.creditCard.configTitle")}</h2>
-      {config.card_last4 ? (
+      {config?.card_last4 ? (
         <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
           {t("accountDetail.creditCard.configCardLabel")} <span className="mono">·{config.card_last4}</span>
         </p>
@@ -124,6 +127,7 @@ export function CreditCardConfigSection({ accountId }: Props) {
             type="text"
             inputMode="decimal"
             value={cupoClp}
+            disabled={pending}
             placeholder="5000000"
             onChange={(e) => onFieldChange(setCupoClp)(e.target.value)}
           />
@@ -133,6 +137,7 @@ export function CreditCardConfigSection({ accountId }: Props) {
             type="text"
             inputMode="decimal"
             value={cupoUsd}
+            disabled={pending}
             placeholder="3000"
             onChange={(e) => onFieldChange(setCupoUsd)(e.target.value)}
           />
@@ -142,6 +147,7 @@ export function CreditCardConfigSection({ accountId }: Props) {
             type="text"
             inputMode="numeric"
             value={cycleStart}
+            disabled={pending}
             placeholder="21"
             onChange={(e) => onFieldChange(setCycleStart)(e.target.value)}
           />
@@ -151,12 +157,13 @@ export function CreditCardConfigSection({ accountId }: Props) {
             type="text"
             inputMode="numeric"
             value={cycleEnd}
+            disabled={pending}
             placeholder="20"
             onChange={(e) => onFieldChange(setCycleEnd)(e.target.value)}
           />
         </Field>
         <div style={{ ...brokerageMovementFieldRowStyle(), display: "flex", alignItems: "flex-end" }}>
-          <Button disabled={patchMutation.isPending} onClick={onSave}>
+          <Button disabled={pending || patchMutation.isPending} onClick={onSave}>
             {patchMutation.isPending
               ? t("common.loading")
               : t("accountDetail.creditCard.configSaveBtn")}

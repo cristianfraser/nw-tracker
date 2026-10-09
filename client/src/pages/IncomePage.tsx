@@ -10,6 +10,7 @@ import { PayrollBreakdownSection } from "../components/income/PayrollBreakdownSe
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
+import { loadableClass } from "../components/ui/Loadable";
 import { useIncome } from "../queries/hooks";
 import { useTranslation } from "../i18n";
 import {
@@ -48,6 +49,8 @@ export function IncomePage() {
   );
   const { data, error } = useIncome();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
+  // The frame renders with zero totals and no rows until the payload arrives.
+  const loading = !data;
 
   const view = useMemo(
     () => (data ? aggregateIncomeFromPayload(data, displayUnit) : null),
@@ -87,18 +90,14 @@ export function IncomePage() {
     return <p className="error">{err}</p>;
   }
 
-  if (!data || !view) {
-    return <p className="muted">{t("common.loading")}</p>;
-  }
-
   return (
     <>
       <h2 className="flow-section-title">{t("sidebar.flowsIncome")}</h2>
 
-      <p className="muted" style={{ marginBottom: "1rem" }}>
+      <p className={loadableClass(loading, "muted")} style={{ marginBottom: "1rem" }}>
         {t("income.totalLabel")}{" "}
         <span className="mono" style={{ color: "var(--text)" }}>
-          {formatFlowMoney(view.total, displayUnit)}
+          {formatFlowMoney(view?.total ?? 0, displayUnit)}
         </span>
         {timeRange !== "total" ? (
           <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}>
@@ -118,6 +117,7 @@ export function IncomePage() {
           points={chartPoints}
           xAxisGranularity={chartGranularity}
           displayUnit={displayUnit}
+          loading={loading}
         />
       </div>
 
@@ -134,21 +134,27 @@ export function IncomePage() {
           rows={monthTableRows}
           displayUnit={displayUnit}
           periodGranularity={tableGranularity}
+          loading={loading}
         />
       </section>
 
-      <PayrollBreakdownSection breakdown={data.payroll_breakdown} displayUnit={displayUnit} />
+      <PayrollBreakdownSection breakdown={data?.payroll_breakdown} displayUnit={displayUnit} loading={loading} />
 
       <section style={{ marginBottom: "1.5rem" }}>
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
           {t("workEarnings.sectionTitle")}
         </h3>
-        <WorkEarningsTable rows={data.work_earnings} displayUnit={displayUnit} checks={data.payslip_checks} />
+        <WorkEarningsTable
+          rows={data?.work_earnings ?? []}
+          displayUnit={displayUnit}
+          checks={data?.payslip_checks}
+          loading={loading}
+        />
       </section>
 
       <section>
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("income.sectionAllLines")}</h3>
-        <IncomeAllLinesTable rows={view.all_rows} displayUnit={displayUnit} />
+        <IncomeAllLinesTable rows={view?.all_rows ?? []} displayUnit={displayUnit} loading={loading} />
       </section>
 
       <section style={{ marginTop: "1.5rem" }}>
@@ -158,21 +164,21 @@ export function IncomePage() {
         <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
           {t("income.refundsHint")}
         </p>
-        <IncomeRefundLinesTable rows={data.refund_lines} displayUnit={displayUnit} />
+        <IncomeRefundLinesTable rows={data?.refund_lines ?? []} displayUnit={displayUnit} loading={loading} />
       </section>
 
       <section style={{ marginTop: "1.5rem" }}>
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
           {t("income.sectionFiltered")}
         </h3>
-        <IncomeFilteredLinesTable rows={data.filtered_lines} displayUnit={displayUnit} />
+        <IncomeFilteredLinesTable rows={data?.filtered_lines ?? []} displayUnit={displayUnit} loading={loading} />
       </section>
 
       <section style={{ marginTop: "1.5rem" }}>
         <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
           {t("income.sectionExcluded")}
         </h3>
-        <IncomeExcludedLinesTable rows={data.excluded_lines} displayUnit={displayUnit} />
+        <IncomeExcludedLinesTable rows={data?.excluded_lines ?? []} displayUnit={displayUnit} loading={loading} />
       </section>
     </>
   );

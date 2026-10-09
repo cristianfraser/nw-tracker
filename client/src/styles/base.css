@@ -135,3 +135,26 @@ h2 {
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
+/*
+ * Loading state (components/ui/Loadable.tsx). A surface keeps its frame and whatever values it
+ * has — zero placeholders, held prior data, an empty table — and dims, inert, while its data
+ * loads. Nested markers never compound: a loading surface inside a dimmed one stays at full
+ * opacity, so a page body and a chart inside it can each carry their own flag.
+ */
+.loadable {
+  transition: opacity 0.2s ease;
+}
+
+.loadable.is-loading {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.loadable.is-loading .loadable.is-loading {
+  opacity: 1;
+}
+
+/* Controls stay live while their surface loads: a Período/Rango/view change is a new request. */
+.loadable.is-loading .chart-panel-title-row {
+  pointer-events: auto;
+}
