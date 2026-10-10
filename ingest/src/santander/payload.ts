@@ -30,7 +30,9 @@ export function assertApiOk(responseBody: unknown, endpoint: string): void {
   const status = pickString(metadata, "STATUS");
   if (status === null) throw new Error(`${endpoint}: response has no METADATA.STATUS`);
   if (status !== "0") {
-    const description = pickString(metadata, "DESCRIPCION") ?? "(no description)";
+    // Cut short: the gateway's STATUS 101 («Error al validar token Oauth 2.0: …») quotes the whole
+    // bearer token, which must not reach the run log or the diagnostics (seen 2026-10-10).
+    const description = (pickString(metadata, "DESCRIPCION") ?? "(no description)").slice(0, 60);
     throw new Error(`${endpoint}: API returned STATUS ${status} — ${description}`);
   }
   const inner = innerResultCode(responseBody);

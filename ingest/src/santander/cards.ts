@@ -1,16 +1,102 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { Page } from "playwright-core";
-import type { Recorder } from "../capture.js";
+import type { Locator, Page } from "playwright-core";
+import type { ApiCall, Recorder } from "../capture.js";
 import { ENDPOINT, ROUTE, SELECTOR, TEXT } from "./routes.js";
-import { gotoRoute } from "./login.js";
+import { openRoute } from "./navigate.js";
 import { assertApiOk, innerResultCode, isSaldoInicialRow, pick, pickString } from "./payload.js";
-import { settle, waitForNewApiCalls } from "../wait.js";
+import { matchesApiCall, waitForNewApiCalls, type ApiCallMatcher } from "../wait.js";
 import { ensureDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 
 /** Upper bound on swiper clicks — a stop condition in case the carousel loops instead of ending. */
 const MAX_SLIDES = 8;
+
+/**
+ * How long the carousel arrow gets to produce the next card's call before the step swipes. The
+ * arrow has done nothing since 2026-10-09 (for a person too); a working arrow answered within
+ * ~2 s on every earlier night, so when it comes back the short path wins.
+ */
+const ARROW_WAIT_MS = 5_000;
+/** How long a currency tab gets to produce its call; a card with no USD side produces none. */
+const CURRENCY_TAB_WAIT_MS = 15_000;
+/**
+ * How long a view gets to render its currency tabs after its data call landed. The billed view
+ * stays a skeleton — no tabs, no «Pagar hasta» — until the page's own PDF request answers, about
+ * a second after the statement call (screenshots of 2026-10-10 02:54); the old 8 s `networkidle`
+ * settle covered that by accident.
+ */
+const VIEW_RENDER_WAIT_MS = 15_000;
+
+/** Both statement endpoints (`estadoCuentaNacional`, `estadoCuentaInternacional`), never the PDF one (`estadoDeCuenta`). */
+const STATEMENT_CALL: ApiCallMatcher = /^estadoCuenta/i;
+
+export type CurrencyTab = { currency: "CLP" | "USD"; label: RegExp; name: string };
+
+/**
+ * The currency tab with `label`, once it is on screen; null when the view shows none within the
+ * wait (a view with no currency tabs, or one that never finished rendering — the caller logs it).
+ */
+async function visibleCurrencyTab(page: Page, label: RegExp): Promise<Locator | null> {
+  const tab = page.getByText(label).first();
+  try {
+    await tab.waitFor({ state: "visible", timeout: VIEW_RENDER_WAIT_MS });
+    return tab;
+  } catch {
+    return null;
+  }
+}
+
+const CURRENCY_TABS: Record<"CLP" | "USD", CurrencyTab> = {
+  CLP: { currency: "CLP", label: TEXT.currencyClp, name: "Pesos" },
+  USD: { currency: "USD", label: TEXT.currencyUsd, name: "Dólares" },
+};
+
+/**
+ * The tab to click after a view arrived in `currency` — the OTHER one. The carousel keeps the
+ * selected tab across cards (verified 2026-10-09), so alternating the tab per card visits both
+ * currencies of every card with one click each and no restore: CLP → click Dólares; the next
+ * card opens on USD → click Pesos. Any other value is not a currency this step knows: never a
+ * guess, the caller reports it.
+ */
+export function otherCurrencyTab(currency: string | null): CurrencyTab | null {
+  const key = currency?.trim().toUpperCase();
+  if (key === "CLP") return CURRENCY_TABS.USD;
+  if (key === "USD") return CURRENCY_TABS.CLP;
+  return null;
+}
+
+/**
+ * The currency a statement call's endpoint stands for: `estadoCuentaNacional` is the Pesos
+ * tab, `estadoCuentaInternacional` the Dólares tab (the international request names no
+ * currency in its body). Anything else — the PDF endpoint, an unknown name — is null.
+ */
+export function statementCallCurrency(endpoint: string): "CLP" | "USD" | null {
+  if (/^estadoCuentaNacional$/i.test(endpoint)) return "CLP";
+  if (/^estadoCuentaInternacional$/i.test(endpoint)) return "USD";
+  return null;
+}
+
+/**
+ * The card contracts the session's product summary lists (`NUMEROCONTRATO` of its `TCR` rows —
+ * the same number each card's calls carry as `Cuenta`, verified 2026-10-10), or null without a
+ * usable summary. The carousel shows one tile per contract, so once every contract has been
+ * visited the step is done: the swiper no longer marks its arrow disabled on the last tile, and
+ * finding that out by swiping costs the arrow wait plus a full swipe wait (~26 s on 2026-10-10).
+ */
+export function cardContractsInSummary(recorder: Recorder): Set<string> | null {
+  const { cupos } = collectCardCupos(recorder);
+  if (!cupos) return null;
+  const contracts = new Set(cupos.rows.map((row) => row.NUMEROCONTRATO ?? "").filter((n) => n.length > 0));
+  return contracts.size > 0 ? contracts : null;
+}
+
+/** Whether every expected contract has been visited; never true without the summary's list. */
+export function everyCardVisited(visited: Iterable<string | null>, expected: Set<string> | null): boolean {
+  if (!expected) return false;
+  const seen = new Set([...visited].filter((v): v is string => v !== null));
+  return [...expected].every((contract) => seen.has(contract));
+}
 
 export type CardSlide = {
   index: number;
@@ -162,40 +248,67 @@ async function swipeToNextCard(page: Page): Promise<void> {
   await page.mouse.up();
 }
 
+/**
+ * Advance the carousel to the next card and wait for the call that proves it loaded (`matcher`,
+ * counted from `before`). Returns "last" when the swiper says there is no next slide, "moved"
+ * when a new call arrived, "stuck" when neither the arrow nor a swipe produced one.
+ *
+ * The arrow is tried first with a short wait; it stopped working on 2026-10-09 (for a person
+ * too), and a drag across the active tile still advances the carousel, so the swipe follows
+ * with the full wait. No settle afterwards: the call is the proof the view loaded.
+ */
+async function advanceCarousel(
+  page: Page,
+  recorder: Recorder,
+  matcher: ApiCallMatcher,
+  before: number,
+): Promise<"last" | "moved" | "stuck"> {
+  const next = page.locator(SELECTOR.swiperNext).first();
+  if ((await next.count()) === 0 || !(await next.isVisible())) return "last";
+  const classes = (await next.getAttribute("class")) ?? "";
+  if (classes.includes(SELECTOR.swiperDisabled)) {
+    log("swiper reached the last slide");
+    return "last";
+  }
+  try {
+    await next.click({ timeout: ARROW_WAIT_MS });
+    if (await waitForNewApiCalls(recorder, matcher, before, ARROW_WAIT_MS)) return "moved";
+    log("swiper arrow produced no new call — swiping instead");
+  } catch (err) {
+    log(`swiper arrow could not be clicked (${err instanceof Error ? err.message.split("\n")[0] : String(err)}) — swiping instead`);
+  }
+  await swipeToNextCard(page);
+  if (await waitForNewApiCalls(recorder, matcher, before)) return "moved";
+  log("neither the arrow nor a swipe produced a new call — stopping");
+  return "stuck";
+}
+
 export async function fetchCardMovements(page: Page, recorder: Recorder): Promise<CardMovementsResult> {
   logStep("credit card — movements");
-  await gotoRoute(page, ROUTE.cardUnbilled);
+  const baseline = recorder.callsFor(ENDPOINT.cardMovements).length;
+  await openRoute(page, ROUTE.cardUnbilled);
+  // The view's first movements call is the proof it loaded — `networkidle` never comes here.
+  if (!(await waitForNewApiCalls(recorder, ENDPOINT.cardMovements, baseline))) {
+    throw new Error(`card movements: no ${ENDPOINT.cardMovements} call after opening the unbilled view`);
+  }
   await recorder.screenshot(page, "card-unbilled-initial");
 
-  // The initial load fetches the first card in CLP; each currency tab and each swiper step adds one call.
-  await fetchUsdForCurrentCard(page, recorder, 0);
+  // The view opens on the first card in one currency; the other currency is its own call behind
+  // the other tab, and the tab stays selected across cards, so each card costs one tab click.
+  await fetchOtherCurrencyForCurrentCard(page, recorder, 0);
 
+  const expected = cardContractsInSummary(recorder);
+  const visited = () => recorder.callsFor(ENDPOINT.cardMovements).map((c) => pickString(pick(c.requestBody, "Entrada", "INPUT"), "Cuenta"));
   for (let slide = 0; slide < MAX_SLIDES; slide++) {
-    const next = page.locator(SELECTOR.swiperNext).first();
-    if ((await next.count()) === 0) break;
-    if (!(await next.isVisible())) break;
-    const classes = (await next.getAttribute("class")) ?? "";
-    if (classes.includes(SELECTOR.swiperDisabled)) {
-      log("swiper reached the last slide");
+    if (everyCardVisited(visited(), expected)) {
+      log(`every card in the product summary visited (${expected?.size}) — carousel done`);
       break;
     }
     const before = recorder.callsFor(ENDPOINT.cardMovements).length;
-    await next.click();
-    let gotNew = await waitForNewApiCalls(recorder, ENDPOINT.cardMovements, before);
-    if (!gotNew) {
-      // The arrow stopped working on 2026-10-09 (for a person too); a drag across the active
-      // tile still advances the carousel.
-      log("swiper arrow produced no new movements call — swiping instead");
-      await swipeToNextCard(page);
-      gotNew = await waitForNewApiCalls(recorder, ENDPOINT.cardMovements, before);
-    }
-    await settle(page, 4_000);
+    const moved = await advanceCarousel(page, recorder, ENDPOINT.cardMovements, before);
+    if (moved !== "moved") break;
     await recorder.screenshot(page, `card-unbilled-slide-${slide + 1}`);
-    if (!gotNew) {
-      log("neither the arrow nor a swipe produced a new movements call — stopping");
-      break;
-    }
-    await fetchUsdForCurrentCard(page, recorder, slide + 1);
+    await fetchOtherCurrencyForCurrentCard(page, recorder, slide + 1);
   }
 
   const collected: CardSlide[] = recorder.callsFor(ENDPOINT.cardMovements).map((call, index) => {
@@ -213,8 +326,8 @@ export async function fetchCardMovements(page: Page, recorder: Recorder): Promis
     };
   });
 
-  // Restoring the Pesos tab re-fetches CLP, so each card yields the same CLP payload twice. Keep one
-  // entry per (account, currency) — a duplicate slide would double-count on import.
+  // One entry per (account, currency): alternating the tabs visits each exactly once, so this is a
+  // safety net («collapsed 0» is the expected log) — a duplicate slide would double-count on import.
   const byAccountCurrency = new Map<string, CardSlide>();
   for (const slide of collected) {
     byAccountCurrency.set(`${slide.account ?? "?"}|${slide.currency ?? "?"}`, slide);
@@ -256,11 +369,7 @@ export type StatementDownload = {
  * different endpoint entirely. Collecting it lets the two be diffed on the same statement before
  * anything downstream is allowed to depend on it.
  */
-function saveStatementJson(recorder: Recorder, destDir: string): string | null {
-  // Matches estadoCuentaNacional and its international/USD sibling, but not the PDF endpoint
-  // (`estadoDeCuenta`), whose name starts differently.
-  const call = recorder.calls.filter((c) => /^estadoCuenta/i.test(c.endpoint)).at(-1);
-  if (!call) return null;
+function saveStatementJson(call: ApiCall, destDir: string): string {
   const input = pick(call.requestBody, "INPUT", "Entrada");
   const account = pickString(input, "Cuenta") ?? "unknown";
   const extracto = pickString(input, "NumExtracto") ?? "0";
@@ -286,64 +395,92 @@ export async function fetchCardStatements(
   jsonDir: string,
 ): Promise<StatementDownload[]> {
   logStep("credit card — statements");
-  await gotoRoute(page, ROUTE.cardBilled);
-  await recorder.screenshot(page, "card-billed-initial");
-
   const saved: StatementDownload[] = [];
-  const pdfCalls = { logged: 0 };
-  for (let slide = 0; slide < MAX_SLIDES; slide++) {
-    // The billed view carries the same Pesos/Dólares tabs as the movements view, and the USD
-    // statement is its own backend call — so each currency has to be visited to be captured at all.
-    for (const currency of ["Pesos", "Dólares"] as const) {
-      const label = `slide ${slide + 1}/${currency}`;
-      try {
-        if (currency === "Dólares" && !(await selectCurrencyTab(page, TEXT.currencyUsd))) {
-          log(`${label}: no Dólares tab`);
-          continue;
-        }
-        saved.push(...(await captureStatementJson(page, recorder, jsonDir, label, pdfCalls)));
-      } catch (err) {
-        // One card must not cost us the others: a dormant card's endpoints can time out
-        // bank-side, which must not stop the step before the active card is reached.
-        log(`${label}: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`);
-      }
-      await recorder.screenshot(page, `card-billed-slide-${slide + 1}-${currency === "Pesos" ? "clp" : "usd"}`);
-    }
-    await selectCurrencyTab(page, TEXT.currencyClp);
+  const progress = { statementsSaved: 0, pdfLogged: 0 };
+  const statementCalls = () => recorder.calls.filter((c) => matchesApiCall(c, STATEMENT_CALL));
 
-    const next = page.locator(SELECTOR.swiperNext).first();
-    if ((await next.count()) === 0 || !(await next.isVisible())) break;
-    const classes = (await next.getAttribute("class")) ?? "";
-    if (classes.includes(SELECTOR.swiperDisabled)) break;
-    await next.click();
-    await settle(page, 4_000);
+  // Entering the billed view resets the tab to Pesos (verified 2026-10-09), so the first call
+  // is the national statement; from there the tabs alternate exactly as in the movements step
+  // — the carousel keeps the tab — and every card costs one tab click, no restore.
+  const baseline = statementCalls().length;
+  await openRoute(page, ROUTE.cardBilled);
+  if (!(await waitForNewApiCalls(recorder, STATEMENT_CALL, baseline))) {
+    log("no statement call after opening the billed view");
+    return saved;
+  }
+  await recorder.screenshot(page, "card-billed-initial");
+  saved.push(...(await captureStatementJson(page, recorder, jsonDir, "slide 1", progress)));
+
+  const expected = cardContractsInSummary(recorder);
+  const visited = () => statementCalls().map((c) => pickString(pick(c.requestBody, "INPUT", "Entrada"), "Cuenta"));
+  for (let slide = 0; slide < MAX_SLIDES; slide++) {
+    const label = `slide ${slide + 1}`;
+    try {
+      // The USD statement is its own backend call behind the other tab.
+      const latest = statementCalls().at(-1);
+      const other = otherCurrencyTab(latest ? statementCallCurrency(latest.endpoint) : null);
+      if (!other) {
+        log(`${label}: latest statement call ${latest?.endpoint ?? "(none)"} names no currency — not switching tabs`);
+      } else {
+        const before = statementCalls().length;
+        const tab = await visibleCurrencyTab(page, other.label);
+        if (!tab) {
+          log(`${label}: no ${other.name} tab`);
+        } else {
+          await tab.click();
+          if (await waitForNewApiCalls(recorder, STATEMENT_CALL, before, CURRENCY_TAB_WAIT_MS)) {
+            saved.push(...(await captureStatementJson(page, recorder, jsonDir, `${label}/${other.name}`, progress)));
+          } else {
+            log(`${label}: ${other.name} tab produced no statement call (card may have no ${other.currency} side)`);
+          }
+        }
+      }
+    } catch (err) {
+      // One card must not cost us the others: a dormant card's endpoints can time out
+      // bank-side, which must not stop the step before the active card is reached.
+      log(`${label}: ${err instanceof Error ? err.message.split("\n")[0] : String(err)}`);
+    }
+    await recorder.screenshot(page, `card-billed-slide-${slide + 1}`);
+
+    if (everyCardVisited(visited(), expected)) {
+      log(`every card in the product summary visited (${expected?.size}) — carousel done`);
+      break;
+    }
+    const before = statementCalls().length;
+    const moved = await advanceCarousel(page, recorder, STATEMENT_CALL, before);
+    if (moved !== "moved") break;
+    saved.push(...(await captureStatementJson(page, recorder, jsonDir, `slide ${slide + 2}`, progress)));
   }
   return saved;
 }
 
-/** Click a currency tab if it exists. Returns false when the view has no such tab. */
-async function selectCurrencyTab(page: Page, label: RegExp): Promise<boolean> {
-  const tab = page.getByText(label).first();
-  if ((await tab.count()) === 0) return false;
-  await tab.click();
-  await settle(page, 4_000);
-  return true;
-}
-
-/** Save the statement JSON for the current view and log what the page's own PDF request got. */
+/**
+ * Save every statement call that arrived since the last capture (named from its own INPUT) and
+ * log what the page's own PDF request got. The billing month is read from the page once per view.
+ */
 async function captureStatementJson(
   page: Page,
   recorder: Recorder,
   jsonDir: string,
   label: string,
-  pdfCalls: { logged: number },
+  progress: { statementsSaved: number; pdfLogged: number },
 ): Promise<StatementDownload[]> {
+  // The call landed; the view renders its tabs and «Pagar hasta» a moment later.
+  if (!(await visibleCurrencyTab(page, TEXT.currencyClp))) {
+    log(`${label}: the billed view showed no currency tabs within ${VIEW_RENDER_WAIT_MS / 1000} s`);
+  }
   const billingMonth = await readBillingMonth(page);
-  const jsonFile = saveStatementJson(recorder, jsonDir);
-  if (jsonFile) log(`${label}: statement JSON → ${path.basename(jsonFile)}`);
+  const statementCalls = recorder.calls.filter((c) => matchesApiCall(c, STATEMENT_CALL));
+  const saved: StatementDownload[] = [];
+  for (const call of statementCalls.slice(progress.statementsSaved)) {
+    const jsonFile = saveStatementJson(call, jsonDir);
+    log(`${label}: statement JSON → ${path.basename(jsonFile)}`);
+    saved.push({ billingMonth, file: jsonFile });
+  }
+  progress.statementsSaved = statementCalls.length;
 
   const calls = recorder.callsFor("estadoDeCuenta");
-  for (const call of calls.slice(pdfCalls.logged)) {
+  for (const call of calls.slice(progress.pdfLogged)) {
     const data = pick(call.responseBody, "DATA");
     const hasPdf = Boolean(pickString(data, "imgNbs64"));
     const inner = innerResultCode(call.responseBody);
@@ -356,32 +493,37 @@ async function captureStatementJson(
             : "without a PDF"),
     );
   }
-  pdfCalls.logged = calls.length;
-  return jsonFile ? [{ billingMonth, file: jsonFile }] : [];
+  progress.pdfLogged = calls.length;
+  return saved;
 }
 
 /**
- * Click the "Dólares" tab so the USD side of the current card loads, then restore "Pesos".
+ * Click the other currency tab of the current card and wait for its call.
  *
  * USD is not fetched by the swiper: each currency is its own `consultaUltimosMovimientos` call,
  * distinguished only by `Entrada.Moneda` (confirmed 2026-08-04 — a full swiper walk produced CLP
- * calls exclusively). Restoring the Pesos tab keeps the next slide's default view predictable.
+ * calls exclusively). The currency the card opened on is read from its call, never assumed, and
+ * the tab is NOT restored afterwards: the carousel keeps the selected tab across cards, so the
+ * next card opens on this currency and one click brings its other side.
  */
-async function fetchUsdForCurrentCard(page: Page, recorder: Recorder, slide: number): Promise<void> {
-  const usdTab = page.getByText(TEXT.currencyUsd).first();
-  if ((await usdTab.count()) === 0) {
-    log(`slide ${slide}: no currency tabs — CLP only`);
+async function fetchOtherCurrencyForCurrentCard(page: Page, recorder: Recorder, slide: number): Promise<void> {
+  const latest = recorder.callsFor(ENDPOINT.cardMovements).at(-1);
+  const currency = pickString(pick(latest?.requestBody, "Entrada", "INPUT"), "Moneda");
+  const other = otherCurrencyTab(currency);
+  if (!other) {
+    throw new Error(`slide ${slide}: the movements call names currency ${JSON.stringify(currency)} — not CLP or USD`);
+  }
+  const tab = await visibleCurrencyTab(page, other.label);
+  if (!tab) {
+    log(`slide ${slide}: no currency tabs — ${currency} only`);
     return;
   }
   const before = recorder.callsFor(ENDPOINT.cardMovements).length;
-  await usdTab.click();
-  if (!(await waitForNewApiCalls(recorder, ENDPOINT.cardMovements, before, 15_000))) {
-    log(`slide ${slide}: Dólares tab produced no call (card may have no USD side)`);
+  await tab.click();
+  if (!(await waitForNewApiCalls(recorder, ENDPOINT.cardMovements, before, CURRENCY_TAB_WAIT_MS))) {
+    log(`slide ${slide}: ${other.name} tab produced no call (card may have no ${other.currency} side)`);
   }
-  await recorder.screenshot(page, `card-unbilled-slide-${slide}-usd`);
-  const clpTab = page.getByText(TEXT.currencyClp).first();
-  if ((await clpTab.count()) > 0) await clpTab.click();
-  await settle(page, 3_000);
+  await recorder.screenshot(page, `card-unbilled-slide-${slide}-${other.currency.toLowerCase()}`);
 }
 
 /** Parse "Pagar hasta: 10/MM/YYYY" into the YYYY-MM facturación it settles (month − 1). */
