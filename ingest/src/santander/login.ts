@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { FrameLocator, Page } from "playwright-core";
-import { APP_BASE, HOME_URL, SELECTOR, TEXT } from "./routes.js";
-import { settle } from "../wait.js";
+import { ENDPOINT, HOME_URL, SELECTOR, TEXT } from "./routes.js";
+import type { Recorder } from "../capture.js";
+import { countApiCalls } from "../wait.js";
 import { log, logStep } from "../log.js";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
 import { clearLoginLatch, recordCredentialsRejected } from "./loginLatch.js";
@@ -23,6 +24,15 @@ const LOGIN_REDIRECT_TIMEOUT_MS = 90_000;
 const LOGIN_REDIRECT_POLL_MS = 500;
 /** How much of the login frame's text the failure message quotes; the full text goes to the file. */
 const LOGIN_FAILURE_EXCERPT_CHARS = 240;
+/** How long the public homepage has to show its login button once its document is parsed. */
+const OPEN_PANEL_VISIBLE_TIMEOUT_MS = 30_000;
+/**
+ * How long the private app's landing page has to make its product-summary call after the redirect.
+ * It arrives 6–7 s after the form is submitted (run 268; the 02:57 capture of 2026-10-10 alike).
+ */
+const LANDING_WAIT_MS = 20_000;
+/** Pause between polls for the landing page's call. */
+const LANDING_POLL_MS = 250;
 
 function firstLine(err: unknown): string {
   return (err instanceof Error ? err.message : String(err)).split("\n")[0] ?? "";
@@ -57,20 +67,49 @@ function normalizeRut(value: string): string {
   return value.replace(/[.\-\s]/g, "").toUpperCase();
 }
 
-/** Navigate the SPA. Hash-only changes don't reload the document, so the hash is set in-page. */
-export async function gotoRoute(page: Page, route: string): Promise<void> {
-  if (page.url().startsWith(APP_BASE)) {
-    await page.evaluate((hash) => {
-      window.location.hash = hash;
-    }, route);
-  } else {
-    await page.goto(`${APP_BASE}#${route}`, { waitUntil: "domcontentloaded" });
-  }
-  await settle(page);
+export function isLoggedIn(page: Page): boolean {
+  return isPrivateAppUrl(page.url());
 }
 
-export function isLoggedIn(page: Page): boolean {
-  return page.url().includes("#/private/");
+/** A private-app route, i.e. a logged-in session (pure twin of `isLoggedIn`). */
+export function isPrivateAppUrl(url: string): boolean {
+  return url.includes("#/private/");
+}
+
+/**
+ * Whether the landing page has done what the steps need of it: the window is on a private route
+ * AND the product summary (`cruceProductosOnline`) has been requested since `baselineCount` — the
+ * cupo and deposit-balance readers take that call's latest instance, and it is the one call every
+ * login makes. Pure, so the wait's decision is unit-tested.
+ */
+export function landingPageReady(args: { loggedIn: boolean; productSummaryCalls: number; baselineCount: number }): boolean {
+  return args.loggedIn && args.productSummaryCalls > args.baselineCount;
+}
+
+/**
+ * Wait for the private app's landing page after a redirect into it, bounded by `LANDING_WAIT_MS`.
+ *
+ * This replaced a `networkidle` settle (20 s) that ran to its timeout every night: the SPA's
+ * analytics traffic never goes idle. The product-summary call is the proof the landing page loaded;
+ * when it does not come but the window is on a private route the session is still usable (the
+ * readers of that call report its absence themselves), so the run continues and says so.
+ */
+async function waitForLandingPage(page: Page, recorder: Recorder, baselineCount: number): Promise<void> {
+  const deadline = Date.now() + LANDING_WAIT_MS;
+  const ready = () =>
+    landingPageReady({
+      loggedIn: isLoggedIn(page),
+      productSummaryCalls: countApiCalls(recorder.calls, ENDPOINT.productSummary),
+      baselineCount,
+    });
+  while (!ready() && Date.now() < deadline) {
+    await page.waitForTimeout(LANDING_POLL_MS);
+  }
+  if (ready()) return;
+  if (!isLoggedIn(page)) {
+    throw new Error(`Landed on ${page.url()} after submitting — expected a /private/ route.`);
+  }
+  log(`(landing page made no ${ENDPOINT.productSummary} call within ${LANDING_WAIT_MS / 1000}s — continuing, the session is on a private route)`);
 }
 
 function redirectedToPrivateApp(page: Page): boolean {
@@ -202,15 +241,34 @@ async function assertNotBotBlocked(page: Page): Promise<void> {
  *
  * The persistent profile means a still-valid session skips this entirely. The password comes from
  * the Keychain and is only ever handed to `fill()` — it is never logged, stored, or echoed.
+ *
+ * No `networkidle` anywhere in here (since 2026-10-10): the public homepage and the private app
+ * both keep analytics traffic flowing, so each settle only ever ran to its timeout — 8 s on the
+ * homepage and 20 s after the redirect, every night. The homepage is ready when its login button
+ * is visible; the private app when the landing page has asked for the product summary
+ * (`waitForLandingPage`, recorded through `recorder`).
  */
-export async function login(page: Page, rut: string, password: string): Promise<void> {
+export async function login(page: Page, recorder: Recorder, rut: string, password: string): Promise<void> {
+  // Before the homepage: a re-login mid-run already has the first landing's call on record.
+  const productSummaryBaseline = countApiCalls(recorder.calls, ENDPOINT.productSummary);
   await page.goto(HOME_URL, { waitUntil: "domcontentloaded" });
-  await settle(page);
   await assertNotBotBlocked(page);
 
   logStep("opening login panel");
-  await dismissOverlays(page);
   const openPanel = page.locator(SELECTOR.openLoginPanel).first();
+  const frame = page.frameLocator(SELECTOR.loginFrame);
+  // The button, not the network, says the homepage is usable. An overlay on top of it is still
+  // "visible" to Playwright; the sweep below and the blocked-click retry deal with those.
+  try {
+    await openPanel.waitFor({ state: "visible", timeout: OPEN_PANEL_VISIBLE_TIMEOUT_MS });
+  } catch (err) {
+    const { base } = await saveLoginDiagnostics(page, frame, `login button never became visible: ${firstLine(err)}`);
+    throw new Error(
+      `The homepage's login button was not visible ${OPEN_PANEL_VISIBLE_TIMEOUT_MS / 1000}s after it loaded ` +
+        `(still on ${page.url()}) — evidence in ${base}.{png,txt}`,
+    );
+  }
+  await dismissOverlays(page);
   try {
     await openPanel.click({ timeout: OPEN_PANEL_FIRST_TRY_MS });
   } catch (err) {
@@ -221,7 +279,6 @@ export async function login(page: Page, rut: string, password: string): Promise<
     await openPanel.click();
   }
 
-  const frame = page.frameLocator(SELECTOR.loginFrame);
   const rutInput = frame.locator(SELECTOR.loginRut);
   const passInput = frame.locator(SELECTOR.loginPass);
 
@@ -236,6 +293,8 @@ export async function login(page: Page, rut: string, password: string): Promise<
   while (Date.now() < deadline) {
     if (isLoggedIn(page)) {
       logStep("session still valid — skipping login");
+      // The landing page loads the same way; its product-summary call is what the steps read.
+      await waitForLandingPage(page, recorder, productSummaryBaseline);
       return;
     }
     if (await rutInput.isVisible().catch(() => false)) {
@@ -317,10 +376,7 @@ export async function login(page: Page, rut: string, password: string): Promise<
   await frame.locator(SELECTOR.loginSubmit).click();
 
   await waitForLoginRedirect(page, frame);
-  await settle(page, 20_000);
-  if (!isLoggedIn(page)) {
-    throw new Error(`Landed on ${page.url()} after submitting — expected a /private/ route.`);
-  }
+  await waitForLandingPage(page, recorder, productSummaryBaseline);
   logStep("logged in");
   clearLoginLatch("the bank accepted the login");
 }
