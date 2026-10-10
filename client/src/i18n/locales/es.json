@@ -1266,7 +1266,42 @@
       },
       "categoryLevelLabel": "Agrupar por",
       "categoryLevelCategory": "Categorías",
-      "categoryLevelSubcategory": "Subcategorías"
+      "categoryLevelSubcategory": "Subcategorías",
+      "pieces": {
+        "action": "Desglosar",
+        "actionEdit": "Piezas",
+        "title": "Desglosar: {{merchant}}",
+        "intro": "Cada pieza es un gasto propio, en el día en que se gastó. Lo que las piezas no cubren sigue siendo el gasto de esta línea, el {{date}}.",
+        "colDate": "Día",
+        "colAmount": "Monto",
+        "colCategory": "Categoría",
+        "add": "Agregar pieza",
+        "remove": "Quitar",
+        "line": "Línea",
+        "inPieces": "En piezas",
+        "remainder": "Queda en la línea",
+        "over": "Las piezas suman más que la línea.",
+        "amountRequired": "Cada pieza necesita un monto mayor que 0.",
+        "save": "Guardar",
+        "saving": "Guardando…",
+        "pieceBadge": "pieza",
+        "remainderBadge": "sin desglosar"
+      },
+      "manualExpense": {
+        "add": "Gasto manual",
+        "edit": "Editar",
+        "titleNew": "Nuevo gasto manual",
+        "titleEdit": "Editar gasto manual",
+        "hint": "Para un gasto que ninguna línea del banco o la tarjeta muestra (efectivo que te dieron, un gasto que le devolviste a alguien). Efectivo de un giro: desglosa el giro.",
+        "date": "Día",
+        "amount": "Monto (CLP)",
+        "category": "Categoría",
+        "description": "Qué fue",
+        "save": "Guardar",
+        "saving": "Guardando…",
+        "delete": "Eliminar",
+        "deleteConfirm": "¿Eliminar este gasto manual?"
+      }
     },
     "kinds": {
       "gas": "Gas",

@@ -63,7 +63,8 @@ export function loadManualExpenseGastosLineDrafts(): FlowCcExpenseLineRowDraft[]
     const categorySlug = validateManualExpenseCategorySlug(row.category);
     const expenseMonth = monthKeyFromYmd(row.spent_on);
     const amountClp = Math.round(row.amount_clp);
-    const merchant = String(row.note ?? "").trim() || categorySlug;
+    // The `manual:` prefix is provenance; the line shows what was written after it.
+    const merchant = String(row.note ?? "").replace(/^manual:/, "").trim() || categorySlug;
 
     lines.push({
       source: "manual",
@@ -92,4 +93,75 @@ export function loadManualExpenseGastosLineDrafts(): FlowCcExpenseLineRowDraft[]
   }
 
   return lines;
+}
+
+export type ManualExpenseInput = {
+  spent_on: string;
+  amount_clp: number;
+  category_slug: string;
+  /** What it was; stored with the `manual:` provenance prefix and shown as the line's merchant. */
+  description: string;
+};
+
+function validManualExpense(input: ManualExpenseInput): {
+  spentOn: string;
+  amountClp: number;
+  category: string;
+  note: string | null;
+} {
+  const spentOn = String(input.spent_on ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(spentOn)) throw new Error(`spent_on must be YYYY-MM-DD, got ${spentOn}`);
+  const amountClp = Number(input.amount_clp);
+  if (!Number.isInteger(amountClp) || amountClp <= 0) {
+    throw new Error(`amount_clp must be a whole number of pesos above 0, got ${input.amount_clp}`);
+  }
+  const description = String(input.description ?? "").trim();
+  if (!description) throw new Error("description required");
+  return {
+    spentOn,
+    amountClp,
+    category: validateManualExpenseCategorySlug(input.category_slug),
+    note: normalizeManualExpenseNote(description),
+  };
+}
+
+/** A manual expense row this API may edit: generic (no place) and not a pre-baseline monthly total. */
+function requireEditableManualExpense(id: number): void {
+  const row = db
+    .prepare(`SELECT category, expense_account_id FROM expense_entries WHERE id = ?`)
+    .get(id) as { category: string | null; expense_account_id: number | null } | undefined;
+  if (!row) throw new Error(`manual expense ${id} not found`);
+  if (row.expense_account_id != null) throw new Error(`expense ${id} is a real-estate bill, not a manual expense`);
+  if (row.category == null || row.category === EXCEL_TOTAL_CATEGORY) {
+    throw new Error(`expense ${id} is not a manual expense line`);
+  }
+}
+
+export function createManualExpense(input: ManualExpenseInput): { id: number } {
+  const v = validManualExpense(input);
+  const result = db
+    .prepare(`INSERT INTO expense_entries (amount_clp, spent_on, category, note) VALUES (?, ?, ?, ?)`)
+    .run(v.amountClp, v.spentOn, v.category, v.note);
+  return { id: Number(result.lastInsertRowid) };
+}
+
+export function updateManualExpense(id: number, input: ManualExpenseInput): void {
+  requireEditableManualExpense(id);
+  const v = validManualExpense(input);
+  db.prepare(`UPDATE expense_entries SET amount_clp = ?, spent_on = ?, category = ?, note = ? WHERE id = ?`).run(
+    v.amountClp,
+    v.spentOn,
+    v.category,
+    v.note,
+    id
+  );
+}
+
+/** Deletes a manual expense and the big group it carried (keyed `manual:<id>`). */
+export function deleteManualExpense(id: number): void {
+  requireEditableManualExpense(id);
+  db.transaction(() => {
+    db.prepare(`DELETE FROM cc_expense_purchase_big_groups WHERE purchase_key = ?`).run(`manual:${id}`);
+    db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(id);
+  })();
 }

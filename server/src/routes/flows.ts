@@ -10,6 +10,18 @@ import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
 import { assignCcExpenseCategoryForManualLedgerInstallmentPurchase } from "../ccExpenseCategories.js";
 import { purchaseIdFromPlanGastosLineId } from "../ccInstallmentPlanGastosLines.js";
 import { assignFlowExpenseLineCategory } from "../assignFlowExpenseLineCategory.js";
+import {
+  getExpenseLinePieces,
+  replaceExpenseLinePieces,
+  type ExpenseLinePieceInput,
+  type ExpenseLinePieceSource,
+} from "../expenseLinePieces.js";
+import {
+  createManualExpense,
+  deleteManualExpense,
+  updateManualExpense,
+  type ManualExpenseInput,
+} from "../flowsManualExpenses.js";
 import { resolveCcExpensePurchaseKey } from "../ccExpenseCategories.js";
 import { setCcExpensePurchaseNote } from "../ccExpensePurchaseNotes.js";
 import {
@@ -287,6 +299,60 @@ app.get("/api/flows/expenses/credit-card/gastos", (req, res) => {
       .filter((s) => s.length > 0)
   );
   res.json(buildFlowsExpensesGastosPayload(unitRaw, excluded));
+});
+
+function piecesLineRef(source: unknown, lineId: unknown): { source: ExpenseLinePieceSource; lineId: number } {
+  const src = String(source ?? "");
+  if (src !== "cc" && src !== "checking") throw new Error(`source must be cc or checking, got ${src}`);
+  const id = Number(lineId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error(`invalid line_id ${String(lineId)}`);
+  return { source: src, lineId: id };
+}
+
+app.get("/api/flows/expenses/line-pieces", (req, res) => {
+  try {
+    const ref = piecesLineRef(req.query.source, req.query.line_id);
+    res.json(getExpenseLinePieces(ref.source, ref.lineId));
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.put("/api/flows/expenses/line-pieces", (req, res) => {
+  const body = req.body as { source?: string; line_id?: number; pieces?: ExpenseLinePieceInput[] };
+  try {
+    const ref = piecesLineRef(body.source, body.line_id);
+    if (!Array.isArray(body.pieces)) throw new Error("pieces must be an array");
+    res.json(replaceExpenseLinePieces(ref.source, ref.lineId, body.pieces));
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.post("/api/flows/expenses/manual", (req, res) => {
+  try {
+    res.status(201).json(createManualExpense(req.body as ManualExpenseInput));
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.patch("/api/flows/expenses/manual/:id", (req, res) => {
+  try {
+    updateManualExpense(Number(req.params.id), req.body as ManualExpenseInput);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.delete("/api/flows/expenses/manual/:id", (req, res) => {
+  try {
+    deleteManualExpense(Number(req.params.id));
+    res.status(204).send();
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
 });
 
 app.get("/api/flows/expenses/credit-card/financing-links", (_req, res) => {

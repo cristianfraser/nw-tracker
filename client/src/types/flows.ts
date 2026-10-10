@@ -235,6 +235,37 @@ export interface FlowCcExpenseLineRow {
   payment_receipt?: PaymentReceipt;
   /** A checking credit marked as a refund: a negative line in its category. */
   checking_refund?: true;
+  /** One piece of a line broken down into pieces. */
+  piece_seq?: number;
+  /** What a line's pieces leave of it, on the line's own day. */
+  pieces_remainder?: true;
+}
+
+/** A card or checking purchase line and its pieces (`GET /api/flows/expenses/line-pieces`). */
+export interface ExpenseLinePieces {
+  source: "cc" | "checking";
+  line_id: number;
+  line_amount_clp: number;
+  line_date: string;
+  merchant: string;
+  category_slug: string;
+  pieces: ExpenseLinePiece[];
+}
+
+export interface ExpenseLinePiece {
+  /** Absent for a piece not saved yet. */
+  seq?: number;
+  /** The day it was spent; null = the line's own day. */
+  spent_on: string | null;
+  amount_clp: number;
+  category_slug: string;
+}
+
+export interface ManualExpenseInput {
+  spent_on: string;
+  amount_clp: number;
+  category_slug: string;
+  description: string;
 }
 
 export interface ExpenseDepositLinkDto {

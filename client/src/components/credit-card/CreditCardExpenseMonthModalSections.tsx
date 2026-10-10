@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
@@ -21,6 +21,8 @@ import {
   CreditCardExpenseLinesTable,
   sortCreditCardExpenseLinesByStatement,
 } from "./CreditCardExpenseLinesTable";
+import { ExpenseLinePiecesDialog } from "./ExpenseLinePiecesDialog";
+import { ManualExpenseDialog } from "./ManualExpenseDialog";
 
 export type CreditCardExpenseMonthBucket = {
   purchases: FlowCcExpenseLineRow[];
@@ -120,6 +122,8 @@ export function CreditCardExpenseMonthModalSections({
   enableCheckingNotes?: boolean;
 }) {
   const { t } = useTranslation();
+  const [piecesLine, setPiecesLine] = useState<FlowCcExpenseLineRow | null>(null);
+  const [manualLine, setManualLine] = useState<FlowCcExpenseLineRow | null>(null);
 
   const purchasesSum = useMemo(
     () => sumLineAmountsClp(bucket.purchases),
@@ -158,6 +162,15 @@ export function CreditCardExpenseMonthModalSections({
         showCategoryControls
         categoryControlVariant={purchaseCategoryVariant}
         enableCheckingNotes={enableCheckingNotes}
+        onEditPieces={setPiecesLine}
+        onEditManual={setManualLine}
+      />
+      <ExpenseLinePiecesDialog line={piecesLine} categories={categories} onClose={() => setPiecesLine(null)} />
+      <ManualExpenseDialog
+        open={manualLine != null}
+        expense={manualLine}
+        categories={categories}
+        onClose={() => setManualLine(null)}
       />
 
       <h3 style={{ fontSize: "1rem", margin: "1.25rem 0 0.35rem" }}>

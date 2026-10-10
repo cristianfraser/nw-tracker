@@ -4488,6 +4488,134 @@
       "categoryLevelSubcategory": {
         "en": "Subcategories",
         "es": "Subcategorías"
+      },
+      "pieces": {
+        "action": {
+          "en": "Break down",
+          "es": "Desglosar"
+        },
+        "actionEdit": {
+          "en": "Pieces",
+          "es": "Piezas"
+        },
+        "title": {
+          "en": "Break down: {{merchant}}",
+          "es": "Desglosar: {{merchant}}"
+        },
+        "intro": {
+          "en": "Each piece is its own expense, on the day it was spent. What the pieces leave stays this line's expense, on {{date}}.",
+          "es": "Cada pieza es un gasto propio, en el día en que se gastó. Lo que las piezas no cubren sigue siendo el gasto de esta línea, el {{date}}."
+        },
+        "colDate": {
+          "en": "Day",
+          "es": "Día"
+        },
+        "colAmount": {
+          "en": "Amount",
+          "es": "Monto"
+        },
+        "colCategory": {
+          "en": "Category",
+          "es": "Categoría"
+        },
+        "add": {
+          "en": "Add piece",
+          "es": "Agregar pieza"
+        },
+        "remove": {
+          "en": "Remove",
+          "es": "Quitar"
+        },
+        "line": {
+          "en": "Line",
+          "es": "Línea"
+        },
+        "inPieces": {
+          "en": "In pieces",
+          "es": "En piezas"
+        },
+        "remainder": {
+          "en": "Left on the line",
+          "es": "Queda en la línea"
+        },
+        "over": {
+          "en": "The pieces add up to more than the line.",
+          "es": "Las piezas suman más que la línea."
+        },
+        "amountRequired": {
+          "en": "Each piece needs an amount above 0.",
+          "es": "Cada pieza necesita un monto mayor que 0."
+        },
+        "save": {
+          "en": "Save",
+          "es": "Guardar"
+        },
+        "saving": {
+          "en": "Saving…",
+          "es": "Guardando…"
+        },
+        "pieceBadge": {
+          "en": "piece",
+          "es": "pieza"
+        },
+        "remainderBadge": {
+          "en": "not broken down",
+          "es": "sin desglosar"
+        }
+      },
+      "manualExpense": {
+        "add": {
+          "en": "Manual expense",
+          "es": "Gasto manual"
+        },
+        "edit": {
+          "en": "Edit",
+          "es": "Editar"
+        },
+        "titleNew": {
+          "en": "New manual expense",
+          "es": "Nuevo gasto manual"
+        },
+        "titleEdit": {
+          "en": "Edit manual expense",
+          "es": "Editar gasto manual"
+        },
+        "hint": {
+          "en": "For spending no bank or card line shows (cash you were given, an expense paid back to someone). Cash from a withdrawal: break the withdrawal down instead.",
+          "es": "Para un gasto que ninguna línea del banco o la tarjeta muestra (efectivo que te dieron, un gasto que le devolviste a alguien). Efectivo de un giro: desglosa el giro."
+        },
+        "date": {
+          "en": "Day",
+          "es": "Día"
+        },
+        "amount": {
+          "en": "Amount (CLP)",
+          "es": "Monto (CLP)"
+        },
+        "category": {
+          "en": "Category",
+          "es": "Categoría"
+        },
+        "description": {
+          "en": "What it was",
+          "es": "Qué fue"
+        },
+        "save": {
+          "en": "Save",
+          "es": "Guardar"
+        },
+        "saving": {
+          "en": "Saving…",
+          "es": "Guardando…"
+        },
+        "delete": {
+          "en": "Delete",
+          "es": "Eliminar"
+        },
+        "deleteConfirm": {
+          "en": "Delete this manual expense?",
+          "es": "¿Eliminar este gasto manual?"
+        }
       }
     },
     "kinds": {

@@ -1,4 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Button } from "@crfrsr/ui";
+import { ManualExpenseDialog } from "../components/credit-card/ManualExpenseDialog";
 import { useFlowsExpenses, useFlowsExpensesGastos } from "../queries/hooks";
 import { CreditCardGroupExpensesChart } from "../components/charts/CreditCardGroupExpensesChart";
 import { GroupExpensesMonthTable } from "../components/credit-card/GroupExpensesMonthTable";
@@ -35,6 +37,7 @@ const YEAR_AVERAGE_RANGES: ReadonlySet<TimeRange> = new Set(["3y", "5y", "10y", 
 export function ExpensesPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
+  const [manualOpen, setManualOpen] = useState(false);
   const chartPrefs = useSurfacePrefs("flows.expenses.chart", "month", "3y");
   // A stored Diario from before it was dropped reads as Mensual.
   const metricsPeriod: "month" | "year" = chartPrefs.period === "year" ? "year" : "month";
@@ -196,9 +199,18 @@ export function ExpensesPage() {
           />
           {t("expenses.creditCard.categoryLevelSubcategory")}
         </label>
-        <span style={{ marginLeft: "auto" }}>
+        <span style={{ marginLeft: "auto", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <Button variant="secondary" onClick={() => setManualOpen(true)}>
+            {t("expenses.creditCard.manualExpense.add")}
+          </Button>
           <CreditCardFacturadoFinancingManager lines={data?.lines ?? []} loading={linesLoading} />
         </span>
+        <ManualExpenseDialog
+          open={manualOpen}
+          expense={null}
+          categories={data?.categories ?? []}
+          onClose={() => setManualOpen(false)}
+        />
       </div>
 
       <div

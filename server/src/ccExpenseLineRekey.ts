@@ -359,8 +359,8 @@ export function applyCcLineMoves(
       }
       if (move.copy) {
         db.prepare(
-          `INSERT INTO cc_expense_line_splits (source, line_id, seq, category_id, amount_clp, note)
-           SELECT source, ?, seq, category_id, amount_clp, note FROM cc_expense_line_splits
+          `INSERT INTO cc_expense_line_splits (source, line_id, seq, category_id, amount_clp, note, spent_on)
+           SELECT source, ?, seq, category_id, amount_clp, note, spent_on FROM cc_expense_line_splits
            WHERE source = 'cc' AND line_id = ?`
         ).run(to.lineId, from.lineId);
       } else {
