@@ -606,6 +606,25 @@ export const api = {
       "/api/flows/expenses/credit-card/purchase-notes",
       { method: "PATCH", body: JSON.stringify(body) }
     ),
+  expenseLinePieces: (source: "cc" | "checking", lineId: number) =>
+    j<import("./types").ExpenseLinePieces>(
+      `/api/flows/expenses/line-pieces?source=${source}&line_id=${lineId}`
+    ),
+  putExpenseLinePieces: (body: {
+    source: "cc" | "checking";
+    line_id: number;
+    pieces: import("./types").ExpenseLinePiece[];
+  }) =>
+    j<import("./types").ExpenseLinePieces>("/api/flows/expenses/line-pieces", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  createManualExpense: (body: import("./types").ManualExpenseInput) =>
+    j<{ id: number }>("/api/flows/expenses/manual", { method: "POST", body: JSON.stringify(body) }),
+  updateManualExpense: (id: number, body: import("./types").ManualExpenseInput) =>
+    j<{ ok: boolean }>(`/api/flows/expenses/manual/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteManualExpense: (id: number) =>
+    j<void>(`/api/flows/expenses/manual/${id}`, { method: "DELETE" }),
   putCcExpensePurchaseBigGroup: (body: { purchase_key: string; group_slug: string | null }) =>
     j<{ purchase_key: string; group_slug: string | null }>(
       "/api/flows/expenses/credit-card/purchase-big-group",

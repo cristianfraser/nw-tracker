@@ -204,6 +204,8 @@ export function CreditCardExpenseLinesTable({
   makeInstallmentLineIds,
   onMakeInstallmentLine,
   makeInstallmentBusyLineId,
+  onEditPieces,
+  onEditManual,
   enableCheckingNotes = false,
   loading,
 }: {
@@ -225,6 +227,10 @@ export function CreditCardExpenseLinesTable({
   makeInstallmentLineIds?: ReadonlySet<number>;
   onMakeInstallmentLine?: (line: FlowCcExpenseLineRow) => void;
   makeInstallmentBusyLineId?: number;
+  /** Break a card / checking purchase line into dated pieces (actions column). */
+  onEditPieces?: (line: FlowCcExpenseLineRow) => void;
+  /** Edit or delete a manual expense line (actions column). */
+  onEditManual?: (line: FlowCcExpenseLineRow) => void;
   /** Show note inputs for cuenta corriente (checking) rows — expenses tab only. */
   enableCheckingNotes?: boolean;
   /** Lines still loading: the header renders with no rows (not the empty label), dimmed. */
@@ -233,6 +239,7 @@ export function CreditCardExpenseLinesTable({
   const { t } = useTranslation();
   const selection = useCreditCardExpenseLinesSelection();
   const showRowSelection = showCategoryControls && selection != null;
+  const showActions = showDeleteAction || onEditPieces != null || onEditManual != null;
 
   if (lines.length === 0 && !loading) {
     return <p className="muted" style={{ marginBottom: "1rem" }}>{emptyLabel}</p>;
@@ -279,7 +286,7 @@ export function CreditCardExpenseLinesTable({
               <th>{t("expenses.creditCard.bigGroups.colGroup")}</th>
             ) : null}
             {showNotesColumn ? <th>{t("expenses.creditCard.lineColNotes")}</th> : null}
-            {showDeleteAction ? (
+            {showActions ? (
               <th>{t("accountDetail.creditCard.lineColActions")}</th>
             ) : null}
           </tr>
@@ -303,6 +310,16 @@ export function CreditCardExpenseLinesTable({
           ln.statement_line_id > 0 &&
           !ln.installment_flag;
         const makeInstallmentBusy = makeInstallmentBusyLineId === ln.statement_line_id;
+        const canEditPieces =
+          onEditPieces != null &&
+          (ln.source === "cc" || ln.source === "checking") &&
+          ln.statement_line_id > 0 &&
+          ln.line_role === "purchase" &&
+          !ln.installment_flag &&
+          !ln.checking_refund &&
+          ln.amount_clp > 0;
+        const hasPieces = ln.piece_seq != null || ln.pieces_remainder === true;
+        const canEditManual = onEditManual != null && ln.source === "manual" && ln.statement_line_id > 0;
         const showNoteInput =
           Boolean(ln.purchase_key) &&
           (isCc || (enableCheckingNotes && ln.source === "checking"));
@@ -343,6 +360,13 @@ export function CreditCardExpenseLinesTable({
               {ln.merchant ?? "—"}
               <TransferCounterpartyLine counterparty={ln.transfer_counterparty} />
               <PaymentReceiptLine receipt={ln.payment_receipt} />
+              {hasPieces ? (
+                <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.9em" }}>
+                  {ln.piece_seq != null
+                    ? t("expenses.creditCard.pieces.pieceBadge")
+                    : t("expenses.creditCard.pieces.remainderBadge")}
+                </span>
+              ) : null}
               {ln.cuota_purchase_kind ? (
                 <span
                   title={t(`expenses.creditCard.cuotaPurchasePendingHint.${ln.cuota_purchase_kind}`)}
@@ -449,8 +473,18 @@ export function CreditCardExpenseLinesTable({
                 )}
               </td>
             ) : null}
-            {showDeleteAction ? (
+            {showActions ? (
               <td>
+                {canEditPieces ? (
+                  <Button variant="ghost" onClick={() => onEditPieces?.(ln)}>
+                    {hasPieces ? t("expenses.creditCard.pieces.actionEdit") : t("expenses.creditCard.pieces.action")}
+                  </Button>
+                ) : null}
+                {canEditManual ? (
+                  <Button variant="ghost" onClick={() => onEditManual?.(ln)}>
+                    {t("expenses.creditCard.manualExpense.edit")}
+                  </Button>
+                ) : null}
                 {canMakeInstallment ? (
                   <Button variant="ghost"
                     disabled={makeInstallmentBusy || deleteBusy}
@@ -469,7 +503,7 @@ export function CreditCardExpenseLinesTable({
                   >
                     {t("accountDetail.creditCard.facturacionDeleteLine")}
                   </Button>
-                ) : (!canMakeInstallment ? "—" : null)}
+                ) : (!canMakeInstallment && !canEditPieces && !canEditManual ? "—" : null)}
               </td>
             ) : null}
           </tr>

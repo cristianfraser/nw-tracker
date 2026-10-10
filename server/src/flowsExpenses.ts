@@ -120,6 +120,7 @@ import { loadManualExpenseGastosLineDrafts } from "./flowsManualExpenses.js";
 import { loadPayslipExpenseLineDrafts } from "./payslipExpenseLines.js";
 import { loadCheckingGapDepositMirrorGastosLineDrafts } from "./flowsCheckingGapDepositMirrors.js";
 import { loadCcExpenseLineSplits } from "./ccExpenseLineSplits.js";
+import { resolvePurchaseKeyForGastosLine } from "./ccExpensePurchaseKey.js";
 
 export { listCreditCardMasterAccountIds };
 
@@ -254,6 +255,10 @@ export type FlowCcExpenseLineRow = {
   checking_refund?: true;
   /** The payment processor's receipt for this charge: who it paid, for what (`paymentProcessorReceipts.ts`). */
   payment_receipt?: PaymentReceiptDto;
+  /** One piece of a line split into pieces (`cc_expense_line_splits.seq`). */
+  piece_seq?: number;
+  /** What a line's pieces leave of it: the line's own expense, on its own day. */
+  pieces_remainder?: true;
 
 };
 
@@ -860,6 +865,14 @@ export function loadFinalizedCheckingGastosLinesReadOnly(): Omit<
   );
 }
 
+/**
+ * A card or checking line split into pieces (`cc_expense_line_splits`): each piece is its own line,
+ * in its category, on the day it was spent (the line's day when it names none). Pieces need not
+ * cover the line — a cash withdrawal spent on several things, part of it never accounted for — so
+ * what they leave stays the line's own expense, on its own day; they may not add up to more than
+ * the line (one peso of rounding aside). Only a purchase line takes pieces, and a checking
+ * movement's deposit-paired portion never does.
+ */
 export function expandLineSplitsInDrafts(
   drafts: readonly FlowCcExpenseLineRowDraft[]
 ): FlowCcExpenseLineRowDraft[] {
@@ -868,38 +881,98 @@ export function expandLineSplitsInDrafts(
 
   const result: FlowCcExpenseLineRowDraft[] = [];
   for (const draft of drafts) {
-    if (draft.source === "cc" || draft.source === "checking") {
-      const splits = splitsMap.get(`${draft.source}:${draft.statement_line_id}`);
-      if (splits && splits.length > 0) {
-        for (const split of splits) {
-          // USD amounts allocate by CLP share: split sums equal the parent amount (enforced
-          // at insert), so shares sum back to the parent USD at the parent's FX date.
-          const usdShare = (parentUsd: number | null | undefined): number | null => {
-            if (parentUsd == null) return null;
-            if (draft.amount_clp === 0) {
-              throw new Error(
-                `cannot split USD amounts for ${draft.source}:${draft.statement_line_id}: amount_clp is 0`
-              );
-            }
-            return parentUsd * (split.amount_clp / draft.amount_clp);
-          };
-          const { category_from_bank_name: _fromBankName, ...parent } = draft;
-          result.push({
-            ...parent,
-            amount_clp: split.amount_clp,
-            amount_usd: usdShare(draft.amount_usd),
-            amount_usd_at_expense: usdShare(draft.amount_usd_at_expense),
-            category_slug: split.category_slug,
-            category_unique: true,
-            split_purchase_key_suffix: `#split:${split.seq}`,
-          });
-        }
-        continue;
-      }
+    const splits =
+      (draft.source === "cc" || draft.source === "checking") && draft.checking_purchase_portion !== "deposit"
+        ? splitsMap.get(`${draft.source}:${draft.statement_line_id}`)
+        : undefined;
+    if (!splits || splits.length === 0) {
+      result.push(draft);
+      continue;
     }
-    result.push(draft);
+    const ref = `${draft.source}:${draft.statement_line_id}`;
+    if (draft.line_role !== "purchase") {
+      throw new Error(`line pieces on ${ref}: only a purchase line takes pieces (line_role ${draft.line_role})`);
+    }
+    const piecesClp = splits.reduce((sum, p) => sum + p.amount_clp, 0);
+    if (piecesClp > draft.amount_clp + 1) {
+      throw new Error(`line pieces on ${ref} add up to ${piecesClp}, more than the line's ${draft.amount_clp}`);
+    }
+    // USD amounts allocate by CLP share, at the parent's FX date: the shares of a fully split
+    // line sum back to the parent's USD.
+    const usdShare = (parentUsd: number | null | undefined, clp: number): number | null => {
+      if (parentUsd == null) return null;
+      if (draft.amount_clp === 0) {
+        throw new Error(`cannot split USD amounts for ${ref}: amount_clp is 0`);
+      }
+      return parentUsd * (clp / draft.amount_clp);
+    };
+    const { category_from_bank_name: _fromBankName, ...parent } = draft;
+    for (const split of splits) {
+      const day = split.spent_on;
+      const month = day ? monthKeyFromYmd(day) : null;
+      result.push({
+        ...parent,
+        ...(day && month
+          ? { occurred_on: day, purchase_on: day, expense_month: month, purchase_month: month }
+          : {}),
+        amount_clp: split.amount_clp,
+        amount_usd: usdShare(draft.amount_usd, split.amount_clp),
+        // A peso line's dollars are read on the day the piece was spent; a dollar line's are fixed.
+        amount_usd_at_expense:
+          day && draft.amount_usd == null
+            ? expenseGastosAmountUsdAtDate(split.amount_clp, null, day)
+            : usdShare(draft.amount_usd_at_expense, split.amount_clp),
+        category_slug: split.category_slug,
+        category_unique: true,
+        split_purchase_key_suffix: `#split:${split.seq}`,
+        piece_seq: split.seq,
+      });
+    }
+    const remainderClp = draft.amount_clp - piecesClp;
+    if (remainderClp > 1) {
+      result.push({
+        ...draft,
+        amount_clp: remainderClp,
+        amount_usd: usdShare(draft.amount_usd, remainderClp),
+        amount_usd_at_expense: usdShare(draft.amount_usd_at_expense, remainderClp),
+        pieces_remainder: true,
+      });
+    }
   }
   return result;
+}
+
+/**
+ * The line a set of pieces breaks down (`PUT /api/flows/expenses/line-pieces`): a card or
+ * checking purchase line, its gastos portion for a checking movement. Throws when there is none.
+ */
+export function expenseLineDraftForPieces(
+  source: "cc" | "checking",
+  lineId: number
+): FlowCcExpenseLineRowDraft & { purchase_key: string } {
+  let drafts: FlowCcExpenseLineRowDraft[];
+  if (source === "checking") {
+    drafts = loadCheckingGastosLinesForExpenses();
+  } else {
+    const row = db
+      .prepare(
+        `SELECT s.account_id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE l.id = ?`
+      )
+      .get(lineId) as { account_id: number } | undefined;
+    if (!row) throw new Error(`card line ${lineId} not found`);
+    drafts = buildCcExpenseLines([row.account_id]);
+  }
+  const matches = drafts.filter(
+    (d) => d.statement_line_id === lineId && d.checking_purchase_portion !== "deposit"
+  );
+  if (matches.length !== 1) {
+    throw new Error(`${source} line ${lineId}: ${matches.length} expense lines, expected one`);
+  }
+  const draft = matches[0]!;
+  if (draft.line_role !== "purchase" || draft.amount_clp <= 0) {
+    throw new Error(`${source} line ${lineId} is not a purchase with an amount, it takes no pieces`);
+  }
+  return { ...draft, purchase_key: resolvePurchaseKeyForGastosLine(draft) };
 }
 
 function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]): FlowCcExpenseLineRow[] {

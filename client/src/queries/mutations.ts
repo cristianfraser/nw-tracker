@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type {
+  ManualExpenseInput,
   FlowCcExpenseLineRow,
   FlowCcExpenseLineSource,
   FlowsExpensesResponse,
@@ -618,6 +619,41 @@ export function useDeleteCcFacturadoFinancingLinkMutation() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.ccFacturadoFinancingLinks() });
+    },
+  });
+}
+
+/** Replaces a card or checking line's pieces; the expense lines and gastos views refetch. */
+export function useSaveExpenseLinePiecesMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: Parameters<typeof api.putExpenseLinePieces>[0]) => api.putExpenseLinePieces(vars),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
+    },
+  });
+}
+
+/** Creates a manual expense (no id) or edits one; the expense lines and gastos views refetch. */
+export function useSaveManualExpenseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (vars: { id: number | null; input: ManualExpenseInput }): Promise<void> => {
+      if (vars.id == null) await api.createManualExpense(vars.input);
+      else await api.updateManualExpense(vars.id, vars.input);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
+    },
+  });
+}
+
+export function useDeleteManualExpenseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => api.deleteManualExpense(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
     },
   });
 }

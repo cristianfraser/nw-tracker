@@ -7,6 +7,8 @@ export type CcExpenseLineSplit = {
   category_slug: string;
   amount_clp: number;
   note: string | null;
+  /** The day the piece was spent; null = the line's own day. */
+  spent_on: string | null;
 };
 
 /**
@@ -17,7 +19,7 @@ export type CcExpenseLineSplit = {
 export function loadCcExpenseLineSplits(): Map<string, CcExpenseLineSplit[]> {
   const rows = db
     .prepare(
-      `SELECT s.source, s.line_id, s.seq, c.slug AS category_slug, s.amount_clp, s.note
+      `SELECT s.source, s.line_id, s.seq, c.slug AS category_slug, s.amount_clp, s.note, s.spent_on
        FROM cc_expense_line_splits s
        JOIN cc_expense_categories c ON c.id = s.category_id
        ORDER BY s.source, s.line_id, s.seq`
@@ -29,6 +31,7 @@ export function loadCcExpenseLineSplits(): Map<string, CcExpenseLineSplit[]> {
     category_slug: string;
     amount_clp: number;
     note: string | null;
+    spent_on: string | null;
   }[];
 
   const map = new Map<string, CcExpenseLineSplit[]>();
@@ -42,6 +45,7 @@ export function loadCcExpenseLineSplits(): Map<string, CcExpenseLineSplit[]> {
       category_slug: row.category_slug,
       amount_clp: row.amount_clp,
       note: row.note,
+      spent_on: row.spent_on,
     });
     map.set(key, arr);
   }

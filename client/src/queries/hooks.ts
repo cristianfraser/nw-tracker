@@ -634,6 +634,9 @@ export {
   useUnmatchRealEstateExpenseMutation,
   useUpsertCcFacturadoFinancingLinkMutation,
   useDeleteCcFacturadoFinancingLinkMutation,
+  useSaveExpenseLinePiecesMutation,
+  useSaveManualExpenseMutation,
+  useDeleteManualExpenseMutation,
 } from "./mutations";
 
 export function useAccountMonthlyPerformance(id: string | undefined, unit: DisplayUnit) {

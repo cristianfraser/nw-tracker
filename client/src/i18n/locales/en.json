@@ -1266,7 +1266,42 @@
       },
       "categoryLevelLabel": "Group by",
       "categoryLevelCategory": "Categories",
-      "categoryLevelSubcategory": "Subcategories"
+      "categoryLevelSubcategory": "Subcategories",
+      "pieces": {
+        "action": "Break down",
+        "actionEdit": "Pieces",
+        "title": "Break down: {{merchant}}",
+        "intro": "Each piece is its own expense, on the day it was spent. What the pieces leave stays this line's expense, on {{date}}.",
+        "colDate": "Day",
+        "colAmount": "Amount",
+        "colCategory": "Category",
+        "add": "Add piece",
+        "remove": "Remove",
+        "line": "Line",
+        "inPieces": "In pieces",
+        "remainder": "Left on the line",
+        "over": "The pieces add up to more than the line.",
+        "amountRequired": "Each piece needs an amount above 0.",
+        "save": "Save",
+        "saving": "Saving…",
+        "pieceBadge": "piece",
+        "remainderBadge": "not broken down"
+      },
+      "manualExpense": {
+        "add": "Manual expense",
+        "edit": "Edit",
+        "titleNew": "New manual expense",
+        "titleEdit": "Edit manual expense",
+        "hint": "For spending no bank or card line shows (cash you were given, an expense paid back to someone). Cash from a withdrawal: break the withdrawal down instead.",
+        "date": "Day",
+        "amount": "Amount (CLP)",
+        "category": "Category",
+        "description": "What it was",
+        "save": "Save",
+        "saving": "Saving…",
+        "delete": "Delete",
+        "deleteConfirm": "Delete this manual expense?"
+      }
     },
     "kinds": {
       "gas": "Gas",
