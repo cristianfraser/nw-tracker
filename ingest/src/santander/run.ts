@@ -12,7 +12,7 @@ import { assertRunAllowed } from "../runGuard.js";
 import { setForceRefetch } from "../documentLedger.js";
 import { assertValidSteps, shouldRunStep } from "../steps.js";
 import type { RunOptions, StepResult } from "../runTypes.js";
-import { isLoggedIn, login } from "./login.js";
+import { isPrivateAppUrl, login } from "./login.js";
 import { assertLoginNotLatched } from "./loginLatch.js";
 import { LOGIN_HOSTS } from "./routes.js";
 import { fetchCardMovements, fetchCardStatements } from "./cards.js";
@@ -34,7 +34,41 @@ import { statementsDueToday } from "./statementSchedule.js";
  */
 const MAX_BROWSER_RELAUNCHES = 1;
 
+/** Two URL reads this far apart that agree count as a settled window (see `sessionVerdict`). */
+const URL_STABILITY_PAUSE_MS = 300;
+/** Upper bound on waiting for the URL to stop moving before a step; past it the last read decides. */
+const URL_STABILITY_MAX_MS = 5_000;
+
 type Session = { context: BrowserContext; page: Page; keepAlive: SessionKeepAlive };
+
+export type SessionVerdict = "logged_in" | "logged_out" | "moving";
+
+/**
+ * What two consecutive URL reads say about the session: the same URL twice is a settled window
+ * (judged by its route), a changed URL is a navigation in flight and no verdict yet. A plain
+ * `isLoggedIn` read once raced the inactivity logout's redirect — the URL still read `#/private/`
+ * while the public site was loading — so the dropped session passed as logged in and the step
+ * failed on selectors that no longer existed instead of logging in again.
+ */
+export function sessionVerdict(urlBefore: string, urlAfter: string): SessionVerdict {
+  if (urlBefore !== urlAfter) return "moving";
+  return isPrivateAppUrl(urlAfter) ? "logged_in" : "logged_out";
+}
+
+/** `isLoggedIn` judged on a URL that held still for one pause; a URL still moving after the bound is read as is. */
+async function sessionIsLoggedIn(page: Page): Promise<boolean> {
+  const deadline = Date.now() + URL_STABILITY_MAX_MS;
+  let before = page.url();
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(URL_STABILITY_PAUSE_MS);
+    const after = page.url();
+    const verdict = sessionVerdict(before, after);
+    if (verdict !== "moving") return verdict === "logged_in";
+    log(`(page navigating before the step: ${before} → ${after})`);
+    before = after;
+  }
+  return isPrivateAppUrl(page.url());
+}
 
 function browserIsGone(session: Session, err: unknown): boolean {
   return session.page.isClosed() || BROWSER_GONE_PATTERN.test(errorMessage(err));
@@ -79,7 +113,7 @@ export async function runSantander(opts: RunOptions): Promise<number> {
     try {
       const page = await firstPage(context);
       recorder.attach(page);
-      await login(page, config.rut, password);
+      await login(page, recorder, config.rut, password);
       return { context, page, keepAlive: keepSessionAlive(page) };
     } catch (err) {
       await context.close().catch((closeErr: unknown) => {
@@ -119,10 +153,11 @@ export async function runSantander(opts: RunOptions): Promise<number> {
     for (;;) {
       try {
         // The inactivity prompt can still win a race with the keep-alive poll; a logged-out page
-        // would otherwise fail every remaining step on selectors that no longer exist.
-        if (!session.page.isClosed() && !isLoggedIn(session.page)) {
+        // would otherwise fail every remaining step on selectors that no longer exist. The URL is
+        // read on a still window (`sessionIsLoggedIn`): judged mid-redirect it once read logged in.
+        if (!session.page.isClosed() && !(await sessionIsLoggedIn(session.page))) {
           log(`session is no longer logged in before "${name}" — logging in again`);
-          await login(session.page, config.rut, password);
+          await login(session.page, recorder, config.rut, password);
         }
         const detail = await run(session.page);
         results.push({ name, ok: true, detail });

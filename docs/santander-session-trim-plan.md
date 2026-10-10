@@ -137,3 +137,7 @@ step 22 → ~14 s expected with a dead arrow (the arrow's 5 s wait per card is t
 keeping the fast path when it comes back), statements per card: route 8 s + 2 × 4 s tab settles
 + 4 s slide settle → one tab click plus the calls themselves. The login's ~36 s of settles (Pass B)
 dominate what is left.
+
+## Pass B — done (2026-10-10 03:04, capture `2026-10-10T03-03-54`)
+
+The homepage waits for the login button instead of networkidle (30 s cap, diagnostics on timeout); after the redirect the session waits for `isLoggedIn` plus a new `cruceProductosOnline` (20 s cap; the «session still valid» branch waits the same way); `gotoRoute` was deleted (no callers, every step uses `openRoute`); the runner judges the pre-step login state only on a URL that held still for 300 ms. Timings launch → logged in / launch → summary: run 268 (card + checking + USD) 48 s / 106 s; 02:57 capture (card + statements) ≈38 s / 74 s; Pass B card-only 14 s / 31 s. No «network still busy» line left in the session.
