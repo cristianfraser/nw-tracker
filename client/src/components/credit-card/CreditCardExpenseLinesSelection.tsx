@@ -134,13 +134,11 @@ export function CreditCardExpenseLinesBulkFooter({
 
   const uniquePurchases = useMemo(() => {
     const seen = new Set<string>();
-    const out: { account_id: number; purchase_key: string }[] = [];
+    const out: { purchase_key: string }[] = [];
     for (const line of selectedLines) {
-      if (!line.purchase_key) continue;
-      const key = `${line.account_id}|${line.purchase_key}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ account_id: line.account_id, purchase_key: line.purchase_key });
+      if (!line.purchase_key || seen.has(line.purchase_key)) continue;
+      seen.add(line.purchase_key);
+      out.push({ purchase_key: line.purchase_key });
     }
     return out;
   }, [selectedLines]);
@@ -187,7 +185,6 @@ export function CreditCardExpenseLinesBulkFooter({
       await Promise.all(
         uniquePurchases.map((p) =>
           putBigGroup.mutateAsync({
-            account_id: p.account_id,
             purchase_key: p.purchase_key,
             group_slug: groupSlug,
           })

@@ -553,15 +553,9 @@ app.patch("/api/flows/expenses/credit-card/purchase-notes", (req, res) => {
 
 app.put("/api/flows/expenses/credit-card/purchase-big-group", (req, res) => {
   const body = req.body as {
-    account_id?: number;
     purchase_key?: string;
     group_slug?: string | null;
   };
-  const accountId = Number(body.account_id);
-  if (!Number.isFinite(accountId) || accountId <= 0) {
-    res.status(400).json({ error: "invalid account_id" });
-    return;
-  }
   const purchaseKey = String(body.purchase_key ?? "").trim();
   if (!purchaseKey) {
     res.status(400).json({ error: "purchase_key required" });
@@ -569,12 +563,10 @@ app.put("/api/flows/expenses/credit-card/purchase-big-group", (req, res) => {
   }
   try {
     const result = setCcExpensePurchaseBigGroup({
-      accountId,
       purchaseKey,
       groupSlug: body.group_slug,
     });
     res.json({
-      account_id: accountId,
       purchase_key: purchaseKey,
       group_slug: result.group_slug,
     });

@@ -238,7 +238,6 @@ export function useAssignCcExpenseLineCategory() {
 }
 
 export type PutCcExpensePurchaseBigGroupVars = {
-  account_id: number;
   purchase_key: string;
   group_slug: string | null;
 };
@@ -251,7 +250,7 @@ export function applyCcExpensePurchaseBigGroupPatch(
   return {
     ...data,
     lines: data.lines.map((ln) => {
-      if (!expenseLineMatchesPurchaseBigGroupPatch(ln, vars.account_id, vars.purchase_key)) {
+      if (!expenseLineMatchesPurchaseBigGroupPatch(ln, vars.purchase_key)) {
         return ln;
       }
       return { ...ln, big_group_slug: vars.group_slug };
@@ -277,7 +276,6 @@ export function usePutCcExpensePurchaseBigGroupMutation() {
     onSuccess: (result) => {
       queryClient.setQueryData<FlowsExpensesResponse>(queryKey, (old) =>
         applyCcExpensePurchaseBigGroupPatch(old, {
-          account_id: result.account_id,
           purchase_key: result.purchase_key,
           group_slug: result.group_slug,
         })

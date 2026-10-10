@@ -189,11 +189,23 @@ export function planCcLineMoves(
 
 type KeyedTable = "cc_expense_unique_purchases" | "cc_expense_purchase_big_groups" | "cc_expense_purchase_notes";
 
-const KEYED_TABLES: { table: KeyedTable; column: string }[] = [
-  { table: "cc_expense_unique_purchases", column: "category_id" },
-  { table: "cc_expense_purchase_big_groups", column: "group_slug" },
-  { table: "cc_expense_purchase_notes", column: "notes" },
+/** `accountScoped`: the row is keyed by (account, purchase key); big groups by the key alone. */
+const KEYED_TABLES: { table: KeyedTable; column: string; accountScoped: boolean }[] = [
+  { table: "cc_expense_unique_purchases", column: "category_id", accountScoped: true },
+  { table: "cc_expense_purchase_big_groups", column: "group_slug", accountScoped: false },
+  { table: "cc_expense_purchase_notes", column: "notes", accountScoped: true },
 ];
+
+/** WHERE clause + params naming one keyed row of `spec`. */
+function keyedRow(
+  spec: { accountScoped: boolean },
+  accountId: number,
+  key: string
+): { where: string; params: (number | string)[] } {
+  return spec.accountScoped
+    ? { where: "account_id = ? AND purchase_key = ?", params: [accountId, key] }
+    : { where: "purchase_key = ?", params: [key] };
+}
 
 export type CcLineMoveConflict = {
   table: KeyedTable | "cc_expense_line_splits";
@@ -224,8 +236,9 @@ function linePrKey(ref: CcLineRef): string | null {
 export function ccLineHasExpenseAssignments(ref: CcLineRef): boolean {
   const key = linePrKey(ref);
   if (key) {
-    for (const { table } of KEYED_TABLES) {
-      if (db.prepare(`SELECT 1 FROM ${table} WHERE account_id = ? AND purchase_key = ?`).get(ref.accountId, key)) {
+    for (const spec of KEYED_TABLES) {
+      const row = keyedRow(spec, ref.accountId, key);
+      if (db.prepare(`SELECT 1 FROM ${spec.table} WHERE ${row.where}`).get(...row.params)) {
         return true;
       }
     }
@@ -269,10 +282,16 @@ export function applyCcLineMoves(
     const fromKey = linePrKey(from);
     const toKey = linePrKey(to);
     if (fromKey && toKey && fromKey !== toKey && from.accountId === to.accountId) {
-      for (const { table, column } of KEYED_TABLES) {
+      for (const spec of KEYED_TABLES) {
+        const { table, column } = spec;
         if (move.classificationOnly && table === "cc_expense_purchase_notes") continue;
-        const get = db.prepare(`SELECT ${column} AS v FROM ${table} WHERE account_id = ? AND purchase_key = ?`);
-        const stored = get.get(from.accountId, fromKey) as { v: unknown } | undefined;
+        const fromRow = keyedRow(spec, from.accountId, fromKey);
+        const toRow = keyedRow(spec, to.accountId, toKey);
+        const get = (r: { where: string; params: (number | string)[] }) =>
+          db.prepare(`SELECT ${column} AS v FROM ${table} WHERE ${r.where}`).get(...r.params) as
+            | { v: unknown }
+            | undefined;
+        const stored = get(fromRow);
         if (!stored) continue;
         if (opts?.skipCategorylessUnique && table === "cc_expense_unique_purchases" && stored.v == null) {
           out.categoryless_unique_skipped += 1;
@@ -282,35 +301,36 @@ export function applyCcLineMoves(
           out.kept_current += 1;
           continue;
         }
-        const current = get.get(to.accountId, toKey) as { v: unknown } | undefined;
-        const del = () =>
-          db.prepare(`DELETE FROM ${table} WHERE account_id = ? AND purchase_key = ?`).run(from.accountId, fromKey);
+        const current = get(toRow);
+        const del = () => db.prepare(`DELETE FROM ${table} WHERE ${fromRow.where}`).run(...fromRow.params);
         const targetEmpty =
           !current || (table === "cc_expense_purchase_notes" && String(current.v ?? "").trim() === "");
         if (targetEmpty) {
-          if (current) db.prepare(`DELETE FROM ${table} WHERE account_id = ? AND purchase_key = ?`).run(to.accountId, toKey);
+          if (current) db.prepare(`DELETE FROM ${table} WHERE ${toRow.where}`).run(...toRow.params);
           if (move.copy) {
-            db.prepare(`INSERT INTO ${table} (account_id, purchase_key, ${column}) VALUES (?, ?, ?)`).run(
-              to.accountId,
-              toKey,
-              stored.v
-            );
+            if (spec.accountScoped) {
+              db.prepare(`INSERT INTO ${table} (account_id, purchase_key, ${column}) VALUES (?, ?, ?)`).run(
+                to.accountId,
+                toKey,
+                stored.v as string | number | null
+              );
+            } else {
+              db.prepare(`INSERT INTO ${table} (purchase_key, ${column}) VALUES (?, ?)`).run(
+                toKey,
+                stored.v as string | number | null
+              );
+            }
           } else {
-            db.prepare(`UPDATE ${table} SET purchase_key = ? WHERE account_id = ? AND purchase_key = ?`).run(
-              toKey,
-              from.accountId,
-              fromKey
-            );
+            db.prepare(`UPDATE ${table} SET purchase_key = ? WHERE ${fromRow.where}`).run(toKey, ...fromRow.params);
           }
           out.moved[table] += 1;
         } else if (current.v === stored.v) {
           if (!move.copy) del();
           out.duplicates_removed += 1;
         } else if (opts?.preferStoredKeys?.has(fromKey)) {
-          db.prepare(`UPDATE ${table} SET ${column} = ? WHERE account_id = ? AND purchase_key = ?`).run(
-            stored.v,
-            to.accountId,
-            toKey
+          db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${toRow.where}`).run(
+            stored.v as string | number | null,
+            ...toRow.params
           );
           if (!move.copy) del();
           out.overridden += 1;
@@ -360,10 +380,11 @@ function assignmentSignature(ref: CcLineRef): string | null {
   const key = linePrKey(ref);
   const parts: unknown[] = [];
   if (key) {
-    for (const { table, column } of KEYED_TABLES) {
+    for (const spec of KEYED_TABLES) {
+      const row = keyedRow(spec, ref.accountId, key);
       const r = db
-        .prepare(`SELECT ${column} AS v FROM ${table} WHERE account_id = ? AND purchase_key = ?`)
-        .get(ref.accountId, key) as { v: unknown } | undefined;
+        .prepare(`SELECT ${spec.column} AS v FROM ${spec.table} WHERE ${row.where}`)
+        .get(...row.params) as { v: unknown } | undefined;
       parts.push(r ? ["row", r.v] : null);
     }
   }

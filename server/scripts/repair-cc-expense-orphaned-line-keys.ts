@@ -61,7 +61,8 @@ function liveLines(accountId: number): CcLineRef[] {
 const keyedRows = db
   .prepare(
     `SELECT account_id, purchase_key FROM cc_expense_unique_purchases WHERE purchase_key LIKE 'line-pr:%'
-     UNION SELECT account_id, purchase_key FROM cc_expense_purchase_big_groups WHERE purchase_key LIKE 'line-pr:%'
+     -- Big groups carry no account (migration 235): one sharing its key with a category or note
+     -- row is found through that row; one alone is not reported here.
      UNION SELECT account_id, purchase_key FROM cc_expense_purchase_notes WHERE purchase_key LIKE 'line-pr:%'`
   )
   .all() as { account_id: number; purchase_key: string }[];

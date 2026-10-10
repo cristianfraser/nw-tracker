@@ -84,10 +84,10 @@ export function expenseLineMatchesPurchaseNotePatch(
 
 export function expenseLineMatchesPurchaseBigGroupPatch(
   ln: FlowCcExpenseLineRow,
-  accountId: number,
   purchaseKey: string
 ): boolean {
-  return ln.account_id === accountId && ln.purchase_key === purchaseKey;
+  // A big group belongs to the expense: its purchase key names it whichever account paid it.
+  return ln.purchase_key === purchaseKey;
 }
 
 export function isInstallmentCuotaZeroLine(line: {
