@@ -224,6 +224,70 @@ describe("matchPaymentReceipts: receipts abroad", () => {
   });
 });
 
+describe("matchPaymentReceipts: stays", () => {
+  const stay = (id: string, sent: string, amount: number, payee: string, checkIn: string, checkOut: string, descriptor: string | null = null): StoredPaymentReceipt => ({
+    ...receipt(id, sent, amount, "booking"),
+    currency: "eur",
+    payee,
+    order_ref: id,
+    statement_descriptor: descriptor,
+    stay: { check_in: checkIn, check_out: checkOut, city: "Ciudad" },
+  });
+  const eurLine = (key: string, on: string, eur: number, merchant: string) => line(key, on, Math.round(eur * 1000), merchant, { amount_usd: eur * 1.1, amount_orig: eur });
+
+  it("pairs a stay the property charged at booking or at check-in, weeks after the mail", () => {
+    const { byPurchaseKey } = matchPaymentReceipts(
+      [stay("s1", "2036-03-01 10:00", 595.91, "Hotel Prueba", "2036-07-08", "2036-07-11")],
+      [eurLine("early", "2036-03-02", 595.91, "OTRO"), eurLine("checkin", "2036-07-08", 595.91, "HOTEL PRUEBA")]
+    );
+    expect(byPurchaseKey.get("checkin")?.message_id).toBe("s1"); // the check-in day itself beats a day after the mail
+    const atBooking = matchPaymentReceipts(
+      [stay("s1", "2036-03-01 10:00", 595.91, "Hotel Prueba", "2036-07-08", "2036-07-11")],
+      [eurLine("early", "2036-03-02", 595.91, "HOTEL PRUEBA")]
+    );
+    expect(atBooking.byPurchaseKey.get("early")?.message_id).toBe("s1");
+    const later = matchPaymentReceipts(
+      [stay("s1", "2036-03-01 10:00", 595.91, "Hotel Prueba", "2036-07-08", "2036-07-11")],
+      [eurLine("checkin", "2036-07-08", 595.91, "HOTEL PRUEBA")]
+    );
+    expect(later.byPurchaseKey.get("checkin")?.message_id).toBe("s1");
+  });
+
+  it("pairs only a reservation's latest Booking mail", () => {
+    const { byPurchaseKey } = matchPaymentReceipts(
+      [
+        { ...stay("old", "2036-05-01 10:00", 452.81, "Hotel Uno", "2036-06-06", "2036-06-11", "Hotel at Booking.com"), sent_at_chile: "2036-05-01 10:00" },
+        // An update restates the reservation, its payment still dated the day it was taken.
+        { ...stay("new", "2036-05-01 10:00", 452.81, "Hotel Uno", "2036-06-06", "2036-06-11", "Hotel at Booking.com"), order_ref: "old", sent_at_chile: "2036-05-03 09:00" },
+      ],
+      [eurLine("paid", "2036-05-01", 452.81, "Hotel at Booking.com")]
+    );
+    expect(byPurchaseKey.get("paid")?.message_id).toBe("new");
+  });
+
+  it("links a stay no line carries at its amount to the lines named like the property during the stay, as a guess", () => {
+    const { byPurchaseKey, chargeByPurchaseKey, unpaired } = matchPaymentReceipts(
+      [stay("g", "2036-09-01 10:00", 258.48, "Résidence Exemple Prueba", "2036-10-02", "2036-10-06")],
+      [
+        eurLine("a", "2036-10-02", 69.12, "EXEMPLE PLAGE"),
+        eurLine("b", "2036-10-02", 192.56, "EXEMPLE PLAGE"),
+        eurLine("other", "2036-10-03", 50, "RESIDENCE OTRA"),
+        eurLine("square", "2036-10-03", 40, "TIENDA PRUEBA"),
+        eurLine("town", "2036-10-03", 30, "SUPER CIUDAD"),
+        eurLine("late", "2036-10-09", 10, "EXEMPLE PLAGE"),
+      ]
+    );
+    expect(byPurchaseKey.get("a")).toMatchObject({ message_id: "g", guess_basis: "stay dates and property name" });
+    expect(byPurchaseKey.get("b")?.message_id).toBe("g");
+    expect(chargeByPurchaseKey.get("b")).toEqual({ position: 2, of: 2 });
+    expect(byPurchaseKey.has("other")).toBe(false);
+    expect(byPurchaseKey.has("square")).toBe(false); // «Prueba» is not the name's first word
+    expect(byPurchaseKey.has("town")).toBe(false); // the stay's city
+    expect(byPurchaseKey.has("late")).toBe(false);
+    expect(unpaired).toEqual({});
+  });
+});
+
 describe("storePaymentProcessorReceipts", () => {
   const ID = "<vitest-ml-split@test>";
   afterEach(() => {
