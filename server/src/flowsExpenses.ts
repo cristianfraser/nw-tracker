@@ -184,11 +184,11 @@ export type FlowCcExpenseLineRow = {
   category_unique: boolean;
 
   /**
-   * Nothing assigned the line a category (it reads «sin categoría» by default): a document that
-   * shows the charge is a subscription's may still place it (`withSubscriptionCategory`). Dropped
-   * from the finalized lines.
+   * Only the bank's name for the charge decided the line's category (a merchant rule, or «sin
+   * categoría» by default): a document naming the real vendor may place it instead
+   * (`withSubscriptionCategory`). Dropped from the finalized lines.
    */
-  category_by_default?: true;
+  category_from_bank_name?: true;
 
   installment_flag: number;
 
@@ -746,7 +746,7 @@ export function buildCcExpenseLines(
 
       category_unique: categoryUnique,
 
-      ...(categoryResolution.byDefault && resolvedCategorySlug === categorySlug ? { category_by_default: true as const } : {}),
+      ...(categoryResolution.fromBankName && resolvedCategorySlug === categorySlug ? { category_from_bank_name: true as const } : {}),
 
       origin_card_last4: row.origin_card_last4,
 
@@ -866,7 +866,7 @@ export function expandLineSplitsInDrafts(
             }
             return parentUsd * (split.amount_clp / draft.amount_clp);
           };
-          const { category_by_default: _byDefault, ...parent } = draft;
+          const { category_from_bank_name: _fromBankName, ...parent } = draft;
           result.push({
             ...parent,
             amount_clp: split.amount_clp,
@@ -897,16 +897,17 @@ function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]):
 }
 
 /**
- * A line nothing assigned a category, whose charge a document shows is a subscription's (a renewing
- * App Store item, Uber One), reads «Suscripciones»; every other line keeps its category. The
- * default marker is dropped here.
+ * A charge a document shows is a subscription's (a renewing App Store item, Uber One) reads
+ * «Suscripciones» when only the bank's name for it decided its category — a merchant rule or none:
+ * the document names the real vendor, the bank only the processor («UBER» covers rides and Uber
+ * One alike). A category set on the line itself, or an «Único» row, stays. The marker is dropped.
  */
-export function withSubscriptionCategory<L extends { category_slug: string; category_by_default?: true; payment_receipt?: { subscription: boolean } }>(
+export function withSubscriptionCategory<L extends { category_slug: string; category_from_bank_name?: true; payment_receipt?: { subscription: boolean } }>(
   lines: L[]
 ): L[] {
   return lines.map((l) => {
-    if (!l.category_by_default) return l;
-    const { category_by_default: _byDefault, ...rest } = l;
+    if (!l.category_from_bank_name) return l;
+    const { category_from_bank_name: _fromBankName, ...rest } = l;
     return (l.payment_receipt?.subscription ? { ...rest, category_slug: SUBSCRIPTIONS_CC_EXPENSE_SLUG } : rest) as L;
   });
 }

@@ -380,15 +380,26 @@ export function resolveCcExpenseCategorySlug(opts: ResolveCcExpenseCategoryOpts)
 }
 
 /**
- * A line's category, and whether it is only the default: nothing — an «Único» row, a line override,
- * a merchant rule, the traspaso or cancelled-plan rules — assigned one.
+ * A line's category, and whether only the bank's name for the charge decided it: a merchant rule
+ * (keyed on that name), or nothing at all («sin categoría» by default). A document naming the
+ * charge's real vendor may then place the line instead; an «Único» row, a line override and the
+ * traspaso / cancelled-plan rules are about this line and stay.
  */
-export function resolveCcExpenseCategory(opts: ResolveCcExpenseCategoryOpts): { slug: string; byDefault: boolean } {
-  const slug = resolveAssignedCcExpenseCategorySlug(opts);
-  return slug == null ? { slug: UNCLASSIFIED_CC_EXPENSE_SLUG, byDefault: true } : { slug, byDefault: false };
+export function resolveCcExpenseCategory(opts: ResolveCcExpenseCategoryOpts): { slug: string; fromBankName: boolean } {
+  const assigned = resolveAssignedCcExpenseCategory(opts);
+  if (assigned == null) return { slug: UNCLASSIFIED_CC_EXPENSE_SLUG, fromBankName: true };
+  return { slug: assigned.slug, fromBankName: assigned.byMerchantRule };
 }
 
-function resolveAssignedCcExpenseCategorySlug(opts: ResolveCcExpenseCategoryOpts): string | null {
+function resolveAssignedCcExpenseCategory(opts: ResolveCcExpenseCategoryOpts): { slug: string; byMerchantRule: boolean } | null {
+  let byMerchantRule = false;
+  const slug = resolveAssignedCcExpenseCategorySlug(opts, () => {
+    byMerchantRule = true;
+  });
+  return slug == null ? null : { slug, byMerchantRule };
+}
+
+function resolveAssignedCcExpenseCategorySlug(opts: ResolveCcExpenseCategoryOpts, onMerchantRule: () => void): string | null {
   const uniqueKey = uniquePurchaseMapKey(opts.accountId, opts.purchaseKey);
   let uniqueSlug = opts.uniquePurchases.get(uniqueKey);
   if (uniqueSlug == null) {
@@ -434,7 +445,10 @@ function resolveAssignedCcExpenseCategorySlug(opts: ResolveCcExpenseCategoryOpts
       opts.merchantKey,
       opts.merchantRules
     );
-    if (merchantSlug) return merchantSlug;
+    if (merchantSlug) {
+      onMerchantRule();
+      return merchantSlug;
+    }
   }
 
   if (isCancelledInstallmentPurchaseKey(opts.accountId, opts.purchaseKey)) {
