@@ -14,6 +14,22 @@ export const receiptChargeSchema = z
 
 export type ReceiptCharge = z.infer<typeof receiptChargeSchema>;
 
+const chileStamp = z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+
+/** A ride the receipt is for: where it started and ended, as the receipt prints them. */
+export const receiptTripSchema = z
+  .object({
+    from: text,
+    to: text,
+    /** Chile clock, `YYYY-MM-DD HH:MM`, when printed. */
+    started_at_chile: chileStamp.nullable(),
+    ended_at_chile: chileStamp.nullable(),
+    distance_km: z.number().nonnegative().nullable(),
+  })
+  .strict();
+
+export type ReceiptTrip = z.infer<typeof receiptTripSchema>;
+
 export const processorReceiptSchema = z
   .object({
     /** The mail's Message-ID: the receipt's identity. */
@@ -52,6 +68,10 @@ export const processorReceiptSchema = z
      * `amount`. Null = one charge of `amount`.
      */
     charges: z.array(receiptChargeSchema).min(2).nullable(),
+    /** The ride, for a receipt of one (Uber). */
+    trip: receiptTripSchema.nullable().optional(),
+    /** The document states the payment is a subscription's (Uber One's monthly charge). */
+    subscription: z.boolean().optional(),
   })
   .strict()
   .refine((r) => r.amount == null || r.currency !== "clp" || Number.isInteger(r.amount), { message: "pesos must be whole" })

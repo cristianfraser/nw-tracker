@@ -18,6 +18,8 @@ export function primaryCreditCardExpensesGroupSlug(): string {
 }
 
 export const UNCLASSIFIED_CC_EXPENSE_SLUG = "unclassified";
+/** Where a charge a document shows is a subscription's lands when nothing else categorizes it. */
+export const SUBSCRIPTIONS_CC_EXPENSE_SLUG = "subscriptions";
 
 /** Excluded from gasto del mes, acumulado, chart stacks, and page total. */
 export const NO_CUENTA_CC_EXPENSE_SLUG = "no_cuenta";
@@ -362,7 +364,7 @@ function uniquePurchaseModeKeysForResolve(
   return keys;
 }
 
-export function resolveCcExpenseCategorySlug(opts: {
+type ResolveCcExpenseCategoryOpts = {
   statementLineId: number;
   accountId: number;
   merchantKey: string;
@@ -371,7 +373,22 @@ export function resolveCcExpenseCategorySlug(opts: {
   merchantRules: Map<string, string>;
   uniquePurchases: Map<string, string>;
   uniquePurchaseModeKeys?: Set<string>;
-}): string {
+};
+
+export function resolveCcExpenseCategorySlug(opts: ResolveCcExpenseCategoryOpts): string {
+  return resolveCcExpenseCategory(opts).slug;
+}
+
+/**
+ * A line's category, and whether it is only the default: nothing — an «Único» row, a line override,
+ * a merchant rule, the traspaso or cancelled-plan rules — assigned one.
+ */
+export function resolveCcExpenseCategory(opts: ResolveCcExpenseCategoryOpts): { slug: string; byDefault: boolean } {
+  const slug = resolveAssignedCcExpenseCategorySlug(opts);
+  return slug == null ? { slug: UNCLASSIFIED_CC_EXPENSE_SLUG, byDefault: true } : { slug, byDefault: false };
+}
+
+function resolveAssignedCcExpenseCategorySlug(opts: ResolveCcExpenseCategoryOpts): string | null {
   const uniqueKey = uniquePurchaseMapKey(opts.accountId, opts.purchaseKey);
   let uniqueSlug = opts.uniquePurchases.get(uniqueKey);
   if (uniqueSlug == null) {
@@ -424,7 +441,7 @@ export function resolveCcExpenseCategorySlug(opts: {
     return NO_CUENTA_CC_EXPENSE_SLUG;
   }
 
-  return UNCLASSIFIED_CC_EXPENSE_SLUG;
+  return null;
 }
 
 function resolveInstallmentPurchaseIdsFromKey(

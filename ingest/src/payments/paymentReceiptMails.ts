@@ -10,6 +10,7 @@
  */
 import type { ProcessorReceipt } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/santanderMailArchive.js";
+import { LATAM_PROCESSORS } from "./latamMails.js";
 
 export type PaymentProcessor = {
   slug: string;
@@ -713,6 +714,7 @@ export const PAYMENT_PROCESSORS: readonly PaymentProcessor[] = [
     wantSubject: (x) => MERCADOLIBRE_ORDER_SUBJECT.test(x),
     decode: decodeMercadoLibreOrder,
   },
+  ...LATAM_PROCESSORS,
 ];
 
 export function decodePaymentReceiptMail(processor: PaymentProcessor, mail: ArchivedMail): ProcessorReceipt | null {

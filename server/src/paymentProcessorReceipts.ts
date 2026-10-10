@@ -7,7 +7,7 @@
  * keys on the line's purchase key and the receipt's pesos and payment day; see `matchPaymentReceipts`.
  */
 import { createHash } from "node:crypto";
-import type { PaymentProcessorReceiptsPayload, ProcessorReceipt } from "nw-tracker-contracts";
+import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptTrip } from "nw-tracker-contracts";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { db } from "./db.js";
 import { deriveMerchantChargeLinks } from "./merchantExpenseNotes.js";
@@ -27,6 +27,12 @@ const COLUMNS = [
   "statement_descriptor",
   "payment_method",
   "installments",
+  "trip_from",
+  "trip_to",
+  "trip_started_at_chile",
+  "trip_ended_at_chile",
+  "trip_distance_km",
+  "subscription",
 ] as const;
 
 type ReceiptRow = Record<(typeof COLUMNS)[number], string | number | null>;
@@ -47,6 +53,12 @@ function receiptRow(r: ProcessorReceipt): ReceiptRow {
     statement_descriptor: r.statement_descriptor,
     payment_method: r.payment_method,
     installments: r.installments,
+    trip_from: r.trip?.from ?? null,
+    trip_to: r.trip?.to ?? null,
+    trip_started_at_chile: r.trip?.started_at_chile ?? null,
+    trip_ended_at_chile: r.trip?.ended_at_chile ?? null,
+    trip_distance_km: r.trip?.distance_km ?? null,
+    subscription: r.subscription ? 1 : 0,
   };
 }
 
@@ -112,9 +124,15 @@ export type PaymentReceiptDto = {
   guess: boolean;
   /** What the link rests on («receipt 2026-05-02», «subscription renewal notice», «monthly run»). */
   basis: string | null;
+  /** The ride the charge paid for (Uber), as the receipt prints it. */
+  trip: ReceiptTrip | null;
+  /** The charge is a subscription's (a renewing App Store item, Uber One). */
+  subscription: boolean;
 };
 
-export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge"> & {
+export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge" | "trip" | "subscription"> & {
+  trip?: ReceiptTrip | null;
+  subscription?: boolean;
   message_id: string;
   /** Null when the document states none: it pairs by its day and the charge's name. */
   amount: number | null;
@@ -149,6 +167,17 @@ export function loadPaymentProcessorReceipts(): StoredPaymentReceipt[] {
     installments: (r.installments as number | null) ?? null,
     amount: r.amount == null ? null : Number(r.amount),
     currency: receiptCurrency(r),
+    trip:
+      r.trip_from == null
+        ? null
+        : {
+            from: String(r.trip_from),
+            to: String(r.trip_to),
+            started_at_chile: (r.trip_started_at_chile as string | null) ?? null,
+            ended_at_chile: (r.trip_ended_at_chile as string | null) ?? null,
+            distance_km: r.trip_distance_km == null ? null : Number(r.trip_distance_km),
+          },
+    subscription: r.subscription === 1,
   }));
 }
 
@@ -182,6 +211,12 @@ const PROCESSOR_MERCHANT_HINT: Record<string, RegExp> = {
   mercadolibre: /MERCADO\s*LIBRE|MERCADO\s*PAGO|MERPAGO|^MP\s*\*/i,
   amazon: /AMAZON|AMZN/i,
   amazon_order: /AMAZON|AMZN/i,
+  uber: /UBER/i,
+  uber_trip_summary: /UBER/i,
+  uber_eats: /UBER/i,
+  uber_one: /UBER/i,
+  latam: /LATAM|\bLAN\b|LANCHILE|LAN\.COM/i,
+  latam_change: /LATAM|\bLAN\b|LANCHILE|LAN\.COM/i,
 };
 
 /**
@@ -228,10 +263,14 @@ function sameAmount(r: StoredPaymentReceipt, amount: number, l: ReceiptCandidate
 
 /**
  * Documents that summarize an order whose charges another source states one by one: read only for
- * an order none of whose charges paired (Amazon's order confirmation vs its shipment mails).
+ * an order none of whose charges paired. Amazon's order confirmation vs its shipment mails (charged
+ * when the order ships, which may be weeks after it was placed); Uber's trip summary vs the trip's
+ * receipt (the summary comes first, the receipt does not always follow).
  */
-const ORDER_SUMMARY_OF: Record<string, string> = { amazon_order: "amazon" };
-const ORDER_SUMMARY_DAYS_AFTER = 30;
+const ORDER_SUMMARY_OF: Record<string, { of: string; daysAfter: number }> = {
+  amazon_order: { of: "amazon", daysAfter: 30 },
+  uber_trip_summary: { of: "uber", daysAfter: 5 },
+};
 
 /** A line may be dated the day before the receipt (a mail sent after midnight) up to a few days after. */
 const DAYS_BEFORE = 1;
@@ -380,11 +419,10 @@ export function matchPaymentReceipts(
   // mail. An order a shipment already accounts for is not a missing pairing.
   const pairedOrders = new Set([...byPurchaseKey.values()].filter((r) => r.order_ref != null).map((r) => `${r.processor}|${r.order_ref}`));
   for (const r of sorted) {
-    const of = ORDER_SUMMARY_OF[r.processor];
-    if (!of || r.amount == null) continue;
-    if (pairedOrders.has(`${of}|${r.order_ref}`)) continue;
-    // Charged when the order ships, which may be weeks after it was placed.
-    const pick = lineFor(r, r.amount, new Set(), ORDER_SUMMARY_DAYS_AFTER);
+    const summary = ORDER_SUMMARY_OF[r.processor];
+    if (!summary || r.amount == null) continue;
+    if (pairedOrders.has(`${summary.of}|${r.order_ref}`)) continue;
+    const pick = lineFor(r, r.amount, new Set(), summary.daysAfter);
     if (pick === "none") {
       unpaired.no_line = (unpaired.no_line ?? 0) + 1;
     } else if (typeof pick === "string") {
@@ -439,10 +477,16 @@ const PROCESSOR_NAMES: Record<string, string> = {
   mercadolibre: "Mercado Libre",
   amazon: "Amazon",
   amazon_order: "Amazon",
+  uber: "Uber",
+  uber_trip_summary: "Uber",
+  uber_eats: "Uber Eats",
+  uber_one: "Uber One",
+  latam: "LATAM",
+  latam_change: "LATAM",
 };
 
 /** Sources that are the shop's own order confirmation rather than a processor's receipt. */
-const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre", "amazon", "amazon_order"]);
+const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre", "amazon", "amazon_order", "uber", "uber_trip_summary", "uber_eats", "uber_one", "latam", "latam_change"]);
 
 function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: number } | null = null): PaymentReceiptDto {
   const name = PROCESSOR_NAMES[r.processor];
@@ -461,6 +505,8 @@ function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: num
     charge,
     guess: false,
     basis: null,
+    trip: r.trip ?? null,
+    subscription: r.subscription ?? false,
   };
 }
 
@@ -512,6 +558,8 @@ export function withPaymentReceipts<L extends ReceiptCandidateLine & { account_i
       charge: null,
       guess: link.guess,
       basis: link.basis,
+      trip: null,
+      subscription: link.subscription,
     });
   }
   const named = lines.map((l) => {

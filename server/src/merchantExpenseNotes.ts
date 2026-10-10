@@ -106,6 +106,11 @@ export type MerchantChargeLink = {
   basis: string;
   /** Inferred from a subscription's cycle or a monthly run, not from a receipt. */
   guess: boolean;
+  /**
+   * The charge is a subscription's: every item of its receipt renews, or it was inferred from a
+   * subscription's cycle or a monthly run of the same charge.
+   */
+  subscription: boolean;
 };
 
 export type MerchantChargeLinksResult = {
@@ -383,7 +388,7 @@ export function deriveMerchantChargeLinks(opts?: {
     return prefix ?? short;
   };
 
-  const link = (c: Charge, apps: string[], labels: string[], concept: string | null, basis: string, guess: boolean): void => {
+  const link = (c: Charge, apps: string[], labels: string[], concept: string | null, basis: string, guess: boolean, subscription: boolean): void => {
     c.link = {
       account_id: c.accountId,
       key: c.key,
@@ -393,6 +398,7 @@ export function deriveMerchantChargeLinks(opts?: {
       concept,
       basis,
       guess,
+      subscription,
     };
     result.links.push(c.link);
   };
@@ -415,7 +421,7 @@ export function deriveMerchantChargeLinks(opts?: {
     }
     const named = [...new Set(apps as string[])];
     const products = [...new Set(r.items.map((i) => i.product).filter((x): x is string => !!x))];
-    link(c, named, [...new Set(named.map(label))], products.length > 0 ? products.join(" + ") : null, `receipt ${r.issuedOn}`, false);
+    link(c, named, [...new Set(named.map(label))], products.length > 0 ? products.join(" + ") : null, `receipt ${r.issuedOn}`, false, r.items.every((i) => i.renews));
   }
 
   // 3. Cadence evidence: subscription receipts' charges and notices.
@@ -486,7 +492,7 @@ export function deriveMerchantChargeLinks(opts?: {
     if (found.size === 0) return;
     const ranked = [...found.entries()].sort((a, b) => a[1].distance - b[1].distance || a[0].localeCompare(b[0]));
     const [best, how] = ranked[0]!;
-    link(c, [how.app], [best], null, found.size > 1 ? `ambiguous: ${ranked.map((r) => r[0]).join(" / ")}` : how.basis, true);
+    link(c, [how.app], [best], null, found.size > 1 ? `ambiguous: ${ranked.map((r) => r[0]).join(" / ")}` : how.basis, true, true);
   });
   return result;
 }

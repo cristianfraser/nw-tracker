@@ -162,6 +162,16 @@ export interface PaymentReceipt {
   /** Inferred from a subscription's cycle or a monthly run, not read off a receipt. */
   guess: boolean;
   basis: string | null;
+  /** The ride the charge paid for (Uber), as the receipt prints it. */
+  trip: {
+    from: string;
+    to: string;
+    started_at_chile: string | null;
+    ended_at_chile: string | null;
+    distance_km: number | null;
+  } | null;
+  /** The charge is a subscription's (a renewing App Store item, Uber One). */
+  subscription: boolean;
 }
 
 export interface FlowCcExpenseLineRow {

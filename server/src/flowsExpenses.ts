@@ -29,9 +29,11 @@ import {
 
   registerGenericUniquePurchaseMode,
 
-  resolveCcExpenseCategorySlug,
+  resolveCcExpenseCategory,
 
   resolveCcExpensePurchaseKey,
+
+  SUBSCRIPTIONS_CC_EXPENSE_SLUG,
 
   installmentLedgerTotalForStatementLine,
 
@@ -180,6 +182,13 @@ export type FlowCcExpenseLineRow = {
   category_slug: string;
 
   category_unique: boolean;
+
+  /**
+   * Nothing assigned the line a category (it reads «sin categoría» by default): a document that
+   * shows the charge is a subscription's may still place it (`withSubscriptionCategory`). Dropped
+   * from the finalized lines.
+   */
+  category_by_default?: true;
 
   installment_flag: number;
 
@@ -630,7 +639,7 @@ export function buildCcExpenseLines(
       { statementLineId: row.statement_line_id }
     );
 
-    const categorySlug = resolveCcExpenseCategorySlug({
+    const categoryResolution = resolveCcExpenseCategory({
 
       statementLineId: row.statement_line_id,
 
@@ -649,6 +658,7 @@ export function buildCcExpenseLines(
       uniquePurchaseModeKeys,
 
     });
+    const categorySlug = categoryResolution.slug;
 
     let resolvedCategorySlug = categorySlug;
     let categoryUnique = categoryUniqueForExpenseLine(
@@ -735,6 +745,8 @@ export function buildCcExpenseLines(
       category_slug: resolvedCategorySlug,
 
       category_unique: categoryUnique,
+
+      ...(categoryResolution.byDefault && resolvedCategorySlug === categorySlug ? { category_by_default: true as const } : {}),
 
       origin_card_last4: row.origin_card_last4,
 
@@ -854,8 +866,9 @@ export function expandLineSplitsInDrafts(
             }
             return parentUsd * (split.amount_clp / draft.amount_clp);
           };
+          const { category_by_default: _byDefault, ...parent } = draft;
           result.push({
-            ...draft,
+            ...parent,
             amount_clp: split.amount_clp,
             amount_usd: usdShare(draft.amount_usd),
             amount_usd_at_expense: usdShare(draft.amount_usd_at_expense),
@@ -878,7 +891,24 @@ function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]):
   syncExpenseDepositLinksFromGastosLines(withNotes);
   const withGroups = enrichFlowLinesWithBigGroups(withNotes);
   const withOrigin = enrichFlowLinesWithOriginLabels(withGroups);
-  return withPaymentReceipts(enrichFlowLinesWithTransferCounterparties(enrichFlowLinesWithExpenseDepositLinks(withOrigin)));
+  return withSubscriptionCategory(
+    withPaymentReceipts(enrichFlowLinesWithTransferCounterparties(enrichFlowLinesWithExpenseDepositLinks(withOrigin)))
+  );
+}
+
+/**
+ * A line nothing assigned a category, whose charge a document shows is a subscription's (a renewing
+ * App Store item, Uber One), reads «Suscripciones»; every other line keeps its category. The
+ * default marker is dropped here.
+ */
+export function withSubscriptionCategory<L extends { category_slug: string; category_by_default?: true; payment_receipt?: { subscription: boolean } }>(
+  lines: L[]
+): L[] {
+  return lines.map((l) => {
+    if (!l.category_by_default) return l;
+    const { category_by_default: _byDefault, ...rest } = l;
+    return (l.payment_receipt?.subscription ? { ...rest, category_slug: SUBSCRIPTIONS_CC_EXPENSE_SLUG } : rest) as L;
+  });
 }
 
 /** A checking line's counterparty (statement_line_id is the movement id for checking lines). */
