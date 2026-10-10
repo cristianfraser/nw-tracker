@@ -168,6 +168,27 @@ describe("matchPaymentReceipts: shipments and order confirmations", () => {
   });
 });
 
+describe("matchPaymentReceipts: Uber trip summaries", () => {
+  const trip = (id: string, paidAt: string, amount: number, processor: string, ref: string): StoredPaymentReceipt => ({
+    ...receipt(id, paidAt, amount, processor),
+    order_ref: ref,
+  });
+
+  it("reads a trip summary only when its trip has no paired receipt", () => {
+    const { byPurchaseKey, unpaired } = matchPaymentReceipts(
+      [
+        trip("sum1", "2036-01-11 14:34", 16786, "uber_trip_summary", "t1"),
+        trip("rcp1", "2036-01-11 14:45", 16786, "uber", "t1"),
+        trip("sum2", "2036-02-03 09:10", 5200, "uber_trip_summary", "t2"),
+      ],
+      [line("ride1", "2036-01-11", 16786, "UBER *TRIP"), line("ride2", "2036-02-03", 5200, "UBER *TRIP")]
+    );
+    expect(byPurchaseKey.get("ride1")?.message_id).toBe("rcp1");
+    expect(byPurchaseKey.get("ride2")?.message_id).toBe("sum2");
+    expect(unpaired).toEqual({});
+  });
+});
+
 describe("storePaymentProcessorReceipts", () => {
   const ID = "<vitest-ml-split@test>";
   afterEach(() => {
@@ -191,6 +212,25 @@ describe("storePaymentProcessorReceipts", () => {
         charges,
       },
     ],
+  });
+
+  it("stores a ride and the subscription flag, and reads them back", () => {
+    const base = payload([{ amount: 8865, installments: null }, { amount: 6860, installments: null }]).receipts[0]!;
+    storePaymentProcessorReceipts({
+      receipts: [
+        {
+          ...base,
+          processor: "uber",
+          charges: null,
+          subscription: true,
+          trip: { from: "Calle Uno 100, Providencia", to: "Calle Dos 200, Maipú", started_at_chile: "2036-04-10 11:30", ended_at_chile: "2036-04-10 12:00", distance_km: 12.5 },
+        },
+      ],
+    });
+    expect(loadPaymentProcessorReceipts().find((r) => r.message_id === ID)).toMatchObject({
+      subscription: true,
+      trip: { from: "Calle Uno 100, Providencia", to: "Calle Dos 200, Maipú", started_at_chile: "2036-04-10 11:30", ended_at_chile: "2036-04-10 12:00", distance_km: 12.5 },
+    });
   });
 
   it("stores a split payment's charges and refuses a resend that states other charges", () => {
