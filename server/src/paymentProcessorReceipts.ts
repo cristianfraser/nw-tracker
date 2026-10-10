@@ -146,6 +146,8 @@ export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "g
   stay?: ReceiptStay | null;
   /** When the mail was sent (Chile clock): which of a reservation's mails is the latest. */
   sent_at_chile?: string;
+  /** Set when the pairing is inferred, not an exact amount: what it rests on. */
+  guess_basis?: string;
   message_id: string;
   /** Null when the document states none: it pairs by its day and the charge's name. */
   amount: number | null;
@@ -351,6 +353,21 @@ function withoutSupersededReceipts(receipts: readonly StoredPaymentReceipt[]): S
   return receipts.filter((r) => !SUPERSEDED_BY_LATER_MAIL.has(r.processor) || r.order_ref == null || latest.get(`${r.processor}|${r.order_ref}`) === r);
 }
 
+/** Lodging sources whose unmatched stays may link by the property's name within the stay. */
+const STAY_NAME_GUESS_SOURCES = new Set(["booking", "airbnb", "accor"]);
+
+/** Words too common in lodging names to tell two properties apart. */
+const LODGING_NAME_STOPWORDS = new Set([
+  "HOTEL", "HOTELS", "HOSTEL", "APART", "APARTMENT", "APARTMENTS", "APARTAMENTOS", "STUDIO", "STUDIOS", "SUITE", "SUITES",
+  "ROOMS", "HOUSE", "HOME", "CASA", "RESIDENCE", "RESORT", "LODGE", "BOOKING", "CENTRAL", "CITY", "THE", "AND", "PAID",
+]);
+
+/** A name's words of four or more letters, accents folded, minus the lodging stopwords, in order. */
+function distinctiveWords(name: string): Set<string> {
+  const folded = name.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase();
+  return new Set(folded.split(/[^A-Z0-9]+/).filter((w) => w.length >= 4 && !LODGING_NAME_STOPWORDS.has(w)));
+}
+
 /** A line may be dated the day before the receipt (a mail sent after midnight) up to a few days after. */
 const DAYS_BEFORE = 1;
 const DAYS_AFTER = 5;
@@ -507,8 +524,32 @@ export function matchPaymentReceipts(
     receiptsPaired += members.length - 1;
     for (const m of members) combined.add(m);
   }
+  // A stay no line carries at its stated amount — the property charged a card surcharge, the city
+  // tax on top, in another currency, or only its own fees: the lines a property named like it
+  // charged during the stay, linked as a guess.
+  const stayGuessed = new Set<StoredPaymentReceipt>();
   for (const r of noLine) {
-    if (!combined.has(r)) unpaired.no_line = (unpaired.no_line ?? 0) + 1;
+    if (combined.has(r) || !r.stay || !STAY_NAME_GUESS_SOURCES.has(r.processor)) continue;
+    // The name's first distinctive word, the city's words left out: «Hotel Ejemplo Lisboa» →
+    // EJEMPLO, never LISBOA (a supermarket in town), nor a square a shop shares.
+    const cityWords = distinctiveWords(r.stay.city ?? "");
+    const key = [...distinctiveWords(r.payee)].find((w) => !cityWords.has(w));
+    if (!key) continue;
+    const picks = [...candidates.values()]
+      .filter(
+        (l) =>
+          !taken.has(l.purchase_key) &&
+          dayDiff(l.purchase_on!, r.stay!.check_in) >= -1 &&
+          dayDiff(l.purchase_on!, r.stay!.check_out) <= 1 &&
+          distinctiveWords(l.merchant ?? "").has(key)
+      )
+      .sort((a, b) => a.purchase_on!.localeCompare(b.purchase_on!) || a.purchase_key.localeCompare(b.purchase_key));
+    if (picks.length === 0) continue;
+    pair({ ...r, guess_basis: "stay dates and property name" }, picks);
+    stayGuessed.add(r);
+  }
+  for (const r of noLine) {
+    if (!combined.has(r) && !stayGuessed.has(r)) unpaired.no_line = (unpaired.no_line ?? 0) + 1;
   }
 
   // An order's confirmation stands in for its shipments only when none of them paired: the card
@@ -606,8 +647,8 @@ function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: num
     statement_descriptor: r.statement_descriptor,
     installments: r.installments,
     charge,
-    guess: false,
-    basis: null,
+    guess: r.guess_basis != null,
+    basis: r.guess_basis ?? null,
     trip: r.trip ?? null,
     trip_label: r.trip ? `${shortAddress(r.trip.from)} → ${shortAddress(r.trip.to)}` : null,
     subscription: r.subscription ?? false,
