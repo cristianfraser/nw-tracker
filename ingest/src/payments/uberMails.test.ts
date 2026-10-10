@@ -175,16 +175,69 @@ describe("Uber trip mails", () => {
     expect(r).toMatchObject({ amount: 1100, paid_at_chile: "2039-03-26 12:53", concept: "Uber · cancellation fee", trip: null });
   });
 
-  it("decodes a ride charged in another currency to null", () => {
-    expect(
+  it("reads a ride abroad in its own currency, dated by the mail since its times are local", () => {
+    const r = valid(
       trips.decode(
         mail(
           "[Personal] Your Tuesday afternoon trip with Uber",
           "2041-10-12 13:36",
-          "Total R$20.44 October 12, 2041 Thanks for riding, Ana Total R$20.44 Amount Charged 7777 | Switch R$20.44 You rode with Pedro UberX 5.10 kilometers | 12 min 1:10 PM Rua Um, Rio 1:22 PM Rua Dois, Rio Report lost item"
+          "Total R$1,134.57 October 12, 2041 Thanks for riding, Ana Total R$1,134.57 Amount Charged 7777 | Switch R$1,134.57 You rode with Pedro UberX 5.10 kilometers | 12 min 1:10 PM Rua Um 1, Rio 1:22 PM Rua Dois 2, Rio Report lost item"
+        )
+      )!
+    );
+    expect(r).toMatchObject({
+      currency: "brl",
+      amount: 1134.57,
+      paid_at_chile: "2041-10-12 13:36",
+      order_ref: "uber-trip:2041-10-12 13:10",
+      trip: { from: "Rua Um 1, Rio", to: "Rua Dois 2, Rio", started_at_chile: null, ended_at_chile: null, distance_km: 5.1 },
+    });
+  });
+
+  it("reads euros (summary and its receipt, paired by the printed start) and New Zealand dollars", () => {
+    const ride = "UberXL 3.55 kilometers | 6 min 12:43 AM Strasse Eins 1, Berlin 12:50 AM Strasse Zwei 2, Berlin Report lost item";
+    const summary = valid(
+      tripSummaries.decode(
+        mail(
+          "[Personal] Your Monday morning trip with Uber",
+          "2041-09-19 19:50",
+          `Total \u00e2\u0082\u00ac11.02 September 20, 2041 Thanks for riding, Ana Total \u00e2\u0082\u00ac11.02 Trip fare \u20ac11.02 This is not a payment receipt. It is a trip summary. You rode with Pedro ${ride}`
+        )
+      )!
+    );
+    const receipt = valid(
+      trips.decode(
+        mail(
+          "[Personal] Your Monday morning trip with Uber",
+          "2041-09-19 20:01",
+          `Total \u20ac11.02 September 20, 2041 Thanks for riding, Ana Total \u20ac11.02 Payments Mastercard ••••7777 9/20/41 12:59 AM \u20ac11.02 You rode with Pedro ${ride}`
+        )
+      )!
+    );
+    expect(summary).toMatchObject({ currency: "eur", amount: 11.02, paid_at_chile: "2041-09-19 19:50", order_ref: "uber-trip:2041-09-20 00:43" });
+    expect(receipt).toMatchObject({ currency: "eur", amount: 11.02, paid_at_chile: "2041-09-19 20:01", order_ref: summary.order_ref, payment_method: "Mastercard ••••7777" });
+    const nz = valid(
+      trips.decode(
+        mail(
+          "[Personal] Your Sunday afternoon trip with Uber",
+          "2043-12-03 08:06",
+          "Dec 3, 2043 2:10 PM Dec 3, 2043 , 2:10 PM Thanks for riding, Ana Total NZ$53.40 Payments Visa ••••6666 NZ$53.40 12/3/43 2:59 PM Trip details UberX 20.10 kilometers, 25 minutes 2:15 PM Road One 1, Auckland 2:40 PM Road Two 2, Auckland 2:15 PM Road One 1, Auckland 2:40 PM Road Two 2, Auckland You rode with Pedro"
+        )
+      )!
+    );
+    expect(nz).toMatchObject({ currency: "nzd", amount: 53.4, paid_at_chile: "2043-12-03 08:06", order_ref: "uber-trip:2043-12-03 14:10", trip: { started_at_chile: null } });
+  });
+
+  it("throws on card charges in two currencies", () => {
+    expect(() =>
+      eats.decode(
+        mail(
+          "[Personal] Your Sunday order with Uber Eats",
+          "2045-01-02 15:38",
+          "Total CLP 8,200 January 2, 2045 Here's your receipt for Tienda Prueba. Total CLP 8,200 Payments Visa ••••8888 1/2/45 3:35 PM CLP 2,799 Visa ••••8888 1/2/45 3:38 PM £5.40 You ordered from Tienda Prueba"
         )
       )
-    ).toBeNull();
+    ).toThrow(/several currencies/);
   });
 
   it("throws on a receipt it cannot read: no payment, or a bare «$» where the layout names currencies", () => {

@@ -248,6 +248,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
 const FOREIGN_KEYS_OFF_MIGRATIONS = new Set([
   "169_movements_amount_currency.sql",
   "178_grocery_receipt_key.sql",
+  "234_payment_receipt_any_currency.sql",
 ]);
 
 export function runMigrations() {

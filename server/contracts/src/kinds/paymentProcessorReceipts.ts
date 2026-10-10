@@ -30,6 +30,20 @@ export const receiptTripSchema = z
 
 export type ReceiptTrip = z.infer<typeof receiptTripSchema>;
 
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+/** A stay the receipt is for (Booking, Airbnb, a hotel's own mail): when, and where. */
+export const receiptStaySchema = z
+  .object({
+    check_in: isoDay,
+    check_out: isoDay,
+    city: text.nullable(),
+  })
+  .strict()
+  .refine((s) => s.check_out >= s.check_in, { message: "check-out is not before check-in" });
+
+export type ReceiptStay = z.infer<typeof receiptStaySchema>;
+
 export const processorReceiptSchema = z
   .object({
     /** The mail's Message-ID: the receipt's identity. */
@@ -51,7 +65,11 @@ export const processorReceiptSchema = z
      * (MercadoLibre's purchase mails since 2026): it then pairs by its day and the charge's name.
      */
     amount: z.number().positive().nullable(),
-    currency: z.enum(["clp", "usd"]),
+    /**
+     * ISO 4217, lowercase: «clp», «usd», or the local currency a receipt abroad prints («eur»,
+     * «nzd», «brl»); the card's dollar statement prints such a charge's original amount beside it.
+     */
+    currency: z.string().regex(/^[a-z]{3}$/),
     /** When the payment went through, on the Chile clock: `YYYY-MM-DD HH:MM`. */
     paid_at_chile: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/),
     order_ref: text.nullable(),
@@ -70,13 +88,18 @@ export const processorReceiptSchema = z
     charges: z.array(receiptChargeSchema).min(2).nullable(),
     /** The ride, for a receipt of one (Uber). */
     trip: receiptTripSchema.nullable().optional(),
+    /**
+     * The stay, for a lodging receipt. A stay the property charges (no `statement_descriptor` of the
+     * platform's own) may land at booking or at check-in, so it pairs within the stay's window.
+     */
+    stay: receiptStaySchema.nullable().optional(),
     /** The document states the payment is a subscription's (Uber One's monthly charge). */
     subscription: z.boolean().optional(),
   })
   .strict()
   .refine((r) => r.amount == null || r.currency !== "clp" || Number.isInteger(r.amount), { message: "pesos must be whole" })
-  .refine((r) => r.amount == null || r.currency !== "usd" || Math.abs(r.amount * 100 - Math.round(r.amount * 100)) < 1e-6, {
-    message: "dollars are to the cent",
+  .refine((r) => r.amount == null || r.currency === "clp" || Math.abs(r.amount * 100 - Math.round(r.amount * 100)) < 1e-6, {
+    message: "amounts other than pesos are to the cent",
   })
   .refine((r) => r.charges == null || (r.amount != null && Math.abs(r.charges.reduce((s, c) => s + c.amount, 0) - r.amount) < 0.005), {
     message: "the charges add up to the amount",

@@ -21,8 +21,9 @@
  * after a comma) and «$4,074» (comma groups of three) cannot be mistaken for each other. The amount
  * is what the CARD was charged: Uber Cash and credit rows are left out, a mail that lists several
  * card charges (a tip or an adjustment added after the order, each with its own mail) carries the
- * last one, which is the one that mail announces. A ride or order the card paid nothing for, or one
- * in a currency other than pesos or dollars, decodes to null.
+ * last one, which is the one that mail announces. A ride or order the card paid nothing for decodes
+ * to null. Rides and orders abroad are read in the currency they print (to the cent; the server
+ * pairs them with the card's original-currency amount) and dated by the mail, see `isAbroad`.
  *
  * The receipt's `order_ref` is Uber's `xid…` token when the mail prints it (every mail to 2020, and
  * every Uber Eats mail); the 2020-on trip mails print none, so the ref is the trip's own printed
@@ -54,10 +55,40 @@ function flatten(text: string): string {
 
 // ─── Money ───────────────────────────────────────────────────────────────────
 
-type Money = { currency: "clp" | "usd" | "other"; amount: number; printed: string };
+/** `currency`: lowercase ISO 4217. */
+type Money = { currency: string; amount: number; printed: string };
+
+/**
+ * How Uber prints each currency outside Chile, by its token: every receipt abroad in the corpus
+ * (EUR, BRL, HRK, NZD, GBP, ARS, 2021–2026) prints comma groups of three and a dot before two
+ * decimals — «€11.02», «R$134.57», «HRK 37.63», «NZ$53.40», «£22.48», «ARS 8,227.00» — the same
+ * style as dollars. A token missing here is not read.
+ */
+const FOREIGN_TOKENS: Record<string, string> = {
+  "US$": "usd",
+  USD: "usd",
+  "€": "eur",
+  EUR: "eur",
+  "R$": "brl",
+  BRL: "brl",
+  HRK: "hrk",
+  kn: "hrk",
+  "NZ$": "nzd",
+  NZD: "nzd",
+  "A$": "aud",
+  AUD: "aud",
+  "£": "gbp",
+  GBP: "gbp",
+  ARS: "ars",
+  MXN: "mxn",
+  PEN: "pen",
+  COP: "cop",
+};
+
+const TOKEN = String.raw`(?:CLP|CL\$|US\$|USD|R\$|NZ\$|NZD|A\$|AUD|ARS|BRL|HRK|(?<![A-Za-z])kn|EUR|GBP|MXN|PEN|COP|€|£|\$)`;
 
 /** A printed amount, with its currency token. */
-const MONEY = String.raw`(?:CLP|CL\$|US\$|USD|R\$|NZ\$|A\$|ARS|BRL|HRK|EUR|GBP|MXN|PEN|COP|€|£|\$)\s?-?\d[\d.,]*\d`;
+const MONEY = String.raw`${TOKEN}\s?-?\d[\d.,]*\d`;
 
 /**
  * «4,877» / «1,723.00»: comma groups of three, optional decimals. The 2016 receipts print centavos
@@ -77,10 +108,10 @@ function chileanPesosWithCents(s: string): number | null {
   return Math.round(Number(m[1]!.replace(/\./g, "")) + Number(m[2]) / 100);
 }
 
-/** «12.34» / «1,234.56»: dollars to the cent. */
-function usDollars(s: string): number | null {
+/** «12.34» / «1,234.56»: comma groups, dot and two decimals, to the cent. */
+function dotCents(s: string): number | null {
   const m = s.match(/^(\d{1,3}(?:,\d{3})*)\.(\d{2})$/);
-  return m ? Number(m[1]!.replace(/,/g, "")) + Number(m[2]) / 100 : null;
+  return m ? Math.round(Number(m[1]!.replace(/,/g, "")) * 100 + Number(m[2])) / 100 : null;
 }
 
 /**
@@ -88,12 +119,12 @@ function usDollars(s: string): number | null {
  * later ones always name the currency, and a bare «$» there throws.
  */
 function readMoney(printed: string, bareDollarSignIsPeso: boolean, mail: ArchivedMail): Money {
-  const m = printed.match(/^(CLP|CL\$|US\$|USD|R\$|NZ\$|A\$|ARS|BRL|HRK|EUR|GBP|MXN|PEN|COP|€|£|\$)\s?(-?)(\d[\d.,]*\d)$/);
+  const m = printed.match(new RegExp(String.raw`^(${TOKEN})\s?(-?)(\d[\d.,]*\d)$`));
   if (!m) fail(mail, `unreadable amount «${printed}»`);
   const [, token, minus, digits] = m;
   if (minus) fail(mail, `negative charge «${printed}»`);
-  let amount: number | null = null;
-  let currency: Money["currency"];
+  let amount: number | null;
+  let currency: string;
   if (token === "CLP" || token === "CL$") {
     currency = "clp";
     amount = usGroupedPesos(digits!);
@@ -101,16 +132,20 @@ function readMoney(printed: string, bareDollarSignIsPeso: boolean, mail: Archive
     if (!bareDollarSignIsPeso) fail(mail, `«${printed}» names no currency`);
     currency = "clp";
     amount = chileanPesosWithCents(digits!) ?? usGroupedPesos(digits!);
-  } else if (token === "US$" || token === "USD") {
-    currency = "usd";
-    amount = usDollars(digits!);
   } else {
-    // Rides and orders abroad: the card is charged in pesos at a rate the mail does not state.
-    return { currency: "other", amount: 0, printed };
+    currency = FOREIGN_TOKENS[token!] ?? fail(mail, `unknown currency «${token}»`);
+    amount = dotCents(digits!);
   }
   if (amount == null) fail(mail, `unreadable amount «${printed}»`);
   return { currency, amount, printed };
 }
+
+/**
+ * A receipt in any currency but pesos is a ride or order abroad: its printed times are the local
+ * clock there, not Chile's, and the mail does not say which zone. So such a receipt is dated by
+ * the mail's own sending time (`sent_at_chile`) and its ride times are left null.
+ */
+const isAbroad = (currency: string) => currency !== "clp";
 
 // ─── Dates ───────────────────────────────────────────────────────────────────
 
@@ -166,6 +201,7 @@ function xidOf(t: string): string | null {
   return t.match(/\b(xid[0-9a-z]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/)?.[1] ?? t.match(/\b(xid[a-z]{6,})\s*$/)?.[1] ?? null;
 }
 
+/** `refund`: a row that took nothing from the card — a refund («-CLP 5,990») or a declined charge («Failed»). */
 type Payment = { method: string; card: string | null; stamp: string | null; money: Money; refund: boolean };
 
 /**
@@ -188,6 +224,11 @@ function paymentsOf(t: string, bareDollarSignIsPeso: boolean, mail: ArchivedMail
     const p: Payment = { method: m[1]!.trim(), card: m[2] ?? null, stamp: slashStamp(m[5]!, m[6]!, mail), money: readMoney(m[4]!, bareDollarSignIsPeso, mail), refund: m[3] === "-" };
     found.push({ at: m.index!, p });
   }
+  // A charge the card declined prints «Failed» after the row («Visa ••••1234 7/13/25 2:51 AM €36.55 Failed»).
+  for (const f of found) {
+    const end = t.indexOf(f.p.money.printed, f.at) + f.p.money.printed.length;
+    if (t.startsWith(" Failed", end)) f.p.refund = true;
+  }
   out.push(...found.sort((a, b) => a.at - b.at).map((f) => f.p));
   if (out.length > 0) return out;
   // «Amount Charged 1234 | Switch $9,390 1234 | Switch $500», «Amount Charged Credits $2,200 1234 $5,288».
@@ -207,9 +248,8 @@ function methodLabel(p: Payment): string {
 }
 
 type Charge =
-  | { amount: number; currency: "clp" | "usd"; paidAt: string | null; method: string | null; charges: ReceiptCharge[] | null }
-  | "nothing"
-  | "foreign";
+  | { amount: number; currency: string; paidAt: string | null; method: string | null; charges: ReceiptCharge[] | null }
+  | "nothing";
 
 /** Minutes between two `YYYY-MM-DD HH:MM` stamps. */
 function minutesBetween(a: string, b: string): number {
@@ -243,15 +283,14 @@ function announcedCharge(payments: Payment[], isUpdate: boolean, mail: ArchivedM
         : cards.filter((p) => p.stamp != null && minutesBetween(p.stamp, last.stamp!) <= SAME_MAIL_CHARGE_WINDOW_MIN);
   }
   if (rows.length === 0) return "nothing";
-  if (rows.every((p) => p.money.currency === "other")) return "foreign";
   const priced = rows.filter((p) => p.money.amount > 0);
   if (priced.length === 0) return "nothing";
   const currency = priced[0]!.money.currency;
-  if (currency === "other" || priced.some((p) => p.money.currency !== currency)) fail(mail, "card charges in several currencies");
+  if (priced.some((p) => p.money.currency !== currency)) fail(mail, "card charges in several currencies");
   const last = priced[priced.length - 1]!;
   const sum = priced.reduce((a, p) => a + p.money.amount, 0);
   return {
-    amount: currency === "usd" ? Math.round(sum * 100) / 100 : sum,
+    amount: currency === "clp" ? sum : Math.round(sum * 100) / 100,
     currency,
     paidAt: last.stamp,
     method: methodLabel(last),
@@ -367,7 +406,7 @@ function readRide(t: string, mail: ArchivedMail): Ride & { layout: "receipt#" | 
     const ymd = englishDate((colon ?? total)![1]!, mail);
     const ride = t.match(
       new RegExp(
-        String.raw`((?:Uber )?[A-Za-z][\w+-]*) ([\d.]+) (?:km|kilometers) \| \d+ min(?:utes?)? (${TIME}) (.+?) (${TIME}) (.+?) (?:Invite your friends|Report lost item|Contact support)`
+        String.raw`((?:Uber )?[A-Za-z][\w+-]*) ([\d.]+) (?:km|kilometers) \| (?:\d+ h )?\d+ min(?:utes?)? (${TIME}) (.+?) (${TIME}) (.+?) (?:Invite your friends|Report lost item|Contact support)`
       )
     );
     const base = { layout: colon ? ("total:" as const) : ("total" as const), ymd };
@@ -406,7 +445,7 @@ function decodeTripMail(mail: ArchivedMail, want: "receipt" | "summary"): Proces
   const preTotalLayout = ride.layout !== "total" && ride.layout !== "header";
 
   let amount: number;
-  let currency: "clp" | "usd";
+  let currency: string;
   let paidAt: string | null = null;
   let method: string | null = null;
   let charges: ReceiptCharge[] | null = null;
@@ -415,7 +454,7 @@ function decodeTripMail(mail: ArchivedMail, want: "receipt" | "summary"): Proces
     const tot = t.match(new RegExp(String.raw`Total (${MONEY})`));
     if (!tot) fail(mail, "summary without a total");
     const money = readMoney(tot[1]!, false, mail);
-    if (money.currency === "other" || money.amount === 0) return null;
+    if (money.amount === 0) return null;
     amount = money.amount;
     currency = money.currency;
     const held = t.match(/payment method (\d{4})/)?.[1];
@@ -425,7 +464,7 @@ function decodeTripMail(mail: ArchivedMail, want: "receipt" | "summary"): Proces
     if (ride.layout === "receipt#") {
       const m = t.match(/Amount Charged (\$[\d.,]+)/) ?? fail(mail, "no amount charged");
       const money = readMoney(m[1]!, true, mail);
-      charge = money.amount === 0 ? "nothing" : { amount: money.amount, currency: money.currency as "clp", paidAt: null, method: null, charges: null };
+      charge = money.amount === 0 ? "nothing" : { amount: money.amount, currency: money.currency, paidAt: null, method: null, charges: null };
       const card = t.match(/Payment Personal (\w+) - (\d{4})/);
       if (typeof charge === "object" && card) charge.method = `${card[1]} ••••${card[2]}`;
     } else if (ride.layout === "choosing" || ride.layout === "choosing|") {
@@ -434,28 +473,31 @@ function decodeTripMail(mail: ArchivedMail, want: "receipt" | "summary"): Proces
       const money = readMoney(m[2]!, true, mail);
       const card = m[1] ?? m[3];
       charge =
-        money.currency === "other"
-          ? "foreign"
-          : money.amount === 0
-            ? "nothing"
-            : { amount: money.amount, currency: money.currency, paidAt: null, method: card ? `••••${card}` : null, charges: null };
+        money.amount === 0
+          ? "nothing"
+          : { amount: money.amount, currency: money.currency, paidAt: null, method: card ? `••••${card}` : null, charges: null };
     } else {
       const payments = paymentsOf(t, preTotalLayout, mail);
       if (payments.length === 0) fail(mail, "no payment listed");
       charge = announcedCharge(payments, isUpdateMail(mail, t, payments), mail);
     }
-    if (charge === "nothing" || charge === "foreign") return null;
+    if (charge === "nothing") return null;
     ({ amount, currency, paidAt, method, charges } = charge);
   }
 
-  const stamps = ride.start != null ? rideStamps(ride.ymd, ride.start, ride.end) : null;
+  // The printed times, as printed: on the Chile clock for a ride in pesos, local time abroad (still
+  // what a summary and its receipt share, so the ref keeps them).
+  const printed = ride.start != null ? rideStamps(ride.ymd, ride.start, ride.end) : null;
+  const abroad = isAbroad(currency);
+  const stamps = abroad ? null : printed;
+  if (abroad) paidAt = null;
   if (cancelled) {
     const at = t.match(new RegExp(String.raw`(${TIME}) Request canceled`))?.[1];
     return receipt(mail, want === "summary" ? "uber_trip_summary" : "uber", {
       payee: UBER,
       amount,
       currency,
-      paid_at_chile: paidAt ?? (at ? `${ride.ymd} ${clock(at, mail)}` : mail.sent_at_chile),
+      paid_at_chile: paidAt ?? (at && !abroad ? `${ride.ymd} ${clock(at, mail)}` : mail.sent_at_chile),
       order_ref: xidOf(t),
       concept: "Uber · cancellation fee",
       payment_method: method,
@@ -470,7 +512,7 @@ function decodeTripMail(mail: ArchivedMail, want: "receipt" | "summary"): Proces
   const ref =
     xidOf(t) ??
     (ride.layout === "total" || ride.layout === "header"
-      ? `uber-trip:${ride.layout === "header" ? `${ride.ymd} ${headerClock(t, mail)}` : stamps?.started ?? fail(mail, "no trip start to name the trip by")}`
+      ? `uber-trip:${ride.layout === "header" ? `${ride.ymd} ${headerClock(t, mail)}` : printed?.started ?? fail(mail, "no trip start to name the trip by")}`
       : null);
   const product = ride.product ? ride.product.replace(/^uber/, "Uber") : "Uber";
   return receipt(mail, want === "summary" ? "uber_trip_summary" : "uber", {
@@ -534,14 +576,14 @@ function decodeEatsMail(mail: ArchivedMail, want: "receipt" | "summary"): Proces
     const ride = readRide(t, mail);
     const m = t.match(new RegExp(String.raw`CHARGED (${MONEY})(?: Personal (\d{4}))?`)) ?? fail(mail, "no CHARGED amount");
     const money = readMoney(m[1]!, true, mail);
-    if (money.currency === "other" || money.amount === 0) return null;
+    if (money.amount === 0) return null;
     const stamps = ride.start ? rideStamps(ride.ymd, ride.start, ride.end) : null;
     const items = t.match(/inquiries\. (.+?) Subtotal /)?.[1]?.replace(/ \d+\.\d{2}\b/g, "").trim() ?? null;
     return receipt(mail, slug, {
       payee: { name: shopOf(t) ?? "Uber Eats", rut: null, email: null },
       amount: money.amount,
       currency: money.currency,
-      paid_at_chile: stamps?.ended ?? mail.sent_at_chile,
+      paid_at_chile: (isAbroad(money.currency) ? null : stamps?.ended) ?? mail.sent_at_chile,
       order_ref: xidOf(t),
       concept: items,
       payment_method: m[2] ? `••••${m[2]}` : null,
@@ -559,14 +601,14 @@ function decodeEatsMail(mail: ArchivedMail, want: "receipt" | "summary"): Proces
     const tot = t.match(new RegExp(String.raw`Total (${MONEY})`)) ?? fail(mail, "summary without a total");
     const money = readMoney(tot[1]!, false, mail);
     charge =
-      money.currency === "other" ? "foreign" : money.amount === 0 ? "nothing" : { amount: money.amount, currency: money.currency, paidAt: null, method: null, charges: null };
+      money.amount === 0 ? "nothing" : { amount: money.amount, currency: money.currency, paidAt: null, method: null, charges: null };
   } else if (/Uber Cash|Uber Credit/.test(t)) {
     // Paid in full by Uber Cash or credit: no card row at all.
     charge = "nothing";
   } else {
     fail(mail, "no payment listed");
   }
-  if (charge === "nothing" || charge === "foreign") return null;
+  if (charge === "nothing") return null;
 
   const header = t.match(new RegExp(String.raw`^([A-Z][a-z]{2} \d{1,2}, \d{4}) (${TIME}) `));
   const completed = t.match(new RegExp(String.raw`Order completed ([A-Z][a-z]{2} \d{1,2}, \d{4}) at (${TIME})`));
@@ -580,7 +622,7 @@ function decodeEatsMail(mail: ArchivedMail, want: "receipt" | "summary"): Proces
     payee: { name: shop, rut: null, email: null },
     amount: charge.amount,
     currency: charge.currency,
-    paid_at_chile: charge.paidAt ?? orderedAt ?? mail.sent_at_chile,
+    paid_at_chile: isAbroad(charge.currency) ? mail.sent_at_chile : (charge.paidAt ?? orderedAt ?? mail.sent_at_chile),
     order_ref: ref,
     concept: isUpdate ? "Tip or adjustment" : itemsOf(t),
     payment_method: charge.method,
@@ -608,7 +650,7 @@ function decodeUberOne(mail: ArchivedMail): ProcessorReceipt | null {
         : new RegExp(String.raw`Total charged \(includes VAT tax\) (${MONEY}) Payment method (.+?) Valid until`)
     ) ?? fail(mail, "no total charged");
   const money = readMoney(m[1]!, false, mail);
-  if (money.currency === "other" || money.amount === 0) return null;
+  if (money.amount === 0) return null;
   const card = m[2]!.match(/^([A-Za-z]+) (?:\*\*|••••)(\d{4})$/);
   return receipt(mail, "uber_one", {
     payee: UBER,
