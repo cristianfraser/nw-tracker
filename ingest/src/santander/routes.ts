@@ -55,6 +55,7 @@ export const SELECTOR = {
   loginPass: "#pass",
   loginSubmit: 'button[type="submit"]',
   swiperNext: ".swiper-button-next",
+  swiperActiveSlide: ".swiper-slide-active",
   swiperDisabled: "swiper-button-disabled",
 } as const;
 

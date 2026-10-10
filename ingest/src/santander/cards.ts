@@ -141,6 +141,27 @@ export function collectDepositBalances(
  * Each click loads one card/currency view. We stop when the next button disappears, goes disabled,
  * or stops producing new API calls — whichever comes first.
  */
+/**
+ * Advances the card carousel the way a finger would: press on the active tile, drag left across
+ * three quarters of its width in small steps (Swiper needs intermediate pointer moves to read a
+ * swipe), release. Throws when there is no active tile to drag.
+ */
+async function swipeToNextCard(page: Page): Promise<void> {
+  const box = await page.locator(SELECTOR.swiperActiveSlide).first().boundingBox();
+  if (!box) throw new Error("card carousel: no active slide to swipe");
+  const y = box.y + box.height / 2;
+  const fromX = box.x + box.width * 0.85;
+  const toX = box.x + box.width * 0.1;
+  await page.mouse.move(fromX, y);
+  await page.mouse.down();
+  const steps = 12;
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(fromX + ((toX - fromX) * i) / steps, y);
+    await page.waitForTimeout(25);
+  }
+  await page.mouse.up();
+}
+
 export async function fetchCardMovements(page: Page, recorder: Recorder): Promise<CardMovementsResult> {
   logStep("credit card — movements");
   await gotoRoute(page, ROUTE.cardUnbilled);
@@ -160,11 +181,18 @@ export async function fetchCardMovements(page: Page, recorder: Recorder): Promis
     }
     const before = recorder.callsFor(ENDPOINT.cardMovements).length;
     await next.click();
-    const gotNew = await waitForNewApiCalls(recorder, ENDPOINT.cardMovements, before);
+    let gotNew = await waitForNewApiCalls(recorder, ENDPOINT.cardMovements, before);
+    if (!gotNew) {
+      // The arrow stopped working on 2026-10-09 (for a person too); a drag across the active
+      // tile still advances the carousel.
+      log("swiper arrow produced no new movements call — swiping instead");
+      await swipeToNextCard(page);
+      gotNew = await waitForNewApiCalls(recorder, ENDPOINT.cardMovements, before);
+    }
     await settle(page, 4_000);
     await recorder.screenshot(page, `card-unbilled-slide-${slide + 1}`);
     if (!gotNew) {
-      log("swiper click produced no new movements call — stopping");
+      log("neither the arrow nor a swipe produced a new movements call — stopping");
       break;
     }
     await fetchUsdForCurrentCard(page, recorder, slide + 1);
