@@ -7,7 +7,7 @@
  * keys on the line's purchase key and the receipt's pesos and payment day; see `matchPaymentReceipts`.
  */
 import { createHash } from "node:crypto";
-import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptTrip } from "nw-tracker-contracts";
+import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptStay, ReceiptTrip } from "nw-tracker-contracts";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
@@ -34,6 +34,9 @@ const COLUMNS = [
   "trip_ended_at_chile",
   "trip_distance_km",
   "subscription",
+  "stay_check_in",
+  "stay_check_out",
+  "stay_city",
 ] as const;
 
 type ReceiptRow = Record<(typeof COLUMNS)[number], string | number | null>;
@@ -60,6 +63,9 @@ function receiptRow(r: ProcessorReceipt): ReceiptRow {
     trip_ended_at_chile: r.trip?.ended_at_chile ?? null,
     trip_distance_km: r.trip?.distance_km ?? null,
     subscription: r.subscription ? 1 : 0,
+    stay_check_in: r.stay?.check_in ?? null,
+    stay_check_out: r.stay?.check_out ?? null,
+    stay_city: r.stay?.city ?? null,
   };
 }
 
@@ -136,10 +142,15 @@ export type PaymentReceiptDto = {
 export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge" | "trip" | "trip_label" | "subscription"> & {
   trip?: ReceiptTrip | null;
   subscription?: boolean;
+  /** A lodging receipt's stay: a stay the property charges pairs within its window. */
+  stay?: ReceiptStay | null;
+  /** When the mail was sent (Chile clock): which of a reservation's mails is the latest. */
+  sent_at_chile?: string;
   message_id: string;
   /** Null when the document states none: it pairs by its day and the charge's name. */
   amount: number | null;
-  currency: "clp" | "usd";
+  /** ISO 4217, lowercase: pesos, dollars, or the local currency of a receipt abroad. */
+  currency: string;
   /** The separate charges the payment was taken as; absent or empty = one charge of `amount`. */
   charges?: StoredCharge[];
 };
@@ -159,6 +170,7 @@ export function loadPaymentProcessorReceipts(): StoredPaymentReceipt[] {
   return rows.map((r) => ({
     charges: chargesByReceipt.get(String(r.message_id)) ?? [],
     message_id: String(r.message_id),
+    sent_at_chile: String(r.sent_at_chile),
     processor: String(r.processor),
     payee: String(r.payee_name),
     payee_rut: (r.payee_rut as string | null) ?? null,
@@ -181,11 +193,15 @@ export function loadPaymentProcessorReceipts(): StoredPaymentReceipt[] {
             distance_km: r.trip_distance_km == null ? null : Number(r.trip_distance_km),
           },
     subscription: r.subscription === 1,
+    stay:
+      r.stay_check_in == null
+        ? null
+        : { check_in: String(r.stay_check_in), check_out: String(r.stay_check_out), city: (r.stay_city as string | null) ?? null },
   }));
 }
 
-function receiptCurrency(r: ReceiptRow): "clp" | "usd" {
-  if (r.currency !== "clp" && r.currency !== "usd") throw new Error(`payment receipt ${r.message_id}: currency ${r.currency}`);
+function receiptCurrency(r: ReceiptRow): string {
+  if (typeof r.currency !== "string" || !/^[a-z]{3}$/.test(r.currency)) throw new Error(`payment receipt ${r.message_id}: currency ${r.currency}`);
   return r.currency;
 }
 
@@ -196,6 +212,10 @@ export type ReceiptCandidateLine = {
   amount_clp: number;
   /** A dollar charge's dollars (the card's dollar side). */
   amount_usd?: number | null;
+  /** A dollar charge's amount in its own currency, as the statement prints it. */
+  amount_orig?: number | null;
+  /** That amount's currency when the statement labels it (pesos, dollars); null for any other. */
+  amount_orig_currency?: "clp" | "usd" | null;
   /** The purchase's own day (a card line's transaction date). */
   purchase_on: string | null;
   merchant: string | null;
@@ -221,6 +241,9 @@ const PROCESSOR_MERCHANT_HINT: Record<string, RegExp> = {
   uber_eats_summary: /UBER/i,
   latam: /LATAM|\bLAN\b|LANCHILE|LAN\.COM/i,
   latam_change: /LATAM|\bLAN\b|LANCHILE|LAN\.COM/i,
+  booking: /BOOKING/i,
+  airbnb: /AIRBNB/i,
+  accor: /ACCOR|IBIS|NOVOTEL|MERCURE|PULLMAN|SOFITEL/i,
 };
 
 /**
@@ -274,12 +297,23 @@ const PESO_RECEIPT_IN_DOLLARS_TOLERANCE = 0.04;
 /**
  * Whether a line carries a charge of the receipt: `exact` — the same pesos, or for a dollar receipt
  * the same dollars to the cent; `at_rate` — a peso receipt of a sender that charged in dollars, on a
- * dollar line naming it (`PESO_RECEIPT_CHARGED_IN_DOLLARS`). A dollar receipt never pairs with a
- * peso-only line: within a few percent of the day's rate, any purchase of the week could fit.
+ * dollar line naming it (`PESO_RECEIPT_CHARGED_IN_DOLLARS`). A receipt in another currency (abroad)
+ * pairs with the dollar line whose original amount is the same to the cent. A dollar receipt never
+ * pairs with a peso-only line: within a few percent of the day's rate, any purchase of the week
+ * could fit.
  */
 function sameAmount(r: StoredPaymentReceipt, amount: number, l: ReceiptCandidateLine): "exact" | "at_rate" | null {
   if (r.currency === "usd") return l.amount_usd != null && Math.abs(l.amount_usd - amount) < 0.005 ? "exact" : null;
+  // Abroad: the dollar line's original-currency amount, to the cent (the statement prints it, the
+  // receipt states it); never a conversion.
+  if (r.currency !== "clp") {
+    return l.amount_usd != null && l.amount_orig != null && l.amount_orig_currency == null && Math.abs(l.amount_orig - amount) < 0.005
+      ? "exact"
+      : null;
+  }
   if ((l.principal_clp ?? l.amount_clp) === amount) return "exact";
+  // A peso purchase billed on the dollar statement (Airbnb in Chile): its printed peso origin.
+  if (l.amount_usd != null && l.amount_orig_currency === "clp" && l.amount_orig === amount) return "exact";
   const sender = PESO_RECEIPT_CHARGED_IN_DOLLARS[r.processor];
   if (!sender || l.amount_usd == null || !(l.amount_usd > 0) || !l.purchase_on || !sender.test(l.merchant ?? "")) return null;
   const fx = fxRowOnOrBefore(l.purchase_on);
@@ -298,6 +332,24 @@ const ORDER_SUMMARY_OF: Record<string, { of: string; daysAfter: number }> = {
   uber_trip_summary: { of: "uber", daysAfter: 5 },
   uber_eats_summary: { of: "uber_eats", daysAfter: 5 },
 };
+
+/**
+ * Senders whose later mail about a reservation restates it whole («Your updated booking at …»):
+ * only the latest mail of a reservation is paired, or every update would claim the same charge.
+ */
+const SUPERSEDED_BY_LATER_MAIL = new Set(["booking"]);
+
+function withoutSupersededReceipts(receipts: readonly StoredPaymentReceipt[]): StoredPaymentReceipt[] {
+  const latest = new Map<string, StoredPaymentReceipt>();
+  for (const r of receipts) {
+    if (!SUPERSEDED_BY_LATER_MAIL.has(r.processor) || r.order_ref == null) continue;
+    const key = `${r.processor}|${r.order_ref}`;
+    const prev = latest.get(key);
+    const sent = (x: StoredPaymentReceipt) => x.sent_at_chile ?? x.paid_at_chile;
+    if (!prev || sent(r) > sent(prev) || (sent(r) === sent(prev) && r.message_id > prev.message_id)) latest.set(key, r);
+  }
+  return receipts.filter((r) => !SUPERSEDED_BY_LATER_MAIL.has(r.processor) || r.order_ref == null || latest.get(`${r.processor}|${r.order_ref}`) === r);
+}
 
 /** A line may be dated the day before the receipt (a mail sent after midnight) up to a few days after. */
 const DAYS_BEFORE = 1;
@@ -342,7 +394,9 @@ export function matchPaymentReceipts(
   let receiptsPaired = 0;
   const unpaired: Record<string, number> = {};
   const ambiguous: string[] = [];
-  const sorted = [...receipts].sort((a, b) => a.paid_at_chile.localeCompare(b.paid_at_chile) || a.message_id.localeCompare(b.message_id));
+  const sorted = withoutSupersededReceipts(receipts).sort(
+    (a, b) => a.paid_at_chile.localeCompare(b.paid_at_chile) || a.message_id.localeCompare(b.message_id)
+  );
 
   /** The line one charge of `r` was taken as, or why there is none. */
   function lineFor(
@@ -353,15 +407,27 @@ export function matchPaymentReceipts(
   ): ReceiptCandidateLine | "none" | string {
     const paidOn = r.paid_at_chile.slice(0, 10);
     const hint = PROCESSOR_MERCHANT_HINT[r.processor];
+    // A stay the property charges (the platform did not take the payment) lands at booking or at
+    // check-in: up to five days past check-out, and «nearest» counts from either day.
+    const stay = r.stay && r.statement_descriptor == null ? r.stay : null;
+    const after = stay ? Math.max(daysAfter, dayDiff(stay.check_out, paidOn) + DAYS_AFTER) : daysAfter;
     const fits = [...candidates.values()]
       .filter((l) => !taken.has(l.purchase_key) && !claimed.has(l.purchase_key) && l.purchase_on != null)
       .map((l) => ({ l, d: dayDiff(l.purchase_on!, paidOn) }))
-      .filter((c) => c.d >= -DAYS_BEFORE && c.d <= daysAfter)
+      .filter((c) => c.d >= -DAYS_BEFORE && c.d <= after)
       .map((c) => ({ ...c, match: sameAmount(r, amount, c.l) }))
       .filter((c) => c.match != null)
+      .map((c) => ({ ...c, dist: stay ? Math.min(Math.abs(c.d), Math.abs(dayDiff(c.l.purchase_on!, stay.check_in))) : Math.abs(c.d) }))
       // Nearest day first; on a day, an exact amount before one at the day's rate, then a line
-      // naming the processor.
-      .map((c) => ({ ...c, rank: Math.abs(c.d) * 4 + (c.match === "at_rate" ? 2 : 0) + (hint?.test(c.l.merchant ?? "") ? 0 : 1) }))
+      // printing the receipt's own reference («AIRBNB * HM…»), then a line naming the processor.
+      .map((c) => ({
+        ...c,
+        rank:
+          c.dist * 8 +
+          (c.match === "at_rate" ? 4 : 0) +
+          (r.order_ref && (c.l.merchant ?? "").toUpperCase().includes(r.order_ref.toUpperCase()) ? 0 : 2) +
+          (hint?.test(c.l.merchant ?? "") ? 0 : 1),
+      }))
       .sort((a, b) => a.rank - b.rank);
     if (fits.length === 0) return "none";
     const best = fits.filter((f) => f.rank === fits[0]!.rank);
@@ -515,10 +581,15 @@ const PROCESSOR_NAMES: Record<string, string> = {
   uber_eats_summary: "Uber Eats",
   latam: "LATAM",
   latam_change: "LATAM",
+  despegar: "Despegar",
+  booking: "Booking.com",
+  airbnb: "Airbnb",
+  accor: "Accor",
+  stripe: "Stripe",
 };
 
 /** Sources that are the shop's own order confirmation rather than a processor's receipt. */
-const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre", "amazon", "amazon_order", "uber", "uber_trip_summary", "uber_eats", "uber_eats_summary", "uber_one", "latam", "latam_change"]);
+const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre", "amazon", "amazon_order", "uber", "uber_trip_summary", "uber_eats", "uber_eats_summary", "uber_one", "latam", "latam_change", "despegar", "booking", "airbnb", "accor"]);
 
 function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: number } | null = null): PaymentReceiptDto {
   const name = PROCESSOR_NAMES[r.processor];

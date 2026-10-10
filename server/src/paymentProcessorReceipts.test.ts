@@ -209,6 +209,21 @@ describe("matchPaymentReceipts: peso receipts charged in dollars", () => {
   });
 });
 
+describe("matchPaymentReceipts: receipts abroad", () => {
+  it("pairs a receipt in another currency with the dollar line printing the same original amount, never by conversion", () => {
+    const nzd = { ...receipt("nz", "2036-12-03 08:06", 53.4, "uber"), currency: "nzd" };
+    const { byPurchaseKey } = matchPaymentReceipts(
+      [nzd],
+      [
+        line("peso", "2036-12-03", 53, "UBER* TRIP"),
+        line("other-orig", "2036-12-03", 30000, "UBER* TRIP", { amount_usd: 33.49, amount_orig: 53.41 }),
+        line("trip", "2036-12-03", 30100, "UBER* TRIP", { amount_usd: 33.49, amount_orig: 53.4 }),
+      ]
+    );
+    expect([...byPurchaseKey.keys()]).toEqual(["trip"]);
+  });
+});
+
 describe("storePaymentProcessorReceipts", () => {
   const ID = "<vitest-ml-split@test>";
   afterEach(() => {

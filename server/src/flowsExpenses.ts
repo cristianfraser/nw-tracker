@@ -175,6 +175,15 @@ export type FlowCcExpenseLineRow = {
   /** USD for gastos display: native USD or CLP ÷ FX on purchase / movement date. */
   amount_usd_at_expense: number | null;
 
+  /**
+   * A dollar statement line's amount in the charge's own currency, as printed («monto moneda
+   * origen»): what a receipt abroad states. Absent on peso lines.
+   */
+  amount_orig?: number | null;
+
+  /** `amount_orig`'s currency when the import labeled it by value (pesos, dollars); null for any other. */
+  amount_orig_currency?: "clp" | "usd" | null;
+
   merchant: string | null;
 
   merchant_key: string;
@@ -399,7 +408,7 @@ export function buildCcExpenseLines(
 
               l.transaction_date, l.posting_date, l.origin_card_last4, l.parser_row_id,
 
-              l.amount_clp, l.amount_usd, l.merchant, l.installment_flag,
+              l.amount_clp, l.amount_usd, l.amount_orig, l.orig_currency, l.merchant, l.installment_flag,
 
               l.nro_cuota_current, l.nro_cuota_total,
 
@@ -454,6 +463,10 @@ export function buildCcExpenseLines(
     amount_clp: number | null;
 
     amount_usd: number | null;
+
+    amount_orig: number | null;
+
+    orig_currency: string | null;
 
     merchant: string | null;
 
@@ -728,6 +741,10 @@ export function buildCcExpenseLines(
 
       amount_usd: amountUsd,
 
+      ...(row.statement_currency === "usd" && row.amount_orig != null
+        ? { amount_orig: row.amount_orig, amount_orig_currency: origCurrencyLabel(row.orig_currency) }
+        : {}),
+
       amount_usd_at_expense: amountUsdAtExpense,
 
       merchant: row.merchant,
@@ -910,6 +927,12 @@ export function withSubscriptionCategory<L extends { category_slug: string; cate
     const { category_from_bank_name: _fromBankName, ...rest } = l;
     return (l.payment_receipt?.subscription ? { ...rest, category_slug: SUBSCRIPTIONS_CC_EXPENSE_SLUG } : rest) as L;
   });
+}
+
+function origCurrencyLabel(c: string | null): "clp" | "usd" | null {
+  if (c == null) return null;
+  if (c === "clp" || c === "usd") return c;
+  throw new Error(`cc_statement_lines.orig_currency ${c}: only clp / usd are labeled (ccOriginCurrency.ts)`);
 }
 
 /** A checking line's counterparty (statement_line_id is the movement id for checking lines). */
