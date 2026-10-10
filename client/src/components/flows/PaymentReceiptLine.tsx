@@ -27,7 +27,7 @@ export function PaymentReceiptLine({ receipt }: { receipt: PaymentReceipt | unde
     <div className="muted" style={{ fontSize: "0.85em" }} title={detail}>
       {r.guess ? "≈" : "→"} {r.payee}
       {r.charge ? ` · ${r.charge.position}/${r.charge.of}` : null}
-      {r.trip ? ` · ${r.trip.from} → ${r.trip.to}` : null}
+      {r.trip_label ? ` · ${r.trip_label}` : null}
       {r.concept ? <span style={{ marginLeft: "0.35rem", fontStyle: "italic" }}>«{r.concept}»</span> : null}
     </div>
   );

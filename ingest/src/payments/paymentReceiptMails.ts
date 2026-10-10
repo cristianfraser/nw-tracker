@@ -11,6 +11,7 @@
 import type { ProcessorReceipt } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/santanderMailArchive.js";
 import { LATAM_PROCESSORS } from "./latamMails.js";
+import { UBER_PROCESSORS } from "./uberMails.js";
 
 export type PaymentProcessor = {
   slug: string;
@@ -715,6 +716,7 @@ export const PAYMENT_PROCESSORS: readonly PaymentProcessor[] = [
     decode: decodeMercadoLibreOrder,
   },
   ...LATAM_PROCESSORS,
+  ...UBER_PROCESSORS,
 ];
 
 export function decodePaymentReceiptMail(processor: PaymentProcessor, mail: ArchivedMail): ProcessorReceipt | null {
