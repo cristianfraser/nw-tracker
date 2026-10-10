@@ -426,7 +426,6 @@ export function CreditCardExpenseLinesTable({
               <td>
                 {ln.purchase_key && !fixedCategory ? (
                   <ExpenseBigGroupSelect
-                    accountId={ln.account_id}
                     purchaseKey={ln.purchase_key}
                     value={ln.big_group_slug}
                     groups={bigGroups}

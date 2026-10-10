@@ -606,12 +606,8 @@ export const api = {
       "/api/flows/expenses/credit-card/purchase-notes",
       { method: "PATCH", body: JSON.stringify(body) }
     ),
-  putCcExpensePurchaseBigGroup: (body: {
-    account_id: number;
-    purchase_key: string;
-    group_slug: string | null;
-  }) =>
-    j<{ account_id: number; purchase_key: string; group_slug: string | null }>(
+  putCcExpensePurchaseBigGroup: (body: { purchase_key: string; group_slug: string | null }) =>
+    j<{ purchase_key: string; group_slug: string | null }>(
       "/api/flows/expenses/credit-card/purchase-big-group",
       { method: "PUT", body: JSON.stringify(body) }
     ),

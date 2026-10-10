@@ -82,7 +82,14 @@ const TABLES = [
     accountCol: "financing_account_id",
   },
   { table: "cc_expense_purchase_notes", keyCol: "purchase_key", accountCol: "account_id" },
-  { table: "cc_expense_purchase_big_groups", keyCol: "purchase_key", accountCol: "account_id" },
+  // Big groups are keyed by the purchase alone (migration 235); an installment-h key carries its
+  // account as its second field.
+  {
+    table: "cc_expense_purchase_big_groups",
+    keyCol: "purchase_key",
+    accountCol:
+      "CAST(substr(purchase_key, 15, instr(substr(purchase_key, 15), ':') - 1) AS INTEGER)",
+  },
 ] as const;
 
 for (const { table, keyCol, accountCol } of TABLES) {

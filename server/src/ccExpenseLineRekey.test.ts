@@ -137,11 +137,7 @@ function setAssignments(accountId: number, key: string, categoryId: number, note
     key,
     categoryId
   );
-  db.prepare(`INSERT INTO cc_expense_purchase_big_groups (account_id, purchase_key, group_slug) VALUES (?, ?, ?)`).run(
-    accountId,
-    key,
-    BIG_GROUP
-  );
+  db.prepare(`INSERT INTO cc_expense_purchase_big_groups (purchase_key, group_slug) VALUES (?, ?)`).run(key, BIG_GROUP);
   db.prepare(`INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, ?)`).run(accountId, key, note);
 }
 
@@ -171,9 +167,10 @@ function cleanup(accountId: number): void {
     accountId
   );
   db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
-  for (const t of ["cc_expense_unique_purchases", "cc_expense_purchase_big_groups", "cc_expense_purchase_notes"]) {
+  for (const t of ["cc_expense_unique_purchases", "cc_expense_purchase_notes"]) {
     db.prepare(`DELETE FROM ${t} WHERE account_id = ? AND purchase_key LIKE 'line-pr:vitest-rekey-%'`).run(accountId);
   }
+  db.prepare(`DELETE FROM cc_expense_purchase_big_groups WHERE purchase_key LIKE 'line-pr:vitest-rekey-%'`).run();
   db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key LIKE 'VITEST %'`).run(accountId);
   db.prepare(`DELETE FROM cc_expense_big_groups WHERE slug = ?`).run(BIG_GROUP);
 }
@@ -198,11 +195,7 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
       oldKey,
       fun.id
     );
-    db.prepare(`INSERT INTO cc_expense_purchase_big_groups (account_id, purchase_key, group_slug) VALUES (?, ?, ?)`).run(
-      accountId,
-      oldKey,
-      BIG_GROUP
-    );
+    db.prepare(`INSERT INTO cc_expense_purchase_big_groups (purchase_key, group_slug) VALUES (?, ?)`).run(oldKey, BIG_GROUP);
     db.prepare(`INSERT INTO cc_expense_purchase_notes (account_id, purchase_key, notes) VALUES (?, ?, 'kept')`).run(
       accountId,
       oldKey
@@ -221,7 +214,10 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
         | { v: unknown }
         | undefined)?.v;
     expect(get("cc_expense_unique_purchases", "category_id")).toBe(fun.id);
-    expect(get("cc_expense_purchase_big_groups", "group_slug")).toBe(BIG_GROUP);
+    const bigGroup = db
+      .prepare(`SELECT group_slug FROM cc_expense_purchase_big_groups WHERE purchase_key = ?`)
+      .get(newKey) as { group_slug: string } | undefined;
+    expect(bigGroup?.group_slug).toBe(BIG_GROUP);
     expect(get("cc_expense_purchase_notes", "notes")).toBe("kept");
     const oldLeft = db
       .prepare(`SELECT COUNT(*) AS n FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`)

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { db } from "./db.js";
 import {
   createCcExpenseBigGroup,
   deleteCcExpenseBigGroup,
@@ -16,24 +15,18 @@ describe("ccExpenseBigGroups", () => {
     expect(slug).toMatch(/^vacaciones_nz_2023/);
   });
 
-  it("assigns and loads purchase big group", () => {
+  it("keys a big group by the purchase alone, manual expenses included", () => {
     const group = createCcExpenseBigGroup(`Vitest trip ${Date.now()}`);
-    const accountId = (
-      db.prepare(`SELECT id FROM accounts ORDER BY id LIMIT 1`).get() as { id: number } | undefined
-    )?.id;
-    expect(accountId).toBeTruthy();
-    setCcExpensePurchaseBigGroup({
-      accountId: accountId!,
-      purchaseKey: "line-pr:vitest-big-group",
-      groupSlug: group.slug,
-    });
-    const map = loadCcExpensePurchaseBigGroups([accountId!]);
-    expect(map.get(`${accountId}|line-pr:vitest-big-group`)).toBe(group.slug);
-    setCcExpensePurchaseBigGroup({
-      accountId: accountId!,
-      purchaseKey: "line-pr:vitest-big-group",
-      groupSlug: null,
-    });
+    for (const purchaseKey of ["line-pr:vitest-big-group", "manual:vitest-big-group"]) {
+      setCcExpensePurchaseBigGroup({ purchaseKey, groupSlug: group.slug });
+      expect(loadCcExpensePurchaseBigGroups().get(purchaseKey)).toBe(group.slug);
+    }
+    expect(() =>
+      setCcExpensePurchaseBigGroup({ purchaseKey: "payslip:vitest", groupSlug: group.slug })
+    ).toThrow(/payroll/);
+    for (const purchaseKey of ["line-pr:vitest-big-group", "manual:vitest-big-group"]) {
+      setCcExpensePurchaseBigGroup({ purchaseKey, groupSlug: null });
+    }
     deleteCcExpenseBigGroup(group.slug);
     expect(listCcExpenseBigGroups().some((g) => g.slug === group.slug)).toBe(false);
   });

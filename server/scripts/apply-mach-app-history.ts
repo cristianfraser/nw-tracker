@@ -101,7 +101,7 @@ const tx = db.transaction(() => {
     const id = Number(ins.run(MACH, r.amount, r.date, `import:mach-mail|app|${label[r.kind]} ${r.who}`).lastInsertRowid);
     if (r.kind === "paid_by") markCheckingExpenseRefund(id, cat);
     else if (cat !== "unclassified") assignFlowExpenseLineCategory({ lineId: id, source: "checking", unique: true, categorySlug: cat });
-    if (r.big_group) setCcExpensePurchaseBigGroup({ accountId: MACH, purchaseKey: checkingGastosMovementPurchaseKey(id), groupSlug: r.big_group });
+    if (r.big_group) setCcExpensePurchaseBigGroup({ purchaseKey: checkingGastosMovementPurchaseKey(id), groupSlug: r.big_group });
     written++;
   }
   say(`${written} payments, purchases and «Pago recibido» written`);

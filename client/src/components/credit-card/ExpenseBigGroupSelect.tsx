@@ -10,13 +10,11 @@ import styles from "./CreditCardExpenseLinesSelection.module.css";
 const CREATE_VALUE = "__create_big_group__";
 
 export function ExpenseBigGroupSelect({
-  accountId,
   purchaseKey,
   value,
   groups,
   disabled = false,
 }: {
-  accountId: number;
   purchaseKey: string;
   value: string | null;
   groups: readonly CcExpenseBigGroupDto[];
@@ -28,21 +26,18 @@ export function ExpenseBigGroupSelect({
   const [creating, setCreating] = useState(false);
 
   const rowPending =
-    (put.isPending &&
-      put.variables?.account_id === accountId &&
-      put.variables?.purchase_key === purchaseKey) ||
+    (put.isPending && put.variables?.purchase_key === purchaseKey) ||
     create.isPending;
 
   const persist = useCallback(
     (groupSlug: string | null) => {
       if (disabled || !purchaseKey) return;
       put.mutate({
-        account_id: accountId,
         purchase_key: purchaseKey,
         group_slug: groupSlug,
       });
     },
-    [accountId, disabled, purchaseKey, put]
+    [disabled, purchaseKey, put]
   );
 
   const onCreate = async () => {

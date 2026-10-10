@@ -68,13 +68,11 @@ const updNoteKey = db.prepare(
 const delNoteKey = db.prepare(
   `DELETE FROM cc_expense_purchase_notes WHERE account_id = ? AND purchase_key = ?`
 );
+// Big groups are keyed by the purchase alone (migration 235).
 const updBigGroupKey = db.prepare(
-  `UPDATE OR IGNORE cc_expense_purchase_big_groups SET purchase_key = ?
-   WHERE account_id = ? AND purchase_key = ?`
+  `UPDATE OR IGNORE cc_expense_purchase_big_groups SET purchase_key = ? WHERE purchase_key = ?`
 );
-const delBigGroupKey = db.prepare(
-  `DELETE FROM cc_expense_purchase_big_groups WHERE account_id = ? AND purchase_key = ?`
-);
+const delBigGroupKey = db.prepare(`DELETE FROM cc_expense_purchase_big_groups WHERE purchase_key = ?`);
 
 const findPdfPlansForLineIdentity = db.prepare(
   `SELECT id, source, purchase_date, total_amount_clp, cuotas_totales, merchant
@@ -196,11 +194,12 @@ function migrateManualPurchaseKeyRefs(
     for (const [upd, del] of [
       [updFinancingKey, delFinancingKey],
       [updNoteKey, delNoteKey],
-      [updBigGroupKey, delBigGroupKey],
     ] as const) {
       rewritten += upd.run(pdfKey, accountId, manualKey).changes;
       del.run(accountId, manualKey);
     }
+    rewritten += updBigGroupKey.run(pdfKey, manualKey).changes;
+    delBigGroupKey.run(manualKey);
   }
   return rewritten;
 }
