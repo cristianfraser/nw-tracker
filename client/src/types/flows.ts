@@ -170,6 +170,8 @@ export interface PaymentReceipt {
     ended_at_chile: string | null;
     distance_km: number | null;
   } | null;
+  /** The ride for the line, each address up to its first comma (server-built). */
+  trip_label: string | null;
   /** The charge is a subscription's (a renewing App Store item, Uber One). */
   subscription: boolean;
 }

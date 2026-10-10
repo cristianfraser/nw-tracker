@@ -189,6 +189,26 @@ describe("matchPaymentReceipts: Uber trip summaries", () => {
   });
 });
 
+describe("matchPaymentReceipts: peso receipts charged in dollars", () => {
+  const fxDay = "2036-03-02";
+  afterEach(() => {
+    db.prepare(`DELETE FROM fx_daily WHERE date = ?`).run(fxDay);
+  });
+
+  it("pairs an Uber peso receipt with a dollar line naming Uber at the day's rate, never an unnamed one", () => {
+    db.prepare(`INSERT OR REPLACE INTO fx_daily (date, clp_per_usd) VALUES (?, ?)`).run(fxDay, 800);
+    const { byPurchaseKey } = matchPaymentReceipts(
+      [receipt("ride", "2036-03-02 10:00", 8000, "uber"), receipt("flow", "2036-03-02 11:00", 8000, "flow")],
+      [
+        line("other", "2036-03-02", 8100, "SOME SHOP INC", { amount_usd: 10.1 }),
+        line("uber", "2036-03-02", 8150, "UBER BV", { amount_usd: 10.2 }),
+      ]
+    );
+    expect(byPurchaseKey.get("uber")?.message_id).toBe("ride");
+    expect(byPurchaseKey.has("other")).toBe(false);
+  });
+});
+
 describe("storePaymentProcessorReceipts", () => {
   const ID = "<vitest-ml-split@test>";
   afterEach(() => {
