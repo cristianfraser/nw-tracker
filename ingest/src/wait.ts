@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { Download, Page } from "playwright-core";
-import type { Recorder } from "./capture.js";
+import type { ApiCall, Recorder } from "./capture.js";
 import { ensureDir } from "./paths.js";
 import { log } from "./log.js";
 
@@ -14,16 +14,39 @@ export async function settle(page: Page, timeoutMs = 8_000): Promise<void> {
   }
 }
 
-/** Block until the recorder sees more calls for `endpoint` than `baselineCount`. */
+/**
+ * Which recorded calls a wait counts: an endpoint basename (exact), a pattern over the basename,
+ * or a predicate over the whole call (request body included — the checking step waits for the
+ * transactions call that names the PESO account, not just any transactions call).
+ */
+export type ApiCallMatcher = string | RegExp | ((call: ApiCall) => boolean);
+
+export function matchesApiCall(call: ApiCall, matcher: ApiCallMatcher): boolean {
+  if (typeof matcher === "string") return call.endpoint === matcher;
+  if (matcher instanceof RegExp) return matcher.test(call.endpoint);
+  return matcher(call);
+}
+
+export function countApiCalls(calls: readonly ApiCall[], matcher: ApiCallMatcher): number {
+  return calls.filter((call) => matchesApiCall(call, matcher)).length;
+}
+
+/**
+ * Block until the recorder sees more calls matching `matcher` than `baselineCount`.
+ *
+ * This is the one wait the steps use after a navigation, a tab click or a carousel move: the
+ * SPA never reaches `networkidle` (analytics traffic keeps flowing), so waiting for the data call
+ * the view makes is both faster and the proof that the view loaded.
+ */
 export async function waitForNewApiCalls(
   recorder: Recorder,
-  endpoint: string,
+  matcher: ApiCallMatcher,
   baselineCount: number,
   timeoutMs = 20_000,
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (recorder.callsFor(endpoint).length > baselineCount) return true;
+    if (countApiCalls(recorder.calls, matcher) > baselineCount) return true;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   return false;

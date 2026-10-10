@@ -4,9 +4,8 @@ import type { Page, Response } from "playwright-core";
 import type { BankConfig } from "../config.js";
 import { ensureDir, resolveCaptureDir } from "../paths.js";
 import { log, logStep } from "../log.js";
-import { settle } from "../wait.js";
 import { ROUTE, SELECTOR } from "./routes.js";
-import { gotoRoute } from "./login.js";
+import { openRoute } from "./navigate.js";
 import { pick, pickString } from "./payload.js";
 import { browserGoneError, errorMessage, saveStepDiagnostics } from "./stepSupport.js";
 
@@ -206,7 +205,7 @@ export async function fetchCheckingUsdMovements(page: Page, config: BankConfig, 
   const deadline = Date.now() + STEP_BUDGET_MS;
   const findUsd = (): UsdTransactionsCall | undefined => calls.find((c) => requestNamesUsdAccount(c.request, usdNumber));
   try {
-    if (!page.url().includes(ROUTE.checkingMovements)) await gotoRoute(page, ROUTE.checkingMovements);
+    if (!page.url().includes(ROUTE.checkingMovements)) await openRoute(page, ROUTE.checkingMovements);
     let labels = await carouselLabels(page);
     let found = findUsd();
     let slideIndex = 0;
@@ -218,10 +217,10 @@ export async function fetchCheckingUsdMovements(page: Page, config: BankConfig, 
       }
       slideIndex = move;
       const waitUntil = Math.min(Date.now() + CALL_WAIT_MS, deadline);
+      // The call is the proof the slide loaded; a `networkidle` settle here only ever timed out.
       while (Date.now() < waitUntil && calls.length === before) {
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
-      await settle(page, 2_000);
       if (labels.length === 0) labels = await carouselLabels(page);
       found = findUsd();
       log(`slide ${move}: ${calls.length - before} transactions call(s)` + (found ? " — the USD account" : ""));
