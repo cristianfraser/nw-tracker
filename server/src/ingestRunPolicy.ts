@@ -170,6 +170,34 @@ export const PAYSLIP_FETCH_LAST_DAY_OF_MONTH = 15;
  * import alone runs while the newest payslip has no deposit paired: pairing reads the monthly
  * cartola, which lands days after the payslip, so the import pairs it the night the cartola does.
  */
+/**
+ * Day of the month the mortgage cuota becomes payable (the same window `mortgageUfReminder.ts`
+ * evaluates: the 11th of the cycle month through the 10th of the next).
+ */
+export const MORTGAGE_CUOTA_DAY = 11;
+
+/**
+ * Whether this run (hourly or nightly) reads the user's mortgage sheet: from the 11th of a month
+ * the cycle's cuota is payable and the sheet is STALE until a regular cuota dated on or after
+ * that 11th is in the ledger — every run reads the sheet (a Numbers file, ~15 s) until the user
+ * posts the paid row; once it is in, nothing is read until the next 11th. A cuota paid late
+ * (after the 10th of the next month) keeps the sheet stale, which is also the overdue signal.
+ */
+export function decideMortgageSheetRun(i: {
+  now: Date;
+  /** Newest regular (numbered) cuota's payment day in the ledger, or null. */
+  latestCuotaPaidOn: string | null;
+}): { reason: string } | null {
+  const today = chileWallClockAt(i.now).ymd;
+  const day = Number(today.slice(8, 10));
+  const [y, m] = [Number(today.slice(0, 4)), Number(today.slice(5, 7))];
+  // The cycle whose payable window has opened: this month's 11th, or last month's before the 11th.
+  const cycleMonth = day >= MORTGAGE_CUOTA_DAY ? `${y}-${String(m).padStart(2, "0")}` : m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+  const windowStart = `${cycleMonth}-${String(MORTGAGE_CUOTA_DAY).padStart(2, "0")}`;
+  if (i.latestCuotaPaidOn != null && i.latestCuotaPaidOn >= windowStart) return null;
+  return { reason: `no mortgage cuota in the ledger since ${windowStart}` };
+}
+
 export function decidePayslipsRun(i: {
   now: Date;
   /** Newest stored payslip: its period (YYYY-MM) and whether a deposit is paired with it. */

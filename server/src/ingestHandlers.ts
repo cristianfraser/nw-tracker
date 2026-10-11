@@ -26,6 +26,7 @@ import { applyPayrollParameters } from "./payrollParametersApply.js";
 import { applyBrokerDividendStatement } from "./brokerDividendStatementApply.js";
 import { applyFundAccountTransactions } from "./fintualCertImport.js";
 import { applyUnemploymentFundDocuments } from "./afcCertImport.js";
+import { applyMortgageSheetPayments } from "./mortgageSheetPaymentsApply.js";
 import {
   applyCardUnbilledMovements,
   type CardUnbilledMovementsImportResult,
@@ -212,6 +213,11 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
   "bank_account.movements": {
     apply({ payload, envelope }) {
       return { status: "applied", details: applyBankAccountMovements(payload, envelope.source.ref) };
+    },
+  },
+  "mortgage.sheet_payments": {
+    apply({ payload }) {
+      return applyMortgageSheetPayments(payload);
     },
   },
   "card.unbilled_movements": {

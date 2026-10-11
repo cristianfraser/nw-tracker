@@ -54,6 +54,8 @@ export function emptyMortgageLedger(accountId: number): AccountDetailBundleRespo
     meta: null,
     rows: [],
     payment_scenarios: [],
+    card_matches: [],
+    card_lines_without_payment: [],
   };
 }
 

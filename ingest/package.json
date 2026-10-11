@@ -40,6 +40,7 @@
     "import:cuenta-vista-cartolas": "tsx src/santander/importCartolasMain.ts --account=cuenta-vista",
     "check:cc-parse": "PYTHONPATH=python/.pdf_deps python3 python/check-cc-statement-parse.py",
     "test:python": "cd python && for t in *_test.py; do PYTHONPATH=.pdf_deps python3 \"$t\" || exit 1; done",
+    "read:mortgage-sheet": "PYTHONPATH=python/.numbers_deps python3 python/read-mortgage-sheet.py",
     "service": "tsx src/service/main.ts",
     "import:checking-movements": "tsx src/santander/importCheckingMovementsMain.ts",
     "import:checking-usd-movements": "tsx src/santander/importCheckingUsdMovementsMain.ts",
@@ -57,6 +58,7 @@
     "import:fintual-acciones": "tsx src/fintual/importAccionesMain.ts",
     "import:fintual-cert": "tsx src/fintual/importCertMain.ts",
     "import:afc-cert": "tsx src/afc/importDocumentsMain.ts",
+    "import:mortgage-sheet": "tsx src/mortgage/importSheetMain.ts",
     "server-task": "tsx src/serverTaskMain.ts",
     "cc:manual-payment": "tsx src/ccManualPaymentMain.ts",
     "import:cfraser-inbox": "tsx src/inbox/pipelineMain.ts"

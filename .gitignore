@@ -27,6 +27,7 @@ server/data/fintual-goal-map.json
 
 # Local PDF parsing deps and the compiled receipt OCR helper (no trailing slash: a worktree links them)
 ingest/python/.pdf_deps
+ingest/python/.numbers_deps
 ingest/python/.ocr_bin
 
 # Personal finance data (Numbers/Excel exports, certificates, local CSVs)

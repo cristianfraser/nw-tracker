@@ -138,6 +138,7 @@ function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
       valor_vivienda_clp:
         viviendaUf != null && ufDay != null ? Math.round(viviendaUf * ufDay) : null,
       min_uf: p.min_uf ?? null,
+      max_uf: p.max_uf ?? null,
       incendio_clp: incendioClp,
       incendio_uf: incendioUf,
       desgravamen_clp: desgravamenClp,

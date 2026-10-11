@@ -31,6 +31,7 @@ function sheetRow(
     valor_vivienda_uf: null,
     valor_vivienda_clp: null,
     min_uf: null,
+    max_uf: null,
     incendio_clp: null,
     incendio_uf: null,
     desgravamen_clp: null,
@@ -119,6 +120,8 @@ describe("buildMortgageSummaryCardsData", () => {
         account_id: 1,
         has_sheet_rows: true,
         meta: null,
+        card_matches: [],
+        card_lines_without_payment: [],
         rows: [
           sheetRow({
             occurred_on: "2025-02-11",
@@ -158,6 +161,8 @@ describe("buildPropertySummaryCardsData", () => {
         account_id: 2,
         has_sheet_rows: true,
         meta: null,
+        card_matches: [],
+        card_lines_without_payment: [],
         rows: [
           sheetRow({
             occurred_on: "2025-02-11",

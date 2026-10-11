@@ -39,6 +39,7 @@ function paymentRow(overrides: Partial<DeptoDividendosPaymentRow>): DeptoDividen
     pagado_neto_uf: null,
     pago_acumulado_clp: null,
     min_uf: null,
+    max_uf: null,
     amortizacion_clp: null,
     amortizacion_uf: null,
     amortizacion_ext_clp: null,

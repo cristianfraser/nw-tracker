@@ -37,6 +37,8 @@ export type DeptoDividendosPaymentRow = {
   pago_acumulado_clp: number | null;
   /** Escenario “min UF” (hoja) — referencia antes del dividendo real del banco. */
   min_uf: number | null;
+  /** The bank's posted cuota máxima (UF), from the mortgage sheet. */
+  max_uf: number | null;
   amortizacion_clp: number | null;
   amortizacion_uf: number | null;
   amortizacion_ext_clp: number | null;
@@ -97,6 +99,7 @@ export type DeptoMortgageSheetRow = {
   valor_vivienda_uf: number | null;
   valor_vivienda_clp: number | null;
   min_uf: number | null;
+  max_uf: number | null;
   incendio_clp: number | null;
   incendio_uf: number | null;
   desgravamen_clp: number | null;
@@ -146,6 +149,7 @@ export function sheetRowToPaymentRow(s: DeptoMortgageSheetRow): DeptoDividendosP
     pagado_neto_uf: s.pagado_neto_uf,
     pago_acumulado_clp: s.pago_acumulado_clp,
     min_uf: s.min_uf,
+    max_uf: s.max_uf,
     amortizacion_clp: s.amortizacion_clp,
     amortizacion_uf: s.amortizacion_uf,
     amortizacion_ext_clp: s.amortizacion_ext_clp,
@@ -360,6 +364,7 @@ export type DeptoPaymentTableRow = {
   pagado_neto_uf: number | null;
   pago_acumulado_clp: number | null;
   min_uf: number | null;
+  max_uf: number | null;
   amortizacion_clp: number | null;
   amortizacion_uf: number | null;
   amortizacion_ext_clp: number | null;
@@ -390,13 +395,13 @@ export function insertDeptoPaymentRow(row: DeptoPaymentTableRow): void {
     `INSERT INTO depto_payments (
        movement_id, kind, origin, cuota,
        amount_uf, credito_restante_uf, valor_vivienda_uf, valor_neto_uf, valor_neto_clp,
-       pagado_neto_uf, pago_acumulado_clp, min_uf,
+       pagado_neto_uf, pago_acumulado_clp, min_uf, max_uf,
        amortizacion_clp, amortizacion_uf, amortizacion_ext_clp, amortizacion_ext_uf,
        interes_clp, interes_uf, incendio_clp, desgravamen_clp
      ) VALUES (
        @movement_id, @kind, @origin, @cuota,
        @amount_uf, @credito_restante_uf, @valor_vivienda_uf, @valor_neto_uf, @valor_neto_clp,
-       @pagado_neto_uf, @pago_acumulado_clp, @min_uf,
+       @pagado_neto_uf, @pago_acumulado_clp, @min_uf, @max_uf,
        @amortizacion_clp, @amortizacion_uf, @amortizacion_ext_clp, @amortizacion_ext_uf,
        @interes_clp, @interes_uf, @incendio_clp, @desgravamen_clp
      )`
@@ -417,6 +422,7 @@ export function deptoPaymentColumnsFromPaymentRow(
     pagado_neto_uf: r.pagado_neto_uf ?? null,
     pago_acumulado_clp: r.pago_acumulado_clp != null ? Math.round(r.pago_acumulado_clp) : null,
     min_uf: r.min_uf ?? null,
+    max_uf: r.max_uf ?? null,
     amortizacion_clp: r.amortizacion_clp != null ? Math.round(r.amortizacion_clp) : null,
     amortizacion_uf: r.amortizacion_uf ?? null,
     amortizacion_ext_clp: r.amortizacion_ext_clp != null ? Math.round(r.amortizacion_ext_clp) : null,

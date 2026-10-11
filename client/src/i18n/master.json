@@ -2060,6 +2060,10 @@
           "en": "Min UF",
           "es": "Min UF"
         },
+        "maxUf": {
+          "en": "Max UF",
+          "es": "Máx UF"
+        },
         "incendio": {
           "en": "Fire ins.",
           "es": "Incendio"
@@ -2079,7 +2083,25 @@
         "interes": {
           "en": "Interest",
           "es": "Interés"
+        },
+        "card": {
+          "en": "Card",
+          "es": "Tarjeta"
         }
+      },
+      "card": {
+        "awaitingCardLine": {
+          "en": "no card line yet",
+          "es": "sin línea de tarjeta aún"
+        },
+        "ambiguous": {
+          "en": "several card lines fit",
+          "es": "varias líneas de tarjeta coinciden"
+        }
+      },
+      "cardLinesWithoutPayment": {
+        "en": "Card charges with no cuota in the ledger (post the row in the mortgage sheet):",
+        "es": "Cargos en la tarjeta sin cuota en el ledger (registra la fila en la hoja de la hipoteca):"
       }
     },
     "import": {

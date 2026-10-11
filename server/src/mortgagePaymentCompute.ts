@@ -204,6 +204,11 @@ export function computeMortgagePaymentRow(
   if (min_uf != null && min_uf <= 0) {
     throw new Error("min_uf must be a positive number when provided");
   }
+  const max_uf =
+    rawInput.max_uf != null && Number.isFinite(rawInput.max_uf) ? rawInput.max_uf : null;
+  if (max_uf != null && max_uf <= 0) {
+    throw new Error("max_uf must be a positive number when provided");
+  }
 
   let amortizacion_clp: number;
   let amortizacion_ext_clp: number;
@@ -309,6 +314,8 @@ export function computeMortgagePaymentRow(
     incendio_clp,
     desgravamen_clp,
     cuota,
+    min_uf,
+    max_uf,
     amortizacion_ext_clp: amortizacion_ext_clp > 0 ? amortizacion_ext_clp : null,
     credito_restante_uf: statedCreditoRestanteUf,
   };
@@ -336,6 +343,7 @@ export function computeMortgagePaymentRow(
     valor_vivienda_uf: grossUf,
     valor_vivienda_clp,
     min_uf,
+    max_uf,
     incendio_clp,
     incendio_uf,
     desgravamen_clp,

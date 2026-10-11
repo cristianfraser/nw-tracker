@@ -35,6 +35,7 @@ function cuota27Row(): DeptoMortgageSheetRow {
     desgravamen_clp: 3041,
     total_seguros_clp: 44_692,
     min_uf: 11.5896,
+    max_uf: null,
     pagado_neto_uf: 2114.53,
     valor_neto_uf: 3564.53,
     valor_vivienda_uf: 5400,

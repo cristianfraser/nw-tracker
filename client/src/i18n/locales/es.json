@@ -605,12 +605,19 @@
         "pago": "Pago",
         "credito": "Crédito",
         "minUf": "Min UF",
+        "maxUf": "Máx UF",
         "incendio": "Incendio",
         "desgravamen": "Desgravamen",
         "amortizacion": "Amortización",
         "amortExt": "Amort. ext",
-        "interes": "Interés"
-      }
+        "interes": "Interés",
+        "card": "Tarjeta"
+      },
+      "card": {
+        "awaitingCardLine": "sin línea de tarjeta aún",
+        "ambiguous": "varias líneas de tarjeta coinciden"
+      },
+      "cardLinesWithoutPayment": "Cargos en la tarjeta sin cuota en el ledger (registra la fila en la hoja de la hipoteca):"
     },
     "import": {
       "sectionTitle": "Importar movimientos y documentos",
