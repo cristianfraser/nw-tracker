@@ -2,8 +2,8 @@
  * The CLP series of the day-period CC historial chart, attached to a `/api/daily-series`
  * payload: `cc_owed` (saldo total — Σ of the scope's CC-master lines, the per-day owed walk),
  * `cc_installment_debt` (deuda en cuotas — Σ per master), `cc_plan_tail` (the future plan
- * simulation over one shared grid) and `cc_facturacion_bars` (each card's facturación bar on its
- * close date). One builder for both scopes: a card's own page passes its single id, a Pasivos /
+ * simulation over one shared grid) and `cc_facturacion_bars` (one stack per billing month, Σ of the
+ * members' bars, on the month's latest member close). One builder for both scopes: a card's own page passes its single id, a Pasivos /
  * credit-card group page the masters its merged monthly ledger sums (`resolveCcMasterAccountIds`),
  * so the two grains agree on membership. Absent when no member has an installment schedule (as
  * before: those cards draw no daily historial).
@@ -23,7 +23,7 @@ import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsD
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   buildCcHistorialChartSeries,
-  facturacionBarsOnCloseDates,
+  facturacionBarsOnMonthCloseDates,
   type CcFacturacionBarPoint,
 } from "./creditCardChartSeries.js";
 import { resolveCcMasterAccountIds } from "./creditCardGroupLedger.js";
@@ -37,20 +37,22 @@ export type CcDailyHistorialBlock = {
   /** Future daily tail (`today+1 .. plan end`, CLP); absent once every plan has settled. */
   cc_plan_tail?: CcPlanTailPoint[];
   /**
-   * Each card's facturación bar on that card's close date, same-day closes summed — ascending,
-   * from the series' first day. A date can lie past the grid (an open month closing after the
-   * plan tail ends); the chart extends its axis to reach it.
+   * One bar per billing month — the Σ of the members' bars, as the monthly chart stacks them —
+   * on the latest close among the members that billed it; ascending, from the series' first day.
+   * A date can lie past the grid (an open month closing after the plan tail ends); the chart
+   * extends its axis to reach it.
    */
   cc_facturacion_bars: CcFacturacionBarPoint[];
 };
 
 /**
  * Every master's monthly historial bars (the monthly chart's own builder over the same cached
- * bundle) placed on that master's closes: the facturaciones table's close for a billed, provisional
- * or open month, the best published — else config — close for a month the plan only projects.
+ * bundle), summed per billing month and placed on the month's latest master close: the
+ * facturaciones table's close for a billed, provisional or open month, the best published — else
+ * config — close for a month the plan only projects.
  */
 function facturacionBarsForMasters(masterIds: readonly number[]): CcFacturacionBarPoint[] {
-  return facturacionBarsOnCloseDates(
+  return facturacionBarsOnMonthCloseDates(
     masterIds.map((accountId) => {
       const bundle = billingDetailCacheForAccount(accountId);
       const closeByMonth = new Map(

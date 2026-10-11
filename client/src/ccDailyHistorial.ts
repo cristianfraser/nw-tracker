@@ -19,9 +19,9 @@ function nextDayYmd(ymd: string): string {
  * CC block (`cc_owed` / `cc_installment_debt` / `cc_plan_tail` / `cc_facturacion_bars` — a card's
  * own page or a Pasivos / credit-card group page, requested in CLP). The historical days map
  * straight onto the two lines (saldo total = owed walk, deuda en cuotas = plan debt), the plan
- * tail extends the grid past today to the plan end, and each facturación bar lands on its close
- * day — the grid runs on, lines empty, to a close past its end (an open month closing after the
- * plan tail). The leading empty grid is clipped to the shared range window (20 % empty lead as
+ * tail extends the grid past today to the plan end, and each billing month's facturación stack
+ * lands on its close day (a group's, the latest member close of that month) — the grid runs on,
+ * lines empty, to a close past its end (an open month closing after the plan tail). The leading empty grid is clipped to the shared range window (20 % empty lead as
  * the truncation cue; `total` starts flush at the first data day). Null when the payload carries
  * no CC block — the caller distinguishes "not fetched yet" from "not a CC scope" itself.
  */
