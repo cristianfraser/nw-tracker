@@ -8,7 +8,7 @@ import { parseChileanNumber } from "../formats/chileanNumber.js";
  *   customer (Fintual's dollar withdrawals). Plain text, field tags in order: `20:` sender's
  *   reference, `32A:` value date / currency / amount, `50K:` ordering customer, `57A:` the
  *   beneficiary's bank (BIC), `59F:` beneficiary, `70:` remittance information.
- * - Santander «AVISO DE LIQUIDACION DE ORDEN DE PAGO RECIBIDA»: «… la orden de pago 202699292118
+ * - Santander «AVISO DE LIQUIDACION DE ORDEN DE PAGO RECIBIDA»: «… la orden de pago 202600000042
  *   a nombre de A. por USD 1.138,53». Its PDFs carry the details; the text has the order number
  *   and the amount, and the account is the one dollar account the client holds there.
  *
