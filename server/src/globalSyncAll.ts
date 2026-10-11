@@ -1173,13 +1173,34 @@ async function runFintualRnComposition(
     errors.push({ step, message: `proxy self-check unavailable: ${result.self_check_error}` });
   }
 
+  if (result.history.status === "conflict") {
+    const diffs = result.history.differences
+      .map((d) => `${d.ticker} ${d.stored == null ? "—" : (d.stored * 100).toFixed(2) + "%"} → ${d.stated == null ? "—" : (d.stated * 100).toFixed(2) + "%"}`)
+      .join(", ");
+    errors.push({
+      step,
+      message: `Fintual restated the ${result.positions_date} basket (${diffs}); the history keeps the first statement, the proxy prices on the new one`,
+    });
+  }
+  const { entered, left, previous_positions_date, previous_holdings_count } = result.ticker_changes;
+  if (result.history.status === "inserted" && previous_positions_date != null && (entered.length || left.length)) {
+    const parts = [
+      ...(entered.length ? [`+${entered.join(", +")}`] : []),
+      ...(left.length ? [`−${left.join(", −")}`] : []),
+    ];
+    notes.push({
+      step,
+      message: `basket changed vs ${previous_positions_date}: ${parts.join(" ")}`,
+    });
+  }
+
   changes.push({
     group: "fintual",
     label: "Risky Norris proxy composition",
-    oldValue: "—",
+    oldValue: previous_holdings_count == null ? "—" : `${previous_holdings_count} holdings`,
     newValue: `${result.holdings_count} holdings`,
-    oldDate: null,
-    newDate: result.composition_date,
+    oldDate: previous_positions_date,
+    newDate: result.positions_date,
   });
   console.log(
     `sync: Risky Norris composition — ${result.holdings_count} ETF(s) as of ${result.positions_date}, anchored ${result.composition_date} (${result.tickers.join(", ")})`
