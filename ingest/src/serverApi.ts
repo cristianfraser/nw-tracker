@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { createIngestClient, IngestRequestError, type IngestClient } from "nw-tracker-contracts";
+import {
+  connectionFailureCode,
+  createIngestClient,
+  IngestConnectionError,
+  IngestRequestError,
+  type IngestClient,
+} from "nw-tracker-contracts";
+import { log } from "./log.js";
 import { resolveRepoRoot } from "./paths.js";
 
 /** How this package names itself to the server (`feeder_id` on every payload). */
@@ -30,21 +37,33 @@ export function resolveServerUrl(): string {
   return envValue("SERVER_URL") ?? DEFAULT_SERVER_URL;
 }
 
+/**
+ * The server client every command and the service send through. A request the server never
+ * answered (refused, reset, cut by a restart mid-request) is retried by the client; each retry
+ * is logged here so the run log shows what it rode out.
+ */
 export function ingestClient(): IngestClient {
   const token = envValue("INGEST_TOKEN");
+  const url = resolveServerUrl();
   return createIngestClient({
-    baseUrl: resolveServerUrl(),
+    baseUrl: url,
     feederId: INGEST_FEEDER_ID,
     ...(token ? { token } : {}),
+    onRetry: ({ pathname, code, attempt, delayMs }) =>
+      log(`server: no answer from ${url} for ${pathname} (${code}) on attempt ${attempt}; retrying in ${delayMs / 1000} s`),
   });
 }
 
-/** A request failure in words a run log can act on (a server that is down, or its refusal). */
+/** A request failure in words a run log can act on: a server that is down, that never answered, or its refusal. */
 export function describeIngestFailure(err: unknown): string {
   if (err instanceof IngestRequestError) return err.message;
-  const cause = err instanceof Error && err.cause instanceof Error ? err.cause : null;
-  if (cause && /ECONNREFUSED/.test(String((cause as NodeJS.ErrnoException).code ?? cause.message))) {
-    return `the server is not reachable at ${resolveServerUrl()} — is com.user.nw-tracker-server running?`;
+  if (err instanceof IngestConnectionError) {
+    const tried = `${err.attempts} attempt(s) over ${Math.round(err.elapsedMs / 1000)} s`;
+    return err.code === "ECONNREFUSED"
+      ? `the server is not reachable at ${err.baseUrl} (${tried}) — is com.user.nw-tracker-server running?`
+      : `the server at ${err.baseUrl} did not answer (${err.code}; ${tried})`;
   }
+  const code = connectionFailureCode(err);
+  if (code != null) return `connection failed (${code}): ${err instanceof Error ? err.message : String(err)}`;
   return err instanceof Error ? err.message : String(err);
 }
