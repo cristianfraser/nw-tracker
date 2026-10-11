@@ -128,7 +128,7 @@ export function parseUltimosMovimientosRows(rows: unknown[][]): UltimosMovimient
     const key = `${date}\t${amount}\t${description}`;
     if (seen.has(key)) return;
     seen.add(key);
-    movements.push({ date, description, currency: "clp", amount, document_no });
+    movements.push({ date, description, currency: "clp", amount, document_no, wire_reference: null });
   };
 
   for (let i = headerRow + 1; i < rows.length; i++) {
@@ -166,7 +166,7 @@ export function parseUltimosMovimientosRows(rows: unknown[][]): UltimosMovimient
 export function ultimosMovimientosPayload(rows: unknown[][]): BankAccountMovementsPayload {
   const { accountNumber } = readUltimosMovimientosHeader(rows);
   const parsed = parseUltimosMovimientosRows(rows);
-  return { account: { issuer: "santander", product: "checking", number: accountNumber }, ...parsed };
+  return { account: { issuer: "santander", product: "checking", currency: "clp", number: accountNumber }, ...parsed };
 }
 
 /** The whole workbook as one payload; throws when it is not the peso account's «últimos movimientos» workbook. */

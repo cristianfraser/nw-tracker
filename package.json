@@ -44,6 +44,7 @@
     "fetch:apple-mail": "npm run fetch:apple-mail -w nw-tracker-ingest --",
     "fetch:buk-payslips": "npm run fetch:buk-payslips -w nw-tracker-ingest --",
     "import:santander-movements": "npm run import:santander-movements -w nw-tracker-ingest --",
+    "import:checking-usd-movements": "npm run import:checking-usd-movements -w nw-tracker-ingest --",
     "import:santander-statements": "npm run import:santander-statements -w nw-tracker-ingest --",
     "import:santander-receipts": "npm run import:santander-receipts -w nw-tracker-ingest --",
     "import:apple-mail": "npm run import:apple-mail -w nw-tracker-ingest --",

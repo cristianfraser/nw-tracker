@@ -65,9 +65,12 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   // card evidence only lands with the feed); 3c the bank's own cupo against the app's.
   if (o.dryRun) {
     await x.step(dry("Santander movements"), npmRun("import:santander-movements", "--dry-run"));
+    await x.step(dry("Santander USD movements"), npmRun("import:checking-usd-movements", "--dry-run"));
     await x.step(dry("Convert CC payment mirrors after card feed"), npmRun("convert:cc-payment-mirrors", "--dry-run"));
   } else {
     await x.step("Santander movements", npmRun("import:santander-movements"));
+    // The dollar account's capture from the same session: confirms its ledger rows, inserts nothing.
+    await x.step("Santander USD movements", npmRun("import:checking-usd-movements"));
     await x.step("Convert CC payment mirrors after card feed", npmRun("convert:cc-payment-mirrors"));
     await x.step("CC bank cupo check", npmRun("check:cc-bank-cupo"));
   }

@@ -148,6 +148,7 @@ if [[ "$DRY_RUN" != "1" ]]; then
     if [[ "$failed" -eq "$failed_before" ]]; then
       sa_caught_up=1
       step "Santander movements ($sa_fetch_kind)" npm run import:santander-movements
+      step "Santander USD movements ($sa_fetch_kind)" npm run import:checking-usd-movements
       step "Convert CC payment mirrors ($sa_fetch_kind)" npm run convert:cc-payment-mirrors
       step "CC bank cupo check ($sa_fetch_kind)" npm run check:cc-bank-cupo
     fi

@@ -27,6 +27,7 @@ import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js"
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { BANK_POSTING_JOIN_SQL, recordBankPosting } from "./movementBankPostings.js";
+import { signedUsdDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 
 type TransferLegRow = {
   id: number;
@@ -79,6 +80,46 @@ export function findMatchingInternalTransferLegId(
   for (const r of rows) {
     if (consumed.has(r.id)) continue;
     if (Math.round(signedTransferLegDelta(r, accountId)) === target) return r.id;
+  }
+  return null;
+}
+
+type UsdTransferLegRow = MovementTransferRow & { id: number };
+
+/**
+ * The dollar twin of {@link findMatchingInternalTransferLegId}: the id of an existing transfer
+ * leg touching `accountId` (a USD cash account) whose signed DOLLAR delta on it
+ * (`signedUsdDeltaForAccountMovement` — the USD leg of a wire booking, a `pago_tarjeta` from the
+ * dollar account, the counter leg of a conversion) equals `amountUsdSigned` to the cent, inside
+ * the same posting window, not yet claimed — else null.
+ */
+export function findMatchingUsdTransferLegId(
+  accountId: number,
+  bankDateYmd: string,
+  amountUsdSigned: number,
+  consumed: Set<number>,
+  dbHandle: Database = db
+): number | null {
+  if (!Number.isFinite(amountUsdSigned) || amountUsdSigned === 0) return null;
+  const targetCents = Math.round(amountUsdSigned * 100);
+  const windowStart = priorChileBusinessDayYmd(bankDateYmd) ?? bankDateYmd;
+  const rows = dbHandle
+    .prepare(
+      `SELECT m.id, m.account_id, m.from_account_id, m.to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL},
+              m.occurred_on, m.note, m.units_delta, m.flow_kind, m.ticker
+       FROM movements m ${BANK_POSTING_JOIN_SQL}
+       WHERE m.account_id IS NULL
+         AND (m.from_account_id = ? OR m.to_account_id = ?)
+         AND (
+           bp.posted_on = ?
+           OR (bp.posted_on IS NULL AND m.occurred_on >= ? AND m.occurred_on <= ?)
+         )
+       ORDER BY (bp.posted_on IS NOT NULL) DESC, m.occurred_on DESC, m.id DESC`
+    )
+    .all(accountId, accountId, accountId, bankDateYmd, windowStart, bankDateYmd) as UsdTransferLegRow[];
+  for (const r of rows) {
+    if (consumed.has(r.id)) continue;
+    if (Math.round(signedUsdDeltaForAccountMovement(r, accountId) * 100) === targetCents) return r.id;
   }
   return null;
 }
