@@ -24,10 +24,13 @@ function unitValue(n: NavValueMapNodeDto, unit: Unit): number | null {
 
 /**
  * `depth` is relative to the page root: its first-level children (depth 1) always show what is
- * inside — a leaf group opens into its accounts (`leaf_accounts`); deeper leaves stay one tile.
+ * inside — a leaf group opens into its accounts (`leaf_accounts`) even with one; deeper, a leaf
+ * group opens when it holds two or more, and a single account stays the group's own tile.
  */
 function toMapNode(dto: NavValueMapNodeDto, unit: Unit, depth = 0): MapNode | null {
-  const inner = dto.children ?? (depth === 1 && dto.leaf_accounts?.length ? dto.leaf_accounts : null);
+  const leafAccounts = dto.leaf_accounts ?? [];
+  const opensLeaf = leafAccounts.length >= (depth === 1 ? 1 : 2);
+  const inner = dto.children ?? (opensLeaf ? leafAccounts : null);
   if (inner) {
     const children = inner.flatMap((c) => {
       const m = toMapNode(c, unit, depth + 1);
@@ -63,11 +66,21 @@ function colorStyle(t: number): { className: string; style: CSSProperties } {
   };
 }
 
-const LAYOUT_OPTS = { headerHeight: 20, minHeaderWidth: 72, minHeaderHeight: 56, framePadding: 3 };
-/** Labels: name over % when the tile fits two lines, one row (name truncates) when it fits one. */
-const MIN_LABEL_W = 56;
+const LAYOUT_OPTS = { headerHeight: 20, minHeaderWidth: 72, minHeaderHeight: 46, framePadding: 3 };
+/**
+ * Labels: name over % when the tile fits two lines, one row when it fits one — and only when
+ * the text fits whole (measured), otherwise none. A frame's header drops its % first, then
+ * shortens the name.
+ */
 const MIN_LABEL_H = 22;
 const MIN_STACKED_LABEL_H = 36;
+/** Horizontal room a label loses to padding, border and the gap between name and %, in px. */
+const TILE_LABEL_INSET = 8;
+const TILE_ROW_GAP = 6;
+const HEADER_INSET = 16;
+const HEADER_GAP = 7;
+
+type LabelKind = "tile-name" | "tile-pct" | "header";
 
 type Hover = { node: NavValueMapNodeDto; x: number; y: number };
 
@@ -141,6 +154,29 @@ export function ValueTreemap({
 
   const go = (n: NavValueMapNodeDto) => navigate(n.route_path);
 
+  // Text widths, measured on hidden spans styled like the labels (null before the first paint).
+  const probeRefs = useRef<Partial<Record<LabelKind, HTMLSpanElement | null>>>({});
+  const textWidth = (text: string, kind: LabelKind): number | null => {
+    const probe = probeRefs.current[kind];
+    if (!probe) return null;
+    probe.textContent = text;
+    return probe.getBoundingClientRect().width;
+  };
+  const tileLabelMode = (w: number, h: number, name: string, pct: string): "stacked" | "row" | null => {
+    if (h < MIN_LABEL_H) return null;
+    const nameW = textWidth(name, "tile-name");
+    const pctW = textWidth(pct, "tile-pct");
+    if (nameW == null || pctW == null) return null;
+    const room = w - TILE_LABEL_INSET;
+    if (h >= MIN_STACKED_LABEL_H) return Math.max(nameW, pctW) <= room ? "stacked" : null;
+    return nameW + TILE_ROW_GAP + pctW <= room ? "row" : null;
+  };
+  const headerShowsPct = (w: number, name: string, pct: string): boolean => {
+    const nameW = textWidth(name, "header");
+    const pctW = textWidth(pct, "header");
+    return nameW != null && pctW != null && nameW + HEADER_GAP + pctW <= w - HEADER_INSET;
+  };
+
   // A payload with no tile in this unit is a real absence only once loaded; while loading the
   // empty box below stands in.
   if (root && !mapRoot && !loading) {
@@ -208,18 +244,21 @@ export function ValueTreemap({
                       {...interaction}
                     >
                       <span className="value-treemap__name">{name}</span>
-                      <span className="value-treemap__pct">{pctText}</span>
+                      {headerShowsPct(p.rect.w, name, pctText) ? (
+                        <span className="value-treemap__pct">{pctText}</span>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
               );
             }
-            const showLabel = p.rect.w >= MIN_LABEL_W && p.rect.h >= MIN_LABEL_H;
-            const rowLabel = p.rect.h < MIN_STACKED_LABEL_H;
+            const labelMode = tileLabelMode(p.rect.w, p.rect.h, name, pctText);
+            const showLabel = labelMode != null;
+            const rowLabel = labelMode === "row";
             return (
               <div
                 key={`t:${dto.slug}`}
-                className={`value-treemap__tile ${rowLabel ? "value-treemap__tile--row" : ""} ${className}`}
+                className={`value-treemap__tile ${showLabel ? (rowLabel ? "value-treemap__tile--row" : "") : "value-treemap__tile--bare"} ${className}`}
                 style={{ ...style, ...box }}
                 {...interaction}
               >
@@ -232,6 +271,21 @@ export function ValueTreemap({
               </div>
             );
           })}
+          <span
+            ref={(el) => (probeRefs.current["tile-name"] = el)}
+            className="value-treemap__probe value-treemap__probe--tile value-treemap__name"
+            aria-hidden="true"
+          />
+          <span
+            ref={(el) => (probeRefs.current["tile-pct"] = el)}
+            className="value-treemap__probe value-treemap__probe--tile value-treemap__pct"
+            aria-hidden="true"
+          />
+          <span
+            ref={(el) => (probeRefs.current.header = el)}
+            className="value-treemap__probe value-treemap__probe--header"
+            aria-hidden="true"
+          />
           {hover && tooltipNode && tooltipValue != null ? (
             <div
               className="value-treemap__tooltip"
