@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCcHistorialChartSeries,
-  facturacionBarsOnCloseDates,
+  facturacionBarsOnMonthCloseDates,
   type CcHistorialChartPoint,
 } from "./creditCardChartSeries.js";
 import type { CcBillingDetailMonthRow, CcFacturacionRow } from "./ccBillingViews.js";
@@ -300,7 +300,7 @@ describe("buildCcHistorialChartSeries", () => {
   });
 });
 
-describe("facturacionBarsOnCloseDates", () => {
+describe("facturacionBarsOnMonthCloseDates", () => {
   const monthPoint = (month: string, cuotas: number | null, rest: number | null): CcHistorialChartPoint => ({
     month,
     facturado_cuotas_clp: cuotas,
@@ -311,9 +311,11 @@ describe("facturacionBarsOnCloseDates", () => {
     cupo_en_cuotas_clp: null,
     balance_total_clp: null,
   });
+  const row = (b: { as_of_date: string; facturado_cuotas_clp: number | null; facturado_rest_clp: number | null; facturado_total_clp: number | null }) =>
+    [b.as_of_date, b.facturado_cuotas_clp, b.facturado_rest_clp, b.facturado_total_clp];
 
-  it("puts each card's bar on its own close and stacks cards that close the same day", () => {
-    const bars = facturacionBarsOnCloseDates([
+  it("stacks every card's bar of a billing month on the month's latest close", () => {
+    const bars = facturacionBarsOnMonthCloseDates([
       {
         points: [monthPoint("2026-08", 100, 900), monthPoint("2026-09", null, null), monthPoint("2026-10", 50, null)],
         closeIsoForMonth: (ym) => ({ "2026-08": "2026-08-25", "2026-10": "2026-10-24" })[ym]!,
@@ -323,10 +325,37 @@ describe("facturacionBarsOnCloseDates", () => {
         closeIsoForMonth: (ym) => ({ "2026-08": "2026-08-26", "2026-10": "2026-10-24" })[ym]!,
       },
     ]);
-    expect(bars.map((b) => [b.as_of_date, b.facturado_cuotas_clp, b.facturado_rest_clp, b.facturado_total_clp])).toEqual([
-      ["2026-08-25", 100, 900, 1_000],
-      ["2026-08-26", 10, 90, 100],
+    expect(bars.map(row)).toEqual([
+      ["2026-08-26", 110, 990, 1_100],
       ["2026-10-24", 55, 20, 75],
     ]);
+  });
+
+  it("a card with no bar in a month lends it neither pesos nor its close", () => {
+    const bars = facturacionBarsOnMonthCloseDates([
+      {
+        points: [monthPoint("2026-08", 100, 900)],
+        closeIsoForMonth: () => "2026-08-24",
+      },
+      {
+        // Projected only in August (no facturado); its estimated close is later than the other's.
+        points: [monthPoint("2026-08", null, null), monthPoint("2026-09", 5, null)],
+        closeIsoForMonth: (ym) => ({ "2026-08": "2026-08-28", "2026-09": "2026-09-26" })[ym]!,
+      },
+    ]);
+    expect(bars.map(row)).toEqual([
+      ["2026-08-24", 100, 900, 1_000],
+      ["2026-09-26", 5, null, 5],
+    ]);
+  });
+
+  it("a card alone keeps its own closes", () => {
+    const bars = facturacionBarsOnMonthCloseDates([
+      {
+        points: [monthPoint("2026-08", 1, 2), monthPoint("2026-09", 3, 4)],
+        closeIsoForMonth: (ym) => ({ "2026-08": "2026-08-24", "2026-09": "2026-09-24" })[ym]!,
+      },
+    ]);
+    expect(bars.map((b) => b.as_of_date)).toEqual(["2026-08-24", "2026-09-24"]);
   });
 });

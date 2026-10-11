@@ -261,24 +261,36 @@ export function buildCcHistorialChartSeries(
 }
 
 /**
- * The day-period historial's bars: each card's monthly bar on that card's close date, cards
- * closing the same day stacked together. The same per-card monthly series feeds the monthly
- * bars, so a card's facturación reads the same numbers in both grains.
+ * The day-period historial's bars: one stack per billing month, as the monthly chart draws it
+ * (a group's bar is the Σ of its cards' own bars), dated on the LATEST close among the cards
+ * that billed that month — ·0901 closes ~the 24th and ·0101 ~the 26th, and two thin stacks two
+ * days apart read as two facturaciones. A card with no bar in a month lends neither pesos nor a
+ * date, so a card the plan only projects there cannot move a billed month's stack onto its
+ * estimated close. The same per-card monthly series feeds the monthly bars, so a facturación
+ * reads the same numbers in both grains; a card alone keeps its own closes.
  */
-export function facturacionBarsOnCloseDates(
+export function facturacionBarsOnMonthCloseDates(
   cards: readonly {
     points: readonly CcHistorialChartPoint[];
     closeIsoForMonth: (billingMonth: string) => string;
   }[]
 ): CcFacturacionBarPoint[] {
-  const byDate = new Map<string, CcFacturadoBarSegments>();
+  const byMonth = new Map<string, { close: string; bar: CcFacturadoBarSegments }>();
   for (const card of cards) {
     for (const p of card.points) {
       if (p.facturado_total_clp == null) continue;
-      const date = card.closeIsoForMonth(p.month);
-      const prev = byDate.get(date);
-      byDate.set(date, prev ? sumBars(prev, p) : barOf(p));
+      const close = card.closeIsoForMonth(p.month);
+      const prev = byMonth.get(p.month);
+      byMonth.set(p.month, {
+        close: prev && prev.close > close ? prev.close : close,
+        bar: prev ? sumBars(prev.bar, p) : barOf(p),
+      });
     }
+  }
+  // Two months on one day would be one row to the client's day index; keep them summed.
+  const byDate = new Map<string, CcFacturadoBarSegments>();
+  for (const { close, bar } of byMonth.values()) {
+    byDate.set(close, sumBars(byDate.get(close), bar));
   }
   return [...byDate.entries()]
     .sort(([a], [b]) => a.localeCompare(b))

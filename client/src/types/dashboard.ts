@@ -436,8 +436,9 @@ export interface DailySeriesResponse {
    */
   cc_plan_tail?: { as_of_date: string; plan_debt_clp: number; balance_clp: number }[];
   /**
-   * CC scopes only: each card's facturación bar on that card's close date, same-day closes
-   * summed (ascending; a date may lie past the grid — an open month closing after the plan tail).
+   * CC scopes only: one facturación bar per billing month (Σ of the members' bars, as the monthly
+   * chart stacks them) on the month's latest member close (ascending; a date may lie past the
+   * grid — an open month closing after the plan tail).
    */
   cc_facturacion_bars?: (CcFacturadoBarSegments & { as_of_date: string })[];
   /** Σ of account `deposits_acum` per day (`__group_dep_total` line). */
