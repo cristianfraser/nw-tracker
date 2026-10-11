@@ -17,6 +17,8 @@ export type ImportBatchKind =
   | "cuenta_vista_web_paste"
   | "cc_statement_pdf"
   | "checking_recent_xlsx"
+  /** A dollar account's feed confirming its ledger rows (nothing inserted). */
+  | "usd_account_feed"
   | "checking_cartola_xlsx"
   | "afp_uno_cert"
   | "fintual_cert"

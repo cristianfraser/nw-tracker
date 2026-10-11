@@ -164,8 +164,11 @@ fi
 #    period every day and repeats dedupe against the same one-shot keys).
 if [[ "$DRY_RUN" == "1" ]]; then
   step "Santander movements (dry run)" npm run import:santander-movements -- --dry-run
+  step "Santander USD movements (dry run)" npm run import:checking-usd-movements -- --dry-run
 else
   step "Santander movements" npm run import:santander-movements
+  # The dollar account's capture from the same session: confirms its ledger rows, inserts nothing.
+  step "Santander USD movements" npm run import:checking-usd-movements
 fi
 
 # 3b. Second pass of the payment-mirror converter. The inbox pipeline ran its own before step 3,

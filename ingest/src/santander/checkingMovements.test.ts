@@ -30,11 +30,11 @@ describe("santanderCheckingMovementsPayload", () => {
     );
     expect(bankAccountMovementsKind.payload.safeParse(payload).success).toBe(true);
     expect(payload).toEqual({
-      account: { issuer: "santander", product: "checking", number: ACCOUNT_NUMBER },
+      account: { issuer: "santander", product: "checking", currency: "clp", number: ACCOUNT_NUMBER },
       movements: [
-        { date: "2026-09-29", description: "0012345678 Transf a Fintual", currency: "clp", amount: -150000, document_no: "0012345678" },
-        { date: "2026-09-30", description: "Remuneracion", currency: "clp", amount: 1234567, document_no: null },
-        { date: "2026-10-01", description: "Transferencia de Tercero", currency: "clp", amount: 50000, document_no: null },
+        { date: "2026-09-29", description: "0012345678 Transf a Fintual", currency: "clp", amount: -150000, document_no: "0012345678", wire_reference: null },
+        { date: "2026-09-30", description: "Remuneracion", currency: "clp", amount: 1234567, document_no: null, wire_reference: null },
+        { date: "2026-10-01", description: "Transferencia de Tercero", currency: "clp", amount: 50000, document_no: null, wire_reference: null },
       ],
       rejected_rows: [],
     });
@@ -86,7 +86,7 @@ describe("the upload format", () => {
   it("answers the payload of bank_account.movements, or not_this_format", () => {
     const parse = PARSE_FORMATS["santander.checking_xlsx"];
     const ok = parse(workbook([ACCOUNT_LINE, HEADER, ["29-09-2026", "Compra", "1.000", ""]]), "u.xlsx");
-    expect(ok).toMatchObject({ kind: "bank_account.movements", schema_version: 1, payload: { account: { number: ACCOUNT_NUMBER } } });
+    expect(ok).toMatchObject({ kind: "bank_account.movements", schema_version: 2, payload: { account: { number: ACCOUNT_NUMBER } } });
     expect(() => parse(workbook([["CARTOLA"], ["Saldo"]]), "cartola.xlsx")).toThrow(NotThisFormatError);
     // The dollar account's listing has the header but is not this account: unreadable, not another format.
     const usdHeader = ["Fecha", "Detalle", "Monto cargo (USD)", "Monto abono (USD)", "Saldo (USD)"];

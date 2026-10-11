@@ -47,6 +47,7 @@ describe("runNightly", () => {
       "run fetch:apple-mail",
       "run import:cfraser-inbox",
       "run import:santander-movements",
+      "run import:checking-usd-movements",
       "run convert:cc-payment-mirrors",
       "run check:cc-bank-cupo",
       "run import:transfer-mails",
@@ -182,6 +183,7 @@ describe("runHourly", () => {
     expect(calls.slice(6)).toEqual([
       "run fetch:santander -- --background --movements-only",
       "run import:santander-movements",
+      "run import:checking-usd-movements",
       "run convert:cc-payment-mirrors",
       "run check:cc-bank-cupo",
       "run import:cfraser-inbox",

@@ -7,6 +7,7 @@ import {
   importCheckingPartialMovements,
   partialMovementNote,
 } from "./checkingPartialMovementsImport.js";
+import type { BankAccountMovementsApplyDetails } from "nw-tracker-contracts";
 import { applyBankAccountMovements } from "./bankAccountMovementsApply.js";
 
 function testCheckingAccountId(): number | null {
@@ -248,15 +249,15 @@ describe("checking import flow lists (inserted_flows / skipped_flows)", () => {
     // The listing as ingest sends it (decoding the bank's workbook is ingest's to test).
     const result = applyBankAccountMovements(
       {
-        account: { issuer: "santander", product: "checking" },
+        account: { issuer: "santander", product: "checking", currency: "clp" },
         movements: [
-          { date: "1799-06-10", description: "vitest-flow transf fintual", currency: "clp", amount: 87654, document_no: null },
-          { date: "1799-06-11", description: "vitest-flow fresh cargo", currency: "clp", amount: -33333, document_no: null },
+          { date: "1799-06-10", description: "vitest-flow transf fintual", currency: "clp", amount: 87654, document_no: null, wire_reference: null },
+          { date: "1799-06-11", description: "vitest-flow fresh cargo", currency: "clp", amount: -33333, document_no: null, wire_reference: null },
         ],
         rejected_rows: [],
       },
       "vitest-ultimos.xlsx"
-    );
+    ) as BankAccountMovementsApplyDetails;
     try {
       expect(result.account_id).toBe(accountId);
       expect(result.inserted).toBe(1);

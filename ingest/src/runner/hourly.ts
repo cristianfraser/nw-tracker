@@ -83,6 +83,7 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
       if (fetched.ok) {
         caughtUp = true;
         await x.step(`Santander movements (${mode})`, npmRun("import:santander-movements"));
+        await x.step(`Santander USD movements (${mode})`, npmRun("import:checking-usd-movements"));
         await x.step(`Convert CC payment mirrors (${mode})`, npmRun("convert:cc-payment-mirrors"));
         await x.step(`CC bank cupo check (${mode})`, npmRun("check:cc-bank-cupo"));
       }
