@@ -4,7 +4,9 @@
  *
  * `watchlist_composite_meta` / `_holdings` carry only the latest basket, rewritten on every sync;
  * this module keeps every basket the sync ever saw, keyed by the day Fintual said the holdings
- * were as of. Rows are write-once: the same positions date stated again with the same weights is
+ * were as of. Tickers are Fintual's own (SPXS, the Invesco S&P 500 UCITS ETF), never the Yahoo
+ * ticker the proxy prices a holding with (`FINTUAL_TICKER_PRICE_PROXY` maps SPXS → SPY only
+ * because Yahoo's SPXS is the Direxion bear ETF). Rows are write-once: the same positions date stated again with the same weights is
  * `unchanged`, with other weights a `conflict` — reported by the caller, never written over.
  * Nothing on a request path reads these tables; they are the record.
  */

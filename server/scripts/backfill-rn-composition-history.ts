@@ -9,6 +9,11 @@
  * that day), and the ETF-sleeve weight sum comes from the sync log's note for that date (one
  * decimal) when there is one.
  *
+ * Snapshots hold the PRICE tickers (`holdingsForPricing` ran before the write), so a recovered SPY
+ * is Fintual's SPXS (the Invesco S&P 500 UCITS ETF, mapped to SPY for Yahoo pricing since
+ * 2026-07-01); the fund never held a real SPY, so the recovered rows name SPXS again
+ * (`PRICE_TICKER_TO_FINTUAL`). The history records Fintual's own tickers.
+ *
  * Report-first; `--apply` writes the recovered baskets as `source = 'snapshot'` rows through the
  * same write-once path the sync uses. Snapshots are opened read-only and immutable through the
  * `sqlite3` CLI (better-sqlite3 cannot open a WAL snapshot read-only without a writable -shm).
@@ -38,6 +43,9 @@ const DIRS = dirArgs.length
     ];
 
 type SnapshotRow = { composition_date: string; positions_date: string; ticker: string; weight: number };
+
+/** Price ticker a snapshot stored → the Fintual ticker it stood for (inverse of `FINTUAL_TICKER_PRICE_PROXY`). */
+const PRICE_TICKER_TO_FINTUAL: Readonly<Record<string, string>> = { SPY: "SPXS" };
 
 function readSnapshotHoldings(file: string): SnapshotRow[] | null {
   const sql =
@@ -109,7 +117,10 @@ function main(): void {
     }
     for (const [positionsDate, list] of byDate) {
       const holdings = list
-        .map((r) => ({ ticker: r.ticker.trim().toUpperCase(), weight: r.weight }))
+        .map((r) => {
+          const stored = r.ticker.trim().toUpperCase();
+          return { ticker: PRICE_TICKER_TO_FINTUAL[stored] ?? stored, weight: r.weight };
+        })
         .sort((a, b) => b.weight - a.weight || a.ticker.localeCompare(b.ticker));
       const existing = baskets.get(positionsDate);
       if (!existing) {
