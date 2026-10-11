@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { isFintualRnCompositionStale } from "./globalSyncStale.js";
-import { holdingsForPricing, parseManagedFundPositionsBody } from "./fintualRiskyNorrisComposition.js";
+import { holdingsAsStated, holdingsForPricing, parseManagedFundPositionsBody } from "./fintualRiskyNorrisComposition.js";
 import { isFintualRnCompositionDueDay } from "./syncSourceSchedule.js";
 
 const FIXTURE = {
@@ -75,6 +75,28 @@ describe("parseManagedFundPositionsBody", () => {
         etf_positions: FIXTURE.etf_positions,
       })
     ).toThrow(/unexpected field/i);
+  });
+});
+
+describe("holdingsAsStated", () => {
+  it("keeps Fintual's own tickers for the history: SPXS stays SPXS, nothing is merged", () => {
+    const positions = [
+      { weight: 0.6, etf: { asset: { ticker: "SPYM" } } },
+      { weight: 0.3, etf: { asset: { ticker: "SPXS" } } },
+      { weight: 0.1, etf: { asset: { ticker: "IAUM" } } },
+    ];
+    expect(holdingsAsStated(positions)).toEqual([
+      { ticker: "SPYM", weight: 0.6 },
+      { ticker: "SPXS", weight: 0.3 },
+      { ticker: "IAUM", weight: 0.1 },
+    ]);
+    expect(holdingsForPricing(positions, "2026-10-08").map((h) => h.ticker)).toEqual(["SPYM", "SPY", "IAUM"]);
+    expect(() =>
+      holdingsAsStated([
+        { weight: 0.5, etf: { asset: { ticker: "SPXS" } } },
+        { weight: 0.5, etf: { asset: { ticker: "SPXS" } } },
+      ])
+    ).toThrow(/listed twice/);
   });
 });
 

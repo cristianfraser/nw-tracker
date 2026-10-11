@@ -18,6 +18,7 @@ import {
   compositeTickerChanges,
   latestCompositePositionsBefore,
   recordCompositePositions,
+  type CompositePositionHolding,
   type RecordCompositePositionsResult,
 } from "./watchlistCompositeHistory.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
@@ -208,6 +209,22 @@ export function holdingsForPricing(
   }));
 }
 
+/**
+ * The basket as Fintual states it, one row per Fintual ticker — what the history records
+ * (`watchlist_composite_positions`). The price-proxy mapping (SPXS → SPY) belongs to pricing only:
+ * Fintual's SPXS is the Invesco S&P 500 UCITS ETF, which has been in the fund all along; the app
+ * never held a real SPY, so recording the price ticker would write a holding Fintual never had.
+ */
+export function holdingsAsStated(positions: FintualEtfPosition[]): CompositePositionHolding[] {
+  const byTicker = new Map<string, number>();
+  for (const p of positions) {
+    const ticker = p.etf.asset.ticker.trim().toUpperCase();
+    if (byTicker.has(ticker)) throw new Error(`Fintual managed fund positions: ticker ${ticker} listed twice`);
+    byTicker.set(ticker, p.weight);
+  }
+  return [...byTicker].map(([ticker, weight]) => ({ ticker, weight }));
+}
+
 /** How far back from Fintual's positions date the anchor may walk before the series is declared stale. */
 export const RN_COMPOSITION_ANCHOR_MAX_WALK_DAYS = 14;
 /**
@@ -384,7 +401,7 @@ export type SyncRiskyNorrisCompositionResult = {
    * rewritten, the history keeps the first statement, and the caller reports it.
    */
   history: RecordCompositePositionsResult;
-  /** Tickers that entered and left against the latest recorded basket before this positions date. */
+  /** Fintual's tickers that entered and left against the latest recorded basket before this positions date. */
   ticker_changes: {
     previous_positions_date: string | null;
     previous_holdings_count: number | null;
@@ -415,6 +432,7 @@ export async function syncRiskyNorrisComposition(
   const positionsDate = api.date;
   const holdings = holdingsForPricing(api.etf_positions, positionsDate);
   const tickers = holdings.map((h) => h.ticker);
+  const statedHoldings = holdingsAsStated(api.etf_positions);
 
   await ensureEquityDailyHistoryForWatchlistTickers(tickers, cl.ymd);
 
@@ -482,7 +500,7 @@ export async function syncRiskyNorrisComposition(
       positions_date: positionsDate,
       etf_weight_sum: api.raw_etf_weight_sum,
       source: "sync",
-      holdings: holdings.map((h) => ({ ticker: h.ticker, weight: h.weight })),
+      holdings: statedHoldings,
     });
     stmtUpsertMeta.run(
       RISKY_NORRIS_PROXY_BUCKET,
@@ -524,7 +542,7 @@ export async function syncRiskyNorrisComposition(
     ticker_changes: {
       previous_positions_date: previousPositions?.positions_date ?? null,
       previous_holdings_count: previousPositions?.holdings.length ?? null,
-      ...compositeTickerChanges(previousPositions?.holdings ?? null, holdings),
+      ...compositeTickerChanges(previousPositions?.holdings ?? null, statedHoldings),
     },
   };
 }
