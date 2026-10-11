@@ -14,6 +14,12 @@ import {
   type GlobalSyncStateFile,
 } from "./globalSyncState.js";
 import { observadoFrameFxForDay } from "./fxObservadoFrame.js";
+import {
+  compositeTickerChanges,
+  latestCompositePositionsBefore,
+  recordCompositePositions,
+  type RecordCompositePositionsResult,
+} from "./watchlistCompositeHistory.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
 import {
   APV_PROXY_NEGLIGIBLE_REL_DIFF,
@@ -371,6 +377,20 @@ export type SyncRiskyNorrisCompositionResult = {
   self_check: CompositionSelfCheck | null;
   /** The self-check could not be computed (e.g. a dropped ticker with no bar on the anchor day). */
   self_check_error: string | null;
+  /**
+   * What recording this positions date in the basket history did (`watchlist_composite_positions`):
+   * `inserted` the first time Fintual states it, `unchanged` on a repeat, `conflict` when the same
+   * positions date comes back with other weights — the latest-basket tables above are still
+   * rewritten, the history keeps the first statement, and the caller reports it.
+   */
+  history: RecordCompositePositionsResult;
+  /** Tickers that entered and left against the latest recorded basket before this positions date. */
+  ticker_changes: {
+    previous_positions_date: string | null;
+    previous_holdings_count: number | null;
+    entered: string[];
+    left: string[];
+  };
 };
 
 export type SyncRiskyNorrisCompositionOptions = {
@@ -454,7 +474,16 @@ export async function syncRiskyNorrisComposition(
     }
   }
 
+  const previousPositions = latestCompositePositionsBefore(RISKY_NORRIS_PROXY_BUCKET, positionsDate);
+  let history: RecordCompositePositionsResult = { status: "unchanged" };
   db.transaction(() => {
+    history = recordCompositePositions({
+      bucket_slug: RISKY_NORRIS_PROXY_BUCKET,
+      positions_date: positionsDate,
+      etf_weight_sum: api.raw_etf_weight_sum,
+      source: "sync",
+      holdings: holdings.map((h) => ({ ticker: h.ticker, weight: h.weight })),
+    });
     stmtUpsertMeta.run(
       RISKY_NORRIS_PROXY_BUCKET,
       FINTUAL_RN_MANAGED_FUND_ID,
@@ -491,5 +520,11 @@ export async function syncRiskyNorrisComposition(
     official_refresh,
     self_check,
     self_check_error,
+    history,
+    ticker_changes: {
+      previous_positions_date: previousPositions?.positions_date ?? null,
+      previous_holdings_count: previousPositions?.holdings.length ?? null,
+      ...compositeTickerChanges(previousPositions?.holdings ?? null, holdings),
+    },
   };
 }
