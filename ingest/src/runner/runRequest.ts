@@ -108,6 +108,7 @@ export async function runRequestedRun(
               afpUnoFetch: request.afp_uno_fetch,
               afpUnoApply: envFlag("NW_TRACKER_AFP_UNO_APPLY"),
               payslips: request.payslips,
+              mortgageSheet: request.mortgage_sheet,
             })),
             activity: false,
           }
@@ -118,6 +119,7 @@ export async function runRequestedRun(
             // The shell fallback's markers too, so a switch back to launchd sees this attempt.
             onSantanderAttempt: (mode) => (mode === "catch-up" ? recordCatchUpAttempt() : recordPaydayAttempt()),
             groceryInboxCount,
+            mortgageSheet: request.mortgage_sheet,
           });
     const failed = x.steps.filter((s) => !s.ok).length;
     x.note(`${request.kind} run ${request.run_id} finished with ${failed} failed step(s)`);

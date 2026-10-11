@@ -59,7 +59,7 @@ function requireDeptoMortgageAccount(accountId: number): void {
   }
 }
 
-function propertyAccountId(): number {
+export function deptoPropertyAccountId(): number {
   const row = db
     .prepare(`SELECT id FROM accounts WHERE import_key = ? ORDER BY id LIMIT 1`)
     .get(PROPERTY_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
@@ -67,7 +67,7 @@ function propertyAccountId(): number {
   return row.id;
 }
 
-function mortgageAccountId(): number {
+export function deptoMortgageAccountId(): number {
   const row = db
     .prepare(`SELECT id FROM accounts WHERE import_key = ? ORDER BY id LIMIT 1`)
     .get(MORTGAGE_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
@@ -105,16 +105,23 @@ export type CommitMortgagePaymentResult = {
   property_movement_id: number;
 };
 
+/**
+ * Writes the cuota's two movements (mortgage + property) and their `depto_payments` rows.
+ * `origin` names the writer — `manual` for the form, `import` for the mortgage sheet — and the
+ * human note follows it.
+ */
 export function commitMortgagePayment(
   accountId: number,
-  rawInput: MortgagePaymentInput
+  rawInput: MortgagePaymentInput,
+  opts: { origin: "manual" | "import" } = { origin: "manual" }
 ): CommitMortgagePaymentResult {
+  const manual = opts.origin === "manual";
   requireDeptoMortgageAccount(accountId);
-  const mortgageId = mortgageAccountId();
+  const mortgageId = deptoMortgageAccountId();
   if (mortgageId !== accountId) {
     throw new Error("Mortgage payment account id mismatch");
   }
-  const propertyId = propertyAccountId();
+  const propertyId = deptoPropertyAccountId();
 
   const ledger = loadDeptoLedgerFromMovements();
   const computed = computeMortgagePaymentRow(ledger, rawInput);
@@ -143,7 +150,7 @@ export function commitMortgagePayment(
         mortgageId,
         Math.abs(sheet.pago_clp),
         occurred_on,
-        deptoPaymentHumanNote("mortgage", cuota, true),
+        deptoPaymentHumanNote("mortgage", cuota, manual),
         mortgageFlowKind
       );
     const propertyMov = db
@@ -151,17 +158,17 @@ export function commitMortgagePayment(
         `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
          VALUES (?, ?, 'clp', ?, ?, NULL)`
       )
-      .run(propertyId, sheet.pago_clp, occurred_on, deptoPaymentHumanNote("dividendos", cuota, true));
+      .run(propertyId, sheet.pago_clp, occurred_on, deptoPaymentHumanNote("dividendos", cuota, manual));
     insertDeptoPaymentRow({
       movement_id: Number(mortgageMov.lastInsertRowid),
       kind: "mortgage",
-      origin: "manual",
+      origin: opts.origin,
       ...paymentCols,
     });
     insertDeptoPaymentRow({
       movement_id: Number(propertyMov.lastInsertRowid),
       kind: "dividendos",
-      origin: "manual",
+      origin: opts.origin,
       ...paymentCols,
     });
     return {
@@ -190,6 +197,8 @@ export function parseMortgagePaymentBody(body: Record<string, unknown>): Mortgag
     body.cuota === undefined || body.cuota === null ? null : String(body.cuota).trim();
   const min_uf =
     body.min_uf === undefined || body.min_uf === null ? null : Number(body.min_uf);
+  const max_uf =
+    body.max_uf === undefined || body.max_uf === null ? null : Number(body.max_uf);
   const amortizacion_ext_clp =
     body.amortizacion_ext_clp === undefined || body.amortizacion_ext_clp === null
       ? null
@@ -209,6 +218,9 @@ export function parseMortgagePaymentBody(body: Record<string, unknown>): Mortgag
   if (min_uf != null && !Number.isFinite(min_uf)) {
     throw new Error("min_uf must be a number when provided");
   }
+  if (max_uf != null && !Number.isFinite(max_uf)) {
+    throw new Error("max_uf must be a number when provided");
+  }
   if (amortizacion_ext_clp != null && !Number.isFinite(amortizacion_ext_clp)) {
     throw new Error("amortizacion_ext_clp must be a number when provided");
   }
@@ -224,6 +236,7 @@ export function parseMortgagePaymentBody(body: Record<string, unknown>): Mortgag
     desgravamen_clp,
     cuota,
     min_uf,
+    max_uf,
     amortizacion_ext_clp,
     credito_restante_uf,
   };

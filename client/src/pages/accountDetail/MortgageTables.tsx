@@ -11,6 +11,7 @@ import type {
   DeptoMortgageSheetRow,
   DeptoPaymentScenarioRow,
   DeptoPaymentScenarioTerm,
+  MortgagePaymentCardMatch,
 } from "../../types";
 import { formatClp, formatUfUnits, formatUfUnitsFine } from "../../format";
 import { cn } from "../../cn";
@@ -36,6 +37,27 @@ function minUfClp(row: DeptoMortgageSheetRow): number | null {
   return row.min_uf * row.uf_clp_day;
 }
 
+/** Max payment CLP is not stored on the sheet row; convert at the row's UF rate. */
+function maxUfClp(row: DeptoMortgageSheetRow): number | null {
+  if (row.max_uf == null || row.uf_clp_day == null) return null;
+  return row.max_uf * row.uf_clp_day;
+}
+
+/** Card line that paid the cuota: its date with the card name as a muted sub-line (shared desktop/mobile cell). */
+function cellCardMatch(match: MortgagePaymentCardMatch | undefined) {
+  if (!match) return "—";
+  if (match.status === "matched" && match.line) {
+    return (
+      <>
+        {match.line.date}
+        <span className={cn("muted", styles.cellSub)}>{match.line.account_name}</span>
+      </>
+    );
+  }
+  const key = match.status === "ambiguous" ? "ambiguous" : "awaitingCardLine";
+  return <span className="muted">{i18n.t(`accountDetail.mortgageSheet.card.${key}`)}</span>;
+}
+
 /** Remaining credit: UF (coarse units) with the CLP amount as a muted sub-line. */
 function cellCreditoPair(row: DeptoMortgageSheetRow) {
   if (row.credito_restante_uf == null && row.restante_clp == null) return "—";
@@ -53,7 +75,13 @@ function colLabel(key: string): string {
   return i18n.t(`accountDetail.mortgageSheet.cols.${key}`);
 }
 
-function MortgageDividendosMobileCard({ row }: { row: DeptoMortgageSheetRow }) {
+function MortgageDividendosMobileCard({
+  row,
+  cardMatch,
+}: {
+  row: DeptoMortgageSheetRow;
+  cardMatch: MortgagePaymentCardMatch | undefined;
+}) {
   return (
     <TableMobileCard title={`${row.cuota} · ${row.occurred_on}`}>
       <TableMobileCardSection>
@@ -62,6 +90,7 @@ function MortgageDividendosMobileCard({ row }: { row: DeptoMortgageSheetRow }) {
       <TableMobileCardSection>
         <TableMobileCardRow label={colLabel("credito")} value={cellCreditoPair(row)} />
         <TableMobileCardRow label={colLabel("minUf")} value={cellUfClpPair(row.min_uf, minUfClp(row))} />
+        <TableMobileCardRow label={colLabel("maxUf")} value={cellUfClpPair(row.max_uf, maxUfClp(row))} />
       </TableMobileCardSection>
       <TableMobileCardSection>
         <TableMobileCardRow
@@ -87,11 +116,20 @@ function MortgageDividendosMobileCard({ row }: { row: DeptoMortgageSheetRow }) {
           value={cellUfClpPair(row.interes_uf, row.interes_clp)}
         />
       </TableMobileCardSection>
+      <TableMobileCardSection>
+        <TableMobileCardRow label={colLabel("card")} value={cellCardMatch(cardMatch)} />
+      </TableMobileCardSection>
     </TableMobileCard>
   );
 }
 
-function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
+function MortgageDividendosDesktopRow({
+  row,
+  cardMatch,
+}: {
+  row: DeptoMortgageSheetRow;
+  cardMatch: MortgagePaymentCardMatch | undefined;
+}) {
   return (
     <>
       <td className={cn("mono", "desktop-only", styles.nowrap)}>
@@ -101,6 +139,7 @@ function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
       <td className="mono desktop-only">{cellUfClpPair(row.pago_uf, row.pago_clp)}</td>
       <td className="mono desktop-only">{cellCreditoPair(row)}</td>
       <td className="mono desktop-only">{cellUfClpPair(row.min_uf, minUfClp(row))}</td>
+      <td className="mono desktop-only">{cellUfClpPair(row.max_uf, maxUfClp(row))}</td>
       <td className="mono desktop-only">{cellUfClpPair(row.incendio_uf, row.incendio_clp)}</td>
       <td className="mono desktop-only">{cellUfClpPair(row.desgravamen_uf, row.desgravamen_clp)}</td>
       <td className="mono desktop-only">{cellUfClpPair(row.amortizacion_uf, row.amortizacion_clp)}</td>
@@ -108,6 +147,7 @@ function MortgageDividendosDesktopRow({ row }: { row: DeptoMortgageSheetRow }) {
         {cellUfClpPair(row.amortizacion_ext_uf, row.amortizacion_ext_clp)}
       </td>
       <td className="mono desktop-only">{cellUfClpPair(row.interes_uf, row.interes_clp)}</td>
+      <td className={cn("mono", "desktop-only", styles.nowrap)}>{cellCardMatch(cardMatch)}</td>
     </>
   );
 }
@@ -129,6 +169,11 @@ export function MortgageDividendosTable({
   const rowsSorted = useMemo(
     () => [...ledger.rows].sort((a, b) => String(b.occurred_on).localeCompare(String(a.occurred_on))),
     [ledger.rows]
+  );
+
+  const cardMatchByCuota = useMemo(
+    () => new Map(ledger.card_matches.map((c) => [c.cuota, c])),
+    [ledger.card_matches]
   );
 
   // Display newest payments first. `occurred_on` is ISO-like (`YYYY-MM-DD`), so lexicographic
@@ -168,6 +213,14 @@ export function MortgageDividendosTable({
           </div>
         </div>
       )}
+      {ledger.card_lines_without_payment.length > 0 && (
+        <p className="muted">
+          {i18n.t("accountDetail.mortgageSheet.cardLinesWithoutPayment")}{" "}
+          {ledger.card_lines_without_payment
+            .map((l) => `${l.date} · ${l.merchant} · ${formatClp(l.amount_clp)} · ${l.account_name}`)
+            .join(" | ")}
+        </p>
+      )}
       <PaginatedTable page={page} pageSize={12} total={total} onPageChange={setPage}>
         <Table
           tableClassName={cn("mortgage-sheet", "table--parallel-mobile", styles.tableMortgage)}
@@ -178,11 +231,13 @@ export function MortgageDividendosTable({
               <th className="desktop-only">{colLabel("pago")}</th>
               <th className="desktop-only">{colLabel("credito")}</th>
               <th className="desktop-only">{colLabel("minUf")}</th>
+              <th className="desktop-only">{colLabel("maxUf")}</th>
               <th className="desktop-only">{colLabel("incendio")}</th>
               <th className="desktop-only">{colLabel("desgravamen")}</th>
               <th className="desktop-only">{colLabel("amortizacion")}</th>
               <th className="desktop-only">{colLabel("amortExt")}</th>
               <th className="desktop-only">{colLabel("interes")}</th>
+              <th className="desktop-only">{colLabel("card")}</th>
               <th className="mobile-only" aria-hidden="true" />
             </tr>
           </thead>
@@ -190,9 +245,9 @@ export function MortgageDividendosTable({
         >
           {pageRows.map((row, idx) => (
             <tr key={`${row.cuota}-${row.occurred_on}-${idx}`}>
-              <MortgageDividendosDesktopRow row={row} />
+              <MortgageDividendosDesktopRow row={row} cardMatch={cardMatchByCuota.get(row.cuota)} />
               <td className="mobile-only">
-                <MortgageDividendosMobileCard row={row} />
+                <MortgageDividendosMobileCard row={row} cardMatch={cardMatchByCuota.get(row.cuota)} />
               </td>
             </tr>
           ))}

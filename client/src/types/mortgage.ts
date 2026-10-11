@@ -35,6 +35,7 @@ export interface DeptoMortgageSheetRow {
   valor_vivienda_uf: number | null;
   valor_vivienda_clp: number | null;
   min_uf: number | null;
+  max_uf: number | null;
   incendio_clp: number | null;
   incendio_uf: number | null;
   desgravamen_clp: number | null;
@@ -88,12 +89,36 @@ export interface DeptoPaymentScenarioRow {
   is_next_payment?: boolean;
 }
 
+/** A card line that pays the mortgage cuota (mirror of server/src/mortgagePaymentCardMatch.ts). */
+export interface MortgageCardLine {
+  line_id: number;
+  account_id: number;
+  account_name: string;
+  date: string;
+  merchant: string;
+  amount_clp: number;
+}
+
+export type MortgageCardMatchStatus = "matched" | "awaiting_card_line" | "ambiguous";
+
+export interface MortgagePaymentCardMatch {
+  cuota: string;
+  paid_on: string;
+  pago_clp: number;
+  status: MortgageCardMatchStatus;
+  line: MortgageCardLine | null;
+}
+
 export interface AccountMortgageLedgerResponse {
   account_id: number;
   has_sheet_rows: boolean;
   meta: AccountMortgageLedgerMeta | null;
   rows: DeptoMortgageSheetRow[];
   payment_scenarios?: DeptoPaymentScenarioRow[];
+  /** One entry per regular (numeric-label) cuota in `rows`, keyed by `cuota`. */
+  card_matches: MortgagePaymentCardMatch[];
+  /** Mortgage card charges no ledger cuota claimed. */
+  card_lines_without_payment: MortgageCardLine[];
 }
 
 /** UF-timing reminder for the CC-paid mortgage cuota (global toast). See server/src/mortgageUfReminder.ts. */

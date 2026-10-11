@@ -18,6 +18,7 @@ import {
 import { buildDeptoPaymentScenarioRows } from "./mortgageScenarioPayments.js";
 import { bookLedgerEditSchemaForAccount } from "./accountBookLedgerEdit.js";
 import { mortgagePaymentCreateSchemaForAccount } from "./mortgagePaymentCreate.js";
+import { mortgageCardMatches } from "./mortgagePaymentCardMatch.js";
 import { accountRowForId } from "./accountRowForMovement.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
@@ -235,7 +236,9 @@ export async function buildAccountDetailBundle(
     meta: unknown;
     rows: unknown[];
     payment_scenarios?: unknown[];
-  } = { account_id: accountId, has_sheet_rows: false, meta: null, rows: [] };
+    card_matches: unknown[];
+    card_lines_without_payment: unknown[];
+  } = { account_id: accountId, has_sheet_rows: false, meta: null, rows: [], card_matches: [], card_lines_without_payment: [] };
   if (
     category_slug === "property" ||
     category_slug === "real_estate" ||
@@ -246,12 +249,15 @@ export async function buildAccountDetailBundle(
       category_slug === "mortgage"
         ? sheetRowsAll.filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
         : sheetRowsAll;
+    const matches = mortgageCardMatches();
     mortgageLedger = {
       account_id: accountId,
       has_sheet_rows: sheetRowsAll.length > 0,
       meta: sheetRowsAll.length > 0 ? mortgageMetaFromSheetRows(sheetRowsAll) : null,
       rows: sheetRows,
       payment_scenarios: buildDeptoPaymentScenarioRows(sheetRowsAll),
+      card_matches: matches.payments,
+      card_lines_without_payment: matches.unmatched_lines,
     };
   }
 

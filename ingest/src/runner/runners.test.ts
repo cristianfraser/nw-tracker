@@ -32,6 +32,7 @@ const NIGHTLY: NightlyOptions = {
   afpUnoFetch: null,
   afpUnoApply: true,
   payslips: null,
+  mortgageSheet: null,
 };
 
 describe("runNightly", () => {
@@ -50,6 +51,7 @@ describe("runNightly", () => {
       "run import:checking-usd-movements",
       "run convert:cc-payment-mirrors",
       "run check:cc-bank-cupo",
+      "run check:mortgage-card-match",
       "run import:transfer-mails",
       "run import:payment-receipt-mails",
       "run import:apple-mail",
@@ -109,6 +111,17 @@ describe("runNightly", () => {
     expect(quiet.calls.some((c) => /buk|payroll/.test(c))).toBe(false);
   });
 
+  it("reads the mortgage sheet after the inbox pipeline when the server says it is stale", async () => {
+    const { x, calls, notes } = fakeRunner();
+    await runNightly(x, { ...NIGHTLY, mortgageSheet: { reason: "no mortgage cuota in the ledger since 2030-10-11" } });
+    expect(calls.indexOf("run import:mortgage-sheet")).toBe(calls.indexOf("run import:cfraser-inbox") + 1);
+    const without = fakeRunner();
+    await runNightly(without.x, NIGHTLY);
+    expect(without.calls).not.toContain("run import:mortgage-sheet");
+    expect(without.notes).toContain("=== Mortgage sheet (not stale)");
+    expect(notes).not.toContain("=== Mortgage sheet (not stale)");
+  });
+
   it("opens no bank session in a dry run", async () => {
     const { x, calls } = fakeRunner();
     expect((await runNightly(x, { ...NIGHTLY, dryRun: true })).santander).toBeNull();
@@ -124,6 +137,7 @@ const HOURLY: HourlyOptions = {
   santanderVeto: () => null,
   onSantanderAttempt: () => {},
   groceryInboxCount: () => 0,
+  mortgageSheet: null,
 };
 
 describe("runHourly", () => {
@@ -140,6 +154,7 @@ describe("runHourly", () => {
       "run import:transfer-mails -- --days=2",
     ]);
     expect(notes).toContain("=== inbox pipeline (skipped — nothing new staged)");
+    expect(notes).toContain("=== Mortgage sheet (not stale)");
   });
 
   it("imports what the hour staged", async () => {
@@ -154,6 +169,15 @@ describe("runHourly", () => {
       "run import:racional-emails -- --apply",
       "run import:transfer-mails -- --days=2",
     ]);
+  });
+
+  it("reads the mortgage sheet when the server says it is stale, and counts a written cuota as activity", async () => {
+    const stale = { reason: "no mortgage cuota in the ledger since 2030-10-11" };
+    const quiet = fakeRunner({ "fetch:emails": "e-mail: 0 broker message(s)", "import:mortgage-sheet": "mortgage sheet: 0 row(s) written, 25 checked" });
+    expect((await runHourly(quiet.x, { ...HOURLY, mortgageSheet: stale })).activity).toBe(false);
+    expect(quiet.calls).toContain("run import:mortgage-sheet");
+    const written = fakeRunner({ "fetch:emails": "e-mail: 0 broker message(s)", "import:mortgage-sheet": "mortgage sheet: 1 row(s) written, 24 checked" });
+    expect((await runHourly(written.x, { ...HOURLY, mortgageSheet: stale })).activity).toBe(true);
   });
 
   it("counts a movement written from a transfer mail as activity", async () => {

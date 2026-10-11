@@ -36,6 +36,7 @@ function basePrior(overrides: Partial<DeptoMortgageSheetRow> = {}): DeptoMortgag
     valor_vivienda_uf: 5400,
     valor_vivienda_clp: null,
     min_uf: null,
+    max_uf: null,
     incendio_clp: 41651,
     incendio_uf: null,
     desgravamen_clp: 3041,

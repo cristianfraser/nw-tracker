@@ -20,6 +20,8 @@ export type HourlyOptions = {
   onSantanderAttempt: (mode: "catch-up" | "payday") => void;
   /** Photos waiting in `cfraser/grocery-receipts/inbox` — the one input no fetch stages. */
   groceryInboxCount: () => number;
+  /** The server's request to read the mortgage sheet (stale from the 11th until the cuota is in). */
+  mortgageSheet: { reason: string } | null;
 };
 
 export type HourlyResult = { santander: SantanderFetchOutcome | null; activity: boolean };
@@ -33,6 +35,12 @@ export function savedCount(output: string): number {
 /** Movements the transfer-mail import wrote from a mail this run («movement written from the mail»). */
 export function mailMovementCount(output: string): number {
   return [...output.matchAll(/movement written from the mail/g)].length;
+}
+
+/** The mortgage sheet import's summary: «mortgage sheet: N row(s) written». */
+export function mortgageSheetWritten(output: string): number {
+  const all = [...output.matchAll(/mortgage sheet: (\d+) row\(s\) written/g)];
+  return all.length > 0 ? Number(all.at(-1)![1]) : 0;
 }
 
 /** fetch.ts always logs the count, zero included: «e-mail: N broker message(s)». */
@@ -119,6 +127,19 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     }
   }
 
+  // The mortgage sheet the user keeps by hand, while the server says the cycle's cuota is not in
+  // the ledger (from the 11th): a cuota posted during the day is in the ledger within the hour.
+  let sheetRows = 0;
+  if (o.mortgageSheet == null) {
+    x.note("=== Mortgage sheet (not stale)");
+  } else {
+    x.note(`mortgage sheet — ${o.mortgageSheet.reason}`);
+    const sheet = o.dryRun
+      ? await x.step("Mortgage sheet (dry run)", npmRun("import:mortgage-sheet", "--dry-run"), capture)
+      : await x.step("Mortgage sheet", npmRun("import:mortgage-sheet"), capture);
+    sheetRows = mortgageSheetWritten(sheet.output);
+  }
+
   // Every hour: a transfer to or from the user's checking account is mailed the moment it is made,
   // and its movement is written from the mail until the 22:00 bank feed lists it.
   const transfers = o.dryRun
@@ -127,12 +148,12 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
   const mailMovements = mailMovementCount(transfers.output);
 
   const activity =
-    sdSaved > 0 || lsSaved > 0 || lbSaved > 0 || fdSaved > 0 || amSaved > 0 || beMsgs > 0 || caughtUp || mailMovements > 0;
+    sdSaved > 0 || lsSaved > 0 || lbSaved > 0 || fdSaved > 0 || amSaved > 0 || beMsgs > 0 || caughtUp || mailMovements > 0 || sheetRows > 0;
   if (activity) {
     x.note(
       `activity this hour: santander-docs saved=${sdSaved}, lider statement saved=${lsSaved}, ` +
         `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, apple mail saved=${amSaved}, broker mail=${beMsgs}, ` +
-        `santander fetch=${caughtUp ? 1 : 0}, movements from transfer mails=${mailMovements}`
+        `santander fetch=${caughtUp ? 1 : 0}, movements from transfer mails=${mailMovements}, mortgage sheet rows=${sheetRows}`
     );
   }
   return { santander, activity };

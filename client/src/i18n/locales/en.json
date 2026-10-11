@@ -605,12 +605,19 @@
         "pago": "Payment",
         "credito": "Credit",
         "minUf": "Min UF",
+        "maxUf": "Max UF",
         "incendio": "Fire ins.",
         "desgravamen": "Life ins.",
         "amortizacion": "Amortization",
         "amortExt": "Extra amort.",
-        "interes": "Interest"
-      }
+        "interes": "Interest",
+        "card": "Card"
+      },
+      "card": {
+        "awaitingCardLine": "no card line yet",
+        "ambiguous": "several card lines fit"
+      },
+      "cardLinesWithoutPayment": "Card charges with no cuota in the ledger (post the row in the mortgage sheet):"
     },
     "import": {
       "sectionTitle": "Import movements and documents",

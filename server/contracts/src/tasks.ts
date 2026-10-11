@@ -10,11 +10,12 @@ import { z } from "zod";
  * `cc_payment_mirrors`: pair checking debits with the card payments they paid and convert each
  * pair into a `pago_tarjeta` transfer. `synthetic_cc_payments_check`: fail when a card payment
  * synthesized from a receipt has no bank listing by its deadline. `cc_bank_cupo_check`: judge the
- * bank's latest stated cupo against what the app says each card owes.
+ * bank's latest stated cupo against what the app says each card owes. `mortgage_card_match_check`:
+ * fail when a recent mortgage cuota has no card line, or a mortgage card line no cuota, past its deadline.
  */
 export const INGEST_TASKS_API_PATH = "/api/ingest/tasks";
 
-export const INGEST_TASK_NAMES = ["cc_payment_mirrors", "synthetic_cc_payments_check", "cc_bank_cupo_check"] as const;
+export const INGEST_TASK_NAMES = ["cc_payment_mirrors", "synthetic_cc_payments_check", "cc_bank_cupo_check", "mortgage_card_match_check"] as const;
 export type IngestTaskName = (typeof INGEST_TASK_NAMES)[number];
 
 export const ingestTaskRequestSchema = z

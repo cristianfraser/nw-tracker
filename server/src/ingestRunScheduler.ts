@@ -10,7 +10,15 @@ import { insertAppMessage } from "./appMessages.js";
 import { backgroundJobsDisabled } from "./backgroundJobsEnv.js";
 import { ingestFeederHeaders, resolveIngestServiceUrl } from "./ingestFeeder.js";
 import { lastDailyRunAt } from "./dailyRunLog.js";
-import { decideAfpUnoFetch, decideIngestRun, decidePayslipsRun, decideSantanderFetch, type IngestSchedulerDecision } from "./ingestRunPolicy.js";
+import {
+  decideAfpUnoFetch,
+  decideIngestRun,
+  decideMortgageSheetRun,
+  decidePayslipsRun,
+  decideSantanderFetch,
+  type IngestSchedulerDecision,
+} from "./ingestRunPolicy.js";
+import { latestRegularMortgageCuotaPaidOn } from "./mortgageSheetPaymentsApply.js";
 import { latestPayslip } from "./payslipsApply.js";
 import {
   inFlightIngestRun,
@@ -66,14 +74,23 @@ export async function requestFeederRun(
   santanderFetch: IngestRunRequest["santander_fetch"],
   afpUnoFetch: IngestRunRequest["afp_uno_fetch"] = null,
   env: NodeJS.ProcessEnv = process.env,
-  payslips: IngestRunRequest["payslips"] = null
+  payslips: IngestRunRequest["payslips"] = null,
+  mortgageSheet: IngestRunRequest["mortgage_sheet"] = null
 ): Promise<FeederAnswer> {
   try {
     const res = await fetch(`${resolveIngestServiceUrl(env)}${FEEDER_RUNS_PATH}`, {
       method: "POST",
       headers: ingestFeederHeaders(env),
       body: JSON.stringify(
-        ingestRunRequestSchema.parse({ run_id: runId, kind, reason, santander_fetch: santanderFetch, afp_uno_fetch: afpUnoFetch, payslips })
+        ingestRunRequestSchema.parse({
+          run_id: runId,
+          kind,
+          reason,
+          santander_fetch: santanderFetch,
+          afp_uno_fetch: afpUnoFetch,
+          payslips,
+          mortgage_sheet: mortgageSheet,
+        })
       ),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -154,13 +171,16 @@ export async function ingestSchedulerTick(
   // A nightly reads the payroll portal from the 1st until last month's payslip is stored, and
   // re-imports while the newest payslip waits for its deposit.
   const payslips = decision.kind === "nightly" ? decidePayslipsRun({ now, latest: latestPayslip() }) : null;
+  // Either kind reads the mortgage sheet while the cycle's cuota is not in the ledger (from the 11th).
+  const mortgageSheet = decideMortgageSheetRun({ now, latestCuotaPaidOn: latestRegularMortgageCuotaPaidOn() });
   const runId = markIngestRunRequested(decision.kind, decision.slot, decision.reason, now, santanderFetch);
-  const answer = await request(runId, decision.kind, decision.reason, santanderFetch, afpUnoFetch, undefined, payslips);
+  const answer = await request(runId, decision.kind, decision.reason, santanderFetch, afpUnoFetch, undefined, payslips, mortgageSheet);
   if (answer.status === "accepted") {
     const fetchNote =
       (santanderFetch ? `; Santander ${santanderFetch.mode}: ${santanderFetch.reason}` : "") +
       (afpUnoFetch ? `; AFP UNO: ${afpUnoFetch.reason}` : "") +
-      (payslips ? `; payslips: ${payslips.reason}` : "");
+      (payslips ? `; payslips: ${payslips.reason}` : "") +
+      (mortgageSheet ? `; mortgage sheet: ${mortgageSheet.reason}` : "");
     console.log(`ingest-runs: ${decision.kind} run ${runId} started (${decision.reason}${fetchNote})`);
     return { decision, run_id: runId, answer };
   }

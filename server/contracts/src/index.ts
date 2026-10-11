@@ -26,5 +26,6 @@ export * from "./kinds/employmentPayslips.js";
 export * from "./kinds/brokerDividendStatement.js";
 export * from "./kinds/fundAccountTransactions.js";
 export * from "./kinds/unemploymentFundDocuments.js";
+export * from "./kinds/mortgageSheetPayments.js";
 export * from "./pastedListing.js";
 export * from "./tasks.js";

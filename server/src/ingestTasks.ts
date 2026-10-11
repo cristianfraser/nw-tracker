@@ -18,6 +18,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { listOverdueUnconfirmedSyntheticCcPayments } from "./santanderSyntheticCcPayments.js";
 import { listOverdueUnconfirmedManualCardPayments } from "./ccManualPayments.js";
+import { checkMortgageCardMatches } from "./mortgagePaymentCardMatch.js";
 
 type TaskOptions = { dry_run: boolean; recheck: boolean };
 type TaskOutcome = Omit<IngestTaskResult, "task">;
@@ -142,6 +143,7 @@ export const INGEST_TASKS: Readonly<Record<IngestTaskName, (o: TaskOptions) => T
   cc_payment_mirrors: ccPaymentMirrors,
   synthetic_cc_payments_check: syntheticCcPaymentsCheck,
   cc_bank_cupo_check: bankSummaryChecks,
+  mortgage_card_match_check: () => checkMortgageCardMatches(),
 };
 
 export function runIngestTask(task: IngestTaskName, o: TaskOptions): IngestTaskResult {

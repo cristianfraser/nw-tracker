@@ -48,6 +48,7 @@ function sheetRow(overrides: Partial<DeptoMortgageSheetRow>): DeptoMortgageSheet
     valor_vivienda_uf: null,
     valor_vivienda_clp: null,
     min_uf: null,
+    max_uf: null,
     incendio_clp: null,
     incendio_uf: null,
     desgravamen_clp: null,

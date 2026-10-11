@@ -26,6 +26,8 @@ export type NightlyOptions = {
   /** The server's request to import the payslips tonight (reading the payroll portal first when
    *  `fetch`), and why; null = not tonight. */
   payslips: { fetch: boolean; reason: string } | null;
+  /** The server's request to read the mortgage sheet (stale from the 11th until the cuota is in). */
+  mortgageSheet: { reason: string } | null;
 };
 
 export type NightlyResult = { santander: SantanderFetchOutcome | null };
@@ -61,6 +63,11 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   else if (o.fullReimport) await x.step("inbox pipeline (full re-reconcile)", npmRun("import:cfraser-inbox", "--full"));
   else await x.step("inbox pipeline", npmRun("import:cfraser-inbox"));
 
+  // 2b. The user's mortgage sheet, while the server says the cycle's cuota is not in the ledger.
+  if (o.mortgageSheet == null) x.note("=== Mortgage sheet (not stale)");
+  else if (o.dryRun) await x.step(dry("Mortgage sheet"), npmRun("import:mortgage-sheet", "--dry-run"));
+  else await x.step("Mortgage sheet", npmRun("import:mortgage-sheet"));
+
   // 3. The card movements step 1 staged; 3b the second payment-mirror pass (a same-day payment's
   // card evidence only lands with the feed); 3c the bank's own cupo against the app's.
   if (o.dryRun) {
@@ -73,6 +80,9 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     await x.step("Santander USD movements", npmRun("import:checking-usd-movements"));
     await x.step("Convert CC payment mirrors after card feed", npmRun("convert:cc-payment-mirrors"));
     await x.step("CC bank cupo check", npmRun("check:cc-bank-cupo"));
+    // The mortgage cuota (the sheet, imported by the inbox pipeline) against the card line that
+    // paid it (the feed just imported): either side waiting past its deadline fails.
+    await x.step("Mortgage card match check", npmRun("check:mortgage-card-match"));
   }
 
   // 3c'. Santander's transfer mails of the last weeks: who each checking transfer went to or came

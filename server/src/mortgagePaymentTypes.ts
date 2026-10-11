@@ -15,6 +15,8 @@ export type MortgagePaymentInput = {
    * fallback (the scenario table's model rate diverges from the bank's by a few CLP).
    */
   min_uf?: number | null;
+  /** Bank "cuota máxima" in UF (the sheet's posted figure); stored, display-only. */
+  max_uf?: number | null;
   amortizacion_ext_clp?: number | null;
   /**
    * Bank-stated «crédito restante» after this payment, in UF. The derived balance

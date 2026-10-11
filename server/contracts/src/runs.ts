@@ -50,6 +50,11 @@ export const ingestRunRequestSchema = z
      * (from the 1st of a month until the previous month's payslip is stored). Absent = no.
      */
     payslips: z.object({ fetch: z.boolean(), reason: z.string().min(1) }).strict().nullable().default(null),
+    /**
+     * Either kind: read the user's mortgage sheet this run, and why — from the 11th of a month
+     * (the cuota's payable day) until that cycle's cuota is in the ledger. Absent = no.
+     */
+    mortgage_sheet: z.object({ reason: z.string().min(1) }).strict().nullable().default(null),
   })
   .strict()
   .refine((r) => r.kind === "hourly" || r.santander_fetch === null, {
