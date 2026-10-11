@@ -1,8 +1,9 @@
 /**
  * Squarified treemap layout (Bruls, Huizing, van Wijk) with nested frames. Pure geometry: the
- * caller owns what a node is and how it is drawn. Frames reserve a header strip when they have
- * room for one and lay their children out in what is left; the root's children fill the root
- * rectangle (the page's own node is the container, not a drawn frame).
+ * caller owns what a node is and how it is drawn. Frames reserve a header strip and lay their
+ * children out in what is left; a frame squarified smaller than the header plus a body is grown
+ * at its siblings' expense until it fits (sizes stay proportional everywhere else). The root's
+ * children fill the root rectangle (the page's own node is the container, not a drawn frame).
  */
 export type Rect = { x: number; y: number; w: number; h: number };
 
@@ -14,7 +15,10 @@ export type LayoutAccessors<T> = {
 
 export type LayoutOptions = {
   headerHeight: number;
-  /** A frame gets a header only when its rect is at least this wide AND tall (header + body). */
+  /**
+   * A frame's minimum size (header + a body): a smaller one is grown at its siblings' expense.
+   * A frame that still cannot reach it (its container is smaller) is drawn without a header.
+   */
   minHeaderWidth: number;
   minHeaderHeight: number;
   /** Inset between a frame's edge and its children. */
@@ -96,14 +100,81 @@ export function squarify(values: readonly number[], rect: Rect): Rect[] {
   return out;
 }
 
+/** Most rounds of growing too-small frames before taking the layout as it is. */
+const FRAME_GROW_ROUNDS = 12;
+
+/**
+ * The smallest rect a node can be drawn in with every frame keeping its header: a tile needs
+ * nothing; a frame needs the configured minimum, and — when it holds frames — its header and
+ * padding around the largest minimum among them (so a short parent grows first, then its child
+ * frames fit inside it).
+ */
+function minFrameSize<T>(node: T, acc: LayoutAccessors<T>, opts: LayoutOptions): { w: number; h: number } {
+  const kids = acc.children(node);
+  if (!kids) return { w: 0, h: 0 };
+  let w = opts.minHeaderWidth;
+  let h = opts.minHeaderHeight;
+  for (const k of kids) {
+    const m = minFrameSize(k, acc, opts);
+    if (m.w === 0 && m.h === 0) continue;
+    w = Math.max(w, m.w + 2 * opts.framePadding);
+    h = Math.max(h, m.h + opts.headerHeight + 2 * opts.framePadding);
+  }
+  return { w, h };
+}
+
+/**
+ * `squarify` by value, then grow each frame whose rect is under its minimum size (its weight
+ * times the shortfall, a little over) and lay out again, until every frame fits or the rounds
+ * run out (a container smaller than its frames' minimum).
+ */
+function squarifyWithFrameMinimum<T>(
+  kids: readonly T[],
+  inner: Rect,
+  acc: LayoutAccessors<T>,
+  opts: LayoutOptions,
+  sizing: Sizing<T> | null
+): Rect[] {
+  const weights = kids.map((k) =>
+    sizing ? acc.value(k) * sizing.pxPerValue + (sizing.overhead.get(k) ?? 0) : acc.value(k)
+  );
+  const mins = kids.map((k) => minFrameSize(k, acc, opts));
+  let rects = squarify(weights, inner);
+  for (let round = 0; round < FRAME_GROW_ROUNDS; round++) {
+    let grew = false;
+    for (let i = 0; i < kids.length; i++) {
+      const r = rects[i]!;
+      const m = mins[i]!;
+      if (m.h === 0 || (r.w >= m.w && r.h >= m.h)) continue;
+      const short = Math.max(m.w / Math.max(r.w, 1), m.h / Math.max(r.h, 1));
+      weights[i] = weights[i]! * Math.min(short * 1.1, 4);
+      grew = true;
+    }
+    if (!grew) break;
+    rects = squarify(weights, inner);
+  }
+  return rects;
+}
+
+/**
+ * Area accounting for frames: each node's area is its value at one global px-per-value plus the
+ * area its own and its descendants' headers and padding take (`overhead`, measured on the
+ * previous pass), so a tile inside a frame gets the same area per value as one outside it.
+ */
+type Sizing<T> = { pxPerValue: number; overhead: Map<T, number> };
+
+/** Rounds of re-measuring frame overhead (it depends on the frame's own shape). */
+const OVERHEAD_ROUNDS = 3;
+
 function placeChildren<T>(
   kids: readonly T[],
   inner: Rect,
   depth: number,
   acc: LayoutAccessors<T>,
-  opts: LayoutOptions
+  opts: LayoutOptions,
+  sizing: Sizing<T> | null
 ): Placed<T>[] {
-  const rects = squarify(kids.map(acc.value), inner);
+  const rects = squarifyWithFrameMinimum(kids, inner, acc, opts, sizing);
   return kids.map((node, i) => {
     const rect = rects[i]!;
     const sub = acc.children(node);
@@ -117,7 +188,13 @@ function placeChildren<T>(
       w: Math.max(0, rect.w - 2 * pad),
       h: Math.max(0, rect.h - header - 2 * pad),
     };
-    return { node, rect, depth, header, children: placeChildren(sub, body, depth + 1, acc, opts) };
+    return {
+      node,
+      rect,
+      depth,
+      header,
+      children: placeChildren(sub, body, depth + 1, acc, opts, sizing),
+    };
   });
 }
 
@@ -130,5 +207,24 @@ export function layoutTreemap<T>(
 ): Placed<T>[] {
   const kids = acc.children(root);
   if (!kids || kids.length === 0) return [];
-  return placeChildren(kids, rect, 0, acc, opts);
+  let placed = placeChildren(kids, rect, 0, acc, opts, null);
+  const totalValue = kids.reduce((s, k) => s + acc.value(k), 0);
+  if (!(totalValue > 0)) return placed;
+  for (let round = 0; round < OVERHEAD_ROUNDS; round++) {
+    const overhead = new Map<T, number>();
+    const measure = (p: Placed<T>): number => {
+      if (p.children.length === 0 && !acc.children(p.node)) return 0;
+      const pad = Math.min(opts.framePadding, p.rect.w / 4, p.rect.h / 4);
+      const bodyArea = Math.max(0, p.rect.w - 2 * pad) * Math.max(0, p.rect.h - p.header - 2 * pad);
+      const own = p.rect.w * p.rect.h - bodyArea;
+      const total = own + p.children.reduce((s, c) => s + measure(c), 0);
+      overhead.set(p.node, total);
+      return total;
+    };
+    const rootOverhead = placed.reduce((s, p) => s + measure(p), 0);
+    const pxPerValue = Math.max(0, rect.w * rect.h - rootOverhead) / totalValue;
+    if (!(pxPerValue > 0)) break;
+    placed = placeChildren(kids, rect, 0, acc, opts, { pxPerValue, overhead });
+  }
+  return placed;
 }

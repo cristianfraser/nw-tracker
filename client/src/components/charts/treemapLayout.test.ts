@@ -50,12 +50,65 @@ describe("layoutTreemap", () => {
     }
   });
 
-  it("a frame too small for a header gets none", () => {
-    const placed: Placed<N>[] = layoutTreemap(tree, { x: 0, y: 0, w: 80, h: 40 }, acc, opts);
+  it("a frame in a container too small for a header gets none", () => {
+    const placed: Placed<N>[] = layoutTreemap(tree, { x: 0, y: 0, w: 50, h: 30 }, acc, opts);
     expect(placed.find((p) => p.node.kids)!.header).toBe(0);
   });
 
   it("a root without children places nothing", () => {
     expect(layoutTreemap({ v: 1 }, { x: 0, y: 0, w: 10, h: 10 }, acc, opts)).toEqual([]);
+  });
+});
+
+describe("frame minimum size", () => {
+  it("grows a frame too small for its header at its siblings' expense", () => {
+    // A tiny frame beside a huge tile: by value alone it would be ~10 px tall.
+    const tree: N = { v: 100, kids: [{ v: 98 }, { v: 2, kids: [{ v: 1 }, { v: 1 }] }] };
+    const placed = layoutTreemap(tree, { x: 0, y: 0, w: 200, h: 400 }, acc, opts);
+    const frame = placed.find((p) => p.children.length > 0)!;
+    expect(frame.rect.h).toBeGreaterThanOrEqual(opts.minHeaderHeight);
+    expect(frame.rect.w).toBeGreaterThanOrEqual(opts.minHeaderWidth);
+    expect(frame.header).toBe(opts.headerHeight);
+    // the siblings still tile the container
+    const total = placed.reduce((s, p) => s + area(p.rect), 0);
+    expect(total).toBeCloseTo(200 * 400, 4);
+  });
+});
+
+describe("nested frame minimum size", () => {
+  it("grows a short parent frame so its child frames keep their headers", () => {
+    const tree: N = {
+      v: 100,
+      kids: [
+        { v: 96 },
+        {
+          v: 4,
+          kids: [
+            { v: 3, kids: [{ v: 2 }, { v: 1 }] },
+            { v: 1, kids: [{ v: 0.5 }, { v: 0.5 }] },
+          ],
+        },
+      ],
+    };
+    const placed = layoutTreemap(tree, { x: 0, y: 0, w: 800, h: 300 }, acc, opts);
+    const parent = placed.find((p) => p.children.length > 0)!;
+    expect(parent.header).toBe(opts.headerHeight);
+    for (const child of parent.children) {
+      expect(child.header).toBe(opts.headerHeight);
+      expect(child.rect.h).toBeGreaterThanOrEqual(opts.minHeaderHeight);
+    }
+  });
+});
+
+describe("frame area accounting", () => {
+  it("gives a tile inside a frame the same area per value as a tile outside it", () => {
+    const tree: N = { v: 100, kids: [{ v: 50 }, { v: 50, kids: [{ v: 25 }, { v: 25 }] }] };
+    const placed = layoutTreemap(tree, { x: 0, y: 0, w: 600, h: 400 }, acc, opts);
+    const outside = placed.find((p) => p.children.length === 0)!;
+    const frame = placed.find((p) => p.children.length > 0)!;
+    const perValueOutside = area(outside.rect) / 50;
+    for (const inner of frame.children) {
+      expect(area(inner.rect) / 25).toBeCloseTo(perValueOutside, -1);
+    }
   });
 });

@@ -109,6 +109,8 @@ describe("buildNavValueMap", () => {
     expect(ipsa.frame).toBe(false);
     expect(ipsa.children).toBeUndefined(); // accounts inside a leaf group are not shown
     expect(ipsa.value_clp).toBe(300);
+    // beside accounts it is a leaf, as in the sidebar: one block, nothing to open into
+    expect(ipsa.leaf_accounts).toEqual([]);
     // a leaf group is a tile that carries its accounts, for the page whose first level it is
     const crypto = hub.children!.find((c) => c.slug === "crypto")!;
     expect(crypto.frame).toBe(false);

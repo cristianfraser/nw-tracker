@@ -155,6 +155,32 @@
   overflow: hidden;
 }
 
+/* An unlabeled tile can be a few px tall: no padding, so it never draws past its slot. */
+/* Hidden spans the label widths are measured on (same font as the labels they stand for). */
+.value-treemap__probe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+  max-width: none;
+}
+
+.value-treemap__probe--tile {
+  font-size: var(--font-size-caption);
+  line-height: 1.15;
+}
+
+.value-treemap__probe--header {
+  font-size: var(--font-size-card-meta);
+  font-weight: 600;
+}
+
+.value-treemap__tile--bare {
+  padding: 0;
+}
+
 .value-treemap__tile--row {
   flex-direction: row;
   gap: 0.35rem;

@@ -154,7 +154,7 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
     };
   };
 
-  const build = (node: NavTreeNodeDto): NavValueMapNodeDto | null => {
+  const build = (node: NavTreeNodeDto, asLeaf = false): NavValueMapNodeDto | null => {
     const groupKids = (node.children ?? []).filter(isMapGroup);
     const accountKids = (node.children ?? []).filter((c) => c.account_id != null && c.account_id > 0);
     const metricsRows = stripMetricsRows(node, rows);
@@ -173,8 +173,13 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
         const t = accountTile(a);
         if (t) children.push(t);
       }
+      // The sidebar's rule (`mapNode` in client/src/sidebarNavFromApi.ts): when a group's
+      // visible children mix accounts and groups, each child group is a leaf — one block.
+      const visible = (node.children ?? []).filter((c) => c.chart_inactive !== true);
+      const mixed =
+        visible.some((c) => c.account_id != null) && visible.some((c) => c.account_id == null);
       for (const g of groupKids) {
-        const t = build(g);
+        const t = build(g, mixed);
         if (t) children.push(t);
       }
       const value_clp = children.reduce((s, c) => s + c.value_clp, 0);
@@ -207,12 +212,14 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
             ? value_usd
             : null;
     }
-    // The leaf's own accounts, for a page whose FIRST level this leaf is: that page opens it
-    // (Brokerage shows Bitcoin inside Crypto); deeper down it stays one tile.
-    const leaf_accounts = accountKids
-      .map((a) => accountTile(a, false))
-      .filter((t): t is NavValueMapNodeDto => t != null && t.value_clp > 0)
-      .sort((x, y) => y.value_clp - x.value_clp);
+    // The leaf's own accounts, for the page to open it into (Crypto shows Bitcoin and Ether);
+    // none when the sidebar shows it as a leaf (IPSA, SOXX among Acciones' stocks).
+    const leaf_accounts = asLeaf
+      ? []
+      : accountKids
+          .map((a) => accountTile(a, false))
+          .filter((t): t is NavValueMapNodeDto => t != null && t.value_clp > 0)
+          .sort((x, y) => y.value_clp - x.value_clp);
     return { ...base, value_clp, value_usd, ...pctAndPl(leafRows), frame: false, leaf_accounts };
   };
 
