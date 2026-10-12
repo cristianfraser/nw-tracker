@@ -9,6 +9,7 @@ import {
 } from "./afpUnoOfficialSync.js";
 import { type ChileWallClock, chileCalendarAddDays, chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
+import { isCmfRnPortfolioStale } from "./cmfRnPortfolioSync.js";
 import {
   loadGlobalSyncState,
   saveGlobalSyncState,
@@ -81,6 +82,7 @@ export type GlobalSyncSource =
   | "afc_cic"
   | "fintual"
   | "fintual_rn_composition"
+  | "cmf_rn_portfolio"
   | "sbif_usd"
   | "sbif_eur"
   | "sbif_uf"
@@ -96,6 +98,7 @@ export const GLOBAL_SYNC_SOURCES: readonly GlobalSyncSource[] = [
   "afc_cic",
   "fintual",
   "fintual_rn_composition",
+  "cmf_rn_portfolio",
   "sbif_usd",
   "sbif_eur",
   "sbif_uf",
@@ -402,6 +405,7 @@ function naturalStaleSyncSources(
   if (isAfcCicStale(cl, state, opts)) out.push("afc_cic");
   if (isFintualSyncStale(cl, state)) out.push("fintual");
   if (isFintualRnCompositionStale(cl, state)) out.push("fintual_rn_composition");
+  if (isCmfRnPortfolioStale(cl, state)) out.push("cmf_rn_portfolio");
   const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
   if (bde) {
     if (isSbifObservedFxStale(maxFxBcentralDateOnOrBefore(cl.ymd), cl, state.sbifUsdLastErrorAt)) out.push("sbif_usd");
@@ -659,6 +663,11 @@ export function allSyncSourceStatuses(
   {
     const stale = isFintualRnCompositionStale(cl, state);
     rows.push(syncSourceRow("fintual_rn_composition", cl, stale ? "stale" : "ok", stale, state));
+  }
+
+  {
+    const stale = isCmfRnPortfolioStale(cl, state);
+    rows.push(syncSourceRow("cmf_rn_portfolio", cl, stale ? "stale" : "ok", stale, state));
   }
 
   const sbifFx = (source: "sbif_usd" | "sbif_eur", maxYmd: string | null, lastErrorAt?: string) => {

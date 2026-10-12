@@ -1328,6 +1328,10 @@
           "en": "Risky Norris composition (proxy)",
           "es": "Composición Risky Norris (proxy)"
         },
+        "cmf_rn_portfolio": {
+          "en": "CMF — Risky Norris monthly portfolio filing",
+          "es": "CMF — cartera mensual Risky Norris"
+        },
         "sbif_usd": {
           "en": "Banco Central — observed dollar",
           "es": "Banco Central — dólar observado"

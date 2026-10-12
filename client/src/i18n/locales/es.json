@@ -389,6 +389,7 @@
         "afc_cic": "AFC — valor cuota Fondo de Cesantía (CIC)",
         "fintual": "Fintual",
         "fintual_rn_composition": "Composición Risky Norris (proxy)",
+        "cmf_rn_portfolio": "CMF — cartera mensual Risky Norris",
         "sbif_usd": "Banco Central — dólar observado",
         "sbif_eur": "Banco Central — euro observado",
         "sbif_uf": "Banco Central — UF",

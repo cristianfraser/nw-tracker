@@ -43,6 +43,10 @@ export type GlobalSyncStateFile = {
   equityEodLastCryptoUtcYmd?: string;
   /** Chile day of last successful Risky Norris proxy composition sync. */
   fintualRnCompositionLastSyncYmd?: string;
+  /** Latest CMF portfolio filing month (YYYYMM) on record for the Risky Norris basket (`cmfRnPortfolioSync.ts`). */
+  cmfRnPortfolioLastMonth?: string;
+  /** Chile day of the last attempt to fetch the next CMF filing (one attempt per day). */
+  cmfRnPortfolioLastCheckYmd?: string;
   /** Sources marked stale from the sync log UI until the next successful sync step. */
   userForcedStale?: string[];
 };

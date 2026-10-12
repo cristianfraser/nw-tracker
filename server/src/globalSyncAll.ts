@@ -43,6 +43,7 @@ import {
   type GlobalSyncSource,
 } from "./globalSyncStale.js";
 import { runSyncStepIfStale, syncErrorMessage } from "./globalSyncStep.js";
+import { CMF_RN_CROSS_CHECK_MAX_GAP_DAYS, syncCmfRnPortfolio } from "./cmfRnPortfolioSync.js";
 import { isSbifUfStale, isSbifUtmStale } from "./sbifMonthlyPublication.js";
 import { isChileBusinessDay } from "./marketHolidays.js";
 import {
@@ -1207,6 +1208,62 @@ async function runFintualRnComposition(
   );
 }
 
+async function runCmfRnPortfolio(
+  cl: ReturnType<typeof chileWallClockNow>,
+  state: GlobalSyncStateFile,
+  changes: SyncFieldChange[],
+  notes: SyncStepNote[],
+  errors: SyncStepError[]
+): Promise<void> {
+  const step = "CMF Risky Norris filing";
+  if (syncDryRun) {
+    console.log("sync: CMF Risky Norris filing — dry-run skip");
+    return;
+  }
+  const result = await syncCmfRnPortfolio(cl, state);
+  for (const p of result.processed) {
+    const label = `${p.period.slice(0, 4)}-${p.period.slice(4, 6)}`;
+    const recorded =
+      p.record === "inserted" ? "recorded" : p.record === "fintual_dated" ? "Fintual stated that day, kept" : "already on record";
+    const cc = p.cross_check;
+    let compare: string;
+    if (cc.fintual_positions_date == null) {
+      compare = `no Fintual basket within ${CMF_RN_CROSS_CHECK_MAX_GAP_DAYS} days to compare`;
+    } else {
+      const parts: string[] = [];
+      if (cc.entered.length) parts.push(`CMF lists +${cc.entered.join(", +")}`);
+      if (cc.left.length) parts.push(`Fintual listed −${cc.left.join(", −")}`);
+      parts.push(`max weight gap ${((cc.max_weight_gap ?? 0) * 100).toFixed(1)} pt`);
+      compare = `vs Fintual ${cc.fintual_positions_date}: ${parts.join("; ")}`;
+    }
+    const line =
+      `filing ${label}: ${p.holdings.length} ETFs (sleeve ${(p.etf_weight_sum * 100).toFixed(1)}% of assets), ${recorded}; ${compare}`;
+    notes.push({ step, message: line });
+    if (cc.alarm) {
+      errors.push({
+        step,
+        message: `${line} — the regulator's month-end basket disagrees with Fintual's statement: check the positions feed`,
+      });
+    }
+    if (p.record === "inserted") {
+      changes.push({
+        group: "fintual",
+        label: "Risky Norris basket (CMF filing)",
+        oldValue: "—",
+        newValue: `${p.holdings.length} holdings`,
+        oldDate: null,
+        newDate: p.month_end,
+      });
+    }
+    console.log(`sync: CMF Risky Norris filing — ${line}`);
+  }
+  if (result.not_published) {
+    const label = `${result.not_published.slice(0, 4)}-${result.not_published.slice(4, 6)}`;
+    notes.push({ step, message: `filing ${label} not published yet (asked once today)` });
+    console.log(`sync: CMF Risky Norris filing — ${label} not published yet`);
+  }
+}
+
 /** Run all external syncs. Returns exit code 0 on success, 1 if any step failed. */
 export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<number> {
   syncDryRun = opts?.dryRun ?? process.argv.includes("--dry-run");
@@ -1256,6 +1313,10 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
         await runFintualRnComposition(cl, state!, syncChanges, stepNotes, stepErrors);
       }
     );
+
+    await runSyncStepIfStale("cmf_rn_portfolio", stale, "CMF Risky Norris filing", stepErrors, state!, cl, async () => {
+      await runCmfRnPortfolio(cl, state!, syncChanges, stepNotes, stepErrors);
+    });
 
     await runSyncStepIfStale("yahoo_fx_usd", stale, "Yahoo USD/CLP", stepErrors, state!, cl, async () => {
       await runYahooFxUsd(state!, syncChanges, stepNotes);
