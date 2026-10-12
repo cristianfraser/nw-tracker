@@ -249,6 +249,7 @@ const FOREIGN_KEYS_OFF_MIGRATIONS = new Set([
   "169_movements_amount_currency.sql",
   "178_grocery_receipt_key.sql",
   "234_payment_receipt_any_currency.sql",
+  "239_watchlist_composite_positions_cmf_source.sql",
 ]);
 
 export function runMigrations() {
