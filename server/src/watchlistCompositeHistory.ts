@@ -12,7 +12,12 @@
  */
 import { db } from "./db.js";
 
-export type CompositePositionsSource = "sync" | "snapshot";
+/**
+ * `sync`: the evening sync, from Fintual's positions response. `snapshot`: recovered from a DB
+ * snapshot's latest-basket tables. `cmf`: the regulator's monthly portfolio file (`cmfFundPortfolio.ts`),
+ * dated the month's last day, weights normalized to the foreign-ETF sleeve like the other two.
+ */
+export type CompositePositionsSource = "sync" | "snapshot" | "cmf";
 
 export type CompositePositionHolding = { ticker: string; weight: number };
 
