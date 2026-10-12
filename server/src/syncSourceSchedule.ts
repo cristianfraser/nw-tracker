@@ -1,6 +1,7 @@
 import { afpUnoNextDue } from "./afpUnoOfficialSync.js";
 import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } from "./chileDate.js";
 import { AFC_CIC_PUBLISH_HOUR_CHILE, afcCicNextDueYmd } from "./afcCicSeries.js";
+import { CMF_RN_SYNC_HOUR_CHILE, cmfRnNextDueYmd } from "./cmfRnPortfolioSync.js";
 import {
   CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE,
   CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE,
@@ -308,6 +309,15 @@ function scheduleForSource(
         next_sync: nextYmd
           ? chileTimeOnYmd(nextYmd, FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE, FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE)
           : null,
+        next_sync_imminent: false,
+        today_day_kind: chileDayKind(cl.ymd),
+      };
+    }
+    case "cmf_rn_portfolio": {
+      // One attempt a day from 09:00 while the previous month's filing is not on record; else the 1st of next month.
+      const nextYmd = cmfRnNextDueYmd(cl, loadGlobalSyncState());
+      return {
+        next_sync: chileTimeOnYmd(nextYmd, CMF_RN_SYNC_HOUR_CHILE, 0),
         next_sync_imminent: false,
         today_day_kind: chileDayKind(cl.ymd),
       };

@@ -19,6 +19,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "../src/db.js";
 import { cmfBasketForFund, cmfPeriodEndIso, parseCmfForeignPortfolio } from "../src/cmfFundPortfolio.js";
+import {
+  CMF_RN_FIRST_PERIOD,
+  cmfFilingsDir,
+  fetchCmfForeignPortfolioText,
+  RISKY_NORRIS_CMF_RUN,
+} from "../src/cmfRnPortfolioSync.js";
 import { RISKY_NORRIS_PROXY_BUCKET } from "../src/watchlistComposite.js";
 import {
   compareCompositeHoldings,
@@ -26,16 +32,12 @@ import {
   recordCompositePositions,
 } from "../src/watchlistCompositeHistory.js";
 
-/** Risky Norris's RUN at the CMF (public: the fund's registry number). */
-const RISKY_NORRIS_CMF_RUN = 9570;
-const FIRST_PERIOD = "201802";
-const CMF_DOWNLOAD_URL = "https://www.cmfchile.cl/institucional/estadisticas/ffm_download.php";
 
 const APPLY = process.argv.includes("--apply");
 const FETCH = process.argv.includes("--fetch");
 const fromArg = process.argv.find((a) => a.startsWith("--from="))?.slice("--from=".length);
-const FROM = fromArg ?? FIRST_PERIOD;
-const DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../cfraser/cmf-ffm-cartera");
+const FROM = fromArg ?? CMF_RN_FIRST_PERIOD;
+const DIR = cmfFilingsDir();
 
 function periodsFrom(from: string): string[] {
   const now = new Date();
@@ -57,23 +59,8 @@ function periodsFrom(from: string): string[] {
 }
 
 async function fetchPeriod(period: string, file: string): Promise<boolean> {
-  const body = new URLSearchParams({
-    mm: period.slice(4, 6),
-    aa: period.slice(0, 4),
-    cartera: "EXTR",
-    btnConsulta: "GENERAR ARCHIVO",
-  });
-  const res = await fetch(CMF_DOWNLOAD_URL, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "Mozilla/5.0" },
-    body,
-  });
-  if (!res.ok) throw new Error(`CMF ${period}: HTTP ${res.status}`);
-  const text = await res.text();
-  if (!text.startsWith("Run Fondo;")) {
-    // A month not published yet answers with a short non-file body; leave nothing on disk.
-    return false;
-  }
+  const text = await fetchCmfForeignPortfolioText(period);
+  if (text == null) return false; // not published yet: nothing on disk
   fs.writeFileSync(file, text);
   return true;
 }
