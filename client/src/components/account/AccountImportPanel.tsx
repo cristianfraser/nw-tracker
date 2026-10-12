@@ -22,7 +22,6 @@ const SKIP_REASON_KEY: Record<string, string> = {
   duplicate: "accountDetail.import.resultSkipReasonDuplicate",
   fuzzy_duplicate: "accountDetail.import.resultSkipReasonDuplicateApprox",
   installment_overlap: "accountDetail.import.resultSkipReasonInstallmentOverlap",
-  duplicate_in_paste: "accountDetail.import.resultSkipReasonDuplicateInPaste",
   cuota_billing: "accountDetail.import.resultSkipReasonCuotaBilling",
   saldo_inicial: "accountDetail.import.resultSkipReasonSaldoInicial",
   already_present: "accountDetail.import.resultSkipReasonAlreadyPresent",
@@ -114,7 +113,6 @@ function summaryCountParts(data: Record<string, unknown>, t: TFn): string[] {
   push("summarySkippedDuplicate", numField(data, "skipped_duplicate", "linesSkippedDuplicate"), true);
   push("summarySkippedFuzzyDuplicate", numField(data, "skipped_fuzzy_duplicate", "linesSkippedFuzzyDuplicate"));
   push("summarySkippedInstallmentOverlap", numField(data, "skipped_installment_overlap", "linesSkippedInstallmentOverlap"));
-  push("summarySkippedDuplicateInPaste", numField(data, "skipped_duplicate_in_paste"));
   push("summarySkippedSupersededByCartola", numField(data, "skipped_superseded_by_cartola"));
   push("summarySkippedSupersededByTransfer", numField(data, "skipped_superseded_by_transfer"));
   push("summarySkippedSupersededByMail", numField(data, "skipped_superseded_by_mail"));

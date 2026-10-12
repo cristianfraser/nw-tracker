@@ -94,8 +94,6 @@ export type CcImportSkipReason =
   | "duplicate"
   | "fuzzy_duplicate"
   | "installment_overlap"
-  /** Dropped before the merge: same line repeated within one web paste. */
-  | "duplicate_in_paste"
   /** Dropped before the merge: bank's «CUOT: N OPER: M» re-listing of a cuota being billed. */
   | "cuota_billing"
   /** Dropped before the merge: the table's «SALDO INICIAL» row (the previous bill's total). */

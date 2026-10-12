@@ -69,7 +69,6 @@ export function importCcWebPasteLines(
       lines_parsed: 0,
       inserted: 0,
       skipped_duplicate: 0,
-      skipped_duplicate_in_paste: 0,
       skipped_cuota_billing: 0,
       skipped_saldo_inicial: 0,
       inserted_flows: [] as CcImportFlowItem[],
@@ -81,7 +80,7 @@ export function importCcWebPasteLines(
   }
 
   const batchId = newWebPasteBatchId();
-  const { records, skipped_in_paste, skipped_cuota_billing, skipped_saldo_inicial } = ccWebPasteToCsvRecords(
+  const { records, skipped_cuota_billing, skipped_saldo_inicial } = ccWebPasteToCsvRecords(
     accountId,
     meta.cardGroup,
     meta.cardLast4,
@@ -119,7 +118,6 @@ export function importCcWebPasteLines(
     account_id: accountId,
     lines_parsed: parsed.lines.length,
     ...statementCounters,
-    skipped_duplicate_in_paste: skipped_in_paste.length,
     skipped_cuota_billing: skipped_cuota_billing.length,
     skipped_saldo_inicial: skipped_saldo_inicial.length,
     ledger: merged.ledger,
@@ -137,7 +135,6 @@ export function importCcWebPasteLines(
     skipped_duplicate: merged.statements.linesSkippedDuplicate,
     skipped_fuzzy_duplicate: merged.statements.linesSkippedFuzzyDuplicate,
     skipped_installment_overlap: merged.statements.linesSkippedInstallmentOverlap,
-    skipped_duplicate_in_paste: skipped_in_paste.length,
     skipped_cuota_billing: skipped_cuota_billing.length,
     skipped_saldo_inicial: skipped_saldo_inicial.length,
     overlap_removed: merged.overlap_removed ?? 0,
@@ -148,7 +145,6 @@ export function importCcWebPasteLines(
     inserted_flows,
     skipped_flows: [
       ...skipped_flows,
-      ...skipped_in_paste.map((f) => ({ ...f, reason: "duplicate_in_paste" as const })),
       ...skipped_cuota_billing.map((f) => ({ ...f, reason: "cuota_billing" as const })),
       ...skipped_saldo_inicial.map((f) => ({ ...f, reason: "saldo_inicial" as const })),
     ],

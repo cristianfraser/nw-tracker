@@ -107,6 +107,23 @@ export function webPasteLineDedupeKey(cardGroup: string, line: CcWebPasteLine): 
   return ccOneShotDedupeKey(cardGroup, line.merchant, dedupeAmount, line.transaction_date);
 }
 
+/**
+ * The one-shot keys of a whole listing, occurrence-indexed: the Nth identical row (same merchant,
+ * amount and date) gets `#dupN`, the parser's convention for same-statement twins. A pasted table
+ * or the nightly feed is the complete «movimientos no facturados» list, so a row it shows twice is
+ * two charges (two Grindr subscriptions billed the same day), never one listed twice — the overlap
+ * with what is already on file is the merge's dedupe against the DB, by these same keys.
+ */
+export function webPasteListingDedupeKeys(cardGroup: string, lines: readonly CcWebPasteLine[]): string[] {
+  const occurrence = new Map<string, number>();
+  return lines.map((line) => {
+    const base = webPasteLineDedupeKey(cardGroup, line);
+    const n = occurrence.get(base) ?? 0;
+    occurrence.set(base, n + 1);
+    return n === 0 ? base : `${base}#dup${n}`;
+  });
+}
+
 export type CcWebPasteRecordsOpts = {
   /**
    * Put every line in this facturación's bucket instead of the open month. The card feed passes
@@ -126,7 +143,6 @@ export function ccWebPasteToCsvRecords(
   opts?: CcWebPasteRecordsOpts
 ): {
   records: CcStatementCsvRecord[];
-  skipped_in_paste: CcImportFlowItem[];
   skipped_cuota_billing: CcImportFlowItem[];
   skipped_saldo_inicial: CcImportFlowItem[];
 } {
@@ -148,19 +164,18 @@ export function ccWebPasteToCsvRecords(
   let additionalLast4: string | null = null;
   const additionalCardLast4 = () => (additionalLast4 ??= activeAdditionalCardLast4ForAccount(accountId));
 
-  const seen = new Set<string>();
   const records: CcStatementCsvRecord[] = [];
-  const skipped_in_paste: CcImportFlowItem[] = [];
   const skipped_cuota_billing: CcImportFlowItem[] = [];
   const skipped_saldo_inicial: CcImportFlowItem[] = [];
+  // Occurrence-indexed: a row the listing shows twice is two charges (`#dupN`, see
+  // webPasteListingDedupeKeys); the merge keys both on it, so re-pasting stays idempotent.
+  const dedupeKeys = webPasteListingDedupeKeys(cardGroup, parsed);
 
-  for (const line of parsed) {
+  parsed.forEach((line, i) => {
     const billingMonth = opts?.targetBillingMonth ?? openBillingMonth;
     const { sourcePdf, statementDate } = bucket(billingMonth);
     const isUsd = line.currency === "usd";
-    const dedupe_key = webPasteLineDedupeKey(cardGroup, line);
-    const isRepeatInPaste = seen.has(dedupe_key);
-    seen.add(dedupe_key);
+    const dedupe_key = dedupeKeys[i]!;
 
     const ddMm = (() => {
       const [y, mo, d] = line.transaction_date.split("-");
@@ -200,7 +215,7 @@ export function ccWebPasteToCsvRecords(
       skipped_saldo_inicial.push(
         ccImportFlowItemFromRow(record, ccStatementLabel(statementDate, "clp"))
       );
-      continue;
+      return;
     }
     // Cuota-billing reference rows never import — the installment schedule already bills them.
     // Reported, not silent, so the batch summary explains parsed > inserted + skipped.
@@ -208,18 +223,12 @@ export function ccWebPasteToCsvRecords(
       skipped_cuota_billing.push(
         ccImportFlowItemFromRow(record, ccStatementLabel(statementDate, "clp"))
       );
-      continue;
+      return;
     }
-    // A line repeated within one paste imports once; report the drop instead of hiding it
-    // (the terse summary otherwise reads parsed > inserted + skipped with no explanation).
-    if (isRepeatInPaste) {
-      skipped_in_paste.push(ccImportFlowItemFromRow(record, ccStatementLabel(statementDate, "clp")));
-    } else {
-      records.push(record);
-    }
-  }
+    records.push(record);
+  });
 
-  return { records, skipped_in_paste, skipped_cuota_billing, skipped_saldo_inicial };
+  return { records, skipped_cuota_billing, skipped_saldo_inicial };
 }
 
 export function newWebPasteBatchId(): string {

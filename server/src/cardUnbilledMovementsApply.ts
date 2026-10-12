@@ -9,7 +9,7 @@ import {
   recordFeedBillingClose,
 } from "./ccBillingCloses.js";
 import { moveOpenBucketLinesByDedupeKey } from "./ccOpenWebPasteRepair.js";
-import { creditCardMasterMetaForAccount, webPasteLineDedupeKey } from "./ccWebPasteParse.js";
+import { creditCardMasterMetaForAccount, webPasteListingDedupeKeys } from "./ccWebPasteParse.js";
 import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { db } from "./db.js";
@@ -111,7 +111,7 @@ function applyFeedClose(
     assertFeedClosesMatchStatements(accountId);
     const rowsBillingMonth = addCalendarMonths(recorded.close.billing_month, 1);
     const meta = creditCardMasterMetaForAccount(accountId);
-    const keys = new Set(lines.map((line) => webPasteLineDedupeKey(meta.cardGroup, line)));
+    const keys = new Set(webPasteListingDedupeKeys(meta.cardGroup, lines));
     const moved = moveOpenBucketLinesByDedupeKey(accountId, keys, rowsBillingMonth);
     return {
       close_iso: recorded.close.close_date,

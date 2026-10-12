@@ -22,7 +22,7 @@ const BCI_LISTING: CardPastedListing = {
 };
 
 describe("importCcWebPaste", () => {
-  let insertedLineId: number | null = null;
+  let insertedLineIds: number[] = [];
   let insertedStmtId: number | null = null;
   let stub: Server | null = null;
   let parsedTexts: string[] = [];
@@ -50,10 +50,8 @@ describe("importCcWebPaste", () => {
 
   afterEach(() => {
     parsedTexts = [];
-    if (insertedLineId != null) {
-      db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(insertedLineId);
-      insertedLineId = null;
-    }
+    for (const id of insertedLineIds) db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(id);
+    insertedLineIds = [];
     if (insertedStmtId != null) {
       const remaining = db
         .prepare(`SELECT COUNT(*) AS c FROM cc_statement_lines WHERE statement_id = ?`)
@@ -87,47 +85,31 @@ describe("importCcWebPaste", () => {
 
     const result = await importCcWebPaste(master.id, BCI_PASTE);
     expect(parsedTexts).toEqual([BCI_PASTE]);
-    expect(result.inserted).toBeGreaterThanOrEqual(1);
-    // Per-line outcome arrays (parity with checking imports): the inserted line plus the
-    // in-paste repeat of the same line, each with date/description/amount detail.
-    expect(result.inserted_flows).toContainEqual(
-      expect.objectContaining({
-        occurred_on: "2026-06-11",
-        description: "VITEST BCI WEB PASTE",
-        amount_clp: 9999,
-      })
-    );
-    expect(result.skipped_flows).toContainEqual(
-      expect.objectContaining({
-        occurred_on: "2026-06-11",
-        description: "VITEST BCI WEB PASTE",
-        amount_clp: 9999,
-        reason: "duplicate_in_paste",
-      })
-    );
-    expect(result.skipped_duplicate_in_paste).toBe(1);
+    // The paste is the complete unbilled list, so a line it shows twice is two charges: both
+    // import, the second as an occurrence-indexed twin (`#dup1`), each in the per-line outcome.
+    expect(result.inserted).toBe(2);
+    expect(result.skipped_flows).toEqual([]);
+    expect(result.inserted_flows.filter((f) => f.description === "VITEST BCI WEB PASTE")).toHaveLength(2);
 
-    const line = db
+    const lines = db
       .prepare(
-        `SELECT l.id, l.amount_clp, l.merchant, s.id AS statement_id, s.card_group
+        `SELECT l.id, l.amount_clp, l.dedupe_key, s.id AS statement_id, s.card_group
          FROM cc_statement_lines l
          JOIN cc_statements s ON s.id = l.statement_id
          WHERE s.account_id = ? AND l.merchant = 'VITEST BCI WEB PASTE'
-         ORDER BY l.id DESC LIMIT 1`
+         ORDER BY l.id`
       )
-      .get(master.id) as
-      | {
-          id: number;
-          amount_clp: number;
-          merchant: string;
-          statement_id: number;
-          card_group: string;
-        }
-      | undefined;
-    expect(line).toBeDefined();
-    expect(line!.amount_clp).toBe(9999);
-    expect(line!.card_group).toBe("BCI");
-    insertedLineId = line!.id;
-    insertedStmtId = line!.statement_id;
+      .all(master.id) as { id: number; amount_clp: number; dedupe_key: string; statement_id: number; card_group: string }[];
+    expect(lines).toHaveLength(2);
+    expect(lines.map((l) => l.amount_clp)).toEqual([9999, 9999]);
+    expect(lines.every((l) => l.card_group === "BCI")).toBe(true);
+    expect(lines[1]!.dedupe_key).toBe(`${lines[0]!.dedupe_key}#dup1`);
+    insertedLineIds = lines.map((l) => l.id);
+    insertedStmtId = lines[0]!.statement_id;
+
+    // Re-pasting the same table changes nothing: both twins are on file.
+    const again = await importCcWebPaste(master.id, BCI_PASTE);
+    expect(again.inserted).toBe(0);
+    expect(again.skipped_duplicate).toBe(2);
   });
 });
