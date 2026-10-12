@@ -67,7 +67,8 @@ export function judgeBankCupo(snapshot: BankCupoSnapshot, owed: CcOwedByCurrency
       reason: null,
     };
   }
-  const diff = Math.round((owed.usd.total - snapshot.cupo_utilizado) * 100) / 100;
+  // `|| 0`: the rounding can yield −0, which would be stored and compared as a distinct value.
+  const diff = Math.round((owed.usd.total - snapshot.cupo_utilizado) * 100) / 100 || 0;
   return {
     status: diff === 0 ? "ok" : "mismatch",
     app_owed: owed.usd.total,

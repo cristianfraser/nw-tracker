@@ -2217,10 +2217,6 @@
         "en": "already entered from the transfer e-mail",
         "es": "ya ingresado desde el correo de la transferencia"
       },
-      "resultSkipReasonDuplicateInPaste": {
-        "en": "repeated in the paste",
-        "es": "repetido en el pegado"
-      },
       "resultCuotaTag": {
         "en": "installment {{cuota}}",
         "es": "cuota {{cuota}}"
@@ -2244,10 +2240,6 @@
       "summarySkippedInstallmentOverlap": {
         "en": "skipped (already in installments): {{n}}",
         "es": "omitidos (ya en cuotas): {{n}}"
-      },
-      "summarySkippedDuplicateInPaste": {
-        "en": "skipped (repeated in the paste): {{n}}",
-        "es": "omitidos (repetido en el pegado): {{n}}"
       },
       "summarySkippedSupersededByCartola": {
         "en": "skipped (already in the statement): {{n}}",

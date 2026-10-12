@@ -72,7 +72,7 @@ describe("bank cupo check", () => {
   }
 
   /** The fixture's listing: one line per currency, the 24/09 close; `balances` as the feeder reports them. */
-  function feed(balances?: Parameters<typeof listing>[1]) {
+  function feed(balances?: Parameters<typeof listing>[1], extraLines: ReturnType<typeof listingLine>[] = []) {
     return listing(
       [
         listingCard(
@@ -80,6 +80,7 @@ describe("bank cupo check", () => {
           [
             listingLine("2026-09-25", "VITEST TIENDA", 20_000),
             listingLine("2026-09-26", "VITEST APP", 12.34, { currency: "usd" }),
+            ...extraLines,
           ],
           { date: "2026-09-24", clp: 1_500_000, usd: 900 }
         ),
@@ -238,6 +239,45 @@ describe("bank cupo check", () => {
       ["clp", "ok", 5],
       ["usd", "mismatch", 0.01],
     ]);
+  });
+
+  it("imports a row the listing shows twice as two charges, which the bank's cupo counts too", () => {
+    // The feed is the whole unbilled list: two identical rows are two charges (a subscription
+    // billed twice on one day), and the bank's utilizado counts both. Before 2026-10-11 the
+    // second collapsed on the one-shot key and the check failed by exactly one charge.
+    const twin = listingLine("2026-09-26", "VITEST APP", 12.34, { currency: "usd" });
+    const ref = "card-movements-vitest-twins.json";
+    const first = applyListing(feed(cupos(BANK_CLP_USED, BANK_USD_USED + 12.34), [twin]), ref);
+    expect(first.accounts[0]).toMatchObject({ inserted: 3, skipped_duplicate: 0 });
+    const usdLines = () =>
+      (
+        db
+          .prepare(
+            `SELECT l.dedupe_key FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+             WHERE s.account_id = ? AND l.amount_usd = 12.34 ORDER BY l.id`
+          )
+          .all(accountId) as { dedupe_key: string }[]
+      ).map((r) => r.dedupe_key);
+    const keys = usdLines();
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(`${keys[0]}#dup1`);
+
+    const run = judgeLatestBankCupoCapture();
+    expect(run.verdicts.map((v) => [v.snapshot.currency, v.status, v.diff])).toEqual([
+      ["clp", "ok", 0],
+      ["usd", "ok", 0],
+    ]);
+    expect(run.verdicts.find((v) => v.snapshot.currency === "usd")!.app_owed).toBe(924.68);
+
+    // The next night lists the same two rows again: nothing new, nothing dropped.
+    const again = applyListing(feed(cupos(BANK_CLP_USED, BANK_USD_USED + 12.34, "2026-10-02T12:00:00.000Z"), [twin]), "card-movements-vitest-twins-2.json");
+    expect(again.accounts[0]).toMatchObject({ inserted: 0, skipped_duplicate: 3 });
+    expect(usdLines()).toEqual(keys);
+    // A listing that shows the row once again is the bank dropping one: the mirror removes one twin.
+    const dropped = applyListing(feed(cupos(BANK_CLP_USED, BANK_USD_USED, "2026-10-02T13:00:00.000Z")), "card-movements-vitest-twins-3.json");
+    expect(dropped.accounts[0]?.mirror?.removed).toHaveLength(1);
+    expect(usdLines()).toHaveLength(1);
+    expect(judgeLatestBankCupoCapture().verdicts.every((v) => v.status === "ok")).toBe(true);
   });
 
   it("does not compare across different closes", () => {
