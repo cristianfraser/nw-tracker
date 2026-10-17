@@ -66,8 +66,17 @@ export function fillFundUnitDailyCalendarGap(opts: {
 }
 
 /**
- * Record a spot observation: carry the previous published unit across any missing calendar days,
- * then upsert the new day (updates same day if price changed).
+ * Record a spot observation: fill any missing calendar days between the last stored day and the
+ * observation, then upsert the new day (updates same day if price changed).
+ *
+ * `gapFill` decides what the gap days hold:
+ * - `"carry_previous"` (default): the previous stored value under `carryNote`; only when the new
+ *   value differs from it by more than half a cent (an equal value needs no placeholder rows).
+ * - `"stand_in_new"`: the NEW value under `standInNote` (required), whenever the gap is non-empty.
+ *   For a source whose observation can stand for days it skipped (Fintual's weekend block value),
+ *   where carrying the old value would put the whole move on the observation day. The rows are
+ *   placeholders a later observation or an official serie overwrites; filling on equal values too
+ *   keeps the rule simple and the placeholders identifiable.
  */
 export function upsertFundUnitSpotPreservingHistory(opts: {
   seriesKey: string;
@@ -76,20 +85,37 @@ export function upsertFundUnitSpotPreservingHistory(opts: {
   note: string;
   dryRun: boolean;
   carryNote?: string;
+  gapFill?: "carry_previous" | "stand_in_new";
+  standInNote?: string;
 }): { gapDaysFilled: number } {
   const px = Math.round(opts.unitValueClp * 10000) / 10000;
   const prev = latestFundUnitRow(opts.seriesKey);
   let gapDaysFilled = 0;
+  const mode = opts.gapFill ?? "carry_previous";
+  if (mode === "stand_in_new" && !opts.standInNote) {
+    throw new Error(`upsertFundUnitSpotPreservingHistory(${opts.seriesKey}): gapFill "stand_in_new" requires standInNote`);
+  }
 
-  if (prev && prev.day < opts.observationDay && Math.abs(prev.unit_value_clp - px) > 0.005) {
-    gapDaysFilled = fillFundUnitDailyCalendarGap({
-      seriesKey: opts.seriesKey,
-      fromDayExclusive: prev.day,
-      toDayExclusive: opts.observationDay,
-      unitValueClp: prev.unit_value_clp,
-      note: opts.carryNote ?? "spot:carry-forward",
-      dryRun: opts.dryRun,
-    });
+  if (prev && prev.day < opts.observationDay) {
+    if (mode === "stand_in_new") {
+      gapDaysFilled = fillFundUnitDailyCalendarGap({
+        seriesKey: opts.seriesKey,
+        fromDayExclusive: prev.day,
+        toDayExclusive: opts.observationDay,
+        unitValueClp: px,
+        note: opts.standInNote!,
+        dryRun: opts.dryRun,
+      });
+    } else if (Math.abs(prev.unit_value_clp - px) > 0.005) {
+      gapDaysFilled = fillFundUnitDailyCalendarGap({
+        seriesKey: opts.seriesKey,
+        fromDayExclusive: prev.day,
+        toDayExclusive: opts.observationDay,
+        unitValueClp: prev.unit_value_clp,
+        note: opts.carryNote ?? "spot:carry-forward",
+        dryRun: opts.dryRun,
+      });
+    }
   }
 
   if (!opts.dryRun) {

@@ -135,6 +135,13 @@ export function isFintualPublishedFundUnitNote(note: string | null | undefined):
   );
 }
 
+/**
+ * Stand-in rows: days a later observation skipped over (a weekend/holiday block value dated the
+ * block's last día inhábil), written at that NEW value as `fintual:stand-in|from=<observation day>`.
+ * Placeholders like the carries below — the official serie replaces them the next day.
+ */
+export const FINTUAL_STAND_IN_NOTE_PREFIX = "fintual:stand-in";
+
 /** Placeholder rows a later observation may overwrite (the previous bar carried across a gap). */
 export const FINTUAL_CARRY_FORWARD_NOTES: ReadonlySet<string> = new Set([
   "fintual:carry-forward",
@@ -142,8 +149,40 @@ export const FINTUAL_CARRY_FORWARD_NOTES: ReadonlySet<string> = new Set([
   "spot:carry-forward",
 ]);
 
+/**
+ * Placeholder rows a later observation or the official serie may overwrite: the previous bar
+ * carried across a gap (`FINTUAL_CARRY_FORWARD_NOTES`) or a stand-in at the observation's value
+ * (`FINTUAL_STAND_IN_NOTE_PREFIX`). Never a published cuota (`isFintualPublishedFundUnitNote`).
+ */
 export function isFintualCarryForwardFundUnitNote(note: string | null | undefined): boolean {
-  return note != null && FINTUAL_CARRY_FORWARD_NOTES.has(note);
+  if (note == null) return false;
+  return (
+    FINTUAL_CARRY_FORWARD_NOTES.has(note) ||
+    note === FINTUAL_STAND_IN_NOTE_PREFIX ||
+    note.startsWith(`${FINTUAL_STAND_IN_NOTE_PREFIX}|`)
+  );
+}
+
+/**
+ * Sorted distinct days in `[fromYmd, throughYmd]` on which any of `seriesKeys` holds a
+ * placeholder row — what the official serie can still heal.
+ */
+export function fintualPlaceholderDaysPending(
+  seriesKeys: readonly string[],
+  fromYmd: string,
+  throughYmd: string
+): string[] {
+  const days = new Set<string>();
+  const stmt = db.prepare(
+    `SELECT day, COALESCE(note, '') AS note FROM fund_unit_daily
+     WHERE series_key = ? AND day >= ? AND day <= ?`
+  );
+  for (const seriesKey of seriesKeys) {
+    for (const r of stmt.all(seriesKey, fromYmd, throughYmd) as { day: string; note: string }[]) {
+      if (isFintualCarryForwardFundUnitNote(r.note)) days.add(r.day);
+    }
+  }
+  return [...days].sort();
 }
 
 export function recordFintualGoalFundUnitDaily(opts: {
@@ -182,7 +221,8 @@ export function recordFintualGoalFundUnitDaily(opts: {
     observationDay: opts.asOfYmd,
     unitValueClp: unitClp,
     note,
-    carryNote: "fintual:carry-forward",
+    gapFill: "stand_in_new",
+    standInNote: `${FINTUAL_STAND_IN_NOTE_PREFIX}|from=${opts.asOfYmd}`,
     dryRun: opts.dryRun,
   });
 

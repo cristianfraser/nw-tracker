@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import type { ChileWallClock } from "./chileDate.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { type ChileWallClock, dateAtTimeZoneWallClock } from "./chileDate.js";
+import { db } from "./db.js";
+import { fintualOfficialSerieNextDue } from "./fintualPublicSeriePrice.js";
 import { attachSyncSourceSchedule } from "./syncSourceSchedule.js";
 
 function cl(ymd: string, hour: number, minute = 0): ChileWallClock {
@@ -133,5 +135,44 @@ describe("attachSyncSourceSchedule", () => {
     const sched = attachSyncSourceSchedule("fintual", cl("2026-06-10", 8), true, false);
     expect(sched.next_sync_imminent).toBe(true);
     expect(sched.next_sync).toBeNull();
+  });
+});
+
+describe("fintual_official_serie schedule", () => {
+  const SERIES = "fintual_cert_reserva2";
+
+  function seedPlaceholder(day: string): void {
+    db.prepare(
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, 1000, 'fintual:stand-in|from=2099-04-13')
+       ON CONFLICT(series_key, day) DO UPDATE SET note = excluded.note`
+    ).run(SERIES, day);
+  }
+
+  afterEach(() => {
+    db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = ? AND day >= '2099-01-01'`).run(SERIES);
+  });
+
+  it("has no wake with nothing pending", () => {
+    expect(fintualOfficialSerieNextDue(cl("2099-04-14", 9), {})).toBeNull();
+    expect(attachSyncSourceSchedule("fintual_official_serie", cl("2099-04-14", 9), false, false).next_sync).toBeNull();
+  });
+
+  it("wakes at today's 12:00 before noon, and tomorrow's when only today's day is a placeholder", () => {
+    seedPlaceholder("2099-04-13");
+    expect(fintualOfficialSerieNextDue(cl("2099-04-14", 9), {})).toEqual({ ymd: "2099-04-14", hour: 12, minute: 0 });
+    db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = ? AND day >= '2099-01-01'`).run(SERIES);
+    seedPlaceholder("2099-04-14");
+    expect(fintualOfficialSerieNextDue(cl("2099-04-14", 9), {})).toEqual({ ymd: "2099-04-15", hour: 12, minute: 0 });
+  });
+
+  it("wakes two hours after the last check while a healable placeholder waits", () => {
+    seedPlaceholder("2099-04-13");
+    // Last check at 14:30 Chile; the ISO is derived from the wall clock so the zone offset does not matter.
+    const last = dateAtTimeZoneWallClock("2099-04-14", 14, 30, "America/Santiago").toISOString();
+    expect(fintualOfficialSerieNextDue(cl("2099-04-14", 15), { fintualOfficialSerieLastCheckedAt: last })).toEqual({
+      ymd: "2099-04-14",
+      hour: 16,
+      minute: 30,
+    });
   });
 });

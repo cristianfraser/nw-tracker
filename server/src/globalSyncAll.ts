@@ -556,14 +556,20 @@ async function runFintual(
  * corrects a wrong bar — loudly, as a step error, since a correction means the evening
  * derivation was wrong. A fetch failure is a step error too, never a silent skip, but it does
  * not undo the goals poll that just ran. Runs after every goals poll (the endpoint publishes
- * day D on D+1, so the evening poll of D+1 is where D gets confirmed).
+ * day D on D+1, so the evening poll of D+1 is where D gets confirmed) and, when placeholder
+ * rows (stand-ins, carries) are still waiting, from the `fintual_official_serie` source — the
+ * only thing that heals them over a weekend, when no goals poll is due.
  */
 async function runFintualOfficialSeriesCheck(
   cl: ChileWallClock,
+  state: GlobalSyncStateFile,
   changes: SyncFieldChange[],
   errors: SyncStepError[]
 ): Promise<void> {
   const fromYmd = chileCalendarAddDays(cl.ymd, -FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS);
+  // Stamped before the fetch so a failed check is retried by the dedicated source after
+  // `FINTUAL_OFFICIAL_SERIE_RECHECK_MS`, not on every 15-minute scheduler tick.
+  if (!syncDryRun) state.fintualOfficialSerieLastCheckedAt = new Date().toISOString();
   let results;
   try {
     results = await verifyFintualSeriesAgainstOfficialPrices({ fromYmd, toYmd: cl.ymd, dryRun: syncDryRun });
@@ -1275,6 +1281,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
   /** Sources stale when the run started (log must not re-check after updates). */
   let staleAtStart: GlobalSyncSource[] = [];
   let state: GlobalSyncStateFile | null = null;
+  let officialSerieCheckedThisRun = false;
   let cl = chileWallClockNow();
 
   try {
@@ -1299,7 +1306,18 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     await runSyncStepIfStale("fintual", stale, "Fintual", stepErrors, state!, cl, async () => {
       const fintualResult = await runFintual(cl, state!, syncChanges);
       if (fintualResult.fintualNoChange) logOpts.fintualNoChange = true;
-      if (fintualResult.polled) await runFintualOfficialSeriesCheck(cl, syncChanges, stepErrors);
+      if (fintualResult.polled) {
+        await runFintualOfficialSeriesCheck(cl, state!, syncChanges, stepErrors);
+        officialSerieCheckedThisRun = true;
+      }
+    });
+
+    await runSyncStepIfStale("fintual_official_serie", stale, "Fintual official serie", stepErrors, state!, cl, async () => {
+      if (officialSerieCheckedThisRun) {
+        console.log("sync: Fintual official serie — already checked by the goals poll this run.");
+        return;
+      }
+      await runFintualOfficialSeriesCheck(cl, state!, syncChanges, stepErrors);
     });
 
     await runSyncStepIfStale(

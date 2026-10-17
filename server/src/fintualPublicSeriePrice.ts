@@ -7,7 +7,7 @@
  * The endpoint publishes day D on D+1 — never on the evening of D — so it cannot serve the
  * evening write (`scripts/fintualRealAssetNav.ts` prices that from Fintual's own share count).
  * It is the next-day verifier and healer: every poll re-reads the last
- * `FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS`, fills days no poll wrote, replaces carry-forward
+ * `FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS`, fills days no poll wrote, replaces carry-forward / stand-in
  * placeholders, and CORRECTS a stored bar that disagrees beyond `FINTUAL_PUBLIC_SERIE_TOLERANCE_REL`
  * — loudly, as a sync error, since a correction means the evening derivation was wrong. It also
  * keeps a series current whose goal is empty (no evening publish, e.g. Risky Norris serie A,
@@ -17,9 +17,11 @@
  * verified value-for-value against 20 months of stored bars on 2026-09-17: max deviation 6,4e-5
  * (weekend restatements), everything else exact to the 4th decimal.
  */
+import { type ChileWallClock, chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { FINTUAL_CERT_V2_ACCOUNT_NAMES, fintualCertV2SeriesKeyFromImportNotes } from "./fintualCertV2.js";
-import { isFintualCarryForwardFundUnitNote } from "./fintualFundUnitDaily.js";
+import { fintualPlaceholderDaysPending, isFintualCarryForwardFundUnitNote } from "./fintualFundUnitDaily.js";
+import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { formatSyncIndex, type SyncFieldChange, type SyncStepError } from "./syncRunLog.js";
 
 export const FINTUAL_PUBLIC_SERIE_PRICE_URL =
@@ -41,6 +43,13 @@ export const FINTUAL_PUBLIC_SERIE_TOLERANCE_REL = 1e-4;
 /** How far back every poll re-verifies (covers a week of missed polls plus the publish lag). */
 export const FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS = 14;
 export const FINTUAL_PUBLIC_SERIE_NOTE_PREFIX = "fintual:public-serie:publish";
+
+/** The `fintual_official_serie` source asks from this Chile hour (the serie publishes day D on D+1). */
+export const FINTUAL_OFFICIAL_SERIE_CHECK_HOUR_CHILE = 12;
+/** Minimum gap between two checks of the dedicated source while placeholders stay unhealed. */
+export const FINTUAL_OFFICIAL_SERIE_RECHECK_MS = 2 * 60 * 60 * 1000;
+/** Placeholders older than this many Chile days are left alone (a gap the serie never filled). */
+export const FINTUAL_OFFICIAL_SERIE_PLACEHOLDER_WINDOW_DAYS = 7;
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -135,7 +144,7 @@ const stmtUpsertBar = db.prepare(
 
 /**
  * Bring one series in line with the official prices for the days they cover: fill absent
- * days, replace carry-forward placeholders, correct published bars beyond tolerance. Bars
+ * days, replace placeholders (carry-forward or stand-in rows; action `carry_replaced`), correct published bars beyond tolerance. Bars
  * within tolerance keep their value and provenance.
  */
 export function reconcileFundUnitSeriesWithOfficialPrices(opts: {
@@ -218,7 +227,7 @@ export function fintualSeriesLabel(seriesKey: string): string {
   return SERIES_LABELS[seriesKey] ?? seriesKey;
 }
 
-/** Sync-log change lines for every bar the verifier wrote (a relabelled equal carry is silent). */
+/** Sync-log change lines for every bar the verifier wrote (a relabelled equal placeholder is silent). */
 export function fintualOfficialSerieSyncChanges(results: readonly FintualSerieReconcileResult[]): SyncFieldChange[] {
   const out: SyncFieldChange[] = [];
   for (const r of results) {
@@ -260,4 +269,61 @@ export function fintualOfficialSerieCorrectionErrors(results: readonly FintualSe
     }
   }
   return out;
+}
+
+/** Placeholder days (carry-forward or stand-in) of any mapped series within the last week, through today. */
+function officialSeriePlaceholderDays(cl: ChileWallClock): string[] {
+  return fintualPlaceholderDaysPending(
+    Object.keys(FINTUAL_PUBLIC_SERIE_BY_SERIES_KEY),
+    chileCalendarAddDays(cl.ymd, -FINTUAL_OFFICIAL_SERIE_PLACEHOLDER_WINDOW_DAYS),
+    cl.ymd
+  );
+}
+
+function lastOfficialSerieCheckMs(state: GlobalSyncStateFile): number | null {
+  const iso = state.fintualOfficialSerieLastCheckedAt?.trim();
+  if (!iso) return null;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * The goals poll runs only on publish days, so after a missed evening (or a block value applied
+ * on a weekend) its placeholder rows would wait for the next weekday poll. This source heals them
+ * from the official serie, which has every calendar day: stale when a placeholder dated within the
+ * last week and on or before YESTERDAY exists (the serie publishes D on D+1), the Chile clock is
+ * at or past 12:00, and the last check is at least two hours old (or never ran).
+ */
+export function isFintualOfficialSerieStale(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile,
+  opts?: { nowMs?: number }
+): boolean {
+  if (cl.hour < FINTUAL_OFFICIAL_SERIE_CHECK_HOUR_CHILE) return false;
+  const last = lastOfficialSerieCheckMs(state);
+  const nowMs = opts?.nowMs ?? Date.now();
+  if (last != null && nowMs - last < FINTUAL_OFFICIAL_SERIE_RECHECK_MS) return false;
+  const yesterday = chileCalendarAddDays(cl.ymd, -1);
+  return officialSeriePlaceholderDays(cl).some((d) => d <= yesterday);
+}
+
+/**
+ * When the source is next due while it is not stale: the later of today's 12:00 and two hours
+ * after the last check while a healable placeholder exists; tomorrow 12:00 when the only
+ * placeholders are dated today; null with nothing pending.
+ */
+export function fintualOfficialSerieNextDue(
+  cl: ChileWallClock,
+  state: GlobalSyncStateFile
+): { ymd: string; hour: number; minute: number } | null {
+  const days = officialSeriePlaceholderDays(cl);
+  if (days.length === 0) return null;
+  const yesterday = chileCalendarAddDays(cl.ymd, -1);
+  const healable = days.some((d) => d <= yesterday);
+  const noonYmd = healable ? cl.ymd : chileCalendarAddDays(cl.ymd, 1);
+  let dueMs = dateAtTimeZoneWallClock(noonYmd, FINTUAL_OFFICIAL_SERIE_CHECK_HOUR_CHILE, 0, "America/Santiago").getTime();
+  const last = lastOfficialSerieCheckMs(state);
+  if (healable && last != null) dueMs = Math.max(dueMs, last + FINTUAL_OFFICIAL_SERIE_RECHECK_MS);
+  const due = chileWallClockAt(new Date(Math.ceil(dueMs / 60_000) * 60_000));
+  return { ymd: due.ymd, hour: due.hour, minute: due.minute };
 }

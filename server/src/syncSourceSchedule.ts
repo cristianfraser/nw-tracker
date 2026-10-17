@@ -2,6 +2,7 @@ import { afpUnoNextDue } from "./afpUnoOfficialSync.js";
 import { chileCalendarAddDays, dateAtTimeZoneWallClock, type ChileWallClock } from "./chileDate.js";
 import { AFC_CIC_PUBLISH_HOUR_CHILE, afcCicNextDueYmd } from "./afcCicSeries.js";
 import { CMF_RN_SYNC_HOUR_CHILE, cmfRnNextDueYmd } from "./cmfRnPortfolioSync.js";
+import { fintualOfficialSerieNextDue } from "./fintualPublicSeriePrice.js";
 import {
   CRYPTO_EOD_SYNC_AFTER_HOUR_CHILE,
   CRYPTO_EOD_SYNC_AFTER_MINUTE_CHILE,
@@ -309,6 +310,15 @@ function scheduleForSource(
         next_sync: nextYmd
           ? chileTimeOnYmd(nextYmd, FINTUAL_RN_COMPOSITION_SYNC_HOUR_CHILE, FINTUAL_RN_COMPOSITION_SYNC_MINUTE_CHILE)
           : null,
+        next_sync_imminent: false,
+        today_day_kind: chileDayKind(cl.ymd),
+      };
+    }
+    case "fintual_official_serie": {
+      // Due again while a placeholder row waits for the official serie; nothing pending = no wake.
+      const due = fintualOfficialSerieNextDue(cl, loadGlobalSyncState());
+      return {
+        next_sync: due ? chileTimeOnYmd(due.ymd, due.hour, due.minute) : null,
         next_sync_imminent: false,
         today_day_kind: chileDayKind(cl.ymd),
       };

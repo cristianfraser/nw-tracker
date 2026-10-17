@@ -175,4 +175,119 @@ describe("globalSyncScheduler", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(runGlobalSyncAll).toHaveBeenCalledTimes(1);
   });
+
+  describe("post-wake handling", () => {
+    // Simulates a suspend: wall time jumps while the (faked) monotonic clock does not.
+    const suspendFor = (ms: number) => vi.setSystemTime(Date.now() + ms);
+
+    async function startPolling() {
+      staleSyncSources.mockReturnValue(["fintual"]);
+      startGlobalSyncScheduler();
+      await vi.waitFor(() => expect(runGlobalSyncAll).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(0);
+      runGlobalSyncAll.mockClear();
+    }
+
+    it("waits 10 s for the network when the poll fires after a suspend", async () => {
+      process.env.GLOBAL_SYNC_INTERVAL_MS = "900000";
+      await startPolling();
+      suspendFor(20 * 60_000);
+      await vi.advanceTimersByTimeAsync(900_000 - 1);
+      expect(runGlobalSyncAll).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(9_000);
+      expect(runGlobalSyncAll).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1_001);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not wait on an ordinary poll tick", async () => {
+      process.env.GLOBAL_SYNC_INTERVAL_MS = "900000";
+      await startPolling();
+      await vi.advanceTimersByTimeAsync(900_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries after 60 s then 180 s when the post-wake sync fails, then stops", async () => {
+      process.env.GLOBAL_SYNC_INTERVAL_MS = "900000";
+      await startPolling();
+      runGlobalSyncAll.mockResolvedValue(1);
+      suspendFor(20 * 60_000);
+      await vi.advanceTimersByTimeAsync(900_000 + 10_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(59_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(179_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(3);
+      // Budget spent: nothing more until the next regular poll.
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(3);
+    });
+
+    it("a retry that succeeds ends the sequence", async () => {
+      process.env.GLOBAL_SYNC_INTERVAL_MS = "900000";
+      await startPolling();
+      runGlobalSyncAll.mockResolvedValueOnce(1).mockResolvedValue(0);
+      suspendFor(20 * 60_000);
+      await vi.advanceTimersByTimeAsync(900_000 + 10_000);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(2);
+    });
+
+    it("a thrown sync counts as a failure", async () => {
+      process.env.GLOBAL_SYNC_INTERVAL_MS = "900000";
+      await startPolling();
+      runGlobalSyncAll.mockRejectedValueOnce(new Error("boom")).mockResolvedValue(0);
+      suspendFor(20 * 60_000);
+      await vi.advanceTimersByTimeAsync(900_000 + 10_000);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not retry a failure that did not follow a wake", async () => {
+      process.env.GLOBAL_SYNC_INTERVAL_MS = "900000";
+      await startPolling();
+      runGlobalSyncAll.mockResolvedValue(1);
+      await vi.advanceTimersByTimeAsync(900_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(240_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(1);
+    });
+
+    it("covers the fresh-source wake timer firing after a suspend (no poll loop)", async () => {
+      allSyncSourceStatuses.mockReturnValue([
+        {
+          source: "crypto_eod",
+          status: "ok",
+          next_sync_imminent: false,
+          next_sync: { ymd: "2026-05-27", hour: 11, minute: 0, timeZone: "America/Santiago" as const },
+        },
+      ]);
+      startGlobalSyncScheduler();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(runGlobalSyncAll).not.toHaveBeenCalled();
+      // The source falls due; the timer fires late because the machine was asleep.
+      staleSyncSources.mockReturnValue(["crypto_eod"]);
+      suspendFor(2 * 60 * 60_000);
+      await vi.advanceTimersByTimeAsync(60 * 60_000);
+      expect(runGlobalSyncAll).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(runGlobalSyncAll).toHaveBeenCalledTimes(1);
+    });
+
+    it("stopping during the network wait does not strand the scheduler", async () => {
+      process.env.GLOBAL_SYNC_INTERVAL_MS = "900000";
+      await startPolling();
+      suspendFor(20 * 60_000);
+      await vi.advanceTimersByTimeAsync(900_000);
+      stopGlobalSyncScheduler();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(runGlobalSyncAll).not.toHaveBeenCalled();
+    });
+  });
 });

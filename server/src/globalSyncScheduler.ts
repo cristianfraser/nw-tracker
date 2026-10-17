@@ -4,20 +4,28 @@
  * - While any source is stale: poll on an interval (default 15 min), sync immediately on start.
  * - When `stocks_nyse` is stale after the NYSE close window, or `stocks_santiago` on the evening of
  *   its Chile close: poll every 3 min until caught up.
- * - After a long idle gap (sleep/wake): run sync immediately on the next timer tick.
+ * - After a suspend (sleep/wake, detected by a late timer or wall-vs-monotonic clock divergence):
+ *   wait 10 s for the network, then sync; a sync that still fails is retried after 60 s and 180 s
+ *   (`globalSyncSchedulerPolicy.ts`). Covers the poll loop and the fresh-source wake timer alike.
  * - When all sources are fresh: stop polling; wake at the earliest source `next_sync` wall time.
  *
  * Env:
  * - `GLOBAL_SYNC_ENABLED` — default on; set `0` to disable.
  * - `GLOBAL_SYNC_INTERVAL_MS` — poll interval while stale (default 15 minutes).
  * - `GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS` — faster poll when a stock EOD bar is due but missing (default 3 minutes).
- * - `GLOBAL_SYNC_WAKE_GAP_MS` — idle gap that triggers an immediate sync (default 5 minutes).
+ * - `GLOBAL_SYNC_WAKE_GAP_MS` — suspended time that counts as a wake (default 5 minutes).
  */
 import { chileWallClockAt, chileWallClockNow } from "./chileDate.js";
 import { runGlobalSyncAll } from "./globalSyncAll.js";
 import { allSyncSourceStatuses, staleSyncSources, type GlobalSyncSource } from "./globalSyncStale.js";
 import { equityEodNyseSyncDue, equityEodSantiagoSyncDue } from "./equityEodSync.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
+import {
+  GLOBAL_SYNC_RETRY_DELAYS_MS,
+  planAfterGlobalSync,
+  planGlobalSyncTick,
+  suspendedGapMs,
+} from "./globalSyncSchedulerPolicy.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 import { syncWallTimeToMs } from "./syncSourceSchedule.js";
 
@@ -32,7 +40,18 @@ let pollLoopActive = false;
 let activePollIntervalMs: number | null = null;
 /** Wall-clock ms for next poll (while stale) or idle wake (when fresh). */
 let nextCheckAtMs: number | null = null;
-let lastSchedulerActivityMs = Date.now();
+/** Wall and monotonic clock at the last activity; their divergence measures time spent suspended. */
+let lastActivityWallMs = Date.now();
+let lastActivityMonotonicMs = performance.now();
+/** Suspended time seen by timer callbacks since the last tick consumed it. */
+let observedSuspendedMs = 0;
+/** Wall time the poll interval is next expected to fire. */
+let pollExpectedAtMs: number | null = null;
+/** Post-wake retries spent; refilled by a tick that finishes with exit code 0. */
+let retriesUsed = 0;
+let retryTimerHandle: ReturnType<typeof setTimeout> | null = null;
+/** The network grace period before a post-wake sync; cancellable so a stop never strands `inFlight`. */
+let resumeWait: { handle: ReturnType<typeof setTimeout>; resolve: (cancelled: boolean) => void } | null = null;
 
 export type GlobalSyncSchedulerSnapshot = {
   enabled: boolean;
@@ -97,6 +116,7 @@ function stopPollLoop(): void {
   }
   pollLoopActive = false;
   activePollIntervalMs = null;
+  pollExpectedAtMs = null;
 }
 
 function restartPollInterval(intervalMs: number): void {
@@ -105,7 +125,10 @@ function restartPollInterval(intervalMs: number): void {
     pollIntervalHandle = null;
   }
   activePollIntervalMs = intervalMs;
+  pollExpectedAtMs = Date.now() + intervalMs;
   pollIntervalHandle = setInterval(() => {
+    observeTimerFire(pollExpectedAtMs);
+    pollExpectedAtMs = Date.now() + intervalMs;
     scheduleNextCheckAt(Date.now() + intervalMs);
     void schedulerTick();
   }, intervalMs);
@@ -116,11 +139,47 @@ function ensurePollInterval(intervalMs: number): void {
   restartPollInterval(intervalMs);
 }
 
-function noteSchedulerActivity(): number {
-  const now = Date.now();
-  const gapMs = now - lastSchedulerActivityMs;
-  lastSchedulerActivityMs = now;
-  return gapMs;
+function noteSchedulerActivity(): void {
+  lastActivityWallMs = Date.now();
+  lastActivityMonotonicMs = performance.now();
+}
+
+/**
+ * Call first thing in every timer callback. Records how long the process was suspended before the
+ * timer fired, so the tick it triggers (directly, or through `rescheduleGlobalSyncScheduler` for
+ * the fresh-source wake timer) knows it follows a wake. Two signals, see `suspendedGapMs`.
+ */
+function observeTimerFire(expectedAtMs: number | null): void {
+  const lateByMs = expectedAtMs == null ? 0 : Date.now() - expectedAtMs;
+  const divergenceMs =
+    Date.now() - lastActivityWallMs - (performance.now() - lastActivityMonotonicMs);
+  observedSuspendedMs = Math.max(observedSuspendedMs, suspendedGapMs({ lateByMs, divergenceMs }));
+}
+
+function clearRetryTimer(): void {
+  if (retryTimerHandle != null) {
+    clearTimeout(retryTimerHandle);
+    retryTimerHandle = null;
+  }
+}
+
+function cancelResumeWait(): void {
+  if (resumeWait != null) {
+    clearTimeout(resumeWait.handle);
+    resumeWait.resolve(true);
+    resumeWait = null;
+  }
+}
+
+/** Resolves true when cancelled by a scheduler stop, false when the wait elapsed. */
+function waitForNetwork(ms: number): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const handle = setTimeout(() => {
+      resumeWait = null;
+      resolve(false);
+    }, ms);
+    resumeWait = { handle, resolve };
+  });
 }
 
 /**
@@ -156,6 +215,7 @@ function scheduleWakeTimer(atMs: number | null): void {
   scheduleNextCheckAt(atMs);
   wakeTimerHandle = setTimeout(() => {
     wakeTimerHandle = null;
+    observeTimerFire(atMs);
     void rescheduleGlobalSyncScheduler();
   }, delay);
 }
@@ -166,6 +226,7 @@ function scheduleFreshSourceWake(atMs: number): void {
   scheduleNextCheckAt(atMs);
   wakeTimerHandle = setTimeout(() => {
     wakeTimerHandle = null;
+    observeTimerFire(atMs);
     void schedulerTick();
   }, Math.max(0, atMs - Date.now()));
 }
@@ -179,14 +240,25 @@ async function schedulerTick(): Promise<void> {
     console.log("sync:scheduler — skip (previous run still in progress).");
     return;
   }
-  const idleGapMs = noteSchedulerActivity();
-  if (pollLoopActive && idleGapMs >= wakeGapMs) {
-    console.log(
-      `sync:scheduler — idle gap ${Math.round(idleGapMs / 1000)}s (sleep/wake?); syncing now`
-    );
-  }
+  const suspendedMs = observedSuspendedMs;
+  observedSuspendedMs = 0;
+  noteSchedulerActivity();
+  const tickPlan = planGlobalSyncTick({ suspendedGapMs: suspendedMs, wakeGapMs });
   inFlight = true;
+  /** 0 = ok (or nothing stale), n = failed steps, null = threw. */
+  let exitCode: number | null = 0;
+  let cancelled = false;
   try {
+    if (tickPlan.resumed) {
+      console.log(
+        `sync:scheduler — resumed after ~${Math.round(suspendedMs / 1000)}s suspended; ` +
+          `waiting ${Math.round(tickPlan.waitBeforeSyncMs / 1000)}s for the network`
+      );
+      if (await waitForNetwork(tickPlan.waitBeforeSyncMs)) {
+        cancelled = true;
+        return;
+      }
+    }
     loadRootDotenv();
     const cl = chileWallClockNow();
     const state = loadGlobalSyncState();
@@ -196,19 +268,42 @@ async function schedulerTick(): Promise<void> {
       `sync:scheduler — stale [${stale.join(", ")}] at Chile ${cl.ymd} ${String(cl.hour).padStart(2, "0")}:${String(cl.minute).padStart(2, "0")}`
     );
     const code = await runGlobalSyncInProcess();
+    exitCode = code;
     if (code !== 0) {
       console.warn(`sync:scheduler — global-sync exited with code ${code}`);
     } else {
       console.log("sync:scheduler — global-sync finished ok.");
     }
   } catch (e) {
+    exitCode = null;
     console.error(`sync:scheduler — error: ${e instanceof Error ? e.message : e}`);
   } finally {
     inFlight = false;
-    if (schedulerEnabled) {
+    if (schedulerEnabled && !cancelled) {
+      scheduleRetryAfterTick(tickPlan.resumed, exitCode);
       await rescheduleGlobalSyncScheduler();
     }
   }
+}
+
+/** A sync that failed right after a wake is retried soon, not a full poll interval later. */
+function scheduleRetryAfterTick(resumed: boolean, exitCode: number | null): void {
+  const plan = planAfterGlobalSync({ resumedAfterSuspend: resumed, exitCode, retriesUsed });
+  retriesUsed = plan.retriesUsed;
+  if (exitCode === 0) clearRetryTimer();
+  if (plan.retryAfterMs == null) return;
+  clearRetryTimer();
+  const attempt = plan.retriesUsed;
+  console.log(
+    `sync:scheduler — retrying in ${Math.round(plan.retryAfterMs / 1000)}s after a failed post-wake sync ` +
+      `(attempt ${attempt}/${GLOBAL_SYNC_RETRY_DELAYS_MS.length})`
+  );
+  const expectedAtMs = Date.now() + plan.retryAfterMs;
+  retryTimerHandle = setTimeout(() => {
+    retryTimerHandle = null;
+    observeTimerFire(expectedAtMs);
+    void schedulerTick();
+  }, plan.retryAfterMs);
 }
 
 /** Re-evaluate stale sources: start/stop poll loop or schedule next wake. */
@@ -272,7 +367,8 @@ export function startGlobalSyncScheduler(): void {
   schedulerIntervalMs = envMs("GLOBAL_SYNC_INTERVAL_MS", 15 * 60 * 1000);
   nyseStalePollIntervalMs = envMs("GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS", 3 * 60 * 1000);
   wakeGapMs = envMs("GLOBAL_SYNC_WAKE_GAP_MS", 5 * 60 * 1000);
-  lastSchedulerActivityMs = Date.now();
+  noteSchedulerActivity();
+  retriesUsed = 0;
   console.log(
     `sync:scheduler — enabled; polls every ${Math.round(schedulerIntervalMs / 1000)}s while stale` +
       ` (${Math.round(nyseStalePollIntervalMs / 1000)}s when NYSE EOD due)`
@@ -283,6 +379,10 @@ export function startGlobalSyncScheduler(): void {
 export function stopGlobalSyncScheduler(): void {
   stopPollLoop();
   clearWakeTimer();
+  clearRetryTimer();
+  cancelResumeWait();
+  retriesUsed = 0;
+  observedSuspendedMs = 0;
   schedulerEnabled = false;
   nextCheckAtMs = null;
 }
