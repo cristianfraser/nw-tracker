@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { ChileWallClock } from "./chileDate.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
+import { db } from "./db.js";
+import { chileWallClockAt } from "./chileDate.js";
+import { isFintualOfficialSerieStale } from "./fintualPublicSeriePrice.js";
 import {
   PUBLISHER_LAG_MAX_POLL_AGE_MS,
   afcCicPublisherLag,
@@ -376,5 +379,52 @@ describe("afcCicPublisherLag", () => {
     expect(staleDimmingSources([row], mondayMidnight)).not.toContain("afc_cic");
     expect(staleDimmingSources([row], wallClock("2026-10-05", 12))).toContain("afc_cic");
     expect(staleDimmingSources([{ ...row, publisher_lag: null }], mondayMidnight)).toContain("afc_cic");
+  });
+});
+
+describe("fintual_official_serie", () => {
+  const SERIES = "fintual_cert_reserva2";
+  const NOON = wallClock("2099-04-14", 12);
+  const nowMs = Date.UTC(2099, 3, 14, 16, 0); // an instant on the Chile day 2099-04-14
+
+  function seedPlaceholder(day: string, note = "fintual:stand-in|from=2099-04-13"): void {
+    db.prepare(
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, 1000, ?)
+       ON CONFLICT(series_key, day) DO UPDATE SET note = excluded.note`
+    ).run(SERIES, day, note);
+  }
+
+  afterEach(() => {
+    db.prepare(`DELETE FROM fund_unit_daily WHERE series_key = ? AND day >= '2099-01-01'`).run(SERIES);
+  });
+
+  it("is stale with a placeholder dated yesterday or earlier, from 12:00, never checked", () => {
+    seedPlaceholder("2099-04-13");
+    expect(isFintualOfficialSerieStale(NOON, {}, { nowMs })).toBe(true);
+    expect(isFintualOfficialSerieStale(wallClock("2099-04-14", 11, 59), {}, { nowMs })).toBe(false);
+    expect(staleSyncSources(NOON, {}, { bcentralConfigured: false })).toContain("fintual_official_serie");
+    const row = allSyncSourceStatuses(NOON, {}, { bcentralConfigured: false, nowMs }).find(
+      (r) => r.source === "fintual_official_serie"
+    );
+    expect(row?.status).toBe("stale");
+  });
+
+  it("is not stale without a healable placeholder", () => {
+    expect(isFintualOfficialSerieStale(NOON, {}, { nowMs })).toBe(false); // nothing stored
+    seedPlaceholder("2099-04-14"); // dated today: the serie has not published it yet
+    expect(isFintualOfficialSerieStale(NOON, {}, { nowMs })).toBe(false);
+    seedPlaceholder("2099-04-05"); // older than the 7-day window
+    expect(isFintualOfficialSerieStale(NOON, {}, { nowMs })).toBe(false);
+    seedPlaceholder("2099-04-12", "fintual:gql:shares-publish|x"); // a published bar is not a placeholder
+    expect(isFintualOfficialSerieStale(NOON, {}, { nowMs })).toBe(false);
+  });
+
+  it("waits two hours after the last check", () => {
+    seedPlaceholder("2099-04-13");
+    const recent = new Date(nowMs - 119 * 60_000).toISOString();
+    const old = new Date(nowMs - 121 * 60_000).toISOString();
+    expect(isFintualOfficialSerieStale(NOON, { fintualOfficialSerieLastCheckedAt: recent }, { nowMs })).toBe(false);
+    expect(isFintualOfficialSerieStale(NOON, { fintualOfficialSerieLastCheckedAt: old }, { nowMs })).toBe(true);
+    expect(chileWallClockAt(new Date(nowMs)).ymd).toBe("2099-04-14");
   });
 });

@@ -47,6 +47,8 @@ export type GlobalSyncStateFile = {
   cmfRnPortfolioLastMonth?: string;
   /** Chile day of the last attempt to fetch the next CMF filing (one attempt per day). */
   cmfRnPortfolioLastCheckYmd?: string;
+  /** ISO time of the last check of Fintual's official serie prices (`fintualPublicSeriePrice.ts`), by the goals poll or the dedicated source. */
+  fintualOfficialSerieLastCheckedAt?: string;
   /** Sources marked stale from the sync log UI until the next successful sync step. */
   userForcedStale?: string[];
 };

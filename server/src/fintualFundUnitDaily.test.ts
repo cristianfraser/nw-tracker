@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   FINTUAL_INFERRED_UNIT_MAX_REL_STEP,
+  FINTUAL_STAND_IN_NOTE_PREFIX,
   isFintualCarryForwardFundUnitNote,
   isFintualPublishedFundUnitNote,
   recordFintualGoalFundUnitDaily,
@@ -89,10 +90,18 @@ describe("fund unit note provenance", () => {
     expect(isFintualCarryForwardFundUnitNote("fintual:cert-carry-forward")).toBe(true);
     expect(isFintualCarryForwardFundUnitNote("fintual:gql:shares-publish|x")).toBe(false);
   });
+
+  it("treats stand-in rows as placeholders, never as published bars", () => {
+    expect(FINTUAL_STAND_IN_NOTE_PREFIX).toBe("fintual:stand-in");
+    expect(isFintualCarryForwardFundUnitNote("fintual:stand-in")).toBe(true);
+    expect(isFintualCarryForwardFundUnitNote("fintual:stand-in|from=2026-10-18")).toBe(true);
+    expect(isFintualCarryForwardFundUnitNote("fintual:stand-inx")).toBe(false);
+    expect(isFintualPublishedFundUnitNote("fintual:stand-in|from=2026-10-18")).toBe(false);
+  });
 });
 
 describe("recordFintualGoalFundUnitDaily", () => {
-  it("writes the publish-day bar with the shares-publish note, carries the gap, restates on re-poll", () => {
+  it("writes the publish-day bar with the shares-publish note, stands the new value in for the gap, restates on re-poll", () => {
     wipeRange("2099-07-01", "2099-07-31");
     seedBar("2099-07-01", 1000, `fintual:gql:shares-publish|${NOTES}`);
     try {
@@ -106,8 +115,9 @@ describe("recordFintualGoalFundUnitDaily", () => {
         dryRun: false,
       });
       expect(r).toEqual({ recorded: true, unitClp: 1003, gapDaysFilled: 2 });
-      expect(readBar("2099-07-02")).toMatchObject({ unit_value_clp: 1000, note: "fintual:carry-forward" });
-      expect(readBar("2099-07-03")).toMatchObject({ unit_value_clp: 1000, note: "fintual:carry-forward" });
+      // The skipped days hold the NEW value (the observation stands in for them), marked as placeholders.
+      expect(readBar("2099-07-02")).toMatchObject({ unit_value_clp: 1003, note: "fintual:stand-in|from=2099-07-04" });
+      expect(readBar("2099-07-03")).toMatchObject({ unit_value_clp: 1003, note: "fintual:stand-in|from=2099-07-04" });
       expect(readBar("2099-07-04")).toMatchObject({
         unit_value_clp: 1003,
         note: `fintual:gql:shares-publish|${NOTES}`,

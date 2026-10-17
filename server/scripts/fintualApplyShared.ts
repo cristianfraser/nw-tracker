@@ -352,7 +352,7 @@ export function syncFintualFundUnitsFromResolutions(
       if (!dryRun) {
         console.log(
           `sync: Fintual — fund_unit_daily ${fu.unitClp} (${asOfYmd}, publish, ${target.importNotes})` +
-            (fu.gapDaysFilled > 0 ? `, carried ${fu.gapDaysFilled} day(s)` : "")
+            (fu.gapDaysFilled > 0 ? `, stand-in for ${fu.gapDaysFilled} skipped day(s)` : "")
         );
       }
     }

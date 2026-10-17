@@ -10,6 +10,7 @@ import {
 import { type ChileWallClock, chileCalendarAddDays, chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
 import { isCmfRnPortfolioStale } from "./cmfRnPortfolioSync.js";
+import { isFintualOfficialSerieStale } from "./fintualPublicSeriePrice.js";
 import {
   loadGlobalSyncState,
   saveGlobalSyncState,
@@ -81,6 +82,7 @@ export type GlobalSyncSource =
   | "afp_uno"
   | "afc_cic"
   | "fintual"
+  | "fintual_official_serie"
   | "fintual_rn_composition"
   | "cmf_rn_portfolio"
   | "sbif_usd"
@@ -97,6 +99,7 @@ export const GLOBAL_SYNC_SOURCES: readonly GlobalSyncSource[] = [
   "afp_uno",
   "afc_cic",
   "fintual",
+  "fintual_official_serie",
   "fintual_rn_composition",
   "cmf_rn_portfolio",
   "sbif_usd",
@@ -404,6 +407,7 @@ function naturalStaleSyncSources(
   if (isAfpUnoSpotStale(cl, state, opts)) out.push("afp_uno");
   if (isAfcCicStale(cl, state, opts)) out.push("afc_cic");
   if (isFintualSyncStale(cl, state)) out.push("fintual");
+  if (isFintualOfficialSerieStale(cl, state)) out.push("fintual_official_serie");
   if (isFintualRnCompositionStale(cl, state)) out.push("fintual_rn_composition");
   if (isCmfRnPortfolioStale(cl, state)) out.push("cmf_rn_portfolio");
   const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
@@ -658,6 +662,11 @@ export function allSyncSourceStatuses(
       });
     }
     rows.push(row);
+  }
+
+  {
+    const stale = isFintualOfficialSerieStale(cl, state, { nowMs: opts?.nowMs });
+    rows.push(syncSourceRow("fintual_official_serie", cl, stale ? "stale" : "ok", stale, state));
   }
 
   {

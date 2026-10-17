@@ -151,4 +151,30 @@ describe("reconcileFundUnitSeriesWithOfficialPrices", () => {
     expect(readBar("2099-02-01")!.note).toBe("fintual:public-serie:publish|serie=999");
     expect(fintualOfficialSerieSyncChanges([res])).toEqual([]);
   });
+
+  it("replaces a stand-in row with the official price", () => {
+    seedBar("2099-03-01", 1000, "fintual:gql:shares-publish|vitest");
+    seedBar("2099-03-02", 999.5, "fintual:stand-in|from=2099-03-04");
+    seedBar("2099-03-03", 999.5, "fintual:stand-in|from=2099-03-04");
+    seedBar("2099-03-04", 999.5, "fintual:gql:shares-publish|vitest");
+    const res = reconcileFundUnitSeriesWithOfficialPrices({
+      seriesKey: SERIES,
+      serieId: SERIE_ID,
+      official: new Map([
+        ["2099-03-02", 1000.3],
+        ["2099-03-03", 1000.1],
+        ["2099-03-04", 999.5],
+      ]),
+      dryRun: false,
+    });
+    expect(res.rows.map((r) => [r.day, r.action])).toEqual([
+      ["2099-03-02", "carry_replaced"],
+      ["2099-03-03", "carry_replaced"],
+    ]);
+    expect(readBar("2099-03-02")).toMatchObject({ unit_value_clp: 1000.3, note: "fintual:public-serie:publish|serie=999" });
+    expect(readBar("2099-03-03")).toMatchObject({ unit_value_clp: 1000.1, note: "fintual:public-serie:publish|serie=999" });
+    expect(readBar("2099-03-04")!.note).toBe("fintual:gql:shares-publish|vitest"); // agrees: untouched
+    // A stand-in whose value differs is a visible change line.
+    expect(fintualOfficialSerieSyncChanges([res])).toHaveLength(2);
+  });
 });

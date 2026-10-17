@@ -1324,6 +1324,10 @@
           "en": "Fintual",
           "es": "Fintual"
         },
+        "fintual_official_serie": {
+          "en": "Fintual — official unit values",
+          "es": "Fintual — valor cuota oficial"
+        },
         "fintual_rn_composition": {
           "en": "Risky Norris composition (proxy)",
           "es": "Composición Risky Norris (proxy)"
