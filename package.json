@@ -58,6 +58,8 @@
     "check:santander-payday-fetch": "npm run --silent check:santander-payday-fetch -w nw-tracker-server --",
     "fetch:racional": "npm run fetch:racional -w nw-tracker-ingest --",
     "fetch:afp-uno": "npm run fetch:afp-uno -w nw-tracker-ingest --",
+    "fetch:afc": "npm run fetch:afc -w nw-tracker-ingest --",
+    "fetch:afc-cartolas": "npm run fetch:afc-cartolas -w nw-tracker-ingest --",
     "import:racional-movements": "npm run import:racional-movements -w nw-tracker-ingest --",
     "import:racional-emails": "npm run import:racional-emails -w nw-tracker-ingest --",
     "fetch:emails": "npm run fetch:emails -w nw-tracker-ingest --",

@@ -40,7 +40,7 @@ export function spanishMonthNumber(word: string): number | null {
 }
 
 function parseClpInteger(raw: string): number {
-  const s = raw.trim().replace(/^\$/, "").replace(/\./g, "");
+  const s = raw.trim().replace(/^\$\s*/, "").replace(/\./g, "");
   if (!/^-?\d+$/.test(s)) throw new Error(`afc: unparsable CLP amount «${raw}»`);
   return Number(s);
 }
@@ -206,10 +206,12 @@ export type AfcCartola = {
 };
 
 const PERIOD_RE = /per[ií]odo del (\d{1,2}) de ([A-Za-zÁÉÍÓÚáéíóúñÑ]+) al (\d{1,2}) de ([A-Za-zÁÉÍÓÚáéíóúñÑ]+) de (\d{4})/i;
-const SALDO_INICIAL_RE = /Al (\d{2})-(\d{2})-(\d{4})\s+\(1\)\s+\$([\d.]+)/;
-const SALDO_FINAL_RE = /Al (\d{2})-(\d{2})-(\d{4})\s+\(1\+2-3\)\s+\$([\d.]+)/;
-const AMOUNTS_RE = /\$-?[\d.]+/g;
-const DETALLE_ROW_RE = /^\s*(.+?)\s{2,}([A-Za-zÁÉÍÓÚáéíóúñÑ]+)-(\d{4})\s+\$([\d.]+)\s*$/;
+// Two renderings of the same document: the sucursal virtual's download prints `Al 31-12-2025 … (1) $3.652.167`,
+// the mailed copy (2026-10-17) `Al 31/12/2025 … (1) $ 3.652.167` and a footnote on the detalle's Total line.
+const SALDO_INICIAL_RE = /Al (\d{2})[-/](\d{2})[-/](\d{4})\s+\(1\)\s+\$\s?([\d.]+)/;
+const SALDO_FINAL_RE = /Al (\d{2})[-/](\d{2})[-/](\d{4})\s+\(1\+2-3\)\s+\$\s?([\d.]+)/;
+const AMOUNTS_RE = /\$\s?-?[\d.]+/g;
+const DETALLE_ROW_RE = /^\s*(.+?)\s{2,}([A-Za-zÁÉÍÓÚáéíóúñÑ]+)-(\d{4})\s+\$\s?([\d.]+)\s*$/;
 
 function monthOrThrow(word: string): number {
   const mo = spanishMonthNumber(word);
@@ -260,7 +262,7 @@ export function parseAfcCartola(text: string): AfcCartola {
   if (dStart < 0) throw new Error("afc cartola: «Detalle de cotizaciones» not found");
   for (let i = dStart + 1; i < lines.length; i++) {
     const l = lines[i]!;
-    if (/^\s*Total\s+\$/.test(l) || /Beneficios del Fondo/.test(l)) break;
+    if (/(^|\s)Total\s+\$\s?[\d.]+\s*$/.test(l) || /Beneficios del Fondo/.test(l)) break;
     const dm = DETALLE_ROW_RE.exec(l);
     if (!dm) continue;
     detalle.push({

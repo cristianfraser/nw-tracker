@@ -241,8 +241,26 @@ describe("AFC ledger rebuild (test DB)", () => {
     expect(again.trueups.map((t) => t.status)).toEqual(["unchanged", "unchanged"]);
     const finalRow = db
       .prepare(`SELECT amount, flow_kind FROM movements WHERE account_id = ? AND note LIKE ?`)
-      .get(accountId, `${afcCartolaTrueUpNoteKey("final", "2099-12-31")}%`) as { amount: number; flow_kind: string };
+      .get(accountId, `${afcCartolaTrueUpNoteKey("2099-12-31")}%`) as { amount: number; flow_kind: string };
     expect(finalRow).toEqual({ amount: -500, flow_kind: "cash_fee" });
+  });
+
+  it("keys a true-up on the saldo day: the next cartola's saldo inicial is the same row, a legacy key is rekeyed", () => {
+    // Runs after the true-ups above were applied: both boundaries plan «unchanged».
+    const cartola = CARTOLA;
+    const finalDay = cartola.saldo_final_ymd;
+    // A row written under the old key for the same day is found and rekeyed on the next plan.
+    db.prepare(`UPDATE movements SET note = ? WHERE account_id = ? AND note LIKE ?`).run(
+      `AFC ajuste cartola — saldo final ${finalDay} · legacy`,
+      accountId,
+      `${afcCartolaTrueUpNoteKey(finalDay)} %`
+    );
+    const again = planAfcCartolaTrueUps(accountId, cartola);
+    expect(again.trueups.map((t) => t.status)).toEqual(["unchanged", "update"]);
+    applyAfcCartolaTrueUps(again);
+    const rows = db.prepare(`SELECT note FROM movements WHERE account_id = ? AND note LIKE 'AFC ajuste cartola%' AND occurred_on = ?`).all(accountId, finalDay) as { note: string }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.note.startsWith(`${afcCartolaTrueUpNoteKey(finalDay)} `)).toBe(true);
   });
 
   it("refuses a cartola whose cotizaciones are not all in the ledger", () => {

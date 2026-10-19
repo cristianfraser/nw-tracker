@@ -11,6 +11,7 @@ import { backgroundJobsDisabled } from "./backgroundJobsEnv.js";
 import { ingestFeederHeaders, resolveIngestServiceUrl } from "./ingestFeeder.js";
 import { lastDailyRunAt } from "./dailyRunLog.js";
 import {
+  decideAfcFetch,
   decideAfpUnoFetch,
   decideIngestRun,
   decideMortgageSheetRun,
@@ -75,7 +76,8 @@ export async function requestFeederRun(
   afpUnoFetch: IngestRunRequest["afp_uno_fetch"] = null,
   env: NodeJS.ProcessEnv = process.env,
   payslips: IngestRunRequest["payslips"] = null,
-  mortgageSheet: IngestRunRequest["mortgage_sheet"] = null
+  mortgageSheet: IngestRunRequest["mortgage_sheet"] = null,
+  afcFetch: IngestRunRequest["afc_fetch"] = null
 ): Promise<FeederAnswer> {
   try {
     const res = await fetch(`${resolveIngestServiceUrl(env)}${FEEDER_RUNS_PATH}`, {
@@ -88,6 +90,7 @@ export async function requestFeederRun(
           reason,
           santander_fetch: santanderFetch,
           afp_uno_fetch: afpUnoFetch,
+          afc_fetch: afcFetch,
           payslips,
           mortgage_sheet: mortgageSheet,
         })
@@ -168,17 +171,20 @@ export async function ingestSchedulerTick(
       : null;
   // Every nightly reads AFP UNO's balance; the read fetches the certificates when its cuotas moved.
   const afpUnoFetch = decision.kind === "nightly" ? decideAfpUnoFetch() : null;
+  // Every nightly reads the AFC's balance and certificate of paid contributions.
+  const afcFetch = decision.kind === "nightly" ? decideAfcFetch() : null;
   // A nightly reads the payroll portal from the 1st until last month's payslip is stored, and
   // re-imports while the newest payslip waits for its deposit.
   const payslips = decision.kind === "nightly" ? decidePayslipsRun({ now, latest: latestPayslip() }) : null;
   // Either kind reads the mortgage sheet while the cycle's cuota is not in the ledger (from the 11th).
   const mortgageSheet = decideMortgageSheetRun({ now, latestCuotaPaidOn: latestRegularMortgageCuotaPaidOn() });
   const runId = markIngestRunRequested(decision.kind, decision.slot, decision.reason, now, santanderFetch);
-  const answer = await request(runId, decision.kind, decision.reason, santanderFetch, afpUnoFetch, undefined, payslips, mortgageSheet);
+  const answer = await request(runId, decision.kind, decision.reason, santanderFetch, afpUnoFetch, undefined, payslips, mortgageSheet, afcFetch);
   if (answer.status === "accepted") {
     const fetchNote =
       (santanderFetch ? `; Santander ${santanderFetch.mode}: ${santanderFetch.reason}` : "") +
       (afpUnoFetch ? `; AFP UNO: ${afpUnoFetch.reason}` : "") +
+      (afcFetch ? `; AFC: ${afcFetch.reason}` : "") +
       (payslips ? `; payslips: ${payslips.reason}` : "") +
       (mortgageSheet ? `; mortgage sheet: ${mortgageSheet.reason}` : "");
     console.log(`ingest-runs: ${decision.kind} run ${runId} started (${decision.reason}${fetchNote})`);

@@ -159,6 +159,11 @@ export function decideAfpUnoFetch(): { reason: string } {
   return { reason: "nightly: the website's balance against the ledger" };
 }
 
+/** Tonight's AFC read: every nightly — the stated balance, and the certificate of paid contributions. */
+export function decideAfcFetch(): { reason: string } {
+  return { reason: "nightly: the sucursal virtual's balance and certificate against the ledger" };
+}
+
 /** The last day of a month on which the nightly still looks for the previous month's payslip. */
 export const PAYSLIP_FETCH_LAST_DAY_OF_MONTH = 15;
 

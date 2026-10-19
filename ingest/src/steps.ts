@@ -15,6 +15,7 @@ export const STEP_NAMES: Record<BankName, readonly string[]> = {
   racional: ["movements", "positions"],
   // Supervised capture only, until the fetcher is built from what it records.
   "afp-uno": ["capture"],
+  afc: ["capture"],
   // No web-session steps: the payslips are fetched by `npm run fetch:buk-payslips`.
   buk: [],
 } as const;

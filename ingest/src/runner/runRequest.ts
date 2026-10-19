@@ -107,6 +107,8 @@ export async function runRequestedRun(
               racionalNeeded,
               afpUnoFetch: request.afp_uno_fetch,
               afpUnoApply: envFlag("NW_TRACKER_AFP_UNO_APPLY"),
+              afcFetch: request.afc_fetch,
+              afcApply: envFlag("NW_TRACKER_AFC_APPLY"),
               payslips: request.payslips,
               mortgageSheet: request.mortgage_sheet,
             })),

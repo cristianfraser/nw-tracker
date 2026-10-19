@@ -22,7 +22,7 @@
  *    are P/L to every deposit reader, never personal capital.
  *
  * Identity is the note key (`AFC cotización — período YYYY-MM (pago YYYY-MM-DD)`,
- * `AFC ajuste cartola — saldo inicial|final YYYY-MM-DD`), the same convention the bank importers
+ * `AFC ajuste cartola — saldo YYYY-MM-DD`, one per printed saldo day), the same convention the bank importers
  * use; re-imports are idempotent and a changed printed amount is reported as a mismatch, never
  * overwritten. Report-first: `planAfcCertImport` / `planAfcCartolaTrueUps` compute, `apply…`
  * write.
@@ -343,8 +343,19 @@ export type AfcCartola = {
   detalle: { employer: string; pay_month_ym: string; amount_clp: number }[];
 };
 
-export function afcCartolaTrueUpNoteKey(which: "inicial" | "final", dayYmd: string): string {
-  return `AFC ajuste cartola — saldo ${which} ${dayYmd}`;
+/**
+ * One true-up per printed saldo DAY: a period's saldo final is the next period's saldo inicial,
+ * the same figure, so both cartolas describe one row (2026-10-17 — the mailed cartolas arriving
+ * three a year had been giving a boundary two rows, «inicial» from one and «final» from the
+ * other). Rows written before carry the legacy `saldo inicial|final <day>` key and are matched
+ * and rekeyed on their next update.
+ */
+export function afcCartolaTrueUpNoteKey(dayYmd: string): string {
+  return `AFC ajuste cartola — saldo ${dayYmd}`;
+}
+
+function legacyTrueUpNoteKeys(dayYmd: string): string[] {
+  return [`AFC ajuste cartola — saldo inicial ${dayYmd}`, `AFC ajuste cartola — saldo final ${dayYmd}`];
 }
 
 export type AfcCartolaTrueUp = {
@@ -371,12 +382,13 @@ export type AfcCartolaPlan = {
   trueups: AfcCartolaTrueUp[];
 };
 
-function trueUpRowFor(accountId: number, key: string): AfcMovementRow | null {
+function trueUpRowFor(accountId: number, dayYmd: string): AfcMovementRow | null {
+  const keys = [afcCartolaTrueUpNoteKey(dayYmd), ...legacyTrueUpNoteKeys(dayYmd)];
   const rows = db
     .prepare(`SELECT id, occurred_on, amount, currency, units_delta, flow_kind, note, account_id, from_account_id, to_account_id
-              FROM movements WHERE account_id = ? AND note LIKE ? ORDER BY id`)
-    .all(accountId, `${key}%`) as AfcMovementRow[];
-  if (rows.length > 1) throw new Error(`afc: ${rows.length} true-up rows carry «${key}»`);
+              FROM movements WHERE account_id = ? AND (note LIKE ? OR note LIKE ? OR note LIKE ?) ORDER BY id`)
+    .all(accountId, ...keys.map((k) => `${k} %`)) as AfcMovementRow[];
+  if (rows.length > 1) throw new Error(`afc: ${rows.length} true-up rows carry the saldo of ${dayYmd}`);
   return rows[0] ?? null;
 }
 
@@ -409,7 +421,7 @@ export function planAfcCartolaTrueUps(accountId: number, cartola: AfcCartola): A
     const saldo = which === "inicial" ? cartola.saldo_inicial_clp : cartola.saldo_final_clp;
     const px = requirePx(seriesKey, day);
     const target = round4(saldo / px);
-    const existing = trueUpRowFor(accountId, afcCartolaTrueUpNoteKey(which, day));
+    const existing = trueUpRowFor(accountId, day);
     const existingUnits = existing?.units_delta ?? 0;
     // Ledger through the day, minus this boundary's own row, plus the inicial row as planned.
     const ledger = round4(afpCuotasCumulativeThroughDate(accountId, day) - existingUnits + (which === "final" ? carriedInicialUnits : 0));
@@ -420,6 +432,8 @@ export function planAfcCartolaTrueUps(accountId: number, cartola: AfcCartola): A
     if (Math.abs(amount) < 1) status = existing ? "delete" : "none";
     else if (!existing) status = "insert";
     else if (Math.abs((existing.units_delta ?? 0) - units) > 0.00005 || Math.round(existing.amount) !== amount) status = "update";
+    // A legacy-keyed row with the right figures is rekeyed in place.
+    else if (!(existing.note ?? "").startsWith(`${afcCartolaTrueUpNoteKey(day)} `)) status = "update";
     else status = "unchanged";
     if (which === "inicial") {
       // What the final boundary will see: the planned inicial units replace the stored ones.
@@ -440,7 +454,7 @@ const stmtUpdateTrueUp = db.prepare(
 
 function trueUpNote(t: AfcCartolaTrueUp, c: AfcCartola): string {
   return (
-    `${afcCartolaTrueUpNoteKey(t.which, t.day_ymd)} · cartola ${c.period_from_ymd}..${c.period_to_ymd}` +
+    `${afcCartolaTrueUpNoteKey(t.day_ymd)} · ${t.which} de la cartola ${c.period_from_ymd}..${c.period_to_ymd}` +
     ` · saldo $${t.saldo_clp} ÷ ${t.px} = ${t.target_units} cuotas vs ledger ${t.ledger_units}` +
     (t.which === "final" ? ` · comisiones impresas $${c.comisiones_clp}` : "")
   );

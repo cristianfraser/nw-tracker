@@ -25,7 +25,7 @@ export type BankConfig = {
   usd_checking_account_number: string | null;
 };
 
-export type BankName = "santander" | "racional" | "afp-uno" | "buk";
+export type BankName = "santander" | "racional" | "afp-uno" | "buk" | "afc";
 
 /**
  * Which identifier each bank signs in with. Santander uses the RUT; Racional is a
@@ -36,6 +36,8 @@ export const LOGIN_IDENTIFIER: Record<BankName, "rut" | "email"> = {
   racional: "email",
   "afp-uno": "rut",
   buk: "email",
+  // The AFC signs in through ClaveÚnica: the RUT is the RUN there, the clave is ClaveÚnica's.
+  afc: "rut",
 } as const;
 
 export function resolveBankConfigPath(bank: BankName): string {
