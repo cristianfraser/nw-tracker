@@ -5,7 +5,8 @@ import type { BrowserContext, Page } from "playwright-core";
 import { firstPage, launchBrowser } from "../browser.js";
 import { Recorder, runStampNow } from "../capture.js";
 import { SupervisedCaptureSession } from "../captureSession.js";
-import { signInWithClaveUnica } from "../claveUnica/login.js";
+import { CLAVE_UNICA_KEYCHAIN_SERVICE, signInWithClaveUnica } from "../claveUnica/login.js";
+import { signInWithAfcClave } from "./login.js";
 import { waitForClaveUnicaCode } from "../claveUnica/codeMail.js";
 import { loadBankConfig } from "../config.js";
 import { readKeychainSecret } from "../keychain.js";
@@ -15,9 +16,9 @@ import { assertValidSteps } from "../steps.js";
 import type { RunOptions } from "../runTypes.js";
 
 /**
- * AFC's sucursal virtual (personas.afc.cl) — first, SUPERVISED capture run. The sign-in is
- * ClaveÚnica's (RUN from `cfraser/afc-fetch.json`, clave from Keychain `nw-tracker-clave-unica`,
- * the e-mail code read from the Gmail the broker-mail poll opens); nothing about the private site
+ * AFC's sucursal virtual (personas.afc.cl) — a SUPERVISED capture run. The sign-in is the AFC's
+ * own clave (RUT from `cfraser/afc-fetch.json`, clave from its Keychain item; `--clave-unica`
+ * signs in through ClaveÚnica with its e-mail code instead); nothing about the private site
  * is known yet, so the run reads and parses nothing: once signed in it records while the user
  * clicks through by hand — every XHR/fetch call, a screenshot plus page text on each change, and
  * every PDF or download the site hands over — into `cfraser/afc-captures/<stamp>/`. The nightly
@@ -44,6 +45,8 @@ const TOUR_SETTLE_MS = 8_000;
 const TOUR_CLICK_TIMEOUT_MS = 6_000;
 
 export type AfcCaptureExtras = {
+  /** Sign in through ClaveÚnica (with its e-mail code) instead of the AFC's own clave. */
+  claveUnica: boolean;
   /** Ask for the code on the terminal instead of reading the mailbox (a first run without IMAP). */
   codeFromStdin: boolean;
   /** How long to record after the sign-in before the run ends itself (default 25 minutes). */
@@ -81,12 +84,12 @@ async function codeFromTerminal(): Promise<string> {
   }
 }
 
-export async function runAfcCapture(opts: RunOptions, extras: AfcCaptureExtras = { codeFromStdin: false }): Promise<number> {
+export async function runAfcCapture(opts: RunOptions, extras: AfcCaptureExtras = { claveUnica: false, codeFromStdin: false }): Promise<number> {
   assertValidSteps(BANK, opts.only);
   if (!opts.capture) throw new Error("AFC has no fetcher yet — run the supervised capture: npm run fetch:afc -- --capture");
   if (opts.background) throw new Error("the AFC capture is supervised — run it without --background");
   const config = loadBankConfig(BANK);
-  const clave = readKeychainSecret(config.keychain_service, config.loginAccount);
+  const clave = readKeychainSecret(extras.claveUnica ? CLAVE_UNICA_KEYCHAIN_SERVICE : config.keychain_service, config.loginAccount);
   assertRunAllowed(BANK, opts.minIntervalMinutes, opts.force);
   const stamp = runStampNow();
   const recorder = new Recorder(true, stamp, BANK);
@@ -106,13 +109,15 @@ export async function runAfcCapture(opts: RunOptions, extras: AfcCaptureExtras =
     session.watch(page);
     await page.goto(START_URL, { waitUntil: "domcontentloaded" });
     try {
-      page = await signInWithClaveUnica(page, {
-        run: config.rut,
-        clave,
-        label: "AFC",
-        isSignedIn: afcIsSignedIn,
-        code: extras.codeFromStdin ? codeFromTerminal : (requestedAt) => waitForClaveUnicaCode({ requestedAt }),
-      });
+      page = extras.claveUnica
+        ? await signInWithClaveUnica(page, {
+            run: config.rut,
+            clave,
+            label: "AFC",
+            isSignedIn: afcIsSignedIn,
+            code: extras.codeFromStdin ? codeFromTerminal : (requestedAt) => waitForClaveUnicaCode({ requestedAt }),
+          })
+        : await signInWithAfcClave(page, { rut: config.rut, clave, label: "AFC", isSignedIn: afcIsSignedIn });
       log("");
       log("Signed in (check the window).");
     } catch (err) {

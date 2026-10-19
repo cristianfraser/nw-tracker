@@ -16,6 +16,9 @@ import { ensureDir, resolveCfraserDir } from "../paths.js";
 
 export type ClaveUnicaCodeProvider = (requestedAt: Date) => Promise<string>;
 
+/** The Keychain item holding the ClaveÚnica clave (account = the RUN); shared by every ClaveÚnica service. */
+export const CLAVE_UNICA_KEYCHAIN_SERVICE = "nw-tracker-clave-unica";
+
 const CLAVE_UNICA_HOST = /claveunica\.gob\.cl/i;
 const OPEN_BUTTON = /clave\s*[úu]nica/i;
 const CHOOSE_EMAIL = /correo|e-?mail/i;
