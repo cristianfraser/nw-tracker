@@ -98,6 +98,14 @@ describe("AFC estado cuatrimestral — parser", () => {
     ]);
   });
 
+  it("reads the mailed rendering (slash dates, a space after $, a footnoted Total line) identically", () => {
+    const mailed = CARTOLA_TEXT.replace(/Al (\d{2})-(\d{2})-(\d{4})/g, "Al $1/$2/$3")
+      .replace(/\$(\d)/g, "$$ $1")
+      .replace(/^\s+Total\s+\$ 48\.000$/m, "* 11 años de contrato con el mismo empleador. Su empleador sigue aportando.          Total   $ 48.000");
+    expect(mailed).not.toBe(CARTOLA_TEXT);
+    expect(parseAfcCartola(mailed)).toEqual(parseAfcCartola(CARTOLA_TEXT));
+  });
+
   it("throws when the saldo identity or the detalle sum is broken", () => {
     expect(() => parseAfcCartola(CARTOLA_TEXT.replace("(1+2-3) $87.500", "(1+2-3) $87.400"))).toThrow(/saldo final/);
     expect(() => parseAfcCartola(CARTOLA_TEXT.replace("$3.000\n", "$3.001\n"))).toThrow(/detalle/);

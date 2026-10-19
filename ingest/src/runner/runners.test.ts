@@ -31,6 +31,8 @@ const NIGHTLY: NightlyOptions = {
   racionalNeeded: () => false,
   afpUnoFetch: null,
   afpUnoApply: true,
+  afcFetch: null,
+  afcApply: true,
   payslips: null,
   mortgageSheet: null,
 };
@@ -46,6 +48,7 @@ describe("runNightly", () => {
       "run fetch:lider-statements",
       "run fetch:fintual-docs",
       "run fetch:apple-mail",
+      "run fetch:afc-cartolas",
       "run import:cfraser-inbox",
       "run import:santander-movements",
       "run import:checking-usd-movements",
@@ -91,6 +94,20 @@ describe("runNightly", () => {
     const quiet = fakeRunner();
     await runNightly(quiet.x, NIGHTLY);
     expect(quiet.calls.some((c) => c.includes("fetch:afp-uno"))).toBe(false);
+  });
+
+  it("reads the AFC only when the server asks, writing only with the apply flag", async () => {
+    const asked = { reason: "nightly: the sucursal virtual's balance and certificate against the ledger" };
+    const { x, calls } = fakeRunner();
+    await runNightly(x, { ...NIGHTLY, afcFetch: asked });
+    expect(calls).toContain("run fetch:afc -- --background --apply");
+    const report = fakeRunner();
+    await runNightly(report.x, { ...NIGHTLY, afcFetch: asked, afcApply: false });
+    expect(report.x.steps.map((s) => s.label)).toContain("AFC (report only)");
+    expect(report.calls).toContain("run fetch:afc -- --background");
+    const quiet = fakeRunner();
+    await runNightly(quiet.x, NIGHTLY);
+    expect(quiet.calls.some((c) => c === "run fetch:afc -- --background" || c.includes("fetch:afc --"))).toBe(false);
   });
 
   it("imports payslips when the server asks, reading the portal only when told to fetch", async () => {

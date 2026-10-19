@@ -23,6 +23,10 @@ export type NightlyOptions = {
   afpUnoFetch: { reason: string } | null;
   /** NW_TRACKER_AFP_UNO_APPLY=1: the certificates' missing rows are written. */
   afpUnoApply: boolean;
+  /** The server's request to read the AFC (balance + certificate) tonight, and why; null = not tonight. */
+  afcFetch: { reason: string } | null;
+  /** NW_TRACKER_AFC_APPLY=1: the certificate's missing contributions and the cartolas' true-ups are written. */
+  afcApply: boolean;
   /** The server's request to import the payslips tonight (reading the payroll portal first when
    *  `fetch`), and why; null = not tonight. */
   payslips: { fetch: boolean; reason: string } | null;
@@ -53,6 +57,7 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     ["Lider statement e-mail", "fetch:lider-statements"],
     ["Fintual Acciones documents", "fetch:fintual-docs"],
     ["Apple receipts e-mail", "fetch:apple-mail"],
+    ["AFC cartolas e-mail", "fetch:afc-cartolas"],
   ] as const) {
     if (o.dryRun) await x.step(dry(label), npmRun(script, "--dry-run"));
     else await x.step(label, npmRun(script));
@@ -132,6 +137,18 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     x.note(`AFP UNO: ${o.afpUnoFetch.reason}`);
     if (o.afpUnoApply) await x.step("AFP UNO (apply)", npmRun("fetch:afp-uno", "--background", "--apply"));
     else await x.step("AFP UNO (report only)", npmRun("fetch:afp-uno", "--background"));
+  }
+
+  // 5b′. The AFC, every night: the stated balance (report only) and the certificate of paid
+  // contributions, sent with the staged cartolas; a new contribution is written at its pay date.
+  if (o.afcFetch == null) {
+    x.note("=== AFC (not tonight)");
+  } else if (o.dryRun) {
+    x.note(`=== (dry run) skipping fetch:afc (${o.afcFetch.reason})`);
+  } else {
+    x.note(`AFC: ${o.afcFetch.reason}`);
+    if (o.afcApply) await x.step("AFC (apply)", npmRun("fetch:afc", "--background", "--apply"));
+    else await x.step("AFC (report only)", npmRun("fetch:afc", "--background"));
   }
 
   // 5c. Payslips, when the server asks: the portal from the 1st until last month's payslip is in,

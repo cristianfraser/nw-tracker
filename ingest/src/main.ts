@@ -1,6 +1,7 @@
 import { runSantander } from "./santander/run.js";
 import { runRacional } from "./racional/run.js";
 import { runAfpUnoCapture } from "./afpUno/capture.js";
+import { runAfcCapture } from "./afc/capture.js";
 import type { BankName } from "./config.js";
 import type { RunOptions } from "./runTypes.js";
 import fs from "node:fs";
@@ -19,7 +20,7 @@ import { log } from "./log.js";
  */
 const FORCED_EXIT_GRACE_MS = 10_000;
 
-const USAGE = `Usage: npm run fetch -- <santander|racional|afp-uno> [options]
+const USAGE = `Usage: npm run fetch -- <santander|racional|afp-uno|afc> [options]
 
 Options:
   --capture          Save every API request/response + screenshots; keep downloads out of the inbox.
@@ -32,6 +33,7 @@ Options:
                      racional:  movements, positions
                      afp-uno:   capture (supervised: --capture, no --background);
                                 the nightly read is npm run fetch:afp-uno
+                     afc:       capture (supervised, signs in through ClaveÚnica + its e-mail code)
   --min-interval=N   Minimum minutes since the last run of this bank (default 30).
   --force            Run despite the interval, and re-fetch documents already recorded.
 `;
@@ -40,6 +42,7 @@ const RUNNERS: Record<BankName, (opts: RunOptions) => Promise<number>> = {
   santander: runSantander,
   racional: runRacional,
   "afp-uno": runAfpUnoCapture,
+  afc: runAfcCapture,
   buk: async () => {
     throw new Error("buk has no session steps — run npm run fetch:buk-payslips");
   },

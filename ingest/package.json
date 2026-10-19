@@ -13,6 +13,8 @@
     "fetch": "tsx src/main.ts",
     "fetch:racional": "tsx src/main.ts racional",
     "fetch:afp-uno": "tsx src/afpUno/fetchMain.ts",
+    "fetch:afc": "tsx src/afc/fetchMain.ts",
+    "fetch:afc-cartolas": "tsx src/email/afcCartolasMain.ts",
     "fetch:buk-payslips": "tsx src/buk/fetchMain.ts",
     "parse:afp-uno-certificate": "tsx src/afpUno/parseCertificateMain.ts",
     "fetch:emails": "tsx src/email/main.ts",
