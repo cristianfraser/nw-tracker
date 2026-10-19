@@ -707,7 +707,7 @@
       "chartFacturadoUsd": "Facturado US$",
       "tooltipCloseOn": "Cierre {{date}}",
       "historialOpenMonth": "Facturación abierta",
-      "historialProjectionStart": "Hoy (proyección →)",
+      "historialProjectionStart": "Hoy",
       "accAreaName": "Accumulated earnings",
       "configTitle": "Configuración de la tarjeta",
       "configCardLabel": "Tarjeta",
