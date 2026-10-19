@@ -2442,8 +2442,8 @@
         "es": "Facturación abierta"
       },
       "historialProjectionStart": {
-        "en": "Today (projection →)",
-        "es": "Hoy (proyección →)"
+        "en": "Today",
+        "es": "Hoy"
       },
       "accAreaName": {
         "en": "Accumulated earnings",
