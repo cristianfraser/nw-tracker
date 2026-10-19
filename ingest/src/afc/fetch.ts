@@ -4,8 +4,9 @@
  *   npm run fetch:afc -w nw-tracker-ingest                          # report only
  *   npm run fetch:afc -w nw-tracker-ingest -- --apply --background  # write (the nightly)
  *
- * Signs in through ClaveÚnica (RUN from `cfraser/afc-fetch.json`, clave from the Keychain, the
- * e-mail code read from the mailbox), then:
+ * Signs in with the AFC's own clave (RUT from `cfraser/afc-fetch.json`, clave from its Keychain
+ * item — no second factor; `--clave-unica` takes the ClaveÚnica path with its e-mail code
+ * instead, Keychain `nw-tracker-clave-unica`), then:
  *
  *  1. reads the home page's own summary call (`sva-portada/v1`: the stated saldo and the last
  *     contribution month the fund has credited) and sends it as `unemployment_fund.balance` —
@@ -31,7 +32,7 @@ import {
   type UnemploymentFundDocumentsApplyDetails,
 } from "nw-tracker-contracts";
 import { firstPage, launchBrowser } from "../browser.js";
-import { saveClaveUnicaDiagnostics, signInWithClaveUnica } from "../claveUnica/login.js";
+import { CLAVE_UNICA_KEYCHAIN_SERVICE, saveClaveUnicaDiagnostics, signInWithClaveUnica } from "../claveUnica/login.js";
 import { waitForClaveUnicaCode } from "../claveUnica/codeMail.js";
 import { loadBankConfig } from "../config.js";
 import { readKeychainSecret } from "../keychain.js";
@@ -41,6 +42,7 @@ import { assertRunAllowed } from "../runGuard.js";
 import { decodeDataUrl } from "../wait.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import { afcIsSignedIn } from "./capture.js";
+import { signInWithAfcClave } from "./login.js";
 import { parseAfcCartola, parseAfcCotizacionesCertificate, pdfTextLayout, unemploymentFundDocumentsPayload } from "./documents.js";
 import { resolveAfcCartolasDir } from "../email/afcCartolas.js";
 
@@ -50,7 +52,8 @@ const API = "https://apis.afc.cl";
 const PORTADA_PATH = "/sva-portada/v1";
 const HOME_WAIT_MS = 60_000;
 
-export type AfcFetchOptions = { apply: boolean; background: boolean; force: boolean; minIntervalMinutes: number };
+export type AfcLoginMethod = "afc" | "clave_unica";
+export type AfcFetchOptions = { apply: boolean; background: boolean; force: boolean; minIntervalMinutes: number; login: AfcLoginMethod };
 
 type Portada = { status: number; saldo: number | null; fechaUltimaCotizacion: string | null; error: string | null };
 
@@ -87,7 +90,9 @@ async function readHome(page: Page): Promise<{ portada: Portada | null }> {
     })().catch((err: unknown) => log(`AFC: home API response not read — ${err instanceof Error ? err.message : String(err)}`));
   });
   const deadline = Date.now() + HOME_WAIT_MS;
-  while (!portada && Date.now() < deadline) await page.waitForTimeout(500);
+  // The poll starts before the sign-in: a sign-in that fails closes the browser under it, and the
+  // sign-in's own error is the one to report — never this poll's.
+  while (!portada && Date.now() < deadline && !page.isClosed()) await page.waitForTimeout(500).catch(() => undefined);
   return { portada };
 }
 
@@ -158,7 +163,7 @@ async function downloadCertificatePdf(page: Page): Promise<Buffer> {
 
 export async function runAfcFetch(opts: AfcFetchOptions): Promise<number> {
   const config = loadBankConfig(BANK);
-  const clave = readKeychainSecret(config.keychain_service, config.loginAccount);
+  const clave = readKeychainSecret(opts.login === "clave_unica" ? CLAVE_UNICA_KEYCHAIN_SERVICE : config.keychain_service, config.loginAccount);
   assertRunAllowed(BANK, opts.minIntervalMinutes, opts.force);
   const now = new Date();
   const context = await launchBrowser({ bank: BANK, headless: false, background: opts.background });
@@ -168,13 +173,16 @@ export async function runAfcFetch(opts: AfcFetchOptions): Promise<number> {
     let page = await firstPage(context);
     const homeRead = readHome(page);
     await page.goto(START_URL, { waitUntil: "domcontentloaded" });
-    page = await signInWithClaveUnica(page, {
-      run: config.rut,
-      clave,
-      label: "AFC",
-      isSignedIn: afcIsSignedIn,
-      code: (requestedAt) => waitForClaveUnicaCode({ requestedAt }),
-    });
+    page =
+      opts.login === "clave_unica"
+        ? await signInWithClaveUnica(page, {
+            run: config.rut,
+            clave,
+            label: "AFC",
+            isSignedIn: afcIsSignedIn,
+            code: (requestedAt) => waitForClaveUnicaCode({ requestedAt }),
+          })
+        : await signInWithAfcClave(page, { rut: config.rut, clave, label: "AFC", isSignedIn: afcIsSignedIn });
     home = await homeRead;
     certificatePdf = await downloadCertificatePdf(page);
   } finally {

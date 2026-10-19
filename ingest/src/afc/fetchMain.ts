@@ -1,8 +1,10 @@
 /**
  * AFC (Fondo de Cesantía) through ClaveÚnica:
  *
- *   npm run fetch:afc -- [--apply] [--background]                  # the nightly read (fetch.ts)
- *   npm run fetch:afc -- --capture [--code-from-stdin] [--minutes=N] [--force]   # a supervised capture
+ *   npm run fetch:afc -- [--apply] [--background] [--clave-unica]   # the nightly read (fetch.ts)
+ *   npm run fetch:afc -- --capture [--clave-unica] [--code-from-stdin] [--minutes=N] [--force]   # a supervised capture
+ *
+ * The sign-in is the AFC's own clave; `--clave-unica` takes the ClaveÚnica path (e-mail code).
  */
 import { runAfcCapture } from "./capture.js";
 import { runAfcFetch } from "./fetch.js";
@@ -22,11 +24,12 @@ async function main(): Promise<number> {
   const minIntervalMinutes = Number.isFinite(min) && min >= 0 ? min : DEFAULT_MIN_INTERVAL_MINUTES;
   const force = argv.includes("--force");
   const background = argv.includes("--background");
-  if (!argv.includes("--capture")) return runAfcFetch({ apply: argv.includes("--apply"), background, force, minIntervalMinutes });
+  const login = argv.includes("--clave-unica") ? "clave_unica" : "afc";
+  if (!argv.includes("--capture")) return runAfcFetch({ apply: argv.includes("--apply"), background, force, minIntervalMinutes, login });
   const minutesRaw = Number(argv.find((a) => a.startsWith("--minutes="))?.split("=")[1]);
   return runAfcCapture(
     { capture: true, background, movementsOnly: false, minIntervalMinutes, force, only: [] },
-    { codeFromStdin: argv.includes("--code-from-stdin"), captureMinutes: Number.isFinite(minutesRaw) && minutesRaw > 0 ? minutesRaw : undefined }
+    { claveUnica: login === "clave_unica", codeFromStdin: argv.includes("--code-from-stdin"), captureMinutes: Number.isFinite(minutesRaw) && minutesRaw > 0 ? minutesRaw : undefined }
   );
 }
 
