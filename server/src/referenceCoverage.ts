@@ -1,12 +1,11 @@
 import type { ProportionalSeriesBlock, ProportionalSeriesLineMeta } from "./proportionalSeries.js";
 
 /**
- * Coverage of the mortgage by the chart host's reference lines (Pasivos: «Disponible» and
- * «Disponible total»): each reference value ÷ the mortgage balance on the same date, as a
- * fraction (1 = the money would clear the mortgage). The mortgage alone — the credit cards are
- * already netted inside «Disponible» through cash, so counting them here would count them
- * twice. A date without a positive mortgage balance has no coverage (null): before the loan,
- * or once it is paid off.
+ * Coverage of the liabilities by the chart host's reference lines (Pasivos: «Disponible» and
+ * «Disponible total»): each reference value ÷ the total owed on the same date — every liability
+ * account on the page, the mortgage balance plus the cards' owed-on-date — as a fraction (1 = the
+ * money would clear every debt). A date without positive debt has no coverage (null): before the
+ * first loan, or once everything is paid off.
  *
  * Shaped like the proportional blocks (`dates` + `series[].values`) so the monthly and daily
  * payloads carry the same thing and the client draws it the same way at every grain.
@@ -15,11 +14,11 @@ export type CoverageInputLine = ProportionalSeriesLineMeta & { values: readonly 
 
 export function buildReferenceCoverage(
   dates: readonly string[],
-  mortgage: readonly (number | null)[],
+  liabilities: readonly (number | null)[],
   references: readonly CoverageInputLine[]
 ): ProportionalSeriesBlock | null {
-  if (mortgage.length !== dates.length) {
-    throw new Error(`reference coverage: ${mortgage.length} mortgage values for ${dates.length} dates`);
+  if (liabilities.length !== dates.length) {
+    throw new Error(`reference coverage: ${liabilities.length} liability values for ${dates.length} dates`);
   }
   const series = references.map((ref) => {
     if (ref.values.length !== dates.length) {
@@ -30,10 +29,10 @@ export function buildReferenceCoverage(
       ...meta,
       dataKey: `coverage:${ref.dataKey}`,
       values: dates.map((_, i) => {
-        const m = mortgage[i];
+        const owed = liabilities[i];
         const v = values[i];
-        if (m == null || !(m > 0) || v == null || !Number.isFinite(v)) return null;
-        return v / m;
+        if (owed == null || !(owed > 0) || v == null || !Number.isFinite(v)) return null;
+        return v / owed;
       }),
     };
   });

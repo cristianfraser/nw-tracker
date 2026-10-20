@@ -101,7 +101,7 @@
     "overview": {
       "invested": "Invertido"
     },
-    "mortgageCoverage": "Cobertura de la hipoteca"
+    "liabilitiesCoverage": "Cobertura de los pasivos"
   },
   "dashboard": {
     "chartGranularityLabel": "Período:",

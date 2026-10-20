@@ -316,8 +316,8 @@ export function LiabilitiesGroupPage() {
     }
     return daily.proportional ?? null;
   }, [proportionalIsDaily, proportionalDailySeries.data, chartCtx?.liabilitiesGrouped]);
-  // Pasivos root: the composition chart's slot shows the mortgage coverage instead (server
-  // block present only where the page has a mortgage and reference lines), on the same controls.
+  // Pasivos root: the composition chart's slot shows the liabilities coverage instead (server
+  // block present only where the page has liability accounts and reference lines), on the same controls.
   const coverageBlock = ts?.reference_coverage
     ? proportionalIsDaily
       ? (proportionalDailySeries.data?.reference_coverage ?? null)
@@ -412,7 +412,7 @@ export function LiabilitiesGroupPage() {
         proportionalReplacement={
           ts?.reference_coverage ? (
             <CoverageLineChart
-              title={t("charts.mortgageCoverage")}
+              title={t("charts.liabilitiesCoverage")}
               block={coverageBlock}
               xAxisGranularity={
                 proportionalIsDaily ? "day" : proportionalPrefs.period === "year" ? "year" : "month"

@@ -42,7 +42,7 @@ import {
   deptoPropertyCloseClpBySnapshotDates,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
-import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
+import { accountBucketKindSlug, bucketSlugForAccountId, isLiabilityKindSlug } from "./accountBucket.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import {
   ccLedgerStatementClosingPointsClpForAccounts,
@@ -1819,26 +1819,27 @@ function groupTabValuationTotalByDate(
 }
 
 /**
- * Mortgage coverage by the chart host's reference lines (`referenceCoverage.ts`), on the
- * block's own dates: the mortgage accounts' plotted balance against each overlay line. Null
- * when the page holds no mortgage (Efectivo hosts a reference line too) or no date has both.
+ * Liabilities coverage by the chart host's reference lines (`referenceCoverage.ts`), on the
+ * block's own dates: the liability accounts' plotted balances summed (mortgage + cards' owed)
+ * against each overlay line. Null when the page holds no liability account (Efectivo hosts a
+ * reference line too) or no date has both.
  */
-function mortgageCoverageFromBlock(
+function liabilitiesCoverageFromBlock(
   block: GroupTabValuationBlock,
   rows: readonly GroupTabAccountRow[],
   groupSlug: string,
   chartHostSlug: string
 ): ProportionalSeriesBlock | null {
-  const mortgageKeys = rows
-    .filter((r) => accountBucketKindSlug(r.bucket_slug) === "mortgage")
+  const liabilityKeys = rows
+    .filter((r) => isLiabilityKindSlug(accountBucketKindSlug(r.bucket_slug)))
     .map((r) => String(seriesAccountIdForGroupTab(r, groupSlug)));
-  if (!mortgageKeys.length) return null;
+  if (!liabilityKeys.length) return null;
   const defs = listReferenceGroupsForChartHost(chartHostSlug);
   if (!defs.length) return null;
   const points = block.points;
   return buildReferenceCoverage(
     points.map((p) => String(p.as_of_date)),
-    sumKeysPerRow(points, mortgageKeys),
+    sumKeysPerRow(points, liabilityKeys),
     defs.map((d) => ({
       dataKey: d.dataKey,
       name: d.label,
@@ -2346,7 +2347,7 @@ function getGroupValuationTimeseriesInnerUncached(
   let reference_coverage: ProportionalSeriesBlock | null = null;
   if (chartHostSlug && accounts_in_group.points.length > 0) {
     accounts_in_group = appendChartHostReferenceOverlays(accounts_in_group, chartHostSlug, unit);
-    reference_coverage = mortgageCoverageFromBlock(accounts_in_group, rows, groupSlug, chartHostSlug);
+    reference_coverage = liabilitiesCoverageFromBlock(accounts_in_group, rows, groupSlug, chartHostSlug);
   }
   if (groupSlug === "real_estate") {
     const propertyRows = rows.filter((x) => accountBucketKindSlug(x.bucket_slug) === "property");

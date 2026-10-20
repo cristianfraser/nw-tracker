@@ -40,7 +40,11 @@ export function accountIsMonthPrecisionDated(accountId: number): boolean {
  * asset's (`pl = prior − owed − flow`, flows positive when capital goes into the debt).
  */
 export function isLiabilityAccountId(accountId: number): boolean {
-  const kind = accountKindSlugForAccountId(accountId);
+  return isLiabilityKindSlug(accountKindSlugForAccountId(accountId));
+}
+
+/** The behavior kinds whose mark is debt owed (see `isLiabilityAccountId`). */
+export function isLiabilityKindSlug(kind: string | null | undefined): boolean {
   return kind === "credit_card" || kind === "mortgage";
 }
 
