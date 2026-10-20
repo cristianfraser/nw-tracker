@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import type { CardListingLine } from "nw-tracker-contracts";
 import { firstCuotaBillingMonth } from "./ccCuotaPurchaseKinds.js";
-import { applyListing, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
+import { applyListing, balanceRow, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
+import { feedMirrorCurrencies } from "./ccFeedMirror.js";
 import { ccInstallmentsDbApiPayload, ccLedgerMonthEndIso } from "./ccInstallmentLedgerDb.js";
 import {
   buildBillingDetailByMonth,
@@ -125,15 +126,46 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     return db.prepare(`SELECT 1 FROM cc_statement_lines WHERE id = ?`).get(id) !== undefined;
   }
 
-  /** The listing after the 25/08 close; `usd: false` for a listing without the dollar side. */
-  function feed(lines: CardListingLine[], opts: { usd?: boolean } = {}) {
+  /**
+   * The listing after the 25/08 close; `usd: false` for a listing whose dollar slide carried no
+   * SALDO INICIAL row; `bankUsed` adds the session's product summary (the bank's cupo utilizado).
+   */
+  function feed(
+    lines: CardListingLine[],
+    opts: { usd?: boolean; bankUsed?: { clp: number; usd: number }; sourceRef?: string } = {}
+  ) {
     return applyListing(
       listing(
         [listingCard(BANK_ACCOUNT, lines, { date: "2026-08-25", clp: 3_476_163, usd: opts.usd === false ? null : 556.21 })],
-        undefined,
+        opts.bankUsed
+          ? {
+              status: "observed",
+              observed_at: "2026-09-20T00:59:40.000Z",
+              rows: [
+                balanceRow(BANK_ACCOUNT, LAST4, "clp", 12_000_000, opts.bankUsed.clp),
+                balanceRow(BANK_ACCOUNT, LAST4, "usd", 12_000, opts.bankUsed.usd),
+              ],
+            }
+          : undefined,
         "2026-09-20T01:00:00.000Z"
       ),
-      "card-movements-2026-09-20T01-00-00.json"
+      opts.sourceRef ?? "card-movements-2026-09-20T01-00-00.json"
+    );
+  }
+
+  /** A dollar bucket line, debt-positive, keyed like a feed row. */
+  function insertUsdBucketLine(bucketId: number, dateIso: string, merchant: string, usd: number): number {
+    const [y, m, d] = dateIso.split("-");
+    const line: CcWebPasteLine = { transaction_date: dateIso, merchant, amount_clp: 0, amount_usd: -usd, currency: "usd", raw_line: merchant };
+    const key = webPasteLineDedupeKey(CARD_GROUP, line);
+    return Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statement_lines (
+             statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key, parser_row_id, raw_line
+           ) VALUES (?, ?, ?, 0, ?, 0, ?, ?, 'vitest')`
+        )
+        .run(bucketId, `${Number(d)}/${Number(m)}/${y}`, merchant, usd, key, `web:${key}`).lastInsertRowid
     );
   }
 
@@ -427,6 +459,65 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
       )
       .all(accountId);
     expect(uber).toEqual([{ transaction_date: "12/9/2026" }]);
+  });
+
+  it("proves a currency complete by the bank's cupo identity when its SALDO INICIAL row is missing", () => {
+    // Pure rule: the dollar slide states no close, but utilizado = close on record + listed rows.
+    const closeOnRecord = { saldo_inicial_clp: 3_476_163, saldo_inicial_usd: 556.21 };
+    const lines = [
+      { currency: "usd" as const, amount: 13.24 },
+      { currency: "usd" as const, amount: 13.22 },
+      { currency: "usd" as const, amount: -556.21 },
+      { currency: "clp" as const, amount: 10_000 },
+    ];
+    expect(
+      feedMirrorCurrencies({ stated: new Set(["clp"]), closeOnRecord, lines, bankUsed: { clp: 9_000_000, usd: 26.46 } })
+    ).toEqual({ clp: "saldo_inicial", usd: "cupo_identity" });
+    // A cent off, no summary, or no close on record: the row-only rule stays.
+    expect(feedMirrorCurrencies({ stated: new Set(["clp"]), closeOnRecord, lines, bankUsed: { usd: 26.47 } })).toEqual({ clp: "saldo_inicial" });
+    expect(feedMirrorCurrencies({ stated: new Set(), closeOnRecord, lines, bankUsed: {} })).toEqual({});
+    expect(feedMirrorCurrencies({ stated: new Set(), closeOnRecord: null, lines, bankUsed: { usd: 26.46 } })).toEqual({});
+    // Pesos: the identity holds only without cuota plans outstanding.
+    expect(feedMirrorCurrencies({ stated: new Set(), closeOnRecord, lines, bankUsed: { clp: 3_486_163 } })).toEqual({ clp: "cupo_identity" });
+  });
+
+  it("mirrors the dollar side on the cupo identity when the slide lost its SALDO INICIAL row", () => {
+    // The 2026-10-19 case: a pending APPLE row of the 16th restated by the bank on the 17th, the
+    // dollar slide listing all its rows but no SALDO INICIAL, the product summary stating the
+    // utilizado the listed rows add up to. An earlier night recorded the close with both totals.
+    feed([], { sourceRef: "card-movements-vitest-identity-0.json" });
+    const sept = insertStatement({ source: "import:web-paste|open|2026-09", date: "20/09/2026", currency: "usd" });
+    const stale = insertUsdBucketLine(sept, "2026-09-16", "APPLE.COM/BILL", 13.22);
+    const kept = insertUsdBucketLine(sept, "2026-09-12", "APPLE.COM/BILL", 13.28);
+    const usdLines = [
+      listingLine("2026-09-17", "APPLE.COM/BILL", 13.22, { currency: "usd" }),
+      listingLine("2026-09-12", "APPLE.COM/BILL", 13.28, { currency: "usd" }),
+      listingLine("2026-09-18", "RENDER.COM", 20.55, { currency: "usd" }),
+    ];
+    const usdUsed = 556.21 + 13.22 + 13.28 + 20.55;
+
+    // Off by a cent: the dollar side is not proved complete, nothing removed.
+    const first = feed(usdLines, { usd: false, bankUsed: { clp: 1, usd: usdUsed + 0.01 }, sourceRef: "card-movements-vitest-identity-1.json" }).accounts[0]!;
+    expect(first.mirror).toMatchObject({ currencies: ["clp"], proof: { clp: "saldo_inicial" } });
+    expect(lineExists(stale)).toBe(true);
+
+    // To the cent: the stale pending row goes, the rows the bank lists stay.
+    const second = feed(usdLines, { usd: false, bankUsed: { clp: 1, usd: usdUsed }, sourceRef: "card-movements-vitest-identity-2.json" }).accounts[0]!;
+    expect(second.mirror).toMatchObject({
+      window_start: "2026-08-25",
+      currencies: ["clp", "usd"],
+      proof: { clp: "saldo_inicial", usd: "cupo_identity" },
+    });
+    expect(second.mirror!.removed.map((r) => r.id)).toEqual([stale]);
+    expect(lineExists(kept)).toBe(true);
+    const restated = db
+      .prepare(
+        `SELECT l.transaction_date FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id
+         WHERE s.account_id = ? AND l.merchant = 'APPLE.COM/BILL' AND l.amount_usd = 13.22`
+      )
+      .all(accountId);
+    expect(restated).toEqual([{ transaction_date: "17/9/2026" }]);
+    db.prepare(`DELETE FROM cc_bank_cupo_captures WHERE source_file LIKE 'card-movements-vitest-identity-%'`).run();
   });
 
   it("refuses to mirror a feed that lost more rows than voids explain", () => {
