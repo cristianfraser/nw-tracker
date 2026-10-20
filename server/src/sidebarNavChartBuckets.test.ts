@@ -9,7 +9,7 @@ import {
 } from "./groupChartBuckets.js";
 import { getNavChartGroupNodeBySlug, getSidebarNavPayload } from "./navTree.js";
 import { annotateSidebarNavChartBuckets } from "./sidebarNavChartBuckets.js";
-import { listAccountsForGroupTab } from "./valuationTimeseries.js";
+import { getGroupValuationTimeseries, listAccountsForGroupTab } from "./valuationTimeseries.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 
 function collectAnnotated(nodes: NavTreeNodeDto[]): NavTreeNodeDto[] {
@@ -58,6 +58,22 @@ describe("annotateSidebarNavChartBuckets", () => {
           );
         }
       }
+    }
+  });
+
+  it("chart_coverage marks exactly the group nodes whose payload carries reference_coverage", () => {
+    const main = annotateSidebarNavChartBuckets(getSidebarNavPayload().main);
+    const groupNodes: NavTreeNodeDto[] = [];
+    const visit = (n: NavTreeNodeDto) => {
+      if (n.account_id == null && n.expense_account_id == null && n.route_path?.trim()) groupNodes.push(n);
+      for (const c of n.children) visit(c);
+    };
+    for (const n of main) visit(n);
+    const marked = groupNodes.filter((n) => n.chart_coverage).map((n) => n.slug);
+    expect(marked).toEqual(["liabilities"]);
+    for (const node of groupNodes) {
+      const ts = getGroupValuationTimeseries(node.slug, "clp");
+      expect(Boolean(ts.reference_coverage), node.slug).toBe(Boolean(node.chart_coverage));
     }
   });
 

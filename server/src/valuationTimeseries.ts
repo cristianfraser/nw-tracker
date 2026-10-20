@@ -1853,6 +1853,20 @@ function liabilitiesCoverageFromBlock(
   );
 }
 
+/**
+ * Whether a group's page draws the liabilities coverage chart in the composition slot: it hosts
+ * reference overlays AND holds a liability account (the data the coverage divides). The nav
+ * tree states it (`chart_coverage`) so the page mounts that chart from first paint instead of
+ * swapping the composition chart out when the payload lands.
+ */
+export function groupHostsLiabilitiesCoverage(groupSlug: string, tabSubgroup?: string): boolean {
+  const chartHostSlug = chartHostSlugForValuationGroup(groupSlug, tabSubgroup);
+  if (!chartHostSlug || !listReferenceGroupsForChartHost(chartHostSlug).length) return false;
+  return listAccountsForGroupTab(groupSlug, tabSubgroup).some((r) =>
+    isLiabilityKindSlug(accountBucketKindSlug(r.bucket_slug))
+  );
+}
+
 /** Reference overlay lines for a chart host (e.g. Pasivos root tab). */
 function appendChartHostReferenceOverlays(
   block: GroupTabValuationBlock,

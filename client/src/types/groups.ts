@@ -256,6 +256,11 @@ export interface NavTreeNodeDto {
    * paint). Absent ⇔ the real payload has no grouped blocks for this node.
    */
   chart_buckets?: NavNodeChartBucketsDto;
+  /**
+   * This node's page draws the liabilities coverage chart in the composition slot, so it mounts
+   * from first paint (Pasivos root). Absent ⇔ the page keeps its composition chart.
+   */
+  chart_coverage?: true;
   children: NavTreeNodeDto[];
 }
 
