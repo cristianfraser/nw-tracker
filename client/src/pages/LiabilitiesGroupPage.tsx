@@ -322,11 +322,18 @@ export function LiabilitiesGroupPage() {
   // chart out; the payload's block (present only where the page has liability accounts and
   // reference lines) is the fallback for a nav tree that predates the hint.
   const showCoverage = Boolean(navMatchNode?.chart_coverage || ts?.reference_coverage);
-  const coverageBlock = ts?.reference_coverage
-    ? proportionalIsDaily
-      ? (proportionalDailySeries.data?.reference_coverage ?? null)
-      : ts.reference_coverage
+  // In Diario the chart keeps the monthly block, dimmed, until its daily series lands — the
+  // valuation chart's rule (`dailyValuationBlock ?? …`), so the two never show one chart drawn
+  // and the other an empty pending box over the same wait.
+  const dailyCoverageBlock = proportionalIsDaily
+    ? (proportionalDailySeries.data?.reference_coverage ?? null)
     : null;
+  const coverageBlock = dailyCoverageBlock ?? ts?.reference_coverage ?? null;
+  const coverageXAxisGranularity: "day" | "month" | "year" = dailyCoverageBlock
+    ? "day"
+    : proportionalPrefs.period === "year"
+      ? "year"
+      : "month";
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily) return null;
     const daily = dailySeries.data;
@@ -418,9 +425,7 @@ export function LiabilitiesGroupPage() {
             <CoverageLineChart
               title={t("charts.liabilitiesCoverage")}
               block={coverageBlock}
-              xAxisGranularity={
-                proportionalIsDaily ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
-              }
+              xAxisGranularity={coverageXAxisGranularity}
               timeRange={proportionalPrefs.range}
               controls={
                 <SurfaceControls
