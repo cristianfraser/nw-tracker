@@ -308,9 +308,9 @@
         "es": "Invertido"
       }
     },
-    "mortgageCoverage": {
-      "en": "Mortgage coverage",
-      "es": "Cobertura de la hipoteca"
+    "liabilitiesCoverage": {
+      "en": "Liabilities coverage",
+      "es": "Cobertura de los pasivos"
     }
   },
   "dashboard": {

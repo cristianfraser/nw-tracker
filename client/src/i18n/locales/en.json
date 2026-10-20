@@ -101,7 +101,7 @@
     "overview": {
       "invested": "Invested"
     },
-    "mortgageCoverage": "Mortgage coverage"
+    "liabilitiesCoverage": "Liabilities coverage"
   },
   "dashboard": {
     "chartGranularityLabel": "Period:",

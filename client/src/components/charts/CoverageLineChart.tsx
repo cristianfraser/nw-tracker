@@ -20,9 +20,9 @@ import { loadableClass } from "../ui/Loadable";
 import type { ProportionalSeriesBlockDto } from "../../types";
 
 /**
- * Mortgage coverage (Pasivos): each server-built series is a reference line ÷ the mortgage
- * balance (`server/src/referenceCoverage.ts`), drawn as percent lines with a dashed 100% line —
- * where that money would clear the mortgage. Same block shape and grain handling as the
+ * Liabilities coverage (Pasivos): each server-built series is a reference line ÷ the total owed
+ * (`server/src/referenceCoverage.ts`), drawn as percent lines with a dashed 100% line — where
+ * that money would clear every debt. Same block shape and grain handling as the
  * proportional chart it replaces there: Rango clips M/Y, yearly samples each year's last row.
  */
 export function CoverageLineChart({
@@ -54,7 +54,7 @@ export function CoverageLineChart({
       }
       return row;
     });
-    // Coverage starts with the mortgage: drop the dates before it (every series null).
+    // Coverage starts with the first debt: drop the dates before it (every series null).
     const first = out.findIndex((row) => block.series.some((s) => typeof row[s.dataKey] === "number"));
     out = first < 0 ? [] : out.slice(first);
     if (xAxisGranularity !== "day") {

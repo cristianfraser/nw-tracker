@@ -19,7 +19,7 @@ import {
 } from "../accountPerformance.js";
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
-import { accountBucketKindSlug, bucketSlugForAccountId } from "../accountBucket.js";
+import { accountBucketKindSlug, bucketSlugForAccountId, isLiabilityKindSlug } from "../accountBucket.js";
 import { ccDailyHistorialBlockForGroup, ccDailyHistorialBlockForMasters } from "../ccDailyHistorialBlock.js";
 import {
   dailyReferenceLinesForChartHost,
@@ -165,17 +165,17 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     // `deposit_cums_raw` is builder-internal (feeds the grouped-bucket aportes below) —
     // never serialized.
     const { deposit_cums_raw: _rawDeps, ...seriesPayload } = series;
-    // Mortgage coverage by the same overlays (Pasivos), the daily twin of the monthly
-    // `reference_coverage` block.
-    const mortgageLines = (series.accounts ?? []).filter(
-      (l) => l.account_id > 0 && accountBucketKindSlug(bucketSlugForAccountId(l.account_id) ?? "") === "mortgage"
+    // Liabilities coverage by the same overlays (Pasivos), the daily twin of the monthly
+    // `reference_coverage` block: the total owed (mortgage + cards) on each day.
+    const liabilityLines = (series.accounts ?? []).filter(
+      (l) => l.account_id > 0 && isLiabilityKindSlug(accountBucketKindSlug(bucketSlugForAccountId(l.account_id) ?? ""))
     );
     const referenceCoverage =
-      chartHost && referenceLines?.length && mortgageLines.length
+      chartHost && referenceLines?.length && liabilityLines.length
         ? buildReferenceCoverage(
             dailyDates,
             sumAlignedValues(
-              mortgageLines.map((l) => l.values),
+              liabilityLines.map((l) => l.values),
               dailyDates.length
             ),
             listReferenceGroupsForChartHost(chartHost).flatMap((d) => {
