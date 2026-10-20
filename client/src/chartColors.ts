@@ -150,7 +150,14 @@ export function allocationBucketColor(groupSlug: string, colorRgb?: string | nul
   return BUCKET_STROKE[groupSlug] ?? shadesForGroupSlug(groupSlug)[3] ?? "#94a3b8";
 }
 
-/** Stroke for synthetic group Total (`__group_val_total`, perf Δ total) from nav `color_rgb`. */
+/**
+ * Group-page valuation chart: the synthetic Total line (`__group_val_total`) and its aportes
+ * companion (`__group_dep_total`) are white, so the group's own colour is left to its members and
+ * the perf Δ total (which still reads `groupTabTotalStroke`).
+ */
+export const GROUP_TAB_TOTAL_LINE_STROKE = "#ffffff";
+
+/** Stroke for synthetic group Total (perf Δ total line/bars, pie) from nav `color_rgb`. */
 export function groupTabTotalStroke(
   groupTotalColorRgb: string | null | undefined,
   fallbackSlug: string
@@ -269,7 +276,6 @@ export function resolveLineSeriesColors(
     const colorSlug =
       plan.groupSlug === "brokerage" && plan.brokerageSubgroup === "crypto" ? "crypto" : plan.groupSlug;
     const { byDataKey } = buildGroupTabColorMaps(colorSlug, plan.accounts, plan.groupTotalColorRgb);
-    const totalStroke = groupTabTotalStroke(plan.groupTotalColorRgb, colorSlug);
     return series.map((s) => {
       if (
         plan.groupSlug === "liabilities" &&
@@ -284,8 +290,7 @@ export function resolveLineSeriesColors(
         return { ...s, stroke: s.isDeposit ? lightenStrokeForAccumulated(stroke) : stroke };
       }
       if (s.dataKey === GROUP_TAB_VAL_TOTAL || s.dataKey === GROUP_TAB_DEP_TOTAL) {
-        const stroke = totalStroke;
-        return { ...s, stroke: s.isDeposit ? lightenStrokeForAccumulated(stroke) : stroke };
+        return { ...s, stroke: GROUP_TAB_TOTAL_LINE_STROKE };
       }
       const base = byDataKey.get(s.dataKey) ?? DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length];
       return { ...s, stroke: s.isDeposit ? lightenStrokeForAccumulated(base) : base };
