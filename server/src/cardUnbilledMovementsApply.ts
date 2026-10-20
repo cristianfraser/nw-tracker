@@ -6,6 +6,7 @@ import { webPasteLineFromCardListingLine } from "./cardListingLines.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
 import {
   assertFeedClosesMatchStatements,
+  latestFeedBillingClose,
   recordFeedBillingClose,
 } from "./ccBillingCloses.js";
 import { moveOpenBucketLinesByDedupeKey } from "./ccOpenWebPasteRepair.js";
@@ -21,7 +22,7 @@ import {
   tagFeedCuotaPurchaseLines,
   type CcFeedPlanCreated,
 } from "./ccFeedCuotaPurchases.js";
-import { mirrorOpenBucketsToFeed, type CcFeedMirrorResult } from "./ccFeedMirror.js";
+import { feedMirrorCurrencies, mirrorOpenBucketsToFeed, type CcFeedMirrorResult } from "./ccFeedMirror.js";
 import type { PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
 import type { CcInstallmentFirstDueNudge } from "./ccWebPasteInstallmentNudge.js";
 import {
@@ -193,17 +194,25 @@ export function applyCardUnbilledMovements(
       upsertCreditCardValuationsFromLedger(accountId);
     }
     // Last: everything this listing shows is now on file, so what the buckets hold beyond it is
-    // what the bank dropped. Only with a close (the window start) and per complete currency.
-    const mirrorCurrencies = new Set<"clp" | "usd">();
-    if (close?.saldo_inicial_clp != null) mirrorCurrencies.add("clp");
-    if (close?.saldo_inicial_usd != null) mirrorCurrencies.add("usd");
+    // what the bank dropped. Only from a close on record (the window start) and per currency the
+    // listing proves complete: its SALDO INICIAL row, or the bank's cupo identity.
+    const stated = new Set<"clp" | "usd">();
+    if (close?.saldo_inicial_clp != null) stated.add("clp");
+    if (close?.saldo_inicial_usd != null) stated.add("usd");
+    const recordedClose = feedClose ? null : latestFeedBillingClose(accountId);
+    const windowStartIso = feedClose?.close_iso ?? recordedClose?.close_date ?? null;
+    const closeOnRecord = feedClose ?? recordedClose;
+    const bankUsed: Partial<Record<"clp" | "usd", number>> = {};
+    if (bankCupo.status === "present") {
+      for (const row of bankCupo.rows) if (row.account_id === accountId) bankUsed[row.currency] = row.cupo_utilizado;
+    }
+    const proof =
+      windowStartIso && closeOnRecord
+        ? feedMirrorCurrencies({ stated, closeOnRecord, lines: card.lines, bankUsed })
+        : {};
     const mirror =
-      feedClose && mirrorCurrencies.size > 0
-        ? mirrorOpenBucketsToFeed(accountId, {
-            windowStartIso: feedClose.close_iso,
-            currencies: mirrorCurrencies,
-            feedLines: lines,
-          })
+      windowStartIso && Object.keys(proof).length > 0
+        ? mirrorOpenBucketsToFeed(accountId, { windowStartIso, proof, feedLines: lines })
         : null;
     // In-process writes do not bump data_version: drop this card's derived caches explicitly.
     invalidateCcBillingDetail(accountId);

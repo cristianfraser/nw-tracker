@@ -9,8 +9,12 @@
  * walk for three weeks.
  *
  * Guards, because deleting is the one thing an import must never do by accident:
- *  - only a currency whose slide carried the SALDO INICIAL row (a complete list; a failed Dólares
- *    tab must not read as «every USD purchase vanished»),
+ *  - only a currency the listing proves complete ({@link feedMirrorCurrencies}): its slide carried
+ *    the SALDO INICIAL row, or the bank's own cupo utilizado for it equals the close on record plus
+ *    the listed rows to the cent — the bank's identity the cupo check judges by (a failed Dólares
+ *    tab must not read as «every USD purchase vanished»; 2026-10-19 the dollar slide listed all 20
+ *    rows but no SALDO INICIAL, and the row-only rule left a restated pending authorization
+ *    counted twice, which the cupo check then flagged),
  *  - only lines dated on/after the latest close (the current cycle; the closed cycle's lines are
  *    its evidence until the statement arrives),
  *  - never payments / divisas abonos (a payment planted from a bank receipt precedes the feed),
@@ -46,14 +50,61 @@ export type CcFeedMirrorRemoved = {
   amount_usd: number | null;
 };
 
+/** How a currency's listing was proved complete, so its missing lines may be removed. */
+export type FeedMirrorCurrencyProof = "saldo_inicial" | "cupo_identity";
+
 export type CcFeedMirrorResult = {
   window_start: string;
   currencies: ("clp" | "usd")[];
+  /** Per mirrored currency, what proved its listing complete. */
+  proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>;
   removed: CcFeedMirrorRemoved[];
 };
 
 function lineCurrency(line: CcOpenBucketLine): "clp" | "usd" {
   return line.amount_usd != null && line.amount_usd !== 0 ? "usd" : "clp";
+}
+
+function roundedUnits(amount: number, currency: "clp" | "usd"): number {
+  return currency === "usd" ? Math.round(amount * 100) : Math.round(amount);
+}
+
+/**
+ * The currencies whose listing is complete, and why (pure). A currency is complete when its slide
+ * stated the close's SALDO INICIAL, or when the bank's own cupo utilizado for it, read in the same
+ * session, equals the close on record plus every listed row (debt-positive) to the cent: that is
+ * the bank's identity for a card's utilizado, so a listing that reproduces it lists everything the
+ * bank counts. Neither holds for a tab that failed to render, and the CLP identity rarely holds
+ * while cuota plans are outstanding (utilizado carries their remainder), so pesos usually keep the
+ * SALDO INICIAL rule.
+ */
+export function feedMirrorCurrencies(opts: {
+  /** Currencies whose slide carried the SALDO INICIAL row. */
+  stated: ReadonlySet<"clp" | "usd">;
+  /** The close on record for the card (the listing's, or the latest recorded), with its billed totals. */
+  closeOnRecord: { saldo_inicial_clp: number | null; saldo_inicial_usd: number | null } | null;
+  /** Every listed row, debt-positive, as the feeder sent it. */
+  lines: readonly { currency: "clp" | "usd"; amount: number }[];
+  /** The bank's cupo utilizado per currency, from the same session's product summary. */
+  bankUsed: Partial<Record<"clp" | "usd", number>>;
+}): Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>> {
+  const proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>> = {};
+  for (const currency of ["clp", "usd"] as const) {
+    if (opts.stated.has(currency)) {
+      proof[currency] = "saldo_inicial";
+      continue;
+    }
+    const saldoInicial = currency === "clp" ? opts.closeOnRecord?.saldo_inicial_clp : opts.closeOnRecord?.saldo_inicial_usd;
+    const used = opts.bankUsed[currency];
+    if (saldoInicial == null || used == null) continue;
+    const listed = opts.lines
+      .filter((l) => l.currency === currency)
+      .reduce((sum, l) => sum + roundedUnits(l.amount, currency), 0);
+    if (roundedUnits(saldoInicial, currency) + listed === roundedUnits(used, currency)) {
+      proof[currency] = "cupo_identity";
+    }
+  }
+  return proof;
 }
 
 /** Bucket lines of the mirrored window that no feed row accounts for (read-only planner). */
@@ -88,9 +139,14 @@ export function planFeedMirror(
 
 export function mirrorOpenBucketsToFeed(
   accountId: number,
-  opts: { windowStartIso: string; currencies: ReadonlySet<"clp" | "usd">; feedLines: readonly CcWebPasteLine[] }
+  opts: {
+    windowStartIso: string;
+    proof: Partial<Record<"clp" | "usd", FeedMirrorCurrencyProof>>;
+    feedLines: readonly CcWebPasteLine[];
+  }
 ): CcFeedMirrorResult {
-  const unlisted = planFeedMirror(accountId, opts);
+  const currencies = new Set((Object.keys(opts.proof) as ("clp" | "usd")[]).filter((c) => opts.proof[c] != null));
+  const unlisted = planFeedMirror(accountId, { windowStartIso: opts.windowStartIso, currencies, feedLines: opts.feedLines });
   const removed = unlisted.map((l) => ({
     id: l.id,
     date: bucketLinePurchaseIso(l) ?? String(l.transaction_date ?? ""),
@@ -98,9 +154,10 @@ export function mirrorOpenBucketsToFeed(
     amount_clp: l.amount_clp,
     amount_usd: l.amount_usd,
   }));
-  const result = {
+  const result: CcFeedMirrorResult = {
     window_start: opts.windowStartIso,
-    currencies: [...opts.currencies].sort() as ("clp" | "usd")[],
+    currencies: [...currencies].sort(),
+    proof: opts.proof,
     removed,
   };
   if (removed.length === 0) return result;
