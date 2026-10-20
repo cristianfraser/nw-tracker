@@ -24,7 +24,13 @@ import type { ProportionalSeriesBlockDto } from "../../types";
  * (`server/src/referenceCoverage.ts`), drawn as percent lines with a dashed 100% line — where
  * that money would clear every debt. Same block shape and grain handling as the
  * proportional chart it replaces there: Rango clips M/Y, yearly samples each year's last row.
+ *
+ * The axis stops at `COVERAGE_AXIS_CAP_PCT`: while the only debt is a small card balance the
+ * coverage runs into the thousands of percent, and a 0-anchored axis holding that flattens the
+ * era that matters (20–110% against the mortgage). The lines clip at the top edge; the rows
+ * keep their true values, so the tooltip still reads them.
  */
+export const COVERAGE_AXIS_CAP_PCT = 200;
 export function CoverageLineChart({
   title,
   controls,
@@ -87,7 +93,7 @@ export function CoverageLineChart({
         hi = Math.max(hi, v);
       }
     }
-    return buildNiceYAxis(lo, hi);
+    return buildNiceYAxis(lo, Math.min(hi, COVERAGE_AXIS_CAP_PCT));
   }, [rows, series]);
 
   if (!rows.length || !series.length) {
@@ -124,6 +130,7 @@ export function CoverageLineChart({
           <YAxis
             domain={yAxis.domain}
             ticks={yAxis.ticks}
+            allowDataOverflow
             width={48}
             tick={CHART_TICK_STYLE}
             axisLine={{ stroke: AXIS_LINE_STROKE }}
