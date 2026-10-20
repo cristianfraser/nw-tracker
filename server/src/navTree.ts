@@ -53,6 +53,12 @@ export type NavTreeNodeDto = {
    * no grouped blocks for this node.
    */
   chart_buckets?: NavNodeChartBucketsDto;
+  /**
+   * This node's page draws the liabilities coverage chart in the composition slot (sidebar-nav
+   * payload only, via `annotateSidebarNavChartBuckets`; `groupHostsLiabilitiesCoverage`), so the
+   * client mounts it from first paint. Absent ⇔ the page keeps its composition chart.
+   */
+  chart_coverage?: true;
   children: NavTreeNodeDto[];
 };
 

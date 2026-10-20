@@ -316,8 +316,12 @@ export function LiabilitiesGroupPage() {
     }
     return daily.proportional ?? null;
   }, [proportionalIsDaily, proportionalDailySeries.data, chartCtx?.liabilitiesGrouped]);
-  // Pasivos root: the composition chart's slot shows the liabilities coverage instead (server
-  // block present only where the page has liability accounts and reference lines), on the same controls.
+  // Pasivos root: the composition chart's slot shows the liabilities coverage instead, on the
+  // same controls. The nav node says so (`chart_coverage`) before any payload lands, so the
+  // coverage chart mounts from first paint (pending frame) instead of swapping the composition
+  // chart out; the payload's block (present only where the page has liability accounts and
+  // reference lines) is the fallback for a nav tree that predates the hint.
+  const showCoverage = Boolean(navMatchNode?.chart_coverage || ts?.reference_coverage);
   const coverageBlock = ts?.reference_coverage
     ? proportionalIsDaily
       ? (proportionalDailySeries.data?.reference_coverage ?? null)
@@ -410,7 +414,7 @@ export function LiabilitiesGroupPage() {
         }
         proportionalTimeRange={proportionalPrefs.range}
         proportionalReplacement={
-          ts?.reference_coverage ? (
+          showCoverage ? (
             <CoverageLineChart
               title={t("charts.liabilitiesCoverage")}
               block={coverageBlock}
