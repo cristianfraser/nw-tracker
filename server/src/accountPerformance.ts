@@ -629,6 +629,9 @@ function monthEndCloseForMortgagePerformance(
 
 /** Month-end `YYYY-MM-DD` → Σ positive units_delta on equity brokerage movements in that calendar month. */
 function stockUnitsInflowByMonthEnd(accountId: number): Map<string, number> {
+  // Only an equity account holds share units; the cash wallet a sell's proceeds land in is the
+  // to-account of a `stock_sell` row with units, and must not read them as an inflow.
+  if (!accountUsesEquityMtm(accountId)) return new Map();
   const shareKinds = ["compra_usd", "stock_buy", "stock_sell"];
   const ph = shareKinds.map(() => "?").join(", ");
   const rows = db

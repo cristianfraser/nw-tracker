@@ -6,6 +6,7 @@ import {
   unitsDeltaForAccountMovement,
 } from "./movementTransfer.js";
 import { isUsdCashAccount } from "./usdCashAccounts.js";
+import { isClpCashAccount } from "./clpCashAccounts.js";
 import { db } from "./db.js";
 import { equityTickerForAccount, requireEquityTicker } from "./accountEquityTicker.js";
 export { equityTickerForAccount } from "./accountEquityTicker.js";
@@ -54,7 +55,10 @@ const stmtHasUnits = db.prepare(
 );
 
 export function accountUsesEquityMtm(accountId: number): boolean {
-  if (isUsdCashAccount(accountId)) return false;
+  // A share flow's cash leg is never the equity side: a buy's from-account and a sell's
+  // to-account are the wallet the proceeds move through (USD cash for USD-quoted stocks, CLP
+  // cash for `.SN` ones — the first CLP sale, 2026-10-20, made Racional CLP read as a stock).
+  if (isUsdCashAccount(accountId) || isClpCashAccount(accountId)) return false;
   return (
     stmtHasUnits.get(accountId, accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null
   );
