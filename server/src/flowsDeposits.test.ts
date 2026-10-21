@@ -9,6 +9,7 @@ import { totalDisplayDepositsClpForAccount } from "./accountDeposits.js";
 import { clpToUsdAtPayment, ufRowOnOrBefore } from "./fxRates.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
+import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 
 /**
  * Fixture dates inside the synthetic market window (the test preset covers the last ~18
@@ -16,6 +17,16 @@ import { db } from "./db.js";
  * is an error.
  */
 const fixtureYmd = (daysBack: number): string => chileCalendarAddDays(chileCalendarTodayYmd(), -daysBack);
+
+/** CLP cash leaves of the fixtures: prefixed, under Efectivo › Cash savings, kind = last slug segment. */
+const LEAF_STATE_BONUS = "cash_eqs__cash_savings__vitest_flows_deposits_state_bonus__clp";
+const LEAF_FUTURE_DATED = "cash_eqs__cash_savings__vitest_flows_deposits_future_dated__clp";
+
+/** Through `ensureChildAssetGroupId`, which also drops the memoized dashboard-bucket map. */
+function insertCashLeaf(slug: string): number {
+  const prefix = "cash_eqs__cash_savings__";
+  return ensureChildAssetGroupId("cash_eqs__cash_savings", slug.slice(prefix.length), "Vitest cash leaf").id;
+}
 
 describe("buildFlowsDepositsPayload", () => {
   it("net_total_clp matches sum of row amounts", () => {
@@ -40,14 +51,10 @@ describe("state contributions are P/L, not deposits", () => {
   let accountId: number | null = null;
 
   beforeAll(() => {
-    const group = db
-      .prepare(`SELECT id FROM asset_groups WHERE slug = 'brokerage_cash__clp'`)
-      .get() as { id: number } | undefined;
-    if (!group) return;
     accountId = Number(
       db
         .prepare(`INSERT INTO accounts (asset_group_id, name) VALUES (?, ?)`)
-        .run(group.id, "vitest-flows-deposits-state-bonus").lastInsertRowid
+        .run(insertCashLeaf(LEAF_STATE_BONUS), "vitest-flows-deposits-state-bonus").lastInsertRowid
     );
     const ins = db.prepare(
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
@@ -61,6 +68,7 @@ describe("state contributions are P/L, not deposits", () => {
     if (accountId == null) return;
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+    db.prepare(`DELETE FROM asset_groups WHERE slug = ?`).run(LEAF_STATE_BONUS);
   });
 
   it("excludes aporte_estatal_clp from deposit rows and per-account totals", () => {
@@ -76,14 +84,10 @@ describe("forward-posted movements count today and move to their bank date when 
   let accountId: number | null = null;
 
   beforeAll(() => {
-    const group = db
-      .prepare(`SELECT id FROM asset_groups WHERE slug = 'brokerage_cash__clp'`)
-      .get() as { id: number } | undefined;
-    if (!group) return;
     accountId = Number(
       db
         .prepare(`INSERT INTO accounts (asset_group_id, name) VALUES (?, ?)`)
-        .run(group.id, "vitest-flows-deposits-future-dated").lastInsertRowid
+        .run(insertCashLeaf(LEAF_FUTURE_DATED), "vitest-flows-deposits-future-dated").lastInsertRowid
     );
     const ins = db.prepare(
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind)
@@ -98,6 +102,7 @@ describe("forward-posted movements count today and move to their bank date when 
     if (accountId == null) return;
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+    db.prepare(`DELETE FROM asset_groups WHERE slug = ?`).run(LEAF_FUTURE_DATED);
   });
 
   it("includes the forward-posted giro in totals and lists it under today with its bank date", () => {

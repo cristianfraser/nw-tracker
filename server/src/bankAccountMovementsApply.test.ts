@@ -97,7 +97,7 @@ describe("applyBankAccountMovements for a dollar account", () => {
 
   beforeAll(() => {
     usdAccountId = account(`${PREFIX} Santander USD`, "cash_eqs__cash_savings__usd");
-    brokerUsdId = account(`${PREFIX} broker USD`, "brokerage_cash__usd");
+    brokerUsdId = account(`${PREFIX} broker USD`, "cash_eqs__cash_savings__usd");
     cardId = account(`${PREFIX} card`, "cash_eqs__cash_savings__usd");
     if (db.prepare(`SELECT 1 FROM bank_account_numbers WHERE number = ?`).get(NUMBER)) throw new Error("test DB already declares the synthetic number");
     db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', ?, 'usd')`).run(usdAccountId, NUMBER);

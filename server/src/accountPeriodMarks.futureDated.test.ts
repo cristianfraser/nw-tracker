@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import { monthEndCloseClpForAccount } from "./accountPeriodMarks.js";
 import { loadAccountRowsForGroupConsolidation } from "./groupMonthlyPerfConsolidation.js";
+import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 
 const FIXTURE = "vitest-future-dated-clp-cash";
 
@@ -18,10 +19,12 @@ describe("monthEndCloseClpForAccount with future-dated movements", () => {
   let leafSlug = "";
 
   beforeEach(() => {
-    const clpLeaf = db
-      .prepare(`SELECT id, slug FROM asset_groups WHERE slug LIKE '%__clp' LIMIT 1`)
-      .get() as { id: number; slug: string } | undefined;
-    if (!clpLeaf) return;
+    // A CLP cash leaf of the test's own (kind = the slug's last `__` segment): a broker's peso
+    // balance under Cash savings, the shape the live DB uses since migration 241.
+    const clpLeaf = {
+      id: ensureChildAssetGroupId("cash_eqs__cash_savings", "vitest_future_dated__clp", "Vitest future-dated CLP").id,
+      slug: "cash_eqs__cash_savings__vitest_future_dated__clp",
+    };
     leafSlug = clpLeaf.slug;
 
     db.prepare(`DELETE FROM accounts WHERE name = ?`).run(FIXTURE);
@@ -49,6 +52,7 @@ describe("monthEndCloseClpForAccount with future-dated movements", () => {
     vi.useRealTimers();
     db.prepare(`DELETE FROM movements WHERE note LIKE ?`).run(`${FIXTURE}%`);
     db.prepare(`DELETE FROM accounts WHERE name = ?`).run(FIXTURE);
+    db.prepare(`DELETE FROM asset_groups WHERE slug = ?`).run(leafSlug);
   });
 
   it("marks the current-month close at Chile-today with every known movement, forward-dated included", () => {

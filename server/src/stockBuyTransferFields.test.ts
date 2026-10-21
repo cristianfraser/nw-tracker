@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import { validateMovementCreate, type AccountRow } from "./movementUnitsPolicy.js";
+import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 
 const FIXTURE_USD = "vitest-stockbuy-usd";
 const FIXTURE_STOCK = "vitest-stockbuy-stock";
@@ -19,13 +20,17 @@ describe("stock_buy transfer field validation + ticker default", () => {
     const stockLeaf = db
       .prepare(`SELECT id, slug FROM asset_groups WHERE slug LIKE 'brokerage_acciones__%' LIMIT 1`)
       .get() as { id: number; slug: string } | undefined;
-    const usdLeaf = db
-      .prepare(`SELECT id, slug FROM asset_groups WHERE slug LIKE '%__usd' LIMIT 1`)
-      .get() as { id: number; slug: string } | undefined;
-    const clpLeaf = db
-      .prepare(`SELECT id, slug FROM asset_groups WHERE slug LIKE '%__clp' LIMIT 1`)
-      .get() as { id: number; slug: string } | undefined;
-    if (!stockLeaf || !usdLeaf || !clpLeaf) return;
+    // Cash leaves of the test's own under Cash savings (kind = the slug's last `__` segment):
+    // `LIKE '%__clp'` treats `_` as a wildcard and once picked `brokerage_crypto__buda_clp`.
+    const usdLeaf = {
+      id: ensureChildAssetGroupId("cash_eqs__cash_savings", "vitest_stock_buy_fields__usd", "Vitest USD cash").id,
+      slug: "cash_eqs__cash_savings__vitest_stock_buy_fields__usd",
+    };
+    const clpLeaf = {
+      id: ensureChildAssetGroupId("cash_eqs__cash_savings", "vitest_stock_buy_fields__clp", "Vitest CLP cash").id,
+      slug: "cash_eqs__cash_savings__vitest_stock_buy_fields__clp",
+    };
+    if (!stockLeaf) return;
 
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?, ?, ?)`).run(
       FIXTURE_USD,
@@ -60,6 +65,7 @@ describe("stock_buy transfer field validation + ticker default", () => {
       FIXTURE_CLP,
       FIXTURE_STOCK_SN
     );
+    db.prepare(`DELETE FROM asset_groups WHERE slug LIKE 'cash_eqs__cash_savings__vitest_stock_buy_fields__%'`).run();
   });
 
   it("rejects a stray CLP leg on stock_buy (stale hidden-field value)", () => {

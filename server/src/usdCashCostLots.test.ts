@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { applyBrokerNotifications } from "./brokerNotificationsApply.js";
 import { facturacionUsdRatesForAccount, usdDebtPaymentsForAccount } from "./ccFacturacionUsdRate.js";
+import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { db } from "./db.js";
 import { brokerNotification } from "./test/brokerNotificationFixtures.js";
 import { usdOutflowPesoCostByMovement } from "./usdCashCostLots.js";
@@ -8,6 +9,8 @@ import { usdOutflowPesoCostByMovement } from "./usdCashCostLots.js";
 const FINTUAL_USD_KEY = "import:panel|kind=usd|key=fintual_usd";
 const FINTUAL_CLP_KEY = "import:panel|kind=clp|key=fintual_clp";
 const PREFIX = "vitest usdCashCostLots";
+/** A prefixed CLP cash leaf (kind = last slug segment) under Efectivo › Cash savings, made on first use. */
+const CLP_GROUP = "cash_eqs__cash_savings__vitest_usdcashcostlots__clp";
 
 const createdAccounts: number[] = [];
 const createdMovements: number[] = [];
@@ -16,6 +19,9 @@ const createdFx: string[] = [];
 let seq = 0;
 
 function groupId(slug: string): number {
+  if (slug === CLP_GROUP) {
+    return ensureChildAssetGroupId("cash_eqs__cash_savings", "vitest_usdcashcostlots__clp", "Vitest usdCashCostLots CLP").id;
+  }
   const row = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as { id: number } | undefined;
   if (!row) throw new Error(`test DB has no asset group ${slug}`);
   return row.id;
@@ -106,12 +112,13 @@ afterEach(() => {
     db.prepare(`DELETE FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`).run(id, id, id);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
   }
+  db.prepare(`DELETE FROM asset_groups WHERE slug = ?`).run(CLP_GROUP);
 });
 
 /** A Fintual dollar withdrawal paid into Santander USD and on to the card (synthetic amounts). */
 function realCase(opts: { stampPurchase: boolean }) {
-  const fintualUsd = account("Fintual USD", "brokerage_cash__usd", FINTUAL_USD_KEY);
-  const fintualClp = account("Fintual CLP", "brokerage_cash__clp");
+  const fintualUsd = account("Fintual USD", "cash_eqs__cash_savings__usd", FINTUAL_USD_KEY);
+  const fintualClp = account("Fintual CLP", CLP_GROUP);
   const santanderUsd = account("Santander USD", "cash_eqs__usd");
   const stock = account("SOXQ", "brokerage_acciones__spy");
   const card = account("card", "credit_cards__credit_card");
@@ -173,8 +180,8 @@ describe("usdOutflowPesoCostByMovement", () => {
   });
 
   it("keeps reserved dollars from a later buy", () => {
-    const fintualUsd = account("Fintual USD", "brokerage_cash__usd", FINTUAL_USD_KEY);
-    const fintualClp = account("Fintual CLP", "brokerage_cash__clp");
+    const fintualUsd = account("Fintual USD", "cash_eqs__cash_savings__usd", FINTUAL_USD_KEY);
+    const fintualClp = account("Fintual CLP", CLP_GROUP);
     const card = account("card", "credit_cards__credit_card");
     const buy = movement({
       date: "2097-11-02",
@@ -194,7 +201,7 @@ describe("usdOutflowPesoCostByMovement", () => {
 
   it("consumes FIFO without a request", () => {
     const usd = account("USD cash", "cash_eqs__usd");
-    const clp = account("CLP cash", "brokerage_cash__clp");
+    const clp = account("CLP cash", CLP_GROUP);
     const card = account("card", "credit_cards__credit_card");
     for (const [date, pesos] of [["2097-12-01", 90_000], ["2097-12-02", 100_000]] as const) {
       movement({ date, from: clp, to: usd, amount: pesos, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
@@ -206,8 +213,8 @@ describe("usdOutflowPesoCostByMovement", () => {
   });
 
   it("prices a partly spent moved batch at the older purchase rate first, one lot per carried slice", () => {
-    const fintualUsd = account("Fintual USD", "brokerage_cash__usd");
-    const fintualClp = account("Fintual CLP", "brokerage_cash__clp");
+    const fintualUsd = account("Fintual USD", "cash_eqs__cash_savings__usd");
+    const fintualClp = account("Fintual CLP", CLP_GROUP);
     const santanderUsd = account("Santander USD", "cash_eqs__usd");
     const card = account("card", "credit_cards__credit_card");
     movement({ date: "2097-08-01", from: fintualClp, to: fintualUsd, amount: 90_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
@@ -228,7 +235,7 @@ describe("usdOutflowPesoCostByMovement", () => {
 
   it("lets a timeless day's arrivals fund its spending, whatever the ids", () => {
     const usd = account("USD cash", "cash_eqs__usd");
-    const clp = account("CLP cash", "brokerage_cash__clp");
+    const clp = account("CLP cash", CLP_GROUP);
     const stock = account("stock", "brokerage_acciones__spy");
     const card = account("card", "credit_cards__credit_card");
     // The buy is written before the wire that funds it, the same day.
@@ -254,7 +261,7 @@ describe("usdOutflowPesoCostByMovement", () => {
 
   it("throws on a shortfall", () => {
     const usd = account("USD cash", "cash_eqs__usd");
-    const clp = account("CLP cash", "brokerage_cash__clp");
+    const clp = account("CLP cash", CLP_GROUP);
     const card = account("card", "credit_cards__credit_card");
     movement({ date: "2097-12-01", from: clp, to: usd, amount: 90_000, currency: "clp", counter_amount: 100, counter_currency: "usd", flow_kind: "compra_usd_venta_clp" });
     movement({ date: "2097-12-03", from: usd, to: card, amount: 200, currency: "usd", flow_kind: "pago_tarjeta" });
@@ -264,7 +271,7 @@ describe("usdOutflowPesoCostByMovement", () => {
 
 describe("broker mail event times", () => {
   it("stamps the movement a re-sent mail matches, and never overwrites a stamp", () => {
-    const fintualUsd = account("Fintual USD", "brokerage_cash__usd", FINTUAL_USD_KEY);
+    const fintualUsd = account("Fintual USD", "cash_eqs__cash_savings__usd", FINTUAL_USD_KEY);
     const fintualClp = account("Fintual CLP", "cash_eqs__cash_savings", FINTUAL_CLP_KEY);
     // Already in the ledger (booked before stamps existed).
     const existing = movement({

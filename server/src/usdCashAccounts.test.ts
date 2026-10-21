@@ -21,7 +21,7 @@ describe("usdCashBalanceClpAt", () => {
       account: {
         account_type: "usd_cash",
         name: "vitest-usd-cash-zero-fx",
-        bucket_slug: "brokerage_cash",
+        bucket_slug: "cash_savings",
         exclude_from_group_totals: false,
       },
     });

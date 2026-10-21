@@ -49,9 +49,10 @@ describe("brokerage portfolio unit (holding + fee caja as one bucket)", () => {
 
   beforeAll(() => {
     const insAg = db.prepare(`INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (?, ?, ?, ?)`);
-    // Filed as the class buckets file them first: holding under acciones, caja under cash.
+    // Filed as the class buckets file them first: holding under acciones, caja under crypto (any
+    // other brokerage bucket works; Brokerage › Cash no longer exists).
     insAg.run(HOLD_LEAF, "Vitest PFU holding", 99, agId("brokerage_acciones"));
-    insAg.run(CAJA_LEAF, "Vitest PFU caja", 99, agId("brokerage_cash"));
+    insAg.run(CAJA_LEAF, "Vitest PFU caja", 99, agId("brokerage_crypto"));
     const insAcc = db.prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`);
     holdId = Number(insAcc.run(agId(HOLD_LEAF), "Vitest PFU holding", `${NOTE}|hold`).lastInsertRowid);
     cajaId = Number(insAcc.run(agId(CAJA_LEAF), "Vitest PFU caja", `${NOTE}|caja`).lastInsertRowid);
@@ -109,7 +110,7 @@ describe("brokerage portfolio unit (holding + fee caja as one bucket)", () => {
   it("seeds the unit under brokerage with both members, out of the class buckets", () => {
     expect(accountIdsInPortfolioGroup(UNIT_SLUG)).toEqual([holdId, cajaId].sort((a, b) => a - b));
     expect(accountIdsInPortfolioGroup("brokerage_acciones")).not.toContain(holdId);
-    expect(accountIdsInPortfolioGroup("brokerage_cash")).not.toContain(cajaId);
+    expect(accountIdsInPortfolioGroup("brokerage_crypto")).not.toContain(cajaId);
     expect(accountIdsInPortfolioGroup("brokerage")).toEqual(expect.arrayContaining([holdId, cajaId]));
 
     const find = (nodes: readonly { slug: string; children: unknown[] }[]): { children: unknown[] } | null => {

@@ -115,7 +115,7 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
         account: {
           account_type: "clp_cash",
           name: "Vitest Fintual CLP",
-          bucket_slug: "brokerage_cash",
+          bucket_slug: "cash_savings",
           category_slug: "vitest_fintual_clp",
           exclude_from_group_totals: false,
         },
@@ -136,7 +136,7 @@ describe("CLP cash buffer (panel clp_cash account) reconciliation", () => {
     );
     db.prepare(`DELETE FROM account_sync_sources WHERE account_id = ?`).run(bufferId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(bufferId);
-    db.prepare(`DELETE FROM asset_groups WHERE slug = 'brokerage_cash__vitest_fintual_clp__clp'`).run();
+    db.prepare(`DELETE FROM asset_groups WHERE slug = 'cash_eqs__cash_savings__vitest_fintual_clp__clp'`).run();
     seedNavTree();
   });
 
