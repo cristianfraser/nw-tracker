@@ -216,7 +216,7 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
       ),
     ]),
     usdCashId: narrative.stocks
-      ? createAccount("brokerage_cash__usd", "USD", "demo:usd-cash")
+      ? createAccount("cash_eqs__cash_savings__usd", "USD", "demo:usd-cash")
       : null,
     cryptoId: narrative.withCrypto
       ? Number(

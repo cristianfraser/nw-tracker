@@ -302,7 +302,6 @@ function rebuildBrokerageNav() {
     ["brokerage_long_term", 5],
     ["brokerage_acciones", 10],
     ["brokerage_crypto", 20],
-    ["brokerage_cash", 30],
   ];
   for (const [slug, sort] of buckets) {
     // An account moved OUT of a sub-bucket must drop its stale membership even if the
@@ -534,19 +533,6 @@ export function seedNavTree(): void {
       group_kind: "bucket",
       color_rgb: "234,179,8",
     });
-    upsert({
-      slug: "brokerage_cash",
-      label: "Cash",
-      parent_slug: "brokerage",
-      sort_order: 40,
-      route_path: "/inversiones/brokerage/cash",
-      active_prefix: "/inversiones/brokerage/cash",
-      api_group: "brokerage",
-      api_subgroup: "cash",
-      kind_slug: "brokerage_cash",
-      group_kind: "bucket",
-    });
-
     upsert({
       slug: "retirement",
       label: "Retiro",
