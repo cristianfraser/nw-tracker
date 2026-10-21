@@ -8,7 +8,7 @@ const CLP_CASH_KIND = "clp";
 
 /**
  * Behaviour kind = last `__` segment of the leaf `asset_groups.slug` (mirrors the server's
- * `accountBucketKindSlug`), e.g. `brokerage_cash__usd` → `usd`,
+ * `accountBucketKindSlug`), e.g. `cash_eqs__cash_savings__racional_usd__usd` → `usd`,
  * `brokerage_cash__caja_portafolio_ipsa__clp` → `clp`.
  */
 function kindFromBucketSlug(slug: string | undefined): string | null {
