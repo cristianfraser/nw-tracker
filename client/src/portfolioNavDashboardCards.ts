@@ -11,7 +11,6 @@ import { buildNavCardBreakdown } from "./navCardBreakdown";
 import { dashboardAccountNavLabel } from "./navAccountLabels";
 import i18n from "./i18n";
 import { DASHBOARD_NET_WORTH_BUCKET_SLUGS } from "./portfolioDashboardBuckets";
-import { collectNavBucketCoverageKeys } from "./navChartBuckets";
 import {
   collectNavAccountDataKeys,
   dashboardBucketGroupsUnderNavHub,
@@ -27,48 +26,19 @@ import type {
   NavTreeNodeDto,
 } from "./types";
 
-function accountBucketSlug(row: Pick<DashboardAccountRow, "bucket_slug" | "group_slug">): string {
-  return (row.bucket_slug ?? row.group_slug ?? "").trim();
-}
-
 /**
- * `chart_inactive` accounts omitted from the nav tree still belong in metrics scope when their
- * bucket matches this node (same placement rule as group-page account enrich).
+ * The accounts a group node's metrics cover: its nav leaves plus every `member_account_ids`
+ * entry in its subtree — the chart-inactive members the sidebar tree omits, which an
+ * all-inactive sub-bucket (Portafolio IPSA once liquidated) keeps only there. Membership is
+ * the server's, never guessed from asset-group slug prefixes.
  */
-export function accountInNavMetricsScope(
-  row: Pick<DashboardAccountRow, "account_id" | "bucket_slug" | "group_slug" | "chart_inactive">,
-  navNode: NavTreeNodeDto,
-  navLeafIds: Set<number>
-): boolean {
-  if (navLeafIds.has(row.account_id)) return true;
-  if (!row.chart_inactive) return false;
-  const bucket = accountBucketSlug(row);
-  if (!bucket) return false;
-  const normalized = bucket.replace(/__/g, "_");
-  if (normalized === navNode.slug) return true;
-  for (const prefix of collectNavBucketCoverageKeys(navNode)) {
-    if (normalized === prefix || normalized.startsWith(`${prefix}_`)) return true;
-    if (bucket === prefix || bucket.startsWith(`${prefix}__`)) return true;
-  }
-  const asset = navNode.asset_group_slug?.trim();
-  if (asset && (bucket === asset || bucket.startsWith(`${asset}__`))) return true;
-  return bucket === navNode.slug || bucket.startsWith(`${navNode.slug}__`);
-}
-
-/** Nav subtree account ids for card metrics (includes chart-inactive group members). */
-export function navMetricsAccountIdSet(
-  navNode: NavTreeNodeDto,
-  all: readonly Pick<
-    DashboardAccountRow,
-    "account_id" | "bucket_slug" | "group_slug" | "chart_inactive"
-  >[] = []
-): Set<number> {
-  const leafIds = navLeafAccountIdSet(navNode);
-  const ids = new Set(leafIds);
-  for (const row of all) {
-    if (ids.has(row.account_id)) continue;
-    if (accountInNavMetricsScope(row, navNode, leafIds)) ids.add(row.account_id);
-  }
+export function navMetricsAccountIdSet(navNode: NavTreeNodeDto): Set<number> {
+  const ids = navLeafAccountIdSet(navNode);
+  const visit = (n: NavTreeNodeDto) => {
+    for (const id of n.member_account_ids ?? []) ids.add(id);
+    for (const c of n.children ?? []) visit(c);
+  };
+  visit(navNode);
   return ids;
 }
 
@@ -100,7 +70,7 @@ export function dashboardRowsForNavSubtree(
   all: DashboardAccountRow[],
   navNode: NavTreeNodeDto
 ): DashboardAccountRow[] {
-  const idSet = navMetricsAccountIdSet(navNode, all);
+  const idSet = navMetricsAccountIdSet(navNode);
   return all.filter((a) => idSet.has(a.account_id));
 }
 
@@ -228,15 +198,16 @@ export function inactiveAccountNavLeavesWithActivity(
   stripGroupChildren: readonly NavTreeNodeDto[]
 ): NavTreeNodeDto[] {
   const leafIds = navLeafAccountIdSet(parentNavNode);
+  const memberIds = navMetricsAccountIdSet(parentNavNode);
   const coveredByGroups = new Set<number>();
   for (const g of stripGroupChildren) {
-    for (const id of navMetricsAccountIdSet(g, dash.accounts)) coveredByGroups.add(id);
+    for (const id of navMetricsAccountIdSet(g)) coveredByGroups.add(id);
   }
   const out: NavTreeNodeDto[] = [];
   for (const row of dash.accounts) {
     if (row.chart_inactive !== true) continue;
     if (leafIds.has(row.account_id) || coveredByGroups.has(row.account_id)) continue;
-    if (!accountInNavMetricsScope(row, parentNavNode, leafIds)) continue;
+    if (!memberIds.has(row.account_id)) continue;
     if (!inactiveAccountRowHasActivity(row)) continue;
     out.push({
       node_id: `acc.${row.account_id}`,

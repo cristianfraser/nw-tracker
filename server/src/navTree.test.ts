@@ -80,6 +80,35 @@ describe("getNetWorthNavGroupNode", () => {
     expect(countNavAccounts(full)).toBeGreaterThanOrEqual(countNavAccounts(filtered));
   });
 
+  it("every group node lists its members, the chart-inactive leaves the sidebar tree omits included", () => {
+    const filtered = getNetWorthNavGroupNode();
+    const full = getNetWorthNavGroupNode({ includeChartInactiveAccounts: true });
+    if (!filtered || !full) return;
+    const fullBySlug = new Map<string, NavTreeNodeDto>();
+    const index = (n: NavTreeNodeDto) => {
+      if (n.account_id == null) fullBySlug.set(n.slug, n);
+      for (const c of n.children) index(c);
+    };
+    index(full);
+    const leafIds = (n: NavTreeNodeDto): number[] => {
+      const out: number[] = n.account_id != null ? [n.account_id] : [];
+      for (const c of n.children) out.push(...leafIds(c));
+      return out.sort((a, b) => a - b);
+    };
+    let checked = 0;
+    const visit = (n: NavTreeNodeDto) => {
+      if (n.account_id == null) {
+        const twin = fullBySlug.get(n.slug);
+        expect(twin, n.slug).toBeDefined();
+        expect(n.member_account_ids, n.slug).toEqual(leafIds(twin!));
+        checked++;
+      }
+      for (const c of n.children) visit(c);
+    };
+    visit(filtered);
+    expect(checked).toBeGreaterThan(0);
+  });
+
   it("keeps USD cash in sidebar nav when chart-inactive", () => {
     const row = db
       .prepare(

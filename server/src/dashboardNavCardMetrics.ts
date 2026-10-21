@@ -419,57 +419,18 @@ export function navLeafAccountIdSet(node: NavTreeNodeDto): Set<number> {
   return idSet;
 }
 
-/** Port of client `collectNavBucketCoverageKeys` (group nodes only). */
-function collectNavBucketCoverageKeys(node: NavTreeNodeDto): string[] {
-  const keys = new Set<string>();
+/**
+ * Port of client `navMetricsAccountIdSet`: the accounts a group node's metrics cover — its nav
+ * leaves plus every `member_account_ids` entry in its subtree (the chart-inactive members the
+ * sidebar tree omits, which an all-inactive sub-bucket keeps only there).
+ */
+export function navMetricsAccountIdSet(node: NavTreeNodeDto): Set<number> {
+  const ids = navLeafAccountIdSet(node);
   const visit = (n: NavTreeNodeDto) => {
-    keys.add(n.slug);
-    const ag = n.asset_group_slug?.trim();
-    if (ag) keys.add(ag);
-    for (const c of n.children ?? []) {
-      if (c.account_id == null) visit(c);
-    }
+    for (const id of n.member_account_ids ?? []) ids.add(id);
+    for (const c of n.children ?? []) visit(c);
   };
   visit(node);
-  return [...keys];
-}
-
-function accountBucketSlug(row: CardMetricsAccountRow): string {
-  return (row.bucket_slug ?? row.group_slug ?? "").trim();
-}
-
-/** Port of client `accountInNavMetricsScope` (chart-inactive bucket members outside the tree). */
-function accountInNavMetricsScope(
-  row: CardMetricsAccountRow,
-  node: NavTreeNodeDto,
-  navLeafIds: Set<number>
-): boolean {
-  if (navLeafIds.has(row.account_id)) return true;
-  if (!row.chart_inactive) return false;
-  const bucket = accountBucketSlug(row);
-  if (!bucket) return false;
-  const normalized = bucket.replace(/__/g, "_");
-  if (normalized === node.slug) return true;
-  for (const prefix of collectNavBucketCoverageKeys(node)) {
-    if (normalized === prefix || normalized.startsWith(`${prefix}_`)) return true;
-    if (bucket === prefix || bucket.startsWith(`${prefix}__`)) return true;
-  }
-  const asset = node.asset_group_slug?.trim();
-  if (asset && (bucket === asset || bucket.startsWith(`${asset}__`))) return true;
-  return bucket === node.slug || bucket.startsWith(`${node.slug}__`);
-}
-
-/** Port of client `navMetricsAccountIdSet`. */
-export function navMetricsAccountIdSet(
-  node: NavTreeNodeDto,
-  rows: readonly CardMetricsAccountRow[]
-): Set<number> {
-  const leafIds = navLeafAccountIdSet(node);
-  const ids = new Set(leafIds);
-  for (const row of rows) {
-    if (ids.has(row.account_id)) continue;
-    if (accountInNavMetricsScope(row, node, leafIds)) ids.add(row.account_id);
-  }
   return ids;
 }
 
@@ -525,7 +486,7 @@ export function stripMetricsRows(
         return rows.filter((a) => leafIds.has(a.account_id));
       })()
     : (() => {
-        const ids = navMetricsAccountIdSet(node, rows);
+        const ids = navMetricsAccountIdSet(node);
         return rows.filter((a) => ids.has(a.account_id));
       })();
   return source.filter((a) => accountCountsTowardGroupTotals(a));
@@ -556,7 +517,7 @@ function parentVariantForNode(
 ): NavCardMetricsVariantDto {
   const { rows } = input;
   const mode = parentTitleModeForNavNode(node);
-  const subtreeIds = navMetricsAccountIdSet(node, rows);
+  const subtreeIds = navMetricsAccountIdSet(node);
   const subtreeRows = rows.filter((a) => subtreeIds.has(a.account_id));
 
   const childMetricsOfStripChildren = (period: CardMetricsPeriod): CardPeriodMetricsDto[] => {

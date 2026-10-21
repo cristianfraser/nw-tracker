@@ -66,17 +66,23 @@ function buildLiabilityNode(
 ): NavTreeNodeDto {
   const items = itemsByGroup.get(group.id) ?? [];
   const children: NavTreeNodeDto[] = [];
+  const memberIds = new Set<number>();
+  const pushGroupChild = (node: NavTreeNodeDto) => {
+    children.push(node);
+    for (const id of node.member_account_ids ?? []) memberIds.add(id);
+  };
 
   for (const item of items) {
     if (item.item_kind === "group" && item.child_group_id != null) {
       const child = groupsById.get(item.child_group_id);
-      if (child) children.push(buildLiabilityNode(child, itemsByGroup, groupsById, accountMeta));
+      if (child) pushGroupChild(buildLiabilityNode(child, itemsByGroup, groupsById, accountMeta));
     } else if (item.item_kind === "credit_card_group" && item.child_credit_card_group_id != null) {
       const ccGroup = db
         .prepare(`SELECT slug FROM credit_card_groups WHERE id = ?`)
         .get(item.child_credit_card_group_id) as { slug: string } | undefined;
-      if (ccGroup) children.push(...getCreditCardGroupNavChildren(ccGroup.slug));
+      if (ccGroup) getCreditCardGroupNavChildren(ccGroup.slug).forEach(pushGroupChild);
     } else if (item.item_kind === "account" && item.account_id != null) {
+      memberIds.add(item.account_id);
       if (accountChartInactive(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
@@ -129,6 +135,7 @@ function buildLiabilityNode(
     color_rgb: null,
     color: null,
     group_kind: "bucket",
+    member_account_ids: [...memberIds].sort((a, b) => a - b),
     children: pruneEmptyLiabilityNavGroups(children),
   };
 }

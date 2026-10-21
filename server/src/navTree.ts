@@ -41,6 +41,13 @@ export type NavTreeNodeDto = {
    */
   chart_inactive?: boolean;
   /**
+   * Group nodes: every account id in this node's subtree as the data links it — the omitted
+   * chart-inactive leaves included — so card metrics, the accounts table's coverage and the
+   * value map read membership from the tree instead of guessing it from asset-group slug
+   * prefixes (which the reparented leaves of a managed portfolio defeat). Absent on leaves.
+   */
+  member_account_ids?: number[];
+  /**
    * Groups from elsewhere in the tree that belong on this node's page as sibling cards, from its
    * single-source chart reference overlays (see `listSingleSourceReferenceSlugsByChartHost`).
    * Omitted when the node hosts none.
@@ -157,24 +164,26 @@ function buildNode(
 ): NavTreeNodeDto {
   const items = itemsByGroup.get(group.id) ?? [];
   const children: NavTreeNodeDto[] = [];
+  const memberIds = new Set<number>();
 
   for (const item of items) {
     if (item.item_kind === "group" && item.child_group_id != null) {
       const child = groupsById.get(item.child_group_id);
       if (child) {
-        children.push(
-          buildNode(
-            child,
-            itemsByGroup,
-            groupsById,
-            accountMeta,
-            expenseMeta,
-            linkedCardSlugsByHost,
-            options
-          )
+        const childNode = buildNode(
+          child,
+          itemsByGroup,
+          groupsById,
+          accountMeta,
+          expenseMeta,
+          linkedCardSlugsByHost,
+          options
         );
+        children.push(childNode);
+        for (const id of childNode.member_account_ids ?? []) memberIds.add(id);
       }
     } else if (item.item_kind === "account" && item.account_id != null) {
+      memberIds.add(item.account_id);
       if (
         !options.includeChartInactiveAccounts &&
         accountChartInactive(item.account_id) &&
@@ -278,6 +287,7 @@ function buildNode(
     color: rgbTripletToCss(resolved),
     group_kind: groupKind,
     ...(chartInactive ? { chart_inactive: true } : {}),
+    member_account_ids: [...memberIds].sort((a, b) => a - b),
     ...(linkedCardSlugs?.length ? { linked_card_slugs: linkedCardSlugs } : {}),
     children: prunedChildren,
   };

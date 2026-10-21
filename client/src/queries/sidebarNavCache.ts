@@ -1,7 +1,7 @@
 import type { SidebarNavResponse } from "../types";
 
-/** v5: nodes carry `chart_coverage`. */
-const SIDEBAR_NAV_STORAGE_KEY = "nw:sidebar-nav-v5";
+/** v5: nodes carry `chart_coverage`; v6: group nodes carry `member_account_ids`. */
+const SIDEBAR_NAV_STORAGE_KEY = "nw:sidebar-nav-v6";
 
 export function readSidebarNavCache(): SidebarNavResponse | undefined {
   try {
