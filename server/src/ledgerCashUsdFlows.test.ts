@@ -7,6 +7,7 @@ import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { db } from "./db.js";
+import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { flowEventInUnit, flowsDepositsNetTotalUsdByAccount } from "./flowsDeposits.js";
 import { loadAccountRowsForGroupConsolidation } from "./groupMonthlyPerfConsolidation.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
@@ -20,6 +21,7 @@ import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
 const FIXTURE_NOTE = "vitest-ledger-cash-usd-flows";
 const CLP_CASH_NAME = "vitest-ledger-cash-usd-flows-clp";
 const CHECKING_NAME = "vitest-ledger-cash-usd-flows-vista";
+const CLP_LEAF_SLUG = "cash_eqs__cash_savings__vitest_ledger_cash_usd_flows__clp";
 
 const thisMonth = monthKeyFromYmd(chileCalendarTodayYmd());
 const M1 = addCalendarMonths(thisMonth, -5);
@@ -35,13 +37,15 @@ describe("CLP ledger cash and checking: USD deposits event by event", () => {
   let restoreFx: (() => void) | null = null;
 
   beforeAll(() => {
-    const clpLeaf = db
-      .prepare(`SELECT id, slug FROM asset_groups WHERE slug = 'brokerage_cash__clp'`)
-      .get() as { id: number; slug: string } | undefined;
     const vistaLeaf = db
       .prepare(`SELECT id, slug FROM asset_groups WHERE slug = 'cash_eqs__cuenta_vista'`)
       .get() as { id: number; slug: string } | undefined;
-    if (!clpLeaf || !vistaLeaf) return;
+    if (!vistaLeaf) throw new Error("test DB has no asset group cash_eqs__cuenta_vista");
+    // A prefixed CLP ledger-cash leaf under Efectivo › Cash savings (kind = last slug segment).
+    const clpLeaf = {
+      id: ensureChildAssetGroupId("cash_eqs__cash_savings", "vitest_ledger_cash_usd_flows__clp", "Vitest ledger cash").id,
+      slug: CLP_LEAF_SLUG,
+    };
     clpSlug = clpLeaf.slug;
     checkingSlug = vistaLeaf.slug;
 
@@ -79,6 +83,7 @@ describe("CLP ledger cash and checking: USD deposits event by event", () => {
     restoreFx?.();
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(FIXTURE_NOTE);
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(CLP_CASH_NAME, CHECKING_NAME);
+    db.prepare(`DELETE FROM asset_groups WHERE slug = ?`).run(CLP_LEAF_SLUG);
   });
 
   /** Σ of the account's deposit events in the calendar month, in `unit`. */

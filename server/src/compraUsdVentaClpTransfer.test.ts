@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
+import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { validateMovementCreate, type AccountRow } from "./movementUnitsPolicy.js";
 import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
@@ -9,6 +10,7 @@ import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 const FIXTURE_USD = "vitest-compra-usd";
 const FIXTURE_CLP = "vitest-compra-clp";
 const FIXTURE_NOTE = "vitest-compra-transfer";
+const CLP_LEAF_SLUG = "cash_eqs__cash_savings__vitest_compra_clp__clp";
 
 const DATE = "2026-07-01";
 const CLP_SPENT = 5_000_000;
@@ -53,15 +55,18 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
   let usdId = 0;
   let clpId = 0;
   let usdAccountRow: AccountRow;
+  let clpAccountRow: AccountRow;
 
   beforeAll(() => {
     const usdLeaf = db
-      .prepare(`SELECT id, slug FROM asset_groups WHERE slug LIKE '%__usd' LIMIT 1`)
+      .prepare(`SELECT id, slug FROM asset_groups WHERE slug = 'cash_eqs__cash_savings__usd'`)
       .get() as { id: number; slug: string } | undefined;
-    const clpLeaf = db
-      .prepare(`SELECT id, slug FROM asset_groups WHERE slug LIKE '%__clp' LIMIT 1`)
-      .get() as { id: number; slug: string } | undefined;
-    if (!usdLeaf || !clpLeaf) return;
+    if (!usdLeaf) return;
+    // A prefixed CLP cash leaf (kind = last slug segment) under Efectivo › Cash savings.
+    const clpLeaf = {
+      id: ensureChildAssetGroupId("cash_eqs__cash_savings", "vitest_compra_clp__clp", "Vitest compra clp").id,
+      slug: CLP_LEAF_SLUG,
+    };
 
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(FIXTURE_NOTE);
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_CLP);
@@ -70,6 +75,7 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
     usdId = Number(ins.run(usdLeaf.id, FIXTURE_USD).lastInsertRowid);
     clpId = Number(ins.run(clpLeaf.id, FIXTURE_CLP).lastInsertRowid);
     usdAccountRow = { bucket_slug: usdLeaf.slug, group_slug: usdLeaf.slug };
+    clpAccountRow = { bucket_slug: clpLeaf.slug, group_slug: clpLeaf.slug };
 
     restoreFx = overrideFxDaily([[DATE, 935]]);
 
@@ -83,6 +89,7 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
     restoreFx?.();
     db.prepare(`DELETE FROM movements WHERE note = ?`).run(FIXTURE_NOTE);
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_USD, FIXTURE_CLP);
+    db.prepare(`DELETE FROM asset_groups WHERE slug = ?`).run(CLP_LEAF_SLUG);
   });
 
   it("validates as a from-CLP → to-USD-cash transfer with both amounts", () => {
@@ -116,7 +123,7 @@ describe("compra_usd_venta_clp with a CLP source counterpart", () => {
     if (!usdId || !clpId) return;
     // current = CLP account, counterpart = USD/from → from=USD, to=CLP → to not USD cash → reject.
     const v = validateMovementCreate(
-      { bucket_slug: "brokerage_cash__clp", group_slug: "brokerage_cash__clp" },
+      clpAccountRow,
       {
         occurred_on: DATE,
         flow_kind: "compra_usd_venta_clp",

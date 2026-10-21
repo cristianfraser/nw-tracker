@@ -9,6 +9,7 @@ import {
 } from "./dailySeries.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
+import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 import {
   computeShortHorizonReturnCells,
@@ -682,21 +683,23 @@ describe("getBucketDailySeriesCached", () => {
 describe("forward-posted cash movements — value and flow legs agree, P/L stays 0", () => {
   // Real clock on purpose: the display rule (`displayLedgerCutoffYmd`) keys off Chile today.
   // A CLP cash ledger account with a deposit dated yesterday and one the bank dates tomorrow.
-  const CASH_SLUG = "brokerage_cash__clp";
+  // A prefixed CLP cash leaf (kind = last slug segment) under Efectivo › Cash savings, made here.
+  const CASH_SLUG = "cash_eqs__cash_savings__vitest_daily_series_forward__clp";
   let cashId: number | null = null;
 
   beforeAll(() => {
-    const group = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(CASH_SLUG) as
-      | { id: number }
-      | undefined;
-    if (!group) return;
+    const group = ensureChildAssetGroupId(
+      "cash_eqs__cash_savings",
+      "vitest_daily_series_forward__clp",
+      "Vitest daily series cash"
+    ).id;
     cashId = Number(
       db
         .prepare(
           `INSERT INTO accounts (asset_group_id, name, notes, import_key)
            VALUES (?, 'Vitest · daily series forward-posted', 'vitest-daily-series-forward', 'vitest-daily-series-forward')`
         )
-        .run(group.id).lastInsertRowid
+        .run(group).lastInsertRowid
     );
     const today = chileCalendarTodayYmd();
     const ins = db.prepare(
@@ -711,6 +714,7 @@ describe("forward-posted cash movements — value and flow legs agree, P/L stays
     if (cashId == null) return;
     db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(cashId);
     db.prepare(`DELETE FROM accounts WHERE id = ?`).run(cashId);
+    db.prepare(`DELETE FROM asset_groups WHERE slug = ?`).run(CASH_SLUG);
     clearAggregationCache();
   });
 

@@ -3,6 +3,7 @@ import { db } from "./db.js";
 import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
 import { loadEquityBrokerageCapitalInflowEvents } from "./equityBrokerageCapitalFlows.js";
 import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
+import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 
 const FIXTURE_CLP = "vitest-clp-cap-cash";
 const FIXTURE_STOCK = "vitest-clp-cap-stock";
@@ -21,10 +22,11 @@ describe("CLP-funded stock_buy capital flows", () => {
     const stockLeaf = db
       .prepare(`SELECT id FROM asset_groups WHERE slug LIKE 'brokerage_acciones__%' LIMIT 1`)
       .get() as { id: number } | undefined;
-    const clpLeaf = db
-      .prepare(`SELECT id FROM asset_groups WHERE slug LIKE '%__clp' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!stockLeaf || !clpLeaf) return;
+    // A CLP cash leaf of the test's own under Cash savings (kind = the slug's last `__` segment).
+    const clpLeaf = {
+      id: ensureChildAssetGroupId("cash_eqs__cash_savings", "vitest_clp_cap_cash__clp", "Vitest CLP cash").id,
+    };
+    if (!stockLeaf) return;
 
     db.prepare(`DELETE FROM movements WHERE note LIKE ?`).run(`${FIXTURE_NOTE}%`);
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_CLP, FIXTURE_STOCK);
@@ -49,6 +51,7 @@ describe("CLP-funded stock_buy capital flows", () => {
   afterAll(() => {
     db.prepare(`DELETE FROM movements WHERE note LIKE ?`).run(`${FIXTURE_NOTE}%`);
     db.prepare(`DELETE FROM accounts WHERE name IN (?, ?)`).run(FIXTURE_CLP, FIXTURE_STOCK);
+    db.prepare(`DELETE FROM asset_groups WHERE slug = 'cash_eqs__cash_savings__vitest_clp_cap_cash__clp'`).run();
   });
 
   it("counts the CLP buy as a clp_wire capital inflow on the equity account", () => {

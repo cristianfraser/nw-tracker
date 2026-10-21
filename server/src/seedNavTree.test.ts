@@ -164,12 +164,13 @@ describe("seedNavTree brokerage sub-bucket move-out", () => {
   it("drops the stale sub-bucket membership when an account moves out of brokerage", () => {
     const cleanup: (() => void)[] = [];
     try {
+      const categorySlug = `vitest_brk_moveout_${Date.now()}`;
       const created = createPanelAccount({
         account: {
           account_type: "clp_cash",
           name: "vitest-brokerage-moveout",
-          category_slug: `vitest_brk_moveout_${Date.now()}`,
-          bucket_slug: "brokerage_cash",
+          category_slug: categorySlug,
+          bucket_slug: "brokerage_crypto",
           exclude_from_group_totals: false,
         },
       });
@@ -177,6 +178,8 @@ describe("seedNavTree brokerage sub-bucket move-out", () => {
       cleanup.push(() => {
         db.prepare(`DELETE FROM portfolio_group_items WHERE account_id = ?`).run(accountId);
         db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+        // The leaf asset groups the create and the move made (one per bucket the account sat in).
+        db.prepare(`DELETE FROM asset_groups WHERE slug GLOB ?`).run(`*__${categorySlug}__clp`);
         seedNavTree();
       });
 
@@ -191,12 +194,12 @@ describe("seedNavTree brokerage sub-bucket move-out", () => {
             .all(id) as { slug: string }[]
         ).map((r) => r.slug);
 
-      expect(groupsFor(accountId)).toContain("brokerage_cash");
+      expect(groupsFor(accountId)).toContain("brokerage_crypto");
 
       updatePanelAccount(accountId, { bucket_slug: "cash_savings" });
       const after = groupsFor(accountId);
       expect(after).toContain("cash_savings");
-      expect(after).not.toContain("brokerage_cash");
+      expect(after).not.toContain("brokerage_crypto");
     } finally {
       for (const fn of cleanup.reverse()) fn();
     }
