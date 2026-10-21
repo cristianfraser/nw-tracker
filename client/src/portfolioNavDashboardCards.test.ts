@@ -139,12 +139,13 @@ function dashRow(
 }
 
 describe("navMetricsAccountIdSet", () => {
-  it("includes chart-inactive accounts in the same portfolio bucket as the nav node", () => {
+  it("covers the members the server lists, the chart-inactive ones the tree omits included", () => {
     const accionesNode: NavTreeNodeDto = navNodeFixture({
       slug: "brokerage_acciones",
       label: "Acciones",
       asset_group_slug: "brokerage__acciones",
       route_path: "/inversiones/brokerage/acciones",
+      member_account_ids: [10, 99],
       children: [navNodeFixture({ slug: "acc-spy", label: "SPY", account_id: 10, children: [] })],
     });
     const accounts: DashboardAccountRow[] = [
@@ -157,14 +158,41 @@ describe("navMetricsAccountIdSet", () => {
     ];
     const leafOnly = navLeafAccountIdSet(accionesNode);
     expect(leafOnly.has(99)).toBe(false);
-    const metrics = navMetricsAccountIdSet(accionesNode, accounts);
+    const metrics = navMetricsAccountIdSet(accionesNode);
     expect(metrics.has(10)).toBe(true);
     expect(metrics.has(99)).toBe(true);
     const rows = dashboardRowsForNavSubtree(accounts, accionesNode);
     expect(rows.map((r) => r.account_id).sort()).toEqual([10, 99]);
   });
-});
 
+  it("reads a childless, all-inactive sub-bucket's members from its own list, not from slug prefixes", () => {
+    // The IPSA unit once liquidated: no nav leaves, members whose asset-group slugs
+    // (`brokerage_acciones__…`, `brokerage_cash__caja_…`) never name the unit.
+    const ipsa: NavTreeNodeDto = navNodeFixture({
+      slug: "brokerage_portafolio_ipsa",
+      label: "IPSA",
+      chart_inactive: true,
+      member_account_ids: [101, 102],
+      children: [],
+    });
+    const acciones: NavTreeNodeDto = navNodeFixture({
+      slug: "brokerage_acciones",
+      label: "Acciones",
+      asset_group_slug: "brokerage_acciones",
+      member_account_ids: [10, 101, 102],
+      children: [ipsa, navNodeFixture({ slug: "acc-spy", label: "SPY", account_id: 10, children: [] })],
+    });
+    expect([...navMetricsAccountIdSet(ipsa)].sort()).toEqual([101, 102]);
+    expect([...navMetricsAccountIdSet(acciones)].sort()).toEqual([10, 101, 102]);
+    const rows: DashboardAccountRow[] = [
+      { ...dashRow(10, 1_000_000, "brokerage_acciones__spy", "SPY"), chart_inactive: false },
+      { ...dashRow(101, 0, "brokerage_acciones__cfietfipsa_sn", "CFIETFIPSA"), chart_inactive: true, deposits_month_clp: -2_992_723 },
+      { ...dashRow(102, 0, "brokerage_cash__caja_portafolio_ipsa__clp", "Caja IPSA"), chart_inactive: true, deposits_month_clp: -38_436 },
+    ];
+    // Both members are covered by the unit's row, so neither leaks into Acciones' own rows.
+    expect(inactiveAccountNavLeavesWithActivity({ accounts: rows }, acciones, [ipsa])).toEqual([]);
+  });
+});
 describe("resolveDashboardBucketFromNavNode cash_savings", () => {
   it("maps cash_savings nav node to cash_eqs API bucket", () => {
     expect(
@@ -667,6 +695,7 @@ describe("inactiveAccountNavLeavesWithActivity", () => {
     route_path: "/inversiones/brokerage/mutual-funds",
     portfolio_group_id: 1,
     chart_inactive: true,
+    member_account_ids: [45],
     children: [],
   });
   const inactiveRow = {

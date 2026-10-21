@@ -56,14 +56,18 @@ function buildCreditCardGroupNode(
 ): NavTreeNodeDto {
   const items = itemsByGroup.get(group.id) ?? [];
   const children: NavTreeNodeDto[] = [];
+  const memberIds = new Set<number>();
 
   for (const item of items) {
     if (item.item_kind === "group" && item.child_group_id != null) {
       const child = groupsById.get(item.child_group_id);
       if (child) {
-        children.push(buildCreditCardGroupNode(child, itemsByGroup, groupsById, accountMeta));
+        const childNode = buildCreditCardGroupNode(child, itemsByGroup, groupsById, accountMeta);
+        children.push(childNode);
+        for (const id of childNode.member_account_ids ?? []) memberIds.add(id);
       }
     } else if (item.item_kind === "account" && item.account_id != null) {
+      memberIds.add(item.account_id);
       if (isSupersededSantanderCcMaster(item.account_id)) continue;
       if (isNavRetiredCcMaster(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
@@ -117,6 +121,7 @@ function buildCreditCardGroupNode(
     color_rgb: null,
     color: null,
     group_kind: "bucket",
+    member_account_ids: [...memberIds].sort((a, b) => a - b),
     children: pruneEmptyCreditCardNavGroups(children),
   };
 }

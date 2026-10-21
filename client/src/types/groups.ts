@@ -244,6 +244,12 @@ export interface NavTreeNodeDto {
   /** Long zero tail: listed for chart history; omitted from group tables and strip cards. */
   chart_inactive?: boolean;
   /**
+   * Group nodes: every account id in the subtree as the server links it, the chart-inactive
+   * leaves the tree omits included — card metrics, table coverage and the value map read
+   * membership from here, never from slug prefixes. Absent on account leaves.
+   */
+  member_account_ids?: number[];
+  /**
    * Groups from elsewhere in the tree that belong on this node's page as sibling cards
    * (Efectivo hosts the Pasivos credit-card group, whose balance nets into its total).
    * Server-declared from the single-source chart reference overlays; resolve against the

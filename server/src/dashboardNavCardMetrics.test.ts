@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildNavCardMetricsBySlug,
   cardMetricsFromRows,
+  navMetricsAccountIdSet,
+  stripMetricsRows,
   sumCardMetrics,
   type CardMetricsAccountRow,
   type NavCardMetricsBuildInput,
@@ -122,6 +124,38 @@ describe("sumCardMetrics", () => {
     expect(sum.delta_period_clp).toBe(7);
     expect(sum.delta_period_usd).toBeNull();
     expect(sum.delta_total_clp).toBeNull();
+  });
+});
+
+describe("navMetricsAccountIdSet", () => {
+  it("covers a node's nav leaves plus the members its subtree lists, never slug-prefix matches", () => {
+    const ipsa = navNode({
+      slug: "brokerage_portafolio_ipsa",
+      chart_inactive: true,
+      member_account_ids: [101, 102],
+      children: [],
+    });
+    const acciones = navNode({
+      slug: "brokerage_acciones",
+      asset_group_slug: "brokerage_acciones",
+      member_account_ids: [10, 101, 102],
+      children: [ipsa, accountLeaf("acc-10", 10)],
+    });
+    expect([...navMetricsAccountIdSet(ipsa)].sort()).toEqual([101, 102]);
+    expect([...navMetricsAccountIdSet(acciones)].sort()).toEqual([10, 101, 102]);
+    const rows = [
+      row({ account_id: 10, bucket_slug: "brokerage_acciones__spy", deposits_month_clp: 0 }),
+      row({ account_id: 101, bucket_slug: "brokerage_acciones__cfietfipsa_sn", chart_inactive: true, deposits_month_clp: -2_992_723, delta_month_clp: -23_042 }),
+      row({ account_id: 102, bucket_slug: "brokerage_cash__caja_portafolio_ipsa__clp", chart_inactive: true, deposits_month_clp: -38_436, delta_month_clp: -2_579 }),
+      row({ account_id: 7, bucket_slug: "brokerage_acciones__stray", chart_inactive: true, deposits_month_clp: -1 }),
+    ];
+    expect(stripMetricsRows(ipsa, rows).map((r) => r.account_id)).toEqual([101, 102]);
+    // The stray row's slug starts with the node's asset group; membership alone decides.
+    expect(stripMetricsRows(acciones, rows).map((r) => r.account_id)).toEqual([10, 101, 102]);
+    const metrics = buildNavCardMetricsBySlug({ navRoots: [acciones], rows });
+    expect(metrics.brokerage_portafolio_ipsa!.child.month.deposits_period_clp).toBe(-3_031_159);
+    expect(metrics.brokerage_portafolio_ipsa!.child.month.delta_period_clp).toBe(-25_621);
+    expect(metrics.brokerage_acciones!.child.month.deposits_period_clp).toBe(-3_031_159);
   });
 });
 

@@ -7,6 +7,7 @@ import { PortfolioNavChildDetailCards } from "./PortfolioNavChildDetailCards";
 import {
   dashboardRowsForNavSubtree,
   inactiveAccountNavLeavesWithActivity,
+  navChildCardHasActivity,
   routableNavStripChildren,
   portfolioNavParentMainValue,
   portfolioNavParentTitleModeForNavNode,
@@ -134,9 +135,17 @@ export function PortfolioNavEntityCardsStrip({
    */
   const groupsAsRows = stripAccountChildren.length > 0 && stripGroupChildren.length > 0;
 
+  /**
+   * A sub-bucket whose every member is chart-inactive stays a row only while some period
+   * still shows activity (the IPSA unit the month it was liquidated), as its detail card
+   * would (`PortfolioNavChildDetailCards`) and as a sold-out account does below.
+   */
   const filteredGroupChildren = useMemo(
-    () => routableNavStripChildren(stripGroupChildren),
-    [stripGroupChildren]
+    () =>
+      routableNavStripChildren(stripGroupChildren).filter(
+        (c) => c.chart_inactive !== true || navChildCardHasActivity(dash, c, showUsd)
+      ),
+    [stripGroupChildren, dash, showUsd]
   );
 
   const filteredAccountChildren = useMemo(
