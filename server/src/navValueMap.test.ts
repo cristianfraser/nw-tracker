@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CardMetricsAccountRow } from "./dashboardNavCardMetrics.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import { buildNavValueMap, NAV_VALUE_MAP_COLOR_BOUNDS, type NavValueMapNodeDto } from "./navValueMap.js";
+import type { ProxyBasketBreakdown, ProxyHoldingBreakdown } from "./proxyBasketBreakdownTypes.js";
 
 function row(partial: Partial<CardMetricsAccountRow> & { account_id: number }): CardMetricsAccountRow {
   return {
@@ -191,5 +192,151 @@ describe("buildNavValueMap", () => {
       linkedCreditCards,
     });
     expect(leaves(out).map((l) => l.slug)).not.toContain("real_estate");
+  });
+});
+
+describe("buildNavValueMap proxy breakdown", () => {
+  const perPeriod = <T,>(v: T): Record<"day" | "month" | "year", T> => ({ day: v, month: v, year: v });
+  const holding = (ticker: string, weight: number, r: number | null): ProxyHoldingBreakdown => ({
+    ticker,
+    price_ticker: ticker,
+    weight,
+    pct: perPeriod({ clp: r, usd: r }),
+    contribution_pct: perPeriod({ clp: r == null ? null : r * weight, usd: r == null ? null : r * weight }),
+    days_held: perPeriod({ held: 3, total: 5 }),
+  });
+  const breakdown = (bucket: string, other_weight: number): ProxyBasketBreakdown => ({
+    bucket_slug: bucket,
+    positions_date: "2026-10-01",
+    other_weight,
+    holdings: [holding("SPXS", 0.5, 0.1), holding("FTEC", 0.3, -0.05)],
+  });
+  // APV frame with two leaf groups, one Fintual account each; a plain brokerage group beside.
+  const tree = navNode({
+    slug: "net_worth",
+    children: [
+      navNode({
+        slug: "retirement_apv",
+        children: [
+          navNode({ slug: "retirement_apv_a", children: [acc(46)] }),
+          navNode({ slug: "retirement_apv_b", children: [acc(47)] }),
+        ],
+      }),
+      navNode({ slug: "brokerage", children: [acc(2)] }),
+    ],
+  });
+  const rows = [
+    row({ account_id: 46, current_value_clp: 600, current_value_usd: 0.6, delta_day_clp: 6, prior_day_close_clp: 594, deposits_day_clp: 0 }),
+    row({ account_id: 47, current_value_clp: 400, current_value_usd: 0.4, delta_day_clp: 4, prior_day_close_clp: 396, deposits_day_clp: 0 }),
+    row({ account_id: 2, current_value_clp: 300, current_value_usd: 0.3, delta_day_clp: -3, prior_day_close_clp: 303, deposits_day_clp: 0 }),
+  ];
+  const linkedCreditCards = { clp: 0, usd: 0 };
+  const proxyX = {
+    bucketByAccountId: new Map([[46, "x"], [47, "x"]]),
+    breakdowns: new Map([["x", breakdown("x", 0.2)]]),
+  };
+
+  it("merges accounts sharing one basket into the frame's holding tiles, no double count", () => {
+    const root = buildNavValueMap({ navRoot: tree, rows, linkedCreditCards, proxy: proxyX });
+    const apv = root.children!.find((c) => c.slug === "retirement_apv")!;
+    expect(apv.kind).toBe("group");
+    expect(apv.frame).toBe(true);
+    expect(apv.leaf_accounts).toBeUndefined();
+    expect(apv.value_clp).toBe(1000);
+    expect(apv.value_usd).toBeCloseTo(1, 10);
+    expect(apv.pct.day.clp).toBeCloseTo(10 / 990, 10);
+    expect(apv.pl.day.clp).toBe(10);
+    expect(apv.children!.map((c) => c.slug)).toEqual(["holding_x_spxs", "holding_x_ftec", "holding_x_other"]);
+    const spxs = apv.children![0]!;
+    expect(spxs.kind).toBe("holding");
+    expect(spxs.label).toBe("SPXS");
+    expect(spxs.label_i18n_key).toBeNull();
+    expect(spxs.account_id).toBeNull();
+    expect(spxs.route_path).toBe("/retirement_apv");
+    expect(spxs.value_clp).toBe(500);
+    expect(spxs.value_usd).toBeCloseTo(0.5, 10);
+    expect(spxs.pct.day.clp).toBe(0.1);
+    expect(spxs.pl.day.clp).toBeCloseTo((500 * 0.1) / 1.1, 10);
+    expect(spxs.pl.day.usd).toBeCloseTo((0.5 * 0.1) / 1.1, 10);
+    expect(spxs.holding).toEqual({
+      ticker: "SPXS",
+      weight: 0.5,
+      contribution_pct: perPeriod({ clp: 0.05, usd: 0.05 }),
+      days_held: perPeriod({ held: 3, total: 5 }),
+    });
+    const ftec = apv.children![1]!;
+    expect(ftec.value_clp).toBe(300);
+    expect(ftec.pl.day.clp).toBeCloseTo((300 * -0.05) / 0.95, 10);
+    const other = apv.children![2]!;
+    expect(other.kind).toBe("holding");
+    expect(other.holding).toBeNull();
+    expect(other.label_i18n_key).toBe("valueMap.otherSleeve");
+    expect(other.value_clp).toBe(200);
+    expect(other.pct.day.clp).toBeNull();
+    expect(other.pl.day.clp).toBeNull();
+    // the accounts are claimed once: the root is Σ of its frames, nothing counted twice
+    expect(root.value_clp).toBe(1300);
+    expect(leaves(root).reduce((s, l) => s + l.value_clp, 0)).toBe(1300);
+    expect(leaves(root).map((l) => l.slug)).not.toContain("retirement_apv_a");
+  });
+
+  it("accounts on different baskets break down under their own leaf groups", () => {
+    const proxy = {
+      bucketByAccountId: new Map([[46, "x"], [47, "y"]]),
+      breakdowns: new Map([["x", breakdown("x", 0)], ["y", breakdown("y", 0.5)]]),
+    };
+    const root = buildNavValueMap({ navRoot: tree, rows, linkedCreditCards, proxy });
+    const apv = root.children!.find((c) => c.slug === "retirement_apv")!;
+    expect(apv.children!.map((c) => c.slug)).toEqual(["retirement_apv_a", "retirement_apv_b"]);
+    const a = apv.children![0]!;
+    expect(a.frame).toBe(true);
+    expect(a.value_clp).toBe(600);
+    expect(a.children!.map((c) => c.slug)).toEqual(["holding_x_spxs", "holding_x_ftec"]);
+    const b = apv.children![1]!;
+    expect(b.children!.map((c) => c.slug)).toEqual(["holding_y_spxs", "holding_y_other", "holding_y_ftec"]);
+    expect(b.children![1]!.value_clp).toBe(200);
+    expect(apv.value_clp).toBe(1000);
+    expect(root.value_clp).toBe(1300);
+  });
+
+  it("a group mixing a proxied and a plain account keeps its shape", () => {
+    const proxy = {
+      bucketByAccountId: new Map([[46, "x"]]),
+      breakdowns: new Map([["x", breakdown("x", 0.2)]]),
+    };
+    const root = buildNavValueMap({ navRoot: tree, rows, linkedCreditCards, proxy });
+    const apv = root.children!.find((c) => c.slug === "retirement_apv")!;
+    expect(apv.children!.map((c) => c.slug)).toEqual(["retirement_apv_a", "retirement_apv_b"]);
+    // apv_a alone is on the basket: it breaks down by itself; apv_b stays a plain leaf tile
+    expect(apv.children![0]!.children!.map((c) => c.kind)).toEqual(["holding", "holding", "holding"]);
+    const b = apv.children![1]!;
+    expect(b.frame).toBe(false);
+    expect(b.children).toBeUndefined();
+    expect(b.leaf_accounts!.map((c) => c.slug)).toEqual(["account_47"]);
+    expect(root.value_clp).toBe(1300);
+  });
+
+  it("no breakdown on record for the basket, or no proxy input: unchanged", () => {
+    const plain = buildNavValueMap({ navRoot: tree, rows, linkedCreditCards });
+    const noBreakdown = buildNavValueMap({
+      navRoot: tree,
+      rows,
+      linkedCreditCards,
+      proxy: { bucketByAccountId: proxyX.bucketByAccountId, breakdowns: new Map() },
+    });
+    expect(noBreakdown).toEqual(plain);
+    const apv = plain.children!.find((c) => c.slug === "retirement_apv")!;
+    expect(apv.children!.map((c) => c.slug)).toEqual(["retirement_apv_a", "retirement_apv_b"]);
+    expect(apv.children![0]!.leaf_accounts!.map((c) => c.slug)).toEqual(["account_46"]);
+  });
+
+  it("the «Otros» tile only when the fund has a non-ETF sleeve", () => {
+    const proxy = {
+      bucketByAccountId: proxyX.bucketByAccountId,
+      breakdowns: new Map([["x", breakdown("x", 0)]]),
+    };
+    const root = buildNavValueMap({ navRoot: tree, rows, linkedCreditCards, proxy });
+    const apv = root.children!.find((c) => c.slug === "retirement_apv")!;
+    expect(apv.children!.map((c) => c.slug)).toEqual(["holding_x_spxs", "holding_x_ftec"]);
   });
 });

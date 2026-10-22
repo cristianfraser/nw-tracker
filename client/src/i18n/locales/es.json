@@ -1915,8 +1915,12 @@
     "tooltip": {
       "value": "Valor",
       "return": "Retorno",
-      "pl": "P/L"
+      "pl": "P/L",
+      "contribution": "Aporte al fondo",
+      "daysHeld": "En cartera",
+      "daysHeldValue": "{{held}}/{{total}} días"
     },
+    "otherSleeve": "Otros",
     "empty": "No hay posiciones para mostrar.",
     "ariaLabel": "Mapa de valor. El tamaño es el valor actual y el color el retorno."
   }

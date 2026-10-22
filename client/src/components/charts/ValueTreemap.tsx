@@ -309,6 +309,25 @@ export function ValueTreemap({
                   ? "—"
                   : formatCurrency(tooltipNode.pl[period][unit]!, unit)}
               </div>
+              {tooltipNode.holding ? (
+                <>
+                  <div>
+                    <span className="muted">{i18n.t("valueMap.tooltip.contribution")}</span>{" "}
+                    {formatPct(
+                      tooltipNode.holding.contribution_pct[period][unit] == null
+                        ? null
+                        : tooltipNode.holding.contribution_pct[period][unit]! * 100
+                    )}
+                  </div>
+                  <div>
+                    <span className="muted">{i18n.t("valueMap.tooltip.daysHeld")}</span>{" "}
+                    {i18n.t("valueMap.tooltip.daysHeldValue", {
+                      held: tooltipNode.holding.days_held[period].held,
+                      total: tooltipNode.holding.days_held[period].total,
+                    })}
+                  </div>
+                </>
+              ) : null}
             </div>
           ) : null}
         </div>

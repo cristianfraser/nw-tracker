@@ -50,6 +50,15 @@ export function isRiskyNorrisApvMtmSeries(seriesKey: string | null | undefined):
 }
 
 /**
+ * The watchlist composite bucket whose basket proxies a fund series (the value map breaks
+ * such an account down into the basket's holdings), or null for a series with no proxy.
+ * Data-driven hook: a second proxied fund adds a case here, nothing else changes.
+ */
+export function proxyBucketSlugForSeriesKey(seriesKey: string | null | undefined): string | null {
+  return isRiskyNorrisProxyMtmSeries(seriesKey) ? RISKY_NORRIS_PROXY_BUCKET : null;
+}
+
+/**
  * Global evening Fintual sync caught up for the Chile day `ymd` (official cuotas in DB).
  *
  * Keyed by a DAY, not the clock: the proxy gate asks about the NYSE session it would be

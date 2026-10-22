@@ -29,12 +29,27 @@
  *
  * Colour: the flow-adjusted % of the period (the card `row_pct` rule over the node's rows; a
  * single row for an account tile), against FIXED per-period bounds emitted with the payload.
+ *
+ * Proxy breakdown: a group (frame or leaf group alike) whose positive, counting accounts ALL
+ * sit on the same proxy basket (`proxy.bucketByAccountId`, a fund valued through an ETF
+ * basket — the two Fintual APV accounts share the Risky Norris proxy) with a breakdown on
+ * record shows the FUND's composition instead of its accounts: a frame whose value, % and P/L
+ * are the group's real ones and whose children are one `holding` tile per stated ETF (sized
+ * node value × weight, coloured by the holding's own held-window return) plus one neutral
+ * «Otros» tile for the non-ETF sleeve. The accounts are claimed by that frame, so the merge
+ * never double counts. Accounts on several buckets, a mix of proxied and plain accounts, or a
+ * bucket without a breakdown fall through to the shape above (each child group then applies
+ * the rule itself).
  */
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { db } from "./db.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { getNetWorthNavGroupNode } from "./navTree.js";
+import { loadProxyBasketBreakdown } from "./proxyBasketBreakdown.js";
+import type { ProxyBasketBreakdown, ProxyHoldingBreakdown } from "./proxyBasketBreakdownTypes.js";
+import { proxyBucketSlugForSeriesKey } from "./riskyNorrisProxyMtm.js";
 import {
   accountCountsTowardGroupTotals,
   cardMetricsFromRows,
@@ -57,9 +72,20 @@ export const NAV_VALUE_MAP_COLOR_BOUNDS: Record<CardMetricsPeriod, number> = {
 
 export type NavValueMapAmountDto = { clp: number | null; usd: number | null };
 
+export type NavValueMapHoldingDto = {
+  /** The ticker as the fund states it. */
+  ticker: string;
+  /** Share of the whole fund (the tile is the frame's value × this). */
+  weight: number;
+  /** The holding's share of the fund's period return, fraction of the fund, per unit. */
+  contribution_pct: Record<CardMetricsPeriod, NavCardPctDto>;
+  /** Calendar days in the period the fund held it, out of the period's days so far. */
+  days_held: Record<CardMetricsPeriod, { held: number; total: number }>;
+};
+
 export type NavValueMapNodeDto = {
-  kind: "group" | "account";
-  /** Group slug, or `account_<id>` for an account tile. */
+  kind: "group" | "account" | "holding";
+  /** Group slug, `account_<id>` for an account tile, `holding_<bucket>_<ticker|other>` for a holding tile. */
   slug: string;
   account_id: number | null;
   label: string;
@@ -78,6 +104,18 @@ export type NavValueMapNodeDto = {
    * level into these (the frame keeps the group's true value); deeper they stay one tile.
    */
   leaf_accounts?: NavValueMapNodeDto[];
+  /**
+   * Holding tiles only (kind "holding"): the ETF behind the tile; null on the «Otros» tile
+   * (the non-ETF sleeve, which has no return of its own).
+   */
+  holding?: NavValueMapHoldingDto | null;
+};
+
+export type NavValueMapProxyInput = {
+  /** account id → proxy bucket slug, for every account valued through a basket proxy. */
+  bucketByAccountId: ReadonlyMap<number, string>;
+  /** bucket slug → its breakdown; a bucket missing here has none on record. */
+  breakdowns: ReadonlyMap<string, ProxyBasketBreakdown>;
 };
 
 export type NavValueMapInput = {
@@ -86,6 +124,8 @@ export type NavValueMapInput = {
   rows: readonly CardMetricsAccountRow[];
   /** Linked credit cards' owed total (as `linkedCreditCardClpForCashCardAsOf`); usd null = unavailable. */
   linkedCreditCards: { clp: number; usd: number | null };
+  /** Proxy baskets to break proxied accounts down into; absent = no breakdowns. */
+  proxy?: NavValueMapProxyInput;
 };
 
 function isMapGroup(n: NavTreeNodeDto): boolean {
@@ -119,8 +159,83 @@ function pctAndPl(rows: readonly CardMetricsAccountRow[]) {
   return { pct, pl };
 }
 
+const PERIODS: readonly CardMetricsPeriod[] = ["day", "month", "year"];
+
+function holdingSlug(bucket: string, part: string): string {
+  return `holding_${bucket}_${part}`.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
+
+/** value × r / (1 + r): the P/L of a holding that returned r over the period and is worth value now. */
+function plFromReturn(value: number | null, r: number | null): number | null {
+  if (value == null || r == null || !Number.isFinite(r) || r <= -1) return null;
+  return (value * r) / (1 + r);
+}
+
+function holdingTile(
+  base: { route_path: string },
+  bucket: string,
+  h: ProxyHoldingBreakdown,
+  frameClp: number,
+  frameUsd: number | null
+): NavValueMapNodeDto {
+  const value_clp = frameClp * h.weight;
+  const value_usd = frameUsd == null ? null : frameUsd * h.weight;
+  const pct = {} as Record<CardMetricsPeriod, NavCardPctDto>;
+  const pl = {} as Record<CardMetricsPeriod, NavValueMapAmountDto>;
+  for (const period of PERIODS) {
+    pct[period] = { clp: h.pct[period].clp, usd: h.pct[period].usd };
+    pl[period] = {
+      clp: plFromReturn(value_clp, h.pct[period].clp),
+      usd: plFromReturn(value_usd, h.pct[period].usd),
+    };
+  }
+  return {
+    kind: "holding",
+    slug: holdingSlug(bucket, h.ticker),
+    account_id: null,
+    label: h.ticker,
+    label_i18n_key: null,
+    route_path: base.route_path,
+    value_clp,
+    value_usd,
+    pct,
+    pl,
+    frame: false,
+    holding: {
+      ticker: h.ticker,
+      weight: h.weight,
+      contribution_pct: h.contribution_pct,
+      days_held: h.days_held,
+    },
+  };
+}
+
+function otherSleeveTile(
+  base: { route_path: string },
+  bucket: string,
+  weight: number,
+  frameClp: number,
+  frameUsd: number | null
+): NavValueMapNodeDto {
+  const nullPct = () => ({ clp: null, usd: null });
+  return {
+    kind: "holding",
+    slug: holdingSlug(bucket, "other"),
+    account_id: null,
+    label: "Otros",
+    label_i18n_key: "valueMap.otherSleeve",
+    route_path: base.route_path,
+    value_clp: frameClp * weight,
+    value_usd: frameUsd == null ? null : frameUsd * weight,
+    pct: { day: nullPct(), month: nullPct(), year: nullPct() },
+    pl: { day: nullPct(), month: nullPct(), year: nullPct() },
+    frame: false,
+    holding: null,
+  };
+}
+
 export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
-  const { navRoot, rows, linkedCreditCards } = input;
+  const { navRoot, rows, linkedCreditCards, proxy } = input;
   const rowById = new Map(rows.map((r) => [r.account_id, r]));
 
   // Accounts the tree names explicitly are claimed by their own group first; chart-inactive
@@ -166,6 +281,34 @@ export function buildNavValueMap(input: NavValueMapInput): NavValueMapNodeDto {
       label_i18n_key: node.label_i18n_key,
       route_path: node.route_path,
     };
+
+    // Proxy breakdown: every positive counting account of this group on ONE proxy basket
+    // with a breakdown → the fund's composition replaces the accounts (see the module doc).
+    if (proxy) {
+      const candidates = metricsRows.filter((r) => {
+        if (!accountCountsTowardGroupTotals(r)) return false;
+        if (r.current_value_clp == null || !(r.current_value_clp > 0)) return false;
+        if (claimed.has(r.account_id)) return false;
+        if (explicitIds.has(r.account_id) && !navLeafAccountIdSet(node).has(r.account_id)) return false;
+        return true;
+      });
+      const buckets = new Set(candidates.map((r) => proxy.bucketByAccountId.get(r.account_id) ?? null));
+      const bucket = buckets.size === 1 ? [...buckets][0] : null;
+      const breakdown = bucket != null ? proxy.breakdowns.get(bucket) : undefined;
+      if (candidates.length > 0 && bucket != null && breakdown) {
+        for (const r of candidates) claimed.add(r.account_id);
+        const value_clp = sumFinite(candidates.map((r) => r.current_value_clp)) ?? 0;
+        const usdParts = candidates.map((r) => r.current_value_usd);
+        const value_usd = usdParts.every((v) => v != null && Number.isFinite(v))
+          ? (sumFinite(usdParts) as number)
+          : null;
+        const children = breakdown.holdings.map((h) => holdingTile(base, bucket, h, value_clp, value_usd));
+        if (breakdown.other_weight > 0) {
+          children.push(otherSleeveTile(base, bucket, breakdown.other_weight, value_clp, value_usd));
+        }
+        return { ...base, value_clp, value_usd, ...pctAndPl(candidates), frame: true, children };
+      }
+    }
 
     if (groupKids.length > 0) {
       const children: NavValueMapNodeDto[] = [];
@@ -243,6 +386,33 @@ export type NavValueMapPayload = {
   value_map_color_bounds: Record<CardMetricsPeriod, number>;
 };
 
+/**
+ * The proxy baskets behind the rows' accounts (`accounts.fund_series_key` →
+ * `proxyBucketSlugForSeriesKey`), with the breakdown of every bucket that has one on record.
+ */
+function loadNavValueMapProxyInput(
+  rows: readonly CardMetricsAccountRow[],
+  includeUsd: boolean
+): NavValueMapProxyInput {
+  const ids = [...new Set(rows.map((r) => r.account_id))].filter((id) => id > 0);
+  const bucketByAccountId = new Map<number, string>();
+  if (ids.length > 0) {
+    const seriesRows = db
+      .prepare(`SELECT id, fund_series_key FROM accounts WHERE id IN (${ids.map(() => "?").join(",")})`)
+      .all(...ids) as { id: number; fund_series_key: string | null }[];
+    for (const r of seriesRows) {
+      const bucket = proxyBucketSlugForSeriesKey(r.fund_series_key);
+      if (bucket) bucketByAccountId.set(r.id, bucket);
+    }
+  }
+  const breakdowns = new Map<string, ProxyBasketBreakdown>();
+  for (const bucket of new Set(bucketByAccountId.values())) {
+    const b = loadProxyBasketBreakdown(bucket, { includeUsd });
+    if (b) breakdowns.set(bucket, b);
+  }
+  return { bucketByAccountId, breakdowns };
+}
+
 /** The two payload fields every `card_metrics_by_slug` carrier also carries. */
 export function buildNavValueMapPayload(
   rows: readonly CardMetricsAccountRow[],
@@ -258,6 +428,7 @@ export function buildNavValueMapPayload(
       navRoot,
       rows,
       linkedCreditCards: { clp, usd: usd != null && Number.isFinite(usd) ? usd : null },
+      proxy: loadNavValueMapProxyInput(rows, includeUsd),
     }),
     value_map_color_bounds: NAV_VALUE_MAP_COLOR_BOUNDS,
   };
