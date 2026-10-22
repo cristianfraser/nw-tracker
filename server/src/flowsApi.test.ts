@@ -21,6 +21,7 @@ function flowRow(over: Partial<FlowsApiRow>): FlowsApiRow {
     occurred_on: "2026-01-15",
     note: null,
     units_delta: null,
+    counter_units_delta: null,
     flow_kind: null,
     ticker: null,
     flow_type: "deposit_clp",

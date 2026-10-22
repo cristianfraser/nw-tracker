@@ -6,9 +6,9 @@
  * the units. The two must agree — a mismatch means the valor cuota or one of the inputs is wrong.
  */
 import { accountKindSlugForAccountId } from "./accountBucket.js";
-import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { cryptoEquityTickerForAccount } from "./cryptoValuation.js";
 import { equityCloseEod } from "./equityQuote.js";
+import { cuotaLedgerSeriesKeyForAccount } from "./cuotaLedgerAccounts.js";
 import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
 import { fundUnitClpOnOrBefore } from "./fundUnitDaily.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
@@ -27,7 +27,7 @@ export function valorCuotaClpOnDate(accountId: number, ymd: string): number | nu
     return closeUsd * fx.clp_per_usd;
   }
   const kind = accountKindSlugForAccountId(accountId);
-  const seriesKey = kind === "afp" ? AFP_UNO_CUOTA_SERIES_KEY : fundSeriesKeyForAccount(accountId);
+  const seriesKey = kind === "afp" ? cuotaLedgerSeriesKeyForAccount(accountId, kind, ymd) : fundSeriesKeyForAccount(accountId);
   if (!seriesKey) return null;
   return fundUnitClpOnOrBefore(seriesKey, ymd);
 }

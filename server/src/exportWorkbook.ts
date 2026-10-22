@@ -20,6 +20,7 @@ import {
 } from "./accountMovementsApi.js";
 import { compareFlowRowsForDisplay } from "./brokerageFlowMovement.js";
 import { db } from "./db.js";
+import { transferToLegUnits } from "./movementTransfer.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 
 export const EXPORT_SECTIONS = ["closings", "aportes", "pl", "movements"] as const;
@@ -127,7 +128,8 @@ function movementRow(m: AccountMovementApiRow, accountName: string | null): Shee
     tipo: m.flow_type_label,
     monto_clp: montoClp,
     monto_usd: montoUsd,
-    unidades: m.units_delta,
+    // The viewed account's own leg: a fund switch credits the to-leg its own count.
+    unidades: m.transfer_direction === "in" ? transferToLegUnits(m) : m.units_delta,
     ticker: m.ticker,
     contraparte: m.counterpart_account_name,
     nota: m.note,

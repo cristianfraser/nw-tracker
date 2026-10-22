@@ -99,7 +99,7 @@ describe("afc_cic — Superintendencia de Pensiones CSV", () => {
   it("next due day skips weekend days whose Friday row already landed", () => {
     // Saturday 14:00 with Friday in DB: Sunday and Monday still expect Friday, Tuesday expects Monday.
     expect(afcCicNextDueYmd(cl("2026-09-26", 14), "2026-09-25")).toBe("2026-09-29");
-    // Tuesday 09:00 with Friday in DB: Monday's row is due today at noon.
+    // Tuesday 09:00 with Friday in DB: Monday's row is due today at 18:00.
     expect(afcCicNextDueYmd(cl("2026-09-22", 9), "2026-09-18")).toBe("2026-09-22");
     // Tuesday 15:00 with Monday in DB: Wednesday expects Tuesday.
     expect(afcCicNextDueYmd(cl("2026-09-22", 15), "2026-09-21")).toBe("2026-09-23");
@@ -165,10 +165,10 @@ describe("afc_cic — upsert + stale rule (test DB)", () => {
     accountId = Number(r.lastInsertRowid);
 
     // Latest row is Wednesday 2099-06-03 (from the upsert test).
-    expect(isAfcCicStale(cl("2099-06-04", 9), {}, { force: false })).toBe(false); // Thu before noon: Wed's row present
-    expect(isAfcCicStale(cl("2099-06-04", 15), {}, { force: false })).toBe(false); // Thu afternoon: still present
-    expect(isAfcCicStale(cl("2099-06-05", 9), {}, { force: false })).toBe(false); // Fri 09:00: Thu's row not due yet
-    expect(isAfcCicStale(cl("2099-06-05", 12), {}, { force: false })).toBe(true); // Fri noon: Thu's row missing
+    expect(isAfcCicStale(cl("2099-06-04", 9), {}, { force: false })).toBe(false); // Thu morning: Wed's row present
+    expect(isAfcCicStale(cl("2099-06-04", 19), {}, { force: false })).toBe(false); // Thu evening: still present
+    expect(isAfcCicStale(cl("2099-06-05", 15), {}, { force: false })).toBe(false); // Fri 15:00: Thu's row not due yet
+    expect(isAfcCicStale(cl("2099-06-05", 18), {}, { force: false })).toBe(true); // Fri 18:00: Thu's row missing
     expect(isAfcCicStale(cl("2099-06-07", 1), {}, { force: false })).toBe(true); // Sun 01:00: Fri's row missing, no hour gate
     expect(isAfcCicStale(cl("2099-06-04", 9), {}, { force: true })).toBe(true);
   });

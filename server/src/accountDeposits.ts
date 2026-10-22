@@ -163,6 +163,10 @@ function loadTransferLegSignedFlowEvents(
   const requested = new Set(uniq);
   const map = new Map<number, SortFlow[]>();
   for (const r of rows) {
+    // An AFP fund switch (`afp_fund_switch`) is NOT in the skip set on purpose: its legs are
+    // ordinary transfer legs — a withdrawal from the sending fund and a deposit into the
+    // receiving one on the switch day, which cancel inside the AFP group — and both endpoints
+    // are cuota accounts (neither equity MTM, USD cash nor a card), so nothing below drops them.
     // compra_usd_venta_clp transfer legs are real CLP↔USD conversions between two cash accounts:
     // the CLP `from` leg must reduce that account's aportes so its balance and deposited line move
     // together (the USD `to` leg is emitted by loadUsdCashCapitalSortFlows — dropped below via

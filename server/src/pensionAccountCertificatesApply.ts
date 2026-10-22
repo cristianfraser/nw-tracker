@@ -6,6 +6,7 @@ import type {
   PensionExpectedRow,
 } from "nw-tracker-contracts";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { liveAfpUnoAccountId } from "./afpAccounts.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
@@ -36,7 +37,6 @@ import {
  * not be the fund manager's stated balance all fail the read and write nothing.
  */
 
-const AFP_ACCOUNT_IMPORT_KEY = "import:excel|key=afp";
 const CUOTA_TOLERANCE = 0.005;
 /**
  * The ledger carries cuotas to 4 decimals and the fund manager states its balance to 2, so a
@@ -220,10 +220,9 @@ export function planPensionCertificates(
   return { rows: out, problems, ledger_cuotas: round4(ledgerCuotas), ledger_cuotas_after: round4(ledgerAfter) };
 }
 
+/** The account the UNO read writes to: the one afp account on the live UNO series. */
 function afpAccountId(): number {
-  const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(AFP_ACCOUNT_IMPORT_KEY) as { id: number } | undefined;
-  if (!row) throw new Error(`pension: no account with import_key "${AFP_ACCOUNT_IMPORT_KEY}"`);
-  return row.id;
+  return liveAfpUnoAccountId();
 }
 
 /**

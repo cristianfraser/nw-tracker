@@ -175,6 +175,8 @@ export type FlowsApiRow = {
   occurred_on: string;
   note: string | null;
   units_delta: number | null;
+  /** A fund switch's to-leg units; null on every other row. */
+  counter_units_delta: number | null;
   flow_kind: string | null;
   ticker: string | null;
   flow_type: string;

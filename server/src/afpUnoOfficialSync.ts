@@ -19,6 +19,7 @@ import {
   fetchSpAfpFundUnits,
   officialPensionFundUnits,
   upsertSpAfpFundUnits,
+  type PensionFund,
   type SpAfpRestatement,
 } from "./spAfpFundUnits.js";
 
@@ -101,12 +102,15 @@ const stmtUpsertDisplay = db.prepare(
    ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
 );
 
-export function afpUnoDisplayNote(r: DisplayFundUnit): string {
-  return `sp:official|afp=uno|official=${r.official_day}|lag=${AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS}`;
+/** Provenance of a display row: the official day it shows and the lag it was shifted by. */
+export function afpDisplayNote(afp: string, r: DisplayFundUnit): string {
+  return `sp:official|afp=${afp}|official=${r.official_day}|lag=${AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS}`;
 }
 
-/** Write display rows; returns the rows that changed a stored value. */
-export function upsertAfpUnoDisplayRows(
+/** Write display rows of one fund's series; returns the rows that changed a stored value. */
+export function upsertAfpDisplayRows(
+  seriesKey: string,
+  afp: string,
   rows: readonly DisplayFundUnit[],
   dryRun: boolean
 ): { written: number; restated: { day: string; previous: number; next: number }[] } {
@@ -114,16 +118,40 @@ export function upsertAfpUnoDisplayRows(
   const restated: { day: string; previous: number; next: number }[] = [];
   const run = () => {
     for (const r of rows) {
-      const prev = stmtDisplayRow.get(AFP_UNO_CUOTA_SERIES_KEY, r.day) as { unit_value_clp: number } | undefined;
+      const prev = stmtDisplayRow.get(seriesKey, r.day) as { unit_value_clp: number } | undefined;
       if (prev && Math.abs(prev.unit_value_clp - r.unit_value_clp) <= 0.005) continue;
       if (prev) restated.push({ day: r.day, previous: prev.unit_value_clp, next: r.unit_value_clp });
       written += 1;
-      if (!dryRun) stmtUpsertDisplay.run(AFP_UNO_CUOTA_SERIES_KEY, r.day, r.unit_value_clp, afpUnoDisplayNote(r));
+      if (!dryRun) stmtUpsertDisplay.run(seriesKey, r.day, r.unit_value_clp, afpDisplayNote(afp, r));
     }
   };
   if (dryRun) run();
   else db.transaction(run)();
   return { written, restated };
+}
+
+/**
+ * A fund's display rows between `fromDay` and `throughDay` (inclusive), built from the stored
+ * official series (`pension_fund_unit_official`) in the same frame the nightly sync writes
+ * with — for a historical fund whose series is written once over the days an account held it.
+ * Throws when the official series carries no business-day value through `throughDay`.
+ */
+export function buildAfpDisplayRowsForFund(
+  afp: string,
+  fund: PensionFund,
+  fromDay: string,
+  throughDay: string
+): DisplayFundUnit[] {
+  if (fromDay > throughDay) throw new Error(`afp display rows: ${fromDay} is after ${throughDay}`);
+  const official = officialPensionFundUnits(afp, fund);
+  if (official.length === 0) throw new Error(`afp display rows: no official ${afp} fund ${fund} values stored`);
+  const rows = buildAfpDisplaySeries(official, AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS, throughDay).filter(
+    (r) => r.day >= fromDay
+  );
+  if (rows.length === 0 || rows.at(-1)!.day !== throughDay) {
+    throw new Error(`afp display rows: official ${afp} fund ${fund} does not reach ${throughDay} (${rows.at(-1)?.day ?? "no rows"})`);
+  }
+  return rows;
 }
 
 /**
@@ -159,7 +187,7 @@ export async function syncAfpUnoFromSp(opts: {
   const display = buildAfpDisplaySeries(series, AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS, throughDay).filter(
     (r) => r.day >= fromDay
   );
-  const written = upsertAfpUnoDisplayRows(display, opts.dryRun);
+  const written = upsertAfpDisplayRows(AFP_UNO_CUOTA_SERIES_KEY, UNO, display, opts.dryRun);
   return {
     years: fromYear === year ? [year] : [fromYear, year],
     published_ymd,

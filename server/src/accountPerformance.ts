@@ -54,6 +54,7 @@ import {
 } from "./cryptoValuation.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
+import { transferToLegUnits } from "./movementTransfer.js";
 import {
   monthEndCloseClpForAccount,
   priorCalendarMonthKey,
@@ -636,7 +637,7 @@ function stockUnitsInflowByMonthEnd(accountId: number): Map<string, number> {
   const ph = shareKinds.map(() => "?").join(", ");
   const rows = db
     .prepare(
-      `SELECT occurred_on, from_account_id, to_account_id, account_id, COALESCE(units_delta, 0) AS ud
+      `SELECT occurred_on, from_account_id, to_account_id, account_id, units_delta, counter_units_delta
        FROM movements
        WHERE (account_id = ? OR to_account_id = ?)
          AND flow_kind IN (${ph})
@@ -647,15 +648,17 @@ function stockUnitsInflowByMonthEnd(accountId: number): Map<string, number> {
     from_account_id: number | null;
     to_account_id: number | null;
     account_id: number | null;
-    ud: number;
+    units_delta: number | null;
+    counter_units_delta: number | null;
   }[];
   const m = new Map<string, number>();
   for (const r of rows) {
+    // The to-leg's own count (`transferToLegUnits`): a fund switch credits what it bought.
     const units =
       r.to_account_id === accountId
-        ? r.ud
+        ? (transferToLegUnits(r) ?? 0)
         : r.account_id === accountId
-          ? r.ud
+          ? (r.units_delta ?? 0)
           : 0;
     if (units <= 0) continue;
     const me = monthEndUtcYmd(monthKeyFromYmd(r.occurred_on));

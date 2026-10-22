@@ -276,6 +276,7 @@
       "cash_fee": "Fee / commission",
       "withdrawal_clp": "CLP withdrawal",
       "withdrawal_usd": "USD withdrawal",
+      "afp_fund_switch": "AFP fund switch",
       "other": "Other"
     },
     "addUsdAccount": {
