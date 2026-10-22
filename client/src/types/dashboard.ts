@@ -141,9 +141,20 @@ export interface NavCardMetricsDto {
 }
 
 /** One tile / frame of the server-built value map (`value_map`). Mirror of server `NavValueMapNodeDto`. */
+/** The ETF behind a holding tile of a proxied fund (mirror of server `NavValueMapHoldingDto`). */
+export interface NavValueMapHoldingDto {
+  ticker: string;
+  /** Share of the whole fund. */
+  weight: number;
+  /** The holding's share of the fund's period return, fraction of the fund, per unit. */
+  contribution_pct: Record<"day" | "month" | "year", { clp: number | null; usd: number | null }>;
+  /** Calendar days in the period the fund held it, out of the period's days so far. */
+  days_held: Record<"day" | "month" | "year", { held: number; total: number }>;
+}
+
 export interface NavValueMapNodeDto {
-  kind: "group" | "account";
-  /** Group slug, or `account_<id>` for an account tile. */
+  kind: "group" | "account" | "holding";
+  /** Group slug, `account_<id>` for an account tile, `holding_<bucket>_<ticker|other>` for a holding tile. */
   slug: string;
   account_id: number | null;
   label: string;
@@ -158,6 +169,8 @@ export interface NavValueMapNodeDto {
   children?: NavValueMapNodeDto[];
   /** Leaf groups: their accounts (> 0); the page opens its first-level leaves into them. */
   leaf_accounts?: NavValueMapNodeDto[];
+  /** Holding tiles only: the ETF behind the tile; null on the «Otros» (non-ETF sleeve) tile. */
+  holding?: NavValueMapHoldingDto | null;
 }
 
 /** Full colour at ±bound (fractions), fixed per period by the server. */

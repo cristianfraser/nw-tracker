@@ -6694,7 +6694,23 @@
       "pl": {
         "en": "P/L",
         "es": "P/L"
+      },
+      "contribution": {
+        "en": "Contribution to the fund",
+        "es": "Aporte al fondo"
+      },
+      "daysHeld": {
+        "en": "Held",
+        "es": "En cartera"
+      },
+      "daysHeldValue": {
+        "en": "{{held}}/{{total}} days",
+        "es": "{{held}}/{{total}} días"
       }
+    },
+    "otherSleeve": {
+      "en": "Other",
+      "es": "Otros"
     },
     "empty": {
       "en": "No holdings to map.",
