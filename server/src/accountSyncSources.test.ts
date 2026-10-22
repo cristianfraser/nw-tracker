@@ -6,6 +6,7 @@ import {
   reseedAllAccountSyncSources,
   syncSourcesForAccountId,
 } from "./accountSyncSources.js";
+import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 
 describe("accountSyncSources", () => {
   it("infers fintual for cert v2 notes", () => {
@@ -30,7 +31,16 @@ describe("accountSyncSources", () => {
     ).toEqual(["fintual"]);
   });
 
-  it("infers afp_uno for AFP excel account", () => {
+  it("infers afp_uno for the account declared on the UNO Fondo A series, whatever its import key", () => {
+    expect(
+      inferSyncSourcesForAccount({
+        id: 1,
+        import_key: "import:afp|afp=uno|fund=A",
+        equity_ticker: null,
+        fund_series_key: AFP_UNO_CUOTA_SERIES_KEY,
+      })
+    ).toEqual(["afp_uno"]);
+    // The legacy import key alone no longer names the live account …
     expect(
       inferSyncSourcesForAccount({
         id: 1,
@@ -38,7 +48,16 @@ describe("accountSyncSources", () => {
         equity_ticker: null,
         fund_series_key: null,
       })
-    ).toEqual(["afp_uno"]);
+    ).toEqual([]);
+    // … and an earlier fund of the chain is not synced by the UNO source.
+    expect(
+      inferSyncSourcesForAccount({
+        id: 1,
+        import_key: "import:afp|afp=planvital|fund=A",
+        equity_ticker: null,
+        fund_series_key: "afp_planvital_cuota_a",
+      })
+    ).toEqual([]);
   });
 
   it("infers afc_cic for an account declared on the AFC CIC series", () => {
@@ -106,18 +125,17 @@ describe("accountSyncSources", () => {
     const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as {
       id: number;
     };
-    const mk = (name: string, notes: string, ticker: string | null) =>
+    const mk = (name: string, notes: string, ticker: string | null, seriesKey: string | null = null) =>
       Number(
         db
           .prepare(
-            `INSERT INTO accounts (asset_group_id, name, notes, import_key, equity_ticker) VALUES (?, ?, ?, ?, ?)`
+            `INSERT INTO accounts (asset_group_id, name, notes, import_key, equity_ticker, fund_series_key)
+             VALUES (?, ?, ?, ?, ?, ?)`
           )
-          .run(group.id, name, notes, notes, ticker).lastInsertRowid
+          .run(group.id, name, notes, notes, ticker, seriesKey).lastInsertRowid
       );
     const fintualId = mk("Sync fixture fintual", "import:fintual|cert|key=apv_b", null);
-    const hadAfp =
-      db.prepare(`SELECT 1 FROM accounts WHERE import_key = 'import:excel|key=afp'`).get() != null;
-    const afpId = hadAfp ? null : mk("Sync fixture AFP", "import:excel|key=afp", null);
+    const afpId = mk("Sync fixture AFP", "test:sync-fixture-afp", null, AFP_UNO_CUOTA_SERIES_KEY);
     const equityId = mk("Sync fixture SPY", "test:sync-fixture-spy", "SPY");
 
     try {
@@ -125,13 +143,10 @@ describe("accountSyncSources", () => {
       expect(links).toBeGreaterThan(0);
 
       expect(syncSourcesForAccountId(fintualId)).toContain("fintual");
-      if (afpId != null) {
-        expect(syncSourcesForAccountId(afpId)).toEqual(["afp_uno"]);
-      }
+      expect(syncSourcesForAccountId(afpId)).toEqual(["afp_uno"]);
       expect(syncSourcesForAccountId(equityId)).toContain("stocks_nyse");
     } finally {
-      const ids = [fintualId, afpId, equityId].filter((x): x is number => x != null);
-      for (const id of ids) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
+      for (const id of [fintualId, afpId, equityId]) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
       reseedAllAccountSyncSources();
     }
   });

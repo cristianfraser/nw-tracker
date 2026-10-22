@@ -328,11 +328,27 @@ export function getAccountPositionMeta(
     const cuotas = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
 
     const out: AccountPositionMeta = {
-      ticker: cuotaLedgerDisplayTicker(categorySlug),
+      ticker: cuotaLedgerDisplayTicker(categorySlug, series),
       units_kind: "shares",
       units: cuotas > 1e-9 && Number.isFinite(cuotas) ? cuotas : null,
     };
-    if (cuotas > 1e-9 && px != null && px > 0 && pxDay) {
+    // Fully withdrawn or switched out of (a fund account the chain left), or not funded yet:
+    // Σ cuotas × valor cuota = 0. An explicit 0 mark, like the Fintual and equity branches —
+    // a null would forward-fill the last value on the monthly chart and never read as sold out.
+    // Dated the day it is read, never the series' last row: a fund the chain left has its
+    // series ending on its sale day, and a reader that re-asks the position «as of» the mark's
+    // date would land before the switch and find the sold cuotas again.
+    // Only for an account modeled in cuotas (one units event anywhere in its history): an
+    // AFP account valued by stored month-ends alone (demo / CI presets) keeps the stored path.
+    if (!(cuotas > 1e-9) || !Number.isFinite(cuotas)) {
+      if (!hasCuotaLedgerUnitsEvents(accountId)) return out;
+      out.units = 0;
+      out.afp_override_value_clp = 0;
+      out.afp_override_value_as_of = asOfCuotas;
+      if (px != null && px > 0) out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
+      return out;
+    }
+    if (px != null && px > 0 && pxDay) {
       out.afp_override_value_clp = Math.round(cuotas * px * 100) / 100;
       out.afp_override_value_as_of = pxDay;
       out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
@@ -368,6 +384,18 @@ export function liveFintualCertDisplayValueClp(
 }
 
 /** Live cuota-ledger mark (AFP UNO / AFC CIC): Σ cuotas × valor cuota on or before `asOfYmd`. */
+/** Whether the account has ever carried units — a units movement or a transfer leg with units. */
+function hasCuotaLedgerUnitsEvents(accountId: number): boolean {
+  const row = db
+    .prepare(
+      `SELECT 1 AS hit FROM movements
+       WHERE units_delta IS NOT NULL AND (account_id = ? OR from_account_id = ? OR to_account_id = ?)
+       LIMIT 1`
+    )
+    .get(accountId, accountId, accountId) as { hit: number } | undefined;
+  return row != null;
+}
+
 export function liveCuotaLedgerDisplayValueClp(
   accountId: number,
   kindSlug: string,

@@ -26,6 +26,8 @@ export type AccountMovementApiRow = {
   occurred_on: string;
   note: string | null;
   units_delta: number | null;
+  /** A fund switch's to-leg units (`transferToLegUnits`); null on every other row. */
+  counter_units_delta: number | null;
   flow_kind: string | null;
   ticker: string | null;
   flow_type: string;
@@ -42,7 +44,7 @@ export type AccountMovementApiRow = {
 
 const movementsForAccountStmt = db.prepare(
   `SELECT id, account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,
-          occurred_on, note, units_delta, flow_kind, ticker
+          occurred_on, note, units_delta, counter_units_delta, flow_kind, ticker
    FROM movements
    WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?
    ORDER BY occurred_on DESC, id DESC`
@@ -67,6 +69,7 @@ function mapMovementRows(accountId: number, rows: MovementTransferRow[]): Accoun
       occurred_on: r.occurred_on,
       note: r.note,
       units_delta: r.units_delta,
+      counter_units_delta: r.counter_units_delta ?? null,
       flow_kind: r.flow_kind,
       ticker: r.ticker,
       flow_type,

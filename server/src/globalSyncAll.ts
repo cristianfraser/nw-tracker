@@ -74,6 +74,7 @@ import {
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { syncAfpUnoFromSp } from "./afpUnoOfficialSync.js";
 import { latestFundUnitRowOnOrBefore, upsertAfpSpotValuationWithExplicitPx } from "./afpUnoValuation.js";
+import { liveAfpUnoAccountId } from "./afpAccounts.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { syncAfcCicFromSp } from "./afcCicSeries.js";
 import {
@@ -284,10 +285,7 @@ async function runAfpUno(
   changes: SyncFieldChange[],
   notes: SyncStepNote[]
 ): Promise<void> {
-  const row = db
-    .prepare(`SELECT id FROM accounts WHERE import_key = 'import:excel|key=afp'`)
-    .get() as { id: number } | undefined;
-  if (!row) throw new Error("sync: AFP UNO — no account with import_key import:excel|key=afp");
+  const row = { id: liveAfpUnoAccountId() };
   const before = latestFundUnitRowOnOrBefore(AFP_UNO_CUOTA_SERIES_KEY, cl.ymd);
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), 60_000);

@@ -927,6 +927,10 @@
         "en": "USD withdrawal",
         "es": "Retiro USD"
       },
+      "afp_fund_switch": {
+        "en": "AFP fund switch",
+        "es": "Traspaso AFP"
+      },
       "other": {
         "en": "Other",
         "es": "Otro"

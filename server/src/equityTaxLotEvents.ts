@@ -7,6 +7,7 @@
  * movement that moves shares throws, since its tax meaning is unknown.
  */
 import { db } from "./db.js";
+import { transferToLegUnits } from "./movementTransfer.js";
 import type { TaxLotEvent } from "./taxLots.js";
 
 export type EquityTaxLotRow = {
@@ -19,6 +20,7 @@ export type EquityTaxLotRow = {
   amount: number;
   currency: string;
   units_delta: number | null;
+  counter_units_delta?: number | null;
 };
 
 /** `currency` is null only when the account has no trades. */
@@ -31,9 +33,11 @@ export function equityTaxLotEventsFromRows(accountId: number, rows: readonly Equ
   for (const r of rows) {
     const units = r.units_delta == null ? null : Math.abs(r.units_delta);
     if (r.flow_kind === "stock_buy" && r.to_account_id === accountId) {
-      if (units == null) throw new Error(`Tax lots: purchase ${r.id} has no share count`);
+      // The to-leg's own count (`transferToLegUnits`); a share buy never carries a counter today.
+      const bought = transferToLegUnits(r);
+      if (bought == null) throw new Error(`Tax lots: purchase ${r.id} has no share count`);
       currencies.add(r.currency);
-      events.push({ kind: "acquire", date: r.occurred_on, movementId: r.id, units, cost: r.amount });
+      events.push({ kind: "acquire", date: r.occurred_on, movementId: r.id, units: Math.abs(bought), cost: r.amount });
     } else if (r.flow_kind === "stock_sell" && r.from_account_id === accountId) {
       if (units == null) throw new Error(`Tax lots: sale ${r.id} has no share count`);
       currencies.add(r.currency);
@@ -57,7 +61,8 @@ export function equityTaxLotEventsFromRows(accountId: number, rows: readonly Equ
 export function loadEquityTaxLotEvents(accountId: number): EquityTaxLotEvents {
   const rows = db
     .prepare(
-      `SELECT id, occurred_on, account_id, from_account_id, to_account_id, flow_kind, amount, currency, units_delta
+      `SELECT id, occurred_on, account_id, from_account_id, to_account_id, flow_kind, amount, currency, units_delta,
+              counter_units_delta
          FROM movements
         WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`
     )

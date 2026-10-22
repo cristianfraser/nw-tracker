@@ -68,19 +68,19 @@ describe("attachSyncSourceSchedule", () => {
     expect(sched.next_sync?.ymd).toBe("2026-09-21");
   });
 
-  it("afc_cic next sync is today noon while the prior business day's row is still due", () => {
+  it("afc_cic next sync is today 18:00 while the prior business day's row is still due", () => {
     const sched = attachSyncSourceSchedule("afc_cic", cl("2026-09-22", 9), false, false, {
       afcCicLatestDay: "2026-09-18",
     });
-    expect(sched.next_sync).toEqual({ ymd: "2026-09-22", hour: 12, minute: 0, timeZone: "America/Santiago" });
+    expect(sched.next_sync).toEqual({ ymd: "2026-09-22", hour: 18, minute: 0, timeZone: "America/Santiago" });
     expect(sched.today_day_kind).toBe("open");
   });
 
-  it("afc_cic from a Saturday whose Friday row landed wakes on Tuesday noon", () => {
+  it("afc_cic from a Saturday whose Friday row landed wakes on Tuesday 18:00", () => {
     const sched = attachSyncSourceSchedule("afc_cic", cl("2026-09-26", 14), false, false, {
       afcCicLatestDay: "2026-09-25",
     });
-    expect(sched.next_sync).toEqual({ ymd: "2026-09-29", hour: 12, minute: 0, timeZone: "America/Santiago" });
+    expect(sched.next_sync).toEqual({ ymd: "2026-09-29", hour: 18, minute: 0, timeZone: "America/Santiago" });
     expect(sched.today_day_kind).toBe("weekend");
   });
 

@@ -80,7 +80,8 @@ import {
   ufRowOnOrBefore,
 } from "./fxRates.js";
 import { liveCuotaLedgerDisplayValueClp } from "./accountPosition.js";
-import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
+import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
+import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import {
   chartHostSlugForValuationGroup,
@@ -527,6 +528,52 @@ function augmentChartDatesForFintualCertAccounts(
 }
 
 /**
+ * Cuota-ledger accounts (AFP fund accounts, AFC) are valued through `accountMarkClpAtYmd`
+ * (Σ cuotas × the account's series), so a fund account with no stored `valuations` rows — the
+ * earlier funds of an AFP chain, a fund switched into — still needs a chart grid: month-ends from
+ * the month of its first units event through the month of its last one, or through today while
+ * it still holds cuotas, plus the exact days of its transfer legs (a fund switch; like the CC
+ * closes and depto rows above, a mid-month day only shows when it is the month's latest point —
+ * `densifyMonthlyValuationPoints` keeps one row per month; the daily series draws the step).
+ * Units events are single-leg `units_delta` rows AND transfer legs — a switch between two fund
+ * accounts is the receiving fund's first event, so its grid starts there. Only accounts
+ * declared on a series take part (`cuotaLedgerSeriesKeyForAccount`); an AFP account with stored
+ * rows keeps them, the dates union. One query per account.
+ */
+function augmentChartDatesForCuotaLedgerAccounts(
+  dateStrs: string[],
+  allIds: number[],
+  slugById: Map<number, string>
+): string[] {
+  const aug = new Set(dateStrs);
+  const today = chileCalendarTodayYmd();
+  for (const id of allIds) {
+    const kind = bucketKindFromSlugMap(slugById, id);
+    if (!isCuotaLedgerKindSlug(kind)) continue;
+    if (cuotaLedgerSeriesKeyForAccount(id, kind, today) == null) continue;
+    const events = db
+      .prepare(
+        `SELECT occurred_on, (account_id IS NULL) AS is_leg FROM movements
+         WHERE units_delta IS NOT NULL AND (account_id = ? OR from_account_id = ? OR to_account_id = ?)`
+      )
+      .all(id, id, id) as { occurred_on: string; is_leg: number }[];
+    const dated = events.filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.occurred_on));
+    if (dated.length === 0) continue;
+    let first = dated[0]!.occurred_on;
+    let last = first;
+    for (const e of dated) {
+      if (e.occurred_on < first) first = e.occurred_on;
+      if (e.occurred_on > last) last = e.occurred_on;
+      if (e.is_leg) aug.add(e.occurred_on);
+    }
+    const holdsCuotas = afpCuotasCumulativeThroughDate(id, today) > 1e-9;
+    const through = holdsCuotas && today > last ? today : last;
+    for (const d of monthEndsBetweenInclusive(first, through)) aug.add(d);
+  }
+  return [...aug].sort();
+}
+
+/**
  * Month-end CLP series from `depto-dividendos.csv` (same as Numbers: **valor neto** + **pago acumulado**),
  * forward-filled along `dateStrsAsc`. Keeps the two chart lines on the same amortization timeline as the sheet.
  */
@@ -881,6 +928,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   dateStrs = augmentChartDatesForCheckingAccounts(dateStrs, allIds, slugById);
   dateStrs = augmentChartDatesForDeptoSheetAccounts(dateStrs, allIds, slugById);
   dateStrs = augmentChartDatesForFintualCertAccounts(dateStrs, allIds, chartMetaById);
+  dateStrs = augmentChartDatesForCuotaLedgerAccounts(dateStrs, allIds, slugById);
   dateStrs = sanitizeValuationChartDateStrs(dateStrs);
   const propertyAccountIds = allIds.filter((id) => bucketKindFromSlugMap(slugById, id) === "property");
   const propertyDeptoSheets =

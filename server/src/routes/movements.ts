@@ -30,8 +30,8 @@ app.post("/api/accounts/:id/movements", (req, res) => {
       .prepare(
         `INSERT INTO movements (
            account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,
-           occurred_on, note, units_delta, flow_kind, ticker
-         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           occurred_on, note, units_delta, counter_units_delta, flow_kind, ticker
+         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         validated.from_account_id,
@@ -43,6 +43,7 @@ app.post("/api/accounts/:id/movements", (req, res) => {
         validated.occurred_on,
         validated.note,
         validated.units_delta,
+        validated.counter_units_delta,
         validated.flow_kind,
         validated.ticker
       );
@@ -66,6 +67,7 @@ app.post("/api/accounts/:id/movements", (req, res) => {
       from_account_id: validated.from_account_id,
       to_account_id: validated.to_account_id,
       units_delta: validated.units_delta,
+      counter_units_delta: validated.counter_units_delta,
       flow_kind: validated.flow_kind,
       superseded_imported_checking_ids: superseded.removed_ids,
     });

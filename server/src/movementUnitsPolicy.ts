@@ -97,6 +97,34 @@ export function movementCreateSchemaForAccount(account: AccountRow): MovementCre
   return { ledger: "movements", units_delta: "required", unit_label: spec.unit_label };
 }
 
+/**
+ * Takes units (cuotas, coin, shares): a cuota-ledger / fund / crypto account (units required on
+ * manual creates) or an equity brokerage account. The endpoints a `counter_units_delta` may join.
+ */
+export function accountTakesUnits(account: AccountRow): boolean {
+  if (accountUsesBrokerageFlowKinds(account)) return true;
+  const schema = movementCreateSchemaForAccount(account);
+  return schema != null && schema.units_delta === "required" && !schema.brokerage_flow_kinds;
+}
+
+/** `counter_units_delta` from an API body: undefined when absent, null when sent as null. */
+export function parseCounterUnitsDeltaField(body: Record<string, unknown>): number | null | undefined {
+  if (!Object.prototype.hasOwnProperty.call(body, "counter_units_delta")) return undefined;
+  const v = body.counter_units_delta;
+  if (v === null || v === undefined) return null;
+  return typeof v === "number" ? v : Number(v);
+}
+
+const COUNTER_UNITS_TRANSFER_ONLY =
+  "counter_units_delta is only supported on a transfer between two units accounts (the units bought on the to-leg).";
+
+/** A non-transfer create carrying `counter_units_delta` is refused; null/absent passes. */
+function refuseCounterUnitsOnSingleLeg(body: Record<string, unknown>): MovementCreateValidation | null {
+  const counter = parseCounterUnitsDeltaField(body);
+  if (counter === undefined || counter === null) return null;
+  return { ok: false, status: 400, error: COUNTER_UNITS_TRANSFER_ONLY };
+}
+
 /** Accept `units_delta` or alias `unit_amount` from API clients. */
 export function parseUnitsDeltaField(body: Record<string, unknown>): number | null | undefined {
   if (Object.prototype.hasOwnProperty.call(body, "units_delta")) {
@@ -155,6 +183,7 @@ export type MovementCreateValidation =
       occurred_on: string;
       note: string | null;
       units_delta: number | null;
+      counter_units_delta: number | null;
       flow_kind: string | null;
       ticker: string | null;
     }
@@ -402,6 +431,8 @@ function validateBrokerageMovementCreate(
     };
   }
 
+  const counterUnitsErr = refuseCounterUnitsOnSingleLeg(body);
+  if (counterUnitsErr) return counterUnitsErr;
   const flow_kind = typeof body.flow_kind === "string" ? body.flow_kind : "";
   const occurred_on = typeof body.occurred_on === "string" ? body.occurred_on.trim() : "";
 
@@ -546,6 +577,8 @@ function validateUsdCashMovementCreate(
   if (!schema?.brokerage_flow_kinds) {
     return { ok: false, status: 400, error: "USD cash flows are only supported for USD cash accounts." };
   }
+  const counterUnitsErr = refuseCounterUnitsOnSingleLeg(body);
+  if (counterUnitsErr) return counterUnitsErr;
   const flow_kind = typeof body.flow_kind === "string" ? body.flow_kind : "";
   const occurred_on = typeof body.occurred_on === "string" ? body.occurred_on.trim() : "";
   if (!occurred_on || !/^\d{4}-\d{2}-\d{2}$/.test(occurred_on)) {
@@ -617,6 +650,8 @@ function validateClpCashMovementCreate(
   if (!schema?.brokerage_flow_kinds) {
     return { ok: false, status: 400, error: "CLP cash flows are only supported for CLP cash accounts." };
   }
+  const counterUnitsErr = refuseCounterUnitsOnSingleLeg(body);
+  if (counterUnitsErr) return counterUnitsErr;
   const flow_kind = typeof body.flow_kind === "string" ? body.flow_kind : "";
   const occurred_on = typeof body.occurred_on === "string" ? body.occurred_on.trim() : "";
   if (!occurred_on || !/^\d{4}-\d{2}-\d{2}$/.test(occurred_on)) {
@@ -694,6 +729,37 @@ function validateTransferMovementCreate(
   const isManualUnitsAccount =
     !!currentSchema && currentSchema.units_delta === "required" && !currentSchema.brokerage_flow_kinds;
 
+  // The to-leg's own unit count (a fund switch): only beside `units_delta`, and only when both
+  // endpoints take units — a cash leg has no count to carry.
+  const counterUnitsRaw = parseCounterUnitsDeltaField(body);
+  const counterUnitsProvided = counterUnitsRaw !== undefined && counterUnitsRaw !== null;
+  if (counterUnitsProvided) {
+    if (unitsValueInvalid(counterUnitsRaw)) {
+      return {
+        ok: false,
+        status: 400,
+        error: "counter_units_delta must be a non-zero number (the units bought on the to-leg).",
+      };
+    }
+    if (!unitsProvided) {
+      return {
+        ok: false,
+        status: 400,
+        error: "counter_units_delta requires units_delta (the units sold on the from-leg).",
+      };
+    }
+    for (const [role, id] of [["from", endpoints.from_account_id], ["to", endpoints.to_account_id]] as const) {
+      const row = accountRowForId(id);
+      if (!row || !accountTakesUnits(row)) {
+        return {
+          ok: false,
+          status: 400,
+          error: `counter_units_delta needs a units account on both legs: the ${role}-leg account ${id} takes no units.`,
+        };
+      }
+    }
+  }
+
   let flow_kind = flow_kind_raw;
   if (isManualUnitsAccount) {
     if (!unitsProvided) {
@@ -706,12 +772,15 @@ function validateTransferMovementCreate(
     if (clpLegRaw == null || !Number.isFinite(clpLegRaw) || clpLegRaw === 0) {
       return { ok: false, status: 400, error: "a CLP amount is required." };
     }
+    // Reconcile the CURRENT account's own leg: with a counter, the to-account's count is it.
+    const currentLegUnits =
+      counterUnitsProvided && endpoints.to_account_id === currentAccountId ? counterUnitsRaw : unitsRaw!;
     try {
       assertManualUnitsClpReconcile({
         accountId: currentAccountId,
         ymd: occurred_on,
         amountClpAbs: Math.abs(clpLegRaw),
-        unitsAbs: Math.abs(unitsRaw!),
+        unitsAbs: Math.abs(currentLegUnits),
       });
     } catch (e) {
       return { ok: false, status: 400, error: e instanceof Error ? e.message : String(e) };
@@ -752,6 +821,11 @@ function validateTransferMovementCreate(
           ? Math.abs(unitsRaw)
           : unitsRaw
         : null,
+    counter_units_delta: counterUnitsProvided
+      ? isManualUnitsAccount
+        ? Math.abs(counterUnitsRaw)
+        : counterUnitsRaw
+      : null,
     flow_kind,
     ticker,
   };
@@ -777,6 +851,7 @@ function validateTransferMovementCreate(
     occurred_on: input.occurred_on,
     note: input.note,
     units_delta: input.units_delta,
+    counter_units_delta: input.counter_units_delta,
     flow_kind: input.flow_kind,
     ticker: input.ticker,
   };
@@ -804,6 +879,8 @@ export function validateMovementCreate(
     return validateClpCashMovementCreate(account, body);
   }
 
+  const counterUnitsErr = refuseCounterUnitsOnSingleLeg(body);
+  if (counterUnitsErr) return counterUnitsErr;
   const parsed = parseAmountFields(body);
   if ("error" in parsed) return { ok: false, status: 400, error: parsed.error };
   if (parsed.counter_amount != null) {

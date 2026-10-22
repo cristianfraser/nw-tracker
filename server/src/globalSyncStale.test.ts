@@ -328,7 +328,7 @@ describe("fintualPublisherLag", () => {
 });
 
 /**
- * The 2026-10-05 shape: Friday 10-02's AFC valor cuota due since Saturday noon, the SP's CSV still
+ * The 2026-10-05 shape: Friday 10-02's AFC valor cuota due since Saturday 18:00, the SP's CSV still
  * ending at Thursday 10-01, every poll reading the year unchanged.
  */
 describe("afcCicPublisherLag", () => {
@@ -366,7 +366,7 @@ describe("afcCicPublisherLag", () => {
     expect(afcCicPublisherLag(mondayMidnight, printed, { latestDbDay: "2026-10-04", nowMs })).toBeNull();
   });
 
-  it("dims an AFC publisher-lag source only from 12:00", () => {
+  it("dims an AFC publisher-lag source only from 18:00", () => {
     const row = {
       source: "afc_cic" as const,
       status: "stale" as const,
@@ -377,7 +377,8 @@ describe("afcCicPublisherLag", () => {
       today_day_kind: "open" as const,
     };
     expect(staleDimmingSources([row], mondayMidnight)).not.toContain("afc_cic");
-    expect(staleDimmingSources([row], wallClock("2026-10-05", 12))).toContain("afc_cic");
+    expect(staleDimmingSources([row], wallClock("2026-10-05", 12))).not.toContain("afc_cic");
+    expect(staleDimmingSources([row], wallClock("2026-10-05", 18))).toContain("afc_cic");
     expect(staleDimmingSources([{ ...row, publisher_lag: null }], mondayMidnight)).toContain("afc_cic");
   });
 });

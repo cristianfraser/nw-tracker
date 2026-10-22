@@ -21,6 +21,13 @@ export const FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO = "prepago_parcial_hipotecari
  * `pago_tarjeta` — card flows come from statement evidence — and the cash leg is its deposit.
  */
 export const FLOW_KIND_CARGA_TARJETA = "carga_tarjeta" as const;
+/**
+ * AFP fund switch: a transfer between two cuota accounts carrying both counts — the cuotas
+ * sold on the from-leg (`units_delta`) and the cuotas bought on the to-leg
+ * (`counter_units_delta`). Ordinary transfer legs to every flow reader (a withdrawal from the
+ * sender, a deposit into the receiver; inside the AFP group they cancel).
+ */
+export const FLOW_KIND_AFP_FUND_SWITCH = "afp_fund_switch" as const;
 
 export type MortgageFlowKind =
   | typeof FLOW_KIND_PAGO_CUOTA_HIPOTECARIO
@@ -32,6 +39,7 @@ export type MovementFlowType =
   | BrokerageFlowKind
   | typeof FLOW_KIND_PAGO_TARJETA
   | typeof FLOW_KIND_CARGA_TARJETA
+  | typeof FLOW_KIND_AFP_FUND_SWITCH
   | "withdrawal_clp"
   | "withdrawal_usd"
   | "deposit_usd"
@@ -64,6 +72,7 @@ export function movementFlowTypeFromRow(row: {
     if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
     if (row.flow_kind === FLOW_KIND_PAGO_TARJETA) return FLOW_KIND_PAGO_TARJETA;
     if (row.flow_kind === FLOW_KIND_CARGA_TARJETA) return FLOW_KIND_CARGA_TARJETA;
+    if (row.flow_kind === FLOW_KIND_AFP_FUND_SWITCH) return FLOW_KIND_AFP_FUND_SWITCH;
     if (row.currency === "usd") return row.transfer_direction === "out" ? "withdrawal_usd" : "deposit_usd";
     if (row.currency !== "clp") throw new Error(`No flow type for a kind-less ${row.currency} transfer`);
     return row.transfer_direction === "out" ? "withdrawal_clp" : "deposit_clp";
@@ -92,6 +101,7 @@ export function movementFlowTypeLabel(flowType: MovementFlowType): string {
   if (label === FLOW_KIND_PAGO_CUOTA_HIPOTECARIO) return "Pago cuota hipotecario";
   if (label === FLOW_KIND_PAGO_TARJETA) return "Pago tarjeta";
   if (label === FLOW_KIND_CARGA_TARJETA) return "Carga desde tarjeta";
+  if (label === FLOW_KIND_AFP_FUND_SWITCH) return "Traspaso AFP";
   if (label === FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO) return "Prepago parcial hipotecario";
   if (isDepositMovementFlowType(flowType)) {
     return depositFlowKindLabel(flowType);

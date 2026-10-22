@@ -44,7 +44,7 @@ export const MARK_INPUT_TRIGGER_SPECS: TriggerSpec[] = [
     ],
     watch: [
       "account_id", "from_account_id", "to_account_id", "amount", "currency", "counter_amount",
-      "counter_currency", "occurred_on", "units_delta", "flow_kind", "ticker",
+      "counter_currency", "occurred_on", "units_delta", "counter_units_delta", "flow_kind", "ticker",
     ],
   },
   {
@@ -237,13 +237,37 @@ export function markInputTriggerNames(): string[] {
   return MARK_INPUT_TRIGGER_SPECS.flatMap((s) => ["ai", "ad", "au"].map((k) => `mark_input_${s.table}_${k}`));
 }
 
-export function runMarkInputChangeTriggers211(dbi: DatabaseType): void {
-  // A draft of these triggers may already exist (it ran as migration 210): replace them all.
+/**
+ * Movement columns added by migrations after 211. SQLite checks a trigger's columns when it
+ * FIRES, not at CREATE TRIGGER, so a trigger watching a column the table does not have yet
+ * would fail the first UPDATE of movements between 211 and the migration that adds it (on a
+ * fresh DB every migration runs in sequence). 211 installs the triggers without them; the
+ * migration that adds each column re-installs the full set.
+ */
+const MOVEMENT_COLUMNS_SINCE_211 = ["counter_units_delta"];
+
+/** Drop every `mark_input_*` trigger and create the given specs' triggers. */
+function installMarkInputChangeTriggers(dbi: DatabaseType, specs: readonly TriggerSpec[]): void {
   const existing = dbi
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'mark\\_input\\_%' ESCAPE '\\'`)
     .all() as { name: string }[];
   for (const { name } of existing) dbi.exec(`DROP TRIGGER "${name}"`);
-  for (const spec of MARK_INPUT_TRIGGER_SPECS) {
+  for (const spec of specs) {
     for (const sql of markInputTriggerSql(spec)) dbi.exec(sql);
   }
+}
+
+export function runMarkInputChangeTriggers211(dbi: DatabaseType): void {
+  // A draft of these triggers may already exist (it ran as migration 210): replace them all.
+  const specsAsOf211 = MARK_INPUT_TRIGGER_SPECS.map((spec) =>
+    spec.table === "movements"
+      ? { ...spec, watch: spec.watch.filter((c) => !MOVEMENT_COLUMNS_SINCE_211.includes(c)) }
+      : spec
+  );
+  installMarkInputChangeTriggers(dbi, specsAsOf211);
+}
+
+/** Migration 242 hook: `movements.counter_units_delta` exists now — watch it on the movements triggers. */
+export function runMarkInputChangeTriggers242(dbi: DatabaseType): void {
+  installMarkInputChangeTriggers(dbi, MARK_INPUT_TRIGGER_SPECS);
 }

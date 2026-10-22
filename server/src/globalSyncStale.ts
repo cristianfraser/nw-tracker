@@ -8,7 +8,7 @@ import {
   latestOfficialUnoDay,
 } from "./afpUnoOfficialSync.js";
 import { type ChileWallClock, chileCalendarAddDays, chileWallClockNow } from "./chileDate.js";
-import { db } from "./db.js";
+import { afpUnoAccountIds, liveAfpUnoAccountId } from "./afpAccounts.js";
 import { isCmfRnPortfolioStale } from "./cmfRnPortfolioSync.js";
 import { isFintualOfficialSerieStale } from "./fintualPublicSeriePrice.js";
 import {
@@ -204,11 +204,10 @@ function mergeUserForcedIntoStaleList(
   return [...out];
 }
 
+/** The afp account on the live UNO series, or null when none declares it (the source is then disabled). */
 function afpUnoAccountId(): number | null {
-  const row = db
-    .prepare(`SELECT id FROM accounts WHERE import_key = 'import:excel|key=afp'`)
-    .get() as { id: number } | undefined;
-  return row?.id ?? null;
+  const ids = afpUnoAccountIds();
+  return ids.length === 0 ? null : liveAfpUnoAccountId();
 }
 
 /**

@@ -33,7 +33,7 @@ const UNITS_EPS = 1e-9;
 const shareKindsPh = BROKERAGE_SHARE_UNITS_FLOW_KINDS.map(() => "?").join(", ");
 
 const stmtShareRows = db.prepare(
-  `SELECT account_id, from_account_id, to_account_id, units_delta, flow_kind
+  `SELECT account_id, from_account_id, to_account_id, units_delta, counter_units_delta, flow_kind
    FROM movements
    WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
      AND occurred_on <= ?

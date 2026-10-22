@@ -28,13 +28,14 @@ import type { GlobalSyncStateFile } from "./globalSyncState.js";
 export const AFC_CIC_SERIES_KEY = "afc_cic";
 
 /**
- * Chile hour from which the previous business day's valor cuota is expected in DB. The SP
- * publishes day D on D+1 at an hour not documented anywhere; noon is late enough that a
- * morning publication is caught by the wake and early enough that the mark is current by
- * the afternoon. The stale rule and the schedule wake both key on this constant — move it
- * if the sync log shows repeated polls before the row lands.
+ * Chile hour from which the previous business day's valor cuota is expected in DB: 18:00, the
+ * same hour as Fintual's cuota (`FINTUAL_PUBLISH_HOUR_CHILE`) and the AFP official value
+ * (`AFP_UNO_PUBLISH_HOUR_CHILE`), so the three funds turn stale and dim together. The SP
+ * publishes day D on D+1 at an hour not documented anywhere; it was noon until 2026-10-22,
+ * which dimmed the AFC every afternoon the SP printed late (10-21's row still missing at
+ * 15:45 on 10-22). The stale rule, the publisher-lag dim and the schedule wake all key on it.
  */
-export const AFC_CIC_PUBLISH_HOUR_CHILE = 12;
+export const AFC_CIC_PUBLISH_HOUR_CHILE = 18;
 
 const SP_CESANTIA_CSV_BASE = "https://www.spensiones.cl/apps/valoresCuotaFondo/vcfAFCxls.php";
 const EXPECTED_HEADER_FUNDS = ["", "Fondo de la Cuenta Individual de Cesantia", "", "Fondo de Cesantia Solidario"];

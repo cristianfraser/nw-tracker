@@ -26,9 +26,33 @@ export type MovementTransferRow = {
   occurred_on: string;
   note: string | null;
   units_delta: number | null;
+  /**
+   * A transfer between two units accounts (an AFP fund switch): the units bought on the to-leg,
+   * when they differ from the units sold (`units_delta`, the from-leg). Null on every other row.
+   * Optional because many readers select movements without it; every reader that attributes
+   * units to a transfer's to-leg must select it (`transferToLegUnits` reads it first).
+   */
+  counter_units_delta?: number | null;
   flow_kind: string | null;
   ticker: string | null;
 };
+
+/**
+ * Units credited to a transfer's to-leg: its own count when the row carries one
+ * (`counter_units_delta`), else the one count both legs share (`units_delta`). Raw (signed as
+ * stored, nullable) — callers apply the sign convention of their path. The one place the
+ * to-leg's units are read, so a reader cannot attribute the sold count to the buying account.
+ */
+export function transferToLegUnits(
+  row: Pick<MovementTransferRow, "units_delta" | "counter_units_delta">
+): number | null {
+  return row.counter_units_delta ?? row.units_delta;
+}
+
+/** Units debited from a transfer's from-leg: always `units_delta`. Raw, like `transferToLegUnits`. */
+export function transferFromLegUnits(row: Pick<MovementTransferRow, "units_delta">): number | null {
+  return row.units_delta;
+}
 
 export function isMovementTransferRow(row: {
   account_id?: number | null;
@@ -132,16 +156,19 @@ export function unitsDeltaForAccountMovement(
   row: MovementTransferRow,
   accountId: number
 ): number {
-  const units = row.units_delta;
-  if (units == null || !Number.isFinite(units) || units === 0) return 0;
+  const valid = (u: number | null | undefined): u is number =>
+    u != null && Number.isFinite(u) && u !== 0;
   if (isMovementTransferRow(row)) {
     if (row.flow_kind === "stock_sell") {
-      if (row.from_account_id === accountId) return -Math.abs(units);
+      const sold = transferFromLegUnits(row);
+      if (row.from_account_id === accountId && valid(sold)) return -Math.abs(sold);
       return 0;
     }
-    return row.to_account_id === accountId ? units : 0;
+    const bought = transferToLegUnits(row);
+    return row.to_account_id === accountId && valid(bought) ? bought : 0;
   }
-  return row.account_id === accountId ? units : 0;
+  const units = row.units_delta;
+  return row.account_id === accountId && valid(units) ? units : 0;
 }
 
 /** Equity flow kinds whose transfer-leg units are read by the stock/share path, not the cuota path. */
@@ -153,10 +180,12 @@ const EQUITY_TRANSFER_FLOW_KINDS = new Set([
 ]);
 
 /**
- * Σ manual transfer-leg `units_delta` for a cuota/coin account through `asOfYmd`
- * (account as `to` = +units, as `from` = −units). Excludes equity flow-kind legs, which
- * the brokerage share path already counts. Fintual / crypto / AFP readers add this on top of
- * their `account_id`-ledger sums so a `checking → fund` transfer moves the fund balance too.
+ * Σ manual transfer-leg units for a cuota/coin account through `asOfYmd`
+ * (account as `to` = +|to-leg units|, as `from` = −|units_delta|). Excludes equity flow-kind
+ * legs, which the brokerage share path already counts. Fintual / crypto / AFP readers add this
+ * on top of their `account_id`-ledger sums so a `checking → fund` transfer moves the fund
+ * balance too. A fund switch (`afp_fund_switch`) carries both counts: the sending fund loses
+ * the cuotas it sold, the receiving fund gains the cuotas it bought (`counter_units_delta`).
  */
 export function transferLegUnitsThroughDate(
   accountId: number,
@@ -165,7 +194,7 @@ export function transferLegUnitsThroughDate(
 ): number {
   const rows = dbHandle
     .prepare(
-      `SELECT from_account_id, to_account_id, units_delta, flow_kind
+      `SELECT from_account_id, to_account_id, units_delta, counter_units_delta, flow_kind
        FROM movements
        WHERE account_id IS NULL
          AND units_delta IS NOT NULL
@@ -176,10 +205,8 @@ export function transferLegUnitsThroughDate(
   let total = 0;
   for (const r of rows) {
     if (r.flow_kind != null && EQUITY_TRANSFER_FLOW_KINDS.has(r.flow_kind)) continue;
-    const mag = absAmount(r.units_delta);
-    if (mag === 0) continue;
-    if (r.to_account_id === accountId) total += mag;
-    else if (r.from_account_id === accountId) total -= mag;
+    if (r.to_account_id === accountId) total += absAmount(transferToLegUnits(r));
+    else if (r.from_account_id === accountId) total -= absAmount(transferFromLegUnits(r));
   }
   return Number.isFinite(total) ? total : 0;
 }
@@ -196,7 +223,7 @@ export function isUsdCashAccount(accountId: number): boolean {
 
 const MOVEMENTS_FOR_ACCOUNT_SQL = `
   SELECT id, account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL},
-         occurred_on, note, units_delta, flow_kind, ticker
+         occurred_on, note, units_delta, counter_units_delta, flow_kind, ticker
   FROM movements
   WHERE account_id = ?
      OR from_account_id = ?
@@ -281,7 +308,7 @@ export function sumUnitsThroughDate(
   const ph = flowKinds.map(() => "?").join(", ");
   const rows = dbHandle
     .prepare(
-      `SELECT account_id, from_account_id, to_account_id, units_delta, flow_kind
+      `SELECT account_id, from_account_id, to_account_id, units_delta, counter_units_delta, flow_kind
        FROM movements
        WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
          AND occurred_on <= ?
@@ -305,6 +332,8 @@ export type TransferCreateInput = {
   counter_amount: number | null;
   counter_currency: MovementCurrency | null;
   units_delta: number | null;
+  /** The to-leg's own unit count (a fund switch); needs `units_delta`, see `validateTransferCreate`. */
+  counter_units_delta: number | null;
   flow_kind: string | null;
   ticker: string | null;
 };
@@ -336,6 +365,15 @@ export function validateTransferCreate(input: TransferCreateInput): void {
   const hasUnits = units != null && Number.isFinite(units) && units !== 0;
   if (amount === 0 && !hasUnits) {
     throw new Error("Transfer requires an amount or units_delta.");
+  }
+  const counterUnits = input.counter_units_delta;
+  if (counterUnits != null) {
+    if (!Number.isFinite(counterUnits) || counterUnits === 0) {
+      throw new Error("counter_units_delta must be a non-zero number (the units bought on the to-leg).");
+    }
+    if (!hasUnits) {
+      throw new Error("counter_units_delta requires units_delta (the units sold on the from-leg).");
+    }
   }
   if ((input.counter_amount == null) !== (input.counter_currency == null)) {
     throw new Error("counter_amount and counter_currency must be set together.");

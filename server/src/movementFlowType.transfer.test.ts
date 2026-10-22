@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { movementFlowTypeFromRow, movementFlowTypeLabel } from "./movementFlowType.js";
+import { FLOW_KIND_AFP_FUND_SWITCH, movementFlowTypeFromRow, movementFlowTypeLabel } from "./movementFlowType.js";
 
 describe("kind-less transfers are named in their own currency", () => {
   const typeOf = (currency: string, transfer_direction: "out" | "in") =>
@@ -19,5 +19,20 @@ describe("kind-less transfers are named in their own currency", () => {
 
   it("refuses a currency it has no name for", () => {
     expect(() => typeOf("eur", "in")).toThrow(/eur/);
+  });
+});
+
+describe("an AFP fund switch is named by its kind on both legs", () => {
+  it("reads afp_fund_switch whichever side is viewed, labelled «Traspaso AFP»", () => {
+    for (const transfer_direction of ["out", "in"] as const) {
+      const type = movementFlowTypeFromRow({
+        signed_clp_delta: 0,
+        flow_kind: FLOW_KIND_AFP_FUND_SWITCH,
+        transfer_direction,
+        currency: "clp",
+      });
+      expect(type).toBe("afp_fund_switch");
+      expect(movementFlowTypeLabel(type)).toBe("Traspaso AFP");
+    }
   });
 });
