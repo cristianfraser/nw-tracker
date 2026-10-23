@@ -227,10 +227,12 @@ function afpAccountId(): number {
 
 /**
  * The account's cuota rows, signed as they move the account: single-leg rows as stored, and a
- * transfer leg (a withdrawal paid to a bank account) with its pesos and cuotas negative when the
- * money leaves, positive when it arrives — a transfer stores both unsigned.
+ * transfer leg (a withdrawal paid to a bank account, a fund switch) with its pesos and cuotas
+ * negative when the money leaves, positive when it arrives — a transfer stores both unsigned.
+ * The to-leg of a fund switch takes its own count (`counter_units_delta`, the cuotas the
+ * receiving fund credited), as `transferToLegUnits` reads it; the from-leg always `units_delta`.
  */
-function loadLedger(accountId: number): PensionLedgerRow[] {
+export function loadPensionLedger(accountId: number): PensionLedgerRow[] {
   return db
     .prepare(
       `SELECT id, occurred_on, amount, COALESCE(units_delta, 0) AS units_delta FROM movements
@@ -238,7 +240,8 @@ function loadLedger(accountId: number): PensionLedgerRow[] {
        UNION ALL
        SELECT id, occurred_on,
               CASE WHEN from_account_id = ? THEN -amount ELSE amount END AS amount,
-              CASE WHEN from_account_id = ? THEN -ABS(COALESCE(units_delta, 0)) ELSE ABS(COALESCE(units_delta, 0)) END AS units_delta
+              CASE WHEN from_account_id = ? THEN -ABS(COALESCE(units_delta, 0))
+                   ELSE ABS(COALESCE(counter_units_delta, units_delta, 0)) END AS units_delta
          FROM movements
         WHERE account_id IS NULL AND currency = 'clp' AND (from_account_id = ? OR to_account_id = ?)
         ORDER BY occurred_on, id`
@@ -261,7 +264,7 @@ export function applyPensionAccountCertificates(
   }
   const accountId = afpAccountId();
   const series = loadSeries(payload.movements.from_period);
-  const plan = planPensionCertificates(payload, loadLedger(accountId), series);
+  const plan = planPensionCertificates(payload, loadPensionLedger(accountId), series);
   const fresh = plan.rows.filter((r) => r.state === "new");
   const value = checkPensionStatedValue(payload.balance, series, chileCalendarTodayYmd(), (day) => {
     const mark = accountMarkClpAtYmd(accountId, day)?.value_clp;
@@ -330,7 +333,7 @@ export function applyPensionAccountBalance(payload: PensionAccountBalancePayload
     throw new Error(`pension: no account mapped for ${payload.provider} ${payload.product}`);
   }
   const accountId = afpAccountId();
-  const ledgerCuotas = round4(loadLedger(accountId).reduce((s, l) => s + l.units_delta, 0));
+  const ledgerCuotas = round4(loadPensionLedger(accountId).reduce((s, l) => s + l.units_delta, 0));
   const certificatesNeeded = Math.abs(ledgerCuotas - payload.balance.cuotas) >= BALANCE_TOLERANCE;
   if (certificatesNeeded) {
     return {

@@ -9,6 +9,7 @@ import {
   transferToLegUnits,
 } from "./movementTransfer.js";
 import { accountTakesUnits, validateMovementCreate } from "./movementUnitsPolicy.js";
+import { loadPensionLedger } from "./pensionAccountCertificatesApply.js";
 
 /**
  * A transfer between two cuota accounts (an AFP fund switch) carries two counts: the cuotas
@@ -72,6 +73,20 @@ describe("transfer leg units with a counter", () => {
     // Before the switch day neither side has moved.
     expect(transferLegUnitsThroughDate(afpFrom, "1990-05-31")).toBe(0);
     expect(transferLegUnitsThroughDate(afpTo, "1990-05-31")).toBe(0);
+    db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+  });
+
+  it("the pension read's ledger credits the receiving fund its own count, not the cuotas sold", () => {
+    // 2026-10-22: the nightly AFP UNO read summed the switch's to-leg as the 115,66 Modelo
+    // cuotas sold instead of the 111,37 UNO credited, read 4,29 above the website and failed.
+    if (!afpFrom) return;
+    const id = insertSwitch(115.66, 111.37);
+    const sold = loadPensionLedger(afpFrom).find((r) => r.id === id);
+    const bought = loadPensionLedger(afpTo).find((r) => r.id === id);
+    expect(sold?.units_delta).toBeCloseTo(-115.66, 9);
+    expect(sold?.amount).toBe(-1000000);
+    expect(bought?.units_delta).toBeCloseTo(111.37, 9);
+    expect(bought?.amount).toBe(1000000);
     db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
   });
 
