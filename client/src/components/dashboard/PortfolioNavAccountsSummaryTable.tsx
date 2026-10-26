@@ -31,7 +31,6 @@ export type PortfolioNavAccountsSummaryTableProps = {
   navChildren: NavTreeNodeDto[];
   showUsd: boolean;
   animated?: boolean;
-  placeholderPhase?: boolean;
 };
 
 type PeriodSlice = "day" | "month" | "year" | "total";
@@ -86,7 +85,6 @@ export function PortfolioNavAccountsSummaryTable({
   navChildren,
   showUsd,
   animated = true,
-  placeholderPhase = false,
 }: PortfolioNavAccountsSummaryTableProps) {
   const { t } = useTranslation();
 
@@ -161,12 +159,11 @@ export function PortfolioNavAccountsSummaryTable({
       {rows.map((row) => {
         const { metricsByPeriod } = row;
         const lifetime = metricsByPeriod.month;
-        const cardSlug = `nav-acc-table-${row.child.slug}-${row.child.node_id}`;
         const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, showUsd);
         const nameCell = row.routePath ? <Link to={row.routePath}>{row.label}</Link> : row.label;
-        // The hidden parallel rendering renders its flows static (animated=false, no mount
-        // seed): a display:none number-flow measures digit widths as 0, and coupling it to
-        // the visible cell's animation collapses zero targets to empty digits.
+        // The hidden parallel rendering renders its flows static (animated=false): a
+        // display:none number-flow measures digit widths as 0, and coupling it to the
+        // visible cell's animation collapses zero targets to empty digits.
         const isAnimated = (variant: CellVariant) => variant === "desktop" && animated;
         /** Balance with the day P/L underneath — the card's balance-row framing. */
         const balanceCell = (variant: CellVariant) => (
@@ -181,12 +178,10 @@ export function PortfolioNavAccountsSummaryTable({
             apiUsd={row.apiUsd}
             showUsd={showUsd}
             animated={isAnimated(variant)}
-            placeholderPhase={placeholderPhase}
             // Desktop cell aligns left like every other column ("breakdown" is a
             // block-level right-align meant for card sub-balance lists; the mobile
             // card row keeps it — values are right-aligned there).
             variant={variant === "desktop" ? "main" : "breakdown"}
-            mountSeedKey={variant === "desktop" ? `${cardSlug}:balance` : undefined}
             fxMissing={row.fxMissing}
             syncStale={row.syncStale}
           />
@@ -210,10 +205,6 @@ export function PortfolioNavAccountsSummaryTable({
                 value={value}
                 showUsd={showUsd}
                 animated={isAnimated(variant)}
-                placeholderPhase={placeholderPhase}
-                mountSeedId={
-                  variant === "desktop" ? `${cardSlug}:deposited:${slice}` : `${cardSlug}:m`
-                }
               />
             </span>
           );
@@ -231,8 +222,6 @@ export function PortfolioNavAccountsSummaryTable({
                     slice === "total" ? "total" : "period"
                   )}
                   animated={isAnimated(variant)}
-                  placeholderPhase={placeholderPhase}
-                  mountSeedId={variant === "desktop" ? `${cardSlug}:delta:${slice}` : undefined}
                   fractionDigits={deltaFractionDigits}
                   className="accounts-summary-delta"
                 />

@@ -21,7 +21,6 @@ export type PortfolioNavChildDetailCardsProps = {
   navChildren: NavTreeNodeDto[];
   showUsd: boolean;
   animated?: boolean;
-  placeholderPhase?: boolean;
 };
 
 /** Second-row dashboard-style cards for first-level portfolio nav children (subset of dashboard accounts). */
@@ -30,7 +29,6 @@ export function PortfolioNavChildDetailCards({
   navChildren,
   showUsd,
   animated = true,
-  placeholderPhase = false,
 }: PortfolioNavChildDetailCardsProps) {
   const sorted = useMemo(() => {
     const filtered = navChildren.filter(
@@ -61,7 +59,6 @@ export function PortfolioNavChildDetailCards({
           child.asset_group_slug?.startsWith("cash_eqs")
             ? "card--cash"
             : "";
-        const cardSlug = `nav-${child.slug}-${child.node_id}`;
         const fxMissing = showUsd && childRows.some((r) => r.fx_missing);
         const syncStale =
           childRows.length > 0 && childRows.every((r) => r.sync_stale === true);
@@ -76,26 +73,20 @@ export function PortfolioNavChildDetailCards({
             apiUsd={apiUsd}
             fxMissing={fxMissing}
             syncStale={syncStale}
-            cardSlug={cardSlug}
             animated={animated}
-            placeholderPhase={placeholderPhase}
             className={cashClass}
             valueDelta={
               <CardValueDayPl
                 metricsByPeriod={metricsByPeriod}
                 showUsd={showUsd}
-                cardSlug={cardSlug}
                 animated={animated}
-                placeholderPhase={placeholderPhase}
               />
             }
             metrics={
               <DashboardCardGroupMetrics
                 metricsByPeriod={metricsByPeriod}
                 showUsd={showUsd}
-                cardSlug={cardSlug}
                 animated={animated}
-                placeholderPhase={placeholderPhase}
               />
             }
             breakdown={
@@ -105,9 +96,7 @@ export function PortfolioNavChildDetailCards({
                   bottomLines={br.bottomLines}
                   pinBottomToCard={br.pinBottom}
                   showUsd={showUsd}
-                  cardSlug={cardSlug}
                   animated={animated}
-                  placeholderPhase={placeholderPhase}
                 />
               ) : null
             }

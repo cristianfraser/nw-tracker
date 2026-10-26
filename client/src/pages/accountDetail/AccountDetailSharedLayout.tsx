@@ -11,7 +11,6 @@ import styles from "../AccountDetailPage.module.css";
 
 type LayoutProps = {
   title: string;
-  accountId: number;
   accountMetricsAgg: ReturnType<typeof cardGroupMetricsByPeriodFromAccounts>;
   displayUnit: "clp" | "usd";
   heroClp: number;
@@ -25,7 +24,7 @@ type LayoutProps = {
   children: ReactNode;
   /** Rendered right-aligned at the bottom of the page (e.g. Export button). */
   toolbar?: ReactNode;
-  /** The page data is not in (or is held prior-unit data): the body dims and the cards sit in their placeholder phase. */
+  /** The page data is not in (or is held prior-unit data): the body dims. */
   loading?: boolean;
   /** Nav child dashboard cards (second strip row). Off for leaf pages that never show them (e.g. credit card). */
   showNavChildCards?: boolean;
@@ -33,7 +32,6 @@ type LayoutProps = {
 
 export function AccountDetailSharedLayout({
   title,
-  accountId,
   accountMetricsAgg,
   displayUnit,
   heroClp,
@@ -53,7 +51,6 @@ export function AccountDetailSharedLayout({
         navChildren={accountNavChildren}
         showUsd={displayUnit === "usd"}
         animated
-        placeholderPhase={loading}
       />
     ) : null;
 
@@ -75,27 +72,21 @@ export function AccountDetailSharedLayout({
               showUsd={displayUnit === "usd"}
               clp={displayUnit === "usd" ? 0 : heroClp}
               apiUsd={displayUnit === "usd" ? heroApiUsd : null}
-              cardSlug={`acc-${accountId}-hero`}
               animated
-              placeholderPhase={loading}
               stripInner
               valueVariant="main"
               valueDelta={
                 <CardValueDayPl
                   metricsByPeriod={accountMetricsAgg}
                   showUsd={displayUnit === "usd"}
-                  cardSlug={`acc-${accountId}-hero`}
                   animated
-                  placeholderPhase={loading}
                 />
               }
               metrics={
                 <DashboardCardGroupMetrics
                   metricsByPeriod={accountMetricsAgg}
                   showUsd={displayUnit === "usd"}
-                  cardSlug={`acc-${accountId}-hero`}
                   animated
-                  placeholderPhase={loading}
                 />
               }
             />

@@ -32,8 +32,11 @@ const RETIRED_PREF_LS_KEYS = [
   "nw-tracker.chartGranularity",
 ];
 
-/** Retired per-account key prefixes (the credit card's per-purchase schedule offsets). */
-const RETIRED_PREF_LS_PREFIXES = ["nw-credit-card-extra-offsets:"];
+/**
+ * Retired key prefixes: the credit card's per-purchase schedule offsets, and the number-flow
+ * mount seeds (a random number each card spun from on mount, removed 2026-10-26).
+ */
+const RETIRED_PREF_LS_PREFIXES = ["nw-credit-card-extra-offsets:", "nw:numberFlowMount:"];
 
 function clearRetiredPrefKeys(): void {
   try {

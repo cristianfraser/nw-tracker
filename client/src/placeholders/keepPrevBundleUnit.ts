@@ -12,7 +12,7 @@ import type {
   TimeseriesBlock,
   ValuationTimeseriesResponse,
 } from "../types";
-import { synthesizeMissingUsdOnDashboardAccountRows } from "./perturbCachedAmount";
+import { synthesizeMissingUsdOnDashboardAccountRows } from "./synthesizeMissingUsd";
 
 /**
  * Keep the previous display unit's chart on screen during a CLP↔USD switch, converted to the

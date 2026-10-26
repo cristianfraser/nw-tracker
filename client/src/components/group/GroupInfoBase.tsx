@@ -40,8 +40,9 @@ export type GroupInfoPortfolioStrip = {
   showUsd: boolean;
   animated?: boolean;
   /**
-   * Static placeholder values, then one spin to final; the strip also dims. Defaults to the
-   * page's `loading`; a page passes true when `dash` is a placeholder of its own (cold strip).
+   * Dims the strip while `dash` is a placeholder of its own (a zero strip from the nav tree).
+   * Defaults to the page's `loading`. The numbers themselves are shown as given — a cached
+   * strip spins to the real one when the bundle lands.
    */
   placeholderPhase?: boolean;
   /** Nodes for `navNode.linked_card_slugs`, resolved against the sidebar nav by the page. */
@@ -192,7 +193,6 @@ export function GroupInfoBase({
               parentNavNode={portfolio.navNode}
               showUsd={portfolio.showUsd}
               animated={portfolio.animated}
-              placeholderPhase={stripPlaceholderPhase}
               linkedCardNavChildren={portfolio.linkedCardNavChildren}
             />
           </Loadable>

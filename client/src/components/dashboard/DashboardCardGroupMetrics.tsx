@@ -10,8 +10,6 @@ import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import { DashboardCardsValueGroup } from "./DashboardCardValue";
 import { DeltaMetricFlow } from "./DeltaMetricFlow";
 import styles from "./CardGroupMetrics.module.css";
-
-const METRIC_MOUNT_DIGIT_RANGE: [number, number] = [5, 7];
 const METRIC_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
 const METRIC_TIMING = {
   transformTiming: { duration: 320, easing: METRIC_EASING },
@@ -22,9 +20,7 @@ type Props = {
   /** All three period slices; rows carry no visible labels (tooltip + a11y text only). */
   metricsByPeriod: CardGroupMetricsByPeriod;
   showUsd: boolean;
-  cardSlug: string;
   animated?: boolean;
-  placeholderPhase?: boolean;
 };
 
 /** Shared decimal alignment for every Δ on the card (the balance-row day Δ included). */
@@ -49,9 +45,7 @@ export function cardDeltaFractionDigits(
 export function CardValueDayPl({
   metricsByPeriod,
   showUsd,
-  cardSlug,
   animated = true,
-  placeholderPhase = false,
 }: Props) {
   const { t } = useTranslation();
   const label = t("dashboard.cardBreakdown.periodDeltaDay");
@@ -61,8 +55,6 @@ export function CardValueDayPl({
       <DeltaMetricFlow
         delta={roundedMetricDelta(metricsByPeriod.day, showUsd, "period")}
         animated={animated}
-        placeholderPhase={placeholderPhase}
-        mountSeedId={`${cardSlug}:delta:day`}
         fractionDigits={cardDeltaFractionDigits(metricsByPeriod, showUsd)}
       />
     </span>
@@ -74,14 +66,10 @@ export function DepositedMetricFlow({
   value,
   showUsd,
   animated,
-  placeholderPhase,
-  mountSeedId,
 }: {
   value: number | null;
   showUsd: boolean;
   animated: boolean;
-  placeholderPhase: boolean;
-  mountSeedId: string;
 }) {
   if (value == null) {
     return <span className={cn(styles.amount, styles.amountEmpty, "mono")}>—</span>;
@@ -91,9 +79,6 @@ export function DepositedMetricFlow({
     <AnimatedNumberFlow
       value={value}
       animated={animated}
-      placeholderPhase={placeholderPhase}
-      mountSeedDigitRange={METRIC_MOUNT_DIGIT_RANGE}
-      mountSeedId={mountSeedId}
       mapDisplayValue={(n) => accountingCurrencyNumberFlowParts(n, unit, "bare")}
       className={cn(styles.amount, "mono")}
       transformTiming={METRIC_TIMING.transformTiming}
@@ -111,9 +96,6 @@ function MetricsRow({
   deltaFractionDigits,
   showUsd,
   animated,
-  placeholderPhase,
-  cardSlug,
-  rowKey,
   dim = false,
 }: {
   deposited: number | null;
@@ -123,9 +105,6 @@ function MetricsRow({
   deltaFractionDigits: number;
   showUsd: boolean;
   animated: boolean;
-  placeholderPhase: boolean;
-  cardSlug: string;
-  rowKey: string;
   dim?: boolean;
 }) {
   return (
@@ -136,16 +115,12 @@ function MetricsRow({
           value={deposited}
           showUsd={showUsd}
           animated={animated}
-          placeholderPhase={placeholderPhase}
-          mountSeedId={`${cardSlug}:deposited:${rowKey}`}
         />
       </span>
       <span className={styles.deltaWrap} title={deltaLabel}>
         <DeltaMetricFlow
           delta={delta}
           animated={animated}
-          placeholderPhase={placeholderPhase}
-          mountSeedId={`${cardSlug}:delta:${rowKey}`}
           fractionDigits={deltaFractionDigits}
         />
       </span>
@@ -161,16 +136,14 @@ function MetricsRow({
 export function DashboardCardGroupMetrics({
   metricsByPeriod,
   showUsd,
-  cardSlug,
   animated = true,
-  placeholderPhase = false,
 }: Props) {
   const { t } = useTranslation();
 
   // Lifetime fields are identical across slices — read them from the month slice.
   const lifetime = metricsByPeriod.month;
   const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, showUsd);
-  const shared = { deltaFractionDigits, showUsd, animated, placeholderPhase, cardSlug };
+  const shared = { deltaFractionDigits, showUsd, animated };
 
   return (
     <div className={styles.root} aria-label={t("dashboard.cardBreakdown.summaryAria")}>
@@ -181,7 +154,6 @@ export function DashboardCardGroupMetrics({
           depositedLabel={t("dashboard.cardBreakdown.periodDepositsMonth")}
           delta={roundedMetricDelta(metricsByPeriod.month, showUsd, "period")}
           deltaLabel={t("dashboard.cardBreakdown.periodDeltaMonth")}
-          rowKey="month"
         />
         <MetricsRow
           {...shared}
@@ -189,7 +161,6 @@ export function DashboardCardGroupMetrics({
           depositedLabel={t("dashboard.cardBreakdown.periodDepositsYear")}
           delta={roundedMetricDelta(metricsByPeriod.year, showUsd, "period")}
           deltaLabel={t("dashboard.cardBreakdown.periodDeltaYear")}
-          rowKey="year"
         />
         <span className={styles.divider} aria-hidden="true" />
         <MetricsRow
@@ -198,7 +169,6 @@ export function DashboardCardGroupMetrics({
           depositedLabel={t("dashboard.cardBreakdown.totalDeposited")}
           delta={roundedMetricDelta(lifetime, showUsd, "total")}
           deltaLabel={t("dashboard.cardBreakdown.totalDelta")}
-          rowKey="total"
           dim
         />
       </DashboardCardsValueGroup>

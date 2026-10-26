@@ -31,7 +31,6 @@ export type PortfolioNavEntityCardsStripProps = {
   parentNavNode: NavTreeNodeDto;
   showUsd: boolean;
   animated?: boolean;
-  placeholderPhase?: boolean;
   /** Nodes for `parentNavNode.linked_card_slugs`, resolved by the page against the sidebar nav. */
   linkedCardNavChildren?: NavTreeNodeDto[];
 };
@@ -43,7 +42,6 @@ type NavSummaryCardProps = {
   to?: string;
   showUsd: boolean;
   animated: boolean;
-  placeholderPhase: boolean;
 };
 
 /**
@@ -57,9 +55,7 @@ function NavSummaryCard({
   to,
   showUsd,
   animated,
-  placeholderPhase,
 }: NavSummaryCardProps) {
-  const cardSlug = `grp-nav-${node.slug}-${node.node_id}`;
   const totals = portfolioNavParentMainValue(
     dash,
     portfolioNavParentTitleModeForNavNode(node),
@@ -74,27 +70,21 @@ function NavSummaryCard({
       showUsd={showUsd}
       clp={totals.clp}
       apiUsd={totals.apiUsd}
-      cardSlug={cardSlug}
       animated={animated}
-      placeholderPhase={placeholderPhase}
       stripInner
       valueVariant="main"
       valueDelta={
         <CardValueDayPl
           metricsByPeriod={metricsByPeriod}
           showUsd={showUsd}
-          cardSlug={cardSlug}
           animated={animated}
-          placeholderPhase={placeholderPhase}
         />
       }
       metrics={
         <DashboardCardGroupMetrics
           metricsByPeriod={metricsByPeriod}
           showUsd={showUsd}
-          cardSlug={cardSlug}
           animated={animated}
-          placeholderPhase={placeholderPhase}
         />
       }
     />
@@ -111,7 +101,6 @@ export function PortfolioNavEntityCardsStrip({
   parentNavNode,
   showUsd,
   animated = true,
-  placeholderPhase = false,
   linkedCardNavChildren = [],
 }: PortfolioNavEntityCardsStripProps) {
   const summaryHubs = useMemo(() => portfolioStripSummaryHubs(parentNavNode), [parentNavNode]);
@@ -185,7 +174,6 @@ export function PortfolioNavEntityCardsStrip({
             label={parentLabel}
             showUsd={showUsd}
             animated={animated}
-            placeholderPhase={placeholderPhase}
           />
         }
         summarySlots={summaryHubs.map((hub) => ({
@@ -198,7 +186,6 @@ export function PortfolioNavEntityCardsStrip({
               to={hub.route_path?.trim() || undefined}
               showUsd={showUsd}
               animated={animated}
-              placeholderPhase={placeholderPhase}
             />
           ),
         }))}
@@ -209,7 +196,6 @@ export function PortfolioNavEntityCardsStrip({
               navChildren={detailChildren}
               showUsd={showUsd}
               animated={animated}
-              placeholderPhase={placeholderPhase}
             />
           ) : null
         }
@@ -220,7 +206,6 @@ export function PortfolioNavEntityCardsStrip({
               navChildren={accountCardChildren}
               showUsd={showUsd}
               animated={animated}
-              placeholderPhase={placeholderPhase}
             />
           ) : null
         }
