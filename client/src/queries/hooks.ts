@@ -24,25 +24,21 @@ import {
 import { queryKeys, type DisplayUnit } from "./keys";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import {
-  perturbDashboardNavSnapshot,
-  perturbGroupPageShell,
   synthesizeMissingUsdOnDashboardNavContext,
   synthesizeMissingUsdOnGroupPageShell,
   synthesizeMissingUsdOnNavSnapshot,
-} from "../placeholders/perturbCachedAmount";
+} from "../placeholders/synthesizeMissingUsd";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
 import type { GroupPageShell } from "./groupPageShell";
 import type { NavTreeNodeDto } from "../types";
 
+/** A snapshot is shown with the numbers it carries; only a USD view of a CLP payload derives its USD fields. */
 function prepareNavSnapshotForDisplay(
   unit: DisplayUnit,
   raw: import("../types").DashboardNavSnapshotResponse
 ) {
-  const cachedFx = readFxLatestCache();
-  const prepared = unit === "usd" ? synthesizeMissingUsdOnNavSnapshot(raw, cachedFx) : raw;
-  if (unit === "usd") return prepared;
-  return perturbDashboardNavSnapshot(prepared);
+  return unit === "usd" ? synthesizeMissingUsdOnNavSnapshot(raw, readFxLatestCache()) : raw;
 }
 
 /** Snapshots read from localStorage (placeholders), as opposed to live server payloads. */
@@ -259,13 +255,8 @@ export function useGroupPageShell(opts: {
       }
       return buildGroupPageShellFromNav(navNode, unit);
     },
-    initialData: () => {
-      if (!cachedShell) return undefined;
-      const raw = readGroupPageShellCacheForUnit(portfolioGroup, unit);
-      if (!raw) return undefined;
-      if (unit === "usd") return raw;
-      return perturbGroupPageShell(raw);
-    },
+    initialData: () =>
+      cachedShell ? readGroupPageShellCacheForUnit(portfolioGroup, unit) : undefined,
     initialDataUpdatedAt: cachedShell ? Date.now() : undefined,
     enabled: enabled && Boolean(portfolioGroup && navNode) && !cachedShell,
     ...displayUnitQueryBehaviorFor(queryKeys.groupPageShell(portfolioGroup, unit), 2),

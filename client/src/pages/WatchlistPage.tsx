@@ -115,21 +115,12 @@ function AddSymbolCombobox() {
   );
 }
 
-function PctCell({
-  value,
-  seedId,
-  col,
-}: {
-  value: number | null;
-  seedId: string;
-  col: string;
-}) {
+function PctCell({ value }: { value: number | null }) {
   return (
     <DeltaMetricFlow
       delta={value}
       deltaFormat="percent"
       fractionDigits={2}
-      mountSeedId={`${seedId}-${col}`}
     />
   );
 }
@@ -141,7 +132,6 @@ function watchlistTr({
   marquee,
   actions,
   showActionsColumn,
-  sortSeed,
 }: {
   row: Pick<WatchlistRow, "value" | "value_currency" | "changes"> & {
     fetch_error?: WatchlistRow["fetch_error"];
@@ -151,7 +141,6 @@ function watchlistTr({
   marquee?: React.ReactNode;
   actions?: React.ReactNode;
   showActionsColumn?: boolean;
-  sortSeed: string;
 }) {
   const changes = row.changes;
   return (
@@ -175,31 +164,31 @@ function watchlistTr({
       </td>
       <td className="watchlist-table__num mono">{formatPriceRow(row)}</td>
       <td className="watchlist-table__num">
-        <PctCell value={changes?.day_pct ?? null} seedId={sortSeed} col="day" />
+        <PctCell value={changes?.day_pct ?? null} />
       </td>
       <td className="watchlist-table__num">
-        <PctCell value={changes?.week_pct ?? null} seedId={sortSeed} col="week" />
+        <PctCell value={changes?.week_pct ?? null} />
       </td>
       <td className="watchlist-table__num">
-        <PctCell value={changes?.mtd_pct ?? null} seedId={sortSeed} col="mtd" />
+        <PctCell value={changes?.mtd_pct ?? null} />
       </td>
       <td className="watchlist-table__num">
-        <PctCell value={changes?.mom_pct ?? null} seedId={sortSeed} col="mom" />
+        <PctCell value={changes?.mom_pct ?? null} />
       </td>
       <td className="watchlist-table__num">
-        <PctCell value={changes?.ytd_pct ?? null} seedId={sortSeed} col="ytd" />
+        <PctCell value={changes?.ytd_pct ?? null} />
       </td>
       <td className="watchlist-table__num">
-        <PctCell value={changes?.yoy_pct ?? null} seedId={sortSeed} col="yoy" />
+        <PctCell value={changes?.yoy_pct ?? null} />
       </td>
       <td className="watchlist-table__num">
-        <PctCell value={changes?.y3_pct ?? null} seedId={sortSeed} col="y3" />
+        <PctCell value={changes?.y3_pct ?? null} />
       </td>
       <td className="watchlist-table__num">
-        <PctCell value={changes?.y5_pct ?? null} seedId={sortSeed} col="y5" />
+        <PctCell value={changes?.y5_pct ?? null} />
       </td>
       <td className="watchlist-table__num">
-        <PctCell value={changes?.y10_pct ?? null} seedId={sortSeed} col="y10" />
+        <PctCell value={changes?.y10_pct ?? null} />
       </td>
       {showActionsColumn ? <td className="watchlist-table__actions">{actions ?? null}</td> : null}
     </tr>
@@ -277,7 +266,6 @@ function WatchlistTable({
           {watchlistTr({
             row,
             symbol: symbolLabel(row, t),
-            sortSeed: `wl-${row.id}`,
             showActionsColumn: showActions,
             actions: showActions ? (
               <Button variant="ghost"
@@ -313,7 +301,6 @@ function WatchlistTable({
                       row: holding,
                       symbol: `${holding.ticker} · ${weightPct}`,
                       symbolClassName: "watchlist-table__symbol watchlist-table__symbol--sub mono",
-                      sortSeed: `wl-${row.id}-h-${holding.ticker}`,
                       showActionsColumn: showActions,
                     })}
                   </Fragment>

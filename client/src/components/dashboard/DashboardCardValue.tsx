@@ -30,11 +30,6 @@ const VARIANT_TIMING: Record<
   },
 };
 
-const MOUNT_DIGIT_RANGE: Record<DashboardCardValueVariant, [number, number]> = {
-  main: [6, 9],
-  breakdown: [5, 7],
-};
-
 const ALIGN_STYLE: Record<DashboardCardValueVariant, { id: string; css: string }> = {
   main: {
     id: "nw-number-flow-left-align",
@@ -121,13 +116,10 @@ type Props = {
   showUsd: boolean;
   animated?: boolean;
   variant?: DashboardCardValueVariant;
-  mountSeedKey?: string;
   /** When true in USD mode, show conversion error instead of em dash. */
   fxMissing?: boolean;
   /** Lower opacity when linked sync source(s) are stale. */
   syncStale?: boolean;
-  /** Bundle loading: hold placeholder values until false, then one spin to final. */
-  placeholderPhase?: boolean;
   /**
    * Fixed USD decimals for card sub-balance lists — parent passes the max adaptive
    * need across siblings so the column aligns. Omit → adaptive (main balances).
@@ -141,25 +133,19 @@ export function DashboardCardValue({
   showUsd,
   animated = true,
   variant = "main",
-  mountSeedKey,
   fxMissing = false,
   syncStale = false,
-  placeholderPhase = false,
   usdFractionDigits,
 }: Props) {
   const { t } = useTranslation();
   const hostRef = useRef<NumberFlowElement | null>(null);
   const target = resolvedAmount(clp, apiUsd, showUsd, usdFractionDigits);
-  const { duration, transformTiming, spinTiming } = VARIANT_TIMING[variant];
+  const { transformTiming, spinTiming } = VARIANT_TIMING[variant];
   const isMain = variant === "main";
 
   useEffect(() => {
     injectAlignStyles(hostRef.current, variant);
   }, [variant]);
-
-  const mountProps = mountSeedKey
-    ? { mountSeedDigitRange: MOUNT_DIGIT_RANGE[variant], mountSeedId: mountSeedKey }
-    : {};
 
   const wrapClass = isMain
     ? `${styles.wrap} ${styles.wrapMain} dashboard-card-value dashboard-card-value--main${syncStale ? ` ${styles.syncStale}` : ""}`
@@ -176,8 +162,6 @@ export function DashboardCardValue({
       }}
       value={target}
       animated={animated}
-      placeholderPhase={placeholderPhase}
-      {...mountProps}
       mapDisplayValue={(n) =>
         showUsd
           ? adaptiveUsdAccountingNumberFlowParts(n, "bare", usdFractionDigits)
@@ -185,7 +169,6 @@ export function DashboardCardValue({
       }
       wrapClassName={wrapClass}
       className={valueClass}
-      mountDuration={duration}
       transformTiming={transformTiming}
       spinTiming={spinTiming}
       emptyFallback={

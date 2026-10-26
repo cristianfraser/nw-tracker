@@ -36,7 +36,6 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   return (
     <AccountDetailSharedLayout
       title={ts.name}
-      accountId={summary.account_id}
       accountMetricsAgg={data.accountMetricsAgg}
       displayUnit={displayUnit}
       heroClp={heroClp}

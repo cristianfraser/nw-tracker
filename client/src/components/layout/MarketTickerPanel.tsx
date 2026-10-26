@@ -17,14 +17,12 @@ function MarqueeItemContent({
   delta,
   deltaFractionDigits,
   showDelta,
-  seed,
 }: {
   label: string;
   value: string;
   delta?: number | null;
   deltaFractionDigits?: number;
   showDelta?: boolean;
-  seed: string;
 }) {
   return (
     <span className={styles.item}>
@@ -34,7 +32,6 @@ function MarqueeItemContent({
         <DeltaMetricFlow
           delta={delta ?? null}
           animated={false}
-          mountSeedId={seed}
           fractionDigits={deltaFractionDigits ?? 2}
           deltaFormat="percent"
           className={styles.delta}
@@ -61,7 +58,6 @@ function MarqueeTrack({ items }: { items: ReturnType<typeof useMarketTickerMarqu
               item.kind === "risky_norris_proxy" ||
               item.kind === "equity"
             }
-            seed={`ticker:${item.kind}:${item.label}`}
           />
           <MarqueeSegmentSeparator />
         </Fragment>

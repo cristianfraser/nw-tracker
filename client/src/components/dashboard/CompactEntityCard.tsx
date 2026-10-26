@@ -13,9 +13,7 @@ export type CompactEntityCardProps = {
   showUsd: boolean;
   clp: number;
   apiUsd?: number | null;
-  cardSlug: string;
   animated?: boolean;
-  placeholderPhase?: boolean;
   fxMissing?: boolean;
   /** Lower opacity when linked sync source(s) are stale. */
   syncStale?: boolean;
@@ -41,9 +39,7 @@ export function CompactEntityCard({
   showUsd,
   clp,
   apiUsd,
-  cardSlug,
   animated = true,
-  placeholderPhase = false,
   subtitle,
   valueDelta,
   metrics,
@@ -69,9 +65,7 @@ export function CompactEntityCard({
           apiUsd={apiUsd}
           showUsd={showUsd}
           animated={animated}
-          placeholderPhase={placeholderPhase}
           variant={valueVariant}
-          mountSeedKey={`${cardSlug}:compact`}
           fxMissing={fxMissing}
           syncStale={syncStale}
         />

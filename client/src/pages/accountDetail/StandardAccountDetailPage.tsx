@@ -188,7 +188,6 @@ export function StandardAccountDetailPage({ data }: Props) {
     <AccountDetailSharedLayout
       toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}
       title={ts.name}
-      accountId={summary.account_id}
       accountMetricsAgg={data.accountMetricsAgg}
       displayUnit={displayUnit}
       heroClp={
