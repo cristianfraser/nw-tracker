@@ -2,11 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { createPanelAccount } from "./createPanelAccount.js";
 import { seedNavTree } from "./seedNavTree.js";
-import {
-  applyBankAccountBalances,
-  bankBalanceMessageKind,
-  judgeLatestBankAccountBalances,
-} from "./bankAccountBalances.js";
+import { applyBankAccountBalances, judgeLatestBankAccountBalances } from "./bankAccountBalances.js";
 
 const NUMBER = "005199990077";
 const REF_A = "vitest-balances-a.json";
@@ -78,6 +74,5 @@ describe("bank account balances", () => {
     applyBankAccountBalances(payload(110, "2020-01-06T02:00:00.000Z"), REF_B);
     const off = judgeLatestBankAccountBalances().filter((v) => v.account_id === accountId);
     expect(off).toMatchObject([{ status: "mismatch", bank_balance: 110, ledger_balance: 100, diff: -10, fresh: true }]);
-    expect(bankBalanceMessageKind(off)).toBe("notification");
   });
 });

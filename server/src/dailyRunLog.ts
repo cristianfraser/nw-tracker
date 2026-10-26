@@ -99,8 +99,9 @@ function chileStampFromStoredUtc(stored: string): string {
 }
 
 /**
- * The most recent run recorded under `titles`, when it was the failed one — null when the last
- * run succeeded or none was ever recorded.
+ * The outage this clean run ends: the unbroken run of failures recorded under `titles` since the
+ * last success — null when the last run succeeded or none was ever recorded. `created_at` is the
+ * most recent failure's; `notified` says whether any failure of the outage was a `notification`.
  *
  * A success that follows a failure is the one outcome the notifications tab could not express: a
  * failure badges as a `notification`, a clean run is a plain `log`, and the tab lists notifications
@@ -109,20 +110,29 @@ function chileStampFromStoredUtc(stored: string): string {
  * recovery is therefore recorded as a notification too, under the SAME title as any clean run:
  * the titles drive `lastDailyRunAt`, `dailyRunFinishedWithin` and `staleDailyRunDays`, and the
  * kind is part of none of those reads. Only the first success after a failure qualifies — the
- * next clean run finds a success on top and is a log again.
+ * next clean run finds a success on top and is a log again — and only when the outage was badged
+ * (2026-10-26): the hourly poll badges one failure per Chile day, so a second outage of the day is
+ * logs only, and its recovery as a notification read as a duplicate «all ok» under one failure.
  */
 function lastRunFailureToRecoverFrom(
   titles: readonly string[],
   failedTitle: string
-): { created_at: string } | null {
-  const row = db
+): { created_at: string; notified: boolean } | null {
+  const rows = db
     .prepare(
-      `SELECT title, created_at FROM app_messages
+      `SELECT title, kind, created_at FROM app_messages
        WHERE title IN (${titles.map(() => "?").join(", ")})
-       ORDER BY created_at DESC, id DESC LIMIT 1`
+       ORDER BY created_at DESC, id DESC`
     )
-    .get(...titles) as { title: string; created_at: string } | undefined;
-  return row && row.title === failedTitle ? { created_at: row.created_at } : null;
+    .iterate(...titles) as IterableIterator<{ title: string; kind: string; created_at: string }>;
+  let latest: string | null = null;
+  let notified = false;
+  for (const row of rows) {
+    if (row.title !== failedTitle) break;
+    latest ??= row.created_at;
+    notified ||= row.kind === "notification";
+  }
+  return latest == null ? null : { created_at: latest, notified };
 }
 
 function recoveryLine(failure: { created_at: string }): string {
@@ -201,7 +211,7 @@ export type RecordDailyRunResult = {
  * Record one run. A failure writes a `notification` so the app shows an unread badge; a clean run
  * writes a `log` alongside the sync/import entries — except the first clean run after a failure,
  * which is a `notification` under the clean title so the tab shows the failure resolved (see
- * `lastRunFailureToRecoverFrom`).
+ * `lastRunFailureToRecoverFrom`; every daily failure is badged, so every daily recovery is).
  */
 export function recordDailyRun(
   steps: readonly DailyRunStep[],
@@ -213,7 +223,7 @@ export function recordDailyRun(
     : null;
   const stepsBody = formatDailyRunBody(steps, opts?.nowYmd);
   const body = recovery ? `${stepsBody}\n\n${recoveryLine(recovery)}` : stepsBody;
-  const kind: "log" | "notification" = ok && !recovery ? "log" : "notification";
+  const kind: "log" | "notification" = ok && !recovery?.notified ? "log" : "notification";
   const message_id = insertAppMessage(
     kind,
     ok ? DAILY_RUN_MESSAGE_TITLE : DAILY_RUN_FAILED_TITLE,
@@ -229,7 +239,10 @@ export type RecordHourlyEmailRunResult = {
   recorded: boolean;
   message_id: number | null;
   kind: "log" | "notification" | null;
-  /** `created_at` of the failed poll this clean poll recovered from (recorded as a notification). */
+  /**
+   * `created_at` of the failed poll this clean poll recovered from — a notification when that
+   * outage was badged, else a log that still closes it on the import-sync page.
+   */
   recovered_from: string | null;
   body: string;
 };
@@ -250,9 +263,11 @@ function lastHourlyEmailFailureAt(): string | null {
  * outage badges once per day instead of hourly, and the nightly run — which executes the
  * same e-mail steps — still raises the macOS alert for anything that keeps failing.
  *
- * The first success after a failed poll is recorded as a `notification` even when quiet —
- * the recovery has to reach the notifications tab, and a poll with nothing to import is the
- * normal shape of the hour that proves the outage is over (see `lastRunFailureToRecoverFrom`).
+ * The first success after a failed poll is recorded even when quiet — a poll with nothing to
+ * import is the normal shape of the hour that proves the outage is over — as a `notification`
+ * when the outage was badged (its first failure of the day), so the tab pairs each badged failure
+ * with one recovery, and as a `log` when every failure of the outage was a log (see
+ * `lastRunFailureToRecoverFrom`).
  */
 export function recordHourlyEmailRun(
   steps: readonly DailyRunStep[],
@@ -277,7 +292,7 @@ export function recordHourlyEmailRun(
     const nowYmd = opts.nowYmd ?? chileCalendarTodayYmd();
     const alreadyFailedToday = lastFailure != null && chileYmdFromStoredUtc(lastFailure) === nowYmd;
     kind = alreadyFailedToday ? "log" : "notification";
-  } else if (recovery) {
+  } else if (recovery?.notified) {
     kind = "notification";
   }
   const message_id = insertAppMessage(

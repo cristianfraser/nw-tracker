@@ -7,12 +7,8 @@
  */
 import type { IngestTaskName, IngestTaskResult } from "nw-tracker-contracts";
 import { insertAppMessage } from "./appMessages.js";
-import {
-  bankBalanceMessageKind,
-  formatBankBalanceReport,
-  judgeLatestBankAccountBalances,
-} from "./bankAccountBalances.js";
-import { bankCupoMessageKind, formatBankCupoReport, judgeLatestBankCupoCapture } from "./ccBankCupoCheck.js";
+import { formatBankBalanceReport, judgeLatestBankAccountBalances } from "./bankAccountBalances.js";
+import { formatBankCupoReport, judgeLatestBankCupoCapture } from "./ccBankCupoCheck.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "./ccPaymentMirrors.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
@@ -91,8 +87,9 @@ const CUPO_TITLE = "Credit card bank cupo";
 /**
  * The bank's own cupo utilizado per card and currency (the latest feed's product summary) against
  * what the app says each card owes. Fails on a fresh mismatch, or when the latest feed carried no
- * summary; records its own app message (a notification for a new, changed or cleared mismatch, a
- * log otherwise). A capture an earlier run already judged is reported again but raises nothing.
+ * summary; records its report as a log (import sync) — the alert is the run record, which names
+ * the failed step like any other, so the check never writes a notification of its own. A capture
+ * an earlier run already judged is reported again but raises nothing.
  */
 function ccBankCupoCheck(o: TaskOptions): TaskOutcome {
   const accountName = (accountId: number): string =>
@@ -103,13 +100,13 @@ function ccBankCupoCheck(o: TaskOptions): TaskOutcome {
   if (run.capture_error != null) {
     const body = `The latest Santander feed (${run.capture.source_file}) carried no cupo summary: ${run.capture_error}`;
     if (run.capture.already_checked) return { ok: true, report: [body, "(already reported — nothing new)"] };
-    insertAppMessage("notification", CUPO_TITLE, body);
+    insertAppMessage("log", CUPO_TITLE, body);
     return { ok: false, report: [body] };
   }
   const report = formatBankCupoReport(run.verdicts, accountName);
   const fresh = run.verdicts.some((v) => v.fresh);
   const mismatches = run.verdicts.filter((v) => v.status === "mismatch");
-  if (fresh) insertAppMessage(bankCupoMessageKind(run.verdicts), CUPO_TITLE, report);
+  if (fresh) insertAppMessage("log", CUPO_TITLE, report);
   return {
     ok: !(fresh && mismatches.length > 0),
     report: [report, ...(fresh ? [] : [`\n(${run.capture.source_file} was already judged — nothing new to report)`])],
@@ -121,13 +118,13 @@ const BALANCE_TITLE = "Bank account balance";
 /**
  * The balance the bank states for each declared deposit account (`bankAccountBalances.ts`) against
  * its ledger. Runs inside the cupo check step: both read the same product summary of the same
- * session. Fails on a fresh mismatch; notifies on a new, changed or cleared one.
+ * session. Fails on a fresh mismatch; the report is a log, the run record carries the alert.
  */
 function bankAccountBalanceCheck(o: TaskOptions): TaskOutcome {
   const verdicts = judgeLatestBankAccountBalances({ recheck: o.recheck });
   const report = formatBankBalanceReport(verdicts);
   const fresh = verdicts.some((v) => v.fresh);
-  if (fresh) insertAppMessage(bankBalanceMessageKind(verdicts), BALANCE_TITLE, report);
+  if (fresh) insertAppMessage("log", BALANCE_TITLE, report);
   const failed = verdicts.some((v) => v.fresh && v.status === "mismatch");
   return { ok: !failed, report: [report, ...(fresh || verdicts.length === 0 ? [] : ["(already judged — nothing new)"])] };
 }

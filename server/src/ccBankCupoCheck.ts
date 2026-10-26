@@ -108,13 +108,6 @@ const upsertCheck = db.prepare(
      checked_at = datetime('now'), status = excluded.status, app_owed = excluded.app_owed,
      diff = excluded.diff, tolerance = excluded.tolerance, detail = excluded.detail`
 );
-const selPreviousCheck = db.prepare(
-  `SELECT k.status, k.diff
-   FROM cc_bank_cupo_checks k
-   JOIN cc_bank_cupo_snapshots s ON s.id = k.snapshot_id
-   WHERE s.account_id = ? AND s.currency = ? AND s.id < ?
-   ORDER BY s.id DESC LIMIT 1`
-);
 
 type CheckDetail = { reason: string | null; owed: CcOwedByCurrency | null };
 
@@ -185,23 +178,6 @@ export function judgeLatestBankCupoCapture(opts?: {
     verdicts.push({ ...judgement, snapshot, owed, fresh: true });
   }
   return { capture: header, capture_error: null, verdicts };
-}
-
-/**
- * Whether this run's verdicts deserve a notification: a new or changed mismatch, or a mismatch
- * that cleared (the notifications tab lists notifications only, so a resolved one would otherwise
- * sit there unresolved). Anything else is a log.
- */
-export function bankCupoMessageKind(verdicts: readonly BankCupoVerdict[]): "notification" | "log" {
-  for (const v of verdicts) {
-    if (!v.fresh) continue;
-    const prev = selPreviousCheck.get(v.snapshot.account_id, v.snapshot.currency, v.snapshot.id) as
-      | { status: BankCupoCheckStatus; diff: number | null }
-      | undefined;
-    if (v.status === "mismatch" && (prev?.status !== "mismatch" || prev.diff !== v.diff)) return "notification";
-    if (v.status !== "mismatch" && prev?.status === "mismatch") return "notification";
-  }
-  return "log";
 }
 
 function fmtAmount(n: number, currency: "clp" | "usd"): string {

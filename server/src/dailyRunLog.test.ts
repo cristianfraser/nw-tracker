@@ -209,6 +209,37 @@ describe("recordHourlyEmailRun", () => {
     expect(quiet.recorded).toBe(false);
   });
 
+  it("notifies the recovery of a badged outage even when its last failure was a log", () => {
+    recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
+    const repeat = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
+    expect(repeat.kind).toBe("log");
+    const recovered = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true, seconds: 5 }], {
+      activity: false,
+    });
+    expect(recovered.kind).toBe("notification");
+    expect(recovered.recovered_from).not.toBeNull();
+  });
+
+  it("logs the recovery of a second outage of the day, which was never badged", () => {
+    recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
+    recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true, seconds: 5 }], { activity: false });
+    // The same Chile day fails again: logs only, so its recovery must not read as a second «all ok»
+    // under the one badged failure.
+    const again = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
+    expect(again.kind).toBe("log");
+    const recovered = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true, seconds: 5 }], {
+      activity: false,
+    });
+    expect(recovered.recorded).toBe(true);
+    expect(recovered.kind).toBe("log");
+    expect(recovered.recovered_from).not.toBeNull();
+    expect(recovered.body).toMatch(/Recovered: the previous run/);
+    const quiet = recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: true, seconds: 5 }], {
+      activity: false,
+    });
+    expect(quiet.recorded).toBe(false);
+  });
+
   it("stays invisible to the daily run's repeat skip and staleness reads", () => {
     recordHourlyEmailRun([{ label: "Lider boletas import", ok: true }], { activity: true });
     recordHourlyEmailRun([{ label: "fetch broker e-mail", ok: false }], { activity: false });
