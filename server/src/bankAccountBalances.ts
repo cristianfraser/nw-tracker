@@ -88,7 +88,7 @@ export type BankBalanceVerdict = {
   status: "ok" | "mismatch";
   /** Judged by this run (false: an earlier run's verdict on the same snapshot). */
   fresh: boolean;
-  /** The previous snapshot's verdict for the same account, for the notify-once rule. */
+  /** The previous snapshot's verdict for the same account (the report marks a cleared mismatch). */
   previous: { status: "ok" | "mismatch"; diff: number } | null;
 };
 
@@ -170,18 +170,6 @@ export function judgeLatestBankAccountBalances(opts: { recheck?: boolean } = {})
     });
   }
   return verdicts;
-}
-
-/** A notification for a new or changed mismatch, or one that cleared; a log otherwise. */
-export function bankBalanceMessageKind(verdicts: readonly BankBalanceVerdict[]): "notification" | "log" {
-  for (const v of verdicts) {
-    if (!v.fresh) continue;
-    if (v.status === "mismatch" && (v.previous?.status !== "mismatch" || v.previous.diff !== v.diff)) {
-      return "notification";
-    }
-    if (v.status === "ok" && v.previous?.status === "mismatch") return "notification";
-  }
-  return "log";
 }
 
 function fmt(n: number, currency: Currency): string {

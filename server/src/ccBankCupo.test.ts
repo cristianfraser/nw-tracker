@@ -12,7 +12,6 @@ import {
   installmentRemainingClpByCalendarMonth,
 } from "./ccInstallmentLedgerDb.js";
 import {
-  bankCupoMessageKind,
   formatBankCupoReport,
   judgeBankCupo,
   judgeLatestBankCupoCapture,
@@ -199,7 +198,6 @@ describe("bank cupo check", () => {
       ["clp", "ok", 0, true],
       ["usd", "ok", 0, true],
     ]);
-    expect(bankCupoMessageKind(run.verdicts)).toBe("log");
     expect(latestBankCupoForAccount(accountId)).toMatchObject({
       observed_at: "2026-10-02T00:59:40.000Z",
       currencies: [
@@ -220,7 +218,6 @@ describe("bank cupo check", () => {
     const bad = judgeLatestBankCupoCapture();
     const clp = bad.verdicts.find((v) => v.snapshot.currency === "clp")!;
     expect(clp).toMatchObject({ status: "mismatch", diff: 300_000, tolerance: 5 });
-    expect(bankCupoMessageKind(bad.verdicts)).toBe("notification");
     const report = formatBankCupoReport(bad.verdicts, () => "Vitest card");
     expect(report).toContain("CLP: bank $1.620.000 · app $1.920.000 · +$300.000 (tolerance $5) MISMATCH");
     expect(report).toContain("cuotas por facturar $400.000 (5)");
@@ -229,7 +226,6 @@ describe("bank cupo check", () => {
     applyListing(feed(cupos(BANK_CLP_USED, BANK_USD_USED, "2026-10-02T12:00:00.000Z")), "card-movements-vitest-2.json");
     const fixed = judgeLatestBankCupoCapture();
     expect(fixed.verdicts.every((v) => v.status === "ok")).toBe(true);
-    expect(bankCupoMessageKind(fixed.verdicts)).toBe("notification");
   });
 
   it("tolerates a peso per unbilled cuota and nothing in dollars", () => {
