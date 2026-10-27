@@ -1,7 +1,8 @@
+import { chainedGroupPctResolver, fillBlankAccountRowPcts } from "./blankPctDailyChain.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { accountChartInactive } from "./accountChartInactive.js";
-import { accountBucketKindSlug } from "./accountBucket.js";
+import { accountBucketKindSlug, isLiabilityAccountId } from "./accountBucket.js";
 import {
   dashboardCardReconcilePeriodDeltas,
   reconcileDashboardCardMetrics,
@@ -559,7 +560,9 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       return { ...merged, ...dashboardRowPeriodPcts(merged, includeUsd) };
     })
   );
-  return rowsBuilt;
+  // A position bought and sold inside a period has no capital base for the one-step rule:
+  // its blank % reads the period's daily-chained return instead (see blankPctDailyChain.ts).
+  return fillBlankAccountRowPcts(rowsBuilt, includeUsd, isLiabilityAccountId);
 }
 
 /** Nav cards strip + account detail row lookup (no full dashboard totals/charts). */
@@ -597,6 +600,7 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
   const card_metrics_by_slug = buildNavCardMetricsBySlug({
     navRoots: [navRoot, liabilitiesRoot],
     rows: rowsBuilt,
+    chainedGroupPct: chainedGroupPctResolver(rowsBuilt, includeUsd, isLiabilityAccountId),
   });
   return {
     accounts: clientAccounts,
