@@ -29,7 +29,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
   const ccScope: CcSurfaceScope = { variant: "account", accountId: summary.account_id };
 
   const heroClp =
-    displayUnit === "usd"
+    data.stripUnit === "usd"
       ? 0
       : data.accountDashRow?.current_value_clp ?? summary.latest_valuation_clp ?? ccLedger.totals.total_remaining_principal_clp;
 
@@ -37,9 +37,9 @@ export function CreditCardAccountDetailPage({ data }: Props) {
     <AccountDetailSharedLayout
       title={ts.name}
       accountMetricsAgg={data.accountMetricsAgg}
-      displayUnit={displayUnit}
+      stripUnit={data.stripUnit}
       heroClp={heroClp}
-      heroApiUsd={displayUnit === "usd" ? data.accountDashRow?.current_value_usd ?? data.chartUsdVal : null}
+      heroApiUsd={data.stripUnit === "usd" ? data.accountDashRow?.current_value_usd ?? data.chartUsdVal : null}
       dash={data.dash}
       accountNavChildren={data.accountNavChildren}
       stripDetailSlots={<CreditCardSummaryCards ccLedger={ccLedger} stripSlots />}

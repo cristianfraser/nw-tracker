@@ -15,7 +15,7 @@ import {
   prefetchDashboardNavSnapshot,
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
-import type { DisplayUnit } from "../queries/keys";
+import { otherDisplayUnit, type DisplayUnit } from "../queries/keys";
 import { isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
   nwBucketTotalsFromDashTotals,
@@ -134,7 +134,6 @@ export function DashboardPage() {
     data,
     error,
     isPending: bundlePending,
-    isFetching,
     isPlaceholderData,
   } = useDashboardBundle(displayUnit);
 
@@ -184,9 +183,17 @@ export function DashboardPage() {
     () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null),
     [sidebarNav, displayUnit]
   );
+  // The page holds the previous unit's bundle while the new unit loads (same-entity keep-previous).
+  const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
+  // Strip cards during a unit switch: the new unit's stored snapshot when it has one, else the
+  // previous unit's values, dimmed and in THEIR unit — the cards then flip to the new values once
+  // the bundle lands, never through a blank strip or an fx-converted guess.
+  const stripFromHeldBundle = holdingPrevUnit && !navSnapshot;
+  const stripShowUsd = (stripFromHeldBundle ? otherDisplayUnit(displayUnit) : displayUnit) === "usd";
   const dashForStrip = useMemo(() => {
     if (!netWorthNav) return null;
     if (useRealBundle && data) return data.dash;
+    if (stripFromHeldBundle && data) return data.dash;
     if (!navSnapshot) return placeholderStripDash;
     return dashPickForNavStrip(
       {
@@ -198,12 +205,11 @@ export function DashboardPage() {
         overviewPoints,
       }
     );
-  }, [netWorthNav, useRealBundle, data, navSnapshot, overviewPoints, placeholderStripDash]);
+  }, [netWorthNav, useRealBundle, stripFromHeldBundle, data, navSnapshot, overviewPoints, placeholderStripDash]);
 
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const showUsd = displayUnit === "usd";
-  const unitSwitching = isFetching && (isPlaceholderData || !bundlePending);
   const overviewIsDaily = overviewPrefs.period === "day";
   const principalesIsDaily = principalesPrefs.period === "day";
   const patrimonioIsDaily = patrimonioPrefs.period === "day";
@@ -836,8 +842,8 @@ export function DashboardPage() {
               groupSlug: "net_worth",
               dash: dashForStrip,
               overviewPoints,
-              showUsd,
-              animated: !unitSwitching,
+              showUsd: stripShowUsd,
+              animated: true,
             }
           : null
       }

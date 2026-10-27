@@ -39,6 +39,7 @@ import {
   useDailySeries,
   useDashboardNavContext,
   useDashboardNavSnapshot,
+  useHeldNavStrip,
   useGroupPageShell,
   usePortfolioGroupBundle,
   useSidebarNav,
@@ -162,7 +163,13 @@ export function GroupInfoPage() {
     isPending: navCtxPending,
     isPlaceholderData: navCtxHeld,
   } = useDashboardNavContext(displayUnit, navCtxEnabled);
-  const overviewPoints = navCtx?.overviewPoints ?? [];
+  // The page holds the previous unit's bundle while the new unit loads (same-entity keep-previous):
+  // with nothing of the new unit's on hand the strip keeps the previous unit's cards, dimmed and
+  // in THEIR unit, and flips to the new values once they land — never a blank strip.
+  const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
+  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx);
+  const overviewPoints = heldStrip?.overviewPoints ?? navCtx?.overviewPoints ?? [];
+  const stripShowUsd = heldStrip ? heldStrip.showUsd : displayUnit === "usd";
   // The value map replaces the composition chart when this page's node has group children;
   // only the real nav-context payload carries it (a cached snapshot's values are placeholders).
   const valueMapRoot = useMemo(
@@ -210,9 +217,10 @@ export function GroupInfoPage() {
     () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null),
     [sidebarNav, displayUnit]
   );
-  const stripIsPlaceholder = navMatchNode != null && !navSnapshot && !navCtx;
+  const stripIsPlaceholder = navMatchNode != null && !navSnapshot && !navCtx && !heldStrip;
   const dashForStrip = useMemo(() => {
     if (!navMatchNode) return null;
+    if (heldStrip) return heldStrip.dash;
     if (!navSnapshot) return navCtx ? dashPickForNavStrip(navCtx) : placeholderStripDash;
     const accountsForDash = useRealBundle && navCtx ? navCtx.accounts : navSnapshot.accounts;
     return dashPickForNavStrip(
@@ -226,7 +234,7 @@ export function GroupInfoPage() {
         overviewPoints,
       }
     );
-  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, placeholderStripDash]);
+  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, placeholderStripDash, heldStrip]);
 
   const resolved = useRealBundle && data ? data : placeholderBundle;
 
@@ -355,7 +363,6 @@ export function GroupInfoPage() {
   });
 
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
-  const showUsd = displayUnit === "usd";
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
   // A Diario chart shows the monthly block, dimmed, until its daily series is this unit's.
   const dailyLoading = (q: { isPending: boolean; isPlaceholderData: boolean }) =>
@@ -388,7 +395,7 @@ export function GroupInfoPage() {
             groupSlug: portfolioGroup,
             dash: dashForStrip,
             overviewPoints,
-            showUsd,
+            showUsd: stripShowUsd,
             animated: true,
             placeholderPhase: stripIsPlaceholder || undefined,
             linkedCardNavChildren,

@@ -47,6 +47,7 @@ import {
   useDailySeries,
   useDashboardNavContext,
   useDashboardNavSnapshot,
+  useHeldNavStrip,
   useGroupPageShell,
   usePortfolioGroupBundle,
   usePortfolioGroupCcLedger,
@@ -178,7 +179,13 @@ export function LiabilitiesGroupPage() {
   const navCtxEnabled =
     pathnameUsesDashboardNavContext(pathname) && (!hasNavSnapshotCache || bundleReady);
   const { data: navCtx } = useDashboardNavContext(displayUnit, navCtxEnabled);
-  const overviewPoints = navCtx?.overviewPoints ?? [];
+  // The page holds the previous unit's bundle while the new unit loads (same-entity keep-previous):
+  // with nothing of the new unit's on hand the strip keeps the previous unit's cards, dimmed and
+  // in THEIR unit, and flips to the new values once they land — never a blank strip.
+  const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
+  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx);
+  const overviewPoints = heldStrip?.overviewPoints ?? navCtx?.overviewPoints ?? [];
+  const stripShowUsd = heldStrip ? heldStrip.showUsd : displayUnit === "usd";
 
   const accounts =
     useRealBundle && data ? data.accounts : (shapeAccounts ?? shell?.accounts ?? []);
@@ -200,9 +207,10 @@ export function LiabilitiesGroupPage() {
     () => (sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null),
     [sidebarNav, displayUnit]
   );
-  const stripIsPlaceholder = navMatchNode != null && !navSnapshot && !navCtx;
+  const stripIsPlaceholder = navMatchNode != null && !navSnapshot && !navCtx && !heldStrip;
   const dashForStrip = useMemo(() => {
     if (!navMatchNode) return null;
+    if (heldStrip) return heldStrip.dash;
     if (!navSnapshot) return navCtx ? dashPickForNavStrip(navCtx) : placeholderStripDash;
     const accountsForDash = useRealBundle && navCtx ? navCtx.accounts : navSnapshot.accounts;
     return dashPickForNavStrip(
@@ -216,7 +224,7 @@ export function LiabilitiesGroupPage() {
         overviewPoints,
       }
     );
-  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, placeholderStripDash]);
+  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, placeholderStripDash, heldStrip]);
 
   const resolved = useRealBundle && data ? data : placeholderBundle;
 
@@ -505,7 +513,6 @@ export function LiabilitiesGroupPage() {
   );
 
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
-  const showUsd = displayUnit === "usd";
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   if (liabilitiesSubgroupParam != null && liabilitiesSubgroupParam !== "" && categoryFilter === null) {
@@ -546,7 +553,7 @@ export function LiabilitiesGroupPage() {
               subgroup: categoryFilter ?? undefined,
               dash: dashForStrip,
               overviewPoints,
-              showUsd,
+              showUsd: stripShowUsd,
               animated: true,
               placeholderPhase: stripIsPlaceholder || undefined,
               linkedCardNavChildren,
