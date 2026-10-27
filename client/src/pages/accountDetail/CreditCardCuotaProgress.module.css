@@ -6,6 +6,7 @@
 
 .caption {
   font-size: var(--font-size-card-meta);
+  text-align: right;
 }
 
 .barWrap {
@@ -21,6 +22,7 @@
 
 .bar {
   display: flex;
+  justify-content: flex-end;
   gap: var(--cuota-segment-gap);
   height: 8px;
   --cuota-segment-gap: 2px;
@@ -53,7 +55,7 @@
   position: absolute;
   z-index: 2;
   top: calc(100% + 6px);
-  left: 0;
+  right: 0;
   min-width: 18rem;
   padding: 0.45rem 0.6rem;
   background: var(--surface2);
