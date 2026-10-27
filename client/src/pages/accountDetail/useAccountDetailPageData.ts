@@ -4,7 +4,14 @@ import {
   filterPointsThroughAsOfDate,
   resolveMonthlyPerfClipEndDate,
 } from "../../components/charts/chartData";
-import { useAccountDetailBundle, useDashboardNavContext, useDashboardNavSnapshot, useSidebarNav } from "../../queries/hooks";
+import {
+  useAccountDetailBundle,
+  useDashboardNavContext,
+  useDashboardNavSnapshot,
+  useHeldNavStrip,
+  useSidebarNav,
+} from "../../queries/hooks";
+import { otherDisplayUnit } from "../../queries/keys";
 import { hasDashboardNavSnapshotCache } from "../../queries/dashboardNavSnapshotCache";
 import { dashPickForNavStrip } from "../../queries/fetchers";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
@@ -50,6 +57,12 @@ export type AccountDetailPageData = {
   /** undefined while the bundle loads; null is the server stating the account has no period returns. */
   periodReturns: PeriodReturnsPayload | null | undefined;
   displayUnit: "clp" | "usd";
+  /**
+   * The unit the card strip (hero, metrics, nav-child cards) renders in: `displayUnit`, except
+   * while the page holds the previous unit's bundle during a switch — then THAT unit, so the
+   * cards keep their values, dimmed, and flip once the new unit lands.
+   */
+  stripUnit: "clp" | "usd";
   /** Per-surface controls: valuation chart (Diario+3y) and the two P/L combos (Mensual+3y). */
   valuationPrefs: SurfacePrefsValue;
   perfPrefs: SurfacePrefsValue;
@@ -142,11 +155,17 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     displayUnit,
     needsNavChildCards && (!hasNavSnapshotCache || bundleReady)
   );
-  const realDash = navCtx ? dashPickForNavStrip(navCtx) : null;
+  // The page holds the previous unit's detail while the new unit loads (same-entity keep-previous):
+  // the whole strip stays in that unit, so the hero (held detail row) and the nav-child cards (the
+  // previous unit's nav context or snapshot) never mix units.
+  const holdingPrevUnit = detailIsPlaceholder && bundleReady;
+  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && needsNavChildCards);
+  const stripUnit = holdingPrevUnit ? otherDisplayUnit(displayUnit) : displayUnit;
+  const realDash = holdingPrevUnit ? (heldStrip?.dash ?? null) : navCtx ? dashPickForNavStrip(navCtx) : null;
   // Nav-context not in yet: the strip's zero frame from the nav tree (cards in their placeholder phase).
   const dash =
     realDash ??
-    (needsNavChildCards && sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, displayUnit) : null);
+    (needsNavChildCards && sidebarNav ? buildPlaceholderNavStripDash(sidebarNav, stripUnit) : null);
   const dashIsPlaceholder = realDash == null && dash != null;
 
   // Tail clip runs server-side; the block carries the clipped x-range when the account ended early.
@@ -217,7 +236,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     ts.accounts.points.length > 0 ? ts.accounts.points[ts.accounts.points.length - 1]! : null;
   const accountDataKey = String(summary.account_id);
   const chartUsdVal =
-    displayUnit === "usd" &&
+    stripUnit === "usd" &&
     lastChartRow &&
     typeof lastChartRow[accountDataKey] === "number" &&
     Number.isFinite(lastChartRow[accountDataKey] as number)
@@ -250,6 +269,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     monthlyPerf,
     periodReturns,
     displayUnit,
+    stripUnit,
     valuationPrefs,
     perfPrefs,
     valuationTailClipEndDate,

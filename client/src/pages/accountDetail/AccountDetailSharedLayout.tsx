@@ -12,7 +12,8 @@ import styles from "../AccountDetailPage.module.css";
 type LayoutProps = {
   title: string;
   accountMetricsAgg: ReturnType<typeof cardGroupMetricsByPeriodFromAccounts>;
-  displayUnit: "clp" | "usd";
+  /** The unit the strip renders in (`AccountDetailPageData.stripUnit`). */
+  stripUnit: "clp" | "usd";
   heroClp: number;
   heroApiUsd: number | null;
   dash: ReturnType<typeof dashPickForNavStrip> | null;
@@ -33,7 +34,7 @@ type LayoutProps = {
 export function AccountDetailSharedLayout({
   title,
   accountMetricsAgg,
-  displayUnit,
+  stripUnit,
   heroClp,
   heroApiUsd,
   dash,
@@ -49,7 +50,7 @@ export function AccountDetailSharedLayout({
       <PortfolioNavChildDetailCards
         dash={dash}
         navChildren={accountNavChildren}
-        showUsd={displayUnit === "usd"}
+        showUsd={stripUnit === "usd"}
         animated
       />
     ) : null;
@@ -69,23 +70,23 @@ export function AccountDetailSharedLayout({
         <PortfolioEntityCardsStrip
           compactSlot={
             <CompactEntityCard
-              showUsd={displayUnit === "usd"}
-              clp={displayUnit === "usd" ? 0 : heroClp}
-              apiUsd={displayUnit === "usd" ? heroApiUsd : null}
+              showUsd={stripUnit === "usd"}
+              clp={stripUnit === "usd" ? 0 : heroClp}
+              apiUsd={stripUnit === "usd" ? heroApiUsd : null}
               animated
               stripInner
               valueVariant="main"
               valueDelta={
                 <CardValueDayPl
                   metricsByPeriod={accountMetricsAgg}
-                  showUsd={displayUnit === "usd"}
+                  showUsd={stripUnit === "usd"}
                   animated
                 />
               }
               metrics={
                 <DashboardCardGroupMetrics
                   metricsByPeriod={accountMetricsAgg}
-                  showUsd={displayUnit === "usd"}
+                  showUsd={stripUnit === "usd"}
                   animated
                 />
               }

@@ -2,11 +2,13 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useEffect, useMemo } from "react";
 import { api } from "../api";
 import {
+  dashPickForNavStrip,
   fetchAccountsByPortfolioGroup,
   fetchDashboardBundle,
   fetchDashboardNavContext,
   fetchDashboardNavSnapshot,
   fetchPortfolioGroupBundle,
+  type DashboardNavContext,
 } from "./fetchers";
 import {
   hasDashboardNavSnapshotCache,
@@ -15,7 +17,7 @@ import {
   writeDashboardNavSnapshotCache,
 } from "./dashboardNavSnapshotCache";
 import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehaviorFor } from "./displayUnitQueries";
-import { queryKeys, type DisplayUnit } from "./keys";
+import { otherDisplayUnit, queryKeys, type DisplayUnit } from "./keys";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
@@ -105,7 +107,9 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     // With a cached strip this query never refetches; freshness relies on DashboardPage
     // re-writing the cache from the live page bundle (writeDashboardNavSnapshotCache there).
     enabled: enabled && !cachedStrip,
-    ...displayUnitQueryBehaviorFor(queryKeys.dashboardNavSnapshot(unit), 1),
+    // Keyed on the unit: a unit change holds nothing (a CLP snapshot has no USD fields; the pages
+    // hold the previous unit's strip themselves, see useHeldNavStrip).
+    ...displayUnitQueryBehaviorFor(queryKeys.dashboardNavSnapshot(unit), 2),
     staleTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
     gcTime: DASHBOARD_NAV_SNAPSHOT_STALE_MS,
   });
@@ -122,6 +126,44 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     void queryClient.resetQueries({ queryKey: queryKeys.dashboardNavSnapshot(unit), exact: true });
   }, [staleCachedSnapshot, queryClient, unit]);
   return staleCachedSnapshot ? { ...query, data: undefined } : query;
+}
+
+/** What a nav strip renders while the page holds the previous unit: cards in THAT unit. */
+export type HeldNavStrip = {
+  dash: ReturnType<typeof dashPickForNavStrip>;
+  overviewPoints: DashboardNavContext["overviewPoints"];
+  showUsd: boolean;
+};
+
+/**
+ * The previous unit's nav strip while a unit switch holds the page (`holding`): its live nav
+ * context when react-query still has it, else its stored snapshot — shown in ITS unit, dimmed,
+ * never converted; null when neither is on hand. Read only: neither query is enabled here, so
+ * nothing is fetched for a unit the user left.
+ */
+export function useHeldNavStrip(unit: DisplayUnit, holding: boolean): HeldNavStrip | null {
+  const other = otherDisplayUnit(unit);
+  const { data: navCtx } = useDashboardNavContext(other, false);
+  const { data: navSnapshot } = useDashboardNavSnapshot(other, false);
+  return useMemo(() => {
+    if (!holding) return null;
+    if (navCtx) {
+      return { dash: dashPickForNavStrip(navCtx), overviewPoints: navCtx.overviewPoints, showUsd: other === "usd" };
+    }
+    if (!navSnapshot) return null;
+    return {
+      dash: dashPickForNavStrip({
+        accounts: navSnapshot.accounts,
+        liabilities_breakdown: navSnapshot.liabilities_breakdown,
+        dashboard_layout: navSnapshot.dashboard_layout,
+        nw_bucket_totals: navSnapshot.nw_bucket_totals,
+        card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
+        overviewPoints: [],
+      }),
+      overviewPoints: [],
+      showUsd: other === "usd",
+    };
+  }, [holding, navCtx, navSnapshot, other]);
 }
 
 export function useGroupConsolidatedTables(

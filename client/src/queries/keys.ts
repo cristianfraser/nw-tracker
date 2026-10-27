@@ -1,5 +1,10 @@
 export type DisplayUnit = "clp" | "usd";
 
+/** The unit a page was showing before a switch — the one keep-previous data belongs to. */
+export function otherDisplayUnit(unit: DisplayUnit): DisplayUnit {
+  return unit === "usd" ? "clp" : "usd";
+}
+
 export const queryKeys = {
   dashboard: (unit: DisplayUnit) => ["dashboard", unit] as const,
   dashboardNav: (unit: DisplayUnit) => ["dashboardNav", unit] as const,

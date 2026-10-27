@@ -189,16 +189,16 @@ export function StandardAccountDetailPage({ data }: Props) {
       toolbar={<ExportToolbarButton exportPath={`/api/accounts/${summary.account_id}/export.xlsx`} />}
       title={ts.name}
       accountMetricsAgg={data.accountMetricsAgg}
-      displayUnit={displayUnit}
+      stripUnit={data.stripUnit}
       heroClp={
-        displayUnit === "usd"
+        data.stripUnit === "usd"
           ? 0
           : data.accountDashRow?.current_value_clp ??
           summary.latest_valuation_clp ??
           0
       }
       heroApiUsd={
-        displayUnit === "usd" ? data.accountDashRow?.current_value_usd ?? data.chartUsdVal : null
+        data.stripUnit === "usd" ? data.accountDashRow?.current_value_usd ?? data.chartUsdVal : null
       }
       dash={data.dash}
       accountNavChildren={data.accountNavChildren}
