@@ -3,6 +3,7 @@ import { setAggregationInvalidationListener } from "./aggregationCache.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { db } from "./db.js";
+import { buildFlowsOverviewPayload } from "./flowsOverview.js";
 import { pruneMarkInputChanges } from "./markInputChanges.js";
 import {
   pendingLiveQuotesChange,
@@ -68,6 +69,9 @@ async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Prom
     const tBundles = performance.now();
     // The bundles carry the live marks; the Rentabilidad series below are not worth the wait.
     publishLiveQuotesStamp(liveChange);
+    // The home dashboard's flows section (Por cuota, month rows).
+    buildFlowsOverviewPayload("clp", "split", null);
+    buildFlowsOverviewPayload("usd", "split", null);
     const scopes = await warmRentabilidadDailySeries();
     lastWarmedDataVersion = currentDataVersion();
     console.log(

@@ -104,6 +104,15 @@
     "liabilitiesCoverage": "Cobertura de los pasivos"
   },
   "dashboard": {
+    "ccUpcoming": {
+      "title": "Tarjetas: próximos pagos",
+      "viewLiabilities": "Ver Pasivos →",
+      "colCard": "Tarjeta",
+      "colBillingMonth": "Facturación",
+      "colAmount": "Monto",
+      "closeObservedHint": "Cierre publicado por el banco (estado de cuenta o movimientos).",
+      "totalToPay": "Total a pagar"
+    },
     "chartGranularityLabel": "Período:",
     "rangeLabel": "Rango:",
     "range": {
@@ -137,10 +146,9 @@
       "primaryAccountsTitle": "Cuentas principales",
       "overviewTitle": "Patrimonio neto",
       "netWorthUsdChartTitle": "Patrimonio neto vs invested (referencia US$)",
-      "perfChartTitleMonthly": "Δ mensual por clase, YTD inversiones y Δ mensual combinado",
-      "perfChartTitleYearly": "Δ anual por clase, total anual inversiones y Δ anual combinado",
-      "accumEarningsChartTitleMonthly": "Ganancias acumuladas y Δ mensual (inversiones)",
-      "accumEarningsChartTitleYearly": "Ganancias acumuladas y Δ anual (inversiones)",
+      "perfChartTitleMonthly": "Δ mensual por clase y ganancias (inversiones)",
+      "perfChartTitleYearly": "Δ anual por clase y ganancias (inversiones)",
+      "areaTotalToggle": "Total acumulado",
       "accumFlowsChartTitleMonthly": "Δ mensual y depósitos (inversiones)",
       "accumFlowsChartTitleYearly": "Δ anual y depósitos (inversiones)",
       "deltaRetirementMonthly": "Δ mensual retiro",
@@ -159,6 +167,12 @@
       "ma3DeltaCombinedYearly": "MM3 Δ anual (inversiones)",
       "ma3DepositsInversionesYearly": "MM3 depósitos del año (inversiones)"
     },
+    "flows": {
+      "title": "Flujos",
+      "lastMonth": "Último mes",
+      "last12Months": "Últimos 12 meses",
+      "openFlows": "Ver flujos"
+    },
     "allocation": {
       "title": "Asignación (últimas valorizaciones)"
     },
@@ -175,6 +189,19 @@
       "periodDeltaYear": "P/L del año",
       "periodDeltaDay": "P/L del día",
       "summaryAria": "Depósitos y Δ total y del período"
+    },
+    "wealthFlowsTitle": "Flujos de patrimonio",
+    "latestExpenses": {
+      "title": "Últimos gastos",
+      "viewAll": "Todos los gastos →",
+      "colDate": "Fecha",
+      "colMerchant": "Descripción",
+      "colCategory": "Categoría",
+      "colOrigin": "Origen",
+      "colAmount": "Monto",
+      "installments": "{{count}} cuotas",
+      "refund": "Reembolso",
+      "empty": "Aún no hay gastos."
     }
   },
   "sidebar": {
@@ -894,10 +921,19 @@
       "chartEmpty": "Sin datos de flujos.",
       "income": "Ingresos",
       "expenses": "Gastos",
+      "savings": "Ahorro",
       "deposits": "Depósitos",
       "depositsPreTax": "AFP+AFC (cotizaciones)",
+      "depositsPreTaxShort": "Pre-impuesto",
+      "cardSpentMinusPaid": "Tarjetas: gastado − pagado",
+      "cardSpentMinusPaidShort": "Tarjetas gastado − pagado",
+      "cashChange": "Variación de caja",
+      "cashUnexplained": "Sin explicar",
       "pl": "PL",
-      "net": "Neto",
+      "investmentsChange": "Variación inversiones",
+      "investmentsChangeShort": "Var. inversiones",
+      "netWorthChange": "Variación patrimonio",
+      "netWorthChangeShort": "Var. patrimonio",
       "detailTitle": "Detalle del mes",
       "totalsLabel": "Totales:",
       "colMonth": "Mes"
@@ -1062,7 +1098,8 @@
     "colCategory": "Categoría",
     "colAccount": "Cuenta",
     "colAmount": "Monto",
-    "emptyCategory": "Sin depósitos en esta categoría."
+    "emptyCategory": "Sin depósitos en esta categoría.",
+    "mortgageCarryingTag": "Intereses y seguros del dividendo (gasto)"
   },
   "depositsReconciliation": {
     "title": "Reconciliación de depósitos",

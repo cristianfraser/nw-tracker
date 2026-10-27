@@ -30,9 +30,13 @@ export type StoredSurfacePrefs = {
   benchmark?: string;
   /** Composition panels: `map` swaps the share chart for the value treemap. */
   view?: SurfaceCompositionView;
+  /** P/L combo charts with a cumulative area: this year's running sum or the full-history one. */
+  area?: SurfaceAreaMode;
 };
 
 export type SurfaceCompositionView = "composition" | "map";
+
+export type SurfaceAreaMode = "ytd" | "total";
 
 /**
  * M/Y-only surfaces (flow tables, the CC financing chart and detalle table): a stored `day`
@@ -65,6 +69,7 @@ export function parseStoredSurfacePrefs(raw: string | null): StoredSurfacePrefs 
   if (range != null) out.range = range;
   if (typeof rec.benchmark === "string" && rec.benchmark !== "") out.benchmark = rec.benchmark;
   if (rec.view === "composition" || rec.view === "map") out.view = rec.view;
+  if (rec.area === "ytd" || rec.area === "total") out.area = rec.area;
   return out;
 }
 
@@ -207,4 +212,34 @@ export function useSurfaceCompositionView(surfaceId: string): {
   );
 
   return { view: stored.view ?? "composition", setView };
+}
+
+/**
+ * Cumulative-area mode of a P/L combo chart (`<pageKey>.<surfaceKey>`): `ytd` (default) runs
+ * the sum within each year, `total` over the whole history. Stored beside the chart's
+ * Período/Rango.
+ */
+export function useSurfaceAreaMode(surfaceId: string): {
+  area: SurfaceAreaMode;
+  setArea: (a: SurfaceAreaMode) => void;
+} {
+  const [state, setState] = useState(() => ({
+    surfaceId,
+    stored: readStoredSurfacePrefs(surfaceId),
+  }));
+
+  let stored = state.stored;
+  if (state.surfaceId !== surfaceId) {
+    stored = readStoredSurfacePrefs(surfaceId);
+    setState({ surfaceId, stored });
+  }
+
+  const setArea = useCallback(
+    (a: SurfaceAreaMode) => {
+      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, { area: a }) });
+    },
+    [surfaceId]
+  );
+
+  return { area: stored.area ?? "ytd", setArea };
 }

@@ -13,6 +13,8 @@ import {
   type FxConversionWarning,
 } from "./fxConversionWarnings.js";
 import { clpToUsdAtPayment, ufRowOnOrBefore } from "./fxRates.js";
+import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
+import type { MortgageCarryingEvent } from "./flowsMortgageCarrying.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 /**
@@ -84,7 +86,25 @@ export type FlowDepositRow = {
   amount_clp: number;
   /** The event in USD at its own date's rate ({@link flowEventInUnit}). */
   amount_usd: number;
+  /**
+   * The mortgage carrying (interés + seguros) the property's dividendo deposit records, taken back
+   * out (negative): it is a gasto, so the deposit counts the amortización only (the /flows/deposits
+   * page, `withMortgageCarrying`).
+   */
+  mortgage_carrying?: true;
 };
+
+/** Payroll-deducted pre-tax deposit kinds — money that never passes through checking. */
+const PRE_TAX_DEPOSIT_KIND_SLUGS = new Set(["afp", "afc"]);
+
+/**
+ * An AFP/AFC cotización (a positive pension event): payroll-deducted, shown apart from the
+ * post-tax deposits by the flows overview and the /flows/deposits page. A negative one (a retiro
+ * that reached checking) is an ordinary deposit row.
+ */
+export function isPreTaxDepositRow(row: Pick<FlowDepositRow, "kind_slug" | "amount_clp">): boolean {
+  return PRE_TAX_DEPOSIT_KIND_SLUGS.has(row.kind_slug) && row.amount_clp > 0;
+}
 
 export type FlowDepositChartPoint = {
   as_of_date: string;
@@ -105,6 +125,11 @@ export type FlowDepositsPayload = {
   chart_monthly_usd: FlowDepositChartPoint[];
   net_total_clp: number;
   net_total_usd: number;
+  /** AFP/AFC cotizaciones ({@link isPreTaxDepositRow}) and the rest: Σ = net total. */
+  pre_tax_total_clp: number;
+  pre_tax_total_usd: number;
+  post_tax_total_clp: number;
+  post_tax_total_usd: number;
   fx_conversion_warnings: FxConversionWarning[];
   by_category: Record<
     DepositFlowCategory,
@@ -263,10 +288,25 @@ export function flowsDepositsNetTotalUsdByAccount(): Map<number, number> {
   return flowsDepositsNetTotalsByAccount("usd", { includeExcludedFromGroupTotals: true });
 }
 
-/** @heavy Scans deposit-flow accounts and merges inflow events for charts + net totals. */
-export function buildFlowsDepositsPayload(): FlowDepositsPayload {
+/**
+ * @heavy Scans deposit-flow accounts and merges inflow events for charts + net totals.
+ * `excludeCheckingAccounts` (the /flows/deposits page, 2026-10-27) leaves out the accounts under
+ * Checking accounts: their events are cash moving in and out of the checking ledger, not deposits,
+ * so the page's total is the flows overview's deposits. The dashboard keeps every account.
+ */
+export function buildFlowsDepositsPayload(opts?: {
+  excludeCheckingAccounts?: boolean;
+  /**
+   * The mortgage carrying per unit (`flowsMortgageCarrying.ts`), added as negative rows on the
+   * property (`mortgage_carrying`) so its deposits read amortización only — the flows overview's
+   * rule; then the total is the overview's deposits + deposits_pre_tax. The events must pair
+   * one-to-one by deposit movement.
+   */
+  withMortgageCarrying?: { clp: readonly MortgageCarryingEvent[]; usd: readonly MortgageCarryingEvent[] };
+}): FlowDepositsPayload {
   clearFxConversionWarnings();
-  const accounts = listDepositFlowAccounts(false);
+  const checking = opts?.excludeCheckingAccounts ? new Set(accountIdsUnderCheckingAccounts()) : null;
+  const accounts = listDepositFlowAccounts(false).filter((a) => checking == null || !checking.has(a.account_id));
   const ids = accounts.map((a) => a.account_id);
   const eventsByAccount = loadMergedDisplayDepositInflowEvents(ids);
 
@@ -290,6 +330,7 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
       });
     }
   }
+  if (opts?.withMortgageCarrying) rows.push(...mortgageCarryingRows(opts.withMortgageCarrying, accounts));
   rows.sort((a, b) => {
     const d = b.occurred_on.localeCompare(a.occurred_on);
     return d !== 0 ? d : a.account_name.localeCompare(b.account_name);
@@ -309,6 +350,8 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
     };
   }
 
+  const preTax = rows.filter(isPreTaxDepositRow);
+  const postTax = rows.filter((r) => !isPreTaxDepositRow(r));
   return {
     rows,
     chart_monthly,
@@ -316,8 +359,57 @@ export function buildFlowsDepositsPayload(): FlowDepositsPayload {
     by_category,
     net_total_clp: rows.reduce((s, r) => s + r.amount_clp, 0),
     net_total_usd: rows.reduce((s, r) => s + r.amount_usd, 0),
+    pre_tax_total_clp: preTax.reduce((s, r) => s + r.amount_clp, 0),
+    pre_tax_total_usd: preTax.reduce((s, r) => s + r.amount_usd, 0),
+    post_tax_total_clp: postTax.reduce((s, r) => s + r.amount_clp, 0),
+    post_tax_total_usd: postTax.reduce((s, r) => s + r.amount_usd, 0),
     fx_conversion_warnings: takeFxConversionWarnings(),
   };
+}
+
+/** One negative row per carrying event, on the property account its deposit belongs to. */
+function mortgageCarryingRows(
+  carrying: { clp: readonly MortgageCarryingEvent[]; usd: readonly MortgageCarryingEvent[] },
+  accounts: readonly DepositFlowAccountRow[]
+): FlowDepositRow[] {
+  const usdByDeposit = new Map<number, number>();
+  for (const e of carrying.usd) {
+    usdByDeposit.set(e.deposit_movement_id, (usdByDeposit.get(e.deposit_movement_id) ?? 0) + e.amount);
+  }
+  const clpByDeposit = new Map<number, { occurred_on: string; amount: number }>();
+  for (const e of carrying.clp) {
+    const cur = clpByDeposit.get(e.deposit_movement_id);
+    if (cur && cur.occurred_on !== e.occurred_on) {
+      throw new Error(`mortgage carrying on deposit ${e.deposit_movement_id}: two days (${cur.occurred_on}, ${e.occurred_on})`);
+    }
+    clpByDeposit.set(e.deposit_movement_id, { occurred_on: e.occurred_on, amount: (cur?.amount ?? 0) + e.amount });
+  }
+  if (usdByDeposit.size !== clpByDeposit.size || [...usdByDeposit.keys()].some((id) => !clpByDeposit.has(id))) {
+    throw new Error("mortgage carrying: the CLP and USD events do not cover the same deposits");
+  }
+  const byId = new Map(accounts.map((a) => [a.account_id, a]));
+  const accountOf = db.prepare(`SELECT COALESCE(account_id, to_account_id) AS account_id FROM movements WHERE id = ?`);
+  const out: FlowDepositRow[] = [];
+  for (const [depositId, { occurred_on, amount }] of clpByDeposit) {
+    const accountId = (accountOf.get(depositId) as { account_id: number | null } | undefined)?.account_id;
+    if (accountId == null) throw new Error(`mortgage carrying: deposit movement ${depositId} not found`);
+    const acc = byId.get(accountId);
+    if (!acc) throw new Error(`mortgage carrying: deposit ${depositId}'s account ${accountId} is not a deposits-page account`);
+    const category = depositFlowCategoryFromGroupSlug(acc.group_slug);
+    if (!category) throw new Error(`mortgage carrying: account ${accountId} has no deposits category`);
+    out.push({
+      occurred_on,
+      category,
+      category_label: CATEGORY_LABEL[category],
+      account_id: accountId,
+      account_name: acc.name,
+      kind_slug: acc.category_slug,
+      amount_clp: -amount,
+      amount_usd: -usdByDeposit.get(depositId)!,
+      mortgage_carrying: true,
+    });
+  }
+  return out;
 }
 
 function aggregateDepositChartPoints(

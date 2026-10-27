@@ -25,9 +25,9 @@ describe("flows PL daily block (buildFlowsPlPayload with days)", () => {
       const p = daily[i]!;
       expect(/^\d{4}-\d{2}-\d{2}$/.test(p.as_of_date)).toBe(true);
       expect(Number.isFinite(p.total)).toBe(true);
-      expect(Number.isFinite(p.brokerage + p.retirement + p.cash)).toBe(true);
-      // total is the sum of the three bucket legs
-      expect(p.total).toBeCloseTo(p.brokerage + p.retirement + p.cash, 6);
+      expect(Number.isFinite(p.brokerage + p.retirement + p.cash + p.real_estate)).toBe(true);
+      // total is the sum of the bucket legs
+      expect(p.total).toBeCloseTo(p.brokerage + p.retirement + p.cash + p.real_estate, 6);
       if (i > 0) expect(p.as_of_date > daily[i - 1]!.as_of_date).toBe(true);
     }
 

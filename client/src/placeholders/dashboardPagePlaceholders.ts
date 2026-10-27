@@ -239,6 +239,7 @@ export function buildPlaceholderDashboardBundle(
     fx: null,
     retirementPerf: includePerf ? zeroGroupPerf(unit, "retirement", monthEnds) : null,
     brokeragePerf: includePerf ? zeroGroupPerf(unit, "brokerage", monthEnds) : null,
+    ccUpcomingPayments: null,
   };
 }
 

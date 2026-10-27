@@ -13,6 +13,8 @@ export interface FlowDepositRow {
   kind_slug: string;
   amount_clp: number;
   amount_usd: number | null;
+  /** The mortgage carrying taken back out of the property's dividendo deposit (negative; a gasto). */
+  mortgage_carrying?: true;
 }
 
 export interface FlowDepositChartPoint {
@@ -24,14 +26,17 @@ export interface FlowDepositChartPoint {
   total: number;
 }
 
-export type FlowsPlBucketSlug = "brokerage" | "retirement" | "cash";
+export type FlowsPlBucketSlug = "brokerage" | "retirement" | "cash" | "real_estate";
 
 /** Monthly market P/L per money bucket (`YYYY-12-31` dates on yearly rows). */
 export interface FlowsPlChartPoint {
   as_of_date: string;
   brokerage: number;
   retirement: number;
+  /** Cash savings outside Checking accounts. */
   cash: number;
+  /** The property's P/L with its mortgage carrying added back (the carrying is a gasto). */
+  real_estate: number;
   total: number;
   /** Running Σ `total` within the calendar year (resets each January). */
   ytd_total: number;
@@ -64,7 +69,8 @@ export interface FlowsPlBucketBlock {
 }
 
 /**
- * `GET /api/flows/pl` — monthly net-worth P/L of the money buckets (no real estate). Years are
+ * `GET /api/flows/pl` — monthly market P/L of the accounts the flows pages count deposits for
+ * (the flows overview's P/L, `flowsPl.ts`). Years are
  * rolled up client-side (`rollupFlowsPlChartPointsByYear`), the chart's after its Rango cut.
  */
 export interface FlowsPlResponse {
@@ -74,6 +80,59 @@ export interface FlowsPlResponse {
   chart_daily?: FlowsPlChartPoint[];
   chart_daily_usd?: FlowsPlChartPoint[];
   by_bucket: FlowsPlBucketBlock[];
+}
+
+/**
+ * One flows overview row: a calendar month (`period_month` YYYY-MM, `as_of_date` its month-end),
+ * a calendar day (both YYYY-MM-DD) or, rolled up client-side, a year.
+ */
+export interface FlowsOverviewRow {
+  period_month: string;
+  as_of_date: string;
+  income: number;
+  expenses: number;
+  /** income − expenses. */
+  savings: number;
+  /** Net deposits of the accounts outside Checking accounts (a linked mortgage deposit keeps only its amortización). */
+  deposits: number;
+  /** AFP/AFC cotizaciones: payroll-deducted, never through checking. */
+  deposits_pre_tax: number;
+  /** The card lines' part of expenses (a mortgage-linked card payment in full). */
+  card_spent: number;
+  /** Card payments out of checking, net of card top-ups into it. */
+  card_paid: number;
+  /** card_spent − card_paid: the card line («Tarjetas: gastado − pagado»). */
+  card_net: number;
+  /** The checking ledger's change over the period. */
+  cash_change: number;
+  /** cash_change − (savings − deposits + card_spent − card_paid). */
+  cash_unexplained: number;
+  /** Market P/L of the deposit accounts outside checking. */
+  pl: number;
+  /** deposits + deposits_pre_tax + pl. */
+  investments_change: number;
+  /** savings + deposits_pre_tax + pl. */
+  net_worth_change: number;
+}
+
+export type FlowsOverviewTotals = Omit<FlowsOverviewRow, "period_month" | "as_of_date">;
+
+/**
+ * `GET /api/flows/overview?unit=&installment_mode=&days=` — the /flows overview and the home
+ * dashboard's flows section, built on the server (`flowsOverview.ts`). Years roll up client-side
+ * after the Rango cut.
+ */
+export interface FlowsOverviewResponse {
+  unit: "clp" | "usd";
+  installment_mode: "split" | "total";
+  /** Oldest first, contiguous through Chile today. */
+  months: FlowsOverviewRow[];
+  /** Full history. */
+  totals: FlowsOverviewTotals;
+  /** Closed months only: the last calendar month and the twelve ending with it (Chile clock). */
+  closed: { last_month: FlowsOverviewRow; last_12_months: FlowsOverviewRow };
+  /** Day rows inside the requested `days` window (days that carry something); null when not asked. */
+  days: FlowsOverviewRow[] | null;
 }
 
 /** Slug of a tracked place (`expense_accounts` row) — data-driven, not a fixed union. */
@@ -235,6 +294,8 @@ export interface FlowCcExpenseLineRow {
   payment_receipt?: PaymentReceipt;
   /** A checking credit marked as a refund: a negative line in its category. */
   checking_refund?: true;
+  /** A card credit no purchase annuls (merchant refund, unpaired nota): a negative line in its category. */
+  card_refund?: true;
   /** One piece of a line broken down into pieces. */
   piece_seq?: number;
   /** What a line's pieces leave of it, on the line's own day. */
@@ -724,6 +785,27 @@ export interface RealEstateLinkCandidateDto {
   purchase_month_offset: number;
 }
 
+/** One row of `GET /api/dashboard/latest-expenses` (home «Últimos gastos»), newest first. */
+export interface LatestExpenseRow {
+  key: string;
+  date: string;
+  merchant: string | null;
+  category_slug: string;
+  /** The parent of a subcategory (labelled «Parent › Child»); null for a top-level category. */
+  category_parent_slug: string | null;
+  source: "cc" | "checking" | "manual" | "payslip";
+  origin_label: string;
+  /** In the response unit; negative for a refund. */
+  amount: number;
+  /** Cuota count of a purchase in cuotas, else null. */
+  installments: number | null;
+}
+
+export interface LatestExpensesResponse {
+  unit: "clp" | "usd";
+  rows: LatestExpenseRow[];
+}
+
 /**
  * `GET /api/flows/deposits` — amounts may be negative (withdrawals). Monthly chart blocks only:
  * the chart rolls years up after its Rango cut (`clipMonthsThenRollup`).
@@ -731,9 +813,14 @@ export interface RealEstateLinkCandidateDto {
 export interface FlowsDepositsResponse {
   rows: FlowDepositRow[];
   chart_monthly: FlowDepositChartPoint[];
-  /** Sum of all row amounts (matches dashboard “Total deposits”). */
+  /** Sum of all row amounts (the flows overview's deposits + deposits_pre_tax). */
   net_total_clp: number;
   net_total_usd: number | null;
+  /** AFP/AFC cotizaciones and the rest (Σ = net total). */
+  pre_tax_total_clp: number;
+  pre_tax_total_usd: number;
+  post_tax_total_clp: number;
+  post_tax_total_usd: number;
   fx_conversion_error?: boolean;
   fx_conversion_warnings?: FxConversionWarning[];
   chart_monthly_usd: FlowDepositChartPoint[];

@@ -76,6 +76,35 @@ export interface CcBillingDetailMonthDto {
 /** Where a facturación's close date comes from (server `ccBillingCloses.ts`). */
 export type CcCloseSource = "statement" | "feed" | "announced" | "estimated";
 
+/** One facturación on the dashboard's «Tarjetas: próximos pagos» panel (server-built). */
+export type CcUpcomingPaymentRowDto = {
+  billing_month: string;
+  close_date_iso: string;
+  /** Close from the bank's own evidence (statement or feed); false = announced or estimated. */
+  close_observed: boolean;
+  close_date_source: CcCloseSource;
+  pay_by_iso: string;
+  pay_by_source: "statement" | "derived";
+  /** The facturación's total in pesos (CLP + the dollars in pesos). */
+  amount_clp: number;
+  is_open_month: boolean;
+  is_provisional_close: boolean;
+};
+
+export type CcUpcomingPaymentsCardDto = {
+  account_id: number;
+  name: string;
+  rows: CcUpcomingPaymentRowDto[];
+};
+
+/** `cc_upcoming_payments` on the dashboard page bundle — pesos in both display units. */
+export type CcUpcomingPaymentsDto = {
+  cards: CcUpcomingPaymentsCardDto[];
+  /** Σ of the listed rows per pay-by month (YYYY-MM), oldest first. */
+  totals_by_month: { pay_month: string; total_clp: number }[];
+  liabilities_route_path: string | null;
+};
+
 /** How the card feed typed a purchase in cuotas (server `ccCuotaPurchaseKinds.ts`). */
 export type CcCuotaPurchaseKind = "cuota_comercio" | "precio_contado";
 

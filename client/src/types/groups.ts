@@ -1,6 +1,7 @@
 import type { AccountMonthlyPerformanceRow } from "./accounts";
 import type { PeriodReturnsPayload } from "./performance";
 import type { FxCoverage } from "./core";
+import type { CcUpcomingPaymentsDto } from "./creditCard";
 import type { DashboardAccountRow, DashboardResponse, FxLatest, ValuationTimeseriesResponse, ValueSeriesType } from "./dashboard";
 
 /** `GET /api/groups/:slug/performance-monthly` — derived, not stored. */
@@ -111,6 +112,7 @@ export interface DashboardPageBundleResponse {
   fx_coverage: FxCoverage | null;
   retirementPerf: GroupMonthlyPerformanceResponse | null;
   brokeragePerf: GroupMonthlyPerformanceResponse | null;
+  cc_upcoming_payments: CcUpcomingPaymentsDto;
 }
 
 export type ConsolidatedMonthlyPerfRow = {
@@ -137,6 +139,13 @@ export interface GroupConsolidatedTablesResponse {
   }[];
   consolidated_monthly: ConsolidatedMonthlyPerfRow[];
   /** Chained flow-adjusted period returns; null for non-investment groups. */
+  period_returns: PeriodReturnsPayload | null;
+}
+
+/** `GET /api/groups/:slug/period-returns` — the Rentabilidad table alone (home dashboard). */
+export interface GroupPeriodReturnsResponse {
+  unit: "clp" | "usd" | "uf";
+  group_slug: string;
   period_returns: PeriodReturnsPayload | null;
 }
 

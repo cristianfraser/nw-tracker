@@ -86,6 +86,8 @@ export const ProportionalAreaChart = lazyChart("ProportionalAreaChart", panelFra
 
 export const CoverageLineChart = lazyChart("CoverageLineChart", panelFrame);
 
+export const FlowsOverviewChart = lazyChart("FlowsOverviewChart", panelFrame);
+
 export const CcInstallmentHistoryChart = lazyChart("CcInstallmentHistoryChart", () => (
   <div className={loadableClass(true)}>
     <ChartEmptyState loading message="" boxStyle={CC_HISTORIAL_BOX_STYLE} />

@@ -2,16 +2,12 @@ import { useMemo } from "react";
 import { FlowsOverviewChart } from "../components/charts/FlowsOverviewChart";
 import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
 import { Table } from "../components/ui/Table";
+import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
 import { loadableClass } from "../components/ui/Loadable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
-import {
-  aggregateFlowsOverview,
-  aggregateFlowsOverviewByDay,
-  flowsOverviewTotals,
-  rollupFlowsOverviewRowsByYear,
-} from "../flowsOverviewAggregate";
+import { flowsOverviewRangeTotals, rollupFlowsOverviewRowsByYear, ZERO_FLOWS_OVERVIEW_TOTALS } from "../flowsOverviewRows";
 import {
   flowChartGranularityFromMetricsPeriod,
   flowPeriodLabel,
@@ -20,19 +16,68 @@ import {
 } from "../flowsDisplay";
 import { clipMonthsThenRollup, timeRangeCutoffYmd, timeRangeToDays } from "../timeRange";
 import { useTranslation } from "../i18n";
-import {
-  useFlowsExpenses,
-  useFlowsExpensesGastos,
-  useFlowsDeposits,
-  useFlowsPl,
-  useIncome,
-} from "../queries/hooks";
+import { useFlowsOverview } from "../queries/hooks";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
+import type { FlowsOverviewTotals } from "../types";
 
 const PAGE_SIZE = 12;
 
-/** Flows master page (/flows): income line vs expenses/deposits stacked bars + month detail. */
-const NO_EXCLUDED_BIG_GROUPS: readonly string[] = [];
+/**
+ * Flows master page (/flows): income line vs expenses/deposits stacked bars + month detail. The
+ * rows come from the server (`GET /api/flows/overview`); the page clips them to the chart's Rango
+ * and rolls years up.
+ */
+/** One figure of the totals lines and the detail table, desktop column and mobile card alike. */
+type OverviewColumn = {
+  id: string;
+  /** Header and mobile-card label. */
+  labelKey: string;
+  /** Totals-line label (the header's long form). */
+  totalsLabelKey: string;
+  value: (r: FlowsOverviewTotals) => number;
+  muted?: boolean;
+};
+
+const COLUMNS: readonly OverviewColumn[] = [
+  { id: "income", labelKey: "flows.overview.income", totalsLabelKey: "flows.overview.income", value: (r) => r.income },
+  { id: "expenses", labelKey: "flows.overview.expenses", totalsLabelKey: "flows.overview.expenses", value: (r) => r.expenses },
+  { id: "savings", labelKey: "flows.overview.savings", totalsLabelKey: "flows.overview.savings", value: (r) => r.savings },
+  { id: "deposits", labelKey: "flows.overview.deposits", totalsLabelKey: "flows.overview.deposits", value: (r) => r.deposits },
+  {
+    id: "deposits_pre_tax",
+    labelKey: "flows.overview.depositsPreTaxShort",
+    totalsLabelKey: "flows.overview.depositsPreTax",
+    value: (r) => r.deposits_pre_tax,
+    muted: true,
+  },
+  {
+    id: "cards",
+    labelKey: "flows.overview.cardSpentMinusPaidShort",
+    totalsLabelKey: "flows.overview.cardSpentMinusPaid",
+    value: (r) => r.card_net,
+  },
+  { id: "cash_change", labelKey: "flows.overview.cashChange", totalsLabelKey: "flows.overview.cashChange", value: (r) => r.cash_change },
+  {
+    id: "cash_unexplained",
+    labelKey: "flows.overview.cashUnexplained",
+    totalsLabelKey: "flows.overview.cashUnexplained",
+    value: (r) => r.cash_unexplained,
+    muted: true,
+  },
+  { id: "pl", labelKey: "flows.overview.pl", totalsLabelKey: "flows.overview.pl", value: (r) => r.pl, muted: true },
+  {
+    id: "investments_change",
+    labelKey: "flows.overview.investmentsChangeShort",
+    totalsLabelKey: "flows.overview.investmentsChange",
+    value: (r) => r.investments_change,
+  },
+  {
+    id: "net_worth_change",
+    labelKey: "flows.overview.netWorthChangeShort",
+    totalsLabelKey: "flows.overview.netWorthChange",
+    value: (r) => r.net_worth_change,
+  },
+];
 
 export function FlowsOverviewPage() {
   const { t } = useTranslation();
@@ -58,53 +103,24 @@ export function FlowsOverviewPage() {
   );
   const { installmentMode } = useCcInstallmentGastosMode();
 
-  const income = useIncome();
-  const expenses = useFlowsExpenses();
-  const gastos = useFlowsExpensesGastos(displayUnit, NO_EXCLUDED_BIG_GROUPS);
-  const deposits = useFlowsDeposits();
-  // Day mode needs the server's per-day bucket P/L for the overview's P/L leg.
-  const pl = useFlowsPl(isDaily ? timeRangeToDays(timeRange) : undefined);
-
-  const error = income.error ?? expenses.error ?? gastos.error ?? deposits.error ?? pl.error;
-  const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
-  // Any of the five still pending (or holding a prior window/unit): the page renders its frame
-  // with zero totals and no rows, dimmed.
-  const loading =
-    !income.data ||
-    !expenses.data ||
-    !gastos.data ||
-    !deposits.data ||
-    !pl.data ||
-    gastos.isPlaceholderData ||
-    pl.isPlaceholderData;
-
-  const monthRows = useMemo(() => {
-    if (!income.data || !expenses.data || !gastos.data || !deposits.data || !pl.data) return null;
-    // Gasto del mes is level-independent: either category level's view carries the same months.
-    const gastosView = gastos.data.views[`${installmentMode}|subcategory`];
-    if (gastosView == null) throw new Error(`missing gastos view ${installmentMode}|subcategory`);
-    return aggregateFlowsOverview(
-      income.data,
-      { lines: expenses.data.lines, gastos_by_month: gastosView.by_month },
-      deposits.data,
-      pl.data,
-      installmentMode,
-      displayUnit
-    );
-  }, [deposits.data, displayUnit, expenses.data, gastos.data, income.data, installmentMode, pl.data]);
-
-  /** Day composite (Diario chart only); the detail table below stays month/year. */
-  const dayRows = useMemo(() => {
-    if (!isDaily || !income.data || !expenses.data || !deposits.data || !pl.data) return null;
-    return aggregateFlowsOverviewByDay(
-      income.data,
-      expenses.data,
-      deposits.data,
-      (displayUnit === "usd" ? pl.data.chart_daily_usd : pl.data.chart_daily) ?? [],
-      installmentMode,
-      displayUnit
-    );
-  }, [deposits.data, displayUnit, expenses.data, income.data, installmentMode, isDaily, pl.data]);
+  // Day mode asks for the day rows of the chart's window too.
+  const overview = useFlowsOverview(
+    displayUnit,
+    installmentMode,
+    isDaily ? timeRangeToDays(timeRange) : undefined
+  );
+  const err =
+    overview.error instanceof Error
+      ? overview.error.message
+      : overview.error
+        ? t("common.loadFailed")
+        : null;
+  // Pending (or holding a prior mode/window): the page renders its frame with zero totals and
+  // no rows, dimmed.
+  const loading = !overview.data || overview.isPlaceholderData;
+  const monthRows = overview.data?.months ?? null;
+  /** Day rows (Diario chart only); the detail table below stays month/year. */
+  const dayRows = isDaily ? (overview.data?.days ?? null) : null;
 
   /** Chart rows (M/Y): months cut at the chart's Rango first, then rolled to its granularity. */
   const rows = useMemo(() => {
@@ -138,8 +154,8 @@ export function FlowsOverviewPage() {
   );
 
   /** Headline totals stay full history; `rangeTotals` (shown when Rango ≠ Todo) follow the chart. */
-  const fullTotals = useMemo(() => flowsOverviewTotals(monthRows ?? []), [monthRows]);
-  const rangeTotals = useMemo(() => flowsOverviewTotals(chartRows), [chartRows]);
+  const fullTotals = overview.data?.totals ?? ZERO_FLOWS_OVERVIEW_TOTALS;
+  const rangeTotals = useMemo(() => flowsOverviewRangeTotals(chartRows), [chartRows]);
 
   /** Table rows: FULL history (no range clip), rolled to the table's own período. */
   const tableRows = useMemo(() => {
@@ -185,52 +201,26 @@ export function FlowsOverviewPage() {
         style={{ marginBottom: timeRange !== "total" ? "0.35rem" : "0.75rem", fontSize: "0.85rem" }}
       >
         {t("flows.overview.totalsLabel")}{" "}
-        <span className="mono" style={{ color: "var(--text)" }}>
-          {t("flows.overview.income")} {formatFlowMoney(fullTotals.income, displayUnit)}
-        </span>
-        {" · "}
-        <span className="mono" style={{ color: "var(--text)" }}>
-          {t("flows.overview.expenses")} {formatFlowMoney(fullTotals.expenses, displayUnit)}
-        </span>
-        {" · "}
-        <span className="mono" style={{ color: "var(--text)" }}>
-          {t("flows.overview.deposits")} {formatFlowMoney(fullTotals.deposits, displayUnit)}
-        </span>
-        {" · "}
-        <span className="mono" style={{ color: "var(--text)" }}>
-          {t("flows.overview.depositsPreTax")} {formatFlowMoney(fullTotals.deposits_pre_tax, displayUnit)}
-        </span>
-        {" · "}
-        <span className="mono" style={{ color: "var(--text)" }}>
-          {t("flows.overview.pl")} {formatFlowMoney(fullTotals.pl, displayUnit)}
-        </span>
-        {" · "}
-        <span className="mono" style={{ color: "var(--text)" }}>
-          {t("flows.overview.net")} {formatFlowMoney(fullTotals.net, displayUnit)}
-        </span>
+        {COLUMNS.map((c, i) => (
+          <span key={c.id}>
+            {i > 0 ? " · " : null}
+            <span className="mono" style={{ color: "var(--text)" }}>
+              {t(c.totalsLabelKey)} {formatFlowMoney(c.value(fullTotals), displayUnit)}
+            </span>
+          </span>
+        ))}
       </p>
       {timeRange !== "total" ? (
         <p className={loadableClass(loading, "muted")} style={{ marginBottom: "0.75rem", fontSize: "0.8rem" }}>
           {t("flows.rangeTotalLabel")}:{" "}
-          <span className="mono">
-            {t("flows.overview.income")} {formatFlowMoney(rangeTotals.income, displayUnit)}
-          </span>
-          {" · "}
-          <span className="mono">
-            {t("flows.overview.expenses")} {formatFlowMoney(rangeTotals.expenses, displayUnit)}
-          </span>
-          {" · "}
-          <span className="mono">
-            {t("flows.overview.deposits")} {formatFlowMoney(rangeTotals.deposits, displayUnit)}
-          </span>
-          {" · "}
-          <span className="mono">
-            {t("flows.overview.pl")} {formatFlowMoney(rangeTotals.pl, displayUnit)}
-          </span>
-          {" · "}
-          <span className="mono">
-            {t("flows.overview.net")} {formatFlowMoney(rangeTotals.net, displayUnit)}
-          </span>
+          {COLUMNS.map((c, i) => (
+            <span key={c.id}>
+              {i > 0 ? " · " : null}
+              <span className="mono">
+                {t(c.totalsLabelKey)} {formatFlowMoney(c.value(rangeTotals), displayUnit)}
+              </span>
+            </span>
+          ))}
         </p>
       ) : null}
 
@@ -239,29 +229,43 @@ export function FlowsOverviewPage() {
           header={
             <thead>
               <tr>
-                <th>{t("flows.overview.colMonth")}</th>
-                <th>{t("flows.overview.income")}</th>
-                <th>{t("flows.overview.expenses")}</th>
-                <th>{t("flows.overview.deposits")}</th>
-                <th>{t("flows.overview.depositsPreTax")}</th>
-                <th>{t("flows.overview.pl")}</th>
-                <th>{t("flows.overview.net")}</th>
+                <th className="desktop-only">{t("flows.overview.colMonth")}</th>
+                {COLUMNS.map((c) => (
+                  <th key={c.id} className="desktop-only">
+                    {t(c.labelKey)}
+                  </th>
+                ))}
+                <th className="mobile-only" aria-hidden="true" />
               </tr>
             </thead>
           }
+          tableClassName="table--parallel-mobile"
           tableStyle={{ fontSize: "0.85rem" }}
         >
-          {pageRows.map((row) => (
-            <tr key={row.period_month}>
-              <td className="mono">{flowPeriodLabel(row.period_month, tableGranularity)}</td>
-              <td className="mono">{formatFlowMoney(row.income, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(row.expenses, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(row.deposits, displayUnit)}</td>
-              <td className="mono muted">{formatFlowMoney(row.deposits_pre_tax, displayUnit)}</td>
-              <td className="mono muted">{formatFlowMoney(row.pl, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(row.net, displayUnit)}</td>
-            </tr>
-          ))}
+          {pageRows.map((row) => {
+            const period = flowPeriodLabel(row.period_month, tableGranularity);
+            return (
+              <tr key={row.period_month}>
+                <td className="mono desktop-only">{period}</td>
+                {COLUMNS.map((c) => (
+                  <td key={c.id} className={c.muted ? "mono muted desktop-only" : "mono desktop-only"}>
+                    {formatFlowMoney(c.value(row), displayUnit)}
+                  </td>
+                ))}
+                <td className="mobile-only">
+                  <TableMobileCard title={period}>
+                    {COLUMNS.map((c) => (
+                      <TableMobileCardRow
+                        key={c.id}
+                        label={t(c.labelKey)}
+                        value={<span className="mono">{formatFlowMoney(c.value(row), displayUnit)}</span>}
+                      />
+                    ))}
+                  </TableMobileCard>
+                </td>
+              </tr>
+            );
+          })}
         </Table>
       </PaginatedTable>
     </>

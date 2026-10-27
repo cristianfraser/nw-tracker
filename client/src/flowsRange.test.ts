@@ -163,6 +163,7 @@ describe("rollupFlowsPlChartPointsByYear", () => {
         brokerage,
         retirement,
         cash: 0,
+        real_estate: 0,
         total,
         ytd_total: ytd,
         cumulative_total: cumulative,
@@ -202,6 +203,7 @@ describe("rollupFlowsPlChartPointsByYear", () => {
       brokerage: 5_000,
       retirement: 0,
       cash: 0,
+      real_estate: 0,
       total: 5_000,
       ytd_total: 5_000,
       // The monthly chart's own December 2024 cumulative — the level, never the clipped sum.

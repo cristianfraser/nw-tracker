@@ -5,7 +5,9 @@ import { buildPayslipChecks } from "../payslipChecks.js";
 import { db } from "../db.js";
 import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsPayload } from "../flowsDeposits.js";
+import { cachedMortgageCarryingEvents } from "../flowsMortgageCarrying.js";
 import { buildFlowsPlPayload } from "../flowsPl.js";
+import { buildFlowsOverviewPayload } from "../flowsOverview.js";
 import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
 import { assignCcExpenseCategoryForManualLedgerInstallmentPurchase } from "../ccExpenseCategories.js";
 import { purchaseIdFromPlanGastosLineId } from "../ccInstallmentPlanGastosLines.js";
@@ -70,7 +72,12 @@ import {
 
 export function registerFlowsRoutes(app: express.Express): void {
 app.get("/api/flows/deposits", (_req, res) => {
-  res.json(buildFlowsDepositsPayload());
+  res.json(
+    buildFlowsDepositsPayload({
+      excludeCheckingAccounts: true,
+      withMortgageCarrying: { clp: cachedMortgageCarryingEvents("clp"), usd: cachedMortgageCarryingEvents("usd") },
+    })
+  );
 });
 
 app.get("/api/flows/pl", (req, res) => {
@@ -81,6 +88,26 @@ app.get("/api/flows/pl", (req, res) => {
     return;
   }
   res.json(buildFlowsPlPayload(days != null ? { days } : undefined));
+});
+
+app.get("/api/flows/overview", (req, res) => {
+  const unit = String(req.query.unit ?? "clp");
+  if (unit !== "clp" && unit !== "usd") {
+    res.status(400).json({ error: `unit must be clp or usd, got ${unit}` });
+    return;
+  }
+  const mode = String(req.query.installment_mode ?? "split");
+  if (mode !== "split" && mode !== "total") {
+    res.status(400).json({ error: `installment_mode must be split or total, got ${mode}` });
+    return;
+  }
+  // `days` (0 = total) opts into the Diario day rows; absent = month rows only.
+  const days = req.query.days != null ? Number(req.query.days) : null;
+  if (days != null && (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS)) {
+    res.status(400).json({ error: `days must be 0..${DAILY_SERIES_MAX_DAYS}` });
+    return;
+  }
+  res.json(buildFlowsOverviewPayload(unit, mode, days));
 });
 
 app.get("/api/flows/deposits/reconciliation", (_req, res) => {

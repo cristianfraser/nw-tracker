@@ -30,6 +30,7 @@ const PL_CHART_BUCKETS: { dataKey: FlowsPlBucketSlug; color: string }[] = [
   { dataKey: "brokerage", color: allocationBucketColor("brokerage") },
   { dataKey: "retirement", color: allocationBucketColor("retirement") },
   { dataKey: "cash", color: allocationBucketColor("cash_eqs") },
+  { dataKey: "real_estate", color: allocationBucketColor("real_estate") },
 ];
 
 export function FlowsPlChart({

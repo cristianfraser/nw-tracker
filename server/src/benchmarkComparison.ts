@@ -10,7 +10,7 @@ import {
   type BenchmarkLevelSeries,
   type BenchmarkRow,
 } from "./benchmarkLevels.js";
-import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
+import { getGroupPeriodReturns } from "./groupConsolidatedTables.js";
 import {
   addMonths,
   computePeriodReturns,
@@ -298,7 +298,7 @@ export function benchmarkComparisonForGroup(
   unit: TsUnit,
   now: Date = new Date()
 ): BenchmarkComparisonPayload | null {
-  const tables = getGroupConsolidatedTables(groupSlug, unit);
+  const tables = getGroupPeriodReturns(groupSlug, unit);
   if (tables.period_returns == null) return null;
   return computeBenchmarkComparison({
     benchmark,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getGroupConsolidatedMonthlyPage,
   getGroupConsolidatedTables,
+  getGroupPeriodReturns,
   rollupConsolidatedMonthlyYearly,
   type ConsolidatedMonthlyPerfRow,
 } from "./groupConsolidatedTables.js";
@@ -157,6 +158,14 @@ describe("getGroupConsolidatedTables period_returns", () => {
       ]);
     }
     expect(getGroupConsolidatedTables("real_estate", "clp").period_returns).toBeNull();
-    expect(getGroupConsolidatedTables("net_worth", "clp").period_returns).toBeNull();
+  });
+
+  it("net worth (the home page) has a Rentabilidad table, served alone by getGroupPeriodReturns", () => {
+    const tables = getGroupConsolidatedTables("net_worth", "clp");
+    const alone = getGroupPeriodReturns("net_worth", "clp");
+    expect(alone.period_returns).not.toBeNull();
+    expect(alone.period_returns).toEqual(tables.period_returns);
+    expect(alone.consolidated_monthly).toEqual(tables.consolidated_monthly);
+    expect(alone.period_returns!.periods.map((c) => c.period)).toEqual(["d1", "w1", ...PERIOD_RETURN_ORDER]);
   });
 });

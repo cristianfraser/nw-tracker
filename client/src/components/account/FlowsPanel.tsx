@@ -40,6 +40,8 @@ type GroupFlowsPanelProps = {
   kind: "group";
   groupSlug: string;
   showUnitsColumn?: boolean;
+  /** Leave out the checking movements the Expenses page counts as spending (home «Flujos de patrimonio»). */
+  excludeSpending?: boolean;
 };
 
 type AccountFlowsPanelProps = {
@@ -56,6 +58,7 @@ export type FlowsPanelProps = (GroupFlowsPanelProps | AccountFlowsPanelProps) & 
 function GroupFlowsPanel({
   groupSlug,
   showUnitsColumn = false,
+  excludeSpending = false,
   enabled = true,
 }: GroupFlowsPanelProps & { enabled?: boolean }) {
   const { t } = useTranslation();
@@ -78,9 +81,10 @@ function GroupFlowsPanel({
       account_id: filterState.account_id ? Number(filterState.account_id) : undefined,
       bucket: filterState.bucket || undefined,
       q: filterState.q || undefined,
+      exclude_spending: excludeSpending || undefined,
       ...extra.filters,
     }),
-    [page, filterState, extra]
+    [page, filterState, extra, excludeSpending]
   );
 
   const { data, isFetching, isPending } = useGroupFlows(groupSlug, filters, enabled);

@@ -57,12 +57,28 @@ function perfRow(as_of_date: string, nominal_pl: number | null): AccountMonthlyP
 }
 
 describe("assembleFlowsPlChartSeries", () => {
+  it("adds the mortgage carrying back into the real-estate bucket: its market P/L", () => {
+    chileToday.ymd = "2026-06-15";
+    const points = assembleFlowsPlChartSeries(
+      {
+        brokerage: [consolidatedRow("2026-05-31", 10_000)],
+        retirement: [],
+        cash: [],
+        // The property's P/L: −400.000 carrying + 30.000 UF revaluation.
+        real_estate: [consolidatedRow("2026-05-31", -370_000)],
+      },
+      new Map([["2026-05-31", 400_000]])
+    );
+    expect(points[0]).toMatchObject({ as_of_date: "2026-05-31", real_estate: 30_000, total: 40_000 });
+  });
+
   it("unions bucket months with zero-fill and normalizes to month-end", () => {
     chileToday.ymd = "2026-06-15";
     const points = assembleFlowsPlChartSeries({
       brokerage: [consolidatedRow("2026-03-31", 100_000), consolidatedRow("2026-06-15", 40_000)],
       retirement: [consolidatedRow("2026-04-30", -25_000)],
       cash: [],
+      real_estate: [],
     });
     expect(points.map((p) => p.as_of_date)).toEqual([
       "2026-03-31",
@@ -87,6 +103,7 @@ describe("assembleFlowsPlChartSeries", () => {
       brokerage: [consolidatedRow("2025-12-31", 10_000), consolidatedRow("2026-01-31", 5_000)],
       retirement: [],
       cash: [],
+      real_estate: [],
     });
     expect(points.map((p) => p.ytd_total)).toEqual([10_000, 5_000]);
     expect(points.map((p) => p.cumulative_total)).toEqual([10_000, 15_000]);
@@ -101,6 +118,7 @@ describe("assembleFlowsPlChartSeries", () => {
       ],
       retirement: [consolidatedRow("2016-01-31", null)],
       cash: [],
+      real_estate: [],
     });
     expect(points.map((p) => p.as_of_date)).toEqual(["2016-03-31"]);
     expect(points[0]).toMatchObject({ brokerage: 50_000, total: 50_000 });
@@ -109,6 +127,7 @@ describe("assembleFlowsPlChartSeries", () => {
         brokerage: [consolidatedRow("2016-01-31", null)],
         retirement: [],
         cash: [],
+        real_estate: [],
       })
     ).toEqual([]);
   });
@@ -119,6 +138,7 @@ describe("assembleFlowsPlChartSeries", () => {
         brokerage: [consolidatedRow("2026-03-31", Number.NaN)],
         retirement: [],
         cash: [],
+        real_estate: [],
       })
     ).toThrow(/non-finite/);
   });
@@ -172,8 +192,8 @@ describe("buildFlowsPlPayload (test DB invariants)", () => {
       let ytd = 0;
       let cumulative = 0;
       for (const pt of series) {
-        expect(pt.total).toBeCloseTo(pt.brokerage + pt.retirement + pt.cash, 6);
-        for (const v of [pt.brokerage, pt.retirement, pt.cash, pt.total]) {
+        expect(pt.total).toBeCloseTo(pt.brokerage + pt.retirement + pt.cash + pt.real_estate, 6);
+        for (const v of [pt.brokerage, pt.retirement, pt.cash, pt.real_estate, pt.total]) {
           expect(Number.isFinite(v)).toBe(true);
         }
         const y = pt.as_of_date.slice(0, 4);
@@ -212,5 +232,6 @@ describe("buildFlowsPlPayload (test DB invariants)", () => {
     expect(last.brokerage).toBeCloseTo(bySlug.get("brokerage")!.total_month_clp, 6);
     expect(last.retirement).toBeCloseTo(bySlug.get("retirement")!.total_month_clp, 6);
     expect(last.cash).toBeCloseTo(bySlug.get("cash")!.total_month_clp, 6);
+    expect(last.real_estate).toBeCloseTo(bySlug.get("real_estate")!.total_month_clp, 6);
   });
 });

@@ -104,6 +104,15 @@
     "liabilitiesCoverage": "Liabilities coverage"
   },
   "dashboard": {
+    "ccUpcoming": {
+      "title": "Cards: upcoming payments",
+      "viewLiabilities": "View liabilities →",
+      "colCard": "Card",
+      "colBillingMonth": "Billing",
+      "colAmount": "Amount",
+      "closeObservedHint": "Close published by the bank (statement or card feed).",
+      "totalToPay": "Total to pay"
+    },
     "chartGranularityLabel": "Period:",
     "rangeLabel": "Range:",
     "range": {
@@ -137,10 +146,9 @@
       "primaryAccountsTitle": "Main accounts",
       "overviewTitle": "Net worth",
       "netWorthUsdChartTitle": "Net worth vs invested (US$ reference)",
-      "perfChartTitleMonthly": "Monthly Δ by class, investments YTD and combined monthly Δ",
-      "perfChartTitleYearly": "Annual Δ by class, annual investments total and combined annual Δ",
-      "accumEarningsChartTitleMonthly": "Accumulated earnings and monthly Δ (investments)",
-      "accumEarningsChartTitleYearly": "Accumulated earnings and annual Δ (investments)",
+      "perfChartTitleMonthly": "Monthly Δ by class and earnings (investments)",
+      "perfChartTitleYearly": "Annual Δ by class and earnings (investments)",
+      "areaTotalToggle": "All-time total",
       "accumFlowsChartTitleMonthly": "Monthly Δ and deposits (investments)",
       "accumFlowsChartTitleYearly": "Annual Δ and deposits (investments)",
       "deltaRetirementMonthly": "Monthly retirement Δ",
@@ -159,6 +167,12 @@
       "ma3DeltaCombinedYearly": "MA3 annual Δ (investments)",
       "ma3DepositsInversionesYearly": "MA3 year's deposits (investments)"
     },
+    "flows": {
+      "title": "Flows",
+      "lastMonth": "Last month",
+      "last12Months": "Last 12 months",
+      "openFlows": "See flows"
+    },
     "allocation": {
       "title": "Allocation (latest valuations)"
     },
@@ -175,6 +189,19 @@
       "periodDeltaYear": "Year P/L",
       "periodDeltaDay": "Day P/L",
       "summaryAria": "Deposits and total and period Δ"
+    },
+    "wealthFlowsTitle": "Wealth flows",
+    "latestExpenses": {
+      "title": "Latest expenses",
+      "viewAll": "All expenses →",
+      "colDate": "Date",
+      "colMerchant": "Description",
+      "colCategory": "Category",
+      "colOrigin": "Origin",
+      "colAmount": "Amount",
+      "installments": "{{count}} installments",
+      "refund": "Refund",
+      "empty": "No expenses yet."
     }
   },
   "sidebar": {
@@ -894,10 +921,19 @@
       "chartEmpty": "No flow data.",
       "income": "Income",
       "expenses": "Expenses",
+      "savings": "Savings",
       "deposits": "Deposits",
       "depositsPreTax": "AFP+AFC (contributions)",
+      "depositsPreTaxShort": "Pre-tax",
+      "cardSpentMinusPaid": "Cards: spent − paid",
+      "cardSpentMinusPaidShort": "Cards spent − paid",
+      "cashChange": "Cash change",
+      "cashUnexplained": "Unexplained",
       "pl": "P/L",
-      "net": "Net",
+      "investmentsChange": "Investments change",
+      "investmentsChangeShort": "Inv. change",
+      "netWorthChange": "Net-worth change",
+      "netWorthChangeShort": "NW change",
       "detailTitle": "Month detail",
       "totalsLabel": "Totals:",
       "colMonth": "Month"
@@ -1062,7 +1098,8 @@
     "colCategory": "Category",
     "colAccount": "Account",
     "colAmount": "Amount",
-    "emptyCategory": "No deposits in this category."
+    "emptyCategory": "No deposits in this category.",
+    "mortgageCarryingTag": "Mortgage interest + insurance (an expense)"
   },
   "depositsReconciliation": {
     "title": "Deposits reconciliation",

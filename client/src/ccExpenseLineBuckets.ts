@@ -97,6 +97,11 @@ export function isInstallmentCuotaZeroLine(line: {
   return line.installment_flag === 1 && line.nro_cuota_current === 0;
 }
 
+/** A negative line that is spending coming back (`checking_refund` / `card_refund`). */
+export function isGastosRefundLine(line: Pick<FlowCcExpenseLineRow, "checking_refund" | "card_refund">): boolean {
+  return line.checking_refund === true || line.card_refund === true;
+}
+
 /** Positive lines, and refunds, that count toward gasto del mes for the active installment mode. */
 export function countsTowardGastosMes(
   line: FlowCcExpenseLineRow,
@@ -105,10 +110,9 @@ export function countsTowardGastosMes(
   if (line.nota_credito_role === "annulled_purchase" || line.nota_credito_role === "matched_nota") {
     return false;
   }
-  // Small fee adjustments affect gastos totals only (see aggregateGastosFromLines), not compras/cuotas UI.
-  if (line.nota_credito_role === "unmatched_nota") return false;
-  // A refund (`checking_refund`) is spending coming back: it counts, negatively, in its category.
-  if (line.amount_clp <= 0 && line.checking_refund !== true) return false;
+  // A refund (a checking credit marked as one, or a card credit no purchase annuls — a small
+  // unpaired nota included) is spending coming back: it counts, negatively, in its category.
+  if (line.amount_clp <= 0 && !isGastosRefundLine(line)) return false;
   if (isCcExpenseTotalsExcludedSlug(line.category_slug)) return false;
   if (isInstallmentCuotaZeroLine(line)) return false;
   const scope = line.gastos_scope ?? "both";
@@ -133,7 +137,7 @@ export function countsTowardComprasModal(
 
 /** Negative lines shown in the «Abonos» modal section (excludes NOTA DE CREDITO handling). */
 export function countsTowardAbonosMes(line: FlowCcExpenseLineRow): boolean {
-  if (line.amount_clp >= 0 || line.checking_refund === true) return false;
+  if (line.amount_clp >= 0 || isGastosRefundLine(line)) return false;
   if (line.nota_credito_role === "matched_nota" || line.nota_credito_role === "unmatched_nota") {
     return false;
   }
