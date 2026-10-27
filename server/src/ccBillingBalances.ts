@@ -798,7 +798,7 @@ export function recomputeCcBillingMonthBalances(accountId: number): number {
         `Account ${accountId}: stored billing month ${billingMonth} has no detalle row to take its cupo and saldo from`
       );
     }
-    updateBalanceFromDetalle.run(row.cupo_en_cuotas_clp, row.balance_total_clp, accountId, billingMonth);
+    updateBalanceFromDetalle.run(row.cupo_statement_clp, row.balance_statement_clp, accountId, billingMonth);
   }
 
   return n;

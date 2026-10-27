@@ -45,9 +45,11 @@ function formatProxyCell(
   proxy: CcProxyFacturacionAggregate | undefined,
   inlineTicker: string
 ): string {
+  // «—» only without a proxy at all; a facturación that floated nothing reads a bare «$0».
   if (!proxy) return "—";
   const t = proxy.by_ticker[inlineTicker];
   if (!t) return "—";
+  if (t.blended_return_pct == null) return formatClp(Math.round(t.total_gain_clp));
   const sign = t.total_gain_clp >= 0 ? "+" : "";
   return `${sign}${formatClp(Math.round(t.total_gain_clp))} (${t.blended_return_pct >= 0 ? "+" : ""}${formatPct(t.blended_return_pct, 1)})`;
 }
@@ -71,7 +73,7 @@ function CloseDateCell({ row }: { row: CcFacturacionDto }) {
   return <>{row.close_date}</>;
 }
 
-/** «provisoria» next to a month closed at the bank whose statement is not imported yet. */
+/** A bare asterisk next to a month closed at the bank whose statement is not imported yet. */
 function ProvisionalMark({ row }: { row: CcFacturacionDto }) {
   const { t } = useTranslation();
   if (!row.is_provisional_close) return null;
@@ -83,8 +85,7 @@ function ProvisionalMark({ row }: { row: CcFacturacionDto }) {
       : "";
   return (
     <span className="muted" title={`${t("accountDetail.creditCard.provisionalCloseHint")}${estimate}`}>
-      {" "}
-      {t("accountDetail.creditCard.provisionalClose")}
+      *
     </span>
   );
 }
@@ -106,6 +107,7 @@ function FacturacionMobileCard({
     facturadoUsd: string;
     facturadoTotal: string;
     cuotaAPagar: string;
+    deudaEnCuotas: string;
     proxyEarnings: string;
   };
   onOpen: (row: CcFacturacionDto) => void;
@@ -138,6 +140,10 @@ function FacturacionMobileCard({
         <TableMobileCardRow
           label={labels.cuotaAPagar}
           value={formatOrDash(row.cuota_a_pagar_clp, formatClp)}
+        />
+        <TableMobileCardRow
+          label={labels.deudaEnCuotas}
+          value={formatOrDash(row.deuda_en_cuotas_clp, formatClp)}
         />
         <TableMobileCardRow
           label={labels.proxyEarnings}
@@ -230,6 +236,7 @@ export function CreditCardFacturacionesTable({
     facturadoUsd: t("accountDetail.creditCard.colFacturadoUsd"),
     facturadoTotal: t("accountDetail.creditCard.colFacturadoTotal"),
     cuotaAPagar: t("accountDetail.creditCard.colCuotaAPagar"),
+    deudaEnCuotas: t("accountDetail.creditCard.colDeudaEnCuotasFacturacion"),
     proxyEarnings: t("accountDetail.creditCard.colProxyEarnings"),
   };
 
@@ -327,6 +334,12 @@ export function CreditCardFacturacionesTable({
                 <th className="desktop-only">{t("accountDetail.creditCard.colFacturadoUsd")}</th>
                 <th className="desktop-only">{t("account.creditCard.colFacturadoTotal")}</th>
                 <th className="desktop-only">{t("accountDetail.creditCard.colCuotaAPagar")}</th>
+                <th
+                  className="desktop-only"
+                  title={t("accountDetail.creditCard.colDeudaEnCuotasFacturacionHint")}
+                >
+                  {t("accountDetail.creditCard.colDeudaEnCuotasFacturacion")}
+                </th>
                 <th className="desktop-only" title={t("accountDetail.creditCard.proxyEarningsHint")}>
                   {t("accountDetail.creditCard.colProxyEarnings")}
                 </th>
@@ -353,7 +366,8 @@ export function CreditCardFacturacionesTable({
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatFacturadoUsdCell(row)}</td>
                 <td className="mono desktop-only">{formatOrDash(row.facturado_total_clp, formatClp)}</td>
                 <td className="mono desktop-only">{formatOrDash(row.cuota_a_pagar_clp, formatClp)}</td>
-                <td className="mono desktop-only">{formatProxyCell(proxy, inlineTicker)}</td>
+                <td className="mono desktop-only">{formatOrDash(row.deuda_en_cuotas_clp, formatClp)}</td>
+                <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatProxyCell(proxy, inlineTicker)}</td>
                 <td className="mobile-only">
                   <FacturacionMobileCard
                     row={row}

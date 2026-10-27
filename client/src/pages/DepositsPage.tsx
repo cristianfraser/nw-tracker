@@ -123,7 +123,7 @@ export function DepositsPage() {
         );
         return (
           <section key={cat} style={{ marginBottom: "1.5rem" }}>
-            <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+            <h3 style={{ marginBottom: "0.35rem" }}>
               {depositFlowCategoryLabel(cat)}
               <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
                 {formatFlowMoney(blockTotal, displayUnit)}

@@ -13,6 +13,9 @@ import { moveOpenBucketLinesByDedupeKey } from "./ccOpenWebPasteRepair.js";
 import { creditCardMasterMetaForAccount, webPasteListingDedupeKeys } from "./ccWebPasteParse.js";
 import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
+import { ymCompare } from "./calendarMonth.js";
+import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
+import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { db } from "./db.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
@@ -49,8 +52,14 @@ export type CardListingCloseImport = {
   status: "new" | "seen";
   saldo_inicial_clp: number | null;
   saldo_inicial_usd: number | null;
-  /** The facturación every row of this feed was filed under (the month after the close). */
+  /**
+   * The facturación this feed's rows are filed under by default: the month after the close. A
+   * row dated in a later cycle than that month's (a close-day purchase on the close day itself,
+   * before the listing rolls) is filed under its own cycle's month instead (`feedLineBillingMonths`).
+   */
   rows_billing_month: string;
+  /** Rows of this feed filed under a later facturación than `rows_billing_month`. */
+  lines_in_later_cycle: number;
   /** Lines already on file under an earlier month that this post-close feed still lists. */
   lines_moved_forward: number;
   /**
@@ -92,16 +101,40 @@ export type CardUnbilledMovementsImportResult = {
 };
 
 /**
- * Record the feed's close and move what it still lists past it. One transaction: a cross-check
- * failure (the SALDO INICIAL disagrees with an imported statement of the same close) leaves no
- * observation and moves nothing.
+ * The facturación each feed row is filed under: the LATER of the feed's own month (the one after
+ * its SALDO INICIAL close — everything a post-close listing shows is unbilled, so never earlier)
+ * and the cycle containing the row's date (`billingMonthContainingPurchase`: statement, feed and
+ * announced closes plus the issuer's close-day rule). The bank rolls the unbilled list the night
+ * AFTER a close day: on the close day itself the evening listing still opens with the previous
+ * SALDO INICIAL, so a purchase dated that day — which Santander bills in the NEXT cycle, its
+ * next period starting ON the close day — would otherwise sit a day in the closing month's bucket
+ * and inflate its provisional estimate until the next listing moved it forward. A pending
+ * authorization carries a date too; a row with no ISO date throws, never a guess.
+ */
+export function feedLineBillingMonths(
+  accountId: number,
+  lines: readonly CcWebPasteLine[],
+  feedBillingMonth: string
+): string[] {
+  if (lines.length === 0) return [];
+  const statements = listCcStatementsForAccount(accountId);
+  return lines.map((line) => {
+    const own = billingMonthContainingPurchase(accountId, line.transaction_date, statements);
+    return ymCompare(own, feedBillingMonth) > 0 ? own : feedBillingMonth;
+  });
+}
+
+/**
+ * Record the feed's close and move what it still lists past it — each line to its own month
+ * (`feedLineBillingMonths`). One transaction: a cross-check failure (the SALDO INICIAL disagrees
+ * with an imported statement of the same close) leaves no observation and moves nothing.
  */
 function applyFeedClose(
   accountId: number,
   close: CardListingClose,
   lines: CcWebPasteLine[],
   sourceFile: string
-): Omit<CardListingCloseImport, "provisional_check"> {
+): { close: Omit<CardListingCloseImport, "provisional_check">; lineBillingMonths: string[] } {
   return db.transaction(() => {
     const recorded = recordFeedBillingClose(accountId, {
       close_iso: close.close_iso,
@@ -111,17 +144,33 @@ function applyFeedClose(
     });
     assertFeedClosesMatchStatements(accountId);
     const rowsBillingMonth = addCalendarMonths(recorded.close.billing_month, 1);
+    // After the close is on record: it is evidence for the cycles the lines fall in.
+    const lineBillingMonths = feedLineBillingMonths(accountId, lines, rowsBillingMonth);
     const meta = creditCardMasterMetaForAccount(accountId);
-    const keys = new Set(webPasteListingDedupeKeys(meta.cardGroup, lines));
-    const moved = moveOpenBucketLinesByDedupeKey(accountId, keys, rowsBillingMonth);
+    const keys = webPasteListingDedupeKeys(meta.cardGroup, lines);
+    const keysByMonth = new Map<string, Set<string>>();
+    keys.forEach((key, i) => {
+      const month = lineBillingMonths[i]!;
+      let set = keysByMonth.get(month);
+      if (!set) keysByMonth.set(month, (set = new Set()));
+      set.add(key);
+    });
+    let moved = 0;
+    for (const [month, monthKeys] of keysByMonth) {
+      moved += moveOpenBucketLinesByDedupeKey(accountId, monthKeys, month).moved;
+    }
     return {
-      close_iso: recorded.close.close_date,
-      billing_month: recorded.close.billing_month,
-      status: recorded.status,
-      saldo_inicial_clp: recorded.close.saldo_inicial_clp,
-      saldo_inicial_usd: recorded.close.saldo_inicial_usd,
-      rows_billing_month: rowsBillingMonth,
-      lines_moved_forward: moved.moved,
+      close: {
+        close_iso: recorded.close.close_date,
+        billing_month: recorded.close.billing_month,
+        status: recorded.status,
+        saldo_inicial_clp: recorded.close.saldo_inicial_clp,
+        saldo_inicial_usd: recorded.close.saldo_inicial_usd,
+        rows_billing_month: rowsBillingMonth,
+        lines_in_later_cycle: lineBillingMonths.filter((m) => m !== rowsBillingMonth).length,
+        lines_moved_forward: moved,
+      },
+      lineBillingMonths,
     };
   })();
 }
@@ -150,8 +199,9 @@ function provisionalCheck(
  *
  * A listing that states a card's latest close (the feed's SALDO INICIAL) records it
  * (`cc_feed_billing_closes`), and since everything a post-close listing shows is unbilled by
- * definition, every row is filed under the facturación AFTER it, and any line already filed
- * under an earlier month that the listing still shows follows it forward.
+ * definition, every row is filed under the facturación AFTER it — or under its own date's cycle
+ * when that is later (`feedLineBillingMonths`) — and any line already filed under an earlier
+ * month that the listing still shows follows it forward.
  */
 export function applyCardUnbilledMovements(
   payload: CardUnbilledMovementsPayload,
@@ -177,14 +227,17 @@ export function applyCardUnbilledMovements(
     const { cardGroup } = creditCardMasterMetaForAccount(accountId);
     const lines = card.lines.map((line) => webPasteLineFromCardListingLine(cardGroup, line));
     const close = closes.get(card.account.number);
-    const feedClose = close ? applyFeedClose(accountId, close, lines, sourceRef) : null;
+    const applied = close ? applyFeedClose(accountId, close, lines, sourceRef) : null;
+    const feedClose = applied?.close ?? null;
     // Before the lines: a plan makes its purchase row import as an installment overlap.
     const plansCreated = createPlansForFeedCuotaPurchases(accountId, lines, sourceRef);
     const result = importCcWebPasteLines(
       accountId,
       { lines, errors: [] },
       "cc_santander_fetch",
-      feedClose ? { targetBillingMonth: feedClose.rows_billing_month } : undefined
+      applied
+        ? { targetBillingMonth: applied.close.rows_billing_month, lineBillingMonths: applied.lineBillingMonths }
+        : undefined
     );
     const tagged = tagFeedCuotaPurchaseLines(accountId, lines);
     // The merge re-syncs balances and valuation points after any write; a close with nothing to

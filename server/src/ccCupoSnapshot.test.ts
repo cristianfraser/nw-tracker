@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { ccCupoSnapshot } from "./creditCardInstallments.js";
 
 const rows = [
-  { billing_month: "2027-01", as_of_kind: "manual" as const, balance_total_clp: 0 },
-  { billing_month: "2026-09", as_of_kind: "manual" as const, balance_total_clp: 8_513_870 },
-  { billing_month: "2026-08", as_of_kind: "statement" as const, balance_total_clp: 11_718_617 },
-  { billing_month: "2026-07", as_of_kind: "statement" as const, balance_total_clp: 9_000_000 },
+  { billing_month: "2027-01", as_of_kind: "manual" as const, balance_statement_clp: 0 },
+  { billing_month: "2026-09", as_of_kind: "manual" as const, balance_statement_clp: 8_513_870 },
+  { billing_month: "2026-08", as_of_kind: "statement" as const, balance_statement_clp: 11_718_617 },
+  { billing_month: "2026-07", as_of_kind: "statement" as const, balance_statement_clp: 9_000_000 },
 ];
 
 describe("ccCupoSnapshot", () => {

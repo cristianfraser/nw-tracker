@@ -388,9 +388,16 @@ export function normalPurchaseToLot(opts: {
 
 // ─── Facturación aggregation ──────────────────────────────────────────────────
 
+export type ProxyFacturacionTickerAggregate = {
+  total_gain_clp: number;
+  /** `total_gain_clp` over the money the facturación floated; null when it floated none. */
+  blended_return_pct: number | null;
+  projected: boolean;
+};
+
 export type ProxyFacturacionAggregate = {
   billing_month: string;
-  by_ticker: Record<string, { total_gain_clp: number; blended_return_pct: number; projected: boolean }>;
+  by_ticker: Record<string, ProxyFacturacionTickerAggregate>;
 };
 
 /**
@@ -401,10 +408,16 @@ export type ProxyFacturacionAggregate = {
  * across 12 facturaciones.
  *
  * blended_return_pct = total_gain_that_month / Σ cuota_amounts_that_month
+ *
+ * `facturacionMonths` are the facturaciones the table shows: one that billed no purchase at all —
+ * the open cycle the morning after a close, a closed month with nothing on it — still gets a row
+ * per ticker, with a gain of 0 and no return (nothing floated, so there is no base), so its cell
+ * reads $0 rather than the «—» kept for a card with no proxy at all.
  */
 export function aggregateProxyByFacturacion(
   results: ProxyLotResult[],
-  tickers: string[]
+  tickers: string[],
+  facturacionMonths: readonly string[] = []
 ): ProxyFacturacionAggregate[] {
   // month → ticker → { gain, floated_amount, projected }
   const byMonth = new Map<string, Map<string, { gain: number; floated: number; projected: boolean }>>();
@@ -426,16 +439,15 @@ export function aggregateProxyByFacturacion(
     }
   }
 
-  const months = [...byMonth.keys()].sort();
+  const months = [...new Set([...byMonth.keys(), ...facturacionMonths])].sort();
   return months.map((billing_month) => {
-    const tickerMap = byMonth.get(billing_month)!;
-    const by_ticker: Record<string, { total_gain_clp: number; blended_return_pct: number; projected: boolean }> = {};
+    const tickerMap = byMonth.get(billing_month);
+    const by_ticker: Record<string, ProxyFacturacionTickerAggregate> = {};
     for (const ticker of tickers) {
-      const agg = tickerMap.get(ticker);
-      if (!agg) continue;
+      const agg = tickerMap?.get(ticker) ?? { gain: 0, floated: 0, projected: false };
       by_ticker[ticker] = {
         total_gain_clp: agg.gain,
-        blended_return_pct: agg.floated > 0 ? (agg.gain / agg.floated) * 100 : 0,
+        blended_return_pct: agg.floated > 0 ? (agg.gain / agg.floated) * 100 : null,
         projected: agg.projected,
       };
     }

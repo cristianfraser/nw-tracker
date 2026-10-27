@@ -55,9 +55,18 @@ export interface CcBillingDetailMonthDto {
   as_of_kind: "statement" | "manual";
   total_facturado_actual_clp: number | null;
   total_facturado_clp: number | null;
-  cupo_en_cuotas_clp: number;
+  /**
+   * Month frame: the historial chart's month-end «deuda en cuotas» (today for the current month),
+   * so the detalle shows the chart's number; null when the month has no point.
+   */
+  cupo_en_cuotas_clp: number | null;
   cuota_a_pagar_next_mes_clp: number;
-  balance_total_clp: number;
+  /** Month frame: the chart's month-end «saldo total» (the owed walk); null when it has no point. */
+  balance_total_clp: number | null;
+  /** Statement frame («cupo en cuotas» as the statement prints it) — carried, not displayed. */
+  cupo_statement_clp: number;
+  /** Statement frame (facturado + cupo = balance) — carried, not displayed. */
+  balance_statement_clp: number;
   /** Plan-only future month (no statement or balance evidence yet). */
   projected?: boolean;
   /** Closed at the bank, statement not imported yet (server `isProvisionallyClosedBillingMonth`). */
@@ -94,6 +103,11 @@ export interface CcFacturacionDto {
   facturado_usd_clp: number | null;
   facturado_total_clp: number | null;
   cuota_a_pagar_clp: number | null;
+  /**
+   * Statement-frame installment debt of this facturación: cuotas not yet billed after its close,
+   * what the statement prints as «saldo capital cuotas».
+   */
+  deuda_en_cuotas_clp: number | null;
   /** True before PDF close — facturado includes únicos + cuota a pagar. */
   is_open_month: boolean;
   /** Closed at the bank, statement pending: facturado is the bank's total or the app's estimate. */
@@ -236,7 +250,8 @@ export interface CcProxyFacturacionAggregate {
   billing_month: string;
   by_ticker: Record<string, {
     total_gain_clp: number;
-    blended_return_pct: number;
+    /** Null when the facturación floated no money: a gain of 0 with no base (the open cycle before its first purchase). */
+    blended_return_pct: number | null;
     projected: boolean;
   }>;
 }

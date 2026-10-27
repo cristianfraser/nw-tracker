@@ -72,9 +72,9 @@ export function CreditCardSummaryCards({
           fact={lastFact}
           note={
             lastFact?.is_provisional_close ? (
+              // A bare asterisk marks a provisional close; the hint carries the wording.
               <span className="muted" title={t("accountDetail.creditCard.provisionalCloseHint")}>
-                {" "}
-                · {t("accountDetail.creditCard.provisionalClose")}
+                *
               </span>
             ) : null
           }

@@ -12,6 +12,8 @@ function detalleRow(overrides: Partial<CcBillingDetailMonthDto>): CcBillingDetai
     cupo_en_cuotas_clp: 0,
     cuota_a_pagar_next_mes_clp: 0,
     balance_total_clp: 0,
+    cupo_statement_clp: 0,
+    balance_statement_clp: 0,
     ...overrides,
   };
 }
@@ -127,6 +129,40 @@ describe("rollupCcBillingDetailYearly", () => {
       balance_total_clp: 0,
       projected: true,
     });
+  });
+
+  it("month-frame lines take the last month with a point; the statement frame the latest month", () => {
+    const rows = [
+      detalleRow({
+        billing_month: "2026-10",
+        cupo_en_cuotas_clp: 300_000,
+        balance_total_clp: 450_000,
+        cupo_statement_clp: 310_000,
+        balance_statement_clp: 460_000,
+      }),
+      detalleRow({
+        billing_month: "2026-11",
+        cupo_en_cuotas_clp: null,
+        balance_total_clp: null,
+        cupo_statement_clp: 250_000,
+        balance_statement_clp: 250_000,
+        projected: true,
+      }),
+    ];
+    const [year] = rollupCcBillingDetailYearly(rows);
+    expect(year).toMatchObject({
+      cupo_en_cuotas_clp: 300_000,
+      balance_total_clp: 450_000,
+      cupo_statement_clp: 250_000,
+      balance_statement_clp: 250_000,
+    });
+  });
+
+  it("a year whose every month lacks a chart point rolls up to null lines", () => {
+    const rows = [detalleRow({ billing_month: "2027-01", cupo_en_cuotas_clp: null, balance_total_clp: null })];
+    const [year] = rollupCcBillingDetailYearly(rows);
+    expect(year!.cupo_en_cuotas_clp).toBeNull();
+    expect(year!.balance_total_clp).toBeNull();
   });
 
   it("returns years ascending regardless of input order", () => {

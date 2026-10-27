@@ -313,7 +313,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     const october = ledger.months.find((m) => m.month === "2026-10");
     expect(october?.breakdown.map((b) => b.label)).toEqual(["MUNICIPALIDAD DE MAIPU"]);
     const detail = buildBillingDetailByMonth(accountId, ledger.months).find((d) => d.billing_month === "2026-09")!;
-    expect(detail.cupo_en_cuotas_clp).toBe(29_990 + 189_990);
+    expect(detail.cupo_statement_clp).toBe(29_990 + 189_990);
   });
 
   it("carries a cuota purchase of unknown count as installment debt from its date, flat until its plan", () => {
@@ -354,7 +354,7 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
     const projected = buildBillingDetailByMonth(accountId, ledger.months).filter((d) => d.projected);
     expect(projected.length).toBeGreaterThan(0);
     const last = projected.reduce((a, b) => (a.billing_month > b.billing_month ? a : b));
-    expect(last).toMatchObject({ cupo_en_cuotas_clp: 189_990, balance_total_clp: 189_990 });
+    expect(last).toMatchObject({ cupo_statement_clp: 189_990, balance_statement_clp: 189_990 });
   });
 
   it("asks for the count: the line carries its type, and entering it pins the first cuota by type", () => {

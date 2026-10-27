@@ -61,9 +61,13 @@
   flex-direction: column;
 }
 
-/* One look for every chart title, whatever heading level it renders at (h2 or h3). */
+/* One look for every chart title, whatever heading level it renders at (h2 or h3):
+   the size and weight are stated here so an h3 chart title does not take the smaller
+   base h3 size; the margin stays the level's (or the placement rules' below). */
 .chart-panel-title {
   color: var(--muted);
+  font-size: 1.1rem;
+  font-weight: 600;
 }
 
 .chart-grid__col > .chart-panel-title {

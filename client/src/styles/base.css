@@ -53,6 +53,23 @@ h2 {
   color: var(--muted);
 }
 
+/* Subsection titles: the h2 house style one step smaller per level (the browser default
+   was body-white, bold and larger than the h2 above it). Levels are the document outline;
+   a component that needs the h2 look at another level (chart titles) says so with a class. */
+h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem;
+  color: var(--muted);
+}
+
+h4 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 1rem 0 0.4rem;
+  color: var(--muted);
+}
+
 .muted {
   color: var(--muted);
 }

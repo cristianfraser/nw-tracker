@@ -359,6 +359,16 @@ describe("aggregateProxyByFacturacion", () => {
     expect(agg[0]!.by_ticker["reserva"]!.blended_return_pct).toBeCloseTo((500 / 50_000) * 100, 4);
   });
 
+  it("gives a facturación that floated nothing a $0 row with no return, never a row for a month nobody named", () => {
+    const lot = makeLotResult([{ billing_month: "2025-08", amount: 30_000, gain: 300 }]);
+    const agg = aggregateProxyByFacturacion([lot], ["reserva"], ["2025-09", "2025-08"]);
+    expect(agg.map((a) => a.billing_month)).toEqual(["2025-08", "2025-09"]);
+    expect(agg[0]!.by_ticker["reserva"]).toMatchObject({ total_gain_clp: 300, blended_return_pct: 1 });
+    expect(agg[1]!.by_ticker["reserva"]).toEqual({ total_gain_clp: 0, blended_return_pct: null, projected: false });
+    // No proxy ticker at all: the row carries no figure (the cell's «—»).
+    expect(aggregateProxyByFacturacion([], [], ["2025-09"])).toEqual([{ billing_month: "2025-09", by_ticker: {} }]);
+  });
+
   it("projected=true when any cuota has projected=true", () => {
     const lot = makeLotResult([{ billing_month: "2025-08", amount: 30_000, gain: 300 }]);
     lot.by_ticker["reserva"]!.cuotas[0]!.projected = true;
@@ -612,12 +622,29 @@ describe("facturación proxy on a card ledger", () => {
     expect([...byMonth.keys()].every((m) => rows.has(m))).toBe(true);
   });
 
-  it("dates a stale bucket's leftover by the open month's pay-by before the open month has a row", () => {
+  it("dates a stale bucket's leftover by the open month's pay-by while that month has no line of its own", () => {
     insertLine(bucket("2026-08", "20/08/2026"), { date: "10/8/2026", merchant: "VITEST LEFTOVER", clp: 3_000 });
     const facturaciones = buildFacturaciones(accountId, []);
-    expect(facturaciones.some((f) => f.billing_month === "2026-10")).toBe(false);
+    // The open month has its row from the close day on (2026-10-26), with no bucket behind it.
+    const open = facturaciones.find((f) => f.billing_month === "2026-10");
+    expect(open?.is_open_month).toBe(true);
+    expect(open?.pay_by_iso).toBe("2026-11-10");
     const lots = lotsByPrincipal(buildNormalPurchaseProxyForAccount(accountId, [SERIES], TODAY, facturaciones));
     expect(lots.get(3_000)).toEqual([["2026-10", "2026-11-10"]]); // VITEST LEFTOVER
+  });
+
+  it("gives the open facturación a $0 aggregate while no purchase has landed in it", () => {
+    // October exists from the close day on with no bucket behind it: the cell reads $0, not «—».
+    const ledger = creditCardInstallmentsResponse(accountId, [SERIES]);
+    const rows = (ledger.facturaciones ?? []).map((f) => f.billing_month).sort();
+    expect(rows).toEqual(["2026-08", "2026-09", "2026-10"]);
+    expect(ledger.facturaciones!.find((f) => f.billing_month === "2026-10")?.is_open_month).toBe(true);
+    const byMonth = new Map((ledger.facturacion_proxy ?? []).map((a) => [a.billing_month, a.by_ticker[SERIES]!]));
+    expect([...byMonth.keys()].sort()).toEqual(rows);
+    expect(byMonth.get("2026-10")).toEqual({ total_gain_clp: 0, blended_return_pct: null, projected: false });
+    // The months that billed money keep their figures and a return over what they floated.
+    expect(byMonth.get("2026-08")!.blended_return_pct).toBeCloseTo(1, 6);
+    expect(byMonth.get("2026-09")!.total_gain_clp).toBeCloseTo(13_000 * 0.02, 6);
   });
 
   it("throws on a line whose purchase date cannot be parsed instead of dropping it", () => {

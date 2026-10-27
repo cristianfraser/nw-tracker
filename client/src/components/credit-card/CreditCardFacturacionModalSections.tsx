@@ -103,7 +103,7 @@ export function CreditCardFacturacionModalSections({
 
   return (
     <>
-      <h3 style={{ fontSize: "1rem", marginBottom: "0.35rem" }}>
+      <h3 style={{ marginBottom: "0.35rem" }}>
         {t("expenses.creditCard.modalSectionGastos")}
         {bucket.gastos.length > 0 ? (
           <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
@@ -120,7 +120,7 @@ export function CreditCardFacturacionModalSections({
         {...tableDeleteProps}
       />
 
-      <h3 style={{ fontSize: "1rem", margin: "1.25rem 0 0.35rem" }}>
+      <h3 style={{ margin: "1.25rem 0 0.35rem" }}>
         {t("accountDetail.creditCard.facturacionModalSectionFinancing")}
         {bucket.costeFinanciero.length > 0 ? (
           <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
@@ -137,7 +137,7 @@ export function CreditCardFacturacionModalSections({
         {...tableDeleteProps}
       />
 
-      <h3 style={{ fontSize: "1rem", margin: "1.25rem 0 0.35rem" }}>
+      <h3 style={{ margin: "1.25rem 0 0.35rem" }}>
         {t("expenses.creditCard.modalSectionAbonos")}
         {bucket.abonos.length > 0 ? (
           <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>

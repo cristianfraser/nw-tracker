@@ -22,7 +22,7 @@ import {
 } from "./ccCuotaRetirement.js";
 import { ccLedgerMonthEndIso, listSchedulePurchaseEvents } from "./ccInstallmentLedgerDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
-import { buildCcInstallmentDebtDailySeries } from "./creditCardChartSeries.js";
+import { buildCcInstallmentDebtDailySeries, type CcHistorialMonthLines } from "./creditCardChartSeries.js";
 
 /** Future daily point of the installment plan simulation (CLP; past today, one per calendar day). */
 export type CcPlanTailPoint = {
@@ -296,7 +296,7 @@ export function ccInstallmentDebtDailyClpForAccounts(
   return sumNullableDailySeries(members, datesAsc.length);
 }
 
-export type CcHistorialMonthLines = { balance_clp: number | null; plan_debt_clp: number | null };
+export type { CcHistorialMonthLines } from "./creditCardChartSeries.js";
 
 /**
  * The monthly historial's two lines, read from the daily data the day chart draws, summed over

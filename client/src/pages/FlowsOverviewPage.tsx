@@ -173,7 +173,7 @@ export function FlowsOverviewPage() {
       </div>
 
       <div className="chart-panel-title-row">
-        <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t("flows.overview.detailTitle")}</h3>
+        <h3 style={{ margin: 0 }}>{t("flows.overview.detailTitle")}</h3>
         <SurfaceControls
           period={tablePrefs.period}
           onPeriodChange={tablePrefs.setPeriod}

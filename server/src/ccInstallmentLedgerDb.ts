@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
+import { sortActivePurchases } from "./ccActivePurchaseOrder.js";
 import {
   clpFacturadoByCloseIso,
   computeCuotaRetirements,
@@ -1233,7 +1234,9 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       finalYm != null ? (retired_on_by_month.get(finalYm) ?? null) : null
     );
   };
-  const purchases_active = computed.filter(purchaseIsActive);
+  // «Compras activas» order is a display shape the server owns: fewest cuotas left first, ties
+  // broken by the first-cuota month, not by name (`ccActivePurchaseOrder.ts`).
+  const purchases_active = sortActivePurchases(computed.filter(purchaseIsActive));
   for (const c of purchases_active) total_remaining_principal_clp += c.remaining_principal_clp;
 
   const purchases_completed = computed

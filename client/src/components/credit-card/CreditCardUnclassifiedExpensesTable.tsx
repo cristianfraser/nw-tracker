@@ -60,7 +60,7 @@ export function CreditCardUnclassifiedExpensesTable({
 
   return (
     <section style={{ marginTop: "2rem" }}>
-      <h3 style={{ fontSize: "1.1rem", marginBottom: "0.35rem" }}>
+      <h3 style={{ marginBottom: "0.35rem" }}>
         {t("expenses.creditCard.unclassifiedTableTitle")}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {unclassifiedGastos.length}

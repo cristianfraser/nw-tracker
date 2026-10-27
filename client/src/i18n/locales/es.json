@@ -731,6 +731,8 @@
       "colFacturadoUsd": "Facturado US$",
       "colFacturadoTotal": "Facturado total",
       "colCuotaAPagar": "Cuota a pagar",
+      "colDeudaEnCuotasFacturacion": "Deuda en cuotas",
+      "colDeudaEnCuotasFacturacionHint": "Cuotas aún no facturadas después de este cierre — el saldo capital cuotas que imprime el estado de cuenta.",
       "colProxyEarnings": "Ganancia potencial",
       "proxyEarningsHint": "Ganancia estimada al invertir el monto a cada vencimiento. Proyectado con IPC cuando no hay precio real.",
       "facturacionModalTitle": "Facturación {{month}}",
@@ -761,7 +763,6 @@
       "associatedCardsTitle": "Tarjetas asociadas",
       "closeDateEstimatedHint": "Estimada según el ciclo configurado de la tarjeta: el banco aún no publica este cierre.",
       "closeDateAnnouncedHint": "Anunciada como próximo período de facturación en el estado de cuenta anterior.",
-      "provisionalClose": "provisoria",
       "provisionalCloseHint": "Cerrada en el banco, estado de cuenta aún sin importar. El facturado es el total que cobró el banco (SALDO INICIAL del feed de la tarjeta) si el feed vio el cierre; si no, la estimación de la app.",
       "provisionalEstimateHint": "La app había estimado {{amount}} para esta facturación."
     },
