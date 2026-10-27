@@ -56,6 +56,25 @@ export type NavCardMetricsDto = {
    * each emptied member's withdrawal charged at the period end (`groupStartFrameFlow`).
    */
   row_pct: Record<CardMetricsPeriod | "total", NavCardPctDto>;
+  /** The node's own return over the `parent` variant's scope (its page's «Total» row). */
+  parent_pct: Record<CardMetricsPeriod | "total", NavCardPctDto>;
+  /**
+   * The liquidated rows of the node's accounts table, shown as one row: chart-inactive
+   * accounts the table lists by themselves and, beside accounts, chart-inactive sub-buckets.
+   * Every one that ever held money, whatever the period (the Total column stays complete).
+   * Absent when there is none.
+   */
+  liquidated?: NavLiquidatedRowsDto;
+};
+
+export type NavLiquidatedRowsDto = {
+  /** Chart-inactive member accounts listed on their own (not under a sub-bucket). */
+  account_ids: number[];
+  /** Chart-inactive sub-buckets listed beside the node's accounts. */
+  group_slugs: string[];
+  /** Σ over the rows' accounts (counts-toward-totals only). */
+  metrics: NavCardMetricsVariantDto;
+  row_pct: Record<CardMetricsPeriod | "total", NavCardPctDto>;
 };
 
 /** Narrow row view — the fields card metrics read from `DashboardAccountStats`. */
@@ -462,6 +481,96 @@ function parentTitleModeForNavNode(node: NavTreeNodeDto): ParentTitleDeltaMode {
   return { kind: "subset_only" };
 }
 
+/* ------------------------------- table row sets ----------------------------------- */
+
+function material(v: number | null | undefined): boolean {
+  return v != null && Number.isFinite(v) && Math.abs(v) >= 0.5;
+}
+
+/** A chart-inactive account that once held money (never-funded accounts are not liquidated). */
+function accountWasLiquidated(row: CardMetricsAccountRow): boolean {
+  return (
+    row.chart_inactive === true &&
+    (material(row.deposits_clp) || material(row.delta_total_clp) || material(row.current_value_clp))
+  );
+}
+
+/**
+ * The rows the client's accounts table groups as «Liquidadas» for `node`: the chart-inactive
+ * member accounts no nav leaf or sub-bucket of the node lists, plus — when the table lists
+ * sub-buckets beside accounts — its chart-inactive sub-buckets.
+ */
+export function liquidatedRowsForNode(
+  node: NavTreeNodeDto,
+  rows: readonly CardMetricsAccountRow[]
+): NavLiquidatedRowsDto | null {
+  const children = node.children ?? [];
+  const accountChildren = children.filter(
+    (c) => c.account_id != null && c.account_id > 0 && Boolean(c.route_path?.trim())
+  );
+  const groupChildren = children.filter(
+    (c) => c.account_id == null && c.expense_account_id == null
+  );
+  const groupsAsRows = accountChildren.length > 0 && groupChildren.length > 0;
+  const inactiveGroups = groupsAsRows
+    ? groupChildren.filter((c) => c.chart_inactive === true && Boolean(c.route_path?.trim()))
+    : [];
+
+  const leafIds = navLeafAccountIdSet(node);
+  const memberIds = navMetricsAccountIdSet(node);
+  const covered = new Set<number>();
+  for (const g of groupChildren) for (const id of navMetricsAccountIdSet(g)) covered.add(id);
+
+  const accountRows = rows
+    .filter(
+      (r) =>
+        memberIds.has(r.account_id) &&
+        !leafIds.has(r.account_id) &&
+        !covered.has(r.account_id) &&
+        accountWasLiquidated(r)
+    )
+    .sort((a, b) => a.account_id - b.account_id);
+
+  if (accountRows.length === 0 && inactiveGroups.length === 0) return null;
+
+  const byId = new Map<number, CardMetricsAccountRow>();
+  for (const r of accountRows) {
+    if (accountCountsTowardGroupTotals(r)) byId.set(r.account_id, r);
+  }
+  for (const g of inactiveGroups) {
+    for (const r of stripMetricsRows(g, rows)) byId.set(r.account_id, r);
+  }
+  const metricsRows = [...byId.values()];
+  return {
+    account_ids: accountRows.map((r) => r.account_id),
+    group_slugs: inactiveGroups.map((g) => g.slug),
+    metrics: {
+      day: cardMetricsFromRows(metricsRows, "day"),
+      month: cardMetricsFromRows(metricsRows, "month"),
+      year: cardMetricsFromRows(metricsRows, "year"),
+    },
+    row_pct: rowPctForRows(metricsRows),
+  };
+}
+
+/** The rows the `parent` variant sums, for its % (a hub's: every counted member). */
+function parentScopeRows(
+  node: NavTreeNodeDto,
+  rows: readonly CardMetricsAccountRow[]
+): CardMetricsAccountRow[] {
+  const mode = parentTitleModeForNavNode(node);
+  const subtreeIds = navMetricsAccountIdSet(node);
+  if (mode.kind === "dashboard_group") {
+    return rows.filter((a) =>
+      accountInDashboardGroupScope(a, mode.group, (r) => subtreeIds.has(r.account_id))
+    );
+  }
+  if (mode.kind === "sum_dashboard_groups") {
+    return rows.filter((a) => subtreeIds.has(a.account_id) && accountCountsTowardGroupTotals(a));
+  }
+  return rows.filter((a) => subtreeIds.has(a.account_id));
+}
+
 /* ----------------------------------- builder -------------------------------------- */
 
 export type NavCardMetricsBuildInput = {
@@ -572,10 +681,13 @@ export function buildNavCardMetricsBySlug(
     }
 
     for (const node of groupNodes) {
+      const liquidated = liquidatedRowsForNode(node, input.rows);
       out[node.slug] = {
         child: childBySlug.get(node.slug)!,
         parent: parentVariantForNode(node, input, childBySlug),
         row_pct: rowPctForRows(stripMetricsRows(node, input.rows)),
+        parent_pct: rowPctForRows(parentScopeRows(node, input.rows)),
+        ...(liquidated ? { liquidated } : {}),
       };
     }
   }

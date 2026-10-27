@@ -194,6 +194,7 @@ function zeroNavCardMetrics(unit: DisplayUnit): NavCardMetricsDto {
     child: variant(),
     parent: variant(),
     row_pct: { day: noPct(), month: noPct(), year: noPct(), total: noPct() },
+    parent_pct: { day: noPct(), month: noPct(), year: noPct(), total: noPct() },
   };
 }
 

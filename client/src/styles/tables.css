@@ -276,3 +276,20 @@ tr:hover td {
   padding-left: 1.1rem;
   font-size: 0.82rem;
 }
+
+/* Accounts summary: the page's «Total» first row and the opened «Liquidadas» rows. */
+.table--accounts-summary .accounts-summary-row--total td {
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.table--accounts-summary .accounts-summary-row--liquidated-detail td:first-child {
+  padding-left: 1.4rem;
+}
+
+.table--accounts-summary .accounts-summary-liquidated-toggle {
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  font-size: var(--font-size-card-meta-sm);
+}

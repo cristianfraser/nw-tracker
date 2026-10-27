@@ -209,32 +209,37 @@ export function inactiveAccountNavLeavesWithActivity(
     if (leafIds.has(row.account_id) || coveredByGroups.has(row.account_id)) continue;
     if (!memberIds.has(row.account_id)) continue;
     if (!inactiveAccountRowHasActivity(row)) continue;
-    out.push({
-      node_id: `acc.${row.account_id}`,
-      slug: `account_${row.account_id}`,
-      label: dashboardAccountNavLabel(row),
-      label_i18n_key: null,
-      route_path: `/account/${row.account_id}`,
-      active_prefix: null,
-      nav_end: true,
-      show_leaf_hyphen: true,
-      account_id: row.account_id,
-      portfolio_group_id: null,
-      expense_account_id: null,
-      expense_account_slug: null,
-      asset_group_slug: null,
-      kind_slug: null,
-      dashboard_bucket_slug: null,
-      api_group: null,
-      api_subgroup: null,
-      color_rgb: null,
-      color: null,
-      group_kind: "bucket",
-      chart_inactive: true,
-      children: [],
-    });
+    out.push(inactiveAccountNavLeaf(row));
   }
   return out;
+}
+
+/** The nav leaf the accounts table lists a chart-inactive account under (the tree omits it). */
+export function inactiveAccountNavLeaf(row: DashboardAccountRow): NavTreeNodeDto {
+  return {
+    node_id: `acc.${row.account_id}`,
+    slug: `account_${row.account_id}`,
+    label: dashboardAccountNavLabel(row),
+    label_i18n_key: null,
+    route_path: `/account/${row.account_id}`,
+    active_prefix: null,
+    nav_end: true,
+    show_leaf_hyphen: true,
+    account_id: row.account_id,
+    portfolio_group_id: null,
+    expense_account_id: null,
+    expense_account_slug: null,
+    asset_group_slug: null,
+    kind_slug: null,
+    dashboard_bucket_slug: null,
+    api_group: null,
+    api_subgroup: null,
+    color_rgb: null,
+    color: null,
+    group_kind: "bucket",
+    chart_inactive: true,
+    children: [],
+  };
 }
 
 export type PortfolioNavParentTitleDeltaMode =

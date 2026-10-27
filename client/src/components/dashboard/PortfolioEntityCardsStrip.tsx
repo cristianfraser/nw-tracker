@@ -3,8 +3,8 @@ import { cn } from "../../cn";
 import { DashboardCardsValueGroup } from "./DashboardCardValue";
 
 export type PortfolioEntityCardsStripProps = {
-  /** Hero row (e.g. net worth `CompactEntityCard`). */
-  compactSlot: ReactNode;
+  /** Hero row (e.g. net worth `CompactEntityCard`); null when the accounts table carries it. */
+  compactSlot: ReactNode | null;
   /** More summary cards beside the hero in row 1, same shell (home: the Inversiones hub). */
   summarySlots?: readonly { key: string; slot: ReactNode }[];
   /** Row 2: detailed group cards. Omitted when empty. */
@@ -42,9 +42,12 @@ export function PortfolioEntityCardsStrip({
 }: PortfolioEntityCardsStripProps) {
   const hasDetails = detailSlots != null && detailSlots !== false;
   const hasAccountsTable = accountsTableSlot != null && accountsTableSlot !== false;
-  const cards = (
+  const hasCompact = compactSlot != null && compactSlot !== false;
+  const cards = !hasCompact && summarySlots.length === 0 && !hasDetails ? null : (
     <div className="cards">
-      <div className={cn(SUMMARY_SHELL, compactStripClassName)}>{compactSlot}</div>
+      {hasCompact ? (
+        <div className={cn(SUMMARY_SHELL, compactStripClassName)}>{compactSlot}</div>
+      ) : null}
       {summarySlots.map(({ key, slot }) => (
         <div key={key} className={SUMMARY_SHELL}>
           {slot}
@@ -57,12 +60,12 @@ export function PortfolioEntityCardsStrip({
   // the table's hidden parallel rendering (mobile twin) measures 0-width while coupled,
   // which collapsed zero-valued visible cells to empty digits.
   const table = hasAccountsTable ? (
-    <div style={{ marginTop: "0.85rem" }}>{accountsTableSlot}</div>
+    <div style={cards ? { marginTop: "0.85rem" } : undefined}>{accountsTableSlot}</div>
   ) : null;
   if (wrapValueGroup) {
     return (
       <>
-        <DashboardCardsValueGroup>{cards}</DashboardCardsValueGroup>
+        {cards ? <DashboardCardsValueGroup>{cards}</DashboardCardsValueGroup> : null}
         {table}
       </>
     );

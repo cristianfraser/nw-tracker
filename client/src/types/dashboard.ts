@@ -138,6 +138,20 @@ export interface NavCardMetricsDto {
    * listed beside accounts — Portafolio IPSA among Acciones' stocks), per period and unit.
    */
   row_pct: Record<"day" | "month" | "year" | "total", { clp: number | null; usd: number | null }>;
+  /** The node's own return over the `parent` scope — its page's «Total» row. */
+  parent_pct: Record<"day" | "month" | "year" | "total", { clp: number | null; usd: number | null }>;
+  /** The liquidated rows of the node's accounts table, grouped as one row (absent: none). */
+  liquidated?: NavLiquidatedRowsDto;
+}
+
+/** Mirror of server `NavLiquidatedRowsDto`. */
+export interface NavLiquidatedRowsDto {
+  /** Chart-inactive member accounts listed on their own. */
+  account_ids: number[];
+  /** Chart-inactive sub-buckets listed beside the node's accounts. */
+  group_slugs: string[];
+  metrics: NavCardMetricsVariantDto;
+  row_pct: Record<"day" | "month" | "year" | "total", { clp: number | null; usd: number | null }>;
 }
 
 /** One tile / frame of the server-built value map (`value_map`). Mirror of server `NavValueMapNodeDto`. */

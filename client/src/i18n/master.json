@@ -3086,6 +3086,22 @@
       "pctTooltip": {
         "en": "Period % (flow-adjusted)",
         "es": "% del período (ajustado por aportes)"
+      },
+      "totalRow": {
+        "en": "Total",
+        "es": "Total"
+      },
+      "liquidated": {
+        "en": "Liquidated ({{count}})",
+        "es": "Liquidadas ({{count}})"
+      },
+      "showLiquidated": {
+        "en": "Show more",
+        "es": "Ver más"
+      },
+      "hideLiquidated": {
+        "en": "Show less",
+        "es": "Ver menos"
       }
     }
   },

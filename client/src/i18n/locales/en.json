@@ -884,7 +884,11 @@
       "month": "Month",
       "year": "Year",
       "total": "Total",
-      "pctTooltip": "Period % (flow-adjusted)"
+      "pctTooltip": "Period % (flow-adjusted)",
+      "totalRow": "Total",
+      "liquidated": "Liquidated ({{count}})",
+      "showLiquidated": "Show more",
+      "hideLiquidated": "Show less"
     }
   },
   "table": {

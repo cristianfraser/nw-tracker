@@ -40,9 +40,10 @@ export function hasDashboardNavSnapshotCache(unit: DisplayUnit): boolean {
  * render all three period rows and no title Δ chip; v9 adds `row_pct` — a bucket listed in
  * its parent's accounts table reads its % from it; v10 adds the `value_map` treemap tree;
  * v11: group metrics cover the members the nav tree lists, not slug-prefix matches; v12: the
- * value map breaks a proxied fund down into `holding` tiles).
+ * value map breaks a proxied fund down into `holding` tiles; v13 adds `parent_pct` and the
+ * `liquidated` table rows).
  */
-const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v12";
+const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v13";
 const LEGACY_STORAGE_PREFIXES = [
   "nw:dashboard-nav-snapshot-v3",
   "nw:dashboard-nav-snapshot-v4",
@@ -53,6 +54,7 @@ const LEGACY_STORAGE_PREFIXES = [
   "nw:dashboard-nav-snapshot-v9",
   "nw:dashboard-nav-snapshot-v10",
   "nw:dashboard-nav-snapshot-v11",
+  "nw:dashboard-nav-snapshot-v12",
 ];
 
 /** Strip full dashboard totals to nav-snapshot bucket fields (server canonical card headers). */

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildNavCardMetricsBySlug,
   cardMetricsFromRows,
+  liquidatedRowsForNode,
   navMetricsAccountIdSet,
   stripMetricsRows,
   sumCardMetrics,
@@ -156,6 +157,47 @@ describe("navMetricsAccountIdSet", () => {
     expect(metrics.brokerage_portafolio_ipsa!.child.month.deposits_period_clp).toBe(-3_031_159);
     expect(metrics.brokerage_portafolio_ipsa!.child.month.delta_period_clp).toBe(-25_621);
     expect(metrics.brokerage_acciones!.child.month.deposits_period_clp).toBe(-3_031_159);
+  });
+});
+
+describe("liquidatedRowsForNode", () => {
+  const ipsa = navNode({
+    slug: "brokerage_portafolio_ipsa",
+    chart_inactive: true,
+    member_account_ids: [101, 102],
+  });
+  const acciones = navNode({
+    slug: "brokerage_acciones",
+    member_account_ids: [10, 20, 30, 101, 102],
+    children: [ipsa, accountLeaf("acc-10", 10)],
+  });
+  const rows = [
+    row({ account_id: 10, current_value_clp: 500, deposits_clp: 400, delta_total_clp: 100 }),
+    // Sold out last year: no period activity left, still a liquidated row (Total stays complete).
+    row({ account_id: 20, chart_inactive: true, deposits_clp: 150_000, delta_total_clp: -150_000 }),
+    // Never held money: not a liquidated row.
+    row({ account_id: 30, chart_inactive: true }),
+    row({ account_id: 101, chart_inactive: true, deposits_clp: -30_000, delta_total_clp: 30_000, deposits_month_clp: -1_500_000, delta_month_clp: -12_000 }),
+    row({ account_id: 102, chart_inactive: true, deposits_clp: -1_000, delta_total_clp: 1_000, deposits_month_clp: -20_000, delta_month_clp: -1_500 }),
+  ];
+
+  it("lists the inactive sub-bucket beside accounts and every once-funded inactive account, summing them", () => {
+    const liquidated = liquidatedRowsForNode(acciones, rows)!;
+    expect(liquidated.group_slugs).toEqual(["brokerage_portafolio_ipsa"]);
+    expect(liquidated.account_ids).toEqual([20]);
+    expect(liquidated.metrics.month.deposits_period_clp).toBe(-1_520_000);
+    expect(liquidated.metrics.month.delta_period_clp).toBe(-13_500);
+    expect(liquidated.metrics.month.deposits_clp).toBe(150_000 - 30_000 - 1_000);
+    expect(liquidated.metrics.month.delta_total_clp).toBe(-150_000 + 30_000 + 1_000);
+    const entry = buildNavCardMetricsBySlug({ navRoots: [acciones], rows }).brokerage_acciones!;
+    expect(entry.liquidated).toEqual(liquidated);
+  });
+
+  it("is absent when nothing is liquidated", () => {
+    const active = rows.filter((r) => r.account_id === 10);
+    const node = navNode({ slug: "solo", member_account_ids: [10], children: [accountLeaf("acc-10", 10)] });
+    expect(liquidatedRowsForNode(node, active)).toBeNull();
+    expect(buildNavCardMetricsBySlug({ navRoots: [node], rows: active }).solo!.liquidated).toBeUndefined();
   });
 });
 
