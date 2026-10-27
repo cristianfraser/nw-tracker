@@ -45,12 +45,13 @@ export function WorkEarningsTable({
   return (
     <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
       <Table
-        tableStyle={{ fontSize: "0.85rem" }}
+        tableClassName="work-earnings-table"
+        tableStyle={{ fontSize: "0.8rem" }}
         header={
           <thead>
             <tr>
               <th>{t("workEarnings.colPeriod")}</th>
-              <th>{t("workEarnings.colEmployer")}</th>
+              <th className="work-earnings-table__employer">{t("workEarnings.colEmployer")}</th>
               <th>{t("workEarnings.colBase")}</th>
               <th>{t("workEarnings.colGratificacion")}</th>
               <th>{t("workEarnings.colColacion")}</th>
@@ -68,7 +69,12 @@ export function WorkEarningsTable({
         {pageRows.map((row) => (
           <tr key={row.id}>
             <td className="mono">{row.period_month}</td>
-            <td title={row.employer_rut ?? undefined}>{row.employer_name}</td>
+            <td
+              className="work-earnings-table__employer"
+              title={row.employer_rut ? `${row.employer_name} · ${row.employer_rut}` : row.employer_name}
+            >
+              {row.employer_name}
+            </td>
             <td className="mono">{formatOptionalClp(row.base_salary_clp, displayUnit)}</td>
             <td className="mono muted">{formatOptionalClp(row.gratificacion_clp, displayUnit)}</td>
             <td className="mono muted">{formatOptionalClp(row.colacion_clp, displayUnit)}</td>
@@ -96,7 +102,7 @@ export function WorkEarningsTable({
                   {row.linked_received_on}{" "}
                   {formatFlowMoney(row.linked_amount_clp ?? row.liquido_clp, displayUnit)}
                   {row.link_source ? (
-                    <span className="muted" style={{ marginLeft: "0.35rem" }}>
+                    <span className="muted work-earnings-table__link-source">
                       ({t(`workEarnings.linkSource.${row.link_source}`)})
                     </span>
                   ) : null}
@@ -104,7 +110,7 @@ export function WorkEarningsTable({
               ) : row.wire_received_on ? (
                 <span className="mono">
                   {row.wire_received_on}
-                  <span className="muted" style={{ marginLeft: "0.35rem" }}>
+                  <span className="muted work-earnings-table__link-source">
                     ({t("workEarnings.usdWire")})
                   </span>
                 </span>
