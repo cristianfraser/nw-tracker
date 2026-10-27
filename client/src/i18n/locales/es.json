@@ -884,7 +884,11 @@
       "month": "Mes",
       "year": "Año",
       "total": "Total",
-      "pctTooltip": "% del período (ajustado por aportes)"
+      "pctTooltip": "% del período (ajustado por aportes)",
+      "totalRow": "Total",
+      "liquidated": "Liquidadas ({{count}})",
+      "showLiquidated": "Ver más",
+      "hideLiquidated": "Ver menos"
     }
   },
   "table": {

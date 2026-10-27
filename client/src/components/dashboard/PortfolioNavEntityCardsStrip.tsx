@@ -6,7 +6,7 @@ import { PortfolioNavAccountsSummaryTable } from "./PortfolioNavAccountsSummaryT
 import { PortfolioNavChildDetailCards } from "./PortfolioNavChildDetailCards";
 import {
   dashboardRowsForNavSubtree,
-  inactiveAccountNavLeavesWithActivity,
+  inactiveAccountNavLeaf,
   navChildCardHasActivity,
   routableNavStripChildren,
   portfolioNavParentMainValue,
@@ -125,16 +125,18 @@ export function PortfolioNavEntityCardsStrip({
   const groupsAsRows = stripAccountChildren.length > 0 && stripGroupChildren.length > 0;
 
   /**
-   * A sub-bucket whose every member is chart-inactive stays a row only while some period
-   * still shows activity (the IPSA unit the month it was liquidated), as its detail card
-   * would (`PortfolioNavChildDetailCards`) and as a sold-out account does below.
+   * A chart-inactive sub-bucket listed as a detail card stays only while some period still
+   * shows activity, as `PortfolioNavChildDetailCards` keeps it. Listed beside accounts it is a
+   * liquidated table row instead (below).
    */
   const filteredGroupChildren = useMemo(
     () =>
-      routableNavStripChildren(stripGroupChildren).filter(
-        (c) => c.chart_inactive !== true || navChildCardHasActivity(dash, c, showUsd)
+      routableNavStripChildren(stripGroupChildren).filter((c) =>
+        c.chart_inactive !== true
+          ? true
+          : !groupsAsRows && navChildCardHasActivity(dash, c, showUsd)
       ),
-    [stripGroupChildren, dash, showUsd]
+    [stripGroupChildren, groupsAsRows, dash, showUsd]
   );
 
   const filteredAccountChildren = useMemo(
@@ -142,15 +144,31 @@ export function PortfolioNavEntityCardsStrip({
     [stripAccountChildren]
   );
 
-  /** Accounts the nav tree hides (chart-inactive) still get a card when any period has activity. */
   const accountCardChildren = useMemo(
-    () => [
-      ...filteredAccountChildren,
-      ...(groupsAsRows ? filteredGroupChildren : []),
-      ...inactiveAccountNavLeavesWithActivity(dash, parentNavNode, stripGroupChildren),
-    ],
-    [filteredAccountChildren, groupsAsRows, filteredGroupChildren, dash, parentNavNode, stripGroupChildren]
+    () => [...filteredAccountChildren, ...(groupsAsRows ? filteredGroupChildren : [])],
+    [filteredAccountChildren, groupsAsRows, filteredGroupChildren]
   );
+
+  /**
+   * The table's liquidated rows, as the server lists them (`card_metrics_by_slug[…].liquidated`):
+   * chart-inactive sub-buckets beside accounts and the chart-inactive accounts the nav tree
+   * omits — every one that ever held money, so the Total column stays complete.
+   */
+  const liquidated = dash.card_metrics_by_slug?.[parentNavNode.slug]?.liquidated ?? null;
+  const liquidatedChildren = useMemo(() => {
+    if (!liquidated) return [];
+    const groups = liquidated.group_slugs.map((slug) => {
+      const node = (parentNavNode.children ?? []).find((c) => c.slug === slug);
+      if (!node) throw new Error(`liquidated sub-bucket "${slug}" is not a child of ${parentNavNode.slug}`);
+      return node;
+    });
+    const accounts = liquidated.account_ids.map((id) => {
+      const row = dash.accounts.find((r) => r.account_id === id);
+      if (!row) throw new Error(`liquidated account ${id} has no dashboard row`);
+      return inactiveAccountNavLeaf(row);
+    });
+    return [...groups, ...accounts];
+  }, [liquidated, parentNavNode, dash.accounts]);
 
   /** Groups hosted from elsewhere in the tree (Efectivo ← Pasivos > tarjeta de crédito). */
   const detailChildren = useMemo(
@@ -159,7 +177,12 @@ export function PortfolioNavEntityCardsStrip({
   );
 
   const showDetailSlots = detailChildren.length > 0;
-  const showAccountsTable = accountCardChildren.length > 0;
+  const showAccountsTable = accountCardChildren.length + liquidatedChildren.length > 0;
+  /**
+   * A page whose cards are only its own summary (a leaf bucket: Acciones) shows that summary
+   * as the table's first «Total» row instead of a card.
+   */
+  const tableCarriesPage = showAccountsTable && !showDetailSlots && summaryHubs.length === 0;
 
   const isCashParent = parentNavNode.slug === "cash_eqs" || parentNavNode.slug === "cash_savings";
 
@@ -168,6 +191,7 @@ export function PortfolioNavEntityCardsStrip({
       <PortfolioEntityCardsStrip
         compactStripClassName={isCashParent ? "card--cash" : undefined}
         compactSlot={
+          tableCarriesPage ? null : (
           <NavSummaryCard
             dash={dash}
             node={parentNavNode}
@@ -175,6 +199,7 @@ export function PortfolioNavEntityCardsStrip({
             showUsd={showUsd}
             animated={animated}
           />
+          )
         }
         summarySlots={summaryHubs.map((hub) => ({
           key: hub.node_id,
@@ -203,7 +228,10 @@ export function PortfolioNavEntityCardsStrip({
           showAccountsTable ? (
             <PortfolioNavAccountsSummaryTable
               dash={dash}
+              pageNode={parentNavNode}
               navChildren={accountCardChildren}
+              liquidatedChildren={liquidatedChildren}
+              showTotalRow={tableCarriesPage}
               showUsd={showUsd}
               animated={animated}
             />
