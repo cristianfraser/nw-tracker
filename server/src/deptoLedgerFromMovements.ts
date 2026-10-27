@@ -23,6 +23,7 @@ import {
   enrichDeptoRowsUfClpFromDb,
   deptoMortgageCloseClpBySnapshotDates,
   deptoPropertyCloseClpBySnapshotDates,
+  sumPresent,
   type DeptoAccountMarkAtYmd,
   type DeptoMortgageSheetRow,
   type DeptoPaymentTableRow,
@@ -145,10 +146,22 @@ function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
       desgravamen_uf: desgravamenUf,
       total_seguros_uf: segurosUf,
       total_seguros_clp: segurosClp,
+      seguros_interes_uf: sumPresent(roundUf5, segurosUf, p.interes_uf ?? null),
+      seguros_interes_clp: sumPresent(Math.round, segurosClp, p.interes_clp ?? null),
       amortizacion_clp: p.amortizacion_clp ?? null,
       amortizacion_uf: p.amortizacion_uf ?? null,
       amortizacion_ext_clp: p.amortizacion_ext_clp ?? null,
       amortizacion_ext_uf: p.amortizacion_ext_uf ?? null,
+      amortizacion_total_uf: sumPresent(
+        roundUf5,
+        p.amortizacion_uf ?? null,
+        p.amortizacion_ext_uf ?? null
+      ),
+      amortizacion_total_clp: sumPresent(
+        Math.round,
+        p.amortizacion_clp ?? null,
+        p.amortizacion_ext_clp ?? null
+      ),
       interes_clp: p.interes_clp ?? null,
       interes_uf: p.interes_uf ?? null,
       delta_credito_amort_clp: null,

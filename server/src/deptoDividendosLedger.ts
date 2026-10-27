@@ -56,6 +56,12 @@ export type DeptoPaymentScenarioRow = {
   is_next_payment?: boolean;
 };
 
+/** Σ of the parts that are present; null when none is (a sheet row that carries none of them). */
+export function sumPresent(round: (v: number) => number, ...parts: Array<number | null>): number | null {
+  const present = parts.filter((v): v is number => v != null);
+  return present.length ? round(present.reduce((a, b) => a + b, 0)) : null;
+}
+
 /** One row of the Numbers “dividendos” export (all numeric columns we use in the UI). */
 export type DeptoMortgageSheetRow = {
   cuota: string;
@@ -86,10 +92,16 @@ export type DeptoMortgageSheetRow = {
   desgravamen_uf: number | null;
   total_seguros_uf: number | null;
   total_seguros_clp: number | null;
+  /** Insurance + interest — the cost of the cuota that buys no equity; null when every part is null. */
+  seguros_interes_uf: number | null;
+  seguros_interes_clp: number | null;
   amortizacion_clp: number | null;
   amortizacion_uf: number | null;
   amortizacion_ext_clp: number | null;
   amortizacion_ext_uf: number | null;
+  /** Scheduled + extra amortización; null when both are null. */
+  amortizacion_total_uf: number | null;
+  amortizacion_total_clp: number | null;
   interes_clp: number | null;
   interes_uf: number | null;
   delta_credito_amort_clp: number | null;
