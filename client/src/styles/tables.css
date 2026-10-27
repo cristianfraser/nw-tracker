@@ -281,6 +281,7 @@ tr:hover td {
 .table--accounts-summary .accounts-summary-row--total td {
   font-weight: 600;
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 60%, var(--surface) 40%);
 }
 
 .table--accounts-summary .accounts-summary-row--liquidated-detail td:first-child {
