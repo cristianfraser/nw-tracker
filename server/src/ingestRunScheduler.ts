@@ -20,7 +20,8 @@ import {
   type IngestSchedulerDecision,
 } from "./ingestRunPolicy.js";
 import { latestRegularMortgageCuotaPaidOn } from "./mortgageSheetPaymentsApply.js";
-import { latestPayslip } from "./payslipsApply.js";
+import { latestPayslip, latestSalaryPayslipPeriod } from "./payslipsApply.js";
+import { latestUnemploymentFundContributionPeriod } from "./unemploymentFundBalanceApply.js";
 import {
   inFlightIngestRun,
   lastAnsweredSlot,
@@ -171,8 +172,11 @@ export async function ingestSchedulerTick(
       : null;
   // Every nightly reads AFP UNO's balance; the read fetches the certificates when its cuotas moved.
   const afpUnoFetch = decision.kind === "nightly" ? decideAfpUnoFetch() : null;
-  // Every nightly reads the AFC's balance and certificate of paid contributions.
-  const afcFetch = decision.kind === "nightly" ? decideAfcFetch() : null;
+  // A nightly reads the AFC from the 14th after a payroll month until its contribution is in.
+  const afcFetch =
+    decision.kind === "nightly"
+      ? decideAfcFetch({ now, latestSalaryPayslipPeriod: latestSalaryPayslipPeriod(), latestContributionPeriod: latestUnemploymentFundContributionPeriod() })
+      : null;
   // A nightly reads the payroll portal from the 1st until last month's payslip is stored, and
   // re-imports while the newest payslip waits for its deposit.
   const payslips = decision.kind === "nightly" ? decidePayslipsRun({ now, latest: latestPayslip() }) : null;

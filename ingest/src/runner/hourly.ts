@@ -1,6 +1,6 @@
 import type { IngestRunRequest, SantanderFetchOutcome } from "nw-tracker-contracts";
 import { applyOrReport } from "./nightly.js";
-import { npmRun, type StepRunner } from "./steps.js";
+import { npmRun, savedCount, type StepRunner } from "./steps.js";
 
 /**
  * The hourly e-mail poll — `email-run.sh`'s sequence (same labels, same commands, same gates),
@@ -26,11 +26,7 @@ export type HourlyOptions = {
 
 export type HourlyResult = { santander: SantanderFetchOutcome | null; activity: boolean };
 
-/** Last «Summary: N saved» of a fetch (santanderDocsMain / liderBoletasMain / …). */
-export function savedCount(output: string): number {
-  const all = [...output.matchAll(/Summary: (\d+) saved/g)];
-  return all.length > 0 ? Number(all.at(-1)![1]) : 0;
-}
+export { savedCount };
 
 /** Movements the transfer-mail import wrote from a mail this run («movement written from the mail»). */
 export function mailMovementCount(output: string): number {

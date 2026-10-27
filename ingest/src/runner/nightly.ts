@@ -1,5 +1,5 @@
 import type { SantanderFetchOutcome } from "nw-tracker-contracts";
-import { npmRun, type StepRunner } from "./steps.js";
+import { npmRun, savedCount, type StepRunner } from "./steps.js";
 
 /**
  * The nightly bank run — `daily-run.sh`'s sequence, step for step (same labels, same commands,
@@ -23,8 +23,13 @@ export type NightlyOptions = {
   afpUnoFetch: { reason: string } | null;
   /** NW_TRACKER_AFP_UNO_APPLY=1: the certificates' missing rows are written. */
   afpUnoApply: boolean;
-  /** The server's request to read the AFC (balance + certificate) tonight, and why; null = not tonight. */
-  afcFetch: { reason: string } | null;
+  /**
+   * The server's request to read the AFC (balance + certificate) tonight, and why; null = not
+   * tonight — unless a cartola mail was staged this run, which is read whatever the server said.
+   * `expected_period`: the payroll month whose contribution the read looks for; `overdue` fails
+   * the step when the certificate still lacks it.
+   */
+  afcFetch: { reason: string; expected_period?: string | null; overdue?: boolean } | null;
   /** NW_TRACKER_AFC_APPLY=1: the certificate's missing contributions and the cartolas' true-ups are written. */
   afcApply: boolean;
   /** The server's request to import the payslips tonight (reading the payroll portal first when
@@ -39,6 +44,7 @@ export type NightlyResult = { santander: SantanderFetchOutcome | null };
 export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<NightlyResult> {
   const dry = (label: string) => `${label} (dry run)`;
   let santander: SantanderFetchOutcome | null = null;
+  let afcCartolasSaved = 0;
 
   // 1. Santander web session — daily movements (card + checking) plus the facturación JSON.
   if (o.dryRun) {
@@ -60,7 +66,10 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     ["AFC cartolas e-mail", "fetch:afc-cartolas"],
   ] as const) {
     if (o.dryRun) await x.step(dry(label), npmRun(script, "--dry-run"));
-    else await x.step(label, npmRun(script));
+    else {
+      const r = await x.step(label, npmRun(script));
+      if (script === "fetch:afc-cartolas") afcCartolasSaved = savedCount(r.output);
+    }
   }
 
   // 2. Inbox pipeline.
@@ -139,16 +148,21 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     else await x.step("AFP UNO (report only)", npmRun("fetch:afp-uno", "--background"));
   }
 
-  // 5b′. The AFC, every night: the stated balance (report only) and the certificate of paid
-  // contributions, sent with the staged cartolas; a new contribution is written at its pay date.
-  if (o.afcFetch == null) {
+  // 5b′. The AFC, when the server expects a contribution (from the 14th after a payroll month
+  // until it is in the ledger) or a cartola mail was staged tonight: the stated balance (report
+  // only) and the certificate of paid contributions, sent with the staged cartolas; a new
+  // contribution is written at its pay date, a cartola's true-up at its saldo day.
+  const afcFetch = o.afcFetch ?? (afcCartolasSaved > 0 ? { reason: `${afcCartolasSaved} cartola mail(s) staged tonight` } : null);
+  if (afcFetch == null) {
     x.note("=== AFC (not tonight)");
   } else if (o.dryRun) {
-    x.note(`=== (dry run) skipping fetch:afc (${o.afcFetch.reason})`);
+    x.note(`=== (dry run) skipping fetch:afc (${afcFetch.reason})`);
   } else {
-    x.note(`AFC: ${o.afcFetch.reason}`);
-    if (o.afcApply) await x.step("AFC (apply)", npmRun("fetch:afc", "--background", "--apply"));
-    else await x.step("AFC (report only)", npmRun("fetch:afc", "--background"));
+    x.note(`AFC: ${afcFetch.reason}`);
+    const args = ["--background", ...(o.afcApply ? ["--apply"] : [])];
+    if (afcFetch.expected_period) args.push(`--expect=${afcFetch.expected_period}`);
+    if (afcFetch.overdue) args.push("--overdue");
+    await x.step(o.afcApply ? "AFC (apply)" : "AFC (report only)", npmRun("fetch:afc", ...args));
   }
 
   // 5c. Payslips, when the server asks: the portal from the 1st until last month's payslip is in,

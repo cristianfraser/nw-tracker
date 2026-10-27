@@ -41,3 +41,20 @@ export function applyUnemploymentFundBalance(payload: UnemploymentFundBalancePay
     ledger_last_contribution_month: ledgerLast.m,
   };
 }
+
+/**
+ * Newest AFC contribution period (YYYY-MM) in the ledger — `pension_contribution_periods` over
+ * the account on the AFC series; null without such an account (demo) or contributions.
+ */
+export function latestUnemploymentFundContributionPeriod(): string | null {
+  const row = db
+    .prepare(
+      `SELECT MAX(p.period_month) AS period
+         FROM pension_contribution_periods p
+         JOIN movements m ON m.id = p.movement_id
+         JOIN accounts a ON a.id = m.account_id
+        WHERE a.fund_series_key = ?`
+    )
+    .get(AFC_CIC_SERIES_KEY) as { period: string | null } | undefined;
+  return row?.period ?? null;
+}

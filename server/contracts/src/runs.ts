@@ -45,8 +45,21 @@ export const ingestRunRequestSchema = z
      * of a month until a read imports new rows cleanly). Absent = no.
      */
     afp_uno_fetch: z.object({ reason: z.string().min(1) }).strict().nullable().default(null),
-    /** Nightly only: read the unemployment fund's (AFC) balance and certificate this run, and why. Absent = no. */
-    afc_fetch: z.object({ reason: z.string().min(1) }).strict().nullable().default(null),
+    /**
+     * Nightly only: read the unemployment fund's (AFC) balance and certificate this run, and why —
+     * from the 14th of the month after a payroll month whose contribution is not in the ledger
+     * (`expected_period`, YYYY-MM) until it is; `overdue` once that following month has ended.
+     * Absent = no.
+     */
+    afc_fetch: z
+      .object({
+        reason: z.string().min(1),
+        expected_period: z.string().regex(/^\d{4}-\d{2}$/).nullable().default(null),
+        overdue: z.boolean().default(false),
+      })
+      .strict()
+      .nullable()
+      .default(null),
     /**
      * Nightly only: import the payslips this run, and first read the payroll portal when `fetch`
      * (from the 1st of a month until the previous month's payslip is stored). Absent = no.

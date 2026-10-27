@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SantanderState } from "nw-tracker-contracts";
 import {
+  decideAfcFetch,
   decideAfpUnoFetch,
   decideMortgageSheetRun,
   decidePayslipsRun,
@@ -189,6 +190,33 @@ describe("decideMortgageSheetRun", () => {
     expect(decideMortgageSheetRun({ now: at("2027-01-05"), latestCuotaPaidOn: "2026-11-11" })?.reason).toContain("2026-12-11");
     expect(decideMortgageSheetRun({ now: at("2027-01-05"), latestCuotaPaidOn: "2026-12-15" })).toBeNull();
     expect(decideMortgageSheetRun({ now: at("2026-10-11"), latestCuotaPaidOn: null })).not.toBeNull();
+  });
+});
+
+describe("decideAfcFetch", () => {
+  /** 22:00 Chile (UTC−3) of the given day. */
+  const nightOf = (ymd: string) => new Date(new Date(`${ymd}T01:00:00Z`).getTime() + 86_400_000);
+  it("reads from the 14th of the month after a payroll month until its contribution is in the ledger", () => {
+    const pending = { latestSalaryPayslipPeriod: "2026-09", latestContributionPeriod: "2026-04" };
+    expect(decideAfcFetch({ now: nightOf("2026-10-13"), ...pending })).toBeNull();
+    expect(decideAfcFetch({ now: nightOf("2026-10-14"), ...pending })).toEqual({
+      reason: "no AFC contribution for 2026-09 in the ledger yet (payslip on file, window from 2026-10-14)",
+      expected_period: "2026-09",
+      overdue: false,
+    });
+    expect(decideAfcFetch({ now: nightOf("2026-10-31"), ...pending })?.overdue).toBe(false);
+    const late = decideAfcFetch({ now: nightOf("2026-11-01"), ...pending });
+    expect(late?.overdue).toBe(true);
+    expect(late?.reason).toMatch(/overdue$/);
+    expect(decideAfcFetch({ now: nightOf("2026-10-21"), latestSalaryPayslipPeriod: "2026-09", latestContributionPeriod: "2026-09" })).toBeNull();
+    // The contribution never lags the payslips the other way: a ledger ahead of the payslips reads nothing.
+    expect(decideAfcFetch({ now: nightOf("2026-10-21"), latestSalaryPayslipPeriod: "2026-08", latestContributionPeriod: "2026-09" })).toBeNull();
+  });
+  it("reads nothing without a payslip, and crosses the year end", () => {
+    expect(decideAfcFetch({ now: nightOf("2026-10-21"), latestSalaryPayslipPeriod: null, latestContributionPeriod: "2026-04" })).toBeNull();
+    expect(decideAfcFetch({ now: nightOf("2027-01-13"), latestSalaryPayslipPeriod: "2026-12", latestContributionPeriod: "2026-11" })).toBeNull();
+    expect(decideAfcFetch({ now: nightOf("2027-01-14"), latestSalaryPayslipPeriod: "2026-12", latestContributionPeriod: null })?.expected_period).toBe("2026-12");
+    expect(decideAfcFetch({ now: nightOf("2027-02-01"), latestSalaryPayslipPeriod: "2026-12", latestContributionPeriod: "2026-11" })?.overdue).toBe(true);
   });
 });
 

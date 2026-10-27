@@ -69,6 +69,12 @@ export function processStepRunner(opts: { cwd: string; logFd: number; env?: Node
 }
 
 /** `npm run <script> [-- args]` from the repo root. */
+/** Last «Summary: N saved» of a fetch (santanderDocsMain / liderBoletasMain / afcCartolasMain / …). */
+export function savedCount(output: string): number {
+  const all = [...output.matchAll(/Summary: (\d+) saved/g)];
+  return all.length > 0 ? Number(all.at(-1)![1]) : 0;
+}
+
 export function npmRun(script: string, ...args: string[]): string[] {
   return args.length > 0 ? ["npm", "run", script, "--", ...args] : ["npm", "run", script];
 }

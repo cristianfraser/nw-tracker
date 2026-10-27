@@ -96,15 +96,21 @@ describe("runNightly", () => {
     expect(quiet.calls.some((c) => c.includes("fetch:afp-uno"))).toBe(false);
   });
 
-  it("reads the AFC only when the server asks, writing only with the apply flag", async () => {
-    const asked = { reason: "nightly: the sucursal virtual's balance and certificate against the ledger" };
+  it("reads the AFC when the server expects a contribution or a cartola mail was staged, writing only with the apply flag", async () => {
+    const asked = { reason: "no AFC contribution for 2026-09 in the ledger yet", expected_period: "2026-09", overdue: false };
     const { x, calls } = fakeRunner();
     await runNightly(x, { ...NIGHTLY, afcFetch: asked });
-    expect(calls).toContain("run fetch:afc -- --background --apply");
+    expect(calls).toContain("run fetch:afc -- --background --apply --expect=2026-09");
+    const overdue = fakeRunner();
+    await runNightly(overdue.x, { ...NIGHTLY, afcFetch: { ...asked, overdue: true } });
+    expect(overdue.calls).toContain("run fetch:afc -- --background --apply --expect=2026-09 --overdue");
+    const cartola = fakeRunner({ "fetch:afc-cartolas": "Summary: 1 saved, 0 skipped" });
+    await runNightly(cartola.x, NIGHTLY);
+    expect(cartola.calls).toContain("run fetch:afc -- --background --apply");
     const report = fakeRunner();
     await runNightly(report.x, { ...NIGHTLY, afcFetch: asked, afcApply: false });
     expect(report.x.steps.map((s) => s.label)).toContain("AFC (report only)");
-    expect(report.calls).toContain("run fetch:afc -- --background");
+    expect(report.calls).toContain("run fetch:afc -- --background --expect=2026-09");
     const quiet = fakeRunner();
     await runNightly(quiet.x, NIGHTLY);
     expect(quiet.calls.some((c) => c === "run fetch:afc -- --background" || c.includes("fetch:afc --"))).toBe(false);
