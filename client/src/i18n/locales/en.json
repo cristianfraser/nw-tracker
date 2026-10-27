@@ -1375,12 +1375,6 @@
       "colCuotaClp": "Installment CLP",
       "colRemainingClp": "Remaining CLP",
       "colLastPaid": "Last paid month",
-      "statementsForPurchase": "Statement(s) with an installment for this purchase:",
-      "mergedIds": "Merged duplicate purchase IDs: {{ids}}",
-      "mergeReason": "Merge reason: {{reason}}",
-      "heuristics": "Heuristics: {{hints}}",
-      "statementNoDate": "no statement date",
-      "proxyCuotaReturn": "{{ticker}} · this installment: {{cuota}} · purchase total: {{total}} ({{pct}})",
       "monthCuotasTitle": "Installments by billing cycle",
       "colMonthCuotaTotal": "Installment due",
       "colDebtAfterPayment": "Debt after payment",
@@ -1391,6 +1385,18 @@
       "payByRule": {
         "ledger": "Installments by statement month: each row is one facturación (closing ~20th) with its pay-by date (~10th of the next month); \"cuota a pagar\" = plan installments billed at that close. PDFs pin amounts, progress and pay-by dates; open/projected months follow the plan. Rows roll off once their facturación is actually paid (or once the pay-by passes, when no payment is on record).",
         "statementsOnly": "Imported statements (PDF). No installment purchases in the ledger until CLP statements are imported."
+      },
+      "cuotaProgress": {
+        "caption": "{{paidCount}} of {{total}} · {{paid}} / {{totalClp}} ({{pending}} pending)",
+        "ariaLabel": "Installment progress: {{paid}} of {{total}} paid",
+        "colCuota": "Installment",
+        "colBillingMonth": "Billing cycle",
+        "colAmount": "Amount",
+        "colStatus": "Status",
+        "statusPaid": "paid",
+        "statusBilled": "billed",
+        "statusPending": "pending",
+        "total": "Total"
       }
     }
   },

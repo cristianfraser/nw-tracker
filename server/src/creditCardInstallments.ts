@@ -59,6 +59,31 @@ export type CcInstallmentPurchaseRow = {
   note: string | null;
 };
 
+/** A cuota of an installment plan as the progress bar shows it. */
+export type CcCuotaProgressCuota = {
+  /** 1-based cuota number. */
+  index: number;
+  /** Facturación that billed it (a statement row's month) or will (the plan schedule). */
+  billing_month: string;
+  /** Pay-by of the statement that billed it (ISO); null until a statement prints it. */
+  pay_by_date: string | null;
+  /** Statement close that billed it (ISO); null until a statement prints it. */
+  statement_date: string | null;
+  amount_clp: number;
+  /** paid = settled by the schedule; billed = printed on a statement not yet counted paid; pending = not billed yet. */
+  status: "paid" | "billed" | "pending";
+};
+
+export type CcCuotaProgress = {
+  /** Σ printed cuotas: above the principal on an interest plan, which is what is actually paid. */
+  total_clp: number;
+  paid_clp: number;
+  billed_clp: number;
+  pending_clp: number;
+  paid_count: number;
+  cuotas: CcCuotaProgressCuota[];
+};
+
 export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
   /** SQLite row id (DB ledger only). */
   purchase_db_id?: number;
@@ -78,12 +103,11 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
     cuota_current: number | null;
     amount_clp: number;
   }[];
-  /** Canonical + sibling purchase ids merged by logical fingerprint dedupe. */
-  merged_purchase_ids?: number[];
-  /** Why sibling IDs were merged. */
-  merge_reason?: string | null;
-  /** Human-readable notes for heuristics used in this logical row. */
-  heuristic_hints?: string[];
+  /**
+   * The plan cuota by cuota, for the purchase's progress bar (DB source only; null without a
+   * schedule). Σ `amount_clp` over the cuotas = `total_clp` = paid + billed + pending.
+   */
+  cuota_progress?: CcCuotaProgress | null;
   /** How this purchase entered the system. */
   origin: DataOrigin;
   /** @deprecated Use `origin`. */
