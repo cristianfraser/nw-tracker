@@ -98,6 +98,26 @@ export function everyCardVisited(visited: Iterable<string | null>, expected: Set
   return [...expected].every((contract) => seen.has(contract));
 }
 
+/**
+ * The cards the summary says owe something (`MONTOUTILIZADO` other than zero in either currency)
+ * that no movements call listed, named by their plastic's last four digits. A carousel that
+ * stalls before such a card leaves the feed without its unbilled rows, and the server's bank cupo
+ * check then fails on the bank's side of the identity (2026-10-23: a run right after a wake from
+ * sleep read only the dormant card's two slides, and the night's purchase on the active card
+ * showed up as a $5x.xxx cupo mismatch). A card at zero may stay unlisted: nothing is missing.
+ */
+export function unlistedCardsWithDebt(visited: Iterable<string | null>, cupos: CardCupos | null): string[] {
+  if (!cupos) return [];
+  const seen = new Set([...visited].filter((v): v is string => v !== null));
+  const unlisted = new Map<string, string>();
+  for (const row of cupos.rows) {
+    const contract = row.NUMEROCONTRATO ?? "";
+    if (contract.length === 0 || seen.has(contract) || !/[1-9]/.test(row.MONTOUTILIZADO ?? "")) continue;
+    unlisted.set(contract, `·${(row.NUMEROPAN ?? "").slice(-4) || "????"}`);
+  }
+  return [...unlisted.values()];
+}
+
 export type CardSlide = {
   index: number;
   /** From the request body (`Entrada.Moneda`): "CLP" or "USD". */
@@ -309,6 +329,12 @@ export async function fetchCardMovements(page: Page, recorder: Recorder): Promis
     if (moved !== "moved") break;
     await recorder.screenshot(page, `card-unbilled-slide-${slide + 1}`);
     await fetchOtherCurrencyForCurrentCard(page, recorder, slide + 1);
+  }
+  // A card with debt the carousel never reached makes the feed incomplete: fail the step (no file
+  // is written) so the hourly catch-up fetches again, instead of the cupo check failing downstream.
+  const unlisted = unlistedCardsWithDebt(visited(), collectCardCupos(recorder).cupos);
+  if (unlisted.length > 0) {
+    throw new Error(`card movements: the carousel never listed ${unlisted.join(", ")}, which the bank says owe money`);
   }
 
   const collected: CardSlide[] = recorder.callsFor(ENDPOINT.cardMovements).map((call, index) => {

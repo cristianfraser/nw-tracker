@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { everyCardVisited, otherCurrencyTab, statementCallCurrency } from "./cards.js";
+import { everyCardVisited, otherCurrencyTab, statementCallCurrency, unlistedCardsWithDebt } from "./cards.js";
 import { TEXT } from "./routes.js";
 
 describe("otherCurrencyTab", () => {
@@ -55,5 +55,39 @@ describe("everyCardVisited", () => {
 
   it("is never true without the summary's list — the stuck detection decides then", () => {
     expect(everyCardVisited(["800000000001", "800000000002"], null)).toBe(false);
+  });
+});
+
+describe("unlistedCardsWithDebt", () => {
+  // Synthetic contracts: ·0001 owes pesos, ·0002 owes dollars only, ·0003 owes nothing.
+  const row = (contract: string, pan: string, currency: string, utilizado: string) => ({
+    NUMEROCONTRATO: contract,
+    NUMEROPAN: pan,
+    CODIGOMONEDA: currency,
+    MONTOUTILIZADO: utilizado,
+  });
+  const cupos = {
+    observedAt: "2030-01-01T01:00:00.000Z",
+    rows: [
+      row("800000000001", "0000000000000001", "CLP", "000000000500000000"),
+      row("800000000001", "0000000000000001", "USD", "000000000000010000"),
+      row("800000000002", "0000000000000002", "CLP", "000000000000000000"),
+      row("800000000002", "0000000000000002", "USD", "000000000000001500"),
+      row("800000000003", "0000000000000003", "CLP", "000000000000000000"),
+      row("800000000003", "0000000000000003", "USD", "000000000000000000"),
+    ],
+  };
+
+  it("names each card with debt that no movements call listed, once, by its plastic", () => {
+    expect(unlistedCardsWithDebt(["800000000003", null], cupos)).toEqual(["·0001", "·0002"]);
+    expect(unlistedCardsWithDebt(["800000000001"], cupos)).toEqual(["·0002"]);
+  });
+
+  it("is empty once every indebted card was listed — a card at zero may stay unlisted", () => {
+    expect(unlistedCardsWithDebt(["800000000001", "800000000002"], cupos)).toEqual([]);
+  });
+
+  it("is empty without the summary — the stuck detection decides then", () => {
+    expect(unlistedCardsWithDebt([], null)).toEqual([]);
   });
 });
