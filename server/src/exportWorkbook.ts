@@ -130,7 +130,6 @@ function movementRow(m: AccountMovementApiRow, accountName: string | null): Shee
     monto_usd: montoUsd,
     // The viewed account's own leg: a fund switch credits the to-leg its own count.
     unidades: m.transfer_direction === "in" ? transferToLegUnits(m) : m.units_delta,
-    ticker: m.ticker,
     contraparte: m.counterpart_account_name,
     nota: m.note,
   };

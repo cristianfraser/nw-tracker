@@ -30,8 +30,8 @@ app.post("/api/accounts/:id/movements", (req, res) => {
       .prepare(
         `INSERT INTO movements (
            account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency,
-           occurred_on, note, units_delta, counter_units_delta, flow_kind, ticker
-         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           occurred_on, note, units_delta, counter_units_delta, flow_kind
+         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         validated.from_account_id,
@@ -44,8 +44,7 @@ app.post("/api/accounts/:id/movements", (req, res) => {
         validated.note,
         validated.units_delta,
         validated.counter_units_delta,
-        validated.flow_kind,
-        validated.ticker
+        validated.flow_kind
       );
     const id = Number(r.lastInsertRowid);
     invalidateAggregationForAccountDate(validated.from_account_id, validated.occurred_on);
@@ -76,8 +75,8 @@ app.post("/api/accounts/:id/movements", (req, res) => {
   if (validated.mode === "brokerage") {
     const r = db
       .prepare(
-        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind, ticker)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         accountId,
@@ -86,8 +85,7 @@ app.post("/api/accounts/:id/movements", (req, res) => {
         validated.occurred_on,
         validated.note,
         validated.units_delta,
-        validated.flow_kind,
-        validated.ticker
+        validated.flow_kind
       );
     invalidateAggregationForAccountDate(accountId, validated.occurred_on);
     res.status(201).json({

@@ -390,7 +390,7 @@ export function loadUsdWalkRows(scope: ReadonlySet<number>): UsdWalkRow[] {
   return db
     .prepare(
       `SELECT id, account_id, from_account_id, to_account_id, amount, currency, counter_amount,
-              counter_currency, occurred_on, note, units_delta, flow_kind, ticker
+              counter_currency, occurred_on, note, units_delta, flow_kind
        FROM movements
        WHERE account_id IN (${ph}) OR from_account_id IN (${ph}) OR to_account_id IN (${ph})
        ORDER BY occurred_on, id`

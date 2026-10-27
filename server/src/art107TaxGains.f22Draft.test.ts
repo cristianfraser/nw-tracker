@@ -58,15 +58,15 @@ describe("art. 107 fund on the F22 draft", () => {
     const cashId = Number(account.run(cashLeaf.id, CASH, null).lastInsertRowid);
 
     const trade = db.prepare(
-      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta, flow_kind, ticker)
-       VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?, ?, ?)`
+      `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+       VALUES (NULL, ?, ?, ?, 'clp', ?, ?, ?, ?)`
     );
-    trade.run(cashId, stockId, 1_000_000, "2024-03-15", `${NOTE}|buy1`, 1000, "stock_buy", TICKER);
-    trade.run(cashId, stockId, 600_000, "2024-06-10", `${NOTE}|buy2`, 500, "stock_buy", TICKER);
+    trade.run(cashId, stockId, 1_000_000, "2024-03-15", `${NOTE}|buy1`, 1000, "stock_buy");
+    trade.run(cashId, stockId, 600_000, "2024-06-10", `${NOTE}|buy2`, 500, "stock_buy");
     saleId = Number(
-      trade.run(stockId, cashId, 1_500_000, "2024-10-21", `${NOTE}|sell`, 1200, "stock_sell", TICKER).lastInsertRowid
+      trade.run(stockId, cashId, 1_500_000, "2024-10-21", `${NOTE}|sell`, 1200, "stock_sell").lastInsertRowid
     );
-    trade.run(stockId, cashId, 12_345, "2024-11-05", `${NOTE}|distribution`, null, "dividend_payout", TICKER);
+    trade.run(stockId, cashId, 12_345, "2024-11-05", `${NOTE}|distribution`, null, "dividend_payout");
     db.prepare(`INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, '2024-12-30', 1100, 'clp')`).run(TICKER);
 
     // 0,4% a month, January through November 2024, where the test DB has no official IPC.

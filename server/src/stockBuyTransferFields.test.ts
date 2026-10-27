@@ -106,7 +106,6 @@ describe("stock_buy transfer field validation + ticker default", () => {
     );
     expect(v.ok).toBe(true);
     if (v.ok && v.mode === "transfer") {
-      expect(v.ticker).toBe("VITEST");
       expect(v.amount).toBe(1346.17);
       expect(v.currency).toBe("usd");
       expect(v.counter_amount).toBeNull();
@@ -131,7 +130,6 @@ describe("stock_buy transfer field validation + ticker default", () => {
     );
     expect(v.ok).toBe(true);
     if (v.ok && v.mode === "transfer") {
-      expect(v.ticker).toBe("VITEST.SN");
       expect(v.amount).toBe(2_985_000);
       expect(v.currency).toBe("clp");
       expect(v.counter_amount).toBeNull();

@@ -106,7 +106,7 @@ export function findMatchingUsdTransferLegId(
   const rows = dbHandle
     .prepare(
       `SELECT m.id, m.account_id, m.from_account_id, m.to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL},
-              m.occurred_on, m.note, m.units_delta, m.flow_kind, m.ticker
+              m.occurred_on, m.note, m.units_delta, m.flow_kind
        FROM movements m ${BANK_POSTING_JOIN_SQL}
        WHERE m.account_id IS NULL
          AND (m.from_account_id = ? OR m.to_account_id = ?)

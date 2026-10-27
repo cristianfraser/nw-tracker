@@ -43,8 +43,8 @@ describe("CLP-funded stock_buy capital flows", () => {
     db.prepare(
       `INSERT INTO movements (
          account_id, from_account_id, to_account_id, amount, currency, occurred_on, note,
-         units_delta, flow_kind, ticker
-       ) VALUES (NULL, ?, ?, 2_985_000, 'clp', '2026-07-03', ?, 2282, 'stock_buy', 'VITEST.SN')`
+         units_delta, flow_kind
+       ) VALUES (NULL, ?, ?, 2_985_000, 'clp', '2026-07-03', ?, 2282, 'stock_buy')`
     ).run(clpId, stockId, `${FIXTURE_NOTE}|buy`);
   });
 

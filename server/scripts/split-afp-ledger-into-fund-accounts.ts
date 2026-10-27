@@ -254,7 +254,6 @@ function insertSwitch(s: FundSwitch): number {
     units_delta: s.out.cuotas,
     counter_units_delta: s.in.cuotas,
     flow_kind: FLOW_KIND_AFP_FUND_SWITCH,
-    ticker: null,
   };
   validateTransferCreate(input);
   const res = db

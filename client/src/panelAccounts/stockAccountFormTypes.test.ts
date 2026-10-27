@@ -62,7 +62,7 @@ describe("stockAccountFormTypes", () => {
     expect(body).not.toHaveProperty("counter_amount");
     expect(body?.counterpart_role).toBe("from");
     expect(body?.units_delta).toBe(2282);
-    expect(body?.ticker).toBe("CFIETFIPSA.SN");
+    expect(body).not.toHaveProperty("ticker");
   });
 
   it("reads an ambiguous amount with the decimal-separator setting", () => {

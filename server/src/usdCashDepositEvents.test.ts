@@ -38,13 +38,12 @@ describe("USD-cash deposit events (event-based, native-frame)", () => {
     occurred_on: string;
     units_delta?: number | null;
     flow_kind: string;
-    ticker?: string | null;
   }): void => {
     db.prepare(
       `INSERT INTO movements (
          account_id, from_account_id, to_account_id, amount, currency,
-         counter_amount, counter_currency, occurred_on, note, units_delta, flow_kind, ticker
-       ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         counter_amount, counter_currency, occurred_on, note, units_delta, flow_kind
+       ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       v.from,
       v.to,
@@ -55,8 +54,7 @@ describe("USD-cash deposit events (event-based, native-frame)", () => {
       v.occurred_on,
       FIXTURE_NOTE,
       v.units_delta ?? null,
-      v.flow_kind,
-      v.ticker ?? null
+      v.flow_kind
     );
   };
 
@@ -111,7 +109,6 @@ describe("USD-cash deposit events (event-based, native-frame)", () => {
       occurred_on: BUY_DATE,
       units_delta: 4,
       flow_kind: "stock_buy",
-      ticker: "VITESTUC",
     });
     // Cash dividend back into USD cash.
     insertTransfer({
