@@ -74,8 +74,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
         .prepare(
           `INSERT INTO movements (
              account_id, from_account_id, to_account_id, amount, currency, occurred_on, note,
-             units_delta, flow_kind, ticker
-           ) VALUES (NULL, ?, ?, 100, 'usd', '2026-05-28', ?, 1.5, 'stock_buy', 'VITEST')`
+             units_delta, flow_kind
+           ) VALUES (NULL, ?, ?, 100, 'usd', '2026-05-28', ?, 1.5, 'stock_buy')`
         )
         .run(usdId, stockId, FIXTURE_NOTE).lastInsertRowid
     );
@@ -114,8 +114,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
       db
         .prepare(
           `INSERT INTO movements (
-             account_id, amount, currency, occurred_on, note, units_delta, flow_kind, ticker
-           ) VALUES (?, 50, 'usd', '2026-06-16', ?, 2, 'stock_buy', 'VITEST')`
+             account_id, amount, currency, occurred_on, note, units_delta, flow_kind
+           ) VALUES (?, 50, 'usd', '2026-06-16', ?, 2, 'stock_buy')`
         )
         .run(stockId, `${FIXTURE_NOTE}|account-id-buy`).lastInsertRowid
     );
@@ -137,8 +137,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
         .prepare(
           `INSERT INTO movements (
              account_id, from_account_id, to_account_id, amount, currency, occurred_on, note,
-             units_delta, flow_kind, ticker
-           ) VALUES (NULL, ?, ?, 1.7, 'usd', '2026-03-26', ?, NULL, 'dividend_payout', 'VITEST')`
+             units_delta, flow_kind
+           ) VALUES (NULL, ?, ?, 1.7, 'usd', '2026-03-26', ?, NULL, 'dividend_payout')`
         )
         .run(stockId, usdId, `${FIXTURE_NOTE}|payout-div`).lastInsertRowid
     );
@@ -191,8 +191,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
         .prepare(
           `INSERT INTO movements (
              account_id, from_account_id, to_account_id, amount, currency, occurred_on, note,
-             units_delta, flow_kind, ticker
-           ) VALUES (NULL, ?, ?, ?, 'usd', '2026-03-26', ?, ?, 'stock_buy', 'VITEST')`
+             units_delta, flow_kind
+           ) VALUES (NULL, ?, ?, ?, 'usd', '2026-03-26', ?, ?, 'stock_buy')`
         )
         .run(usdId, stockId, usd, note, units).lastInsertRowid
     );
@@ -246,8 +246,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
         .prepare(
           `INSERT INTO movements (
              account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note,
-             units_delta, flow_kind, ticker
-           ) VALUES (NULL, ?, ?, ?, 'clp', ?, 'usd', '2026-03-26', ?, NULL, 'compra_usd_venta_clp', NULL)`
+             units_delta, flow_kind
+           ) VALUES (NULL, ?, ?, ?, 'clp', ?, 'usd', '2026-03-26', ?, NULL, 'compra_usd_venta_clp')`
         )
         .run(clpId, usdId, clp, usd, note).lastInsertRowid
     );
@@ -323,8 +323,8 @@ describe("equityBrokerageCapitalFlows fixture", () => {
         .prepare(
           `INSERT INTO movements (
              account_id, from_account_id, to_account_id, amount, currency, occurred_on, note,
-             units_delta, flow_kind, ticker
-           ) VALUES (NULL, ?, ?, 2.13, 'usd', '2026-03-10', ?, NULL, 'dividend_payout', 'VITEST')`
+             units_delta, flow_kind
+           ) VALUES (NULL, ?, ?, 2.13, 'usd', '2026-03-10', ?, NULL, 'dividend_payout')`
         )
         .run(stockId, usdId, note).lastInsertRowid
     );

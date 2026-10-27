@@ -26,7 +26,6 @@ function insertValidatedTransfer(v: {
   note: string | null;
   units_delta: number | null;
   flow_kind: string | null;
-  ticker: string | null;
 }): number {
   return Number(
     db
@@ -34,8 +33,8 @@ function insertValidatedTransfer(v: {
         `INSERT INTO movements (
            account_id, from_account_id, to_account_id, amount, currency,
            counter_amount, counter_currency, occurred_on, note,
-           units_delta, flow_kind, ticker
-         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           units_delta, flow_kind
+         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         v.from_account_id,
@@ -47,8 +46,7 @@ function insertValidatedTransfer(v: {
         v.occurred_on,
         v.note ?? FIXTURE_NOTE,
         v.units_delta,
-        v.flow_kind,
-        v.ticker
+        v.flow_kind
       ).lastInsertRowid
   );
 }
@@ -94,7 +92,6 @@ describe("dividend_payout (stock cash dividend → USD cash)", () => {
       note: FIXTURE_NOTE,
       units_delta: 3,
       flow_kind: "stock_buy",
-      ticker: "VITEST",
     });
   });
 

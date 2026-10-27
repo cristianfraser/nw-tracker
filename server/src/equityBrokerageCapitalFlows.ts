@@ -422,7 +422,7 @@ export function loadUsdCashCapitalSortFlows(
   const rows = db
     .prepare(
       `SELECT id, account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL},
-              occurred_on, note, units_delta, flow_kind, ticker
+              occurred_on, note, units_delta, flow_kind
        FROM movements
        WHERE account_id IN (${ph}) OR from_account_id IN (${ph}) OR to_account_id IN (${ph})
        ORDER BY occurred_on, id`

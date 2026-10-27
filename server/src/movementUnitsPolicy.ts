@@ -156,7 +156,6 @@ export type MovementCreateValidation =
       flow_kind: null;
       counter_amount: null;
       counter_currency: null;
-      ticker: null;
     }
   | {
       ok: true;
@@ -169,7 +168,6 @@ export type MovementCreateValidation =
       flow_kind: string;
       counter_amount: number | null;
       counter_currency: MovementCurrency | null;
-      ticker: string | null;
     }
   | {
       ok: true;
@@ -185,7 +183,6 @@ export type MovementCreateValidation =
       units_delta: number | null;
       counter_units_delta: number | null;
       flow_kind: string | null;
-      ticker: string | null;
     }
   | { ok: false; status: number; error: string };
 
@@ -242,7 +239,7 @@ function parsedLeg(fields: ParsedAmountFields, currency: MovementCurrency): numb
 function stockTradeQuoteCurrency(input: TransferCreateInput): "usd" | "clp" {
   const stockAccountId =
     input.flow_kind === "stock_buy" ? input.to_account_id : input.from_account_id;
-  const ticker = input.ticker?.trim() || equityTickerForAccount(stockAccountId);
+  const ticker = equityTickerForAccount(stockAccountId);
   if (!ticker) return "usd";
   return equityQuoteCurrency(ticker);
 }
@@ -419,8 +416,7 @@ function validateBrokerageTransferEndpoints(
 
 function validateBrokerageMovementCreate(
   account: AccountRow,
-  body: Record<string, unknown>,
-  defaultTicker: string | null
+  body: Record<string, unknown>
 ): MovementCreateValidation {
   const schema = movementCreateSchemaForAccount(account);
   if (!schema?.brokerage_flow_kinds) {
@@ -487,11 +483,6 @@ function validateBrokerageMovementCreate(
     }
   }
 
-  const tickerRaw = body.ticker;
-  const ticker =
-    typeof tickerRaw === "string" && tickerRaw.trim()
-      ? tickerRaw.trim().toUpperCase()
-      : defaultTicker;
   const note = typeof body.note === "string" ? body.note : body.note == null ? null : String(body.note);
 
   const unitsRaw = parseUnitsDeltaField(body);
@@ -523,7 +514,6 @@ function validateBrokerageMovementCreate(
       ...brokerageNativeAmount(flow_kind, parsed, amount_clp, amount_usd),
       counter_amount: null,
       counter_currency: null,
-      ticker,
       note,
       units_delta: unitsRaw,
     };
@@ -545,7 +535,6 @@ function validateBrokerageMovementCreate(
     ...brokerageNativeAmount(flow_kind, parsed, amount_clp, amount_usd),
     counter_amount: null,
     counter_currency: null,
-    ticker,
     note,
     units_delta: unitsProvided && unitsRaw !== null ? unitsRaw : null,
   };
@@ -636,7 +625,6 @@ function validateUsdCashMovementCreate(
       : { amount: signedAmountClpForBrokerageFlow(flow_kind, amount_clp, amount_usd), currency: "clp" as const }),
     counter_amount: null,
     counter_currency: null,
-    ticker: null,
     note,
     units_delta: null,
   };
@@ -686,7 +674,6 @@ function validateClpCashMovementCreate(
     currency: "clp",
     counter_amount: null,
     counter_currency: null,
-    ticker: null,
     note,
     units_delta: null,
   };
@@ -789,16 +776,6 @@ function validateTransferMovementCreate(
   } else if (unitsProvided && flow_kind == null) {
     flow_kind = unitsRaw! > 0 ? "stock_buy" : "stock_sell";
   }
-  const tickerRaw = body.ticker;
-  let ticker =
-    typeof tickerRaw === "string" && tickerRaw.trim() ? tickerRaw.trim().toUpperCase() : null;
-  // Default the ticker from the equity account on share trades (the client may not know it on the
-  // first buy, before a position exists): stock_buy → to_account, stock_sell → from_account.
-  if (ticker == null && (flow_kind === "stock_buy" || flow_kind === "stock_sell")) {
-    const equityAccountId =
-      flow_kind === "stock_buy" ? endpoints.to_account_id : endpoints.from_account_id;
-    ticker = equityTickerForAccount(equityAccountId);
-  }
   const note = typeof body.note === "string" ? body.note : body.note == null ? null : String(body.note);
 
   // Transfers store positive amounts (direction lives in from/to); units-only transfers
@@ -827,7 +804,6 @@ function validateTransferMovementCreate(
         : counterUnitsRaw
       : null,
     flow_kind,
-    ticker,
   };
   try {
     validateTransferCreate(input);
@@ -853,7 +829,6 @@ function validateTransferMovementCreate(
     units_delta: input.units_delta,
     counter_units_delta: input.counter_units_delta,
     flow_kind: input.flow_kind,
-    ticker: input.ticker,
   };
 }
 
@@ -869,8 +844,7 @@ export function validateMovementCreate(
     return validateTransferMovementCreate(currentAccountId, body);
   }
   if (accountUsesBrokerageFlowKinds(account)) {
-    const defaultTicker = account.equity_ticker?.trim().toUpperCase() ?? null;
-    return validateBrokerageMovementCreate(account, body, defaultTicker);
+    return validateBrokerageMovementCreate(account, body);
   }
   if (accountUsesUsdCashFlowKinds(account)) {
     return validateUsdCashMovementCreate(account, body);
@@ -934,7 +908,6 @@ export function validateMovementCreate(
       flow_kind: null,
       counter_amount: null,
       counter_currency: null,
-      ticker: null,
     };
   }
 
@@ -957,6 +930,5 @@ export function validateMovementCreate(
     flow_kind: null,
     counter_amount: null,
     counter_currency: null,
-    ticker: null,
   };
 }

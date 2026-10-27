@@ -27,7 +27,6 @@ function flowRow(over: Partial<FlowsApiRow>): FlowsApiRow {
     units_delta: null,
     counter_units_delta: null,
     flow_kind: null,
-    ticker: null,
     flow_type: "deposit_clp",
     flow_type_label: "Depósito CLP",
     counterpart_account_id: null,

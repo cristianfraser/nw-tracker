@@ -44,7 +44,7 @@ export const MARK_INPUT_TRIGGER_SPECS: TriggerSpec[] = [
     ],
     watch: [
       "account_id", "from_account_id", "to_account_id", "amount", "currency", "counter_amount",
-      "counter_currency", "occurred_on", "units_delta", "counter_units_delta", "flow_kind", "ticker",
+      "counter_currency", "occurred_on", "units_delta", "counter_units_delta", "flow_kind",
     ],
   },
   {
@@ -269,5 +269,10 @@ export function runMarkInputChangeTriggers211(dbi: DatabaseType): void {
 
 /** Migration 242 hook: `movements.counter_units_delta` exists now — watch it on the movements triggers. */
 export function runMarkInputChangeTriggers242(dbi: DatabaseType): void {
+  installMarkInputChangeTriggers(dbi, MARK_INPUT_TRIGGER_SPECS);
+}
+
+/** Migration 243 hook: `movements.ticker` is gone — re-create the triggers it dropped. */
+export function runMarkInputChangeTriggers243(dbi: DatabaseType): void {
   installMarkInputChangeTriggers(dbi, MARK_INPUT_TRIGGER_SPECS);
 }

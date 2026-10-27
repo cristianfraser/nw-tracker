@@ -24,14 +24,10 @@ function formatFlowUnits(
   }
   return formatInstrumentUnits(
     row.units_delta,
-    row.ticker != null ? "shares" : (movementUnitsKind?.(row.bucket_slug ?? "") ?? "shares")
+    movementUnitsKind?.(row.bucket_slug ?? "") ?? "shares"
   );
 }
 
-
-function showTickerColumn(rows: readonly FlowsApiRow[]): boolean {
-  return rows.some((r) => r.ticker != null && String(r.ticker).trim() !== "");
-}
 
 function showCounterpartColumn(rows: readonly FlowsApiRow[]): boolean {
   return rows.some((r) => r.counterpart_account_name != null && r.counterpart_account_name.trim() !== "");
@@ -55,14 +51,12 @@ function formatMovementAmount(row: FlowsApiRow): string {
 
 function flowsColumnCount(
   showAccountColumn: boolean,
-  showFlowTickerCol: boolean,
   showUnitsColumn: boolean,
   showCounterpartCol: boolean
 ): number {
   return (
     4 +
     (showAccountColumn ? 1 : 0) +
-    (showFlowTickerCol ? 1 : 0) +
     (showUnitsColumn ? 1 : 0) +
     (showCounterpartCol ? 1 : 0) +
     1
@@ -96,7 +90,6 @@ function FlowsMobileCard({
   row,
   labels,
   showAccountColumn,
-  showFlowTickerCol,
   showUnitsColumn,
   movementUnitsKind,
 }: {
@@ -105,13 +98,11 @@ function FlowsMobileCard({
     account: string;
     type: string;
     date: string;
-    ticker: string;
     amount: string;
     units: string;
     note: string;
   };
   showAccountColumn: boolean;
-  showFlowTickerCol: boolean;
   showUnitsColumn: boolean;
   movementUnitsKind?: (slug: string) => "shares" | "coin";
 }) {
@@ -128,9 +119,6 @@ function FlowsMobileCard({
             truncateValue
             valueTitle={row.account_name ?? undefined}
           />
-        ) : null}
-        {showFlowTickerCol ? (
-          <TableMobileCardRow label={labels.ticker} value={row.ticker ?? "—"} />
         ) : null}
       </TableMobileCardSection>
 
@@ -226,14 +214,12 @@ export function FlowsTable({
   amountFilterError?: string | null;
 }) {
   const { t } = useTranslation();
-  const showFlowTickerCol = showTickerColumn(rows);
   const showCounterpartCol = showCounterpartColumn(rows);
 
   const mobileLabels = {
     account: t("groupPage.flowsAccountColumn"),
     type: t("accountDetail.flowTypeColumn"),
     date: t("accountDetail.flowDateColumn"),
-    ticker: t("accountDetail.flowTickerColumn"),
     amount: t("accountDetail.flowAmountColumn"),
     units: t("accountDetail.flowUnitsColumn"),
     note: t("accountDetail.flowNoteColumn"),
@@ -242,7 +228,6 @@ export function FlowsTable({
 
   const colSpan = flowsColumnCount(
     showAccountColumn,
-    showFlowTickerCol,
     showUnitsColumn,
     showCounterpartCol
   );
@@ -417,9 +402,6 @@ export function FlowsTable({
         ) : null}
         <th className="desktop-only">{t("accountDetail.flowTypeColumn")}</th>
         <th className="desktop-only">{t("accountDetail.flowDateColumn")}</th>
-        {showFlowTickerCol ? (
-          <th className="desktop-only">{t("accountDetail.flowTickerColumn")}</th>
-        ) : null}
         <th className="desktop-only">{t("accountDetail.flowAmountColumn")}</th>
         {showUnitsColumn ? (
           <th className="desktop-only">{t("accountDetail.flowUnitsColumn")}</th>
@@ -471,9 +453,6 @@ export function FlowsTable({
               <td className="desktop-only">
                 <FlowDateCell row={row} />
               </td>
-              {showFlowTickerCol ? (
-                <td className="desktop-only">{row.ticker ?? "—"}</td>
-              ) : null}
               <td className="mono desktop-only">{formatMovementAmount(row)}</td>
               {showUnitsColumn ? (
                 <td className="mono desktop-only">
@@ -496,7 +475,6 @@ export function FlowsTable({
                   row={row}
                   labels={mobileLabels}
                   showAccountColumn={showAccountColumn}
-                  showFlowTickerCol={showFlowTickerCol}
                   showUnitsColumn={showUnitsColumn}
                   movementUnitsKind={movementUnitsKind}
                 />

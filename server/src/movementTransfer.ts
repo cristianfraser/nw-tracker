@@ -34,7 +34,6 @@ export type MovementTransferRow = {
    */
   counter_units_delta?: number | null;
   flow_kind: string | null;
-  ticker: string | null;
 };
 
 /**
@@ -223,7 +222,7 @@ export function isUsdCashAccount(accountId: number): boolean {
 
 const MOVEMENTS_FOR_ACCOUNT_SQL = `
   SELECT id, account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL},
-         occurred_on, note, units_delta, counter_units_delta, flow_kind, ticker
+         occurred_on, note, units_delta, counter_units_delta, flow_kind
   FROM movements
   WHERE account_id = ?
      OR from_account_id = ?
@@ -335,7 +334,6 @@ export type TransferCreateInput = {
   /** The to-leg's own unit count (a fund switch); needs `units_delta`, see `validateTransferCreate`. */
   counter_units_delta: number | null;
   flow_kind: string | null;
-  ticker: string | null;
 };
 
 export function resolveTransferEndpoints(

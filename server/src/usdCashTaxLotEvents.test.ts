@@ -23,7 +23,6 @@ function row(r: Partial<UsdWalkRow> & { id: number; occurred_on: string; amount:
     note: null,
     units_delta: r.units_delta ?? null,
     flow_kind: r.flow_kind ?? null,
-    ticker: null,
   };
 }
 

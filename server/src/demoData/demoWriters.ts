@@ -104,8 +104,8 @@ function pickMerchant(
 /* ------------------------------- movement helpers -------------------------------- */
 
 const insMovementFull = db.prepare(
-  `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind, ticker)
-   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`
 );
 
 function movementWithUnits(
@@ -117,7 +117,6 @@ function movementWithUnits(
     units_delta?: number | null;
     flow_kind?: string | null;
     amount_usd?: number | null;
-    ticker?: string | null;
   }
 ): void {
   // Single-leg row: native amount is the CLP leg when present, else the USD leg
@@ -130,14 +129,13 @@ function movementWithUnits(
     m.occurred_on,
     m.note,
     m.units_delta ?? null,
-    m.flow_kind ?? null,
-    m.ticker ?? null
+    m.flow_kind ?? null
   );
 }
 
 const insTransferFull = db.prepare(
-  `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, units_delta, flow_kind, ticker)
-   VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, units_delta, flow_kind)
+   VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 
 /** Transfer row (account_id NULL, from/to set) — the manual stock_buy/stock_sell shape. */
@@ -149,7 +147,6 @@ function stockTransfer(m: {
   flow_kind: "stock_buy" | "stock_sell";
   amount_usd: number;
   units_delta: number;
-  ticker: string;
 }): void {
   insTransferFull.run(
     m.from_account_id,
@@ -161,8 +158,7 @@ function stockTransfer(m: {
     m.occurred_on,
     m.note,
     m.units_delta,
-    m.flow_kind,
-    m.ticker
+    m.flow_kind
   );
 }
 
@@ -179,7 +175,6 @@ function cashTransfer(m: {
   flow_kind: "compra_usd_venta_clp" | "withdrawal_usd" | "dividend_payout";
   amount_clp: number;
   amount_usd: number;
-  ticker?: string | null;
 }): void {
   // Cross-currency transfer: CLP from-leg is the native amount, USD to-leg the counter
   // (migration-169 mapping). A CLP-less payout (dividend_payout) is a plain USD row.
@@ -195,8 +190,7 @@ function cashTransfer(m: {
     m.occurred_on,
     m.note,
     null,
-    m.flow_kind,
-    m.ticker ?? null
+    m.flow_kind
   );
 }
 
@@ -1294,7 +1288,6 @@ export function writeInvestmentMonth(
         flow_kind: "stock_buy",
         amount_usd: usd,
         units_delta: units,
-        ticker: lot.ticker,
       });
     }
     for (const sale of flows.stockSells) {
@@ -1312,7 +1305,6 @@ export function writeInvestmentMonth(
         flow_kind: "stock_sell",
         amount_usd: sale.usd,
         units_delta: Math.round(sale.units * 1e6) / 1e6,
-        ticker: sale.ticker,
       });
       // Proceeds leave USD cash the same day, wired back to checking as ONE transfer
       // (USD leg out of cash, CLP credited to checking).
@@ -1345,7 +1337,6 @@ export function writeInvestmentMonth(
           flow_kind: "dividend_payout",
           amount_clp: 0,
           amount_usd: divUsd,
-          ticker: divTicker,
         });
         const price = demoEquityCloseUsd(state.equitySeries, divTicker, payYmd);
         const reinvestUnits = Math.round((divUsd / price) * 1e6) / 1e6;
@@ -1358,7 +1349,6 @@ export function writeInvestmentMonth(
             flow_kind: "stock_buy",
             amount_usd: divUsd,
             units_delta: reinvestUnits,
-            ticker: divTicker,
           });
           state.stockUnits.set(divTicker, divUnitsHeld + reinvestUnits);
         }

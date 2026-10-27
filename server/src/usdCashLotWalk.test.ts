@@ -23,7 +23,6 @@ function row(r: Partial<UsdWalkRow> & { occurred_on: string; amount: number; cur
     note: null,
     units_delta: r.units_delta ?? null,
     flow_kind: r.flow_kind ?? null,
-    ticker: null,
   };
 }
 const buyUsd = (on: string, to: number, usd: number, clp: number, id?: number) =>

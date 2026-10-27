@@ -100,7 +100,6 @@ export function buildBrokerageMovementPostBody(
     ...(brokerageFlowKindShowsUnits(row.flowKind)
       ? { units_delta: parseNumberInputOrThrow(row.unitsDelta) }
       : {}),
-    ...(ticker ? { ticker } : {}),
     ...(row.counterpartAccountId !== ""
       ? {
           counterpart_account_id: row.counterpartAccountId,

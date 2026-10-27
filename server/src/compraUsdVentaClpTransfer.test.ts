@@ -32,8 +32,8 @@ function insertTransfer(v: {
         `INSERT INTO movements (
            account_id, from_account_id, to_account_id, amount, currency,
            counter_amount, counter_currency, occurred_on, note,
-           units_delta, flow_kind, ticker
-         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL)`
+           units_delta, flow_kind
+         ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`
       )
       .run(
         v.from_account_id,

@@ -2030,10 +2030,6 @@
       "en": "Date",
       "es": "Fecha"
     },
-    "flowTickerColumn": {
-      "en": "Ticker",
-      "es": "Ticker"
-    },
     "flowAmountColumn": {
       "en": "Amount",
       "es": "Monto"

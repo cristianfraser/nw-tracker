@@ -593,7 +593,6 @@
     },
     "flowTypeColumn": "Tipo",
     "flowDateColumn": "Fecha",
-    "flowTickerColumn": "Ticker",
     "flowAmountColumn": "Monto",
     "flowUnitsColumn": "Unidades",
     "flowNoteColumn": "Nota",
