@@ -36,7 +36,7 @@ beforeAll(() => {
     db
       .prepare(
         `INSERT INTO accounts (asset_group_id, name, notes, import_key)
-         VALUES (?, 'Vitest · daily liability card', 'vitest-daily-liab', 'vitest-daily-liab')`
+         VALUES (?, 'Vitest · daily liability card', 'vitest-daily-liab', 'credit_card_master|santander|vitest-daily-liab')`
       )
       .run(leaf.id).lastInsertRowid
   );

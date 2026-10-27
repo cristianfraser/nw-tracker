@@ -588,8 +588,9 @@ describe("facturación proxy on a card ledger", () => {
     // Closed August: the printed PAGAR HASTA; dd/mm/yy and dd/mm/yyyy rows alike.
     expect(lots.get(20_000)).toEqual([["2026-08", "2026-09-10"]]); // VITEST SHORT YEAR
     expect(lots.get(11_000)).toEqual([["2026-08", "2026-09-10"]]); // VITEST LONG YEAR
-    // Provisional September and open October: no printed pay-by, the table's derived one.
-    expect(lots.get(13_000)).toEqual([["2026-09", "2026-10-10"]]); // VITEST SEPTEMBER
+    // Provisional September and open October: no printed pay-by, the table's derived one — the
+    // Santander rule moves a Saturday 10th back to Friday the 9th.
+    expect(lots.get(13_000)).toEqual([["2026-09", "2026-10-09"]]); // VITEST SEPTEMBER
     expect(lots.get(4_000)).toEqual([["2026-10", "2026-11-10"]]); // VITEST OCTOBER
     expect(lots.get(3_000)).toEqual([["2026-10", "2026-11-10"]]); // VITEST LEFTOVER
     // No lot for the plan's pasted purchase row (3x.xxx) nor the count-less cuota purchase (9x.xxx).
@@ -598,7 +599,7 @@ describe("facturación proxy on a card ledger", () => {
     const payBy = new Map(facturaciones.map((f) => [f.billing_month, f.pay_by_iso]));
     expect([payBy.get("2026-08"), payBy.get("2026-09"), payBy.get("2026-10")]).toEqual([
       "2026-09-10",
-      "2026-10-10",
+      "2026-10-09",
       "2026-11-10",
     ]);
 

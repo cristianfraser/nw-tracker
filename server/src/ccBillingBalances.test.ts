@@ -78,7 +78,7 @@ describe("normalizedPostCloseLines", () => {
     accountId = Number(
       db
         .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
-        .run(group.id, "Vitest · post-close line dates", "vitest-cc-post-close-line-dates").lastInsertRowid
+        .run(group.id, "Vitest · post-close line dates", "credit_card_master|santander|vitest-cc-post-close-line-dates").lastInsertRowid
     );
     const statementId = Number(
       db
@@ -107,7 +107,7 @@ describe("normalizedPostCloseLines", () => {
     accountId = Number(
       db
         .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
-        .run(group.id, "Vitest · backdated nota", "vitest-cc-backdated-nota").lastInsertRowid
+        .run(group.id, "Vitest · backdated nota", "credit_card_master|santander|vitest-cc-backdated-nota").lastInsertRowid
     );
     const statementId = Number(
       db

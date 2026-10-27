@@ -1,16 +1,19 @@
 /**
- * Due date (“pagar hasta”) for installment rows parsed from Banco de Chile PDFs.
+ * Due date («PAGAR HASTA») of a facturación.
  *
  * Order of resolution (same for import + any server-side recompute):
- * 1. **Explicit `pay_by`** from the statement (CSV column `pay_by`, DD/MM/YYYY) when non-empty —
+ * 1. **Explicit `pay_by`** printed on the statement (CSV column `pay_by`, DD/MM/YYYY) when non-empty —
  *    extracted in Python via `PAGAR\s+HASTA\s+(\d{2}/\d{2}/\d{4})` in `parse-cc-statement-pdfs.py`.
- * 2. **Fallback** when the PDF extract did not surface `pay_by`: take **`statement_date`**
- *    (“FECHA ESTADO DE CUENTA”, DD/MM/YYYY) and use the **10th calendar day of the immediately following month**.
- *    Banco de Chile typically bills around the last third of the month with due ~9–10 of the next month; we fix
- *    day **10** for consistency when `pay_by` is missing.
- * 3. If `statement_date` is also empty, use **`period_to`** (DD/MM/YYYY) with the same “next month, day 10” rule.
+ * 2. **Derived from the close** by the issuer's rule (`CcDerivedPayByRule` on `CC_ISSUERS`): the
+ *    **`statement_date`** («FECHA ESTADO DE CUENTA») is the close — BCI the 10th of the next month as
+ *    it falls, Santander the 10th moved back to the previous Chile business day, CMR close + 16 days.
+ *    The Chile holiday calendar only covers the years `marketHolidays.ts` lists, which is what a
+ *    forward estimate needs; a historical statement carries its printed date.
+ * 3. If `statement_date` is also empty, use **`period_to`** (DD/MM/YYYY) with the same rule.
  * 4. If neither is usable, use **`transaction_date`** / posting with the same rule as a last resort.
  */
+import type { CcDerivedPayByRule } from "./ccIssuers.js";
+import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 
 const DD_MM = /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/;
 /** pypdf can merge DD/MM/YY with MCC digits (e.g. 13/05/2511001SANTIAG). */
@@ -52,27 +55,43 @@ export function nextMonthDayIso(anchorDdMmYyyy: string, day: number): string | n
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
-export function resolveInstallmentPayByIso(row: {
-  pay_by?: string;
-  statement_date?: string;
-  period_to?: string;
-  transaction_date?: string;
-}): string | null {
+function isoAddDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! + days)).toISOString().slice(0, 10);
+}
+
+/**
+ * The pay-by an issuer would print for a facturación that closed on `closeDdMmYyyyOrIso`, by its
+ * rule (see `CcDerivedPayByRule`); null when the close does not parse.
+ */
+export function derivedPayByIso(closeDdMmYyyyOrIso: string, rule: CcDerivedPayByRule): string | null {
+  if (rule.kind === "close_plus_days") {
+    const iso = parseDdMmYyToIso(closeDdMmYyyyOrIso);
+    return iso ? isoAddDays(iso, rule.days) : null;
+  }
+  const iso = nextMonthDayIso(closeDdMmYyyyOrIso, rule.day);
+  if (!iso || !rule.prior_business_day || isChileBusinessDay(iso)) return iso;
+  const prior = priorChileBusinessDayYmd(iso);
+  if (!prior) throw new Error(`No Chile business day within two weeks before ${iso}`);
+  return prior;
+}
+
+export function resolveInstallmentPayByIso(
+  row: {
+    pay_by?: string;
+    statement_date?: string;
+    period_to?: string;
+    transaction_date?: string;
+  },
+  rule: CcDerivedPayByRule | (() => CcDerivedPayByRule)
+): string | null {
   const explicit = String(row.pay_by ?? "").trim();
   if (explicit) {
     return parseDdMmYyToIso(explicit);
   }
-  const st = String(row.statement_date ?? "").trim();
-  if (st) {
-    return nextMonthDayIso(st, 10);
-  }
-  const pto = String(row.period_to ?? "").trim();
-  if (pto) {
-    return nextMonthDayIso(pto, 10);
-  }
-  const tx = String(row.transaction_date ?? "").trim();
-  if (tx) {
-    return nextMonthDayIso(tx, 10);
+  for (const anchor of [row.statement_date, row.period_to, row.transaction_date]) {
+    const a = String(anchor ?? "").trim();
+    if (a) return derivedPayByIso(a, typeof rule === "function" ? rule() : rule);
   }
   return null;
 }

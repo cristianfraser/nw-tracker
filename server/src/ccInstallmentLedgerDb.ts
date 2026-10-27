@@ -6,13 +6,15 @@ import {
   computeCuotaRetirements,
   listClpCcPaymentEventsForAccount,
 } from "./ccCuotaRetirement.js";
-import { normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
+import { derivedPayByIso, normalizeTransactionDateIso } from "./ccInstallmentPayBy.js";
+import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { paymentStatementMonthYm, statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import {
   billingMonthContainingPurchase,
   billingMonthForLedgerPurchase,
+  closeDateForBillingMonth,
   lastPdfBillingMonthForAccount,
 } from "./ccManualBillingMonth.js";
 import {
@@ -1198,9 +1200,15 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
   const todayYmd = chileCalendarTodayYmd();
 
   // Pay-by evidence per facturación month: every payment row on a statement carries the
-  // statement's PAGAR HASTA. Open/projected months derive it (~10th of the next month —
-  // same convention as resolveInstallmentPayByIso's statement-date fallback).
+  // statement's PAGAR HASTA. Open/projected months derive it from the month's best published
+  // close by the issuer's rule (`derivedPayByIso`, the facturaciones table's convention).
   const payByEvidenceByMonth = new Map<string, string>();
+  const payByRule = ccDerivedPayByRuleForAccount(accountId);
+  const derivedPayByForMonth = (month: string): string => {
+    const iso = derivedPayByIso(closeDateForBillingMonth(accountId, month).close_iso, payByRule);
+    if (!iso) throw new Error(`Account ${accountId}: no derivable pay-by for ${month}`);
+    return iso;
+  };
   for (const pays of paymentsByPurchase.values()) {
     for (const p of pays) {
       const ym = paymentBillingMonth(p);
@@ -1246,7 +1254,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       return {
         month,
         cuota_clp: payByMonth.get(month) ?? 0,
-        pay_by_iso: payByEvidenceByMonth.get(month) ?? `${addCalendarMonths(month, 1)}-10`,
+        pay_by_iso: payByEvidenceByMonth.get(month) ?? derivedPayByForMonth(month),
         close_iso: closeIso,
         facturado_clp: closeIso != null ? (facturadoByClose.get(closeIso) ?? null) : null,
       };
@@ -1264,8 +1272,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
           `installment month breakdown mismatch for account ${accountId} month ${month}: breakdown=${breakdownSum} total=${total_clp}`
         );
       }
-      const pay_by_date =
-        payByEvidenceByMonth.get(month) ?? `${addCalendarMonths(month, 1)}-10`;
+      const pay_by_date = payByEvidenceByMonth.get(month) ?? derivedPayByForMonth(month);
       return {
         month,
         total_clp,
