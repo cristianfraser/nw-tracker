@@ -53,7 +53,17 @@ const PORTADA_PATH = "/sva-portada/v1";
 const HOME_WAIT_MS = 60_000;
 
 export type AfcLoginMethod = "afc" | "clave_unica";
-export type AfcFetchOptions = { apply: boolean; background: boolean; force: boolean; minIntervalMinutes: number; login: AfcLoginMethod };
+export type AfcFetchOptions = {
+  apply: boolean;
+  background: boolean;
+  force: boolean;
+  minIntervalMinutes: number;
+  login: AfcLoginMethod;
+  /** The payroll month (YYYY-MM) whose contribution this read looks for, when the server named one. */
+  expectedPeriod?: string | null;
+  /** The certificate still lacking `expectedPeriod` fails the run: its month has ended with no payment credited. */
+  overdue?: boolean;
+};
 
 type Portada = { status: number; saldo: number | null; fechaUltimaCotizacion: string | null; error: string | null };
 
@@ -196,13 +206,19 @@ export async function runAfcFetch(opts: AfcFetchOptions): Promise<number> {
   const cert = parseAfcCotizacionesCertificate(pdfTextLayout(latest));
   const last = cert.legs[cert.legs.length - 1];
   log(`AFC: certificate — ${cert.legs.length} legs, total ${cert.total_clp} CLP, latest ${last?.period_ym ?? "—"} paid ${last?.pay_ymd ?? "—"}`);
+  let failed = false;
+  if (opts.expectedPeriod && (last == null || last.period_ym < opts.expectedPeriod)) {
+    if (opts.overdue) {
+      log(`AFC: OVERDUE — the contribution for ${opts.expectedPeriod} is still not credited (certificate ends at ${last?.period_ym ?? "—"})`);
+      failed = true;
+    } else log(`AFC: the contribution for ${opts.expectedPeriod} is not credited yet (certificate ends at ${last?.period_ym ?? "—"})`);
+  }
   const cartolaFiles = fs.existsSync(resolveAfcCartolasDir())
     ? fs.readdirSync(resolveAfcCartolasDir()).filter((f) => f.toLowerCase().endsWith(".pdf")).sort()
     : [];
   const cartolas = cartolaFiles.map((f) => parseAfcCartola(pdfTextLayout(path.join(resolveAfcCartolasDir(), f))));
   log(`AFC: ${cartolas.length} cartola(s) staged${cartolaFiles.length ? ` (${cartolaFiles.join(", ")})` : ""}`);
 
-  let failed = false;
   try {
     const result = await ingestClient().send(
       unemploymentFundDocumentsKind,

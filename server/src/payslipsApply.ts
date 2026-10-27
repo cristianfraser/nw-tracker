@@ -230,6 +230,14 @@ export function applyEmploymentPayslips(payload: EmploymentPayslipsPayload): Emp
 
 /** The newest stored payslip (latest period; a period's severance and salary count as one), and
  * whether every payslip of that period has a deposit paired — what the nightly schedule reads. */
+/** Newest salary payslip's period (YYYY-MM) — the month whose AFC contribution is next expected. */
+export function latestSalaryPayslipPeriod(): string | null {
+  const row = db.prepare(`SELECT MAX(period_month) AS period FROM payroll_work_earnings WHERE earning_type = 'salary'`).get() as
+    | { period: string | null }
+    | undefined;
+  return row?.period ?? null;
+}
+
 export function latestPayslip(): { period: string; paired: boolean } | null {
   const row = db
     .prepare(

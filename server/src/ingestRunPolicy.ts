@@ -160,8 +160,43 @@ export function decideAfpUnoFetch(): { reason: string } {
 }
 
 /** Tonight's AFC read: every nightly — the stated balance, and the certificate of paid contributions. */
-export function decideAfcFetch(): { reason: string } {
-  return { reason: "nightly: the sucursal virtual's balance and certificate against the ledger" };
+/**
+ * Day of the month from which the previous payroll month's AFC contribution is looked for:
+ * Previred's electronic deadline is the 13th, and the fund credits a few days later (the
+ * September 2026 contribution, paid on the 9th, showed on the 21st).
+ */
+export const AFC_CONTRIBUTION_WINDOW_DAY = 14;
+
+/**
+ * Whether tonight's nightly reads the AFC's sucursal virtual. A payslip for month M says an AFC
+ * contribution for M is coming (the employer pays it through Previred during M+1), so from the
+ * 14th of M+1 the read runs every night until M's contribution is in the ledger, then nothing
+ * until the next payslip's month; a month with no payslip costs no read. `overdue` once M+1 has
+ * ended without it — the fetcher then fails its step, so an employer that stopped paying is
+ * noticed. The mailed cartolas do not go through this rule: the runner reads the AFC the night
+ * a cartola is staged, whatever the server said.
+ */
+export function decideAfcFetch(i: {
+  now: Date;
+  /** Newest salary payslip's period (YYYY-MM), or null. */
+  latestSalaryPayslipPeriod: string | null;
+  /** Newest AFC contribution period in the ledger (YYYY-MM), or null. */
+  latestContributionPeriod: string | null;
+}): { reason: string; expected_period: string; overdue: boolean } | null {
+  const expected = i.latestSalaryPayslipPeriod;
+  if (expected == null) return null;
+  if (i.latestContributionPeriod != null && i.latestContributionPeriod >= expected) return null;
+  const today = chileWallClockAt(i.now).ymd;
+  const [y, m] = [Number(expected.slice(0, 4)), Number(expected.slice(5, 7))];
+  const ym = (year: number, month: number) => `${year + Math.floor((month - 1) / 12)}-${String(((month - 1) % 12) + 1).padStart(2, "0")}`;
+  const windowStart = `${ym(y, m + 1)}-${String(AFC_CONTRIBUTION_WINDOW_DAY).padStart(2, "0")}`;
+  if (today < windowStart) return null;
+  const overdue = today >= `${ym(y, m + 2)}-01`;
+  return {
+    reason: `no AFC contribution for ${expected} in the ledger yet (payslip on file, window from ${windowStart})${overdue ? " — overdue" : ""}`,
+    expected_period: expected,
+    overdue,
+  };
 }
 
 /** The last day of a month on which the nightly still looks for the previous month's payslip. */

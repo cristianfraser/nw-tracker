@@ -1,7 +1,7 @@
 /**
  * AFC (Fondo de Cesantía) through ClaveÚnica:
  *
- *   npm run fetch:afc -- [--apply] [--background] [--clave-unica]   # the nightly read (fetch.ts)
+ *   npm run fetch:afc -- [--apply] [--background] [--clave-unica] [--expect=YYYY-MM] [--overdue]   # the nightly read (fetch.ts)
  *   npm run fetch:afc -- --capture [--clave-unica] [--code-from-stdin] [--minutes=N] [--force]   # a supervised capture
  *
  * The sign-in is the AFC's own clave; `--clave-unica` takes the ClaveÚnica path (e-mail code).
@@ -25,7 +25,11 @@ async function main(): Promise<number> {
   const force = argv.includes("--force");
   const background = argv.includes("--background");
   const login = argv.includes("--clave-unica") ? "clave_unica" : "afc";
-  if (!argv.includes("--capture")) return runAfcFetch({ apply: argv.includes("--apply"), background, force, minIntervalMinutes, login });
+  if (!argv.includes("--capture")) {
+    const expectedPeriod = argv.find((a) => a.startsWith("--expect="))?.split("=")[1] ?? null;
+    if (expectedPeriod != null && !/^\d{4}-\d{2}$/.test(expectedPeriod)) throw new Error(`--expect takes YYYY-MM, got «${expectedPeriod}»`);
+    return runAfcFetch({ apply: argv.includes("--apply"), background, force, minIntervalMinutes, login, expectedPeriod, overdue: argv.includes("--overdue") });
+  }
   const minutesRaw = Number(argv.find((a) => a.startsWith("--minutes="))?.split("=")[1]);
   return runAfcCapture(
     { capture: true, background, movementsOnly: false, minIntervalMinutes, force, only: [] },
