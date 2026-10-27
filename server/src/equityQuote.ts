@@ -189,7 +189,7 @@ export function equityMarketKind(ticker: string): EquityMarketKind {
  * (weekdays minus `CHILE_CLOSED_YMD`; the NYSE calendar plays no part).
  * Approximate on purpose: live rows are additionally freshness-gated by `liveQuotesMaxAgeMs`.
  */
-function isSantiagoRegularSessionOpen(now: Date): boolean {
+export function isSantiagoRegularSessionOpen(now: Date): boolean {
   const cl = chileWallClockAt(now);
   if (!isChileBusinessDay(cl.ymd)) return false;
   const mins = cl.hour * 60 + cl.minute;

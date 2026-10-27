@@ -669,6 +669,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ date, buy_clp_per_usd, sell_clp_per_usd }),
     }),
+  liveQuotesStamp: () => j<{ stamp: string | null }>("/api/live-quotes/stamp"),
   // Values come back in the display unit (server-side conversion); CLP is the default.
   marketTicker: (unit: "clp" | "usd") =>
     j<import("./types").MarketTickerResponse>(

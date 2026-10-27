@@ -56,3 +56,40 @@ export function planAfterTick(budgetRemaining: number, failedWholesale: boolean)
   const attempt = RETRY_DELAYS_MS.length - budgetRemaining;
   return { delayMs: RETRY_DELAYS_MS[attempt] ?? null, budgetRemaining: budgetRemaining - 1 };
 }
+
+/**
+ * Delay after a market's opening minute before its first poll. Yahoo moves `regularMarketTime`
+ * to the new session within the first minute of trading (2026-10-27: the 10:31:12 Chile poll
+ * read the session that opened at 10:30:00), so a few seconds is enough to read it.
+ */
+export const OPEN_TICK_DELAY_MS = 20_000;
+
+const MINUTE_MS = 60_000;
+
+/**
+ * When the next poll runs. Ticks sit on wall-clock multiples of the cadence — the session
+ * cadence while a tracked market is open, the base one otherwise — and the minute a market
+ * opens gets its own tick `OPEN_TICK_DELAY_MS` later, so live prices land right after the bell
+ * instead of whenever the process happened to start (2026-10-27: polls at :x1:12 / :x6:12 from
+ * the last restart, up to five minutes of the session's start read as yesterday's close).
+ *
+ * `sessionOpenAt` says whether any market the poll prices is in its regular session at an
+ * instant; opens land on whole minutes (09:30 New York, 09:30 Chile), so open edges are found
+ * by checking the minute boundaries up to the next aligned tick.
+ */
+export function nextLiveQuotesTickAtMs(
+  nowMs: number,
+  baseIntervalMs: number,
+  sessionIntervalMs: number,
+  sessionOpenAt: (at: Date) => boolean
+): number {
+  const step = sessionOpenAt(new Date(nowMs)) ? sessionIntervalMs : baseIntervalMs;
+  const aligned = (Math.floor(nowMs / step) + 1) * step;
+  for (let m = Math.floor(nowMs / MINUTE_MS) * MINUTE_MS; m <= aligned; m += MINUTE_MS) {
+    const openTick = m + OPEN_TICK_DELAY_MS;
+    if (openTick <= nowMs) continue;
+    if (openTick >= aligned) break;
+    if (sessionOpenAt(new Date(m)) && !sessionOpenAt(new Date(m - MINUTE_MS))) return openTick;
+  }
+  return aligned;
+}

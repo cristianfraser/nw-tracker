@@ -7,6 +7,7 @@ import { fetchYahooLiveUsdClpPerUsd, shouldUseLiveFxQuote } from "./fxLive.js";
 import { syncYahooFxUsdFromYahoo, yahooFxUsdSyncDue } from "./fxYahooEodSync.js";
 import { priorNyseSessionYmd } from "./marketHolidays.js";
 import { invalidateMarketDataAggregations } from "./aggregationCache.js";
+import { noteLiveQuotesChanged } from "./liveQuotesStamp.js";
 import {
   getLatestLiveEquityQuoteRow,
   getLatestLiveFxQuoteRow,
@@ -242,7 +243,10 @@ export async function syncAllLiveMarketQuotes(now = new Date()): Promise<LiveMar
   // so the cached per-account daily mark series survive — a rebuilt daily view re-prices just
   // today (the one day never cached) instead of re-walking all of history every 5 minutes.
   const valuesChanged = equities.some((r) => r.changed === true) || fxSync.changed;
-  if (valuesChanged) invalidateMarketDataAggregations("live_tail");
+  if (valuesChanged) {
+    noteLiveQuotesChanged(fetchedAt);
+    invalidateMarketDataAggregations("live_tail");
+  }
 
   console.log(
     `live-quotes:sync — equities ${okCount}/${equities.length}, fx ${fxRows} row(s)${shouldUseLiveFxQuote(now) ? " (Yahoo CLP=X)" : " (Yahoo EOD fx_daily)"}, pruned ${pruned}${valuesChanged ? ", aggregations invalidated" : ""}`

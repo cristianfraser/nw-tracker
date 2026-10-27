@@ -5,6 +5,7 @@ import { db } from "../db.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { getMarketSeriesPayload } from "../marketSeries.js";
 import { getMarketTickerPayload } from "../marketTicker.js";
+import { liveQuotesStamp } from "../liveQuotesStamp.js";
 import {
   addManualWatchlistTickerFromYahoo,
   deleteManualWatchlistRow,
@@ -90,6 +91,12 @@ app.post("/api/fx", (req, res) => {
 /** Upsert UF (CLF): body { date: 'YYYY-MM-DD', clp_per_uf: number } CLP per 1 UF */
 app.get("/api/market-series", (_req, res) => {
   res.json(getMarketSeriesPayload());
+});
+
+// When the live prices last moved (published once the dashboard caches carry them); the client
+// polls it and refetches on change. In-process state only — `null` until a poll moves a price.
+app.get("/api/live-quotes/stamp", (_req, res) => {
+  res.json({ stamp: liveQuotesStamp() });
 });
 
 // `?unit=usd` returns values and changes in USD (the app's CLP/USD toggle); default CLP.
