@@ -73,6 +73,20 @@ function CloseDateCell({ row }: { row: CcFacturacionDto }) {
   return <>{row.close_date}</>;
 }
 
+/** Pay-by with its provenance: one derived from the close (no statement prints it yet) reads «≈». */
+function PayByCell({ row }: { row: CcFacturacionDto }) {
+  const { t } = useTranslation();
+  if (row.pay_by == null) return <>—</>;
+  if (row.pay_by_source === "derived") {
+    return (
+      <span className="muted" title={t("accountDetail.creditCard.payByDerivedHint")}>
+        ≈ {row.pay_by}
+      </span>
+    );
+  }
+  return <>{row.pay_by}</>;
+}
+
 /** A bare asterisk next to a month closed at the bank whose statement is not imported yet. */
 function ProvisionalMark({ row }: { row: CcFacturacionDto }) {
   const { t } = useTranslation();
@@ -125,7 +139,7 @@ function FacturacionMobileCard({
     <TableMobileCard title={title}>
       <TableMobileCardSection>
         <TableMobileCardRow label={labels.closeDate} value={<CloseDateCell row={row} />} />
-        <TableMobileCardRow label={labels.payBy} value={row.pay_by ?? "—"} />
+        <TableMobileCardRow label={labels.payBy} value={<PayByCell row={row} />} />
       </TableMobileCardSection>
       <TableMobileCardSection>
         <TableMobileCardRow
@@ -361,7 +375,9 @@ export function CreditCardFacturacionesTable({
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>
                   <CloseDateCell row={row} />
                 </td>
-                <td className={cn("mono", "desktop-only", styles.nowrap)}>{row.pay_by ?? "—"}</td>
+                <td className={cn("mono", "desktop-only", styles.nowrap)}>
+                  <PayByCell row={row} />
+                </td>
                 <td className="mono desktop-only">{formatOrDash(row.facturado_clp, formatClp)}</td>
                 <td className={cn("mono", "desktop-only", styles.nowrap)}>{formatFacturadoUsdCell(row)}</td>
                 <td className="mono desktop-only">{formatOrDash(row.facturado_total_clp, formatClp)}</td>

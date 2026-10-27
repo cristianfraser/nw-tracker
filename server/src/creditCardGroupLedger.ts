@@ -99,6 +99,7 @@ function mergeFacturaciones(ledgers: CcLedgerResponse[]): CcFacturacionRow[] {
           prev.billing_month >= row.billing_month ? prev.close_date_iso : row.close_date_iso,
         pay_by: prev.pay_by ?? row.pay_by,
         pay_by_iso: prev.pay_by_iso ?? row.pay_by_iso,
+        pay_by_source: prev.pay_by != null ? prev.pay_by_source : row.pay_by_source,
         // Each card's dollars are already in pesos at its own rate; a merged row names a rate only
         // when the members agree (or just one bills in dollars).
         ...mergedUsdRate(prev, row),

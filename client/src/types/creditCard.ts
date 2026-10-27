@@ -98,6 +98,8 @@ export interface CcFacturacionDto {
   close_date_iso: string;
   pay_by: string | null;
   pay_by_iso: string | null;
+  /** The statement's printed PAGAR HASTA, or derived from the close while no statement prints it. */
+  pay_by_source: "statement" | "derived" | null;
   facturado_clp: number | null;
   facturado_usd: number | null;
   facturado_usd_clp: number | null;

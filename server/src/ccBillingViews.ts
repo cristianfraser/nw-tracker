@@ -110,6 +110,10 @@ export type CcFacturacionRow = {
   close_date_iso: string;
   pay_by: string | null;
   pay_by_iso: string | null;
+  /** Where the pay-by comes from: the statement's printed PAGAR HASTA, or derived from the close
+   * (~10th of the next month) while no statement prints it — open and provisional months, and a
+   * statement without the field. Null with no pay-by at all. */
+  pay_by_source: "statement" | "derived" | null;
   facturado_clp: number | null;
   facturado_usd: number | null;
   facturado_usd_clp: number | null;
@@ -874,7 +878,7 @@ function applyFacturacionUsdRates(accountId: number, rows: CcFacturacionRow[]): 
 function resolveFacturacionPayBy(
   slot: CcStatementSlotByCurrency,
   primary: CcStatementRow
-): { pay_by: string | null; pay_by_iso: string | null } {
+): { pay_by: string | null; pay_by_iso: string | null; pay_by_source: CcFacturacionRow["pay_by_source"] } {
   for (const st of [slot.clp, slot.usd]) {
     if (!st) continue;
     const explicit = String(st.pay_by ?? "").trim();
@@ -882,6 +886,7 @@ function resolveFacturacionPayBy(
       return {
         pay_by: explicit,
         pay_by_iso: parseDdMmYyToIso(explicit),
+        pay_by_source: "statement",
       };
     }
   }
@@ -889,8 +894,8 @@ function resolveFacturacionPayBy(
     statement_date: primary.statement_date_iso ?? primary.statement_date,
     period_to: primary.period_to ?? undefined,
   });
-  if (!payByIso) return { pay_by: null, pay_by_iso: null };
-  return { pay_by: ddMmYyyyFromIso(payByIso), pay_by_iso: payByIso };
+  if (!payByIso) return { pay_by: null, pay_by_iso: null, pay_by_source: null };
+  return { pay_by: ddMmYyyyFromIso(payByIso), pay_by_iso: payByIso, pay_by_source: "derived" };
 }
 
 export function buildFacturaciones(
@@ -1003,7 +1008,7 @@ function buildFacturacionesInner(
     const facturadoClp = clpDerived.facturado_clp;
     const facturadoUsd = usdDerived.facturado_usd;
 
-    const { pay_by, pay_by_iso: payByIso } = resolveFacturacionPayBy(slot, primary);
+    const { pay_by, pay_by_iso: payByIso, pay_by_source } = resolveFacturacionPayBy(slot, primary);
     const facturadoUsdClp =
       facturadoUsd != null
         ? usdToClpAsDebt(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
@@ -1035,6 +1040,7 @@ function buildFacturacionesInner(
       close_date_iso: primary.statement_date_iso,
       pay_by,
       pay_by_iso: payByIso,
+      pay_by_source,
       facturado_clp: facturadoClp,
       facturado_usd: facturadoUsd,
       facturado_usd_clp: facturadoUsdClp,
@@ -1121,6 +1127,7 @@ function openFacturacionRow(
     close_date_iso: close.close_iso,
     pay_by: payByIso ? ddMmYyyyFromIso(payByIso) : null,
     pay_by_iso: payByIso,
+    pay_by_source: payByIso ? "derived" : null,
     facturado_clp: facturadoTotal - facturadoUsdClp,
     facturado_usd: facturadoUsd,
     facturado_usd_clp: facturadoUsdClp,
@@ -1149,6 +1156,7 @@ function provisionalFacturacionRow(
     close_date_iso: pv.close_iso,
     pay_by: pv.pay_by_iso ? ddMmYyyyFromIso(pv.pay_by_iso) : null,
     pay_by_iso: pv.pay_by_iso,
+    pay_by_source: pv.pay_by_iso ? "derived" : null,
     facturado_clp: pv.facturado_clp,
     facturado_usd: pv.facturado_usd,
     facturado_usd_clp: pv.facturado_usd_clp,

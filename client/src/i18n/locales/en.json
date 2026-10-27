@@ -728,6 +728,7 @@
       "facturacionesTitle": "Billing cycles",
       "colCloseDate": "Close date",
       "colPayBy": "Pay by",
+      "payByDerivedHint": "Derived from the close (about the 10th of the next month): no statement prints this pay-by yet.",
       "colFacturadoUsd": "Billed US$",
       "colFacturadoTotal": "Total billed",
       "colCuotaAPagar": "Payment due",
