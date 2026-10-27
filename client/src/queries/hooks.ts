@@ -7,7 +7,6 @@ import {
   fetchDashboardNavContext,
   fetchDashboardNavSnapshot,
   fetchPortfolioGroupBundle,
-  type DashboardNavContext,
 } from "./fetchers";
 import {
   hasDashboardNavSnapshotCache,
@@ -15,55 +14,22 @@ import {
   readDashboardNavSnapshotCache,
   writeDashboardNavSnapshotCache,
 } from "./dashboardNavSnapshotCache";
-import { readFxLatestCache } from "./fxLatestCache";
-import {
-  DISPLAY_UNIT_STALE_MS,
-  displayUnitQueryBehavior,
-  displayUnitQueryBehaviorFor,
-} from "./displayUnitQueries";
+import { DISPLAY_UNIT_STALE_MS, displayUnitQueryBehaviorFor } from "./displayUnitQueries";
 import { queryKeys, type DisplayUnit } from "./keys";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
-import {
-  synthesizeMissingUsdOnDashboardNavContext,
-  synthesizeMissingUsdOnGroupPageShell,
-  synthesizeMissingUsdOnNavSnapshot,
-} from "../placeholders/synthesizeMissingUsd";
 import { hasGroupPageShellCache, readGroupPageShellCache } from "./groupPageShellCache";
 import { readSidebarNavCache, writeSidebarNavCache } from "./sidebarNavCache";
-import type { GroupPageShell } from "./groupPageShell";
 import type { NavTreeNodeDto } from "../types";
-
-/** A snapshot is shown with the numbers it carries; only a USD view of a CLP payload derives its USD fields. */
-function prepareNavSnapshotForDisplay(
-  unit: DisplayUnit,
-  raw: import("../types").DashboardNavSnapshotResponse
-) {
-  return unit === "usd" ? synthesizeMissingUsdOnNavSnapshot(raw, readFxLatestCache()) : raw;
-}
 
 /** Snapshots read from localStorage (placeholders), as opposed to live server payloads. */
 const navSnapshotsFromLocalCache = new WeakSet<object>();
 
+/** A unit reads its own cached snapshot only — a CLP cache never stands in for USD. */
 function readNavSnapshotCacheForUnit(unit: DisplayUnit) {
-  const raw =
-    readDashboardNavSnapshotCache(unit) ??
-    (unit === "usd" ? readDashboardNavSnapshotCache("clp") : undefined);
-  if (!raw) return undefined;
-  const prepared = prepareNavSnapshotForDisplay(unit, raw);
-  navSnapshotsFromLocalCache.add(prepared);
-  return prepared;
-}
-
-function readGroupPageShellCacheForUnit(
-  portfolioGroup: string,
-  unit: DisplayUnit
-): GroupPageShell | undefined {
-  const cached = readGroupPageShellCache(portfolioGroup, unit);
-  if (cached) return cached;
-  if (unit !== "usd") return undefined;
-  const clpShell = readGroupPageShellCache(portfolioGroup, "clp");
-  if (!clpShell) return undefined;
-  return synthesizeMissingUsdOnGroupPageShell(clpShell, readFxLatestCache());
+  const snapshot = readDashboardNavSnapshotCache(unit);
+  if (!snapshot) return undefined;
+  navSnapshotsFromLocalCache.add(snapshot);
+  return snapshot;
 }
 
 export { hasDashboardNavSnapshotCache } from "./dashboardNavSnapshotCache";
@@ -107,13 +73,6 @@ export function useDailySeries(
   });
 }
 
-/**
- * Held prior-unit data during a CLP→USD switch gets its USD fields synthesized (FX approximation),
- * memoized per source object so downstream `useMemo`s keep a stable identity across renders —
- * the placeholderData fn runs on every render while the new-unit fetch is in flight.
- */
-const synthesizedNavCtxByPrev = new WeakMap<DashboardNavContext, DashboardNavContext>();
-
 export function useDashboardNavContext(unit: DisplayUnit, enabled = true) {
   return useQuery({
     queryKey: queryKeys.dashboardNav(unit),
@@ -122,16 +81,8 @@ export function useDashboardNavContext(unit: DisplayUnit, enabled = true) {
       return ctx;
     },
     enabled,
-    ...displayUnitQueryBehavior,
-    placeholderData: (prev: DashboardNavContext | undefined) => {
-      if (!prev || unit !== "usd") return prev;
-      let synthesized = synthesizedNavCtxByPrev.get(prev);
-      if (!synthesized) {
-        synthesized = synthesizeMissingUsdOnDashboardNavContext(prev, readFxLatestCache());
-        synthesizedNavCtxByPrev.set(prev, synthesized);
-      }
-      return synthesized;
-    },
+    // A unit change holds nothing: the pages fall back to the unit's own nav snapshot cache, never a converted context.
+    ...displayUnitQueryBehaviorFor(queryKeys.dashboardNav(unit), 2),
   });
 }
 
@@ -147,7 +98,7 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     queryFn: async () => {
       const snapshot = await fetchDashboardNavSnapshot(unit);
       writeDashboardNavSnapshotCache(unit, snapshot);
-      return prepareNavSnapshotForDisplay(unit, snapshot);
+      return snapshot;
     },
     initialData: () => (cachedStrip ? readNavSnapshotCacheForUnit(unit) : undefined),
     initialDataUpdatedAt: cachedStrip ? Date.now() : undefined,
@@ -248,7 +199,7 @@ export function useGroupPageShell(opts: {
   return useQuery({
     queryKey: queryKeys.groupPageShell(portfolioGroup, unit),
     queryFn: () => {
-      const cached = readGroupPageShellCacheForUnit(portfolioGroup, unit);
+      const cached = readGroupPageShellCache(portfolioGroup, unit);
       if (cached) return cached;
       if (!navNode) {
         throw new Error("useGroupPageShell: navNode required when cache is empty");
@@ -256,7 +207,7 @@ export function useGroupPageShell(opts: {
       return buildGroupPageShellFromNav(navNode, unit);
     },
     initialData: () =>
-      cachedShell ? readGroupPageShellCacheForUnit(portfolioGroup, unit) : undefined,
+      cachedShell ? readGroupPageShellCache(portfolioGroup, unit) : undefined,
     initialDataUpdatedAt: cachedShell ? Date.now() : undefined,
     enabled: enabled && Boolean(portfolioGroup && navNode) && !cachedShell,
     ...displayUnitQueryBehaviorFor(queryKeys.groupPageShell(portfolioGroup, unit), 2),

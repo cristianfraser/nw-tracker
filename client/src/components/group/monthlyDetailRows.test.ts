@@ -1,5 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { writeFxLatestCache } from "../../queries/fxLatestCache";
+import { describe, expect, it } from "vitest";
 import { consolidatedRowsForDisplay } from "../../useGroupInfoConsolidatedTables";
 import type { ConsolidatedMonthlyPerfRow } from "../../types";
 import { resolveMonthlyDetailRows } from "./monthlyDetailRows";
@@ -86,21 +85,6 @@ describe("resolveMonthlyDetailRows", () => {
 });
 
 describe("consolidatedRowsForDisplay", () => {
-  const storage: Record<string, string> = {};
-
-  beforeEach(() => {
-    for (const k of Object.keys(storage)) delete storage[k];
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => storage[key] ?? null,
-      setItem: (key: string, value: string) => {
-        storage[key] = value;
-      },
-      removeItem: (key: string) => {
-        delete storage[key];
-      },
-    });
-  });
-
   it("same-unit and uf payloads pass through by reference", () => {
     const rows = [row()];
     expect(consolidatedRowsForDisplay(rows, "clp", "clp")).toBe(rows);
@@ -108,16 +92,8 @@ describe("consolidatedRowsForDisplay", () => {
     expect(consolidatedRowsForDisplay(rows, "uf", "usd")).toBe(rows);
   });
 
-  it("converts held CLP rows to USD via the cached FX rate", () => {
-    writeFxLatestCache({ date: "2025-01-31", clp_per_usd: 950 });
-    const out = consolidatedRowsForDisplay([row()], "clp", "usd");
-    expect(out).not.toBeNull();
-    expect(out![0]!.closing_value).toBeCloseTo(1_000, 6);
-    expect(out![0]!.nominal_pl).toBeCloseTo(10, 6);
-    expect(out![0]!.pct_month).toBe(0.01);
-  });
-
-  it("returns null when no FX rate is available (caller falls back to placeholders)", () => {
+  it("returns null for a held prior-unit payload (caller falls back to placeholders)", () => {
     expect(consolidatedRowsForDisplay([row()], "clp", "usd")).toBeNull();
+    expect(consolidatedRowsForDisplay([row()], "usd", "clp")).toBeNull();
   });
 });

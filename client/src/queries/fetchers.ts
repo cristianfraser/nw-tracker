@@ -84,9 +84,8 @@ function sumDepositsUsd(accounts: DashboardResponse["accounts"], include: (a: Da
 
 /**
  * Strip `dash` for the nav cards: every bucket total and prior close is the server's
- * `nw_bucket_totals` — account rows are never summed into them. A CLP payload shown in USD
- * (the placeholder of a CLP→USD switch, or the CLP snapshot cache on a first USD visit) gets
- * its USD bucket totals FX-converted by `synthesizeMissingUsdOn…` before it reaches here.
+ * `nw_bucket_totals` — account rows are never summed into them, and a payload is always its
+ * own unit's (a CLP payload is never shown in USD).
  */
 export function dashPickForNavStrip(
   ctx: Omit<DashboardNavContext, "liabilities_breakdown"> & {

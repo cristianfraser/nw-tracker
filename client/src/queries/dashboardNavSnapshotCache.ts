@@ -28,11 +28,9 @@ export function navSnapshotCoversNavTree(
   return roots.every((root) => root == null || covers(root));
 }
 
-/** True when localStorage has a nav-snapshot row for this unit (CLP fallback for USD). */
+/** True when localStorage has a nav-snapshot row for this unit. */
 export function hasDashboardNavSnapshotCache(unit: DisplayUnit): boolean {
-  if (readDashboardNavSnapshotCache(unit) != null) return true;
-  if (unit === "usd" && readDashboardNavSnapshotCache("clp") != null) return true;
-  return false;
+  return readDashboardNavSnapshotCache(unit) != null;
 }
 
 /**

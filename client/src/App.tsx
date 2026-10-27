@@ -8,7 +8,6 @@ import { MortgageUfReminderToast } from "./components/layout/MortgageUfReminderT
 import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
 import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
 import { useDemoPageviewBeacon } from "./demoAnalytics";
-import { useEnsureFxLatestCache } from "./queries/useEnsureFxLatestCache";
 import { useChileDayRolloverInvalidation } from "./queries/useChileDayRolloverInvalidation";
 import { useDocumentTitleFromH1 } from "./useDocumentTitleFromH1";
 import { useFaviconFromRoute } from "./useFaviconFromRoute";
@@ -94,8 +93,6 @@ function AppTree() {
   useFaviconFromRoute();
   // Anonymous route reporting; a no-op outside the hosted demo (endpoint exists there only).
   useDemoPageviewBeacon();
-  // Seed the FX cache for CLP↔USD keep-previous conversions on deep links that skip the dashboard.
-  useEnsureFxLatestCache();
   // Refetch day-baked payloads right after Chile midnight instead of waiting out staleTime.
   useChileDayRolloverInvalidation();
   // Import the lazy chunks (charts first, then the other pages) once the browser is idle.

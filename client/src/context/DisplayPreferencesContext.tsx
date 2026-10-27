@@ -30,6 +30,7 @@ const RETIRED_PREF_LS_KEYS = [
   "nw-tracker.metricsPeriod",
   "nw-tracker.timeRange",
   "nw-tracker.chartGranularity",
+  "nw:fx-latest-v1",
 ];
 
 /**

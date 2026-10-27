@@ -32,11 +32,6 @@ import { extractGroupPageShellFromReal } from "../placeholders/groupPageShellFro
 import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageChartPlaceholders";
 import { buildPlaceholderNavStripDash } from "../placeholders/dashboardPagePlaceholders";
 import { emptyCcLedger, emptyMortgageLedger } from "../placeholders/accountDetailPlaceholders";
-import {
-  convertPortfolioGroupBundleUnit,
-  resolveClpPerUsdForKeepPrev,
-} from "../placeholders/keepPrevBundleUnit";
-import { readFxLatestCache } from "../queries/fxLatestCache";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
 import { hasDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCache";
@@ -223,17 +218,7 @@ export function LiabilitiesGroupPage() {
     );
   }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, placeholderStripDash]);
 
-  // Keep the previous unit's charts on screen (FX-converted) during a CLP↔USD switch instead of
-  // blinking to the flat-zero placeholder; snaps to exact when the real bundle resolves. Held
-  // data is only ever this group's (entity-scoped keep-previous), so it is the other unit's.
-  const keepPrevBundle = useMemo(() => {
-    if (!isPlaceholderData || !bundleReady || !data) return null;
-    const rate = resolveClpPerUsdForKeepPrev(undefined, readFxLatestCache());
-    if (rate == null) return null;
-    return convertPortfolioGroupBundleUnit(data, displayUnit, rate);
-  }, [isPlaceholderData, bundleReady, data, displayUnit]);
-
-  const resolved = useRealBundle && data ? data : (keepPrevBundle ?? placeholderBundle);
+  const resolved = useRealBundle && data ? data : placeholderBundle;
 
   const tableAccountsForPerf = useMemo(
     () =>

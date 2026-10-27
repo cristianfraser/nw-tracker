@@ -199,7 +199,6 @@ export const api = {
       `/api/dashboard/valuation-timeseries${qs ? `?${qs}` : ""}`
     );
   },
-  fxLatest: () => j<import("./types").FxLatest | null>("/api/fx/latest"),
   accountsByPortfolioGroup: (portfolioGroup: string, unit: "clp" | "usd" = "clp") => {
     const q = new URLSearchParams();
     q.set("portfolio_group", portfolioGroup);
