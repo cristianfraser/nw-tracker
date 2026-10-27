@@ -114,17 +114,15 @@ function CreditCardInstallmentsSection({
     <thead>
       <tr>
         <th className="desktop-only">{t("account.creditCard.colPurchase")}</th>
-        <th className="desktop-only">{t("account.creditCard.colInstallments")}</th>
-        {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colPaid")}</th> : null}
-        {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colRemain")}</th> : null}
-        <th className="desktop-only">{t("account.creditCard.colPrincipal")}</th>
+        {dueColumn === "last" ? <th className="desktop-only">{t("account.creditCard.colInstallments")}</th> : null}
+        {dueColumn === "last" ? <th className="desktop-only">{t("account.creditCard.colPrincipal")}</th> : null}
         {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colAnnualRate")}</th> : null}
         <th className="desktop-only">{t("account.creditCard.colPurchaseDate")}</th>
-        <th className="desktop-only">{t("account.creditCard.colPurchaseBillingMonth")}</th>
-        {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colFirstDue")}</th> : null}
+        {dueColumn === "last" ? (
+          <th className="desktop-only">{t("account.creditCard.colPurchaseBillingMonth")}</th>
+        ) : null}
         {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetCsv")}</th> : null}
         <th className="desktop-only">{t("account.creditCard.colCuotaClp")}</th>
-        {dueColumn !== "last" ? <th className="desktop-only">{t("account.creditCard.colRemainingClp")}</th> : null}
         {dueColumn === "last" ? <th className="desktop-only">{t("account.creditCard.colLastPaid")}</th> : null}
         <th className="mobile-only" aria-hidden="true" />
       </tr>
@@ -156,19 +154,17 @@ function CreditCardInstallmentsSection({
                 </Button>
               ) : null}
             </td>
-            <td className="mono desktop-only">{p.installment_count}</td>
-            {opts.dueColumn !== "last" ? <td className="mono desktop-only">{p.installments_paid}</td> : null}
-            {opts.dueColumn !== "last" ? <td className="mono desktop-only">{p.remaining_installments}</td> : null}
-            <td className="mono desktop-only">{formatClp(p.principal_clp)}</td>
+            {opts.dueColumn === "last" ? <td className="mono desktop-only">{p.installment_count}</td> : null}
+            {opts.dueColumn === "last" ? <td className="mono desktop-only">{formatClp(p.principal_clp)}</td> : null}
             {!hasLedger ? (
               <td className="mono desktop-only">{formatGroupedDecimal(p.annual_interest_pct, 2)}</td>
             ) : null}
             <td className="mono desktop-only">{p.purchase_date ?? "—"}</td>
-            <td className="mono desktop-only">{p.purchase_billing_month ?? p.purchase_month ?? "—"}</td>
-            {opts.dueColumn !== "last" ? <td className="mono desktop-only">{p.first_due_month}</td> : null}
+            {opts.dueColumn === "last" ? (
+              <td className="mono desktop-only">{p.purchase_billing_month ?? p.purchase_month ?? "—"}</td>
+            ) : null}
             {!hasLedger ? <td className="mono desktop-only">{p.schedule_offset_months}</td> : null}
             <td className="mono desktop-only">{formatClp(p.cuota_clp)}</td>
-            {opts.dueColumn !== "last" ? <td className="mono desktop-only">{formatClp(p.remaining_principal_clp)}</td> : null}
             {opts.dueColumn === "last" ? (
               <td className="mono desktop-only">
                 {p.last_paid_month ? formatYearMonthLabel(p.last_paid_month) : "—"}

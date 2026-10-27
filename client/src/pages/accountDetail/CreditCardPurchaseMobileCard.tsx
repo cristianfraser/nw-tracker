@@ -60,16 +60,12 @@ export function CreditCardPurchaseMobileCard({
         ) : null}
       </TableMobileCardSection>
 
-      <TableMobileCardSection>
-        <TableMobileCardRow label={t("account.creditCard.colInstallments")} value={String(purchase.installment_count)} />
-        {dueColumn !== "last" ? (
-          <TableMobileCardRow label={t("account.creditCard.colPaid")} value={String(purchase.installments_paid)} />
-        ) : null}
-        {dueColumn !== "last" ? (
-          <TableMobileCardRow label={t("account.creditCard.colRemain")} value={String(purchase.remaining_installments)} />
-        ) : null}
-        <TableMobileCardRow label={t("account.creditCard.colPrincipal")} value={formatClp(purchase.principal_clp)} />
-      </TableMobileCardSection>
+      {dueColumn === "last" ? (
+        <TableMobileCardSection>
+          <TableMobileCardRow label={t("account.creditCard.colInstallments")} value={String(purchase.installment_count)} />
+          <TableMobileCardRow label={t("account.creditCard.colPrincipal")} value={formatClp(purchase.principal_clp)} />
+        </TableMobileCardSection>
+      ) : null}
 
       <TableMobileCardSection>
         {!hasLedger ? (
@@ -79,12 +75,11 @@ export function CreditCardPurchaseMobileCard({
           />
         ) : null}
         <TableMobileCardRow label={t("account.creditCard.colPurchaseDate")} value={purchase.purchase_date ?? "—"} />
-        <TableMobileCardRow
-          label={t("account.creditCard.colPurchaseBillingMonth")}
-          value={purchase.purchase_billing_month ?? purchase.purchase_month ?? "—"}
-        />
-        {dueColumn !== "last" ? (
-          <TableMobileCardRow label={t("account.creditCard.colFirstDue")} value={purchase.first_due_month} />
+        {dueColumn === "last" ? (
+          <TableMobileCardRow
+            label={t("account.creditCard.colPurchaseBillingMonth")}
+            value={purchase.purchase_billing_month ?? purchase.purchase_month ?? "—"}
+          />
         ) : null}
         {dueColumn === "last" ? (
           <TableMobileCardRow
@@ -102,9 +97,6 @@ export function CreditCardPurchaseMobileCard({
 
       <TableMobileCardSection>
         <TableMobileCardRow label={t("account.creditCard.colCuotaClp")} value={formatClp(purchase.cuota_clp)} />
-        {dueColumn !== "last" ? (
-          <TableMobileCardRow label={t("account.creditCard.colRemainingClp")} value={formatClp(purchase.remaining_principal_clp)} />
-        ) : null}
       </TableMobileCardSection>
 
       {dueColumn === "none" && purchase.cuota_progress ? (
@@ -120,10 +112,10 @@ export function purchaseTableColSpan(
   hasLedger: boolean,
   dueColumn: "last" | "none"
 ): number {
-  // Base desktop columns — "last": Compra, Cuotas, Principal, Fecha, Mes facturación,
-  // Cuota CLP, Mes último pago; "none" swaps the último-pago column for Pagadas, Restan,
-  // 1.ª cuota, Restante CLP. Without a ledger the Tasa + Offset CSV columns are added.
-  // +1 = the mobile-only cell.
-  const desktop = (dueColumn === "last" ? 7 : 10) + (hasLedger ? 0 : 2);
+  // Base desktop columns — "last" (completed): Compra, Cuotas, Principal, Fecha, Mes
+  // facturación, Cuota CLP, Mes último pago; "none" (active): Compra, Fecha, Cuota CLP — the
+  // progress bar under the row carries the rest. Without a ledger the Tasa + Offset CSV
+  // columns are added. +1 = the mobile-only cell.
+  const desktop = (dueColumn === "last" ? 7 : 3) + (hasLedger ? 0 : 2);
   return desktop + 1;
 }
