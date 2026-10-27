@@ -2525,6 +2525,10 @@
         "en": "Pay by",
         "es": "Pagar hasta"
       },
+      "payByDerivedHint": {
+        "en": "Derived from the close (about the 10th of the next month): no statement prints this pay-by yet.",
+        "es": "Derivada del cierre (alrededor del 10 del mes siguiente): ningún estado de cuenta imprime aún esta fecha."
+      },
       "colFacturadoUsd": {
         "en": "Billed US$",
         "es": "Facturado US$"

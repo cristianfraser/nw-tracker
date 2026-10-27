@@ -917,6 +917,10 @@ describe("credit-card close evidence", () => {
     expectDetalleShowsChart(group);
     const october = group.facturaciones!.find((f) => f.billing_month === "2026-10")!;
     expect(october.is_open_month).toBe(true);
+    // No statement prints October's PAGAR HASTA yet: the pay-by is the ~10th-of-next-month rule.
+    expect(october.pay_by_source).toBe("derived");
+    const statementClosed = group.facturaciones!.filter((f) => f.close_date_source === "statement");
+    for (const f of statementClosed) expect(f.pay_by_source).toBe("statement");
     expect(october.facturado_total_clp!).toBeGreaterThanOrEqual(30_000);
     expect(october.deuda_en_cuotas_clp!).toBeGreaterThanOrEqual(30_000);
     const row = group.billing_detail_by_month!.find((r) => r.billing_month === "2026-10")!;

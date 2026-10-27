@@ -728,6 +728,7 @@
       "facturacionesTitle": "Facturaciones",
       "colCloseDate": "Fecha cierre",
       "colPayBy": "Pagar hasta",
+      "payByDerivedHint": "Derivada del cierre (alrededor del 10 del mes siguiente): ningún estado de cuenta imprime aún esta fecha.",
       "colFacturadoUsd": "Facturado US$",
       "colFacturadoTotal": "Facturado total",
       "colCuotaAPagar": "Cuota a pagar",

@@ -30,6 +30,7 @@ const makeFacturacion = (
   close_date: `23/${billing_month.slice(5, 7)}/${billing_month.slice(0, 4)}`,
   close_date_iso: `${billing_month}-23`,
   pay_by: null,
+  pay_by_source: null,
   pay_by_iso: null,
   facturado_clp: null,
   facturado_usd: null,
