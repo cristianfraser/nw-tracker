@@ -11,7 +11,11 @@
  * METHODOLOGY BREAK: UBS revised its estimation model across the 2024–2026 reports, so
  * 2025 medians are NOT comparable with ≤2022 ones (e.g. the US median falls from 107,739
  * to 68,998 because of the model change, not impoverishment). 2023/2024 rows bridge the
- * break by geometric interpolation and are flagged `interpolated: true`.
+ * break by geometric interpolation and are flagged `interpolated: true`. The GWR 2024
+ * (end-2023) and GWR 2025 (end-2024) editions print top-25 mean/median tables, but each
+ * edition states its figures are not comparable with the previous one, so they are NOT
+ * used as anchors (checked 2026-10-21). Refresh procedure and source inventory:
+ * docs/wealth-percentile-data-refresh.md.
  *
  * The lognormal underestimates the extreme tail (>p99.5); p99 thresholds are the reliable
  * ceiling. Percentiles are over each country's adult (20+) population, household wealth
@@ -73,13 +77,21 @@ export type WealthDistributionRecord = {
 const GWD2023 = (year: number) => `UBS Global Wealth Databook 2023, Table 2-2 (end-${year})`;
 const GWD2023_WITH_GINI = `UBS Global Wealth Databook 2023, Table 2-2 (end-2022) + Table 3-1 Gini`;
 const GWR2026 = "UBS Global Wealth Report 2026 (end-2025)";
-const CL_2025_SOURCE =
-  "Own reconstruction end-2025 (BCCh + FX + UBS Gini), validated against the UBS GWR 2026 millionaire count (~69,100); mean_fin from est. fin/debt shares of gross (0.58/0.16)";
 /**
- * GWR 2026 publishes mean/median only for its top-30 markets; MX/BR/CN fall outside both lists.
- * Their end-2025 rows are reconstructed with the CL-2025 method from published GWR 2026 figures:
- * sigma from the Gini table, mu from the UBS Millionaire Index count over extrapolated adults
- * (GWD 2023 Table 2-2 2016→2022 linear trend), median = e^mu, mean = e^(mu + sigma²/2).
+ * The Spanish Latin-America edition of GWR 2026 (p.7, running text — no table) is the only
+ * place UBS prints end-2025 per-adult levels for CL/MX/BR: Chile's average «supera
+ * ligeramente los 66.400 USD» (no median anywhere), Mexico «más de 75.000» / median «cerca
+ * de 14.500», Brazil «cerca de 27.000» / median 5.090. Rounded as printed.
+ */
+const GWR2026_LATAM_ES = "UBS Global Wealth Report 2026, Latin America edition (ES), p.7 text (end-2025)";
+const CL_2025_SOURCE =
+  `${GWR2026_LATAM_ES}: mean as printed; median own calibration so the lognormal reproduces the UBS GWR 2026 millionaire count (~69,100 = +2,593 at +3.9%) over 14.85M adults; mean_fin from est. fin/debt shares of gross (0.58/0.16)`;
+/**
+ * GWR 2026 publishes mean/median only for its top-30 markets; CN falls outside both lists and
+ * the Latin-America edition. Its end-2025 row is reconstructed with the CL method from published
+ * GWR 2026 figures: sigma from the Gini table, mu from the UBS Millionaire Index count over
+ * extrapolated adults (GWD 2023 Table 2-2 2016→2022 linear trend), median = e^mu,
+ * mean = e^(mu + sigma²/2). MX/BR adults are extrapolated the same way (nothing newer is printed).
  */
 const GWR2026_MILLIONAIRE_RECONSTRUCTION = (millionairesK: number) =>
   `Own reconstruction end-2025 from UBS GWR 2026 Gini + Millionaire Index (${millionairesK}k millionaires) over trend-extrapolated adults`;
@@ -94,8 +106,8 @@ const BASE_RECORDS: readonly WealthDistributionRecord[] = [
   { country: "CL", year: 2020, mean_usd: 57_984, median_usd: 19_564, adults_thousands: 14_259, mean_fin_usd: 37_638 - 9_770, source: GWD2023(2020) },
   { country: "CL", year: 2021, mean_usd: 50_964, median_usd: 17_554, adults_thousands: 14_358, mean_fin_usd: 34_248 - 9_121, source: GWD2023(2021) },
   { country: "CL", year: 2022, mean_usd: 54_082, median_usd: 19_544, gini: 0.788, adults_thousands: 14_409, mean_fin_usd: 35_512 - 10_352, source: GWD2023_WITH_GINI },
-  // mean_fin_usd = 62,400 × (fin_share − debt_share)/(1 − debt_share) = ×(0.58 − 0.16)/0.84
-  { country: "CL", year: 2025, mean_usd: 62_400, median_usd: 20_400, gini: 0.71, adults_thousands: 14_850, mean_fin_usd: 31_200, reconstructed: true, source: CL_2025_SOURCE },
+  // mean_fin_usd = 66,400 × (fin_share − debt_share)/(1 − debt_share) = ×(0.58 − 0.16)/0.84
+  { country: "CL", year: 2025, mean_usd: 66_400, median_usd: 23_400, gini: 0.71, adults_thousands: 14_850, mean_fin_usd: 33_200, reconstructed: true, source: CL_2025_SOURCE },
 
   // United States
   { country: "US", year: 2016, mean_usd: 385_707, median_usd: 57_398, adults_thousands: 241_360, source: GWD2023(2016) },
@@ -175,7 +187,9 @@ const BASE_RECORDS: readonly WealthDistributionRecord[] = [
   { country: "MX", year: 2020, mean_usd: 44_249, median_usd: 14_282, adults_thousands: 85_136, source: GWD2023(2020) },
   { country: "MX", year: 2021, mean_usd: 48_608, median_usd: 15_837, adults_thousands: 86_570, source: GWD2023(2021) },
   { country: "MX", year: 2022, mean_usd: 55_274, median_usd: 18_920, gini: 0.793, adults_thousands: 87_983, source: GWD2023_WITH_GINI },
-  { country: "MX", year: 2025, mean_usd: 53_000, median_usd: 16_500, gini: 0.72, adults_thousands: 92_300, reconstructed: true, source: GWR2026_MILLIONAIRE_RECONSTRUCTION(333) },
+  // The printed pair implies a fatter lognormal tail (~900k millionaires) than UBS's own Gini
+  // 0.72 / Millionaire Index 333k; UBS's distribution is not a lognormal. Printed figures kept.
+  { country: "MX", year: 2025, mean_usd: 75_000, median_usd: 14_500, gini: 0.72, adults_thousands: 92_300, source: GWR2026_LATAM_ES },
 
   // Brazil
   { country: "BR", year: 2016, mean_usd: 20_106, median_usd: 3_828, adults_thousands: 144_692, source: GWD2023(2016) },
@@ -185,7 +199,7 @@ const BASE_RECORDS: readonly WealthDistributionRecord[] = [
   { country: "BR", year: 2020, mean_usd: 20_168, median_usd: 3_757, adults_thousands: 153_307, source: GWD2023(2020) },
   { country: "BR", year: 2021, mean_usd: 22_649, median_usd: 4_156, adults_thousands: 155_248, source: GWD2023(2021) },
   { country: "BR", year: 2022, mean_usd: 29_452, median_usd: 5_702, gini: 0.884, adults_thousands: 157_120, source: GWD2023_WITH_GINI },
-  { country: "BR", year: 2025, mean_usd: 29_600, median_usd: 5_300, gini: 0.81, adults_thousands: 163_300, reconstructed: true, source: GWR2026_MILLIONAIRE_RECONSTRUCTION(386) },
+  { country: "BR", year: 2025, mean_usd: 27_000, median_usd: 5_090, gini: 0.81, adults_thousands: 163_300, source: GWR2026_LATAM_ES },
 
   // Mainland China
   { country: "CN", year: 2016, mean_usd: 48_297, median_usd: 16_295, adults_thousands: 1_077_268, source: GWD2023(2016) },
