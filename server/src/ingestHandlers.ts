@@ -73,6 +73,7 @@ function cardUnbilledDetails(result: CardUnbilledMovementsImportResult): CardUnb
             billed_clp: a.feed_close.saldo_inicial_clp,
             billed_usd: a.feed_close.saldo_inicial_usd,
             rows_billing_month: a.feed_close.rows_billing_month,
+            lines_in_later_cycle: a.feed_close.lines_in_later_cycle,
             lines_moved_forward: a.feed_close.lines_moved_forward,
             provisional_check: a.feed_close.provisional_check,
           }

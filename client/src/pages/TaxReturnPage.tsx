@@ -413,7 +413,7 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
       ) : null}
       {a.distributions.length > 0 ? (
         <>
-          <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("taxReturn.art107.distributionsTitle")}</h3>
+          <h3 style={{ marginBottom: "0.35rem" }}>{t("taxReturn.art107.distributionsTitle")}</h3>
           <p className="muted">{t("taxReturn.art107.distributionsExplain")}</p>
           <Table header={distributionsHeader} tableClassName="table--parallel-mobile">
             {a.distributions.map((d, i) => (
@@ -541,7 +541,7 @@ function UsdFxSection({ data }: { data: TaxReturnResponse }) {
       {codes}
       {f.fees.length > 0 ? (
         <>
-          <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("taxReturn.usdFx.feesTitle")}</h3>
+          <h3 style={{ marginBottom: "0.35rem" }}>{t("taxReturn.usdFx.feesTitle")}</h3>
           <p className="muted">{t("taxReturn.usdFx.feesExplain")}</p>
           <Table header={feesHeader} tableClassName="table--parallel-mobile">
             {f.fees.map((x, i) => (

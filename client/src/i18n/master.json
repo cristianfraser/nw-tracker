@@ -2537,6 +2537,14 @@
         "en": "Payment due",
         "es": "Cuota a pagar"
       },
+      "colDeudaEnCuotasFacturacion": {
+        "en": "Installment debt",
+        "es": "Deuda en cuotas"
+      },
+      "colDeudaEnCuotasFacturacionHint": {
+        "en": "Cuotas not yet billed after this close — what the statement prints as saldo capital cuotas.",
+        "es": "Cuotas aún no facturadas después de este cierre — el saldo capital cuotas que imprime el estado de cuenta."
+      },
       "colProxyEarnings": {
         "en": "Potential earnings",
         "es": "Ganancia potencial"
@@ -2650,10 +2658,6 @@
       "closeDateAnnouncedHint": {
         "en": "Announced as the next billing period by the previous statement.",
         "es": "Anunciada como próximo período de facturación en el estado de cuenta anterior."
-      },
-      "provisionalClose": {
-        "en": "provisional",
-        "es": "provisoria"
       },
       "provisionalCloseHint": {
         "en": "Closed at the bank, statement not imported yet. The facturado is the bank's billed total (the card feed's SALDO INICIAL) when the feed saw the close, otherwise the app's estimate.",

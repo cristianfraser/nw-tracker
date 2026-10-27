@@ -11,8 +11,8 @@
   margin-top: var(--space-xl);
 }
 
+/* Size comes from the base h3 rule (base.css); only the spacing is tightened here. */
 .subsectionTitle {
-  font-size: var(--font-size-section-title);
   margin-bottom: var(--space-2xs);
 }
 

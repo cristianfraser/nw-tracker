@@ -65,9 +65,12 @@ export function rollupCcBillingDetailYearly(
       as_of_kind: latest.as_of_kind,
       total_facturado_actual_clp: sumOrNull(months.map((m) => m.total_facturado_actual_clp)),
       total_facturado_clp: unclosed.length === 0 ? closedFacturado : null,
-      cupo_en_cuotas_clp: latest.cupo_en_cuotas_clp,
+      // Month-frame lines: the year's last month WITH a point (a month may have none).
+      cupo_en_cuotas_clp: lastFinite(months.map((m) => m.cupo_en_cuotas_clp)),
       cuota_a_pagar_next_mes_clp: estimatedFacturado,
-      balance_total_clp: latest.balance_total_clp,
+      balance_total_clp: lastFinite(months.map((m) => m.balance_total_clp)),
+      cupo_statement_clp: latest.cupo_statement_clp,
+      balance_statement_clp: latest.balance_statement_clp,
       projected: months.every((m) => m.projected === true),
     } satisfies CcBillingDetailMonthDto;
   });

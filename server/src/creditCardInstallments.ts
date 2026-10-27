@@ -4,6 +4,7 @@ import { listCcBillingMonthBalances } from "./ccBillingBalances.js";
 import {
   pendingCuotaPurchaseLines,
   type CcBillingDetailMonthRow,
+  type CcBillingDetailStatementRow,
   type CcFacturacionRow,
   type CcPendingCuotaPurchase,
 } from "./ccBillingViews.js";
@@ -18,7 +19,12 @@ import {
 } from "./ccStatementsDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { associatedCardLast4sForMaster } from "./ccConsolidatedCards.js";
-import { buildCcHistorialChartSeries, type CcHistorialChartPoint } from "./creditCardChartSeries.js";
+import {
+  buildCcHistorialChartSeries,
+  overlayBillingDetailMonthLines,
+  type CcHistorialChartPoint,
+  type CcHistorialMonthLines,
+} from "./creditCardChartSeries.js";
 import type { DataOrigin } from "./dataOrigin.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { ccHistorialLinesAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
@@ -128,13 +134,14 @@ export type CcCupoSnapshot = {
   used_clp: number | null;
   /** `total − used` when both are known, else null (an unconfigured cupo is not 0). */
   available_clp: number | null;
-  /** Billing month whose `balance_total_clp` is `used_clp` (open month, else latest statement). */
+  /** Billing month whose `balance_statement_clp` is `used_clp` (open month, else latest statement). */
   billing_month: string | null;
 };
 
+/** Statement frame on purpose: the open month's rolled balance is what the bank's cupo is used by. */
 export function ccCupoSnapshot(
   totalClp: number | null,
-  rows: readonly Pick<CcBillingDetailMonthRow, "billing_month" | "as_of_kind" | "balance_total_clp">[],
+  rows: readonly Pick<CcBillingDetailStatementRow, "billing_month" | "as_of_kind" | "balance_statement_clp">[],
   openBillingMonth: string | null
 ): CcCupoSnapshot {
   const openRow =
@@ -146,7 +153,7 @@ export function ccCupoSnapshot(
       undefined
     );
   const row = openRow ?? latestStatement;
-  const used = row?.balance_total_clp ?? null;
+  const used = row?.balance_statement_clp ?? null;
   const total = totalClp != null && Number.isFinite(totalClp) ? totalClp : null;
   return {
     total_clp: total,
@@ -158,7 +165,7 @@ export function ccCupoSnapshot(
 
 function ccCupoSnapshotForAccount(
   accountId: number,
-  rows: readonly CcBillingDetailMonthRow[],
+  rows: readonly CcBillingDetailStatementRow[],
   openBillingMonth: string | null
 ): CcCupoSnapshot {
   const cupoClp = getCreditCardAccountConfig(accountId).cupo.find((c) => c.currency === "clp")?.value ?? null;
@@ -240,7 +247,12 @@ function buildInstallmentProxy(
   // cuota or one-shot, carries the facturación that billed it.
   allLotResults.push(...buildNormalPurchaseProxyForAccount(accountId, tickers, today, facturaciones));
 
-  const facturacionProxy = aggregateProxyByFacturacion(allLotResults, activeTickers);
+  // Every facturación the table shows gets a row, the ones that billed nothing at $0.
+  const facturacionProxy = aggregateProxyByFacturacion(
+    allLotResults,
+    activeTickers,
+    facturaciones.map((f) => f.billing_month)
+  );
   return { purchaseProxy, facturacionProxy };
 }
 
@@ -270,6 +282,15 @@ export function creditCardInstallmentsResponse(
       tickers,
       today
     );
+    // The historial's lines, sampled once for the chart's months: the chart plots them and the
+    // detalle table's month frame is overlaid from the same map (see `overlayBillingDetailMonthLines`).
+    let lines: ReadonlyMap<string, CcHistorialMonthLines> | null = null;
+    const historial_chart = buildCcHistorialChartSeries(
+      db.installment_history_months,
+      billingDetail,
+      facturaciones,
+      { linesForMonths: (months) => (lines = ccHistorialLinesAtMonthEndsClp([accountId], months, today)) }
+    );
     return {
       account_id: accountId,
       has_installment_ledger: true,
@@ -289,18 +310,13 @@ export function creditCardInstallmentsResponse(
       installment_history_months: db.installment_history_months,
       statements: ccStatementsPayloadForAccount(accountId).statements,
       billing_month_balances: listCcBillingMonthBalances(accountId),
-      billing_detail_by_month: billingDetail,
+      billing_detail_by_month: overlayBillingDetailMonthLines(billingDetail, lines),
       facturaciones,
       billing_config: loadCreditCardBillingConfig(accountId),
       cupo: ccCupoSnapshotForAccount(accountId, billingDetail, open_billing_month),
       bank_cupo: latestBankCupoForAccount(accountId),
       pending_cuota_purchases: pendingCuotaPurchaseLines(accountId),
-      historial_chart: buildCcHistorialChartSeries(
-        db.installment_history_months,
-        billingDetail,
-        facturaciones,
-        { linesForMonths: (months) => ccHistorialLinesAtMonthEndsClp([accountId], months, today) }
-      ),
+      historial_chart,
       proxy_tickers: tickers,
       purchase_proxy: purchaseProxy,
       facturacion_proxy: facturacionProxy,
@@ -315,6 +331,13 @@ export function creditCardInstallmentsResponse(
         : 0;
     const billingDetail = bundle.detail;
     const facturaciones = bundle.facturaciones;
+    // No plan ledger: the «deuda en cuotas» line has nothing to walk, but the owed walk still
+    // gives the «saldo total» line, and the table shows what the chart draws, as on a card
+    // with plans.
+    let lines: ReadonlyMap<string, CcHistorialMonthLines> | null = null;
+    const historial_chart = buildCcHistorialChartSeries([], billingDetail, facturaciones, {
+      linesForMonths: (months) => (lines = ccHistorialLinesAtMonthEndsClp([accountId], months, today)),
+    });
     return {
       account_id: accountId,
       has_installment_ledger: false,
@@ -335,13 +358,13 @@ export function creditCardInstallmentsResponse(
       },
       statements: ccStatementsPayloadForAccount(accountId).statements,
       billing_month_balances: billing,
-      billing_detail_by_month: billingDetail,
+      billing_detail_by_month: overlayBillingDetailMonthLines(billingDetail, lines),
       facturaciones,
       billing_config: loadCreditCardBillingConfig(accountId),
       cupo: ccCupoSnapshotForAccount(accountId, billingDetail, open_billing_month),
       bank_cupo: latestBankCupoForAccount(accountId),
       pending_cuota_purchases: pendingCuotaPurchaseLines(accountId),
-      historial_chart: buildCcHistorialChartSeries([], billingDetail, facturaciones),
+      historial_chart,
     };
   }
 

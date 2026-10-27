@@ -5,7 +5,7 @@ import {
 import {
   buildBillingDetailByMonth,
   buildFacturaciones,
-  type CcBillingDetailMonthRow,
+  type CcBillingDetailStatementRow,
   type CcFacturacionRow,
 } from "./ccBillingViews.js";
 import { ccInstallmentLedgerRowCount, ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
@@ -31,7 +31,8 @@ export function planScheduleMonths(payload: CcInstallmentsDbPayload): CcInstallm
 export type CcLedgerBillingBundle = {
   /** Full ledger API payload; null when the account has no installment ledger (statements-only master). */
   payload: CcInstallmentsDbPayload | null;
-  detail: CcBillingDetailMonthRow[];
+  /** Statement frame only — the month frame is overlaid at response assembly (`overlayBillingDetailMonthLines`). */
+  detail: CcBillingDetailStatementRow[];
   facturaciones: CcFacturacionRow[];
 };
 

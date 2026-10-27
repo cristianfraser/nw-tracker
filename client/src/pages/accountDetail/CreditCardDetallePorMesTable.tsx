@@ -27,14 +27,16 @@ function renderFacturado(row: CcBillingDetailMonthDto, projectedHint: string): R
   );
 }
 
-/** «provisoria» on a month closed at the bank whose statement is not imported yet. */
+/**
+ * A bare asterisk on a month closed at the bank whose statement is not imported yet — the same
+ * mark the projected rows carry; the hover hint says which it is.
+ */
 function ProvisionalMark({ row }: { row: CcBillingDetailMonthDto }) {
   const { t } = useTranslation();
   if (!row.provisional) return null;
   return (
     <span className="muted" title={t("accountDetail.creditCard.provisionalCloseHint")}>
-      {" "}
-      {t("accountDetail.creditCard.provisionalClose")}
+      *
     </span>
   );
 }
@@ -72,8 +74,14 @@ function CreditCardDetallePorMesMobileCard({
           label={labels.totalFacturado}
           value={renderFacturado(row, labels.projectedHint)}
         />
-        <TableMobileCardRow label={labels.cupoEnCuotas} value={formatClp(row.cupo_en_cuotas_clp)} />
-        <TableMobileCardRow label={labels.balanceTotal} value={formatClp(row.balance_total_clp)} />
+        <TableMobileCardRow
+          label={labels.cupoEnCuotas}
+          value={formatOrDash(row.cupo_en_cuotas_clp, formatClp)}
+        />
+        <TableMobileCardRow
+          label={labels.balanceTotal}
+          value={formatOrDash(row.balance_total_clp, formatClp)}
+        />
       </TableMobileCardSection>
     </TableMobileCard>
   );
@@ -146,8 +154,8 @@ export function CreditCardDetallePorMesTable({
               <ProvisionalMark row={row} />
             </td>
             <td className="mono desktop-only">{renderFacturado(row, projectedHint)}</td>
-            <td className="mono desktop-only">{formatClp(row.cupo_en_cuotas_clp)}</td>
-            <td className="mono desktop-only">{formatClp(row.balance_total_clp)}</td>
+            <td className="mono desktop-only">{formatOrDash(row.cupo_en_cuotas_clp, formatClp)}</td>
+            <td className="mono desktop-only">{formatOrDash(row.balance_total_clp, formatClp)}</td>
             <td className="mobile-only">
               <CreditCardDetallePorMesMobileCard row={row} isYearly={isYearly} labels={mobileLabels} />
             </td>

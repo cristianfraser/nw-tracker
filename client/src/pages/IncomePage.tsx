@@ -123,7 +123,7 @@ export function IncomePage() {
 
       <section style={{ marginBottom: "1.5rem" }}>
         <div className="chart-panel-title-row">
-          <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t("income.sectionMonthly")}</h3>
+          <h3 style={{ margin: 0 }}>{t("income.sectionMonthly")}</h3>
           <SurfaceControls
             period={tablePrefs.period}
             onPeriodChange={tablePrefs.setPeriod}
@@ -141,7 +141,7 @@ export function IncomePage() {
       <PayrollBreakdownSection breakdown={data?.payroll_breakdown} displayUnit={displayUnit} loading={loading} />
 
       <section style={{ marginBottom: "1.5rem" }}>
-        <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+        <h3 style={{ marginBottom: "0.35rem" }}>
           {t("workEarnings.sectionTitle")}
         </h3>
         <WorkEarningsTable
@@ -153,12 +153,12 @@ export function IncomePage() {
       </section>
 
       <section>
-        <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("income.sectionAllLines")}</h3>
+        <h3 style={{ marginBottom: "0.35rem" }}>{t("income.sectionAllLines")}</h3>
         <IncomeAllLinesTable rows={view?.all_rows ?? []} displayUnit={displayUnit} loading={loading} />
       </section>
 
       <section style={{ marginTop: "1.5rem" }}>
-        <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+        <h3 style={{ marginBottom: "0.35rem" }}>
           {t("income.sectionRefunds")}
         </h3>
         <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
@@ -168,14 +168,14 @@ export function IncomePage() {
       </section>
 
       <section style={{ marginTop: "1.5rem" }}>
-        <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+        <h3 style={{ marginBottom: "0.35rem" }}>
           {t("income.sectionFiltered")}
         </h3>
         <IncomeFilteredLinesTable rows={data?.filtered_lines ?? []} displayUnit={displayUnit} loading={loading} />
       </section>
 
       <section style={{ marginTop: "1.5rem" }}>
-        <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+        <h3 style={{ marginBottom: "0.35rem" }}>
           {t("income.sectionExcluded")}
         </h3>
         <IncomeExcludedLinesTable rows={data?.excluded_lines ?? []} displayUnit={displayUnit} loading={loading} />

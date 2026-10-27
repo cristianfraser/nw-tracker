@@ -132,6 +132,13 @@ export type CcWebPasteRecordsOpts = {
    * close keeps its earlier date).
    */
   targetBillingMonth?: string;
+  /**
+   * One bucket month per line, aligned with `parsed` (the feed decides each row's facturación:
+   * `feedLineBillingMonths` in `cardUnbilledMovementsApply.ts`). An entry wins over
+   * `targetBillingMonth`; a length that differs from the lines' throws. Lines of several months
+   * share one import: one bucket per month, dedupe keys and the batch log as before.
+   */
+  lineBillingMonths?: readonly string[];
 };
 
 export function ccWebPasteToCsvRecords(
@@ -170,9 +177,15 @@ export function ccWebPasteToCsvRecords(
   // Occurrence-indexed: a row the listing shows twice is two charges (`#dupN`, see
   // webPasteListingDedupeKeys); the merge keys both on it, so re-pasting stays idempotent.
   const dedupeKeys = webPasteListingDedupeKeys(cardGroup, parsed);
+  const lineMonths = opts?.lineBillingMonths;
+  if (lineMonths && lineMonths.length !== parsed.length) {
+    throw new Error(
+      `ccWebPasteToCsvRecords: ${lineMonths.length} line billing month(s) for ${parsed.length} line(s)`
+    );
+  }
 
   parsed.forEach((line, i) => {
-    const billingMonth = opts?.targetBillingMonth ?? openBillingMonth;
+    const billingMonth = lineMonths?.[i] ?? opts?.targetBillingMonth ?? openBillingMonth;
     const { sourcePdf, statementDate } = bucket(billingMonth);
     const isUsd = line.currency === "usd";
     const dedupe_key = dedupeKeys[i]!;

@@ -246,7 +246,7 @@ export function ExpensesPage() {
       />
 
       <div className="chart-panel-title-row" style={{ marginBottom: "0.5rem" }}>
-      <h3 style={{ fontSize: "1.1rem", margin: 0 }}>
+      <h3 style={{ margin: 0 }}>
         {t(
           tableGranularity === "year"
             ? "accountDetail.yearlyDetailTitle"

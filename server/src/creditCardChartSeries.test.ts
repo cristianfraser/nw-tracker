@@ -2,22 +2,23 @@ import { describe, expect, it } from "vitest";
 import {
   buildCcHistorialChartSeries,
   facturacionBarsOnMonthCloseDates,
+  overlayBillingDetailMonthLines,
   type CcHistorialChartPoint,
 } from "./creditCardChartSeries.js";
-import type { CcBillingDetailMonthRow, CcFacturacionRow } from "./ccBillingViews.js";
+import type { CcBillingDetailStatementRow, CcFacturacionRow } from "./ccBillingViews.js";
 
 const makeDetalle = (
   billing_month: string,
-  overrides: Partial<CcBillingDetailMonthRow> = {}
-): CcBillingDetailMonthRow => ({
+  overrides: Partial<CcBillingDetailStatementRow> = {}
+): CcBillingDetailStatementRow => ({
   billing_month,
   as_of_date: `${billing_month}-23`,
   as_of_kind: "statement",
   total_facturado_actual_clp: null,
   total_facturado_clp: null,
-  cupo_en_cuotas_clp: 0,
+  cupo_statement_clp: 0,
   cuota_a_pagar_next_mes_clp: 0,
-  balance_total_clp: 0,
+  balance_statement_clp: 0,
   ...overrides,
 });
 
@@ -35,6 +36,7 @@ const makeFacturacion = (
   facturado_usd_clp: null,
   facturado_total_clp: null,
   cuota_a_pagar_clp: null,
+  deuda_en_cuotas_clp: null,
   is_open_month: false,
   is_provisional_close: false,
   close_date_source: "statement",
@@ -61,9 +63,9 @@ describe("buildCcHistorialChartSeries", () => {
         makeDetalle("2025-07", {
           total_facturado_actual_clp: 2_583_795,
           total_facturado_clp: 2_583_795,
-          cupo_en_cuotas_clp: 1_000_000,
+          cupo_statement_clp: 1_000_000,
           cuota_a_pagar_next_mes_clp: 50_000,
-          balance_total_clp: 3_583_795,
+          balance_statement_clp: 3_583_795,
         }),
       ],
       [
@@ -125,17 +127,17 @@ describe("buildCcHistorialChartSeries", () => {
       makeDetalle("2026-06", {
         total_facturado_actual_clp: 2_000_000,
         total_facturado_clp: 2_000_000,
-        cupo_en_cuotas_clp: 5_000_000,
+        cupo_statement_clp: 5_000_000,
         cuota_a_pagar_next_mes_clp: 200_000,
-        balance_total_clp: 6_800_000,
+        balance_statement_clp: 6_800_000,
       }),
       makeDetalle("2026-07", {
         as_of_kind: "manual",
         total_facturado_actual_clp: 500_000,
         total_facturado_clp: 500_000,
-        cupo_en_cuotas_clp: 4_500_000,
+        cupo_statement_clp: 4_500_000,
         cuota_a_pagar_next_mes_clp: 180_000,
-        balance_total_clp: 4_820_000,
+        balance_statement_clp: 4_820_000,
       }),
     ];
     const facturaciones = [
@@ -168,8 +170,8 @@ describe("buildCcHistorialChartSeries", () => {
     const rows = buildCcHistorialChartSeries(
       [],
       [
-        makeDetalle("2025-07", { total_facturado_clp: 1_000_000, cupo_en_cuotas_clp: 500_000, balance_total_clp: 1_500_000 }),
-        makeDetalle("2025-11", { total_facturado_clp: 2_000_000, cupo_en_cuotas_clp: 400_000, balance_total_clp: 2_400_000 }),
+        makeDetalle("2025-07", { total_facturado_clp: 1_000_000, cupo_statement_clp: 500_000, balance_statement_clp: 1_500_000 }),
+        makeDetalle("2025-11", { total_facturado_clp: 2_000_000, cupo_statement_clp: 400_000, balance_statement_clp: 2_400_000 }),
       ],
       [
         makeFacturacion("2025-07", { facturado_clp: 1_000_000, facturado_total_clp: 1_000_000 }),
@@ -210,8 +212,8 @@ describe("buildCcHistorialChartSeries", () => {
     // July billed 100k of cuotas at its close, paid after month-end: the table's cupo (still
     // unbilled, 400k) pairs with facturado; the chart lines are the daily values at 31/07.
     const detalle = [
-      makeDetalle("2025-07", { cupo_en_cuotas_clp: 400_000, balance_total_clp: 1_400_000 }),
-      makeDetalle("2025-09", { cupo_en_cuotas_clp: 200_000, balance_total_clp: 1_000_000 }),
+      makeDetalle("2025-07", { cupo_statement_clp: 400_000, balance_statement_clp: 1_400_000 }),
+      makeDetalle("2025-09", { cupo_statement_clp: 200_000, balance_statement_clp: 1_000_000 }),
     ];
     const asked: string[][] = [];
     const rows = buildCcHistorialChartSeries([], detalle, [], {
@@ -229,10 +231,38 @@ describe("buildCcHistorialChartSeries", () => {
     expect(rows.map((r) => r.balance_total_clp)).toEqual([1_500_000, 900_000, null]);
   });
 
+  it("overlays the detalle's month frame from the sampled lines, the statement frame untouched", () => {
+    const rows = overlayBillingDetailMonthLines(
+      [
+        makeDetalle("2025-07", { cupo_statement_clp: 400_000, balance_statement_clp: 1_400_000 }),
+        makeDetalle("2025-08", { cupo_statement_clp: 300_000, balance_statement_clp: 1_300_000 }),
+      ],
+      new Map([
+        ["2025-07", { balance_clp: 1_500_000, plan_debt_clp: 500_000 }],
+        ["2025-08", { balance_clp: null, plan_debt_clp: null }],
+      ])
+    );
+    expect(rows.map((r) => [r.cupo_statement_clp, r.balance_statement_clp])).toEqual([
+      [400_000, 1_400_000],
+      [300_000, 1_300_000],
+    ]);
+    expect(rows.map((r) => [r.cupo_en_cuotas_clp, r.balance_total_clp])).toEqual([
+      [500_000, 1_500_000],
+      [null, null],
+    ]);
+    // No sample at all: the month frame is null on every row.
+    expect(overlayBillingDetailMonthLines([makeDetalle("2025-07")], null)[0]).toMatchObject({
+      cupo_en_cuotas_clp: null,
+      balance_total_clp: null,
+    });
+    // A month the sampler was never asked about breaks the one-sample contract.
+    expect(() => overlayBillingDetailMonthLines([makeDetalle("2025-09")], new Map())).toThrow(/2025-09/);
+  });
+
   it("keeps the billing-frame columns when the sampler has no data", () => {
     const rows = buildCcHistorialChartSeries(
       [],
-      [makeDetalle("2025-07", { cupo_en_cuotas_clp: 400_000, balance_total_clp: 1_400_000 })],
+      [makeDetalle("2025-07", { cupo_statement_clp: 400_000, balance_statement_clp: 1_400_000 })],
       [],
       { linesForMonths: () => null }
     );

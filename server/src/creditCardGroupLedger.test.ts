@@ -77,6 +77,7 @@ describe("mergeCreditCardLedgers", () => {
           facturado_usd_clp: null,
           facturado_total_clp: 100_000,
           cuota_a_pagar_clp: 50_000,
+          deuda_en_cuotas_clp: 120_000,
           is_open_month: false,
           is_provisional_close: false,
           close_date_source: "statement" as const,
@@ -106,6 +107,7 @@ describe("mergeCreditCardLedgers", () => {
           facturado_usd_clp: null,
           facturado_total_clp: 80_000,
           cuota_a_pagar_clp: 20_000,
+          deuda_en_cuotas_clp: null,
           is_open_month: false,
           is_provisional_close: false,
           close_date_source: "statement" as const,
@@ -126,6 +128,7 @@ describe("mergeCreditCardLedgers", () => {
     expect(merged.account_id).toBe(0);
     expect(merged.facturaciones?.[0]?.facturado_clp).toBe(180_000);
     expect(merged.facturaciones?.[0]?.cuota_a_pagar_clp).toBe(70_000);
+    expect(merged.facturaciones?.[0]?.deuda_en_cuotas_clp).toBe(120_000);
     expect(merged.totals.total_remaining_principal_clp).toBe(350_000);
     expect(merged.totals.next_calendar_month).toBe("2025-02");
     expect(merged.totals.next_calendar_month_total_clp).toBe(55_000);
@@ -139,9 +142,11 @@ describe("mergeCreditCardLedgers", () => {
       as_of_kind: "manual",
       total_facturado_actual_clp: null,
       total_facturado_clp: null,
-      cupo_en_cuotas_clp: 0,
+      cupo_statement_clp: 0,
       cuota_a_pagar_next_mes_clp: 0,
-      balance_total_clp: 0,
+      balance_statement_clp: 0,
+      cupo_en_cuotas_clp: null,
+      balance_total_clp: null,
       ...overrides,
     });
     const point = (overrides: Partial<CcHistorialChartPoint>): CcHistorialChartPoint => ({
@@ -186,9 +191,11 @@ describe("mergeCreditCardLedgers", () => {
             as_of_kind: "manual",
             total_facturado_actual_clp: 1,
             total_facturado_clp: 1,
-            cupo_en_cuotas_clp: 10,
+            cupo_statement_clp: 10,
             cuota_a_pagar_next_mes_clp: 5,
-            balance_total_clp: 15,
+            balance_statement_clp: 15,
+            cupo_en_cuotas_clp: 12,
+            balance_total_clp: 17,
           },
         ] satisfies CcBillingDetailMonthRow[],
       }),
@@ -200,17 +207,22 @@ describe("mergeCreditCardLedgers", () => {
             as_of_kind: "statement",
             total_facturado_actual_clp: 2,
             total_facturado_clp: 2,
-            cupo_en_cuotas_clp: 20,
+            cupo_statement_clp: 20,
             cuota_a_pagar_next_mes_clp: 8,
-            balance_total_clp: 28,
+            balance_statement_clp: 28,
+            cupo_en_cuotas_clp: 22,
+            balance_total_clp: 30,
           },
         ] satisfies CcBillingDetailMonthRow[],
       }),
     ]);
     const row = merged.billing_detail_by_month?.[0];
     expect(row?.as_of_kind).toBe("statement");
-    expect(row?.cupo_en_cuotas_clp).toBe(30);
-    expect(row?.balance_total_clp).toBe(43);
+    expect(row?.cupo_statement_clp).toBe(30);
+    expect(row?.balance_statement_clp).toBe(43);
+    // The month frame is never the Σ of the members' own: without the group's sampler it is null.
+    expect(row?.cupo_en_cuotas_clp).toBeNull();
+    expect(row?.balance_total_clp).toBeNull();
   });
 
   it("adds a projected card's cuotas to a month another card has already billed", () => {
@@ -220,9 +232,11 @@ describe("mergeCreditCardLedgers", () => {
       as_of_kind: "manual",
       total_facturado_actual_clp: null,
       total_facturado_clp: null,
-      cupo_en_cuotas_clp: 0,
+      cupo_statement_clp: 0,
       cuota_a_pagar_next_mes_clp: 0,
-      balance_total_clp: 0,
+      balance_statement_clp: 0,
+      cupo_en_cuotas_clp: null,
+      balance_total_clp: null,
       ...overrides,
     });
     const open = row({ total_facturado_actual_clp: 1_000, total_facturado_clp: 1_000, cuota_a_pagar_next_mes_clp: 800 });
@@ -248,9 +262,11 @@ describe("mergeCreditCardLedgers", () => {
       as_of_kind: "statement",
       total_facturado_actual_clp: 100,
       total_facturado_clp: 100,
-      cupo_en_cuotas_clp: cupo,
+      cupo_statement_clp: cupo,
       cuota_a_pagar_next_mes_clp: 0,
-      balance_total_clp: 100 + cupo,
+      balance_statement_clp: 100 + cupo,
+      cupo_en_cuotas_clp: cupo + 1,
+      balance_total_clp: 100 + cupo + 1,
     });
     const ledgers = [
       ledgerStub({ account_id: 1, billing_detail_by_month: [detailRow(10)] }),
@@ -259,12 +275,17 @@ describe("mergeCreditCardLedgers", () => {
     const merged = mergeCreditCardLedgers(ledgers, {
       linesForMonths: (months) => new Map(months.map((m) => [m, { balance_clp: 160, plan_debt_clp: 45 }] as const)),
     });
-    expect(merged.billing_detail_by_month?.[0]?.cupo_en_cuotas_clp).toBe(30);
+    expect(merged.billing_detail_by_month?.[0]).toMatchObject({ cupo_statement_clp: 30, balance_statement_clp: 230 });
     expect(merged.historial_chart?.map((p) => [p.month, p.cupo_en_cuotas_clp, p.balance_total_clp])).toEqual([
       ["2025-03", 45, 160],
     ]);
-    // A pure merge (no sampler) plots the merged column.
-    expect(mergeCreditCardLedgers(ledgers).historial_chart?.[0]?.cupo_en_cuotas_clp).toBe(30);
+    // The merged table row's month frame is the group's own sample — the chart point — never the
+    // Σ of the members' overlaid values (11 + 21).
+    expect(merged.billing_detail_by_month?.[0]).toMatchObject({ cupo_en_cuotas_clp: 45, balance_total_clp: 160 });
+    // A pure merge (no sampler) plots the merged column and leaves the rows' month frame null.
+    const plain = mergeCreditCardLedgers(ledgers);
+    expect(plain.historial_chart?.[0]?.cupo_en_cuotas_clp).toBe(30);
+    expect(plain.billing_detail_by_month?.[0]).toMatchObject({ cupo_en_cuotas_clp: null, balance_total_clp: null });
   });
 });
 

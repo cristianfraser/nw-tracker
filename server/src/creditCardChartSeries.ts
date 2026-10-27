@@ -1,5 +1,9 @@
 import { expandYearMonthsInclusive } from "./calendarMonth.js";
-import type { CcBillingDetailMonthRow, CcFacturacionRow } from "./ccBillingViews.js";
+import type {
+  CcBillingDetailMonthRow,
+  CcBillingDetailStatementRow,
+  CcFacturacionRow,
+} from "./ccBillingViews.js";
 
 // ─── Historial chart ──────────────────────────────────────────────────────────
 
@@ -81,7 +85,7 @@ function histHasProjectedInstallmentData(h: HistMonthPoint): boolean {
 
 function collectHistorialBaseMonths(
   hist: HistMonthPoint[],
-  detalle: CcBillingDetailMonthRow[] | undefined
+  detalle: readonly CcBillingDetailStatementRow[] | undefined
 ): string[] {
   const months = new Set<string>();
   for (const d of detalle ?? []) months.add(d.billing_month);
@@ -124,7 +128,7 @@ function collectHistorialBaseMonths(
 function barForMonth(
   month: string,
   fact: CcFacturacionRow | undefined,
-  detalle: CcBillingDetailMonthRow | undefined,
+  detalle: CcBillingDetailStatementRow | undefined,
   hist: HistMonthPoint | undefined
 ): CcFacturadoBarSegments {
   if (fact) {
@@ -172,18 +176,22 @@ function barOf(p: CcFacturadoBarSegments): CcFacturadoBarSegments {
   };
 }
 
+/** The historial's two lines on a month's last day (today for the current month). */
+export type CcHistorialMonthLines = { balance_clp: number | null; plan_debt_clp: number | null };
+
 export type CcHistorialChartOptions = {
   /**
    * Both lines per chart month, read from the daily data (ascending months in; null = no data,
    * keep the billing frame): «saldo total» and «deuda en cuotas» on the month's last day, today
    * for the current month (`ccHistorialLinesAtMonthEndsClp`), so the monthly chart shows what the
-   * daily chart shows on that day. The detalle table keeps the BILLING frame — a closed month's
-   * billed cuotas ride inside its facturado, facturado + cupo = balance — while the daily line is
-   * the PAYMENT frame, where a cycle's cuotas stay until that facturación is paid.
+   * daily chart shows on that day. Called once, for every month the chart draws; the response
+   * assembly keeps the map it returns and overlays the detalle table's month frame from it
+   * ({@link overlayBillingDetailMonthLines}), so the table and the chart read one sample. The
+   * bundle's rows keep the STATEMENT frame — a closed month's billed cuotas ride inside its
+   * facturado, facturado + cupo = balance — while these lines are the PAYMENT frame, where a
+   * cycle's cuotas stay until that facturación is paid.
    */
-  linesForMonths?: (
-    months: readonly string[]
-  ) => ReadonlyMap<string, { balance_clp: number | null; plan_debt_clp: number | null }> | null;
+  linesForMonths?: (months: readonly string[]) => ReadonlyMap<string, CcHistorialMonthLines> | null;
   /**
    * A group's member cards' own series: the group's bar for a month is the Σ of its cards' bars,
    * never split again from merged facturaciones — a month one card has billed (or opened) while
@@ -199,7 +207,7 @@ export type CcHistorialChartOptions = {
  */
 export function buildCcHistorialChartSeries(
   hist: HistMonthPoint[],
-  detalle: CcBillingDetailMonthRow[] | undefined,
+  detalle: readonly CcBillingDetailStatementRow[] | undefined,
   facturaciones: CcFacturacionRow[] | undefined,
   opts?: CcHistorialChartOptions
 ): CcHistorialChartPoint[] {
@@ -241,10 +249,10 @@ export function buildCcHistorialChartSeries(
       ? (fact.facturado_total_clp ?? (fact.facturado_clp ?? 0) + (fact.facturado_usd_clp ?? 0))
       : null;
     // Billing frame: pairs with facturado for a month with no detail row's balance.
-    const billingCupo = d?.cupo_en_cuotas_clp ?? (h != null ? cupoFromHistPoint(h) : null);
+    const billingCupo = d?.cupo_statement_clp ?? (h != null ? cupoFromHistPoint(h) : null);
     const lines = linesByMonth?.get(month);
     const cupo = linesByMonth != null ? (lines?.plan_debt_clp ?? null) : billingCupo;
-    let balance_total_clp = linesByMonth != null ? (lines?.balance_clp ?? null) : (d?.balance_total_clp ?? null);
+    let balance_total_clp = linesByMonth != null ? (lines?.balance_clp ?? null) : (d?.balance_statement_clp ?? null);
     if (linesByMonth == null && balance_total_clp == null && billingCupo != null) {
       balance_total_clp = (facturadoTotal ?? 0) + billingCupo;
     }
@@ -256,6 +264,32 @@ export function buildCcHistorialChartSeries(
       ...bar,
       cupo_en_cuotas_clp: cupo,
       balance_total_clp,
+    };
+  });
+}
+
+/**
+ * The detalle table's MONTH frame: each row's «deuda en cuotas» / «balance total» read from the
+ * same lines map the historial chart was drawn from (`linesForMonths`'s one result), so a table
+ * row equals the chart point of its month by construction. Null in both when the sampler had no
+ * data at all (`lines` null) or none for that month; a month the map was never asked about is a
+ * contract violation (the sampler covers every month the chart draws, and the chart draws every
+ * detalle month) and throws. Only here does a row gain the two month-frame fields — the bundle's
+ * rows stay statement-framed so nothing the bundle build reaches can read them.
+ */
+export function overlayBillingDetailMonthLines(
+  rows: readonly CcBillingDetailStatementRow[],
+  lines: ReadonlyMap<string, CcHistorialMonthLines> | null
+): CcBillingDetailMonthRow[] {
+  return rows.map((row) => {
+    const l = lines?.get(row.billing_month);
+    if (lines != null && l == null) {
+      throw new Error(`Detalle ${row.billing_month}: the historial lines were not sampled for that month`);
+    }
+    return {
+      ...row,
+      cupo_en_cuotas_clp: l?.plan_debt_clp ?? null,
+      balance_total_clp: l?.balance_clp ?? null,
     };
   });
 }

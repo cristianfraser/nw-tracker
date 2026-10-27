@@ -92,14 +92,14 @@ describe("projected future billing months", () => {
       for (const row of projectedRows) {
         expect(row.projected).toBe(true);
         expect(row.total_facturado_clp).toBeNull();
-        expect(row.balance_total_clp).toBe(
+        expect(row.balance_statement_clp).toBe(
           remainingByMonth.get(addCalendarMonths(row.billing_month, -1)) ?? 0
         );
       }
 
       // Live «Balance total» must read the open row, never a projected month.
       expect(latestCreditCardBillingBalanceTotalClp(accountId)).toBe(
-        Math.round(openRow!.balance_total_clp)
+        Math.round(openRow!.balance_statement_clp)
       );
     } finally {
       wipeVitestCcFixtureData();
@@ -112,7 +112,7 @@ type BillingDetailRowLike = {
   billing_month: string;
   as_of_date: string;
   as_of_kind: "statement" | "manual";
-  balance_total_clp: number;
+  balance_statement_clp: number;
 };
 
 function postCloseAdjForRow(accountId: number, row: BillingDetailRowLike): number {
@@ -138,7 +138,7 @@ function expectedOpenRolledBalanceClp(
     incrementalChargesClpForBillingMonth(accountId, openBm) -
     paymentAbonosClpForBillingMonth(accountId, openBm);
   return Math.round(
-    priorClosed.balance_total_clp - postCloseAdjForRow(accountId, priorClosed) + netCharges
+    priorClosed.balance_statement_clp - postCloseAdjForRow(accountId, priorClosed) + netCharges
   );
 }
 
@@ -164,12 +164,12 @@ describe("buildBillingDetailByMonth", () => {
     expect(openRow.as_of_kind).toBe("manual");
     expect(openRow.total_facturado_clp).toBeGreaterThan(0);
     // Open month: live debt = prior closed balance rolled forward + this cycle's net charges.
-    expect(openRow.balance_total_clp).toBe(expectedOpenRolledBalanceClp(master.id, det, openBm));
+    expect(openRow.balance_statement_clp).toBe(expectedOpenRolledBalanceClp(master.id, det, openBm));
     // Closed month: statement anchor + post-close activity through its calendar month-end.
-    expect(may.balance_total_clp).toBe(
+    expect(may.balance_statement_clp).toBe(
       Math.round(
         (may.total_facturado_clp ?? 0) +
-          may.cupo_en_cuotas_clp -
+          may.cupo_statement_clp -
           may.cuota_a_pagar_next_mes_clp +
           postCloseAdjForRow(master.id, may)
       )
@@ -202,7 +202,7 @@ describe("buildBillingDetailByMonth", () => {
     // Open month did not roll the prior closed facturado into this cycle.
     expect(openRow.total_facturado_clp ?? 0).toBeLessThan(may.total_facturado_clp ?? 0);
     // …but the balance does roll the prior closed month's debt forward.
-    expect(openRow.balance_total_clp).toBe(expectedOpenRolledBalanceClp(master.id, det, openBm));
+    expect(openRow.balance_statement_clp).toBe(expectedOpenRolledBalanceClp(master.id, det, openBm));
   });
 
   it("open month includes charges when PAGO and purchases share web-paste bucket", () => {
@@ -273,10 +273,10 @@ describe("buildBillingDetailByMonth", () => {
       expect(factAfter?.facturado_total_clp).toBe(after!.total_facturado_clp);
       // Balance, in contrast, DOES net the PAGO via the roll-forward.
       const detAfter = buildBillingDetailByMonth(master.id, payload.months);
-      expect(after!.balance_total_clp).toBe(
+      expect(after!.balance_statement_clp).toBe(
         expectedOpenRolledBalanceClp(master.id, detAfter, openBm)
       );
-      expect(after!.balance_total_clp).toBeLessThan(before.balance_total_clp);
+      expect(after!.balance_statement_clp).toBeLessThan(before.balance_statement_clp);
     } finally {
       for (const id of [insA.lastInsertRowid, insB.lastInsertRowid, insPago.lastInsertRowid]) {
         db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(id);
@@ -325,11 +325,11 @@ describe("buildBillingDetailByMonth", () => {
       expect(after!.total_facturado_clp).toBe(uniquo + after!.cuota_a_pagar_next_mes_clp);
       expect(after!.total_facturado_clp).toBe(before.total_facturado_clp);
       const detAfter = buildBillingDetailByMonth(master.id, payload.months);
-      expect(after!.balance_total_clp).toBe(
+      expect(after!.balance_statement_clp).toBe(
         expectedOpenRolledBalanceClp(master.id, detAfter, openBm)
       );
       // The PAGO reduces the rolled balance relative to the pre-insert detail.
-      expect(after!.balance_total_clp).toBeLessThan(before.balance_total_clp);
+      expect(after!.balance_statement_clp).toBeLessThan(before.balance_statement_clp);
     } finally {
       db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(ins.lastInsertRowid);
     }

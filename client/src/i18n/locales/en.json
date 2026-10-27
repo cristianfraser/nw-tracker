@@ -731,6 +731,8 @@
       "colFacturadoUsd": "Billed US$",
       "colFacturadoTotal": "Total billed",
       "colCuotaAPagar": "Payment due",
+      "colDeudaEnCuotasFacturacion": "Installment debt",
+      "colDeudaEnCuotasFacturacionHint": "Cuotas not yet billed after this close — what the statement prints as saldo capital cuotas.",
       "colProxyEarnings": "Potential earnings",
       "proxyEarningsHint": "Estimated gain from investing the amount at each due date. Projected with CPI when there is no real price.",
       "facturacionModalTitle": "Billing {{month}}",
@@ -761,7 +763,6 @@
       "associatedCardsTitle": "Associated cards",
       "closeDateEstimatedHint": "Estimated from the card's configured cycle: the bank has not published this close yet.",
       "closeDateAnnouncedHint": "Announced as the next billing period by the previous statement.",
-      "provisionalClose": "provisional",
       "provisionalCloseHint": "Closed at the bank, statement not imported yet. The facturado is the bank's billed total (the card feed's SALDO INICIAL) when the feed saw the close, otherwise the app's estimate.",
       "provisionalEstimateHint": "The app had estimated {{amount}} for this facturación."
     },

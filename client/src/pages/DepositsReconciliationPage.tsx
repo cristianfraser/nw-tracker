@@ -80,7 +80,7 @@ function ReconciliationSection({
 
   return (
     <section style={{ marginBottom: "1.5rem" }}>
-      <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+      <h3 style={{ marginBottom: "0.35rem" }}>
         {t(statusSectionKey(status))}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
@@ -149,7 +149,7 @@ function ManualAssertionsSection({
 
   return (
     <section style={{ marginBottom: "1.5rem" }}>
-      <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+      <h3 style={{ marginBottom: "0.35rem" }}>
         {t("depositsReconciliation.assertedTitle")}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
@@ -257,7 +257,7 @@ function RedemptionSection({
 
   return (
     <section style={{ marginBottom: "1.5rem" }}>
-      <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+      <h3 style={{ marginBottom: "0.35rem" }}>
         {t(redemptionSectionKey(status))}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
@@ -354,7 +354,7 @@ export function DepositsReconciliationPage() {
       <ManualAssertionsSection rows={data?.manual_assertions ?? []} loading={loading} />
 
       <section style={{ marginBottom: "1.5rem" }}>
-        <h3 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>
+        <h3 style={{ marginBottom: "0.35rem" }}>
           {t("depositsReconciliation.byMonth")}
         </h3>
         <Table

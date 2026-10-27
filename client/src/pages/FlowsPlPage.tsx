@@ -115,7 +115,7 @@ export function FlowsPlPage() {
       </div>
 
       <div className="chart-panel-title-row">
-        <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t("flows.overview.detailTitle")}</h3>
+        <h3 style={{ margin: 0 }}>{t("flows.overview.detailTitle")}</h3>
         <SurfaceControls
           period={tablePrefs.period}
           onPeriodChange={tablePrefs.setPeriod}
@@ -155,12 +155,12 @@ export function FlowsPlPage() {
         </Table>
       </PaginatedTable>
 
-      <h3 style={{ fontSize: "1.05rem", margin: "1.5rem 0 0.35rem" }}>
+      <h3 style={{ margin: "1.5rem 0 0.35rem" }}>
         {t("flows.pl.breakdownTitle")}
       </h3>
       {(data?.by_bucket ?? []).map((block) => (
         <section key={block.slug} style={{ marginBottom: "1.5rem" }}>
-          <h4 style={{ fontSize: "0.95rem", marginBottom: "0.35rem" }}>
+          <h4 style={{ marginBottom: "0.35rem" }}>
             {flowsPlBucketLabel(block.slug)}
             <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
               {formatFlowMoney(bucketTotal(block, "total_cumulative", displayUnit), displayUnit)}

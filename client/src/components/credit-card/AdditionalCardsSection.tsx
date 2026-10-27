@@ -83,7 +83,7 @@ export function AdditionalCardsSection({
   return (
     <section style={{ marginTop: "1.5rem" }}>
       <div className="chart-panel-title-row" style={{ marginBottom: "0.35rem" }}>
-        <h3 style={{ fontSize: "1.1rem", margin: 0 }}>
+        <h3 style={{ margin: 0 }}>
           {t("expenses.additionalCards.title")}
           <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
             {t("expenses.additionalCards.balanceLabel")}{" "}

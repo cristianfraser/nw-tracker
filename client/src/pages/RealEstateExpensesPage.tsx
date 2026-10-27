@@ -213,7 +213,7 @@ export function RealEstateExpensesPage() {
       </div>
 
       <section style={{ marginBottom: "1.75rem" }}>
-        <h3 style={{ fontSize: "1.1rem", marginBottom: "0.75rem" }}>
+        <h3 style={{ marginBottom: "0.75rem" }}>
           {t("expenses.groups.real_estate")}
           <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
             {formatClp(groupTotal)}
@@ -228,7 +228,7 @@ export function RealEstateExpensesPage() {
         </h3>
         {sections.map((acc) => (
           <div key={acc.account_slug} style={{ marginBottom: "1.25rem" }}>
-            <h4 style={{ fontSize: "1rem", marginBottom: "0.35rem" }}>
+            <h4 style={{ marginBottom: "0.35rem" }}>
               {acc.label}
               <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
                 {formatClp(acc.total_clp)}

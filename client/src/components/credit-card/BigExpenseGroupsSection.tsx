@@ -144,7 +144,7 @@ export function BigExpenseGroupsSection({
 
   return (
     <section className={loadableClass(loading)} style={{ marginTop: "2rem", marginBottom: "1.5rem" }}>
-      <h3 style={{ fontSize: "1.1rem", marginBottom: "0.35rem" }}>
+      <h3 style={{ marginBottom: "0.35rem" }}>
         {t("expenses.creditCard.bigGroups.sectionTitle")}
       </h3>
       {usage.map((g) => (

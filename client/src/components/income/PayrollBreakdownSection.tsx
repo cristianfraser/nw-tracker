@@ -194,7 +194,7 @@ export function PayrollBreakdownSection({
       </div>
 
       <div className="chart-panel-title-row">
-        <h3 style={{ fontSize: "1.05rem", margin: 0 }}>{t("income.payroll.tableTitle")}</h3>
+        <h3 style={{ margin: 0 }}>{t("income.payroll.tableTitle")}</h3>
         <SurfaceControls period={tablePrefs.period} onPeriodChange={tablePrefs.setPeriod} periodOptions={["month", "year"]} />
       </div>
       <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>

@@ -1,12 +1,21 @@
 import type { CcCloseSource } from "./ccBillingCloses.js";
-import type { CcBillingDetailMonthRow, CcFacturacionRow } from "./ccBillingViews.js";
+import type {
+  CcBillingDetailMonthRow,
+  CcBillingDetailStatementRow,
+  CcFacturacionRow,
+} from "./ccBillingViews.js";
 import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import {
   creditCardInstallmentsResponse,
   type CcInstallmentsTotals,
   type CcCupoSnapshot,
 } from "./creditCardInstallments.js";
-import { buildCcHistorialChartSeries, type CcHistorialChartOptions } from "./creditCardChartSeries.js";
+import {
+  buildCcHistorialChartSeries,
+  overlayBillingDetailMonthLines,
+  type CcHistorialChartOptions,
+  type CcHistorialMonthLines,
+} from "./creditCardChartSeries.js";
 import { ccHistorialLinesAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
@@ -74,6 +83,7 @@ function mergeFacturaciones(ledgers: CcLedgerResponse[]): CcFacturacionRow[] {
         facturado_usd_clp: sumNullable(prev.facturado_usd_clp, row.facturado_usd_clp),
         facturado_total_clp: sumNullable(prev.facturado_total_clp, row.facturado_total_clp),
         cuota_a_pagar_clp: sumNullable(prev.cuota_a_pagar_clp, row.cuota_a_pagar_clp),
+        deuda_en_cuotas_clp: sumNullable(prev.deuda_en_cuotas_clp, row.deuda_en_cuotas_clp),
         is_open_month: prev.is_open_month || row.is_open_month,
         // Provisional while any member still awaits its statement; its estimate is only
         // meaningful per card, so a merged month carries the Σ when every member has one.
@@ -105,7 +115,10 @@ function mergeFacturaciones(ledgers: CcLedgerResponse[]): CcFacturacionRow[] {
  * opened (2026-10: ·0101's 3x.xxx missing beside ·0901's open facturación), so the group table
  * read below the historial bars. Null only when no member has billed the month.
  */
-function mergedTotalFacturadoClp(a: CcBillingDetailMonthRow, b: CcBillingDetailMonthRow): number | null {
+function mergedTotalFacturadoClp(
+  a: CcBillingDetailStatementRow,
+  b: CcBillingDetailStatementRow
+): number | null {
   if (a.total_facturado_clp == null && b.total_facturado_clp == null) return null;
   return (
     (a.total_facturado_clp ?? a.cuota_a_pagar_next_mes_clp) +
@@ -113,13 +126,27 @@ function mergedTotalFacturadoClp(a: CcBillingDetailMonthRow, b: CcBillingDetailM
   );
 }
 
-function mergeBillingDetail(ledgers: CcLedgerResponse[]): CcBillingDetailMonthRow[] {
-  const byMonth = new Map<string, CcBillingDetailMonthRow>();
+/** A member's row without its own month frame: the merged row takes the group's (`mergeCreditCardLedgers`). */
+function statementRowOf(row: CcBillingDetailMonthRow): CcBillingDetailStatementRow {
+  const { cupo_en_cuotas_clp: _cupo, balance_total_clp: _balance, ...statement } = row;
+  return statement;
+}
+
+/**
+ * The members' rows summed per month in the STATEMENT frame. The month frame (the table's «deuda
+ * en cuotas» / «balance total») is never summed from the members' rows: a member's lines were
+ * sampled on its own and a month one member lacks would drop out of the sum. The merged rows take
+ * the group's own lines — the map its chart is drawn from — so the merged row equals the group
+ * chart point by construction.
+ */
+function mergeBillingDetail(ledgers: CcLedgerResponse[]): CcBillingDetailStatementRow[] {
+  const byMonth = new Map<string, CcBillingDetailStatementRow>();
   for (const ledger of ledgers) {
-    for (const row of ledger.billing_detail_by_month ?? []) {
+    for (const monthRow of ledger.billing_detail_by_month ?? []) {
+      const row = statementRowOf(monthRow);
       const prev = byMonth.get(row.billing_month);
       if (!prev) {
-        byMonth.set(row.billing_month, { ...row });
+        byMonth.set(row.billing_month, row);
         continue;
       }
       const asOfKind =
@@ -135,10 +162,10 @@ function mergeBillingDetail(ledgers: CcLedgerResponse[]): CcBillingDetailMonthRo
           row.total_facturado_actual_clp
         ),
         total_facturado_clp: mergedTotalFacturadoClp(prev, row),
-        cupo_en_cuotas_clp: prev.cupo_en_cuotas_clp + row.cupo_en_cuotas_clp,
+        cupo_statement_clp: prev.cupo_statement_clp + row.cupo_statement_clp,
         cuota_a_pagar_next_mes_clp:
           prev.cuota_a_pagar_next_mes_clp + row.cuota_a_pagar_next_mes_clp,
-        balance_total_clp: prev.balance_total_clp + row.balance_total_clp,
+        balance_statement_clp: prev.balance_statement_clp + row.balance_statement_clp,
         ...(prev.projected === true && row.projected === true ? { projected: true } : {}),
         ...(prev.provisional === true || row.provisional === true ? { provisional: true } : {}),
       });
@@ -234,10 +261,12 @@ function mergeOpenBillingMonth(ledgers: CcLedgerResponse[]): string | null {
 }
 
 /**
- * Merge per-master CC ledger payloads into one group-shaped response. `opts` carries the
- * historial chart's «deuda en cuotas» for the merged months (the members' daily walks summed at
- * each month-end — `creditCardGroupLedgerResponse` passes it; without it the merged billing-frame
- * column is plotted). The historial's bars are always the Σ of the members' own bars.
+ * Merge per-master CC ledger payloads into one group-shaped response. `opts.linesForMonths`
+ * carries the historial chart's two lines for the merged months (the members' daily walks summed
+ * at each month-end — `creditCardGroupLedgerResponse` passes it); it is sampled once, the chart
+ * plots it and the merged detalle rows take their month frame from it. Without it the merged
+ * statement-frame column is plotted and the rows' month frame is null. The historial's bars are
+ * always the Σ of the members' own bars.
  */
 export function mergeCreditCardLedgers(
   ledgers: CcLedgerResponse[],
@@ -273,7 +302,19 @@ export function mergeCreditCardLedgers(
 
   const facturaciones = mergeFacturaciones(ledgers);
   const installment_history_months = mergeInstallmentHistory(ledgers);
-  const billing_detail_by_month = mergeBillingDetail(ledgers);
+  const mergedDetail = mergeBillingDetail(ledgers);
+  let lines: ReadonlyMap<string, CcHistorialMonthLines> | null = null;
+  const sampler = opts?.linesForMonths;
+  const historial_chart = buildCcHistorialChartSeries(
+    installment_history_months,
+    mergedDetail,
+    facturaciones,
+    {
+      ...opts,
+      linesForMonths: sampler ? (months) => (lines = sampler(months)) : undefined,
+      memberSeries: ledgers.map((l) => l.historial_chart ?? []),
+    }
+  );
   return {
     account_id: 0,
     has_installment_ledger: ledgers.some((l) => l.has_installment_ledger),
@@ -285,13 +326,8 @@ export function mergeCreditCardLedgers(
     totals: mergeTotals(ledgers),
     installment_history_months,
     facturaciones,
-    billing_detail_by_month,
-    historial_chart: buildCcHistorialChartSeries(
-      installment_history_months,
-      billing_detail_by_month,
-      facturaciones,
-      { ...opts, memberSeries: ledgers.map((l) => l.historial_chart ?? []) }
-    ),
+    billing_detail_by_month: overlayBillingDetailMonthLines(mergedDetail, lines),
+    historial_chart,
     open_billing_month: mergeOpenBillingMonth(ledgers),
     cupo: mergeCupo(ledgers),
     associated_card_last4s: [...associated].sort(),

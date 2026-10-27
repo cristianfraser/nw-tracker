@@ -110,7 +110,7 @@ export function CreditCardFacturadoFinancingManager({
         subtitle={t("expenses.creditCard.financing.intro")}
         closeAriaLabel={t("common.close")}
       >
-        <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>
+        <h3 style={{ marginBottom: "0.5rem" }}>
           {t("expenses.creditCard.financing.existingTitle")}
         </h3>
         {links.data && links.data.links.length > 0 ? (
@@ -150,7 +150,7 @@ export function CreditCardFacturadoFinancingManager({
           </p>
         )}
 
-        <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>
+        <h3 style={{ marginBottom: "0.5rem" }}>
           {t("expenses.creditCard.financing.newTitle")}
         </h3>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "0.75rem" }}>

@@ -54,15 +54,9 @@ function CreditCardInstallmentsSection({
   const manualBusy = deletePurchase.isPending;
   const purchasesCompleted = ledger.purchases_completed ?? [];
 
-  const purchasesActiveSorted = useMemo(() => {
-    const list = [...ledger.purchases];
-    list.sort((a, b) => {
-      const d = a.remaining_installments - b.remaining_installments;
-      if (d !== 0) return d;
-      return a.label.localeCompare(b.label, "es");
-    });
-    return list;
-  }, [ledger.purchases]);
+  // The server orders `purchases` (plan finishing soonest first, ties by billing month —
+  // `ccActivePurchaseOrder.ts`); the client only picks.
+  const purchasesActiveSorted = useMemo(() => [...ledger.purchases], [ledger.purchases]);
 
   const purchaseById = useMemo(() => {
     const map = new Map<string, CcInstallmentPurchaseComputed>();
