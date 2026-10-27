@@ -1,3 +1,5 @@
+import { chainedGroupPctResolver } from "./blankPctDailyChain.js";
+import { isLiabilityAccountId } from "./accountBucket.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
@@ -88,6 +90,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     const card_metrics_by_slug = buildNavCardMetricsBySlug({
       navRoots: [navRoot, liabilitiesRoot],
       rows: rowsBuilt,
+      chainedGroupPct: chainedGroupPctResolver(rowsBuilt, includeUsd, isLiabilityAccountId),
     });
     const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday);
     const liabilities_clp_aligned = liabilitiesClp.mortgage_clp + liabilitiesClp.credit_card_clp;
