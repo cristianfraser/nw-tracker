@@ -158,9 +158,31 @@ export interface CcInstallmentPurchaseComputed {
     cuota_current: number | null;
     amount_clp: number;
   }[];
-  merged_purchase_ids?: number[];
-  merge_reason?: string | null;
-  heuristic_hints?: string[];
+  /** The plan cuota by cuota for the progress bar (DB source only; null without a schedule). */
+  cuota_progress?: CcCuotaProgress | null;
+}
+
+export interface CcCuotaProgressCuota {
+  /** 1-based cuota number. */
+  index: number;
+  /** Facturación that billed it, or will. */
+  billing_month: string;
+  /** ISO pay-by of the statement that billed it; null until one prints it. */
+  pay_by_date: string | null;
+  /** ISO close of the statement that billed it; null until one prints it. */
+  statement_date: string | null;
+  amount_clp: number;
+  status: "paid" | "billed" | "pending";
+}
+
+export interface CcCuotaProgress {
+  /** Σ printed cuotas = paid + billed + pending. */
+  total_clp: number;
+  paid_clp: number;
+  billed_clp: number;
+  pending_clp: number;
+  paid_count: number;
+  cuotas: CcCuotaProgressCuota[];
 }
 
 export interface CcInstallmentMonthBreakdown {

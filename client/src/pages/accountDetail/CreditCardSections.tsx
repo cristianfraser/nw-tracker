@@ -6,13 +6,12 @@ import type {
   AccountCcInstallmentsResponse,
   CcInstallmentMonthBreakdown,
   CcInstallmentPurchaseComputed,
-  CcProxyLotResult,
 } from "../../types";
 import { formatClp, formatGroupedDecimal } from "../../format";
 import { cn } from "../../cn";
 import { Trans, useTranslation } from "../../i18n";
 import { formatYearMonthLabel } from "../../formatDateLabel";
-import { proxyCuotaLine } from "./creditCardProxyLine";
+import { CreditCardCuotaProgress } from "./CreditCardCuotaProgress";
 import { CreditCardFacturacionesTable } from "./CreditCardFacturacionesTable";
 import {
   CreditCardPurchaseMobileCard,
@@ -57,6 +56,12 @@ function CreditCardInstallmentsSection({
   // The server orders `purchases` (plan finishing soonest first, ties by billing month —
   // `ccActivePurchaseOrder.ts`); the client only picks.
   const purchasesActiveSorted = useMemo(() => [...ledger.purchases], [ledger.purchases]);
+
+  // The progress bars of the active table share one segment width: 1/(longest plan) of the row.
+  const maxActiveInstallments = useMemo(
+    () => purchasesActiveSorted.reduce((m, p) => Math.max(m, p.installment_count), 0),
+    [purchasesActiveSorted]
+  );
 
   const purchaseById = useMemo(() => {
     const map = new Map<string, CcInstallmentPurchaseComputed>();
@@ -104,13 +109,6 @@ function CreditCardInstallmentsSection({
     p.origin === "manual"
       ? t("account.creditCard.originManual")
       : t("account.creditCard.originImportDocument");
-
-  const inlineTicker = ledger.proxy_tickers?.[0] ?? "fintual_cert_reserva2";
-
-  const formatProxyForCuota = (
-    proxy: CcProxyLotResult | undefined,
-    payByDate: string
-  ): string | null => proxyCuotaLine(proxy, inlineTicker, payByDate);
 
   const purchaseTableHeader = (dueColumn: "last" | "none") => (
     <thead>
@@ -189,41 +187,14 @@ function CreditCardInstallmentsSection({
                     ? () => deletePurchase.mutate(p.purchase_db_id!)
                     : undefined
                 }
-                purchaseProxy={
-                  p.purchase_db_id != null ? ledger.purchase_proxy?.[p.purchase_db_id] : undefined
-                }
-                inlineTicker={inlineTicker}
+                maxInstallments={maxActiveInstallments}
               />
             </td>
           </tr>
-          {opts.dueColumn === "none" && p.payment_statements && p.payment_statements.length > 0 ? (
+          {opts.dueColumn === "none" && p.cuota_progress ? (
             <tr className="desktop-only">
               <td colSpan={detailColSpan} className={cn("muted", styles.purchaseMeta)}>
-                {p.merged_purchase_ids && p.merged_purchase_ids.length > 1 ? (
-                  <div className="mono">
-                    {t("account.creditCard.mergedIds", { ids: p.merged_purchase_ids.join(", ") })}
-                  </div>
-                ) : null}
-                {p.merge_reason ? (
-                  <div className="mono">{t("account.creditCard.mergeReason", { reason: p.merge_reason })}</div>
-                ) : null}
-                {p.heuristic_hints && p.heuristic_hints.length > 0 ? (
-                  <div className="mono">{t("account.creditCard.heuristics", { hints: p.heuristic_hints.join(" | ") })}</div>
-                ) : null}
-                <div>{t("account.creditCard.statementsForPurchase")}</div>
-                {p.payment_statements.map((st, idx) => {
-                  const purchaseProxy = p.purchase_db_id != null
-                    ? ledger.purchase_proxy?.[p.purchase_db_id]
-                    : undefined;
-                  const proxyInline = formatProxyForCuota(purchaseProxy, st.pay_by_date);
-                  return (
-                    <div key={`${p.purchase_id}:st:${idx}`} className="mono">
-                      {st.statement_date ?? t("account.creditCard.statementNoDate")} · pay_by{" "}
-                      {st.pay_by_date} · cuota {st.cuota_current ?? "?"} · {formatClp(st.amount_clp)}
-                      {proxyInline ? <span className="muted"> · {proxyInline}</span> : null}
-                    </div>
-                  );
-                })}
+                <CreditCardCuotaProgress progress={p.cuota_progress} maxInstallments={maxActiveInstallments} />
               </td>
             </tr>
           ) : null}

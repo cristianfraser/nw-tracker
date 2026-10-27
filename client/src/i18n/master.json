@@ -4873,30 +4873,6 @@
         "en": "Last paid month",
         "es": "Mes último pago"
       },
-      "statementsForPurchase": {
-        "en": "Statement(s) with an installment for this purchase:",
-        "es": "Estado(s) con cuota para esta compra:"
-      },
-      "mergedIds": {
-        "en": "Merged duplicate purchase IDs: {{ids}}",
-        "es": "IDs de compra duplicados fusionados: {{ids}}"
-      },
-      "mergeReason": {
-        "en": "Merge reason: {{reason}}",
-        "es": "Motivo de fusión: {{reason}}"
-      },
-      "heuristics": {
-        "en": "Heuristics: {{hints}}",
-        "es": "Heurísticas: {{hints}}"
-      },
-      "statementNoDate": {
-        "en": "no statement date",
-        "es": "sin fecha estado"
-      },
-      "proxyCuotaReturn": {
-        "en": "{{ticker}} · this installment: {{cuota}} · purchase total: {{total}} ({{pct}})",
-        "es": "{{ticker}} · esta cuota: {{cuota}} · total compra: {{total}} ({{pct}})"
-      },
       "monthCuotasTitle": {
         "en": "Installments by billing cycle",
         "es": "Cuotas por facturación"
@@ -4933,6 +4909,48 @@
         "statementsOnly": {
           "en": "Imported statements (PDF). No installment purchases in the ledger until CLP statements are imported.",
           "es": "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP."
+        }
+      },
+      "cuotaProgress": {
+        "caption": {
+          "en": "{{paidCount}} of {{total}} · {{paid}} / {{totalClp}} ({{pending}} pending)",
+          "es": "{{paidCount}} de {{total}} · {{paid}} / {{totalClp}} ({{pending}} pendiente)"
+        },
+        "ariaLabel": {
+          "en": "Installment progress: {{paid}} of {{total}} paid",
+          "es": "Progreso de cuotas: {{paid}} de {{total}} pagadas"
+        },
+        "colCuota": {
+          "en": "Installment",
+          "es": "Cuota"
+        },
+        "colBillingMonth": {
+          "en": "Billing cycle",
+          "es": "Facturación"
+        },
+        "colAmount": {
+          "en": "Amount",
+          "es": "Monto"
+        },
+        "colStatus": {
+          "en": "Status",
+          "es": "Estado"
+        },
+        "statusPaid": {
+          "en": "paid",
+          "es": "pagada"
+        },
+        "statusBilled": {
+          "en": "billed",
+          "es": "facturada"
+        },
+        "statusPending": {
+          "en": "pending",
+          "es": "pendiente"
+        },
+        "total": {
+          "en": "Total",
+          "es": "Total"
         }
       }
     }

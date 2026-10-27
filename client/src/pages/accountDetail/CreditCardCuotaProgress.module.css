@@ -1,0 +1,137 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+}
+
+.caption {
+  font-size: var(--font-size-card-meta);
+}
+
+.barWrap {
+  position: relative;
+  border-radius: var(--card-radius);
+  cursor: default;
+}
+
+.barWrap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.bar {
+  display: flex;
+  gap: var(--cuota-segment-gap);
+  height: 8px;
+  --cuota-segment-gap: 2px;
+}
+
+/* Every bar of the table shares one segment width: the row split into --cuota-segments, capped. */
+.segment {
+  flex: 0 0
+    min(
+      calc((100% - (var(--cuota-segments) - 1) * var(--cuota-segment-gap)) / var(--cuota-segments)),
+      var(--cuota-segment-max)
+    );
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--surface2);
+}
+
+.paid {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.billed {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 18rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  color: var(--text);
+  font-size: var(--font-size-caption);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+.tooltipTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltipTable th,
+.tooltipTable td {
+  padding: 0.1rem 0.6rem 0.1rem 0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tooltipTable th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.tooltipTable th:last-child,
+.tooltipTable td:last-child {
+  padding-right: 0;
+}
+
+.num {
+  text-align: right !important;
+}
+
+.rowPending {
+  color: var(--muted);
+}
+
+.statementDate::before {
+  content: " · ";
+}
+
+.tooltipTable tfoot td {
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+}
+
+/* Inside a mobile card (overflow hidden, narrow) the tooltip opens in flow, under the bar. */
+@media (max-width: 879px) {
+  .tooltip {
+    position: static;
+    min-width: 0;
+    margin-top: var(--space-xs);
+    box-shadow: none;
+  }
+
+  .tooltipTable {
+    font-size: var(--font-size-card-meta);
+  }
+
+  .tooltipTable th,
+  .tooltipTable td {
+    padding-right: 0.4rem;
+  }
+
+  .tooltipTable th {
+    white-space: normal;
+  }
+
+  .statementDate {
+    display: block;
+    color: var(--muted);
+  }
+
+  .statementDate::before {
+    content: none;
+  }
+}

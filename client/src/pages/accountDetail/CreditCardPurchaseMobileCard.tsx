@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { CcInstallmentPurchaseComputed, CcProxyLotResult } from "../../types";
+import type { CcInstallmentPurchaseComputed } from "../../types";
 import { formatClp, formatGroupedDecimal } from "../../format";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
@@ -9,7 +9,7 @@ import {
   TableMobileCardSection,
 } from "../../components/ui/TableMobileCard";
 import { formatYearMonthLabel } from "../../formatDateLabel";
-import { proxyCuotaLine } from "./creditCardProxyLine";
+import { CreditCardCuotaProgress } from "./CreditCardCuotaProgress";
 import styles from "../AccountDetailPage.module.css";
 import { Button } from "@crfrsr/ui";
 
@@ -25,8 +25,7 @@ export function CreditCardPurchaseMobileCard({
   manualDeleteLabel,
   manualBusy,
   onDeleteManual,
-  purchaseProxy,
-  inlineTicker,
+  maxInstallments,
 }: {
   purchase: CcInstallmentPurchaseComputed;
   hasLedger: boolean;
@@ -35,8 +34,8 @@ export function CreditCardPurchaseMobileCard({
   manualDeleteLabel: string;
   manualBusy: boolean;
   onDeleteManual?: () => void;
-  purchaseProxy?: CcProxyLotResult;
-  inlineTicker?: string;
+  /** Shared segment width of the table's progress bars (see CreditCardCuotaProgress). */
+  maxInstallments: number;
 }) {
   const { t } = useTranslation();
   const title = (
@@ -108,35 +107,9 @@ export function CreditCardPurchaseMobileCard({
         ) : null}
       </TableMobileCardSection>
 
-      {dueColumn === "none" && purchase.payment_statements && purchase.payment_statements.length > 0 ? (
+      {dueColumn === "none" && purchase.cuota_progress ? (
         <TableMobileCardSection>
-          <div className={cn("muted", styles.purchaseMeta)}>{t("account.creditCard.statementsForPurchase")}</div>
-          {purchase.merged_purchase_ids && purchase.merged_purchase_ids.length > 1 ? (
-            <div className={cn("mono", "muted", styles.purchaseMeta)}>
-              {t("account.creditCard.mergedIds", { ids: purchase.merged_purchase_ids.join(", ") })}
-            </div>
-          ) : null}
-          {purchase.merge_reason ? (
-            <div className={cn("mono", "muted", styles.purchaseMeta)}>
-              {t("account.creditCard.mergeReason", { reason: purchase.merge_reason })}
-            </div>
-          ) : null}
-          {purchase.heuristic_hints && purchase.heuristic_hints.length > 0 ? (
-            <div className={cn("mono", "muted", styles.purchaseMeta)}>
-              {t("account.creditCard.heuristics", { hints: purchase.heuristic_hints.join(" | ") })}
-            </div>
-          ) : null}
-          {purchase.payment_statements.map((st) => {
-            const ticker = inlineTicker ?? "fintual_cert_reserva2";
-            const proxyInline = proxyCuotaLine(purchaseProxy, ticker, st.pay_by_date);
-            return (
-              <div key={`${purchase.purchase_id}:st:${st.pay_by_date}`} className={cn("mono", "muted", styles.purchaseMeta)}>
-                {st.statement_date ?? t("account.creditCard.statementNoDate")} · pay_by{" "}
-                {st.pay_by_date} · cuota {st.cuota_current ?? "?"} · {formatClp(st.amount_clp)}
-                {proxyInline ? ` · ${proxyInline}` : null}
-              </div>
-            );
-          })}
+          <CreditCardCuotaProgress progress={purchase.cuota_progress} maxInstallments={maxInstallments} />
         </TableMobileCardSection>
       ) : null}
     </TableMobileCard>

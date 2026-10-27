@@ -1375,12 +1375,6 @@
       "colCuotaClp": "Cuota CLP",
       "colRemainingClp": "Restante CLP",
       "colLastPaid": "Mes último pago",
-      "statementsForPurchase": "Estado(s) con cuota para esta compra:",
-      "mergedIds": "IDs de compra duplicados fusionados: {{ids}}",
-      "mergeReason": "Motivo de fusión: {{reason}}",
-      "heuristics": "Heurísticas: {{hints}}",
-      "statementNoDate": "sin fecha estado",
-      "proxyCuotaReturn": "{{ticker}} · esta cuota: {{cuota}} · total compra: {{total}} ({{pct}})",
       "monthCuotasTitle": "Cuotas por facturación",
       "colMonthCuotaTotal": "Cuota a pagar",
       "colDebtAfterPayment": "Deuda tras pago",
@@ -1391,6 +1385,18 @@
       "payByRule": {
         "ledger": "Cuotas por facturación: cada fila es una facturación (cierre ~20) con su pagar-hasta (~10 del mes siguiente); cuota a pagar = cuotas del plan que factura ese cierre. Los PDF fijan montos, avance y pagar-hasta; meses abiertos/proyectados siguen el plan. La fila desaparece cuando su facturación se paga efectivamente (o pasado su pagar-hasta si no hay pago registrado).",
         "statementsOnly": "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP."
+      },
+      "cuotaProgress": {
+        "caption": "{{paidCount}} de {{total}} · {{paid}} / {{totalClp}} ({{pending}} pendiente)",
+        "ariaLabel": "Progreso de cuotas: {{paid}} de {{total}} pagadas",
+        "colCuota": "Cuota",
+        "colBillingMonth": "Facturación",
+        "colAmount": "Monto",
+        "colStatus": "Estado",
+        "statusPaid": "pagada",
+        "statusBilled": "facturada",
+        "statusPending": "pendiente",
+        "total": "Total"
       }
     }
   },
