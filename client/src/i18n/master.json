@@ -4829,14 +4829,6 @@
         "en": "Installments",
         "es": "Cuotas"
       },
-      "colPaid": {
-        "en": "Paid",
-        "es": "Pagadas"
-      },
-      "colRemain": {
-        "en": "Remaining",
-        "es": "Restan"
-      },
       "colPrincipal": {
         "en": "Principal",
         "es": "Principal"
@@ -4853,10 +4845,6 @@
         "en": "Billing month",
         "es": "Mes facturación"
       },
-      "colFirstDue": {
-        "en": "1st installment (MONTH)",
-        "es": "1.ª cuota (MES)"
-      },
       "colOffsetCsv": {
         "en": "CSV offset (months)",
         "es": "Offset CSV (meses)"
@@ -4864,10 +4852,6 @@
       "colCuotaClp": {
         "en": "Installment CLP",
         "es": "Cuota CLP"
-      },
-      "colRemainingClp": {
-        "en": "Remaining CLP",
-        "es": "Restante CLP"
       },
       "colLastPaid": {
         "en": "Last paid month",
