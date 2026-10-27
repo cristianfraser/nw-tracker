@@ -2182,19 +2182,29 @@
           "en": "Interest",
           "es": "Interés"
         },
-        "card": {
-          "en": "Card",
-          "es": "Tarjeta"
-        }
-      },
-      "card": {
-        "awaitingCardLine": {
-          "en": "no card line yet",
-          "es": "sin línea de tarjeta aún"
+        "min": {
+          "en": "Min",
+          "es": "Mín"
         },
-        "ambiguous": {
-          "en": "several card lines fit",
-          "es": "varias líneas de tarjeta coinciden"
+        "max": {
+          "en": "Max",
+          "es": "Máx"
+        },
+        "cuotaPago": {
+          "en": "Installment · payment",
+          "es": "Cuota · pago"
+        },
+        "minMaxUf": {
+          "en": "Min · max UF",
+          "es": "Mín · máx UF"
+        },
+        "segurosInteres": {
+          "en": "Insurance · interest",
+          "es": "Seguros · interés"
+        },
+        "amortizaciones": {
+          "en": "Amortization · extra",
+          "es": "Amortización · extra"
         }
       },
       "cardLinesWithoutPayment": {
@@ -3058,8 +3068,8 @@
         "es": "Cuenta"
       },
       "balance": {
-        "en": "Balance",
-        "es": "Balance"
+        "en": "Today",
+        "es": "Hoy"
       },
       "month": {
         "en": "Month",

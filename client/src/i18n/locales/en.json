@@ -640,11 +640,12 @@
         "amortizacion": "Amortization",
         "amortExt": "Extra amort.",
         "interes": "Interest",
-        "card": "Card"
-      },
-      "card": {
-        "awaitingCardLine": "no card line yet",
-        "ambiguous": "several card lines fit"
+        "min": "Min",
+        "max": "Max",
+        "cuotaPago": "Installment · payment",
+        "minMaxUf": "Min · max UF",
+        "segurosInteres": "Insurance · interest",
+        "amortizaciones": "Amortization · extra"
       },
       "cardLinesWithoutPayment": "Card charges with no cuota in the ledger (post the row in the mortgage sheet):"
     },
@@ -879,7 +880,7 @@
     },
     "accountsTable": {
       "account": "Account",
-      "balance": "Balance",
+      "balance": "Today",
       "month": "Month",
       "year": "Year",
       "total": "Total",

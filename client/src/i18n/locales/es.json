@@ -640,11 +640,12 @@
         "amortizacion": "Amortización",
         "amortExt": "Amort. ext",
         "interes": "Interés",
-        "card": "Tarjeta"
-      },
-      "card": {
-        "awaitingCardLine": "sin línea de tarjeta aún",
-        "ambiguous": "varias líneas de tarjeta coinciden"
+        "min": "Mín",
+        "max": "Máx",
+        "cuotaPago": "Cuota · pago",
+        "minMaxUf": "Mín · máx UF",
+        "segurosInteres": "Seguros · interés",
+        "amortizaciones": "Amortización · extra"
       },
       "cardLinesWithoutPayment": "Cargos en la tarjeta sin cuota en el ledger (registra la fila en la hoja de la hipoteca):"
     },
@@ -879,7 +880,7 @@
     },
     "accountsTable": {
       "account": "Cuenta",
-      "balance": "Balance",
+      "balance": "Hoy",
       "month": "Mes",
       "year": "Año",
       "total": "Total",

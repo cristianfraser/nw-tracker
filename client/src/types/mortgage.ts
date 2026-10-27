@@ -42,10 +42,14 @@ export interface DeptoMortgageSheetRow {
   desgravamen_uf: number | null;
   total_seguros_uf: number | null;
   total_seguros_clp: number | null;
+  seguros_interes_uf: number | null;
+  seguros_interes_clp: number | null;
   amortizacion_clp: number | null;
   amortizacion_uf: number | null;
   amortizacion_ext_clp: number | null;
   amortizacion_ext_uf: number | null;
+  amortizacion_total_uf: number | null;
+  amortizacion_total_clp: number | null;
   interes_clp: number | null;
   interes_uf: number | null;
   delta_credito_amort_clp: number | null;

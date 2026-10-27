@@ -158,6 +158,43 @@
   font-size: var(--font-size-card-meta);
 }
 
+/* Several former columns in one cell: label / figure / muted figure aligned across the lines. */
+.mergedLines {
+  display: grid;
+  grid-template-columns: max-content max-content max-content;
+  column-gap: var(--space-sm);
+  align-items: baseline;
+}
+
+.mergedLinesUnlabelled {
+  grid-template-columns: max-content max-content;
+}
+
+.mergedLine {
+  display: contents;
+}
+
+/* A line that is one figure: spans the figure columns (never the label column). */
+.mergedLineWide {
+  grid-column: span 2;
+}
+
+.mergedLineLabel {
+  font-size: var(--font-size-card-meta);
+  text-align: right;
+}
+
+/* The total under a merged cell's lines: a rule above it, the figure columns only. */
+.mergedLineTotal > * {
+  border-top: 1px solid var(--border);
+  padding-top: 2px;
+  margin-top: 2px;
+}
+
+.mergedLineTotal > .mergedLineLabel {
+  border-top: none;
+}
+
 /* Form / misc */
 .breakAll {
   word-break: break-all;

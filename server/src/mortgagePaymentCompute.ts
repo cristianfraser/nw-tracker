@@ -1,4 +1,4 @@
-import { type DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
+import { sumPresent, type DeptoMortgageSheetRow } from "./deptoDividendosLedger.js";
 import {
   computeMortgagePaymentAnalytics,
   mortgageAnalyticsMetaFromLedger,
@@ -350,10 +350,14 @@ export function computeMortgagePaymentRow(
     desgravamen_uf,
     total_seguros_uf,
     total_seguros_clp,
+    seguros_interes_uf: roundUf4(total_seguros_uf + interes_uf),
+    seguros_interes_clp: total_seguros_clp + interes_clp,
     amortizacion_clp,
     amortizacion_uf,
     amortizacion_ext_clp: amortizacion_ext_clp > 0 ? amortizacion_ext_clp : null,
     amortizacion_ext_uf,
+    amortizacion_total_uf: sumPresent(roundUf4, amortizacion_uf, amortizacion_ext_uf),
+    amortizacion_total_clp: amortizacion_clp + amortizacion_ext_clp,
     interes_clp,
     interes_uf,
     delta_credito_amort_clp: null,
