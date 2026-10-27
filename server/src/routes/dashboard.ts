@@ -46,7 +46,16 @@ import {
   getDashboardOverviewDaily,
   OVERVIEW_DAILY_DEFAULT_DAYS,
 } from "../dashboardOverviewDaily.js";
-import { getGroupConsolidatedMonthlyPage, getGroupConsolidatedTables } from "../groupConsolidatedTables.js";
+import {
+  getGroupConsolidatedMonthlyPage,
+  getGroupConsolidatedTables,
+  getGroupPeriodReturns,
+} from "../groupConsolidatedTables.js";
+import {
+  buildLatestExpenses,
+  LATEST_EXPENSES_DEFAULT_LIMIT,
+  LATEST_EXPENSES_MAX_LIMIT,
+} from "../latestExpenses.js";
 import {
   buildGroupFlows,
   parseExtraFlowsFilterParams,
@@ -363,6 +372,37 @@ app.get("/api/groups/:slug/consolidated-tables", (req, res) => {
   res.json(getGroupConsolidatedTables(tabSlug, unit, undefined));
 });
 
+/**
+ * The Rentabilidad table alone (`{unit, group_slug, period_returns}`; null period_returns for a
+ * group without one) — the home dashboard, which does not load the consolidated-tables payload.
+ */
+app.get("/api/groups/:slug/period-returns", (req, res) => {
+  const slug = typeof req.params.slug === "string" ? req.params.slug.trim() : "";
+  if (!isKnownClassTabGroup(slug) || !isResolvablePortfolioGroupSlug(slug)) {
+    res.status(400).json({ error: "unknown group slug" });
+    return;
+  }
+  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+  const unit: TsUnit = includeUsd ? "usd" : "clp";
+  const { unit: u, group_slug, period_returns } = getGroupPeriodReturns(slug, unit);
+  res.json({ unit: u, group_slug, period_returns });
+});
+
+/** Home «Últimos gastos»: `?limit=` (default 15) newest expense lines, `?unit=clp|usd`. */
+app.get("/api/dashboard/latest-expenses", (req, res) => {
+  const unitRaw = String(req.query.unit ?? "clp");
+  if (unitRaw !== "clp" && unitRaw !== "usd") {
+    res.status(400).json({ error: `unit must be clp or usd, got ${unitRaw}` });
+    return;
+  }
+  const limitRaw = req.query.limit == null ? LATEST_EXPENSES_DEFAULT_LIMIT : Number(req.query.limit);
+  if (!Number.isInteger(limitRaw) || limitRaw <= 0 || limitRaw > LATEST_EXPENSES_MAX_LIMIT) {
+    res.status(400).json({ error: `limit must be an integer 1..${LATEST_EXPENSES_MAX_LIMIT}` });
+    return;
+  }
+  res.json(buildLatestExpenses(unitRaw, limitRaw));
+});
+
 /** Server-paginated consolidated detalle-por-mes rows (dashboard net_worth table). */
 app.get("/api/groups/:slug/consolidated-monthly", (req, res) => {
   const slug = typeof req.params.slug === "string" ? req.params.slug.trim() : "";
@@ -428,7 +468,8 @@ app.get("/api/groups/:slug/flows", (req, res) => {
     return;
   }
   Object.assign(filters, extra.filters);
-  res.json(buildGroupFlows(tabSlug, filters, page, pageSize));
+  const excludeSpending = req.query.exclude_spending === "1" || req.query.exclude_spending === "true";
+  res.json(buildGroupFlows(tabSlug, filters, page, pageSize, { excludeSpending }));
 });
 
 /** Paginated + filtered flows for a single account (server-side). */

@@ -70,6 +70,9 @@ export function DepositsPage() {
     }
     return data.net_total_clp;
   }, [data, displayUnit]);
+  /** The total's two parts, as the flows overview reads them: post-tax deposits and AFP/AFC. */
+  const postTaxTotal = data ? (displayUnit === "usd" ? data.post_tax_total_usd : data.post_tax_total_clp) : 0;
+  const preTaxTotal = data ? (displayUnit === "usd" ? data.pre_tax_total_usd : data.pre_tax_total_clp) : 0;
 
   /** "En el rango" companion: sum of the clipped chart points (matches the visible bars). */
   const rangeTotal = useMemo(
@@ -93,6 +96,13 @@ export function DepositsPage() {
         {t("deposits.totalLabel")}{" "}
         <span className="mono" style={{ color: "var(--text)" }}>
           {formatFlowMoney(total, displayUnit)}
+        </span>
+        <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}>
+          ({t("flows.overview.deposits")}{" "}
+          <span className="mono">{formatFlowMoney(postTaxTotal, displayUnit)}</span>
+          {" · "}
+          {t("flows.overview.depositsPreTax")}{" "}
+          <span className="mono">{formatFlowMoney(preTaxTotal, displayUnit)}</span>)
         </span>
         {timeRange !== "total" ? (
           <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}>
@@ -164,6 +174,11 @@ export function DepositsPage() {
                       <td>{depositFlowCategoryLabel(r.category)}</td>
                       <td>
                         <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
+                        {r.mortgage_carrying ? (
+                          <span className="muted" style={{ marginLeft: "0.4rem", fontSize: "0.8rem" }}>
+                            {t("deposits.mortgageCarryingTag")}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="mono">{formatFlowMoney(amount, displayUnit)}</td>
                     </tr>

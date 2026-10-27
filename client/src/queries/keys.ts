@@ -16,6 +16,9 @@ export const queryKeys = {
     ["dailySeries", scope, unit, days] as const,
   groupConsolidatedTables: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
     ["groupConsolidatedTables", group, subgroup ?? null, unit] as const,
+  groupPeriodReturns: (group: string, unit: DisplayUnit) =>
+    ["groupPeriodReturns", group, unit] as const,
+  latestExpenses: (unit: DisplayUnit, limit: number) => ["latestExpenses", unit, limit] as const,
   groupConsolidatedMonthlyPage: (
     group: string,
     unit: DisplayUnit,
@@ -57,6 +60,9 @@ export const queryKeys = {
   flowsExpensesGastosAll: () => ["flowsExpenses", "gastos"] as const,
   flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[]) =>
     ["flowsExpenses", "gastos", unit, [...excludedBigGroups].sort().join(",")] as const,
+  /** Nested under `flowsExpenses()` too: a line edit refetches the overview. Entity = up to the unit. */
+  flowsOverview: (unit: DisplayUnit, installmentMode: "split" | "total", days?: number) =>
+    ["flowsExpenses", "overview", unit, installmentMode, days ?? null] as const,
   creditCardConfig: (accountId: string) => ["creditCardConfig", accountId] as const,
   ccFacturadoFinancingLinks: () => ["ccFacturadoFinancingLinks"] as const,
   portfolioGroup: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>

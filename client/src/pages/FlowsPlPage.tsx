@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { FlowsPlChart } from "../components/charts/FlowsPlChart";
 import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
 import { Table } from "../components/ui/Table";
+import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
@@ -17,9 +18,12 @@ import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import { rollupFlowsPlChartPointsByYear } from "../flowsPlAggregate";
 import { flowsPlBucketLabel, useTranslation } from "../i18n";
 import { useFlowsPl } from "../queries/hooks";
-import type { FlowsPlAccountRow, FlowsPlBucketBlock } from "../types";
+import type { FlowsPlAccountRow, FlowsPlBucketBlock, FlowsPlBucketSlug } from "../types";
 
 const PAGE_SIZE = 12;
+
+/** The table's bucket columns, in the server's bucket order (`FLOWS_PL_BUCKETS`). */
+const PL_TABLE_BUCKETS: FlowsPlBucketSlug[] = ["brokerage", "retirement", "cash", "real_estate"];
 
 function accountRowValue(
   row: FlowsPlAccountRow,
@@ -37,7 +41,7 @@ function bucketTotal(
   return block[`${field}_${unit}`];
 }
 
-/** Flows → PL: monthly market P/L of the money buckets (brokerage / retiro / efectivo). */
+/** Flows → PL: monthly market P/L of the buckets (brokerage / retiro / efectivo / inmuebles) — the flows overview's P/L. */
 export function FlowsPlPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -127,31 +131,61 @@ export function FlowsPlPage() {
           header={
             <thead>
               <tr>
-                <th>{t("flows.overview.colMonth")}</th>
-                <th>{flowsPlBucketLabel("brokerage")}</th>
-                <th>{flowsPlBucketLabel("retirement")}</th>
-                <th>{flowsPlBucketLabel("cash")}</th>
-                <th>{t("flows.pl.colTotal")}</th>
-                <th>{t("flows.pl.colYtd")}</th>
-                <th>{t("flows.pl.colCumulative")}</th>
+                <th className="desktop-only">{t("flows.overview.colMonth")}</th>
+                {PL_TABLE_BUCKETS.map((slug) => (
+                  <th key={slug} className="desktop-only">
+                    {flowsPlBucketLabel(slug)}
+                  </th>
+                ))}
+                <th className="desktop-only">{t("flows.pl.colTotal")}</th>
+                <th className="desktop-only">{t("flows.pl.colYtd")}</th>
+                <th className="desktop-only">{t("flows.pl.colCumulative")}</th>
+                <th className="mobile-only" aria-hidden="true" />
               </tr>
             </thead>
           }
+          tableClassName="table--parallel-mobile"
           tableStyle={{ fontSize: "0.85rem" }}
         >
-          {pageRows.map((row) => (
-            <tr key={row.as_of_date}>
-              <td className="mono">
-                {flowPeriodLabel(row.as_of_date, tableGranularity)}
-              </td>
-              <td className="mono">{formatFlowMoney(row.brokerage, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(row.retirement, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(row.cash, displayUnit)}</td>
-              <td className="mono">{formatFlowMoney(row.total, displayUnit)}</td>
-              <td className="mono muted">{formatFlowMoney(row.ytd_total, displayUnit)}</td>
-              <td className="mono muted">{formatFlowMoney(row.cumulative_total, displayUnit)}</td>
-            </tr>
-          ))}
+          {pageRows.map((row) => {
+            const period = flowPeriodLabel(row.as_of_date, tableGranularity);
+            return (
+              <tr key={row.as_of_date}>
+                <td className="mono desktop-only">{period}</td>
+                {PL_TABLE_BUCKETS.map((slug) => (
+                  <td key={slug} className="mono desktop-only">
+                    {formatFlowMoney(row[slug], displayUnit)}
+                  </td>
+                ))}
+                <td className="mono desktop-only">{formatFlowMoney(row.total, displayUnit)}</td>
+                <td className="mono muted desktop-only">{formatFlowMoney(row.ytd_total, displayUnit)}</td>
+                <td className="mono muted desktop-only">{formatFlowMoney(row.cumulative_total, displayUnit)}</td>
+                <td className="mobile-only">
+                  <TableMobileCard title={period}>
+                    {PL_TABLE_BUCKETS.map((slug) => (
+                      <TableMobileCardRow
+                        key={slug}
+                        label={flowsPlBucketLabel(slug)}
+                        value={<span className="mono">{formatFlowMoney(row[slug], displayUnit)}</span>}
+                      />
+                    ))}
+                    <TableMobileCardRow
+                      label={t("flows.pl.colTotal")}
+                      value={<span className="mono">{formatFlowMoney(row.total, displayUnit)}</span>}
+                    />
+                    <TableMobileCardRow
+                      label={t("flows.pl.colYtd")}
+                      value={<span className="mono">{formatFlowMoney(row.ytd_total, displayUnit)}</span>}
+                    />
+                    <TableMobileCardRow
+                      label={t("flows.pl.colCumulative")}
+                      value={<span className="mono">{formatFlowMoney(row.cumulative_total, displayUnit)}</span>}
+                    />
+                  </TableMobileCard>
+                </td>
+              </tr>
+            );
+          })}
         </Table>
       </PaginatedTable>
 

@@ -14,6 +14,7 @@ import { attachNetWorthAth } from "./netWorthAllTimeHigh.js";
 import { buildFxCoverageWithConversionWarnings, type FxCoverage } from "./fxCoverage.js";
 import { clearFxConversionWarnings } from "./fxConversionWarnings.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
+import { buildDashboardCcUpcomingPayments } from "./dashboardCcUpcomingPayments.js";
 
 export type { FxCoverage };
 
@@ -69,6 +70,9 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
   const brokeragePerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
     getGroupMonthlyPerformanceSeries("brokerage", unit)
   );
+  await nextMacrotask();
+  // Pesos in both units: the facturaciones rows it reads carry no USD frame.
+  const ccUpcomingPayments = buildDashboardCcUpcomingPayments();
 
   return {
     dash,
@@ -77,5 +81,6 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
     fx_coverage: includeUsd ? buildFxCoverageWithConversionWarnings() : null,
     retirementPerf,
     brokeragePerf,
+    cc_upcoming_payments: ccUpcomingPayments,
   };
 }

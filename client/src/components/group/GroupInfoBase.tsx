@@ -16,16 +16,17 @@ import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCar
 import type { ColdStripShape } from "../../coldPageShape";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useTranslation } from "../../i18n";
-import { useGroupConsolidatedMonthlyPage } from "../../queries/hooks";
+import { useGroupConsolidatedMonthlyPage, useGroupPeriodReturns } from "../../queries/hooks";
 import {
   consolidatedRowsForDisplay,
+  periodReturnsForDisplay,
   useGroupInfoConsolidatedTables,
   type GroupInfoTableAccount,
 } from "../../useGroupInfoConsolidatedTables";
 import { resolveMonthlyDetailRows } from "./monthlyDetailRows";
 import { monthYearMetricsPeriod } from "../../dashboardCardBreakdown";
 import { buildPlaceholderConsolidatedMonthlyRows } from "../../placeholders/groupPageTablePlaceholders";
-import type { DashboardResponse, NavTreeNodeDto } from "../../types";
+import type { DashboardResponse, NavTreeNodeDto, PeriodReturnsPayload } from "../../types";
 import pageShellStyles from "../../pages/AccountDetailPage.module.css";
 
 export type GroupInfoPortfolioStrip = {
@@ -75,6 +76,15 @@ export type GroupInfoBaseProps = {
    * whole consolidated-tables payload (dashboard net_worth; group pages stay client-paginated).
    */
   serverPaginatedMonthlyDetail?: boolean;
+  /** i18n key of the flows table heading (default «Flujos»). */
+  flowsTitleKey?: string;
+  /**
+   * The flows table leaves out the checking movements the Expenses page counts as spending
+   * (home «Flujos de patrimonio»).
+   */
+  flowsExcludeSpending?: boolean;
+  /** Rendered right after the flows table (home «Últimos gastos»). */
+  afterFlows?: ReactNode;
 };
 
 export function GroupInfoBase({
@@ -90,6 +100,9 @@ export function GroupInfoBase({
   loading = false,
   hideConsolidatedTables = false,
   serverPaginatedMonthlyDetail = false,
+  flowsTitleKey = "groupPage.flowsTitle",
+  flowsExcludeSpending = false,
+  afterFlows,
 }: GroupInfoBaseProps) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -119,6 +132,25 @@ export function GroupInfoBase({
     displayUnit,
     tablesFetchEnabled && !serverPaginatedMonthlyDetail
   );
+
+  // A server-paginated page does not load the consolidated-tables payload: its Rentabilidad
+  // table comes alone (`/api/groups/:slug/period-returns`).
+  const leanPeriodReturnsQuery = useGroupPeriodReturns(
+    portfolio?.groupSlug ?? "",
+    displayUnit,
+    tablesFetchEnabled && serverPaginatedMonthlyDetail
+  );
+  // undefined = not here yet (or held prior-unit data); null = the server sends none.
+  const leanPeriodReturns = useMemo((): PeriodReturnsPayload | null | undefined => {
+    const data = leanPeriodReturnsQuery.data;
+    if (!data) return leanPeriodReturnsQuery.isError ? null : undefined;
+    if (!data.period_returns) return null;
+    return periodReturnsForDisplay(data.period_returns, displayUnit) ?? undefined;
+  }, [leanPeriodReturnsQuery.data, leanPeriodReturnsQuery.isError, displayUnit]);
+  const shownPeriodReturns = serverPaginatedMonthlyDetail ? leanPeriodReturns : periodReturns;
+  const periodReturnsHeld = serverPaginatedMonthlyDetail
+    ? leanPeriodReturnsQuery.isPlaceholderData
+    : tablesHeld;
 
   // Page state is tied to the period it was set under: a month↔year toggle changes the
   // row count, so the derived page snaps back to 1 without an effect (no stale-page fetch).
@@ -204,15 +236,15 @@ export function GroupInfoBase({
         {tablesEnabled ? (
           <>
             {/* undefined = still loading (frame, dimmed — also before the nav names the group); null = the server sends none. */}
-            {!serverPaginatedMonthlyDetail && periodReturns !== null ? (
+            {shownPeriodReturns !== null ? (
               <>
                 <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("periodReturns.title")}</h2>
                 <PeriodReturnsWithBenchmark
-                  data={periodReturns ?? null}
+                  data={shownPeriodReturns ?? null}
                   displayUnit={displayUnit}
                   scope={{ portfolioGroup: portfolio?.groupSlug ?? "" }}
                   surfaceId={`group.${portfolio?.groupSlug || "pending"}.returns`}
-                  loading={periodReturns === undefined || tablesHeld}
+                  loading={shownPeriodReturns === undefined || periodReturnsHeld}
                 />
               </>
             ) : null}
@@ -267,7 +299,7 @@ export function GroupInfoBase({
               <p className="muted">{t("groupPage.monthlyDetailEmpty")}</p>
             )}
 
-            <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("groupPage.flowsTitle")}</h2>
+            <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t(flowsTitleKey)}</h2>
             {tablesError ? (
               <p className="error">{tablesError}</p>
             ) : (
@@ -275,9 +307,11 @@ export function GroupInfoBase({
                 kind="group"
                 groupSlug={portfolio?.groupSlug ?? ""}
                 showUnitsColumn={false}
+                excludeSpending={flowsExcludeSpending}
                 enabled={flowsEnabled}
               />
             )}
+            {afterFlows}
           </>
         ) : null}
         {exportSlot ? (

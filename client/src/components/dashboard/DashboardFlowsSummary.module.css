@@ -1,0 +1,64 @@
+/* Home dashboard flows section: the last closed month / twelve closed months above the overview chart. */
+.root {
+  margin-top: 1.75rem;
+}
+
+.link {
+  font-size: var(--font-size-card-meta);
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+  margin: var(--space-sm) 0 var(--space-md);
+}
+
+@media (max-width: 600px) {
+  .summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.period {
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+  padding: var(--space-sm) var(--space-md);
+}
+
+.periodTitle {
+  font-size: var(--font-size-card-label);
+  color: var(--muted);
+  margin-bottom: var(--space-xs);
+}
+
+.lines {
+  margin: 0;
+  font-size: var(--font-size-card-meta);
+}
+
+.line,
+.lineSection {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.line dt,
+.lineSection dt {
+  color: var(--muted);
+}
+
+.line dd,
+.lineSection dd {
+  margin: 0;
+}
+
+/* Savings and P/L each open a section: a divider above. */
+.lineSection {
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-xs);
+  padding-top: var(--space-xs);
+}

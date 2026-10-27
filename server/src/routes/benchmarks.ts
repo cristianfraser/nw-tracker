@@ -5,7 +5,7 @@ import { getBenchmark, listBenchmarks } from "../benchmarkLevels.js";
 import { db } from "../db.js";
 import { computeMortgagePrepaymentComparison } from "../mortgagePrepaymentComparison.js";
 import {
-  isInvestmentPerformanceGroupSlug,
+  groupHasPeriodReturns,
   isResolvablePortfolioGroupSlug,
   normalizeLegacyTabSubgroup,
   resolvePortfolioGroupSlugForLegacyTab,
@@ -81,7 +81,7 @@ export function registerBenchmarkRoutes(app: express.Express): void {
       res.status(400).json({ error: "unknown group slug" });
       return;
     }
-    if (!isInvestmentPerformanceGroupSlug(tabSlug)) {
+    if (!groupHasPeriodReturns(tabSlug)) {
       res.json(null);
       return;
     }

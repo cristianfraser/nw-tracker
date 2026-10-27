@@ -1,10 +1,11 @@
 import { db } from "./db.js";
 import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
-import { isInvestmentPerformanceAccount, isInvestmentPerformanceGroupSlug } from "./portfolioGroupTree.js";
+import { groupHasPeriodReturns, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 
 /**
  * The full-history daily series every Rentabilidad table chains (`periodReturnsDaily.ts`) and the
- * own-portfolio benchmarks read: each investment group page and each investment account, in CLP
+ * own-portfolio benchmarks read: each investment group page, net worth (the home page) and each
+ * investment account, in CLP
  * and USD (the per-account marks are shared by both units, so USD adds only its own sums and
  * conversions). Built one scope per macrotask, so
  * requests interleave with the warm instead of waiting behind all of it. A scope already cached
@@ -17,8 +18,8 @@ export async function warmRentabilidadDailySeries(): Promise<number> {
       .all() as { slug: string }[]
   )
     .map((r) => r.slug)
-    .filter((slug) => isInvestmentPerformanceGroupSlug(slug));
-  if (!groups.includes("inversiones")) groups.push("inversiones");
+    .filter((slug) => groupHasPeriodReturns(slug));
+  for (const slug of ["inversiones", "net_worth"]) if (!groups.includes(slug)) groups.push(slug);
   const accounts = (
     db
       .prepare(

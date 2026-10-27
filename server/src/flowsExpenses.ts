@@ -1,5 +1,7 @@
 import { transferCounterpartiesByMovementSide, type TransferCounterpartyDto } from "./bankTransferNotices.js";
 import { withPaymentReceipts, type PaymentReceiptDto } from "./paymentProcessorReceipts.js";
+import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
+import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import {
   buildAdditionalCardsSummary,
@@ -253,6 +255,12 @@ export type FlowCcExpenseLineRow = {
   transfer_counterparty?: TransferCounterpartyDto;
   /** A checking credit marked as a refund (`checkingExpenseRefunds.ts`): a negative line in its category. */
   checking_refund?: true;
+  /**
+   * A card credit no purchase annuls (a merchant refund, a nota de crédito without its purchase;
+   * never a payment, an ABONO DE DIVISAS or a traspaso de deuda): a negative line in its category
+   * ({@link markCardRefunds}).
+   */
+  card_refund?: true;
   /** The payment processor's receipt for this charge: who it paid, for what (`paymentProcessorReceipts.ts`). */
   payment_receipt?: PaymentReceiptDto;
   /** One piece of a line split into pieces (`cc_expense_line_splits.seq`). */
@@ -1024,7 +1032,7 @@ function enrichFlowLinesWithTransferCounterparties(lines: FlowCcExpenseLineRow[]
  * facturaciones table shows (`facturacionPayByIsoResolver`: printed, else derived from the close;
  * a facturación with none throws there).
  */
-function cuotaPayByIsoByAccountBillingMonth(accountIds: readonly number[]): Record<string, string> {
+export function cuotaPayByIsoByAccountBillingMonth(accountIds: readonly number[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const accountId of accountIds) {
     const { facturaciones } = billingDetailCacheForAccount(accountId);
@@ -1034,6 +1042,23 @@ function cuotaPayByIsoByAccountBillingMonth(accountIds: readonly number[]): Reco
     }
   }
   return out;
+}
+
+/**
+ * Card credits that are spending coming back count negatively in their category, like checking
+ * refunds (2026-10-27): every negative card line except a payment of the card (PAGO, MONTO
+ * CANCELADO, ABONO …), an ABONO DE DIVISAS, a traspaso de deuda and a nota de crédito paired with
+ * the purchase it annuls (the pair nets out of gastos on its own). Their category decides the
+ * rest: one in no_cuenta or an internal transfer stays out of the totals.
+ */
+export function markCardRefunds(lines: readonly FlowCcExpenseLineRowDraft[]): FlowCcExpenseLineRowDraft[] {
+  return lines.map((l) => {
+    if (l.source !== "cc" || l.amount_clp >= 0 || l.line_role !== "purchase") return l;
+    if (l.nota_credito_role === "matched_nota" || l.nota_credito_role === "annulled_purchase") return l;
+    if (isCcPaymentMerchant(l.merchant) || isCcUsdDebtAbonoMerchant(l.merchant)) return l;
+    if (isCcTraspasoDeudaMerchant(l.merchant)) return l;
+    return { ...l, card_refund: true as const };
+  });
 }
 
 /** Every gastos line the Expenses page lists: card, checking, manual, mirror and payslip lines. */
@@ -1050,7 +1075,7 @@ export function buildFlowsExpenseLines(accountIds: readonly number[] = listCredi
   const checkingLines = loadCheckingGastosLinesForExpenses();
   return applyCcFacturadoFinancingProjection(
     finalizeFlowExpenseLines([
-      ...enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines]),
+      ...markCardRefunds(enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines])),
       ...loadManualExpenseGastosLineDrafts(),
       ...loadCheckingGapDepositMirrorGastosLineDrafts(),
       ...loadPayslipExpenseLineDrafts(),

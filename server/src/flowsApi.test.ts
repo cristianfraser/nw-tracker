@@ -6,6 +6,10 @@ import {
   buildGroupFlows,
   type FlowsApiRow,
 } from "./flowsApi.js";
+import { checkingAccountId } from "./checkingCartolaImport.js";
+import { addCalendarMonths } from "./ccYearMonth.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import { checkingMovementKey, checkingSpendingMovementKeys } from "./checkingSpendingMovements.js";
 
 function flowRow(over: Partial<FlowsApiRow>): FlowsApiRow {
   return {
@@ -90,5 +94,44 @@ describe("flows bucket filter", () => {
     expect(res!.filter_options.buckets).toEqual([]);
     expect(res!.rows.length).toBeGreaterThan(0);
     for (const r of res!.rows) expect(r.bucket_slug).toBe(linked!.slug);
+  });
+});
+
+describe("net-worth flows without spending (exclude_spending)", () => {
+  it("leaves out the checking debits the Expenses page counts, keeps the rest", () => {
+    const accountId = checkingAccountId();
+    // Inside the synthetic preset's market window (the USD gastos amount reads the day's fx).
+    const day = addCalendarMonths(chileCalendarTodayYmd().slice(0, 7), -1) + "-12";
+    const month = day.slice(0, 7);
+    const insert = (amount: number, description: string, idx: number): number =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+             VALUES (?, ?, 'clp', ?, ?, NULL)`
+          )
+          .run(
+            accountId,
+            amount,
+            day,
+            `import:cartola|${month}|Agustinas|${description}|on:${day}|amt:${amount}|idx:${idx}`
+          ).lastInsertRowid
+      );
+    const debitId = insert(-48_317, "PAGO VITEST SPENDING SHOP", 1);
+    const creditId = insert(91_423, "ABONO VITEST SPENDING INCOME", 2);
+    try {
+      expect(checkingSpendingMovementKeys().has(checkingMovementKey(debitId, accountId))).toBe(true);
+      expect(checkingSpendingMovementKeys().has(checkingMovementKey(creditId, accountId))).toBe(false);
+
+      const filters = { date_from: day, date_to: day, q: "VITEST SPENDING" };
+      const all = buildGroupFlows("net_worth", filters, 1, 50);
+      expect(all.rows.map((r) => r.id).sort()).toEqual([debitId, creditId].sort());
+
+      const wealth = buildGroupFlows("net_worth", filters, 1, 50, { excludeSpending: true });
+      expect(wealth.rows.map((r) => r.id)).toEqual([creditId]);
+      expect(wealth.total).toBe(1);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE id IN (?, ?)`).run(debitId, creditId);
+    }
   });
 });

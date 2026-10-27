@@ -179,6 +179,25 @@ export function useGroupConsolidatedTables(
   });
 }
 
+/** The Rentabilidad table alone (dashboard net_worth, whose detalle table is server-paginated). */
+export function useGroupPeriodReturns(portfolioGroup: string, unit: DisplayUnit, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.groupPeriodReturns(portfolioGroup, unit),
+    queryFn: () => api.groupPeriodReturns(portfolioGroup, unit),
+    enabled: enabled && Boolean(portfolioGroup),
+    ...displayUnitQueryBehaviorFor(queryKeys.groupPeriodReturns(portfolioGroup, unit), 2),
+  });
+}
+
+/** Home «Últimos gastos»: the newest expense lines across every source. */
+export function useLatestExpenses(unit: DisplayUnit, limit: number) {
+  return useQuery({
+    queryKey: queryKeys.latestExpenses(unit, limit),
+    queryFn: () => api.latestExpenses(unit, limit),
+    ...displayUnitQueryBehaviorFor(queryKeys.latestExpenses(unit, limit), 3),
+  });
+}
+
 /** One server page of the consolidated detalle table (dashboard net_worth). */
 export function useGroupConsolidatedMonthlyPage(
   portfolioGroup: string,
@@ -576,6 +595,19 @@ export function useFlowsExpensesGastos(
   });
 }
 
+/**
+ * The flows overview (income, expenses, deposits, P/L, net by month, by day when `days` is given,
+ * this month / year). Held across an installment-mode or window change, never across units.
+ */
+export function useFlowsOverview(unit: DisplayUnit, installmentMode: "split" | "total", days?: number) {
+  const queryKey = queryKeys.flowsOverview(unit, installmentMode, days);
+  return useQuery({
+    queryKey,
+    queryFn: () => api.flowsOverview(unit, installmentMode, days),
+    ...displayUnitQueryBehaviorFor(queryKey, 3),
+  });
+}
+
 export function useCcFacturadoFinancingLinks() {
   return useQuery({
     queryKey: queryKeys.ccFacturadoFinancingLinks(),
@@ -680,6 +712,8 @@ export type FlowsQueryFilters = {
   amount_exact?: number;
   /** Currency the amount filters compare against (server default: clp). */
   amount_currency?: string;
+  /** Group flows only: leave out the checking movements the Expenses page counts as spending. */
+  exclude_spending?: boolean;
 };
 
 function serializeFlowFilters(f: FlowsQueryFilters): string {
@@ -698,6 +732,7 @@ function serializeFlowFilters(f: FlowsQueryFilters): string {
     mx: f.amount_max ?? "",
     ex: f.amount_exact ?? "",
     ac: f.amount_currency ?? "",
+    xs: f.exclude_spending ?? false,
   });
 }
 
@@ -720,6 +755,7 @@ export function useGroupFlows(slug: string, filters: FlowsQueryFilters, enabled 
         amount_max: filters.amount_max,
         amount_exact: filters.amount_exact,
         amount_currency: filters.amount_currency,
+        exclude_spending: filters.exclude_spending,
       }),
     enabled: enabled && Boolean(slug),
     ...displayUnitQueryBehaviorFor(queryKeys.groupFlows(slug, filtersKey), 2),

@@ -116,15 +116,35 @@ function mortgageLinkAmortizationChartAmount(
   return expenseDepositAmortizationChartAmount(link.amortization_clp);
 }
 
+/** The fields {@link countsTowardGastosMes} reads (the checking read-only lines carry them too). */
+export type GastosMesLine = Pick<
+  FlowCcExpenseLineRow,
+  | "nota_credito_role"
+  | "amount_clp"
+  | "checking_refund"
+  | "card_refund"
+  | "category_slug"
+  | "installment_flag"
+  | "nro_cuota_current"
+  | "gastos_scope"
+  | "line_role"
+>;
+
+/**
+ * A negative line that is spending coming back — a checking credit marked as a refund
+ * (`checking_refund`) or a card credit no purchase annuls (`card_refund`: a merchant refund, a nota
+ * de crédito without its purchase): it counts, negatively, in its category.
+ */
+export function isGastosRefundLine(line: Pick<GastosMesLine, "checking_refund" | "card_refund">): boolean {
+  return line.checking_refund === true || line.card_refund === true;
+}
+
 /** Positive lines, and refunds, that count toward gasto del mes in the mode. */
-export function countsTowardGastosMes(line: FlowCcExpenseLineRow, mode: CcInstallmentGastosMode): boolean {
+export function countsTowardGastosMes(line: GastosMesLine, mode: CcInstallmentGastosMode): boolean {
   if (line.nota_credito_role === "annulled_purchase" || line.nota_credito_role === "matched_nota") {
     return false;
   }
-  // Small fee adjustments affect gastos totals only, not compras / cuotas.
-  if (line.nota_credito_role === "unmatched_nota") return false;
-  // A refund (`checking_refund`) is spending coming back: it counts, negatively, in its category.
-  if (line.amount_clp <= 0 && line.checking_refund !== true) return false;
+  if (line.amount_clp <= 0 && !isGastosRefundLine(line)) return false;
   if (isCcExpenseTotalsExcludedSlug(line.category_slug)) return false;
   if (isInstallmentCuotaZeroLine(line)) return false;
   const scope = line.gastos_scope ?? "both";
@@ -185,19 +205,9 @@ export function aggregateGastosFromLines(
       continue;
     }
 
-    if (ln.nota_credito_role === "unmatched_nota") {
-      if (sumMonth) {
-        touchBucket(sumMonth).gastos += amount;
-      }
-      for (const periodMonth of periodMonthsForGastosLine(ln)) {
-        touchBucket(periodMonth).line_count += 1;
-      }
-      continue;
-    }
-
     if (sumMonth) {
       const sumBucket = touchBucket(sumMonth);
-      if (amount > 0 || ln.checking_refund === true) {
+      if (amount > 0 || isGastosRefundLine(ln)) {
         sumBucket.gastosReal += amount;
         const skipChartCategory =
           ln.big_group_slug != null && excludedBigGroupSlugs?.has(ln.big_group_slug) === true;

@@ -16,6 +16,7 @@ import { demoVisitLogMiddleware, registerDemoAnalyticsRoutes } from "./demoAnaly
 import { applyBackgroundJobsEnvDefaults } from "./backgroundJobsEnv.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
+import { invalidateFlowsOverview } from "./aggregationCache.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAccountsRoutes } from "./routes/accounts.js";
@@ -71,6 +72,19 @@ const jsonBody = express.json({ limit: "2mb" });
 // columns); the ingest routes take local connections only (`ingestAuth.ts`).
 const ingestJsonBody = express.json({ limit: "32mb" });
 app.use((req, res, next) => (req.path.startsWith("/api/ingest/") ? ingestJsonBody : jsonBody)(req, res, next));
+// The flows overview reads nearly every table (income, expense lines and their categories, deposits),
+// and many of its writers (category / income / place edits) touch no aggregation funnel: any
+// write through the API drops it once the write has answered.
+app.use((req, res, next) => {
+  if (
+    req.path.startsWith("/api/") &&
+    !req.path.startsWith("/api/demo/") &&
+    req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS"
+  ) {
+    res.on("finish", () => invalidateFlowsOverview({ inputs: true }));
+  }
+  next();
+});
 
 /** Route registration order preserves the original monolithic file's order. */
 if (demoModeEnabled()) registerDemoAnalyticsRoutes(app);

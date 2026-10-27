@@ -7,7 +7,9 @@ import {
   ValuationLineCharts,
 } from "../components/charts/lazyCharts";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
+import { CcUpcomingPaymentsPanel } from "../components/dashboard/CcUpcomingPaymentsPanel";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
+import { LatestExpensesTable } from "../components/dashboard/LatestExpensesTable";
 import { ExportToolbarButton } from "../components/export/ExportModal";
 import {
   prefetchAccountsByPortfolioGroup,
@@ -47,9 +49,10 @@ import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
 import { useDailySeries } from "../queries/hooks";
-import { useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPrefs";
+import { useSurfaceAreaMode, useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
+import { DashboardFlowsSummary } from "../components/dashboard/DashboardFlowsSummary";
 import type { TimeseriesBlock } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
@@ -110,6 +113,7 @@ export function DashboardPage() {
   const principalesPrefs = useSurfacePrefs("home.principales", "day", "3y");
   const patrimonioPrefs = useSurfacePrefs("home.patrimonio", "day", "3y");
   const combosPrefs = useSurfacePrefs("home.combos", "month", "3y");
+  const perfArea = useSurfaceAreaMode("home.perf");
   const allocationPrefs = useSurfacePrefs("home.proportional", "month", "total");
   const compositionView = useSurfaceCompositionView("home.proportional");
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
@@ -578,6 +582,19 @@ export function DashboardPage() {
       onRangeChange={combosPrefs.setRange}
     />
   );
+  const perfControls = (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+      <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem" }}>
+        <input
+          type="checkbox"
+          checked={perfArea.area === "total"}
+          onChange={(e) => perfArea.setArea(e.target.checked ? "total" : "ytd")}
+        />
+        {t("dashboard.sections.areaTotalToggle")}
+      </label>
+      {combosControls}
+    </span>
+  );
 
   const dashboardCharts = (
     <>
@@ -626,6 +643,7 @@ export function DashboardPage() {
         loading={valuationChartsLoading}
       />
 
+      {/* Pesos in both units, so a held prior-unit bundle's block is still right (dimmed). */}
       {patrimonioBlock?.points.length ? (
         <>
           <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
@@ -656,6 +674,10 @@ export function DashboardPage() {
         </>
       ) : null}
 
+      <DashboardFlowsSummary displayUnit={displayUnit} />
+
+      <CcUpcomingPaymentsPanel data={data?.ccUpcomingPayments ?? null} loading={contentLoading} />
+
       {retirementBrokerageForCharts.length > 0 ? (
         <>
           <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
@@ -663,11 +685,11 @@ export function DashboardPage() {
               title={
                 isYearly ? t("dashboard.sections.perfChartTitleYearly") : t("dashboard.sections.perfChartTitleMonthly")
               }
-              points={dailyRetirementBrokeragePoints ?? retirementBrokerageForCharts}
+              points={dailyRetirementBrokeragePoints ?? retirementBrokerageAccumChart}
               displayUnit={displayUnit}
               xAxisGranularity={combosXAxis}
               timeRange={combosPrefs.range}
-              controls={combosControls}
+              controls={perfControls}
               barSeries={[
                 {
                   dataKey: "delta_retirement",
@@ -684,55 +706,23 @@ export function DashboardPage() {
                   color: bucketColorBySlug.get("brokerage") ?? allocationBucketColor("brokerage"),
                 },
               ]}
-              areaKey="ytd_combined"
-              areaName={isYearly ? t("dashboard.sections.yearTotalCombined") : t("dashboard.sections.ytdCombined")}
+              areaKey={perfArea.area === "total" ? "accumulated_earnings" : "ytd_combined"}
+              areaName={
+                perfArea.area === "total"
+                  ? t("dashboard.sections.accumulatedEarnings")
+                  : isYearly
+                    ? t("dashboard.sections.yearTotalCombined")
+                    : t("dashboard.sections.ytdCombined")
+              }
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
+              alternateYearAreaStripes={perfArea.area !== "total"}
               lineKey="delta_combined"
               lineName={isYearly ? t("dashboard.combinedAnnualDelta") : t("dashboard.combinedMonthlyDelta")}
               loading={combosLoading}
             />
           </div>
           <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
-            <MonthlyPerformanceComboChart
-              title={
-                isYearly
-                  ? t("dashboard.sections.accumEarningsChartTitleYearly")
-                  : t("dashboard.sections.accumEarningsChartTitleMonthly")
-              }
-              points={dailyRetirementBrokeragePoints ?? retirementBrokerageAccumChart}
-              displayUnit={displayUnit}
-              xAxisGranularity={combosXAxis}
-              timeRange={combosPrefs.range}
-              controls={combosControls}
-              barSeries={[
-                {
-                  dataKey: "delta_combined",
-                  name: isYearly
-                    ? t("dashboard.sections.deltaCombinedYearly")
-                    : t("dashboard.sections.deltaCombinedMonthly"),
-                  color: "#38bdf8",
-                },
-              ]}
-              areaKey="accumulated_earnings"
-              areaName={t("dashboard.sections.accumulatedEarnings")}
-              areaFill="rgba(148, 163, 184, 0.22)"
-              areaStroke="#64748b"
-              alternateYearAreaStripes={false}
-              loading={combosLoading}
-              lineSeries={dailyRetirementBrokeragePoints ? [] : [
-                {
-                  dataKey: "delta_combined_ma3",
-                  name: isYearly
-                    ? t("dashboard.sections.ma3DeltaCombinedYearly")
-                    : t("dashboard.sections.ma3DeltaCombinedMonthly"),
-                  stroke: "#0ea5e9",
-                  strokeWidth: 1.5,
-                  showDot: false,
-                  pairsWithBar: "delta_combined",
-                },
-              ]}
-            />
             <MonthlyPerformanceComboChart
               title={
                 isYearly
@@ -851,6 +841,9 @@ export function DashboardPage() {
       charts={dashboardCharts}
       tableAccounts={netWorthTableAccounts}
       serverPaginatedMonthlyDetail
+      flowsTitleKey="dashboard.wealthFlowsTitle"
+      flowsExcludeSpending
+      afterFlows={<LatestExpensesTable />}
       accountsTree={
         accountsTreeRoot ? (
           <NavAccountsTree

@@ -68,6 +68,7 @@ export function flowsPlBucketLabel(slug: FlowsPlBucketSlug): string {
     brokerage: "dashboard.buckets.brokerage",
     retirement: "dashboard.buckets.retirement",
     cash: "dashboard.buckets.cash_eqs",
+    real_estate: "dashboard.buckets.real_estate",
   };
   return i18n.t(key[slug]);
 }

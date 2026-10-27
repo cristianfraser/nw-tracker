@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { ExpenseDepositLinkDto } from "./expenseDepositLinks.js";
 import { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG } from "./expenseDepositLinks.js";
 import { DEPOSITS_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
-import type { FlowCcExpenseCategoryChartPoint, FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { markCardRefunds, type FlowCcExpenseCategoryChartPoint, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { enrichLinesWithNotaDeCreditoPairing } from "./ccNotaDeCreditoPairing.js";
 import {
   aggregateGastosFromLines,
   buildFlowsExpensesGastosViews,
@@ -106,6 +107,30 @@ describe("aggregateGastosFromLines", () => {
     expect(agg.chart_monthly_by_category.find((p) => p.as_of_date.startsWith("2025-04"))?.fun).toBe(70_000);
   });
 
+
+  it("a card credit no purchase annuls counts negatively in its category; payments and paired notas do not", () => {
+    const one = { line_role: "purchase" as const, installment_flag: 0, nro_cuota_current: 0, nro_cuota_total: 0, expense_month: "2025-04", billing_month: "2025-04" };
+    const drafts = [
+      ccLine({ ...one, statement_line_id: 1, purchase_on: "2025-04-05", amount_clp: 100_000, category_slug: "supermarket", merchant: "LIDER" }),
+      ccLine({ ...one, statement_line_id: 2, purchase_on: "2025-04-12", amount_clp: -37_500, category_slug: "supermarket", merchant: "GLASS LIDER.CL (T)" }),
+      ccLine({ ...one, statement_line_id: 3, purchase_on: "2025-04-20", amount_clp: -500_000, category_slug: "unclassified", merchant: "PAGO" }),
+      ccLine({ ...one, statement_line_id: 4, purchase_on: "2025-04-21", amount_clp: -60_000, category_slug: "no_cuenta", merchant: "ABONO DE DIVISAS" }),
+      ccLine({ ...one, statement_line_id: 5, purchase_on: "2025-04-22", amount_clp: 45_000, category_slug: "fun", merchant: "CINE" }),
+      ccLine({ ...one, statement_line_id: 6, purchase_on: "2025-04-23", amount_clp: -45_000, category_slug: "fun", merchant: "NOTA DE CREDITO" }),
+      ccLine({ ...one, statement_line_id: 7, purchase_on: "2025-04-24", amount_clp: -2_000, category_slug: "fun", merchant: "NOTA DE CREDITO" }),
+      ccLine({ ...one, statement_line_id: 8, purchase_on: "2025-04-25", amount_clp: -70_000, category_slug: "unclassified", merchant: "TRASPASO DE DEUDA INTERNACIO" }),
+    ];
+    const lines = markCardRefunds(enrichLinesWithNotaDeCreditoPairing(drafts)) as FlowCcExpenseLineRow[];
+    expect(lines.filter((l) => l.card_refund).map((l) => l.statement_line_id)).toEqual([2, 7]);
+    const agg = aggregateGastosFromLines(lines, ["supermarket", "fun"], "split");
+    const april = agg.by_month.find((m) => m.period_month === "2025-04")!;
+    // 100.000 − 37.500 (refund) − 2.000 (small unmatched nota); the cine and its nota net out.
+    expect(april.gastos_mes_clp).toBe(100_000 - 37_500 - 2_000);
+    expect(april.abonos_mes_clp).toBe(-500_000 - 60_000 - 70_000);
+    const stack = agg.chart_monthly_by_category.find((p) => p.as_of_date.startsWith("2025-04"))!;
+    expect(stack.supermarket).toBe(62_500);
+    expect(stack.fun).toBe(-2_000);
+  });
 
   it("split mode sums cuotas in billing months; total mode sums purchase in purchase month", () => {
     const lines = [

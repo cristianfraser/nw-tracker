@@ -313,6 +313,14 @@ export const api = {
       `/api/groups/${encodeURIComponent(slug)}/consolidated-tables${qs ? `?${qs}` : ""}`
     );
   },
+  groupPeriodReturns: (slug: string, unit: "clp" | "usd") =>
+    j<import("./types").GroupPeriodReturnsResponse>(
+      `/api/groups/${encodeURIComponent(slug)}/period-returns${unit === "usd" ? "?include_usd=true" : ""}`
+    ),
+  latestExpenses: (unit: "clp" | "usd", limit: number) =>
+    j<import("./types").LatestExpensesResponse>(
+      `/api/dashboard/latest-expenses?${new URLSearchParams({ unit, limit: String(limit) }).toString()}`
+    ),
   groupConsolidatedMonthly: (
     slug: string,
     unit: "clp" | "usd",
@@ -357,6 +365,7 @@ export const api = {
       amount_max?: number;
       amount_exact?: number;
       amount_currency?: string;
+      exclude_spending?: boolean;
     }
   ) => {
     const qu = new URLSearchParams();
@@ -364,6 +373,7 @@ export const api = {
     if (opts.pageSize) qu.set("page_size", String(opts.pageSize));
     if (opts.year) qu.set("year", opts.year);
     if (opts.type) qu.set("type", opts.type);
+    if (opts.exclude_spending) qu.set("exclude_spending", "1");
     if (opts.account_id != null) qu.set("account_id", String(opts.account_id));
     if (opts.bucket) qu.set("bucket", opts.bucket);
     if (opts.q) qu.set("q", opts.q);
@@ -504,6 +514,11 @@ export const api = {
     j<import("./types").FlowsPlResponse>(
       days != null ? `/api/flows/pl?days=${days}` : "/api/flows/pl"
     ),
+  flowsOverview: (unit: "clp" | "usd", installmentMode: "split" | "total", days?: number) => {
+    const q = new URLSearchParams({ unit, installment_mode: installmentMode });
+    if (days != null) q.set("days", String(days));
+    return j<import("./types").FlowsOverviewResponse>(`/api/flows/overview?${q.toString()}`);
+  },
   flowsDepositsReconciliation: () =>
     j<import("./types").DepositsReconciliationPayload>("/api/flows/deposits/reconciliation"),
   flowsRealEstateExpenses: () =>

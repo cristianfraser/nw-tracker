@@ -10,8 +10,8 @@ import { computePeriodReturns, type PeriodReturnsPayload } from "./periodReturns
 import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
 import { withDailyChainedReturns } from "./periodReturnsDaily.js";
 import { resolveGroupDailySeries } from "./groupDailySeries.js";
-import { isInvestmentPerformanceGroupSlug } from "./portfolioGroupTree.js";
-import { listAccountsForGroupTab } from "./valuationTimeseries.js";
+import { groupHasPeriodReturns } from "./portfolioGroupTree.js";
+import { listAccountsForGroupTab, type GroupTabAccountRow } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 export type { ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
@@ -72,18 +72,55 @@ export function getGroupConsolidatedTables(
         ? buildInversionesConsolidatedMonthly(unit)
         : consolidateFromAccountMonthly(account_monthly, unit);
 
-  const period_returns = isInvestmentPerformanceGroupSlug(groupSlug)
-    ? withShortHorizonCells(
-        withDailyChainedReturns(
-          computePeriodReturns(consolidated_monthly, unit),
-          resolveGroupDailySeries(groupSlug, unit, 0)?.points ?? []
-        ),
-        rows,
-        unit
-      )
-    : null;
+  const period_returns = groupPeriodReturnsFromMonthly(groupSlug, unit, consolidated_monthly, rows);
 
   return { unit, group_slug: groupSlug, account_monthly, consolidated_monthly, period_returns };
+}
+
+/**
+ * Chained period returns (month windows chained from the group's daily series, 1D/1W from the
+ * marks); null for a group with no Rentabilidad table (`groupHasPeriodReturns`).
+ */
+function groupPeriodReturnsFromMonthly(
+  groupSlug: string,
+  unit: TsUnit,
+  consolidated_monthly: ConsolidatedMonthlyPerfRow[],
+  rows: readonly GroupTabAccountRow[]
+): PeriodReturnsPayload | null {
+  if (!groupHasPeriodReturns(groupSlug)) return null;
+  return withShortHorizonCells(
+    withDailyChainedReturns(
+      computePeriodReturns(consolidated_monthly, unit),
+      resolveGroupDailySeries(groupSlug, unit, 0)?.points ?? []
+    ),
+    rows,
+    unit
+  );
+}
+
+export type GroupPeriodReturnsResponse = {
+  unit: TsUnit;
+  group_slug: string;
+  period_returns: PeriodReturnsPayload | null;
+};
+
+/**
+ * The Rentabilidad table alone, with the consolidated monthly rows it is built from — for pages
+ * that do not load the whole consolidated-tables payload (the home dashboard, whose detalle table
+ * is server-paginated) and for the benchmark row.
+ */
+export function getGroupPeriodReturns(
+  groupSlug: string,
+  unit: TsUnit = "clp"
+): GroupPeriodReturnsResponse & { consolidated_monthly: ConsolidatedMonthlyPerfRow[] } {
+  const consolidated_monthly = getGroupConsolidatedMonthlyRows(groupSlug, unit);
+  const period_returns = groupPeriodReturnsFromMonthly(
+    groupSlug,
+    unit,
+    consolidated_monthly,
+    listAccountsForGroupTab(groupSlug, undefined)
+  );
+  return { unit, group_slug: groupSlug, consolidated_monthly, period_returns };
 }
 
 export type ConsolidatedMonthlyPeriod = "month" | "year";

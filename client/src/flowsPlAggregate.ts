@@ -12,7 +12,7 @@ import type { FlowsPlChartPoint } from "./types";
 export function rollupFlowsPlChartPointsByYear(
   points: readonly FlowsPlChartPoint[]
 ): FlowsPlChartPoint[] {
-  return rollupChartPointsByYear(points, ["brokerage", "retirement", "cash", "total"], {
+  return rollupChartPointsByYear(points, ["brokerage", "retirement", "cash", "real_estate", "total"], {
     levelKeys: ["cumulative_total"],
   }).map((pt) => ({ ...pt, ytd_total: pt.total }));
 }

@@ -27,7 +27,7 @@ export function consolidatedRowsForDisplay(
 
 /** Same rule for the period-returns strip: the payload when its unit matches (or is `uf`), null
  * for a held prior-unit payload. */
-function periodReturnsForDisplay(
+export function periodReturnsForDisplay(
   payload: PeriodReturnsPayload,
   displayUnit: DisplayUnit
 ): PeriodReturnsPayload | null {

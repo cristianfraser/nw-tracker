@@ -129,6 +129,17 @@ export function invalidateDashboardPageBundle(): void {
 }
 
 /**
+ * The flows overview (`flowsOverview.ts`): its payloads (`flows.overview|`) bake in the P/L leg,
+ * so every invalidation drops them; its non-market inputs (`flows.overview.inputs|`: income,
+ * expense lines, deposits) go with writes and historical market data (fx) — not with a
+ * live-quote tick, which moves only the P/L.
+ */
+export function invalidateFlowsOverview(opts: { inputs: boolean }): void {
+  deleteKeysMatchingPrefix("flows.overview|");
+  if (opts.inputs) deleteKeysMatchingPrefix("flows.overview.inputs|");
+}
+
+/**
  * Daily-view aggregations: bucket series, the overview-daily payload, and the reference-line
  * source totals. Each bakes per-day marks across many accounts, so per-account precision
  * isn't worth the mapping — they rebuild lazily on the next daily-view request, now on top
@@ -203,6 +214,7 @@ export function invalidateCcBillingDetail(accountId?: number): void {
   // series (whose historical legs read movements/valuations/CC valuations), and the depto
   // ledger memo go with it.
   invalidateDashboardPageBundle();
+  invalidateFlowsOverview({ inputs: true });
   invalidateDailySeries();
   deleteKeysMatchingPrefix("depto.ledger|");
   invalidationListener?.();
@@ -348,6 +360,7 @@ export function invalidateMarketDataAggregations(
   deleteKeysMatchingPrefix("group.consolidated_monthly|");
   deleteKeysMatchingPrefix("group.valuation_closing_by_date|");
   invalidateDashboardPageBundle();
+  invalidateFlowsOverview({ inputs: scope === "historical" });
   if (scope === "live_tail") {
     invalidateDailyAggregates();
   } else {

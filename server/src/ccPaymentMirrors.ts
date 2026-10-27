@@ -52,6 +52,13 @@ const MATCH_WINDOW_DAYS = 4;
  */
 const DIVISAS_DESC_RE = /COMPRA\s+DE\s+DIVISAS/i;
 const LINEA_CREDITO_PAYMENT_DESC_RE = /TRASPASO(?:\s+\w+)*\s+A\s+L[IÍ]NEA\s+CR[EÉ]DITO/i;
+/**
+ * A transfer to Khipu (a payment gateway: «Transf a khipu CLBS E»): the BCI card has been paid
+ * through it from the cuenta corriente (2025-08-29, 2025-08-31). Khipu also takes other payments,
+ * so such a debit is a card payment only when it pairs — exact pesos, the card's PAGO inside the
+ * window, one-to-one — like every other wording; an unpaired one stays a plain debit.
+ */
+const KHIPU_TRANSFER_DESC_RE = /\bTRANSF\w*\.?\s+A\s+KHIPU\b/i;
 const DIVISAS_IMPLIED_FX_MIN = 300;
 const DIVISAS_IMPLIED_FX_MAX = 2000;
 
@@ -183,7 +190,7 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
     (m) =>
       checkingIds.has(m.account_id) &&
       m.note != null &&
-      CC_PAYMENT_DESC_RE.test(m.note) &&
+      (CC_PAYMENT_DESC_RE.test(m.note) || KHIPU_TRANSFER_DESC_RE.test(m.note)) &&
       // Paying the overdraft line is not a card payment (the shared description pattern keeps it:
       // for checking gastos it is an internal transfer all the same).
       !LINEA_CREDITO_PAYMENT_DESC_RE.test(m.note)

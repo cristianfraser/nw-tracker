@@ -200,6 +200,38 @@ describe("listCcPaymentMirrorCandidates", () => {
   });
 });
 
+describe("a transfer to Khipu", () => {
+  it("pairs with a card PAGO of the exact amount inside the window, and only then", () => {
+    if (checkingId == null || lineStatementId == null) return;
+    const lineId = Number(
+      db
+        .prepare(
+          `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, installment_flag, dedupe_key)
+           VALUES (?, '18/04/2037', 'PAGO', -48250, 0, 'vitest-ccpago-khipu')`
+        )
+        .run(lineStatementId).lastInsertRowid
+    );
+    const ins = db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
+    );
+    // The card's PAGO one day before the debit (posted the next business day).
+    const paid = Number(ins.run(checkingId, -48_250, "2037-04-19", "vitest|0000000000 Transf a khipu CLBS E|a").lastInsertRowid);
+    // Another Khipu payment with no card PAGO of its amount: a plain debit.
+    const other = Number(ins.run(checkingId, -33_333, "2037-04-19", "vitest|0000000000 Transf a khipu CLBS E|b").lastInsertRowid);
+    clearAggregationCache();
+    try {
+      const cands = listCcPaymentMirrorCandidates().filter((c) => c.out.movement_id === paid || c.out.movement_id === other);
+      expect(cands.map((c) => [c.out.movement_id, c.evidence.statement_line_id, c.skew_days, c.blocked])).toEqual([
+        [paid, lineId, 1, false],
+      ]);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE id IN (?, ?)`).run(paid, other);
+      db.prepare(`DELETE FROM cc_statement_lines WHERE id = ?`).run(lineId);
+      clearAggregationCache();
+    }
+  });
+});
+
 describe("an undated header payment's legs", () => {
   it("pair each leg's debit and count as dated payments for the cuota retirement", () => {
     if (checkingId == null || ccId == null) return;

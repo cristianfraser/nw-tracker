@@ -314,6 +314,36 @@
     }
   },
   "dashboard": {
+    "ccUpcoming": {
+      "title": {
+        "en": "Cards: upcoming payments",
+        "es": "Tarjetas: próximos pagos"
+      },
+      "viewLiabilities": {
+        "en": "View liabilities →",
+        "es": "Ver Pasivos →"
+      },
+      "colCard": {
+        "en": "Card",
+        "es": "Tarjeta"
+      },
+      "colBillingMonth": {
+        "en": "Billing",
+        "es": "Facturación"
+      },
+      "colAmount": {
+        "en": "Amount",
+        "es": "Monto"
+      },
+      "closeObservedHint": {
+        "en": "Close published by the bank (statement or card feed).",
+        "es": "Cierre publicado por el banco (estado de cuenta o movimientos)."
+      },
+      "totalToPay": {
+        "en": "Total to pay",
+        "es": "Total a pagar"
+      }
+    },
     "chartGranularityLabel": {
       "en": "Period:",
       "es": "Período:"
@@ -426,20 +456,16 @@
         "es": "Patrimonio neto vs invested (referencia US$)"
       },
       "perfChartTitleMonthly": {
-        "en": "Monthly Δ by class, investments YTD and combined monthly Δ",
-        "es": "Δ mensual por clase, YTD inversiones y Δ mensual combinado"
+        "en": "Monthly Δ by class and earnings (investments)",
+        "es": "Δ mensual por clase y ganancias (inversiones)"
       },
       "perfChartTitleYearly": {
-        "en": "Annual Δ by class, annual investments total and combined annual Δ",
-        "es": "Δ anual por clase, total anual inversiones y Δ anual combinado"
+        "en": "Annual Δ by class and earnings (investments)",
+        "es": "Δ anual por clase y ganancias (inversiones)"
       },
-      "accumEarningsChartTitleMonthly": {
-        "en": "Accumulated earnings and monthly Δ (investments)",
-        "es": "Ganancias acumuladas y Δ mensual (inversiones)"
-      },
-      "accumEarningsChartTitleYearly": {
-        "en": "Accumulated earnings and annual Δ (investments)",
-        "es": "Ganancias acumuladas y Δ anual (inversiones)"
+      "areaTotalToggle": {
+        "en": "All-time total",
+        "es": "Total acumulado"
       },
       "accumFlowsChartTitleMonthly": {
         "en": "Monthly Δ and deposits (investments)",
@@ -510,6 +536,24 @@
         "es": "MM3 depósitos del año (inversiones)"
       }
     },
+    "flows": {
+      "title": {
+        "en": "Flows",
+        "es": "Flujos"
+      },
+      "lastMonth": {
+        "en": "Last month",
+        "es": "Último mes"
+      },
+      "last12Months": {
+        "en": "Last 12 months",
+        "es": "Últimos 12 meses"
+      },
+      "openFlows": {
+        "en": "See flows",
+        "es": "Ver flujos"
+      }
+    },
     "allocation": {
       "title": {
         "en": "Allocation (latest valuations)",
@@ -564,6 +608,52 @@
       "summaryAria": {
         "en": "Deposits and total and period Δ",
         "es": "Depósitos y Δ total y del período"
+      }
+    },
+    "wealthFlowsTitle": {
+      "en": "Wealth flows",
+      "es": "Flujos de patrimonio"
+    },
+    "latestExpenses": {
+      "title": {
+        "en": "Latest expenses",
+        "es": "Últimos gastos"
+      },
+      "viewAll": {
+        "en": "All expenses →",
+        "es": "Todos los gastos →"
+      },
+      "colDate": {
+        "en": "Date",
+        "es": "Fecha"
+      },
+      "colMerchant": {
+        "en": "Description",
+        "es": "Descripción"
+      },
+      "colCategory": {
+        "en": "Category",
+        "es": "Categoría"
+      },
+      "colOrigin": {
+        "en": "Origin",
+        "es": "Origen"
+      },
+      "colAmount": {
+        "en": "Amount",
+        "es": "Monto"
+      },
+      "installments": {
+        "en": "{{count}} installments",
+        "es": "{{count}} cuotas"
+      },
+      "refund": {
+        "en": "Refund",
+        "es": "Reembolso"
+      },
+      "empty": {
+        "en": "No expenses yet.",
+        "es": "Aún no hay gastos."
       }
     }
   },
@@ -3111,6 +3201,10 @@
         "en": "Expenses",
         "es": "Gastos"
       },
+      "savings": {
+        "en": "Savings",
+        "es": "Ahorro"
+      },
       "deposits": {
         "en": "Deposits",
         "es": "Depósitos"
@@ -3119,13 +3213,45 @@
         "en": "AFP+AFC (contributions)",
         "es": "AFP+AFC (cotizaciones)"
       },
+      "depositsPreTaxShort": {
+        "en": "Pre-tax",
+        "es": "Pre-impuesto"
+      },
+      "cardSpentMinusPaid": {
+        "en": "Cards: spent − paid",
+        "es": "Tarjetas: gastado − pagado"
+      },
+      "cardSpentMinusPaidShort": {
+        "en": "Cards spent − paid",
+        "es": "Tarjetas gastado − pagado"
+      },
+      "cashChange": {
+        "en": "Cash change",
+        "es": "Variación de caja"
+      },
+      "cashUnexplained": {
+        "en": "Unexplained",
+        "es": "Sin explicar"
+      },
       "pl": {
         "en": "P/L",
         "es": "PL"
       },
-      "net": {
-        "en": "Net",
-        "es": "Neto"
+      "investmentsChange": {
+        "en": "Investments change",
+        "es": "Variación inversiones"
+      },
+      "investmentsChangeShort": {
+        "en": "Inv. change",
+        "es": "Var. inversiones"
+      },
+      "netWorthChange": {
+        "en": "Net-worth change",
+        "es": "Variación patrimonio"
+      },
+      "netWorthChangeShort": {
+        "en": "NW change",
+        "es": "Var. patrimonio"
       },
       "detailTitle": {
         "en": "Month detail",
@@ -3717,6 +3843,10 @@
     "emptyCategory": {
       "en": "No deposits in this category.",
       "es": "Sin depósitos en esta categoría."
+    },
+    "mortgageCarryingTag": {
+      "en": "Mortgage interest + insurance (an expense)",
+      "es": "Intereses y seguros del dividendo (gasto)"
     }
   },
   "depositsReconciliation": {

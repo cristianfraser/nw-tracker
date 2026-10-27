@@ -19,6 +19,7 @@ import {
 } from "./portfolioGroupTree.js";
 import { paginate, type Paginated } from "./pagination.js";
 import { isMovementCurrency, type MovementCurrency } from "./movementAmounts.js";
+import { checkingMovementKey, checkingSpendingMovementKeys } from "./checkingSpendingMovements.js";
 
 // Mirrors client `isPersonalCapitalFlowType` in `depositFlowKind.ts`
 const PERSONAL_FLOW_TYPES = new Set<string>([
@@ -243,11 +244,21 @@ export function parseExtraFlowsFilterParams(
   return { ok: true, filters };
 }
 
+export type GroupFlowsOptions = {
+  /**
+   * Leave out the checking movements the Expenses page counts as spending
+   * (`checkingSpendingMovementKeys`) — the home «Flujos de patrimonio» table. Filter options
+   * describe the remaining rows.
+   */
+  excludeSpending?: boolean;
+};
+
 export function buildGroupFlows(
   groupSlug: string,
   filters: FlowsFilters,
   page: number,
-  pageSize: number
+  pageSize: number,
+  options: GroupFlowsOptions = {}
 ): FlowsPageResponse {
   const accountRows: GroupTabAccountRow[] = listAccountsForGroupTab(groupSlug, undefined);
   const bucketByAccount = bucketSlugByAccountIds(accountRows.map((r) => r.account_id));
@@ -259,7 +270,13 @@ export function buildGroupFlows(
   const movementsByAccount = listAccountMovementsForApiBulk(
     accountEntries.map((e) => e.account_id)
   );
-  const allRows = assembleFlowRows(accountEntries, movementsByAccount);
+  let allRows = assembleFlowRows(accountEntries, movementsByAccount);
+  if (options.excludeSpending) {
+    const spending = checkingSpendingMovementKeys();
+    allRows = allRows.filter(
+      (r) => r.transfer_direction != null || !spending.has(checkingMovementKey(r.id, r.account_id))
+    );
+  }
   const filter_options = buildFilterOptions(allRows, true);
   const filtered = applyFlowFilters(allRows, filters);
   return { ...paginate(filtered, page, pageSize), filter_options };

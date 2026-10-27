@@ -251,6 +251,14 @@ export function isInvestmentPerformanceGroupSlug(slug: string): boolean {
   return false;
 }
 
+/**
+ * Groups whose page shows a Rentabilidad table (period returns + benchmark row): the investment
+ * groups and net worth itself (the home dashboard).
+ */
+export function groupHasPeriodReturns(slug: string): boolean {
+  return slug === "net_worth" || isInvestmentPerformanceGroupSlug(slug);
+}
+
 /** True when the account lives under the `brokerage` or `retirement` NW bucket. */
 export function isInvestmentPerformanceAccount(accountId: number): boolean {
   const metricGroup = nwDashboardMetricGroupForAccount(accountId);
