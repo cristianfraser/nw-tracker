@@ -9,6 +9,7 @@ import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/Dis
 import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
 import { useDemoPageviewBeacon } from "./demoAnalytics";
 import { useChileDayRolloverInvalidation } from "./queries/useChileDayRolloverInvalidation";
+import { useLiveQuotesStampInvalidation } from "./queries/useLiveQuotesStampInvalidation";
 import { useDocumentTitleFromH1 } from "./useDocumentTitleFromH1";
 import { useFaviconFromRoute } from "./useFaviconFromRoute";
 import { PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
@@ -95,6 +96,8 @@ function AppTree() {
   useDemoPageviewBeacon();
   // Refetch day-baked payloads right after Chile midnight instead of waiting out staleTime.
   useChileDayRolloverInvalidation();
+  // Refetch as soon as the server's caches carry new live prices.
+  useLiveQuotesStampInvalidation();
   // Import the lazy chunks (charts first, then the other pages) once the browser is idle.
   useIdleChunkPrefetch();
 

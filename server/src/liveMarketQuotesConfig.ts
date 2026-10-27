@@ -32,6 +32,15 @@ export function liveQuotesIntervalMs(): number {
   return envMs("LIVE_QUOTES_INTERVAL_MS", 5 * 60 * 1000);
 }
 
+/**
+ * Poll cadence while a market the poll prices is in its regular session (default 2 min). Each
+ * poll that moves a price rebuilds the dashboard caches (~10–20 s of work on the real DB), so
+ * a one-minute cadence would keep the server busy for a third of every minute.
+ */
+export function liveQuotesSessionIntervalMs(): number {
+  return envMs("LIVE_QUOTES_SESSION_INTERVAL_MS", 2 * 60 * 1000);
+}
+
 export function liveQuotesRetentionHours(): number {
   return envHours("LIVE_QUOTES_RETENTION_HOURS", 48);
 }

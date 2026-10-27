@@ -59,9 +59,15 @@ function deleteKeysMatchingPrefix(prefix: string): void {
  * here to schedule a debounced background rebuild; day-rollover / data_version clears are
  * detected by the warmer's own timers instead (they happen lazily inside reads).
  */
-let invalidationListener: (() => void) | null = null;
+let invalidationListener: ((scope?: MarketDataInvalidationScope) => void) | null = null;
 
-export function setAggregationInvalidationListener(listener: (() => void) | null): void {
+/**
+ * Called after every invalidation; `scope` is set for market-data invalidations
+ * (`"live_tail"` = a live-quote poll moved a price).
+ */
+export function setAggregationInvalidationListener(
+  listener: ((scope?: MarketDataInvalidationScope) => void) | null
+): void {
   invalidationListener = listener;
 }
 
@@ -347,7 +353,7 @@ export function invalidateMarketDataAggregations(
   } else {
     invalidateDailySeries();
   }
-  invalidationListener?.();
+  invalidationListener?.(scope);
 }
 
 const LINKED_CC_AGGREGATION_GROUP_SLUGS = [

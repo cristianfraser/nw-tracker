@@ -39,6 +39,7 @@ export const queryKeys = {
   messagesUnread: () => ["messages", "unreadCount"] as const,
   messages: (kind: "notification" | "log") => ["messages", kind] as const,
   syncStatus: () => ["syncStatus"] as const,
+  liveQuotesStamp: () => ["liveQuotesStamp"] as const,
   importSyncDocumentCoverage: () => ["importSyncDocumentCoverage"] as const,
   genericUniqueMerchants: () => ["genericUniqueMerchants"] as const,
   income: () => ["income"] as const,
