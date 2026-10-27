@@ -7,6 +7,7 @@ import {
 } from "./ccInstallmentLineDedupe.js";
 import { backfillMissingInstallmentPaymentsForAccount } from "./ccInstallmentPaymentBackfill.js";
 import { resolveInstallmentPayByIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import {
   currencyFromRow,
@@ -403,6 +404,7 @@ export function mergeInstallmentLedgerFromParsedRows(
         payGroups.set(pk, list);
       }
 
+      const payByRule = () => ccDerivedPayByRuleForAccount(accountId);
       for (const list of payGroups.values()) {
         const chosen = [...list].sort((a, b) => {
           const da = String(a.is_duplicate_across_statements ?? "").toLowerCase() === "true";
@@ -411,12 +413,15 @@ export function mergeInstallmentLedgerFromParsedRows(
           return String(a.row_id ?? "").localeCompare(String(b.row_id ?? ""));
         })[0]!;
 
-        const payBy = resolveInstallmentPayByIso({
-          pay_by: chosen.pay_by,
-          statement_date: chosen.statement_date,
-          period_to: chosen.period_to,
-          transaction_date: chosen.transaction_date,
-        });
+        const payBy = resolveInstallmentPayByIso(
+          {
+            pay_by: chosen.pay_by,
+            statement_date: chosen.statement_date,
+            period_to: chosen.period_to,
+            transaction_date: chosen.transaction_date,
+          },
+          payByRule
+        );
         if (!payBy) continue;
         const cuotaAmt = parseOptionalChileanInteger(String(chosen.valor_cuota_mensual_clp ?? ""));
         if (cuotaAmt == null || cuotaAmt <= 0) continue;

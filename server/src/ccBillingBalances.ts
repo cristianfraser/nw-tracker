@@ -23,6 +23,7 @@ import {
 } from "./ccInstallmentPayBy.js";
 import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
 import { db } from "./db.js";
+import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingMonthForStatementDate, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import { ledgerFacturadoClpForBillingMonth } from "./ccInstallmentLedgerDb.js";
@@ -112,11 +113,14 @@ export function balanceUsdFxDateIso(accountId: number, statementDate: string): s
   const meta = stmtPayByMetaByDate.get(accountId, statementDate) as
     | { pay_by: string | null; period_to: string | null }
     | undefined;
-  const payByIso = resolveInstallmentPayByIso({
-    pay_by: meta?.pay_by ?? undefined,
-    statement_date: statementDate,
-    period_to: meta?.period_to ?? undefined,
-  });
+  const payByIso = resolveInstallmentPayByIso(
+    {
+      pay_by: meta?.pay_by ?? undefined,
+      statement_date: statementDate,
+      period_to: meta?.period_to ?? undefined,
+    },
+    () => ccDerivedPayByRuleForAccount(accountId)
+  );
   return payByIso ? payByFxDateIso(payByIso) : parseDdMmYyToIso(statementDate);
 }
 

@@ -44,7 +44,8 @@ import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import { ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { parseDdMmYyToIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
+import { derivedPayByIso, parseDdMmYyToIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
+import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import type { CcInstallmentMonthRow } from "./creditCardInstallments.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
@@ -324,7 +325,7 @@ export function facturadoTotalClpForStatementSlot(
   const facturadoClp = clpDerived.facturado_clp;
   const facturadoUsd = usdDerived.facturado_usd;
 
-  const { pay_by_iso: payByIso } = resolveFacturacionPayBy(slot, primary);
+  const { pay_by_iso: payByIso } = resolveFacturacionPayBy(accountId, slot, primary);
   const facturadoUsdClp =
     facturadoUsd != null
       ? usdToClpAsDebt(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
@@ -521,7 +522,7 @@ function provisionalFacturado(
   cuotaAPagarClp: number
 ): ProvisionalFacturado {
   const close = closeDateForBillingMonth(accountId, billingMonth);
-  const pay_by_iso = resolveInstallmentPayByIso({ statement_date: close.close_iso });
+  const pay_by_iso = derivedPayByIso(close.close_iso, ccDerivedPayByRuleForAccount(accountId));
   const estimate_total_clp = openMonthFacturadoTotalClp(accountId, billingMonth, cuotaAPagarClp);
   const base = {
     close_iso: close.close_iso,
@@ -874,8 +875,9 @@ function applyFacturacionUsdRates(accountId: number, rows: CcFacturacionRow[]): 
   }
 }
 
-/** Explicit PDF pay_by when present; else statement close + 10th of next month (see ccInstallmentPayBy). */
+/** Explicit PDF pay_by when present; else derived from the close by the issuer's rule (see ccInstallmentPayBy). */
 function resolveFacturacionPayBy(
+  accountId: number,
   slot: CcStatementSlotByCurrency,
   primary: CcStatementRow
 ): { pay_by: string | null; pay_by_iso: string | null; pay_by_source: CcFacturacionRow["pay_by_source"] } {
@@ -890,10 +892,13 @@ function resolveFacturacionPayBy(
       };
     }
   }
-  const payByIso = resolveInstallmentPayByIso({
-    statement_date: primary.statement_date_iso ?? primary.statement_date,
-    period_to: primary.period_to ?? undefined,
-  });
+  const payByIso = resolveInstallmentPayByIso(
+    {
+      statement_date: primary.statement_date_iso ?? primary.statement_date,
+      period_to: primary.period_to ?? undefined,
+    },
+    () => ccDerivedPayByRuleForAccount(accountId)
+  );
   if (!payByIso) return { pay_by: null, pay_by_iso: null, pay_by_source: null };
   return { pay_by: ddMmYyyyFromIso(payByIso), pay_by_iso: payByIso, pay_by_source: "derived" };
 }
@@ -923,7 +928,7 @@ export function facturacionPayByIsoResolver(
   return (billingMonth) => {
     if (!byMonth.has(billingMonth)) {
       const close = closeDateForBillingMonth(accountId, billingMonth);
-      byMonth.set(billingMonth, resolveInstallmentPayByIso({ statement_date: close.close_iso }));
+      byMonth.set(billingMonth, derivedPayByIso(close.close_iso, ccDerivedPayByRuleForAccount(accountId)));
     }
     const iso = byMonth.get(billingMonth);
     if (!iso) {
@@ -954,7 +959,7 @@ export function facturacionUsdRateResolver(
         {
           billing_month: billingMonth,
           close_date_iso: close,
-          pay_by_iso: resolveInstallmentPayByIso({ statement_date: close }),
+          pay_by_iso: derivedPayByIso(close, ccDerivedPayByRuleForAccount(accountId)),
         },
       ]);
       byMonth.set(billingMonth, rates.get(billingMonth)!.clp_per_usd);
@@ -1008,7 +1013,7 @@ function buildFacturacionesInner(
     const facturadoClp = clpDerived.facturado_clp;
     const facturadoUsd = usdDerived.facturado_usd;
 
-    const { pay_by, pay_by_iso: payByIso, pay_by_source } = resolveFacturacionPayBy(slot, primary);
+    const { pay_by, pay_by_iso: payByIso, pay_by_source } = resolveFacturacionPayBy(accountId, slot, primary);
     const facturadoUsdClp =
       facturadoUsd != null
         ? usdToClpAsDebt(facturadoUsd, payByIso) ?? usdDerived.facturado_clp
@@ -1120,7 +1125,7 @@ function openFacturacionRow(
     facturadoUsdClp = Math.round(openUsd.clp);
   }
   const close = closeDateForBillingMonth(accountId, billingMonth);
-  const payByIso = resolveInstallmentPayByIso({ statement_date: close.close_iso });
+  const payByIso = derivedPayByIso(close.close_iso, ccDerivedPayByRuleForAccount(accountId));
   return {
     billing_month: billingMonth,
     close_date: close.close_ddmmyyyy,

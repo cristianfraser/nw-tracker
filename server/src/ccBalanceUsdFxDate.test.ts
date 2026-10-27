@@ -27,8 +27,14 @@ describe("balanceUsdFxDateIso", () => {
     expect(balanceUsdFxDateIso(master.id, "23/06/2026")).toBe("2026-07-08");
   });
 
-  it("falls back to the 10th of the next month (minus one day) for open web-paste statements with no pay_by", () => {
-    // No matching statement row → computed pay-by = 10 Aug → minus one day = 9 Aug.
-    expect(balanceUsdFxDateIso(-999_999, "20/07/2026")).toBe("2026-08-09");
+  it("falls back to the issuer's derived pay-by (minus one day) for open web-paste statements with no pay_by", () => {
+    const master = db
+      .prepare(`SELECT id FROM accounts WHERE notes = ?`)
+      .get(VITEST_SANTANDER_CC_MASTER_NOTES) as { id: number } | undefined;
+    if (!master) return;
+    // No matching statement row → Santander's rule: 10 Aug 2026 (a Monday) → minus one day = 9 Aug.
+    expect(balanceUsdFxDateIso(master.id, "20/07/2026")).toBe("2026-08-09");
+    // A Saturday 10th moves back to Friday the 9th → fx date the 8th.
+    expect(balanceUsdFxDateIso(master.id, "24/09/2026")).toBe("2026-10-08");
   });
 });

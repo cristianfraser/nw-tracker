@@ -24,7 +24,7 @@ beforeAll(() => {
     db
       .prepare(
         `INSERT INTO accounts (asset_group_id, name, notes, import_key)
-         VALUES (?, 'Vitest · cc-financing card', 'vitest-ccfin', 'vitest-ccfin')`
+         VALUES (?, 'Vitest · cc-financing card', 'vitest-ccfin', 'credit_card_master|santander|vitest-ccfin')`
       )
       .run(ccLeaf.id).lastInsertRowid
   );

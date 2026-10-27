@@ -198,7 +198,7 @@ export interface CcInstallmentMonthRow {
   month: string;
   total_clp: number;
   breakdown: CcInstallmentMonthBreakdown[];
-  /** Statement PAGAR HASTA when closed; derived (~10th of next month) for open/projected. */
+  /** Statement PAGAR HASTA when closed; derived from the close by the issuer's rule for open/projected. */
   pay_by_date: string;
   /** Plan debt remaining after this facturación's cuotas are paid (last row = 0). */
   debt_after_clp: number;
