@@ -4,11 +4,9 @@ import type { GroupPageShell } from "./groupPageShell";
 /** v2 adds `first_month`. */
 const STORAGE_PREFIX = "nw:group-shell-v2";
 
-/** True when localStorage has a group-page shell row (CLP fallback for USD). */
+/** True when localStorage has a group-page shell row for this unit. */
 export function hasGroupPageShellCache(portfolioGroup: string, unit: DisplayUnit): boolean {
-  if (readGroupPageShellCache(portfolioGroup, unit) != null) return true;
-  if (unit === "usd" && readGroupPageShellCache(portfolioGroup, "clp") != null) return true;
-  return false;
+  return readGroupPageShellCache(portfolioGroup, unit) != null;
 }
 
 function storageKey(portfolioGroup: string, unit: DisplayUnit): string {

@@ -97,8 +97,8 @@ describe("dashPickForNavStrip bucket totals", () => {
   });
 
   it("never sums account rows into bucket totals: a CLP-only payload has no USD totals", () => {
-    // The placeholders convert a CLP payload shown in USD before it gets here
-    // (`synthesizeMissingUsdOn…`); the strip itself only picks.
+    // A CLP payload is never shown in USD (each unit reads its own cache or a blank
+    // placeholder); the strip itself only picks.
     const dash = dashPickForNavStrip({
       card_metrics_by_slug: {},
       accounts: [brokerageRow, cashRow],

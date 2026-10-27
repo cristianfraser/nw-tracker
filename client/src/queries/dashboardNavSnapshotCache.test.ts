@@ -65,7 +65,7 @@ describe("hasDashboardNavSnapshotCache", () => {
     expect(hasDashboardNavSnapshotCache("clp")).toBe(true);
   });
 
-  it("USD falls back to CLP cache", () => {
+  it("a CLP cache does not stand in for USD", () => {
     writeDashboardNavSnapshotCache("clp", {
       accounts: [],
       card_metrics_by_slug: {},
@@ -96,7 +96,7 @@ describe("hasDashboardNavSnapshotCache", () => {
         },
       },
     });
-    expect(hasDashboardNavSnapshotCache("usd")).toBe(true);
+    expect(hasDashboardNavSnapshotCache("usd")).toBe(false);
   });
 });
 

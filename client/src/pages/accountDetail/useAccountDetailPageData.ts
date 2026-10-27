@@ -14,12 +14,6 @@ import { findNavTreeNodeByAccountId } from "../../portfolioNavFromApi";
 import i18n from "../../i18n";
 import { buildPlaceholderAccountDetailBundle } from "../../placeholders/accountDetailPlaceholders";
 import { buildPlaceholderNavStripDash } from "../../placeholders/dashboardPagePlaceholders";
-import {
-  convertAccountDetailBundleUnit,
-  convertPeriodReturnsUnit,
-  resolveClpPerUsdForKeepPrev,
-} from "../../placeholders/keepPrevBundleUnit";
-import { readFxLatestCache } from "../../queries/fxLatestCache";
 import { cardGroupMetricsByPeriodFromAccounts } from "../../dashboardCardBreakdown";
 import { useSurfacePrefs, type SurfacePrefsValue } from "../../surfaceDisplayPrefs";
 import { clipMonthsThenRollup } from "../../timeRange";
@@ -83,30 +77,11 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const perfRange = perfPrefs.range;
 
   const {
-    data: rawDetail,
+    data: detail,
     error: detailError,
     isPending: detailPending,
     isPlaceholderData: detailIsPlaceholder,
   } = useAccountDetailBundle(id, displayUnit, "monthly");
-
-  // During a CLP↔USD switch keepPreviousData holds the prior-unit bundle; convert its
-  // toggle-responsive surfaces (chart, monthly perf, header card) to the target unit so the
-  // page stays consistent instead of briefly showing prior-unit magnitudes under the new symbol.
-  const detail = useMemo(() => {
-    if (!detailIsPlaceholder || !rawDetail) return rawDetail;
-    if (rawDetail.ts && rawDetail.ts.unit === (displayUnit === "usd" ? "usd" : "clp")) return rawDetail;
-    const rate = resolveClpPerUsdForKeepPrev(undefined, readFxLatestCache());
-    if (rate == null) return rawDetail;
-    const converted = convertAccountDetailBundleUnit(rawDetail, displayUnit, rate);
-    // The Rentabilidad table stays on screen (dimmed) while the target unit loads, so its money
-    // cells convert too.
-    return converted.period_returns
-      ? {
-          ...converted,
-          period_returns: convertPeriodReturnsUnit(converted.period_returns, displayUnit, rate),
-        }
-      : converted;
-  }, [detailIsPlaceholder, rawDetail, displayUnit]);
   const { data: sidebarNav } = useSidebarNav();
   const { data: navSnapshot } = useDashboardNavSnapshot(displayUnit);
 

@@ -1,4 +1,4 @@
-import { keepPreviousData, type QueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import {
   fetchAccountsByPortfolioGroup,
   fetchDashboardBundle,
@@ -50,13 +50,6 @@ export function displayUnitQueryBehaviorFor(queryKey: readonly unknown[], entity
     placeholderData: keepPreviousDataSameEntity(queryKey, entityKeyLength),
   };
 }
-
-/** Key-agnostic variant for queries whose key carries no entity (unit or window only). */
-export const displayUnitQueryBehavior = {
-  staleTime: DISPLAY_UNIT_STALE_MS,
-  refetchInterval: LIVE_DASHBOARD_REFETCH_MS,
-  placeholderData: keepPreviousData,
-} as const;
 
 export function prefetchDashboardBundle(queryClient: QueryClient, unit: DisplayUnit): Promise<void> {
   return queryClient.prefetchQuery({

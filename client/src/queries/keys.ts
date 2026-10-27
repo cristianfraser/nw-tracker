@@ -31,7 +31,6 @@ export const queryKeys = {
   watchlistSymbolSearch: (q: string) => ["watchlist-symbol-search", q] as const,
   marketSeries: () => ["marketSeries"] as const,
   mortgageUfReminder: () => ["mortgageUfReminder"] as const,
-  fxLatest: () => ["fxLatest"] as const,
   messagesUnread: () => ["messages", "unreadCount"] as const,
   messages: (kind: "notification" | "log") => ["messages", kind] as const,
   syncStatus: () => ["syncStatus"] as const,

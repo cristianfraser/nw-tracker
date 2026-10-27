@@ -148,9 +148,8 @@ export function GroupInfoBase({
   const stripPlaceholderPhase = portfolio?.placeholderPhase ?? loading;
   const placeholderMonthlyRows = useMemo(() => buildPlaceholderConsolidatedMonthlyRows(), []);
 
-  // During a CLP↔USD switch the held prior-unit page converts via FX (keep-previous), so the
-  // table shows approximate values instead of blanking; undefined (no data / no rate) falls
-  // back to placeholder rows inside resolveMonthlyDetailRows.
+  // A held prior-unit page (keep-previous during a CLP↔USD switch) is never converted; undefined
+  // falls back to placeholder rows inside resolveMonthlyDetailRows.
   const serverMonthlyRows = useMemo(() => {
     const resp = serverMonthly.data;
     if (!resp) return undefined;
