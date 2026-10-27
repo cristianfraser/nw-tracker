@@ -1,26 +1,6 @@
 import { db } from "./db.js";
 import { ufRowOnOrBefore } from "./fxRates.js";
 
-/** Semicolon CSV + es-CL number parsing (aligned with `cfraserCsv.ts`). */
-export function numCsv(v: unknown): number | null {
-  if (v == null) return null;
-  if (typeof v === "number") return Number.isFinite(v) ? v : null;
-  const s = String(v).trim();
-  if (!s) return null;
-  const neg = s.includes("(") && s.includes(")");
-  // Strip $, whitespace, UF label, NBSP / narrow NBSP / figure space (Numbers exports).
-  const t = s
-    .replace(/^\ufeff/, "")
-    .replace(/US\$/gi, "")
-    .replace(/[$\sUF\u00a0\u202f\u2007]/gi, "")
-    .replace(/\./g, "")
-    .replace(/,/g, ".")
-    .replace(/[()]/g, "");
-  const n = Number(t);
-  if (!Number.isFinite(n)) return null;
-  return neg ? -n : n;
-}
-
 /** One payment / capital row from Numbers export `depto-dividendos.csv` (sheet “dividendos”). */
 export type DeptoDividendosPaymentRow = {
   cuota: string;

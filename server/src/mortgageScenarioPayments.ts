@@ -6,7 +6,6 @@ import {
   type DeptoPaymentScenarioRow,
   type DeptoPaymentScenarioTerm,
   isDeptoMortgagePaymentCuota,
-  numCsv,
 } from "./deptoDividendosLedger.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { ufRowOnOrBefore } from "./fxRates.js";
@@ -17,7 +16,9 @@ const DEFAULT_ANNUAL_RATE = 0.0495;
 /** Mortgage installments are scheduled on this day of each month (display + UF día lookup). */
 export const MORTGAGE_PAYMENT_DAY_OF_MONTH = 11;
 
-const TERM_PLAZO_MESES: Record<DeptoPaymentScenarioTerm, number> = {
+type AmortizationTerm = Exclude<DeptoPaymentScenarioTerm, "max">;
+
+const TERM_PLAZO_MESES: Record<AmortizationTerm, number> = {
   30: 360,
   25: 300,
   20: 240,
@@ -25,18 +26,6 @@ const TERM_PLAZO_MESES: Record<DeptoPaymentScenarioTerm, number> = {
   12: 144,
   10: 120,
   5: 60,
-  max: 60,
-};
-
-const SCENARIO_UF_COL: Record<DeptoPaymentScenarioTerm, number> = {
-  30: 24,
-  25: 25,
-  20: 26,
-  15: 27,
-  12: 28,
-  10: 29,
-  5: 30,
-  max: 31,
 };
 
 function roundUf5(v: number): number {
@@ -152,35 +141,12 @@ export function computeMortgageScenarioPaymentUf(
   return roundUf5((balanceUfBefore * r) / denom + insuranceUf);
 }
 
-function manualUfFromCsv(rawRow: string[], term: DeptoPaymentScenarioTerm): number | null {
-  const v = numCsv(rawRow[SCENARIO_UF_COL[term]]);
-  return v != null && Number.isFinite(v) ? roundUf5(v) : null;
-}
-
-function scenarioCell(
+function scenarioCellAtScheduleUf(
   term: DeptoPaymentScenarioTerm,
-  rawRow: string[],
-  sheetRow: DeptoMortgageSheetRow,
-  monthsPaid: number,
-  scheduleYmd: string,
-  opts: { isNext: boolean }
+  paymentUf: number | null,
+  scheduleYmd: string
 ): DeptoPaymentScenarioCell {
-  const plazo = TERM_PLAZO_MESES[term];
-  const paymentNum = paymentNumber(sheetRow.cuota, monthsPaid);
-  const manualUf = opts.isNext ? null : manualUfFromCsv(rawRow, term);
-  const ufRow = ufRowOnOrBefore(scheduleYmd);
-  const ufClpDay = ufRow?.clp_per_uf ?? null;
-  let paymentUf: number | null = null;
-  if (plazo < paymentNum) {
-    paymentUf = null;
-  } else if (manualUf != null) {
-    paymentUf = manualUf;
-  } else {
-    const bal = opts.isNext ? balanceUfForNextPayment(sheetRow) : balanceUfBeforePayment(sheetRow);
-    if (bal != null) {
-      paymentUf = computeMortgageScenarioPaymentUf(bal, plazo, paymentNum, insuranceUfFromRow(sheetRow));
-    }
-  }
+  const ufClpDay = ufRowOnOrBefore(scheduleYmd)?.clp_per_uf ?? null;
   const paymentClp =
     paymentUf != null && ufClpDay != null && Number.isFinite(ufClpDay)
       ? Math.round(paymentUf * ufClpDay)
@@ -188,19 +154,45 @@ function scenarioCell(
   return { term, payment_uf: paymentUf, payment_clp: paymentClp };
 }
 
+function scenarioCell(
+  term: AmortizationTerm,
+  sheetRow: DeptoMortgageSheetRow,
+  monthsPaid: number,
+  scheduleYmd: string,
+  opts: { isNext: boolean }
+): DeptoPaymentScenarioCell {
+  const plazo = TERM_PLAZO_MESES[term];
+  const paymentNum = paymentNumber(sheetRow.cuota, monthsPaid);
+  let paymentUf: number | null = null;
+  if (plazo >= paymentNum) {
+    const bal = opts.isNext ? balanceUfForNextPayment(sheetRow) : balanceUfBeforePayment(sheetRow);
+    if (bal != null) {
+      paymentUf = computeMortgageScenarioPaymentUf(bal, plazo, paymentNum, insuranceUfFromRow(sheetRow));
+    }
+  }
+  return scenarioCellAtScheduleUf(term, paymentUf, scheduleYmd);
+}
+
+/**
+ * The bank's posted cuota máxima (sheet `max_uf`), not an amortization scenario. The projected
+ * next row carries the last paid cuota's máxima, assumed to hold until the end of the loan.
+ */
+function maxScenarioCell(sheetRow: DeptoMortgageSheetRow, scheduleYmd: string): DeptoPaymentScenarioCell {
+  return scenarioCellAtScheduleUf("max", sheetRow.max_uf, scheduleYmd);
+}
+
 function buildScenarioRow(
   scheduleYmd: string,
   cuotaLabel: string,
   sheetRow: DeptoMortgageSheetRow,
   monthsPaid: number,
-  rawRow: string[],
   opts: { isNext: boolean }
 ): DeptoPaymentScenarioRow {
   const scenarios: DeptoPaymentScenarioCell[] = [];
   for (const term of DEPTO_PAYMENT_SCENARIO_TERMS) {
-    scenarios.push(scenarioCell(term, rawRow, sheetRow, monthsPaid, scheduleYmd, opts));
+    scenarios.push(scenarioCell(term, sheetRow, monthsPaid, scheduleYmd, opts));
   }
-  scenarios.push(scenarioCell("max", rawRow, sheetRow, monthsPaid, scheduleYmd, opts));
+  scenarios.push(maxScenarioCell(sheetRow, scheduleYmd));
   const minCell = scenarios.find((s) => s.term === 30)!;
   return {
     occurred_on: scheduleYmd,
@@ -214,7 +206,8 @@ function buildScenarioRow(
 
 /**
  * Reference payment scenarios on the mortgage schedule (day 11 each month).
- * UF from sheet when present; otherwise amortization formula. CLP = UF × uf_daily on schedule date.
+ * Term columns use the amortization formula; `max` is the bank's posted cuota máxima (sheet `max_uf`).
+ * CLP = UF × uf_daily on schedule date.
  * Appends a projected next-payment row at the end (shown first in the UI).
  */
 export function buildDeptoPaymentScenarioRows(
@@ -222,8 +215,6 @@ export function buildDeptoPaymentScenarioRows(
 ): DeptoPaymentScenarioRow[] {
   const firstSchedule = firstMortgageScheduleYmd(ledger);
   if (!firstSchedule) return [];
-
-  const byDateCuota = new Map<string, string[]>();
 
   const paymentRows = [...ledger]
     .filter((r) => isDeptoMortgagePaymentCuota(r.cuota))
@@ -246,10 +237,7 @@ export function buildDeptoPaymentScenarioRows(
     const scheduleYmd = mortgageScheduleYmdForCuota(firstSchedule, firstCuotaNum, cuotaNum);
     if (!scheduleYmd || scheduleYmd >= nextScheduleYmd) continue;
     monthsPaid += 1;
-    const raw = byDateCuota.get(`${sheetRow.occurred_on}|${sheetRow.cuota}`) ?? [];
-    historical.push(
-      buildScenarioRow(scheduleYmd, sheetRow.cuota, sheetRow, monthsPaid, raw, { isNext: false })
-    );
+    historical.push(buildScenarioRow(scheduleYmd, sheetRow.cuota, sheetRow, monthsPaid, { isNext: false }));
   }
 
   const lastPaid = numericRows[numericRows.length - 1]!;
@@ -260,7 +248,6 @@ export function buildDeptoPaymentScenarioRows(
     String(nextCuotaNum),
     { ...lastPaid, cuota: String(nextCuotaNum) },
     monthsPaid + 1,
-    [],
     { isNext: true }
   );
 

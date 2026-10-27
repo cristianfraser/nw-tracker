@@ -139,6 +139,7 @@ describe("buildDeptoPaymentScenarioRows", () => {
       credito_restante_uf: 1000,
       amortizacion_uf: 2,
       total_seguros_uf: 0.5,
+      max_uf: 80.5,
     }),
     sheetRow({
       cuota: "2",
@@ -146,6 +147,7 @@ describe("buildDeptoPaymentScenarioRows", () => {
       credito_restante_uf: 998,
       amortizacion_uf: 2,
       total_seguros_uf: 0.5,
+      max_uf: 80.7,
     }),
   ];
 
@@ -185,11 +187,24 @@ describe("buildDeptoPaymentScenarioRows", () => {
     expect(r1.min_payment_clp).toBe(Math.round(expectedMinUf! * UF_ON_APR_11));
     // Scenario cells exclude the 30-year term (that is the min column).
     expect(r1.scenarios.map((s) => s.term)).toEqual([25, 20, 15, 12, 10, 5, "max"]);
-    // `max` shares the 5-year plazo.
     const t5 = r1.scenarios.find((s) => s.term === 5)!;
-    const tMax = r1.scenarios.find((s) => s.term === "max")!;
-    expect(tMax.payment_uf).toBe(t5.payment_uf);
     expect(t5.payment_uf).toBe(computeMortgageScenarioPaymentUf(1002, 60, 1, 0.5));
+  });
+
+  it("max is the bank's posted cuota máxima, not an amortization term", () => {
+    const rows = buildDeptoPaymentScenarioRows(ledger);
+    const maxOf = (r: (typeof rows)[number]) => r.scenarios.find((s) => s.term === "max")!;
+    expect(maxOf(rows[0]!)).toEqual({ term: "max", payment_uf: 80.5, payment_clp: Math.round(80.5 * UF_ON_APR_11) });
+    expect(maxOf(rows[1]!).payment_uf).toBe(80.7);
+    // The projected row holds the last posted máxima, at the latest UF.
+    expect(maxOf(rows[2]!)).toEqual({ term: "max", payment_uf: 80.7, payment_clp: Math.round(80.7 * UF_ON_MAY_11) });
+  });
+
+  it("max is empty when the cuota has no posted máxima", () => {
+    const rows = buildDeptoPaymentScenarioRows(ledger.map((r) => ({ ...r, max_uf: null })));
+    for (const r of rows) {
+      expect(r.scenarios.find((s) => s.term === "max")).toEqual({ term: "max", payment_uf: null, payment_clp: null });
+    }
   });
 
   it("projects the next payment from balance-after-last-payment at the latest UF", () => {
