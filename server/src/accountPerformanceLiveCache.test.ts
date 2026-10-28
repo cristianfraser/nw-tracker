@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clearAggregationCache } from "./aggregationCache.js";
 import { db } from "./db.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
-import * as syncLatest from "./syncLatestDisplayValueClp.js";
+import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
+import * as todayValue from "./accountTodayValue.js";
 
-describe("getAccountMonthlyPerformance live patch vs cache", () => {
+describe("valuationSeriesMonthlyPerformance live patch vs cache", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     clearAggregationCache();
@@ -16,12 +16,12 @@ describe("getAccountMonthlyPerformance live patch vs cache", () => {
       .get() as { id: number } | undefined;
     if (!row) return;
 
-    const spy = vi.spyOn(syncLatest, "syncLatestDisplayValueClp");
-    spy.mockReturnValueOnce({ value_clp: 3_004_764, as_of_date: "2026-06-03" });
-    spy.mockReturnValueOnce({ value_clp: 3_051_857, as_of_date: "2026-06-03" });
+    const spy = vi.spyOn(todayValue, "accountTodayValue");
+    spy.mockReturnValueOnce({ value_clp: 3_004_764, as_of_date: "2026-06-03", priced_on: "2026-06-03" });
+    spy.mockReturnValueOnce({ value_clp: 3_051_857, as_of_date: "2026-06-03", priced_on: "2026-06-03" });
 
-    const first = getAccountMonthlyPerformance(row.id, "clp");
-    const second = getAccountMonthlyPerformance(row.id, "clp");
+    const first = valuationSeriesMonthlyPerformance(row.id, "clp");
+    const second = valuationSeriesMonthlyPerformance(row.id, "clp");
     if (!first?.monthly.length || !second?.monthly.length) return;
 
     const top1 = first.monthly[0];

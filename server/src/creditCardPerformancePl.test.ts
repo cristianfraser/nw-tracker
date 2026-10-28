@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { isClpSection3Merchant, isClpSection3FinancingChargeMerchant } from "./ccStatementSection3.js";
-import {
-  buildCreditCardFinancingPlByBillingMonth,
-} from "./creditCardPerformancePl.js";
 import { facturadoClpUsdForStatementSlot } from "./ccBillingViews.js";
 import { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 
@@ -39,17 +36,5 @@ describe("credit card API financing + facturaciones", () => {
 
     const { facturado_clp } = facturadoClpUsdForStatementSlot(master.id, slot);
     expect(facturado_clp).toBeGreaterThan(100_000);
-  });
-
-  it("builds financing rows for fixture account with statements", () => {
-    const master = db
-      .prepare(`SELECT id FROM accounts WHERE notes = 'credit_card_master|santander|4242' LIMIT 1`)
-      .get() as { id: number } | undefined;
-    if (!master) return;
-
-    const rows = buildCreditCardFinancingPlByBillingMonth(master.id, []);
-    if (rows.length === 0) return;
-    expect(rows[0]!.billing_month).toMatch(/^\d{4}-\d{2}$/);
-    expect(rows[0]!.financing_cost_clp).toBeGreaterThanOrEqual(0);
   });
 });

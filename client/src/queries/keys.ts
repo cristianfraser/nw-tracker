@@ -12,8 +12,12 @@ export const queryKeys = {
   dashboardOverview: (unit: DisplayUnit) => ["dashboardOverview", unit] as const,
   dashboardOverviewDaily: (unit: DisplayUnit, days: number) =>
     ["dashboardOverviewDaily", unit, days] as const,
-  dailySeries: (scope: string, unit: DisplayUnit, days: number) =>
-    ["dailySeries", scope, unit, days] as const,
+  inversionesPerfDaily: (unit: DisplayUnit, days: number) =>
+    ["inversionesPerfDaily", unit, days] as const,
+  /** `variant` "perf" carries the day-mode P/L levels (`perf_levels`); a separate entity, so
+   * neither variant is ever held as the other's placeholder. */
+  dailySeries: (scope: string, variant: "base" | "perf", unit: DisplayUnit, days: number) =>
+    ["dailySeries", scope, variant, unit, days] as const,
   groupConsolidatedTables: (group: string, subgroup: string | undefined, unit: DisplayUnit) =>
     ["groupConsolidatedTables", group, subgroup ?? null, unit] as const,
   groupPeriodReturns: (group: string, unit: DisplayUnit) =>

@@ -8,6 +8,7 @@ import type {
   DashboardResponse,
   FxLatest,
   GroupMonthlyPerformanceResponse,
+  InversionesPerfMonthlyResponse,
   ValuationTimeseriesResponse,
 } from "../types";
 import { queryKeys, type DisplayUnit } from "./keys";
@@ -18,8 +19,8 @@ export type DashboardBundle = {
   dash: DashboardResponse;
   ts: ValuationTimeseriesResponse;
   fx: FxLatest | null;
-  retirementPerf: GroupMonthlyPerformanceResponse | null;
-  brokeragePerf: GroupMonthlyPerformanceResponse | null;
+  /** The P/L + deposits combo; null on a placeholder bundle without perf sections. */
+  inversionesPerf: InversionesPerfMonthlyResponse | null;
   /** Null only on a placeholder bundle: unknown until the server answers (pesos in both units). */
   ccUpcomingPayments: CcUpcomingPaymentsDto | null;
 };
@@ -30,8 +31,7 @@ export async function fetchDashboardBundle(unit: DisplayUnit): Promise<Dashboard
     dash: bundle.dash,
     fx: bundle.fx,
     ts: bundle.ts,
-    retirementPerf: bundle.retirementPerf,
-    brokeragePerf: bundle.brokeragePerf,
+    inversionesPerf: bundle.inversionesPerf,
     ccUpcomingPayments: bundle.cc_upcoming_payments,
   };
 }

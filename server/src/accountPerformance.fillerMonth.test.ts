@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
 import { clearAggregationCache } from "./aggregationCache.js";
 import { db } from "./db.js";
 
@@ -40,10 +40,10 @@ afterAll(() => {
   clearAggregationCache();
 });
 
-describe("getAccountMonthlyPerformance across months with no valuation row", () => {
+describe("valuationSeriesMonthlyPerformance across months with no valuation row", () => {
   it("carries cumulative deposits through the gap, so each flow lands in its own month", () => {
     if (accountId == null) return;
-    const rows = getAccountMonthlyPerformance(accountId)!.monthly;
+    const rows = valuationSeriesMonthlyPerformance(accountId)!.monthly;
     const byMonth = new Map(rows.map((r) => [r.as_of_date.slice(0, 7), r]));
     for (const m of ["2012-02", "2012-03", "2012-04"]) {
       const r = byMonth.get(m);

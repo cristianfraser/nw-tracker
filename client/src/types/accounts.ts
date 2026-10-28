@@ -42,6 +42,8 @@ export interface AccountMonthlyPerformanceResponse {
   account_id: number;
   category_slug: string;
   monthly: AccountMonthlyPerformanceRow[];
+  /** The server's yearly rollup of `monthly` («Detalle por año»), newest first. */
+  yearly: AccountMonthlyPerformanceRow[];
 }
 
 export interface MortgagePaymentCreateSchema {

@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { db } from "./db.js";
 import { getMergedDepositInflowEventsForAccount } from "./accountDeposits.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
 
 /**
  * Mirror-converted transfers carry ONE date, and each side's aportes event must be bucketed on
@@ -170,7 +170,7 @@ describe("mirror-merged transfer aportes bucketing", () => {
       `${PREFIX}|deposito`
     );
 
-    const perf = getAccountMonthlyPerformance(outAccountId, "clp");
+    const perf = valuationSeriesMonthlyPerformance(outAccountId, "clp");
     const byDate = new Map(perf!.monthly.map((r) => [r.as_of_date, r]));
     const dec = byDate.get("2025-12-31")!;
     const jan = byDate.get("2026-01-31")!;

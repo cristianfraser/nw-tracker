@@ -1,7 +1,8 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
-import { fxForLiveMtm } from "./fxRates.js";
+import { accountTodayValue } from "./accountTodayValue.js";
+import { accountValueClpToUnitAt } from "./clpToUnitAt.js";
 import {
   endChargedFlow,
   flowAdjustedPct,
@@ -9,7 +10,8 @@ import {
   type PeriodReturnCell,
   type PeriodReturnsPayload,
 } from "./periodReturns.js";
-import { convertTs, type TsUnit } from "./valuationTimeseries.js";
+import { convertTs } from "./clpToUnitAt.js";
+import type { TsUnit } from "./valuationTimeseries.js";
 
 /**
  * Short-horizon (1D / 1W) returns for the Rentabilidad strip. Unlike the monthly windows
@@ -39,25 +41,37 @@ export function includeShortHorizonAccount(a: ShortHorizonAccountRef): boolean {
 }
 
 /**
- * Convert a CLP leg to `unit`. For a USD view of the live-today leg, use the same intraday
- * `CLP=X` the live mark was built with (`fxForLiveMtm`) — `convertTs` would divide by EOD FX
- * and leave an FX artifact in the USD return on the live day. Prior/historical legs use
- * `convertTs` (EOD on-or-before), which cancels each mark's own EOD FX cleanly.
- * Shared with the daily series builder so its legs convert identically.
+ * One account's value at `ymd` in `unit`: its mark (`accountMarkClpAtYmd`), framed per account
+ * (`accountValueClpToUnitAt`). Today in USD the pesos are framed on the day they were priced
+ * (`accountTodayValue().priced_on`: a market mark's own day, else today) — the dashboard row's
+ * `current_value_usd`; a USD cash account is its ledger dollars on every day. Earlier days read
+ * the stored fx on or before. Null when the account has no mark, or no rate is on file.
+ * Shared with the daily series builder (`dailySeries.ts`), so both derive identical legs.
  */
-export function convertLegToUnit(rawClp: number, ymd: string, unit: TsUnit, now: Date): number {
+export function accountValueInUnitAt(
+  a: ShortHorizonAccountRef,
+  ymd: string,
+  unit: TsUnit,
+  now: Date
+): number | null {
+  const markOpts = { import_key: a.import_key ?? null, name: a.name ?? null };
   if (unit === "usd" && ymd === chileCalendarTodayYmd()) {
-    const live = fxForLiveMtm(ymd, now);
-    if (live != null && Number.isFinite(live.clp_per_usd) && live.clp_per_usd > 0) {
-      return rawClp / live.clp_per_usd;
-    }
+    const live = accountTodayValue(a.account_id, a.bucket_slug, markOpts);
+    if (live?.value_clp == null || !Number.isFinite(live.value_clp)) return null;
+    return accountValueClpToUnitAt(a.account_id, live.value_clp, ymd, unit, {
+      markAsOf: live.priced_on,
+      now,
+    });
   }
-  return convertTs(rawClp, ymd, unit);
+  const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, markOpts);
+  if (mark?.value_clp == null || !Number.isFinite(mark.value_clp)) return null;
+  return accountValueClpToUnitAt(a.account_id, mark.value_clp, ymd, unit, { now });
 }
 
 /**
- * Sum per-account CLP marks at `ymd`, converted once to `unit`; null when no account marks.
- * Shared with the daily series builder (`dailySeries.ts`) so both derive identical legs.
+ * The bucket's value at `ymd` in `unit`: Σ of each member's own value in the unit
+ * ({@link accountValueInUnitAt} — never Σ pesos ÷ one rate, which would frame every member on
+ * today's rate and a USD cash account at the mid). Null when no account has a value.
  */
 export function bucketValueInUnitAt(
   accounts: readonly ShortHorizonAccountRef[],
@@ -65,21 +79,17 @@ export function bucketValueInUnitAt(
   unit: TsUnit,
   now: Date
 ): number | null {
-  let rawClp = 0;
+  let sum = 0;
   let any = false;
   for (const a of accounts) {
     if (!includeShortHorizonAccount(a)) continue;
-    const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, {
-      import_key: a.import_key ?? null,
-      name: a.name ?? null,
-    });
-    if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) {
-      rawClp += mark.value_clp;
+    const v = accountValueInUnitAt(a, ymd, unit, now);
+    if (v != null && Number.isFinite(v)) {
+      sum += v;
       any = true;
     }
   }
-  if (!any) return null;
-  return convertLegToUnit(rawClp, ymd, unit, now);
+  return any ? sum : null;
 }
 
 function emptyCell(
@@ -152,16 +162,9 @@ function shortHorizonCell(
     const accFlow = netDepositFlowBetween(a.account_id, startYmd, endYmd, flowUnit);
     flowRaw += accFlow;
     if (!(accFlow < 0)) continue;
-    const mark = accountMarkClpAtYmd(a.account_id, endYmd, a.bucket_slug, {
-      import_key: a.import_key ?? null,
-      name: a.name ?? null,
-    });
-    if (mark?.value_clp == null || !Number.isFinite(mark.value_clp)) continue;
-    endCharged += endChargedFlow(
-      toUnit(accFlow),
-      convertLegToUnit(mark.value_clp, endYmd, unit, now),
-      unit
-    );
+    const close = accountValueInUnitAt(a, endYmd, unit, now);
+    if (close == null || !Number.isFinite(close)) continue;
+    endCharged += endChargedFlow(toUnit(accFlow), close, unit);
   }
 
   return shortHorizonCellFromLegs(period, vEnd, vStart, toUnit(flowRaw), startYmd, unit, endCharged);

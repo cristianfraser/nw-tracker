@@ -1,5 +1,5 @@
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
@@ -19,14 +19,14 @@ import {
 } from "./periodReturns.js";
 import {
   bucketValueInUnitAt,
-  convertLegToUnit,
   includeShortHorizonAccount,
   type ShortHorizonAccountRef,
   withShortHorizonCells,
 } from "./periodReturnsShortHorizon.js";
 import { windowIrr } from "./irr.js";
 import { isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
-import { convertTs, listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
+import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
+import { clpToUnitAt } from "./clpToUnitAt.js";
 
 /**
  * The Rentabilidad table's comparison row: for each window, a shadow portfolio that starts with
@@ -146,8 +146,10 @@ export function levelInUnit(
           if (fx == null || !(fx.clp_per_usd > 0)) throw new Error(`benchmark: no USD/CLP on or before ${ymd}`);
           clp = native * fx.clp_per_usd;
         }
-        out = unit === "uf" ? convertTs(clp, ymd, "uf") : convertLegToUnit(clp, ymd, unit, now);
-        if (!Number.isFinite(out)) throw new Error(`benchmark: no ${unit} rate on or before ${ymd}`);
+        out = clpToUnitAt(clp, ymd, unit, { now });
+        if (out == null || !Number.isFinite(out)) {
+          throw new Error(`benchmark: no ${unit} rate on or before ${ymd}`);
+        }
       }
     }
     cache.set(ymd, out);
@@ -277,7 +279,7 @@ export function benchmarkComparisonForAccount(
     )
     .get(accountId) as { name: string; import_key: string | null; bucket_slug: string } | undefined;
   if (!acc) return null;
-  const perf = getAccountMonthlyPerformance(accountId, unit);
+  const perf = monthlyPerfForAccountId(accountId, unit);
   if (perf == null || perf.monthly.length === 0) return null;
   const ref: ShortHorizonAccountRef = {
     account_id: accountId,

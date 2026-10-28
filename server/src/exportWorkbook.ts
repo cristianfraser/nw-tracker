@@ -5,13 +5,13 @@
  * numeric cells — the decimal-separator preference is a display concern.
  *
  * Sections reuse the existing aggregation surface:
- * - closings / pl → getAccountMonthlyPerformance (per account; groups iterate members)
+ * - closings / pl → monthlyPerfForAccountId (per account; groups iterate members)
  * - aportes      → getMergedDisplayDepositInflowEventsForAccount (cumulative over full
  *                  history, then range-filtered, so `acumulado` stays a true running total)
  * - movements    → listAccountMovementsForApi(Bulk)
  */
 import XLSX from "xlsx";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { getMergedDisplayDepositInflowEventsForAccount } from "./accountDeposits.js";
 import {
   listAccountMovementsForApi,
@@ -59,7 +59,7 @@ type MemberAccount = { account_id: number; name: string };
 function closingsRows(accounts: readonly MemberAccount[], opts: ExportOptions, withAccount: boolean): SheetRow[] {
   const rows: SheetRow[] = [];
   for (const a of accounts) {
-    const perf = getAccountMonthlyPerformance(a.account_id, opts.unit);
+    const perf = monthlyPerfForAccountId(a.account_id, opts.unit);
     if (!perf) continue;
     for (const m of [...perf.monthly].reverse()) {
       if (!monthInRange(m.as_of_date, opts)) continue;
@@ -76,7 +76,7 @@ function closingsRows(accounts: readonly MemberAccount[], opts: ExportOptions, w
 function plRows(accounts: readonly MemberAccount[], opts: ExportOptions, withAccount: boolean): SheetRow[] {
   const rows: SheetRow[] = [];
   for (const a of accounts) {
-    const perf = getAccountMonthlyPerformance(a.account_id, opts.unit);
+    const perf = monthlyPerfForAccountId(a.account_id, opts.unit);
     if (!perf) continue;
     for (const m of [...perf.monthly].reverse()) {
       if (!monthInRange(m.as_of_date, opts)) continue;

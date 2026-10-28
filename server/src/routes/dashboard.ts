@@ -13,10 +13,9 @@ import {
   getGroupValuationTimeseries,
   type TsUnit,
 } from "../valuationTimeseries.js";
-import {
-  getGroupMonthlyPerformanceSeries,
-  getStocksLifetimeEarningsSeries,
-} from "../accountPerformance.js";
+import { getGroupMonthlyPlSeries } from "../groupMonthlyPlSeries.js";
+import { buildInversionesPerfDaily } from "../inversionesPerfSeries.js";
+import { dailyPerfLevelsForAccount, dailyPerfLevelsForGroup } from "../dailyPerfLevels.js";
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
 import { accountBucketKindSlug, bucketSlugForAccountId, isLiabilityKindSlug } from "../accountBucket.js";
@@ -105,6 +104,9 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
   }
   const portfolioGroup = String(req.query.portfolio_group ?? "").trim();
   const accountIdRaw = req.query.account_id != null ? Number(req.query.account_id) : null;
+  // Day-mode P/L combos: the scope's day P/L with its YTD / all-time levels anchored on the
+  // scope's own monthly rows (`dailyPerfLevels.ts`), so the client only picks.
+  const wantPerfLevels = req.query.perf_levels === "1" || req.query.perf_levels === "true";
   if ((portfolioGroup !== "") === (accountIdRaw != null)) {
     res.status(400).json({ error: "pass exactly one of portfolio_group or account_id" });
     return;
@@ -231,6 +233,7 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     const ccDaily = unit === "clp" ? ccDailyHistorialBlockForGroup(portfolioGroup, series) : null;
     res.json({
       ...withRefs,
+      ...(wantPerfLevels ? { perf_levels: dailyPerfLevelsForGroup(portfolioGroup, unit, series) } : {}),
       ...(groupOverlays.length ? { accounts: [...withRefs.accounts!, ...groupOverlays] } : {}),
       ...(ccDaily ?? {}),
       ...(grouped
@@ -262,7 +265,13 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
   }
   // Excluded-from-totals accounts still get their own daily series on their page.
   const series = resolveAccountDailySeries(row, unit, days);
-  const { deposit_cums_raw: _rawDepsAcct, ...accountSeriesPayload } = series;
+  const { deposit_cums_raw: _rawDepsAcct, ...accountSeriesBase } = series;
+  const accountSeriesPayload = wantPerfLevels
+    ? {
+        ...accountSeriesBase,
+        perf_levels: dailyPerfLevelsForAccount(accountId, row.bucket_slug, unit, series),
+      }
+    : accountSeriesBase;
   // Property account page: the monthly block carries synthetic «hipoteca»/«valor» reference
   // lines beside the property line — emit their daily twins (matched by account id in the
   // client's metadata borrow) or the overlays vanish in day mode.
@@ -305,6 +314,20 @@ app.get("/api/dashboard/overview-daily", asyncHandler(async (req, res) => {
 }));
 
 /**
+ * Home «Δ mensual y depósitos por clase» in day mode: retirement + brokerage day bars, deposits
+ * and the YTD / accumulated levels anchored on the monthly inversiones consolidation.
+ */
+app.get("/api/dashboard/inversiones-perf-daily", asyncHandler(async (req, res) => {
+  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
+  const days = req.query.days != null ? Number(req.query.days) : OVERVIEW_DAILY_DEFAULT_DAYS;
+  if (!Number.isInteger(days) || days < 0 || days > DAILY_SERIES_MAX_DAYS) {
+    res.status(400).json({ error: `days must be 0..${DAILY_SERIES_MAX_DAYS}` });
+    return;
+  }
+  res.json(buildInversionesPerfDaily(includeUsd ? "usd" : "clp", days));
+}));
+
+/**
  * Valuation time series: main dashboard (no `group`) or per-class tab (`group=retirement|brokerage|…`).
  * Query: include_usd / include_uf → unit (main dashboard UI only uses CLP+USD; UF kept for other consumers).
  */
@@ -339,13 +362,6 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
   }
 
   res.json(attachNetWorthAth(attachColorsToValuationPayload(getDashboardValuationTimeseries(unit)), unit));
-});
-
-/** SPY+VEA merged: monthly Δ (sum) and cumulative earnings since first month (derived). */
-app.get("/api/dashboard/stocks-earnings-monthly", (req, res) => {
-  const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
-  const unit: TsUnit = includeUsd ? "usd" : "clp";
-  res.json(getStocksLifetimeEarningsSeries(unit));
 });
 
 /** Group consolidated tables: per-account monthly perf + movements in one response. */
@@ -520,7 +536,7 @@ app.get("/api/groups/:slug/performance-monthly", (req, res) => {
   }
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
-  res.json(getGroupMonthlyPerformanceSeries(tabSlug, unit, undefined, { groupedBlocks: true }));
+  res.json(getGroupMonthlyPlSeries(tabSlug, unit, { groupedBlocks: true }));
 });
 
 }

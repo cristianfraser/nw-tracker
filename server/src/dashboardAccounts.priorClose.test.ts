@@ -5,7 +5,7 @@ import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
@@ -53,7 +53,7 @@ describe("buildDashboardAccountRows prior closes", () => {
     const depto = deptoAccountMarkClpAtYmd("property", chileCalendarTodayYmd());
     if (!depto) return;
 
-    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const perf = monthlyPerfForAccountId(row.id, "clp");
     const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
     const cur = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === curMk);
     if (cur?.nominal_pl == null) return;

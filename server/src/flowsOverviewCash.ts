@@ -14,7 +14,7 @@ import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
-import { convertLegToUnit } from "./periodReturnsShortHorizon.js";
+import { accountValueClpToUnitAt, clpToUnitAt } from "./clpToUnitAt.js";
 import type { GastosUnit } from "./flowsExpensesGastos.js";
 
 /** Ascending contiguous Chile calendar days `fromYmd..toYmd` inclusive. */
@@ -37,7 +37,9 @@ export function checkingValueByDay(
   now: Date = new Date()
 ): Map<string, number> {
   const grid = calendarDaysBetween(fromYmd, toYmd);
-  const rawClp = new Array<number>(grid.length).fill(0);
+  // Σ of each account's value in the unit (a USD cash account: its ledger dollars), never
+  // Σ pesos ÷ one rate.
+  const inUnit = new Array<number>(grid.length).fill(0);
   const accountRow = db.prepare(`SELECT import_key, name FROM accounts WHERE id = ?`);
   for (const accountId of checkingAccountIds) {
     const bucketSlug = bucketSlugForAccountId(accountId);
@@ -48,12 +50,17 @@ export function checkingValueByDay(
       { account_id: accountId, bucket_slug: bucketSlug, import_key: row.import_key, name: row.name },
       grid
     );
-    for (let i = 0; i < grid.length; i++) rawClp[i]! += series[i] ?? 0;
+    for (let i = 0; i < grid.length; i++) {
+      const clp = series[i] ?? 0;
+      const v = accountValueClpToUnitAt(accountId, clp, grid[i]!, unit, { now });
+      if (v == null || !Number.isFinite(v)) {
+        throw new Error(`checking account ${accountId}: no ${unit} rate on or before ${grid[i]}`);
+      }
+      inUnit[i]! += v;
+    }
   }
   const out = new Map<string, number>();
-  for (let i = 0; i < grid.length; i++) {
-    out.set(grid[i]!, convertLegToUnit(rawClp[i]!, grid[i]!, unit, now));
-  }
+  for (let i = 0; i < grid.length; i++) out.set(grid[i]!, inUnit[i]!);
   return out;
 }
 
@@ -122,5 +129,9 @@ export function loadCardPaymentsFromChecking(
 export function cardPaymentInUnit(p: CardPaymentFromChecking, unit: GastosUnit, now: Date = new Date()): number {
   if (unit === "usd" && p.amount_usd != null) return p.amount_usd;
   if (unit === "clp") return p.amount_clp;
-  return convertLegToUnit(p.amount_clp, p.occurred_on, unit, now);
+  const v = clpToUnitAt(p.amount_clp, p.occurred_on, unit, { now });
+  if (v == null || !Number.isFinite(v)) {
+    throw new Error(`card payment ${p.movement_id}: no ${unit} rate on or before ${p.occurred_on}`);
+  }
+  return v;
 }

@@ -111,9 +111,38 @@ export interface DashboardPageBundleResponse {
   ts: ValuationTimeseriesResponse;
   fx: FxLatest | null;
   fx_coverage: FxCoverage | null;
-  retirementPerf: GroupMonthlyPerformanceResponse | null;
-  brokeragePerf: GroupMonthlyPerformanceResponse | null;
+  inversionesPerf: InversionesPerfMonthlyResponse;
   cc_upcoming_payments: CcUpcomingPaymentsDto;
+}
+
+/**
+ * One period of the home «Δ mensual y depósitos por clase (inversiones)» combo, built on the
+ * server (`inversionesPerfSeries.ts`): class P/L bars, Σ Δ, the YTD and all-time running P/L,
+ * and the period's net deposits by class.
+ */
+export interface InversionesPerfPoint {
+  as_of_date: string;
+  delta_retirement: number;
+  delta_brokerage: number;
+  delta_combined: number;
+  ytd_combined: number;
+  accumulated_earnings: number;
+  deposits_retirement: number;
+  deposits_brokerage: number;
+  deposits_inversiones: number;
+}
+
+/** The page bundle's `inversionesPerf`: one point per month of the inversiones consolidation. */
+export interface InversionesPerfMonthlyResponse {
+  unit: "clp" | "usd" | "uf";
+  points: InversionesPerfPoint[];
+}
+
+/** `GET /api/dashboard/inversiones-perf-daily` — the same combo, one point per day. */
+export interface InversionesPerfDailyResponse {
+  unit: "clp" | "usd" | "uf";
+  days: number;
+  points: InversionesPerfPoint[];
 }
 
 export type ConsolidatedMonthlyPerfRow = {
@@ -139,6 +168,8 @@ export interface GroupConsolidatedTablesResponse {
     monthly: AccountMonthlyPerformanceRow[];
   }[];
   consolidated_monthly: ConsolidatedMonthlyPerfRow[];
+  /** The server's yearly rollup of `consolidated_monthly`, newest first. */
+  consolidated_yearly: ConsolidatedMonthlyPerfRow[];
   /** Chained flow-adjusted period returns; null for non-investment groups. */
   period_returns: PeriodReturnsPayload | null;
 }

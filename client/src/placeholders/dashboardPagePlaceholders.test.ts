@@ -36,8 +36,7 @@ describe("buildPlaceholderDashboardBundle", () => {
     const bundle = buildPlaceholderDashboardBundle("usd");
     expect(bundle.dash.allocation[0]?.value_usd).toBe(1);
     expect(bundle.ts.unit).toBe("usd");
-    expect(bundle.retirementPerf).toBeNull();
-    expect(bundle.brokeragePerf).toBeNull();
+    expect(bundle.inversionesPerf).toBeNull();
   });
 });
 

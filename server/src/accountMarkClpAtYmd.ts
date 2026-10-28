@@ -20,7 +20,7 @@ import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
 import { storedMarkValueWithFlowCarry } from "./storedMarkFlowCarry.js";
 import { isUsdCashAccount, usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { isClpCashAccount, clpCashBalanceClpAt } from "./clpCashAccounts.js";
-import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
+import { accountTodayValue } from "./accountTodayValue.js";
 import { db } from "./db.js";
 import {
   latestCreditCardValuationRowAsOf,
@@ -156,14 +156,10 @@ export function accountMarkClpAtYmd(
   const today = chileCalendarTodayYmd();
 
   if (asOfYmd === today) {
-    const deptoKind = deptoKindForBucketSlug(slug);
-    if (deptoKind) {
-      const depto = deptoAccountMarkClpAtYmd(deptoKind, asOfYmd);
-      if (depto) return depto;
-    }
-    const live = syncLatestDisplayValueClp(accountId, slug, opts);
-    if (live) return live;
-    return null;
+    // Today is the account's one today value (`accountTodayValue`): the same figure the
+    // dashboard row, the account page and the charts' live last point show.
+    const live = accountTodayValue(accountId, slug, opts);
+    return live ? { value_clp: live.value_clp, as_of_date: live.as_of_date } : null;
   }
 
   return historicalMarkClpAtYmd(accountId, asOfYmd, slug, opts);

@@ -1,8 +1,10 @@
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
-import { clpToUsdForBalanceAt } from "./fxRates.js";
+import { accountValueClpToUnitAt, clpToUnitAt } from "./clpToUnitAt.js";
+import { accountValueInUnitAt } from "./periodReturnsShortHorizon.js";
 import {
   consolidatedClosingRawByDate,
   getGroupConsolidatedMonthlyPerfForRows,
@@ -73,14 +75,15 @@ function rawPortfolioGroupAccountsClpAt(
   return raw;
 }
 
-function consolidatedBucketValueClpAt(
+function consolidatedBucketValueAt(
   bucket: NwDashboardBucketSlug,
-  asOfYmd: string
+  asOfYmd: string,
+  unit: "clp" | "usd"
 ): number | null {
   const pgSlug = portfolioGroupSlugForDashboardBucket(bucket);
   const tabRows = listAccountsForGroupTab(pgSlug);
   if (!tabRows.length) return null;
-  const consolidated = getGroupConsolidatedMonthlyPerfForRows(tabRows, pgSlug, "clp");
+  const consolidated = getGroupConsolidatedMonthlyPerfForRows(tabRows, pgSlug, unit);
   if (!consolidated.length) return null;
   const raw = consolidatedClosingRawByDate(consolidated);
   const mapped = mapMonthlyClosingToChartDates(raw, [asOfYmd]);
@@ -96,12 +99,35 @@ function portfolioGroupValueClpAtRaw(
   bucket: NwDashboardBucketSlug,
   asOfYmd: string
 ): number {
-  const consolidated = consolidatedBucketValueClpAt(bucket, asOfYmd);
+  const consolidated = consolidatedBucketValueAt(bucket, asOfYmd, "clp");
   if (consolidated != null) return consolidated;
   const raw = rawPortfolioGroupAccountsClpAt(bucket, asOfYmd);
   if (bucket !== "cash_eqs") return raw;
   // Unrounded like every other bucket's raw — the apportionment below rounds once.
   return cashNetOfLinkedCreditCards(raw, linkedCreditCardClpForCashCardAsOf(asOfYmd));
+}
+
+/**
+ * The bucket in USD at a date — the same source as the CLP figure, in dollars: the consolidated
+ * USD closing, which is Σ of each member's own USD close (today: each account's pesos framed
+ * on the day they were priced, a USD cash account's ledger dollars — the dashboard rows'
+ * `current_value_usd`) with the cash netting at that day's rate. Never the bucket's pesos ÷ one
+ * rate, so Σ cards == the headline == Σ rows in USD. Null when a rate is missing.
+ */
+function portfolioGroupValueUsdAtRaw(bucket: NwDashboardBucketSlug, asOfYmd: string): number | null {
+  const consolidated = consolidatedBucketValueAt(bucket, asOfYmd, "usd");
+  if (consolidated != null) return consolidated;
+  const now = new Date();
+  let raw = 0;
+  for (const a of listAccountsForDashboardBucket(bucket)) {
+    if (a.exclude_from_group_totals === 1) continue;
+    const v = accountValueInUnitAt(a, asOfYmd, "usd", now);
+    if (v != null && Number.isFinite(v)) raw += v;
+  }
+  if (bucket !== "cash_eqs") return raw;
+  const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
+  const ccUsd = cc === 0 ? 0 : clpToUnitAt(cc, asOfYmd, "usd", { now });
+  return ccUsd == null || !Number.isFinite(ccUsd) ? null : cashNetOfLinkedCreditCards(raw, ccUsd);
 }
 
 /**
@@ -176,7 +202,7 @@ export type DashboardBucketValueTotals = {
 /**
  * Per-session bucket values for daily views: Σ `accountMarkClpAtYmd` per bucket at each
  * session (+ the cash_eqs linked-CC netting), bucket account lists fetched once. This
- * deliberately bypasses `consolidatedBucketValueClpAt` — the consolidated monthly closing
+ * deliberately bypasses `consolidatedBucketValueAt` — the consolidated monthly closing
  * maps one value onto every chart date of its month, which is correct for month grids but
  * flattens a daily series (all sessions of the current month would show today's value).
  */
@@ -252,7 +278,8 @@ export function dashboardBucketDayPriorCloses(priorDayYmd: string): {
       });
       if (mark?.value_clp == null || !Number.isFinite(mark.value_clp)) continue;
       rawClp += mark.value_clp;
-      const u = clpToUsdForBalanceAt(mark.value_clp, priorDayYmd);
+      // The stored fx of that day (a USD cash account: its ledger dollars that day).
+      const u = accountValueClpToUnitAt(a.account_id, mark.value_clp, priorDayYmd, "usd");
       if (u != null && Number.isFinite(u)) rawUsd += u;
     }
     if (slug === "cash_eqs") {
@@ -260,7 +287,7 @@ export function dashboardBucketDayPriorCloses(priorDayYmd: string): {
       // on both sides of the day delta, so it can't show up as a day change.
       const ccClp = linkedCreditCardClpForCashCardAsOf(priorDayYmd);
       rawClp = cashNetOfLinkedCreditCards(rawClp, ccClp);
-      const ccUsd = clpToUsdForBalanceAt(ccClp, priorDayYmd);
+      const ccUsd = clpToUnitAt(ccClp, priorDayYmd, "usd");
       if (ccUsd != null && Number.isFinite(ccUsd)) {
         rawUsd = cashNetOfLinkedCreditCards(rawUsd, ccUsd);
       }
@@ -271,6 +298,27 @@ export function dashboardBucketDayPriorCloses(priorDayYmd: string): {
   clp.net_worth = clp.real_estate + clp.retirement + clp.brokerage + clp.cash_eqs;
   usd.net_worth = usd.real_estate + usd.retirement + usd.brokerage + usd.cash_eqs;
   return { clp, usd };
+}
+
+/**
+ * The net-worth buckets TODAY in USD, as the headline and the cards show them (each bucket Σ of
+ * its accounts' own dollars, `portfolioGroupValueUsdAtRaw`; net worth Σ of the buckets). The
+ * daily overview and the all-time-high walk read their today point here, so it equals the cards.
+ * Throws when a bucket has no rate.
+ */
+export function dashboardBucketsUsdToday(): Record<NwDashboardBucketSlug, number> & { net_worth: number } {
+  const totals = buildDashboardBucketValueTotals(chileCalendarTodayYmd(), true);
+  const pick = (v: number | null | undefined, slug: string): number => {
+    if (v == null || !Number.isFinite(v)) throw new Error(`dashboard buckets: no USD value for ${slug} today`);
+    return v;
+  };
+  return {
+    real_estate: pick(totals.real_estate_usd, "real_estate"),
+    retirement: pick(totals.retirement_usd, "retirement"),
+    brokerage: pick(totals.brokerage_usd, "brokerage"),
+    cash_eqs: pick(totals.cash_eqs_usd, "cash_eqs"),
+    net_worth: pick(totals.net_worth_usd, "net_worth"),
+  };
 }
 
 export function buildDashboardBucketValueTotals(
@@ -286,20 +334,25 @@ export function buildDashboardBucketValueTotals(
   if (!includeUsd) {
     return { net_worth_clp, real_estate_clp, retirement_clp, brokerage_clp, cash_eqs_clp };
   }
-  const toUsd = (clp: number) => {
-    const u = clpToUsdForBalanceAt(clp, asOfYmd);
-    return u != null && Number.isFinite(u) ? u : null;
-  };
+  // Each bucket in USD from its own members' USD values; the headline is their sum, so the
+  // cards add up to it in dollars as they do in pesos.
+  const usd = {} as Record<NwDashboardBucketSlug, number | null>;
+  let netWorthUsd: number | null = 0;
+  for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
+    const u = portfolioGroupValueUsdAtRaw(slug, asOfYmd);
+    usd[slug] = u != null && Number.isFinite(u) ? u : null;
+    netWorthUsd = netWorthUsd != null && usd[slug] != null ? netWorthUsd + usd[slug]! : null;
+  }
   return {
     net_worth_clp,
     real_estate_clp,
     retirement_clp,
     brokerage_clp,
     cash_eqs_clp,
-    net_worth_usd: toUsd(net_worth_clp),
-    real_estate_usd: toUsd(real_estate_clp) ?? undefined,
-    retirement_usd: toUsd(retirement_clp) ?? undefined,
-    brokerage_usd: toUsd(brokerage_clp) ?? undefined,
-    cash_eqs_usd: toUsd(cash_eqs_clp) ?? undefined,
+    net_worth_usd: netWorthUsd,
+    real_estate_usd: usd.real_estate ?? undefined,
+    retirement_usd: usd.retirement ?? undefined,
+    brokerage_usd: usd.brokerage ?? undefined,
+    cash_eqs_usd: usd.cash_eqs ?? undefined,
   };
 }
