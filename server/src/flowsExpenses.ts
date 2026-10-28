@@ -1,7 +1,11 @@
 import { transferCounterpartiesByMovementSide, type TransferCounterpartyDto } from "./bankTransferNotices.js";
 import { withPaymentReceipts, type PaymentReceiptDto } from "./paymentProcessorReceipts.js";
 import { isCcPaymentMerchant, isCcUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
-import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
+import {
+  isCcTraspasoDeudaMerchant,
+  isClpSection3FinancingChargeMerchant,
+  isUsdSection3FinancingChargeMerchant,
+} from "./ccStatementSection3.js";
 import type { CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import {
   buildAdditionalCardsSummary,
@@ -258,6 +262,12 @@ export type FlowCcExpenseLineRow = {
    * ({@link markCardRefunds}).
    */
   card_refund?: true;
+  /**
+   * A card line the bank charged as the cost of financing (section 3: intereses, comisiones,
+   * impuestos, administración) — the lines the card's P/L counts ({@link markFinancingCostLines}).
+   * The facturación modal lists them under «Coste financiero», never under Gastos.
+   */
+  is_financing_cost?: true;
   /** The payment processor's receipt for this charge: who it paid, for what (`paymentProcessorReceipts.ts`). */
   payment_receipt?: PaymentReceiptDto;
   /** One piece of a line split into pieces (`cc_expense_line_splits.seq`). */
@@ -343,6 +353,9 @@ export type FlowsExpensesPayload = {
   big_groups: CcExpenseBigGroupRow[];
 
   lines: FlowCcExpenseLineRow[];
+
+  /** Big groups some line carries, sorted: the Expenses page's default chart exclusion. */
+  active_big_group_slugs: string[];
 
   /** Gastos by month / category: `GET /api/flows/expenses/credit-card/gastos` (`flowsExpensesGastos.ts`). */
 
@@ -1058,6 +1071,26 @@ export function markCardRefunds(lines: readonly FlowCcExpenseLineRowDraft[]): Fl
   });
 }
 
+/**
+ * Stamps the card lines the bank charged as financing (2026-10-28): a positive one-shot line whose
+ * merchant is a section-3 charge by the statement-line rules the card's P/L reads
+ * (`isClp/UsdSection3FinancingChargeMerchant`, `ccStatementLineRules.json`) — the dollar rule when
+ * the line carries dollars, the peso rule otherwise. The client kept its own copy of those rules,
+ * which had drifted (the CMR card's «Servicio Administracion» / «Impuesto ITE» read as Gastos).
+ */
+export function markFinancingCostLines(lines: readonly FlowCcExpenseLineRow[]): FlowCcExpenseLineRow[] {
+  return lines.map((l) => (isFinancingCostLine(l) ? { ...l, is_financing_cost: true as const } : l));
+}
+
+function isFinancingCostLine(
+  l: Pick<FlowCcExpenseLineRow, "source" | "installment_flag" | "amount_clp" | "amount_usd" | "merchant">
+): boolean {
+  if (l.source !== "cc" || l.installment_flag || l.amount_clp <= 0) return false;
+  const usd = l.amount_usd;
+  if (usd != null && usd > 0) return isUsdSection3FinancingChargeMerchant(l.merchant, usd);
+  return isClpSection3FinancingChargeMerchant(l.merchant);
+}
+
 /** Every gastos line the Expenses page lists: card, checking, manual, mirror and payslip lines. */
 export function buildFlowsExpenseLines(accountIds: readonly number[] = listCreditCardMasterAccountIds()): FlowCcExpenseLineRow[] {
   if (accountIds.length === 0) {
@@ -1070,14 +1103,14 @@ export function buildFlowsExpenseLines(accountIds: readonly number[] = listCredi
   }
   const ccLines = buildCcExpenseLines([...accountIds]);
   const checkingLines = loadCheckingGastosLinesForExpenses();
-  return applyCcFacturadoFinancingProjection(
+  return markFinancingCostLines(applyCcFacturadoFinancingProjection(
     finalizeFlowExpenseLines([
       ...markCardRefunds(enrichLinesWithNotaDeCreditoPairing([...ccLines, ...checkingLines])),
       ...loadManualExpenseGastosLineDrafts(),
       ...loadCheckingGapDepositMirrorGastosLineDrafts(),
       ...loadPayslipExpenseLineDrafts(),
     ])
-  );
+  ));
 }
 
 export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
@@ -1089,6 +1122,7 @@ export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
     categories: listCcExpenseCategories(),
     big_groups: listCcExpenseBigGroups(),
     lines,
+    active_big_group_slugs: [...new Set(lines.flatMap((l) => (l.big_group_slug ? [l.big_group_slug] : [])))].sort(),
     ...(accountIds.length > 0 ? { cuota_pay_by_iso: cuotaPayByIsoByAccountBillingMonth(accountIds) } : {}),
     additional_cards: buildAdditionalCardsSummary(lines),
   };

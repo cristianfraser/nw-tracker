@@ -1,5 +1,4 @@
 import { countsTowardAbonosMes } from "../../ccExpenseLineBuckets";
-import { isCcStatementFinancingCostLine } from "../../ccStatementSection3";
 import type { FlowCcExpenseLineRow } from "../../types";
 import { sortCreditCardExpenseLinesByStatement } from "./CreditCardExpenseLinesTable";
 
@@ -13,7 +12,11 @@ export function emptyFacturacionModalBucket(): FacturacionModalBucket {
   return { gastos: [], costeFinanciero: [], abonos: [] };
 }
 
-/** Statement lines split into gastos, financing charges, and payments/credits (abonos). */
+/**
+ * Statement lines split into gastos, financing charges, and payments/credits (abonos). Which
+ * charges are financing is the server's call (`is_financing_cost`, the statement-line rules the
+ * card's P/L reads).
+ */
 export function buildFacturacionModalBucket(
   lines: readonly FlowCcExpenseLineRow[]
 ): FacturacionModalBucket {
@@ -22,10 +25,10 @@ export function buildFacturacionModalBucket(
     .sort(sortCreditCardExpenseLinesByStatement);
   const charges = lines.filter((ln) => !countsTowardAbonosMes(ln));
   const costeFinanciero = charges
-    .filter(isCcStatementFinancingCostLine)
+    .filter((ln) => ln.is_financing_cost === true)
     .sort(sortCreditCardExpenseLinesByStatement);
   const gastos = charges
-    .filter((ln) => !isCcStatementFinancingCostLine(ln))
+    .filter((ln) => ln.is_financing_cost !== true)
     .sort(sortCreditCardExpenseLinesByStatement);
   return { gastos, costeFinanciero, abonos };
 }

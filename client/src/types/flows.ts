@@ -296,6 +296,8 @@ export interface FlowCcExpenseLineRow {
   checking_refund?: true;
   /** A card credit no purchase annuls (merchant refund, unpaired nota): a negative line in its category. */
   card_refund?: true;
+  /** A card line the bank charged as financing (section 3), as the card's P/L counts it. */
+  is_financing_cost?: true;
   /** One piece of a line broken down into pieces. */
   piece_seq?: number;
   /** What a line's pieces leave of it, on the line's own day. */
@@ -434,6 +436,8 @@ export interface FlowsExpensesResponse {
   categories: CcExpenseCategoryDto[];
   big_groups: CcExpenseBigGroupDto[];
   lines: FlowCcExpenseLineRow[];
+  /** Big groups some line carries, sorted: the default chart exclusion. */
+  active_big_group_slugs: string[];
   /**
    * `<account_id>|<billing_month>` → the facturación's PAGAR HASTA date (ISO), for the Diario
    * gastos view (cuotas land on the day their facturación is paid).
@@ -475,6 +479,16 @@ export interface FlowsExpensesGastosResponse {
   excluded_big_groups: string[];
   /** Keyed `<split|total>|<category|subcategory>`. */
   views: Record<string, FlowsExpensesGastosView>;
+  /** Big groups that hold spend, per installment mode (pesos, whatever the unit), sorted by label. */
+  big_group_usage: Record<"split" | "total", BigGroupUsage[]>;
+}
+
+/** One big group's spend in an installment mode (server `bigGroupUsageByMode`). */
+export interface BigGroupUsage {
+  slug: string;
+  label: string;
+  total_clp: number;
+  purchase_count: number;
 }
 
 /** One month / year of «Tarjetas adicionales» (server `additionalCardReimbursements.ts`). */
