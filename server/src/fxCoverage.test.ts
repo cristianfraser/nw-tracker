@@ -1,12 +1,11 @@
 import { afterAll, describe, expect, it, beforeEach } from "vitest";
 import { db } from "./db.js";
 import { buildFxCoverage } from "./fxCoverage.js";
-import { depositClpToUsdAtDate } from "./flowsDeposits.js";
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 
 // These fx functions read only the fx tables (buildFxCoverage → fx_daily +
-// fx_daily_yahoo_rejected; depositClpToUsdAtDate / fxMonthEndForBalanceUsd → fx_daily
+// fx_daily_yahoo_rejected; fxMonthEndForBalanceUsd → fx_daily
 // [+ bid-ask]). Snapshot exactly those and restore in afterAll so wiping them for a
 // controlled fixture doesn't poison later test files sharing the DB.
 const restoreTables = snapshotTables([
@@ -47,22 +46,6 @@ describe("buildFxCoverage", () => {
     const c = buildFxCoverage();
     expect(c.row_count).toBe(1);
     expect(c.is_sparse).toBe(true);
-  });
-});
-
-describe("depositClpToUsdAtDate", () => {
-  beforeEach(() => {
-    db.exec("DELETE FROM fx_daily");
-    db.exec("DELETE FROM fx_daily_bid_ask");
-  });
-
-  it("returns null when no fx row on or before date", () => {
-    expect(depositClpToUsdAtDate(1000, "2020-06-15")).toBeNull();
-  });
-
-  it("uses buy rate inferred from mid on or before event date", () => {
-    db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, ?)`).run("2020-06-01", 800);
-    expect(depositClpToUsdAtDate(800, "2020-06-15")).toBeCloseTo(800 / 802, 5);
   });
 });
 

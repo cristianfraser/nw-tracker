@@ -39,7 +39,8 @@ import { accountBucketKindSlug } from "./accountBucket.js";
 import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { transferToLegUnits } from "./movementTransfer.js";
 import {
-  monthEndCloseClpForAccount,
+  monthEndCloseFromPerfRows,
+  monthEndMarkClpForAccount,
   priorCalendarMonthKey,
   priorCalendarMonthKeyFromToday,
   type MonthEndCloseForAccountOpts,
@@ -149,10 +150,12 @@ export type ReanchorMonthlyPerfOpts = {
 };
 
 /**
- * An account's month-end close in `unit`: its mark at the month end in CLP
- * (`monthEndCloseClpForAccount`), USD at that month end's balance rate. The one wrapper the
- * per-account reanchor, the live current-month row and the group consolidation's prior closes
- * all read.
+ * An account's month-end close in `unit`: its mark at the month end (`monthEndMarkClpForAccount`)
+ * converted to the unit — USD at that month end's balance rate (a USD cash account's ledger
+ * dollars), UF at that month end's UF — else the rows' own close, which is already in `unit`
+ * (converting it again was the latent twin: a USD or UF close divided twice). The one wrapper
+ * the per-account reanchor, the live current-month row and the group consolidation's prior
+ * closes all read.
  */
 export function monthEndCloseForAccountInUnit(
   accountId: number,
@@ -162,14 +165,10 @@ export function monthEndCloseForAccountInUnit(
   unit: TsUnit,
   opts?: MonthEndCloseForAccountOpts
 ): number | null {
-  const clp = monthEndCloseClpForAccount(accountId, bucketSlug, monthlyRows, monthKey, opts);
-  if (clp == null || !Number.isFinite(clp)) return null;
-  if (unit === "clp") return clp;
-  if (unit === "usd") {
-    // A USD cash account's close is its ledger dollars at the month end, as its rows read.
-    return accountValueClpToUnitAt(accountId, clp, monthEndUtcYmd(monthKey), "usd");
-  }
-  return clp;
+  const markClp = monthEndMarkClpForAccount(accountId, bucketSlug, monthKey, opts);
+  if (markClp == null) return monthEndCloseFromPerfRows(monthlyRows, monthKey);
+  if (unit === "clp") return markClp;
+  return accountValueClpToUnitAt(accountId, markClp, monthEndUtcYmd(monthKey), unit);
 }
 
 /**
@@ -372,10 +371,11 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
       ? { value_clp: resolved, as_of_date: today, priced_on: today }
       : resolved;
   let live: number | null = liveClose?.value_clp ?? null;
-  if (live != null && unit === "usd") {
+  if (live != null && unit !== "clp") {
     // The dashboard row's frame (`current_value_usd`): the pesos at the fx of the day they
-    // were priced, live while that fx day is open; a USD cash account's ledger dollars.
-    live = accountValueClpToUnitAt(accountId, live, today, "usd", {
+    // were priced, live while that fx day is open; a USD cash account's ledger dollars. In UF,
+    // today's UF (the live row used to stay in pesos).
+    live = accountValueClpToUnitAt(accountId, live, today, unit, {
       markAsOf: liveClose!.priced_on,
     });
   }
@@ -408,7 +408,15 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     // calendar month. Both legs read forward-posted rows as today (`displayLedgerCutoffYmd`
     // for the balance, the display-dated events for the flow), so such a row never reads
     // as phantom P/L in either direction.
-    return netDepositFlowCurrentMonthThroughToday(accountId, unit === "usd" ? "usd" : "clp");
+    if (unit === "uf") {
+      // UF window flows convert at the window end, as the closed months' do.
+      return perfSheetClpFlowInUnit(
+        netDepositFlowCurrentMonthThroughToday(accountId, "clp"),
+        today,
+        "uf"
+      );
+    }
+    return netDepositFlowCurrentMonthThroughToday(accountId, unit);
   })();
   const nominal = ccPerf
     ? ccPerf.nominal

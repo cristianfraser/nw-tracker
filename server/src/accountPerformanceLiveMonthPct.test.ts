@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 
 const chileToday = vi.hoisted(() => ({ ymd: "2037-05-20" }));
@@ -24,6 +24,8 @@ import {
   patchOrInsertLiveCurrentMonthPerfRows,
   reanchorMonthlyPerfToCalendarMonthEnds,
 } from "./accountPerformance.js";
+import { db } from "./db.js";
+import { snapshotTables } from "./test/snapshotTables.js";
 
 /** No such account: its marks resolve to nothing, so every close comes from the rows below. */
 const ACCOUNT_ID = -4242;
@@ -109,5 +111,33 @@ describe("live current-month % return", () => {
 
     expect(closed.pct_month).toBeCloseTo(0.02, 12);
     expect(running.pct_month).toBeCloseTo(closed.pct_month!, 12);
+  });
+});
+
+describe("live current-month row in UF", () => {
+  const restoreUf = snapshotTables(["uf_daily"]);
+  afterAll(() => restoreUf());
+
+  it("is in UF, with the month's flow in UF at today's value", () => {
+    db.prepare(`INSERT OR REPLACE INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`).run(
+      "2037-05-20",
+      40_000
+    );
+    chileToday.ymd = "2037-05-20";
+    monthToDateFlow.clp = 200_000; // 5 UF
+    const aprilUf = perfRow({ as_of_date: "2037-04-30", closing_value: 25, unit: "uf" });
+    const rows = patchOrInsertLiveCurrentMonthPerfRows(
+      ACCOUNT_ID,
+      SLUG,
+      [aprilUf],
+      "uf",
+      () => 1_240_000 // 31 UF of pesos
+    );
+    const may = rows.find((r) => r.as_of_date === "2037-05-20")!;
+    // It used to keep 1.240.000 «UF» against a 25 UF prior close, with the flow in pesos.
+    expect(may.prior_closing).toBe(25);
+    expect(may.closing_value).toBeCloseTo(31, 9);
+    expect(may.net_capital_flow).toBeCloseTo(5, 9);
+    expect(may.nominal_pl).toBeCloseTo(1, 9);
   });
 });

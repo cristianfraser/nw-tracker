@@ -6,7 +6,6 @@ import { loadMergedDisplayDepositInflowEvents, type DepositInflowEvent } from ".
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { densifyMonthlyPoints, monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
-import { clpToUsdAtDate } from "./flowMoneyAtDate.js";
 import {
   clearFxConversionWarnings,
   takeFxConversionWarnings,
@@ -176,11 +175,6 @@ export function listDepositFlowAccounts(includeExcludedFromGroupTotals = false):
       };
     })
     .filter((r): r is DepositFlowAccountRow => r != null);
-}
-
-/** CLP → USD at the **buy rate** on or before the event date (deposit events = money actually moved). Balance display uses `clpToUnitAt` (mid) instead. */
-export function depositClpToUsdAtDate(clp: number, occurredOn: string): number | null {
-  return clpToUsdAtDate(clp, occurredOn);
 }
 
 function monthEndFromOccurredOn(occurredOn: string): string {

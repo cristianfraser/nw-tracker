@@ -32,9 +32,12 @@ export function fintualGoalUnitsFromMovementsThroughDate(
           .get(accountId) as { u: number } | undefined);
   const ledger = row?.u ?? 0;
   const asOf = asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd) ? asOfYmd : chileCalendarTodayYmd();
-  const u = ledger + transferLegUnitsThroughDate(accountId, asOf);
-  if (!Number.isFinite(u) || u <= 0) return null;
-  return Math.round(u * 1e4) / 1e4;
+  const raw = ledger + transferLegUnitsThroughDate(accountId, asOf);
+  if (!Number.isFinite(raw)) return null;
+  // Rounded before the zero test: cuotas are stored to 4 decimals, and withdrawing exactly the
+  // rounded holding leaves a float residue (~1e-12) that must read as an emptied account.
+  const u = Math.round(raw * 1e4) / 1e4;
+  return u <= 0 ? null : u;
 }
 
 /**
