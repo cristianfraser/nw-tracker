@@ -5,7 +5,7 @@ import type {
   DashboardChartShape,
   DashboardChartShapeLine,
   DashboardResponse,
-  GroupMonthlyPerformanceResponse,
+  InversionesPerfMonthlyResponse,
   NavCardMetricsDto,
   NavCardPeriodMetricsDto,
   NavTreeNodeDto,
@@ -62,17 +62,21 @@ function accountLinesFromShape(lines: DashboardChartShapeLine[]): NonNullable<Ti
   }));
 }
 
-/** Zero group-perf series so the perf/accumulated sections mount before the bundle resolves. */
-function zeroGroupPerf(
-  unit: DisplayUnit,
-  groupSlug: string,
-  monthEnds: string[]
-): GroupMonthlyPerformanceResponse {
+/** Zero P/L + deposits combo so the perf section mounts before the bundle resolves. */
+function zeroInversionesPerf(unit: DisplayUnit, monthEnds: string[]): InversionesPerfMonthlyResponse {
   return {
     unit: unitForTs(unit),
-    group_slug: groupSlug,
-    bar_accounts: [],
-    points: monthEnds.map((as_of_date) => ({ as_of_date, delta_total: 0 })),
+    points: monthEnds.map((as_of_date) => ({
+      as_of_date,
+      delta_retirement: 0,
+      delta_brokerage: 0,
+      delta_combined: 0,
+      ytd_combined: 0,
+      accumulated_earnings: 0,
+      deposits_retirement: 0,
+      deposits_brokerage: 0,
+      deposits_inversiones: 0,
+    })),
   };
 }
 
@@ -234,8 +238,7 @@ export function buildPlaceholderDashboardBundle(
     dash: buildPlaceholderDashboardDash(unit),
     ts: buildPlaceholderDashboardTimeseries(unit, shape),
     fx: null,
-    retirementPerf: includePerf ? zeroGroupPerf(unit, "retirement", monthEnds) : null,
-    brokeragePerf: includePerf ? zeroGroupPerf(unit, "brokerage", monthEnds) : null,
+    inversionesPerf: includePerf ? zeroInversionesPerf(unit, monthEnds) : null,
     ccUpcomingPayments: null,
   };
 }
@@ -259,8 +262,6 @@ export function chartShapeFromLoadedDashboardBundle(
     first_month: typeof firstDate === "string" ? firstDate : null,
     overview_lines: overview.lines,
     primary_lines,
-    has_perf_sections: Boolean(
-      bundle.retirementPerf?.points.length || bundle.brokeragePerf?.points.length
-    ),
+    has_perf_sections: Boolean(bundle.inversionesPerf?.points.length),
   };
 }

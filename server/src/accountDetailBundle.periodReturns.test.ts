@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildAccountDetailBundle } from "./accountDetailBundle.js";
 import { computePeriodReturns, PERIOD_RETURN_ORDER } from "./periodReturns.js";
 import { isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { db } from "./db.js";
 import { resolveAccountDailySeries } from "./groupDailySeries.js";
 import { withDailyChainedReturns } from "./periodReturnsDaily.js";
@@ -12,7 +12,7 @@ function findInvestmentAccountId(): number | null {
   const rows = db.prepare(`SELECT id FROM accounts ORDER BY id`).all() as { id: number }[];
   for (const { id } of rows) {
     if (!isInvestmentPerformanceAccount(id)) continue;
-    const perf = getAccountMonthlyPerformance(id, "clp");
+    const perf = monthlyPerfForAccountId(id, "clp");
     if (perf && perf.monthly.length > 0) return id;
   }
   return null;

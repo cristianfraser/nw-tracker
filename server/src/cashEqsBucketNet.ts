@@ -1,4 +1,4 @@
-import { clpToUsdForBalanceAt } from "./fxRates.js";
+import { clpToUnitAt } from "./clpToUnitAt.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { priorCalendarMonthKey } from "./accountPeriodMarks.js";
@@ -27,10 +27,11 @@ export function cashNetOfLinkedCreditCards(rawCash: number, linkedCreditCardsOwe
   return rawCash - linkedCreditCardsOwed;
 }
 
+/** The linked cards' owed in the unit at that day (today: today's live mid). NaN without a rate. */
 function convertLinkedCc(clp: number, asOf: string, unit: TsUnit): number {
   if (unit === "clp") return clp;
   if (unit === "usd") {
-    const usd = clpToUsdForBalanceAt(clp, asOf);
+    const usd = clpToUnitAt(clp, asOf, "usd");
     return usd != null && Number.isFinite(usd) ? usd : Number.NaN;
   }
   return clp;
@@ -57,7 +58,7 @@ export function cashSavingsLinkedBalances(
 ): DashboardLinkedBalanceDto[] {
   const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
   if (cc === 0) return [];
-  const usd = includeUsd ? clpToUsdForBalanceAt(cc, asOfYmd) : null;
+  const usd = includeUsd ? clpToUnitAt(cc, asOfYmd, "usd") : null;
   return [
     {
       slug: "credit_card",

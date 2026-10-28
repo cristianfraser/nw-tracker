@@ -173,16 +173,26 @@ export const api = {
       `/api/dashboard/overview-daily?${q.toString()}`
     );
   },
+  inversionesPerfDaily: (unit: "clp" | "usd", days: number) => {
+    const q = new URLSearchParams();
+    if (unit === "usd") q.set("include_usd", "true");
+    q.set("days", String(days));
+    return j<import("./types").InversionesPerfDailyResponse>(
+      `/api/dashboard/inversiones-perf-daily?${q.toString()}`
+    );
+  },
   dailySeries: (
     unit: "clp" | "usd",
     scope: { portfolioGroup?: string; accountId?: number },
-    days: number
+    days: number,
+    opts?: { perfLevels?: boolean }
   ) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
     if (scope.portfolioGroup) q.set("portfolio_group", scope.portfolioGroup);
     if (scope.accountId != null) q.set("account_id", String(scope.accountId));
     q.set("days", String(days));
+    if (opts?.perfLevels) q.set("perf_levels", "1");
     return j<import("./types").DailySeriesResponse>(`/api/daily-series?${q.toString()}`);
   },
   valuationTimeseries: (

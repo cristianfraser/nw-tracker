@@ -7,7 +7,7 @@ import { buildNavValueMapPayload } from "./navValueMap.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
 import { buildFlowsDepositsPayload, inversionesBrokerageDepositsSeries } from "./flowsDeposits.js";
-import { clpToUsdForBalanceAt } from "./fxRates.js";
+import { clpToUnitAt } from "./clpToUnitAt.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
 import { cashSavingsLinkedBalances } from "./cashEqsBucketNet.js";
@@ -54,21 +54,20 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
         ? { ...card, linked_balances: cashSavingsLinkedBalances(asOfToday, includeUsd) }
         : card
     );
+    const bucketUsdBySlug: Record<string, number | null | undefined> = {
+      real_estate: bucketTotals.real_estate_usd,
+      retirement: bucketTotals.retirement_usd,
+      brokerage: bucketTotals.brokerage_usd,
+      cash_eqs: bucketTotals.cash_eqs_usd,
+    };
     const byGroup = new Map<string, { label: string; value_clp: number; value_usd: number }>();
     for (const card of layoutCards) {
       const bucketSlug = card.bucket_slug;
       const sum = isNwDashboardBucketSlug(bucketSlug)
         ? {
             clp: portfolioGroupValueClpAt(bucketSlug, asOfToday),
-            usd: includeUsd
-              ? (() => {
-                  const u = clpToUsdForBalanceAt(
-                    portfolioGroupValueClpAt(bucketSlug, asOfToday),
-                    asOfToday
-                  );
-                  return u != null && Number.isFinite(u) ? u : 0;
-                })()
-              : 0,
+            // The bucket card's own dollars (Σ of its members' USD values), not its pesos ÷ one rate.
+            usd: includeUsd ? bucketUsdBySlug[bucketSlug] ?? 0 : 0,
           }
         : { clp: 0, usd: 0 };
       byGroup.set(card.bucket_slug, {
@@ -98,8 +97,8 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     const liabilities_breakdown = {
       mortgage_clp: liabilitiesClp.mortgage_clp,
       credit_card_clp: liabilitiesClp.credit_card_clp,
-      mortgage_usd: clpToUsdForBalanceAt(liabilitiesClp.mortgage_clp, asOfToday),
-      credit_card_usd: clpToUsdForBalanceAt(liabilitiesClp.credit_card_clp, asOfToday),
+      mortgage_usd: clpToUnitAt(liabilitiesClp.mortgage_clp, asOfToday, "usd"),
+      credit_card_usd: clpToUnitAt(liabilitiesClp.credit_card_clp, asOfToday, "usd"),
     };
     return {
       totals: {

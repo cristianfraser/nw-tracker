@@ -6,6 +6,7 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
+import { withRunningPlTotals } from "./monthlyPerfRollup.js";
 import {
   getGroupConsolidatedMonthlyPerfForRows,
   type ConsolidatedMonthlyPerfRow,
@@ -84,22 +85,7 @@ function sumBucketConsolidatedRows(
       return { ...row, pct_month: pct };
     });
 
-  let ytdYear = 0;
-  let ytdRun = 0;
-  let cumPl = 0;
-  const withYtd = asc.map((row) => {
-    const y = Number(row.as_of_date.slice(0, 4));
-    if (Number.isFinite(y) && y !== ytdYear) {
-      ytdYear = y;
-      ytdRun = 0;
-    }
-    const nominal = row.nominal_pl ?? 0;
-    ytdRun += nominal;
-    cumPl += nominal;
-    return { ...row, ytd_nominal_pl: ytdRun, cumulative_nominal_pl: cumPl };
-  });
-
-  return withYtd.reverse();
+  return withRunningPlTotals(asc).reverse();
 }
 
 function loadBucketConsolidatedMonthly(

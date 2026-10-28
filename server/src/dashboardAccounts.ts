@@ -1,6 +1,5 @@
 import { chainedGroupPctResolver, fillBlankAccountRowPcts } from "./blankPctDailyChain.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
-import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountBucketKindSlug, isLiabilityAccountId } from "./accountBucket.js";
 import {
@@ -9,23 +8,22 @@ import {
 } from "./accountPeriodMetrics.js";
 import { monthlyPerfRowsForAccount } from "./groupMonthlyPerfConsolidation.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { accountDisplayValue } from "./accountDisplayValue.js";
+import { accountTodayValue } from "./accountTodayValue.js";
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import { priorCloseFromPerfRows, priorPeriodEndYmd } from "./accountPeriodMarks.js";
-import { fxForLiveMtm, usdFromClpAtLiveFrame } from "./fxRates.js";
+import { fxForLiveMtm } from "./fxRates.js";
+import { accountValueClpToUnitAt, clpToUnitAt } from "./clpToUnitAt.js";
 import {
   flowsDepositsNetTotalByAccount,
   flowsDepositsNetTotalUsdByAccount,
   netDepositFlowBetween,
 } from "./flowsDeposits.js";
-import { getAccountPositionMeta, type AccountPositionMeta } from "./accountPosition.js";
+import { getAccountPositionMeta, positionSnapshotFromMeta } from "./accountPosition.js";
 import { flowAdjustedPct } from "./periodReturns.js";
 import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
-import { depositClpToUsdAtDate, flowEventInUnit } from "./flowsDeposits.js";
+import { flowEventInUnit } from "./flowsDeposits.js";
 import { buildFxCoverageWithConversionWarnings } from "./fxCoverage.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 import {
@@ -51,25 +49,24 @@ import {
 import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { db } from "./db.js";
-import { creditCardFinancingPlSummaryForDashboard } from "./creditCardPerformancePl.js";
 
 const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
 
 /**
- * A prior close in USD is the same anchor-date mark the CLP figure reads, at that date's fx
- * (a USD cash account's native balance falls out of it, since its mark was built at that fx);
- * the performance series' month-end close is the fallback for an account with no mark there.
+ * A prior close in USD is the same anchor-date mark the CLP figure reads, at that date's stored
+ * fx (a USD cash account: its ledger dollars that day, as its perf rows read them); the
+ * performance series' month-end close is the fallback for an account with no mark there.
  * The USD frame keeps the peso's move inside P/L on every row, as the consolidated monthly
  * rows do — the dashboard card and the «Detalle por año» table must read the same year P/L.
  */
 function priorCloseUsdFromMark(
+  accountId: number,
   markClp: number | null | undefined,
   anchorYmd: string,
   fromPerf: number | undefined
 ): number | undefined {
   if (markClp == null || !Number.isFinite(markClp)) return fromPerf;
-  const usd = convertTs(markClp, anchorYmd, "usd");
-  return Number.isFinite(usd) ? usd : fromPerf;
+  return accountValueClpToUnitAt(accountId, markClp, anchorYmd, "usd") ?? fromPerf;
 }
 
 export function listDashboardSourceAccounts(): {
@@ -102,52 +99,6 @@ export function listDashboardSourceAccounts(): {
     bucket_slug: string;
     bucket_label: string;
   }[];
-}
-
-function positionSnapshotFromMeta(
-  categorySlug: string | null | undefined,
-  meta: AccountPositionMeta | null,
-  deposits_clp: number,
-  latest: { value_clp: number; as_of_date: string } | null | undefined
-): DashboardAccountStats["position"] {
-  if (meta == null) return null;
-  const afp = isCuotaLedgerKindSlug(categorySlug);
-  const crypto = categorySlug === "bitcoin" || categorySlug === "eth";
-  const v = latest?.value_clp;
-  const units = meta.units;
-  const ovc = meta.afp_override_value_clp;
-  const fundUnitMark =
-    ovc != null &&
-    Number.isFinite(ovc) &&
-    ovc > 0 &&
-    meta.afp_override_valor_cuota_clp != null &&
-    Number.isFinite(meta.afp_override_valor_cuota_clp);
-  // Fully-withdrawn cuota/coin position: meta emits ovc = 0 with a date → mark as 0, not stale stored.
-  const explicitZeroMark =
-    ovc === 0 && meta.afp_override_value_as_of != null && (units == null || units <= 0);
-  const mtmMark =
-    fundUnitMark ||
-    explicitZeroMark ||
-    ((afp || crypto) && ovc != null && Number.isFinite(ovc) && (ovc > 0 || (crypto && ovc === 0)));
-  const value_clp = mtmMark ? ovc : v != null && Number.isFinite(v) ? v : null;
-  const value_as_of = mtmMark ? meta.afp_override_value_as_of ?? null : latest?.as_of_date ?? null;
-  const value_per_unit_clp =
-    fundUnitMark && meta.afp_override_valor_cuota_clp != null
-      ? meta.afp_override_valor_cuota_clp
-      : afp && meta.afp_override_valor_cuota_clp != null && Number.isFinite(meta.afp_override_valor_cuota_clp)
-        ? meta.afp_override_valor_cuota_clp
-        : v != null && units != null && units > 0 && Number.isFinite(v) && Number.isFinite(units)
-          ? v / units
-          : null;
-  return {
-    ticker: meta.ticker,
-    units_kind: meta.units_kind,
-    units,
-    deposited_clp: deposits_clp,
-    value_clp,
-    value_as_of,
-    value_per_unit_clp,
-  };
 }
 
 type MortgageCardDeposits = {
@@ -254,6 +205,19 @@ function dashboardRowPeriodPcts(
   };
 }
 
+/**
+ * A card's financing cost in dollars at `asOf`, the conversion its monthly rows apply to the
+ * month's financing (`perfSheetClpFlowInUnit` → `convertTs`): the stored USD/CLP row on or
+ * before the date. A missing rate throws, as it does for the rows.
+ */
+function ccFinancingClpInUsd(clp: number, asOf: string, accountId: number): number {
+  const usd = convertTs(clp, asOf, "usd");
+  if (!Number.isFinite(usd)) {
+    throw new Error(`Account ${accountId}: no USD/CLP rate on or before ${asOf} for the card's day financing`);
+  }
+  return usd;
+}
+
 /** Dashboard nav cards: account rows with balances and P/L metrics (one perf fetch per unit). */
 export async function buildDashboardAccountRows(includeUsd: boolean): Promise<DashboardAccountStats[]> {
   return withAccountValuationTsCache(() => buildDashboardAccountRowsInner(includeUsd));
@@ -262,8 +226,9 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
 async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<DashboardAccountStats[]> {
   const accounts = listDashboardSourceAccounts();
   const leafSlugByAccount = leafPortfolioGroupSlugByAccountIds(accounts.map((a) => a.id));
-  // Lifetime deposits for the rows that carry no monthly performance series (cards; a
-  // liability or reference account): the asset rows read theirs from the series below.
+  // Lifetime deposits for the rows whose deposits are not their series' flows (cards, whose
+  // flows are not personal capital; a liability or reference account): the asset rows read
+  // theirs from the series below.
   const depositsNetByAccount = flowsDepositsNetTotalByAccount();
   const depositsNetUsdByAccount = includeUsd ? flowsDepositsNetTotalUsdByAccount() : null;
 
@@ -309,9 +274,12 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       // rows the group tables consolidate — one series, one picker, one sum — so the card and
       // the «Detalle por mes / año» table of the same scope agree by construction, in both
       // units (a card's USD year P/L keeps the peso's move inside P/L like every table row).
-      // The mortgage row reads its P/L from the same rows; its deposits are the depto ledger's
-      // payments. A card has neither (its P/L is the financing cost, below).
-      const hasPerfRows = trackAssetMetrics || kindSlug === "mortgage";
+      // The mortgage and credit-card rows read their P/L from the same rows (the card's is
+      // its cost of financing per calendar month, `creditCardMonthPerf`, the account page's
+      // «Detalle por mes»); their deposits are not the rows' flows — the mortgage's are the
+      // depto ledger's payments, and a card's flows are not personal capital.
+      const hasPerfRows =
+        trackAssetMetrics || kindSlug === "mortgage" || kindSlug === "credit_card";
       const rowsClp: AccountMonthlyPerformanceRow[] = hasPerfRows
         ? monthlyPerfRowsForAccount(a.id, leafSlug, "clp")
         : [];
@@ -337,9 +305,17 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       /** Asset-group leaf slug (`real_estate__property`), not nav bucket (`real_estate`) — required for depto UF marks. */
       const markCategorySlug = leafSlug;
 
-      // Today's value is the mark for every row, liabilities included — the same function
-      // as the prior-day / month-end marks below and the account page header.
-      const v = accountMarkClpAtYmd(a.id, today, markCategorySlug, markOpts);
+      // Today's value is the account's one today value for every row, liabilities included —
+      // the today mark (`accountMarkClpAtYmd` at today reads it too), the account page header,
+      // the current month's performance row and the charts' live last point. The position is
+      // asked at Chile today and shared with it, so units-priced accounts (cuota ledgers,
+      // Fintual cert funds, crypto) are valued by the same position the row shows.
+      const positionMeta = getAccountPositionMeta(a.id, kindSlug, {
+        afpCuotasAsOfYmd: today,
+        accountImportKey: a.import_key,
+        accountName: a.name,
+      });
+      const v = accountTodayValue(a.id, markCategorySlug, { ...markOpts, positionMeta });
 
       const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd, markCategorySlug, markOpts);
       const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd, markCategorySlug, markOpts);
@@ -351,13 +327,10 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         ? accountMarkClpAtYmd(a.id, priorDayYmd, markCategorySlug, markOpts)
         : null;
       const prior_day_close_clp = priorDayMark?.value_clp ?? null;
-      const priorDayCloseUsdRaw =
-        includeUsd && prior_day_close_clp != null
-          ? convertTs(prior_day_close_clp, priorDayYmd, "usd")
-          : null;
+      // Stored fx of the prior day (a USD cash account: its ledger dollars that day).
       const prior_day_close_usd =
-        priorDayCloseUsdRaw != null && Number.isFinite(priorDayCloseUsdRaw)
-          ? priorDayCloseUsdRaw
+        includeUsd && prior_day_close_clp != null
+          ? accountValueClpToUnitAt(a.id, prior_day_close_clp, priorDayYmd, "usd")
           : null;
       const deposits_day_clp = mortgagePayments
         ? mortgagePayments.day_clp
@@ -375,33 +348,20 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       const prior_year_close_clp =
         priorYearMark?.value_clp ??
         (trackAssetMetrics ? priorCloseFromPerfRows(rowsClp, "ytd", today) ?? undefined : undefined);
-      const asOfCuotas = v?.as_of_date ?? chileCalendarTodayYmd();
-      const positionMeta = getAccountPositionMeta(a.id, kindSlug, {
-        afpCuotasAsOfYmd: isCuotaLedgerKindSlug(kindSlug) ? asOfCuotas : undefined,
-        accountImportKey: a.import_key,
-        accountName: a.name,
-      });
-      const position = positionSnapshotFromMeta(kindSlug, positionMeta, deposits, v ?? undefined);
-      const { value_clp: current_value_clp, as_of_date: valuation_as_of } = accountDisplayValue({
-        accountId: a.id,
-        kindSlug,
-        importKey: a.import_key,
-        mark: v,
-        position,
-      });
-      // The USD frame of the row is the CLP mark ÷ the fx that mark was built with: the live
-      // CLP=X while the mark date's fx day is open, the stored close after (`fxForLiveMtm`
-      // reads the stored row for any earlier date). Dividing a live-fx CLP value by the
-      // stored on-or-before row understated every USD holding by the day's fx move while
-      // the fx day was open.
-      const fxRow = includeUsd ? fxForLiveMtm(valuation_as_of ?? null) : null;
-      const current_value_usd = includeUsd
-        ? isUsdCashAccount(a.id)
-          ? usdCashBalanceUsdAt(a.id, valuation_as_of ?? today)
-          : current_value_clp != null
-            ? usdFromClpAtLiveFrame(current_value_clp, valuation_as_of ?? null)
-            : null
-        : null;
+      const position = positionSnapshotFromMeta(kindSlug, positionMeta, deposits, v);
+      const current_value_clp = v?.value_clp ?? null;
+      const valuation_as_of = v?.as_of_date ?? null;
+      // The USD frame of the row is the pesos ÷ the fx of the day they were priced
+      // (`priced_on`): the live CLP=X while that fx day is open, the stored close after. A
+      // USD cash account reads its ledger dollars. The perf live row and the charts' live
+      // point read the same helper, so the card, its table and its chart agree.
+      const fxRow = includeUsd ? fxForLiveMtm(v?.priced_on ?? null) : null;
+      const current_value_usd =
+        includeUsd && current_value_clp != null
+          ? accountValueClpToUnitAt(a.id, current_value_clp, today, "usd", {
+              markAsOf: v!.priced_on,
+            })
+          : null;
       const fx_missing =
         includeUsd &&
         ((current_value_clp != null && fxRow == null) ||
@@ -412,7 +372,8 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       // nominal_pl): a UF uptick is a daily financing loss on the mortgage, an amortizing
       // cuota nets interest+seguros. A card's day cost is the intereses/comisiones charged
       // that day (`ccFinancingCostDaily.ts`) — its purchases and PAGOs are flows, so they
-      // cancel out and most days read 0.
+      // cancel out and most days read 0 — in dollars at the rate its monthly rows convert the
+      // month's financing at (`convertTs` at today), so the day and the month share one frame.
       const isMortgageRow = kindSlug === "mortgage";
       const isCcRow = kindSlug === "credit_card";
       const ccDayFinancingClp = isCcRow ? ccFinancingCostClpBetween(a.id, priorDayYmd, today) : 0;
@@ -425,7 +386,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
           : null;
       const delta_day_usd = isCcRow
         ? includeUsd
-          ? depositClpToUsdAtDate(-ccDayFinancingClp, today)
+          ? ccFinancingClpInUsd(-ccDayFinancingClp, today, a.id)
           : null
         : includeUsd && current_value_usd != null && prior_day_close_usd != null
           ? isMortgageRow
@@ -477,6 +438,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         prior_month_close_clp,
         prior_month_close_usd: includeUsd
           ? priorCloseUsdFromMark(
+              a.id,
               priorMonthMark?.value_clp,
               priorMonthEnd,
               trackAssetMetrics ? priorCloseFromPerfRows(rowsUsd, "mtd", today) ?? undefined : undefined
@@ -485,6 +447,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         prior_year_close_clp,
         prior_year_close_usd: includeUsd
           ? priorCloseUsdFromMark(
+              a.id,
               priorYearMark?.value_clp,
               priorYearEnd,
               trackAssetMetrics ? priorCloseFromPerfRows(rowsUsd, "ytd", today) ?? undefined : undefined
@@ -502,24 +465,8 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         position,
         sync_stale: staleAccountIds.has(a.id),
       };
-      // A card's P/L is its cost of financing (intereses, comisiones, impuestos), loss-negative.
-      const ccDeltas: Partial<DashboardAccountStats> = {};
-      if (kindSlug === "credit_card") {
-        const plSummary = creditCardFinancingPlSummaryForDashboard(a.id, today.slice(0, 7));
-        const rate = includeUsd && fxRow != null ? fxRow.clp_per_usd : null;
-        const inUsd = (clp: number) => (rate != null ? clp / rate : null);
-        ccDeltas.delta_total_clp = plSummary ? -plSummary.cumulative_clp : null;
-        ccDeltas.delta_month_clp = plSummary ? -plSummary.current_month_clp : null;
-        ccDeltas.delta_year_clp = plSummary ? -plSummary.ytd_clp : null;
-        if (includeUsd) {
-          ccDeltas.delta_total_usd = plSummary ? inUsd(-plSummary.cumulative_clp) : null;
-          ccDeltas.delta_month_usd = plSummary ? inUsd(-plSummary.current_month_clp) : null;
-          ccDeltas.delta_year_usd = plSummary ? inUsd(-plSummary.ytd_clp) : null;
-        }
-      }
-
-      const merged = { ...baseRow, ...ccDeltas } as DashboardAccountStats;
-      return { ...merged, ...dashboardRowPeriodPcts(merged, includeUsd) };
+      const row = baseRow as DashboardAccountStats;
+      return { ...row, ...dashboardRowPeriodPcts(row, includeUsd) };
     })
   );
   // A position bought and sold inside a period has no capital base for the one-step rule:
@@ -540,8 +487,10 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
   const liabilities_breakdown = {
     mortgage_clp: liabilitiesClp.mortgage_clp,
     credit_card_clp: liabilitiesClp.credit_card_clp,
-    mortgage_usd: depositClpToUsdAtDate(liabilitiesClp.mortgage_clp, asOfToday),
-    credit_card_usd: depositClpToUsdAtDate(liabilitiesClp.credit_card_clp, asOfToday),
+    // Balances owed today, at today's mid (live while the fx day is open), as every USD value
+    // on the page — never the buy rate deposit events use.
+    mortgage_usd: clpToUnitAt(liabilitiesClp.mortgage_clp, asOfToday, "usd"),
+    credit_card_usd: clpToUnitAt(liabilitiesClp.credit_card_clp, asOfToday, "usd"),
   };
   const dashboard_layout = getDashboardLayoutCards().map((card) =>
     card.slug === "cash_eqs"

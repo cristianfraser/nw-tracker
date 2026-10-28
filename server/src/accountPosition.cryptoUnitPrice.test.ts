@@ -68,7 +68,9 @@ describe("crypto position meta — per-unit price", () => {
     const meta = getAccountPositionMeta(accountId, "bitcoin", { afpCuotasAsOfYmd: TODAY, now });
     expect(meta?.units).toBe(UNITS);
     expect(meta?.afp_override_value_clp).toBeCloseTo(UNITS * 40_000 * 950, 2);
-    expect(meta?.afp_override_value_as_of).toBe("2099-01-06");
+    // Dated on the day its pesos were framed on (the asked date), not the stale bar's day, so a
+    // USD reader divides by the rate that multiplied (2f4172f9).
+    expect(meta?.afp_override_value_as_of).toBe(TODAY);
     // Tuesday's close at the value's live rate — not at Tuesday's stored 900.
     expect(meta?.afp_override_valor_cuota_clp).toBeCloseTo(40_000 * 950, 4);
     expect(UNITS * meta!.afp_override_valor_cuota_clp!).toBeCloseTo(meta!.afp_override_value_clp!, 2);

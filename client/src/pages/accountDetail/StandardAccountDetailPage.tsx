@@ -5,7 +5,7 @@ import { AccountFlowsSection } from "../../components/account/AccountFlowsSectio
 import { DailyPerfDetailTable } from "../../components/account/DailyPerfDetailTable";
 import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDetailTable";
 import { buildDailyValuationBlock } from "../../dailySeriesChart";
-import { buildDailyPerfComboPoints } from "../../dailyPerfCombo";
+import { servedDailyPerfComboPoints } from "../../servedDailyPerfCombo";
 import { useDailySeries } from "../../queries/hooks";
 import { timeRangeToDays } from "../../timeRange";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
@@ -63,6 +63,7 @@ export function StandardAccountDetailPage({ data }: Props) {
     valuationPrefs,
     perfPrefs,
     monthlyPerfRows,
+    monthlyPerfYearlyRows,
     periodReturns,
     ytdChartPoints,
     accChartPoints,
@@ -114,7 +115,8 @@ export function StandardAccountDetailPage({ data }: Props) {
     { accountId: summary.account_id },
     displayUnit,
     timeRangeToDays(perfPrefs.range),
-    perfIsDaily
+    perfIsDaily,
+    { perfLevels: true }
   );
   const dailyValuationBlock = useMemo(() => {
     if (!valuationIsDaily) return null;
@@ -143,21 +145,16 @@ export function StandardAccountDetailPage({ data }: Props) {
     />
   );
 
-  // Day view P/L bars: one bar account (this account), so a single build serves both combos —
-  // `nominal_pl`/`delta_month` are the same daily P/L and the two areas ride along.
+  // Day view P/L bars: one bar account (this account), so a single pick serves both combos —
+  // `nominal_pl`/`delta_month` are the same daily P/L and the server's two levels ride along.
   const dailyPerfPoints = useMemo(() => {
     if (!perfIsDaily || !perfDailySeries.data?.points.length || !monthlyPerfRows.length) return null;
     const line = perfDailySeries.data.accounts?.find((l) => l.account_id === summary.account_id);
     if (!line?.pl) return null;
-    return buildDailyPerfComboPoints({
+    return servedDailyPerfComboPoints({
       series: perfDailySeries.data,
       lines: [line],
       barAccounts: [{ account_id: summary.account_id, bar_data_key: "nominal_pl" }],
-      monthlyPointsAsc: [...monthlyPerfRows].reverse().map((r) => ({
-        as_of_date: r.as_of_date,
-        ytd_nominal_pl: r.ytd_nominal_pl ?? 0,
-        accumulated_earnings: r.cumulative_nominal_pl ?? 0,
-      })),
       ytdKey: "ytd_nominal_pl",
       totalKey: "delta_month",
     });
@@ -499,6 +496,7 @@ export function StandardAccountDetailPage({ data }: Props) {
                 <MonthlyPerfDetailTable
                   key={`${id}-${displayUnit}-mp-detail`}
                   rows={monthlyPerfRows}
+                  yearlyRows={monthlyPerfYearlyRows}
                   displayUnit={displayUnit}
                   period={detallePrefs.period === "year" ? "year" : "month"}
                   isMortgageAccount={isMortgageAccount}

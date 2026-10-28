@@ -480,6 +480,7 @@ export function LiabilitiesGroupPage() {
           mortgageLedger={mortgageLedger ?? emptyMortgageLedger(0)}
           displayUnit={displayUnit}
           monthlyPerfRows={mortgagePerf?.monthly ?? []}
+          monthlyPerfYearlyRows={mortgagePerf?.yearly ?? []}
           summary={mortgageSummary}
           accountDashRow={mortgageDashRow}
           accountColorRgb={mortgageColorRgb}
@@ -502,6 +503,7 @@ export function LiabilitiesGroupPage() {
           mortgageLedger={mortgageLedger ?? emptyMortgageLedger(0)}
           displayUnit={displayUnit}
           monthlyPerfRows={mortgagePerf?.monthly ?? []}
+          monthlyPerfYearlyRows={mortgagePerf?.yearly ?? []}
           summary={mortgageSummary}
           accountDashRow={mortgageDashRow}
           accountColorRgb={mortgageColorRgb}

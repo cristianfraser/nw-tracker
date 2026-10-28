@@ -21,7 +21,7 @@ import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { getBucketDailySeriesCached, type DailySeriesAccountLine } from "./dailySeries.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { linkedCreditCardClpForCashCardByDates } from "./liabilityTree.js";
-import { convertLegToUnit } from "./periodReturnsShortHorizon.js";
+import { clpToUnitAt } from "./clpToUnitAt.js";
 import {
   composeReferenceValuesByDate,
   listReferenceGroupsForChartHost,
@@ -78,10 +78,10 @@ function sourceGroupDailyValues(
     for (const p of series.points) {
       if (p.value == null || !Number.isFinite(p.value)) continue;
       const ccClp = ccByDate?.get(p.as_of_date) ?? 0;
-      const cc = ccClp !== 0 ? convertLegToUnit(ccClp, p.as_of_date, unit, now) : 0;
+      const cc = ccClp !== 0 ? clpToUnitAt(ccClp, p.as_of_date, unit, { now }) : 0;
       out.set(
         p.as_of_date,
-        Number.isFinite(cc) ? cashNetOfLinkedCreditCards(p.value, cc) : p.value
+        cc != null && Number.isFinite(cc) ? cashNetOfLinkedCreditCards(p.value, cc) : p.value
       );
     }
     return out;
@@ -128,7 +128,7 @@ export function deptoPropertyChartOverlayDailyLines(
       },
       datesAsc
     ).map((clp, i) =>
-      clp != null && Number.isFinite(clp) ? convertLegToUnit(clp, datesAsc[i]!, unit, now) : null
+      clp != null && Number.isFinite(clp) ? clpToUnitAt(clp, datesAsc[i]!, unit, { now }) : null
     );
 
   const hipoteca = markValues(mortgageRows[0]!);
