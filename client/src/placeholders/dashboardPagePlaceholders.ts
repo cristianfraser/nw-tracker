@@ -32,6 +32,7 @@ const OVERVIEW_LINE_SPECS: DashboardChartShapeLine[] = [
     dataKey: `usd_${k}k`,
     name: `US$${k},000`,
     valueSeriesType: "reference" as const,
+    level_currency: "usd" as const,
   })),
 ];
 
