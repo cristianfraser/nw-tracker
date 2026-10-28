@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
-import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
-import type { CcInstallmentGastosMode } from "../../ccExpensePeriodMonth";
-import { bigGroupsWithUsage } from "../../ccExpenseBigGroupTotals";
+import type {
+  BigGroupUsage,
+  CcExpenseBigGroupDto,
+  CcExpenseCategoryDto,
+  FlowCcExpenseLineRow,
+} from "../../types";
 import {
   useDeleteCcExpenseBigGroupMutation,
   useRenameCcExpenseBigGroupMutation,
@@ -118,7 +121,7 @@ export function BigExpenseGroupsSection({
   lines,
   categories,
   bigGroups,
-  installmentMode,
+  usage,
   isExcluded,
   toggleExcluded,
   loading,
@@ -126,16 +129,13 @@ export function BigExpenseGroupsSection({
   lines: readonly FlowCcExpenseLineRow[];
   categories: readonly CcExpenseCategoryDto[];
   bigGroups: readonly CcExpenseBigGroupDto[];
-  installmentMode: CcInstallmentGastosMode;
+  /** The groups that hold spend in the page's installment mode (server-built, gastos payload). */
+  usage: readonly BigGroupUsage[];
   isExcluded: (slug: string) => boolean;
   toggleExcluded: (slug: string) => void;
   loading?: boolean;
 }) {
   const { t } = useTranslation();
-  const usage = useMemo(
-    () => bigGroupsWithUsage(lines, bigGroups, installmentMode),
-    [bigGroups, installmentMode, lines]
-  );
 
   // Absent only once the lines have loaded and carry no big group; while loading, the title frame.
   if (usage.length === 0 && !loading) {

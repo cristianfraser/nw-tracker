@@ -11,6 +11,7 @@ function sampleData(): FlowsExpensesResponse {
     account_ids: [32],
     categories: [],
     big_groups: [],
+    active_big_group_slugs: [],
     lines: [
       {
         source: "cc",

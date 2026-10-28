@@ -102,7 +102,12 @@ export function isGastosRefundLine(line: Pick<FlowCcExpenseLineRow, "checking_re
   return line.checking_refund === true || line.card_refund === true;
 }
 
-/** Positive lines, and refunds, that count toward gasto del mes for the active installment mode. */
+/**
+ * Positive lines, and refunds, that count toward gasto del mes for the active installment mode.
+ * A copy of the server's rule (`countsTowardGastosMes`, `flowsExpensesGastos.ts`), kept because the
+ * month modal moves a line between its sections as a category edit is applied optimistically;
+ * pinned to the server by `server/src/test/gastosMesCountingCases.json`, asserted by both suites.
+ */
 export function countsTowardGastosMes(
   line: FlowCcExpenseLineRow,
   mode: CcInstallmentGastosMode = "split"
