@@ -76,7 +76,47 @@ function augmentPointsWithYearStripeAreas(
   });
 }
 
-export type MonthlyPlBarSeries = { dataKey: string; name: string; color: string };
+export type MonthlyPlBarSeries = {
+  dataKey: string;
+  name: string;
+  color: string;
+  /** Bars sharing a stack id draw as one stacked bar (positives up, negatives down). */
+  stackId?: string;
+};
+
+/**
+ * Y range of the plotted values with stacked bars summed: each stack's positive and negative
+ * parts add up separately (`stackOffset="sign"`), unstacked bars and the other keys count alone.
+ */
+function stackedMinMax(
+  rows: readonly Record<string, string | number | null>[],
+  bars: readonly MonthlyPlBarSeries[],
+  otherKeys: readonly string[]
+): { min: number; max: number } {
+  const loneKeys = [...otherKeys, ...bars.filter((b) => !b.stackId).map((b) => b.dataKey)];
+  const { min: loneMin, max: loneMax } = minMaxForKeys(rows, loneKeys);
+  let min = loneMin;
+  let max = loneMax;
+  const stacks = new Map<string, string[]>();
+  for (const b of bars) {
+    if (b.stackId) stacks.set(b.stackId, [...(stacks.get(b.stackId) ?? []), b.dataKey]);
+  }
+  for (const row of rows) {
+    for (const keys of stacks.values()) {
+      let pos = 0;
+      let neg = 0;
+      for (const k of keys) {
+        const v = row[k];
+        if (typeof v !== "number" || !Number.isFinite(v)) continue;
+        if (v > 0) pos += v;
+        else neg += v;
+      }
+      min = Math.min(min, neg);
+      max = Math.max(max, pos);
+    }
+  }
+  return { min, max };
+}
 
 export type MonthlyPlLineSeries = {
   dataKey: string;
@@ -234,19 +274,19 @@ export function MonthlyPerformanceComboChart({
     [rangedPoints, xAxisGranularity, visibleBarSeries]
   );
 
-  const yKeys = useMemo(() => {
-    const k = [
-      ...visibleBarSeries.map((b) => b.dataKey),
-      ...resolvedLineSeries.map((l) => l.dataKey),
-    ];
-    if (areaKey) k.push(areaKey);
-    return k;
-  }, [visibleBarSeries, areaKey, resolvedLineSeries]);
+  const hasStacks = visibleBarSeries.some((b) => b.stackId);
+  // Bars Recharts draws side by side: one per stack, plus each unstacked bar.
+  const barSlotCount = useMemo(
+    () => new Set(visibleBarSeries.map((b, i) => b.stackId ?? `__bar${i}`)).size,
+    [visibleBarSeries]
+  );
 
   const yScale = useMemo(() => {
-    const { min, max } = minMaxForKeys(densePoints, yKeys);
+    const otherKeys = resolvedLineSeries.map((l) => l.dataKey);
+    if (areaKey) otherKeys.push(areaKey);
+    const { min, max } = stackedMinMax(densePoints, visibleBarSeries, otherKeys);
     return buildNiceYAxis(min, max);
-  }, [densePoints, yKeys]);
+  }, [densePoints, visibleBarSeries, resolvedLineSeries, areaKey]);
 
   const plotPoints = useMemo(
     () =>
@@ -301,8 +341,9 @@ export function MonthlyPerformanceComboChart({
       <div className="chart-box line-chart-focus-wrap">
         <AppComposedChart
           data={plotPoints}
+          {...(hasStacks ? { stackOffset: "sign" as const } : {})}
           barGroup={{
-            count: visibleBarSeries.length,
+            count: barSlotCount,
             maxBarSize: BAR_MAX_SIZE,
             yAxisWidth: rechartsMoneyYAxisWidth(displayUnit, compactAxis),
           }}
@@ -392,6 +433,7 @@ export function MonthlyPerformanceComboChart({
                 dataKey={b.dataKey}
                 name={b.name}
                 fill={b.color}
+                {...(b.stackId ? { stackId: b.stackId } : {})}
                 isAnimationActive
                 animationDuration={CHART_ANIM_MS}
                 maxBarSize={BAR_MAX_SIZE}

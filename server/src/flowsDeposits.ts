@@ -442,13 +442,14 @@ function aggregateDepositChartPoints(
   return densifyMonthlyPoints(sorted, emptyPoint);
 }
 
-/** Retiro (inversiones) + brokerage net deposits per chart period. */
+/** Retiro (the `inversiones` bucket) and brokerage net deposits per chart period, by class. */
 export function inversionesBrokerageDepositsSeries(
   points: readonly FlowDepositChartPoint[]
-): { as_of_date: string; deposited: number }[] {
+): { as_of_date: string; retirement: number; brokerage: number }[] {
   return points.map((pt) => ({
     as_of_date: pt.as_of_date,
-    deposited: (pt.brokerage ?? 0) + (pt.inversiones ?? 0),
+    retirement: pt.inversiones ?? 0,
+    brokerage: pt.brokerage ?? 0,
   }));
 }
 

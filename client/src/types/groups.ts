@@ -49,7 +49,6 @@ export interface DashboardChartShape {
   first_month: string | null;
   overview_lines: DashboardChartShapeLine[];
   primary_lines: DashboardChartShapeLine[];
-  has_patrimonio_usd_chart: boolean;
   has_perf_sections: boolean;
 }
 

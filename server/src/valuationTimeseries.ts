@@ -1305,7 +1305,7 @@ function capChartDatesThroughChileToday(datesAsc: string[]): string[] {
   return datesAsc.filter((d) => d <= today);
 }
 
-/** USD notionals for patrimonio chart reference lines (each date's level in the chart's unit). */
+/** USD notionals for the home net-worth chart reference lines (each date's level in the chart's unit). */
 const PATRIMONIO_USD_MILESTONE_AMOUNTS = [50_000, 100_000, 250_000, 300_000, 500_000] as const;
 
 function usdMilestoneDataKey(usd: number): string {
@@ -1402,76 +1402,40 @@ function buildReferenceMilestoneAnchorsByDate(
   return out;
 }
 
-/** Leading month-end row with USD milestone reference lines only (data series get client zero anchors). */
-function prependPatrimonioUsdMilestoneAnchorPoints(
-  points: Record<string, string | number | null>[],
-  firstOverviewYmd: string,
-  unit: TsUnit
-): Record<string, string | number | null>[] {
-  const anchorDate = priorCalendarPeriodEndYmdChart(firstOverviewYmd, "month");
-  if (!anchorDate || anchorDate >= firstOverviewYmd) return points;
-  const byDate = new Map(points.map((p) => [String(p.as_of_date), { ...p }]));
-  const existing = byDate.get(anchorDate);
-  if (existing) {
-    appendUsdMilestoneFields(existing, anchorDate, unit);
-    byDate.set(anchorDate, existing);
-  } else {
-    const row: Record<string, string | number | null> = { as_of_date: anchorDate };
-    appendUsdMilestoneFields(row, anchorDate, unit);
-    byDate.set(anchorDate, row);
-  }
-  return [...byDate.values()].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
+/** The USD milestone reference lines the home «Patrimonio neto» chart draws (dashed, faint). */
+function usdMilestoneReferenceLines(): NonNullable<GroupTabValuationBlock["lines"]> {
+  return PATRIMONIO_USD_MILESTONE_AMOUNTS.map((usd) => ({
+    dataKey: usdMilestoneDataKey(usd),
+    name: `US$${usd.toLocaleString("en-US")}`,
+    valueSeriesType: "reference" as const,
+  }));
 }
 
 /**
- * Patrimonio neto + invested with USD milestone reference lines, all in `unit`: the two data
- * series are the overview's own points in that unit (so this chart and the overview agree),
- * the milestones the USD notionals at each date's rate — flat in USD.
- * Y-axis on the client uses only the two `data` series; milestones may extend above the scale.
+ * The home overview block with the USD milestone reference lines: each point carries the US$
+ * notionals in `unit` at that date's rate (flat in USD), and the month/year anchor dates before
+ * the first point carry them too so the client's leading zero anchors draw them.
+ * The client scales the Y axis on the data lines only; milestones may extend above it.
  */
-function buildPatrimonioUsdMilestoneChartBlock(
-  overview: Record<string, string | number | null>[],
+function withUsdMilestoneReferences(
+  overview: { lines: NonNullable<GroupTabValuationBlock["lines"]>; points: Record<string, string | number | null>[] },
   unit: TsUnit
-): GroupTabValuationBlock & { unit: TsUnit } {
-  const firstOverviewYmd = overview.length
-    ? [...overview].map((r) => String(r.as_of_date)).sort((a, b) => a.localeCompare(b))[0]!
+) {
+  const firstOverviewYmd = overview.points.length
+    ? overview.points.map((r) => String(r.as_of_date)).sort((a, b) => a.localeCompare(b))[0]!
     : "";
-  const points = overview.map((row) => {
-    const d = String(row.as_of_date);
-    const out: Record<string, string | number | null> = {
-      as_of_date: d,
-      total_nw: row.total_nw ?? null,
-      invested: row.invested ?? null,
-    };
-    appendUsdMilestoneFields(out, d, unit);
+  const points = overview.points.map((row) => {
+    const out = { ...row };
+    appendUsdMilestoneFields(out, String(row.as_of_date), unit);
     return out;
   });
-  const withAnchor = firstOverviewYmd
-    ? prependPatrimonioUsdMilestoneAnchorPoints(points, firstOverviewYmd, unit)
-    : points;
-  const lines: NonNullable<GroupTabValuationBlock["lines"]> = [
-    {
-      dataKey: "total_nw",
-      name: "Patrimonio neto",
-      name_i18n_key: "dashboard.cards.netWorth",
-      valueSeriesType: "data",
-    },
-    {
-      dataKey: "invested",
-      name: "Invested",
-      name_i18n_key: "charts.overview.invested",
-      valueSeriesType: "data",
-    },
-    ...PATRIMONIO_USD_MILESTONE_AMOUNTS.map((usd) => ({
-      dataKey: usdMilestoneDataKey(usd),
-      name: `US$${usd.toLocaleString("en-US")}`,
-      valueSeriesType: "reference" as const,
-    })),
-  ];
-  const referenceMilestoneByDate = firstOverviewYmd
-    ? buildReferenceMilestoneAnchorsByDate(firstOverviewYmd, unit)
-    : undefined;
-  return { unit, accounts: [], lines, points: withAnchor, referenceMilestoneByDate };
+  return {
+    lines: [...overview.lines, ...usdMilestoneReferenceLines()],
+    points,
+    ...(firstOverviewYmd
+      ? { referenceMilestoneByDate: buildReferenceMilestoneAnchorsByDate(firstOverviewYmd, unit) }
+      : {}),
+  };
 }
 
 /** Overview + primary chart blocks from `portfolio_groups` net-worth buckets (one TS build). */
@@ -1503,7 +1467,7 @@ function buildDashboardOverviewSlice(unit: TsUnit): {
   };
 }
 
-/** @heavy Nav / group pages: overview chart only (skips patrimonio USD milestone block). */
+/** @heavy Nav / group pages: overview chart only (no USD milestone reference lines). */
 export function getDashboardOverviewBlock(unit: TsUnit) {
   return buildDashboardOverviewSlice(unit).overview;
 }
@@ -1965,17 +1929,13 @@ function appendChartHostReferenceOverlays(
   };
 }
 
-/** @heavy Builds primary portfolio lines, overview, and USD milestone chart for the home page. */
+/** @heavy Builds primary portfolio lines and the overview (with USD milestone lines) for the home page. */
 export function getDashboardValuationTimeseries(unit: TsUnit) {
   return withPortfolioGroupIndex(() => getDashboardValuationTimeseriesInner(unit));
 }
 
 function getDashboardValuationTimeseriesInner(unit: TsUnit) {
   const slice = buildDashboardOverviewSlice(unit);
-  const patrimonio_usd_milestones_chart = buildPatrimonioUsdMilestoneChartBlock(
-    slice.overview.points,
-    unit
-  );
 
   // Lines one level below the big buckets of the nav tree (shares are unit-invariant).
   const allocation_proportional = slice.composition();
@@ -1983,10 +1943,7 @@ function getDashboardValuationTimeseriesInner(unit: TsUnit) {
   return {
     unit,
     accounts_ex_property: applyTrailingZeroTailClipToBlock(slice.accounts_ex_property),
-    overview: applyTrailingZeroTailClipToBlock(slice.overview),
-    patrimonio_usd_milestones_chart: applyTrailingZeroTailClipToBlock(
-      patrimonio_usd_milestones_chart
-    ),
+    overview: applyTrailingZeroTailClipToBlock(withUsdMilestoneReferences(slice.overview, unit)),
     allocation_proportional,
   };
 }
@@ -2005,7 +1962,6 @@ export type DashboardChartShape = {
   first_month: string | null;
   overview_lines: DashboardChartShapeLine[];
   primary_lines: DashboardChartShapeLine[];
-  has_patrimonio_usd_chart: boolean;
   has_perf_sections: boolean;
 };
 
@@ -2041,9 +1997,9 @@ export function getDashboardChartShape(): DashboardChartShape {
     accountIdsInPortfolioGroup("brokerage").length > 0;
   return {
     first_month,
-    overview_lines: buildDashboardOverviewLines(),
+    // The home chart's own lines, milestones included, so the loading legend is the loaded one.
+    overview_lines: [...buildDashboardOverviewLines(), ...usdMilestoneReferenceLines()],
     primary_lines,
-    has_patrimonio_usd_chart: first_month != null,
     has_perf_sections,
   };
 }

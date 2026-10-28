@@ -109,26 +109,18 @@ describe("net worth surfaces reconcile", () => {
     });
   });
 
-  it("patrimonio USD milestone chart backfills reference lines on leading anchor date", async () => {
+  it("home overview carries USD milestone anchors for the dates before its first point", async () => {
     await withPortfolioGroupIndex(async () => {
       const ts = getDashboardValuationTimeseries("clp");
-      const block = ts.patrimonio_usd_milestones_chart;
-      if (!block?.points.length) return;
+      const block = ts.overview;
+      if (!block.points.length) return;
 
-      const sorted = [...block.points].sort((a, b) =>
-        String(a.as_of_date).localeCompare(String(b.as_of_date))
-      );
-      const firstData = sorted.find(
-        (r) => typeof r.total_nw === "number" && Number.isFinite(r.total_nw)
-      );
-      if (!firstData) return;
-
-      const firstDate = String(firstData.as_of_date);
-      const leading = sorted.filter((r) => String(r.as_of_date) < firstDate);
-      expect(leading.length).toBeGreaterThan(0);
-      for (const row of leading) {
-        expect(typeof row.usd_50k === "number" && row.usd_50k > 0).toBe(true);
-        expect(block.referenceMilestoneByDate?.[String(row.as_of_date)]?.usd_50k).toBe(row.usd_50k);
+      const firstDate = [...block.points].map((r) => String(r.as_of_date)).sort()[0]!;
+      const anchors = Object.entries(block.referenceMilestoneByDate ?? {});
+      expect(anchors.length).toBeGreaterThan(0);
+      for (const [date, levels] of anchors) {
+        expect(date < firstDate).toBe(true);
+        expect(typeof levels.usd_50k === "number" && levels.usd_50k > 0).toBe(true);
       }
     });
   });
