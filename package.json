@@ -50,6 +50,7 @@
     "import:apple-mail": "npm run import:apple-mail -w nw-tracker-ingest --",
     "import:transfer-mails": "npm run import:transfer-mails -w nw-tracker-ingest --",
     "import:payment-receipt-mails": "npm run import:payment-receipt-mails -w nw-tracker-ingest --",
+    "import:utility-bills": "npm run import:utility-bills -w nw-tracker-ingest --",
     "match:app-store-notes": "npm run match:app-store-notes -w nw-tracker-server --",
     "convert:cc-payment-mirrors": "npm run server-task -w nw-tracker-ingest -- cc_payment_mirrors",
     "check:cc-bank-cupo": "npm run server-task -w nw-tracker-ingest -- cc_bank_cupo_check",

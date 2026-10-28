@@ -11,6 +11,7 @@
  *
  * Read-only on the mailbox (All Mail, so archived mail counts too).
  */
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { ImapFlow } from "imapflow";
@@ -18,6 +19,7 @@ import { readKeychainSecret } from "../keychain.js";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 import { loadBrokerEmailConfig, mimeBodyToText } from "./fetch.js";
+import { pdfAttachmentsFromStructure, safeAttachmentName } from "./santanderDocs.js";
 
 export type SantanderArchivedMail = {
   message_id: string;
@@ -28,6 +30,8 @@ export type SantanderArchivedMail = {
   from_name?: string;
   subject: string;
   text: string;
+  /** PDF attachments the archive was asked for: the saved file and its `pdftotext -layout` text. */
+  attachments?: { filename: string; file: string; text: string }[];
 };
 
 /** The subjects that state a movement; marketing and notices are left out. */
@@ -99,6 +103,11 @@ export async function archiveMails(opts: {
   /** Folder under `cfraser/`. */
   dir: string;
   fileName?: string;
+  /**
+   * PDF attachments to keep, by file name: each is saved under `cfraser/<dir>/attachments/` and its
+   * `pdftotext -layout` text staged with the mail.
+   */
+  pdfAttachment?: (filename: string) => boolean;
 }): Promise<{ file: string; count: number }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.fromYmd) || !/^\d{4}-\d{2}-\d{2}$/.test(opts.toYmd)) {
     throw new Error(`--from / --to must be YYYY-MM-DD (got ${opts.fromYmd} / ${opts.toYmd})`);
@@ -114,6 +123,7 @@ export async function archiveMails(opts: {
   logStep(`e-mail — ${opts.label} ${opts.fromYmd} → ${opts.toYmd}`);
   await client.connect();
   const mails: ArchivedMail[] = [];
+  const pdfParts: { mail: ArchivedMail; uid: number; part: string; filename: string }[] = [];
   try {
     const allMail = (await client.list()).find((b) => b.specialUse === "\\All");
     if (!allMail) throw new Error("No All Mail folder on this account");
@@ -131,7 +141,7 @@ export async function archiveMails(opts: {
       for await (const msg of client.fetch(uids, { envelope: true, uid: true })) {
         if (opts.wantSubject(String(msg.envelope?.subject ?? "").trim())) wanted.push(msg.uid);
       }
-      for await (const msg of client.fetch(wanted, { envelope: true, source: true, uid: true }, { uid: true })) {
+      for await (const msg of client.fetch(wanted, { envelope: true, source: true, uid: true, bodyStructure: true }, { uid: true })) {
         const subject = String(msg.envelope?.subject ?? "").trim();
         const date = msg.envelope?.date;
         if (!date) throw new Error(`mail ${msg.uid} «${subject}» has no date`);
@@ -148,6 +158,23 @@ export async function archiveMails(opts: {
         };
         if (opts.keep && !opts.keep(mail)) continue;
         mails.push(mail);
+        if (opts.pdfAttachment) {
+          mail.attachments = [];
+          for (const a of pdfAttachmentsFromStructure(msg.bodyStructure)) {
+            if (opts.pdfAttachment(a.filename)) pdfParts.push({ mail, uid: msg.uid, part: a.part, filename: a.filename });
+          }
+        }
+      }
+      // Downloaded once the fetch stream is done (a download inside it would wait on the stream).
+      for (const a of pdfParts) {
+        const download = await client.download(String(a.uid), a.part, { uid: true });
+        const chunks: Buffer[] = [];
+        for await (const chunk of download.content) chunks.push(Buffer.from(chunk));
+        const dir = ensureDir(path.join(resolveCfraserDir(), opts.dir, "attachments"));
+        const file = path.join(dir, `${a.mail.sent_at_chile.slice(0, 10)}-${a.uid}-${safeAttachmentName(a.filename, "attachment.pdf")}`);
+        fs.writeFileSync(file, Buffer.concat(chunks));
+        const text = execFileSync("pdftotext", ["-layout", file, "-"], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+        a.mail.attachments!.push({ filename: a.filename, file, text });
       }
     } finally {
       lock.release();
