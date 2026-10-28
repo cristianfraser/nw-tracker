@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
 import { AppLineChart } from "../components/charts/AppLineChart";
@@ -167,53 +167,75 @@ function MyDataTable({
   );
 }
 
-/** p50/p90/p99 stacked for one distribution cell; a pair dims once its threshold sits below today's net worth. */
-function ThresholdPairsCell({
-  cell,
-  currentNwUsd,
-  displayUnit,
-}: {
-  cell: WealthPercentileCell;
-  currentNwUsd: number;
-  displayUnit: "clp" | "usd";
-}) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
-      {THRESHOLD_KEYS_DESC.map((k) => {
-        // Compare in USD so dimming is independent of the CLP/USD display toggle.
-        const surpassed = thresholdOf(cell, k, "usd") < currentNwUsd;
-        return (
-          <span key={k} style={{ whiteSpace: "nowrap", ...(surpassed ? { opacity: 0.28 } : null) }}>
-            {`${k}: ${formatCurrency(thresholdOf(cell, k, displayUnit), displayUnit)}`}
-          </span>
-        );
-      })}
-    </div>
-  );
+const THRESHOLD_PERCENTILE: Record<ThresholdKey, number> = { p50: 50, p90: 90, p99: 99 };
+
+/**
+ * Own percentile label, truncated (never rounded up) so it cannot read as the threshold above it:
+ * 98,96 is «p98,9», not «p99,0». Two decimals above p99, where one would show «p99,9» for 99,96.
+ */
+function ownPercentileLabel(percentile: number): string {
+  const decimals = percentile >= 99 ? 2 : 1;
+  const factor = 10 ** decimals;
+  return `p${formatGroupedDecimal(Math.floor(percentile * factor) / factor, decimals)}`;
 }
 
 /**
- * Año | CL fin. | CL | benchmark columns (same order as MyDataTable) — p99/p90/p50 per cell; surpassed
- * thresholds dim. The CL fin. column (Chile financial-wealth distribution, ex real estate) dims against
- * today's FINANCIAL net worth; total-mode columns dim against today's total net worth.
+ * p99/p90/p50 stacked for one distribution cell, with the user's own net worth for that year inserted
+ * where its percentile falls (above p99, between two thresholds, or below p50) and highlighted.
+ */
+function ThresholdPairsCell({
+  cell,
+  ownUsd,
+  ownClp,
+  displayUnit,
+}: {
+  cell: WealthPercentileCell;
+  ownUsd: number;
+  ownClp: number;
+  displayUnit: "clp" | "usd";
+}) {
+  const { t } = useTranslation();
+  const ownValue = formatCurrency(displayUnit === "usd" ? ownUsd : ownClp, displayUnit);
+  const ownLine = (
+    <span key="own" className="wealth-own-threshold" style={{ whiteSpace: "nowrap" }}>
+      {`${cell.below_support || cell.percentile === null ? t("wealthPercentile.belowSupport") : ownPercentileLabel(cell.percentile)}: ${ownValue}`}
+    </span>
+  );
+  const lines: ReactNode[] = [];
+  let ownPlaced = false;
+  for (const k of THRESHOLD_KEYS_DESC) {
+    if (!ownPlaced && cell.percentile !== null && cell.percentile >= THRESHOLD_PERCENTILE[k]) {
+      lines.push(ownLine);
+      ownPlaced = true;
+    }
+    lines.push(
+      <span key={k} style={{ whiteSpace: "nowrap" }}>
+        {`${k}: ${formatCurrency(thresholdOf(cell, k, displayUnit), displayUnit)}`}
+      </span>
+    );
+  }
+  if (!ownPlaced) lines.push(ownLine);
+  return <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>{lines}</div>;
+}
+
+/**
+ * Año | CL fin. | CL | benchmark columns (same order as MyDataTable) — p99/p90/p50 per cell plus the
+ * user's own line for that year. The CL fin. column (Chile financial-wealth distribution, ex real
+ * estate) places the year's FINANCIAL net worth; total-mode columns place the year's total net worth.
  */
 function CountryDataTable({
   rows,
-  currentNwUsd,
-  currentFinNwUsd,
   countries,
   loading,
 }: {
   rows: readonly WealthPercentileYearRow[];
-  currentNwUsd: number;
-  currentFinNwUsd: number;
   countries: readonly WealthBenchmarkCountry[];
   loading?: boolean;
 }) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  const pairs = (cell: WealthPercentileCell, baselineUsd: number) => (
-    <ThresholdPairsCell cell={cell} currentNwUsd={baselineUsd} displayUnit={displayUnit} />
+  const pairs = (cell: WealthPercentileCell, ownUsd: number, ownClp: number) => (
+    <ThresholdPairsCell cell={cell} ownUsd={ownUsd} ownClp={ownClp} displayUnit={displayUnit} />
   );
 
   const header = (
@@ -241,19 +263,19 @@ function CountryDataTable({
             <td className="mono desktop-only" style={{ verticalAlign: "top" }}>
               {yearLabel}
             </td>
-            <td className="mono desktop-only">{pairs(row.cl_financial, currentFinNwUsd)}</td>
-            <td className="mono desktop-only">{pairs(row.cl_total, currentNwUsd)}</td>
+            <td className="mono desktop-only">{pairs(row.cl_financial, row.fin_net_worth_usd, row.fin_net_worth_clp)}</td>
+            <td className="mono desktop-only">{pairs(row.cl_total, row.net_worth_usd, row.net_worth_clp)}</td>
             {countries.map((c) => (
               <td key={c} className="mono desktop-only">
-                {pairs(row.benchmarks[c], currentNwUsd)}
+                {pairs(row.benchmarks[c], row.net_worth_usd, row.net_worth_clp)}
               </td>
             ))}
             <td className="mobile-only">
               <TableMobileCard title={yearLabel}>
-                <TableMobileCardRow label="CL fin." value={pairs(row.cl_financial, currentFinNwUsd)} />
-                <TableMobileCardRow label="CL" value={pairs(row.cl_total, currentNwUsd)} />
+                <TableMobileCardRow label="CL fin." value={pairs(row.cl_financial, row.fin_net_worth_usd, row.fin_net_worth_clp)} />
+                <TableMobileCardRow label="CL" value={pairs(row.cl_total, row.net_worth_usd, row.net_worth_clp)} />
                 {countries.map((c) => (
-                  <TableMobileCardRow key={c} label={c} value={pairs(row.benchmarks[c], currentNwUsd)} />
+                  <TableMobileCardRow key={c} label={c} value={pairs(row.benchmarks[c], row.net_worth_usd, row.net_worth_clp)} />
                 ))}
               </TableMobileCard>
             </td>
@@ -357,10 +379,8 @@ export function WealthPercentilePage() {
   }
 
   const rows = data?.rows ?? [];
-  // Dimming baseline + column order both come from the latest row (current year, valued as of today).
+  // Column order comes from the latest row (current year, valued as of today).
   const latestRow = rows.length ? rows.reduce((m, r) => (r.year > m.year ? r : m)) : null;
-  const currentNwUsd = latestRow?.net_worth_usd ?? 0;
-  const currentFinNwUsd = latestRow?.fin_net_worth_usd ?? 0;
   // Enabled benchmark columns ordered by today's percentile, highest first (easiest country → hardest).
   const benchmarkOrder: readonly WealthBenchmarkCountry[] = latestRow
     ? [...enabledBenchmarks].sort(
@@ -465,8 +485,6 @@ export function WealthPercentilePage() {
         <h2>{t("wealthPercentile.tables.countryData")}</h2>
         <CountryDataTable
           rows={rows}
-          currentNwUsd={currentNwUsd}
-          currentFinNwUsd={currentFinNwUsd}
           countries={benchmarkOrder}
           loading={loading}
         />
