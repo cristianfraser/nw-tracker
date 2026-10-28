@@ -13,7 +13,7 @@
  * for it) and no m³: those are only in the PDF behind the mail's link, so `m3` stays null.
  *
  * A mail from these senders with another subject is marketing and decodes to null; a bill mail a
- * decoder cannot read throws.
+ * decoder cannot read throws. A building's gastos comunes statements are `hoaStatementMails.ts`.
  */
 import type { UtilityBill } from "nw-tracker-contracts";
 import type { ArchivedMail } from "../email/santanderMailArchive.js";
@@ -33,6 +33,8 @@ export type UtilityProvider = {
   from: string;
   wantSubject: (subject: string) => boolean;
   decode: (mail: ArchivedMail) => DecodedUtilityBill | null;
+  /** PDF attachments the decoder reads, by file name (staged with their text). */
+  pdfAttachment?: (filename: string) => boolean;
 };
 
 function need(text: string, re: RegExp, what: string): RegExpMatchArray {
