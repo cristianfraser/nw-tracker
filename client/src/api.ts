@@ -461,7 +461,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  income: () => j<import("./types").FlowsIncomeResponse>("/api/income"),
+  income: (unit: "clp" | "usd") =>
+    j<import("./types").FlowsIncomeResponse>(`/api/income?unit=${unit}`),
   patchWorkEarning: (
     id: number,
     body: {

@@ -14,7 +14,7 @@ import {
   flowTableGranularity,
   formatFlowMoney,
 } from "../flowsDisplay";
-import { clipMonthsThenRollup, timeRangeCutoffYmd, timeRangeToDays } from "../timeRange";
+import { clipMonthsThenRollup, clipPointsToTimeRange, timeRangeToDays } from "../timeRange";
 import { useTranslation } from "../i18n";
 import { useFlowsOverview } from "../queries/hooks";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
@@ -137,8 +137,7 @@ export function FlowsOverviewPage() {
   const chartRows = useMemo(() => {
     if (!isDaily) return rows;
     if (!dayRows) return [];
-    const cutoff = timeRangeCutoffYmd(timeRange);
-    return cutoff ? dayRows.filter((r) => r.as_of_date >= cutoff) : dayRows;
+    return clipPointsToTimeRange(dayRows, timeRange);
   }, [dayRows, isDaily, rows, timeRange]);
 
   const chartPoints = useMemo(
