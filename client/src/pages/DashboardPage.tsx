@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  LineChartPanel,
   MonthlyPerformanceComboChart,
   ProportionalAreaChart,
   ValuationLineCharts,
@@ -17,7 +16,7 @@ import {
   prefetchDashboardNavSnapshot,
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
-import { otherDisplayUnit, type DisplayUnit } from "../queries/keys";
+import { otherDisplayUnit } from "../queries/keys";
 import { isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
   nwBucketTotalsFromDashTotals,
@@ -31,8 +30,7 @@ import {
   useSidebarNav,
 } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { allocationBucketColor } from "../chartColors";
-import { appendTrailingMovingAverage } from "../chartMovingAverage";
+import { allocationBucketColor, desaturateStroke, isUsdMilestoneDataKey } from "../chartColors";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../dashboardTimeseriesYearly";
 import { rollupChartPointsByYear } from "../flowsDisplay";
 import { useTranslation } from "../i18n";
@@ -53,7 +51,7 @@ import { useSurfaceAreaMode, useSurfaceCompositionView, useSurfacePrefs } from "
 import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { DashboardFlowsSummary } from "../components/dashboard/DashboardFlowsSummary";
-import type { TimeseriesBlock } from "../types";
+import type { InversionesDepositsPoint, TimeseriesBlock } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
 
@@ -68,8 +66,13 @@ const DAILY_OVERVIEW_LINE_KEYS = new Set([
   "liabilities",
 ]);
 
+/** The daily point fields each overview line reads (USD milestone keys are the same on both). */
+const DAILY_OVERVIEW_POINT_FIELD: Record<string, string> = {
+  total_nw: "net_worth",
+  cash: "cash_eqs",
+};
+
 type ComboRow = Record<string, string | number | null>;
-type DepositedPoint = { as_of_date: string; deposited: number };
 
 /** The P/L combos' yearly rows: class Δs and the combined Δ sum, accumulated is year-end. */
 function rollupCombinedPerfYearly(months: readonly ComboRow[]): ComboRow[] {
@@ -81,28 +84,27 @@ function rollupCombinedPerfYearly(months: readonly ComboRow[]): ComboRow[] {
   });
 }
 
-function rollupDepositedByYear(months: readonly DepositedPoint[]): DepositedPoint[] {
-  return rollupChartPointsByYear(months, ["deposited"]);
+function rollupDepositsByYear(months: readonly InversionesDepositsPoint[]): InversionesDepositsPoint[] {
+  return rollupChartPointsByYear(months, ["retirement", "brokerage"]);
 }
 
-/** Retiro + brokerage net deposits of each row's period, joined by date (0 when none). */
+/** Retiro and brokerage net deposits of each row's period, by class and Σ, joined by date (0 when none). */
 function withInversionesDeposits(
   rows: readonly ComboRow[],
-  deposits: readonly DepositedPoint[]
+  deposits: readonly InversionesDepositsPoint[]
 ): ComboRow[] {
-  const byDate = new Map(deposits.map((p) => [p.as_of_date, p.deposited]));
-  return rows.map((row) => ({
-    ...row,
-    deposits_inversiones: byDate.get(String(row.as_of_date ?? "")) ?? 0,
-  }));
-}
-
-function withInversionesMovingAverages(rows: ComboRow[]): ComboRow[] {
-  return appendTrailingMovingAverage(
-    appendTrailingMovingAverage(rows, "delta_combined", "delta_combined_ma3"),
-    "deposits_inversiones",
-    "deposits_inversiones_ma3"
-  );
+  const byDate = new Map(deposits.map((p) => [p.as_of_date, p]));
+  return rows.map((row) => {
+    const d = byDate.get(String(row.as_of_date ?? ""));
+    const retirement = d?.retirement ?? 0;
+    const brokerage = d?.brokerage ?? 0;
+    return {
+      ...row,
+      deposits_retirement: retirement,
+      deposits_brokerage: brokerage,
+      deposits_inversiones: retirement + brokerage,
+    };
+  });
 }
 
 export function DashboardPage() {
@@ -111,7 +113,6 @@ export function DashboardPage() {
   const { displayUnit } = useDisplayPreferences();
   const overviewPrefs = useSurfacePrefs("home.overview", "day", "3y");
   const principalesPrefs = useSurfacePrefs("home.principales", "day", "3y");
-  const patrimonioPrefs = useSurfacePrefs("home.patrimonio", "day", "3y");
   const combosPrefs = useSurfacePrefs("home.combos", "month", "3y");
   const perfArea = useSurfaceAreaMode("home.perf");
   const allocationPrefs = useSurfacePrefs("home.proportional", "month", "total");
@@ -216,12 +217,11 @@ export function DashboardPage() {
   const showUsd = displayUnit === "usd";
   const overviewIsDaily = overviewPrefs.period === "day";
   const principalesIsDaily = principalesPrefs.period === "day";
-  const patrimonioIsDaily = patrimonioPrefs.period === "day";
   const combosIsDaily = combosPrefs.period === "day";
   const combosIsYearly = combosPrefs.period === "year";
   const isYearly = combosIsYearly;
 
-  // Day view: each of the three valuation charts swaps to daily series from its own
+  // Day view: each of the two valuation charts swaps to daily series from its own
   // overview-daily fetch (surfaces that agree on the range dedupe into one request).
   const overviewDaily = useDashboardOverviewDaily(
     displayUnit,
@@ -235,12 +235,6 @@ export function DashboardPage() {
     principalesIsDaily
   );
   const principalesDailyData = principalesDaily.data;
-  const patrimonioDaily = useDashboardOverviewDaily(
-    displayUnit,
-    timeRangeToDays(patrimonioPrefs.range),
-    patrimonioIsDaily
-  );
-  const patrimonioDailyData = patrimonioDaily.data;
   // The value map replaces the composition chart; only the real bundle carries it.
   const valueMapRoot = useMemo(
     () =>
@@ -273,24 +267,32 @@ export function DashboardPage() {
     contentLoading ||
     dailyLoading(overviewIsDaily, overviewDaily) ||
     dailyLoading(principalesIsDaily, principalesDaily);
-  const patrimonioLoading = contentLoading || dailyLoading(patrimonioIsDaily, patrimonioDaily);
   const allocationLoading = contentLoading || dailyLoading(allocationIsDaily, allocationDaily);
   const dailyOverviewBlock = useMemo(() => {
     if (!overviewIsDaily || !overviewDailyData?.points.length || !ts?.overview) return null;
-    const lines = ts.overview.lines.filter((l) => DAILY_OVERVIEW_LINE_KEYS.has(String(l.dataKey)));
+    const lines = ts.overview.lines.filter(
+      (l) => DAILY_OVERVIEW_LINE_KEYS.has(String(l.dataKey)) || isUsdMilestoneDataKey(String(l.dataKey))
+    );
     if (!lines.length) return null;
-    const points = overviewDailyData.points.map((p) => ({
-      as_of_date: p.as_of_date,
-      total_nw: p.net_worth,
-      real_estate: p.real_estate,
-      retirement: p.retirement,
-      brokerage: p.brokerage,
-      cash: p.cash_eqs,
-      invested: p.invested,
-      liabilities: p.liabilities,
-    }));
-    return { lines, points };
-  }, [overviewIsDaily, overviewDailyData, ts?.overview]);
+    const points = overviewDailyData.points.map((p) => {
+      const src = p as unknown as Record<string, number | string | null>;
+      const row: Record<string, string | number | null> = { as_of_date: p.as_of_date };
+      for (const l of lines) {
+        const key = String(l.dataKey);
+        row[key] = src[DAILY_OVERVIEW_POINT_FIELD[key] ?? key] ?? null;
+      }
+      return row;
+    });
+    // The milestone anchors only while both payloads are in the same unit (a held prior-unit
+    // monthly bundle would mix units).
+    return {
+      lines,
+      points,
+      ...(ts.unit === overviewDailyData.unit
+        ? { referenceMilestoneByDate: ts.overview.referenceMilestoneByDate }
+        : {}),
+    };
+  }, [overviewIsDaily, overviewDailyData, ts?.overview, ts?.unit]);
 
   // Day mode: «Cuentas principales» swaps to the per-child daily lines. Borrow the monthly
   // block's account metadata (ids/colors/labels) so line identities survive the M↔D toggle,
@@ -310,21 +312,6 @@ export function DashboardPage() {
     });
     return { accounts, points };
   }, [principalesIsDaily, principalesDailyData, ts?.accounts_ex_property]);
-
-  // Day mode: «Patrimonio neto vs invested» swaps to daily points (in the daily payload's
-  // unit). Borrow the monthly block's line metadata; its milestone anchors only while both
-  // payloads are in the same unit (a held prior-unit monthly block would mix units).
-  const dailyPatrimonioBlock = useMemo(() => {
-    const src = ts?.patrimonio_usd_milestones_chart;
-    if (!patrimonioIsDaily || !patrimonioDailyData?.patrimonio?.length || !src) return null;
-    const { referenceMilestoneByDate, ...rest } = src;
-    return {
-      ...rest,
-      ...(src.unit === patrimonioDailyData.unit ? { referenceMilestoneByDate } : {}),
-      unit: patrimonioDailyData.unit,
-      points: patrimonioDailyData.patrimonio,
-    };
-  }, [patrimonioIsDaily, patrimonioDailyData, ts?.patrimonio_usd_milestones_chart]);
 
   /** Union of retirement + brokerage group monthly Δ; YTD and cumulative on combined monthly Δ. */
   const retirementBrokeragePerfPoints = useMemo(() => {
@@ -441,6 +428,8 @@ export function DashboardPage() {
     });
     return rows.map((row, i) => ({
       ...row,
+      deposits_retirement: retDeps[i] ?? 0,
+      deposits_brokerage: brkDeps[i] ?? 0,
       deposits_inversiones: (retDeps[i] ?? 0) + (brkDeps[i] ?? 0),
     }));
   }, [combosIsDaily, retirementDaily.data, brokerageDaily.data, retirementBrokeragePerfPoints]);
@@ -452,38 +441,15 @@ export function DashboardPage() {
       : showUsd && depChart.monthly_usd
         ? depChart.monthly_usd
         : depChart.monthly_clp;
-    if (!isYearly) {
-      // The chart clips the months; the MA3 trails the full history.
-      return withInversionesMovingAverages(
-        withInversionesDeposits(retirementBrokerageForCharts, monthlyDeposits)
-      );
-    }
-    // Yearly: the deposits companion goes through the same months-then-rollup order as the P/L
-    // rows (a partial first year), while the MA3 trails the FULL-history years — a partial first
-    // year must not drag it, and the first visible years keep their trailing context, as in the
-    // monthly view.
-    const plotted = withInversionesDeposits(
+    if (!isYearly) return withInversionesDeposits(retirementBrokerageForCharts, monthlyDeposits);
+    // Yearly: the deposits go through the same months-then-rollup order as the P/L rows (a
+    // partial first year).
+    return withInversionesDeposits(
       retirementBrokerageForCharts,
-      clipMonthsThenRollup(monthlyDeposits, "year", combosPrefs.range, rollupDepositedByYear)
+      clipMonthsThenRollup(monthlyDeposits, "year", combosPrefs.range, rollupDepositsByYear)
     );
-    const fullYears = withInversionesMovingAverages(
-      withInversionesDeposits(
-        rollupCombinedPerfYearly(retirementBrokeragePerfPoints),
-        rollupDepositedByYear(monthlyDeposits)
-      )
-    );
-    const maByDate = new Map(fullYears.map((row) => [String(row.as_of_date ?? ""), row]));
-    return plotted.map((row) => {
-      const ma = maByDate.get(String(row.as_of_date ?? ""));
-      return {
-        ...row,
-        delta_combined_ma3: ma?.delta_combined_ma3 ?? null,
-        deposits_inversiones_ma3: ma?.deposits_inversiones_ma3 ?? null,
-      };
-    });
   }, [
     retirementBrokerageForCharts,
-    retirementBrokeragePerfPoints,
     dash?.inversiones_deposits_chart,
     isYearly,
     showUsd,
@@ -493,9 +459,13 @@ export function DashboardPage() {
   // Each valuation chart rolls up (or not) per its OWN period control.
   const overviewBlock = useMemo((): TimeseriesBlock | null => {
     if (!ts?.overview) return null;
-    const base = { lines: ts.overview.lines, points: ts.overview.points };
+    const base = {
+      lines: ts.overview.lines,
+      points: ts.overview.points,
+      referenceMilestoneByDate: ts.overview.referenceMilestoneByDate,
+    };
     if (overviewPrefs.period !== "year") return base;
-    return { lines: ts.overview.lines, points: rollupTimeseriesBlockYearEnd(base).points };
+    return { ...base, points: rollupTimeseriesBlockYearEnd(base).points };
   }, [ts?.overview, overviewPrefs.period]);
 
   const principalesBlock = useMemo(() => {
@@ -505,21 +475,6 @@ export function DashboardPage() {
       : ts.accounts_ex_property;
   }, [ts?.accounts_ex_property, principalesPrefs.period]);
 
-  const patrimonioBlock = useMemo(() => {
-    const src = ts?.patrimonio_usd_milestones_chart;
-    if (!src) return null;
-    return patrimonioPrefs.period === "year"
-      ? { ...rollupTimeseriesBlockYearEnd(src), unit: src.unit }
-      : src;
-  }, [ts?.patrimonio_usd_milestones_chart, patrimonioPrefs.period]);
-  // The block carries its own unit: a held prior-unit block keeps rendering in that unit until
-  // the new one lands (the zero placeholder has none and takes the toggle's).
-  const patrimonioShown = dailyPatrimonioBlock ?? patrimonioBlock;
-  const patrimonioUnit: DisplayUnit =
-    patrimonioShown?.unit === "usd" || patrimonioShown?.unit === "clp"
-      ? patrimonioShown.unit
-      : displayUnit;
-
   const bucketColorBySlug = useMemo(() => {
     const m = new Map<string, string>();
     for (const row of dash?.allocation ?? []) {
@@ -527,6 +482,8 @@ export function DashboardPage() {
     }
     return m;
   }, [dash?.allocation]);
+  const retirementColor = bucketColorBySlug.get("retirement") ?? allocationBucketColor("retirement");
+  const brokerageColor = bucketColorBySlug.get("brokerage") ?? allocationBucketColor("brokerage");
 
   const netWorthTableAccounts = useMemo(() => {
     const rows =
@@ -568,7 +525,7 @@ export function DashboardPage() {
     ? (allocationDailyData?.allocation_proportional ?? null)
     : (ts.allocation_proportional ?? null);
 
-  // The three P/L combo charts share ONE control (`home.combos`) — same state, rendered on each title.
+  // The P/L + deposits combo keeps its `home.combos` control (period + range).
   const combosXAxis = dailyRetirementBrokeragePoints
     ? ("day" as const)
     : combosIsYearly
@@ -643,37 +600,6 @@ export function DashboardPage() {
         loading={valuationChartsLoading}
       />
 
-      {/* Pesos in both units, so a held prior-unit bundle's block is still right (dimmed). */}
-      {patrimonioBlock?.points.length ? (
-        <>
-          <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
-            <LineChartPanel
-              title={t("dashboard.sections.netWorthUsdChartTitle")}
-              block={patrimonioShown!}
-              displayUnit={patrimonioUnit}
-              includeAccumulatedLines={false}
-              trimLeadingInactive={false}
-              colorPlan={{ kind: "dashboard-patrimonio-usd" }}
-              thickKey="total_nw"
-              xAxisGranularity={
-                dailyPatrimonioBlock ? "day" : patrimonioPrefs.period === "year" ? "year" : "month"
-              }
-              timeRange={patrimonioPrefs.range}
-              controls={
-                <SurfaceControls
-                  period={patrimonioPrefs.period}
-                  onPeriodChange={patrimonioPrefs.setPeriod}
-                  range={patrimonioPrefs.range}
-                  onRangeChange={patrimonioPrefs.setRange}
-                />
-              }
-              yScaleDataKeys={["total_nw", "invested"]}
-              loading={patrimonioLoading}
-            />
-          </div>
-        </>
-      ) : null}
-
       <DashboardFlowsSummary displayUnit={displayUnit} />
 
       <CcUpcomingPaymentsPanel data={data?.ccUpcomingPayments ?? null} loading={contentLoading} />
@@ -696,14 +622,33 @@ export function DashboardPage() {
                   name: isYearly
                     ? t("dashboard.sections.deltaRetirementYearly")
                     : t("dashboard.sections.deltaRetirementMonthly"),
-                  color: bucketColorBySlug.get("retirement") ?? allocationBucketColor("retirement"),
+                  color: retirementColor,
+                  stackId: "pl",
                 },
                 {
                   dataKey: "delta_brokerage",
                   name: isYearly
                     ? t("dashboard.sections.deltaBrokerageYearly")
                     : t("dashboard.sections.deltaBrokerageMonthly"),
-                  color: bucketColorBySlug.get("brokerage") ?? allocationBucketColor("brokerage"),
+                  color: brokerageColor,
+                  stackId: "pl",
+                },
+                // Deposits stack beside the P/L one, each class in its own hue, less saturated.
+                {
+                  dataKey: "deposits_retirement",
+                  name: isYearly
+                    ? t("dashboard.sections.depositsRetirementYearly")
+                    : t("dashboard.sections.depositsRetirementMonthly"),
+                  color: desaturateStroke(retirementColor),
+                  stackId: "deposits",
+                },
+                {
+                  dataKey: "deposits_brokerage",
+                  name: isYearly
+                    ? t("dashboard.sections.depositsBrokerageYearly")
+                    : t("dashboard.sections.depositsBrokerageMonthly"),
+                  color: desaturateStroke(brokerageColor),
+                  stackId: "deposits",
                 },
               ]}
               areaKey={perfArea.area === "total" ? "accumulated_earnings" : "ytd_combined"}
@@ -717,62 +662,21 @@ export function DashboardPage() {
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
               alternateYearAreaStripes={perfArea.area !== "total"}
-              lineKey="delta_combined"
-              lineName={isYearly ? t("dashboard.combinedAnnualDelta") : t("dashboard.combinedMonthlyDelta")}
-              loading={combosLoading}
-            />
-          </div>
-          <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
-            <MonthlyPerformanceComboChart
-              title={
-                isYearly
-                  ? t("dashboard.sections.accumFlowsChartTitleYearly")
-                  : t("dashboard.sections.accumFlowsChartTitleMonthly")
-              }
-              points={dailyRetirementBrokeragePoints ?? retirementBrokerageAccumChart}
-              displayUnit={displayUnit}
-              xAxisGranularity={combosXAxis}
-              timeRange={combosPrefs.range}
-              controls={combosControls}
-              loading={combosLoading}
-              barSeries={[
+              lineSeries={[
                 {
                   dataKey: "delta_combined",
-                  name: isYearly
-                    ? t("dashboard.sections.deltaCombinedYearly")
-                    : t("dashboard.sections.deltaCombinedMonthly"),
-                  color: "#38bdf8",
+                  name: isYearly ? t("dashboard.combinedAnnualDelta") : t("dashboard.combinedMonthlyDelta"),
+                  stroke: "#38bdf8",
                 },
                 {
                   dataKey: "deposits_inversiones",
                   name: isYearly
-                    ? t("dashboard.sections.depositsInversionesYearly")
-                    : t("dashboard.sections.depositsInversionesMonthly"),
-                  color: "#a78bfa",
+                    ? t("dashboard.combinedAnnualDeposits")
+                    : t("dashboard.combinedMonthlyDeposits"),
+                  stroke: "#a78bfa",
                 },
               ]}
-              lineSeries={dailyRetirementBrokeragePoints ? [] : [
-                {
-                  dataKey: "delta_combined_ma3",
-                  name: isYearly
-                    ? t("dashboard.sections.ma3DeltaCombinedYearly")
-                    : t("dashboard.sections.ma3DeltaCombinedMonthly"),
-                  stroke: "#0ea5e9",
-                  strokeWidth: 1.5,
-                  showDot: false,
-                  pairsWithBar: "delta_combined",
-                },
-                {
-                  dataKey: "deposits_inversiones_ma3",
-                  name: isYearly
-                    ? t("dashboard.sections.ma3DepositsInversionesYearly")
-                    : t("dashboard.sections.ma3DepositsInversionesMonthly"),
-                  stroke: "#8b5cf6",
-                  strokeWidth: 1.5,
-                  showDot: false,
-                  pairsWithBar: "deposits_inversiones",
-                },
-              ]}
+              loading={combosLoading}
             />
           </div>
         </>

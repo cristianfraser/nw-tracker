@@ -359,16 +359,77 @@ function InteractiveLegend({
   const visible = series.filter((s) => !s.isDeposit);
   if (visible.length === 0) return null;
   const dim = focusColorIndex != null;
+  // Faint reference lines (USD milestones) get their own row under the data lines.
+  const rows = [visible.filter((s) => !s.isFaintReference), visible.filter((s) => s.isFaintReference)].filter(
+    (row) => row.length > 0
+  );
+  const rowStyle = {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignContent: "flex-start",
+    rowGap: 12,
+    columnGap: 20,
+  } as const;
+  const renderItem = (s: ResolvedLineSeriesItem) => {
+    const color = s.stroke;
+    const isHi = focusColorIndex != null && s.colorIndex === focusColorIndex;
+    const faded = dim && !isHi;
+    const isFaint = Boolean(s.isFaintReference);
+    const isDerivedDash =
+      isFaint ||
+      s.dataKey === "invested" ||
+      s.dataKey === "available" ||
+      s.dataKey === "all_available" ||
+      s.dataKey.startsWith("ref:");
+    const legBase = isDerivedDash ? 1.5 : 2;
+    return (
+      <button
+        key={s.dataKey}
+        type="button"
+        onPointerEnter={() => onHighlight(s.dataKey)}
+        style={{ opacity: faded ? DIM_LEGEND_OPACITY : 1 }}
+      >
+        <svg width={18} height={10} aria-hidden style={{ flexShrink: 0 }}>
+          <line
+            x1={0}
+            y1={5}
+            x2={18}
+            y2={5}
+            stroke={color}
+            strokeWidth={isHi ? (isDerivedDash ? Math.max(legBase * 1.35, legBase + 0.85) : 3.5) : legBase}
+            {...(isFaint ? { strokeDasharray: "4 3" } : {})}
+            opacity={
+              faded
+                ? 0.5
+                : isFaint
+                  ? 0.6
+                  : s.dataKey === "all_available" || s.dataKey.includes("disponible_total")
+                    ? 0.6
+                    : isDerivedDash
+                      ? 0.8
+                      : 1
+            }
+          />
+        </svg>
+        <span
+          style={{
+            fontWeight: 400,
+            ...(focusColorIndex != null && isHi ? { color: "#f1f5f9" } : {}),
+          }}
+        >
+          {s.name}
+        </span>
+      </button>
+    );
+  };
   return (
     <div
       className="line-chart-legend"
       style={{
         display: "flex",
-        flexWrap: "wrap",
-        justifyContent: "center",
-        alignContent: "flex-start",
+        flexDirection: "column",
         rowGap: 12,
-        columnGap: 20,
         paddingTop: 14,
         paddingBottom: 10,
         fontSize: 12,
@@ -376,53 +437,11 @@ function InteractiveLegend({
         color: "var(--muted, #94a3b8)",
       }}
     >
-      {visible.map((s) => {
-        const color = s.stroke;
-        const isHi = focusColorIndex != null && s.colorIndex === focusColorIndex;
-        const faded = dim && !isHi;
-        const isDerivedDash =
-          s.dataKey === "invested" ||
-          s.dataKey === "available" ||
-          s.dataKey === "all_available" ||
-          s.dataKey.startsWith("ref:");
-        const legBase = isDerivedDash ? 1.5 : 2;
-        return (
-          <button
-            key={s.dataKey}
-            type="button"
-            onPointerEnter={() => onHighlight(s.dataKey)}
-            style={{ opacity: faded ? DIM_LEGEND_OPACITY : 1 }}
-          >
-            <svg width={18} height={10} aria-hidden style={{ flexShrink: 0 }}>
-              <line
-                x1={0}
-                y1={5}
-                x2={18}
-                y2={5}
-                stroke={color}
-                strokeWidth={isHi ? (isDerivedDash ? Math.max(legBase * 1.35, legBase + 0.85) : 3.5) : legBase}
-                opacity={
-                  faded
-                    ? 0.5
-                    : s.dataKey === "all_available" || s.dataKey.includes("disponible_total")
-                      ? 0.6
-                      : isDerivedDash
-                        ? 0.8
-                        : 1
-                }
-              />
-            </svg>
-            <span
-              style={{
-                fontWeight: 400,
-                ...(focusColorIndex != null && isHi ? { color: "#f1f5f9" } : {}),
-              }}
-            >
-              {s.name}
-            </span>
-          </button>
-        );
-      })}
+      {rows.map((row, i) => (
+        <div key={i} style={rowStyle}>
+          {row.map(renderItem)}
+        </div>
+      ))}
     </div>
   );
 }
@@ -522,11 +541,13 @@ export function LineChartPanel({
     return row ? { x: row.x, index: row.index, value: athMarker.value } : null;
   }, [athMarker, chartData, xAxisGranularity]);
 
+  // Faint reference lines (USD milestones) never stretch the axis: they are context, drawn only
+  // where they fall inside the data's range.
   const yScale = useMemo(() => {
     const scaleSeries =
       yScaleDataKeys?.length && yScaleDataKeys.length > 0
         ? visibleSeries.filter((s) => yScaleDataKeys.includes(s.dataKey))
-        : visibleSeries;
+        : visibleSeries.filter((s) => !s.isFaintReference);
     const { min, max } = minMaxForKeys(chartData, scaleSeries.map((s) => s.dataKey));
     // App-wide rule: a value axis starts at 0 (non-negative series) or spans it (mixed-sign);
     // a padded band around the data range would read a flat holding as a wild swing.
@@ -537,12 +558,11 @@ export function LineChartPanel({
   const lineCurveType = clipPlotToYDomain ? "linear" : "monotone";
 
   const plotChartData = useMemo(() => {
-    if (!clipPlotToYDomain) return chartData;
-    return clipChartDataToYDomain(
-      chartData,
-      visibleSeries.map((s) => s.dataKey),
-      yScale.domain
-    );
+    const clipKeys = clipPlotToYDomain
+      ? visibleSeries.map((s) => s.dataKey)
+      : visibleSeries.filter((s) => s.isFaintReference).map((s) => s.dataKey);
+    if (!clipKeys.length) return chartData;
+    return clipChartDataToYDomain(chartData, clipKeys, yScale.domain);
   }, [chartData, visibleSeries, yScale.domain, clipPlotToYDomain]);
 
   // Tooltip nearness to the peak works in plotted-row indices (the tooltip only knows the
@@ -676,9 +696,12 @@ export function LineChartPanel({
                   (colorPlan?.kind === "dashboard-overview" && s.dataKey === "invested") ||
                   isLiquidityRefLine;
                 const isRefOverlay = Boolean(s.isReferenceOverlay);
+                const isFaintRef = Boolean(s.isFaintReference);
                 const baseW = isDep
                   ? 1.15
-                  : isRefOverlay
+                  : isFaintRef
+                    ? 1
+                    : isRefOverlay
                     ? 1.25
                     : isThinDerivedLine
                       ? 1.5
@@ -687,7 +710,9 @@ export function LineChartPanel({
                         : 2;
                 const baseOpacity = isDep
                   ? 0.8
-                  : isRefOverlay
+                  : isFaintRef
+                    ? 0.3
+                    : isRefOverlay
                     ? 0.55
                     : s.dataKey === "all_available" || s.dataKey.includes("disponible_total")
                       ? 0.6

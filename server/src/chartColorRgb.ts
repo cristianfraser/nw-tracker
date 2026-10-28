@@ -283,7 +283,6 @@ export function attachColorsToValuationPayload<T extends Record<string, unknown>
   const keys = [
     "accounts_in_group",
     "accounts_ex_property",
-    "patrimonio_usd_milestones_chart",
     "accounts",
   ] as const;
   const out = { ...payload } as Record<string, unknown>;

@@ -48,6 +48,51 @@ export function lightenStrokeForAccumulated(baseStroke: string, mixTowardWhite =
   return `rgb(${r},${g},${b})`;
 }
 
+/**
+ * The same hue and lightness with its HSL saturation scaled by `factor` (a companion series that
+ * reads as the same class, one step quieter). Accepts `#rrggbb` and `rgb(r,g,b)`; anything else
+ * comes back unchanged.
+ */
+export function desaturateStroke(baseStroke: string, factor = 0.6): string {
+  const s = baseStroke.trim();
+  const hex6 = /^#?([0-9a-f]{6})$/i.exec(s);
+  const rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(s);
+  let r: number;
+  let g: number;
+  let b: number;
+  if (hex6) {
+    const h = hex6[1]!;
+    r = parseInt(h.slice(0, 2), 16);
+    g = parseInt(h.slice(2, 4), 16);
+    b = parseInt(h.slice(4, 6), 16);
+  } else if (rgb) {
+    r = Number(rgb[1]);
+    g = Number(rgb[2]);
+    b = Number(rgb[3]);
+  } else {
+    return baseStroke;
+  }
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  const d = max - min;
+  let hue = 0;
+  let sat = 0;
+  if (d > 0) {
+    sat = d / (1 - Math.abs(2 * l - 1));
+    if (max === rn) hue = ((gn - bn) / d) % 6;
+    else if (max === gn) hue = (bn - rn) / d + 2;
+    else hue = (rn - gn) / d + 4;
+    hue *= 60;
+    if (hue < 0) hue += 360;
+  }
+  const scaled = Math.min(1, Math.max(0, sat * factor));
+  return `hsl(${hue.toFixed(1)}, ${(scaled * 100).toFixed(1)}%, ${(l * 100).toFixed(1)}%)`;
+}
+
 const RETIREMENT = ["#14532d", "#166534", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac"];
 const BROKERAGE = ["#1e3a8a", "#1e40af", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe"];
 /** Same blue as dashboard “Brokerage (consolidado)” / allocation brokerage slice (`BROKERAGE[3]`). */
@@ -180,7 +225,6 @@ export type ChartColorPlan =
   | { kind: "default" }
   | { kind: "dashboard-primary" }
   | { kind: "dashboard-overview" }
-  | { kind: "dashboard-patrimonio-usd" }
   | {
     kind: "group-tab";
     groupSlug: AssetGroupSlug;
@@ -200,9 +244,16 @@ export type LineSeriesColorInput = {
   isDeposit?: boolean;
   /** Deposit companions: dataKey of the value series this aportes-acum. line belongs to. */
   depositFor?: string;
-  /** Dashed overlay (e.g. USD milestone lines on patrimonio chart). */
+  /** Dashed overlay (e.g. the invested line, liquidity reference lines). */
   isReferenceOverlay?: boolean;
+  /** Fainter dashed overlay (USD milestone lines on the home net-worth chart). */
+  isFaintReference?: boolean;
 };
+
+/** USD milestone reference line on the home net-worth chart (`usd_50k`, …; server key format). */
+export function isUsdMilestoneDataKey(dataKey: string): boolean {
+  return dataKey.startsWith("usd_");
+}
 
 export type ResolvedLineSeriesItem = LineSeriesColorInput & { stroke: string };
 
@@ -236,21 +287,15 @@ export function resolveLineSeriesColors(
   }
 
   if (plan.kind === "dashboard-overview") {
-    return series.map((s) => ({
-      ...s,
-      stroke: strokeFromAccountColorRgb(s.color_rgb) ?? overviewLineColor(s.dataKey),
-    }));
-  }
-
-  if (plan.kind === "dashboard-patrimonio-usd") {
     const milestoneStrokes = ["#94a3b8", "#78716c", "#a8a29e", "#71717a", "#64748b"];
     let mi = 0;
     return series.map((s) => {
-      if (s.dataKey === "total_nw") return { ...s, stroke: BUCKET_STROKE.total_nw };
-      if (s.dataKey === "invested") return { ...s, stroke: BUCKET_STROKE.invested };
-      const stroke = milestoneStrokes[mi % milestoneStrokes.length]!;
-      mi += 1;
-      return { ...s, stroke, isReferenceOverlay: true };
+      if (isUsdMilestoneDataKey(s.dataKey)) {
+        const stroke = milestoneStrokes[mi % milestoneStrokes.length]!;
+        mi += 1;
+        return { ...s, stroke, isReferenceOverlay: true, isFaintReference: true };
+      }
+      return { ...s, stroke: strokeFromAccountColorRgb(s.color_rgb) ?? overviewLineColor(s.dataKey) };
     });
   }
 

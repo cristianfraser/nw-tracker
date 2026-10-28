@@ -242,18 +242,25 @@ export interface DashboardResponse {
     { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number | null }
   >;
   /**
-   * Retiro + brokerage net deposits per month (flows chart aggregation); the yearly combos roll
-   * them up after their Rango cut.
+   * Retiro and brokerage net deposits per month, by class (flows chart aggregation); the yearly
+   * combos roll them up after their Rango cut.
    */
   inversiones_deposits_chart?: {
-    monthly_clp: { as_of_date: string; deposited: number }[];
-    monthly_usd?: { as_of_date: string; deposited: number }[];
+    monthly_clp: InversionesDepositsPoint[];
+    monthly_usd?: InversionesDepositsPoint[];
   };
   /** Home bucket cards (order + bucket) from `portfolio_groups`; Patrimonio neto hero is not included. */
   dashboard_layout?: DashboardLayoutCardRow[];
   /** True when deposit USD totals could not be converted (missing fx_daily). */
   fx_conversion_error?: boolean;
   fx_conversion_warnings?: FxConversionWarning[];
+}
+
+/** One period's net deposits into the two invested classes (display unit). */
+export interface InversionesDepositsPoint {
+  as_of_date: string;
+  retirement: number;
+  brokerage: number;
 }
 
 export interface FxLatest {
@@ -334,8 +341,6 @@ export interface TimeseriesBlock {
   points: Record<string, string | number | null>[];
   /** Server: portfolio group color (or resolver fallback) for synthetic aggregated lines; keys like `"-203"`. */
   synthetic_group_color_rgb?: Record<string, string>;
-  /** Unit the block's values are in, when the block states its own (patrimonio chart). */
-  unit?: "clp" | "usd" | "uf";
   /** USD milestone levels (in the block's unit) for chart anchor dates (month/year prior period ends). */
   referenceMilestoneByDate?: Record<string, Record<string, number | null>>;
   /** Server tail-clip: last visible date when every data series ends early (x-axis stops here). */
@@ -348,12 +353,12 @@ export interface TimeseriesBlock {
 export interface ValuationTimeseriesResponse {
   unit: "clp" | "usd" | "uf";
   accounts_ex_property?: TimeseriesBlock;
-  overview?: Required<Pick<TimeseriesBlock, "lines" | "points">> & {
+  /** Home: also carries the USD milestone reference lines (`usd_50k`, …) and their anchors. */
+  overview?: Required<Pick<TimeseriesBlock, "lines" | "points">> &
+    Pick<TimeseriesBlock, "referenceMilestoneByDate"> & {
     /** Per-grain peaks of the net-worth line (this unit); absent on placeholder / keep-prev bundles. */
     ath?: NetWorthAthByPeriod | null;
   };
-  /** Patrimonio neto + invested and USD milestone reference lines, in the block's `unit`. */
-  patrimonio_usd_milestones_chart?: TimeseriesBlock;
   group_slug?: string;
   /** Whole class tab: all accounts on one line chart (+ deposit lines) */
   accounts_in_group?: TimeseriesBlock;
@@ -380,11 +385,10 @@ export interface DashboardOverviewDailyPoint {
   retirement: number | null;
   brokerage: number | null;
   cash_eqs: number | null;
+  /** USD milestone reference levels (`usd_50k`, …) in the request unit, same keys as the
+   * monthly overview's reference lines. */
+  [usdMilestoneKey: `usd_${string}`]: number | null;
 }
-
-/** One day of the «Patrimonio neto vs invested» chart (request unit): total_nw + invested +
- * per-day USD milestone levels, same keys as the monthly `patrimonio_usd_milestones_chart`. */
-export type PatrimonioDailyPoint = Record<string, string | number | null>;
 
 /** A «Cuentas principales» child line: values in the request unit, aligned to `points`,
  * keyed by the same synthetic dataKey as the monthly `accounts_ex_property` accounts. */
@@ -399,8 +403,6 @@ export interface DashboardOverviewDailyResponse {
   days: number;
   end_ymd: string;
   points: DashboardOverviewDailyPoint[];
-  /** «Patrimonio neto vs invested» daily points (request unit). */
-  patrimonio: PatrimonioDailyPoint[];
   /** «Cuentas principales» per-child-group daily lines (request unit). */
   primary_lines: PrimaryDailyLine[];
   /** Home composition shares at day grain (same dataKeys as the monthly block). */

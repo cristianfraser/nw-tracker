@@ -27,6 +27,12 @@ const OVERVIEW_LINE_SPECS: DashboardChartShapeLine[] = [
   { dataKey: "cash", name: "Cash savings", valueSeriesType: "data" },
   { dataKey: "liabilities", name: "Pasivos", valueSeriesType: "data" },
   { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
+  // The server's USD milestone lines (same keys and labels as `usdMilestoneReferenceLines`).
+  ...(["50", "100", "250", "300", "500"] as const).map((k) => ({
+    dataKey: `usd_${k}k`,
+    name: `US$${k},000`,
+    valueSeriesType: "reference" as const,
+  })),
 ];
 
 const PRIMARY_LINE_FALLBACK: DashboardChartShapeLine[] = [
@@ -81,11 +87,6 @@ export function buildPlaceholderDashboardTimeseries(
     accounts: accountLinesFromShape(primaryLines),
     points: zeroPointsForKeys(primaryLines.map((l) => l.dataKey), monthEnds),
   };
-  // Skeleton keeps the milestone reference lines out: flat-zero references only add legend noise.
-  const patrimonioLines: DashboardChartShapeLine[] = [
-    { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
-    { dataKey: "invested", name: "Invested", valueSeriesType: "data" },
-  ];
   return {
     unit: unitForTs(unit),
     overview: {
@@ -93,14 +94,6 @@ export function buildPlaceholderDashboardTimeseries(
       points: zeroPointsForKeys(overviewLines.map((l) => l.dataKey), monthEnds),
     },
     accounts_ex_property: accountsExProperty,
-    ...(shape?.has_patrimonio_usd_chart
-      ? {
-          patrimonio_usd_milestones_chart: {
-            lines: patrimonioLines,
-            points: zeroPointsForKeys(patrimonioLines.map((l) => l.dataKey), monthEnds),
-          },
-        }
-      : {}),
   };
 }
 
@@ -263,7 +256,6 @@ export function chartShapeFromLoadedDashboardBundle(
     first_month: typeof firstDate === "string" ? firstDate : null,
     overview_lines: overview.lines,
     primary_lines,
-    has_patrimonio_usd_chart: Boolean(bundle.ts.patrimonio_usd_milestones_chart?.points.length),
     has_perf_sections: Boolean(
       bundle.retirementPerf?.points.length || bundle.brokeragePerf?.points.length
     ),
