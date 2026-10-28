@@ -141,8 +141,9 @@ describe("prefetchDashboardNavSnapshot", () => {
 });
 
 describe("stale nav snapshot vs a grown nav tree", () => {
-  // The coverage rule reads only which slugs have an entry, never the metrics body.
-  const metrics = {} as NavCardMetricsDto;
+  // The coverage rule reads which slugs have an entry and that each carries the current
+  // fields, never the figures themselves.
+  const metrics = { value: {}, parent_pct: {} } as unknown as NavCardMetricsDto;
 
   function snapshotWithSlugs(slugs: string[]): DashboardNavSnapshotResponse {
     return {
@@ -195,6 +196,17 @@ describe("stale nav snapshot vs a grown nav tree", () => {
     expect(navSnapshotCoversNavTree(old, sidebarNav(true))).toBe(false);
     const noLiabChild = snapshotWithSlugs(OLD_SLUGS.filter((s) => s !== "tst_liab_cards"));
     expect(navSnapshotCoversNavTree(noLiabChild.card_metrics_by_slug, sidebarNav(false))).toBe(false);
+  });
+
+  it("does not cover a tree with entries saved from an older payload", () => {
+    const covered = snapshotWithSlugs(OLD_SLUGS).card_metrics_by_slug;
+    const noValue = { ...covered, tst_stocks: { parent_pct: {} } as unknown as NavCardMetricsDto };
+    expect(navSnapshotCoversNavTree(noValue, sidebarNav(false))).toBe(false);
+    const liquidatedWithoutValue = {
+      ...covered,
+      tst_stocks: { ...metrics, liquidated: { account_ids: [] } } as unknown as NavCardMetricsDto,
+    };
+    expect(navSnapshotCoversNavTree(liquidatedWithoutValue, sidebarNav(false))).toBe(false);
   });
 
   it("treats an unknown nav tree as no mismatch", () => {
