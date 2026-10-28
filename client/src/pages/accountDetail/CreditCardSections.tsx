@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Table } from "../../components/ui/Table";
 import { Loadable } from "../../components/ui/Loadable";
 import { PaginatedTable } from "../../components/ui/PaginatedTable";
@@ -13,6 +13,7 @@ import { Trans, useTranslation } from "../../i18n";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { CreditCardCuotaProgress } from "./CreditCardCuotaProgress";
 import { CreditCardFacturacionesTable } from "./CreditCardFacturacionesTable";
+import { CreditCardPurchaseNotes } from "./CreditCardPurchaseNotes";
 import {
   CreditCardPurchaseMobileCard,
   purchaseTableColSpan,
@@ -110,93 +111,135 @@ function CreditCardInstallmentsSection({
       ? t("account.creditCard.originManual")
       : t("account.creditCard.originImportDocument");
 
-  const purchaseTableHeader = (dueColumn: "last" | "none") => (
+  const deleteButton = (p: CcInstallmentPurchaseComputed) =>
+    hasLedger && p.origin === "manual" && p.purchase_db_id != null ? (
+      <Button variant="ghost"
+        disabled={manualBusy}
+        onClick={() => {
+          deletePurchase.mutate(p.purchase_db_id!);
+        }}
+      >
+        {t("account.creditCard.manualDelete")}
+      </Button>
+    ) : null;
+
+  const activePurchaseTableHeader = (
     <thead>
       <tr>
         <th className="desktop-only">{t("account.creditCard.colPurchase")}</th>
-        {dueColumn === "last" ? <th className="desktop-only">{t("account.creditCard.colInstallments")}</th> : null}
-        {dueColumn === "last" ? <th className="desktop-only">{t("account.creditCard.colPrincipal")}</th> : null}
-        {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colAnnualRate")}</th> : null}
-        <th className="desktop-only">{t("account.creditCard.colPurchaseDate")}</th>
-        {dueColumn === "last" ? (
-          <th className="desktop-only">{t("account.creditCard.colPurchaseBillingMonth")}</th>
-        ) : null}
-        {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetCsv")}</th> : null}
-        <th className="desktop-only">{t("account.creditCard.colCuotaClp")}</th>
-        {dueColumn === "last" ? <th className="desktop-only">{t("account.creditCard.colLastPaid")}</th> : null}
+        <th className="desktop-only">{t("account.creditCard.colNotes")}</th>
         <th className="mobile-only" aria-hidden="true" />
       </tr>
     </thead>
   );
 
-  const renderPurchaseRows = (
-    rows: ReadonlyArray<CcInstallmentPurchaseComputed>,
-    opts: { dueColumn: "last" | "none" }
-  ) =>
-    rows.map((p) => {
-      const detailColSpan = purchaseTableColSpan(hasLedger, opts.dueColumn);
-      return (
-        <Fragment key={p.purchase_id}>
-          <tr>
-            <td className="desktop-only">
-              <div>{p.label}</div>
-              <div className={cn("mono", "muted", styles.purchaseMeta)}>{p.purchase_id}</div>
-              <div className={cn("muted", styles.purchaseMeta)}>{originLabel(p)}</div>
-              {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
-              {hasLedger && p.origin === "manual" && p.purchase_db_id != null ? (
-                <Button variant="ghost"
-                  disabled={manualBusy}
-                  onClick={() => {
-                    deletePurchase.mutate(p.purchase_db_id!);
-                  }}
-                >
-                  {t("account.creditCard.manualDelete")}
-                </Button>
-              ) : null}
-            </td>
-            {opts.dueColumn === "last" ? <td className="mono desktop-only">{p.installment_count}</td> : null}
-            {opts.dueColumn === "last" ? <td className="mono desktop-only">{formatClp(p.principal_clp)}</td> : null}
-            {!hasLedger ? (
-              <td className="mono desktop-only">{formatGroupedDecimal(p.annual_interest_pct, 2)}</td>
+  // One row per plan: «date · cuota» over the vendor on the left, the note and receipt link over
+  // the progress bar on the right.
+  const renderActivePurchaseRows = (rows: ReadonlyArray<CcInstallmentPurchaseComputed>) =>
+    rows.map((p) => (
+      <tr key={p.purchase_id}>
+        <td className="desktop-only">
+          <div className="mono">
+            {p.purchase_date ?? "—"} · {formatClp(p.cuota_clp)}
+          </div>
+          <div className={styles.purchaseVendor}>
+            <span>{p.label}</span>
+            {deleteButton(p)}
+          </div>
+          {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
+        </td>
+        <td className="desktop-only">
+          <div className={styles.purchaseNotesStack}>
+            <div>
+              <CreditCardPurchaseNotes purchase={p} accountId={accountId} />
+            </div>
+            {p.cuota_progress ? (
+              <CreditCardCuotaProgress progress={p.cuota_progress} maxInstallments={maxActiveInstallments} />
             ) : null}
-            <td className="mono desktop-only">{p.purchase_date ?? "—"}</td>
-            {opts.dueColumn === "last" ? (
-              <td className="mono desktop-only">{p.purchase_billing_month ?? p.purchase_month ?? "—"}</td>
-            ) : null}
-            {!hasLedger ? <td className="mono desktop-only">{p.schedule_offset_months}</td> : null}
-            <td className="mono desktop-only">{formatClp(p.cuota_clp)}</td>
-            {opts.dueColumn === "last" ? (
-              <td className="mono desktop-only">
-                {p.last_paid_month ? formatYearMonthLabel(p.last_paid_month) : "—"}
-              </td>
-            ) : null}
-            <td className="mobile-only">
-              <CreditCardPurchaseMobileCard
-                purchase={p}
-                hasLedger={hasLedger}
-                dueColumn={opts.dueColumn}
-                originLabel={originLabel(p)}
-                manualDeleteLabel={t("account.creditCard.manualDelete")}
-                manualBusy={manualBusy}
-                onDeleteManual={
-                  hasLedger && p.origin === "manual" && p.purchase_db_id != null
-                    ? () => deletePurchase.mutate(p.purchase_db_id!)
-                    : undefined
-                }
-                maxInstallments={maxActiveInstallments}
-              />
-            </td>
-          </tr>
-          {opts.dueColumn === "none" && p.cuota_progress ? (
-            <tr className="desktop-only">
-              <td colSpan={detailColSpan} className={cn("muted", styles.purchaseMeta)}>
-                <CreditCardCuotaProgress progress={p.cuota_progress} maxInstallments={maxActiveInstallments} />
-              </td>
-            </tr>
-          ) : null}
-        </Fragment>
-      );
-    });
+          </div>
+        </td>
+        <td className="mobile-only">
+          <CreditCardPurchaseMobileCard
+            purchase={p}
+            accountId={accountId}
+            hasLedger={hasLedger}
+            dueColumn="none"
+            originLabel={originLabel(p)}
+            manualDeleteLabel={t("account.creditCard.manualDelete")}
+            manualBusy={manualBusy}
+            onDeleteManual={
+              hasLedger && p.origin === "manual" && p.purchase_db_id != null
+                ? () => deletePurchase.mutate(p.purchase_db_id!)
+                : undefined
+            }
+            maxInstallments={maxActiveInstallments}
+          />
+        </td>
+      </tr>
+    ));
+
+  const completedPurchaseTableHeader = (
+    <thead>
+      <tr>
+        <th className="desktop-only">{t("account.creditCard.colPurchase")}</th>
+        <th className="desktop-only">{t("account.creditCard.colInstallments")}</th>
+        <th className="desktop-only">{t("account.creditCard.colPrincipal")}</th>
+        {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colAnnualRate")}</th> : null}
+        <th className="desktop-only">{t("account.creditCard.colPurchaseDate")}</th>
+        <th className="desktop-only">{t("account.creditCard.colPurchaseBillingMonth")}</th>
+        {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetCsv")}</th> : null}
+        <th className="desktop-only">{t("account.creditCard.colCuotaClp")}</th>
+        <th className="desktop-only">{t("account.creditCard.colLastPaid")}</th>
+        <th className="desktop-only">{t("account.creditCard.colNotes")}</th>
+        <th className="mobile-only" aria-hidden="true" />
+      </tr>
+    </thead>
+  );
+
+  const renderCompletedPurchaseRows = (rows: ReadonlyArray<CcInstallmentPurchaseComputed>) =>
+    rows.map((p) => (
+      <tr key={p.purchase_id}>
+        <td className="desktop-only">
+          <div>{p.label}</div>
+          <div className={cn("mono", "muted", styles.purchaseMeta)}>{p.purchase_id}</div>
+          <div className={cn("muted", styles.purchaseMeta)}>{originLabel(p)}</div>
+          {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
+          {deleteButton(p)}
+        </td>
+        <td className="mono desktop-only">{p.installment_count}</td>
+        <td className="mono desktop-only">{formatClp(p.principal_clp)}</td>
+        {!hasLedger ? (
+          <td className="mono desktop-only">{formatGroupedDecimal(p.annual_interest_pct, 2)}</td>
+        ) : null}
+        <td className="mono desktop-only">{p.purchase_date ?? "—"}</td>
+        <td className="mono desktop-only">{p.purchase_billing_month ?? p.purchase_month ?? "—"}</td>
+        {!hasLedger ? <td className="mono desktop-only">{p.schedule_offset_months}</td> : null}
+        <td className="mono desktop-only">{formatClp(p.cuota_clp)}</td>
+        <td className="mono desktop-only">
+          {p.last_paid_month ? formatYearMonthLabel(p.last_paid_month) : "—"}
+        </td>
+        <td className="desktop-only">
+          <CreditCardPurchaseNotes purchase={p} accountId={accountId} />
+        </td>
+        <td className="mobile-only">
+          <CreditCardPurchaseMobileCard
+            purchase={p}
+            accountId={accountId}
+            hasLedger={hasLedger}
+            dueColumn="last"
+            originLabel={originLabel(p)}
+            manualDeleteLabel={t("account.creditCard.manualDelete")}
+            manualBusy={manualBusy}
+            onDeleteManual={
+              hasLedger && p.origin === "manual" && p.purchase_db_id != null
+                ? () => deletePurchase.mutate(p.purchase_db_id!)
+                : undefined
+            }
+            maxInstallments={maxActiveInstallments}
+          />
+        </td>
+      </tr>
+    ));
 
   const COMPLETED_PAGE_SIZE = 10;
   const [completedPage, setCompletedPage] = useState(1);
@@ -263,7 +306,7 @@ function CreditCardInstallmentsSection({
           <Table
             wrapClassName={styles.tableWrapSpaced}
             tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
-            header={purchaseTableHeader("none")}
+            header={activePurchaseTableHeader}
           >
             {ledger.purchases.length === 0 ? (
               loading ? null : (
@@ -274,7 +317,7 @@ function CreditCardInstallmentsSection({
                 </tr>
               )
             ) : (
-              renderPurchaseRows(purchasesActiveSorted, { dueColumn: "none" })
+              renderActivePurchaseRows(purchasesActiveSorted)
             )}
           </Table>
 
@@ -289,7 +332,7 @@ function CreditCardInstallmentsSection({
           >
             <Table
               tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
-              header={purchaseTableHeader("last")}
+              header={completedPurchaseTableHeader}
             >
               {purchasesCompletedSorted.length === 0 ? (
                 loading ? null : (
@@ -300,7 +343,7 @@ function CreditCardInstallmentsSection({
                   </tr>
                 )
               ) : (
-                renderPurchaseRows(completedPageRows, { dueColumn: "last" })
+                renderCompletedPurchaseRows(completedPageRows)
               )}
             </Table>
           </PaginatedTable>

@@ -47,8 +47,8 @@
 }
 
 .billed {
-  background: var(--accent-dim);
-  border-color: var(--accent-dim);
+  background: var(--cuota-billed);
+  border-color: var(--cuota-billed);
 }
 
 .tooltip {

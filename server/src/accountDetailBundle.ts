@@ -10,6 +10,7 @@ import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
+import { withPurchaseExpenseLinks } from "./ccPurchaseExpenseLinks.js";
 import {
   isDeptoMortgagePaymentCuota,
   mortgageMetaFromSheetRows,
@@ -219,7 +220,12 @@ export async function buildAccountDetailBundle(
     },
   };
   if (category_slug === "credit_card") {
-    ccLedger = creditCardInstallmentsResponse(accountId);
+    const ledger = creditCardInstallmentsResponse(accountId);
+    ccLedger = {
+      ...ledger,
+      purchases: withPurchaseExpenseLinks(accountId, ledger.purchases),
+      purchases_completed: withPurchaseExpenseLinks(accountId, ledger.purchases_completed),
+    };
   }
 
   const retirementBucketIds = leafAssetGroupIdsUnder("retirement");

@@ -1415,6 +1415,7 @@
       "colPurchaseBillingMonth": "Billing month",
       "colOffsetCsv": "CSV offset (months)",
       "colCuotaClp": "Installment CLP",
+      "colNotes": "Notes",
       "colLastPaid": "Last paid month",
       "monthCuotasTitle": "Installments by billing cycle",
       "colMonthCuotaTotal": "Installment due",
