@@ -4,21 +4,16 @@ import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountBucketKindSlug, isLiabilityAccountId } from "./accountBucket.js";
 import {
-  dashboardCardReconcilePeriodDeltas,
-  reconcileDashboardCardMetrics,
-} from "./dashboardCardMetricsReconcile.js";
-import {
-  accountCardPerformanceMetricsFromPerf,
-  dashboardAccountPerfDerived,
-  type AccountCardPerformanceMetrics,
-} from "./dashboardAccountCardMetrics.js";
+  accountPeriodMetricsFromMonthlyRows,
+  type AccountPeriodMetrics,
+} from "./accountPeriodMetrics.js";
+import { monthlyPerfRowsForAccount } from "./groupMonthlyPerfConsolidation.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountDisplayValue } from "./accountDisplayValue.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import { priorCloseFromPerfRows, priorPeriodEndYmd } from "./accountPeriodMarks.js";
-import { fxForLiveMtm } from "./fxRates.js";
+import { fxForLiveMtm, usdFromClpAtLiveFrame } from "./fxRates.js";
 import {
-  flowsDepositsNetInPeriodByAccount,
   flowsDepositsNetTotalByAccount,
   flowsDepositsNetTotalUsdByAccount,
   netDepositFlowBetween,
@@ -60,22 +55,21 @@ import { creditCardFinancingPlSummaryForDashboard } from "./creditCardPerformanc
 
 const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
 
-/** Depto property P/L is UF-based in CLP; USD cards use CLP nominal converted at mark FX. */
-function dashboardPropertyDeltaUsd(
-  kindSlug: string,
-  asOfYmd: string | null,
-  deltaClp: number | null | undefined,
-  deltaUsdFromPerf: number | null | undefined
-): number | null | undefined {
-  if (
-    accountBucketKindSlug(kindSlug) !== "property" ||
-    deltaClp == null ||
-    !Number.isFinite(deltaClp)
-  ) {
-    return deltaUsdFromPerf;
-  }
-  const usd = convertTs(deltaClp, asOfYmd ?? chileCalendarTodayYmd(), "usd");
-  return Number.isFinite(usd) ? usd : deltaUsdFromPerf;
+/**
+ * A prior close in USD is the same anchor-date mark the CLP figure reads, at that date's fx
+ * (a USD cash account's native balance falls out of it, since its mark was built at that fx);
+ * the performance series' month-end close is the fallback for an account with no mark there.
+ * The USD frame keeps the peso's move inside P/L on every row, as the consolidated monthly
+ * rows do — the dashboard card and the «Detalle por año» table must read the same year P/L.
+ */
+function priorCloseUsdFromMark(
+  markClp: number | null | undefined,
+  anchorYmd: string,
+  fromPerf: number | undefined
+): number | undefined {
+  if (markClp == null || !Number.isFinite(markClp)) return fromPerf;
+  const usd = convertTs(markClp, anchorYmd, "usd");
+  return Number.isFinite(usd) ? usd : fromPerf;
 }
 
 export function listDashboardSourceAccounts(): {
@@ -268,10 +262,10 @@ export async function buildDashboardAccountRows(includeUsd: boolean): Promise<Da
 async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<DashboardAccountStats[]> {
   const accounts = listDashboardSourceAccounts();
   const leafSlugByAccount = leafPortfolioGroupSlugByAccountIds(accounts.map((a) => a.id));
+  // Lifetime deposits for the rows that carry no monthly performance series (cards; a
+  // liability or reference account): the asset rows read theirs from the series below.
   const depositsNetByAccount = flowsDepositsNetTotalByAccount();
   const depositsNetUsdByAccount = includeUsd ? flowsDepositsNetTotalUsdByAccount() : null;
-  const depositsMonth = flowsDepositsNetInPeriodByAccount("month");
-  const depositsYear = flowsDepositsNetInPeriodByAccount("year");
 
   const today = chileCalendarTodayYmd();
   const priorMonthEnd = priorPeriodEndYmd("mtd", today);
@@ -307,20 +301,37 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       const leafSlug = a.bucket_slug;
       const kindSlug = accountBucketKindSlug(leafSlug);
       const mortgagePayments = kindSlug === "mortgage" ? mortgageCardDeposits() : null;
-      const deposits = mortgagePayments?.total_clp ?? depositsNetByAccount.get(a.id) ?? 0;
-      const deposits_usd = mortgagePayments
-        ? mortgagePayments.total_usd
-        : depositsNetUsdByAccount?.get(a.id) ?? null;
       const portfolioLeafSlug = leafSlugByAccount.get(a.id) ?? null;
       const metricGroup = nwDashboardMetricGroupForAccount(a.id) ?? leafSlug;
       const dashboard_bucket_slug = nwDashboardMetricGroupForAccount(a.id);
       const trackAssetMetrics = DASHBOARD_ASSET_METRIC_GROUPS.has(metricGroup);
-      const derivedClp = dashboardAccountPerfDerived(a.id, "clp", trackAssetMetrics);
-      const derivedUsd =
-        trackAssetMetrics && includeUsd ? dashboardAccountPerfDerived(a.id, "usd", true) : null;
-      const perfClp = derivedClp.metrics;
-      const perfUsd = derivedUsd?.metrics ?? null;
-      const perfSeriesClp = trackAssetMetrics ? getAccountMonthlyPerformance(a.id, "clp") : null;
+      // The card's deposits and P/L (month, year, lifetime) are read from the same monthly
+      // rows the group tables consolidate — one series, one picker, one sum — so the card and
+      // the «Detalle por mes / año» table of the same scope agree by construction, in both
+      // units (a card's USD year P/L keeps the peso's move inside P/L like every table row).
+      // The mortgage row reads its P/L from the same rows; its deposits are the depto ledger's
+      // payments. A card has neither (its P/L is the financing cost, below).
+      const hasPerfRows = trackAssetMetrics || kindSlug === "mortgage";
+      const rowsClp: AccountMonthlyPerformanceRow[] = hasPerfRows
+        ? monthlyPerfRowsForAccount(a.id, leafSlug, "clp")
+        : [];
+      const rowsUsd: AccountMonthlyPerformanceRow[] =
+        hasPerfRows && includeUsd ? monthlyPerfRowsForAccount(a.id, leafSlug, "usd") : [];
+      const perfClp: AccountPeriodMetrics | null = hasPerfRows
+        ? accountPeriodMetricsFromMonthlyRows(rowsClp, today)
+        : null;
+      const perfUsd: AccountPeriodMetrics | null =
+        hasPerfRows && includeUsd ? accountPeriodMetricsFromMonthlyRows(rowsUsd, today) : null;
+      const deposits = mortgagePayments
+        ? mortgagePayments.total_clp
+        : trackAssetMetrics
+          ? perfClp!.deposits_total
+          : depositsNetByAccount.get(a.id) ?? 0;
+      const deposits_usd = mortgagePayments
+        ? mortgagePayments.total_usd
+        : trackAssetMetrics
+          ? perfUsd?.deposits_total ?? null
+          : depositsNetUsdByAccount?.get(a.id) ?? null;
       const markOpts = { import_key: a.import_key, name: a.name };
 
       /** Asset-group leaf slug (`real_estate__property`), not nav bucket (`real_estate`) — required for depto UF marks. */
@@ -360,14 +371,10 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
           : undefined;
       const prior_month_close_clp =
         priorMonthMark?.value_clp ??
-        (trackAssetMetrics
-          ? priorCloseFromPerfRows(perfSeriesClp?.monthly ?? [], "mtd", today) ?? undefined
-          : derivedClp.prior_month_close);
+        (trackAssetMetrics ? priorCloseFromPerfRows(rowsClp, "mtd", today) ?? undefined : undefined);
       const prior_year_close_clp =
         priorYearMark?.value_clp ??
-        (trackAssetMetrics
-          ? priorCloseFromPerfRows(perfSeriesClp?.monthly ?? [], "ytd", today) ?? undefined
-          : derivedClp.prior_year_close);
+        (trackAssetMetrics ? priorCloseFromPerfRows(rowsClp, "ytd", today) ?? undefined : undefined);
       const asOfCuotas = v?.as_of_date ?? chileCalendarTodayYmd();
       const positionMeta = getAccountPositionMeta(a.id, kindSlug, {
         afpCuotasAsOfYmd: isCuotaLedgerKindSlug(kindSlug) ? asOfCuotas : undefined,
@@ -391,8 +398,8 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
       const current_value_usd = includeUsd
         ? isUsdCashAccount(a.id)
           ? usdCashBalanceUsdAt(a.id, valuation_as_of ?? today)
-          : current_value_clp != null && fxRow != null
-            ? current_value_clp / fxRow.clp_per_usd
+          : current_value_clp != null
+            ? usdFromClpAtLiveFrame(current_value_clp, valuation_as_of ?? null)
             : null
         : null;
       const fx_missing =
@@ -425,7 +432,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
             ? prior_day_close_usd - current_value_usd - (deposits_day_usd ?? 0)
             : current_value_usd - prior_day_close_usd - (deposits_day_usd ?? 0)
           : null;
-      const rowBeforeReconcile = {
+      const baseRow = {
         account_id: a.id,
         name: a.name,
         group_slug: portfolioLeafSlug ?? leafSlug,
@@ -435,52 +442,31 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         dashboard_bucket_slug: dashboard_bucket_slug ?? null,
         deposits_clp: deposits,
         deposits_usd: includeUsd ? deposits_usd : undefined,
-        delta_month_clp: perfClp?.delta_month,
-        delta_month_usd: includeUsd
-          ? dashboardPropertyDeltaUsd(
-              markCategorySlug,
-              valuation_as_of,
-              perfClp?.delta_month,
-              perfUsd?.delta_month
-            )
-          : undefined,
-        delta_year_clp: perfClp?.delta_year,
-        delta_year_usd: includeUsd
-          ? dashboardPropertyDeltaUsd(
-              markCategorySlug,
-              valuation_as_of,
-              perfClp?.delta_year,
-              perfUsd?.delta_year
-            )
-          : undefined,
-        delta_total_clp: perfClp?.delta_total,
-        delta_total_usd: includeUsd
-          ? dashboardPropertyDeltaUsd(
-              markCategorySlug,
-              valuation_as_of,
-              perfClp?.delta_total,
-              perfUsd?.delta_total
-            )
-          : undefined,
+        delta_month_clp: perfClp?.delta_month ?? null,
+        delta_month_usd: includeUsd ? perfUsd?.delta_month ?? null : undefined,
+        delta_year_clp: perfClp?.delta_year ?? null,
+        delta_year_usd: includeUsd ? perfUsd?.delta_year ?? null : undefined,
+        delta_total_clp: perfClp?.delta_total ?? null,
+        delta_total_usd: includeUsd ? perfUsd?.delta_total ?? null : undefined,
         deposits_month_clp: mortgagePayments
           ? mortgagePayments.month_clp
           : trackAssetMetrics
-            ? (depositsMonth.clp.get(a.id) ?? 0)
+            ? perfClp!.deposits_month
             : undefined,
         deposits_month_usd: mortgagePayments
           ? mortgagePayments.month_usd
           : trackAssetMetrics
-            ? (depositsMonth.usd.get(a.id) ?? null)
+            ? perfUsd?.deposits_month ?? null
             : undefined,
         deposits_year_clp: mortgagePayments
           ? mortgagePayments.year_clp
           : trackAssetMetrics
-            ? (depositsYear.clp.get(a.id) ?? 0)
+            ? perfClp!.deposits_year
             : undefined,
         deposits_year_usd: mortgagePayments
           ? mortgagePayments.year_usd
           : trackAssetMetrics
-            ? (depositsYear.usd.get(a.id) ?? null)
+            ? perfUsd?.deposits_year ?? null
             : undefined,
         deposits_day_clp,
         deposits_day_usd: includeUsd ? deposits_day_usd : undefined,
@@ -489,9 +475,21 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         prior_day_close_clp,
         prior_day_close_usd: includeUsd ? prior_day_close_usd : undefined,
         prior_month_close_clp,
-        prior_month_close_usd: derivedUsd?.prior_month_close,
+        prior_month_close_usd: includeUsd
+          ? priorCloseUsdFromMark(
+              priorMonthMark?.value_clp,
+              priorMonthEnd,
+              trackAssetMetrics ? priorCloseFromPerfRows(rowsUsd, "mtd", today) ?? undefined : undefined
+            )
+          : undefined,
         prior_year_close_clp,
-        prior_year_close_usd: derivedUsd?.prior_year_close,
+        prior_year_close_usd: includeUsd
+          ? priorCloseUsdFromMark(
+              priorYearMark?.value_clp,
+              priorYearEnd,
+              trackAssetMetrics ? priorCloseFromPerfRows(rowsUsd, "ytd", today) ?? undefined : undefined
+            )
+          : undefined,
         current_value_clp,
         valuation_as_of,
         current_value_usd,
@@ -504,59 +502,23 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
         position,
         sync_stale: staleAccountIds.has(a.id),
       };
-      const reconciled = reconcileDashboardCardMetrics(rowBeforeReconcile, {
-        includeUsd,
-        reconcilePeriodDeltas: dashboardCardReconcilePeriodDeltas(metricGroup),
-      });
-
+      // A card's P/L is its cost of financing (intereses, comisiones, impuestos), loss-negative.
+      const ccDeltas: Partial<DashboardAccountStats> = {};
       if (kindSlug === "credit_card") {
-        const masterAccountId = a.id;
-        const todayYm = today.slice(0, 7);
-        const plSummary = creditCardFinancingPlSummaryForDashboard(masterAccountId, todayYm);
-        if (plSummary !== null) {
-          reconciled.delta_total_clp = -plSummary.cumulative_clp;
-          reconciled.delta_month_clp = -plSummary.current_month_clp;
-          reconciled.delta_year_clp = -plSummary.ytd_clp;
-          if (includeUsd && fxRow != null) {
-            const rate = fxRow.clp_per_usd;
-            reconciled.delta_total_usd = -plSummary.cumulative_clp / rate;
-            reconciled.delta_month_usd = -plSummary.current_month_clp / rate;
-            reconciled.delta_year_usd = -plSummary.ytd_clp / rate;
-          }
-        } else {
-          reconciled.delta_total_clp = null;
-          reconciled.delta_month_clp = null;
-          reconciled.delta_year_clp = null;
-          if (includeUsd) {
-            reconciled.delta_total_usd = null;
-            reconciled.delta_month_usd = null;
-            reconciled.delta_year_usd = null;
-          }
-        }
-      }
-
-      if (kindSlug === "mortgage") {
-        // Card P/L = financing cost from the monthly perf series (negative = losing money),
-        // never the generic balance − deposits reconcile: the balance is debt, not return.
-        const masterAccountId = a.id;
-        const perfMetricsFor = (unit: TsUnit): AccountCardPerformanceMetrics | null => {
-          if (mortgagePayments == null) return null;
-          const perf = getAccountMonthlyPerformance(masterAccountId, unit);
-          return perf && perf.monthly.length ? accountCardPerformanceMetricsFromPerf(perf) : null;
-        };
-        const plClp = perfMetricsFor("clp");
-        reconciled.delta_total_clp = plClp?.delta_total ?? null;
-        reconciled.delta_month_clp = plClp?.delta_month ?? null;
-        reconciled.delta_year_clp = plClp?.delta_year ?? null;
+        const plSummary = creditCardFinancingPlSummaryForDashboard(a.id, today.slice(0, 7));
+        const rate = includeUsd && fxRow != null ? fxRow.clp_per_usd : null;
+        const inUsd = (clp: number) => (rate != null ? clp / rate : null);
+        ccDeltas.delta_total_clp = plSummary ? -plSummary.cumulative_clp : null;
+        ccDeltas.delta_month_clp = plSummary ? -plSummary.current_month_clp : null;
+        ccDeltas.delta_year_clp = plSummary ? -plSummary.ytd_clp : null;
         if (includeUsd) {
-          const plUsd = perfMetricsFor("usd");
-          reconciled.delta_total_usd = plUsd?.delta_total ?? null;
-          reconciled.delta_month_usd = plUsd?.delta_month ?? null;
-          reconciled.delta_year_usd = plUsd?.delta_year ?? null;
+          ccDeltas.delta_total_usd = plSummary ? inUsd(-plSummary.cumulative_clp) : null;
+          ccDeltas.delta_month_usd = plSummary ? inUsd(-plSummary.current_month_clp) : null;
+          ccDeltas.delta_year_usd = plSummary ? inUsd(-plSummary.ytd_clp) : null;
         }
       }
 
-      const merged = { ...rowBeforeReconcile, ...reconciled } as DashboardAccountStats;
+      const merged = { ...baseRow, ...ccDeltas } as DashboardAccountStats;
       return { ...merged, ...dashboardRowPeriodPcts(merged, includeUsd) };
     })
   );
@@ -566,7 +528,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
 }
 
 /** Nav cards strip + account detail row lookup (no full dashboard totals/charts). */
-/** @heavy One {@link getAccountMonthlyPerformance} per tracked account (via {@link buildDashboardAccountRows}). */
+/** @heavy One {@link monthlyPerfRowsForAccount} per unit per tracked account (via {@link buildDashboardAccountRows}). */
 export async function buildDashboardNavSnapshot(includeUsd: boolean) {
   const rowsBuilt = await buildDashboardAccountRows(includeUsd);
   const clientAccounts = rowsBuilt.map(({ notes, ...rest }) => ({

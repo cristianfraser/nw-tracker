@@ -42,7 +42,7 @@ import {
   type ChartBucketPlan,
 } from "./groupChartBuckets.js";
 import { getNavChartGroupNodeBySlug } from "./navTree.js";
-import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
+import { ufClpBySnapshotDatesAsc, usdFromClpAtLiveFrame } from "./fxRates.js";
 import { accountUsesEquityMtm, computeEquityMtmClp } from "./brokerageEquityMtm.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
@@ -320,7 +320,10 @@ function accountMetaForLivePerfClose(
   return row ?? null;
 }
 
-function livePerfCloseClpForCurrentMonth(accountId: number, categorySlug: string): number | null {
+/** A live close for the current month: the CLP mark and the day it is dated. */
+export type LivePerfClose = { value_clp: number; as_of_date: string };
+
+function livePerfCloseForCurrentMonth(accountId: number, categorySlug: string): LivePerfClose | null {
   const meta = accountMetaForLivePerfClose(accountId);
   const slug = categorySlug || meta?.bucket_slug || "";
   const markOpts = { import_key: meta?.import_key ?? null, name: meta?.name ?? null };
@@ -328,10 +331,12 @@ function livePerfCloseClpForCurrentMonth(accountId: number, categorySlug: string
   if (deptoKind === "property" || deptoKind === "mortgage") {
     const today = chileCalendarTodayYmd();
     const mark = accountMarkClpAtYmd(accountId, today, slug, markOpts);
-    if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) return mark.value_clp;
+    if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) {
+      return { value_clp: mark.value_clp, as_of_date: mark.as_of_date };
+    }
   }
   const live = syncLatestDisplayValueClp(accountId, slug, markOpts);
-  if (live?.value_clp != null && Number.isFinite(live.value_clp)) return live.value_clp;
+  if (live?.value_clp != null && Number.isFinite(live.value_clp)) return live;
   return null;
 }
 
@@ -344,7 +349,8 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   categorySlug: string,
   sortedAsc: AccountMonthlyPerformanceRow[],
   unit: TsUnit,
-  resolveLiveClp?: () => number | null
+  /** The live CLP close; a bare number is a mark dated today. */
+  resolveLive?: () => number | LivePerfClose | null
 ): AccountMonthlyPerformanceRow[] {
   if (!sortedAsc.length) return sortedAsc;
 
@@ -370,10 +376,14 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   const idx = sortedAsc.findIndex((r) => monthKeyFromYmd(r.as_of_date) === curMk);
   const row = idx >= 0 ? sortedAsc[idx]! : null;
 
-  let live: number | null = resolveLiveClp?.() ?? livePerfCloseClpForCurrentMonth(accountId, categorySlug);
+  const resolved = resolveLive?.() ?? livePerfCloseForCurrentMonth(accountId, categorySlug);
+  const liveClose: LivePerfClose | null =
+    typeof resolved === "number" ? { value_clp: resolved, as_of_date: today } : resolved;
+  let live: number | null = liveClose?.value_clp ?? null;
   if (live != null && unit === "usd") {
-    const usd = convertTs(live, today, "usd");
-    live = Number.isFinite(usd) ? usd : null;
+    // The dashboard row's frame (`current_value_usd`): the fx of the day the mark is dated,
+    // live while that fx day is open — not the stored row on or before today.
+    live = usdFromClpAtLiveFrame(live, liveClose!.as_of_date);
   }
   if (live == null || !Number.isFinite(live)) {
     if (row?.closing_value != null && Number.isFinite(row.closing_value)) live = row.closing_value;

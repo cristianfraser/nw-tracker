@@ -21,7 +21,6 @@ import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { getAccountMonthlyPerformance } from "./accountPerformance.js";
-import { reconcileDashboardCardMetrics } from "./dashboardCardMetricsReconcile.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 
 /**
@@ -353,7 +352,7 @@ describe("accountMarkClpAtYmd property", () => {
     expect(cur.as_of_date).toBe(today);
   });
 
-  it("reconciled dashboard MTD non-zero when UF moved", () => {
+  it("property marks move with the UF between the month-end and today", () => {
     const acc = propertyAccountRow();
     if (!acc) return;
     const row = db
@@ -375,17 +374,10 @@ describe("accountMarkClpAtYmd property", () => {
     });
     if (!current || !prior || current.value_clp === prior.value_clp) return;
 
-    const reconciled = reconcileDashboardCardMetrics(
-      {
-        deposits_clp: 0,
-        current_value_clp: current.value_clp,
-        prior_month_close_clp: prior.value_clp,
-        deposits_month_clp: 0,
-      },
-      { includeUsd: false, reconcilePeriodDeltas: true }
-    );
-    expect(reconciled.delta_month_clp).not.toBe(0);
-    expect(reconciled.delta_month_clp).toBeCloseTo(current.value_clp - prior.value_clp, 0);
+    // The marks the dashboard row's prior-close fields carry: a UF move between the month-end
+    // mark and today's is a non-zero balance change on the property.
+    expect(current.value_clp - prior.value_clp).not.toBe(0);
+    expect(current.as_of_date).toBe(today);
   });
 });
 

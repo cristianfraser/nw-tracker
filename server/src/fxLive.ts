@@ -47,3 +47,17 @@ export function fxForLiveMtm(asOfYmd: string | null, now = new Date(), maxAgeMs 
   }
   return fxMonthEndForBalanceUsd(asOfYmd);
 }
+
+/**
+ * Pesos in dollars in the live frame of the day they were marked: the live CLP=X while the
+ * mark date's fx day is open, the stored close after. The dashboard row's `current_value_usd`
+ * and the performance series' live current-month row both read it, so a card's value and its
+ * table's last close are the same dollars (the AFC's mark is dated the previous business day:
+ * converted at today's stored row it sat 0,xx USD off the card, 2026-10-27). Null without fx.
+ */
+export function usdFromClpAtLiveFrame(clp: number, asOfYmd: string | null, now = new Date()): number | null {
+  const fx = fxForLiveMtm(asOfYmd, now);
+  if (!fx || !(fx.clp_per_usd > 0)) return null;
+  const usd = clp / fx.clp_per_usd;
+  return Number.isFinite(usd) ? usd : null;
+}

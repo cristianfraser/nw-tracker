@@ -18,7 +18,7 @@ import { db } from "./db.js";
 import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import {
   consolidateGroupMonthlyPerf,
-  loadAccountRowsForGroupConsolidation,
+  monthlyPerfRowsForAccount,
 } from "./groupMonthlyPerfConsolidation.js";
 import { listAccountsForGroupTab } from "./valuationTimeseries.js";
 
@@ -290,7 +290,7 @@ describe("groupMonthlyPerfConsolidation", () => {
       .get(corriente.account_id) as { o: number } | undefined;
     if (!hasMovements) return;
 
-    const monthly = loadAccountRowsForGroupConsolidation(
+    const monthly = monthlyPerfRowsForAccount(
       corriente.account_id,
       corriente.bucket_slug,
       "clp"

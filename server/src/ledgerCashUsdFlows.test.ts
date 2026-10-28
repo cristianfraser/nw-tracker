@@ -9,7 +9,7 @@ import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { db } from "./db.js";
 import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { flowEventInUnit, flowsDepositsNetTotalUsdByAccount } from "./flowsDeposits.js";
-import { loadAccountRowsForGroupConsolidation } from "./groupMonthlyPerfConsolidation.js";
+import { monthlyPerfRowsForAccount } from "./groupMonthlyPerfConsolidation.js";
 import { overrideFxDaily } from "./test/fxDailyFixture.js";
 import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
 
@@ -110,8 +110,8 @@ describe("CLP ledger cash and checking: USD deposits event by event", () => {
       [clpId, clpSlug],
       [checkingId, checkingSlug],
     ] as const) {
-      const usd = loadAccountRowsForGroupConsolidation(id, slug, "usd");
-      const clp = loadAccountRowsForGroupConsolidation(id, slug, "clp");
+      const usd = monthlyPerfRowsForAccount(id, slug, "usd");
+      const clp = monthlyPerfRowsForAccount(id, slug, "clp");
       for (const mk of FIXTURE_MONTHS) {
         expect(rowForMonth(usd, mk).net_capital_flow).toBeCloseTo(eventsInMonth(id, mk, "usd"), 8);
         expect(rowForMonth(clp, mk).net_capital_flow).toBe(eventsInMonth(id, mk, "clp"));
@@ -125,11 +125,11 @@ describe("CLP ledger cash and checking: USD deposits event by event", () => {
     }
     // In pesos the events sum to balance − interest: the fee stays out of the flow, and the
     // transfer month reads no P/L.
-    const clpRows = loadAccountRowsForGroupConsolidation(clpId, clpSlug, "clp");
+    const clpRows = monthlyPerfRowsForAccount(clpId, clpSlug, "clp");
     expect(rowForMonth(clpRows, M1).net_capital_flow).toBe(1_000_000);
     expect(rowForMonth(clpRows, M3).nominal_pl).toBe(0);
     expect(rowForMonth(clpRows, M3).closing_value).toBe(clpCashBalanceClpAt(clpId, monthEndUtcYmd(M3)));
-    const checkingRows = loadAccountRowsForGroupConsolidation(checkingId, checkingSlug, "clp");
+    const checkingRows = monthlyPerfRowsForAccount(checkingId, checkingSlug, "clp");
     expect(rowForMonth(checkingRows, M3).closing_value).toBe(
       checkingMovementBalanceClpAtCached(checkingId, monthEndUtcYmd(M3))
     );
@@ -138,7 +138,7 @@ describe("CLP ledger cash and checking: USD deposits event by event", () => {
   it("the account's performance table and aportes line read the same events", () => {
     if (!clpId) return;
     const perf = getAccountMonthlyPerformance(clpId, "usd")?.monthly ?? [];
-    const cons = loadAccountRowsForGroupConsolidation(clpId, clpSlug, "usd");
+    const cons = monthlyPerfRowsForAccount(clpId, clpSlug, "usd");
     for (const mk of [M2, M3]) {
       expect(rowForMonth(perf, mk).net_capital_flow).toBeCloseTo(rowForMonth(cons, mk).net_capital_flow, 8);
     }
@@ -162,7 +162,7 @@ describe("CLP ledger cash and checking: USD deposits event by event", () => {
       [clpId, clpSlug],
       [checkingId, checkingSlug],
     ] as const) {
-      const rows = loadAccountRowsForGroupConsolidation(id, slug, "usd");
+      const rows = monthlyPerfRowsForAccount(id, slug, "usd");
       const flows = rows.reduce((s, r) => s + r.net_capital_flow, 0);
       expect(flows).toBeCloseTo(cardUsd.get(id)!, 8);
     }
@@ -175,7 +175,7 @@ describe("CLP ledger cash and checking: USD deposits event by event", () => {
       [checkingId, checkingSlug],
     ] as const) {
       for (const unit of ["clp", "usd"] as const) {
-        const rows = loadAccountRowsForGroupConsolidation(id, slug, unit); // newest first
+        const rows = monthlyPerfRowsForAccount(id, slug, unit); // newest first
         const first = rowForMonth(rows, M1);
         expect(first.nominal_pl).toBeCloseTo(first.closing_value - first.net_capital_flow, 8);
         const flows = rows.reduce((s, r) => s + r.net_capital_flow, 0);
@@ -183,7 +183,7 @@ describe("CLP ledger cash and checking: USD deposits event by event", () => {
       }
     }
     // Pesos: the first month's P/L is the commission charged in it.
-    const clpRows = loadAccountRowsForGroupConsolidation(clpId, clpSlug, "clp");
+    const clpRows = monthlyPerfRowsForAccount(clpId, clpSlug, "clp");
     expect(rowForMonth(clpRows, M1).nominal_pl).toBe(-2_000);
   });
 });
