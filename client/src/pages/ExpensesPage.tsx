@@ -25,7 +25,6 @@ import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
 import { useCcExpenseCategoryLevel } from "../useCcExpenseCategoryLevel";
 import { ccExpenseCategoriesAtLevel } from "../ccExpenseCategories";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
-import { activeBigGroupSlugs, bigGroupsWithUsage } from "../ccExpenseBigGroupTotals";
 
 /** Chart Período choices: Diario is not offered on this page. */
 const EXPENSES_CHART_PERIODS = ["month", "year"] as const;
@@ -67,10 +66,7 @@ export function ExpensesPage() {
     [categoryLevel, data?.categories]
   );
 
-  const activeBigGroups = useMemo(
-    () => (data ? activeBigGroupSlugs(data.lines) : []),
-    [data]
-  );
+  const activeBigGroups = useMemo(() => data?.active_big_group_slugs ?? [], [data]);
 
   const { excludedBigGroups, isExcluded, toggleExcluded } =
     useCcExpenseExcludedBigGroups(activeBigGroups);
@@ -81,13 +77,8 @@ export function ExpensesPage() {
   const err =
     loadError instanceof Error ? loadError.message : loadError ? t("common.loadFailed") : null;
 
-  const bigGroupUsage = useMemo(
-    () =>
-      data
-        ? bigGroupsWithUsage(data.lines, data.big_groups ?? [], installmentMode)
-        : [],
-    [data, installmentMode]
-  );
+  /** Big groups that hold spend in this mode (server `bigGroupUsageByMode`). */
+  const bigGroupUsage = gastos.data?.big_group_usage[installmentMode] ?? [];
 
   /** The server's precomputed view for this installment mode and category level, in this unit. */
   const view = gastos.data?.views[`${installmentMode}|${categoryLevel}`] ?? null;
@@ -239,10 +230,10 @@ export function ExpensesPage() {
         lines={data?.lines ?? []}
         categories={data?.categories ?? []}
         bigGroups={data?.big_groups ?? []}
-        installmentMode={installmentMode}
+        usage={bigGroupUsage}
         isExcluded={isExcluded}
         toggleExcluded={toggleExcluded}
-        loading={linesLoading}
+        loading={gastosLoading}
       />
 
       <div className="chart-panel-title-row" style={{ marginBottom: "0.5rem" }}>

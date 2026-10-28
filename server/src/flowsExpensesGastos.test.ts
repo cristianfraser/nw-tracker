@@ -1,12 +1,17 @@
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { ExpenseDepositLinkDto } from "./expenseDepositLinks.js";
 import { BILLS_CC_EXPENSE_SLUG, REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG } from "./expenseDepositLinks.js";
 import { DEPOSITS_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
-import { markCardRefunds, type FlowCcExpenseCategoryChartPoint, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { markCardRefunds, markFinancingCostLines, type FlowCcExpenseCategoryChartPoint, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { enrichLinesWithNotaDeCreditoPairing } from "./ccNotaDeCreditoPairing.js";
 import {
   aggregateGastosFromLines,
+  bigGroupUsageByMode,
   buildFlowsExpensesGastosViews,
+  countsTowardGastosMes,
   expenseYearMonthlyAverages,
   gastosViewKey,
 } from "./flowsExpensesGastos.js";
@@ -453,5 +458,95 @@ describe("buildFlowsExpensesGastosViews", () => {
     expect(nov(v.chart_monthly_by_category).bills).toBe(0);
     expect(nov(v.chart_sort_monthly_by_category!).bills).toBe(20_000);
     expect(v.by_month.find((r) => r.period_month === "2025-11")!.gastos_mes_clp).toBe(20_000);
+  });
+});
+
+type GastosMesCase = {
+  note: string;
+  line: Partial<FlowCcExpenseLineRow>;
+  split: boolean;
+  total: boolean;
+};
+
+const gastosMesCases = JSON.parse(
+  fs.readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "test", "gastosMesCountingCases.json"),
+    "utf-8"
+  )
+) as GastosMesCase[];
+
+/** The same table is asserted by the client's `ccExpenseLineBuckets.test.ts` (optimistic edits). */
+describe("countsTowardGastosMes (shared case table)", () => {
+  it.each(gastosMesCases)("$note", (c) => {
+    const line = ccLine({
+      line_role: "purchase",
+      installment_flag: 0,
+      nro_cuota_current: null,
+      nro_cuota_total: null,
+      amount_clp: 10_000,
+      category_slug: "supermarket",
+      ...c.line,
+    });
+    expect(countsTowardGastosMes(line, "split")).toBe(c.split);
+    expect(countsTowardGastosMes(line, "total")).toBe(c.total);
+  });
+});
+
+describe("bigGroupUsageByMode", () => {
+  it("sums the lines that count in each mode, counts purchases once, sorts by label", () => {
+    const purchase = (over: Partial<FlowCcExpenseLineRow>) =>
+      ccLine({ line_role: "purchase", installment_flag: 0, nro_cuota_current: null, category_slug: "travel", ...over });
+    const lines = [
+      purchase({ purchase_key: "a", amount_clp: 1000.4, big_group_slug: "trip" }),
+      purchase({ purchase_key: "a", amount_clp: 500, big_group_slug: "trip" }),
+      purchase({ purchase_key: "b", amount_clp: 700, big_group_slug: "trip", category_slug: "no_cuenta" }),
+      ccLine({ purchase_key: "c", amount_clp: 300, big_group_slug: "boda" }),
+      ccLine({ purchase_key: "c", line_role: "installment_purchase_total", installment_flag: 1, amount_clp: 900, big_group_slug: "boda" }),
+      purchase({ purchase_key: "d", amount_clp: 50 }),
+    ];
+    const usage = bigGroupUsageByMode(lines, [
+      { slug: "trip", label: "Viaje" },
+      { slug: "boda", label: "Boda" },
+    ]);
+    expect(usage.split).toEqual([
+      { slug: "boda", label: "Boda", total_clp: 300, purchase_count: 1 },
+      { slug: "trip", label: "Viaje", total_clp: 1500, purchase_count: 1 },
+    ]);
+    expect(usage.total).toEqual([
+      { slug: "boda", label: "Boda", total_clp: 900, purchase_count: 1 },
+      { slug: "trip", label: "Viaje", total_clp: 1500, purchase_count: 1 },
+    ]);
+  });
+});
+
+describe("markFinancingCostLines", () => {
+  const charge = (over: Partial<FlowCcExpenseLineRow>) =>
+    ccLine({ line_role: "purchase", installment_flag: 0, nro_cuota_current: null, amount_clp: 2_990, ...over });
+
+  it("stamps the bank's section-3 charges the card P/L counts, by the shared statement-line rules", () => {
+    const [admin, ite, interest, usdFee, purchase, payment, traspaso, cuota, checking] = markFinancingCostLines([
+      charge({ merchant: "Servicio Administracion" }),
+      charge({ merchant: "Impuesto ITE" }),
+      charge({ merchant: "INTERESES ROTATIVOS" }),
+      charge({ merchant: "COMISION USO INTERNACIONAL", amount_usd: 3.5 }),
+      charge({ merchant: "SUPERMERCADO" }),
+      charge({ merchant: "MONTO CANCELADO", amount_usd: 12 }),
+      charge({ merchant: "TRASPASO A DEUDA NACIONAL" }),
+      charge({ merchant: "INTERESES", installment_flag: 1 }),
+      charge({ source: "checking", merchant: "COMISION MANTENCION" }),
+    ]);
+    expect(admin!.is_financing_cost).toBe(true);
+    expect(ite!.is_financing_cost).toBe(true);
+    expect(interest!.is_financing_cost).toBe(true);
+    expect(usdFee!.is_financing_cost).toBe(true);
+    expect(purchase!.is_financing_cost).toBeUndefined();
+    expect(payment!.is_financing_cost).toBeUndefined();
+    expect(traspaso!.is_financing_cost).toBeUndefined();
+    expect(cuota!.is_financing_cost).toBeUndefined();
+    expect(checking!.is_financing_cost).toBeUndefined();
+  });
+
+  it("never stamps a credit", () => {
+    expect(markFinancingCostLines([charge({ merchant: "COMISION", amount_clp: -100 })])[0]!.is_financing_cost).toBeUndefined();
   });
 });

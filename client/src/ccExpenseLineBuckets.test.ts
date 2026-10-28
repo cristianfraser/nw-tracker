@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./types";
 import {
@@ -207,5 +209,32 @@ describe("ccExpenseLineBuckets", () => {
     ];
     const gastos = rows.filter((ln) => countsTowardGastosMes(ln));
     expect(sumLineAmountsClp(gastos)).toBe(3000);
+  });
+});
+
+type GastosMesCase = {
+  note: string;
+  line: Partial<FlowCcExpenseLineRow>;
+  split: boolean;
+  total: boolean;
+};
+
+/**
+ * The client keeps `countsTowardGastosMes` to move a line between the month modal's sections as an
+ * edit is applied optimistically; the server's rule (`flowsExpensesGastos.ts`) is the original.
+ * Both assert the same table, so the two cannot drift.
+ */
+const gastosMesCases = JSON.parse(
+  fs.readFileSync(
+    fileURLToPath(new URL("../../server/src/test/gastosMesCountingCases.json", import.meta.url)),
+    "utf-8"
+  )
+) as GastosMesCase[];
+
+describe("countsTowardGastosMes (shared case table with the server)", () => {
+  it.each(gastosMesCases)("$note", (c) => {
+    const ln = line(c.line);
+    expect(countsTowardGastosMes(ln, "split")).toBe(c.split);
+    expect(countsTowardGastosMes(ln, "total")).toBe(c.total);
   });
 });

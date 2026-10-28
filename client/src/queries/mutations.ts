@@ -283,8 +283,10 @@ export function usePutCcExpensePurchaseBigGroupMutation() {
       );
     },
     onSettled: () => {
-      // The gastos views leave excluded big groups out of the chart: recompute them.
+      // The gastos views leave excluded big groups out of the chart and carry each group's
+      // usage; the lines payload lists the active groups: recompute both.
       void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpensesGastosAll() });
+      void queryClient.invalidateQueries({ queryKey, exact: true });
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
