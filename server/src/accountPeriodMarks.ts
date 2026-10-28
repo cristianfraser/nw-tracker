@@ -81,6 +81,23 @@ export function monthEndCloseClpForAccount(
   monthKey: string,
   opts?: MonthEndCloseForAccountOpts
 ): number | null {
+  return (
+    monthEndMarkClpForAccount(accountId, bucketSlug, monthKey, opts) ??
+    monthEndCloseFromPerfRows(monthlyRows, monthKey)
+  );
+}
+
+/**
+ * The account's mark in CLP at the month end (today for the current month), or null when it has
+ * none. Apart from {@link monthEndCloseClpForAccount} so a reader in another unit converts the
+ * mark only: the perf-row fallback is already in the rows' unit.
+ */
+export function monthEndMarkClpForAccount(
+  accountId: number,
+  bucketSlug: string,
+  monthKey: string,
+  opts?: MonthEndCloseForAccountOpts
+): number | null {
   const monthEnd = monthEndUtcYmd(monthKey);
   const today = chileCalendarTodayYmd();
   const ymd = monthEnd > today ? today : monthEnd;
@@ -88,8 +105,7 @@ export function monthEndCloseClpForAccount(
     import_key: opts?.import_key ?? null,
     name: opts?.name ?? null,
   });
-  if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) return mark.value_clp;
-  return monthEndCloseFromPerfRows(monthlyRows, monthKey);
+  return mark?.value_clp != null && Number.isFinite(mark.value_clp) ? mark.value_clp : null;
 }
 
 /** True when the perf series' earliest row is after `boundaryYmd` — the account had no value then. */

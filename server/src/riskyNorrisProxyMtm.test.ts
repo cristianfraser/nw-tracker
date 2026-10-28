@@ -368,6 +368,12 @@ describe("fintualGlobalSyncSettledForChileDay", () => {
   });
 
   it("asks the poll-day predicate about the day it was given, not the clock", () => {
+    // The state is stubbed: read from disk, a run with no Fintual poll on record passes nulls,
+    // which `expect.anything()` rejects (the test then failed only on some machines and days).
+    vi.spyOn(globalSyncState, "loadGlobalSyncState").mockReturnValue({
+      fintualLastAppliedPublishYmd: "2026-09-10",
+      fintualLastAppliedSig: "sig",
+    });
     const caughtUp = vi
       .spyOn(fintualPublishDate, "fintualPollDayCaughtUp")
       .mockImplementation((pollYmd: string) => pollYmd === "2026-09-10");

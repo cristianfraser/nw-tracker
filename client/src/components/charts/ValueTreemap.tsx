@@ -48,6 +48,12 @@ export function valueMapReadyForUnit(root: NavValueMapNodeDto | undefined, unit:
   return root != null && unitValue(root, unit) != null;
 }
 
+/**
+ * Keys the server puts on value-map nodes (`navValueMap.ts`), listed so the i18n dead-key check
+ * sees them: «Otros», a proxied fund's non-ETF sleeve.
+ */
+export const SERVER_VALUE_MAP_LABEL_KEYS = ["valueMap.otherSleeve"] as const;
+
 function nodeLabel(n: NavValueMapNodeDto): string {
   return n.label_i18n_key ? i18n.t(n.label_i18n_key) : n.label;
 }
