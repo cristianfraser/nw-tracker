@@ -1,6 +1,7 @@
 import type {
   DashboardNavSnapshotResponse,
   DashboardResponse,
+  NavCardMetricsDto,
   NavTreeNodeDto,
   SidebarNavResponse,
 } from "../types";
@@ -8,11 +9,23 @@ import type { DisplayUnit } from "./keys";
 import { readSidebarNavCache } from "./sidebarNavCache";
 
 /**
- * True when a cached snapshot's `card_metrics_by_slug` has an entry for every group node the
- * current nav tree can render as a card — the node set the server keys (net_worth tree + the
- * Pasivos root, account leaves skipped; `buildNavCardMetricsBySlug`). A snapshot saved before a
- * node existed must never be rendered: `requireNavCardMetrics` would throw on it. An unknown
- * nav (first visit, nothing cached yet) is not a mismatch — no strip renders without a tree.
+ * True when an entry carries the fields this client reads. A snapshot can be saved by a new
+ * client from a server still on the previous payload (a restart lagging a deploy: v13 lacked
+ * `parent_pct` that way, and on 2026-10-28 a v15 snapshot lacked `value`, which crashed every
+ * card page on reload), so a version bump alone does not keep an old shape out.
+ */
+function navCardMetricsEntryHasCurrentShape(entry: NavCardMetricsDto): boolean {
+  if (entry.value == null || entry.parent_pct == null) return false;
+  return entry.liquidated == null || entry.liquidated.value != null;
+}
+
+/**
+ * True when a cached snapshot's `card_metrics_by_slug` has an entry, in the current shape, for
+ * every group node the current nav tree can render as a card — the node set the server keys
+ * (net_worth tree + the Pasivos root, account leaves skipped; `buildNavCardMetricsBySlug`). A
+ * snapshot saved before a node existed, or from a server on an older payload, must never be
+ * rendered: `requireNavCardMetrics` and its readers would throw on it. An unknown nav (first
+ * visit, nothing cached yet) is not a mismatch — no strip renders without a tree.
  */
 export function navSnapshotCoversNavTree(
   cardMetricsBySlug: DashboardResponse["card_metrics_by_slug"] | undefined,
@@ -22,7 +35,10 @@ export function navSnapshotCoversNavTree(
   const roots = [nav.net_worth, nav.main.find((n) => n.slug === "liabilities")];
   const covers = (n: NavTreeNodeDto): boolean => {
     const cardNode = n.account_id == null && n.expense_account_id == null;
-    if (cardNode && !cardMetricsBySlug?.[n.slug]) return false;
+    if (cardNode) {
+      const entry = cardMetricsBySlug?.[n.slug];
+      if (!entry || !navCardMetricsEntryHasCurrentShape(entry)) return false;
+    }
     return (n.children ?? []).every(covers);
   };
   return roots.every((root) => root == null || covers(root));
