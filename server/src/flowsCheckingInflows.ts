@@ -1,4 +1,3 @@
-import { monthKeyFromYmd } from "./calendarMonth.js";
 import { isCheckingLedgerAnchorNote } from "./checkingCartolaBalances.js";
 import { loadCheckingExpenseRefunds } from "./checkingExpenseRefunds.js";
 import { db } from "./db.js";
@@ -87,7 +86,6 @@ export type FlowFilteredCheckingIncomeLine = {
 export type FlowsCheckingIncomePayload = {
   lines: FlowCheckingIncomeLine[];
   manual: FlowManualIncomeLine[];
-  monthly_totals: Record<string, number>;
   work_earnings: FlowWorkEarningRow[];
   income_kind_by_movement_id: Record<number, CheckingIncomeKind>;
   payroll_period_by_movement_id: Record<number, string>;
@@ -418,18 +416,10 @@ function computeCheckingIncome(): CheckingIncomeComputation {
     return b.movement_id - a.movement_id;
   });
 
-  const monthly_totals: Record<string, number> = {};
-  for (const line of lines) {
-    const month = monthKeyFromYmd(line.received_on);
-    if (!month) continue;
-    monthly_totals[month] = (monthly_totals[month] ?? 0) + line.amount_clp;
-  }
-
   return {
     payload: {
       lines,
       manual: loadManualIncomeEntries(),
-      monthly_totals,
       work_earnings: loadPayrollWorkEarnings(),
       income_kind_by_movement_id: mergedIncomeKindByMovementIdRecord(),
       payroll_period_by_movement_id: payrollPeriodByMovementIdRecord(),

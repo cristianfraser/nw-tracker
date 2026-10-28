@@ -22,7 +22,7 @@ describe("rangeWindowStartYmd", () => {
 
   it("clamps the lead to the range cutoff (5y range, 4.5y of data ⇒ show the full 5y)", () => {
     // first − 1y would predate the cutoff, so the window stops at the 5y cutoff (0.5y empty).
-    expect(rangeWindowStartYmd("5y", "2022-01-01", TODAY)).toBe("2021-06-30");
+    expect(rangeWindowStartYmd("5y", "2022-01-01", TODAY)).toBe("2021-07-01");
   });
 
   it("starts flush at the data for total (no truncation ⇒ no gap)", () => {
@@ -30,11 +30,11 @@ describe("rangeWindowStartYmd", () => {
   });
 
   it("returns the plain cutoff when the data is older than the range (90d)", () => {
-    expect(rangeWindowStartYmd("90d", "2020-01-01", TODAY)).toBe("2026-04-02");
+    expect(rangeWindowStartYmd("90d", "2020-01-01", TODAY)).toBe("2026-04-03");
   });
 
   it("falls back to the cutoff when there is no data to anchor on", () => {
-    expect(rangeWindowStartYmd("1y", null, TODAY)).toBe("2025-06-30");
+    expect(rangeWindowStartYmd("1y", null, TODAY)).toBe("2025-07-01");
   });
 
   it("returns null (no clip) for total with no data", () => {

@@ -34,7 +34,7 @@ describe("flows overview rows", () => {
     row("2024-02", { income: 300, expenses: 60, deposits: 30, pl: 7, card_paid: 30, cash_change: 175 }),
   ];
 
-  it("rolls months up into calendar years, summing the legs and re-deriving the rest", () => {
+  it("rolls months up into calendar years, summing every field", () => {
     const years = rollupFlowsOverviewRowsByYear(months);
     expect(years.map((y) => y.period_month)).toEqual(["2023-12", "2024-12"]);
     expect(years[1]).toEqual({
@@ -63,9 +63,14 @@ describe("flows overview rows", () => {
     expect(months[1]!.income).toBe(200);
   });
 
-  it("range totals add the kept rows and re-derive the derived fields", () => {
+  it("range totals add the kept rows field by field", () => {
     const t = flowsOverviewRangeTotals(months.slice(1));
     const { period_month: _p, as_of_date: _a, ...year } = rollupFlowsOverviewRowsByYear(months.slice(1))[0]!;
     expect(t).toEqual(year);
+  });
+
+  it("sums the server's derived figures as they are, never re-deriving them", () => {
+    const odd = { ...months[0]!, cash_unexplained: 999 };
+    expect(flowsOverviewRangeTotals([odd]).cash_unexplained).toBe(999);
   });
 });

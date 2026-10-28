@@ -8,6 +8,7 @@ import { buildFlowsPlPayload } from "./flowsPl.js";
 import {
   aggregateFlowsOverviewDays,
   aggregateFlowsOverviewMonths,
+  buildFlowsIncomeAggregates,
   buildFlowsOverviewPayload,
   flowsOverviewClosed,
   flowsOverviewTotals,
@@ -298,6 +299,69 @@ describe("aggregateFlowsOverviewMonths", () => {
     expect(closed.last_12_months.pl).toBe(0);
     const empty = flowsOverviewClosed([], TODAY);
     expect(empty.last_month).toMatchObject({ period_month: "2024-03", as_of_date: "2024-03-31", savings: 0, cash_unexplained: 0 });
+  });
+});
+
+describe("buildFlowsIncomeAggregates", () => {
+  /** Salary on its payroll month, a gift, a manual entry and a dollar wire with no movement. */
+  function mixedIncome(): FlowsOverviewIncome {
+    const income = incomePayload();
+    income.lines[0]!.amount_usd = 2_105.26;
+    income.lines.push({
+      ...income.lines[0]!,
+      movement_id: 2,
+      received_on: "2024-03-20",
+      amount_clp: 150_000.4,
+      amount_usd: 157.89,
+    });
+    income.income_kind_by_movement_id = { 1: "salary", 2: "parent_gift" };
+    income.payroll_period_by_movement_id = { 1: "2024-02" };
+    income.manual = [
+      { id: 7, amount_clp: 30_000, received_on: "2024-01-10", amount_usd: 31.6, source: null, note: null, origin: "manual" },
+    ];
+    income.work_earnings = [
+      {
+        earning_type: "salary",
+        liquido_clp: 900_000.6,
+        liquido_usd: 950.25,
+        movement_id: null,
+        period_month: "2024-03",
+        wire_received_on: "2024-03-28",
+      } as FlowsOverviewIncome["work_earnings"][number],
+    ];
+    return income;
+  }
+
+  for (const unit of ["clp", "usd"] as const) {
+    it(`each month's income is the overview's income (${unit})`, () => {
+      const income = mixedIncome();
+      const agg = buildFlowsIncomeAggregates(income, unit, TODAY);
+      const overview = months({ income, deposits: [] }, "split", unit);
+      for (const row of agg.months) {
+        const o = overview.find((r) => r.period_month === row.period_month);
+        expect(o?.income ?? 0).toBe(row.total_clp);
+      }
+      expect(agg.total).toBe(flowsOverviewTotals(overview).income);
+      const days = aggregateFlowsOverviewDays(
+        { income, lines: [], cuotaPayByIso: {}, deposits: [], plDaily: [], ...DAY_EXTRA },
+        "split",
+        unit
+      );
+      for (const p of agg.days) {
+        expect(days.find((r) => r.as_of_date === p.as_of_date)!.income).toBeCloseTo(p.total, 6);
+      }
+    });
+  }
+
+  it("splits by kind, counts legs and runs the months through today", () => {
+    const agg = buildFlowsIncomeAggregates(mixedIncome(), "clp", TODAY);
+    expect(agg.months.map((m) => m.period_month)).toEqual(["2024-01", "2024-02", "2024-03", "2024-04"]);
+    expect(agg.months[1]).toMatchObject({ salary_clp: 2_000_000, total_clp: 2_000_000, line_count: 1 });
+    expect(agg.months[2]).toMatchObject({ salary_clp: 900_001, parent_gift_clp: 150_000, total_clp: 1_050_001, line_count: 2 });
+    expect(agg.months[3]).toMatchObject({ total_clp: 0, line_count: 0, cumulative_clp: 3_080_001 });
+    expect(agg.total).toBe(3_080_001);
+    expect(agg.days.map((d) => d.as_of_date)).toEqual(["2024-01-10", "2024-03-05", "2024-03-20", "2024-03-28"]);
+    expect(agg.days[1]).toMatchObject({ salary: 2_000_000, total: 2_000_000 });
   });
 });
 

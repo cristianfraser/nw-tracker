@@ -14,10 +14,7 @@ import {
   sumChartPointsField,
 } from "../flowsDisplay";
 import { clipMonthsThenRollup, clipPointsToTimeRange } from "../timeRange";
-import {
-  aggregateDepositChartPointsByDay,
-  rollupDepositChartPointsByYear,
-} from "../flowsDepositsAggregate";
+import { rollupDepositChartPointsByYear } from "../flowsDepositsAggregate";
 import type { DepositFlowCategory } from "../types";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
@@ -46,7 +43,7 @@ export function DepositsPage() {
     if (!data) return [];
     if (chartGranularity === "day") {
       return clipPointsToTimeRange(
-        aggregateDepositChartPointsByDay(data.rows, displayUnit),
+        displayUnit === "usd" ? data.chart_daily_usd : data.chart_daily,
         timeRange
       );
     }
@@ -125,12 +122,10 @@ export function DepositsPage() {
 
       {CATEGORY_ORDER.map((cat) => {
         // Tables include full history (the chart's Rango only scopes the chart + its
-        // companion total); the section subtotal equals the server subtotal.
-        const blockRows = data ? data.by_category[cat].rows : [];
-        const blockTotal = blockRows.reduce(
-          (s, r) => s + (displayUnit === "usd" ? r.amount_usd ?? 0 : r.amount_clp),
-          0
-        );
+        // companion total); the section subtotal is the server's.
+        const block = data ? data.by_category[cat] : null;
+        const blockRows = block ? block.rows : [];
+        const blockTotal = block ? (displayUnit === "usd" ? block.total_usd : block.total_clp) : 0;
         return (
           <section key={cat} style={{ marginBottom: "1.5rem" }}>
             <h3 style={{ marginBottom: "0.35rem" }}>
