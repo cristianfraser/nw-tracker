@@ -10,20 +10,22 @@ import {
   isChartActiveAccount,
 } from "./accountGroupTotals";
 import { dashboardAccountNavLabel } from "./navAccountLabels";
-import { navAccountIdSet } from "./portfolioNavDashboardCards";
+import { navAccountIdSet, requireNavCardMetrics } from "./portfolioNavDashboardCards";
 import { mixedNavChildren, stripChartBucketNavNodes } from "./navChartBuckets";
 import {
   portfolioStripAccountChildren,
   portfolioStripGroupChildren,
 } from "./portfolioNavFromApi";
 import { resolveNavTreeLabel } from "./sidebarNavFromApi";
-import type { DashboardAccountRow, NavTreeNodeDto } from "./types";
+import type { DashboardAccountRow, DashboardResponse, NavTreeNodeDto } from "./types";
 
+type BreakdownDash = Pick<DashboardResponse, "accounts" | "card_metrics_by_slug">;
 
 function accountDetailPath(accountId: number): string {
   return `/account/${accountId}`;
 }
 
+/** Rows a breakdown lists: counted, chart-active, with a balance (visibility, not a figure). */
 function valueRows(rows: DashboardAccountRow[]): DashboardAccountRow[] {
   return rows.filter(
     (a) =>
@@ -31,22 +33,6 @@ function valueRows(rows: DashboardAccountRow[]): DashboardAccountRow[] {
       isChartActiveAccount(a) &&
       hasMaterialDashboardBalance(a)
   );
-}
-
-function sumClp(rows: DashboardAccountRow[]): number {
-  return rows.reduce((s, r) => s + (r.current_value_clp ?? 0), 0);
-}
-
-function sumUsd(rows: DashboardAccountRow[]): number | null {
-  let sum = 0;
-  let any = false;
-  for (const r of rows) {
-    if (r.current_value_usd != null && Number.isFinite(r.current_value_usd)) {
-      sum += r.current_value_usd;
-      any = true;
-    }
-  }
-  return any ? sum : null;
 }
 
 function sortByClpDesc<T extends { clp: number }>(items: T[]): T[] {
@@ -69,28 +55,36 @@ function accountLines(
   );
 }
 
-/** One line for a group listed as a leaf (a bucket beside accounts), without its accounts. */
-function groupLeafLine(
+/**
+ * A group's line: the server's un-netted balance of its members (`value.members`), shown while
+ * one of its accounts is listed. Never a Σ of rows here.
+ */
+function groupLine(
   g: NavTreeNodeDto,
-  rows: DashboardAccountRow[],
+  listedRows: DashboardAccountRow[],
   depth: 0 | 1 | 2,
+  dash: BreakdownDash,
   rowsById: Map<number, DashboardAccountRow>
 ): CardBreakdownLine | null {
-  const gIds = navAccountIdSet(g);
-  const gRows = rows.filter((r) => gIds.has(r.account_id));
-  if (!gRows.length) return null;
+  if (!listedRows.length) return null;
+  const { members } = requireNavCardMetrics(dash, g).value;
   const gPath = g.route_path?.trim();
   return {
     label: resolveNavTreeLabel(g),
-    clp: sumClp(gRows),
-    usd: sumUsd(gRows),
+    clp: members.clp,
+    usd: members.usd,
     depth,
     ...(gPath ? { to: gPath } : {}),
     ...groupLineMeta(
-      gRows.map((r) => r.account_id),
+      listedRows.map((r) => r.account_id),
       rowsById
     ),
   };
+}
+
+function rowsUnder(node: NavTreeNodeDto, rows: DashboardAccountRow[]): DashboardAccountRow[] {
+  const ids = navAccountIdSet(node);
+  return rows.filter((r) => ids.has(r.account_id));
 }
 
 /**
@@ -101,6 +95,7 @@ function mixedChildLines(
   children: NavTreeNodeDto[],
   rows: DashboardAccountRow[],
   depth: 1 | 2,
+  dash: BreakdownDash,
   rowsById: Map<number, DashboardAccountRow>
 ): CardBreakdownLine[] {
   const out: CardBreakdownLine[] = [];
@@ -109,7 +104,7 @@ function mixedChildLines(
       out.push(...accountLines(rows.filter((r) => r.account_id === c.account_id), depth));
       continue;
     }
-    const line = groupLeafLine(c, rows, depth, rowsById);
+    const line = groupLine(c, rowsUnder(c, rows), depth, dash, rowsById);
     if (line) out.push(line);
   }
   return sortByClpDesc(out);
@@ -118,54 +113,48 @@ function mixedChildLines(
 function breakdownBlockForNavNode(
   node: NavTreeNodeDto,
   activeRows: DashboardAccountRow[],
+  dash: BreakdownDash,
   rowsById: Map<number, DashboardAccountRow>,
   leafLike = false
 ): CardBreakdownLine[] | null {
-  const nodeRows = activeRows.filter((r) => navAccountIdSet(node).has(r.account_id));
+  const nodeRows = rowsUnder(node, activeRows);
   if (!nodeRows.length) return null;
-  if (leafLike) {
-    const line = groupLeafLine(node, nodeRows, 0, rowsById);
-    return line ? [line] : null;
+  if (node.account_id != null) {
+    // An account bucket: a head line under the nav label, then the account itself.
+    const row = nodeRows[0]!;
+    const rp = node.route_path?.trim();
+    return [
+      {
+        label: resolveNavTreeLabel(node),
+        clp: row.current_value_clp ?? 0,
+        usd: row.current_value_usd ?? null,
+        depth: 0,
+        ...(rp ? { to: rp } : {}),
+        ...groupLineMeta([row.account_id], rowsById),
+      },
+      ...accountLines(nodeRows, 1),
+    ];
   }
-  const nodeAccountIds = nodeRows.map((r) => r.account_id);
-
-  const rp = node.route_path?.trim();
-  const lines: CardBreakdownLine[] = [
-    {
-      label: resolveNavTreeLabel(node),
-      clp: sumClp(nodeRows),
-      usd: sumUsd(nodeRows),
-      depth: 0,
-      ...(rp ? { to: rp } : {}),
-      ...groupLineMeta(nodeAccountIds, rowsById),
-    },
-  ];
+  const head = groupLine(node, nodeRows, 0, dash, rowsById)!;
+  if (leafLike) return [head];
+  const lines: CardBreakdownLine[] = [head];
 
   const mixed = mixedNavChildren(node);
   if (mixed) {
-    lines.push(...mixedChildLines(mixed, nodeRows, 1, rowsById));
+    lines.push(...mixedChildLines(mixed, nodeRows, 1, dash, rowsById));
     return lines;
   }
 
   const innerGroups = portfolioStripGroupChildren(node).filter((c) => c.route_path?.trim());
   if (innerGroups.length >= 1) {
     for (const g of innerGroups) {
-      const gIds = navAccountIdSet(g);
-      const gRows = nodeRows.filter((r) => gIds.has(r.account_id));
-      if (!gRows.length) continue;
-      const gAccountIds = gRows.map((r) => r.account_id);
-      const gPath = g.route_path?.trim();
-      lines.push({
-        label: resolveNavTreeLabel(g),
-        clp: sumClp(gRows),
-        usd: sumUsd(gRows),
-        depth: 1,
-        ...(gPath ? { to: gPath } : {}),
-        ...groupLineMeta(gAccountIds, rowsById),
-      });
+      const gRows = rowsUnder(g, nodeRows);
+      const line = groupLine(g, gRows, 1, dash, rowsById);
+      if (!line) continue;
+      lines.push(line);
       const gMixed = mixedNavChildren(g);
       if (gMixed) {
-        lines.push(...mixedChildLines(gMixed, gRows, 2, rowsById));
+        lines.push(...mixedChildLines(gMixed, gRows, 2, dash, rowsById));
         continue;
       }
       const accountKids = portfolioStripAccountChildren(g);
@@ -174,8 +163,7 @@ function breakdownBlockForNavNode(
         for (const ak of accountKids) {
           for (const id of navAccountIdSet(ak)) leafIds.add(id);
         }
-        const leafRows = gRows.filter((r) => leafIds.has(r.account_id));
-        lines.push(...accountLines(leafRows, 2));
+        lines.push(...accountLines(gRows.filter((r) => leafIds.has(r.account_id)), 2));
       } else {
         lines.push(...accountLines(gRows, 2));
       }
@@ -188,12 +176,14 @@ function breakdownBlockForNavNode(
 }
 
 /**
- * Card breakdown from immediate nav child buckets under `navNode` (matches chart agrupado buckets).
+ * Card breakdown from immediate nav child buckets under `navNode` (matches chart agrupado
+ * buckets). Group lines carry the server's balances; account lines their own row's.
  */
 export function buildNavCardBreakdown(
   navNode: NavTreeNodeDto,
-  scopedRows: DashboardAccountRow[]
+  dash: BreakdownDash
 ): CardBreakdownLine[] | null {
+  const scopedRows = rowsUnder(navNode, dash.accounts);
   const active = valueRows(scopedRows);
   if (!active.length) return null;
   const rowsById = dashboardAccountRowsById(scopedRows);
@@ -202,13 +192,10 @@ export function buildNavCardBreakdown(
   /**
    * Too few children to bucket (a single-account leaf such as Ahorros y reservas): list the
    * node's own accounts flat, the way a bucket's sole account already renders through the
-   * nesting collapse. Rows are kept to the node's own leaves, so another account scoped to the
-   * same bucket never reaches the card.
+   * nesting collapse.
    */
   if (childNodes.length === 0) {
-    const ownIds = navAccountIdSet(navNode);
-    const ownRows = active.filter((r) => ownIds.has(r.account_id));
-    return ownRows.length ? accountLines(ownRows, 0) : null;
+    return accountLines(active, 0);
   }
 
   // Beside accounts a sub-bucket is listed as a leaf (Portafolio IPSA among Acciones' stocks).
@@ -218,6 +205,7 @@ export function buildNavCardBreakdown(
     const block = breakdownBlockForNavNode(
       child,
       active,
+      dash,
       rowsById,
       leafLikeGroups && child.account_id == null
     );

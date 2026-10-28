@@ -132,16 +132,6 @@ export function resolveDashboardBucketFromNavNode(node: NavTreeNodeDto): Dashboa
   return null;
 }
 
-/** Bucket slugs for routable children under a `nav_hub` (e.g. inversiones → retirement + brokerage). */
-export function dashboardBucketGroupsUnderNavHub(node: NavTreeNodeDto): DashboardGroupSlug[] {
-  const out: DashboardGroupSlug[] = [];
-  for (const child of portfolioStripGroupChildren(node)) {
-    const g = resolveDashboardBucketFromNavNode(child);
-    if (g && g !== "net_worth") out.push(g);
-  }
-  return out;
-}
-
 /**
  * Hub the strip spreads into its children's cards (inversiones → brokerage + retirement).
  * The cash_eqs hub is a dashboard bucket itself and keeps its own card.

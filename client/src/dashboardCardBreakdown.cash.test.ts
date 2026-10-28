@@ -34,7 +34,7 @@ describe("cash card breakdown", () => {
 
   /**
    * The savings card goes through the generic nav builder (no cash special case). Its single
-   * account still gets a line, and another account scoped to the same bucket must not.
+   * account still gets a line, and another account outside its nav leaves must not.
    */
   it("savings nav card lists its own account only", () => {
     const savingsNode = navNodeFixture({
@@ -55,7 +55,10 @@ describe("cash card breakdown", () => {
       ],
     });
 
-    const lines = buildNavCardBreakdown(savingsNode, [reserva, checking]);
+    const lines = buildNavCardBreakdown(savingsNode, {
+      accounts: [reserva, checking],
+      card_metrics_by_slug: {},
+    });
 
     expect(lines).not.toBeNull();
     expect(lines!.map((l) => l.label)).toEqual(["Reserva"]);

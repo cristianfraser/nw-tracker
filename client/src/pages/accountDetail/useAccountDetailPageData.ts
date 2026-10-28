@@ -21,7 +21,7 @@ import { findNavTreeNodeByAccountId } from "../../portfolioNavFromApi";
 import i18n from "../../i18n";
 import { buildPlaceholderAccountDetailBundle } from "../../placeholders/accountDetailPlaceholders";
 import { buildPlaceholderNavStripDash } from "../../placeholders/dashboardPagePlaceholders";
-import { cardGroupMetricsByPeriodFromAccounts } from "../../dashboardCardBreakdown";
+import { cardMetricsByPeriodForAccountRow } from "../../dashboardCardBreakdown";
 import { useSurfacePrefs, type SurfacePrefsValue } from "../../surfaceDisplayPrefs";
 import { clipMonthsThenRollup } from "../../timeRange";
 import type {
@@ -74,7 +74,7 @@ export type AccountDetailPageData = {
   navSelf: ReturnType<typeof findNavTreeNodeByAccountId>;
   accountChartTheme: { bar: string; areaStroke: string; areaFill: string };
   accountDashRow: DashboardAccountRow | null;
-  accountMetricsAgg: ReturnType<typeof cardGroupMetricsByPeriodFromAccounts>;
+  accountMetricsAgg: ReturnType<typeof cardMetricsByPeriodForAccountRow>;
   accountNavChildren: NonNullable<ReturnType<typeof findNavTreeNodeByAccountId>>["children"];
   chartUsdVal: number | null;
 };
@@ -250,7 +250,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     if (fromNavCtx) return fromNavCtx;
     return navSnapshot?.accounts.find((a) => a.account_id === summary.account_id) ?? null;
   }, [detail?.dashboard_account_row, dash?.accounts, navSnapshot, summary.account_id]);
-  const accountMetricsAgg = cardGroupMetricsByPeriodFromAccounts(accountDashRow ? [accountDashRow] : []);
+  const accountMetricsAgg = cardMetricsByPeriodForAccountRow(accountDashRow ?? null);
   const accountNavChildren = navSelf?.children?.filter((c) => c.route_path?.trim()) ?? [];
 
   return {

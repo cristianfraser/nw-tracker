@@ -5,13 +5,13 @@ import { PortfolioEntityCardsStrip } from "../../components/dashboard/PortfolioE
 import { PortfolioNavChildDetailCards } from "../../components/dashboard/PortfolioNavChildDetailCards";
 import { PageTitleRow } from "../../components/layout/PageTitleRow";
 import { loadableClass } from "../../components/ui/Loadable";
-import type { cardGroupMetricsByPeriodFromAccounts } from "../../dashboardCardBreakdown";
+import type { cardMetricsByPeriodForAccountRow } from "../../dashboardCardBreakdown";
 import type { dashPickForNavStrip } from "../../queries/fetchers";
 import styles from "../AccountDetailPage.module.css";
 
 type LayoutProps = {
   title: string;
-  accountMetricsAgg: ReturnType<typeof cardGroupMetricsByPeriodFromAccounts>;
+  accountMetricsAgg: ReturnType<typeof cardMetricsByPeriodForAccountRow>;
   /** The unit the strip renders in (`AccountDetailPageData.stripUnit`). */
   stripUnit: "clp" | "usd";
   heroClp: number;

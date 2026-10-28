@@ -125,12 +125,31 @@ export interface NavCardMetricsVariantDto {
   year: NavCardPeriodMetricsDto;
 }
 
+/** A balance in both units (usd null = no member carries a dollar value in this payload). */
+export interface NavCardAmountDto {
+  clp: number;
+  usd: number | null;
+}
+
+/** Mirror of server `NavCardValueDto`: a nav node's balances, picked, never re-summed. */
+export interface NavCardValueDto {
+  /** The detail card's balance (a cash child: the CC-netted cash bucket). */
+  child: NavCardAmountDto;
+  /** The node's own page summary card and accounts-table «Total» row. */
+  parent: NavCardAmountDto;
+  /** Σ of the member rows the card covers, never netted (a card breakdown line). */
+  members: NavCardAmountDto;
+  fx_missing: boolean;
+  sync_stale: boolean;
+}
+
 /**
- * Server-computed card metrics per nav-tree group slug (server/src/dashboardNavCardMetrics.ts).
+ * Server-computed card figures per nav-tree group slug (server/src/dashboardNavCardMetrics.ts).
  * `child` = the node as a strip detail card; `parent` = the node as its page's compact card.
- * The client renders these — it never re-sums account rows for group cards.
+ * The client renders these — it never re-sums account rows for a group's balance or metrics.
  */
 export interface NavCardMetricsDto {
+  value: NavCardValueDto;
   child: NavCardMetricsVariantDto;
   parent: NavCardMetricsVariantDto;
   /**
@@ -151,6 +170,8 @@ export interface NavLiquidatedRowsDto {
   /** Chart-inactive sub-buckets listed beside the node's accounts. */
   group_slugs: string[];
   metrics: NavCardMetricsVariantDto;
+  /** Σ balance over the same rows. */
+  value: NavCardAmountDto & { fx_missing: boolean };
   row_pct: Record<"day" | "month" | "year" | "total", { clp: number | null; usd: number | null }>;
 }
 

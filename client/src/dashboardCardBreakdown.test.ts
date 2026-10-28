@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  accountInDashboardGroupDisplayScope,
-  accountInDashboardGroupScope,
-  cardGroupMetricsFromAccounts,
   cardMainBalanceFromMetrics,
+  cardMetricsByPeriodForAccountRow,
   roundedMetricDelta,
   roundedMetricDeposits,
 } from "./dashboardCardBreakdown";
@@ -44,98 +42,31 @@ describe("roundedMetricDelta USD cents", () => {
   });
 });
 
-describe("dashboard card accounting identity", () => {
-  it("sold-out account deposits count in metrics while live balance sums as 0", () => {
-    const withBalance = baseRow({
-      account_id: 1,
-      deposits_clp: 10_000,
-      delta_total_clp: 5_000,
-      current_value_clp: 15_000,
-    });
+/** Group metrics are the server's (dashboardNavCardMetrics.test.ts); one row is projected here. */
+describe("cardMetricsByPeriodForAccountRow", () => {
+  it("projects one row: a sold-out account keeps its deposits and lifetime P/L", () => {
     const soldOut = baseRow({
       account_id: 2,
       deposits_clp: 1_000_000,
       delta_total_clp: 968_035,
-      current_value_clp: null,
-    });
-    const metrics = cardGroupMetricsFromAccounts([withBalance, soldOut], "month");
-    expect(roundedMetricDeposits(metrics, false, "total")).toBe(1_010_000);
-    expect(cardMainBalanceFromMetrics(metrics, false)).toBe(1_983_035);
-  });
-
-});
-
-describe("accountInDashboardGroupScope", () => {
-  it("includes sold-out account in metrics scope; display scope hides it", () => {
-    const soldOut = baseRow({
-      account_id: 60,
-      group_slug: "brokerage_acciones__oilk",
-      dashboard_bucket_slug: "brokerage",
-      current_value_clp: null,
-      delta_month_clp: -241_251,
-      delta_year_clp: -267_541,
-      deposits_clp: 500_000,
-      deposits_month_clp: -2_719_944,
-      delta_total_clp: -267_541,
-    });
-    const open = baseRow({
-      account_id: 85,
-      group_slug: "brokerage_acciones__spy",
-      dashboard_bucket_slug: "brokerage",
-      current_value_clp: 689_768,
-      delta_month_clp: -1_586,
-    });
-
-    expect(accountInDashboardGroupScope(soldOut, "brokerage")).toBe(true);
-    expect(accountInDashboardGroupDisplayScope(soldOut, "brokerage")).toBe(false);
-
-    const zeroBalance = baseRow({
-      account_id: 61,
-      group_slug: "brokerage_acciones__oilk",
-      dashboard_bucket_slug: "brokerage",
-      current_value_clp: 0,
-    });
-    expect(accountInDashboardGroupDisplayScope(zeroBalance, "brokerage")).toBe(false);
-
-    const metrics = cardGroupMetricsFromAccounts(
-      [soldOut, open].filter((a) => accountInDashboardGroupScope(a, "brokerage")),
-      "month"
-    );
-    expect(roundedMetricDelta(metrics, false, "period")).toBe(-242_837);
-    expect(roundedMetricDeposits(metrics, false, "period")).toBe(-2_719_944);
-    expect(roundedMetricDeposits(metrics, false, "total")).toBe(500_000);
-  });
-
-  it("nets stock_sell outflows from sold-out accounts against open-position buys", () => {
-    const soldOut = baseRow({
-      account_id: 60,
-      group_slug: "brokerage_acciones__oilk",
-      dashboard_bucket_slug: "brokerage",
-      current_value_clp: null,
       deposits_month_clp: -2_719_944,
       delta_month_clp: -241_251,
+      current_value_clp: null,
     });
-    const ccj = baseRow({
-      account_id: 92,
-      group_slug: "brokerage_acciones__ccj",
-      dashboard_bucket_slug: "brokerage",
-      current_value_clp: 2_723_617,
-      deposits_month_clp: 2_719_944,
-      delta_month_clp: 3_673,
-    });
-    const linde = baseRow({
-      account_id: 91,
-      group_slug: "brokerage_acciones__linde",
-      dashboard_bucket_slug: "brokerage",
-      current_value_clp: 1_175_645,
-      deposits_month_clp: 1_192_782,
-      delta_month_clp: -17_138,
-    });
+    const { month, day } = cardMetricsByPeriodForAccountRow(soldOut);
+    expect(roundedMetricDeposits(month, false, "total")).toBe(1_000_000);
+    expect(roundedMetricDeposits(month, false, "period")).toBe(-2_719_944);
+    expect(roundedMetricDelta(month, false, "period")).toBe(-241_251);
+    expect(cardMainBalanceFromMetrics(month, false)).toBe(1_968_035);
+    // no day fields on the row: deposits 0, P/L absent
+    expect(day.deposits_period_clp).toBe(0);
+    expect(day.delta_period_clp).toBeNull();
+  });
 
-    const metrics = cardGroupMetricsFromAccounts(
-      [soldOut, ccj, linde].filter((a) => accountInDashboardGroupScope(a, "brokerage")),
-      "month"
-    );
-    expect(roundedMetricDeposits(metrics, false, "period")).toBe(1_192_782);
+  it("no row: zero deposits and absent P/L", () => {
+    const { year } = cardMetricsByPeriodForAccountRow(null);
+    expect(year.deposits_clp).toBe(0);
+    expect(year.delta_total_clp).toBeNull();
+    expect(year.deposits_usd).toBeNull();
   });
 });

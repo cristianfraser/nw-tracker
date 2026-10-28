@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
+  accountCountsTowardGroupTotals,
   buildNavCardMetricsBySlug,
   cardMetricsFromRows,
   liquidatedRowsForNode,
@@ -7,6 +11,7 @@ import {
   stripMetricsRows,
   sumCardMetrics,
   type CardMetricsAccountRow,
+  type NavCardBucketTotals,
   type NavCardMetricsBuildInput,
 } from "./dashboardNavCardMetrics.js";
 import type { NavTreeNodeDto } from "./navTree.js";
@@ -62,6 +67,25 @@ function navNode(partial: Partial<NavTreeNodeDto> & { slug: string }): NavTreeNo
     ...partial,
   };
 }
+
+type CountsCase = { exclude_from_group_totals: number | null | "absent"; counts: boolean };
+const countsCases = JSON.parse(
+  fs.readFileSync(
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "test",
+      "accountCountsTowardGroupTotalsCases.json"
+    ),
+    "utf-8"
+  )
+) as CountsCase[];
+
+const NO_BUCKETS: NavCardBucketTotals = {
+  real_estate_clp: 0,
+  retirement_clp: 0,
+  brokerage_clp: 0,
+  cash_eqs_clp: 0,
+};
 
 function accountLeaf(slug: string, accountId: number): NavTreeNodeDto {
   return navNode({ slug, account_id: accountId, portfolio_group_id: null });
@@ -153,7 +177,7 @@ describe("navMetricsAccountIdSet", () => {
     expect(stripMetricsRows(ipsa, rows).map((r) => r.account_id)).toEqual([101, 102]);
     // The stray row's slug starts with the node's asset group; membership alone decides.
     expect(stripMetricsRows(acciones, rows).map((r) => r.account_id)).toEqual([10, 101, 102]);
-    const metrics = buildNavCardMetricsBySlug({ navRoots: [acciones], rows });
+    const metrics = buildNavCardMetricsBySlug({ navRoots: [acciones], rows, bucketTotals: NO_BUCKETS });
     expect(metrics.brokerage_portafolio_ipsa!.child.month.deposits_period_clp).toBe(-3_031_159);
     expect(metrics.brokerage_portafolio_ipsa!.child.month.delta_period_clp).toBe(-25_621);
     expect(metrics.brokerage_acciones!.child.month.deposits_period_clp).toBe(-3_031_159);
@@ -189,7 +213,7 @@ describe("liquidatedRowsForNode", () => {
     expect(liquidated.metrics.month.delta_period_clp).toBe(-13_500);
     expect(liquidated.metrics.month.deposits_clp).toBe(150_000 - 30_000 - 1_000);
     expect(liquidated.metrics.month.delta_total_clp).toBe(-150_000 + 30_000 + 1_000);
-    const entry = buildNavCardMetricsBySlug({ navRoots: [acciones], rows }).brokerage_acciones!;
+    const entry = buildNavCardMetricsBySlug({ navRoots: [acciones], rows, bucketTotals: NO_BUCKETS }).brokerage_acciones!;
     expect(entry.liquidated).toEqual(liquidated);
   });
 
@@ -197,7 +221,7 @@ describe("liquidatedRowsForNode", () => {
     const active = rows.filter((r) => r.account_id === 10);
     const node = navNode({ slug: "solo", member_account_ids: [10], children: [accountLeaf("acc-10", 10)] });
     expect(liquidatedRowsForNode(node, active)).toBeNull();
-    expect(buildNavCardMetricsBySlug({ navRoots: [node], rows: active }).solo!.liquidated).toBeUndefined();
+    expect(buildNavCardMetricsBySlug({ navRoots: [node], rows: active, bucketTotals: NO_BUCKETS }).solo!.liquidated).toBeUndefined();
   });
 });
 
@@ -229,6 +253,7 @@ describe("buildNavCardMetricsBySlug", () => {
   const input: NavCardMetricsBuildInput = {
     navRoots: [tree],
     rows: brokerageRows,
+    bucketTotals: NO_BUCKETS,
   };
 
   it("full-bucket child: bucket scope excludes non-counting rows; every variant carries all three period slices", () => {
@@ -365,5 +390,121 @@ describe("buildNavCardMetricsBySlug", () => {
     const cash = out.cash_savings!;
     expect(cash.child.month.deposits_clp).toBe(150);
     expect(cash.child.month.delta_period_clp).toBe(34);
+  });
+});
+
+describe("accountCountsTowardGroupTotals", () => {
+  // Shared with the client's visibility filter (client/src/accountGroupTotals.test.ts).
+  it.each(countsCases)("exclude_from_group_totals=$exclude_from_group_totals → $counts", (c) => {
+    const r =
+      c.exclude_from_group_totals === "absent"
+        ? row({ account_id: 1, exclude_from_group_totals: undefined })
+        : row({ account_id: 1, exclude_from_group_totals: c.exclude_from_group_totals });
+    expect(accountCountsTowardGroupTotals(r)).toBe(c.counts);
+  });
+});
+
+describe("nav card value", () => {
+  const cashRows = [
+    row({ account_id: 21, group_slug: "cash_eqs", dashboard_bucket_slug: "cash_eqs", current_value_clp: 3_000, current_value_usd: 3 }),
+    row({ account_id: 22, group_slug: "cash_eqs", dashboard_bucket_slug: "cash_eqs", current_value_clp: 200, current_value_usd: 0.2, sync_stale: true }),
+    row({ account_id: 11, current_value_clp: 1_100, current_value_usd: 1.1, fx_missing: true }),
+    row({ account_id: 12, current_value_clp: 900, current_value_usd: 0.9, exclude_from_group_totals: 1 }),
+  ];
+  const cashSavings = navNode({
+    slug: "cash_savings",
+    dashboard_bucket_slug: "cash_eqs",
+    children: [accountLeaf("acc-21", 21)],
+  });
+  const checking = navNode({
+    slug: "checking_accounts",
+    asset_group_slug: "cash_eqs__checking",
+    children: [accountLeaf("acc-22", 22)],
+  });
+  const cashHub = navNode({
+    slug: "cash_eqs",
+    group_kind: "nav_bucket",
+    dashboard_bucket_slug: "cash_eqs",
+    children: [cashSavings, checking],
+  });
+  const brokerage = navNode({
+    slug: "brokerage",
+    dashboard_bucket_slug: "brokerage",
+    children: [accountLeaf("acc-11", 11), accountLeaf("acc-12", 12)],
+  });
+  const mf = navNode({
+    slug: "brokerage_mutual_funds",
+    api_group: "brokerage",
+    api_subgroup: "mutual_funds",
+    member_account_ids: [11, 12],
+    children: [accountLeaf("acc-11", 11), accountLeaf("acc-12", 12)],
+  });
+  const root = navNode({ slug: "net_worth", children: [brokerage, cashHub, mf] });
+  // The cash bucket nets a linked card owing 9 000: the bucket total is what the cards read.
+  const bucketTotals: NavCardBucketTotals = {
+    real_estate_clp: 0,
+    retirement_clp: 0,
+    brokerage_clp: 1_100,
+    cash_eqs_clp: 3_200 - 9_000,
+    real_estate_usd: 0,
+    retirement_usd: 0,
+    brokerage_usd: 1.1,
+    cash_eqs_usd: 3.2 - 9,
+  };
+  const out = buildNavCardMetricsBySlug({ navRoots: [root], rows: cashRows, bucketTotals });
+
+  it("a cash child's card shows the netted bucket total; its breakdown line the raw members", () => {
+    const v = out.cash_savings!.value;
+    expect(v.child).toEqual({ clp: -5_800, usd: 3.2 - 9 });
+    // the hub is the bucket too
+    expect(out.cash_eqs!.value.child).toEqual({ clp: -5_800, usd: 3.2 - 9 });
+    expect(v.members).toEqual({ clp: 3_000, usd: 3 });
+  });
+
+  it("a bucket's own node reads the bucket total in both variants", () => {
+    expect(out.brokerage!.value.child).toEqual({ clp: 1_100, usd: 1.1 });
+    expect(out.brokerage!.value.parent).toEqual({ clp: 1_100, usd: 1.1 });
+    // members leave the row excluded from group totals out
+    expect(out.brokerage!.value.members).toEqual({ clp: 1_100, usd: 1.1 });
+  });
+
+  it("net worth's summary card sums the bucket totals", () => {
+    const parent = out.net_worth!.value.parent;
+    expect(parent.clp).toBe(1_100 + 3_200 - 9_000);
+    expect(parent.usd).toBeCloseTo(1.1 + 3.2 - 9, 10);
+  });
+
+  it("a node with no bucket sums its rows: counted ones for the card, every one for its page", () => {
+    const v = out.brokerage_mutual_funds!.value;
+    expect(v.child).toEqual({ clp: 1_100, usd: 1.1 });
+    expect(v.parent).toEqual({ clp: 2_000, usd: 2 });
+    expect(v.fx_missing).toBe(true);
+    expect(v.sync_stale).toBe(false);
+    expect(out.checking_accounts!.value.sync_stale).toBe(true);
+  });
+
+  it("usd is null when no row carries a dollar value", () => {
+    const clpOnly = cashRows.map((r) => ({ ...r, current_value_usd: null }));
+    const v = buildNavCardMetricsBySlug({ navRoots: [root], rows: clpOnly, bucketTotals: NO_BUCKETS })
+      .brokerage_mutual_funds!.value;
+    expect(v.child).toEqual({ clp: 1_100, usd: null });
+  });
+
+  it("the liquidated row sums its counted rows' balances", () => {
+    const ipsa = navNode({ slug: "ipsa", chart_inactive: true, member_account_ids: [101] });
+    const acciones = navNode({
+      slug: "acciones",
+      member_account_ids: [10, 20, 101],
+      children: [ipsa, accountLeaf("acc-10", 10)],
+    });
+    const rows = [
+      row({ account_id: 10, current_value_clp: 500, current_value_usd: 0.5 }),
+      row({ account_id: 20, chart_inactive: true, deposits_clp: 10, current_value_clp: 7, current_value_usd: 0.007, fx_missing: true }),
+      row({ account_id: 101, chart_inactive: true, deposits_clp: 5, current_value_clp: 3, current_value_usd: 0.003 }),
+    ];
+    const liquidated = liquidatedRowsForNode(acciones, rows)!;
+    expect(liquidated.value.clp).toBe(10);
+    expect(liquidated.value.usd).toBeCloseTo(0.01, 10);
+    expect(liquidated.value.fx_missing).toBe(true);
   });
 });
