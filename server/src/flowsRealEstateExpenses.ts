@@ -101,9 +101,8 @@ export type RealEstateExpenseChartPoint = {
  * a kind outside it throws when the chart is built (`kwh` readings carry no amount).
  */
 export const REAL_ESTATE_CHART_KINDS = [
-  "mortgage_amortization",
-  "mortgage_extra_amortization",
   "mortgage_carrying",
+  "mortgage_amortization",
   "rent",
   "gastos_comunes",
   "electricidad",
@@ -111,6 +110,7 @@ export const REAL_ESTATE_CHART_KINDS = [
   "internet",
   "gas",
   "contribuciones",
+  "mortgage_extra_amortization",
 ] as const;
 
 /** One stacked series: a place's spend on one kind of bill. */
@@ -129,6 +129,8 @@ export type RealEstateChartSeriesDto = {
  */
 export type RealEstateChartScopeDto = {
   series: RealEstateChartSeriesDto[];
+  /** The kinds the scope draws, in stacking order (the legend's order). */
+  kinds: RealEstateChartSeriesDto["kind"][];
   points: RealEstateExpenseChartPoint[];
 };
 
@@ -331,7 +333,8 @@ function chartScope(
   const sorted = [...byPeriod.values()]
     .map((p) => ({ ...emptyPoint(p.as_of_date), ...p }))
     .sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
-  return { series, points: densifyMonthlyPoints(sorted, emptyPoint) };
+  const kinds = REAL_ESTATE_CHART_KINDS.filter((k) => series.some((s) => s.kind === k));
+  return { series, kinds, points: densifyMonthlyPoints(sorted, emptyPoint) };
 }
 
 function buildChartScopes(

@@ -3,6 +3,7 @@ import { db } from "./db.js";
 import {
   buildRealEstateExpensesPayload,
   chartPartsOf,
+  REAL_ESTATE_CHART_KINDS,
   createRealEstatePlace,
   mortgageCuotaBillMonths,
   spreadOverCoveredMonths,
@@ -132,6 +133,7 @@ describe("real-estate chart scopes", () => {
     const early = payload.chart_scopes.vitest_chart_early!;
     expect(early.points.map((p) => p.as_of_date)).toEqual(["2019-01-31", "2019-02-28", "2019-03-31"]);
     expect(early.series.map((s) => s.data_key)).toEqual(["vitest_chart_early__rent", "vitest_chart_early__electricidad"]);
+    expect(early.kinds).toEqual(["rent", "electricidad"]);
     const late = payload.chart_scopes.vitest_chart_late!;
     expect(late.points.at(-1)?.as_of_date).toBe("2019-07-31");
     expect(late.points[0]).toMatchObject({
@@ -212,6 +214,12 @@ describe("chartPartsOf", () => {
       { kind: "mortgage_extra_amortization", amount: 350_000 },
       { kind: "mortgage_carrying", amount: 250_000 },
     ]);
+  });
+
+  it("stacks the cuota's interest and insurance at the bottom and the extra amortization on top of every kind", () => {
+    expect(REAL_ESTATE_CHART_KINDS[0]).toBe("mortgage_carrying");
+    expect(REAL_ESTATE_CHART_KINDS[1]).toBe("mortgage_amortization");
+    expect(REAL_ESTATE_CHART_KINDS.at(-1)).toBe("mortgage_extra_amortization");
   });
 
   it("throws on a mortgage cuota without parts, and on a kind the chart does not know", () => {
