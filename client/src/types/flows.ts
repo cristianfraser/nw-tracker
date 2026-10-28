@@ -167,6 +167,8 @@ export interface RealEstateChartSeriesDto {
 /** The real-estate chart for one scope, its months running from its first to its last bill. */
 export interface RealEstateChartScopeDto {
   series: RealEstateChartSeriesDto[];
+  /** The kinds the scope draws, in stacking order (the legend's order). */
+  kinds: RealEstateChartSeriesDto["kind"][];
   points: FlowExpenseChartPoint[];
 }
 

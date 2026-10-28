@@ -226,6 +226,7 @@ export function RealEstateExpensesPage() {
           title={t("expenses.chartTitle")}
           points={chartPoints}
           series={chartScope?.series ?? []}
+          kinds={chartScope?.kinds ?? []}
           placeLabels={placeLabels}
           xAxisGranularity={granularity}
           loading={loading}
