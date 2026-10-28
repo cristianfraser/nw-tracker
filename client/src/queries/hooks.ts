@@ -507,10 +507,11 @@ export function useMarkMessagesReadMutation() {
   });
 }
 
-export function useIncome() {
+/** The income page payload with its aggregates in `unit` (never held across units). */
+export function useIncome(unit: DisplayUnit) {
   return useQuery({
-    queryKey: queryKeys.income(),
-    queryFn: () => api.income(),
+    queryKey: queryKeys.income(unit),
+    queryFn: () => api.income(unit),
   });
 }
 

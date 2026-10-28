@@ -10,7 +10,7 @@ import { useTranslation } from "../../i18n";
 import { useFlowsOverview } from "../../queries/hooks";
 import type { DisplayUnit } from "../../queries/keys";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
-import { clipMonthsThenRollup, timeRangeCutoffYmd, timeRangeToDays } from "../../timeRange";
+import { clipMonthsThenRollup, clipPointsToTimeRange, timeRangeToDays } from "../../timeRange";
 import type { FlowsOverviewRow } from "../../types";
 import { useCcInstallmentGastosMode } from "../../useCcInstallmentGastosMode";
 import { DeltaMetricFlow } from "./DeltaMetricFlow";
@@ -80,9 +80,7 @@ export function DashboardFlowsSummary({ displayUnit }: { displayUnit: DisplayUni
     if (!data) return [];
     let rows: readonly FlowsOverviewRow[];
     if (isDaily) {
-      const cutoff = timeRangeCutoffYmd(prefs.range);
-      const days = data.days ?? [];
-      rows = cutoff ? days.filter((r) => r.as_of_date >= cutoff) : days;
+      rows = clipPointsToTimeRange(data.days ?? [], prefs.range);
     } else {
       rows = clipMonthsThenRollup(
         data.months,

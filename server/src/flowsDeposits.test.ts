@@ -45,6 +45,26 @@ describe("buildFlowsDepositsPayload", () => {
       expect(block.total_clp).toBe(sum);
     }
   });
+
+  it("day points carry each day's deposits by category and add up to the month points", () => {
+    const payload = buildFlowsDepositsPayload();
+    for (const [daily, monthly, amountOf] of [
+      [payload.chart_daily, payload.chart_monthly, (r: { amount_clp: number }) => r.amount_clp],
+      [payload.chart_daily_usd, payload.chart_monthly_usd, (r: { amount_usd: number }) => r.amount_usd],
+    ] as const) {
+      const days = daily.map((p) => p.as_of_date);
+      expect(days).toEqual([...new Set(payload.rows.map((r) => r.occurred_on.slice(0, 10)))].sort());
+      for (const p of daily) {
+        const rows = payload.rows.filter((r) => r.occurred_on.slice(0, 10) === p.as_of_date);
+        expect(p.total).toBeCloseTo(rows.reduce((s, r) => s + amountOf(r as never), 0), 6);
+        expect(p.total).toBeCloseTo(p.real_estate + p.cash + p.brokerage + p.inversiones, 6);
+      }
+      for (const m of monthly) {
+        const inMonth = daily.filter((p) => p.as_of_date.slice(0, 7) === m.as_of_date.slice(0, 7));
+        expect(inMonth.reduce((s, p) => s + p.total, 0)).toBeCloseTo(m.total, 6);
+      }
+    }
+  });
 });
 
 describe("state contributions are P/L, not deposits", () => {

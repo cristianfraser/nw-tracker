@@ -46,6 +46,16 @@ describe("flows Rango helpers", () => {
     expect(sumChartPointsField(clipped, "total")).toBe(70);
   });
 
+  it("a Rango of N days keeps N days ending today, as the server's day windows do", () => {
+    // Server: first day = today − (days − 1) (flowsOverview day rows, the daily series' points).
+    expect(timeRangeCutoffYmd("30d", "2026-10-28")).toBe("2026-09-29");
+    const days = Array.from({ length: 40 }, (_, i) => {
+      const d = new Date(Date.UTC(2026, 9, 28 - i)).toISOString().slice(0, 10);
+      return { as_of_date: d, total: 1 };
+    });
+    expect(clipPointsToTimeRange(days, "30d", "2026-10-28")).toHaveLength(30);
+  });
+
   it("sumChartPointsField ignores non-numeric / missing fields", () => {
     const mixed = [
       { as_of_date: "2025-01-31", total: 5 },

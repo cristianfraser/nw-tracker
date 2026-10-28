@@ -14,7 +14,7 @@ import {
   densifyRecordsByCalendarPeriod,
 } from "../../chartDensifyTimeSeries";
 import { chileTodayYmd } from "../../calendarMonth";
-import { timeRangeCutoffYmd, type TimeRange } from "../../timeRange";
+import { clipPointsToTimeRange, type TimeRange } from "../../timeRange";
 import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { ChartEmptyState } from "./ChartEmptyState";
@@ -455,9 +455,7 @@ export function LineChartPanel({
   // misread as "the account started here".
   const { blockRanged, rangeClipped } = useMemo(() => {
     if (xAxisGranularity === "day") return { blockRanged: blockPlotted, rangeClipped: false };
-    const cutoff = timeRangeCutoffYmd(timeRange);
-    if (cutoff == null) return { blockRanged: blockPlotted, rangeClipped: false };
-    const points = blockPlotted.points.filter((p) => String(p.as_of_date ?? "") >= cutoff);
+    const points = clipPointsToTimeRange(blockPlotted.points, timeRange);
     if (points.length === blockPlotted.points.length)
       return { blockRanged: blockPlotted, rangeClipped: false };
     return { blockRanged: { ...blockPlotted, points }, rangeClipped: true };

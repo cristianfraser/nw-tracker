@@ -32,13 +32,30 @@ export function timeRangeToDays(range: TimeRange): number {
   return RANGE_DAYS[range];
 }
 
-/** Inclusive left cutoff for client-side monthly/yearly chart clipping; null = no clip. */
+/**
+ * Inclusive left cutoff of a Rango; null = no clip. The server's window rule: N days ending
+ * today, today included (today − (N − 1)) — the daily series' points and the flows overview's
+ * day rows (`chileCalendarAddDays(today, -(days - 1))`), so a client-clipped chart spans the same
+ * days as a server-windowed one.
+ */
 export function timeRangeCutoffYmd(range: TimeRange, todayYmd: string = chileTodayYmd()): string | null {
   const days = RANGE_DAYS[range];
   if (days === 0) return null;
   const t = Date.parse(`${todayYmd}T00:00:00Z`);
-  if (!Number.isFinite(t)) return null;
-  return new Date(t - days * 86_400_000).toISOString().slice(0, 10);
+  if (!Number.isFinite(t)) throw new Error(`timeRangeCutoffYmd: invalid today ${JSON.stringify(todayYmd)}`);
+  return new Date(t - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** Rows whose date (`dateOf`) is inside the Rango window, in order. */
+export function clipRowsToTimeRange<T>(
+  rows: readonly T[],
+  range: TimeRange,
+  dateOf: (row: T) => string | number | null | undefined,
+  todayYmd?: string
+): T[] {
+  const cutoff = timeRangeCutoffYmd(range, todayYmd);
+  if (cutoff == null) return [...rows];
+  return rows.filter((r) => String(dateOf(r) ?? "") >= cutoff);
 }
 
 /** Filter chart rows to the range window (levels clip safely; aportes lines are levels too). */
@@ -47,9 +64,7 @@ export function clipPointsToTimeRange<T extends { as_of_date?: string | number |
   range: TimeRange,
   todayYmd?: string
 ): T[] {
-  const cutoff = timeRangeCutoffYmd(range, todayYmd);
-  if (cutoff == null) return [...points];
-  return points.filter((p) => String(p.as_of_date ?? "") >= cutoff);
+  return clipRowsToTimeRange(points, range, (p) => p.as_of_date, todayYmd);
 }
 
 /**

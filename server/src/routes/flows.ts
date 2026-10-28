@@ -7,7 +7,7 @@ import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliati
 import { buildFlowsDepositsPayload } from "../flowsDeposits.js";
 import { cachedMortgageCarryingEvents } from "../flowsMortgageCarrying.js";
 import { buildFlowsPlPayload } from "../flowsPl.js";
-import { buildFlowsOverviewPayload } from "../flowsOverview.js";
+import { buildFlowsIncomeAggregates, buildFlowsOverviewPayload } from "../flowsOverview.js";
 import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
 import { assignCcExpenseCategoryForManualLedgerInstallmentPurchase } from "../ccExpenseCategories.js";
 import { purchaseIdFromPlanGastosLineId } from "../ccInstallmentPlanGastosLines.js";
@@ -118,7 +118,12 @@ app.get("/api/flows/deposits/reconciliation", (_req, res) => {
   }
 });
 
-app.get("/api/income", (_req, res) => {
+app.get("/api/income", (req, res) => {
+  const unit = String(req.query.unit ?? "clp");
+  if (unit !== "clp" && unit !== "usd") {
+    res.status(400).json({ error: `unit must be clp or usd, got ${unit}` });
+    return;
+  }
   const payload = buildFlowsCheckingIncomePayload();
   const counterparties = transferCounterpartiesByMovementSide();
   res.json({
@@ -129,6 +134,8 @@ app.get("/api/income", (_req, res) => {
     refund_lines: withTransferCounterparties(payload.refund_lines, counterparties),
     payroll_breakdown: buildPayrollBreakdown(),
     payslip_checks: buildPayslipChecks(),
+    // The page's month rows, day points and total, from the overview's own income rule.
+    aggregates: buildFlowsIncomeAggregates(payload, unit),
   });
 });
 

@@ -8,6 +8,7 @@ import {
   type AdditionalCardChargeLineInput,
 } from "./additionalCardReimbursements.js";
 import { buildFlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
+import { buildFlowsIncomeAggregates } from "./flowsOverview.js";
 import { isCheckingIncomeKind } from "./flowsCheckingIncomeOverrides.js";
 import { markCheckingExpenseRefund, unmarkCheckingExpenseRefund } from "./checkingExpenseRefunds.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
@@ -192,7 +193,9 @@ describe("checking credits as expense refunds", () => {
       expect(after.lines.some((l) => l.movement_id === movementId)).toBe(false);
       expect(after.filtered_lines.some((l) => l.movement_id === movementId)).toBe(false);
       expect(after.refund_lines.find((l) => l.movement_id === movementId)).toMatchObject({ amount_clp: 12_340, category_slug: "food" });
-      expect(after.monthly_totals["2099-05"] ?? 0).toBe((before.monthly_totals["2099-05"] ?? 0) - 12_340);
+      const may = (p: typeof before) =>
+        buildFlowsIncomeAggregates(p, "clp", "2099-06-01").months.find((m) => m.period_month === "2099-05")?.total_clp ?? 0;
+      expect(may(after)).toBe(may(before) - 12_340);
 
       const line = () => buildFlowsExpensesPayload().lines.find((l) => l.source === "checking" && l.statement_line_id === movementId);
       expect(line()).toMatchObject({ amount_clp: -12_340, category_slug: "food", expense_month: "2099-05", checking_refund: true });

@@ -1,4 +1,3 @@
-import { addCalendarMonths, chileTodayYmd, monthEndUtcYmd, ymCompare } from "./calendarMonth";
 import { rollupChartPointsByYear } from "./flowsDisplay";
 import type { DisplayUnit } from "./queries/keys";
 import type {
@@ -10,6 +9,13 @@ import type {
   FlowWorkEarningRow,
   IncomeKind,
 } from "./types";
+
+/*
+ * Income page display helpers. The page's month rows, day points and total are built on the
+ * server (`buildFlowsIncomeAggregates`, the overview's own income rule) and only picked here;
+ * the yearly rollups below re-bucket those server rows by calendar year, the flows pages'
+ * convention for M/Y views.
+ */
 
 export type IncomeDisplayRow =
   | ({
@@ -29,44 +35,6 @@ function incomeKindForCheckingLine(
   data: FlowsIncomeResponse
 ): IncomeKind {
   return data.income_kind_by_movement_id[line.movement_id] ?? "other";
-}
-
-export function incomeAttributionMonthForCheckingLine(
-  line: FlowCheckingIncomeLine,
-  data: FlowsIncomeResponse
-): string | null {
-  const kind = incomeKindForCheckingLine(line, data);
-  if (kind === "salary" || kind === "severance") {
-    const payrollMonth = data.payroll_period_by_movement_id[line.movement_id];
-    if (payrollMonth) return payrollMonth;
-  }
-  return periodMonthFromYmd(line.received_on);
-}
-
-function extendIncomeMonthRowsThroughToday(rows: FlowIncomeMonthRow[]): FlowIncomeMonthRow[] {
-  if (rows.length === 0) return rows;
-  const todayYm = chileTodayYmd().slice(0, 7);
-  const last = rows[rows.length - 1]!;
-  if (ymCompare(last.period_month, todayYm) >= 0) return rows;
-
-  const extended = [...rows];
-  const running = last.cumulative_clp;
-  let cur = addCalendarMonths(last.period_month, 1);
-  while (ymCompare(cur, todayYm) <= 0) {
-    extended.push({
-      period_month: cur,
-      as_of_date: monthEndUtcYmd(cur),
-      salary_clp: 0,
-      severance_clp: 0,
-      parent_gift_clp: 0,
-      other_clp: 0,
-      total_clp: 0,
-      line_count: 0,
-      cumulative_clp: running,
-    });
-    cur = addCalendarMonths(cur, 1);
-  }
-  return extended;
 }
 
 export function buildIncomeDisplayRows(data: FlowsIncomeResponse): IncomeDisplayRow[] {
@@ -118,24 +86,6 @@ export function incomeManualAmount(line: FlowManualIncomeLine, unit: DisplayUnit
   return Math.round(line.amount_clp);
 }
 
-export function isUsdSyntheticWorkEarning(row: FlowWorkEarningRow): boolean {
-  return row.liquido_usd != null && row.movement_id == null;
-}
-
-export function workEarningSalaryAmount(
-  row: FlowWorkEarningRow,
-  unit: DisplayUnit
-): number {
-  if (row.liquido_usd != null) {
-    if (unit === "usd") return row.liquido_usd;
-    return Math.round(row.liquido_clp);
-  }
-  if (unit === "usd") {
-    throw new Error(`missing liquido_usd for work earning ${row.id}`);
-  }
-  return Math.round(row.liquido_clp);
-}
-
 export function workEarningLiquidoDisplayAmount(
   row: FlowWorkEarningRow,
   unit: DisplayUnit
@@ -181,105 +131,6 @@ export function rollupIncomeMonthRowsByYear(rows: readonly FlowIncomeMonthRow[])
   });
 }
 
-export function aggregateIncomeFromPayload(
-  data: FlowsIncomeResponse,
-  unit: DisplayUnit = "clp"
-): {
-  by_month: FlowIncomeMonthRow[];
-  chart_monthly: FlowIncomeChartPoint[];
-  total: number;
-  all_rows: IncomeDisplayRow[];
-} {
-  type MonthBucket = {
-    salary: number;
-    severance: number;
-    parent_gift: number;
-    other: number;
-    line_count: number;
-  };
-
-  const byMonth = new Map<string, MonthBucket>();
-
-  const touch = (month: string): MonthBucket => {
-    const existing = byMonth.get(month);
-    if (existing) return existing;
-    const fresh: MonthBucket = { salary: 0, severance: 0, parent_gift: 0, other: 0, line_count: 0 };
-    byMonth.set(month, fresh);
-    return fresh;
-  };
-
-  const addToBucket = (month: string, kind: IncomeKind, amount: number) => {
-    const bucket = touch(month);
-    if (kind === "salary") bucket.salary += amount;
-    else if (kind === "severance") bucket.severance += amount;
-    else if (kind === "parent_gift") bucket.parent_gift += amount;
-    else bucket.other += amount;
-    bucket.line_count += 1;
-  };
-
-  for (const line of data.lines) {
-    const month = incomeAttributionMonthForCheckingLine(line, data);
-    if (!month) continue;
-    addToBucket(month, incomeKindForCheckingLine(line, data), incomeCartolaAmount(line, unit));
-  }
-
-  for (const line of data.manual) {
-    const month = periodMonthFromYmd(line.received_on);
-    if (!month) continue;
-    addToBucket(month, "other", incomeManualAmount(line, unit));
-  }
-
-  for (const row of data.work_earnings) {
-    if (row.earning_type !== "salary" || !isUsdSyntheticWorkEarning(row)) continue;
-    addToBucket(row.period_month, "salary", workEarningSalaryAmount(row, unit));
-  }
-
-  const monthsAsc = [...byMonth.keys()].sort(ymCompare);
-  let running = 0;
-  const byMonthAsc: FlowIncomeMonthRow[] = [];
-
-  for (const periodMonth of monthsAsc) {
-    const bucket = byMonth.get(periodMonth)!;
-    const salaryClp = Math.round(bucket.salary);
-    const severanceClp = Math.round(bucket.severance);
-    const parentGiftClp = Math.round(bucket.parent_gift);
-    const otherClp = Math.round(bucket.other);
-    const totalClp = salaryClp + severanceClp + parentGiftClp + otherClp;
-    running += totalClp;
-    byMonthAsc.push({
-      period_month: periodMonth,
-      as_of_date: monthEndUtcYmd(periodMonth),
-      salary_clp: salaryClp,
-      severance_clp: severanceClp,
-      parent_gift_clp: parentGiftClp,
-      other_clp: otherClp,
-      total_clp: totalClp,
-      line_count: bucket.line_count,
-      cumulative_clp: Math.round(running),
-    });
-  }
-
-  const byMonthThroughToday = extendIncomeMonthRowsThroughToday(byMonthAsc);
-
-  const chart_monthly: FlowIncomeChartPoint[] = byMonthThroughToday.map((m) => ({
-    as_of_date: m.as_of_date,
-    salary: m.salary_clp,
-    severance: m.severance_clp,
-    parent_gift: m.parent_gift_clp,
-    other: m.other_clp,
-    total: m.total_clp,
-  }));
-
-  const total = byMonthAsc.reduce((sum, m) => sum + m.total_clp, 0);
-
-  return {
-    by_month: [...byMonthThroughToday].reverse(),
-    chart_monthly,
-    total: unit === "clp" ? Math.round(total) : total,
-    all_rows: buildIncomeDisplayRows(data),
-  };
-}
-
 const INCOME_CHART_KEYS = ["salary", "severance", "parent_gift", "other", "total"] as const;
 
 /**
@@ -291,65 +142,3 @@ export function rollupIncomeChartPointsByYear(
 ): FlowIncomeChartPoint[] {
   return rollupChartPointsByYear(points, INCOME_CHART_KEYS);
 }
-
-/**
- * Per-calendar-day income chart points (Diario). Unlike the monthly view, day grain buckets
- * by the actual arrival date (`received_on` / wire date), not payroll-month attribution —
- * income is spiky on pay days, matching the daily-series deposit-day convention. The chart's
- * calendar-day densify fills the empty days; Σ(day points in a month) reconciles to the
- * received-date month total (not the payroll-attributed monthly chart, which shifts salary).
- */
-export function aggregateIncomeChartPointsByDay(
-  data: FlowsIncomeResponse,
-  unit: DisplayUnit = "clp"
-): FlowIncomeChartPoint[] {
-  type DayBucket = { salary: number; severance: number; parent_gift: number; other: number };
-  const byDay = new Map<string, DayBucket>();
-  const add = (day: string, kind: IncomeKind, amount: number) => {
-    let b = byDay.get(day);
-    if (!b) {
-      b = { salary: 0, severance: 0, parent_gift: 0, other: 0 };
-      byDay.set(day, b);
-    }
-    if (kind === "salary") b.salary += amount;
-    else if (kind === "severance") b.severance += amount;
-    else if (kind === "parent_gift") b.parent_gift += amount;
-    else b.other += amount;
-  };
-
-  for (const line of data.lines) {
-    add(
-      line.received_on.slice(0, 10),
-      incomeKindForCheckingLine(line, data),
-      incomeCartolaAmount(line, unit)
-    );
-  }
-  for (const line of data.manual) {
-    add(line.received_on.slice(0, 10), "other", incomeManualAmount(line, unit));
-  }
-  for (const row of data.work_earnings) {
-    if (row.earning_type !== "salary" || !isUsdSyntheticWorkEarning(row)) continue;
-    const day = (row.wire_received_on ?? monthEndUtcYmd(row.period_month)).slice(0, 10);
-    add(day, "salary", workEarningSalaryAmount(row, unit));
-  }
-
-  return [...byDay.keys()]
-    .sort((a, b) => a.localeCompare(b))
-    .map((day) => {
-      const b = byDay.get(day)!;
-      const round = (v: number) => (unit === "clp" ? Math.round(v) : v);
-      const salary = round(b.salary);
-      const severance = round(b.severance);
-      const parent_gift = round(b.parent_gift);
-      const other = round(b.other);
-      return {
-        as_of_date: day,
-        salary,
-        severance,
-        parent_gift,
-        other,
-        total: salary + severance + parent_gift + other,
-      };
-    });
-}
-

@@ -350,30 +350,147 @@ function eachIncomeEntry(
   }
 }
 
+type IncomeKindTotals = Record<IncomeKindBucket, number> & { line_count: number };
+
 /**
- * Income per bucket: each kind is summed, then rounded (always at month grain — the income
- * page's month rows; only in CLP at day grain), then the kinds are added.
+ * Income per bucket and kind: each kind is summed, then rounded (always at month grain — the
+ * income page's month rows; only in CLP at day grain). `line_count` counts the legs.
  */
+function incomeKindTotals(
+  income: FlowsOverviewIncome,
+  unit: GastosUnit,
+  grain: "month" | "day"
+): Map<string, IncomeKindTotals> {
+  const byKey = new Map<string, IncomeKindTotals>();
+  eachIncomeEntry(income, unit, grain, (key, kind, amount) => {
+    let b = byKey.get(key);
+    if (!b) {
+      b = { salary: 0, severance: 0, parent_gift: 0, other: 0, line_count: 0 };
+      byKey.set(key, b);
+    }
+    b[kind] += amount;
+    b.line_count += 1;
+  });
+  const round = (v: number) => (grain === "month" || unit === "clp" ? Math.round(v) : v);
+  for (const b of byKey.values()) {
+    b.salary = round(b.salary);
+    b.severance = round(b.severance);
+    b.parent_gift = round(b.parent_gift);
+    b.other = round(b.other);
+  }
+  return byKey;
+}
+
+function incomeKindSum(b: IncomeKindTotals): number {
+  return b.salary + b.severance + b.parent_gift + b.other;
+}
+
+/** Income per bucket: the rounded kinds added. */
 function incomeTotals(
   income: FlowsOverviewIncome,
   unit: GastosUnit,
   grain: "month" | "day"
 ): Map<string, number> {
-  const byKey = new Map<string, Record<IncomeKindBucket, number>>();
-  eachIncomeEntry(income, unit, grain, (key, kind, amount) => {
-    let b = byKey.get(key);
-    if (!b) {
-      b = { salary: 0, severance: 0, parent_gift: 0, other: 0 };
-      byKey.set(key, b);
-    }
-    b[kind] += amount;
-  });
-  const round = (v: number) => (grain === "month" || unit === "clp" ? Math.round(v) : v);
   const out = new Map<string, number>();
-  for (const [key, b] of byKey) {
-    out.set(key, round(b.salary) + round(b.severance) + round(b.parent_gift) + round(b.other));
-  }
+  for (const [key, b] of incomeKindTotals(income, unit, grain)) out.set(key, incomeKindSum(b));
   return out;
+}
+
+/** One income month row (amounts in the unit; the `_clp` names are the page's legacy DTO). */
+export type FlowsIncomeMonthRow = {
+  period_month: string;
+  as_of_date: string;
+  salary_clp: number;
+  severance_clp: number;
+  parent_gift_clp: number;
+  other_clp: number;
+  total_clp: number;
+  line_count: number;
+  cumulative_clp: number;
+};
+
+/** One income chart point (a month-end or a day). */
+export type FlowsIncomeChartPoint = {
+  as_of_date: string;
+  salary: number;
+  severance: number;
+  parent_gift: number;
+  other: number;
+  total: number;
+};
+
+/**
+ * The income page's figures in the unit, from the same legs and rounding as the overview's
+ * income (`incomeKindTotals`): month rows oldest first, carried through Chile today with zero
+ * months after the last arrival (salary and severance on their payroll month); day points by
+ * arrival date, days carrying income only; the full-history total.
+ */
+export type FlowsIncomeAggregates = {
+  unit: GastosUnit;
+  months: FlowsIncomeMonthRow[];
+  days: FlowsIncomeChartPoint[];
+  total: number;
+};
+
+export function buildFlowsIncomeAggregates(
+  income: FlowsOverviewIncome,
+  unit: GastosUnit,
+  todayYmd: string = chileCalendarTodayYmd()
+): FlowsIncomeAggregates {
+  const byMonth = incomeKindTotals(income, unit, "month");
+  const monthsAsc = [...byMonth.keys()].sort(ymCompare);
+  const months: FlowsIncomeMonthRow[] = [];
+  let running = 0;
+  for (const ym of monthsAsc) {
+    const b = byMonth.get(ym)!;
+    const total = incomeKindSum(b);
+    running += total;
+    months.push({
+      period_month: ym,
+      as_of_date: monthEndUtcYmd(ym),
+      salary_clp: b.salary,
+      severance_clp: b.severance,
+      parent_gift_clp: b.parent_gift,
+      other_clp: b.other,
+      total_clp: total,
+      line_count: b.line_count,
+      cumulative_clp: Math.round(running),
+    });
+  }
+  const total = running;
+  const todayYm = todayYmd.slice(0, 7);
+  if (monthsAsc.length > 0) {
+    for (
+      let ym = addCalendarMonths(monthsAsc[monthsAsc.length - 1]!, 1);
+      ymCompare(ym, todayYm) <= 0;
+      ym = addCalendarMonths(ym, 1)
+    ) {
+      months.push({
+        period_month: ym,
+        as_of_date: monthEndUtcYmd(ym),
+        salary_clp: 0,
+        severance_clp: 0,
+        parent_gift_clp: 0,
+        other_clp: 0,
+        total_clp: 0,
+        line_count: 0,
+        cumulative_clp: Math.round(running),
+      });
+    }
+  }
+  const byDay = incomeKindTotals(income, unit, "day");
+  const days: FlowsIncomeChartPoint[] = [...byDay.keys()].sort().map((day) => {
+    const b = byDay.get(day)!;
+    return {
+      as_of_date: day,
+      salary: b.salary,
+      severance: b.severance,
+      parent_gift: b.parent_gift,
+      other: b.other,
+      total: incomeKindSum(b),
+    };
+  });
+  return { unit, months, days, total: unit === "clp" ? Math.round(total) : total };
 }
 
 // --- rows -----------------------------------------------------------------------------------
