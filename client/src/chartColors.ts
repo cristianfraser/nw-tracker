@@ -248,12 +248,9 @@ export type LineSeriesColorInput = {
   isReferenceOverlay?: boolean;
   /** Fainter dashed overlay (USD milestone lines on the home net-worth chart). */
   isFaintReference?: boolean;
+  /** A reference level fixed in this currency (server `level_currency`, the USD milestones). */
+  levelCurrency?: "clp" | "usd";
 };
-
-/** USD milestone reference line on the home net-worth chart (`usd_50k`, …; server key format). */
-export function isUsdMilestoneDataKey(dataKey: string): boolean {
-  return dataKey.startsWith("usd_");
-}
 
 export type ResolvedLineSeriesItem = LineSeriesColorInput & { stroke: string };
 
@@ -290,7 +287,7 @@ export function resolveLineSeriesColors(
     const milestoneStrokes = ["#94a3b8", "#78716c", "#a8a29e", "#71717a", "#64748b"];
     let mi = 0;
     return series.map((s) => {
-      if (isUsdMilestoneDataKey(s.dataKey)) {
+      if (s.levelCurrency != null) {
         const stroke = milestoneStrokes[mi % milestoneStrokes.length]!;
         mi += 1;
         return { ...s, stroke, isReferenceOverlay: true, isFaintReference: true };

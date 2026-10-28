@@ -38,6 +38,8 @@ export interface DashboardChartShapeLine {
   valueSeriesType: ValueSeriesType;
   account_id?: number;
   color_rgb?: string;
+  /** See `TimeseriesBlock.lines[].level_currency`. */
+  level_currency?: "clp" | "usd";
 }
 
 /**

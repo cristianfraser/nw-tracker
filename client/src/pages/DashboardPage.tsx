@@ -30,7 +30,7 @@ import {
   useSidebarNav,
 } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
-import { allocationBucketColor, desaturateStroke, isUsdMilestoneDataKey } from "../chartColors";
+import { allocationBucketColor, desaturateStroke } from "../chartColors";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../dashboardTimeseriesYearly";
 import { rollupChartPointsByYear } from "../flowsDisplay";
 import { useTranslation } from "../i18n";
@@ -271,7 +271,7 @@ export function DashboardPage() {
   const dailyOverviewBlock = useMemo(() => {
     if (!overviewIsDaily || !overviewDailyData?.points.length || !ts?.overview) return null;
     const lines = ts.overview.lines.filter(
-      (l) => DAILY_OVERVIEW_LINE_KEYS.has(String(l.dataKey)) || isUsdMilestoneDataKey(String(l.dataKey))
+      (l) => DAILY_OVERVIEW_LINE_KEYS.has(String(l.dataKey)) || l.level_currency != null
     );
     if (!lines.length) return null;
     const points = overviewDailyData.points.map((p) => {

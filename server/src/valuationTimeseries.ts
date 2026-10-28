@@ -153,6 +153,9 @@ type GroupTabValuationBlock = {
     name_i18n_key?: string;
     valueSeriesType: "data" | "reference";
     color_rgb?: string;
+    /** A reference level fixed in a currency (the USD milestones): in that display unit its value
+     * is its own name, so the tooltip leaves it out. */
+    level_currency?: "clp" | "usd";
   }[];
   synthetic_group_color_rgb?: Record<string, string>;
   /** FX-backed USD milestone CLP levels for chart anchor dates (month/year prior period ends). */
@@ -1408,6 +1411,7 @@ function usdMilestoneReferenceLines(): NonNullable<GroupTabValuationBlock["lines
     dataKey: usdMilestoneDataKey(usd),
     name: `US$${usd.toLocaleString("en-US")}`,
     valueSeriesType: "reference" as const,
+    level_currency: "usd" as const,
   }));
 }
 
@@ -1961,6 +1965,7 @@ export type DashboardChartShapeLine = {
   valueSeriesType: "data" | "reference";
   account_id?: number;
   color_rgb?: string;
+  level_currency?: "clp" | "usd";
 };
 
 /** Dashboard chart skeleton: line specs + x-axis start + section presence, no points. */

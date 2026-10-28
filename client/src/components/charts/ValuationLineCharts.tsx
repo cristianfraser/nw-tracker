@@ -341,6 +341,7 @@ function buildRawLineSeries(block: TimeseriesBlock, includeAccumulatedLines: boo
       colorIndex: nAccounts + j,
       color_rgb: ln.color_rgb,
       isReferenceOverlay: ln.valueSeriesType === "reference",
+      ...(ln.level_currency ? { levelCurrency: ln.level_currency } : {}),
     });
   }
   return raw;
@@ -356,80 +357,20 @@ function InteractiveLegend({
   focusColorIndex: number | null;
   onHighlight: (dataKey: string | null) => void;
 }) {
-  const visible = series.filter((s) => !s.isDeposit);
+  // Faint references (USD milestones) stay out of the legend: they are context, named in the tooltip.
+  const visible = series.filter((s) => !s.isDeposit && !s.isFaintReference);
   if (visible.length === 0) return null;
   const dim = focusColorIndex != null;
-  // Faint reference lines (USD milestones) get their own row under the data lines.
-  const rows = [visible.filter((s) => !s.isFaintReference), visible.filter((s) => s.isFaintReference)].filter(
-    (row) => row.length > 0
-  );
-  const rowStyle = {
-    display: "flex",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    alignContent: "flex-start",
-    rowGap: 12,
-    columnGap: 20,
-  } as const;
-  const renderItem = (s: ResolvedLineSeriesItem) => {
-    const color = s.stroke;
-    const isHi = focusColorIndex != null && s.colorIndex === focusColorIndex;
-    const faded = dim && !isHi;
-    const isFaint = Boolean(s.isFaintReference);
-    const isDerivedDash =
-      isFaint ||
-      s.dataKey === "invested" ||
-      s.dataKey === "available" ||
-      s.dataKey === "all_available" ||
-      s.dataKey.startsWith("ref:");
-    const legBase = isDerivedDash ? 1.5 : 2;
-    return (
-      <button
-        key={s.dataKey}
-        type="button"
-        onPointerEnter={() => onHighlight(s.dataKey)}
-        style={{ opacity: faded ? DIM_LEGEND_OPACITY : 1 }}
-      >
-        <svg width={18} height={10} aria-hidden style={{ flexShrink: 0 }}>
-          <line
-            x1={0}
-            y1={5}
-            x2={18}
-            y2={5}
-            stroke={color}
-            strokeWidth={isHi ? (isDerivedDash ? Math.max(legBase * 1.35, legBase + 0.85) : 3.5) : legBase}
-            {...(isFaint ? { strokeDasharray: "4 3" } : {})}
-            opacity={
-              faded
-                ? 0.5
-                : isFaint
-                  ? 0.6
-                  : s.dataKey === "all_available" || s.dataKey.includes("disponible_total")
-                    ? 0.6
-                    : isDerivedDash
-                      ? 0.8
-                      : 1
-            }
-          />
-        </svg>
-        <span
-          style={{
-            fontWeight: 400,
-            ...(focusColorIndex != null && isHi ? { color: "#f1f5f9" } : {}),
-          }}
-        >
-          {s.name}
-        </span>
-      </button>
-    );
-  };
   return (
     <div
       className="line-chart-legend"
       style={{
         display: "flex",
-        flexDirection: "column",
+        flexWrap: "wrap",
+        justifyContent: "center",
+        alignContent: "flex-start",
         rowGap: 12,
+        columnGap: 20,
         paddingTop: 14,
         paddingBottom: 10,
         fontSize: 12,
@@ -437,11 +378,53 @@ function InteractiveLegend({
         color: "var(--muted, #94a3b8)",
       }}
     >
-      {rows.map((row, i) => (
-        <div key={i} style={rowStyle}>
-          {row.map(renderItem)}
-        </div>
-      ))}
+      {visible.map((s) => {
+        const color = s.stroke;
+        const isHi = focusColorIndex != null && s.colorIndex === focusColorIndex;
+        const faded = dim && !isHi;
+        const isDerivedDash =
+          s.dataKey === "invested" ||
+          s.dataKey === "available" ||
+          s.dataKey === "all_available" ||
+          s.dataKey.startsWith("ref:");
+        const legBase = isDerivedDash ? 1.5 : 2;
+        return (
+          <button
+            key={s.dataKey}
+            type="button"
+            onPointerEnter={() => onHighlight(s.dataKey)}
+            style={{ opacity: faded ? DIM_LEGEND_OPACITY : 1 }}
+          >
+            <svg width={18} height={10} aria-hidden style={{ flexShrink: 0 }}>
+              <line
+                x1={0}
+                y1={5}
+                x2={18}
+                y2={5}
+                stroke={color}
+                strokeWidth={isHi ? (isDerivedDash ? Math.max(legBase * 1.35, legBase + 0.85) : 3.5) : legBase}
+                opacity={
+                  faded
+                    ? 0.5
+                    : s.dataKey === "all_available" || s.dataKey.includes("disponible_total")
+                      ? 0.6
+                      : isDerivedDash
+                        ? 0.8
+                        : 1
+                }
+              />
+            </svg>
+            <span
+              style={{
+                fontWeight: 400,
+                ...(focusColorIndex != null && isHi ? { color: "#f1f5f9" } : {}),
+              }}
+            >
+              {s.name}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -617,7 +600,12 @@ export function LineChartPanel({
           margin={chartMargin}
           tooltip={{
             formatValue: (v) => formatTooltipValue(v, displayUnit),
-            mapPayload: dedupeTooltipPayloadPreferVisibleStroke,
+            // A reference level fixed in the displayed currency (US$ milestones in USD) would only
+            // repeat its own name; in any other unit it says what the level is worth that day.
+            mapPayload: (payload) =>
+              dedupeTooltipPayloadPreferVisibleStroke(payload).filter(
+                (e) => seriesByDataKey.get(String(e.dataKey))?.levelCurrency !== displayUnit
+              ),
             renderContent: lineSeriesTooltipRenderContent({
               displayUnit,
               xAxisGranularity,
@@ -656,7 +644,9 @@ export function LineChartPanel({
               )}
             />
             {(() => {
-              const hitLines = visibleSeries.map((s) => (
+              // Faint references (USD milestones) take no hover: their values still reach the
+              // tooltip through the visible line, but hovering them never highlights them.
+              const hitLines = visibleSeries.filter((s) => !s.isFaintReference).map((s) => (
                 <Line
                   key={`${s.dataKey}__hit`}
                   type={lineCurveType}
