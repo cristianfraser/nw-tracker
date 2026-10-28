@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "./db.js";
 import { monthEndCloseClpForAccount } from "./accountPeriodMarks.js";
-import { loadAccountRowsForGroupConsolidation } from "./groupMonthlyPerfConsolidation.js";
+import { monthlyPerfRowsForAccount } from "./groupMonthlyPerfConsolidation.js";
 import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 
 const FIXTURE = "vitest-future-dated-clp-cash";
@@ -76,7 +76,7 @@ describe("monthEndCloseClpForAccount with future-dated movements", () => {
 
   it("consolidation monthly rows evaluate the current month at today, closed months at month-end", () => {
     if (!clpId) return;
-    const rows = loadAccountRowsForGroupConsolidation(clpId, leafSlug, "clp");
+    const rows = monthlyPerfRowsForAccount(clpId, leafSlug, "clp");
     const byMonth = new Map(rows.map((r) => [r.as_of_date.slice(0, 7), r.closing_value]));
     expect(byMonth.get("2099-06")).toBe(1_000_000);
     expect(byMonth.get("2099-07")).toBe(15_000); // the live month reads every known row, like the balance

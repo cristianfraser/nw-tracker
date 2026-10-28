@@ -270,7 +270,12 @@ export function getAccountPositionMeta(
         const mtm = computeCryptoMtmClp(accountId, session, liveQuote.price, now);
         if (mtm != null && Number.isFinite(mtm)) {
           out.afp_override_value_clp = Math.round(mtm * 100) / 100;
-          out.afp_override_value_as_of = liveQuote.trade_date ?? session;
+          // Dated on the session the pesos were framed on (`computeCryptoMtmClp` reads that
+          // date's fx), so a USD reader divides by the same rate and gets units × price back.
+          // The live quote's `trade_date` is the coin's last completed UTC day, two days
+          // behind the session at night: the card read the crypto rows 7,91 USD apart from
+          // their own table row (2026-10-27 23:00).
+          out.afp_override_value_as_of = session;
           const u = out.units;
           if (u != null && u > 1e-12) {
             out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
@@ -288,7 +293,8 @@ export function getAccountPositionMeta(
         .get(equityTickerRow, asOf) as { trade_date: string; close: number } | undefined;
       if (mtm != null && Number.isFinite(mtm) && closeRow?.trade_date) {
         out.afp_override_value_clp = Math.round(mtm * 100) / 100;
-        out.afp_override_value_as_of = closeRow.trade_date;
+        // `asOf`, the fx frame of these pesos (the bar may be older) — see the live branch.
+        out.afp_override_value_as_of = asOf;
         const u = out.units;
         // Per-unit price from the value itself — the same close at the same rate
         // (`computeCryptoMtmClp` reads the date's fx frame, live while that fx day is open), so

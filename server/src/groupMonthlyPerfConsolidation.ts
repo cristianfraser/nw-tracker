@@ -17,7 +17,7 @@ import {
 } from "./calendarMonth.js";
 import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
+import { pickMonthlyPerfRowsByMonth } from "./accountPeriodMetrics.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import {
   monthEndCloseClpForAccount,
@@ -186,10 +186,9 @@ function balanceOnlyMonthlyRowsAsc(
   }
 
   if (isMovementBalanceCashCategory(categorySlug)) {
-    return patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, outAsc, unit, () => {
-      const live = checkingMovementBalanceLive(accountId);
-      return live.value_clp;
-    });
+    return patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, outAsc, unit, () =>
+      checkingMovementBalanceLive(accountId)
+    );
   }
 
   return outAsc;
@@ -305,15 +304,20 @@ function bookValuationMonthlyPerfRows(
 
   const patched = patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, asc, unit, () => {
     const liveMark = syncLatestDisplayValueClp(accountId, categorySlug, { import_key: null, name: "" });
-    const liveClp = liveMark?.value_clp ?? bookAsc[bookAsc.length - 1]!.value_clp;
-    return liveClp;
+    return liveMark ?? bookAsc[bookAsc.length - 1]!.value_clp;
   });
 
   return [...patched].reverse();
 }
 
-/** Per-account month-end rows for group consolidation (full cash bucket incl. cartola / ahorro). */
-export function loadAccountRowsForGroupConsolidation(
+/**
+ * An account's monthly performance rows in `unit` — THE per-account series behind every group
+ * table (consolidation) and every dashboard card row (`accountPeriodMetricsFromMonthlyRows`):
+ * the valuation-series performance for invested accounts, the ledger-balance walks for cash
+ * (checking, USD / CLP cash, cuenta de ahorro). A new reader of an account's month P/L takes
+ * these rows; it does not re-derive them.
+ */
+export function monthlyPerfRowsForAccount(
   accountId: number,
   bucketSlug: string,
   unit: TsUnit = "clp"
@@ -333,17 +337,6 @@ export function loadAccountRowsForGroupConsolidation(
   }
   const perf = getAccountMonthlyPerformance(accountId, unit);
   return perf?.monthly ?? [];
-}
-
-/** One row per account per calendar month (same rules as account monthly perf collapse). */
-function pickAccountMonthlyRowForConsolidation(
-  monthRows: readonly AccountMonthlyPerformanceRow[],
-  monthKey: string
-): AccountMonthlyPerformanceRow {
-  if (monthRows.length === 1) return monthRows[0]!;
-  const picked = pickRepresentativeMonthlyPerfRow([...monthRows], monthKey);
-  const totalFlow = monthRows.reduce((s, r) => s + r.net_capital_flow, 0);
-  return { ...picked, net_capital_flow: totalFlow };
 }
 
 /**
@@ -392,20 +385,12 @@ export function consolidateGroupMonthlyPerf(
   const today = chileCalendarTodayYmd();
   const currentMk = monthKeyFromYmd(today);
 
+  // One picked row per account per month — the same rows `accountPeriodMetricsFromMonthlyRows`
+  // sums for the dashboard cards, so a card and this table cannot drift.
   const latestByAccountMonth = new Map<string, AccountMonthlyPerformanceRow>();
   for (const acct of byAccount) {
-    const byMonth = new Map<string, AccountMonthlyPerformanceRow[]>();
-    for (const row of acct.monthly) {
-      const mk = monthKeyFromYmd(row.as_of_date);
-      const arr = byMonth.get(mk) ?? [];
-      arr.push(row);
-      byMonth.set(mk, arr);
-    }
-    for (const [mk, monthRows] of byMonth) {
-      latestByAccountMonth.set(
-        `${acct.account_id}:${mk}`,
-        pickAccountMonthlyRowForConsolidation(monthRows, mk)
-      );
+    for (const [mk, row] of pickMonthlyPerfRowsByMonth(acct.monthly)) {
+      latestByAccountMonth.set(`${acct.account_id}:${mk}`, row);
     }
   }
 
@@ -520,7 +505,7 @@ function buildConsolidationPayloads(
     if (r.exclude_from_group_totals === 1) continue;
     const seriesId = seriesAccountIdForGroupTab(r, groupSlug);
     if (!accountCountsTowardGroupTotals(seriesId)) continue;
-    const monthly = loadAccountRowsForGroupConsolidation(seriesId, r.bucket_slug, unit);
+    const monthly = monthlyPerfRowsForAccount(seriesId, r.bucket_slug, unit);
     if (!monthly.length) continue;
     account_monthly.push({
       account_id: seriesId,

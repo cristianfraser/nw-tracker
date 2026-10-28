@@ -62,6 +62,8 @@ export function trailingZeroRunClipStartIndex(
   values: readonly (number | null | undefined)[],
   kept = TS_TRAILING_ZERO_MONTHS_KEPT
 ): number | null {
+  const isZero = (v: number | null | undefined) =>
+    typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 1e-9;
   let lastNonZeroIdx = -1;
   for (let i = 0; i < values.length; i++) {
     const v = values[i];
@@ -70,9 +72,20 @@ export function trailingZeroRunClipStartIndex(
     }
   }
   const n = values.length;
-  const trailingLen = lastNonZeroIdx >= 0 ? n - 1 - lastNonZeroIdx : n;
-  if (trailingLen <= kept) return null;
-  return lastNonZeroIdx + 1 + kept;
+  // The kept run starts at the first finite zero after the last value — the point where the
+  // series actually reached zero. Nulls between the two are gaps (a monthly grid densified to
+  // month-ends with no observation), not the series at zero: counting them as the run kept a
+  // null gap month and dropped the liquidation zero after it, so the month that booked the
+  // sale never reached the performance rows (account 105, 2018-07, −2x.xxx CLP never counted).
+  let keepFrom = lastNonZeroIdx + 1;
+  for (let i = lastNonZeroIdx + 1; i < n; i++) {
+    if (isZero(values[i])) {
+      keepFrom = i;
+      break;
+    }
+  }
+  if (n - keepFrom <= kept) return null;
+  return keepFrom + kept;
 }
 
 /** Index from which to null a series after trailing zeros; `null` if no clip. */

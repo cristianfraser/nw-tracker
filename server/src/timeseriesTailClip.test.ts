@@ -27,6 +27,31 @@ describe("trailingZeroTailClipStartIndex", () => {
   it("nulls from the second trailing zero onward", () => {
     expect(trailingZeroTailClipStartIndex(points, "s", 1)).toBe(3);
   });
+
+  it("keeps the zero the series reached, not the null gap months before it", () => {
+    // A monthly grid densified to month-ends: no observation in June/July, the liquidation
+    // zero in August, nothing after. The kept point is August's zero (its month books the sale
+    // in the performance rows); the gap months stay null and nothing after August survives.
+    const gapped = [
+      { as_of_date: "2026-04-30", s: 100 },
+      { as_of_date: "2026-05-31", s: 100 },
+      { as_of_date: "2026-06-30", s: null },
+      { as_of_date: "2026-07-31", s: null },
+      { as_of_date: "2026-08-31", s: 0 },
+      { as_of_date: "2026-09-30", s: null },
+      { as_of_date: "2026-10-31", s: 0 },
+    ];
+    expect(trailingZeroTailClipStartIndex(gapped, "s", 1)).toBe(5);
+    const block = { accounts: [accountLine("s")], points: gapped };
+    const out = applyTrailingZeroTailClipToBlock(block);
+    expect(out.chart_end_ymd).toBe("2026-08-31");
+    expect(out.points.map((r) => r.s)).toEqual([100, 100, null, null, 0]);
+  });
+
+  it("a tail of nulls with no zero clips as before", () => {
+    const nulls = [{ s: 100 }, { s: null }, { s: null }, { s: null }];
+    expect(trailingZeroTailClipStartIndex(nulls, "s", 1)).toBe(2);
+  });
 });
 
 function accountLine(dataKey: string, extra: Record<string, unknown> = {}) {
