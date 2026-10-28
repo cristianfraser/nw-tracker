@@ -1,6 +1,7 @@
 import type { AccountMortgageLedgerResponse } from "./mortgage";
 
 import type { DataOrigin } from "../dataOrigin";
+import type { PaymentReceipt } from "./flows";
 
 /** `GET /api/accounts/:id/cc-installments` — credit_card: installment purchases from SQLite (PDF/ledger import). */
 export interface CcStatementLineDto {
@@ -189,6 +190,11 @@ export interface CcInstallmentPurchaseComputed {
   }[];
   /** The plan cuota by cuota for the progress bar (DB source only; null without a schedule). */
   cuota_progress?: CcCuotaProgress | null;
+  /** The `installment-h:` key the plan's expense lines carry; its note is written under it (card page only). */
+  expense_purchase_key?: string;
+  purchase_notes?: string;
+  /** The receipt link its expense lines show. */
+  payment_receipt?: PaymentReceipt;
 }
 
 export interface CcCuotaProgressCuota {

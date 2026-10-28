@@ -190,7 +190,6 @@ export function CreditCardExpenseLinesTable({
   categories,
   emptyLabel,
   showCategoryControls = true,
-  showNotesColumn = true,
   showBigGroupControls = false,
   bigGroups = [],
   categoryControlVariant = "select",
@@ -213,7 +212,6 @@ export function CreditCardExpenseLinesTable({
   categories: readonly CcExpenseCategoryDto[];
   emptyLabel: string;
   showCategoryControls?: boolean;
-  showNotesColumn?: boolean;
   showBigGroupControls?: boolean;
   bigGroups?: readonly CcExpenseBigGroupDto[];
   categoryControlVariant?: "select" | "pills";
@@ -285,7 +283,7 @@ export function CreditCardExpenseLinesTable({
             {showBigGroupControls ? (
               <th>{t("expenses.creditCard.bigGroups.colGroup")}</th>
             ) : null}
-            {showNotesColumn ? <th>{t("expenses.creditCard.lineColNotes")}</th> : null}
+            <th>{t("expenses.creditCard.lineColNotes")}</th>
             {showActions ? (
               <th>{t("accountDetail.creditCard.lineColActions")}</th>
             ) : null}
@@ -358,8 +356,6 @@ export function CreditCardExpenseLinesTable({
             <td className="mono">{ln.purchase_on ?? "—"}</td>
             <td>
               {ln.merchant ?? "—"}
-              <TransferCounterpartyLine counterparty={ln.transfer_counterparty} />
-              <PaymentReceiptLine receipt={ln.payment_receipt} />
               {hasPieces ? (
                 <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.9em" }}>
                   {ln.piece_seq != null
@@ -459,20 +455,20 @@ export function CreditCardExpenseLinesTable({
                 )}
               </td>
             ) : null}
-            {showNotesColumn ? (
-              <td>
-                {showNoteInput ? (
-                  <ExpensePurchaseNoteInput
-                    accountId={ln.account_id}
-                    purchaseKey={ln.purchase_key}
-                    statementLineId={noteStatementLineId}
-                    value={ln.purchase_notes ?? ""}
-                  />
-                ) : (
-                  "—"
-                )}
-              </td>
-            ) : null}
+            <td>
+              {showNoteInput ? (
+                <ExpensePurchaseNoteInput
+                  accountId={ln.account_id}
+                  purchaseKey={ln.purchase_key}
+                  statementLineId={noteStatementLineId}
+                  value={ln.purchase_notes ?? ""}
+                />
+              ) : ln.transfer_counterparty || ln.payment_receipt ? null : (
+                "—"
+              )}
+              <TransferCounterpartyLine counterparty={ln.transfer_counterparty} />
+              <PaymentReceiptLine receipt={ln.payment_receipt} />
+            </td>
             {showActions ? (
               <td>
                 {canEditPieces ? (

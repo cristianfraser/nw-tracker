@@ -5,6 +5,7 @@ import type {
   FlowCcExpenseLineRow,
   FlowCcExpenseLineSource,
   FlowsExpensesResponse,
+  AccountDetailBundleResponse,
 } from "../types";
 import {
   expenseLineCategoryTargetId,
@@ -182,6 +183,24 @@ export function applyCcExpensePurchaseNotePatch(
   };
 }
 
+export function applyCcPurchaseNotePatchToDetail(
+  data: AccountDetailBundleResponse | undefined,
+  purchaseKey: string,
+  notes: string
+): AccountDetailBundleResponse | undefined {
+  if (!data) return data;
+  const patch = <P extends { expense_purchase_key?: string }>(rows: P[]): P[] =>
+    rows.map((p) => (p.expense_purchase_key === purchaseKey ? { ...p, purchase_notes: notes } : p));
+  return {
+    ...data,
+    ccLedger: {
+      ...data.ccLedger,
+      purchases: patch(data.ccLedger.purchases),
+      purchases_completed: patch(data.ccLedger.purchases_completed),
+    },
+  };
+}
+
 export function usePatchCcExpensePurchaseNoteMutation() {
   const queryClient = useQueryClient();
   const queryKey = queryKeys.flowsExpenses();
@@ -223,6 +242,11 @@ export function usePatchCcExpensePurchaseNoteMutation() {
           purchase_key: result.purchase_key,
           notes: result.notes,
         })
+      );
+      // The card page's purchase tables show the same note (a plan's `expense_purchase_key`).
+      queryClient.setQueriesData<AccountDetailBundleResponse>(
+        { queryKey: ["accountDetail", String(result.account_id)] },
+        (old) => applyCcPurchaseNotePatchToDetail(old, result.purchase_key, result.notes)
       );
     },
     onError: (_err, _vars, context) => {

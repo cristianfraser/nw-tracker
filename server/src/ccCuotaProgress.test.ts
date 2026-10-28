@@ -14,6 +14,9 @@ const row = (cuota: number, statementMonth: string, amount: number, opts?: { sta
   cuota_total: 6,
 });
 
+/** Paid when its pay-by is on or before «today» (2026-10-28). */
+const paidByToday = (_month: string, payBy: string | null) => payBy != null && payBy <= "2026-10-28";
+
 describe("cuotaProgressForPurchase", () => {
   it("lists every cuota of the plan: printed ones with their statement, the rest from the schedule", () => {
     const plan = {
@@ -29,7 +32,7 @@ describe("cuotaProgressForPurchase", () => {
       row(4, "2026-08", 82_000, { statement: "25/08/2026", payBy: "2026-09-09" }),
       row(5, "2026-09", 82_000, { statement: "24/09/2026", payBy: "2026-10-09" }),
     ];
-    const p = cuotaProgressForPurchase(plan, pays);
+    const p = cuotaProgressForPurchase(plan, pays, paidByToday);
     expect(p.cuotas.map((c) => [c.index, c.billing_month, c.status])).toEqual([
       [1, "2026-05", "paid"],
       [2, "2026-06", "paid"],
@@ -47,15 +50,15 @@ describe("cuotaProgressForPurchase", () => {
     expect(p.total_clp).toBe(492_000);
   });
 
-  it("a printed cuota the schedule has not counted paid is billed; printed amounts win over the split", () => {
+  it("a printed cuota whose facturación is not paid yet is billed; printed amounts win over the split", () => {
     const plan = {
       installmentCount: 3,
       firstDueYm: "2026-08",
       cuotaAmounts: [400_000, 400_000, 400_000],
       installmentsPaid: 1,
     };
-    const pays = [row(1, "2026-08", 400_000), row(2, "2026-09", 400_002)];
-    const p = cuotaProgressForPurchase(plan, pays);
+    const pays = [row(1, "2026-08", 400_000), row(2, "2026-09", 400_002, { payBy: "2026-11-10" })];
+    const p = cuotaProgressForPurchase(plan, pays, paidByToday);
     expect(p.cuotas.map((c) => c.status)).toEqual(["paid", "billed", "pending"]);
     expect(p.cuotas[1]!.amount_clp).toBe(400_002);
     expect(p.billed_clp).toBe(400_002);
@@ -63,13 +66,26 @@ describe("cuotaProgressForPurchase", () => {
     expect(p.total_clp).toBe(p.paid_clp + p.billed_clp + p.pending_clp);
   });
 
+  it("a cuota the schedule counts billed stays billed until its facturación is paid (2026-10-28)", () => {
+    // The October statement printed the last cuota (close 26/10, pay-by 10/11): billed, not paid.
+    const plan = { installmentCount: 2, firstDueYm: "2026-09", cuotaAmounts: [82_000, 82_000], installmentsPaid: 2 };
+    const pays = [
+      row(1, "2026-09", 82_000, { statement: "24/09/2026", payBy: "2026-10-09" }),
+      row(2, "2026-10", 82_000, { statement: "26/10/2026", payBy: "2026-11-10" }),
+    ];
+    const p = cuotaProgressForPurchase(plan, pays, paidByToday);
+    expect(p.cuotas.map((c) => c.status)).toEqual(["paid", "billed"]);
+    expect(p.paid_count).toBe(1);
+    expect(p.billed_clp).toBe(82_000);
+  });
+
   it("collapses a duplicate statement copy of a cuota, and throws on a differing twin or an index above N", () => {
     const plan = { installmentCount: 2, firstDueYm: "2026-01", cuotaAmounts: [10, 10], installmentsPaid: 1 };
     const dup = [row(1, "2026-01", 10), { ...row(1, "2026-01", 10), id: 99, pay_by_date: "2026-02-10" }];
-    expect(cuotaProgressForPurchase(plan, dup).cuotas).toHaveLength(2);
+    expect(cuotaProgressForPurchase(plan, dup, paidByToday).cuotas).toHaveLength(2);
     expect(() =>
-      cuotaProgressForPurchase(plan, [row(1, "2026-01", 10), { ...row(1, "2026-01", 11), id: 99 }])
+      cuotaProgressForPurchase(plan, [row(1, "2026-01", 10), { ...row(1, "2026-01", 11), id: 99 }], paidByToday)
     ).toThrow(/twice/);
-    expect(() => cuotaProgressForPurchase(plan, [row(3, "2026-03", 10)])).toThrow(/cuota 3 of a 2-cuota plan/);
+    expect(() => cuotaProgressForPurchase(plan, [row(3, "2026-03", 10)], paidByToday)).toThrow(/cuota 3 of a 2-cuota plan/);
   });
 });

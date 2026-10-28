@@ -148,6 +148,19 @@
   font-size: var(--font-size-card-meta);
 }
 
+.purchaseVendor {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+/* Active card purchase: note and receipt link over the cuota progress bar. */
+.purchaseNotesStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
 .purchaseMetaBlock {
   display: block;
   font-size: var(--font-size-card-meta);

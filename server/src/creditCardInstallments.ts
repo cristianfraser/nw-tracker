@@ -26,6 +26,7 @@ import {
   type CcHistorialMonthLines,
 } from "./creditCardChartSeries.js";
 import type { DataOrigin } from "./dataOrigin.js";
+import type { PaymentReceiptDto } from "./paymentProcessorReceipts.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { ccHistorialLinesAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
 import { latestBankCupoForAccount, type CcBankCupoStatus } from "./ccBankCupoCheck.js";
@@ -108,6 +109,13 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
    * schedule). Σ `amount_clp` over the cuotas = `total_clp` = paid + billed + pending.
    */
   cuota_progress?: CcCuotaProgress | null;
+  /**
+   * The plan's note and receipt link as its expense lines carry them (card page only,
+   * `withPurchaseExpenseLinks`): the `installment-h:` key the note is written under.
+   */
+  expense_purchase_key?: string;
+  purchase_notes?: string;
+  payment_receipt?: PaymentReceiptDto;
   /** How this purchase entered the system. */
   origin: DataOrigin;
   /** @deprecated Use `origin`. */

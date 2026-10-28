@@ -10,6 +10,7 @@ import {
 } from "../../components/ui/TableMobileCard";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { CreditCardCuotaProgress } from "./CreditCardCuotaProgress";
+import { CreditCardPurchaseNotes } from "./CreditCardPurchaseNotes";
 import styles from "../AccountDetailPage.module.css";
 import { Button } from "@crfrsr/ui";
 
@@ -19,6 +20,7 @@ function PurchaseMeta({ children }: { children: ReactNode }) {
 
 export function CreditCardPurchaseMobileCard({
   purchase,
+  accountId,
   hasLedger,
   dueColumn,
   originLabel,
@@ -28,6 +30,7 @@ export function CreditCardPurchaseMobileCard({
   maxInstallments,
 }: {
   purchase: CcInstallmentPurchaseComputed;
+  accountId: number;
   hasLedger: boolean;
   dueColumn: "last" | "none";
   originLabel: string;
@@ -38,6 +41,48 @@ export function CreditCardPurchaseMobileCard({
   maxInstallments: number;
 }) {
   const { t } = useTranslation();
+  const deleteButton =
+    hasLedger && purchase.origin === "manual" && purchase.purchase_db_id != null && onDeleteManual ? (
+      <Button variant="ghost" disabled={manualBusy} onClick={onDeleteManual}>
+        {manualDeleteLabel}
+      </Button>
+    ) : null;
+  const notes = (
+    <TableMobileCardSection>
+      <CreditCardPurchaseNotes purchase={purchase} accountId={accountId} />
+    </TableMobileCardSection>
+  );
+
+  // Active plans: the desktop row's two lines — «date · cuota» over the vendor — then the note and
+  // the progress bar.
+  if (dueColumn === "none") {
+    return (
+      <TableMobileCard
+        title={
+          <>
+            <div className="mono">
+              {purchase.purchase_date ?? "—"} · {formatClp(purchase.cuota_clp)}
+            </div>
+            <div>{purchase.label}</div>
+          </>
+        }
+      >
+        {deleteButton || purchase.note ? (
+          <TableMobileCardSection>
+            {purchase.note ? <PurchaseMeta>{purchase.note}</PurchaseMeta> : null}
+            {deleteButton}
+          </TableMobileCardSection>
+        ) : null}
+        {notes}
+        {purchase.cuota_progress ? (
+          <TableMobileCardSection>
+            <CreditCardCuotaProgress progress={purchase.cuota_progress} maxInstallments={maxInstallments} />
+          </TableMobileCardSection>
+        ) : null}
+      </TableMobileCard>
+    );
+  }
+
   const title = (
     <>
       <div>{purchase.label}</div>
@@ -50,22 +95,13 @@ export function CreditCardPurchaseMobileCard({
       <TableMobileCardSection>
         <PurchaseMeta>{originLabel}</PurchaseMeta>
         {purchase.note ? <PurchaseMeta>{purchase.note}</PurchaseMeta> : null}
-        {hasLedger && purchase.origin === "manual" && purchase.purchase_db_id != null && onDeleteManual ? (
-          <Button variant="ghost"
-            disabled={manualBusy}
-            onClick={onDeleteManual}
-          >
-            {manualDeleteLabel}
-          </Button>
-        ) : null}
+        {deleteButton}
       </TableMobileCardSection>
 
-      {dueColumn === "last" ? (
-        <TableMobileCardSection>
-          <TableMobileCardRow label={t("account.creditCard.colInstallments")} value={String(purchase.installment_count)} />
-          <TableMobileCardRow label={t("account.creditCard.colPrincipal")} value={formatClp(purchase.principal_clp)} />
-        </TableMobileCardSection>
-      ) : null}
+      <TableMobileCardSection>
+        <TableMobileCardRow label={t("account.creditCard.colInstallments")} value={String(purchase.installment_count)} />
+        <TableMobileCardRow label={t("account.creditCard.colPrincipal")} value={formatClp(purchase.principal_clp)} />
+      </TableMobileCardSection>
 
       <TableMobileCardSection>
         {!hasLedger ? (
@@ -75,18 +111,14 @@ export function CreditCardPurchaseMobileCard({
           />
         ) : null}
         <TableMobileCardRow label={t("account.creditCard.colPurchaseDate")} value={purchase.purchase_date ?? "—"} />
-        {dueColumn === "last" ? (
-          <TableMobileCardRow
-            label={t("account.creditCard.colPurchaseBillingMonth")}
-            value={purchase.purchase_billing_month ?? purchase.purchase_month ?? "—"}
-          />
-        ) : null}
-        {dueColumn === "last" ? (
-          <TableMobileCardRow
-            label={t("account.creditCard.colLastPaid")}
-            value={purchase.last_paid_month ? formatYearMonthLabel(purchase.last_paid_month) : "—"}
-          />
-        ) : null}
+        <TableMobileCardRow
+          label={t("account.creditCard.colPurchaseBillingMonth")}
+          value={purchase.purchase_billing_month ?? purchase.purchase_month ?? "—"}
+        />
+        <TableMobileCardRow
+          label={t("account.creditCard.colLastPaid")}
+          value={purchase.last_paid_month ? formatYearMonthLabel(purchase.last_paid_month) : "—"}
+        />
       </TableMobileCardSection>
 
       {!hasLedger ? (
@@ -99,11 +131,7 @@ export function CreditCardPurchaseMobileCard({
         <TableMobileCardRow label={t("account.creditCard.colCuotaClp")} value={formatClp(purchase.cuota_clp)} />
       </TableMobileCardSection>
 
-      {dueColumn === "none" && purchase.cuota_progress ? (
-        <TableMobileCardSection>
-          <CreditCardCuotaProgress progress={purchase.cuota_progress} maxInstallments={maxInstallments} />
-        </TableMobileCardSection>
-      ) : null}
+      {notes}
     </TableMobileCard>
   );
 }
@@ -112,10 +140,9 @@ export function purchaseTableColSpan(
   hasLedger: boolean,
   dueColumn: "last" | "none"
 ): number {
-  // Base desktop columns — "last" (completed): Compra, Cuotas, Principal, Fecha, Mes
-  // facturación, Cuota CLP, Mes último pago; "none" (active): Compra, Fecha, Cuota CLP — the
-  // progress bar under the row carries the rest. Without a ledger the Tasa + Offset CSV
-  // columns are added. +1 = the mobile-only cell.
-  const desktop = (dueColumn === "last" ? 7 : 3) + (hasLedger ? 0 : 2);
+  // "none" (active): Compra (date · cuota over the vendor), Notas (note over the progress bar).
+  // "last" (completed): Compra, Cuotas, Principal, Fecha, Mes facturación, Cuota CLP, Mes último
+  // pago, Notas — without a ledger the Tasa + Offset CSV columns are added. +1 = the mobile-only cell.
+  const desktop = dueColumn === "none" ? 2 : 8 + (hasLedger ? 0 : 2);
   return desktop + 1;
 }

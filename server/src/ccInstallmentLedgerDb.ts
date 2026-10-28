@@ -260,13 +260,16 @@ function indexedInstallmentPaymentStatements(payList: PaymentRow[]) {
 /**
  * The plan cuota by cuota for the purchase's progress bar: one entry per index 1..N. A cuota a
  * statement printed carries that statement's month, close and pay-by; the rest take the schedule's
- * month. `paid` follows the schedule's settled count (`installmentsPaid`); a printed cuota above it
- * is `billed`; everything else `pending`. Two rows for one index must agree on the amount (a
- * duplicate statement copy) — a differing twin, or an index above N, is bad data and throws.
+ * month. A cuota a statement billed (printed, or within the schedule's billed count
+ * `installmentsPaid`) is `paid` once its facturación is paid (`facturacionPaid`: the real payment
+ * date when the evidence has one, else the pay-by — the clock that moves a purchase to completed),
+ * `billed` until then; everything else `pending`. Two rows for one index must agree on the amount
+ * (a duplicate statement copy) — a differing twin, or an index above N, is bad data and throws.
  */
 export function cuotaProgressForPurchase(
   plan: { installmentCount: number; firstDueYm: string; cuotaAmounts: number[]; installmentsPaid: number },
-  payList: PaymentRow[]
+  payList: PaymentRow[],
+  facturacionPaid: (billingMonth: string, payByIso: string | null) => boolean
 ): CcCuotaProgress {
   const n = plan.installmentCount;
   const byIndex = new Map<number, PaymentRow>();
@@ -287,18 +290,27 @@ export function cuotaProgressForPurchase(
   let paid_clp = 0;
   let billed_clp = 0;
   let pending_clp = 0;
+  let paid_count = 0;
   for (let i = 1; i <= n; i++) {
     const row = byIndex.get(i);
     const amount_clp = row?.amount_clp ?? plan.cuotaAmounts[i - 1] ?? 0;
+    const billing_month = (row ? paymentBillingMonth(row) : null) ?? installmentDueYm(plan.firstDueYm, i - 1);
+    const pay_by_date = row ? normalizeTransactionDateIso(row.pay_by_date) : null;
     const status: CcCuotaProgressCuota["status"] =
-      i <= plan.installmentsPaid ? "paid" : row ? "billed" : "pending";
-    if (status === "paid") paid_clp += amount_clp;
-    else if (status === "billed") billed_clp += amount_clp;
+      row || i <= plan.installmentsPaid
+        ? facturacionPaid(billing_month, pay_by_date)
+          ? "paid"
+          : "billed"
+        : "pending";
+    if (status === "paid") {
+      paid_clp += amount_clp;
+      paid_count += 1;
+    } else if (status === "billed") billed_clp += amount_clp;
     else pending_clp += amount_clp;
     cuotas.push({
       index: i,
-      billing_month: (row ? paymentBillingMonth(row) : null) ?? installmentDueYm(plan.firstDueYm, i - 1),
-      pay_by_date: row ? normalizeTransactionDateIso(row.pay_by_date) : null,
+      billing_month,
+      pay_by_date,
       statement_date: row ? normalizeTransactionDateIso(row.statement_date) : null,
       amount_clp,
       status,
@@ -309,7 +321,7 @@ export function cuotaProgressForPurchase(
     paid_clp,
     billed_clp,
     pending_clp,
-    paid_count: Math.min(n, Math.max(0, plan.installmentsPaid)),
+    paid_count,
     cuotas,
   };
 }
@@ -1109,6 +1121,7 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
 
   const statements = listCcStatementsForAccount(accountId);
   const computed: CcInstallmentPurchaseComputed[] = [];
+  const progressPlans = new Map<number, Parameters<typeof cuotaProgressForPurchase>[0]>();
   for (const pr of purchasesRaw) {
     const payList = paymentsByPurchase.get(pr.id) ?? [];
     const principal = pr.total_amount_clp;
@@ -1136,17 +1149,16 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
 
     const label = (pr.description_merged ?? pr.merchant ?? "Compra").trim() || "Compra";
     const payment_statements = indexedInstallmentPaymentStatements(payList);
-    const cuota_progress = sched
-      ? cuotaProgressForPurchase(
-          {
-            installmentCount: pr.cuotas_totales,
-            firstDueYm: first_due_month,
-            cuotaAmounts,
-            installmentsPaid: installments_paid,
-          },
-          payList
-        )
-      : null;
+    // Filled once the facturaciones' payment dates are known (below).
+    if (sched) {
+      progressPlans.set(pr.id, {
+        installmentCount: pr.cuotas_totales,
+        firstDueYm: first_due_month,
+        cuotaAmounts,
+        installmentsPaid: installments_paid,
+      });
+    }
+    const cuota_progress: CcCuotaProgress | null = null;
 
     let next_due_month: string | null = null;
     let next_installment_index: number | null = null;
@@ -1285,6 +1297,16 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
     // payment date when evidence exists, else its pay-by), then rolls off — the same clock
     // that flips its final-cuota purchases to completed.
     .filter((row) => (retired_on_by_month.get(row.month) ?? row.pay_by_date) >= todayYmd);
+
+  // A billed cuota is paid on the day its facturación is: the real payment date when the evidence
+  // has one, else its pay-by — the clock `installmentPurchaseShowsActive` reads.
+  const facturacionPaid = (billingMonth: string, payByIso: string | null): boolean =>
+    todayYmd >= (retired_on_by_month.get(billingMonth) ?? payByIso ?? payByEvidenceByMonth.get(billingMonth) ?? derivedPayByForMonth(billingMonth));
+  for (const c of computed) {
+    const plan = progressPlans.get(c.purchase_db_id ?? -1);
+    if (!plan) continue;
+    c.cuota_progress = cuotaProgressForPurchase(plan, paymentsByPurchase.get(c.purchase_db_id!) ?? [], facturacionPaid);
+  }
 
   const installment_history_months = installmentHistoryMonthsFromLedgerData(
     schedulePurchases,
