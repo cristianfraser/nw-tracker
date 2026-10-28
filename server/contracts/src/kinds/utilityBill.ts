@@ -3,8 +3,11 @@ import { defineIngestKind } from "../defineKind.js";
 
 const text = z.string().trim().min(1);
 
-/** What a bill is for; the server files it under the matching real-estate bill kind. */
-export const UTILITY_SERVICES = ["electricity", "gas", "water", "internet"] as const;
+/**
+ * What a bill is for; the server files it under the matching real-estate bill kind. `hoa` is a
+ * building's monthly common-expenses statement (gastos comunes) for one unit.
+ */
+export const UTILITY_SERVICES = ["electricity", "gas", "water", "internet", "hoa"] as const;
 export type UtilityService = (typeof UTILITY_SERVICES)[number];
 
 export const utilityBillSchema = z
@@ -12,9 +15,12 @@ export const utilityBillSchema = z
     /** Who billed («enel», «metrogas»…): a slug, never a display name. */
     provider: z.string().regex(/^[a-z][a-z0-9_]*$/),
     service: z.enum(UTILITY_SERVICES),
-    /** The provider's number for the supply (N° cliente), as printed. */
+    /** The provider's number for the supply (N° cliente; a building's unit number), as printed. */
     service_account: text,
-    /** The bill's own number (N° boleta), as printed: with the provider, the bill's identity. */
+    /**
+     * The bill's own number (N° boleta), as printed: with the provider, the bill's identity. A
+     * statement that prints none is numbered `<service_account>-<YYYY-MM>` (its unit and month).
+     */
     bill_number: text,
     issued_on: z.iso.date(),
     /** Pesos to pay, as printed. */
@@ -100,6 +106,12 @@ export type UtilityBillOutcome =
 export type UtilityBillApplyDetails = {
   received: number;
   new_bills: number;
+  /**
+   * Payments to a building's administration (gastos comunes of a place that receives `hoa` bills)
+   * no bill accounts for, older than the grace days: the statement for their month never arrived.
+   * Nothing is written for them.
+   */
+  unbilled_hoa_payments: { place: string; purchase_key: string; day: string; amount: number; merchant: string | null }[];
   /** One row per stored bill still being followed (new, or not settled before). */
   bills: {
     provider: string;

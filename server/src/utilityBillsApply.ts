@@ -1,7 +1,8 @@
 /**
- * Utility bills (`utility.bill`): an electricity, gas, water or internet bill read from the
- * provider's mail becomes the real-estate page's bill row for its place — once, and only once the
- * card or checking charge that paid it is in. Nothing that has not happened appears on the page.
+ * Utility bills (`utility.bill`): an electricity, gas, water or internet bill, or a building's
+ * gastos comunes statement, read from the provider's mail becomes the real-estate page's bill row
+ * for its place — once, and only once the card or checking charge that paid it is in. Nothing that
+ * has not happened appears on the page.
  *
  * Each bill is stored once (`utility_bills`, keyed by provider + bill number); a resend that states
  * anything else is a conflict and stores nothing — except a period one send leaves out (ENEL's is
@@ -12,14 +13,22 @@
  *    printed, compared without punctuation or leading zeros). An unmapped supply writes nothing.
  *  - its charge (`pickUtilityBillCharge`) is the one whole purchase among the lines the page pairs
  *    bills with (`loadGastosLinesForRealEstateMatching`) of exactly the bill's pesos, whose merchant
- *    is the kind's (`merchantMatchesExpectation`), dated from the issue day through due + 10 days.
- *    Several → ambiguous; none → waiting, and overdue once past due + 15 days.
+ *    is the kind's (`merchantMatchesExpectation`), dated from the issue day through the end of its
+ *    window (`chargeWindowEnd`: due + 10 days; a gastos comunes statement, paid by transfer later
+ *    in the month, its issue day + 35). A transfer whose mail names its counterparty must be paying
+ *    someone else than the client's own accounts; among several, those whose counterparty is the
+ *    place's are kept. Several → ambiguous; none → waiting, and overdue 5 days past the window.
  *  - a charge no bill row holds yet → a bill row created from it (`assignPurchaseToRealEstateExpense`)
  *    in the bill's month (`utilityBillMonth`) with the consumption; a charge already filed under a
  *    bill by hand → that bill's consumption filled when empty. A bill row of another place, kind or
  *    amount, or a different consumption already stored, is a conflict: never overwritten.
  * A bill that created or filled its row is settled and never followed again (a row deleted by hand
  * afterwards is not written back).
+ *
+ * A place that receives gastos comunes statements also has its payments to the building checked
+ * the other way (`unbilledHoaPayments`): a gastos comunes payment no bill row holds, made since its
+ * first statement and more than `UNBILLED_HOA_PAYMENT_GRACE_DAYS` ago, is listed — the statement
+ * for its month never arrived. Nothing is written for it.
  */
 import { createHash } from "node:crypto";
 import type {
@@ -43,8 +52,12 @@ import { merchantMatchesExpectation, type RealEstateBillKind } from "./realEstat
 
 /** How long after its due day a bill's charge may still be dated. */
 export const UTILITY_BILL_CHARGE_GRACE_DAYS = 10;
-/** Past due + this many days with no charge, a bill is reported overdue. */
-export const UTILITY_BILL_OVERDUE_DAYS = 15;
+/** A gastos comunes statement's charge (a transfer later in the month) may be dated this long after its issue day. */
+export const HOA_CHARGE_WINDOW_DAYS = 35;
+/** Past its charge window by this many days with no charge, a bill is reported overdue. */
+export const UTILITY_BILL_OVERDUE_DAYS = 5;
+/** A gastos comunes payment with no statement is reported once this old. */
+export const UNBILLED_HOA_PAYMENT_GRACE_DAYS = 10;
 
 /** The real-estate bill kind each service is filed under. */
 export const UTILITY_SERVICE_KIND: Record<UtilityService, RealEstateBillKind> = {
@@ -52,6 +65,7 @@ export const UTILITY_SERVICE_KIND: Record<UtilityService, RealEstateBillKind> = 
   gas: "gas",
   water: "water",
   internet: "internet",
+  hoa: "gastos_comunes",
 };
 
 /** An account number as printed, for comparison: digits and the check letter, no leading zeros. */
@@ -76,6 +90,28 @@ export function utilityBillMonth(b: Pick<UtilityBill, "period_to" | "issued_on">
 /** The day a gastos line's charge happened. */
 const lineDay = (l: Pick<FlowCcExpenseLineRow, "purchase_on" | "occurred_on">) => l.purchase_on ?? l.occurred_on;
 
+/** The last day a bill's charge may be dated. */
+export function chargeWindowEnd(bill: Pick<UtilityBill, "issued_on" | "due_on" | "service">): string {
+  return bill.service === "hoa"
+    ? chileCalendarAddDays(bill.issued_on, HOA_CHARGE_WINDOW_DAYS)
+    : chileCalendarAddDays(bill.due_on, UTILITY_BILL_CHARGE_GRACE_DAYS);
+}
+
+/**
+ * Whether a line pays the place's `kind`, by the bank's name for it; a transfer whose mail names
+ * its counterparty must be paying someone else (not between the client's own accounts).
+ */
+function linePaysKind(l: FlowCcExpenseLineRow, comunidadPatterns: string | null, kind: RealEstateBillKind): boolean {
+  if (l.transfer_counterparty && l.transfer_counterparty.direction !== "out") return false;
+  return merchantMatchesExpectation(comunidadPatterns, kind, l.merchant ?? l.merchant_key);
+}
+
+/** A transfer whose mail names the place's counterparty for `kind`. */
+function counterpartyIsKinds(l: FlowCcExpenseLineRow, comunidadPatterns: string | null, kind: RealEstateBillKind): boolean {
+  const name = l.transfer_counterparty?.name;
+  return name != null && merchantMatchesExpectation(comunidadPatterns, kind, name);
+}
+
 export type UtilityChargePick =
   | { kind: "one"; line: FlowCcExpenseLineRow }
   | { kind: "none" }
@@ -89,15 +125,17 @@ export function pickUtilityBillCharge(
   excluded: ReadonlySet<string>
 ): UtilityChargePick {
   const kind = UTILITY_SERVICE_KIND[bill.service];
-  const last = chileCalendarAddDays(bill.due_on, UTILITY_BILL_CHARGE_GRACE_DAYS);
-  const candidates = lines.filter(
+  const last = chargeWindowEnd(bill);
+  let candidates = lines.filter(
     (l) =>
       !excluded.has(l.purchase_key) &&
       Math.round(l.amount_clp) === bill.amount &&
       lineDay(l) >= bill.issued_on &&
       lineDay(l) <= last &&
-      merchantMatchesExpectation(comunidadPatterns, kind, l.merchant ?? l.merchant_key)
+      linePaysKind(l, comunidadPatterns, kind)
   );
+  const named = candidates.filter((l) => counterpartyIsKinds(l, comunidadPatterns, kind));
+  if (named.length > 0) candidates = named;
   const keys = [...new Set(candidates.map((l) => l.purchase_key))];
   if (keys.length === 0) return { kind: "none" };
   if (keys.length > 1) return { kind: "ambiguous", purchase_keys: keys.sort() };
@@ -232,10 +270,16 @@ export function applyUtilityBills(
   const pending = db
     .prepare(`SELECT * FROM utility_bills WHERE settled_at IS NULL ORDER BY issued_on, provider, bill_number`)
     .all() as StoredBillRow[];
-  const details: UtilityBillApplyDetails = { received: payload.bills.length, new_bills: stored.new_bills, bills: [] };
-  if (pending.length === 0) return { status: stored.new_bills > 0 ? "applied" : "duplicate", details };
-
+  const details: UtilityBillApplyDetails = {
+    received: payload.bills.length,
+    new_bills: stored.new_bills,
+    bills: [],
+    unbilled_hoa_payments: [],
+  };
   const places = loadServicePlaces();
+  const hoaPlaces = firstHoaStatementByPlace(places);
+  if (pending.length === 0 && hoaPlaces.size === 0) return { status: stored.new_bills > 0 ? "applied" : "duplicate", details };
+
   let lines = loadGastosLinesForRealEstateMatching();
   const linkOfKey = () =>
     new Map(
@@ -255,6 +299,8 @@ export function applyUtilityBills(
     `UPDATE utility_bills SET expense_entry_id = ?, settled_at = datetime('now') WHERE provider = ? AND bill_number = ?`
   );
   let wrote = false;
+  // Charges a waiting statement could still take: not reported as unbilled.
+  const followedKeys = new Set<string>();
 
   for (const row of pending) {
     const bill = storedAsBill(row);
@@ -291,11 +337,12 @@ export function applyUtilityBills(
     );
     const pick = pickUtilityBillCharge(bill, place.comunidad_patterns, lines, excluded);
     if (pick.kind === "ambiguous") {
+      for (const k of pick.purchase_keys) followedKeys.add(k);
       report("ambiguous", { message: `charges ${pick.purchase_keys.join(", ")}` });
       continue;
     }
     if (pick.kind === "none") {
-      const overdue = todayYmd > chileCalendarAddDays(bill.due_on, UTILITY_BILL_OVERDUE_DAYS);
+      const overdue = todayYmd > chileCalendarAddDays(chargeWindowEnd(bill), UTILITY_BILL_OVERDUE_DAYS);
       report(overdue ? "overdue" : "waiting");
       continue;
     }
@@ -355,5 +402,44 @@ export function applyUtilityBills(
     claimedEntries.add(linkedEntry);
     report(have == null ? "filled" : "already_filed", { expense_entry_id: linkedEntry, purchase_key: key });
   }
+  details.unbilled_hoa_payments = unbilledHoaPayments(hoaPlaces, lines, new Set([...links.keys(), ...followedKeys]), todayYmd);
   return { status: stored.new_bills > 0 || wrote ? "applied" : "duplicate", details };
+}
+
+/** Each place that receives gastos comunes statements → the issue day of its first one. */
+function firstHoaStatementByPlace(places: ReadonlyMap<string, Place>): Map<number, { place: Place; since: string }> {
+  const rows = db
+    .prepare(`SELECT provider, service_account, MIN(issued_on) AS since FROM utility_bills WHERE service = 'hoa' GROUP BY provider, service_account`)
+    .all() as { provider: string; service_account: string; since: string }[];
+  const out = new Map<number, { place: Place; since: string }>();
+  for (const r of rows) {
+    const place = places.get(`${r.provider}|${normalizeServiceAccount(r.service_account)}`);
+    if (!place) continue;
+    const prev = out.get(place.id);
+    if (!prev || r.since < prev.since) out.set(place.id, { place, since: r.since });
+  }
+  return out;
+}
+
+/**
+ * Gastos comunes payments of a place that receives statements, which no bill row holds (`taken`:
+ * linked to a bill, or still a candidate of a waiting statement), dated from its first statement
+ * through `UNBILLED_HOA_PAYMENT_GRACE_DAYS` ago: the statement for their month never arrived.
+ */
+export function unbilledHoaPayments(
+  hoaPlaces: ReadonlyMap<number, { place: Place; since: string }>,
+  lines: readonly FlowCcExpenseLineRow[],
+  taken: ReadonlySet<string>,
+  todayYmd: string
+): UtilityBillApplyDetails["unbilled_hoa_payments"] {
+  const until = chileCalendarAddDays(todayYmd, -UNBILLED_HOA_PAYMENT_GRACE_DAYS);
+  const out: UtilityBillApplyDetails["unbilled_hoa_payments"] = [];
+  for (const { place, since } of hoaPlaces.values()) {
+    for (const l of lines) {
+      if (taken.has(l.purchase_key) || lineDay(l) < since || lineDay(l) > until) continue;
+      if (!linePaysKind(l, place.comunidad_patterns, "gastos_comunes")) continue;
+      out.push({ place: place.slug, purchase_key: l.purchase_key, day: lineDay(l), amount: Math.round(l.amount_clp), merchant: l.merchant });
+    }
+  }
+  return out.sort((a, b) => a.day.localeCompare(b.day) || a.purchase_key.localeCompare(b.purchase_key));
 }
