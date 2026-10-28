@@ -90,6 +90,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     const card_metrics_by_slug = buildNavCardMetricsBySlug({
       navRoots: [navRoot, liabilitiesRoot],
       rows: rowsBuilt,
+      bucketTotals,
       chainedGroupPct: chainedGroupPctResolver(rowsBuilt, includeUsd, isLiabilityAccountId),
     });
     const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday);

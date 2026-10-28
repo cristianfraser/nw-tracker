@@ -1,18 +1,18 @@
 /**
- * Server-side card metrics for the portfolio nav strip (home + group pages).
+ * Server-side card figures for the portfolio nav strip (home + group pages): the ONLY source
+ * of a nav node's balance, deposits, P/L and %.
  *
- * One entry per group node of the net_worth nav tree, keyed by portfolio-group slug, with
- * BOTH consumer variants precomputed:
- *   - `child`:  what `mainValueAndMetricsForNavChild` / `titleBalanceDeltaForNavChild`
- *               showed for the node as a detail card (home second row, group-page children).
- *   - `parent`: what `portfolioNavParentMetrics` / `parentTitleBalanceDelta` showed for the
- *               node as the compact parent card of its own page (incl. the home Patrimonio
- *               neto card = net_worth root).
+ * One entry per group node of the net_worth nav tree (and the Pasivos root), keyed by
+ * portfolio-group slug, with BOTH consumer variants precomputed:
+ *   - `child`:  the node as a detail card (home second row, group-page children) and as a
+ *               row of its parent's accounts table.
+ *   - `parent`: the node as the summary card of its own page (incl. the home Patrimonio neto
+ *               card = net_worth root) and its accounts table's «Total» row.
+ * plus `value.members`, the un-netted Σ of the node's member rows (a card breakdown line).
  *
- * This is a faithful port of the client Σ logic (client/src/dashboardCardBreakdown.ts +
- * portfolioNavDashboardCards.ts as of 2026-07-15) so the client can render precomputed
- * numbers instead of summing server rows — same rationale as groupChartBuckets.ts. The
- * client keeps only single-account projections (compact account cards, account detail).
+ * The rules started as a port of the client's Σ logic (2026-07-15); since 2026-10-28 the
+ * client keeps no copy of them — it picks these numbers, and only single-account rows
+ * (account table rows, account detail) are projected client-side from their own row.
  */
 import type { DashboardAccountStats } from "./brokerageAcciones.js";
 import {
@@ -47,7 +47,24 @@ export type NavCardMetricsVariantDto = {
 /** A flow-adjusted % in both units (null = no capital base, or the unit's legs are missing). */
 export type NavCardPctDto = { clp: number | null; usd: number | null };
 
+/** A balance in both units (usd null = no member carries a dollar value in this payload). */
+export type NavCardAmountDto = { clp: number; usd: number | null };
+
+export type NavCardValueDto = {
+  /** The detail card's balance: the dashboard bucket total (CC-netted cash) or Σ member rows. */
+  child: NavCardAmountDto;
+  /** The node's own page summary card / accounts-table «Total» row. */
+  parent: NavCardAmountDto;
+  /** Σ of the member rows the `child` metrics cover, never netted (a card breakdown line). */
+  members: NavCardAmountDto;
+  /** Some subtree row has no fx for its USD frame. */
+  fx_missing: boolean;
+  /** Every subtree row reads a stale sync source. */
+  sync_stale: boolean;
+};
+
 export type NavCardMetricsDto = {
+  value: NavCardValueDto;
   child: NavCardMetricsVariantDto;
   parent: NavCardMetricsVariantDto;
   /**
@@ -74,6 +91,8 @@ export type NavLiquidatedRowsDto = {
   group_slugs: string[];
   /** Σ over the rows' accounts (counts-toward-totals only). */
   metrics: NavCardMetricsVariantDto;
+  /** Σ balance over the same rows. */
+  value: NavCardAmountDto & { fx_missing: boolean };
   row_pct: Record<CardMetricsPeriod | "total", NavCardPctDto>;
 };
 
@@ -110,7 +129,8 @@ export type CardMetricsAccountRow = Pick<
   | "prior_month_close_usd"
   | "prior_year_close_clp"
   | "prior_year_close_usd"
->;
+> &
+  Partial<Pick<DashboardAccountStats, "fx_missing" | "sync_stale">>;
 
 const DASHBOARD_NW_BUCKET_SLUGS = ["real_estate", "retirement", "brokerage", "cash_eqs"] as const;
 type DashboardNwBucketSlug = (typeof DASHBOARD_NW_BUCKET_SLUGS)[number];
@@ -159,7 +179,7 @@ function emptyPeriodMetrics(): CardPeriodMetricsDto {
   };
 }
 
-/** Port of client `cardGroupMetricsFromAccounts`. */
+/** Σ of the rows' card metrics for one period (null = no row contributes that leg). */
 export function cardMetricsFromRows(
   rows: readonly CardMetricsAccountRow[],
   period: CardMetricsPeriod
@@ -241,7 +261,7 @@ export function cardMetricsFromRows(
   };
 }
 
-/** Port of client `sumCardGroupMetrics`. */
+/** Σ of card metrics already summed per part (same null rule). */
 export function sumCardMetrics(parts: readonly CardPeriodMetricsDto[]): CardPeriodMetricsDto {
   if (parts.length === 0) return emptyPeriodMetrics();
   let deposits_clp = 0;
@@ -303,7 +323,7 @@ export function sumCardMetrics(parts: readonly CardPeriodMetricsDto[]): CardPeri
 /* -------------------------------- bucket metrics ---------------------------------- */
 
 
-/** Port of client `cardGroupMetricsForDashboardBucket`. */
+/** A dashboard bucket's card metrics: its counted rows, or `filter` replacing membership. */
 function bucketCardMetrics(
   rows: readonly CardMetricsAccountRow[],
   bucket: DashboardNwBucketSlug,
@@ -401,7 +421,7 @@ function resolveDashboardBucketFromNavNode(node: NavTreeNodeDto): DashboardNwBuc
   return slug != null && isDashboardNwBucketSlug(slug) ? slug : null;
 }
 
-/** Port of client `usesFullDashboardBucketTotals`. */
+/** The dashboard bucket whose total a node's detail card shows (a cash child, a bucket's own node). */
 function usesFullDashboardBucketTotals(node: NavTreeNodeDto): DashboardNwBucketSlug | null {
   const bucket = resolveDashboardBucketFromNavNode(node);
   if (!bucket) return null;
@@ -410,7 +430,7 @@ function usesFullDashboardBucketTotals(node: NavTreeNodeDto): DashboardNwBucketS
   return null;
 }
 
-/** Port of client `isCashSavingsNavNode`. */
+/** A cash child: its card nets the linked credit cards, its metrics read its raw leaves. */
 export function isCashSavingsNavNode(node: NavTreeNodeDto): boolean {
   if (node.slug === "cash_savings") return true;
   const dash = node.dashboard_bucket_slug?.trim();
@@ -418,7 +438,7 @@ export function isCashSavingsNavNode(node: NavTreeNodeDto): boolean {
   return node.asset_group_slug === "cash_eqs__cash_savings";
 }
 
-/** Port of client `dashboardBucketGroupsUnderNavHub`. */
+/** The dashboard buckets a nav hub spreads into (inversiones → retirement + brokerage). */
 function dashboardBucketGroupsUnderNavHub(node: NavTreeNodeDto): DashboardNwBucketSlug[] {
   const out: DashboardNwBucketSlug[] = [];
   for (const child of portfolioStripGroupChildren(node)) {
@@ -439,9 +459,9 @@ export function navLeafAccountIdSet(node: NavTreeNodeDto): Set<number> {
 }
 
 /**
- * Port of client `navMetricsAccountIdSet`: the accounts a group node's metrics cover — its nav
- * leaves plus every `member_account_ids` entry in its subtree (the chart-inactive members the
- * sidebar tree omits, which an all-inactive sub-bucket keeps only there).
+ * The accounts a group node's metrics cover — its nav leaves plus every `member_account_ids`
+ * entry in its subtree (the chart-inactive members the sidebar tree omits, which an
+ * all-inactive sub-bucket keeps only there). Membership is the tree's, never slug prefixes.
  */
 export function navMetricsAccountIdSet(node: NavTreeNodeDto): Set<number> {
   const ids = navLeafAccountIdSet(node);
@@ -458,7 +478,7 @@ type ParentTitleDeltaMode =
   | { kind: "sum_dashboard_groups"; groups: readonly DashboardNwBucketSlug[] }
   | { kind: "subset_only" };
 
-/** Port of client `portfolioNavParentTitleModeForNavNode`. */
+/** How a node's own summary card composes: one bucket, Σ of buckets, or its subtree rows. */
 function parentTitleModeForNavNode(node: NavTreeNodeDto): ParentTitleDeltaMode {
   if (isNetWorthPortfolioRoot(node)) {
     return { kind: "sum_dashboard_groups", groups: DASHBOARD_NW_BUCKET_SLUGS };
@@ -552,6 +572,10 @@ export function liquidatedRowsForNode(
     account_ids: accountRows.map((r) => r.account_id),
     group_slugs: inactiveGroups.map((g) => g.slug),
     metrics,
+    value: {
+      ...sumRowValues(metricsRows),
+      fx_missing: metricsRows.some((r) => r.fx_missing === true),
+    },
     row_pct: fillBlankGroupPct(
       rowPctForRows(metricsRows),
       metrics,
@@ -580,6 +604,77 @@ function parentScopeRows(
   return rows.filter((a) => subtreeIds.has(a.account_id));
 }
 
+/* ------------------------------------ value ------------------------------------- */
+
+/** Dashboard bucket totals (`buildDashboardNwBucketTotals`): the CC-netted cash bucket included. */
+export type NavCardBucketTotals = {
+  [K in `${DashboardNwBucketSlug}_clp`]: number;
+} & {
+  [K in `${DashboardNwBucketSlug}_usd`]?: number | null;
+};
+
+function finiteOrNull(v: number | null | undefined): number | null {
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
+/** Σ current value: rows without a CLP value count 0; usd null when no row carries one. */
+export function sumRowValues(rows: readonly CardMetricsAccountRow[]): NavCardAmountDto {
+  let clp = 0;
+  let usd = 0;
+  let anyUsd = false;
+  for (const r of rows) {
+    const c = finiteOrNull(r.current_value_clp);
+    if (c != null) clp += c;
+    const u = finiteOrNull(r.current_value_usd);
+    if (u != null) {
+      usd += u;
+      anyUsd = true;
+    }
+  }
+  return { clp, usd: anyUsd ? usd : null };
+}
+
+function bucketAmount(totals: NavCardBucketTotals, bucket: DashboardNwBucketSlug): NavCardAmountDto {
+  return { clp: totals[`${bucket}_clp`], usd: finiteOrNull(totals[`${bucket}_usd`]) };
+}
+
+function sumAmounts(parts: readonly NavCardAmountDto[]): NavCardAmountDto {
+  let clp = 0;
+  let usd = 0;
+  let anyUsd = false;
+  for (const p of parts) {
+    clp += p.clp;
+    if (p.usd != null) {
+      usd += p.usd;
+      anyUsd = true;
+    }
+  }
+  return { clp, usd: anyUsd ? usd : null };
+}
+
+function nodeValue(node: NavTreeNodeDto, input: NavCardMetricsBuildInput): NavCardValueDto {
+  const { rows, bucketTotals } = input;
+  const subtreeIds = navMetricsAccountIdSet(node);
+  const subtreeRows = rows.filter((r) => subtreeIds.has(r.account_id));
+  const members = sumRowValues(stripMetricsRows(node, rows));
+  const fullBucket = usesFullDashboardBucketTotals(node);
+  const child = fullBucket ? bucketAmount(bucketTotals, fullBucket) : members;
+  const mode = parentTitleModeForNavNode(node);
+  const parent =
+    mode.kind === "dashboard_group"
+      ? bucketAmount(bucketTotals, mode.group)
+      : mode.kind === "sum_dashboard_groups"
+        ? sumAmounts(mode.groups.map((g) => bucketAmount(bucketTotals, g)))
+        : sumRowValues(subtreeRows);
+  return {
+    child,
+    parent,
+    members,
+    fx_missing: subtreeRows.some((r) => r.fx_missing === true),
+    sync_stale: subtreeRows.length > 0 && subtreeRows.every((r) => r.sync_stale === true),
+  };
+}
+
 /* ----------------------------------- builder -------------------------------------- */
 
 export type NavCardMetricsBuildInput = {
@@ -591,6 +686,8 @@ export type NavCardMetricsBuildInput = {
    */
   navRoots: readonly NavTreeNodeDto[];
   rows: readonly CardMetricsAccountRow[];
+  /** The dashboard bucket totals the payload carries: a bucket node's balance reads them. */
+  bucketTotals: NavCardBucketTotals;
   /**
    * Daily-chained % for a group cell the one-step rule leaves blank (a position bought and
    * sold inside the period: see `blankPctDailyChain.ts`) — the group's own daily series, or
@@ -666,7 +763,7 @@ export function fillBlankGroupPct(
   return out;
 }
 
-/** Port of client `stripMetricsRowsForNavChild` (cash-savings node uses raw leaf ids). */
+/** The rows a node's detail card covers: counted members (a cash child: its raw leaves). */
 export function stripMetricsRows(
   node: NavTreeNodeDto,
   rows: readonly CardMetricsAccountRow[]
@@ -770,6 +867,7 @@ export function buildNavCardMetricsBySlug(
       const childRows = stripMetricsRows(node, input.rows);
       const parentRows = parentScopeRows(node, input.rows);
       out[node.slug] = {
+        value: nodeValue(node, input),
         child,
         parent,
         row_pct: fillBlankGroupPct(rowPctForRows(childRows), child, childRows, scope, input.chainedGroupPct),

@@ -1,4 +1,4 @@
-import { navLeafAccountIdSet } from "../portfolioNavDashboardCards";
+import { navAccountIdSet } from "../portfolioNavDashboardCards";
 import { resolveNavTreeLabel } from "../sidebarNavFromApi";
 import type { GroupPageShell } from "../queries/groupPageShell";
 import type { DisplayUnit } from "../queries/keys";
@@ -101,7 +101,7 @@ export function extractGroupPageShellFromReal(
   navNode: NavTreeNodeDto,
   firstMonth?: string | null
 ): GroupPageShell {
-  const idSet = navLeafAccountIdSet(navNode);
+  const idSet = navAccountIdSet(navNode);
   return {
     accounts: accounts.filter((a) => idSet.has(a.id)),
     dashAccounts: dashAccounts.filter((a) => idSet.has(a.account_id)),

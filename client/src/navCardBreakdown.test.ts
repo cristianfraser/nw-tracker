@@ -3,6 +3,7 @@ import { nestCardBreakdownLines } from "./dashboardCardBreakdown";
 import { buildNavCardBreakdown } from "./navCardBreakdown";
 import type { DashboardAccountRow, NavTreeNodeDto } from "./types";
 import { navNodeFixture } from "./test/navNodeFixture";
+import { navCardMetricsFixture } from "./test/navCardMetricsFixture";
 
 function leafAccount(id: number, slug: string): NavTreeNodeDto {
   return navNodeFixture({
@@ -100,12 +101,17 @@ describe("buildNavCardBreakdown retirement", () => {
       ],
     });
 
-    const lines = buildNavCardBreakdown(retirement, [
-      dashRow(1, 20_000_000, "retirement_afp_afc__afp", "AFP UNO"),
-      dashRow(2, 8_000_000, "retirement_afp_afc__afc", "AFC Banco"),
-    ]);
+    const lines = buildNavCardBreakdown(retirement, {
+      accounts: [
+        dashRow(1, 20_000_000, "retirement_afp_afc__afp", "AFP UNO"),
+        dashRow(2, 8_000_000, "retirement_afp_afc__afc", "AFC Banco"),
+      ],
+      card_metrics_by_slug: navCardMetricsFixture({ retirement_afp_afc: 28_000_000 }),
+    });
 
     expect(lines).not.toBeNull();
+    // The group line is the server's balance, never a Σ of the rows here.
+    expect(lines!.find((l) => l.label === "AFP + AFC")?.clp).toBe(28_000_000);
     const afpLine = lines!.find((l) => l.label === "AFP UNO" && l.depth === 1);
     const afcLine = lines!.find((l) => l.label === "AFC Banco" && l.depth === 1);
     expect(afpLine?.clp).toBe(20_000_000);
@@ -134,12 +140,22 @@ describe("buildNavCardBreakdown retirement", () => {
       ),
     ], "/retiro", "Retiro");
 
-    const lines = buildNavCardBreakdown(retirement, [
-      dashRow(1, 20_000_000, "retirement_afp_afc__afp", "AFP UNO"),
-      dashRow(2, 8_000_000, "retirement_afp_afc__afc", "AFC Banco"),
-      dashRow(3, 45_000_000, "retirement_apv_a__apv", "apv-a"),
-      dashRow(4, 20_000_000, "retirement_apv_b__apv", "apv-b"),
-    ]);
+    const lines = buildNavCardBreakdown(retirement, {
+      accounts: [
+        dashRow(1, 20_000_000, "retirement_afp_afc__afp", "AFP UNO"),
+        dashRow(2, 8_000_000, "retirement_afp_afc__afc", "AFC Banco"),
+        dashRow(3, 45_000_000, "retirement_apv_a__apv", "apv-a"),
+        dashRow(4, 20_000_000, "retirement_apv_b__apv", "apv-b"),
+      ],
+      card_metrics_by_slug: navCardMetricsFixture({
+        retirement_afp_afc: 28_000_000,
+        retirement_afp_afc__afp: 20_000_000,
+        retirement_afp_afc__afc: 8_000_000,
+        retirement_apv: 65_000_000,
+        retirement_apv_a: 45_000_000,
+        retirement_apv_b: 20_000_000,
+      }),
+    });
 
     expect(visibleBreakdownLabels(lines)).toEqual([
       "APV",
@@ -170,11 +186,19 @@ describe("buildNavCardBreakdown retirement", () => {
       ),
     ], "/retiro", "Retiro");
 
-    const lines = buildNavCardBreakdown(retirement, [
-      { ...dashRow(1, 20_000_000, "retirement_afp_afc__afp", "AFP UNO"), sync_stale: false },
-      { ...dashRow(3, 45_000_000, "retirement_apv_a__apv", "apv-a"), sync_stale: true },
-      { ...dashRow(4, 20_000_000, "retirement_apv_b__apv", "apv-b"), sync_stale: false },
-    ]);
+    const lines = buildNavCardBreakdown(retirement, {
+      accounts: [
+        { ...dashRow(1, 20_000_000, "retirement_afp_afc__afp", "AFP UNO"), sync_stale: false },
+        { ...dashRow(3, 45_000_000, "retirement_apv_a__apv", "apv-a"), sync_stale: true },
+        { ...dashRow(4, 20_000_000, "retirement_apv_b__apv", "apv-b"), sync_stale: false },
+      ],
+      card_metrics_by_slug: navCardMetricsFixture({
+        retirement_afp_afc: 20_000_000,
+        retirement_apv: 65_000_000,
+        retirement_apv_a: 45_000_000,
+        retirement_apv_b: 20_000_000,
+      }),
+    });
 
     const apvGroup = lines!.find((l) => l.label === "APV" && l.depth === 0);
     const apvA = lines!.find((l) => l.label === "apv-a");

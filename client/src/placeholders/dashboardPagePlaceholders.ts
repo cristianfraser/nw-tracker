@@ -177,14 +177,16 @@ function zeroNavCardPeriodMetrics(unit: DisplayUnit): NavCardPeriodMetricsDto {
   };
 }
 
-function zeroNavCardMetrics(unit: DisplayUnit): NavCardMetricsDto {
+export function zeroNavCardMetrics(unit: DisplayUnit): NavCardMetricsDto {
   const variant = () => ({
     day: zeroNavCardPeriodMetrics(unit),
     month: zeroNavCardPeriodMetrics(unit),
     year: zeroNavCardPeriodMetrics(unit),
   });
   const noPct = () => ({ clp: null, usd: null });
+  const zero = () => ({ clp: 0, usd: unit === "usd" ? 0 : null });
   return {
+    value: { child: zero(), parent: zero(), members: zero(), fx_missing: false, sync_stale: false },
     child: variant(),
     parent: variant(),
     row_pct: { day: noPct(), month: noPct(), year: noPct(), total: noPct() },

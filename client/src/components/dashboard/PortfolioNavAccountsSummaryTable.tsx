@@ -2,19 +2,16 @@ import { useState, type ReactNode } from "react";
 import { Button } from "@crfrsr/ui";
 import { Link } from "react-router-dom";
 import {
-  cardGroupMetricsByPeriodFromAccounts,
+  cardMetricsByPeriodForAccountRow,
   compareDashboardCardMainDesc,
   roundedMetricDelta,
   roundedMetricDeposits,
-  sumCurrentValueClpUsd,
   type CardGroupMetricsByPeriod,
 } from "../../dashboardCardBreakdown";
 import { formatPct } from "../../format";
 import { useTranslation } from "../../i18n";
 import {
-  dashboardRowsForNavSubtree,
-  portfolioNavParentMainValue,
-  portfolioNavParentTitleModeForNavNode,
+  navCardAmount,
   requireNavCardMetrics,
 } from "../../portfolioNavDashboardCards";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
@@ -35,7 +32,7 @@ import {
 } from "../ui/TableMobileCard";
 
 export type PortfolioNavAccountsSummaryTableProps = {
-  dash: Pick<DashboardResponse, "accounts" | "card_metrics_by_slug" | "totals">;
+  dash: Pick<DashboardResponse, "accounts" | "card_metrics_by_slug">;
   /** The page the table belongs to: its «Total» row and its liquidated rows' metrics. */
   pageNode: NavTreeNodeDto;
   navChildren: NavTreeNodeDto[];
@@ -117,16 +114,15 @@ function writeLiquidatedOpen(pageSlug: string, open: boolean): void {
 
 /**
  * Leaf-bucket account summary: one row per account leaf, replacing the old per-account
- * compact cards. Same 1-row client projection as the cards (dashboardRowsForNavSubtree +
- * cardGroupMetricsByPeriodFromAccounts); the % leg is the server-computed flow-adjusted
- * pct on the dashboard row. A bucket listed beside the accounts (IPSA among Acciones'
- * stocks) is one row too, with the server's card metrics and `row_pct`. Balance carries the
- * day P/L line under the value; period columns (Mes/Año/Total) stack aportes and a
- * `P/L (pct%)` line per cell.
+ * compact cards. An account row projects its own dashboard row (value, metrics, server pct);
+ * a bucket listed beside the accounts (IPSA among Acciones' stocks) is one row too, with the
+ * server's `value.child`, card metrics and `row_pct`. Balance carries the day P/L line under
+ * the value; period columns (Mes/Año/Total) stack aportes and a `P/L (pct%)` line per cell.
  *
- * Optional first «Total» row (the page's `parent` metrics and `parent_pct`, when the table
- * stands in for the page's summary card), and two or more liquidated rows folded into one
- * «Liquidadas (n)» row with the server's `liquidated` metrics, opened with «Ver más».
+ * Optional first «Total» row (the page's `value.parent`, `parent` metrics and `parent_pct`,
+ * when the table stands in for the page's summary card), and two or more liquidated rows
+ * folded into one «Liquidadas (n)» row with the server's `liquidated` figures, opened with
+ * «Ver más». No figure here is a client Σ of rows.
  * Parallel desktop `<td>` / mobile `<TableMobileCard>` renderings (keep in sync).
  */
 export function PortfolioNavAccountsSummaryTable({
@@ -148,28 +144,38 @@ export function PortfolioNavAccountsSummaryTable({
   };
 
   const childRow = (child: NavTreeNodeDto, kind: RowKind): AccountTableRow => {
-    const accountRows = dashboardRowsForNavSubtree(dash.accounts, child);
-    const { clp, apiUsd } = sumCurrentValueClpUsd(accountRows, showUsd);
-    const isGroup = child.account_id == null;
-    const serverMetrics = isGroup ? requireNavCardMetrics(dash, child) : null;
-    const single = accountRows.length === 1 ? accountRows[0]! : null;
     const label = resolveNavTreeLabel(child);
     const routePath = child.route_path?.trim() ?? "";
-    return {
+    const base = {
       key: child.node_id,
       kind,
       name: routePath ? <Link to={routePath}>{label}</Link> : label,
-      clp,
-      apiUsd,
-      metricsByPeriod: serverMetrics
-        ? serverMetrics.child
-        : cardGroupMetricsByPeriodFromAccounts(accountRows),
-      pct: serverMetrics
-        ? serverPct(serverMetrics.row_pct)
-        : (slice, usd) => accountRowPct(single, slice, usd),
-      fxMissing: showUsd && accountRows.some((r) => r.fx_missing),
-      syncStale: accountRows.length > 0 && accountRows.every((r) => r.sync_stale === true),
       inactive: child.chart_inactive === true,
+    };
+    if (child.account_id == null) {
+      const entry = requireNavCardMetrics(dash, child);
+      return {
+        ...base,
+        ...navCardAmount(entry.value.child, showUsd),
+        metricsByPeriod: entry.child,
+        pct: serverPct(entry.row_pct),
+        fxMissing: showUsd && entry.value.fx_missing,
+        syncStale: entry.value.sync_stale,
+      };
+    }
+    const accountId = child.account_id;
+    const row = dash.accounts.find((r) => r.account_id === accountId) ?? null;
+    return {
+      ...base,
+      clp: row?.current_value_clp ?? 0,
+      apiUsd:
+        showUsd && row?.current_value_usd != null && Number.isFinite(row.current_value_usd)
+          ? row.current_value_usd
+          : null,
+      metricsByPeriod: cardMetricsByPeriodForAccountRow(row),
+      pct: (slice, usd) => accountRowPct(row, slice, usd),
+      fxMissing: showUsd && row?.fx_missing === true,
+      syncStale: row?.sync_stale === true,
     };
   };
 
@@ -186,23 +192,15 @@ export function PortfolioNavAccountsSummaryTable({
 
     if (showTotalRow) {
       const metrics = requireNavCardMetrics(dash, pageNode);
-      const subtreeRows = dashboardRowsForNavSubtree(dash.accounts, pageNode);
-      const { clp, apiUsd } = portfolioNavParentMainValue(
-        dash,
-        portfolioNavParentTitleModeForNavNode(pageNode),
-        subtreeRows,
-        showUsd
-      );
       out.push({
         key: `total.${pageNode.node_id}`,
         kind: "total",
         name: t("groupPage.accountsTable.totalRow"),
-        clp,
-        apiUsd,
+        ...navCardAmount(metrics.value.parent, showUsd),
         metricsByPeriod: metrics.parent,
         pct: serverPct(metrics.parent_pct),
-        fxMissing: showUsd && subtreeRows.some((r) => r.fx_missing),
-        syncStale: subtreeRows.length > 0 && subtreeRows.every((r) => r.sync_stale === true),
+        fxMissing: showUsd && metrics.value.fx_missing,
+        syncStale: metrics.value.sync_stale,
         inactive: false,
       });
     }
@@ -213,21 +211,14 @@ export function PortfolioNavAccountsSummaryTable({
       if (!liquidated) {
         throw new Error(`card_metrics_by_slug.${pageNode.slug} has liquidated rows but no metrics`);
       }
-      const ids = new Set<number>();
-      for (const c of liquidatedChildren) {
-        for (const r of dashboardRowsForNavSubtree(dash.accounts, c)) ids.add(r.account_id);
-      }
-      const liquidatedRows = dash.accounts.filter((r) => ids.has(r.account_id));
-      const { clp, apiUsd } = sumCurrentValueClpUsd(liquidatedRows, showUsd);
       out.push({
         key: `liquidated.${pageNode.node_id}`,
         kind: "liquidated",
         name: t("groupPage.accountsTable.liquidated", { count: liquidatedChildren.length }),
-        clp,
-        apiUsd,
+        ...navCardAmount(liquidated.value, showUsd),
         metricsByPeriod: liquidated.metrics,
         pct: serverPct(liquidated.row_pct),
-        fxMissing: showUsd && liquidatedRows.some((r) => r.fx_missing),
+        fxMissing: showUsd && liquidated.value.fx_missing,
         syncStale: false,
         inactive: true,
       });

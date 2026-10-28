@@ -562,6 +562,7 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
   const card_metrics_by_slug = buildNavCardMetricsBySlug({
     navRoots: [navRoot, liabilitiesRoot],
     rows: rowsBuilt,
+    bucketTotals: nw_bucket_totals,
     chainedGroupPct: chainedGroupPctResolver(rowsBuilt, includeUsd, isLiabilityAccountId),
   });
   return {

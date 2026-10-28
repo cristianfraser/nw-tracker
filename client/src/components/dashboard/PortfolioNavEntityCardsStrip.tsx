@@ -5,12 +5,10 @@ import { PortfolioEntityCardsStrip } from "./PortfolioEntityCardsStrip";
 import { PortfolioNavAccountsSummaryTable } from "./PortfolioNavAccountsSummaryTable";
 import { PortfolioNavChildDetailCards } from "./PortfolioNavChildDetailCards";
 import {
-  dashboardRowsForNavSubtree,
   inactiveAccountNavLeaf,
   navChildCardHasActivity,
+  navParentMainValue,
   routableNavStripChildren,
-  portfolioNavParentMainValue,
-  portfolioNavParentTitleModeForNavNode,
   requireNavCardMetrics,
 } from "../../portfolioNavDashboardCards";
 import {
@@ -56,12 +54,7 @@ function NavSummaryCard({
   showUsd,
   animated,
 }: NavSummaryCardProps) {
-  const totals = portfolioNavParentMainValue(
-    dash,
-    portfolioNavParentTitleModeForNavNode(node),
-    dashboardRowsForNavSubtree(dash.accounts, node),
-    showUsd
-  );
+  const totals = navParentMainValue(dash, node, showUsd);
   const metricsByPeriod = requireNavCardMetrics(dash, node).parent;
   return (
     <CompactEntityCard
@@ -134,7 +127,7 @@ export function PortfolioNavEntityCardsStrip({
       routableNavStripChildren(stripGroupChildren).filter((c) =>
         c.chart_inactive !== true
           ? true
-          : !groupsAsRows && navChildCardHasActivity(dash, c, showUsd)
+          : !groupsAsRows && navChildCardHasActivity(dash, c)
       ),
     [stripGroupChildren, groupsAsRows, dash, showUsd]
   );

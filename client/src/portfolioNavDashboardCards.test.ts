@@ -2,60 +2,22 @@ import { describe, expect, it } from "vitest";
 import i18n from "./i18n";
 import {
   breakdownForNavChild,
-  dashboardRowsForNavSubtree,
   mainValueForNavChild,
-  inactiveAccountNavLeavesWithActivity,
   navChildCardHasActivity,
-  navLeafAccountIdSet,
-  navMetricsAccountIdSet,
-  portfolioNavParentMainValue,
-  portfolioNavParentTitleModeForNavNode,
+  navParentMainValue,
   requireNavCardMetrics,
 } from "./portfolioNavDashboardCards";
 import { resolveDashboardBucketFromNavNode, isPortfolioStripCardNode } from "./portfolioNavFromApi";
 import type {
   DashboardAccountRow,
   DashboardResponse,
+  NavCardAmountDto,
   NavCardMetricsDto,
   NavCardMetricsVariantDto,
   NavCardPeriodMetricsDto,
   NavTreeNodeDto,
 } from "./types";
 import { navNodeFixture } from "./test/navNodeFixture";
-
-function testTotals(
-  partial: Pick<
-    DashboardResponse["totals"],
-    | "net_worth_clp"
-    | "real_estate_clp"
-    | "retirement_clp"
-    | "brokerage_clp"
-    | "cash_eqs_clp"
-  > &
-    Partial<DashboardResponse["totals"]>,
-  priorOverrides?: Partial<DashboardResponse["totals"]["prior_closes"]["month"]>
-): DashboardResponse["totals"] {
-  const defaultPrior = {
-    net_worth_clp: partial.net_worth_clp - 1_000_000,
-    real_estate_clp: partial.real_estate_clp - 100_000,
-    retirement_clp: partial.retirement_clp - 200_000,
-    brokerage_clp: partial.brokerage_clp - 300_000,
-    cash_eqs_clp: partial.cash_eqs_clp - 400_000,
-  };
-  const month = { ...defaultPrior, ...priorOverrides };
-  const year = { ...month, ...(partial.prior_closes?.year ?? {}) };
-  return {
-    deposits_clp: 0,
-    liabilities_clp: 0,
-    prior_closes: partial.prior_closes ?? {
-      month_end: "2026-05-31",
-      year_end: "2025-12-31",
-      month,
-      year,
-    },
-    ...partial,
-  };
-}
 
 function leafAccount(id: number): NavTreeNodeDto {
   return navNodeFixture({
@@ -93,29 +55,23 @@ function cardMetricsVariantFixture(partial?: {
 function cardMetricsEntryFixture(partial?: {
   child?: Parameters<typeof cardMetricsVariantFixture>[0];
   parent?: Parameters<typeof cardMetricsVariantFixture>[0];
+  value?: { child?: NavCardAmountDto; parent?: NavCardAmountDto; members?: NavCardAmountDto };
 }): NavCardMetricsDto {
+  const zero: NavCardAmountDto = { clp: 0, usd: null };
   return {
+    value: {
+      child: partial?.value?.child ?? zero,
+      parent: partial?.value?.parent ?? zero,
+      members: partial?.value?.members ?? partial?.value?.child ?? zero,
+      fx_missing: false,
+      sync_stale: false,
+    },
     child: cardMetricsVariantFixture(partial?.child),
     parent: cardMetricsVariantFixture(partial?.parent),
     row_pct: { day: { clp: null, usd: null }, month: { clp: null, usd: null }, year: { clp: null, usd: null }, total: { clp: null, usd: null } },
     parent_pct: { day: { clp: null, usd: null }, month: { clp: null, usd: null }, year: { clp: null, usd: null }, total: { clp: null, usd: null } },
   };
 }
-
-describe("navLeafAccountIdSet", () => {
-  it("includes leaf account ids and excludes group-only nodes", () => {
-    const node: NavTreeNodeDto = navNodeFixture({
-      slug: "retirement",
-      label: "Retiro",
-      route_path: "/retirement",
-      children: [leafAccount(1), leafAccount(2)],
-    });
-    const ids = navLeafAccountIdSet(node);
-    expect(ids.has(1)).toBe(true);
-    expect(ids.has(2)).toBe(true);
-    expect(ids.size).toBe(2);
-  });
-});
 
 function dashRow(
   id: number,
@@ -139,61 +95,6 @@ function dashRow(
   } as DashboardAccountRow;
 }
 
-describe("navMetricsAccountIdSet", () => {
-  it("covers the members the server lists, the chart-inactive ones the tree omits included", () => {
-    const accionesNode: NavTreeNodeDto = navNodeFixture({
-      slug: "brokerage_acciones",
-      label: "Acciones",
-      asset_group_slug: "brokerage__acciones",
-      route_path: "/inversiones/brokerage/acciones",
-      member_account_ids: [10, 99],
-      children: [navNodeFixture({ slug: "acc-spy", label: "SPY", account_id: 10, children: [] })],
-    });
-    const accounts: DashboardAccountRow[] = [
-      { ...dashRow(10, 1_000_000, "brokerage__acciones", "SPY"), chart_inactive: false },
-      {
-        ...dashRow(99, 0, "brokerage__acciones", "OILK"),
-        chart_inactive: true,
-        current_value_clp: 0,
-      },
-    ];
-    const leafOnly = navLeafAccountIdSet(accionesNode);
-    expect(leafOnly.has(99)).toBe(false);
-    const metrics = navMetricsAccountIdSet(accionesNode);
-    expect(metrics.has(10)).toBe(true);
-    expect(metrics.has(99)).toBe(true);
-    const rows = dashboardRowsForNavSubtree(accounts, accionesNode);
-    expect(rows.map((r) => r.account_id).sort()).toEqual([10, 99]);
-  });
-
-  it("reads a childless, all-inactive sub-bucket's members from its own list, not from slug prefixes", () => {
-    // The IPSA unit once liquidated: no nav leaves, members whose asset-group slugs
-    // (`brokerage_acciones__…`, `brokerage_cash__caja_…`) never name the unit.
-    const ipsa: NavTreeNodeDto = navNodeFixture({
-      slug: "brokerage_portafolio_ipsa",
-      label: "IPSA",
-      chart_inactive: true,
-      member_account_ids: [101, 102],
-      children: [],
-    });
-    const acciones: NavTreeNodeDto = navNodeFixture({
-      slug: "brokerage_acciones",
-      label: "Acciones",
-      asset_group_slug: "brokerage_acciones",
-      member_account_ids: [10, 101, 102],
-      children: [ipsa, navNodeFixture({ slug: "acc-spy", label: "SPY", account_id: 10, children: [] })],
-    });
-    expect([...navMetricsAccountIdSet(ipsa)].sort()).toEqual([101, 102]);
-    expect([...navMetricsAccountIdSet(acciones)].sort()).toEqual([10, 101, 102]);
-    const rows: DashboardAccountRow[] = [
-      { ...dashRow(10, 1_000_000, "brokerage_acciones__spy", "SPY"), chart_inactive: false },
-      { ...dashRow(101, 0, "brokerage_acciones__cfietfipsa_sn", "CFIETFIPSA"), chart_inactive: true, deposits_month_clp: -2_992_723 },
-      { ...dashRow(102, 0, "brokerage_cash__caja_portafolio_ipsa__clp", "Caja IPSA"), chart_inactive: true, deposits_month_clp: -38_436 },
-    ];
-    // Both members are covered by the unit's row, so neither leaks into Acciones' own rows.
-    expect(inactiveAccountNavLeavesWithActivity({ accounts: rows }, acciones, [ipsa])).toEqual([]);
-  });
-});
 describe("resolveDashboardBucketFromNavNode cash_savings", () => {
   it("maps cash_savings nav node to cash_eqs API bucket", () => {
     expect(
@@ -248,7 +149,7 @@ describe("breakdownForNavChild real_estate", () => {
     label: "Inmuebles",
     asset_group_slug: "real_estate",
     route_path: "/real_estate",
-    children: [],
+    children: [leafAccount(10), leafAccount(12)],
   });
 
   const propertyRow: DashboardAccountRow = {
@@ -266,8 +167,12 @@ describe("breakdownForNavChild real_estate", () => {
   } as DashboardAccountRow;
 
   it("omits valor and hipoteca without a paired mortgage account", () => {
-    const br = breakdownForNavChild(realEstateNode, [propertyRow], {
+    const br = breakdownForNavChild(realEstateNode, {
+      accounts: [propertyRow],
       liabilities_breakdown: undefined,
+      card_metrics_by_slug: {
+        real_estate: cardMetricsEntryFixture({ value: { members: { clp: 144_818_228, usd: null } } }),
+      },
     });
     const labels = br?.lines?.map((l) => l.label) ?? [];
     expect(labels).not.toContain("valor");
@@ -296,9 +201,12 @@ describe("breakdownForNavChild real_estate", () => {
       deposits_clp: 0,
       exclude_from_group_totals: 0,
     } as DashboardAccountRow;
-    const br = breakdownForNavChild(realEstateNode, [demoProperty], {
+    const br = breakdownForNavChild(realEstateNode, {
       liabilities_breakdown: undefined,
       accounts: [demoProperty, demoMortgage],
+      card_metrics_by_slug: {
+        real_estate: cardMetricsEntryFixture({ value: { members: { clp: 27_110_948, usd: null } } }),
+      },
     });
     const lines = br?.lines ?? [];
     expect(lines).toHaveLength(3);
@@ -347,8 +255,11 @@ describe("breakdownForNavChild cash_savings", () => {
         asset_group_slug: "cash_eqs__cash_savings",
         children: [leafAccount(1)],
       }),
-      [dashRow(1, 2_000_000, "cash_eqs__fondo_reserva", "Reserva2")],
-      dash
+      {
+        ...dash,
+        accounts: [dashRow(1, 2_000_000, "cash_eqs__fondo_reserva", "Reserva2")],
+        card_metrics_by_slug: {},
+      }
     );
     expect(br?.lines).toHaveLength(1);
     expect(br?.lines?.[0]?.clp).toBe(2_000_000);
@@ -363,9 +274,11 @@ describe("breakdownForNavChild cash_savings", () => {
       route_path: "/cash_eqs/savings",
       children: [leafAccount(1)],
     });
-    const br = breakdownForNavChild(
-      node,
-      [
+    const br = breakdownForNavChild(node, {
+      card_metrics_by_slug: {},
+      liabilities_breakdown: undefined,
+      dashboard_layout: [],
+      accounts: [
         {
           account_id: 1,
           name: "Reserva",
@@ -381,117 +294,28 @@ describe("breakdownForNavChild cash_savings", () => {
           exclude_from_group_totals: 0,
         } as DashboardAccountRow,
       ],
-      { liabilities_breakdown: undefined }
-    );
+    });
     expect(br?.lines.length).toBeGreaterThan(0);
     expect(br?.lines[0]?.clp).toBe(2_000_000);
   });
 });
 
-describe("portfolioNavParentTitleModeForNavNode", () => {
-  it("uses dashboard_group for bucket page with portfolio subgroup strip children", () => {
-    const node: NavTreeNodeDto = navNodeFixture({
-      slug: "brokerage",
-      label: "Brokerage",
-      asset_group_slug: "brokerage",
-      route_path: "/inversiones/brokerage",
-      children: [
-        navNodeFixture({
-          slug: "brokerage_mutual_funds",
-          label: "MF",
-          route_path: "/mf",
-          portfolio_group_id: 1,
-          api_subgroup: "mutual_funds",
-          children: [],
-        }),
-        navNodeFixture({
-          slug: "brokerage_acciones",
-          label: "Acciones",
-          route_path: "/acc",
-          portfolio_group_id: 2,
-          api_subgroup: "acciones",
-          children: [],
-        }),
-      ],
-    });
-    expect(portfolioNavParentTitleModeForNavNode(node)).toEqual({
-      kind: "dashboard_group",
-      group: "brokerage",
-    });
-  });
-
-  it("uses subset_only when strip children map to a different dashboard bucket", () => {
-    const node: NavTreeNodeDto = navNodeFixture({
-      slug: "cash_eqs",
-      label: "Cash",
-      asset_group_slug: "cash_eqs",
-      route_path: "/cash_eqs",
-      children: [
-        navNodeFixture({
-          slug: "real_estate",
-          label: "Inmuebles",
-          asset_group_slug: "real_estate",
-          route_path: "/real_estate",
-          children: [],
-        }),
-      ],
-    });
-    expect(portfolioNavParentTitleModeForNavNode(node)).toEqual({ kind: "subset_only" });
-  });
-
-  it("uses dashboard_group for leaf bucket card without subgroup children", () => {
-    const node: NavTreeNodeDto = navNodeFixture({
-      slug: "real_estate",
-      label: "Inmuebles",
-      asset_group_slug: "real_estate",
-      route_path: "/real_estate",
-      children: [],
-    });
-    expect(portfolioNavParentTitleModeForNavNode(node)).toEqual({
-      kind: "dashboard_group",
-      group: "real_estate",
-    });
-  });
-});
-
-describe("portfolioNavParentMainValue", () => {
-  it("uses dashboard bucket totals for net_worth root (not raw cash savings accounts)", () => {
+describe("navParentMainValue", () => {
+  it("picks the served parent balance (net worth: the bucket totals, never its rows)", () => {
     const netWorthNode: NavTreeNodeDto = navNodeFixture({
       slug: "net_worth",
       label: "Patrimonio neto",
-      asset_group_slug: "net_worth",
-      children: [
-        navNodeFixture({
-          slug: "cash_savings",
-          label: "Ahorros",
-          asset_group_slug: "cash_eqs__cash_savings",
-          children: [leafAccount(99)],
-        }),
-      ],
+      children: [leafAccount(99)],
     });
-    const dash: Pick<DashboardResponse, "totals"> = {
-      totals: testTotals({
-        net_worth_clp: 270_525_274,
-        real_estate_clp: 144_818_228,
-        retirement_clp: 95_651_400,
-        brokerage_clp: 16_343_745,
-        cash_eqs_clp: 13_711_901,
-      }),
+    const dash = {
+      card_metrics_by_slug: {
+        net_worth: cardMetricsEntryFixture({
+          value: { parent: { clp: 270_525_274, usd: 290_000 } },
+        }),
+      },
     };
-    const mode = portfolioNavParentTitleModeForNavNode(netWorthNode);
-    expect(mode.kind).toBe("sum_dashboard_groups");
-    const parentRows = [
-      {
-        account_id: 99,
-        name: "Reserva2",
-        current_value_clp: 24_403_210,
-        current_value_usd: null,
-        exclude_from_group_totals: 0,
-      } as DashboardAccountRow,
-    ];
-    const { clp } = portfolioNavParentMainValue(dash, mode, parentRows, false);
-    expect(clp).toBe(270_525_274);
-    expect(clp).not.toBe(144_818_228 + 95_651_400 + 16_343_745 + 24_403_210);
+    expect(navParentMainValue(dash, netWorthNode, false)).toEqual({ clp: 270_525_274, apiUsd: null });
+    expect(navParentMainValue(dash, netWorthNode, true)).toEqual({ clp: 270_525_274, apiUsd: 290_000 });
   });
 
   it("parent metrics come from the served net_worth entry", () => {
@@ -548,7 +372,7 @@ describe("portfolioNavParentMainValue", () => {
 });
 
 describe("mainValueForNavChild", () => {
-  it("sums nav subtree for brokerage subgroup strip card, not server bucket totals alone", () => {
+  it("picks the served child balance, never a Σ of the subtree rows", () => {
     const mutualFundsNode: NavTreeNodeDto = navNodeFixture({
       slug: "brokerage_mutual_funds",
       label: "Mutual funds",
@@ -556,74 +380,21 @@ describe("mainValueForNavChild", () => {
       portfolio_group_id: 1,
       children: [leafAccount(1), leafAccount(2)],
     });
-    const dash: Pick<
-      DashboardResponse,
-      "accounts" | "totals" | "dashboard_layout" | "card_metrics_by_slug"
-    > = {
+    const dash = {
       card_metrics_by_slug: {
         brokerage_mutual_funds: cardMetricsEntryFixture({
           child: { year: { delta_period_clp: 2_300_000 } },
+          value: { child: { clp: 16_000_000, usd: 17_000 } },
         }),
       },
-      accounts: [
-        {
-          ...dashRow(1, 10_000_000, "brokerage_mutual_funds"),
-          prior_year_close_clp: 8_000_000,
-          delta_year_clp: 1_500_000,
-          deposits_year_clp: 500_000,
-        },
-        {
-          ...dashRow(2, 6_000_000, "brokerage_crypto"),
-          prior_year_close_clp: 5_000_000,
-          delta_year_clp: 800_000,
-          deposits_year_clp: 200_000,
-        },
-      ],
-      dashboard_layout: [],
-      totals: testTotals({
-        net_worth_clp: 99_000_000,
-        real_estate_clp: 0,
-        retirement_clp: 0,
-        brokerage_clp: 99_000_000,
-        cash_eqs_clp: 0,
-      }),
     };
-    const { clp } = mainValueForNavChild(dash, mutualFundsNode, false);
-    expect(clp).toBe(16_000_000);
-    expect(clp).not.toBe(dash.totals.brokerage_clp);
+    expect(mainValueForNavChild(dash, mutualFundsNode, false)).toEqual({ clp: 16_000_000, apiUsd: null });
+    expect(mainValueForNavChild(dash, mutualFundsNode, true).apiUsd).toBe(17_000);
     const variant = requireNavCardMetrics(dash, mutualFundsNode).child;
     expect(variant.year.delta_period_clp).toBe(2_300_000);
     expect(variant.month.delta_period_clp).toBeNull();
   });
-
-  it("sums subtree accounts for brokerage subgroups, not the whole bucket", () => {
-    const mutualFundsNode: NavTreeNodeDto = navNodeFixture({
-      slug: "brokerage_mutual_funds",
-      label: "Mutual funds",
-      children: [leafAccount(1)],
-    });
-    const dash: Pick<
-      DashboardResponse,
-      "accounts" | "totals" | "dashboard_layout" | "card_metrics_by_slug"
-    > = {
-      card_metrics_by_slug: {
-        brokerage_mutual_funds: cardMetricsEntryFixture(),
-      },
-      accounts: [dashRow(1, 10_000_000, "brokerage_mutual_funds"), dashRow(2, 5_000_000, "brokerage_crypto")],
-      dashboard_layout: [],
-      totals: testTotals({
-        net_worth_clp: 15_000_000,
-        real_estate_clp: 0,
-        retirement_clp: 0,
-        brokerage_clp: 15_000_000,
-        cash_eqs_clp: 0,
-      }),
-    };
-    const { clp } = mainValueForNavChild(dash, mutualFundsNode, false);
-    expect(clp).toBe(10_000_000);
-  });
 });
-
 
 describe("navChildCardHasActivity", () => {
   /** Wound-down bucket: only account is chart-inactive at $0, activity only in the year window. */
@@ -635,10 +406,7 @@ describe("navChildCardHasActivity", () => {
     chart_inactive: true,
     children: [],
   });
-  const dash: Pick<
-    DashboardResponse,
-    "accounts" | "totals" | "dashboard_layout" | "card_metrics_by_slug"
-  > = {
+  const dash: Pick<DashboardResponse, "accounts" | "dashboard_layout" | "card_metrics_by_slug"> = {
     card_metrics_by_slug: {
       brokerage_mutual_funds: cardMetricsEntryFixture({
         child: {
@@ -659,17 +427,19 @@ describe("navChildCardHasActivity", () => {
       },
     ],
     dashboard_layout: [],
-    totals: testTotals({
-      net_worth_clp: 0,
-      real_estate_clp: 0,
-      retirement_clp: 0,
-      brokerage_clp: 0,
-      cash_eqs_clp: 0,
-    }),
   };
 
   it("reports activity when any period slice has flows or Δ (year-only here)", () => {
-    expect(navChildCardHasActivity(dash, inactiveMutualFundsNode, false)).toBe(true);
+    expect(navChildCardHasActivity(dash, inactiveMutualFundsNode)).toBe(true);
+  });
+
+  it("reports activity from the served balance alone", () => {
+    const funded = {
+      card_metrics_by_slug: {
+        brokerage_mutual_funds: cardMetricsEntryFixture({ value: { child: { clp: 5_000, usd: null } } }),
+      },
+    };
+    expect(navChildCardHasActivity(funded, inactiveMutualFundsNode)).toBe(true);
   });
 
   it("reports no activity when balance and every period slice are zero", () => {
@@ -685,64 +455,7 @@ describe("navChildCardHasActivity", () => {
         },
       ],
     };
-    expect(navChildCardHasActivity(quietDash, inactiveMutualFundsNode, false)).toBe(false);
-  });
-});
-
-describe("inactiveAccountNavLeavesWithActivity", () => {
-  const mutualFundsNode: NavTreeNodeDto = navNodeFixture({
-    slug: "brokerage_mutual_funds",
-    label: "Mutual funds",
-    route_path: "/inversiones/brokerage/mutual-funds",
-    portfolio_group_id: 1,
-    chart_inactive: true,
-    member_account_ids: [45],
-    children: [],
-  });
-  const inactiveRow = {
-    ...dashRow(45, 0, "brokerage__mutual_funds", "caca daca"),
-    chart_inactive: true,
-    deposits_month_clp: 0,
-    delta_month_clp: 0,
-    prior_month_close_clp: 0,
-    deposits_year_clp: -21_000_000,
-    delta_year_clp: 300_000,
-    prior_year_close_clp: 20_700_000,
-  };
-  const dash = { accounts: [inactiveRow] };
-
-  it("synthesizes a leaf card when any period has activity; skips fully quiet rows", () => {
-    const leaves = inactiveAccountNavLeavesWithActivity(dash, mutualFundsNode, []);
-    expect(leaves.map((n) => n.account_id)).toEqual([45]);
-    expect(leaves[0]!.route_path).toBe("/account/45");
-    expect(leaves[0]!.chart_inactive).toBe(true);
-
-    const quietRow = { ...dashRow(45, 0, "brokerage__mutual_funds", "caca daca"), chart_inactive: true };
-    expect(inactiveAccountNavLeavesWithActivity({ accounts: [quietRow] }, mutualFundsNode, [])).toEqual([]);
-  });
-
-  it("skips rows already covered by a group-child detail card", () => {
-    const brokerageNode: NavTreeNodeDto = navNodeFixture({
-      slug: "brokerage",
-      label: "Brokerage",
-      route_path: "/inversiones/brokerage",
-      children: [mutualFundsNode],
-    });
-    expect(
-      inactiveAccountNavLeavesWithActivity(dash, brokerageNode, [mutualFundsNode])
-    ).toEqual([]);
-  });
-
-  it("skips accounts that are still nav leaves (active)", () => {
-    const parentWithLeaf: NavTreeNodeDto = navNodeFixture({
-      slug: "brokerage_mutual_funds",
-      label: "Mutual funds",
-      route_path: "/inversiones/brokerage/mutual-funds",
-      children: [leafAccount(45)],
-    });
-    expect(
-      inactiveAccountNavLeavesWithActivity(dash, parentWithLeaf, [])
-    ).toEqual([]);
+    expect(navChildCardHasActivity(quietDash, inactiveMutualFundsNode)).toBe(false);
   });
 });
 
@@ -782,7 +495,15 @@ describe("breakdownForNavChild cash_eqs hub", () => {
       dashRow(3, 300_000, "cash_eqs__cuenta_corriente", "Cuenta corriente"),
       dashRow(4, 0, "cash_eqs__cuenta_vista", "Cuenta vista"),
     ];
-    const br = breakdownForNavChild(hub, rows, {
+    const br = breakdownForNavChild(hub, {
+      accounts: rows,
+      card_metrics_by_slug: {
+        // The savings card is CC-netted (child); its breakdown line reads the raw members.
+        cash_savings: cardMetricsEntryFixture({
+          value: { child: { clp: 1_500_000, usd: null }, members: { clp: 2_000_000, usd: null } },
+        }),
+        checking_accounts: cardMetricsEntryFixture({ value: { child: { clp: 300_000, usd: null } } }),
+      },
       liabilities_breakdown: undefined,
       dashboard_layout: [
         {

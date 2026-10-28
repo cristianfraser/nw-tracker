@@ -42,9 +42,10 @@ export function hasDashboardNavSnapshotCache(unit: DisplayUnit): boolean {
  * v11: group metrics cover the members the nav tree lists, not slug-prefix matches; v12: the
  * value map breaks a proxied fund down into `holding` tiles; v13 adds `parent_pct` and the
  * `liquidated` table rows; v14 drops v13 snapshots saved from a server still on v12's
- * payload, with no `parent_pct`).
+ * payload, with no `parent_pct`; v15 adds each node's server balance `value` and the
+ * liquidated row's `value` — the client no longer sums a nav node's rows).
  */
-const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v14";
+const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v15";
 const LEGACY_STORAGE_PREFIXES = [
   "nw:dashboard-nav-snapshot-v3",
   "nw:dashboard-nav-snapshot-v4",
@@ -57,6 +58,7 @@ const LEGACY_STORAGE_PREFIXES = [
   "nw:dashboard-nav-snapshot-v11",
   "nw:dashboard-nav-snapshot-v12",
   "nw:dashboard-nav-snapshot-v13",
+  "nw:dashboard-nav-snapshot-v14",
 ];
 
 /** Strip full dashboard totals to nav-snapshot bucket fields (server canonical card headers). */

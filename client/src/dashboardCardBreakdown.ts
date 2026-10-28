@@ -1,19 +1,12 @@
 import {
   accountCountsTowardGroupTotals,
-  dashboardAccountCurrentValueClp,
   hasMaterialDashboardBalance,
   isChartActiveAccount,
 } from "./accountGroupTotals";
-import {
-  accountBelongsToDashboardBucket,
-} from "./accountDashboardBucket";
 import { dashboardBucketRoutePath } from "./portfolioDashboardBuckets";
 import { liabilitiesSubgroupPath } from "./liabilitiesPath";
 import i18n from "./i18n";
-import type {
-  DashboardAccountRow,
-  DashboardResponse,
-} from "./types";
+import type { DashboardAccountRow, NavCardAmountDto } from "./types";
 
 export type CardGroupMetrics = {
   /** Lifetime net deposits. */
@@ -163,146 +156,62 @@ function mortgageAccountForPropertyRow(
   return mortgages.length === 1 ? mortgages[0] : undefined;
 }
 
-export function cardGroupMetricsFromAccounts(
-  rows: DashboardAccountRow[],
-  period: CardGroupMetricsPeriod
-): CardGroupMetrics {
-  let deposits_clp = 0;
-  let deposits_usd = 0;
-  let delta_total_clp = 0;
-  let delta_total_usd = 0;
-  let deposits_period_clp = 0;
-  let deposits_period_usd = 0;
-  let delta_period_clp = 0;
-  let delta_period_usd = 0;
-  let anyUsdDep = false;
-  let anyUsdTotalDelta = false;
-  let anyUsdPeriodDep = false;
-  let anyTotalDelta = false;
-  let anyPeriodDeltaClp = false;
-  let anyPeriodDeltaUsd = false;
-
-  for (const r of rows) {
-    deposits_clp += r.deposits_clp;
-    if (r.deposits_usd != null && Number.isFinite(r.deposits_usd)) {
-      deposits_usd += r.deposits_usd;
-      anyUsdDep = true;
-    }
-    if (r.delta_total_clp != null && Number.isFinite(r.delta_total_clp)) {
-      delta_total_clp += r.delta_total_clp;
-      anyTotalDelta = true;
-    }
-    if (r.delta_total_usd != null && Number.isFinite(r.delta_total_usd)) {
-      delta_total_usd += r.delta_total_usd;
-      anyUsdTotalDelta = true;
-    }
-
-    const periodDepClp =
-      period === "month"
-        ? r.deposits_month_clp
-        : period === "day"
-          ? r.deposits_day_clp
-          : r.deposits_year_clp;
-    if (periodDepClp != null && Number.isFinite(periodDepClp)) {
-      deposits_period_clp += periodDepClp;
-    }
-
-    const periodDepUsd =
-      period === "month"
-        ? r.deposits_month_usd
-        : period === "day"
-          ? r.deposits_day_usd
-          : r.deposits_year_usd;
-    if (periodDepUsd != null && Number.isFinite(periodDepUsd)) {
-      deposits_period_usd += periodDepUsd;
-      anyUsdPeriodDep = true;
-    }
-
-    const periodDeltaClp =
-      period === "month" ? r.delta_month_clp : period === "day" ? r.delta_day_clp : r.delta_year_clp;
-    if (periodDeltaClp != null && Number.isFinite(periodDeltaClp)) {
-      delta_period_clp += periodDeltaClp;
-      anyPeriodDeltaClp = true;
-    }
-    const periodDeltaUsd =
-      period === "month" ? r.delta_month_usd : period === "day" ? r.delta_day_usd : r.delta_year_usd;
-    if (periodDeltaUsd != null && Number.isFinite(periodDeltaUsd)) {
-      delta_period_usd += periodDeltaUsd;
-      anyPeriodDeltaUsd = true;
-    }
-  }
-
-  return {
-    deposits_clp,
-    deposits_usd: anyUsdDep ? deposits_usd : null,
-    delta_total_clp: anyTotalDelta ? delta_total_clp : null,
-    delta_total_usd: anyUsdTotalDelta ? delta_total_usd : null,
-    deposits_period_clp,
-    deposits_period_usd: anyUsdPeriodDep ? deposits_period_usd : null,
-    delta_period_clp: anyPeriodDeltaClp ? delta_period_clp : null,
-    delta_period_usd: anyPeriodDeltaUsd ? delta_period_usd : null,
-  };
-}
-
 export type CardGroupMetricsByPeriod = Record<CardGroupMetricsPeriod, CardGroupMetrics>;
 
-/** All three period slices from dashboard rows — cards render día/mes/año rows simultaneously. */
-export function cardGroupMetricsByPeriodFromAccounts(
-  rows: DashboardAccountRow[]
-): CardGroupMetricsByPeriod {
+function finiteOr<T>(v: number | null | undefined, fallback: T): number | T {
+  return v != null && Number.isFinite(v) ? v : fallback;
+}
+
+/** One account row's card metrics for a period (a group's are the server's, never summed here). */
+function cardMetricsForAccountRow(
+  r: DashboardAccountRow | null,
+  period: CardGroupMetricsPeriod
+): CardGroupMetrics {
+  if (!r) {
+    return {
+      deposits_clp: 0,
+      deposits_usd: null,
+      delta_total_clp: null,
+      delta_total_usd: null,
+      deposits_period_clp: 0,
+      deposits_period_usd: null,
+      delta_period_clp: null,
+      delta_period_usd: null,
+    };
+  }
+  const depClp =
+    period === "month" ? r.deposits_month_clp : period === "day" ? r.deposits_day_clp : r.deposits_year_clp;
+  const depUsd =
+    period === "month" ? r.deposits_month_usd : period === "day" ? r.deposits_day_usd : r.deposits_year_usd;
+  const deltaClp =
+    period === "month" ? r.delta_month_clp : period === "day" ? r.delta_day_clp : r.delta_year_clp;
+  const deltaUsd =
+    period === "month" ? r.delta_month_usd : period === "day" ? r.delta_day_usd : r.delta_year_usd;
   return {
-    day: cardGroupMetricsFromAccounts(rows, "day"),
-    month: cardGroupMetricsFromAccounts(rows, "month"),
-    year: cardGroupMetricsFromAccounts(rows, "year"),
+    deposits_clp: r.deposits_clp,
+    deposits_usd: finiteOr(r.deposits_usd, null),
+    delta_total_clp: finiteOr(r.delta_total_clp, null),
+    delta_total_usd: finiteOr(r.delta_total_usd, null),
+    deposits_period_clp: finiteOr(depClp, 0),
+    deposits_period_usd: finiteOr(depUsd, null),
+    delta_period_clp: finiteOr(deltaClp, null),
+    delta_period_usd: finiteOr(deltaUsd, null),
   };
 }
 
-/** Account scope for bucket card metrics and balance Δ (includes sold-out + chart_inactive). */
-export function accountInDashboardGroupScope(
-  a: DashboardAccountRow,
-  groupSlug: DashboardGroupSlug,
-  filter?: (a: DashboardAccountRow) => boolean
-): boolean {
-  if (!accountCountsTowardGroupTotals(a)) return false;
-  if (filter) return filter(a);
-  return accountBelongsToDashboardBucket(a, groupSlug);
+/** All three period slices of one account row — cards render día/mes/año rows at once. */
+export function cardMetricsByPeriodForAccountRow(
+  row: DashboardAccountRow | null
+): CardGroupMetricsByPeriod {
+  return {
+    day: cardMetricsForAccountRow(row, "day"),
+    month: cardMetricsForAccountRow(row, "month"),
+    year: cardMetricsForAccountRow(row, "year"),
+  };
 }
 
-/** Breakdown lines / visible position list (hides chart_inactive and null/zero marks). */
-export function accountInDashboardGroupDisplayScope(
-  a: DashboardAccountRow,
-  groupSlug: DashboardGroupSlug,
-  filter?: (a: DashboardAccountRow) => boolean
-): boolean {
-  if (!accountInDashboardGroupScope(a, groupSlug, filter)) return false;
-  if (!isChartActiveAccount(a)) return false;
-  return hasMaterialDashboardBalance(a);
-}
-
-function sumUsd(rows: DashboardAccountRow[]): number | null {
-  let sum = 0;
-  let any = false;
-  for (const r of rows) {
-    if (r.current_value_usd != null && Number.isFinite(r.current_value_usd)) {
-      sum += r.current_value_usd;
-      any = true;
-    }
-  }
-  return any ? sum : null;
-}
-
-function sumClp(rows: DashboardAccountRow[], pick: (r: DashboardAccountRow) => number): number {
-  let s = 0;
-  for (const r of rows) {
-    s += pick(r);
-  }
-  return s;
-}
-
-function valueRows(accounts: DashboardAccountRow[], groupSlug?: DashboardGroupSlug): DashboardAccountRow[] {
-  if (groupSlug) {
-    return accounts.filter((a) => accountInDashboardGroupDisplayScope(a, groupSlug));
-  }
+/** Breakdown lines / visible position list (counted, chart-active, non-zero balance). */
+function valueRows(accounts: DashboardAccountRow[]): DashboardAccountRow[] {
   return accounts.filter(
     (a) =>
       accountCountsTowardGroupTotals(a) &&
@@ -316,40 +225,6 @@ function sortGroupsDesc<T extends { clp: number }>(items: T[]): T[] {
 }
 
 export type DashboardGroupSlug = "net_worth" | "real_estate" | "retirement" | "brokerage" | "cash_eqs";
-
-/** Sum live dashboard current values for an account subset (CLP always; USD when `showUsd`). */
-export function sumCurrentValueClpUsd(
-  rows: DashboardAccountRow[],
-  showUsd: boolean
-): { clp: number; apiUsd: number | null } {
-  let clp = 0;
-  let usd = 0;
-  let anyUsd = false;
-  for (const r of rows) {
-    clp += dashboardAccountCurrentValueClp(r);
-    if (showUsd && r.current_value_usd != null && Number.isFinite(r.current_value_usd)) {
-      usd += r.current_value_usd;
-      anyUsd = true;
-    }
-  }
-  return { clp, apiUsd: anyUsd ? usd : null };
-}
-
-export type DashboardBucketTotals = DashboardResponse["totals"];
-
-/** Primary balance for a dashboard bucket (`GET /api/dashboard` totals — single source of truth). */
-export function dashboardBucketMainValue(
-  totals: DashboardBucketTotals,
-  group: DashboardGroupSlug,
-  showUsd: boolean
-): { clp: number; apiUsd: number | null } {
-  const clp = totals[`${group}_clp`];
-  const usd = totals[`${group}_usd`];
-  return {
-    clp,
-    apiUsd: showUsd && usd != null && Number.isFinite(usd) ? usd : null,
-  };
-}
 
 /** Sort key for the primary balance shown on a card (matches `DashboardCardValue` / `showUsd`). */
 export function dashboardCardMainSortKey(
@@ -374,9 +249,13 @@ export function compareDashboardCardMainDesc(
   return dashboardCardMainSortKey(bClp, bUsd, showUsd) - dashboardCardMainSortKey(aClp, aUsd, showUsd);
 }
 
-/** Real estate card: property (net equity) with valor and hipoteca detail lines. */
+/**
+ * Real estate card: property (net equity) with valor and hipoteca detail lines. `total` is the
+ * node's server balance (`value.members`) — the head line, never a Σ of the rows here.
+ */
 export function buildRealEstateCardBreakdown(
   accounts: DashboardAccountRow[],
+  total: NavCardAmountDto,
   allAccounts?: DashboardAccountRow[]
 ): CardBreakdownLine[] {
   const props = valueRows(accounts.filter((a) => a.group_slug === "real_estate"));
@@ -388,8 +267,8 @@ export function buildRealEstateCardBreakdown(
   );
   const mortgageRow = mortgageAccountForPropertyRow(allAccounts ?? accounts, propertyRow);
   const propertyName = props[0]!.name.trim().toLowerCase();
-  const netClp = props.length ? sumClp(props, (r) => r.current_value_clp ?? 0) : 0;
-  const groupUsd = props.length ? sumUsd(props) : null;
+  const netClp = total.clp;
+  const groupUsd = total.usd;
   const propertyTo =
     propertyRow != null
       ? accountDetailPath(propertyRow.account_id)

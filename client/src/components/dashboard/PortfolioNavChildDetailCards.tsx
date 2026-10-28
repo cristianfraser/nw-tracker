@@ -4,7 +4,6 @@ import { CardValueDayPl, DashboardCardGroupMetrics } from "./DashboardCardGroupM
 import { DetailedGroupCard } from "./DetailedGroupCard";
 import {
   breakdownForNavChild,
-  dashboardRowsForNavSubtree,
   mainValueForNavChild,
   navChildCardHasActivity,
   requireNavCardMetrics,
@@ -34,7 +33,7 @@ export function PortfolioNavChildDetailCards({
     const filtered = navChildren.filter(
       (c) =>
         c.route_path?.trim() &&
-        (c.chart_inactive !== true || navChildCardHasActivity(dash, c, showUsd))
+        (c.chart_inactive !== true || navChildCardHasActivity(dash, c))
     );
     return [...filtered].sort((a, b) => {
       const aMain = mainValueForNavChild(dash, a, showUsd);
@@ -48,10 +47,10 @@ export function PortfolioNavChildDetailCards({
   return (
     <>
       {sorted.map((child) => {
-        const childRows = dashboardRowsForNavSubtree(dash.accounts, child);
         const { clp, apiUsd } = mainValueForNavChild(dash, child, showUsd);
-        const metricsByPeriod = requireNavCardMetrics(dash, child).child;
-        const br = breakdownForNavChild(child, childRows, dash);
+        const entry = requireNavCardMetrics(dash, child);
+        const metricsByPeriod = entry.child;
+        const br = breakdownForNavChild(child, dash);
         const rp = child.route_path?.trim() ?? "";
         const cashClass =
           child.slug === "cash_eqs" ||
@@ -59,9 +58,8 @@ export function PortfolioNavChildDetailCards({
           child.asset_group_slug?.startsWith("cash_eqs")
             ? "card--cash"
             : "";
-        const fxMissing = showUsd && childRows.some((r) => r.fx_missing);
-        const syncStale =
-          childRows.length > 0 && childRows.every((r) => r.sync_stale === true);
+        const fxMissing = showUsd && entry.value.fx_missing;
+        const syncStale = entry.value.sync_stale;
 
         return (
           <DetailedGroupCard
