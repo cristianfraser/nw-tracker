@@ -208,7 +208,7 @@ function keyedRow(
 }
 
 export type CcLineMoveConflict = {
-  table: KeyedTable | "cc_expense_line_splits";
+  table: KeyedTable | "cc_expense_line_splits" | "real_estate_expense_links";
   from: string;
   to: string;
   stored: unknown;
@@ -216,7 +216,7 @@ export type CcLineMoveConflict = {
 };
 
 export type CcLineMoveApplyResult = {
-  moved: Record<KeyedTable | "cc_expense_line_splits", number>;
+  moved: Record<KeyedTable | "cc_expense_line_splits" | "real_estate_expense_links", number>;
   /** Orphan rows dropped because the target already holds the same value. */
   duplicates_removed: number;
   /** Target rows overwritten with the stored value (`preferStoredKeys`). */
@@ -243,7 +243,40 @@ export function ccLineHasExpenseAssignments(ref: CcLineRef): boolean {
       }
     }
   }
+  if (key && db.prepare(`SELECT 1 FROM real_estate_expense_links WHERE purchase_key = ?`).get(key)) {
+    return true;
+  }
   return db.prepare(`SELECT 1 FROM cc_expense_line_splits WHERE source = 'cc' AND line_id = ?`).get(ref.lineId) != null;
+}
+
+/**
+ * Moves the place bill linked to `fromKey` onto `toKey` (and its rejections, so a refused pairing
+ * stays refused). A bill pairs with one purchase, so a copy never takes it: the link stays with the
+ * line it was made on. A target already linked to another bill is a conflict.
+ */
+function moveRealEstateLink(fromKey: string, toKey: string, out: CcLineMoveApplyResult): void {
+  const stored = db
+    .prepare(`SELECT expense_entry_id FROM real_estate_expense_links WHERE purchase_key = ?`)
+    .get(fromKey) as { expense_entry_id: number } | undefined;
+  db.prepare(
+    `UPDATE OR IGNORE real_estate_expense_link_rejections SET purchase_key = ? WHERE purchase_key = ?`
+  ).run(toKey, fromKey);
+  if (!stored) return;
+  const current = db
+    .prepare(`SELECT expense_entry_id FROM real_estate_expense_links WHERE purchase_key = ?`)
+    .get(toKey) as { expense_entry_id: number } | undefined;
+  if (current) {
+    out.conflicts.push({
+      table: "real_estate_expense_links",
+      from: fromKey,
+      to: toKey,
+      stored: stored.expense_entry_id,
+      current: current.expense_entry_id,
+    });
+    return;
+  }
+  db.prepare(`UPDATE real_estate_expense_links SET purchase_key = ? WHERE purchase_key = ?`).run(toKey, fromKey);
+  out.moved.real_estate_expense_links += 1;
 }
 
 /**
@@ -270,6 +303,7 @@ export function applyCcLineMoves(
       cc_expense_purchase_big_groups: 0,
       cc_expense_purchase_notes: 0,
       cc_expense_line_splits: 0,
+      real_estate_expense_links: 0,
     },
     duplicates_removed: 0,
     overridden: 0,
@@ -338,6 +372,7 @@ export function applyCcLineMoves(
           out.conflicts.push({ table, from: fromKey, to: toKey, stored: stored.v, current: current.v });
         }
       }
+      if (!move.copy && !move.classificationOnly) moveRealEstateLink(fromKey, toKey, out);
     }
     if (from.lineId !== to.lineId && !move.classificationOnly) {
       const splits = db
@@ -471,6 +506,7 @@ export function rekeyCcExpenseLinesAfterImport(capture: CcExpenseLineCapture): C
       cc_expense_purchase_big_groups: 0,
       cc_expense_purchase_notes: 0,
       cc_expense_line_splits: 0,
+      real_estate_expense_links: 0,
     },
     duplicates_removed: 0,
     overridden: 0,

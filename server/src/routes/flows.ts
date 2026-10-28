@@ -67,6 +67,7 @@ import {
   manualLinkRealEstateExpense,
   unmatchRealEstateExpense,
   updateRealEstateExpenseBillMonth,
+  updateRealEstateExpenseMonthsCovered,
   updateRealEstateExpenseConsumption,
 } from "../realEstateExpenseMatching.js";
 
@@ -571,6 +572,21 @@ app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/bill-month", 
   }
   try {
     updateRealEstateExpenseBillMonth(expenseEntryId, billMonth);
+    res.status(204).send();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "update failed";
+    res.status(400).json({ error: msg });
+  }
+});
+
+app.patch("/api/flows/expenses/real-estate/entries/:expenseEntryId/months-covered", (req, res) => {
+  const expenseEntryId = Number(req.params.expenseEntryId);
+  if (!Number.isFinite(expenseEntryId) || expenseEntryId <= 0) {
+    res.status(400).json({ error: "invalid expense entry id" });
+    return;
+  }
+  try {
+    updateRealEstateExpenseMonthsCovered(expenseEntryId, Number((req.body as { months_covered?: number }).months_covered));
     res.status(204).send();
   } catch (e) {
     const msg = e instanceof Error ? e.message : "update failed";

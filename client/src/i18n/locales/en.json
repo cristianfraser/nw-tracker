@@ -1151,6 +1151,8 @@
       "colLinkedOrigin": "Origin",
       "colActions": "Actions",
       "unlinked": "Unlinked",
+      "brokenLinkMissing": "The linked purchase is no longer found — unlink or delete the row",
+      "brokenLinkOutsideWindow": "The linked purchase falls outside this bill's month window",
       "linkAction": "Link",
       "unlinkAction": "Unlink",
       "linkModalTitle": "Link expense",
@@ -1186,7 +1188,10 @@
       "merchantMatchHintKind": "matches kind",
       "billPreviousMonthToggle": "Billed period: previous month",
       "billMonthEditAction": "Edit billed month",
-      "paidOnHint": "paid {{date}}"
+      "paidOnHint": "paid {{date}}",
+      "mortgagePartsHint": "amortization {{amortization}} · extra {{extra}} · interest and insurance {{carrying}}",
+      "coversHint": "covers {{from}} – {{to}}",
+      "monthsCoveredLabel": "Months covered"
     },
     "colDate": "Date",
     "colKind": "Type",
@@ -1226,6 +1231,7 @@
       "chartStyleLine": "Lines",
       "chartYearAverage": "Yearly average",
       "chartTotal": "Total",
+      "chartShownTotal": "Shown total",
       "chartEmpty": "No expenses in this period.",
       "colCategory": "Category",
       "colSelect": "Select",
@@ -1358,10 +1364,13 @@
       "kwh": "kWh (reading)",
       "water": "Water",
       "rent": "Rent",
-      "mortgage": "Mortgage"
+      "mortgage": "Mortgage",
+      "mortgage_amortization": "Mortgage — amortization",
+      "mortgage_extra_amortization": "Mortgage — extra amortization",
+      "mortgage_carrying": "Mortgage — interest and insurance"
     },
     "emptyAccount": "No expenses imported.",
-    "chartTitle": "Expenses by apartment",
+    "chartTitle": "Expenses by type",
     "additionalCards": {
       "title": "Additional cards",
       "hint": "Charges made with the additional cards (not counted in your expenses) against the reimbursements received for them.",

@@ -17,7 +17,7 @@ import {
   loadGastosLinesForRealEstateMatching,
   listRealEstateExpectations,
   loadAllRejections,
-  dropInvalidRealEstateExpenseLinks,
+  findInvalidRealEstateExpenseLinks,
   persistAutoLinks,
   purchaseMonthForLine,
   purchaseMonthOffsetFromBill,
@@ -36,6 +36,16 @@ export type RealEstateExpenseLinkDto = {
   source: FlowCcExpenseLineSource;
 };
 
+/**
+ * A stored link that no longer holds: its purchase is not among the eligible lines any more
+ * (re-imported under another key, recategorized, deleted), or its month left the bill's
+ * +0..+2 window. Shown on the page, never deleted on read.
+ */
+export type RealEstateBrokenLinkDto = {
+  purchase_key: string;
+  problem: "missing_purchase" | "outside_window";
+};
+
 export type RealEstateBillSlot = {
   /** Null for read-only rows derived from the depto ledger (mortgage). */
   expense_entry_id: number | null;
@@ -45,10 +55,20 @@ export type RealEstateBillSlot = {
   kind: string;
   expected_amount_clp: number;
   link: RealEstateExpenseLinkDto | null;
+  broken_link: RealEstateBrokenLinkDto | null;
   display_amount_clp: number;
   note: string | null;
   kwh: number | null;
   m3: number | null;
+  /** Months the payment covers, ending at `bill_month` (1 = that month alone). */
+  months_covered: number;
+  /** First month the payment covers (`bill_month` when it covers one). */
+  covers_from: string;
+  /**
+   * A mortgage cuota as paid, split: the scheduled amortización, the extra amortization paid above
+   * the minimum, and carrying = interés + fire and mortgage-life insurance. Null on every other bill.
+   */
+  mortgage_parts: { amortization_clp: number; extra_amortization_clp: number; carrying_clp: number } | null;
   can_link: boolean;
 };
 
@@ -76,15 +96,51 @@ export type RealEstateExpenseChartPoint = {
   total: number;
 } & Record<string, number | string>;
 
+/**
+ * Bill kinds in stacking order (bottom first). Every kind a slot can carry with an amount is here;
+ * a kind outside it throws when the chart is built (`kwh` readings carry no amount).
+ */
+export const REAL_ESTATE_CHART_KINDS = [
+  "mortgage_amortization",
+  "mortgage_extra_amortization",
+  "mortgage_carrying",
+  "rent",
+  "gastos_comunes",
+  "electricidad",
+  "water",
+  "internet",
+  "gas",
+  "contribuciones",
+] as const;
+
+/** One stacked series: a place's spend on one kind of bill. */
+export type RealEstateChartSeriesDto = {
+  data_key: string;
+  place_slug: string;
+  kind: (typeof REAL_ESTATE_CHART_KINDS)[number];
+  /** Places alternate between the two schemes in date order, so one place hands over to the next. */
+  scheme: "base" | "alternate";
+};
+
+/**
+ * The chart for one scope (every place, or one): its series and monthly points, from the scope's
+ * first to its last month with a bill — a place that ended stops there, so the page's Rango counts
+ * back from the scope's last point, not from today.
+ */
+export type RealEstateChartScopeDto = {
+  series: RealEstateChartSeriesDto[];
+  points: RealEstateExpenseChartPoint[];
+};
+
 export type RealEstateExpensesPayload = {
   places: RealEstatePlaceDto[];
   slots: RealEstateBillSlot[];
   by_account: Record<string, RealEstateExpenseAccountBlock>;
   /**
-   * Monthly only: the page's yearly chart rolls these up client-side AFTER cutting the months at
-   * its own Rango (a partial first year), so a pre-rolled yearly block would be clipped whole.
+   * Keyed `all` and by place slug. Monthly only: the page's yearly chart rolls these up client-side
+   * AFTER cutting the months at its own Rango (a partial first year).
    */
-  chart_monthly: RealEstateExpenseChartPoint[];
+  chart_scopes: Record<string, RealEstateChartScopeDto>;
   total_clp: number;
 };
 
@@ -186,30 +242,119 @@ export function createRealEstatePlace(opts: {
   };
 }
 
-function aggregateChartPoints(
-  slots: readonly RealEstateBillSlot[],
-  places: readonly RealEstatePlaceRow[]
-): RealEstateExpenseChartPoint[] {
-  const emptyPoint = (as_of_date: string): RealEstateExpenseChartPoint => {
-    const pt: RealEstateExpenseChartPoint = { as_of_date, total: 0 };
-    for (const p of places) pt[p.slug] = 0;
-    return pt;
-  };
+/** Places in date order (first occupied first), which is the order their schemes alternate in. */
+function placesInDateOrder(places: readonly RealEstatePlaceRow[]): RealEstatePlaceRow[] {
+  return [...places].sort(
+    (a, b) => (a.active_from ?? "").localeCompare(b.active_from ?? "") || a.sort_order - b.sort_order
+  );
+}
 
+/** The chart series a bill feeds: a mortgage cuota feeds its principal and carrying parts. */
+export function chartPartsOf(slot: RealEstateBillSlot): { kind: RealEstateChartSeriesDto["kind"]; amount: number }[] {
+  if (slot.kind === "mortgage") {
+    if (!slot.mortgage_parts) throw new Error(`real-estate chart: mortgage cuota ${slot.spent_on} has no parts`);
+    return [
+      { kind: "mortgage_amortization", amount: slot.mortgage_parts.amortization_clp },
+      { kind: "mortgage_extra_amortization", amount: slot.mortgage_parts.extra_amortization_clp },
+      { kind: "mortgage_carrying", amount: slot.mortgage_parts.carrying_clp },
+    ];
+  }
+  const kind = REAL_ESTATE_CHART_KINDS.find((k) => k === slot.kind);
+  if (!kind) {
+    throw new Error(`real-estate chart: bill kind '${slot.kind}' (${slot.account_slug} ${slot.bill_month}) has no chart series`);
+  }
+  return [{ kind, amount: slot.display_amount_clp }];
+}
+
+/**
+ * A payment that covers several months, in equal whole-peso shares over the months ending at its
+ * bill month; the last month takes the rounding remainder, so the shares add up to the payment.
+ */
+export function spreadOverCoveredMonths(
+  slot: Pick<RealEstateBillSlot, "bill_month" | "months_covered" | "display_amount_clp">
+): { month: string; amount: number }[] {
+  const n = slot.months_covered;
+  if (!Number.isInteger(n) || n < 1) throw new Error(`months_covered ${n} is not a positive integer`);
+  const share = Math.floor(slot.display_amount_clp / n);
+  const out: { month: string; amount: number }[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    out.push({ month: addCalendarMonths(slot.bill_month, -i), amount: i === 0 ? slot.display_amount_clp - share * (n - 1) : share });
+  }
+  return out;
+}
+
+function chartScope(
+  slots: readonly RealEstateBillSlot[],
+  schemeByPlace: ReadonlyMap<string, RealEstateChartSeriesDto["scheme"]>,
+  placeOrder: readonly string[]
+): RealEstateChartScopeDto {
+  const used = new Map<string, RealEstateChartSeriesDto>();
   const byPeriod = new Map<string, RealEstateExpenseChartPoint>();
   for (const slot of slots) {
     if (slot.display_amount_clp <= 0) continue;
-    const pe = monthEndUtcYmd(slot.bill_month);
-    let pt = byPeriod.get(pe);
-    if (!pt) {
-      pt = emptyPoint(pe);
-      byPeriod.set(pe, pt);
+    for (const part of chartPartsOf(slot)) {
+      if (part.amount <= 0) continue;
+      const dataKey = `${slot.account_slug}__${part.kind}`;
+      if (!used.has(dataKey)) {
+        const scheme = schemeByPlace.get(slot.account_slug);
+        if (!scheme) throw new Error(`real-estate chart: unknown place '${slot.account_slug}'`);
+        used.set(dataKey, { data_key: dataKey, place_slug: slot.account_slug, kind: part.kind, scheme });
+      }
+      const spread = spreadOverCoveredMonths({
+        bill_month: slot.bill_month,
+        months_covered: slot.months_covered,
+        display_amount_clp: part.amount,
+      });
+      for (const { month, amount } of spread) {
+        const pe = monthEndUtcYmd(month);
+        let pt = byPeriod.get(pe);
+        if (!pt) {
+          pt = { as_of_date: pe, total: 0 };
+          byPeriod.set(pe, pt);
+        }
+        pt[dataKey] = Number(pt[dataKey] ?? 0) + amount;
+        pt.total += amount;
+      }
     }
-    pt[slot.account_slug] = Number(pt[slot.account_slug] ?? 0) + slot.display_amount_clp;
-    pt.total += slot.display_amount_clp;
   }
-  const sorted = [...byPeriod.values()].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
-  return densifyMonthlyPoints(sorted, emptyPoint);
+  // Stack by place (date order), then by kind; every point carries every series (0 when none).
+  const series = [...used.values()].sort(
+    (a, b) =>
+      placeOrder.indexOf(a.place_slug) - placeOrder.indexOf(b.place_slug) ||
+      REAL_ESTATE_CHART_KINDS.indexOf(a.kind) - REAL_ESTATE_CHART_KINDS.indexOf(b.kind)
+  );
+  const emptyPoint = (as_of_date: string): RealEstateExpenseChartPoint => {
+    const pt: RealEstateExpenseChartPoint = { as_of_date, total: 0 };
+    for (const s of series) pt[s.data_key] = 0;
+    return pt;
+  };
+  const sorted = [...byPeriod.values()]
+    .map((p) => ({ ...emptyPoint(p.as_of_date), ...p }))
+    .sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
+  return { series, points: densifyMonthlyPoints(sorted, emptyPoint) };
+}
+
+function buildChartScopes(
+  slots: readonly RealEstateBillSlot[],
+  places: readonly RealEstatePlaceRow[]
+): Record<string, RealEstateChartScopeDto> {
+  const ordered = placesInDateOrder(places);
+  const placeOrder = ordered.map((p) => p.slug);
+  const schemeByPlace = new Map(
+    ordered.map((p, i) => [p.slug, i % 2 === 0 ? ("base" as const) : ("alternate" as const)])
+  );
+  const scopes: Record<string, RealEstateChartScopeDto> = {
+    all: chartScope(slots, schemeByPlace, placeOrder),
+  };
+  for (const place of places) {
+    if (place.slug === "all") throw new Error("real-estate place slug 'all' collides with the chart's all-places scope");
+    scopes[place.slug] = chartScope(
+      slots.filter((s) => s.account_slug === place.slug),
+      schemeByPlace,
+      placeOrder
+    );
+  }
+  return scopes;
 }
 
 function linkToDto(
@@ -230,7 +375,8 @@ function linkToDto(
 function expectationToSlot(
   exp: ExpenseExpectationRow,
   link: RealEstateLinkRow | undefined,
-  gastosLines: readonly FlowCcExpenseLineRow[]
+  gastosLines: readonly FlowCcExpenseLineRow[],
+  brokenLink: RealEstateBrokenLinkDto | undefined
 ): RealEstateBillSlot {
   const kind = exp.category ?? "";
   const linkedLine = link ? gastosLineByPurchaseKey(link.purchase_key, gastosLines) : undefined;
@@ -243,10 +389,14 @@ function expectationToSlot(
     kind,
     expected_amount_clp: exp.amount_clp,
     link: link && linkedLine ? linkToDto(link, linkedLine) : null,
+    broken_link: brokenLink ?? null,
     display_amount_clp: displayAmountClp(exp.amount_clp, linkedLine),
     note: exp.note,
     kwh: exp.kwh,
     m3: exp.m3,
+    months_covered: exp.months_covered,
+    covers_from: addCalendarMonths(bill_month, 1 - exp.months_covered),
+    mortgage_parts: null,
     can_link: exp.amount_clp > 0,
   };
 }
@@ -318,9 +468,11 @@ export function mortgageCuotaBillMonths(rows: readonly MortgageCuotaPaymentRow[]
 /**
  * Monthly dividendo as read-only slots for every place linked to a property master
  * (`expense_accounts.property_account_id`), sourced from the depto ledger. Regular
- * cuotas only — pie and prepagos are capital events, not monthly expenses. The cash
- * cost is the component sum (amortización + interés + seguros); the movement's
- * `amount_clp` is an equity mark, not the payment. `bill_month` is the cuota's
+ * cuotas only — pie and prepagos are capital events, not monthly expenses. Each cuota is
+ * what was paid, split in `mortgage_parts`: the scheduled amortización, the extra amortization
+ * paid above the minimum, and carrying (interés + seguros); the movement's `amount_clp` is an
+ * equity mark, not the payment. Until 2026-10-28 the extra amortization was left out, so the
+ * chart showed the minimum cuota. `bill_month` is the cuota's
  * scheduled month (billed-period framing); `spent_on` keeps the real payment date.
  */
 function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateBillSlot[] {
@@ -330,8 +482,9 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
   const slots: RealEstateBillSlot[] = [];
   const stmt = db.prepare(
     `SELECT m.occurred_on, p.cuota,
-            COALESCE(p.amortizacion_clp, 0) + COALESCE(p.interes_clp, 0)
-              + COALESCE(p.incendio_clp, 0) + COALESCE(p.desgravamen_clp, 0) AS pago_clp
+            COALESCE(p.amortizacion_clp, 0) AS amortization_clp,
+            COALESCE(p.amortizacion_ext_clp, 0) AS extra_amortization_clp,
+            COALESCE(p.interes_clp, 0) + COALESCE(p.incendio_clp, 0) + COALESCE(p.desgravamen_clp, 0) AS carrying_clp
      FROM movements m
      JOIN depto_payments p ON p.movement_id = m.id
      WHERE m.account_id = ?
@@ -345,23 +498,32 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
       stmt.all(place.property_account_id) as {
         occurred_on: string;
         cuota: string;
-        pago_clp: number;
+        amortization_clp: number;
+        extra_amortization_clp: number;
+        carrying_clp: number;
       }[]
-    ).filter((r) => r.pago_clp > 0);
+    ).filter((r) => r.amortization_clp + r.extra_amortization_clp + r.carrying_clp > 0);
     const billMonths = mortgageCuotaBillMonths(rows);
     rows.forEach((r, i) => {
+      const amortization = Math.round(r.amortization_clp);
+      const extra = Math.round(r.extra_amortization_clp);
+      const carrying = Math.round(r.carrying_clp);
       slots.push({
         expense_entry_id: null,
         account_slug: place.slug,
         bill_month: billMonths[i]!,
         spent_on: r.occurred_on,
         kind: "mortgage",
-        expected_amount_clp: Math.round(r.pago_clp),
+        expected_amount_clp: amortization + extra + carrying,
         link: null,
-        display_amount_clp: Math.round(r.pago_clp),
+        broken_link: null,
+        display_amount_clp: amortization + extra + carrying,
         note: null,
         kwh: null,
         m3: null,
+        months_covered: 1,
+        covers_from: billMonths[i]!,
+        mortgage_parts: { amortization_clp: amortization, extra_amortization_clp: extra, carrying_clp: carrying },
         can_link: false,
       });
     });
@@ -369,10 +531,15 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
   return slots;
 }
 
-function ensureAutoLinks(): Map<number, RealEstateLinkRow> {
-  const expectations = listRealEstateExpectations();
-  const gastosLines = loadGastosLinesForRealEstateMatching();
-  dropInvalidRealEstateExpenseLinks(expectations, gastosLines, loadExistingLinks());
+/**
+ * Auto-links bills to their purchases. A stored link that no longer holds is kept and reported on
+ * its bill (`broken_link`), never deleted on a read: a re-import that renamed the purchase would
+ * otherwise erase the pairing silently.
+ */
+function ensureAutoLinks(
+  expectations: readonly ExpenseExpectationRow[],
+  gastosLines: readonly FlowCcExpenseLineRow[]
+): Map<number, RealEstateLinkRow> {
   let existing = loadExistingLinks();
   const newLinks = runAutoLinkPass(expectations, gastosLines, existing);
   if (newLinks.length > 0) {
@@ -384,12 +551,19 @@ function ensureAutoLinks(): Map<number, RealEstateLinkRow> {
 
 export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
   const places = listRealEstatePlaces();
-  const linksByEntry = ensureAutoLinks();
   const expectations = listRealEstateExpectations();
   const gastosLines = loadGastosLinesForRealEstateMatching();
+  const linksByEntry = ensureAutoLinks(expectations, gastosLines);
+
+  const brokenByEntry = new Map(
+    findInvalidRealEstateExpenseLinks(expectations, gastosLines, linksByEntry).map((l) => [
+      l.expense_entry_id,
+      { purchase_key: l.purchase_key, problem: l.problem } satisfies RealEstateBrokenLinkDto,
+    ])
+  );
 
   const slots = expectations
-    .map((exp) => expectationToSlot(exp, linksByEntry.get(exp.id), gastosLines))
+    .map((exp) => expectationToSlot(exp, linksByEntry.get(exp.id), gastosLines, brokenByEntry.get(exp.id)))
     .concat(mortgageLedgerSlots(places))
     .sort((a, b) => b.spent_on.localeCompare(a.spent_on));
 
@@ -404,14 +578,14 @@ export function buildRealEstateExpensesPayload(): RealEstateExpensesPayload {
     };
   }
 
-  const chart_monthly = aggregateChartPoints(slots, places);
+  const chart_scopes = buildChartScopes(slots, places);
   const total_clp = slots.reduce((s, sl) => s + sl.display_amount_clp, 0);
 
   return {
     places: places.map(placeToDto),
     slots,
     by_account,
-    chart_monthly,
+    chart_scopes,
     total_clp,
   };
 }

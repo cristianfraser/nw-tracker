@@ -4043,6 +4043,14 @@
         "en": "Unlinked",
         "es": "Sin vincular"
       },
+      "brokenLinkMissing": {
+        "en": "The linked purchase is no longer found — unlink or delete the row",
+        "es": "La compra vinculada ya no aparece — desvincula o elimina la fila"
+      },
+      "brokenLinkOutsideWindow": {
+        "en": "The linked purchase falls outside this bill's month window",
+        "es": "La compra vinculada quedó fuera de la ventana de meses de esta cuenta"
+      },
       "linkAction": {
         "en": "Link",
         "es": "Vincular"
@@ -4186,6 +4194,18 @@
       "paidOnHint": {
         "en": "paid {{date}}",
         "es": "pagado {{date}}"
+      },
+      "mortgagePartsHint": {
+        "en": "amortization {{amortization}} · extra {{extra}} · interest and insurance {{carrying}}",
+        "es": "amortización {{amortization}} · extra {{extra}} · interés y seguros {{carrying}}"
+      },
+      "coversHint": {
+        "en": "covers {{from}} – {{to}}",
+        "es": "cubre {{from}} – {{to}}"
+      },
+      "monthsCoveredLabel": {
+        "en": "Months covered",
+        "es": "Meses que cubre"
       }
     },
     "colDate": {
@@ -4318,6 +4338,10 @@
       "chartTotal": {
         "en": "Total",
         "es": "Total"
+      },
+      "chartShownTotal": {
+        "en": "Shown total",
+        "es": "Total mostrado"
       },
       "chartEmpty": {
         "en": "No expenses in this period.",
@@ -4820,6 +4844,18 @@
       "mortgage": {
         "en": "Mortgage",
         "es": "Dividendo hipotecario"
+      },
+      "mortgage_amortization": {
+        "en": "Mortgage — amortization",
+        "es": "Dividendo — amortización"
+      },
+      "mortgage_extra_amortization": {
+        "en": "Mortgage — extra amortization",
+        "es": "Dividendo — amortización extra"
+      },
+      "mortgage_carrying": {
+        "en": "Mortgage — interest and insurance",
+        "es": "Dividendo — interés y seguros"
       }
     },
     "emptyAccount": {
@@ -4827,8 +4863,8 @@
       "es": "Sin gastos importados."
     },
     "chartTitle": {
-      "en": "Expenses by apartment",
-      "es": "Gastos por departamento"
+      "en": "Expenses by type",
+      "es": "Gastos por tipo"
     },
     "additionalCards": {
       "title": {

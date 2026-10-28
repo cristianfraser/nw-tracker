@@ -1151,6 +1151,8 @@
       "colLinkedOrigin": "Origen",
       "colActions": "Acciones",
       "unlinked": "Sin vincular",
+      "brokenLinkMissing": "La compra vinculada ya no aparece — desvincula o elimina la fila",
+      "brokenLinkOutsideWindow": "La compra vinculada quedó fuera de la ventana de meses de esta cuenta",
       "linkAction": "Vincular",
       "unlinkAction": "Desvincular",
       "linkModalTitle": "Vincular gasto",
@@ -1186,7 +1188,10 @@
       "merchantMatchHintKind": "coincide con el tipo",
       "billPreviousMonthToggle": "Período facturado: mes anterior",
       "billMonthEditAction": "Editar mes facturado",
-      "paidOnHint": "pagado {{date}}"
+      "paidOnHint": "pagado {{date}}",
+      "mortgagePartsHint": "amortización {{amortization}} · extra {{extra}} · interés y seguros {{carrying}}",
+      "coversHint": "cubre {{from}} – {{to}}",
+      "monthsCoveredLabel": "Meses que cubre"
     },
     "colDate": "Fecha",
     "colKind": "Tipo",
@@ -1226,6 +1231,7 @@
       "chartStyleLine": "Líneas",
       "chartYearAverage": "Promedio anual",
       "chartTotal": "Total",
+      "chartShownTotal": "Total mostrado",
       "chartEmpty": "Sin gastos en este período.",
       "colCategory": "Categoría",
       "colSelect": "Seleccionar",
@@ -1358,10 +1364,13 @@
       "kwh": "kWh (lectura)",
       "water": "Agua",
       "rent": "Arriendo",
-      "mortgage": "Dividendo hipotecario"
+      "mortgage": "Dividendo hipotecario",
+      "mortgage_amortization": "Dividendo — amortización",
+      "mortgage_extra_amortization": "Dividendo — amortización extra",
+      "mortgage_carrying": "Dividendo — interés y seguros"
     },
     "emptyAccount": "Sin gastos importados.",
-    "chartTitle": "Gastos por departamento",
+    "chartTitle": "Gastos por tipo",
     "additionalCards": {
       "title": "Tarjetas adicionales",
       "hint": "Cargos de las tarjetas adicionales (no cuentan en tus gastos) frente a los reembolsos recibidos por ellos.",
