@@ -154,6 +154,33 @@ describe("international rows", () => {
     expect(line.origin_amount).toBeCloseTo(258.13, 2);
   });
 
+  it("takes a payment's direction from its code, not its printed sign (MONTO CANCELADO printed '+')", () => {
+    const line = internationalRowToLine(
+      internationalRow({
+        NombreComercio: "MONTO CANCELADO",
+        CodTxs: "0067",
+        MontoOrigen: "00000000000+",
+        MontoTransaccion: "00000077777+",
+      })
+    );
+    expect(line.kind).toBe("payment");
+    expect(line.amount).toBeCloseTo(-777.77, 2);
+  });
+
+  it("reads a nota de crédito as a negative credit note", () => {
+    const line = internationalRowToLine(
+      internationalRow({ NombreComercio: "NOTA DE CREDITO", CodTxs: "2510", MontoTransaccion: "00000002000-" })
+    );
+    expect(line.kind).toBe("credit_note");
+    expect(line.amount).toBeCloseTo(-20, 2);
+  });
+
+  it("refuses an unknown international code", () => {
+    expect(() => internationalRowToLine(internationalRow({ CodTxs: "9999" }))).toThrow(
+      /unknown international CodTxs "9999"/
+    );
+  });
+
   it("keeps the posting date and reference the national feed lacks", () => {
     const line = internationalRowToLine(internationalRow());
     expect(line.posting_date).toBe("2026-07-06");
@@ -244,7 +271,7 @@ function internationalBody(
             CodPais: "US",
             CiudadComercio: null,
             NumeroReferencia: null,
-            CodTxs: "000",
+            CodTxs: "2000",
           })),
         },
       },

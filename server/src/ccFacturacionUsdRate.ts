@@ -1,12 +1,10 @@
 import { payByFxDateIso } from "./ccBillingBalances.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { isCcPaymentOrUsdDebtAbonoMerchant } from "./ccPaymentLines.js";
 import {
   listCcPaymentEvidenceRows,
   listCcPaymentPairings,
   type CcPaymentPairing,
 } from "./ccPaymentMirrorEvidence.js";
-import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
 import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
@@ -181,23 +179,10 @@ export function usdDebtPaymentsForAccount(accountId: number): UsdDebtPayment[] {
   return out;
 }
 
-/**
- * A card line that pays dollar debt: a dollar credit that is a payment (ABONO DE DIVISAS, a PAGO or
- * MONTO CANCELADO in dollars) or a traspaso de deuda's USD leg.
- */
-export function isCcUsdPaymentLine(line: {
-  installment_flag: number;
-  merchant: string | null;
-  usd: number;
-}): boolean {
-  if (line.installment_flag === 1 || !(line.usd < 0)) return false;
-  return isCcPaymentOrUsdDebtAbonoMerchant(line.merchant) || isCcTraspasoDeudaMerchant(line.merchant);
-}
-
 export type CcUsdPaymentLine = { statement_line_id: number; date_iso: string | null; usd: number };
 
 /**
- * The pesos a dollar payment line ({@link isCcUsdPaymentLine}) shows: what was actually paid for
+ * The pesos a dollar payment line (`isCcUsdPaymentLine` in `ccUsdStatementBilled.ts`) shows: what was actually paid for
  * it. It is printed on the statement after the facturación it pays, so the rate of the facturación
  * whose statement prints it is the wrong one. In order:
  * - a divisas purchase paired with the line's payment: its pesos. The line must be divisas payment

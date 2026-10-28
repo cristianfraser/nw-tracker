@@ -26,6 +26,7 @@ import { db } from "./db.js";
 import { billingPeriodIsoRange, loadCreditCardBillingConfig } from "./ccBillingMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
+import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
 
 export type CcCloseSource = "statement" | "feed" | "announced" | "estimated";
 
@@ -349,7 +350,10 @@ export function nextPeriodStartIsoForBillingMonth(
  * The SALDO INICIAL row is the statement's «Monto total facturado» by definition — verified on the
  * July 2026 ·0901 close in both currencies (9xx.xxx CLP, US$xxx,xx on the feed and on the PDFs) —
  * and it is dated at the statement's close. A disagreement means one of the two parses is wrong.
- * A statement with no printed total (the JSON USD side's all-null header) is not compared.
+ * A dollar statement with no printed total (the JSON USD side's all-null header) is compared by
+ * what its lines bill (`usdBilledFromStatementLines`, the figure its facturación row shows): a line
+ * read in the wrong direction (the 09/10/2026 MONTO CANCELADO came in as a positive charge)
+ * fails here. A peso statement with no printed total is not compared.
  */
 export function feedCloseStatementMismatches(
   accountId: number,
@@ -372,7 +376,8 @@ export function feedCloseStatementMismatches(
         problems.push(`${label} closes ${stClose}, the feed's SALDO INICIAL is dated ${close.close_date}`);
         continue;
       }
-      const printed = st.monto_facturado;
+      const printed =
+        st.monto_facturado ?? (st.currency === "usd" ? usdBilledFromStatementLines(st.id) : null);
       const observed = st.currency === "usd" ? close.saldo_inicial_usd : close.saldo_inicial_clp;
       // Nothing to compare: a statement with no printed total, or a currency the feed did not
       // show (its tab failed, or the card never billed in it).
