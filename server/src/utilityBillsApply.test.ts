@@ -135,14 +135,14 @@ describe("pickUtilityBillCharge", () => {
     expect(pick).toMatchObject({ kind: "one", line: { purchase_key: "k1" } });
   });
 
-  it("ignores another merchant, a charge before the bill and one past due + 10 days", () => {
+  it("ignores another merchant, a charge before the bill and one past due + 20 days", () => {
     const lines = [
       line({ merchant: "METROGAS", merchant_key: "METROGAS" }),
       line({ purchase_key: "k2", purchase_on: "2036-10-04" }),
-      line({ purchase_key: "k3", purchase_on: "2036-11-01" }),
+      line({ purchase_key: "k3", purchase_on: "2036-11-11" }),
     ];
     expect(pickUtilityBillCharge(b, null, lines, new Set())).toEqual({ kind: "none" });
-    expect(pickUtilityBillCharge(b, null, [line({ purchase_on: "2036-10-31" })], new Set()).kind).toBe("one");
+    expect(pickUtilityBillCharge(b, null, [line({ purchase_on: "2036-11-10" })], new Set()).kind).toBe("one");
   });
 
   it("reports two fitting charges as ambiguous and skips taken ones", () => {
@@ -164,7 +164,7 @@ describe("applyUtilityBills", () => {
     map("enel", "123456-7", placeId);
     const b = bill({ issued_on: "2036-03-05", due_on: "2036-03-20", period_to: "2036-03-02", amount: 11111 });
     expect(outcomeOf(applyUtilityBills({ bills: [b] }, { todayYmd: "2036-03-10" }), b)?.outcome).toBe("waiting");
-    const again = applyUtilityBills({ bills: [b] }, { todayYmd: "2036-04-10" });
+    const again = applyUtilityBills({ bills: [b] }, { todayYmd: "2036-04-20" });
     expect(again.status).toBe("duplicate");
     expect(outcomeOf(again, b)?.outcome).toBe("overdue");
   });
@@ -225,6 +225,21 @@ describe("applyUtilityBills", () => {
     const o = outcomeOf(applyUtilityBills({ bills: [b] }, { todayYmd: "2036-06-15" }), b)!;
     expect(o.outcome).toBe("ambiguous");
     expect(db.prepare(`SELECT COUNT(*) AS n FROM expense_entries WHERE expense_account_id = ? AND amount_clp = 33333`).get(placeId)).toEqual({ n: 0 });
+  });
+
+  it("takes the one of two fitting charges already filed under a bill (a bill paid twice)", () => {
+    map("enel", "123456-7", placeId);
+    const filed = cardLine("ENEL DISTRIBUCION CHILE", "10/06/2036", 34444);
+    cardLine("ENEL DISTRIBUCION CHILE", "12/06/2036", 34444);
+    const { expense_entry_id } = assignPurchaseToRealEstateExpense({
+      purchaseKey: filed,
+      accountSlug: PLACE_SLUG,
+      kind: "electricidad",
+      billMonth: "2036-05",
+    });
+    const b = bill({ amount: 34444, issued_on: "2036-06-05", due_on: "2036-06-20", period_to: "2036-06-01", kwh: 150 });
+    const o = outcomeOf(applyUtilityBills({ bills: [b] }, { todayYmd: "2036-06-15" }), b)!;
+    expect(o).toMatchObject({ outcome: "filled", expense_entry_id, purchase_key: filed });
   });
 
   it("fills the m³ on a gas bill filed by hand", () => {

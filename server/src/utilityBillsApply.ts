@@ -14,7 +14,7 @@
  *  - its charge (`pickUtilityBillCharge`) is the one whole purchase among the lines the page pairs
  *    bills with (`loadGastosLinesForRealEstateMatching`) of exactly the bill's pesos, whose merchant
  *    is the kind's (`merchantMatchesExpectation`), dated from the issue day through the end of its
- *    window (`chargeWindowEnd`: due + 10 days; a gastos comunes statement, paid by transfer later
+ *    window (`chargeWindowEnd`: due + 20 days; a gastos comunes statement, paid by transfer later
  *    in the month, its issue day + 35). A transfer whose mail names its counterparty must be paying
  *    someone else than the client's own accounts; among several, those whose counterparty is the
  *    place's are kept. Several → ambiguous; none → waiting, and overdue 5 days past the window.
@@ -52,7 +52,7 @@ import {
 import { merchantMatchesExpectation, type RealEstateBillKind } from "./realEstateExpenseMerchants.js";
 
 /** How long after its due day a bill's charge may still be dated. */
-export const UTILITY_BILL_CHARGE_GRACE_DAYS = 10;
+export const UTILITY_BILL_CHARGE_GRACE_DAYS = 20;
 /** A gastos comunes statement's charge (a transfer later in the month) may be dated this long after its issue day. */
 export const HOA_CHARGE_WINDOW_DAYS = 35;
 /** Past its charge window by this many days with no charge, a bill is reported overdue. */
@@ -352,7 +352,14 @@ export function applyUtilityBills(
     const excluded = new Set(
       [...links].filter(([, entry]) => claimedEntries.has(entry)).map(([key]) => key)
     );
-    const pick = pickUtilityBillCharge(bill, place.comunidad_patterns, lines, excluded);
+    let pick = pickUtilityBillCharge(bill, place.comunidad_patterns, lines, excluded);
+    if (pick.kind === "ambiguous") {
+      // Several charges fit (a bill paid twice, the second refunded): one already filed under a bill
+      // is the bill's — the row it is filed under is then checked like any linked charge.
+      const filed = pick.purchase_keys.filter((k) => links.has(k));
+      const line = filed.length === 1 ? lines.find((l) => l.purchase_key === filed[0]) : undefined;
+      if (line) pick = { kind: "one", line };
+    }
     if (pick.kind === "ambiguous") {
       for (const k of pick.purchase_keys) followedKeys.add(k);
       report("ambiguous", { message: `charges ${pick.purchase_keys.join(", ")}` });
