@@ -651,18 +651,26 @@ export function DashboardPage() {
                   stackId: "deposits",
                 },
               ]}
-              areaKey={perfArea.area === "total" ? "accumulated_earnings" : "ytd_combined"}
+              // The YTD area always shows; «Total acumulado» adds the all-time P/L as a line.
+              areaKey="ytd_combined"
               areaName={
-                perfArea.area === "total"
-                  ? t("dashboard.sections.accumulatedEarnings")
-                  : isYearly
-                    ? t("dashboard.sections.yearTotalCombined")
-                    : t("dashboard.sections.ytdCombined")
+                isYearly ? t("dashboard.sections.yearTotalCombined") : t("dashboard.sections.ytdCombined")
               }
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
-              alternateYearAreaStripes={perfArea.area !== "total"}
+              alternateYearAreaStripes
               lineSeries={[
+                ...(perfArea.area === "total"
+                  ? [
+                      {
+                        dataKey: "accumulated_earnings",
+                        name: t("dashboard.sections.accumulatedEarnings"),
+                        stroke: "#e2e8f0",
+                        strokeWidth: 2,
+                        strokeDasharray: "",
+                      },
+                    ]
+                  : []),
                 {
                   dataKey: "delta_combined",
                   name: isYearly ? t("dashboard.combinedAnnualDelta") : t("dashboard.combinedMonthlyDelta"),
