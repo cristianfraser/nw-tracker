@@ -255,3 +255,82 @@ describe("applyUtilityBills", () => {
     expect(outcomeOf(applyUtilityBills({ bills: [billB] }, { todayYmd: "2036-08-15" }), billB)?.outcome).toBe("conflict");
   });
 });
+
+describe("gastos comunes statements", () => {
+  const PATTERN = "COMUNIDAD EDIFICIO EJEMPLO";
+  const hoa = (over: Partial<UtilityBill> = {}): UtilityBill =>
+    bill({
+      provider: "comunidad_edificio",
+      service: "hoa",
+      service_account: "1203",
+      bill_number: `1203-2036-${Math.floor(Math.random() * 1e6)}`,
+      issued_on: "2036-10-08",
+      due_on: "2036-10-13",
+      period_from: "2036-09-01",
+      period_to: "2036-09-30",
+      amount: 64321,
+      kwh: null,
+      m3: null,
+      estimated_reading: null,
+      ...over,
+    });
+  const transfer = (over: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow =>
+    ({
+      purchase_key: "t1",
+      amount_clp: 64321,
+      merchant: `Transf a ${PATTERN}`,
+      merchant_key: `TRANSF A ${PATTERN}`,
+      purchase_on: "2036-10-28",
+      occurred_on: "2036-10-28",
+      ...over,
+    }) as FlowCcExpenseLineRow;
+  const counterparty = (direction: "out" | "own", name: string) => ({
+    direction,
+    name,
+    rut: null,
+    bank: null,
+    account_type: null,
+    account_number: null,
+    email: null,
+    comment: null,
+    sent_at_chile: "2036-10-28 10:00",
+  });
+
+  it("takes a transfer to the building up to 35 days after the statement, never one between own accounts", () => {
+    const b = hoa();
+    expect(pickUtilityBillCharge(b, PATTERN, [transfer({})], new Set()).kind).toBe("one");
+    expect(pickUtilityBillCharge(b, PATTERN, [transfer({ purchase_on: "2036-11-13" })], new Set()).kind).toBe("none");
+    expect(pickUtilityBillCharge(b, PATTERN, [transfer({ transfer_counterparty: counterparty("own", PATTERN) })], new Set()).kind).toBe(
+      "none"
+    );
+  });
+
+  it("prefers the transfer whose mail names the building when two fit", () => {
+    const lines = [
+      transfer({}),
+      transfer({ purchase_key: "t2", purchase_on: "2036-10-29", transfer_counterparty: counterparty("out", `${PATTERN} 100`) }),
+    ];
+    expect(pickUtilityBillCharge(hoa(), PATTERN, lines, new Set())).toMatchObject({ kind: "one", line: { purchase_key: "t2" } });
+  });
+
+  it("files the statement in its month and lists a later payment no statement accounts for", () => {
+    db.prepare(`UPDATE expense_accounts SET comunidad_merchant_patterns = ? WHERE id = ?`).run(PATTERN, placeId);
+    map("comunidad_edificio", "1203", placeId);
+    const key = cardLine(`Transf a ${PATTERN}`, "27/10/2036", 64321);
+    const b = hoa();
+    const r = applyUtilityBills({ bills: [b] }, { todayYmd: "2036-10-30" });
+    const o = outcomeOf(r, b)!;
+    expect(o).toMatchObject({ outcome: "created", purchase_key: key, bill_month: "2036-09" });
+    expect(entry(o.expense_entry_id!)).toMatchObject({ amount_clp: 64321, spent_on: "2036-09-30", category: "gastos_comunes", kwh: null, m3: null });
+
+    // November's payment with no statement: listed once 10 days old, never filed.
+    const unbilled = cardLine(`Transf a ${PATTERN}`, "26/11/2036", 61111);
+    const early = applyUtilityBills({ bills: [] }, { todayYmd: "2036-12-01" });
+    expect(early.status === "conflict" ? null : early.details.unbilled_hoa_payments).toEqual([]);
+    const late = applyUtilityBills({ bills: [] }, { todayYmd: "2036-12-07" });
+    expect(late.status === "conflict" ? null : late.details.unbilled_hoa_payments).toEqual([
+      { place: PLACE_SLUG, purchase_key: unbilled, day: "2036-11-26", amount: 61111, merchant: `Transf a ${PATTERN}` },
+    ]);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM expense_entries WHERE expense_account_id = ? AND amount_clp = 61111`).get(placeId)).toEqual({ n: 0 });
+  });
+});

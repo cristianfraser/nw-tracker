@@ -1,13 +1,13 @@
--- Utility bills (utility.bill): what each electricity / gas / water / internet bill charged and the
--- consumption it states, read from the provider's mail. A bill becomes the real-estate page's bill
--- row (expense_entries under its place) only once the card or checking charge that paid it is in;
--- `expense_entry_id` records the row it created or filled, and `settled_at` that it is done (a row
--- deleted by hand afterwards is not written again).
+-- Utility bills (utility.bill): what each electricity / gas / water / internet bill, or a building's
+-- gastos comunes statement, charged and the consumption it states, read from the provider's mail. A
+-- bill becomes the real-estate page's bill row (expense_entries under its place) only once the card or
+-- checking charge that paid it is in; `expense_entry_id` records the row it created or filled, and
+-- `settled_at` that it is done (a row deleted by hand afterwards is not written again).
 
 CREATE TABLE IF NOT EXISTS utility_bills (
   provider TEXT NOT NULL,
   bill_number TEXT NOT NULL,
-  service TEXT NOT NULL CHECK (service IN ('electricity', 'gas', 'water', 'internet')),
+  service TEXT NOT NULL CHECK (service IN ('electricity', 'gas', 'water', 'internet', 'hoa')),
   service_account TEXT NOT NULL,
   issued_on TEXT NOT NULL,
   amount INTEGER NOT NULL CHECK (amount >= 0),
