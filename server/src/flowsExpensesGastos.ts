@@ -27,6 +27,7 @@ import {
   hasSplittableMortgageExpenseDepositLink,
   REAL_ESTATE_AMORTIZATION_CC_EXPENSE_SLUG,
 } from "./expenseDepositLinks.js";
+import { listCcExpenseBigGroups, type CcExpenseBigGroupRow } from "./ccExpenseBigGroups.js";
 import {
   buildFlowsExpenseLines,
   type FlowCcExpenseCategoryChartPoint,
@@ -476,15 +477,62 @@ export function buildFlowsExpensesGastosViews(
   return { unit, excluded_big_groups: [...excludedBigGroupSlugs].sort(), views };
 }
 
+/** A big group's spend (pesos, whatever the display unit) and how many purchases it holds. */
+export type BigGroupUsage = {
+  slug: string;
+  label: string;
+  total_clp: number;
+  purchase_count: number;
+};
+
+/**
+ * The big groups that hold spend, per installment mode (2026-10-28): Σ pesos of the lines that
+ * count toward gasto del mes in the mode, purchases counted by (account, purchase key), sorted by
+ * label. The Expenses page's «Grandes gastos» section and its chart filter pick it; they used to
+ * sum the lines on the client.
+ */
+export function bigGroupUsageByMode(
+  lines: readonly FlowCcExpenseLineRow[],
+  catalog: readonly Pick<CcExpenseBigGroupRow, "slug" | "label">[]
+): Record<CcInstallmentGastosMode, BigGroupUsage[]> {
+  const labelBySlug = new Map(catalog.map((g) => [g.slug, g.label]));
+  const usageFor = (mode: CcInstallmentGastosMode): BigGroupUsage[] => {
+    const totals = new Map<string, number>();
+    const purchases = new Map<string, Set<string>>();
+    for (const ln of lines) {
+      const slug = ln.big_group_slug;
+      if (!slug || !countsTowardGastosMes(ln, mode)) continue;
+      totals.set(slug, (totals.get(slug) ?? 0) + ln.amount_clp);
+      const set = purchases.get(slug) ?? new Set<string>();
+      set.add(`${ln.account_id}|${ln.purchase_key}`);
+      purchases.set(slug, set);
+    }
+    const label = (slug: string) => labelBySlug.get(slug) ?? slug;
+    return [...totals.keys()]
+      .sort((a, b) => label(a).localeCompare(label(b), "es"))
+      .map((slug) => ({
+        slug,
+        label: label(slug),
+        total_clp: Math.round(totals.get(slug) ?? 0),
+        purchase_count: purchases.get(slug)?.size ?? 0,
+      }));
+  };
+  return { split: usageFor("split"), total: usageFor("total") };
+}
+
 export function buildFlowsExpensesGastosPayload(
   unit: GastosUnit,
   excludedBigGroupSlugs: ReadonlySet<string>
-): FlowsExpensesGastosPayload {
-  return buildFlowsExpensesGastosViews(
-    buildFlowsExpenseLines(),
-    listCcExpenseCategories(),
-    unit,
-    excludedBigGroupSlugs,
-    chileCalendarTodayYmd().slice(0, 7)
-  );
+): FlowsExpensesGastosPayload & { big_group_usage: Record<CcInstallmentGastosMode, BigGroupUsage[]> } {
+  const lines = buildFlowsExpenseLines();
+  return {
+    ...buildFlowsExpensesGastosViews(
+      lines,
+      listCcExpenseCategories(),
+      unit,
+      excludedBigGroupSlugs,
+      chileCalendarTodayYmd().slice(0, 7)
+    ),
+    big_group_usage: bigGroupUsageByMode(lines, listCcExpenseBigGroups()),
+  };
 }

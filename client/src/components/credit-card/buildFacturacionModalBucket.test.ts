@@ -32,10 +32,10 @@ function line(
 }
 
 describe("buildFacturacionModalBucket", () => {
-  it("splits section-3 financing charges from gastos", () => {
+  it("files the lines the server marks as financing under coste financiero", () => {
     const bucket = buildFacturacionModalBucket([
       line({ statement_line_id: 1, merchant: "JUMBO", amount_clp: 50_000 }),
-      line({ statement_line_id: 2, merchant: "INTERESES ROTATIVOS", amount_clp: 12_000 }),
+      line({ statement_line_id: 2, merchant: "INTERESES ROTATIVOS", amount_clp: 12_000, is_financing_cost: true }),
       line({ statement_line_id: 3, merchant: "PAGO", amount_clp: -100_000 }),
     ]);
     expect(bucket.gastos.map((l) => l.merchant)).toEqual(["JUMBO"]);
@@ -43,30 +43,9 @@ describe("buildFacturacionModalBucket", () => {
     expect(bucket.abonos.map((l) => l.merchant)).toEqual(["PAGO"]);
   });
 
-  it("keeps traspaso deuda nacional in gastos, not financing", () => {
+  it("never reads the merchant: an unmarked charge is a gasto", () => {
     const bucket = buildFacturacionModalBucket([
-      line({
-        statement_line_id: 5,
-        merchant: "TRASPASO A DEUDA NACIONAL",
-        amount_clp: 167_192,
-        category_slug: "no_cuenta",
-      }),
-    ]);
-    expect(bucket.gastos.map((l) => l.merchant)).toEqual(["TRASPASO A DEUDA NACIONAL"]);
-    expect(bucket.costeFinanciero).toHaveLength(0);
-  });
-
-  it("keeps installment cuotas in gastos, not financing", () => {
-    const bucket = buildFacturacionModalBucket([
-      line({
-        statement_line_id: 4,
-        merchant: "STORE",
-        amount_clp: 30_000,
-        installment_flag: 1,
-        line_role: "installment_cuota",
-        nro_cuota_current: 2,
-        nro_cuota_total: 6,
-      }),
+      line({ statement_line_id: 4, merchant: "Servicio Administracion", amount_clp: 2_990 }),
     ]);
     expect(bucket.gastos).toHaveLength(1);
     expect(bucket.costeFinanciero).toHaveLength(0);
