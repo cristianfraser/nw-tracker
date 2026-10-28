@@ -47,6 +47,7 @@ import {
   loadExpectationById,
   loadGastosLinesForRealEstateMatching,
   updateRealEstateExpenseConsumption,
+  updateRealEstateExpenseMonthsCovered,
 } from "./realEstateExpenseMatching.js";
 import { merchantMatchesExpectation, type RealEstateBillKind } from "./realEstateExpenseMerchants.js";
 
@@ -85,6 +86,22 @@ export function utilityBillMonth(b: Pick<UtilityBill, "period_to" | "issued_on">
   const day = b.period_to ?? b.issued_on;
   const ym = day.slice(0, 7);
   return Number(day.slice(8, 10)) >= 15 ? ym : addCalendarMonths(ym, -1);
+}
+
+/** Average length of a month in days, to count the months a billing period spans. */
+const DAYS_PER_MONTH = 365.25 / 12;
+
+/**
+ * Months a bill pays for, from its printed period: a two-month gas period covers 2, a monthly bill
+ * 1. Without a period, 1. The page spreads the bill over them, ending at its bill month.
+ */
+export function utilityBillMonthsCovered(b: Pick<UtilityBill, "period_from" | "period_to">): number {
+  if (b.period_from == null || b.period_to == null) return 1;
+  const days = (Date.parse(`${b.period_to}T00:00:00Z`) - Date.parse(`${b.period_from}T00:00:00Z`)) / 86_400_000 + 1;
+  if (!Number.isFinite(days) || days < 1) {
+    throw new Error(`utility bill period ${b.period_from}..${b.period_to} is not a period`);
+  }
+  return Math.max(1, Math.round(days / DAYS_PER_MONTH));
 }
 
 /** The day a gastos line's charge happened. */
@@ -358,6 +375,8 @@ export function applyUtilityBills(
         kwh: consumption.kwh,
         m3: consumption.m3,
       });
+      const monthsCovered = utilityBillMonthsCovered(bill);
+      if (monthsCovered > 1) updateRealEstateExpenseMonthsCovered(expense_entry_id, monthsCovered);
       settle.run(expense_entry_id, bill.provider, bill.bill_number);
       claimedEntries.add(expense_entry_id);
       wrote = true;
