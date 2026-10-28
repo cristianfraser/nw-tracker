@@ -184,3 +184,9 @@ h2.flow-section-title {
   justify-content: flex-end;
   width: 100%;
 }
+
+/* Wealth percentile «Datos país»: the user's own line among the p99/p90/p50 thresholds. */
+.wealth-own-threshold {
+  color: #74a4d9;
+  font-weight: 600;
+}
