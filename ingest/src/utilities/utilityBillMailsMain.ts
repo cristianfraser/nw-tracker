@@ -1,7 +1,9 @@
 /**
- * Send the utility bills the providers mailed (ENEL electricity, Metrogas gas) to the server as
+ * Send the utility bills the providers mailed (ENEL electricity, Metrogas gas, and the building
+ * administrations' gastos comunes statements configured in `cfraser/hoa-mail.json`) to the server as
  * `utility.bill`: each becomes its place's bill row on the real-estate page once the charge that
- * paid it is in, with the consumption it states.
+ * paid it is in, with the consumption it states. The server also lists gastos comunes payments no
+ * statement accounts for.
  *
  *   npm run import:utility-bills -w nw-tracker-ingest                       # the last 70 days, fetched now
  *   npm run import:utility-bills -w nw-tracker-ingest -- --days=800
@@ -20,6 +22,7 @@ import { utilityBillKind, type UtilityBillApplyDetails } from "nw-tracker-contra
 import { archiveMails, type ArchivedMail } from "../email/santanderMailArchive.js";
 import { log } from "../log.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
+import { decodeHoaStatement, HOA_STATEMENT_SUBJECT, HOA_UNIT_PDF, loadHoaSenders } from "./hoaStatementMails.js";
 import { UTILITY_PROVIDERS, utilityBillsFromDecoded, type DecodedUtilityBill, type UtilityProvider } from "./utilityBillMails.js";
 
 const argv = process.argv.slice(2);
@@ -33,12 +36,24 @@ function chileToday(): string {
 /** How old an overdue bill may be and still fail the step. */
 const OVERDUE_ALARM_DAYS = 75;
 
+/** The bill mailers: the utilities, then each configured building administration. */
+const PROVIDERS: readonly UtilityProvider[] = [
+  ...UTILITY_PROVIDERS,
+  ...loadHoaSenders().map((s) => ({
+    slug: s.provider,
+    from: s.from,
+    wantSubject: (subject: string) => HOA_STATEMENT_SUBJECT.test(subject),
+    pdfAttachment: (filename: string) => HOA_UNIT_PDF.test(filename),
+    decode: (mail: ArchivedMail) => decodeHoaStatement(mail, s.provider),
+  })),
+];
+
 type TaggedMail = { provider: UtilityProvider; mail: ArchivedMail };
 
 function providerForFile(file: string): UtilityProvider {
   const base = file.split("/").pop() ?? file;
-  const p = UTILITY_PROVIDERS.find((x) => base.startsWith(`${x.slug}-`));
-  if (!p) throw new Error(`${base}: an archive is named <provider>-… (${UTILITY_PROVIDERS.map((x) => x.slug).join(", ")})`);
+  const p = PROVIDERS.find((x) => base.startsWith(`${x.slug}-`));
+  if (!p) throw new Error(`${base}: an archive is named <provider>-… (${PROVIDERS.map((x) => x.slug).join(", ")})`);
   return p;
 }
 
@@ -62,13 +77,14 @@ async function stagedMails(): Promise<{ mails: TaggedMail[]; ref: string }> {
     fromYmd = from.toISOString().slice(0, 10);
   }
   const mails: TaggedMail[] = [];
-  for (const p of UTILITY_PROVIDERS) {
+  for (const p of PROVIDERS) {
     const { file } = await archiveMails({
       from: p.from,
       label: `${p.slug} bills`,
       fromYmd,
       toYmd,
       wantSubject: p.wantSubject,
+      ...(p.pdfAttachment ? { pdfAttachment: p.pdfAttachment } : {}),
       dir: "utility-bill-mails",
       fileName: windowed ? `${p.slug}-recent.json` : `${p.slug}-${fromYmd}_${toYmd}.json`,
     });
@@ -121,6 +137,9 @@ async function main(): Promise<number> {
           `${b.message ? ` — ${b.message}` : ""}`
       );
       if (b.outcome === "conflict" || (b.outcome === "overdue" && b.issued_on >= alarmFromYmd)) alarms++;
+    }
+    for (const u of d.unbilled_hoa_payments) {
+      log(`  NO STATEMENT for a gastos comunes payment: ${u.day} $${u.amount} ${u.merchant ?? u.purchase_key} (${u.place})`);
     }
     if (alarms > 0) return 1;
   } catch (err) {
