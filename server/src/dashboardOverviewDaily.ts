@@ -15,7 +15,7 @@ import {
   getBucketDailySeriesCached,
   totalRangeDays,
 } from "./dailySeries.js";
-import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
+import { nullLeadingZeroRun, trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { clpToUsdForBalanceAt } from "./fxRates.js";
 import { getNetWorthAllTimeHigh, type NetWorthAthDto } from "./netWorthAllTimeHigh.js";
 import { buildDashboardBucketDailySeriesClp } from "./portfolioGroupValueAtDate.js";
@@ -110,6 +110,9 @@ function buildPrimaryDailyLines(
     });
     const byDate = new Map(series.points.map((p) => [p.as_of_date, p.value]));
     const values = grid.map((ymd) => byDate.get(ymd) ?? null);
+    // A child group that starts holding inside the window reads a finite 0 before (a member
+    // marks 0, not null): the line starts at its first non-zero day, as the monthly block does.
+    nullLeadingZeroRun(values);
     // A sold-out child group (e.g. mutual funds after the fund was liquidated) reads a finite 0
     // every day after, which would hug zero to today; the monthly `accounts_ex_property` block is
     // clipped by `applyTrailingZeroTailClipToBlock`, so mirror it here — same kept-zeros rule.

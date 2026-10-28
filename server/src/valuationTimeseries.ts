@@ -106,7 +106,7 @@ import {
 } from "./groupMonthlyPerfConsolidation.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 import { buildReferenceCoverage, sumKeysPerRow } from "./referenceCoverage.js";
-import { applyTrailingZeroTailClipToBlock } from "./timeseriesTailClip.js";
+import { applyTrailingZeroTailClipToBlock, nullLeadingZeroRun } from "./timeseriesTailClip.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
 
@@ -1750,13 +1750,20 @@ function buildDashboardPrimaryFromTotals(
     });
   }
 
-  const points = datesAsc.map((d) => {
-    const row: Record<string, string | number | null> = { as_of_date: d };
-    for (const spec of primarySpecs) {
-      const dk = String(spec.chartAccountId);
+  // A child group that starts holding after the first chart date reads a finite 0 before (a
+  // member marks 0, not null): its line starts at its first non-zero date, as the daily lines do.
+  const valuesByKey = new Map<string, (number | null)[]>();
+  for (const spec of primarySpecs) {
+    const values = datesAsc.map((d) => {
       const v = totalsBySlug.get(spec.slug)?.get(d);
-      row[dk] = v != null && Number.isFinite(v) ? v : null;
-    }
+      return v != null && Number.isFinite(v) ? v : null;
+    });
+    nullLeadingZeroRun(values);
+    valuesByKey.set(String(spec.chartAccountId), values);
+  }
+  const points = datesAsc.map((d, i) => {
+    const row: Record<string, string | number | null> = { as_of_date: d };
+    for (const [dk, values] of valuesByKey) row[dk] = values[i] ?? null;
     return row;
   });
 

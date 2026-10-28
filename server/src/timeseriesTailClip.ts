@@ -208,3 +208,16 @@ export function applyTrailingZeroTailClipToBlock<T extends TailClipableBlock>(
     ...(chart_end_ymd ? { chart_end_ymd } : {}),
   };
 }
+
+/**
+ * Nulls a line's leading run of 0 / null in place, so a line that starts holding inside the window
+ * begins at its first non-zero value instead of hugging zero from the left edge (the leading
+ * mirror of {@link trailingZeroRunClipStartIndex}). A line that is never non-zero ends all null.
+ */
+export function nullLeadingZeroRun(values: (number | null)[]): void {
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v != null && Number.isFinite(v) && v !== 0) return;
+    values[i] = null;
+  }
+}
