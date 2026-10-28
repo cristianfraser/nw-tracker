@@ -14,8 +14,7 @@ import { loadableClass } from "../components/ui/Loadable";
 import { useIncome } from "../queries/hooks";
 import { useTranslation } from "../i18n";
 import {
-  aggregateIncomeChartPointsByDay,
-  aggregateIncomeFromPayload,
+  buildIncomeDisplayRows,
   rollupIncomeChartPointsByYear,
   rollupIncomeMonthRowsByYear,
 } from "../incomeAggregates";
@@ -47,44 +46,50 @@ export function IncomePage() {
   const tableGranularity = flowTableGranularity(
     flowChartGranularityFromMetricsPeriod(tablePrefs.period)
   );
-  const { data, error } = useIncome();
+  const { data, error } = useIncome(displayUnit);
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
   // The frame renders with zero totals and no rows until the payload arrives.
   const loading = !data;
 
-  const view = useMemo(
-    () => (data ? aggregateIncomeFromPayload(data, displayUnit) : null),
-    [data, displayUnit]
-  );
+  // Month rows, day points and the total are the server's (the overview's own income rule).
+  const aggregates = data?.aggregates ?? null;
+  const allRows = useMemo(() => (data ? buildIncomeDisplayRows(data) : []), [data]);
 
   const chartPoints = useMemo(() => {
-    if (!view) return [];
+    if (!aggregates) return [];
     if (chartGranularity === "day") {
-      return clipPointsToTimeRange(aggregateIncomeChartPointsByDay(data!, displayUnit), timeRange);
+      return clipPointsToTimeRange(aggregates.days, timeRange);
     }
     // Months cut at the Rango start, then rolled up: the yearly chart starts with a partial
     // first year.
     return clipMonthsThenRollup(
-      view.chart_monthly,
+      aggregates.months.map((m) => ({
+        as_of_date: m.as_of_date,
+        salary: m.salary_clp,
+        severance: m.severance_clp,
+        parent_gift: m.parent_gift_clp,
+        other: m.other_clp,
+        total: m.total_clp,
+      })),
       chartGranularity,
       timeRange,
       rollupIncomeChartPointsByYear
     );
-  }, [chartGranularity, data, displayUnit, view, timeRange]);
+  }, [aggregates, chartGranularity, timeRange]);
 
   /**
-   * "En el rango" companion (headline `view.total` stays full history): the plotted points'
+   * "En el rango" companion (headline total stays full history): the plotted points'
    * sum, the same at month and year grain since the yearly rows are built from the in-range months.
    */
   const rangeTotal = useMemo(() => sumChartPointsField(chartPoints, "total"), [chartPoints]);
 
   const monthTableRows = useMemo(() => {
-    if (!view) return [];
-    // Tables include full history; the chart's Rango only scopes the chart.
-    if (tableGranularity !== "year") return view.by_month;
-    const asc = [...view.by_month].reverse();
-    return [...rollupIncomeMonthRowsByYear(asc)].reverse();
-  }, [tableGranularity, view]);
+    if (!aggregates) return [];
+    // Tables include full history (newest first); the chart's Rango only scopes the chart.
+    const asc =
+      tableGranularity === "year" ? rollupIncomeMonthRowsByYear(aggregates.months) : aggregates.months;
+    return [...asc].reverse();
+  }, [aggregates, tableGranularity]);
 
   if (err) {
     return <p className="error">{err}</p>;
@@ -97,7 +102,7 @@ export function IncomePage() {
       <p className={loadableClass(loading, "muted")} style={{ marginBottom: "1rem" }}>
         {t("income.totalLabel")}{" "}
         <span className="mono" style={{ color: "var(--text)" }}>
-          {formatFlowMoney(view?.total ?? 0, displayUnit)}
+          {formatFlowMoney(aggregates?.total ?? 0, displayUnit)}
         </span>
         {timeRange !== "total" ? (
           <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}>
@@ -154,7 +159,7 @@ export function IncomePage() {
 
       <section>
         <h3 style={{ marginBottom: "0.35rem" }}>{t("income.sectionAllLines")}</h3>
-        <IncomeAllLinesTable rows={view?.all_rows ?? []} displayUnit={displayUnit} loading={loading} />
+        <IncomeAllLinesTable rows={allRows} displayUnit={displayUnit} loading={loading} />
       </section>
 
       <section style={{ marginTop: "1.5rem" }}>

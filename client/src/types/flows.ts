@@ -568,7 +568,6 @@ export interface FlowManualIncomeLine {
 export interface FlowsIncomeResponse {
   lines: FlowCheckingIncomeLine[];
   manual: FlowManualIncomeLine[];
-  monthly_totals: Record<string, number>;
   work_earnings: FlowWorkEarningRow[];
   income_kind_by_movement_id: Record<number, IncomeKind>;
   payroll_period_by_movement_id: Record<number, string>;
@@ -580,6 +579,18 @@ export interface FlowsIncomeResponse {
   payroll_breakdown: PayrollBreakdownPayload;
   /** Each salary payslip recomputed from the month's legal parameters vs what it printed (server-built). */
   payslip_checks: PayslipChecksRow[];
+  /** The page's month rows, day points and total in the requested unit (server-built, the overview's income rule). */
+  aggregates: FlowsIncomeAggregates;
+}
+
+export interface FlowsIncomeAggregates {
+  unit: "clp" | "usd";
+  /** Oldest first, through Chile today (zero months after the last arrival). */
+  months: FlowIncomeMonthRow[];
+  /** Days carrying income, by arrival date, oldest first. */
+  days: FlowIncomeChartPoint[];
+  /** Full history. */
+  total: number;
 }
 
 export type PayslipCheckName = "taxable_base" | "pension" | "health_minimum" | "unemployment" | "income_tax" | "pension_credited";
@@ -824,8 +835,11 @@ export interface FlowsDepositsResponse {
   fx_conversion_error?: boolean;
   fx_conversion_warnings?: FxConversionWarning[];
   chart_monthly_usd: FlowDepositChartPoint[];
+  /** Diario: one point per day carrying a deposit, oldest first (server-built). */
+  chart_daily: FlowDepositChartPoint[];
+  chart_daily_usd: FlowDepositChartPoint[];
   by_category: Record<
     DepositFlowCategory,
-    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number | null }
+    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number }
   >;
 }

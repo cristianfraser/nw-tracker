@@ -123,6 +123,9 @@ export type FlowDepositsPayload = {
    */
   chart_monthly: FlowDepositChartPoint[];
   chart_monthly_usd: FlowDepositChartPoint[];
+  /** Diario: one point per day carrying a deposit, oldest first (the chart densifies the rest). */
+  chart_daily: FlowDepositChartPoint[];
+  chart_daily_usd: FlowDepositChartPoint[];
   net_total_clp: number;
   net_total_usd: number;
   /** AFP/AFC cotizaciones ({@link isPreTaxDepositRow}) and the rest: Σ = net total. */
@@ -338,6 +341,8 @@ export function buildFlowsDepositsPayload(opts?: {
 
   const chart_monthly = aggregateDepositChartPoints(rows, "clp");
   const chart_monthly_usd = aggregateDepositChartPoints(rows, "usd");
+  const chart_daily = aggregateDepositChartPoints(rows, "clp", "day");
+  const chart_daily_usd = aggregateDepositChartPoints(rows, "usd", "day");
 
   const by_category = {} as FlowDepositsPayload["by_category"];
   for (const cat of DEPOSIT_FLOW_CATEGORIES) {
@@ -356,6 +361,8 @@ export function buildFlowsDepositsPayload(opts?: {
     rows,
     chart_monthly,
     chart_monthly_usd,
+    chart_daily,
+    chart_daily_usd,
     by_category,
     net_total_clp: rows.reduce((s, r) => s + r.amount_clp, 0),
     net_total_usd: rows.reduce((s, r) => s + r.amount_usd, 0),
@@ -414,11 +421,12 @@ function mortgageCarryingRows(
 
 function aggregateDepositChartPoints(
   rows: readonly FlowDepositRow[],
-  unit: "clp" | "usd"
+  unit: "clp" | "usd",
+  grain: "month" | "day" = "month"
 ): FlowDepositChartPoint[] {
   const byPeriod = new Map<string, FlowDepositChartPoint>();
   for (const r of rows) {
-    const pe = monthEndFromOccurredOn(r.occurred_on);
+    const pe = grain === "day" ? r.occurred_on.slice(0, 10) : monthEndFromOccurredOn(r.occurred_on);
     let pt = byPeriod.get(pe);
     if (!pt) {
       pt = {
@@ -436,6 +444,7 @@ function aggregateDepositChartPoints(
     pt.total += amt;
   }
   const sorted = [...byPeriod.values()].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
+  if (grain === "day") return sorted;
   const emptyPoint = (as_of_date: string): FlowDepositChartPoint => ({
     as_of_date, real_estate: 0, cash: 0, brokerage: 0, inversiones: 0, total: 0,
   });

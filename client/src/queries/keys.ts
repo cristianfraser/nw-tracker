@@ -45,7 +45,8 @@ export const queryKeys = {
   liveQuotesStamp: () => ["liveQuotesStamp"] as const,
   importSyncDocumentCoverage: () => ["importSyncDocumentCoverage"] as const,
   genericUniqueMerchants: () => ["genericUniqueMerchants"] as const,
-  income: () => ["income"] as const,
+  /** Bare `income()` is the prefix every income invalidation uses. */
+  income: (unit?: DisplayUnit) => (unit ? (["income", unit] as const) : (["income"] as const)),
   flowsDeposits: () => ["flowsDeposits"] as const,
   flowsPl: (days?: number) => ["flowsPl", days ?? null] as const,
   flowsDepositsReconciliation: () => ["flowsDepositsReconciliation"] as const,

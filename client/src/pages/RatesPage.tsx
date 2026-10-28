@@ -11,7 +11,7 @@ import type { MarketDisplaySeriesRow } from "../types";
 import { densifyRecordsByCalendarDay, type ChartSparseRow } from "../chartDensifyTimeSeries";
 import { RatesLineChart, type RatesLineSeries } from "../components/charts/RatesLineChart";
 import { useDailyRateTailClip } from "./ratesDailyTailClip";
-import { timeRangeCutoffYmd, type TimeRange } from "../timeRange";
+import { clipRowsToTimeRange, type TimeRange } from "../timeRange";
 
 const FX_USD_DUAL_SERIES_KEYS = ["yahoo", "bcentral", "buy", "sell"] as const;
 const SINGLE_VALUE_SERIES_KEYS = ["value"] as const;
@@ -214,8 +214,7 @@ function FxUsdClpDualChart({
     [yahooData, bcentralData, buyData, sellData]
   );
   const denseData = useMemo(() => {
-    const cutoff = timeRangeCutoffYmd(timeRange);
-    const clipped = cutoff ? merged.filter((r) => r.date >= cutoff) : merged;
+    const clipped = clipRowsToTimeRange(merged, timeRange, (r) => r.date);
     return densifyRecordsByCalendarDay(clipped as unknown as ChartSparseRow[], "date", [
       "yahoo",
       "bcentral",
@@ -334,8 +333,7 @@ function MiniLineChart({
   loading?: boolean;
 }) {
   const denseData = useMemo(() => {
-    const cutoff = timeRangeCutoffYmd(timeRange);
-    const clipped = cutoff ? data.filter((r) => r.date >= cutoff) : data;
+    const clipped = clipRowsToTimeRange(data, timeRange, (r) => r.date);
     return densifyRecordsByCalendarDay(clipped as unknown as ChartSparseRow[], "date", ["value"]);
   }, [data, timeRange]);
 
