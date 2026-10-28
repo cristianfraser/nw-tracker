@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
 import { clearAggregationCache } from "./aggregationCache.js";
 import { expandSnapshotDatesForCryptoMtm, requireCryptoMtmClp } from "./cryptoValuation.js";
 import { db } from "./db.js";
@@ -105,7 +105,7 @@ describe("crypto valuation without stored rows", () => {
     // Before the purchase the account holds nothing.
     expect(accountMarkClpAtYmd(id, "2099-01-05")?.value_clp).toBe(0);
 
-    const perf = getAccountMonthlyPerformance(id, "clp");
+    const perf = valuationSeriesMonthlyPerformance(id, "clp");
     const byDate = new Map(perf!.monthly.map((r) => [r.as_of_date, r.closing_value]));
     expect(byDate.get("2099-01-31")).toBeCloseTo(UNITS * 40_000 * 900, 2);
     expect(byDate.get("2099-02-28")).toBeCloseTo(UNITS * 50_000 * 1000, 2);

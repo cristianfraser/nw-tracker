@@ -12,7 +12,7 @@ afterAll(() => {
   chileCalendarTodaySpy.mockRestore();
 });
 
-import { getGroupMonthlyPerformanceSeries } from "./accountPerformance.js";
+import { getGroupMonthlyPlSeries } from "./groupMonthlyPlSeries.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
 import { getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
@@ -257,7 +257,7 @@ describe("groupMonthlyPerfConsolidation", () => {
 
   it("brokerage consolidated current-month P/L matches performance-monthly delta_total", () => {
     const curMk = monthKeyFromYmd(chileToday.ymd);
-    const series = getGroupMonthlyPerformanceSeries("brokerage", "clp");
+    const series = getGroupMonthlyPlSeries("brokerage", "clp");
     if (!series.bar_accounts.length || !series.points.length) return;
 
     const last = series.points[series.points.length - 1]!;

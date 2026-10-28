@@ -6,6 +6,7 @@ import {
 } from "./groupMonthlyPerfConsolidation.js";
 import { buildInversionesConsolidatedMonthly, buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
 import { paginate, type Paginated } from "./pagination.js";
+import { rollupMonthlyPerfYearly } from "./monthlyPerfRollup.js";
 import { computePeriodReturns, type PeriodReturnsPayload } from "./periodReturns.js";
 import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
 import { withDailyChainedReturns } from "./periodReturnsDaily.js";
@@ -27,6 +28,8 @@ export type GroupConsolidatedTablesResponse = {
     monthly: AccountMonthlyPerformanceRow[];
   }[];
   consolidated_monthly: ConsolidatedMonthlyPerfRow[];
+  /** The «Detalle por año» rows: `consolidated_monthly` rolled up by year, newest first. */
+  consolidated_yearly: ConsolidatedMonthlyPerfRow[];
   /** Chained flow-adjusted period returns; null for non-investment groups. */
   period_returns: PeriodReturnsPayload | null;
 };
@@ -74,7 +77,14 @@ export function getGroupConsolidatedTables(
 
   const period_returns = groupPeriodReturnsFromMonthly(groupSlug, unit, consolidated_monthly, rows);
 
-  return { unit, group_slug: groupSlug, account_monthly, consolidated_monthly, period_returns };
+  return {
+    unit,
+    group_slug: groupSlug,
+    account_monthly,
+    consolidated_monthly,
+    consolidated_yearly: rollupMonthlyPerfYearly(consolidated_monthly),
+    period_returns,
+  };
 }
 
 /**
@@ -125,59 +135,6 @@ export function getGroupPeriodReturns(
 
 export type ConsolidatedMonthlyPeriod = "month" | "year";
 
-/**
- * Yearly rollup of consolidated monthly rows (mirrors the client-side rollup used by
- * client-paginated detalle tables): flows/P-L sum per year, % compounds the months,
- * closing/cumulative take the year's latest month, and the YTD column is null (the
- * detalle tables don't show it in yearly mode). Returns newest-first.
- */
-export function rollupConsolidatedMonthlyYearly(
-  rows: readonly ConsolidatedMonthlyPerfRow[]
-): ConsolidatedMonthlyPerfRow[] {
-  if (!rows.length) return [];
-
-  const byYear = new Map<string, ConsolidatedMonthlyPerfRow[]>();
-  for (const row of rows) {
-    const year = row.as_of_date.slice(0, 4);
-    if (!byYear.has(year)) byYear.set(year, []);
-    byYear.get(year)!.push(row);
-  }
-
-  const yearsAsc = [...byYear.keys()].sort((a, b) => a.localeCompare(b));
-
-  const ascRows = yearsAsc.map((year) => {
-    const monthsAsc = [...byYear.get(year)!].sort((a, b) =>
-      a.as_of_date.localeCompare(b.as_of_date)
-    );
-    const latest = monthsAsc[monthsAsc.length - 1]!;
-
-    const netCapitalFlow = monthsAsc.reduce((s, r) => s + (r.net_capital_flow ?? 0), 0);
-    const stockUnitsInflow = monthsAsc.reduce((s, r) => s + (r.stock_units_inflow ?? 0), 0);
-    const nominalPl = monthsAsc.reduce((s, r) => s + (r.nominal_pl ?? 0), 0);
-    const endChargedFlow = monthsAsc.reduce((s, r) => s + r.end_charged_flow, 0);
-
-    const pctYear =
-      monthsAsc.reduce((prod, r) => {
-        const p = r.pct_month;
-        return prod * (1 + (p != null && Number.isFinite(p) ? p : 0));
-      }, 1) - 1;
-
-    return {
-      ...latest,
-      as_of_date: `${year}-12-31`,
-      net_capital_flow: netCapitalFlow,
-      stock_units_inflow: stockUnitsInflow,
-      nominal_pl: nominalPl,
-      end_charged_flow: endChargedFlow,
-      pct_month: pctYear,
-      ytd_nominal_pl: null,
-      cumulative_nominal_pl: latest.cumulative_nominal_pl,
-    } satisfies ConsolidatedMonthlyPerfRow;
-  });
-
-  return ascRows.reverse();
-}
-
 export type GroupConsolidatedMonthlyPageResponse = Paginated<ConsolidatedMonthlyPerfRow> & {
   unit: TsUnit;
   group_slug: string;
@@ -194,6 +151,6 @@ export function getGroupConsolidatedMonthlyPage(
   tabSubgroup?: string
 ): GroupConsolidatedMonthlyPageResponse {
   const all = getGroupConsolidatedMonthlyRows(groupSlug, unit, tabSubgroup);
-  const rows = period === "year" ? rollupConsolidatedMonthlyYearly(all) : all;
+  const rows = period === "year" ? rollupMonthlyPerfYearly(all) : all;
   return { unit, group_slug: groupSlug, period, ...paginate(rows, page, pageSize) };
 }

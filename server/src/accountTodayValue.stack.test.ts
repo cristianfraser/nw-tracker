@@ -3,10 +3,10 @@ import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
 import { listAccountsForBucketSlug } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
-import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
+import { accountTodayValue } from "./accountTodayValue.js";
 import { db } from "./db.js";
 
-describe("syncLatestDisplayValueClp", () => {
+describe("accountTodayValue raw stack", () => {
   it("resolves USD cash from full portfolio bucket slug (not kind slug only)", () => {
     const row = db
       .prepare(
@@ -18,7 +18,7 @@ describe("syncLatestDisplayValueClp", () => {
       )
       .get() as { account_id: number; bucket_slug: string; notes: string | null; name: string } | undefined;
     if (!row) return;
-    const v = syncLatestDisplayValueClp(row.account_id, row.bucket_slug, {
+    const v = accountTodayValue(row.account_id, row.bucket_slug, {
       import_key: row.notes,
       name: row.name,
     });
@@ -36,7 +36,7 @@ describe("syncLatestDisplayValueClp", () => {
     if (mtmRows.length < 2) return;
 
     const withValue = mtmRows.filter((r) => {
-      const v = syncLatestDisplayValueClp(r.account_id, r.bucket_slug, {
+      const v = accountTodayValue(r.account_id, r.bucket_slug, {
         import_key: r.notes,
         name: r.name,
       });
@@ -60,7 +60,7 @@ describe("getGroupValuationTimeseries acciones composition shares", () => {
     );
     let matched = 0;
     for (const r of mtmRows) {
-      const v = syncLatestDisplayValueClp(r.account_id, r.bucket_slug, {
+      const v = accountTodayValue(r.account_id, r.bucket_slug, {
         import_key: r.notes,
         name: r.name,
       });

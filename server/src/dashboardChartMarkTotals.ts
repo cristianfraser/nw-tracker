@@ -1,6 +1,10 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import { clpToUnitAt } from "./clpToUnitAt.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
+import { bucketValueInUnitAt } from "./periodReturnsShortHorizon.js";
+import type { TsUnit } from "./valuationTimeseries.js";
 
 /**
  * The one valuation the dashboard charts (overview, patrimonio-vs-invested, cuentas
@@ -82,4 +86,30 @@ export function slugMarkTotalsAtDatesClp(
     out.set(ymd, Math.round(raw));
   }
   return out;
+}
+
+/**
+ * A bucket's value TODAY in a non-peso unit: Σ of each account's own value in the unit
+ * (`bucketValueInUnitAt` — each framed on the day its pesos were priced, a USD cash account
+ * in its ledger dollars) with the cash netting at today's rate — the headline's rule, so the
+ * charts' today point equals the cards. Never the bucket's pesos ÷ one rate, which framed every
+ * market mark priced on an earlier day (cuotas, a pre-open stock) on today's live rate.
+ * Absent (null) under the same rule as {@link slugMarkTotalsAtDatesClp}.
+ */
+export function slugValueInUnitToday(
+  accounts: readonly ChartMarkTotalAccountRow[],
+  unit: Exclude<TsUnit, "clp">,
+  opts?: SlugMarkTotalsOpts & { now?: Date }
+): number | null {
+  const now = opts?.now ?? new Date();
+  const today = chileCalendarTodayYmd();
+  const rows = accounts.filter((a) => a.account_id > 0);
+  const sum = bucketValueInUnitAt(rows, today, unit, now);
+  if (!opts?.netLinkedCreditCard) return sum;
+  const cc = linkedCreditCardClpForCashCardAsOf(today);
+  const ccInUnit = cc === 0 ? 0 : clpToUnitAt(cc, today, unit, { now });
+  if (ccInUnit == null) {
+    throw new Error(`slugValueInUnitToday: no ${unit} rate for the linked credit cards on ${today}`);
+  }
+  return cashNetOfLinkedCreditCards(sum ?? 0, ccInUnit);
 }

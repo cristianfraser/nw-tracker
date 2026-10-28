@@ -44,7 +44,7 @@
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { clpToUsdForBalanceAt } from "./fxRates.js";
+import { clpToUnitAt } from "./clpToUnitAt.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { getNetWorthNavGroupNode } from "./navTree.js";
 import { loadProxyBasketBreakdown } from "./proxyBasketBreakdown.js";
@@ -422,7 +422,7 @@ export function buildNavValueMapPayload(
   if (!navRoot) throw new Error("nav value map: net_worth nav tree missing");
   const today = chileCalendarTodayYmd();
   const clp = linkedCreditCardClpForCashCardAsOf(today);
-  const usd = includeUsd ? clpToUsdForBalanceAt(clp, today) : null;
+  const usd = includeUsd ? clpToUnitAt(clp, today, "usd") : null;
   return {
     value_map: buildNavValueMap({
       navRoot,

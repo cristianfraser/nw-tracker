@@ -55,23 +55,37 @@ export function useDashboardOverviewDaily(unit: DisplayUnit, days: number, enabl
   });
 }
 
+/** Home P/L + deposits combo in day mode (retirement + brokerage, levels anchored server-side). */
+export function useInversionesPerfDaily(unit: DisplayUnit, days: number, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.inversionesPerfDaily(unit, days),
+    queryFn: () => api.inversionesPerfDaily(unit, days),
+    enabled,
+    ...displayUnitQueryBehaviorFor(queryKeys.inversionesPerfDaily(unit, days), 1),
+  });
+}
+
 /** Daily series for one group page or account (day period view: chart + detalle por día). */
 export function useDailySeries(
   scope: { portfolioGroup?: string; accountId?: number },
   unit: DisplayUnit,
   days: number,
-  enabled = true
+  enabled = true,
+  /** Ask for the day-mode P/L levels (`perf_levels`) the P/L combos pick. */
+  opts?: { perfLevels?: boolean }
 ) {
   const scopeKey = scope.portfolioGroup
     ? `pg:${scope.portfolioGroup}`
     : scope.accountId != null
       ? `account:${scope.accountId}`
       : "";
+  const perfLevels = opts?.perfLevels === true;
+  const key = queryKeys.dailySeries(scopeKey, perfLevels ? "perf" : "base", unit, days);
   return useQuery({
-    queryKey: queryKeys.dailySeries(scopeKey, unit, days),
-    queryFn: () => api.dailySeries(unit, scope, days),
+    queryKey: key,
+    queryFn: () => api.dailySeries(unit, scope, days, { perfLevels }),
     enabled: enabled && scopeKey !== "",
-    ...displayUnitQueryBehaviorFor(queryKeys.dailySeries(scopeKey, unit, days), 2),
+    ...displayUnitQueryBehaviorFor(key, 3),
   });
 }
 

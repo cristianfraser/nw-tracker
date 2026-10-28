@@ -8,7 +8,7 @@ import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "../../pages/
 import { MonthlyPerfDetailTable } from "../account/MonthlyPerfDetailTable";
 import { DailyPerfDetailTable } from "../account/DailyPerfDetailTable";
 import { rollupPerfPointsYearly } from "../../dashboardTimeseriesYearly";
-import { buildDailyPerfComboPoints } from "../../dailyPerfCombo";
+import { servedDailyPerfComboPoints } from "../../servedDailyPerfCombo";
 import { useDailySeries } from "../../queries/hooks";
 import { clipMonthsThenRollup, timeRangeToDays } from "../../timeRange";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
@@ -27,6 +27,8 @@ type Props = {
   mortgageLedger: AccountMortgageLedgerResponse;
   displayUnit: "clp" | "usd";
   monthlyPerfRows: readonly AccountMonthlyPerformanceRow[];
+  /** The server's yearly rollup of `monthlyPerfRows`. */
+  monthlyPerfYearlyRows: readonly AccountMonthlyPerformanceRow[];
   summary: Pick<AccountSummaryResponse, "latest_valuation_clp" | "account_id">;
   accountDashRow: DashboardAccountRow | null;
   accountColorRgb?: string | null;
@@ -41,6 +43,7 @@ export function LiabilitiesMortgageGroupSection({
   mortgageLedger,
   displayUnit,
   monthlyPerfRows,
+  monthlyPerfYearlyRows,
   summary,
   accountDashRow,
   accountColorRgb,
@@ -83,27 +86,23 @@ export function LiabilitiesMortgageGroupSection({
     [accountColorRgb]
   );
 
-  // Day view: the mortgage's own daily P/L (its financing cost) as bars, with the cumulative
-  // areas anchored on the monthly series — same builder the account page uses.
+  // Day view: the mortgage's own daily P/L (its financing cost) as bars, with the server's
+  // cumulative levels (anchored on its monthly rows) — the same pick the account page uses.
   const dailySeries = useDailySeries(
     { accountId: summary.account_id },
     displayUnit,
     timeRangeToDays(timeRange),
-    isDaily && summary.account_id > 0
+    isDaily && summary.account_id > 0,
+    { perfLevels: true }
   );
   const dailyPerfPoints = useMemo(() => {
     if (!isDaily || !dailySeries.data?.points.length || !monthlyPerfRows.length) return null;
     const line = dailySeries.data.accounts?.find((l) => l.account_id === summary.account_id);
     if (!line?.pl) return null;
-    return buildDailyPerfComboPoints({
+    return servedDailyPerfComboPoints({
       series: dailySeries.data,
       lines: [line],
       barAccounts: [{ account_id: summary.account_id, bar_data_key: "nominal_pl" }],
-      monthlyPointsAsc: [...monthlyPerfRows].reverse().map((r) => ({
-        as_of_date: r.as_of_date,
-        ytd_nominal_pl: r.ytd_nominal_pl ?? 0,
-        accumulated_earnings: r.cumulative_nominal_pl ?? 0,
-      })),
       ytdKey: "ytd_nominal_pl",
       totalKey: "delta_month",
     });
@@ -237,6 +236,7 @@ export function LiabilitiesMortgageGroupSection({
           ) : (
             <MonthlyPerfDetailTable
               rows={monthlyPerfRows}
+              yearlyRows={monthlyPerfYearlyRows}
               displayUnit={displayUnit}
               period={detallePrefs.period === "year" ? "year" : "month"}
               isMortgageAccount

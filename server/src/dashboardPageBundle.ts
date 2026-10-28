@@ -1,4 +1,4 @@
-import { getGroupMonthlyPerformanceSeries } from "./accountPerformance.js";
+import { buildInversionesPerfMonthly } from "./inversionesPerfSeries.js";
 import {
   cacheKeyDashboardPageBundle,
   getAggregationCached,
@@ -63,12 +63,14 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
   );
   await nextMacrotask();
   const fx = fxLatestRow() ?? null;
-  const retirementPerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
-    getGroupMonthlyPerformanceSeries("retirement", unit)
-  );
-  await nextMacrotask();
-  const brokeragePerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
-    getGroupMonthlyPerformanceSeries("brokerage", unit)
+  // The P/L + deposits combo, from the inversiones consolidation and the payload's deposits.
+  const depositsChart = dash.inversiones_deposits_chart;
+  const depositsMonthly = includeUsd ? depositsChart.monthly_usd : depositsChart.monthly_clp;
+  if (!depositsMonthly) {
+    throw new Error(`dashboard page bundle: no ${unit} inversiones deposits series`);
+  }
+  const inversionesPerf = timeHeavy(HeavyWork.groupMonthlyPerformance, () =>
+    buildInversionesPerfMonthly(unit, depositsMonthly)
   );
   await nextMacrotask();
   // Pesos in both units: the facturaciones rows it reads carry no USD frame.
@@ -79,8 +81,7 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
     ts: tsRaw,
     fx,
     fx_coverage: includeUsd ? buildFxCoverageWithConversionWarnings() : null,
-    retirementPerf,
-    brokeragePerf,
+    inversionesPerf,
     cc_upcoming_payments: ccUpcomingPayments,
   };
 }

@@ -418,3 +418,89 @@ export function liveCuotaLedgerDisplayValueClp(
   return null;
 }
 
+
+/**
+ * The mark a units-priced position carries (cuota ledgers, Fintual cert funds, crypto — any
+ * account whose meta prices units × a market price), or null when the meta holds no mark the
+ * position may stand on. A fully withdrawn position whose meta emits an explicit 0 with a date
+ * marks 0 (never the stale stored row).
+ */
+export function positionMarkFromMeta(
+  kindSlug: string | null | undefined,
+  meta: AccountPositionMeta | null | undefined
+): { value_clp: number; as_of_date: string | null } | null {
+  if (meta == null) return null;
+  const afp = isCuotaLedgerKindSlug(kindSlug);
+  const crypto = kindSlug === "bitcoin" || kindSlug === "eth";
+  const units = meta.units;
+  const ovc = meta.afp_override_value_clp;
+  const fundUnitMark =
+    ovc != null &&
+    Number.isFinite(ovc) &&
+    ovc > 0 &&
+    meta.afp_override_valor_cuota_clp != null &&
+    Number.isFinite(meta.afp_override_valor_cuota_clp);
+  const explicitZeroMark =
+    ovc === 0 && meta.afp_override_value_as_of != null && (units == null || units <= 0);
+  const mtmMark =
+    fundUnitMark ||
+    explicitZeroMark ||
+    ((afp || crypto) && ovc != null && Number.isFinite(ovc) && (ovc > 0 || (crypto && ovc === 0)));
+  if (!mtmMark || ovc == null) return null;
+  return { value_clp: ovc, as_of_date: meta.afp_override_value_as_of ?? null };
+}
+
+export type AccountPositionSnapshot = {
+  ticker: string;
+  units_kind: UnitsKind;
+  units: number | null;
+  deposited_clp: number;
+  value_clp: number | null;
+  value_as_of: string | null;
+  value_per_unit_clp: number | null;
+};
+
+/**
+ * The `position` block of the dashboard row and of the account page summary — one copy, so the
+ * two cannot drift. `today` is the account's value today (`accountTodayValue`), `meta` its
+ * position asked at Chile today. `extra` adds fields computed from the snapshot's value (the
+ * account page's equity returns).
+ */
+export function positionSnapshotFromMeta<E extends object = Record<never, never>>(
+  kindSlug: string | null | undefined,
+  meta: AccountPositionMeta | null,
+  deposits_clp: number,
+  today: { value_clp: number; as_of_date: string } | null | undefined,
+  extra?: (value_clp: number | null) => E | null
+): (AccountPositionSnapshot & Partial<E>) | null {
+  if (meta == null) return null;
+  const afp = isCuotaLedgerKindSlug(kindSlug);
+  const v = today?.value_clp;
+  const units = meta.units;
+  const mark = positionMarkFromMeta(kindSlug, meta);
+  const fundUnitMark =
+    mark != null &&
+    mark.value_clp > 0 &&
+    meta.afp_override_valor_cuota_clp != null &&
+    Number.isFinite(meta.afp_override_valor_cuota_clp);
+  const value_clp = mark ? mark.value_clp : v != null && Number.isFinite(v) ? v : null;
+  const value_as_of = mark ? mark.as_of_date : today?.as_of_date ?? null;
+  const value_per_unit_clp =
+    fundUnitMark && meta.afp_override_valor_cuota_clp != null
+      ? meta.afp_override_valor_cuota_clp
+      : afp && meta.afp_override_valor_cuota_clp != null && Number.isFinite(meta.afp_override_valor_cuota_clp)
+        ? meta.afp_override_valor_cuota_clp
+        : v != null && units != null && units > 0 && Number.isFinite(v) && Number.isFinite(units)
+          ? v / units
+          : null;
+  return {
+    ticker: meta.ticker,
+    units_kind: meta.units_kind,
+    units,
+    deposited_clp: deposits_clp,
+    value_clp,
+    value_as_of,
+    value_per_unit_clp,
+    ...(extra?.(value_clp) ?? {}),
+  } as AccountPositionSnapshot & Partial<E>;
+}

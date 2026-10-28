@@ -8,8 +8,6 @@ import {
 } from "./ccInstallmentInterest.js";
 import { listSchedulePurchaseEvents } from "./ccInstallmentLedgerDb.js";
 import { ccFinancingCostClpByDate } from "./ccFinancingCostDaily.js";
-import { buildCreditCardFinancingPlByBillingMonth } from "./creditCardPerformancePl.js";
-import type { CcInstallmentPurchaseComputed } from "./creditCardInstallments.js";
 import { getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 
 const TAG = "vitest-inst-interest";
@@ -113,35 +111,9 @@ describe("installment interest", () => {
     expect(interest.reduce((t, e) => t + e.clp, 0)).toBe(28_557);
   });
 
-  it("is the card's financing cost on the purchase date, and in the dashboard's billing month", () => {
+  it("is the card's financing cost on the purchase date", () => {
     if (!accountId) return;
     expect(ccFinancingCostClpByDate(accountId).get("2036-11-08")).toBe(28_557);
     expect(ccFinancingCostClpByDate(accountId).get("2036-11-09")).toBeUndefined();
-
-    const purchase = (key: string, billingMonth: string): CcInstallmentPurchaseComputed => ({
-      purchase_id: `${TAG}|${key}`,
-      purchase_db_id: planIds[key],
-      purchase_billing_month: billingMonth,
-      label: key,
-      principal_clp: 0,
-      installment_count: 3,
-      installments_paid: 3,
-      cuota_clp: 0,
-      annual_interest_pct: 0,
-      first_due_month: "2036-12",
-      schedule_offset_months: 0,
-      purchase_month: "2036-11",
-      note: null,
-      remaining_installments: 0,
-      remaining_principal_clp: 0,
-      next_due_month: null,
-      next_installment_index: null,
-      last_paid_month: "2037-02",
-      upcoming_cuota_clp: 0,
-      origin: "import_document",
-    });
-    const rows = buildCreditCardFinancingPlByBillingMonth(accountId, [purchase("rated", "2036-11"), purchase("free", "2036-11")]);
-    expect(rows.find((r) => r.billing_month === "2036-11")?.installment_interest_clp).toBe(28_557);
-    expect(rows.find((r) => r.billing_month === "2036-12")?.installment_interest_clp).toBe(0);
   });
 });

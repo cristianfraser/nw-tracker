@@ -27,12 +27,12 @@ import {
   useDashboardBundle,
   useDashboardNavSnapshot,
   useDashboardOverviewDaily,
+  useInversionesPerfDaily,
   useSidebarNav,
 } from "../queries/hooks";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
 import { allocationBucketColor, desaturateStroke } from "../chartColors";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../dashboardTimeseriesYearly";
-import { rollupChartPointsByYear } from "../flowsDisplay";
 import { useTranslation } from "../i18n";
 import { buildGroupPageShellFromNav } from "../placeholders/groupPageShellFromNav";
 import {
@@ -45,13 +45,11 @@ import { resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
 import { DASHBOARD_COLD_STRIP } from "../coldPageShape";
 import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
-import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
-import { useDailySeries } from "../queries/hooks";
 import { useSurfaceAreaMode, useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { DashboardFlowsSummary } from "../components/dashboard/DashboardFlowsSummary";
-import type { InversionesDepositsPoint, TimeseriesBlock } from "../types";
+import type { TimeseriesBlock } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
 
@@ -74,38 +72,23 @@ const DAILY_OVERVIEW_POINT_FIELD: Record<string, string> = {
 
 type ComboRow = Record<string, string | number | null>;
 
-/** The P/L combos' yearly rows: class Δs and the combined Δ sum, accumulated is year-end. */
-function rollupCombinedPerfYearly(months: readonly ComboRow[]): ComboRow[] {
-  return rollupPerfPointsYearly(months, {
-    sumKeys: ["delta_retirement", "delta_brokerage"],
-    ytdKey: "ytd_combined",
-    accumKey: "accumulated_earnings",
-    totalKey: "delta_combined",
-  });
-}
-
-function rollupDepositsByYear(months: readonly InversionesDepositsPoint[]): InversionesDepositsPoint[] {
-  return rollupChartPointsByYear(months, ["retirement", "brokerage"]);
-}
-
-/** Retiro and brokerage net deposits of each row's period, by class and Σ, joined by date (0 when none). */
-function withInversionesDeposits(
-  rows: readonly ComboRow[],
-  deposits: readonly InversionesDepositsPoint[]
-): ComboRow[] {
-  const byDate = new Map(deposits.map((p) => [p.as_of_date, p]));
-  return rows.map((row) => {
-    const d = byDate.get(String(row.as_of_date ?? ""));
-    const retirement = d?.retirement ?? 0;
-    const brokerage = d?.brokerage ?? 0;
-    return {
-      ...row,
-      deposits_retirement: retirement,
-      deposits_brokerage: brokerage,
-      deposits_inversiones: retirement + brokerage,
-    };
-  });
-}
+/**
+ * The P/L combo's yearly rows: class Δs, Σ Δ and deposits sum over the year's months in range,
+ * YTD is that Σ Δ, the all-time level is sampled at year-end. `rollupChartPointsByYear` cannot
+ * express the YTD: neither a flow nor a year-end level once the first year is cut at the Rango.
+ */
+const COMBINED_PERF_YEARLY = {
+  sumKeys: [
+    "delta_retirement",
+    "delta_brokerage",
+    "deposits_retirement",
+    "deposits_brokerage",
+    "deposits_inversiones",
+  ],
+  ytdKey: "ytd_combined",
+  accumKey: "accumulated_earnings",
+  totalKey: "delta_combined",
+};
 
 export function DashboardPage() {
   const { t } = useTranslation();
@@ -166,8 +149,7 @@ export function DashboardPage() {
   const resolved = useRealBundle && data ? data : placeholderBundle;
   const dash = resolved.dash;
   const ts = resolved.ts;
-  const retirementPerf = resolved.retirementPerf;
-  const brokeragePerf = resolved.brokeragePerf;
+  const inversionesPerf = resolved.inversionesPerf;
 
   useEffect(() => {
     if (!useRealBundle || !data) return;
@@ -214,7 +196,6 @@ export function DashboardPage() {
 
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
-  const showUsd = displayUnit === "usd";
   const overviewIsDaily = overviewPrefs.period === "day";
   const principalesIsDaily = principalesPrefs.period === "day";
   const combosIsDaily = combosPrefs.period === "day";
@@ -313,148 +294,35 @@ export function DashboardPage() {
     return { accounts, points };
   }, [principalesIsDaily, principalesDailyData, ts?.accounts_ex_property]);
 
-  /** Union of retirement + brokerage group monthly Δ; YTD and cumulative on combined monthly Δ. */
-  const retirementBrokeragePerfPoints = useMemo(() => {
-    const retPts = retirementPerf?.points ?? [];
-    const brkPts = brokeragePerf?.points ?? [];
-    if (!retPts.length && !brkPts.length) return [];
-
-    const deltaTotal = (p: Record<string, string | number | null>) => {
-      const v = p.delta_total;
-      return typeof v === "number" && Number.isFinite(v) ? v : 0;
-    };
-
-    const byDate = new Map<string, { ret: number; brk: number }>();
-    for (const p of retPts) {
-      const d = String(p.as_of_date ?? "");
-      if (!d) continue;
-      const cur = byDate.get(d) ?? { ret: 0, brk: 0 };
-      cur.ret = deltaTotal(p);
-      byDate.set(d, cur);
-    }
-    for (const p of brkPts) {
-      const d = String(p.as_of_date ?? "");
-      if (!d) continue;
-      const cur = byDate.get(d) ?? { ret: 0, brk: 0 };
-      cur.brk = deltaTotal(p);
-      byDate.set(d, cur);
-    }
-
-    const datesAsc = [...byDate.keys()].sort((a, b) => a.localeCompare(b));
-    let ytdYear = 0;
-    let ytdRun = 0;
-    let cumLife = 0;
-    const out: Record<string, string | number | null>[] = [];
-    for (const d of datesAsc) {
-      const { ret, brk } = byDate.get(d)!;
-      const combined = ret + brk;
-      const y = Number(d.slice(0, 4));
-      if (Number.isFinite(y) && y !== ytdYear) {
-        ytdYear = y;
-        ytdRun = 0;
-      }
-      ytdRun += combined;
-      cumLife += combined;
-      out.push({
-        as_of_date: d,
-        delta_retirement: ret,
-        delta_brokerage: brk,
-        delta_combined: combined,
-        ytd_combined: ytdRun,
-        accumulated_earnings: cumLife,
-      });
-    }
-    return out;
-  }, [retirementPerf, brokeragePerf]);
+  // The P/L + deposits combo arrives built (`inversionesPerf`: the inversiones consolidation's
+  // months, deposits joined); the client only cuts it to the Rango and rolls years up.
+  const inversionesPerfPoints = useMemo(
+    (): ComboRow[] => (inversionesPerf?.points ?? []).map((p) => ({ ...p })),
+    [inversionesPerf]
+  );
 
   const retirementBrokerageForCharts = useMemo(() => {
-    if (!retirementBrokeragePerfPoints.length) return [];
-    if (!isYearly) return retirementBrokeragePerfPoints;
+    if (!inversionesPerfPoints.length) return [];
+    if (!isYearly) return inversionesPerfPoints;
     // Months cut at the combos' Rango first, then rolled up: a partial first year.
-    return clipMonthsThenRollup(
-      retirementBrokeragePerfPoints,
-      "year",
-      combosPrefs.range,
-      rollupCombinedPerfYearly
+    return clipMonthsThenRollup(inversionesPerfPoints, "year", combosPrefs.range, (months) =>
+      rollupPerfPointsYearly(months, COMBINED_PERF_YEARLY)
     );
-  }, [retirementBrokeragePerfPoints, isYearly, combosPrefs.range]);
+  }, [inversionesPerfPoints, isYearly, combosPrefs.range]);
 
-  // Day mode P/L bars: the two invested buckets' own daily series (shared `pg:` builds, warm
-  // from their group pages). Synthetic bar accounts map them onto the monthly chart's keys.
-  const retirementDaily = useDailySeries(
-    { portfolioGroup: "retirement" },
+  // Day mode: the server's day combo (retirement + brokerage day bars and deposits, running
+  // levels anchored on the monthly consolidation).
+  const inversionesDaily = useInversionesPerfDaily(
     displayUnit,
     timeRangeToDays(combosPrefs.range),
     combosIsDaily
   );
-  const brokerageDaily = useDailySeries(
-    { portfolioGroup: "brokerage" },
-    displayUnit,
-    timeRangeToDays(combosPrefs.range),
-    combosIsDaily
-  );
-  const combosLoading =
-    contentLoading ||
-    dailyLoading(combosIsDaily, retirementDaily) ||
-    dailyLoading(combosIsDaily, brokerageDaily);
-  const dailyRetirementBrokeragePoints = useMemo(() => {
+  const combosLoading = contentLoading || dailyLoading(combosIsDaily, inversionesDaily);
+  const dailyRetirementBrokeragePoints = useMemo((): ComboRow[] | null => {
     if (!combosIsDaily) return null;
-    const ret = retirementDaily.data;
-    const brk = brokerageDaily.data;
-    if (!ret?.points.length || !brk?.points.length) return null;
-    // Both series run the same calendar grid (same `days`, same today); bail rather than
-    // mis-align if that ever stops holding.
-    if (ret.points.length !== brk.points.length) return null;
-    const depositsPerDay = (s: typeof ret): number[] => {
-      const cum = s.deposits_acum_total;
-      if (!cum?.length) return s.points.map(() => 0);
-      return cum.map((v, i) => (i === 0 ? 0 : v - (cum[i - 1] ?? 0)));
-    };
-    const retDeps = depositsPerDay(ret);
-    const brkDeps = depositsPerDay(brk);
-    const rows = buildDailyPerfComboPoints({
-      series: ret,
-      lines: [
-        { account_id: -1, name: "retirement", values: [], pl: ret.points.map((p) => p.pl) },
-        { account_id: -2, name: "brokerage", values: [], pl: brk.points.map((p) => p.pl) },
-      ],
-      barAccounts: [
-        { account_id: -1, bar_data_key: "delta_retirement" },
-        { account_id: -2, bar_data_key: "delta_brokerage" },
-      ],
-      monthlyPointsAsc: retirementBrokeragePerfPoints,
-      ytdKey: "ytd_combined",
-      totalKey: "delta_combined",
-    });
-    return rows.map((row, i) => ({
-      ...row,
-      deposits_retirement: retDeps[i] ?? 0,
-      deposits_brokerage: brkDeps[i] ?? 0,
-      deposits_inversiones: (retDeps[i] ?? 0) + (brkDeps[i] ?? 0),
-    }));
-  }, [combosIsDaily, retirementDaily.data, brokerageDaily.data, retirementBrokeragePerfPoints]);
-
-  const retirementBrokerageAccumChart = useMemo(() => {
-    const depChart = dash?.inversiones_deposits_chart;
-    const monthlyDeposits = !depChart
-      ? []
-      : showUsd && depChart.monthly_usd
-        ? depChart.monthly_usd
-        : depChart.monthly_clp;
-    if (!isYearly) return withInversionesDeposits(retirementBrokerageForCharts, monthlyDeposits);
-    // Yearly: the deposits go through the same months-then-rollup order as the P/L rows (a
-    // partial first year).
-    return withInversionesDeposits(
-      retirementBrokerageForCharts,
-      clipMonthsThenRollup(monthlyDeposits, "year", combosPrefs.range, rollupDepositsByYear)
-    );
-  }, [
-    retirementBrokerageForCharts,
-    dash?.inversiones_deposits_chart,
-    isYearly,
-    showUsd,
-    combosPrefs.range,
-  ]);
+    const pts = inversionesDaily.data?.points;
+    return pts?.length ? pts.map((p) => ({ ...p })) : null;
+  }, [combosIsDaily, inversionesDaily.data]);
 
   // Each valuation chart rolls up (or not) per its OWN period control.
   const overviewBlock = useMemo((): TimeseriesBlock | null => {
@@ -611,7 +479,7 @@ export function DashboardPage() {
               title={
                 isYearly ? t("dashboard.sections.perfChartTitleYearly") : t("dashboard.sections.perfChartTitleMonthly")
               }
-              points={dailyRetirementBrokeragePoints ?? retirementBrokerageAccumChart}
+              points={dailyRetirementBrokeragePoints ?? retirementBrokerageForCharts}
               displayUnit={displayUnit}
               xAxisGranularity={combosXAxis}
               timeRange={combosPrefs.range}

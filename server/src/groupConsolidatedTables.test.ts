@@ -3,9 +3,9 @@ import {
   getGroupConsolidatedMonthlyPage,
   getGroupConsolidatedTables,
   getGroupPeriodReturns,
-  rollupConsolidatedMonthlyYearly,
   type ConsolidatedMonthlyPerfRow,
 } from "./groupConsolidatedTables.js";
+import { rollupMonthlyPerfYearly as rollupConsolidatedMonthlyYearly } from "./monthlyPerfRollup.js";
 import { PERIOD_RETURN_ORDER } from "./periodReturns.js";
 import { isInvestmentPerformanceGroupSlug } from "./portfolioGroupTree.js";
 
@@ -24,7 +24,7 @@ function monthRow(overrides: Partial<ConsolidatedMonthlyPerfRow> & { as_of_date:
   };
 }
 
-describe("rollupConsolidatedMonthlyYearly", () => {
+describe("rollupMonthlyPerfYearly", () => {
   it("returns empty for no rows", () => {
     expect(rollupConsolidatedMonthlyYearly([])).toEqual([]);
   });
@@ -89,6 +89,32 @@ describe("rollupConsolidatedMonthlyYearly", () => {
       monthRow({ as_of_date: "2025-01-31", pct_month: 0.05 }),
     ];
     expect(rollupConsolidatedMonthlyYearly(rows)[0]!.pct_month).toBeCloseTo(0.05, 12);
+  });
+
+  it("reads null, never 0, for a year whose months all lack a P/L or a %", () => {
+    const rows = [
+      monthRow({ as_of_date: "2025-02-28", nominal_pl: null, pct_month: null, net_capital_flow: 10 }),
+      monthRow({ as_of_date: "2025-01-31", nominal_pl: null, pct_month: null, net_capital_flow: 5 }),
+    ];
+    const [y] = rollupConsolidatedMonthlyYearly(rows);
+    expect(y!.nominal_pl).toBeNull();
+    expect(y!.pct_month).toBeNull();
+    expect(y!.net_capital_flow).toBe(15);
+  });
+
+  it("sums the members' end-charged flows", () => {
+    const rows = [
+      monthRow({ as_of_date: "2025-02-28", end_charged_flow: -3 }),
+      monthRow({ as_of_date: "2025-01-31", end_charged_flow: -4 }),
+    ];
+    expect(rollupConsolidatedMonthlyYearly(rows)[0]!.end_charged_flow).toBe(-7);
+  });
+});
+
+describe("consolidated-tables yearly rows", () => {
+  it("are the server's rollup of the monthly rows", () => {
+    const t = getGroupConsolidatedTables("brokerage", "clp");
+    expect(t.consolidated_yearly).toEqual(rollupConsolidatedMonthlyYearly(t.consolidated_monthly));
   });
 });
 

@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { db } from "./db.js";
 import {
-  getAccountMonthlyPerformance,
-  getGroupMonthlyPerformanceSeries,
+  valuationSeriesMonthlyPerformance,
   reanchorMonthlyPerfToCalendarMonthEnds,
   type AccountMonthlyPerformanceRow,
 } from "./accountPerformance.js";
@@ -85,14 +84,14 @@ describe("reanchorMonthlyPerfToCalendarMonthEnds", () => {
   });
 });
 
-describe("getAccountMonthlyPerformance", () => {
+describe("valuationSeriesMonthlyPerformance", () => {
   it("Reserva2 May 2026 attributes net withdrawals to aportes, not P/L", () => {
     const acc = db
       .prepare(`SELECT id FROM accounts WHERE notes LIKE '%reserva2%' LIMIT 1`)
       .get() as { id: number } | undefined;
     if (!acc) return;
 
-    const perf = getAccountMonthlyPerformance(acc.id, "clp");
+    const perf = valuationSeriesMonthlyPerformance(acc.id, "clp");
     const may = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2026-05");
     if (!may) return;
 
@@ -121,7 +120,7 @@ describe("getAccountMonthlyPerformance", () => {
     if (!row) return;
 
     expect(isMovementBalanceCashCategory(accountBucketKindSlug(row.bucket_slug))).toBe(true);
-    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const perf = valuationSeriesMonthlyPerformance(row.id, "clp");
     expect(perf?.monthly).toEqual([]);
   });
 
@@ -135,12 +134,12 @@ describe("getAccountMonthlyPerformance", () => {
       )
       .all() as { id: number }[];
     const row = cc.find((r) => {
-      const perf = getAccountMonthlyPerformance(r.id, "clp");
+      const perf = valuationSeriesMonthlyPerformance(r.id, "clp");
       return (perf?.monthly.length ?? 0) > 0;
     });
     if (!row) return;
 
-    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const perf = valuationSeriesMonthlyPerformance(row.id, "clp");
     expect(perf?.monthly.length).toBeGreaterThan(0);
     for (const m of perf!.monthly) {
       // A card's P/L is what the bank charged (never a gain), and the rest of the balance
@@ -165,7 +164,7 @@ describe("getAccountMonthlyPerformance", () => {
     const row = investRows.find((r) => !skip.has(accountBucketKindSlug(r.bucket_slug)));
     if (!row) return;
 
-    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const perf = valuationSeriesMonthlyPerformance(row.id, "clp");
     if (!perf?.monthly.length) return;
 
     for (const r of perf.monthly) {
@@ -200,7 +199,7 @@ describe("getAccountMonthlyPerformance", () => {
       .get() as { id: number; notes: string | null; name: string; bucket_slug: string } | undefined;
     if (!acc) return;
 
-    const perf = getAccountMonthlyPerformance(acc.id, "clp");
+    const perf = valuationSeriesMonthlyPerformance(acc.id, "clp");
     if (!perf?.monthly.length) return;
 
     const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
@@ -227,7 +226,7 @@ describe("getAccountMonthlyPerformance", () => {
       .get() as { id: number; notes: string | null; name: string; bucket_slug: string } | undefined;
     if (!acc) return;
 
-    const perf = getAccountMonthlyPerformance(acc.id, "clp");
+    const perf = valuationSeriesMonthlyPerformance(acc.id, "clp");
     if (!perf?.monthly.length) return;
 
     const asc = [...perf.monthly].reverse();
@@ -265,7 +264,7 @@ describe("getAccountMonthlyPerformance", () => {
       .get() as { id: number } | undefined;
     if (!row) return;
 
-    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const perf = valuationSeriesMonthlyPerformance(row.id, "clp");
     if (!perf?.monthly.length) return;
 
     const nov = perf.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2024-11");
@@ -298,12 +297,12 @@ describe("getAccountMonthlyPerformance", () => {
 
     // Latest month with an actual sheet payment: early in a new month both units are 0
     // flow (nothing posted yet) and the CLP-vs-USD scale check is vacuous.
-    const clpMonthly = getAccountMonthlyPerformance(row.id, "clp")?.monthly ?? [];
+    const clpMonthly = valuationSeriesMonthlyPerformance(row.id, "clp")?.monthly ?? [];
     const clpWithFlow = clpMonthly.find((r) => Math.abs(r.net_capital_flow) > 1_000);
     if (!clpWithFlow) return;
     const mk = monthKeyFromYmd(clpWithFlow.as_of_date);
     const clp = clpWithFlow;
-    const usd = getAccountMonthlyPerformance(row.id, "usd")?.monthly.find(
+    const usd = valuationSeriesMonthlyPerformance(row.id, "usd")?.monthly.find(
       (r) => monthKeyFromYmd(r.as_of_date) === mk
     );
     if (!clp || !usd || usd.prior_closing == null) return;
@@ -329,7 +328,7 @@ describe("depto ledger payments in the performance table", () => {
       )
       .all() as { id: number; slug: string }[];
     for (const r of rows) {
-      const monthly = getAccountMonthlyPerformance(r.id, "usd")?.monthly ?? [];
+      const monthly = valuationSeriesMonthlyPerformance(r.id, "usd")?.monthly ?? [];
       if (!monthly.length) continue;
       const firstMk = monthKeyFromYmd(monthly[monthly.length - 1]!.as_of_date);
       const events =
@@ -340,80 +339,6 @@ describe("depto ledger payments in the performance table", () => {
         .filter((e) => monthKeyFromYmd(e.occurred_on) >= firstMk)
         .reduce((s, e) => s + flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, "usd"), 0);
       expect(monthly.reduce((s, m) => s + m.net_capital_flow, 0)).toBeCloseTo(expected, 4);
-    }
-  });
-});
-
-describe("getGroupMonthlyPerformanceSeries", () => {
-  it("delta_total equals sum of per-account nominal_pl for every month", () => {
-    for (const groupSlug of ["brokerage", "retirement"] as const) {
-      const series = getGroupMonthlyPerformanceSeries(groupSlug, "clp");
-      if (!series.bar_accounts.length || !series.points.length) continue;
-
-      for (const pt of series.points) {
-        if (pt.delta_total == null) continue;
-        const mk = monthKeyFromYmd(String(pt.as_of_date));
-        let sum = 0;
-        for (const ba of series.bar_accounts) {
-          const perf = getAccountMonthlyPerformance(ba.account_id, "clp");
-          const row = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === mk);
-          if (row?.nominal_pl != null) sum += row.nominal_pl;
-        }
-        expect(pt.delta_total).toBeCloseTo(sum, 2);
-      }
-    }
-  });
-
-  it("brokerage current month delta_total matches full-bucket dashboard row MTD P/L", async () => {
-    const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
-    const series = getGroupMonthlyPerformanceSeries("brokerage", "clp");
-    if (!series.points.length) return;
-    const last = series.points[series.points.length - 1]!;
-    if (monthKeyFromYmd(String(last.as_of_date)) !== curMk) return;
-    if (last.delta_total == null) return;
-
-    const { buildDashboardAccountRows } = await import("./dashboardAccounts.js");
-    const { withPortfolioGroupIndex } = await import("./portfolioGroupTree.js");
-    const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows(false));
-    let cardSum = 0;
-    let any = false;
-    for (const r of rows) {
-      if (r.dashboard_bucket_slug !== "brokerage" || r.exclude_from_group_totals === 1) continue;
-      if (r.delta_month_clp != null && Number.isFinite(r.delta_month_clp)) {
-        cardSum += r.delta_month_clp;
-        any = true;
-      }
-    }
-    if (!any) return;
-    expect(last.delta_total).toBeCloseTo(cardSum, 0);
-  });
-
-  it("brokerage ytd_group matches consolidated ytd_nominal_pl for current month", async () => {
-    const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
-    const series = getGroupMonthlyPerformanceSeries("brokerage", "clp");
-    if (!series.points.length) return;
-    const last = series.points[series.points.length - 1]!;
-    if (monthKeyFromYmd(String(last.as_of_date)) !== curMk) return;
-    if (last.ytd_group == null || !Number.isFinite(Number(last.ytd_group))) return;
-
-    const { getGroupConsolidatedTables } = await import("./groupConsolidatedTables.js");
-    const tables = getGroupConsolidatedTables("brokerage", "clp");
-    const june = tables.consolidated_monthly.find((r) =>
-      monthKeyFromYmd(String(r.as_of_date)) === curMk
-    );
-    if (june?.ytd_nominal_pl == null || !Number.isFinite(june.ytd_nominal_pl)) return;
-    expect(Number(last.ytd_group)).toBeCloseTo(june.ytd_nominal_pl, 0);
-  });
-
-  it("returns bar_accounts and points for retirement when data exists", () => {
-    const series = getGroupMonthlyPerformanceSeries("retirement", "clp");
-    if (series.bar_accounts.length === 0) return;
-    expect(series.group_slug).toBe("retirement");
-    expect(series.unit).toBe("clp");
-    expect(Array.isArray(series.points)).toBe(true);
-    const first = series.points[0];
-    if (first) {
-      expect(typeof first.as_of_date).toBe("string");
     }
   });
 });

@@ -20,7 +20,7 @@ import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 
 /**
@@ -321,7 +321,7 @@ describe("accountMarkClpAtYmd property", () => {
     const row = propertyAccountRow();
     if (!row) return;
 
-    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const perf = monthlyPerfForAccountId(row.id, "clp");
     if (!perf?.monthly.length) return;
 
     const curMk = monthKeyFromYmd(chileCalendarTodayYmd());
@@ -341,7 +341,7 @@ describe("accountMarkClpAtYmd property", () => {
     const row = propertyAccountRow();
     if (!row) return;
 
-    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const perf = monthlyPerfForAccountId(row.id, "clp");
     if (!perf?.monthly.length) return;
 
     const today = chileCalendarTodayYmd();
@@ -395,7 +395,7 @@ describe("depto mortgage live perf row", () => {
     if (!row) return;
     if (!loadDeptoLedgerFromMovements().length) return;
 
-    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const perf = monthlyPerfForAccountId(row.id, "clp");
     if (!perf?.monthly.length) return;
 
     const today = chileCalendarTodayYmd();
@@ -429,7 +429,7 @@ describe("mortgage P/L sign convention", () => {
     const row = mortgageMasterRow();
     if (!row) return;
 
-    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const perf = monthlyPerfForAccountId(row.id, "clp");
     if (!perf?.monthly.length) return;
 
     let sawPaymentMonth = false;
@@ -465,7 +465,7 @@ describe("mortgage dashboard card metrics", () => {
       .filter((e) => e.occurred_on > priorMonthEnd)
       .reduce((s, e) => s + e.pago_clp, 0);
 
-    const perf = getAccountMonthlyPerformance(master.id, "clp");
+    const perf = monthlyPerfForAccountId(master.id, "clp");
     const cum = perf?.monthly[0]?.cumulative_nominal_pl ?? null;
 
     const rows = await withPortfolioGroupIndex(async () => buildDashboardAccountRows(false));

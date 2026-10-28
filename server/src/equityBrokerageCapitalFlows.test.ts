@@ -15,7 +15,7 @@ import {
   type EquityCapitalSortFlow,
 } from "./equityBrokerageCapitalFlows.js";
 import { equityReturnSnapshot, totalDividendsClpForAccount } from "./equityReturns.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
 import { usdToClpReferenceRounded } from "./fxRates.js";
 import { MOVEMENT_USD_LEG_SQL } from "./movementAmounts.js";
 
@@ -480,12 +480,12 @@ describe("equityBrokerageCapitalFlows dev data", () => {
   });
 });
 
-describe("getAccountMonthlyPerformance equity MTM", () => {
+describe("valuationSeriesMonthlyPerformance equity MTM", () => {
   it("OILK May 2026 attributes stock_buy USD to net_capital_flow, not all P/L", () => {
     const oilkId = findEquityAccountByName("OILK");
     if (oilkId == null || !hasStockBuyTransfer(oilkId)) return;
 
-    const perf = getAccountMonthlyPerformance(oilkId, "clp");
+    const perf = valuationSeriesMonthlyPerformance(oilkId, "clp");
     const may = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2026-05");
     if (!may) return;
 
@@ -504,7 +504,7 @@ describe("getAccountMonthlyPerformance equity MTM", () => {
     const oilkId = findEquityAccountByName("OILK");
     if (oilkId == null || !hasStockBuyTransfer(oilkId)) return;
 
-    const perf = getAccountMonthlyPerformance(oilkId, "clp");
+    const perf = valuationSeriesMonthlyPerformance(oilkId, "clp");
     const may = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2026-05");
     if (!may) return;
 
@@ -533,7 +533,7 @@ describe("getAccountMonthlyPerformance equity MTM", () => {
       .get(oilkId);
     if (!sell) return;
 
-    const perf = getAccountMonthlyPerformance(oilkId, "clp");
+    const perf = valuationSeriesMonthlyPerformance(oilkId, "clp");
     const june = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2026-06");
     if (!june) return;
 
@@ -560,7 +560,7 @@ describe("getAccountMonthlyPerformance equity MTM", () => {
       .get(ccjId);
     if (!buy) return;
 
-    const perf = getAccountMonthlyPerformance(ccjId, "clp");
+    const perf = valuationSeriesMonthlyPerformance(ccjId, "clp");
     const june = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2026-06");
     if (!june) return;
 
@@ -580,7 +580,7 @@ describe("getAccountMonthlyPerformance equity MTM", () => {
       .get(FIXTURE_STOCK) as { id: number } | undefined;
     if (!row) return;
 
-    const perf = getAccountMonthlyPerformance(row.id, "clp");
+    const perf = valuationSeriesMonthlyPerformance(row.id, "clp");
     const may = perf?.monthly.find((r) => monthKeyFromYmd(r.as_of_date) === "2026-05");
     if (!may) return;
 

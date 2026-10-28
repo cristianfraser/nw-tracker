@@ -1,37 +1,34 @@
 import {
-  getAccountMonthlyPerformance,
+  valuationSeriesMonthlyPerformance,
   mapMonthlyClosingToChartDates,
+  monthEndCloseForAccountInUnit,
   patchOrInsertLiveCurrentMonthPerfRows,
   type AccountMonthlyPerformanceRow,
 } from "./accountPerformance.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
+import { db } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
-import {
-  checkingMovementBalanceClpAtCached,
-  checkingMovementBalanceLive,
-} from "./checkingCartolaBalances.js";
+import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import {
   monthEndsBetweenInclusive,
-  monthEndUtcYmd,
   monthKeyFromYmd,
 } from "./calendarMonth.js";
-import { cashInterestClpThroughDate } from "./cashAccountInterest.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { pickMonthlyPerfRowsByMonth } from "./accountPeriodMetrics.js";
+import { rollupMonthlyPerfYearly, withRunningPlTotals } from "./monthlyPerfRollup.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import {
-  monthEndCloseClpForAccount,
   monthEndCloseFromPerfRows,
   priorCalendarMonthKey,
 } from "./accountPeriodMarks.js";
-import { fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
+import { accountValueClpToUnitAt, convertTs } from "./clpToUnitAt.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { netDepositFlowWindows } from "./flowsDeposits.js";
 import { isUsdCashKindSlug } from "./movementTransfer.js";
-import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
+import { usdCashBalanceClpAt, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { isClpCashKindSlug, clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { syncLatestDisplayValueClp } from "./syncLatestDisplayValueClp.js";
+import { accountTodayValue } from "./accountTodayValue.js";
 import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
@@ -52,17 +49,12 @@ export type GroupTabAccountRow = {
   chart_inactive?: boolean;
 };
 
-function convertTs(clp: number, asOf: string, unit: TsUnit): number {
-  if (unit === "usd") {
-    const fx = fxMonthEndForBalanceUsd(asOf);
-    if (!fx || fx.clp_per_usd <= 0) return Number.NaN;
-    return clp / fx.clp_per_usd;
-  }
-  if (unit === "uf") {
-    const u = ufRowOnOrBefore(asOf);
-    return u && u.clp_per_uf > 0 ? clp / u.clp_per_uf : clp;
-  }
-  return clp;
+/**
+ * A ledger balance close in USD at `asOf` (the current month evaluates at Chile today, framed
+ * live like the dashboard row; earlier months at the stored fx on or before). NaN without a rate.
+ */
+function balanceCloseUsdAt(accountId: number, clp: number, asOf: string): number {
+  return accountValueClpToUnitAt(accountId, clp, asOf, "usd") ?? Number.NaN;
 }
 
 export type ConsolidatedMonthlyPerfRow = {
@@ -86,26 +78,6 @@ export type ConsolidatedMonthlyPerfRow = {
 
 const GROUP_TAB_VAL_TOTAL = "__group_val_total";
 
-function recomputeYtdAndCumulative(
-  rowsAsc: ConsolidatedMonthlyPerfRow[]
-): ConsolidatedMonthlyPerfRow[] {
-  let ytdYear = 0;
-  let ytdRun = 0;
-  let cumPl = 0;
-  return rowsAsc.map((row) => {
-    const y = Number(row.as_of_date.slice(0, 4));
-    if (!Number.isFinite(y)) return row;
-    if (y !== ytdYear) {
-      ytdYear = y;
-      ytdRun = 0;
-    }
-    const nominal = row.nominal_pl ?? 0;
-    ytdRun += nominal;
-    cumPl += nominal;
-    return { ...row, ytd_nominal_pl: ytdRun, cumulative_nominal_pl: cumPl };
-  });
-}
-
 function balanceOnlyMonthlyRowsAsc(
   accountId: number,
   categorySlug: string,
@@ -114,32 +86,18 @@ function balanceOnlyMonthlyRowsAsc(
   closeAt: (asOf: string) => number,
   /**
    * Event-based month flow over `(prevEvalYmd, evalYmd]` (null prev = cumulative through the
-   * first month, the builder convention). Ledger cash (USD, CLP, checking) passes its merged
-   * deposit events ({@link ledgerCashNetFlowBetween}) so each flow converts at its own date's
-   * rate — the deposited-delta default re-prices the standing balance − interest at each
-   * month-end and leaks the month's fx move into the aportes column. Only the book-valuation
-   * path keeps the default.
+   * first month, the builder convention): the account's merged deposit events
+   * ({@link ledgerCashNetFlowBetween}), each converted at its own date's rate, so fx moves on
+   * the balance held are P/L. Every caller passes it (2026-10-28): a balance − cumulative
+   * interest delta re-prices the standing balance at each month-end and leaked the month's fx
+   * move into the aportes column (the cuenta de ahorro's USD closed months did until then).
    */
-  netFlowBetween?: (prevEvalYmd: string | null, evalYmd: string) => number
+  netFlowBetween: (prevEvalYmd: string | null, evalYmd: string) => number
 ): AccountMonthlyPerformanceRow[] {
   const outAsc: AccountMonthlyPerformanceRow[] = [];
   let prevClose: number | null = null;
-  let prevDeposited: number | null = null;
   let prevEvalAt: string | null = null;
-  let ytdYear = 0;
-  let ytdRun = 0;
-  let cumPl = 0;
   const today = chileCalendarTodayYmd();
-
-  // Default flow: deposited capital = balance − cumulative interest (interest = savings_earnings
-  // = the account's only real P/L; every other balance change is a transfer/compra/deposit) —
-  // with netFlow hardcoded to 0 (the old behavior) every transfer read as phantom nominal P/L
-  // and the group's net_capital_flow diverged from Σ deposits (dashboardCardClosingReconcile).
-  const depositedAt = (asOf: string): number => {
-    const interestClp = cashInterestClpThroughDate(accountId, asOf);
-    const interest = unit === "clp" ? interestClp : convertTs(interestClp, asOf, unit);
-    return closeAt(asOf) - (Number.isFinite(interest) ? interest : 0);
-  };
 
   for (const asOf of monthEndsAsc) {
     // Current month: evaluate the ledger at Chile-today, never the future month-end —
@@ -148,25 +106,12 @@ function balanceOnlyMonthlyRowsAsc(
     const evalAt = asOf > today ? today : asOf;
     const close = closeAt(evalAt);
     if (!Number.isFinite(close)) continue;
-    const deposited = depositedAt(evalAt);
     // First month: flow = cumulative aportes at this date (vs 0) and P/L = close − that flow —
     // same convention as the equity/AFP monthly perf builder. A null first P/L dropped the
     // month's fx move on an event-based flow, so the lifetime P/L missed part of what the
     // dashboard card's value − deposits counts.
-    const netFlow = netFlowBetween
-      ? netFlowBetween(prevEvalAt, evalAt)
-      : prevDeposited != null
-        ? deposited - prevDeposited
-        : deposited;
+    const netFlow = netFlowBetween(prevEvalAt, evalAt);
     const nominal = close - (prevClose ?? 0) - netFlow;
-    const y = Number(asOf.slice(0, 4));
-    if (Number.isFinite(y) && y !== ytdYear) {
-      ytdYear = y;
-      ytdRun = 0;
-    }
-    const nIn = Number.isFinite(nominal) ? nominal : 0;
-    ytdRun += nIn;
-    cumPl += nIn;
 
     outAsc.push({
       as_of_date: asOf,
@@ -175,23 +120,25 @@ function balanceOnlyMonthlyRowsAsc(
       net_capital_flow: netFlow,
       stock_units_inflow: 0,
       nominal_pl: nominal,
-      pct_month: null,
-      ytd_nominal_pl: ytdRun,
-      cumulative_nominal_pl: cumPl,
+      // The account's own month %, the valuation-series builder's rule (the account page's
+      // «Detalle por mes» reads it; the group consolidation computes its own from the sums).
+      pct_month: flowAdjustedPct(nominal, prevClose, netFlow, close, unit),
+      ytd_nominal_pl: null,
+      cumulative_nominal_pl: null,
       unit,
     });
     prevClose = close;
-    prevDeposited = deposited;
     prevEvalAt = evalAt;
   }
+  const withTotals = withRunningPlTotals(outAsc);
 
   if (isMovementBalanceCashCategory(categorySlug)) {
-    return patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, outAsc, unit, () =>
-      checkingMovementBalanceLive(accountId)
+    return patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, withTotals, unit, () =>
+      accountTodayValue(accountId, categorySlug)
     );
   }
 
-  return outAsc;
+  return withTotals;
 }
 
 /**
@@ -228,10 +175,8 @@ function usdCashMonthlyPerfRows(
     categorySlug,
     unit,
     monthEndsAsc,
-    (asOf) => {
-      const clp = usdCashBalanceClpAt(accountId, asOf);
-      return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
-    },
+    // In USD the account's ledger dollars, never its sell-rate pesos ÷ the mid rate.
+    (asOf) => (unit === "usd" ? usdCashBalanceUsdAt(accountId, asOf) : usdCashBalanceClpAt(accountId, asOf)),
     ledgerCashNetFlowBetween(accountId, unit)
   );
   return [...asc].reverse();
@@ -255,7 +200,7 @@ function clpCashMonthlyPerfRows(
     monthEndsAsc,
     (asOf) => {
       const clp = clpCashBalanceClpAt(accountId, asOf);
-      return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
+      return unit === "usd" ? balanceCloseUsdAt(accountId, clp, asOf) : clp;
     },
     ledgerCashNetFlowBetween(accountId, unit)
   );
@@ -280,7 +225,7 @@ function movementBalanceMonthlyPerfRows(
     monthEndsAsc,
     (asOf) => {
       const clp = checkingMovementBalanceClpAtCached(accountId, asOf);
-      return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
+      return unit === "usd" ? balanceCloseUsdAt(accountId, clp, asOf) : clp;
     },
     ledgerCashNetFlowBetween(accountId, unit)
   );
@@ -297,14 +242,25 @@ function bookValuationMonthlyPerfRows(
 
   const monthEndsAsc = bookAsc.map((r) => r.as_of_date);
   const clpByDate = new Map(bookAsc.map((r) => [r.as_of_date, r.value_clp]));
-  const asc = balanceOnlyMonthlyRowsAsc(accountId, categorySlug, unit, monthEndsAsc, (asOf) => {
-    const clp = clpByDate.get(asOf) ?? 0;
-    return unit === "usd" ? convertTs(clp, asOf, "usd") : clp;
-  });
+  // Month-precision dated (`monthPrecisionAccountKinds.ts`): movements sit on conventional
+  // month-ends, the same days as the book rows, so each `(prev month-end, month-end]` window
+  // takes its month's deposit exactly once.
+  const asc = balanceOnlyMonthlyRowsAsc(
+    accountId,
+    categorySlug,
+    unit,
+    monthEndsAsc,
+    (asOf) => {
+      const clp = clpByDate.get(asOf) ?? 0;
+      return unit === "usd" ? balanceCloseUsdAt(accountId, clp, asOf) : clp;
+    },
+    ledgerCashNetFlowBetween(accountId, unit)
+  );
 
   const patched = patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, asc, unit, () => {
-    const liveMark = syncLatestDisplayValueClp(accountId, categorySlug, { import_key: null, name: "" });
-    return liveMark ?? bookAsc[bookAsc.length - 1]!.value_clp;
+    // The account's one today value, with its real import key and name (read from the account).
+    const live = accountTodayValue(accountId, categorySlug);
+    return live ?? bookAsc[bookAsc.length - 1]!.value_clp;
   });
 
   return [...patched].reverse();
@@ -332,43 +288,47 @@ export function monthlyPerfRowsForAccount(
   if (isClpCashKindSlug(kindSlug)) {
     return clpCashMonthlyPerfRows(accountId, bucketSlug, unit);
   }
-  if (bucketSlug === "cuenta_ahorro_vivienda") {
+  // By kind, like the other branches: the account's leaf slug is `cash_eqs__cuenta_ahorro_vivienda`,
+  // so a bare-slug match never fired and the account fell to the valuation series.
+  if (kindSlug === "cuenta_ahorro_vivienda") {
     return bookValuationMonthlyPerfRows(accountId, bucketSlug, unit);
   }
-  const perf = getAccountMonthlyPerformance(accountId, unit);
+  const perf = valuationSeriesMonthlyPerformance(accountId, unit);
   return perf?.monthly ?? [];
 }
 
 /**
- * Sum each account's monthly performance by calendar month (one representative row per account).
- * Canonical source for detalle por mes cierre and dashboard bucket lines.
+ * {@link monthlyPerfRowsForAccount} for a caller holding only the account id (the account page,
+ * `GET /api/accounts/:id/performance-monthly`, the export, the benchmark row, tail-inactive
+ * detection): looks the leaf bucket up and returns the same rows. Null when the account does
+ * not exist.
  */
-function monthEndCloseForConsolidation(
-  acct: {
-    account_id: number;
-    bucket_slug: string;
-    monthly: readonly AccountMonthlyPerformanceRow[];
-    notes?: string | null;
-    import_key?: string | null;
-    name?: string | null;
-  },
-  priorMk: string,
-  unit: TsUnit
-): number | null {
-  const clp = monthEndCloseClpForAccount(
-    acct.account_id,
-    acct.bucket_slug,
-    acct.monthly,
-    priorMk,
-    { import_key: acct.import_key ?? null, name: acct.name }
-  );
-  if (clp == null || !Number.isFinite(clp)) return null;
-  if (unit === "clp") return clp;
-  if (unit === "usd") {
-    const usd = convertTs(clp, monthEndUtcYmd(priorMk), "usd");
-    return Number.isFinite(usd) ? usd : null;
-  }
-  return clp;
+export function monthlyPerfForAccountId(
+  accountId: number,
+  unit: TsUnit = "clp"
+): {
+  account_id: number;
+  bucket_slug: string;
+  monthly: AccountMonthlyPerformanceRow[];
+  /** The «Detalle por año» rows: `monthly` rolled up by year (`rollupMonthlyPerfYearly`). */
+  yearly: AccountMonthlyPerformanceRow[];
+} | null {
+  const row = db
+    .prepare(
+      `SELECT g.slug AS bucket_slug
+       FROM accounts a
+       INNER JOIN asset_groups g ON g.id = a.asset_group_id
+       WHERE a.id = ?`
+    )
+    .get(accountId) as { bucket_slug: string } | undefined;
+  if (!row) return null;
+  const monthly = monthlyPerfRowsForAccount(accountId, row.bucket_slug, unit);
+  return {
+    account_id: accountId,
+    bucket_slug: row.bucket_slug,
+    monthly,
+    yearly: rollupMonthlyPerfYearly(monthly),
+  };
 }
 
 export function consolidateGroupMonthlyPerf(
@@ -431,7 +391,14 @@ export function consolidateGroupMonthlyPerf(
     let sumPrior = 0;
     let anyPrior = false;
     for (const acct of byAccount) {
-      let priorClose = monthEndCloseForConsolidation(acct, priorMk, unit);
+      let priorClose = monthEndCloseForAccountInUnit(
+        acct.account_id,
+        acct.bucket_slug,
+        acct.monthly,
+        priorMk,
+        unit,
+        { import_key: acct.import_key ?? null, name: acct.name }
+      );
       if (priorClose == null) {
         priorClose = monthEndCloseFromPerfRows(acct.monthly, priorMk);
       }
@@ -452,7 +419,7 @@ export function consolidateGroupMonthlyPerf(
     .map(([, bucket]) => {
       const prior = bucket.prior_closing;
       const net = bucket.net_capital_flow;
-      /** Same definition as {@link getGroupMonthlyPerformanceSeries} `delta_total` (Σ per-account picked nominal_pl). */
+      /** Σ per-account picked nominal_pl — the group P/L chart's `delta_total` reads this row (`groupMonthlyPlSeries.ts`). */
       const nominal = bucket.nominal_pl;
       const pct = flowAdjustedPct(
         nominal,
@@ -464,7 +431,7 @@ export function consolidateGroupMonthlyPerf(
       return { ...bucket, nominal_pl: nominal, pct_month: pct };
     });
 
-  return recomputeYtdAndCumulative(asc).reverse();
+  return withRunningPlTotals(asc).reverse();
 }
 
 export function consolidatedClosingRawByDate(

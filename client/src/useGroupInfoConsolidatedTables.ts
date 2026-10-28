@@ -58,6 +58,14 @@ export function useGroupInfoConsolidatedTables(
     [data, displayUnit]
   );
 
+  const consolidatedYearlyPerf = useMemo(
+    () =>
+      data
+        ? (consolidatedRowsForDisplay(data.consolidated_yearly, data.unit, displayUnit) ?? [])
+        : [],
+    [data, displayUnit]
+  );
+
   // undefined = not here yet (pending, disabled, or held prior-unit data):
   // callers render the table frame dimmed. null = the server sends none (or the fetch failed):
   // callers leave the table out.
@@ -76,6 +84,7 @@ export function useGroupInfoConsolidatedTables(
 
   return {
     consolidatedMonthlyPerf,
+    consolidatedYearlyPerf,
     periodReturns,
     tableFlags,
     tablesLoading,

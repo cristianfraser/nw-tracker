@@ -68,6 +68,7 @@ export type AccountDetailPageData = {
   perfPrefs: SurfacePrefsValue;
   valuationTailClipEndDate: string | null;
   monthlyPerfRows: AccountMonthlyPerformanceResponse["monthly"];
+  monthlyPerfYearlyRows: AccountMonthlyPerformanceResponse["yearly"];
   ytdChartPoints: Record<string, string | number | null>[];
   accChartPoints: Record<string, string | number | null>[];
   valuationBlockForChart: NonNullable<DetailBundle["ts"]>["accounts"] | null;
@@ -176,6 +177,15 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     const clipEnd = resolveMonthlyPerfClipEndDate(valuationTailClipEndDate, rows);
     return filterPointsThroughAsOfDate(rows, clipEnd);
   }, [monthlyPerf?.monthly, valuationTailClipEndDate]);
+  // The server's yearly rows, cut at the same tail clip: a year after the clip month is gone,
+  // the clip month's own year stays (the months after it are the trailing zeros).
+  const monthlyPerfYearlyRows = useMemo(() => {
+    const rows = monthlyPerf?.yearly ?? [];
+    const clipEnd = resolveMonthlyPerfClipEndDate(valuationTailClipEndDate, monthlyPerf?.monthly ?? []);
+    if (!clipEnd) return rows;
+    const clipYear = clipEnd.slice(0, 4);
+    return rows.filter((r) => r.as_of_date.slice(0, 4) <= clipYear);
+  }, [monthlyPerf?.yearly, monthlyPerf?.monthly, valuationTailClipEndDate]);
 
   // Yearly combos: months cut at the combos' Rango first, then rolled up (a partial first year).
   const ytdChartPoints = useMemo(() => {
@@ -274,6 +284,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     perfPrefs,
     valuationTailClipEndDate,
     monthlyPerfRows,
+    monthlyPerfYearlyRows,
     ytdChartPoints,
     accChartPoints,
     valuationBlockForChart,

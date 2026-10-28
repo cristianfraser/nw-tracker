@@ -16,9 +16,9 @@ import {
   totalRangeDays,
 } from "./dailySeries.js";
 import { nullLeadingZeroRun, trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
-import { clpToUsdForBalanceAt } from "./fxRates.js";
+import { clpToUnitAt } from "./clpToUnitAt.js";
 import { getNetWorthAllTimeHigh, type NetWorthAthDto } from "./netWorthAllTimeHigh.js";
-import { buildDashboardBucketDailySeriesClp } from "./portfolioGroupValueAtDate.js";
+import { buildDashboardBucketDailySeriesClp, dashboardBucketsUsdToday } from "./portfolioGroupValueAtDate.js";
 import {
   DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
   listAccountsForGroupTab,
@@ -82,7 +82,9 @@ function buildPrimaryDailyLines(
   unit: "clp" | "usd",
   days: number,
   grid: readonly string[],
-  cashNettedClpByDate: Map<string, number>
+  cashNettedClpByDate: Map<string, number>,
+  /** Today's cash card in USD (the headline's per-account dollars); null in CLP. */
+  cashUsdToday: number | null
 ): PrimaryDailyLine[] {
   const lines: PrimaryDailyLine[] = [];
   for (const spec of listDashboardPrimaryPortfolioGroupSpecs()) {
@@ -95,7 +97,8 @@ function buildPrimaryDailyLines(
           const clp = cashNettedClpByDate.get(ymd);
           if (clp == null || !Number.isFinite(clp)) return null;
           if (unit === "clp") return clp;
-          const usd = clpToUsdForBalanceAt(clp, ymd);
+          if (ymd === grid[grid.length - 1] && cashUsdToday != null) return cashUsdToday;
+          const usd = clpToUnitAt(clp, ymd, "usd");
           return usd != null && Number.isFinite(usd) ? usd : null;
         }),
       });
@@ -163,31 +166,37 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
   // as data, not absence.
   let reStarted = false;
   let liabStarted = false;
+  // Today in USD is the headline's figure (Σ of each account's own dollars), never the
+  // bucket's pesos ÷ one live rate: a cuota or a pre-open stock is priced on an earlier day.
+  const usdToday = unit === "usd" ? dashboardBucketsUsdToday() : null;
   const points: OverviewDailyPoint[] = grid.map((ymd) => {
     const row = byDate.get(ymd)!;
+    const isToday = ymd === endYmd && usdToday != null;
     const pick = (clp: number): number | null => {
       if (unit === "clp") return clp;
-      const usd = clpToUsdForBalanceAt(clp, ymd);
+      const usd = clpToUnitAt(clp, ymd, "usd");
       return usd != null && Number.isFinite(usd) ? usd : null;
     };
+    const bucket = (slug: "real_estate" | "retirement" | "brokerage" | "cash_eqs" | "net_worth"): number | null =>
+      isToday ? usdToday![slug] : pick(row[slug]);
     if (!reStarted && Math.abs(row.real_estate) >= 0.5) reStarted = true;
     const liabClp = liabByDate.get(ymd)!;
     if (!liabStarted && Math.abs(liabClp) >= 0.5) liabStarted = true;
     return {
       as_of_date: ymd,
-      net_worth: pick(row.net_worth),
-      real_estate: reStarted ? pick(row.real_estate) : null,
-      retirement: pick(row.retirement),
-      brokerage: pick(row.brokerage),
-      cash_eqs: pick(row.cash_eqs),
-      invested: pick(row.retirement + row.brokerage),
+      net_worth: bucket("net_worth"),
+      real_estate: reStarted ? bucket("real_estate") : null,
+      retirement: bucket("retirement"),
+      brokerage: bucket("brokerage"),
+      cash_eqs: bucket("cash_eqs"),
+      invested: isToday ? usdToday!.retirement + usdToday!.brokerage : pick(row.retirement + row.brokerage),
       liabilities: liabStarted ? pick(liabClp) : null,
       ...milestoneFieldsForDate(ymd, unit),
     };
   });
 
   const cashNettedClpByDate = new Map(grid.map((ymd) => [ymd, byDate.get(ymd)!.cash_eqs]));
-  const primary_lines = buildPrimaryDailyLines(unit, days, grid, cashNettedClpByDate);
+  const primary_lines = buildPrimaryDailyLines(unit, days, grid, cashNettedClpByDate, usdToday?.cash_eqs ?? null);
 
   // Composition shares (day grain): the same lines and marks as the monthly block, sampled
   // daily (shares are unit-invariant, so the CLP marks serve both units).

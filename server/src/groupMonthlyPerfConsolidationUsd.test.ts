@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
 import { clearAggregationCache } from "./aggregationCache.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { db } from "./db.js";
 import {
   getGroupConsolidatedMonthlyPerfForRows,
   getGroupConsolidationAccountMonthly,
+  monthlyPerfForAccountId,
   type GroupTabAccountRow,
 } from "./groupMonthlyPerfConsolidation.js";
 
@@ -75,7 +75,7 @@ describe("group consolidation in USD — Fintual certificate account", () => {
   it("a one-account group's USD month % and prior close are the account's own", () => {
     if (row == null) return;
     const own = new Map(
-      getAccountMonthlyPerformance(row.account_id, "usd")!.monthly.map((r) => [
+      monthlyPerfForAccountId(row.account_id, "usd")!.monthly.map((r) => [
         monthKeyFromYmd(r.as_of_date),
         r,
       ])
