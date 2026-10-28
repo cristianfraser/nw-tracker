@@ -57,6 +57,7 @@ describe("runNightly", () => {
       "run check:mortgage-card-match",
       "run import:transfer-mails",
       "run import:payment-receipt-mails",
+      "run import:utility-bills",
       "run import:apple-mail",
       "run fetch:emails",
       "run check:broker-emails",
