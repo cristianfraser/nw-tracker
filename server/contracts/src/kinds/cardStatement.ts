@@ -16,6 +16,8 @@ const currency = z.enum(["clp", "usd"]);
  */
 export const CARD_STATEMENT_LINE_KINDS = ["purchase", "installment", "charge", "payment", "credit_note", "credit"] as const;
 
+const CREDIT_LINE_KINDS: ReadonlySet<string> = new Set(["payment", "credit_note", "credit"]);
+
 export const cardStatementLineSchema = z
   .object({
     kind: z.enum(CARD_STATEMENT_LINE_KINDS),
@@ -50,6 +52,12 @@ export const cardStatementLineSchema = z
   })
   .refine((l) => l.kind === "installment" ? l.amount === l.installment!.cuota_amount : true, {
     message: "an installment line bills its cuota",
+  })
+  // Debt-positive: a payment or credit can never add debt, a charge can never take it away. A
+  // feeder that reads a direction wrong (the 09/10/2026 dollar MONTO CANCELADO came in as a
+  // positive purchase) must fail here instead of landing in the owed walk.
+  .refine((l) => (CREDIT_LINE_KINDS.has(l.kind) ? l.amount <= 0 : l.amount >= 0), {
+    message: "a payment or credit line is negative, a purchase, installment or charge line is positive",
   });
 
 export type CardStatementLine = z.infer<typeof cardStatementLineSchema>;

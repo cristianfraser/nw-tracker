@@ -22,6 +22,7 @@ import {
   statementLineDateIso,
 } from "./ccInstallmentPayBy.js";
 import { ccTraspasoLinkedClpByUsdLineId } from "./ccTraspasoDeudaLinks.js";
+import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
 import { db } from "./db.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -689,17 +690,19 @@ export function statementHeaderFacturado(stmt: { monto_facturado: number | null 
 export function facturadoFromStatement(
   accountId: number,
   statementDate: string,
-  stmt: { currency: string; monto_facturado: number | null; source_pdf?: string | null },
+  stmt: { id: number; currency: string; monto_facturado: number | null; source_pdf?: string | null },
   fxDate: string
 ): { facturado_clp: number | null; facturado_usd: number | null } {
   const headerMonto = statementHeaderFacturado(stmt);
+  if (stmt.currency === "usd") {
+    // A dollar statement that prints no total (the Santander international JSON) bills what its
+    // own lines bill: summing peso lines for it had left a facturación's dollars out of its total.
+    const usd = headerMonto ?? usdBilledFromStatementLines(stmt.id);
+    const fx = fxMonthEndForBalanceUsd(balanceUsdFxDateIso(accountId, statementDate))?.clp_per_usd;
+    const clp = fx != null && fx > 0 ? Math.round(usd * fx) : null;
+    return { facturado_clp: clp, facturado_usd: usd };
+  }
   if (headerMonto != null) {
-    if (stmt.currency === "usd") {
-      const fx = fxMonthEndForBalanceUsd(balanceUsdFxDateIso(accountId, statementDate))?.clp_per_usd;
-      const clp =
-        fx != null && fx > 0 ? Math.round(headerMonto * fx) : null;
-      return { facturado_clp: clp, facturado_usd: headerMonto };
-    }
     return {
       facturado_clp: Math.round(headerMonto),
       facturado_usd: null,

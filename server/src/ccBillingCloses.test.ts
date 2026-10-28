@@ -34,6 +34,7 @@ import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
 import { ccLedgerStatementClosingPointsClp } from "./ccCreditCardValuations.js";
 import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import { buildBillingDetailByMonth, buildFacturaciones } from "./ccBillingViews.js";
+import { usdBilledFromStatementLines } from "./ccUsdStatementBilled.js";
 import { applyListing, listing, listingCard, listingLine } from "./test/cardListingPayloads.js";
 import {
   facturacionMonthByStatementDate,
@@ -1021,6 +1022,51 @@ describe("credit-card close evidence", () => {
     const second = reconcileOpenWebPasteAfterPdfClose(accountId, "2026-09");
     expect(second).toMatchObject({ skipped: false, currencies: ["clp", "usd"], deleted_line_ids: [supermercado] });
     expect(merchantsIn(bucketId("2026-09"))).toEqual([]);
+  });
+
+  it("a dollar statement with no printed total bills its lines, payments left out, and is held to the feed", () => {
+    recordFeedBillingClose(accountId, {
+      close_iso: "2026-09-24",
+      saldo_inicial_clp: 10_000,
+      saldo_inicial_usd: 30.52,
+      source_file: "feed",
+    });
+    const clp = insertStatement({
+      source: "import:santander-json|clp|24/09/2026",
+      date: "24/09/2026",
+      from: "25/08/2026",
+      to: "24/09/2026",
+      currency: "clp",
+      monto: 10_000,
+    });
+    insertLine(clp, { date: "03/09/2026", merchant: "SUPERMERCADO VITEST", clp: 10_000 });
+    // The international JSON prints no header: its dollars come from the lines.
+    const usd = insertStatement({
+      source: "import:santander-json|usd|24/09/2026",
+      date: "24/09/2026",
+      from: "25/08/2026",
+      to: "24/09/2026",
+      currency: "usd",
+      monto: null,
+    });
+    insertLine(usd, { date: "01/09/2026", merchant: "APPLE.COM/BILL", usd: 13.52 });
+    insertLine(usd, { date: "02/09/2026", merchant: "VITEST CLOUD", usd: 20 });
+    insertLine(usd, { date: "05/09/2026", merchant: "NOTA DE CREDITO", usd: -3 });
+    const payment = insertLine(usd, { date: "09/09/2026", merchant: "MONTO CANCELADO", usd: -50 });
+
+    expect(usdBilledFromStatementLines(usd)).toBeCloseTo(30.52, 2);
+    expect(feedCloseStatementMismatches(accountId)).toEqual([]);
+    invalidateCcBillingDetail(accountId);
+    const ledger = ccInstallmentsDbApiPayload(accountId);
+    const september = buildFacturaciones(accountId, ledger.months).find((f) => f.billing_month === "2026-09")!;
+    expect(september.facturado_usd).toBeCloseTo(30.52, 2);
+    expect(september.facturado_total_clp).toBe(10_000 + september.facturado_usd_clp!);
+
+    // A payment read as a charge (a dollar MONTO CANCELADO read as positive) disagrees.
+    db.prepare(`UPDATE cc_statement_lines SET amount_usd = 50 WHERE id = ?`).run(payment);
+    expect(feedCloseStatementMismatches(accountId)).toEqual([
+      expect.stringMatching(/bills 80\.52, the feed's SALDO INICIAL for that close is 30\.52/),
+    ]);
   });
 
   it("flags a statement that disagrees with the feed's SALDO INICIAL for the same close", () => {

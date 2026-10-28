@@ -61,6 +61,23 @@ function payload(apply: boolean, over: Partial<CardStatementPayload> = {}): Card
   });
 }
 
+describe("card.statement line signs", () => {
+  it("refuses a payment or credit that adds debt, and a purchase that removes it", () => {
+    const usdSide = (l: CardStatementLine) => ({
+      statements: [
+        { currency: "usd" as const, document: "vitest.json", billed_total: null, payments_total: null, lines: [l] },
+      ],
+    });
+    // A dollar MONTO CANCELADO read as a positive purchase must not parse either way.
+    expect(() => payload(false, usdSide(line({ kind: "payment", merchant: "MONTO CANCELADO", amount: 777.77 })))).toThrow(
+      /a payment or credit line is negative/
+    );
+    expect(() => payload(false, usdSide(line({ kind: "credit", merchant: "ABONO DE DIVISAS", amount: 84.77 })))).toThrow();
+    expect(() => payload(false, usdSide(line({ kind: "purchase", amount: -12.5 })))).toThrow();
+    expect(payload(false, usdSide(line({ kind: "credit", merchant: "ABONO DE DIVISAS", amount: -84.77 })))).toBeTruthy();
+  });
+});
+
 describe("applyCardStatement", () => {
   let accountId = 0;
   let tmpDir = "";

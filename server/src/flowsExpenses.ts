@@ -64,11 +64,8 @@ import {
   effectiveCcExpenseLineAmountUsd,
 } from "./ccExpenseAmountClp.js";
 import { facturacionPayByIsoResolver, facturacionUsdRateResolver } from "./ccBillingViews.js";
-import {
-  isCcUsdPaymentLine,
-  usdPaymentLineClpResolver,
-  type CcUsdPaymentLine,
-} from "./ccFacturacionUsdRate.js";
+import { usdPaymentLineClpResolver, type CcUsdPaymentLine } from "./ccFacturacionUsdRate.js";
+import { isCcUsdPaymentLine } from "./ccUsdStatementBilled.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import { loadCheckingExpenseRefunds } from "./checkingExpenseRefunds.js";
 import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";

@@ -74,6 +74,33 @@ export const NATIONAL_COD_TXS = {
 const KNOWN_NATIONAL_COD_TXS = new Set<string>(Object.values(NATIONAL_COD_TXS));
 
 /**
+ * Transaction codes seen on the international (USD) statement, each with its direction. The
+ * trailing sign of `MontoTransaccion` is not trusted on its own: the bank printed the 09/10/2026
+ * dollar payment («MONTO CANCELADO», code 0067, paid from the dollar account) as
+ * `000001xxxxx+`, which read as a US$1.xxx,xx charge. A code is mapped here and its amount takes
+ * the code's sign; an unknown code is refused rather than guessed.
+ */
+export const INTERNATIONAL_COD_TXS = {
+  PURCHASE: "2000",
+  /** A purchase abroad billed in the merchant's currency (Argentine terminals, 2026-09). */
+  PURCHASE_FOREIGN: "2003",
+  /** ABONO DE DIVISAS: dollars bought to pay the previous facturación (printed with '-'). */
+  CURRENCY_PAYMENT: "2020",
+  /** NOTA DE CREDITO (printed with '-'). */
+  CREDIT_NOTE: "2510",
+  /** MONTO CANCELADO: a payment of the previous facturación, printed with '+' (see above). */
+  PAYMENT: "0067",
+} as const;
+
+const INTERNATIONAL_KIND_BY_CODE: Record<string, CardStatementLine["kind"]> = {
+  [INTERNATIONAL_COD_TXS.PURCHASE]: "purchase",
+  [INTERNATIONAL_COD_TXS.PURCHASE_FOREIGN]: "purchase",
+  [INTERNATIONAL_COD_TXS.CURRENCY_PAYMENT]: "credit",
+  [INTERNATIONAL_COD_TXS.CREDIT_NOTE]: "credit_note",
+  [INTERNATIONAL_COD_TXS.PAYMENT]: "payment",
+};
+
+/**
  * Read a zero-padded fixed-point amount.
  *
  * Two conventions coexist and confusing them is a silent factor-of-100 error: national amounts are
@@ -164,17 +191,25 @@ export function nationalRowToLine(row: SantanderNationalRow): CardStatementLine 
 /**
  * One international (USD) row as a canonical line.
  *
- * `MontoTransaccion` is the billed USD and carries the direction in its trailing sign (an ABONO DE
- * DIVISAS is negative). `MontoOrigen` is what the merchant charged — dollars, or the pesos of a
- * merchant billing in Chile; the feed does not say which.
+ * `MontoTransaccion` is the billed USD; its direction comes from the row's code
+ * (`INTERNATIONAL_COD_TXS`), not from its trailing sign. `MontoOrigen` is what the merchant
+ * charged — dollars, or the pesos of a merchant billing in Chile; the feed does not say which.
  */
 export function internationalRowToLine(row: SantanderInternationalRow): CardStatementLine {
   const merchant = String(row.NombreComercio ?? "").trim();
+  const code = String(row.CodTxs ?? "").trim();
+  const kind = INTERNATIONAL_KIND_BY_CODE[code];
+  if (!kind) {
+    throw new Error(
+      `unknown international CodTxs "${code}" (${merchant} ${row.MontoTransaccion}) — map its sign convention before importing`
+    );
+  }
   const transaction_date = santanderIsoDate(row.FechaTxs);
   if (!transaction_date) throw new Error(`International row has no FechaTxs (${merchant})`);
-  const usd = parseSantanderFixed(row.MontoTransaccion, 2);
+  const printed = Math.abs(parseSantanderFixed(row.MontoTransaccion, 2));
+  const usd = kind === "purchase" ? printed : -printed;
   return {
-    kind: usd < 0 ? "credit" : "purchase",
+    kind,
     transaction_date,
     posting_date: santanderIsoDate(row.FechaProceso),
     merchant,
