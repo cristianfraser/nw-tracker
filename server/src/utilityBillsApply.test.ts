@@ -10,6 +10,7 @@ import {
   normalizeServiceAccount,
   pickUtilityBillCharge,
   utilityBillMonth,
+  utilityBillMonthsCovered,
 } from "./utilityBillsApply.js";
 
 const PLACE_SLUG = "vitest_utility_place";
@@ -106,6 +107,14 @@ describe("utilityBillMonth", () => {
     expect(utilityBillMonth({ period_to: "2036-08-24", issued_on: "2036-08-28" })).toBe("2036-08");
     // No period printed: the issue day decides the same way.
     expect(utilityBillMonth({ period_to: null, issued_on: "2036-01-06" })).toBe("2035-12");
+  });
+});
+
+describe("utilityBillMonthsCovered", () => {
+  it("counts the months a printed period spans", () => {
+    expect(utilityBillMonthsCovered({ period_from: "2036-06-26", period_to: "2036-08-23" })).toBe(2);
+    expect(utilityBillMonthsCovered({ period_from: "2036-09-02", period_to: "2036-10-01" })).toBe(1);
+    expect(utilityBillMonthsCovered({ period_from: null, period_to: null })).toBe(1);
   });
 });
 
