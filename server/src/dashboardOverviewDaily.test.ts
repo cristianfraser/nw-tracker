@@ -66,6 +66,19 @@ describe("getDashboardOverviewDaily — phase 3 blocks", () => {
     }
   });
 
+  it("a primary line starts at its first non-zero value, never on a run of zeros (both grains)", () => {
+    const d = getDashboardOverviewDaily("clp", 0);
+    for (const line of d.primary_lines) {
+      const first = line.values.find((v) => v != null);
+      if (first != null) expect(first).not.toBe(0);
+    }
+    const m = getDashboardValuationTimeseries("clp").accounts_ex_property;
+    for (const a of m.accounts) {
+      const first = m.points.map((p) => p[a.dataKey]).find((v) => v != null);
+      if (first != null) expect(first).not.toBe(0);
+    }
+  });
+
   it("composition lines (one level below the big buckets) agree between daily and monthly at a month-end", () => {
     const d = getDashboardOverviewDaily("clp", 0).allocation_proportional;
     const m = getDashboardValuationTimeseries("clp").allocation_proportional;
