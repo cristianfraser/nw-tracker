@@ -109,6 +109,11 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   if (o.dryRun) await x.step(dry("Payment receipt mails"), npmRun("import:payment-receipt-mails", "--dry-run"));
   else await x.step("Payment receipt mails", npmRun("import:payment-receipt-mails"));
 
+  // 3c'''. Utility bills (ENEL, Metrogas): each becomes its place's bill row once the card or
+  // checking charge that paid it is in (imported above), with the consumption it states.
+  if (o.dryRun) await x.step(dry("Utility bill mails"), npmRun("import:utility-bills", "--dry-run"));
+  else await x.step("Utility bill mails", npmRun("import:utility-bills"));
+
   // 3d. Apple's mails, once the card lines they explain are in: which app each charge paid for.
   if (o.dryRun) await x.step(dry("Apple receipts"), npmRun("import:apple-mail", "--dry-run"));
   else await x.step("Apple receipts", npmRun("import:apple-mail"));
