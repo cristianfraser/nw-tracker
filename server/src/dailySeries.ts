@@ -11,10 +11,12 @@ import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
 import {
-  convertLegToUnit,
   includeShortHorizonAccount,
   type ShortHorizonAccountRef,
 } from "./periodReturnsShortHorizon.js";
+import { accountTodayValue } from "./accountTodayValue.js";
+import { clpToUnitAt } from "./clpToUnitAt.js";
+import { isUsdCashAccount, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
@@ -381,29 +383,58 @@ export function getBucketDailySeries(
   const wealthByAccount: (number | null)[][] | null = perAccount
     ? included.map(() => new Array<number | null>(grid.length).fill(null))
     : null;
-  const values: (number | null)[] = grid.map((ymd, gi) => {
-    let rawClp = 0;
-    let rawWealthClp = 0;
+  // Every value is framed PER ACCOUNT (the 1D/1W cells' `accountValueInUnitAt`): a USD cash
+  // account is its ledger dollars on every day; on today's grid day in USD each account's pesos
+  // are framed on the day they were priced (`priced_on`); earlier days at the stored fx on or
+  // before. The bucket in the unit is Σ of those, never Σ pesos ÷ one rate.
+  const lastGi = grid.length - 1;
+  const isUsdCash = unit === "usd" ? included.map((a) => isUsdCashAccount(a.account_id)) : null;
+  const pricedOnToday =
+    unit === "usd" && grid[lastGi] === chileCalendarTodayYmd()
+      ? included.map(
+          (a) =>
+            accountTodayValue(a.account_id, a.bucket_slug, {
+              import_key: a.import_key ?? null,
+              name: a.name ?? null,
+            })?.priced_on ?? null
+        )
+      : null;
+  const accountValueInUnit = (ai: number, clp: number, gi: number): number | null => {
+    const ymd = grid[gi]!;
+    if (isUsdCash?.[ai]) return usdCashBalanceUsdAt(included[ai]!.account_id, ymd);
+    return clpToUnitAt(clp, ymd, unit, {
+      now,
+      markAsOf: gi === lastGi ? pricedOnToday?.[ai] ?? null : null,
+    });
+  };
+  /** Each account's value in the unit per grid day (null: no mark, or no rate on file). */
+  const unitByAccount = included.map(() => new Array<number | null>(grid.length).fill(null));
+  const values: (number | null)[] = grid.map((_ymd, gi) => {
+    let sum = 0;
+    let wealthSum = 0;
     let any = false;
     included.forEach((a, ai) => {
       const clp = marksByAccount[ai]![gi];
       const ok = clp != null && Number.isFinite(clp);
-      if (ok) {
-        rawWealthClp += isLiability[ai] ? -clp : clp;
-        rawClp += clp;
+      ccMarksClp.get(a.account_id)?.push(ok ? clp : null);
+      const u = ok ? accountValueInUnit(ai, clp, gi) : null;
+      const uOk = u != null && Number.isFinite(u);
+      if (uOk) {
+        unitByAccount[ai]![gi] = u;
+        wealthSum += isLiability[ai] ? -u : u;
+        sum += u;
         any = true;
       }
-      ccMarksClp.get(a.account_id)?.push(ok ? clp : null);
-      if (wealthByAccount && ok) {
-        wealthByAccount[ai]![gi] = convertLegToUnit(isLiability[ai] ? -clp : clp, ymd, unit, now);
+      if (wealthByAccount && uOk) {
+        wealthByAccount[ai]![gi] = isLiability[ai] ? -u : u;
       }
       // Baseline (gi 0) anchors deltas only; account lines align with `points`.
       if (perAccount && gi >= 1) {
-        perAccount[ai]!.values.push(ok ? convertLegToUnit(clp, ymd, unit, now) : null);
+        perAccount[ai]!.values.push(uOk ? u : null);
       }
     });
-    wealth.push(any ? convertLegToUnit(rawWealthClp, ymd, unit, now) : null);
-    return any ? convertLegToUnit(rawClp, ymd, unit, now) : null;
+    wealth.push(any ? wealthSum : null);
+    return any ? sum : null;
   });
   const flowUnit = unit === "usd" ? "usd" : "clp";
   const { flows, liabilityFlows, byAccount: flowsByAccount } = gridFlows(accounts, grid, flowUnit);
@@ -540,13 +571,9 @@ export function getBucketDailySeries(
     for (const { ai, accFlows, sign } of baseFlowsByAccount) {
       const baseFlow = sign * accFlows[i - 1]!;
       if (!(baseFlow < 0)) continue;
-      const closeClp = marksByAccount[ai]![i];
-      if (closeClp == null || !Number.isFinite(closeClp)) continue;
-      endCharged += endChargedFlow(
-        toUnit(baseFlow),
-        convertLegToUnit(closeClp, ymd, unit, now),
-        unit
-      );
+      const close = unitByAccount[ai]![i];
+      if (close == null || !Number.isFinite(close)) continue;
+      endCharged += endChargedFlow(toUnit(baseFlow), close, unit);
     }
     const pct = flowAdjustedPct(
       pl,

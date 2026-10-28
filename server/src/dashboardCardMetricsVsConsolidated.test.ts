@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import { buildDashboardNavSnapshot } from "./dashboardAccounts.js";
 import { getNetWorthNavGroupNode } from "./navTree.js";
 import type { NavTreeNodeDto } from "./navTree.js";
-import {
-  getGroupConsolidatedMonthlyRows,
-  rollupConsolidatedMonthlyYearly,
-} from "./groupConsolidatedTables.js";
+import { getGroupConsolidatedMonthlyRows } from "./groupConsolidatedTables.js";
+import { rollupMonthlyPerfYearly } from "./monthlyPerfRollup.js";
 import { isResolvablePortfolioGroupSlug } from "./portfolioGroupTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
@@ -63,7 +61,7 @@ describe("dashboard card metrics vs consolidated monthly table", () => {
         const card = snap.card_metrics_by_slug[slug]?.parent;
         expect(card, slug).toBeDefined();
         const monthly = getGroupConsolidatedMonthlyRows(slug, unit);
-        const yearly = rollupConsolidatedMonthlyYearly(monthly);
+        const yearly = rollupMonthlyPerfYearly(monthly);
         const monthRow = monthly.find((r) => monthKeyFromYmd(r.as_of_date) === currentMk) ?? null;
         const yearRow = yearly.find((r) => r.as_of_date.slice(0, 4) === currentY) ?? null;
         const latest = monthly[0] ?? null;

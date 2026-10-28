@@ -22,7 +22,7 @@ async function main() {
   const { buildFlowsExpensesPayload } = await import("../src/flowsExpenses.js");
   const { buildGroupFlows } = await import("../src/flowsApi.js");
   const { getGroupValuationTimeseries } = await import("../src/valuationTimeseries.js");
-  const { getGroupMonthlyPerformanceSeries } = await import("../src/accountPerformance.js");
+  const { getGroupMonthlyPlSeries } = await import("../src/groupMonthlyPlSeries.js");
   const { getDashboardOverviewDaily } = await import("../src/dashboardOverviewDaily.js");
 
   const out: Record<string, unknown> = {};
@@ -47,7 +47,7 @@ async function main() {
       (getGroupValuationTimeseries as any)(slug, "clp", undefined, { groupedBlocks: true })
     );
     grab(`group_perf_${slug}`, () =>
-      (getGroupMonthlyPerformanceSeries as any)(slug, "clp", undefined, { groupedBlocks: true })
+      (getGroupMonthlyPlSeries as any)(slug, "clp", undefined, { groupedBlocks: true })
     );
   }
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getMergedDisplayDepositInflowEventsForAccount } from "./accountDeposits.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { valuationSeriesMonthlyPerformance } from "./accountPerformance.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
@@ -137,7 +137,7 @@ describe("CLP ledger cash and checking: USD deposits event by event", () => {
 
   it("the account's performance table and aportes line read the same events", () => {
     if (!clpId) return;
-    const perf = getAccountMonthlyPerformance(clpId, "usd")?.monthly ?? [];
+    const perf = valuationSeriesMonthlyPerformance(clpId, "usd")?.monthly ?? [];
     const cons = monthlyPerfRowsForAccount(clpId, clpSlug, "usd");
     for (const mk of [M2, M3]) {
       expect(rowForMonth(perf, mk).net_capital_flow).toBeCloseTo(rowForMonth(cons, mk).net_capital_flow, 8);

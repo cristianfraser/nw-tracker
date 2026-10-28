@@ -2,7 +2,7 @@
  * Profile dashboard server work (no HTTP). Run from server/: npm run profile:dashboard
  */
 import { performance } from "node:perf_hooks";
-import { getGroupMonthlyPerformanceSeries } from "../src/accountPerformance.js";
+import { getGroupMonthlyPlSeries } from "../src/groupMonthlyPlSeries.js";
 import { buildDashboardNavSnapshot } from "../src/dashboardAccounts.js";
 import { buildDashboardPagePayload } from "../src/dashboardPagePayload.js";
 import { buildFlowsDepositsPayload } from "../src/flowsDeposits.js";
@@ -30,10 +30,10 @@ async function main() {
   await time("getDashboardValuationTimeseries", () => getDashboardValuationTimeseries("clp"));
   await time("getDashboardOverviewBlock (nav)", () => getDashboardOverviewBlock("clp"));
   await time("getGroupMonthlyPerformance(retirement)", () =>
-    getGroupMonthlyPerformanceSeries("retirement", "clp")
+    getGroupMonthlyPlSeries("retirement", "clp")
   );
   await time("getGroupMonthlyPerformance(brokerage)", () =>
-    getGroupMonthlyPerformanceSeries("brokerage", "clp")
+    getGroupMonthlyPlSeries("brokerage", "clp")
   );
   await time("buildFlowsDepositsPayload", () => buildFlowsDepositsPayload());
   await time("buildDashboardNavSnapshot", () => buildDashboardNavSnapshot(false));
@@ -46,7 +46,7 @@ async function main() {
 
   console.log("\nFunctions marked @heavy in source: getDashboardValuationTimeseries,");
   console.log("buildDashboardPrimaryFromPortfolioGroups, getGroupValuationTimeseries,");
-  console.log("getAccountMonthlyPerformance, getGroupMonthlyPerformanceSeries,");
+  console.log("valuationSeriesMonthlyPerformance, getGroupMonthlyPlSeries,");
   console.log("buildDashboardAccountRows, buildFlowsDepositsPayload.");
   console.log("\nServer: DEBUG_VERBOSE=1 or DEBUG_PERF=1 logs [heavy] spans per HTTP request.");
 }

@@ -6,8 +6,7 @@ import {
   totalDisplayDepositsClpForAccount,
   totalStateContributionsClpForAccount,
 } from "./accountDeposits.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
-import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
+import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
@@ -25,7 +24,7 @@ import { equityQuoteCurrency } from "./equityQuote.js";
 import { equityBrokerHoldings } from "./equityBrokerHoldings.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
-import { getAccountPositionMeta } from "./accountPosition.js";
+import { getAccountPositionMeta, positionSnapshotFromMeta } from "./accountPosition.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { dashboardBucketSlugForAccountId, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
@@ -43,62 +42,11 @@ import {
   type TsUnit,
 } from "./valuationTimeseries.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
-import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { accountDisplayValue } from "./accountDisplayValue.js";
+import { accountTodayValue } from "./accountTodayValue.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
 const MOVEMENT_CARTOLA_SLUGS = new Set(["cuenta_corriente", "cuenta_vista"]);
 
-
-function positionSnapshotFromMeta(
-  categorySlug: string | null | undefined,
-  meta: ReturnType<typeof getAccountPositionMeta>,
-  deposits_clp: number,
-  latest: { value_clp: number; as_of_date: string } | null | undefined,
-  accountId?: number
-) {
-  if (meta == null) return null;
-  const afp = isCuotaLedgerKindSlug(categorySlug);
-  const crypto = categorySlug === "bitcoin" || categorySlug === "eth";
-  const v = latest?.value_clp;
-  const units = meta.units;
-  const ovc = meta.afp_override_value_clp;
-  const fundUnitMark =
-    ovc != null &&
-    Number.isFinite(ovc) &&
-    ovc > 0 &&
-    meta.afp_override_valor_cuota_clp != null &&
-    Number.isFinite(meta.afp_override_valor_cuota_clp);
-  // Fully-withdrawn cuota/coin position: meta emits ovc = 0 with a date → mark as 0, not stale stored.
-  const explicitZeroMark =
-    ovc === 0 && meta.afp_override_value_as_of != null && (units == null || units <= 0);
-  const mtmMark =
-    fundUnitMark ||
-    explicitZeroMark ||
-    ((afp || crypto) && ovc != null && Number.isFinite(ovc) && (ovc > 0 || (crypto && ovc === 0)));
-  const value_clp = mtmMark ? ovc : v != null && Number.isFinite(v) ? v : null;
-  const value_as_of = mtmMark ? meta.afp_override_value_as_of ?? null : latest?.as_of_date ?? null;
-  const value_per_unit_clp =
-    fundUnitMark && meta.afp_override_valor_cuota_clp != null
-      ? meta.afp_override_valor_cuota_clp
-      : afp && meta.afp_override_valor_cuota_clp != null && Number.isFinite(meta.afp_override_valor_cuota_clp)
-        ? meta.afp_override_valor_cuota_clp
-        : v != null && units != null && units > 0 && Number.isFinite(v) && Number.isFinite(units)
-          ? v / units
-          : null;
-  const equityReturns =
-    accountId != null ? equityReturnSnapshot(accountId, deposits_clp, value_clp) : null;
-  return {
-    ticker: meta.ticker,
-    units_kind: meta.units_kind,
-    units,
-    deposited_clp: deposits_clp,
-    value_clp,
-    value_as_of,
-    value_per_unit_clp,
-    ...(equityReturns ?? {}),
-  };
-}
 
 export async function buildAccountDetailBundle(
   accountId: number,
@@ -143,41 +91,36 @@ export async function buildAccountDetailBundle(
       : cat.bucket_label;
 
   const deposits_clp = pocketDepositsClpForAccount(accountId);
-  // Same mark and override as the dashboard row (`accountDisplayValue`), so the header and
-  // the card cannot disagree.
-  const latest = accountMarkClpAtYmd(accountId, chileCalendarTodayYmd(), cat.bucket_slug, {
-    import_key: cat.account_import_key,
-    name: cat.account_name,
-  });
-  const asOfCuotas = latest?.as_of_date ?? chileCalendarTodayYmd();
+  // The account's one today value and its position asked at Chile today — the same pair the
+  // dashboard row reads, so the header and the card cannot disagree.
+  const today = chileCalendarTodayYmd();
   const positionMeta = getAccountPositionMeta(accountId, category_slug, {
-    afpCuotasAsOfYmd: isCuotaLedgerKindSlug(category_slug) ? asOfCuotas : undefined,
+    afpCuotasAsOfYmd: today,
     accountImportKey: cat.account_import_key,
     accountName: cat.account_name,
+  });
+  const latest = accountTodayValue(accountId, cat.bucket_slug, {
+    import_key: cat.account_import_key,
+    name: cat.account_name,
+    positionMeta,
   });
   const position = positionSnapshotFromMeta(
     category_slug,
     positionMeta,
     deposits_clp,
-    latest ?? undefined,
-    accountId
+    latest,
+    (value_clp) => equityReturnSnapshot(accountId, deposits_clp, value_clp)
   );
   // One account per ticker whatever the broker: the split by the cash account that paid.
   const positionWithBrokers =
     position != null && position.units_kind === "shares" && accountUsesEquityMtm(accountId)
       ? {
           ...position,
-          brokers: equityBrokerHoldings(accountId, chileCalendarTodayYmd(), position.value_clp),
+          brokers: equityBrokerHoldings(accountId, today, position.value_clp),
         }
       : position;
-  const { value_clp: latest_valuation_clp, as_of_date: latest_valuation_date } =
-    accountDisplayValue({
-      accountId,
-      kindSlug: category_slug,
-      importKey: cat.account_import_key,
-      mark: latest,
-      position,
-    });
+  const latest_valuation_clp = latest?.value_clp ?? null;
+  const latest_valuation_date = latest?.as_of_date ?? null;
 
   const accountRow = accountRowForId(accountId);
   const bundleEquityTicker = equityTickerForAccount(accountId);
@@ -300,7 +243,7 @@ export async function buildAccountDetailBundle(
     ? getCheckingCartolaMonths(accountId)
     : null;
 
-  const monthly_performance = getAccountMonthlyPerformance(accountId, unit);
+  const monthly_performance = monthlyPerfForAccountId(accountId, unit);
   const period_returns =
     monthly_performance != null &&
     monthly_performance.monthly.length > 0 &&

@@ -496,6 +496,12 @@ export interface DailySeriesResponse {
   cc_facturacion_bars?: (CcFacturadoBarSegments & { as_of_date: string })[];
   /** Σ of account `deposits_acum` per day (`__group_dep_total` line). */
   deposits_acum_total?: number[];
+  /**
+   * Requested with `perf_levels=1`: the scope's day P/L and its running YTD / all-time levels,
+   * anchored on the scope's own monthly rows so a month-end reads the same as the monthly
+   * chart; index-aligned with points.
+   */
+  perf_levels?: { delta_total: number[]; ytd: number[]; accumulated: number[] };
   /** Agrupado lines (bucket sums keyed by the monthly grouped block's synthetic ids). */
   grouped_accounts?: DailySeriesAccountLineDto[];
   /** "Sin agrupar" bucket lines, keyed by the monthly ungrouped block's synthetic ids

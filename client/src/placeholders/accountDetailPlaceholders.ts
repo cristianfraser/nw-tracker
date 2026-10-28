@@ -125,6 +125,7 @@ export function buildPlaceholderAccountDetailBundle(
       account_id: accountId,
       category_slug,
       monthly: emptyAccountMonthlyPerfRows(accountId, unitTs),
+      yearly: [],
     },
     period_returns: null,
     dashboard_account_row: null,

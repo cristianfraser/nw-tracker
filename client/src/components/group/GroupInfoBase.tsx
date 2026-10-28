@@ -121,6 +121,7 @@ export function GroupInfoBase({
   const tablesFetchEnabled = tablesEnabled && Boolean(portfolio?.groupSlug);
   const {
     consolidatedMonthlyPerf,
+    consolidatedYearlyPerf,
     periodReturns,
     tableFlags,
     tablesLoading,
@@ -196,6 +197,9 @@ export function GroupInfoBase({
     tablesLoading,
     placeholderRows: placeholderMonthlyRows,
   });
+  // The client-paginated yearly view shows the server's yearly rows of the same payload (the
+  // placeholder rows while it loads).
+  const yearlyRows = monthlyRows === placeholderMonthlyRows ? placeholderMonthlyRows : consolidatedYearlyPerf;
   // Placeholder rows (returned by identity) or held prior-unit / prior-page data: the table dims
   // and never reads as empty.
   const monthlyLoading =
@@ -279,6 +283,7 @@ export function GroupInfoBase({
             ) : monthlyRows.length > 0 || monthlyLoading ? (
               <MonthlyPerfDetailTable
                 rows={monthlyRows}
+                yearlyRows={yearlyRows}
                 displayUnit={displayUnit}
                 period={monthYearMetricsPeriod(tablePeriod)}
                 isMortgageAccount={tableFlags.isMortgageAccount}

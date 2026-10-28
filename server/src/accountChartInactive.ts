@@ -1,5 +1,5 @@
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
-import { getAccountMonthlyPerformance } from "./accountPerformance.js";
+import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { db } from "./db.js";
 import {
   CHART_TRAILING_ZERO_MONTHS_KEPT,
@@ -16,12 +16,12 @@ export {
 } from "./accountValuationTailInactive.js";
 
 /**
- * Month-end closes for tail-inactive detection (performance series, else stored valuations,
- * else today's mark). Ledger cash (checking, cuenta vista, a fund's CLP buffer) has neither a
- * perf series nor stored valuations; without the mark an emptied one read as active forever.
+ * Month-end closes for tail-inactive detection: the account's monthly performance rows
+ * (`monthlyPerfForAccountId` — ledger cash reads its balance walk there), else stored
+ * valuations, else today's mark (an account with no movement bounds and no valuation rows).
  */
 function monthEndClosingAscForInactiveCheck(accountId: number): number[] {
-  const perf = getAccountMonthlyPerformance(accountId, "clp");
+  const perf = monthlyPerfForAccountId(accountId, "clp");
   if (perf?.monthly.length) {
     return [...perf.monthly].reverse().map((r) => r.closing_value);
   }

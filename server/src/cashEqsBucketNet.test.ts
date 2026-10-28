@@ -11,7 +11,7 @@ import { dailyReferenceLinesForChartHost } from "./dailyReferenceLines.js";
 import { slugMarkTotalsAtDatesClp } from "./dashboardChartMarkTotals.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { db } from "./db.js";
-import { clpToUsdForBalanceAt } from "./fxRates.js";
+import { clpToUnitAt } from "./clpToUnitAt.js";
 import {
   getGroupConsolidatedMonthlyPerfForRows,
   type ConsolidatedMonthlyPerfRow,
@@ -263,7 +263,7 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
 
   it("prior-day close nets the USD leg at the same date", () => {
     const yesterday = chileCalendarAddDays(chileCalendarTodayYmd(), -1);
-    const creditUsd = clpToUsdForBalanceAt(CREDIT, yesterday);
+    const creditUsd = clpToUnitAt(CREDIT, yesterday, "usd");
     expect(creditUsd).not.toBeNull();
     expect(credit.priorDay.usd.cash_eqs - base.priorDay.usd.cash_eqs).toBeCloseTo(creditUsd!, 6);
     expect(credit.priorDay.clp.cash_eqs - base.priorDay.clp.cash_eqs).toBe(CREDIT);

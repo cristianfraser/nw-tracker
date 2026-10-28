@@ -51,55 +51,6 @@ function formatPerfPeriodLabel(asOfDate: string, isYearly: boolean): string {
   return formatYearMonthLabel(ym);
 }
 
-function rollupMonthlyPerfRowsYearly(rows: readonly PerfRow[]): PerfRow[] {
-  if (!rows.length) return [];
-
-  const byYear = new Map<string, PerfRow[]>();
-  for (const row of rows) {
-    const year = row.as_of_date.slice(0, 4);
-    if (!byYear.has(year)) byYear.set(year, []);
-    byYear.get(year)!.push(row);
-  }
-
-  const yearsAsc = [...byYear.keys()].sort((a, b) => a.localeCompare(b));
-
-  const ascRows: PerfRow[] = yearsAsc.map((year) => {
-    const monthRows = byYear.get(year)!;
-    // Sort months ascending for compound return (rows arrive desc from caller)
-    const monthsAsc = [...monthRows].sort((a, b) => a.as_of_date.localeCompare(b.as_of_date));
-    const latest = monthRows[0]; // desc-sorted → first is latest
-
-    const netCapitalFlow = monthRows.reduce((s, r) => s + (r.net_capital_flow ?? 0), 0);
-    const stockUnitsInflow = monthRows.reduce((s, r) => s + (r.stock_units_inflow ?? 0), 0);
-    const nominalPl = monthRows.reduce((s, r) => s + (r.nominal_pl ?? 0), 0);
-
-    // Compound monthly returns: Π(1 + pct_month) - 1
-    const pctYear = monthsAsc.reduce((prod, r) => {
-      const p = r.pct_month;
-      return prod * (1 + (p != null && Number.isFinite(p) ? p : 0));
-    }, 1) - 1;
-
-    const mortgageLast = latest as AccountMonthlyPerformanceRow;
-
-    return {
-      ...latest,
-      as_of_date: `${year}-12-31`,
-      net_capital_flow: netCapitalFlow,
-      stock_units_inflow: stockUnitsInflow,
-      nominal_pl: nominalPl,
-      pct_month: pctYear,
-      ytd_nominal_pl: null,
-      cumulative_nominal_pl: latest.cumulative_nominal_pl,
-      closing_value: latest.closing_value,
-      closing_balance_uf: mortgageLast.closing_balance_uf,
-      uf_clp_day: mortgageLast.uf_clp_day,
-    } as PerfRow;
-  });
-
-  // Return newest-first for the table
-  return ascRows.reverse();
-}
-
 function MonthlyPerfDetailMobileCard({
   row,
   fmtPerf,
@@ -173,6 +124,7 @@ function MonthlyPerfDetailMobileCard({
 
 export function MonthlyPerfDetailTable({
   rows,
+  yearlyRows,
   displayUnit,
   isMortgageAccount = false,
   isAfpAccount = false,
@@ -183,6 +135,12 @@ export function MonthlyPerfDetailTable({
   loading = false,
 }: {
   rows: readonly PerfRow[];
+  /**
+   * The server's «Detalle por año» rows for the same scope (`rollupMonthlyPerfYearly`), shown
+   * when `period` is "year". Required unless `serverPagination` is set — then `rows` already is
+   * the server's page of the chosen period.
+   */
+  yearlyRows?: readonly PerfRow[];
   displayUnit: "clp" | "usd";
   isMortgageAccount?: boolean;
   isAfpAccount?: boolean;
@@ -232,14 +190,13 @@ export function MonthlyPerfDetailTable({
     cum: cumLabel,
   };
 
-  const sortedRows = useMemo(
-    () => [...rows].sort((a, b) => b.as_of_date.localeCompare(a.as_of_date)),
-    [rows]
-  );
-
+  if (isYearly && !serverPagination && !yearlyRows) {
+    throw new Error("MonthlyPerfDetailTable: yearly view needs the server's yearlyRows");
+  }
+  const shownRows = isYearly && !serverPagination ? yearlyRows! : rows;
   const displayRows = useMemo(
-    () => (isYearly && !serverPagination ? rollupMonthlyPerfRowsYearly(sortedRows) : sortedRows),
-    [sortedRows, isYearly, serverPagination]
+    () => [...shownRows].sort((a, b) => b.as_of_date.localeCompare(a.as_of_date)),
+    [shownRows]
   );
 
   const clientPagination = useClientPagination(displayRows, PAGE_SIZE);

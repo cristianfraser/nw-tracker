@@ -45,7 +45,7 @@ import {
   useSidebarNav,
 } from "../queries/hooks";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
-import { buildDailyPerfComboPoints } from "../dailyPerfCombo";
+import { servedDailyPerfComboPoints } from "../servedDailyPerfCombo";
 import { timeRangeToDays } from "../timeRange";
 import { useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
@@ -280,7 +280,8 @@ export function GroupInfoPage() {
     { portfolioGroup: portfolioGroup || undefined },
     displayUnit,
     timeRangeToDays(perfPrefs.range),
-    perfIsDaily && portfolioGroup !== ""
+    perfIsDaily && portfolioGroup !== "",
+    { perfLevels: true }
   );
   const proportionalDailySeries = useDailySeries(
     { portfolioGroup: portfolioGroup || undefined },
@@ -325,8 +326,8 @@ export function GroupInfoPage() {
     return buildDisplayGroupPerf(groupPerfRaw, chartCtx, groupedToggleOn);
   }, [groupPerfRaw, chartCtx, groupedToggleOn]);
 
-  // Day view: per-day P/L bars keyed by the monthly block's bar metadata, with the cumulative
-  // areas anchored on the monthly series so month-ends read the same in both period modes.
+  // Day view: per-day P/L bars keyed by the monthly block's bar metadata; the total and the
+  // cumulative areas are the server's (anchored on the group consolidation).
   const dailyGroupPerfPoints = useMemo(() => {
     if (!perfIsDaily) return null;
     const daily = perfDailySeries.data;
@@ -338,13 +339,12 @@ export function GroupInfoPage() {
       : daily.ungrouped_accounts ?? daily.grouped_accounts;
     const lines = bucketLines?.length ? bucketLines : daily.accounts;
     if (!lines?.length) return null;
-    return buildDailyPerfComboPoints({
+    return servedDailyPerfComboPoints({
       series: daily,
       lines,
       barAccounts: displayGroupPerf.bar_accounts,
-      monthlyPointsAsc: groupPerfRaw?.points ?? [],
     });
-  }, [perfIsDaily, perfDailySeries.data, displayGroupPerf, groupedToggleOn, groupPerfRaw]);
+  }, [perfIsDaily, perfDailySeries.data, displayGroupPerf, groupedToggleOn]);
 
   const chartSeriesCount = accounts.length;
   const chartColorSlug = (chartCtx?.chartColorSlug ?? portfolioGroup) as AssetGroupSlug | "crypto";
