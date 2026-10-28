@@ -28,6 +28,7 @@ import { applyBrokerDividendStatement } from "./brokerDividendStatementApply.js"
 import { applyFundAccountTransactions } from "./fintualCertImport.js";
 import { applyUnemploymentFundDocuments } from "./afcCertImport.js";
 import { applyMortgageSheetPayments } from "./mortgageSheetPaymentsApply.js";
+import { applyUtilityBills } from "./utilityBillsApply.js";
 import {
   applyCardUnbilledMovements,
   type CardUnbilledMovementsImportResult,
@@ -225,6 +226,11 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
   "mortgage.sheet_payments": {
     apply({ payload }) {
       return applyMortgageSheetPayments(payload);
+    },
+  },
+  "utility.bill": {
+    apply({ payload }) {
+      return applyUtilityBills(payload);
     },
   },
   "card.unbilled_movements": {
