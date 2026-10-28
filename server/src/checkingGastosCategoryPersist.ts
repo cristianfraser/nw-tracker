@@ -62,7 +62,31 @@ function migratePurchaseNotesKey(
     .run(accountId, stableKey, row.notes);
 }
 
-/** Copy Único category + notes from `checking-mv:{id}` to stable cartola note key. */
+/**
+ * Moves the place bill linked to a daily row (`checking-mv:{id}`) onto the cartola row's stable key,
+ * with its rejections. A target already linked to another bill throws: two bills cannot claim one
+ * payment, and dropping either would lose a pairing silently.
+ */
+function moveRealEstateLinkKey(fromKey: string, toKey: string, dbHandle: Database): void {
+  dbHandle
+    .prepare(`UPDATE OR IGNORE real_estate_expense_link_rejections SET purchase_key = ? WHERE purchase_key = ?`)
+    .run(toKey, fromKey);
+  const from = dbHandle
+    .prepare(`SELECT expense_entry_id FROM real_estate_expense_links WHERE purchase_key = ?`)
+    .get(fromKey) as { expense_entry_id: number } | undefined;
+  if (!from) return;
+  const to = dbHandle
+    .prepare(`SELECT expense_entry_id FROM real_estate_expense_links WHERE purchase_key = ?`)
+    .get(toKey) as { expense_entry_id: number } | undefined;
+  if (to) {
+    throw new Error(
+      `real-estate bills ${from.expense_entry_id} and ${to.expense_entry_id} both claim the payment ${fromKey} → ${toKey}`
+    );
+  }
+  dbHandle.prepare(`UPDATE real_estate_expense_links SET purchase_key = ? WHERE purchase_key = ?`).run(toKey, fromKey);
+}
+
+/** Copy Único category + notes from `checking-mv:{id}` to stable cartola note key; move its bill link. */
 export function transferCheckingGastosCategoryFromMovementToNote(
   accountId: number,
   fromMovementId: number,
@@ -74,6 +98,7 @@ export function transferCheckingGastosCategoryFromMovementToNote(
     const fromKey = legacyCheckingGastosPurchaseKey(fromMovementId, portion);
     const toKey = checkingCartolaStablePurchaseKey(accountId, toCartolaNote, portion);
     if (!toKey) continue;
+    moveRealEstateLinkKey(fromKey, toKey, dbHandle);
     const row = dbHandle
       .prepare(
         `SELECT category_id FROM cc_expense_unique_purchases

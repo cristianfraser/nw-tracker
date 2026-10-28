@@ -32,6 +32,8 @@ export type ExpenseExpectationRow = {
   note: string | null;
   kwh: number | null;
   m3: number | null;
+  /** Months the payment covers, ending at the bill month (1 = that month alone). */
+  months_covered: number;
   expense_account_id: number;
   account_slug: string;
   comunidad_patterns: string | null;
@@ -223,40 +225,54 @@ export type DropInvalidRealEstateLinksResult = {
   removedOrphan: number;
 };
 
-/** Remove links whose purchase month is outside bill+0/+1/+2 (no rejection row). */
+export type InvalidRealEstateLink = {
+  expense_entry_id: number;
+  purchase_key: string;
+  problem: "missing_purchase" | "outside_window";
+};
+
+/**
+ * Links that no longer hold: the purchase is not an eligible gastos line any more, or its month
+ * left the bill's +0..+2 window. Read-only — the page shows them; only an explicit run of
+ * `dropInvalidRealEstateExpenseLinks` (the reconcile script) deletes.
+ */
+export function findInvalidRealEstateExpenseLinks(
+  expectations: readonly ExpenseExpectationRow[],
+  gastosLines: readonly FlowCcExpenseLineRow[],
+  existingLinks: ReadonlyMap<number, RealEstateLinkRow>
+): InvalidRealEstateLink[] {
+  const expById = new Map(expectations.map((e) => [e.id, e]));
+  const out: InvalidRealEstateLink[] = [];
+  for (const [entryId, link] of existingLinks) {
+    const exp = expById.get(entryId);
+    if (!exp) throw new Error(`real_estate_expense_links: entry ${entryId} is not a place bill`);
+    const line = gastosLineByPurchaseKey(link.purchase_key, gastosLines);
+    if (!line) {
+      out.push({ expense_entry_id: entryId, purchase_key: link.purchase_key, problem: "missing_purchase" });
+      continue;
+    }
+    if (!purchaseMonthMatchesBillSlot(billMonthFromSpentOn(exp.spent_on), purchaseMonthForLine(line))) {
+      out.push({ expense_entry_id: entryId, purchase_key: link.purchase_key, problem: "outside_window" });
+    }
+  }
+  return out;
+}
+
+/** Remove the links `findInvalidRealEstateExpenseLinks` reports (no rejection row). Explicit runs only. */
 export function dropInvalidRealEstateExpenseLinks(
   expectations: readonly ExpenseExpectationRow[],
   gastosLines: readonly FlowCcExpenseLineRow[],
   existingLinks: ReadonlyMap<number, RealEstateLinkRow>
 ): DropInvalidRealEstateLinksResult {
-  const expById = new Map(expectations.map((e) => [e.id, e]));
+  const invalid = findInvalidRealEstateExpenseLinks(expectations, gastosLines, existingLinks);
   const del = db.prepare(`DELETE FROM real_estate_expense_links WHERE expense_entry_id = ?`);
-  let removedOutsideWindow = 0;
-  let removedOrphan = 0;
-
-  const tx = db.transaction(() => {
-    for (const [entryId, link] of existingLinks) {
-      const exp = expById.get(entryId);
-      if (!exp) {
-        del.run(entryId);
-        removedOrphan++;
-        continue;
-      }
-      const line = gastosLineByPurchaseKey(link.purchase_key, gastosLines);
-      if (!line) {
-        del.run(entryId);
-        removedOrphan++;
-        continue;
-      }
-      const billMonth = billMonthFromSpentOn(exp.spent_on);
-      if (!purchaseMonthMatchesBillSlot(billMonth, purchaseMonthForLine(line))) {
-        del.run(entryId);
-        removedOutsideWindow++;
-      }
-    }
-  });
-  tx();
-  return { removedOutsideWindow, removedOrphan };
+  db.transaction(() => {
+    for (const l of invalid) del.run(l.expense_entry_id);
+  })();
+  return {
+    removedOutsideWindow: invalid.filter((l) => l.problem === "outside_window").length,
+    removedOrphan: invalid.filter((l) => l.problem === "missing_purchase").length,
+  };
 }
 
 export type ReconcileRealEstateLinksResult = DropInvalidRealEstateLinksResult & {
@@ -377,6 +393,19 @@ export function assertConsumptionMatchesKind(
   if ((kind === "electricidad" || kind === "kwh") && values.m3 != null) {
     throw new Error("m3 belongs to gas bills, not electricidad");
   }
+}
+
+/** Longest stretch one payment may cover (a year's worth of a monthly bill). */
+export const REAL_ESTATE_MAX_MONTHS_COVERED = 12;
+
+/** Set how many months a bill's payment covers, ending at its bill month. */
+export function updateRealEstateExpenseMonthsCovered(expenseEntryId: number, monthsCovered: number): void {
+  const exp = loadExpectationById(expenseEntryId);
+  if (!exp) throw new Error("expense entry not found");
+  if (!Number.isInteger(monthsCovered) || monthsCovered < 1 || monthsCovered > REAL_ESTATE_MAX_MONTHS_COVERED) {
+    throw new Error(`months_covered must be an integer from 1 to ${REAL_ESTATE_MAX_MONTHS_COVERED}`);
+  }
+  db.prepare(`UPDATE expense_entries SET months_covered = ? WHERE id = ?`).run(monthsCovered, expenseEntryId);
 }
 
 /** Set the consumption metadata (kWh / m³) on a real-estate bill entry. */
@@ -542,7 +571,7 @@ export function unmatchRealEstateExpense(expenseEntryId: number): void {
 export function loadExpectationById(expenseEntryId: number): ExpenseExpectationRow | null {
   const row = db
     .prepare(
-      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.expense_account_id, a.slug AS account_slug, a.comunidad_merchant_patterns AS comunidad_patterns
+      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.months_covered, e.expense_account_id, a.slug AS account_slug, a.comunidad_merchant_patterns AS comunidad_patterns
        FROM expense_entries e
        JOIN expense_accounts a ON a.id = e.expense_account_id
        JOIN expense_groups g ON g.id = a.group_id
@@ -556,7 +585,7 @@ export function loadExpectationById(expenseEntryId: number): ExpenseExpectationR
 export function listRealEstateExpectations(): ExpenseExpectationRow[] {
   const rows = db
     .prepare(
-      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.expense_account_id, a.slug AS account_slug, a.comunidad_merchant_patterns AS comunidad_patterns
+      `SELECT e.id, e.amount_clp, e.spent_on, e.category, e.note, e.kwh, e.m3, e.months_covered, e.expense_account_id, a.slug AS account_slug, a.comunidad_merchant_patterns AS comunidad_patterns
        FROM expense_entries e
        JOIN expense_accounts a ON a.id = e.expense_account_id
        JOIN expense_groups g ON g.id = a.group_id

@@ -7,6 +7,7 @@ import {
   resolveMerchantCategorySlug,
 } from "./ccExpenseCategories.js";
 import { importCcStatementsFromCsvRecords } from "./ccStatementsImport.js";
+import { createRealEstatePlace } from "./flowsRealEstateExpenses.js";
 import { VITEST_SANTANDER_CC_MASTER_NOTES } from "./test/vitestDbSeed.js";
 
 function ref(lineId: number, parserRowId: string | null, identity: string): CcLineRef {
@@ -230,6 +231,45 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
       { line_id: newLine, amount_clp: 1500 },
       { line_id: newLine, amount_clp: 1000 },
     ]);
+  });
+
+  it("moves a place bill's link onto the re-parsed line", () => {
+    cleanup(accountId);
+    db.prepare(`INSERT INTO cc_expense_big_groups (slug, label) VALUES (?, 'vitest rekey')`).run(BIG_GROUP);
+    const place = db
+      .prepare(
+        `SELECT a.id FROM expense_accounts a JOIN expense_groups g ON g.id = a.group_id
+         WHERE g.slug = 'real_estate' AND a.slug = 'vitest_rekey_place'`
+      )
+      .get() as { id: number } | undefined;
+    if (!place) createRealEstatePlace({ slug: "vitest_rekey_place", label: "Vitest rekey" });
+    const placeId = (
+      db.prepare(`SELECT id FROM expense_accounts WHERE slug = 'vitest_rekey_place'`).get() as { id: number }
+    ).id;
+    const entryId = Number(
+      db
+        .prepare(
+          `INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id)
+           VALUES (2500, '2024-12-31', 'electricidad', 'vitest rekey bill', ?)`
+        )
+        .run(placeId).lastInsertRowid
+    );
+    try {
+      importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-old")]);
+      db.prepare(
+        `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source) VALUES (?, 'line-pr:vitest-rekey-old', 'manual')`
+      ).run(entryId);
+
+      importCcStatementsFromCsvRecords(accountId, [record("vitest-rekey-new")]);
+
+      const link = db
+        .prepare(`SELECT purchase_key FROM real_estate_expense_links WHERE expense_entry_id = ?`)
+        .get(entryId) as { purchase_key: string } | undefined;
+      expect(link?.purchase_key).toBe("line-pr:vitest-rekey-new");
+    } finally {
+      db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
+      db.prepare(`DELETE FROM expense_accounts WHERE id = ?`).run(placeId);
+    }
   });
 
   it("gives every line of a split re-parse the assignments the one old line carried", () => {

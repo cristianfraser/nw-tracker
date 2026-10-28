@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { ExpensesByApartmentChart } from "../components/charts/ExpensesByApartmentChart";
+import { RealEstateExpensesChart } from "../components/charts/RealEstateExpensesChart";
 import { RealEstateAddPlaceModal } from "../components/real-estate/RealEstateAddPlaceModal";
 import { RealEstateAssignPurchaseModal } from "../components/real-estate/RealEstateAssignPurchaseModal";
 import { RealEstateExpenseLinkModal } from "../components/real-estate/RealEstateExpenseLinkModal";
@@ -18,14 +18,16 @@ import {
   parseNumberInput,
 } from "../format";
 import { expenseKindLabel, useTranslation } from "../i18n";
+import { formatYearMonthLabel } from "../formatDateLabel";
 import { useRealEstateExpenses } from "../queries/hooks";
 import {
   useDeleteRealEstateExpenseEntryMutation,
   useUnmatchRealEstateExpenseMutation,
   useUpdateRealEstateBillMonthMutation,
   useUpdateRealEstateConsumptionMutation,
+  useUpdateRealEstateMonthsCoveredMutation,
 } from "../queries/mutations";
-import type { ExpenseApartmentSlug, RealEstateBillSlot } from "../types";
+import type { RealEstateBillSlot } from "../types";
 import { Button, Input } from "@crfrsr/ui";
 
 /** Kinds where a kWh / m³ reading makes sense (edit affordance shown). */
@@ -100,12 +102,16 @@ export function RealEstateExpensesPage() {
   const [editingBillMonth, setEditingBillMonth] = useState<{
     id: number;
     value: string;
+    initialValue: string;
+    monthsCovered: number;
+    initialMonthsCovered: number;
     error: string | null;
   } | null>(null);
   const { data, error } = useRealEstateExpenses();
   const unmatchMutation = useUnmatchRealEstateExpenseMutation();
   const consumptionMutation = useUpdateRealEstateConsumptionMutation();
   const billMonthMutation = useUpdateRealEstateBillMonthMutation();
+  const monthsCoveredMutation = useUpdateRealEstateMonthsCoveredMutation();
   const deleteEntryMutation = useDeleteRealEstateExpenseEntryMutation();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
@@ -130,10 +136,18 @@ export function RealEstateExpensesPage() {
   const saveBillMonth = async () => {
     if (!editingBillMonth) return;
     try {
-      await billMonthMutation.mutateAsync({
-        expense_entry_id: editingBillMonth.id,
-        bill_month: editingBillMonth.value,
-      });
+      if (editingBillMonth.value !== editingBillMonth.initialValue) {
+        await billMonthMutation.mutateAsync({
+          expense_entry_id: editingBillMonth.id,
+          bill_month: editingBillMonth.value,
+        });
+      }
+      if (editingBillMonth.monthsCovered !== editingBillMonth.initialMonthsCovered) {
+        await monthsCoveredMutation.mutateAsync({
+          expense_entry_id: editingBillMonth.id,
+          months_covered: editingBillMonth.monthsCovered,
+        });
+      }
       setEditingBillMonth(null);
     } catch (e) {
       setEditingBillMonth({
@@ -143,24 +157,30 @@ export function RealEstateExpensesPage() {
     }
   };
 
-  const chartPoints = useMemo(() => {
-    if (!data) return [];
-    // Every place and the total are flows. Months cut at the Rango start, then rolled up: the
-    // yearly chart starts with a partial first year.
-    const placeKeys = [...data.places.map((p) => p.slug), "total"];
-    return clipMonthsThenRollup(data.chart_monthly, granularity, timeRange, (rows) =>
-      rollupChartPointsByYear(rows, placeKeys)
-    );
-  }, [data, granularity, timeRange]);
-
   const places = useMemo(() => data?.places ?? [], [data]);
+  const placeLabels = useMemo(() => new Map(places.map((p) => [p.slug, p.label])), [places]);
 
-  const accountFilter = useMemo((): ExpenseApartmentSlug[] | undefined => {
-    if (accountSlug && places.some((p) => p.slug === accountSlug)) {
-      return [accountSlug];
-    }
-    return undefined; // index view: all places
-  }, [accountSlug, places]);
+  // The place page charts that place alone (its own total); the index charts every place.
+  const chartScope = data
+    ? (data.chart_scopes[accountSlug && data.chart_scopes[accountSlug] ? accountSlug : "all"] ?? null)
+    : null;
+
+  const chartPoints = useMemo(() => {
+    if (!chartScope) return [];
+    // Every series and the total are flows. Months cut at the Rango start — counted back from the
+    // scope's last bill, so a place that ended shows its own last years — then rolled up: the
+    // yearly chart starts with a partial first year.
+    const lastDate = chartScope.points.at(-1)?.as_of_date;
+    if (!lastDate) return [];
+    const keys = [...chartScope.series.map((s) => s.data_key), "total"];
+    return clipMonthsThenRollup(
+      chartScope.points,
+      granularity,
+      timeRange,
+      (rows) => rollupChartPointsByYear(rows, keys),
+      lastDate
+    );
+  }, [chartScope, granularity, timeRange]);
 
   const sections = useMemo(() => {
     if (!data) return [];
@@ -201,13 +221,13 @@ export function RealEstateExpensesPage() {
         className="chart-grid chart-grid--full-line chart-grid--full-width-stack"
         style={{ marginBottom: "1.5rem" }}
       >
-        <ExpensesByApartmentChart
+        <RealEstateExpensesChart
           controls={chartControls}
           title={t("expenses.chartTitle")}
           points={chartPoints}
-          places={places}
+          series={chartScope?.series ?? []}
+          placeLabels={placeLabels}
           xAxisGranularity={granularity}
-          accountFilter={accountFilter}
           loading={loading}
         />
       </div>
@@ -285,8 +305,27 @@ export function RealEstateExpensesPage() {
                               }
                             />
                           </span>
+                          <label style={{ display: "inline-flex", gap: "0.35rem", alignItems: "center" }}>
+                            <span className="muted">{t("expenses.realEstate.monthsCoveredLabel")}</span>
+                            <select
+                              value={editingBillMonth.monthsCovered}
+                              onChange={(e) =>
+                                setEditingBillMonth({
+                                  ...editingBillMonth,
+                                  monthsCovered: Number(e.target.value),
+                                  error: null,
+                                })
+                              }
+                            >
+                              {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                                <option key={n} value={n}>
+                                  {n}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                           <Button
-                            disabled={billMonthMutation.isPending}
+                            disabled={billMonthMutation.isPending || monthsCoveredMutation.isPending}
                             onClick={() => void saveBillMonth()}
                           >
                             {t("common.save")}
@@ -309,6 +348,9 @@ export function RealEstateExpensesPage() {
                             setEditingBillMonth({
                               id: slot.expense_entry_id!,
                               value: slot.bill_month,
+                              initialValue: slot.bill_month,
+                              monthsCovered: slot.months_covered,
+                              initialMonthsCovered: slot.months_covered,
                               error: null,
                             })
                           }
@@ -318,6 +360,14 @@ export function RealEstateExpensesPage() {
                       ) : (
                         slot.bill_month
                       )}
+                      {slot.months_covered > 1 ? (
+                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                          {t("expenses.realEstate.coversHint", {
+                            from: formatYearMonthLabel(slot.covers_from),
+                            to: formatYearMonthLabel(slot.bill_month),
+                          })}
+                        </span>
+                      ) : null}
                       {paidDateForSlot(slot) ? (
                         <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
                           {t("expenses.realEstate.paidOnHint", { date: paidDateForSlot(slot) })}
@@ -327,6 +377,15 @@ export function RealEstateExpensesPage() {
                     <td>{expenseKindLabel(slot.kind)}</td>
                     <td className="mono">
                       {formatAmountCell(slot)}
+                      {slot.mortgage_parts ? (
+                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                          {t("expenses.realEstate.mortgagePartsHint", {
+                            amortization: formatClp(slot.mortgage_parts.amortization_clp),
+                            extra: formatClp(slot.mortgage_parts.extra_amortization_clp),
+                            carrying: formatClp(slot.mortgage_parts.carrying_clp),
+                          })}
+                        </span>
+                      ) : null}
                       {slot.link &&
                       slot.expected_amount_clp > 0 &&
                       slot.link.amount_clp !== slot.expected_amount_clp ? (
@@ -396,10 +455,20 @@ export function RealEstateExpensesPage() {
                       )}
                     </td>
                     <td
-                      className={slot.link ? undefined : "muted"}
+                      className={slot.link || slot.broken_link ? undefined : "muted"}
                       style={{ fontSize: slot.link ? "0.85rem" : undefined }}
                     >
                       {slot.kind === "kwh" ? "—" : linkedPurchaseLabel(slot, t)}
+                      {slot.broken_link ? (
+                        <span
+                          style={{ display: "block", fontSize: "0.75rem", color: "var(--negative)" }}
+                          title={slot.broken_link.purchase_key}
+                        >
+                          {slot.broken_link.problem === "missing_purchase"
+                            ? t("expenses.realEstate.brokenLinkMissing")
+                            : t("expenses.realEstate.brokenLinkOutsideWindow")}
+                        </span>
+                      ) : null}
                       {slot.link ? (
                         <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
                           {slot.link.link_source === "auto"
@@ -414,7 +483,7 @@ export function RealEstateExpensesPage() {
                       ) : (
                         <span style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
                           {slot.can_link ? (
-                            slot.link ? (
+                            slot.link || slot.broken_link ? (
                               <Button variant="secondary"
                                 disabled={unmatchMutation.isPending}
                                 onClick={() =>

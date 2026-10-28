@@ -10,6 +10,7 @@ import {
 } from "./checkingPartialMovementsImport.js";
 import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
 import { buildCheckingGastosLines } from "./flowsCheckingGastos.js";
+import { createRealEstatePlace } from "./flowsRealEstateExpenses.js";
 import {
   checkingMovementContentMatches,
   parsePartialMovementNote,
@@ -488,6 +489,70 @@ describe("checkingCartolaPartialReconcile", () => {
     db.prepare(
       `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
     ).run(accountId, stableKey);
+  });
+
+  it("moves a place bill's link from the partial row onto the cartola row", () => {
+    const accountId = testCheckingAccountId();
+    if (accountId == null) return;
+
+    const periodMonth = "1800-04";
+    const occurredOn = "1800-04-15";
+    const amountClp = -81_103;
+    const description = "TRANSF A COMUNIDAD EDIFICIO VITEST";
+    const partialNote = partialMovementNote({
+      occurred_on: occurredOn,
+      amount_clp: amountClp,
+      description,
+      document_no: "0560112904",
+    });
+    const officialNote = movementNote(periodMonth, "Agustinas", description, "0560112904", {
+      occurredOn,
+      amountClp,
+      cartolaIndex: 0,
+    });
+    db.prepare(`DELETE FROM movements WHERE account_id = ? AND note IN (?, ?)`).run(accountId, partialNote, officialNote);
+    db.prepare(`DELETE FROM expense_accounts WHERE slug = 'vitest_cartola_place'`).run();
+
+    const partialId = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+           VALUES (?, ?, 'clp', ?, ?, NULL)`
+        )
+        .run(accountId, amountClp, occurredOn, partialNote).lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, ?, 'clp', ?, ?, NULL)`
+    ).run(accountId, amountClp, occurredOn, officialNote);
+    createRealEstatePlace({ slug: "vitest_cartola_place", label: "Vitest cartola" });
+    const entryId = Number(
+      db
+        .prepare(
+          `INSERT INTO expense_entries (amount_clp, spent_on, category, note, expense_account_id)
+           VALUES (68200, '1800-03-31', 'gastos_comunes', 'vitest',
+                   (SELECT id FROM expense_accounts WHERE slug = 'vitest_cartola_place'))`
+        )
+        .run().lastInsertRowid
+    );
+    db.prepare(
+      `INSERT INTO real_estate_expense_links (expense_entry_id, purchase_key, link_source) VALUES (?, ?, 'manual')`
+    ).run(entryId, legacyCheckingGastosPurchaseKey(partialId));
+
+    try {
+      const { removed } = prunePartialMovementsSupersededByCartola(accountId, [
+        { occurred_on: occurredOn, amount_clp: amountClp, branch: "Agustinas", description, document_no: "0560112904" },
+      ]);
+      expect(removed).toBe(1);
+      const link = db
+        .prepare(`SELECT purchase_key FROM real_estate_expense_links WHERE expense_entry_id = ?`)
+        .get(entryId) as { purchase_key: string } | undefined;
+      expect(link?.purchase_key).toBe(`checking-cartola:${accountId}:${periodMonth}:${occurredOn}:${amountClp}:0`);
+    } finally {
+      db.prepare(`DELETE FROM expense_entries WHERE id = ?`).run(entryId);
+      db.prepare(`DELETE FROM expense_accounts WHERE slug = 'vitest_cartola_place'`).run();
+      db.prepare(`DELETE FROM movements WHERE account_id = ? AND note IN (?, ?)`).run(accountId, partialNote, officialNote);
+    }
   });
 
   it("partial withdrawals appear in gastos until superseded by cartola", () => {

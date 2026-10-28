@@ -138,11 +138,36 @@ export interface FlowsOverviewResponse {
 /** Slug of a tracked place (`expense_accounts` row) — data-driven, not a fixed union. */
 export type ExpenseApartmentSlug = string;
 
-/** Per-place stacked chart point; place slugs are dynamic keys. */
+/** Real-estate chart point; series data keys (`<place>__<kind>`) are dynamic keys. */
 export interface FlowExpenseChartPoint {
   as_of_date: string;
   total: number;
-  [placeSlug: string]: number | string;
+  [dataKey: string]: number | string;
+}
+
+/** One stacked series of the real-estate chart: a place's spend on one kind of bill. */
+export interface RealEstateChartSeriesDto {
+  data_key: string;
+  place_slug: string;
+  kind:
+    | "mortgage_amortization"
+    | "mortgage_extra_amortization"
+    | "mortgage_carrying"
+    | "rent"
+    | "gastos_comunes"
+    | "contribuciones"
+    | "electricidad"
+    | "gas"
+    | "water"
+    | "internet";
+  /** Places alternate between the two colour schemes in date order. */
+  scheme: "base" | "alternate";
+}
+
+/** The real-estate chart for one scope, its months running from its first to its last bill. */
+export interface RealEstateChartScopeDto {
+  series: RealEstateChartSeriesDto[];
+  points: FlowExpenseChartPoint[];
 }
 
 export interface FlowCcExpenseMonthRow {
@@ -751,10 +776,18 @@ export interface RealEstateBillSlot {
   kind: string;
   expected_amount_clp: number;
   link: RealEstateExpenseLinkDto | null;
+  /** A stored link that no longer holds (purchase gone, or outside the bill's +0..+2 window). */
+  broken_link: { purchase_key: string; problem: "missing_purchase" | "outside_window" } | null;
   display_amount_clp: number;
   note: string | null;
   kwh: number | null;
   m3: number | null;
+  /** Months the payment covers, ending at `bill_month` (1 = that month alone); the chart spreads it. */
+  months_covered: number;
+  /** First month the payment covers (`bill_month` when it covers one). */
+  covers_from: string;
+  /** A mortgage cuota as paid: amortización, extra amortization and carrying (interés + seguros). */
+  mortgage_parts: { amortization_clp: number; extra_amortization_clp: number; carrying_clp: number } | null;
   can_link: boolean;
 }
 
@@ -793,8 +826,11 @@ export interface RealEstateExpensesResponse {
   places: RealEstatePlaceDto[];
   slots: RealEstateBillSlot[];
   by_account: Record<string, RealEstateExpenseAccountBlock>;
-  /** Monthly only — the chart rolls years up after its Rango cut (`clipMonthsThenRollup`). */
-  chart_monthly: FlowExpenseChartPoint[];
+  /**
+   * Keyed `all` and by place slug. Monthly only — the chart rolls years up after its Rango cut
+   * (`clipMonthsThenRollup`), counted back from the scope's last point.
+   */
+  chart_scopes: Record<string, RealEstateChartScopeDto>;
   total_clp: number;
 }
 

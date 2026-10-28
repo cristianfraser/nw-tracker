@@ -584,6 +584,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  updateRealEstateMonthsCovered: (expenseEntryId: number, body: { months_covered: number }) =>
+    j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}/months-covered`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   updateRealEstateBillMonth: (expenseEntryId: number, body: { bill_month: string }) =>
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}/bill-month`, {
       method: "PATCH",

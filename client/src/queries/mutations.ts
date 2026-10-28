@@ -505,6 +505,17 @@ export function useUpdateRealEstateBillMonthMutation() {
   });
 }
 
+export function useUpdateRealEstateMonthsCoveredMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { expense_entry_id: number; months_covered: number }) =>
+      api.updateRealEstateMonthsCovered(vars.expense_entry_id, { months_covered: vars.months_covered }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsRealEstateExpenses() });
+    },
+  });
+}
+
 export function useUpdateRealEstateConsumptionMutation() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -5,6 +5,7 @@ import {
   billMonthFromSpentOn,
   displayAmountClp,
   findAmountMatchCandidates,
+  findInvalidRealEstateExpenseLinks,
   pickAutoLinkCandidate,
   purchaseMonthMatchesBillSlot,
   purchaseMonthOffsetFromBill,
@@ -56,6 +57,7 @@ function expectation(
     note: null,
     kwh: null,
     m3: null,
+    months_covered: 1,
     expense_account_id: 2,
     account_slug: "depto",
     comunidad_patterns: "COMUNIDAD DEPTO",
@@ -223,5 +225,30 @@ describe("displayAmountClp", () => {
 
   it("falls back to expected when unlinked", () => {
     expect(displayAmountClp(40_000, undefined)).toBe(40_000);
+  });
+});
+
+describe("findInvalidRealEstateExpenseLinks", () => {
+  const exp = expectation({ id: 10, amount_clp: 61_320, spent_on: "2024-05-31" });
+
+  it("reports a link whose purchase is no longer an eligible line", () => {
+    const links = new Map([[10, { expense_entry_id: 10, purchase_key: "line-pr:gone", link_source: "manual" as const }]]);
+    expect(findInvalidRealEstateExpenseLinks([exp], [], links)).toEqual([
+      { expense_entry_id: 10, purchase_key: "line-pr:gone", problem: "missing_purchase" },
+    ]);
+  });
+
+  it("reports a link whose purchase left the bill's month window", () => {
+    const line = ccLine({ purchase_key: "line-pr:late", amount_clp: 61_320, purchase_on: "2024-09-02" });
+    const links = new Map([[10, { expense_entry_id: 10, purchase_key: "line-pr:late", link_source: "auto" as const }]]);
+    expect(findInvalidRealEstateExpenseLinks([exp], [line], links)).toEqual([
+      { expense_entry_id: 10, purchase_key: "line-pr:late", problem: "outside_window" },
+    ]);
+  });
+
+  it("says nothing about a link that holds", () => {
+    const line = ccLine({ purchase_key: "line-pr:ok", amount_clp: 61_320, purchase_on: "2024-06-21" });
+    const links = new Map([[10, { expense_entry_id: 10, purchase_key: "line-pr:ok", link_source: "auto" as const }]]);
+    expect(findInvalidRealEstateExpenseLinks([exp], [line], links)).toEqual([]);
   });
 });
