@@ -734,6 +734,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ source }),
     }),
+  ingestRunsStatus: () => j<import("./types").IngestRunsStatusResponse>("/api/import-sync/ingest-runs"),
+  startIngestRun: (kind: import("./types").IngestRunKind) =>
+    j<import("./types").IngestRunsStatusResponse>("/api/import-sync/ingest-runs", {
+      method: "POST",
+      body: JSON.stringify({ kind }),
+    }),
   importSyncDocumentCoverage: () =>
     j<import("./types").ImportSyncDocumentCoverageResponse>(
       "/api/import-sync/document-coverage"

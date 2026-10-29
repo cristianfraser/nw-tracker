@@ -2,10 +2,12 @@ import { useTranslation } from "react-i18next";
 import { MessagesTable } from "../../components/messages/MessagesTable";
 import { AvailableDocumentsTable } from "../../components/sync/AvailableDocumentsTable";
 import { GenericUniqueMerchantsPanel } from "../../components/sync/GenericUniqueMerchantsPanel";
+import { IngestRunsPanel } from "../../components/sync/IngestRunsPanel";
 import { SyncLogStatusPanel } from "../../components/sync/SyncLogStatusPanel";
 import {
   useGenericUniqueMerchants,
   useImportSyncDocumentCoverage,
+  useIngestRunsStatus,
   useMessages,
   useSyncStatus,
 } from "../../queries/hooks";
@@ -18,6 +20,11 @@ export function ImportSyncPage() {
     error: syncStatusError,
     isPending: syncStatusPending,
   } = useSyncStatus();
+  const {
+    data: ingestRuns,
+    error: ingestRunsError,
+    isPending: ingestRunsPending,
+  } = useIngestRunsStatus();
   const {
     data: coverage,
     error: coverageError,
@@ -35,13 +42,15 @@ export function ImportSyncPage() {
       ? logsError.message
       : syncStatusError instanceof Error
         ? syncStatusError.message
-        : coverageError instanceof Error
-          ? coverageError.message
-          : genericMerchantsError instanceof Error
-            ? genericMerchantsError.message
-            : logsError || syncStatusError || coverageError || genericMerchantsError
-              ? t("common.loadFailed")
-              : null;
+        : ingestRunsError instanceof Error
+          ? ingestRunsError.message
+          : coverageError instanceof Error
+            ? coverageError.message
+            : genericMerchantsError instanceof Error
+              ? genericMerchantsError.message
+              : logsError || syncStatusError || ingestRunsError || coverageError || genericMerchantsError
+                ? t("common.loadFailed")
+                : null;
 
   if (err) {
     return <p className="error">{err}</p>;
@@ -49,8 +58,12 @@ export function ImportSyncPage() {
 
   return (
     <>
+      <h2 className="flow-section-title">{t("importSync.ingestRunsTitle")}</h2>
+      <IngestRunsPanel status={ingestRuns} loading={ingestRunsPending} />
 
-      <h2 className="flow-section-title">{t("importSync.syncLogTitle")}</h2>
+      <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
+        {t("importSync.syncLogTitle")}
+      </h2>
       <SyncLogStatusPanel status={syncStatus} loading={syncStatusPending} />
       <MessagesTable
         rows={logs}

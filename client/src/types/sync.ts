@@ -111,3 +111,25 @@ export interface SyncStatusResponse {
   /** ISO-ish timestamp from latest sync log row (`app_messages`, kind=log). */
   last_sync_at: string | null;
 }
+
+export type IngestRunKind = "nightly" | "hourly";
+
+export type IngestRunStatus = "requested" | "done" | "failed" | "lost" | "skipped" | "not_started";
+
+export interface IngestRunSummary {
+  id: number;
+  kind: IngestRunKind;
+  status: IngestRunStatus;
+  reason: string;
+  requested_at: string | null;
+  finished_at: string | null;
+  failed_steps: number | null;
+  error: string | null;
+}
+
+/** `GET /api/import-sync/ingest-runs`: the run in flight, the latest run of each kind and its next slot. */
+export interface IngestRunsStatusResponse {
+  scheduler_enabled: boolean;
+  in_flight: IngestRunSummary | null;
+  kinds: { kind: IngestRunKind; latest: IngestRunSummary | null; next_slot_at: string }[];
+}

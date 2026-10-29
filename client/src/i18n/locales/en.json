@@ -435,6 +435,31 @@
       "agoHoursMinutes": "{{h}} h {{m}} min ago",
       "agoDay": "1 day ago",
       "agoDays": "{{n}} days ago"
+    },
+    "ingestRunsTitle": "Bank and e-mail runs",
+    "ingest": {
+      "schedulerOff": "The ingest scheduler is off on this server instance: runs can only be started from the primary one.",
+      "inFlight": "Running: {{kind}} since {{time}}.",
+      "idle": "No run in progress.",
+      "colRun": "Run",
+      "colLatest": "Latest",
+      "colNext": "Next",
+      "kinds": {
+        "hourly": "E-mail poll (hourly)",
+        "nightly": "Nightly run (bank + every import)"
+      },
+      "status": {
+        "requested": "running",
+        "done": "ok",
+        "failed": "failed",
+        "lost": "no report",
+        "skipped": "skipped",
+        "not_started": "not started"
+      },
+      "failedSteps": "{{n}} failed step(s)",
+      "never": "never",
+      "runNow": "Run now",
+      "runNowPending": "Starting…"
     }
   },
   "detail": {

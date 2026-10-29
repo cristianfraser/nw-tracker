@@ -9,7 +9,15 @@ import {
   type IngestRunRequest,
 } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import { INGEST_UNREACHABLE_TITLE, ingestSchedulerEnabled, ingestSchedulerTick, requestFeederRun, type FeederAnswer } from "./ingestRunScheduler.js";
+import {
+  INGEST_UNREACHABLE_TITLE,
+  MANUAL_RUN_REASON,
+  ingestSchedulerEnabled,
+  ingestSchedulerTick,
+  requestFeederRun,
+  startManualIngestRun,
+  type FeederAnswer,
+} from "./ingestRunScheduler.js";
 import { completeIngestRun, ingestRunById, listRecentIngestRuns } from "./ingestRuns.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
 
@@ -182,6 +190,54 @@ describe("ingestSchedulerTick", () => {
     );
     await ingestSchedulerTick(new Date("2099-06-11T03:30:05Z"), new Set(), ok.request);
     expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", santanderFetch: { mode: "catch-up" } });
+  });
+});
+
+describe("startManualIngestRun", () => {
+  const ON = { INGEST_SCHEDULER_ENABLED: "1" } as NodeJS.ProcessEnv;
+  const AT = new Date("2099-06-10T18:40:00Z");
+
+  beforeEach(() => {
+    messageIdFloor = (db.prepare(`SELECT COALESCE(MAX(id), 0) AS m FROM app_messages`).get() as { m: number }).m;
+    clear();
+  });
+  afterEach(clear);
+
+  it("refuses on an instance whose scheduler is off, asking nothing", async () => {
+    const feeder = fakeFeeder({ status: "accepted" });
+    const out = await startManualIngestRun("hourly", AT, feeder.request, {});
+    expect(out).toMatchObject({ status: "refused", reason: "scheduler_off" });
+    expect(feeder.calls).toEqual([]);
+    expect(listRecentIngestRuns()).toEqual([]);
+  });
+
+  it("starts a run now, which answers its hour's slot and holds the scheduler off while it runs", async () => {
+    const feeder = fakeFeeder({ status: "accepted" });
+    const out = await startManualIngestRun("hourly", AT, feeder.request, ON);
+    expect(out.status).toBe("started");
+    const runId = (out as { run_id: number }).run_id;
+    expect(feeder.calls).toEqual([{ runId, kind: "hourly", reason: MANUAL_RUN_REASON, santanderFetch: null }]);
+    expect(ingestRunById(runId)).toMatchObject({ kind: "hourly", status: "requested", slot_at: AT.toISOString() });
+
+    // A second click while it runs is refused; a tick waits for it.
+    expect(await startManualIngestRun("nightly", AT, feeder.request, ON)).toMatchObject({ status: "refused", reason: "in_flight" });
+    const tick = await ingestSchedulerTick(new Date("2099-06-10T18:41:00Z"), new Set(), feeder.request);
+    expect(tick.decision).toMatchObject({ action: "wait", kind: "nightly" });
+
+    // Once it reports, the 18:30 slot it ran in is answered: the next hourly is the 19:30 one.
+    completeIngestRun(runId, report({ santander: null, santander_state: STATE }));
+    db.prepare(`INSERT INTO ingest_runs (kind, slot_at, status, reason) VALUES ('nightly', ?, 'done', 'test')`).run(
+      "2099-06-10T02:00:00.000Z"
+    );
+    const after = await ingestSchedulerTick(new Date("2099-06-10T18:45:00Z"), new Set(), feeder.request);
+    expect(after.decision).toEqual({ action: "idle" });
+  });
+
+  it("marks a run the service would not take as not started, and says why", async () => {
+    const feeder = fakeFeeder({ status: "busy", detail: "running a nightly run since 2099-06-10T18:00:00Z" });
+    const out = await startManualIngestRun("hourly", AT, feeder.request, ON);
+    expect(out).toMatchObject({ status: "refused", reason: "busy" });
+    expect(listRecentIngestRuns()[0]).toMatchObject({ status: "not_started", reason: MANUAL_RUN_REASON });
   });
 });
 

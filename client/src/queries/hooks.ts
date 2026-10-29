@@ -455,6 +455,25 @@ export function useSyncStatus() {
   });
 }
 
+/** Polls fast while a run is in flight, so the page sees it finish. */
+export function useIngestRunsStatus() {
+  return useQuery({
+    queryKey: queryKeys.ingestRunsStatus(),
+    queryFn: () => api.ingestRunsStatus(),
+    refetchInterval: (query) => (query.state.data?.in_flight ? 5_000 : 30_000),
+  });
+}
+
+export function useStartIngestRunMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (kind: import("../types").IngestRunKind) => api.startIngestRun(kind),
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKeys.ingestRunsStatus(), data);
+    },
+  });
+}
+
 export function useImportSyncDocumentCoverage() {
   return useQuery({
     queryKey: queryKeys.importSyncDocumentCoverage(),
