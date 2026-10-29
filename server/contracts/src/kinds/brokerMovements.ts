@@ -32,7 +32,22 @@ export const brokerMovementSchema = z
   .object({
     /** The broker's id for the movement, or a stand-in (`<day>|<kind>|<amount>`) for a row whose id was never read. Provenance only. */
     movement_id: z.string().min(1).max(256),
-    kind: z.enum(["deposit", "withdrawal", "buy", "sell", "dividend", "interest", "fee", "corporate_action"]),
+    /**
+     * `portfolio_cash_withdrawal` (2026-10-21): the cash a managed portfolio's caja held, returned
+     * to the broker wallet when the portfolio is liquidated. A liquidation row decodes to one
+     * `sell` per position sold plus this movement; a widened enum still accepts every v1 payload.
+     */
+    kind: z.enum([
+      "deposit",
+      "withdrawal",
+      "buy",
+      "sell",
+      "dividend",
+      "interest",
+      "fee",
+      "corporate_action",
+      "portfolio_cash_withdrawal",
+    ]),
     /** The instrument, for trades and dividends; null for cash, or when the list never named it. */
     ticker: z.string().regex(/^[A-Z][A-Z0-9.]{0,9}$/).nullable(),
     occurred_on: z.iso.date(),

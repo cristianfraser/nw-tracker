@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  normalizeRacionalListRowKey,
   parseRacionalAmount,
   parseRacionalDetail,
+  parseRacionalLiquidationDetail,
+  racionalListRowKey,
   racionalMovementKind,
   racionalMovementTicker,
   racionalMovementTimestamp,
   racionalRowToMovement,
+  racionalRowToMovements,
   sortRacionalMovementsNewestFirst,
 } from "./movements.js";
 import { racionalApiDividendsFromResponse } from "./movements.js";
@@ -288,5 +292,138 @@ describe("racionalMovements — dividends API records", () => {
     expect(() =>
       racionalApiDividendsFromResponse({ dividends: [{ ...raw.dividends[0], amount: 2.75 }] })
     ).toThrow(/does not add up/);
+  });
+});
+
+/**
+ * 2026-10-20: the «Portafolio IPSA» was liquidated. Racional lists it as one «Retiro» row
+ * (class `pending-withdrawal` until the money reaches the wallet two days later, `withdrawal`
+ * after) whose detail view prints the positions sold and the caja's pesos. The crawl had set
+ * the row aside as a bank withdrawal. Fixture amounts are synthetic; the layout is the real one.
+ */
+describe("racionalMovements — portfolio liquidation («Retiro»)", () => {
+  const RETIRO_DETAIL = [
+    "Retiraste $2.640.000 de tu portafolio IPSA.",
+    "Progreso",
+    "Solicitud de retiro",
+    "Creada",
+    "19/10/97 23:40",
+    "Venta de activos",
+    "Completada",
+    "20/10/97 15:31",
+    "Depósito en billetera",
+    "Pendiente",
+    "22/10/97",
+    "Montos vendidos",
+    "ETF IPSA Chile",
+    "VTIPSA",
+    "$1.300",
+    "$2.600.000",
+    "2.000 acciones",
+    "Además, se retiraron $40.000 de lo que tenías de caja.",
+    "El dinero llegará a tu Billetera en 2 días hábiles.",
+  ].join("\n");
+  const retiroRow = {
+    title: "Retiro",
+    amount: "$2.640.000",
+    day: "19/10",
+    occurred_on: "2097-10-19",
+    kind_class: "pending-withdrawal",
+    status: "pending" as const,
+    detail: RETIRO_DETAIL,
+    detail_status: "opened" as const,
+  };
+
+  it("reads the positions sold, the caja line and the sale day out of the detail view", () => {
+    const parsed = parseRacionalLiquidationDetail(RETIRO_DETAIL);
+    expect(parsed).toEqual({
+      positions: [{ ticker: "VTIPSA", price: 1300, amount: 2600000, units: "2000" }],
+      caja_amount: 40000,
+      sale_day: "2097-10-20",
+    });
+    // The same text flattened with pipes (how a detail reads once joined) parses the same.
+    expect(parseRacionalLiquidationDetail(RETIRO_DETAIL.replace(/\n/g, " | "))).toEqual(parsed);
+    // A plain bank withdrawal prints no «Montos vendidos».
+    expect(parseRacionalLiquidationDetail("Retiraste $1.000.000 a tu cuenta bancaria.\nProgreso\nCreada\n19/10/97 10:00")).toBeNull();
+    // A section that prints positions in a shape the reader does not know must not pass as a bank withdrawal.
+    expect(() => parseRacionalLiquidationDetail("Montos vendidos\nVTIPSA — 2.000 acciones por $2.600.000")).toThrow(/layout changed/);
+  });
+
+  it("decodes the row to one sell per position plus the caja's pesos, dated the sale day", () => {
+    const movements = racionalRowToMovements(retiroRow);
+    expect(movements).toHaveLength(2);
+    expect(movements[0]).toMatchObject({
+      kind: "sell",
+      ticker: "VTIPSA",
+      occurred_on: "2097-10-20",
+      amount: 2600000,
+      currency: "clp",
+      units: "2000",
+      price: 1300,
+      title: "Retiro · venta VTIPSA",
+      movement_id: "2097-10-19|withdrawal|2640000#sell:VTIPSA",
+      incomplete: null,
+    });
+    expect(movements[1]).toMatchObject({
+      kind: "portfolio_cash_withdrawal",
+      ticker: null,
+      occurred_on: "2097-10-20",
+      amount: 40000,
+      currency: "clp",
+      units: null,
+      title: "Retiro · caja",
+      movement_id: "2097-10-19|withdrawal|2640000#caja",
+      incomplete: null,
+    });
+    // The single-movement reader refuses a row that is several.
+    expect(() => racionalRowToMovement(retiroRow)).toThrow(/decodes to 2 movements/);
+    // Once the money landed the row reads `withdrawal`: the same movements.
+    expect(racionalRowToMovements({ ...retiroRow, kind_class: "withdrawal", status: "complete" })).toEqual(movements);
+  });
+
+  it("falls back to the list day without a sale step, and skips the caja when it held nothing", () => {
+    const noTimeline = RETIRO_DETAIL.split("\n").filter((l) => !/^(Venta de activos|Completada|20\/10\/97 15:31)$/.test(l)).join("\n");
+    const [sell, caja] = racionalRowToMovements({ ...retiroRow, detail: noTimeline });
+    expect(sell).toMatchObject({ kind: "sell", occurred_on: "2097-10-19" });
+    expect(caja).toMatchObject({ kind: "portfolio_cash_withdrawal", occurred_on: "2097-10-19" });
+
+    const emptyCaja = RETIRO_DETAIL.replace(/Además, se retiraron \$40\.000 de lo que tenías de caja\.\n/, "");
+    expect(racionalRowToMovements({ ...retiroRow, detail: emptyCaja }).map((m) => m.kind)).toEqual(["sell"]);
+  });
+
+  it("keeps a plain bank Retiro as a cash withdrawal, and marks one the crawl never opened incomplete", () => {
+    const bank = racionalRowToMovements({
+      ...retiroRow,
+      amount: "$1.000.000",
+      detail: "Retiraste $1.000.000 a tu cuenta bancaria.\nProgreso\nCreada\n19/10/97 10:00",
+    });
+    expect(bank).toHaveLength(1);
+    expect(bank[0]).toMatchObject({ kind: "withdrawal", amount: 1000000, currency: "clp", incomplete: null });
+
+    const unopened = racionalRowToMovement({
+      ...retiroRow,
+      detail: null,
+      detail_status: "unopened",
+      detail_error: "the list changed under the click",
+    });
+    expect(unopened.kind).toBe("withdrawal");
+    expect(unopened.incomplete).toBe(
+      "whether it liquidated a portfolio or paid a bank account unknown — the crawl could not open its detail view (the list changed under the click)"
+    );
+    // A Retiro staged before the crawl opened withdrawals (no detail, no flag) is just as undecided.
+    expect(racionalRowToMovement({ title: "Retiro", amount: "$1.000", occurred_on: "2097-10-19" }).incomplete).toMatch(
+      /^whether it liquidated a portfolio .* the crawl never opened its detail view$/
+    );
+  });
+
+  it("keys the row without its state, so the cursor survives pending-withdrawal → withdrawal", () => {
+    const pending = racionalListRowKey(retiroRow);
+    expect(pending).toBe("2097-10-19|withdrawal|$2.640.000");
+    expect(racionalListRowKey({ ...retiroRow, kind_class: "withdrawal", status: "complete" })).toBe(pending);
+    // A cursor written while keys still carried the state (2026-10-21) is read the same way.
+    expect(normalizeRacionalListRowKey("2026-10-20|pending-withdrawal|$1.234.567")).toBe("2026-10-20|withdrawal|$1.234.567");
+    expect(normalizeRacionalListRowKey(pending)).toBe(pending);
+    // The class decides the kind with its state stripped; «Comisión» rows carry `commissions`.
+    expect(racionalRowToMovement({ title: "Comisión", amount: "$2.579", occurred_on: "2097-10-19", kind_class: "commissions" }).kind).toBe("fee");
   });
 });
