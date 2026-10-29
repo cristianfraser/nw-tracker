@@ -316,7 +316,14 @@ export function StackedExpensesChart({
             tickLine={{ stroke: AXIS_LINE_STROKE }}
             tickFormatter={(d: string) => xAxis.formatTick(String(d))}
           />
-          <YAxis domain={yScale.domain} ticks={yScale.ticks} {...moneyYAxisProps(displayUnit, compactAxis)} />
+          {/* The domain is computed above; the invisible tooltip-only series (shown total, year average)
+              must not stretch it. */}
+          <YAxis
+            domain={yScale.domain}
+            ticks={yScale.ticks}
+            allowDataOverflow
+            {...moneyYAxisProps(displayUnit, compactAxis)}
+          />
           <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
           {currentPeriodX != null ? renderPeriodRefLine({ x: currentPeriodX }) : null}
           <Legend

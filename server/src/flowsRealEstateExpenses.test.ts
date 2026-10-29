@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
+  buildChartScopes,
   buildRealEstateExpensesPayload,
   chartPartsOf,
   REAL_ESTATE_CHART_KINDS,
@@ -145,7 +146,7 @@ describe("real-estate chart scopes", () => {
     });
     for (const chart of Object.values(payload.chart_scopes)) {
       for (const pt of chart.points) {
-        expect(chart.series.reduce((acc, s) => acc + Number(pt[s.data_key]), 0)).toBe(pt.total);
+        expect(chart.series.reduce((acc, s) => acc + Math.abs(Number(pt[s.data_key])), 0)).toBe(pt.total);
       }
     }
   });
@@ -225,5 +226,51 @@ describe("chartPartsOf", () => {
   it("throws on a mortgage cuota without parts, and on a kind the chart does not know", () => {
     expect(() => chartPartsOf({ ...base, kind: "mortgage", display_amount_clp: 1, mortgage_parts: null })).toThrow();
     expect(() => chartPartsOf({ ...base, kind: "kwh2", display_amount_clp: 1, mortgage_parts: null })).toThrow();
+  });
+});
+
+describe("buildChartScopes", () => {
+  it("draws a cuota's extra amortization below zero; the total counts what was paid", () => {
+    const place = {
+      slug: "depto",
+      label: "Depto",
+      sort_order: 0,
+      active_from: "2036-01",
+      active_to: null,
+      property_account_id: 1,
+      comunidad_merchant_patterns: null,
+    };
+    const scopes = buildChartScopes(
+      [
+        {
+          expense_entry_id: null,
+          account_slug: "depto",
+          bill_month: "2036-10",
+          spent_on: "2036-10-11",
+          kind: "mortgage",
+          expected_amount_clp: 700_000,
+          link: null,
+          broken_link: null,
+          display_amount_clp: 700_000,
+          note: null,
+          kwh: null,
+          m3: null,
+          months_covered: 1,
+          covers_from: "2036-10",
+          mortgage_parts: { amortization_clp: 100_000, extra_amortization_clp: 350_000, carrying_clp: 250_000 },
+          can_link: false,
+        },
+      ],
+      [place]
+    );
+    expect(scopes.depto!.points).toEqual([
+      {
+        as_of_date: "2036-10-31",
+        total: 700_000,
+        depto__mortgage_carrying: 250_000,
+        depto__mortgage_amortization: 100_000,
+        depto__mortgage_extra_amortization: -350_000,
+      },
+    ]);
   });
 });
