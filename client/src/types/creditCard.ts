@@ -86,8 +86,12 @@ export type CcUpcomingPaymentRowDto = {
   close_date_source: CcCloseSource;
   pay_by_iso: string;
   pay_by_source: "statement" | "derived";
-  /** The facturación's total in pesos (CLP + the dollars in pesos). */
+  /** What is still owed, in pesos (the dollars left at today's rate). */
   amount_clp: number;
+  /** The facturación's total in pesos (CLP + the dollars in pesos). */
+  billed_clp: number;
+  /** Its pay-by has passed with something still owed. */
+  overdue: boolean;
   is_open_month: boolean;
   is_provisional_close: boolean;
 };
@@ -101,7 +105,7 @@ export type CcUpcomingPaymentsCardDto = {
 /** `cc_upcoming_payments` on the dashboard page bundle — pesos in both display units. */
 export type CcUpcomingPaymentsDto = {
   cards: CcUpcomingPaymentsCardDto[];
-  /** Σ of the listed rows per pay-by month (YYYY-MM), oldest first. */
+  /** Σ of the listed rows per pay-by month (YYYY-MM), oldest first; an overdue row counts in the current month. */
   totals_by_month: { pay_month: string; total_clp: number }[];
   liabilities_route_path: string | null;
 };

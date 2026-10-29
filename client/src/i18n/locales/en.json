@@ -111,7 +111,11 @@
       "colBillingMonth": "Billing",
       "colAmount": "Amount",
       "closeObservedHint": "Close published by the bank (statement or card feed).",
-      "totalToPay": "Total to pay"
+      "totalToPay": "Total to pay",
+      "billedOf": "of {{amount}}",
+      "partlyPaidHint": "Still owed after the payments and credits since the close. The facturación billed {{amount}}.",
+      "overdue": "overdue",
+      "overdueHint": "The pay-by date passed with this amount still owed."
     },
     "chartGranularityLabel": "Period:",
     "rangeLabel": "Range:",
