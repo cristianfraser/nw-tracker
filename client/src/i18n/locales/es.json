@@ -111,7 +111,11 @@
       "colBillingMonth": "Facturación",
       "colAmount": "Monto",
       "closeObservedHint": "Cierre publicado por el banco (estado de cuenta o movimientos).",
-      "totalToPay": "Total a pagar"
+      "totalToPay": "Total a pagar",
+      "billedOf": "de {{amount}}",
+      "partlyPaidHint": "Lo que queda tras los pagos y abonos desde el cierre. La facturación fue de {{amount}}.",
+      "overdue": "vencida",
+      "overdueHint": "Pasó la fecha de pago y queda este monto por pagar."
     },
     "chartGranularityLabel": "Período:",
     "rangeLabel": "Rango:",

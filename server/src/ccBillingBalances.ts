@@ -41,6 +41,7 @@ import {
   requireHeaderPagoIso,
 } from "./ccPaymentLines.js";
 import {
+  isCcTraspasoDeudaMerchant,
   isClpSection3FinancingChargeMerchant,
   isUsdSection3FinancingChargeMerchant,
 } from "./ccStatementSection3.js";
@@ -621,6 +622,39 @@ export function openMonthUsdFacturado(
   };
   for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) addStatement(stmtDate);
   return { usd, clp };
+}
+
+/**
+ * The credits of an open facturación (refunds, notas de crédito — negative one-shot lines that
+ * are not payments, divisas abonos or traspasos de deuda), positive, per currency: what its
+ * facturado nets ({@link openMonthUsdFacturado} for dollars, the open-cycle charge sum for pesos)
+ * that a card's still-owed reckoning applies to the previous facturación first, as the bank
+ * does (`dashboardCcUpcomingPayments.ts`).
+ */
+export function openFacturacionCredits(
+  accountId: number,
+  billingMonth: string
+): { clp: number; usd: number } {
+  const superseded = oneShotStatementLineIdsSupersededByInstallmentPurchases(accountId);
+  let clp = 0;
+  let usd = 0;
+  for (const stmtDate of statementDatesForFacturacion(accountId, billingMonth)) {
+    const fxDateIso = balanceUsdFxDateIso(accountId, stmtDate);
+    for (const r of listRevolvingLineRowsForStatementDate(accountId, stmtDate)) {
+      if (superseded.has(r.id)) continue;
+      if (isInstallmentContractSummaryMerchant(r.merchant)) continue;
+      if (isCcPaymentOrUsdDebtAbonoMerchant(r.merchant) || isCcTraspasoDeudaMerchant(r.merchant)) continue;
+      const oneShot = { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null };
+      const u = effectiveCcExpenseLineAmountUsd(oneShot);
+      if (u != null) {
+        if (u < 0) usd -= u;
+        continue;
+      }
+      const c = effectiveCcExpenseLineAmountClp(oneShot, fxDateIso);
+      if (c != null && c < 0) clp -= c;
+    }
+  }
+  return { clp: Math.round(clp), usd: Math.round(usd * 100) / 100 };
 }
 
 function installmentCuotaDueForAccountStatementDateClp(

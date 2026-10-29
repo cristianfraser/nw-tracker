@@ -34,9 +34,19 @@ function CloseCell({ row }: { row: CcUpcomingPaymentRowDto }) {
   );
 }
 
-/** Pay-by with its provenance: one derived from the close (no statement prints it yet) reads «≈». */
+/**
+ * Pay-by with its provenance: one derived from the close (no statement prints it yet) reads «≈»;
+ * one passed with something still owed is marked overdue.
+ */
 function PayByCell({ row }: { row: CcUpcomingPaymentRowDto }) {
   const { t } = useTranslation();
+  if (row.overdue) {
+    return (
+      <span style={{ color: "var(--negative)" }} title={t("dashboard.ccUpcoming.overdueHint")}>
+        {row.pay_by_iso} · {t("dashboard.ccUpcoming.overdue")}
+      </span>
+    );
+  }
   if (row.pay_by_source === "derived") {
     return (
       <span className="muted" title={t("accountDetail.creditCard.payByDerivedHint")}>
@@ -45,6 +55,19 @@ function PayByCell({ row }: { row: CcUpcomingPaymentRowDto }) {
     );
   }
   return <>{row.pay_by_iso}</>;
+}
+
+/** What is still owed; once part is paid, the facturación's total beside it. */
+function AmountCell({ row }: { row: CcUpcomingPaymentRowDto }) {
+  const { t } = useTranslation();
+  if (row.amount_clp === row.billed_clp) return <>{formatClp(row.amount_clp)}</>;
+  const billed = formatClp(row.billed_clp);
+  return (
+    <span title={t("dashboard.ccUpcoming.partlyPaidHint", { amount: billed })}>
+      {formatClp(row.amount_clp)}{" "}
+      <span className="muted">{t("dashboard.ccUpcoming.billedOf", { amount: billed })}</span>
+    </span>
+  );
 }
 
 function MonthCell({ row }: { row: CcUpcomingPaymentRowDto }) {
@@ -77,7 +100,9 @@ function CardRows({ card }: { card: CcUpcomingPaymentsCardDto }) {
           <td className="mono desktop-only">
             <PayByCell row={row} />
           </td>
-          <td className="mono desktop-only">{formatClp(row.amount_clp)}</td>
+          <td className="mono desktop-only">
+            <AmountCell row={row} />
+          </td>
           <td className="mobile-only">
             <TableMobileCard
               title={
@@ -97,7 +122,7 @@ function CardRows({ card }: { card: CcUpcomingPaymentsCardDto }) {
                 />
                 <TableMobileCardRow
                   label={t("dashboard.ccUpcoming.colAmount")}
-                  value={formatClp(row.amount_clp)}
+                  value={<AmountCell row={row} />}
                 />
               </TableMobileCardSection>
             </TableMobileCard>
@@ -109,8 +134,8 @@ function CardRows({ card }: { card: CcUpcomingPaymentsCardDto }) {
 }
 
 /**
- * «Tarjetas: próximos pagos» on the home dashboard: per active card, the facturaciones still to
- * pay and the open one, as the server built them (`cc_upcoming_payments` on the page bundle).
+ * «Tarjetas: próximos pagos» on the home dashboard: per active card, what the latest closed
+ * facturación and the open one still owe, as the server built them (`cc_upcoming_payments` on the page bundle).
  * Pesos in both display units. Renders nothing before the server has answered (`data` null on a
  * placeholder bundle) and nothing when no card has anything pending.
  */

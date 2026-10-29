@@ -342,6 +342,22 @@
       "totalToPay": {
         "en": "Total to pay",
         "es": "Total a pagar"
+      },
+      "billedOf": {
+        "en": "of {{amount}}",
+        "es": "de {{amount}}"
+      },
+      "partlyPaidHint": {
+        "en": "Still owed after the payments and credits since the close. The facturación billed {{amount}}.",
+        "es": "Lo que queda tras los pagos y abonos desde el cierre. La facturación fue de {{amount}}."
+      },
+      "overdue": {
+        "en": "overdue",
+        "es": "vencida"
+      },
+      "overdueHint": {
+        "en": "The pay-by date passed with this amount still owed.",
+        "es": "Pasó la fecha de pago y queda este monto por pagar."
       }
     },
     "chartGranularityLabel": {
