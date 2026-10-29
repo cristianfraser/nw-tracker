@@ -89,7 +89,7 @@ export type RealEstatePlaceDto = {
   property_account_id: number | null;
 };
 
-type RealEstatePlaceRow = RealEstatePlaceDto & { comunidad_merchant_patterns: string | null };
+export type RealEstatePlaceRow = RealEstatePlaceDto & { comunidad_merchant_patterns: string | null };
 
 export type RealEstateExpenseChartPoint = {
   as_of_date: string;
@@ -285,6 +285,14 @@ export function spreadOverCoveredMonths(
   return out;
 }
 
+/**
+ * Kinds drawn below zero: the extra amortization paid above the minimum cuota is saving into the
+ * property, not the month's cost (the scheduled amortization stays above, part of the cuota).
+ */
+const REAL_ESTATE_BELOW_ZERO_KINDS: ReadonlySet<RealEstateChartSeriesDto["kind"]> = new Set([
+  "mortgage_extra_amortization",
+]);
+
 function chartScope(
   slots: readonly RealEstateBillSlot[],
   schemeByPlace: ReadonlyMap<string, RealEstateChartSeriesDto["scheme"]>,
@@ -307,6 +315,7 @@ function chartScope(
         months_covered: slot.months_covered,
         display_amount_clp: part.amount,
       });
+      const sign = REAL_ESTATE_BELOW_ZERO_KINDS.has(part.kind) ? -1 : 1;
       for (const { month, amount } of spread) {
         const pe = monthEndUtcYmd(month);
         let pt = byPeriod.get(pe);
@@ -314,7 +323,8 @@ function chartScope(
           pt = { as_of_date: pe, total: 0 };
           byPeriod.set(pe, pt);
         }
-        pt[dataKey] = Number(pt[dataKey] ?? 0) + amount;
+        pt[dataKey] = Number(pt[dataKey] ?? 0) + sign * amount;
+        // The total counts what was paid, the below-zero kinds included.
         pt.total += amount;
       }
     }
@@ -337,7 +347,7 @@ function chartScope(
   return { series, kinds, points: densifyMonthlyPoints(sorted, emptyPoint) };
 }
 
-function buildChartScopes(
+export function buildChartScopes(
   slots: readonly RealEstateBillSlot[],
   places: readonly RealEstatePlaceRow[]
 ): Record<string, RealEstateChartScopeDto> {
