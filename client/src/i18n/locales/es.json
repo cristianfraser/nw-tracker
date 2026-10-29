@@ -1429,7 +1429,7 @@
         "statementsOnly": "Estados de cuenta importados (PDF). Sin compras en cuotas en el ledger hasta importar estados CLP."
       },
       "cuotaProgress": {
-        "caption": "{{paidCount}} de {{total}} · {{paid}} / {{totalClp}} ({{pending}} pendiente)",
+        "caption": "{{cuota}} × {{paidCount}} de {{total}} · {{paid}} / {{totalClp}} ({{pending}})",
         "ariaLabel": "Progreso de cuotas: {{paid}} de {{total}} pagadas",
         "colCuota": "Cuota",
         "colBillingMonth": "Facturación",

@@ -53,15 +53,16 @@ export function CreditCardPurchaseMobileCard({
     </TableMobileCardSection>
   );
 
-  // Active plans: the desktop row's two lines — «date · cuota» over the vendor — then the note and
-  // the progress bar.
+  // Active plans: the desktop row — the date over the vendor, then the note and the progress bar,
+  // whose caption leads with the cuota.
   if (dueColumn === "none") {
     return (
       <TableMobileCard
         title={
           <>
             <div className="mono">
-              {purchase.purchase_date ?? "—"} · {formatClp(purchase.cuota_clp)}
+              {purchase.purchase_date ?? "—"}
+              {purchase.cuota_progress ? null : ` · ${formatClp(purchase.cuota_clp)}`}
             </div>
             <div>{purchase.label}</div>
           </>
@@ -76,7 +77,11 @@ export function CreditCardPurchaseMobileCard({
         {notes}
         {purchase.cuota_progress ? (
           <TableMobileCardSection>
-            <CreditCardCuotaProgress progress={purchase.cuota_progress} maxInstallments={maxInstallments} />
+            <CreditCardCuotaProgress
+              progress={purchase.cuota_progress}
+              cuotaClp={purchase.cuota_clp}
+              maxInstallments={maxInstallments}
+            />
           </TableMobileCardSection>
         ) : null}
       </TableMobileCard>

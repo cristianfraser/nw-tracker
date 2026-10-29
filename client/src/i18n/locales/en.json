@@ -1429,7 +1429,7 @@
         "statementsOnly": "Imported statements (PDF). No installment purchases in the ledger until CLP statements are imported."
       },
       "cuotaProgress": {
-        "caption": "{{paidCount}} of {{total}} · {{paid}} / {{totalClp}} ({{pending}} pending)",
+        "caption": "{{cuota}} × {{paidCount}} of {{total}} · {{paid}} / {{totalClp}} ({{pending}})",
         "ariaLabel": "Installment progress: {{paid}} of {{total}} paid",
         "colCuota": "Installment",
         "colBillingMonth": "Billing cycle",
