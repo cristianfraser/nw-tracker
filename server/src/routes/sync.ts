@@ -22,6 +22,39 @@ import { normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import { backfillGenericTransferUniquePurchases } from "../ccExpenseGenericTransferBackfill.js";
 import { lastSyncRunCreatedAt } from "../syncRunLog.js";
 import { getGlobalSyncSchedulerSnapshot, notifyGlobalSyncScheduler } from "../globalSyncScheduler.js";
+import { INGEST_RUN_KINDS, type IngestRunKind } from "nw-tracker-contracts";
+import { inFlightIngestRun, latestStartedIngestRun, type IngestRunRow } from "../ingestRuns.js";
+import { ingestSchedulerEnabled, startManualIngestRun } from "../ingestRunScheduler.js";
+import { nextIngestSlotsAfter } from "../ingestRunPolicy.js";
+import { asyncHandler } from "./shared.js";
+
+function ingestRunSummary(row: IngestRunRow | null) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    kind: row.kind,
+    status: row.status,
+    reason: row.reason,
+    requested_at: row.requested_at,
+    finished_at: row.finished_at,
+    failed_steps: row.failed_steps,
+    error: row.error,
+  };
+}
+
+/** The ingest runs the import sync page shows: the one in flight, the latest of each kind, the next slots. */
+function ingestRunsStatusPayload(now: Date) {
+  const next = nextIngestSlotsAfter(now);
+  return {
+    scheduler_enabled: ingestSchedulerEnabled(),
+    in_flight: ingestRunSummary(inFlightIngestRun()),
+    kinds: (["hourly", "nightly"] as const satisfies readonly IngestRunKind[]).map((kind) => ({
+      kind,
+      latest: ingestRunSummary(latestStartedIngestRun(kind)),
+      next_slot_at: next[kind].toISOString(),
+    })),
+  };
+}
 
 export function registerSyncRoutes(app: express.Express): void {
 app.get("/api/sync/status", (_req, res) => {
@@ -51,6 +84,28 @@ app.post("/api/sync/force-stale", (req, res) => {
     last_sync_at: lastSyncRunCreatedAt(),
   });
 });
+
+app.get("/api/import-sync/ingest-runs", (_req, res) => {
+  res.json(ingestRunsStatusPayload(new Date()));
+});
+
+// Run the hourly poll or the nightly now (a mail that just landed), instead of waiting for its slot.
+app.post(
+  "/api/import-sync/ingest-runs",
+  asyncHandler(async (req, res) => {
+    const kind = typeof req.body?.kind === "string" ? req.body.kind : "";
+    if (!(INGEST_RUN_KINDS as readonly string[]).includes(kind)) {
+      res.status(400).json({ error: `Unknown ingest run kind: ${kind || "(none)"}` });
+      return;
+    }
+    const outcome = await startManualIngestRun(kind as IngestRunKind, new Date());
+    if (outcome.status === "refused") {
+      res.status(outcome.reason === "unreachable" ? 503 : 409).json({ error: outcome.message, reason: outcome.reason });
+      return;
+    }
+    res.status(202).json(ingestRunsStatusPayload(new Date()));
+  })
+);
 
 app.get("/api/import-sync/document-coverage", (_req, res) => {
   res.json(buildImportSyncDocumentCoveragePayload());

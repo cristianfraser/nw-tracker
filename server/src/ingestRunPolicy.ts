@@ -34,6 +34,14 @@ export function hourlySlotAtOrBefore(now: Date): Date {
   return new Date(Math.floor((now.getTime() - HALF_HOUR_MS) / HOUR_MS) * HOUR_MS + HALF_HOUR_MS);
 }
 
+/** The next slot of each kind strictly after `now` (the nightly ±1 h across a DST change is fine for display). */
+export function nextIngestSlotsAfter(now: Date): Record<IngestRunKind, Date> {
+  return {
+    hourly: new Date(hourlySlotAtOrBefore(now).getTime() + HOUR_MS),
+    nightly: nightlySlotAtOrBefore(new Date(now.getTime() + 24 * HOUR_MS)),
+  };
+}
+
 export type IngestSchedulerInputs = {
   now: Date;
   /** Latest nightly slot a row answers (requested, finished or skipped — not one that never started). */

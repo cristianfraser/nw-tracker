@@ -435,6 +435,31 @@
       "agoHoursMinutes": "hace {{h}} h {{m}} min",
       "agoDay": "hace 1 día",
       "agoDays": "hace {{n}} días"
+    },
+    "ingestRunsTitle": "Corridas de banco y correo",
+    "ingest": {
+      "schedulerOff": "El programador de ingesta está apagado en esta instancia del servidor: las corridas solo se pueden iniciar desde la principal.",
+      "inFlight": "En curso: {{kind}} desde {{time}}.",
+      "idle": "Ninguna corrida en curso.",
+      "colRun": "Corrida",
+      "colLatest": "Última",
+      "colNext": "Próxima",
+      "kinds": {
+        "hourly": "Revisión de correo (cada hora)",
+        "nightly": "Corrida nocturna (banco + todas las importaciones)"
+      },
+      "status": {
+        "requested": "en curso",
+        "done": "ok",
+        "failed": "falló",
+        "lost": "sin reporte",
+        "skipped": "omitida",
+        "not_started": "no iniciada"
+      },
+      "failedSteps": "{{n}} paso(s) fallido(s)",
+      "never": "nunca",
+      "runNow": "Correr ahora",
+      "runNowPending": "Iniciando…"
     }
   },
   "detail": {

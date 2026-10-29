@@ -1491,6 +1491,88 @@
         "en": "{{n}} days ago",
         "es": "hace {{n}} días"
       }
+    },
+    "ingestRunsTitle": {
+      "en": "Bank and e-mail runs",
+      "es": "Corridas de banco y correo"
+    },
+    "ingest": {
+      "schedulerOff": {
+        "en": "The ingest scheduler is off on this server instance: runs can only be started from the primary one.",
+        "es": "El programador de ingesta está apagado en esta instancia del servidor: las corridas solo se pueden iniciar desde la principal."
+      },
+      "inFlight": {
+        "en": "Running: {{kind}} since {{time}}.",
+        "es": "En curso: {{kind}} desde {{time}}."
+      },
+      "idle": {
+        "en": "No run in progress.",
+        "es": "Ninguna corrida en curso."
+      },
+      "colRun": {
+        "en": "Run",
+        "es": "Corrida"
+      },
+      "colLatest": {
+        "en": "Latest",
+        "es": "Última"
+      },
+      "colNext": {
+        "en": "Next",
+        "es": "Próxima"
+      },
+      "kinds": {
+        "hourly": {
+          "en": "E-mail poll (hourly)",
+          "es": "Revisión de correo (cada hora)"
+        },
+        "nightly": {
+          "en": "Nightly run (bank + every import)",
+          "es": "Corrida nocturna (banco + todas las importaciones)"
+        }
+      },
+      "status": {
+        "requested": {
+          "en": "running",
+          "es": "en curso"
+        },
+        "done": {
+          "en": "ok",
+          "es": "ok"
+        },
+        "failed": {
+          "en": "failed",
+          "es": "falló"
+        },
+        "lost": {
+          "en": "no report",
+          "es": "sin reporte"
+        },
+        "skipped": {
+          "en": "skipped",
+          "es": "omitida"
+        },
+        "not_started": {
+          "en": "not started",
+          "es": "no iniciada"
+        }
+      },
+      "failedSteps": {
+        "en": "{{n}} failed step(s)",
+        "es": "{{n}} paso(s) fallido(s)"
+      },
+      "never": {
+        "en": "never",
+        "es": "nunca"
+      },
+      "runNow": {
+        "en": "Run now",
+        "es": "Correr ahora"
+      },
+      "runNowPending": {
+        "en": "Starting…",
+        "es": "Iniciando…"
+      }
     }
   },
   "detail": {

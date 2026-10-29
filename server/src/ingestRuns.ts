@@ -212,3 +212,15 @@ export function completeIngestRun(id: number, completion: IngestRunCompletion): 
 export function listRecentIngestRuns(limit = 50): IngestRunRow[] {
   return db.prepare(`SELECT * FROM ingest_runs ORDER BY slot_at DESC, id DESC LIMIT ?`).all(limit) as IngestRunRow[];
 }
+
+/** The latest run of `kind` that was started (requested, finished or written off) — not a skipped slot. */
+export function latestStartedIngestRun(kind: IngestRunKind): IngestRunRow | null {
+  return (
+    (db
+      .prepare(
+        `SELECT * FROM ingest_runs WHERE kind = ? AND status IN ('requested', 'done', 'failed', 'lost')
+         ORDER BY requested_at DESC, id DESC LIMIT 1`
+      )
+      .get(kind) as IngestRunRow | undefined) ?? null
+  );
+}

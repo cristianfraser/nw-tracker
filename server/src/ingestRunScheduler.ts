@@ -126,6 +126,52 @@ export async function requestFeederRun(
   }
 }
 
+type RunRequestExtras = {
+  santanderFetch: IngestRunRequest["santander_fetch"];
+  afpUnoFetch: IngestRunRequest["afp_uno_fetch"];
+  afcFetch: IngestRunRequest["afc_fetch"];
+  payslips: IngestRunRequest["payslips"];
+  mortgageSheet: IngestRunRequest["mortgage_sheet"];
+};
+
+/** What a run of `kind` requested now carries besides its kind: the same rules for a slot and a manual run. */
+function runRequestExtras(kind: IngestRunKind, now: Date): RunRequestExtras {
+  return {
+    // An hourly poll may carry the one bank fetch the rules allow (catch-up, else payday).
+    santanderFetch:
+      kind === "hourly"
+        ? decideSantanderFetch({
+            now,
+            state: latestSantanderState(),
+            lastCatchUpAttemptAt: lastCatchUpAttemptAt(),
+            lastPaydayAttemptYmd: lastPaydayAttemptYmd(),
+          })
+        : null,
+    // Every nightly reads AFP UNO's balance; the read fetches the certificates when its cuotas moved.
+    afpUnoFetch: kind === "nightly" ? decideAfpUnoFetch() : null,
+    // A nightly reads the AFC from the 14th after a payroll month until its contribution is in.
+    afcFetch:
+      kind === "nightly"
+        ? decideAfcFetch({ now, latestSalaryPayslipPeriod: latestSalaryPayslipPeriod(), latestContributionPeriod: latestUnemploymentFundContributionPeriod() })
+        : null,
+    // A nightly reads the payroll portal from the 1st until last month's payslip is stored, and
+    // re-imports while the newest payslip waits for its deposit.
+    payslips: kind === "nightly" ? decidePayslipsRun({ now, latest: latestPayslip() }) : null,
+    // Either kind reads the mortgage sheet while the cycle's cuota is not in the ledger (from the 11th).
+    mortgageSheet: decideMortgageSheetRun({ now, latestCuotaPaidOn: latestRegularMortgageCuotaPaidOn() }),
+  };
+}
+
+function extrasNote(e: RunRequestExtras): string {
+  return (
+    (e.santanderFetch ? `; Santander ${e.santanderFetch.mode}: ${e.santanderFetch.reason}` : "") +
+    (e.afpUnoFetch ? `; AFP UNO: ${e.afpUnoFetch.reason}` : "") +
+    (e.afcFetch ? `; AFC: ${e.afcFetch.reason}` : "") +
+    (e.payslips ? `; payslips: ${e.payslips.reason}` : "") +
+    (e.mortgageSheet ? `; mortgage sheet: ${e.mortgageSheet.reason}` : "")
+  );
+}
+
 export type IngestTickOutcome = {
   decision: IngestSchedulerDecision;
   run_id: number | null;
@@ -160,38 +206,12 @@ export async function ingestSchedulerTick(
     console.log(`ingest-runs: ${decision.kind} slot ${decision.slot.toISOString()} skipped — ${decision.reason}`);
     return { decision, run_id: null, answer: null };
   }
-  // An hourly poll may carry the one bank fetch the rules allow (catch-up, else payday).
-  const santanderFetch =
-    decision.kind === "hourly"
-      ? decideSantanderFetch({
-          now,
-          state: latestSantanderState(),
-          lastCatchUpAttemptAt: lastCatchUpAttemptAt(),
-          lastPaydayAttemptYmd: lastPaydayAttemptYmd(),
-        })
-      : null;
-  // Every nightly reads AFP UNO's balance; the read fetches the certificates when its cuotas moved.
-  const afpUnoFetch = decision.kind === "nightly" ? decideAfpUnoFetch() : null;
-  // A nightly reads the AFC from the 14th after a payroll month until its contribution is in.
-  const afcFetch =
-    decision.kind === "nightly"
-      ? decideAfcFetch({ now, latestSalaryPayslipPeriod: latestSalaryPayslipPeriod(), latestContributionPeriod: latestUnemploymentFundContributionPeriod() })
-      : null;
-  // A nightly reads the payroll portal from the 1st until last month's payslip is stored, and
-  // re-imports while the newest payslip waits for its deposit.
-  const payslips = decision.kind === "nightly" ? decidePayslipsRun({ now, latest: latestPayslip() }) : null;
-  // Either kind reads the mortgage sheet while the cycle's cuota is not in the ledger (from the 11th).
-  const mortgageSheet = decideMortgageSheetRun({ now, latestCuotaPaidOn: latestRegularMortgageCuotaPaidOn() });
+  const extras = runRequestExtras(decision.kind, now);
+  const { santanderFetch, afpUnoFetch, afcFetch, payslips, mortgageSheet } = extras;
   const runId = markIngestRunRequested(decision.kind, decision.slot, decision.reason, now, santanderFetch);
   const answer = await request(runId, decision.kind, decision.reason, santanderFetch, afpUnoFetch, undefined, payslips, mortgageSheet, afcFetch);
   if (answer.status === "accepted") {
-    const fetchNote =
-      (santanderFetch ? `; Santander ${santanderFetch.mode}: ${santanderFetch.reason}` : "") +
-      (afpUnoFetch ? `; AFP UNO: ${afpUnoFetch.reason}` : "") +
-      (afcFetch ? `; AFC: ${afcFetch.reason}` : "") +
-      (payslips ? `; payslips: ${payslips.reason}` : "") +
-      (mortgageSheet ? `; mortgage sheet: ${mortgageSheet.reason}` : "");
-    console.log(`ingest-runs: ${decision.kind} run ${runId} started (${decision.reason}${fetchNote})`);
+    console.log(`ingest-runs: ${decision.kind} run ${runId} started (${decision.reason}${extrasNote(extras)})`);
     return { decision, run_id: runId, answer };
   }
   markIngestRunNotStarted(runId, `${answer.status}: ${answer.detail}`);
@@ -218,6 +238,71 @@ export async function ingestSchedulerTick(
     );
   }
   return { decision, run_id: runId, answer };
+}
+
+export const MANUAL_RUN_REASON = "manual: requested from the import sync page";
+
+export type ManualIngestRunOutcome =
+  | { status: "started"; run_id: number }
+  | { status: "refused"; reason: "scheduler_off" | "in_flight" | "busy" | "unreachable"; message: string };
+
+/**
+ * Run the hourly poll or the nightly now, outside its slot — a mail that just landed, a fetch to
+ * retry. The run is a row like any other (slot = the request instant), carries what a run of that
+ * kind requested now would carry, and reports back the same way. Only the instance whose
+ * scheduler is on may ask: the feeder reports to the primary server, which must know the run id.
+ * A slot run a manual run overlaps is answered by it: an hourly at 14:40 answers the 14:30 slot,
+ * and a nightly that just finished makes the 22:00 slot skip (the one-hour repeat window).
+ */
+export async function startManualIngestRun(
+  kind: IngestRunKind,
+  now: Date,
+  request: typeof requestFeederRun = requestFeederRun,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<ManualIngestRunOutcome> {
+  if (!ingestSchedulerEnabled(env)) {
+    return {
+      status: "refused",
+      reason: "scheduler_off",
+      message: "The ingest scheduler is off on this server instance (INGEST_SCHEDULER_ENABLED); only the primary instance can start a run.",
+    };
+  }
+  const inFlight = inFlightIngestRun();
+  if (inFlight) {
+    return {
+      status: "refused",
+      reason: "in_flight",
+      message: `A ${inFlight.kind} run (${inFlight.id}) is still running since ${inFlight.requested_at}.`,
+    };
+  }
+  const extras = runRequestExtras(kind, now);
+  // Synchronous up to here, so a scheduler tick in between sees this run in flight.
+  const runId = markIngestRunRequested(kind, now, MANUAL_RUN_REASON, now, extras.santanderFetch);
+  const answer = await request(
+    runId,
+    kind,
+    MANUAL_RUN_REASON,
+    extras.santanderFetch,
+    extras.afpUnoFetch,
+    undefined,
+    extras.payslips,
+    extras.mortgageSheet,
+    extras.afcFetch
+  );
+  if (answer.status === "accepted") {
+    console.log(`ingest-runs: ${kind} run ${runId} started (${MANUAL_RUN_REASON}${extrasNote(extras)})`);
+    return { status: "started", run_id: runId };
+  }
+  markIngestRunNotStarted(runId, `${answer.status}: ${answer.detail}`);
+  console.log(`ingest-runs: manual ${kind} run ${runId} not started — ${answer.status}: ${answer.detail}`);
+  return {
+    status: "refused",
+    reason: answer.status,
+    message:
+      answer.status === "busy"
+        ? `The ingest service is busy: ${answer.detail}.`
+        : `The ingest service at ${resolveIngestServiceUrl()} did not answer (${answer.detail}).`,
+  };
 }
 
 let started = false;
