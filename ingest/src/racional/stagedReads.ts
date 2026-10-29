@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { BrokerDividend, BrokerMovement } from "nw-tracker-contracts";
 import { resolveMovementsDir } from "../paths.js";
-import { racionalApiDividendsFromResponse, racionalListRowKey, racionalRowToMovement, type RacionalScrapedRow } from "./movements.js";
+import { racionalApiDividendsFromResponse, racionalListRowKey, racionalRowToMovements, type RacionalScrapedRow } from "./movements.js";
 
 /**
  * The reads a Racional crawl staged in `cfraser/racional-movements/`, one per crawl stamp:
@@ -54,7 +54,8 @@ export function decodeStagedRacionalRead(read: StagedRacionalRead): DecodedRacio
   if (read.movements_file) {
     const rows = JSON.parse(fs.readFileSync(read.movements_file, "utf8")) as RacionalScrapedRow[];
     if (!Array.isArray(rows)) throw new Error(`${path.basename(read.movements_file)} is not a list of movement rows`);
-    movements = rows.map(racionalRowToMovement);
+    // A row may describe several movements (a portfolio liquidation: its sells plus the caja).
+    movements = rows.flatMap(racionalRowToMovements);
     firstRowKey = rows[0] ? racionalListRowKey(rows[0]) : null;
   }
   const dividends = read.dividends_file

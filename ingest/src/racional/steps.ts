@@ -3,7 +3,7 @@ import type { Recorder } from "../capture.js";
 import { MOVEMENTS_URL, SELECTOR, TEXT } from "./routes.js";
 import { settle, waitForNewApiCalls } from "../wait.js";
 import { log, logStep } from "../log.js";
-import { racionalListRowKey } from "./movements.js";
+import { normalizeRacionalListRowKey, racionalListRowKey, racionalRowKindClass } from "./movements.js";
 
 /**
  * Two different extraction paths, because Racional serves the two halves differently (see
@@ -30,11 +30,20 @@ export type RacionalMovementRow = {
   day: string;
   /** `YYYY-MM-DD`, the day joined to the «Año NNNN» separator above the row. */
   occurred_on: string | null;
-  /** `.movement-type` class: `buy` | `contribution` | `dividends` | … — not language-dependent. */
+  /**
+   * `.movement-type` class: `buy` | `contribution` | `dividends` | `withdrawal` | … — not
+   * language-dependent. A row in flight carries a `pending-` prefix (`pending-withdrawal`).
+   */
   kind_class: string | null;
+  /** `pending` while the class carries the `pending-` prefix, `complete` for any other class, null without one. */
+  status: "pending" | "complete" | null;
   /** Canonical id from the detail route; only known for rows the crawl actually opened. */
   movement_id: string | null;
-  /** Detail-panel text (units, price, commission, order id); only fetched for trades. */
+  /**
+   * Detail-panel text (units, price, commission, order id); fetched for trades and, since
+   * 2026-10-21, for withdrawals — a «Retiro» that liquidated a managed portfolio prints the
+   * positions sold («Montos vendidos») and the caja's pesos there, and nowhere else.
+   */
   detail: string | null;
   /** The dividends-API record matched to this row (dividends only); see {@link RacionalApiDividend}. */
   dividend?: RacionalApiDividend | null;
@@ -191,6 +200,7 @@ async function readRenderedRows(page: Page): Promise<RacionalMovementRow[]> {
       day: string;
       occurred_on: string | null;
       kind_class: string | null;
+      status: "pending" | "complete" | null;
     }[] = [];
     // Each row sits in its own wrapper, so there is no shared container to walk — but a
     // combined selector still returns labels and rows in DOCUMENT order, which is all the
@@ -210,14 +220,16 @@ async function readRenderedRows(page: Page): Promise<RacionalMovementRow[]> {
       const day = parts[2] ?? "";
       const dm = /^(\d{2})\/(\d{2})$/.exec(day);
       const typeEl = el.querySelector(".movement-type");
+      const kindClass = typeEl
+        ? (typeEl.className || "").toString().replace("movement-type", "").trim() || null
+        : null;
       out.push({
         title: parts[0] ?? "",
         amount: parts[1] ?? "",
         day,
         occurred_on: year && dm ? `${year}-${dm[2]}-${dm[1]}` : null,
-        kind_class: typeEl
-          ? (typeEl.className || "").toString().replace("movement-type", "").trim() || null
-          : null,
+        kind_class: kindClass,
+        status: kindClass == null ? null : /^pending-/i.test(kindClass) ? "pending" : "complete",
       });
     }
     return out;
@@ -226,10 +238,16 @@ async function readRenderedRows(page: Page): Promise<RacionalMovementRow[]> {
 
 /**
  * Identity of a row as seen in the list, before its detail route is known — e.g.
- * `2026-09-22|buy|US$xxx,xx`; the crawl cursor holds one (see `racionalListRowKey`).
+ * `2026-09-22|buy|US$xxx,xx`; the crawl cursor holds one (see `racionalListRowKey`). The row's
+ * state is not part of it: a `pending-withdrawal` and the `withdrawal` it becomes share a key.
  */
 export function rowKey(row: RacionalMovementRow): string {
   return racionalListRowKey(row);
+}
+
+/** Whether a rendered row is the one a stored cursor names (the cursor may carry a `pending-` state). */
+function rowMatchesKey(row: RacionalMovementRow, storedKey: string): boolean {
+  return rowKey(row) === normalizeRacionalListRowKey(storedKey);
 }
 
 /**
@@ -241,7 +259,7 @@ export function rowsAboveWatermark(
   rows: readonly RacionalMovementRow[],
   watermarkKey: string | null,
 ): { fresh: RacionalMovementRow[]; reached: boolean } {
-  const cutoff = watermarkKey == null ? -1 : rows.findIndex((r) => rowKey(r) === watermarkKey);
+  const cutoff = watermarkKey == null ? -1 : rows.findIndex((r) => rowMatchesKey(r, watermarkKey));
   return { fresh: cutoff >= 0 ? rows.slice(0, cutoff) : [...rows], reached: cutoff >= 0 };
 }
 
@@ -268,6 +286,11 @@ export function movementIdFromDetailUrl(url: string): string | null {
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** A «Retiro» row, by its class (state prefix stripped) or its label. */
+function isWithdrawalRow(row: RacionalMovementRow): boolean {
+  return racionalRowKindClass(row.kind_class) === "withdrawal" || /^retiro\b/i.test(row.title);
+}
 
 /**
  * The rendered rows once two reads a second apart agree (bounded): the page re-renders the list
@@ -375,20 +398,26 @@ async function openRowDetail(
     }
     await settle(page, 8_000);
     const id = movementIdFromDetailUrl(page.url());
-    const detail = id
+    // A withdrawal's route is not known to carry the `_<ISO>` id of a trade's; its detail text
+    // is what the row needs (the list date is its day), so the route only has to leave the list.
+    const leftList = !/\/tabs\/movements\/?$/.test(page.url().split(/[?#]/)[0]!);
+    const onDetailRoute = id != null || (isWithdrawalRow(row) && leftList);
+    // Ionic keeps the list page in the DOM behind the detail, so the match must be a word only
+    // the detail prints («Retiro» alone would capture the list and read as a bank withdrawal).
+    const detail = onDetailRoute
       ? await page.evaluate(() => {
           const hit = Array.from(document.querySelectorAll("ion-content"))
             .map((c) => (c as HTMLElement).innerText || "")
-            .find((t) => /Compraste|Vendiste|Recibiste/i.test(t));
+            .find((t) => /Compraste|Vendiste|Recibiste|Retiraste|Montos vendidos/i.test(t));
           return hit ?? null;
         })
       : null;
-    if (id && detail) {
+    if (detail) {
       row.movement_id = id;
       row.detail = detail;
       row.detail_status = "opened";
     } else {
-      reason = id
+      reason = onDetailRoute
         ? "its detail view printed no movement text"
         : `the click did not open a movement route (${page.url().split("?")[0]})`;
     }
@@ -422,7 +451,7 @@ export async function openMovements(
   let rows = await loadMovementsList(page, recorder, true);
   await recorder.screenshot(page, "movements");
 
-  const atWatermark = () => watermarkKey != null && rows.some((r) => rowKey(r) === watermarkKey);
+  const atWatermark = () => watermarkKey != null && rows.some((r) => rowMatchesKey(r, watermarkKey));
   // Scroll until the watermark appears or the list stops growing. The cap is a runaway guard,
   // not a page budget — a first run legitimately needs many passes.
   for (let pass = 0; pass < 60 && !atWatermark(); pass += 1) {
@@ -468,11 +497,13 @@ export async function openMovements(
   // NOWHERE in the list row (no symbol, no logo) and only in the id its route exposes — the API
   // match above covers that, so only a dividend the API did not list is still clicked. Cash
   // rows are fully described by the list, so they are never opened.
-  const NEEDS_DETAIL = new Set(["buy", "sell", "dividends"]);
+  // A «Retiro» is opened too (2026-10-21): the list cannot tell cash sent to a bank from a
+  // managed portfolio liquidated into the wallet, and only the detail prints what was sold.
+  const NEEDS_DETAIL = new Set(["buy", "sell", "dividends", "withdrawal"]);
   for (const [i, row] of fresh.entries()) {
     if (row.dividend) continue;
     const needsDetail =
-      NEEDS_DETAIL.has(row.kind_class ?? "") || /^(compra|venta|dividendo)\b/i.test(row.title);
+      NEEDS_DETAIL.has(racionalRowKindClass(row.kind_class) ?? "") || /^(compra|venta|dividendo|retiro)\b/i.test(row.title);
     if (!needsDetail) continue;
     // `fresh` is a prefix of `rows`, so this is the row's occurrence among its key twins.
     const occurrence = fresh.slice(0, i).filter((r) => rowKey(r) === rowKey(row)).length;

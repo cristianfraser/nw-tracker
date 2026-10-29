@@ -4,12 +4,14 @@ import { brokerCleanThrough } from "./brokerReadCoverage.js";
 import { db } from "./db.js";
 import {
   applyRacionalDividendDetails,
+  applyRacionalMovements,
   applyRacionalRead,
   markDuplicates,
   planRacionalDividendDetails,
   planRacionalMovement,
   planRacionalMovements,
   racionalComisionCrawlDue,
+  racionalEquityAccountId,
 } from "./racionalMovementsImport.js";
 import { getMovementDividendDetail } from "./movementDividendDetails.js";
 import type { RacionalPlannedMovement } from "./racionalMovementsImport.js";
@@ -533,5 +535,200 @@ describe("racional reads — incomplete rows, read isolation, coverage", () => {
     expect(planRacionalMovements([buy]).planned[0]!.blocked).toMatch(/^share count and instrument unknown/);
     const existing = seedBuy();
     expect(planRacionalMovements([buy]).planned[0]).toMatchObject({ duplicate_of: existing, blocked: null });
+  });
+});
+
+/**
+ * 2026-10-20: the «Portafolio IPSA» (an ETF account plus its caja) was liquidated. Racional
+ * lists it as one «Retiro» row; the crawl now reads the positions sold and the caja's pesos
+ * from its detail view and ingest decodes them as one `sell` per position plus a
+ * `portfolio_cash_withdrawal` — the mirror of the buy (`stock_buy` wallet → ETF, transfer
+ * wallet → caja). Until then the row was set aside as a bank withdrawal and the cursor moved
+ * past it. Synthetic amounts; the shape is the real one.
+ */
+describe("racional portfolio liquidation («Retiro» with sold amounts)", () => {
+  const TICKER = "VTIPSA";
+  let clp: { id: number; cleanup: () => void };
+  let caja: { accountId: number; cleanup: () => void };
+  let equity: number;
+
+  function ensureCashAccount(importKey: string, name: string): { id: number; cleanup: () => void } {
+    const existing = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(importKey) as { id: number } | undefined;
+    if (existing) return { id: existing.id, cleanup: () => {} };
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };
+    const id = Number(
+      db.prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, ?, ?, ?)`).run(group.id, name, importKey, importKey)
+        .lastInsertRowid
+    );
+    return { id, cleanup: () => db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id) };
+  }
+
+  function createCaja(suffix = ""): { accountId: number; cleanup: () => void } {
+    const leafId = Number(
+      db.prepare(`INSERT INTO asset_groups (slug, label, sort_order) VALUES (?, 'vitest caja', 9999)`).run(`brokerage_cash__caja_vitest_liq${suffix}__clp`)
+        .lastInsertRowid
+    );
+    const accountId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes, import_key) VALUES (?, 'vitest Caja IPSA', 'vitest-caja', ?)`)
+        .run(leafId, `vitest-caja-racional-liq${suffix}`).lastInsertRowid
+    );
+    return {
+      accountId,
+      cleanup: () => {
+        db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
+        db.prepare(`DELETE FROM asset_groups WHERE id = ?`).run(leafId);
+      },
+    };
+  }
+
+  beforeEach(() => {
+    clp = ensureCashAccount("import:panel|kind=clp|key=clp", "vitest Racional CLP");
+    caja = createCaja();
+    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as { id: number };
+    // The app keys the Chilean ETF on its Yahoo symbol; Racional prints the bare Bolsa one.
+    equity = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, import_key, equity_ticker)
+           VALUES (?, 'vitest VTIPSA', 'vitest:racional-liq', 'vitest:racional-liq|VTIPSA', ?)`
+        )
+        .run(group.id, `${TICKER}.SN`).lastInsertRowid
+    );
+  });
+
+  afterEach(() => {
+    const ids = [clp.id, caja.accountId, equity];
+    db.prepare(
+      `DELETE FROM movements WHERE (account_id IN (?, ?, ?) OR from_account_id IN (?, ?, ?) OR to_account_id IN (?, ?, ?))
+         AND (note LIKE 'vitest-%' OR note LIKE 'Racional Retiro%')`
+    ).run(...ids, ...ids, ...ids);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(equity);
+    caja.cleanup();
+    clp.cleanup();
+  });
+
+  const sell = brokerMovement({
+    kind: "sell",
+    title: `Retiro · venta ${TICKER}`,
+    occurred_on: "2097-10-20",
+    amount: 2_600_000,
+    currency: "clp",
+    ticker: TICKER,
+    units: "2000",
+    price: 1300,
+    movement_id: "2097-10-19|withdrawal|2640000#sell:VTIPSA",
+  });
+  const cajaOut = brokerMovement({
+    kind: "portfolio_cash_withdrawal",
+    title: "Retiro · caja",
+    occurred_on: "2097-10-20",
+    amount: 40_000,
+    currency: "clp",
+    movement_id: "2097-10-19|withdrawal|2640000#caja",
+  });
+
+  it("resolves Racional's bare Chilean symbol to the .SN account, and never guesses between two", () => {
+    expect(racionalEquityAccountId(TICKER)).toBe(equity);
+    expect(racionalEquityAccountId(`${TICKER}.SN`)).toBe(equity);
+    expect(() => racionalEquityAccountId("VTNOPE")).toThrow(/found 0/);
+  });
+
+  it("plans the sell as stock_sell ETF → Racional CLP with its units and the caja as a transfer caja → Racional CLP", () => {
+    const { planned } = planRacionalMovements([sell, cajaOut]);
+    expect(planned.map((p) => p.source.kind)).toEqual(["sell", "portfolio_cash_withdrawal"]);
+    expect(planned[0]).toMatchObject({
+      from_account_id: equity,
+      to_account_id: clp.id,
+      amount: 2_600_000,
+      currency: "clp",
+      units_delta: "2000",
+      flow_kind: "stock_sell",
+      note: `Racional Retiro · venta ${TICKER} · 2000 @ $1300`,
+      duplicate_of: null,
+      requires_manual: null,
+      conflict: null,
+      blocked: null,
+    });
+    expect(planned[1]).toMatchObject({
+      from_account_id: caja.accountId,
+      to_account_id: clp.id,
+      account_id: null,
+      amount: 40_000,
+      currency: "clp",
+      units_delta: null,
+      flow_kind: null,
+      duplicate_of: null,
+      requires_manual: null,
+      blocked: null,
+    });
+  });
+
+  it("writes both rows once, recognises them on a re-read, and empties the caja so the comisión nudge stops", () => {
+    // The caja held the money the portfolio's buy put there (minus fees); the nudge runs while it does.
+    db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 40000, 'clp', '2020-01-05', 'vitest-caja-seed')`).run(
+      caja.accountId
+    );
+    expect(racionalComisionCrawlDue("2099-05-25").due).toBe(true);
+
+    const first = applyRacionalMovements(planRacionalMovements([sell, cajaOut]), "movements-vitest-liq.json");
+    expect(first.inserted).toBe(2);
+    const rows = db
+      .prepare(
+        `SELECT from_account_id, to_account_id, amount, units_delta, flow_kind FROM movements
+         WHERE occurred_on = '2097-10-20' AND to_account_id = ? ORDER BY amount DESC`
+      )
+      .all(clp.id);
+    expect(rows).toEqual([
+      { from_account_id: equity, to_account_id: clp.id, amount: 2_600_000, units_delta: 2000, flow_kind: "stock_sell" },
+      { from_account_id: caja.accountId, to_account_id: clp.id, amount: 40_000, units_delta: null, flow_kind: null },
+    ]);
+    // The money left the caja: nothing to charge a comisión to any more.
+    expect(racionalComisionCrawlDue("2099-05-25").due).toBe(false);
+
+    // The row is re-read once the money lands (its class changes, and a cursor the crawl cannot
+    // find re-stages the window): the day-sum dedupe sees both rows and writes nothing.
+    const again = planRacionalMovements([sell, cajaOut]);
+    expect(again.planned.map((p) => p.duplicate_of != null)).toEqual([true, true]);
+    expect(applyRacionalMovements(again, "movements-vitest-liq-2.json").inserted).toBe(0);
+  });
+
+  it("recognises a liquidation booked by hand as already present", () => {
+    // The real one (2026-10-20) was booked by hand as a stock_sell and a caja transfer before the importer could.
+    db.prepare(
+      `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+       VALUES (?, ?, 2600000, 'clp', '2097-10-20', 'vitest-hand-sell', 2000, 'stock_sell')`
+    ).run(equity, clp.id);
+    db.prepare(`INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note) VALUES (?, ?, 40000, 'clp', '2097-10-20', 'vitest-hand-caja')`).run(
+      caja.accountId,
+      clp.id
+    );
+    const { planned } = planRacionalMovements([sell, cajaOut]);
+    expect(planned.every((p) => p.duplicate_of != null && p.conflict == null)).toBe(true);
+  });
+
+  it("keeps a plain bank Retiro manual, and blocks one the crawl never opened", () => {
+    const bank = brokerMovement({ kind: "withdrawal", title: "Retiro", occurred_on: "2097-10-21", amount: 1_000_000, currency: "clp" });
+    const [plain] = planRacionalMovements([bank]).planned;
+    expect(plain).toMatchObject({ account_id: clp.id, amount: -1_000_000, blocked: null });
+    expect(plain!.requires_manual).toMatch(/mirror-pairs/);
+
+    // Whether it liquidated a portfolio is what the detail view decides: unopened, it must not pass as cash.
+    const [unopened] = planRacionalMovements([
+      { ...bank, incomplete: "whether it liquidated a portfolio or paid a bank account unknown — the crawl never opened its detail view" },
+    ]).planned;
+    expect(unopened!.blocked).toMatch(/^whether it liquidated a portfolio .* no ledger movement matches it/);
+  });
+
+  it("refuses a caja withdrawal in dollars and holds one back without a single caja", () => {
+    expect(() => planRacionalMovement({ ...cajaOut, currency: "usd" })).toThrow(/only a CLP caja is mapped/);
+    const second = createCaja("_2"); // two cajas: which one returned the money?
+    try {
+      const planned = planRacionalMovement(cajaOut);
+      expect(planned.requires_manual).toMatch(/no single portafolio caja/);
+      expect(planned.from_account_id).toBeNull();
+    } finally {
+      second.cleanup();
+    }
   });
 });

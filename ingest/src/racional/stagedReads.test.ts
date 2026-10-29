@@ -77,6 +77,41 @@ describe("staged Racional reads", () => {
     expect(listStagedRacionalReads(dir).map((r) => r.stamp)).toEqual(["2097-09-22T01-00-00"]);
   });
 
+  it("decodes a liquidation row to its sells and caja, keyed without the row's state", () => {
+    const dir = tmp();
+    const retiroRow = {
+      title: "Retiro",
+      amount: "$2.640.000",
+      day: "19/10",
+      occurred_on: "2097-10-19",
+      kind_class: "pending-withdrawal",
+      status: "pending",
+      movement_id: null,
+      detail:
+        "Retiraste $2.640.000 de tu portafolio IPSA.\nProgreso\nVenta de activos\nCompletada\n20/10/97 15:31\n" +
+        "Montos vendidos\nETF IPSA Chile\nVTIPSA\n$1.300\n$2.600.000\n2.000 acciones\n" +
+        "Además, se retiraron $40.000 de lo que tenías de caja.",
+      detail_status: "opened",
+    };
+    write(dir, "movements-2097-10-20T01-00-00.json", [retiroRow, interestRow]);
+    const [read] = listStagedRacionalReads(dir);
+    const decoded = decodeStagedRacionalRead(read!);
+    expect(decoded.first_row_key).toBe("2097-10-19|withdrawal|$2.640.000");
+    expect(decoded.movements?.map((m) => [m.kind, m.ticker, m.amount, m.units])).toEqual([
+      ["sell", "VTIPSA", 2600000, "2000"],
+      ["portfolio_cash_withdrawal", null, 40000, null],
+      ["interest", null, 0.05, null],
+    ]);
+    const parsed = brokerMovementsKind.payload.safeParse({
+      broker: "racional",
+      apply: true,
+      read_at: read!.read_at,
+      movements: decoded.movements,
+      dividends: null,
+    });
+    expect(parsed.error).toBeUndefined();
+  });
+
   it("refuses an unmapped row instead of sending it", () => {
     const dir = tmp();
     write(dir, "movements-2097-09-24T01-00-00.json", [{ title: "Algo Nuevo", amount: "US$1,00", day: "24/09", occurred_on: "2097-09-24" }]);

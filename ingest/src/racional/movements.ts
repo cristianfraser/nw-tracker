@@ -25,7 +25,9 @@ export type RacionalMovementKind =
   | "dividend"
   | "interest"
   | "fee"
-  | "corporate_action";
+  | "corporate_action"
+  /** A managed portfolio's caja returned to the wallet when the portfolio is liquidated. */
+  | "portfolio_cash_withdrawal";
 
 export type RacionalScrapedRow = {
   /** e.g. "Compra SLV", "Depósito", "Dividendo". */
@@ -40,8 +42,14 @@ export type RacionalScrapedRow = {
    * never opened — Racional's rows carry no href, so an id costs a click.
    */
   occurred_on?: string | null;
-  /** `.movement-type` class (`buy`, `contribution`, `dividends`) — language-independent. */
+  /**
+   * `.movement-type` class (`buy`, `contribution`, `dividends`, `withdrawal`) — language-independent.
+   * A row still in flight carries the state as a prefix (`pending-withdrawal` while a Retiro's
+   * money has not reached the wallet), which the list key strips: the state changes, the row does not.
+   */
   kind_class?: string | null;
+  /** The row's state as the crawl read it (since 2026-10-21): `pending` from a `pending-` class, else `complete`. */
+  status?: "pending" | "complete" | null;
   /** Canonical id from the detail route; only known for rows the crawl opened. */
   movement_id?: string | null;
   /** Raw text of the detail panel, when the fetcher opened it. */
@@ -138,7 +146,23 @@ const KIND_BY_CLASS: Record<string, RacionalMovementKind> = {
   sell: "sell",
   contribution: "deposit",
   dividends: "dividend",
+  withdrawal: "withdrawal",
+  commissions: "fee",
 };
+
+/** The `pending-` state prefix a `.movement-type` class carries while the row is in flight. */
+const RE_PENDING_CLASS = /^pending-/i;
+
+/**
+ * A row's `.movement-type` class without its state: `pending-withdrawal` → `withdrawal`. The
+ * 2026-10-20 portfolio liquidation listed as `pending-withdrawal` the night it was requested and
+ * reads `withdrawal` once the money lands two days later — the same row, so the key and the kind
+ * must read the same both nights.
+ */
+export function racionalRowKindClass(kindClass: string | null | undefined): string | null {
+  const cls = String(kindClass ?? "").trim().toLowerCase().replace(RE_PENDING_CLASS, "");
+  return cls || null;
+}
 
 /** A decoded row: the canonical movement the server receives. */
 export type RacionalMovement = BrokerMovement;
@@ -263,7 +287,19 @@ export function racionalListRowKey(row: RacionalScrapedRow): string {
   if ((row.occurred_on ?? row.day) == null) {
     throw new Error(`Racional row "${row.title}" (${row.amount}) has no list identity — neither occurred_on nor day`);
   }
-  return `${row.occurred_on ?? row.day}|${row.kind_class ?? row.title}|${row.amount}`;
+  // The class without its `pending-` state: a Retiro keyed `pending-withdrawal` the night it was
+  // requested is the same row as the `withdrawal` it reads once paid.
+  return `${row.occurred_on ?? row.day}|${racionalRowKindClass(row.kind_class) ?? row.title}|${row.amount}`;
+}
+
+/**
+ * A stored list key in the form {@link racionalListRowKey} builds today. The crawl cursor written
+ * on 2026-10-21 holds `2026-10-20|pending-withdrawal|$1.234.567` (keys carried the state until then);
+ * compared normalized, it is reached when the row reads `withdrawal` — a cursor the crawl cannot find
+ * re-stages the whole rendered window, which the importer dedupes but which should never be by accident.
+ */
+export function normalizeRacionalListRowKey(key: string): string {
+  return String(key ?? "").replace(/^([^|]*)\|pending-/i, "$1|");
 }
 
 /** What keeps a movement from being written as it stands (see `RacionalMovement.incomplete`). */
@@ -288,6 +324,14 @@ function incompleteReason(
   if (kind === "dividend" && !ticker) {
     return `paying instrument unknown — ${unopened ?? "no dividends-API record matched the row and no route id names one"}`;
   }
+  // A «Retiro» is either cash sent to a bank or a portfolio liquidated into the wallet, and only
+  // its detail view says which (since 2026-10-21 the crawl opens it): without one the row cannot
+  // be set aside as a bank withdrawal, which is how the 2026-10-20 liquidation was lost.
+  if (kind === "withdrawal" && !row.detail) {
+    return `whether it liquidated a portfolio or paid a bank account unknown — ${
+      unopened ?? "the crawl never opened its detail view"
+    }`;
+  }
   return null;
 }
 
@@ -304,6 +348,134 @@ function incompleteReason(
  * was long since movement 11110 fail every staged file behind it, night after night.
  */
 export function racionalRowToMovement(row: RacionalScrapedRow): RacionalMovement {
+  const [movement, ...rest] = racionalRowToMovements(row);
+  if (rest.length > 0) {
+    throw new Error(`Racional row "${row.title}" (${row.amount}) decodes to ${rest.length + 1} movements — use racionalRowToMovements`);
+  }
+  return movement!;
+}
+
+/**
+ * Every movement a row describes: one for most rows; for a «Retiro» that liquidated a managed
+ * portfolio (its detail view prints «Montos vendidos»), one `sell` per position sold plus the
+ * caja's pesos as a `portfolio_cash_withdrawal` — the mirror of how the portfolio was bought
+ * (a `stock_buy` into the ETF plus a transfer into the caja). A Retiro whose detail names no sold
+ * amounts stays the cash withdrawal it always was.
+ */
+export function racionalRowToMovements(row: RacionalScrapedRow): RacionalMovement[] {
+  const single = decodeRacionalRow(row);
+  if (single.kind !== "withdrawal") return [single];
+  const liquidation = parseRacionalLiquidationDetail(row.detail);
+  if (!liquidation) return [single];
+  if (single.currency !== "clp") {
+    throw new Error(`Racional liquidation "${row.title}" (${row.amount}) is listed in ${single.currency} — only CLP portfolios are mapped`);
+  }
+  const day = liquidation.sale_day ?? single.occurred_on;
+  const occurredAt = day === single.occurred_on ? single.occurred_at : `${day}T00:00:00.000Z`;
+  const sells: RacionalMovement[] = liquidation.positions.map((p) => ({
+    ...single,
+    movement_id: `${single.movement_id}#sell:${p.ticker}`,
+    kind: "sell",
+    ticker: p.ticker,
+    occurred_on: day,
+    occurred_at: occurredAt,
+    amount: p.amount,
+    units: p.units,
+    price: p.price,
+    title: `${single.title} · venta ${p.ticker}`,
+    incomplete: null,
+  }));
+  // A portfolio whose caja held nothing prints no «Además, se retiraron…» line: nothing to move.
+  const caja: RacionalMovement[] =
+    liquidation.caja_amount > 0
+      ? [
+          {
+            ...single,
+            movement_id: `${single.movement_id}#caja`,
+            kind: "portfolio_cash_withdrawal",
+            ticker: null,
+            occurred_on: day,
+            occurred_at: occurredAt,
+            amount: liquidation.caja_amount,
+            title: `${single.title} · caja`,
+            incomplete: null,
+          },
+        ]
+      : [];
+  return [...sells, ...caja];
+}
+
+/** One position the liquidation detail prints under «Montos vendidos». */
+export type RacionalLiquidationPosition = {
+  ticker: string;
+  /** Pesos per share, as printed. */
+  price: number;
+  /** Pesos the sale brought, as printed. */
+  amount: number;
+  /** Shares sold, as a decimal string. */
+  units: string;
+};
+
+export type RacionalLiquidationDetail = {
+  positions: RacionalLiquidationPosition[];
+  /** «Además, se retiraron $X de lo que tenías de caja» — 0 when the line is absent. */
+  caja_amount: number;
+  /** The day the sale step of the detail's timeline prints, or null when it prints none. */
+  sale_day: string | null;
+};
+
+const RE_SOLD_SECTION = /Montos\s+vendidos/i;
+// Name, ticker, price, pesos, share count — each in its own node, so separated by newlines in
+// raw innerText and by pipes once flattened; the ticker is the last bare symbol before the price.
+const RE_SOLD_POSITION =
+  /\b([A-Z][A-Z0-9.]{1,9})[\s|,·…]*\$\s*([\d.]+(?:,\d+)?)[\s|,·…]*\$\s*([\d.]+(?:,\d+)?)[\s|,·…]*([\d.]+(?:,\d+)?)\s+acciones?\b/g;
+const RE_CAJA_LINE = /se\s+retir(?:aron|ó)\s+\$\s*([\d.]+(?:,\d+)?)\s+de\s+lo\s+que\s+ten[íi]as\s+(?:de|en)\s+caja/i;
+// The timeline step that sold the positions («Venta de activos | Completada | 20/10/26 15:31»):
+// the first dd/mm/yy within reach of a label naming the sale.
+const RE_SALE_STEP = /\b(?:venta|vendid[oa]s?)\b[\s\S]{0,80}?\b(\d{2})\/(\d{2})\/(\d{2})\b/i;
+
+/**
+ * The liquidation a Retiro's detail view describes, or null when it describes a plain cash
+ * withdrawal (no «Montos vendidos» section). A section with no readable position throws: the
+ * layout changed, and the row must not quietly become a bank withdrawal again.
+ */
+export function parseRacionalLiquidationDetail(detail: string | null | undefined): RacionalLiquidationDetail | null {
+  const text = String(detail ?? "");
+  const section = RE_SOLD_SECTION.exec(text);
+  if (!section) return null;
+  const sold = text.slice(section.index + section[0].length);
+  const positions: RacionalLiquidationPosition[] = [];
+  for (const m of sold.matchAll(RE_SOLD_POSITION)) {
+    const ticker = m[1]!.toUpperCase();
+    if (positions.some((p) => p.ticker === ticker)) {
+      throw new Error(`Racional liquidation detail lists ${ticker} twice under «Montos vendidos»`);
+    }
+    positions.push({
+      ticker,
+      price: Number(chileanDecimalString(m[2]!)),
+      amount: Number(chileanDecimalString(m[3]!)),
+      units: chileanDecimalString(m[4]!),
+    });
+  }
+  if (positions.length === 0) {
+    throw new Error("Racional liquidation detail has a «Montos vendidos» section but no readable position (ticker, $price, $pesos, N acciones) — the layout changed");
+  }
+  for (const p of positions) {
+    if (!(p.price > 0) || !(p.amount > 0) || !(Number(p.units) > 0)) {
+      throw new Error(`Racional liquidation detail: ${p.ticker} sold at $${p.price} for $${p.amount}, ${p.units} shares — not a sale`);
+    }
+  }
+  const caja = RE_CAJA_LINE.exec(text);
+  const cajaAmount = caja ? Number(chileanDecimalString(caja[1]!)) : 0;
+  if (!Number.isFinite(cajaAmount) || cajaAmount < 0) {
+    throw new Error(`Racional liquidation detail: unreadable caja amount "${caja?.[1]}"`);
+  }
+  const step = RE_SALE_STEP.exec(text.slice(0, section.index));
+  const saleDay = step ? `20${step[3]}-${step[2]}-${step[1]}` : null;
+  return { positions, caja_amount: cajaAmount, sale_day: saleDay };
+}
+
+function decodeRacionalRow(row: RacionalScrapedRow): RacionalMovement {
   const dividend = row.dividend ?? null;
   const movementId = String(row.movement_id ?? dividend?.id ?? "").trim();
   const listDate = String(row.occurred_on ?? "").trim();
@@ -313,7 +485,7 @@ export function racionalRowToMovement(row: RacionalScrapedRow): RacionalMovement
   if (row.detail_status === "unopened" && row.detail) {
     throw new Error(`Racional row "${row.title}" (${row.amount}) is flagged unopened but carries a detail text — the crawl output is inconsistent`);
   }
-  const kindClass = String(row.kind_class ?? "").trim().toLowerCase();
+  const kindClass = racionalRowKindClass(row.kind_class) ?? "";
   const kind = KIND_BY_CLASS[kindClass] ?? racionalMovementKind(row.title);
   const { amount, currency } = parseRacionalAmount(row.amount);
   if (dividend && kind !== "dividend") {

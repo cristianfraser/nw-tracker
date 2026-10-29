@@ -23,7 +23,7 @@ import type {
   BrokerMovementsApplyDetails,
   BrokerMovementsPayload,
 } from "nw-tracker-contracts";
-import { accountIdForEquityTicker, accountsWithEquityTicker } from "./accountEquityTicker.js";
+import { accountsWithEquityTicker } from "./accountEquityTicker.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { clpCashBalanceLive } from "./clpCashAccounts.js";
 import { brokerCleanThrough, recordBrokerCleanRead } from "./brokerReadCoverage.js";
@@ -60,6 +60,25 @@ export function racionalCashAccountId(currency: "clp" | "usd"): number {
  * The CLP portafolio caja (`brokerage_cash__caja_*` leaf) — where Racional charges portfolio
  * commissions. Exactly one such account, else null (never guess which caja to charge).
  */
+/**
+ * The account holding a ticker as Racional prints it. Racional lists a Chilean instrument by its
+ * bare Bolsa symbol («CFIETFIPSA»), while the app keys the account on the Yahoo symbol with the
+ * exchange suffix (`CFIETFIPSA.SN`, see «Quote currency / Santiago (`.SN`) tickers»): the exact
+ * symbol first, else its `.SN` form — never both (that is two accounts claiming one symbol).
+ */
+export function racionalEquityAccountId(ticker: string): number {
+  const symbol = String(ticker ?? "").trim().toUpperCase();
+  const exact = accountsWithEquityTicker(symbol);
+  const santiago = symbol.includes(".") ? [] : accountsWithEquityTicker(`${symbol}.SN`);
+  if (exact.length + santiago.length !== 1) {
+    throw new Error(
+      `Expected exactly one account with equity_ticker "${symbol}" or "${symbol}.SN", found ${exact.length + santiago.length}. ` +
+        `Create the position in the panel first (it sets accounts.equity_ticker).`
+    );
+  }
+  return (exact[0] ?? santiago[0])!;
+}
+
 export function portfolioCajaClpAccountId(): number | null {
   const rows = db
     .prepare(
@@ -135,7 +154,7 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
   const note = [
     `Racional ${movement.title}`,
     movement.order_id ? `orden ${movement.order_id}` : null,
-    movement.price != null ? `${movement.units} @ US$${movement.price}` : null,
+    movement.price != null ? `${movement.units} @ ${movement.currency === "usd" ? "US$" : "$"}${movement.price}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -158,7 +177,7 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
 
   // A trade or dividend without its instrument keeps only the leg it knows (Racional cash): the
   // row can still be recognised in the ledger, and is never written (`blocked`).
-  const equityAccount = () => (movement.ticker ? accountIdForEquityTicker(movement.ticker) : null);
+  const equityAccount = () => (movement.ticker ? racionalEquityAccountId(movement.ticker) : null);
   switch (movement.kind) {
     case "buy":
       return {
@@ -238,6 +257,26 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
         requires_manual:
           "cash to a bank account — link it to the checking side in /panel/mirror-pairs",
       };
+    case "portfolio_cash_withdrawal": {
+      // A liquidated portfolio's caja goes back to the wallet: a plain transfer caja → Racional
+      // CLP, the mirror of the transfer that funded the caja when the portfolio was bought
+      // (movement 11377). The ETF's sale rides beside it as the `sell` of the same row.
+      if (movement.currency !== "clp") {
+        throw new Error(
+          `Racional portfolio caja withdrawal (${movement.occurred_on}, ${movement.title}) is in ${movement.currency} — ` +
+            `only a CLP caja is mapped`
+        );
+      }
+      const caja = portfolioCajaClpAccountId();
+      if (caja == null) {
+        return {
+          ...base,
+          to_account_id: racionalCashAccountId("clp"),
+          requires_manual: "no single portafolio caja account to return the money from — book the transfer by hand",
+        };
+      }
+      return { ...base, from_account_id: caja, to_account_id: racionalCashAccountId("clp") };
+    }
     case "corporate_action":
       throw new Error(
         `Racional «Evento Corporativo» (${movement.occurred_on}, ${movement.title}) has no ` +
@@ -343,7 +382,11 @@ export type RacionalImportResult = {
  */
 function blockedReason(p: RacionalPlannedMovement): string | null {
   if (p.source.incomplete == null) return null;
-  if (p.duplicate_of != null || p.conflict != null || p.requires_manual != null) return null;
+  if (p.duplicate_of != null || p.conflict != null) return null;
+  // A cash leg left for mirror-pairs is held back anyway — except a «Retiro» the crawl never
+  // opened: whether it is cash to a bank or a liquidated portfolio is exactly what its detail
+  // view decides, so it must not pass as a bank withdrawal (the 2026-10-20 liquidation did).
+  if (p.requires_manual != null && p.source.kind !== "withdrawal") return null;
   return (
     `${p.source.incomplete}, and no ledger movement matches it. Book it by hand, or let the ` +
     `next crawl re-open it (it re-lists the row while it is rendered above the cursor)`
