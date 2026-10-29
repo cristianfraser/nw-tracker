@@ -24,9 +24,12 @@ export const CUOTA_SEGMENT_MAX_PX = 30;
  */
 export function CreditCardCuotaProgress({
   progress,
+  cuotaClp,
   maxInstallments,
 }: {
   progress: CcCuotaProgress;
+  /** The plan's current cuota, leading the caption. */
+  cuotaClp: number;
   /** The largest cuota count among the bars drawn together (≥ this plan's). */
   maxInstallments: number;
 }) {
@@ -42,6 +45,9 @@ export function CreditCardCuotaProgress({
   };
 
   const segments = Math.max(maxInstallments, total, 1);
+  // What is still owed, written as a minus: «-$400.000» (none left reads «$0»).
+  const owed = progress.pending_clp + progress.billed_clp;
+  const owedLabel = owed > 0 ? `-${formatClp(owed)}` : formatClp(0);
 
   return (
     <div
@@ -50,11 +56,12 @@ export function CreditCardCuotaProgress({
     >
       <div className={cn("mono", styles.caption)}>
         {t("account.creditCard.cuotaProgress.caption", {
+          cuota: formatClp(cuotaClp),
           paidCount: progress.paid_count,
           total,
           paid: formatClp(progress.paid_clp),
           totalClp: formatClp(progress.total_clp),
-          pending: formatClp(progress.pending_clp + progress.billed_clp),
+          pending: owedLabel,
         })}
       </div>
       <div

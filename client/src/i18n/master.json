@@ -5069,8 +5069,8 @@
       },
       "cuotaProgress": {
         "caption": {
-          "en": "{{paidCount}} of {{total}} · {{paid}} / {{totalClp}} ({{pending}} pending)",
-          "es": "{{paidCount}} de {{total}} · {{paid}} / {{totalClp}} ({{pending}} pendiente)"
+          "en": "{{cuota}} × {{paidCount}} of {{total}} · {{paid}} / {{totalClp}} ({{pending}})",
+          "es": "{{cuota}} × {{paidCount}} de {{total}} · {{paid}} / {{totalClp}} ({{pending}})"
         },
         "ariaLabel": {
           "en": "Installment progress: {{paid}} of {{total}} paid",

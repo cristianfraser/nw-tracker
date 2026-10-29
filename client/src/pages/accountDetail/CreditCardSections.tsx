@@ -125,38 +125,42 @@ function CreditCardInstallmentsSection({
 
   const activePurchaseTableHeader = (
     <thead>
-      <tr>
+      <tr className={styles.activePurchaseRow}>
         <th className="desktop-only">{t("account.creditCard.colPurchase")}</th>
-        <th className="desktop-only">{t("account.creditCard.colNotes")}</th>
+        <th className="desktop-only">{t("account.creditCard.colInstallments")}</th>
         <th className="mobile-only" aria-hidden="true" />
       </tr>
     </thead>
   );
 
-  // One row per plan: «date · cuota» over the vendor on the left, the note and receipt link over
-  // the progress bar on the right.
+  // One row per plan: the date, the vendor and the note / receipt link on the left, the
+  // progress bar on the right — under it on a narrow desktop (`.activePurchaseRow`), and on
+  // mobile the card stacks the same pieces.
   const renderActivePurchaseRows = (rows: ReadonlyArray<CcInstallmentPurchaseComputed>) =>
     rows.map((p) => (
-      <tr key={p.purchase_id}>
+      <tr key={p.purchase_id} className={styles.activePurchaseRow}>
         <td className="desktop-only">
           <div className="mono">
-            {p.purchase_date ?? "—"} · {formatClp(p.cuota_clp)}
+            {p.purchase_date ?? "—"}
+            {p.cuota_progress ? null : ` · ${formatClp(p.cuota_clp)}`}
           </div>
           <div className={styles.purchaseVendor}>
             <span>{p.label}</span>
             {deleteButton(p)}
           </div>
           {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
+          <div className={styles.purchaseNotes}>
+            <CreditCardPurchaseNotes purchase={p} accountId={accountId} />
+          </div>
         </td>
         <td className="desktop-only">
-          <div className={styles.purchaseNotesStack}>
-            <div>
-              <CreditCardPurchaseNotes purchase={p} accountId={accountId} />
-            </div>
-            {p.cuota_progress ? (
-              <CreditCardCuotaProgress progress={p.cuota_progress} maxInstallments={maxActiveInstallments} />
-            ) : null}
-          </div>
+          {p.cuota_progress ? (
+            <CreditCardCuotaProgress
+              progress={p.cuota_progress}
+              cuotaClp={p.cuota_clp}
+              maxInstallments={maxActiveInstallments}
+            />
+          ) : null}
         </td>
         <td className="mobile-only">
           <CreditCardPurchaseMobileCard
