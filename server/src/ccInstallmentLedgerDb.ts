@@ -1,6 +1,6 @@
 import { db } from "./db.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
-import { sortActivePurchases } from "./ccActivePurchaseOrder.js";
+import { sortActivePurchases, sortCuotaLinesInActiveOrder } from "./ccActivePurchaseOrder.js";
 import {
   clpFacturadoByCloseIso,
   computeCuotaRetirements,
@@ -779,6 +779,13 @@ function loadLedgerPurchasesAndPayments(accountId: number): {
 
   const paymentsByPurchase = new Map<number, PaymentRow[]>();
   for (const row of allPayments) {
+    // A «00/N» row is stored with no cuota number (the ledger merge); a 0 here would count as
+    // cuota 1 billed.
+    if (row.cuota_current === 0) {
+      throw new Error(
+        `cc_installment_payments ${row.id} (purchase ${row.purchase_id}) stores cuota 0: a 00/N row must carry no cuota number — re-run the card merge`
+      );
+    }
     const list = paymentsByPurchase.get(row.purchase_id) ?? [];
     list.push(row);
     paymentsByPurchase.set(row.purchase_id, list);
@@ -1276,7 +1283,8 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
 
   const months: CcInstallmentCalendarMonthRow[] = allPlanMonths
     .map((month) => {
-      const breakdown = breakdownByMonth.get(month) ?? [];
+      // Listed in the «Compras activas» order, so the two tables read the plans the same way.
+      const breakdown = sortCuotaLinesInActiveOrder(breakdownByMonth.get(month) ?? [], computed);
       const total_clp = payByMonth.get(month) ?? 0;
       const breakdownSum = breakdown.reduce((s, b) => s + b.amount_clp, 0);
       if (breakdown.length > 0 && breakdownSum !== total_clp) {

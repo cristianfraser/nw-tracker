@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   activePurchaseFirstDueYm,
+  activePurchaseLastDueYm,
   compareActivePurchases,
   sortActivePurchases,
+  sortCuotaLinesInActiveOrder,
   type CcActivePurchaseOrderKey,
 } from "./ccActivePurchaseOrder.js";
 
-function plan(label: string, remaining_installments: number, first_due_month: string): CcActivePurchaseOrderKey {
-  return { label, remaining_installments, first_due_month };
+function plan(
+  label: string,
+  remaining_installments: number,
+  first_due_month: string,
+  installment_count = 3
+): CcActivePurchaseOrderKey {
+  return { label, remaining_installments, first_due_month, installment_count };
 }
 
 describe("activePurchaseFirstDueYm", () => {
@@ -18,7 +25,24 @@ describe("activePurchaseFirstDueYm", () => {
   });
 });
 
+describe("activePurchaseLastDueYm", () => {
+  it("is the first-cuota month plus the count less one, across a year end", () => {
+    expect(activePurchaseLastDueYm(plan("A", 3, "2026-11", 3))).toBe("2027-01");
+    expect(activePurchaseLastDueYm(plan("A", 1, "2025-12", 12))).toBe("2026-11");
+    expect(activePurchaseLastDueYm(plan("A", 3, "", 3))).toBeNull();
+  });
+});
+
 describe("compareActivePurchases", () => {
+  it("breaks a tie on the remaining count by the month the last cuota bills", () => {
+    // Same count left, but a plan whose statements lag (or that counted a 00/N row as billed)
+    // ends later: it reads after the plan that finishes first, whatever its first-cuota month.
+    const endsJan = plan("ENDS JAN", 2, "2026-11", 3);
+    const endsDec = plan("ENDS DEC", 2, "2026-06", 7);
+    expect(sortActivePurchases([endsJan, endsDec]).map((p) => p.label)).toEqual(["ENDS DEC", "ENDS JAN"]);
+  });
+
+
   it("orders by the cuotas left, fewest first", () => {
     const long = plan("LONG", 20, "2025-06");
     const short = plan("SHORT", 3, "2026-11");
@@ -71,5 +95,28 @@ describe("compareActivePurchases", () => {
     const out = sortActivePurchases(input);
     expect(input.map((p) => p.label)).toEqual(["B", "A"]);
     expect(out.map((p) => p.label)).toEqual(["A", "B"]);
+  });
+});
+
+describe("sortCuotaLinesInActiveOrder", () => {
+  it("lists a facturación's cuotas in the plans' «Compras activas» order, a plan's lines by cuota", () => {
+    const plans = [
+      { ...plan("AAA LONG", 5, "2026-10", 6), purchase_id: "p-aaa" },
+      { ...plan("ZZZ SHORT", 1, "2026-10", 2), purchase_id: "p-zzz" },
+    ];
+    const lines = [
+      { purchase_id: "p-aaa", installment_index: 0, label: "AAA LONG" },
+      { purchase_id: "p-zzz", installment_index: 1, label: "ZZZ SHORT 2" },
+      { purchase_id: "p-zzz", installment_index: 0, label: "ZZZ SHORT 1" },
+    ];
+    expect(sortCuotaLinesInActiveOrder(lines, plans).map((l) => l.label)).toEqual([
+      "ZZZ SHORT 1",
+      "ZZZ SHORT 2",
+      "AAA LONG",
+    ]);
+  });
+
+  it("throws on a line whose plan is not among the plans", () => {
+    expect(() => sortCuotaLinesInActiveOrder([{ purchase_id: "p-x", installment_index: 0 }], [])).toThrow(/p-x/);
   });
 });

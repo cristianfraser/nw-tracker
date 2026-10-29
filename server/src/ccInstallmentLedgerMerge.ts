@@ -425,8 +425,12 @@ export function mergeInstallmentLedgerFromParsedRows(
         if (!payBy) continue;
         const cuotaAmt = parseOptionalChileanInteger(String(chosen.valor_cuota_mensual_clp ?? ""));
         if (cuotaAmt == null || cuotaAmt <= 0) continue;
+        // A «00/N» row (bought this cycle, nothing billed yet) is stored with no cuota number: the
+        // PDF parse leaves the cell empty, the statement JSON writes 0. Stored as 0 it read as
+        // cuota 1 billed (`ledgerInstallmentsPaid` matched it by amount; 2026-10-28, plan 173).
         const ccRaw = String(chosen.nro_cuota_current ?? "").trim();
-        const cuota_current = ccRaw ? parseOptionalChileanInteger(ccRaw) : null;
+        const ccParsed = ccRaw ? parseOptionalChileanInteger(ccRaw) : null;
+        const cuota_current = ccParsed === 0 ? null : ccParsed;
         const ct = parseOptionalChileanInteger(String(chosen.nro_cuota_total ?? ""));
         const cuota_total = ct != null && ct > 0 ? ct : maxCuotas;
 
