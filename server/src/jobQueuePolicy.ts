@@ -169,3 +169,17 @@ export function coalesceQueued(existing: CoalescedFields, incoming: CoalescedFie
     stale_after: incoming.stale_after,
   };
 }
+
+/** A wait reason in plain English, for logs and the deploy agent (the page words it itself). */
+export function describeJobWait(reason: JobWaitReason): string {
+  switch (reason.code) {
+    case "not_before":
+      return `not before ${reason.at}`;
+    case "resource":
+      return `waiting for ${reason.resource}, held by ${reason.held_by.kind} job ${reason.held_by.id}`;
+    case "exclusive":
+      return `${reason.held_by.kind} job ${reason.held_by.id} holds ${EXCLUSIVE_RESOURCE}`;
+    case "draining":
+      return `the queue is draining for ${reason.for_job.kind} job ${reason.for_job.id}`;
+  }
+}
