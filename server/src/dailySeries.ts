@@ -1,6 +1,6 @@
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { isLiabilityAccountId } from "./accountBucket.js";
-import { getAggregationCached } from "./aggregationCache.js";
+import { getAggregationCached, historyTierMemo } from "./aggregationCache.js";
 import { isCreditCardAccountId } from "./ccAccountConfig.js";
 import { ccFinancingCostClpByDate } from "./ccFinancingCostDaily.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
@@ -15,7 +15,7 @@ import {
   type ShortHorizonAccountRef,
 } from "./periodReturnsShortHorizon.js";
 import { accountTodayValue } from "./accountTodayValue.js";
-import { clpToUnitAt } from "./clpToUnitAt.js";
+import { clpToUnitAt, pastDayUnitConverter } from "./clpToUnitAt.js";
 import { isUsdCashAccount, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
@@ -124,12 +124,17 @@ export type BucketDailySeries = {
   chart_end_ymd?: string;
 };
 
+/** The last grid built (every scope of one rebuild asks for the same full-history grid). */
+let lastDaysList: { endYmd: string; count: number; days: string[] } | null = null;
+
 /** Ascending list of `count` Chile calendar days ending at `endYmd` inclusive. */
 export function chileCalendarDaysListEndingAt(endYmd: string, count: number): string[] {
+  if (lastDaysList?.endYmd === endYmd && lastDaysList.count === count) return lastDaysList.days.slice();
   const out = new Array<string>(count);
   for (let i = 0; i < count; i++) {
     out[count - 1 - i] = i === 0 ? endYmd : chileCalendarAddDays(endYmd, -i);
   }
+  lastDaysList = { endYmd, count, days: out.slice() };
   return out;
 }
 
@@ -399,9 +404,26 @@ export function getBucketDailySeries(
             })?.priced_on ?? null
         )
       : null;
+  // Days before Chile today on the real clock share one rate per day across accounts and scopes.
+  const realToday = chileCalendarTodayYmd();
+  const pastConvert = opts.now === undefined ? pastDayUnitConverter(unit) : null;
+  const usdCashPast = isUsdCash?.some(Boolean)
+    ? historyTierMemo<string, number>("usd_cash_balance_usd_by_day")
+    : null;
   const accountValueInUnit = (ai: number, clp: number, gi: number): number | null => {
     const ymd = grid[gi]!;
-    if (isUsdCash?.[ai]) return usdCashBalanceUsdAt(included[ai]!.account_id, ymd);
+    if (isUsdCash?.[ai]) {
+      const accountId = included[ai]!.account_id;
+      if (!usdCashPast || ymd >= realToday) return usdCashBalanceUsdAt(accountId, ymd);
+      const key = `${accountId}|${ymd}`;
+      let usd = usdCashPast.get(key);
+      if (usd === undefined) {
+        usd = usdCashBalanceUsdAt(accountId, ymd);
+        usdCashPast.set(key, usd);
+      }
+      return usd;
+    }
+    if (pastConvert && ymd < realToday) return pastConvert(clp, ymd);
     return clpToUnitAt(clp, ymd, unit, {
       now,
       markAsOf: gi === lastGi ? pricedOnToday?.[ai] ?? null : null,

@@ -12,17 +12,34 @@ export type NyseWallClock = {
   weekday: number;
 };
 
+const nyseWallClockFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: NY_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  weekday: "short",
+  hour12: false,
+});
+
+/** Memoized per UTC minute, like `chileWallClockAt` (minute resolution, whole-hour offsets). */
+const nyseWallClockByMinute = new Map<number, NyseWallClock>();
+
 export function nyseWallClock(now: Date = new Date()): NyseWallClock {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: NY_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    weekday: "short",
-    hour12: false,
-  }).formatToParts(now);
+  const minute = Math.floor(now.getTime() / 60_000);
+  if (!Number.isFinite(minute)) return nyseWallClockUncached(now);
+  let clock = nyseWallClockByMinute.get(minute);
+  if (!clock) {
+    if (nyseWallClockByMinute.size >= 4096) nyseWallClockByMinute.clear();
+    clock = nyseWallClockUncached(now);
+    nyseWallClockByMinute.set(minute, clock);
+  }
+  return { ...clock };
+}
+
+function nyseWallClockUncached(now: Date): NyseWallClock {
+  const parts = nyseWallClockFormatter.formatToParts(now);
   const g = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value;
   const y = g("year");
   const m = g("month");

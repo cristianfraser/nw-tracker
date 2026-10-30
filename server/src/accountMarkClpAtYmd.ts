@@ -22,6 +22,7 @@ import { isUsdCashAccount, usdCashBalanceClpAt } from "./usdCashAccounts.js";
 import { isClpCashAccount, clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import { db } from "./db.js";
+import { historyTierMemo } from "./aggregationCache.js";
 import {
   latestCreditCardValuationRowAsOf,
   latestMortgageDisplayedBalance,
@@ -162,5 +163,31 @@ export function accountMarkClpAtYmd(
     return live ? { value_clp: live.value_clp, as_of_date: live.as_of_date } : null;
   }
 
-  return historicalMarkClpAtYmd(accountId, asOfYmd, slug, opts);
+  if (asOfYmd > today) return historicalMarkClpAtYmd(accountId, asOfYmd, slug, opts);
+  // A past day's mark reads no live quote, so it is kept across live-quote ticks (the history
+  // tier, `aggregationCache.ts`): the month-end marks every monthly builder walks are paid once.
+  const memo = historyTierMemo<string, AccountMarkAtYmd | null>("account_marks");
+  const key = `${accountId}|${slug}|${opts?.import_key ?? ""}|${opts?.name ?? ""}|${asOfYmd}`;
+  let mark = memo.get(key);
+  if (mark === undefined) {
+    mark = historicalMarkClpAtYmd(accountId, asOfYmd, slug, opts);
+    memo.set(key, mark);
+  }
+  return mark ? { ...mark } : null;
+}
+
+/**
+ * {@link accountMarkClpAtYmd} for a day before Chile today, never memoized: for the per-account
+ * daily mark series (`accountMarkDailyCache.ts`), which keep their own store.
+ */
+export function accountHistoricalMarkClpAtYmdUncached(
+  accountId: number,
+  asOfYmd: string,
+  categorySlug: string,
+  opts?: { import_key?: string | null; name?: string | null }
+): AccountMarkAtYmd | null {
+  if (asOfYmd >= chileCalendarTodayYmd()) {
+    throw new Error(`accountHistoricalMarkClpAtYmdUncached: ${asOfYmd} is not before Chile today`);
+  }
+  return historicalMarkClpAtYmd(accountId, asOfYmd, categorySlug, opts);
 }
