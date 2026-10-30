@@ -40,7 +40,25 @@ const chileDateOnlyFormatter = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
+/**
+ * Wall clocks have minute resolution and both zones' offsets are whole hours, so every instant of
+ * one UTC minute reads the same clock: memoized per minute (hot — every today/fx reader asks).
+ */
+const chileWallClockByMinute = new Map<number, ChileWallClock>();
+
 export function chileWallClockAt(now: Date): ChileWallClock {
+  const minute = Math.floor(now.getTime() / 60_000);
+  if (!Number.isFinite(minute)) return chileWallClockAtUncached(now);
+  let clock = chileWallClockByMinute.get(minute);
+  if (!clock) {
+    if (chileWallClockByMinute.size >= 4096) chileWallClockByMinute.clear();
+    clock = chileWallClockAtUncached(now);
+    chileWallClockByMinute.set(minute, clock);
+  }
+  return { ...clock };
+}
+
+function chileWallClockAtUncached(now: Date): ChileWallClock {
   const parts = wallClockFormatter("America/Santiago").formatToParts(now);
   const g = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value;
   const y = g("year");

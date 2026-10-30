@@ -315,6 +315,11 @@ const db = wrapDatabaseForVerboseLog(dbInternal);
 
 export { db };
 
+/** Whether a transaction is open on the connection (read off the raw handle, not the log proxy). */
+export function dbInTransaction(): boolean {
+  return dbInternal.inTransaction;
+}
+
 /** Run before any other module prepares SQL against tables created in migrations (e.g. `equity_daily`). */
 initSchema();
 runMigrations();

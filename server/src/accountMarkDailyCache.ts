@@ -1,4 +1,4 @@
-import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { accountHistoricalMarkClpAtYmdUncached, accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { applyPendingMarkInputChanges } from "./markInputChanges.js";
 import { getMarkSeries, markSeriesKey, setMarkSeries, type CachedMarkSeries } from "./markSeriesStore.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
@@ -57,7 +57,10 @@ function markClpAt(account: MarkSeriesAccountRef, ymd: string): number | null {
   return clp != null && Number.isFinite(clp) ? clp : null;
 }
 
-/** Marks for the inclusive day range, computed one by one (no cache involvement). */
+/**
+ * Marks for the inclusive day range (all before Chile today), computed one by one — this store
+ * is their cache, so the history tier's point-mark memo is bypassed.
+ */
 function buildRange(
   account: MarkSeriesAccountRef,
   startYmd: string,
@@ -66,7 +69,12 @@ function buildRange(
   const count = dayOffset(startYmd, endYmd) + 1;
   const out = new Array<number | null>(count);
   for (let i = 0; i < count; i++) {
-    out[i] = markClpAt(account, i === 0 ? startYmd : chileCalendarAddDays(startYmd, i));
+    const ymd = i === 0 ? startYmd : chileCalendarAddDays(startYmd, i);
+    const clp = accountHistoricalMarkClpAtYmdUncached(account.account_id, ymd, account.bucket_slug, {
+      import_key: account.import_key ?? null,
+      name: account.name ?? null,
+    })?.value_clp;
+    out[i] = clp != null && Number.isFinite(clp) ? clp : null;
   }
   return out;
 }
