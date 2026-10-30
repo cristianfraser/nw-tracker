@@ -61,6 +61,7 @@ import {
 import { buildFlowsPlChartMonthly, buildFlowsPlDailyChartSeries } from "./flowsPl.js";
 import {
   cachedFlowsExpenseLines,
+  syncFlowsInputsWithLiveUsdRates,
   cachedMortgageCarryingEvents,
   mortgageCarryingEvents,
   mortgageLinkCarryingAmount,
@@ -786,6 +787,7 @@ type OverviewSourceInputs = {
 };
 
 function overviewSourceInputs(): OverviewSourceInputs {
+  syncFlowsInputsWithLiveUsdRates();
   return getAggregationCached("flows.overview.inputs|", () => {
     const accountIds = listCreditCardMasterAccountIds();
     const lines = cachedFlowsExpenseLines();

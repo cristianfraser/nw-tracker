@@ -133,12 +133,11 @@ async function tickParity(equityFactor: number, fxFactor: number): Promise<{ dif
 }
 
 describe("live-quote tick: incremental rebuild == full rebuild", () => {
+  // The live fx moves card payloads too: an unpaid facturación's dollars (the «próximos pagos»
+  // panel, the flows overview's card spend) are priced at the live rate.
   it("serves byte-identical payloads in CLP and USD after the quotes and the live fx move", async () => {
     const { differing, moved } = await tickParity(1.03, 1.0075);
-    // Known gap, older than the history tier: the expense lines behind the flows overview
-    // (`flows.overview.inputs|`) price an unpaid facturación's dollars at the live rate and are
-    // kept across ticks, so its card spend lags the live fx until the next write.
-    expect(differing.filter((k) => !k.startsWith("flows|"))).toEqual([]);
+    expect(differing).toEqual([]);
     // The tick reached the payloads (otherwise the comparison above proves nothing).
     expect(moved).toBe(true);
   }, 300_000);

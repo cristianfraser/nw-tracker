@@ -1,3 +1,4 @@
+import { historyTierMemo } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { sortActivePurchases, sortCuotaLinesInActiveOrder } from "./ccActivePurchaseOrder.js";
@@ -904,9 +905,18 @@ export function cancelledInstallmentPurchaseIdsByNotaCredit(opts: {
   return cancelled;
 }
 
-/** Ledger-backed cancelled purchases (NOTA DE CREDITO match with month window). */
+/**
+ * Ledger-backed cancelled purchases (NOTA DE CREDITO match with month window). Asked once per
+ * expense line, and read from card tables only, so kept in the history tier (`aggregationCache.ts`).
+ */
 export function cancelledInstallmentPurchaseIdsForAccount(accountId: number): Set<number> {
-  return loadLedgerPurchasesAndPayments(accountId).cancelledPurchaseIds;
+  const memo = historyTierMemo<number, Set<number>>("cancelled_installment_purchase_ids");
+  let ids = memo.get(accountId);
+  if (!ids) {
+    ids = loadLedgerPurchasesAndPayments(accountId).cancelledPurchaseIds;
+    memo.set(accountId, ids);
+  }
+  return new Set(ids);
 }
 
 /** Statement month (YYYY-MM) of the plan's earliest billed row (cuota 00 preamble counts). */
