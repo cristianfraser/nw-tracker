@@ -8,6 +8,7 @@ import {
   loadUsdCashCapitalSortFlows,
 } from "./equityBrokerageCapitalFlows.js";
 import { db } from "./db.js";
+import { historyTierMemo } from "./aggregationCache.js";
 import {
   isUsdCashAccount,
   signedClpDeltaForAccountMovement,
@@ -239,11 +240,33 @@ export type DepositInflowEventWithCounter = DepositInflowEvent & {
   transfer_counter_account_id?: number;
 };
 
+/**
+ * The merged deposit timeline reads movements only (no quote), so it is kept in the history
+ * tier (`aggregationCache.ts`) across live-quote ticks; callers get their own arrays and events.
+ */
 function buildMergedDepositMap(
   accountIds: number[],
   personalOnly: boolean,
   dating: EventDating = "display",
   withTransferCounter = false
+): Map<number, DepositInflowEventWithCounter[]> {
+  const memo = historyTierMemo<string, Map<number, DepositInflowEventWithCounter[]>>("merged_deposit_maps");
+  const key = `${personalOnly}|${dating}|${withTransferCounter}|${accountIds.join(",")}`;
+  let built = memo.get(key);
+  if (!built) {
+    built = buildMergedDepositMapUncached(accountIds, personalOnly, dating, withTransferCounter);
+    memo.set(key, built);
+  }
+  const out = new Map<number, DepositInflowEventWithCounter[]>();
+  for (const [id, events] of built) out.set(id, events.map((e) => ({ ...e })));
+  return out;
+}
+
+function buildMergedDepositMapUncached(
+  accountIds: number[],
+  personalOnly: boolean,
+  dating: EventDating,
+  withTransferCounter: boolean
 ): Map<number, DepositInflowEventWithCounter[]> {
   const requested = new Set(accountIds.filter((id) => id > 0));
   const mov = loadMovementSignedFlowEvents(accountIds, personalOnly);

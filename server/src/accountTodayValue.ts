@@ -28,6 +28,7 @@ import { usdCashBalanceLive } from "./usdCashAccounts.js";
 import { isClpCashKindSlug, clpCashBalanceLive } from "./clpCashAccounts.js";
 import { latestCreditCardBillingBalanceTotalClpAndAsOfDate } from "./ccCreditCardValuations.js";
 import { db } from "./db.js";
+import { liveTierMemo } from "./aggregationCache.js";
 import {
   latestCreditCardDisplayedBalance,
   latestDisplayedBalanceForAccount,
@@ -194,6 +195,30 @@ export function accountTodayValue(
   const slug = categorySlug || row?.bucket_slug || "";
   const importKey = opts?.import_key !== undefined ? opts.import_key : row?.import_key ?? null;
   const name = opts?.name !== undefined ? opts.name : row?.name ?? null;
+  // Asked by every reader of today (rows, perf rows, daily points, bucket totals): computed once
+  // per live tier (`aggregationCache.ts`) on the real clock, unless the caller hands its own
+  // position (then the figure is built from it).
+  if (now === undefined && opts?.positionMeta === undefined) {
+    const memo = liveTierMemo<string, AccountTodayValue | null>("account_today_values");
+    const key = `${accountId}|${slug}|${importKey ?? ""}|${name ?? ""}`;
+    let value = memo.get(key);
+    if (value === undefined) {
+      value = accountTodayValueFor(accountId, slug, importKey, name, opts?.positionMeta, now);
+      memo.set(key, value);
+    }
+    return value ? { ...value } : null;
+  }
+  return accountTodayValueFor(accountId, slug, importKey, name, opts?.positionMeta, now);
+}
+
+function accountTodayValueFor(
+  accountId: number,
+  slug: string,
+  importKey: string | null,
+  name: string | null,
+  positionMeta: AccountPositionMeta | null | undefined,
+  now: Date | undefined
+): AccountTodayValue | null {
   const kindSlug = slug ? accountBucketKindSlug(slug) : "";
   const today = chileCalendarTodayYmd();
 
@@ -207,8 +232,8 @@ export function accountTodayValue(
     // counted its cuotas through the price day, and a fund account right after a switch read
     // the position before the cuotas arrived.
     const meta =
-      opts?.positionMeta !== undefined
-        ? opts.positionMeta
+      positionMeta !== undefined
+        ? positionMeta
         : getAccountPositionMeta(accountId, kindSlug, {
             afpCuotasAsOfYmd: today,
             accountImportKey: importKey,

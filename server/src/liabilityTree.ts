@@ -5,6 +5,7 @@ import { getCreditCardGroupNavChildren } from "./creditCardTree.js";
 import { db } from "./db.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { historyTierMemo } from "./aggregationCache.js";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
@@ -278,8 +279,32 @@ function latestValuationRowFromAscRows(
   return last;
 }
 
-/** Sum linked CC balances for many chart dates (one view list + one valuation read per card). */
+/**
+ * Sum linked CC balances for many chart dates (one view list + one valuation read per card).
+ * A day before Chile today reads no quote, so its sum is kept in the history tier
+ * (`aggregationCache.ts`) across live-quote ticks.
+ */
 export function linkedCreditCardClpForCashCardByDates(datesAsc: string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const d of datesAsc) out.set(d, 0);
+  if (!datesAsc.length) return out;
+  const today = chileCalendarTodayYmd();
+  const memo = historyTierMemo<string, number>("linked_cc_clp_by_day");
+  const toBuild = datesAsc.filter((d) => d >= today || !memo.has(d));
+  const built = linkedCreditCardClpForCashCardByDatesUncached(toBuild, today);
+  for (const d of datesAsc) {
+    const past = d < today;
+    const v = past && memo.has(d) ? memo.get(d)! : built.get(d)!;
+    if (past) memo.set(d, v);
+    out.set(d, v);
+  }
+  return out;
+}
+
+function linkedCreditCardClpForCashCardByDatesUncached(
+  datesAsc: string[],
+  today: string
+): Map<string, number> {
   const out = new Map<string, number>();
   for (const d of datesAsc) out.set(d, 0);
   if (!datesAsc.length) return out;
@@ -287,7 +312,6 @@ export function linkedCreditCardClpForCashCardByDates(datesAsc: string[]): Map<s
   const masters = linkedCreditCardMasters();
   if (!masters.length) return out;
 
-  const today = chileCalendarTodayYmd();
   const maxDate = [...datesAsc].sort().at(-1)!;
   const perMasterRows = masters.map((master) => {
     const rows = stmtValuationsOnOrBefore.all(master.account_id, maxDate) as {
