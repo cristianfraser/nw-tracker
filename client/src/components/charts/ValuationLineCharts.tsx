@@ -7,7 +7,7 @@ import { GROUP_TAB_DEP_TOTAL } from "../../groupTabAggregation";
 import type { NetWorthAthDto, TimeseriesBlock } from "../../types";
 import { clipChartDataToYDomain } from "../../chartTailClip";
 import { AppLineChart } from "./AppLineChart";
-import { renderAthMarker } from "./AthMarker";
+import { ATH_MARKER_STROKE, renderAthMarker } from "./AthMarker";
 import { isNearAthRow, resolveAthMarkerRow } from "./athMarkerPlacement";
 import {
   carryForwardTrailingPendingRows,
@@ -150,8 +150,8 @@ interface BlockProps {
   controls?: ReactNode;
   /**
    * All-time high of the `thickKey` line AT THIS GRAIN (server-computed; the caller picks the
-   * day / month / year peak to match `xAxisGranularity`): drawn as a small diamond on the
-   * plotted row of that date — no label of its own: the docked tooltip adds an ATH line while the
+   * day / month / year peak to match `xAxisGranularity`): drawn as a short vertical tick on the
+   * plotted point of that date — no label of its own: the docked tooltip adds an ATH line while the
    * cursor is near that row. Omitted from the render when the Rango clip leaves the peak outside
    * the window.
    */
@@ -176,12 +176,11 @@ type AthTooltipContext = {
   /** Row index per plotted date — the tooltip only knows the hovered label. */
   indexByDate: ReadonlyMap<string, number>;
   rowCount: number;
-  color: string;
 };
 
 /**
- * Footer line under the tooltip rows while the cursor is near the peak: a diamond glyph like the
- * marker's, the peak's date framed like the tooltip title, and its value. Bright on the peak's
+ * Footer line under the tooltip rows while the cursor is near the peak: a bar glyph like the
+ * marker, the peak's date framed like the tooltip title, and its value. Bright on the peak's
  * own row, muted on the neighbouring ones — a marker that sits under a dozen daily rows would
  * otherwise be nearly impossible to hover exactly.
  */
@@ -211,8 +210,8 @@ function AthTooltipFooter({
         fontSize: 13,
       }}
     >
-      <svg width={10} height={10} aria-hidden style={{ flexShrink: 0 }}>
-        <path d="M5,0 L10,5 L5,10 L0,5 Z" fill={ctx.color} stroke="#f8fafc" strokeWidth={1} />
+      <svg width={4} height={12} aria-hidden style={{ flexShrink: 0 }}>
+        <rect x={1} y={0} width={2} height={12} fill={ATH_MARKER_STROKE} />
       </svg>
       <span style={{ color: muted }}>{i18n.t("charts.athTooltip", { date })}</span>
       <span style={{ color: muted }}>:</span>
@@ -557,7 +556,6 @@ export function LineChartPanel({
       ath: athPlacement,
       indexByDate,
       rowCount: plotChartData.length,
-      color: thickSeriesForAth.stroke,
     };
   }, [athPlacement, plotChartData, thickSeriesForAth]);
 
@@ -735,7 +733,6 @@ export function LineChartPanel({
                   ? renderAthMarker({
                       x: athPlacement.x,
                       y: athPlacement.value,
-                      color: thickSeriesForAth.stroke,
                       opacity:
                         focusColorIndex != null && thickSeriesForAth.colorIndex !== focusColorIndex
                           ? DIM_LINE_OPACITY
