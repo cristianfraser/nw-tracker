@@ -10,7 +10,8 @@
  * (`split_only`) re-presents a card-financed dividendo over later months and is skipped, so the
  * carrying lands on the depto payment day in both installment modes.
  */
-import { getAggregationCached } from "./aggregationCache.js";
+import { getAggregationCached, invalidateFlowsOverview } from "./aggregationCache.js";
+import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import { buildFlowsExpenseLines, listCreditCardMasterAccountIds, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { expenseLineGastosAmount, type GastosUnit } from "./flowsExpensesGastos.js";
@@ -74,15 +75,46 @@ export function sumMortgageCarryingBy(
 }
 
 /**
+ * The live rates the expense lines priced dollars at: an unpaid facturación whose pay-by is still
+ * ahead shows its dollars at today's rate (`usd_rate_source: live`, `ccFacturacionUsdRate.ts`), read
+ * from the cards' billing-detail bundles — which a live-quote tick rebuilds.
+ */
+function liveUsdRatesFingerprint(): string {
+  const parts: string[] = [];
+  for (const accountId of listCreditCardMasterAccountIds()) {
+    for (const row of billingDetailCacheForAccount(accountId).facturaciones) {
+      if (row.usd_rate_source === "live") parts.push(`${accountId}:${row.billing_month}:${row.usd_rate_clp}`);
+    }
+  }
+  return parts.join("|");
+}
+
+/**
+ * The flows-overview inputs survive a live-quote tick (they read no quote) except through the
+ * live dollar rate: when the rate the cached lines used is no longer the cards' current one, they
+ * are dropped and rebuild. A tick that leaves the rate alone (a stock or coin quote, the fx day
+ * closed) keeps them.
+ */
+export function syncFlowsInputsWithLiveUsdRates(): void {
+  const current = liveUsdRatesFingerprint();
+  const key = "flows.overview.inputs|live_usd_rates";
+  if (getAggregationCached(key, () => current) === current) return;
+  invalidateFlowsOverview({ inputs: true });
+  getAggregationCached(key, () => current);
+}
+
+/**
  * The finalized expense lines (the Expenses page's), cached under the flows overview's inputs
  * prefix (`flows.overview.inputs|`) so the same invalidations drop them (`invalidateFlowsOverview`).
  */
 export function cachedFlowsExpenseLines(): FlowCcExpenseLineRow[] {
+  syncFlowsInputsWithLiveUsdRates();
   return getAggregationCached("flows.overview.inputs|lines", () => buildFlowsExpenseLines(listCreditCardMasterAccountIds()));
 }
 
 /** {@link mortgageCarryingEvents} over the cached expense lines, per unit. */
 export function cachedMortgageCarryingEvents(unit: GastosUnit): MortgageCarryingEvent[] {
+  syncFlowsInputsWithLiveUsdRates();
   return getAggregationCached(`flows.overview.inputs|carrying|${unit}`, () =>
     mortgageCarryingEvents(cachedFlowsExpenseLines(), unit)
   );
