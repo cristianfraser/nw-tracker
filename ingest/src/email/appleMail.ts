@@ -8,14 +8,12 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { ImapFlow } from "imapflow";
-import { readKeychainSecret } from "../keychain.js";
 import { hasDocument, recordDocument } from "../documentLedger.js";
 import { ensureDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 import { APPLE_MAIL_SENDER, appleMailKind, appleMailStagingDir, type StagedAppleMail } from "../apple/appStoreMail.js";
-import { loadBrokerEmailConfig } from "./fetch.js";
 import { htmlBodyPartFromStructure, mailDocumentLedgerKey } from "./santanderDocs.js";
+import { withImapSession } from "./imapSession.js";
 
 const DEFAULT_WINDOW_DAYS = 45;
 const LEDGER_KIND = "email-app-store";
@@ -23,23 +21,13 @@ const LEDGER_KIND = "email-app-store";
 export type AppleMailFetchResult = { saved: string[]; skipped: { key: string; reason: string }[] };
 
 export async function fetchAppleMail(opts?: { windowDays?: number; dryRun?: boolean }): Promise<AppleMailFetchResult> {
-  const config = loadBrokerEmailConfig();
-  const password = readKeychainSecret(config.keychain_service, config.address);
   const windowDays = opts?.windowDays ?? DEFAULT_WINDOW_DAYS;
   const since = new Date(Date.now() - windowDays * 86_400_000);
   const dryRun = opts?.dryRun === true;
   logStep(`e-mail — Apple receipts and subscription notices since ${since.toISOString().slice(0, 10)}${dryRun ? " (dry run)" : ""}`);
 
   const result: AppleMailFetchResult = { saved: [], skipped: [] };
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: true,
-    auth: { user: config.address, pass: password },
-    logger: false,
-  });
-  await client.connect();
-  try {
+  await withImapSession("Apple mail", async (client) => {
     const all = (await client.list()).find((b) => b.specialUse === "\\All");
     if (!all) throw new Error("No All Mail folder on this account");
     const lock = await client.getMailboxLock(all.path, { readOnly: true });
@@ -88,8 +76,6 @@ export async function fetchAppleMail(opts?: { windowDays?: number; dryRun?: bool
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout();
-  }
+  });
   return result;
 }

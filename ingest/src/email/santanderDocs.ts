@@ -25,14 +25,13 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { ImapFlow } from "imapflow";
 import type { FetchMessageObject, MessageStructureObject } from "imapflow";
-import { readKeychainSecret } from "../keychain.js";
 import { ensureDir, resolveInboxDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 import { hasDocument, recordDocument } from "../documentLedger.js";
-import { loadBrokerEmailConfig, mimeBodyToText } from "./fetch.js";
+import { mimeBodyToText } from "./fetch.js";
 import { resolveCfraserDir } from "../paths.js";
+import { withImapSession } from "./imapSession.js";
 
 export const SANTANDER_MAIL_SENDER = "mensajeria@santander.cl";
 
@@ -182,8 +181,6 @@ export async function fetchSantanderMailDocuments(opts?: {
   /** List what would be downloaded without writing anything or touching the ledger. */
   dryRun?: boolean;
 }): Promise<SantanderMailFetchResult> {
-  const config = loadBrokerEmailConfig();
-  const password = readKeychainSecret(config.keychain_service, config.address);
   const windowDays = opts?.windowDays ?? DEFAULT_WINDOW_DAYS;
   const since = new Date(Date.now() - windowDays * 86_400_000);
   const dryRun = opts?.dryRun === true;
@@ -193,16 +190,7 @@ export async function fetchSantanderMailDocuments(opts?: {
   const result: SantanderMailFetchResult = { saved: [], skipped: [] };
   const inbox = dryRun ? null : ensureDir(resolveInboxDir());
 
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: true,
-    auth: { user: config.address, pass: password },
-    logger: false,
-  });
-
-  await client.connect();
-  try {
+  await withImapSession("Santander documents", async (client) => {
     const lock = await client.getMailboxLock("INBOX");
     try {
       const uids = await client.search({ from: SANTANDER_MAIL_SENDER, since });
@@ -306,9 +294,7 @@ export async function fetchSantanderMailDocuments(opts?: {
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => undefined);
-  }
+  });
 
   for (const s of result.saved) log(`e-mail: ${s.kind} ${s.period} → ${s.file}`);
   for (const s of result.skipped) log(`e-mail: ${s.kind} ${s.period} skipped (${s.reason})`);

@@ -7,10 +7,9 @@
  * The mailbox is the same Gmail the broker-mail poll reads (`cfraser/email-fetch.json`, Keychain
  * `nw-tracker-gmail`); nothing is written, marked or moved.
  */
-import { ImapFlow } from "imapflow";
 import { loadBrokerEmailConfig, mimeBodyToText, searchSinceCandidates } from "../email/fetch.js";
-import { readKeychainSecret } from "../keychain.js";
 import { log } from "../log.js";
+import { withImapSession } from "../email/imapSession.js";
 
 export const CLAVE_UNICA_CODE_SENDER = "no-reply@digital.gob.cl";
 export const CLAVE_UNICA_CODE_SUBJECT = /c[oó]digo de validaci[oó]n/i;
@@ -73,15 +72,13 @@ export async function waitForClaveUnicaCode(opts: { requestedAt: Date; timeoutMs
   const timeoutMs = opts.timeoutMs ?? 180_000;
   const pollMs = opts.pollMs ?? 5_000;
   const config = loadBrokerEmailConfig();
-  const password = readKeychainSecret(config.keychain_service, config.address);
-  const client = new ImapFlow({ host: config.host, port: config.port, secure: true, auth: { user: config.address, pass: password }, logger: false });
-  await client.connect();
-  try {
+  // Outside the session: a rerun after a dropped connection keeps the original wait.
+  const started = Date.now();
+  const deadline = started + timeoutMs;
+  log(`ClaveÚnica: waiting for the code mail (${config.address}, up to ${Math.round(timeoutMs / 1000)} s)`);
+  return withImapSession("ClaveÚnica code", async (client) => {
     const lock = await client.getMailboxLock("INBOX");
     try {
-      const started = Date.now();
-      const deadline = started + timeoutMs;
-      log(`ClaveÚnica: waiting for the code mail (${config.address}, up to ${Math.round(timeoutMs / 1000)} s)`);
       for (;;) {
         await client.noop().catch(() => undefined);
         let uids: number[] = [];
@@ -130,7 +127,5 @@ export async function waitForClaveUnicaCode(opts: { requestedAt: Date; timeoutMs
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => undefined);
-  }
+  });
 }

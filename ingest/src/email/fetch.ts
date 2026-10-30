@@ -15,10 +15,10 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { ImapFlow } from "imapflow";
-import { readKeychainSecret } from "../keychain.js";
+import type { ImapFlow } from "imapflow";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
 import { log, logStep } from "../log.js";
+import { withImapSession } from "./imapSession.js";
 
 export const BROKER_EMAIL_KEYCHAIN_SERVICE = "nw-tracker-gmail";
 
@@ -198,8 +198,6 @@ export async function fetchBrokerEmails(opts?: {
   sinceDays?: number;
   markSeen?: boolean;
 }): Promise<{ emails: FetchedEmail[]; file: string | null; newestAt: string | null }> {
-  const config = loadBrokerEmailConfig();
-  const password = readKeychainSecret(config.keychain_service, config.address);
   const state = readBrokerEmailState();
 
   // An explicit --since overrides the watermark: it is how you re-read a window after changing
@@ -210,17 +208,10 @@ export async function fetchBrokerEmails(opts?: {
   const since = !explicitSince && state?.last_seen_at ? new Date(state.last_seen_at) : floor;
 
   logStep(`e-mail — fetching broker mail since ${since.toISOString()}`);
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: true,
-    auth: { user: config.address, pass: password },
-    logger: false,
-  });
-
   const emails: FetchedEmail[] = [];
-  await client.connect();
-  try {
+  await withImapSession("broker mail", async (client) => {
+    // A rerun after a dropped connection reads the whole window again.
+    emails.length = 0;
     const lock = await client.getMailboxLock("INBOX");
     try {
       // One search per sender: Gmail's IMAP OR syntax is awkward and this is a handful of
@@ -245,9 +236,7 @@ export async function fetchBrokerEmails(opts?: {
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => undefined);
-  }
+  });
 
   // IMAP `SINCE` is day-granular: the search returns the watermark message's entire day, so
   // without this every poll re-stages the newest message of the previous scan and it lands in

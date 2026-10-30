@@ -14,11 +14,10 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { ImapFlow } from "imapflow";
-import { readKeychainSecret } from "../keychain.js";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
 import { log, logStep } from "../log.js";
-import { loadBrokerEmailConfig, mimeBodyToText } from "./fetch.js";
+import { mimeBodyToText } from "./fetch.js";
+import { withImapSession } from "./imapSession.js";
 import { pdfAttachmentsFromStructure, safeAttachmentName } from "./santanderDocs.js";
 
 export type SantanderArchivedMail = {
@@ -112,19 +111,13 @@ export async function archiveMails(opts: {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.fromYmd) || !/^\d{4}-\d{2}-\d{2}$/.test(opts.toYmd)) {
     throw new Error(`--from / --to must be YYYY-MM-DD (got ${opts.fromYmd} / ${opts.toYmd})`);
   }
-  const config = loadBrokerEmailConfig();
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: true,
-    auth: { user: config.address, pass: readKeychainSecret(config.keychain_service, config.address) },
-    logger: false,
-  });
   logStep(`e-mail — ${opts.label} ${opts.fromYmd} → ${opts.toYmd}`);
-  await client.connect();
   const mails: ArchivedMail[] = [];
   const pdfParts: { mail: ArchivedMail; uid: number; part: string; filename: string }[] = [];
-  try {
+  await withImapSession(opts.label, async (client) => {
+    // A rerun after a dropped connection reads the whole window again.
+    mails.length = 0;
+    pdfParts.length = 0;
     const allMail = (await client.list()).find((b) => b.specialUse === "\\All");
     if (!allMail) throw new Error("No All Mail folder on this account");
     const lock = await client.getMailboxLock(allMail.path, { readOnly: true });
@@ -179,9 +172,7 @@ export async function archiveMails(opts: {
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout();
-  }
+  });
   mails.sort((a, b) => a.sent_at_chile.localeCompare(b.sent_at_chile));
   const dir = ensureDir(path.join(resolveCfraserDir(), opts.dir));
   const file = path.join(dir, opts.fileName ?? `${opts.fromYmd}_${opts.toYmd}.json`);
