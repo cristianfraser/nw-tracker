@@ -7,13 +7,17 @@ import { windowIrr } from "./irr.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 /**
- * The mortgage's prepayments against a benchmark: every peso paid above the minimum cuota
- * (`depto_payments.amortizacion_ext_clp` — the `prepago` rows and the extra inside each regular
- * payment) is followed to today two ways:
+ * The mortgage's prepayments against a benchmark: every peso paid above the minimum cuota is
+ * followed to today two ways. Above the minimum is the extra amortization inside a regular payment
+ * (`depto_payments.amortizacion_ext_clp`) and the WHOLE of a prepago made outside a cuota
+ * (`flow_kind = 'prepago_parcial_hipotecario'`), interest included: it has no minimum, so all of it
+ * is money that could have been invested instead.
  *
- * - **prepaid** — what it is worth having gone into the mortgage: it stopped accruing the loan's
- *   rate, so it grows at the `mortgage` benchmark (UF + the loan rate);
- * - **invested** — what it would be worth had it gone into the chosen benchmark on the same day.
+ * - **prepaid** — what it is worth having gone into the mortgage: only the amortization reduced
+ *   the loan, so only it stopped accruing the loan's rate and grows at the `mortgage` benchmark
+ *   (UF + the loan rate); the interest a prepago carries is worth nothing on this side;
+ * - **invested** — what the whole extra would be worth had it gone into the chosen benchmark on
+ *   the same day.
  *
  * Δ = invested − prepaid: positive means investing the extra would have come out ahead so far.
  * Before tax on both sides; the insurance that shrinks with the balance is left out.
@@ -23,11 +27,13 @@ export type PrepaymentRow = {
   date: string;
   /** The ledger's cuota label: a cuota number, or `prepago N`. */
   cuota: string;
-  /** Paid above the minimum cuota, in the display unit at that day's rate. */
+  /** Paid above the minimum cuota (a prepago's whole payment), in the display unit at that day's rate. */
   extra: number;
   prepaid_value: number | null;
   invested_value: number | null;
   delta: number | null;
+  /** Δ ÷ prepaid value (a fraction): how much more (or less) investing is worth than prepaying. */
+  delta_pct: number | null;
 };
 
 export type PrepaymentTotals = {
@@ -39,6 +45,8 @@ export type PrepaymentTotals = {
   prepaid_value: number | null;
   invested_value: number | null;
   delta: number | null;
+  /** Δ ÷ prepaid value (a fraction). */
+  delta_pct: number | null;
   /** Each side's internal rate of return on the extra payments; annualized when `irr_annualized`. */
   prepaid_irr_pct: number | null;
   invested_irr_pct: number | null;
@@ -54,22 +62,61 @@ export type MortgagePrepaymentComparison = {
   totals: PrepaymentTotals;
 };
 
-type ExtraPayment = { date: string; cuota: string; extra_clp: number };
+function deltaPct(prepaid: number | null, invested: number | null): number | null {
+  return prepaid != null && invested != null && prepaid > 0 ? invested / prepaid - 1 : null;
+}
+
+type ExtraPayment = {
+  date: string;
+  cuota: string;
+  /** Paid above the minimum: what could have been invested instead. */
+  extra_clp: number;
+  /** The part of it that paid down the loan. */
+  amortization_clp: number;
+};
 
 /** Payments above the minimum on a mortgage account, oldest first. Empty for any other account. */
 export function listMortgageExtraPayments(accountId: number): ExtraPayment[] {
   const rows = db
     .prepare(
-      `SELECT m.occurred_on AS date, d.cuota AS cuota, d.amortizacion_ext_clp AS extra_clp
+      `SELECT m.id AS movement_id, m.occurred_on AS date, m.amount AS amount, m.flow_kind AS flow_kind,
+              d.cuota AS cuota, d.amortizacion_clp AS amortizacion_clp,
+              d.amortizacion_ext_clp AS amortizacion_ext_clp, d.interes_clp AS interes_clp,
+              d.incendio_clp AS incendio_clp, d.desgravamen_clp AS desgravamen_clp
        FROM depto_payments d JOIN movements m ON m.id = d.movement_id
        WHERE d.kind = 'mortgage' AND m.account_id = ?
        ORDER BY m.occurred_on, m.id`
     )
-    .all(accountId) as { date: string; cuota: string; extra_clp: number | null }[];
+    .all(accountId) as {
+    movement_id: number;
+    date: string;
+    amount: number;
+    flow_kind: string | null;
+    cuota: string;
+    amortizacion_clp: number | null;
+    amortizacion_ext_clp: number | null;
+    interes_clp: number | null;
+    incendio_clp: number | null;
+    desgravamen_clp: number | null;
+  }[];
   const out: ExtraPayment[] = [];
   for (const r of rows) {
-    if (r.extra_clp == null || !(r.extra_clp > 0)) continue;
-    out.push({ date: r.date, cuota: r.cuota, extra_clp: r.extra_clp });
+    const amortization = r.amortizacion_ext_clp ?? 0;
+    if (r.flow_kind === "prepago_parcial_hipotecario") {
+      // A prepago outside a cuota has no minimum: the whole payment is above it.
+      const paid =
+        (r.amortizacion_clp ?? 0) + amortization + (r.interes_clp ?? 0) + (r.incendio_clp ?? 0) + (r.desgravamen_clp ?? 0);
+      if (Math.abs(paid - r.amount) > 1) {
+        throw new Error(
+          `mortgage prepago ${r.cuota} (movement ${r.movement_id}): its parts add up to ${paid}, the payment is ${r.amount}`
+        );
+      }
+      if (!(paid > 0)) continue;
+      out.push({ date: r.date, cuota: r.cuota, extra_clp: paid, amortization_clp: amortization });
+      continue;
+    }
+    if (!(amortization > 0)) continue;
+    out.push({ date: r.date, cuota: r.cuota, extra_clp: amortization, amortization_clp: amortization });
   }
   return out;
 }
@@ -100,7 +147,8 @@ export function computeMortgagePrepaymentComparison(input: {
 
   const rows: PrepaymentRow[] = payments.map((p) => {
     const extra = flowEventInUnit({ occurred_on: p.date, amt: p.extra_clp }, unit);
-    const prepaid = grow(prepaidLevel, extra, p.date);
+    const amortization = flowEventInUnit({ occurred_on: p.date, amt: p.amortization_clp }, unit);
+    const prepaid = grow(prepaidLevel, amortization, p.date);
     const invested = grow(investedLevel, extra, p.date);
     return {
       date: p.date,
@@ -109,6 +157,7 @@ export function computeMortgagePrepaymentComparison(input: {
       prepaid_value: prepaid,
       invested_value: invested,
       delta: prepaid != null && invested != null ? invested - prepaid : null,
+      delta_pct: deltaPct(prepaid, invested),
     };
   });
 
@@ -148,6 +197,7 @@ export function computeMortgagePrepaymentComparison(input: {
       prepaid_value: prepaidValue,
       invested_value: investedValue,
       delta: prepaidValue != null && investedValue != null ? investedValue - prepaidValue : null,
+      delta_pct: deltaPct(prepaidValue, investedValue),
       prepaid_irr_pct: prepaidIrr?.pct ?? null,
       invested_irr_pct: investedIrr?.pct ?? null,
       irr_annualized: (prepaidIrr ?? investedIrr)?.annualized ?? false,

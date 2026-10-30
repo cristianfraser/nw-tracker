@@ -62,6 +62,8 @@ export interface PrepaymentRow {
   invested_value: number | null;
   /** Invested − prepaid (positive: investing would have come out ahead). */
   delta: number | null;
+  /** Δ ÷ prepaid value (a fraction). */
+  delta_pct: number | null;
 }
 
 export interface MortgagePrepaymentComparison {
@@ -78,6 +80,8 @@ export interface MortgagePrepaymentComparison {
     prepaid_value: number | null;
     invested_value: number | null;
     delta: number | null;
+    /** Δ ÷ prepaid value (a fraction). */
+    delta_pct: number | null;
     /** Each side's IRR on the extra payments; yearly when `irr_annualized`. */
     prepaid_irr_pct: number | null;
     invested_irr_pct: number | null;

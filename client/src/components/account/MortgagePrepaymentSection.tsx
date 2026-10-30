@@ -68,6 +68,16 @@ export function MortgagePrepaymentSection({
         })}
       </span>
     );
+  // Δ with its percentage of the prepaid value beside it, both in the Δ's tone.
+  const delta = (amount: number | null, pct: number | null) =>
+    amount == null ? (
+      "—"
+    ) : (
+      <span style={toneStyle(amount)}>
+        {money(amount)}
+        {pct == null ? null : ` · ${formatPct(pct * 100)}`}
+      </span>
+    );
   const labels = {
     date: t("accountDetail.prepayments.colDate"),
     cuota: t("accountDetail.prepayments.colCuota"),
@@ -131,8 +141,8 @@ export function MortgagePrepaymentSection({
               {money(totals.invested_value)}
               {irr(totals.invested_irr_pct)}
             </td>
-            <td className="mono desktop-only" style={{ ...toneStyle(totals.delta), fontWeight: 600 }}>
-              {money(totals.delta)}
+            <td className="mono desktop-only" style={{ fontWeight: 600 }}>
+              {delta(totals.delta, totals.delta_pct)}
             </td>
             <td className="mobile-only">
               <TableMobileCard
@@ -160,7 +170,7 @@ export function MortgagePrepaymentSection({
                   />
                   <TableMobileCardRow
                     label={labels.delta}
-                    value={<span style={toneStyle(totals.delta)}>{money(totals.delta)}</span>}
+                    value={delta(totals.delta, totals.delta_pct)}
                   />
                 </TableMobileCardSection>
               </TableMobileCard>
@@ -193,9 +203,7 @@ export function MortgagePrepaymentSection({
               <td className="mono desktop-only">{money(row.extra)}</td>
               <td className="mono desktop-only">{money(row.prepaid_value)}</td>
               <td className="mono desktop-only">{money(row.invested_value)}</td>
-              <td className="mono desktop-only" style={toneStyle(row.delta)}>
-                {money(row.delta)}
-              </td>
+              <td className="mono desktop-only">{delta(row.delta, row.delta_pct)}</td>
               <td className="mobile-only">
                 <TableMobileCard title={`${row.date} · ${row.cuota}`}>
                   <TableMobileCardSection>
@@ -204,7 +212,7 @@ export function MortgagePrepaymentSection({
                     <TableMobileCardRow label={labels.invested} value={money(row.invested_value)} />
                     <TableMobileCardRow
                       label={labels.delta}
-                      value={<span style={toneStyle(row.delta)}>{money(row.delta)}</span>}
+                      value={delta(row.delta, row.delta_pct)}
                     />
                   </TableMobileCardSection>
                 </TableMobileCard>

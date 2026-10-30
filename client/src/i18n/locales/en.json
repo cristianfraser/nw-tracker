@@ -827,7 +827,7 @@
     },
     "prepayments": {
       "title": "Prepayments vs investing",
-      "hint": "Every peso paid above the minimum cuota (the prepagos and the extra in each payment), followed to today two ways: prepaid, it grows at the mortgage's rate, {{mortgage}}, the interest it saves; invested on the same day in the benchmark, it grows with it. Δ = invested − prepaid; green means investing would have come out ahead so far. Before tax on both sides. Your own portfolios earn their own time-weighted return — what each peso held there made, picks included (APV: without its tax benefit or the early-withdrawal penalty).",
+      "hint": "Every peso paid above the minimum cuota (the extra in each payment, and the whole of a prepago made outside a cuota, its interest included), followed to today two ways: prepaid, only the part that paid down the loan grows, at the mortgage's rate, {{mortgage}}, the interest it saves — a prepago's interest is worth nothing on this side; invested on the same day in the benchmark, all of it grows with it. Δ = invested − prepaid, and its % of the prepaid value; green means investing would have come out ahead so far. Before tax on both sides. Your own portfolios earn their own time-weighted return — what each peso held there made, picks included (APV: without its tax benefit or the early-withdrawal penalty).",
       "compareWith": "Invested in",
       "colDate": "Date",
       "colCuota": "Payment",

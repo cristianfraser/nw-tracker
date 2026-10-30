@@ -827,7 +827,7 @@
     },
     "prepayments": {
       "title": "Prepagos vs invertir",
-      "hint": "Cada peso pagado sobre la cuota mínima (los prepagos y lo extra de cada pago), seguido hasta hoy de dos formas: prepagado, crece a la tasa de la hipoteca, {{mortgage}}, los intereses que ahorra; invertido el mismo día en la referencia, crece con ella. Δ = invertido − prepagado; verde significa que invertir habría resultado mejor hasta ahora. Antes de impuestos en ambos lados. Tus portafolios rinden su propia rentabilidad ponderada por tiempo — lo que ganó cada peso que estuvo ahí, con tus elecciones incluidas (APV: sin su beneficio tributario ni la penalidad por retiro anticipado).",
+      "hint": "Cada peso pagado sobre la cuota mínima (lo extra de cada pago, y todo un prepago hecho fuera de una cuota, sus intereses incluidos), seguido hasta hoy de dos formas: prepagado, solo la parte que amortizó el crédito crece, a la tasa de la hipoteca, {{mortgage}}, los intereses que ahorra — los intereses de un prepago no valen nada en este lado; invertido el mismo día en la referencia, todo crece con ella. Δ = invertido − prepagado, y su % del valor prepagado; verde significa que invertir habría resultado mejor hasta ahora. Antes de impuestos en ambos lados. Tus portafolios rinden su propia rentabilidad ponderada por tiempo — lo que ganó cada peso que estuvo ahí, con tus elecciones incluidas (APV: sin su beneficio tributario ni la penalidad por retiro anticipado).",
       "compareWith": "Invertido en",
       "colDate": "Fecha",
       "colCuota": "Pago",
