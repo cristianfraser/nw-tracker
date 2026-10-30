@@ -73,7 +73,8 @@ export function registerIngestRoutes(app: express.Express, options: IngestRoutes
       refuse(404, { error: "unknown_ingest_run", message: `No ingest run ${String(req.params.id)}` });
       return;
     }
-    if (run.status !== "requested" && run.status !== "lost") {
+    // not_started: the service took a request whose answer was lost, and its job went back to the queue.
+    if (run.status !== "requested" && run.status !== "lost" && run.status !== "not_started") {
       refuse(409, { error: "run_not_waiting", message: `Ingest run ${id} is ${run.status}, not waiting for a report` });
       return;
     }

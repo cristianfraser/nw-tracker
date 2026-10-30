@@ -8,6 +8,7 @@ import {
 import { chileWallClockAt } from "./chileDate.js";
 import { recordDailyRun, recordHourlyEmailRun, type DailyRunStep } from "./dailyRunLog.js";
 import { db } from "./db.js";
+import { completeJob, jobById } from "./jobQueue.js";
 
 /**
  * The `ingest_runs` table (migration 200): the scheduler's memory of each slot. Instants are
@@ -36,9 +37,15 @@ export type IngestRunRow = {
   santander_state_json: string | null;
   activity: number | null;
   dry_run: number | null;
+  /** The queue job that ran it (docs/job-queue-plan.md); null for runs from before the queue. */
+  job_id: number | null;
 };
 
-/** A run that has not reported back after this long is written off as `lost`. */
+/**
+ * A run from before the queue (no `job_id`) that has not reported back after this long is written
+ * off as `lost`. Runs of the queue are written off when their job's lease runs out
+ * (`jobQueueExecutor.ts`).
+ */
 export const INGEST_RUN_TIMEOUT_MS: Readonly<Record<IngestRunKind, number>> = {
   nightly: 3 * 3_600_000,
   hourly: 90 * 60_000,
@@ -48,6 +55,14 @@ function parseInstant(value: string | null | undefined): Date | null {
   if (!value) return null;
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Latest slot a queue job of `kind` was enqueued for (any status: a queued job waits, a cancelled one was meant to skip). */
+export function lastJobSlot(kind: IngestRunKind): Date | null {
+  const row = db
+    .prepare(`SELECT MAX(json_extract(payload_json, '$.slot')) AS s FROM jobs WHERE kind = ?`)
+    .get(`ingest.${kind}`) as { s: string | null };
+  return parseInstant(row.s);
 }
 
 /** Latest slot a row answers: any status for the hourly poll, anything that started for the nightly. */
@@ -70,10 +85,10 @@ export function inFlightIngestRun(): IngestRunRow | null {
   );
 }
 
-/** Write off requested runs older than their kind's timeout. Returns the rows written off. */
+/** Write off requested runs from before the queue older than their kind's timeout. Returns the rows written off. */
 export function sweepLostIngestRuns(now: Date): IngestRunRow[] {
   const lost: IngestRunRow[] = [];
-  for (const row of db.prepare(`SELECT * FROM ingest_runs WHERE status = 'requested'`).all() as IngestRunRow[]) {
+  for (const row of db.prepare(`SELECT * FROM ingest_runs WHERE status = 'requested' AND job_id IS NULL`).all() as IngestRunRow[]) {
     const requested = parseInstant(row.requested_at);
     if (requested && now.getTime() - requested.getTime() > INGEST_RUN_TIMEOUT_MS[row.kind]) {
       const error = `no report within ${INGEST_RUN_TIMEOUT_MS[row.kind] / 60_000} min`;
@@ -86,27 +101,43 @@ export function sweepLostIngestRuns(now: Date): IngestRunRow[] {
   return lost;
 }
 
-/** Claim a slot as requested (a retry of a slot that never started reuses its row). */
+/**
+ * The ingest run of queue job `jobId`'s slot, as requested (a retry of a slot that never started —
+ * the service busy or silent — reuses its row, so the service sees the same run id again).
+ */
 export function markIngestRunRequested(
   kind: IngestRunKind,
   slot: Date,
   reason: string,
   now: Date,
-  santanderFetch: IngestRunRequest["santander_fetch"] = null
+  santanderFetch: IngestRunRequest["santander_fetch"],
+  jobId: number
 ): number {
   const row = db
     .prepare(
-      `INSERT INTO ingest_runs (kind, slot_at, status, reason, requested_at, santander_request, santander_request_reason)
-       VALUES (?, ?, 'requested', ?, ?, ?, ?)
+      `INSERT INTO ingest_runs (kind, slot_at, status, reason, requested_at, santander_request, santander_request_reason, job_id)
+       VALUES (?, ?, 'requested', ?, ?, ?, ?, ?)
        ON CONFLICT (kind, slot_at) DO UPDATE SET status = 'requested', reason = excluded.reason,
          requested_at = excluded.requested_at, error = NULL, santander_request = excluded.santander_request,
-         santander_request_reason = excluded.santander_request_reason
+         santander_request_reason = excluded.santander_request_reason, job_id = excluded.job_id
        RETURNING id`
     )
-    .get(kind, slot.toISOString(), reason, now.toISOString(), santanderFetch?.mode ?? null, santanderFetch?.reason ?? null) as {
+    .get(kind, slot.toISOString(), reason, now.toISOString(), santanderFetch?.mode ?? null, santanderFetch?.reason ?? null, jobId) as {
     id: number;
   };
   return row.id;
+}
+
+/**
+ * Queue job `jobId` was written off as lost (its worker stopped heartbeating): its run is lost too,
+ * recorded as a failed run like any other. Returns the run, or null when the job had none in flight.
+ */
+export function markIngestRunLostForJob(jobId: number, error: string): IngestRunRow | null {
+  const row = db.prepare(`SELECT * FROM ingest_runs WHERE job_id = ? AND status = 'requested'`).get(jobId) as IngestRunRow | undefined;
+  if (!row) return null;
+  db.prepare(`UPDATE ingest_runs SET status = 'lost', error = ? WHERE id = ?`).run(error, row.id);
+  recordRunMessage(row.kind, [{ label: `${row.kind} run — ${error}`, ok: false, seconds: null }], false);
+  return { ...row, status: "lost", error };
 }
 
 /** The feeder's bank facts from the latest run that reported them. */
@@ -155,11 +186,12 @@ export function markIngestRunNotStarted(id: number, error: string): void {
   db.prepare(`UPDATE ingest_runs SET status = 'not_started', error = ? WHERE id = ?`).run(error, id);
 }
 
-export function markIngestRunSkipped(kind: IngestRunKind, slot: Date, reason: string): void {
+export function markIngestRunSkipped(kind: IngestRunKind, slot: Date, reason: string, jobId: number | null = null): void {
   db.prepare(
-    `INSERT INTO ingest_runs (kind, slot_at, status, reason) VALUES (?, ?, 'skipped', ?)
-     ON CONFLICT (kind, slot_at) DO UPDATE SET status = 'skipped', reason = excluded.reason`
-  ).run(kind, slot.toISOString(), reason);
+    `INSERT INTO ingest_runs (kind, slot_at, status, reason, job_id) VALUES (?, ?, 'skipped', ?, ?)
+     ON CONFLICT (kind, slot_at) DO UPDATE SET status = 'skipped', reason = excluded.reason, job_id = excluded.job_id
+     WHERE ingest_runs.status IN ('skipped', 'not_started')`
+  ).run(kind, slot.toISOString(), reason, jobId);
 }
 
 export function ingestRunById(id: number): IngestRunRow | null {
@@ -204,6 +236,21 @@ export function completeIngestRun(id: number, completion: IngestRunCompletion): 
       const steps: DailyRunStep[] =
         completion.steps ?? [{ label: `runner reported no steps (exit ${completion.exit_code})`, ok: false, seconds: null }];
       recordRunMessage(row.kind, steps, completion.activity);
+    }
+    // The run's queue job ends with it (a job already finished — a duplicate report — is left alone).
+    if (row.job_id != null) {
+      const job = jobById(row.job_id);
+      if (job && (job.status === "running" || job.status === "lost" || job.status === "queued")) {
+        completeJob(
+          row.job_id,
+          {
+            ok,
+            result: { ingest_run_id: id, exit_code: completion.exit_code, failed_steps: failedSteps, dry_run: completion.dry_run },
+            error: ok ? null : `exit ${completion.exit_code}, ${failedSteps ?? "?"} failed step(s)`,
+          },
+          new Date()
+        );
+      }
     }
   })();
   return ingestRunById(id)!;

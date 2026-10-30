@@ -23,7 +23,6 @@ function inputs(over: Partial<IngestSchedulerInputs>): IngestSchedulerInputs {
     lastNightlySlot: NIGHTLY_0929,
     lastHourlySlot: at("2026-09-30T17:30:00Z"),
     lastDailyRunAt: at("2026-09-30T01:20:00Z"),
-    inFlight: null,
     ...over,
   };
 }
@@ -69,10 +68,10 @@ describe("decideIngestRun", () => {
     const d = decideIngestRun(inputs({ now: wake, lastHourlySlot: at("2026-09-30T23:30:00Z") }));
     expect(d).toMatchObject({ action: "request", kind: "nightly", slot: NIGHTLY_0930 });
     expect(d.action === "request" && d.reason).toMatch(/381 min late/);
-    // Once that slot has a row, the hour's poll is next — and skipped while the nightly runs.
+    // Once that slot is queued, the hour's poll is next (it waits in the queue behind the nightly).
     expect(
-      decideIngestRun(inputs({ now: wake, lastNightlySlot: NIGHTLY_0930, lastHourlySlot: at("2026-09-30T23:30:00Z"), inFlight: { kind: "nightly" } }))
-    ).toMatchObject({ action: "skip", kind: "hourly", slot: at("2026-10-01T06:30:00Z") });
+      decideIngestRun(inputs({ now: wake, lastNightlySlot: NIGHTLY_0930, lastHourlySlot: at("2026-09-30T23:30:00Z") }))
+    ).toMatchObject({ action: "request", kind: "hourly", slot: at("2026-10-01T06:30:00Z") });
   });
 
   it("counts a daily run recorded after the slot as its answer (a LaunchAgent or manual run)", () => {
@@ -89,12 +88,6 @@ describe("decideIngestRun", () => {
     expect(
       decideIngestRun(inputs({ now: at("2026-10-01T01:00:30Z"), lastDailyRunAt: at("2026-09-30T15:55:00Z") }))
     ).toMatchObject({ action: "request", kind: "nightly" });
-  });
-
-  it("makes the nightly wait for a run in flight", () => {
-    expect(
-      decideIngestRun(inputs({ now: at("2026-10-01T01:00:30Z"), inFlight: { kind: "hourly" } }))
-    ).toMatchObject({ action: "wait", kind: "nightly", reason: "a hourly run is in flight" });
   });
 
   it("starts with the latest hourly slot when no hourly has run yet", () => {

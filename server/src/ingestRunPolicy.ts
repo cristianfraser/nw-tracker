@@ -12,9 +12,9 @@ import { DAILY_RUN_REPEAT_WINDOW_MINUTES } from "./dailyRunLog.js";
  *   already answered when a run requested for it exists or any daily run was recorded after it
  *   (a manual run, or a LaunchAgent run before this scheduler took over), and is skipped when a
  *   run finished less than an hour ago (a manual run just before 22:00).
- * - The hourly e-mail poll answers the :30 slot of every hour; while another run is in flight it
- *   skips that hour, as the shell poll skipped behind the nightly.
- * - The nightly waits for a run in flight instead of skipping.
+ * - The hourly e-mail poll answers the :30 slot of every hour.
+ * - A slot answered here is queued (docs/job-queue-plan.md): a run in flight makes it wait in the
+ *   queue, never skipped — an hourly that waits past the next slot is absorbed by it.
  */
 
 export const NIGHTLY_SLOT_HOUR_CHILE = 22;
@@ -44,20 +44,17 @@ export function nextIngestSlotsAfter(now: Date): Record<IngestRunKind, Date> {
 
 export type IngestSchedulerInputs = {
   now: Date;
-  /** Latest nightly slot a row answers (requested, finished or skipped — not one that never started). */
+  /** Latest nightly slot a row answers (requested, finished or skipped — not one that never started) or a queue job was enqueued for. */
   lastNightlySlot: Date | null;
-  /** Latest hourly slot a row answers, whatever became of it. */
+  /** Latest hourly slot a row answers or a queue job was enqueued for, whatever became of it. */
   lastHourlySlot: Date | null;
   /** The most recent daily run recorded in app messages (any outcome, any trigger). */
   lastDailyRunAt: Date | null;
-  /** A run this scheduler requested that has not reported back. */
-  inFlight: { kind: IngestRunKind } | null;
 };
 
 export type IngestSchedulerDecision =
   | { action: "request"; kind: IngestRunKind; slot: Date; reason: string }
   | { action: "skip"; kind: IngestRunKind; slot: Date; reason: string }
-  | { action: "wait"; kind: IngestRunKind; slot: Date; reason: string }
   | { action: "idle" };
 
 function minutes(ms: number): number {
@@ -86,17 +83,11 @@ export function decideIngestRun(inputs: IngestSchedulerInputs): IngestSchedulerD
         reason: `a daily run finished ${minutes(sinceLast)} min ago`,
       };
     }
-    if (inputs.inFlight) {
-      return { action: "wait", kind: "nightly", slot: nightly, reason: `a ${inputs.inFlight.kind} run is in flight` };
-    }
     return { action: "request", kind: "nightly", slot: nightly, reason: `22:00 slot, ${slotLabel(nightly, now)}` };
   }
 
   const hourly = hourlySlotAtOrBefore(now);
   if (inputs.lastHourlySlot == null || inputs.lastHourlySlot.getTime() < hourly.getTime()) {
-    if (inputs.inFlight) {
-      return { action: "skip", kind: "hourly", slot: hourly, reason: `a ${inputs.inFlight.kind} run is in flight` };
-    }
     return { action: "request", kind: "hourly", slot: hourly, reason: `:30 slot, ${slotLabel(hourly, now)}` };
   }
   return { action: "idle" };

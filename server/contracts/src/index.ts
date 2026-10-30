@@ -31,3 +31,4 @@ export * from "./kinds/mortgageSheetPayments.js";
 export * from "./kinds/utilityBill.js";
 export * from "./pastedListing.js";
 export * from "./tasks.js";
+export * from "./jobs.js";
