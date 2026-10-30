@@ -16,16 +16,14 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { ImapFlow } from "imapflow";
 import type { FetchMessageObject } from "imapflow";
 import { execFileSync } from "node:child_process";
 import { loadBankConfig } from "../config.js";
-import { readKeychainSecret } from "../keychain.js";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 import { hasDocument, recordDocument } from "../documentLedger.js";
-import { loadBrokerEmailConfig } from "./fetch.js";
 import { mailDocumentLedgerKey, normalizeMailSubject, pdfAttachmentsFromStructure, safeAttachmentName } from "./santanderDocs.js";
+import { withImapSession } from "./imapSession.js";
 
 export const AFC_CARTOLA_SENDER = "cartolasafc@afc.cl";
 /** Three a year; 45 days covers one missed cartola plus mail lag. */
@@ -66,8 +64,6 @@ export type AfcCartolaFetchResult = {
 };
 
 export async function fetchAfcCartolaEmails(opts?: { windowDays?: number; dryRun?: boolean }): Promise<AfcCartolaFetchResult> {
-  const config = loadBrokerEmailConfig();
-  const password = readKeychainSecret(config.keychain_service, config.address);
   const pdfPassword = afcCartolaPassword(loadBankConfig("afc").rut);
   const windowDays = opts?.windowDays ?? DEFAULT_WINDOW_DAYS;
   const since = new Date(Date.now() - windowDays * 86_400_000);
@@ -76,9 +72,7 @@ export async function fetchAfcCartolaEmails(opts?: { windowDays?: number; dryRun
 
   const result: AfcCartolaFetchResult = { saved: [], skipped: [], errors: [] };
   const dir = dryRun ? null : ensureDir(resolveAfcCartolasDir());
-  const client = new ImapFlow({ host: config.host, port: config.port, secure: true, auth: { user: config.address, pass: password }, logger: false });
-  await client.connect();
-  try {
+  await withImapSession("AFC cartolas", async (client) => {
     const lock = await client.getMailboxLock("INBOX");
     try {
       const uids = await client.search({ from: AFC_CARTOLA_SENDER, since });
@@ -131,9 +125,7 @@ export async function fetchAfcCartolaEmails(opts?: { windowDays?: number; dryRun
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => undefined);
-  }
+  });
   for (const s of result.saved) log(`e-mail: AFC cartola ${s.key} → ${s.file}`);
   const already = result.skipped.filter((s) => s.reason === "already fetched").length;
   for (const s of result.skipped) if (s.reason !== "already fetched") log(`e-mail: AFC cartola ${s.key} skipped (${s.reason})`);

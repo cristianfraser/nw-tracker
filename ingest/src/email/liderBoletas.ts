@@ -16,14 +16,13 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { ImapFlow } from "imapflow";
 import type { FetchMessageObject } from "imapflow";
-import { readKeychainSecret } from "../keychain.js";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 import { hasDocument, recordDocument } from "../documentLedger.js";
-import { loadBrokerEmailConfig, mimeBodyToText } from "./fetch.js";
+import { mimeBodyToText } from "./fetch.js";
 import { normalizeMailSubject, pdfAttachmentsFromStructure, htmlBodyPartFromStructure } from "./santanderDocs.js";
+import { withImapSession } from "./imapSession.js";
 
 export const LIDER_BOLETA_SENDER = "contacto@info.lider.cl";
 
@@ -57,8 +56,6 @@ export async function fetchLiderBoletaEmails(opts?: {
   allHistory?: boolean;
   dryRun?: boolean;
 }): Promise<LiderBoletaFetchResult> {
-  const config = loadBrokerEmailConfig();
-  const password = readKeychainSecret(config.keychain_service, config.address);
   const windowDays = opts?.allHistory ? ALL_HISTORY_DAYS : (opts?.windowDays ?? DEFAULT_WINDOW_DAYS);
   const since = new Date(Date.now() - windowDays * 86_400_000);
   const dryRun = opts?.dryRun === true;
@@ -66,16 +63,7 @@ export async function fetchLiderBoletaEmails(opts?: {
   logStep(`e-mail — Lider boletas since ${since.toISOString().slice(0, 10)}${dryRun ? " (dry run)" : ""}`);
 
   const result: LiderBoletaFetchResult = { saved: [], skipped: [] };
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: true,
-    auth: { user: config.address, pass: password },
-    logger: false,
-  });
-
-  await client.connect();
-  try {
+  await withImapSession("Lider boletas", async (client) => {
     const lock = await client.getMailboxLock("INBOX");
     try {
       const uids = await client.search({ from: LIDER_BOLETA_SENDER, since });
@@ -153,9 +141,7 @@ export async function fetchLiderBoletaEmails(opts?: {
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => undefined);
-  }
+  });
 
   for (const s of result.saved) log(`e-mail: boleta ${s.key}`);
   const alreadyCount = result.skipped.filter((s) => s.reason === "already fetched").length;

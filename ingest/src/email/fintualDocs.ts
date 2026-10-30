@@ -23,19 +23,17 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { ImapFlow } from "imapflow";
 import type { FetchMessageObject } from "imapflow";
-import { readKeychainSecret } from "../keychain.js";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 import { hasDocument, recordDocument } from "../documentLedger.js";
-import { loadBrokerEmailConfig } from "./fetch.js";
 import {
   mailDocumentLedgerKey,
   normalizeMailSubject,
   pdfAttachmentsFromStructure,
   safeAttachmentName,
 } from "./santanderDocs.js";
+import { withImapSession } from "./imapSession.js";
 
 export const FINTUAL_MAIL_SENDER = "hola@fintual.com";
 
@@ -90,8 +88,6 @@ export async function fetchFintualAccionesDocuments(opts?: {
   /** List what would be downloaded without writing anything or touching the ledger. */
   dryRun?: boolean;
 }): Promise<FintualAccionesFetchResult> {
-  const config = loadBrokerEmailConfig();
-  const password = readKeychainSecret(config.keychain_service, config.address);
   const windowDays = opts?.windowDays ?? DEFAULT_WINDOW_DAYS;
   const since = new Date(Date.now() - windowDays * 86_400_000);
   const dryRun = opts?.dryRun === true;
@@ -101,16 +97,7 @@ export async function fetchFintualAccionesDocuments(opts?: {
   const result: FintualAccionesFetchResult = { saved: [], skipped: [], errors: [] };
   const root = dryRun ? null : ensureDir(resolveFintualAccionesDir());
 
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: true,
-    auth: { user: config.address, pass: password },
-    logger: false,
-  });
-
-  await client.connect();
-  try {
+  await withImapSession("Fintual Acciones documents", async (client) => {
     const lock = await client.getMailboxLock("INBOX");
     try {
       // `subject` narrows server-side to the Acciones mails; the notification mails share the
@@ -173,9 +160,7 @@ export async function fetchFintualAccionesDocuments(opts?: {
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => undefined);
-  }
+  });
 
   for (const s of result.saved) log(`e-mail: fintual ${s.kind} ${s.key} → ${s.file}`);
   const alreadyCount = result.skipped.filter((s) => s.reason === "already fetched").length;

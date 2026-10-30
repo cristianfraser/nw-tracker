@@ -25,19 +25,17 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { ImapFlow } from "imapflow";
 import type { FetchMessageObject } from "imapflow";
-import { readKeychainSecret } from "../keychain.js";
 import { ensureDir, resolveInboxDir } from "../paths.js";
 import { log, logStep } from "../log.js";
 import { hasDocument, recordDocument } from "../documentLedger.js";
-import { loadBrokerEmailConfig } from "./fetch.js";
 import {
   mailDocumentLedgerKey,
   normalizeMailSubject,
   pdfAttachmentsFromStructure,
   safeAttachmentName,
 } from "./santanderDocs.js";
+import { withImapSession } from "./imapSession.js";
 
 export const LIDER_STATEMENT_SENDER = "estadodecuenta@correo.tarjetaliderbci.cl";
 
@@ -71,8 +69,6 @@ export async function fetchLiderStatementEmails(opts?: {
   /** List what would be downloaded without writing anything or touching the ledger. */
   dryRun?: boolean;
 }): Promise<LiderStatementFetchResult> {
-  const config = loadBrokerEmailConfig();
-  const password = readKeychainSecret(config.keychain_service, config.address);
   const windowDays = opts?.windowDays ?? DEFAULT_WINDOW_DAYS;
   const since = new Date(Date.now() - windowDays * 86_400_000);
   const dryRun = opts?.dryRun === true;
@@ -82,16 +78,7 @@ export async function fetchLiderStatementEmails(opts?: {
   const result: LiderStatementFetchResult = { saved: [], skipped: [], errors: [] };
   const inbox = dryRun ? null : ensureDir(resolveInboxDir());
 
-  const client = new ImapFlow({
-    host: config.host,
-    port: config.port,
-    secure: true,
-    auth: { user: config.address, pass: password },
-    logger: false,
-  });
-
-  await client.connect();
-  try {
+  await withImapSession("Lider statement", async (client) => {
     const lock = await client.getMailboxLock("INBOX");
     try {
       const uids = await client.search({ from: LIDER_STATEMENT_SENDER, since });
@@ -152,9 +139,7 @@ export async function fetchLiderStatementEmails(opts?: {
     } finally {
       lock.release();
     }
-  } finally {
-    await client.logout().catch(() => undefined);
-  }
+  });
 
   for (const s of result.saved) log(`e-mail: lider statement ${s.key} → ${s.file}`);
   const alreadyCount = result.skipped.filter((s) => s.reason === "already fetched").length;
