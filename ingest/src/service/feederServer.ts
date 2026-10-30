@@ -4,6 +4,7 @@ import {
   FEEDER_PARSE_FORMATS,
   FEEDER_PARSE_PATH,
   FEEDER_RUNS_PATH,
+  JOB_HEARTBEAT_INTERVAL_MS,
   feederParseRequestSchema,
   ingestRunRequestSchema,
   type FeederParseFormat,
@@ -23,6 +24,10 @@ import {
 export type FeederDeps = {
   run: (request: IngestRunRequest) => Promise<IngestRunCompletion>;
   report: (runId: number, completion: IngestRunCompletion) => Promise<void>;
+  /** Tell the server the run's queue job is alive (docs/job-queue-plan.md); a failure is logged, never fatal. */
+  heartbeat?: (jobId: number) => Promise<void>;
+  /** How often to heartbeat (default `JOB_HEARTBEAT_INTERVAL_MS`). */
+  heartbeatMs?: number;
   /** A runner this service did not start (by hand, or a LaunchAgent still installed). */
   runningOutside: () => boolean;
   /** The bank facts every report carries, also when the run could not start. */
@@ -68,8 +73,21 @@ export function createFeederServer(deps: FeederDeps): { server: http.Server; cur
   // 30-minute guard).
   const ran = new Set<number>();
 
+  /** Heartbeat the run's job until `stop` is called; the server writes a silent job off as lost. */
+  function heartbeatWhileRunning(request: IngestRunRequest): () => void {
+    const jobId = request.job_id;
+    if (jobId == null || !deps.heartbeat) return () => {};
+    const beat = deps.heartbeat;
+    const timer = setInterval(() => {
+      beat(jobId).catch((err) => deps.log(`run ${request.run_id}: heartbeat for job ${jobId} failed — ${err instanceof Error ? err.message : String(err)}`));
+    }, deps.heartbeatMs ?? JOB_HEARTBEAT_INTERVAL_MS);
+    timer.unref?.();
+    return () => clearInterval(timer);
+  }
+
   async function execute(request: IngestRunRequest): Promise<void> {
     let completion: IngestRunCompletion;
+    const stopHeartbeat = heartbeatWhileRunning(request);
     try {
       completion = await deps.run(request);
     } catch (err) {
@@ -85,6 +103,8 @@ export function createFeederServer(deps: FeederDeps): { server: http.Server; cur
         santander: null,
         santander_state: deps.santanderState(),
       };
+    } finally {
+      stopHeartbeat();
     }
     current = null;
     deps.log(`run ${request.run_id} (${request.kind}) finished — exit ${completion.exit_code}`);

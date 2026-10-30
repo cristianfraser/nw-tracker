@@ -35,6 +35,7 @@ import { registerMarketRoutes } from "./routes/market.js";
 import { registerFlowsRoutes } from "./routes/flows.js";
 import { registerSyncRoutes } from "./routes/sync.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
+import { registerJobRoutes } from "./routes/jobs.js";
 import { startIngestRunScheduler } from "./ingestRunScheduler.js";
 import { startJobQueueExecutor } from "./jobQueueExecutor.js";
 
@@ -106,6 +107,7 @@ registerMarketRoutes(app);
 registerFlowsRoutes(app);
 registerSyncRoutes(app);
 registerIngestRoutes(app);
+registerJobRoutes(app);
 
 if (serveClientDistEnabled()) {
   registerClientDistStatic(app);

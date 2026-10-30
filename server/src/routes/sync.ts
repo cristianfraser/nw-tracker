@@ -26,7 +26,6 @@ import { INGEST_RUN_KINDS, type IngestRunKind } from "nw-tracker-contracts";
 import { inFlightIngestRun, latestStartedIngestRun, type IngestRunRow } from "../ingestRuns.js";
 import { ingestSchedulerEnabled, startManualIngestRun } from "../ingestRunScheduler.js";
 import { nextIngestSlotsAfter } from "../ingestRunPolicy.js";
-import { asyncHandler } from "./shared.js";
 
 function ingestRunSummary(row: IngestRunRow | null) {
   if (!row) return null;
@@ -89,23 +88,21 @@ app.get("/api/import-sync/ingest-runs", (_req, res) => {
   res.json(ingestRunsStatusPayload(new Date()));
 });
 
-// Run the hourly poll or the nightly now (a mail that just landed), instead of waiting for its slot.
-app.post(
-  "/api/import-sync/ingest-runs",
-  asyncHandler(async (req, res) => {
-    const kind = typeof req.body?.kind === "string" ? req.body.kind : "";
-    if (!(INGEST_RUN_KINDS as readonly string[]).includes(kind)) {
-      res.status(400).json({ error: `Unknown ingest run kind: ${kind || "(none)"}` });
-      return;
-    }
-    const outcome = await startManualIngestRun(kind as IngestRunKind, new Date());
-    if (outcome.status === "refused") {
-      res.status(outcome.reason === "unreachable" ? 503 : 409).json({ error: outcome.message, reason: outcome.reason });
-      return;
-    }
-    res.status(202).json(ingestRunsStatusPayload(new Date()));
-  })
-);
+// Run the hourly poll or the nightly now (a mail that just landed): queued at once, started as
+// soon as the ingest service is free.
+app.post("/api/import-sync/ingest-runs", (req, res) => {
+  const kind = typeof req.body?.kind === "string" ? req.body.kind : "";
+  if (!(INGEST_RUN_KINDS as readonly string[]).includes(kind)) {
+    res.status(400).json({ error: `Unknown ingest run kind: ${kind || "(none)"}` });
+    return;
+  }
+  const outcome = startManualIngestRun(kind as IngestRunKind, new Date());
+  if (outcome.status === "refused") {
+    res.status(409).json({ error: outcome.message, reason: outcome.reason });
+    return;
+  }
+  res.status(202).json(ingestRunsStatusPayload(new Date()));
+});
 
 app.get("/api/import-sync/document-coverage", (_req, res) => {
   res.json(buildImportSyncDocumentCoveragePayload());
