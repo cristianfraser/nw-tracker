@@ -1573,6 +1573,132 @@
         "en": "Starting…",
         "es": "Iniciando…"
       }
+    },
+    "jobs": {
+      "title": {
+        "en": "Queue",
+        "es": "Cola"
+      },
+      "summary": {
+        "en": "{{running}} running, {{queued}} waiting.",
+        "es": "{{running}} en curso, {{queued}} en espera."
+      },
+      "empty": {
+        "en": "Nothing has gone through the queue yet.",
+        "es": "Todavía no ha pasado nada por la cola."
+      },
+      "colJob": {
+        "en": "Job",
+        "es": "Trabajo"
+      },
+      "colStatus": {
+        "en": "Status",
+        "es": "Estado"
+      },
+      "colWhen": {
+        "en": "When",
+        "es": "Cuándo"
+      },
+      "colDetail": {
+        "en": "Detail",
+        "es": "Detalle"
+      },
+      "kinds": {
+        "ingest_nightly": {
+          "en": "Nightly run",
+          "es": "Corrida nocturna"
+        },
+        "ingest_hourly": {
+          "en": "E-mail poll",
+          "es": "Revisión de correo"
+        },
+        "deploy": {
+          "en": "Deploy",
+          "es": "Despliegue"
+        }
+      },
+      "resources": {
+        "ingest-service": {
+          "en": "the ingest service",
+          "es": "el servicio de ingesta"
+        },
+        "server-restart": {
+          "en": "a server restart",
+          "es": "un reinicio del servidor"
+        }
+      },
+      "status": {
+        "queued": {
+          "en": "waiting",
+          "es": "en espera"
+        },
+        "running": {
+          "en": "running",
+          "es": "en curso"
+        },
+        "done": {
+          "en": "ok",
+          "es": "ok"
+        },
+        "failed": {
+          "en": "failed",
+          "es": "falló"
+        },
+        "cancelled": {
+          "en": "cancelled",
+          "es": "cancelado"
+        },
+        "superseded": {
+          "en": "superseded",
+          "es": "reemplazado"
+        },
+        "lost": {
+          "en": "no heartbeat",
+          "es": "sin señal"
+        }
+      },
+      "waiting": {
+        "next": {
+          "en": "Starts on the next tick.",
+          "es": "Parte en la próxima revisión."
+        },
+        "notBefore": {
+          "en": "Not before {{time}}.",
+          "es": "No antes de {{time}}."
+        },
+        "resource": {
+          "en": "Waiting for {{resource}}, held by {{kind}} #{{id}}.",
+          "es": "Esperando {{resource}}, ocupado por {{kind}} #{{id}}."
+        },
+        "exclusive": {
+          "en": "{{kind}} #{{id}} is restarting the server.",
+          "es": "{{kind}} #{{id}} está reiniciando el servidor."
+        },
+        "draining": {
+          "en": "The queue is clearing for {{kind}} #{{id}}.",
+          "es": "La cola se está vaciando para {{kind}} #{{id}}."
+        }
+      },
+      "runningDetail": {
+        "en": "{{worker}}: last heartbeat {{heartbeat}}, lease until {{lease}}.",
+        "es": "{{worker}}: última señal {{heartbeat}}, plazo hasta {{lease}}."
+      },
+      "cancel": {
+        "en": "Cancel",
+        "es": "Cancelar"
+      },
+      "cancelPending": {
+        "en": "Cancelling…",
+        "es": "Cancelando…"
+      },
+      "retry": {
+        "en": "Retry",
+        "es": "Reintentar"
+      },
+      "retryPending": {
+        "en": "Queuing…",
+        "es": "Encolando…"
+      }
     }
   },
   "detail": {

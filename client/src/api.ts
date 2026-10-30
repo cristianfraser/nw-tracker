@@ -740,6 +740,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ kind }),
     }),
+  jobQueue: () => j<import("./types").JobQueueResponse>("/api/import-sync/jobs"),
+  cancelJob: (id: number) => j<import("./types").JobQueueResponse>(`/api/import-sync/jobs/${id}/cancel`, { method: "POST" }),
+  retryJob: (id: number) => j<import("./types").JobQueueResponse>(`/api/import-sync/jobs/${id}/retry`, { method: "POST" }),
   importSyncDocumentCoverage: () =>
     j<import("./types").ImportSyncDocumentCoverageResponse>(
       "/api/import-sync/document-coverage"

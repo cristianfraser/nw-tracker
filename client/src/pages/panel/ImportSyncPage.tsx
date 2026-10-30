@@ -3,11 +3,13 @@ import { MessagesTable } from "../../components/messages/MessagesTable";
 import { AvailableDocumentsTable } from "../../components/sync/AvailableDocumentsTable";
 import { GenericUniqueMerchantsPanel } from "../../components/sync/GenericUniqueMerchantsPanel";
 import { IngestRunsPanel } from "../../components/sync/IngestRunsPanel";
+import { JobQueuePanel } from "../../components/sync/JobQueuePanel";
 import { SyncLogStatusPanel } from "../../components/sync/SyncLogStatusPanel";
 import {
   useGenericUniqueMerchants,
   useImportSyncDocumentCoverage,
   useIngestRunsStatus,
+  useJobQueue,
   useMessages,
   useSyncStatus,
 } from "../../queries/hooks";
@@ -25,6 +27,7 @@ export function ImportSyncPage() {
     error: ingestRunsError,
     isPending: ingestRunsPending,
   } = useIngestRunsStatus();
+  const { data: jobQueue, error: jobQueueError, isPending: jobQueuePending } = useJobQueue();
   const {
     data: coverage,
     error: coverageError,
@@ -44,11 +47,13 @@ export function ImportSyncPage() {
         ? syncStatusError.message
         : ingestRunsError instanceof Error
           ? ingestRunsError.message
-          : coverageError instanceof Error
+          : jobQueueError instanceof Error
+            ? jobQueueError.message
+            : coverageError instanceof Error
             ? coverageError.message
             : genericMerchantsError instanceof Error
               ? genericMerchantsError.message
-              : logsError || syncStatusError || ingestRunsError || coverageError || genericMerchantsError
+              : logsError || syncStatusError || ingestRunsError || jobQueueError || coverageError || genericMerchantsError
                 ? t("common.loadFailed")
                 : null;
 
@@ -60,6 +65,8 @@ export function ImportSyncPage() {
     <>
       <h2 className="flow-section-title">{t("importSync.ingestRunsTitle")}</h2>
       <IngestRunsPanel status={ingestRuns} loading={ingestRunsPending} />
+      <h3>{t("importSync.jobs.title")}</h3>
+      <JobQueuePanel queue={jobQueue} loading={jobQueuePending} />
 
       <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
         {t("importSync.syncLogTitle")}

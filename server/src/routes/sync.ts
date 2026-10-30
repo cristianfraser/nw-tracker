@@ -26,6 +26,7 @@ import { INGEST_RUN_KINDS, type IngestRunKind } from "nw-tracker-contracts";
 import { inFlightIngestRun, latestStartedIngestRun, type IngestRunRow } from "../ingestRuns.js";
 import { ingestSchedulerEnabled, startManualIngestRun } from "../ingestRunScheduler.js";
 import { nextIngestSlotsAfter } from "../ingestRunPolicy.js";
+import { buildJobQueuePayload, cancelQueuedJob, retryJob, type JobActionOutcome } from "../jobQueueView.js";
 
 function ingestRunSummary(row: IngestRunRow | null) {
   if (!row) return null;
@@ -103,6 +104,23 @@ app.post("/api/import-sync/ingest-runs", (req, res) => {
   }
   res.status(202).json(ingestRunsStatusPayload(new Date()));
 });
+
+// The job queue (docs/job-queue-plan.md): running, waiting (and why), recent; cancel a queued job, retry a failed run.
+app.get("/api/import-sync/jobs", (_req, res) => {
+  res.json(buildJobQueuePayload(new Date()));
+});
+
+const jobAction = (action: (id: number, now: Date) => JobActionOutcome) => (req: express.Request, res: express.Response) => {
+  const id = Number(req.params.id);
+  const outcome = Number.isInteger(id) && id > 0 ? action(id, new Date()) : ({ ok: false, status: 404, message: `No job ${req.params.id}` } as const);
+  if (!outcome.ok) {
+    res.status(outcome.status).json({ error: outcome.message });
+    return;
+  }
+  res.json(buildJobQueuePayload(new Date()));
+};
+app.post("/api/import-sync/jobs/:id/cancel", jobAction(cancelQueuedJob));
+app.post("/api/import-sync/jobs/:id/retry", jobAction(retryJob));
 
 app.get("/api/import-sync/document-coverage", (_req, res) => {
   res.json(buildImportSyncDocumentCoveragePayload());
