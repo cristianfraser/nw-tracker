@@ -36,6 +36,7 @@ import { registerFlowsRoutes } from "./routes/flows.js";
 import { registerSyncRoutes } from "./routes/sync.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
 import { startIngestRunScheduler } from "./ingestRunScheduler.js";
+import { startJobQueueExecutor } from "./jobQueueExecutor.js";
 
 seedNavTree();
 
@@ -129,5 +130,6 @@ app.listen(PORT, HOST, () => {
   startDbBackupScheduler();
   startDashboardCacheWarmer();
   startIngestRunScheduler();
+  startJobQueueExecutor();
 });
 
