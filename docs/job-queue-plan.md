@@ -1,6 +1,7 @@
 # Job queue plan
 
-Status: proposed (2026-10-30). Replaces the fixed time windows in `scripts/server-deploy.sh` and
+Status: phases 1–4 built (2026-10-30, branch `claude/job-queue-5bc32b`); 5–6 open — see
+«Implementation notes» at the end. Replaces the fixed time windows in `scripts/server-deploy.sh` and
 the slot bookkeeping in `ingest_runs` with one durable queue that every long-running job goes
 through.
 
@@ -159,3 +160,46 @@ ingest split did (`docs/ingest-split-plan.md`).
   priority rule in `pickNextJobs`, not a clock window in the script.
 - Cancelling a running job: only the ingest service could stop a run safely (between steps);
   phase 4 offers cancel for queued jobs only.
+
+## Implementation notes (phases 1–4, 2026-10-30)
+
+What was built differs from the sketch above in these points:
+
+- **Coalescing is per kind, not per slot.** `dedupe_key` is `ingest.hourly` / `ingest.nightly` /
+  `deploy`, so at most one queued job per kind; the slot lives in the payload and moves to the
+  newest on coalesce. The scheduler's «is this slot answered?» reads the newest slot any job of
+  that kind was enqueued for (`lastJobSlot`) besides `ingest_runs`. `stale_after` is set for a
+  scheduled hourly (slot + 1 h) and for a deploy (enqueue + 15 min, renewed by the agent every
+  run), never for a nightly or a manual run.
+- **`decideIngestRun` lost its `inFlight` input.** The nightly no longer «waits» and the hourly no
+  longer «skips»: both queue. The equivalent rules moved to job start (`coveredByDailyRun`): a
+  scheduled nightly with a daily run recorded after its slot or < 60 min ago, or a scheduled
+  hourly whose slot precedes the last daily run, is superseded instead of run.
+- **Drain.** `pickNextJobs` stops starting lower-priority jobs once a due `server-restart` job is
+  queued — without it the claim-based deploy (the executor never dispatches it; the agent polls)
+  could be starved by an hourly started between two agent polls.
+- **Claim is a short poll, not a long-poll:** the agent asks every 10 s for ~150 s, then leaves
+  the job queued; its next run (3 min) re-enqueues and asks again.
+- **Release ≠ attempt.** A job the ingest service did not take (busy, silent) goes back to the
+  queue with `not_before` = now + 30 s and the same run id on retry; `attempt` / `max_attempts`
+  exist but nothing retries automatically yet (all kinds `max_attempts` 1; Retry on the page
+  enqueues a new manual job).
+- **Wait reasons are structured** (`resource` + holder, `exclusive`, `draining`, `not_before`);
+  the page words them through i18n, the agent's log through `describeJobWait`.
+- **Shadow mode (phase 1) was short-lived**: phase 2 replaced it on the same branch;
+  `scripts/replay-job-queue.ts` is the replay check (in-memory, durations from `ingest_runs`).
+
+For phases 5–6:
+
+- A maintenance job needs a dispatcher in `jobQueueTick` (today: ingest kinds only; anything
+  else with `dispatch: "executor"` throws) or `dispatch: "claim"` plus a CLI worker that claims,
+  heartbeats and completes like the deploy agent — the claim/complete endpoints only accept
+  `deploy` today (`CLAIMED_JOB_KINDS`, `jobEnqueueRequestSchema` is deploy-only).
+- `db-maintenance` should conflict with `ingest-service` and `server-restart`: either give ingest
+  jobs `db-maintenance` too (shared resources are not modelled — every resource is exclusive),
+  or add read/write modes to resources.
+- Per-institution resources: the ingest service still runs one run at a time and answers 409
+  busy; splitting `ingest-service` needs the service to run several runs, which it does not.
+- Open question «a deploy right before 22:00»: not built. With the drain, a deploy claimed at
+  21:58 delays the nightly by the deploy's length (a few minutes); the replay of 2026-10-29 with
+  deploys at 21:50 and 22:20 showed the nightly on time and the second deploy 3 min late.

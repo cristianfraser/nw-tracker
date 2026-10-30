@@ -133,3 +133,42 @@ export interface IngestRunsStatusResponse {
   in_flight: IngestRunSummary | null;
   kinds: { kind: IngestRunKind; latest: IngestRunSummary | null; next_slot_at: string }[];
 }
+
+/** Why a queued job waits (server-decided; the page words it). */
+export type JobWaitView =
+  | { code: "not_before"; at: string }
+  | { code: "resource"; resource: string; held_by: { id: number; kind_slug: string } }
+  | { code: "exclusive"; held_by: { id: number; kind_slug: string } }
+  | { code: "draining"; for_job: { id: number; kind_slug: string } };
+
+export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled" | "superseded" | "lost";
+
+/** One job of the queue, as the import sync page shows it. */
+export interface JobView {
+  id: number;
+  kind_slug: string;
+  status: JobStatus;
+  reason: string;
+  enqueued_by: string;
+  resources: string[];
+  worker: string | null;
+  created_at: string;
+  not_before: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  heartbeat_at: string | null;
+  lease_expires_at: string | null;
+  error: string | null;
+  waiting: JobWaitView | null;
+  ingest_run: { id: number; status: string; failed_steps: number | null } | null;
+  can_cancel: boolean;
+  can_retry: boolean;
+}
+
+/** `GET /api/import-sync/jobs`: the job queue (docs/job-queue-plan.md). */
+export interface JobQueueResponse {
+  scheduler_enabled: boolean;
+  running: JobView[];
+  queued: JobView[];
+  recent: JobView[];
+}

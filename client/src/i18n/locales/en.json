@@ -460,6 +460,45 @@
       "never": "never",
       "runNow": "Run now",
       "runNowPending": "Starting…"
+    },
+    "jobs": {
+      "title": "Queue",
+      "summary": "{{running}} running, {{queued}} waiting.",
+      "empty": "Nothing has gone through the queue yet.",
+      "colJob": "Job",
+      "colStatus": "Status",
+      "colWhen": "When",
+      "colDetail": "Detail",
+      "kinds": {
+        "ingest_nightly": "Nightly run",
+        "ingest_hourly": "E-mail poll",
+        "deploy": "Deploy"
+      },
+      "resources": {
+        "ingest-service": "the ingest service",
+        "server-restart": "a server restart"
+      },
+      "status": {
+        "queued": "waiting",
+        "running": "running",
+        "done": "ok",
+        "failed": "failed",
+        "cancelled": "cancelled",
+        "superseded": "superseded",
+        "lost": "no heartbeat"
+      },
+      "waiting": {
+        "next": "Starts on the next tick.",
+        "notBefore": "Not before {{time}}.",
+        "resource": "Waiting for {{resource}}, held by {{kind}} #{{id}}.",
+        "exclusive": "{{kind}} #{{id}} is restarting the server.",
+        "draining": "The queue is clearing for {{kind}} #{{id}}."
+      },
+      "runningDetail": "{{worker}}: last heartbeat {{heartbeat}}, lease until {{lease}}.",
+      "cancel": "Cancel",
+      "cancelPending": "Cancelling…",
+      "retry": "Retry",
+      "retryPending": "Queuing…"
     }
   },
   "detail": {

@@ -20,6 +20,7 @@ const client = ingestClient();
 const { server } = createFeederServer({
   run: (request) => runRequestedRun(request),
   report: (runId, completion) => reportWithRetry((id, c) => client.completeRun(id, c), runId, completion, log),
+  heartbeat: (jobId) => client.heartbeatJob(jobId),
   runningOutside: runnerScriptRunningOutside,
   santanderState: readSantanderState,
   log,

@@ -470,6 +470,27 @@ export function useStartIngestRunMutation() {
     mutationFn: (kind: import("../types").IngestRunKind) => api.startIngestRun(kind),
     onSuccess: (data) => {
       queryClient.setQueryData(queryKeys.ingestRunsStatus(), data);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.jobQueue() });
+    },
+  });
+}
+
+/** The job queue; polls fast while anything runs or waits. */
+export function useJobQueue() {
+  return useQuery({
+    queryKey: queryKeys.jobQueue(),
+    queryFn: () => api.jobQueue(),
+    refetchInterval: (query) => (query.state.data && (query.state.data.running.length || query.state.data.queued.length) ? 5_000 : 30_000),
+  });
+}
+
+export function useJobActionMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: number; action: "cancel" | "retry" }) => (action === "cancel" ? api.cancelJob(id) : api.retryJob(id)),
+    onSuccess: (data) => {
+      queryClient.setQueryData(queryKeys.jobQueue(), data);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.ingestRunsStatus() });
     },
   });
 }

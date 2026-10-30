@@ -74,6 +74,10 @@ export const INGEST_ERROR_CODES = [
   "invalid_task_request",
   /** A task request the server checked and refused (e.g. a transfer that cannot be adopted). */
   "task_refused",
+  /** Job queue (`jobs.ts`): no such job, or it is not in the state the request needs. */
+  "unknown_job",
+  "job_not_running",
+  "invalid_job_request",
 ] as const;
 
 export type IngestErrorCode = (typeof INGEST_ERROR_CODES)[number];

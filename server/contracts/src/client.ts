@@ -9,6 +9,7 @@ import {
 } from "./envelope.js";
 import type { IngestKindDefinition } from "./defineKind.js";
 import { INGEST_RUNS_API_PATH, ingestRunCompletionSchema, type IngestRunCompletion } from "./runs.js";
+import { jobHeartbeatPath } from "./jobs.js";
 import {
   CC_MANUAL_PAYMENT_TASK,
   ccManualPaymentRequestSchema,
@@ -113,6 +114,8 @@ export interface IngestClient {
   ): Promise<IngestResult>;
   /** Report a run the server asked for as finished. */
   completeRun(runId: number, completion: IngestRunCompletion): Promise<void>;
+  /** The worker holding queue job `jobId` is alive (`jobs.ts`). Throws on a refusal (the job is not running). */
+  heartbeatJob(jobId: number): Promise<void>;
   /** Ask the server to run one of its tasks (`tasks.ts`); resolves with its report. */
   runTask(task: IngestTaskName, request?: IngestTaskRequest): Promise<IngestTaskResult>;
   /** Record a card payment entered by hand (`tasks.ts`, `cc_manual_payment`). */
@@ -175,6 +178,9 @@ export function createIngestClient(options: IngestClientOptions): IngestClient {
     },
     async completeRun(runId, completion) {
       await post(`${INGEST_RUNS_API_PATH}/${runId}/complete`, ingestRunCompletionSchema.parse(completion));
+    },
+    async heartbeatJob(jobId) {
+      await post(jobHeartbeatPath(jobId), {});
     },
     async runTask(task, request = {}) {
       const json = await post(`${INGEST_TASKS_API_PATH}/${task}`, ingestTaskRequestSchema.parse(request));
