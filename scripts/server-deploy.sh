@@ -4,13 +4,15 @@
 #   scripts/server-deploy.sh            # what com.user.nw-tracker-deploy runs every few minutes
 #   scripts/server-deploy.sh --check    # say what it would do, change nothing
 #
-# Each run: fetch origin/main; when it moved, wait out the ingest runs (one in flight, the 22:00
-# nightly window, the hourly :30 poll), snapshot the database, fast-forward, `npm ci` only when a
-# package file changed, rebuild the client, restart the server (and the ingest service when its
-# code changed), and wait for /api/health to report the new commit. A deploy whose server does not
-# come back healthy is rolled back to the previous commit. Pushes made while a deploy waits are
-# deployed together: only the newest commit is ever deployed. Outcomes go to cfraser/deploy.log
-# and to the app's messages (a failure as a notification).
+# Each run: fetch origin/main; when it moved, enqueue a deploy job in the server's job queue
+# (docs/job-queue-plan.md) and claim it — the queue grants it only when nothing else runs (the
+# `server-restart` resource: an ingest run in flight finishes first, and nothing new starts while
+# the deploy waits or runs). Once granted: snapshot the database, fast-forward, `npm ci` only when
+# a package file changed, rebuild the client, restart the server (and the ingest service when its
+# code changed), wait for /api/health to report the new commit, and complete the job. A deploy
+# whose server does not come back healthy is rolled back to the previous commit. Pushes made while
+# a deploy waits are deployed together: the queued job moves to the newest commit. Outcomes go to
+# cfraser/deploy.log, to the job, and to the app's messages (a failure as a notification).
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -44,6 +46,38 @@ message() { # kind title body
 
 server_listening() { lsof -nP -iTCP:"${PORT:-3001}" -sTCP:LISTEN >/dev/null 2>&1; }
 
+# The queue's worker endpoints take the ingest token when the server has one.
+TOKEN="${INGEST_TOKEN:-$(sed -n 's/^INGEST_TOKEN=//p' "$REPO/.env" 2>/dev/null | tail -1)}"
+JOB_ID=""
+
+jobs_api() { # path json → response body on stdout; non-zero on a failed request
+  local args=(-sS -m 30 -X POST -H 'content-type: application/json' -d "$2" -w '\n%{http_code}')
+  [[ -n "$TOKEN" ]] && args+=(-H "authorization: Bearer $TOKEN")
+  local out code
+  out="$(curl "${args[@]}" "$API$1")" || return 1
+  code="${out##*$'\n'}"
+  printf '%s' "${out%$'\n'*}"
+  [[ "$code" == 2* ]]
+}
+
+json_field() { /usr/bin/python3 -c 'import json,sys
+v=json.load(sys.stdin)
+for k in sys.argv[1].split("."):
+    v=None if v is None else v.get(k)
+print("" if v is None else v)' "$1"; }
+
+# Keep the claimed job's lease (a deploy holds it 20 minutes without a heartbeat). The server
+# restarting in between is expected: a missed heartbeat is not an error.
+job_heartbeat() { [[ -n "$JOB_ID" ]] && jobs_api "/api/jobs/$JOB_ID/heartbeat" '{}' >/dev/null 2>&1 || true; }
+
+job_complete() { # ok(true|false) error-or-empty
+  [[ -z "$JOB_ID" ]] && return 0
+  local err="null"
+  [[ -n "$2" ]] && err="$(/usr/bin/python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$2")"
+  jobs_api "/api/jobs/$JOB_ID/complete" "{\"ok\":$1,\"result\":{\"from\":\"$old\",\"to\":\"$new\"},\"error\":$err}" >/dev/null \
+    || log "could not complete deploy job $JOB_ID (its lease will run out)"
+}
+
 mkdir "$LOCK" 2>/dev/null || exit 0
 trap 'rmdir "$LOCK"' EXIT
 cd "$REPO"
@@ -65,34 +99,42 @@ if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
   exit 1
 fi
 
-# The ingest runs: never restart under one, nor right before one starts.
-hhmm=$((10#$(TZ=America/Santiago date +%H%M)))
-minute=$((hhmm % 100))
-if (( hhmm >= 2140 && hhmm < 2230 )); then
-  log_once "$new:nightly" "Waiting to deploy $short: nightly run window (21:40–22:30)."
-  exit 0
-fi
-if (( minute >= 25 && minute < 36 )); then
-  log_once "$new:hourly" "Waiting to deploy $short: hourly poll window (:25–:36)."
-  exit 0
-fi
-if server_listening; then
-  if ! runs="$(curl -fsS -m 90 "$API/api/import-sync/ingest-runs")"; then
-    log_once "$new:busy" "Waiting to deploy $short: the server did not answer the run status."
-    exit 0
-  fi
-  in_flight="$(/usr/bin/python3 -c 'import json,sys; r=json.load(sys.stdin).get("in_flight"); print("" if r is None else "%s run %s" % (r["kind"], r["id"]))' <<<"$runs")"
-  if [[ -n "$in_flight" ]]; then
-    log_once "$new:run" "Waiting to deploy $short: $in_flight in progress."
-    exit 0
-  fi
-fi
-
 changed="$(git diff --name-only "$old" "$new")"
 commits="$(git log --format='%h %s' "$old..$new")"
 if (( CHECK )); then
-  echo "Would deploy $(git rev-parse --short=8 "$old") → $short:"; echo "$commits"
+  echo "Would enqueue a deploy of $(git rev-parse --short=8 "$old") → $short:"; echo "$commits"
   exit 0
+fi
+
+# Never restart under an ingest run: the job queue grants the deploy when nothing else runs.
+if server_listening; then
+  if ! answer="$(jobs_api /api/jobs "{\"kind\":\"deploy\",\"sha\":\"$new\",\"reason\":\"deploy-agent: origin/main $short\"}")"; then
+    log_once "$new:enqueue" "Not deploying $short: the server refused or did not answer the deploy job ($answer)."
+    exit 1
+  fi
+  waiting=""
+  # Poll the claim for a while (a run about to finish), then leave the job queued: the next run
+  # of this agent enqueues it again, which also keeps it from going stale.
+  for _ in $(seq 1 15); do
+    claim="$(jobs_api /api/jobs/claim '{"kind":"deploy","worker":"deploy-agent"}')" || { waiting="the server did not answer the claim"; break; }
+    JOB_ID="$(json_field job.id <<<"$claim")"
+    [[ -n "$JOB_ID" ]] && break
+    waiting="$(json_field waiting <<<"$claim")"
+    sleep 10
+  done
+  if [[ -z "$JOB_ID" ]]; then
+    log_once "$new:queued" "Waiting to deploy $short: $waiting."
+    exit 0
+  fi
+  claimed="$(json_field job.payload_json <<<"$claim" | json_field sha)"
+  if [[ "$claimed" != "$new" ]]; then
+    job_complete false "claimed $claimed, but origin/main is $new"
+    log "Deploy job $JOB_ID targets $claimed, not origin/main $new; completed it as failed, the next run enqueues again."
+    exit 1
+  fi
+  log "Deploy job $JOB_ID granted"
+else
+  log "The server is not listening: deploying $short without the job queue."
 fi
 
 needs_ci() { grep -qE '(^|/)package(-lock)?\.json$' <<<"$1"; }
@@ -137,9 +179,10 @@ echo "$commits" | sed 's/^/    /' | tee -a "$LOG"
 (cd server && npm run -s db:snapshot -- --label="before-deploy-$short") >>"$LOG" 2>&1
 git merge --ff-only --quiet "$new"
 
-if install_and_build "$changed" && restart "$changed" && healthy_at "$new"; then
+if job_heartbeat && install_and_build "$changed" && job_heartbeat && restart "$changed" && healthy_at "$new"; then
   log "Deployed $short"
   message log "Deploy $short" "$(printf 'Deployed %s.\n%s' "$short" "$commits")"
+  job_complete true ""
   rm -f "$STATE"
   exit 0
 fi
@@ -150,6 +193,7 @@ install_and_build "$changed" || true
 restart "$changed" || true
 if healthy_at "$old"; then
   log "Rolled back to $(git rev-parse --short=8 "$old")"
+  job_complete false "the server did not come back healthy on $short; rolled back"
 else
   log "Rollback did not come back healthy either — check cfraser/server.log"
 fi
