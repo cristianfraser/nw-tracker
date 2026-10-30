@@ -99,6 +99,45 @@ describe("feeder server", () => {
     expect((await s.post({ run_id: 7, kind: "nightly", reason: "x", santander_fetch: null }, { authorization: "Bearer abc" })).status).toBe(202);
   });
 
+  it("heartbeats the run's queue job while it runs, and stops when it ends", async () => {
+    const beats: number[] = [];
+    const s = await start({ heartbeat: async (jobId) => void beats.push(jobId), heartbeatMs: 10 });
+    expect((await s.post({ run_id: 11, job_id: 42, kind: "nightly", reason: "x", santander_fetch: null })).status).toBe(202);
+    await new Promise((r) => setTimeout(r, 60));
+    expect(beats.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(beats)).toEqual(new Set([42]));
+    s.finish(DONE);
+    await s.feeder.idle();
+    const after = beats.length;
+    await new Promise((r) => setTimeout(r, 40));
+    expect(beats.length).toBe(after);
+  });
+
+  it("keeps running when a heartbeat fails, and sends none for a run without a job", async () => {
+    const logs: string[] = [];
+    let calls = 0;
+    const s = await start({
+      heartbeat: async () => {
+        calls++;
+        throw new Error("ECONNREFUSED");
+      },
+      heartbeatMs: 10,
+      log: (m) => logs.push(m),
+    });
+    expect((await s.post({ run_id: 12, kind: "hourly", reason: "x", santander_fetch: null })).status).toBe(202);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(calls).toBe(0);
+    s.finish(DONE);
+    await s.feeder.idle();
+    expect((await s.post({ run_id: 13, job_id: 5, kind: "hourly", reason: "x", santander_fetch: null })).status).toBe(202);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(calls).toBeGreaterThan(0);
+    expect(logs.some((l) => /heartbeat for job 5 failed/.test(l))).toBe(true);
+    s.finish(DONE);
+    await s.feeder.idle();
+    expect(s.reports.map((r) => r.runId)).toEqual([12, 13]);
+  });
+
   it("reports a runner that could not start as a failure", async () => {
     const s = await start({
       run: async () => {

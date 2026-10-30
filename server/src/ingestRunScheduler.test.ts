@@ -19,7 +19,11 @@ import {
   type FeederAnswer,
 } from "./ingestRunScheduler.js";
 import { completeIngestRun, ingestRunById, listRecentIngestRuns } from "./ingestRuns.js";
+import { heartbeatJob, jobById, listJobsByStatus } from "./jobQueue.js";
+import { jobQueueTick } from "./jobQueueExecutor.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
+import { registerJobRoutes } from "./routes/jobs.js";
+import { clearJobs } from "./test/jobQueueTestUtils.js";
 
 /**
  * Far-future clock: every daily run the test DB already holds is long before these slots, so
@@ -27,15 +31,35 @@ import { registerIngestRoutes } from "./routes/ingest.js";
  */
 const NIGHTLY = new Date("2099-06-11T02:00:00Z");
 
-type Call = { runId: number; kind: IngestRunKind; reason: string; santanderFetch: IngestRunRequest["santander_fetch"] };
+type Call = { runId: number; jobId: number | null; kind: IngestRunKind; reason: string; santanderFetch: IngestRunRequest["santander_fetch"] };
 
+/** A stand-in ingest service; `answer` can be changed between steps. */
 function fakeFeeder(answer: FeederAnswer) {
   const calls: Call[] = [];
-  const request = async (runId: number, kind: IngestRunKind, reason: string, santanderFetch: IngestRunRequest["santander_fetch"], _afpUnoFetch?: IngestRunRequest["afp_uno_fetch"]) => {
-    calls.push({ runId, kind, reason, santanderFetch });
-    return answer;
+  const feeder = {
+    answer,
+    calls,
+    request: async (r: IngestRunRequest): Promise<FeederAnswer> => {
+      calls.push({ runId: r.run_id, jobId: r.job_id, kind: r.kind, reason: r.reason, santanderFetch: r.santander_fetch });
+      return feeder.answer;
+    },
   };
-  return { calls, request };
+  return feeder;
+}
+
+/** What the server does every 30 s: the scheduler queues what is due, the executor starts what may start. */
+async function step(at: string, feeder: ReturnType<typeof fakeFeeder>, notified = new Set<string>()) {
+  const now = new Date(at);
+  const tick = ingestSchedulerTick(now);
+  await jobQueueTick(now, { request: feeder.request, notified });
+  return tick;
+}
+
+/** The ingest run the service was last asked for. */
+function lastRunId(feeder: ReturnType<typeof fakeFeeder>): number {
+  const call = feeder.calls.at(-1);
+  if (!call) throw new Error("the service was never asked");
+  return call.runId;
 }
 
 const STATE = {
@@ -65,6 +89,7 @@ function report(over: Partial<IngestRunCompletion> = {}): IngestRunCompletion {
 let messageIdFloor = 0;
 
 function clear() {
+  clearJobs();
   db.prepare(`DELETE FROM ingest_runs`).run();
   db.prepare(`DELETE FROM app_messages WHERE title = ? OR id > ?`).run(INGEST_UNREACHABLE_TITLE, messageIdFloor);
 }
@@ -75,81 +100,128 @@ function runMessages(): { kind: string; title: string; body: string }[] {
     .all(messageIdFloor) as { kind: string; title: string; body: string }[];
 }
 
-describe("ingestSchedulerTick", () => {
+describe("scheduler + executor", () => {
   beforeEach(() => {
     messageIdFloor = (db.prepare(`SELECT COALESCE(MAX(id), 0) AS m FROM app_messages`).get() as { m: number }).m;
     clear();
   });
   afterEach(clear);
 
-  it("asks for the nightly, then the hourly slot is skipped while it runs, and nothing twice", async () => {
+  it("queues the nightly and starts it; the hour's poll waits for it instead of being dropped", async () => {
     const feeder = fakeFeeder({ status: "accepted" });
-    const notified = new Set<string>();
-    const first = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), notified, feeder.request);
+    const first = await step("2099-06-11T02:00:10Z", feeder);
     expect(first.decision).toMatchObject({ action: "request", kind: "nightly", slot: NIGHTLY });
-    expect(feeder.calls).toEqual([
-      { runId: first.run_id, kind: "nightly", reason: "22:00 slot, on time", santanderFetch: null },
-    ]);
-    expect(ingestRunById(first.run_id!)).toMatchObject({ status: "requested", slot_at: NIGHTLY.toISOString() });
+    expect(feeder.calls).toEqual([{ runId: expect.any(Number), jobId: first.job_id, kind: "nightly", reason: "22:00 slot, on time", santanderFetch: null }]);
+    const runId = lastRunId(feeder);
+    expect(ingestRunById(runId)).toMatchObject({ status: "requested", slot_at: NIGHTLY.toISOString(), job_id: first.job_id });
+    expect(jobById(first.job_id!)).toMatchObject({ status: "running", worker: "ingest-service" });
 
-    // Same minute: the hour's :30 slot (01:30Z) is next, skipped behind the nightly in flight.
-    const second = await ingestSchedulerTick(new Date("2099-06-11T02:00:40Z"), notified, feeder.request);
-    expect(second.decision).toMatchObject({ action: "skip", kind: "hourly" });
-    expect((await ingestSchedulerTick(new Date("2099-06-11T02:01:10Z"), notified, feeder.request)).decision).toEqual({
-      action: "idle",
-    });
+    // Same minute: the hour's :30 slot (01:30Z) is queued and waits for the ingest service.
+    const second = await step("2099-06-11T02:00:40Z", feeder);
+    expect(second.decision).toMatchObject({ action: "request", kind: "hourly" });
+    expect(jobById(second.job_id!)).toMatchObject({ status: "queued" });
+    expect((await step("2099-06-11T02:01:10Z", feeder)).decision).toEqual({ action: "idle" });
     expect(feeder.calls).toHaveLength(1);
+
+    // The service heartbeats; the nightly reports; the waiting hourly starts.
+    heartbeatJob(first.job_id!, new Date("2099-06-11T02:04:00Z"));
+    completeIngestRun(runId, report());
+    expect(jobById(first.job_id!)).toMatchObject({ status: "done" });
+    await step("2099-06-11T02:12:30Z", feeder);
+    expect(feeder.calls.at(-1)).toMatchObject({ kind: "hourly", jobId: second.job_id });
   });
 
-  it("retries a nightly the service did not take, badging an outage once per slot", async () => {
-    const down = fakeFeeder({ status: "unreachable", detail: "fetch failed — connect ECONNREFUSED" });
+  it("an hourly queued past the next slot is absorbed by it: one run, the newer slot", async () => {
+    const feeder = fakeFeeder({ status: "accepted" });
+    const nightly = await step("2099-06-11T02:00:10Z", feeder);
+    const h1 = await step("2099-06-11T02:00:40Z", feeder);
+    // The nightly keeps heartbeating for over an hour.
+    heartbeatJob(nightly.job_id!, new Date("2099-06-11T02:30:00Z"));
+    heartbeatJob(nightly.job_id!, new Date("2099-06-11T02:34:00Z"));
+    const h2 = await step("2099-06-11T02:30:05Z", feeder);
+    expect(h2.job_id).toBe(h1.job_id);
+    expect(listJobsByStatus("queued")).toHaveLength(1);
+    expect(JSON.parse(jobById(h1.job_id!)!.payload_json)).toEqual({ slot: "2099-06-11T02:30:00.000Z" });
+    completeIngestRun(lastRunId(feeder), report({ finished_at: "2099-06-11T02:35:00.000Z" }));
+    await step("2099-06-11T02:35:30Z", feeder);
+    expect(feeder.calls.map((c) => c.kind)).toEqual(["nightly", "hourly"]);
+    expect(ingestRunById(lastRunId(feeder))).toMatchObject({ slot_at: "2099-06-11T02:30:00.000Z" });
+  });
+
+  it("keeps a nightly the service did not take queued, retrying the same run id, badging an outage once", async () => {
+    const feeder = fakeFeeder({ status: "unreachable", detail: "fetch failed — connect ECONNREFUSED" });
     const notified = new Set<string>();
-    const a = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), notified, down.request);
+    const a = await step("2099-06-11T02:00:10Z", feeder, notified);
     // One unanswered request is not an outage yet (a timeout right after a wake): no badge.
     expect(db.prepare(`SELECT kind FROM app_messages WHERE title = ?`).all(INGEST_UNREACHABLE_TITLE)).toEqual([]);
-    const b = await ingestSchedulerTick(new Date("2099-06-11T02:00:40Z"), notified, down.request);
-    expect([a.run_id, b.run_id]).toEqual([a.run_id, a.run_id]); // the same slot row, retried
-    expect(ingestRunById(a.run_id!)).toMatchObject({ status: "not_started", error: expect.stringMatching(/ECONNREFUSED/) });
-    const badges = db.prepare(`SELECT kind FROM app_messages WHERE title = ?`).all(INGEST_UNREACHABLE_TITLE);
-    expect(badges).toEqual([{ kind: "notification" }]);
+    expect(jobById(a.job_id!)).toMatchObject({ status: "queued", error: expect.stringMatching(/ECONNREFUSED/) });
+    const runId = lastRunId(feeder);
+    expect(ingestRunById(runId)).toMatchObject({ status: "not_started" });
+    // Not offered again before the retry delay (the hour's poll, free to go meanwhile, is offered — and fails too).
+    await step("2099-06-11T02:00:20Z", feeder, notified);
+    const nightlyCalls = () => feeder.calls.filter((c) => c.kind === "nightly").map((c) => c.runId);
+    expect(nightlyCalls()).toEqual([runId]);
+    await step("2099-06-11T02:00:45Z", feeder, notified);
+    expect(nightlyCalls()).toEqual([runId, runId]);
+    expect(db.prepare(`SELECT kind FROM app_messages WHERE title = ?`).all(INGEST_UNREACHABLE_TITLE)).toEqual([{ kind: "notification" }]);
 
-    const up = fakeFeeder({ status: "accepted" });
-    const c = await ingestSchedulerTick(new Date("2099-06-11T02:01:10Z"), notified, up.request);
-    expect(c.run_id).toBe(a.run_id);
-    expect(ingestRunById(a.run_id!)).toMatchObject({ status: "requested", error: null });
+    feeder.answer = { status: "accepted" };
+    await step("2099-06-11T02:01:20Z", feeder, notified);
+    expect(nightlyCalls().at(-1)).toBe(runId);
+    expect(ingestRunById(runId)).toMatchObject({ status: "requested", error: null });
+    expect(jobById(a.job_id!)).toMatchObject({ status: "running" });
   });
 
-  it("gives up an hourly slot the service did not take", async () => {
-    // The nightly for this day already answered, so the hourly is what is due.
-    const ok = fakeFeeder({ status: "accepted" });
-    const notified = new Set<string>();
-    const nightly = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), notified, ok.request);
-    db.prepare(`UPDATE ingest_runs SET status = 'done' WHERE id = ?`).run(nightly.run_id);
-    const busy = fakeFeeder({ status: "busy", detail: "running a nightly run" });
-    const hourly = await ingestSchedulerTick(new Date("2099-06-11T02:30:05Z"), notified, busy.request);
-    expect(hourly.decision).toMatchObject({ action: "request", kind: "hourly" });
-    expect(ingestRunById(hourly.run_id!)).toMatchObject({ status: "not_started" });
-    expect((await ingestSchedulerTick(new Date("2099-06-11T02:30:40Z"), notified, busy.request)).decision).toEqual({
-      action: "idle",
-    });
+  it("keeps an hourly the service is busy for queued until it can start (no longer given up)", async () => {
+    db.prepare(`INSERT INTO ingest_runs (kind, slot_at, status, reason) VALUES ('nightly', ?, 'done', 'test')`).run(NIGHTLY.toISOString());
+    const feeder = fakeFeeder({ status: "busy", detail: "running a outside run" });
+    const hourly = await step("2099-06-11T02:30:05Z", feeder);
+    expect(jobById(hourly.job_id!)).toMatchObject({ status: "queued" });
+    feeder.answer = { status: "accepted" };
+    await step("2099-06-11T02:40:00Z", feeder);
+    expect(jobById(hourly.job_id!)).toMatchObject({ status: "running" });
+    expect(feeder.calls).toHaveLength(2);
   });
 
-  it("writes off a run that never reported, as a failed run", async () => {
+  it("writes off a run whose service stopped heartbeating, as a failed run, and frees the queue", async () => {
     const feeder = fakeFeeder({ status: "accepted" });
-    const first = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), new Set(), feeder.request);
-    await ingestSchedulerTick(new Date("2099-06-11T05:10:00Z"), new Set(), feeder.request);
-    expect(ingestRunById(first.run_id!)).toMatchObject({ status: "lost" });
+    const first = await step("2099-06-11T02:00:10Z", feeder);
+    const runId = lastRunId(feeder);
+    heartbeatJob(first.job_id!, new Date("2099-06-11T02:01:00Z"));
+    await step("2099-06-11T02:05:30Z", feeder);
+    expect(jobById(first.job_id!)!.status).toBe("running");
+    await step("2099-06-11T02:06:30Z", feeder);
+    expect(jobById(first.job_id!)).toMatchObject({ status: "lost", error: expect.stringMatching(/no heartbeat from ingest-service for 5 min/) });
+    expect(ingestRunById(runId)).toMatchObject({ status: "lost" });
     expect(runMessages()).toEqual([
-      expect.objectContaining({ kind: "notification", title: "Daily bank run failed", body: expect.stringMatching(/no report within 180 min/) }),
+      expect.objectContaining({ kind: "notification", title: "Daily bank run failed", body: expect.stringMatching(/no heartbeat/) }),
     ]);
+    // The hour's poll, queued meanwhile, started once the nightly was written off.
+    expect(feeder.calls.map((c) => c.kind)).toEqual(["nightly", "hourly"]);
+    // A late report of the lost run is still recorded.
+    completeIngestRun(runId, report());
+    expect(jobById(first.job_id!)!.status).toBe("done");
+  });
+
+  it("supersedes a queued nightly a run started by hand already covered", async () => {
+    const feeder = fakeFeeder({ status: "busy", detail: "running a outside run" });
+    const queued = await step("2099-06-11T02:00:10Z", feeder);
+    expect(jobById(queued.job_id!)).toMatchObject({ status: "queued" });
+    // A daily run (by hand, outside the queue) is recorded after the slot.
+    db.prepare(`INSERT INTO app_messages (kind, title, body, created_at) VALUES ('log', 'Daily bank run', 'x', '2099-06-11 02:10:00')`).run();
+    feeder.answer = { status: "accepted" };
+    await step("2099-06-11T02:11:00Z", feeder);
+    expect(jobById(queued.job_id!)).toMatchObject({ status: "superseded", error: expect.stringMatching(/after the slot/) });
+    expect(listRecentIngestRuns().find((r) => r.kind === "nightly")).toMatchObject({ status: "skipped", job_id: queued.job_id });
+    expect(feeder.calls.filter((c) => c.kind === "nightly")).toHaveLength(1);
   });
 
   it("asks an hourly poll for a catch-up when the nightly fetch failed, once per slot", async () => {
     const ok = fakeFeeder({ status: "accepted" });
-    const nightly = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), new Set(), ok.request);
+    await step("2099-06-11T02:00:10Z", ok);
     // The nightly's fetch failed; its report carries the bank facts (last success yesterday).
     completeIngestRun(
-      nightly.run_id!,
+      lastRunId(ok),
       report({
         exit_code: 1,
         steps: [{ label: "fetch Santander", ok: false, seconds: 98 }],
@@ -157,12 +229,17 @@ describe("ingestSchedulerTick", () => {
         santander_state: { ...STATE, last_attempt_at: "2099-06-11T02:00:15.000Z", last_success_at: "2099-06-10T02:01:00.000Z" },
       })
     );
-    const hourly = await ingestSchedulerTick(new Date("2099-06-11T02:40:00Z"), new Set(), ok.request);
-    expect(hourly.decision).toMatchObject({ action: "request", kind: "hourly" });
-    expect(ok.calls.at(-1)?.santanderFetch).toMatchObject({ mode: "catch-up" });
-    expect(ingestRunById(hourly.run_id!)).toMatchObject({ santander_request: "catch-up" });
+    // The hour's poll queued at 02:00:40 waited; it starts at 02:40 with the catch-up decided then.
+    await step("2099-06-11T02:00:40Z", ok);
+    expect(ok.calls.at(-1)?.kind).toBe("hourly");
+    expect(ok.calls.at(-1)?.santanderFetch).toBeNull(); // the bank was tried 25 s ago
+    completeIngestRun(lastRunId(ok), report({ santander: null, santander_state: { ...STATE, last_attempt_at: "2099-06-11T02:00:15.000Z", last_success_at: "2099-06-10T02:01:00.000Z" } }));
+    await step("2099-06-11T02:40:00Z", ok);
+    expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", santanderFetch: { mode: "catch-up" } });
+    const hourly = lastRunId(ok);
+    expect(ingestRunById(hourly)).toMatchObject({ santander_request: "catch-up" });
     completeIngestRun(
-      hourly.run_id!,
+      hourly,
       report({
         exit_code: 1,
         steps: [{ label: "fetch Santander (catch-up)", ok: false, seconds: 60 }],
@@ -172,24 +249,8 @@ describe("ingestSchedulerTick", () => {
       })
     );
     // The slot's one retry is used: the next hour polls mail only.
-    await ingestSchedulerTick(new Date("2099-06-11T03:30:05Z"), new Set(), ok.request);
+    await step("2099-06-11T03:30:05Z", ok);
     expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", santanderFetch: null });
-  });
-
-  it("asks again after a declined catch-up", async () => {
-    const ok = fakeFeeder({ status: "accepted" });
-    const nightly = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), new Set(), ok.request);
-    completeIngestRun(
-      nightly.run_id!,
-      report({ santander: { mode: "nightly", outcome: "failed", note: null }, santander_state: { ...STATE, last_attempt_at: "2099-06-11T02:00:15.000Z" } })
-    );
-    const hourly = await ingestSchedulerTick(new Date("2099-06-11T02:40:00Z"), new Set(), ok.request);
-    completeIngestRun(
-      hourly.run_id!,
-      report({ santander: { mode: "catch-up", outcome: "vetoed", note: "last attempt 20 min ago" }, santander_state: { ...STATE, last_attempt_at: "2099-06-11T02:20:00.000Z" } })
-    );
-    await ingestSchedulerTick(new Date("2099-06-11T03:30:05Z"), new Set(), ok.request);
-    expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", santanderFetch: { mode: "catch-up" } });
   });
 });
 
@@ -203,41 +264,35 @@ describe("startManualIngestRun", () => {
   });
   afterEach(clear);
 
-  it("refuses on an instance whose scheduler is off, asking nothing", async () => {
-    const feeder = fakeFeeder({ status: "accepted" });
-    const out = await startManualIngestRun("hourly", AT, feeder.request, {});
-    expect(out).toMatchObject({ status: "refused", reason: "scheduler_off" });
-    expect(feeder.calls).toEqual([]);
-    expect(listRecentIngestRuns()).toEqual([]);
+  it("refuses on an instance whose scheduler is off, queuing nothing", () => {
+    expect(startManualIngestRun("hourly", AT, {})).toMatchObject({ status: "refused", reason: "scheduler_off" });
+    expect(listJobsByStatus("queued")).toEqual([]);
   });
 
-  it("starts a run now, which answers its hour's slot and holds the scheduler off while it runs", async () => {
+  it("queues a run that starts now and answers its hour's slot", async () => {
+    db.prepare(`INSERT INTO ingest_runs (kind, slot_at, status, reason) VALUES ('nightly', ?, 'done', 'test')`).run("2099-06-10T02:00:00.000Z");
+    db.prepare(`INSERT INTO ingest_runs (kind, slot_at, status, reason) VALUES ('hourly', ?, 'done', 'test')`).run("2099-06-10T17:30:00.000Z");
     const feeder = fakeFeeder({ status: "accepted" });
-    const out = await startManualIngestRun("hourly", AT, feeder.request, ON);
-    expect(out.status).toBe("started");
-    const runId = (out as { run_id: number }).run_id;
-    expect(feeder.calls).toEqual([{ runId, kind: "hourly", reason: MANUAL_RUN_REASON, santanderFetch: null }]);
+    const out = startManualIngestRun("hourly", AT, ON);
+    expect(out).toMatchObject({ status: "queued", coalesced: false });
+    await jobQueueTick(AT, { request: feeder.request, notified: new Set() });
+    expect(feeder.calls).toEqual([{ runId: expect.any(Number), jobId: (out as { job_id: number }).job_id, kind: "hourly", reason: MANUAL_RUN_REASON, santanderFetch: null }]);
+    const runId = lastRunId(feeder);
     expect(ingestRunById(runId)).toMatchObject({ kind: "hourly", status: "requested", slot_at: AT.toISOString() });
 
-    // A second click while it runs is refused; a tick waits for it.
-    expect(await startManualIngestRun("nightly", AT, feeder.request, ON)).toMatchObject({ status: "refused", reason: "in_flight" });
-    const tick = await ingestSchedulerTick(new Date("2099-06-10T18:41:00Z"), new Set(), feeder.request);
-    expect(tick.decision).toMatchObject({ action: "wait", kind: "nightly" });
-
-    // Once it reports, the 18:30 slot it ran in is answered: the next hourly is the 19:30 one.
+    // A second click while it runs queues behind it; the 18:30 slot it ran in is answered.
+    expect(startManualIngestRun("nightly", AT, ON)).toMatchObject({ status: "queued" });
+    expect(ingestSchedulerTick(new Date("2099-06-10T18:41:00Z")).decision).toEqual({ action: "idle" });
     completeIngestRun(runId, report({ santander: null, santander_state: STATE }));
-    db.prepare(`INSERT INTO ingest_runs (kind, slot_at, status, reason) VALUES ('nightly', ?, 'done', 'test')`).run(
-      "2099-06-10T02:00:00.000Z"
-    );
-    const after = await ingestSchedulerTick(new Date("2099-06-10T18:45:00Z"), new Set(), feeder.request);
-    expect(after.decision).toEqual({ action: "idle" });
+    await jobQueueTick(new Date("2099-06-10T18:45:00Z"), { request: feeder.request, notified: new Set() });
+    expect(feeder.calls.at(-1)).toMatchObject({ kind: "nightly", reason: MANUAL_RUN_REASON });
   });
 
-  it("marks a run the service would not take as not started, and says why", async () => {
-    const feeder = fakeFeeder({ status: "busy", detail: "running a nightly run since 2099-06-10T18:00:00Z" });
-    const out = await startManualIngestRun("hourly", AT, feeder.request, ON);
-    expect(out).toMatchObject({ status: "refused", reason: "busy" });
-    expect(listRecentIngestRuns()[0]).toMatchObject({ status: "not_started", reason: MANUAL_RUN_REASON });
+  it("moves up a run of the same kind already queued instead of adding one", () => {
+    const scheduled = ingestSchedulerTick(new Date("2099-06-10T18:30:05Z"));
+    const out = startManualIngestRun(scheduled.decision.action === "request" ? scheduled.decision.kind : "hourly", AT, ON);
+    expect(out).toMatchObject({ status: "queued", coalesced: true, job_id: scheduled.job_id });
+    expect(jobById(scheduled.job_id!)).toMatchObject({ enqueued_by: "manual", reason: MANUAL_RUN_REASON, stale_after: null });
   });
 });
 
@@ -258,6 +313,7 @@ describe("run reports", () => {
     const app = express();
     app.use(express.json());
     registerIngestRoutes(app, { auth: { token: null, allowRemote: false, demoMode: false } });
+    registerJobRoutes(app, { auth: { token: null, allowRemote: false, demoMode: false } });
     const s = await new Promise<Server>((resolve) => {
       const started: Server = app.listen(0, "127.0.0.1", () => resolve(started));
     });
@@ -265,9 +321,10 @@ describe("run reports", () => {
     return `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
   }
 
-  it("records a finished run, and refuses a second report", async () => {
+  it("records a finished run and its job, and refuses a second report", async () => {
     const feeder = fakeFeeder({ status: "accepted" });
-    const { run_id } = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), new Set(), feeder.request);
+    const { job_id } = await step("2099-06-11T02:00:10Z", feeder);
+    const run_id = lastRunId(feeder);
     const base = await start();
     const client = createIngestClient({ baseUrl: base, feederId: "vitest" });
     const failed = report({
@@ -277,41 +334,57 @@ describe("run reports", () => {
         { label: "inbox pipeline", ok: false, seconds: 12 },
       ],
     });
-    await client.completeRun(run_id!, failed);
-    expect(ingestRunById(run_id!)).toMatchObject({ status: "failed", exit_code: 1, failed_steps: 1, santander_outcome: "ok" });
+    await client.completeRun(run_id, failed);
+    expect(ingestRunById(run_id)).toMatchObject({ status: "failed", exit_code: 1, failed_steps: 1, santander_outcome: "ok" });
+    expect(jobById(job_id!)).toMatchObject({ status: "failed", error: "exit 1, 1 failed step(s)" });
     expect(runMessages()).toEqual([
       expect.objectContaining({ kind: "notification", title: "Daily bank run failed", body: expect.stringMatching(/inbox pipeline/) }),
     ]);
-    await expect(client.completeRun(run_id!, failed)).rejects.toThrow(/run_not_waiting/);
+    await expect(client.completeRun(run_id, failed)).rejects.toThrow(/run_not_waiting/);
     await expect(client.completeRun(999_999, failed)).rejects.toThrow(/unknown_ingest_run/);
     expect(listRecentIngestRuns(1)[0]?.id).toBe(run_id);
   });
 
+  it("heartbeats a running job, and refuses one that is not running", async () => {
+    const feeder = fakeFeeder({ status: "accepted" });
+    const { job_id } = await step("2099-06-11T02:00:10Z", feeder);
+    const client = createIngestClient({ baseUrl: await start(), feederId: "vitest" });
+    await client.heartbeatJob(job_id!);
+    expect(jobById(job_id!)!.heartbeat_at! > "2099").toBe(false); // stamped with the real clock
+    completeIngestRun(lastRunId(feeder), report());
+    await expect(client.heartbeatJob(job_id!)).rejects.toThrow(/job_not_running/);
+    await expect(client.heartbeatJob(999_999)).rejects.toThrow(/unknown_job/);
+  });
+
   it("takes the report of a run marked not started: the service had taken it after all", async () => {
     const down = fakeFeeder({ status: "unreachable", detail: "The operation was aborted due to timeout" });
-    const { run_id } = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), new Set(), down.request);
-    expect(ingestRunById(run_id!)).toMatchObject({ status: "not_started" });
-    completeIngestRun(run_id!, report());
-    expect(ingestRunById(run_id!)).toMatchObject({ status: "done" });
+    const { job_id } = await step("2099-06-11T02:00:10Z", down);
+    const run_id = lastRunId(down);
+    expect(ingestRunById(run_id)).toMatchObject({ status: "not_started" });
+    const client = createIngestClient({ baseUrl: await start(), feederId: "vitest" });
+    await client.completeRun(run_id, report());
+    expect(ingestRunById(run_id)).toMatchObject({ status: "done" });
+    expect(jobById(job_id!)).toMatchObject({ status: "done" });
   });
 
   it("marks a clean run done", async () => {
     const feeder = fakeFeeder({ status: "accepted" });
-    const { run_id } = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), new Set(), feeder.request);
+    await step("2099-06-11T02:00:10Z", feeder);
     const client = createIngestClient({ baseUrl: await start(), feederId: "vitest" });
-    await client.completeRun(run_id!, report());
-    expect(ingestRunById(run_id!)).toMatchObject({ status: "done", failed_steps: 0 });
+    await client.completeRun(lastRunId(feeder), report());
+    expect(ingestRunById(lastRunId(feeder))).toMatchObject({ status: "done", failed_steps: 0 });
     expect(runMessages().map((m) => m.title)).toEqual(["Daily bank run"]);
   });
 
   it("records nothing for a dry run or a quiet hourly poll", async () => {
     const feeder = fakeFeeder({ status: "accepted" });
-    const nightly = await ingestSchedulerTick(new Date("2099-06-11T02:00:10Z"), new Set(), feeder.request);
-    completeIngestRun(nightly.run_id!, report({ dry_run: true }));
-    const hourly = await ingestSchedulerTick(new Date("2099-06-11T02:30:05Z"), new Set(), feeder.request);
-    completeIngestRun(hourly.run_id!, report({ santander: null, activity: false }));
+    await step("2099-06-11T02:00:10Z", feeder);
+    completeIngestRun(lastRunId(feeder), report({ dry_run: true }));
+    await step("2099-06-11T02:30:05Z", feeder);
+    const hourly = lastRunId(feeder);
+    completeIngestRun(hourly, report({ santander: null, activity: false }));
     expect(runMessages()).toEqual([]);
-    expect(ingestRunById(hourly.run_id!)).toMatchObject({ status: "done", activity: 0 });
+    expect(ingestRunById(hourly)).toMatchObject({ status: "done", activity: 0 });
   });
 });
 
@@ -337,7 +410,8 @@ describe("requestFeederRun", () => {
     for (const [status, body, expected] of cases) {
       const svc = await stubService(status, body);
       try {
-        expect((await requestFeederRun(50, "nightly", "x", null, null, svc.env)).status).toBe(expected);
+        const request = { run_id: 50, job_id: 7, kind: "nightly" as const, reason: "x", santander_fetch: null, afp_uno_fetch: null, afc_fetch: null, payslips: null, mortgage_sheet: null };
+        expect((await requestFeederRun(request, svc.env)).status).toBe(expected);
       } finally {
         await svc.close();
       }

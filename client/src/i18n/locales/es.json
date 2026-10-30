@@ -460,6 +460,45 @@
       "never": "nunca",
       "runNow": "Correr ahora",
       "runNowPending": "Iniciando…"
+    },
+    "jobs": {
+      "title": "Cola",
+      "summary": "{{running}} en curso, {{queued}} en espera.",
+      "empty": "Todavía no ha pasado nada por la cola.",
+      "colJob": "Trabajo",
+      "colStatus": "Estado",
+      "colWhen": "Cuándo",
+      "colDetail": "Detalle",
+      "kinds": {
+        "ingest_nightly": "Corrida nocturna",
+        "ingest_hourly": "Revisión de correo",
+        "deploy": "Despliegue"
+      },
+      "resources": {
+        "ingest-service": "el servicio de ingesta",
+        "server-restart": "un reinicio del servidor"
+      },
+      "status": {
+        "queued": "en espera",
+        "running": "en curso",
+        "done": "ok",
+        "failed": "falló",
+        "cancelled": "cancelado",
+        "superseded": "reemplazado",
+        "lost": "sin señal"
+      },
+      "waiting": {
+        "next": "Parte en la próxima revisión.",
+        "notBefore": "No antes de {{time}}.",
+        "resource": "Esperando {{resource}}, ocupado por {{kind}} #{{id}}.",
+        "exclusive": "{{kind}} #{{id}} está reiniciando el servidor.",
+        "draining": "La cola se está vaciando para {{kind}} #{{id}}."
+      },
+      "runningDetail": "{{worker}}: última señal {{heartbeat}}, plazo hasta {{lease}}.",
+      "cancel": "Cancelar",
+      "cancelPending": "Cancelando…",
+      "retry": "Reintentar",
+      "retryPending": "Encolando…"
     }
   },
   "detail": {

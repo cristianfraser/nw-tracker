@@ -32,6 +32,11 @@ export type SantanderFetchMode = (typeof SANTANDER_FETCH_MODES)[number];
 export const ingestRunRequestSchema = z
   .object({
     run_id: z.number().int().positive(),
+    /**
+     * The queue job this run is (docs/job-queue-plan.md): the feeder heartbeats it while the run
+     * lasts (`jobs.ts`). Null from a server before the queue.
+     */
+    job_id: z.number().int().positive().nullable().default(null),
     kind: z.enum(INGEST_RUN_KINDS),
     /** Why the server asked now (the slot, a wake after a missed slot…), for the feeder's log. */
     reason: z.string().min(1),
