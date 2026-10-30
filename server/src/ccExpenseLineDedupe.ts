@@ -175,11 +175,22 @@ export function dedupeFlowCcExpenseLines<T extends CcExpenseLineForDedupe>(
     best.set(key, prev ? pickPreferredExpenseLine(prev, line) : line);
   }
 
+  // Lines can only match within the same account, facturación, pesos and purchase day: each such
+  // bucket keeps its kept lines' positions in order, so the first match is the first in
+  // `purchaseBest` as a full scan would find it (a full scan was quadratic in the line count).
   const purchaseBest: T[] = [];
+  const positionsByBucket = new Map<string, number[]>();
   for (const line of purchases) {
-    const idx = purchaseBest.findIndex((prev) => purchaseExpenseLinesMatchForDisplayDedupe(prev, line));
-    if (idx < 0) purchaseBest.push(line);
-    else purchaseBest[idx] = pickPreferredExpenseLine(purchaseBest[idx]!, line);
+    const bucket = `${line.account_id}|${line.billing_month}|${line.amount_clp}|${line.purchase_on ?? ""}`;
+    let positions = positionsByBucket.get(bucket);
+    if (!positions) positionsByBucket.set(bucket, (positions = []));
+    const idx = positions.find((i) => purchaseExpenseLinesMatchForDisplayDedupe(purchaseBest[i]!, line));
+    if (idx === undefined) {
+      positions.push(purchaseBest.length);
+      purchaseBest.push(line);
+    } else {
+      purchaseBest[idx] = pickPreferredExpenseLine(purchaseBest[idx]!, line);
+    }
   }
 
   return [...best.values(), ...purchaseBest];

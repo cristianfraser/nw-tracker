@@ -3,6 +3,7 @@ import { fxMonthEndForBalanceUsd, ufRowOnOrBefore } from "./fxRates.js";
 import { usdFromClpAtLiveFrame } from "./fxLive.js";
 import { isUsdCashAccount, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import type { TsUnit } from "./valuationTimeseries.js";
+import { historyTierMemo } from "./aggregationCache.js";
 
 /**
  * Pesos in `unit` at a date by the historical rule: USD at the `fx_daily` row on or before the
@@ -22,6 +23,45 @@ export function convertTs(clp: number, asOf: string, unit: TsUnit): number {
     return u && u.clp_per_uf > 0 ? clp / u.clp_per_uf : clp;
   }
   return clp;
+}
+
+/**
+ * {@link convertTs} for many days before Chile today (the daily series' grids): the day's rate
+ * is read once and kept in the history tier (`aggregationCache.ts`) — fx and UF rows are
+ * write-once and their writes drop the tier — so every account of every scope shares it.
+ * Returns exactly what {@link clpToUnitAt} returns for such a day (null where it is null);
+ * throws for today or later, which take the live frame.
+ */
+export function pastDayUnitConverter(unit: TsUnit): (clp: number, ymd: string) => number | null {
+  if (unit === "clp") return (clp) => clp;
+  const today = chileCalendarTodayYmd();
+  // null = no usable rate on file (USD: NaN → null; UF: the pesos pass through unconverted).
+  const rates = historyTierMemo<string, number | null>(`unit_rate_by_day|${unit}`);
+  const rateAt = (ymd: string): number | null => {
+    let r = rates.get(ymd);
+    if (r === undefined) {
+      if (unit === "usd") {
+        const fx = fxMonthEndForBalanceUsd(ymd);
+        r = fx && fx.clp_per_usd > 0 ? fx.clp_per_usd : null;
+      } else {
+        const u = ufRowOnOrBefore(ymd);
+        r = u && u.clp_per_uf > 0 ? u.clp_per_uf : null;
+      }
+      rates.set(ymd, r);
+    }
+    return r;
+  };
+  return (clp, ymd) => {
+    if (ymd >= today) throw new Error(`pastDayUnitConverter: ${ymd} is not before Chile today`);
+    const rate = rateAt(ymd);
+    if (unit === "usd") {
+      if (rate == null) return null;
+      const out = clp / rate;
+      return Number.isFinite(out) ? out : null;
+    }
+    const out = rate == null ? clp : clp / rate;
+    return Number.isFinite(out) ? out : null;
+  };
 }
 
 export type ClpToUnitOpts = {

@@ -5,7 +5,7 @@ import { applyPendingMarkInputChanges, setMarkInputsChangedListener } from "./ma
 import { clearMarkSeries } from "./markSeriesStore.js";
 import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import { CC_ISSUER_SLUGS } from "./ccIssuers.js";
-import { db } from "./db.js";
+import { db, dbInTransaction } from "./db.js";
 import { buildPortfolioGroupIndex } from "./portfolioGroupIndex.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
@@ -42,6 +42,7 @@ function ensureCacheFreshForChileDay(): void {
   const dataVersion = currentDbDataVersion();
   if (cacheDayYmd !== today || cacheDbDataVersion !== dataVersion) {
     cache.clear();
+    invalidateLiveTier();
     rollupSlugsByAccountId = null;
     cacheDayYmd = today;
     cacheDbDataVersion = dataVersion;
@@ -74,9 +75,65 @@ export function setAggregationInvalidationListener(
 /** Drop everything cached, the per-account mark series included (a full rebuild follows). */
 export function clearAggregationCache(): void {
   cache.clear();
+  invalidateLiveTier();
   clearMarkSeries();
   rollupSlugsByAccountId = null;
   invalidationListener?.();
+}
+
+/**
+ * The history tier: memos of results computed only from evidence dated strictly before Chile
+ * today — a historical mark, an account's deposit events, an fx row on a past date. A live-quote
+ * tick (`live_tail`) moves nothing such a result reads (no historical reader reads
+ * `live_market_quotes`, see {@link invalidateDailyAggregates}), so this tier survives it and the
+ * rebuild after a tick recomputes only today's marks and the current-month rows on top of it.
+ * Every other invalidation drops the whole tier — writes (directly, or through the mark-input
+ * log of any connection), historical market data, the day rollover, a `data_version` change —
+ * so outside a live tick it behaves exactly like the rest of the cache.
+ *
+ * An entry may only depend on rows of the mark-input tables (`markInputChanges.ts`, whose log
+ * drops the tier whichever connection wrote) or on rows its invalidation funnel covers; never on
+ * a live quote, the live fx row, or the wall clock beyond the Chile day.
+ */
+const HISTORY_TIER_PREFIX = "hist.";
+
+/**
+ * A named memo map in the history tier (created empty on first use after a drop). Inside a
+ * transaction it is a throwaway map: a report-only import reads rows it then rolls back.
+ */
+export function historyTierMemo<K, V>(name: string): Map<K, V> {
+  if (dbInTransaction()) return new Map<K, V>();
+  return getAggregationCached(`${HISTORY_TIER_PREFIX}${name}`, () => new Map<K, V>());
+}
+
+function invalidateHistoryTier(): void {
+  deleteKeysMatchingPrefix(HISTORY_TIER_PREFIX);
+}
+
+/**
+ * The live tier: memos of today's live figures (an account's today value) for the rest of the
+ * current UTC minute, so one rebuild asks each account once instead of once per reader. Dropped
+ * by every invalidation (a live-quote tick included) and when the minute turns, so a figure is
+ * never older than the clock reading a fresh computation would make, give or take a minute.
+ * Inside a transaction it is a throwaway map, like the history tier.
+ */
+let liveTier: { minute: number; maps: Map<string, Map<unknown, unknown>> } = { minute: -1, maps: new Map() };
+
+export function liveTierMemo<K, V>(name: string): Map<K, V> {
+  if (dbInTransaction()) return new Map<K, V>();
+  ensureCacheFreshForChileDay();
+  const minute = Math.floor(Date.now() / 60_000);
+  if (liveTier.minute !== minute) liveTier = { minute, maps: new Map() };
+  let map = liveTier.maps.get(name);
+  if (!map) {
+    map = new Map();
+    liveTier.maps.set(name, map);
+  }
+  return map as Map<K, V>;
+}
+
+function invalidateLiveTier(): void {
+  liveTier.maps.clear();
 }
 
 export function getAggregationCached<T>(key: string, build: () => T): T {
@@ -177,6 +234,8 @@ export function invalidateDailySeries(): void {
 // (the depto ledger, a card's normalized line streams, the checking balance memo) so the
 // rebuilt days read the new rows even when the writer did not invalidate them itself.
 setMarkInputsChangedListener((change) => {
+  invalidateHistoryTier();
+  invalidateLiveTier();
   deleteKeysMatchingPrefix("daily.");
   deleteKeysMatchingPrefix("depto.ledger|");
   if (change.all) {
@@ -209,6 +268,8 @@ export function invalidateCcBillingDetail(accountId?: number): void {
     cache.delete(cacheKeyCcBillingDetail(accountId));
     deleteKeysMatchingPrefix(`${cacheKeyCcBillingDetail(accountId)}|`);
   }
+  invalidateHistoryTier();
+  invalidateLiveTier();
   // Every account/CC write funnels through here (invalidateAggregationForAccountDate and
   // invalidateLinkedCreditCardAggregationCache both call this) — the bundle, the daily
   // series (whose historical legs read movements/valuations/CC valuations), and the depto
@@ -218,6 +279,19 @@ export function invalidateCcBillingDetail(accountId?: number): void {
   invalidateDailySeries();
   deleteKeysMatchingPrefix("depto.ledger|");
   invalidationListener?.();
+}
+
+/**
+ * A card's open facturación prices its dollars at today's live rate while unpaid
+ * (`ccFacturacionUsdRate.ts`, `usd_rate_source: live`), and its expense lines read that rate, so
+ * a live-quote tick drops the cached billing detail bundles (`cc.billing_detail|<id>`, not their
+ * evidence satellites) and the flows-overview inputs built on them. They rebuilt on top of the
+ * history tier, which the tick keeps.
+ */
+function invalidateCcBillingDetailLiveRates(): void {
+  for (const key of [...cache.keys()]) {
+    if (/^cc\.billing_detail\|\d+$/.test(key)) cache.delete(key);
+  }
 }
 
 function ancestorGroupSlugsForGroupId(
@@ -279,7 +353,7 @@ export function invalidateAggregationForAccountDate(
     throw new Error(`invalidateAggregationForAccountDate: invalid date ${occurredOrAsOfYmd}`);
   }
   clearCheckingBalanceCache(accountId);
-  invalidateCcBillingDetail(accountId);
+  invalidateCcBillingDetail(accountId); // drops the history tier too
 
   const monthKeysToInvalidate = forwardMonthKeysFrom(occurredOrAsOfYmd);
   for (const unit of ["clp", "usd", "uf"] as const) {
@@ -339,7 +413,8 @@ export function rollupSlugsForAccountTest(accountId: number): string[] {
  * - `historical` (default): rows dated in the past — EOD closes, fx/UF, fund units. Every
  *   mark from that date forward can move, so the whole daily namespace goes.
  * - `live_tail`: `live_market_quotes` only, which no historical mark reads. The cached mark
- *   series stay; today's mark is recomputed on the next read because it is never cached.
+ *   series and the history tier stay; today's mark is recomputed on the next read because it
+ *   is never cached (the live tier goes with every invalidation).
  *
  * Unknown callers get the conservative default — only pass `live_tail` from the live-quotes
  * poll, whose writes are confined to that table.
@@ -356,6 +431,7 @@ export type MarketDataInvalidationScope = "historical" | "live_tail";
 export function invalidateMarketDataAggregations(
   scope: MarketDataInvalidationScope = "historical"
 ): void {
+  invalidateLiveTier();
   deleteKeysMatchingPrefix("account.monthly_perf|");
   deleteKeysMatchingPrefix("group.consolidated_monthly|");
   deleteKeysMatchingPrefix("group.valuation_closing_by_date|");
@@ -363,7 +439,9 @@ export function invalidateMarketDataAggregations(
   invalidateFlowsOverview({ inputs: scope === "historical" });
   if (scope === "live_tail") {
     invalidateDailyAggregates();
+    invalidateCcBillingDetailLiveRates();
   } else {
+    invalidateHistoryTier();
     invalidateDailySeries();
   }
   invalidationListener?.(scope);

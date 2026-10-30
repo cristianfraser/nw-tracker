@@ -33,7 +33,7 @@ import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
-import { getAggregationCached } from "./aggregationCache.js";
+import { getAggregationCached, historyTierMemo } from "./aggregationCache.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
@@ -83,6 +83,11 @@ function balanceOnlyMonthlyRowsAsc(
   categorySlug: string,
   unit: TsUnit,
   monthEndsAsc: string[],
+  /**
+   * Names `closeAt`'s ledger (e.g. `checking`): a close before Chile today reads no quote, so
+   * it is kept in the history tier (`aggregationCache.ts`) under this name across live ticks.
+   */
+  closeSource: string,
   closeAt: (asOf: string) => number,
   /**
    * Event-based month flow over `(prevEvalYmd, evalYmd]` (null prev = cumulative through the
@@ -98,13 +103,23 @@ function balanceOnlyMonthlyRowsAsc(
   let prevClose: number | null = null;
   let prevEvalAt: string | null = null;
   const today = chileCalendarTodayYmd();
+  const closeMemo = historyTierMemo<string, number>("ledger_month_closes");
+  const closeKeyPrefix = `${closeSource}|${accountId}|${unit}|`;
 
   for (const asOf of monthEndsAsc) {
     // Current month: evaluate the ledger at Chile-today, never the future month-end —
     // a future-dated movement inside the month must not count until its date arrives
     // (equity MTM only counts units through today; mixing skews consolidated totals).
     const evalAt = asOf > today ? today : asOf;
-    const close = closeAt(evalAt);
+    let close: number;
+    if (evalAt < today) {
+      const memoKey = closeKeyPrefix + evalAt;
+      const memoized = closeMemo.get(memoKey);
+      close = memoized ?? closeAt(evalAt);
+      if (memoized === undefined) closeMemo.set(memoKey, close);
+    } else {
+      close = closeAt(evalAt);
+    }
     if (!Number.isFinite(close)) continue;
     // First month: flow = cumulative aportes at this date (vs 0) and P/L = close − that flow —
     // same convention as the equity/AFP monthly perf builder. A null first P/L dropped the
@@ -175,6 +190,7 @@ function usdCashMonthlyPerfRows(
     categorySlug,
     unit,
     monthEndsAsc,
+    "usd_cash",
     // In USD the account's ledger dollars, never its sell-rate pesos ÷ the mid rate.
     (asOf) => (unit === "usd" ? usdCashBalanceUsdAt(accountId, asOf) : usdCashBalanceClpAt(accountId, asOf)),
     ledgerCashNetFlowBetween(accountId, unit)
@@ -198,6 +214,7 @@ function clpCashMonthlyPerfRows(
     categorySlug,
     unit,
     monthEndsAsc,
+    "clp_cash",
     (asOf) => {
       const clp = clpCashBalanceClpAt(accountId, asOf);
       return unit === "usd" ? balanceCloseUsdAt(accountId, clp, asOf) : clp;
@@ -223,6 +240,7 @@ function movementBalanceMonthlyPerfRows(
     categorySlug,
     unit,
     monthEndsAsc,
+    "checking",
     (asOf) => {
       const clp = checkingMovementBalanceClpAtCached(accountId, asOf);
       return unit === "usd" ? balanceCloseUsdAt(accountId, clp, asOf) : clp;
@@ -250,6 +268,7 @@ function bookValuationMonthlyPerfRows(
     categorySlug,
     unit,
     monthEndsAsc,
+    "book",
     (asOf) => {
       const clp = clpByDate.get(asOf) ?? 0;
       return unit === "usd" ? balanceCloseUsdAt(accountId, clp, asOf) : clp;

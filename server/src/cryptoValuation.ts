@@ -6,6 +6,7 @@ import {
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { historyTierMemo } from "./aggregationCache.js";
 import {
   cryptoDisplaySessionYmd,
   equityCloseEod,
@@ -85,7 +86,28 @@ export function computeCryptoMtmClp(
   accountId: number,
   asOfYmd: string,
   priceUsd?: number | null,
-  now: Date = new Date()
+  now?: Date
+): number | null {
+  // A day before Chile today reads the EOD bar and the stored fx: kept in the history tier
+  // (`aggregationCache.ts`) across live-quote ticks.
+  if (priceUsd == null && now === undefined && asOfYmd < chileCalendarTodayYmd()) {
+    const memo = historyTierMemo<string, number | null>("crypto_mtm_clp");
+    const key = `${accountId}|${asOfYmd}`;
+    let v = memo.get(key);
+    if (v === undefined) {
+      v = computeCryptoMtmClpUncached(accountId, asOfYmd, null, new Date());
+      memo.set(key, v);
+    }
+    return v;
+  }
+  return computeCryptoMtmClpUncached(accountId, asOfYmd, priceUsd, now ?? new Date());
+}
+
+function computeCryptoMtmClpUncached(
+  accountId: number,
+  asOfYmd: string,
+  priceUsd: number | null | undefined,
+  now: Date
 ): number | null {
   const ticker = cryptoEquityTickerForAccount(accountId);
   if (!ticker) return null;
@@ -110,7 +132,7 @@ export function computeCryptoMtmClp(
  * or fx row is a data gap to fill — run the crypto EOD sync / backfill — never a stored-row
  * fallback.
  */
-export function requireCryptoMtmClp(accountId: number, asOfYmd: string, now: Date = new Date()): number {
+export function requireCryptoMtmClp(accountId: number, asOfYmd: string, now?: Date): number {
   const clp = computeCryptoMtmClp(accountId, asOfYmd, null, now);
   if (clp != null && Number.isFinite(clp)) return clp;
   const ticker = cryptoEquityTickerForAccount(accountId);

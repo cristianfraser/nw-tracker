@@ -372,8 +372,19 @@ function distinctiveWords(name: string): Set<string> {
 const DAYS_BEFORE = 1;
 const DAYS_AFTER = 5;
 
+/** Day number of an ISO date (UTC midnights are whole days apart); memoized — the matcher compares every receipt with every line. */
+const dayNumberByYmd = new Map<string, number>();
+function dayNumber(ymd: string): number {
+  let n = dayNumberByYmd.get(ymd);
+  if (n === undefined) {
+    n = Math.round(Date.parse(`${ymd}T00:00:00Z`) / 86_400_000);
+    dayNumberByYmd.set(ymd, n);
+  }
+  return n;
+}
+
 function dayDiff(a: string, b: string): number {
-  return Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000);
+  return dayNumber(a) - dayNumber(b);
 }
 
 /**
@@ -405,6 +416,23 @@ export function matchPaymentReceipts(
     if (!l.purchase_on || !(l.amount_clp > 0)) continue;
     if (!candidates.has(l.purchase_key)) candidates.set(l.purchase_key, l);
   }
+  // The candidates by purchase day, so a receipt scans only its date window; `pos` keeps the
+  // candidates' own order, which the ranking's stable sort falls back to.
+  const byDay = [...candidates.values()]
+    .map((l, pos) => ({ l, pos, day: dayNumber(l.purchase_on!) }))
+    .sort((a, b) => a.day - b.day || a.pos - b.pos);
+  const candidatesWithinDays = (fromDay: number, toDay: number): ReceiptCandidateLine[] => {
+    let lo = 0;
+    let hi = byDay.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (byDay[mid]!.day < fromDay) lo = mid + 1;
+      else hi = mid;
+    }
+    const hits: { l: ReceiptCandidateLine; pos: number }[] = [];
+    for (let i = lo; i < byDay.length && byDay[i]!.day <= toDay; i++) hits.push(byDay[i]!);
+    return hits.sort((a, b) => a.pos - b.pos).map((h) => h.l);
+  };
   const taken = new Set<string>();
   const byPurchaseKey = new Map<string, StoredPaymentReceipt>();
   const chargeByPurchaseKey = new Map<string, { position: number; of: number }>();
@@ -428,7 +456,8 @@ export function matchPaymentReceipts(
     // check-in: up to five days past check-out, and «nearest» counts from either day.
     const stay = r.stay && r.statement_descriptor == null ? r.stay : null;
     const after = stay ? Math.max(daysAfter, dayDiff(stay.check_out, paidOn) + DAYS_AFTER) : daysAfter;
-    const fits = [...candidates.values()]
+    const paidDay = dayNumber(paidOn);
+    const fits = candidatesWithinDays(paidDay - DAYS_BEFORE, paidDay + after)
       .filter((l) => !taken.has(l.purchase_key) && !claimed.has(l.purchase_key) && l.purchase_on != null)
       .map((l) => ({ l, d: dayDiff(l.purchase_on!, paidOn) }))
       .filter((c) => c.d >= -DAYS_BEFORE && c.d <= after)
