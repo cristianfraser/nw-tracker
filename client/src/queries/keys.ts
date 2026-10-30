@@ -47,6 +47,7 @@ export const queryKeys = {
   messages: (kind: "notification" | "log") => ["messages", kind] as const,
   syncStatus: () => ["syncStatus"] as const,
   ingestRunsStatus: () => ["ingestRunsStatus"] as const,
+  jobQueue: () => ["jobQueue"] as const,
   liveQuotesStamp: () => ["liveQuotesStamp"] as const,
   importSyncDocumentCoverage: () => ["importSyncDocumentCoverage"] as const,
   genericUniqueMerchants: () => ["genericUniqueMerchants"] as const,

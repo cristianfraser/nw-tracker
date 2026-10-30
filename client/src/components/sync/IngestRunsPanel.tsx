@@ -25,8 +25,9 @@ function statusClass(run: IngestRunSummary): string {
 
 /**
  * The ingest service's two runs (the hourly e-mail poll and the nightly) with a button to start
- * either now instead of waiting for its slot — a statement mail that just landed. The server
- * decides what the run carries and refuses one while another is in flight.
+ * either now instead of waiting for its slot — a statement mail that just landed. The run is
+ * queued (docs/job-queue-plan.md) and starts as soon as the ingest service is free; the server
+ * decides what it carries.
  */
 export function IngestRunsPanel({
   status,
@@ -47,7 +48,7 @@ export function IngestRunsPanel({
     previousInFlight.current = inFlightId;
   }, [inFlightId, queryClient]);
 
-  const canStart = status != null && status.scheduler_enabled && status.in_flight == null && !startRun.isPending;
+  const canStart = status != null && status.scheduler_enabled && !startRun.isPending;
 
   const headline = !status
     ? "—"

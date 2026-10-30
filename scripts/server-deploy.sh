@@ -47,7 +47,8 @@ message() { # kind title body
 server_listening() { lsof -nP -iTCP:"${PORT:-3001}" -sTCP:LISTEN >/dev/null 2>&1; }
 
 # The queue's worker endpoints take the ingest token when the server has one.
-TOKEN="${INGEST_TOKEN:-$(sed -n 's/^INGEST_TOKEN=//p' "$REPO/.env" 2>/dev/null | tail -1)}"
+TOKEN="${INGEST_TOKEN:-}"
+if [[ -z "$TOKEN" && -f "$REPO/.env" ]]; then TOKEN="$(sed -n 's/^INGEST_TOKEN=//p' "$REPO/.env" | tail -1)"; fi
 JOB_ID=""
 
 jobs_api() { # path json → response body on stdout; non-zero on a failed request
