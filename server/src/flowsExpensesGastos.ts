@@ -522,9 +522,9 @@ export function bigGroupUsageByMode(
 
 export function buildFlowsExpensesGastosPayload(
   unit: GastosUnit,
-  excludedBigGroupSlugs: ReadonlySet<string>
+  excludedBigGroupSlugs: ReadonlySet<string>,
+  lines: FlowCcExpenseLineRow[] = buildFlowsExpenseLines()
 ): FlowsExpensesGastosPayload & { big_group_usage: Record<CcInstallmentGastosMode, BigGroupUsage[]> } {
-  const lines = buildFlowsExpenseLines();
   return {
     ...buildFlowsExpensesGastosViews(
       lines,

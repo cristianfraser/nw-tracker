@@ -5,7 +5,11 @@ import { buildPayslipChecks } from "../payslipChecks.js";
 import { db } from "../db.js";
 import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsPayload } from "../flowsDeposits.js";
-import { cachedMortgageCarryingEvents } from "../flowsMortgageCarrying.js";
+import {
+  cachedFlowsExpensesGastosPayload,
+  cachedFlowsExpensesPayload,
+  cachedMortgageCarryingEvents,
+} from "../flowsMortgageCarrying.js";
 import { buildFlowsPlPayload } from "../flowsPl.js";
 import { buildFlowsIncomeAggregates, buildFlowsOverviewPayload } from "../flowsOverview.js";
 import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
@@ -32,8 +36,6 @@ import {
   renameCcExpenseBigGroup,
   setCcExpensePurchaseBigGroup,
 } from "../ccExpenseBigGroups.js";
-import { buildFlowsExpensesPayload } from "../flowsExpenses.js";
-import { buildFlowsExpensesGastosPayload } from "../flowsExpensesGastos.js";
 import {
   deleteCcFacturadoFinancingLink,
   listCcFacturadoFinancingLinks,
@@ -318,7 +320,7 @@ app.get("/api/expenses", (_req, res) => {
 });
 
 app.get("/api/flows/expenses/credit-card", (_req, res) => {
-  res.json(buildFlowsExpensesPayload());
+  res.json(cachedFlowsExpensesPayload());
 });
 
 app.get("/api/flows/expenses/credit-card/gastos", (req, res) => {
@@ -333,7 +335,7 @@ app.get("/api/flows/expenses/credit-card/gastos", (req, res) => {
       .map((s) => s.trim())
       .filter((s) => s.length > 0)
   );
-  res.json(buildFlowsExpensesGastosPayload(unitRaw, excluded));
+  res.json(cachedFlowsExpensesGastosPayload(unitRaw, excluded));
 });
 
 function piecesLineRef(source: unknown, lineId: unknown): { source: ExpenseLinePieceSource; lineId: number } {

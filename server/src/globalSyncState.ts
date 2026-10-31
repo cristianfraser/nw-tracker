@@ -78,13 +78,30 @@ function migrateLoadedState(state: GlobalSyncStateFile): GlobalSyncStateFile {
   return { ...state, userForcedStale };
 }
 
+/**
+ * The last parse, keyed by the file's identity on disk: valuation readers ask for the state
+ * once per mark (thousands of times per build), and the file changes a few times a day — by
+ * this process (`saveGlobalSyncState` drops the memo) or by another one (a new mtime / size).
+ * Callers get their own copy, since some edit what they read before saving it.
+ */
+let parsedState: { stamp: string; state: GlobalSyncStateFile } | null = null;
+
 export function loadGlobalSyncState(): GlobalSyncStateFile {
   const p = globalSyncStatePath();
-  if (!fs.existsSync(p)) return {};
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(p);
+  } catch {
+    return {};
+  }
+  const stamp = `${stat.ino}|${stat.mtimeMs}|${stat.size}`;
+  if (parsedState?.stamp === stamp) return structuredClone(parsedState.state);
   try {
     const raw = JSON.parse(fs.readFileSync(p, "utf8")) as unknown;
     if (!raw || typeof raw !== "object") return {};
-    return migrateLoadedState(raw as GlobalSyncStateFile);
+    const state = migrateLoadedState(raw as GlobalSyncStateFile);
+    parsedState = { stamp, state: structuredClone(state) };
+    return state;
   } catch (e) {
     // Corrupt state file: keep the evidence aside and start fresh (sources re-sync as "never synced").
     const aside = `${p}.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}`;
@@ -103,6 +120,7 @@ export function loadGlobalSyncState(): GlobalSyncStateFile {
 
 export function saveGlobalSyncState(state: GlobalSyncStateFile): void {
   const p = globalSyncStatePath();
+  parsedState = null;
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify(state, null, 2) + "\n", "utf8");
 }

@@ -7,6 +7,7 @@ import {
   resolvePortfolioGroupSlugForLegacyTab,
 } from "../portfolioGroupTree.js";
 import { attachColorsToValuationPayload } from "../chartColorRgb.js";
+import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached } from "../aggregationCache.js";
 import { attachNetWorthAth } from "../netWorthAllTimeHigh.js";
 import {
   getDashboardValuationTimeseries,
@@ -353,9 +354,13 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
       res.status(400).json({ error: "unknown group slug" });
       return;
     }
+    // Cached with the page bundle's lifetime: it reads the same inputs, and every invalidation
+    // that drops the bundle drops it.
     res.json(
-      attachColorsToValuationPayload(
-        getGroupValuationTimeseries(tabSlug, unit, undefined, { groupedBlocks: true })
+      getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}group_valuation_ts|${tabSlug}|${unit}`, () =>
+        attachColorsToValuationPayload(
+          getGroupValuationTimeseries(tabSlug, unit, undefined, { groupedBlocks: true })
+        )
       )
     );
     return;

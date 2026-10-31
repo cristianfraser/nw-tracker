@@ -39,6 +39,8 @@ const groupByIdStmt = db.prepare(
 );
 
 export function portfolioGroupBySlug(slug: string): PortfolioGroupRow | null {
+  const idx = getPortfolioGroupIndex();
+  if (idx) return idx.groupBySlug.get(slug) ?? null;
   return (groupBySlugStmt.get(slug) as PortfolioGroupRow | undefined) ?? null;
 }
 
