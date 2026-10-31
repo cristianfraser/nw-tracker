@@ -1,5 +1,5 @@
 /**
- * Market data for the v2 demo. Two sources, one reader:
+ * Market data for the synthetic databases. Two sources, one reader:
  *
  * - `real` (the hosted demo): `loadDemoRealMarket` filled the tables from Yahoo, the Banco Central
  *   and AFP UNO before generation; nothing here writes prices.
@@ -9,16 +9,16 @@
  * The simulation only ever reads prices back from the database (`MarketReader`), so a holding is
  * valued by the generator exactly as the app values it.
  */
-import { db } from "../../db.js";
-import { fxRowOnOrBefore, ufRowOnOrBefore } from "../../fxRates.js";
-import { isNyseTradingDay, isWeekendYmd } from "../../marketHolidays.js";
-import { upsertSpAfpFundUnits, type SpAfpFundUnitRow } from "../../spAfpFundUnits.js";
+import { db } from "../db.js";
+import { fxRowOnOrBefore, ufRowOnOrBefore } from "../fxRates.js";
+import { isNyseTradingDay, isWeekendYmd } from "../marketHolidays.js";
+import { upsertSpAfpFundUnits, type SpAfpFundUnitRow } from "../spAfpFundUnits.js";
 import { stream } from "./rng.js";
-import { chileCalendarTodayYmd } from "../../chileDate.js";
-import { addDays, addMonths, BTC_TICKER, type Month, type Ymd, V2_FIRST_MONTH, V2_MARKET_YEARS, V2_SEED } from "./person.js";
+import { chileCalendarTodayYmd } from "../chileDate.js";
+import { addDays, addMonths, BTC_TICKER, DEMO_PERSON, type Month, type Person, type Ymd } from "./person.js";
 
 /** Every ticker the person holds, with the first day the story needs its price. */
-export const V2_TICKERS: { ticker: string; firstUse: Ymd }[] = [
+export const DEMO_TICKERS: { ticker: string; firstUse: Ymd }[] = [
   { ticker: "SPY", firstUse: "2018-05-01" },
   { ticker: "AAPL", firstUse: "2019-03-01" },
   { ticker: "AMD", firstUse: "2019-07-01" },
@@ -85,14 +85,16 @@ export function anchorValue(anchors: readonly Anchor[], d: Ymd): number {
  * UF daily, UTM and IPC monthly, weekday equity closes (BTC every day) with a little seeded noise,
  * and the AFP fund A values (Modelo from the committed snapshot, UNO synthetic from 2019-10).
  */
-export function writeSyntheticMarket(fromMonth: Month, lastDay: Ymd, modeloRows: SpAfpFundUnitRow[]): void {
+export function writeSyntheticMarket(person: Person, fromMonth: Month, lastDay: Ymd, modeloRows: SpAfpFundUnitRow[]): void {
+  const seed = person.seed;
+  const tickers = new Set([...person.brokerTickers, ...(person.btc ? [BTC_TICKER] : [])]);
   const insFx = db.prepare(`INSERT OR REPLACE INTO fx_daily (date, clp_per_usd) VALUES (?, ?)`);
   const insFxB = db.prepare(`INSERT OR REPLACE INTO fx_daily_bcentral (date, clp_per_usd) VALUES (?, ?)`);
   const insUf = db.prepare(`INSERT OR REPLACE INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`);
   const insUtm = db.prepare(`INSERT OR REPLACE INTO utm_daily (date, utm_clp) VALUES (?, ?)`);
   const insIpc = db.prepare(`INSERT OR REPLACE INTO ipc_daily (date, ipc_index) VALUES (?, ?)`);
   const insEq = db.prepare(`INSERT OR REPLACE INTO equity_daily (ticker, trade_date, close, currency) VALUES (?, ?, ?, 'usd')`);
-  const fxNoise = stream(V2_SEED, "market|fx");
+  const fxNoise = stream(seed, "market|fx");
   const start: Ymd = `${fromMonth}-01`;
   const ufEnd = addDays(lastDay, 40);
   db.transaction(() => {
@@ -107,8 +109,10 @@ export function writeSyntheticMarket(fromMonth: Month, lastDay: Ymd, modeloRows:
       insUtm.run(`${m}-01`, Math.round(anchorValue(UTM_ANCHORS, `${m}-01`)));
       insIpc.run(`${m}-01`, Math.round((anchorValue(UF_ANCHORS, `${m}-01`) / 35_110) * 100 * 1e6) / 1e6);
     }
-    for (const [ticker, anchors] of Object.entries(EQUITY_ANCHORS)) {
-      const noise = stream(V2_SEED, `market|${ticker}`);
+    for (const ticker of tickers) {
+      const anchors = EQUITY_ANCHORS[ticker];
+      if (!anchors) throw new Error(`demo: no synthetic price anchors for ${ticker}`);
+      const noise = stream(seed, `market|${ticker}`);
       const crypto = ticker.endsWith("-USD");
       for (let d = start < anchors[0]![0] ? anchors[0]![0] : start; d <= lastDay; d = addDays(d, 1)) {
         if (!crypto && !isNyseTradingDay(d)) continue;
@@ -156,7 +160,7 @@ export function dbMarketReader(): MarketReader {
         trade_date: string;
         close: number;
       }[];
-      if (rows.length === 0) throw new Error(`demo v2: no closes for ${ticker}`);
+      if (rows.length === 0) throw new Error(`demo: no closes for ${ticker}`);
       s = { d: rows.map((r) => r.trade_date), c: rows.map((r) => r.close) };
       closes.set(ticker, s);
     }
@@ -173,26 +177,26 @@ export function dbMarketReader(): MarketReader {
         lo = mid + 1;
       } else hi = mid - 1;
     }
-    if (found < 0) throw new Error(`demo v2: no ${label} on or before ${day}`);
+    if (found < 0) throw new Error(`demo: no ${label} on or before ${day}`);
     return s.c[found]!;
   };
   const fundCache = new Map<string, { d: string[]; c: number[] }>();
   return {
     fx(day) {
       const r = fxRowOnOrBefore(day)?.clp_per_usd;
-      if (r == null) throw new Error(`demo v2: no fx on or before ${day}`);
+      if (r == null) throw new Error(`demo: no fx on or before ${day}`);
       return r;
     },
     uf(day) {
       const r = ufRowOnOrBefore(day)?.clp_per_uf;
-      if (r == null) throw new Error(`demo v2: no UF on or before ${day}`);
+      if (r == null) throw new Error(`demo: no UF on or before ${day}`);
       return r;
     },
     utm(month) {
       const r = db.prepare(`SELECT utm_clp FROM utm_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`).get(`${month}-01`) as
         | { utm_clp: number }
         | undefined;
-      if (!r) throw new Error(`demo v2: no UTM for ${month}`);
+      if (!r) throw new Error(`demo: no UTM for ${month}`);
       return r.utm_clp;
     },
     close(ticker, day) {
@@ -213,13 +217,7 @@ export function dbMarketReader(): MarketReader {
   };
 }
 
-/** First month of the market window (prior marks and watchlist anchors need years of history). */
-export function v2MarketFirstMonth(today: Ymd = chileCalendarTodayYmd()): Month {
-  const m = addMonths(today.slice(0, 7), -Math.round(V2_MARKET_YEARS * 12));
-  return m < V2_FIRST_MONTH ? m : V2_FIRST_MONTH;
-}
-
-/** What the real-market loader fetches for the v2 demo. */
-export function v2MarketSpec(today: Ymd = chileCalendarTodayYmd()): { fromMonth: Month; tickers: typeof V2_TICKERS; withAfp: boolean } {
-  return { fromMonth: v2MarketFirstMonth(today), tickers: V2_TICKERS, withAfp: true };
+/** What the real-market loader fetches for the hosted demo. */
+export function demoMarketSpec(today: Ymd = chileCalendarTodayYmd()): { fromMonth: Month; tickers: typeof DEMO_TICKERS; withAfp: boolean } {
+  return { fromMonth: DEMO_PERSON.marketFromMonth(today), tickers: DEMO_TICKERS, withAfp: true };
 }

@@ -1,7 +1,7 @@
 # Demo data generator v2 — plan
 
-Status: built (2026-10-31), `server/src/demoData/v2/`. The `demo` preset is v2; the lean
-`test` preset keeps the old engine (see «As built» at the end).
+Status: built (2026-10-31), `server/src/demoData/`. One engine, two people: the hosted demo's
+(`DEMO_PERSON`) and the Vitest database's (`testPerson`). See «As built» at the end.
 
 ## Goal
 
@@ -13,11 +13,11 @@ the app. End state: net worth ≈ US$400k today (close is fine, not exact).
 
 ## Architecture
 
-1. **Life ledger** (`demoData/v2/ledger*.ts`): a seeded, deterministic list of real-world
+1. **Life ledger** (`demoData/simulate.ts`): a seeded, deterministic list of real-world
    events — paycheck, boleta, purchase, transfer, divisas, card payment, contribution,
    gift, trade. Pure, no DB. Random draws come from a per-month stream
    (`rng(seed, month, stream)`), so appending a new month never changes history.
-2. **Document renderers** (`demoData/v2/render*.ts`): ledger → canonical ingest payloads
+2. **Document renderers** (`demoData/render.ts`): ledger → canonical ingest payloads
    (`server/contracts`):
    - CLP checking + cuenta vista cartolas → `bank_account.statements`
    - checking USD → `bank_account.statements` with a currency (contract extension), or a
@@ -168,10 +168,17 @@ All seven phases are in. Where the build differs from the plan above:
   (USD, `origin = 'rebuilt'`), the mortgage ledger. The F22 forms are not stored: their cash
   (April payment, May refund) is in the cartolas, and the tax page drafts each year from the
   liquidaciones.
-- **The Vitest preset stays on the old engine** (`demoNarrative.ts` / `demoWriters.ts`, trimmed to
-  the `test` preset only and checked byte-identical before and after): the suite's fixtures were
-  written around it. A probe run of the suite on a v2 database stalled in the heaviest file (it
-  rebuilds every payload twice, on a database ~5× the lean one); porting the suite is its own task.
+- **The Vitest database is the same engine on a second, short person** (`testPerson`: about
+  twenty months ending today). The old direct-write engine (`demoNarrative.ts` /
+  `demoWriters.ts` / `generateDemoDb.ts`) is deleted. Running the suite on the demo person itself
+  was 60× slower in the heaviest files (they rebuild every payload twice over a decade of
+  history). Tests that had assumed the old fixtures were upgraded: they find accounts by kind or
+  import key, step aside the test person's declared bank numbers when they need their own, and
+  isolate a card group from the person's statements when they fake an earlier clock. Three
+  turned out to check nothing on the old data (the SPY watchlist stats returned early with no
+  closes) or encoded a frame the app had since changed (the card detalle vs valuation check now
+  skips month-ends still ahead). Two small app fixes came out of it: the overview's daily cash
+  line starts at its first non-zero day like every other line, and the AFP fund switch pairing.
 - **Numbers:** on the synthetic market the person ends at ~US$370k; on the real market the plays
   move it. The invariant allows ±25 % around US$400k.
 - **Story adjustments found while building:** the first apartment starts with job 2; the NVDA

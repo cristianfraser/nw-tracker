@@ -39,7 +39,11 @@ describe("CC billing detail / valuation path invariant", () => {
 
       // Only check months present in both (valuation pts include more months via ledgerMonths union)
       const mismatches: { month: string; valuation: number; historial: number; diff: number }[] = [];
+      const today = chileCalendarTodayYmd();
       for (const pt of pts) {
+        // A month-end still ahead (the open facturación's, between its close and the month's end)
+        // carries today's owed, while the detalle projects the plan: there is nothing to compare yet.
+        if (pt.as_of_date > today) continue;
         const ym = pt.as_of_date.slice(0, 7);
         const historialBalance = detailByMonth.get(ym);
         if (historialBalance == null) continue;

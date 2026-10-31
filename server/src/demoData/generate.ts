@@ -1,5 +1,6 @@
 /**
- * Demo generator v2 (docs/demo-generator-plan.md). Order:
+ * The synthetic database generator (docs/demo-generator-plan.md), for the hosted demo's person
+ * and the Vitest person (`person.ts`). Order:
  *
  * 1. accounts and the nav trees;
  * 2. market: the real tables (already loaded) or the synthetic ones, plus the series the person's
@@ -15,37 +16,37 @@
  * 7. category rules, colors, sync sources, the invariants.
  */
 import { readFileSync } from "node:fs";
-import { db } from "../../db.js";
-import { chileCalendarTodayYmd } from "../../chileDate.js";
-import { seedNavTree } from "../../seedNavTree.js";
-import { seedCreditCardTree } from "../../seedCreditCardTree.js";
-import { ensureAccountSyncSourcesSeeded } from "../../accountSyncSources.js";
-import { recomputeCcBillingMonthBalances } from "../../ccBillingBalances.js";
-import { afpDisplaySeriesKey, AFP_UNO_CUOTA_SERIES_KEY } from "../../afpUnoSeries.js";
-import { afpDisplayThroughDay, buildAfpDisplayRowsForFund, upsertAfpDisplayRows } from "../../afpUnoOfficialSync.js";
-import { officialPensionFundUnits } from "../../spAfpFundUnits.js";
-import { ufWindowForIpcMonth, writeOfficialIpcMonths } from "../../siiOfficialIpc.js";
-import { applyBankAccountStatements } from "../../bankAccountStatementsApply.js";
-import { applyBankAccountMovements } from "../../bankAccountMovementsApply.js";
-import { applyParsedCcStatements } from "../../ccParsedStatementsApply.js";
-import { importCcWebPasteLines } from "../../accountImports.js";
-import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../../ccPaymentMirrors.js";
-import { applyPayrollParameters } from "../../payrollParametersApply.js";
-import { applyEmploymentPayslips } from "../../payslipsApply.js";
-import { payslipLineKind } from "../../payslipLineKinds.js";
-import { getCcExpenseCategoryBySlug, normalizeCcExpenseMerchantKey } from "../../ccExpenseCategories.js";
-import { invalidateExpenseGenericUniqueMerchantCache } from "../../expenseGenericUniqueMerchants.js";
+import { db } from "../db.js";
+import { chileCalendarTodayYmd } from "../chileDate.js";
+import { seedNavTree } from "../seedNavTree.js";
+import { seedCreditCardTree } from "../seedCreditCardTree.js";
+import { ensureAccountSyncSourcesSeeded } from "../accountSyncSources.js";
+import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
+import { afpDisplaySeriesKey, AFP_UNO_CUOTA_SERIES_KEY } from "../afpUnoSeries.js";
+import { afpDisplayThroughDay, buildAfpDisplayRowsForFund, upsertAfpDisplayRows } from "../afpUnoOfficialSync.js";
+import { officialPensionFundUnits } from "../spAfpFundUnits.js";
+import { ufWindowForIpcMonth, writeOfficialIpcMonths } from "../siiOfficialIpc.js";
+import { applyBankAccountStatements } from "../bankAccountStatementsApply.js";
+import { applyBankAccountMovements } from "../bankAccountMovementsApply.js";
+import { applyParsedCcStatements } from "../ccParsedStatementsApply.js";
+import { importCcWebPasteLines } from "../accountImports.js";
+import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "../ccPaymentMirrors.js";
+import { applyPayrollParameters } from "../payrollParametersApply.js";
+import { applyEmploymentPayslips } from "../payslipsApply.js";
+import { payslipLineKind } from "../payslipLineKinds.js";
+import { getCcExpenseCategoryBySlug, normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
+import { invalidateExpenseGenericUniqueMerchantCache } from "../expenseGenericUniqueMerchants.js";
 import {
   deptoPaymentColumnsFromPaymentRow,
   deptoPaymentHumanNote,
   insertDeptoPaymentRow,
   mortgageFlowKindFromCuota,
   type DeptoDividendosPaymentRow,
-} from "../../deptoDividendosLedger.js";
-import { isChileBusinessDay } from "../../marketHolidays.js";
-import { DEMO_AFP_MODELO_CSV_PATH, parseDemoAfpModeloCsv } from "../demoRealMarket.js";
-import { dbMarketReader, v2MarketFirstMonth, writeSyntheticMarket, type MarketReader } from "./market.js";
-import { addDays, addMonths, BROKER_TICKERS, CARDS, daysInMonth, HOUSE, type Month, type Ymd, ymd } from "./person.js";
+} from "../deptoDividendosLedger.js";
+import { isChileBusinessDay } from "../marketHolidays.js";
+import { DEMO_AFP_MODELO_CSV_PATH, parseDemoAfpModeloCsv } from "./demoRealMarket.js";
+import { dbMarketReader, writeSyntheticMarket, type MarketReader } from "./market.js";
+import { addDays, addMonths, daysInMonth, type Month, type Person, type Ymd, ymd } from "./person.js";
 import {
   renderCardStatementRecords,
   renderCartolas,
@@ -55,10 +56,10 @@ import {
   renderPayslips,
   DEMO_CHECKING_NUMBER,
 } from "./render.js";
-import { APV_FUND_SERIES_KEY, mortgageCuotaUf, simulate, type Acct, type Ledger } from "./simulate.js";
-import { assertV2Invariants, type V2Report } from "./invariants.js";
+import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, mortgageCuotaUf, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
+import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 
-export type GenerateV2Options = { market: "synthetic" | "real"; today?: Ymd };
+export type GenerateDemoDbOptions = { person: Person; market: "synthetic" | "real"; today?: Ymd };
 
 /* ------------------------------------ accounts ------------------------------------ */
 
@@ -66,7 +67,7 @@ function ensureAssetGroup(slug: string, label: string, parentSlug: string): numb
   const existing = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as { id: number } | undefined;
   if (existing) return existing.id;
   const parent = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(parentSlug) as { id: number } | undefined;
-  if (!parent) throw new Error(`demo v2: asset group ${parentSlug} missing (schema seed incomplete?)`);
+  if (!parent) throw new Error(`demo: asset group ${parentSlug} missing (schema seed incomplete?)`);
   return Number(db.prepare(`INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (?, ?, 90, ?)`).run(slug, label, parent.id).lastInsertRowid);
 }
 
@@ -78,11 +79,11 @@ function createAccount(groupId: number, name: string, opts: { key?: string; tick
   );
 }
 
-function createAccounts(): Map<Acct, number> {
+function createAccounts(person: Person): Map<Acct, number> {
   const ids = new Map<Acct, number>();
   const g = (slug: string) => {
     const r = db.prepare(`SELECT id FROM asset_groups WHERE slug = ?`).get(slug) as { id: number } | undefined;
-    if (!r) throw new Error(`demo v2: asset group ${slug} missing`);
+    if (!r) throw new Error(`demo: asset group ${slug} missing`);
     return r.id;
   };
   ids.set("vista", createAccount(g("cash_eqs__cuenta_vista"), "Cuenta vista"));
@@ -90,11 +91,16 @@ function createAccounts(): Map<Acct, number> {
   ids.set("checkingUsd", createAccount(ensureAssetGroup("cash_eqs__cuenta_usd__usd", "Cuenta corriente USD", "cash_eqs__checking_accounts"), "Cuenta corriente USD"));
   ids.set("brokerClp", createAccount(ensureAssetGroup("cash_eqs__cash_savings__broker_clp__clp", "Broker CLP", "cash_eqs__cash_savings"), "Broker CLP", { key: "import:panel|kind=clp|key=broker_clp" }));
   ids.set("brokerUsd", createAccount(ensureAssetGroup("cash_eqs__cash_savings__broker_usd__usd", "Broker USD", "cash_eqs__cash_savings"), "Broker USD", { key: "import:panel|kind=usd|key=broker_usd" }));
-  ids.set("exchangeClp", createAccount(ensureAssetGroup("brokerage_crypto__buda_clp", "Exchange CLP", "brokerage_crypto"), "Exchange CLP"));
-  ids.set("btc", createAccount(g("brokerage_crypto__bitcoin"), "Bitcoin", { ticker: "BTC-USD" }));
-  for (const t of BROKER_TICKERS) {
+  if (person.btc) {
+    ids.set("exchangeClp", createAccount(ensureAssetGroup("brokerage_crypto__buda_clp", "Exchange CLP", "brokerage_crypto"), "Exchange CLP"));
+    ids.set("btc", createAccount(g("brokerage_crypto__bitcoin"), "Bitcoin", { ticker: "BTC-USD" }));
+  }
+  for (const t of person.brokerTickers) {
     const leaf = ensureAssetGroup(`brokerage_acciones__${t.toLowerCase()}`, t, "brokerage_acciones");
     ids.set(`stock:${t}`, createAccount(leaf, t, { key: `import:panel|ticker=${t}|key=demo_${t.toLowerCase()}`, ticker: t }));
+  }
+  if (person.fund) {
+    ids.set("fund", createAccount(g("brokerage_mutual_funds__fintual_risky_norris"), person.fund.name, { key: "import:panel|kind=fund|key=demo_fondo", series: MUTUAL_FUND_SERIES_KEY }));
   }
   ids.set("apvA", createAccount(g("retirement_apv_a__apv"), "APV A", { series: APV_FUND_SERIES_KEY }));
   ids.set("apvB", createAccount(g("retirement_apv_b__apv"), "APV B", { series: APV_FUND_SERIES_KEY }));
@@ -102,19 +108,21 @@ function createAccounts(): Map<Acct, number> {
     const key = `import:afp|afp=${slug}|fund=A`;
     return createAccount(g("retirement_afp_afc__afp"), name, { key, series: afpDisplaySeriesKey(slug, "A") });
   };
-  ids.set("afpModelo", afp("modelo", "Modelo-A"));
+  // Modelo only for a life that starts before the switch into UNO.
+  if (person.firstMonth < AFP_SWITCH_MONTH) ids.set("afpModelo", afp("modelo", "Modelo-A"));
   ids.set("afpUno", afp("uno", "UNO-A"));
   ids.set("afc", createAccount(g("retirement_afp_afc__afc"), "AFC"));
-  ids.set("property", createAccount(g("real_estate__property"), "Depto propio", { key: "import:excel|key=property" }));
-  const mortgageId = createAccount(g("liabilities__mortgage"), "Hipoteca depto", { key: "import:excel|key=mortgage" });
-  ids.set("mortgage" as Acct, mortgageId);
-  for (const c of CARDS) {
-    const id = createAccount(g("credit_cards__credit_card"), c.displayName, { key: `credit_card_master|santander|${c.last4}` });
+  if (person.house) {
+    ids.set("property", createAccount(g("real_estate__property"), "Depto propio", { key: "import:excel|key=property" }));
+    ids.set("mortgage" as Acct, createAccount(g("liabilities__mortgage"), "Hipoteca depto", { key: "import:excel|key=mortgage" }));
+  }
+  for (const c of person.cards) {
+    const id = createAccount(g("credit_cards__credit_card"), c.displayName, { key: `credit_card_master|${c.issuer}|${c.last4}` });
     db.prepare(
       `INSERT INTO credit_card_account_config (account_id, cupo_clp, cupo_usd, billing_cycle_start_day, billing_cycle_end_day, card_last4)
        VALUES (?, ?, ?, 21, 20, ?)`
     ).run(id, c.key === "main" ? 8_000_000 : 12_000_000, c.key === "main" ? 3_000 : 6_000, c.last4);
-    ids.set(`card:${c.key}`, id);
+    ids.set(`card:${c.key}` as Acct, id);
   }
   db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', ?, 'clp')`).run(ids.get("checking")!, DEMO_CHECKING_NUMBER);
   db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', '5100234567', 'usd')`).run(ids.get("checkingUsd")!);
@@ -124,26 +132,28 @@ function createAccounts(): Map<Acct, number> {
 /* ------------------------------------- market -------------------------------------- */
 
 /** The APV fund: a balanced fund (65 % SPY in pesos, 35 % a steady 3 %/yr sleeve), valued daily. */
-function writeApvFundSeries(market: MarketReader, from: Ymd, today: Ymd): void {
+function writeFundSeries(seriesKey: string, equityShare: number, market: MarketReader, from: Ymd, today: Ymd): void {
   const ins = db.prepare(`INSERT OR REPLACE INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, 'demo')`);
   const spy0 = market.close("SPY", from) * market.fx(from);
   db.transaction(() => {
     for (let d = from; d <= today; d = addDays(d, 1)) {
       if (!isChileBusinessDay(d)) continue;
       const years = (Date.parse(d) - Date.parse(from)) / (365.25 * 86_400_000);
-      const v = 10_000 * (0.65 * ((market.close("SPY", d) * market.fx(d)) / spy0) + 0.35 * Math.pow(1.03, years));
-      ins.run(APV_FUND_SERIES_KEY, d, Math.round(v * 100) / 100);
+      const v = 10_000 * (equityShare * ((market.close("SPY", d) * market.fx(d)) / spy0) + (1 - equityShare) * Math.pow(1.03, years));
+      ins.run(seriesKey, d, Math.round(v * 100) / 100);
     }
   })();
 }
 
-function writeAfpDisplaySeries(today: Ymd): void {
-  const modelo = officialPensionFundUnits("modelo", "A");
-  if (modelo.length === 0) throw new Error("demo v2: no Modelo fund A values (the committed snapshot)");
-  const modeloRows = buildAfpDisplayRowsForFund("modelo", "A", modelo[0]!.day, modelo.at(-1)!.day);
-  upsertAfpDisplayRows(afpDisplaySeriesKey("modelo", "A"), "modelo", modeloRows, false);
+function writeAfpDisplaySeries(person: Person, today: Ymd): void {
+  if (person.firstMonth < AFP_SWITCH_MONTH) {
+    const modelo = officialPensionFundUnits("modelo", "A");
+    if (modelo.length === 0) throw new Error("demo: no Modelo fund A values (the committed snapshot)");
+    const modeloRows = buildAfpDisplayRowsForFund("modelo", "A", modelo[0]!.day, modelo.at(-1)!.day);
+    upsertAfpDisplayRows(afpDisplaySeriesKey("modelo", "A"), "modelo", modeloRows, false);
+  }
   const uno = officialPensionFundUnits("uno", "A");
-  if (uno.length === 0) throw new Error("demo v2: no UNO fund A values");
+  if (uno.length === 0) throw new Error("demo: no UNO fund A values");
   const through = afpDisplayThroughDay(uno, today);
   upsertAfpDisplayRows(AFP_UNO_CUOTA_SERIES_KEY, "uno", buildAfpDisplayRowsForFund("uno", "A", uno[0]!.day, through), false);
 }
@@ -174,7 +184,7 @@ function writeOfficialIpcFromUf(market: MarketReader, fromMonth: Month, today: Y
 function writeDirect(ledger: Ledger, ids: Map<Acct, number>): void {
   const id = (a: Acct) => {
     const v = ids.get(a);
-    if (v == null) throw new Error(`demo v2: no account for ${a}`);
+    if (v == null) throw new Error(`demo: no account for ${a}`);
     return v;
   };
   const insSingle = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind) VALUES (?, ?, ?, ?, ?, ?, ?)`);
@@ -217,7 +227,7 @@ function writeContractorPayslips(ledger: Ledger): void {
        period_month, employer_name, employer_rut, pay_period_label, earning_type,
        total_haberes_clp, desc_other_clp, total_descuentos_clp, liquido, liquido_currency,
        source_pdf, parse_version, movement_id, link_source, wire_received_on, origin, rebuilt_basis, pension_fund
-     ) VALUES (?, ?, NULL, ?, 'salary', ?, ?, ?, ?, 'usd', ?, 'demo-v2', NULL, NULL, ?, 'rebuilt', ?, NULL)`
+     ) VALUES (?, ?, NULL, ?, 'salary', ?, ?, ?, ?, 'usd', ?, 'demo', NULL, NULL, ?, 'rebuilt', ?, NULL)`
   );
   const insLine = db.prepare(`INSERT INTO payslip_lines (payslip_id, position, side, section, label, amount, kind) VALUES (?, ?, ?, NULL, ?, ?, ?)`);
   db.transaction(() => {
@@ -244,7 +254,8 @@ function writeContractorPayslips(ledger: Ledger): void {
 
 function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketReader, today: Ymd): void {
   const m = ledger.mortgage;
-  if (!m) return;
+  const HOUSE = ledger.person.house;
+  if (!m || !HOUSE) return;
   const propertyId = ids.get("property")!;
   const mortgageId = ids.get("mortgage" as Acct)!;
   const insMov = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'clp', ?, ?, ?)`);
@@ -338,7 +349,7 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketRea
       const end = ymd(mo, daysInMonth(mo));
       const day = end <= today ? end : today;
       const paid = m.cuotas.filter((c) => c.date <= day).length;
-      const balUf = paid > 0 ? mortgageCuotaUf(m.principalUf, paid).balanceAfterUf : m.principalUf;
+      const balUf = paid > 0 ? mortgageCuotaUf(HOUSE, m.principalUf, paid).balanceAfterUf : m.principalUf;
       const uf = market.uf(day);
       insVal.run(mortgageId, day, Math.round(balUf * uf));
       insVal.run(propertyId, day, Math.round((valueUfAt(day) - balUf) * uf));
@@ -347,11 +358,12 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketRea
   })();
 }
 
-/** APV accounts are book accounts: units × the APV fund's value, marked every business day. */
-function writeApvValuations(ids: Map<Acct, number>, market: MarketReader, today: Ymd): void {
+/** APV and mutual fund accounts are book accounts: units × the fund's value, marked every business day. */
+function writeFundValuations(ids: Map<Acct, number>, market: MarketReader, today: Ymd): void {
   const insVal = db.prepare(`INSERT OR REPLACE INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`);
-  for (const key of ["apvA", "apvB"] as const) {
-    const id = ids.get(key)!;
+  for (const [key, series] of [["apvA", APV_FUND_SERIES_KEY], ["apvB", APV_FUND_SERIES_KEY], ["fund", MUTUAL_FUND_SERIES_KEY]] as const) {
+    const id = ids.get(key);
+    if (id == null) continue;
     const rows = db
       .prepare(
         `SELECT occurred_on, units_delta FROM movements WHERE (account_id = ? OR to_account_id = ?) AND units_delta IS NOT NULL ORDER BY occurred_on`
@@ -364,7 +376,7 @@ function writeApvValuations(ids: Map<Acct, number>, market: MarketReader, today:
       for (let d = rows[0]!.occurred_on; d <= today; d = addDays(d, 1)) {
         while (i < rows.length && rows[i]!.occurred_on <= d) units += rows[i++]!.units_delta;
         if (!isChileBusinessDay(d) && d !== today) continue;
-        insVal.run(id, d, Math.round(units * market.fundUnit(APV_FUND_SERIES_KEY, d)));
+        insVal.run(id, d, Math.round(units * market.fundUnit(series, d)));
       }
     })();
   }
@@ -407,20 +419,21 @@ function renameTreesCategoryToHobbies(): void {
       `UPDATE cc_expense_categories SET slug = 'hobbies', label = 'Hobbies', label_i18n_key = 'expenses.creditCard.categories.hobbies' WHERE slug = 'trees'`
     )
     .run();
-  if (res.changes !== 1) throw new Error("demo v2: cc_expense_categories missing slug trees (reference migrations not applied?)");
+  if (res.changes !== 1) throw new Error("demo: cc_expense_categories missing slug trees (reference migrations not applied?)");
 }
 
 function seedCategoryRules(ledger: Ledger, ids: Map<Acct, number>): void {
   const ins = db.prepare(`INSERT OR IGNORE INTO cc_expense_merchant_categories (account_id, merchant_key, category_id) VALUES (?, ?, ?)`);
   const cat = (slug: string) => {
     const c = getCcExpenseCategoryBySlug(slug);
-    if (!c) throw new Error(`demo v2: no expense category ${slug}`);
+    if (!c) throw new Error(`demo: no expense category ${slug}`);
     return c.id;
   };
-  for (const c of CARDS) {
-    for (const [merchant, slug] of ledger.categoryByMerchant) ins.run(ids.get(`card:${c.key}`)!, normalizeCcExpenseMerchantKey(merchant), cat(slug));
+  for (const c of ledger.person.cards) {
+    for (const [merchant, slug] of ledger.categoryByMerchant) ins.run(ids.get(`card:${c.key}` as Acct)!, normalizeCcExpenseMerchantKey(merchant), cat(slug));
   }
   for (const acct of ["checking", "vista"] as const) {
+    if (!ids.has(acct)) continue;
     for (const [desc, slug] of ledger.categoryByCheckingDescription) ins.run(ids.get(acct)!, normalizeCcExpenseMerchantKey(desc), cat(slug));
   }
   const generic = db.prepare(`INSERT OR IGNORE INTO cc_expense_generic_unique_merchants (merchant_key, sort_order) VALUES (?, ?)`);
@@ -449,51 +462,65 @@ function applyColors(ids: Map<Acct, number>): void {
   const g = db.prepare(`UPDATE portfolio_groups SET color_rgb = ? WHERE slug = ?`);
   for (const [slug, rgb] of GROUP_COLORS) g.run(rgb, slug);
   const a = db.prepare(`UPDATE accounts SET color_rgb = ? WHERE id = ?`);
-  a.run("161,11,29", ids.get("checking")!);
-  a.run("90,90,150", ids.get("checkingUsd")!);
-  a.run("234,179,8", ids.get("btc")!);
-  a.run("118,185,0", ids.get("stock:NVDA")!);
-  a.run("35,55,217", ids.get("stock:SPY")!);
-  a.run("75,153,189", ids.get("card:main")!);
-  a.run("180,120,60", ids.get("card:second")!);
+  const colors: [Acct, string][] = [
+    ["checking", "161,11,29"],
+    ["checkingUsd", "90,90,150"],
+    ["btc", "234,179,8"],
+    ["stock:NVDA", "118,185,0"],
+    ["stock:SPY", "35,55,217"],
+    ["card:main", "75,153,189"],
+    ["card:second", "180,120,60"],
+  ];
+  for (const [key, rgb] of colors) {
+    const id = ids.get(key);
+    if (id != null) a.run(rgb, id);
+  }
 }
 
 /* ------------------------------------ entry ---------------------------------------- */
 
-export function generateDemoDbV2(opts: GenerateV2Options): V2Report {
+export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
+  const person = opts.person;
   const today = opts.today ?? chileCalendarTodayYmd();
   const n = (db.prepare(`SELECT COUNT(*) AS c FROM accounts`).get() as { c: number }).c;
-  if (n > 0) throw new Error(`demo v2: target DB already has ${n} accounts — point NW_TRACKER_TEST_DB at a fresh file`);
+  if (n > 0) throw new Error(`demo: target DB already has ${n} accounts — point NW_TRACKER_TEST_DB at a fresh file`);
 
-  const ids = createAccounts();
+  const ids = createAccounts(person);
   seedCreditCardTree();
   seedNavTree();
   renameTreesCategoryToHobbies();
 
   if (opts.market === "synthetic") {
-    writeSyntheticMarket(v2MarketFirstMonth(today), addDays(today, -1), parseDemoAfpModeloCsv(readFileSync(DEMO_AFP_MODELO_CSV_PATH, "utf8")));
+    writeSyntheticMarket(person, person.marketFromMonth(today), addDays(today, -1), parseDemoAfpModeloCsv(readFileSync(DEMO_AFP_MODELO_CSV_PATH, "utf8")));
   }
-  writeAfpDisplaySeries(today);
+  writeAfpDisplaySeries(person, today);
   const prices = dbMarketReader();
-  writeApvFundSeries(prices, "2019-01-02", today);
-  writeOfficialIpcFromUf(prices, v2MarketFirstMonth(today), today);
+  const spyFrom = (db.prepare(`SELECT MIN(trade_date) AS d FROM equity_daily WHERE ticker = 'SPY' AND trade_date >= ?`).get(
+    `${person.marketFromMonth(today)}-01`
+  ) as { d: string | null }).d;
+  if (!spyFrom) throw new Error("demo: no SPY closes for the APV fund");
+  const fundFrom = spyFrom > "2019-01-02" ? spyFrom : "2019-01-02";
+  // The APV fund is balanced (65 % equities); the mutual fund is the risky one (90 %).
+  writeFundSeries(APV_FUND_SERIES_KEY, 0.65, prices, fundFrom, today);
+  if (person.fund) writeFundSeries(MUTUAL_FUND_SERIES_KEY, 0.9, prices, fundFrom, today);
+  writeOfficialIpcFromUf(prices, person.marketFromMonth(today), today);
   const market = dbMarketReader();
 
-  const ledger = simulate(market, today);
+  const ledger = simulate(person, market, today);
   writeDirect(ledger, ids);
 
   const cartolas = renderCartolas(ledger);
   for (const p of cartolas.statements) {
     const d = applyBankAccountStatements(p);
     const errors = d.files.filter((f) => f.error);
-    if (errors.length) throw new Error(`demo v2: cartola import failed: ${errors.map((e) => `${e.file}: ${e.error}`).join("; ")}`);
+    if (errors.length) throw new Error(`demo: cartola import failed: ${errors.map((e) => `${e.file}: ${e.error}`).join("; ")}`);
   }
   const listing = renderCurrentMonthListing(cartolas.currentMonth);
-  if (listing) applyBankAccountMovements(listing, `demo-v2-ultimos-movimientos-${today}.xlsx`);
+  if (listing) applyBankAccountMovements(listing, `demo-ultimos-movimientos-${today}.xlsx`);
 
   const records = renderCardStatementRecords(ledger);
   const cards = applyParsedCcStatements(records, { dryRun: false, full: true });
-  if (cards.problems.length) throw new Error(`demo v2: card statements: ${cards.problems.join("; ")}`);
+  if (cards.problems.length) throw new Error(`demo: card statements: ${cards.problems.join("; ")}`);
   for (const o of renderOpenCycle(ledger)) importCcWebPasteLines(ids.get(`card:${o.card.key}`)!, o.listing, "cc_web_paste");
 
   const candidates = listCcPaymentMirrorCandidates().filter((c) => !c.blocked);
@@ -505,14 +532,14 @@ export function generateDemoDbV2(opts: GenerateV2Options): V2Report {
   const payslipResult = payslips ? applyEmploymentPayslips(payslips) : null;
   writeContractorPayslips(ledger);
   writeMortgage(ledger, ids, market, today);
-  writeApvValuations(ids, market, today);
+  writeFundValuations(ids, market, today);
   writeAfc(ledger, ids.get("afc")!, today);
 
-  for (const c of CARDS) recomputeCcBillingMonthBalances(ids.get(`card:${c.key}`)!);
+  for (const c of person.cards) recomputeCcBillingMonthBalances(ids.get(`card:${c.key}` as Acct)!);
   seedCategoryRules(ledger, ids);
   ensureAccountSyncSourcesSeeded();
   seedNavTree();
   applyColors(ids);
 
-  return assertV2Invariants(ledger, ids, market, today, { payslips: payslipResult });
+  return assertDemoInvariants(ledger, ids, market, today, { payslips: payslipResult });
 }
