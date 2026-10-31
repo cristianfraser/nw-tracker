@@ -10,15 +10,31 @@ import { useLocation } from "react-router-dom";
  * fetch ended (or, when nothing had to be fetched, the first check), measured from the route
  * change — from page start for the first page of a load, so it includes loading the app. A view
  * left, hidden in a background tab or still fetching after {@link TIMEOUT_MS} is reported without
- * a time. The server ignores the beacon when its usage log is off (demo, secondary dev servers).
+ * a time. The server ignores the beacon when its usage log is off (secondary dev servers).
+ *
+ * On the hosted demo this is also its anonymous pageview record: the server tags each view with
+ * the visitor's daily hash, and the beacon carries the landing URL's `?src=` campaign tag
+ * (linkedin / cv / homepage), kept for the whole visit.
  */
 
 const BEACON_PATH = "/api/usage/page-view";
+const SRC_STORAGE_KEY = "nw:demo-src";
 /** Long enough for a lazy chunk to load and its queries to start before calling a page settled. */
 const QUIET_MS = 400;
 const TIMEOUT_MS = 60_000;
 
 type Outcome = "settled" | "left" | "hidden" | "timeout";
+
+function captureSrcTag(): string | null {
+  try {
+    const fromUrl = new URLSearchParams(window.location.search).get("src");
+    if (fromUrl) sessionStorage.setItem(SRC_STORAGE_KEY, fromUrl);
+    return sessionStorage.getItem(SRC_STORAGE_KEY);
+  } catch {
+    // Private-mode sessionStorage can throw; the tag is a nice-to-have, the view isn't.
+    return null;
+  }
+}
 
 function sendPageView(body: {
   path: string;
@@ -27,7 +43,7 @@ function sendPageView(body: {
   settle_ms: number | null;
   fetched_queries: number;
 }): void {
-  const payload = JSON.stringify(body);
+  const payload = JSON.stringify({ ...body, src: captureSrcTag() });
   const blob = new Blob([payload], { type: "application/json" });
   if (navigator.sendBeacon?.(BEACON_PATH, blob)) return;
   void fetch(BEACON_PATH, {
@@ -97,10 +113,6 @@ export function useUsagePageTiming(): void {
       if (document.visibilityState === "hidden") finish("hidden");
     };
     document.addEventListener("visibilitychange", onVisibility);
-    if (document.visibilityState === "hidden") {
-      finish("hidden");
-      return;
-    }
     timeoutTimer = setTimeout(() => finish("timeout"), TIMEOUT_MS);
     armQuiet();
     // StrictMode (dev) mounts every effect twice in the same commit: a cleanup before this
@@ -108,6 +120,7 @@ export function useUsagePageTiming(): void {
     let rehearsal = true;
     queueMicrotask(() => {
       rehearsal = false;
+      if (document.visibilityState === "hidden") finish("hidden");
     });
 
     return () => {

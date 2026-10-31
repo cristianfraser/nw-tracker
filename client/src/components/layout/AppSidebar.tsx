@@ -20,7 +20,7 @@ import {
   sidebarNodeMatchesPath,
   type SidebarNavNode,
 } from "../../sidebarNavTree";
-import { PANEL_SUBROUTES } from "../../pages/panel/panelSubroutes";
+import { VISIBLE_PANEL_SUBROUTES } from "../../pages/panel/panelSubroutes";
 import { cn } from "../../cn";
 import styles from "./AppSidebar.module.css";
 
@@ -281,7 +281,7 @@ export function AppSidebar() {
       to: "/panel",
       activePrefix: "/panel",
       showLeafHyphen: false,
-      children: PANEL_SUBROUTES.map((route) => ({
+      children: VISIBLE_PANEL_SUBROUTES.map((route) => ({
         id: `panel.${route.slug}`,
         label: t(route.labelKey),
         to: `/panel/${route.slug}`,

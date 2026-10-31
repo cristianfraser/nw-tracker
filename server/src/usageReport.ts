@@ -1,11 +1,11 @@
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
-import { db } from "./db.js";
 import {
   USAGE_HISTOGRAM_BOUNDS_MS,
   USAGE_HISTOGRAM_BUCKETS,
   USAGE_HISTOGRAM_COLUMNS,
   usageLogEnabled,
 } from "./usageLog.js";
+import { usageDb } from "./usageDb.js";
 
 /**
  * Display shapes of the usage log (`/panel/usage`): most visited pages, slowest endpoints and
@@ -57,7 +57,7 @@ export type UsagePageRow = {
   route: string;
   views: number;
   settled_views: number;
-  /** Views left, hidden or timed out before their queries settled. */
+  /** Views with no settle time: left, hidden or timed out before settling (or untimed). */
   unsettled_views: number;
   settle_p50_ms: number | null;
   settle_p95_ms: number | null;
@@ -132,7 +132,7 @@ export function buildUsageReport(days: UsageReportWindow, now: Date = new Date()
   const from = windowStart(now, days);
   const to = now.toISOString();
 
-  const viewRows = db
+  const viewRows = usageDb()
     .prepare(
       `SELECT route, viewed_at, outcome, settle_ms, fetched_queries
        FROM usage_page_views WHERE viewed_at >= ? ORDER BY viewed_at`
@@ -169,7 +169,7 @@ export function buildUsageReport(days: UsageReportWindow, now: Date = new Date()
   });
   pages.sort((a, b) => b.views - a.views || a.route.localeCompare(b.route));
 
-  const sums = db
+  const sums = usageDb()
     .prepare(
       `SELECT method, route, params, SUM(count) AS count, SUM(total_ms) AS total_ms, MAX(max_ms) AS max_ms,
               SUM(client_errors) AS client_errors, SUM(server_errors) AS server_errors,
@@ -250,7 +250,7 @@ export function buildUsageEndpointTrend(
   days: UsageReportWindow,
   now: Date = new Date()
 ): UsageEndpointTrend {
-  const rows = db
+  const rows = usageDb()
     .prepare(
       `SELECT hour_start, count, total_ms, max_ms, ${USAGE_HISTOGRAM_COLUMNS.join(", ")}
        FROM usage_endpoint_hourly

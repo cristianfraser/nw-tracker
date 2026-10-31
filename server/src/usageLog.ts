@@ -1,18 +1,20 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import { db } from "./db.js";
-import { demoModeEnabled } from "./demoMode.js";
 import { requestCacheOutcome, runWithRequestCacheStats, type RequestCacheStats } from "./requestCacheStats.js";
+import { usageDb } from "./usageDb.js";
+import { USAGE_PAGE_VIEW_PATH } from "./usagePagePath.js";
 
 /**
- * Usage and performance log of the primary instance (migration 247): every `/api` request's
- * duration, status, size and cache outcome, aggregated per UTC hour × method × route pattern ×
- * the query parameters that change the work; and every in-app page view the client reports
- * (`POST /api/usage/page-view`) with how long its queries took to settle.
+ * Usage and performance log (migration 247): every `/api` request's duration, status, size and
+ * cache outcome, aggregated per UTC hour × method × route pattern × the query parameters that
+ * change the work; and every in-app page view the client reports (`POST /api/usage/page-view`)
+ * with how long its queries took to settle.
  *
  * Requests only touch an in-memory buffer; {@link flushUsageLog} writes it once a minute in one
- * transaction (a restart loses at most that minute). Off in demo mode (its read-only DB is
- * regenerated every deploy and has its own visitor analytics) and on secondary dev servers
- * (`BACKGROUND_JOBS_ENABLED=0` defaults `USAGE_LOG_ENABLED` to 0), so only the primary writes.
+ * transaction (a restart loses at most that minute). One log for both deployments, stored where
+ * {@link usageDb} says: the personal primary writes its main DB, the hosted demo its persistent
+ * analytics file (with the visitor hash on each page view, demoAnalytics.ts). Secondary dev
+ * servers stay out: `BACKGROUND_JOBS_ENABLED=0` defaults `USAGE_LOG_ENABLED` to 0, while demo
+ * mode defaults it to 1 first (it cannot collide with the primary's DB).
  */
 
 /** Upper bounds (ms) of the histogram buckets; one more bucket counts everything above. */
@@ -20,7 +22,8 @@ export const USAGE_HISTOGRAM_BOUNDS_MS = [
   2, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000,
 ] as const;
 export const USAGE_HISTOGRAM_BUCKETS = USAGE_HISTOGRAM_BOUNDS_MS.length + 1;
-export const USAGE_RETENTION_DAYS = 90;
+/** Endpoint aggregates only; page views are kept for good (the history of what is used). */
+export const USAGE_ENDPOINT_RETENTION_DAYS = 90;
 const FLUSH_INTERVAL_MS = 60_000;
 
 /**
@@ -46,10 +49,8 @@ export const USAGE_KEY_QUERY_PARAMS = [
 ] as const;
 
 const MAX_PARAM_VALUE = 40;
-const MAX_PATH = 200;
 
 export function usageLogEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  if (demoModeEnabled()) return false;
   const v = env.USAGE_LOG_ENABLED?.trim().toLowerCase();
   return !(v === "0" || v === "false" || v === "no");
 }
@@ -72,22 +73,6 @@ export function usageRoutePattern(req: Request): string | null {
   if (typeof path !== "string") return null;
   const joined = `${req.baseUrl}${path === "/" && req.baseUrl ? "" : path}`;
   return joined || "/";
-}
-
-/** A client route for grouping page views: numeric path segments become `:id`. */
-export function usagePageRoute(path: string): string {
-  return path
-    .split("/")
-    .map((segment) => (/^\d+$/.test(segment) ? ":id" : segment))
-    .join("/");
-}
-
-/** A beacon path as an app route: leading slash, no query/hash, bounded. Null otherwise. */
-export function normalizeUsagePagePath(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const path = raw.split(/[?#]/)[0]?.trim() ?? "";
-  if (!path.startsWith("/") || path.startsWith("//") || path.length > MAX_PATH) return null;
-  return path;
 }
 
 export function usageHistogramBucket(ms: number): number {
@@ -135,8 +120,10 @@ export type UsagePageViewSample = {
   viewed_at: string;
   route: string;
   path: string;
+  /** The demo's daily visitor hash; null on the personal instance. */
+  visitor: string | null;
   initial: boolean;
-  outcome: "settled" | "left" | "hidden" | "timeout";
+  outcome: "settled" | "left" | "hidden" | "timeout" | "untimed";
   settle_ms: number | null;
   fetched_queries: number;
 };
@@ -215,7 +202,7 @@ let lastPrunedDay: string | null = null;
 
 /**
  * Writes the buffered aggregates and page views in one transaction, then (once per UTC day)
- * drops what is older than the retention. The buffer is swapped out before writing, so a
+ * drops endpoint aggregates older than the retention. The buffer is swapped out before writing, so a
  * request finishing meanwhile lands in the next flush.
  */
 export function flushUsageLog(now: Date = new Date()): { endpoints: number; page_views: number } {
@@ -223,10 +210,11 @@ export function flushUsageLog(now: Date = new Date()): { endpoints: number; page
   const pageViews = pageViewBuffer;
   endpointBuffer.clear();
   pageViewBuffer = [];
+  const db = usageDb();
   const upsert = db.prepare(UPSERT_ENDPOINT_SQL);
   const insertView = db.prepare(
-    `INSERT INTO usage_page_views (viewed_at, route, path, initial, outcome, settle_ms, fetched_queries)
-     VALUES (@viewed_at, @route, @path, @initial, @outcome, @settle_ms, @fetched_queries)`
+    `INSERT INTO usage_page_views (viewed_at, route, path, visitor, initial, outcome, settle_ms, fetched_queries)
+     VALUES (@viewed_at, @route, @path, @visitor, @initial, @outcome, @settle_ms, @fetched_queries)`
   );
   const today = now.toISOString().slice(0, 10);
   db.transaction(() => {
@@ -237,9 +225,8 @@ export function flushUsageLog(now: Date = new Date()): { endpoints: number; page
     }
     for (const view of pageViews) insertView.run({ ...view, initial: view.initial ? 1 : 0 });
     if (lastPrunedDay !== today) {
-      const cutoff = new Date(now.getTime() - USAGE_RETENTION_DAYS * 86_400_000).toISOString();
+      const cutoff = new Date(now.getTime() - USAGE_ENDPOINT_RETENTION_DAYS * 86_400_000).toISOString();
       db.prepare(`DELETE FROM usage_endpoint_hourly WHERE hour_start < ?`).run(cutoff);
-      db.prepare(`DELETE FROM usage_page_views WHERE viewed_at < ?`).run(cutoff);
     }
   })();
   lastPrunedDay = today;
@@ -254,7 +241,7 @@ export function resetUsageLogBufferForTest(): void {
 }
 
 /** The beacon is the client's own record, not a request worth timing. */
-const USAGE_SKIPPED_PATHS = new Set(["/api/usage/page-view"]);
+const USAGE_SKIPPED_PATHS = new Set([USAGE_PAGE_VIEW_PATH]);
 
 /**
  * Times every `/api` request (except the page-view beacon) from arrival to the last byte sent.

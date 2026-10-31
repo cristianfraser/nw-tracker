@@ -2,6 +2,8 @@
 
 interface ImportMetaEnv {
   readonly VITE_API_URL: string;
+  /** "1" in a hosted-demo build (vite.config.ts); "" otherwise. */
+  readonly VITE_DEMO_MODE: string;
 }
 
 interface ImportMeta {
