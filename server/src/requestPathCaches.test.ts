@@ -1,10 +1,15 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { cachedGroupResponse, clearAggregationCache, invalidateAggregationForAccountDate } from "./aggregationCache.js";
+import {
+  aggregationCacheHasForTest,
+  cachedGroupResponse,
+  clearAggregationCache,
+  invalidateAggregationForAccountDate,
+} from "./aggregationCache.js";
 import { getGroupConsolidatedMonthlyRows, getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import { getGroupMonthlyPlSeries } from "./groupMonthlyPlSeries.js";
 import { groupDailySeriesResponse } from "./groupDailySeriesResponse.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { buildDashboardNavContext, buildDashboardNavSnapshot } from "./dashboardAccounts.js";
+import { buildDashboardAccountRows, buildDashboardNavContext, buildDashboardNavSnapshot } from "./dashboardAccounts.js";
 import { db } from "./db.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import { buildFlowsExpensesGastosPayload } from "./flowsExpensesGastos.js";
@@ -229,6 +234,64 @@ describe("card ledger caches", () => {
     }
     clearAggregationCache();
     expect(ccLedgerPayloads()).toEqual(first);
+  }, 300_000);
+});
+
+describe("dashboard account rows (one cache entry per account)", () => {
+  async function rowsPayloads(): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    for (const includeUsd of [false, true]) {
+      out.set(String(includeUsd), JSON.stringify(await buildDashboardAccountRows(includeUsd)));
+    }
+    return out;
+  }
+  /** Built inside a transaction, where every row builds afresh (nothing cached), rolled back. */
+  async function rowsUncached(): Promise<Map<string, string>> {
+    const pending: [string, Promise<unknown>][] = [];
+    try {
+      db.transaction(() => {
+        // The rows build synchronously; the promises only resolve after the rollback.
+        for (const includeUsd of [false, true]) pending.push([String(includeUsd), buildDashboardAccountRows(includeUsd)]);
+        throw new Error("rollback");
+      })();
+    } catch (e) {
+      if (!(e instanceof Error) || e.message !== "rollback") throw e;
+    }
+    const out = new Map<string, string>();
+    for (const [k, p] of pending) out.set(k, JSON.stringify(await p));
+    return out;
+  }
+
+  it("serve the uncached build, before and after a write", async () => {
+    clearAggregationCache();
+    const cached = await rowsPayloads();
+    const accountIds = (db.prepare(`SELECT id FROM accounts ORDER BY id`).all() as { id: number }[]).map((r) => r.id);
+    // The rows are cached one by one, and the list on top of them.
+    for (const id of accountIds) {
+      expect(aggregationCacheHasForTest(`dashboard.page_bundle|account_row|${id}|clp`)).toBe(true);
+    }
+    expect(await rowsPayloads()).toEqual(cached);
+    expect(await rowsUncached()).toEqual(cached);
+
+    const accountId = (
+      db.prepare(`SELECT account_id AS id FROM movements WHERE account_id IS NOT NULL AND currency = 'clp' LIMIT 1`).get() as {
+        id: number;
+      }
+    ).id;
+    const id = Number(
+      db
+        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 54321, 'clp', ?, 'vitest:account-rows')`)
+        .run(accountId, chileCalendarTodayYmd()).lastInsertRowid
+    );
+    invalidateAggregationForAccountDate(accountId, chileCalendarTodayYmd());
+    try {
+      const afterWrite = await rowsPayloads();
+      expect(afterWrite.get("false")).not.toBe(cached.get("false"));
+      expect(await rowsUncached()).toEqual(afterWrite);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+      clearAggregationCache();
+    }
   }, 300_000);
 });
 
