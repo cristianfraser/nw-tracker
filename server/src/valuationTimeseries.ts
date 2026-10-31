@@ -46,7 +46,12 @@ import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { ccLedgerStatementClosingPointsClpForAccounts } from "./ccCreditCardValuations.js";
 import { latestCreditCardValuationRowAsOf } from "./valuationLatest.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
-import { cacheKeyGroupClosingByDate, DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached } from "./aggregationCache.js";
+import {
+  cachedGroupResponse,
+  cacheKeyGroupClosingByDate,
+  DASHBOARD_PAGE_BUNDLE_PREFIX,
+  getAggregationCached,
+} from "./aggregationCache.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
   averageRgbTriplets,
@@ -1793,12 +1798,20 @@ function groupTabValuationTotalFromBuilt(
   return out;
 }
 
+/**
+ * A reference source's totals, cached as their own part with the group responses' lifetime: a
+ * live tick drops the part only when that source read a moved price (`cacheDependencies.ts`), so
+ * a coin tick on the Pasivos page rebuilds the source that holds the coin and none of the others.
+ * Shared by every host that overlays the source; callers must not mutate the map.
+ */
 function groupTabValuationTotalByDate(
   portfolioGroupSlug: string,
   unit: TsUnit
 ): Map<string, number> {
-  const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(portfolioGroupSlug);
-  return groupTabValuationTotalFromBuilt(getGroupValuationTimeseries(groupSlug, unit, tabSubgroup));
+  return cachedGroupResponse("reference_source_totals", portfolioGroupSlug, unit, () => {
+    const { groupSlug, tabSubgroup } = portfolioGroupApiForValuation(portfolioGroupSlug);
+    return groupTabValuationTotalFromBuilt(getGroupValuationTimeseries(groupSlug, unit, tabSubgroup));
+  });
 }
 
 /**
