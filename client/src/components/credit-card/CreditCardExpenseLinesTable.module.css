@@ -97,28 +97,22 @@
 .origin {
   grid-area: origin;
   align-self: start;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   width: 1.5rem;
   height: 1.5rem;
   color: var(--muted);
 }
 
-/* The selection checkbox sits in the row's left gutter, hidden until the row is hovered or a row
-   is selected (the origin icon beside it keeps its tooltip). */
-.listSelectable .header {
-  padding-left: calc(1.9rem + 1.5rem + 0.6rem);
-}
-
-.listSelectable .row {
-  padding-left: 1.9rem;
+/* The origin icon and the selection checkbox share the origin cell: the checkbox shows on hover,
+   keyboard focus or while any row is selected, and the icon goes transparent under it — opacity
+   only, so showing or hiding either never moves the row. */
+.originIcon,
+.select {
+  grid-area: 1 / 1;
 }
 
 .select {
-  position: absolute;
-  left: 0.55rem;
-  top: 0.8rem;
   width: 0.95rem;
   height: 0.95rem;
   margin: 0;
@@ -134,11 +128,24 @@
   pointer-events: auto;
 }
 
-/* Touch screens have no hover: the gutter is there anyway, so the checkbox always shows. */
+.rowSelectable:hover .originIcon,
+.rowSelectable:has(:focus-visible) .originIcon,
+.listHasSelection .rowSelectable .originIcon,
+.rowSelected .originIcon {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Touch screens have no hover: the checkbox always shows, in place of the icon. */
 @media (hover: none) {
   .rowSelectable .select {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .rowSelectable .originIcon {
+    opacity: 0;
+    pointer-events: none;
   }
 }
 

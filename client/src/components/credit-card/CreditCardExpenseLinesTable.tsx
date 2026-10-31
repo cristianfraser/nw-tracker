@@ -401,17 +401,19 @@ function ExpenseLineRow({
         canSelect && styles.rowSelectable
       )}
     >
-      {canSelect ? (
-        <input
-          type="checkbox"
-          className={styles.select}
-          checked={selected}
-          aria-label={t("expenses.creditCard.selectRowAria", { merchant })}
-          onChange={() => selection.toggleLine(ln)}
-        />
-      ) : null}
       <div className={styles.origin}>
-        <ExpenseOriginIcon origin={ln.origin} />
+        <span className={styles.originIcon}>
+          <ExpenseOriginIcon origin={ln.origin} />
+        </span>
+        {canSelect ? (
+          <input
+            type="checkbox"
+            className={styles.select}
+            checked={selected}
+            aria-label={t("expenses.creditCard.selectRowAria", { merchant })}
+            onChange={() => selection.toggleLine(ln)}
+          />
+        ) : null}
       </div>
       <div className={cn("mono", "muted", styles.date)}>{lineDate(ln)}</div>
       <div className={styles.pills}>
@@ -725,7 +727,6 @@ export function CreditCardExpenseLinesTable({
       <div
         className={cn(
           styles.list,
-          selection != null && showCategoryControls && styles.listSelectable,
           anySelected && styles.listHasSelection
         )}
       >
