@@ -1,6 +1,6 @@
 import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { isLiabilityAccountId } from "./accountBucket.js";
-import { getAggregationCached, historyTierMemo } from "./aggregationCache.js";
+import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./aggregationCache.js";
 import { isCreditCardAccountId } from "./ccAccountConfig.js";
 import { ccFinancingCostClpByDate } from "./ccFinancingCostDaily.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
@@ -20,6 +20,7 @@ import { isUsdCashAccount, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
+import { dbInTransaction } from "./db.js";
 import { convertTs, type TsUnit } from "./valuationTimeseries.js";
 
 /**
@@ -339,6 +340,59 @@ export function totalRangeDays(todayYmd: string = chileCalendarTodayYmd()): numb
   return Math.round((endMs - startMs) / 86_400_000) + 1;
 }
 
+/**
+ * The part of a daily series that reads only evidence: each account's value in the unit on every
+ * grid day but the last (null where it has no mark or no rate), the flow legs and deposit
+ * cumulatives over the whole grid (ledger rows and stored rates; a write drops them), and each
+ * grid day's market flag.
+ */
+type DailySeriesPast = {
+  unitByAccount: (number | null)[][];
+  flows: ReturnType<typeof gridFlows>;
+  depositCums: Map<number, number[]> | null;
+  marketDay: boolean[];
+};
+
+function dailySeriesPastKey(
+  accounts: readonly ShortHorizonAccountRef[],
+  unit: TsUnit,
+  grid: readonly string[],
+  withAccounts: boolean
+): string {
+  const ids = accounts
+    .map((a) => `${a.account_id}:${a.bucket_slug}:${a.import_key ?? ""}:${a.exclude_from_group_totals ?? ""}`)
+    .join(",");
+  return `${unit}|${withAccounts ? 1 : 0}|${grid[0]}|${grid.length}|${ids}`;
+}
+
+function buildDailySeriesPast(
+  accounts: readonly ShortHorizonAccountRef[],
+  included: readonly ShortHorizonAccountRef[],
+  grid: readonly string[],
+  flowUnit: "clp" | "usd",
+  marksByAccount: readonly (readonly (number | null)[])[],
+  valueInUnit: (ai: number, clp: number, gi: number) => number | null,
+  withAccounts: boolean
+): DailySeriesPast {
+  const lastGi = grid.length - 1;
+  const unitByAccount = included.map((_a, ai) => {
+    const out = new Array<number | null>(lastGi).fill(null);
+    for (let gi = 0; gi < lastGi; gi++) {
+      const clp = marksByAccount[ai]![gi];
+      if (clp == null || !Number.isFinite(clp)) continue;
+      const u = valueInUnit(ai, clp, gi);
+      if (u != null && Number.isFinite(u)) out[gi] = u;
+    }
+    return out;
+  });
+  return {
+    unitByAccount,
+    flows: gridFlows(accounts, grid, flowUnit),
+    depositCums: withAccounts ? accountDepositCumsOnGrid(included, grid, flowUnit) : null,
+    marketDay: grid.map((ymd) => isNyseTradingDay(ymd) || isChileBusinessDay(ymd)),
+  };
+}
+
 /** Build the daily series for one bucket of accounts. Throws on an out-of-bounds window. */
 export function getBucketDailySeries(
   accounts: readonly ShortHorizonAccountRef[],
@@ -429,6 +483,27 @@ export function getBucketDailySeries(
       markAsOf: gi === lastGi ? pricedOnToday?.[ai] ?? null : null,
     });
   };
+  // Everything before the grid's last day reads evidence only (past marks, stored rates, the
+  // ledger): the per-account values in the unit on past days, the flow legs and the deposit
+  // cumulatives. On the real clock it is kept in the history tier, so the rebuild after a live
+  // tick recomputes only today's values and the arithmetic on top.
+  const flowUnit = unit === "usd" ? "usd" : "clp";
+  const buildPast = (): DailySeriesPast =>
+    buildDailySeriesPast(accounts, included, grid, flowUnit, marksByAccount, accountValueInUnit, !!perAccount);
+  const pastKey =
+    opts.now === undefined && grid[lastGi] === realToday && !dbInTransaction()
+      ? dailySeriesPastKey(accounts, unit, grid, !!perAccount)
+      : null;
+  let past: DailySeriesPast;
+  if (pastKey) {
+    const memo = historyTierMemo<string, DailySeriesPast>("daily_series_past");
+    const hit = memo.get(pastKey);
+    past = hit ?? buildHistoryTierValue("daily series past part", buildPast);
+    if (!hit) memo.set(pastKey, past);
+  } else {
+    past = buildPast();
+  }
+
   /** Each account's value in the unit per grid day (null: no mark, or no rate on file). */
   const unitByAccount = included.map(() => new Array<number | null>(grid.length).fill(null));
   const values: (number | null)[] = grid.map((_ymd, gi) => {
@@ -439,7 +514,7 @@ export function getBucketDailySeries(
       const clp = marksByAccount[ai]![gi];
       const ok = clp != null && Number.isFinite(clp);
       ccMarksClp.get(a.account_id)?.push(ok ? clp : null);
-      const u = ok ? accountValueInUnit(ai, clp, gi) : null;
+      const u = gi < lastGi ? past.unitByAccount[ai]![gi]! : ok ? accountValueInUnit(ai, clp, gi) : null;
       const uOk = u != null && Number.isFinite(u);
       if (uOk) {
         unitByAccount[ai]![gi] = u;
@@ -458,8 +533,10 @@ export function getBucketDailySeries(
     wealth.push(any ? wealthSum : null);
     return any ? sum : null;
   });
-  const flowUnit = unit === "usd" ? "usd" : "clp";
-  const { flows, liabilityFlows, byAccount: flowsByAccount } = gridFlows(accounts, grid, flowUnit);
+  // Copies: the card flows below are added into them.
+  const flows = past.flows.flows.slice();
+  const liabilityFlows = past.flows.liabilityFlows.slice();
+  const flowsByAccount = new Map([...past.flows.byAccount].map(([id, arr]) => [id, arr.slice()]));
   for (const [accountId, marks] of ccMarksClp) {
     const derived = ccDerivedFlowsClp(accountId, grid, marks);
     for (let i = 1; i < grid.length; i++) {
@@ -478,7 +555,7 @@ export function getBucketDailySeries(
   let depsAcumTotal: number[] | null = null;
   let depositCumsRaw: Map<number, number[]> | null = null;
   if (perAccount) {
-    const cumsById = accountDepositCumsOnGrid(included, grid, flowUnit);
+    const cumsById = past.depositCums!;
     const emit = (cumRaw: number, ymd: string): number =>
       unit === "uf" ? convertTs(cumRaw, ymd, "uf") : cumRaw;
     depsAcumTotal = new Array<number>(grid.length - 1).fill(0);
@@ -611,7 +688,7 @@ export function getBucketDailySeries(
       delta,
       pl,
       pct,
-      market_day: isNyseTradingDay(ymd) || isChileBusinessDay(ymd),
+      market_day: past.marketDay[i]!,
     });
   }
 

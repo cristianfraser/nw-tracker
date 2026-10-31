@@ -97,3 +97,10 @@ function directlyAffected(node: CacheDepNode, moves: LiveQuoteMoves): boolean {
   for (const t of node.tickers) if (moves.tickers.has(t)) return true;
   return false;
 }
+
+const EVERY_LIVE_INPUT: LiveQuoteMoves = { tickers: { has: () => true } as unknown as ReadonlySet<string>, fx: true };
+
+/** Whether `node` (or anything linked under it) read any live input at all. */
+export function cacheDepNodeReadsLiveInput(node: CacheDepNode): boolean {
+  return cacheDepNodeAffected(node, EVERY_LIVE_INPUT, new Map());
+}

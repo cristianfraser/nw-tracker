@@ -2,6 +2,7 @@ import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { noteAggregationCacheLookup } from "./requestCacheStats.js";
 import {
   cacheDepNodeAffected,
+  cacheDepNodeReadsLiveInput,
   linkCacheDepNode,
   newCacheDepNode,
   runInCacheDepNode,
@@ -125,6 +126,20 @@ const HISTORY_TIER_PREFIX = "hist.";
 export function historyTierMemo<K, V>(name: string): Map<K, V> {
   if (dbInTransaction()) return new Map<K, V>();
   return getAggregationCached(`${HISTORY_TIER_PREFIX}${name}`, () => new Map<K, V>());
+}
+
+/**
+ * Run `build` for a history-tier entry, enforcing the tier's contract: it must read no live input
+ * (a live quote, the live dollar, or a gate deciding whether to read one). Throws when it did — a
+ * history-tier result that read a live price would survive the tick that moves it.
+ */
+export function buildHistoryTierValue<T>(what: string, build: () => T): T {
+  const node = newCacheDepNode();
+  const value = runInCacheDepNode(node, build);
+  if (cacheDepNodeReadsLiveInput(node)) {
+    throw new Error(`history tier: ${what} read a live input; it may only read evidence dated before today`);
+  }
+  return value;
 }
 
 function invalidateHistoryTier(): void {
