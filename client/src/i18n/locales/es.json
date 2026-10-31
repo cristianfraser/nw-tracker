@@ -1427,7 +1427,11 @@
         "originManual": "Gasto manual",
         "originPayslip": "Deducción de liquidación",
         "noBigGroup": "Sin grupo",
-        "bigGroupLabel": "Grupo grande"
+        "bigGroupLabel": "Grupo grande",
+        "bankMerchant": "Como lo imprime el banco: {{merchant}}",
+        "viaProcessor": "Pagado vía {{processor}}",
+        "nightsOne": "{{count}} noche",
+        "nightsMany": "{{count}} noches"
       }
     },
     "kinds": {

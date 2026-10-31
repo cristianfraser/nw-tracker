@@ -5051,6 +5051,22 @@
         "bigGroupLabel": {
           "en": "Big group",
           "es": "Grupo grande"
+        },
+        "bankMerchant": {
+          "en": "As the bank prints it: {{merchant}}",
+          "es": "Como lo imprime el banco: {{merchant}}"
+        },
+        "viaProcessor": {
+          "en": "Paid through {{processor}}",
+          "es": "Pagado vía {{processor}}"
+        },
+        "nightsOne": {
+          "en": "{{count}} night",
+          "es": "{{count}} noche"
+        },
+        "nightsMany": {
+          "en": "{{count}} nights",
+          "es": "{{count}} noches"
         }
       }
     },
