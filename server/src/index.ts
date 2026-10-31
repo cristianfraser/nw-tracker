@@ -20,6 +20,7 @@ import {
   invalidateAccountDetailBundles,
   invalidateCcLedgerResponses,
   invalidateFlowsOverview,
+  invalidateGroupResponses,
 } from "./aggregationCache.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
 import { registerMetaRoutes } from "./routes/meta.js";
@@ -84,8 +85,8 @@ const ingestJsonBody = express.json({ limit: "32mb" });
 app.use((req, res, next) => (req.path.startsWith("/api/ingest/") ? ingestJsonBody : jsonBody)(req, res, next));
 // The flows overview reads nearly every table (income, expense lines and their categories, deposits),
 // and many of its writers (category / income / place edits) touch no aggregation funnel: any
-// write through the API drops it once the write has answered. The card ledgers and the account
-// page bundles too (labels, notes, card config and plan edits sit beside the billing funnel).
+// write through the API drops it once the write has answered. The card ledgers and the account and
+// group page payloads too (labels, notes, card config and plan edits sit beside the billing funnel).
 app.use((req, res, next) => {
   if (
     req.path.startsWith("/api/") &&
@@ -96,6 +97,7 @@ app.use((req, res, next) => {
       invalidateFlowsOverview({ inputs: true });
       invalidateCcLedgerResponses();
       invalidateAccountDetailBundles();
+      invalidateGroupResponses();
     });
   }
   next();

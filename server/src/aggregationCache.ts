@@ -266,6 +266,21 @@ export function cacheKeyAccountDetailBundle(accountId: number, unit: TsUnit, gra
   return `${DASHBOARD_PAGE_BUNDLE_PREFIX}account_detail|${accountId}|${unit}|${granularity}`;
 }
 
+/**
+ * A group page's responses (valuation series, consolidated tables, monthly P/L series, Rentabilidad),
+ * under the page bundle's prefix like the account bundles: every invalidation that drops the
+ * bundle drops them, a live tick only where they read a moved price, and API writes drop them too
+ * (account names and notes are in the payloads). Inside a transaction they are built afresh.
+ */
+export function cachedGroupResponse<T>(kind: string, slug: string, unit: TsUnit, build: () => T): T {
+  if (dbInTransaction()) return build();
+  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}group|${kind}|${slug}|${unit}`, build);
+}
+
+export function invalidateGroupResponses(): void {
+  deleteKeysMatchingPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}group|`);
+}
+
 export function invalidateAccountDetailBundles(): void {
   deleteKeysMatchingPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}account_detail|`);
 }
