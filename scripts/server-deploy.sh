@@ -8,7 +8,7 @@
 # (docs/job-queue-plan.md) and claim it — the queue grants it only when nothing else runs (the
 # `server-restart` resource: an ingest run in flight finishes first, and nothing new starts while
 # the deploy waits or runs). Once granted: snapshot the database, fast-forward, `npm ci` only when
-# a package file changed, rebuild the client, restart the server (and the ingest service when its
+# a package file changed, rebuild the client beside the served one and swap it in, restart the server (and the ingest service when its
 # code changed), wait for /api/health to report the new commit, and complete the job. A deploy
 # whose server does not come back healthy is rolled back to the previous commit. Pushes made while
 # a deploy waits are deployed together: the queued job moves to the newest commit. Outcomes go to
@@ -163,8 +163,15 @@ install_and_build() {
         || { log "better-sqlite3 rebuild failed"; return 1; }
     fi
   fi
+  # Build beside the served client and swap it in with two renames: an in-place build empties
+  # client/dist first, and the running server answered 404 for the whole build.
   log "client build"
-  npm run build -w nw-tracker-client >>"$LOG" 2>&1 || { log "client build failed"; return 1; }
+  rm -rf client/dist.next
+  npm run build -w nw-tracker-client -- --outDir dist.next >>"$LOG" 2>&1 || { log "client build failed"; return 1; }
+  [[ -f client/dist.next/index.html ]] || { log "client build wrote no index.html"; return 1; }
+  rm -rf client/dist.prev
+  [[ -d client/dist ]] && mv client/dist client/dist.prev
+  mv client/dist.next client/dist
 }
 
 restart() {
