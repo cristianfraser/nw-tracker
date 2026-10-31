@@ -79,6 +79,7 @@ import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { db } from "./db.js";
 
 import { enrichFlowLinesWithOriginLabels, type ExpenseLineOrigin } from "./ccExpenseOriginLabel.js";
+import { withExpenseDisplayNames, type ExpenseLinkLabel } from "./expenseDisplayNames.js";
 import { enrichFlowLinesWithPurchaseNotes } from "./ccExpensePurchaseNotes.js";
 import {
   enrichFlowLinesWithBigGroups,
@@ -240,6 +241,15 @@ export type FlowCcExpenseLineRow = {
 
   /** Where the line came from, as data (kind, account, plastic); the client draws and words it. */
   origin: ExpenseLineOrigin;
+
+  /** The merchant as the row shows it, when it differs from the bank's (`expenseDisplayNames.ts`). */
+  display_merchant?: string;
+
+  /** The payment processor whose prefix `display_merchant` dropped («Mercado Pago», «PayU»…). */
+  merchant_processor?: string;
+
+  /** The short label of what the line is linked to (receipt payee, app, transfer counterparty). */
+  link_label?: ExpenseLinkLabel;
 
   /** Physical card that made the charge (CLP statement line); null = primary / unknown. */
   origin_card_last4: string | null;
@@ -1002,8 +1012,10 @@ function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]):
   syncExpenseDepositLinksFromGastosLines(withNotes);
   const withGroups = enrichFlowLinesWithBigGroups(withNotes);
   const withOrigin = enrichFlowLinesWithOriginLabels(withGroups);
-  return withSubscriptionCategory(
-    withPaymentReceipts(enrichFlowLinesWithTransferCounterparties(enrichFlowLinesWithExpenseDepositLinks(withOrigin)))
+  return withExpenseDisplayNames(
+    withSubscriptionCategory(
+      withPaymentReceipts(enrichFlowLinesWithTransferCounterparties(enrichFlowLinesWithExpenseDepositLinks(withOrigin)))
+    )
   );
 }
 

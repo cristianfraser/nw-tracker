@@ -1427,7 +1427,11 @@
         "originManual": "Manual expense",
         "originPayslip": "Payroll deduction",
         "noBigGroup": "No group",
-        "bigGroupLabel": "Big group"
+        "bigGroupLabel": "Big group",
+        "bankMerchant": "As the bank prints it: {{merchant}}",
+        "viaProcessor": "Paid through {{processor}}",
+        "nightsOne": "{{count}} night",
+        "nightsMany": "{{count}} nights"
       }
     },
     "kinds": {

@@ -271,6 +271,18 @@ export interface PaymentReceipt {
   trip_label: string | null;
   /** The charge is a subscription's (a renewing App Store item, Uber One). */
   subscription: boolean;
+  /** A lodging receipt's stay; null for anything else. */
+  stay: { check_in: string; check_out: string; city: string | null } | null;
+}
+
+/** Server `ExpenseLinkLabel` (`expenseDisplayNames.ts`): the short label of what a line is linked to. */
+export interface ExpenseLinkLabel {
+  arrow: "→" | "≈" | "←" | "⇄";
+  text: string;
+  /** A stay's nights; the client words it. */
+  nights: number | null;
+  /** Show it on the row beside the merchant (false when the merchant already says it). */
+  inline: boolean;
 }
 
 export interface FlowCcExpenseLineRow {
@@ -319,6 +331,12 @@ export interface FlowCcExpenseLineRow {
   origin_label: string;
   /** Where the line came from, as data: the row draws an icon per kind with the account in a tooltip. */
   origin: ExpenseLineOrigin;
+  /** The merchant as the row shows it, when it differs from the bank's `merchant` (server-built). */
+  display_merchant?: string;
+  /** The payment processor whose prefix `display_merchant` dropped («Mercado Pago», «PayU»…). */
+  merchant_processor?: string;
+  /** The short label of what the line is linked to (receipt payee, app, transfer counterparty). */
+  link_label?: ExpenseLinkLabel;
   /** Physical card that made the charge; null = primary / unknown / checking. */
   origin_card_last4?: string | null;
   /** Statement billing card; null for checking / synthetic lines. */

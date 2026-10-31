@@ -137,9 +137,11 @@ export type PaymentReceiptDto = {
   trip_label: string | null;
   /** The charge is a subscription's (a renewing App Store item, Uber One). */
   subscription: boolean;
+  /** A lodging receipt's stay (check-in, check-out, city); null for anything else. */
+  stay: ReceiptStay | null;
 };
 
-export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge" | "trip" | "trip_label" | "subscription"> & {
+export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge" | "trip" | "trip_label" | "subscription" | "stay"> & {
   trip?: ReceiptTrip | null;
   subscription?: boolean;
   /** A lodging receipt's stay: a stay the property charges pairs within its window. */
@@ -681,6 +683,7 @@ function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: num
     trip: r.trip ?? null,
     trip_label: r.trip ? `${shortAddress(r.trip.from)} → ${shortAddress(r.trip.to)}` : null,
     subscription: r.subscription ?? false,
+    stay: r.stay ?? null,
   };
 }
 
@@ -740,6 +743,7 @@ export function withPaymentReceipts<L extends ReceiptCandidateLine & { account_i
       trip: null,
       trip_label: null,
       subscription: link.subscription,
+      stay: null,
     });
   }
   const named = lines.map((l) => {

@@ -203,10 +203,18 @@ function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
   );
 }
 
-/** What the line is linked to (transfer counterparty, payment receipt, deposit) — the ⓘ card. */
+/**
+ * The ⓘ card: the merchant as the bank prints it (when the row shows another name) and what the
+ * line is linked to (transfer counterparty, payment receipt, deposit), in full.
+ */
 function useLineInfo(line: FlowCcExpenseLineRow): ReactNode[] {
   const { t } = useTranslation();
   const blocks: ReactNode[] = [];
+  if (line.display_merchant != null && line.merchant) {
+    const bank = [t("expenses.creditCard.lineRow.bankMerchant", { merchant: line.merchant })];
+    if (line.merchant_processor) bank.push(t("expenses.creditCard.lineRow.viaProcessor", { processor: line.merchant_processor }));
+    blocks.push(<InfoBlock key="bank" lines={bank} />);
+  }
   const c = line.transfer_counterparty;
   if (c) blocks.push(<InfoBlock key="counterparty" lines={transferCounterpartyDetailLines(c)} />);
   const r = line.payment_receipt;
@@ -227,6 +235,30 @@ function useLineInfo(line: FlowCcExpenseLineRow): ReactNode[] {
     blocks.push(<InfoBlock key="deposit" lines={[t("expenses.creditCard.investmentDepositLink")]} />);
   }
   return blocks;
+}
+
+/**
+ * The short label of what the line is linked to — «→ Streat Burger (Isidora)», «→ Lisboa · 3
+ * nights», «← Ana Perez» — or the deposit it pairs with; null when it has none.
+ */
+function useLinkLabel(line: FlowCcExpenseLineRow): { text: string; inline: boolean } | null {
+  const { t } = useTranslation();
+  const l = line.link_label;
+  if (l) {
+    const nights =
+      l.nights != null
+        ? ` · ${t(l.nights === 1 ? "expenses.creditCard.lineRow.nightsOne" : "expenses.creditCard.lineRow.nightsMany", { count: l.nights })}`
+        : "";
+    return { text: `${l.arrow} ${l.text}${nights}`, inline: l.inline };
+  }
+  const mortgageLink = line.expense_deposit_links?.find((d) => d.depto_cuota != null);
+  if (mortgageLink) {
+    return { text: t("expenses.creditCard.mortgageDepositLinkCuota", { cuota: mortgageLink.depto_cuota }), inline: true };
+  }
+  if ((line.expense_deposit_links?.length ?? 0) > 0) {
+    return { text: t("expenses.creditCard.investmentDepositLink"), inline: true };
+  }
+  return null;
 }
 
 function InfoBlock({ lines }: { lines: readonly string[] }) {
@@ -278,6 +310,7 @@ function ExpenseLineRow({
   const { t } = useTranslation();
   const selection = useCreditCardExpenseLinesSelection();
   const info = useLineInfo(ln);
+  const linkLabel = useLinkLabel(ln);
   // A payslip deduction's category is the deduction's own: no picker, no bulk select, no group.
   const fixedCategory = ln.source === "payslip";
   const canSelect = selectable && selection != null && !fixedCategory;
@@ -315,6 +348,7 @@ function ExpenseLineRow({
   const bigGroupOnRow = canBigGroup && ln.big_group_slug != null;
   const bigGroupInPanel = canBigGroup && ln.big_group_slug == null;
   const hasPanel =
+    linkLabel != null ||
     showNoteInput ||
     bigGroupInPanel ||
     hasPieces ||
@@ -324,7 +358,7 @@ function ExpenseLineRow({
     canMakeInstallment ||
     canDelete;
   const note = ln.purchase_notes.trim();
-  const merchant = ln.merchant ?? "—";
+  const merchant = ln.display_merchant ?? ln.merchant ?? "—";
 
   return (
     <div
@@ -361,6 +395,7 @@ function ExpenseLineRow({
       <div className={styles.vendor}>
         <span className={styles.merchant}>{merchant}</span>
         {note ? <span className={styles.note}>· {note}</span> : null}
+        {linkLabel?.inline ? <span className={styles.linkLabel}>· {linkLabel.text}</span> : null}
         {info.length > 0 ? (
           <HoverPopover
             className={styles.infoTrigger}
@@ -391,6 +426,7 @@ function ExpenseLineRow({
       </div>
       {hasPanel && expanded ? (
         <div className={styles.panel}>
+          {linkLabel ? <div className={styles.panelLink}>{linkLabel.text}</div> : null}
           {hasPieces || needsAction ? (
             <div className={styles.panelBadges}>
               {hasPieces ? (

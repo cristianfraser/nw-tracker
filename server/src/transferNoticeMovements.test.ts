@@ -205,7 +205,7 @@ describe("movements written from transfer mails", () => {
     const [debit] = applyBankTransferNotices({ issuer: "santander", notices: [notice] }).synthesized;
     expect(debit).toMatchObject({ account_id: account, amount: -76_282, date: today });
     const row = db.prepare(`SELECT amount, note FROM movements WHERE id = ?`).get(debit!.movement_id) as { amount: number; note: string };
-    expect(row).toEqual({ amount: -76_282, note: `import:santander-mail|${today} 20:19|Transf a COMUNIDAD EDIFICIO VITEST (Banco Santander)` });
+    expect(row).toEqual({ amount: -76_282, note: `import:santander-mail|${today} 20:19|Transf a COMUNIDAD EDIFICIO VITEST` });
     expect(listCheckingMovements(account, "out").some((m) => m.id === debit!.movement_id)).toBe(true);
     const bankDay = chileCalendarAddDays(today, 1);
     expect(

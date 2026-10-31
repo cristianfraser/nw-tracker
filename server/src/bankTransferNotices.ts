@@ -17,6 +17,7 @@
  * order; any other tie is left unpaired and reported.
  */
 import { createHash } from "node:crypto";
+import { repairMojibake } from "./textRepair.js";
 import type { BankAccountTransferNoticesApplyDetails, BankAccountTransferNoticesPayload, TransferNotice } from "nw-tracker-contracts";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
@@ -256,8 +257,10 @@ const MAILER_NOTE_PREFIX: Record<string, string> = {
 
 /**
  * The note of a movement written from a mail, in the mail-rebuilt family
- * (`import:<issuer>-mail|<mail time>|<description>`, see `isMailRebuiltCheckingNote`), worded like
- * the rows rebuilt from the same mails for the lost 2019 months: «Transf a <payee> (<bank>)».
+ * (`import:<issuer>-mail|<mail time>|<description>`, see `isMailRebuiltCheckingNote`): «Transf a
+ * <payee>» / «Transf. de <sender>». The payee's bank and account live in the notice the movement is
+ * paired with (`movement_transfer_notices`), so the description does not repeat them (until
+ * 2026-10-31 it read «Transf a <payee> (<bank>)»; `server/scripts/sanitize-transfer-mail-notes.ts`).
  */
 export function transferNoticeMovementNote(issuer: string, n: TransferNotice): string {
   const prefix = MAILER_NOTE_PREFIX[issuer];
@@ -267,7 +270,7 @@ export function transferNoticeMovementNote(issuer: string, n: TransferNotice): s
       ? `Transf. de ${n.from.name ?? "?"}`
       : n.kind === "between_own_products"
         ? "Transferencia entre productos"
-        : `Transf a ${n.to.name ?? "?"}${n.to.bank ? ` (${n.to.bank})` : ""}`;
+        : `Transf a ${n.to.name ?? "?"}`;
   const description = `${head}${n.comment ? ` — ${n.comment}` : ""}`.replace(/\|/g, "/");
   return `${prefix}${n.sent_at_chile}|${description}`;
 }
@@ -278,13 +281,18 @@ const COLUMNS = [
   "to_name", "to_rut", "to_bank", "to_account_type", "to_account_number", "to_email",
 ] as const;
 
+/**
+ * The stored row of a notice. Text is repaired of UTF-8 read as Latin-1 («SebastiÃ¡n») on the way
+ * in (`repairMojibake`), so a resend of the same mail compares equal to the repaired row.
+ */
 function noticeRow(issuer: string, n: TransferNotice): Record<(typeof COLUMNS)[number], string | number | null> {
+  const t = repairMojibake;
   return {
-    message_id: n.message_id, issuer, sent_at_chile: n.sent_at_chile, subject: n.subject, kind: n.kind,
-    notice_date: n.date, amount: n.amount, scheduled: n.scheduled ? 1 : 0, comment: n.comment,
-    from_name: n.from.name, from_rut: n.from.rut, from_bank: n.from.bank, from_account_type: n.from.account_type,
+    message_id: n.message_id, issuer, sent_at_chile: n.sent_at_chile, subject: t(n.subject), kind: n.kind,
+    notice_date: n.date, amount: n.amount, scheduled: n.scheduled ? 1 : 0, comment: t(n.comment),
+    from_name: t(n.from.name), from_rut: n.from.rut, from_bank: t(n.from.bank), from_account_type: t(n.from.account_type),
     from_account_number: n.from.account_number, from_email: n.from.email,
-    to_name: n.to.name, to_rut: n.to.rut, to_bank: n.to.bank, to_account_type: n.to.account_type,
+    to_name: t(n.to.name), to_rut: n.to.rut, to_bank: t(n.to.bank), to_account_type: t(n.to.account_type),
     to_account_number: n.to.account_number, to_email: n.to.email,
   };
 }
