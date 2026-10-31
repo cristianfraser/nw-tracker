@@ -2838,7 +2838,7 @@
         "es": "Facturado total"
       },
       "colCuotaAPagar": {
-        "en": "Payment due",
+        "en": "Installment due",
         "es": "Cuota a pagar"
       },
       "colDeudaEnCuotasFacturacion": {
