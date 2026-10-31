@@ -4,7 +4,7 @@ A personal net-worth tracker for the Chilean market — brokerage, retirement (A
 crypto, real estate, cash, credit cards and more — consolidated into one dashboard with
 historical valuations, monthly P&L, aportes (contributions), and long-range projections.
 
-**Live demo:** https://nw-tracker-demo.onrender.com/?src=github
+**Live demo:** [nw-tracker-demo.onrender.com](https://nw-tracker-demo.onrender.com/?src=github)
 
 > Log in with your email and password: `frasertest26`
 >
