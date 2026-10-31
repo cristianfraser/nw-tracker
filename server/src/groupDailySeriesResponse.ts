@@ -1,7 +1,8 @@
 import { getAggregationCached } from "./aggregationCache.js";
+import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { accountBucketKindSlug, bucketSlugForAccountId, isLiabilityKindSlug } from "./accountBucket.js";
-import { ccDailyHistorialBlockForGroup } from "./ccDailyHistorialBlock.js";
-import { dailyPerfLevelsForGroup } from "./dailyPerfLevels.js";
+import { ccDailyHistorialBlockForGroup, ccDailyHistorialBlockForMasters } from "./ccDailyHistorialBlock.js";
+import { dailyPerfLevelsForAccount, dailyPerfLevelsForGroup } from "./dailyPerfLevels.js";
 import { dailyReferenceLinesForChartHost, deptoPropertyChartOverlayDailyLines } from "./dailyReferenceLines.js";
 import { groupDailySeriesAccounts } from "./dailySeries.js";
 import { dbInTransaction } from "./db.js";
@@ -12,7 +13,7 @@ import {
   shouldAggregateNavCharts,
   type ChartBucketPlan,
 } from "./groupChartBuckets.js";
-import { resolveGroupDailySeries } from "./groupDailySeries.js";
+import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
 import { HeavyWork, timeHeavy } from "./heavyWork.js";
 import { getNavChartGroupNodeBySlug } from "./navTree.js";
 import { chartHostSlugForValuationGroup, listReferenceGroupsForChartHost } from "./portfolioGroupReference.js";
@@ -20,8 +21,12 @@ import { buildProportionalFromValueArrays } from "./proportionalSeries.js";
 import { buildReferenceCoverage, sumAlignedValues } from "./referenceCoverage.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
-/** Prefix of the cached group daily-series responses (dropped by API writes too). */
-export const GROUP_DAILY_RESPONSE_PREFIX = "daily.series|response|group|";
+/** Prefix of every cached daily-series response, group and account (dropped by API writes too). */
+export const DAILY_SERIES_RESPONSE_PREFIX = "daily.series|response|";
+/** Prefix of the cached group daily-series responses. */
+export const GROUP_DAILY_RESPONSE_PREFIX = `${DAILY_SERIES_RESPONSE_PREFIX}group|`;
+/** Prefix of the cached account daily-series responses. */
+export const ACCOUNT_DAILY_RESPONSE_PREFIX = `${DAILY_SERIES_RESPONSE_PREFIX}account|`;
 
 /**
  * `GET /api/daily-series?portfolio_group=` for one group: the bucket series with its chart lines,
@@ -35,7 +40,7 @@ export function groupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, d
   if (dbInTransaction()) return build();
   return getAggregationCached(
     `${GROUP_DAILY_RESPONSE_PREFIX}${portfolioGroup}|${unit}|${days}|${wantPerfLevels ? "perf" : "plain"}`,
-    build
+    () => markJsonResponseCacheable(build())
   );
 }
 
@@ -177,4 +182,71 @@ function buildGroupDailySeriesResponse(portfolioGroup: string, unit: TsUnit, day
         }
       : {}),
   };
+}
+
+export type AccountDailySeriesRow = {
+  account_id: number;
+  name: string;
+  bucket_slug: string;
+  import_key: string | null;
+};
+
+/**
+ * `GET /api/daily-series?account_id=` for one account: its bucket series with its chart line, the
+ * property's «hipoteca»/«valor» overlays, a card's historial block (CLP only) and (on request) the
+ * P/L levels. Cached beside the group responses (same invalidations; the account's name is in
+ * the payload, so API writes drop it too); built afresh inside a transaction.
+ */
+export function accountDailySeriesResponse(
+  row: AccountDailySeriesRow,
+  unit: TsUnit,
+  days: number,
+  wantPerfLevels: boolean
+) {
+  const build = () => buildAccountDailySeriesResponse(row, unit, days, wantPerfLevels);
+  if (dbInTransaction()) return build();
+  return getAggregationCached(
+    `${ACCOUNT_DAILY_RESPONSE_PREFIX}${row.account_id}|${row.bucket_slug}|${unit}|${days}|${wantPerfLevels ? "perf" : "plain"}`,
+    () => markJsonResponseCacheable(build())
+  );
+}
+
+function buildAccountDailySeriesResponse(
+  row: AccountDailySeriesRow,
+  unit: TsUnit,
+  days: number,
+  wantPerfLevels: boolean
+) {
+  const accountId = row.account_id;
+  // Excluded-from-totals accounts still get their own daily series on their page.
+  const series = resolveAccountDailySeries(row, unit, days);
+  const { deposit_cums_raw: _rawDepsAcct, ...accountSeriesBase } = series;
+  const accountSeriesPayload = wantPerfLevels
+    ? {
+        ...accountSeriesBase,
+        perf_levels: dailyPerfLevelsForAccount(accountId, row.bucket_slug, unit, series),
+      }
+    : accountSeriesBase;
+  // Property account page: the monthly block carries synthetic «hipoteca»/«valor» reference
+  // lines beside the property line — emit their daily twins (matched by account id in the
+  // client's metadata borrow) or the overlays vanish in day mode.
+  if (accountBucketKindSlug(row.bucket_slug) === "property" && accountSeriesPayload.accounts?.length) {
+    const overlays = deptoPropertyChartOverlayDailyLines(
+      series.points.map((p) => p.as_of_date),
+      unit
+    );
+    if (overlays.length) {
+      accountSeriesPayload.accounts = [...accountSeriesPayload.accounts, ...overlays];
+    }
+  }
+  // CC masters: attach the day-period historial series — owed, plan debt («deuda en cuotas»),
+  // the future plan tail (today+1 .. plan end) and the facturación bars on their close dates —
+  // so the account page's daily historial has both lines and the bars and covers the same
+  // window as its monthly/yearly forms. CLP-native like the chart, so CLP requests only (the
+  // client asks for clp explicitly).
+  if (accountBucketKindSlug(row.bucket_slug) === "credit_card" && unit === "clp") {
+    const ccDaily = ccDailyHistorialBlockForMasters([accountId], series);
+    if (ccDaily) return { ...accountSeriesPayload, ...ccDaily };
+  }
+  return accountSeriesPayload;
 }

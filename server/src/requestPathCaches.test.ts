@@ -1,3 +1,8 @@
+import http from "node:http";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import zlib from "node:zlib";
+import express from "express";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   aggregationCacheHasForTest,
@@ -7,7 +12,16 @@ import {
 } from "./aggregationCache.js";
 import { getGroupConsolidatedMonthlyRows, getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import { getGroupMonthlyPlSeries } from "./groupMonthlyPlSeries.js";
-import { groupDailySeriesResponse } from "./groupDailySeriesResponse.js";
+import {
+  accountDailySeriesResponse,
+  groupDailySeriesResponse,
+  type AccountDailySeriesRow,
+} from "./groupDailySeriesResponse.js";
+import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
+import { groupValuationTsResponse } from "./groupPagePayloads.js";
+import { jsonResponseMiddleware } from "./jsonResponse.js";
+import { registerAccountsRoutes } from "./routes/accounts.js";
+import { registerDashboardRoutes } from "./routes/dashboard.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildDashboardAccountRows, buildDashboardNavContext, buildDashboardNavSnapshot } from "./dashboardAccounts.js";
 import { db } from "./db.js";
@@ -444,4 +458,153 @@ describe("group responses share one consolidation", () => {
       clearAggregationCache();
     }
   }, 300_000);
+});
+
+describe("served JSON of the cached responses", () => {
+  type Raw = { status: number; headers: http.IncomingHttpHeaders; body: Buffer };
+  const rawGet = (base: string, path: string, headers: Record<string, string>): Promise<Raw> =>
+    new Promise((resolve, reject) => {
+      http
+        .get(`${base}${path}`, { headers }, (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (c: Buffer) => chunks.push(c));
+          res.on("end", () => resolve({ status: res.statusCode!, headers: res.headers, body: Buffer.concat(chunks) }));
+        })
+        .on("error", reject);
+    });
+  const decode = (r: Raw): string =>
+    r.headers["content-encoding"] === "gzip"
+      ? zlib.gunzipSync(r.body).toString("utf8")
+      : r.headers["content-encoding"] === "br"
+        ? zlib.brotliDecompressSync(r.body).toString("utf8")
+        : r.body.toString("utf8");
+
+  function accountRow(id: number): AccountDailySeriesRow {
+    return db
+      .prepare(
+        `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug, a.import_key
+         FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE a.id = ?`
+      )
+      .get(id) as AccountDailySeriesRow;
+  }
+
+  it("are the payload's JSON in every encoding, and follow a write", async () => {
+    clearAggregationCache();
+    const masterId = listCreditCardMasterAccountIds()[0]!;
+    const property = db
+      .prepare(
+        `SELECT a.id FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id WHERE g.slug LIKE '%property%' LIMIT 1`
+      )
+      .get() as { id: number } | undefined;
+    const writeAccountId = (
+      db.prepare(`SELECT account_id AS id FROM movements WHERE account_id IS NOT NULL AND currency = 'clp' LIMIT 1`).get() as {
+        id: number;
+      }
+    ).id;
+    const accountIds = [...new Set([masterId, writeAccountId, ...(property ? [property.id] : [])])];
+
+    // Sync responses: what each route serves, built without caches (inside a rolled-back transaction).
+    const syncExpected = (): Map<string, string> => {
+      const out = new Map<string, string>();
+      for (const days of [1096, 0]) {
+        out.set(
+          `/api/daily-series?portfolio_group=liabilities&days=${days}`,
+          JSON.stringify(groupDailySeriesResponse("liabilities", "clp", days, false))
+        );
+      }
+      out.set(
+        `/api/daily-series?portfolio_group=net_worth&days=365&include_usd=1&perf_levels=1`,
+        JSON.stringify(groupDailySeriesResponse("net_worth", "usd", 365, true))
+      );
+      for (const id of accountIds) {
+        out.set(
+          `/api/daily-series?account_id=${id}&days=365`,
+          JSON.stringify(accountDailySeriesResponse(accountRow(id), "clp", 365, false))
+        );
+      }
+      out.set(
+        `/api/dashboard/valuation-timeseries?portfolio_group=liabilities`,
+        JSON.stringify(groupValuationTsResponse("liabilities", "clp"))
+      );
+      out.set(`/api/portfolio-groups/liabilities/cc-ledger`, JSON.stringify(creditCardGroupLedgerResponse("liabilities")));
+      return out;
+    };
+    const syncUncached = (): Map<string, string> => {
+      let out = new Map<string, string>();
+      try {
+        db.transaction(() => {
+          out = syncExpected();
+          throw new Error("rollback");
+        })();
+      } catch (e) {
+        if (!(e instanceof Error) || e.message !== "rollback") throw e;
+      }
+      return out;
+    };
+    // Async responses: the cached object itself (the uncached builds are compared in the tests above).
+    const asyncExpected = async (): Promise<Map<string, string>> => {
+      const out = new Map<string, string>();
+      out.set(`/api/dashboard/page-bundle`, JSON.stringify(await buildDashboardPageBundle("clp")));
+      out.set(`/api/dashboard/nav-context`, JSON.stringify(await buildDashboardNavContext(false, "clp")));
+      out.set(`/api/dashboard/nav-snapshot?include_usd=1`, JSON.stringify(await buildDashboardNavSnapshot(true)));
+      out.set(
+        `/api/accounts/${masterId}/detail-bundle`,
+        JSON.stringify(await cachedAccountDetailBundle(masterId, "clp", "monthly"))
+      );
+      return out;
+    };
+
+    const app = express();
+    app.use(jsonResponseMiddleware());
+    registerAccountsRoutes(app);
+    registerDashboardRoutes(app);
+    const server = await new Promise<Server>((resolve) => {
+      const s = app.listen(0, "127.0.0.1", () => resolve(s));
+    });
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const served = async (paths: Iterable<string>) => {
+      const out = new Map<string, string>();
+      for (const path of paths) {
+        const bodies = new Set<string>();
+        for (const enc of [undefined, "gzip", "br", "gzip, deflate, br"]) {
+          const r = await rawGet(base, path, enc ? { "Accept-Encoding": enc } : {});
+          expect(r.status, path).toBe(200);
+          bodies.add(decode(r));
+        }
+        expect(bodies.size, path).toBe(1);
+        out.set(path, [...bodies][0]!);
+      }
+      return out;
+    };
+    const mismatches = (a: Map<string, string>, b: Map<string, string>) => [...a.keys()].filter((k) => a.get(k) !== b.get(k));
+
+    let id: number | null = null;
+    try {
+      const sync = syncUncached();
+      const servedSync = await served(sync.keys());
+      expect(mismatches(sync, servedSync)).toEqual([]);
+      const servedAsync = await served((await asyncExpected()).keys());
+      expect(mismatches(await asyncExpected(), servedAsync)).toEqual([]);
+
+      id = Number(
+        db
+          .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 54321, 'clp', ?, 'vitest:served-json')`)
+          .run(writeAccountId, chileCalendarTodayYmd()).lastInsertRowid
+      );
+      invalidateAggregationForAccountDate(writeAccountId, chileCalendarTodayYmd());
+
+      const servedSyncAfter = await served(sync.keys());
+      expect(mismatches(syncUncached(), servedSyncAfter)).toEqual([]);
+      const asyncAfter = await asyncExpected();
+      expect(mismatches(asyncAfter, await served(asyncAfter.keys()))).toEqual([]);
+      // The write reached the served bytes (otherwise the comparison proves nothing).
+      const accountPath = `/api/daily-series?account_id=${writeAccountId}&days=365`;
+      expect(servedSyncAfter.get(accountPath)).not.toBe(servedSync.get(accountPath));
+      expect(asyncAfter.get(`/api/dashboard/nav-context`)).not.toBe(servedAsync.get(`/api/dashboard/nav-context`));
+    } finally {
+      if (id != null) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+      server.close();
+      clearAggregationCache();
+    }
+  }, 600_000);
 });
