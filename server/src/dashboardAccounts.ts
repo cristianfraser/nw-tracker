@@ -49,7 +49,7 @@ import {
 } from "./portfolioGroupTree.js";
 import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import { db } from "./db.js";
+import { db, dbInTransaction } from "./db.js";
 
 const DASHBOARD_ASSET_METRIC_GROUPS = new Set(["real_estate", "retirement", "brokerage", "cash_eqs"]);
 
@@ -219,9 +219,21 @@ function ccFinancingClpInUsd(clp: number, asOf: string, accountId: number): numb
   return usd;
 }
 
-/** Dashboard nav cards: account rows with balances and P/L metrics (one perf fetch per unit). */
-export async function buildDashboardAccountRows(includeUsd: boolean): Promise<DashboardAccountStats[]> {
-  return withAccountValuationTsCache(() => buildDashboardAccountRowsInner(includeUsd));
+/**
+ * Dashboard nav cards: account rows with balances and P/L metrics (one perf fetch per unit).
+ * Cached for the page bundle's lifetime (`dashboard.page_bundle|account_rows|<unit>`) and shared
+ * by its three readers — the home bundle, the nav snapshot and an account page's row — which each
+ * built them; built afresh inside a transaction. Callers must not mutate the rows.
+ */
+export function buildDashboardAccountRows(includeUsd: boolean): Promise<DashboardAccountStats[]> {
+  if (dbInTransaction()) return buildDashboardAccountRowsUncached(includeUsd);
+  return cachedWithPageBundleLifetime(`account_rows|${includeUsd ? "usd" : "clp"}`, () =>
+    buildDashboardAccountRowsUncached(includeUsd)
+  );
+}
+
+function buildDashboardAccountRowsUncached(includeUsd: boolean): Promise<DashboardAccountStats[]> {
+  return withPortfolioGroupIndex(() => withAccountValuationTsCache(() => buildDashboardAccountRowsInner(includeUsd)));
 }
 
 async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<DashboardAccountStats[]> {
