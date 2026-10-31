@@ -6,6 +6,7 @@ import { getDashboardOverviewDaily } from "./dashboardOverviewDaily.js";
 import { db } from "./db.js";
 import { equityMarketKind, marketQuoteCurrency } from "./equityQuote.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
+import { cachedFlowsExpensesGastosPayload, cachedFlowsExpensesPayload } from "./flowsMortgageCarrying.js";
 import { getGroupConsolidatedMonthlyRows } from "./groupConsolidatedTables.js";
 import { resolveGroupDailySeries } from "./groupDailySeries.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
@@ -82,6 +83,7 @@ async function snapshotPayloads(): Promise<Map<string, string>> {
   for (const unit of ["clp", "usd"] as const) {
     out.set(`bundle|${unit}`, JSON.stringify(await buildDashboardPageBundle(unit)));
     out.set(`flows|${unit}`, JSON.stringify(buildFlowsOverviewPayload(unit, "split", null)));
+    out.set(`gastos|${unit}`, JSON.stringify(cachedFlowsExpensesGastosPayload(unit, new Set())));
     out.set(`overview_daily|${unit}`, JSON.stringify(getDashboardOverviewDaily(unit, 0)));
     for (const slug of groups) {
       out.set(`daily|${slug}|${unit}`, JSON.stringify(resolveGroupDailySeries(slug, unit, 0)));
@@ -93,6 +95,11 @@ async function snapshotPayloads(): Promise<Map<string, string>> {
     }
     for (const id of accountIds) out.set(`monthly_perf|${id}|${unit}`, JSON.stringify(monthlyPerfForAccountId(id, unit)));
   }
+  // The synthetic gap-mirror ids are numbered per build; the lines are the comparison.
+  out.set(
+    "expenses",
+    JSON.stringify(cachedFlowsExpensesPayload()).replace(/synthetic-checking-gap-mirror:\d+|"statement_line_id":-\d+/g, "~")
+  );
   return out;
 }
 

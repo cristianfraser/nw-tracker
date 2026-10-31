@@ -9,10 +9,31 @@ export function repoRootFromSrc(): string {
   return path.resolve(__dirname, "..", "..");
 }
 
-/** Load repo-root `.env` when keys are not already in `process.env`. */
+let loadedFromStamp: string | null = null;
+let checkedAtMs = -Infinity;
+
+/** How long a load stands before the file is looked at again. */
+const RECHECK_MS = 1000;
+
+/**
+ * Load repo-root `.env` when keys are not already in `process.env`. Hot readers call this per
+ * lookup (the live-quote config, once per quote read), so the file is looked at no more than
+ * once a second and re-read only when it changed on disk.
+ */
 export function loadRootDotenv(): void {
+  const nowMs = Date.now();
+  if (nowMs - checkedAtMs < RECHECK_MS && nowMs >= checkedAtMs) return;
+  checkedAtMs = nowMs;
   const p = path.join(repoRootFromSrc(), ".env");
-  if (!fs.existsSync(p)) return;
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(p);
+  } catch {
+    return;
+  }
+  const stamp = `${stat.ino}|${stat.mtimeMs}|${stat.size}`;
+  if (stamp === loadedFromStamp) return;
+  loadedFromStamp = stamp;
   const text = fs.readFileSync(p, "utf8");
   for (const line of text.split("\n")) {
     const t = line.trim();

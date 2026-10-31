@@ -22,6 +22,7 @@ import { listAccountsForGroupTab, type TsUnit } from "../valuationTimeseries.js"
 import { monthlyPerfForAccountId } from "../groupMonthlyPerfConsolidation.js";
 import { listPortfolioGroupAccountsForApi } from "../portfolioGroupAccountsApi.js";
 import { buildAccountDetailBundle } from "../accountDetailBundle.js";
+import { HeavyWork, timeHeavy, timeHeavyAsync } from "../heavyWork.js";
 import { clearCheckingLedgerAnchor, upsertCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
 import { getCheckingCartolaMonths } from "../checkingCartolaMonthSummary.js";
 import { creditCardGroupLedgerResponse } from "../creditCardGroupLedger.js";
@@ -247,7 +248,7 @@ app.get("/api/portfolio-groups/:slug/cc-ledger", (req, res) => {
     res.status(404).json({ error: "portfolio group not found" });
     return;
   }
-  res.json(creditCardGroupLedgerResponse(slug));
+  res.json(timeHeavy(`${HeavyWork.ccGroupLedger} ${slug}`, () => creditCardGroupLedgerResponse(slug)));
 });
 
 app.get("/api/portfolio-groups/:slug/mortgage-ledger", (req, res) => {
@@ -268,7 +269,9 @@ app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   const granularity = req.query.granularity === "daily" ? "daily" : "monthly";
-  const payload = await buildAccountDetailBundle(id, unit, granularity);
+  const payload = await timeHeavyAsync(`${HeavyWork.accountDetailBundle} ${id} ${unit} ${granularity}`, () =>
+    buildAccountDetailBundle(id, unit, granularity)
+  );
   if (!payload) {
     res.status(404).json({ error: "account not found" });
     return;

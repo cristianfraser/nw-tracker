@@ -1,3 +1,4 @@
+import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached, invalidateDashboardPageBundle } from "./aggregationCache.js";
 import { chainedGroupPctResolver, fillBlankAccountRowPcts } from "./blankPctDailyChain.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
@@ -474,9 +475,28 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
   return fillBlankAccountRowPcts(rowsBuilt, includeUsd, isLiabilityAccountId);
 }
 
-/** Nav cards strip + account detail row lookup (no full dashboard totals/charts). */
+/**
+ * Nav cards strip + account detail row lookup (no full dashboard totals/charts). Cached with the
+ * page bundle's lifetime (`dashboard.page_bundle|nav_snapshot|<unit>`): every invalidation that
+ * drops the bundle drops it, so it is what a fresh build would answer; the cached value is the
+ * in-flight promise, and a rejected build evicts itself.
+ */
+export function buildDashboardNavSnapshot(includeUsd: boolean): ReturnType<typeof buildDashboardNavSnapshotUncached> {
+  return cachedWithPageBundleLifetime(`nav_snapshot|${includeUsd ? "usd" : "clp"}`, () =>
+    buildDashboardNavSnapshotUncached(includeUsd)
+  );
+}
+
+function cachedWithPageBundleLifetime<T>(name: string, build: () => Promise<T>): Promise<T> {
+  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}${name}`, () => {
+    const built = build();
+    built.catch(() => invalidateDashboardPageBundle());
+    return built;
+  });
+}
+
 /** @heavy One {@link monthlyPerfRowsForAccount} per unit per tracked account (via {@link buildDashboardAccountRows}). */
-export async function buildDashboardNavSnapshot(includeUsd: boolean) {
+async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
   const rowsBuilt = await buildDashboardAccountRows(includeUsd);
   const clientAccounts = rowsBuilt.map(({ notes, ...rest }) => ({
     ...rest,
@@ -529,8 +549,10 @@ export async function buildDashboardNavSnapshot(includeUsd: boolean) {
  * Nav strip + overview chart in one response (single HTTP round-trip).
  * Runs account rows and full dashboard valuation TS in parallel on the server.
  */
-export async function buildDashboardNavContext(includeUsd: boolean, unit: TsUnit) {
-  return withPortfolioGroupIndex(() => buildDashboardNavContextInner(includeUsd, unit));
+export function buildDashboardNavContext(includeUsd: boolean, unit: TsUnit): ReturnType<typeof buildDashboardNavContextInner> {
+  return cachedWithPageBundleLifetime(`nav_context|${includeUsd ? "usd" : "clp"}|${unit}`, () =>
+    withPortfolioGroupIndex(() => buildDashboardNavContextInner(includeUsd, unit))
+  );
 }
 
 async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) {

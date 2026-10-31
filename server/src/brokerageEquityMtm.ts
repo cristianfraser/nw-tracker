@@ -61,9 +61,14 @@ export function accountUsesEquityMtm(accountId: number): boolean {
   // to-account are the wallet the proceeds move through (USD cash for USD-quoted stocks, CLP
   // cash for `.SN` ones — the first CLP sale, 2026-10-20, made Racional CLP read as a stock).
   if (isUsdCashAccount(accountId) || isClpCashAccount(accountId)) return false;
-  return (
-    stmtHasUnits.get(accountId, accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null
-  );
+  // Movements are mark-input tables: the history tier drops this the moment one is written.
+  const memo = historyTierMemo<number, boolean>("account_uses_equity_mtm");
+  let uses = memo.get(accountId);
+  if (uses === undefined) {
+    uses = stmtHasUnits.get(accountId, accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null;
+    memo.set(accountId, uses);
+  }
+  return uses;
 }
 
 /** Share units held on or before `asOfYmd` (brokerage acciones / crypto with unit flows). */

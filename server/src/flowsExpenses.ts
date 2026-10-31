@@ -1115,7 +1115,14 @@ export function buildFlowsExpenseLines(accountIds: readonly number[] = listCredi
 
 export function buildFlowsExpensesPayload(): FlowsExpensesPayload {
   const accountIds = listCreditCardMasterAccountIds();
-  const lines = buildFlowsExpenseLines(accountIds);
+  return flowsExpensesPayloadFromLines(accountIds, buildFlowsExpenseLines(accountIds));
+}
+
+/** The Expenses page payload around already-built lines (`buildFlowsExpenseLines(accountIds)`). */
+export function flowsExpensesPayloadFromLines(
+  accountIds: number[],
+  lines: FlowCcExpenseLineRow[]
+): FlowsExpensesPayload {
   return {
     group_slug: primaryCreditCardExpensesGroupSlug(),
     account_ids: accountIds,
