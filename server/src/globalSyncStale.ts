@@ -176,7 +176,8 @@ function applyUserForcedStaleToRows(
 /**
  * Sources the hosted demo never runs: they read the author's own Fintual goals, or only serve
  * the Risky Norris proxy of funds the demo does not hold. The demo syncs only the public market
- * sources its holdings need (stocks, crypto, USD/CLP, Banco Central, AFP/AFC official values).
+ * sources its holdings need (stocks, crypto, USD/CLP, Banco Central, AFP UNO — from UNO's own API,
+ * `afpUnoOfficialSource`; its AFC is a book account, so `afc_cic` reads «Not configured» too).
  */
 export const DEMO_SYNC_DISABLED_SOURCES: ReadonlySet<GlobalSyncSource> = new Set([
   "fintual",

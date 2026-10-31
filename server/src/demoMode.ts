@@ -5,9 +5,10 @@ import { loadDemoRealMarket } from "./demoData/demoRealMarket.js";
 
 /**
  * Hosted recruiter-demo mode (`DEMO_MODE=1`): the server owns a dedicated synthetic
- * SQLite file and (re)generates it at boot when empty. Hosting free tiers have
- * ephemeral disks, so every cold start / deploy rebuilds the demo from current source —
- * the demo always matches the deployed code. Local personal mode never sets this flag.
+ * SQLite file. On Render the build generates it (`npm run demo:generate`, render.yaml), so a
+ * deploy's boot only opens it; the boot generates only when it finds the DB empty (a local
+ * rehearsal). Either way every deploy rebuilds the demo from current source — the demo always
+ * matches the deployed code. Local personal mode never sets this flag.
  */
 export { demoModeEnabled } from "./demoModeFlag.js";
 import { demoModeEnabled } from "./demoModeFlag.js";
@@ -55,7 +56,7 @@ export async function bootstrapDemoModeIfEnabled(): Promise<void> {
   console.log(
     `demo mode: real market ${market.from} → ${market.through} — ` +
       Object.entries(market.equities).map(([t, n]) => `${t} ${n}`).join(", ") +
-      `; fx ${market.fx}; BCentral usd ${market.bcentral.usd} uf ${market.bcentral.uf}; AFP ${market.afp_official}; AFC ${market.afc}`
+      `; fx ${market.fx}; BCentral usd ${market.bcentral.usd} uf ${market.bcentral.uf}; AFP official values ${market.afp_official}`
   );
   const r = generateDemoDb("demo", { market: "real" });
   console.log(

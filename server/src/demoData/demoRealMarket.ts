@@ -8,16 +8,23 @@
  * - `fx_daily`: Yahoo CLP=X (write-once, like the live frame);
  * - `fx_daily_bcentral` / `eur_daily` / `uf_daily` / `utm_daily` / `ipc_daily`: Banco Central
  *   (`BCENTRAL_EMAIL` / `BCENTRAL_PASSWORD` are required — a Render secret on the demo);
- * - `pension_fund_unit_official` (every AFP, fund A) and the UNO display series: the
- *   Superintendencia de Pensiones; `fund_unit_daily` `afc_cic`: its cesantía CSVs.
+ * - `pension_fund_unit_official` UNO fund A and the UNO display series: AFP UNO's own API
+ *   (`afpUnoApi.ts`; the Superintendencia de Pensiones refuses connections from Render's
+ *   servers); Modelo fund A, which the demo holds until 2020, from the committed snapshot of
+ *   the SP's official values (`DEMO_AFP_MODELO_CSV_PATH`, 2018-01 → 2020-03 — the fund the
+ *   demo leaves in 2020 never changes). The AFC stays a synthetic book account: no source of
+ *   the cesantía fund's values answers Render.
  *
  * History stops at yesterday (Chile; the last completed UTC day for crypto): today's close is
  * the live sync's. Every source is retried with backoff for up to ~10 minutes; a source still
  * failing then throws and the boot fails (Render keeps the previous deploy live).
  */
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { fetchUnoFundAHistory, UNO_API_FIRST_DAY } from "../afpUnoApi.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "../afpUnoSeries.js";
 import { afpDisplayThroughDay, buildAfpDisplayRowsForFund, upsertAfpDisplayRows } from "../afpUnoOfficialSync.js";
-import { fetchSpCesantiaYear, upsertAfcCicRows } from "../afcCicSeries.js";
 import {
   fetchDolarAfterDate,
   fetchEuroAfterDate,
@@ -40,7 +47,11 @@ import {
   upsertUtmRows,
   writeVerifiedIpcRows,
 } from "../sbifSyncDb.js";
-import { fetchSpAfpFundUnits, officialPensionFundUnits, upsertSpAfpFundUnits } from "../spAfpFundUnits.js";
+import {
+  officialPensionFundUnits,
+  upsertSpAfpFundUnits,
+  type SpAfpFundUnitRow,
+} from "../spAfpFundUnits.js";
 import type { DemoNarrative } from "./demoNarrative.js";
 import {
   DEMO_AFP_MODELO,
@@ -48,14 +59,6 @@ import {
   marketHistoryFirstMonth,
   type DemoEquitySeries,
 } from "./demoWriters.js";
-
-/**
- * Whether the demo's AFP and AFC are cuota ledgers on the Superintendencia's official values
- * (Modelo-A switched into UNO-A, and `afc_cic`). Off: the SP site refuses connections from
- * Render's servers, so the hosted demo cannot fetch them; the demo keeps its synthetic book
- * AFP/AFC until a reachable source exists. The ledger code is kept for that day.
- */
-export const DEMO_PENSION_LEDGERS = false;
 
 /** Waits between attempts of one source (≈10 minutes in all), then it throws. */
 export const DEMO_MARKET_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 180_000, 180_000];
@@ -65,6 +68,75 @@ const DEMO_AFP_LIVE = "uno";
 
 type Sleep = (ms: number) => Promise<void>;
 const realSleep: Sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The SP's official Modelo fund A values over the window the demo holds it (committed data). */
+export const DEMO_AFP_MODELO_CSV_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../data/demo/afp-modelo-fund-a-2018-2020.csv"
+);
+
+const MODELO_CSV_HEADER = "afp;fund;day;unit_value_clp";
+
+/**
+ * Rows of the Modelo snapshot (`afp;fund;day;unit_value_clp`, plain dot decimals, one row per calendar
+ * day ascending). Throws on another header, another AFP or fund, a missing or repeated day, or a
+ * value that is not positive.
+ */
+export function parseDemoAfpModeloCsv(text: string): SpAfpFundUnitRow[] {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim() !== "");
+  if (lines[0] !== MODELO_CSV_HEADER) throw new Error(`demo modelo csv: unexpected header «${lines[0] ?? ""}»`);
+  const rows: SpAfpFundUnitRow[] = [];
+  for (const line of lines.slice(1)) {
+    const cells = line.split(";");
+    if (cells.length !== 4) throw new Error(`demo modelo csv: unexpected line «${line}»`);
+    const [afp, fund, day, raw] = cells as [string, string, string, string];
+    if (afp !== DEMO_AFP_MODELO || fund !== "A") throw new Error(`demo modelo csv: not Modelo fund A «${line}»`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error(`demo modelo csv: invalid day «${line}»`);
+    const prev = rows.at(-1)?.day;
+    if (prev != null && day !== chileCalendarAddDays(prev, 1)) {
+      throw new Error(`demo modelo csv: ${day} does not follow ${prev}`);
+    }
+    if (!/^\d+(?:\.\d+)?$/.test(raw)) throw new Error(`demo modelo csv: unreadable value «${line}»`);
+    const v = Number(raw);
+    if (!(v > 0)) throw new Error(`demo modelo csv: non-positive value «${line}»`);
+    rows.push({ afp, fund: "A", day, unit_value_clp: v, provisional: false });
+  }
+  if (rows.length === 0) throw new Error("demo modelo csv: no rows");
+  return rows;
+}
+
+/**
+ * The demo's pension market: Modelo fund A from the committed snapshot and UNO fund A from UNO's
+ * API (retried like the other sources), stored as official values; UNO's display series is
+ * written through the day its latest value shows. Modelo's display rows are written by the
+ * generator over the window the demo holds it. `fetchUno` is injectable for tests and harnesses.
+ */
+export async function loadDemoPensionMarket(
+  todayYmd: string,
+  opts: {
+    fetchUno?: (fromDay: string, toDay: string) => Promise<SpAfpFundUnitRow[]>;
+    retry?: <T>(label: string, fn: () => Promise<T>) => Promise<T>;
+  } = {}
+): Promise<{ modelo: number; uno: number; uno_through: string }> {
+  const fetchUno = opts.fetchUno ?? ((from: string, to: string) => fetchUnoFundAHistory(from, to));
+  const retry = opts.retry ?? withDemoMarketRetries;
+  const modelo = parseDemoAfpModeloCsv(readFileSync(DEMO_AFP_MODELO_CSV_PATH, "utf8"));
+  const uno = await retry("AFP UNO valor cuota", async () => {
+    const rows = await fetchUno(UNO_API_FIRST_DAY, todayYmd);
+    if (rows.length === 0) throw new Error("no UNO fund A values");
+    return rows;
+  });
+  if (uno[0]!.day > modelo.at(-1)!.day) {
+    throw new Error(`demo market: UNO history starts ${uno[0]!.day}, after the Modelo snapshot ends ${modelo.at(-1)!.day}`);
+  }
+  upsertSpAfpFundUnits(modelo, { dryRun: false });
+  upsertSpAfpFundUnits(uno, { dryRun: false });
+  const unoOfficial = officialPensionFundUnits(DEMO_AFP_LIVE, "A");
+  const throughDay = afpDisplayThroughDay(unoOfficial, todayYmd);
+  const unoDisplay = buildAfpDisplayRowsForFund(DEMO_AFP_LIVE, "A", unoOfficial[0]!.day, throughDay);
+  upsertAfpDisplayRows(AFP_UNO_CUOTA_SERIES_KEY, DEMO_AFP_LIVE, unoDisplay, false);
+  return { modelo: modelo.length, uno: uno.length, uno_through: throughDay };
+}
 
 /** Runs `fn` until it succeeds, waiting {@link DEMO_MARKET_RETRY_DELAYS_MS} between attempts. */
 export async function withDemoMarketRetries<T>(
@@ -113,7 +185,6 @@ export type DemoRealMarketSummary = {
   fx: number;
   bcentral: { usd: number; eur: number; uf: number; utm: number; ipc: number };
   afp_official: number;
-  afc: number;
 };
 
 /**
@@ -180,39 +251,7 @@ export async function loadDemoRealMarket(narrative: DemoNarrative, now: Date = n
   upsertUtmRows(utm, false);
   writeVerifiedIpcRows(ipc, { replace: false, dryRun: false });
 
-  // AFP / AFC: the Superintendencia's official values, when the host can reach its site.
-  // Render's servers cannot (every request fails at the connection, 2026-10-31), so the hosted
-  // demo keeps its synthetic book AFP/AFC (`DEMO_PENSION_LEDGERS`).
-  let afpOfficial = 0;
-  let afc = 0;
-  if (DEMO_PENSION_LEDGERS) {
-    // AFP: every AFP's official fund A values since the narrative starts; UNO's display series
-    // (the live account's) through the day its latest value shows. Modelo's display rows are
-    // written by the generator over the window the demo holds it.
-    const firstYear = Number(narrative.firstMonth.slice(0, 4));
-    const afpRows = await withDemoMarketRetries("Superintendencia AFP fund A", () =>
-      fetchSpAfpFundUnits("A", firstYear, cl.year, cl.ymd)
-    );
-    for (const afp of [DEMO_AFP_MODELO, DEMO_AFP_LIVE]) {
-      if (!afpRows.some((r) => r.afp === afp)) throw new Error(`demo market: the SP AFP file carries no ${afp} column`);
-    }
-    upsertSpAfpFundUnits(afpRows, { dryRun: false });
-    const unoOfficial = officialPensionFundUnits(DEMO_AFP_LIVE, "A");
-    const unoDisplay = buildAfpDisplayRowsForFund(
-      DEMO_AFP_LIVE,
-      "A",
-      unoOfficial[0]!.day,
-      afpDisplayThroughDay(unoOfficial, cl.ymd)
-    );
-    upsertAfpDisplayRows(AFP_UNO_CUOTA_SERIES_KEY, DEMO_AFP_LIVE, unoDisplay, false);
-
-    for (let year = firstYear; year <= cl.year; year++) {
-      const rows = await withDemoMarketRetries(`Superintendencia AFC ${year}`, () => fetchSpCesantiaYear(year));
-      afc += upsertAfcCicRows(rows, { dryRun: false, note: `sp:cesantia|demo-boot|${year}` }).inserted;
-    }
-
-    afpOfficial = afpRows.length;
-  }
+  const pension = narrative.withAfp ? await loadDemoPensionMarket(cl.ymd) : null;
 
   return {
     from,
@@ -220,8 +259,7 @@ export async function loadDemoRealMarket(narrative: DemoNarrative, now: Date = n
     equities,
     fx,
     bcentral: { usd: usd.length, eur: eur.length, uf: uf.length, utm: utm.length, ipc: ipc.length },
-    afp_official: afpOfficial,
-    afc,
+    afp_official: pension ? pension.modelo + pension.uno : 0,
   };
 }
 
