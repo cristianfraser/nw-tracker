@@ -13,7 +13,7 @@ import {
 } from "../../components/credit-card/ExpenseVendorLabel";
 import styles from "./CreditCardPurchaseVendor.module.css";
 
-function purchaseVendorSource(p: CcInstallmentPurchaseComputed): ExpenseVendorSource {
+export function purchaseVendorSource(p: CcInstallmentPurchaseComputed): ExpenseVendorSource {
   return {
     merchant: p.label,
     display_merchant: p.display_merchant,

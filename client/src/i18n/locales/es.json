@@ -1502,7 +1502,7 @@
       "colMonthCuotaTotal": "Cuota a pagar",
       "colDebtAfterPayment": "Deuda tras pago",
       "colMonthBreakdown": "Detalle",
-      "monthCuotasBreakdownLine": "{{current}}/{{total}} - {{label}}: {{amount}}",
+      "monthCuotasBreakdownLine": "{{current}}/{{total}} - <name></name>: {{amount}}",
       "monthCuotasEmpty": "Sin cuotas pendientes en el calendario.",
       "mortgageSheetEmpty": "No hay filas de dividendos en la base. Ejecuta npm run import:excel (exporta depto-dividendos.csv desde Numbers a cfraser/ antes del import).",
       "payByRule": {

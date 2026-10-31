@@ -5316,8 +5316,8 @@
         "es": "Detalle"
       },
       "monthCuotasBreakdownLine": {
-        "en": "{{current}}/{{total}} - {{label}}: {{amount}}",
-        "es": "{{current}}/{{total}} - {{label}}: {{amount}}"
+        "en": "{{current}}/{{total}} - <name></name>: {{amount}}",
+        "es": "{{current}}/{{total}} - <name></name>: {{amount}}"
       },
       "monthCuotasEmpty": {
         "en": "No pending installments on the calendar.",

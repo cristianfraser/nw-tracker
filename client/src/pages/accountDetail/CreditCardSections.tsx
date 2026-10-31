@@ -13,7 +13,8 @@ import { Trans, useTranslation } from "../../i18n";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { CreditCardCuotaProgress } from "./CreditCardCuotaProgress";
 import { CreditCardFacturacionesTable } from "./CreditCardFacturacionesTable";
-import { CreditCardPurchaseVendor } from "./CreditCardPurchaseVendor";
+import { CreditCardPurchaseVendor, purchaseVendorSource } from "./CreditCardPurchaseVendor";
+import { ExpenseVendorLabel } from "../../components/credit-card/ExpenseVendorLabel";
 import {
   CreditCardPurchaseMobileCard,
   purchaseTableColSpan,
@@ -78,15 +79,18 @@ function CreditCardInstallmentsSection({
     <ul className={listClassName}>
       {breakdown.map((b, i) => (
         <li key={`${b.purchase_id}-${b.installment_index}-${i}`} className="mono muted">
-          {t("account.creditCard.monthCuotasBreakdownLine", {
-            label: b.label,
-            amount: formatClp(b.amount_clp),
-            current: b.installment_index + 1,
-            total:
-              b.installment_count ??
-              purchaseById.get(b.purchase_id)?.installment_count ??
-              "?",
-          })}
+          <Trans
+            i18nKey="account.creditCard.monthCuotasBreakdownLine"
+            values={{
+              amount: formatClp(b.amount_clp),
+              current: b.installment_index + 1,
+              total:
+                b.installment_count ??
+                purchaseById.get(b.purchase_id)?.installment_count ??
+                "?",
+            }}
+            components={{ name: <CuotaVendor breakdown={b} purchase={purchaseById.get(b.purchase_id)} /> }}
+          />
         </li>
       ))}
     </ul>
@@ -395,3 +399,18 @@ export function CreditCardDetailSections(props: Parameters<typeof CreditCardInst
   return <CreditCardInstallmentsSection {...props} />;
 }
 
+
+/**
+ * A cuota of the cuotas-por-facturación detail, named as its purchase row names it (name · note ·
+ * link ⓘ); a cuota whose purchase the page does not list keeps the bank's text.
+ */
+function CuotaVendor({
+  breakdown,
+  purchase,
+}: {
+  breakdown: CcInstallmentMonthBreakdown;
+  purchase: CcInstallmentPurchaseComputed | undefined;
+}) {
+  if (!purchase) return <span>{breakdown.label}</span>;
+  return <ExpenseVendorLabel source={purchaseVendorSource(purchase)} note={purchase.purchase_notes} inline />;
+}
