@@ -3,7 +3,10 @@ import {
   buildFlowsDepositsPayload,
   flowEventInUnit,
   flowsDepositsNetTotalByAccount,
+  isPreTaxDepositRow,
+  markPensionSwitchRows,
   netDepositFlowBetween,
+  type FlowDepositRow,
 } from "./flowsDeposits.js";
 import { totalDisplayDepositsClpForAccount } from "./accountDeposits.js";
 import { clpToUsdAtPayment, ufRowOnOrBefore } from "./fxRates.js";
@@ -186,5 +189,33 @@ describe("flowEventInUnit", () => {
     expect(() => flowEventInUnit({ occurred_on: "1900-01-02", amt: 10_000 }, "uf")).toThrow(/no UF/);
     // A recorded USD leg needs no rate.
     expect(flowEventInUnit({ occurred_on: "1900-01-02", amt: 10_000, amt_usd: 12 }, "usd")).toBe(12);
+  });
+});
+
+describe("markPensionSwitchRows", () => {
+  const row = (account_id: number, occurred_on: string, amount_clp: number, kind_slug = "afp"): FlowDepositRow => ({
+    occurred_on,
+    category: "inversiones",
+    category_label: "Retirement",
+    account_id,
+    account_name: `acct ${account_id}`,
+    kind_slug,
+    amount_clp,
+    amount_usd: amount_clp / 900,
+  });
+
+  it("marks a fund switch's two legs pre-tax, so they cancel there", () => {
+    const rows = [row(1, "2020-02-07", -3_205_366), row(2, "2020-02-07", 3_205_366), row(2, "2020-02-10", 134_587)];
+    markPensionSwitchRows(rows);
+    expect(rows.map((r) => r.pension_switch ?? false)).toEqual([true, true, false]);
+    const preTax = rows.filter(isPreTaxDepositRow).reduce((s, r) => s + r.amount_clp, 0);
+    expect(preTax).toBe(134_587);
+  });
+
+  it("leaves a retiro (negative pension row with no same-day twin) an ordinary deposit row", () => {
+    const rows = [row(1, "2020-08-03", -1_200_000), row(2, "2020-08-04", 1_200_000), row(3, "2020-08-03", 1_200_000, "spy")];
+    markPensionSwitchRows(rows);
+    expect(rows.some((r) => r.pension_switch)).toBe(false);
+    expect(isPreTaxDepositRow(rows[0]!)).toBe(false);
   });
 });

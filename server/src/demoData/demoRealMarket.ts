@@ -1,10 +1,10 @@
 /**
- * Real market history for the hosted demo (preset `demo`). Before the narrative is generated,
+ * Real market history for the hosted demo (preset `demo`). Before the demo is generated,
  * the market tables of the fresh demo DB are filled from the same public sources the personal
  * instance syncs from, so the demo's holdings are valued at real prices and the wake-on-visit
  * syncs (`demoMarketActivity.ts`) only ever append the days since:
  *
- * - `equity_daily`: Yahoo daily closes of every ticker the narrative holds (BTC-USD included);
+ * - `equity_daily`: Yahoo daily closes of every ticker the demo holds (BTC-USD included);
  * - `fx_daily`: Yahoo CLP=X (write-once, like the live frame);
  * - `fx_daily_bcentral` / `eur_daily` / `uf_daily` / `utm_daily` / `ipc_daily`: Banco Central
  *   (`BCENTRAL_EMAIL` / `BCENTRAL_PASSWORD` are required — a Render secret on the demo);
@@ -52,13 +52,15 @@ import {
   upsertSpAfpFundUnits,
   type SpAfpFundUnitRow,
 } from "../spAfpFundUnits.js";
-import type { DemoNarrative } from "./demoNarrative.js";
-import {
-  DEMO_AFP_MODELO,
-  demoNarrativeTickers,
-  marketHistoryFirstMonth,
-  type DemoEquitySeries,
-} from "./demoWriters.js";
+/** The AFP the demo's history starts on (switched into UNO later). */
+export const DEMO_AFP_MODELO = "modelo";
+
+/** What the demo's market needs: the window's first month and each ticker with its first use day. */
+export type DemoMarketSpec = {
+  fromMonth: string;
+  tickers: readonly { ticker: string; firstUse: string }[];
+  withAfp: boolean;
+};
 
 /** Waits between attempts of one source (≈10 minutes in all), then it throws. */
 export const DEMO_MARKET_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 180_000, 180_000];
@@ -188,10 +190,10 @@ export type DemoRealMarketSummary = {
 };
 
 /**
- * Fills the market tables for `narrative` from the real sources. Requires an empty market
+ * Fills the market tables for `spec` from the real sources. Requires an empty market
  * (a fresh demo DB) and Banco Central credentials; throws otherwise.
  */
-export async function loadDemoRealMarket(narrative: DemoNarrative, now: Date = new Date()): Promise<DemoRealMarketSummary> {
+export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new Date()): Promise<DemoRealMarketSummary> {
   const creds = loadBcentralCredentials();
   if (!creds) {
     throw new Error("demo market: set BCENTRAL_EMAIL and BCENTRAL_PASSWORD (Banco Central series for the demo)");
@@ -203,21 +205,20 @@ export async function loadDemoRealMarket(narrative: DemoNarrative, now: Date = n
   const yesterday = chileCalendarAddDays(cl.ymd, -1);
   // The market window opens years before the portfolio (watchlist 10Y anchors), so the first
   // month's prior-month marks always find a rate.
-  const from = `${marketHistoryFirstMonth(narrative)}-01`;
+  const from = `${spec.fromMonth}-01`;
   const fxFrom = from;
   const p2 = Math.floor(now.getTime() / 1000);
 
   const equities: Record<string, number> = {};
-  for (const ticker of demoNarrativeTickers(narrative)) {
+  for (const { ticker, firstUse } of spec.tickers) {
     const last = ticker.endsWith("-USD") ? cryptoCompletedUtcYmd(now) : yesterday;
     const series = await withDemoMarketRetries(`Yahoo ${ticker}`, async () => {
       const s = closesThrough(await fetchYahooDailyCloses(ticker, unixSeconds(from), p2), last);
       if (s.dates.length === 0) throw new Error(`no closes for ${ticker}`);
       return s;
     });
-    const firstBuy = narrative.stocks ? `${narrative.stocks.from}-01` : `${narrative.firstMonth}-01`;
-    if (series.dates[0]! > firstBuy) {
-      throw new Error(`demo market: ${ticker} history starts ${series.dates[0]}, after the first buy month ${firstBuy}`);
+    if (series.dates[0]! > firstUse) {
+      throw new Error(`demo market: ${ticker} history starts ${series.dates[0]}, after its first use ${firstUse}`);
     }
     equities[ticker] = upsertEquityDailySeries(ticker, series);
   }
@@ -251,7 +252,7 @@ export async function loadDemoRealMarket(narrative: DemoNarrative, now: Date = n
   upsertUtmRows(utm, false);
   writeVerifiedIpcRows(ipc, { replace: false, dryRun: false });
 
-  const pension = narrative.withAfp ? await loadDemoPensionMarket(cl.ymd) : null;
+  const pension = spec.withAfp ? await loadDemoPensionMarket(cl.ymd) : null;
 
   return {
     from,
@@ -261,16 +262,4 @@ export async function loadDemoRealMarket(narrative: DemoNarrative, now: Date = n
     bcentral: { usd: usd.length, eur: eur.length, uf: uf.length, utm: utm.length, ipc: ipc.length },
     afp_official: pension ? pension.modelo + pension.uno : 0,
   };
-}
-
-/** The stored closes per ticker, as the generator's unit math reads them (replaces the synthetic series). */
-export function demoEquitySeriesFromDb(tickers: readonly string[]): DemoEquitySeries {
-  const select = db.prepare(`SELECT trade_date, close FROM equity_daily WHERE ticker = ? ORDER BY trade_date`);
-  const out: DemoEquitySeries = new Map();
-  for (const ticker of tickers) {
-    const rows = (select.all(ticker) as { trade_date: string; close: number }[]).map((r) => [r.trade_date, r.close] as [string, number]);
-    if (rows.length === 0) throw new Error(`demo market: no stored closes for ${ticker}`);
-    out.set(ticker, rows);
-  }
-  return out;
 }

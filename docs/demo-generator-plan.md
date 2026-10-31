@@ -1,7 +1,7 @@
 # Demo data generator v2 — plan
 
-Status: plan (2026-10-31). Replaces the `demo` preset of `server/src/demoData/` from the
-bottom up; the lean `test` preset keeps the current engine until v2 is done, then moves.
+Status: built (2026-10-31), `server/src/demoData/v2/`. The `demo` preset is v2; the lean
+`test` preset keeps the old engine (see «As built» at the end).
 
 ## Goal
 
@@ -151,3 +151,33 @@ bencina, TAG), health, subscriptions, clothing, tech, travel, gifts, hobbies, pe
 5. Housing and cars: rentals, purchase, mortgage, contribuciones, gastos comunes.
 6. Expense model tuning (ratchet, windfalls, seasonality) to the net-worth target.
 7. Swap the `demo` preset to v2, delete v1 writers; then port the `test` preset.
+
+## As built (2026-10-31)
+
+All seven phases are in. Where the build differs from the plan above:
+
+- **Through the real import functions:** cartolas (`applyBankAccountStatements`), this month's
+  checking listing (`applyBankAccountMovements`), every card facturación in both currencies as
+  statement-parser rows (`applyParsedCcStatements`, with the reconcile gates on), the open cycle
+  (`importCcWebPasteLines`), the card-payment mirror conversion, Previred parameters and the
+  liquidaciones (`applyEmploymentPayslips`, every one paired with its salary credit).
+- **Written directly**, because the import shape for them is a specific provider's (Fintual's
+  certificate, AFP UNO's website, Racional's crawl) or does not exist: the dollar checking account
+  (no dollar statement import), the broker and the crypto exchange, the AFP cuota ledger
+  (Modelo → UNO, with contribution periods), the AFC and APV book marks, the contractor payslips
+  (USD, `origin = 'rebuilt'`), the mortgage ledger. The F22 forms are not stored: their cash
+  (April payment, May refund) is in the cartolas, and the tax page drafts each year from the
+  liquidaciones.
+- **The Vitest preset stays on the old engine** (`demoNarrative.ts` / `demoWriters.ts`, trimmed to
+  the `test` preset only and checked byte-identical before and after): the suite's fixtures were
+  written around it. A probe run of the suite on a v2 database stalled in the heaviest file (it
+  rebuilds every payload twice, on a database ~5× the lean one); porting the suite is its own task.
+- **Numbers:** on the synthetic market the person ends at ~US$370k; on the real market the plays
+  move it. The invariant allows ±25 % around US$400k.
+- **Story adjustments found while building:** the first apartment starts with job 2; the NVDA
+  play is US$3.000 (job 2 could not fund more), and a play the cash cannot cover trims SPY;
+  contractor pay lands on the month's last business day (the platform's cycle), so income and cash
+  share a month.
+- **App fix found by the demo:** an AFP fund switch read as a withdrawal plus a pre-tax cotización
+  in the flows overview («sin explicar» −3,2 M in its month); `markPensionSwitchRows` now pairs
+  the two legs as pre-tax (it affects the real ledger's switches too).

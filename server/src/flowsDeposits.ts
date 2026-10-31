@@ -91,6 +91,12 @@ export type FlowDepositRow = {
    * page, `withMortgageCarrying`).
    */
   mortgage_carrying?: true;
+  /**
+   * One leg of a switch between two pension funds (an `afp_fund_switch` transfer: the same pesos out
+   * of one AFP/AFC account and into another, the same day). Both legs are pre-tax, so they cancel
+   * there instead of reading as a withdrawal and a cotización.
+   */
+  pension_switch?: true;
 };
 
 /** Payroll-deducted pre-tax deposit kinds — money that never passes through checking. */
@@ -101,8 +107,34 @@ const PRE_TAX_DEPOSIT_KIND_SLUGS = new Set(["afp", "afc"]);
  * post-tax deposits by the flows overview and the /flows/deposits page. A negative one (a retiro
  * that reached checking) is an ordinary deposit row.
  */
-export function isPreTaxDepositRow(row: Pick<FlowDepositRow, "kind_slug" | "amount_clp">): boolean {
+export function isPreTaxDepositRow(row: Pick<FlowDepositRow, "kind_slug" | "amount_clp" | "pension_switch">): boolean {
+  if (row.pension_switch) return true;
   return PRE_TAX_DEPOSIT_KIND_SLUGS.has(row.kind_slug) && row.amount_clp > 0;
+}
+
+/**
+ * Marks the two legs of each pension fund switch: a negative and a positive AFP/AFC row of the same
+ * day and the same pesos on two different accounts (the transfer's legs; one-to-one).
+ */
+export function markPensionSwitchRows(rows: FlowDepositRow[]): void {
+  const pension = rows.filter((r) => PRE_TAX_DEPOSIT_KIND_SLUGS.has(r.kind_slug) && !r.pension_switch);
+  const used = new Set<FlowDepositRow>();
+  for (const out of pension) {
+    if (out.amount_clp >= 0 || used.has(out)) continue;
+    const into = pension.find(
+      (r) =>
+        !used.has(r) &&
+        r.amount_clp > 0 &&
+        r.account_id !== out.account_id &&
+        r.occurred_on === out.occurred_on &&
+        Math.abs(r.amount_clp + out.amount_clp) < 0.5
+    );
+    if (!into) continue;
+    used.add(out);
+    used.add(into);
+    out.pension_switch = true;
+    into.pension_switch = true;
+  }
 }
 
 export type FlowDepositChartPoint = {
@@ -327,6 +359,7 @@ export function buildFlowsDepositsPayload(opts?: {
       });
     }
   }
+  markPensionSwitchRows(rows);
   if (opts?.withMortgageCarrying) rows.push(...mortgageCarryingRows(opts.withMortgageCarrying, accounts));
   rows.sort((a, b) => {
     const d = b.occurred_on.localeCompare(a.occurred_on);
