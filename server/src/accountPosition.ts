@@ -154,6 +154,9 @@ export function equityBrokeragePositionMeta(
     units_kind: "shares",
     units: units > 1e-12 && Number.isFinite(units) ? units : null,
   };
+  // No shares: no mark, whatever the price. Reading none keeps a sold-out position's row free
+  // of its ticker's live quote (`cacheDependencies.ts`).
+  if (out.units == null) return out;
 
   const today = chileCalendarTodayYmd();
   const session = equitySessionYmdForTicker(ticker, now);
@@ -194,7 +197,7 @@ export function equityBrokeragePositionMeta(
   if (close == null || !Number.isFinite(close)) return out;
 
   const u = out.units;
-  if (u == null || u <= 1e-12) return out;
+  if (u == null) return out;
 
   if (equityQuoteCurrency(ticker) === "clp") {
     out.afp_override_value_clp = Math.round(u * close * 100) / 100;
