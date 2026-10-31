@@ -22,6 +22,8 @@ export type PatchCcExpenseLineCategoryVars = {
   unique: boolean;
   category_slug?: string;
   clear_category?: boolean;
+  /** «Específico»: the rule for the merchant + this link instead of the merchant's general rule. */
+  rule_link?: { kind: "receipt" | "app" | "recipient"; key: string } | null;
 };
 
 function lineMatchesCategoryTargetId(

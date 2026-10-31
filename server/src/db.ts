@@ -8,6 +8,7 @@ import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
 import { runExpenseConsumptionBackfill161, runLegacyNoteBackfill157 } from "./legacyNoteBackfills.js";
 import { runMovementsAmountCurrency169 } from "./movementsAmountCurrency169.js";
 import { runGroceryReceiptKey178 } from "./groceryReceiptKey178.js";
+import { runExpenseCategoryRuleMigration252 } from "./expenseCategoryRulesMigration.js";
 import {
   runMarkInputChangeTriggers211,
   runMarkInputChangeTriggers242,
@@ -240,6 +241,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "211_mark_input_changes.sql": runMarkInputChangeTriggers211,
   "242_movements_counter_units_delta.sql": runMarkInputChangeTriggers242,
   "243_drop_movements_ticker.sql": runMarkInputChangeTriggers243,
+  "252_expense_category_rules.sql": runExpenseCategoryRuleMigration252,
 };
 
 /**

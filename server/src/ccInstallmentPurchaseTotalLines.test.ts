@@ -1,3 +1,4 @@
+import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import {
@@ -42,7 +43,7 @@ function line(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
 
 const emptyMaps = {
   lineOverrides: new Map(),
-  merchantRules: new Map(),
+  merchantRules: rulesFor([]),
   uniquePurchases: new Map(),
   uniquePurchaseModeKeys: new Set<string>(),
 };

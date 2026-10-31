@@ -97,7 +97,6 @@ export function wipeVitestCcFixtureData(): void {
   db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(id);
-  db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ?`).run(id);
 }

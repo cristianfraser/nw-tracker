@@ -12,6 +12,7 @@ import { isCheckingExpenseRefund, setCheckingExpenseRefundCategory } from "./che
 import { normalizeCcExpenseMerchantKey } from "./ccExpenseCategories.js";
 import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
 import { db } from "./db.js";
+import type { CategoryRuleLink } from "./expenseCategoryRules.js";
 import { purchaseIdFromPlanGastosLineId } from "./ccInstallmentPlanGastosLines.js";
 
 export type FlowExpenseLineCategorySource = "cc" | "checking" | "manual" | "payslip";
@@ -23,6 +24,8 @@ export function assignFlowExpenseLineCategory(opts: {
   unique: boolean;
   categorySlug?: string | null;
   clearCategory?: boolean;
+  /** «Específico»: the rule for the merchant + this link instead of the general one. */
+  ruleLink?: CategoryRuleLink | null;
 }): {
   category_slug: string;
   unique: boolean;
@@ -43,6 +46,7 @@ export function assignFlowExpenseLineCategory(opts: {
       unique: opts.unique,
       categorySlug: opts.categorySlug ?? null,
       clearCategory: opts.clearCategory,
+      ruleLink: opts.ruleLink ?? null,
     });
   }
 
@@ -69,6 +73,7 @@ export function assignFlowExpenseLineCategory(opts: {
       unique: opts.unique,
       categorySlug: opts.categorySlug ?? null,
       clearCategory: opts.clearCategory,
+      ruleLink: opts.ruleLink ?? null,
     });
   }
 
@@ -79,6 +84,7 @@ export function assignFlowExpenseLineCategory(opts: {
       unique: opts.unique,
       categorySlug: opts.categorySlug ?? null,
       clearCategory: opts.clearCategory,
+      ruleLink: opts.ruleLink ?? null,
     });
   }
 
@@ -91,6 +97,7 @@ export function assignFlowExpenseLineCategory(opts: {
       unique: opts.unique,
       categorySlug: opts.categorySlug ?? null,
       clearCategory: opts.clearCategory,
+      ruleLink: opts.ruleLink ?? null,
     });
   }
   if (cc.ok) {
@@ -99,6 +106,7 @@ export function assignFlowExpenseLineCategory(opts: {
       unique: opts.unique,
       categorySlug: opts.categorySlug ?? null,
       clearCategory: opts.clearCategory,
+      ruleLink: opts.ruleLink ?? null,
     });
   }
 

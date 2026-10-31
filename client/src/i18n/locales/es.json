@@ -1305,6 +1305,8 @@
       "bulkClearSelection": "Limpiar selección",
       "bulkCategoryPlaceholder": "Asignar categoría…",
       "bulkCategorySelectAria": "Categoría para los gastos seleccionados",
+      "categorySpecificLabel": "Específico ({{link}})",
+      "categorySpecificHint": "La categoría vale para este comercio solo junto con esta tienda, app o destinatario; las demás compras del comercio siguen con la suya.",
       "categoryUniqueLabel": "Único",
       "clearCategoryAria": "Quitar categoría",
       "categories": {

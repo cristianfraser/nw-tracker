@@ -1,3 +1,4 @@
+import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
 import { afterAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { installmentPlanBreakdownByMonth } from "./ccInstallmentLedgerDb.js";
@@ -8,7 +9,7 @@ import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./
 
 const emptyMaps = {
   lineOverrides: new Map(),
-  merchantRules: new Map(),
+  merchantRules: rulesFor([]),
   uniquePurchases: new Map(),
   uniquePurchaseModeKeys: new Set<string>(),
 };

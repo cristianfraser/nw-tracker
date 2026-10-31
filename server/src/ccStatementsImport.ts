@@ -1,8 +1,6 @@
 import { db } from "./db.js";
 import { oneShotLineFuzzyMatchExists, shouldSkipOneShotStatementImport } from "./ccCrossImportDedupe.js";
 import {
-  propagateCcExpenseMerchantRulesAcrossGroup,
-  propagateCcExpenseMerchantRulesFromLegacy,
   restoreCcExpenseCategories,
   snapshotCcExpenseCategories,
 } from "./ccExpenseCategoryPersist.js";
@@ -220,8 +218,6 @@ export function importCcStatementsMerge(
       );
     }
   }
-  propagateCcExpenseMerchantRulesFromLegacy(accountId);
-  propagateCcExpenseMerchantRulesAcrossGroup("santander");
   const categorySnap = snapshotCcExpenseCategories(accountId);
 
   const replaceAll = opts?.replaceAll === true;

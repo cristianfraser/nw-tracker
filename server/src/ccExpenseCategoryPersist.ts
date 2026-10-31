@@ -1,5 +1,4 @@
 import { db } from "./db.js";
-import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import {
   loadCcStatementLineExpenseCtx,
   stableCcExpensePurchaseKeyFromCtx,
@@ -11,45 +10,6 @@ export type CcExpenseCategorySnapshot = {
   lineCategoryByDedupeKey: Map<string, number>;
   uniqueCategoryByStablePurchaseKey: Map<string, number | null>;
 };
-
-/** Copy merchant rules from legacy combined CC master (id 15) onto per-card accounts. */
-export function propagateCcExpenseMerchantRulesFromLegacy(
-  targetAccountId: number,
-  legacyAccountId = 15
-): number {
-  const r = db
-    .prepare(
-      `INSERT OR IGNORE INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
-       SELECT ?, mc.merchant_key, mc.category_id
-       FROM cc_expense_merchant_categories mc
-       WHERE mc.account_id = ?`
-    )
-    .run(targetAccountId, legacyAccountId);
-  return r.changes;
-}
-
-/** Share merchant rules across all cards in a credit-card group (e.g. Santander). */
-export function propagateCcExpenseMerchantRulesAcrossGroup(
-  groupSlug = "santander"
-): number {
-  const accountIds = listCreditCardGroupMasterAccountIds(groupSlug);
-  if (accountIds.length === 0) return 0;
-
-  let total = 0;
-  const ins = db.prepare(
-    `INSERT OR IGNORE INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
-     SELECT ?, mc.merchant_key, mc.category_id
-     FROM cc_expense_merchant_categories mc
-     WHERE mc.account_id = ?`
-  );
-  for (const targetId of accountIds) {
-    for (const sourceId of accountIds) {
-      if (sourceId === targetId) continue;
-      total += ins.run(targetId, sourceId).changes;
-    }
-  }
-  return total;
-}
 
 /** Capture assignments before statement lines are deleted (reimport). */
 export function snapshotCcExpenseCategories(accountId: number): CcExpenseCategorySnapshot {

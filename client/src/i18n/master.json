@@ -4587,6 +4587,14 @@
         "en": "Category for the selected expenses",
         "es": "Categoría para los gastos seleccionados"
       },
+      "categorySpecificLabel": {
+        "en": "Specific ({{link}})",
+        "es": "Específico ({{link}})"
+      },
+      "categorySpecificHint": {
+        "en": "The category applies to this vendor only together with this store, app or recipient; the vendor's other purchases keep their own.",
+        "es": "La categoría vale para este comercio solo junto con esta tienda, app o destinatario; las demás compras del comercio siguen con la suya."
+      },
       "categoryUniqueLabel": {
         "en": "One-off",
         "es": "Único"

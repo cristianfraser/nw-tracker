@@ -1,14 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import {
-  propagateCcExpenseMerchantRulesFromLegacy,
-  snapshotCcExpenseCategories,
-} from "./ccExpenseCategoryPersist.js";
+import { snapshotCcExpenseCategories } from "./ccExpenseCategoryPersist.js";
 import {
   assignCcExpenseLineCategory,
   getCcExpenseCategoryBySlug,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
+  resolveMerchantCategorySlug,
 } from "./ccExpenseCategories.js";
 import { importCcStatementsFromCsvRecords } from "./ccStatementsImport.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
@@ -63,7 +61,7 @@ function cleanupFixtureAccount(accountId: number): void {
        SELECT id FROM cc_statements WHERE account_id = ?)`
   ).run(accountId);
   db.prepare(`DELETE FROM cc_statements WHERE account_id = ?`).run(accountId);
-  db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ?`).run(accountId);
+  db.prepare(`DELETE FROM expense_category_rules WHERE vendor LIKE 'VITEST%'`).run();
   db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ?`).run(accountId);
 }
 
@@ -75,39 +73,6 @@ describe("ccExpenseCategoryPersist", () => {
   });
   afterAll(() => {
     cleanupFixtureAccount(accountId);
-  });
-
-  it("propagates merchant rules from a legacy account onto per-card accounts", () => {
-    // Own source rules on a throwaway "legacy" account — never a shared master.
-    const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as {
-      id: number;
-    };
-    const legacyId = Number(
-      db
-        .prepare(
-          `INSERT INTO accounts (asset_group_id, name, notes)
-           VALUES (?, 'vitest-legacy-rules', 'vitest:legacy-rules')`
-        )
-        .run(group.id).lastInsertRowid
-    );
-    try {
-      const fun = getCcExpenseCategoryBySlug("fun")!;
-      db.prepare(
-        `INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
-         VALUES (?, ?, ?)`
-      ).run(legacyId, normalizeCcExpenseMerchantKey("VITEST LEGACY MERCHANT"), fun.id);
-
-      const n = propagateCcExpenseMerchantRulesFromLegacy(accountId, legacyId);
-      expect(n).toBe(1);
-      const count = db
-        .prepare(`SELECT COUNT(*) AS c FROM cc_expense_merchant_categories WHERE account_id = ?`)
-        .get(accountId) as { c: number };
-      expect(count.c).toBeGreaterThan(0);
-    } finally {
-      db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ?`).run(legacyId);
-      db.prepare(`DELETE FROM accounts WHERE id = ?`).run(legacyId);
-      db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ?`).run(accountId);
-    }
   });
 
   it("restores per-line override after reimport via parser_row_id", () => {
@@ -151,7 +116,7 @@ describe("ccExpenseCategoryPersist", () => {
     expect(cat?.slug).toBe("supermarket");
   });
 
-  it("merchant rules on per-card accounts survive statement reimport", () => {
+  it("category rules survive statement reimport", () => {
     importCcStatementsFromCsvRecords(accountId, [seedRecord()]);
     const line = db
       .prepare(
@@ -168,16 +133,12 @@ describe("ccExpenseCategoryPersist", () => {
     });
 
     const merchantKey = normalizeCcExpenseMerchantKey(line.merchant);
-    const before = loadCcExpenseCategoryMaps([accountId]).merchantRules.get(
-      `${accountId}|${merchantKey}`
-    );
+    const before = resolveMerchantCategorySlug(merchantKey, loadCcExpenseCategoryMaps([accountId]).merchantRules);
     expect(before).toBe("fun");
 
     importCcStatementsFromCsvRecords(accountId, []);
 
-    const after = loadCcExpenseCategoryMaps([accountId]).merchantRules.get(
-      `${accountId}|${merchantKey}`
-    );
+    const after = resolveMerchantCategorySlug(merchantKey, loadCcExpenseCategoryMaps([accountId]).merchantRules);
     expect(after).toBe("fun");
 
     const payload = buildFlowsExpensesPayload();

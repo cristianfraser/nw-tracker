@@ -15,6 +15,7 @@
  *    mortgage ledger, book valuations (property, mortgage, AFC);
  * 7. category rules, colors, sync sources, the invariants.
  */
+import { setExpenseCategoryRule } from "../expenseCategoryRules.js";
 import { readFileSync } from "node:fs";
 import { db } from "../db.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
@@ -423,18 +424,17 @@ function renameTreesCategoryToHobbies(): void {
 }
 
 function seedCategoryRules(ledger: Ledger, ids: Map<Acct, number>): void {
-  const ins = db.prepare(`INSERT OR IGNORE INTO cc_expense_merchant_categories (account_id, merchant_key, category_id) VALUES (?, ?, ?)`);
   const cat = (slug: string) => {
     const c = getCcExpenseCategoryBySlug(slug);
     if (!c) throw new Error(`demo: no expense category ${slug}`);
     return c.id;
   };
-  for (const c of ledger.person.cards) {
-    for (const [merchant, slug] of ledger.categoryByMerchant) ins.run(ids.get(`card:${c.key}` as Acct)!, normalizeCcExpenseMerchantKey(merchant), cat(slug));
+  // Category rules are global (keyed on the vendor), whichever card or account paid.
+  if (ledger.person.cards.length > 0) {
+    for (const [merchant, slug] of ledger.categoryByMerchant) setExpenseCategoryRule(normalizeCcExpenseMerchantKey(merchant), null, cat(slug));
   }
-  for (const acct of ["checking", "vista"] as const) {
-    if (!ids.has(acct)) continue;
-    for (const [desc, slug] of ledger.categoryByCheckingDescription) ins.run(ids.get(acct)!, normalizeCcExpenseMerchantKey(desc), cat(slug));
+  if (ids.has("checking") || ids.has("vista")) {
+    for (const [desc, slug] of ledger.categoryByCheckingDescription) setExpenseCategoryRule(normalizeCcExpenseMerchantKey(desc), null, cat(slug));
   }
   const generic = db.prepare(`INSERT OR IGNORE INTO cc_expense_generic_unique_merchants (merchant_key, sort_order) VALUES (?, ?)`);
   ["TRANSF A BROKER DEMO SPA", "TRANSF A CRYPTO EXCHANGE SPA", "TRANSF A AGF ANDES APV", "TRANSF A INMOBILIARIA LOS ALAMOS"].forEach((k, i) =>

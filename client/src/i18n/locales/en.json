@@ -1305,6 +1305,8 @@
       "bulkClearSelection": "Clear selection",
       "bulkCategoryPlaceholder": "Assign category…",
       "bulkCategorySelectAria": "Category for the selected expenses",
+      "categorySpecificLabel": "Specific ({{link}})",
+      "categorySpecificHint": "The category applies to this vendor only together with this store, app or recipient; the vendor's other purchases keep their own.",
       "categoryUniqueLabel": "One-off",
       "clearCategoryAria": "Remove category",
       "categories": {

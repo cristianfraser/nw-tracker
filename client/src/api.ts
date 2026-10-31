@@ -620,6 +620,7 @@ export const api = {
       category_slug?: string;
       clear_category?: boolean;
       source?: import("./types").FlowCcExpenseLineSource;
+      rule_link?: { kind: "receipt" | "app" | "recipient"; key: string } | null;
     }
   ) =>
     j<{ category_slug: string; unique: boolean; merchant_key: string; purchase_key: string }>(

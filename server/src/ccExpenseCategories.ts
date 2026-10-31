@@ -1,5 +1,12 @@
 import { db } from "./db.js";
-import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "./ccWebMerchantTruncation.js";
+import {
+  clearExpenseCategoryRule,
+  generalRuleCategory,
+  loadExpenseCategoryRules,
+  setExpenseCategoryRule,
+  type CategoryRuleLink,
+  type ExpenseCategoryRules,
+} from "./expenseCategoryRules.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { cancelledInstallmentPurchaseIdsForAccount } from "./ccInstallmentLedgerDb.js";
 import {
@@ -213,14 +220,15 @@ export function getCcExpenseCategoryBySlug(slug: string): CcExpenseCategoryRow |
 
 export function loadCcExpenseCategoryMaps(accountIds: readonly number[]): {
   lineOverrides: Map<number, string>;
-  merchantRules: Map<string, string>;
+  /** The global category rules (`expenseCategoryRules.ts`): the general rule decides here. */
+  merchantRules: ExpenseCategoryRules;
   /** `account_id|purchase_key` → category slug (assigned Único only). */
   uniquePurchases: Map<string, string>;
   /** Único with no category — blocks merchant rules for this purchase. */
   uniquePurchaseModeKeys: Set<string>;
 } {
   const lineOverrides = new Map<number, string>();
-  const merchantRules = new Map<string, string>();
+  const merchantRules = loadExpenseCategoryRules();
   const uniquePurchases = new Map<string, string>();
   const uniquePurchaseModeKeys = new Set<string>();
 
@@ -242,19 +250,6 @@ export function loadCcExpenseCategoryMaps(accountIds: readonly number[]): {
 
   for (const r of lineRows) {
     lineOverrides.set(r.statement_line_id, r.slug);
-  }
-
-  const merchantRows = db
-    .prepare(
-      `SELECT mc.account_id, mc.merchant_key, c.slug
-       FROM cc_expense_merchant_categories mc
-       JOIN cc_expense_categories c ON c.id = mc.category_id
-       WHERE mc.account_id IN (${ph})`
-    )
-    .all(...accountIds) as { account_id: number; merchant_key: string; slug: string }[];
-
-  for (const r of merchantRows) {
-    merchantRules.set(`${r.account_id}|${r.merchant_key}`, r.slug);
   }
 
   const uniqueRows = db
@@ -292,54 +287,9 @@ function uniquePurchaseMapKey(accountId: number, purchaseKey: string): string {
   return `${accountId}|${purchaseKey}`;
 }
 
-/** The charge-type column Santander's PDF glues onto a PAT charge's merchant. */
-const GLUED_CHARGE_TYPE_SUFFIX = " COMPRAS P.A.T.";
-
-/**
- * Rule keys that describe this line's merchant, most specific first: the name itself, the name
- * without the PDF's glued charge-type column («SEG AUTO SANTANDER COMPRAS P.A.T.»), and its cut at
- * the web table's width. A rule learned on a pasted or pending line carries the cut name
- * («FULLNEUMATICO Q»), and the statement that replaces the line prints the full one — an exact
- * match alone dropped the category the day the statement arrived.
- */
-export function merchantRuleCandidateKeys(merchantKey: string): string[] {
-  if (!merchantKey) return [];
-  const out = [merchantKey];
-  let base = merchantKey;
-  if (base.endsWith(GLUED_CHARGE_TYPE_SUFFIX) && base.length > GLUED_CHARGE_TYPE_SUFFIX.length) {
-    base = base.slice(0, -GLUED_CHARGE_TYPE_SUFFIX.length).trimEnd();
-    out.push(base);
-  }
-  if (base.length > WEB_PASTE_MERCHANT_TRUNCATION_WIDTH) {
-    // A cut landing on a space shows as the shorter, trimmed name.
-    out.push(base.slice(0, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH).trimEnd());
-  }
-  return [...new Set(out)];
-}
-
-/** Merchant rule for this account: the first of {@link merchantRuleCandidateKeys} with a rule. */
-export function resolveMerchantCategorySlug(
-  accountId: number,
-  merchantKey: string,
-  merchantRules: Map<string, string>
-): string | null {
-  for (const key of merchantRuleCandidateKeys(merchantKey)) {
-    const slug = merchantRules.get(`${accountId}|${key}`);
-    if (slug) return slug;
-  }
-  return null;
-}
-
-/** Stored merchant rule keys that apply to this merchant ({@link merchantRuleCandidateKeys}). */
-export function merchantRuleKeysMatchingLineMerchant(
-  accountId: number,
-  merchantKey: string
-): string[] {
-  const sel = db.prepare(
-    `SELECT merchant_key FROM cc_expense_merchant_categories
-     WHERE account_id = ? AND merchant_key = ?`
-  );
-  return merchantRuleCandidateKeys(merchantKey).filter((key) => sel.get(accountId, key) != null);
+/** The general category rule for a bank merchant (global, keyed on its vendor). */
+export function resolveMerchantCategorySlug(merchantKey: string, merchantRules: ExpenseCategoryRules): string | null {
+  return generalRuleCategory(merchantRules, merchantKey);
 }
 
 function uniquePurchaseModeKeysForResolve(
@@ -370,7 +320,7 @@ type ResolveCcExpenseCategoryOpts = {
   merchantKey: string;
   purchaseKey: string;
   lineOverrides: Map<number, string>;
-  merchantRules: Map<string, string>;
+  merchantRules: ExpenseCategoryRules;
   uniquePurchases: Map<string, string>;
   uniquePurchaseModeKeys?: Set<string>;
 };
@@ -380,9 +330,10 @@ export function resolveCcExpenseCategorySlug(opts: ResolveCcExpenseCategoryOpts)
 }
 
 /**
- * A line's category, and whether only the bank's name for the charge decided it: a merchant rule
- * (keyed on that name), or nothing at all («sin categoría» by default). A document naming the
- * charge's real vendor may then place the line instead; an «Único» row, a line override and the
+ * A line's category, and whether only the bank's name for the charge decided it: the general rule
+ * (keyed on the vendor), an «Único» row with no category yet, or nothing at all («sin categoría» by
+ * default). A document naming the charge's real vendor (a subscription) or a specific rule for the
+ * line's link may then place the line instead; an «Único» category, a line override and the
  * traspaso / cancelled-plan rules are about this line and stay.
  */
 export function resolveCcExpenseCategory(opts: ResolveCcExpenseCategoryOpts): { slug: string; fromBankName: boolean } {
@@ -429,6 +380,7 @@ function resolveAssignedCcExpenseCategorySlug(opts: ResolveCcExpenseCategoryOpts
       opts.uniquePurchaseModeKeys
     ).some((key) => opts.uniquePurchaseModeKeys?.has(key))
   ) {
+    onMerchantRule();
     return UNCLASSIFIED_CC_EXPENSE_SLUG;
   }
 
@@ -440,11 +392,7 @@ function resolveAssignedCcExpenseCategorySlug(opts: ResolveCcExpenseCategoryOpts
   }
 
   if (!isGenericTransferMerchantKey(opts.merchantKey)) {
-    const merchantSlug = resolveMerchantCategorySlug(
-      opts.accountId,
-      opts.merchantKey,
-      opts.merchantRules
-    );
+    const merchantSlug = resolveMerchantCategorySlug(opts.merchantKey, opts.merchantRules);
     if (merchantSlug) {
       onMerchantRule();
       return merchantSlug;
@@ -1146,6 +1094,8 @@ function executeCcExpenseCategoryAssignment(opts: {
   hasCategory: boolean;
   catId: number | null;
   resolvedSlug: string;
+  /** «Específico»: the change writes the rule for the merchant + this link instead of the general one. */
+  ruleLink: CategoryRuleLink | null;
 }): {
   category_slug: string;
   unique: boolean;
@@ -1161,6 +1111,7 @@ function executeCcExpenseCategoryAssignment(opts: {
     clearCategory,
     catId,
     resolvedSlug,
+    ruleLink,
   } = opts;
 
   const delLine = db.prepare(`DELETE FROM cc_expense_line_categories WHERE statement_line_id = ?`);
@@ -1171,14 +1122,6 @@ function executeCcExpenseCategoryAssignment(opts: {
     `INSERT INTO cc_expense_unique_purchases (account_id, purchase_key, category_id)
      VALUES (?, ?, ?)
      ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
-  );
-  const upsertMerchant = db.prepare(
-    `INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, merchant_key) DO UPDATE SET category_id = excluded.category_id`
-  );
-  const delMerchant = db.prepare(
-    `DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`
   );
 
   const tx = db.transaction(() => {
@@ -1206,9 +1149,7 @@ function executeCcExpenseCategoryAssignment(opts: {
         }
       } else {
         delUniquePurchase.run(accountId, purchaseKey);
-        for (const ruleKey of merchantRuleKeysMatchingLineMerchant(accountId, merchantKey)) {
-          delMerchant.run(accountId, ruleKey);
-        }
+        if (merchantKey) clearExpenseCategoryRule(merchantKey, ruleLink);
         if (!isInstallmentContractPurchaseKey(purchaseKey)) {
           markUserDeclinedAutoCategory(accountId, purchaseKey);
         }
@@ -1224,7 +1165,7 @@ function executeCcExpenseCategoryAssignment(opts: {
     } else {
       delUniquePurchase.run(accountId, purchaseKey);
       if (catId != null && merchantKey) {
-        upsertMerchant.run(accountId, merchantKey, catId);
+        setExpenseCategoryRule(merchantKey, ruleLink, catId);
       }
     }
   });
@@ -1270,6 +1211,7 @@ export function assignCcExpenseCategoryForManualLedgerInstallmentPurchase(opts: 
   unique: boolean;
   categorySlug?: string | null;
   clearCategory?: boolean;
+  ruleLink?: CategoryRuleLink | null;
 }): {
   category_slug: string;
   unique: boolean;
@@ -1345,6 +1287,7 @@ export function assignCcExpenseCategoryForManualLedgerInstallmentPurchase(opts: 
     hasCategory,
     catId,
     resolvedSlug,
+    ruleLink: opts.ruleLink ?? null,
   });
 }
 
@@ -1354,6 +1297,8 @@ export function assignCcExpenseLineCategory(opts: {
   categorySlug?: string | null;
   /** User chose «Sin clasificar» — clear category; non-unique also removes merchant rule. */
   clearCategory?: boolean;
+  /** «Específico»: write (or clear) the rule for the merchant + this link instead of the general one. */
+  ruleLink?: CategoryRuleLink | null;
 }): {
   category_slug: string;
   unique: boolean;
@@ -1402,5 +1347,6 @@ export function assignCcExpenseLineCategory(opts: {
     hasCategory,
     catId,
     resolvedSlug,
+    ruleLink: opts.ruleLink ?? null,
   });
 }

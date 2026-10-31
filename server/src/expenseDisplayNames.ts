@@ -43,6 +43,10 @@ import {
 } from "./expenseNameText.js";
 import { repairMojibake } from "./textRepair.js";
 import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "./ccWebMerchantTruncation.js";
+import { cleanBankMerchant, splitProcessorPrefix } from "./bankMerchantName.js";
+import { linkKeyForName, type CategoryRuleLink } from "./expenseCategoryRules.js";
+
+export { cleanBankMerchant, splitProcessorPrefix };
 import { foldVendorName, loadVendorCatalog, normalizeRut, type VendorCatalog } from "./vendorCatalog.js";
 
 export type ExpenseLinkLabel = {
@@ -61,7 +65,19 @@ export type ExpenseDisplayNames = {
   link_label?: ExpenseLinkLabel;
   /** A cut branch that could be several places: the user picks one (`key`: the folded name). */
   branch_choices?: { key: string; options: string[] };
+  /** What a specific category rule for this line is keyed on (`expenseCategoryRules.ts`). */
+  category_link?: CategoryRuleLinkDto;
 };
+
+/**
+ * The line's link as a category rule sees it: a receipt's store (by brand), an App Store app, or a
+ * transfer's recipient (by RUT, else by name). `specific_default`: whether a category change writes
+ * the specific rule unless the user says otherwise — off for food delivery (the restaurant does not
+ * change what the platform is), on for everything else.
+ */
+export type CategoryRuleLinkDto = CategoryRuleLink & { label: string; specific_default: boolean };
+
+const FOOD_DELIVERY_RECEIPTS = new Set(["uber_eats", "uber_eats_summary", "rappi"]);
 
 /**
  * Receipts of the shop itself or of a payment processor: their payee is the merchant the bank's
@@ -78,54 +94,6 @@ const RECEIPT_NAMES_MERCHANT = new Set([
   "club_domino",
   "micoca_cola",
 ]);
-
-const PROCESSOR_PREFIXES: readonly [RegExp, string][] = [
-  [/^MERPAGO\s*\*\s*/i, "Mercado Pago"],
-  [/^MERCADOPAGO\s*\*\s*/i, "Mercado Pago"],
-  [/^MP\s*\*\s*/i, "Mercado Pago"],
-  [/^PAYU\s*(?:PS)?\s*\*\s*/i, "PayU"],
-  [/^PAYU\s*\/\s*/i, "PayU"],
-  [/^HAULMER\s*\*\s*/i, "Haulmer"],
-  [/^TUU\s*\*\s*/i, "TUU"],
-  [/^SUMUP\s*C?\s*\*\s*/i, "SumUp"],
-  [/^REDELCO\s*\*\s*/i, "Redelcom"],
-  [/^REDELCOM\s+/i, "Redelcom"],
-  [/^FLOW\s*\*\s*/i, "Flow"],
-  [/^REDGLOBA\s*\*\s*/i, "RedGlobal"],
-  [/^DL\s*\*\s*/i, "dLocal"],
-  [/^DP\s*\*\s*/i, "dLocal"],
-  [/^PAYPAL\s*\*\s*/i, "PayPal"],
-  [/^PYV\s*\*\s*/i, "PYV"],
-  [/^NYA\s*\*\s*/i, "Nayax"],
-  [/^IZ\s*\*\s*/i, "Zettle"],
-  [/^SQ\s*\*\s*/i, "Square"],
-];
-
-/** The bank's clutter around a merchant name. */
-export function cleanBankMerchant(raw: string): string {
-  return raw
-    .replace(/\s+COMPRAS P\.A\.T\.\s*$/i, "")
-    .replace(/\s*\(T\)\s*$/, "")
-    .replace(/,\s*SANTIAGO\s*$/i, "")
-    .replace(/^\d{6,}\s+/, "")
-    .replace(/^Agustinas\s+/i, "")
-    .replace(/^\*\/\s*/, "")
-    // An old card listing put «COMPRA» / «Compra Nacional» before the merchant; the statement's
-    // own estimated lines («COMPRAS DEL PERIODO (ESTIMADO)») and «Compras Internet» keep theirs.
-    .replace(/^Compra Nacional\s+/i, "")
-    .replace(/^COMPRAS?\s+(?!DEL PERIODO|INTERNACIONALES|INTERNET\s*$)(?=\S)/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** «MERPAGO*MICOCACOLA» → {name: «MICOCACOLA», processor: «Mercado Pago»}. */
-export function splitProcessorPrefix(name: string): { name: string; processor: string | null } {
-  for (const [re, processor] of PROCESSOR_PREFIXES) {
-    const rest = name.replace(re, "");
-    if (rest !== name && rest.trim()) return { name: rest.trim(), processor };
-  }
-  return { name, processor: null };
-}
 
 /** «Grindr - Gay Dating & Chat», «Tinder Dating App: Meet & Date + Grindr - …» → «Grindr», «Tinder + Grindr». */
 export function appStoreLabel(name: string, catalog: VendorCatalog): string {
@@ -381,10 +349,27 @@ export function expenseLineDisplayNames(
     const label = receiptLabel(r, ctx.catalog, ctx.brands);
     if (label) {
       out.link_label = { arrow: r.guess ? "≈" : "→", text: label.text, nights: label.nights, inline: !contains(shown, label.text) };
+      // A stay's label is its city: no rule per city.
+      if (label.nights == null && !LODGING_PROCESSORS.has(r.processor)) {
+        const app = r.processor === "app_store";
+        const key = linkKeyForName(label.text);
+        if (key) {
+          out.category_link = {
+            kind: app ? "app" : "receipt",
+            key,
+            label: label.text,
+            specific_default: app || !FOOD_DELIVERY_RECEIPTS.has(r.processor),
+          };
+        }
+      }
     }
   } else if (cp && cpLabel) {
     const arrow = cp.direction === "out" ? "→" : cp.direction === "in" ? "←" : "⇄";
     out.link_label = { arrow, text: cpLabel, nights: null, inline: !contains(shown, cpLabel) };
+    if (cp.direction !== "own") {
+      const key = cp.rut ? normalizeRut(cp.rut) : `N:${foldVendorName(cp.name ?? cpLabel)}`;
+      out.category_link = { kind: "recipient", key, label: cpLabel, specific_default: true };
+    }
   }
   return out;
 }

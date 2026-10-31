@@ -79,7 +79,8 @@ import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { db } from "./db.js";
 
 import { enrichFlowLinesWithOriginLabels, type ExpenseLineOrigin } from "./ccExpenseOriginLabel.js";
-import { withExpenseDisplayNames, type ExpenseLinkLabel } from "./expenseDisplayNames.js";
+import { withExpenseDisplayNames, type CategoryRuleLinkDto, type ExpenseLinkLabel } from "./expenseDisplayNames.js";
+import { loadExpenseCategoryRules, specificRuleCategory, type CategoryRuleLink } from "./expenseCategoryRules.js";
 import { enrichFlowLinesWithPurchaseNotes } from "./ccExpensePurchaseNotes.js";
 import {
   enrichFlowLinesWithBigGroups,
@@ -250,6 +251,12 @@ export type FlowCcExpenseLineRow = {
 
   /** The short label of what the line is linked to (receipt payee, app, transfer counterparty). */
   link_label?: ExpenseLinkLabel;
+
+  /** What a specific category rule for this line is keyed on, with its «Específico» default. */
+  category_link?: CategoryRuleLinkDto;
+
+  /** A specific rule (vendor + this link) decided the category. */
+  category_specific?: true;
 
   /** A cut branch that could be several places: the user picks one (`key`: the folded name). */
   branch_choices?: { key: string; options: string[] };
@@ -1015,26 +1022,45 @@ function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]):
   syncExpenseDepositLinksFromGastosLines(withNotes);
   const withGroups = enrichFlowLinesWithBigGroups(withNotes);
   const withOrigin = enrichFlowLinesWithOriginLabels(withGroups);
-  return withExpenseDisplayNames(
-    withSubscriptionCategory(
-      withPaymentReceipts(enrichFlowLinesWithTransferCounterparties(enrichFlowLinesWithExpenseDepositLinks(withOrigin)))
+  return withSpecificCategoryRules(
+    withExpenseDisplayNames(
+      withSubscriptionCategory(
+        withPaymentReceipts(enrichFlowLinesWithTransferCounterparties(enrichFlowLinesWithExpenseDepositLinks(withOrigin)))
+      )
     )
   );
+}
+
+/**
+ * A specific category rule (vendor + the line's store, app or recipient) places a line whose category
+ * only the bank's name decided — the general rule, a subscription document, or nothing; a category
+ * set on the line itself stays. Runs once the line's link is known. The marker is dropped.
+ */
+export function withSpecificCategoryRules<
+  L extends { category_slug: string; category_from_bank_name?: true; merchant: string | null; category_link?: CategoryRuleLink }
+>(lines: L[]): L[] {
+  const rules = loadExpenseCategoryRules();
+  return lines.map((l) => {
+    const { category_from_bank_name: fromBankName, ...rest } = l;
+    if (!fromBankName || !l.category_link || !l.merchant) return rest as L;
+    const slug = specificRuleCategory(rules, l.merchant, l.category_link);
+    return (slug ? { ...rest, category_slug: slug, category_specific: true } : rest) as L;
+  });
 }
 
 /**
  * A charge a document shows is a subscription's (a renewing App Store item, Uber One) reads
  * «Suscripciones» when only the bank's name for it decided its category — a merchant rule or none:
  * the document names the real vendor, the bank only the processor («UBER» covers rides and Uber
- * One alike). A category set on the line itself, or an «Único» row, stays. The marker is dropped.
+ * One alike). A category set on the line itself, or an «Único» row, stays. The marker stays for
+ * `withSpecificCategoryRules`, which drops it.
  */
 export function withSubscriptionCategory<L extends { category_slug: string; category_from_bank_name?: true; payment_receipt?: { subscription: boolean } }>(
   lines: L[]
 ): L[] {
   return lines.map((l) => {
-    if (!l.category_from_bank_name) return l;
-    const { category_from_bank_name: _fromBankName, ...rest } = l;
-    return (l.payment_receipt?.subscription ? { ...rest, category_slug: SUBSCRIPTIONS_CC_EXPENSE_SLUG } : rest) as L;
+    if (!l.category_from_bank_name || !l.payment_receipt?.subscription) return l;
+    return { ...l, category_slug: SUBSCRIPTIONS_CC_EXPENSE_SLUG };
   });
 }
 

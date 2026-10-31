@@ -298,19 +298,45 @@ describe("flowsCheckingInflows", () => {
       corrienteId,
       "2099-07-01",
       -500_000,
-      "Transf. Internet a otro Bancos",
+      "Traspaso Internet a Cuenta Vista",
       { cartolaMonth: "2099-07", idx: 9998501 }
     );
     const creditId = insertCheckingCartolaCredit(
       vistaId,
       "2099-07-01",
       500_000,
-      "ABONO TRANSFERENCIA",
+      "Traspaso Internet desde Cta.Ct",
       { cartolaMonth: "2099-07", idx: 9998502 }
     );
 
     const payload = buildFlowsCheckingIncomePayload();
     expect(payload.lines.some((l) => l.movement_id === creditId)).toBe(false);
+
+    deleteCheckingMovements([withdrawalId, creditId]);
+  });
+
+  it("keeps a third party's transfer in income beside a same-day wire to another bank", () => {
+    const corrienteId = checkingAccountId();
+    const vistaId = cartolaCashAccountIdOptional("cuenta_vista");
+    if (vistaId == null) return;
+
+    const withdrawalId = insertCheckingCartolaWithdrawal(
+      corrienteId,
+      "2099-07-02",
+      -500_000,
+      "Transf. Internet a otro Bancos",
+      { cartolaMonth: "2099-07", idx: 9998503 }
+    );
+    const creditId = insertCheckingCartolaCredit(
+      vistaId,
+      "2099-07-02",
+      500_000,
+      "0012345678 Transf. Ana P",
+      { cartolaMonth: "2099-07", idx: 9998504 }
+    );
+
+    const payload = buildFlowsCheckingIncomePayload();
+    expect(payload.lines.some((l) => l.movement_id === creditId)).toBe(true);
 
     deleteCheckingMovements([withdrawalId, creditId]);
   });

@@ -117,7 +117,7 @@ describe("vendor catalog", () => {
       expect(() => saveVendorBranchChoice("EXPRESS VERY LONG NAME LAS", "Lider Express (Nowhere)")).toThrow(/not a branch/);
       saveVendorBranchChoice("EXPRESS VERY LONG NAME LAS", "Lider Express (Very Long Name Las Condes)");
       const after = loadVendorCatalog().match("EXPRESS VERY LONG NAME LAS");
-      expect(after).toEqual({ display: "Lider Express (Very Long Name Las Condes)", branchChoices: null });
+      expect(after).toEqual({ display: "Lider Express (Very Long Name Las Condes)", brand: "Lider Express (Very Long Name Las Condes)", branchChoices: null });
     } finally {
       db.prepare(`DELETE FROM vendor_catalog WHERE source = 'choice'`).run();
     }
@@ -327,5 +327,34 @@ describe("expenseLineDisplayNames", () => {
     );
     expect(names.display_merchant).toBe("Transf a Ana Perez");
     expect(names.link_label).toEqual({ arrow: "→", text: "Ana Perez", nights: null, inline: false });
+    expect(names.category_link).toEqual({ kind: "recipient", key: "N:ANA MARIA PEREZ SOTO", label: "Ana Perez", specific_default: true });
+  });
+
+  it("the link a specific category rule keys on, with its «Específico» default", () => {
+    const delivery = expenseLineDisplayNames(
+      { source: "cc", merchant: "PAYU *UBER EATS", account_id: 1, payment_receipt: receipt("uber_eats", "Jumbo - Costanera Center") },
+      ctx
+    );
+    expect(delivery.category_link).toEqual({ kind: "receipt", key: "JUMBO", label: "Jumbo (Costanera Center)", specific_default: false });
+    const seller = expenseLineDisplayNames(
+      { source: "cc", merchant: "MERCADO PAGO 4 TCOM", account_id: 1, payment_receipt: receipt("mercadolibre", "TIENDA UNO SPA, TIENDA DOS SPA") },
+      ctx
+    );
+    expect(seller.category_link).toMatchObject({ kind: "receipt", key: "TIENDA UNO", specific_default: true });
+    const app = expenseLineDisplayNames(
+      { source: "cc", merchant: "APPLE.COM/BILL", account_id: 1, payment_receipt: receipt("app_store", "Grindr - Gay Dating & Chat") },
+      ctx
+    );
+    expect(app.category_link).toMatchObject({ kind: "app", key: "GRINDR", specific_default: true });
+    const stay = expenseLineDisplayNames(
+      {
+        source: "cc",
+        merchant: "AIRBNB * HM123",
+        account_id: 1,
+        payment_receipt: receipt("airbnb", "Some flat", { stay: { check_in: "2026-01-10", check_out: "2026-01-12", city: "Lisboa" } }),
+      },
+      ctx
+    );
+    expect(stay.category_link).toBeUndefined();
   });
 });
