@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   aggregationCacheHasForTest,
+  buildHistoryTierValue,
   clearAggregationCache,
   getAggregationCached,
   invalidateMarketDataAggregations,
@@ -68,5 +69,15 @@ describe("cache dependencies", () => {
     getAggregationCached("depto.ledger|t", () => (noteLiveTickerRead("BTC-USD"), 1));
     invalidateMarketDataAggregations("live_tail", { tickers: new Set(["BTC-USD"]), fx: true });
     expect(aggregationCacheHasForTest("depto.ledger|t")).toBe(true);
+  });
+
+  it("a history-tier build that reads a live input throws", () => {
+    expect(buildHistoryTierValue("plain", () => 1)).toBe(1);
+    expect(() => buildHistoryTierValue("dollar", () => (noteLiveFxRead(), 1))).toThrow(/read a live input/);
+    // Through a cached part it hit, too.
+    getAggregationCached("daily.series|t:coin-part", () => (noteLiveTickerRead("BTC-USD"), 1));
+    expect(() =>
+      buildHistoryTierValue("via a part", () => getAggregationCached("daily.series|t:coin-part", () => 0))
+    ).toThrow(/read a live input/);
   });
 });

@@ -1,3 +1,4 @@
+import { historyTierMemo } from "./aggregationCache.js";
 import { db } from "./db.js";
 import {
   ensureBidAskForPaymentDate,
@@ -91,8 +92,7 @@ export function usdToClpReferenceRounded(usd: number, paymentDate: string): numb
  */
 export function clpToUsdAtPayment(clp: number, paymentDate: string): number | null {
   if (!Number.isFinite(clp) || clp === 0) return 0;
-  ensureBidAskForPaymentDate(paymentDate);
-  const buy = fxBuyClpPerUsdOnOrBefore(paymentDate);
+  const buy = buyRateOnOrBefore(paymentDate);
   if (buy != null && buy > 0) return clp / buy;
   const fx = fxRowOnOrBefore(paymentDate);
   if (!fx || fx.clp_per_usd <= 0) return null;
@@ -102,6 +102,22 @@ export function clpToUsdAtPayment(clp: number, paymentDate: string): number | nu
     context: "clpToUsdAtPaymentRounded",
   });
   return clp / fx.clp_per_usd;
+}
+
+/**
+ * The buy rate on or before `paymentDate` (inferred from the mid when none is stored). A rate
+ * found is memoized in the history tier — every daily build converts each deposit event, a few
+ * thousand lookups — and the stored rates are mark inputs, so any write to them drops the memo.
+ * A missing rate is not memoized: the mid fallback records its warning on every conversion.
+ */
+function buyRateOnOrBefore(paymentDate: string): number | null {
+  const memo = historyTierMemo<string, number>("fx_buy_rate_on_or_before");
+  const known = memo.get(paymentDate);
+  if (known !== undefined) return known;
+  ensureBidAskForPaymentDate(paymentDate);
+  const buy = fxBuyClpPerUsdOnOrBefore(paymentDate);
+  if (buy != null && buy > 0) memo.set(paymentDate, buy);
+  return buy;
 }
 
 /** {@link clpToUsdAtPayment} rounded to the deposit cross-rate precision. */

@@ -183,6 +183,8 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
     expect(moved).toBe(true);
     // A card's billing detail keeps its base part (statement frame, ledger payload) and re-applies
     // only the live dollar rate on top (`ccBillingDetailCache.ts`).
+    // The daily series keep their past part (values on past days, flow legs, deposit cums).
+    expect(keptKeys).toContain("hist.daily_series_past");
     // (A card that never billed in dollars reads no live rate and keeps its bundle too.)
     const kept = new Set(keptKeys);
     const ratesReapplied = listCreditCardMasterAccountIds().filter(
