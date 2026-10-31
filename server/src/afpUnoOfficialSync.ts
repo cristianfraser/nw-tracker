@@ -11,7 +11,7 @@
  * days are «provisorios» and a restated value replaces the stored one (reported as a step note).
  */
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
-import { afpDisplayDayForOfficialDay, buildAfpDisplaySeries, type DisplayFundUnit } from "./afpDisplayFrame.js";
+import { afpDisplayDayForOfficialDay, buildAfpDisplaySeries, type DisplayFundUnit, type OfficialFundUnit } from "./afpDisplayFrame.js";
 import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { isChileBusinessDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "./marketHolidays.js";
@@ -180,9 +180,7 @@ export async function syncAfpUnoFromSp(opts: {
   // Rows go only through the day the latest published value shows: while the next one is
   // pending, today has no row of its own (readers take the value on or before), so the
   // value's arrival is a new row, never a «restatement» of a carried one.
-  const lastValued = [...series].reverse().find((r) => isChileBusinessDay(r.day));
-  if (!lastValued) throw new Error("afp_uno: the official UNO series has no business-day value");
-  const throughDay = minYmd(opts.cl.ymd, afpDisplayDayForOfficialDay(lastValued.day, AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS));
+  const throughDay = afpDisplayThroughDay(series, opts.cl.ymd);
   const fromDay = chileCalendarAddDays(opts.cl.ymd, -DISPLAY_REWRITE_DAYS);
   const display = buildAfpDisplaySeries(series, AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS, throughDay).filter(
     (r) => r.day >= fromDay
@@ -196,6 +194,17 @@ export async function syncAfpUnoFromSp(opts: {
     display_restated: written.restated,
     latest_display: display.at(-1) ?? null,
   };
+}
+
+/**
+ * The last day a fund's display series gets a row: the day its latest published business-day
+ * value shows, never after today. While the next value is pending today has no row of its own
+ * (readers take the value on or before), so the value's arrival is a new row.
+ */
+export function afpDisplayThroughDay(series: readonly OfficialFundUnit[], todayYmd: string): string {
+  const lastValued = [...series].reverse().find((r) => isChileBusinessDay(r.day));
+  if (!lastValued) throw new Error("afp display: the official series has no business-day value");
+  return minYmd(todayYmd, afpDisplayDayForOfficialDay(lastValued.day, AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS));
 }
 
 function minYmd(a: string, b: string): string {

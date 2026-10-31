@@ -1,6 +1,7 @@
 /**
  * Stale checks for external sync sources (no Fintual script imports — safe for `tsc` / in-server use).
  */
+import { demoModeEnabled } from "./demoModeFlag.js";
 import {
   AFP_UNO_PUBLISH_HOUR_CHILE,
   afpUnoExpectedOfficialDay,
@@ -172,11 +173,23 @@ function applyUserForcedStaleToRows(
   });
 }
 
+/**
+ * Sources the hosted demo never runs: they read the author's own Fintual goals, or only serve
+ * the Risky Norris proxy of funds the demo does not hold. The demo syncs only the public market
+ * sources its holdings need (stocks, crypto, USD/CLP, Banco Central, AFP/AFC official values).
+ */
+export const DEMO_SYNC_DISABLED_SOURCES: ReadonlySet<GlobalSyncSource> = new Set([
+  "fintual",
+  "fintual_official_serie",
+  "fintual_rn_composition",
+  "cmf_rn_portfolio",
+]);
+
 function disabledSyncSources(
   cl: ChileWallClock,
   opts?: { bcentralConfigured?: boolean }
 ): Set<GlobalSyncSource> {
-  const disabled = new Set<GlobalSyncSource>();
+  const disabled = new Set<GlobalSyncSource>(demoModeEnabled() ? DEMO_SYNC_DISABLED_SOURCES : []);
   if (afpUnoAccountId() == null) disabled.add("afp_uno");
   if (afcCicAccountIds().length === 0) disabled.add("afc_cic");
   const bde = opts?.bcentralConfigured ?? isBcentralConfigured();
@@ -438,8 +451,9 @@ export function staleSyncSources(
   opts?: { force?: boolean; forceSbif?: boolean; bcentralConfigured?: boolean }
 ): GlobalSyncSource[] {
   loadRootDotenv();
-  const natural = naturalStaleSyncSources(cl, state, opts);
-  return mergeUserForcedIntoStaleList(natural, state, disabledSyncSources(cl, opts));
+  const disabled = disabledSyncSources(cl, opts);
+  const natural = naturalStaleSyncSources(cl, state, opts).filter((s) => !disabled.has(s));
+  return mergeUserForcedIntoStaleList(natural, state, disabled);
 }
 
 export type SyncSourceDisplayStatus = "ok" | "stale" | "disabled";
@@ -749,7 +763,10 @@ export function allSyncSourceStatuses(
     rows.push(syncSourceRow("crypto_eod", cl, stale ? "stale" : "ok", stale, state));
   }
 
-  return applyUserForcedStaleToRows(rows, state);
+  const demoRows = demoModeEnabled()
+    ? rows.map((r) => (DEMO_SYNC_DISABLED_SOURCES.has(r.source) ? syncSourceRow(r.source, cl, "disabled", false, state) : r))
+    : rows;
+  return applyUserForcedStaleToRows(demoRows, state);
 }
 
 export function syncStatusPayload(): {

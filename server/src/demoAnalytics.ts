@@ -1,3 +1,4 @@
+import { noteDemoMarketActivity } from "./demoMarketActivity.js";
 import Database from "better-sqlite3";
 import type { Database as BetterSqliteDb } from "better-sqlite3";
 import { createHmac, randomBytes } from "node:crypto";
@@ -265,6 +266,7 @@ export function demoVisitLogMiddleware(): RequestHandler {
       const day = chileCalendarTodayYmd();
       const identity = demoVisitorForRequest(req, day);
       if (identity) {
+        noteDemoMarketActivity();
         recordDemoVisit({
           day,
           visitor: identity.visitor,

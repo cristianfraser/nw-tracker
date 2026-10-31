@@ -15,6 +15,7 @@
  * - `GLOBAL_SYNC_NYSE_STALE_INTERVAL_MS` — faster poll when a stock EOD bar is due but missing (default 3 minutes).
  * - `GLOBAL_SYNC_WAKE_GAP_MS` — suspended time that counts as a wake (default 5 minutes).
  */
+import { demoMarketAwake, onDemoMarketWake } from "./demoMarketActivity.js";
 import { chileWallClockAt, chileWallClockNow } from "./chileDate.js";
 import { runGlobalSyncAll } from "./globalSyncAll.js";
 import { allSyncSourceStatuses, staleSyncSources, type GlobalSyncSource } from "./globalSyncStale.js";
@@ -240,6 +241,9 @@ async function schedulerTick(): Promise<void> {
     console.log("sync:scheduler — skip (previous run still in progress).");
     return;
   }
+  // The hosted demo syncs only while someone browses it; its first request wakes this
+  // scheduler again (`onDemoMarketWake` below).
+  if (!demoMarketAwake()) return;
   const suspendedMs = observedSuspendedMs;
   observedSuspendedMs = 0;
   noteSchedulerActivity();
@@ -369,6 +373,7 @@ export function startGlobalSyncScheduler(): void {
   wakeGapMs = envMs("GLOBAL_SYNC_WAKE_GAP_MS", 5 * 60 * 1000);
   noteSchedulerActivity();
   retriesUsed = 0;
+  onDemoMarketWake(() => notifyGlobalSyncScheduler());
   console.log(
     `sync:scheduler — enabled; polls every ${Math.round(schedulerIntervalMs / 1000)}s while stale` +
       ` (${Math.round(nyseStalePollIntervalMs / 1000)}s when NYSE EOD due)`
