@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appStoreLabel,
   brandsFromPayees,
+  cardMerchantsByAccount,
   cleanBankMerchant,
   counterpartyLabel,
   counterpartyNamesFromRows,
@@ -11,7 +12,7 @@ import {
   type DisplayNameContext,
 } from "./expenseDisplayNames.js";
 import { shortPersonName, stripLegalSuffix, titleCaseName } from "./expenseNameText.js";
-import { foldVendorName, vendorCatalogFromEntries, type VendorCatalogEntry } from "./vendorCatalog.js";
+import { foldVendorName, loadVendorCatalog, vendorCatalogFromEntries, type VendorCatalogEntry } from "./vendorCatalog.js";
 import { repairMojibake } from "./textRepair.js";
 import type { PaymentReceiptDto } from "./paymentProcessorReceipts.js";
 
@@ -34,6 +35,9 @@ const catalog = vendorCatalogFromEntries([
   seed("branch", "JUMBO", "Jumbo"),
   seed("branch", "AHUM", "Ahumada"),
   seed("branch", "EXPRESS", "Lider Express"),
+  seed("branch", "STREAT BURGER", "Streat Burger"),
+  seed("exact", "UBER EATS", "Uber Eats"),
+  seed("prefix", "UBER EAT Z", "Zona Prueba"),
   seed("rut", "11111111K", "Arriendo Prueba"),
   { kind: "prefix", pattern: "ENEL", display: "Enel (user)", source: "user" },
 ]);
@@ -52,6 +56,26 @@ describe("vendor catalog", () => {
     expect(catalog.lookup("AHUM L272 LOS LEONES 1")).toBe("Ahumada (Los Leones 1)");
     expect(catalog.lookup("ENEL")).toBe("Enel (user)");
     expect(catalog.lookupRut("11.111.111-k")).toBe("Arriendo Prueba");
+  });
+
+  it("seeds the brands migration 249 adds", () => {
+    const seeded = loadVendorCatalog();
+    expect(seeded.lookup("ARCOSDEVALPARAISO")).toBe("McDonald's (San Martín)");
+    expect(seeded.lookup("SABA ARAUCO PAO")).toBe("Saba (Parque Arauco)");
+    expect(seeded.lookup("SABA PLAZA BELLAVISTA")).toBe("Saba (Plaza Bellavista)");
+    expect(seeded.lookup("IKEA OPEN KENNEDY")).toBe("Ikea (Open Kennedy)");
+    expect(seeded.lookup("CLINICA ALEMANA PZA EGANA")).toBe("Clínica Alemana (Plaza Egaña)");
+    expect(seeded.lookup("DL*GOOGLE YOUTUBE")).toBe("YouTube Premium");
+    expect(seeded.lookup("ANTHROPIC* CLAUDE SUB")).toBe("Claude");
+    expect(seeded.lookup("RENDER.COM")).toBe("render.com");
+  });
+
+  it("does not wrap a branch the name already sets apart", () => {
+    expect(catalog.lookup("Streat Burger (Isidora)")).toBe("Streat Burger (Isidora)");
+    expect(catalog.lookup("Streat Burger - Isidora")).toBe("Streat Burger (Isidora)");
+    expect(catalog.lookup("Jumbo - Costanera Center")).toBe("Jumbo (Costanera Center)");
+    expect(catalog.lookup("Jumbo – Bilbao")).toBe("Jumbo (Bilbao)");
+    expect(catalog.lookup("Jumbo -")).toBe("Jumbo");
   });
 });
 
@@ -104,6 +128,7 @@ describe("link labels", () => {
     expect(receiptLabel(receipt("uber_eats", "Streat Burger - Isidora"), catalog, brands)?.text).toBe("Streat Burger (Isidora)");
     expect(receiptLabel(receipt("uber_eats", "Streat Burger Isidora"), catalog, brands)?.text).toBe("Streat Burger (Isidora)");
     expect(receiptLabel(receipt("uber_eats", "Streat Burger (Isidora)"), catalog, brands)?.text).toBe("Streat Burger (Isidora)");
+    expect(receiptLabel(receipt("uber_eats", "Jumbo - Costanera Center"), catalog, brands)?.text).toBe("Jumbo (Costanera Center)");
     expect(receiptLabel(receipt("uber_eats", "Five Guys - Burgers, Fries & Shakes"), catalog, brands)?.text).toBe("Five Guys");
     expect(receiptLabel(receipt("uber_eats", "⚡️SPID Express (Los Leones)"), catalog, brands)?.text).toBe("SPID Express (Los Leones)");
     expect(receiptLabel(receipt("uber_eats", "The Frita's Empanadas Gourmet."), catalog, brands)?.text).toBe("The Frita's Empanadas Gourmet");
@@ -147,20 +172,53 @@ describe("link labels", () => {
 });
 
 describe("expenseLineDisplayNames", () => {
-  const ctx: DisplayNameContext = { catalog, counterparties: new Map(), brands: [] };
+  const ctx: DisplayNameContext = {
+    catalog,
+    counterparties: new Map(),
+    brands: [],
+    cardMerchantsByAccount: cardMerchantsByAccount([
+      { source: "cc", merchant: "PAYU   *UBER EATS", account_id: 1 },
+      { source: "cc", merchant: "PAYU *UBER EATS", account_id: 1 },
+      { source: "cc", merchant: "PAYU *UBER EATS", account_id: 2 },
+      { source: "cc", merchant: "PAYU *UBER EAT ZONA", account_id: 2 },
+    ]),
+  };
 
   it("a card line: cleaned, processor split, catalog applied", () => {
-    expect(expenseLineDisplayNames({ source: "cc", merchant: "MERPAGO*MICOCACOLA" }, ctx)).toEqual({
+    expect(expenseLineDisplayNames({ source: "cc", merchant: "MERPAGO*MICOCACOLA", account_id: 1 }, ctx)).toEqual({
       display_merchant: "miCoca-Cola",
       merchant_processor: "Mercado Pago",
     });
-    expect(expenseLineDisplayNames({ source: "cc", merchant: "JUMBO BILBAO" }, ctx)).toEqual({ display_merchant: "Jumbo (Bilbao)" });
-    expect(expenseLineDisplayNames({ source: "cc", merchant: "SOMEWHERE" }, ctx)).toEqual({});
+    expect(expenseLineDisplayNames({ source: "cc", merchant: "JUMBO BILBAO", account_id: 1 }, ctx)).toEqual({ display_merchant: "Jumbo (Bilbao)" });
+    expect(expenseLineDisplayNames({ source: "cc", merchant: "SOMEWHERE", account_id: 1 }, ctx)).toEqual({});
+  });
+
+  it("a merchant the listing cut reads as the longer one it starts on the same account", () => {
+    // The bank collapses the cut row's spaces: «PAYU   *UBER EATS» arrives as «PAYU *UBER EA».
+    expect(expenseLineDisplayNames({ source: "cc", merchant: "PAYU   *UBER EA", account_id: 1 }, ctx)).toEqual({
+      display_merchant: "Uber Eats",
+      merchant_processor: "PayU",
+    });
+    expect(expenseLineDisplayNames({ source: "cc", merchant: "PAYU *UBER EA", account_id: 1 }, ctx).display_merchant).toBe("Uber Eats");
+  });
+
+  it("a cut merchant stays as printed without one reading of the longer merchants", () => {
+    // Account 2 prints two longer merchants that read differently: no pick.
+    expect(expenseLineDisplayNames({ source: "cc", merchant: "PAYU *UBER EA", account_id: 2 }, ctx)).toEqual({
+      display_merchant: "UBER EA",
+      merchant_processor: "PayU",
+    });
+    // No longer merchant on the account: another account's lines are not evidence.
+    expect(expenseLineDisplayNames({ source: "cc", merchant: "PAYU *UBER EA", account_id: 3 }, ctx).display_merchant).toBe("UBER EA");
+    // Longer than the cut width: not a cut name.
+    expect(
+      expenseLineDisplayNames({ source: "cc", merchant: "PAYU *UBER EA EXTRA", account_id: 1 }, ctx).display_merchant
+    ).toBe("UBER EA EXTRA");
   });
 
   it("a receipt's label is not repeated on the row when the merchant says it", () => {
     const names = expenseLineDisplayNames(
-      { source: "cc", merchant: "UBER", payment_receipt: receipt("uber", "Uber") },
+      { source: "cc", merchant: "UBER", account_id: 1, payment_receipt: receipt("uber", "Uber") },
       ctx
     );
     expect(names.link_label).toEqual({ arrow: "→", text: "Uber", nights: null, inline: false });
@@ -171,6 +229,7 @@ describe("expenseLineDisplayNames", () => {
       {
         source: "checking",
         merchant: "Transf a INMOBILIARIA Y CONSTR",
+        account_id: 3,
         transfer_counterparty: {
           direction: "out", name: "ANA MARIA PEREZ SOTO", rut: null, bank: "Banco Prueba", account_type: null,
           account_number: null, email: null, comment: null, sent_at_chile: "2026-01-01 10:00",

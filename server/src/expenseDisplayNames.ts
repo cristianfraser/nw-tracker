@@ -10,7 +10,8 @@
  *   - else the bank's clutter dropped (BCI's « (T)», the PDF's glued «COMPRAS P.A.T.» column,
  *     «, SANTIAGO», an account number or the old «Agustinas » branch at the start), the payment
  *     processor's prefix taken off («MERPAGO*», «PAYU *», «HAULMER*»… → `merchant_processor`),
- *     then the vendor catalog (`vendorCatalog.ts`)
+ *     then the vendor catalog (`vendorCatalog.ts`); a card merchant the listing cut reads as the
+ *     longer merchant it starts on the same account, when they all read the same
  *
  * Link label (`link_label`):
  *   - a receipt: the payee, never the processor («Streat Burger (Isidora)», not «… (Uber Eats)»);
@@ -39,6 +40,7 @@ import {
   trimNameEdges,
 } from "./expenseNameText.js";
 import { repairMojibake } from "./textRepair.js";
+import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "./ccWebMerchantTruncation.js";
 import { foldVendorName, loadVendorCatalog, normalizeRut, type VendorCatalog } from "./vendorCatalog.js";
 
 export type ExpenseLinkLabel = {
@@ -224,18 +226,72 @@ function contains(haystack: string, needle: string): boolean {
   return n.length > 0 && h.includes(n);
 }
 
-export type DisplayNameContext = { catalog: VendorCatalog; counterparties: CounterpartyNames; brands: readonly string[] };
+export type DisplayNameContext = {
+  catalog: VendorCatalog;
+  counterparties: CounterpartyNames;
+  brands: readonly string[];
+  /** Each card account's merchants as printed (folded, distinct): evidence for a cut name. */
+  cardMerchantsByAccount: ReadonlyMap<number, readonly string[]>;
+};
 
-export function loadDisplayNameContext(lines: readonly Pick<FlowCcExpenseLineRow, "payment_receipt">[]): DisplayNameContext {
+/** The folded merchants each card account's lines print. */
+export function cardMerchantsByAccount(
+  lines: readonly Pick<FlowCcExpenseLineRow, "source" | "merchant" | "account_id">[]
+): Map<number, string[]> {
+  const sets = new Map<number, Set<string>>();
+  for (const l of lines) {
+    if (l.source !== "cc" || !l.merchant) continue;
+    const folded = foldVendorName(l.merchant);
+    if (!folded) continue;
+    let set = sets.get(l.account_id);
+    if (!set) sets.set(l.account_id, (set = new Set()));
+    set.add(folded);
+  }
+  return new Map([...sets].map(([k, v]) => [k, [...v]]));
+}
+
+export function loadDisplayNameContext(
+  lines: readonly Pick<FlowCcExpenseLineRow, "payment_receipt" | "source" | "merchant" | "account_id">[]
+): DisplayNameContext {
   const payees = lines.flatMap((l) =>
     l.payment_receipt && l.payment_receipt.processor !== "app_store" ? [l.payment_receipt.payee] : []
   );
-  return { catalog: loadVendorCatalog(), counterparties: loadCounterpartyNames(), brands: brandsFromPayees(payees) };
+  return {
+    catalog: loadVendorCatalog(),
+    counterparties: loadCounterpartyNames(),
+    brands: brandsFromPayees(payees),
+    cardMerchantsByAccount: cardMerchantsByAccount(lines),
+  };
+}
+
+/** A bank merchant through the catalog: cleaned, processor prefix off, then looked up. */
+function catalogMerchant(raw: string, catalog: VendorCatalog): { name: string; processor: string | null; listed: string | null } {
+  const cleaned = cleanBankMerchant(raw);
+  const { name, processor } = splitProcessorPrefix(cleaned);
+  return { name, processor, listed: catalog.lookup(name) ?? catalog.lookup(cleaned) };
+}
+
+/**
+ * A card merchant the bank's listing cut («PAYU *UBER EA»: the web table and the feed's pending
+ * rows cut at 15 characters, and the bank collapses spaces before sending it, so the stored length
+ * says nothing) shows as the longer merchant it starts — when the same account's lines print one —
+ * if every such merchant reads the same through the catalog. Null when none does, or they differ.
+ */
+function cutMerchantListed(raw: string, accountId: number, ctx: DisplayNameContext): string | null {
+  const folded = foldVendorName(raw);
+  if (!folded || folded.length > WEB_PASTE_MERCHANT_TRUNCATION_WIDTH) return null;
+  const longer = (ctx.cardMerchantsByAccount.get(accountId) ?? []).filter(
+    (m) => m.length > folded.length && m.startsWith(folded)
+  );
+  if (longer.length === 0) return null;
+  const listed = new Set(longer.map((m) => catalogMerchant(m, ctx.catalog).listed));
+  if (listed.size !== 1) return null;
+  return [...listed][0] ?? null;
 }
 
 /** The names one line shows. */
 export function expenseLineDisplayNames(
-  line: Pick<FlowCcExpenseLineRow, "source" | "merchant" | "payment_receipt" | "transfer_counterparty">,
+  line: Pick<FlowCcExpenseLineRow, "source" | "merchant" | "account_id" | "payment_receipt" | "transfer_counterparty">,
   ctx: DisplayNameContext
 ): ExpenseDisplayNames {
   const out: ExpenseDisplayNames = {};
@@ -247,9 +303,8 @@ export function expenseLineDisplayNames(
   if (line.source === "checking" && cp && cpLabel && cp.direction !== "own") {
     shown = cp.direction === "out" ? `Transf a ${cpLabel}` : `Transf. de ${cpLabel}`;
   } else if (raw) {
-    const cleaned = cleanBankMerchant(raw);
-    const { name, processor } = splitProcessorPrefix(cleaned);
-    shown = ctx.catalog.lookup(name) ?? ctx.catalog.lookup(cleaned) ?? name;
+    const { name, processor, listed } = catalogMerchant(raw, ctx.catalog);
+    shown = listed ?? (line.source === "cc" ? cutMerchantListed(raw, line.account_id, ctx) : null) ?? name;
     if (processor) out.merchant_processor = processor;
   }
   if (shown && shown !== raw) out.display_merchant = shown;
