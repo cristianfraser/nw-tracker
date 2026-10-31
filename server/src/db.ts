@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import type { Database as DatabaseType } from "better-sqlite3";
+import { noteDbWrite } from "./dbWriteCounter.js";
 import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
 import { runExpenseConsumptionBackfill161, runLegacyNoteBackfill157 } from "./legacyNoteBackfills.js";
 import { runMovementsAmountCurrency169 } from "./movementsAmountCurrency169.js";
@@ -309,6 +310,29 @@ export function runMigrations() {
   } else {
     console.log(`migrations: applied ${appliedCount} new file(s); total recorded ${done.size + appliedCount}`);
   }
+}
+
+// Count this connection's writes (see dbWriteCounter.ts): a statement that can write is
+// wrapped once, when prepared, so reads pay nothing.
+{
+  const prepare = dbInternal.prepare.bind(dbInternal) as (source: string) => Database.Statement;
+  (dbInternal as { prepare: (source: string) => Database.Statement }).prepare = (source: string) => {
+    const stmt = prepare(source);
+    if (stmt.readonly) return stmt;
+    for (const method of ["run", "get", "all", "iterate"] as const) {
+      const original = stmt[method] as (...args: unknown[]) => unknown;
+      (stmt as unknown as Record<string, unknown>)[method] = function (this: Database.Statement, ...args: unknown[]) {
+        noteDbWrite();
+        return original.apply(this, args);
+      };
+    }
+    return stmt;
+  };
+  const exec = dbInternal.exec.bind(dbInternal);
+  dbInternal.exec = (sql: string) => {
+    noteDbWrite();
+    return exec(sql);
+  };
 }
 
 const db = wrapDatabaseForVerboseLog(dbInternal);
