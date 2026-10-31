@@ -49,6 +49,14 @@ import {
   type DemoEquitySeries,
 } from "./demoWriters.js";
 
+/**
+ * Whether the demo's AFP and AFC are cuota ledgers on the Superintendencia's official values
+ * (Modelo-A switched into UNO-A, and `afc_cic`). Off: the SP site refuses connections from
+ * Render's servers, so the hosted demo cannot fetch them; the demo keeps its synthetic book
+ * AFP/AFC until a reachable source exists. The ledger code is kept for that day.
+ */
+export const DEMO_PENSION_LEDGERS = false;
+
 /** Waits between attempts of one source (≈10 minutes in all), then it throws. */
 export const DEMO_MARKET_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 180_000, 180_000];
 
@@ -172,30 +180,38 @@ export async function loadDemoRealMarket(narrative: DemoNarrative, now: Date = n
   upsertUtmRows(utm, false);
   writeVerifiedIpcRows(ipc, { replace: false, dryRun: false });
 
-  // AFP: every AFP's official fund A values since the narrative starts; UNO's display series
-  // (the live account's) through the day its latest value shows. Modelo's display rows are
-  // written by the generator over the window the demo holds it.
-  const firstYear = Number(narrative.firstMonth.slice(0, 4));
-  const afpRows = await withDemoMarketRetries("Superintendencia AFP fund A", () =>
-    fetchSpAfpFundUnits("A", firstYear, cl.year, cl.ymd)
-  );
-  for (const afp of [DEMO_AFP_MODELO, DEMO_AFP_LIVE]) {
-    if (!afpRows.some((r) => r.afp === afp)) throw new Error(`demo market: the SP AFP file carries no ${afp} column`);
-  }
-  upsertSpAfpFundUnits(afpRows, { dryRun: false });
-  const unoOfficial = officialPensionFundUnits(DEMO_AFP_LIVE, "A");
-  const unoDisplay = buildAfpDisplayRowsForFund(
-    DEMO_AFP_LIVE,
-    "A",
-    unoOfficial[0]!.day,
-    afpDisplayThroughDay(unoOfficial, cl.ymd)
-  );
-  upsertAfpDisplayRows(AFP_UNO_CUOTA_SERIES_KEY, DEMO_AFP_LIVE, unoDisplay, false);
-
+  // AFP / AFC: the Superintendencia's official values, when the host can reach its site.
+  // Render's servers cannot (every request fails at the connection, 2026-10-31), so the hosted
+  // demo keeps its synthetic book AFP/AFC (`DEMO_PENSION_LEDGERS`).
+  let afpOfficial = 0;
   let afc = 0;
-  for (let year = firstYear; year <= cl.year; year++) {
-    const rows = await withDemoMarketRetries(`Superintendencia AFC ${year}`, () => fetchSpCesantiaYear(year));
-    afc += upsertAfcCicRows(rows, { dryRun: false, note: `sp:cesantia|demo-boot|${year}` }).inserted;
+  if (DEMO_PENSION_LEDGERS) {
+    // AFP: every AFP's official fund A values since the narrative starts; UNO's display series
+    // (the live account's) through the day its latest value shows. Modelo's display rows are
+    // written by the generator over the window the demo holds it.
+    const firstYear = Number(narrative.firstMonth.slice(0, 4));
+    const afpRows = await withDemoMarketRetries("Superintendencia AFP fund A", () =>
+      fetchSpAfpFundUnits("A", firstYear, cl.year, cl.ymd)
+    );
+    for (const afp of [DEMO_AFP_MODELO, DEMO_AFP_LIVE]) {
+      if (!afpRows.some((r) => r.afp === afp)) throw new Error(`demo market: the SP AFP file carries no ${afp} column`);
+    }
+    upsertSpAfpFundUnits(afpRows, { dryRun: false });
+    const unoOfficial = officialPensionFundUnits(DEMO_AFP_LIVE, "A");
+    const unoDisplay = buildAfpDisplayRowsForFund(
+      DEMO_AFP_LIVE,
+      "A",
+      unoOfficial[0]!.day,
+      afpDisplayThroughDay(unoOfficial, cl.ymd)
+    );
+    upsertAfpDisplayRows(AFP_UNO_CUOTA_SERIES_KEY, DEMO_AFP_LIVE, unoDisplay, false);
+
+    for (let year = firstYear; year <= cl.year; year++) {
+      const rows = await withDemoMarketRetries(`Superintendencia AFC ${year}`, () => fetchSpCesantiaYear(year));
+      afc += upsertAfcCicRows(rows, { dryRun: false, note: `sp:cesantia|demo-boot|${year}` }).inserted;
+    }
+
+    afpOfficial = afpRows.length;
   }
 
   return {
@@ -204,7 +220,7 @@ export async function loadDemoRealMarket(narrative: DemoNarrative, now: Date = n
     equities,
     fx,
     bcentral: { usd: usd.length, eur: eur.length, uf: uf.length, utm: utm.length, ipc: ipc.length },
-    afp_official: afpRows.length,
+    afp_official: afpOfficial,
     afc,
   };
 }

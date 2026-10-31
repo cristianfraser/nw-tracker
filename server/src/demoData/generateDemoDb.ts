@@ -30,7 +30,7 @@ import {
   demoNarrativeTickers,
   type DemoAccounts,
 } from "./demoWriters.js";
-import { demoEquitySeriesFromDb } from "./demoRealMarket.js";
+import { DEMO_PENSION_LEDGERS, demoEquitySeriesFromDb } from "./demoRealMarket.js";
 import { AFC_CIC_SERIES_KEY } from "../afcCicSeries.js";
 import { afpDisplaySeriesKey } from "../afpUnoSeries.js";
 import { buildAfpDisplayRowsForFund, upsertAfpDisplayRows } from "../afpUnoOfficialSync.js";
@@ -198,7 +198,8 @@ export function generateDemoDb(preset: DemoPreset, opts: GenerateDemoDbOptions =
   if (real && narrative.withFondo) {
     throw new Error("demo: the real-market demo has no fund series for the fondo — use withFondo: false");
   }
-  if (real && narrative.withAfp && narrative.firstMonth >= DEMO_AFP_SWITCH_MONTH) {
+  const pensionLedgers = real && DEMO_PENSION_LEDGERS && narrative.withAfp;
+  if (pensionLedgers && narrative.firstMonth >= DEMO_AFP_SWITCH_MONTH) {
     throw new Error(`demo: the real-market AFP history needs a start before its switch month ${DEMO_AFP_SWITCH_MONTH}`);
   }
 
@@ -244,17 +245,17 @@ export function generateDemoDb(preset: DemoPreset, opts: GenerateDemoDbOptions =
       : null,
     afpId: !narrative.withAfp
       ? null
-      : real
+      : pensionLedgers
         ? createAfpFundAccount("uno", "UNO-A")
         : createAccount("retirement_afp_afc__afp", "AFP", "demo:afp"),
     afpLedger:
-      real && narrative.withAfp
+      pensionLedgers
         ? { modeloId: createAfpFundAccount(DEMO_AFP_MODELO, "Modelo-A"), switchMonth: DEMO_AFP_SWITCH_MONTH }
         : null,
     afcId: narrative.withAfp
       ? createAccount("retirement_afp_afc__afc", "AFC", "demo:afc")
       : null,
-    afcLedger: real && narrative.withAfp,
+    afcLedger: pensionLedgers,
     stockIdByTicker: new Map([
       ...(narrative.stocks?.positions ?? []).map(
         (p) => [p.ticker, createTickerAccount("brokerage_acciones", "Acciones", p.ticker)] as const
@@ -314,7 +315,7 @@ export function generateDemoDb(preset: DemoPreset, opts: GenerateDemoDbOptions =
   let state;
   if (real) {
     state = initialDemoRunState(narrative, rng, demoEquitySeriesFromDb(demoNarrativeTickers(narrative)));
-    if (accounts.afcId != null) {
+    if (accounts.afcId != null && accounts.afcLedger) {
       db.prepare(`UPDATE accounts SET fund_series_key = ? WHERE id = ?`).run(AFC_CIC_SERIES_KEY, accounts.afcId);
     }
     if (accounts.afpLedger) {
