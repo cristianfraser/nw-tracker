@@ -1,3 +1,4 @@
+import { dbStateMemo } from "./dbStateMemo.js";
 import {
   monthEndsBetweenInclusive,
   monthEndUtcYmd,
@@ -49,8 +50,10 @@ const stmtHasCryptoUnits = db.prepare(
 );
 
 export function accountUsesCryptoMtm(accountId: number): boolean {
-  if (!cryptoEquityTickerForAccount(accountId)) return false;
-  return stmtHasCryptoUnits.get(accountId) != null;
+  return dbStateMemo("account_uses_crypto_mtm", accountId, () => {
+    if (!cryptoEquityTickerForAccount(accountId)) return false;
+    return stmtHasCryptoUnits.get(accountId) != null;
+  });
 }
 
 /**
