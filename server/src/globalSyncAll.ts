@@ -72,7 +72,7 @@ import {
   type GlobalSyncStateFile,
 } from "./globalSyncState.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
-import { syncAfpUnoFromSp } from "./afpUnoOfficialSync.js";
+import { afpUnoOfficialSyncRunner } from "./afpUnoOfficialSync.js";
 import { latestFundUnitRowOnOrBefore, upsertAfpSpotValuationWithExplicitPx } from "./afpUnoValuation.js";
 import { liveAfpUnoAccountId } from "./afpAccounts.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
@@ -275,7 +275,8 @@ function maxEurDateAfterUpsert(cl: ChileWallClock): string | null {
 }
 
 /**
- * AFP UNO Fondo A valor cuota from the Superintendencia de Pensiones (`afpUnoOfficialSync.ts`):
+ * AFP UNO Fondo A valor cuota from the Superintendencia de Pensiones — AFP UNO's own API on the
+ * hosted demo, `afpUnoOfficialSource` (`afpUnoOfficialSync.ts`):
  * stores every AFP's official fund A values, re-derives UNO's display rows and stamps today's
  * AFP valuation at the value shown today. A restated value is replaced and noted.
  */
@@ -291,7 +292,7 @@ async function runAfpUno(
   const t = setTimeout(() => ac.abort(), 60_000);
   let r;
   try {
-    r = await syncAfpUnoFromSp({ cl, dryRun: syncDryRun, signal: ac.signal });
+    r = await afpUnoOfficialSyncRunner()({ cl, dryRun: syncDryRun, signal: ac.signal });
   } finally {
     clearTimeout(t);
   }

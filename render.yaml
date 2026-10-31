@@ -30,7 +30,7 @@
 #   the compiled dist/ build would not ship server/migrations/*.sql. Build therefore
 #   installs devDependencies explicitly (Render sets NODE_ENV=production by default).
 # - The demo runs on real market data: at boot it fetches the history of its holdings (Yahoo),
-#   Banco Central series and the AFP/AFC official values before generating the DB, and its
+#   Banco Central series and AFP UNO's valor cuota (its own API) before generating the DB, and its
 #   market syncs + live quotes run while someone browses it, sleeping 30 min after the last
 #   request (server/src/demoMode.ts, demoData/demoRealMarket.ts, demoMarketActivity.ts).
 #   DB backups default off; the dashboard cache warmer stays on for first paint.

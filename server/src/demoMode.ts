@@ -55,7 +55,7 @@ export async function bootstrapDemoModeIfEnabled(): Promise<void> {
   console.log(
     `demo mode: real market ${market.from} → ${market.through} — ` +
       Object.entries(market.equities).map(([t, n]) => `${t} ${n}`).join(", ") +
-      `; fx ${market.fx}; BCentral usd ${market.bcentral.usd} uf ${market.bcentral.uf}; AFP ${market.afp_official}; AFC ${market.afc}`
+      `; fx ${market.fx}; BCentral usd ${market.bcentral.usd} uf ${market.bcentral.uf}; AFP official values ${market.afp_official}`
   );
   const r = generateDemoDb("demo", { market: "real" });
   console.log(
