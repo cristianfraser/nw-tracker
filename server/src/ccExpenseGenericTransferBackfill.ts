@@ -11,8 +11,6 @@ import {
 import {
   cartolaDescriptionFromNote,
 } from "./checkingDescriptionPredicates.js";
-import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
-import { CC_ISSUER_SLUGS } from "./ccIssuers.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 
@@ -33,9 +31,6 @@ export function backfillGenericTransferUniquePurchases(): {
   );
   const hasUnique = db.prepare(
     `SELECT 1 AS o FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
-  );
-  const delMerchantRule = db.prepare(
-    `DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`
   );
 
   let inserted = 0;
@@ -97,22 +92,14 @@ export function backfillGenericTransferUniquePurchases(): {
     }
   }
 
+  // General rules on a generic transfer's text never decide a line (the resolver skips them).
   let merchant_rules_removed = 0;
-  const accountIds = new Set<number>([
-    ...CC_ISSUER_SLUGS.flatMap((slug) => listCreditCardGroupMasterAccountIds(slug)),
-  ]);
-  if (checkingId != null) accountIds.add(checkingId);
-
-  for (const accountId of accountIds) {
-    const rules = db
-      .prepare(
-        `SELECT merchant_key FROM cc_expense_merchant_categories WHERE account_id = ?`
-      )
-      .all(accountId) as { merchant_key: string }[];
-    for (const { merchant_key } of rules) {
-      if (!isGenericTransferMerchantKey(merchant_key)) continue;
-      merchant_rules_removed += delMerchantRule.run(accountId, merchant_key).changes;
-    }
+  const delRule = db.prepare(`DELETE FROM expense_category_rules WHERE id = ?`);
+  const rules = db
+    .prepare(`SELECT id, vendor FROM expense_category_rules WHERE link_kind = ''`)
+    .all() as { id: number; vendor: string }[];
+  for (const r of rules) {
+    if (isGenericTransferMerchantKey(r.vendor)) merchant_rules_removed += delRule.run(r.id).changes;
   }
 
   return { inserted, merchant_rules_removed };

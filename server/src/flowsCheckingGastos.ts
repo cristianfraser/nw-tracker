@@ -15,10 +15,9 @@ import {
   isCcExpenseTotalsExcludedSlug,
   loadCcExpenseCategoryMaps,
   normalizeCcExpenseMerchantKey,
-  merchantRuleKeysMatchingLineMerchant,
   registerGenericUniquePurchaseMode,
   registerUniquePurchaseMode,
-  resolveCcExpenseCategorySlug,
+  resolveCcExpenseCategory,
   UNCLASSIFIED_CC_EXPENSE_SLUG,
   DEPOSITS_CC_EXPENSE_SLUG,
   CHECKING_INTERNAL_TRANSFER_CC_EXPENSE_SLUG,
@@ -29,6 +28,7 @@ import {
 } from "./ccExpenseDepositMatchNotes.js";
 import type { FlowCcExpenseLineRowDraft } from "./flowsExpenses.js";
 import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
+import { clearExpenseCategoryRule, setExpenseCategoryRule, type CategoryRuleLink, type ExpenseCategoryRules } from "./expenseCategoryRules.js";
 import {
   CHECKING_CORRIENTE_INTERNET_TRANSFER_RE,
   CHECKING_GASTOS_CASH_GROUP,
@@ -174,6 +174,8 @@ export function assignCheckingGastosMovementCategory(opts: {
   unique: boolean;
   categorySlug?: string | null;
   clearCategory?: boolean;
+  /** «Específico»: write (or clear) the rule for the merchant + this link instead of the general one. */
+  ruleLink?: CategoryRuleLink | null;
 }): {
   category_slug: string;
   unique: boolean;
@@ -181,6 +183,7 @@ export function assignCheckingGastosMovementCategory(opts: {
   purchase_key: string;
 } {
   const belong = checkingGastosMovementBelongs(opts.movementId);
+  const ruleLink = opts.ruleLink ?? null;
   if (!belong.ok || belong.account_id == null) {
     throw new Error("checking gastos movement not found");
   }
@@ -223,14 +226,6 @@ export function assignCheckingGastosMovementCategory(opts: {
      VALUES (?, ?, ?)
      ON CONFLICT(account_id, purchase_key) DO UPDATE SET category_id = excluded.category_id`
   );
-  const upsertMerchant = db.prepare(
-    `INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id)
-     VALUES (?, ?, ?)
-     ON CONFLICT(account_id, merchant_key) DO UPDATE SET category_id = excluded.category_id`
-  );
-  const delMerchant = db.prepare(
-    `DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`
-  );
 
   const tx = db.transaction(() => {
     if (opts.clearCategory) {
@@ -242,9 +237,7 @@ export function assignCheckingGastosMovementCategory(opts: {
         for (const key of purchaseKeys) {
           delUniquePurchase.run(accountId, key);
         }
-        for (const ruleKey of merchantRuleKeysMatchingLineMerchant(accountId, merchantKey)) {
-          delMerchant.run(accountId, ruleKey);
-        }
+        if (merchantKey) clearExpenseCategoryRule(merchantKey, ruleLink);
       }
       return;
     }
@@ -259,7 +252,7 @@ export function assignCheckingGastosMovementCategory(opts: {
         delUniquePurchase.run(accountId, key);
       }
       if (catId != null && merchantKey) {
-        upsertMerchant.run(accountId, merchantKey, catId);
+        setExpenseCategoryRule(merchantKey, ruleLink, catId);
       }
     }
   });
@@ -1215,7 +1208,7 @@ type CheckingGastosLineBuilderOptions = {
   /** Deposits already claimed by an outflow (see {@link buildCheckingGastosLinesForAccounts}). */
   usedDepositKeys?: Set<string>;
   checkingCredits?: readonly CheckingCredit[];
-  merchantRules?: Map<string, string>;
+  merchantRules?: ExpenseCategoryRules;
   uniquePurchases?: Map<string, string>;
   uniquePurchaseModeKeys?: Set<string>;
 };
@@ -1301,7 +1294,7 @@ function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions
       row.id,
       opts.purchasePortion ?? "gastos"
     );
-    let categorySlug = resolveCcExpenseCategorySlug({
+    const resolution = resolveCcExpenseCategory({
       statementLineId: row.id,
       accountId,
       merchantKey,
@@ -1311,6 +1304,7 @@ function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions
       uniquePurchases,
       uniquePurchaseModeKeys,
     });
+    let categorySlug = resolution.slug;
     const purchaseMapKey = `${accountId}|${purchaseKey}`;
     const userClearedUnique = userClearedUniqueAtLoad.has(purchaseMapKey);
     const persistedCategorySlug = uniquePurchases.get(purchaseMapKey);
@@ -1399,6 +1393,7 @@ function createCheckingGastosLineBuilder(opts?: CheckingGastosLineBuilderOptions
       merchant_key: merchantKey,
       category_slug: categorySlug,
       category_unique: categoryUnique,
+      ...(resolution.fromBankName && !isAutoExcludedMatch ? { category_from_bank_name: true as const } : {}),
       origin_card_last4: null,
       primary_card_last4: null,
       ...(opts.purchasePortion === "deposit"

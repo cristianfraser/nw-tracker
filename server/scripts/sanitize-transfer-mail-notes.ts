@@ -18,6 +18,7 @@ import { db } from "../src/db.js";
 import { cartolaDescriptionFromNote, MAIL_REBUILT_NOTE_PREFIXES } from "../src/checkingDescriptionPredicates.js";
 import { normalizeCcExpenseMerchantKey } from "../src/ccExpenseCategories.js";
 import { repairMojibake } from "../src/textRepair.js";
+import { generalRuleCategoryIdReaching, setExpenseCategoryRule } from "../src/expenseCategoryRules.js";
 
 const apply = process.argv.includes("--apply");
 
@@ -65,15 +66,19 @@ for (const m of movements) {
 }
 
 // Merchant rules to carry over to the new keys.
-const ruleFor = db.prepare(`SELECT category_id FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`);
+// Category rules are global and keyed on the vendor (`expenseCategoryRules.ts`).
+const ruleFor = (_accountId: number, merchantKey: string) => {
+  const id = generalRuleCategoryIdReaching(merchantKey);
+  return id == null ? undefined : { category_id: id };
+};
 type RuleMove = { account_id: number; from: string; to: string; category_id: number };
 const ruleMoves = new Map<string, RuleMove>();
 const conflicts: string[] = [];
 for (const c of [...noteChanges]) {
   if (c.account_id == null || c.oldKey === c.newKey) continue;
-  const old = ruleFor.get(c.account_id, c.oldKey) as { category_id: number } | undefined;
+  const old = ruleFor(c.account_id, c.oldKey) as { category_id: number } | undefined;
   if (!old) continue;
-  const atNew = ruleFor.get(c.account_id, c.newKey) as { category_id: number } | undefined;
+  const atNew = ruleFor(c.account_id, c.newKey) as { category_id: number } | undefined;
   const pending = ruleMoves.get(`${c.account_id}|${c.newKey}`);
   const target = atNew?.category_id ?? pending?.category_id;
   if (target != null && target !== old.category_id) {
@@ -115,8 +120,7 @@ if (!apply) {
     for (const c of noteChanges) {
       if (setNote.run(c.to, c.id, c.from).changes !== 1) throw new Error(`movement ${c.id} changed while running`);
     }
-    const addRule = db.prepare(`INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id) VALUES (?, ?, ?)`);
-    for (const r of ruleMoves.values()) addRule.run(r.account_id, r.to, r.category_id);
+    for (const r of ruleMoves.values()) setExpenseCategoryRule(r.to, null, r.category_id);
     for (const c of noticeChanges) {
       db.prepare(`UPDATE bank_transfer_notices SET ${c.column} = ? WHERE message_id = ?`).run(c.to, c.message_id);
     }

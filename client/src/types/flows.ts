@@ -339,6 +339,13 @@ export interface FlowCcExpenseLineRow {
   link_label?: ExpenseLinkLabel;
   /** A cut branch that could be several places: the user picks one (`key`: the folded name). */
   branch_choices?: { key: string; options: string[] };
+  /**
+   * What a specific category rule for this line keys on: a receipt's store, an App Store app or a
+   * transfer's recipient, with whether a category change writes that rule by default («Específico»).
+   */
+  category_link?: { kind: "receipt" | "app" | "recipient"; key: string; label: string; specific_default: boolean };
+  /** A specific rule (vendor + this link) decided the category. */
+  category_specific?: true;
   /** Physical card that made the charge; null = primary / unknown / checking. */
   origin_card_last4?: string | null;
   /** Statement billing card; null for checking / synthetic lines. */

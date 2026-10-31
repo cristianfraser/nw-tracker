@@ -24,6 +24,7 @@ import {
 } from "./creditCardChartSeries.js";
 import type { DataOrigin } from "./dataOrigin.js";
 import type { PaymentReceiptDto } from "./paymentProcessorReceipts.js";
+import type { ExpenseLinkLabel } from "./expenseDisplayNames.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { ccHistorialLinesAtMonthEndsClp } from "./ccInstallmentDebtDaily.js";
 import { latestBankCupoForAccount, type CcBankCupoStatus } from "./ccBankCupoCheck.js";
@@ -54,7 +55,6 @@ export type CcInstallmentPurchaseRow = {
   /** Extra months added to every installment index (persistent in CSV; e.g. +1 if statement slipped a month). */
   schedule_offset_months: number;
   purchase_month: string | null;
-  note: string | null;
 };
 
 /** A cuota of an installment plan as the progress bar shows it. */
@@ -113,6 +113,10 @@ export type CcInstallmentPurchaseComputed = CcInstallmentPurchaseRow & {
   expense_purchase_key?: string;
   purchase_notes?: string;
   payment_receipt?: PaymentReceiptDto;
+  /** The names its expense lines show (`expenseLineDisplayNames`): merchant, processor, link label. */
+  display_merchant?: string;
+  merchant_processor?: string;
+  link_label?: ExpenseLinkLabel;
   /** How this purchase entered the system. */
   origin: DataOrigin;
   /** @deprecated Use `origin`. */

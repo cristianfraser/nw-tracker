@@ -29,7 +29,8 @@ describe("backfillCheckingAutoMatchCategories", () => {
     )?.id;
     if (corrienteId == null) return;
 
-    const note = movementNote("2099-11", "Agustinas", "Transf. Internet a otro Bancos", "", {
+    // The bank's own traspaso between the two checking accounts (a wire to another bank never is one).
+    const note = movementNote("2099-11", "Agustinas", "Traspaso Internet a Cuenta Vista", "", {
       occurredOn: "2099-11-05",
       amountClp: -50_000,
       cartolaIndex: 9990042,
@@ -54,7 +55,7 @@ describe("backfillCheckingAutoMatchCategories", () => {
     )?.id;
     if (vistaId == null) return;
 
-    const vistaNote = movementNote("2099-11", "Agustinas", "Transf. Internet a otro Bancos", "", {
+    const vistaNote = movementNote("2099-11", "Agustinas", "Traspaso Internet desde Cta.Ct", "", {
       occurredOn: "2099-11-05",
       amountClp: 50_000,
       cartolaIndex: 9990043,

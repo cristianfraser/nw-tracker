@@ -97,15 +97,23 @@ function ExpenseLineCategoryPicker({
     assign.variables?.lineId === categoryLineId &&
     assign.variables?.source === line.source;
 
+  // «Específico»: a change writes the rule for this vendor + the line's link (its store, app or
+  // recipient) instead of the vendor's general rule. Off by default for food delivery.
+  const link = line.category_link;
+  const [specific, setSpecific] = useState(
+    () => line.category_specific === true || (link?.specific_default ?? false)
+  );
+  const ruleLink = link && specific && !line.category_unique ? { kind: link.kind, key: link.key } : null;
+
   const persistCategory = useCallback(
     (nextSlug: string | null) => {
       assign.mutate(
         nextSlug
-          ? { lineId: categoryLineId, source: line.source, unique: line.category_unique, category_slug: nextSlug }
-          : { lineId: categoryLineId, source: line.source, unique: line.category_unique, clear_category: true }
+          ? { lineId: categoryLineId, source: line.source, unique: line.category_unique, category_slug: nextSlug, rule_link: ruleLink }
+          : { lineId: categoryLineId, source: line.source, unique: line.category_unique, clear_category: true, rule_link: ruleLink }
       );
     },
-    [assign, categoryLineId, line.category_unique, line.source]
+    [assign, categoryLineId, line.category_unique, line.source, ruleLink]
   );
 
   const persistUnique = useCallback(
@@ -141,15 +149,23 @@ function ExpenseLineCategoryPicker({
       })}
       pending={pending}
       footer={
-        <label className={styles.uniqueLabel}>
-          <input
-            type="checkbox"
-            checked={line.category_unique}
-            disabled={pending}
-            onChange={(e) => persistUnique(e.target.checked)}
-          />
-          {t("expenses.creditCard.categoryUniqueLabel")}
-        </label>
+        <>
+          <label className={styles.uniqueLabel}>
+            <input
+              type="checkbox"
+              checked={line.category_unique}
+              disabled={pending}
+              onChange={(e) => persistUnique(e.target.checked)}
+            />
+            {t("expenses.creditCard.categoryUniqueLabel")}
+          </label>
+          {link && !line.category_unique ? (
+            <label className={styles.uniqueLabel} title={t("expenses.creditCard.categorySpecificHint")}>
+              <input type="checkbox" checked={specific} disabled={pending} onChange={(e) => setSpecific(e.target.checked)} />
+              {t("expenses.creditCard.categorySpecificLabel", { link: link.label })}
+            </label>
+          ) : null}
+        </>
       }
     />
   );

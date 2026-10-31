@@ -26,6 +26,7 @@
  */
 import fs from "node:fs";
 import { db } from "../src/db.js";
+import { setExpenseCategoryRule } from "../src/expenseCategoryRules.js";
 import { createPanelAccount } from "../src/createPanelAccount.js";
 import { convertMirrorPairs } from "../src/movementMirrorConvert.js";
 import { markCheckingExpenseRefund } from "../src/checkingExpenseRefunds.js";
@@ -224,12 +225,8 @@ try {
     if (converted.length !== pairs.length) throw new Error(`converted ${converted.length} of ${pairs.length} pairs`);
 
     // The card's top-up lines are internal transfers, out of gastos.
-    const rule = db.prepare(
-      `INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id) VALUES (?, ?, ?)
-       ON CONFLICT(account_id, merchant_key) DO UPDATE SET category_id = excluded.category_id`
-    );
     const internal = getCcExpenseCategoryBySlug("checking_internal_transfer")!.id;
-    for (const m of plan.card_merchants) rule.run(plan.card_account_id, normalizeCcExpenseMerchantKey(m), internal);
+    for (const m of plan.card_merchants) setExpenseCategoryRule(normalizeCcExpenseMerchantKey(m), null, internal);
     // A line's own category (or split) beats the merchant rule, so each top-up line is set too; what
     // it carried before is listed (a hint at what that money was spent on inside MACH).
     const splitsOf = db.prepare(

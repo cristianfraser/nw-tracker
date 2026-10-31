@@ -17,9 +17,9 @@
  */
 import { db } from "./db.js";
 import { statementLineDateIso } from "./ccInstallmentPayBy.js";
+import { generalRuleCategoryIdReaching, hasGeneralRule, setExpenseCategoryRule } from "./expenseCategoryRules.js";
 import {
   isGenericTransferMerchantKey,
-  merchantRuleKeysMatchingLineMerchant,
   normalizeCcExpenseMerchantKey,
 } from "./ccExpenseCategories.js";
 
@@ -587,12 +587,6 @@ export function carryCcExpenseAssignments(
   const insertLineCategory = db.prepare(
     `INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)`
   );
-  const ruleCategory = db.prepare(
-    `SELECT category_id FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`
-  );
-  const insertRule = db.prepare(
-    `INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id) VALUES (?, ?, ?)`
-  );
   for (const p of pairs) {
     const from = rowById.get(p.fromLineId)!;
     const to = rowById.get(p.toLineId)!;
@@ -602,16 +596,15 @@ export function carryCcExpenseAssignments(
       out.line_categories_copied += 1;
     }
 
-    if (from.account_id !== to.account_id) continue;
+    // Rules are global and keyed on the vendor: a replacing line printed under another vendor
+    // («FARMACIA CENTRAL (T)» for the paste's «FARMACIA CENTRAL») gets the rule the old name had.
     const fromKey = normalizeCcExpenseMerchantKey(from.merchant);
     const toKey = normalizeCcExpenseMerchantKey(to.merchant);
     if (!fromKey || !toKey || fromKey === toKey || isGenericTransferMerchantKey(toKey)) continue;
-    const [fromRuleKey] = merchantRuleKeysMatchingLineMerchant(from.account_id, fromKey);
-    if (fromRuleKey == null) continue;
-    if (merchantRuleKeysMatchingLineMerchant(to.account_id, toKey).length > 0) continue;
-    const rule = ruleCategory.get(from.account_id, fromRuleKey) as { category_id: number };
-    insertRule.run(to.account_id, toKey, rule.category_id);
-    out.merchant_rules_copied.push({ account_id: to.account_id, from: fromRuleKey, to: toKey });
+    const fromCategoryId = generalRuleCategoryIdReaching(fromKey);
+    if (fromCategoryId == null || hasGeneralRule(toKey)) continue;
+    setExpenseCategoryRule(toKey, null, fromCategoryId);
+    out.merchant_rules_copied.push({ account_id: to.account_id, from: fromKey, to: toKey });
   }
   return out;
 }

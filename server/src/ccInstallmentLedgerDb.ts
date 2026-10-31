@@ -1208,7 +1208,6 @@ export function ccInstallmentsDbApiPayload(accountId: number): {
       purchase_month: parseYearMonth(pr.purchase_date.slice(0, 7)),
       purchase_date: pr.purchase_date,
       purchase_billing_month: billingMonthContainingPurchase(accountId, pr.purchase_date, statements),
-      note: pr.matched_baseline_purchase_id ? `baseline: ${pr.matched_baseline_purchase_id}` : null,
       remaining_installments,
       remaining_principal_clp,
       next_due_month,

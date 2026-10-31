@@ -1,9 +1,12 @@
+import { generalRuleCategoryIdReaching, setExpenseCategoryRule } from "./expenseCategoryRules.js";
+import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
+import { vendorRuleKeyCandidates } from "./bankMerchantName.js";
+import { vendorCatalogFromEntries } from "./vendorCatalogMatch.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { carryCcExpenseAssignments, planCcLineMoves, type CcLineRef } from "./ccExpenseLineRekey.js";
 import {
   getCcExpenseCategoryBySlug,
-  merchantRuleCandidateKeys,
   resolveMerchantCategorySlug,
 } from "./ccExpenseCategories.js";
 import { importCcStatementsFromCsvRecords } from "./ccStatementsImport.js";
@@ -59,29 +62,37 @@ describe("planCcLineMoves", () => {
   });
 });
 
-describe("merchantRuleCandidateKeys", () => {
-  it("adds the name without the PDF's charge-type column and its 15-character cut", () => {
-    expect(merchantRuleCandidateKeys("FULLNEUMATICO QUILIN")).toEqual(["FULLNEUMATICO QUILIN", "FULLNEUMATICO Q"]);
-    expect(merchantRuleCandidateKeys("SEG AUTO SANTANDER COMPRAS P.A.T.")).toEqual([
-      "SEG AUTO SANTANDER COMPRAS P.A.T.",
+describe("vendorRuleKeyCandidates", () => {
+  const empty = vendorCatalogFromEntries([]);
+
+  it("keys the vendor without the PDF's charge-type column, plus its 15-character cut", () => {
+    expect(vendorRuleKeyCandidates("FULLNEUMATICO QUILIN", empty)).toEqual(["FULLNEUMATICO QUILIN", "FULLNEUMATICO Q"]);
+    expect(vendorRuleKeyCandidates("SEG AUTO SANTANDER COMPRAS P.A.T.", empty)).toEqual([
       "SEG AUTO SANTANDER",
       "SEG AUTO SANTAN",
     ]);
-    expect(merchantRuleCandidateKeys("CLINICA ALEMANA")).toEqual(["CLINICA ALEMANA"]);
-    expect(merchantRuleCandidateKeys("EMOVA SUBTE 4042 X")).toEqual(["EMOVA SUBTE 4042 X", "EMOVA SUBTE 404"]);
+    expect(vendorRuleKeyCandidates("CLINICA ALEMANA", empty)).toEqual(["CLINICA ALEMANA"]);
   });
 
   it("resolves a rule learned on the pasted name for the statement's full name, exact first", () => {
-    const rules = new Map([
-      ["7|FULLNEUMATICO Q", "transportation"],
-      ["7|SEG AUTO SANTANDER", "transportation"],
-      ["7|DL*GOOGLE YOUTUBE", "subscriptions"],
-      ["7|DL*GOOGLE YOUTU", "fun"],
+    const rules = rulesFor([
+      ["FULLNEUMATICO Q", "transportation"],
+      ["SEG AUTO SANTANDER", "transportation"],
+      ["DL*GOOGLE YOUTUBE", "subscriptions"],
+      ["DL*GOOGLE YOUTU", "fun"],
     ]);
-    expect(resolveMerchantCategorySlug(7, "FULLNEUMATICO QUILIN", rules)).toBe("transportation");
-    expect(resolveMerchantCategorySlug(7, "SEG AUTO SANTANDER COMPRAS P.A.T.", rules)).toBe("transportation");
-    expect(resolveMerchantCategorySlug(7, "DL*GOOGLE YOUTUBE", rules)).toBe("subscriptions");
-    expect(resolveMerchantCategorySlug(7, "FULLNEUMATICO", rules)).toBeNull();
+    expect(resolveMerchantCategorySlug("FULLNEUMATICO QUILIN", rules)).toBe("transportation");
+    expect(resolveMerchantCategorySlug("SEG AUTO SANTANDER COMPRAS P.A.T.", rules)).toBe("transportation");
+    expect(resolveMerchantCategorySlug("DL*GOOGLE YOUTUBE", rules)).toBe("subscriptions");
+    expect(resolveMerchantCategorySlug("FULLNEUMATICO", rules)).toBeNull();
+  });
+
+  it("one rule for every branch of a catalog brand", () => {
+    const rules = rulesFor([["JUMBO BILBAO", "supermarket"]], [
+      { kind: "branch", pattern: "JUMBO", display: "Jumbo", source: "seed" },
+    ]);
+    expect(resolveMerchantCategorySlug("JUMBO PENALOLEN", rules)).toBe("supermarket");
+    expect(resolveMerchantCategorySlug("MERPAGO*JUMBO COSTANERA", rules)).toBe("supermarket");
   });
 });
 
@@ -172,7 +183,7 @@ function cleanup(accountId: number): void {
     db.prepare(`DELETE FROM ${t} WHERE account_id = ? AND purchase_key LIKE 'line-pr:vitest-rekey-%'`).run(accountId);
   }
   db.prepare(`DELETE FROM cc_expense_purchase_big_groups WHERE purchase_key LIKE 'line-pr:vitest-rekey-%'`).run();
-  db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key LIKE 'VITEST %'`).run(accountId);
+  db.prepare(`DELETE FROM expense_category_rules WHERE vendor LIKE 'VITEST %'`).run();
   db.prepare(`DELETE FROM cc_expense_big_groups WHERE slug = ?`).run(BIG_GROUP);
 }
 
@@ -328,11 +339,7 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
       record("vitest-rekey-paste2", "VITEST TOKU", 2503),
       record("vitest-rekey-stmt2", "VITEST TOKU (T)", 2504),
     ]);
-    db.prepare(`INSERT INTO cc_expense_merchant_categories (account_id, merchant_key, category_id) VALUES (?, ?, ?)`).run(
-      accountId,
-      "VITEST SHOP",
-      health.id
-    );
+    setExpenseCategoryRule("VITEST SHOP", null, health.id);
     const ids = lineIds(accountId);
     db.prepare(`INSERT INTO cc_expense_line_categories (statement_line_id, category_id) VALUES (?, ?)`).run(
       ids.get("vitest-rekey-paste2")!,
@@ -343,14 +350,10 @@ describe("rekeyCcExpenseLinesAfterImport (statement re-import)", () => {
       { fromLineId: ids.get("vitest-rekey-paste")!, toLineId: ids.get("vitest-rekey-stmt")! },
       { fromLineId: ids.get("vitest-rekey-paste2")!, toLineId: ids.get("vitest-rekey-stmt2")! },
     ])!;
-    expect(result.merchant_rules_copied).toEqual([
-      { account_id: accountId, from: "VITEST SHOP", to: "VITEST SHOP (T)" },
-    ]);
+    // Rules are keyed on the vendor: BCI's « (T)» names the same vendor, so nothing is copied.
+    expect(result.merchant_rules_copied).toEqual([]);
     expect(result.line_categories_copied).toBe(1);
-    const rule = db
-      .prepare(`SELECT category_id FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`)
-      .get(accountId, "VITEST SHOP (T)") as { category_id: number };
-    expect(rule.category_id).toBe(health.id);
+    expect(generalRuleCategoryIdReaching("VITEST SHOP (T)")).toBe(health.id);
     const line = db
       .prepare(`SELECT category_id FROM cc_expense_line_categories WHERE statement_line_id = ?`)
       .get(ids.get("vitest-rekey-stmt2")!) as { category_id: number };

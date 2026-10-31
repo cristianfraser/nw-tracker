@@ -1,3 +1,5 @@
+import { clearExpenseCategoryRule } from "./expenseCategoryRules.js";
+import { rulesFor } from "./test/expenseCategoryRulesFixture.js";
 import { afterAll, describe, expect, it } from "vitest";
 import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import {
@@ -91,7 +93,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "TEST",
         purchaseKey: "installment:8",
         lineOverrides: new Map(),
-        merchantRules: new Map([["15|TEST", "supermarket"]]),
+        merchantRules: rulesFor([["TEST", "supermarket"]]),
         uniquePurchases: new Map([["15|installment:8", "fun"]]),
       })
     ).toBe("fun");
@@ -102,7 +104,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "TEST",
         purchaseKey: "installment:8",
         lineOverrides: new Map([[1, "others"]]),
-        merchantRules: new Map([["15|TEST", "supermarket"]]),
+        merchantRules: rulesFor([["TEST", "supermarket"]]),
         uniquePurchases: new Map([["15|installment:8", "fun"]]),
       })
     ).toBe("fun");
@@ -113,7 +115,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "TEST",
         purchaseKey: "installment:8",
         lineOverrides: new Map(),
-        merchantRules: new Map([["15|TEST", "supermarket"]]),
+        merchantRules: rulesFor([["TEST", "supermarket"]]),
         uniquePurchases: new Map(),
       })
     ).toBe("supermarket");
@@ -124,7 +126,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "UNKNOWN",
         purchaseKey: "line:4",
         lineOverrides: new Map(),
-        merchantRules: new Map([["15|TEST", "supermarket"]]),
+        merchantRules: rulesFor([["TEST", "supermarket"]]),
         uniquePurchases: new Map(),
       })
     ).toBe("unclassified");
@@ -138,7 +140,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "TEST",
         purchaseKey: "line-pr:abc",
         lineOverrides: new Map(),
-        merchantRules: new Map([["15|TEST", "supermarket"]]),
+        merchantRules: rulesFor([["TEST", "supermarket"]]),
         uniquePurchases: new Map(),
         uniquePurchaseModeKeys: new Set(["15|line-pr:abc"]),
       })
@@ -146,17 +148,17 @@ describe("ccExpenseCategories", () => {
   });
 
   it("matches merchant rules by exact merchant_key only", () => {
-    const rules = new Map([["32|METLIFE CHILE SEGUROS", "bills"]]);
+    const rules = rulesFor([["METLIFE CHILE SEGUROS", "bills"]]);
     expect(
-      resolveMerchantCategorySlug(32, "METLIFE CHILE SEGUROS DE VIDA", rules)
+      resolveMerchantCategorySlug("METLIFE CHILE SEGUROS DE VIDA", rules)
     ).toBeNull();
-    expect(resolveMerchantCategorySlug(32, "METLIFE CHILE SEGUROS", rules)).toBe("bills");
+    expect(resolveMerchantCategorySlug("METLIFE CHILE SEGUROS", rules)).toBe("bills");
   });
 
   it("does not apply UBER rule to UBER EATS", () => {
-    const rules = new Map([["32|UBER", "transportation"]]);
-    expect(resolveMerchantCategorySlug(32, "UBER EATS", rules)).toBeNull();
-    expect(resolveMerchantCategorySlug(32, "UBER", rules)).toBe("transportation");
+    const rules = rulesFor([["UBER", "transportation"]]);
+    expect(resolveMerchantCategorySlug("UBER EATS", rules)).toBeNull();
+    expect(resolveMerchantCategorySlug("UBER", rules)).toBe("transportation");
   });
 
   it("detects generic transfer merchant keys", () => {
@@ -185,7 +187,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "TRASPASO A DEUDA NACIONAL",
         purchaseKey: "one:1",
         lineOverrides: new Map(),
-        merchantRules: new Map(),
+        merchantRules: rulesFor([]),
         uniquePurchases: new Map(),
       })
     ).toBe("no_cuenta");
@@ -219,7 +221,7 @@ describe("ccExpenseCategories", () => {
           merchantKey: "TRASPASO A DEUDA NACIONAL",
           purchaseKey,
           lineOverrides: new Map(),
-          merchantRules: new Map(),
+          merchantRules: rulesFor([]),
           uniquePurchases: new Map(),
           uniquePurchaseModeKeys: modeKeys,
         })
@@ -252,7 +254,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "TRASPASO A DEUDA NACIONAL",
         purchaseKey: "one:1",
         lineOverrides: new Map(),
-        merchantRules: new Map(),
+        merchantRules: rulesFor([]),
         uniquePurchases: new Map(),
         uniquePurchaseModeKeys: new Set(["15|one:1"]),
       })
@@ -267,7 +269,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "TRANSF. INTERNET A OTRO BANCOS",
         purchaseKey: "checking-mv:1",
         lineOverrides: new Map(),
-        merchantRules: new Map([["15|TRANSF. INTERNET A OTRO BANCOS", "deposits"]]),
+        merchantRules: rulesFor([["TRANSF. INTERNET A OTRO BANCOS", "deposits"]]),
         uniquePurchases: new Map(),
       })
     ).toBe("unclassified");
@@ -281,7 +283,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "ROCA WEBPAY",
         purchaseKey: "installment-h:15:2025-04-15:12:ROCA WEBPAY",
         lineOverrides: new Map(),
-        merchantRules: new Map(),
+        merchantRules: rulesFor([]),
         uniquePurchases: new Map(),
       })
     ).toBe("unclassified");
@@ -301,7 +303,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "SHOP",
         purchaseKey: "installment-h:15:2025-04-01:6:SHOP",
         lineOverrides: new Map(),
-        merchantRules: new Map(),
+        merchantRules: rulesFor([]),
         uniquePurchases: new Map(),
       })
     ).toBe("unclassified");
@@ -343,7 +345,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "MP MERCADO LIBRE",
         purchaseKey: `installment:${pid}`,
         lineOverrides: new Map(),
-        merchantRules: new Map(),
+        merchantRules: rulesFor([]),
         uniquePurchases: new Map(),
       });
       expect(resolved).toBe("no_cuenta");
@@ -354,7 +356,7 @@ describe("ccExpenseCategories", () => {
         merchantKey: "MP MERCADO LIBRE",
         purchaseKey: `installment-h:${master.id}:2025-02-07:6:MP MERCADO LIBRE`,
         lineOverrides: new Map(),
-        merchantRules: new Map(),
+        merchantRules: rulesFor([]),
         uniquePurchases: new Map(),
       });
       expect(resolvedH).toBe("no_cuenta");
@@ -447,10 +449,7 @@ function createMerchantPropagationFixture(tag: string): {
         `DELETE FROM cc_expense_unique_purchases WHERE account_id = ? AND purchase_key = ?`
       ).run(accountId, pk);
     }
-    db.prepare(`DELETE FROM cc_expense_merchant_categories WHERE account_id = ? AND merchant_key = ?`).run(
-      accountId,
-      merchantKey
-    );
+    clearExpenseCategoryRule(merchantKey, null);
     db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(statementId);
     db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(statementId);
   };
@@ -535,7 +534,7 @@ function createMerchantPropagationFixture(tag: string): {
 
       // Merchant rule survives the unique-line clear; peers keep supermarket.
       const { merchantRules } = loadCcExpenseCategoryMaps([fx.accountId]);
-      expect(resolveMerchantCategorySlug(fx.accountId, merchantKey, merchantRules)).toBe(
+      expect(resolveMerchantCategorySlug(merchantKey, merchantRules)).toBe(
         "supermarket"
       );
       for (const peerId of peerIds) {

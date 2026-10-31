@@ -4,6 +4,7 @@ import { buildPayrollBreakdown } from "../payrollBreakdown.js";
 import { buildPayslipChecks } from "../payslipChecks.js";
 import { db } from "../db.js";
 import { saveVendorBranchChoice } from "../vendorCatalog.js";
+import type { CategoryRuleLinkKind } from "../expenseCategoryRules.js";
 import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsPayload } from "../flowsDeposits.js";
 import {
@@ -772,10 +773,16 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
     unique?: boolean;
     clear_category?: boolean;
     source?: "cc" | "checking" | "manual" | "payslip";
+    /** «Específico»: the line's link (`category_link`), so the change writes the specific rule. */
+    rule_link?: { kind?: string; key?: string } | null;
   };
   const categorySlug = body.category_slug != null ? String(body.category_slug).trim() : "";
   const unique = !!body.unique;
   const clearCategory = body.clear_category === true;
+  const ruleLink =
+    body.rule_link != null
+      ? { kind: String(body.rule_link.kind ?? "") as CategoryRuleLinkKind, key: String(body.rule_link.key ?? "") }
+      : null;
   try {
     if (body.source === "manual") {
       res.status(400).json({ error: "manual expense entries are not editable" });
@@ -794,6 +801,7 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
         unique,
         categorySlug: categorySlug || null,
         clearCategory,
+        ruleLink,
       });
       res.json(result);
       return;
@@ -809,6 +817,7 @@ app.patch("/api/flows/expenses/credit-card/lines/:lineId/category", (req, res) =
       unique,
       categorySlug: categorySlug || null,
       clearCategory,
+      ruleLink,
     });
     res.json(result);
   } catch (e) {
