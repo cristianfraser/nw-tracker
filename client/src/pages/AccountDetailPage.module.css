@@ -144,10 +144,6 @@
   font-size: var(--font-size-value-secondary);
 }
 
-.purchaseMeta {
-  font-size: var(--font-size-card-meta);
-}
-
 .activePurchaseRow > td:global(.desktop-only):first-child {
   width: 50%;
 }
@@ -168,11 +164,6 @@
     border-bottom: none;
     padding-bottom: 0;
   }
-}
-
-.purchaseMetaBlock {
-  display: block;
-  font-size: var(--font-size-card-meta);
 }
 
 .cellSub {

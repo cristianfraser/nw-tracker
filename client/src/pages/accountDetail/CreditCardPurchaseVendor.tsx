@@ -26,7 +26,8 @@ function purchaseVendorSource(p: CcInstallmentPurchaseComputed): ExpenseVendorSo
 /**
  * A card plan's vendor, read like its expense lines (`merchant · note · link ⓘ`), with a ⋯ panel
  * holding the full link label, the note (written under the plan's `installment-h:` key, so only a
- * plan with an expense line has one) and, for a hand-entered plan, its delete.
+ * plan with an expense line has one), for a hand-entered plan its delete, and last the plan's id
+ * and where it came from (statement or hand-entered).
  */
 export function CreditCardPurchaseVendor({
   purchase,
@@ -44,21 +45,18 @@ export function CreditCardPurchaseVendor({
   const source = purchaseVendorSource(purchase);
   const linkLabel = useExpenseVendorLinkLabel(source);
   const noteKey = purchase.expense_purchase_key;
-  const hasPanel = linkLabel != null || noteKey != null || onDeleteManual != null;
 
   return (
     <div className={styles.root}>
       <div className={styles.line}>
         <ExpenseVendorLabel source={source} note={purchase.purchase_notes} className={styles.label} />
-        {hasPanel ? (
-          <ExpenseRowMoreButton
-            expanded={expanded}
-            ariaLabel={t("expenses.creditCard.lineRow.moreAria", { merchant: expenseVendorName(source) })}
-            onClick={() => setExpanded((v) => !v)}
-          />
-        ) : null}
+        <ExpenseRowMoreButton
+          expanded={expanded}
+          ariaLabel={t("expenses.creditCard.lineRow.moreAria", { merchant: expenseVendorName(source) })}
+          onClick={() => setExpanded((v) => !v)}
+        />
       </div>
-      {hasPanel && expanded ? (
+      {expanded ? (
         <div className={styles.panel}>
           {linkLabel ? <ExpenseVendorPanelLink linkLabel={linkLabel} /> : null}
           {noteKey ? (
@@ -77,6 +75,14 @@ export function CreditCardPurchaseVendor({
               </Button>
             </div>
           ) : null}
+          <div className={styles.panelMeta}>
+            <div className="mono">{purchase.purchase_id}</div>
+            <div>
+              {purchase.origin === "manual"
+                ? t("account.creditCard.originManual")
+                : t("account.creditCard.originImportDocument")}
+            </div>
+          </div>
         </div>
       ) : null}
     </div>
