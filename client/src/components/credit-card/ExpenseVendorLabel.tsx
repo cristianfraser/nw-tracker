@@ -152,7 +152,7 @@ export function ExpenseVendorLabel({
   const trimmedNote = note?.trim() ?? "";
   const Root = inline ? "span" : "div";
   return (
-    <Root className={cn(styles.vendor, className)}>
+    <Root className={cn(styles.vendor, inline && styles.inline, className)}>
       <span className={styles.merchant}>{expenseVendorName(source)}</span>
       {trimmedNote ? (
         <>
