@@ -30,8 +30,12 @@ let cacheDayYmd: string | null = null;
  */
 let cacheDbDataVersion: number | null = null;
 
+// Prepared once: every cached read checks it, and `db.pragma()` prepares a statement per call.
+let dataVersionStmt: import("better-sqlite3").Statement<[], number> | null = null;
+
 function currentDbDataVersion(): number {
-  return db.pragma("data_version", { simple: true }) as number;
+  dataVersionStmt ??= db.prepare<[], number>("PRAGMA data_version").pluck();
+  return dataVersionStmt.get()!;
 }
 
 function ensureCacheFreshForChileDay(): void {

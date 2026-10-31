@@ -14,6 +14,9 @@ export type PortfolioGroupIndex = {
   items: PortfolioGroupItemRow[];
   byGroupId: Map<number, PortfolioGroupItemRow[]>;
   groupById: Map<number, PortfolioGroupRow>;
+  groupBySlug: Map<string, PortfolioGroupRow>;
+  /** Leaf `asset_groups.slug` by account id (accounts without an asset group are absent). */
+  assetGroupSlugByAccountId: Map<number, string>;
 };
 
 const store = new AsyncLocalStorage<PortfolioGroupIndex>();
@@ -48,8 +51,17 @@ export function buildPortfolioGroupIndex(): PortfolioGroupIndex {
     .all() as PortfolioGroupRow[];
 
   const groupById = new Map(groups.map((g) => [g.id, g]));
+  const groupBySlug = new Map(groups.map((g) => [g.slug, g]));
 
-  return { items, byGroupId, groupById };
+  const accountSlugs = db
+    .prepare(
+      `SELECT a.id, g.slug FROM accounts a
+       INNER JOIN asset_groups g ON g.id = a.asset_group_id`
+    )
+    .all() as { id: number; slug: string }[];
+  const assetGroupSlugByAccountId = new Map(accountSlugs.map((r) => [r.id, r.slug]));
+
+  return { items, byGroupId, groupById, groupBySlug, assetGroupSlugByAccountId };
 }
 
 /** Run `fn` with a single shared portfolio tree index for the current async context. */
