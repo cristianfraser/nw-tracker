@@ -1,3 +1,5 @@
+import { cacheKeyCcLedgerAccount, getAggregationCached } from "./aggregationCache.js";
+import { dbInTransaction } from "./db.js";
 import type { CcBillingMonthBalanceRow } from "./ccBillingBalances.js";
 import { getCreditCardAccountConfig } from "./ccAccountConfig.js";
 import { listCcBillingMonthBalances } from "./ccBillingBalances.js";
@@ -288,7 +290,22 @@ function buildInstallmentProxy(
   return { purchaseProxy, facturacionProxy };
 }
 
+/**
+ * A card's ledger payload (the card page's and, per master, the Pasivos group ledger's). Cached
+ * per card under `cc.ledger|` (`aggregationCache.ts`: dropped by every card write, every API
+ * write, historical market data, and a live tick that moved a price it read — the open
+ * facturación's dollars at the live rate, the proxy's tickers); built afresh inside a
+ * transaction or for explicit proxy tickers.
+ */
 export function creditCardInstallmentsResponse(
+  accountId: number,
+  proxyTickers?: string[]
+): CcInstallmentsResponseBase {
+  if (proxyTickers !== undefined || dbInTransaction()) return buildCreditCardInstallmentsResponse(accountId, proxyTickers);
+  return getAggregationCached(cacheKeyCcLedgerAccount(accountId), () => buildCreditCardInstallmentsResponse(accountId));
+}
+
+function buildCreditCardInstallmentsResponse(
   accountId: number,
   proxyTickers?: string[]
 ): CcInstallmentsResponseBase {
