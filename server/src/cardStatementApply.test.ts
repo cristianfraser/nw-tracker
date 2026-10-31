@@ -162,13 +162,30 @@ describe("applyCardStatement", () => {
       .get(accountId);
     expect(header).toEqual({ monto_facturado: 22_000, monto_pagado_anterior: -5_000, monto_pagado_anterior_date: "2026-09-10", next_period_to: "24/10/2026" });
 
-    // Sent again: this source owns the close and rewrites it to the same lines.
+    // Sent again unchanged (every night until the PDF arrives): this source owns the close, and
+    // the same records are not rewritten.
+    const lineIds = () =>
+      db.prepare(`SELECT l.id FROM cc_statement_lines l JOIN cc_statements s ON s.id = l.statement_id WHERE s.account_id = ? ORDER BY l.id`).all(accountId);
+    const before = lineIds();
     const again = applyCardStatement(payload(true));
     expect(again.statements.map((s) => [s.outcome, s.owner])).toEqual([
-      ["written", "json"],
-      ["written", "json"],
+      ["clean", "json"],
+      ["clean", "json"],
     ]);
-    expect(linesOf("clp")).toHaveLength(2);
+    expect(again.written).toBeNull();
+    expect(lineIds()).toEqual(before);
+  });
+
+  it("rewrites a JSON-owned close when its lines changed, both currencies together", () => {
+    applyCardStatement(payload(true));
+    const changed = payload(true);
+    changed.statements[1]!.lines[0]!.amount = 13.5;
+    const rewritten = applyCardStatement(changed);
+    expect(rewritten.statements.map((s) => [s.currency, s.outcome, s.owner])).toEqual([
+      ["clp", "written", "json"],
+      ["usd", "written", "json"],
+    ]);
+    expect(linesOf("usd")).toEqual([{ merchant: "VITEST CLOUD", amount_clp: 0, amount_usd: 13.5 }]);
   });
 
   it("only cross-checks a close a PDF holds, and names an unexplained difference", () => {
