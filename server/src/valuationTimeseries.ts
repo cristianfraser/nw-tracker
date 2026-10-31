@@ -49,6 +49,7 @@ import { movementBoundsByAccountIds } from "./movementBounds.js";
 import {
   cachedGroupResponse,
   cacheKeyGroupClosingByDate,
+  historyTierMemo,
   DASHBOARD_PAGE_BUNDLE_PREFIX,
   getAggregationCached,
 } from "./aggregationCache.js";
@@ -799,6 +800,35 @@ function patchLiveAfpMarksOnPoints(
   return next;
 }
 
+/**
+ * A chart account's raw CLP mark on `d` for every kind but the card, mortgage and property lines:
+ * the stored / MTM raw, replaced by `accountMarkClpAtYmd` for the mark-valued accounts (see the
+ * long note in {@link buildPointsForAccounts}). Null when the account has no value that day.
+ */
+function plainAccountChartRawClp(
+  aid: number,
+  aidKind: string,
+  aidSlug: string,
+  d: string,
+  byDate: Map<string, Map<number, number>>,
+  slugById: Map<number, string>,
+  chartMeta: { import_key: string | null; name: string | null } | undefined
+): number | null {
+  const raw = valuationRawClpForAccount(aid, d, byDate, slugById);
+  const isMarkValued =
+    !accountUsesEquityMtm(aid) &&
+    !accountUsesCryptoMtm(aid) &&
+    !isMovementBalanceCashCategory(aidSlug) &&
+    !isUsdCashKindSlug(aidKind) &&
+    !isClpCashKindSlug(aidKind);
+  if (!isMarkValued) return raw;
+  const mark = accountMarkClpAtYmd(aid, d, aidSlug, {
+    import_key: chartMeta?.import_key ?? null,
+    name: chartMeta?.name ?? null,
+  });
+  return mark?.value_clp != null && Number.isFinite(mark.value_clp) ? mark.value_clp : null;
+}
+
 function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: TsUnit, merge?: MergePairOpts) {
   const mergeIds = [
     merge?.btcId,
@@ -949,6 +979,12 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     }
   }
 
+  // A plain account's raw mark on a past chart date reads evidence only — an equity's past MTM
+  // consults the live-dollar gate but reads the stored close for any day before today, as the
+  // `equity_mtm_clp` history memo relies on — so it is kept in the history tier and the rebuild
+  // after a live tick recomputes the trailing / today point alone. The card, mortgage and property
+  // lines keep their own per-build sources below.
+  const pastRawMemo = historyTierMemo<string, number | null>("valuation_chart_past_raw_clp");
   const points = dateStrs.map((d) => {
     const row: Record<string, string | number | null> = { as_of_date: d };
     const useLiveAfpOnDate = d === trailingChartDate || d === todayYmd;
@@ -956,8 +992,25 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       if (t.dataKey === "crypto_total" || t.dataKey === "stocks_total" || t.dataKey === "mutual_funds_total")
         continue;
       const aid = t.account_id;
-      let raw = valuationRawClpForAccount(aid, d, byDate, slugById);
       const aidKind = bucketKindFromSlugMap(slugById, aid);
+      const chartMeta = chartMetaById.get(aid);
+      const aidSlug = slugById.get(aid) ?? "";
+      const pastKey =
+        !useLiveAfpOnDate && d < todayYmd && aidKind !== "credit_card" && aidKind !== "mortgage" && aidKind !== "property"
+          ? `${aid}|${aidSlug}|${chartMeta?.import_key ?? ""}|${chartMeta?.name ?? ""}|${d}`
+          : null;
+      if (pastKey != null) {
+        let raw = pastRawMemo.get(pastKey);
+        if (raw === undefined) {
+          raw = plainAccountChartRawClp(aid, aidKind, aidSlug, d, byDate, slugById, chartMeta);
+          pastRawMemo.set(pastKey, raw);
+        }
+        if (raw != null) last.set(aid, raw);
+        const v = last.get(aid);
+        row[t.dataKey] = v === undefined ? null : accountChartValueInUnit(aid, aidKind, v, d, unit);
+        continue;
+      }
+      let raw = valuationRawClpForAccount(aid, d, byDate, slugById);
       if (aidKind === "credit_card") {
         // Historical points read stored `valuations` (owed on that date — same source as the
         // Saldo pasivos line); only the live/trailing point uses the billing ledger. Billing-month
@@ -972,7 +1025,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         const mtgClose = mtgCloseByAccAndDate.get(aid)?.get(d);
         if (mtgClose != null && Number.isFinite(mtgClose)) raw = mtgClose;
       }
-      const chartMeta = chartMetaById.get(aid);
       if (propertyAccountIds.length === 1 && aidKind === "property") {
         // Sheet UF marks on every date including the trailing/today point: depto CLP is
         // (valor_neto_uf × UF(d)), the same daily re-mark as the Hipoteca line and the monthly table.
@@ -999,7 +1051,6 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       //    month-ends are the sole source for 2017-06…2019-09 (verified: mark == stored there).
       // The remaining special-branch kinds (equity/crypto/cash MTM, CC, mortgage, property)
       // keep the raw they computed above — those framings are intentional.
-      const aidSlug = slugById.get(aid) ?? "";
       const isMarkValued =
         !accountUsesEquityMtm(aid) &&
         !accountUsesCryptoMtm(aid) &&

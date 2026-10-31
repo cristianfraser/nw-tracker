@@ -255,5 +255,6 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
     // What reads no coin stays: the card ledgers, the past parts, a source without the coin.
     expect(keptKeys).toContain("hist.daily_series_past");
     expect(keptKeys.some((k) => k.startsWith("cc.ledger|"))).toBe(true);
+    expect(keptKeys).toContain("hist.valuation_chart_past_raw_clp");
   }, 300_000);
 });
