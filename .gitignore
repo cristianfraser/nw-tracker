@@ -45,3 +45,5 @@ version.json
 
 # Python bytecode caches (server/scripts)
 __pycache__/
+# Live-database copies parked by a machine move (personal data)
+server/data/*.moved-to-*
