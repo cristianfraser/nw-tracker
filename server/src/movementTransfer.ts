@@ -6,7 +6,8 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import type { Database } from "better-sqlite3";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { signedAmountClpForBrokerageFlow } from "./brokerageFlowMovement.js";
-import { db } from "./db.js";
+import { historyTierMemo } from "./aggregationCache.js";
+import { db, dbInTransaction } from "./db.js";
 import {
   MOVEMENT_AMOUNT_COLUMNS_SQL,
   movementClpLegOrZero,
@@ -191,23 +192,107 @@ export function transferLegUnitsThroughDate(
   asOfYmd: string,
   dbHandle: Database = db
 ): number {
-  const rows = dbHandle
-    .prepare(
-      `SELECT from_account_id, to_account_id, units_delta, counter_units_delta, flow_kind
-       FROM movements
-       WHERE account_id IS NULL
-         AND units_delta IS NOT NULL
-         AND (from_account_id = ? OR to_account_id = ?)
-         AND date(occurred_on) <= date(?)`
-    )
-    .all(accountId, accountId, asOfYmd) as MovementTransferRow[];
-  let total = 0;
-  for (const r of rows) {
-    if (r.flow_kind != null && EQUITY_TRANSFER_FLOW_KINDS.has(r.flow_kind)) continue;
-    if (r.to_account_id === accountId) total += absAmount(transferToLegUnits(r));
-    else if (r.from_account_id === accountId) total -= absAmount(transferFromLegUnits(r));
-  }
+  const total = ledgerTotalThrough("transfer_leg_units", accountId, asOfYmd, dbHandle, false, (handle) =>
+    (
+      handle
+        .prepare(
+          `SELECT id, occurred_on, from_account_id, to_account_id, units_delta, counter_units_delta, flow_kind
+           FROM movements
+           WHERE account_id IS NULL
+             AND units_delta IS NOT NULL
+             AND (from_account_id = ? OR to_account_id = ?)`
+        )
+        .all(accountId, accountId) as MovementTransferRow[]
+    ).map((r) => ({ id: r.id!, occurred_on: r.occurred_on, delta: transferLegUnitsDelta(r, accountId) }))
+  );
   return Number.isFinite(total) ? total : 0;
+}
+
+function ledgerDeltaKey(r: MovementTransferRow) {
+  return { id: r.id!, occurred_on: r.occurred_on, account_id: r.account_id, from_account_id: r.from_account_id };
+}
+
+function transferLegUnitsDelta(r: MovementTransferRow, accountId: number): number {
+  if (r.flow_kind != null && EQUITY_TRANSFER_FLOW_KINDS.has(r.flow_kind)) return 0;
+  if (r.to_account_id === accountId) return absAmount(transferToLegUnits(r));
+  if (r.from_account_id === accountId) return -absAmount(transferFromLegUnits(r));
+  return 0;
+}
+
+type LedgerDelta = { id: number; occurred_on: string; delta: number; account_id?: number | null; from_account_id?: number | null };
+
+/** One index branch of the per-call SQL: its rows in (day, id) order and their running sums. */
+type LedgerRun = { dates: string[]; deltas: number[]; prefix: number[] };
+
+/**
+ * One account's movement deltas, in the order the per-call SQL scan returned them, so a sum adds
+ * in the same order and gives the same float: SQLite answered `account_id = ? OR from_account_id
+ * = ? OR to_account_id = ?` index branch by index branch (`idx_movements_{account,from,to}_occurred`),
+ * each in (day, id) order — a row once, in the first branch it matches.
+ */
+type LedgerPrefix = LedgerRun[];
+
+function buildLedgerRun(rows: LedgerDelta[]): LedgerRun {
+  rows.sort((a, b) => (a.occurred_on < b.occurred_on ? -1 : a.occurred_on > b.occurred_on ? 1 : a.id - b.id));
+  const prefix = [0];
+  for (const r of rows) prefix.push(prefix[prefix.length - 1]! + r.delta);
+  return { dates: rows.map((r) => r.occurred_on), deltas: rows.map((r) => r.delta), prefix };
+}
+
+function buildLedgerPrefix(deltas: LedgerDelta[], accountId: number, byBranch: boolean): LedgerPrefix {
+  if (!byBranch) return [buildLedgerRun(deltas)];
+  const branches: LedgerDelta[][] = [[], [], []];
+  for (const r of deltas) {
+    branches[r.account_id === accountId ? 0 : r.from_account_id === accountId ? 1 : 2]!.push(r);
+  }
+  return branches.map(buildLedgerRun);
+}
+
+/**
+ * Σ of an account's per-movement deltas dated on or before `asOfYmd`. The account's deltas sit
+ * in the history tier: movements and the account metadata a delta reads are mark-input tables,
+ * so any write to them (any connection) drops the tier before the next read, and a live-quote
+ * tick moves nothing they read. Inside a transaction (or against another handle) the rows are
+ * read directly — the write may be rolled back.
+ *
+ * Every caller's dates are `YYYY-MM-DD` (so are all stored `occurred_on`), so the string
+ * comparison is `date(occurred_on) <= date(?)`.
+ */
+function ledgerTotalThrough(
+  name: string,
+  accountId: number,
+  asOfYmd: string,
+  dbHandle: Database,
+  byBranch: boolean,
+  loadDeltas: (handle: Database) => LedgerDelta[]
+): number {
+  let ledger: LedgerPrefix;
+  if (dbHandle !== db || dbInTransaction()) {
+    ledger = buildLedgerPrefix(loadDeltas(dbHandle), accountId, byBranch);
+  } else {
+    const memo = historyTierMemo<number, LedgerPrefix>(`movement_ledger_prefix.${name}`);
+    const cached = memo.get(accountId);
+    if (cached) ledger = cached;
+    else {
+      ledger = buildLedgerPrefix(loadDeltas(db), accountId, byBranch);
+      memo.set(accountId, ledger);
+    }
+  }
+  let total = 0;
+  for (const run of ledger) {
+    // k = rows of this branch dated on or before asOfYmd.
+    let lo = 0;
+    let hi = run.dates.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (run.dates[mid]! <= asOfYmd) lo = mid + 1;
+      else hi = mid;
+    }
+    // Adding to an exact 0 gives the branch's own running sum; otherwise add row by row.
+    if (total === 0) total = run.prefix[lo]!;
+    else for (let i = 0; i < lo; i++) total += run.deltas[i]!;
+  }
+  return total;
 }
 
 export function isUsdCashKindSlug(kindSlug: string): boolean {
@@ -234,35 +319,33 @@ export function listMovementRowsForAccount(accountId: number): MovementTransferR
 }
 
 export function sumClpThroughDate(accountId: number, asOfYmd: string, dbHandle: Database = db): number {
-  const rows = dbHandle
-    .prepare(
-      `SELECT account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, flow_kind
-       FROM movements
-       WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
-         AND occurred_on <= ?`
+  return Math.round(
+    ledgerTotalThrough("clp", accountId, asOfYmd, dbHandle, true, (handle) =>
+      (
+        handle
+          .prepare(
+            `SELECT id, occurred_on, account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, flow_kind
+             FROM movements
+             WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`
+          )
+          .all(accountId, accountId, accountId) as MovementTransferRow[]
+      ).map((r) => ({ ...ledgerDeltaKey(r), delta: signedClpDeltaForAccountMovement(r, accountId) }))
     )
-    .all(accountId, accountId, accountId, asOfYmd) as MovementTransferRow[];
-  let total = 0;
-  for (const r of rows) {
-    total += signedClpDeltaForAccountMovement(r, accountId);
-  }
-  return Math.round(total);
+  );
 }
 
 export function sumUsdThroughDate(accountId: number, asOfYmd: string, dbHandle: Database = db): number {
-  const rows = dbHandle
-    .prepare(
-      `SELECT account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, units_delta, flow_kind, note
-       FROM movements
-       WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
-         AND occurred_on <= ?`
-    )
-    .all(accountId, accountId, accountId, asOfYmd) as MovementTransferRow[];
-  let total = 0;
-  for (const r of rows) {
-    total += signedUsdDeltaForAccountMovement(r, accountId);
-  }
-  return total;
+  return ledgerTotalThrough("usd", accountId, asOfYmd, dbHandle, true, (handle) =>
+    (
+      handle
+        .prepare(
+          `SELECT id, occurred_on, account_id, from_account_id, to_account_id, ${MOVEMENT_AMOUNT_COLUMNS_SQL}, units_delta, flow_kind, note
+           FROM movements
+           WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`
+        )
+        .all(accountId, accountId, accountId) as MovementTransferRow[]
+    ).map((r) => ({ ...ledgerDeltaKey(r), delta: signedUsdDeltaForAccountMovement(r, accountId) }))
+  );
 }
 
 /** Sentinel upper bound: every known row, whatever its bank date. */
@@ -305,20 +388,18 @@ export function sumUnitsThroughDate(
 ): number {
   if (flowKinds.length === 0) return 0;
   const ph = flowKinds.map(() => "?").join(", ");
-  const rows = dbHandle
-    .prepare(
-      `SELECT account_id, from_account_id, to_account_id, units_delta, counter_units_delta, flow_kind
-       FROM movements
-       WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
-         AND occurred_on <= ?
-         AND flow_kind IN (${ph})`
-    )
-    .all(accountId, accountId, accountId, asOfYmd, ...flowKinds) as MovementTransferRow[];
-  let total = 0;
-  for (const r of rows) {
-    total += unitsDeltaForAccountMovement(r, accountId);
-  }
-  return total;
+  return ledgerTotalThrough(`units.${flowKinds.join(",")}`, accountId, asOfYmd, dbHandle, true, (handle) =>
+    (
+      handle
+        .prepare(
+          `SELECT id, occurred_on, account_id, from_account_id, to_account_id, units_delta, counter_units_delta, flow_kind
+           FROM movements
+           WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
+             AND flow_kind IN (${ph})`
+        )
+        .all(accountId, accountId, accountId, ...flowKinds) as MovementTransferRow[]
+    ).map((r) => ({ ...ledgerDeltaKey(r), delta: unitsDeltaForAccountMovement(r, accountId) }))
+  );
 }
 
 export type TransferCreateInput = {
