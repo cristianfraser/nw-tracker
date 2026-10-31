@@ -383,14 +383,14 @@ function ExpenseLineRow({
       </div>
       <div className={cn("mono", "muted", styles.date)}>{lineDate(ln)}</div>
       <div className={styles.pills}>
+        {bigGroupOnRow ? (
+          <ExpenseBigGroupPicker purchaseKey={ln.purchase_key} value={ln.big_group_slug} groups={bigGroups} />
+        ) : null}
         {showCategoryControls && !fixedCategory ? (
           <ExpenseLineCategoryPicker line={ln} categories={categories} />
         ) : (
           <FixedCategoryPill line={ln} categories={categories} />
         )}
-        {bigGroupOnRow ? (
-          <ExpenseBigGroupPicker purchaseKey={ln.purchase_key} value={ln.big_group_slug} groups={bigGroups} />
-        ) : null}
       </div>
       <div className={styles.vendor}>
         <span className={styles.merchant}>{merchant}</span>
