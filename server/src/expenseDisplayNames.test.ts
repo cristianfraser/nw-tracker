@@ -90,6 +90,7 @@ describe("vendor catalog", () => {
     expect(seeded.lookup("IKEA COM")).toBe("Ikea");
     expect(seeded.lookup("GOOGLE PLAY-YO")).toBe("YouTube Premium");
     expect(seeded.lookup("OK MARKET S.A.")).toBe("OK Market");
+    expect(seeded.lookup("MUNICIPALIDAD DE MAIPU")).toBe("Permiso de circulación (Maipú)");
   });
 
   it("spells a branch's places and completes the one a cut branch starts", () => {
