@@ -1,7 +1,7 @@
 import type { AccountMortgageLedgerResponse } from "./mortgage";
 
 import type { DataOrigin } from "../dataOrigin";
-import type { PaymentReceipt } from "./flows";
+import type { ExpenseLinkLabel, PaymentReceipt } from "./flows";
 
 export interface CcBillingDetailMonthDto {
   billing_month: string;
@@ -130,7 +130,6 @@ export interface CcInstallmentPurchaseComputed {
   purchase_date?: string;
   /** Facturación month the purchase falls into: the bank's cycle containing the purchase date. */
   purchase_billing_month?: string | null;
-  note: string | null;
   remaining_installments: number;
   remaining_principal_clp: number;
   next_due_month: string | null;
@@ -145,6 +144,10 @@ export interface CcInstallmentPurchaseComputed {
   purchase_notes?: string;
   /** The receipt link its expense lines show. */
   payment_receipt?: PaymentReceipt;
+  /** The names its expense lines show: merchant, processor, link label. */
+  display_merchant?: string;
+  merchant_processor?: string;
+  link_label?: ExpenseLinkLabel;
 }
 
 export interface CcCuotaProgressCuota {

@@ -148,18 +148,6 @@
   font-size: var(--font-size-card-meta);
 }
 
-.purchaseVendor {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-}
-
-/* Active card purchase: the note and receipt link under the vendor, the progress bar beside. */
-.purchaseNotes {
-  margin-top: var(--space-xs);
-  max-width: 28rem;
-}
-
 .activePurchaseRow > td:global(.desktop-only):first-child {
   width: 50%;
 }

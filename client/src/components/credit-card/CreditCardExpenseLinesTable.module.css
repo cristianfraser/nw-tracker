@@ -185,30 +185,6 @@
 
 .vendor {
   grid-area: vendor;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.merchant {
-  font-weight: 500;
-}
-
-.sep {
-  margin: 0 0.35rem;
-  color: var(--muted);
-}
-
-.note {
-  color: var(--muted);
-  font-style: italic;
-}
-
-.linkLabel {
-  color: var(--muted);
-}
-
-.infoTrigger {
-  margin-left: 0.3rem;
 }
 
 .amountCell {
@@ -234,44 +210,6 @@
   justify-content: center;
 }
 
-.moreButton {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.moreButton:hover,
-.moreButtonOpen {
-  color: var(--text);
-  background: var(--surface2);
-}
-
-.moreButton:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-/* The line waits on the user (e.g. how many cuotas): a red dot on the ⋯ button's corner. */
-.needsActionBadge {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: var(--negative);
-  box-shadow: 0 0 0 2px var(--surface);
-}
-
 .panel {
   grid-area: panel;
   display: flex;
@@ -279,11 +217,6 @@
   gap: 0.45rem;
   margin-left: calc(1.5rem + 0.6rem);
   padding-top: 0.4rem;
-}
-
-.panelLink {
-  font-size: 0.85rem;
-  color: var(--muted);
 }
 
 .panelBadges {
@@ -317,10 +250,4 @@
   gap: 0.3rem;
   white-space: nowrap;
   cursor: pointer;
-}
-
-.infoBlock + .infoBlock {
-  margin-top: 0.45rem;
-  padding-top: 0.45rem;
-  border-top: 1px solid var(--border);
 }

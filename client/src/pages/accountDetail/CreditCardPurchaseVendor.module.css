@@ -1,0 +1,24 @@
+.root {
+  min-width: 0;
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.label {
+  flex: 1 1 auto;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.4rem;
+}
+
+.panelNote {
+  max-width: 28rem;
+}

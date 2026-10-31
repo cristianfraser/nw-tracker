@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "@crfrsr/ui";
 import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
@@ -8,16 +8,19 @@ import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow }
 import { loadableClass } from "../ui/Loadable";
 import { Pill } from "../ui/Pill";
 import { PillPicker } from "../ui/PillPicker";
-import { HoverPopover } from "../ui/HoverPopover";
-import { InfoIcon } from "../icons/InfoIcon";
-import { MoreIcon } from "../icons/MoreIcon";
 import { expenseLineCategoryTargetId } from "../../ccExpenseLineBuckets";
 import { assignableCcExpenseCategories, ccExpenseCategoryPathLabel } from "../../ccExpenseCategories";
 import { ExpensePurchaseNoteInput } from "./ExpensePurchaseNoteInput";
 import { ExpenseBigGroupPicker } from "./ExpenseBigGroupPicker";
 import { ExpenseOriginIcon } from "./ExpenseOriginIcon";
-import { paymentReceiptDetailLines } from "../flows/PaymentReceiptLine";
-import { transferCounterpartyDetailLines } from "../flows/TransferCounterpartyLine";
+import {
+  ExpenseRowMoreButton,
+  ExpenseVendorLabel,
+  ExpenseVendorPanelLink,
+  expenseVendorName,
+  Joined,
+  useExpenseVendorLinkLabel,
+} from "./ExpenseVendorLabel";
 import { useAssignCcExpenseLineCategory, usePostVendorBranchChoiceMutation } from "../../queries/hooks";
 import styles from "./CreditCardExpenseLinesTable.module.css";
 
@@ -199,28 +202,6 @@ function FixedCategoryPill({
 }
 
 /** The separator between the parts of a row's text: drawn by the row, never part of a string. */
-function Sep() {
-  return (
-    <span className={styles.sep} aria-hidden>
-      ·
-    </span>
-  );
-}
-
-/** Text parts with a separator between each («Lisboa», «3 nights» → Lisboa · 3 nights). */
-function Joined({ parts }: { parts: readonly string[] }) {
-  return (
-    <>
-      {parts.map((part, i) => (
-        <span key={i}>
-          {i > 0 ? <Sep /> : null}
-          {part}
-        </span>
-      ))}
-    </>
-  );
-}
-
 /** The amount, with the installment detail in superscript («3/6 · $270.000», «6 cuotas»). */
 function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
@@ -243,81 +224,6 @@ function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
         </sup>
       ) : null}
     </span>
-  );
-}
-
-/**
- * The ⓘ card: the merchant as the bank prints it (when the row shows another name) and what the
- * line is linked to (transfer counterparty, payment receipt, deposit), in full.
- */
-function useLineInfo(line: FlowCcExpenseLineRow): ReactNode[] {
-  const { t } = useTranslation();
-  const blocks: ReactNode[] = [];
-  if (line.display_merchant != null && line.merchant) {
-    const bank = [line.merchant];
-    if (line.merchant_processor) bank.push(t("expenses.creditCard.lineRow.viaProcessor", { processor: line.merchant_processor }));
-    blocks.push(<InfoBlock key="bank" lines={bank} />);
-  }
-  const c = line.transfer_counterparty;
-  if (c) blocks.push(<InfoBlock key="counterparty" lines={transferCounterpartyDetailLines(c)} />);
-  const r = line.payment_receipt;
-  if (r) {
-    const lines = paymentReceiptDetailLines(r);
-    lines[0] = `${r.guess ? "≈" : "→"} ${lines[0]}`;
-    blocks.push(<InfoBlock key="receipt" lines={lines} />);
-  }
-  const mortgageLink = line.expense_deposit_links?.find((l) => l.depto_cuota != null);
-  if (mortgageLink) {
-    blocks.push(
-      <InfoBlock
-        key="deposit"
-        lines={[t("expenses.creditCard.mortgageDepositLinkCuota", { cuota: mortgageLink.depto_cuota })]}
-      />
-    );
-  } else if ((line.expense_deposit_links?.length ?? 0) > 0) {
-    blocks.push(<InfoBlock key="deposit" lines={[t("expenses.creditCard.investmentDepositLink")]} />);
-  }
-  return blocks;
-}
-
-/**
- * The short label of what the line is linked to, as parts the row separates — «Streat Burger
- * (Isidora)», «Lisboa» + «3 nights», «← Ana Perez» — or the deposit it pairs with; null when it has none.
- */
-function useLinkLabel(line: FlowCcExpenseLineRow): { parts: string[]; inline: boolean } | null {
-  const { t } = useTranslation();
-  const l = line.link_label;
-  if (l) {
-    // «→» (paid to) is what a link on an expense means; only the other directions are shown.
-    const parts = [l.arrow === "→" ? l.text : `${l.arrow} ${l.text}`];
-    if (l.nights != null) {
-      parts.push(
-        t(l.nights === 1 ? "expenses.creditCard.lineRow.nightsOne" : "expenses.creditCard.lineRow.nightsMany", {
-          count: l.nights,
-        })
-      );
-    }
-    return { parts, inline: l.inline };
-  }
-  const mortgageLink = line.expense_deposit_links?.find((d) => d.depto_cuota != null);
-  if (mortgageLink) {
-    return { parts: [t("expenses.creditCard.mortgageDepositLinkCuota", { cuota: mortgageLink.depto_cuota })], inline: true };
-  }
-  if ((line.expense_deposit_links?.length ?? 0) > 0) {
-    return { parts: [t("expenses.creditCard.investmentDepositLink")], inline: true };
-  }
-  return null;
-}
-
-function InfoBlock({ lines }: { lines: readonly string[] }) {
-  return (
-    <div className={styles.infoBlock}>
-      {lines.map((text, i) => (
-        <div key={i} className={i === 0 ? undefined : "muted"}>
-          {text}
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -357,8 +263,7 @@ function ExpenseLineRow({
 }) {
   const { t } = useTranslation();
   const selection = useCreditCardExpenseLinesSelection();
-  const info = useLineInfo(ln);
-  const linkLabel = useLinkLabel(ln);
+  const linkLabel = useExpenseVendorLinkLabel(ln);
   // A payslip deduction's category is the deduction's own: no picker, no bulk select, no group.
   const fixedCategory = ln.source === "payslip";
   const canSelect = selectable && selection != null && !fixedCategory;
@@ -405,8 +310,7 @@ function ExpenseLineRow({
     canEditManual ||
     canMakeInstallment ||
     canDelete;
-  const note = ln.purchase_notes.trim();
-  const merchant = ln.display_merchant ?? ln.merchant ?? "—";
+  const merchant = expenseVendorName(ln);
 
   return (
     <div
@@ -442,57 +346,24 @@ function ExpenseLineRow({
           <FixedCategoryPill line={ln} categories={categories} />
         )}
       </div>
-      <div className={styles.vendor}>
-        <span className={styles.merchant}>{merchant}</span>
-        {note ? (
-          <>
-            <Sep />
-            <span className={styles.note}>{note}</span>
-          </>
-        ) : null}
-        {linkLabel?.inline ? (
-          <>
-            <Sep />
-            <span className={styles.linkLabel}>
-              <Joined parts={linkLabel.parts} />
-            </span>
-          </>
-        ) : null}
-        {info.length > 0 ? (
-          <HoverPopover
-            className={styles.infoTrigger}
-            ariaLabel={t("expenses.creditCard.lineRow.infoAria")}
-            trigger={<InfoIcon size={14} />}
-          >
-            {info}
-          </HoverPopover>
-        ) : null}
-      </div>
+      <ExpenseVendorLabel source={ln} note={ln.purchase_notes} className={styles.vendor} />
       <div className={styles.amountCell}>
         <LineAmount line={ln} />
       </div>
       <div className={styles.more}>
         {hasPanel ? (
-          <button
-            type="button"
-            className={cn(styles.moreButton, expanded && styles.moreButtonOpen)}
-            aria-expanded={expanded}
-            aria-label={t("expenses.creditCard.lineRow.moreAria", { merchant })}
-            title={needsAction ? t("expenses.creditCard.lineRow.needsAction") : undefined}
+          <ExpenseRowMoreButton
+            expanded={expanded}
+            needsAction={needsAction}
+            ariaLabel={t("expenses.creditCard.lineRow.moreAria", { merchant })}
+            needsActionTitle={t("expenses.creditCard.lineRow.needsAction")}
             onClick={onToggleExpanded}
-          >
-            <MoreIcon size={16} />
-            {needsAction ? <span className={styles.needsActionBadge} aria-hidden /> : null}
-          </button>
+          />
         ) : null}
       </div>
       {hasPanel && expanded ? (
         <div className={styles.panel}>
-          {linkLabel ? (
-            <div className={styles.panelLink}>
-              <Joined parts={linkLabel.parts} />
-            </div>
-          ) : null}
+          {linkLabel ? <ExpenseVendorPanelLink linkLabel={linkLabel} /> : null}
           {hasPieces || needsAction ? (
             <div className={styles.panelBadges}>
               {hasPieces ? (
