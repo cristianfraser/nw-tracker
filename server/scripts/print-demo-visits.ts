@@ -4,9 +4,12 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 
 /**
- * Prints the hosted demo's anonymous visit analytics — admin tooling, meant for the Render
- * shell (`npm run demo:visits` from the repo root). Read-only: never creates or migrates
- * anything, and does not boot the app (no db.ts import).
+ * Prints the hosted demo's anonymous visit analytics and its usage log (page views with load
+ * times, slowest endpoints) — admin tooling, meant for the Render shell (`npm run demo:visits`
+ * from the repo root). The demo refuses `/api/usage/report` (it is public), so this is where its
+ * usage is read. Read-only: never creates or migrates anything, and does not boot the app (no
+ * db.ts import). A file the merged server has not opened yet still has the old
+ * `demo_pageviews` counts instead of `usage_page_views`; both are read.
  *
  * Reads `DEMO_ANALYTICS_DB` (the persistent-disk SQLite file on the hosted demo, see
  * server/src/demoAnalytics.ts); unset → the local rehearsal file under server/data/.
@@ -65,13 +68,17 @@ console.table(
     .all()
 );
 
-if (tableExists("demo_pageviews")) {
-  console.log("\nMost-visited pages");
+if (tableExists("usage_page_views")) {
+  console.log("\nMost-visited pages (load = until the page's queries settled; untimed = from before timings)");
   console.table(
     db
       .prepare(
-        `SELECT path, SUM(views) AS views, COUNT(DISTINCT day || visitor) AS visitors
-         FROM demo_pageviews GROUP BY path ORDER BY views DESC LIMIT 25`
+        `SELECT route, COUNT(*) AS views,
+                COUNT(DISTINCT substr(viewed_at, 1, 10) || visitor) AS visitors,
+                SUM(outcome = 'settled') AS timed,
+                CAST(ROUND(AVG(settle_ms)) AS INTEGER) AS avg_load_ms,
+                CAST(ROUND(MAX(settle_ms)) AS INTEGER) AS max_load_ms
+         FROM usage_page_views GROUP BY route ORDER BY views DESC LIMIT 25`
       )
       .all()
   );
@@ -81,8 +88,37 @@ if (tableExists("demo_pageviews")) {
     db
       .prepare(
         `SELECT pages, COUNT(*) AS visitors FROM (
-           SELECT day, visitor, COUNT(*) AS pages FROM demo_pageviews GROUP BY day, visitor
+           SELECT substr(viewed_at, 1, 10) AS day, visitor, COUNT(DISTINCT path) AS pages
+           FROM usage_page_views WHERE visitor IS NOT NULL GROUP BY day, visitor
          ) GROUP BY pages ORDER BY pages`
+      )
+      .all()
+  );
+} else if (tableExists("demo_pageviews")) {
+  console.log("\nMost-visited pages (legacy counts)");
+  console.table(
+    db
+      .prepare(
+        `SELECT path, SUM(views) AS views, COUNT(DISTINCT day || visitor) AS visitors
+         FROM demo_pageviews GROUP BY path ORDER BY views DESC LIMIT 25`
+      )
+      .all()
+  );
+}
+
+if (tableExists("usage_endpoint_hourly")) {
+  console.log("\nSlowest endpoints, last 30 days (by mean)");
+  console.table(
+    db
+      .prepare(
+        `SELECT method || ' ' || route || CASE WHEN params = '' THEN '' ELSE '?' || params END AS endpoint,
+                SUM(count) AS requests,
+                CAST(ROUND(SUM(total_ms) / SUM(count)) AS INTEGER) AS avg_ms,
+                CAST(ROUND(MAX(max_ms)) AS INTEGER) AS max_ms,
+                SUM(server_errors) AS errors_5xx
+         FROM usage_endpoint_hourly
+         WHERE hour_start >= strftime('%Y-%m-%dT%H:00:00.000Z', 'now', '-30 days')
+         GROUP BY method, route, params ORDER BY avg_ms DESC LIMIT 25`
       )
       .all()
   );

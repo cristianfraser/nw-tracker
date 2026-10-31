@@ -5,15 +5,17 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Request, RequestHandler } from "express";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { DEMO_PAGEVIEW_PATH } from "./httpSecurity.js";
 
 /**
- * Anonymous analytics for the open (login-free) hosted demo.
+ * Anonymous visitor analytics for the open (login-free) hosted demo. Page views and endpoint
+ * timings are the usage log's (usageLog.ts), shared with the personal instance; this module adds
+ * what only the public demo needs — who arrives and from where — and owns the analytics file
+ * both are stored in on the demo (usageDb.ts).
  *
  * The old model asked recruiters for an email behind a shared-password gate; they bounced
  * off the gate instead of using it. What is actually worth knowing is whether people arrive,
  * where from, and whether they explore — so this records visits and in-app pageviews with no
- * login, no cookie, and no stored IP:
+ * login, no cookie, and no stored IP (the visitor hash below also tags each usage page view):
  *
  * - A visitor id is `hmac(daily key, ip|user-agent)`. The daily key is itself derived from a
  *   long-lived salt plus the calendar day, so ids cannot be correlated across days and the
@@ -26,7 +28,6 @@ import { DEMO_PAGEVIEW_PATH } from "./httpSecurity.js";
  */
 
 /** Column widths — analytics strings are bounded so a hostile header can't bloat the table. */
-const MAX_PATH = 120;
 const MAX_SRC = 40;
 const MAX_UA = 300;
 const MAX_REFERRER = 200;
@@ -57,15 +58,6 @@ export function demoAnalyticsDb(): BetterSqliteDb {
        last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
        request_count INTEGER NOT NULL DEFAULT 0,
        PRIMARY KEY (day, visitor)
-     );
-     CREATE TABLE IF NOT EXISTS demo_pageviews (
-       day TEXT NOT NULL,
-       visitor TEXT NOT NULL,
-       path TEXT NOT NULL,
-       views INTEGER NOT NULL DEFAULT 0,
-       first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-       last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
-       PRIMARY KEY (day, visitor, path)
      );
      CREATE TABLE IF NOT EXISTS demo_analytics_meta (
        key TEXT PRIMARY KEY,
@@ -159,35 +151,22 @@ export function recordDemoVisit(input: VisitInput): void {
     .run(input);
 }
 
-/** One row per (day, visitor, in-app route); repeat views bump `views`. */
-export function recordDemoPageview(day: string, visitor: string, path: string): void {
-  demoAnalyticsDb()
-    .prepare(
-      `INSERT INTO demo_pageviews (day, visitor, path, views) VALUES (?, ?, ?, 1)
-       ON CONFLICT(day, visitor, path) DO UPDATE SET
-         views = views + 1,
-         last_seen_at = datetime('now')`
-    )
-    .run(day, visitor, path);
-}
-
 /**
- * Normalize a beacon path to an app route: leading slash, no query/hash, bounded length.
- * Returns null for anything that isn't a plausible route (the beacon is unauthenticated).
+ * The visitor's own address. Render serves the demo through Cloudflare, whose edge forwards
+ * each request from a different address, so `req.ip` (one trusted proxy hop) changed request by
+ * request and one person showed up as a dozen visitors a minute (export of 2026-10-31). Cloudflare
+ * states the client in `CF-Connecting-IP`; `req.ip` stays the fallback off Cloudflare.
  */
-export function normalizeBeaconPath(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const withoutQuery = raw.split(/[?#]/)[0]?.trim() ?? "";
-  if (!withoutQuery.startsWith("/") || withoutQuery.startsWith("//")) return null;
-  if (withoutQuery.length > MAX_PATH) return null;
-  return withoutQuery;
+export function clientAddress(req: Request): string {
+  const cf = req.headers["cf-connecting-ip"];
+  return (typeof cf === "string" && cf.trim()) || req.ip || "";
 }
 
 /** Visitor identity for a request, or null when it shouldn't be counted (bot / no UA). */
-function visitorForRequest(req: Request, day: string): { visitor: string; userAgent: string } | null {
+export function demoVisitorForRequest(req: Request, day: string): { visitor: string; userAgent: string } | null {
   const userAgent = req.headers["user-agent"] ?? "";
   if (isBotUserAgent(userAgent)) return null;
-  return { visitor: visitorKey(req.ip ?? "", userAgent, day), userAgent };
+  return { visitor: visitorKey(clientAddress(req), userAgent, day), userAgent };
 }
 
 function countryHeader(req: Request): string | null {
@@ -217,7 +196,7 @@ export function demoVisitLogMiddleware(): RequestHandler {
     }
     try {
       const day = chileCalendarTodayYmd();
-      const identity = visitorForRequest(req, day);
+      const identity = demoVisitorForRequest(req, day);
       if (identity) {
         recordDemoVisit({
           day,
@@ -238,32 +217,11 @@ export function demoVisitLogMiddleware(): RequestHandler {
   };
 }
 
-/**
- * `POST /api/demo/pageview` — the SPA reports its route changes here (the server only sees
- * the initial document request, so without this every visit looks like one page). Registered
- * in demo mode only, and exempt from the read-only guard; always answers 204 so the client
- * beacon has nothing to handle.
- */
-export function registerDemoAnalyticsRoutes(app: import("express").Express): void {
-  app.post(DEMO_PAGEVIEW_PATH, (req, res) => {
-    try {
-      const path = normalizeBeaconPath(req.body?.path);
-      const day = chileCalendarTodayYmd();
-      const identity = visitorForRequest(req, day);
-      if (path && identity) {
-        recordDemoPageview(day, identity.visitor, path);
-        const src = typeof req.body?.src === "string" ? clamp(req.body.src.replace(/[^\w.-]/g, ""), MAX_SRC) : null;
-        if (src) {
-          demoAnalyticsDb()
-            .prepare(
-              `UPDATE demo_visits SET src = COALESCE(src, ?) WHERE day = ? AND visitor = ?`
-            )
-            .run(src, day, identity.visitor);
-        }
-      }
-    } catch (err) {
-      console.error("[demo-analytics] pageview beacon error:", err);
-    }
-    res.status(204).end();
-  });
+/** A src tag the client kept from the landing URL; the visit keeps its first one. */
+export function noteDemoVisitSrc(day: string, visitor: string, rawSrc: unknown): void {
+  const src = typeof rawSrc === "string" ? clamp(rawSrc.replace(/[^\w.-]/g, ""), MAX_SRC) : null;
+  if (!src) return;
+  demoAnalyticsDb()
+    .prepare(`UPDATE demo_visits SET src = COALESCE(src, ?) WHERE day = ? AND visitor = ?`)
+    .run(src, day, visitor);
 }

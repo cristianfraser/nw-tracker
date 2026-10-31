@@ -14,12 +14,15 @@ export function demoModeEnabled(): boolean {
 /**
  * Demo-mode env defaults, applied only when the variable is not set explicitly.
  * Outbound syncs and DB backups are pointless against synthetic data; the dashboard
- * cache warmer (`CACHE_WARM_ENABLED`) stays default-on so first paint is warm.
+ * cache warmer (`CACHE_WARM_ENABLED`) stays default-on so first paint is warm. The usage log
+ * is set on before `applyBackgroundJobsEnvDefaults` can default it off: the demo writes it to
+ * its own analytics file (usageDb.ts), so a demo rehearsal cannot collide with the primary.
  */
 const DEMO_MODE_DEFAULT_ENV: ReadonlyArray<readonly [name: string, value: string]> = [
   ["GLOBAL_SYNC_ENABLED", "0"],
   ["LIVE_QUOTES_SYNC_ENABLED", "0"],
   ["DB_BACKUP_ENABLED", "0"],
+  ["USAGE_LOG_ENABLED", "1"],
 ];
 
 /**

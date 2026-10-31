@@ -12,7 +12,7 @@ import {
   resolveCorsOrigins,
 } from "./httpSecurity.js";
 import { bootstrapDemoModeIfEnabled, demoModeEnabled } from "./demoMode.js";
-import { demoVisitLogMiddleware, registerDemoAnalyticsRoutes } from "./demoAnalytics.js";
+import { demoVisitLogMiddleware } from "./demoAnalytics.js";
 import { applyBackgroundJobsEnvDefaults } from "./backgroundJobsEnv.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
@@ -38,6 +38,8 @@ import { registerIngestRoutes } from "./routes/ingest.js";
 import { registerJobRoutes } from "./routes/jobs.js";
 import { startIngestRunScheduler } from "./ingestRunScheduler.js";
 import { startJobQueueExecutor } from "./jobQueueExecutor.js";
+import { registerUsageRoutes } from "./routes/usage.js";
+import { startUsageLogFlusher, usageLogEnabled, usageLogMiddleware } from "./usageLog.js";
 
 seedNavTree();
 
@@ -61,13 +63,14 @@ process.on("unhandledRejection", (reason) => {
 
 app.use(cors({ origin: resolveCorsOrigins() }));
 app.use(httpRequestLogMiddleware);
+if (usageLogEnabled()) app.use(usageLogMiddleware());
 if (demoModeEnabled()) {
   // Render terminates TLS: without this every visitor's req.ip is the proxy's, so the
   // analytics visitor hash would collapse to a single id.
   app.set("trust proxy", 1);
   app.use(demoReadOnlyMiddleware());
   app.use(demoVisitLogMiddleware());
-  console.log("demo: /api is read-only, anonymous visit analytics enabled (DEMO_MODE=1)");
+  console.log("demo: /api is read-only, anonymous visit analytics + usage log in DEMO_ANALYTICS_DB (DEMO_MODE=1)");
 }
 const jsonBody = express.json({ limit: "2mb" });
 // An ingest payload can carry a whole document set (every parsed card statement is ~4 MB as
@@ -80,7 +83,7 @@ app.use((req, res, next) => (req.path.startsWith("/api/ingest/") ? ingestJsonBod
 app.use((req, res, next) => {
   if (
     req.path.startsWith("/api/") &&
-    !req.path.startsWith("/api/demo/") &&
+    !req.path.startsWith("/api/usage/") &&
     req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS"
   ) {
     res.on("finish", () => invalidateFlowsOverview({ inputs: true }));
@@ -89,7 +92,6 @@ app.use((req, res, next) => {
 });
 
 /** Route registration order preserves the original monolithic file's order. */
-if (demoModeEnabled()) registerDemoAnalyticsRoutes(app);
 registerMetaRoutes(app);
 registerAccountsRoutes(app);
 registerMortgageRoutes(app);
@@ -108,6 +110,7 @@ registerFlowsRoutes(app);
 registerSyncRoutes(app);
 registerIngestRoutes(app);
 registerJobRoutes(app);
+registerUsageRoutes(app);
 
 if (serveClientDistEnabled()) {
   registerClientDistStatic(app);
@@ -133,5 +136,6 @@ app.listen(PORT, HOST, () => {
   startDashboardCacheWarmer();
   startIngestRunScheduler();
   startJobQueueExecutor();
+  if (usageLogEnabled()) startUsageLogFlusher();
 });
 

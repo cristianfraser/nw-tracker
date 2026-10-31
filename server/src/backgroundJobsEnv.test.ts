@@ -30,6 +30,7 @@ describe("applyBackgroundJobsEnvDefaults", () => {
     expect(env.LIVE_QUOTES_SYNC_ENABLED).toBe("0");
     expect(env.DB_BACKUP_ENABLED).toBe("0");
     expect(env.CACHE_WARM_ENABLED).toBe("0");
+    expect(env.USAGE_LOG_ENABLED).toBe("0");
   });
 
   it("never overrides an explicitly set per-job flag", () => {
