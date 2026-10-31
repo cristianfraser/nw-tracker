@@ -1,3 +1,4 @@
+import { historyTierMemo } from "./aggregationCache.js";
 /**
  * Evening Fintual poll: goals API balance vs certificado cuotas × fund_unit_daily must agree
  * before we treat v2 accounts as settled (a v2 bar is only ever written from a Fintual publish price).
@@ -162,6 +163,23 @@ export function fintualGoalsNavMatchesPriorPublishPosition(
 ): boolean {
   if (goalsNavClp == null || !Number.isFinite(goalsNavClp)) return false;
   if (!isFintualCertV2ValuationNotes(importNotes)) return false;
+  // Asked once per mark of the account: it reads movements and fund units only (mark-input
+  // tables, so a write to either drops the history tier).
+  const memo = historyTierMemo<string, boolean>("fintual_goals_nav_matches_prior_publish");
+  const key = `${accountId}|${goalsNavClp}|${importNotes}`;
+  let matches = memo.get(key);
+  if (matches === undefined) {
+    matches = goalsNavMatchesPriorPublishPositionUncached(accountId, importNotes, goalsNavClp);
+    memo.set(key, matches);
+  }
+  return matches;
+}
+
+function goalsNavMatchesPriorPublishPositionUncached(
+  accountId: number,
+  importNotes: string,
+  goalsNavClp: number
+): boolean {
   const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
   if (!seriesKey) return false;
   const units = fintualGoalUnitsFromMovements(accountId);
