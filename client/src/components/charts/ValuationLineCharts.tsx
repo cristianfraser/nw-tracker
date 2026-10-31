@@ -627,7 +627,10 @@ export function LineChartPanel({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              allowDataOverflow={!clipPlotToYDomain}
+              // No allowDataOverflow: every plotted value already lies inside the domain (the
+              // scaled series define it, everything else goes through clipChartDataToYDomain), and
+              // with it Recharts clips each Line to the exact plot rect — which cut half the
+              // stroke off the last segment, ending on the right edge (a day's move read faint).
               {...moneyYAxisProps(displayUnit, compactAxis)}
             />
             <Legend
