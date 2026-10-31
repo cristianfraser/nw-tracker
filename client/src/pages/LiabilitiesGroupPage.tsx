@@ -109,7 +109,12 @@ export function LiabilitiesGroupPage() {
   // Per-surface control for the Pasivos valuation chart (persisted per liabilities scope).
   const valuationPrefs = useSurfacePrefs(`liab.${portfolioGroup}.valuation`, "day", "3y");
   const valuationIsDaily = valuationPrefs.period === "day";
-  const proportionalPrefs = useSurfacePrefs(`liab.${portfolioGroup}.proportional`, "month", "total");
+  // The Pasivos root shows the coverage chart in this slot, which reads best over 3 years.
+  const proportionalPrefs = useSurfacePrefs(
+    `liab.${portfolioGroup}.proportional`,
+    "month",
+    navMatchNode?.chart_coverage ? "3y" : "total"
+  );
   const proportionalIsDaily = proportionalPrefs.period === "day";
 
   const { data: shell } = useGroupPageShell({

@@ -186,8 +186,8 @@ export function useSurfaceBenchmark(
 }
 
 /**
- * Composition panel view (`<pageKey>.proportional`): the share chart (default) or the value
- * treemap. Stored beside that surface's Período/Rango, which only the share chart uses.
+ * Composition panel view (`<pageKey>.proportional`): the share chart or the value
+ * treemap (default). Stored beside that surface's Período/Rango, which only the share chart uses.
  */
 export function useSurfaceCompositionView(surfaceId: string): {
   view: SurfaceCompositionView;
@@ -211,7 +211,7 @@ export function useSurfaceCompositionView(surfaceId: string): {
     [surfaceId]
   );
 
-  return { view: stored.view ?? "composition", setView };
+  return { view: stored.view ?? "map", setView };
 }
 
 /**
