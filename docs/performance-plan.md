@@ -1,6 +1,7 @@
 # Performance plan
 
-Status: proposed (2026-10-30). The primary instance runs on a 2019 Intel MacBook Pro
+Status: phases 1–2 merged (2026-10-30); phases 3–4 on branch `claude/perf-phases-3-4-2f95ae`
+(2026-10-31, measured below). The primary instance runs on a 2019 Intel MacBook Pro
 (i5-8279U); pages that felt instant on the M-series laptop are slow there. This plan orders the
 known fixes by what a person feels, starting with a warm reload of the Pasivos daily view.
 
@@ -96,6 +97,23 @@ ledger and the liabilities' monthly performance depend on no live price, yet a B
 - One group consolidation per (group, unit), shared by the four group endpoints.
 - Warm the pages you use: once the usage log exists, the warmer rebuilds the most visited group
   pages (and their daily series at the Rango you use) after each invalidation, most visited first.
+
+### Phases 3–4 as built (2026-10-31, Intel home server, copy of the real DB)
+
+| Path | Before | After |
+| --- | --- | --- |
+| Pasivos, all requests at once, warm | 1,9 s | 0,11 s |
+| Pasivos, one after another, after a crypto-only tick (no warmer) | 6,4 s | 2,4 s |
+| First Pasivos + ·0781 visit after a boot warm | 6,1 s | 0,23 s |
+| cc-ledger, warm | 1,3 s | 5 ms |
+| ·0781 account bundle | 1,64 MB, 156 ms warm | 169 KB, 8 ms |
+| Brokerage page endpoints, all at once, warm | 431 ms | 50 ms |
+
+What a crypto tick still rebuilds on Pasivos: nav context (0,8 s, every account's today value),
+the valuation series and daily series (the «Disponible» lines include the brokerage), each on
+top of the history tier. The four group endpoints already shared the per-account rows; what each
+re-ran was the group consolidation (~90 ms), now cached once. Not done: a quieter crypto cadence
+(product choice); rebuilding only the reference lines of a Pasivos payload.
 
 ### 5. Daily views
 
