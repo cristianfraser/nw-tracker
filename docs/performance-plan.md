@@ -149,7 +149,7 @@ rows; the card metrics and bucket totals are sums over rows and stay cheap. Expe
 nav-context after a coin tick 0,75 s -> ~0,1 s, the home bundle rebuild after a tick shorter too.
 Small change, low risk (rows are already independent).
 
-**C. Keep requests ahead of the warmer.** The warmer yields between pages, but one page build
+**C. Keep requests ahead of the warmer.** (Done 2026-10-31: `apiRequestsInFlight.ts`; synthetic demo DB, Pasivos requests landing during the bundle rewarm 0,95-1,5 s -> 0,47-1,0 s.) The warmer yields between pages, but one page build
 blocks for up to ~1 s. Count in-flight API requests in a middleware; the warmer awaits zero
 in-flight requests before each step and reorders: a page requested while it waits is built by
 the request, the warmer then hits the cache. Expected: a reload right after a tick costs what the
