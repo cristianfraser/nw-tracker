@@ -41,9 +41,18 @@ export function normalizeRut(rut: string): string {
   return rut.replace(/[^0-9kK]/g, "").toUpperCase();
 }
 
-/** A branch as the bank prints it, readable: store codes dropped («L272 LOS LEONES» → «Los Leones»). */
+/**
+ * A branch as the bank prints it, readable: store codes dropped («L272 LOS LEONES» → «Los Leones»).
+ * A branch a receipt already sets apart — «- Isidora», «(Isidora)» — is unwrapped first, so it is
+ * not wrapped twice.
+ */
 function branchName(rest: string): string {
-  const cleaned = rest.replace(/^(?:[A-Z]?\d{2,}\s+)+/i, "").trim();
+  const unwrapped = rest
+    .trim()
+    .replace(/^[-–]\s*/, "")
+    .replace(/^\(([^()]*)\)$/, "$1")
+    .trim();
+  const cleaned = unwrapped.replace(/^(?:[A-Z]?\d{2,}\s+)+/i, "").trim();
   return cleaned ? titleCaseName(cleaned) : "";
 }
 
