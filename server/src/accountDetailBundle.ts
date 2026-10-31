@@ -37,7 +37,12 @@ import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { equityReturnSnapshot } from "./equityReturns.js";
 import { attachColorsToValuationPayload } from "./chartColorRgb.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { db } from "./db.js";
+import { db, dbInTransaction } from "./db.js";
+import {
+  cacheKeyAccountDetailBundle,
+  getAggregationCached,
+  invalidateAccountDetailBundles,
+} from "./aggregationCache.js";
 import {
   getAccountValuationTimeseries,
   type TsUnit,
@@ -47,6 +52,23 @@ import { accountTodayValue } from "./accountTodayValue.js";
 import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
 const MOVEMENT_CARTOLA_SLUGS = new Set(["cuenta_corriente", "cuenta_vista"]);
+
+/**
+ * `GET /api/accounts/:id/detail-bundle`, cached for the page bundle's lifetime
+ * (`cacheKeyAccountDetailBundle`); built afresh inside a transaction.
+ */
+export function cachedAccountDetailBundle(
+  accountId: number,
+  unit: TsUnit,
+  granularity: "monthly" | "daily"
+): ReturnType<typeof buildAccountDetailBundle> {
+  if (dbInTransaction()) return buildAccountDetailBundle(accountId, unit, granularity);
+  return getAggregationCached(cacheKeyAccountDetailBundle(accountId, unit, granularity), () => {
+    const built = buildAccountDetailBundle(accountId, unit, granularity);
+    built.catch(() => invalidateAccountDetailBundles());
+    return built;
+  });
+}
 
 
 export async function buildAccountDetailBundle(

@@ -21,7 +21,7 @@ import { db } from "../db.js";
 import { listAccountsForGroupTab, type TsUnit } from "../valuationTimeseries.js";
 import { monthlyPerfForAccountId } from "../groupMonthlyPerfConsolidation.js";
 import { listPortfolioGroupAccountsForApi } from "../portfolioGroupAccountsApi.js";
-import { buildAccountDetailBundle } from "../accountDetailBundle.js";
+import { cachedAccountDetailBundle } from "../accountDetailBundle.js";
 import { HeavyWork, timeHeavy, timeHeavyAsync } from "../heavyWork.js";
 import { clearCheckingLedgerAnchor, upsertCheckingLedgerAnchor } from "../checkingCartolaBalances.js";
 import { getCheckingCartolaMonths } from "../checkingCartolaMonthSummary.js";
@@ -270,7 +270,7 @@ app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
   const unit: TsUnit = includeUsd ? "usd" : "clp";
   const granularity = req.query.granularity === "daily" ? "daily" : "monthly";
   const payload = await timeHeavyAsync(`${HeavyWork.accountDetailBundle} ${id} ${unit} ${granularity}`, () =>
-    buildAccountDetailBundle(id, unit, granularity)
+    cachedAccountDetailBundle(id, unit, granularity)
   );
   if (!payload) {
     res.status(404).json({ error: "account not found" });

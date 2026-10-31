@@ -1,3 +1,4 @@
+import { noteLiveFxRead, noteLiveTickerRead } from "./cacheDependencies.js";
 import { db } from "./db.js";
 import {
   LIVE_FX_SYMBOL,
@@ -69,6 +70,7 @@ export function getLatestLiveEquityQuoteRow(
   ticker: string,
   maxAgeMs = liveQuotesMaxAgeMs()
 ): LiveMarketQuoteRow | null {
+  noteLiveTickerRead(ticker);
   const row = stmtLatestEquity.get(ticker.toUpperCase()) as LiveMarketQuoteRow | undefined;
   if (!row || !isFresh(row.fetched_at, maxAgeMs)) return null;
   return row;
@@ -77,6 +79,7 @@ export function getLatestLiveEquityQuoteRow(
 export function getLatestLiveFxQuoteRow(
   maxAgeMs = liveQuotesMaxAgeMs()
 ): LiveMarketQuoteRow | null {
+  noteLiveFxRead();
   const row = stmtLatestFx.get(LIVE_FX_SYMBOL) as LiveMarketQuoteRow | undefined;
   if (!row || !isFresh(row.fetched_at, maxAgeMs)) return null;
   return row;

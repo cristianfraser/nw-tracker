@@ -169,6 +169,13 @@ export function computeCryptoMtmClpDisplaySync(
   if (!ticker || !accountUsesCryptoMtm(accountId)) return null;
 
   const session = equitySessionYmdForTicker(ticker, now);
+  // The session is always today's UTC day, which the live gate always takes: with no coins
+  // that day both live branches read 0 whatever the price (`computeCryptoMtmClpUncached`).
+  // Answering from the units reads no quote, so a sold-out coin records no live dependency.
+  const unitsOnSession = cryptoCoinCumulativeThroughDate(accountId, session);
+  if (!Number.isFinite(unitsOnSession) || unitsOnSession <= 1e-12) {
+    return { value_clp: 0, as_of_date: session };
+  }
   if (shouldUseLiveEquityQuote(ticker, session, now)) {
     const cached = computeCryptoMtmClpCachedLive(accountId, now);
     if (cached != null && Number.isFinite(cached)) {
