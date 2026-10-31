@@ -1,4 +1,5 @@
 import { cacheKeyCcLedgerGroup, getAggregationCached } from "./aggregationCache.js";
+import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { dbInTransaction } from "./db.js";
 import type { CcCloseSource } from "./ccBillingCloses.js";
 import type {
@@ -344,7 +345,7 @@ export function mergeCreditCardLedgers(
 export function creditCardGroupLedgerResponse(portfolioGroupSlug: string): CcLedgerResponse {
   if (dbInTransaction()) return buildCreditCardGroupLedgerResponse(portfolioGroupSlug);
   return getAggregationCached(cacheKeyCcLedgerGroup(portfolioGroupSlug), () =>
-    buildCreditCardGroupLedgerResponse(portfolioGroupSlug)
+    markJsonResponseCacheable(buildCreditCardGroupLedgerResponse(portfolioGroupSlug))
   );
 }
 
