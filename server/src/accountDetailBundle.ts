@@ -1,3 +1,4 @@
+import { markJsonResponseCacheable } from "./jsonResponse.js";
 import {
   getMergedDepositInflowEventsForAccount,
   getMergedDisplayDepositInflowEventsForAccount,
@@ -64,7 +65,7 @@ export function cachedAccountDetailBundle(
 ): ReturnType<typeof buildAccountDetailBundle> {
   if (dbInTransaction()) return buildAccountDetailBundle(accountId, unit, granularity);
   return getAggregationCached(cacheKeyAccountDetailBundle(accountId, unit, granularity), () => {
-    const built = buildAccountDetailBundle(accountId, unit, granularity);
+    const built = buildAccountDetailBundle(accountId, unit, granularity).then(markJsonResponseCacheable);
     built.catch(() => invalidateAccountDetailBundles());
     return built;
   });

@@ -1,3 +1,4 @@
+import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { cacheKeyCcLedgerAccount, getAggregationCached } from "./aggregationCache.js";
 import { dbInTransaction } from "./db.js";
 import { getCreditCardAccountConfig } from "./ccAccountConfig.js";
@@ -304,7 +305,9 @@ export function creditCardInstallmentsResponse(
   proxyTickers?: string[]
 ): CcInstallmentsResponseBase {
   if (proxyTickers !== undefined || dbInTransaction()) return buildCreditCardInstallmentsResponse(accountId, proxyTickers);
-  return getAggregationCached(cacheKeyCcLedgerAccount(accountId), () => buildCreditCardInstallmentsResponse(accountId));
+  return getAggregationCached(cacheKeyCcLedgerAccount(accountId), () =>
+    markJsonResponseCacheable(buildCreditCardInstallmentsResponse(accountId))
+  );
 }
 
 function buildCreditCardInstallmentsResponse(

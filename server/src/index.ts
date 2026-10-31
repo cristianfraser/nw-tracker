@@ -24,7 +24,7 @@ import {
   invalidateGroupResponses,
   invalidateKeysWithPrefix,
 } from "./aggregationCache.js";
-import { GROUP_DAILY_RESPONSE_PREFIX } from "./groupDailySeriesResponse.js";
+import { DAILY_SERIES_RESPONSE_PREFIX } from "./groupDailySeriesResponse.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAccountsRoutes } from "./routes/accounts.js";
@@ -48,6 +48,7 @@ import { startIngestRunScheduler } from "./ingestRunScheduler.js";
 import { startJobQueueExecutor } from "./jobQueueExecutor.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import { startUsageLogFlusher, usageLogEnabled, usageLogMiddleware } from "./usageLog.js";
+import { jsonResponseMiddleware } from "./jsonResponse.js";
 
 seedNavTree();
 
@@ -74,6 +75,8 @@ app.use(cors({ origin: resolveCorsOrigins() }));
 app.use(apiInFlightMiddleware());
 app.use(httpRequestLogMiddleware);
 if (usageLogEnabled()) app.use(usageLogMiddleware());
+// `res.json` on /api: serialized once per cached payload, gzip/brotli above 1 KB (jsonResponse.ts).
+app.use(jsonResponseMiddleware());
 if (demoModeEnabled()) {
   // Render terminates TLS: without this every visitor's req.ip is the proxy's, so the
   // analytics visitor hash would collapse to a single id.
@@ -103,7 +106,7 @@ app.use((req, res, next) => {
       invalidateCcLedgerResponses();
       invalidateAccountDetailBundles();
       invalidateGroupResponses();
-      invalidateKeysWithPrefix(GROUP_DAILY_RESPONSE_PREFIX);
+      invalidateKeysWithPrefix(DAILY_SERIES_RESPONSE_PREFIX);
     });
   }
   next();
