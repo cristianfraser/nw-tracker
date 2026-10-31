@@ -1,6 +1,5 @@
 import { cacheKeyCcLedgerAccount, getAggregationCached } from "./aggregationCache.js";
 import { dbInTransaction } from "./db.js";
-import type { CcBillingMonthBalanceRow } from "./ccBillingBalances.js";
 import { getCreditCardAccountConfig } from "./ccAccountConfig.js";
 import { listCcBillingMonthBalances } from "./ccBillingBalances.js";
 import {
@@ -13,12 +12,7 @@ import {
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import type { CreditCardBillingConfig } from "./ccBillingMonth.js";
 import { loadCreditCardBillingConfig } from "./ccBillingMonth.js";
-import {
-  ccStatementRowCount,
-  ccStatementsPayloadForAccount,
-  type CcStatementRow,
-  type CcStatementLineRow,
-} from "./ccStatementsDb.js";
+import { ccStatementRowCount } from "./ccStatementsDb.js";
 import { billingMonthForManualLedgerPurchase } from "./ccManualBillingMonth.js";
 import { associatedCardLast4sForMaster } from "./ccConsolidatedCards.js";
 import {
@@ -230,8 +224,6 @@ export type CcInstallmentsResponseBase = {
     installment_payments_clp: number;
     ledger_remaining_installments_clp?: number;
   }[];
-  statements?: (CcStatementRow & { lines: CcStatementLineRow[] })[];
-  billing_month_balances?: CcBillingMonthBalanceRow[];
   billing_detail_by_month?: CcBillingDetailMonthRow[];
   facturaciones?: CcFacturacionRow[];
   billing_config?: CreditCardBillingConfig;
@@ -249,13 +241,23 @@ export type CcInstallmentsResponseBase = {
   historial_chart?: CcHistorialChartPoint[];
   /** Tracked proxy tickers for this response. */
   proxy_tickers?: string[];
-  /** Per-purchase proxy earnings, keyed by purchase_db_id. */
-  purchase_proxy?: Record<number, ProxyLotResult>;
   /** Per-facturación aggregated proxy earnings. */
   facturacion_proxy?: ProxyFacturacionAggregate[];
 };
 
-function buildInstallmentProxy(
+/**
+ * A purchase as the card page receives it: without its payment rows, which only the proxy reads
+ * (here, from the ledger payload). The page renders none of them, and the statements, the stored
+ * balance snapshot and the per-purchase proxy were left out for the same reason (2026-10-31: the
+ * ·0781 bundle carried 1,3 MB of statement lines nobody drew).
+ */
+function forCardPage(p: CcInstallmentPurchaseComputed): CcInstallmentPurchaseComputed {
+  const { payment_statements: _paymentRows, ...rest } = p;
+  return rest;
+}
+
+/** @internal Exported for tests: the facturación and per-purchase proxy figures. */
+export function buildInstallmentProxy(
   accountId: number,
   purchases: readonly CcInstallmentPurchaseComputed[],
   facturaciones: readonly CcFacturacionRow[],
@@ -324,7 +326,7 @@ function buildCreditCardInstallmentsResponse(
     const db = bundle.payload;
     const billingDetail = bundle.detail;
     const facturaciones = bundle.facturaciones;
-    const { purchaseProxy, facturacionProxy } = buildInstallmentProxy(
+    const { facturacionProxy } = buildInstallmentProxy(
       accountId,
       [...db.purchases, ...db.purchases_completed],
       facturaciones,
@@ -351,14 +353,12 @@ function buildCreditCardInstallmentsResponse(
         installment_payment_count: db.meta.installment_payment_count,
         pay_by_rule_i18n_key: db.meta.pay_by_rule_i18n_key,
       },
-      purchases: db.purchases,
-      purchases_completed: db.purchases_completed,
+      purchases: db.purchases.map(forCardPage),
+      purchases_completed: db.purchases_completed.map(forCardPage),
       hidden_cancelled_purchases: db.hidden_cancelled_purchases,
       months: db.months,
       totals: db.totals,
       installment_history_months: db.installment_history_months,
-      statements: ccStatementsPayloadForAccount(accountId).statements,
-      billing_month_balances: listCcBillingMonthBalances(accountId),
       billing_detail_by_month: overlayBillingDetailMonthLines(billingDetail, lines),
       facturaciones,
       billing_config: loadCreditCardBillingConfig(accountId),
@@ -367,7 +367,6 @@ function buildCreditCardInstallmentsResponse(
       pending_cuota_purchases: pendingCuotaPurchaseLines(accountId),
       historial_chart,
       proxy_tickers: tickers,
-      purchase_proxy: purchaseProxy,
       facturacion_proxy: facturacionProxy,
     };
   }
@@ -405,8 +404,6 @@ function buildCreditCardInstallmentsResponse(
         next_calendar_month_total_clp: null,
         next_calendar_month: null,
       },
-      statements: ccStatementsPayloadForAccount(accountId).statements,
-      billing_month_balances: billing,
       billing_detail_by_month: overlayBillingDetailMonthLines(billingDetail, lines),
       facturaciones,
       billing_config: loadCreditCardBillingConfig(accountId),

@@ -18,7 +18,9 @@ import {
 import * as watchlistStats from "./watchlistStats.js";
 import { db } from "./db.js";
 import { buildFacturaciones } from "./ccBillingViews.js";
-import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
+import { buildInstallmentProxy, creditCardInstallmentsResponse } from "./creditCardInstallments.js";
+import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 
 // ─── Price-map helpers ────────────────────────────────────────────────────────
 
@@ -604,8 +606,16 @@ describe("facturación proxy on a card ledger", () => {
     ]);
 
     const ledger = creditCardInstallmentsResponse(accountId, [SERIES]);
+    const bundle = billingDetailCacheForAccount(accountId);
+    const { purchaseProxy } = buildInstallmentProxy(
+      accountId,
+      [...bundle.payload!.purchases, ...bundle.payload!.purchases_completed],
+      bundle.facturaciones,
+      [SERIES],
+      chileCalendarTodayYmd()
+    );
     // The plan's cuota 1, billed at the August close, withdraws on that facturación's pay-by.
-    expect(withdrawalsOf(ledger.purchase_proxy?.[planId])).toEqual([["2026-08", "2026-09-10"]]);
+    expect(withdrawalsOf(purchaseProxy[planId])).toEqual([["2026-08", "2026-09-10"]]);
     const byMonth = new Map(
       (ledger.facturacion_proxy ?? []).map((a) => [a.billing_month, a.by_ticker[SERIES]!] as const)
     );
