@@ -125,7 +125,7 @@
 }
 
 .rowSelectable:hover .select,
-.rowSelectable:focus-within .select,
+.rowSelectable:has(:focus-visible) .select,
 .listHasSelection .rowSelectable .select,
 .rowSelected .select {
   opacity: 1;
