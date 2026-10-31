@@ -18,6 +18,7 @@
     "list:missing-cc-pdfs": "tsx scripts/list-missing-cc-statement-pdfs.ts",
     "repair:checking-gastos-categories": "tsx scripts/repair-checking-gastos-categories.ts",
     "db:snapshot": "tsx scripts/db-snapshot.ts",
+    "demo:generate": "tsx scripts/generate-demo-data.ts --preset=demo --real-market",
     "demo:visits": "tsx scripts/print-demo-visits.ts",
     "repair:cc-usd-statements": "tsx scripts/import-missing-cc-usd-statements.ts",
     "reconcile:real-estate-links": "tsx scripts/reconcile-real-estate-expense-links.ts",
