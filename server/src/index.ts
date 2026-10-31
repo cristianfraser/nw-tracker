@@ -44,7 +44,7 @@ import { startUsageLogFlusher, usageLogEnabled, usageLogMiddleware } from "./usa
 seedNavTree();
 
 loadRootDotenv();
-bootstrapDemoModeIfEnabled();
+await bootstrapDemoModeIfEnabled();
 applyBackgroundJobsEnvDefaults();
 ensureAccountSyncSourcesSeeded();
 

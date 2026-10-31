@@ -25,8 +25,15 @@ import {
   writeCreditCardMonth,
   writeInvestmentMonth,
   writeMarketSeries,
+  DEMO_AFP_MODELO,
+  demoAfpSwitchDays,
+  demoNarrativeTickers,
   type DemoAccounts,
 } from "./demoWriters.js";
+import { demoEquitySeriesFromDb } from "./demoRealMarket.js";
+import { AFC_CIC_SERIES_KEY } from "../afcCicSeries.js";
+import { afpDisplaySeriesKey } from "../afpUnoSeries.js";
+import { buildAfpDisplayRowsForFund, upsertAfpDisplayRows } from "../afpUnoOfficialSync.js";
 
 function assertFreshDb(): void {
   if (!process.env.NW_TRACKER_TEST_DB?.trim()) {
@@ -157,9 +164,43 @@ function applyDemoColors(accounts: DemoAccounts): void {
   updByNotes.run("180,120,60", "credit_card_master|bci|%");
 }
 
-export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
+/**
+ * When the real-market demo switches its AFP from Modelo into UNO (which opened 2019-10) —
+ * early 2020, like the author's own history.
+ */
+const DEMO_AFP_SWITCH_MONTH = "2020-02";
+
+/** An AFP fund account on its display series, as the AFP split script creates them. */
+function createAfpFundAccount(afp: string, name: string): number {
+  const key = `import:afp|afp=${afp}|fund=A`;
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key, fund_series_key) VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(assetGroupId("retirement_afp_afc__afp"), name, key, key, afpDisplaySeriesKey(afp, "A")).lastInsertRowid
+  );
+}
+
+export type GenerateDemoDbOptions = {
+  /**
+   * `synthetic` (default): built-in price series, no network — the lean test preset and offline
+   * runs. `real`: the market tables were filled by `loadDemoRealMarket` (the hosted demo); the
+   * generator reads them, and the AFP/AFC become cuota ledgers on the official values.
+   */
+  market?: "synthetic" | "real";
+};
+
+export function generateDemoDb(preset: DemoPreset, opts: GenerateDemoDbOptions = {}): GenerateDemoDbResult {
   assertFreshDb();
   const narrative = demoNarrativeForPreset(preset);
+  const real = opts.market === "real";
+  if (real && narrative.withFondo) {
+    throw new Error("demo: the real-market demo has no fund series for the fondo — use withFondo: false");
+  }
+  if (real && narrative.withAfp && narrative.firstMonth >= DEMO_AFP_SWITCH_MONTH) {
+    throw new Error(`demo: the real-market AFP history needs a start before its switch month ${DEMO_AFP_SWITCH_MONTH}`);
+  }
 
   const checkingId = createAccount(
     "cash_eqs__cuenta_corriente",
@@ -201,12 +242,19 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
             ).lastInsertRowid
         )
       : null,
-    afpId: narrative.withAfp
-      ? createAccount("retirement_afp_afc__afp", "AFP", "demo:afp")
-      : null,
+    afpId: !narrative.withAfp
+      ? null
+      : real
+        ? createAfpFundAccount("uno", "UNO-A")
+        : createAccount("retirement_afp_afc__afp", "AFP", "demo:afp"),
+    afpLedger:
+      real && narrative.withAfp
+        ? { modeloId: createAfpFundAccount(DEMO_AFP_MODELO, "Modelo-A"), switchMonth: DEMO_AFP_SWITCH_MONTH }
+        : null,
     afcId: narrative.withAfp
       ? createAccount("retirement_afp_afc__afc", "AFC", "demo:afc")
       : null,
+    afcLedger: real && narrative.withAfp,
     stockIdByTicker: new Map([
       ...(narrative.stocks?.positions ?? []).map(
         (p) => [p.ticker, createTickerAccount("brokerage_acciones", "Acciones", p.ticker)] as const
@@ -263,9 +311,23 @@ export function generateDemoDb(preset: DemoPreset): GenerateDemoDbResult {
   renameDemoTreesCategoryToHobbies();
 
   const rng = demoRng(narrative.seed);
-  writeMarketSeries(narrative, rng);
-  const state = initialDemoRunState(narrative, rng);
-  writeDemoPriceSeries(state);
+  let state;
+  if (real) {
+    state = initialDemoRunState(narrative, rng, demoEquitySeriesFromDb(demoNarrativeTickers(narrative)));
+    if (accounts.afcId != null) {
+      db.prepare(`UPDATE accounts SET fund_series_key = ? WHERE id = ?`).run(AFC_CIC_SERIES_KEY, accounts.afcId);
+    }
+    if (accounts.afpLedger) {
+      // Modelo's display series covers exactly the window the demo holds it (through the sale day).
+      const { saleDay } = demoAfpSwitchDays(accounts.afpLedger.switchMonth);
+      const rows = buildAfpDisplayRowsForFund(DEMO_AFP_MODELO, "A", `${narrative.firstMonth}-01`, saleDay);
+      upsertAfpDisplayRows(afpDisplaySeriesKey(DEMO_AFP_MODELO, "A"), DEMO_AFP_MODELO, rows, false);
+    }
+  } else {
+    writeMarketSeries(narrative, rng);
+    state = initialDemoRunState(narrative, rng);
+    writeDemoPriceSeries(state);
+  }
   const months = expandYearMonthsInclusive(narrative.firstMonth, narrative.lastMonth);
   for (const month of months) {
     const { flows, afpContribClp } = writeCheckingMonth(narrative, accounts, month, state, rng);

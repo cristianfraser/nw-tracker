@@ -31,6 +31,10 @@ import { chileCalendarTodayYmd } from "../chileDate.js";
 import { invalidateExpenseGenericUniqueMerchantCache } from "../expenseGenericUniqueMerchants.js";
 import { expandYearMonthsInclusive, monthEndUtcYmd } from "../calendarMonth.js";
 import { MOVEMENT_CLP_LEG_SQL } from "../movementAmounts.js";
+import { AFC_CIC_SERIES_KEY } from "../afcCicSeries.js";
+import { AFP_UNO_CUOTA_SERIES_KEY, afpDisplaySeriesKey } from "../afpUnoSeries.js";
+import { isChileBusinessDay, nextChileBusinessDayYmd } from "../marketHolidays.js";
+import { FLOW_KIND_AFP_FUND_SWITCH } from "../movementFlowType.js";
 import {
   chapterForMonth,
   type DemoCard,
@@ -51,6 +55,14 @@ export type DemoAccounts = {
   cryptoId: number | null;
   afpId: number | null;
   afcId: number | null;
+  /**
+   * Real-market demo only: the AFP is a cuota ledger on the Superintendencia's official values —
+   * Modelo fund A from the start, switched into UNO fund A (`afpId`, the live account) in
+   * `switchMonth`, the shape the author's own AFP history has. Null = the synthetic book AFP.
+   */
+  afpLedger: { modeloId: number; switchMonth: DemoMonth } | null;
+  /** Real-market demo only: the AFC is a cuota ledger on the SP `afc_cic` series. */
+  afcLedger: boolean;
   savingsId: number | null;
   vistaId: number | null;
   propertyId: number | null;
@@ -240,7 +252,7 @@ function monthsBetween(a: DemoMonth, b: DemoMonth): number {
  * sets `marketHistoryYears`, the series reaches that many years before `lastMonth` — so the
  * watchlist 10Y anchor has data — without moving the portfolio window; else it starts at `firstMonth`.
  */
-function marketHistoryFirstMonth(narrative: DemoNarrative): DemoMonth {
+export function marketHistoryFirstMonth(narrative: DemoNarrative): DemoMonth {
   const years = narrative.marketHistoryYears;
   if (years == null) return narrative.firstMonth;
   const [ly, lm] = narrative.lastMonth.split("-").map(Number) as [number, number];
@@ -415,14 +427,20 @@ function ymdAddDays(ymd: string, days: number): string {
   return new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
-export function buildDemoEquitySeries(
-  narrative: DemoNarrative,
-  rng: () => number
-): DemoEquitySeries {
+/** Every ticker the narrative holds (stock positions, long-term core, BTC when it has crypto). */
+export function demoNarrativeTickers(narrative: DemoNarrative): string[] {
   const tickers = new Set<string>();
   for (const p of narrative.stocks?.positions ?? []) tickers.add(p.ticker);
   for (const p of narrative.stocks?.longTermPositions ?? []) tickers.add(p.ticker);
   if (narrative.withCrypto) tickers.add("BTC-USD");
+  return [...tickers];
+}
+
+export function buildDemoEquitySeries(
+  narrative: DemoNarrative,
+  rng: () => number
+): DemoEquitySeries {
+  const tickers = demoNarrativeTickers(narrative);
   const portfolioStart = dayInMonth(narrative.firstMonth, 1);
   const marketStart = dayInMonth(marketHistoryFirstMonth(narrative), 1);
   const end = monthEndUtcYmd(narrative.lastMonth);
@@ -546,6 +564,10 @@ export type DemoRunState = {
   cryptoUnits: number;
   afpValueClp: number;
   afcValueClp: number;
+  /** Cuota ledgers (real-market demo): Modelo cuotas until the switch, then UNO; AFC cuotas. */
+  afpModeloUnits: number;
+  afpUnoUnits: number;
+  afcUnits: number;
   savingsValueClp: number;
   checkingBalanceClp: number;
   /** Built once per run: weekly USD closes per ticker + monthly fondo valor cuota. */
@@ -561,7 +583,9 @@ export type DemoRunState = {
 
 export function initialDemoRunState(
   narrative: DemoNarrative,
-  rng: () => number
+  rng: () => number,
+  /** Real-market demo: the stored real closes (no synthetic series is built). */
+  realEquitySeries?: DemoEquitySeries
 ): DemoRunState {
   return {
     cards: new Map(
@@ -572,9 +596,12 @@ export function initialDemoRunState(
     cryptoUnits: 0,
     afpValueClp: 0,
     afcValueClp: 0,
+    afpModeloUnits: 0,
+    afpUnoUnits: 0,
+    afcUnits: 0,
     savingsValueClp: 0,
     checkingBalanceClp: 0,
-    equitySeries: buildDemoEquitySeries(narrative, rng),
+    equitySeries: realEquitySeries ?? buildDemoEquitySeries(narrative, rng),
     fondoCuotaSeries: narrative.withFondo ? buildDemoFondoCuotaSeries(narrative, rng) : [],
     mortgageOutstandingClp: null,
     deptoCuotaN: 0,
@@ -1224,6 +1251,89 @@ export function writeCreditCardMonth(
 }
 
 /** Fondo/stocks/crypto + AFP month-end valuations along seeded return paths; house once bought. */
+/** A fund series' value on or before `ymd` (the readers' rule); throws when it has none yet. */
+function fundUnitOnOrBefore(seriesKey: string, ymd: string): number {
+  const row = db
+    .prepare(`SELECT unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day <= ? ORDER BY day DESC LIMIT 1`)
+    .get(seriesKey, ymd) as { unit_value_clp: number } | undefined;
+  if (!row) throw new Error(`demo: no ${seriesKey} value on or before ${ymd}`);
+  return row.unit_value_clp;
+}
+
+/** Nth Chile business day after `ymd`. */
+function chileBusinessDaysAfter(ymd: string, n: number): string {
+  let cur = ymd;
+  for (let i = 0; i < n; i++) {
+    const next = nextChileBusinessDayYmd(cur);
+    if (next == null) throw new Error(`demo: no Chile business day after ${cur}`);
+    cur = next;
+  }
+  return cur;
+}
+
+/**
+ * The sale day of the demo's AFP switch: the first Chile business day from the 3rd of the
+ * switch month. Modelo's display series runs through it; UNO credits four business days later.
+ */
+export function demoAfpSwitchDays(switchMonth: DemoMonth): { saleDay: string; creditDay: string } {
+  const third = dayInMonth(switchMonth, 3);
+  const saleDay = isChileBusinessDay(third) ? third : chileBusinessDaysAfter(third, 1);
+  return { saleDay, creditDay: chileBusinessDaysAfter(saleDay, 4) };
+}
+
+const insAfpSwitch = db.prepare(
+  `INSERT INTO movements (from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta, counter_units_delta, flow_kind)
+   VALUES (?, ?, ?, 'clp', ?, ?, ?, ?, ?)`
+);
+
+/**
+ * One month of the cuota-ledger AFP: the contribution buys cuotas of the fund held that day
+ * (Modelo before the switch credit, UNO from it) at its display value; in the switch month the
+ * whole Modelo balance is sold at the sale day's value and credited to UNO, as an
+ * `afp_fund_switch` transfer carrying both cuota counts.
+ */
+function writeDemoAfpLedgerMonth(
+  unoId: number,
+  ledger: { modeloId: number; switchMonth: DemoMonth },
+  month: DemoMonth,
+  state: DemoRunState,
+  contribClp: number
+): void {
+  const { saleDay, creditDay } = demoAfpSwitchDays(ledger.switchMonth);
+  if (month === ledger.switchMonth && state.afpModeloUnits > 0) {
+    const pesos = Math.round(state.afpModeloUnits * fundUnitOnOrBefore(afpDisplaySeriesKey(DEMO_AFP_MODELO, "A"), saleDay));
+    const unoUnits = Math.round((pesos / fundUnitOnOrBefore(AFP_UNO_CUOTA_SERIES_KEY, creditDay)) * 1e4) / 1e4;
+    insAfpSwitch.run(
+      ledger.modeloId,
+      unoId,
+      pesos,
+      creditDay,
+      `Traspaso AFP Modelo → UNO|demo`,
+      state.afpModeloUnits,
+      unoUnits,
+      FLOW_KIND_AFP_FUND_SWITCH
+    );
+    state.afpUnoUnits = Math.round((state.afpUnoUnits + unoUnits) * 1e4) / 1e4;
+    state.afpModeloUnits = 0;
+  }
+  if (contribClp <= 0) return;
+  const day = dayInMonth(month, 25);
+  const onUno = day >= creditDay;
+  const seriesKey = onUno ? AFP_UNO_CUOTA_SERIES_KEY : afpDisplaySeriesKey(DEMO_AFP_MODELO, "A");
+  const units = Math.round((contribClp / fundUnitOnOrBefore(seriesKey, day)) * 1e4) / 1e4;
+  if (onUno) state.afpUnoUnits = Math.round((state.afpUnoUnits + units) * 1e4) / 1e4;
+  else state.afpModeloUnits = Math.round((state.afpModeloUnits + units) * 1e4) / 1e4;
+  movementWithUnits(onUno ? unoId : ledger.modeloId, {
+    amount_clp: contribClp,
+    occurred_on: day,
+    note: "Cotización obligatoria|demo",
+    units_delta: units,
+  });
+}
+
+/** The AFP the demo's history starts on (switched into UNO later, see `writeDemoAfpLedgerMonth`). */
+export const DEMO_AFP_MODELO = "modelo";
+
 export function writeInvestmentMonth(
   narrative: DemoNarrative,
   accounts: DemoAccounts,
@@ -1383,7 +1493,9 @@ export function writeInvestmentMonth(
     }
   }
 
-  if (accounts.afpId != null && afpContribClp > 0) {
+  if (accounts.afpId != null && accounts.afpLedger != null) {
+    writeDemoAfpLedgerMonth(accounts.afpId, accounts.afpLedger, month, state, afpContribClp);
+  } else if (accounts.afpId != null && afpContribClp > 0) {
     movement(accounts.afpId, afpContribClp, dayInMonth(month, 25), "Cotización obligatoria|demo");
     state.afpValueClp = Math.max(0, state.afpValueClp * (1 + r * 0.7) + afpContribClp);
     valuation(accounts.afpId, monthEnd, state.afpValueClp);
@@ -1391,7 +1503,12 @@ export function writeInvestmentMonth(
 
   if (accounts.afcId != null) {
     const afcContrib = Math.round(afpContribClp * 0.125);
-    if (afcContrib > 0) {
+    if (afcContrib > 0 && accounts.afcLedger) {
+      const day = dayInMonth(month, 25);
+      const units = Math.round((afcContrib / fundUnitOnOrBefore(AFC_CIC_SERIES_KEY, day)) * 1e4) / 1e4;
+      state.afcUnits = Math.round((state.afcUnits + units) * 1e4) / 1e4;
+      movementWithUnits(accounts.afcId, { amount_clp: afcContrib, occurred_on: day, note: "Cotización AFC|demo", units_delta: units });
+    } else if (afcContrib > 0) {
       movement(accounts.afcId, afcContrib, dayInMonth(month, 25), "Cotización AFC|demo");
       state.afcValueClp = Math.max(0, state.afcValueClp * (1 + r * 0.4) + afcContrib);
       valuation(accounts.afcId, monthEnd, state.afcValueClp);

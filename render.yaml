@@ -29,8 +29,11 @@
 # - startCommand runs the server from source via tsx (same as local dev, minus watch):
 #   the compiled dist/ build would not ship server/migrations/*.sql. Build therefore
 #   installs devDependencies explicitly (Render sets NODE_ENV=production by default).
-# - DEMO_MODE defaults GLOBAL_SYNC_ENABLED / LIVE_QUOTES_SYNC_ENABLED / DB_BACKUP_ENABLED
-#   to 0 (server/src/demoMode.ts); the dashboard cache warmer stays on for first paint.
+# - The demo runs on real market data: at boot it fetches the history of its holdings (Yahoo),
+#   Banco Central series and the AFP/AFC official values before generating the DB, and its
+#   market syncs + live quotes run while someone browses it, sleeping 30 min after the last
+#   request (server/src/demoMode.ts, demoData/demoRealMarket.ts, demoMarketActivity.ts).
+#   DB backups default off; the dashboard cache warmer stays on for first paint.
 # - Single-service same-origin (SERVE_CLIENT_DIST=1) — no CORS_ALLOWED_ORIGINS needed.
 services:
   - type: web
@@ -85,3 +88,10 @@ services:
       # read it from the service's Environment tab.
       - key: DEMO_OWNER_CODE
         generateValue: true
+      # Banco Central API (observed dollar, euro, UF, UTM, IPC) for the demo's real market data.
+      # Entered by hand in the dashboard (secrets never live in this public file); the boot fails
+      # without them.
+      - key: BCENTRAL_EMAIL
+        sync: false
+      - key: BCENTRAL_PASSWORD
+        sync: false

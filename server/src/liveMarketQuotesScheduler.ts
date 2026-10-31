@@ -14,6 +14,7 @@
  * instead of leaving yesterday's closes on screen for a whole interval — see
  * `liveMarketQuotesSchedulerPolicy.ts` for the decisions and the incident.
  */
+import { demoMarketAwake, onDemoMarketWake } from "./demoMarketActivity.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 import {
   liveQuotesIntervalMs,
@@ -41,7 +42,7 @@ let lastTickStartedAtMs: number | null = null;
 let retryBudget = RETRY_DELAYS_MS.length;
 let retryTimer: NodeJS.Timeout | null = null;
 
-type TickTrigger = "boot" | "interval" | "retry";
+type TickTrigger = "boot" | "interval" | "retry" | "wake";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -59,6 +60,9 @@ async function schedulerTick(trigger: TickTrigger): Promise<void> {
     console.log("live-quotes:scheduler — skip (previous run still in progress).");
     return;
   }
+  // The hosted demo polls only while someone browses it; a visitor's first request runs a
+  // "wake" tick at once (`onDemoMarketWake` below).
+  if (!demoMarketAwake()) return;
   inFlight = true;
   if (trigger === "retry") retryTimer = null;
   let result: LiveMarketQuotesSyncResult | null = null;
@@ -123,6 +127,7 @@ export function startLiveMarketQuotesScheduler(): void {
     `live-quotes:scheduler — enabled; polling every ${Math.round(intervalMs / 1000)}s, ` +
       `${Math.round(sessionIntervalMs / 1000)}s while a priced market is open`
   );
+  onDemoMarketWake(() => void schedulerTick("wake"));
   void schedulerTick("boot");
   scheduleNextTick();
 }
