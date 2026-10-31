@@ -43,6 +43,8 @@ export function Modal({
   const nextBtnRef = useRef<HTMLButtonElement>(null);
   const closeBtnRef = useRef<HTMLButtonElement>(null);
   const lastNavClick = useRef<"prev" | "next" | null>(null);
+  /** The press that began on the backdrop (the `<dialog>` itself), if the current one did. */
+  const pressStartedOnBackdrop = useRef(false);
 
   useEffect(() => {
     const el = ref.current;
@@ -88,8 +90,17 @@ export function Modal({
         e.preventDefault();
         ref.current?.close();
       }}
+      // Close on a backdrop click only when the press also began there. A click whose target is
+      // the dialog can come from elsewhere: a react-aria popover's underlay (rendered inside the
+      // dialog) unmounts on pointerdown, so the click lands on the dialog; a text selection
+      // dragged out of the content ends on the backdrop.
+      onPointerDown={(e) => {
+        pressStartedOnBackdrop.current = e.target === ref.current;
+      }}
       onClick={(e) => {
-        if (e.target === ref.current) ref.current.close();
+        const startedOnBackdrop = pressStartedOnBackdrop.current;
+        pressStartedOnBackdrop.current = false;
+        if (startedOnBackdrop && e.target === ref.current) ref.current.close();
       }}
     >
       <header className={styles.header}>
