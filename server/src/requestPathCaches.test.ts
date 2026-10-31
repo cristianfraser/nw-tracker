@@ -1,5 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
-import { clearAggregationCache, invalidateAggregationForAccountDate } from "./aggregationCache.js";
+import { cachedGroupResponse, clearAggregationCache, invalidateAggregationForAccountDate } from "./aggregationCache.js";
+import { getGroupConsolidatedMonthlyRows, getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
+import { getGroupMonthlyPlSeries } from "./groupMonthlyPlSeries.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "./dashboardAccounts.js";
 import { db } from "./db.js";
@@ -17,7 +19,7 @@ import {
   transferToLegUnits,
   type MovementTransferRow,
 } from "./movementTransfer.js";
-import { getDashboardOverviewBlock } from "./valuationTimeseries.js";
+import { getDashboardOverviewBlock, getGroupValuationTimeseries } from "./valuationTimeseries.js";
 import { createManualCcInstallmentPurchase, deleteManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
 import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
@@ -260,6 +262,64 @@ describe("account detail bundle cache", () => {
       const afterWrite = await snap(cachedAccountDetailBundle);
       expect(afterWrite.get(`${accountId}|clp`)).not.toBe(cached.get(`${accountId}|clp`));
       const freshAfter = await snap(buildAccountDetailBundle);
+      expect([...freshAfter.keys()].filter((k) => afterWrite.get(k) !== freshAfter.get(k))).toEqual([]);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+      clearAggregationCache();
+    }
+  }, 300_000);
+});
+
+describe("group responses share one consolidation", () => {
+  function groupPayloads(): Map<string, string> {
+    const out = new Map<string, string>();
+    const slugs = (db.prepare(`SELECT slug FROM portfolio_groups ORDER BY id`).all() as { slug: string }[]).map((r) => r.slug);
+    for (const slug of slugs) {
+      for (const unit of ["clp", "usd"] as const) {
+        const resp = <T,>(kind: string, build: () => T) => out.set(`${kind}|${slug}|${unit}`, JSON.stringify(cachedGroupResponse(kind, slug, unit, build)));
+        resp("consolidated_tables", () => getGroupConsolidatedTables(slug, unit));
+        resp("monthly_pl_series", () => getGroupMonthlyPlSeries(slug, unit, { groupedBlocks: true }));
+        resp("valuation_ts", () => getGroupValuationTimeseries(slug, unit, undefined, { groupedBlocks: true }));
+        out.set(`rows|${slug}|${unit}`, JSON.stringify(getGroupConsolidatedMonthlyRows(slug, unit)));
+      }
+    }
+    return out;
+  }
+  function uncached(): Map<string, string> {
+    let out = new Map<string, string>();
+    try {
+      db.transaction(() => {
+        out = groupPayloads();
+        throw new Error("rollback");
+      })();
+    } catch (e) {
+      if (!(e instanceof Error) || e.message !== "rollback") throw e;
+    }
+    return out;
+  }
+
+  it("cached responses equal a build without caches, before and after a write", () => {
+    clearAggregationCache();
+    const cached = groupPayloads();
+    expect(groupPayloads()).toEqual(cached);
+    const fresh = uncached();
+    expect([...fresh.keys()].filter((k) => cached.get(k) !== fresh.get(k))).toEqual([]);
+
+    const accountId = (
+      db.prepare(`SELECT account_id AS id FROM movements WHERE account_id IS NOT NULL AND currency = 'clp' LIMIT 1`).get() as {
+        id: number;
+      }
+    ).id;
+    const id = Number(
+      db
+        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 54321, 'clp', ?, 'vitest:group-responses')`)
+        .run(accountId, chileCalendarTodayYmd()).lastInsertRowid
+    );
+    invalidateAggregationForAccountDate(accountId, chileCalendarTodayYmd());
+    try {
+      const afterWrite = groupPayloads();
+      expect([...afterWrite.keys()].some((k) => afterWrite.get(k) !== cached.get(k))).toBe(true);
+      const freshAfter = uncached();
       expect([...freshAfter.keys()].filter((k) => afterWrite.get(k) !== freshAfter.get(k))).toEqual([]);
     } finally {
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);

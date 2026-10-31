@@ -8,7 +8,7 @@ import {
 } from "../portfolioGroupTree.js";
 import { attachColorsToValuationPayload } from "../chartColorRgb.js";
 import { HeavyWork, timeHeavy } from "../heavyWork.js";
-import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached } from "../aggregationCache.js";
+import { cachedGroupResponse } from "../aggregationCache.js";
 import { attachNetWorthAth } from "../netWorthAllTimeHigh.js";
 import {
   getDashboardValuationTimeseries,
@@ -359,10 +359,9 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
       res.status(400).json({ error: "unknown group slug" });
       return;
     }
-    // Cached with the page bundle's lifetime: it reads the same inputs, and every invalidation
-    // that drops the bundle drops it.
+    // Cached with the page bundle's lifetime (`cachedGroupResponse`).
     res.json(
-      getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}group_valuation_ts|${tabSlug}|${unit}`, () =>
+      cachedGroupResponse("valuation_ts", tabSlug, unit, () =>
         attachColorsToValuationPayload(
           getGroupValuationTimeseries(tabSlug, unit, undefined, { groupedBlocks: true })
         )
@@ -395,7 +394,7 @@ app.get("/api/groups/:slug/consolidated-tables", (req, res) => {
   }
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
-  res.json(getGroupConsolidatedTables(tabSlug, unit, undefined));
+  res.json(cachedGroupResponse("consolidated_tables", tabSlug, unit, () => getGroupConsolidatedTables(tabSlug, unit, undefined)));
 });
 
 /**
@@ -410,8 +409,12 @@ app.get("/api/groups/:slug/period-returns", (req, res) => {
   }
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
-  const { unit: u, group_slug, period_returns } = getGroupPeriodReturns(slug, unit);
-  res.json({ unit: u, group_slug, period_returns });
+  res.json(
+    cachedGroupResponse("period_returns", slug, unit, () => {
+      const { unit: u, group_slug, period_returns } = getGroupPeriodReturns(slug, unit);
+      return { unit: u, group_slug, period_returns };
+    })
+  );
 });
 
 /** Home «Últimos gastos»: `?limit=` (default 15) newest expense lines, `?unit=clp|usd`. */
@@ -546,7 +549,9 @@ app.get("/api/groups/:slug/performance-monthly", (req, res) => {
   }
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
-  res.json(getGroupMonthlyPlSeries(tabSlug, unit, { groupedBlocks: true }));
+  res.json(
+    cachedGroupResponse("monthly_pl_series", tabSlug, unit, () => getGroupMonthlyPlSeries(tabSlug, unit, { groupedBlocks: true }))
+  );
 });
 
 }
