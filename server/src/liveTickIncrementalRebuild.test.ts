@@ -20,6 +20,7 @@ import { insertLiveMarketQuote } from "./liveMarketQuotesDb.js";
 import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { warmRentabilidadDailySeries } from "./rentabilidadDailyWarm.js";
 import { snapshotTables } from "./test/snapshotTables.js";
+import { seedNavTree } from "./seedNavTree.js";
 import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
@@ -30,8 +31,15 @@ import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
  * timelines, ledger closes, fx rows by day) and rebuilds only today on top of it. Whatever the
  * rebuild serves must be byte-identical to a rebuild from an empty cache at the same instant.
  */
-const restoreTables = snapshotTables(["live_market_quotes", "equity_daily", "fx_daily"]);
+const restoreTables = snapshotTables(["live_market_quotes", "equity_daily", "fx_daily", "mark_input_changes"]);
+const COIN_IMPORT_KEY = "vitest:live-tick|btc";
 afterAll(() => {
+  // Never snapshot `accounts`: restoring it deletes every account, which cascades through their rows.
+  const coin = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(COIN_IMPORT_KEY) as { id: number } | undefined;
+  if (coin) {
+    db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(coin.id);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(coin.id);
+  }
   restoreTables();
   vi.useRealTimers();
   clearAggregationCache();
@@ -205,5 +213,47 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
     expect(keptKeys.some((k) => k.startsWith("dashboard.page_bundle|"))).toBe(true);
     // The Pasivos reference sources («Disponible») are cached parts of their own.
     expect(keptKeys.some((k) => k.startsWith("dashboard.page_bundle|group|reference_source_totals|"))).toBe(true);
+  }, 300_000);
+
+  // Only a coin moves (crypto at night, a weekend): the synthetic DB gets a Bitcoin account in the
+  // crypto bucket, so the daily series, valuation series, monthly rows and bundles that read it
+  // rebuild today's part on top of everything kept, and must equal an empty-cache rebuild.
+  it("a scoped coin-only tick serves the same payloads as a full rebuild", async () => {
+    const groupId = (
+      db.prepare(`SELECT id FROM asset_groups WHERE slug = 'brokerage_crypto__bitcoin'`).get() as { id: number }
+    ).id;
+    const btcId = Number(
+      db
+        .prepare(
+          `INSERT INTO accounts (asset_group_id, name, notes, equity_ticker, import_key)
+           VALUES (?, 'Test Bitcoin', 'vitest:live-tick', 'BTC-USD', ?)`
+        )
+        .run(groupId, COIN_IMPORT_KEY).lastInsertRowid
+    );
+    seedNavTree();
+    expect(
+      db.prepare(`SELECT 1 FROM portfolio_group_items WHERE account_id = ?`).get(btcId)
+    ).toBeDefined();
+    const today = chileCalendarTodayYmd();
+    db.prepare(`DELETE FROM equity_daily WHERE ticker = 'BTC-USD'`).run();
+    const insClose = db.prepare(
+      `INSERT INTO equity_daily (ticker, trade_date, close, currency) VALUES ('BTC-USD', ?, ?, 'usd')`
+    );
+    for (let d = chileCalendarAddDays(today, -800), i = 0; d < today; d = chileCalendarAddDays(d, 1), i++) {
+      insClose.run(d, 40_000 + 25 * i);
+    }
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
+       VALUES (?, 3000000, 'clp', ?, 'Compra BTC|vitest', 0.05)`
+    ).run(btcId, chileCalendarAddDays(today, -500));
+
+    const { differing, moved, keptKeys } = await tickParity((t) => (t.toUpperCase() === "BTC-USD" ? 1.05 : 1), 1, {
+      scoped: true,
+    });
+    expect(differing).toEqual([]);
+    expect(moved).toBe(true);
+    // What reads no coin stays: the card ledgers, the past parts, a source without the coin.
+    expect(keptKeys).toContain("hist.daily_series_past");
+    expect(keptKeys.some((k) => k.startsWith("cc.ledger|"))).toBe(true);
   }, 300_000);
 });
