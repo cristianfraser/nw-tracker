@@ -308,6 +308,44 @@ cold Pasivos daily series, its reference sources included) — the warmer's job,
 Suggested order: 1 (largest, one change, needs a careful write-detection test), then 3-4 (small,
 tracked entries), then 5 (gate semantics, needs parity tests), then 2.
 
+### The profile's fixes, benchmarked (2026-10-31, SYNTHETIC demo DB, Linux sandbox, 4 cores)
+
+Each fix was measured against the commit before it with `scripts/measure-pasivos-tick.ts`
+(5 rounds, medians) run three times alternating between two checkouts, plus in-process rebuild
+timings. Noise is ~10 % run to run, so a single run decides nothing; what stayed below that was
+dropped.
+
+| Fix | Pasivos cold | coin tick | dollar tick | Kept |
+| --- | --- | --- | --- | --- |
+| 1. Freshness checked once per synchronous stretch unless this connection wrote (`dbWriteCounter.ts`) | ~2470 → ~2000 ms | ~220 → ~200 | ~365 → ~306 | yes |
+| 2. Statements shared per SQL text (in `db.ts`; not in the profile, found after fix 1) | ~2020 → ~1620 | ~190 → ~145 | ~308 → ~245 | yes |
+| 3. Nav trees memoized until the database changes (`dbStateMemo.ts`) | unchanged | ~136 → ~113 | ~236 → ~201 | yes |
+| 4. Per-account lookups (movement bounds, ticker, crypto flag, bucket, card flag, live-close meta, card group) and month-end dates memoized | within noise | within noise | ~192 → ~167 | yes |
+| `accountChartInactive` memoized | within noise | within noise | within noise | no |
+| `listAccountsForGroupTab` memoized | — | — | — | no: its rows read live figures (the memo's guard refused it) |
+| 5. `fxForLiveMtm` reports no live read for a date no fresh row can match | within noise | within noise | ~183 → ~164 (daily series rebuild ~75 → ~64) | yes |
+
+All together, against e38a76e: Pasivos cold ~2510 → ~1310 ms (−48 %), coin tick ~219 → ~108
+(−51 %), dollar tick ~373 → ~162 (−57 %). In-process rebuilds after a tick: Pasivos valuation
+~76 → ~26 ms (coin) and ~124 → ~50 (dollar), nav-context ~94 → ~26 and ~138 → ~41, the Pasivos +
+net-worth daily series ~108 → ~56 (dollar). Cold builds: sidebar ~545 → ~388 ms, nav-context
+~1095 → ~578, the Pasivos daily series ~1970 → ~1210.
+
+- **Fix 1** wraps every statement better-sqlite3 does not report as read-only (and `exec`) when
+  it is prepared, counting this connection's writes; the check reruns in the same stretch only
+  after one. Another connection's commit inside a stretch is seen at the next microtask.
+- **Fix 2:** many readers call `db.prepare` inside the function that runs the query, and
+  compiling cost more than running. A shared statement never changes: `pluck` / `raw` /
+  `expand` / `safeIntegers` / `bind` return a private copy, and a statement still iterating is
+  not handed out again (`dbSharedStatements.test.ts`).
+- **`dbStateMemo`** (fixes 3-4): a result of the database alone, kept until this connection
+  writes, another commits or the Chile day turns; not inside a transaction (a rollback undoes
+  writes without a new one), frozen, and a build that reads a live input throws.
+- **F (crypto cadence) stays unimplemented:** at ~0,11 s of Pasivos rebuild per coin tick, the
+  5-minute crypto cadence costs ~1,3 s an hour; 15 minutes would save ~0,9 s an hour.
+- One full-suite run failed `ccInstallmentLedgerDb.test.ts` «persists a today valuation equal to
+  the live balance» once; it passed alone 16 times and in the next two full runs.
+
 ### 5. Daily views
 
 - Reference lines on Pasivos (`dailyReferenceLines.ts`): each «Disponible» source group's daily
