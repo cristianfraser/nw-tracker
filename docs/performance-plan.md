@@ -131,7 +131,7 @@ by the warmer but block every request while it runs (~47 s at boot).
 
 Possible improvements, by expected gain:
 
-**A. Rebuild only today's part of a dropped payload.** A dropped entry is rebuilt whole, on top of
+**A. Rebuild only today's part of a dropped payload.** (Done 2026-10-31 for the card billing detail, the daily series, the ledger monthly rows and the valuation series' past marks; see «A-F as built» below.) A dropped entry is rebuilt whole, on top of
 the history tier. Split the expensive builders into a past part (every day / month before today,
 cached like the history tier: survives ticks, dropped by writes and historical data) and a today
 part recomputed per tick: daily series = cached past points + today's point; monthly payloads =
@@ -142,7 +142,7 @@ phases 3-4 do not help. Risk: the past part must never read today (the history-t
 parity tests per builder against a whole build. Largest change; do it builder by builder,
 starting with the daily series (biggest and simplest: the grid already ends at today).
 
-**B. One dashboard row per account, cached with its own dependencies.** `account_rows|<unit>`
+**B. One dashboard row per account, cached with its own dependencies.** (Done 2026-10-31: `account_row|<id>|<unit>` over a shared `account_rows_ctx|<unit>`.) `account_rows|<unit>`
 is one entry, so any moved price rebuilds all 40 rows (nav-context 0,75 s, the bundles, the
 account pages). Cache each row (`account_row|<id>|<unit>`) so a coin tick rebuilds the two coin
 rows; the card metrics and bucket totals are sums over rows and stay cheap. Expected:
@@ -176,17 +176,86 @@ hits, median of 20 over loopback:
 Compressing a 982 KB body costs gzip 1 ~5 ms, gzip 6 ~10 ms, brotli 1 ~1 ms, brotli 5 ~6 ms: cached
 payloads pay gzip 6 / brotli 5 once per build, uncached ones gzip 1 / brotli 1 per response.
 
-**E. Reference lines from their own cached parts.** The Pasivos valuation and daily series rebuild
+**E. Reference lines from their own cached parts.** (Done 2026-10-31 for the valuation series: each source's totals are a cached group-response part; the daily reference lines already read each source's own cached daily series.) The Pasivos valuation and daily series rebuild
 the liabilities' own lines when only the «Disponible» sources moved. Keep the host's own lines
 and each source's lines as separate cached parts and assemble on read, so a coin tick recomputes
 the brokerage source only. Smaller gain than A (which subsumes most of it); worth it only if A
 stops short of the reference lines.
 
-**F. Quieter polls outside market hours.** Crypto is the only mover at night and on weekends: a
+**F. Quieter polls outside market hours.** (Not implemented: a product decision; numbers below.) Crypto is the only mover at night and on weekends: a
 15-minute crypto cadence then (product choice) cuts the rebuilds by 3x where A-B do not reach.
 
 Suggested order: B and C (small, independent), then A starting with the daily series, then D;
 E and F only if measurements after A still call for them.
+
+### A-F as built (2026-10-31, SYNTHETIC: demo preset DB, Linux sandbox, 4 cores)
+
+Measured with `server/scripts/measure-pasivos-tick.ts` (in-process server on a copy, background
+jobs and warmer off, clock shifted to a trading afternoon; the eight Pasivos requests one after
+another; medians of 3-5 rounds; other jobs shared the CPU, so ±15 %). Intel / real-DB numbers
+are still to be taken by a local session.
+
+| Pasivos, one after another | Before (cae189c) | After |
+| --- | --- | --- |
+| cold | 5,4 s | 2,5 s |
+| warm | 36 ms | 38 ms |
+| after a coin-only tick | 321 ms | 228 ms |
+| after a tick that moves the dollar | 1,33 s | 0,40 s |
+| `meta/sidebar-nav` after a dollar tick | 856 ms | 32 ms |
+| `valuation-timeseries?portfolio_group=liabilities` after a coin tick | 116 ms | 47 ms |
+| `daily-series?…liabilities&days=1096` after a coin tick | 55 ms | 35 ms |
+
+What each piece did (one commit each):
+
+- **Card billing detail (A).** Profiling the rebuild after a dollar tick showed ~90 % of it was
+  not the daily series at all: group pages order their rows by today's value, a card reads its
+  balance through its billing detail, and the whole detail went with every dollar tick because an
+  unpaid facturación prices its dollars live. The bundle is now a base part (ledger payload,
+  detalle, facturaciones without rates; dependency-tracked, so it survives a dollar tick) plus the
+  rates applied on top; a card's statement list (read thousands of times per build) is memoized in
+  the history tier. Four full-history group daily series rebuilt per dollar tick: 1348 -> 389 ms.
+- **Daily series (A).** The past part of `getBucketDailySeries` (per-account values in the unit on
+  every day but today, flow legs, deposit cumulatives, market-day flags) lives in the history tier
+  (`daily_series_past`), built under `buildHistoryTierValue`, which throws if a history-tier part
+  reads any live input. Deposit-event buy rates memoized too. 389 -> 273 ms.
+- **Ledger monthly rows (A).** The closed months' rows of checking / cash / book accounts are kept
+  (`ledger_closed_month_rows`); only the current month's row is rebuilt. 273 -> 178 ms.
+- **Valuation series (A).** A plain account's raw mark on a past chart date is memoized
+  (`valuation_chart_past_raw_clp`). Not under the guard: an equity's past MTM consults the
+  live-dollar gate (`fxForLiveMtm`) even for a past day, though it reads the stored close; the
+  existing `equity_mtm_clp` memo relies on the same rule. Coin-tick rebuild of the Pasivos
+  valuation series 95 -> 80 ms.
+- **Reference sources (E).** Each «Disponible» source's totals are a cached part; 122 -> 91 ms.
+- **B** (per-account rows), **C** (warmer steps aside for in-flight requests), **D** (JSON
+  serialized once, gzip/brotli): see their entries above and their commits. On synthetic data B
+  shows little (most of a row's cost was already in the history tier); the real DB has more rows.
+
+Parity: `liveTickIncrementalRebuild.test.ts` now runs four ticks (unscoped every price + dollar,
+scoped every price + dollar, a ticker nothing reads, and a coin-only tick on a Bitcoin account it
+adds), each comparing every payload with an empty-cache rebuild at the same frozen instant and
+asserting the kept parts; `requestPathCaches.test.ts` adds the statement memo (writes inside and
+outside a transaction, frozen rows); `cacheDependencies.test.ts` the history-tier guard.
+
+What is left, from the profiles:
+
+- **Freshness checks.** Every history-tier memo access runs `ensureCacheFreshForChileDay` (two
+  SQLite statements); in a rebuild after a tick that is ~35-40 % of the time. One combined statement
+  did not help (it is per-execution overhead). Reducing the number of accesses (fetch a memo map
+  once per build loop instead of per value) is the next cheap win; skipping the check within a
+  synchronous turn would need a way to see same-connection writes.
+- **The dollar gate on past days.** `fxForLiveMtm` and the equity gates report a live read even for
+  a past date; with that split (report only when the date can use the live row) the valuation memo
+  could run under the guard, and a dollar tick would stop dropping entries that only read past
+  marks (B's agent saw nearly every dashboard row read the dollar gate).
+- **The nav tree** (`buildNavForest`) is rebuilt per call (~14 ms each, several per page).
+- **nav-context** after a tick (~110-180 ms synthetic): bucket totals, the overview block and the
+  value map, which read today's values of every account.
+
+F, numbers only (not implemented): with the 5-minute off-session cadence a night has 12 coin
+ticks an hour; each drops what reads the coin, and the warmer then rebuilds the bundles and visited
+pages (the Pasivos requests alone cost ~0,23 s synthetic per tick after A-E, vs ~0,32 s before).
+A 15-minute crypto cadence at night would cut that 3x (4 ticks an hour); the price shown would be
+up to 15 minutes old instead of 5.
 
 ### 5. Daily views
 
