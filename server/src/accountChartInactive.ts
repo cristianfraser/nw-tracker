@@ -1,6 +1,7 @@
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { db } from "./db.js";
+import { withoutLiveDependencies } from "./cacheDependencies.js";
 import {
   CHART_TRAILING_ZERO_MONTHS_KEPT,
   chartInactiveFromMonthlyClosingAsc,
@@ -47,7 +48,10 @@ function isCreditCardChartAccount(accountId: number): boolean {
  */
 export function accountChartInactive(accountId: number): boolean {
   if (isCreditCardChartAccount(accountId)) return false;
-  const closing = monthEndClosingAscForInactiveCheck(accountId);
+  // Whether the closes ended in zeros cannot move with a live price (always positive, it only
+  // multiplies the units held), so a nav tree built on this answer does not depend on the
+  // prices it read: a coin moving at night must not drop every group payload that lists accounts.
+  const closing = withoutLiveDependencies(() => monthEndClosingAscForInactiveCheck(accountId));
   if (!closing.length) return false;
   return chartInactiveFromMonthlyClosingAsc(closing, CHART_TRAILING_ZERO_MONTHS_KEPT);
 }
