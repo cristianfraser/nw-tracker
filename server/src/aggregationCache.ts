@@ -1,4 +1,5 @@
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { noteAggregationCacheLookup } from "./requestCacheStats.js";
 import {
   cacheDepNodeAffected,
@@ -274,7 +275,9 @@ export function cacheKeyAccountDetailBundle(accountId: number, unit: TsUnit, gra
  */
 export function cachedGroupResponse<T>(kind: string, slug: string, unit: TsUnit, build: () => T): T {
   if (dbInTransaction()) return build();
-  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}group|${kind}|${slug}|${unit}`, build);
+  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}group|${kind}|${slug}|${unit}`, () =>
+    markJsonResponseCacheable(build())
+  );
 }
 
 export function invalidateGroupResponses(): void {

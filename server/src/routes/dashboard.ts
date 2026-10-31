@@ -13,21 +13,16 @@ import {
   groupPeriodReturnsResponse,
   groupValuationTsResponse,
 } from "../groupPagePayloads.js";
-import { groupDailySeriesResponse } from "../groupDailySeriesResponse.js";
+import { accountDailySeriesResponse, groupDailySeriesResponse } from "../groupDailySeriesResponse.js";
 import { attachNetWorthAth } from "../netWorthAllTimeHigh.js";
 import {
   getDashboardValuationTimeseries,
   type TsUnit,
 } from "../valuationTimeseries.js";
 import { buildInversionesPerfDaily } from "../inversionesPerfSeries.js";
-import { dailyPerfLevelsForAccount } from "../dailyPerfLevels.js";
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "../dashboardAccounts.js";
 import { buildDashboardPageBundle } from "../dashboardPageBundle.js";
-import { accountBucketKindSlug } from "../accountBucket.js";
-import { ccDailyHistorialBlockForMasters } from "../ccDailyHistorialBlock.js";
-import { deptoPropertyChartOverlayDailyLines } from "../dailyReferenceLines.js";
 import { DAILY_SERIES_MAX_DAYS } from "../dailySeries.js";
-import { resolveAccountDailySeries } from "../groupDailySeries.js";
 import { db } from "../db.js";
 import {
   getDashboardOverviewDaily,
@@ -119,43 +114,7 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     res.status(404).json({ error: `account ${accountId} not found` });
     return;
   }
-  // Excluded-from-totals accounts still get their own daily series on their page.
-  const series = resolveAccountDailySeries(row, unit, days);
-  const { deposit_cums_raw: _rawDepsAcct, ...accountSeriesBase } = series;
-  const accountSeriesPayload = wantPerfLevels
-    ? {
-        ...accountSeriesBase,
-        perf_levels: dailyPerfLevelsForAccount(accountId, row.bucket_slug, unit, series),
-      }
-    : accountSeriesBase;
-  // Property account page: the monthly block carries synthetic «hipoteca»/«valor» reference
-  // lines beside the property line — emit their daily twins (matched by account id in the
-  // client's metadata borrow) or the overlays vanish in day mode.
-  if (
-    accountBucketKindSlug(row.bucket_slug) === "property" &&
-    accountSeriesPayload.accounts?.length
-  ) {
-    const overlays = deptoPropertyChartOverlayDailyLines(
-      series.points.map((p) => p.as_of_date),
-      unit
-    );
-    if (overlays.length) {
-      accountSeriesPayload.accounts = [...accountSeriesPayload.accounts, ...overlays];
-    }
-  }
-  // CC masters: attach the day-period historial series — owed, plan debt («deuda en cuotas»),
-  // the future plan tail (today+1 .. plan end) and the facturación bars on their close dates —
-  // so the account page's daily historial has both lines and the bars and covers the same
-  // window as its monthly/yearly forms. CLP-native like the chart, so CLP requests only (the
-  // client asks for clp explicitly).
-  if (accountBucketKindSlug(row.bucket_slug) === "credit_card" && unit === "clp") {
-    const ccDaily = ccDailyHistorialBlockForMasters([accountId], series);
-    if (ccDaily) {
-      res.json({ ...accountSeriesPayload, ...ccDaily });
-      return;
-    }
-  }
-  res.json(accountSeriesPayload);
+  res.json(accountDailySeriesResponse(row, unit, days, wantPerfLevels));
 }));
 
 /** Daily net-worth series (one point per NYSE session) for the day period view. */

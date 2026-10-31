@@ -1,3 +1,4 @@
+import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { buildInversionesPerfMonthly } from "./inversionesPerfSeries.js";
 import {
   cacheKeyDashboardPageBundle,
@@ -39,7 +40,7 @@ export type DashboardPageBundle = Awaited<ReturnType<typeof buildDashboardPageBu
  */
 export function buildDashboardPageBundle(unit: TsUnit): Promise<DashboardPageBundle> {
   return getAggregationCached(cacheKeyDashboardPageBundle(unit), () => {
-    const built = withPortfolioGroupIndex(() => buildDashboardPageBundleInner(unit));
+    const built = withPortfolioGroupIndex(() => buildDashboardPageBundleInner(unit)).then(markJsonResponseCacheable);
     built.catch(() => invalidateDashboardPageBundle());
     return built;
   });

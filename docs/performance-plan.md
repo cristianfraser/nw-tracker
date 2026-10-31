@@ -160,6 +160,21 @@ phase 7): build caches in a worker thread.
 `JSON.stringify`ed on every request (~15 ms on a hit, more on the phone over Tailscale because it
 is uncompressed). Cache the serialized string next to the object and add gzip (plan phases 5-6).
 Expected: ~10 ms per request on the server, 548 KB -> ~70 KB on the wire. Small change.
+*Done 2026-10-31* (`jsonResponse.ts`, see AGENTS «JSON responses are serialized once and
+compressed»): cached response objects keep their bytes, ETag and gzip/brotli forms in a WeakMap
+keyed by the object; every `/api` JSON body of 1 KB or more is compressed. Synthetic demo DB, warm
+hits, median of 20 over loopback:
+
+| Request | Identity | gzip | brotli | Before (identity) | After (identity / gzip) |
+| --- | --- | --- | --- | --- | --- |
+| `daily-series?portfolio_group=liabilities&days=1096` | 366 KB | 27 KB | 17 KB | 4,1 ms | 0,9 / 0,5 ms |
+| `daily-series?portfolio_group=liabilities&days=0` | 982 KB | 74 KB | 31 KB | 6,8 ms | 1,5 / 0,5 ms |
+| `daily-series?portfolio_group=net_worth&days=0` | 3,3 MB | 506 KB | 458 KB | 29,6 ms | 3,8 / 1,7 ms |
+| `dashboard/page-bundle` | 648 KB | 67 KB | 62 KB | 4,5 ms | 1,5 / 0,4 ms |
+| `dashboard/nav-context` | 90 KB | 11 KB | 10 KB | 1,1 ms | 0,9 / 1,0 ms |
+
+Compressing a 982 KB body costs gzip 1 ~5 ms, gzip 6 ~10 ms, brotli 1 ~1 ms, brotli 5 ~6 ms: cached
+payloads pay gzip 6 / brotli 5 once per build, uncached ones gzip 1 / brotli 1 per response.
 
 **E. Reference lines from their own cached parts.** The Pasivos valuation and daily series rebuild
 the liabilities' own lines when only the «Disponible» sources moved. Keep the host's own lines
@@ -181,12 +196,12 @@ E and F only if measurements after A still call for them.
 - Mortgage daily marks (7 s / 25 s): trace the depto mark per day; make it one pass over the
   ledger and the UF series instead of a lookup per day.
 - Cache the serialized JSON of large daily payloads (the 548 KB / 1,4 MB responses are
-  re-stringified on every request).
+  re-stringified on every request). *Done 2026-10-31, see D.*
 
 ### 6. Transport
 
 - gzip/brotli responses (`compression` middleware): ~548 KB → ~60–80 KB for the daily series;
-  matters most on the phone over Tailscale.
+  matters most on the phone over Tailscale. *Done 2026-10-31 with `node:zlib` (no dependency), see D.*
 
 ### 7. Keep requests from queueing behind heavy work
 

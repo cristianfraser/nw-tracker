@@ -256,8 +256,13 @@ export function usageLogMiddleware(): RequestHandler {
     const t0 = performance.now();
     const stats: RequestCacheStats = { hits: 0, misses: 0 };
     res.on("finish", () => {
+      // The payload size before compression (`jsonResponse.ts` notes it; any other response is
+      // sent uncompressed, so its Content-Length is that size): what the report's «mean size»
+      // compares, whatever encoding the client accepted.
+      const bodyBytes: unknown = res.locals.usageBodyBytes;
       const lengthHeader = res.getHeader("content-length");
-      const bytes = lengthHeader === undefined ? null : Number(lengthHeader);
+      const bytes =
+        typeof bodyBytes === "number" ? bodyBytes : lengthHeader === undefined ? null : Number(lengthHeader);
       recordUsageRequest({
         at: new Date(),
         method: req.method,

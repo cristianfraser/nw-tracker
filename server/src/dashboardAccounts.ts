@@ -1,3 +1,4 @@
+import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached, invalidateDashboardPageBundle } from "./aggregationCache.js";
 import { chainedGroupPctResolver, fillBlankAccountRowPcts } from "./blankPctDailyChain.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
@@ -501,7 +502,7 @@ export function buildDashboardNavSnapshot(includeUsd: boolean): ReturnType<typeo
 
 function cachedWithPageBundleLifetime<T>(name: string, build: () => Promise<T>): Promise<T> {
   return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}${name}`, () => {
-    const built = build();
+    const built = build().then(markJsonResponseCacheable);
     built.catch(() => invalidateDashboardPageBundle());
     return built;
   });
