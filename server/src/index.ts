@@ -1,6 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { httpRequestLogMiddleware } from "./httpRequestLog.js";
+import { apiInFlightMiddleware } from "./apiRequestsInFlight.js";
 import { seedNavTree } from "./seedNavTree.js";
 import { startGlobalSyncScheduler } from "./globalSyncScheduler.js";
 import { startLiveMarketQuotesScheduler } from "./liveMarketQuotesScheduler.js";
@@ -69,6 +70,8 @@ process.on("unhandledRejection", (reason) => {
 });
 
 app.use(cors({ origin: resolveCorsOrigins() }));
+// The cache warmer steps aside while a request is in flight (apiRequestsInFlight.ts).
+app.use(apiInFlightMiddleware());
 app.use(httpRequestLogMiddleware);
 if (usageLogEnabled()) app.use(usageLogMiddleware());
 if (demoModeEnabled()) {
