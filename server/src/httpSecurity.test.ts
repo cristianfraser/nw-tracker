@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEMO_PAGEVIEW_PATH, demoReadOnlyMiddleware } from "./httpSecurity.js";
+import { demoReadOnlyMiddleware } from "./httpSecurity.js";
+import { USAGE_PAGE_VIEW_PATH } from "./usagePagePath.js";
 
 describe("demoReadOnlyMiddleware", () => {
   /** Minimal Express-shaped doubles: the guard only touches method/path and status().json(). */
@@ -35,7 +36,7 @@ describe("demoReadOnlyMiddleware", () => {
   });
 
   it("exempts the analytics beacon and non-api paths", () => {
-    expect(run("POST", DEMO_PAGEVIEW_PATH).nexted).toBe(true);
+    expect(run("POST", USAGE_PAGE_VIEW_PATH).nexted).toBe(true);
     expect(run("POST", "/login").nexted).toBe(true);
     expect(run("POST", "/apifoo").nexted).toBe(true);
   });

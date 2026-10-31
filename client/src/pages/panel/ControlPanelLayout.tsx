@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../cn";
-import { PANEL_SUBROUTES } from "./panelSubroutes";
+import { VISIBLE_PANEL_SUBROUTES } from "./panelSubroutes";
 
 export function ControlPanelLayout() {
   const { t } = useTranslation();
@@ -11,7 +11,7 @@ export function ControlPanelLayout() {
     <main>
       <h1>{t("panel.layoutTitle")}</h1>
       <nav className="flow-subnav" aria-label={t("panel.subnavAria")}>
-        {PANEL_SUBROUTES.map((route) => (
+        {VISIBLE_PANEL_SUBROUTES.map((route) => (
           <NavLink
             key={route.slug}
             to={route.slug}

@@ -1,4 +1,5 @@
 import type { RequestHandler } from "express";
+import { USAGE_PAGE_VIEW_PATH } from "./usagePagePath.js";
 
 /**
  * Deployment modes share one binary and differ only by env:
@@ -37,20 +38,18 @@ export function resolveCorsOrigins(): string[] {
 // only regenerates on deploy / cold start, so a single mutating request would corrupt what
 // the next visitor sees. Demo mode therefore serves reads only.
 
-/** Analytics beacon path — a POST, but the one mutation the demo accepts (see demoAnalytics.ts). */
-export const DEMO_PAGEVIEW_PATH = "/api/demo/pageview";
 
 const READ_ONLY_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /**
  * Rejects `/api` mutations with `403 { error: "demo_read_only" }` (the client turns that
- * sentinel into a localized message). Non-`/api` paths and the analytics beacon pass through.
+ * sentinel into a localized message). Non-`/api` paths and the usage page-view beacon pass through.
  * Mounted only when `DEMO_MODE=1`, so local personal mode is unaffected.
  */
 export function demoReadOnlyMiddleware(): RequestHandler {
   return (req, res, next) => {
     const isApi = req.path === "/api" || req.path.startsWith("/api/");
-    if (!isApi || READ_ONLY_METHODS.has(req.method) || req.path === DEMO_PAGEVIEW_PATH) {
+    if (!isApi || READ_ONLY_METHODS.has(req.method) || req.path === USAGE_PAGE_VIEW_PATH) {
       next();
       return;
     }

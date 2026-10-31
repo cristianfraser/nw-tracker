@@ -1,4 +1,5 @@
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
+import { noteAggregationCacheLookup } from "./requestCacheStats.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { applyPendingMarkInputChanges, setMarkInputsChangedListener } from "./markInputChanges.js";
@@ -142,7 +143,11 @@ function invalidateLiveTier(): void {
 
 export function getAggregationCached<T>(key: string, build: () => T): T {
   ensureCacheFreshForChileDay();
-  if (cache.has(key)) return cache.get(key) as T;
+  if (cache.has(key)) {
+    noteAggregationCacheLookup(true);
+    return cache.get(key) as T;
+  }
+  noteAggregationCacheLookup(false);
   const value = build();
   cache.set(key, value);
   return value;

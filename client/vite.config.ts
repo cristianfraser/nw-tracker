@@ -7,6 +7,9 @@ import { resolveVersionInfo } from "../scripts/version-info.mjs";
 // index.html transform in local dev/build; the hosted demo's real env var (render.yaml)
 // takes precedence over this default.
 process.env.VITE_CF_ANALYTICS_TOKEN ??= "";
+// The hosted demo builds with DEMO_MODE=1 in its env (render.yaml): the client hides what the
+// demo server refuses (the usage panel). A local rehearsal sets VITE_DEMO_MODE=1 itself.
+process.env.VITE_DEMO_MODE ??= process.env.DEMO_MODE === "1" ? "1" : "";
 
 const apiProxy = {
   "/api": {
