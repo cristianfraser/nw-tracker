@@ -39,7 +39,10 @@ log_once() {
 }
 
 message() { # kind title body
-  local esc_title="${2//\'/\'\'}" esc_body="${3//\'/\'\'}"
+  # SQL doubles a single quote. The pattern must be a variable: inside double quotes `\'` keeps
+  # its backslash, so a commit title with an apostrophe broke the INSERT (2026-10-30).
+  local q="'"
+  local esc_title="${2//$q/$q$q}" esc_body="${3//$q/$q$q}"
   sqlite3 "$DB" "INSERT INTO app_messages (kind, title, body) VALUES ('$1', '$esc_title', '$esc_body');" \
     || log "could not record the message: $2"
 }
@@ -51,8 +54,8 @@ TOKEN="${INGEST_TOKEN:-}"
 if [[ -z "$TOKEN" && -f "$REPO/.env" ]]; then TOKEN="$(sed -n 's/^INGEST_TOKEN=//p' "$REPO/.env" | tail -1)"; fi
 JOB_ID=""
 
-jobs_api() { # path json → response body on stdout; non-zero on a failed request
-  local args=(-sS -m 30 -X POST -H 'content-type: application/json' -d "$2" -w '\n%{http_code}')
+jobs_api() { # path json [timeout s] → response body on stdout; non-zero on a failed request
+  local args=(-sS -m "${3:-30}" -X POST -H 'content-type: application/json' -d "$2" -w '\n%{http_code}')
   [[ -n "$TOKEN" ]] && args+=(-H "authorization: Bearer $TOKEN")
   local out code
   out="$(curl "${args[@]}" "$API$1")" || return 1
@@ -75,8 +78,16 @@ job_complete() { # ok(true|false) error-or-empty
   [[ -z "$JOB_ID" ]] && return 0
   local err="null"
   [[ -n "$2" ]] && err="$(/usr/bin/python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$2")"
-  jobs_api "/api/jobs/$JOB_ID/complete" "{\"ok\":$1,\"result\":{\"from\":\"$old\",\"to\":\"$new\"},\"error\":$err}" >/dev/null \
-    || log "could not complete deploy job $JOB_ID (its lease will run out)"
+  # Right after the restart the new server is busy rebuilding its caches and can take minutes to
+  # answer; a deploy job left running holds `server-restart` (no ingest run starts) until its lease
+  # runs out, so keep asking for up to ~10 minutes (2026-10-30: one 30 s try left job 9 holding it).
+  local body="{\"ok\":$1,\"result\":{\"from\":\"$old\",\"to\":\"$new\"},\"error\":$err}"
+  for attempt in 1 2 3 4 5; do
+    jobs_api "/api/jobs/$JOB_ID/complete" "$body" 120 >/dev/null && return 0
+    log "completing deploy job $JOB_ID: attempt $attempt did not get an answer"
+    sleep 5
+  done
+  log "could not complete deploy job $JOB_ID (its lease will run out)"
 }
 
 mkdir "$LOCK" 2>/dev/null || exit 0
