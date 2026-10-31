@@ -1,4 +1,5 @@
 import { chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
+import { noteLiveFxRead } from "./cacheDependencies.js";
 import { db } from "./db.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 
@@ -89,6 +90,9 @@ export function interbankWindowAverageClpPerUsd(
   ymd: string,
   now: Date
 ): { clp_per_usd: number; prints: number } | null {
+  // Reported before the window check: a figure built before the window opened must go with the
+  // first tick that moves the rate inside it (`cacheDependencies.ts`).
+  noteLiveFxRead();
   const { start, end } = interbankWindowBounds(ymd, now);
   if (end.getTime() <= start.getTime()) return null;
   const row = stmtWindowPrints.get(LIVE_FX_SYMBOL, start.toISOString(), end.toISOString()) as

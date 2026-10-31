@@ -1,5 +1,10 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { clearAggregationCache, invalidateMarketDataAggregations } from "./aggregationCache.js";
+import {
+  aggregationCacheKeysForTest,
+  clearAggregationCache,
+  invalidateMarketDataAggregations,
+} from "./aggregationCache.js";
+import type { LiveQuoteMoves } from "./cacheDependencies.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { getDashboardOverviewDaily } from "./dashboardOverviewDaily.js";
@@ -36,8 +41,13 @@ function tradingAfternoon(): Date {
   return dateAtTimeZoneWallClock(d, 14, 0, "America/New_York");
 }
 
-/** A poll's writes: every ticker at `factor` × its last close, the fx row at `fxFactor` ×. */
-function writeQuotes(at: Date, factor: number, fxFactor: number): void {
+/**
+ * A poll's writes: every ticker at `factor(ticker)` × its last close, the fx row at `fxFactor` ×.
+ * Returns the tickers whose quote it moved.
+ */
+function writeQuotes(at: Date, factor: number | ((ticker: string) => number), fxFactor: number): Set<string> {
+  const factorOf = typeof factor === "number" ? () => factor : factor;
+  const moved = new Set<string>();
   const ymd = at.toISOString().slice(0, 10);
   const chileYmd = chileCalendarTodayYmd();
   const tickers = (
@@ -49,10 +59,11 @@ function writeQuotes(at: Date, factor: number, fxFactor: number): void {
       .get(ticker, chileYmd) as { close: number } | undefined;
     if (!last) continue;
     const kind = equityMarketKind(ticker);
+    if (factorOf(ticker) !== 1) moved.add(ticker.toUpperCase());
     insertLiveMarketQuote({
       symbol: ticker.toUpperCase(),
       kind: "equity",
-      value: last.close * factor,
+      value: last.close * factorOf(ticker),
       currency: marketQuoteCurrency(ticker),
       session_ymd: kind === "crypto24" ? ymd : chileYmd,
       previous_value: last.close,
@@ -71,6 +82,7 @@ function writeQuotes(at: Date, factor: number, fxFactor: number): void {
     previous_value: fx.clp_per_usd,
     fetched_at: at.toISOString(),
   });
+  return moved;
 }
 
 async function snapshotPayloads(): Promise<Map<string, string>> {
@@ -107,7 +119,11 @@ async function snapshotPayloads(): Promise<Map<string, string>> {
  * Rebuild after a tick (quotes a minute later at the given factors) incrementally and from an
  * empty cache; returns the keys whose payloads differ, and whether the tick moved the bundles.
  */
-async function tickParity(equityFactor: number, fxFactor: number): Promise<{ differing: string[]; moved: boolean }> {
+async function tickParity(
+  equityFactor: number | ((ticker: string) => number),
+  fxFactor: number,
+  opts: { scoped?: boolean; extraMovedTickers?: string[] } = {}
+): Promise<{ differing: string[]; moved: boolean; keptKeys: string[] }> {
   const t0 = tradingAfternoon();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(t0);
@@ -124,8 +140,12 @@ async function tickParity(equityFactor: number, fxFactor: number): Promise<{ dif
   // The tick: new quotes a minute later, then the poll's own invalidation.
   const t1 = new Date(t0.getTime() + 60_000);
   vi.setSystemTime(t1);
-  writeQuotes(t1, equityFactor, fxFactor);
-  invalidateMarketDataAggregations("live_tail");
+  const movedTickers = writeQuotes(t1, equityFactor, fxFactor);
+  for (const t of opts.extraMovedTickers ?? []) movedTickers.add(t);
+  const moves: LiveQuoteMoves | undefined = opts.scoped ? { tickers: movedTickers, fx: fxFactor !== 1 } : undefined;
+  const cachedBefore = new Set(aggregationCacheKeysForTest());
+  invalidateMarketDataAggregations("live_tail", moves);
+  const keptKeys = aggregationCacheKeysForTest().filter((k) => cachedBefore.has(k));
   const incremental = await snapshotPayloads();
 
   clearAggregationCache();
@@ -133,6 +153,7 @@ async function tickParity(equityFactor: number, fxFactor: number): Promise<{ dif
   vi.useRealTimers();
   return {
     differing: [...full.keys()].filter((k) => incremental.get(k) !== full.get(k)),
+    keptKeys,
     moved:
       incremental.get("bundle|clp") !== before.get("bundle|clp") &&
       incremental.get("bundle|usd") !== before.get("bundle|usd"),
@@ -147,5 +168,22 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
     expect(differing).toEqual([]);
     // The tick reached the payloads (otherwise the comparison above proves nothing).
     expect(moved).toBe(true);
+  }, 300_000);
+
+  // A scoped tick (the poll names what moved) drops only what read a moved price.
+  it("a scoped tick of every price and the dollar serves the same payloads as a full rebuild", async () => {
+    const { differing, moved } = await tickParity(1.03, 1.0075, { scoped: true });
+    expect(differing).toEqual([]);
+    expect(moved).toBe(true);
+  }, 300_000);
+
+  // The synthetic DB holds no stock or coin, so a moved ticker is one nothing reads: a scoped
+  // tick keeps everything (a coin moving at night in the real data; the unit tests in
+  // cacheDependencies.test.ts cover an entry that does read the ticker).
+  it("a tick of a price nothing reads keeps every cached payload", async () => {
+    const { differing, keptKeys } = await tickParity(1, 1, { scoped: true, extraMovedTickers: ["ZZZ-USD"] });
+    expect(differing).toEqual([]);
+    expect(keptKeys.some((k) => k.startsWith("group.consolidated_monthly|liabilities|"))).toBe(true);
+    expect(keptKeys.some((k) => k.startsWith("dashboard.page_bundle|"))).toBe(true);
   }, 300_000);
 });
