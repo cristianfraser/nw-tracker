@@ -1,3 +1,4 @@
+import { dbStateMemo } from "./dbStateMemo.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { db } from "./db.js";
 
@@ -14,9 +15,11 @@ const stmtDistinctTickers = db.prepare(
 
 /** Yahoo symbol stored on the account (SPY, OILK, BTC-USD, …). */
 export function equityTickerForAccount(accountId: number): string | null {
-  const row = stmtEquityTicker.get(accountId) as { equity_ticker: string | null } | undefined;
-  const t = row?.equity_ticker?.trim();
-  return t ? t.toUpperCase() : null;
+  return dbStateMemo("account_equity_ticker", accountId, () => {
+    const row = stmtEquityTicker.get(accountId) as { equity_ticker: string | null } | undefined;
+    const t = row?.equity_ticker?.trim();
+    return t ? t.toUpperCase() : null;
+  });
 }
 
 const stmtAccountsByTicker = db.prepare(

@@ -1,3 +1,4 @@
+import { dbStateMemo } from "./dbStateMemo.js";
 import { cacheKeyAccountMonthlyPerf, getAggregationCached } from "./aggregationCache.js";
 import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
@@ -295,6 +296,12 @@ function collapseMonthlyPerfDuplicateCalendarMonths(
 }
 
 function accountMetaForLivePerfClose(
+  accountId: number
+): { bucket_slug: string; import_key: string | null; name: string } | null {
+  return dbStateMemo("account_meta_live_perf_close", accountId, () => accountMetaForLivePerfCloseUncached(accountId));
+}
+
+function accountMetaForLivePerfCloseUncached(
   accountId: number
 ): { bucket_slug: string; import_key: string | null; name: string } | null {
   const row = db

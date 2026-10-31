@@ -1,3 +1,4 @@
+import { dbStateMemo } from "./dbStateMemo.js";
 import { assertValuationCurrencyClp } from "./valuationValue.js";
 import {
   liveCuotaLedgerDisplayValueClp,
@@ -37,6 +38,10 @@ function deptoKindForBucketSlug(bucketSlug: string): "property" | "mortgage" | n
 }
 
 function bucketSlugForAccount(accountId: number): string | null {
+  return dbStateMemo("account_bucket_slug", accountId, () => bucketSlugForAccountUncached(accountId));
+}
+
+function bucketSlugForAccountUncached(accountId: number): string | null {
   const row = db
     .prepare(
       `SELECT g.slug AS bucket_slug
