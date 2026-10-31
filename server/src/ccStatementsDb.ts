@@ -1,3 +1,4 @@
+import { historyTierMemo } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
@@ -68,7 +69,24 @@ export function ccStatementRowCount(accountId: number): number {
   return Number(r?.c ?? 0);
 }
 
-export function listCcStatementsForAccount(accountId: number): CcStatementRow[] {
+/**
+ * A card's statements, newest first. Memoized in the history tier (`aggregationCache.ts`): the
+ * billing views ask for the same card's list thousands of times per build, and a live-quote tick
+ * that drops a card's billing detail (its unpaid dollars price at the live rate) must not re-read
+ * them. Every write to `cc_statements` drops the tier (the mark-input log, the card write funnel,
+ * `data_version`). Frozen: callers share the rows.
+ */
+export function listCcStatementsForAccount(accountId: number): readonly CcStatementRow[] {
+  const memo = historyTierMemo<number, readonly CcStatementRow[]>("cc_statements_by_account");
+  let rows = memo.get(accountId);
+  if (!rows) {
+    rows = Object.freeze(listCcStatementsForAccountUncached(accountId).map((r) => Object.freeze(r)));
+    memo.set(accountId, rows);
+  }
+  return rows;
+}
+
+function listCcStatementsForAccountUncached(accountId: number): CcStatementRow[] {
   const rows = db
     .prepare(
       `SELECT id, account_id, card_group, source_pdf, statement_date, period_from, period_to, pay_by,

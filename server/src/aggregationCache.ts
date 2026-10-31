@@ -409,9 +409,15 @@ export function invalidateCcBillingDetail(accountId?: number): void {
  */
 function invalidateCcBillingDetailLiveRates(): void {
   for (const key of [...cache.keys()]) {
-    if (/^cc\.billing_detail\|\d+$/.test(key)) cache.delete(key);
+    if (CC_BILLING_DETAIL_LIVE_KEY.test(key)) cache.delete(key);
   }
 }
+
+/**
+ * A card's billing detail bundle and its base part (`ccBillingDetailCache.ts`): the bundle applies
+ * the live rate, the base is dropped by a scoped tick only when it read a moved price itself.
+ */
+const CC_BILLING_DETAIL_LIVE_KEY = /^cc\.billing_detail\|\d+(\|base)?$/;
 
 function ancestorGroupSlugsForGroupId(
   groupId: number,
@@ -585,7 +591,7 @@ const LIVE_TAIL_PREFIXES = [
 ];
 
 function droppedByLiveTail(key: string): boolean {
-  return LIVE_TAIL_PREFIXES.some((p) => key.startsWith(p)) || /^cc\.billing_detail\|\d+$/.test(key);
+  return LIVE_TAIL_PREFIXES.some((p) => key.startsWith(p)) || CC_BILLING_DETAIL_LIVE_KEY.test(key);
 }
 
 /**

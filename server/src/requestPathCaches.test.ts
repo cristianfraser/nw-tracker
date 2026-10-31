@@ -25,6 +25,7 @@ import { createManualCcInstallmentPurchase, deleteManualCcInstallmentPurchase } 
 import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 import { buildAccountDetailBundle, cachedAccountDetailBundle } from "./accountDetailBundle.js";
 
@@ -125,6 +126,56 @@ describe("movement ledger prefix sums", () => {
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
     }
     expect(ledgerSums(accountId, day)).toEqual(before);
+  });
+});
+
+describe("memoized card statements", () => {
+  const uncached = (accountId: number) =>
+    (
+      db
+        .prepare(`SELECT id, statement_date FROM cc_statements WHERE account_id = ? ORDER BY statement_date DESC, card_group, source_pdf`)
+        .all(accountId) as { id: number; statement_date: string }[]
+    ).map((r) => r.id);
+  const memoized = (accountId: number) => listCcStatementsForAccount(accountId).map((r) => r.id);
+
+  it("see a write at once, inside a transaction and after it, and refuse mutation", () => {
+    clearAggregationCache();
+    const accountId = listCreditCardMasterAccountIds()[0]!;
+    const before = memoized(accountId);
+    expect(before).toEqual(uncached(accountId));
+    expect(before.length).toBeGreaterThan(0);
+    const insert = () =>
+      Number(
+        db
+          .prepare(
+            `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, currency)
+             VALUES (?, 'A', 'vitest:memo', '01/01/2099', 'clp')`
+          )
+          .run(accountId).lastInsertRowid
+      );
+    expect(() =>
+      db.transaction(() => {
+        insert();
+        expect(memoized(accountId)).toEqual(uncached(accountId));
+        expect(memoized(accountId).length).toBe(before.length + 1);
+        throw new Error("rollback");
+      })()
+    ).toThrow("rollback");
+    expect(memoized(accountId)).toEqual(before);
+    // Outside a transaction: the mark-input log drops the memo before the next read.
+    const id = insert();
+    try {
+      expect(memoized(accountId)).toEqual(uncached(accountId));
+      expect(memoized(accountId)).toContain(id);
+    } finally {
+      db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(id);
+    }
+    expect(memoized(accountId)).toEqual(before);
+    // Shared rows: a caller cannot change them for the next one.
+    const rows = listCcStatementsForAccount(accountId);
+    expect(() => {
+      (rows[0] as { statement_date: string }).statement_date = "x";
+    }).toThrow();
   });
 });
 
