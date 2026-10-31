@@ -37,7 +37,13 @@ import { upsertEquityDailySeries } from "../brokerageEquityMtm.js";
 import { chileCalendarAddDays, chileWallClockAt } from "../chileDate.js";
 import { db } from "../db.js";
 import { cryptoCompletedUtcYmd } from "../equityEodSync.js";
-import { fetchYahooDailyCloses, type EodCloseSeries } from "../equityYahooEod.js";
+import { listBenchmarkEquityTickers } from "../benchmarkLevels.js";
+import { insertEquityDividendsIfMissing } from "../equityDividends.js";
+import {
+  fetchYahooDailyCloses,
+  fetchYahooDailyClosesAndDividends,
+  type EodCloseSeries,
+} from "../equityYahooEod.js";
 import { fetchYahooFxUsdDailyCloses } from "../fxYahooEodSync.js";
 import {
   insertFxRowsIfMissing,
@@ -184,6 +190,8 @@ export type DemoRealMarketSummary = {
   from: string;
   through: string;
   equities: Record<string, number>;
+  /** Dividends stored per benchmark ticker (total-return benchmarks reinvest them). */
+  dividends: Record<string, number>;
   fx: number;
   bcentral: { usd: number; eur: number; uf: number; utm: number; ipc: number };
   afp_official: number;
@@ -209,18 +217,39 @@ export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new D
   const fxFrom = from;
   const p2 = Math.floor(now.getTime() / 1000);
 
+  // Benchmark tickers (the Rentabilidad row's SPY) need their dividends too: a total-return
+  // benchmark with no dividend on file refuses to read, and the row shows nothing.
+  const benchmarkTickers = new Set(listBenchmarkEquityTickers());
+  const tickers: { ticker: string; firstUse: string | null }[] = [...spec.tickers];
+  for (const t of benchmarkTickers) {
+    if (!tickers.some((x) => x.ticker === t)) tickers.push({ ticker: t, firstUse: null });
+  }
+
   const equities: Record<string, number> = {};
-  for (const { ticker, firstUse } of spec.tickers) {
+  const dividends: Record<string, number> = {};
+  for (const { ticker, firstUse } of tickers) {
     const last = ticker.endsWith("-USD") ? cryptoCompletedUtcYmd(now) : yesterday;
-    const series = await withDemoMarketRetries(`Yahoo ${ticker}`, async () => {
-      const s = closesThrough(await fetchYahooDailyCloses(ticker, unixSeconds(from), p2), last);
+    const withDividends = benchmarkTickers.has(ticker);
+    const { series, divs } = await withDemoMarketRetries(`Yahoo ${ticker}`, async () => {
+      let raw: EodCloseSeries;
+      let divs: { ex_date: string; amount: number }[] = [];
+      if (withDividends) {
+        const r = await fetchYahooDailyClosesAndDividends(ticker, unixSeconds(from), p2);
+        raw = r.series;
+        divs = r.dividends.filter((d) => d.ex_date <= last);
+        if (divs.length === 0) throw new Error(`no dividends for benchmark ticker ${ticker}`);
+      } else {
+        raw = await fetchYahooDailyCloses(ticker, unixSeconds(from), p2);
+      }
+      const s = closesThrough(raw, last);
       if (s.dates.length === 0) throw new Error(`no closes for ${ticker}`);
-      return s;
+      return { series: s, divs };
     });
-    if (series.dates[0]! > firstUse) {
+    if (firstUse != null && series.dates[0]! > firstUse) {
       throw new Error(`demo market: ${ticker} history starts ${series.dates[0]}, after its first use ${firstUse}`);
     }
     equities[ticker] = upsertEquityDailySeries(ticker, series);
+    if (withDividends) dividends[ticker] = insertEquityDividendsIfMissing(ticker, divs).inserted;
   }
 
   const fxRows = await withDemoMarketRetries("Yahoo CLP=X", async () => {
@@ -258,6 +287,7 @@ export async function loadDemoRealMarket(spec: DemoMarketSpec, now: Date = new D
     from,
     through: yesterday,
     equities,
+    dividends,
     fx,
     bcentral: { usd: usd.length, eur: eur.length, uf: uf.length, utm: utm.length, ipc: ipc.length },
     afp_official: pension ? pension.modelo + pension.uno : 0,
