@@ -178,9 +178,17 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
 
   // A scoped tick (the poll names what moved) drops only what read a moved price.
   it("a scoped tick of every price and the dollar serves the same payloads as a full rebuild", async () => {
-    const { differing, moved } = await tickParity(1.03, 1.0075, { scoped: true });
+    const { differing, moved, keptKeys } = await tickParity(1.03, 1.0075, { scoped: true });
     expect(differing).toEqual([]);
     expect(moved).toBe(true);
+    // A card's billing detail keeps its base part (statement frame, ledger payload) and re-applies
+    // only the live dollar rate on top (`ccBillingDetailCache.ts`).
+    // (A card that never billed in dollars reads no live rate and keeps its bundle too.)
+    const kept = new Set(keptKeys);
+    const ratesReapplied = listCreditCardMasterAccountIds().filter(
+      (id) => kept.has(`cc.billing_detail|${id}|base`) && !kept.has(`cc.billing_detail|${id}`)
+    );
+    expect(ratesReapplied.length).toBeGreaterThan(0);
   }, 300_000);
 
   // The synthetic DB holds no stock or coin, so a moved ticker is one nothing reads: a scoped

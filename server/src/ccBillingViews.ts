@@ -907,7 +907,27 @@ export function buildFacturaciones(
   accountId: number,
   ledgerMonths: CcInstallmentMonthRow[]
 ): CcFacturacionRow[] {
+  return withFacturacionUsdRates(accountId, buildFacturacionesWithoutUsdRates(accountId, ledgerMonths));
+}
+
+/**
+ * The facturaciones without the rate their dollars show at (`usd_rate_clp` / `usd_rate_source`
+ * null, `facturado_usd_clp` / `facturado_total_clp` in the debt frame): everything but the part an
+ * unpaid facturación reads from today's live rate. The billing-detail cache keeps it apart
+ * (`ccBillingDetailCache.ts`), so a tick that moves the dollar re-applies only the rates.
+ */
+export function buildFacturacionesWithoutUsdRates(
+  accountId: number,
+  ledgerMonths: CcInstallmentMonthRow[]
+): CcFacturacionRow[] {
   return withCcOneShotScanCache(() => buildFacturacionesInner(accountId, ledgerMonths));
+}
+
+/** Copies of `rows` with the rates their dollars show at applied (`applyFacturacionUsdRates`). */
+export function withFacturacionUsdRates(accountId: number, rows: readonly CcFacturacionRow[]): CcFacturacionRow[] {
+  const out = rows.map((r) => ({ ...r }));
+  applyFacturacionUsdRates(accountId, out);
+  return out;
 }
 
 /**
@@ -1086,7 +1106,6 @@ function buildFacturacionesInner(
     );
   }
 
-  applyFacturacionUsdRates(accountId, out);
   out.sort((a, b) => b.billing_month.localeCompare(a.billing_month));
   return out;
 }

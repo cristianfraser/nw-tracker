@@ -58,7 +58,7 @@ function facturacionBarsForMasters(masterIds: readonly number[]): CcFacturacionB
       const closeByMonth = new Map(
         bundle.facturaciones.map((f) => [f.billing_month, f.close_date_iso] as const)
       );
-      let statements: CcStatementRow[] | null = null;
+      let statements: readonly CcStatementRow[] | undefined;
       return {
         points: buildCcHistorialChartSeries(
           bundle.payload?.installment_history_months ?? [],
