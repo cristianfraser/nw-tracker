@@ -35,6 +35,7 @@ function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     purchase_notes: "",
     big_group_slug: null,
     origin_label: "Lider",
+    origin: { kind: "card", account_name: null, card_last4: null, additional: false },
     origin_card_last4: null,
     primary_card_last4: null,
     ...partial,
@@ -63,6 +64,7 @@ function cuota(
     purchase_key: purchaseKey,
     category_slug: "no_cuenta",
     origin_label: "Santander",
+    origin: { kind: "card", account_name: null, card_last4: null, additional: false },
   });
 }
 

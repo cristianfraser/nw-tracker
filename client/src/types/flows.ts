@@ -207,6 +207,17 @@ export interface CcExpenseBigGroupDto {
 
 export type FlowCcExpenseLineSource = "cc" | "checking" | "manual" | "payslip";
 
+/** Server `ExpenseLineOrigin` (`ccExpenseOriginLabel.ts`). */
+export interface ExpenseLineOrigin {
+  kind: "card" | "checking" | "manual" | "payslip";
+  /** Card master or bank account name; null for manual / payslip lines. */
+  account_name: string | null;
+  /** The plastic that made the charge (card lines). */
+  card_last4: string | null;
+  /** The plastic is the additional cardholder's. */
+  additional: boolean;
+}
+
 /** Installment-mode scope override; default `both`. See ccExpensePeriodMonth.ts. */
 export type CcFacturadoFinancingGastosScope = "both" | "total_only" | "split_only" | "excluded";
 
@@ -306,6 +317,8 @@ export interface FlowCcExpenseLineRow {
   big_group_slug: string | null;
   /** Card last4 (CC) or full account name (checking). */
   origin_label: string;
+  /** Where the line came from, as data: the row draws an icon per kind with the account in a tooltip. */
+  origin: ExpenseLineOrigin;
   /** Physical card that made the charge; null = primary / unknown / checking. */
   origin_card_last4?: string | null;
   /** Statement billing card; null for checking / synthetic lines. */

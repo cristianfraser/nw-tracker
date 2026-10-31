@@ -1,15 +1,8 @@
 import type { PaymentReceipt } from "../../types/flows";
 
-/**
- * Who a processor charge («PAGOS.FLOW.CL», «PAGO FACIL») actually paid, under its description:
- * «→ payee «concept»», like a transfer's counterparty; an inferred one (a subscription's cycle, a
- * monthly run) reads «≈ payee». A ride adds «from → to». The full receipt (processor, order, RUT, e-mail, when it was paid,
- * what the link rests on) is in the tooltip. Data only, nothing to translate.
- */
-export function PaymentReceiptLine({ receipt }: { receipt: PaymentReceipt | undefined }) {
-  if (!receipt) return null;
-  const r = receipt;
-  const detail = [
+/** The full receipt, one fact per line (processor, ride, concept, RUT, e-mail, order, when, basis). */
+export function paymentReceiptDetailLines(r: PaymentReceipt): string[] {
+  return [
     `${r.payee} (${r.processor_name})`,
     r.trip ? `${r.trip.started_at_chile ?? ""} ${r.trip.from}`.trim() : null,
     r.trip ? `${r.trip.ended_at_chile ?? ""} ${r.trip.to}`.trim() : null,
@@ -20,9 +13,19 @@ export function PaymentReceiptLine({ receipt }: { receipt: PaymentReceipt | unde
     r.charge ? `${r.charge.position}/${r.charge.of}` : null,
     r.paid_at_chile,
     r.basis,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].filter((x): x is string => Boolean(x));
+}
+
+/**
+ * Who a processor charge («PAGOS.FLOW.CL», «PAGO FACIL») actually paid, under its description:
+ * «→ payee «concept»», like a transfer's counterparty; an inferred one (a subscription's cycle, a
+ * monthly run) reads «≈ payee». A ride adds «from → to». The full receipt (processor, order, RUT, e-mail, when it was paid,
+ * what the link rests on) is in the tooltip. Data only, nothing to translate.
+ */
+export function PaymentReceiptLine({ receipt }: { receipt: PaymentReceipt | undefined }) {
+  if (!receipt) return null;
+  const r = receipt;
+  const detail = paymentReceiptDetailLines(r).join("\n");
   return (
     <div className="muted" style={{ fontSize: "0.85em" }} title={detail}>
       {r.guess ? "≈" : "→"} {r.payee}

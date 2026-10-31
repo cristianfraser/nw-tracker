@@ -78,6 +78,7 @@ function baseLine(
     purchase_notes: "auto:deposit-match|acct:41|date:2024-03-11|amt:1000000",
     big_group_slug: null,
     origin_label: "Cuenta corriente",
+    origin: { kind: "card", account_name: null, card_last4: null, additional: false },
     origin_card_last4: null,
     primary_card_last4: null,
     ...overrides,

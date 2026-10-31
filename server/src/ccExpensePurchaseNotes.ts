@@ -76,7 +76,7 @@ export function setCcExpensePurchaseNote(opts: {
 
 export type FlowCcExpenseLineBeforeNotes = Omit<
   FlowCcExpenseLineRow,
-  "purchase_key" | "purchase_notes" | "origin_label" | "big_group_slug"
+  "purchase_key" | "purchase_notes" | "origin_label" | "origin" | "big_group_slug"
 > & {
   /** Checking-only: deposit-paired portion of a movement (distinct purchase_key). */
   checking_purchase_portion?: "deposit";
@@ -88,7 +88,7 @@ export type FlowCcExpenseLineBeforeNotes = Omit<
 export function enrichFlowLinesWithPurchaseNotes(
   lines: FlowCcExpenseLineBeforeNotes[],
   notesByKey?: Map<string, string>
-): Omit<FlowCcExpenseLineRow, "origin_label" | "big_group_slug">[] {
+): Omit<FlowCcExpenseLineRow, "origin_label" | "origin" | "big_group_slug">[] {
   const accountIds = [...new Set(lines.map((ln) => ln.account_id))];
   const notes =
     notesByKey ??

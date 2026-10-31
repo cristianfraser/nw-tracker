@@ -2947,10 +2947,6 @@
         "en": "Cancel",
         "es": "Cancelar"
       },
-      "lineColActions": {
-        "en": "Actions",
-        "es": "Acciones"
-      },
       "associatedCardsTitle": {
         "en": "Associated cards",
         "es": "Tarjetas asociadas"
@@ -3341,10 +3337,6 @@
     "paginationPageOf": {
       "en": "Page {{page}} of {{total}}",
       "es": "Pág. {{page}} de {{total}}"
-    },
-    "showMore": {
-      "en": "Show more…",
-      "es": "Mostrar más…"
     }
   },
   "common": {
@@ -4571,14 +4563,6 @@
         "en": "No expenses in this period.",
         "es": "Sin gastos en este período."
       },
-      "colCategory": {
-        "en": "Category",
-        "es": "Categoría"
-      },
-      "colSelect": {
-        "en": "Select",
-        "es": "Seleccionar"
-      },
       "selectRowAria": {
         "en": "Select {{merchant}}",
         "es": "Seleccionar {{merchant}}"
@@ -4757,10 +4741,6 @@
         "en": "No movements.",
         "es": "Sin movimientos."
       },
-      "lineColSource": {
-        "en": "Origin",
-        "es": "Origen"
-      },
       "sourceCreditCard": {
         "en": "Credit card",
         "es": "Tarjeta"
@@ -4768,26 +4748,6 @@
       "sourceChecking": {
         "en": "Checking account",
         "es": "Cuenta corriente"
-      },
-      "lineColStatementClose": {
-        "en": "Statement close",
-        "es": "Cierre estado"
-      },
-      "lineColPurchaseDate": {
-        "en": "Purchase date",
-        "es": "Fecha compra"
-      },
-      "lineColAmount": {
-        "en": "CLP amount",
-        "es": "Monto CLP"
-      },
-      "lineColInstallment": {
-        "en": "Installment",
-        "es": "Cuota"
-      },
-      "lineColNotes": {
-        "en": "Notes",
-        "es": "Notas"
       },
       "purchaseNotePlaceholder": {
         "en": "Note…",
@@ -4822,17 +4782,9 @@
         "es": "· depósito inversión"
       },
       "bigGroups": {
-        "colGroup": {
-          "en": "Big group",
-          "es": "Grupo grande"
-        },
         "none": {
           "en": "—",
           "es": "—"
-        },
-        "selectAria": {
-          "en": "The purchase's big group",
-          "es": "Grupo grande de la compra"
         },
         "createOption": {
           "en": "+ Create group…",
@@ -5029,6 +4981,72 @@
         "deleteConfirm": {
           "en": "Delete this manual expense?",
           "es": "¿Eliminar este gasto manual?"
+        }
+      },
+      "lineRow": {
+        "sortDate": {
+          "en": "Date",
+          "es": "Fecha"
+        },
+        "sortAmount": {
+          "en": "Amount",
+          "es": "Monto"
+        },
+        "sortCategory": {
+          "en": "Category",
+          "es": "Categoría"
+        },
+        "sortAria": {
+          "en": "Sort by {{column}}",
+          "es": "Ordenar por {{column}}"
+        },
+        "moreAria": {
+          "en": "More for {{merchant}}",
+          "es": "Más de {{merchant}}"
+        },
+        "needsAction": {
+          "en": "Needs your input",
+          "es": "Necesita tu respuesta"
+        },
+        "infoAria": {
+          "en": "Linked details",
+          "es": "Detalle vinculado"
+        },
+        "categoryPickerAria": {
+          "en": "Category: {{category}}",
+          "es": "Categoría: {{category}}"
+        },
+        "bigGroupPickerAria": {
+          "en": "Big group: {{group}}",
+          "es": "Grupo grande: {{group}}"
+        },
+        "clearBigGroupAria": {
+          "en": "Remove big group",
+          "es": "Quitar grupo grande"
+        },
+        "originCard": {
+          "en": "Card {{name}} · {{last4}}",
+          "es": "Tarjeta {{name}} · {{last4}}"
+        },
+        "originCardAdditional": {
+          "en": "Card {{name}} · {{last4}} (additional card)",
+          "es": "Tarjeta {{name}} · {{last4}} (tarjeta adicional)"
+        },
+        "originChecking": {
+          "en": "Account {{name}}",
+          "es": "Cuenta {{name}}"
+        },
+        "originManual": {
+          "en": "Manual expense",
+          "es": "Gasto manual"
+        },
+        "originPayslip": {
+          "en": "Payroll deduction",
+          "es": "Deducción de liquidación"
+        },
+        "noBigGroup": {
+          "en": "No group",
+          "es": "Sin grupo"
         }
       }
     },

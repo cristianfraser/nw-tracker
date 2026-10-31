@@ -1,0 +1,15 @@
+.popover {
+  max-width: min(22rem, calc(100vw - 1.5rem));
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, #000 45%, transparent);
+  font-size: var(--font-size-ui);
+}
+
+.dialog {
+  padding: 0.55rem 0.65rem;
+  outline: none;
+  overflow-wrap: anywhere;
+}
