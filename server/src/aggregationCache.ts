@@ -13,6 +13,7 @@ import {
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { dbWriteCount } from "./dbWriteCounter.js";
+import { clearDbStateMemos, setDbStateMemoFreshnessCheck } from "./dbStateMemo.js";
 import { applyPendingMarkInputChanges, setMarkInputsChangedListener } from "./markInputChanges.js";
 import { clearMarkSeries } from "./markSeriesStore.js";
 import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
@@ -85,6 +86,7 @@ function ensureCacheFreshForChileDay(): void {
     cache.clear();
     depNodes.clear();
     invalidateLiveTier();
+    clearDbStateMemos();
     rollupSlugsByAccountId = null;
     cacheDayYmd = today;
     cacheDbDataVersion = dataVersion;
@@ -120,10 +122,13 @@ export function clearAggregationCache(): void {
   cache.clear();
   depNodes.clear();
   invalidateLiveTier();
+  clearDbStateMemos();
   clearMarkSeries();
   rollupSlugsByAccountId = null;
   invalidationListener?.();
 }
+
+setDbStateMemoFreshnessCheck(ensureCacheFreshForChileDay);
 
 /**
  * The history tier: memos of results computed only from evidence dated strictly before Chile
