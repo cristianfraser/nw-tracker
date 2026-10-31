@@ -1,7 +1,5 @@
-import type { ReactNode } from "react";
 import type { CcInstallmentPurchaseComputed } from "../../types";
 import { formatClp, formatGroupedDecimal } from "../../format";
-import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import {
   TableMobileCard,
@@ -11,18 +9,12 @@ import {
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { CreditCardCuotaProgress } from "./CreditCardCuotaProgress";
 import { CreditCardPurchaseVendor } from "./CreditCardPurchaseVendor";
-import styles from "../AccountDetailPage.module.css";
-
-function PurchaseMeta({ children }: { children: ReactNode }) {
-  return <div className={cn("muted", styles.purchaseMeta)}>{children}</div>;
-}
 
 export function CreditCardPurchaseMobileCard({
   purchase,
   accountId,
   hasLedger,
   dueColumn,
-  originLabel,
   manualBusy,
   onDeleteManual,
   maxInstallments,
@@ -31,7 +23,6 @@ export function CreditCardPurchaseMobileCard({
   accountId: number;
   hasLedger: boolean;
   dueColumn: "last" | "none";
-  originLabel: string;
   manualBusy: boolean;
   onDeleteManual?: () => void;
   /** Shared segment width of the table's progress bars (see CreditCardCuotaProgress). */
@@ -76,13 +67,6 @@ export function CreditCardPurchaseMobileCard({
   return (
     <TableMobileCard title={vendor}>
       <TableMobileCardSection>
-        <PurchaseMeta>
-          <span className="mono">{purchase.purchase_id}</span>
-        </PurchaseMeta>
-        <PurchaseMeta>{originLabel}</PurchaseMeta>
-      </TableMobileCardSection>
-
-      <TableMobileCardSection>
         <TableMobileCardRow label={t("account.creditCard.colInstallments")} value={String(purchase.installment_count)} />
         <TableMobileCardRow label={t("account.creditCard.colPrincipal")} value={formatClp(purchase.principal_clp)} />
       </TableMobileCardSection>
@@ -114,7 +98,6 @@ export function CreditCardPurchaseMobileCard({
       <TableMobileCardSection>
         <TableMobileCardRow label={t("account.creditCard.colCuotaClp")} value={formatClp(purchase.cuota_clp)} />
       </TableMobileCardSection>
-
     </TableMobileCard>
   );
 }

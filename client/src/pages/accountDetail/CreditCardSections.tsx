@@ -105,11 +105,6 @@ function CreditCardInstallmentsSection({
     return list;
   }, [purchasesCompleted]);
 
-  const originLabel = (p: CcInstallmentPurchaseComputed) =>
-    p.origin === "manual"
-      ? t("account.creditCard.originManual")
-      : t("account.creditCard.originImportDocument");
-
   // Only a hand-entered plan can be deleted (a statement plan comes back with the next import).
   const deleteManual = (p: CcInstallmentPurchaseComputed) =>
     hasLedger && p.origin === "manual" && p.purchase_db_id != null
@@ -163,7 +158,6 @@ function CreditCardInstallmentsSection({
             accountId={accountId}
             hasLedger={hasLedger}
             dueColumn="none"
-            originLabel={originLabel(p)}
             manualBusy={manualBusy}
             onDeleteManual={deleteManual(p)}
             maxInstallments={maxActiveInstallments}
@@ -194,8 +188,6 @@ function CreditCardInstallmentsSection({
       <tr key={p.purchase_id}>
         <td className="desktop-only">
           {purchaseVendor(p)}
-          <div className={cn("mono", "muted", styles.purchaseMeta)}>{p.purchase_id}</div>
-          <div className={cn("muted", styles.purchaseMeta)}>{originLabel(p)}</div>
         </td>
         <td className="mono desktop-only">{p.installment_count}</td>
         <td className="mono desktop-only">{formatClp(p.principal_clp)}</td>
@@ -215,7 +207,6 @@ function CreditCardInstallmentsSection({
             accountId={accountId}
             hasLedger={hasLedger}
             dueColumn="last"
-            originLabel={originLabel(p)}
             manualBusy={manualBusy}
             onDeleteManual={deleteManual(p)}
             maxInstallments={maxActiveInstallments}

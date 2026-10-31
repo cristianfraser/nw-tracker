@@ -22,3 +22,8 @@
 .panelNote {
   max-width: 28rem;
 }
+
+.panelMeta {
+  color: var(--muted);
+  font-size: var(--font-size-card-meta);
+}
