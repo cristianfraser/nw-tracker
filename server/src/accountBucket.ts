@@ -1,4 +1,5 @@
 import { portfolioGroupBySlug } from "./portfolioGroupTree.js";
+import { getPortfolioGroupIndex } from "./portfolioGroupIndex.js";
 import { db } from "./db.js";
 import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
 
@@ -18,6 +19,9 @@ export function accountBucketKindSlug(leafBucketSlug: string): string {
 
 /** Leaf `asset_groups.slug` for an account (replaces legacy `categories.slug`). */
 export function bucketSlugForAccountId(accountId: number): string | null {
+  // Inside a build that shares one tree index (`withPortfolioGroupIndex`), read its snapshot.
+  const idx = getPortfolioGroupIndex();
+  if (idx) return idx.assetGroupSlugByAccountId.get(accountId) ?? null;
   const row = bucketSlugStmt.get(accountId) as { slug: string } | undefined;
   return row?.slug ?? null;
 }

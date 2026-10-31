@@ -7,6 +7,8 @@ import {
   resolvePortfolioGroupSlugForLegacyTab,
 } from "../portfolioGroupTree.js";
 import { attachColorsToValuationPayload } from "../chartColorRgb.js";
+import { HeavyWork, timeHeavy } from "../heavyWork.js";
+import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached } from "../aggregationCache.js";
 import { attachNetWorthAth } from "../netWorthAllTimeHigh.js";
 import {
   getDashboardValuationTimeseries,
@@ -112,7 +114,9 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     return;
   }
   if (portfolioGroup !== "") {
-    const series = resolveGroupDailySeries(portfolioGroup, unit, days);
+    const series = timeHeavy(`${HeavyWork.dailyGroupSeries} ${portfolioGroup} ${unit} ${days}`, () =>
+      resolveGroupDailySeries(portfolioGroup, unit, days)
+    );
     if (!series) {
       res.status(404).json({ error: `no accounts for group ${portfolioGroup}` });
       return;
@@ -148,11 +152,13 @@ app.get("/api/daily-series", asyncHandler(async (req, res) => {
     // same grid. Values only — the client pairs them with that block's line metadata.
     const chartHost = chartHostSlugForValuationGroup(portfolioGroup);
     const referenceLines = chartHost
-      ? dailyReferenceLinesForChartHost(
-          chartHost,
-          unit,
-          days,
-          series.points.map((p) => p.as_of_date)
+      ? timeHeavy(`${HeavyWork.dailyReferenceLines} ${chartHost} ${unit} ${days}`, () =>
+          dailyReferenceLinesForChartHost(
+            chartHost,
+            unit,
+            days,
+            series.points.map((p) => p.as_of_date)
+          )
         )
       : null;
     // Composition shares (pie-replacement chart, day grain): per-account and, when the
@@ -353,9 +359,13 @@ app.get("/api/dashboard/valuation-timeseries", (req, res) => {
       res.status(400).json({ error: "unknown group slug" });
       return;
     }
+    // Cached with the page bundle's lifetime: it reads the same inputs, and every invalidation
+    // that drops the bundle drops it.
     res.json(
-      attachColorsToValuationPayload(
-        getGroupValuationTimeseries(tabSlug, unit, undefined, { groupedBlocks: true })
+      getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}group_valuation_ts|${tabSlug}|${unit}`, () =>
+        attachColorsToValuationPayload(
+          getGroupValuationTimeseries(tabSlug, unit, undefined, { groupedBlocks: true })
+        )
       )
     );
     return;

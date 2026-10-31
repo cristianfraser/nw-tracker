@@ -46,7 +46,7 @@ import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
 import { ccLedgerStatementClosingPointsClpForAccounts } from "./ccCreditCardValuations.js";
 import { latestCreditCardValuationRowAsOf } from "./valuationLatest.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
-import { cacheKeyGroupClosingByDate, getAggregationCached } from "./aggregationCache.js";
+import { cacheKeyGroupClosingByDate, DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached } from "./aggregationCache.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
   averageRgbTriplets,
@@ -1389,9 +1389,14 @@ function buildDashboardOverviewSlice(unit: TsUnit): {
   };
 }
 
-/** @heavy Nav / group pages: overview chart only (no USD milestone reference lines). */
-export function getDashboardOverviewBlock(unit: TsUnit) {
-  return buildDashboardOverviewSlice(unit).overview;
+/**
+ * @heavy Nav / group pages: overview chart only (no USD milestone reference lines). Cached with
+ * the page bundle's lifetime (it reads the same inputs).
+ */
+export function getDashboardOverviewBlock(unit: TsUnit): ReturnType<typeof buildDashboardOverviewSlice>["overview"] {
+  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}overview|${unit}`, () =>
+    buildDashboardOverviewSlice(unit).overview
+  );
 }
 
 /** Overview chart `dataKey` → `portfolio_groups.slug` (cash line = ahorros y reservas). */

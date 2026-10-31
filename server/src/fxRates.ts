@@ -140,6 +140,8 @@ export function ufClpByDateRange(fromYmd: string, toYmd: string): Map<string, nu
   return out;
 }
 
+const UF_SNAPSHOT_INDEXED_LOOKUP_MAX = 16;
+
 /**
  * Official UF (CLP per 1 UF) from `uf_daily` at each snapshot label — last row on or before each date.
  * Used for mortgage cierre / UF día (not duplicated from the depto dividendos sheet).
@@ -147,6 +149,14 @@ export function ufClpByDateRange(fromYmd: string, toYmd: string): Map<string, nu
 export function ufClpBySnapshotDatesAsc(datesAsc: readonly string[]): Map<string, number> {
   const out = new Map<string, number>();
   if (datesAsc.length === 0) return out;
+  if (datesAsc.length <= UF_SNAPSHOT_INDEXED_LOOKUP_MAX) {
+    // A few dates (a single mark): one indexed on-or-before lookup each beats reading the table.
+    for (const d of datesAsc) {
+      const row = ufRowOnOrBefore(d);
+      if (row != null && Number.isFinite(row.clp_per_uf)) out.set(d, row.clp_per_uf);
+    }
+    return out;
+  }
   const rows = db
     .prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date ASC`)
     .all() as { date: string; clp_per_uf: number }[];

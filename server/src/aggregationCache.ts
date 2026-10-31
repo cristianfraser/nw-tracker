@@ -31,8 +31,12 @@ let cacheDayYmd: string | null = null;
  */
 let cacheDbDataVersion: number | null = null;
 
+// Prepared once: every cached read checks it, and `db.pragma()` prepares a statement per call.
+let dataVersionStmt: import("better-sqlite3").Statement<[], number> | null = null;
+
 function currentDbDataVersion(): number {
-  return db.pragma("data_version", { simple: true }) as number;
+  dataVersionStmt ??= db.prepare<[], number>("PRAGMA data_version").pluck();
+  return dataVersionStmt.get()!;
 }
 
 function ensureCacheFreshForChileDay(): void {
@@ -176,8 +180,15 @@ export function cacheKeyCcBillingDetail(accountId: number): string {
   return `cc.billing_detail|${accountId}`;
 }
 
+/**
+ * Every key under this prefix lives as long as the home page bundle: the bundle itself
+ * (`<prefix><unit>`) and the payloads built from the same inputs (the nav snapshot / context, the
+ * overview chart block).
+ */
+export const DASHBOARD_PAGE_BUNDLE_PREFIX = "dashboard.page_bundle|";
+
 export function cacheKeyDashboardPageBundle(unit: TsUnit): string {
-  return `dashboard.page_bundle|${unit}`;
+  return `${DASHBOARD_PAGE_BUNDLE_PREFIX}${unit}`;
 }
 
 /**
@@ -187,7 +198,7 @@ export function cacheKeyDashboardPageBundle(unit: TsUnit): string {
  * next day rollover. Also the eviction hook for a build that rejected mid-flight.
  */
 export function invalidateDashboardPageBundle(): void {
-  deleteKeysMatchingPrefix("dashboard.page_bundle|");
+  deleteKeysMatchingPrefix(DASHBOARD_PAGE_BUNDLE_PREFIX);
 }
 
 /**
@@ -254,6 +265,8 @@ setMarkInputsChangedListener((change) => {
     }
   }
   invalidateDashboardPageBundle();
+  // The expense lines (and the payloads cached on them) read movements and card lines too.
+  invalidateFlowsOverview({ inputs: true });
   invalidationListener?.();
 });
 
