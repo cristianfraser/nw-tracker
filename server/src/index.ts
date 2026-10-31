@@ -12,7 +12,7 @@ import {
   resolveCorsOrigins,
 } from "./httpSecurity.js";
 import { bootstrapDemoModeIfEnabled, demoModeEnabled } from "./demoMode.js";
-import { demoVisitLogMiddleware } from "./demoAnalytics.js";
+import { demoOwnerCookieMiddleware, demoVisitLogMiddleware } from "./demoAnalytics.js";
 import { applyBackgroundJobsEnvDefaults } from "./backgroundJobsEnv.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
@@ -69,6 +69,7 @@ if (demoModeEnabled()) {
   // analytics visitor hash would collapse to a single id.
   app.set("trust proxy", 1);
   app.use(demoReadOnlyMiddleware());
+  app.use(demoOwnerCookieMiddleware());
   app.use(demoVisitLogMiddleware());
   console.log("demo: /api is read-only, anonymous visit analytics + usage log in DEMO_ANALYTICS_DB (DEMO_MODE=1)");
 }

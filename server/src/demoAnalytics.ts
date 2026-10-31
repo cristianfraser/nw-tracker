@@ -64,6 +64,13 @@ export function demoAnalyticsDb(): BetterSqliteDb {
        value TEXT NOT NULL
      );`
   );
+  // The owner's own visits (2026-10-31): kept, flagged, reported apart (see ownerCookie below).
+  const columns = opened.prepare(`PRAGMA table_info(demo_visits)`).all() as { name: string }[];
+  if (!columns.some((c) => c.name === "owner")) {
+    opened.exec(
+      `ALTER TABLE demo_visits ADD COLUMN owner INTEGER NOT NULL DEFAULT 0 CHECK (owner IN (0, 1))`
+    );
+  }
   handle = opened;
   return opened;
 }
@@ -132,23 +139,27 @@ export type VisitInput = {
   referrer: string | null;
   country: string | null;
   userAgent: string | null;
+  /** The request carried the owner cookie: the demo's author, counted apart. */
+  owner: boolean;
 };
 
 /** One row per (day, visitor); repeat requests bump `request_count` / `last_seen_at`.
- * `src` and `referrer` keep their first non-null value — the arrival is what they describe. */
+ * `src` and `referrer` keep their first non-null value — the arrival is what they describe.
+ * `owner` sticks once any request of the visit carried the owner cookie. */
 export function recordDemoVisit(input: VisitInput): void {
   demoAnalyticsDb()
     .prepare(
-      `INSERT INTO demo_visits (day, visitor, src, referrer, country, user_agent, request_count)
-       VALUES (@day, @visitor, @src, @referrer, @country, @userAgent, 1)
+      `INSERT INTO demo_visits (day, visitor, src, referrer, country, user_agent, request_count, owner)
+       VALUES (@day, @visitor, @src, @referrer, @country, @userAgent, 1, @owner)
        ON CONFLICT(day, visitor) DO UPDATE SET
          request_count = request_count + 1,
          last_seen_at = datetime('now'),
          src = COALESCE(demo_visits.src, excluded.src),
          referrer = COALESCE(demo_visits.referrer, excluded.referrer),
-         country = COALESCE(demo_visits.country, excluded.country)`
+         country = COALESCE(demo_visits.country, excluded.country),
+         owner = MAX(demo_visits.owner, excluded.owner)`
     )
-    .run(input);
+    .run({ ...input, owner: input.owner ? 1 : 0 });
 }
 
 /**
@@ -183,6 +194,62 @@ function isCountableRequest(req: Request): boolean {
   return (req.headers.accept ?? "").includes("text/html");
 }
 
+// --- The owner's own browsers ------------------------------------------------------------
+//
+// The author browses the demo too, and can't be told apart by address (none is stored, and a
+// home IP changes). Opening the demo once with `?owner=<DEMO_OWNER_CODE>` sets a long-lived
+// cookie in that browser; every later request carrying it marks the visit `owner`, which the
+// report (`npm run demo:visits`) shows apart. It is per browser (once in each browser and
+// device, again after clearing cookies). Without DEMO_OWNER_CODE the feature is off. Anyone
+// who learned the code would only hide their own visits, so it is not a secret that matters.
+
+export const OWNER_COOKIE = "nw_demo_owner";
+const OWNER_COOKIE_MAX_AGE_S = 5 * 365 * 24 * 3600;
+
+function ownerCode(): string | null {
+  return process.env.DEMO_OWNER_CODE?.trim() || null;
+}
+
+/** One cookie's value from the Cookie header (no cookie-parser dependency for one cookie). */
+export function cookieValue(header: string | undefined, name: string): string | null {
+  for (const part of (header ?? "").split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(eq + 1).trim());
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** The request is the owner's: it carries the cookie with the current code, or the code itself. */
+export function isOwnerRequest(req: Request): boolean {
+  const code = ownerCode();
+  if (!code) return false;
+  return cookieValue(req.headers.cookie, OWNER_COOKIE) === code || req.query.owner === code;
+}
+
+/**
+ * `?owner=<code>` on any request sets the owner cookie (HttpOnly, 5 years). A wrong code does
+ * nothing. Mounted in demo mode only, before the visit log.
+ */
+export function demoOwnerCookieMiddleware(): RequestHandler {
+  return (req, res, next) => {
+    const code = ownerCode();
+    if (code && req.query.owner === code) {
+      const secure = req.secure ? "; Secure" : "";
+      res.setHeader(
+        "Set-Cookie",
+        `${OWNER_COOKIE}=${encodeURIComponent(code)}; Max-Age=${OWNER_COOKIE_MAX_AGE_S}; Path=/; HttpOnly; SameSite=Lax${secure}`
+      );
+    }
+    next();
+  };
+}
+
 /**
  * Records one visit row per visitor per day. Mounted only in demo mode. Analytics are an
  * optional side channel: a failure here is logged once per process and never breaks a request.
@@ -205,6 +272,7 @@ export function demoVisitLogMiddleware(): RequestHandler {
           referrer: referrerOrigin(req.headers.referer),
           country: countryHeader(req),
           userAgent: clamp(identity.userAgent, MAX_UA),
+          owner: isOwnerRequest(req),
         });
       }
     } catch (err) {

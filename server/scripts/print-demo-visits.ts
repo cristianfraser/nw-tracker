@@ -36,14 +36,31 @@ if (!tableExists("demo_visits")) {
   process.exit(1);
 }
 
-console.log(`demo analytics — ${dbPath}\n`);
+// Visits from the owner's marked browsers (cookie, see demoAnalytics.ts) are left out of every
+// table below and counted on their own; a file from before the flag has no such column.
+const hasOwner = (db.prepare("PRAGMA table_info(demo_visits)").all() as { name: string }[]).some(
+  (c) => c.name === "owner"
+);
+const notOwner = hasOwner ? "owner = 0" : "1";
+const ownerVisitors = hasOwner
+  ? "(SELECT visitor FROM demo_visits WHERE owner = 1)"
+  : "(SELECT NULL WHERE 0)";
+
+console.log(`demo analytics — ${dbPath}`);
+console.log(
+  hasOwner
+    ? `(owner's own visits excluded: ${
+        (db.prepare("SELECT COUNT(*) AS c FROM demo_visits WHERE owner = 1").get() as { c: number }).c
+      } visit row(s), see the last table)\n`
+    : "(no owner flag in this file yet: every visit counted)\n"
+);
 
 console.log("Visitors per day");
 console.table(
   db
     .prepare(
       `SELECT day, COUNT(*) AS visitors, SUM(request_count) AS requests
-       FROM demo_visits GROUP BY day ORDER BY day DESC LIMIT 60`
+       FROM demo_visits WHERE ${notOwner} GROUP BY day ORDER BY day DESC LIMIT 60`
     )
     .all()
 );
@@ -53,7 +70,7 @@ console.table(
   db
     .prepare(
       `SELECT COALESCE(src, '(none)') AS src, COUNT(*) AS visits
-       FROM demo_visits GROUP BY 1 ORDER BY visits DESC`
+       FROM demo_visits WHERE ${notOwner} GROUP BY 1 ORDER BY visits DESC`
     )
     .all()
 );
@@ -63,7 +80,7 @@ console.table(
   db
     .prepare(
       `SELECT COALESCE(referrer, '(direct)') AS referrer, COUNT(*) AS visits
-       FROM demo_visits GROUP BY 1 ORDER BY visits DESC LIMIT 20`
+       FROM demo_visits WHERE ${notOwner} GROUP BY 1 ORDER BY visits DESC LIMIT 20`
     )
     .all()
 );
@@ -78,7 +95,9 @@ if (tableExists("usage_page_views")) {
                 SUM(outcome = 'settled') AS timed,
                 CAST(ROUND(AVG(settle_ms)) AS INTEGER) AS avg_load_ms,
                 CAST(ROUND(MAX(settle_ms)) AS INTEGER) AS max_load_ms
-         FROM usage_page_views GROUP BY route ORDER BY views DESC LIMIT 25`
+         FROM usage_page_views
+         WHERE visitor IS NULL OR visitor NOT IN ${ownerVisitors}
+         GROUP BY route ORDER BY views DESC LIMIT 25`
       )
       .all()
   );
@@ -89,7 +108,9 @@ if (tableExists("usage_page_views")) {
       .prepare(
         `SELECT pages, COUNT(*) AS visitors FROM (
            SELECT substr(viewed_at, 1, 10) AS day, visitor, COUNT(DISTINCT path) AS pages
-           FROM usage_page_views WHERE visitor IS NOT NULL GROUP BY day, visitor
+           FROM usage_page_views
+           WHERE visitor IS NOT NULL AND visitor NOT IN ${ownerVisitors}
+           GROUP BY day, visitor
          ) GROUP BY pages ORDER BY pages`
       )
       .all()
@@ -129,7 +150,19 @@ console.table(
   db
     .prepare(
       `SELECT day, visitor, src, referrer, country, request_count, first_seen_at, last_seen_at
-       FROM demo_visits ORDER BY day DESC, last_seen_at DESC LIMIT 40`
+       FROM demo_visits WHERE ${notOwner} ORDER BY day DESC, last_seen_at DESC LIMIT 40`
     )
     .all()
 );
+
+if (hasOwner) {
+  console.log("\nOwner's own visits (marked browsers)");
+  console.table(
+    db
+      .prepare(
+        `SELECT day, COUNT(*) AS visits, SUM(request_count) AS requests
+         FROM demo_visits WHERE owner = 1 GROUP BY day ORDER BY day DESC LIMIT 30`
+      )
+      .all()
+  );
+}
