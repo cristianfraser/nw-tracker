@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import type { Database as DatabaseType } from "better-sqlite3";
+import { noteDbWrite } from "./dbWriteCounter.js";
 import { wrapDatabaseForVerboseLog } from "./dbVerbose.js";
 import { runExpenseConsumptionBackfill161, runLegacyNoteBackfill157 } from "./legacyNoteBackfills.js";
 import { runMovementsAmountCurrency169 } from "./movementsAmountCurrency169.js";
@@ -309,6 +310,56 @@ export function runMigrations() {
   } else {
     console.log(`migrations: applied ${appliedCount} new file(s); total recorded ${done.size + appliedCount}`);
   }
+}
+
+// Count this connection's writes (see dbWriteCounter.ts): a statement that can write is
+// wrapped once, when prepared, so reads pay nothing.
+//
+// Statements are also shared per SQL text: many readers call `db.prepare` inside the function
+// that runs the query, and compiling the statement cost more than running it. A shared statement
+// never changes: `pluck`, `raw`, `expand`, `safeIntegers` and `bind` on it return a private copy
+// with that setting (so `db.prepare(sql).pluck()` keeps working; calling them without using the
+// result does nothing). One that is busy (an `iterate` still open over it) is not handed out; the
+// caller gets a private one.
+{
+  const prepare = dbInternal.prepare.bind(dbInternal) as (source: string) => Database.Statement;
+  const compile = (source: string): Database.Statement => {
+    const stmt = prepare(source);
+    if (!stmt.readonly) {
+      for (const method of ["run", "get", "all", "iterate"] as const) {
+        const original = stmt[method] as (...args: unknown[]) => unknown;
+        (stmt as unknown as Record<string, unknown>)[method] = function (this: Database.Statement, ...args: unknown[]) {
+          noteDbWrite();
+          return original.apply(this, args);
+        };
+      }
+    }
+    return stmt;
+  };
+  const SHARED_STATEMENTS_MAX = 4000;
+  const shared = new Map<string, Database.Statement>();
+  const share = (source: string, stmt: Database.Statement): Database.Statement => {
+    for (const setting of ["pluck", "raw", "expand", "safeIntegers", "bind"] as const) {
+      (stmt as unknown as Record<string, unknown>)[setting] = (...args: unknown[]) => {
+        const own = compile(source) as unknown as Record<string, (...a: unknown[]) => Database.Statement>;
+        return own[setting]!(...args);
+      };
+    }
+    return stmt;
+  };
+  (dbInternal as { prepare: (source: string) => Database.Statement }).prepare = (source: string) => {
+    const hit = shared.get(source);
+    if (hit) return hit.busy ? compile(source) : hit;
+    if (shared.size >= SHARED_STATEMENTS_MAX) shared.clear();
+    const stmt = share(source, compile(source));
+    shared.set(source, stmt);
+    return stmt;
+  };
+  const exec = dbInternal.exec.bind(dbInternal);
+  dbInternal.exec = (sql: string) => {
+    noteDbWrite();
+    return exec(sql);
+  };
 }
 
 const db = wrapDatabaseForVerboseLog(dbInternal);

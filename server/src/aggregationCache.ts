@@ -12,6 +12,8 @@ import {
 } from "./cacheDependencies.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { dbWriteCount } from "./dbWriteCounter.js";
+import { clearDbStateMemos, setDbStateMemoFreshnessCheck } from "./dbStateMemo.js";
 import { applyPendingMarkInputChanges, setMarkInputsChangedListener } from "./markInputChanges.js";
 import { clearMarkSeries } from "./markSeriesStore.js";
 import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
@@ -55,20 +57,41 @@ function currentDbDataVersion(): number {
   return dataVersionStmt.get()!;
 }
 
+/**
+ * The two freshness queries (the mark-input log's head, `data_version`) cost a statement each,
+ * and one rebuild looks things up thousands of times. Within one synchronous stretch (until the
+ * next microtask) they are asked once, again only after this connection wrote. Another
+ * connection's commit inside that stretch is seen at the next one, as it would be had it landed
+ * a moment later.
+ */
+let checkedInStretch = false;
+let checkedAtWriteCount = -1;
+
 function ensureCacheFreshForChileDay(): void {
+  const today = chileCalendarTodayYmd();
+  const writeCount = dbWriteCount();
+  if (checkedInStretch && writeCount === checkedAtWriteCount && cacheDayYmd === today) return;
+  if (!checkedInStretch) {
+    checkedInStretch = true;
+    queueMicrotask(() => {
+      checkedInStretch = false;
+    });
+  }
+  checkedAtWriteCount = -1;
   // Marks a write moved (any connection — the database logs it) are trimmed, and the daily
   // aggregations built on them dropped through the listener below, before anything is served.
-  applyPendingMarkInputChanges();
-  const today = chileCalendarTodayYmd();
+  applyPendingMarkInputChanges(today);
   const dataVersion = currentDbDataVersion();
   if (cacheDayYmd !== today || cacheDbDataVersion !== dataVersion) {
     cache.clear();
     depNodes.clear();
     invalidateLiveTier();
+    clearDbStateMemos();
     rollupSlugsByAccountId = null;
     cacheDayYmd = today;
     cacheDbDataVersion = dataVersion;
   }
+  checkedAtWriteCount = writeCount;
 }
 
 function deleteKeysMatchingPrefix(prefix: string): void {
@@ -99,10 +122,13 @@ export function clearAggregationCache(): void {
   cache.clear();
   depNodes.clear();
   invalidateLiveTier();
+  clearDbStateMemos();
   clearMarkSeries();
   rollupSlugsByAccountId = null;
   invalidationListener?.();
 }
+
+setDbStateMemoFreshnessCheck(ensureCacheFreshForChileDay);
 
 /**
  * The history tier: memos of results computed only from evidence dated strictly before Chile
