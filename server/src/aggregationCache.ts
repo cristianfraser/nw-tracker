@@ -258,6 +258,19 @@ export function cacheKeyDashboardPageBundle(unit: TsUnit): string {
 }
 
 /**
+ * An account page's bundle (`cachedAccountDetailBundle`), under the page bundle's prefix so every
+ * invalidation that drops the bundle drops it too; API writes drop it as well (labels, notes and
+ * card config are not in any aggregation funnel).
+ */
+export function cacheKeyAccountDetailBundle(accountId: number, unit: TsUnit, granularity: string): string {
+  return `${DASHBOARD_PAGE_BUNDLE_PREFIX}account_detail|${accountId}|${unit}|${granularity}`;
+}
+
+export function invalidateAccountDetailBundles(): void {
+  deleteKeysMatchingPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}account_detail|`);
+}
+
+/**
  * The home page-bundle response bakes in every dashboard input (account rows with live marks,
  * valuation TS, CC balances, group perf, fx), so every explicit invalidation below must drop
  * it — a targeted key delete that leaves a stale bundle would serve pre-write data until the

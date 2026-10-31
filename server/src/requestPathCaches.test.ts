@@ -23,6 +23,7 @@ import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { snapshotTables } from "./test/snapshotTables.js";
+import { buildAccountDetailBundle, cachedAccountDetailBundle } from "./accountDetailBundle.js";
 
 afterAll(() => clearAggregationCache());
 
@@ -225,5 +226,44 @@ describe("card ledger caches", () => {
     }
     clearAggregationCache();
     expect(ccLedgerPayloads()).toEqual(first);
+  }, 300_000);
+});
+
+describe("account detail bundle cache", () => {
+  it("serves the uncached build for every account, before and after a write", async () => {
+    clearAggregationCache();
+    const ids = (db.prepare(`SELECT id FROM accounts ORDER BY id`).all() as { id: number }[]).map((r) => r.id);
+    const snap = async (build: typeof buildAccountDetailBundle) => {
+      const out = new Map<string, string>();
+      for (const id of ids) {
+        for (const unit of ["clp", "usd"] as const) out.set(`${id}|${unit}`, JSON.stringify(await build(id, unit, "monthly")));
+      }
+      return out;
+    };
+    const cached = await snap(cachedAccountDetailBundle);
+    expect(await snap(cachedAccountDetailBundle)).toEqual(cached);
+    const fresh = await snap(buildAccountDetailBundle);
+    expect([...fresh.keys()].filter((k) => cached.get(k) !== fresh.get(k))).toEqual([]);
+
+    const accountId = (
+      db.prepare(`SELECT account_id AS id FROM movements WHERE account_id IS NOT NULL AND currency = 'clp' LIMIT 1`).get() as {
+        id: number;
+      }
+    ).id;
+    const id = Number(
+      db
+        .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 54321, 'clp', ?, 'vitest:detail-bundle')`)
+        .run(accountId, chileCalendarTodayYmd()).lastInsertRowid
+    );
+    invalidateAggregationForAccountDate(accountId, chileCalendarTodayYmd());
+    try {
+      const afterWrite = await snap(cachedAccountDetailBundle);
+      expect(afterWrite.get(`${accountId}|clp`)).not.toBe(cached.get(`${accountId}|clp`));
+      const freshAfter = await snap(buildAccountDetailBundle);
+      expect([...freshAfter.keys()].filter((k) => afterWrite.get(k) !== freshAfter.get(k))).toEqual([]);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
+      clearAggregationCache();
+    }
   }, 300_000);
 });

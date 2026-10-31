@@ -3,53 +3,6 @@ import type { AccountMortgageLedgerResponse } from "./mortgage";
 import type { DataOrigin } from "../dataOrigin";
 import type { PaymentReceipt } from "./flows";
 
-/** `GET /api/accounts/:id/cc-installments` — credit_card: installment purchases from SQLite (PDF/ledger import). */
-export interface CcStatementLineDto {
-  id: number;
-  statement_id: number;
-  transaction_date: string | null;
-  posting_date: string | null;
-  merchant: string | null;
-  description_merged: string | null;
-  country: string | null;
-  amount_orig: number | null;
-  orig_currency: string | null;
-  amount_clp: number | null;
-  amount_usd: number | null;
-  installment_flag: boolean;
-}
-
-export interface CcStatementDto {
-  id: number;
-  account_id: number;
-  card_group: string;
-  source_pdf: string;
-  statement_date: string;
-  statement_date_iso: string;
-  period_from: string | null;
-  period_to: string | null;
-  pay_by: string | null;
-  pay_by_iso: string | null;
-  billing_month: string | null;
-  layout: string;
-  currency: string;
-  monto_facturado: number | null;
-  deuda_total: number | null;
-  lines: CcStatementLineDto[];
-}
-
-export interface CcBillingMonthBalanceDto {
-  id: number;
-  billing_month: string;
-  as_of_date: string;
-  as_of_kind: string;
-  facturado_clp: number | null;
-  facturado_usd: number | null;
-  cupo_utilizado_clp: number;
-  saldo_total_clp: number;
-  saldo_total_usd: number | null;
-}
-
 export interface CcBillingDetailMonthDto {
   billing_month: string;
   as_of_date: string;
@@ -185,13 +138,6 @@ export interface CcInstallmentPurchaseComputed {
   /** YYYY-MM from last payment row (DB) or schedule (CSV). */
   last_paid_month: string | null;
   upcoming_cuota_clp: number;
-  payment_statements?: {
-    pay_by_date: string;
-    statement_date: string | null;
-    source_pdf: string | null;
-    cuota_current: number | null;
-    amount_clp: number;
-  }[];
   /** The plan cuota by cuota for the progress bar (DB source only; null without a schedule). */
   cuota_progress?: CcCuotaProgress | null;
   /** The `installment-h:` key the plan's expense lines carry; its note is written under it (card page only). */
@@ -287,28 +233,6 @@ export type CcHistorialChartPoint = CcFacturadoBarSegments & {
   balance_total_clp: number | null;
 };
 
-export interface CcProxyCuotaResult {
-  pay_by_date: string;
-  billing_month: string;
-  cuota_amount_clp: number;
-  realized_gain_clp: number;
-  /** The whole purchase's proxy P/L at this cuota's pay-by (withdrawn + still invested). */
-  total_gain_so_far_clp: number;
-  total_return_so_far_pct: number;
-  projected: boolean;
-}
-
-export interface CcProxyTickerResult {
-  gain_clp: number;
-  return_pct: number;
-  projected: boolean;
-  cuotas: CcProxyCuotaResult[];
-}
-
-export interface CcProxyLotResult {
-  by_ticker: Record<string, CcProxyTickerResult>;
-}
-
 export interface CcProxyFacturacionAggregate {
   billing_month: string;
   by_ticker: Record<string, {
@@ -362,8 +286,6 @@ export interface AccountCcInstallmentsResponse {
   };
   /** End-of-month outstanding installment principal vs cuotas pagadas (ledger import). */
   installment_history_months?: CcInstallmentHistoryMonthPoint[];
-  statements?: CcStatementDto[];
-  billing_month_balances?: CcBillingMonthBalanceDto[];
   billing_detail_by_month?: CcBillingDetailMonthDto[];
   facturaciones?: CcFacturacionDto[];
   billing_config?: CreditCardBillingConfigDto;
@@ -381,8 +303,6 @@ export interface AccountCcInstallmentsResponse {
   historial_chart?: CcHistorialChartPoint[];
   /** Tracked tickers for proxy earnings computation. */
   proxy_tickers?: string[];
-  /** Per-installment-purchase proxy earnings, keyed by purchase_db_id. */
-  purchase_proxy?: Record<number, CcProxyLotResult>;
   /** Per-facturación aggregated proxy earnings (installments + normal purchases). */
   facturacion_proxy?: CcProxyFacturacionAggregate[];
 }
