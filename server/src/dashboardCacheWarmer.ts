@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { setAggregationInvalidationListener } from "./aggregationCache.js";
+import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { db } from "./db.js";
@@ -31,6 +32,9 @@ import { warmVisitedPages } from "./visitedPagesWarm.js";
  * - a live-quote poll that moved a price, after `LIVE_TAIL_DELAY_MS` instead of the write
  *   debounce (polls are minutes apart, nothing to coalesce), and once warm the poll's change is
  *   published to the client (`liveQuotesStamp.ts`).
+ *
+ * Requests go first: each step starts only once no API request is in flight
+ * (`apiRequestsInFlight.ts`).
  *
  * Env: `CACHE_WARM_ENABLED=0` disables (default on).
  */
@@ -65,14 +69,22 @@ async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Prom
   warming = true;
   const liveChange = pendingLiveQuotesChange();
   try {
+    // Every step waits until no API request is in flight: a page being opened builds what it
+    // needs itself (each step is a cache lookup, so the warm then finds it built) instead of
+    // queueing behind the rest of the warm. A step is never paused halfway — a request may be
+    // awaiting the promise it is building.
+    await whenNoApiRequestsInFlight();
     const t0 = performance.now();
     await buildDashboardPageBundle("clp");
+    await whenNoApiRequestsInFlight();
     await buildDashboardPageBundle("usd");
     const tBundles = performance.now();
     // The bundles carry the live marks; the Rentabilidad series below are not worth the wait.
     publishLiveQuotesStamp(liveChange);
     // The home dashboard's flows section (Por cuota, month rows).
+    await whenNoApiRequestsInFlight();
     buildFlowsOverviewPayload("clp", "split", null);
+    await whenNoApiRequestsInFlight();
     buildFlowsOverviewPayload("usd", "split", null);
     // The pages actually opened, most visited first (usage log).
     const tVisited = performance.now();

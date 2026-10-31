@@ -1,4 +1,5 @@
 import { cachedAccountDetailBundle } from "./accountDetailBundle.js";
+import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
 import { creditCardGroupLedgerResponse, resolveCcMasterAccountIds } from "./creditCardGroupLedger.js";
 import { buildDashboardNavContext } from "./dashboardAccounts.js";
 import { db } from "./db.js";
@@ -17,8 +18,9 @@ import type { TsUnit } from "./valuationTimeseries.js";
  * Warm the pages actually opened (the usage log, `usageLog.ts`), most visited first, after the
  * home bundle: each visited group page's cached responses (valuation, tables, monthly P/L, card
  * ledger) and its daily series at the Rango and unit it was asked for, each visited account page's
- * bundle, and the sidebar and nav context every non-home page loads. One page per macrotask, so requests
- * interleave with the warm; a payload already cached costs a lookup.
+ * bundle, and the sidebar and nav context every non-home page loads. Each payload waits until no API
+ * request is in flight (`apiRequestsInFlight.ts`), so a page being opened is built by its own
+ * requests and the warm then finds it cached; a payload already cached costs a lookup.
  */
 
 /** How far back the ranking looks, and how many pages of each kind it warms. */
@@ -163,9 +165,9 @@ export function visitedWarmPlanFromUsageLog(now = new Date()): VisitedWarmPlan {
   };
 }
 
-/** Build the plan's payloads, one page per macrotask; returns how many pages it warmed. */
+/** Build the plan's payloads, each once no request is in flight; returns how many pages it warmed. */
 export async function warmVisitedPages(plan: VisitedWarmPlan = visitedWarmPlanFromUsageLog()): Promise<number> {
-  const yieldToRequests = () => new Promise<void>((resolve) => setImmediate(resolve));
+  const yieldToRequests = () => whenNoApiRequestsInFlight();
   let pages = 0;
   if (plan.groups.length > 0 || plan.accounts.length > 0) {
     await yieldToRequests();

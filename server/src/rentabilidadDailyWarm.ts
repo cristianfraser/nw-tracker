@@ -1,3 +1,4 @@
+import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
 import { db } from "./db.js";
 import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
 import { groupHasPeriodReturns, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
@@ -7,8 +8,8 @@ import { groupHasPeriodReturns, isInvestmentPerformanceAccount } from "./portfol
  * own-portfolio benchmarks read: each investment group page, net worth (the home page) and each
  * investment account, in CLP
  * and USD (the per-account marks are shared by both units, so USD adds only its own sums and
- * conversions). Built one scope per macrotask, so
- * requests interleave with the warm instead of waiting behind all of it. A scope already cached
+ * conversions). Each scope waits until no API request is in flight (`apiRequestsInFlight.ts`), so
+ * requests run ahead of the warm instead of waiting behind it. A scope already cached
  * costs nothing; after a live-quote tick only today's marks recompute.
  */
 export async function warmRentabilidadDailySeries(): Promise<number> {
@@ -30,7 +31,7 @@ export async function warmRentabilidadDailySeries(): Promise<number> {
   ).filter((a) => isInvestmentPerformanceAccount(a.account_id));
 
   let scopes = 0;
-  const yieldToRequests = () => new Promise<void>((resolve) => setImmediate(resolve));
+  const yieldToRequests = () => whenNoApiRequestsInFlight();
   for (const unit of ["clp", "usd"] as const) {
     for (const slug of groups) {
       await yieldToRequests();
