@@ -30,8 +30,7 @@ import {
   demoNarrativeTickers,
   type DemoAccounts,
 } from "./demoWriters.js";
-import { DEMO_PENSION_LEDGERS, demoEquitySeriesFromDb } from "./demoRealMarket.js";
-import { AFC_CIC_SERIES_KEY } from "../afcCicSeries.js";
+import { demoEquitySeriesFromDb } from "./demoRealMarket.js";
 import { afpDisplaySeriesKey } from "../afpUnoSeries.js";
 import { buildAfpDisplayRowsForFund, upsertAfpDisplayRows } from "../afpUnoOfficialSync.js";
 
@@ -186,7 +185,8 @@ export type GenerateDemoDbOptions = {
   /**
    * `synthetic` (default): built-in price series, no network — the lean test preset and offline
    * runs. `real`: the market tables were filled by `loadDemoRealMarket` (the hosted demo); the
-   * generator reads them, and the AFP/AFC become cuota ledgers on the official values.
+   * generator reads them, the AFP becomes a cuota ledger on the official values (Modelo-A
+   * switched into UNO-A) and the AFC a smooth book account (`writeDemoAfcSmoothMonth`).
    */
   market?: "synthetic" | "real";
 };
@@ -198,8 +198,8 @@ export function generateDemoDb(preset: DemoPreset, opts: GenerateDemoDbOptions =
   if (real && narrative.withFondo) {
     throw new Error("demo: the real-market demo has no fund series for the fondo — use withFondo: false");
   }
-  const pensionLedgers = real && DEMO_PENSION_LEDGERS && narrative.withAfp;
-  if (pensionLedgers && narrative.firstMonth >= DEMO_AFP_SWITCH_MONTH) {
+  const afpLedger = real && narrative.withAfp;
+  if (afpLedger && narrative.firstMonth >= DEMO_AFP_SWITCH_MONTH) {
     throw new Error(`demo: the real-market AFP history needs a start before its switch month ${DEMO_AFP_SWITCH_MONTH}`);
   }
 
@@ -245,17 +245,17 @@ export function generateDemoDb(preset: DemoPreset, opts: GenerateDemoDbOptions =
       : null,
     afpId: !narrative.withAfp
       ? null
-      : pensionLedgers
+      : afpLedger
         ? createAfpFundAccount("uno", "UNO-A")
         : createAccount("retirement_afp_afc__afp", "AFP", "demo:afp"),
     afpLedger:
-      pensionLedgers
+      afpLedger
         ? { modeloId: createAfpFundAccount(DEMO_AFP_MODELO, "Modelo-A"), switchMonth: DEMO_AFP_SWITCH_MONTH }
         : null,
     afcId: narrative.withAfp
       ? createAccount("retirement_afp_afc__afc", "AFC", "demo:afc")
       : null,
-    afcLedger: pensionLedgers,
+    afcModel: real ? "smooth" : "portfolio",
     stockIdByTicker: new Map([
       ...(narrative.stocks?.positions ?? []).map(
         (p) => [p.ticker, createTickerAccount("brokerage_acciones", "Acciones", p.ticker)] as const
@@ -315,9 +315,6 @@ export function generateDemoDb(preset: DemoPreset, opts: GenerateDemoDbOptions =
   let state;
   if (real) {
     state = initialDemoRunState(narrative, rng, demoEquitySeriesFromDb(demoNarrativeTickers(narrative)));
-    if (accounts.afcId != null && accounts.afcLedger) {
-      db.prepare(`UPDATE accounts SET fund_series_key = ? WHERE id = ?`).run(AFC_CIC_SERIES_KEY, accounts.afcId);
-    }
     if (accounts.afpLedger) {
       // Modelo's display series covers exactly the window the demo holds it (through the sale day).
       const { saleDay } = demoAfpSwitchDays(accounts.afpLedger.switchMonth);
