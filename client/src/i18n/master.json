@@ -5295,10 +5295,6 @@
         "en": "Installment CLP",
         "es": "Cuota CLP"
       },
-      "colNotes": {
-        "en": "Notes",
-        "es": "Notas"
-      },
       "colLastPaid": {
         "en": "Last paid month",
         "es": "Mes último pago"

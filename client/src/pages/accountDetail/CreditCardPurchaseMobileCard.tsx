@@ -10,9 +10,8 @@ import {
 } from "../../components/ui/TableMobileCard";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { CreditCardCuotaProgress } from "./CreditCardCuotaProgress";
-import { CreditCardPurchaseNotes } from "./CreditCardPurchaseNotes";
+import { CreditCardPurchaseVendor } from "./CreditCardPurchaseVendor";
 import styles from "../AccountDetailPage.module.css";
-import { Button } from "@crfrsr/ui";
 
 function PurchaseMeta({ children }: { children: ReactNode }) {
   return <div className={cn("muted", styles.purchaseMeta)}>{children}</div>;
@@ -24,7 +23,6 @@ export function CreditCardPurchaseMobileCard({
   hasLedger,
   dueColumn,
   originLabel,
-  manualDeleteLabel,
   manualBusy,
   onDeleteManual,
   maxInstallments,
@@ -34,47 +32,34 @@ export function CreditCardPurchaseMobileCard({
   hasLedger: boolean;
   dueColumn: "last" | "none";
   originLabel: string;
-  manualDeleteLabel: string;
   manualBusy: boolean;
   onDeleteManual?: () => void;
   /** Shared segment width of the table's progress bars (see CreditCardCuotaProgress). */
   maxInstallments: number;
 }) {
   const { t } = useTranslation();
-  const deleteButton =
-    hasLedger && purchase.origin === "manual" && purchase.purchase_db_id != null && onDeleteManual ? (
-      <Button variant="ghost" disabled={manualBusy} onClick={onDeleteManual}>
-        {manualDeleteLabel}
-      </Button>
-    ) : null;
-  const notes = (
-    <TableMobileCardSection>
-      <CreditCardPurchaseNotes purchase={purchase} accountId={accountId} />
-    </TableMobileCardSection>
+  const vendor = (
+    <CreditCardPurchaseVendor
+      purchase={purchase}
+      accountId={accountId}
+      onDeleteManual={onDeleteManual}
+      deleteBusy={manualBusy}
+    />
   );
 
-  // Active plans: the desktop row — the date over the vendor, then the note and the progress bar,
-  // whose caption leads with the cuota.
+  // Active plans: the desktop row — the date over the vendor (`merchant · note · link ⓘ ⋯`), then
+  // the progress bar, whose caption leads with the cuota.
   if (dueColumn === "none") {
     return (
       <TableMobileCard
         title={
-          <>
-            <div className="mono">
-              {purchase.purchase_date ?? "—"}
-              {purchase.cuota_progress ? null : ` · ${formatClp(purchase.cuota_clp)}`}
-            </div>
-            <div>{purchase.label}</div>
-          </>
+          <div className="mono">
+            {purchase.purchase_date ?? "—"}
+            {purchase.cuota_progress ? null : ` · ${formatClp(purchase.cuota_clp)}`}
+          </div>
         }
       >
-        {deleteButton || purchase.note ? (
-          <TableMobileCardSection>
-            {purchase.note ? <PurchaseMeta>{purchase.note}</PurchaseMeta> : null}
-            {deleteButton}
-          </TableMobileCardSection>
-        ) : null}
-        {notes}
+        <TableMobileCardSection>{vendor}</TableMobileCardSection>
         {purchase.cuota_progress ? (
           <TableMobileCardSection>
             <CreditCardCuotaProgress
@@ -88,19 +73,13 @@ export function CreditCardPurchaseMobileCard({
     );
   }
 
-  const title = (
-    <>
-      <div>{purchase.label}</div>
-      <div className={cn("mono", "muted", styles.purchaseMeta)}>{purchase.purchase_id}</div>
-    </>
-  );
-
   return (
-    <TableMobileCard title={title}>
+    <TableMobileCard title={vendor}>
       <TableMobileCardSection>
+        <PurchaseMeta>
+          <span className="mono">{purchase.purchase_id}</span>
+        </PurchaseMeta>
         <PurchaseMeta>{originLabel}</PurchaseMeta>
-        {purchase.note ? <PurchaseMeta>{purchase.note}</PurchaseMeta> : null}
-        {deleteButton}
       </TableMobileCardSection>
 
       <TableMobileCardSection>
@@ -136,7 +115,6 @@ export function CreditCardPurchaseMobileCard({
         <TableMobileCardRow label={t("account.creditCard.colCuotaClp")} value={formatClp(purchase.cuota_clp)} />
       </TableMobileCardSection>
 
-      {notes}
     </TableMobileCard>
   );
 }
@@ -145,9 +123,10 @@ export function purchaseTableColSpan(
   hasLedger: boolean,
   dueColumn: "last" | "none"
 ): number {
-  // "none" (active): Compra (date · cuota over the vendor), Notas (note over the progress bar).
-  // "last" (completed): Compra, Cuotas, Principal, Fecha, Mes facturación, Cuota CLP, Mes último
-  // pago, Notas — without a ledger the Tasa + Offset CSV columns are added. +1 = the mobile-only cell.
-  const desktop = dueColumn === "none" ? 2 : 8 + (hasLedger ? 0 : 2);
+  // "none" (active): Compra (date · cuota over the vendor), Cuotas (the progress bar).
+  // "last" (completed): Compra (the vendor with its note), Cuotas, Principal, Fecha, Mes facturación,
+  // Cuota CLP, Mes último pago — without a ledger the Tasa + Offset CSV columns are added.
+  // +1 = the mobile-only cell.
+  const desktop = dueColumn === "none" ? 2 : 7 + (hasLedger ? 0 : 2);
   return desktop + 1;
 }

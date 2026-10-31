@@ -13,7 +13,7 @@ import { Trans, useTranslation } from "../../i18n";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { CreditCardCuotaProgress } from "./CreditCardCuotaProgress";
 import { CreditCardFacturacionesTable } from "./CreditCardFacturacionesTable";
-import { CreditCardPurchaseNotes } from "./CreditCardPurchaseNotes";
+import { CreditCardPurchaseVendor } from "./CreditCardPurchaseVendor";
 import {
   CreditCardPurchaseMobileCard,
   purchaseTableColSpan,
@@ -25,7 +25,6 @@ import {
 } from "../../components/ui/TableMobileCard";
 import { useDeleteCcPurchaseMutation } from "../../queries/hooks";
 import styles from "../AccountDetailPage.module.css";
-import { Button } from "@crfrsr/ui";
 
 function CreditCardInstallmentsSection({
   ledger,
@@ -111,17 +110,20 @@ function CreditCardInstallmentsSection({
       ? t("account.creditCard.originManual")
       : t("account.creditCard.originImportDocument");
 
-  const deleteButton = (p: CcInstallmentPurchaseComputed) =>
-    hasLedger && p.origin === "manual" && p.purchase_db_id != null ? (
-      <Button variant="ghost"
-        disabled={manualBusy}
-        onClick={() => {
-          deletePurchase.mutate(p.purchase_db_id!);
-        }}
-      >
-        {t("account.creditCard.manualDelete")}
-      </Button>
-    ) : null;
+  // Only a hand-entered plan can be deleted (a statement plan comes back with the next import).
+  const deleteManual = (p: CcInstallmentPurchaseComputed) =>
+    hasLedger && p.origin === "manual" && p.purchase_db_id != null
+      ? () => deletePurchase.mutate(p.purchase_db_id!)
+      : undefined;
+
+  const purchaseVendor = (p: CcInstallmentPurchaseComputed) => (
+    <CreditCardPurchaseVendor
+      purchase={p}
+      accountId={accountId}
+      onDeleteManual={deleteManual(p)}
+      deleteBusy={manualBusy}
+    />
+  );
 
   const activePurchaseTableHeader = (
     <thead>
@@ -133,8 +135,8 @@ function CreditCardInstallmentsSection({
     </thead>
   );
 
-  // One row per plan: the date, the vendor and the note / receipt link on the left, the
-  // progress bar on the right — under it on a narrow desktop (`.activePurchaseRow`), and on
+  // One row per plan: the date over the vendor (`merchant · note · link ⓘ ⋯`, as its expense
+  // lines read) on the left, the progress bar on the right — under it on a narrow desktop (`.activePurchaseRow`), and on
   // mobile the card stacks the same pieces.
   const renderActivePurchaseRows = (rows: ReadonlyArray<CcInstallmentPurchaseComputed>) =>
     rows.map((p) => (
@@ -144,14 +146,7 @@ function CreditCardInstallmentsSection({
             {p.purchase_date ?? "—"}
             {p.cuota_progress ? null : ` · ${formatClp(p.cuota_clp)}`}
           </div>
-          <div className={styles.purchaseVendor}>
-            <span>{p.label}</span>
-            {deleteButton(p)}
-          </div>
-          {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
-          <div className={styles.purchaseNotes}>
-            <CreditCardPurchaseNotes purchase={p} accountId={accountId} />
-          </div>
+          {purchaseVendor(p)}
         </td>
         <td className="desktop-only">
           {p.cuota_progress ? (
@@ -169,13 +164,8 @@ function CreditCardInstallmentsSection({
             hasLedger={hasLedger}
             dueColumn="none"
             originLabel={originLabel(p)}
-            manualDeleteLabel={t("account.creditCard.manualDelete")}
             manualBusy={manualBusy}
-            onDeleteManual={
-              hasLedger && p.origin === "manual" && p.purchase_db_id != null
-                ? () => deletePurchase.mutate(p.purchase_db_id!)
-                : undefined
-            }
+            onDeleteManual={deleteManual(p)}
             maxInstallments={maxActiveInstallments}
           />
         </td>
@@ -194,7 +184,6 @@ function CreditCardInstallmentsSection({
         {!hasLedger ? <th className="desktop-only">{t("account.creditCard.colOffsetCsv")}</th> : null}
         <th className="desktop-only">{t("account.creditCard.colCuotaClp")}</th>
         <th className="desktop-only">{t("account.creditCard.colLastPaid")}</th>
-        <th className="desktop-only">{t("account.creditCard.colNotes")}</th>
         <th className="mobile-only" aria-hidden="true" />
       </tr>
     </thead>
@@ -204,11 +193,9 @@ function CreditCardInstallmentsSection({
     rows.map((p) => (
       <tr key={p.purchase_id}>
         <td className="desktop-only">
-          <div>{p.label}</div>
+          {purchaseVendor(p)}
           <div className={cn("mono", "muted", styles.purchaseMeta)}>{p.purchase_id}</div>
           <div className={cn("muted", styles.purchaseMeta)}>{originLabel(p)}</div>
-          {p.note ? <div className={cn("muted", styles.purchaseMeta)}>{p.note}</div> : null}
-          {deleteButton(p)}
         </td>
         <td className="mono desktop-only">{p.installment_count}</td>
         <td className="mono desktop-only">{formatClp(p.principal_clp)}</td>
@@ -222,9 +209,6 @@ function CreditCardInstallmentsSection({
         <td className="mono desktop-only">
           {p.last_paid_month ? formatYearMonthLabel(p.last_paid_month) : "—"}
         </td>
-        <td className="desktop-only">
-          <CreditCardPurchaseNotes purchase={p} accountId={accountId} />
-        </td>
         <td className="mobile-only">
           <CreditCardPurchaseMobileCard
             purchase={p}
@@ -232,13 +216,8 @@ function CreditCardInstallmentsSection({
             hasLedger={hasLedger}
             dueColumn="last"
             originLabel={originLabel(p)}
-            manualDeleteLabel={t("account.creditCard.manualDelete")}
             manualBusy={manualBusy}
-            onDeleteManual={
-              hasLedger && p.origin === "manual" && p.purchase_db_id != null
-                ? () => deletePurchase.mutate(p.purchase_db_id!)
-                : undefined
-            }
+            onDeleteManual={deleteManual(p)}
             maxInstallments={maxActiveInstallments}
           />
         </td>
