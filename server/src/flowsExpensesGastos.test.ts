@@ -43,6 +43,7 @@ function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
     purchase_notes: "",
     big_group_slug: null,
     origin_label: "4242",
+    origin: { kind: "card", account_name: null, card_last4: null, additional: false },
     origin_card_last4: null,
     primary_card_last4: null,
     ...partial,
@@ -77,6 +78,7 @@ function baseLine(
     purchase_notes: "",
     big_group_slug: null,
     origin_label: "Cuenta corriente",
+    origin: { kind: "card", account_name: null, card_last4: null, additional: false },
     origin_card_last4: null,
     primary_card_last4: null,
     expense_deposit_links: [

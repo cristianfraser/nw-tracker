@@ -116,7 +116,6 @@ export function CreditCardFacturacionModalSections({
         categories={categories}
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
-        categoryControlVariant="pills"
         {...tableDeleteProps}
       />
 
@@ -133,7 +132,6 @@ export function CreditCardFacturacionModalSections({
         categories={categories}
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
-        categoryControlVariant="pills"
         {...tableDeleteProps}
       />
 
@@ -150,7 +148,6 @@ export function CreditCardFacturacionModalSections({
         categories={categories}
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
-        categoryControlVariant="pills"
         {...tableDeleteProps}
       />
 

@@ -1,0 +1,111 @@
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+.pending {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.pill {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wrap .empty {
+  background: transparent;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.wrap .empty:hover {
+  color: var(--text);
+}
+
+/* Floating × on the pill's right corner: shown while the pointer is over the pill (or it has focus). */
+.clear {
+  position: absolute;
+  right: 0;
+  top: 0;
+  transform: translate(45%, -45%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  background: var(--surface2);
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 1;
+}
+
+.wrap:hover .clear,
+.wrap:focus-within .clear {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .wrap:hover .clear {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+/* A definite width: shrink-to-fit would size the popover by the room left at the trigger before
+   it is positioned, so it would never shift back inside the dialog. */
+.popover {
+  width: min(20rem, calc(100vw - 1.5rem));
+}
+
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.options .option {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+}
+
+.options .optionActive {
+  box-shadow: 0 0 0 2px var(--text);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid var(--border);
+}
+
+.clearEntry {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.clearEntry:hover {
+  color: var(--text);
+}

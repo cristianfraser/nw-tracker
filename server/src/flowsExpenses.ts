@@ -78,7 +78,7 @@ import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
 import { db } from "./db.js";
 
-import { enrichFlowLinesWithOriginLabels } from "./ccExpenseOriginLabel.js";
+import { enrichFlowLinesWithOriginLabels, type ExpenseLineOrigin } from "./ccExpenseOriginLabel.js";
 import { enrichFlowLinesWithPurchaseNotes } from "./ccExpensePurchaseNotes.js";
 import {
   enrichFlowLinesWithBigGroups,
@@ -238,6 +238,9 @@ export type FlowCcExpenseLineRow = {
   /** Display label for origin column (card last4 or account name). */
   origin_label: string;
 
+  /** Where the line came from, as data (kind, account, plastic); the client draws and words it. */
+  origin: ExpenseLineOrigin;
+
   /** Physical card that made the charge (CLP statement line); null = primary / unknown. */
   origin_card_last4: string | null;
 
@@ -279,7 +282,7 @@ export type FlowCcExpenseLineRow = {
 
 export type FlowCcExpenseLineRowDraft = Omit<
   FlowCcExpenseLineRow,
-  "origin_label" | "purchase_key" | "purchase_notes" | "big_group_slug"
+  "origin_label" | "origin" | "purchase_key" | "purchase_notes" | "big_group_slug"
 > & {
   /** Checking-only: distinct purchase_key for deposit-paired portion of a movement. */
   checking_purchase_portion?: "deposit";
@@ -876,7 +879,7 @@ function checkingExpenseRefundLineDrafts(): FlowCcExpenseLineRowDraft[] {
  */
 export function loadFinalizedCheckingGastosLinesReadOnly(): Omit<
   FlowCcExpenseLineRow,
-  "origin_label" | "big_group_slug"
+  "origin_label" | "origin" | "big_group_slug"
 >[] {
   return enrichFlowLinesWithPurchaseNotes(
     expandLineSplitsInDrafts(loadCheckingGastosLinesForExpenses())

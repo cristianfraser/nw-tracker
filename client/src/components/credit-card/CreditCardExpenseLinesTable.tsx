@@ -1,35 +1,32 @@
-import { PaymentReceiptLine } from "../flows/PaymentReceiptLine";
-import { TransferCounterpartyLine } from "../flows/TransferCounterpartyLine";
-import { useCallback } from "react";
-import { useTranslation, ccExpenseCategoryLabel } from "../../i18n";
-import { useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { Button } from "@crfrsr/ui";
+import { cn } from "../../cn";
+import { useTranslation } from "../../i18n";
+import { expenseLineRowKey, useCreditCardExpenseLinesSelection } from "./CreditCardExpenseLinesSelection";
 import { formatCcExpenseLineAmount, formatClp } from "../../format";
 import type { CcExpenseBigGroupDto, CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
-import { Table } from "../ui/Table";
 import { loadableClass } from "../ui/Loadable";
 import { Pill } from "../ui/Pill";
-import {
-  expenseLineCategoryTargetId,
-} from "../../ccExpenseLineBuckets";
+import { PillPicker } from "../ui/PillPicker";
+import { HoverPopover } from "../ui/HoverPopover";
+import { InfoIcon } from "../icons/InfoIcon";
+import { MoreIcon } from "../icons/MoreIcon";
+import { expenseLineCategoryTargetId } from "../../ccExpenseLineBuckets";
 import { assignableCcExpenseCategories, ccExpenseCategoryPathLabel } from "../../ccExpenseCategories";
 import { ExpensePurchaseNoteInput } from "./ExpensePurchaseNoteInput";
-import { ExpenseBigGroupSelect } from "./ExpenseBigGroupSelect";
+import { ExpenseBigGroupPicker } from "./ExpenseBigGroupPicker";
+import { ExpenseOriginIcon } from "./ExpenseOriginIcon";
+import { paymentReceiptDetailLines } from "../flows/PaymentReceiptLine";
+import { transferCounterpartyDetailLines } from "../flows/TransferCounterpartyLine";
 import { useAssignCcExpenseLineCategory } from "../../queries/hooks";
-import tableStyles from "../../pages/AccountDetailPage.module.css";
-import categoryStyles from "./CreditCardExpenseLinesTable.module.css";
-import { Button } from "@crfrsr/ui";
-
-function pillHoverColor(hex: string): string {
-  return `color-mix(in srgb, ${hex} 78%, black)`;
-}
-
-function formatCuota(current: number | null, total: number | null): string {
-  if (current == null || total == null || total <= 0) return "—";
-  return `${current}/${total}`;
-}
+import styles from "./CreditCardExpenseLinesTable.module.css";
 
 function lineCategorySlug(line: FlowCcExpenseLineRow): string {
   return line.category_slug === "unclassified" ? "" : line.category_slug;
+}
+
+function lineDate(line: FlowCcExpenseLineRow): string {
+  return line.purchase_on ?? line.occurred_on;
 }
 
 /** Calendar-month modal order: purchase date, then statement close, then amount. */
@@ -38,7 +35,7 @@ export function sortCreditCardExpenseLinesByStatement(
   b: FlowCcExpenseLineRow
 ): number {
   return (
-    (b.purchase_on ?? b.occurred_on).localeCompare(a.purchase_on ?? a.occurred_on) ||
+    lineDate(b).localeCompare(lineDate(a)) ||
     b.occurred_on.localeCompare(a.occurred_on) ||
     Math.abs(b.amount_clp) - Math.abs(a.amount_clp)
   );
@@ -51,43 +48,62 @@ export function sortCreditCardExpenseLinesByAmountDesc(
   return b.amount_clp - a.amount_clp || b.occurred_on.localeCompare(a.occurred_on);
 }
 
-function ExpenseLineCategoryControls({
+type SortKey = "date" | "amount" | "category";
+type SortState = { key: SortKey; direction: "asc" | "desc" } | null;
+
+/**
+ * Sorts by the column's value; ties keep the incoming order. «No category» stays last in both
+ * directions (it is the absence of a category, not a label).
+ */
+function sortLines(
+  lines: readonly FlowCcExpenseLineRow[],
+  sort: SortState,
+  categoryLabel: (line: FlowCcExpenseLineRow) => string | null
+): readonly FlowCcExpenseLineRow[] {
+  if (!sort) return lines;
+  const sign = sort.direction === "asc" ? 1 : -1;
+  return lines
+    .map((line, index) => ({ line, index }))
+    .sort((a, b) => {
+      let cmp = 0;
+      if (sort.key === "date") cmp = sign * lineDate(a.line).localeCompare(lineDate(b.line));
+      else if (sort.key === "amount") cmp = sign * (a.line.amount_clp - b.line.amount_clp);
+      else {
+        const la = categoryLabel(a.line);
+        const lb = categoryLabel(b.line);
+        if (la == null || lb == null) cmp = la == null ? (lb == null ? 0 : 1) : -1;
+        else cmp = sign * la.localeCompare(lb);
+      }
+      return cmp || a.index - b.index;
+    })
+    .map((x) => x.line);
+}
+
+function ExpenseLineCategoryPicker({
   line,
   categories,
-  variant = "select",
 }: {
   line: FlowCcExpenseLineRow;
   categories: readonly CcExpenseCategoryDto[];
-  variant?: "select" | "pills";
 }) {
   const { t } = useTranslation();
   const assign = useAssignCcExpenseLineCategory();
   const assignable = assignableCcExpenseCategories(categories);
   const activeSlug = lineCategorySlug(line);
-  const activeCategory = assignable.find((c) => c.slug === activeSlug);
+  const active = assignable.find((c) => c.slug === activeSlug);
   const categoryLineId = expenseLineCategoryTargetId(line);
-  const rowPending =
+  const pending =
     assign.isPending &&
     assign.variables?.lineId === categoryLineId &&
     assign.variables?.source === line.source;
 
   const persistCategory = useCallback(
-    (nextSlug: string) => {
-      if (!nextSlug || nextSlug === "unclassified") {
-        assign.mutate({
-          lineId: categoryLineId,
-          source: line.source,
-          unique: line.category_unique,
-          clear_category: true,
-        });
-        return;
-      }
-      assign.mutate({
-        lineId: categoryLineId,
-        source: line.source,
-        unique: line.category_unique,
-        category_slug: nextSlug,
-      });
+    (nextSlug: string | null) => {
+      assign.mutate(
+        nextSlug
+          ? { lineId: categoryLineId, source: line.source, unique: line.category_unique, category_slug: nextSlug }
+          : { lineId: categoryLineId, source: line.source, unique: line.category_unique, clear_category: true }
+      );
     },
     [assign, categoryLineId, line.category_unique, line.source]
   );
@@ -104,87 +120,379 @@ function ExpenseLineCategoryControls({
     [activeSlug, assign, categoryLineId, line.source]
   );
 
-  const uniqueCheckbox = (
-    <label
-      className={`${categoryStyles.uniqueLabel} ${
-        rowPending ? categoryStyles.uniqueLabelPending : categoryStyles.uniqueLabelReady
-      }`}
-    >
-      <input
-        type="checkbox"
-        checked={line.category_unique}
-        disabled={rowPending}
-        onChange={(e) => persistUnique(e.target.checked)}
-      />
-      {t("expenses.creditCard.categoryUniqueLabel")}
-    </label>
-  );
-
-  if (variant === "pills") {
-    return (
-      <div className={categoryStyles.categoryCell}>
-        {activeCategory ? (
-          <Pill
-            size="small"
-            uppercase={false}
-            label={ccExpenseCategoryPathLabel(activeCategory)}
-            backgroundColor={activeCategory.chart_color}
-            hoverBackgroundColor={pillHoverColor(activeCategory.chart_color)}
-            clearable
-            title={t("expenses.creditCard.clearCategoryAria")}
-            onClick={() => {
-              if (rowPending) return;
-              persistCategory("");
-            }}
-          />
-        ) : (
-          <div
-            className={categoryStyles.categoryPills}
-            role="group"
-            aria-label={t("expenses.creditCard.colCategory")}
-          >
-            {assignable.map((c) => (
-              <Pill
-                key={c.slug}
-                size="small"
-                uppercase={false}
-                label={ccExpenseCategoryPathLabel(c)}
-                backgroundColor={c.chart_color}
-                hoverBackgroundColor={pillHoverColor(c.chart_color)}
-                aria-label={ccExpenseCategoryPathLabel(c)}
-                onClick={() => {
-                  if (rowPending) return;
-                  persistCategory(c.slug);
-                }}
-              />
-            ))}
-          </div>
-        )}
-        {uniqueCheckbox}
-      </div>
-    );
-  }
-
+  const unclassified = t("expenses.creditCard.categories.unclassified");
+  const value = active
+    ? { key: active.slug, label: ccExpenseCategoryPathLabel(active), color: active.chart_color }
+    : null;
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem" }}>
-      <select
-        value={activeSlug}
-        disabled={rowPending}
-        aria-label={t("expenses.creditCard.colCategory")}
-        onChange={(e) => persistCategory(e.target.value)}
-      >
-        <option value="">{ccExpenseCategoryLabel("unclassified")}</option>
-        {assignable.map((c) => (
-          <option key={c.slug} value={c.slug}>
-            {ccExpenseCategoryPathLabel(c)}
-          </option>
-        ))}
-      </select>
-      {uniqueCheckbox}
+    <PillPicker
+      value={value}
+      emptyLabel={unclassified}
+      options={assignable.map((c) => ({
+        key: c.slug,
+        label: ccExpenseCategoryPathLabel(c),
+        color: c.chart_color,
+      }))}
+      onSelect={(slug) => persistCategory(slug)}
+      onClear={() => persistCategory(null)}
+      clearLabel={t("expenses.creditCard.clearCategoryAria")}
+      ariaLabel={t("expenses.creditCard.lineRow.categoryPickerAria", {
+        category: value?.label ?? unclassified,
+      })}
+      pending={pending}
+      footer={
+        <label className={styles.uniqueLabel}>
+          <input
+            type="checkbox"
+            checked={line.category_unique}
+            disabled={pending}
+            onChange={(e) => persistUnique(e.target.checked)}
+          />
+          {t("expenses.creditCard.categoryUniqueLabel")}
+        </label>
+      }
+    />
+  );
+}
+
+/** A category drawn as a pill nobody can change (payslip deductions, read-only tables). */
+function FixedCategoryPill({
+  line,
+  categories,
+}: {
+  line: FlowCcExpenseLineRow;
+  categories: readonly CcExpenseCategoryDto[];
+}) {
+  const { t } = useTranslation();
+  const c = categories.find((x) => x.slug === line.category_slug);
+  const value = c
+    ? { key: c.slug, label: ccExpenseCategoryPathLabel(c), color: c.chart_color }
+    : null;
+  return (
+    <PillPicker
+      readOnly
+      value={value}
+      emptyLabel={t("expenses.creditCard.categories.unclassified")}
+      options={[]}
+      onSelect={() => undefined}
+      onClear={() => undefined}
+      clearLabel=""
+      ariaLabel=""
+    />
+  );
+}
+
+/** The amount, with the installment detail in superscript («3/6 · $270.000», «6 cuotas»). */
+function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
+  const { t } = useTranslation();
+  let sup: string | null = null;
+  if (line.line_role === "installment_purchase_total") {
+    sup = t("expenses.creditCard.installmentPurchaseTotalLabel", { count: line.nro_cuota_total ?? 0 });
+  } else if (line.installment_flag && line.nro_cuota_current != null && line.nro_cuota_total != null) {
+    const cuota = `${line.nro_cuota_current}/${line.nro_cuota_total}`;
+    sup =
+      line.line_role === "installment_cuota" && line.installment_total_clp != null
+        ? `${cuota} · ${formatClp(line.installment_total_clp)}`
+        : cuota;
+  }
+  return (
+    <span className={cn("mono", styles.amount)}>
+      {formatCcExpenseLineAmount(line.amount_clp, line.amount_usd)}
+      {sup ? <sup className={styles.amountSup}>{sup}</sup> : null}
+    </span>
+  );
+}
+
+/** What the line is linked to (transfer counterparty, payment receipt, deposit) — the ⓘ card. */
+function useLineInfo(line: FlowCcExpenseLineRow): ReactNode[] {
+  const { t } = useTranslation();
+  const blocks: ReactNode[] = [];
+  const c = line.transfer_counterparty;
+  if (c) blocks.push(<InfoBlock key="counterparty" lines={transferCounterpartyDetailLines(c)} />);
+  const r = line.payment_receipt;
+  if (r) {
+    const lines = paymentReceiptDetailLines(r);
+    lines[0] = `${r.guess ? "≈" : "→"} ${lines[0]}`;
+    blocks.push(<InfoBlock key="receipt" lines={lines} />);
+  }
+  const mortgageLink = line.expense_deposit_links?.find((l) => l.depto_cuota != null);
+  if (mortgageLink) {
+    blocks.push(
+      <InfoBlock
+        key="deposit"
+        lines={[t("expenses.creditCard.mortgageDepositLinkCuota", { cuota: mortgageLink.depto_cuota })]}
+      />
+    );
+  } else if ((line.expense_deposit_links?.length ?? 0) > 0) {
+    blocks.push(<InfoBlock key="deposit" lines={[t("expenses.creditCard.investmentDepositLink")]} />);
+  }
+  return blocks;
+}
+
+function InfoBlock({ lines }: { lines: readonly string[] }) {
+  return (
+    <div className={styles.infoBlock}>
+      {lines.map((text, i) => (
+        <div key={i} className={i === 0 ? undefined : "muted"}>
+          {text}
+        </div>
+      ))}
     </div>
   );
 }
 
+type RowActions = {
+  showDeleteAction: boolean;
+  deletableLineIds?: ReadonlySet<number>;
+  onDeleteLine?: (line: FlowCcExpenseLineRow) => void;
+  deletePendingLineId?: number;
+  makeInstallmentLineIds?: ReadonlySet<number>;
+  onMakeInstallmentLine?: (line: FlowCcExpenseLineRow) => void;
+  makeInstallmentBusyLineId?: number;
+  onEditPieces?: (line: FlowCcExpenseLineRow) => void;
+  onEditManual?: (line: FlowCcExpenseLineRow) => void;
+  enableCheckingNotes: boolean;
+};
+
+function ExpenseLineRow({
+  line: ln,
+  categories,
+  bigGroups,
+  showCategoryControls,
+  showBigGroupControls,
+  selectable,
+  actions,
+  expanded,
+  onToggleExpanded,
+}: {
+  line: FlowCcExpenseLineRow;
+  categories: readonly CcExpenseCategoryDto[];
+  bigGroups: readonly CcExpenseBigGroupDto[];
+  showCategoryControls: boolean;
+  showBigGroupControls: boolean;
+  selectable: boolean;
+  actions: RowActions;
+  expanded: boolean;
+  onToggleExpanded: () => void;
+}) {
+  const { t } = useTranslation();
+  const selection = useCreditCardExpenseLinesSelection();
+  const info = useLineInfo(ln);
+  // A payslip deduction's category is the deduction's own: no picker, no bulk select, no group.
+  const fixedCategory = ln.source === "payslip";
+  const canSelect = selectable && selection != null && !fixedCategory;
+  const selected = canSelect && selection.isSelected(ln);
+
+  const canDelete =
+    actions.showDeleteAction &&
+    actions.deletableLineIds?.has(ln.statement_line_id) === true &&
+    ln.statement_line_id > 0;
+  const deleteBusy = actions.deletePendingLineId === ln.statement_line_id;
+  const canMakeInstallment =
+    actions.showDeleteAction &&
+    actions.makeInstallmentLineIds?.has(ln.statement_line_id) === true &&
+    ln.statement_line_id > 0 &&
+    !ln.installment_flag;
+  const makeInstallmentBusy = actions.makeInstallmentBusyLineId === ln.statement_line_id;
+  const canEditPieces =
+    actions.onEditPieces != null &&
+    (ln.source === "cc" || ln.source === "checking") &&
+    ln.statement_line_id > 0 &&
+    ln.line_role === "purchase" &&
+    !ln.installment_flag &&
+    !ln.checking_refund &&
+    ln.amount_clp > 0;
+  const hasPieces = ln.piece_seq != null || ln.pieces_remainder === true;
+  const canEditManual = actions.onEditManual != null && ln.source === "manual" && ln.statement_line_id > 0;
+  const showNoteInput =
+    Boolean(ln.purchase_key) &&
+    (ln.source === "cc" || (actions.enableCheckingNotes && ln.source === "checking"));
+  const noteStatementLineId =
+    ln.statement_line_id > 0 ? ln.statement_line_id : ln.category_statement_line_id ?? undefined;
+  const needsAction = ln.cuota_purchase_kind != null;
+  const hasPanel =
+    showNoteInput || hasPieces || needsAction || canEditPieces || canEditManual || canMakeInstallment || canDelete;
+  const note = ln.purchase_notes.trim();
+  const merchant = ln.merchant ?? "—";
+
+  return (
+    <div
+      role="listitem"
+      className={cn(
+        styles.row,
+        selected && styles.rowSelected,
+        canSelect && styles.rowSelectable
+      )}
+    >
+      {canSelect ? (
+        <input
+          type="checkbox"
+          className={styles.select}
+          checked={selected}
+          aria-label={t("expenses.creditCard.selectRowAria", { merchant })}
+          onChange={() => selection.toggleLine(ln)}
+        />
+      ) : null}
+      <div className={styles.origin}>
+        <ExpenseOriginIcon origin={ln.origin} />
+      </div>
+      <div className={cn("mono", "muted", styles.date)}>{lineDate(ln)}</div>
+      <div className={styles.pills}>
+        {showCategoryControls && !fixedCategory ? (
+          <ExpenseLineCategoryPicker line={ln} categories={categories} />
+        ) : (
+          <FixedCategoryPill line={ln} categories={categories} />
+        )}
+        {showBigGroupControls && ln.purchase_key && !fixedCategory ? (
+          <ExpenseBigGroupPicker purchaseKey={ln.purchase_key} value={ln.big_group_slug} groups={bigGroups} />
+        ) : null}
+      </div>
+      <div className={styles.vendor}>
+        <span className={styles.merchant}>{merchant}</span>
+        {note ? <span className={styles.note}>· {note}</span> : null}
+        {info.length > 0 ? (
+          <HoverPopover
+            className={styles.infoTrigger}
+            ariaLabel={t("expenses.creditCard.lineRow.infoAria")}
+            trigger={<InfoIcon size={14} />}
+          >
+            {info}
+          </HoverPopover>
+        ) : null}
+      </div>
+      <div className={styles.amountCell}>
+        <LineAmount line={ln} />
+      </div>
+      <div className={styles.more}>
+        {hasPanel ? (
+          <button
+            type="button"
+            className={cn(styles.moreButton, expanded && styles.moreButtonOpen)}
+            aria-expanded={expanded}
+            aria-label={t("expenses.creditCard.lineRow.moreAria", { merchant })}
+            title={needsAction ? t("expenses.creditCard.lineRow.needsAction") : undefined}
+            onClick={onToggleExpanded}
+          >
+            <MoreIcon size={16} />
+            {needsAction ? <span className={styles.needsActionBadge} aria-hidden /> : null}
+          </button>
+        ) : null}
+      </div>
+      {hasPanel && expanded ? (
+        <div className={styles.panel}>
+          {hasPieces || needsAction ? (
+            <div className={styles.panelBadges}>
+              {hasPieces ? (
+                <span className="muted">
+                  {ln.piece_seq != null
+                    ? t("expenses.creditCard.pieces.pieceBadge")
+                    : t("expenses.creditCard.pieces.remainderBadge")}
+                </span>
+              ) : null}
+              {ln.cuota_purchase_kind ? (
+                <>
+                  <Pill
+                    size="small"
+                    label={t("expenses.creditCard.cuotaPurchasePendingBadge")}
+                    backgroundColor="#92400e"
+                  />
+                  <span className="muted">
+                    {t(`expenses.creditCard.cuotaPurchasePendingHint.${ln.cuota_purchase_kind}`)}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {showNoteInput ? (
+            <div className={styles.panelNote}>
+              <ExpensePurchaseNoteInput
+                accountId={ln.account_id}
+                purchaseKey={ln.purchase_key}
+                statementLineId={noteStatementLineId}
+                value={ln.purchase_notes ?? ""}
+              />
+            </div>
+          ) : null}
+          {canEditPieces || canEditManual || canMakeInstallment || canDelete ? (
+            <div className={styles.panelActions}>
+              {canEditPieces ? (
+                <Button variant="ghost" size="sm" onClick={() => actions.onEditPieces?.(ln)}>
+                  {hasPieces
+                    ? t("expenses.creditCard.pieces.actionEdit")
+                    : t("expenses.creditCard.pieces.action")}
+                </Button>
+              ) : null}
+              {canEditManual ? (
+                <Button variant="ghost" size="sm" onClick={() => actions.onEditManual?.(ln)}>
+                  {t("expenses.creditCard.manualExpense.edit")}
+                </Button>
+              ) : null}
+              {canMakeInstallment ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={makeInstallmentBusy || deleteBusy}
+                  onClick={() => actions.onMakeInstallmentLine?.(ln)}
+                >
+                  {ln.cuota_purchase_kind
+                    ? t("accountDetail.creditCard.makeInstallmentActionPending")
+                    : t("accountDetail.creditCard.makeInstallmentAction")}
+                </Button>
+              ) : null}
+              {canDelete ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={deleteBusy || makeInstallmentBusy}
+                  aria-label={t("accountDetail.creditCard.facturacionDeleteLineAria")}
+                  onClick={() => actions.onDeleteLine?.(ln)}
+                >
+                  {t("accountDetail.creditCard.facturacionDeleteLine")}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SortButton({
+  sortKey,
+  label,
+  sort,
+  onSort,
+}: {
+  sortKey: SortKey;
+  label: string;
+  sort: SortState;
+  onSort: (key: SortKey) => void;
+}) {
+  const { t } = useTranslation();
+  const active = sort?.key === sortKey;
+  return (
+    <button
+      type="button"
+      className={cn(styles.sortButton, active && styles.sortButtonActive)}
+      aria-label={t("expenses.creditCard.lineRow.sortAria", { column: label })}
+      aria-pressed={active}
+      onClick={() => onSort(sortKey)}
+    >
+      {label}
+      {active ? <span aria-hidden>{sort.direction === "asc" ? " ▲" : " ▼"}</span> : null}
+    </button>
+  );
+}
+
+/**
+ * Expense lines as a responsive list: one row per line — origin icon, date and the category /
+ * big-group pills on top, the merchant (+ note, ⓘ linked details) and the amount (installment
+ * detail in superscript) below; the ⋯ button opens the row's extras (note editor, pieces,
+ * installments, delete), with a red badge when the line waits on the user. The header is a set of
+ * sort buttons (date, category, amount) that sort and reverse the rows. Same rendering at every
+ * width; narrow containers stack the pills under the merchant.
+ */
 export function CreditCardExpenseLinesTable({
   lines,
   categories,
@@ -192,7 +500,6 @@ export function CreditCardExpenseLinesTable({
   showCategoryControls = true,
   showBigGroupControls = false,
   bigGroups = [],
-  categoryControlVariant = "select",
   collapsedVisibleRows,
   showMoreLabel,
   showLessLabel,
@@ -214,7 +521,6 @@ export function CreditCardExpenseLinesTable({
   showCategoryControls?: boolean;
   showBigGroupControls?: boolean;
   bigGroups?: readonly CcExpenseBigGroupDto[];
-  categoryControlVariant?: "select" | "pills";
   collapsedVisibleRows?: number;
   showMoreLabel?: string;
   showLessLabel?: string;
@@ -225,9 +531,9 @@ export function CreditCardExpenseLinesTable({
   makeInstallmentLineIds?: ReadonlySet<number>;
   onMakeInstallmentLine?: (line: FlowCcExpenseLineRow) => void;
   makeInstallmentBusyLineId?: number;
-  /** Break a card / checking purchase line into dated pieces (actions column). */
+  /** Break a card / checking purchase line into dated pieces (row extras). */
   onEditPieces?: (line: FlowCcExpenseLineRow) => void;
-  /** Edit or delete a manual expense line (actions column). */
+  /** Edit or delete a manual expense line (row extras). */
   onEditManual?: (line: FlowCcExpenseLineRow) => void;
   /** Show note inputs for cuenta corriente (checking) rows — expenses tab only. */
   enableCheckingNotes?: boolean;
@@ -236,275 +542,111 @@ export function CreditCardExpenseLinesTable({
 }) {
   const { t } = useTranslation();
   const selection = useCreditCardExpenseLinesSelection();
-  const showRowSelection = showCategoryControls && selection != null;
-  const showActions = showDeleteAction || onEditPieces != null || onEditManual != null;
+  const [sort, setSort] = useState<SortState>(null);
+  const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const [showAll, setShowAll] = useState(false);
+
+  const categoryLabelBySlug = useMemo(
+    () => new Map(categories.map((c) => [c.slug, ccExpenseCategoryPathLabel(c)])),
+    [categories]
+  );
+  const sorted = useMemo(
+    () =>
+      sortLines(lines, sort, (ln) => {
+        const slug = lineCategorySlug(ln);
+        return slug ? (categoryLabelBySlug.get(slug) ?? slug) : null;
+      }),
+    [categoryLabelBySlug, lines, sort]
+  );
 
   if (lines.length === 0 && !loading) {
     return <p className="muted" style={{ marginBottom: "1rem" }}>{emptyLabel}</p>;
   }
 
-  const hidden =
-    collapsedVisibleRows != null && collapsedVisibleRows > 0
-      ? Math.max(0, lines.length - collapsedVisibleRows)
-      : 0;
+  const onSort = (key: SortKey) =>
+    setSort((prev) =>
+      prev?.key === key
+        ? { key, direction: prev.direction === "desc" ? "asc" : "desc" }
+        : { key, direction: "desc" }
+    );
+  const toggleExpanded = (key: string) =>
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const limit = collapsedVisibleRows != null && collapsedVisibleRows > 0 ? collapsedVisibleRows : null;
+  const hidden = limit != null ? Math.max(0, sorted.length - limit) : 0;
+  const visible = hidden > 0 && !showAll ? sorted.slice(0, limit ?? undefined) : sorted;
+  const actions: RowActions = {
+    showDeleteAction,
+    deletableLineIds,
+    onDeleteLine,
+    deletePendingLineId,
+    makeInstallmentLineIds,
+    onMakeInstallmentLine,
+    makeInstallmentBusyLineId,
+    onEditPieces,
+    onEditManual,
+    enableCheckingNotes,
+  };
+  const anySelected = selection != null && selection.selectedKeys.size > 0;
 
   return (
-    <Table
-      tableClassName={tableStyles.tableCompact}
-      tableStyle={{ marginBottom: "1.25rem" }}
-      wrapClassName={loading ? loadableClass(true) : undefined}
-      collapsedVisibleRows={collapsedVisibleRows}
-      showMoreLabel={
-        showMoreLabel ??
-        (hidden > 0 ? t("table.showMoreRows", { count: hidden }) : t("table.showMore"))
-      }
-      showLessLabel={showLessLabel ?? t("table.showLess")}
-      header={
-        <thead>
-          <tr>
-            {showRowSelection ? (
-              <th className={categoryStyles.selectCol} aria-label={t("expenses.creditCard.colSelect")} />
-            ) : null}
-            <th data-sort-key="source">{t("expenses.creditCard.lineColSource")}</th>
-            <th data-sort-key="statement" data-sort-type="date">
-              {t("expenses.creditCard.lineColStatementClose")}
-            </th>
-            <th data-sort-key="purchase" data-sort-type="date">
-              {t("expenses.creditCard.lineColPurchaseDate")}
-            </th>
-            <th data-sort-key="merchant">{t("account.creditCard.lineMerchant")}</th>
-            <th data-sort-key="amount" data-sort-type="number">
-              {t("expenses.creditCard.lineColAmount")}
-            </th>
-            <th data-sort-key="installment" data-sort-type="number">
-              {t("expenses.creditCard.lineColInstallment")}
-            </th>
-            {showCategoryControls ? <th>{t("expenses.creditCard.colCategory")}</th> : null}
-            {showBigGroupControls ? (
-              <th>{t("expenses.creditCard.bigGroups.colGroup")}</th>
-            ) : null}
-            <th>{t("expenses.creditCard.lineColNotes")}</th>
-            {showActions ? (
-              <th>{t("accountDetail.creditCard.lineColActions")}</th>
-            ) : null}
-          </tr>
-        </thead>
-      }
-    >
-      {lines.map((ln) => {
-        const isCc = ln.source === "cc";
-        const noteStatementLineId =
-          ln.statement_line_id > 0
-            ? ln.statement_line_id
-            : ln.category_statement_line_id ?? undefined;
-        const canDelete =
-          showDeleteAction &&
-          deletableLineIds?.has(ln.statement_line_id) === true &&
-          ln.statement_line_id > 0;
-        const deleteBusy = deletePendingLineId === ln.statement_line_id;
-        const canMakeInstallment =
-          showDeleteAction &&
-          makeInstallmentLineIds?.has(ln.statement_line_id) === true &&
-          ln.statement_line_id > 0 &&
-          !ln.installment_flag;
-        const makeInstallmentBusy = makeInstallmentBusyLineId === ln.statement_line_id;
-        const canEditPieces =
-          onEditPieces != null &&
-          (ln.source === "cc" || ln.source === "checking") &&
-          ln.statement_line_id > 0 &&
-          ln.line_role === "purchase" &&
-          !ln.installment_flag &&
-          !ln.checking_refund &&
-          ln.amount_clp > 0;
-        const hasPieces = ln.piece_seq != null || ln.pieces_remainder === true;
-        const canEditManual = onEditManual != null && ln.source === "manual" && ln.statement_line_id > 0;
-        const showNoteInput =
-          Boolean(ln.purchase_key) &&
-          (isCc || (enableCheckingNotes && ln.source === "checking"));
-        // A payslip deduction's category is the deduction's own: no picker, no bulk select, no group.
-        const fixedCategory = ln.source === "payslip";
-        const rowSelected = showRowSelection && !fixedCategory && selection.isSelected(ln);
-        return (
-          <tr
-            key={`${ln.source}-${ln.statement_line_id}-${ln.purchase_key}`}
-            className={rowSelected ? categoryStyles.rowSelected : undefined}
-            data-sort-source={ln.origin_label}
-            data-sort-statement={ln.occurred_on}
-            data-sort-purchase={ln.purchase_on ?? ""}
-            data-sort-merchant={ln.merchant ?? ""}
-            data-sort-amount={ln.amount_clp}
-            data-sort-installment={
-              ln.installment_flag ? (ln.nro_cuota_current ?? 0) : -1
-            }
-          >
-            {showRowSelection ? (
-              <td className={categoryStyles.selectCol}>
-                {fixedCategory ? null : (
-                  <input
-                    type="checkbox"
-                    checked={rowSelected}
-                    aria-label={t("expenses.creditCard.selectRowAria", {
-                      merchant: ln.merchant ?? ln.origin_label,
-                    })}
-                    onChange={() => selection.toggleLine(ln)}
-                  />
-                )}
-              </td>
-            ) : null}
-            <td className="mono">{ln.origin_label}</td>
-            <td className="mono">{isCc ? ln.statement_date : "—"}</td>
-            <td className="mono">{ln.purchase_on ?? "—"}</td>
-            <td>
-              {ln.merchant ?? "—"}
-              {hasPieces ? (
-                <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.9em" }}>
-                  {ln.piece_seq != null
-                    ? t("expenses.creditCard.pieces.pieceBadge")
-                    : t("expenses.creditCard.pieces.remainderBadge")}
-                </span>
-              ) : null}
-              {ln.cuota_purchase_kind ? (
-                <span
-                  title={t(`expenses.creditCard.cuotaPurchasePendingHint.${ln.cuota_purchase_kind}`)}
-                  style={{ marginLeft: "0.35rem" }}
-                >
-                  <Pill
-                    size="small"
-                    label={t("expenses.creditCard.cuotaPurchasePendingBadge")}
-                    backgroundColor="#92400e"
-                    hoverBackgroundColor="#b45309"
-                  />
-                </span>
-              ) : null}
-              {(() => {
-                const mortgageLink = ln.expense_deposit_links?.find((l) => l.depto_cuota != null);
-                if (mortgageLink) {
-                  return (
-                    <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.9em" }}>
-                      {t("expenses.creditCard.mortgageDepositLinkCuota", {
-                        cuota: mortgageLink.depto_cuota,
-                      })}
-                    </span>
-                  );
-                }
-                const hasInvestmentLink = (ln.expense_deposit_links?.length ?? 0) > 0;
-                if (hasInvestmentLink) {
-                  return (
-                    <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.9em" }}>
-                      {t("expenses.creditCard.investmentDepositLink")}
-                    </span>
-                  );
-                }
-                return null;
-              })()}
-            </td>
-            <td className="mono" style={{ whiteSpace: "nowrap" }}>
-              <span>
-                {formatCcExpenseLineAmount(ln.amount_clp, ln.amount_usd)}
-                {ln.line_role === "installment_cuota" && ln.installment_total_clp != null ? (
-                  <sup style={{ marginLeft: "0.15em", opacity: 0.6, fontSize: "0.75em", verticalAlign: "top" }}>
-                    /{formatClp(ln.installment_total_clp)}
-                  </sup>
-                ) : null}
-              </span>
-            </td>
-            <td className="mono muted">
-              {ln.line_role === "installment_purchase_total" ? (
-                <Pill
-                  size="small"
-                  label={t("expenses.creditCard.installmentPurchaseTotalLabel", {
-                    count: ln.nro_cuota_total ?? 0,
-                  })}
-                  backgroundColor="#475569"
-                  hoverBackgroundColor="#64748b"
-                />
-              ) : ln.installment_flag ? (
-                formatCuota(ln.nro_cuota_current, ln.nro_cuota_total)
-              ) : (
-                "—"
-              )}
-            </td>
-            {showCategoryControls ? (
-              <td>
-                {fixedCategory ? (
-                  <span className="muted">
-                    {(() => {
-                      const c = categories.find((x) => x.slug === ln.category_slug);
-                      return c ? ccExpenseCategoryPathLabel(c) : ln.category_slug;
-                    })()}
-                  </span>
-                ) : (
-                  <ExpenseLineCategoryControls
-                    line={ln}
-                    categories={categories}
-                    variant={categoryControlVariant}
-                  />
-                )}
-              </td>
-            ) : null}
-            {showBigGroupControls ? (
-              <td>
-                {ln.purchase_key && !fixedCategory ? (
-                  <ExpenseBigGroupSelect
-                    purchaseKey={ln.purchase_key}
-                    value={ln.big_group_slug}
-                    groups={bigGroups}
-                  />
-                ) : (
-                  "—"
-                )}
-              </td>
-            ) : null}
-            <td>
-              {showNoteInput ? (
-                <ExpensePurchaseNoteInput
-                  accountId={ln.account_id}
-                  purchaseKey={ln.purchase_key}
-                  statementLineId={noteStatementLineId}
-                  value={ln.purchase_notes ?? ""}
-                />
-              ) : ln.transfer_counterparty || ln.payment_receipt ? null : (
-                "—"
-              )}
-              <TransferCounterpartyLine counterparty={ln.transfer_counterparty} />
-              <PaymentReceiptLine receipt={ln.payment_receipt} />
-            </td>
-            {showActions ? (
-              <td>
-                {canEditPieces ? (
-                  <Button variant="ghost" onClick={() => onEditPieces?.(ln)}>
-                    {hasPieces ? t("expenses.creditCard.pieces.actionEdit") : t("expenses.creditCard.pieces.action")}
-                  </Button>
-                ) : null}
-                {canEditManual ? (
-                  <Button variant="ghost" onClick={() => onEditManual?.(ln)}>
-                    {t("expenses.creditCard.manualExpense.edit")}
-                  </Button>
-                ) : null}
-                {canMakeInstallment ? (
-                  <Button variant="ghost"
-                    disabled={makeInstallmentBusy || deleteBusy}
-                    onClick={() => onMakeInstallmentLine?.(ln)}
-                  >
-                    {ln.cuota_purchase_kind
-                      ? t("accountDetail.creditCard.makeInstallmentActionPending")
-                      : t("accountDetail.creditCard.makeInstallmentAction")}
-                  </Button>
-                ) : null}
-                {canDelete ? (
-                  <Button variant="ghost"
-                    disabled={deleteBusy || makeInstallmentBusy}
-                    aria-label={t("accountDetail.creditCard.facturacionDeleteLineAria")}
-                    onClick={() => onDeleteLine?.(ln)}
-                  >
-                    {t("accountDetail.creditCard.facturacionDeleteLine")}
-                  </Button>
-                ) : (!canMakeInstallment && !canEditPieces && !canEditManual ? "—" : null)}
-              </td>
-            ) : null}
-          </tr>
-        );
-      })}
-    </Table>
+    <div className={cn(styles.wrap, loading && loadableClass(true))}>
+      <div
+        className={cn(
+          styles.list,
+          selection != null && showCategoryControls && styles.listSelectable,
+          anySelected && styles.listHasSelection
+        )}
+      >
+        <div className={styles.header}>
+          <SortButton sortKey="date" label={t("expenses.creditCard.lineRow.sortDate")} sort={sort} onSort={onSort} />
+          <span className={styles.headerRight}>
+            <SortButton
+              sortKey="category"
+              label={t("expenses.creditCard.lineRow.sortCategory")}
+              sort={sort}
+              onSort={onSort}
+            />
+            <SortButton
+              sortKey="amount"
+              label={t("expenses.creditCard.lineRow.sortAmount")}
+              sort={sort}
+              onSort={onSort}
+            />
+          </span>
+        </div>
+        <div role="list">
+          {visible.map((ln) => {
+            const key = expenseLineRowKey(ln);
+            return (
+              <ExpenseLineRow
+                key={key}
+                line={ln}
+                categories={categories}
+                bigGroups={bigGroups}
+                showCategoryControls={showCategoryControls}
+                showBigGroupControls={showBigGroupControls}
+                selectable={showCategoryControls}
+                actions={actions}
+                expanded={expandedKeys.has(key)}
+                onToggleExpanded={() => toggleExpanded(key)}
+              />
+            );
+          })}
+        </div>
+      </div>
+      {hidden > 0 ? (
+        <Button variant="ghost" onClick={() => setShowAll((s) => !s)}>
+          {showAll
+            ? (showLessLabel ?? t("table.showLess"))
+            : (showMoreLabel ?? t("table.showMoreRows", { count: hidden }))}
+        </Button>
+      ) : null}
+    </div>
   );
 }

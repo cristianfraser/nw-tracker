@@ -850,7 +850,6 @@
       "facturacionDeleteConfirmBody": "¿Eliminar «{{merchant}}» ({{amount}}) de esta facturación? No se puede deshacer.",
       "facturacionDeleteConfirmAction": "Eliminar",
       "facturacionDeleteConfirmCancel": "Cancelar",
-      "lineColActions": "Acciones",
       "associatedCardsTitle": "Tarjetas asociadas",
       "closeDateEstimatedHint": "Estimada según el ciclo configurado de la tarjeta: el banco aún no publica este cierre.",
       "closeDateAnnouncedHint": "Anunciada como próximo período de facturación en el estado de cuenta anterior.",
@@ -962,8 +961,7 @@
     "paginationPrev": "Página anterior",
     "paginationNext": "Página siguiente",
     "paginationPageAria": "Página",
-    "paginationPageOf": "Pág. {{page}} de {{total}}",
-    "showMore": "Mostrar más…"
+    "paginationPageOf": "Pág. {{page}} de {{total}}"
   },
   "common": {
     "loading": "Cargando…",
@@ -1301,8 +1299,6 @@
       "chartTotal": "Total",
       "chartShownTotal": "Total mostrado",
       "chartEmpty": "Sin gastos en este período.",
-      "colCategory": "Categoría",
-      "colSelect": "Seleccionar",
       "selectRowAria": "Seleccionar {{merchant}}",
       "bulkFooterAria": "Acciones sobre gastos seleccionados",
       "bulkSelectedCount": "{{count}} seleccionados",
@@ -1349,14 +1345,8 @@
       "modalSectionExcluded": "Excluidos del gasto",
       "modalSectionExcludedHint": "Cuota 0, total de compra en cuotas (modo Por cuota), categoría No cuenta / Depósitos, y notas de crédito. No suman al gasto del mes.",
       "modalSectionEmpty": "Sin movimientos.",
-      "lineColSource": "Origen",
       "sourceCreditCard": "Tarjeta",
       "sourceChecking": "Cuenta corriente",
-      "lineColStatementClose": "Cierre estado",
-      "lineColPurchaseDate": "Fecha compra",
-      "lineColAmount": "Monto CLP",
-      "lineColInstallment": "Cuota",
-      "lineColNotes": "Notas",
       "purchaseNotePlaceholder": "Nota…",
       "purchaseNoteAria": "Nota de la compra",
       "unclassifiedTableTitle": "Gastos sin clasificar",
@@ -1366,9 +1356,7 @@
       "mortgageDepositLinkCuota": "· Cuota hipotecaria {{cuota}}",
       "investmentDepositLink": "· depósito inversión",
       "bigGroups": {
-        "colGroup": "Grupo grande",
         "none": "—",
-        "selectAria": "Grupo grande de la compra",
         "createOption": "+ Crear grupo…",
         "createPrompt": "Nombre del grupo (viaje, remodelación, etc.)",
         "bulkPlaceholder": "Asignar grupo grande…",
@@ -1421,6 +1409,24 @@
         "saving": "Guardando…",
         "delete": "Eliminar",
         "deleteConfirm": "¿Eliminar este gasto manual?"
+      },
+      "lineRow": {
+        "sortDate": "Fecha",
+        "sortAmount": "Monto",
+        "sortCategory": "Categoría",
+        "sortAria": "Ordenar por {{column}}",
+        "moreAria": "Más de {{merchant}}",
+        "needsAction": "Necesita tu respuesta",
+        "infoAria": "Detalle vinculado",
+        "categoryPickerAria": "Categoría: {{category}}",
+        "bigGroupPickerAria": "Grupo grande: {{group}}",
+        "clearBigGroupAria": "Quitar grupo grande",
+        "originCard": "Tarjeta {{name}} · {{last4}}",
+        "originCardAdditional": "Tarjeta {{name}} · {{last4}} (tarjeta adicional)",
+        "originChecking": "Cuenta {{name}}",
+        "originManual": "Gasto manual",
+        "originPayslip": "Deducción de liquidación",
+        "noBigGroup": "Sin grupo"
       }
     },
     "kinds": {

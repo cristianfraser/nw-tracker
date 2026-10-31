@@ -850,7 +850,6 @@
       "facturacionDeleteConfirmBody": "Delete “{{merchant}}” ({{amount}}) from this billing month? This cannot be undone.",
       "facturacionDeleteConfirmAction": "Delete",
       "facturacionDeleteConfirmCancel": "Cancel",
-      "lineColActions": "Actions",
       "associatedCardsTitle": "Associated cards",
       "closeDateEstimatedHint": "Estimated from the card's configured cycle: the bank has not published this close yet.",
       "closeDateAnnouncedHint": "Announced as the next billing period by the previous statement.",
@@ -962,8 +961,7 @@
     "paginationPrev": "Previous page",
     "paginationNext": "Next page",
     "paginationPageAria": "Page",
-    "paginationPageOf": "Page {{page}} of {{total}}",
-    "showMore": "Show more…"
+    "paginationPageOf": "Page {{page}} of {{total}}"
   },
   "common": {
     "loading": "Loading…",
@@ -1301,8 +1299,6 @@
       "chartTotal": "Total",
       "chartShownTotal": "Shown total",
       "chartEmpty": "No expenses in this period.",
-      "colCategory": "Category",
-      "colSelect": "Select",
       "selectRowAria": "Select {{merchant}}",
       "bulkFooterAria": "Actions on selected expenses",
       "bulkSelectedCount": "{{count}} selected",
@@ -1349,14 +1345,8 @@
       "modalSectionExcluded": "Excluded from spend",
       "modalSectionExcludedHint": "Installment 0, installment-purchase totals (Per-installment mode), the Doesn't count / Deposits categories, and credit notes. They do not add to the month's spend.",
       "modalSectionEmpty": "No movements.",
-      "lineColSource": "Origin",
       "sourceCreditCard": "Credit card",
       "sourceChecking": "Checking account",
-      "lineColStatementClose": "Statement close",
-      "lineColPurchaseDate": "Purchase date",
-      "lineColAmount": "CLP amount",
-      "lineColInstallment": "Installment",
-      "lineColNotes": "Notes",
       "purchaseNotePlaceholder": "Note…",
       "purchaseNoteAria": "Purchase note",
       "unclassifiedTableTitle": "Unclassified expenses",
@@ -1366,9 +1356,7 @@
       "mortgageDepositLinkCuota": "· Mortgage installment {{cuota}}",
       "investmentDepositLink": "· investment deposit",
       "bigGroups": {
-        "colGroup": "Big group",
         "none": "—",
-        "selectAria": "The purchase's big group",
         "createOption": "+ Create group…",
         "createPrompt": "Group name (trip, remodel, etc.)",
         "bulkPlaceholder": "Assign big group…",
@@ -1421,6 +1409,24 @@
         "saving": "Saving…",
         "delete": "Delete",
         "deleteConfirm": "Delete this manual expense?"
+      },
+      "lineRow": {
+        "sortDate": "Date",
+        "sortAmount": "Amount",
+        "sortCategory": "Category",
+        "sortAria": "Sort by {{column}}",
+        "moreAria": "More for {{merchant}}",
+        "needsAction": "Needs your input",
+        "infoAria": "Linked details",
+        "categoryPickerAria": "Category: {{category}}",
+        "bigGroupPickerAria": "Big group: {{group}}",
+        "clearBigGroupAria": "Remove big group",
+        "originCard": "Card {{name}} · {{last4}}",
+        "originCardAdditional": "Card {{name}} · {{last4}} (additional card)",
+        "originChecking": "Account {{name}}",
+        "originManual": "Manual expense",
+        "originPayslip": "Payroll deduction",
+        "noBigGroup": "No group"
       }
     },
     "kinds": {

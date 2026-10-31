@@ -110,7 +110,6 @@ export function CreditCardExpenseMonthModalSections({
   categories,
   bigGroups = [],
   abonosSumClp,
-  purchaseCategoryVariant = "pills",
   enableCheckingNotes = false,
 }: {
   bucket: CreditCardExpenseMonthBucket;
@@ -118,7 +117,6 @@ export function CreditCardExpenseMonthModalSections({
   bigGroups?: readonly CcExpenseBigGroupDto[];
   /** When set, shown next to the abonos section title (e.g. month row abonos_mes_clp). */
   abonosSumClp?: number;
-  purchaseCategoryVariant?: "select" | "pills";
   enableCheckingNotes?: boolean;
 }) {
   const { t } = useTranslation();
@@ -160,7 +158,6 @@ export function CreditCardExpenseMonthModalSections({
         showBigGroupControls
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
-        categoryControlVariant={purchaseCategoryVariant}
         enableCheckingNotes={enableCheckingNotes}
         onEditPieces={setPiecesLine}
         onEditManual={setManualLine}
@@ -206,7 +203,6 @@ export function CreditCardExpenseMonthModalSections({
         showBigGroupControls
         emptyLabel={t("expenses.creditCard.modalSectionEmpty")}
         showCategoryControls
-        categoryControlVariant={purchaseCategoryVariant}
         enableCheckingNotes={enableCheckingNotes}
       />
 

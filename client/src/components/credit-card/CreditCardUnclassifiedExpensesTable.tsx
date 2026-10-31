@@ -112,7 +112,6 @@ export function CreditCardUnclassifiedExpensesTable({
           showBigGroupControls
           emptyLabel={t("expenses.creditCard.unclassifiedTableEmpty")}
           showCategoryControls
-          categoryControlVariant="pills"
           enableCheckingNotes
           loading={loading}
         />

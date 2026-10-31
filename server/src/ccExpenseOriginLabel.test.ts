@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   enrichFlowLinesWithOriginLabels,
+  expenseLineOrigin,
   expenseLineOriginLabel,
   loadAccountNameById,
 } from "./ccExpenseOriginLabel.js";
@@ -60,5 +61,39 @@ describe("ccExpenseOriginLabel", () => {
     ]);
     expect(enriched[0]?.origin_label).toBeTruthy();
     expect(enriched[0]?.origin_label).toMatch(/^\d{4}$|./);
+  });
+
+  it("expenseLineOrigin states the kind, the account and the plastic", () => {
+    const names = new Map([
+      [901, "Card master"],
+      [902, "Checking"],
+    ]);
+    expect(expenseLineOrigin({ account_id: 0, source: "manual" }, names)).toEqual({
+      kind: "manual",
+      account_name: null,
+      card_last4: null,
+      additional: false,
+    });
+    expect(expenseLineOrigin({ account_id: 0, source: "payslip" }, names).kind).toBe("payslip");
+    expect(expenseLineOrigin({ account_id: 902, source: "checking" }, names)).toEqual({
+      kind: "checking",
+      account_name: "Checking",
+      card_last4: null,
+      additional: false,
+    });
+    expect(
+      expenseLineOrigin(
+        { account_id: 901, source: "cc", origin_card_last4: "4141", primary_card_last4: "4141" },
+        names
+      )
+    ).toEqual({ kind: "card", account_name: "Card master", card_last4: "4141", additional: false });
+  });
+
+  it("expenseLineOrigin flags the additional cardholder's plastic", () => {
+    const origin = expenseLineOrigin(
+      { account_id: 901, source: "cc", origin_card_last4: "4999", primary_card_last4: "4141" },
+      new Map([[901, "Card master"]])
+    );
+    expect(origin).toEqual({ kind: "card", account_name: "Card master", card_last4: "4999", additional: true });
   });
 });

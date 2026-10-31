@@ -37,6 +37,7 @@ function ccLine(
     nro_cuota_total: null,
     purchase_notes: "",
     origin_label: "4242",
+    origin: { kind: "card", account_name: null, card_last4: null, additional: false },
     amount_usd: null,
     amount_usd_at_expense: null,
     big_group_slug: null,

@@ -113,7 +113,6 @@ export function CreditCardDepositMatchedExpensesTable({
           categories={categories}
           emptyLabel={t("expenses.creditCard.depositMatchedTableEmpty")}
           showCategoryControls
-          categoryControlVariant="pills"
           enableCheckingNotes
           loading={loading}
         />

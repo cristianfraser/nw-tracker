@@ -1,4 +1,5 @@
 import { accountKindSlugForAccountId } from "./accountBucket.js";
+import { isAdditionalCardExpenseLine } from "./ccAdditionalCardExpenseMatch.js";
 import { cardLast4ForCreditCardAccount } from "./ccManualBillingMonth.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineSource } from "./flowsExpenses.js";
@@ -35,12 +36,64 @@ export function expenseLineOriginLabel(
   return names.get(accountId) ?? "Cuenta corriente";
 }
 
+/**
+ * Where an expense line came from, as data the client words and draws (an icon per kind, a tooltip
+ * with the account): `card` = a card statement / feed line, `checking` = a bank account movement,
+ * `manual` = a hand-entered expense, `payslip` = a payroll deduction.
+ */
+export type ExpenseLineOrigin = {
+  kind: "card" | "checking" | "manual" | "payslip";
+  /** The account's name (card master or bank account); null for manual / payslip lines. */
+  account_name: string | null;
+  /** The plastic that made the charge (card lines): the line's origin card, else the master's. */
+  card_last4: string | null;
+  /** The plastic is the additional cardholder's (`additional_card_last4s`). */
+  additional: boolean;
+};
+
+const ORIGIN_KIND: Record<FlowCcExpenseLineSource, ExpenseLineOrigin["kind"]> = {
+  cc: "card",
+  checking: "checking",
+  manual: "manual",
+  payslip: "payslip",
+};
+
+export function expenseLineOrigin(
+  line: {
+    account_id: number;
+    source: FlowCcExpenseLineSource;
+    origin_card_last4?: string | null;
+    primary_card_last4?: string | null;
+  },
+  names: Map<number, string>
+): ExpenseLineOrigin {
+  const kind = ORIGIN_KIND[line.source];
+  if (kind === "manual" || kind === "payslip") {
+    return { kind, account_name: null, card_last4: null, additional: false };
+  }
+  const account_name = names.get(line.account_id) ?? null;
+  if (kind === "checking") return { kind, account_name, card_last4: null, additional: false };
+  const origin = String(line.origin_card_last4 ?? "").trim();
+  return {
+    kind,
+    account_name,
+    card_last4: origin || cardLast4ForCreditCardAccount(line.account_id) || null,
+    additional: isAdditionalCardExpenseLine(line.origin_card_last4, line.primary_card_last4),
+  };
+}
+
 export function enrichFlowLinesWithOriginLabels<
-  T extends { account_id: number; source: FlowCcExpenseLineSource },
->(lines: readonly T[]): (T & { origin_label: string })[] {
+  T extends {
+    account_id: number;
+    source: FlowCcExpenseLineSource;
+    origin_card_last4?: string | null;
+    primary_card_last4?: string | null;
+  },
+>(lines: readonly T[]): (T & { origin_label: string; origin: ExpenseLineOrigin })[] {
   const names = loadAccountNameById(lines.map((ln) => ln.account_id));
   return lines.map((ln) => ({
     ...ln,
     origin_label: expenseLineOriginLabel(ln.account_id, ln.source, names),
+    origin: expenseLineOrigin(ln, names),
   }));
 }
