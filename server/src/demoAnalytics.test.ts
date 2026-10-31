@@ -14,7 +14,9 @@ process.env.DEMO_ANALYTICS_SALT = "vitest-analytics-salt";
 const {
   demoAnalyticsDb,
   clientAddress,
+  cookieValue,
   isBotUserAgent,
+  isOwnerRequest,
   recordDemoVisit,
   referrerOrigin,
   srcTagFromQuery,
@@ -33,6 +35,7 @@ function visit(overrides: Partial<Parameters<typeof recordDemoVisit>[0]> = {}) {
     referrer: null,
     country: null,
     userAgent: "Mozilla/5.0",
+    owner: false,
     ...overrides,
   });
 }
@@ -63,6 +66,39 @@ describe("visitorKey", () => {
     expect(visitorKey("1.2.3.4", "OtherUA", DAY)).not.toBe(a);
     expect(a).toMatch(/^[0-9a-f]{16}$/);
     expect(a).not.toContain("1.2.3.4");
+  });
+});
+
+describe("owner visits", () => {
+  it("reads one cookie from the header", () => {
+    expect(cookieValue("a=1; nw_demo_owner=abc%2B1; b=2", "nw_demo_owner")).toBe("abc+1");
+    expect(cookieValue("a=1", "nw_demo_owner")).toBeNull();
+    expect(cookieValue(undefined, "nw_demo_owner")).toBeNull();
+  });
+
+  it("recognizes the owner by cookie or code, only with a code configured", () => {
+    const req = (cookie: string | undefined, owner?: string) =>
+      ({ headers: { cookie }, query: owner ? { owner } : {} }) as never;
+    process.env.DEMO_OWNER_CODE = "s3cret";
+    try {
+      expect(isOwnerRequest(req("nw_demo_owner=s3cret"))).toBe(true);
+      expect(isOwnerRequest(req(undefined, "s3cret"))).toBe(true);
+      expect(isOwnerRequest(req("nw_demo_owner=old-code"))).toBe(false);
+      expect(isOwnerRequest(req(undefined, "guess"))).toBe(false);
+    } finally {
+      delete process.env.DEMO_OWNER_CODE;
+    }
+    expect(isOwnerRequest(req("nw_demo_owner=s3cret"))).toBe(false);
+  });
+
+  it("keeps a visit marked once any request carried the cookie", () => {
+    visit();
+    visit({ owner: true });
+    visit();
+    const row = demoAnalyticsDb()
+      .prepare(`SELECT owner, request_count FROM demo_visits WHERE day = ? AND visitor = 'v1'`)
+      .get(DAY);
+    expect(row).toEqual({ owner: 1, request_count: 3 });
   });
 });
 
