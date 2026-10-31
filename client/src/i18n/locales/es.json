@@ -1426,7 +1426,8 @@
         "originChecking": "Cuenta {{name}}",
         "originManual": "Gasto manual",
         "originPayslip": "Deducción de liquidación",
-        "noBigGroup": "Sin grupo"
+        "noBigGroup": "Sin grupo",
+        "bigGroupLabel": "Grupo grande"
       }
     },
     "kinds": {

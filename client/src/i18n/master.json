@@ -5047,6 +5047,10 @@
         "noBigGroup": {
           "en": "No group",
           "es": "Sin grupo"
+        },
+        "bigGroupLabel": {
+          "en": "Big group",
+          "es": "Grupo grande"
         }
       }
     },
