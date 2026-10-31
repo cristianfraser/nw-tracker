@@ -238,7 +238,7 @@ function useLineInfo(line: FlowCcExpenseLineRow): ReactNode[] {
   const { t } = useTranslation();
   const blocks: ReactNode[] = [];
   if (line.display_merchant != null && line.merchant) {
-    const bank = [t("expenses.creditCard.lineRow.bankMerchant", { merchant: line.merchant })];
+    const bank = [line.merchant];
     if (line.merchant_processor) bank.push(t("expenses.creditCard.lineRow.viaProcessor", { processor: line.merchant_processor }));
     blocks.push(<InfoBlock key="bank" lines={bank} />);
   }

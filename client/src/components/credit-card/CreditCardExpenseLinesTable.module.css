@@ -110,6 +110,14 @@
 .originIcon,
 .select {
   grid-area: 1 / 1;
+  transition: opacity 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .originIcon,
+  .select {
+    transition: none;
+  }
 }
 
 .select {

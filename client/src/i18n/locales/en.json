@@ -1430,7 +1430,6 @@
         "bigGroupLabel": "Big group",
         "branchChoiceLabel": "Which branch?",
         "branchChoiceHint": "The bank cut the name; it could be any of these.",
-        "bankMerchant": "As the bank prints it: {{merchant}}",
         "viaProcessor": "Paid through {{processor}}",
         "nightsOne": "{{count}} night",
         "nightsMany": "{{count}} nights"

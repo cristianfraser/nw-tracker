@@ -1430,7 +1430,6 @@
         "bigGroupLabel": "Grupo grande",
         "branchChoiceLabel": "¿Qué sucursal?",
         "branchChoiceHint": "El banco cortó el nombre; podría ser cualquiera de estas.",
-        "bankMerchant": "Como lo imprime el banco: {{merchant}}",
         "viaProcessor": "Pagado vía {{processor}}",
         "nightsOne": "{{count}} noche",
         "nightsMany": "{{count}} noches"
