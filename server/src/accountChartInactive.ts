@@ -9,6 +9,10 @@ import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
 import { isUsdCashAccount } from "./movementTransfer.js";
 import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { clpCashBalanceClpAt, isClpCashKindSlug } from "./clpCashAccounts.js";
+import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
+import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { movementBoundsByAccountIds } from "./movementBounds.js";
 import {
   CHART_TRAILING_ZERO_MONTHS_KEPT,
   chartInactiveFromMonthlyClosingAsc,
@@ -51,8 +55,8 @@ const EMPTY_HOLDING_EPS = 1e-9;
 
 /**
  * What the account holds today in its own unit, read from the ledger without any price: shares,
- * coins, fund cuotas, dollars. Null for an account valued some other way (a peso ledger, the
- * property, stored marks), whose month closes decide instead.
+ * coins, fund cuotas, dollars, a peso ledger's pesos. Null for an account valued some other way
+ * (the property, the mortgage, stored marks), whose month closes decide instead.
  */
 function holdingTodayWithoutPrice(accountId: number): number | null {
   const today = chileCalendarTodayYmd();
@@ -69,6 +73,16 @@ function holdingTodayWithoutPrice(accountId: number): number | null {
     return fintualGoalUnitsFromMovementsThroughDate(accountId, today) ?? 0;
   }
   if (isUsdCashAccount(accountId)) return usdCashBalanceUsdAt(accountId, today);
+  // A peso ledger (checking, a broker's peso balance, a portfolio caja) holds its balance: the
+  // last month close of its balance walk is that same balance (the current month-end, or a
+  // later one a forward-posted row opened, reads every known movement). Without movements
+  // the walk is empty and the stored rows decide, so those keep the month-close rule.
+  if (slug != null && (isMovementBalanceCashCategory(slug) || isClpCashKindSlug(kindSlug))) {
+    if (!movementBoundsByAccountIds([accountId]).get(accountId)?.min_d) return null;
+    return isClpCashKindSlug(kindSlug)
+      ? clpCashBalanceClpAt(accountId, today)
+      : checkingMovementBalanceClpAtCached(accountId, today);
+  }
   return null;
 }
 
