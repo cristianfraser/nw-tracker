@@ -3,7 +3,17 @@
  * the vendor catalog: title case, legal suffixes, person names, emoji, the bank's own clutter.
  */
 
-const LOWERCASE_PARTICLES = new Set(["de", "del", "la", "las", "los", "y", "e", "da", "do", "das", "dos", "van", "von", "di"]);
+/** «Jumbo  Peñalolén» → «JUMBO PENALOLEN»: upper case, accents dropped, single spaces. */
+export function foldVendorName(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const LOWERCASE_PARTICLES =new Set(["de", "del", "la", "las", "los", "y", "e", "da", "do", "das", "dos", "van", "von", "di"]);
 
 /**
  * «NICOLAS ANDRES CARACCI VELOSO» / «felipe caroca» → «Nicolas Andres Caracci Veloso» / «Felipe

@@ -18,7 +18,7 @@ import { ExpenseBigGroupPicker } from "./ExpenseBigGroupPicker";
 import { ExpenseOriginIcon } from "./ExpenseOriginIcon";
 import { paymentReceiptDetailLines } from "../flows/PaymentReceiptLine";
 import { transferCounterpartyDetailLines } from "../flows/TransferCounterpartyLine";
-import { useAssignCcExpenseLineCategory } from "../../queries/hooks";
+import { useAssignCcExpenseLineCategory, usePostVendorBranchChoiceMutation } from "../../queries/hooks";
 import styles from "./CreditCardExpenseLinesTable.module.css";
 
 function lineCategorySlug(line: FlowCcExpenseLineRow): string {
@@ -182,23 +182,50 @@ function FixedCategoryPill({
   );
 }
 
+/** The separator between the parts of a row's text: drawn by the row, never part of a string. */
+function Sep() {
+  return (
+    <span className={styles.sep} aria-hidden>
+      ·
+    </span>
+  );
+}
+
+/** Text parts with a separator between each («Lisboa», «3 nights» → Lisboa · 3 nights). */
+function Joined({ parts }: { parts: readonly string[] }) {
+  return (
+    <>
+      {parts.map((part, i) => (
+        <span key={i}>
+          {i > 0 ? <Sep /> : null}
+          {part}
+        </span>
+      ))}
+    </>
+  );
+}
+
 /** The amount, with the installment detail in superscript («3/6 · $270.000», «6 cuotas»). */
 function LineAmount({ line }: { line: FlowCcExpenseLineRow }) {
   const { t } = useTranslation();
-  let sup: string | null = null;
+  let sup: string[] | null = null;
   if (line.line_role === "installment_purchase_total") {
-    sup = t("expenses.creditCard.installmentPurchaseTotalLabel", { count: line.nro_cuota_total ?? 0 });
+    sup = [t("expenses.creditCard.installmentPurchaseTotalLabel", { count: line.nro_cuota_total ?? 0 })];
   } else if (line.installment_flag && line.nro_cuota_current != null && line.nro_cuota_total != null) {
     const cuota = `${line.nro_cuota_current}/${line.nro_cuota_total}`;
     sup =
       line.line_role === "installment_cuota" && line.installment_total_clp != null
-        ? `${cuota} · ${formatClp(line.installment_total_clp)}`
-        : cuota;
+        ? [cuota, formatClp(line.installment_total_clp)]
+        : [cuota];
   }
   return (
     <span className={cn("mono", styles.amount)}>
       {formatCcExpenseLineAmount(line.amount_clp, line.amount_usd)}
-      {sup ? <sup className={styles.amountSup}>{sup}</sup> : null}
+      {sup ? (
+        <sup className={styles.amountSup}>
+          <Joined parts={sup} />
+        </sup>
+      ) : null}
     </span>
   );
 }
@@ -238,25 +265,30 @@ function useLineInfo(line: FlowCcExpenseLineRow): ReactNode[] {
 }
 
 /**
- * The short label of what the line is linked to — «→ Streat Burger (Isidora)», «→ Lisboa · 3
- * nights», «← Ana Perez» — or the deposit it pairs with; null when it has none.
+ * The short label of what the line is linked to, as parts the row separates — «Streat Burger
+ * (Isidora)», «Lisboa» + «3 nights», «← Ana Perez» — or the deposit it pairs with; null when it has none.
  */
-function useLinkLabel(line: FlowCcExpenseLineRow): { text: string; inline: boolean } | null {
+function useLinkLabel(line: FlowCcExpenseLineRow): { parts: string[]; inline: boolean } | null {
   const { t } = useTranslation();
   const l = line.link_label;
   if (l) {
-    const nights =
-      l.nights != null
-        ? ` · ${t(l.nights === 1 ? "expenses.creditCard.lineRow.nightsOne" : "expenses.creditCard.lineRow.nightsMany", { count: l.nights })}`
-        : "";
-    return { text: `${l.arrow} ${l.text}${nights}`, inline: l.inline };
+    // «→» (paid to) is what a link on an expense means; only the other directions are shown.
+    const parts = [l.arrow === "→" ? l.text : `${l.arrow} ${l.text}`];
+    if (l.nights != null) {
+      parts.push(
+        t(l.nights === 1 ? "expenses.creditCard.lineRow.nightsOne" : "expenses.creditCard.lineRow.nightsMany", {
+          count: l.nights,
+        })
+      );
+    }
+    return { parts, inline: l.inline };
   }
   const mortgageLink = line.expense_deposit_links?.find((d) => d.depto_cuota != null);
   if (mortgageLink) {
-    return { text: t("expenses.creditCard.mortgageDepositLinkCuota", { cuota: mortgageLink.depto_cuota }), inline: true };
+    return { parts: [t("expenses.creditCard.mortgageDepositLinkCuota", { cuota: mortgageLink.depto_cuota })], inline: true };
   }
   if ((line.expense_deposit_links?.length ?? 0) > 0) {
-    return { text: t("expenses.creditCard.investmentDepositLink"), inline: true };
+    return { parts: [t("expenses.creditCard.investmentDepositLink")], inline: true };
   }
   return null;
 }
@@ -342,7 +374,7 @@ function ExpenseLineRow({
     (ln.source === "cc" || (actions.enableCheckingNotes && ln.source === "checking"));
   const noteStatementLineId =
     ln.statement_line_id > 0 ? ln.statement_line_id : ln.category_statement_line_id ?? undefined;
-  const needsAction = ln.cuota_purchase_kind != null;
+  const needsAction = ln.cuota_purchase_kind != null || ln.branch_choices != null;
   // A big group shows on the row once set; until then its picker lives in the row's extras.
   const canBigGroup = showBigGroupControls && Boolean(ln.purchase_key) && !fixedCategory;
   const bigGroupOnRow = canBigGroup && ln.big_group_slug != null;
@@ -394,8 +426,20 @@ function ExpenseLineRow({
       </div>
       <div className={styles.vendor}>
         <span className={styles.merchant}>{merchant}</span>
-        {note ? <span className={styles.note}>· {note}</span> : null}
-        {linkLabel?.inline ? <span className={styles.linkLabel}>· {linkLabel.text}</span> : null}
+        {note ? (
+          <>
+            <Sep />
+            <span className={styles.note}>{note}</span>
+          </>
+        ) : null}
+        {linkLabel?.inline ? (
+          <>
+            <Sep />
+            <span className={styles.linkLabel}>
+              <Joined parts={linkLabel.parts} />
+            </span>
+          </>
+        ) : null}
         {info.length > 0 ? (
           <HoverPopover
             className={styles.infoTrigger}
@@ -426,7 +470,11 @@ function ExpenseLineRow({
       </div>
       {hasPanel && expanded ? (
         <div className={styles.panel}>
-          {linkLabel ? <div className={styles.panelLink}>{linkLabel.text}</div> : null}
+          {linkLabel ? (
+            <div className={styles.panelLink}>
+              <Joined parts={linkLabel.parts} />
+            </div>
+          ) : null}
           {hasPieces || needsAction ? (
             <div className={styles.panelBadges}>
               {hasPieces ? (
@@ -450,6 +498,7 @@ function ExpenseLineRow({
               ) : null}
             </div>
           ) : null}
+          {ln.branch_choices ? <BranchChoice choices={ln.branch_choices} /> : null}
           {bigGroupInPanel ? (
             <div className={styles.panelBigGroup}>
               <span className="muted">{t("expenses.creditCard.lineRow.bigGroupLabel")}</span>
@@ -507,6 +556,30 @@ function ExpenseLineRow({
           ) : null}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** A cut branch that could be several places: one button per place; the pick names every such row. */
+function BranchChoice({ choices }: { choices: { key: string; options: string[] } }) {
+  const { t } = useTranslation();
+  const pick = usePostVendorBranchChoiceMutation();
+  return (
+    <div className={styles.panelBigGroup}>
+      <span className="muted" title={t("expenses.creditCard.lineRow.branchChoiceHint")}>
+        {t("expenses.creditCard.lineRow.branchChoiceLabel")}
+      </span>
+      {choices.options.map((option) => (
+        <Button
+          key={option}
+          variant="ghost"
+          size="sm"
+          disabled={pick.isPending}
+          onClick={() => pick.mutate({ key: choices.key, display: option })}
+        >
+          {option}
+        </Button>
+      ))}
     </div>
   );
 }

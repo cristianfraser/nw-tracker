@@ -337,6 +337,8 @@ export interface FlowCcExpenseLineRow {
   merchant_processor?: string;
   /** The short label of what the line is linked to (receipt payee, app, transfer counterparty). */
   link_label?: ExpenseLinkLabel;
+  /** A cut branch that could be several places: the user picks one (`key`: the folded name). */
+  branch_choices?: { key: string; options: string[] };
   /** Physical card that made the charge; null = primary / unknown / checking. */
   origin_card_last4?: string | null;
   /** Statement billing card; null for checking / synthetic lines. */

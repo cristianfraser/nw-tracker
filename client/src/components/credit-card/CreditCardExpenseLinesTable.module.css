@@ -168,14 +168,17 @@
   font-weight: 500;
 }
 
+.sep {
+  margin: 0 0.35rem;
+  color: var(--muted);
+}
+
 .note {
-  margin-left: 0.35rem;
   color: var(--muted);
   font-style: italic;
 }
 
 .linkLabel {
-  margin-left: 0.35rem;
   color: var(--muted);
 }
 

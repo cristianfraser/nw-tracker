@@ -4774,12 +4774,12 @@
         "es": "No hay gastos emparejados con depósitos."
       },
       "mortgageDepositLinkCuota": {
-        "en": "· Mortgage installment {{cuota}}",
-        "es": "· Cuota hipotecaria {{cuota}}"
+        "en": "Mortgage installment {{cuota}}",
+        "es": "Cuota hipotecaria {{cuota}}"
       },
       "investmentDepositLink": {
-        "en": "· investment deposit",
-        "es": "· depósito inversión"
+        "en": "Investment deposit",
+        "es": "Depósito inversión"
       },
       "bigGroups": {
         "none": {
@@ -5051,6 +5051,14 @@
         "bigGroupLabel": {
           "en": "Big group",
           "es": "Grupo grande"
+        },
+        "branchChoiceLabel": {
+          "en": "Which branch?",
+          "es": "¿Qué sucursal?"
+        },
+        "branchChoiceHint": {
+          "en": "The bank cut the name; it could be any of these.",
+          "es": "El banco cortó el nombre; podría ser cualquiera de estas."
         },
         "bankMerchant": {
           "en": "As the bank prints it: {{merchant}}",
