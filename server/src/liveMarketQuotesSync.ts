@@ -158,26 +158,33 @@ async function catchUpFxDailyIfMissingDueSession(now: Date): Promise<{ rows: num
   }
 }
 
-async function mirrorFxDailyWithCatchUp(
-  now: Date,
-  fetchedAt: string
-): Promise<{ rows: number; changed: boolean; error?: string }> {
+type FxSyncOutcome = {
+  rows: number;
+  changed: boolean;
+  /** `fx_daily` rows were written (the day's close): not a live-only change. */
+  wroteFxDaily?: boolean;
+  error?: string;
+};
+
+async function mirrorFxDailyWithCatchUp(now: Date, fetchedAt: string): Promise<FxSyncOutcome> {
   const catchUp = await catchUpFxDailyIfMissingDueSession(now);
   // New fx_daily rows shift EOD conversions even when the mirrored live value is unchanged.
   const catchUpChanged = catchUp.rows > 0;
   try {
     const mirror = mirrorFxDailyToLiveQuotes(fetchedAt);
-    return { rows: mirror.rows, changed: mirror.changed || catchUpChanged, error: catchUp.error };
+    return {
+      rows: mirror.rows,
+      changed: mirror.changed || catchUpChanged,
+      wroteFxDaily: catchUpChanged,
+      error: catchUp.error,
+    };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { rows: catchUp.rows, changed: catchUpChanged, error: msg.slice(0, 200) };
+    return { rows: catchUp.rows, changed: catchUpChanged, wroteFxDaily: catchUpChanged, error: msg.slice(0, 200) };
   }
 }
 
-async function syncLiveFxQuote(
-  now: Date,
-  fetchedAt: string
-): Promise<{ rows: number; changed: boolean; error?: string }> {
+async function syncLiveFxQuote(now: Date, fetchedAt: string): Promise<FxSyncOutcome> {
   if (shouldUseLiveFxQuote(now)) {
     try {
       const live = await fetchYahooLiveUsdClpPerUsd(now);
@@ -201,7 +208,7 @@ async function syncLiveFxQuote(
       const msg = e instanceof Error ? e.message : String(e);
       console.warn(`live-quotes:sync — Yahoo CLP=X failed (${msg}); falling back to fx_daily EOD`);
       const fallback = await mirrorFxDailyWithCatchUp(now, fetchedAt);
-      return { rows: fallback.rows, changed: fallback.changed, error: msg.slice(0, 200) };
+      return { ...fallback, error: msg.slice(0, 200) };
     }
   }
 
@@ -242,10 +249,21 @@ export async function syncAllLiveMarketQuotes(now = new Date()): Promise<LiveMar
   // `live_tail`: this poll only writes `live_market_quotes`, which no historical mark reads,
   // so the cached per-account daily mark series survive — a rebuilt daily view re-prices just
   // today (the one day never cached) instead of re-walking all of history every 5 minutes.
+  // Only the aggregates that read a moved price go (`cacheDependencies.ts`): a crypto move at
+  // night leaves the card ledger, the mortgage and the liabilities' consolidation cached. A poll
+  // that also wrote the day's `fx_daily` close drops everything a tick can reach, as before.
   const valuesChanged = equities.some((r) => r.changed === true) || fxSync.changed;
   if (valuesChanged) {
     noteLiveQuotesChanged(fetchedAt);
-    invalidateMarketDataAggregations("live_tail");
+    invalidateMarketDataAggregations(
+      "live_tail",
+      fxSync.wroteFxDaily
+        ? undefined
+        : {
+            tickers: new Set(equities.filter((r) => r.changed === true).map((r) => r.ticker.toUpperCase())),
+            fx: fxSync.changed,
+          }
+    );
   }
 
   console.log(

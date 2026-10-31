@@ -1,6 +1,18 @@
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { db } from "./db.js";
+import { equityTickerForAccount } from "./accountEquityTicker.js";
+import { accountUsesEquityMtm, equityShareUnitsThroughYmd } from "./brokerageEquityMtm.js";
+import { accountUsesCryptoMtm, cryptoCoinCumulativeThroughDate } from "./cryptoValuation.js";
+import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
+import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
+import { isUsdCashAccount } from "./movementTransfer.js";
+import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { clpCashBalanceClpAt, isClpCashKindSlug } from "./clpCashAccounts.js";
+import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
+import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
+import { movementBoundsByAccountIds } from "./movementBounds.js";
 import {
   CHART_TRAILING_ZERO_MONTHS_KEPT,
   chartInactiveFromMonthlyClosingAsc,
@@ -31,6 +43,49 @@ function monthEndClosingAscForInactiveCheck(accountId: number): number[] {
   return mark ? [mark.value_clp] : [];
 }
 
+const stmtImportKey = db.prepare(`SELECT import_key FROM accounts WHERE id = ?`);
+const stmtHasUnits = db.prepare(
+  `SELECT 1 FROM movements
+   WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?) AND COALESCE(units_delta, 0) != 0
+   LIMIT 1`
+);
+
+/** Below this a holding is float residue of an emptied account (cuotas carry 4 decimals). */
+const EMPTY_HOLDING_EPS = 1e-9;
+
+/**
+ * What the account holds today in its own unit, read from the ledger without any price: shares,
+ * coins, fund cuotas, dollars, a peso ledger's pesos. Null for an account valued some other way
+ * (the property, the mortgage, stored marks), whose month closes decide instead.
+ */
+function holdingTodayWithoutPrice(accountId: number): number | null {
+  const today = chileCalendarTodayYmd();
+  if (equityTickerForAccount(accountId) != null && accountUsesEquityMtm(accountId)) {
+    return equityShareUnitsThroughYmd(accountId, today);
+  }
+  if (accountUsesCryptoMtm(accountId)) return cryptoCoinCumulativeThroughDate(accountId, today);
+  const slug = bucketSlugForAccountId(accountId);
+  const kindSlug = slug != null ? accountBucketKindSlug(slug) : "";
+  const importKey = (stmtImportKey.get(accountId) as { import_key: string | null } | undefined)?.import_key ?? null;
+  const cuotaLedger =
+    isCuotaLedgerKindSlug(kindSlug) && cuotaLedgerSeriesKeyForAccount(accountId, kindSlug, today) != null;
+  if ((cuotaLedger || isFintualCertV2ValuationNotes(importKey)) && stmtHasUnits.get(accountId, accountId, accountId)) {
+    return fintualGoalUnitsFromMovementsThroughDate(accountId, today) ?? 0;
+  }
+  if (isUsdCashAccount(accountId)) return usdCashBalanceUsdAt(accountId, today);
+  // A peso ledger (checking, a broker's peso balance, a portfolio caja) holds its balance: the
+  // last month close of its balance walk is that same balance (the current month-end, or a
+  // later one a forward-posted row opened, reads every known movement). Without movements
+  // the walk is empty and the stored rows decide, so those keep the month-close rule.
+  if (slug != null && (isMovementBalanceCashCategory(slug) || isClpCashKindSlug(kindSlug))) {
+    if (!movementBoundsByAccountIds([accountId]).get(accountId)?.min_d) return null;
+    return isClpCashKindSlug(kindSlug)
+      ? clpCashBalanceClpAt(accountId, today)
+      : checkingMovementBalanceClpAtCached(accountId, today);
+  }
+  return null;
+}
+
 /** Credit-card masters: never tail-inactive (installment projections + retired cards). */
 function isCreditCardChartAccount(accountId: number): boolean {
   const slug = bucketSlugForAccountId(accountId);
@@ -47,6 +102,11 @@ function isCreditCardChartAccount(accountId: number): boolean {
  */
 export function accountChartInactive(accountId: number): boolean {
   if (isCreditCardChartAccount(accountId)) return false;
+  // An account valued from units holds something exactly when it has units: the price only
+  // multiplies them. Reading the units keeps the answer (and every nav tree built on it) free of
+  // prices, and spares building the account's whole monthly series.
+  const holding = holdingTodayWithoutPrice(accountId);
+  if (holding != null) return !(Math.abs(holding) > EMPTY_HOLDING_EPS);
   const closing = monthEndClosingAscForInactiveCheck(accountId);
   if (!closing.length) return false;
   return chartInactiveFromMonthlyClosingAsc(closing, CHART_TRAILING_ZERO_MONTHS_KEPT);

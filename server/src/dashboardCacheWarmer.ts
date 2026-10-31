@@ -11,11 +11,13 @@ import {
   setLiveQuotesStampPublishedByWarmer,
 } from "./liveQuotesStamp.js";
 import { warmRentabilidadDailySeries } from "./rentabilidadDailyWarm.js";
+import { warmVisitedPages } from "./visitedPagesWarm.js";
 
 /**
- * Proactive dashboard cache warmer: rebuilds the page-bundle aggregation caches, then the
- * full-history daily series behind every Rentabilidad table (`rentabilidadDailyWarm.ts`), in the
- * background so interactive requests never pay a cold build.
+ * Proactive dashboard cache warmer: rebuilds the page-bundle aggregation caches, the pages the
+ * usage log says are opened, most visited first (`visitedPagesWarm.ts`), then the full-history
+ * daily series behind every Rentabilidad table (`rentabilidadDailyWarm.ts`), in the background so
+ * interactive requests never pay a cold build.
  *
  * Triggers:
  * - server boot;
@@ -72,11 +74,16 @@ async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Prom
     // The home dashboard's flows section (Por cuota, month rows).
     buildFlowsOverviewPayload("clp", "split", null);
     buildFlowsOverviewPayload("usd", "split", null);
+    // The pages actually opened, most visited first (usage log).
+    const tVisited = performance.now();
+    const visited = await warmVisitedPages();
+    const tRentabilidad = performance.now();
     const scopes = await warmRentabilidadDailySeries();
     lastWarmedDataVersion = currentDataVersion();
     console.log(
       `cache-warm: dashboard caches warmed (${reason}) in ${(tBundles - t0).toFixed(0)}ms; ` +
-        `${scopes} Rentabilidad daily series in ${(performance.now() - tBundles).toFixed(0)}ms`
+        `${visited} visited page(s) in ${(tRentabilidad - tVisited).toFixed(0)}ms; ` +
+        `${scopes} Rentabilidad daily series in ${(performance.now() - tRentabilidad).toFixed(0)}ms`
     );
   } catch (e) {
     console.error(`cache-warm: failed (${reason}) — ${e instanceof Error ? e.message : e}`);

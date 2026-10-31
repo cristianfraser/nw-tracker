@@ -28,7 +28,7 @@ import { usdCashBalanceLive } from "./usdCashAccounts.js";
 import { isClpCashKindSlug, clpCashBalanceLive } from "./clpCashAccounts.js";
 import { latestCreditCardBillingBalanceTotalClpAndAsOfDate } from "./ccCreditCardValuations.js";
 import { db } from "./db.js";
-import { liveTierMemo } from "./aggregationCache.js";
+import { liveTierCached } from "./aggregationCache.js";
 import {
   latestCreditCardDisplayedBalance,
   latestDisplayedBalanceForAccount,
@@ -199,13 +199,10 @@ export function accountTodayValue(
   // per live tier (`aggregationCache.ts`) on the real clock, unless the caller hands its own
   // position (then the figure is built from it).
   if (now === undefined && opts?.positionMeta === undefined) {
-    const memo = liveTierMemo<string, AccountTodayValue | null>("account_today_values");
     const key = `${accountId}|${slug}|${importKey ?? ""}|${name ?? ""}`;
-    let value = memo.get(key);
-    if (value === undefined) {
-      value = accountTodayValueFor(accountId, slug, importKey, name, opts?.positionMeta, now);
-      memo.set(key, value);
-    }
+    const value = liveTierCached("account_today_values", key, () =>
+      accountTodayValueFor(accountId, slug, importKey, name, opts?.positionMeta, now)
+    );
     return value ? { ...value } : null;
   }
   return accountTodayValueFor(accountId, slug, importKey, name, opts?.positionMeta, now);

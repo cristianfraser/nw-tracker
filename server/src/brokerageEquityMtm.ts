@@ -186,6 +186,20 @@ export function computeEquityMtmClpDisplaySync(
   const ticker = requireEquityTicker(accountId);
 
   const session = equitySessionYmdForTicker(ticker, now);
+  const displayYmd = equityDisplaySessionYmd(ticker, now);
+  const md = (stmtMaxEqDate.get(ticker) as { md: string | null } | undefined)?.md ?? null;
+  // Every branch below prices the shares held on `session`, `displayYmd` or `md`, and a price
+  // only multiplies them (`computeEquityMtmClpUncached` is null without shares). With no shares
+  // on any of those days the answer is the units' alone: no quote is read, so a sold-out
+  // position records no live dependency on its ticker.
+  const holdsOn = (ymd: string): boolean => {
+    const units = equityShareUnitsThroughYmd(accountId, ymd);
+    return units > 0 && Number.isFinite(units);
+  };
+  if (!holdsOn(session) && !holdsOn(displayYmd) && !(md != null && holdsOn(md))) {
+    return soldOutEquityMark(accountId, displayYmd);
+  }
+
   if (shouldUseLiveEquityQuote(ticker, session, now)) {
     const cached = computeEquityMtmClpCachedLive(accountId, now);
     if (cached != null && Number.isFinite(cached) && cached > 0) {
@@ -207,14 +221,11 @@ export function computeEquityMtmClpDisplaySync(
     }
   }
 
-  const displayYmd = equityDisplaySessionYmd(ticker, now);
   const fromDisplay = computeEquityMtmClp(accountId, displayYmd, null, now);
   if (fromDisplay != null && Number.isFinite(fromDisplay) && fromDisplay > 0) {
     return { value_clp: fromDisplay, as_of_date: displayYmd };
   }
 
-  const mdRow = stmtMaxEqDate.get(ticker) as { md: string | null } | undefined;
-  const md = mdRow?.md;
   if (md) {
     const fromEod = computeEquityMtmClp(accountId, md);
     if (fromEod != null && Number.isFinite(fromEod) && fromEod > 0) {
@@ -222,10 +233,17 @@ export function computeEquityMtmClpDisplaySync(
     }
   }
 
+  return soldOutEquityMark(accountId, displayYmd);
+}
+
+/** 0 on the display session for a position emptied after holding shares, else no mark. */
+function soldOutEquityMark(
+  accountId: number,
+  displayYmd: string
+): { value_clp: number; as_of_date: string } | null {
   if (firstEquityShareActivityYmd(accountId) != null && equityShareUnitsThroughYmd(accountId, displayYmd) <= 0) {
     return { value_clp: 0, as_of_date: displayYmd };
   }
-
   return null;
 }
 
