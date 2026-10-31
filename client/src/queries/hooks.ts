@@ -447,6 +447,25 @@ export function useMessages(kind: "notification" | "log") {
   });
 }
 
+export function useUsageReport(days: import("../types").UsageReportWindow) {
+  return useQuery({
+    queryKey: queryKeys.usageReport(days),
+    queryFn: () => api.usageReport(days),
+    placeholderData: keepPreviousData,
+  });
+}
+
+export function useUsageEndpointTrend(
+  series: (import("../types").UsageEndpointSeries & { key: string }) | null,
+  days: import("../types").UsageReportWindow
+) {
+  return useQuery({
+    queryKey: queryKeys.usageEndpointTrend(series?.key ?? "", days),
+    queryFn: () => api.usageEndpointTrend(series!, days),
+    enabled: series != null,
+  });
+}
+
 export function useSyncStatus() {
   return useQuery({
     queryKey: queryKeys.syncStatus(),

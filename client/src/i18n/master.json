@@ -755,6 +755,10 @@
     "mirrorPairsTitle": {
       "en": "Historical mirrors",
       "es": "Mirrors históricos"
+    },
+    "usageTitle": {
+      "en": "Usage",
+      "es": "Uso"
     }
   },
   "settings": {
@@ -7129,6 +7133,146 @@
     "ariaLabel": {
       "en": "Value map. Size is current value, colour is return.",
       "es": "Mapa de valor. El tamaño es el valor actual y el color el retorno."
+    }
+  },
+  "usage": {
+    "windowLabel": {
+      "en": "Window",
+      "es": "Período"
+    },
+    "windowOptions": {
+      "1": {
+        "en": "Last 24 hours",
+        "es": "Últimas 24 horas"
+      },
+      "7": {
+        "en": "Last 7 days",
+        "es": "Últimos 7 días"
+      },
+      "30": {
+        "en": "Last 30 days",
+        "es": "Últimos 30 días"
+      },
+      "90": {
+        "en": "Last 90 days",
+        "es": "Últimos 90 días"
+      }
+    },
+    "totals": {
+      "en": "{{views}} page views · {{requests}} API requests · {{seconds}} s of server time",
+      "es": "{{views}} visitas · {{requests}} solicitudes a la API · {{seconds}} s de tiempo de servidor"
+    },
+    "disabled": {
+      "en": "The usage log is off on this instance (demo or a secondary server): nothing new is recorded.",
+      "es": "El registro de uso está apagado en esta instancia (demo o servidor secundario): no se registra nada nuevo."
+    },
+    "pagesTitle": {
+      "en": "Most visited pages",
+      "es": "Páginas más visitadas"
+    },
+    "pagesEmpty": {
+      "en": "No page views in this window.",
+      "es": "Sin visitas en este período."
+    },
+    "endpointsTitle": {
+      "en": "Slowest endpoints",
+      "es": "Endpoints más lentos"
+    },
+    "endpointsHint": {
+      "en": "Ordered by p95. Times in ms (estimated from a histogram); total time in s; size in KB.",
+      "es": "Ordenados por p95. Tiempos en ms (estimados de un histograma); tiempo total en s; tamaño en KB."
+    },
+    "endpointsEmpty": {
+      "en": "No API requests in this window.",
+      "es": "Sin solicitudes a la API en este período."
+    },
+    "trendTitle": {
+      "en": "Daily trend",
+      "es": "Tendencia diaria"
+    },
+    "showTrend": {
+      "en": "trend",
+      "es": "tendencia"
+    },
+    "trendShown": {
+      "en": "shown",
+      "es": "mostrada"
+    },
+    "colPage": {
+      "en": "Page",
+      "es": "Página"
+    },
+    "colViews": {
+      "en": "Views",
+      "es": "Visitas"
+    },
+    "colSettleP50": {
+      "en": "Load p50 (ms)",
+      "es": "Carga p50 (ms)"
+    },
+    "colSettleP95": {
+      "en": "Load p95 (ms)",
+      "es": "Carga p95 (ms)"
+    },
+    "colSettleMax": {
+      "en": "Load max (ms)",
+      "es": "Carga máx. (ms)"
+    },
+    "colUnsettled": {
+      "en": "Left before loading",
+      "es": "Dejadas antes de cargar"
+    },
+    "colFetchedQueries": {
+      "en": "Queries fetched",
+      "es": "Consultas pedidas"
+    },
+    "colLastViewed": {
+      "en": "Last visit",
+      "es": "Última visita"
+    },
+    "colEndpoint": {
+      "en": "Endpoint",
+      "es": "Endpoint"
+    },
+    "colCount": {
+      "en": "Requests",
+      "es": "Solicitudes"
+    },
+    "colAvg": {
+      "en": "Avg (ms)",
+      "es": "Prom. (ms)"
+    },
+    "colP50": {
+      "en": "p50 (ms)",
+      "es": "p50 (ms)"
+    },
+    "colP95": {
+      "en": "p95 (ms)",
+      "es": "p95 (ms)"
+    },
+    "colMax": {
+      "en": "Max (ms)",
+      "es": "Máx. (ms)"
+    },
+    "colTotalTime": {
+      "en": "Total (s)",
+      "es": "Total (s)"
+    },
+    "colWarm": {
+      "en": "Warm cache",
+      "es": "Caché caliente"
+    },
+    "colErrors": {
+      "en": "Errors 5xx / 4xx",
+      "es": "Errores 5xx / 4xx"
+    },
+    "colSize": {
+      "en": "Size (KB)",
+      "es": "Tamaño (KB)"
+    },
+    "colDay": {
+      "en": "Day",
+      "es": "Día"
     }
   }
 }

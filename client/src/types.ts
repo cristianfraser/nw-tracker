@@ -13,3 +13,4 @@ export * from "./types/mirrors";
 export * from "./types/projections";
 export * from "./types/wealthPercentile";
 export * from "./types/taxReturn";
+export * from "./types/usage";
