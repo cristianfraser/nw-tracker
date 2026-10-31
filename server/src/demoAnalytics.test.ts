@@ -13,6 +13,7 @@ process.env.DEMO_ANALYTICS_SALT = "vitest-analytics-salt";
 
 const {
   demoAnalyticsDb,
+  clientAddress,
   isBotUserAgent,
   recordDemoVisit,
   referrerOrigin,
@@ -62,6 +63,14 @@ describe("visitorKey", () => {
     expect(visitorKey("1.2.3.4", "OtherUA", DAY)).not.toBe(a);
     expect(a).toMatch(/^[0-9a-f]{16}$/);
     expect(a).not.toContain("1.2.3.4");
+  });
+});
+
+describe("clientAddress", () => {
+  it("takes Cloudflare's client address over the proxy hop", () => {
+    const req = (headers: Record<string, string>, ip: string) => ({ headers, ip }) as never;
+    expect(clientAddress(req({ "cf-connecting-ip": "9.9.9.9" }, "172.70.1.2"))).toBe("9.9.9.9");
+    expect(clientAddress(req({}, "172.70.1.2"))).toBe("172.70.1.2");
   });
 });
 

@@ -151,11 +151,22 @@ export function recordDemoVisit(input: VisitInput): void {
     .run(input);
 }
 
+/**
+ * The visitor's own address. Render serves the demo through Cloudflare, whose edge forwards
+ * each request from a different address, so `req.ip` (one trusted proxy hop) changed request by
+ * request and one person showed up as a dozen visitors a minute (export of 2026-10-31). Cloudflare
+ * states the client in `CF-Connecting-IP`; `req.ip` stays the fallback off Cloudflare.
+ */
+export function clientAddress(req: Request): string {
+  const cf = req.headers["cf-connecting-ip"];
+  return (typeof cf === "string" && cf.trim()) || req.ip || "";
+}
+
 /** Visitor identity for a request, or null when it shouldn't be counted (bot / no UA). */
 export function demoVisitorForRequest(req: Request, day: string): { visitor: string; userAgent: string } | null {
   const userAgent = req.headers["user-agent"] ?? "";
   if (isBotUserAgent(userAgent)) return null;
-  return { visitor: visitorKey(req.ip ?? "", userAgent, day), userAgent };
+  return { visitor: visitorKey(clientAddress(req), userAgent, day), userAgent };
 }
 
 function countryHeader(req: Request): string | null {
