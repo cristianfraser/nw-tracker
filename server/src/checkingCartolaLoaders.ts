@@ -16,7 +16,11 @@ import {
   parsePartialMovementNote,
   partialMovementSupersededByCartola,
 } from "./checkingCartolaPartialReconcile.js";
-import { CHECKING_GASTOS_CASH_GROUP } from "./checkingDescriptionPredicates.js";
+import {
+  CHECKING_GASTOS_CASH_GROUP,
+  cartolaDescriptionFromNote,
+  isCheckingOwnTraspasoInflow,
+} from "./checkingDescriptionPredicates.js";
 import { db } from "./db.js";
 import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import {
@@ -61,7 +65,25 @@ export type DepositMatchCandidate = {
   claim_key: string;
   /** The movement row the deposit is, when it is a movement on the account (not a transfer leg). */
   movement_id: number | null;
+  /**
+   * Set on a credit to a checking account only: the bank printed it as a traspaso from the client's
+   * other checking account. Any other credit there (a third party's transfer, a salary) funded by
+   * no debit of the client's, so no checking debit may claim it as its internal transfer.
+   */
+  checking_own_traspaso?: boolean;
 };
+
+/** {@link DepositMatchCandidate.checking_own_traspaso} for a credit on `accountId`. */
+function checkingOwnTraspasoFlag(
+  accountId: number,
+  movementId: number | null,
+  checkingIds: ReadonlySet<number>
+): { checking_own_traspaso?: boolean } {
+  if (!checkingIds.has(accountId)) return {};
+  if (movementId == null) return { checking_own_traspaso: false };
+  const row = db.prepare(`SELECT note FROM movements WHERE id = ?`).get(movementId) as { note: string | null } | undefined;
+  return { checking_own_traspaso: isCheckingOwnTraspasoInflow(cartolaDescriptionFromNote(row?.note)) };
+}
 
 /** Claim identity + movement row of a merged deposit event (see {@link DepositMatchCandidate}). */
 export function depositEventClaimIdentity(
@@ -94,7 +116,8 @@ function uniqueDepositCandidatesByClaimKey(candidates: readonly DepositMatchCand
       prev.occurred_on !== c.occurred_on ||
       prev.amount_clp !== c.amount_clp ||
       prev.category_slug !== c.category_slug ||
-      prev.group_slug !== c.group_slug
+      prev.group_slug !== c.group_slug ||
+      prev.checking_own_traspaso !== c.checking_own_traspaso
     ) {
       throw new Error(`deposit claim key ${c.claim_key} loaded twice with different fields`);
     }
@@ -289,14 +312,18 @@ function loadCuentaVistaInternalTransferCredits(checkingIds: ReadonlySet<number>
   return events
     .filter((e) => e.amt > 0 && Number.isFinite(e.amt))
     .filter((e) => !depositEventExplainedByCheckingTransfer(e, checkingIds))
-    .map((e) => ({
-      occurred_on: e.occurred_on,
-      amount_clp: Math.round(e.amt),
-      account_id: vistaId,
-      category_slug: "cuenta_vista",
-      group_slug: CHECKING_GASTOS_CASH_GROUP,
-      ...depositEventClaimIdentity(vistaId, e),
-    }));
+    .map((e) => {
+      const identity = depositEventClaimIdentity(vistaId, e);
+      return {
+        occurred_on: e.occurred_on,
+        amount_clp: Math.round(e.amt),
+        account_id: vistaId,
+        category_slug: "cuenta_vista",
+        group_slug: CHECKING_GASTOS_CASH_GROUP,
+        ...identity,
+        ...checkingOwnTraspasoFlag(vistaId, identity.movement_id, checkingIds),
+      };
+    });
 }
 
 export function checkingGastosAccountCategorySlug(accountId: number): string {
@@ -329,13 +356,15 @@ export function loadDepositMatchCandidates(): DepositMatchCandidate[] {
     for (const e of events) {
       if (e.amt <= 0 || !Number.isFinite(e.amt)) continue;
       if (depositEventExplainedByCheckingTransfer(e, checkingIds)) continue;
+      const identity = depositEventClaimIdentity(accountId, e);
       out.push({
         occurred_on: e.occurred_on,
         amount_clp: Math.round(e.amt),
         account_id: accountId,
         category_slug,
         group_slug,
-        ...depositEventClaimIdentity(accountId, e),
+        ...identity,
+        ...checkingOwnTraspasoFlag(accountId, identity.movement_id, checkingIds),
       });
     }
   }

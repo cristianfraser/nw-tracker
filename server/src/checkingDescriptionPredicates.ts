@@ -123,6 +123,27 @@ export const CHECKING_CORRIENTE_INTERNET_TRANSFER_RE =
 export const CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE =
   /TRASPASO\s+INTERNET\s+A\s+CTA\.?\s*CTE?\.?/i;
 
+/** How the bank prints money arriving from the client's other checking account («desde Cta.Ct», «de Cuenta Vista»). */
+export const CHECKING_OWN_TRASPASO_INFLOW_RE = /TRASPASO\s+INTERNET\s+(?:DESDE\s+CTA\.?\s*CT\.?|DE\s+CUENTA\s+VISTA)/i;
+
+export function isCheckingOwnTraspasoInflow(description: string): boolean {
+  return CHECKING_OWN_TRASPASO_INFLOW_RE.test(stripCheckingBranchPrefix(description).trim());
+}
+
+/**
+ * How the bank prints money leaving for the client's other checking account («a Cuentamática»,
+ * «a Cuenta Vista…», «a Cta. Cte.»). A «Transf. Internet a otro Bancos» never is one: it left the bank.
+ */
+export function isCheckingOwnTraspasoOutflow(description: string): boolean {
+  const d = stripCheckingBranchPrefix(description).trim();
+  return (
+    CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE.test(d) ||
+    OWN_SANTANDER_TRANSFER_RE.test(d) ||
+    CUENTA_VISTA_TRANSFER_DESC_RE.test(d) ||
+    INTERNAL_TRANSFER_RE.test(d)
+  );
+}
+
 export function isCheckingCorrienteVistaTraspasoOutflow(description: string): boolean {
   const d = stripCheckingBranchPrefix(description).trim();
   return CHECKING_CORRIENTE_VISTA_TRASPASO_OUTFLOW_RE.test(d);
