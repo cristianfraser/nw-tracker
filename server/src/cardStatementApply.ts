@@ -5,6 +5,7 @@ import type {
   CardStatementPayload,
 } from "nw-tracker-contracts";
 import { diffStatementAgainstLedger } from "./cardStatementCrossCheck.js";
+import { filterUnchangedStatementRecords } from "./ccStatementFingerprint.js";
 import { padCcStatementDate, statementSourceOwnerForClose } from "./ccStatementJsonSource.js";
 import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { masterAccountIdForIssuerCardAccount } from "./santanderAccountMap.js";
@@ -137,10 +138,25 @@ export function applyCardStatement(payload: CardStatementPayload): CardStatement
 
   let written: CardStatementApplyDetails["written"] = null;
   const pending = reviews.filter((r) => r.write != null);
-  if (payload.apply && pending.length > 0) {
-    const result = writeSantanderStatements(accountId, pending.flatMap((r) => r.write!));
-    written = { currencies: result.currencies, lines_inserted: result.lineCount };
+  // The feeder sends the close every night until its PDF arrives: a JSON-owned close whose records
+  // hash to what the last write stored is unchanged and is not rewritten. Both currencies are
+  // written together or not at all (a traspaso month links its two legs in one transaction).
+  if (
+    pending.length > 0 &&
+    pending.every((r) => r.owner === "json") &&
+    filterUnchangedStatementRecords(accountId, pending.flatMap((r) => r.write!)).changed.length === 0
+  ) {
     for (const review of pending) {
+      review.outcome = "clean";
+      review.report[review.report.length - 1] = "  ✓ JSON-owned, unchanged since its last write — not rewritten";
+      delete review.write;
+    }
+  }
+  const toWrite = pending.filter((r) => r.write != null);
+  if (payload.apply && toWrite.length > 0) {
+    const result = writeSantanderStatements(accountId, toWrite.flatMap((r) => r.write!));
+    written = { currencies: result.currencies, lines_inserted: result.lineCount };
+    for (const review of toWrite) {
       const post = diffStatementAgainstLedger(accountId, statementDate, review.statement);
       const unexplained = unexplainedDifferences(post);
       if (unexplained !== 0) {
