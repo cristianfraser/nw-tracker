@@ -13,8 +13,20 @@
 import { getAggregationCached, invalidateFlowsOverview } from "./aggregationCache.js";
 import { billingDetailCacheForAccount } from "./ccBillingDetailCache.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
-import { buildFlowsExpenseLines, listCreditCardMasterAccountIds, type FlowCcExpenseLineRow } from "./flowsExpenses.js";
-import { expenseLineGastosAmount, type GastosUnit } from "./flowsExpensesGastos.js";
+import {
+  buildFlowsExpenseLines,
+  buildFlowsExpensesPayload,
+  flowsExpensesPayloadFromLines,
+  listCreditCardMasterAccountIds,
+  type FlowCcExpenseLineRow,
+  type FlowsExpensesPayload,
+} from "./flowsExpenses.js";
+import { dbInTransaction } from "./db.js";
+import {
+  buildFlowsExpensesGastosPayload,
+  expenseLineGastosAmount,
+  type GastosUnit,
+} from "./flowsExpensesGastos.js";
 
 export type MortgageCarryingEvent = {
   /** The property deposit movement the dividendo is linked to. */
@@ -110,6 +122,33 @@ export function syncFlowsInputsWithLiveUsdRates(): void {
 export function cachedFlowsExpenseLines(): FlowCcExpenseLineRow[] {
   syncFlowsInputsWithLiveUsdRates();
   return getAggregationCached("flows.overview.inputs|lines", () => buildFlowsExpenseLines(listCreditCardMasterAccountIds()));
+}
+
+/**
+ * The Expenses page payload (`GET /api/flows/expenses/credit-card`) over the cached lines, cached
+ * beside them: its other parts (categories, big groups, the cards' pay-by dates) change only
+ * through writes, which drop the `flows.overview.inputs|` prefix (see `invalidateFlowsOverview`
+ * and the API's write middleware). Inside a transaction it is built afresh.
+ */
+export function cachedFlowsExpensesPayload(): FlowsExpensesPayload {
+  if (dbInTransaction()) return buildFlowsExpensesPayload();
+  syncFlowsInputsWithLiveUsdRates();
+  return getAggregationCached("flows.overview.inputs|expenses_payload", () =>
+    flowsExpensesPayloadFromLines(listCreditCardMasterAccountIds(), cachedFlowsExpenseLines())
+  );
+}
+
+/** The Expenses page's gastos view (`GET /api/flows/expenses/credit-card/gastos`), cached the same way. */
+export function cachedFlowsExpensesGastosPayload(
+  unit: GastosUnit,
+  excludedBigGroupSlugs: ReadonlySet<string>
+): ReturnType<typeof buildFlowsExpensesGastosPayload> {
+  if (dbInTransaction()) return buildFlowsExpensesGastosPayload(unit, excludedBigGroupSlugs);
+  syncFlowsInputsWithLiveUsdRates();
+  const excludedKey = [...excludedBigGroupSlugs].sort().join(",");
+  return getAggregationCached(`flows.overview.inputs|gastos|${unit}|${excludedKey}`, () =>
+    buildFlowsExpensesGastosPayload(unit, excludedBigGroupSlugs, cachedFlowsExpenseLines())
+  );
 }
 
 /** {@link mortgageCarryingEvents} over the cached expense lines, per unit. */

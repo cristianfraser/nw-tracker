@@ -260,6 +260,8 @@ setMarkInputsChangedListener((change) => {
     }
   }
   invalidateDashboardPageBundle();
+  // The expense lines (and the payloads cached on them) read movements and card lines too.
+  invalidateFlowsOverview({ inputs: true });
   invalidationListener?.();
 });
 
