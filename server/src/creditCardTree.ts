@@ -1,3 +1,4 @@
+import { dbStateMemo } from "./dbStateMemo.js";
 import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
 import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
@@ -127,12 +128,14 @@ function buildCreditCardGroupNode(
 }
 
 export function getCreditCardGroupBySlug(slug: string): CreditCardGroupRow | undefined {
-  return db
-    .prepare(
-      `SELECT id, parent_id, slug, label, sort_order, label_i18n_key, route_path
-       FROM credit_card_groups WHERE slug = ?`
-    )
-    .get(slug) as CreditCardGroupRow | undefined;
+  return dbStateMemo("credit_card_group_by_slug", slug, () =>
+    db
+      .prepare(
+        `SELECT id, parent_id, slug, label, sort_order, label_i18n_key, route_path
+         FROM credit_card_groups WHERE slug = ?`
+      )
+      .get(slug) as CreditCardGroupRow | undefined
+  );
 }
 
 /** Operational CC masters in asset group `credit_cards` (Gastos, category PATCH allowlist). */

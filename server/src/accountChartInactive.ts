@@ -1,3 +1,4 @@
+import { dbStateMemo } from "./dbStateMemo.js";
 import { accountBucketKindSlug, bucketSlugForAccountId } from "./accountBucket.js";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { db } from "./db.js";
@@ -88,6 +89,10 @@ function holdingTodayWithoutPrice(accountId: number): number | null {
 
 /** Credit-card masters: never tail-inactive (installment projections + retired cards). */
 function isCreditCardChartAccount(accountId: number): boolean {
+  return dbStateMemo("account_is_credit_card_chart", accountId, () => isCreditCardChartAccountUncached(accountId));
+}
+
+function isCreditCardChartAccountUncached(accountId: number): boolean {
   const slug = bucketSlugForAccountId(accountId);
   if (slug != null && accountBucketKindSlug(slug) === "credit_card") return true;
   const row = db

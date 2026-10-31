@@ -43,6 +43,13 @@ export async function fetchYahooLiveUsdClpPerUsd(now = new Date()): Promise<{
  * `fx_daily` close on or before the date.
  */
 export function fxForLiveMtm(asOfYmd: string | null, now = new Date(), maxAgeMs = liveQuotesMaxAgeMs()): FxRow | null {
+  // A live row applies only to a date on or after its session (the Chile day it was fetched),
+  // and only while fresh: fetched after `Date.now() - maxAgeMs`. A date before that instant's
+  // Chile day can match no fresh row, now or after any later tick, so it reads the stored close
+  // without reporting a live read — a tick that moves the dollar keeps what it built.
+  if (asOfYmd != null && asOfYmd < chileWallClockAt(new Date(Date.now() - maxAgeMs)).ymd) {
+    return fxMonthEndForBalanceUsd(asOfYmd);
+  }
   if (shouldUseLiveFxQuote(now)) {
     const live = getLatestLiveFxQuoteRow(maxAgeMs);
     if (live && asOfYmd != null && live.session_ymd <= asOfYmd) {

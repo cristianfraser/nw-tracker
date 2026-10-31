@@ -271,4 +271,38 @@ describe("aggregationCache", () => {
       expect(builds).toBe(2);
     });
   });
+
+  it("a write on this connection is seen by the next lookup, even in the same synchronous stretch", () => {
+    const account = db.prepare(`SELECT id FROM accounts ORDER BY id LIMIT 1`).get() as { id: number };
+    let builds = 0;
+    const read = () => getAggregationCached("daily.vitest-stretch", () => ++builds);
+    expect(read()).toBe(1);
+    expect(read()).toBe(1);
+    db.prepare(
+      `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, 1, 'clp', '2020-01-02', 'vitest-stretch-write')`
+    ).run(account.id);
+    try {
+      // The trigger logged the write; the lookup must apply it before serving.
+      expect(read()).toBe(2);
+    } finally {
+      db.prepare(`DELETE FROM movements WHERE note = 'vitest-stretch-write'`).run();
+    }
+    expect(read()).toBe(3);
+  });
+
+  it("another connection's commit is seen once the stretch ends", async () => {
+    const { default: Database } = await import("better-sqlite3");
+    let builds = 0;
+    const read = () => getAggregationCached("test|other-connection", () => ++builds);
+    expect(read()).toBe(1);
+    const other = new Database(db.name);
+    try {
+      other.prepare(`INSERT INTO app_messages (kind, title, body) VALUES ('log', 'vitest-other-connection', '')`).run();
+      await Promise.resolve();
+      expect(read()).toBe(2);
+    } finally {
+      other.prepare(`DELETE FROM app_messages WHERE title = 'vitest-other-connection'`).run();
+      other.close();
+    }
+  });
 });

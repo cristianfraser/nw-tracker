@@ -1,3 +1,4 @@
+import { dbStateMemo } from "./dbStateMemo.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { getAccountColorRgb, resolvePortfolioGroupColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { db } from "./db.js";
@@ -356,6 +357,13 @@ function buildNavForest(section: string | null): NavTreeNodeDto[] {
 export function getNetWorthNavGroupNode(
   options: NavTreeBuildOptions = {}
 ): NavTreeNodeDto | null {
+  const withInactive = options.includeChartInactiveAccounts === true;
+  return dbStateMemo("nav.net_worth", withInactive, () =>
+    buildNetWorthNavGroupNode({ includeChartInactiveAccounts: withInactive })
+  );
+}
+
+function buildNetWorthNavGroupNode(options: NavTreeBuildOptions): NavTreeNodeDto | null {
   const groups = loadGroups();
   const nw = groups.find((g) => g.slug === "net_worth");
   if (!nw) return null;
@@ -419,6 +427,10 @@ function findNavNodeBySlugDeep(node: NavTreeNodeDto, slug: string): NavTreeNodeD
 
 /** Pasivos root node (`liabilities`) with its DB-driven children — mirrors {@link getSidebarNavPayload}. */
 export function getLiabilitiesNavRootNode(): NavTreeNodeDto | null {
+  return dbStateMemo("nav.liabilities_root", 0, buildLiabilitiesNavRootNode);
+}
+
+function buildLiabilitiesNavRootNode(): NavTreeNodeDto | null {
   const liab = buildNavForest("main").find((n) => n.slug === "liabilities");
   if (!liab) return null;
   return { ...liab, children: getLiabilitiesNavChildren() };

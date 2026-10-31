@@ -115,7 +115,18 @@ export function cartolaCalendarMonthsFromPeriod(
 }
 
 /** Last UTC calendar day of month for `YYYY-MM`. Throws on malformed input (fail fast). */
+const monthEndByMonthKey = new Map<string, string>();
+
 export function monthEndUtcYmd(monthKey: string): string {
+  const hit = monthEndByMonthKey.get(monthKey);
+  if (hit !== undefined) return hit;
+  const end = monthEndUtcYmdUncached(monthKey);
+  if (monthEndByMonthKey.size > 10_000) monthEndByMonthKey.clear();
+  monthEndByMonthKey.set(monthKey, end);
+  return end;
+}
+
+function monthEndUtcYmdUncached(monthKey: string): string {
   const [ys, ms] = monthKey.split("-");
   const y = Number(ys);
   const mo = Number(ms);
