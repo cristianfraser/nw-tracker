@@ -203,5 +203,7 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
     expect(differing).toEqual([]);
     expect(keptKeys.some((k) => k.startsWith("group.consolidated_monthly|liabilities|"))).toBe(true);
     expect(keptKeys.some((k) => k.startsWith("dashboard.page_bundle|"))).toBe(true);
+    // The Pasivos reference sources («Disponible») are cached parts of their own.
+    expect(keptKeys.some((k) => k.startsWith("dashboard.page_bundle|group|reference_source_totals|"))).toBe(true);
   }, 300_000);
 });
