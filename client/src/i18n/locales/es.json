@@ -230,7 +230,8 @@
     "accountsTitle": "Accounts",
     "importSyncTitle": "Import sync",
     "settingsTitle": "Ajustes",
-    "mirrorPairsTitle": "Mirrors históricos"
+    "mirrorPairsTitle": "Mirrors históricos",
+    "usageTitle": "Uso"
   },
   "settings": {
     "language": "Idioma: ",
@@ -2042,5 +2043,43 @@
     "otherSleeve": "Otros",
     "empty": "No hay posiciones para mostrar.",
     "ariaLabel": "Mapa de valor. El tamaño es el valor actual y el color el retorno."
+  },
+  "usage": {
+    "windowLabel": "Período",
+    "windowOptions": {
+      "1": "Últimas 24 horas",
+      "7": "Últimos 7 días",
+      "30": "Últimos 30 días",
+      "90": "Últimos 90 días"
+    },
+    "totals": "{{views}} visitas · {{requests}} solicitudes a la API · {{seconds}} s de tiempo de servidor",
+    "disabled": "El registro de uso está apagado en esta instancia (demo o servidor secundario): no se registra nada nuevo.",
+    "pagesTitle": "Páginas más visitadas",
+    "pagesEmpty": "Sin visitas en este período.",
+    "endpointsTitle": "Endpoints más lentos",
+    "endpointsHint": "Ordenados por p95. Tiempos en ms (estimados de un histograma); tiempo total en s; tamaño en KB.",
+    "endpointsEmpty": "Sin solicitudes a la API en este período.",
+    "trendTitle": "Tendencia diaria",
+    "showTrend": "tendencia",
+    "trendShown": "mostrada",
+    "colPage": "Página",
+    "colViews": "Visitas",
+    "colSettleP50": "Carga p50 (ms)",
+    "colSettleP95": "Carga p95 (ms)",
+    "colSettleMax": "Carga máx. (ms)",
+    "colUnsettled": "Dejadas antes de cargar",
+    "colFetchedQueries": "Consultas pedidas",
+    "colLastViewed": "Última visita",
+    "colEndpoint": "Endpoint",
+    "colCount": "Solicitudes",
+    "colAvg": "Prom. (ms)",
+    "colP50": "p50 (ms)",
+    "colP95": "p95 (ms)",
+    "colMax": "Máx. (ms)",
+    "colTotalTime": "Total (s)",
+    "colWarm": "Caché caliente",
+    "colErrors": "Errores 5xx / 4xx",
+    "colSize": "Tamaño (KB)",
+    "colDay": "Día"
   }
 }

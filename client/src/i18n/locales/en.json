@@ -230,7 +230,8 @@
     "accountsTitle": "Accounts",
     "importSyncTitle": "Import sync",
     "settingsTitle": "Settings",
-    "mirrorPairsTitle": "Historical mirrors"
+    "mirrorPairsTitle": "Historical mirrors",
+    "usageTitle": "Usage"
   },
   "settings": {
     "language": "Language: ",
@@ -2042,5 +2043,43 @@
     "otherSleeve": "Other",
     "empty": "No holdings to map.",
     "ariaLabel": "Value map. Size is current value, colour is return."
+  },
+  "usage": {
+    "windowLabel": "Window",
+    "windowOptions": {
+      "1": "Last 24 hours",
+      "7": "Last 7 days",
+      "30": "Last 30 days",
+      "90": "Last 90 days"
+    },
+    "totals": "{{views}} page views · {{requests}} API requests · {{seconds}} s of server time",
+    "disabled": "The usage log is off on this instance (demo or a secondary server): nothing new is recorded.",
+    "pagesTitle": "Most visited pages",
+    "pagesEmpty": "No page views in this window.",
+    "endpointsTitle": "Slowest endpoints",
+    "endpointsHint": "Ordered by p95. Times in ms (estimated from a histogram); total time in s; size in KB.",
+    "endpointsEmpty": "No API requests in this window.",
+    "trendTitle": "Daily trend",
+    "showTrend": "trend",
+    "trendShown": "shown",
+    "colPage": "Page",
+    "colViews": "Views",
+    "colSettleP50": "Load p50 (ms)",
+    "colSettleP95": "Load p95 (ms)",
+    "colSettleMax": "Load max (ms)",
+    "colUnsettled": "Left before loading",
+    "colFetchedQueries": "Queries fetched",
+    "colLastViewed": "Last visit",
+    "colEndpoint": "Endpoint",
+    "colCount": "Requests",
+    "colAvg": "Avg (ms)",
+    "colP50": "p50 (ms)",
+    "colP95": "p95 (ms)",
+    "colMax": "Max (ms)",
+    "colTotalTime": "Total (s)",
+    "colWarm": "Warm cache",
+    "colErrors": "Errors 5xx / 4xx",
+    "colSize": "Size (KB)",
+    "colDay": "Day"
   }
 }

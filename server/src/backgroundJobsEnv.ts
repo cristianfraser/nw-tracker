@@ -2,7 +2,7 @@
  * Umbrella kill-switch for the in-process background schedulers.
  *
  * `BACKGROUND_JOBS_ENABLED=0` defaults GLOBAL_SYNC_ENABLED / LIVE_QUOTES_SYNC_ENABLED /
- * DB_BACKUP_ENABLED / CACHE_WARM_ENABLED to "0"; an explicitly set per-job flag wins
+ * DB_BACKUP_ENABLED / CACHE_WARM_ENABLED / USAGE_LOG_ENABLED to "0"; an explicitly set per-job flag wins
  * (same precedence as demo mode's env defaults).
  *
  * Purpose: secondary dev servers (agent-spawned `.claude/launch.json` configs) share the
@@ -16,6 +16,7 @@ const BACKGROUND_JOB_ENV_FLAGS = [
   "LIVE_QUOTES_SYNC_ENABLED",
   "DB_BACKUP_ENABLED",
   "CACHE_WARM_ENABLED",
+  "USAGE_LOG_ENABLED",
 ] as const;
 
 export function backgroundJobsDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -30,6 +31,6 @@ export function applyBackgroundJobsEnvDefaults(env: NodeJS.ProcessEnv = process.
     if (env[name] === undefined) env[name] = "0";
   }
   console.log(
-    "background jobs: BACKGROUND_JOBS_ENABLED=0 — sync/live-quotes/backup/cache-warm schedulers default off"
+    "background jobs: BACKGROUND_JOBS_ENABLED=0 — sync/live-quotes/backup/cache-warm schedulers and the usage log default off"
   );
 }

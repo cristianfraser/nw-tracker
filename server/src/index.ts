@@ -38,6 +38,8 @@ import { registerIngestRoutes } from "./routes/ingest.js";
 import { registerJobRoutes } from "./routes/jobs.js";
 import { startIngestRunScheduler } from "./ingestRunScheduler.js";
 import { startJobQueueExecutor } from "./jobQueueExecutor.js";
+import { registerUsageRoutes } from "./routes/usage.js";
+import { startUsageLogFlusher, usageLogEnabled, usageLogMiddleware } from "./usageLog.js";
 
 seedNavTree();
 
@@ -61,6 +63,7 @@ process.on("unhandledRejection", (reason) => {
 
 app.use(cors({ origin: resolveCorsOrigins() }));
 app.use(httpRequestLogMiddleware);
+if (usageLogEnabled()) app.use(usageLogMiddleware());
 if (demoModeEnabled()) {
   // Render terminates TLS: without this every visitor's req.ip is the proxy's, so the
   // analytics visitor hash would collapse to a single id.
@@ -81,6 +84,7 @@ app.use((req, res, next) => {
   if (
     req.path.startsWith("/api/") &&
     !req.path.startsWith("/api/demo/") &&
+    !req.path.startsWith("/api/usage/") &&
     req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS"
   ) {
     res.on("finish", () => invalidateFlowsOverview({ inputs: true }));
@@ -108,6 +112,7 @@ registerFlowsRoutes(app);
 registerSyncRoutes(app);
 registerIngestRoutes(app);
 registerJobRoutes(app);
+registerUsageRoutes(app);
 
 if (serveClientDistEnabled()) {
   registerClientDistStatic(app);
@@ -133,5 +138,6 @@ app.listen(PORT, HOST, () => {
   startDashboardCacheWarmer();
   startIngestRunScheduler();
   startJobQueueExecutor();
+  if (usageLogEnabled()) startUsageLogFlusher();
 });
 

@@ -727,6 +727,15 @@ export const api = {
   messagesUnreadCount: () => j<{ count: number }>("/api/messages/unread-count"),
   messages: (kind: "notification" | "log") =>
     j<{ messages: AppMessageRow[] }>(`/api/messages?kind=${kind}`),
+  usageReport: (days: import("./types").UsageReportWindow) =>
+    j<import("./types").UsageReport>(`/api/usage/report?days=${days}`),
+  usageEndpointTrend: (
+    series: import("./types").UsageEndpointSeries,
+    days: import("./types").UsageReportWindow
+  ) =>
+    j<import("./types").UsageEndpointTrend>(
+      `/api/usage/endpoint-trend?${new URLSearchParams({ ...series, days: String(days) })}`
+    ),
   markMessagesRead: () => j<{ marked: number }>("/api/messages/mark-read", { method: "POST" }),
   syncStatus: () => j<import("./types").SyncStatusResponse>("/api/sync/status"),
   syncForceStale: (source: import("./types").SyncSourceId) =>

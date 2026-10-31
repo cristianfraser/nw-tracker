@@ -8,6 +8,7 @@ export const PANEL_SUBROUTES = [
   { slug: "accounts", labelKey: "panel.accountsTitle" },
   { slug: "import-sync", labelKey: "panel.importSyncTitle" },
   { slug: "mirror-pairs", labelKey: "panel.mirrorPairsTitle" },
+  { slug: "usage", labelKey: "panel.usageTitle" },
   { slug: "settings", labelKey: "panel.settingsTitle" },
 ] as const;
 
