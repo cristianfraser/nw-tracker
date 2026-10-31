@@ -6,7 +6,7 @@ import {
   type AccountMonthlyPerformanceRow,
 } from "./accountPerformance.js";
 import { accountCountsTowardGroupTotals } from "./accountGroupTotals.js";
-import { db } from "./db.js";
+import { db, dbInTransaction } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import {
@@ -534,17 +534,33 @@ function buildGroupConsolidatedMonthlyPerfUncached(
   groupSlug: string,
   unit: TsUnit
 ): ConsolidatedMonthlyPerfRow[] {
-  // The payloads go in whole: the month-end marks need each account's `import_key` (a Fintual
-  // certificate account has no mark without it, and its prior close fell back to perf rows
-  // already in `unit`, which the USD path then divided by fx a second time).
-  const consolidated = consolidateGroupMonthlyPerf(
-    buildConsolidationPayloads(rows, groupSlug, unit),
-    unit
-  );
+  const consolidated = groupConsolidatedMonthlyRaw(rows, groupSlug, unit);
   if (isCashEqsNwValuationGroupSlug(groupSlug)) {
     return netLinkedCreditCardFromCashConsolidated(consolidated, unit);
   }
   return consolidated;
+}
+
+/**
+ * The group's consolidation of its accounts' monthly rows, before any cash netting: one build per
+ * (group, unit, account set), cached under the group's consolidation key so the same
+ * invalidations drop it, and shared by the group endpoints (valuation, tables, monthly
+ * performance, detalle por mes) and the netted figures above. Built afresh inside a transaction.
+ */
+export function groupConsolidatedMonthlyRaw(
+  rows: readonly GroupTabAccountRow[],
+  groupSlug: string,
+  unit: TsUnit
+): ConsolidatedMonthlyPerfRow[] {
+  // The payloads go in whole: the month-end marks need each account's `import_key` (a Fintual
+  // certificate account has no mark without it, and its prior close fell back to perf rows
+  // already in `unit`, which the USD path then divided by fx a second time).
+  const build = () => consolidateGroupMonthlyPerf(buildConsolidationPayloads(rows, groupSlug, unit), unit);
+  if (dbInTransaction()) return build();
+  const rowsKey = rows.map((r) => `${r.account_id}:${r.bucket_slug}`).join("|");
+  return getAggregationCached(`group.consolidated_monthly|${groupSlug}|${unit}|raw|${rowsKey}`, () =>
+    withAccountValuationTsCache(build)
+  );
 }
 
 export function getGroupConsolidationAccountMonthly(

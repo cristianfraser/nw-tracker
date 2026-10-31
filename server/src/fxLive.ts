@@ -1,3 +1,4 @@
+import { noteLiveFxRead } from "./cacheDependencies.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { fetchYahooLiveQuote } from "./equityYahooEod.js";
 import { getLatestLiveFxQuoteRow } from "./liveMarketQuotesDb.js";
@@ -14,6 +15,9 @@ export const LIVE_FX_YAHOO_SYMBOL = "CLP=X";
  * stored close in `fx_daily`, which the sync writes from the same quote the readers froze on.
  */
 export function shouldUseLiveFxQuote(now = new Date()): boolean {
+  // Reported whatever the answer: a figure built on the stored close must go when the fx day
+  // opens and the first tick moves the rate (`cacheDependencies.ts`).
+  noteLiveFxRead();
   return isFxDayOpen(now);
 }
 

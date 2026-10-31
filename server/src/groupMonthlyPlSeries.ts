@@ -28,7 +28,6 @@ import {
   type ChartBucketPlan,
 } from "./groupChartBuckets.js";
 import {
-  consolidateGroupMonthlyPerf,
   getGroupConsolidationAccountMonthly,
   type ConsolidatedMonthlyPerfRow,
 } from "./groupMonthlyPerfConsolidation.js";
@@ -138,15 +137,9 @@ function aggregatePerfByBuckets(
  * `getGroupConsolidatedMonthlyRows` for every slug but `net_worth` / `inversiones` (which sum
  * the bucket consolidations), reusing the payloads so the ledger walks run once.
  */
-function consolidatedRowsForScope(
-  groupSlug: string,
-  unit: TsUnit,
-  payloads: ReturnType<typeof getGroupConsolidationAccountMonthly>
-): ConsolidatedMonthlyPerfRow[] {
-  if (groupSlug === "net_worth" || groupSlug === "inversiones") {
-    return getGroupConsolidatedMonthlyRows(groupSlug, unit);
-  }
-  return consolidateGroupMonthlyPerf(payloads, unit);
+function consolidatedRowsForScope(groupSlug: string, unit: TsUnit): ConsolidatedMonthlyPerfRow[] {
+  // The rows the group's detalle por mes shows (the same cached consolidation).
+  return getGroupConsolidatedMonthlyRows(groupSlug, unit);
 }
 
 /** @heavy The group consolidation's per-account rows (one ledger walk / perf build per account). */
@@ -164,7 +157,7 @@ function buildGroupMonthlyPlSeries(
   opts?: { groupedBlocks?: boolean }
 ): GroupMonthlyPlSeriesResponse {
   const payloads = getGroupConsolidationAccountMonthly(listAccountsForGroupTab(groupSlug), groupSlug, unit);
-  const consolidatedAsc = [...consolidatedRowsForScope(groupSlug, unit, payloads)].reverse();
+  const consolidatedAsc = [...consolidatedRowsForScope(groupSlug, unit)].reverse();
 
   const bar_accounts: GroupMonthlyPerformanceBarAccount[] = [];
   const pickedByAccount: Map<string, { nominal_pl: number | null }>[] = [];

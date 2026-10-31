@@ -1,5 +1,13 @@
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
 import { noteAggregationCacheLookup } from "./requestCacheStats.js";
+import {
+  cacheDepNodeAffected,
+  linkCacheDepNode,
+  newCacheDepNode,
+  runInCacheDepNode,
+  type CacheDepNode,
+  type LiveQuoteMoves,
+} from "./cacheDependencies.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { applyPendingMarkInputChanges, setMarkInputsChangedListener } from "./markInputChanges.js";
@@ -11,6 +19,12 @@ import { buildPortfolioGroupIndex } from "./portfolioGroupIndex.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 const cache = new Map<string, unknown>();
+/**
+ * The live inputs each entry read while it was built (`cacheDependencies.ts`), so a live-quote
+ * tick drops only the entries that read a price it moved. Overwritten on every rebuild; a stale
+ * node of a deleted key is never consulted (lookups go through `cache` first).
+ */
+const depNodes = new Map<string, CacheDepNode>();
 
 let rollupSlugsByAccountId: Map<number, Set<string>> | null = null;
 
@@ -47,6 +61,7 @@ function ensureCacheFreshForChileDay(): void {
   const dataVersion = currentDbDataVersion();
   if (cacheDayYmd !== today || cacheDbDataVersion !== dataVersion) {
     cache.clear();
+    depNodes.clear();
     invalidateLiveTier();
     rollupSlugsByAccountId = null;
     cacheDayYmd = today;
@@ -80,6 +95,7 @@ export function setAggregationInvalidationListener(
 /** Drop everything cached, the per-account mark series included (a full rebuild follows). */
 export function clearAggregationCache(): void {
   cache.clear();
+  depNodes.clear();
   invalidateLiveTier();
   clearMarkSeries();
   rollupSlugsByAccountId = null;
@@ -118,14 +134,19 @@ function invalidateHistoryTier(): void {
 /**
  * The live tier: memos of today's live figures (an account's today value) for the rest of the
  * current UTC minute, so one rebuild asks each account once instead of once per reader. Dropped
- * by every invalidation (a live-quote tick included) and when the minute turns, so a figure is
- * never older than the clock reading a fresh computation would make, give or take a minute.
- * Inside a transaction it is a throwaway map, like the history tier.
+ * by every invalidation (a live-quote tick only where it read a moved price) and when the minute
+ * turns, so a figure is never older than the clock reading a fresh computation would make, give
+ * or take a minute. Inside a transaction nothing is memoized, like the history tier.
  */
-let liveTier: { minute: number; maps: Map<string, Map<unknown, unknown>> } = { minute: -1, maps: new Map() };
+type LiveTierEntry = { value: unknown; node: CacheDepNode };
+let liveTier: { minute: number; maps: Map<string, Map<unknown, LiveTierEntry>> } = { minute: -1, maps: new Map() };
 
-export function liveTierMemo<K, V>(name: string): Map<K, V> {
-  if (dbInTransaction()) return new Map<K, V>();
+/**
+ * `build()` memoized in the live tier under (`name`, `key`). The entry keeps the live inputs its
+ * build read and passes them on to whatever is built around a later hit, like a cache entry.
+ */
+export function liveTierCached<K, V>(name: string, key: K, build: () => V): V {
+  if (dbInTransaction()) return build();
   ensureCacheFreshForChileDay();
   const minute = Math.floor(Date.now() / 60_000);
   if (liveTier.minute !== minute) liveTier = { minute, maps: new Map() };
@@ -134,7 +155,16 @@ export function liveTierMemo<K, V>(name: string): Map<K, V> {
     map = new Map();
     liveTier.maps.set(name, map);
   }
-  return map as Map<K, V>;
+  const hit = map.get(key);
+  if (hit) {
+    linkCacheDepNode(hit.node);
+    return hit.value as V;
+  }
+  const node = newCacheDepNode();
+  const value = runInCacheDepNode(node, build);
+  map.set(key, { value, node });
+  linkCacheDepNode(node);
+  return value;
 }
 
 function invalidateLiveTier(): void {
@@ -143,13 +173,27 @@ function invalidateLiveTier(): void {
 
 export function getAggregationCached<T>(key: string, build: () => T): T {
   ensureCacheFreshForChileDay();
+  // History-tier maps read no live input by contract (and are asked very often): no node.
+  const tracked = !key.startsWith(HISTORY_TIER_PREFIX);
   if (cache.has(key)) {
     noteAggregationCacheLookup(true);
+    if (tracked) {
+      const node = depNodes.get(key);
+      if (node) linkCacheDepNode(node);
+    }
     return cache.get(key) as T;
   }
   noteAggregationCacheLookup(false);
-  const value = build();
+  if (!tracked) {
+    const value = build();
+    cache.set(key, value);
+    return value;
+  }
+  const node = newCacheDepNode();
+  const value = runInCacheDepNode(node, build);
   cache.set(key, value);
+  depNodes.set(key, node);
+  linkCacheDepNode(node);
   return value;
 }
 
@@ -162,6 +206,8 @@ export function getAggregationCached<T>(key: string, build: () => T): T {
 export function setAggregationCached<T>(key: string, value: T): void {
   ensureCacheFreshForChileDay();
   cache.set(key, value);
+  // Inputs unknown: a scoped live tick treats the entry as affected.
+  depNodes.delete(key);
 }
 
 export function cacheKeyAccountMonthlyPerf(accountId: number, unit: TsUnit): string {
@@ -181,6 +227,26 @@ export function cacheKeyCcBillingDetail(accountId: number): string {
 }
 
 /**
+ * Card ledger payloads (`creditCardInstallmentsResponse`, `creditCardGroupLedgerResponse`). They
+ * merge cards, read card config, labels and plan edits as well as the billing detail, so any
+ * card write, any API write and any historical market data drop them all
+ * ({@link invalidateCcLedgerResponses}); a live tick only where they read a moved price.
+ */
+const CC_LEDGER_PREFIX = "cc.ledger|";
+
+export function cacheKeyCcLedgerAccount(accountId: number): string {
+  return `${CC_LEDGER_PREFIX}account|${accountId}`;
+}
+
+export function cacheKeyCcLedgerGroup(slug: string): string {
+  return `${CC_LEDGER_PREFIX}group|${slug}`;
+}
+
+export function invalidateCcLedgerResponses(): void {
+  deleteKeysMatchingPrefix(CC_LEDGER_PREFIX);
+}
+
+/**
  * Every key under this prefix lives as long as the home page bundle: the bundle itself
  * (`<prefix><unit>`) and the payloads built from the same inputs (the nav snapshot / context, the
  * overview chart block).
@@ -189,6 +255,39 @@ export const DASHBOARD_PAGE_BUNDLE_PREFIX = "dashboard.page_bundle|";
 
 export function cacheKeyDashboardPageBundle(unit: TsUnit): string {
   return `${DASHBOARD_PAGE_BUNDLE_PREFIX}${unit}`;
+}
+
+/**
+ * An account page's bundle (`cachedAccountDetailBundle`), under the page bundle's prefix so every
+ * invalidation that drops the bundle drops it too; API writes drop it as well (labels, notes and
+ * card config are not in any aggregation funnel).
+ */
+export function cacheKeyAccountDetailBundle(accountId: number, unit: TsUnit, granularity: string): string {
+  return `${DASHBOARD_PAGE_BUNDLE_PREFIX}account_detail|${accountId}|${unit}|${granularity}`;
+}
+
+/**
+ * A group page's responses (valuation series, consolidated tables, monthly P/L series, Rentabilidad),
+ * under the page bundle's prefix like the account bundles: every invalidation that drops the
+ * bundle drops them, a live tick only where they read a moved price, and API writes drop them too
+ * (account names and notes are in the payloads). Inside a transaction they are built afresh.
+ */
+export function cachedGroupResponse<T>(kind: string, slug: string, unit: TsUnit, build: () => T): T {
+  if (dbInTransaction()) return build();
+  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}group|${kind}|${slug}|${unit}`, build);
+}
+
+export function invalidateGroupResponses(): void {
+  deleteKeysMatchingPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}group|`);
+}
+
+/** Drop the entries under one response prefix (an API write; see `index.ts`). */
+export function invalidateKeysWithPrefix(prefix: string): void {
+  deleteKeysMatchingPrefix(prefix);
+}
+
+export function invalidateAccountDetailBundles(): void {
+  deleteKeysMatchingPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}account_detail|`);
 }
 
 /**
@@ -265,6 +364,7 @@ setMarkInputsChangedListener((change) => {
     }
   }
   invalidateDashboardPageBundle();
+  invalidateCcLedgerResponses();
   // The expense lines (and the payloads cached on them) read movements and card lines too.
   invalidateFlowsOverview({ inputs: true });
   invalidationListener?.();
@@ -288,6 +388,7 @@ export function invalidateCcBillingDetail(accountId?: number): void {
   }
   invalidateHistoryTier();
   invalidateLiveTier();
+  invalidateCcLedgerResponses();
   // Every account/CC write funnels through here (invalidateAggregationForAccountDate and
   // invalidateLinkedCreditCardAggregationCache both call this) — the bundle, the daily
   // series (whose historical legs read movements/valuations/CC valuations), and the depto
@@ -447,13 +548,20 @@ export type MarketDataInvalidationScope = "historical" | "live_tail";
  * the warmer so the bucket totals track intraday marks instead of the price at cache-build time.
  */
 export function invalidateMarketDataAggregations(
-  scope: MarketDataInvalidationScope = "historical"
+  scope: MarketDataInvalidationScope = "historical",
+  moves?: LiveQuoteMoves
 ): void {
+  if (scope === "live_tail" && moves) {
+    invalidateLiveTickAffected(moves);
+    invalidationListener?.(scope);
+    return;
+  }
   invalidateLiveTier();
   deleteKeysMatchingPrefix("account.monthly_perf|");
   deleteKeysMatchingPrefix("group.consolidated_monthly|");
   deleteKeysMatchingPrefix("group.valuation_closing_by_date|");
   invalidateDashboardPageBundle();
+  invalidateCcLedgerResponses();
   invalidateFlowsOverview({ inputs: scope === "historical" });
   if (scope === "live_tail") {
     invalidateDailyAggregates();
@@ -463,6 +571,52 @@ export function invalidateMarketDataAggregations(
     invalidateDailySeries();
   }
   invalidationListener?.(scope);
+}
+
+/** The entries an unscoped `live_tail` invalidation drops (see above); a scoped one never drops more. */
+const LIVE_TAIL_PREFIXES = [
+  "account.monthly_perf|",
+  "group.consolidated_monthly|",
+  "group.valuation_closing_by_date|",
+  DASHBOARD_PAGE_BUNDLE_PREFIX,
+  CC_LEDGER_PREFIX,
+  "flows.overview|",
+  ...DAILY_AGGREGATE_PREFIXES,
+];
+
+function droppedByLiveTail(key: string): boolean {
+  return LIVE_TAIL_PREFIXES.some((p) => key.startsWith(p)) || /^cc\.billing_detail\|\d+$/.test(key);
+}
+
+/**
+ * A live-quote poll moved `moves`: drop, among the entries an unscoped tick would drop, those
+ * that read a moved price (`cacheDependencies.ts`) or whose inputs are unknown, and the live-tier
+ * memos that read one. Everything else — the card ledger, the mortgage, the liabilities'
+ * consolidation, a crypto move at 3 a.m. — stays. What is dropped rebuilds on top of the history
+ * tier, so only today's marks and the current-month rows are recomputed.
+ */
+function invalidateLiveTickAffected(moves: LiveQuoteMoves): void {
+  const memo = new Map<CacheDepNode, boolean>();
+  for (const map of liveTier.maps.values()) {
+    for (const [k, entry] of [...map]) {
+      if (cacheDepNodeAffected(entry.node, moves, memo)) map.delete(k);
+    }
+  }
+  for (const key of [...cache.keys()]) {
+    if (!droppedByLiveTail(key)) continue;
+    const node = depNodes.get(key);
+    if (!node || cacheDepNodeAffected(node, moves, memo)) cache.delete(key);
+  }
+}
+
+/** @internal Test hook: whether `key` is cached. */
+export function aggregationCacheHasForTest(key: string): boolean {
+  return cache.has(key);
+}
+
+/** @internal Test hook: every cached key. */
+export function aggregationCacheKeysForTest(): string[] {
+  return [...cache.keys()];
 }
 
 const LINKED_CC_AGGREGATION_GROUP_SLUGS = [

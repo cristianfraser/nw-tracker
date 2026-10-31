@@ -1,7 +1,7 @@
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import {
-  consolidateGroupMonthlyPerf,
   getGroupConsolidationAccountMonthly,
+  groupConsolidatedMonthlyRaw,
   type ConsolidatedMonthlyPerfRow,
 } from "./groupMonthlyPerfConsolidation.js";
 import { buildInversionesConsolidatedMonthly, buildNetWorthConsolidatedMonthly } from "./netWorthConsolidation.js";
@@ -34,16 +34,6 @@ export type GroupConsolidatedTablesResponse = {
   period_returns: PeriodReturnsPayload | null;
 };
 
-type AccountMonthlyPayload = ReturnType<typeof getGroupConsolidationAccountMonthly>;
-
-function consolidateFromAccountMonthly(
-  account_monthly: AccountMonthlyPayload,
-  unit: TsUnit
-): ConsolidatedMonthlyPerfRow[] {
-  // Whole payloads, `import_key` included: the month-end marks are keyed by it.
-  return consolidateGroupMonthlyPerf(account_monthly, unit);
-}
-
 /** Full consolidated detalle-por-mes series for a group tab (newest first). */
 export function getGroupConsolidatedMonthlyRows(
   groupSlug: string,
@@ -54,11 +44,7 @@ export function getGroupConsolidatedMonthlyRows(
   if (groupSlug === "inversiones" && tabSubgroup == null) {
     return buildInversionesConsolidatedMonthly(unit);
   }
-  const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
-  return consolidateFromAccountMonthly(
-    getGroupConsolidationAccountMonthly(rows, groupSlug, unit),
-    unit
-  );
+  return groupConsolidatedMonthlyRaw(listAccountsForGroupTab(groupSlug, tabSubgroup), groupSlug, unit);
 }
 
 export function getGroupConsolidatedTables(
@@ -73,7 +59,7 @@ export function getGroupConsolidatedTables(
       ? buildNetWorthConsolidatedMonthly(unit)
       : groupSlug === "inversiones" && tabSubgroup == null
         ? buildInversionesConsolidatedMonthly(unit)
-        : consolidateFromAccountMonthly(account_monthly, unit);
+        : groupConsolidatedMonthlyRaw(rows, groupSlug, unit);
 
   const period_returns = groupPeriodReturnsFromMonthly(groupSlug, unit, consolidated_monthly, rows);
 
