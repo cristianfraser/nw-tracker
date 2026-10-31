@@ -44,15 +44,6 @@ export function linkCacheDepNode(child: CacheDepNode): void {
   if (parent && parent !== child) parent.children.add(child);
 }
 
-/**
- * Run `fn` without passing its live reads on to the entry being built around it: only for a
- * result a live price cannot change (see the caller's reason). Cache entries `fn` builds or hits
- * keep their own dependencies.
- */
-export function withoutLiveDependencies<T>(fn: () => T): T {
-  return storage.run(newCacheDepNode(), fn);
-}
-
 export function noteLiveTickerRead(ticker: string): void {
   storage.getStore()?.tickers.add(ticker.toUpperCase());
 }
