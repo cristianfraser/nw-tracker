@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { cachedGroupResponse, clearAggregationCache, invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { getGroupConsolidatedMonthlyRows, getGroupConsolidatedTables } from "./groupConsolidatedTables.js";
 import { getGroupMonthlyPlSeries } from "./groupMonthlyPlSeries.js";
+import { groupDailySeriesResponse } from "./groupDailySeriesResponse.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { buildDashboardNavContext, buildDashboardNavSnapshot } from "./dashboardAccounts.js";
 import { db } from "./db.js";
@@ -281,6 +282,9 @@ describe("group responses share one consolidation", () => {
         resp("monthly_pl_series", () => getGroupMonthlyPlSeries(slug, unit, { groupedBlocks: true }));
         resp("valuation_ts", () => getGroupValuationTimeseries(slug, unit, undefined, { groupedBlocks: true }));
         out.set(`rows|${slug}|${unit}`, JSON.stringify(getGroupConsolidatedMonthlyRows(slug, unit)));
+        for (const days of [90, 0]) {
+          out.set(`daily|${slug}|${unit}|${days}`, JSON.stringify(groupDailySeriesResponse(slug, unit, days, days === 0)));
+        }
       }
     }
     return out;

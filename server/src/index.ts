@@ -21,7 +21,9 @@ import {
   invalidateCcLedgerResponses,
   invalidateFlowsOverview,
   invalidateGroupResponses,
+  invalidateKeysWithPrefix,
 } from "./aggregationCache.js";
+import { GROUP_DAILY_RESPONSE_PREFIX } from "./groupDailySeriesResponse.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAccountsRoutes } from "./routes/accounts.js";
@@ -98,6 +100,7 @@ app.use((req, res, next) => {
       invalidateCcLedgerResponses();
       invalidateAccountDetailBundles();
       invalidateGroupResponses();
+      invalidateKeysWithPrefix(GROUP_DAILY_RESPONSE_PREFIX);
     });
   }
   next();
