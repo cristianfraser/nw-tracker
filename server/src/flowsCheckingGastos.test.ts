@@ -35,6 +35,8 @@ import {
   isInvestmentDepositTarget,
   isMercadoCapitalesCargoDescription,
   stripCheckingBranchPrefix,
+  isCheckingOwnTraspasoInflow,
+  isCheckingOwnTraspasoOutflow,
 } from "./checkingDescriptionPredicates.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
 import {
@@ -1543,5 +1545,60 @@ describe("internal-transfer timing helpers", () => {
     expect(
       ledgerCapitalReturnMatchesTiming("2026-05-03", "2026-05-31", "cuenta_ahorro_vivienda", 3)
     ).toBe(true);
+  });
+});
+
+describe("internal transfers between the two checking accounts", () => {
+  const credit = (own: boolean, occurred_on = "2018-05-07"): DepositMatchCandidate => ({
+    occurred_on,
+    amount_clp: 30_000,
+    account_id: 2,
+    category_slug: "cuenta_vista",
+    group_slug: "cash_eqs",
+    claim_key: `internal-traspaso-${own}-${occurred_on}`,
+    movement_id: null,
+    checking_own_traspaso: own,
+  });
+
+  it("pairs only the bank's own traspaso with a credit printed as one", () => {
+    const traspaso = { occurred_on: "2018-05-07", amount_clp: -30_000, description: "Traspaso Internet a Cuentamática" };
+    expect(withdrawalMatchesInternalCashTransfer(traspaso, [credit(true)], 3, undefined, 1)).toBe(true);
+    // A third party's transfer into the other account funded by nobody.
+    expect(withdrawalMatchesInternalCashTransfer(traspaso, [credit(false)], 3, undefined, 1)).toBe(false);
+  });
+
+  it("never pairs a wire to another bank with a checking credit", () => {
+    const wire = { occurred_on: "2018-05-04", amount_clp: -30_000, description: "Transf. Internet a otro Bancos" };
+    expect(withdrawalMatchesInternalCashTransfer(wire, [credit(false)], 3, undefined, 1)).toBe(false);
+    expect(withdrawalMatchesInternalCashTransfer(wire, [credit(true)], 3, undefined, 1)).toBe(false);
+  });
+
+  it("leaves the credit to the real traspaso of the next day", () => {
+    const used = new Set<string>();
+    const deposits = [credit(true, "2019-02-01")];
+    const opts = { splittablePool: new Map<string, number>(), usedDepositKeys: used, withdrawalAccountId: 1, withdrawalCategorySlug: "cuenta_corriente" };
+    const wire = splitCheckingWithdrawalAgainstDeposits(
+      { occurred_on: "2019-01-31", amount_clp: -30_000, description: "Transf. Internet a otro Bancos" },
+      deposits,
+      opts
+    );
+    expect(wire.internalClp).toBe(0);
+    const traspaso = splitCheckingWithdrawalAgainstDeposits(
+      { occurred_on: "2019-02-01", amount_clp: -30_000, description: "Traspaso Internet a Cta. Cte." },
+      deposits,
+      opts
+    );
+    expect(traspaso.internalClp).toBe(30_000);
+  });
+
+  it("reads the bank's own traspaso wording on both sides", () => {
+    expect(isCheckingOwnTraspasoInflow("Traspaso Internet desde Cta.Ct")).toBe(true);
+    expect(isCheckingOwnTraspasoInflow("Agustinas Traspaso Internet de Cuenta Vista")).toBe(true);
+    expect(isCheckingOwnTraspasoInflow("0012345678 Transf. Ana P")).toBe(false);
+    expect(isCheckingOwnTraspasoInflow("Traspaso con la Cuenta N° 001000000000")).toBe(false);
+    expect(isCheckingOwnTraspasoOutflow("Traspaso Internet a Cta. Cte.")).toBe(true);
+    expect(isCheckingOwnTraspasoOutflow("Traspaso a Cuenta Vista 10% AFP")).toBe(true);
+    expect(isCheckingOwnTraspasoOutflow("Transf. Internet a otro Bancos")).toBe(false);
+    expect(isCheckingOwnTraspasoOutflow("Traspaso a Cuenta de Otro Banco")).toBe(false);
   });
 });

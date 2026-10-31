@@ -46,6 +46,7 @@ import {
   dapReferenceFromDescription,
   daysBetweenYmd,
   isCheckingCorrienteVistaTraspasoOutflow,
+  isCheckingOwnTraspasoOutflow,
   isCheckingGastosWithdrawalNote,
   isDapReturnCreditDescription,
   isExcludedCheckingWithdrawal,
@@ -798,15 +799,25 @@ export function checkingCreditMatchesAfpRetiroReturn(
   return false;
 }
 
+/**
+ * A deposit on another account the withdrawal may have funded. A credit on a checking account
+ * counts only when both sides are the bank's own traspaso between the two checking accounts: a
+ * third party's transfer into checking was funded by nobody, and a «Transf. Internet a otro
+ * Bancos» left the bank — on 2026-10-31 twelve such wires had paired with third parties'
+ * transfers into checking, or with a real traspaso of the next day.
+ */
 function depositIsCrossAccountInternalTransfer(
-  deposit: Pick<DepositMatchCandidate, "account_id">,
+  deposit: Pick<DepositMatchCandidate, "account_id" | "checking_own_traspaso">,
+  withdrawal: { description?: string },
   withdrawalAccountId: number
 ): boolean {
-  return deposit.account_id !== withdrawalAccountId;
+  if (deposit.account_id === withdrawalAccountId) return false;
+  if (deposit.checking_own_traspaso === undefined) return true;
+  return deposit.checking_own_traspaso && isCheckingOwnTraspasoOutflow(withdrawal.description ?? "");
 }
 
 function withdrawalMatchesInternalCashTransferExact(
-  withdrawal: { occurred_on: string; amount_clp: number },
+  withdrawal: { occurred_on: string; amount_clp: number; description?: string },
   deposits: readonly DepositMatchCandidate[],
   maxDayGap: number,
   withdrawalAccountId: number
@@ -815,7 +826,7 @@ function withdrawalMatchesInternalCashTransferExact(
   if (want <= 0) return false;
   for (const d of deposits) {
     if (d.group_slug !== CHECKING_GASTOS_CASH_GROUP) continue;
-    if (!depositIsCrossAccountInternalTransfer(d, withdrawalAccountId)) continue;
+    if (!depositIsCrossAccountInternalTransfer(d, withdrawal, withdrawalAccountId)) continue;
     if (Math.round(d.amount_clp) !== want) continue;
     if (depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) return true;
   }
@@ -869,7 +880,7 @@ function tryAllocateSplittableInternalTransfer(
 }
 
 function findExactInternalCashTransferDeposit(
-  withdrawal: { occurred_on: string; amount_clp: number },
+  withdrawal: { occurred_on: string; amount_clp: number; description?: string },
   deposits: readonly DepositMatchCandidate[],
   maxDayGap: number,
   withdrawalAccountId: number,
@@ -888,7 +899,7 @@ function findExactInternalCashTransferDeposit(
     if (MONTH_BUCKET_INTERNAL_TRANSFER_CATEGORIES.has(d.category_slug) !== (timing === "month_bucket")) {
       continue;
     }
-    if (!depositIsCrossAccountInternalTransfer(d, withdrawalAccountId)) continue;
+    if (!depositIsCrossAccountInternalTransfer(d, withdrawal, withdrawalAccountId)) continue;
     if (Math.round(d.amount_clp) !== want) continue;
     if (usedDepositKeys?.has(d.claim_key)) continue;
     if (!depositMatchesInternalTransferTiming(withdrawal, d, maxDayGap)) continue;
@@ -909,7 +920,7 @@ function findExactInternalCashTransferDeposit(
  * wire), or that deposit is left unexplained.
  */
 function findInternalCashTransferDepositPreferringExactDays(
-  withdrawal: { occurred_on: string; amount_clp: number },
+  withdrawal: { occurred_on: string; amount_clp: number; description?: string },
   deposits: readonly DepositMatchCandidate[],
   maxDayGap: number,
   withdrawalAccountId: number,
