@@ -18,6 +18,11 @@ import {
   type MovementTransferRow,
 } from "./movementTransfer.js";
 import { getDashboardOverviewBlock } from "./valuationTimeseries.js";
+import { createManualCcInstallmentPurchase, deleteManualCcInstallmentPurchase } from "./ccInstallmentManual.js";
+import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
+import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
+import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { snapshotTables } from "./test/snapshotTables.js";
 
 afterAll(() => clearAggregationCache());
 
@@ -163,5 +168,62 @@ describe("request-path caches", () => {
       db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
       clearAggregationCache();
     }
+  }, 300_000);
+});
+
+/** The card ledgers of every master and every liabilities group, as served. */
+function ccLedgerPayloads(): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const id of listCreditCardMasterAccountIds()) out.set(`card|${id}`, JSON.stringify(creditCardInstallmentsResponse(id)));
+  const slugs = (
+    db.prepare(`SELECT slug FROM portfolio_groups WHERE slug LIKE 'liabilities%'`).all() as { slug: string }[]
+  ).map((r) => r.slug);
+  for (const slug of ["liabilities", ...slugs]) out.set(`group|${slug}`, JSON.stringify(creditCardGroupLedgerResponse(slug)));
+  return out;
+}
+
+/** Uncached: built inside a transaction (the caches build afresh there), rolled back. */
+function ccLedgerPayloadsUncached(): Map<string, string> {
+  let out = new Map<string, string>();
+  try {
+    db.transaction(() => {
+      out = ccLedgerPayloads();
+      throw new Error("rollback");
+    })();
+  } catch (e) {
+    if (!(e instanceof Error) || e.message !== "rollback") throw e;
+  }
+  return out;
+}
+
+describe("card ledger caches", () => {
+  it("serve the uncached build, before and after a card write", () => {
+    const restoreCardTables = snapshotTables(["valuations", "cc_billing_month_balances"]);
+    clearAggregationCache();
+    const masterId = listCreditCardMasterAccountIds()[0];
+    expect(masterId).toBeDefined();
+    const first = ccLedgerPayloads();
+    expect(ccLedgerPayloads()).toEqual(first); // the cached reads
+    const uncached = ccLedgerPayloadsUncached();
+    expect([...first.keys()].filter((k) => first.get(k) !== uncached.get(k))).toEqual([]);
+
+    const { id } = createManualCcInstallmentPurchase(masterId!, {
+      purchase_date: chileCalendarTodayYmd(),
+      total_amount_clp: 120_000,
+      cuotas_totales: 3,
+      merchant: "VITEST LEDGER CACHE",
+    });
+    try {
+      const afterWrite = ccLedgerPayloads();
+      expect(afterWrite.get(`card|${masterId}`)).not.toBe(first.get(`card|${masterId}`));
+      const fresh = ccLedgerPayloadsUncached();
+      expect([...fresh.keys()].filter((k) => afterWrite.get(k) !== fresh.get(k))).toEqual([]);
+    } finally {
+      deleteManualCcInstallmentPurchase(masterId!, id);
+      // The plan's writers re-stamp today's valuation and the month snapshot: put them back.
+      restoreCardTables();
+    }
+    clearAggregationCache();
+    expect(ccLedgerPayloads()).toEqual(first);
   }, 300_000);
 });

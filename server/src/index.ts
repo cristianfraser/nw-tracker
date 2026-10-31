@@ -16,7 +16,7 @@ import { demoOwnerCookieMiddleware, demoVisitLogMiddleware } from "./demoAnalyti
 import { applyBackgroundJobsEnvDefaults } from "./backgroundJobsEnv.js";
 import { registerClientDistStatic, serveClientDistEnabled } from "./staticClientDist.js";
 import { startDashboardCacheWarmer } from "./dashboardCacheWarmer.js";
-import { invalidateFlowsOverview } from "./aggregationCache.js";
+import { invalidateCcLedgerResponses, invalidateFlowsOverview } from "./aggregationCache.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
 import { registerMetaRoutes } from "./routes/meta.js";
 import { registerAccountsRoutes } from "./routes/accounts.js";
@@ -80,14 +80,18 @@ const ingestJsonBody = express.json({ limit: "32mb" });
 app.use((req, res, next) => (req.path.startsWith("/api/ingest/") ? ingestJsonBody : jsonBody)(req, res, next));
 // The flows overview reads nearly every table (income, expense lines and their categories, deposits),
 // and many of its writers (category / income / place edits) touch no aggregation funnel: any
-// write through the API drops it once the write has answered.
+// write through the API drops it once the write has answered. The card ledgers too (labels, card
+// config and plan edits sit beside the billing funnel).
 app.use((req, res, next) => {
   if (
     req.path.startsWith("/api/") &&
     !req.path.startsWith("/api/usage/") &&
     req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS"
   ) {
-    res.on("finish", () => invalidateFlowsOverview({ inputs: true }));
+    res.on("finish", () => {
+      invalidateFlowsOverview({ inputs: true });
+      invalidateCcLedgerResponses();
+    });
   }
   next();
 });

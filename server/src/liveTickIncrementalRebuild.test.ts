@@ -20,6 +20,9 @@ import { insertLiveMarketQuote } from "./liveMarketQuotesDb.js";
 import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { warmRentabilidadDailySeries } from "./rentabilidadDailyWarm.js";
 import { snapshotTables } from "./test/snapshotTables.js";
+import { creditCardGroupLedgerResponse } from "./creditCardGroupLedger.js";
+import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
+import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
 
 /**
@@ -107,6 +110,9 @@ async function snapshotPayloads(): Promise<Map<string, string>> {
     }
     for (const id of accountIds) out.set(`monthly_perf|${id}|${unit}`, JSON.stringify(monthlyPerfForAccountId(id, unit)));
   }
+  // The card ledgers price an unpaid facturación's dollars at the live rate.
+  for (const id of listCreditCardMasterAccountIds()) out.set(`cc_ledger|${id}`, JSON.stringify(creditCardInstallmentsResponse(id)));
+  out.set("cc_ledger|liabilities", JSON.stringify(creditCardGroupLedgerResponse("liabilities")));
   // The synthetic gap-mirror ids are numbered per build; the lines are the comparison.
   out.set(
     "expenses",

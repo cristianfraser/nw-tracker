@@ -227,6 +227,26 @@ export function cacheKeyCcBillingDetail(accountId: number): string {
 }
 
 /**
+ * Card ledger payloads (`creditCardInstallmentsResponse`, `creditCardGroupLedgerResponse`). They
+ * merge cards, read card config, labels and plan edits as well as the billing detail, so any
+ * card write, any API write and any historical market data drop them all
+ * ({@link invalidateCcLedgerResponses}); a live tick only where they read a moved price.
+ */
+const CC_LEDGER_PREFIX = "cc.ledger|";
+
+export function cacheKeyCcLedgerAccount(accountId: number): string {
+  return `${CC_LEDGER_PREFIX}account|${accountId}`;
+}
+
+export function cacheKeyCcLedgerGroup(slug: string): string {
+  return `${CC_LEDGER_PREFIX}group|${slug}`;
+}
+
+export function invalidateCcLedgerResponses(): void {
+  deleteKeysMatchingPrefix(CC_LEDGER_PREFIX);
+}
+
+/**
  * Every key under this prefix lives as long as the home page bundle: the bundle itself
  * (`<prefix><unit>`) and the payloads built from the same inputs (the nav snapshot / context, the
  * overview chart block).
@@ -311,6 +331,7 @@ setMarkInputsChangedListener((change) => {
     }
   }
   invalidateDashboardPageBundle();
+  invalidateCcLedgerResponses();
   // The expense lines (and the payloads cached on them) read movements and card lines too.
   invalidateFlowsOverview({ inputs: true });
   invalidationListener?.();
@@ -334,6 +355,7 @@ export function invalidateCcBillingDetail(accountId?: number): void {
   }
   invalidateHistoryTier();
   invalidateLiveTier();
+  invalidateCcLedgerResponses();
   // Every account/CC write funnels through here (invalidateAggregationForAccountDate and
   // invalidateLinkedCreditCardAggregationCache both call this) — the bundle, the daily
   // series (whose historical legs read movements/valuations/CC valuations), and the depto
@@ -506,6 +528,7 @@ export function invalidateMarketDataAggregations(
   deleteKeysMatchingPrefix("group.consolidated_monthly|");
   deleteKeysMatchingPrefix("group.valuation_closing_by_date|");
   invalidateDashboardPageBundle();
+  invalidateCcLedgerResponses();
   invalidateFlowsOverview({ inputs: scope === "historical" });
   if (scope === "live_tail") {
     invalidateDailyAggregates();
@@ -523,6 +546,7 @@ const LIVE_TAIL_PREFIXES = [
   "group.consolidated_monthly|",
   "group.valuation_closing_by_date|",
   DASHBOARD_PAGE_BUNDLE_PREFIX,
+  CC_LEDGER_PREFIX,
   "flows.overview|",
   ...DAILY_AGGREGATE_PREFIXES,
 ];
