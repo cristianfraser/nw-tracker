@@ -821,7 +821,7 @@
       "payByDerivedHint": "Derived from the close (about the 10th of the next month): no statement prints this pay-by yet.",
       "colFacturadoUsd": "Billed US$",
       "colFacturadoTotal": "Total billed",
-      "colCuotaAPagar": "Payment due",
+      "colCuotaAPagar": "Installment due",
       "colDeudaEnCuotasFacturacion": "Installment debt",
       "colDeudaEnCuotasFacturacionHint": "Cuotas not yet billed after this close — what the statement prints as saldo capital cuotas.",
       "colProxyEarnings": "Potential earnings",
