@@ -7,12 +7,21 @@ import {
   counterpartyLabel,
   counterpartyNamesFromRows,
   expenseLineDisplayNames,
+  payslipLineName,
   receiptLabel,
   splitProcessorPrefix,
   type DisplayNameContext,
 } from "./expenseDisplayNames.js";
 import { shortPersonName, stripLegalSuffix, titleCaseName } from "./expenseNameText.js";
-import { foldVendorName, loadVendorCatalog, vendorCatalogFromEntries, type VendorCatalogEntry } from "./vendorCatalog.js";
+import {
+  foldVendorName,
+  loadVendorCatalog,
+  saveVendorBranchChoice,
+  vendorCatalogFromEntries,
+  type VendorCatalogEntry,
+} from "./vendorCatalog.js";
+import { placeBranch } from "./chilePlaces.js";
+import { db } from "./db.js";
 import { repairMojibake } from "./textRepair.js";
 import type { PaymentReceiptDto } from "./paymentProcessorReceipts.js";
 
@@ -70,6 +79,50 @@ describe("vendor catalog", () => {
     expect(seeded.lookup("RENDER.COM")).toBe("render.com");
   });
 
+  it("seeds the brands migration 250 adds", () => {
+    const seeded = loadVendorCatalog();
+    expect(seeded.lookup("AMAZON* 4H4FI9OJ5")).toBe("Amazon.com");
+    expect(seeded.lookup("MERCADO PAGO 4 TCOM")).toBe("Mercado Pago");
+    expect(seeded.lookup("MUEVO COPEC")).toBe("Copec (App)");
+    expect(seeded.lookup("OKM SUECIA")).toBe("OK Market");
+    expect(seeded.lookup("LONDON COFFEE ALCANT")).toBe("Santander Work/Café (Alcántara)");
+    expect(seeded.lookup("HIPER PUENTE NUEVO.")).toBe("Hiper Lider (Puente Nuevo)");
+    expect(seeded.lookup("IKEA COM")).toBe("Ikea");
+    expect(seeded.lookup("GOOGLE PLAY-YO")).toBe("YouTube Premium");
+    expect(seeded.lookup("OK MARKET S.A.")).toBe("OK Market");
+  });
+
+  it("spells a branch's places and completes the one a cut branch starts", () => {
+    expect(catalog.lookup("JUMBO PENALOLEN")).toBe("Jumbo (Peñalolén)");
+    expect(catalog.lookup("JUMBO J875 VINA DEL MA")).toBe("Jumbo (Viña del Mar)");
+    expect(catalog.lookup("EXPRESS AVDA VALPARAI")).toBe("Lider Express (Avda Valparaíso)");
+    expect(catalog.lookup("AHUM L272 LOS LEONES 1160")).toBe("Ahumada (Los Leones 1160)");
+    // Short enough not to be cut: a partial word stays as printed.
+    expect(catalog.lookup("JUMBO VALPA")).toBe("Jumbo (Valpa)");
+    expect(placeBranch("Santi", true)).toEqual({ text: "Santiago", choices: null });
+  });
+
+  it("a cut branch several places could be stays as printed, with the choices", () => {
+    const placed = placeBranch("Las", true);
+    expect(placed.text).toBe("Las");
+    expect(placed.choices).toEqual(expect.arrayContaining(["Las Condes", "Las Catalpas"]));
+    const m = catalog.match("EXPRESS VERY LONG NAME LAS");
+    expect(m?.display).toBe("Lider Express (Very Long Name las)");
+    expect(m?.branchChoices).toEqual(expect.arrayContaining(["Lider Express (Very Long Name Las Condes)"]));
+  });
+
+  it("stores a picked branch, matched before the seed's branch row", () => {
+    db.prepare(`DELETE FROM vendor_catalog WHERE source = 'choice'`).run();
+    try {
+      expect(() => saveVendorBranchChoice("EXPRESS VERY LONG NAME LAS", "Lider Express (Nowhere)")).toThrow(/not a branch/);
+      saveVendorBranchChoice("EXPRESS VERY LONG NAME LAS", "Lider Express (Very Long Name Las Condes)");
+      const after = loadVendorCatalog().match("EXPRESS VERY LONG NAME LAS");
+      expect(after).toEqual({ display: "Lider Express (Very Long Name Las Condes)", branchChoices: null });
+    } finally {
+      db.prepare(`DELETE FROM vendor_catalog WHERE source = 'choice'`).run();
+    }
+  });
+
   it("does not wrap a branch the name already sets apart", () => {
     expect(catalog.lookup("Streat Burger (Isidora)")).toBe("Streat Burger (Isidora)");
     expect(catalog.lookup("Streat Burger - Isidora")).toBe("Streat Burger (Isidora)");
@@ -118,6 +171,25 @@ describe("merchant cleanup", () => {
     expect(splitProcessorPrefix("PAYU   *UBER EATS")).toEqual({ name: "UBER EATS", processor: "PayU" });
     expect(splitProcessorPrefix("HAULMER*PAPAS RICAS Y")).toEqual({ name: "PAPAS RICAS Y", processor: "Haulmer" });
     expect(splitProcessorPrefix("JUMBO BILBAO")).toEqual({ name: "JUMBO BILBAO", processor: null });
+    expect(splitProcessorPrefix("DL     *GOOGLE PLAY-YO")).toEqual({ name: "GOOGLE PLAY-YO", processor: "dLocal" });
+    expect(splitProcessorPrefix("PAYPAL *EPOCH ICFTECHN")).toEqual({ name: "EPOCH ICFTECHN", processor: "PayPal" });
+    expect(splitProcessorPrefix("IZ *Phone HUB")).toEqual({ name: "Phone HUB", processor: "Zettle" });
+  });
+
+  it("drops an old listing's «COMPRA» before the merchant, not the statement's own lines", () => {
+    expect(cleanBankMerchant("COMPRA JUMBO PENALOLEN")).toBe("JUMBO PENALOLEN");
+    expect(cleanBankMerchant("Compra Nacional Llaves Servicat")).toBe("Llaves Servicat");
+    expect(cleanBankMerchant("Compras Sodimac")).toBe("Sodimac");
+    expect(cleanBankMerchant("COMPRAS DEL PERIODO (ESTIMADO)")).toBe("COMPRAS DEL PERIODO (ESTIMADO)");
+    expect(cleanBankMerchant("COMPRAS INTERNACIONALES (ESTIMADO)")).toBe("COMPRAS INTERNACIONALES (ESTIMADO)");
+    expect(cleanBankMerchant("Compras Internet")).toBe("Compras Internet");
+  });
+
+  it("payslip lines: the employer without its legal suffix, words spelled", () => {
+    expect(payslipLineName("Comisión AFP · EMPRESA PRUEBA SPA")).toBe("Comisión AFP · Empresa Prueba");
+    expect(payslipLineName("Impuesto Unico (LQ) · PRUEBA CHILE SPA")).toBe("Impuesto Único · Prueba Chile");
+    expect(payslipLineName("IMPUESTO UNICO TRABAJADORES · PRUEBA S.A.")).toBe("Impuesto Único Trabajadores · Prueba");
+    expect(payslipLineName("Cotizacion Salud · PRUEBA LTDA")).toBe("Cotización Salud · Prueba");
   });
 });
 
@@ -214,6 +286,22 @@ describe("expenseLineDisplayNames", () => {
     expect(
       expenseLineDisplayNames({ source: "cc", merchant: "PAYU *UBER EA EXTRA", account_id: 1 }, ctx).display_merchant
     ).toBe("UBER EA EXTRA");
+  });
+
+  it("a shop's own receipt names the merchant the bank's name hides", () => {
+    const shop = expenseLineDisplayNames(
+      { source: "cc", merchant: "COMERCIALPRUEBA", account_id: 1, payment_receipt: receipt("shopify", "CORRALES DEL SUR") },
+      ctx
+    );
+    expect(shop.display_merchant).toBe("Corrales del Sur");
+    expect(shop.link_label?.inline).toBe(false);
+    // A platform selling for others keeps the platform as the merchant.
+    const platform = expenseLineDisplayNames(
+      { source: "cc", merchant: "PAYU *UBER EATS", account_id: 1, payment_receipt: receipt("uber_eats", "Streat Burger (Isidora)") },
+      ctx
+    );
+    expect(platform.display_merchant).toBe("Uber Eats");
+    expect(platform.link_label).toMatchObject({ text: "Streat Burger (Isidora)", inline: true });
   });
 
   it("a receipt's label is not repeated on the row when the merchant says it", () => {

@@ -717,6 +717,7 @@ export {
   usePatchCcExpenseLineCategoryMutation,
   usePatchCcExpensePurchaseNoteMutation,
   usePutCcExpensePurchaseBigGroupMutation,
+  usePostVendorBranchChoiceMutation,
   useCreateCcExpenseBigGroupMutation,
   useRenameCcExpenseBigGroupMutation,
   useDeleteCcExpenseBigGroupMutation,

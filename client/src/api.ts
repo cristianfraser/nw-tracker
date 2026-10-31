@@ -655,6 +655,11 @@ export const api = {
     j<{ ok: boolean }>(`/api/flows/expenses/manual/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteManualExpense: (id: number) =>
     j<void>(`/api/flows/expenses/manual/${id}`, { method: "DELETE" }),
+  postVendorBranchChoice: (body: { key: string; display: string }) =>
+    j<{ ok: boolean }>("/api/flows/expenses/vendor-branch-choice", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   putCcExpensePurchaseBigGroup: (body: { purchase_key: string; group_slug: string | null }) =>
     j<{ purchase_key: string; group_slug: string | null }>(
       "/api/flows/expenses/credit-card/purchase-big-group",

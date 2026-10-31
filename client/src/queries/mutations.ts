@@ -283,6 +283,17 @@ export function applyCcExpensePurchaseBigGroupPatch(
   };
 }
 
+/** The branch the user picks for a cut merchant name; the server rebuilds the rows' names. */
+export function usePostVendorBranchChoiceMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { key: string; display: string }) => api.postVendorBranchChoice(vars),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses(), exact: true });
+    },
+  });
+}
+
 export function usePutCcExpensePurchaseBigGroupMutation() {
   const queryClient = useQueryClient();
   const queryKey = queryKeys.flowsExpenses();

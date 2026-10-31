@@ -12,6 +12,8 @@
  *     processor's prefix taken off («MERPAGO*», «PAYU *», «HAULMER*»… → `merchant_processor`),
  *     then the vendor catalog (`vendorCatalog.ts`); a card merchant the listing cut reads as the
  *     longer merchant it starts on the same account, when they all read the same
+ *   - a name the catalog does not know, with a shop's or processor's own receipt: the receipt's payee
+ *   - a payslip line: its label spelled, its employer without the legal suffix
  *
  * Link label (`link_label`):
  *   - a receipt: the payee, never the processor («Streat Burger (Isidora)», not «… (Uber Eats)»);
@@ -57,7 +59,25 @@ export type ExpenseDisplayNames = {
   display_merchant?: string;
   merchant_processor?: string;
   link_label?: ExpenseLinkLabel;
+  /** A cut branch that could be several places: the user picks one (`key`: the folded name). */
+  branch_choices?: { key: string; options: string[] };
 };
+
+/**
+ * Receipts of the shop itself or of a payment processor: their payee is the merchant the bank's
+ * name hides («COMERCIALLASI» → «Corrales del Sur»). Platforms selling for others (Uber Eats,
+ * MercadoLibre, the App Store, stays) keep the platform as the merchant and the payee as the link.
+ */
+const RECEIPT_NAMES_MERCHANT = new Set([
+  "shopify",
+  "flow",
+  "pago_facil",
+  "calvin_klein",
+  "adidas",
+  "dynavap",
+  "club_domino",
+  "micoca_cola",
+]);
 
 const PROCESSOR_PREFIXES: readonly [RegExp, string][] = [
   [/^MERPAGO\s*\*\s*/i, "Mercado Pago"],
@@ -72,6 +92,13 @@ const PROCESSOR_PREFIXES: readonly [RegExp, string][] = [
   [/^REDELCOM\s+/i, "Redelcom"],
   [/^FLOW\s*\*\s*/i, "Flow"],
   [/^REDGLOBA\s*\*\s*/i, "RedGlobal"],
+  [/^DL\s*\*\s*/i, "dLocal"],
+  [/^DP\s*\*\s*/i, "dLocal"],
+  [/^PAYPAL\s*\*\s*/i, "PayPal"],
+  [/^PYV\s*\*\s*/i, "PYV"],
+  [/^NYA\s*\*\s*/i, "Nayax"],
+  [/^IZ\s*\*\s*/i, "Zettle"],
+  [/^SQ\s*\*\s*/i, "Square"],
 ];
 
 /** The bank's clutter around a merchant name. */
@@ -83,6 +110,10 @@ export function cleanBankMerchant(raw: string): string {
     .replace(/^\d{6,}\s+/, "")
     .replace(/^Agustinas\s+/i, "")
     .replace(/^\*\/\s*/, "")
+    // An old card listing put «COMPRA» / «Compra Nacional» before the merchant; the statement's
+    // own estimated lines («COMPRAS DEL PERIODO (ESTIMADO)») and «Compras Internet» keep theirs.
+    .replace(/^Compra Nacional\s+/i, "")
+    .replace(/^COMPRAS?\s+(?!DEL PERIODO|INTERNACIONALES|INTERNET\s*$)(?=\S)/i, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -265,10 +296,36 @@ export function loadDisplayNameContext(
 }
 
 /** A bank merchant through the catalog: cleaned, processor prefix off, then looked up. */
-function catalogMerchant(raw: string, catalog: VendorCatalog): { name: string; processor: string | null; listed: string | null } {
+function catalogMerchant(
+  raw: string,
+  catalog: VendorCatalog
+): { name: string; processor: string | null; listed: string | null; choices: ExpenseDisplayNames["branch_choices"] | null } {
   const cleaned = cleanBankMerchant(raw);
   const { name, processor } = splitProcessorPrefix(cleaned);
-  return { name, processor, listed: catalog.lookup(name) ?? catalog.lookup(cleaned) };
+  for (const key of [name, cleaned]) {
+    const m = catalog.match(key);
+    if (m) {
+      const choices = m.branchChoices ? { key: foldVendorName(key), options: m.branchChoices } : null;
+      return { name, processor, listed: m.display, choices };
+    }
+  }
+  return { name, processor, listed: null, choices: null };
+}
+
+const PAYSLIP_LABEL_WORDS: readonly [RegExp, string][] = [
+  [/\bUnico\b/g, "Único"],
+  [/\bCotizacion\b/g, "Cotización"],
+  [/\bComision\b/g, "Comisión"],
+];
+
+/** «Impuesto Unico (LQ) · EMPRESA CHILE SPA» → «Impuesto Único · Empresa Chile». */
+export function payslipLineName(raw: string): string {
+  const parts = raw.split(" · ");
+  const employer = parts.length > 1 ? parts.pop()! : null;
+  let label = parts.join(" · ").replace(/\s*\(LQ\)\s*$/i, "").trim();
+  if (label === label.toUpperCase()) label = titleCaseName(label);
+  for (const [re, word] of PAYSLIP_LABEL_WORDS) label = label.replace(re, word);
+  return employer ? `${label} · ${titleCaseName(stripLegalSuffix(employer))}` : label;
 }
 
 /**
@@ -302,10 +359,20 @@ export function expenseLineDisplayNames(
   let shown = raw;
   if (line.source === "checking" && cp && cpLabel && cp.direction !== "own") {
     shown = cp.direction === "out" ? `Transf a ${cpLabel}` : `Transf. de ${cpLabel}`;
+  } else if (line.source === "payslip" && raw) {
+    shown = payslipLineName(raw);
   } else if (raw) {
-    const { name, processor, listed } = catalogMerchant(raw, ctx.catalog);
-    shown = listed ?? (line.source === "cc" ? cutMerchantListed(raw, line.account_id, ctx) : null) ?? name;
+    const { name, processor, listed, choices } = catalogMerchant(raw, ctx.catalog);
+    const known = listed ?? (line.source === "cc" ? cutMerchantListed(raw, line.account_id, ctx) : null);
+    shown = known ?? name;
     if (processor) out.merchant_processor = processor;
+    if (choices) out.branch_choices = choices;
+    // A shop's or processor's receipt names the merchant the bank's name hides.
+    const r = line.payment_receipt;
+    if (known == null && r && !r.guess && RECEIPT_NAMES_MERCHANT.has(r.processor)) {
+      const label = receiptLabel(r, ctx.catalog, ctx.brands);
+      if (label) shown = label.text;
+    }
   }
   if (shown && shown !== raw) out.display_merchant = shown;
 

@@ -3,6 +3,7 @@ import express from "express";
 import { buildPayrollBreakdown } from "../payrollBreakdown.js";
 import { buildPayslipChecks } from "../payslipChecks.js";
 import { db } from "../db.js";
+import { saveVendorBranchChoice } from "../vendorCatalog.js";
 import { buildDepositsReconciliationPayload } from "../flowsDepositsReconciliation.js";
 import { buildFlowsDepositsPayload } from "../flowsDeposits.js";
 import {
@@ -666,6 +667,22 @@ app.patch("/api/flows/expenses/credit-card/purchase-notes", (req, res) => {
       stack: e instanceof Error ? e.stack : undefined,
     });
     res.status(400).json({ error: msg });
+  }
+});
+
+app.post("/api/flows/expenses/vendor-branch-choice", (req, res) => {
+  const body = req.body as { key?: string; display?: string };
+  const key = String(body.key ?? "").trim();
+  const display = String(body.display ?? "").trim();
+  if (!key || !display) {
+    res.status(400).json({ error: "key and display required" });
+    return;
+  }
+  try {
+    saveVendorBranchChoice(key, display);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
 
