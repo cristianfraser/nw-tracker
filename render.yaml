@@ -6,7 +6,8 @@
 # up). No secrets to set. The demo has NO login: recruiters landed on the login page and
 # left without trying it, so the gate cost more visits than it bought. DEMO_MODE serves
 # /api reads only (server/src/httpSecurity.ts) so an open demo can't be vandalized, and
-# anonymous visit/pageview analytics replace the old login log (server/src/demoAnalytics.ts).
+# anonymous visit/pageview analytics replace the old login log (server/src/demoAnalytics.ts,
+# pageviews and endpoint timings in the shared usage log, server/src/usageLog.ts).
 # See AGENTS.md "Hosted demo (Render)".
 # The repo is safe to make public: tree and full git history are free of personal data
 # (balances/amounts/account numbers purged; card last4s scrubbed from all history
@@ -50,7 +51,7 @@ services:
     # Persistent disk for the visit analytics only. The synthetic demo DB
     # (NW_TRACKER_TEST_DB, a relative path → server/data/, ephemeral) still regenerates
     # every deploy so it always matches deployed code; DEMO_ANALYTICS_DB lives on this disk
-    # so the visit log survives regeneration. See server/src/demoAnalytics.ts.
+    # so the visit log and the usage log survive regeneration. See server/src/usageDb.ts.
     # (The old demo-auth-logins.db from the login era stays on this disk, unread.)
     disk:
       name: nw-tracker-data

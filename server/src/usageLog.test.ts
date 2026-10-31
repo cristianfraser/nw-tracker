@@ -3,21 +3,21 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getAggregationCached } from "./aggregationCache.js";
-import { db } from "./db.js";
+import { usageDb } from "./usageDb.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import {
   flushUsageLog,
   resetUsageLogBufferForTest,
   usageHistogramBucket,
   usageLogMiddleware,
-  usagePageRoute,
   usageParamsKey,
 } from "./usageLog.js";
+import { usagePageRoute } from "./usagePagePath.js";
 import { buildUsageEndpointTrend, buildUsageReport, histogramPercentile } from "./usageReport.js";
 
 function clearTables(): void {
-  db.prepare(`DELETE FROM usage_endpoint_hourly`).run();
-  db.prepare(`DELETE FROM usage_page_views`).run();
+  usageDb().prepare(`DELETE FROM usage_endpoint_hourly`).run();
+  usageDb().prepare(`DELETE FROM usage_page_views`).run();
 }
 
 describe("usage log keys", () => {
@@ -125,7 +125,7 @@ describe("usage log over HTTP", () => {
     flushUsageLog();
     await fetch(`${base}/api/boom`);
     flushUsageLog();
-    const row = db.prepare(`SELECT count, server_errors FROM usage_endpoint_hourly WHERE route = '/api/boom'`).get();
+    const row = usageDb().prepare(`SELECT count, server_errors FROM usage_endpoint_hourly WHERE route = '/api/boom'`).get();
     expect(row).toEqual({ count: 2, server_errors: 2 });
   });
 });

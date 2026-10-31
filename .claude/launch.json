@@ -99,7 +99,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "NW_TRACKER_API_PROXY_TARGET=http://localhost:3210 npm run dev -w nw-tracker-client -- --port 5210 --strictPort"
+        "VITE_DEMO_MODE=1 NW_TRACKER_API_PROXY_TARGET=http://localhost:3210 npm run dev -w nw-tracker-client -- --port 5210 --strictPort"
       ],
       "port": 5210
     }

@@ -7,13 +7,12 @@ import { MarketTickerPanel } from "./components/layout/MarketTickerPanel";
 import { MortgageUfReminderToast } from "./components/layout/MortgageUfReminderToast";
 import { DisplayPreferencesProvider, useDisplayPreferences } from "./context/DisplayPreferencesContext";
 import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
-import { useDemoPageviewBeacon } from "./demoAnalytics";
 import { useUsagePageTiming } from "./usagePageTiming";
 import { useChileDayRolloverInvalidation } from "./queries/useChileDayRolloverInvalidation";
 import { useLiveQuotesStampInvalidation } from "./queries/useLiveQuotesStampInvalidation";
 import { useDocumentTitleFromH1 } from "./useDocumentTitleFromH1";
 import { useFaviconFromRoute } from "./useFaviconFromRoute";
-import { PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
+import { VISIBLE_PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GroupInfoPage } from "./pages/GroupInfoPage";
 import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
@@ -95,9 +94,8 @@ function AppTree() {
   useDocumentTitleFromH1();
   // Tab icon follows the route (bucket/account color halves, flows/settings shapes).
   useFaviconFromRoute();
-  // Anonymous route reporting; a no-op outside the hosted demo (endpoint exists there only).
-  useDemoPageviewBeacon();
-  // Usage log of the primary instance: route visits and how long their queries took to settle.
+  // Usage log: route visits and how long their queries took to settle (the public demo's
+  // anonymous pageviews too; the server ignores it on instances whose log is off).
   useUsagePageTiming();
   // Refetch day-baked payloads right after Chile midnight instead of waiting out staleTime.
   useChileDayRolloverInvalidation();
@@ -147,7 +145,7 @@ function AppTree() {
             <Route path="/watchlist" element={<WatchlistPage />} />
             <Route path="/panel" element={<ControlPanelLayout />}>
               <Route index element={<Navigate to="notifications" replace />} />
-              {PANEL_SUBROUTES.map((route) => (
+              {VISIBLE_PANEL_SUBROUTES.map((route) => (
                 <Route
                   key={route.slug}
                   path={route.slug}

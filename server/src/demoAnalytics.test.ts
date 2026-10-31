@@ -14,13 +14,13 @@ process.env.DEMO_ANALYTICS_SALT = "vitest-analytics-salt";
 const {
   demoAnalyticsDb,
   isBotUserAgent,
-  normalizeBeaconPath,
-  recordDemoPageview,
   recordDemoVisit,
   referrerOrigin,
   srcTagFromQuery,
   visitorKey,
 } = await import("./demoAnalytics.js");
+const { prepareDemoUsageDb } = await import("./usageDb.js");
+const { normalizeUsagePagePath } = await import("./usagePagePath.js");
 
 const DAY = "2026-07-24";
 
@@ -41,7 +41,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
-  demoAnalyticsDb().exec("DELETE FROM demo_visits; DELETE FROM demo_pageviews;");
+  demoAnalyticsDb().exec("DELETE FROM demo_visits;");
 });
 
 afterAll(() => {
@@ -90,12 +90,12 @@ describe("request classification", () => {
   });
 
   it("accepts only plausible in-app routes from the beacon", () => {
-    expect(normalizeBeaconPath("/liabilities/cc/santander?x=1")).toBe("/liabilities/cc/santander");
-    expect(normalizeBeaconPath("/")).toBe("/");
-    expect(normalizeBeaconPath("//evil.example.com")).toBeNull();
-    expect(normalizeBeaconPath("https://evil.example.com")).toBeNull();
-    expect(normalizeBeaconPath(`/${"a".repeat(200)}`)).toBeNull();
-    expect(normalizeBeaconPath(42)).toBeNull();
+    expect(normalizeUsagePagePath("/liabilities/cc/santander?x=1")).toBe("/liabilities/cc/santander");
+    expect(normalizeUsagePagePath("/")).toBe("/");
+    expect(normalizeUsagePagePath("//evil.example.com")).toBeNull();
+    expect(normalizeUsagePagePath("https://evil.example.com")).toBeNull();
+    expect(normalizeUsagePagePath(`/${"a".repeat(200)}`)).toBeNull();
+    expect(normalizeUsagePagePath(42)).toBeNull();
   });
 });
 
@@ -134,20 +134,30 @@ describe("recordDemoVisit", () => {
   });
 });
 
-describe("recordDemoPageview", () => {
-  it("counts views per (day, visitor, path)", () => {
-    recordDemoPageview(DAY, "v1", "/");
-    recordDemoPageview(DAY, "v1", "/");
-    recordDemoPageview(DAY, "v1", "/projections");
-    recordDemoPageview(DAY, "v2", "/");
+describe("prepareDemoUsageDb", () => {
+  it("adds the usage tables and turns the legacy per-day pageview counts into untimed views, once", () => {
+    const analytics = demoAnalyticsDb();
+    analytics.exec(
+      `CREATE TABLE demo_pageviews (
+         day TEXT NOT NULL, visitor TEXT NOT NULL, path TEXT NOT NULL, views INTEGER NOT NULL DEFAULT 0,
+         first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, PRIMARY KEY (day, visitor, path));
+       INSERT INTO demo_pageviews VALUES ('2026-07-24', 'v1', '/account/12', 2, '2026-07-24 13:05:00', '2026-07-24 13:09:00');
+       INSERT INTO demo_pageviews VALUES ('2026-07-24', 'v2', '/', 1, '2026-07-24 14:00:00', '2026-07-24 14:00:00');`
+    );
+    prepareDemoUsageDb(analytics);
+    prepareDemoUsageDb(analytics);
 
-    const rows = demoAnalyticsDb()
-      .prepare(`SELECT visitor, path, views FROM demo_pageviews ORDER BY visitor, path`)
+    const rows = analytics
+      .prepare(`SELECT viewed_at, route, path, visitor, outcome, settle_ms FROM usage_page_views ORDER BY id`)
       .all();
     expect(rows).toEqual([
-      { visitor: "v1", path: "/", views: 2 },
-      { visitor: "v1", path: "/projections", views: 1 },
-      { visitor: "v2", path: "/", views: 1 },
+      { viewed_at: "2026-07-24T13:05:00.000Z", route: "/account/:id", path: "/account/12", visitor: "v1", outcome: "untimed", settle_ms: null },
+      { viewed_at: "2026-07-24T13:05:00.000Z", route: "/account/:id", path: "/account/12", visitor: "v1", outcome: "untimed", settle_ms: null },
+      { viewed_at: "2026-07-24T14:00:00.000Z", route: "/", path: "/", visitor: "v2", outcome: "untimed", settle_ms: null },
     ]);
+    expect(
+      analytics.prepare(`SELECT 1 FROM sqlite_master WHERE name = 'demo_pageviews'`).get()
+    ).toBeUndefined();
+    expect(analytics.prepare(`SELECT 1 FROM sqlite_master WHERE name = 'usage_endpoint_hourly'`).get()).toBeTruthy();
   });
 });
