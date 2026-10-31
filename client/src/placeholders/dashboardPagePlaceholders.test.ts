@@ -17,7 +17,6 @@ describe("buildPlaceholderDashboardTimeseries", () => {
     expect(ts.overview?.points.length).toBeGreaterThan(0);
     const last = ts.overview!.points[ts.overview!.points.length - 1]!;
     expect(last.total_nw).toBe(0);
-    expect(ts.accounts_ex_property?.points.length).toBeGreaterThan(0);
     expect(last.as_of_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

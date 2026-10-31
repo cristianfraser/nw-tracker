@@ -9,7 +9,6 @@ import {
 } from "./groupMonthlyPerfConsolidation.js";
 import { db } from "./db.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
-import { listFirstLevelPortfolioGroupChildren } from "./portfolioGroups.js";
 import {
   getDashboardValuationTimeseries,
   getGroupValuationTimeseries,
@@ -81,27 +80,6 @@ describe("listLiabilitiesTabAccountRows", () => {
       tabSum,
       0
     );
-  });
-
-  it("primary chart lines match brokerage and retirement first-level portfolio children", () => {
-    const ts = getDashboardValuationTimeseries("clp");
-    const accounts = ts.accounts_ex_property?.accounts ?? [];
-    const expectedSlugs = [
-      ...listFirstLevelPortfolioGroupChildren("brokerage").map((c) => c.slug),
-      ...listFirstLevelPortfolioGroupChildren("retirement").map((c) => c.slug),
-      "cash_eqs",
-    ];
-    // Lean preset: brokerage sub-buckets without accounts stay unlinked (seedNavTree is
-    // data-gated), so the lean tree has fewer first-level children than the real one.
-    expect(expectedSlugs.length).toBeGreaterThanOrEqual(4);
-    expect(accounts.length).toBe(expectedSlugs.length);
-    const labels = new Set(accounts.map((a) => a.name));
-    for (const child of [
-      ...listFirstLevelPortfolioGroupChildren("brokerage"),
-      ...listFirstLevelPortfolioGroupChildren("retirement"),
-    ]) {
-      expect(labels.has(child.label)).toBe(true);
-    }
   });
 
   it("overview brokerage on a mid-month chart date uses that month's cierre, not prior month", () => {

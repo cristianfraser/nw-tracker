@@ -4,50 +4,31 @@ import { getDashboardValuationTimeseries } from "./valuationTimeseries.js";
 
 /**
  * The daily overview payload carries what the day-mode dashboard charts need (the overview
- * points with their USD milestone levels, and «Cuentas principales»). They must be aligned to
- * the `points` grid and — because both the daily and the monthly views now sum the same marks
- * (phase 2a) — agree with the monthly chart at shared month-ends.
+ * points with their USD milestone levels). Because both the daily and the monthly views sum the
+ * same marks (phase 2a), they agree with the monthly chart at shared month-ends.
  */
 describe("getDashboardOverviewDaily — phase 3 blocks", () => {
-  it("carries USD milestone levels on every point and primary_lines aligned to points", () => {
+  it("carries USD milestone levels on every point", () => {
     const d = getDashboardOverviewDaily("clp", 90);
     expect(d.points.length).toBeGreaterThan(0);
 
     for (const p of d.points) {
       expect(Object.keys(p)).toEqual(expect.arrayContaining(["usd_50k", "usd_100k", "usd_500k"]));
     }
-
-    // Primary child lines: each aligned to the points grid.
-    expect(d.primary_lines.length).toBeGreaterThan(0);
-    for (const line of d.primary_lines) {
-      expect(line.values.length).toBe(d.points.length);
-      expect(line.dataKey).toMatch(/^-?\d+$/);
-    }
   });
 
-  it("primary lines and the overview match the monthly chart at a shared month-end", () => {
+  it("the overview matches the monthly chart at a shared month-end", () => {
     const d = getDashboardOverviewDaily("clp", 0);
     const m = getDashboardValuationTimeseries("clp");
 
     const dayIdx = new Map(d.points.map((p, i) => [p.as_of_date, i]));
-    // Pick a month-end present in both the daily grid and the monthly primary chart.
-    const monthEnd = m.accounts_ex_property.points
+    // Pick a month-end present in both the daily grid and the monthly overview chart.
+    const monthEnd = m.overview.points
       .map((p) => String(p.as_of_date))
       .filter((date) => dayIdx.has(date))
       .at(-2); // penultimate: avoid the live "today" point whose value moves intraday
     if (!monthEnd) return; // lean synthetic DB may not overlap — shape test above still covers it
     const i = dayIdx.get(monthEnd)!;
-
-    const monthlyRow = m.accounts_ex_property.points.find((p) => p.as_of_date === monthEnd)!;
-    for (const line of d.primary_lines) {
-      const daily = line.values[i];
-      const monthly = monthlyRow[line.dataKey];
-      const nd = typeof daily === "number" && Number.isFinite(daily) ? daily : null;
-      const nm = typeof monthly === "number" && Number.isFinite(monthly) ? monthly : null;
-      if (nd == null || nm == null) continue;
-      // Σ marks either way; allow a peso of rounding.
-      expect(Math.abs(nd - nm)).toBeLessThan(2);
-    }
 
     const monthlyOverview = m.overview.points.find((p) => p.as_of_date === monthEnd);
     const dailyOverview = d.points[i]!;
@@ -63,19 +44,6 @@ describe("getDashboardOverviewDaily — phase 3 blocks", () => {
           expect(Math.abs(nd - nm)).toBeLessThan(2);
         }
       }
-    }
-  });
-
-  it("a primary line starts at its first non-zero value, never on a run of zeros (both grains)", () => {
-    const d = getDashboardOverviewDaily("clp", 0);
-    for (const line of d.primary_lines) {
-      const first = line.values.find((v) => v != null);
-      if (first != null) expect(first).not.toBe(0);
-    }
-    const m = getDashboardValuationTimeseries("clp").accounts_ex_property;
-    for (const a of m.accounts) {
-      const first = m.points.map((p) => p[a.dataKey]).find((v) => v != null);
-      if (first != null) expect(first).not.toBe(0);
     }
   });
 

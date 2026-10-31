@@ -282,7 +282,6 @@ export function attachColorsToTimeseriesBlock<T extends TimeseriesAccountsBlock 
 export function attachColorsToValuationPayload<T extends Record<string, unknown>>(payload: T): T {
   const keys = [
     "accounts_in_group",
-    "accounts_ex_property",
     "accounts",
   ] as const;
   const out = { ...payload } as Record<string, unknown>;

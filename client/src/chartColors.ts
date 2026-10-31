@@ -223,7 +223,6 @@ export function overviewLineColor(dataKey: string): string {
 
 export type ChartColorPlan =
   | { kind: "default" }
-  | { kind: "dashboard-primary" }
   | { kind: "dashboard-overview" }
   | {
     kind: "group-tab";
@@ -293,24 +292,6 @@ export function resolveLineSeriesColors(
         return { ...s, stroke, isReferenceOverlay: true, isFaintReference: true };
       }
       return { ...s, stroke: strokeFromAccountColorRgb(s.color_rgb) ?? overviewLineColor(s.dataKey) };
-    });
-  }
-
-  if (plan.kind === "dashboard-primary") {
-    const strokeByColorIndex = new Map<number, string>();
-    const missingColor = "#f43f5e";
-    return series.map((s) => {
-      if (s.isDeposit) {
-        const base =
-          strokeByColorIndex.get(s.colorIndex) ?? DEFAULT_LINE_COLORS[s.colorIndex % DEFAULT_LINE_COLORS.length];
-        return {
-          ...s,
-          stroke: lightenStrokeForAccumulated(base),
-        };
-      }
-      const stroke = strokeFromAccountColorRgb(s.color_rgb) ?? missingColor;
-      strokeByColorIndex.set(s.colorIndex, stroke);
-      return { ...s, stroke };
     });
   }
 

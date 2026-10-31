@@ -10,7 +10,6 @@ import type {
   NavCardPeriodMetricsDto,
   NavTreeNodeDto,
   SidebarNavResponse,
-  TimeseriesBlock,
   ValuationTimeseriesResponse,
 } from "../types";
 import { monthEndYmdsForSkeleton } from "./placeholderMonthRows";
@@ -36,10 +35,6 @@ const OVERVIEW_LINE_SPECS: DashboardChartShapeLine[] = [
   })),
 ];
 
-const PRIMARY_LINE_FALLBACK: DashboardChartShapeLine[] = [
-  { dataKey: "total_nw", name: "Patrimonio neto", valueSeriesType: "data" },
-];
-
 function zeroPointsForKeys(
   keys: string[],
   monthEnds: string[]
@@ -49,17 +44,6 @@ function zeroPointsForKeys(
     for (const k of keys) row[k] = 0;
     return row;
   });
-}
-
-/** Shape line → chart account line (real `accounts_ex_property` uses `accounts`, not `lines`). */
-function accountLinesFromShape(lines: DashboardChartShapeLine[]): NonNullable<TimeseriesBlock["accounts"]> {
-  return lines.map((l) => ({
-    account_id: l.account_id ?? (Number(l.dataKey) || 0),
-    name: l.name,
-    dataKey: l.dataKey,
-    valueSeriesType: l.valueSeriesType,
-    ...(l.color_rgb ? { color_rgb: l.color_rgb } : {}),
-  }));
 }
 
 /** Zero P/L + deposits combo so the perf section mounts before the bundle resolves. */
@@ -80,25 +64,19 @@ function zeroInversionesPerf(unit: DisplayUnit, monthEnds: string[]): Inversione
   };
 }
 
-/** Flat-zero overview + primary blocks for home dashboard charts while bundle loads. */
+/** Flat-zero overview block for the home dashboard chart while the bundle loads. */
 export function buildPlaceholderDashboardTimeseries(
   unit: DisplayUnit,
   shape?: DashboardChartShape
 ): ValuationTimeseriesResponse {
   const monthEnds = monthEndYmdsForSkeleton(shape?.first_month);
   const overviewLines = shape?.overview_lines?.length ? shape.overview_lines : OVERVIEW_LINE_SPECS;
-  const primaryLines = shape?.primary_lines?.length ? shape.primary_lines : PRIMARY_LINE_FALLBACK;
-  const accountsExProperty: TimeseriesBlock = {
-    accounts: accountLinesFromShape(primaryLines),
-    points: zeroPointsForKeys(primaryLines.map((l) => l.dataKey), monthEnds),
-  };
   return {
     unit: unitForTs(unit),
     overview: {
       lines: overviewLines,
       points: zeroPointsForKeys(overviewLines.map((l) => l.dataKey), monthEnds),
     },
-    accounts_ex_property: accountsExProperty,
   };
 }
 
@@ -250,18 +228,9 @@ export function chartShapeFromLoadedDashboardBundle(
   const overview = bundle.ts?.overview;
   if (!overview?.points.length) return undefined;
   const firstDate = overview.points[0]?.as_of_date;
-  const primary = bundle.ts.accounts_ex_property;
-  const primary_lines: DashboardChartShapeLine[] = (primary?.accounts ?? []).map((a) => ({
-    dataKey: a.dataKey,
-    name: a.name,
-    valueSeriesType: a.valueSeriesType,
-    account_id: a.account_id,
-    ...(a.color_rgb ? { color_rgb: a.color_rgb } : {}),
-  }));
   return {
     first_month: typeof firstDate === "string" ? firstDate : null,
     overview_lines: overview.lines,
-    primary_lines,
     has_perf_sections: Boolean(bundle.inversionesPerf?.points.length),
   };
 }
