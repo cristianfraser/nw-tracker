@@ -254,6 +254,13 @@
   font-size: 0.8rem;
 }
 
+.panelBigGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
 .panelNote {
   max-width: 28rem;
 }

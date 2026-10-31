@@ -310,8 +310,19 @@ function ExpenseLineRow({
   const noteStatementLineId =
     ln.statement_line_id > 0 ? ln.statement_line_id : ln.category_statement_line_id ?? undefined;
   const needsAction = ln.cuota_purchase_kind != null;
+  // A big group shows on the row once set; until then its picker lives in the row's extras.
+  const canBigGroup = showBigGroupControls && Boolean(ln.purchase_key) && !fixedCategory;
+  const bigGroupOnRow = canBigGroup && ln.big_group_slug != null;
+  const bigGroupInPanel = canBigGroup && ln.big_group_slug == null;
   const hasPanel =
-    showNoteInput || hasPieces || needsAction || canEditPieces || canEditManual || canMakeInstallment || canDelete;
+    showNoteInput ||
+    bigGroupInPanel ||
+    hasPieces ||
+    needsAction ||
+    canEditPieces ||
+    canEditManual ||
+    canMakeInstallment ||
+    canDelete;
   const note = ln.purchase_notes.trim();
   const merchant = ln.merchant ?? "—";
 
@@ -343,7 +354,7 @@ function ExpenseLineRow({
         ) : (
           <FixedCategoryPill line={ln} categories={categories} />
         )}
-        {showBigGroupControls && ln.purchase_key && !fixedCategory ? (
+        {bigGroupOnRow ? (
           <ExpenseBigGroupPicker purchaseKey={ln.purchase_key} value={ln.big_group_slug} groups={bigGroups} />
         ) : null}
       </div>
@@ -401,6 +412,12 @@ function ExpenseLineRow({
                   </span>
                 </>
               ) : null}
+            </div>
+          ) : null}
+          {bigGroupInPanel ? (
+            <div className={styles.panelBigGroup}>
+              <span className="muted">{t("expenses.creditCard.lineRow.bigGroupLabel")}</span>
+              <ExpenseBigGroupPicker purchaseKey={ln.purchase_key} value={null} groups={bigGroups} />
             </div>
           ) : null}
           {showNoteInput ? (
@@ -486,10 +503,10 @@ function SortButton({
 }
 
 /**
- * Expense lines as a responsive list: one row per line — origin icon, date and the category /
- * big-group pills on top, the merchant (+ note, ⓘ linked details) and the amount (installment
- * detail in superscript) below; the ⋯ button opens the row's extras (note editor, pieces,
- * installments, delete), with a red badge when the line waits on the user. The header is a set of
+ * Expense lines as a responsive list: one row per line — origin icon, date and the category pill
+ * (+ the big group's once set) on top, the merchant (+ note, ⓘ linked details) and the amount
+ * (installment detail in superscript) below; the ⋯ button opens the row's extras (big group while
+ * unset, note editor, pieces, installments, delete), with a red badge when the line waits on the user. The header is a set of
  * sort buttons (date, category, amount) that sort and reverse the rows. Same rendering at every
  * width; narrow containers stack the pills under the merchant.
  */
