@@ -281,6 +281,11 @@ export function invalidateGroupResponses(): void {
   deleteKeysMatchingPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}group|`);
 }
 
+/** Drop the entries under one response prefix (an API write; see `index.ts`). */
+export function invalidateKeysWithPrefix(prefix: string): void {
+  deleteKeysMatchingPrefix(prefix);
+}
+
 export function invalidateAccountDetailBundles(): void {
   deleteKeysMatchingPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}account_detail|`);
 }
