@@ -128,6 +128,7 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     await x.step("broker e-mail check", npmRun("check:broker-emails"));
     await applyOrReport(x, "Fintual e-mail movements", "import:fintual-emails", o.fintualApply);
     await applyOrReport(x, "Fintual Acciones dividend breakdowns", "import:fintual-acciones", o.fintualApply);
+    await applyOrReport(x, "Fintual wallet interest", "import:fintual-wallet", o.fintualApply);
     await applyOrReport(x, "Racional e-mail movements", "import:racional-emails", o.racionalApply);
   }
 
