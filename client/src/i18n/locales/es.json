@@ -1353,7 +1353,7 @@
       "unclassifiedTableEmpty": "No hay gastos sin clasificar.",
       "depositMatchedTableTitle": "Gastos emparejados con depósitos",
       "depositMatchedTableEmpty": "No hay gastos emparejados con depósitos.",
-      "mortgageDepositLinkCuota": "Cuota hipotecaria {{cuota}}",
+      "mortgageDepositLinkCuota": "cuota {{cuota}}",
       "investmentDepositLink": "Depósito inversión",
       "bigGroups": {
         "none": "—",

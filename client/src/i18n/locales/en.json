@@ -1353,7 +1353,7 @@
       "unclassifiedTableEmpty": "No unclassified expenses.",
       "depositMatchedTableTitle": "Expenses matched to deposits",
       "depositMatchedTableEmpty": "No expenses matched to deposits.",
-      "mortgageDepositLinkCuota": "Mortgage installment {{cuota}}",
+      "mortgageDepositLinkCuota": "installment {{cuota}}",
       "investmentDepositLink": "Investment deposit",
       "bigGroups": {
         "none": "—",

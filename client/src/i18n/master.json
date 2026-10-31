@@ -4774,8 +4774,8 @@
         "es": "No hay gastos emparejados con depósitos."
       },
       "mortgageDepositLinkCuota": {
-        "en": "Mortgage installment {{cuota}}",
-        "es": "Cuota hipotecaria {{cuota}}"
+        "en": "installment {{cuota}}",
+        "es": "cuota {{cuota}}"
       },
       "investmentDepositLink": {
         "en": "Investment deposit",
