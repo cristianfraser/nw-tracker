@@ -5060,10 +5060,6 @@
           "en": "The bank cut the name; it could be any of these.",
           "es": "El banco cortó el nombre; podría ser cualquiera de estas."
         },
-        "bankMerchant": {
-          "en": "As the bank prints it: {{merchant}}",
-          "es": "Como lo imprime el banco: {{merchant}}"
-        },
         "viaProcessor": {
           "en": "Paid through {{processor}}",
           "es": "Pagado vía {{processor}}"
