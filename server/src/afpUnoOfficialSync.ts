@@ -13,13 +13,16 @@
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import { afpDisplayDayForOfficialDay, buildAfpDisplaySeries, type DisplayFundUnit, type OfficialFundUnit } from "./afpDisplayFrame.js";
 import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
+import { fetchUnoFundAHistory, UNO_API_FIRST_DAY } from "./afpUnoApi.js";
 import { db } from "./db.js";
+import { demoModeEnabled } from "./demoModeFlag.js";
 import { isChileBusinessDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import {
   fetchSpAfpFundUnits,
   officialPensionFundUnits,
   upsertSpAfpFundUnits,
   type PensionFund,
+  type SpAfpFundUnitRow,
   type SpAfpRestatement,
 } from "./spAfpFundUnits.js";
 
@@ -33,6 +36,20 @@ export const AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS = 1;
  */
 export const AFP_UNO_PUBLISH_HOUR_CHILE = 18;
 
+/**
+ * Where UNO's official values come from: the Superintendencia (`sp`) on the personal instance,
+ * AFP UNO's own API (`uno_api`, `afpUnoApi.ts`) on the hosted demo, whose host the SP refuses.
+ * The one place the choice is made; the sync runner and the stale rules both read it.
+ */
+export type AfpUnoOfficialSource = "sp" | "uno_api";
+
+export function afpUnoOfficialSource(): AfpUnoOfficialSource {
+  return demoModeEnabled() ? "uno_api" : "sp";
+}
+
+/** Business days a source publishes after the SP: UNO's API carries day D one business day later. */
+export const AFP_UNO_SOURCE_EXTRA_LAG_BUSINESS_DAYS: Record<AfpUnoOfficialSource, number> = { sp: 0, uno_api: 1 };
+
 const UNO = "uno";
 const FUND = "A" as const;
 /** Display days re-derived on every run (covers the SP's provisional tail and any restatement). */
@@ -43,12 +60,15 @@ const DISPLAY_REWRITE_DAYS = 60;
  * latest business day whose publish hour has passed (today from 18:00, else the business day
  * before today).
  */
-export function afpUnoExpectedOfficialDay(cl: ChileWallClock): string {
+export function afpUnoExpectedOfficialDay(
+  cl: ChileWallClock,
+  source: AfpUnoOfficialSource = afpUnoOfficialSource()
+): string {
   const latestPublishDay =
     isChileBusinessDay(cl.ymd) && cl.hour >= AFP_UNO_PUBLISH_HOUR_CHILE ? cl.ymd : priorChileBusinessDayYmd(cl.ymd);
   if (!latestPublishDay) throw new Error(`afp_uno: no Chile business day before ${cl.ymd}`);
   let d = latestPublishDay;
-  for (let i = 0; i < AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS; i++) {
+  for (let i = 0; i < AFP_UNO_DISPLAY_LAG_BUSINESS_DAYS + AFP_UNO_SOURCE_EXTRA_LAG_BUSINESS_DAYS[source]; i++) {
     const prior = priorChileBusinessDayYmd(d);
     if (!prior) throw new Error(`afp_uno: no Chile business day before ${d}`);
     d = prior;
@@ -64,8 +84,12 @@ export function latestOfficialUnoDay(): string | null {
 }
 
 /** Stale = the expected official day is not in DB. */
-export function isAfpUnoOfficialStale(cl: ChileWallClock, latestOfficialDay: string | null): boolean {
-  const expected = afpUnoExpectedOfficialDay(cl);
+export function isAfpUnoOfficialStale(
+  cl: ChileWallClock,
+  latestOfficialDay: string | null,
+  source: AfpUnoOfficialSource = afpUnoOfficialSource()
+): boolean {
+  const expected = afpUnoExpectedOfficialDay(cl, source);
   return latestOfficialDay == null || latestOfficialDay < expected;
 }
 
@@ -74,10 +98,14 @@ export function isAfpUnoOfficialStale(cl: ChileWallClock, latestOfficialDay: str
  * official day is beyond `latestOfficialDay` — today when today is a business day before its
  * publish hour, else the following business days.
  */
-export function afpUnoNextDue(cl: ChileWallClock, latestOfficialDay: string | null): { ymd: string; hour: number } | null {
+export function afpUnoNextDue(
+  cl: ChileWallClock,
+  latestOfficialDay: string | null,
+  source: AfpUnoOfficialSource = afpUnoOfficialSource()
+): { ymd: string; hour: number } | null {
   let d = isChileBusinessDay(cl.ymd) && cl.hour < AFP_UNO_PUBLISH_HOUR_CHILE ? cl.ymd : nextChileBusinessDayYmd(cl.ymd);
   for (let i = 0; d != null && i < 21; i++) {
-    const expected = afpUnoExpectedOfficialDay({ ...cl, ymd: d, hour: AFP_UNO_PUBLISH_HOUR_CHILE, minute: 0 });
+    const expected = afpUnoExpectedOfficialDay({ ...cl, ymd: d, hour: AFP_UNO_PUBLISH_HOUR_CHILE, minute: 0 }, source);
     if (latestOfficialDay == null || expected > latestOfficialDay) return { ymd: d, hour: AFP_UNO_PUBLISH_HOUR_CHILE };
     d = nextChileBusinessDayYmd(d);
   }
@@ -168,8 +196,39 @@ export async function syncAfpUnoFromSp(opts: {
   const latestBefore = latestOfficialUnoDay();
   const fromYear = latestBefore != null && latestBefore >= `${year - 1}-12-31` ? year : year - 1;
   const fetched = await fetchSpAfpFundUnits(FUND, fromYear, year, opts.cl.ymd, { signal: opts.signal });
-  const unoFetched = fetched.filter((r) => r.afp === UNO);
-  if (unoFetched.length === 0) throw new Error(`afp_uno: the SP file for ${fromYear}–${year} carries no UNO column`);
+  return applyFetchedOfficialRows(fetched, fromYear === year ? [year] : [fromYear, year], opts);
+}
+
+/**
+ * The hosted demo's runner: UNO's own API from {@link DISPLAY_REWRITE_DAYS} days before the
+ * latest stored day (its whole history when none is), then the same store and display rewrite.
+ */
+export async function syncAfpUnoFromUnoApi(opts: {
+  cl: ChileWallClock;
+  dryRun: boolean;
+  signal?: AbortSignal;
+}): Promise<AfpUnoOfficialSyncResult> {
+  const latestBefore = latestOfficialUnoDay();
+  const fromDay = latestBefore == null ? UNO_API_FIRST_DAY : chileCalendarAddDays(latestBefore, -DISPLAY_REWRITE_DAYS);
+  const fetched = await fetchUnoFundAHistory(fromDay, opts.cl.ymd, { signal: opts.signal });
+  const years = [...new Set(fetched.map((r) => Number(r.day.slice(0, 4))))];
+  return applyFetchedOfficialRows(fetched, years, opts);
+}
+
+/** The `afp_uno` sync runner of {@link afpUnoOfficialSource}. */
+export function afpUnoOfficialSyncRunner(
+  source: AfpUnoOfficialSource = afpUnoOfficialSource()
+): typeof syncAfpUnoFromSp {
+  return source === "uno_api" ? syncAfpUnoFromUnoApi : syncAfpUnoFromSp;
+}
+
+function applyFetchedOfficialRows(
+  fetched: readonly SpAfpFundUnitRow[],
+  years: number[],
+  opts: { cl: ChileWallClock; dryRun: boolean }
+): AfpUnoOfficialSyncResult {
+  const unoFetched = fetched.filter((r) => r.afp === UNO && r.fund === FUND);
+  if (unoFetched.length === 0) throw new Error(`afp_uno: the fetch for ${years.join("–")} carries no UNO fund A value`);
   const official = upsertSpAfpFundUnits(fetched, { dryRun: opts.dryRun });
   const published_ymd = unoFetched.reduce((m, r) => (r.day > m ? r.day : m), unoFetched[0]!.day);
 
@@ -187,7 +246,7 @@ export async function syncAfpUnoFromSp(opts: {
   );
   const written = upsertAfpDisplayRows(AFP_UNO_CUOTA_SERIES_KEY, UNO, display, opts.dryRun);
   return {
-    years: fromYear === year ? [year] : [fromYear, year],
+    years,
     published_ymd,
     official_restated: official.restated.filter((r) => r.afp === UNO),
     display_written: written.written,

@@ -31,12 +31,12 @@ import { chileCalendarTodayYmd } from "../chileDate.js";
 import { invalidateExpenseGenericUniqueMerchantCache } from "../expenseGenericUniqueMerchants.js";
 import { expandYearMonthsInclusive, monthEndUtcYmd } from "../calendarMonth.js";
 import { MOVEMENT_CLP_LEG_SQL } from "../movementAmounts.js";
-import { AFC_CIC_SERIES_KEY } from "../afcCicSeries.js";
 import { AFP_UNO_CUOTA_SERIES_KEY, afpDisplaySeriesKey } from "../afpUnoSeries.js";
 import { isChileBusinessDay, nextChileBusinessDayYmd } from "../marketHolidays.js";
 import { FLOW_KIND_AFP_FUND_SWITCH } from "../movementFlowType.js";
 import {
   chapterForMonth,
+  demoRng,
   type DemoCard,
   type DemoChapter,
   type DemoMonth,
@@ -56,13 +56,19 @@ export type DemoAccounts = {
   afpId: number | null;
   afcId: number | null;
   /**
-   * Real-market demo only: the AFP is a cuota ledger on the Superintendencia's official values —
-   * Modelo fund A from the start, switched into UNO fund A (`afpId`, the live account) in
-   * `switchMonth`, the shape the author's own AFP history has. Null = the synthetic book AFP.
+   * Real-market demo only: the AFP is a cuota ledger on the official values — Modelo fund A from
+   * the start (the committed SP snapshot), switched into UNO fund A (`afpId`, the live account,
+   * on UNO's own API) in `switchMonth`, the shape the author's own AFP history has. Null = the
+   * synthetic book AFP.
    */
   afpLedger: { modeloId: number; switchMonth: DemoMonth } | null;
-  /** Real-market demo only: the AFC is a cuota ledger on the SP `afc_cic` series. */
-  afcLedger: boolean;
+  /**
+   * How the AFC book account is valued: `portfolio` (lean test preset) marks it month-end at a
+   * fraction of the portfolio's monthly return; `smooth` (real-market demo) marks it every Chile
+   * business day at a fixed low yearly return plus small seeded noise, like a pension fund
+   * (`writeDemoAfcSmoothMonth`). No source of the cesantía fund's values answers the demo's host.
+   */
+  afcModel: "portfolio" | "smooth";
   savingsId: number | null;
   vistaId: number | null;
   propertyId: number | null;
@@ -564,10 +570,11 @@ export type DemoRunState = {
   cryptoUnits: number;
   afpValueClp: number;
   afcValueClp: number;
-  /** Cuota ledgers (real-market demo): Modelo cuotas until the switch, then UNO; AFC cuotas. */
+  /** Cuota ledger (real-market demo): Modelo cuotas until the switch, then UNO. */
   afpModeloUnits: number;
   afpUnoUnits: number;
-  afcUnits: number;
+  /** The smooth AFC's own noise stream, apart from the narrative's so it moves no other figure. */
+  afcNoise: () => number;
   savingsValueClp: number;
   checkingBalanceClp: number;
   /** Built once per run: weekly USD closes per ticker + monthly fondo valor cuota. */
@@ -598,7 +605,7 @@ export function initialDemoRunState(
     afcValueClp: 0,
     afpModeloUnits: 0,
     afpUnoUnits: 0,
-    afcUnits: 0,
+    afcNoise: demoRng(narrative.seed ^ 0x0afc),
     savingsValueClp: 0,
     checkingBalanceClp: 0,
     equitySeries: realEquitySeries ?? buildDemoEquitySeries(narrative, rng),
@@ -1331,6 +1338,40 @@ function writeDemoAfpLedgerMonth(
   });
 }
 
+/** The smooth AFC's yearly return (`writeDemoAfcSmoothMonth`). */
+export const DEMO_AFC_YEARLY_RETURN = 0.035;
+/** Half-width of the smooth AFC's daily noise (three summed uniforms: std ≈ 0,05 %). */
+const DEMO_AFC_DAILY_NOISE = 0.001;
+const CHILE_BUSINESS_DAYS_PER_YEAR = 250;
+
+/**
+ * One month of the smooth AFC book account: on every Chile business day the balance grows at
+ * {@link DEMO_AFC_YEARLY_RETURN} plus small noise from the run's own seeded stream and is marked;
+ * the contribution lands on the 25th (a weekend's carries it to the next business day's mark).
+ */
+export function writeDemoAfcSmoothMonth(
+  afcId: number,
+  month: DemoMonth,
+  state: DemoRunState,
+  contribClp: number
+): void {
+  const drift = Math.log(1 + DEMO_AFC_YEARLY_RETURN) / CHILE_BUSINESS_DAYS_PER_YEAR;
+  const lastDay = Number(monthEndUtcYmd(month).slice(8, 10));
+  for (let d = 1; d <= lastDay; d++) {
+    const day = dayInMonth(month, d);
+    const business = isChileBusinessDay(day);
+    if (business && state.afcValueClp > 0) {
+      const noise = (state.afcNoise() + state.afcNoise() + state.afcNoise() - 1.5) * DEMO_AFC_DAILY_NOISE;
+      state.afcValueClp *= Math.exp(drift + noise);
+    }
+    if (d === 25 && contribClp > 0) {
+      movement(afcId, contribClp, day, "Cotización AFC|demo");
+      state.afcValueClp += contribClp;
+    }
+    if (business && state.afcValueClp > 0) valuation(afcId, day, state.afcValueClp);
+  }
+}
+
 /** The AFP the demo's history starts on (switched into UNO later, see `writeDemoAfpLedgerMonth`). */
 export const DEMO_AFP_MODELO = "modelo";
 
@@ -1503,11 +1544,8 @@ export function writeInvestmentMonth(
 
   if (accounts.afcId != null) {
     const afcContrib = Math.round(afpContribClp * 0.125);
-    if (afcContrib > 0 && accounts.afcLedger) {
-      const day = dayInMonth(month, 25);
-      const units = Math.round((afcContrib / fundUnitOnOrBefore(AFC_CIC_SERIES_KEY, day)) * 1e4) / 1e4;
-      state.afcUnits = Math.round((state.afcUnits + units) * 1e4) / 1e4;
-      movementWithUnits(accounts.afcId, { amount_clp: afcContrib, occurred_on: day, note: "Cotización AFC|demo", units_delta: units });
+    if (accounts.afcModel === "smooth") {
+      writeDemoAfcSmoothMonth(accounts.afcId, month, state, afcContrib);
     } else if (afcContrib > 0) {
       movement(accounts.afcId, afcContrib, dayInMonth(month, 25), "Cotización AFC|demo");
       state.afcValueClp = Math.max(0, state.afcValueClp * (1 + r * 0.4) + afcContrib);
