@@ -257,6 +257,57 @@ pages (the Pasivos requests alone cost ~0,23 s synthetic per tick after A-E, vs 
 A 15-minute crypto cadence at night would cut that 3x (4 ticks an hour); the price shown would be
 up to 15 minutes old instead of 5.
 
+### Profile after A-F (2026-10-31, SYNTHETIC demo DB, merged main ad59046)
+
+Pasivos one after another: cold 2,5 s, warm 42 ms, coin tick 206 ms, dollar tick 375 ms. What is
+left after a tick is mostly `nav-context` (89 ms coin, 196 ms dollar) and the Pasivos valuation
+series (49 / 72 ms); cold, the daily series (1,2 s), nav-context (0,6 s) and the sidebar (0,36 s).
+CPU profiles of those rebuilds (in-process, clock on a trading afternoon) show five causes, in
+order of size:
+
+1. **Freshness checks on every memo access — ~38 % of a nav-context rebuild after a tick, ~18 % of
+   a cold build.** Every `getAggregationCached` / `historyTierMemo` / `liveTierCached` call runs
+   `ensureCacheFreshForChileDay`: two SQLite statements (the mark-input log's `MAX(id)` and
+   `PRAGMA data_version`), each O(1), ~2 µs, but ~15 000 of them per nav-context rebuild. 80 %
+   come from `accountMarkClpAtYmd`'s `account_marks` memo, asked once per account and date inside
+   loops. Merging the two statements into one saved nothing (per-execution overhead). Options:
+   (a) skip the check when it already ran in the same macrotask and this connection wrote nothing
+   since — a JS counter bumped by a wrapper on `Statement.run` / `Database.exec` catches every
+   same-connection write; a write from another connection inside one synchronous turn reads as if
+   it had arrived a moment later, which is already the case between turns; (b) hoist the memo map
+   out of the hot loops (fetch once per loop, as `pastDayUnitConverter` does). (a) removes nearly
+   all of it with one change; (b) is local and safe but has to be repeated per loop.
+2. **Per-account constants read by SQL on every call — ~13 % of a cold build.**
+   `portfolioGroupBySlug` (via `accountBucketKindSlug`), `bucketSlugForAccountId` (via
+   `isClpCashAccount`, `isUsdCashAccount`, the equity MTM), `accountUsesCryptoMtm`: each a
+   statement per account per day. Their tables (accounts, asset_groups, portfolio_groups) are
+   mark-input tables, so a history-tier memo (or a per-process map dropped with it) is exact.
+3. **The nav tree is rebuilt on every call — ~11 % of nav-context after a tick.**
+   `getNavChartGroupNodeBySlug`, `getNetWorthNavGroupNode` and `getLiabilitiesNavRootNode` re-read
+   groups, items and account names and rebuild the forest each time (several times per request,
+   via `orderGroupTabRowsBucketMajor` and the snapshot). It reads chart-inactive flags, which read
+   no price for units-valued accounts; caching it as a tracked entry (page-bundle lifetime, API
+   writes drop it) keeps it across most ticks.
+4. **`accountChartInactive` and `listAccountsForGroupTab` are uncached.** Chart-inactive runs per
+   account per caller (`finishGroupTabRows`, the nav tree, the snapshot), and for ledger accounts
+   reads the month closes; the group-tab row list is re-ordered by today's value on every call.
+   Both fit a tracked entry per account / per group: dropped by a tick only when they read a
+   moved price.
+5. **After a dollar tick nearly every dashboard row rebuilds (47 ms of the 157 ms)**, although
+   peso accounts do not move with the dollar: the live-dollar gates (`shouldUseLiveFxQuote`,
+   `fxForLiveMtm`) report a read even for a past date or a peso-only path, so B's per-row entries
+   all depend on the dollar. Reporting only when the answer can depend on the live row (the date
+   is the live row's session or later — the post-midnight window where yesterday's session row is
+   still live included) would let the peso rows survive; it would also let the valuation-chart
+   past-mark memo run under the history-tier guard. Needs a parity test per gate.
+
+Cold builds remain dominated by building the per-account mark series (`buildRange`, ~1,5 s of the
+cold Pasivos daily series, its reference sources included) — the warmer's job, or a worker thread
+(phase 7). Items 1-2 also shorten every cold build.
+
+Suggested order: 1 (largest, one change, needs a careful write-detection test), then 3-4 (small,
+tracked entries), then 5 (gate semantics, needs parity tests), then 2.
+
 ### 5. Daily views
 
 - Reference lines on Pasivos (`dailyReferenceLines.ts`): each «Disponible» source group's daily
