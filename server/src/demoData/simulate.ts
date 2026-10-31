@@ -4,40 +4,23 @@
  * documents are rendered from (`render.ts`) and the writers apply (`apply.ts`). It keeps every
  * balance itself and fails when one would go negative — a demo that overdraws is a story bug.
  */
-import { igcTax } from "../../f22Draft.js";
-import { isChileBusinessDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "../../marketHolidays.js";
+import { igcTax } from "../f22Draft.js";
+import { isChileBusinessDay, nextChileBusinessDayYmd, priorChileBusinessDayYmd } from "../marketHolidays.js";
 import type { MarketReader } from "./market.js";
 import {
   addDays,
   addMonths,
-  ALLOWANCE,
-  APV,
-  BTC,
   boletaRetentionRate,
-  CARDS,
-  CARS,
-  CASH_BAND,
-  CONTRACT_JOBS,
-  CONTRACTOR_JOBS,
-  DAD_NAME,
   daysInMonth,
-  DCA,
-  DIVIDEND_PER_SHARE_USD,
-  HOUSE,
-  HOUSING,
-  INTERNSHIPS,
   monthOf,
   monthsBetween,
-  ONE_OFFS,
-  PLAYS,
-  V2_FIRST_MONTH,
-  V2_REAL_BASE_MONTH,
-  V2_SEED,
   ymd,
   type CardDef,
   type ContractJob,
   type ContractorJob,
+  type House,
   type Month,
+  type Person,
   type Ymd,
 } from "./person.js";
 import { stream, type Rng } from "./rng.js";
@@ -54,6 +37,7 @@ export type Acct =
   | "afpUno"
   | "afc"
   | "property"
+  | "fund"
   | `stock:${string}`
   | `card:${CardDef["key"]}`;
 
@@ -159,6 +143,7 @@ export type ContractorPayslip = { job: ContractorJob; month: Month; wireDate: Ym
 export type MortgageCuota = { n: number; date: Ymd; clp: number; ufDay: number; pmtUf: number; interestUf: number; amortUf: number; balanceAfterUf: number };
 
 export type Ledger = {
+  person: Person;
   today: Ymd;
   bank: BankRow[];
   direct: DirectMovement[];
@@ -185,6 +170,8 @@ export const MORTGAGE_MERCHANT = "MUTUARIA ANDES HIPOTECARIO";
 const MORTGAGE_INCENDIO_CLP = 18_000;
 const MORTGAGE_DESGRAVAMEN_CLP = 4_500;
 export const APV_FUND_SERIES_KEY = "demo_apv_fondo";
+/** The mutual fund's valor cuota series (a person with `fund`). */
+export const MUTUAL_FUND_SERIES_KEY = "demo_fondo";
 
 /** Discretionary spend shares by category at the base lifestyle. */
 const CATEGORY_WEIGHTS: Record<string, number> = {
@@ -291,31 +278,17 @@ function lastBusinessDay(month: Month): Ymd {
   return businessDayOnOrBefore(ymd(month, daysInMonth(month)));
 }
 
-function contractJobFor(month: Month): ContractJob | null {
-  return CONTRACT_JOBS.find((j) => month >= j.from && month <= j.to) ?? null;
-}
-function contractorJobFor(month: Month): ContractorJob | null {
-  return CONTRACTOR_JOBS.find((j) => month >= j.from && (j.to == null || month <= j.to)) ?? null;
-}
-function housingFor(month: Month) {
-  const h = [...HOUSING].reverse().find((x) => month >= x.from);
-  if (!h) throw new Error(`demo v2: no housing for ${month}`);
-  return h;
-}
-function carFor(month: Month) {
-  return CARS.find((c) => month >= c.from && (c.to == null || month <= c.to)) ?? null;
-}
-function activeCards(month: Month): CardDef[] {
-  return CARDS.filter((c) => month >= c.from);
-}
-
 /** Close date of `card` in `month`. */
 export function cardClose(card: CardDef, month: Month): Ymd {
   return ymd(month, card.closeDay);
 }
-/** Santander pay-by: the 10th of the month after the close, moved back to a business day. */
-export function cardPayBy(close: Ymd): Ymd {
-  return businessDayOnOrBefore(ymd(addMonths(monthOf(close), 1), 10));
+/**
+ * The issuer's pay-by for a close: Santander the 10th of the next month moved back to a business
+ * day, BCI the 10th as it falls (`CC_ISSUERS`' derived rule, which the statements print).
+ */
+export function cardPayBy(card: CardDef, close: Ymd): Ymd {
+  const tenth = ymd(addMonths(monthOf(close), 1), 10);
+  return card.issuer === "bci" ? tenth : businessDayOnOrBefore(tenth);
 }
 
 /** IUSC on a month's taxable amount (the monthly brackets: the annual table's factors in UTM). */
@@ -365,7 +338,7 @@ class Book {
     m.set(day, (m.get(day) ?? 0) + amount);
     if (amount < 0) {
       const low = this.lowestFrom(acct, day);
-      if (low < (usd ? -0.005 : -0.5)) throw new Error(`demo v2: ${acct} would go negative on or after ${day} (${low}; this row ${amount})`);
+      if (low < (usd ? -0.005 : -0.5)) throw new Error(`demo: ${acct} would go negative on or after ${day} (${low}; this row ${amount})`);
     }
   }
   /** The lowest end-of-day balance of a cash account from `day` on (calendar order). */
@@ -406,7 +379,7 @@ class Book {
       if (!isCash(a)) return;
       const isUsd = a === "checkingUsd" || a === "brokerUsd";
       const v = isUsd ? usd : clp;
-      if (v == null) throw new Error(`demo v2: transfer ${t.note} needs a ${isUsd ? "USD" : "CLP"} leg for ${a}`);
+      if (v == null) throw new Error(`demo: transfer ${t.note} needs a ${isUsd ? "USD" : "CLP"} leg for ${a}`);
       this.add(a, sign * v, t.date);
     };
     cashLeg(t.from, -1);
@@ -445,10 +418,6 @@ class Book {
   }
 }
 
-function hasCheckingOn(day: Ymd): boolean {
-  return day >= "2018-04-01";
-}
-
 function isCash(a: Acct): a is CashAcct {
   return ["vista", "checking", "checkingUsd", "brokerClp", "brokerUsd", "exchangeClp"].includes(a);
 }
@@ -462,7 +431,38 @@ type CardCycleState = {
   paid: { clp: { amount: number; date: Ymd } | null; usd: { amount: number; date: Ymd; viaDivisas: boolean } | null };
 };
 
-export function simulate(market: MarketReader, today: Ymd): Ledger {
+export function simulate(person: Person, market: MarketReader, today: Ymd): Ledger {
+  const {
+    seed: SEED,
+    firstMonth: FIRST_MONTH,
+    realBaseMonth: REAL_BASE_MONTH,
+    dadName: DAD_NAME,
+    allowance: ALLOWANCE,
+    internships: INTERNSHIPS,
+    contractJobs: CONTRACT_JOBS,
+    contractorJobs: CONTRACTOR_JOBS,
+    housing: HOUSING,
+    house: HOUSE,
+    cars: CARS,
+    oneOffs: ONE_OFFS,
+    cards: CARDS,
+    plays: PLAYS,
+    dividendPerShareUsd: DIVIDEND_PER_SHARE_USD,
+    btc: BTC,
+    cashBand: CASH_BAND,
+    apv: APV,
+  } = person;
+  const contractJobFor = (month: Month): ContractJob | null => CONTRACT_JOBS.find((j) => month >= j.from && month <= j.to) ?? null;
+  const contractorJobFor = (month: Month): ContractorJob | null =>
+    CONTRACTOR_JOBS.find((j) => month >= j.from && (j.to == null || month <= j.to)) ?? null;
+  const housingFor = (month: Month) => {
+    const h = [...HOUSING].reverse().find((x) => month >= x.from);
+    if (!h) throw new Error(`demo: no housing for ${month}`);
+    return h;
+  };
+  const carFor = (month: Month) => CARS.find((c) => month >= c.from && (c.to == null || month <= c.to)) ?? null;
+  const activeCards = (month: Month): CardDef[] => CARDS.filter((c) => month >= c.from);
+  const hasCheckingOn = (day: Ymd) => monthOf(day) >= person.checkingFrom;
   const book = new Book();
   const lastMonth = monthOf(today);
   const plans: InstallmentPlan[] = [];
@@ -482,7 +482,7 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
   };
   for (const c of CARDS) cards.set(c.key, { pendingByClose: new Map(), prevFacturado: { clp: 0, usd: 0 }, paid: { clp: null, usd: null } });
 
-  const ufBase = market.uf(`${V2_REAL_BASE_MONTH}-01`);
+  const ufBase = market.uf(`${REAL_BASE_MONTH}-01`);
   /** Real (early-2016) CLP → nominal CLP on `day`. */
   const nominal = (real: number, day: Ymd) => real * (market.uf(day) / ufBase);
 
@@ -509,7 +509,7 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
   const cardPurchase = (line: CardLine) => {
     if (line.date > today) return;
     const card = cardOf(line.card);
-    if (monthOf(line.date) < card.from) throw new Error(`demo v2: ${line.merchant} on card ${card.key} before it opens`);
+    if (monthOf(line.date) < card.from) throw new Error(`demo: ${line.merchant} on card ${card.key} before it opens`);
     // The mortgage's card line is split by the app itself (carrying cost vs amortización).
     if (line.merchant !== MORTGAGE_MERCHANT) catByMerchant.set(line.merchant, line.category);
     const st = cards.get(line.card)!;
@@ -539,9 +539,11 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
   };
 
   /* ------------------------- lifestyle (the ratchet) ------------------------- */
-  let lifestyleReal = 175_000;
-  let smoothedIncomeReal = ALLOWANCE.clp;
-  const targetFor = (incomeReal: number) => 175_000 * Math.pow(Math.max(incomeReal, 150_000) / ALLOWANCE.clp, 0.52);
+  // The lifestyle scale: 175k real pesos a month at a student's 250k income, concave in income.
+  const LIFESTYLE_BASE_INCOME = 250_000;
+  let smoothedIncomeReal = ALLOWANCE?.clp ?? LIFESTYLE_BASE_INCOME;
+  const targetFor = (incomeReal: number) => 175_000 * Math.pow(Math.max(incomeReal, 150_000) / LIFESTYLE_BASE_INCOME, 0.52);
+  let lifestyleReal = ALLOWANCE ? 175_000 : targetFor(firstMonthIncomeReal());
 
   /* ------------------------- taxes and contributions ------------------------- */
   type YearTax = { contractTaxable: number; iuscWithheld: number; honorariosGross: number; honorariosRetention: number; apvB: number; independent: boolean };
@@ -648,8 +650,8 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
 
   /* --------------------------------- months ---------------------------------- */
   let lastAgeMonthsExpense: number[] = [];
-  for (let month = V2_FIRST_MONTH; month <= lastMonth; month = addMonths(month, 1)) {
-    const r = (label: string): Rng => stream(V2_SEED, `${month}|${label}`);
+  for (let month = FIRST_MONTH; month <= lastMonth; month = addMonths(month, 1)) {
+    const r = (label: string): Rng => stream(SEED, `${month}|${label}`);
     const year = Number(month.slice(0, 4));
     const mo = Number(month.slice(5, 7));
     const contract = contractJobFor(month);
@@ -657,13 +659,13 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
     const housing = housingFor(month);
     const car = carFor(month);
     const working = contract != null || contractor != null;
-    const hasChecking = month >= "2018-04";
+    const hasChecking = month >= person.checkingFrom;
 
     for (const d of deferred.filter((x) => monthOf(x.day) === month).sort((a, b) => a.day.localeCompare(b.day))) d.run();
-    // The cuenta vista opens with what he had saved from summer jobs.
-    if (month === V2_FIRST_MONTH) book.bankRow("vista", firstBusinessDayOnOrAfter(ymd(month, 1)), "DEPOSITO EN EFECTIVO", 380_000);
-    // Opening the checking account: the vista's savings move over.
-    if (month === "2018-04") {
+    // The first account opens with what he had saved.
+    if (month === FIRST_MONTH) book.bankRow(person.opening.account, ymd(month, 1), "DEPOSITO EN EFECTIVO", person.opening.clp);
+    // Opening the checking account after the vista: the vista's savings move over.
+    if (month === person.checkingFrom && month > FIRST_MONTH) {
       const day = ymd(month, 1);
       const moved = Math.floor((book.bal.vista - 60_000) / 10_000) * 10_000;
       if (moved > 0) {
@@ -677,7 +679,7 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
 
     /* ---------- income ---------- */
     let incomeNominal = 0;
-    if (month >= ALLOWANCE.from && month <= ALLOWANCE.to) {
+    if (ALLOWANCE && month >= ALLOWANCE.from && month <= ALLOWANCE.to) {
       const day = firstBusinessDayOnOrAfter(ymd(month, 1));
       if (day <= today) {
         book.bankRow("vista", day, `TRANSF. DE ${DAD_NAME}`, ALLOWANCE.clp);
@@ -781,7 +783,7 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
 
     /* ---------- housing ---------- */
     if (housing.kind === "parents") {
-      if (month >= "2018-04") bankBill("checking", ymd(month, 5), "TRANSF APORTE GASTOS CASA", "others", round(nominal(housing.aporteClp, ymd(month, 5)) / 1000) * 1000);
+      if (hasChecking) bankBill("checking", ymd(month, 5), "TRANSF APORTE GASTOS CASA", "others", round(nominal(housing.aporteClp, ymd(month, 5)) / 1000) * 1000);
     } else if (housing.kind === "rent") {
       const leaseYears = Math.floor(monthsBetween(housing.from, month) / 12);
       const anniversary = addMonths(housing.from, leaseYears * 12);
@@ -797,7 +799,7 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
           catByDesc.set(`DEVOLUCION GARANTIA ${housing.landlord}`, "bills");
         }
       }
-    } else {
+    } else if (HOUSE) {
       bankBill("checking", ymd(month, 10), "PAGO GASTOS COMUNES EDIFICIO", "bills", round(nominal(HOUSE.gcClp, ymd(month, 10)) * r("gc").jitter(1, 0.08)));
       if (HOUSE.contribucionesMonths.includes(mo)) bankBill("checking", ymd(month, 20), "TGR CONTRIBUCIONES", "bills", round(nominal(HOUSE.contribucionesClp, ymd(month, 20))));
     }
@@ -810,10 +812,10 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
     }
 
     /* ---------- the house ---------- */
-    if (month === monthOf(HOUSE.dadGift.date) && HOUSE.dadGift.date <= today) {
+    if (HOUSE && month === monthOf(HOUSE.dadGift.date) && HOUSE.dadGift.date <= today) {
       book.bankRow("checking", HOUSE.dadGift.date, `TRANSF. DE ${DAD_NAME}`, HOUSE.dadGift.clp);
     }
-    if (month === HOUSE.month && HOUSE.pieDate <= today) {
+    if (HOUSE && month === HOUSE.month && HOUSE.pieDate <= today) {
       const ufPie = market.uf(HOUSE.pieDate);
       const pieClp = round(HOUSE.pieUf * ufPie);
       ensureClp(HOUSE.pieDate, pieClp);
@@ -824,11 +826,11 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
       bankBill("checking", HOUSE.gastosDate, "TRANSF NOTARIA Y CBR GASTOS OPERACIONALES", "others", gastos);
       mortgage = { cuotas: [], pieClp, principalUf: HOUSE.valueUf - HOUSE.pieUf, pieDate: HOUSE.pieDate };
     }
-    if (mortgage && month > HOUSE.month) {
+    if (mortgage && HOUSE && month > HOUSE.month) {
       const day = ymd(month, 10);
       if (day <= today) {
         const n = mortgage.cuotas.length + 1;
-        const s = mortgageCuotaUf(mortgage.principalUf, n);
+        const s = mortgageCuotaUf(HOUSE, mortgage.principalUf, n);
         const ufDay = market.uf(day);
         const clp = round(s.pmtUf * ufDay) + MORTGAGE_INCENDIO_CLP + MORTGAGE_DESGRAVAMEN_CLP;
         mortgage.cuotas.push({ n, date: day, clp, ufDay, ...s });
@@ -903,11 +905,11 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
         if (!cardsNow.some((c) => c.key === s.card)) continue;
         cardPurchase({ card: s.card, date: ymd(month, 2 + (s.merchant.length % 24)), merchant: s.merchant, category: "subscriptions", currency: "usd", amount: s.usd });
       }
-      if (cardsNow.length > 0 && month >= "2019-01" && rr.chance(0.45)) {
+      if (cardsNow.length > 0 && rr.chance(0.45)) {
         const day = ymd(month, rr.int(2, 27));
         cardPurchase({ card: cardsNow.length > 1 ? "second" : "main", date: day, merchant: "AMAZON.COM", category: "others", currency: "usd", amount: cents(rr.range(25, 140) * Math.pow(lifestyleReal / 300_000, 0.4)) });
       }
-      if (month < "2018-05" && month >= "2016-03") bankBill("vista", ymd(month, 4), "COMPRA NAC SPOTIFY", "subscriptions", round(nominal(4_000, ymd(month, 4))));
+      if (cardsNow.length === 0 && month > FIRST_MONTH) bankBill(hasChecking ? "checking" : "vista", ymd(month, 4), "COMPRA NAC SPOTIFY", "subscriptions", round(nominal(4_000, ymd(month, 4))));
     }
     for (const o of ONE_OFFS) {
       if (o.month !== month) continue;
@@ -968,7 +970,7 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
           currency,
           close,
           periodFrom,
-          payBy: cardPayBy(close),
+          payBy: cardPayBy(card, close),
           nextClose: cardClose(card, addMonths(month, 1)),
           lines: ls,
           cuotas: cs,
@@ -1042,7 +1044,7 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
     // Known cash outflows of the next six months (a car paid in cash, the December APV) stay put.
     const reserved = upcomingCashNeeds(month);
     if (brokerDay <= today) {
-      const holdForHouse = month >= "2023-11" && month <= HOUSE.month;
+      const holdForHouse = HOUSE != null && month >= HOUSE.holdFromMonth && month <= HOUSE.month;
       // Dividends (quarterly, net of the 15 % US withholding).
       if (mo % 3 === 0) {
         for (const [ticker, dps] of Object.entries(DIVIDEND_PER_SHARE_USD)) {
@@ -1093,8 +1095,8 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
         buyStock(p.date, p.ticker, p.usd);
       }
       // The house: the sale's dollars come home to pay the pie.
-      if (month === "2024-02") {
-        const day = "2024-02-19";
+      if (HOUSE && month === monthOf(HOUSE.saleTransferDate)) {
+        const day = HOUSE.saleTransferDate;
         const usd = Math.floor(brokerFree(day) - 50);
         book.transfer({ from: "brokerUsd", to: "checkingUsd", date: day, usd, flowKind: null, note: "Broker|retiro a cuenta USD" });
         sellUsd(addDays(day, 1), usdFree(addDays(day, 1)) - 500);
@@ -1103,13 +1105,11 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
       const cashNow = totalCashClp(brokerDay);
       const allowDca = cashNow > CASH_BAND.low * avgExpense + reserved && !holdForHouse;
       if (allowDca) {
-        if (contract?.id === "job1") depositBrokerClp(brokerDay, DCA.job1Clp);
-        if (contract?.id === "job2") depositBrokerClp(brokerDay, DCA.job2Clp);
-        if (contractor?.id === "job3") depositBrokerUsd(brokerDay, Math.min(DCA.job3Usd, usdFree(brokerDay)));
-        if (contractor?.id === "job4") depositBrokerUsd(brokerDay, Math.min(DCA.job4Usd, usdFree(brokerDay)));
+        if (contract) depositBrokerClp(brokerDay, contract.dcaClp);
+        if (contractor) depositBrokerUsd(brokerDay, Math.min(contractor.dcaUsd, usdFree(brokerDay)));
       }
-      if (month >= BTC.from && month <= BTC.to && hasChecking) {
-        const lump = monthOf(BTC.lump.date) === month ? BTC.lump.clp : 0;
+      if (BTC && month >= BTC.from && month <= BTC.to && hasChecking) {
+        const lump = BTC.lump && monthOf(BTC.lump.date) === month ? BTC.lump.clp : 0;
         const clp = BTC.monthlyClp + lump;
         const day = businessDayOnOrBefore(ymd(month, 17));
         if (day <= today) {
@@ -1120,6 +1120,16 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
           book.single({ type: "single", account: "exchangeClp", date: day, amount: -clp, currency: "clp", note: "Exchange|compra BTC" });
           book.single({ type: "single", account: "btc", date: day, amount: clp, currency: "clp", note: "Exchange|compra BTC", units: btcUnits, cryptoKind: "buy" });
         }
+      }
+      // The mutual fund: a fixed monthly deposit buys cuotas at the day's value.
+      if (person.fund && month >= person.fund.from && allowDca) {
+        const clp = person.fund.monthlyClp;
+        const units = Math.round((clp / market.fundUnit(MUTUAL_FUND_SERIES_KEY, brokerDay)) * 1e4) / 1e4;
+        book.addUnits("fund", units, 4);
+        book.transfer(
+          { from: "checking", to: "fund", date: brokerDay, clp, units, flowKind: null, note: `${person.fund.name}|aporte` },
+          { account: "checking", description: "TRANSF A FINTUAL AGF", side: "from" }
+        );
       }
       // Sweep: cash above the band's top goes to the broker.
       const cashAfter = totalCashClp(brokerDay);
@@ -1159,6 +1169,7 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
   }
 
   return {
+    person,
     today,
     bank: book.bank,
     direct: book.direct,
@@ -1175,6 +1186,14 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
   };
 
   /* ------------------------------ closures ------------------------------ */
+  /** What he earns in his first month (real pesos): the lifestyle starts there when no allowance does. */
+  function firstMonthIncomeReal(): number {
+    const job = contractJobFor(FIRST_MONTH);
+    if (job) return contractPayslip(job, FIRST_MONTH, market).net;
+    const c = contractorJobFor(FIRST_MONTH);
+    if (c) return c.monthlyUsd * market.fx(ymd(FIRST_MONTH, 15)) * 0.83;
+    return LIFESTYLE_BASE_INCOME;
+  }
   function usdFree(day: Ymd): number {
     return Math.max(0, book.lowestFrom("checkingUsd", day));
   }
@@ -1191,7 +1210,7 @@ export function simulate(market: MarketReader, today: Ymd): Ledger {
       // Moving in: the deposit (garantía) and the first rent.
       for (const h of HOUSING) if (h.kind === "rent" && h.from === m) need += 2.2 * h.rentClp;
       // A month without income (between jobs) is lived on savings.
-      if (m >= "2018-04" && !contractJobFor(m) && !contractorJobFor(m)) need += 1.5 * trailingExpense();
+      if (m >= person.checkingFrom && !contractJobFor(m) && !contractorJobFor(m)) need += 1.5 * trailingExpense();
     }
     return need;
   }
@@ -1307,9 +1326,9 @@ function finiquitoPayslip(job: ContractJob, month: Month, market: MarketReader):
 /* ------------------------------- mortgage math ----------------------------------- */
 
 /** French schedule in UF (the dividendo is a fixed UF amount). */
-export function mortgageCuotaUf(principalUf: number, n: number) {
-  const i = HOUSE.monthlyRate;
-  const pmtUf = (principalUf * i) / (1 - Math.pow(1 + i, -HOUSE.termMonths));
+export function mortgageCuotaUf(house: House, principalUf: number, n: number) {
+  const i = house.monthlyRate;
+  const pmtUf = (principalUf * i) / (1 - Math.pow(1 + i, -house.termMonths));
   const g = Math.pow(1 + i, n - 1);
   const before = principalUf * g - (pmtUf * (g - 1)) / i;
   const interestUf = before * i;

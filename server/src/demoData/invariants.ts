@@ -1,16 +1,16 @@
 /**
- * What must hold after the v2 demo is generated. A failure throws (the build fails; the live demo
+ * What must hold after a synthetic database is generated. A failure throws (the build fails; the live demo
  * keeps its previous version). The report is printed by the generate script.
  */
 import type { EmploymentPayslipsApplyDetails } from "nw-tracker-contracts";
-import { db } from "../../db.js";
-import { accountMarkClpAtYmd } from "../../accountMarkClpAtYmd.js";
-import { checkingMovementBalanceClpAt } from "../../checkingCartolaBalances.js";
+import { db } from "../db.js";
+import { accountMarkClpAtYmd } from "../accountMarkClpAtYmd.js";
+import { checkingMovementBalanceClpAt } from "../checkingCartolaBalances.js";
 import type { MarketReader } from "./market.js";
 import type { Ymd } from "./person.js";
 import type { Acct, Ledger } from "./simulate.js";
 
-export type V2Report = {
+export type DemoDbReport = {
   today: Ymd;
   movements: number;
   cartolas: number;
@@ -24,17 +24,16 @@ export type V2Report = {
   monthsOutsideBand: number;
 };
 
-/** Net worth the demo aims for (USD), and how far it may land from it before the build complains. */
-export const V2_NET_WORTH_TARGET_USD = 400_000;
-export const V2_NET_WORTH_TOLERANCE = 0.25;
+/** How far net worth may land from the person's target before the build complains. */
+export const NET_WORTH_TOLERANCE = 0.25;
 
-export function assertV2Invariants(
+export function assertDemoInvariants(
   ledger: Ledger,
   ids: Map<Acct, number>,
   market: MarketReader,
   today: Ymd,
   extra: { payslips: EmploymentPayslipsApplyDetails | null }
-): V2Report {
+): DemoDbReport {
   const problems: string[] = [];
 
   // The app's checking balances equal the ones the story kept.
@@ -73,7 +72,7 @@ export function assertV2Invariants(
   if (unpaired > 0) problems.push(`${unpaired} card payment debit(s) were not paired with their card's evidence`);
 
   // Net worth near the target.
-  const byAccount: V2Report["byAccount"] = [];
+  const byAccount: DemoDbReport["byAccount"] = [];
   let nw = 0;
   for (const [key, id] of ids) {
     const mark = accountMarkClpAtYmd(id, today);
@@ -87,12 +86,13 @@ export function assertV2Invariants(
   }
   const fx = market.fx(today);
   const nwUsd = nw / fx;
-  if (Math.abs(nwUsd / V2_NET_WORTH_TARGET_USD - 1) > V2_NET_WORTH_TOLERANCE) {
-    problems.push(`net worth US$${Math.round(nwUsd)} is more than ${V2_NET_WORTH_TOLERANCE * 100} % from US$${V2_NET_WORTH_TARGET_USD}`);
+  const target = ledger.person.netWorthTargetUsd;
+  if (target != null && Math.abs(nwUsd / target - 1) > NET_WORTH_TOLERANCE) {
+    problems.push(`net worth US$${Math.round(nwUsd)} is more than ${NET_WORTH_TOLERANCE * 100} % from US$${target}`);
   }
 
   const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
-  const report: V2Report = {
+  const report: DemoDbReport = {
     today,
     movements: count(`SELECT COUNT(*) AS n FROM movements`),
     cartolas: count(`SELECT COUNT(*) AS n FROM checking_cartola_imports`),
@@ -111,7 +111,7 @@ export function assertV2Invariants(
     monthsOutsideBand: ledger.months.filter((m) => m.cashClp > m.band[1] * 1.5).length,
   };
   if (problems.length > 0) {
-    throw new Error(`demo v2 invariants failed:\n  - ${problems.join("\n  - ")}\n${JSON.stringify(report, null, 1)}`);
+    throw new Error(`demo invariants failed:\n  - ${problems.join("\n  - ")}\n${JSON.stringify(report, null, 1)}`);
   }
   return report;
 }

@@ -30,14 +30,17 @@ describe("watchlistStatsForRow", () => {
     }
   });
 
-  it("computes change fields for SPY when EOD history exists", () => {
-    const stats = watchlistStatsForRow(
-      row({ kind: "equity", series_key: "SPY", slug: "spy", label: "SPY" })
-    );
-    if (stats.value == null) return;
-    expect(stats.value_currency).toBe("usd");
-    expect(stats.changes).not.toBeNull();
-    expect(stats.changes?.day_pct).not.toBeUndefined();
+  it("computes change fields for SPY in the display unit when EOD history exists", () => {
+    const spy = row({ kind: "equity", series_key: "SPY", slug: "spy", label: "SPY" });
+    const usd = watchlistStatsForRow(spy, new Date(), "usd");
+    expect(usd.value).not.toBeNull();
+    expect(usd.value_currency).toBe("usd");
+    expect(usd.changes).not.toBeNull();
+    expect(usd.changes?.day_pct).not.toBeUndefined();
+    // In pesos the same close is converted at the day's rate.
+    const clp = watchlistStatsForRow(spy, new Date(), "clp");
+    expect(clp.value_currency).toBe("clp");
+    expect(clp.value!).toBeGreaterThan(usd.value! * 100);
   });
 });
 

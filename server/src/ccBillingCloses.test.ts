@@ -717,7 +717,8 @@ describe("credit-card close evidence", () => {
     onTestFinished(() => {
       db.prepare(`DELETE FROM credit_card_group_items WHERE account_id = ?`).run(accountId);
     });
-    const group = creditCardGroupLedgerResponse("liabilities_credit_card");
+    // The Santander issuer group: this card is its only member while the test runs.
+    const group = creditCardGroupLedgerResponse("santander");
     expect(group.account_id).toBe(0);
     expectDetalleShowsChart(group);
     // The merged September row carries this card's three unpaid cuotas on top of the other masters'.
@@ -907,6 +908,20 @@ describe("credit-card close evidence", () => {
 
   it("a group's merged rows carry a member's open facturación before any line lands in it", () => {
     insertSeptemberPlanBeforeTheClose();
+    // The test person's own cards hold statements through today, after this test's clock: the
+    // issuer group is this card alone while it runs.
+    const others = db
+      .prepare(`SELECT * FROM credit_card_group_items WHERE item_kind = 'account' AND account_id != ?`)
+      .all(accountId) as Record<string, unknown>[];
+    db.prepare(`DELETE FROM credit_card_group_items WHERE item_kind = 'account' AND account_id != ?`).run(accountId);
+    onTestFinished(() => {
+      for (const r of others) {
+        const cols = Object.keys(r);
+        db.prepare(`INSERT INTO credit_card_group_items (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).run(
+          ...cols.map((c) => r[c])
+        );
+      }
+    });
     const santander = db.prepare(`SELECT id FROM credit_card_groups WHERE slug = 'santander'`).get() as { id: number };
     db.prepare(
       `INSERT INTO credit_card_group_items (group_id, item_kind, account_id, sort_order) VALUES (?, 'account', ?, 99)`
@@ -921,7 +936,9 @@ describe("credit-card close evidence", () => {
     // No statement prints October's PAGAR HASTA yet: the pay-by is the ~10th-of-next-month rule.
     expect(october.pay_by_source).toBe("derived");
     const statementClosed = group.facturaciones!.filter((f) => f.close_date_source === "statement");
-    for (const f of statementClosed) expect(f.pay_by_source).toBe("statement");
+    // This fixture's statements print no PAGAR HASTA: a statement-closed month derives its pay-by too.
+    expect(statementClosed.length).toBeGreaterThan(0);
+    for (const f of statementClosed) expect(f.pay_by_source).toBe("derived");
     expect(october.facturado_total_clp!).toBeGreaterThanOrEqual(30_000);
     expect(october.deuda_en_cuotas_clp!).toBeGreaterThanOrEqual(30_000);
     const row = group.billing_detail_by_month!.find((r) => r.billing_month === "2026-10")!;

@@ -51,6 +51,8 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
 
     const today = "2999-01-01"; // far future → include all rows
     const baseline = fintualGoalUnitsFromMovementsThroughDate(fund, today) ?? 0;
+    // The account may already hold cuotas bought by transfer (the test person's deposits).
+    const legsBaseline = transferLegUnitsThroughDate(fund, today);
 
     const ins = db.prepare(
       `INSERT INTO movements (account_id, from_account_id, to_account_id, amount, currency, occurred_on, note, units_delta)
@@ -60,7 +62,7 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
     const retiroId = Number(ins.run(fund, other, 40000, "2020-02-01", "test:manual-units", 4).lastInsertRowid);
 
     try {
-      expect(transferLegUnitsThroughDate(fund, today)).toBeCloseTo(6, 4);
+      expect(transferLegUnitsThroughDate(fund, today) - legsBaseline).toBeCloseTo(6, 4);
       const after = fintualGoalUnitsFromMovementsThroughDate(fund, today) ?? 0;
       expect(after - baseline).toBeCloseTo(6, 4);
     } finally {

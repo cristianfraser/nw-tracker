@@ -1,7 +1,8 @@
 import { db } from "./db.js";
 import { loadDemoRealMarket } from "./demoData/demoRealMarket.js";
-import { generateDemoDbV2 } from "./demoData/v2/generate.js";
-import { v2MarketSpec } from "./demoData/v2/market.js";
+import { generateDemoDb } from "./demoData/generate.js";
+import { demoMarketSpec } from "./demoData/market.js";
+import { DEMO_PERSON } from "./demoData/person.js";
 
 /**
  * Hosted recruiter-demo mode (`DEMO_MODE=1`): the server owns a dedicated synthetic
@@ -32,7 +33,7 @@ const DEMO_MODE_DEFAULT_ENV: ReadonlyArray<readonly [name: string, value: string
 /**
  * Call once at boot, after `loadRootDotenv()` and before the schedulers start.
  * Requires `NW_TRACKER_TEST_DB` so demo mode can never open (or generate into) the real
- * `nw-tracker.db`; `generateDemoDbV2` additionally refuses any DB that already has accounts.
+ * `nw-tracker.db`; `generateDemoDb` additionally refuses any DB that already has accounts.
  * An empty DB is filled with real market history first (`loadDemoRealMarket`, which retries
  * each source for ~10 minutes and then throws, failing the boot).
  */
@@ -52,13 +53,13 @@ export async function bootstrapDemoModeIfEnabled(): Promise<void> {
     console.log(`demo mode: DB already populated (${accounts} accounts) — skipping generation`);
     return;
   }
-  const market = await loadDemoRealMarket(v2MarketSpec());
+  const market = await loadDemoRealMarket(demoMarketSpec());
   console.log(
     `demo mode: real market ${market.from} → ${market.through} — ` +
       Object.entries(market.equities).map(([t, n]) => `${t} ${n}`).join(", ") +
       `; fx ${market.fx}; BCentral usd ${market.bcentral.usd} uf ${market.bcentral.uf}; AFP official values ${market.afp_official}`
   );
-  const r = generateDemoDbV2({ market: "real" });
+  const r = generateDemoDb({ person: DEMO_PERSON, market: "real" });
   console.log(
     `demo mode: generated the demo DB — ${r.movements} movements, ${r.cartolas} cartolas, ` +
       `${r.statements} card statements, net worth US$${r.netWorthUsd}`

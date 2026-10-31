@@ -85,10 +85,11 @@ function insertFundDeposit(occurredOn: string, amountClp: number): number {
 describe("manual deposits-category assertions", () => {
   beforeAll(() => {
     checkingId = checkingAccountId();
-    const fund = db.prepare(`SELECT id FROM accounts WHERE notes = 'demo:fondo'`).get() as
+    // The test person's mutual fund (src/demoData/person.ts `testPerson`).
+    const fund = db.prepare(`SELECT id FROM accounts WHERE import_key = 'import:panel|kind=fund|key=demo_fondo'`).get() as
       | { id: number }
       | undefined;
-    if (!fund) throw new Error("expected demo:fondo account in test DB");
+    if (!fund) throw new Error("expected the test person's mutual fund account in the test DB");
     fundId = fund.id;
     const cat = db
       .prepare(`SELECT id FROM cc_expense_categories WHERE slug = ?`)

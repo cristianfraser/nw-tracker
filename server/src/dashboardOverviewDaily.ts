@@ -91,17 +91,18 @@ function buildPrimaryDailyLines(
     const dataKey = String(spec.chartAccountId);
     if (spec.slug === DASHBOARD_NW_CASH_PORTFOLIO_SLUG) {
       // Netted cash, converted per day like the overview cash line.
-      lines.push({
-        dataKey,
-        values: grid.map((ymd) => {
-          const clp = cashNettedClpByDate.get(ymd);
-          if (clp == null || !Number.isFinite(clp)) return null;
-          if (unit === "clp") return clp;
-          if (ymd === grid[grid.length - 1] && cashUsdToday != null) return cashUsdToday;
-          const usd = clpToUnitAt(clp, ymd, "usd");
-          return usd != null && Number.isFinite(usd) ? usd : null;
-        }),
+      const values = grid.map((ymd) => {
+        const clp = cashNettedClpByDate.get(ymd);
+        if (clp == null || !Number.isFinite(clp)) return null;
+        if (unit === "clp") return clp;
+        if (ymd === grid[grid.length - 1] && cashUsdToday != null) return cashUsdToday;
+        const usd = clpToUnitAt(clp, ymd, "usd");
+        return usd != null && Number.isFinite(usd) ? usd : null;
       });
+      // Before the first money arrives (a cartola's opening anchor dated the day before) cash
+      // reads 0: the line starts at its first non-zero day, like every other line.
+      nullLeadingZeroRun(values);
+      lines.push({ dataKey, values });
       continue;
     }
     const rows = listAccountsForGroupTab(spec.slug).filter((r) => r.account_id > 0);

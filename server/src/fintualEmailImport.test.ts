@@ -41,7 +41,7 @@ describe("fintualEmailImport", () => {
     for (const id of createdAccounts.splice(0)) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
   });
 
-  /** The synthetic test DB has neither position; create what the mapping needs. */
+  /** The SPY position (the test person holds one) and the Fintual USD cash, created when missing. */
   function seedFintualAccounts(): { spy: number; cash: number } | null {
     const group = db.prepare(`SELECT id FROM asset_groups ORDER BY id LIMIT 1`).get() as
       | { id: number }
@@ -56,8 +56,9 @@ describe("fintualEmailImport", () => {
       createdAccounts.push(id);
       return id;
     };
+    const existingSpy = db.prepare(`SELECT id FROM accounts WHERE equity_ticker = 'SPY'`).get() as { id: number } | undefined;
     return {
-      spy: mk("vitest SPY", "SPY", null),
+      spy: existingSpy?.id ?? mk("vitest SPY", "SPY", null),
       cash: mk("vitest Fintual USD", null, "import:panel|kind=usd|key=fintual_usd"),
     };
   }

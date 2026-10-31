@@ -8,7 +8,7 @@ const serverDir = path.join(__dirname, "..");
 const dataDir = path.join(serverDir, "data");
 
 /**
- * Missing `nw-tracker.test.db` → generate the lean synthetic preset (tests must not
+ * Missing `nw-tracker.test.db` → generate the Vitest person (`testPerson`, src/demoData; tests must not
  * depend on personal data — see the demoData generator). Delete the test DB to rebuild.
  *
  * Escape hatch: `NW_TRACKER_TEST_FROM_DEV=1` restores the old behavior of copying the
@@ -47,7 +47,7 @@ export default function vitestGlobalSetup(): void {
     throw new Error(`vitest globalSetup: tsx binary not found (looked in ${tsxCandidates.join(", ")})`);
   }
   const script = path.join(serverDir, "scripts", "generate-demo-data.ts");
-  const r = spawnSync(tsx, [script, "--preset=test"], {
+  const r = spawnSync(tsx, [script, "--test"], {
     cwd: serverDir,
     env: { ...process.env, NW_TRACKER_TEST_DB: testPath },
     stdio: "inherit",

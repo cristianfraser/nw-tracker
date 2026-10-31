@@ -91,15 +91,18 @@ function cleanupRows(): void {
   db.prepare(`DELETE FROM incoming_wire_notices WHERE message_id LIKE ?`).run(`${PREFIX}%`);
 }
 
+let setAsideDollarAccounts: { account_id: number; issuer: string; number: string; currency: string }[] = [];
+
 describe("incoming dollar wires", () => {
   beforeAll(() => {
     fintualUsd = account("vitest Fintual USD", "import:panel|kind=usd|key=fintual_usd");
     santanderUsd = account("vitest Santander USD", null);
     // The receiving bank's own notice names no account: it is the bank's one dollar account.
-    db.prepare(`DELETE FROM bank_account_numbers WHERE issuer = 'santander' AND currency = 'usd' AND number = ?`).run(DEST_NUMBER);
-    if (db.prepare(`SELECT 1 FROM bank_account_numbers WHERE issuer = 'santander' AND currency = 'usd'`).get() != null) {
-      throw new Error("test DB already declares a Santander dollar account");
-    }
+    // The test person's own dollar account steps aside while these tests own the bank's one.
+    setAsideDollarAccounts = db
+      .prepare(`SELECT account_id, issuer, number, currency FROM bank_account_numbers WHERE issuer = 'santander' AND currency = 'usd'`)
+      .all() as typeof setAsideDollarAccounts;
+    db.prepare(`DELETE FROM bank_account_numbers WHERE issuer = 'santander' AND currency = 'usd'`).run();
     db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', ?, 'usd')`).run(
       santanderUsd,
       DEST_NUMBER
@@ -110,6 +113,8 @@ describe("incoming dollar wires", () => {
 
   afterAll(() => {
     db.prepare(`DELETE FROM bank_account_numbers WHERE number = ?`).run(DEST_NUMBER);
+    const restore = db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, ?, ?, ?)`);
+    for (const r of setAsideDollarAccounts) restore.run(r.account_id, r.issuer, r.number, r.currency);
     for (const a of createdAccounts) {
       db.prepare(`DELETE FROM movements WHERE account_id = ? OR from_account_id = ? OR to_account_id = ?`).run(a, a, a);
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(a);

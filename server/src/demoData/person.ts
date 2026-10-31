@@ -1,9 +1,12 @@
 /**
- * The demo person (v2): one life, told through the documents a real person receives. Every number
- * here is hand-tuned — no personal data. Amounts are CLP unless named `Usd`; "real" CLP amounts
- * are in early-2016 pesos and are indexed by the UF (≈ IPC) when spent (`realToNominal`).
+ * The people the synthetic databases are generated for: one life each, told through the documents
+ * a real person receives. Every number here is hand-tuned — no personal data. Amounts are CLP
+ * unless named `Usd`; "real" CLP amounts are in pesos of the person's `realBaseMonth` and are
+ * indexed by the UF (≈ IPC) when spent.
  *
- * See docs/demo-generator-plan.md for the story and the architecture.
+ * - `DEMO_PERSON`: the hosted demo (2016 → today; docs/demo-generator-plan.md).
+ * - `testPerson(today)`: the Vitest database — the same engine on a short life ending today
+ *   (about twenty months), so the suite stays fast.
  */
 
 /** `YYYY-MM`. */
@@ -11,12 +14,6 @@ export type Month = string;
 /** `YYYY-MM-DD`. */
 export type Ymd = string;
 
-export const V2_SEED = 1995_04_17;
-export const V2_FIRST_MONTH: Month = "2016-02";
-/** Prices and rates start this many months before the first month (prior closes, watchlist anchors). */
-export const V2_MARKET_YEARS = 11;
-/** The UF on which "real" CLP amounts are expressed (≈ January 2016). */
-export const V2_REAL_BASE_MONTH: Month = "2016-01";
 
 export type ContractJob = {
   kind: "contract";
@@ -39,6 +36,8 @@ export type ContractJob = {
   bonusMonth: number | null;
   /** Aguinaldo paid in September and December. */
   aguinaldoClp: number;
+  /** Monthly broker deposit (DCA) while this job lasts. */
+  dcaClp: number;
 };
 
 export type ContractorJob = {
@@ -51,6 +50,8 @@ export type ContractorJob = {
   to: Month | null;
   monthlyUsd: number;
   transferFeeUsd: number;
+  /** Monthly broker deposit (DCA, in dollars) while this job lasts. */
+  dcaUsd: number;
 };
 
 export type Internship = {
@@ -61,14 +62,12 @@ export type Internship = {
   grossClp: number;
 };
 
-export const DAD_NAME = "JORGE DEMO";
-
-export const INTERNSHIPS: Internship[] = [
+const INTERNSHIPS: Internship[] = [
   { id: "intern1", employer: "LABORATORIO DATOS SPA", employerRut: "76.123.456-7", months: ["2017-01", "2017-02"], grossClp: 550_000 },
   { id: "intern2", employer: "CODIGO SUR LTDA", employerRut: "77.234.567-8", months: ["2018-01", "2018-02"], grossClp: 650_000 },
 ];
 
-export const CONTRACT_JOBS: ContractJob[] = [
+const CONTRACT_JOBS: ContractJob[] = [
   {
     kind: "contract",
     id: "job1",
@@ -84,6 +83,7 @@ export const CONTRACT_JOBS: ContractJob[] = [
     transportClp: 40_000,
     bonusMonth: null,
     aguinaldoClp: 60_000,
+    dcaClp: 100_000,
   },
   {
     kind: "contract",
@@ -100,16 +100,17 @@ export const CONTRACT_JOBS: ContractJob[] = [
     transportClp: 40_000,
     bonusMonth: 3,
     aguinaldoClp: 80_000,
+    dcaClp: 250_000,
   },
 ];
 
-export const CONTRACTOR_JOBS: ContractorJob[] = [
-  { kind: "contractor", id: "job3", employer: "Northwind Labs Inc.", platform: "DEEL", from: "2022-10", to: "2024-09", monthlyUsd: 6_000, transferFeeUsd: 15 },
-  { kind: "contractor", id: "job4", employer: "Bluepeak Software LLC", platform: "DEEL", from: "2024-10", to: null, monthlyUsd: 8_000, transferFeeUsd: 15 },
+const CONTRACTOR_JOBS: ContractorJob[] = [
+  { kind: "contractor", id: "job3", employer: "Northwind Labs Inc.", platform: "DEEL", from: "2022-10", to: "2024-09", monthlyUsd: 6_000, transferFeeUsd: 15, dcaUsd: 1_500 },
+  { kind: "contractor", id: "job4", employer: "Bluepeak Software LLC", platform: "DEEL", from: "2024-10", to: null, monthlyUsd: 8_000, transferFeeUsd: 15, dcaUsd: 2_000 },
 ];
 
 /** Dad's monthly allowance while studying (to the cuenta vista). */
-export const ALLOWANCE = { from: "2016-02" as Month, to: "2019-03" as Month, clp: 250_000 };
+const ALLOWANCE = { from: "2016-02" as Month, to: "2019-03" as Month, clp: 250_000 };
 
 /** Where he lives: parents, a first apartment (from the second job), an expensive one, his own. */
 export type Housing =
@@ -117,16 +118,36 @@ export type Housing =
   | { kind: "rent"; id: string; from: Month; to: Month; rentClp: number; gcClp: number; landlord: string }
   | { kind: "own"; from: Month };
 
-export const HOUSING: Housing[] = [
+const HOUSING: Housing[] = [
   { kind: "parents", from: "2016-02", to: "2020-07", aporteClp: 80_000 },
   { kind: "rent", id: "apt1", from: "2020-08", to: "2023-01", rentClp: 550_000, gcClp: 75_000, landlord: "MARIA GONZALEZ" },
   { kind: "rent", id: "apt2", from: "2023-02", to: "2024-02", rentClp: 820_000, gcClp: 130_000, landlord: "INMOBILIARIA VISTA ALTA" },
   { kind: "own", from: "2024-03" },
 ];
 
+export type House = {
+  month: Month;
+  valueUf: number;
+  pieUf: number;
+  gastosOperacionalesUf: number;
+  termMonths: number;
+  monthlyRate: number;
+  gcClp: number;
+  contribucionesMonths: number[];
+  contribucionesClp: number;
+  dadGift: { date: Ymd; clp: number };
+  pieDate: Ymd;
+  gastosDate: Ymd;
+  monthlyAppreciation: number;
+  /** From this month investing pauses: the cash is the pie. */
+  holdFromMonth: Month;
+  /** The broker sale's dollars come home to the dollar account on this day (pesos the next). */
+  saleTransferDate: Ymd;
+};
+
 /** His own apartment: dad's gift + an NVDA (and some SPY) sale pay the pie. */
-export const HOUSE = {
-  month: "2024-03" as Month,
+const HOUSE: House = {
+  month: "2024-03",
   valueUf: 5_500,
   pieUf: 1_100,
   gastosOperacionalesUf: 160,
@@ -137,16 +158,18 @@ export const HOUSE = {
   /** Contribuciones paid in these months (real CLP). */
   contribucionesMonths: [4, 6, 9, 11],
   contribucionesClp: 70_000,
-  dadGift: { date: "2024-02-26" as Ymd, clp: 25_000_000 },
-  pieDate: "2024-03-06" as Ymd,
-  gastosDate: "2024-03-08" as Ymd,
+  dadGift: { date: "2024-02-26", clp: 25_000_000 },
+  pieDate: "2024-03-06",
+  gastosDate: "2024-03-08",
   /** Property value growth per month (UF terms). */
   monthlyAppreciation: 0.0012,
+  holdFromMonth: "2023-11",
+  saleTransferDate: "2024-02-19",
 };
 
 export type Car = { id: string; from: Month; to: Month | null; priceClp: number; tradeInClp: number; permisoClp: number; insuranceClp: number };
 
-export const CARS: Car[] = [
+const CARS: Car[] = [
   { id: "car1", from: "2019-03", to: "2022-12", priceClp: 6_500_000, tradeInClp: 0, permisoClp: 140_000, insuranceClp: 0 },
   { id: "car2", from: "2023-01", to: null, priceClp: 17_000_000, tradeInClp: 4_200_000, permisoClp: 360_000, insuranceClp: 38_000 },
 ];
@@ -165,7 +188,7 @@ export type OneOff = {
   card?: "main" | "second";
 };
 
-export const ONE_OFFS: OneOff[] = [
+const ONE_OFFS: OneOff[] = [
   { month: "2018-06", day: 9, label: "MAC STORE PARQUE ARAUCO", category: "others", clp: 1_250_000, cuotas: 12 },
   { month: "2019-08", day: 14, label: "ENTEL TIENDA IPHONE", category: "others", clp: 900_000, cuotas: 12 },
   { month: "2019-09", day: 3, label: "LATAM AIRLINES", category: "fun", clp: 480_000, cuotas: 6 },
@@ -191,11 +214,11 @@ export const ONE_OFFS: OneOff[] = [
 ];
 
 /** The cards: a main card with the first contract, a second one with the first dollar job. */
-export type CardDef = { key: "main" | "second"; last4: string; displayName: string; from: Month; closeDay: number };
+export type CardDef = { key: "main" | "second"; issuer: "santander" | "bci"; last4: string; displayName: string; from: Month; closeDay: number };
 
-export const CARDS: CardDef[] = [
-  { key: "main", last4: "4417", displayName: "Visa Platinum 4417", from: "2018-05", closeDay: 22 },
-  { key: "second", last4: "8823", displayName: "Mastercard Black 8823", from: "2022-11", closeDay: 25 },
+const CARDS: CardDef[] = [
+  { key: "main", issuer: "santander", last4: "4417", displayName: "Visa Platinum 4417", from: "2018-05", closeDay: 22 },
+  { key: "second", issuer: "bci", last4: "8823", displayName: "Mastercard Black 8823", from: "2022-11", closeDay: 25 },
 ];
 
 /** Broker plays: explicit buys and sells (USD), on top of the SPY DCA. */
@@ -203,7 +226,7 @@ export type Play =
   | { kind: "buy"; date: Ymd; ticker: string; usd: number }
   | { kind: "sell"; date: Ymd; ticker: string; fraction: number };
 
-export const PLAYS: Play[] = [
+const PLAYS: Play[] = [
   { kind: "buy", date: "2019-03-20", ticker: "AAPL", usd: 1_200 },
   { kind: "buy", date: "2019-07-15", ticker: "AMD", usd: 1_000 },
   { kind: "buy", date: "2020-04-15", ticker: "MSFT", usd: 1_500 },
@@ -220,27 +243,151 @@ export const PLAYS: Play[] = [
   { kind: "sell", date: "2026-06-23", ticker: "OILK", fraction: 1 },
 ];
 
-export const BROKER_TICKERS = ["SPY", "AAPL", "AMD", "MSFT", "ZM", "NVDA", "INTC", "OILK", "LNG"] as const;
+const BROKER_TICKERS = ["SPY", "AAPL", "AMD", "MSFT", "ZM", "NVDA", "INTC", "OILK", "LNG"];
 export const BTC_TICKER = "BTC-USD";
 
 /** Quarterly dividend per share (USD), by ticker; paid in Mar/Jun/Sep/Dec, 15 % withheld. */
-export const DIVIDEND_PER_SHARE_USD: Record<string, number> = { SPY: 1.55, AAPL: 0.23, MSFT: 0.65, INTC: 0.3, LNG: 0.45 };
+const DIVIDEND_PER_SHARE_USD: Record<string, number> = { SPY: 1.55, AAPL: 0.23, MSFT: 0.65, INTC: 0.3, LNG: 0.45 };
 
-/** Monthly DCA into the broker, per job. */
-export const DCA = {
-  job1Clp: 100_000,
-  job2Clp: 250_000,
-  job3Usd: 1_500,
-  job4Usd: 2_000,
-};
 /** Bitcoin: monthly DCA through the exchange plus a lump at the 2018 bottom. */
-export const BTC = { from: "2018-06" as Month, to: "2019-12" as Month, monthlyClp: 50_000, lump: { date: "2018-12-14" as Ymd, clp: 400_000 } };
+const BTC = { from: "2018-06" as Month, to: "2019-12" as Month, monthlyClp: 50_000, lump: { date: "2018-12-14" as Ymd, clp: 400_000 } };
 
 /** Cash band on checking CLP + USD (months of trailing expenses). */
-export const CASH_BAND = { low: 3, target: 4.5, high: 6, trailingMonths: 6 };
+const CASH_BAND = { low: 3, target: 4.5, high: 6, trailingMonths: 6 };
 
 /** APV: 40 UTM every December; regime A while the year's marginal tax rate is ≤ 15 %, B above. */
-export const APV = { from: 2019, utm: 40, bonusRate: 0.15, bonusCapUtm: 6, depositDay: 18 };
+const APV = { from: 2019, utm: 40, bonusRate: 0.15, bonusCapUtm: 6, depositDay: 18 };
+
+export type Person = {
+  /** Seeds every random stream. */
+  seed: number;
+  firstMonth: Month;
+  /** The month whose pesos the "real" amounts (lifestyle, tickets, rents) are in. */
+  realBaseMonth: Month;
+  /** Prices and rates start this month (prior closes, watchlist anchors need some history). */
+  marketFromMonth: (today: Ymd) => Month;
+  /** Savings he starts with, deposited in cash on the first business day. */
+  opening: { account: "vista" | "checking"; clp: number };
+  /** The cuenta corriente opens this month (the vista's balance moves over). */
+  checkingFrom: Month;
+  dadName: string;
+  allowance: { from: Month; to: Month; clp: number } | null;
+  internships: Internship[];
+  contractJobs: ContractJob[];
+  contractorJobs: ContractorJob[];
+  housing: Housing[];
+  house: House | null;
+  cars: Car[];
+  oneOffs: OneOff[];
+  cards: CardDef[];
+  plays: Play[];
+  /** Every ticker the broker can hold (SPY first: the DCA and lump sums buy it). */
+  brokerTickers: string[];
+  dividendPerShareUsd: Record<string, number>;
+  btc: { from: Month; to: Month; monthlyClp: number; lump: { date: Ymd; clp: number } | null } | null;
+  /** A Fintual-style mutual fund: a monthly deposit from checking buys its cuotas (null: none). */
+  fund: { name: string; from: Month; monthlyClp: number } | null;
+  cashBand: { low: number; target: number; high: number; trailingMonths: number };
+  apv: { from: number; utm: number; bonusRate: number; bonusCapUtm: number; depositDay: number };
+  /** Where net worth should land today (USD), for the build's sanity check; null: no target. */
+  netWorthTargetUsd: number | null;
+};
+
+/** The hosted demo's person: born 1995, a decade of documents from university to his own apartment. */
+export const DEMO_PERSON: Person = {
+  seed: 1995_04_17,
+  firstMonth: "2016-02",
+  realBaseMonth: "2016-01",
+  marketFromMonth: (today) => {
+    const m = addMonths(monthOf(today), -132);
+    return m < "2016-02" ? m : "2016-02";
+  },
+  opening: { account: "vista", clp: 380_000 },
+  checkingFrom: "2018-04",
+  dadName: "JORGE DEMO",
+  allowance: ALLOWANCE,
+  internships: INTERNSHIPS,
+  contractJobs: CONTRACT_JOBS,
+  contractorJobs: CONTRACTOR_JOBS,
+  housing: HOUSING,
+  house: HOUSE,
+  cars: CARS,
+  oneOffs: ONE_OFFS,
+  cards: CARDS,
+  plays: PLAYS,
+  brokerTickers: BROKER_TICKERS,
+  dividendPerShareUsd: DIVIDEND_PER_SHARE_USD,
+  btc: BTC,
+  fund: null,
+  cashBand: CASH_BAND,
+  apv: APV,
+  netWorthTargetUsd: 400_000,
+};
+
+/**
+ * The Vitest person: the same engine on about twenty months ending today — a contrato job with
+ * liquidaciones, then a contractor job paid in dollars; a rented apartment; two cards with cuotas
+ * and a dollar side; the broker (SPY plus one play); AFP, AFC and an APV deposit. Dates are relative
+ * to today, so the database always ends in the current month.
+ */
+export function testPerson(today: Ymd): Person {
+  const cur = monthOf(today);
+  const back = (k: number) => addMonths(cur, -k);
+  const first = back(19);
+  return {
+    seed: 4242,
+    firstMonth: first,
+    realBaseMonth: first,
+    marketFromMonth: () => back(22),
+    opening: { account: "checking", clp: 2_500_000 },
+    checkingFrom: first,
+    dadName: "PADRE PRUEBA",
+    allowance: null,
+    internships: [],
+    contractJobs: [
+      {
+        kind: "contract",
+        id: "testjob1",
+        employer: "Empresa Prueba SpA",
+        employerRut: "76.000.111-2",
+        bankName: "EMPRESA PRUEBA SPA",
+        from: first,
+        to: back(8),
+        baseClp: 1_900_000,
+        yearlyRaise: 0.05,
+        raiseMonth: Number(first.slice(5, 7)),
+        mealClp: 50_000,
+        transportClp: 40_000,
+        bonusMonth: null,
+        aguinaldoClp: 60_000,
+        dcaClp: 150_000,
+      },
+    ],
+    contractorJobs: [
+      { kind: "contractor", id: "testjob2", employer: "Remote Test Inc.", platform: "DEEL", from: back(7), to: null, monthlyUsd: 5_000, transferFeeUsd: 15, dcaUsd: 1_000 },
+    ],
+    housing: [{ kind: "rent", id: "testapt", from: first, to: "9999-12", rentClp: 600_000, gcClp: 90_000, landlord: "ARRENDADOR PRUEBA" }],
+    house: null,
+    cars: [],
+    oneOffs: [
+      { month: back(14), day: 9, label: "MAC STORE PRUEBA", category: "others", clp: 1_200_000, cuotas: 6 },
+      { month: back(5), day: 6, label: "AEROLINEA PRUEBA", category: "fun", clp: 700_000, cuotas: 3, card: "second" },
+      { month: back(5), day: 18, label: "HOTEL PRUEBA", category: "fun", clp: null, usd: 650, card: "second" },
+    ],
+    cards: [
+      { key: "main", issuer: "santander", last4: "4321", displayName: "Tarjeta Prueba 4321", from: first, closeDay: 22 },
+      { key: "second", issuer: "bci", last4: "6605", displayName: "Tarjeta Prueba 6605", from: back(9), closeDay: 25 },
+    ],
+    plays: [{ kind: "buy", date: ymd(back(3), 15), ticker: "AAPL", usd: 800 }],
+    brokerTickers: ["SPY", "AAPL"],
+    dividendPerShareUsd: { SPY: 1.55, AAPL: 0.23 },
+    btc: null,
+    fund: { name: "Fondo Moderado", from: back(16), monthlyClp: 120_000 },
+    cashBand: CASH_BAND,
+    apv: APV,
+    netWorthTargetUsd: null,
+  };
+}
 
 /** Boleta retention per year (law 21.133 schedule). */
 export function boletaRetentionRate(year: number): number {

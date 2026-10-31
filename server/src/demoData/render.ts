@@ -16,11 +16,11 @@ import type {
   PayrollParametersPayload,
 } from "nw-tracker-contracts";
 import { CARD_PARSED_STATEMENT_COLUMNS } from "nw-tracker-contracts";
-import type { CcStatementCsvRecord } from "../../ccStatementsImport.js";
-import type { CcWebPasteParseResult } from "../../ccWebPasteParse.js";
-import { webPasteAmountFromDebtPositive } from "../../ccPaymentLines.js";
+import type { CcStatementCsvRecord } from "../ccStatementsImport.js";
+import type { CcWebPasteParseResult } from "../ccWebPasteParse.js";
+import { webPasteAmountFromDebtPositive } from "../ccPaymentLines.js";
 import type { MarketReader } from "./market.js";
-import { addMonths, CARDS, daysInMonth, MONTH_NAMES_ES, monthOf, type Month, type Ymd, ymd } from "./person.js";
+import { addMonths, daysInMonth, MONTH_NAMES_ES, monthOf, type CardDef, type Month, type Ymd, ymd } from "./person.js";
 import { afpWorkerRate, BRANCH, type BankRow, type CardStatement, type Ledger } from "./simulate.js";
 
 function ddmmyyyy(day: Ymd): string {
@@ -111,12 +111,12 @@ function emptyRecord(): CcStatementCsvRecord {
 /** Every closed facturación as the statement parser would print its lines. */
 export function renderCardStatementRecords(ledger: Ledger): CcStatementCsvRecord[] {
   const out: CcStatementCsvRecord[] = [];
-  for (const s of ledger.statements) out.push(...statementRecords(s));
+  for (const s of ledger.statements) out.push(...statementRecords(s, ledger.person.cards));
   return out;
 }
 
-function statementRecords(s: CardStatement): CcStatementCsvRecord[] {
-  const card = CARDS.find((c) => c.key === s.card)!;
+function statementRecords(s: CardStatement, cards: readonly CardDef[]): CcStatementCsvRecord[] {
+  const card = cards.find((c) => c.key === s.card)!;
   const clp = s.currency === "clp";
   const source = `import:demo-statement|${card.last4}|${s.currency}|${s.close}`;
   const header = (): CcStatementCsvRecord => {
@@ -154,7 +154,7 @@ function statementRecords(s: CardStatement): CcStatementCsvRecord[] {
   };
   const rows: CcStatementCsvRecord[] = [];
   let i = 0;
-  const id = () => `v2|${card.last4}|${s.currency}|${s.close}|${i++}`;
+  const id = () => `demo|${card.last4}|${s.currency}|${s.close}|${i++}`;
   for (const l of s.lines) {
     const r = header();
     r.transaction_date = ddmmyyyy(l.date);
@@ -183,7 +183,7 @@ function statementRecords(s: CardStatement): CcStatementCsvRecord[] {
     r.interest_rate_text = "0,00%";
     r.tipo_cuota = "CUOTA COMERCIO";
     r.row_id = r.dedupe_key = id();
-    r.canonical_row_id = `v2|plan|${c.plan.id}`;
+    r.canonical_row_id = `demo|plan|${c.plan.id}`;
     rows.push(r);
   }
   if (!clp && s.paidPrevious > 0 && s.paidPreviousDate) {
@@ -198,17 +198,17 @@ function statementRecords(s: CardStatement): CcStatementCsvRecord[] {
     r.row_id = r.dedupe_key = r.canonical_row_id = id();
     rows.push(r);
   }
-  if (rows.length === 0) throw new Error(`demo v2: statement ${source} has no lines`);
+  if (rows.length === 0) throw new Error(`demo: statement ${source} has no lines`);
   return rows;
 }
 
 /** The open cycle (after the last close) as the card feed lists it, per card. */
-export function renderOpenCycle(ledger: Ledger): { card: (typeof CARDS)[number]; listing: CcWebPasteParseResult }[] {
+export function renderOpenCycle(ledger: Ledger): { card: CardDef; listing: CcWebPasteParseResult }[] {
   return ledger.openCycle
     .map((o) => {
-      const card = CARDS.find((c) => c.key === o.card)!;
+      const card = ledger.person.cards.find((c) => c.key === o.card)!;
       const lines: CcWebPasteParseResult["lines"] = o.lines.map((l) => {
-        const pasted = webPasteAmountFromDebtPositive(l.amount, "santander");
+        const pasted = webPasteAmountFromDebtPositive(l.amount, card.issuer);
         return {
           transaction_date: l.date,
           merchant: l.merchant,
@@ -220,13 +220,13 @@ export function renderOpenCycle(ledger: Ledger): { card: (typeof CARDS)[number];
       });
       if (o.payment) {
         if (o.payment.clp > 0)
-          lines.push({ transaction_date: o.payment.date, merchant: "PAGO", amount_clp: webPasteAmountFromDebtPositive(-o.payment.clp, "santander"), amount_usd: null, currency: "clp", raw_line: "PAGO" });
+          lines.push({ transaction_date: o.payment.date, merchant: "PAGO", amount_clp: webPasteAmountFromDebtPositive(-o.payment.clp, card.issuer), amount_usd: null, currency: "clp", raw_line: "PAGO" });
         if (o.payment.usd > 0)
           lines.push({
             transaction_date: o.payment.date,
             merchant: o.payment.usdViaDivisas ? "ABONO DE DIVISAS" : "MONTO CANCELADO",
             amount_clp: 0,
-            amount_usd: webPasteAmountFromDebtPositive(-o.payment.usd, "santander"),
+            amount_usd: webPasteAmountFromDebtPositive(-o.payment.usd, card.issuer),
             currency: "usd",
             raw_line: o.payment.usdViaDivisas ? "ABONO DE DIVISAS" : "MONTO CANCELADO",
           });
@@ -242,7 +242,7 @@ export function renderPayslips(ledger: Ledger): EmploymentPayslipsPayload | null
   if (ledger.payslips.length === 0) return null;
   return {
     apply: true,
-    parser_version: "demo-v2",
+    parser_version: "demo",
     payslips: ledger.payslips.map((p) => {
       const sum = (side: "haber" | "descuento", section?: string) =>
         p.lines.filter((l) => l.side === side && (section == null || l.section === section)).reduce((a, l) => a + l.amount, 0);

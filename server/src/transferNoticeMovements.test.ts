@@ -104,15 +104,15 @@ describe("mailMovementForNotice", () => {
 
 describe("movements written from transfer mails", () => {
   let account: number;
-  let hadNumber: boolean;
+  let setAside: { number: string; issuer: string; currency: string }[] = [];
   const today = chileCalendarTodayYmd();
 
   beforeEach(() => {
     account = checkingAccountId();
-    hadNumber = db.prepare(`SELECT 1 FROM bank_account_numbers WHERE account_id = ?`).get(account) != null;
-    if (!hadNumber) {
-      db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', ?, 'clp')`).run(account, NUMBER);
-    }
+    // The mails name NUMBER: the checking account's own declared number steps aside meanwhile.
+    setAside = db.prepare(`SELECT number, issuer, currency FROM bank_account_numbers WHERE account_id = ?`).all(account) as typeof setAside;
+    db.prepare(`DELETE FROM bank_account_numbers WHERE account_id = ?`).run(account);
+    db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', ?, 'clp')`).run(account, NUMBER);
   });
 
   afterEach(() => {
@@ -124,7 +124,9 @@ describe("movements written from transfer mails", () => {
     db.prepare(`DELETE FROM bank_transfer_notices WHERE message_id LIKE '<vitest-tn-%'`).run();
     for (const id of ids) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
     db.prepare(`DELETE FROM movements WHERE note LIKE 'import:cartola-partial|%|VITEST TN%'`).run();
-    if (!hadNumber) db.prepare(`DELETE FROM bank_account_numbers WHERE account_id = ? AND number = ?`).run(account, NUMBER);
+    db.prepare(`DELETE FROM bank_account_numbers WHERE account_id = ? AND number = ?`).run(account, NUMBER);
+    const restore = db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, ?, ?, ?)`);
+    for (const r of setAside) restore.run(account, r.issuer, r.number, r.currency);
   });
 
   it("writes the credit from the mail, pairs it, and lets the nightly feed confirm it instead of adding a row", () => {

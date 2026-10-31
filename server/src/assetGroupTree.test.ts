@@ -11,6 +11,7 @@ import {
   listAccountsForBucketSlug,
 } from "./assetGroupTree.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
+import { accountKindSlugForAccountId } from "./accountBucket.js";
 
 describe("assetGroupTree", () => {
   it("has nested brokerage leaves after migration", () => {
@@ -70,8 +71,8 @@ describe("assetGroupTree", () => {
 
   it("lists AFP + AFC from retirement_afp_afc portfolio group", () => {
     const rows = listAccountsForBucketSlug("retirement_afp_afc", undefined, NOTE_STOCKS_LEGACY);
-    const names = rows.map((r) => r.name);
-    expect(names).toContain("AFP");
-    expect(names).toContain("AFC");
+    const kinds = rows.map((r) => accountKindSlugForAccountId(r.account_id));
+    expect(kinds).toContain("afp");
+    expect(kinds).toContain("afc");
   });
 });
