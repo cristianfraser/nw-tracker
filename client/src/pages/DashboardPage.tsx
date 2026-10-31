@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   MonthlyPerformanceComboChart,
   ProportionalAreaChart,
-  ValuationLineCharts,
+  LineChartPanel,
 } from "../components/charts/lazyCharts";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
 import { CcUpcomingPaymentsPanel } from "../components/dashboard/CcUpcomingPaymentsPanel";
@@ -95,7 +95,6 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const { displayUnit } = useDisplayPreferences();
   const overviewPrefs = useSurfacePrefs("home.overview", "day", "3y");
-  const principalesPrefs = useSurfacePrefs("home.principales", "day", "3y");
   const combosPrefs = useSurfacePrefs("home.combos", "month", "3y");
   const perfArea = useSurfaceAreaMode("home.perf");
   const allocationPrefs = useSurfacePrefs("home.proportional", "month", "total");
@@ -137,7 +136,7 @@ export function DashboardPage() {
   );
 
   const bundleReady = Boolean(
-    data?.dash && data?.ts?.overview && data?.ts?.accounts_ex_property
+    data?.dash && data?.ts?.overview
   );
   const useRealBundle = useRealBundleForContent(isPlaceholderData, bundleReady);
   const contentLoading = isBundleContentLoading({
@@ -197,25 +196,17 @@ export function DashboardPage() {
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   const overviewIsDaily = overviewPrefs.period === "day";
-  const principalesIsDaily = principalesPrefs.period === "day";
   const combosIsDaily = combosPrefs.period === "day";
   const combosIsYearly = combosPrefs.period === "year";
   const isYearly = combosIsYearly;
 
-  // Day view: each of the two valuation charts swaps to daily series from its own
-  // overview-daily fetch (surfaces that agree on the range dedupe into one request).
+  // Day view: the net-worth chart swaps to the daily series (overview-daily fetch).
   const overviewDaily = useDashboardOverviewDaily(
     displayUnit,
     timeRangeToDays(overviewPrefs.range),
     overviewIsDaily
   );
   const overviewDailyData = overviewDaily.data;
-  const principalesDaily = useDashboardOverviewDaily(
-    displayUnit,
-    timeRangeToDays(principalesPrefs.range),
-    principalesIsDaily
-  );
-  const principalesDailyData = principalesDaily.data;
   // The value map replaces the composition chart; only the real bundle carries it.
   const valueMapRoot = useMemo(
     () =>
@@ -246,8 +237,7 @@ export function DashboardPage() {
     on && (q.isPending || q.isPlaceholderData);
   const valuationChartsLoading =
     contentLoading ||
-    dailyLoading(overviewIsDaily, overviewDaily) ||
-    dailyLoading(principalesIsDaily, principalesDaily);
+    dailyLoading(overviewIsDaily, overviewDaily);
   const allocationLoading = contentLoading || dailyLoading(allocationIsDaily, allocationDaily);
   const dailyOverviewBlock = useMemo(() => {
     if (!overviewIsDaily || !overviewDailyData?.points.length || !ts?.overview) return null;
@@ -274,25 +264,6 @@ export function DashboardPage() {
         : {}),
     };
   }, [overviewIsDaily, overviewDailyData, ts?.overview, ts?.unit]);
-
-  // Day mode: «Cuentas principales» swaps to the per-child daily lines. Borrow the monthly
-  // block's account metadata (ids/colors/labels) so line identities survive the M↔D toggle,
-  // and pair each account's dataKey with the daily values (index-aligned to the daily grid).
-  const dailyPrimaryBlock = useMemo(() => {
-    const accounts = ts?.accounts_ex_property?.accounts;
-    if (!principalesIsDaily || !principalesDailyData?.primary_lines?.length || !accounts?.length)
-      return null;
-    const valuesByKey = new Map(principalesDailyData.primary_lines.map((l) => [l.dataKey, l.values]));
-    const points = principalesDailyData.points.map((p, i) => {
-      const row: Record<string, string | number | null> = { as_of_date: p.as_of_date };
-      for (const a of accounts) {
-        const vals = valuesByKey.get(a.dataKey);
-        row[a.dataKey] = vals ? (vals[i] ?? null) : null;
-      }
-      return row;
-    });
-    return { accounts, points };
-  }, [principalesIsDaily, principalesDailyData, ts?.accounts_ex_property]);
 
   // The P/L + deposits combo arrives built (`inversionesPerf`: the inversiones consolidation's
   // months, deposits joined); the client only cuts it to the Rango and rolls years up.
@@ -336,13 +307,6 @@ export function DashboardPage() {
     return { ...base, points: rollupTimeseriesBlockYearEnd(base).points };
   }, [ts?.overview, overviewPrefs.period]);
 
-  const principalesBlock = useMemo(() => {
-    if (!ts?.accounts_ex_property) return null;
-    return principalesPrefs.period === "year"
-      ? rollupTimeseriesBlockYearEnd(ts.accounts_ex_property)
-      : ts.accounts_ex_property;
-  }, [ts?.accounts_ex_property, principalesPrefs.period]);
-
   const bucketColorBySlug = useMemo(() => {
     const m = new Map<string, string>();
     for (const row of dash?.allocation ?? []) {
@@ -379,7 +343,7 @@ export function DashboardPage() {
 
   // The blocks are always on hand (placeholder, held or real bundle); the nav only counts once
   // it has answered.
-  if ((!netWorthNav && navSettled) || !overviewBlock || !principalesBlock) {
+  if ((!netWorthNav && navSettled) || !overviewBlock) {
     return (
       <main>
         <p className="muted">{t("common.loadFailed")}</p>
@@ -423,50 +387,36 @@ export function DashboardPage() {
 
   const dashboardCharts = (
     <>
-      <ValuationLineCharts
-        displayUnit={displayUnit}
-        primaryTitle={t("dashboard.sections.overviewTitle")}
-        primary={dailyOverviewBlock ?? overviewBlock}
-        secondaryTitle={t("dashboard.sections.primaryAccountsTitle")}
-        secondary={dailyPrimaryBlock ?? principalesBlock}
-        thickLineDataKey="total_nw"
-        includeAccumulatedLines={false}
-        primaryColorPlan={{ kind: "dashboard-overview" }}
-        secondaryColorPlan={{ kind: "dashboard-primary" }}
-        primaryXAxisGranularity={
-          dailyOverviewBlock ? "day" : overviewPrefs.period === "year" ? "year" : "month"
-        }
-        secondaryXAxisGranularity={
-          dailyPrimaryBlock ? "day" : principalesPrefs.period === "year" ? "year" : "month"
-        }
-        primaryTimeRange={overviewPrefs.range}
-        secondaryTimeRange={principalesPrefs.range}
-        primaryAthMarker={
-          dailyOverviewBlock
-            ? (overviewDailyData?.ath ?? null)
-            : overviewPrefs.period === "year"
-              ? (ts.overview?.ath?.year ?? null)
-              : (ts.overview?.ath?.month ?? null)
-        }
-        primaryControls={
-          <SurfaceControls
-            period={overviewPrefs.period}
-            onPeriodChange={overviewPrefs.setPeriod}
-            range={overviewPrefs.range}
-            onRangeChange={overviewPrefs.setRange}
-          />
-        }
-        secondaryControls={
-          <SurfaceControls
-            period={principalesPrefs.period}
-            onPeriodChange={principalesPrefs.setPeriod}
-            range={principalesPrefs.range}
-            onRangeChange={principalesPrefs.setRange}
-          />
-        }
-        chartLayout="fullWidthStack"
-        loading={valuationChartsLoading}
-      />
+      <div className="chart-grid chart-grid--full-width-stack">
+        <LineChartPanel
+          title={t("dashboard.sections.overviewTitle")}
+          block={dailyOverviewBlock ?? overviewBlock}
+          displayUnit={displayUnit}
+          thickKey="total_nw"
+          includeAccumulatedLines={false}
+          colorPlan={{ kind: "dashboard-overview" }}
+          xAxisGranularity={
+            dailyOverviewBlock ? "day" : overviewPrefs.period === "year" ? "year" : "month"
+          }
+          timeRange={overviewPrefs.range}
+          athMarker={
+            dailyOverviewBlock
+              ? (overviewDailyData?.ath ?? null)
+              : overviewPrefs.period === "year"
+                ? (ts.overview?.ath?.year ?? null)
+                : (ts.overview?.ath?.month ?? null)
+          }
+          controls={
+            <SurfaceControls
+              period={overviewPrefs.period}
+              onPeriodChange={overviewPrefs.setPeriod}
+              range={overviewPrefs.range}
+              onRangeChange={overviewPrefs.setRange}
+            />
+          }
+          loading={valuationChartsLoading}
+        />
+      </div>
 
       <DashboardFlowsSummary displayUnit={displayUnit} />
 

@@ -68,18 +68,6 @@ const CC_HISTORIAL_BOX_STYLE: CSSProperties = { height: 280, marginTop: "0.35rem
 
 export const LineChartPanel = lazyChart("LineChartPanel", panelFrame);
 
-/** Same grid as ValuationLineCharts: its two LineChartPanels side by side or stacked. */
-export const ValuationLineCharts = lazyChart("ValuationLineCharts", (p) => (
-  <div
-    className={
-      p.chartLayout === "fullWidthStack" ? "chart-grid chart-grid--full-width-stack" : "chart-grid"
-    }
-  >
-    {panelFrame({ title: p.primaryTitle, controls: p.primaryControls })}
-    {panelFrame({ title: p.secondaryTitle, controls: p.secondaryControls })}
-  </div>
-));
-
 export const MonthlyPerformanceComboChart = lazyChart("MonthlyPerformanceComboChart", panelFrame);
 
 export const ProportionalAreaChart = lazyChart("ProportionalAreaChart", panelFrame);

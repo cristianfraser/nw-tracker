@@ -12,17 +12,13 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   chileCalendarDaysListEndingAt,
   DAILY_SERIES_MAX_DAYS,
-  getBucketDailySeriesCached,
   totalRangeDays,
 } from "./dailySeries.js";
-import { nullLeadingZeroRun, trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { clpToUnitAt } from "./clpToUnitAt.js";
 import { getNetWorthAllTimeHigh, type NetWorthAthDto } from "./netWorthAllTimeHigh.js";
 import { buildDashboardBucketDailySeriesClp, dashboardBucketsUsdToday } from "./portfolioGroupValueAtDate.js";
 import {
-  DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
   listAccountsForGroupTab,
-  listDashboardPrimaryPortfolioGroupSpecs,
   milestoneFieldsForDate,
 } from "./valuationTimeseries.js";
 
@@ -54,9 +50,6 @@ export type OverviewDailyPoint = {
   [usdMilestoneKey: `usd_${string}`]: number | null;
 };
 
-/** A «Cuentas principales» child-group line: values in the request unit, aligned to `points`. */
-export type PrimaryDailyLine = { dataKey: string; values: (number | null)[] };
-
 export type OverviewDailyPayload = {
   unit: "clp" | "usd";
   days: number;
@@ -64,68 +57,9 @@ export type OverviewDailyPayload = {
   points: OverviewDailyPoint[];
   /** Composition shares for the home pie-replacement chart (same dataKeys as the monthly block). */
   allocation_proportional: ProportionalSeriesBlock;
-  /** «Cuentas principales» per-child-group daily lines (request unit), keyed by the same
-   * synthetic dataKeys as the monthly `accounts_ex_property` accounts. */
-  primary_lines: PrimaryDailyLine[];
   /** All-time high of the net-worth line in the request unit (full-history daily walk, see `netWorthAllTimeHigh.ts`). */
   ath: NetWorthAthDto | null;
 };
-
-/**
- * Per-child-group daily lines for «Cuentas principales», in the request unit. Each line sums
- * the same marks the group page's daily series sums (`getBucketDailySeriesCached` under the
- * shared `pg:<slug>` key), so a line here equals that group's day-mode chart point-for-point.
- * The cash child reuses the CC-netted `cash_eqs` bucket from `byDate` — the netting the
- * net-worth cash line always applies — so it matches the overview cash line, not the raw group.
- */
-function buildPrimaryDailyLines(
-  unit: "clp" | "usd",
-  days: number,
-  grid: readonly string[],
-  cashNettedClpByDate: Map<string, number>,
-  /** Today's cash card in USD (the headline's per-account dollars); null in CLP. */
-  cashUsdToday: number | null
-): PrimaryDailyLine[] {
-  const lines: PrimaryDailyLine[] = [];
-  for (const spec of listDashboardPrimaryPortfolioGroupSpecs()) {
-    const dataKey = String(spec.chartAccountId);
-    if (spec.slug === DASHBOARD_NW_CASH_PORTFOLIO_SLUG) {
-      // Netted cash, converted per day like the overview cash line.
-      const values = grid.map((ymd) => {
-        const clp = cashNettedClpByDate.get(ymd);
-        if (clp == null || !Number.isFinite(clp)) return null;
-        if (unit === "clp") return clp;
-        if (ymd === grid[grid.length - 1] && cashUsdToday != null) return cashUsdToday;
-        const usd = clpToUnitAt(clp, ymd, "usd");
-        return usd != null && Number.isFinite(usd) ? usd : null;
-      });
-      // Before the first money arrives (a cartola's opening anchor dated the day before) cash
-      // reads 0: the line starts at its first non-zero day, like every other line.
-      nullLeadingZeroRun(values);
-      lines.push({ dataKey, values });
-      continue;
-    }
-    const rows = listAccountsForGroupTab(spec.slug).filter((r) => r.account_id > 0);
-    if (!rows.length) continue;
-    const series = getBucketDailySeriesCached(`pg:${spec.slug}`, rows, {
-      unit,
-      days,
-      includeAccounts: true,
-    });
-    const byDate = new Map(series.points.map((p) => [p.as_of_date, p.value]));
-    const values = grid.map((ymd) => byDate.get(ymd) ?? null);
-    // A child group that starts holding inside the window reads a finite 0 before (a member
-    // marks 0, not null): the line starts at its first non-zero day, as the monthly block does.
-    nullLeadingZeroRun(values);
-    // A sold-out child group (e.g. mutual funds after the fund was liquidated) reads a finite 0
-    // every day after, which would hug zero to today; the monthly `accounts_ex_property` block is
-    // clipped by `applyTrailingZeroTailClipToBlock`, so mirror it here — same kept-zeros rule.
-    const startNullAt = trailingZeroRunClipStartIndex(values);
-    if (startNullAt != null) for (let i = startNullAt; i < values.length; i++) values[i] = null;
-    lines.push({ dataKey, values });
-  }
-  return lines;
-}
 
 /** Σ liability-account marks per grid day (same accounts as the Pasivos group daily view). */
 function liabilitiesClpByDate(grid: readonly string[]): Map<string, number> {
@@ -196,9 +130,6 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
     };
   });
 
-  const cashNettedClpByDate = new Map(grid.map((ymd) => [ymd, byDate.get(ymd)!.cash_eqs]));
-  const primary_lines = buildPrimaryDailyLines(unit, days, grid, cashNettedClpByDate, usdToday?.cash_eqs ?? null);
-
   // Composition shares (day grain): the same lines and marks as the monthly block, sampled
   // daily (shares are unit-invariant, so the CLP marks serve both units).
   const compositionSpecs = compositionLineSpecsFromNavTree((slug) => listAccountsForGroupTab(slug));
@@ -213,7 +144,6 @@ function buildOverviewDaily(unit: "clp" | "usd", days: number): OverviewDailyPay
     days,
     end_ymd: endYmd,
     points,
-    primary_lines,
     allocation_proportional,
     ath: getNetWorthAllTimeHigh(unit),
   };

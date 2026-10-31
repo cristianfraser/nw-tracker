@@ -56,7 +56,6 @@ import {
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
   averageRgbTriplets,
-  colorRgbForSyntheticAccountLine,
   getAccountColorRgb,
   syntheticGroupColorRgbMapForValuationGroup,
 } from "./chartColorRgb.js";
@@ -70,10 +69,7 @@ import {
 } from "./groupChartBuckets.js";
 import { orderGroupTabRowsBucketMajor } from "./groupTabOrdering.js";
 import { getNavChartGroupNodeBySlug } from "./navTree.js";
-import {
-  listFirstLevelPortfolioGroupChildren,
-  portfolioGroupColorRgbBySlug,
-} from "./portfolioGroups.js";
+import { portfolioGroupColorRgbBySlug } from "./portfolioGroups.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc } from "./fxRates.js";
@@ -104,7 +100,7 @@ import {
 } from "./groupMonthlyPerfConsolidation.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 import { buildReferenceCoverage, sumKeysPerRow } from "./referenceCoverage.js";
-import { applyTrailingZeroTailClipToBlock, nullLeadingZeroRun } from "./timeseriesTailClip.js";
+import { applyTrailingZeroTailClipToBlock } from "./timeseriesTailClip.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
 
@@ -1416,9 +1412,8 @@ function withUsdMilestoneReferences(
   };
 }
 
-/** Overview + primary chart blocks from `portfolio_groups` net-worth buckets (one TS build). */
+/** Overview chart block from `portfolio_groups` net-worth buckets (one TS build). */
 function buildDashboardOverviewSlice(unit: TsUnit): {
-  accounts_ex_property: { accounts: AccountLine[]; points: Record<string, string | number | null>[] };
   overview: { lines: ReturnType<typeof buildDashboardOverviewLines>; points: Record<string, string | number | null>[] };
   chartDates: string[];
   /** Composition shares at the chart dates (lazy: only the home bundle pays for its marks). */
@@ -1430,11 +1425,9 @@ function buildDashboardOverviewSlice(unit: TsUnit): {
   const datesAsc = clpTotals.datesAsc;
   const today = chileCalendarTodayYmd();
   const chartDates = datesAsc.filter((d) => d <= today);
-  const accountsExProperty = buildDashboardPrimaryFromTotals(unit, chartDates, totalsBySlug);
   const totalsBySlugClp = clpTotals.totalsBySlug;
   const overviewPoints = buildOverviewDisplayPointsFromPortfolioTotals(chartDates, totalsBySlugClp, totalsBySlug);
   return {
-    accounts_ex_property: accountsExProperty,
     overview: { lines: buildDashboardOverviewLines(), points: overviewPoints },
     chartDates,
     composition: () => {
@@ -1593,42 +1586,8 @@ const DASHBOARD_OVERVIEW_PORTFOLIO_SLUGS = [
   "liabilities",
 ] as const;
 
-/** Stable negative `account_id` for “Cuentas principales” lines (see `SYNTHETIC_ACCOUNT_PORTFOLIO_GROUP_SLUG`). */
-const DASHBOARD_PRIMARY_CHART_ACCOUNT_ID: Record<string, number> = {
-  brokerage_mutual_funds: -201,
-  brokerage_acciones: -202,
-  brokerage_crypto: -203,
-  retirement_afp_afc: -9101,
-  retirement_apv: -9102,
-  cash_savings: -9201,
-  cash_eqs: -9201,
-};
-
-export type DashboardPrimaryLineSpec = { slug: string; chartAccountId: number };
-
-/**
- * “Cuentas principales”: brokerage + retirement first-level portfolio children + ahorros y reservas.
- * Totals from each child’s class-tab valuation (`groupTabValuationTotalFromBuilt`).
- */
-export function listDashboardPrimaryPortfolioGroupSpecs(): DashboardPrimaryLineSpec[] {
-  const specs: DashboardPrimaryLineSpec[] = [];
-  for (const parentSlug of ["brokerage", "retirement"] as const) {
-    for (const child of listFirstLevelPortfolioGroupChildren(parentSlug)) {
-      const chartAccountId =
-        DASHBOARD_PRIMARY_CHART_ACCOUNT_ID[child.slug] ?? -10_000 - child.group_id;
-      specs.push({ slug: child.slug, chartAccountId });
-    }
-  }
-  specs.push({
-    slug: DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
-    chartAccountId: DASHBOARD_PRIMARY_CHART_ACCOUNT_ID.cash_eqs,
-  });
-  return specs;
-}
-
 function dashboardChartPortfolioSlugs(): string[] {
-  const primary = listDashboardPrimaryPortfolioGroupSpecs().map((s) => s.slug);
-  return [...new Set([...DASHBOARD_OVERVIEW_PORTFOLIO_SLUGS, ...primary])];
+  return [...DASHBOARD_OVERVIEW_PORTFOLIO_SLUGS];
 }
 
 const portfolioGroupLabelStmt = db.prepare(
@@ -1750,44 +1709,6 @@ function convertDashboardPortfolioGroupTotals(
     totalsBySlug.set(slug, converted);
   }
   return { datesAsc: clp.datesAsc, totalsBySlug };
-}
-
-function buildDashboardPrimaryFromTotals(
-  unit: TsUnit,
-  datesAsc: string[],
-  totalsBySlug: Map<string, Map<string, number>>
-): { accounts: AccountLine[]; points: Record<string, string | number | null>[] } {
-  const primarySpecs = listDashboardPrimaryPortfolioGroupSpecs();
-  const accounts: AccountLine[] = [];
-  for (const spec of primarySpecs) {
-    const row = portfolioGroupLabelStmt.get(spec.slug) as { label: string } | undefined;
-    const dk = String(spec.chartAccountId);
-    accounts.push({
-      account_id: spec.chartAccountId,
-      name: row?.label ?? spec.slug,
-      dataKey: dk,
-      valueSeriesType: "data",
-    });
-  }
-
-  // A child group that starts holding after the first chart date reads a finite 0 before (a
-  // member marks 0, not null): its line starts at its first non-zero date, as the daily lines do.
-  const valuesByKey = new Map<string, (number | null)[]>();
-  for (const spec of primarySpecs) {
-    const values = datesAsc.map((d) => {
-      const v = totalsBySlug.get(spec.slug)?.get(d);
-      return v != null && Number.isFinite(v) ? v : null;
-    });
-    nullLeadingZeroRun(values);
-    valuesByKey.set(String(spec.chartAccountId), values);
-  }
-  const points = datesAsc.map((d, i) => {
-    const row: Record<string, string | number | null> = { as_of_date: d };
-    for (const [dk, values] of valuesByKey) row[dk] = values[i] ?? null;
-    return row;
-  });
-
-  return { accounts, points };
 }
 
 /** Carry each source group’s last valuation on or before each chart date (month-ends may differ). */
@@ -1964,7 +1885,7 @@ function appendChartHostReferenceOverlays(
   };
 }
 
-/** @heavy Builds primary portfolio lines and the overview (with USD milestone lines) for the home page. */
+/** @heavy Builds the overview (with USD milestone lines) and the composition block for the home page. */
 export function getDashboardValuationTimeseries(unit: TsUnit) {
   return withPortfolioGroupIndex(() => getDashboardValuationTimeseriesInner(unit));
 }
@@ -1977,7 +1898,6 @@ function getDashboardValuationTimeseriesInner(unit: TsUnit) {
 
   return {
     unit,
-    accounts_ex_property: applyTrailingZeroTailClipToBlock(slice.accounts_ex_property),
     overview: applyTrailingZeroTailClipToBlock(withUsdMilestoneReferences(slice.overview, unit)),
     allocation_proportional,
   };
@@ -1997,7 +1917,6 @@ export type DashboardChartShape = {
   /** Earliest valuation date — dashboard chart x-axes start on its month. Null on an empty DB. */
   first_month: string | null;
   overview_lines: DashboardChartShapeLine[];
-  primary_lines: DashboardChartShapeLine[];
   has_perf_sections: boolean;
 };
 
@@ -2017,17 +1936,6 @@ const minValuationDateStmt = db.prepare(
  */
 export function getDashboardChartShape(): DashboardChartShape {
   const first_month = (minValuationDateStmt.get() as { d: string | null }).d;
-  const primary_lines = listDashboardPrimaryPortfolioGroupSpecs().map((spec) => {
-    const row = portfolioGroupLabelStmt.get(spec.slug) as { label: string } | undefined;
-    const color_rgb = colorRgbForSyntheticAccountLine(spec.chartAccountId);
-    return {
-      dataKey: String(spec.chartAccountId),
-      name: row?.label ?? spec.slug,
-      valueSeriesType: "data" as const,
-      account_id: spec.chartAccountId,
-      ...(color_rgb ? { color_rgb } : {}),
-    };
-  });
   const has_perf_sections =
     accountIdsInPortfolioGroup("retirement").length > 0 ||
     accountIdsInPortfolioGroup("brokerage").length > 0;
@@ -2035,7 +1943,6 @@ export function getDashboardChartShape(): DashboardChartShape {
     first_month,
     // The home chart's own lines, milestones included, so the loading legend is the loaded one.
     overview_lines: [...buildDashboardOverviewLines(), ...usdMilestoneReferenceLines()],
-    primary_lines,
     has_perf_sections,
   };
 }

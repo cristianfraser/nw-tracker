@@ -50,7 +50,6 @@ export interface DashboardChartShape {
   /** Earliest valuation date; chart x-axes start on its month. Null on an empty DB. */
   first_month: string | null;
   overview_lines: DashboardChartShapeLine[];
-  primary_lines: DashboardChartShapeLine[];
   has_perf_sections: boolean;
 }
 

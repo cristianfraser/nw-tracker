@@ -376,7 +376,6 @@ export interface TimeseriesBlock {
 /** Dashboard home, or `/api/...?group=` for class tabs */
 export interface ValuationTimeseriesResponse {
   unit: "clp" | "usd" | "uf";
-  accounts_ex_property?: TimeseriesBlock;
   /** Home: also carries the USD milestone reference lines (`usd_50k`, …) and their anchors. */
   overview?: Required<Pick<TimeseriesBlock, "lines" | "points">> &
     Pick<TimeseriesBlock, "referenceMilestoneByDate"> & {
@@ -414,21 +413,12 @@ export interface DashboardOverviewDailyPoint {
   [usdMilestoneKey: `usd_${string}`]: number | null;
 }
 
-/** A «Cuentas principales» child line: values in the request unit, aligned to `points`,
- * keyed by the same synthetic dataKey as the monthly `accounts_ex_property` accounts. */
-export interface PrimaryDailyLine {
-  dataKey: string;
-  values: (number | null)[];
-}
-
 /** Daily net-worth series for the day period view (calendar-day grid, last point live). */
 export interface DashboardOverviewDailyResponse {
   unit: "clp" | "usd";
   days: number;
   end_ymd: string;
   points: DashboardOverviewDailyPoint[];
-  /** «Cuentas principales» per-child-group daily lines (request unit). */
-  primary_lines: PrimaryDailyLine[];
   /** Home composition shares at day grain (same dataKeys as the monthly block). */
   allocation_proportional?: ProportionalSeriesBlockDto;
   /** Peak of the net-worth line (full-history daily walk, this unit); null when no day is finite. */
