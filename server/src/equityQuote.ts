@@ -8,6 +8,7 @@ import {
   nyseSessionYmd,
   utcTodayYmd,
 } from "./nyseSession.js";
+import { noteLiveTickerRead } from "./cacheDependencies.js";
 import { getLatestLiveEquityQuoteRow, type LiveMarketQuoteRow } from "./liveMarketQuotesDb.js";
 import { liveQuotesMaxAgeMs } from "./liveMarketQuotesConfig.js";
 import { marketSymbol, type MarketQuoteCurrency } from "./marketSymbols.js";
@@ -261,6 +262,7 @@ export function getLiveEquityQuoteFromDb(
  * session is still the best evidence there is.
  */
 export function equityHeldSessionQuote(ticker: string, now = new Date()): ResolvedEquityQuote | null {
+  noteLiveTickerRead(ticker);
   if (!equitySessionClosedForDay(ticker, now)) return null;
   const session = equitySessionYmdForTicker(ticker, now);
   if (eodCloseOnDate(ticker, session) != null) return null;
@@ -271,6 +273,9 @@ export function equityHeldSessionQuote(ticker: string, now = new Date()): Resolv
 
 /** Whether `asOfYmd` is the active session and we should prefer stored live quotes over DB EOD. */
 export function shouldUseLiveEquityQuote(ticker: string, asOfYmd: string, now = new Date()): boolean {
+  // The gate reports the ticker whatever it decides: a cached figure that read the stored close
+  // before the open must go when the session's first tick moves the price (`cacheDependencies.ts`).
+  noteLiveTickerRead(ticker);
   const kind = equityMarketKind(ticker);
   if (kind === "crypto24") {
     const today = utcTodayYmd(now);
