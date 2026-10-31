@@ -26,6 +26,11 @@
   margin-left: 0.3rem;
 }
 
+/* Inside a line of text the icon must not make the line taller than the text around it. */
+.inline .infoTrigger {
+  margin-block: -0.3rem;
+}
+
 .infoBlock + .infoBlock {
   margin-top: 0.45rem;
   padding-top: 0.45rem;
