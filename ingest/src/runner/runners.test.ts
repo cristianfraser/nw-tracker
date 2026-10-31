@@ -63,6 +63,7 @@ describe("runNightly", () => {
       "run check:broker-emails",
       "run import:fintual-emails -- --apply",
       "run import:fintual-acciones -- --apply",
+      "run import:fintual-wallet -- --apply",
       "run import:racional-emails -- --apply",
       "run import:santander-statements -- --apply",
     ]);
@@ -176,6 +177,7 @@ describe("runHourly", () => {
       "run fetch:apple-mail",
       "run fetch:emails",
       "run import:transfer-mails -- --days=2",
+      "run import:fintual-wallet -- --apply",
     ]);
     expect(notes).toContain("=== inbox pipeline (skipped — nothing new staged)");
     expect(notes).toContain("=== Mortgage sheet (not stale)");
@@ -192,6 +194,7 @@ describe("runHourly", () => {
       "run import:fintual-emails -- --apply",
       "run import:racional-emails -- --apply",
       "run import:transfer-mails -- --days=2",
+      "run import:fintual-wallet -- --apply",
     ]);
   });
 
@@ -210,6 +213,16 @@ describe("runHourly", () => {
       "import:transfer-mails": "  movement written from the mail: 9, 2030-10-07 $29597 on account 22",
     });
     expect((await runHourly(x, HOURLY)).activity).toBe(true);
+  });
+
+  it("reads the Fintual wallet every hour and counts a booked interest credit as activity", async () => {
+    const quiet = fakeRunner({ "fetch:emails": "e-mail: 0 broker message(s)", "import:fintual-wallet": "  → 0 inserted, 2 already present" });
+    expect((await runHourly(quiet.x, HOURLY)).activity).toBe(false);
+    const booked = fakeRunner({ "fetch:emails": "e-mail: 0 broker message(s)", "import:fintual-wallet": "  → 1 inserted, 1 already present" });
+    expect((await runHourly(booked.x, HOURLY)).activity).toBe(true);
+    const report = fakeRunner();
+    await runHourly(report.x, { ...HOURLY, fintualApply: false });
+    expect(report.calls).toContain("run import:fintual-wallet");
   });
 
   it("runs a photo waiting in the grocery inbox through the pipeline", async () => {
@@ -236,6 +249,7 @@ describe("runHourly", () => {
       "run check:cc-bank-cupo",
       "run import:cfraser-inbox",
       "run import:transfer-mails -- --days=2",
+      "run import:fintual-wallet -- --apply",
     ]);
   });
 

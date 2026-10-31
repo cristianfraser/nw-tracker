@@ -81,6 +81,10 @@ export type BrokerMovement = z.infer<typeof brokerMovementSchema>;
  * dividends record, as of `read_at`. `movements: null` when the list was not read this time (only
  * the dividends record was); `dividends: null` when the record was not. A read the server applies
  * with nothing left to fix covers the broker's notifications sent before it.
+ *
+ * `fintual` (2026-10-30): the dollar wallet's cash interest («Ganancia dólares»), which no mail
+ * announces, read from Fintual's own activity feed. Its other movements arrive by mail, so a
+ * Fintual read carries interest only, and no dividends record.
  */
 export const brokerMovementsKind = defineIngestKind({
   kind: "broker.movements",
@@ -88,14 +92,18 @@ export const brokerMovementsKind = defineIngestKind({
   description: "One read of a broker's movement list and dividends record.",
   payload: z
     .object({
-      broker: z.enum(["racional"]),
+      broker: z.enum(["racional", "fintual"]),
       apply: z.boolean(),
       read_at: z.iso.datetime({ offset: true }),
       movements: z.array(brokerMovementSchema).nullable(),
       dividends: z.array(brokerDividendSchema).nullable(),
     })
     .strict()
-    .refine((p) => p.movements != null || p.dividends != null, { message: "a read carries movements, dividends or both" }),
+    .refine((p) => p.movements != null || p.dividends != null, { message: "a read carries movements, dividends or both" })
+    .refine(
+      (p) => p.broker !== "fintual" || (p.dividends == null && (p.movements ?? []).every((m) => m.kind === "interest")),
+      { message: "a Fintual read carries interest movements only" }
+    ),
 });
 
 export type BrokerMovementsPayload = z.infer<typeof brokerMovementsKind.payload>;

@@ -19,6 +19,7 @@ import { applyParsedCcStatements } from "./ccParsedStatementsApply.js";
 import { applyMerchantPurchaseDocument } from "./merchantPurchaseDocumentApply.js";
 import { applyPensionAccountBalance, applyPensionAccountCertificates } from "./pensionAccountCertificatesApply.js";
 import { applyUnemploymentFundBalance } from "./unemploymentFundBalanceApply.js";
+import { applyFintualWalletRead } from "./fintualWalletInterestApply.js";
 import { applyRacionalRead } from "./racionalMovementsImport.js";
 import { applyCardPaymentReceipt } from "./santanderCcPaymentReceipts.js";
 import { applyStoreReceipt } from "./storeReceiptApply.js";
@@ -176,7 +177,11 @@ export const INGEST_HANDLERS: IngestHandlerMap = {
   },
   "broker.movements": {
     apply({ payload, envelope }) {
-      return { status: "applied", details: applyRacionalRead(payload, envelope.source.ref) };
+      const details =
+        payload.broker === "fintual"
+          ? applyFintualWalletRead(payload)
+          : applyRacionalRead(payload, envelope.source.ref);
+      return { status: "applied", details };
     },
   },
   "broker.notifications": {

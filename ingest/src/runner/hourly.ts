@@ -39,6 +39,12 @@ export function mortgageSheetWritten(output: string): number {
   return all.length > 0 ? Number(all.at(-1)![1]) : 0;
 }
 
+/** import:fintual-wallet --apply logs «→ N inserted, M already present». */
+export function fintualWalletInserted(output: string): number {
+  const all = [...output.matchAll(/→ (\d+) inserted, \d+ already present/g)];
+  return all.length > 0 ? Number(all.at(-1)![1]) : 0;
+}
+
 /** fetch.ts always logs the count, zero included: «e-mail: N broker message(s)». */
 export function brokerMessageCount(output: string): number {
   const all = [...output.matchAll(/e-mail: (\d+) broker message\(s\)/g)];
@@ -143,13 +149,31 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     : await x.step("Transfer mails", npmRun("import:transfer-mails", "--days=2"), capture);
   const mailMovements = mailMovementCount(transfers.output);
 
+  // Every hour: the Fintual dollar wallet's cash interest, which no mail announces (one /gql
+  // request); a credit is in the ledger within the hour it posts.
+  const wallet =
+    o.dryRun || !o.fintualApply
+      ? await x.step(`Fintual wallet interest (${o.dryRun ? "dry run" : "report only"})`, npmRun("import:fintual-wallet"), capture)
+      : await x.step("Fintual wallet interest (apply)", npmRun("import:fintual-wallet", "--apply"), capture);
+  const walletInterest = fintualWalletInserted(wallet.output);
+
   const activity =
-    sdSaved > 0 || lsSaved > 0 || lbSaved > 0 || fdSaved > 0 || amSaved > 0 || beMsgs > 0 || caughtUp || mailMovements > 0 || sheetRows > 0;
+    sdSaved > 0 ||
+    lsSaved > 0 ||
+    lbSaved > 0 ||
+    fdSaved > 0 ||
+    amSaved > 0 ||
+    beMsgs > 0 ||
+    caughtUp ||
+    mailMovements > 0 ||
+    sheetRows > 0 ||
+    walletInterest > 0;
   if (activity) {
     x.note(
       `activity this hour: santander-docs saved=${sdSaved}, lider statement saved=${lsSaved}, ` +
         `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, apple mail saved=${amSaved}, broker mail=${beMsgs}, ` +
-        `santander fetch=${caughtUp ? 1 : 0}, movements from transfer mails=${mailMovements}, mortgage sheet rows=${sheetRows}`
+        `santander fetch=${caughtUp ? 1 : 0}, movements from transfer mails=${mailMovements}, mortgage sheet rows=${sheetRows}, ` +
+        `fintual wallet interest=${walletInterest}`
     );
   }
   return { santander, activity };

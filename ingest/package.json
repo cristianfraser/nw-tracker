@@ -59,6 +59,7 @@
     "import:payroll-liquidaciones": "tsx src/payroll/importPayslipsMain.ts",
     "import:previred-indicators": "tsx src/payroll/importPreviredIndicatorsMain.ts",
     "import:fintual-acciones": "tsx src/fintual/importAccionesMain.ts",
+    "import:fintual-wallet": "tsx src/fintual/importWalletMain.ts",
     "import:fintual-cert": "tsx src/fintual/importCertMain.ts",
     "import:afc-cert": "tsx src/afc/importDocumentsMain.ts",
     "import:mortgage-sheet": "tsx src/mortgage/importSheetMain.ts",
