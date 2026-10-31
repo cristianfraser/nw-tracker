@@ -16,6 +16,10 @@ export const HeavyWork = {
   flowsDepositsPayload: "flows.deposits_payload",
   navContext: "dashboard.nav_context",
   pageBundle: "dashboard.page_bundle",
+  dailyGroupSeries: "daily.group_series",
+  dailyReferenceLines: "daily.reference_lines",
+  ccGroupLedger: "cc.group_ledger",
+  accountDetailBundle: "account.detail_bundle",
 } as const;
 
 export type HeavyWorkLabel = (typeof HeavyWork)[keyof typeof HeavyWork];
