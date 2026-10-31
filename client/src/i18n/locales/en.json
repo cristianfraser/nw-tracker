@@ -1502,7 +1502,7 @@
       "colMonthCuotaTotal": "Installment due",
       "colDebtAfterPayment": "Debt after payment",
       "colMonthBreakdown": "Detail",
-      "monthCuotasBreakdownLine": "{{current}}/{{total}} - {{label}}: {{amount}}",
+      "monthCuotasBreakdownLine": "{{current}}/{{total}} - <name></name>: {{amount}}",
       "monthCuotasEmpty": "No pending installments on the calendar.",
       "mortgageSheetEmpty": "No payment rows in the database. Run npm run import:excel (export depto-dividendos.csv from Numbers into cfraser/ before the import).",
       "payByRule": {

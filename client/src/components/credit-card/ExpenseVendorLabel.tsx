@@ -138,17 +138,21 @@ export function ExpenseVendorLabel({
   source,
   note,
   className,
+  inline = false,
 }: {
   source: ExpenseVendorSource;
   note: string | null | undefined;
   className?: string;
+  /** Inside a line of text (the cuotas-por-facturación detail) rather than a block of its own. */
+  inline?: boolean;
 }) {
   const { t } = useTranslation();
   const info = useExpenseVendorInfo(source);
   const linkLabel = useExpenseVendorLinkLabel(source);
   const trimmedNote = note?.trim() ?? "";
+  const Root = inline ? "span" : "div";
   return (
-    <div className={cn(styles.vendor, className)}>
+    <Root className={cn(styles.vendor, className)}>
       <span className={styles.merchant}>{expenseVendorName(source)}</span>
       {trimmedNote ? (
         <>
@@ -173,7 +177,7 @@ export function ExpenseVendorLabel({
           {info}
         </HoverPopover>
       ) : null}
-    </div>
+    </Root>
   );
 }
 
