@@ -185,6 +185,8 @@ describe("live-quote tick: incremental rebuild == full rebuild", () => {
     // only the live dollar rate on top (`ccBillingDetailCache.ts`).
     // The daily series keep their past part (values on past days, flow legs, deposit cums).
     expect(keptKeys).toContain("hist.daily_series_past");
+    // The ledger accounts keep their closed months' rows; only the current month's is rebuilt.
+    expect(keptKeys).toContain("hist.ledger_closed_month_rows");
     // (A card that never billed in dollars reads no live rate and keeps its bundle too.)
     const kept = new Set(keptKeys);
     const ratesReapplied = listCreditCardMasterAccountIds().filter(

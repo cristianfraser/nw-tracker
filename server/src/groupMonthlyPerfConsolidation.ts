@@ -33,7 +33,7 @@ import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
 import { netLinkedCreditCardFromCashConsolidated } from "./cashEqsBucketNet.js";
 import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 import { movementBoundsByAccountIds } from "./movementBounds.js";
-import { getAggregationCached, historyTierMemo } from "./aggregationCache.js";
+import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./aggregationCache.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 
 export type TsUnit = "clp" | "usd" | "uf";
@@ -78,6 +78,13 @@ export type ConsolidatedMonthlyPerfRow = {
 
 const GROUP_TAB_VAL_TOTAL = "__group_val_total";
 
+/** A ledger account's rows over its closed months, and the running state after them. */
+type ClosedMonthRowsPrefix = {
+  rows: readonly AccountMonthlyPerformanceRow[];
+  prevClose: number | null;
+  prevEvalAt: string | null;
+};
+
 function balanceOnlyMonthlyRowsAsc(
   accountId: number,
   categorySlug: string,
@@ -99,14 +106,21 @@ function balanceOnlyMonthlyRowsAsc(
    */
   netFlowBetween: (prevEvalYmd: string | null, evalYmd: string) => number
 ): AccountMonthlyPerformanceRow[] {
-  const outAsc: AccountMonthlyPerformanceRow[] = [];
-  let prevClose: number | null = null;
-  let prevEvalAt: string | null = null;
   const today = chileCalendarTodayYmd();
   const closeMemo = historyTierMemo<string, number>("ledger_month_closes");
   const closeKeyPrefix = `${closeSource}|${accountId}|${unit}|`;
+  // The closed months (month-end before today) read evidence only, their flows included (the
+  // ledger's deposit events): their rows are kept in the history tier, so the rebuild after a
+  // live tick computes the current month's row alone. Every caller's flow is the ledger's own.
+  const closedCount = monthEndsAsc.findIndex((asOf) => asOf >= today);
+  const closedMonthEnds = closedCount < 0 ? monthEndsAsc : monthEndsAsc.slice(0, closedCount);
+  const prefixMemo = historyTierMemo<string, ClosedMonthRowsPrefix>("ledger_closed_month_rows");
+  const prefixKey = `${closeKeyPrefix}${closedMonthEnds.join(",")}`;
+  const outAsc: AccountMonthlyPerformanceRow[] = [];
+  let prevClose: number | null = null;
+  let prevEvalAt: string | null = null;
 
-  for (const asOf of monthEndsAsc) {
+  const addMonth = (asOf: string): void => {
     // Current month: evaluate the ledger at Chile-today, never the future month-end —
     // a future-dated movement inside the month must not count until its date arrives
     // (equity MTM only counts units through today; mixing skews consolidated totals).
@@ -120,7 +134,7 @@ function balanceOnlyMonthlyRowsAsc(
     } else {
       close = closeAt(evalAt);
     }
-    if (!Number.isFinite(close)) continue;
+    if (!Number.isFinite(close)) return;
     // First month: flow = cumulative aportes at this date (vs 0) and P/L = close − that flow —
     // same convention as the equity/AFP monthly perf builder. A null first P/L dropped the
     // month's fx move on an event-based flow, so the lifetime P/L missed part of what the
@@ -144,7 +158,21 @@ function balanceOnlyMonthlyRowsAsc(
     });
     prevClose = close;
     prevEvalAt = evalAt;
+  };
+
+  let prefix = prefixMemo.get(prefixKey);
+  if (!prefix) {
+    prefix = buildHistoryTierValue("ledger closed-month rows", () => {
+      for (const asOf of closedMonthEnds) addMonth(asOf);
+      return { rows: [...outAsc], prevClose, prevEvalAt };
+    });
+    prefixMemo.set(prefixKey, prefix);
+  } else {
+    outAsc.push(...prefix.rows);
+    prevClose = prefix.prevClose;
+    prevEvalAt = prefix.prevEvalAt;
   }
+  for (const asOf of monthEndsAsc.slice(closedMonthEnds.length)) addMonth(asOf);
   const withTotals = withRunningPlTotals(outAsc);
 
   if (isMovementBalanceCashCategory(categorySlug)) {
