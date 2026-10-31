@@ -1,7 +1,9 @@
+import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached } from "./aggregationCache.js";
 import { chartBucketsDtoForNavNode } from "./groupChartBuckets.js";
 import {
   getLiabilitiesNavRootNode,
   getNetWorthNavGroupNode,
+  getSidebarNavPayload,
   type NavTreeNodeDto,
 } from "./navTree.js";
 import { groupHostsLiabilitiesCoverage } from "./valuationTimeseries.js";
@@ -51,4 +53,16 @@ function findBySlugDeep(node: NavTreeNodeDto, slug: string): NavTreeNodeDto | nu
     if (hit) return hit;
   }
   return null;
+}
+
+/**
+ * The sidebar payload (`GET /api/meta/sidebar-nav`), cached with the page bundle's lifetime: its
+ * chart-inactive flags read the accounts' month series, and a nav-tree edit clears the whole cache
+ * (`seedNavTree`). Shared with the visited-pages warm.
+ */
+export function cachedSidebarNavPayload() {
+  return getAggregationCached(`${DASHBOARD_PAGE_BUNDLE_PREFIX}sidebar_nav`, () => {
+    const built = getSidebarNavPayload();
+    return { ...built, main: annotateSidebarNavChartBuckets(built.main) };
+  });
 }

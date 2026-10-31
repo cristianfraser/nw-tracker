@@ -1,3 +1,5 @@
+import { cacheKeyCcLedgerGroup, getAggregationCached } from "./aggregationCache.js";
+import { dbInTransaction } from "./db.js";
 import type { CcCloseSource } from "./ccBillingCloses.js";
 import type {
   CcBillingDetailMonthRow,
@@ -335,7 +337,18 @@ export function mergeCreditCardLedgers(
   };
 }
 
+/**
+ * `GET /api/portfolio-groups/:slug/cc-ledger`. Cached per group under `cc.ledger|`, like each
+ * card's ledger it is merged from (`creditCardInstallmentsResponse`).
+ */
 export function creditCardGroupLedgerResponse(portfolioGroupSlug: string): CcLedgerResponse {
+  if (dbInTransaction()) return buildCreditCardGroupLedgerResponse(portfolioGroupSlug);
+  return getAggregationCached(cacheKeyCcLedgerGroup(portfolioGroupSlug), () =>
+    buildCreditCardGroupLedgerResponse(portfolioGroupSlug)
+  );
+}
+
+function buildCreditCardGroupLedgerResponse(portfolioGroupSlug: string): CcLedgerResponse {
   const masterIds = resolveCcMasterAccountIds(portfolioGroupSlug);
   if (masterIds.length === 0) {
     return mergeCreditCardLedgers([]);
