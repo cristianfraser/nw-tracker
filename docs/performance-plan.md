@@ -103,17 +103,75 @@ ledger and the liabilities' monthly performance depend on no live price, yet a B
 | Path | Before | After |
 | --- | --- | --- |
 | Pasivos, all requests at once, warm | 1,9 s | 0,11 s |
-| Pasivos, one after another, after a crypto-only tick (no warmer) | 6,4 s | 2,4 s |
+| Pasivos, one after another, after a crypto-only tick (no warmer) | 6,4 s | 2,1 s |
 | First Pasivos + ·0781 visit after a boot warm | 6,1 s | 0,23 s |
 | cc-ledger, warm | 1,3 s | 5 ms |
 | ·0781 account bundle | 1,64 MB, 156 ms warm | 169 KB, 8 ms |
 | Brokerage page endpoints, all at once, warm | 431 ms | 50 ms |
 
-What a crypto tick still rebuilds on Pasivos: nav context (0,8 s, every account's today value),
-the valuation series and daily series (the «Disponible» lines include the brokerage), each on
-top of the history tier. The four group endpoints already shared the per-account rows; what each
-re-ran was the group consolidation (~90 ms), now cached once. Not done: a quieter crypto cadence
-(product choice); rebuilding only the reference lines of a Pasivos payload.
+Chart-inactive now reads units and dollars instead of building each account's peso series
+(flags identical on all 40 accounts; sidebar cold 2,1 s -> 1,0 s).
+
+### What is still slow after phases 3-4 (measured 2026-10-31, Intel, copy of the real DB)
+
+Pasivos after a crypto-only tick (warmer off), 2,1 s one after another:
+
+| Request | After a tick | Why it rebuilds |
+| --- | --- | --- |
+| `dashboard/nav-context` | 0,75 s | every account's dashboard row (today's value, current-month perf) in one cached build |
+| `valuation-timeseries?portfolio_group=liabilities` | 0,65 s | the «Disponible» lines sum brokerage, crypto included |
+| `daily-series?portfolio_group=liabilities&days=1096` | 0,48 s | same reference lines, daily |
+| `meta/sidebar-nav` | 0,16 s | orders chart buckets by today's value (a real price dependency) |
+
+Also: on weekdays while the fx day is open the dollar moves on almost every poll, and nearly every
+payload reads it (USD units, card dollars), so most caches still go every 2-5 minutes; with the
+warmer on, requests right after a tick wait behind the rewarm (seen at 1,5-2,5 s); cold builds
+after a boot or a write (nav-context 11 s, Pasivos daily 7 s, a group's tables 15 s) are covered
+by the warmer but block every request while it runs (~47 s at boot).
+
+Possible improvements, by expected gain:
+
+**A. Rebuild only today's part of a dropped payload.** A dropped entry is rebuilt whole, on top of
+the history tier. Split the expensive builders into a past part (every day / month before today,
+cached like the history tier: survives ticks, dropped by writes and historical data) and a today
+part recomputed per tick: daily series = cached past points + today's point; monthly payloads =
+cached closed months + the current-month row; valuation series = cached past points + live last
+point (`patchAccountLiveLastPoint` already isolates it). Expected: the three Pasivos rebuilds
+(~1,9 s) to well under 0,3 s, and the same on every page during the fx day, which is the case
+phases 3-4 do not help. Risk: the past part must never read today (the history-tier rule);
+parity tests per builder against a whole build. Largest change; do it builder by builder,
+starting with the daily series (biggest and simplest: the grid already ends at today).
+
+**B. One dashboard row per account, cached with its own dependencies.** `account_rows|<unit>`
+is one entry, so any moved price rebuilds all 40 rows (nav-context 0,75 s, the bundles, the
+account pages). Cache each row (`account_row|<id>|<unit>`) so a coin tick rebuilds the two coin
+rows; the card metrics and bucket totals are sums over rows and stay cheap. Expected:
+nav-context after a coin tick 0,75 s -> ~0,1 s, the home bundle rebuild after a tick shorter too.
+Small change, low risk (rows are already independent).
+
+**C. Keep requests ahead of the warmer.** The warmer yields between pages, but one page build
+blocks for up to ~1 s. Count in-flight API requests in a middleware; the warmer awaits zero
+in-flight requests before each step and reorders: a page requested while it waits is built by
+the request, the warmer then hits the cache. Expected: a reload right after a tick costs what the
+request needs, never the rest of the warm (seen 1,5-2,5 s). Small change. Longer term (plan
+phase 7): build caches in a worker thread.
+
+**D. Serialize big payloads once.** The Pasivos daily series is 548 KB (1,4 MB full history) and is
+`JSON.stringify`ed on every request (~15 ms on a hit, more on the phone over Tailscale because it
+is uncompressed). Cache the serialized string next to the object and add gzip (plan phases 5-6).
+Expected: ~10 ms per request on the server, 548 KB -> ~70 KB on the wire. Small change.
+
+**E. Reference lines from their own cached parts.** The Pasivos valuation and daily series rebuild
+the liabilities' own lines when only the «Disponible» sources moved. Keep the host's own lines
+and each source's lines as separate cached parts and assemble on read, so a coin tick recomputes
+the brokerage source only. Smaller gain than A (which subsumes most of it); worth it only if A
+stops short of the reference lines.
+
+**F. Quieter polls outside market hours.** Crypto is the only mover at night and on weekends: a
+15-minute crypto cadence then (product choice) cuts the rebuilds by 3x where A-B do not reach.
+
+Suggested order: B and C (small, independent), then A starting with the daily series, then D;
+E and F only if measurements after A still call for them.
 
 ### 5. Daily views
 
