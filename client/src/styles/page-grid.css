@@ -76,6 +76,9 @@
      rail tables query, and size containment makes `subgrid` compute to `none` anyway. */
   .page-rail {
     grid-column: 9 / -1;
+    /* No gutter between the stacks: the rail reaches back to the main stack's edge, the
+       way cards touch inside a strip. */
+    margin-left: calc(-1 * var(--gutter));
     grid-template-columns: minmax(0, 1fr);
     container-type: inline-size;
     container-name: rail;

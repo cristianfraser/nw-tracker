@@ -316,20 +316,12 @@
   "dashboard": {
     "ccUpcoming": {
       "title": {
-        "en": "Cards: upcoming payments",
-        "es": "Tarjetas: próximos pagos"
+        "en": "Upcoming payments",
+        "es": "Próximos pagos"
       },
       "viewLiabilities": {
         "en": "View liabilities →",
         "es": "Ver Pasivos →"
-      },
-      "colCard": {
-        "en": "Card",
-        "es": "Tarjeta"
-      },
-      "colBillingMonth": {
-        "en": "Billing",
-        "es": "Facturación"
       },
       "colAmount": {
         "en": "Amount",
