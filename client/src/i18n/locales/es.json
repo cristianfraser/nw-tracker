@@ -105,10 +105,8 @@
   },
   "dashboard": {
     "ccUpcoming": {
-      "title": "Tarjetas: próximos pagos",
+      "title": "Próximos pagos",
       "viewLiabilities": "Ver Pasivos →",
-      "colCard": "Tarjeta",
-      "colBillingMonth": "Facturación",
       "colAmount": "Monto",
       "closeObservedHint": "Cierre publicado por el banco (estado de cuenta o movimientos).",
       "totalToPay": "Total a pagar",

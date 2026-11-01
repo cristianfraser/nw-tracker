@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
@@ -8,12 +7,10 @@ import type {
   CcUpcomingPaymentsCardDto,
   CcUpcomingPaymentsDto,
 } from "../../types";
-import { ChartPanelTitleRow } from "../charts/ChartPanelTitleRow";
 import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder } from "../../dashboardLayout";
-import { Loadable } from "../ui/Loadable";
-import { Table } from "../ui/Table";
-import { TableMobileCard, TableMobileCardRow, TableMobileCardSection } from "../ui/TableMobileCard";
+import { loadableClass } from "../ui/Loadable";
+import styles from "./DashboardFlowsSummary.module.css";
 
 /** Close date with its evidence: ✓ when the bank published it, ≈ when announced or estimated. */
 function CloseCell({ row }: { row: CcUpcomingPaymentRowDto }) {
@@ -86,59 +83,36 @@ function MonthCell({ row }: { row: CcUpcomingPaymentRowDto }) {
   );
 }
 
-function CardRows({ card }: { card: CcUpcomingPaymentsCardDto }) {
+/** One facturación of one card: title, then close / pay-by / amount as label–value lines. */
+function PaymentCard({ card, row }: { card: CcUpcomingPaymentsCardDto; row: CcUpcomingPaymentRowDto }) {
   const { t } = useTranslation();
+  const lines = [
+    { id: "close", label: t("accountDetail.creditCard.colCloseDate"), value: <CloseCell row={row} /> },
+    { id: "payBy", label: t("accountDetail.creditCard.colPayBy"), value: <PayByCell row={row} /> },
+    { id: "amount", label: t("dashboard.ccUpcoming.colAmount"), value: <AmountCell row={row} /> },
+  ];
   return (
-    <>
-      {card.rows.map((row, i) => (
-        <tr key={`${card.account_id}|${row.billing_month}`}>
-          <td className="desktop-only">{i === 0 ? card.name : null}</td>
-          <td className="mono desktop-only">
-            <MonthCell row={row} />
-          </td>
-          <td className="mono desktop-only">
-            <CloseCell row={row} />
-          </td>
-          <td className="mono desktop-only">
-            <PayByCell row={row} />
-          </td>
-          <td className="mono desktop-only">
-            <AmountCell row={row} />
-          </td>
-          <td className="mobile-only">
-            <TableMobileCard
-              title={
-                <>
-                  {card.name} · <MonthCell row={row} />
-                </>
-              }
-            >
-              <TableMobileCardSection>
-                <TableMobileCardRow
-                  label={t("accountDetail.creditCard.colCloseDate")}
-                  value={<CloseCell row={row} />}
-                />
-                <TableMobileCardRow
-                  label={t("accountDetail.creditCard.colPayBy")}
-                  value={<PayByCell row={row} />}
-                />
-                <TableMobileCardRow
-                  label={t("dashboard.ccUpcoming.colAmount")}
-                  value={<AmountCell row={row} />}
-                />
-              </TableMobileCardSection>
-            </TableMobileCard>
-          </td>
-        </tr>
-      ))}
-    </>
+    <div className={`card ${styles.period}`}>
+      <div className={styles.periodTitle}>
+        {card.name} · <MonthCell row={row} />
+      </div>
+      <dl className={styles.lines}>
+        {lines.map((line) => (
+          <div key={line.id} className={styles.line}>
+            <dt>{line.label}</dt>
+            <dd className="mono">{line.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 
 /**
- * «Tarjetas: próximos pagos» on the home dashboard: per active card, what the latest closed
- * facturación and the open one still owe, as the server built them (`cc_upcoming_payments` on the page bundle).
- * Pesos in both display units. Renders nothing before the server has answered (`data` null on a
+ * «Próximos pagos» on the home dashboard: per active card, what the latest closed facturación
+ * and the open one still owe, as the server built them (`cc_upcoming_payments` on the page
+ * bundle), drawn like the «Flujos» period cards (a `.cards` block of label–value lines). Pesos in
+ * both display units. Renders nothing before the server has answered (`data` null on a
  * placeholder bundle) and nothing when no card has anything pending.
  */
 export function CcUpcomingPaymentsPanel({
@@ -150,62 +124,36 @@ export function CcUpcomingPaymentsPanel({
 }) {
   const { t } = useTranslation();
   if (!data || data.cards.length === 0) return null;
-  const link = data.liabilities_route_path ? (
-    <Link to={data.liabilities_route_path}>{t("dashboard.ccUpcoming.viewLiabilities")}</Link>
-  ) : null;
   return (
     <PageGridTile id="cc-upcoming" order={dashboardTileOrder("cc-upcoming")}>
-    <Loadable loading={loading} className="chart-grid chart-grid--full-line">
-      <div className="chart-grid__col">
-        <ChartPanelTitleRow title={t("dashboard.ccUpcoming.title")} controls={link} />
-        <Table
-          tableClassName="table--parallel-mobile"
-          header={
-            <thead>
-              <tr>
-                <th className="desktop-only">{t("dashboard.ccUpcoming.colCard")}</th>
-                <th className="desktop-only">{t("dashboard.ccUpcoming.colBillingMonth")}</th>
-                <th className="desktop-only">{t("accountDetail.creditCard.colCloseDate")}</th>
-                <th className="desktop-only">{t("accountDetail.creditCard.colPayBy")}</th>
-                <th className="desktop-only">{t("dashboard.ccUpcoming.colAmount")}</th>
-                <th className="mobile-only" aria-hidden="true" />
-              </tr>
-            </thead>
-          }
-        >
-          {data.cards.map((card) => (
-            <Fragment key={card.account_id}>
-              <CardRows card={card} />
-            </Fragment>
-          ))}
-          {data.totals_by_month.length > 0 ? (
-            <tr>
-              <td className="desktop-only" colSpan={4}>
-                <strong>{t("dashboard.ccUpcoming.totalToPay")}</strong>
-              </td>
-              <td className="mono desktop-only">
-                {data.totals_by_month.map((m) => (
-                  <div key={m.pay_month}>
-                    {formatYearMonthLabel(m.pay_month)}: <strong>{formatClp(m.total_clp)}</strong>
-                  </div>
-                ))}
-              </td>
-              <td className="mobile-only">
-                <TableMobileCard title={t("dashboard.ccUpcoming.totalToPay")}>
-                  {data.totals_by_month.map((m) => (
-                    <TableMobileCardRow
-                      key={m.pay_month}
-                      label={formatYearMonthLabel(m.pay_month)}
-                      value={formatClp(m.total_clp)}
-                    />
-                  ))}
-                </TableMobileCard>
-              </td>
-            </tr>
-          ) : null}
-        </Table>
+      <div className="chart-panel-title-row">
+        <h2>{t("dashboard.ccUpcoming.title")}</h2>
+        {data.liabilities_route_path ? (
+          <Link to={data.liabilities_route_path} className={styles.link}>
+            {t("dashboard.ccUpcoming.viewLiabilities")}
+          </Link>
+        ) : null}
       </div>
-    </Loadable>
+      <div className={loadableClass(loading, "cards")}>
+        {data.cards.flatMap((card) =>
+          card.rows.map((row) => (
+            <PaymentCard key={`${card.account_id}|${row.billing_month}`} card={card} row={row} />
+          ))
+        )}
+        {data.totals_by_month.length > 0 ? (
+          <div className={`card ${styles.period}`}>
+            <div className={styles.periodTitle}>{t("dashboard.ccUpcoming.totalToPay")}</div>
+            <dl className={styles.lines}>
+              {data.totals_by_month.map((m) => (
+                <div key={m.pay_month} className={styles.line}>
+                  <dt>{formatYearMonthLabel(m.pay_month)}</dt>
+                  <dd className="mono">{formatClp(m.total_clp)}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        ) : null}
+      </div>
     </PageGridTile>
   );
 }

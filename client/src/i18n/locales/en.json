@@ -105,10 +105,8 @@
   },
   "dashboard": {
     "ccUpcoming": {
-      "title": "Cards: upcoming payments",
+      "title": "Upcoming payments",
       "viewLiabilities": "View liabilities →",
-      "colCard": "Card",
-      "colBillingMonth": "Billing",
       "colAmount": "Amount",
       "closeObservedHint": "Close published by the bank (statement or card feed).",
       "totalToPay": "Total to pay",

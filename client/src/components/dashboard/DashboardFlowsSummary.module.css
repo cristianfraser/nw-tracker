@@ -1,4 +1,4 @@
-/* Home dashboard «Flujos»: the two period cards (a `.cards` block, cards.css) and the link beside the title. */
+/* Home dashboard label–value cards: the «Flujos» period cards and the «Próximos pagos» cards (a `.cards` block, cards.css) and the link beside each title. */
 .link {
   font-size: var(--font-size-card-meta);
 }
