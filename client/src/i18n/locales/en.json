@@ -190,11 +190,6 @@
     "latestExpenses": {
       "title": "Latest expenses",
       "viewAll": "All expenses →",
-      "colDate": "Date",
-      "colMerchant": "Description",
-      "colCategory": "Category",
-      "colOrigin": "Origin",
-      "colAmount": "Amount",
       "installments": "{{count}} installments",
       "refund": "Refund",
       "empty": "No expenses yet."
