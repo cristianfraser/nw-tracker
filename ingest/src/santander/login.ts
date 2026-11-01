@@ -94,7 +94,13 @@ export function landingPageReady(args: { loggedIn: boolean; productSummaryCalls:
  * when it does not come but the window is on a private route the session is still usable (the
  * readers of that call report its absence themselves), so the run continues and says so.
  */
-async function waitForLandingPage(page: Page, recorder: Recorder, baselineCount: number): Promise<void> {
+async function waitForLandingPage(
+  page: Page,
+  frame: FrameLocator,
+  recorder: Recorder,
+  baselineCount: number,
+): Promise<void> {
+  const callsBefore = recorder.calls.length;
   const deadline = Date.now() + LANDING_WAIT_MS;
   const ready = () =>
     landingPageReady({
@@ -107,7 +113,17 @@ async function waitForLandingPage(page: Page, recorder: Recorder, baselineCount:
   }
   if (ready()) return;
   if (!isLoggedIn(page)) {
-    throw new Error(`Landed on ${page.url()} after submitting — expected a /private/ route.`);
+    // The private app bounced the session to its own login page (2026-10-31, twice): the redirect
+    // happened, so neither the toast nor the timeout branch of `waitForLoginRedirect` saw it. The API
+    // calls the app made meanwhile (endpoint and status only) say which one turned the session away.
+    const calls = recorder.calls
+      .slice(callsBefore)
+      .map((call) => `${call.receivedAt} ${call.status} ${call.endpoint}`);
+    const { base } = await saveLoginDiagnostics(page, frame, "the private app sent the session back to its login page", [
+      "--- API calls since the redirect ---",
+      ...(calls.length > 0 ? calls : ["(none)"]),
+    ]);
+    throw new Error(`Landed on ${page.url()} after submitting — expected a /private/ route. Evidence in ${base}.{png,txt}`);
   }
   log(`(landing page made no ${ENDPOINT.productSummary} call within ${LANDING_WAIT_MS / 1000}s — continuing, the session is on a private route)`);
 }
@@ -154,6 +170,7 @@ async function saveLoginDiagnostics(
   page: Page,
   frame: FrameLocator,
   reason: string,
+  extra: readonly string[] = [],
 ): Promise<{ base: string; frameText: string }> {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const base = path.join(ensureDir(path.join(resolveCfraserDir(), "scraper-diagnostics")), `santander-login-${stamp}`);
@@ -174,6 +191,7 @@ async function saveLoginDiagnostics(
       `reason: ${reason}`,
       `url: ${page.url()}`,
       `title: ${title}`,
+      ...(extra.length > 0 ? ["", ...extra] : []),
       "",
       "--- login frame text ---",
       frameText,
@@ -294,7 +312,7 @@ export async function login(page: Page, recorder: Recorder, rut: string, passwor
     if (isLoggedIn(page)) {
       logStep("session still valid — skipping login");
       // The landing page loads the same way; its product-summary call is what the steps read.
-      await waitForLandingPage(page, recorder, productSummaryBaseline);
+      await waitForLandingPage(page, frame, recorder, productSummaryBaseline);
       return;
     }
     if (await rutInput.isVisible().catch(() => false)) {
@@ -376,7 +394,7 @@ export async function login(page: Page, recorder: Recorder, rut: string, passwor
   await frame.locator(SELECTOR.loginSubmit).click();
 
   await waitForLoginRedirect(page, frame);
-  await waitForLandingPage(page, recorder, productSummaryBaseline);
+  await waitForLandingPage(page, frame, recorder, productSummaryBaseline);
   logStep("logged in");
   clearLoginLatch("the bank accepted the login");
 }
