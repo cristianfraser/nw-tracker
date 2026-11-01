@@ -89,7 +89,11 @@ tr:hover td {
   align-items: center;
 }
 
-/* Parallel-column responsive tables: desktop cells + mobile card cell */
+/* Parallel-column responsive tables: desktop cells + mobile card cell. The cards show below the
+   880 viewport line, and at any width where the table's desktop rendering is wider than its
+   wrap (`.table-wrap--cards`, set by `useTableFit` in components/ui/Table.tsx: a table's columns
+   are as wide as its data, so no fixed breakpoint fits every table). The two rule sets below
+   are the same; keep them together. */
 .mobile-only {
   display: none;
 }
@@ -123,6 +127,35 @@ tr:hover td {
     width: 100%;
     overflow: hidden;
   }
+}
+
+.table-wrap--cards .desktop-only {
+  display: none !important;
+}
+
+.table-wrap--cards .mobile-only {
+  display: table-cell !important;
+}
+
+.table-wrap--cards th.mobile-only {
+  padding: 0;
+  border: none;
+  font-size: 0;
+  line-height: 0;
+}
+
+.table-wrap--cards .table--parallel-mobile tr:hover td.mobile-only {
+  background: var(--surface2);
+}
+
+.table-wrap--cards .table--parallel-mobile {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.table-wrap--cards .table--parallel-mobile td.mobile-only {
+  width: 100%;
+  overflow: hidden;
 }
 
 .table--parallel-mobile .table-mobile-card {

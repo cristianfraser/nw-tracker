@@ -86,7 +86,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
           {t("dashboard.flows.openFlows")}
         </Link>
       </div>
-      <div className={loadableClass(loading, "cards")}>
+      <div className={loadableClass(loading, "cards", styles.periods)}>
         {periods.map(({ labelKey, row }) => (
           <div key={labelKey} className={`card ${styles.period}`}>
             <div className={styles.periodTitle}>{t(labelKey)}</div>
