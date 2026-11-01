@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright-core";
@@ -113,6 +114,25 @@ function disablePasswordManager(profileDir: string): void {
 }
 
 /**
+ * Keep the display awake while a browser is open (macOS only), and wake it first.
+ *
+ * The home server runs with its lid closed and lets the display sleep after two minutes. With the
+ * display asleep Chrome draws nothing: on 2026-11-01 the logged-in Santander session's views stayed
+ * blank, their API calls came late or never, and `page.screenshot` timed out. `caffeinate -u`
+ * declares the user active, which turns the display on even with the lid closed, and `-d` keeps it
+ * on; `-w` ends the assertion with this process if the browser is never closed.
+ */
+function keepDisplayAwake(): () => void {
+  if (process.platform !== "darwin") return () => {};
+  const child = spawn("caffeinate", ["-d", "-u", "-w", String(process.pid)], { stdio: "ignore" });
+  child.on("error", (err) => log(`(caffeinate could not start: ${err.message} — the display may sleep)`));
+  child.unref();
+  return () => {
+    child.kill();
+  };
+}
+
+/**
  * Launch the user's installed Chrome against a dedicated profile directory.
  *
  * A persistent profile (rather than a fresh incognito context per run) is deliberate: it keeps
@@ -124,6 +144,7 @@ export async function launchBrowser(opts: LaunchOptions): Promise<BrowserContext
   disablePasswordManager(profileDir);
   log(`Chrome profile: ${profileDir}`);
   if (opts.background) log("background mode — window parked off-screen");
+  const releaseDisplay = keepDisplayAwake();
   const context = await chromium.launchPersistentContext(profileDir, {
     channel: "chrome",
     headless: opts.headless,
@@ -139,6 +160,7 @@ export async function launchBrowser(opts: LaunchOptions): Promise<BrowserContext
     locale: "es-CL",
     timezoneId: "America/Santiago",
   });
+  context.on("close", releaseDisplay);
   await context.addInitScript(HIDE_WEBDRIVER_INIT_SCRIPT);
   await context.addInitScript(CAPTURE_INLINE_DOWNLOADS_INIT_SCRIPT);
   return context;
