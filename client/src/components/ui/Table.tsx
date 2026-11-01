@@ -11,6 +11,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { cn } from "../../cn";
 import i18n from "../../i18n";
 import { Button } from "@crfrsr/ui";
 
@@ -294,12 +295,7 @@ export function Table({
 
   return (
     <div className={wrapClassName} style={wrapStyle}>
-      <div
-        className="table-wrap"
-        style={{
-          marginBottom: hasHiddenRows && !expanded ? "0.35rem" : undefined,
-        }}
-      >
+      <div className={cn("table-wrap", hasHiddenRows && !expanded && "table-wrap--collapsed")}>
         <table className={tableClassName} style={tableStyle}>
           {renderedHeader}
           <tbody>{needsRowFlattening ? bodyRows : children}</tbody>

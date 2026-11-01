@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { downloadFile } from "../../downloadFile";
 import { Modal } from "../ui/Modal";
 import { Button, Input } from "@crfrsr/ui";
+import styles from "./ExportModal.module.css";
 
 const SECTIONS = ["closings", "aportes", "pl", "movements"] as const;
 type Section = (typeof SECTIONS)[number];
@@ -144,10 +145,10 @@ export function ExportToolbarButton({ exportPath }: { exportPath: string }) {
             </label>
           </p>
         ) : null}
-        <fieldset style={{ border: "none", padding: 0, margin: "0.5rem 0" }}>
+        <fieldset className={styles.sections}>
           <legend>{t("export.sectionsLabel")}</legend>
           {SECTIONS.map((s) => (
-            <label key={s} style={{ display: "block" }}>
+            <label key={s} className={styles.sectionOption}>
               <input type="checkbox" checked={sections.has(s)} onChange={() => toggleSection(s)} />{" "}
               {t(`export.sections.${s}`)}
             </label>

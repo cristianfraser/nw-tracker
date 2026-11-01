@@ -1,30 +1,116 @@
+/* A card has no chrome of its own (docs/layout-grid-plan.md §B); the strip below draws the
+   hairlines between cards, so this reset must stay above those rules. */
+.card {
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  line-height: 1;
+}
+
+/* Card strips (docs/layout-grid-plan.md §A/B). Cards carry no chrome of their own: they touch,
+   and one hairline — a per-card border stripped by a FIXED count per tier, never auto-fill —
+   separates them like a table's rules. A strip (`.cards-strip`) is one child of the page grid
+   holding the summary block (`.cards--summary`) over the detail block (`.cards--detail`); the
+   one line between the two rows is the detail block's border-top, under the empty cells too.
+   A bare `.cards` outside a strip (the mortgage / credit-card summary rows, the depto cards)
+   is a plain 4-column grid with the same dividers. */
+.cards-strip {
+  display: grid;
+  grid-template-columns: repeat(var(--content-cols), minmax(0, 1fr));
+  column-gap: var(--gutter);
+  row-gap: 0;
+  min-width: 0;
+  /* A right-edge card's number-flow mask reaches ~5px past the content edge now that cards have
+     no padding; clipped here rather than scrolling the main column (goes with the inset step). */
+  overflow-x: clip;
+}
+
+/* Inside the page grid the strip is a subgrid, so its cards sit on the page's columns. */
+.page-grid>.cards-strip {
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+}
+
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 0;
+  row-gap: 0;
+  /* Never a `container-type` here: size containment makes `grid-template-columns: subgrid`
+     compute to `none`, and the strip's cards would pile into implicit tracks. That is why the
+     mobile 2-up below is a media query, not a container query. */
 }
 
-/* Summary cards open the strip (the page's own, then spread hubs such as Inversiones on home). */
-.cards>.card--dashboard-net-worth,
-.cards>.portfolio-strip-compact {
-  min-height: auto;
-  background: var(--surface-emphasis);
-  border-color: color-mix(in srgb, var(--border) 80%, var(--surface2) 20%);
+/* A subgrid of a subgrid with its own zero gap: the difference is split across each gutter,
+   so adjacent cards meet on the gutter's centre line. */
+.cards-strip>.cards {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
 }
 
-/* Desktop: the summary cards own row 1, so the first card after them starts a new row. */
+/* The one line between the summary row and the detail rows (full width, under the empty cells). */
+.cards--summary+.cards--detail {
+  border-top: 1px solid var(--hairline);
+}
+
+/* The accounts summary table under the strip, its own page-grid child; outside a page grid
+   the row gap is a margin. */
+.cards-strip+.cards-strip__table {
+  margin-top: var(--row-gap);
+}
+
+.page-grid>.cards-strip+.cards-strip__table {
+  margin-top: 0;
+}
+
+/* Desktop: 4-up — three of the twelve page columns each in a strip, one column each in the
+   plain grid. */
 @media (min-width: 880px) {
-  .cards>.portfolio-strip-compact+:not(.portfolio-strip-compact) {
-    grid-column-start: 1;
+  .cards-strip>.cards>.card {
+    grid-column: span 3;
+  }
+
+  .cards>.card {
+    border-left: 1px solid var(--hairline);
+  }
+
+  .cards>.card:nth-child(4n+1) {
+    border-left: 0;
+  }
+
+  .cards>.card:nth-child(n+5) {
+    border-top: 1px solid var(--hairline);
   }
 }
 
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--card-radius);
-  padding: 0.4rem 0.7rem 0.4rem 0.65rem;
-  line-height: 1;
+/* Mobile: 1-up on the page's four columns. */
+@media (max-width: 879px) {
+  .cards>.card {
+    grid-column: 1 / -1;
+    border-left: 0;
+  }
+
+  .cards>:where(.card + .card) {
+    border-top: 1px solid var(--hairline);
+  }
+}
+
+/* A wide phone or a tablet in the drawer layout: 2-up (two of the four columns each). A media
+   query, not `@container`: a `.cards` cannot be a size container (see `.cards` above). */
+@media (min-width: 600px) and (max-width: 879px) {
+  .cards>.card {
+    grid-column: span 2;
+    border-top: 0;
+  }
+
+  .cards>.card:nth-child(2n) {
+    border-left: 1px solid var(--hairline);
+  }
+
+  .cards>.card:nth-child(n+3) {
+    border-top: 1px solid var(--hairline);
+  }
 }
 
 .card .label {
@@ -133,17 +219,12 @@
   font-size: var(--font-size-card-meta-sm);
 }
 
-.card--detail {
-  min-width: 220px;
-}
-
-/* Bucket card height alignment: only on the home dashboard (not inversiones/asset strips). */
-.page-dashboard .card--detail:not(.card--dashboard-net-worth) {
-  min-height: 180px;
-}
-
-.card--detail-compact {
-  min-width: 220px;
+/* Bucket card height alignment: only on the home dashboard (not inversiones/asset strips), so
+   the cold strip and the real strip paint at the same height. The summary row is out of it
+   structurally (its own block). */
+.page-dashboard .cards--detail>.card--detail {
+  --card-detail-min-height: 180px;
+  min-height: var(--card-detail-min-height);
 }
 
 .card--detail-stretch {

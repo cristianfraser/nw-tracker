@@ -1,8 +1,4 @@
 .root {
-  border: 1px solid var(--border);
-  border-radius: var(--radius, 10px);
-  padding: var(--space-sm) 0.85rem;
-  background: var(--card, var(--panel));
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -16,16 +12,12 @@
   margin-bottom: 0;
 }
 
-/** Nested inside `portfolio-strip-compact` / net-worth strip (outer shell already has card chrome). */
-.rootStripInner {
-  border: none;
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
+.subtitle {
+  font-size: var(--font-size-card-label);
 }
 
-/** Fills strip height so pinned breakdown footer works (`card--cash` on strip wrapper). */
-.rootStripInner.rootWithBreakdown {
+/** Fills the strip shell's height so a pinned breakdown footer works (`card--cash` on the shell). */
+.rootWithBreakdown {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;

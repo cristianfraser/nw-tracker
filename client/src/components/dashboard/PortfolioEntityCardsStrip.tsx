@@ -15,22 +15,24 @@ export type PortfolioEntityCardsStripProps = {
   wrapValueGroup?: boolean;
   /** Extra classes on the compact strip shell (e.g. `card--cash`). */
   compactStripClassName?: string;
+  /** Hide the strip from assistive tech (the nameless placeholder strip). */
+  ariaHidden?: boolean;
 };
 
-/** Card chrome of the row-1 summary cards (`CompactEntityCard stripInner` renders inside). */
+/** Shell of the row-1 summary cards (a `CompactEntityCard` renders inside). */
 const SUMMARY_SHELL = cn(
   "portfolio-strip-compact",
   "card",
   "card--detail",
   "card--detail-compact",
   "card--detail-stretch",
-  "card--dashboard-net-worth",
 );
 
 /**
- * Dashboard-style card strip: summary cards (row 1), optional detailed group children (from row
- * 2 on desktop — see `cards.css`), optional full-width per-account summary table below. Same CSS
- * grid as the home dashboard.
+ * Dashboard-style card strip: one `.cards-strip` holding the summary block (row 1) over the
+ * detail block (the detailed group children, present only when there are any) — two `.cards`
+ * grids on the page's columns, separated by one hairline (`cards.css`) — then, as its own
+ * sibling, the optional full-width per-account summary table. Same grid as the home dashboard.
  */
 export function PortfolioEntityCardsStrip({
   compactSlot,
@@ -39,28 +41,34 @@ export function PortfolioEntityCardsStrip({
   accountsTableSlot,
   wrapValueGroup = true,
   compactStripClassName,
+  ariaHidden = false,
 }: PortfolioEntityCardsStripProps) {
   const hasDetails = detailSlots != null && detailSlots !== false;
   const hasAccountsTable = accountsTableSlot != null && accountsTableSlot !== false;
   const hasCompact = compactSlot != null && compactSlot !== false;
-  const cards = !hasCompact && summarySlots.length === 0 && !hasDetails ? null : (
-    <div className="cards">
-      {hasCompact ? (
-        <div className={cn(SUMMARY_SHELL, compactStripClassName)}>{compactSlot}</div>
-      ) : null}
-      {summarySlots.map(({ key, slot }) => (
-        <div key={key} className={SUMMARY_SHELL}>
-          {slot}
+  const hasSummary = hasCompact || summarySlots.length > 0;
+  const cards = !hasSummary && !hasDetails ? null : (
+    <div className="cards-strip" aria-hidden={ariaHidden || undefined}>
+      {hasSummary ? (
+        <div className="cards cards--summary">
+          {hasCompact ? (
+            <div className={cn(SUMMARY_SHELL, compactStripClassName)}>{compactSlot}</div>
+          ) : null}
+          {summarySlots.map(({ key, slot }) => (
+            <div key={key} className={SUMMARY_SHELL}>
+              {slot}
+            </div>
+          ))}
         </div>
-      ))}
-      {hasDetails ? detailSlots : null}
+      ) : null}
+      {hasDetails ? <div className="cards cards--detail">{detailSlots}</div> : null}
     </div>
   );
   // The table stays OUTSIDE the number-flow group: grouped flows animate in lockstep, and
   // the table's hidden parallel rendering (mobile twin) measures 0-width while coupled,
   // which collapsed zero-valued visible cells to empty digits.
   const table = hasAccountsTable ? (
-    <div style={cards ? { marginTop: "0.85rem" } : undefined}>{accountsTableSlot}</div>
+    <div className="cards-strip__table">{accountsTableSlot}</div>
   ) : null;
   if (wrapValueGroup) {
     return (

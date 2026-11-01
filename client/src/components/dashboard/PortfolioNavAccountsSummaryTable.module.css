@@ -1,0 +1,33 @@
+/* Cell layouts of the accounts summary table (table-level rules: styles/tables.css). */
+.nameStack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* Balance over its day P/L; aportes over P/L in a period cell. */
+.cellStack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.depositsLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.plLine {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+}
+
+.pct {
+  font-size: var(--font-size-card-meta-sm);
+}
+
+.rowInactive {
+  opacity: 0.55;
+}

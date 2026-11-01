@@ -5,6 +5,8 @@ import { formatClp, formatUsdFine } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useLatestExpenses } from "../../queries/hooks";
 import type { LatestExpenseRow } from "../../types";
+import { PageGridTile } from "../layout/PageGridTile";
+import { dashboardTileOrder } from "../../dashboardLayout";
 import { Loadable } from "../ui/Loadable";
 import { Table } from "../ui/Table";
 import { TableMobileCard, TableMobileCardRow, TableMobileCardSection } from "../ui/TableMobileCard";
@@ -57,9 +59,9 @@ export function LatestExpensesTable() {
   );
 
   return (
-    <section style={{ marginTop: "2rem" }}>
+    <PageGridTile id="latest-expenses" order={dashboardTileOrder("latest-expenses")}>
       <div className="chart-panel-title-row">
-        <h2 style={{ margin: 0 }}>{t("dashboard.latestExpenses.title")}</h2>
+        <h2>{t("dashboard.latestExpenses.title")}</h2>
         <Link to="/flows/expenses">{t("dashboard.latestExpenses.viewAll")}</Link>
       </div>
       {query.isError ? (
@@ -108,6 +110,6 @@ export function LatestExpensesTable() {
           </Table>
         </Loadable>
       )}
-    </section>
+    </PageGridTile>
   );
 }

@@ -4,6 +4,7 @@ import type { ChartDisplayUnit } from "./chartLayout";
 import { groupTabPieSliceFill } from "../../chartColors";
 import { cn } from "../../cn";
 import i18n from "../../i18n";
+import { PageGridTile } from "../layout/PageGridTile";
 import type { GroupTabColorMaps, PortfolioGroupChartsColorSlug } from "../../usePortfolioGroupCharts";
 import type { GroupPageChartContext } from "../../groupPageChartViews";
 import type { TimeRange } from "../../timeRange";
@@ -102,9 +103,7 @@ export function PortfolioGroupChartsSection({
 }) {
   if (accountsEmpty && !loading) {
     return (
-      <p className="empty muted" style={{ marginTop: "1rem" }}>
-        {accountsEmptyMessage}
-      </p>
+      <p className="empty muted">{accountsEmptyMessage}</p>
     );
   }
 
@@ -116,10 +115,7 @@ export function PortfolioGroupChartsSection({
 
   return (
     <>
-      <div
-        className={cn("chart-grid", chartSeriesCount <= 1 && "chart-grid--full-line")}
-        style={{ marginTop: "0.75rem" }}
-      >
+      <PageGridTile id="valuation" className={cn("chart-grid", chartSeriesCount <= 1 && "chart-grid--full-line")}>
         <LineChartPanel
           title={i18n.t("charts.valuationAndDeposits")}
           block={valuationBlock}
@@ -164,13 +160,13 @@ export function PortfolioGroupChartsSection({
               }
             />
           ))}
-      </div>
+      </PageGridTile>
 
       {chartControls}
 
       {!hideGroupPerf && !perfAbsent ? (
         <>
-          <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
+          <PageGridTile id="perf-combo" className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title={i18n.t("charts.groupPerfComboTitle")}
               points={groupPerfForChart?.points ?? []}
@@ -193,8 +189,8 @@ export function PortfolioGroupChartsSection({
               ]}
               loading={perfLoading}
             />
-          </div>
-          <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
+          </PageGridTile>
+          <PageGridTile id="perf-accum" className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title={i18n.t("charts.monthlyDeltaConsolidatedAccumTitle")}
               points={groupPerfForChart?.points ?? []}
@@ -216,7 +212,7 @@ export function PortfolioGroupChartsSection({
               alternateYearAreaStripes={false}
               loading={perfLoading}
             />
-          </div>
+          </PageGridTile>
         </>
       ) : null}
     </>

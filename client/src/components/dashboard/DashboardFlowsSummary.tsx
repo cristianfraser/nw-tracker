@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { FlowsOverviewChart } from "../charts/lazyCharts";
+import { PageGridTile } from "../layout/PageGridTile";
+import { dashboardTileOrder } from "../../dashboardLayout";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { loadableClass } from "../ui/Loadable";
 import { flowChartGranularityFromMetricsPeriod, formatFlowMoney } from "../../flowsDisplay";
@@ -57,12 +59,73 @@ const SUMMARY_LINES: readonly SummaryLine[] = [
 ];
 
 /**
- * Home dashboard flows section: the last closed month and the twelve closed months ending with it,
- * as the server states them (`closed` of `GET /api/flows/overview` — the month in progress would
- * read as a deficit until its salary lands), and the /flows overview chart with its own Período /
- * Rango. The client only picks rows, clips them to the Rango and rolls years up.
+ * Home dashboard «Flujos» summary: the last closed month and the twelve closed months ending
+ * with it, as the server states them (`closed` of `GET /api/flows/overview` — the month in
+ * progress would read as a deficit until its salary lands). Two cards of a 4-up `.cards` block,
+ * so they take the same quarter width and dividers as the strip cards; its own tile, so the
+ * big-desktop rail can hold it apart from the chart (`DashboardFlowsChart`). Both halves read the
+ * same react-query entry (the month payload, no `days`).
  */
-export function DashboardFlowsSummary({ displayUnit }: { displayUnit: DisplayUnit }) {
+export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUnit }) {
+  const { t } = useTranslation();
+  const { installmentMode } = useCcInstallmentGastosMode();
+  const overview = useFlowsOverview(displayUnit, installmentMode, undefined);
+  const data = overview.data;
+  const loading = !data || overview.isPlaceholderData;
+
+  const periods = [
+    { labelKey: "dashboard.flows.lastMonth", row: data?.closed.last_month ?? ZERO_ROW },
+    { labelKey: "dashboard.flows.last12Months", row: data?.closed.last_12_months ?? ZERO_ROW },
+  ] as const;
+
+  return (
+    <PageGridTile id="flows-periods" order={dashboardTileOrder("flows-periods")}>
+      <div className="chart-panel-title-row">
+        <h2>{t("dashboard.flows.title")}</h2>
+        <Link to="/flows" className={styles.link}>
+          {t("dashboard.flows.openFlows")}
+        </Link>
+      </div>
+      <div className={loadableClass(loading, "cards")}>
+        {periods.map(({ labelKey, row }) => (
+          <div key={labelKey} className={`card ${styles.period}`}>
+            <div className={styles.periodTitle}>{t(labelKey)}</div>
+            <dl className={styles.lines}>
+              {SUMMARY_LINES.map((line) => {
+                const value = line.value(row);
+                return (
+                  <div key={line.id} className={line.section ? styles.lineSection : styles.line}>
+                    <dt>{t(line.labelKey)}</dt>
+                    <dd className={line.delta ? undefined : "mono"}>
+                      {line.delta ? (
+                        <DeltaMetricFlow
+                          delta={value}
+                          fractionDigits={
+                            displayUnit === "usd"
+                              ? minAdaptiveUsdFractionDigits(SUMMARY_LINES.filter((l) => l.delta).map((l) => l.value(row)))
+                              : 0
+                          }
+                        />
+                      ) : (
+                        formatFlowMoney(value, displayUnit)
+                      )}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </div>
+        ))}
+      </div>
+    </PageGridTile>
+  );
+}
+
+/**
+ * The /flows overview chart on the home dashboard, with its own Período / Rango
+ * (`dashboard.flows`). The client only picks rows, clips them to the Rango and rolls years up.
+ */
+export function DashboardFlowsChart({ displayUnit }: { displayUnit: DisplayUnit }) {
   const { t } = useTranslation();
   const prefs = useSurfacePrefs("dashboard.flows", "month", "1y");
   const granularity = flowChartGranularityFromMetricsPeriod(prefs.period);
@@ -98,67 +161,27 @@ export function DashboardFlowsSummary({ displayUnit }: { displayUnit: DisplayUni
     }));
   }, [data, granularity, isDaily, prefs.range]);
 
-  const periods = [
-    { labelKey: "dashboard.flows.lastMonth", row: data?.closed.last_month ?? ZERO_ROW },
-    { labelKey: "dashboard.flows.last12Months", row: data?.closed.last_12_months ?? ZERO_ROW },
-  ] as const;
-
   return (
-    <section className={styles.root}>
-      <div className="chart-panel-title-row">
-        <h2 style={{ margin: 0 }}>{t("dashboard.flows.title")}</h2>
-        <Link to="/flows" className={styles.link}>
-          {t("dashboard.flows.openFlows")}
-        </Link>
-      </div>
-      <div className={loadableClass(loading, styles.summary)}>
-        {periods.map(({ labelKey, row }) => (
-          <div key={labelKey} className={styles.period}>
-            <div className={styles.periodTitle}>{t(labelKey)}</div>
-            <dl className={styles.lines}>
-              {SUMMARY_LINES.map((line) => {
-                const value = line.value(row);
-                return (
-                  <div key={line.id} className={line.section ? styles.lineSection : styles.line}>
-                    <dt>{t(line.labelKey)}</dt>
-                    <dd className={line.delta ? undefined : "mono"}>
-                      {line.delta ? (
-                        <DeltaMetricFlow
-                          delta={value}
-                          fractionDigits={
-                            displayUnit === "usd"
-                              ? minAdaptiveUsdFractionDigits(SUMMARY_LINES.filter((l) => l.delta).map((l) => l.value(row)))
-                              : 0
-                          }
-                        />
-                      ) : (
-                        formatFlowMoney(value, displayUnit)
-                      )}
-                    </dd>
-                  </div>
-                );
-              })}
-            </dl>
-          </div>
-        ))}
-      </div>
-      <div className="chart-grid chart-grid--full-line">
-        <FlowsOverviewChart
-          title={t("flows.overview.chartTitle")}
-          controls={
-            <SurfaceControls
-              period={prefs.period}
-              onPeriodChange={prefs.setPeriod}
-              range={prefs.range}
-              onRangeChange={prefs.setRange}
-            />
-          }
-          points={chartPoints}
-          xAxisGranularity={granularity}
-          displayUnit={displayUnit}
-          loading={loading}
-        />
-      </div>
-    </section>
+    <PageGridTile
+      id="flows-chart"
+      order={dashboardTileOrder("flows-chart")}
+      className="chart-grid chart-grid--full-line"
+    >
+      <FlowsOverviewChart
+        title={t("flows.overview.chartTitle")}
+        controls={
+          <SurfaceControls
+            period={prefs.period}
+            onPeriodChange={prefs.setPeriod}
+            range={prefs.range}
+            onRangeChange={prefs.setRange}
+          />
+        }
+        points={chartPoints}
+        xAxisGranularity={granularity}
+        displayUnit={displayUnit}
+        loading={loading}
+      />
+    </PageGridTile>
   );
 }

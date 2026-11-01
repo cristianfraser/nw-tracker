@@ -1,9 +1,10 @@
+/* A chart's box is its reserved height alone: no chrome (docs/layout-grid-plan.md §B). */
 .chart-box {
-  margin-top: 1rem;
-  padding: 0.5rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  margin-top: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
   min-height: var(--chart-panel-min-height);
   height: var(--chart-panel-height);
 }
@@ -27,30 +28,35 @@
   stroke-width: 2px;
 }
 
+/* A chart row on the page columns: a subgrid where it is a page-grid (or stack) child, the same
+   column count and gutter on its own elsewhere. Two panels take six columns each from 880; a
+   `--full-line` / `--full-width-stack` row gives its panel every column. */
 .chart-grid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 1rem 1.25rem;
+  grid-template-columns: repeat(var(--content-cols), minmax(0, 1fr));
+  column-gap: var(--gutter);
+  row-gap: var(--row-gap);
   align-items: stretch;
-  margin-top: 0.75rem;
 }
 
-@media (min-width: 900px) {
-  .chart-grid {
-    grid-template-columns: 1fr 1fr;
-  }
+.page-grid>.chart-grid,
+.page-main>.chart-grid,
+.page-rail>.chart-grid {
+  grid-template-columns: subgrid;
+}
 
-  .chart-grid.chart-grid--full-line {
-    grid-template-columns: 1fr;
-  }
+.chart-grid>* {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
 
-  .chart-grid.chart-grid--full-width-stack {
-    grid-template-columns: 1fr;
+@media (min-width: 880px) {
+  .chart-grid:not(.chart-grid--full-line):not(.chart-grid--full-width-stack)>.chart-grid__col {
+    grid-column: span 6;
   }
 }
 
 .chart-grid.chart-grid--full-width-stack {
-  gap: 1.75rem 0;
   --chart-panel-min-height: 440px;
   --chart-panel-height: clamp(400px, 42vh, 640px);
 }
@@ -254,7 +260,8 @@
   font-weight: 600;
 }
 
-/* A chart's loading frame (ChartEmptyState): the box at chart size with nothing drawn in it. */
+/* A chart's loading frame (ChartEmptyState): the box at chart size with nothing drawn in it —
+   fully transparent, the frame is the title row plus the reserved height. */
 .chart-box--pending {
-  background: var(--surface);
+  background: none;
 }

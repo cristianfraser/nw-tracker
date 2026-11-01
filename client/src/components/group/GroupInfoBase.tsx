@@ -9,7 +9,9 @@ import { useDailySeries } from "../../queries/hooks";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { Loadable } from "../ui/Loadable";
+import { PageGridTile } from "../layout/PageGridTile";
 import { PageTitleRow } from "../layout/PageTitleRow";
+import { cn } from "../../cn";
 import { PeriodReturnsWithBenchmark } from "../perf/PeriodReturnsTable";
 import { PlaceholderCardsStrip } from "../dashboard/PlaceholderCardsStrip";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
@@ -85,6 +87,14 @@ export type GroupInfoBaseProps = {
   flowsExcludeSpending?: boolean;
   /** Rendered right after the flows table (home «Últimos gastos»). */
   afterFlows?: ReactNode;
+  /**
+   * The dashboard's rail: tiles that sit beside the strip and the main charts on the big-desktop
+   * tier (styles/page-grid.css `.page-rail`) and in the one stack below it. With a rail the
+   * export row and the accounts tree join it; the wide tables stay below both stacks.
+   */
+  rail?: ReactNode;
+  /** A tile's place in the one-stack reading order (dashboardLayout.ts); DOM order when absent. */
+  tileOrder?: (id: "returns" | "detail" | "wealth-flows" | "export" | "accounts") => number;
 };
 
 export function GroupInfoBase({
@@ -103,6 +113,8 @@ export function GroupInfoBase({
   flowsTitleKey = "groupPage.flowsTitle",
   flowsExcludeSpending = false,
   afterFlows,
+  rail,
+  tileOrder,
 }: GroupInfoBaseProps) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -216,33 +228,63 @@ export function GroupInfoBase({
 
   const flowsEnabled = tablesFetchEnabled;
 
+  // The strip is a grid of its own (the card blocks are subgrids of it), so its Loadable
+  // wrapper is the page-grid child and passes the columns through.
+  const strip = portfolio ? (
+    <Loadable loading={stripPlaceholderPhase} className="page-grid page-tile" data-tile="strip">
+      <PortfolioNavEntityCardsStrip
+        dash={portfolio.dash}
+        parentNavNode={portfolio.navNode}
+        showUsd={portfolio.showUsd}
+        animated={portfolio.animated}
+        linkedCardNavChildren={portfolio.linkedCardNavChildren}
+      />
+    </Loadable>
+  ) : coldStripShape ? (
+    <Loadable loading className="page-grid page-tile" data-tile="strip">
+      <PlaceholderCardsStrip {...coldStripShape} />
+    </Loadable>
+  ) : null;
+  const exportTile = exportSlot ? (
+    <PageGridTile id="export" className="page-tile--end" order={tileOrder?.("export")}>
+      {exportSlot}
+    </PageGridTile>
+  ) : null;
+  const accountsTile = accountsTree ? (
+    <PageGridTile id="accounts" order={tileOrder?.("accounts")}>
+      {accountsTree}
+    </PageGridTile>
+  ) : null;
+
   return (
-    <main className={mainClassName}>
-      <Loadable loading={loading} className={pageShellStyles.contentShell}>
+    <main className={cn(mainClassName, "page-grid")}>
+      <Loadable loading={loading} className={cn(pageShellStyles.contentShell, "page-grid")}>
         <PageTitleRow title={title} />
         {toolbar}
-        {portfolio ? (
-          <Loadable loading={stripPlaceholderPhase}>
-            <PortfolioNavEntityCardsStrip
-              dash={portfolio.dash}
-              parentNavNode={portfolio.navNode}
-              showUsd={portfolio.showUsd}
-              animated={portfolio.animated}
-              linkedCardNavChildren={portfolio.linkedCardNavChildren}
-            />
-          </Loadable>
-        ) : coldStripShape ? (
-          <Loadable loading>
-            <PlaceholderCardsStrip {...coldStripShape} />
-          </Loadable>
-        ) : null}
-        {charts}
+        {rail ? (
+          <>
+            <div className="page-main">
+              {strip}
+              {charts}
+            </div>
+            <div className="page-rail">
+              {rail}
+              {exportTile}
+              {accountsTile}
+            </div>
+          </>
+        ) : (
+          <>
+            {strip}
+            {charts}
+          </>
+        )}
         {tablesEnabled ? (
           <>
             {/* undefined = still loading (frame, dimmed — also before the nav names the group); null = the server sends none. */}
             {shownPeriodReturns !== null ? (
-              <>
-                <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t("periodReturns.title")}</h2>
+              <PageGridTile id="returns" order={tileOrder?.("returns")}>
+                <h2>{t("periodReturns.title")}</h2>
                 <PeriodReturnsWithBenchmark
                   data={shownPeriodReturns ?? null}
                   displayUnit={displayUnit}
@@ -250,10 +292,11 @@ export function GroupInfoBase({
                   surfaceId={`group.${portfolio?.groupSlug || "pending"}.returns`}
                   loading={shownPeriodReturns === undefined || periodReturnsHeld}
                 />
-              </>
+              </PageGridTile>
             ) : null}
-            <div className="chart-panel-title-row" style={{ marginTop: "2rem" }}>
-              <h2 style={{ margin: 0, fontSize: "1.15rem" }}>
+            <PageGridTile id="detail" order={tileOrder?.("detail")}>
+            <div className="chart-panel-title-row">
+              <h2>
                 {t(
                   isDaily
                     ? "groupPage.dailyDetailTitle"
@@ -303,28 +346,27 @@ export function GroupInfoBase({
             ) : (
               <p className="muted">{t("groupPage.monthlyDetailEmpty")}</p>
             )}
+            </PageGridTile>
 
-            <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t(flowsTitleKey)}</h2>
-            {tablesError ? (
-              <p className="error">{tablesError}</p>
-            ) : (
-              <FlowsPanel
-                kind="group"
-                groupSlug={portfolio?.groupSlug ?? ""}
-                showUnitsColumn={false}
-                excludeSpending={flowsExcludeSpending}
-                enabled={flowsEnabled}
-              />
-            )}
+            <PageGridTile id="wealth-flows" order={tileOrder?.("wealth-flows")}>
+              <h2>{t(flowsTitleKey)}</h2>
+              {tablesError ? (
+                <p className="error">{tablesError}</p>
+              ) : (
+                <FlowsPanel
+                  kind="group"
+                  groupSlug={portfolio?.groupSlug ?? ""}
+                  showUnitsColumn={false}
+                  excludeSpending={flowsExcludeSpending}
+                  enabled={flowsEnabled}
+                />
+              )}
+            </PageGridTile>
             {afterFlows}
           </>
         ) : null}
-        {exportSlot ? (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1.25rem" }}>
-            {exportSlot}
-          </div>
-        ) : null}
-        {accountsTree}
+        {rail ? null : exportTile}
+        {rail ? null : accountsTile}
       </Loadable>
     </main>
   );

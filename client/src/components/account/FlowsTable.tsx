@@ -1,4 +1,5 @@
 import { Input } from "@crfrsr/ui";
+import { cn } from "../../cn";
 import { useTranslation } from "../../i18n";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
@@ -10,6 +11,7 @@ import {
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../ui/TableMobileCard";
+import styles from "./FlowsTable.module.css";
 
 function formatFlowUnits(
   row: FlowsApiRow,
@@ -240,15 +242,7 @@ export function FlowsTable({
 
   const filterBar =
     filterOptions && filterState && onFilterChange ? (
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "0.5rem",
-          alignItems: "center",
-          fontSize: "0.875rem",
-        }}
-      >
+      <div className={styles.filterBar}>
         {filterOptions.years.length > 0 ? (
           <select
             value={filterState.year}
@@ -309,9 +303,7 @@ export function FlowsTable({
           </select>
         ) : null}
 
-        {/* Inputs fill their container, so each control is sized by the wrapper
-            it sits in — otherwise every filter would claim a whole row. */}
-        <div style={{ width: "14rem" }}>
+        <div className={styles.filterWide}>
           <Input
             type="search"
             value={filterState.q}
@@ -320,7 +312,7 @@ export function FlowsTable({
           />
         </div>
 
-        <div style={{ width: "10rem" }}>
+        <div className={styles.filterMedium}>
           <Input
             type="date"
             value={filterState.date_from}
@@ -328,7 +320,7 @@ export function FlowsTable({
             aria-label={t("flows.filters.dateFrom")}
           />
         </div>
-        <div style={{ width: "10rem" }}>
+        <div className={styles.filterMedium}>
           <Input
             type="date"
             value={filterState.date_to}
@@ -344,7 +336,7 @@ export function FlowsTable({
           <option value="clp">CLP</option>
           <option value="usd">USD</option>
         </select>
-        <div style={{ width: "7rem" }}>
+        <div className={styles.filterNarrow}>
           <Input
             type="text"
             inputMode="numeric"
@@ -353,7 +345,7 @@ export function FlowsTable({
             placeholder={t("flows.filters.amountExact")}
           />
         </div>
-        <div style={{ width: "6.5rem" }}>
+        <div className={styles.filterTiny}>
           <Input
             type="text"
             inputMode="numeric"
@@ -363,7 +355,7 @@ export function FlowsTable({
             placeholder={t("flows.filters.amountMin")}
           />
         </div>
-        <div style={{ width: "6.5rem" }}>
+        <div className={styles.filterTiny}>
           <Input
             type="text"
             inputMode="numeric"
@@ -375,7 +367,7 @@ export function FlowsTable({
         </div>
 
         {filterState.personal_only !== undefined ? (
-          <label style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+          <label className={styles.checkLabel}>
             <input
               type="checkbox"
               checked={filterState.personal_only}
@@ -385,7 +377,7 @@ export function FlowsTable({
           </label>
         ) : null}
         {amountFilterError ? (
-          <span className="error" style={{ flexBasis: "100%", fontSize: "0.8rem" }}>
+          <span className={cn("error", styles.filterError)}>
             {amountFilterError}
           </span>
         ) : null}

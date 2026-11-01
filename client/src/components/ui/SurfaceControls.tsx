@@ -52,19 +52,9 @@ export function SurfaceControls({
   const { t } = useTranslation();
 
   return (
-    <div
-      className="surface-controls"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.75rem",
-        flexWrap: "wrap",
-        fontSize: "0.85rem",
-        ...style,
-      }}
-    >
+    <div className="surface-controls" style={style}>
       {view != null && onViewChange ? (
-        <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+        <label className="surface-controls__label">
           <span className="muted">{t("valueMap.viewLabel")}</span>
           <select
             value={view}
@@ -79,7 +69,7 @@ export function SurfaceControls({
         </label>
       ) : null}
       {period != null && onPeriodChange ? (
-        <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+        <label className="surface-controls__label">
           <span className="muted">
             {t(periodKind === "return" ? "valueMap.periodLabel" : "dashboard.chartGranularityLabel")}
           </span>
@@ -99,7 +89,7 @@ export function SurfaceControls({
         </label>
       ) : null}
       {range != null && onRangeChange ? (
-        <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+        <label className="surface-controls__label">
           <span className="muted">{t("dashboard.rangeLabel")}</span>
           <select
             value={range}
