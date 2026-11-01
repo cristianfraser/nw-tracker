@@ -3,6 +3,13 @@
   font-size: var(--font-size-card-meta);
 }
 
+/* The period cards' block: a right-edge card's number-flow mask reaches ~6px past the content
+   edge (cards have no padding), which scrolled the main column sideways; clipped like the
+   cards strip (cards.css `.cards-strip`). */
+.periods {
+  overflow-x: clip;
+}
+
 .period {
   min-width: 0;
 }

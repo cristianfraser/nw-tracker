@@ -15,8 +15,9 @@
 .layout-main {
   grid-column: 2;
   min-width: 0;
-  /* A table wider than the content (the flows table below ~1100px) scrolls inside the main
-     column, as before, instead of pushing the sidebar off the viewport. */
+  /* Anything wider than the content scrolls inside the main column instead of pushing the
+     sidebar off the viewport. Nothing should: a table that does not fit shows its cards
+     (`useTableFit`, tables.css `.table-wrap--cards`). */
   overflow: auto;
   display: flex;
   flex-direction: column;

@@ -14,6 +14,7 @@ import {
 import { cn } from "../../cn";
 import i18n from "../../i18n";
 import { Button } from "@crfrsr/ui";
+import { useTableFit } from "./useTableFit";
 
 export type TableSortDirection = "asc" | "desc";
 
@@ -217,6 +218,12 @@ export type TableProps = {
   tableClassName?: string;
   wrapClassName?: string;
   wrapStyle?: CSSProperties;
+  /**
+   * Show the table's mobile rendering whenever its desktop rendering is wider than the space it
+   * is given (`useTableFit`). Defaults to on for `table--parallel-mobile` tables; a table with
+   * its own narrow rendering (the Rentabilidad flip) turns it on explicitly.
+   */
+  fitToWidth?: boolean;
 };
 
 /**
@@ -236,7 +243,10 @@ export function Table({
   tableClassName,
   wrapClassName,
   wrapStyle,
+  fitToWidth,
 }: TableProps) {
+  const fit = fitToWidth ?? (tableClassName?.split(/\s+/).includes("table--parallel-mobile") ?? false);
+  const { wrapRef, tableRef } = useTableFit(fit);
   const [expanded, setExpanded] = useState(false);
   const [sort, setSort] = useState<TableSortState>(null);
   const resolvedShowMoreLabel = showMoreLabel ?? i18n.t("notifications.showMore");
@@ -295,8 +305,11 @@ export function Table({
 
   return (
     <div className={wrapClassName} style={wrapStyle}>
-      <div className={cn("table-wrap", hasHiddenRows && !expanded && "table-wrap--collapsed")}>
-        <table className={tableClassName} style={tableStyle}>
+      <div
+        ref={wrapRef}
+        className={cn("table-wrap", hasHiddenRows && !expanded && "table-wrap--collapsed")}
+      >
+        <table ref={tableRef} className={tableClassName} style={tableStyle}>
           {renderedHeader}
           <tbody>{needsRowFlattening ? bodyRows : children}</tbody>
         </table>
