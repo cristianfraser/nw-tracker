@@ -8,8 +8,8 @@ import type { LatestExpenseRow } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder } from "../../dashboardLayout";
 import { Loadable } from "../ui/Loadable";
-import { Table } from "../ui/Table";
-import { TableMobileCard, TableMobileCardRow, TableMobileCardSection } from "../ui/TableMobileCard";
+import styles from "./LatestExpenses.module.css";
+import flowsStyles from "./DashboardFlowsSummary.module.css";
 
 const LATEST_EXPENSES_LIMIT = 15;
 
@@ -24,7 +24,8 @@ function categoryLabel(row: LatestExpenseRow): string {
 /**
  * Home «Últimos gastos»: the newest expense lines across every source (card, checking, manual,
  * payroll), as the server lists them (`GET /api/dashboard/latest-expenses`), with a link to the
- * Expenses page. Desktop columns and the mobile card show the same fields.
+ * Expenses page. One compact entry per expense (merchant and amount, then date · category ·
+ * origin), in the type scale of the «Flujos» cards; the same rendering at every width.
  */
 export function LatestExpensesTable() {
   const { t } = useTranslation();
@@ -45,24 +46,13 @@ export function LatestExpensesTable() {
       ? `${formatAmount(row.amount, unit)} · ${t("dashboard.latestExpenses.refund")}`
       : formatAmount(row.amount, unit);
 
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{t("dashboard.latestExpenses.colDate")}</th>
-        <th className="desktop-only">{t("dashboard.latestExpenses.colMerchant")}</th>
-        <th className="desktop-only">{t("dashboard.latestExpenses.colCategory")}</th>
-        <th className="desktop-only">{t("dashboard.latestExpenses.colOrigin")}</th>
-        <th className="desktop-only">{t("dashboard.latestExpenses.colAmount")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
-
   return (
     <PageGridTile id="latest-expenses" order={dashboardTileOrder("latest-expenses")}>
       <div className="chart-panel-title-row">
         <h2>{t("dashboard.latestExpenses.title")}</h2>
-        <Link to="/flows/expenses">{t("dashboard.latestExpenses.viewAll")}</Link>
+        <Link to="/flows/expenses" className={flowsStyles.link}>
+          {t("dashboard.latestExpenses.viewAll")}
+        </Link>
       </div>
       {query.isError ? (
         <p className="error">
@@ -70,44 +60,25 @@ export function LatestExpensesTable() {
         </p>
       ) : (
         <Loadable loading={loading}>
-          <Table header={header} tableClassName="table--parallel-mobile">
-            {rows.length === 0 && loading ? null : rows.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="muted">
-                  {t("dashboard.latestExpenses.empty")}
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.key}>
-                  <td className="desktop-only mono">{row.date}</td>
-                  <td className="desktop-only">{description(row)}</td>
-                  <td className="desktop-only">{categoryLabel(row)}</td>
-                  <td className="desktop-only muted">{row.origin_label}</td>
-                  <td className="desktop-only mono">{amountCell(row)}</td>
-                  <td className="mobile-only">
-                    <TableMobileCard title={description(row)}>
-                      <TableMobileCardSection>
-                        <TableMobileCardRow label={t("dashboard.latestExpenses.colDate")} value={row.date} />
-                        <TableMobileCardRow
-                          label={t("dashboard.latestExpenses.colCategory")}
-                          value={categoryLabel(row)}
-                        />
-                        <TableMobileCardRow
-                          label={t("dashboard.latestExpenses.colOrigin")}
-                          value={row.origin_label}
-                        />
-                        <TableMobileCardRow
-                          label={t("dashboard.latestExpenses.colAmount")}
-                          value={amountCell(row)}
-                        />
-                      </TableMobileCardSection>
-                    </TableMobileCard>
-                  </td>
-                </tr>
-              ))
-            )}
-          </Table>
+          {rows.length === 0 && !loading ? (
+            <p className={`muted ${styles.list}`}>{t("dashboard.latestExpenses.empty")}</p>
+          ) : (
+            <ul className={styles.list}>
+              {rows.map((row) => (
+                <li key={row.key} className={styles.item}>
+                  <div className={styles.main}>
+                    <span className={styles.merchant} title={description(row)}>
+                      {description(row)}
+                    </span>
+                    <span className={`mono ${styles.amount}`}>{amountCell(row)}</span>
+                  </div>
+                  <div className={styles.meta}>
+                    <span className="mono">{row.date}</span> · {categoryLabel(row)} · {row.origin_label}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </Loadable>
       )}
     </PageGridTile>

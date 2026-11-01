@@ -190,11 +190,6 @@
     "latestExpenses": {
       "title": "Últimos gastos",
       "viewAll": "Todos los gastos →",
-      "colDate": "Fecha",
-      "colMerchant": "Descripción",
-      "colCategory": "Categoría",
-      "colOrigin": "Origen",
-      "colAmount": "Monto",
       "installments": "{{count}} cuotas",
       "refund": "Reembolso",
       "empty": "Aún no hay gastos."
