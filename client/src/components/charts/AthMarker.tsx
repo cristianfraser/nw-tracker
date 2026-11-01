@@ -1,10 +1,10 @@
 import type { ReactElement } from "react";
 import { ReferenceDot } from "recharts";
 
-/** The marker's tint: a pale gold, a shade darker than the white net-worth line it marks. */
-export const ATH_MARKER_STROKE = "#d9c48f";
+/** The marker's tint: a deep gold, clearly apart from the white net-worth line it marks. */
+export const ATH_MARKER_STROKE = "#c9971c";
 /** Base opacity of the marker; the line's legend-focus dimming multiplies it. */
-const ATH_MARKER_OPACITY = 0.55;
+const ATH_MARKER_OPACITY = 0.85;
 const ATH_MARKER_WIDTH = 2;
 /** Height of the tick, centered on the peak point (px). */
 const ATH_MARKER_HEIGHT = 12;
