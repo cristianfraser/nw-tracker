@@ -454,8 +454,8 @@
         "es": "Efectivo"
       },
       "cash_savings": {
-        "en": "Savings and reserves",
-        "es": "Ahorros y reservas"
+        "en": "Savings",
+        "es": "Reservas"
       }
     },
     "sections": {
@@ -691,8 +691,8 @@
       "es": "Navegación principal"
     },
     "checking_accounts": {
-      "en": "Checking accounts",
-      "es": "Cuentas corrientes"
+      "en": "Checking",
+      "es": "Banco"
     },
     "flows": {
       "en": "Flows",
