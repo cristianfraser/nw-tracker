@@ -380,7 +380,7 @@ export function seedNavTree(): void {
     });
     upsert({
       slug: "checking_accounts",
-      label: "Checking accounts",
+      label: "Checking",
       label_i18n_key: "sidebar.checking_accounts",
       parent_slug: "cash_eqs",
       sort_order: 20,

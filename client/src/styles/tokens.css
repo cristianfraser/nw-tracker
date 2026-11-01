@@ -25,19 +25,22 @@
    * Layout grid (docs/layout-grid-plan.md). The shell is two tracks: the sidebar, a fixed
    * `--sidebar-w`, and the content region, which alone carries the column grid —
    * `--content-cols` columns (12 on both desktop tiers, so a tile's {x, w} never changes between
-   * them; 4 on a phone) with `--gutter` between them and `--margin-inline` on both sides. Media
+   * them; 4 on a phone) with `--gutter` between them and `--margin-inline` on both sides (0 for now). Media
    * queries cannot read these, so the tier lines (880, 1440) are literals below and in every
    * stylesheet that needs them; the values live here.
    */
-  --sidebar-w: 15.5rem;
+  /** 3/4 of the old 15.5rem: the widest nav label (≈158px, no padding) plus the active nudge fits. */
+  --sidebar-w: 11.625rem;
   --content-cols: 4;
   --gutter: 1rem;
   --row-gap: var(--gutter);
   /** One UI line: the row unit tiles are measured in (react-grid-layout `rowHeight`). */
   --row-unit: 1.5rem;
-  --margin-inline: 1rem;
-  --margin-top: var(--row-gap);
-  --margin-bottom: calc(2 * var(--row-gap) + var(--display-prefs-bar-reserve) + env(safe-area-inset-bottom, 0px));
+  /** No content padding (raw layout step): the content's text sits on its columns' outer edges.
+      The bottom keeps only the space the fixed prefs dock covers, so the last row stays visible. */
+  --margin-inline: 0px;
+  --margin-top: 0px;
+  --margin-bottom: calc(var(--display-prefs-bar-reserve) + env(safe-area-inset-bottom, 0px));
   --page-max: 100vw;
   --page-w: min(100vw, var(--page-max));
   /** Desktop only (the sidebar is a drawer below 880): the content's column box and one column. */
@@ -47,6 +50,8 @@
   --bg: #0c0f14;
   --surface: #141a22;
   --surface2: #1c2430;
+  /** The sidebar: a shade above the page background, enough to tell it apart. */
+  --sidebar-bg: color-mix(in srgb, var(--surface) 30%, var(--bg));
   --border: #2a3544;
   --text: #e8edf4;
   --muted: #8b98a8;
@@ -61,7 +66,9 @@
   /** Alternating x-axis band behind grouped bars — same visual weight as the dashed grid. */
   --chart-band-fill: rgba(148, 163, 184, 0.05);
   /** Primary currency figure on dashboard / group cards (compact strip + detailed buckets). */
-  --dashboard-card-primary-value-font-size: 1.05rem;
+  /* Only a step above the card's own rows (--font-size-card-meta): with no card padding a
+     quarter-width card is ~140px at 880, and a larger figure ran into its day P/L. */
+  --dashboard-card-primary-value-font-size: 0.82rem;
   --dashboard-card-primary-value-font-weight: 600;
   --font-size-card-label: 0.75rem;
   --font-size-card-meta: 0.72rem;
@@ -72,7 +79,7 @@
   --font-size-table: 0.82rem;
   --font-size-value-secondary: 0.95rem;
   --font-size-ui: 0.9rem;
-  --font-size-section-title: var(--dashboard-card-primary-value-font-size);
+  --font-size-section-title: 1.05rem;
   --content-max-width: 58rem;
   --card-radius: 5px;
   font-family: "DM Sans", system-ui, sans-serif;
@@ -84,8 +91,7 @@
 @media (min-width: 880px) {
   :root {
     --content-cols: 12;
-    --margin-inline: 1.5rem;
-    --margin-bottom: calc(2 * var(--row-gap) + var(--display-prefs-stack-height));
+    --margin-bottom: var(--display-prefs-stack-height);
   }
 }
 
@@ -94,7 +100,6 @@
 @media (min-width: 1440px) {
   :root {
     --gutter: 1.5rem;
-    --margin-inline: 2rem;
     --page-max: 105rem;
   }
 }

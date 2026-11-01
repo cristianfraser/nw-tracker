@@ -144,7 +144,7 @@
       "retirement": "Retiro",
       "brokerage": "Brokerage",
       "cash_eqs": "Efectivo",
-      "cash_savings": "Ahorros y reservas"
+      "cash_savings": "Reservas"
     },
     "sections": {
       "overviewTitle": "Patrimonio neto",
@@ -213,7 +213,7 @@
     "flowsPl": "PL",
     "controlPanel": "Panel de control",
     "mainNavAria": "Navegación principal",
-    "checking_accounts": "Cuentas corrientes",
+    "checking_accounts": "Banco",
     "flows": "Flujos",
     "projections": "Proyecciones",
     "wealthPercentile": "Percentil de riqueza",
