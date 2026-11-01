@@ -570,8 +570,8 @@ export function fintualPublisherLag(
 /**
  * Classify a stale AFC CIC source as the PUBLISHER's lag — or null when we are the ones behind.
  *
- * `isAfcCicStale` waits on the last Chile business day's valor cuota from noon the day after, and
- * the Superintendencia de Pensiones is sometimes days late printing it: on 2026-10-05 its CSV still
+ * `isAfcCicStale` waits on the valor cuota the latest SP publication day should have printed, and
+ * the Superintendencia de Pensiones is sometimes late printing it: on 2026-10-05 its CSV still
  * ended at Thursday 10-01 while every 15-minute poll since Saturday noon read the whole year
  * unchanged, and the sync panel called that «stale» like a failed fetch. This is lag on the
  * publisher's side when: nobody forced a run, the last fetch is recent
@@ -587,7 +587,7 @@ export function afcCicPublisherLag(
   const published = state.afcCicLastPublishedYmd?.trim();
   if (!published || !/^\d{4}-\d{2}-\d{2}$/.test(published)) return null;
   if (opts.latestDbDay == null || opts.latestDbDay < published) return null;
-  const expected = afcCicExpectedYmd(cl.ymd);
+  const expected = afcCicExpectedYmd(cl);
   if (published >= expected) return null;
   const checkedAt = state.afcCicLastCheckedAt ?? null;
   const checkedMs = checkedAt ? Date.parse(checkedAt) : NaN;
@@ -605,7 +605,7 @@ function publisherLagOverdueHourChile(source: GlobalSyncSource): number {
 /**
  * Sources whose accounts dim at `cl`. Our own staleness (a missed or failed poll, a due sync not
  * yet run, a signature mismatch, a forced run) always dims. A publisher's lag dims only once the
- * cuota is OVERDUE — from the source's publish hour (Fintual 18:00, AFC 12:00) until it lands;
+ * cuota is OVERDUE — from the source's publish hour (Fintual, AFC and AFP 18:00) until it lands;
  * before that the display holds everything the publisher has (pre-open, the live proxy, the
  * post-close hold), so nothing is behind (2026-09-21). The window is wall-clock: a cuota still
  * missing at midnight reads normal again from 00:00 and dims from the publish hour the next day,
@@ -778,7 +778,7 @@ export function syncStatusPayload(): {
   /**
    * The sources whose accounts the dashboard dims right now (`staleDimmingSources`): every stale
    * source whose staleness is ours, plus a source waiting on its publisher once the cuota is
-   * overdue (from its publish hour: Fintual 18:00, AFC 12:00). Before that hour a publisher-lag source holds
+   * overdue (from its publish hour: Fintual, AFC and AFP 18:00). Before that hour a publisher-lag source holds
    * everything the publisher has, so its accounts are not behind anything.
    */
   stale_dimming: GlobalSyncSource[];

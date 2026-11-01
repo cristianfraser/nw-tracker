@@ -328,42 +328,42 @@ describe("fintualPublisherLag", () => {
 });
 
 /**
- * The 2026-10-05 shape: Friday 10-02's AFC valor cuota due since Saturday 18:00, the SP's CSV still
- * ending at Thursday 10-01, every poll reading the year unchanged.
+ * Friday 10-02's AFC valor cuota due from Monday 10-05 18:00 (the SP's next publication), the
+ * CSV still ending at Thursday 10-01, every poll reading the year unchanged.
  */
 describe("afcCicPublisherLag", () => {
-  const mondayMidnight = wallClock("2026-10-05", 0, 3);
-  const nowMs = Date.parse("2026-10-05T03:03:00Z");
+  const mondayEvening = wallClock("2026-10-05", 19, 3);
+  const nowMs = Date.parse("2026-10-05T22:03:00Z");
   const waitingOnFriday: GlobalSyncStateFile = {
-    afcCicLastCheckedAt: "2026-10-05T03:00:59Z",
+    afcCicLastCheckedAt: "2026-10-05T22:00:59Z",
     afcCicLastPublishedYmd: "2026-10-01",
   };
 
   it("classifies a recent fetch whose CSV ends before the expected day as publisher lag", () => {
-    expect(afcCicPublisherLag(mondayMidnight, waitingOnFriday, { latestDbDay: "2026-10-01", nowMs })).toEqual({
+    expect(afcCicPublisherLag(mondayEvening, waitingOnFriday, { latestDbDay: "2026-10-01", nowMs })).toEqual({
       expected_ymd: "2026-10-02",
       published_ymd: "2026-10-01",
-      last_checked_at: "2026-10-05T03:00:59Z",
+      last_checked_at: "2026-10-05T22:00:59Z",
     });
   });
 
   it("is our staleness when the fetch is old or missing, the DB lacks a printed day, or a run was forced", () => {
     const old = new Date(nowMs - PUBLISHER_LAG_MAX_POLL_AGE_MS - 1_000).toISOString();
     expect(
-      afcCicPublisherLag(mondayMidnight, { ...waitingOnFriday, afcCicLastCheckedAt: old }, { latestDbDay: "2026-10-01", nowMs })
+      afcCicPublisherLag(mondayEvening, { ...waitingOnFriday, afcCicLastCheckedAt: old }, { latestDbDay: "2026-10-01", nowMs })
     ).toBeNull();
     expect(
-      afcCicPublisherLag(mondayMidnight, { afcCicLastPublishedYmd: "2026-10-01" }, { latestDbDay: "2026-10-01", nowMs })
+      afcCicPublisherLag(mondayEvening, { afcCicLastPublishedYmd: "2026-10-01" }, { latestDbDay: "2026-10-01", nowMs })
     ).toBeNull();
-    expect(afcCicPublisherLag(mondayMidnight, waitingOnFriday, { latestDbDay: "2026-09-30", nowMs })).toBeNull();
+    expect(afcCicPublisherLag(mondayEvening, waitingOnFriday, { latestDbDay: "2026-09-30", nowMs })).toBeNull();
     expect(
-      afcCicPublisherLag(mondayMidnight, { ...waitingOnFriday, userForcedStale: ["afc_cic"] }, { latestDbDay: "2026-10-01", nowMs })
+      afcCicPublisherLag(mondayEvening, { ...waitingOnFriday, userForcedStale: ["afc_cic"] }, { latestDbDay: "2026-10-01", nowMs })
     ).toBeNull();
   });
 
   it("is not lag once the SP printed the expected day (our write is what is behind)", () => {
     const printed: GlobalSyncStateFile = { ...waitingOnFriday, afcCicLastPublishedYmd: "2026-10-04" };
-    expect(afcCicPublisherLag(mondayMidnight, printed, { latestDbDay: "2026-10-04", nowMs })).toBeNull();
+    expect(afcCicPublisherLag(mondayEvening, printed, { latestDbDay: "2026-10-04", nowMs })).toBeNull();
   });
 
   it("dims an AFC publisher-lag source only from 18:00", () => {
@@ -376,10 +376,10 @@ describe("afcCicPublisherLag", () => {
       next_sync_imminent: true,
       today_day_kind: "open" as const,
     };
-    expect(staleDimmingSources([row], mondayMidnight)).not.toContain("afc_cic");
+    expect(staleDimmingSources([row], wallClock("2026-10-05", 0, 3))).not.toContain("afc_cic");
     expect(staleDimmingSources([row], wallClock("2026-10-05", 12))).not.toContain("afc_cic");
     expect(staleDimmingSources([row], wallClock("2026-10-05", 18))).toContain("afc_cic");
-    expect(staleDimmingSources([{ ...row, publisher_lag: null }], mondayMidnight)).toContain("afc_cic");
+    expect(staleDimmingSources([{ ...row, publisher_lag: null }], wallClock("2026-10-05", 0, 3))).toContain("afc_cic");
   });
 });
 

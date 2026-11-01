@@ -89,21 +89,26 @@ describe("afc_cic — Superintendencia de Pensiones CSV", () => {
     expect(() => spCesantiaCsvUrl(1999)).toThrow(/invalid year/);
   });
 
-  it("expects the last Chile business day strictly before the day", () => {
-    expect(afcCicExpectedYmd("2026-09-22")).toBe("2026-09-21"); // Tuesday → Monday
-    expect(afcCicExpectedYmd("2026-09-21")).toBe("2026-09-17"); // Monday after Fiestas Patrias (18–19 closed)
-    expect(afcCicExpectedYmd("2026-09-27")).toBe("2026-09-25"); // Sunday → Friday
-    expect(afcCicExpectedYmd("2026-09-26")).toBe("2026-09-25"); // Saturday → Friday
+  it("expects the business day the latest SP publication printed", () => {
+    expect(afcCicExpectedYmd(cl("2026-09-22", 19))).toBe("2026-09-21"); // Tuesday after 18:00 → Monday
+    expect(afcCicExpectedYmd(cl("2026-09-22", 9))).toBe("2026-09-17"); // Tuesday morning → Monday's publication (Thu 17)
+    expect(afcCicExpectedYmd(cl("2026-09-26", 14))).toBe("2026-09-24"); // Saturday → Friday printed Thursday
+    expect(afcCicExpectedYmd(cl("2026-09-27", 20))).toBe("2026-09-24"); // Sunday → still Thursday
+    expect(afcCicExpectedYmd(cl("2026-09-28", 17))).toBe("2026-09-24"); // Monday before 18:00 → Thursday
+    expect(afcCicExpectedYmd(cl("2026-09-28", 18))).toBe("2026-09-25"); // Monday 18:00 → Friday
+    expect(afcCicExpectedYmd(cl("2026-11-01", 12))).toBe("2026-10-29"); // Sunday (Sat 10-31 holiday) → Thursday
   });
 
-  it("next due day skips weekend days whose Friday row already landed", () => {
-    // Saturday 14:00 with Friday in DB: Sunday and Monday still expect Friday, Tuesday expects Monday.
+  it("next due day is the first business day whose publication expects a newer row", () => {
+    // Saturday 14:00 with Thursday in DB: Monday 18:00 publishes Friday.
+    expect(afcCicNextDueYmd(cl("2026-09-26", 14), "2026-09-24")).toBe("2026-09-28");
+    // Saturday with Friday already in DB: Monday publishes Friday too, so Tuesday.
     expect(afcCicNextDueYmd(cl("2026-09-26", 14), "2026-09-25")).toBe("2026-09-29");
-    // Tuesday 09:00 with Friday in DB: Monday's row is due today at 18:00.
-    expect(afcCicNextDueYmd(cl("2026-09-22", 9), "2026-09-18")).toBe("2026-09-22");
-    // Tuesday 15:00 with Monday in DB: Wednesday expects Tuesday.
-    expect(afcCicNextDueYmd(cl("2026-09-22", 15), "2026-09-21")).toBe("2026-09-23");
-    // Nothing in DB: due immediately (from today when the hour is still ahead).
+    // Tuesday 09:00 with Thursday 17 in DB: today's publication prints Monday.
+    expect(afcCicNextDueYmd(cl("2026-09-22", 9), "2026-09-17")).toBe("2026-09-22");
+    // Tuesday 19:00 with Monday in DB: Wednesday prints Tuesday.
+    expect(afcCicNextDueYmd(cl("2026-09-22", 19), "2026-09-21")).toBe("2026-09-23");
+    // Nothing in DB: due at the next publication.
     expect(afcCicNextDueYmd(cl("2026-09-22", 9), null)).toBe("2026-09-22");
   });
 });
@@ -166,10 +171,10 @@ describe("afc_cic — upsert + stale rule (test DB)", () => {
 
     // Latest row is Wednesday 2099-06-03 (from the upsert test).
     expect(isAfcCicStale(cl("2099-06-04", 9), {}, { force: false })).toBe(false); // Thu morning: Wed's row present
-    expect(isAfcCicStale(cl("2099-06-04", 19), {}, { force: false })).toBe(false); // Thu evening: still present
+    expect(isAfcCicStale(cl("2099-06-04", 19), {}, { force: false })).toBe(false); // Thu evening: Wed's row present
     expect(isAfcCicStale(cl("2099-06-05", 15), {}, { force: false })).toBe(false); // Fri 15:00: Thu's row not due yet
     expect(isAfcCicStale(cl("2099-06-05", 18), {}, { force: false })).toBe(true); // Fri 18:00: Thu's row missing
-    expect(isAfcCicStale(cl("2099-06-07", 1), {}, { force: false })).toBe(true); // Sun 01:00: Fri's row missing, no hour gate
+    expect(isAfcCicStale(cl("2099-06-07", 1), {}, { force: false })).toBe(true); // Sun: Thu's row still missing
     expect(isAfcCicStale(cl("2099-06-04", 9), {}, { force: true })).toBe(true);
   });
 });
