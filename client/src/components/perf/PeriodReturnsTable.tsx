@@ -37,7 +37,7 @@ function toneClass(n: number | null): string | undefined {
   return n > 0 ? styles.up : styles.down;
 }
 
-/** Grid placement for the flipped (mobile) layout; ignored by the desktop table. */
+/** Grid placement for the flipped (narrow) layout; ignored by the wide table. */
 function cellPos(row: number, col: number): CSSProperties {
   return { "--r": row, "--c": col } as CSSProperties;
 }
@@ -57,7 +57,8 @@ export type BenchmarkComparisonProps = {
  * there (shadow P/L) and Δ = real P/L − that, and both rows gain the money's IRR (yearly
  * on windows of a year or more) — all server-computed. Static (no NumberFlow): it
  * refetches wholesale on unit toggle. Formats at render time (decimal-separator convention).
- * One markup for both viewports — narrow screens flip it to one row per period (CSS).
+ * One markup for both widths — a container narrower than the table's floor flips it to one row
+ * per period (CSS container query on the wrap, not the viewport).
  *
  * `data` is null only while the payload loads (callers pass null with `loading`, never as a
  * server-stated absence — that gate stays on the caller): the table then renders its frame from
@@ -127,7 +128,7 @@ export function PeriodReturnsTable({
     <Table
       header={header}
       tableClassName={cn(styles.table, compare && styles.compare)}
-      wrapClassName={loadableClass(loading)}
+      wrapClassName={cn(styles.wrap, loadableClass(loading))}
     >
       <tr>
         {compare ? (
