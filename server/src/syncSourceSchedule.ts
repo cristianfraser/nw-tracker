@@ -188,9 +188,9 @@ function scheduleForSource(
       };
     }
     case "afc_cic": {
-      // The SP prints day D on D+1; the source is due at AFC_CIC_PUBLISH_HOUR_CHILE on the first
-      // calendar day whose prior Chile business day is beyond the latest row in DB — a Sunday
-      // whose Friday row already landed on Saturday is not a wake (`afcCicNextDueYmd`).
+      // The SP prints business day D on the next business day; the source is due at
+      // AFC_CIC_PUBLISH_HOUR_CHILE on the first business day whose publication expects a row
+      // beyond the latest in DB (`afcCicNextDueYmd`) — never on a weekend or holiday.
       const nextYmd = afcCicNextDueYmd(cl, opts?.afcCicLatestDay ?? null);
       return {
         next_sync: nextYmd ? chileTimeOnYmd(nextYmd, AFC_CIC_PUBLISH_HOUR_CHILE, 0) : null,

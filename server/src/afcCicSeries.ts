@@ -22,7 +22,7 @@
 import { db } from "./db.js";
 import { chileCalendarAddDays, type ChileWallClock } from "./chileDate.js";
 import { fetchOut } from "./httpOut.js";
-import { priorChileBusinessDayYmd } from "./marketHolidays.js";
+import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 
 export const AFC_CIC_SERIES_KEY = "afc_cic";
@@ -211,22 +211,33 @@ export function afcCicAccountIds(): number[] {
 }
 
 /**
- * The day whose valor cuota must be in DB at `ymd`: the last Chile business day strictly
- * before it. Weekend and holiday rows are flat carries of that close, so they are never
- * waited for (the mark reads on-or-before) — they land with the next business day's fetch.
+ * The latest day the SP has published by `cl`: today once its publish hour has passed on a Chile
+ * business day, else the previous Chile business day. The SP prints on business days only, the
+ * AFP's rule (`afpUnoExpectedOfficialDay`): Friday's valor cuota appears on Monday ~18:30, never
+ * on the weekend (on Monday 2026-10-05 the CSV still ended at Thursday 10-01).
  */
-export function afcCicExpectedYmd(ymd: string): string {
-  const prior = priorChileBusinessDayYmd(ymd);
-  if (!prior) throw new Error(`afc_cic: no Chile business day before ${ymd}`);
+function afcCicLatestPublishDay(cl: ChileWallClock): string {
+  if (isChileBusinessDay(cl.ymd) && cl.hour >= AFC_CIC_PUBLISH_HOUR_CHILE) return cl.ymd;
+  const prior = priorChileBusinessDayYmd(cl.ymd);
+  if (!prior) throw new Error(`afc_cic: no Chile business day before ${cl.ymd}`);
   return prior;
 }
 
 /**
- * Stale = the expected day's row is missing, once it is due: from
- * {@link AFC_CIC_PUBLISH_HOUR_CHILE} when the expected day is yesterday, any hour when it is
- * older (a Sunday waits on Friday's row since Saturday noon). Never stale without an account
- * on the series.
+ * The day whose valor cuota must be in DB at `cl`: the Chile business day before the latest
+ * publish day — the one that day printed. Weekend and holiday rows are flat carries of that
+ * close, so they are never waited for (the mark reads on-or-before) — they land with the next
+ * publication. Until 2026-11-01 it was the business day before TODAY, so every weekend waited on
+ * Friday's row from Saturday and dimmed the AFC until Monday evening.
  */
+export function afcCicExpectedYmd(cl: ChileWallClock): string {
+  const publishDay = afcCicLatestPublishDay(cl);
+  const prior = priorChileBusinessDayYmd(publishDay);
+  if (!prior) throw new Error(`afc_cic: no Chile business day before ${publishDay}`);
+  return prior;
+}
+
+/** Stale = the expected day's row is missing. Never stale without an account on the series. */
 export function isAfcCicStale(
   cl: ChileWallClock,
   _state?: GlobalSyncStateFile,
@@ -234,25 +245,22 @@ export function isAfcCicStale(
 ): boolean {
   if (afcCicAccountIds().length === 0) return false;
   if (opts?.force) return true;
-  const expected = afcCicExpectedYmd(cl.ymd);
   const latest = latestAfcCicRow()?.day ?? null;
-  if (latest != null && latest >= expected) return false;
-  const yesterday = chileCalendarAddDays(cl.ymd, -1);
-  if (expected === yesterday && cl.hour < AFC_CIC_PUBLISH_HOUR_CHILE) return false;
-  return true;
+  return latest == null || latest < afcCicExpectedYmd(cl);
 }
 
 /**
- * Pure schedule helper: the first calendar day (from today when the publish hour is still
- * ahead, else tomorrow) whose expected row is beyond `latestDay` — that is when the source
- * next becomes stale. Skips the wakes a naïve "tomorrow noon" would spend on weekend days
- * whose expected row (Friday's) already landed.
+ * Pure schedule helper: the first Chile business day (today when its publish hour is still ahead,
+ * else from tomorrow) whose publication at {@link AFC_CIC_PUBLISH_HOUR_CHILE} expects a row
+ * beyond `latestDay` — that is when the source next becomes stale.
  */
 export function afcCicNextDueYmd(cl: ChileWallClock, latestDay: string | null): string | null {
   let d = cl.hour < AFC_CIC_PUBLISH_HOUR_CHILE ? cl.ymd : chileCalendarAddDays(cl.ymd, 1);
   for (let i = 0; i < 21; i++) {
-    const expected = afcCicExpectedYmd(d);
-    if (latestDay == null || expected > latestDay) return d;
+    if (isChileBusinessDay(d)) {
+      const expected = afcCicExpectedYmd({ ...cl, ymd: d, hour: AFC_CIC_PUBLISH_HOUR_CHILE });
+      if (latestDay == null || expected > latestDay) return d;
+    }
     d = chileCalendarAddDays(d, 1);
   }
   return null;
