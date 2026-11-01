@@ -1,0 +1,113 @@
+/* Pages on the column grid (docs/layout-grid-plan.md).
+   `.page-grid` is a subgrid of the content columns (`.layout-main>.content`, shell.css): its
+   children sit on the page's columns and are separated by one row gap. Nest it (a page's <main>
+   and the Loadable shell inside it) and the columns pass straight through. A child spans every
+   column unless it is a tile that says otherwise. */
+.page-grid {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  row-gap: var(--row-gap);
+  align-items: start;
+  align-content: start;
+}
+
+.page-grid>* {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+/* A tile is one section of a page: its heading lives inside it, so the row gap is the only
+   space between sections (no outside margins). `--tile-order` is its place in the one-stack
+   reading order (set by the dashboard from dashboardLayout.ts; 0 elsewhere = DOM order). */
+.page-tile {
+  min-width: 0;
+  order: var(--tile-order, 0);
+}
+
+.page-tile>:is(h2, h3, h4, .chart-panel-title-row):first-child {
+  margin-top: 0;
+}
+
+.chart-panel-title-row>:is(h2, h3, h4) {
+  margin: 0;
+}
+
+/* The export button row and similar end-aligned rows. */
+.page-tile--end {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The dashboard's two stacks. Below the big-desktop tier the containers vanish
+   (`display: contents`) and their tiles are page-grid items in `order`; from 1440 the main
+   stack takes the first 8 columns and the rail the last 4, side by side, each its own column of
+   rows, so a long rail never opens whitespace inside the main stack. The wide tables follow
+   below both, spanning every column. */
+.page-main,
+.page-rail {
+  display: contents;
+}
+
+/* Flattened or not, a stack's tiles span their grid (the page grid below 1440, the stack's own
+   columns from it). */
+.page-main>*,
+.page-rail>* {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+@media (min-width: 1440px) {
+  .page-main,
+  .page-rail {
+    display: grid;
+    grid-template-columns: subgrid;
+    row-gap: var(--row-gap);
+    align-items: start;
+    align-content: start;
+    min-width: 0;
+  }
+
+  .page-main {
+    grid-column: 1 / span 8;
+  }
+
+  /* The rail is one column of full-width tiles, not a subgrid: it is the size container the
+     rail tables query, and size containment makes `subgrid` compute to `none` anyway. */
+  .page-rail {
+    grid-column: 9 / -1;
+    grid-template-columns: minmax(0, 1fr);
+    container-type: inline-size;
+    container-name: rail;
+  }
+
+  /* The strip in the main stack: 8 columns, so a 4-up card spans 2. */
+  .page-main .cards-strip>.cards>.card {
+    grid-column: span 2;
+  }
+
+  /* A 4-up block in the rail is 2-up (the flows periods). */
+  .page-rail .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .page-rail .cards>.card:nth-child(2n+1) {
+    border-left: 0;
+  }
+
+  .page-rail .cards>.card:nth-child(n+3) {
+    border-top: 1px solid var(--hairline);
+  }
+
+  /* A rail narrower than a table's desktop columns shows the table's mobile rendering
+     (the same rule tables.css applies below 880, keyed on the rail's own width). */
+  @container rail (max-width: 40rem) {
+    .page-rail .desktop-only {
+      display: none !important;
+    }
+
+    .page-rail .mobile-only {
+      display: table-cell !important;
+    }
+  }
+}

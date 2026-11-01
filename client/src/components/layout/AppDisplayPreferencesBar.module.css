@@ -55,7 +55,7 @@
     left: auto;
     right: var(--display-prefs-side, 0.75rem);
     width: max-content;
-    max-width: calc(100vw - 15.5rem - 2 * var(--display-prefs-side, 0.75rem));
+    max-width: calc(var(--content-w) - 2 * var(--display-prefs-side, 0.75rem));
     justify-content: flex-end;
     padding: 0 0 calc(var(--display-prefs-side, 0.75rem) + env(safe-area-inset-bottom, 0px));
   }

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import type { NavTreeNodeDto } from "../../types";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import { useTranslation } from "../../i18n";
+import styles from "./NavAccountsTree.module.css";
 
 function treeGuidePrefix(depth: number): string {
   if (depth <= 0) return "";
@@ -10,12 +11,11 @@ function treeGuidePrefix(depth: number): string {
 
 function NavAccountsTreeNode({ node, depth = 0 }: { node: NavTreeNodeDto; depth?: number }) {
   const label = resolveNavTreeLabel(node);
-  const indentPx = 32;
   const prefix = treeGuidePrefix(depth);
 
   if (node.account_id != null) {
     return (
-      <li style={{ marginLeft: `${indentPx}px` }}>
+      <li className={styles.node}>
         {prefix ? <span className="muted mono">{prefix}</span> : null}
         <Link to={`/account/${node.account_id}`}>
           <span className="mono">#{node.account_id}</span> {label}
@@ -34,15 +34,12 @@ function NavAccountsTreeNode({ node, depth = 0 }: { node: NavTreeNodeDto; depth?
   );
 
   return (
-    <li style={{ marginLeft: `${indentPx}px` }}>
+    <li className={styles.node}>
       {prefix ? <span className="muted mono">{prefix}</span> : null}
       {labelNode}{" "}
-      {/* A slug has no break opportunity; at depth on a phone it would otherwise widen the page. */}
-      <span className="muted mono" style={{ overflowWrap: "anywhere" }}>
-        ({node.slug})
-      </span>
+      <span className={`muted mono ${styles.slug}`}>({node.slug})</span>
       {node.children.length > 0 ? (
-        <ul style={{ marginTop: "0.35rem", marginLeft: 0, paddingLeft: 0, listStyle: "none" }}>
+        <ul className={styles.children}>
           {node.children.map((child) => (
             <NavAccountsTreeNode key={child.node_id} node={child} depth={depth + 1} />
           ))}
@@ -70,12 +67,12 @@ export function NavAccountsTree({
   return (
     <>
       {titleI18nKey ? (
-        <h2 style={{ marginTop: "2rem", fontSize: "1.15rem" }}>{t(titleI18nKey)}</h2>
+        <h2 className={styles.title}>{t(titleI18nKey)}</h2>
       ) : null}
       {isEmpty ? (
         <p className="muted">{t(emptyI18nKey)}</p>
       ) : (
-        <ul style={{ marginLeft: 0, paddingLeft: 0, listStyle: "none" }}>
+        <ul className={styles.tree}>
           <NavAccountsTreeNode node={root} />
         </ul>
       )}

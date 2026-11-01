@@ -24,8 +24,6 @@ export type CompactEntityCardProps = {
   metrics?: ReactNode;
   /** `main` vs `breakdown`: number-flow alignment / animation (font size is shared). */
   valueVariant?: DashboardCardValueVariant;
-  /** When true, no inner border/padding (parent is `portfolio-strip-compact`). */
-  stripInner?: boolean;
   /** Optional account list / footer (e.g. cash bucket breakdown). */
   breakdown?: ReactNode;
 };
@@ -44,21 +42,16 @@ export function CompactEntityCard({
   valueDelta,
   metrics,
   valueVariant = "breakdown",
-  stripInner = false,
   breakdown,
   fxMissing = false,
   syncStale = false,
 }: CompactEntityCardProps) {
   return (
     <div
-      className={cn(
-        styles.root,
-        stripInner && styles.rootStripInner,
-        breakdown != null && breakdown !== false && styles.rootWithBreakdown
-      )}
+      className={cn(styles.root, breakdown != null && breakdown !== false && styles.rootWithBreakdown)}
     >
       {label != null ? <DashboardCardTitleRow label={label} titleTo={to} /> : null}
-      {subtitle ? <span className="muted" style={{ fontSize: "0.75rem" }}>{subtitle}</span> : null}
+      {subtitle ? <span className={cn("muted", styles.subtitle)}>{subtitle}</span> : null}
       <div className="value mono">
         <DashboardCardValue
           clp={clp}

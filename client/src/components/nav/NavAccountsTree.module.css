@@ -1,0 +1,27 @@
+/* Nav accounts tree: a nested list, each level indented one step. The lists are nested, so a
+   node's indent is its own step on top of its ancestors' — depth never multiplies here. */
+.tree,
+.children {
+  margin-left: 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.children {
+  margin-top: var(--space-2xs);
+}
+
+.node {
+  --tree-indent: 32px;
+  margin-left: var(--tree-indent);
+}
+
+/* A slug has no break opportunity; at depth on a phone it would otherwise widen the page. */
+.slug {
+  overflow-wrap: anywhere;
+}
+
+/* Spacing only until the tree becomes a page tile; size comes from the base h2 rule. */
+.title {
+  margin-top: 2rem;
+}

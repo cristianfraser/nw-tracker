@@ -1,0 +1,10 @@
+/* The sections fieldset: a plain list of checkboxes, no fieldset chrome. */
+.sections {
+  border: none;
+  padding: 0;
+  margin: var(--space-xs) 0;
+}
+
+.sectionOption {
+  display: block;
+}

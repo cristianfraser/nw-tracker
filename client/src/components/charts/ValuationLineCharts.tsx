@@ -19,6 +19,8 @@ import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { ChartEmptyState } from "./ChartEmptyState";
 import { loadableClass } from "../ui/Loadable";
+import { cn } from "../../cn";
+import styles from "./ValuationLineCharts.module.css";
 import {
   coerceKeptTrailingZeroMonth,
   prependInitialZeroAnchorsOnBlock,
@@ -361,22 +363,7 @@ function InteractiveLegend({
   if (visible.length === 0) return null;
   const dim = focusColorIndex != null;
   return (
-    <div
-      className="line-chart-legend"
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        justifyContent: "center",
-        alignContent: "flex-start",
-        rowGap: 12,
-        columnGap: 20,
-        paddingTop: 14,
-        paddingBottom: 10,
-        fontSize: 12,
-        lineHeight: 1.35,
-        color: "var(--muted, #94a3b8)",
-      }}
-    >
+    <div className={cn("line-chart-legend", styles.legend)}>
       {visible.map((s) => {
         const color = s.stroke;
         const isHi = focusColorIndex != null && s.colorIndex === focusColorIndex;
@@ -394,7 +381,7 @@ function InteractiveLegend({
             onPointerEnter={() => onHighlight(s.dataKey)}
             style={{ opacity: faded ? DIM_LEGEND_OPACITY : 1 }}
           >
-            <svg width={18} height={10} aria-hidden style={{ flexShrink: 0 }}>
+            <svg width={18} height={10} aria-hidden className={styles.legendSwatch}>
               <line
                 x1={0}
                 y1={5}
@@ -414,10 +401,10 @@ function InteractiveLegend({
               />
             </svg>
             <span
-              style={{
-                fontWeight: 400,
-                ...(focusColorIndex != null && isHi ? { color: "#f1f5f9" } : {}),
-              }}
+              className={cn(
+                styles.legendName,
+                focusColorIndex != null && isHi && styles.legendNameHighlighted
+              )}
             >
               {s.name}
             </span>

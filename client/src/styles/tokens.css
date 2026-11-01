@@ -21,10 +21,32 @@
   /** Mobile: fixed bottom dock (progressive blur fade + toolbar) — content padding-bottom. */
   --display-prefs-bar-reserve: 7.5rem;
   --nav-drawer-tab-gap: var(--space-xs);
+  /**
+   * Layout grid (docs/layout-grid-plan.md). The shell is two tracks: the sidebar, a fixed
+   * `--sidebar-w`, and the content region, which alone carries the column grid —
+   * `--content-cols` columns (12 on both desktop tiers, so a tile's {x, w} never changes between
+   * them; 4 on a phone) with `--gutter` between them and `--margin-inline` on both sides. Media
+   * queries cannot read these, so the tier lines (880, 1440) are literals below and in every
+   * stylesheet that needs them; the values live here.
+   */
+  --sidebar-w: 15.5rem;
+  --content-cols: 4;
+  --gutter: 1rem;
+  --row-gap: var(--gutter);
+  /** One UI line: the row unit tiles are measured in (react-grid-layout `rowHeight`). */
+  --row-unit: 1.5rem;
+  --margin-inline: 1rem;
+  --margin-top: var(--row-gap);
+  --margin-bottom: calc(2 * var(--row-gap) + var(--display-prefs-bar-reserve) + env(safe-area-inset-bottom, 0px));
+  --page-max: 100vw;
+  --page-w: min(100vw, var(--page-max));
+  /** Desktop only (the sidebar is a drawer below 880): the content's column box and one column. */
+  --content-w: calc(var(--page-w) - var(--sidebar-w) - 2 * var(--margin-inline));
+  --col-w: calc((var(--content-w) - (var(--content-cols) - 1) * var(--gutter)) / var(--content-cols));
+  --hairline: var(--border);
   --bg: #0c0f14;
   --surface: #141a22;
   --surface2: #1c2430;
-  --surface-emphasis: color-mix(in srgb, var(--surface) 72%, var(--surface2) 28%);
   --border: #2a3544;
   --text: #e8edf4;
   --muted: #8b98a8;
@@ -58,6 +80,25 @@
   background-color: var(--bg);
   color: var(--text);
 }
+/* Small desktop: the persistent sidebar beside a 12-column content region. */
+@media (min-width: 880px) {
+  :root {
+    --content-cols: 12;
+    --margin-inline: 1.5rem;
+    --margin-bottom: calc(2 * var(--row-gap) + var(--display-prefs-stack-height));
+  }
+}
+
+/* Big desktop: wider gutter and margins, the dashboard rail. Beyond the cap the layout stays
+   left-aligned and the right side grows. */
+@media (min-width: 1440px) {
+  :root {
+    --gutter: 1.5rem;
+    --margin-inline: 2rem;
+    --page-max: 105rem;
+  }
+}
+
 /* Value map (treemap): tile hues blended with the neutral by return intensity. */
 :root {
   --treemap-neutral: #3a4655;

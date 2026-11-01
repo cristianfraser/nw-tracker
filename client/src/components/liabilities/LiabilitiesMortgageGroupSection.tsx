@@ -215,7 +215,7 @@ export function LiabilitiesMortgageGroupSection({
             />
           </div>
           <div className="chart-panel-title-row">
-            <h4 className={styles.subsectionTitleMid} style={{ marginBottom: 0 }}>
+            <h4 className={styles.subsectionTitleMid}>
               {t(
                 tableIsDaily
                   ? "accountDetail.dailyDetailTitle"

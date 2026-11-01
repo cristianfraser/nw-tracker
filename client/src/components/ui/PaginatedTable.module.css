@@ -1,0 +1,25 @@
+.filters {
+  margin-bottom: var(--space-xs);
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: var(--space-xs);
+  flex-wrap: wrap;
+}
+
+.pageLabel {
+  display: flex;
+  align-items: center;
+  font-size: var(--font-size-ui);
+}
+
+.pageSelect {
+  margin-left: var(--space-xs);
+}
+
+.pageOf {
+  font-size: var(--font-size-prose);
+}

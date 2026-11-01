@@ -1,9 +1,13 @@
 /* Never a scroll box: a table wider than its container is a table to fix, and a tooltip that
-   hangs below a row (the cuota progress bar's) must not be clipped. */
+   hangs below a row (the cuota progress bar's) must not be clipped. No chrome either: the row
+   hairlines (`th, td` border-bottom) are the table's lines. */
 .table-wrap {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
+  min-width: 0;
+}
+
+/* A table showing its first rows only, with the «show more» button right under it. */
+.table-wrap--collapsed {
+  margin-bottom: 0.35rem;
 }
 
 table {

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Button } from "@crfrsr/ui";
 import { Link } from "react-router-dom";
+import { cn } from "../../cn";
 import {
   cardMetricsByPeriodForAccountRow,
   compareDashboardCardMainDesc,
@@ -30,6 +31,7 @@ import {
   TableMobileCardRow,
   TableMobileCardSection,
 } from "../ui/TableMobileCard";
+import styles from "./PortfolioNavAccountsSummaryTable.module.css";
 
 export type PortfolioNavAccountsSummaryTableProps = {
   dash: Pick<DashboardResponse, "accounts" | "card_metrics_by_slug">;
@@ -287,7 +289,7 @@ export function PortfolioNavAccountsSummaryTable({
         const deltaFractionDigits = cardDeltaFractionDigits(metricsByPeriod, showUsd);
         const nameCell =
           row.kind === "liquidated" ? (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+            <div className={styles.nameStack}>
               <span>{row.name}</span>
               {liquidatedToggle}
             </div>
@@ -300,7 +302,7 @@ export function PortfolioNavAccountsSummaryTable({
         const isAnimated = (variant: CellVariant) => variant === "desktop" && animated;
         /** Balance with the day P/L underneath — the card's balance-row framing. */
         const balanceCell = (variant: CellVariant) => (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+          <div className={styles.cellStack}>
             {balanceValue(variant)}
             {plLine("day", variant)}
           </div>
@@ -327,10 +329,7 @@ export function PortfolioNavAccountsSummaryTable({
             slice === "total" ? "total" : "period"
           );
           return (
-            <span
-              title={labels.deposits[slice]}
-              style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem" }}
-            >
+            <span title={labels.deposits[slice]} className={styles.depositsLine}>
               {value != null ? (
                 <span aria-hidden>{value >= 0 ? "\u2192" : "\u2190"}</span>
               ) : null}
@@ -346,7 +345,7 @@ export function PortfolioNavAccountsSummaryTable({
         const plLine = (slice: PeriodSlice, variant: CellVariant) => {
           const pct = row.pct(slice, showUsd);
           return (
-            <span style={{ display: "inline-flex", alignItems: "baseline", gap: "0.3rem" }}>
+            <span className={styles.plLine}>
               <span title={labels.pl[slice]}>
                 <DeltaMetricFlow
                   delta={roundedMetricDelta(
@@ -360,11 +359,7 @@ export function PortfolioNavAccountsSummaryTable({
                 />
               </span>
               {pct != null ? (
-                <span
-                  className="mono muted"
-                  style={{ fontSize: "var(--font-size-card-meta-sm)" }}
-                  title={labels.pct}
-                >
+                <span className={cn("mono muted", styles.pct)} title={labels.pct}>
                   ({formatPct(pct * 100)})
                 </span>
               ) : null}
@@ -372,7 +367,7 @@ export function PortfolioNavAccountsSummaryTable({
           );
         };
         const periodCell = (slice: PeriodSlice, variant: CellVariant) => (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+          <div className={styles.cellStack}>
             {slice !== "day" ? depositsLine(slice, variant) : null}
             {plLine(slice, variant)}
           </div>
@@ -383,9 +378,8 @@ export function PortfolioNavAccountsSummaryTable({
             : row.kind === "liquidated_detail"
               ? "accounts-summary-row--liquidated-detail"
               : undefined;
-        const rowStyle = row.inactive ? { opacity: 0.55 } : undefined;
         return (
-          <tr key={row.key} className={rowClass} style={rowStyle}>
+          <tr key={row.key} className={cn(rowClass, row.inactive && styles.rowInactive)}>
             <td className="desktop-only">{nameCell}</td>
             <td className="mono desktop-only">{balanceCell("desktop")}</td>
             <td className="mono desktop-only">{periodCell("month", "desktop")}</td>

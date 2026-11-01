@@ -1,29 +1,46 @@
+/* The app shell (docs/layout-grid-plan.md): two tracks, the sidebar (`--sidebar-w`) and the
+   content region. Only the content region carries the column grid; the sidebar stays out of it.
+   Below 880 the sidebar is an off-canvas drawer and the shell is plain block flow. */
 .layout {
-  display: flex;
-  flex-direction: column;
   min-height: 100vh;
 }
 
 .layout--with-sidebar {
-  flex-direction: row;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+  max-width: var(--page-max);
   align-items: stretch;
 }
 
 .layout-main {
-  flex: 1;
+  grid-column: 2;
   min-width: 0;
+  /* A table wider than the content (the flows table below ~1100px) scrolls inside the main
+     column, as before, instead of pushing the sidebar off the viewport. */
   overflow: auto;
   display: flex;
   flex-direction: column;
   background-color: var(--bg);
+  /* The ticker is fixed at the top: reserve its strip so the first row sits below it. */
+  padding-top: var(--market-ticker-height);
 }
 
+/* The content region is the column grid every page's <main> spans; a page that opts in
+   (`.page-grid`) places its sections on these columns, any other page stays block flow. */
 .layout-main>.content {
   flex: 1;
-  padding: 1.25rem 1.5rem 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(var(--content-cols), minmax(0, 1fr));
+  column-gap: var(--gutter);
+  align-content: start;
+  padding: var(--margin-top) var(--margin-inline) var(--margin-bottom);
   width: 100%;
+  min-width: 0;
+}
+
+.layout-main>.content>* {
+  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 /* Mobile nav drawer — checkbox + labels are siblings before `.app-sidebar` (see MobileNavDrawer). */
@@ -45,17 +62,15 @@
 }
 
 .app-sidebar {
-  --sidebar-max-depth: 5;
   --sidebar-rail-space-base: 32px;
-  width: 15.5rem;
-  flex-shrink: 0;
+  grid-column: 1;
   display: flex;
   flex-direction: column;
   background: var(--surface);
   border-right: 1px solid var(--border);
   position: sticky;
   top: 0;
-  align-self: flex-start;
+  align-self: start;
   max-height: 100vh;
   height: 100vh;
   overflow: hidden;
@@ -90,6 +105,7 @@
 @media (max-width: 879px) {
   .layout--with-sidebar {
     display: block;
+    max-width: none;
   }
 
   .nav-drawer-tab {
@@ -137,6 +153,7 @@
     position: fixed;
     left: 0;
     top: 0;
+    width: var(--sidebar-w);
     z-index: 50;
     transform: translateX(-100%);
     transition: transform 0.28s cubic-bezier(0.33, 1, 0.68, 1);
@@ -164,16 +181,6 @@
     overflow: hidden;
     height: 100vh;
   }
-
-  /* Ticker is fixed: pad scroll column so first content sits just below marquee. */
-  .layout-main {
-    padding-top: calc(var(--market-ticker-height));
-  }
-
-  .layout-main>.content {
-    padding-top: 1.25rem;
-    padding-bottom: calc(2rem + var(--display-prefs-bar-reserve) + env(safe-area-inset-bottom, 0px));
-  }
 }
 
 @media (min-width: 880px) {
@@ -181,9 +188,13 @@
     display: none;
   }
 
+  /* The ticker covers the content's last 8 columns plus the right margin, so its left edge
+     sits on a grid line (content column 5). Beyond the page cap it follows the layout, not the
+     viewport. */
   .market-ticker-panel {
     left: auto;
-    width: calc((100vw - 15.5rem) * 2 / 3);
+    right: calc(100vw - var(--page-w));
+    width: calc(8 * var(--col-w) + 7 * var(--gutter) + var(--margin-inline));
     background-color: var(--bg);
   }
 

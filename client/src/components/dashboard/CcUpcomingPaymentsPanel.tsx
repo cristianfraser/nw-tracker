@@ -9,6 +9,8 @@ import type {
   CcUpcomingPaymentsDto,
 } from "../../types";
 import { ChartPanelTitleRow } from "../charts/ChartPanelTitleRow";
+import { PageGridTile } from "../layout/PageGridTile";
+import { dashboardTileOrder } from "../../dashboardLayout";
 import { Loadable } from "../ui/Loadable";
 import { Table } from "../ui/Table";
 import { TableMobileCard, TableMobileCardRow, TableMobileCardSection } from "../ui/TableMobileCard";
@@ -152,7 +154,8 @@ export function CcUpcomingPaymentsPanel({
     <Link to={data.liabilities_route_path}>{t("dashboard.ccUpcoming.viewLiabilities")}</Link>
   ) : null;
   return (
-    <Loadable loading={loading} className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
+    <PageGridTile id="cc-upcoming" order={dashboardTileOrder("cc-upcoming")}>
+    <Loadable loading={loading} className="chart-grid chart-grid--full-line">
       <div className="chart-grid__col">
         <ChartPanelTitleRow title={t("dashboard.ccUpcoming.title")} controls={link} />
         <Table
@@ -203,5 +206,6 @@ export function CcUpcomingPaymentsPanel({
         </Table>
       </div>
     </Loadable>
+    </PageGridTile>
   );
 }

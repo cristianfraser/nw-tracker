@@ -1,0 +1,26 @@
+/* Legend under a valuation line chart (beside the global `.line-chart-legend` hook). */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: flex-start;
+  row-gap: 12px;
+  column-gap: 20px;
+  padding-top: 14px;
+  padding-bottom: 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted, #94a3b8);
+}
+
+.legendSwatch {
+  flex-shrink: 0;
+}
+
+.legendName {
+  font-weight: 400;
+}
+
+.legendNameHighlighted {
+  color: #f1f5f9;
+}

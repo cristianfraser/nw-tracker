@@ -42,7 +42,7 @@ function BlankCardRows({ titled }: { titled: boolean }) {
 
 function summaryCard(titled: boolean): ReactNode {
   return (
-    <div className={cn(compactStyles.root, compactStyles.rootStripInner)}>
+    <div className={compactStyles.root}>
       <BlankCardRows titled={titled} />
     </div>
   );
@@ -70,13 +70,12 @@ export function PlaceholderCardsStrip({ summary, detail }: ColdStripShape) {
         ))
       : null;
   return (
-    <div style={{ marginTop: "0.85rem" }} aria-hidden="true">
-      <PortfolioEntityCardsStrip
-        compactSlot={summaryCard(titled)}
-        summarySlots={extraSummary}
-        detailSlots={detailSlots}
-        wrapValueGroup={false}
-      />
-    </div>
+    <PortfolioEntityCardsStrip
+      compactSlot={summaryCard(titled)}
+      summarySlots={extraSummary}
+      detailSlots={detailSlots}
+      wrapValueGroup={false}
+      ariaHidden
+    />
   );
 }

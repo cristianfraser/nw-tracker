@@ -2,6 +2,8 @@ import { type CSSProperties, type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { Button } from "@crfrsr/ui";
 import { loadableClass } from "./Loadable";
+import { cn } from "../../cn";
+import styles from "./PaginatedTable.module.css";
 
 /**
  * Client-side pagination state + page slice. Pass the full sorted array; get back the current page's rows.
@@ -75,17 +77,9 @@ export function PaginatedTable({
 
   return (
     <div className={wrapClassName} style={wrapStyle}>
-      {filters ? <div style={{ marginBottom: "0.5rem" }}>{filters}</div> : null}
+      {filters ? <div className={styles.filters}>{filters}</div> : null}
       {canPaginate ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.6rem",
-            marginBottom: "0.5rem",
-            flexWrap: "wrap",
-          }}
-        >
+        <div className={styles.pager}>
           <Button variant="ghost" size="icon"
             aria-label={t("table.paginationPrev")}
             title={t("table.paginationPrev")}
@@ -95,12 +89,12 @@ export function PaginatedTable({
             ‹
           </Button>
 
-          <label className="muted" style={{ display: "flex", alignItems: "center", fontSize: "0.9rem" }}>
+          <label className={cn("muted", styles.pageLabel)}>
             {t("table.paginationPageAria")}
             <select
               value={safePage}
               onChange={(e) => onPageChange(Number(e.target.value))}
-              style={{ marginLeft: "0.5rem" }}
+              className={styles.pageSelect}
             >
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                 <option key={p} value={p}>
@@ -119,7 +113,7 @@ export function PaginatedTable({
             ›
           </Button>
 
-          <span className="muted" style={{ fontSize: "0.85rem" }}>
+          <span className={cn("muted", styles.pageOf)}>
             {t("table.paginationPageOf", { page: safePage, total: totalPages })}
           </span>
         </div>

@@ -3,7 +3,10 @@ import { useSyncExternalStore } from "react";
 /**
  * The one narrow-viewport breakpoint, shared with CSS. Anything that swaps layout by width
  * uses `@media (max-width: 879px)` (shell.css, tables.css `.mobile-only`); this constant is
- * the JS half of that same line so the two can never drift.
+ * the JS half of that same line so the two can never drift. It is also the shell's small-desktop
+ * line: from 880 the sidebar is a persistent track beside the content's column grid (tokens.css). The only
+ * other line is 1440, the big-desktop tier (wider gutter, the dashboard rail) — nothing in JS
+ * reads it.
  */
 export const NARROW_VIEWPORT_MEDIA_QUERY = "(max-width: 879px)";
 

@@ -64,7 +64,6 @@ function NavSummaryCard({
       clp={totals.clp}
       apiUsd={totals.apiUsd}
       animated={animated}
-      stripInner
       valueVariant="main"
       valueDelta={
         <CardValueDayPl
@@ -180,11 +179,10 @@ export function PortfolioNavEntityCardsStrip({
   const isCashParent = parentNavNode.slug === "cash_eqs" || parentNavNode.slug === "cash_savings";
 
   return (
-    <div style={{ marginTop: "0.85rem" }}>
-      <PortfolioEntityCardsStrip
-        compactStripClassName={isCashParent ? "card--cash" : undefined}
-        compactSlot={
-          tableCarriesPage ? null : (
+    <PortfolioEntityCardsStrip
+      compactStripClassName={isCashParent ? "card--cash" : undefined}
+      compactSlot={
+        tableCarriesPage ? null : (
           <NavSummaryCard
             dash={dash}
             node={parentNavNode}
@@ -192,45 +190,44 @@ export function PortfolioNavEntityCardsStrip({
             showUsd={showUsd}
             animated={animated}
           />
-          )
-        }
-        summarySlots={summaryHubs.map((hub) => ({
-          key: hub.node_id,
-          slot: (
-            <NavSummaryCard
-              dash={dash}
-              node={hub}
-              label={resolveNavTreeLabel(hub)}
-              to={hub.route_path?.trim() || undefined}
-              showUsd={showUsd}
-              animated={animated}
-            />
-          ),
-        }))}
-        detailSlots={
-          showDetailSlots ? (
-            <PortfolioNavChildDetailCards
-              dash={dash}
-              navChildren={detailChildren}
-              showUsd={showUsd}
-              animated={animated}
-            />
-          ) : null
-        }
-        accountsTableSlot={
-          showAccountsTable ? (
-            <PortfolioNavAccountsSummaryTable
-              dash={dash}
-              pageNode={parentNavNode}
-              navChildren={accountCardChildren}
-              liquidatedChildren={liquidatedChildren}
-              showTotalRow={tableCarriesPage}
-              showUsd={showUsd}
-              animated={animated}
-            />
-          ) : null
-        }
-      />
-    </div>
+        )
+      }
+      summarySlots={summaryHubs.map((hub) => ({
+        key: hub.node_id,
+        slot: (
+          <NavSummaryCard
+            dash={dash}
+            node={hub}
+            label={resolveNavTreeLabel(hub)}
+            to={hub.route_path?.trim() || undefined}
+            showUsd={showUsd}
+            animated={animated}
+          />
+        ),
+      }))}
+      detailSlots={
+        showDetailSlots ? (
+          <PortfolioNavChildDetailCards
+            dash={dash}
+            navChildren={detailChildren}
+            showUsd={showUsd}
+            animated={animated}
+          />
+        ) : null
+      }
+      accountsTableSlot={
+        showAccountsTable ? (
+          <PortfolioNavAccountsSummaryTable
+            dash={dash}
+            pageNode={parentNavNode}
+            navChildren={accountCardChildren}
+            liquidatedChildren={liquidatedChildren}
+            showTotalRow={tableCarriesPage}
+            showUsd={showUsd}
+            animated={animated}
+          />
+        ) : null
+      }
+    />
   );
 }

@@ -74,7 +74,6 @@ export function AccountDetailSharedLayout({
               clp={stripUnit === "usd" ? 0 : heroClp}
               apiUsd={stripUnit === "usd" ? heroApiUsd : null}
               animated
-              stripInner
               valueVariant="main"
               valueDelta={
                 <CardValueDayPl

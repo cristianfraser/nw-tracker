@@ -48,7 +48,9 @@ import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
 import { useSurfaceAreaMode, useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
-import { DashboardFlowsSummary } from "../components/dashboard/DashboardFlowsSummary";
+import { DashboardFlowsChart, DashboardFlowsPeriods } from "../components/dashboard/DashboardFlowsSummary";
+import { PageGridTile } from "../components/layout/PageGridTile";
+import { dashboardTileOrder } from "../dashboardLayout";
 import type { TimeseriesBlock } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
@@ -372,8 +374,8 @@ export function DashboardPage() {
     />
   );
   const perfControls = (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-      <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem" }}>
+    <span className="surface-controls">
+      <label className="surface-controls__label">
         <input
           type="checkbox"
           checked={perfArea.area === "total"}
@@ -387,7 +389,11 @@ export function DashboardPage() {
 
   const dashboardCharts = (
     <>
-      <div className="chart-grid chart-grid--full-width-stack">
+      <PageGridTile
+        id="net-worth-chart"
+        order={dashboardTileOrder("net-worth-chart")}
+        className="chart-grid chart-grid--full-width-stack"
+      >
         <LineChartPanel
           title={t("dashboard.sections.overviewTitle")}
           block={dailyOverviewBlock ?? overviewBlock}
@@ -416,15 +422,17 @@ export function DashboardPage() {
           }
           loading={valuationChartsLoading}
         />
-      </div>
+      </PageGridTile>
 
-      <DashboardFlowsSummary displayUnit={displayUnit} />
-
-      <CcUpcomingPaymentsPanel data={data?.ccUpcomingPayments ?? null} loading={contentLoading} />
+      <DashboardFlowsChart displayUnit={displayUnit} />
 
       {retirementBrokerageForCharts.length > 0 ? (
         <>
-          <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
+          <PageGridTile
+            id="perf-combo"
+            order={dashboardTileOrder("perf-combo")}
+            className="chart-grid chart-grid--full-line"
+          >
             <MonthlyPerformanceComboChart
               title={
                 isYearly ? t("dashboard.sections.perfChartTitleYearly") : t("dashboard.sections.perfChartTitleMonthly")
@@ -504,11 +512,15 @@ export function DashboardPage() {
               ]}
               loading={combosLoading}
             />
-          </div>
+          </PageGridTile>
         </>
       ) : null}
 
-      <div className="chart-grid chart-grid--full-line" style={{ marginTop: "1.75rem" }}>
+      <PageGridTile
+        id="allocation"
+        order={dashboardTileOrder("allocation")}
+        className="chart-grid chart-grid--full-line"
+      >
         {valueMapShown ? (
           <ValueMapPanel
             title={t("dashboard.allocation.title")}
@@ -546,7 +558,7 @@ export function DashboardPage() {
             loading={allocationLoading}
           />
         )}
-      </div>
+      </PageGridTile>
     </>
   );
 
@@ -573,7 +585,14 @@ export function DashboardPage() {
       serverPaginatedMonthlyDetail
       flowsTitleKey="dashboard.wealthFlowsTitle"
       flowsExcludeSpending
-      afterFlows={<LatestExpensesTable />}
+      rail={
+        <>
+          <DashboardFlowsPeriods displayUnit={displayUnit} />
+          <CcUpcomingPaymentsPanel data={data?.ccUpcomingPayments ?? null} loading={contentLoading} />
+          <LatestExpensesTable />
+        </>
+      }
+      tileOrder={dashboardTileOrder}
       accountsTree={
         accountsTreeRoot ? (
           <NavAccountsTree
