@@ -269,9 +269,10 @@ export function CcInstallmentHistoryChart({
           <YAxis
             domain={yScale.domain}
             ticks={yScale.ticks}
-            {...moneyYAxisProps("clp", compactAxis)}
+            {...moneyYAxisProps("clp", compactAxis, yScale.ticks)}
           />
           <Legend
+            itemSorter={null}
             wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 6 }}
             formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
           />

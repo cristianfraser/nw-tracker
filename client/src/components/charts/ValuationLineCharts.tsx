@@ -41,6 +41,7 @@ import {
   moneyYAxisProps,
   DIM_LEGEND_OPACITY,
   type ChartDisplayUnit,
+  UNDER_SERIES_Z_INDEX,
 } from "./chartLayout";
 import {
   ChartTooltipRows,
@@ -600,7 +601,7 @@ export function LineChartPanel({
         >
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.35} />
             {yScale.showZeroReference ? (
-              <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
+              <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} zIndex={UNDER_SERIES_Z_INDEX} />
             ) : null}
             <XAxis
               dataKey="as_of_date"
@@ -618,9 +619,10 @@ export function LineChartPanel({
               // scaled series define it, everything else goes through clipChartDataToYDomain), and
               // with it Recharts clips each Line to the exact plot rect — which cut half the
               // stroke off the last segment, ending on the right edge (a day's move read faint).
-              {...moneyYAxisProps(displayUnit, compactAxis)}
+              {...moneyYAxisProps(displayUnit, compactAxis, yScale.ticks)}
             />
             <Legend
+              itemSorter={null}
               content={() => (
                 <InteractiveLegend
                   series={visibleSeries}

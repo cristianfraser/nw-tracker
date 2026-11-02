@@ -159,8 +159,9 @@ export function PayrollBreakdownSection({
                 tickLine={{ stroke: AXIS_LINE_STROKE }}
                 tickFormatter={(d: string) => xAxis.formatTick(String(d))}
               />
-              <YAxis domain={yScale.domain} ticks={yScale.ticks} {...moneyYAxisProps(displayUnit, compactAxis)} />
+              <YAxis domain={yScale.domain} ticks={yScale.ticks} {...moneyYAxisProps(displayUnit, compactAxis, yScale.ticks)} />
               <Legend
+                itemSorter={null}
                 wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
                 formatter={(value) => (
                   <span style={{ color: "var(--muted, #94a3b8)" }}>{label(String(value) as PayrollBreakdownField)}</span>

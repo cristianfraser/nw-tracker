@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Tooltip } from "recharts";
-import type { TooltipProps } from "recharts";
+import { Tooltip, usePlotArea } from "recharts";
+import type { TooltipContentProps, TooltipPayloadEntry, TooltipProps } from "recharts";
 import { DIM_LEGEND_OPACITY } from "./chartLayout";
 
-export type ChartTooltipEntry = NonNullable<TooltipProps<number, string>["payload"]>[number];
+export type ChartTooltipEntry = TooltipPayloadEntry;
 
 export const TOOLTIP_VIEWPORT_INSET_PX = 10;
 
@@ -311,9 +311,11 @@ function coerceRowValue(raw: unknown): number {
 }
 
 /** The `content` renderer the App* wrappers pass to recharts `<Tooltip>`. */
-export function AppChartTooltipContent(props: TooltipProps<number, string> & { spec: AppTooltipSpec }) {
-  const { active, payload, label, coordinate, viewBox, spec } = props;
-  const mapped = payload?.length ? (spec.mapPayload ? spec.mapPayload(payload) : payload) : [];
+export function AppChartTooltipContent(props: TooltipContentProps<number, string> & { spec: AppTooltipSpec }) {
+  const { active, payload, label, coordinate, spec } = props;
+  // v3 no longer hands the content the plot rect; it reads it from the chart (the portal keeps context).
+  const viewBox = usePlotArea();
+  const mapped = payload?.length ? (spec.mapPayload ? spec.mapPayload([...payload]) : [...payload]) : [];
   const cx = coordinate?.x;
   if (!active || !viewBox || cx == null || mapped.length === 0) return null;
   const guide = spec.horizontalGuide === false ? null : horizontalGuideRect(coordinate?.y, viewBox);
@@ -378,7 +380,7 @@ export function appTooltipElement(spec: AppTooltipSpec) {
       wrapperStyle={{ transform: "none", width: "100%", height: "100%" }}
       cursor={spec.cursor ?? DEFAULT_TOOLTIP_CURSOR}
       content={(props) => (
-        <AppChartTooltipContent {...(props as TooltipProps<number, string>)} spec={spec} />
+        <AppChartTooltipContent {...(props as TooltipContentProps<number, string>)} spec={spec} />
       )}
     />
   );

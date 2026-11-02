@@ -123,9 +123,10 @@ export function IncomeMonthlyChart({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              {...moneyYAxisProps(displayUnit, compactAxis)}
+              {...moneyYAxisProps(displayUnit, compactAxis, yScale.ticks)}
             />
             <Legend
+              itemSorter={null}
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
               formatter={(value) => {
                 const labels: Record<string, string> = {
