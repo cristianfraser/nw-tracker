@@ -85,7 +85,8 @@ const SUMMARY_LINES: readonly SummaryLine[] = [
  * Home dashboard «Flujos» summary: the last closed month and the twelve closed months ending
  * with it, as the server states them (`closed` of `GET /api/flows/overview` — the month in
  * progress would read as a deficit until its salary lands). Two cards of a 4-up `.cards` block,
- * so they take the same quarter width and dividers as the strip cards; its own tile, so the
+ * so they take the same quarter width and dividers as the strip cards — a `cards--pair` block,
+ * so on a phone they stay side by side instead of stacking; its own tile, so the
  * big-desktop rail can hold it apart from the chart (`DashboardFlowsChart`). Both halves read the
  * same react-query entry (the month payload, no `days`).
  */
@@ -111,7 +112,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
       <h2>
         <Link to="/flows">{t("dashboard.flows.title")}</Link>
       </h2>
-      <div className={loadableClass(loading, "cards", styles.periods)}>
+      <div className={loadableClass(loading, "cards cards--pair", styles.periods)}>
         {periods.map(({ labelKey, row }) => (
           <div key={labelKey} className={`card ${styles.period}`}>
             <div className={styles.periodTitle}>{t(labelKey)}</div>
