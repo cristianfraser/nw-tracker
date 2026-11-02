@@ -9,8 +9,9 @@ import {
   payByFxDateIso,
   unbilledAtMonthEndAdjustmentsClp,
   type CcBillingMonthBalanceRow,
+  type CcOwedNative,
 } from "./ccBillingBalances.js";
-import { effectiveCcExpenseLineAmountClp } from "./ccExpenseAmountClp.js";
+import { debtCcExpenseLineAmountClp, debtFrameClpPerUsd, withUniformDebtUsdRate } from "./ccExpenseAmountClp.js";
 import {
   accountHasUsdStatements,
   facturacionUsdRatesForAccount,
@@ -48,7 +49,6 @@ import { derivedPayByIso, parseDdMmYyToIso, resolveInstallmentPayByIso } from ".
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { listCcStatementsForAccount, type CcStatementRow } from "./ccStatementsDb.js";
 import type { CcInstallmentMonthRow } from "./creditCardInstallments.js";
-import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 /**
  * A detalle row in the STATEMENT frame — what the billing-detail bundle builds and every internal
  * reader consumes: the month-end valuation anchors (`ccLedgerStatementClosingPointsClp`), the
@@ -363,7 +363,7 @@ export function paymentAbonosClpForBillingMonth(
     }[];
     for (const r of rows) {
       if (!isCcPaymentOrUsdDebtAbonoMerchant(r.merchant)) continue;
-      const clp = effectiveCcExpenseLineAmountClp(
+      const clp = debtCcExpenseLineAmountClp(
         {
           installment_flag: 0,
           amount_clp: r.amount_clp,
@@ -604,6 +604,45 @@ export function buildBillingDetailByMonth(
 ): CcBillingDetailStatementRow[] {
   // Memoize the account-level one-shot scans for this synchronous build (read-only).
   return withCcOneShotScanCache(() => buildBillingDetailByMonthInner(accountId, ledgerMonths));
+}
+
+/** The uniform rates of the split passes: multiples of 100, so dollars to the cent convert to whole pesos. */
+const SPLIT_RATES = [900, 1000, 1100] as const;
+
+/**
+ * Each month's statement-frame balance (`balance_statement_clp`, the month-end anchor) split into
+ * the pesos and the dollars it is made of. The balance is built from pesos and from dollars
+ * converted at debt-frame rates, so it is affine in a uniform rate r: b(r) = pesos + dollars · r.
+ * Three builds at 900, 1000 and 1100 give both parts; when the three are not on one line (a clamp
+ * or a branch that mixes the currencies) the split is not defined and this throws.
+ */
+export function ccStatementOwedByCurrencyByMonth(
+  accountId: number,
+  ledgerMonths: CcInstallmentMonthRow[]
+): Map<string, CcOwedNative> {
+  const builds = SPLIT_RATES.map((r) =>
+    withUniformDebtUsdRate(r, () =>
+      new Map(buildBillingDetailByMonth(accountId, ledgerMonths).map((row) => [row.billing_month, row.balance_statement_clp]))
+    )
+  );
+  const [lo, mid, hi] = builds as [Map<string, number>, Map<string, number>, Map<string, number>];
+  const out = new Map<string, CcOwedNative>();
+  for (const [month, bMid] of mid) {
+    const bLo = lo.get(month);
+    const bHi = hi.get(month);
+    if (bLo == null || bHi == null) {
+      throw new Error(`Account ${accountId} ${month}: the statement frame has the month at one rate and not another`);
+    }
+    if (bHi - bMid !== bMid - bLo) {
+      throw new Error(
+        `Account ${accountId} ${month}: the statement-frame balance is not affine in the dollar rate ` +
+          `(${bLo} / ${bMid} / ${bHi} at ${SPLIT_RATES.join(" / ")}) — cannot split it by currency`
+      );
+    }
+    const usd = Math.round(((bHi - bLo) / (SPLIT_RATES[2] - SPLIT_RATES[0])) * 100) / 100;
+    out.set(month, { clp: Math.round(bMid - usd * SPLIT_RATES[1]), usd });
+  }
+  return out;
 }
 
 function buildBillingDetailByMonthInner(
@@ -848,9 +887,8 @@ function appendProjectedBillingDetailRows(
 /** USD valued as debt for a facturación paid by `payByIso`: the pay-by − 1 rate (`balanceUsdFxDateIso`). */
 function usdToClpAsDebt(usd: number, payByIso: string | null): number | null {
   if (!Number.isFinite(usd) || !payByIso) return null;
-  const fx = fxMonthEndForBalanceUsd(payByFxDateIso(payByIso));
-  if (!fx?.clp_per_usd || fx.clp_per_usd <= 0) return null;
-  return Math.round(usd * fx.clp_per_usd);
+  const fx = debtFrameClpPerUsd(payByFxDateIso(payByIso));
+  return fx == null ? null : Math.round(usd * fx);
 }
 
 /**
