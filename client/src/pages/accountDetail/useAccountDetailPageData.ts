@@ -49,7 +49,6 @@ export type AccountDetailPageData = {
   mortgageLedger: NonNullable<DetailBundle["mortgageLedger"]>;
   ccLedger: AccountCcInstallmentsResponse;
   checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
-  invNavAccounts: DetailBundle["invNavAccounts"]["accounts"];
   dash: ReturnType<typeof dashPickForNavStrip> | null;
   /** `dash` is the nav-tree zero frame (nav-context not in yet): its cards are in the placeholder phase. */
   dashIsPlaceholder: boolean;
@@ -132,8 +131,7 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     detail.ts != null &&
     detail.depositInflows != null &&
     detail.mortgageLedger != null &&
-    detail.ccLedger != null &&
-    detail.invNavAccounts?.accounts != null;
+    detail.ccLedger != null;
 
   // `detailIsPlaceholder` = prior-unit data of this same account held while the new unit loads.
   const contentLoading = detailPending || detailIsPlaceholder || !bundleReady;
@@ -143,7 +141,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const depositInflows = detail?.depositInflows ?? placeholder.depositInflows;
   const mortgageLedger = detail?.mortgageLedger ?? placeholder.mortgageLedger;
   const ccLedger = (detail?.ccLedger ?? placeholder.ccLedger) as AccountCcInstallmentsResponse;
-  const invNavAccounts = detail?.invNavAccounts?.accounts ?? placeholder.invNavAccounts.accounts;
   const monthlyPerf = detail?.monthly_performance ?? placeholder.monthly_performance;
   const periodReturns = detail?.period_returns;
   const checkingCartolaMonths = detail?.checkingCartolaMonths ?? null;
@@ -273,7 +270,6 @@ export function useAccountDetailPageData(): AccountDetailPageData {
     mortgageLedger,
     ccLedger,
     checkingCartolaMonths,
-    invNavAccounts,
     dash,
     dashIsPlaceholder,
     monthlyPerf,

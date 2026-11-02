@@ -61,7 +61,7 @@ app.get("/api/dashboard/nav-snapshot", asyncHandler(async (req, res) => {
   res.json(await buildDashboardNavSnapshot(includeUsd));
 }));
 
-/** Group/account nav strip: accounts + liabilities links + overview (one round-trip). */
+/** Group, Pasivos and account nav strip: account rows, card metrics, the value map. */
 app.get("/api/dashboard/nav-context", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";

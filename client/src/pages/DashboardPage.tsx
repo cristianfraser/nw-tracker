@@ -162,7 +162,6 @@ export function DashboardPage() {
     });
   }, [useRealBundle, data, displayUnit]);
 
-  const overviewPoints = ts?.overview?.points ?? [];
 
   // No snapshot yet (cold cache): a zero strip from the sidebar nav, in its placeholder phase.
   const placeholderStripDash = useMemo(
@@ -188,10 +187,9 @@ export function DashboardPage() {
         dashboard_layout: navSnapshot.dashboard_layout,
         nw_bucket_totals: navSnapshot.nw_bucket_totals,
         card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
-        overviewPoints,
       }
     );
-  }, [netWorthNav, useRealBundle, stripFromHeldBundle, data, navSnapshot, overviewPoints, placeholderStripDash]);
+  }, [netWorthNav, useRealBundle, stripFromHeldBundle, data, navSnapshot, placeholderStripDash]);
 
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
@@ -578,7 +576,6 @@ export function DashboardPage() {
               navNode: netWorthNav,
               groupSlug: "net_worth",
               dash: dashForStrip,
-              overviewPoints,
               showUsd: stripShowUsd,
               animated: true,
             }

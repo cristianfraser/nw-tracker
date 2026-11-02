@@ -1,4 +1,4 @@
-import type { AccountListRow, AccountPositionSnapshot } from "./core";
+import type { AccountPositionSnapshot } from "./core";
 import type { AccountCcInstallmentsResponse } from "./creditCard";
 import type { DashboardAccountRow, TimeseriesBlock } from "./dashboard";
 import type { AccountDepositInflowsResponse, AccountMortgageLedgerResponse, DeptoMortgageSheetRow } from "./mortgage";
@@ -103,7 +103,6 @@ export interface AccountDetailBundleResponse {
   depositInflows: AccountDepositInflowsResponse;
   mortgageLedger: AccountMortgageLedgerResponse;
   ccLedger: AccountCcInstallmentsResponse;
-  invNavAccounts: { accounts: AccountListRow[] };
   checkingCartolaMonths: CheckingCartolaMonthsResponse | null;
   monthly_performance: AccountMonthlyPerformanceResponse | null;
   /** Chained flow-adjusted period returns; null for non-investment accounts. */
