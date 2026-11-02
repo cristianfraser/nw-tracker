@@ -148,7 +148,7 @@ export const MARK_INPUT_TRIGGER_SPECS: TriggerSpec[] = [
   {
     table: "fund_unit_daily",
     targets: (r) => [{ account: ALL, date: `${r}.day` }],
-    watch: ["series_key", "day", "unit_value_clp", "note"],
+    watch: ["series_key", "day", "unit_value", "currency", "note"],
   },
   {
     // A close moves the accounts that hold the ticker (crypto accounts carry BTC-USD / ETH-USD),
@@ -282,10 +282,23 @@ const DEPTO_PAYMENTS_SPEC_BEFORE_258: TriggerSpec = {
 };
 const TABLES_SINCE_258 = ["loan_payments", "property_appraisals"];
 
+/**
+ * The specs as the schema stood before migration 257: `fund_unit_daily` named its price
+ * `unit_value_clp` and had no `currency` (257 renamed it; RENAME COLUMN rewrites the triggers).
+ */
+function fundUnitSpecBefore257(spec: TriggerSpec): TriggerSpec {
+  return {
+    ...spec,
+    watch: spec.watch.filter((c) => c !== "currency").map((c) => (c === "unit_value" ? "unit_value_clp" : c)),
+  };
+}
+
+/** The specs as the schema stood for the hooks of 211 / 242 / 243 (before 257 and 258). */
 function specsBefore258(specs: readonly TriggerSpec[]): TriggerSpec[] {
   const out: TriggerSpec[] = [];
   for (const spec of specs) {
     if (spec.table === "loan_payments") out.push(DEPTO_PAYMENTS_SPEC_BEFORE_258);
+    else if (spec.table === "fund_unit_daily") out.push(fundUnitSpecBefore257(spec));
     else if (!TABLES_SINCE_258.includes(spec.table)) out.push(spec);
   }
   return out;
