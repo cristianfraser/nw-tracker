@@ -45,11 +45,16 @@ describe("planVisitedWarm", () => {
       { id: 32, unit: "clp", granularity: "daily" },
       { id: 7, unit: "clp", granularity: "daily" },
     ]);
-    expect(plan.navContextUnits).toEqual(["clp", "usd"]);
+    expect(plan.navContexts).toEqual([
+      { root: "liabilities", unit: "clp" },
+      { root: "brokerage", unit: "usd" },
+      { root: "brokerage", unit: "clp" },
+      { root: "cash_eqs", unit: "clp" },
+    ]);
   });
 
   it("is empty without a visit", () => {
-    expect(planVisitedWarm([], [], routes)).toEqual({ groups: [], accounts: [], navContextUnits: [] });
+    expect(planVisitedWarm([], [], routes)).toEqual({ groups: [], accounts: [], navContexts: [] });
   });
 });
 
@@ -59,7 +64,7 @@ describe("warmVisitedPages", () => {
     const pages = await warmVisitedPages({
       groups: [{ slug: "liabilities", units: ["clp"], daily: [{ days: 90, unit: "clp", perfLevels: false }] }],
       accounts: [],
-      navContextUnits: ["clp"],
+      navContexts: [{ root: "liabilities", unit: "clp" }],
     });
     expect(pages).toBe(1);
     const keys = aggregationCacheKeysForTest();

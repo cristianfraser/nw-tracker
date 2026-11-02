@@ -40,6 +40,7 @@ import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
 import { buildNavValueMapPayload } from "./navValueMap.js";
 import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
+import { navContextScope, valueMapSubtree } from "./navContextScope.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
   leafPortfolioGroupSlugByAccountIds,
@@ -621,22 +622,38 @@ async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
   };
 }
 
-/** The nav strip's payload for group, Pasivos and account pages (`GET /api/dashboard/nav-context`). */
-export function buildDashboardNavContext(includeUsd: boolean, unit: TsUnit): ReturnType<typeof buildDashboardNavContextInner> {
-  return cachedWithPageBundleLifetime(`nav_context|${includeUsd ? "usd" : "clp"}|${unit}`, () =>
-    withPortfolioGroupIndex(() => buildDashboardNavContextInner(includeUsd))
+/**
+ * The nav strip's payload for one group, Pasivos or account page (`GET /api/dashboard/nav-context`),
+ * cut to what that page can draw ({@link navContextScope}): the card figures, account rows and value
+ * map of its node, the groups it hosts and the liability accounts. The bucket totals, layout and
+ * liabilities breakdown are whole (small, read by the strip's totals and footers).
+ */
+export function buildDashboardNavContext(
+  includeUsd: boolean,
+  unit: TsUnit,
+  rootSlug: string
+): ReturnType<typeof buildDashboardNavContextInner> {
+  return cachedWithPageBundleLifetime(`nav_context|${includeUsd ? "usd" : "clp"}|${unit}|${rootSlug}`, () =>
+    withPortfolioGroupIndex(() => buildDashboardNavContextInner(includeUsd, rootSlug))
   );
 }
 
-async function buildDashboardNavContextInner(includeUsd: boolean) {
+async function buildDashboardNavContextInner(includeUsd: boolean, rootSlug: string) {
   const nav = await timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(includeUsd));
   return {
-    accounts: nav.accounts,
+    accounts: nav.accounts.filter((a) => scope.accountIds.has(a.account_id)),
     liabilities_breakdown: nav.liabilities_breakdown,
+  const navRoot = getNetWorthNavGroupNode();
+  if (!navRoot) throw new Error("nav-context: net_worth nav tree missing");
+  const liabilitiesRoot = getLiabilitiesNavRootNode();
+  if (!liabilitiesRoot) throw new Error("nav-context: liabilities nav tree missing");
+  const scope = navContextScope(rootSlug, [liabilitiesRoot, navRoot], liabilitiesRoot);
     dashboard_layout: nav.dashboard_layout,
     nw_bucket_totals: nav.nw_bucket_totals,
-    card_metrics_by_slug: nav.card_metrics_by_slug,
-    value_map: nav.value_map,
+    card_metrics_by_slug: Object.fromEntries(
+      Object.entries(nav.card_metrics_by_slug).filter(([slug]) => scope.slugs.has(slug))
+    ),
+    value_map: valueMapSubtree(nav.value_map, rootSlug),
     value_map_color_bounds: nav.value_map_color_bounds,
   };
 }

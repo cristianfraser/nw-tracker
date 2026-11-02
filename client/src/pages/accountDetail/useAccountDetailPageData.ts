@@ -151,13 +151,14 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const hasNavSnapshotCache = hasDashboardNavSnapshotCache(displayUnit);
   const { data: navCtx } = useDashboardNavContext(
     displayUnit,
+    navSelfEarly?.slug ?? null,
     needsNavChildCards && (!hasNavSnapshotCache || bundleReady)
   );
   // The page holds the previous unit's detail while the new unit loads (same-entity keep-previous):
   // the whole strip stays in that unit, so the hero (held detail row) and the nav-child cards (the
   // previous unit's nav context or snapshot) never mix units.
   const holdingPrevUnit = detailIsPlaceholder && bundleReady;
-  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && needsNavChildCards);
+  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && needsNavChildCards, navSelfEarly?.slug ?? null);
   const stripUnit = holdingPrevUnit ? otherDisplayUnit(displayUnit) : displayUnit;
   const realDash = holdingPrevUnit ? (heldStrip?.dash ?? null) : navCtx ? dashPickForNavStrip(navCtx) : null;
   // Nav-context not in yet: the strip's zero frame from the nav tree (cards in their placeholder phase).

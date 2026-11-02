@@ -203,7 +203,7 @@ async function requestPathPayloads(): Promise<Map<string, string>> {
   for (const unit of ["clp", "usd"] as const) {
     const includeUsd = unit === "usd";
     out.set(`nav_snapshot|${unit}`, JSON.stringify(await buildDashboardNavSnapshot(includeUsd)));
-    out.set(`nav_context|${unit}`, JSON.stringify(await buildDashboardNavContext(includeUsd, unit)));
+    out.set(`nav_context|${unit}`, JSON.stringify(await buildDashboardNavContext(includeUsd, unit, "net_worth")));
     out.set(`overview|${unit}`, JSON.stringify(getDashboardOverviewBlock(unit)));
     out.set(`gastos|${unit}`, JSON.stringify(cachedFlowsExpensesGastosPayload(unit, new Set())));
   }
@@ -545,7 +545,7 @@ describe("served JSON of the cached responses", () => {
     const asyncExpected = async (): Promise<Map<string, string>> => {
       const out = new Map<string, string>();
       out.set(`/api/dashboard/page-bundle`, JSON.stringify(await buildDashboardPageBundle("clp")));
-      out.set(`/api/dashboard/nav-context`, JSON.stringify(await buildDashboardNavContext(false, "clp")));
+      out.set(`/api/dashboard/nav-context?root=net_worth`, JSON.stringify(await buildDashboardNavContext(false, "clp", "net_worth")));
       out.set(`/api/dashboard/nav-snapshot?include_usd=1`, JSON.stringify(await buildDashboardNavSnapshot(true)));
       out.set(
         `/api/accounts/${masterId}/detail-bundle`,
@@ -600,7 +600,7 @@ describe("served JSON of the cached responses", () => {
       // The write reached the served bytes (otherwise the comparison proves nothing).
       const accountPath = `/api/daily-series?account_id=${writeAccountId}&days=365`;
       expect(servedSyncAfter.get(accountPath)).not.toBe(servedSync.get(accountPath));
-      expect(asyncAfter.get(`/api/dashboard/nav-context`)).not.toBe(servedAsync.get(`/api/dashboard/nav-context`));
+      expect(asyncAfter.get(`/api/dashboard/nav-context?root=net_worth`)).not.toBe(servedAsync.get(`/api/dashboard/nav-context?root=net_worth`));
     } finally {
       if (id != null) db.prepare(`DELETE FROM movements WHERE id = ?`).run(id);
       server.close();

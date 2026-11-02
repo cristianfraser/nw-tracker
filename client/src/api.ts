@@ -151,13 +151,12 @@ export const api = {
       `/api/dashboard/nav-snapshot${qs ? `?${qs}` : ""}`
     );
   },
-  dashboardNavContext: (unit: "clp" | "usd") => {
+  /** `root`: the page's nav node slug; the payload covers that page's strip only. */
+  dashboardNavContext: (unit: "clp" | "usd", root: string) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
-    const qs = q.toString();
-    return j<import("./types").DashboardNavContextResponse>(
-      `/api/dashboard/nav-context${qs ? `?${qs}` : ""}`
-    );
+    q.set("root", root);
+    return j<import("./types").DashboardNavContextResponse>(`/api/dashboard/nav-context?${q}`);
   },
   dashboardPageBundle: (unit: "clp" | "usd") => {
     const q = new URLSearchParams();

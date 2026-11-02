@@ -35,7 +35,8 @@ export type DailyVariant = { days: number; unit: TsUnit; perfLevels: boolean };
 export type VisitedWarmPlan = {
   groups: { slug: string; units: TsUnit[]; daily: DailyVariant[] }[];
   accounts: { id: number; unit: TsUnit; granularity: "monthly" | "daily" }[];
-  navContextUnits: TsUnit[];
+  /** Each group page's own nav-context (its strip), in the units the page was opened in. */
+  navContexts: { root: string; unit: TsUnit }[];
 };
 
 type PageViewCount = { path: string; n: number };
@@ -130,9 +131,8 @@ export function planVisitedWarm(
   const accounts = byScore(accountScore)
     .slice(0, VISITED_WARM_MAX_ACCOUNTS)
     .map(([id]) => ({ id, unit: "clp" as TsUnit, granularity: granularity as "monthly" | "daily" }));
-  const navContextUnits = [...new Set(groups.flatMap((g) => g.units))];
-  if (navContextUnits.length === 0 && accounts.length > 0) navContextUnits.push("clp");
-  return { groups, accounts, navContextUnits };
+  const navContexts = groups.flatMap((g) => g.units.map((unit) => ({ root: g.slug, unit })));
+  return { groups, accounts, navContexts };
 }
 
 export function visitedWarmPlanFromUsageLog(now = new Date()): VisitedWarmPlan {
@@ -173,9 +173,9 @@ export async function warmVisitedPages(plan: VisitedWarmPlan = visitedWarmPlanFr
     await yieldToRequests();
     cachedSidebarNavPayload();
   }
-  for (const unit of plan.navContextUnits) {
+  for (const { root, unit } of plan.navContexts) {
     await yieldToRequests();
-    await buildDashboardNavContext(unit === "usd", unit);
+    await buildDashboardNavContext(unit === "usd", unit, root);
   }
   for (const g of plan.groups) {
     for (const unit of g.units) {
