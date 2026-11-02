@@ -6,7 +6,7 @@ import {
   roundUsdAdaptive,
 } from "../../format";
 import { useTranslation } from "../../i18n";
-import { AnimatedNumberFlow, type NumberChangeEffect } from "./AnimatedNumberFlow";
+import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import { cn } from "../../cn";
 import styles from "./DashboardCardValue.module.css";
 
@@ -125,8 +125,8 @@ type Props = {
    * need across siblings so the column aligns. Omit → adaptive (main balances).
    */
   usdFractionDigits?: 0 | 1 | 2;
-  /** How a change shows while the page is open (`AnimatedNumberFlow`); none = rolling digits. */
-  changeEffect?: NumberChangeEffect;
+  /** Flash green/red when the value changes while the page is open (`AnimatedNumberFlow`); off = rolling digits. */
+  flashOnChange?: boolean;
 };
 
 export function DashboardCardValue({
@@ -138,7 +138,7 @@ export function DashboardCardValue({
   fxMissing = false,
   syncStale = false,
   usdFractionDigits,
-  changeEffect,
+  flashOnChange,
 }: Props) {
   const { t } = useTranslation();
   const hostRef = useRef<NumberFlowElement | null>(null);
@@ -165,7 +165,7 @@ export function DashboardCardValue({
       }}
       value={target}
       animated={animated}
-      changeEffect={changeEffect}
+      flashOnChange={flashOnChange}
       mapDisplayValue={(n) =>
         showUsd
           ? adaptiveUsdAccountingNumberFlowParts(n, "bare", usdFractionDigits)

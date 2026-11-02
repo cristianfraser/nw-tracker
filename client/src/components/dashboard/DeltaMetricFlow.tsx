@@ -1,6 +1,6 @@
 import { cn } from "../../cn";
 import { plainNumberFlowParts, plainPercentNumberFlowParts } from "../../format";
-import { AnimatedNumberFlow, type NumberChangeEffect } from "./AnimatedNumberFlow";
+import { AnimatedNumberFlow } from "./AnimatedNumberFlow";
 import styles from "./CardGroupMetrics.module.css";
 
 const METRIC_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
@@ -15,8 +15,8 @@ type Props = {
   className?: string;
   fractionDigits?: number;
   deltaFormat?: "absolute" | "percent";
-  /** How a change shows while the page is open (`AnimatedNumberFlow`); none = rolling digits. */
-  changeEffect?: NumberChangeEffect;
+  /** Flash green/red when the value changes while the page is open (`AnimatedNumberFlow`); off = rolling digits. */
+  flashOnChange?: boolean;
 };
 
 export function DeltaMetricFlow({
@@ -25,7 +25,7 @@ export function DeltaMetricFlow({
   className = "",
   fractionDigits = 0,
   deltaFormat = "absolute",
-  changeEffect,
+  flashOnChange,
 }: Props) {
   if (delta == null) {
     return (
@@ -48,7 +48,7 @@ export function DeltaMetricFlow({
       <AnimatedNumberFlow
         value={delta}
         animated={animated}
-        changeEffect={changeEffect}
+        flashOnChange={flashOnChange}
         mapDisplayValue={(n) =>
           deltaFormat === "percent"
             ? plainPercentNumberFlowParts(n, fractionDigits)

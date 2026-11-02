@@ -53,7 +53,7 @@ export function CardValueDayPl({
     <span className={styles.valueDayPl} title={label}>
       <span className="visually-hidden">{label}</span>
       <DeltaMetricFlow
-        changeEffect="dip"
+        flashOnChange
         delta={roundedMetricDelta(metricsByPeriod.day, showUsd, "period")}
         animated={animated}
         fractionDigits={cardDeltaFractionDigits(metricsByPeriod, showUsd)}
@@ -117,7 +117,7 @@ function MetricsRow({
       </span>
       <span className={styles.deltaWrap} title={deltaLabel}>
         <DeltaMetricFlow
-        changeEffect="dip"
+        flashOnChange
           delta={delta}
           animated={animated}
           fractionDigits={deltaFractionDigits}
