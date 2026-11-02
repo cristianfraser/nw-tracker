@@ -323,7 +323,7 @@ export function WatchlistPage() {
   const loading = isPending || isPlaceholderData;
   if (error) {
     return (
-      <main className="page-grid">
+      <main>
         <p className="muted">
           <Link to="/">{t("common.backToDashboard")}</Link>
         </p>
@@ -334,7 +334,7 @@ export function WatchlistPage() {
   }
 
   return (
-    <main className="page-grid">
+    <main>
       <p className="muted">
         <Link to="/">{t("common.backToDashboard")}</Link>
       </p>

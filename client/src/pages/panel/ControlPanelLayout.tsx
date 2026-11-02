@@ -8,7 +8,7 @@ export function ControlPanelLayout() {
   const { t } = useTranslation();
 
   return (
-    <main className="page-grid">
+    <main>
       <h1>{t("panel.layoutTitle")}</h1>
       <nav className="flow-subnav" aria-label={t("panel.subnavAria")}>
         {VISIBLE_PANEL_SUBROUTES.map((route) => (

@@ -130,7 +130,7 @@ export function ProjectionsPage() {
 
   if (error) {
     return (
-      <main className="page-grid">
+      <main>
         <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>
       </main>
     );
@@ -139,7 +139,7 @@ export function ProjectionsPage() {
   const s = data?.summary ?? EMPTY_SUMMARY;
 
   return (
-    <main className="page-grid">
+    <main>
       <h1>{t("projections.title")}</h1>
 
       {/* Row gap leaves room for a Field's error, which overlays rather than

@@ -373,7 +373,7 @@ export function WealthPercentilePage() {
 
   if (error) {
     return (
-      <main className="page-grid">
+      <main>
         <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>
       </main>
     );
@@ -391,7 +391,7 @@ export function WealthPercentilePage() {
     : enabledBenchmarks;
 
   return (
-    <main className="page-grid">
+    <main>
       <h1>{t("wealthPercentile.title")}</h1>
 
       <PageGridTile id="chart">

@@ -1,8 +1,11 @@
 /* Pages on the column grid (docs/layout-grid-plan.md).
-   `.page-grid` is a subgrid of the content columns (`.layout-main>.content`, shell.css): its
-   children sit on the page's columns and are separated by one row gap. Nest it (a page's <main>
-   and the Loadable shell inside it) and the columns pass straight through. A child spans every
-   column unless it is a tile that says otherwise. */
+   Whatever a route renders (the direct child of `.layout-main>.content`, shell.css) is a subgrid
+   of the content columns by this rule alone: a page root declares nothing. Its children sit on
+   the columns, one row gap apart. A container INSIDE the page that holds tiles of its own — a
+   Loadable shell, a page rendered inside the flows or panel layout, a tile grouping sub-tiles —
+   says so with `.page-grid`, and the columns pass straight through. A child spans every column
+   unless it is a tile that says otherwise. */
+.layout-main>.content>*,
 .page-grid {
   display: grid;
   grid-template-columns: subgrid;
@@ -12,6 +15,8 @@
   align-content: start;
 }
 
+/* `:where()`: the same weight as `.page-grid>*` or less, so a tile's own class rules win. */
+:where(.layout-main>.content>*)>*,
 .page-grid>* {
   grid-column: 1 / -1;
   min-width: 0;
@@ -31,6 +36,7 @@
 
 /* Grid items do not collapse margins, so a heading, paragraph or subnav placed straight on the
    grid, or the last child of a tile, would add its own margin on top of the row gap. */
+:where(.layout-main>.content>*)>:is(h1, h2, h3, h4, p, .flow-subnav),
 .page-grid>:is(h1, h2, h3, h4, p, .flow-subnav) {
   margin: 0;
 }
