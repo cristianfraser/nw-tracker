@@ -8,7 +8,7 @@ export function AccountDetailPage() {
 
   if (data.err) {
     return (
-      <main className="page-grid">
+      <main>
         <p className="error">{data.err}</p>
       </main>
     );

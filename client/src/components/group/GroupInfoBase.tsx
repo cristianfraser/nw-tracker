@@ -257,7 +257,7 @@ export function GroupInfoBase({
   ) : null;
 
   return (
-    <main className={cn(mainClassName, "page-grid")}>
+    <main className={mainClassName}>
       <Loadable loading={loading} className={cn(pageShellStyles.contentShell, "page-grid")}>
         <PageTitleRow title={title} />
         {toolbar}

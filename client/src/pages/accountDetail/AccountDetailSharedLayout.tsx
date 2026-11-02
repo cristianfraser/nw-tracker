@@ -68,7 +68,7 @@ export function AccountDetailSharedLayout({
   // page grids, every section below is a tile with its heading inside, and the row gap is the
   // only space between them.
   return (
-    <main className="page-grid">
+    <main>
       <PageTitleRow title={title} />
       <div className={loadableClass(loading, styles.contentShell, "page-grid")}>
         {/* The strip is a grid of its own (its card blocks are subgrids), so the tile passes the columns through. */}

@@ -437,14 +437,14 @@ export function RatesPage() {
 
   if (err) {
     return (
-      <main className="page-grid">
+      <main>
         <p className="error">{err}</p>
       </main>
     );
   }
 
   return (
-    <main className="page-grid">
+    <main>
       <p className="muted">
         <Link to="/">{t("common.backToDashboard")}</Link>
       </p>

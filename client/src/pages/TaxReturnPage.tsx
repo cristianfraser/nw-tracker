@@ -701,7 +701,7 @@ export function TaxReturnPage() {
   const loading = q.isPending || q.isPlaceholderData;
 
   return (
-    <main className="page-grid">
+    <main>
       <h1>{t("taxReturn.title")}</h1>
       <p className="muted">{t("taxReturn.subtitle")}</p>
       {q.isError ? <p className="error">{(q.error as Error).message}</p> : null}
