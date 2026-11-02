@@ -6,7 +6,7 @@ import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { PerfDetailRows, type PerfDetailFlow, type PerfDetailRow } from "./PerfDetailRows";
 import { BanknoteIcon } from "../icons/BanknoteIcon";
-import { SafeIcon } from "../icons/SafeIcon";
+import { PiggyBankIcon } from "../icons/PiggyBankIcon";
 import { ShoppingBagIcon } from "../icons/ShoppingBagIcon";
 
 const PAGE_SIZE = 12;
@@ -144,7 +144,7 @@ export function MonthlyPerfDetailTable({
       Number.isFinite(row.net_capital_flow) && row.net_capital_flow !== 0
         ? {
             key: "contribution",
-            icon: SafeIcon,
+            icon: PiggyBankIcon,
             amount: fmtPerf(row.net_capital_flow),
             title: t("accountDetail.netDepositsColumn"),
           }
