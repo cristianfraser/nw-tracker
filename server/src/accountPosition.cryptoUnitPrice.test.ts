@@ -11,6 +11,10 @@ import { insertLiveMarketQuote } from "./liveMarketQuotesDb.js";
  * quote, and live CLP=X at 950 during Wednesday 2099-01-07's fx day — the value takes the
  * date's live rate, and the per-unit price used to take the bar date's 900.
  */
+
+/** Values convert at the sell rate: the stored mid less the inferred half spread (`rates.ts`). */
+const SELL = (mid: number): number => mid - 2;
+
 describe("crypto position meta — per-unit price", () => {
   const TICKER = "BTC-USD";
   const TODAY = "2099-01-07";
@@ -67,12 +71,12 @@ describe("crypto position meta — per-unit price", () => {
 
     const meta = getAccountPositionMeta(accountId, "bitcoin", { afpCuotasAsOfYmd: TODAY, now });
     expect(meta?.units).toBe(UNITS);
-    expect(meta?.afp_override_value_clp).toBeCloseTo(UNITS * 40_000 * 950, 2);
+    expect(meta?.afp_override_value_clp).toBeCloseTo(UNITS * 40_000 * SELL(950), 2);
     // Dated on the day its pesos were framed on (the asked date), not the stale bar's day, so a
     // USD reader divides by the rate that multiplied (2f4172f9).
     expect(meta?.afp_override_value_as_of).toBe(TODAY);
     // Tuesday's close at the value's live rate — not at Tuesday's stored 900.
-    expect(meta?.afp_override_valor_cuota_clp).toBeCloseTo(40_000 * 950, 4);
+    expect(meta?.afp_override_valor_cuota_clp).toBeCloseTo(40_000 * SELL(950), 4);
     expect(UNITS * meta!.afp_override_valor_cuota_clp!).toBeCloseTo(meta!.afp_override_value_clp!, 2);
   });
 });

@@ -88,7 +88,7 @@ describe("crypto position meta — live vs EOD", () => {
       .get(TICKER, asOf) as { close: number };
     const fx = fxForLiveMtm(asOf)!;
     expect(close.close).not.toBe(LIVE_PRICE_USD);
-    expect(meta.afp_override_value_clp).toBeCloseTo(UNITS * close.close * fx.clp_per_usd, 0);
+    expect(meta.afp_override_value_clp).toBeCloseTo(UNITS * close.close * (fx.clp_per_usd - 2), 0);
   });
 
   it("with a fresh live quote, values live and dates the mark today (UTC session)", () => {

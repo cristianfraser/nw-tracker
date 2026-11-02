@@ -15,7 +15,7 @@ import {
   getLiveEquityQuoteFromDb,
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
-import { fxForLiveMtm } from "./fxRates.js";
+import { convertValue } from "./valueConvert.js";
 import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
 import { equityBrokeragePositionMeta, type AccountPositionMeta } from "./accountPosition.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -79,11 +79,13 @@ function priorEquityPositionMeta(
     out.afp_override_valor_cuota_clp = Math.round(close * 10000) / 10000;
     return out;
   }
-  const fx = fxForLiveMtm(markDate, now);
-  if (!fx || fx.clp_per_usd <= 0) return out;
-  out.afp_override_value_clp = Math.round(u * close * fx.clp_per_usd * 100) / 100;
+  // Converted once at the asked date's sell rate (`valueConvert.ts`).
+  const value = convertValue(u * close, "usd", "clp", asOfYmd, "asset", now);
+  const perUnit = convertValue(close, "usd", "clp", asOfYmd, "asset", now);
+  if (value == null || perUnit == null) return out;
+  out.afp_override_value_clp = Math.round(value * 100) / 100;
   out.afp_override_value_as_of = markDate;
-  out.afp_override_valor_cuota_clp = Math.round(close * fx.clp_per_usd * 10000) / 10000;
+  out.afp_override_valor_cuota_clp = Math.round(perUnit * 10000) / 10000;
   return out;
 }
 

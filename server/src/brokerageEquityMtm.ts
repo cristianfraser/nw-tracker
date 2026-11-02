@@ -16,7 +16,6 @@ export { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
   equityCloseEod,
   equityDisplaySessionYmd,
-  equityHeldSessionQuote,
   equityQuoteCurrency,
   marketQuoteCurrency,
   equitySessionYmdForTicker,
@@ -24,7 +23,10 @@ import {
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import type { EodCloseSeries } from "./equityYahooEod.js";
-import { fxForLiveMtm } from "./fxRates.js";
+import { chileWallClockAt } from "./chileDate.js";
+import { holdingPriceAt } from "./holdingPrices.js";
+import type { CurrencyCode } from "./rates.js";
+import { convertValue } from "./valueConvert.js";
 
 /** Equity symbols loaded at `import:excel` into `equity_daily` (quote-currency close per share/coin). Crypto: CoinGecko; stocks: Yahoo. */
 export const EQUITY_DAILY_IMPORT_TICKERS = ["SPY", "VEA", "OILK", "BTC-USD", "ETH-USD"] as const;
@@ -145,19 +147,9 @@ function computeEquityMtmClpUncached(
   if (units <= 0 || !Number.isFinite(units)) return null;
   const close = price ?? equityCloseEod(ticker, asOfYmd);
   if (close == null || !Number.isFinite(close)) return null;
-  if (equityQuoteCurrency(ticker) === "clp") {
-    const clp = units * close;
-    return Number.isFinite(clp) ? clp : null;
-  }
-  // The fx is `asOfYmd`'s frame whatever the price source: live CLP=X while that day's fx
-  // day is open (a historical date never matches the live row's session, so it reads the
-  // stored close as before), the stored close after 17:05 New York. Gating the live rate on a
-  // live PRICE priced today's EOD bar at Friday's fx for the hour between the NYSE close and
-  // the fx day end — see `equityBrokeragePositionMeta`.
-  const fx = fxForLiveMtm(asOfYmd, now);
-  if (!fx || fx.clp_per_usd <= 0) return null;
-  const clp = units * close * fx.clp_per_usd;
-  return Number.isFinite(clp) ? clp : null;
+  // Shares × the quote-currency price, converted once at what selling them would get
+  // (`valueConvert.ts`): the date's rate, live while today's fx day is open.
+  return convertValue(units * close, equityQuoteCurrency(ticker), "clp", asOfYmd, "asset", now);
 }
 
 /** Sync MTM using a fresh cached live quote only during NYSE regular session. */
@@ -175,66 +167,39 @@ export function computeEquityMtmClpCachedLive(
 }
 
 /**
- * Synchronous display mark for acciones: live MTM in session, else last EOD for
- * {@link equityDisplaySessionYmd} (prior close before open; same-day close after close —
- * on the ticker's own exchange calendar, Chile day for `.SN`).
+ * Today's value of an equity position in its quote currency: the shares held today × today's
+ * price (`holdingPriceAt`: live in session, the held print after the close, the display
+ * session's bar, the newest bar). A position emptied after holding shares is 0, read from the
+ * shares alone — no quote is read, so a sold-out position records no live dependency.
  */
+export function equityTodayNativeValue(
+  accountId: number,
+  now: Date = new Date()
+): { value: number; currency: CurrencyCode; as_of_date: string } | null {
+  if (!accountUsesEquityMtm(accountId)) return null;
+  const ticker = requireEquityTicker(accountId);
+  const quote = equityQuoteCurrency(ticker);
+  const today = chileWallClockAt(now).ymd;
+  const units = equityShareUnitsThroughYmd(accountId, today);
+  if (!(units > 0) || !Number.isFinite(units)) {
+    const sold = soldOutEquityMark(accountId, equityDisplaySessionYmd(ticker, now));
+    return sold ? { value: 0, currency: quote, as_of_date: sold.as_of_date } : null;
+  }
+  const px = holdingPriceAt({ kind: "stock", ticker, quote }, today, { now });
+  if (!px) return null;
+  const value = units * px.price;
+  return Number.isFinite(value) ? { value, currency: px.currency, as_of_date: px.as_of } : null;
+}
+
+/** {@link equityTodayNativeValue} in pesos, at today's sell rate. */
 export function computeEquityMtmClpDisplaySync(
   accountId: number,
   now: Date = new Date()
 ): { value_clp: number; as_of_date: string } | null {
-  if (!accountUsesEquityMtm(accountId)) return null;
-  const ticker = requireEquityTicker(accountId);
-
-  const session = equitySessionYmdForTicker(ticker, now);
-  const displayYmd = equityDisplaySessionYmd(ticker, now);
-  const md = (stmtMaxEqDate.get(ticker) as { md: string | null } | undefined)?.md ?? null;
-  // Every branch below prices the shares held on `session`, `displayYmd` or `md`, and a price
-  // only multiplies them (`computeEquityMtmClpUncached` is null without shares). With no shares
-  // on any of those days the answer is the units' alone: no quote is read, so a sold-out
-  // position records no live dependency on its ticker.
-  const holdsOn = (ymd: string): boolean => {
-    const units = equityShareUnitsThroughYmd(accountId, ymd);
-    return units > 0 && Number.isFinite(units);
-  };
-  if (!holdsOn(session) && !holdsOn(displayYmd) && !(md != null && holdsOn(md))) {
-    return soldOutEquityMark(accountId, displayYmd);
-  }
-
-  if (shouldUseLiveEquityQuote(ticker, session, now)) {
-    const cached = computeEquityMtmClpCachedLive(accountId, now);
-    if (cached != null && Number.isFinite(cached) && cached > 0) {
-      return { value_clp: cached, as_of_date: session };
-    }
-    const fromSession = computeEquityMtmClp(accountId, session, null, now);
-    if (fromSession != null && Number.isFinite(fromSession) && fromSession > 0) {
-      return { value_clp: fromSession, as_of_date: session };
-    }
-  }
-
-  // Post-close, pre-sync: hold the session's last stored print (= the close) rather than
-  // falling to the previous bar — see `equityHeldSessionQuote`.
-  const held = equityHeldSessionQuote(ticker, now);
-  if (held) {
-    const fromHeld = computeEquityMtmClp(accountId, session, held.price, now);
-    if (fromHeld != null && Number.isFinite(fromHeld) && fromHeld > 0) {
-      return { value_clp: fromHeld, as_of_date: session };
-    }
-  }
-
-  const fromDisplay = computeEquityMtmClp(accountId, displayYmd, null, now);
-  if (fromDisplay != null && Number.isFinite(fromDisplay) && fromDisplay > 0) {
-    return { value_clp: fromDisplay, as_of_date: displayYmd };
-  }
-
-  if (md) {
-    const fromEod = computeEquityMtmClp(accountId, md);
-    if (fromEod != null && Number.isFinite(fromEod) && fromEod > 0) {
-      return { value_clp: fromEod, as_of_date: md };
-    }
-  }
-
-  return soldOutEquityMark(accountId, displayYmd);
+  const native = equityTodayNativeValue(accountId, now);
+  if (!native) return null;
+  const clp = convertValue(native.value, native.currency, "clp", chileWallClockAt(now).ymd, "asset", now);
+  return clp != null && Number.isFinite(clp) ? { value_clp: clp, as_of_date: native.as_of_date } : null;
 }
 
 /** 0 on the display session for a position emptied after holding shares, else no mark. */

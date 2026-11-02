@@ -2,8 +2,11 @@ import { getAggregationCached } from "./aggregationCache.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { chileCalendarDaysListEndingAt, totalRangeDays } from "./dailySeries.js";
 import { ufClpByDateRange, ufRowOnOrBefore } from "./fxRates.js";
-import { clpToUnitAt } from "./clpToUnitAt.js";
-import { buildDashboardBucketDailySeriesClp, dashboardBucketsUsdToday } from "./portfolioGroupValueAtDate.js";
+import {
+  buildDashboardBucketDailySeriesClp,
+  buildDashboardBucketDailySeriesInUnit,
+  dashboardBucketsUsdToday,
+} from "./portfolioGroupValueAtDate.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 /**
@@ -96,10 +99,12 @@ function netWorthInUnitByDay(
   // Today in USD is the headline's net worth (Σ of each account's own dollars).
   const todayYmd = grid[grid.length - 1]!;
   const usdToday = unit === "usd" ? dashboardBucketsUsdToday().net_worth : null;
+  // Σ of each account's own dollars per day, never the net worth's pesos ÷ one rate.
+  const byDateUsd = unit === "usd" ? buildDashboardBucketDailySeriesInUnit(grid, "usd") : null;
   return grid.map((ymd) => {
     const clp = byDate.get(ymd)!.net_worth;
     const value =
-      unit === "clp" ? clp : ymd === todayYmd && usdToday != null ? usdToday : clpToUnitAt(clp, ymd, "usd");
+      unit === "clp" ? clp : ymd === todayYmd && usdToday != null ? usdToday : byDateUsd!.get(ymd)!.net_worth;
     return { as_of_date: ymd, value: value != null && Number.isFinite(value) ? value : null };
   });
 }

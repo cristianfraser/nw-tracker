@@ -8,15 +8,12 @@ import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
 import { flowEventInUnit } from "./flowsDeposits.js";
 import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
-import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
+import { accountMarkClpSeriesOnGrid, accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
 import {
   includeShortHorizonAccount,
   type ShortHorizonAccountRef,
 } from "./periodReturnsShortHorizon.js";
-import { accountTodayValue } from "./accountTodayValue.js";
-import { clpToUnitAt, pastDayUnitConverter } from "./clpToUnitAt.js";
-import { isUsdCashAccount, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
@@ -442,46 +439,34 @@ export function getBucketDailySeries(
   const wealthByAccount: (number | null)[][] | null = perAccount
     ? included.map(() => new Array<number | null>(grid.length).fill(null))
     : null;
-  // Every value is framed PER ACCOUNT (the 1D/1W cells' `accountValueInUnitAt`): a USD cash
-  // account is its ledger dollars on every day; on today's grid day in USD each account's pesos
-  // are framed on the day they were priced (`priced_on`); earlier days at the stored fx on or
-  // before. The bucket in the unit is Σ of those, never Σ pesos ÷ one rate.
+  // Every value is framed PER ACCOUNT (the 1D/1W cells' `accountValueInUnitAt`): what the
+  // account held that day converted once into the unit at its side (`accountValueSeriesOnGrid`:
+  // dollar cash is its ledger dollars, a dollar stock its shares × dollar price, a peso value
+  // its pesos at the day's rate — today's live). The bucket in the unit is Σ of those, never Σ
+  // pesos ÷ one rate.
   const lastGi = grid.length - 1;
-  const isUsdCash = unit === "usd" ? included.map((a) => isUsdCashAccount(a.account_id)) : null;
-  const pricedOnToday =
-    unit === "usd" && grid[lastGi] === chileCalendarTodayYmd()
-      ? included.map(
-          (a) =>
-            accountTodayValue(a.account_id, a.bucket_slug, {
-              import_key: a.import_key ?? null,
-              name: a.name ?? null,
-            })?.priced_on ?? null
-        )
-      : null;
-  // Days before Chile today on the real clock share one rate per day across accounts and scopes.
   const realToday = chileCalendarTodayYmd();
-  const pastConvert = opts.now === undefined ? pastDayUnitConverter(unit) : null;
-  const usdCashPast = isUsdCash?.some(Boolean)
-    ? historyTierMemo<string, number>("usd_cash_balance_usd_by_day")
-    : null;
-  const accountValueInUnit = (ai: number, clp: number, gi: number): number | null => {
-    const ymd = grid[gi]!;
-    if (isUsdCash?.[ai]) {
-      const accountId = included[ai]!.account_id;
-      if (!usdCashPast || ymd >= realToday) return usdCashBalanceUsdAt(accountId, ymd);
-      const key = `${accountId}|${ymd}`;
-      let usd = usdCashPast.get(key);
-      if (usd === undefined) {
-        usd = usdCashBalanceUsdAt(accountId, ymd);
-        usdCashPast.set(key, usd);
-      }
-      return usd;
+  const refOf = (a: (typeof included)[number]) => ({
+    account_id: a.account_id,
+    bucket_slug: a.bucket_slug,
+    import_key: a.import_key ?? null,
+    name: a.name ?? null,
+  });
+  // Built lazily: after a live tick the past part is a history-tier hit and only the last day
+  // is read, which is computed on its own.
+  // The days before the last one (the history-tier past part) and the last day apart: the
+  // past never reads a live input.
+  const pastGrid = grid.slice(0, lastGi);
+  const unitSeries: ((number | null)[] | undefined)[] = included.map(() => undefined);
+  const accountValueInUnit = (ai: number, _clp: number, gi: number): number | null => {
+    if (unit === "clp") return marksByAccount[ai]![gi] ?? null;
+    if (gi === lastGi) return accountValueSeriesOnGrid(refOf(included[ai]!), [grid[lastGi]!], unit)[0] ?? null;
+    let series = unitSeries[ai];
+    if (!series) {
+      series = accountValueSeriesOnGrid(refOf(included[ai]!), pastGrid, unit);
+      unitSeries[ai] = series;
     }
-    if (pastConvert && ymd < realToday) return pastConvert(clp, ymd);
-    return clpToUnitAt(clp, ymd, unit, {
-      now,
-      markAsOf: gi === lastGi ? pricedOnToday?.[ai] ?? null : null,
-    });
+    return series[gi] ?? null;
   };
   // Everything before the grid's last day reads evidence only (past marks, stored rates, the
   // ledger): the per-account values in the unit on past days, the flow legs and the deposit

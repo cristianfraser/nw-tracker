@@ -422,7 +422,7 @@ export function buildNavValueMapPayload(
   if (!navRoot) throw new Error("nav value map: net_worth nav tree missing");
   const today = chileCalendarTodayYmd();
   const clp = linkedCreditCardClpForCashCardAsOf(today);
-  const usd = includeUsd ? clpToUnitAt(clp, today, "usd") : null;
+  const usd = includeUsd ? clpToUnitAt(clp, today, "usd", { side: "debt" }) : null;
   return {
     value_map: buildNavValueMap({
       navRoot,
