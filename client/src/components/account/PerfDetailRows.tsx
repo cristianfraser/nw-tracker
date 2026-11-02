@@ -33,8 +33,8 @@ export type PerfDetailRow = {
  * mobile cards), read by arrows, ▲ / ▼ and colour instead of column labels (each figure names
  * itself on hover). While every row fits its list on one line the rows share the list's columns
  * (a subgrid of it), so each kind of figure lines up down the list; when they do not, a row is
- * three lines: its period; its closing on the left and its result on the right; its flows on
- * the left and its running totals on the right (a line each on a phone). One line or wrapped is measured, not a breakpoint: the
+ * three lines: its period; its closing with its result beside it, the year so far on the right;
+ * its flows, the all-time total on the right. One line or wrapped is measured, not a breakpoint: the
  * columns as wide as their content, wider than the list = the rows wrap.
  */
 export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailRow[]; flowSlots: number }) {
@@ -119,7 +119,12 @@ export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailR
           </span>
           <span className={styles.totals}>
             {row.totals.map((total) => (
-              <span key={total.key} className={cn("mono muted", styles.total)} title={total.title}>
+              <span
+                key={total.key}
+                className={cn("mono muted", styles.total)}
+                data-total={total.key}
+                title={total.title}
+              >
                 <span className={styles.totalPrefix} aria-hidden="true">
                   {total.prefix}
                 </span>
