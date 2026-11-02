@@ -14,16 +14,16 @@
 }
 
 .flashUp {
-  animation: number-change-up 800ms ease-out;
+  animation: number-change-up 2000ms ease-out;
 }
 
 .flashDown {
-  animation: number-change-down 800ms ease-out;
+  animation: number-change-down 2000ms ease-out;
 }
 
 @keyframes number-change-up {
   0%,
-  20% {
+  10% {
     background-color: color-mix(in srgb, var(--positive) 35%, transparent);
   }
 
@@ -34,7 +34,7 @@
 
 @keyframes number-change-down {
   0%,
-  20% {
+  10% {
     background-color: color-mix(in srgb, var(--negative) 35%, transparent);
   }
 
