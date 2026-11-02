@@ -91,7 +91,7 @@ export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailR
                 {flow ? (
                   <>
                     {flow.icon ? (
-                      <flow.icon size={14} className={styles.icon} />
+                      <flow.icon size={18} strokeWidth={2.25} className={styles.icon} />
                     ) : (
                       <span className={styles.arrow} aria-hidden="true">
                         {flow.direction === "out" ? "←" : "→"}

@@ -60,9 +60,11 @@
   color: var(--muted);
 }
 
+/* Icons a size above the figures, with thick strokes: small shapes need rough ones. */
 .icon {
-  margin-right: 0.3em;
-  vertical-align: -0.15em;
+  display: inline-block;
+  margin-right: 0.35em;
+  vertical-align: -0.3em;
 }
 
 .pct {
