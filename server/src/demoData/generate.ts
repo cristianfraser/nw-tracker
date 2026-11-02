@@ -452,7 +452,7 @@ function seedCategoryRules(ledger: Ledger, ids: Map<Acct, number>): void {
 
 const GROUP_COLORS: ReadonlyArray<[string, string]> = [
   ["net_worth", "255,255,255"],
-  ["inversiones", "17,19,143"],
+  ["inversiones", "245,158,11"],
   ["brokerage", "36,36,191"],
   ["brokerage_acciones", "29,153,168"],
   ["brokerage_crypto", "234,179,8"],
