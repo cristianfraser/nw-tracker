@@ -1,30 +1,23 @@
 import { db } from "./db.js";
 import { ufRowOnOrBefore } from "./fxRates.js";
 
-/** One payment / capital row from Numbers export `depto-dividendos.csv` (sheet “dividendos”). */
+/**
+ * One payment / capital row as the bank states it: the pesos paid and their parts, the balance
+ * after it and the minimum / maximum cuota in UF. Everything else the ledger shows (the parts in
+ * UF, net equity, cumulative figures) is derived when read (`deptoLedgerFromMovements.ts`).
+ */
 export type DeptoDividendosPaymentRow = {
   cuota: string;
   occurred_on: string;
   amount_clp: number;
-  amount_uf: number | null;
-  uf_clp_day: number | null;
   credito_restante_uf: number | null;
-  /** Tasación / valor vivienda (UF) — observed value; net equity is DERIVED (gross − balance). */
-  valor_vivienda_uf: number | null;
-  valor_neto_uf: number | null;
-  valor_neto_clp: number | null;
-  pagado_neto_uf: number | null;
-  pago_acumulado_clp: number | null;
-  /** Escenario “min UF” (hoja) — referencia antes del dividendo real del banco. */
+  /** The bank's cuota mínima (UF). */
   min_uf: number | null;
   /** The bank's posted cuota máxima (UF), from the mortgage sheet. */
   max_uf: number | null;
   amortizacion_clp: number | null;
-  amortizacion_uf: number | null;
   amortizacion_ext_clp: number | null;
-  amortizacion_ext_uf: number | null;
   interes_clp: number | null;
-  interes_uf: number | null;
   incendio_clp: number | null;
   desgravamen_clp: number | null;
 };
@@ -132,22 +125,12 @@ export function sheetRowToPaymentRow(s: DeptoMortgageSheetRow): DeptoDividendosP
     cuota: s.cuota,
     occurred_on: s.occurred_on,
     amount_clp: s.pago_clp,
-    amount_uf: s.pago_uf,
-    uf_clp_day: s.uf_clp_day,
     credito_restante_uf: s.credito_restante_uf,
-    valor_vivienda_uf: s.valor_vivienda_uf,
-    valor_neto_uf: s.valor_neto_uf,
-    valor_neto_clp: s.valor_neto_clp,
-    pagado_neto_uf: s.pagado_neto_uf,
-    pago_acumulado_clp: s.pago_acumulado_clp,
     min_uf: s.min_uf,
     max_uf: s.max_uf,
     amortizacion_clp: s.amortizacion_clp,
-    amortizacion_uf: s.amortizacion_uf,
     amortizacion_ext_clp: s.amortizacion_ext_clp,
-    amortizacion_ext_uf: s.amortizacion_ext_uf,
     interes_clp: s.interes_clp,
-    interes_uf: s.interes_uf,
     incendio_clp: s.incendio_clp,
     desgravamen_clp: s.desgravamen_clp,
   };
@@ -182,7 +165,7 @@ export function deptoLedgerChronoCompare(
  * `credito_restante_uf` must not exceed the chronologically previous row's. (Regular cuotas
  * CAN follow a balance increase — grace-period interest capitalizes between pie and the
  * first billed cuota — so only prepago rows carry this invariant.) A violation means the
- * row still holds a month-grain non-sequential balance: fix the `depto_payments` data.
+ * row still holds a month-grain non-sequential balance: fix the `loan_payments` data.
  */
 export function assertDeptoPrepagoSequencing(
   rowsChronoAsc: readonly Pick<
@@ -198,7 +181,7 @@ export function assertDeptoPrepagoSequencing(
     if (isDeptoPrepagoCuota(row.cuota) && prev != null && v > prev + 1e-6) {
       throw new Error(
         `depto ledger: prepago "${row.cuota}" (${row.occurred_on}) has credito_restante_uf ` +
-          `${v} > previous row "${prevCuota}" ${prev} — non-sequential balance, fix depto_payments`
+          `${v} > previous row "${prevCuota}" ${prev} — non-sequential balance, fix loan_payments`
       );
     }
     prev = v;
@@ -340,101 +323,142 @@ export function deptoPropertyCloseClpBySnapshotDates(
   return out;
 }
 
-// ---------- depto_payments table (machine payload; notes are human provenance) ----------
+// ---------- loan_payments / property_appraisals (machine payload; notes are human provenance) ----------
 
-/** One `depto_payments` row: the payment fields runtime derives the ledger from. */
-export type DeptoPaymentTableRow = {
+/** The account a payment movement sits on: the property account's row or the mortgage's. */
+export type LoanPaymentLeg = "property" | "loan";
+
+/**
+ * One `loan_payments` row: what the bank states about one payment, in the currency it states
+ * it — balance after / min / max in `loan_currency`, the parts of the charge in
+ * `payment_currency`. The depto ledger reads UF loans paid in pesos only
+ * ({@link assertDeptoLoanPaymentCurrencies}).
+ */
+export type LoanPaymentRow = {
   movement_id: number;
-  kind: "dividendos" | "mortgage";
+  loan_account_id: number;
+  leg: LoanPaymentLeg;
   origin: "import" | "manual";
   cuota: string;
-  amount_uf: number | null;
-  credito_restante_uf: number | null;
-  valor_vivienda_uf: number | null;
-  valor_neto_uf: number | null;
-  valor_neto_clp: number | null;
-  pagado_neto_uf: number | null;
-  pago_acumulado_clp: number | null;
-  min_uf: number | null;
-  max_uf: number | null;
-  amortizacion_clp: number | null;
-  amortizacion_uf: number | null;
-  amortizacion_ext_clp: number | null;
-  amortizacion_ext_uf: number | null;
-  interes_clp: number | null;
-  interes_uf: number | null;
-  incendio_clp: number | null;
-  desgravamen_clp: number | null;
+  loan_currency: string;
+  balance_after: number | null;
+  min_payment: number | null;
+  max_payment: number | null;
+  payment_currency: string;
+  principal: number | null;
+  extra_principal: number | null;
+  interest: number | null;
+  insurance_fire: number | null;
+  insurance_life: number | null;
 };
 
-export function deptoPaymentRowForMovementId(movementId: number): DeptoPaymentTableRow | null {
+/** The columns a payment row fills (everything but the movement, account, leg and origin). */
+export type LoanPaymentColumns = Omit<LoanPaymentRow, "movement_id" | "loan_account_id" | "leg" | "origin">;
+
+/** Fail fast: the depto ledger's in-memory shape is a UF loan with its parts in pesos. */
+export function assertDeptoLoanPaymentCurrencies(
+  row: Pick<LoanPaymentRow, "movement_id" | "loan_currency" | "payment_currency">
+): void {
+  if (row.loan_currency !== "uf" || row.payment_currency !== "clp") {
+    throw new Error(
+      `loan_payments row ${row.movement_id}: the depto ledger reads a UF loan paid in pesos, got loan ${row.loan_currency} / payment ${row.payment_currency}`
+    );
+  }
+}
+
+export function loanPaymentRowForMovementId(movementId: number): LoanPaymentRow | null {
   const r = db
-    .prepare(`SELECT * FROM depto_payments WHERE movement_id = ?`)
-    .get(movementId) as DeptoPaymentTableRow | undefined;
+    .prepare(`SELECT * FROM loan_payments WHERE movement_id = ?`)
+    .get(movementId) as LoanPaymentRow | undefined;
   return r ?? null;
 }
 
 /** Movement ids of "pie" (down payment) rows — property capital, excluded from payment lists. */
 export function deptoPieMovementIdSet(): Set<number> {
   const rows = db
-    .prepare(`SELECT movement_id FROM depto_payments WHERE LOWER(TRIM(cuota)) = 'pie'`)
+    .prepare(`SELECT movement_id FROM loan_payments WHERE LOWER(TRIM(cuota)) = 'pie'`)
     .all() as { movement_id: number }[];
   return new Set(rows.map((r) => r.movement_id));
 }
 
-export function insertDeptoPaymentRow(row: DeptoPaymentTableRow): void {
+export function insertLoanPaymentRow(row: LoanPaymentRow): void {
   db.prepare(
-    `INSERT INTO depto_payments (
-       movement_id, kind, origin, cuota,
-       amount_uf, credito_restante_uf, valor_vivienda_uf, valor_neto_uf, valor_neto_clp,
-       pagado_neto_uf, pago_acumulado_clp, min_uf, max_uf,
-       amortizacion_clp, amortizacion_uf, amortizacion_ext_clp, amortizacion_ext_uf,
-       interes_clp, interes_uf, incendio_clp, desgravamen_clp
+    `INSERT INTO loan_payments (
+       movement_id, loan_account_id, leg, origin, cuota,
+       loan_currency, balance_after, min_payment, max_payment,
+       payment_currency, principal, extra_principal, interest, insurance_fire, insurance_life
      ) VALUES (
-       @movement_id, @kind, @origin, @cuota,
-       @amount_uf, @credito_restante_uf, @valor_vivienda_uf, @valor_neto_uf, @valor_neto_clp,
-       @pagado_neto_uf, @pago_acumulado_clp, @min_uf, @max_uf,
-       @amortizacion_clp, @amortizacion_uf, @amortizacion_ext_clp, @amortizacion_ext_uf,
-       @interes_clp, @interes_uf, @incendio_clp, @desgravamen_clp
+       @movement_id, @loan_account_id, @leg, @origin, @cuota,
+       @loan_currency, @balance_after, @min_payment, @max_payment,
+       @payment_currency, @principal, @extra_principal, @interest, @insurance_fire, @insurance_life
      )`
   ).run(row);
 }
 
-/** `depto_payments` columns for a payment row (shared by manual entry, recompute, and demo data). */
-export function deptoPaymentColumnsFromPaymentRow(
-  r: DeptoDividendosPaymentRow
-): Omit<DeptoPaymentTableRow, "movement_id" | "kind" | "origin"> {
+/** `loan_payments` columns for a depto payment row (shared by manual entry, recompute, and demo data). */
+export function loanPaymentColumnsFromPaymentRow(r: DeptoDividendosPaymentRow): LoanPaymentColumns {
+  const peso = (v: number | null | undefined) => (v != null ? Math.round(v) : null);
   return {
     cuota: r.cuota,
-    amount_uf: r.amount_uf ?? null,
-    credito_restante_uf: r.credito_restante_uf ?? null,
-    valor_vivienda_uf: r.valor_vivienda_uf ?? null,
-    valor_neto_uf: r.valor_neto_uf ?? null,
-    valor_neto_clp: r.valor_neto_clp != null ? Math.round(r.valor_neto_clp) : null,
-    pagado_neto_uf: r.pagado_neto_uf ?? null,
-    pago_acumulado_clp: r.pago_acumulado_clp != null ? Math.round(r.pago_acumulado_clp) : null,
-    min_uf: r.min_uf ?? null,
-    max_uf: r.max_uf ?? null,
-    amortizacion_clp: r.amortizacion_clp != null ? Math.round(r.amortizacion_clp) : null,
-    amortizacion_uf: r.amortizacion_uf ?? null,
-    amortizacion_ext_clp: r.amortizacion_ext_clp != null ? Math.round(r.amortizacion_ext_clp) : null,
-    amortizacion_ext_uf: r.amortizacion_ext_uf ?? null,
-    interes_clp: r.interes_clp != null ? Math.round(r.interes_clp) : null,
-    interes_uf: r.interes_uf ?? null,
-    incendio_clp: r.incendio_clp != null ? Math.round(r.incendio_clp) : null,
-    desgravamen_clp: r.desgravamen_clp != null ? Math.round(r.desgravamen_clp) : null,
+    loan_currency: "uf",
+    balance_after: r.credito_restante_uf ?? null,
+    min_payment: r.min_uf ?? null,
+    max_payment: r.max_uf ?? null,
+    payment_currency: "clp",
+    principal: peso(r.amortizacion_clp),
+    extra_principal: peso(r.amortizacion_ext_clp),
+    interest: peso(r.interes_clp),
+    insurance_fire: peso(r.incendio_clp),
+    insurance_life: peso(r.desgravamen_clp),
   };
 }
 
-/** Human note for a depto payment movement (machine payload lives in `depto_payments`). */
+/**
+ * The property's appraisal (UF) on a date — a valuation of the property account. The ledger
+ * carries the latest one on or before each row. Writing the same date twice must state the same
+ * value.
+ */
+export function upsertPropertyAppraisalUf(accountId: number, asOfYmd: string, valueUf: number): void {
+  const prev = db
+    .prepare(`SELECT value, currency FROM property_appraisals WHERE account_id = ? AND as_of_date = ?`)
+    .get(accountId, asOfYmd) as { value: number; currency: string } | undefined;
+  if (prev) {
+    if (prev.currency !== "uf" || prev.value !== valueUf) {
+      throw new Error(
+        `property appraisal ${accountId} ${asOfYmd}: stored ${prev.value} ${prev.currency}, new ${valueUf} uf`
+      );
+    }
+    return;
+  }
+  db.prepare(
+    `INSERT INTO property_appraisals (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'uf')`
+  ).run(accountId, asOfYmd, valueUf);
+}
+
+/** Appraisals of a property account in UF, oldest first (a non-UF row throws). */
+export function propertyAppraisalsUfAsc(accountId: number): { as_of_date: string; value_uf: number }[] {
+  const rows = db
+    .prepare(
+      `SELECT as_of_date, value, currency FROM property_appraisals WHERE account_id = ? ORDER BY as_of_date`
+    )
+    .all(accountId) as { as_of_date: string; value: number; currency: string }[];
+  return rows.map((r) => {
+    if (r.currency !== "uf") {
+      throw new Error(`property appraisal ${accountId} ${r.as_of_date}: the depto ledger reads UF, got ${r.currency}`);
+    }
+    return { as_of_date: r.as_of_date, value_uf: r.value };
+  });
+}
+
+/** Human note for a depto payment movement (machine payload lives in `loan_payments`). */
 export function deptoPaymentHumanNote(
-  kind: "dividendos" | "mortgage",
+  leg: LoanPaymentLeg,
   cuota: string,
   manual: boolean
 ): string {
   const base = isDeptoPieCuota(cuota)
     ? "Depto pie"
-    : kind === "mortgage"
+    : leg === "loan"
       ? `Pago hipoteca — cuota ${cuota}`
       : `Depto dividendo — cuota ${cuota}`;
   return manual ? `${base} (manual)` : base;

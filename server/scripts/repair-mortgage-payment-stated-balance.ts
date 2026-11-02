@@ -7,8 +7,8 @@
  * in UF at higher precision than the CLP components can express. When the field was left
  * blank at logging time (the bank's balance is usually only visible after the payment posts),
  * this script re-runs the SAME compute the form used, against the ledger WITHOUT that cuota,
- * with the stored inputs plus the stated balance, and rewrites both `depto_payments` rows
- * (mortgage + dividendos) from the result. Same tolerance guard as the form: a stated value
+ * with the stored inputs plus the stated balance, and rewrites both `loan_payments` rows
+ * (loan + property leg) from the result. Same tolerance guard as the form: a stated value
  * farther than 0,005 UF from the derived one throws inside the compute.
  *
  * Only the LATEST payment is editable — later rows chain off its balance, and re-deriving a
@@ -21,9 +21,11 @@
 import { db } from "../src/db.js";
 import { invalidateAggregationForAccountDate } from "../src/aggregationCache.js";
 import {
+  assertDeptoLoanPaymentCurrencies,
   deptoLedgerChronoCompare,
-  deptoPaymentColumnsFromPaymentRow,
+  loanPaymentColumnsFromPaymentRow,
   sheetRowToPaymentRow,
+  type LoanPaymentRow,
 } from "../src/deptoDividendosLedger.js";
 import { loadDeptoLedgerFromMovements } from "../src/deptoLedgerFromMovements.js";
 import {
@@ -39,49 +41,24 @@ function argValue(name: string): string | null {
   return hit ? hit.slice(prefix.length) : null;
 }
 
-type StoredRow = {
-  movement_id: number;
+type StoredRow = LoanPaymentRow & {
   account_id: number;
-  kind: "dividendos" | "mortgage";
   occurred_on: string;
   amount: number;
-  cuota: string;
-  amount_uf: number | null;
-  credito_restante_uf: number | null;
-  valor_vivienda_uf: number | null;
-  valor_neto_uf: number | null;
-  valor_neto_clp: number | null;
-  pagado_neto_uf: number | null;
-  pago_acumulado_clp: number | null;
-  min_uf: number | null;
-  amortizacion_clp: number | null;
-  amortizacion_uf: number | null;
-  amortizacion_ext_clp: number | null;
-  amortizacion_ext_uf: number | null;
-  interes_clp: number | null;
-  interes_uf: number | null;
-  incendio_clp: number | null;
-  desgravamen_clp: number | null;
 };
 
 const PAYMENT_COLUMNS = [
   "cuota",
-  "amount_uf",
-  "credito_restante_uf",
-  "valor_vivienda_uf",
-  "valor_neto_uf",
-  "valor_neto_clp",
-  "pagado_neto_uf",
-  "pago_acumulado_clp",
-  "min_uf",
-  "amortizacion_clp",
-  "amortizacion_uf",
-  "amortizacion_ext_clp",
-  "amortizacion_ext_uf",
-  "interes_clp",
-  "interes_uf",
-  "incendio_clp",
-  "desgravamen_clp",
+  "loan_currency",
+  "balance_after",
+  "min_payment",
+  "max_payment",
+  "payment_currency",
+  "principal",
+  "extra_principal",
+  "interest",
+  "insurance_fire",
+  "insurance_life",
 ] as const;
 type PaymentColumn = (typeof PAYMENT_COLUMNS)[number];
 
@@ -111,23 +88,24 @@ function main(): void {
   const stored = db
     .prepare(
       `SELECT p.*, m.account_id, m.occurred_on, m.amount
-         FROM depto_payments p
+         FROM loan_payments p
          JOIN movements m ON m.id = p.movement_id
         WHERE p.cuota = ?
-        ORDER BY p.kind`
+        ORDER BY p.leg DESC`
     )
     .all(cuota) as StoredRow[];
   if (stored.length !== 2) {
-    throw new Error(`Expected exactly 2 depto_payments rows for cuota ${cuota} (mortgage + dividendos), found ${stored.length}`);
+    throw new Error(`Expected exactly 2 loan_payments rows for cuota ${cuota} (property + loan leg), found ${stored.length}`);
   }
-  const [dividendosRow, mortgageRow] = stored;
-  if (dividendosRow!.kind !== "dividendos" || mortgageRow!.kind !== "mortgage") {
-    throw new Error(`Cuota ${cuota} rows are not one dividendos + one mortgage row`);
+  const [propertyRow, loanRow] = stored;
+  if (propertyRow!.leg !== "property" || loanRow!.leg !== "loan") {
+    throw new Error(`Cuota ${cuota} rows are not one property + one loan row`);
   }
-  if (dividendosRow!.occurred_on !== mortgageRow!.occurred_on) {
-    throw new Error(`Cuota ${cuota} rows disagree on occurred_on (${dividendosRow!.occurred_on} vs ${mortgageRow!.occurred_on})`);
+  for (const row of stored) assertDeptoLoanPaymentCurrencies(row);
+  if (propertyRow!.occurred_on !== loanRow!.occurred_on) {
+    throw new Error(`Cuota ${cuota} rows disagree on occurred_on (${propertyRow!.occurred_on} vs ${loanRow!.occurred_on})`);
   }
-  const occurredOn = mortgageRow!.occurred_on;
+  const occurredOn = loanRow!.occurred_on;
 
   const ledger = loadDeptoLedgerFromMovements();
   const sorted = [...ledger].sort(deptoLedgerChronoCompare);
@@ -142,30 +120,31 @@ function main(): void {
     throw new Error(`Expected to remove exactly one ledger row for cuota ${cuota}, removed ${ledger.length - ledgerWithout.length}`);
   }
 
-  const m = mortgageRow!;
-  for (const [k, v] of Object.entries({ interes_clp: m.interes_clp, incendio_clp: m.incendio_clp, desgravamen_clp: m.desgravamen_clp, amortizacion_ext_clp: m.amortizacion_ext_clp })) {
+  const m = loanRow!;
+  for (const [k, v] of Object.entries({ interest: m.interest, insurance_fire: m.insurance_fire, insurance_life: m.insurance_life, extra_principal: m.extra_principal })) {
     if (v == null) throw new Error(`Stored ${k} is NULL on cuota ${cuota}; cannot rebuild the compute input`);
   }
   const input: MortgagePaymentInput = {
     occurred_on: occurredOn,
     pago_clp: Math.abs(m.amount),
-    interes_clp: m.interes_clp!,
-    incendio_clp: m.incendio_clp!,
-    desgravamen_clp: m.desgravamen_clp,
+    interes_clp: m.interest!,
+    incendio_clp: m.insurance_fire!,
+    desgravamen_clp: m.insurance_life,
     cuota,
-    min_uf: m.min_uf,
+    min_uf: m.min_payment,
+    max_uf: m.max_payment,
     // Explicit stored prepago: the split is data once written; only the balance is re-stated.
-    amortizacion_ext_clp: m.amortizacion_ext_clp,
+    amortizacion_ext_clp: m.extra_principal,
     credito_restante_uf: stated,
   };
 
   const computed = computeMortgagePaymentRow(ledgerWithout, input);
-  const next = deptoPaymentColumnsFromPaymentRow(sheetRowToPaymentRow(computed.sheet));
+  const next = loanPaymentColumnsFromPaymentRow(sheetRowToPaymentRow(computed.sheet));
 
   console.log(`cuota ${cuota} on ${occurredOn} — stated crédito restante ${fmt(stated)} UF (derived ${fmt(computed.credito_restante_derived_uf)} UF, override used: ${computed.credito_restante_used_override})`);
   let anyChange = false;
   for (const row of stored) {
-    console.log(`\n${row.kind} row — movement ${row.movement_id} (account ${row.account_id})`);
+    console.log(`\n${row.leg} row — movement ${row.movement_id} (account ${row.account_id})`);
     for (const col of PAYMENT_COLUMNS) {
       const before = row[col as PaymentColumn];
       const after = next[col as PaymentColumn];
@@ -185,7 +164,7 @@ function main(): void {
   }
 
   const update = db.prepare(
-    `UPDATE depto_payments SET ${PAYMENT_COLUMNS.map((c) => `${c} = @${c}`).join(", ")} WHERE movement_id = @movement_id`
+    `UPDATE loan_payments SET ${PAYMENT_COLUMNS.map((c) => `${c} = @${c}`).join(", ")} WHERE movement_id = @movement_id`
   );
   db.transaction(() => {
     for (const row of stored) {
@@ -194,7 +173,7 @@ function main(): void {
     }
   })();
   for (const row of stored) invalidateAggregationForAccountDate(row.account_id, occurredOn);
-  console.log(`\nApplied: ${stored.length} depto_payments rows rewritten (movements ${stored.map((r) => r.movement_id).join(", ")}).`);
+  console.log(`\nApplied: ${stored.length} loan_payments rows rewritten (movements ${stored.map((r) => r.movement_id).join(", ")}).`);
 }
 
 main();

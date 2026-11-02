@@ -6,7 +6,7 @@ import {
   type MortgageUfReminderDecisionInput,
 } from "./mortgageUfReminder.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
-import { insertDeptoPaymentRow } from "./deptoDividendosLedger.js";
+import { insertLoanPaymentRow } from "./deptoDividendosLedger.js";
 
 /**
  * Cycle month 2099-06, default 21→20 config: payable window 2099-06-11 … 2099-07-10,
@@ -171,7 +171,7 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
     if (masterId != null) wipeVitestCcFixtureData();
     for (const date of insertedUfDates) db.prepare(`DELETE FROM uf_daily WHERE date = ?`).run(date);
     if (paidAccountId != null) {
-      db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(paidAccountId); // cascades depto_payments
+      db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(paidAccountId); // cascades loan_payments
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(paidAccountId);
     }
   });
@@ -237,28 +237,22 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
     const prepagoMov = db
       .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', '2099-06-12', NULL)`)
       .run(paidAccountId, 1_000_000);
-    insertDeptoPaymentRow({
+    insertLoanPaymentRow({
       movement_id: Number(prepagoMov.lastInsertRowid),
-      kind: "mortgage",
+      loan_account_id: paidAccountId!,
+      leg: "loan",
       origin: "manual",
       cuota: "prepago 1",
-      amount_uf: null,
-      credito_restante_uf: null,
-      valor_vivienda_uf: null,
-      valor_neto_uf: null,
-      valor_neto_clp: null,
-      pagado_neto_uf: null,
-      pago_acumulado_clp: null,
-      min_uf: null,
-      max_uf: null,
-      amortizacion_clp: null,
-      amortizacion_uf: null,
-      amortizacion_ext_clp: null,
-      amortizacion_ext_uf: null,
-      interes_clp: null,
-      interes_uf: null,
-      incendio_clp: null,
-      desgravamen_clp: null,
+      loan_currency: "uf",
+      balance_after: null,
+      min_payment: null,
+      max_payment: null,
+      payment_currency: "clp",
+      principal: null,
+      extra_principal: null,
+      interest: null,
+      insurance_fire: null,
+      insurance_life: null,
     });
     expect(buildMortgageUfReminder("2099-06-11").reason).not.toBe("already_paid");
 
@@ -267,28 +261,22 @@ describe("buildMortgageUfReminder (assembler, synthetic fixture)", () => {
       .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', '2099-06-11', NULL)`)
       .run(paidAccountId, 1_200_000);
     paidMovementId = Number(paidMov.lastInsertRowid);
-    insertDeptoPaymentRow({
+    insertLoanPaymentRow({
       movement_id: paidMovementId,
-      kind: "mortgage",
+      loan_account_id: paidAccountId!,
+      leg: "loan",
       origin: "manual",
       cuota: "999",
-      amount_uf: null,
-      credito_restante_uf: null,
-      valor_vivienda_uf: null,
-      valor_neto_uf: null,
-      valor_neto_clp: null,
-      pagado_neto_uf: null,
-      pago_acumulado_clp: null,
-      min_uf: null,
-      max_uf: null,
-      amortizacion_clp: null,
-      amortizacion_uf: null,
-      amortizacion_ext_clp: null,
-      amortizacion_ext_uf: null,
-      interes_clp: null,
-      interes_uf: null,
-      incendio_clp: null,
-      desgravamen_clp: null,
+      loan_currency: "uf",
+      balance_after: null,
+      min_payment: null,
+      max_payment: null,
+      payment_currency: "clp",
+      principal: null,
+      extra_principal: null,
+      interest: null,
+      insurance_fire: null,
+      insurance_life: null,
     });
 
     // Cycle 2099-06 is now paid; today 2099-06-11 looks ahead to 2099-07 (no UF) → uf_unavailable.

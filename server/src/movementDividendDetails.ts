@@ -5,7 +5,7 @@
  * balance walk and the P/L readers need, and it is also the only figure every source agrees on.
  * What the tax year needs on top — the gross dividend and the tax withheld abroad, which Chile
  * credits against the local tax on the gross — is a satellite row here, one per dividend
- * movement (migration 183, the `depto_payments` pattern). Nothing reads it on a request path
+ * movement (migration 183, the satellite pattern of `loan_payments`). Nothing reads it on a request path
  * yet; importers write it from whatever document prints the breakdown:
  *
  *  - Racional's `/users/movements/dividends` API (`DIV` gross, `DIVTAX`, `amount` net),

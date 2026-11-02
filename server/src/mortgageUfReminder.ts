@@ -224,9 +224,9 @@ function mortgagePaidInWindow(fromYmd: string, toYmd: string): boolean {
   const rows = db
     .prepare(
       `SELECT p.cuota AS cuota
-       FROM depto_payments p
+       FROM loan_payments p
        JOIN movements m ON m.id = p.movement_id
-       WHERE p.kind = 'mortgage' AND m.occurred_on >= ? AND m.occurred_on <= ?`
+       WHERE p.leg = 'loan' AND m.occurred_on >= ? AND m.occurred_on <= ?`
     )
     .all(fromYmd, toYmd) as { cuota: string }[];
   // Prepagos / pie are capital events, not the scheduled cuota — exclude via numericCuota.

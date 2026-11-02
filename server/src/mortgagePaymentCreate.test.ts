@@ -51,11 +51,12 @@ describe("mortgage payment create API layer", () => {
     expect(committed.mortgage_movement_id).toBeGreaterThan(0);
     expect(committed.property_movement_id).toBeGreaterThan(0);
 
-    // Both movements carry a depto_payments row; the mortgage one carries the flow kind column.
+    // Both movements carry a loan_payments row; the mortgage one carries the flow kind column.
     const paymentRows = db
-      .prepare(`SELECT movement_id, kind, origin FROM depto_payments WHERE cuota = ? ORDER BY kind`)
-      .all(testCuota) as { movement_id: number; kind: string; origin: string }[];
-    expect(paymentRows.map((r) => r.kind)).toEqual(["dividendos", "mortgage"]);
+      .prepare(`SELECT movement_id, leg, origin, loan_currency, payment_currency FROM loan_payments WHERE cuota = ? ORDER BY leg`)
+      .all(testCuota) as { movement_id: number; leg: string; origin: string; loan_currency: string; payment_currency: string }[];
+    expect(paymentRows.map((r) => r.leg)).toEqual(["loan", "property"]);
+    expect(paymentRows.every((r) => r.loan_currency === "uf" && r.payment_currency === "clp")).toBe(true);
     expect(paymentRows.every((r) => r.origin === "manual")).toBe(true);
     const mortgageFlowKind = db
       .prepare(`SELECT flow_kind FROM movements WHERE id = ?`)
@@ -70,12 +71,12 @@ describe("mortgage payment create API layer", () => {
       expect(propertyAfter.value_clp).not.toBe(propertyBefore.value_clp);
     }
 
-    // depto_payments rows cascade with the movements.
+    // loan_payments rows cascade with the movements.
     db.prepare(`DELETE FROM movements WHERE id IN (?, ?)`).run(
       committed.mortgage_movement_id,
       committed.property_movement_id
     );
-    const left = db.prepare(`SELECT COUNT(*) c FROM depto_payments WHERE cuota = ?`).get(testCuota) as {
+    const left = db.prepare(`SELECT COUNT(*) c FROM loan_payments WHERE cuota = ?`).get(testCuota) as {
       c: number;
     };
     expect(left.c).toBe(0);

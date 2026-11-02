@@ -1,5 +1,5 @@
 /**
- * Report-first repair of the mortgage cuota-mínima (min_uf) column in `depto_payments`.
+ * Report-first repair of the mortgage cuota-mínima (min_payment, UF) column in `loan_payments`.
  *
  * min_uf is the bank's scheduled French-amortization payment (interés + seguros + scheduled
  * amortización, EXCLUDING any prepago). It is a statement figure the app now takes as input
@@ -54,15 +54,15 @@ function fmt(n: number | null, dp = 4): string {
 }
 
 function main(): void {
-  // One representative row per (cuota, occurred_on) — the dividendos and mortgage rows carry
+  // One representative row per (cuota, occurred_on) — the property and loan legs carry
   // identical component values, so either one deduces the same min.
   const rows = db
     .prepare(
-      `SELECT p.cuota, m.occurred_on, p.min_uf, p.interes_clp, p.incendio_clp,
-              p.desgravamen_clp, p.amortizacion_clp
-         FROM depto_payments p
+      `SELECT p.cuota, m.occurred_on, p.min_payment AS min_uf, p.interest AS interes_clp, p.insurance_fire AS incendio_clp,
+              p.insurance_life AS desgravamen_clp, p.principal AS amortizacion_clp
+         FROM loan_payments p
          JOIN movements m ON m.id = p.movement_id
-        WHERE p.kind = 'dividendos'
+        WHERE p.leg = 'property' AND p.loan_currency = 'uf' AND p.payment_currency = 'clp'
         ORDER BY m.occurred_on, p.cuota`
     )
     .all() as Row[];
@@ -143,12 +143,12 @@ function main(): void {
     return;
   }
 
-  // Update BOTH the dividendos and mortgage depto_payments rows for each cuota/date, matching
+  // Update BOTH the property and loan loan_payments rows for each cuota/date, matching
   // recompute's write scope.
   const upd = db.prepare(
-    `UPDATE depto_payments SET min_uf = @min_uf
+    `UPDATE loan_payments SET min_payment = @min_uf
        WHERE movement_id IN (
-         SELECT p.movement_id FROM depto_payments p
+         SELECT p.movement_id FROM loan_payments p
            JOIN movements m ON m.id = p.movement_id
           WHERE p.cuota = @cuota AND m.occurred_on = @occurred_on
        )`
@@ -161,7 +161,7 @@ function main(): void {
     return n;
   });
   const changed = tx();
-  console.log(`Applied: updated ${changed} depto_payments row(s) across ${toWrite.length} cuota(s).\n`);
+  console.log(`Applied: updated ${changed} loan_payments row(s) across ${toWrite.length} cuota(s).\n`);
 }
 
 main();

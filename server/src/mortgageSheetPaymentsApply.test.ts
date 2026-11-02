@@ -2,9 +2,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { MortgageSheetPaymentRow, MortgageSheetPaymentsPayload } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import {
-  deptoPaymentColumnsFromPaymentRow,
   deptoPaymentHumanNote,
-  insertDeptoPaymentRow,
+  insertLoanPaymentRow,
+  loanPaymentColumnsFromPaymentRow,
+  upsertPropertyAppraisalUf,
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
 import { DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY, loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
@@ -29,22 +30,12 @@ function paymentRow(overrides: Partial<DeptoDividendosPaymentRow>): DeptoDividen
     cuota: "1",
     occurred_on: "1990-02-11",
     amount_clp: 0,
-    amount_uf: null,
-    uf_clp_day: null,
     credito_restante_uf: null,
-    valor_vivienda_uf: null,
-    valor_neto_uf: null,
-    valor_neto_clp: null,
-    pagado_neto_uf: null,
-    pago_acumulado_clp: null,
     min_uf: null,
     max_uf: null,
     amortizacion_clp: null,
-    amortizacion_uf: null,
     amortizacion_ext_clp: null,
-    amortizacion_ext_uf: null,
     interes_clp: null,
-    interes_uf: null,
     incendio_clp: null,
     desgravamen_clp: null,
     ...overrides,
@@ -161,41 +152,29 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
         cuota: "pie",
         occurred_on: "1990-01-10",
         amount_clp: 58_000_000,
-        amount_uf: 1450,
         credito_restante_uf: 3950,
-        valor_vivienda_uf: 5400,
-        valor_neto_uf: 1450,
-        valor_neto_clp: 58_000_000,
-        pago_acumulado_clp: 58_000_000,
       }),
       paymentRow({
         cuota: "1",
         occurred_on: "1990-02-11",
         amount_clp: 1_200_000,
-        amount_uf: 30,
         credito_restante_uf: 3000,
-        valor_vivienda_uf: 5400,
-        valor_neto_uf: 2400,
-        valor_neto_clp: 96_000_000,
-        pago_acumulado_clp: 59_200_000,
         amortizacion_clp: 558_400,
-        amortizacion_uf: 13.96,
         amortizacion_ext_clp: 0,
         interes_clp: 601_500,
-        interes_uf: 15.0375,
         incendio_clp: 20_050,
         desgravamen_clp: 20_050,
         min_uf: 30,
-        pagado_neto_uf: 1463.96,
       }),
     ];
     const insMov = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'clp', ?, ?, ?)`);
+    upsertPropertyAppraisalUf(propertyId, "1990-01-10", 5400);
     for (const r of rows) {
-      const prop = insMov.run(propertyId, r.amount_clp, r.occurred_on, deptoPaymentHumanNote("dividendos", r.cuota, false), null);
-      insertDeptoPaymentRow({ movement_id: Number(prop.lastInsertRowid), kind: "dividendos", origin: "import", ...deptoPaymentColumnsFromPaymentRow(r) });
+      const prop = insMov.run(propertyId, r.amount_clp, r.occurred_on, deptoPaymentHumanNote("property", r.cuota, false), null);
+      insertLoanPaymentRow({ movement_id: Number(prop.lastInsertRowid), loan_account_id: mortgageId, leg: "property", origin: "import", ...loanPaymentColumnsFromPaymentRow(r) });
       if (r.cuota !== "pie") {
-        const mort = insMov.run(mortgageId, r.amount_clp, r.occurred_on, deptoPaymentHumanNote("mortgage", r.cuota, false), "pago_cuota_hipotecario");
-        insertDeptoPaymentRow({ movement_id: Number(mort.lastInsertRowid), kind: "mortgage", origin: "import", ...deptoPaymentColumnsFromPaymentRow(r) });
+        const mort = insMov.run(mortgageId, r.amount_clp, r.occurred_on, deptoPaymentHumanNote("loan", r.cuota, false), "pago_cuota_hipotecario");
+        insertLoanPaymentRow({ movement_id: Number(mort.lastInsertRowid), loan_account_id: mortgageId, leg: "loan", origin: "import", ...loanPaymentColumnsFromPaymentRow(r) });
       }
     }
   });
@@ -226,7 +205,7 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
       ["3", "not_due", []],
     ]);
     expect(movementCount()).toBe(before);
-    expect((db.prepare(`SELECT max_uf FROM depto_payments WHERE cuota = '1' AND kind = 'mortgage'`).get() as { max_uf: number | null }).max_uf).toBeNull();
+    expect((db.prepare(`SELECT max_payment FROM loan_payments WHERE cuota = '1' AND leg = 'loan'`).get() as { max_payment: number | null }).max_payment).toBeNull();
     // The memoized ledger must not keep the rolled-back row or the rolled-back max_uf fill.
     const ledger = loadDeptoLedgerFromMovements();
     expect(ledger.map((x) => x.cuota)).toEqual(["pie", "1"]);
@@ -285,7 +264,7 @@ describe("applyMortgageSheetPayments (synthetic depto)", () => {
     const mov = db.prepare(`SELECT note, flow_kind FROM movements WHERE id = ?`).get(written.mortgage_movement_id) as { note: string; flow_kind: string };
     expect(mov.note).toBe("Pago hipoteca — cuota 2");
     expect(mov.flow_kind).toBe("pago_cuota_hipotecario");
-    expect((db.prepare(`SELECT origin FROM depto_payments WHERE movement_id = ?`).get(written.mortgage_movement_id) as { origin: string }).origin).toBe("import");
+    expect((db.prepare(`SELECT origin FROM loan_payments WHERE movement_id = ?`).get(written.mortgage_movement_id) as { origin: string }).origin).toBe("import");
     expect(ledger.find((x) => x.cuota === "1")!.max_uf).toBe(80.5);
 
     const again = applyMortgageSheetPayments(payload([PIE, CUOTA_1, CUOTA_2, CUOTA_3_FUTURE], true));
