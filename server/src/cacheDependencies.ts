@@ -9,7 +9,15 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * (`shouldUseLiveEquityQuote`, `equityHeldSessionQuote`, `getLatestLiveEquityQuoteRow`) or the
  * live dollar (`shouldUseLiveFxQuote`, `getLatestLiveFxQuoteRow`, the observado window average).
  * A gate reports even when it decides against the live row: an aggregate built before the open
- * read the stored close, and must go when the first tick of the session moves the price.
+ * read the stored close, and must go when the first tick of the session moves the price. The
+ * same holds for every switch decided by the clock or the sync state (a session, a publish
+ * hour, a holiday hold, a settled cuota): it reports what it would read whatever it decides —
+ * the Risky Norris proxy gate did not, and the APV accounts read the pre-open cuota all session
+ * (2026-11-02).
+ *
+ * The dashboard's sync dimming (`stale_dimming`) is an input of its own: it turns at a publish
+ * hour without any price moving, so its readers report `noteSyncDimmingRead` and a change of the
+ * dimmed set drops them (`syncDimmingWatch.ts`).
  *
  * Each cache entry (and each live-tier memo) builds inside its own node; a lookup links the
  * entry's node into the node of whatever is being built around it, hit or miss, so an aggregate
@@ -21,16 +29,17 @@ import { AsyncLocalStorage } from "node:async_hooks";
 export type CacheDepNode = {
   tickers: Set<string>;
   fx: boolean;
+  syncDimming: boolean;
   children: Set<CacheDepNode>;
 };
 
 /** What a live-quote poll moved: tickers as stored (upper case) and whether the dollar moved. */
-export type LiveQuoteMoves = { tickers: ReadonlySet<string>; fx: boolean };
+export type LiveQuoteMoves = { tickers: ReadonlySet<string>; fx: boolean; syncDimming?: boolean };
 
 const storage = new AsyncLocalStorage<CacheDepNode>();
 
 export function newCacheDepNode(): CacheDepNode {
-  return { tickers: new Set(), fx: false, children: new Set() };
+  return { tickers: new Set(), fx: false, syncDimming: false, children: new Set() };
 }
 
 /** Run `fn` with `node` collecting the live inputs it reads (async continuations included). */
@@ -51,6 +60,12 @@ export function noteLiveTickerRead(ticker: string): void {
 export function noteLiveFxRead(): void {
   const node = storage.getStore();
   if (node) node.fx = true;
+}
+
+/** The build read which accounts the dashboard dims (`syncStatusPayload().stale_dimming`). */
+export function noteSyncDimmingRead(): void {
+  const node = storage.getStore();
+  if (node) node.syncDimming = true;
 }
 
 /** Whether `node` (or anything linked under it) read an input `moves` changed. */
@@ -94,11 +109,16 @@ export function cacheDepNodeAffected(
 
 function directlyAffected(node: CacheDepNode, moves: LiveQuoteMoves): boolean {
   if (moves.fx && node.fx) return true;
+  if (moves.syncDimming && node.syncDimming) return true;
   for (const t of node.tickers) if (moves.tickers.has(t)) return true;
   return false;
 }
 
-const EVERY_LIVE_INPUT: LiveQuoteMoves = { tickers: { has: () => true } as unknown as ReadonlySet<string>, fx: true };
+const EVERY_LIVE_INPUT: LiveQuoteMoves = {
+  tickers: { has: () => true } as unknown as ReadonlySet<string>,
+  fx: true,
+  syncDimming: true,
+};
 
 /** Whether `node` (or anything linked under it) read any live input at all. */
 export function cacheDepNodeReadsLiveInput(node: CacheDepNode): boolean {

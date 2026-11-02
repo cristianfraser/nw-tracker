@@ -1,25 +1,35 @@
+import fs from "node:fs";
 import path from "node:path";
 import { cartolaPdfIndicatesSinMovimientos } from "./cartolaSinMovimientos.js";
 import { db } from "./db.js";
 import type { ImportSyncDocumentKind } from "./importSyncDocumentCoverage.js";
 import {
   loadCartolaParsedPdfJsonEntries,
+  resolveCartolaParsedPdfJsonPath,
   type CartolaParsedPdfJsonEntry,
 } from "./importSyncDocumentFilePath.js";
 
+/** Keyed by the file's identity on disk, so a re-parse shows without a restart. */
 const parsedJsonCache = new Map<
   ImportSyncDocumentKind,
-  CartolaParsedPdfJsonEntry[]
+  { stamp: string; rows: CartolaParsedPdfJsonEntry[] }
 >();
 
 function cachedParsedJsonEntries(
   kind: ImportSyncDocumentKind
 ): CartolaParsedPdfJsonEntry[] {
-  let rows = parsedJsonCache.get(kind);
-  if (!rows) {
-    rows = loadCartolaParsedPdfJsonEntries(kind);
-    parsedJsonCache.set(kind, rows);
+  const jsonPath = resolveCartolaParsedPdfJsonPath(kind);
+  let stamp = "missing";
+  try {
+    const stat = fs.statSync(jsonPath);
+    stamp = `${stat.ino}|${stat.mtimeMs}|${stat.size}`;
+  } catch {
+    // No parse output yet: the loader answers [] for a missing file.
   }
+  const hit = parsedJsonCache.get(kind);
+  if (hit?.stamp === stamp) return hit.rows;
+  const rows = loadCartolaParsedPdfJsonEntries(kind);
+  parsedJsonCache.set(kind, { stamp, rows });
   return rows;
 }
 

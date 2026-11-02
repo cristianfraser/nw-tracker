@@ -1,4 +1,5 @@
 import { markJsonResponseCacheable } from "./jsonResponse.js";
+import { noteSyncDimmingRead } from "./cacheDependencies.js";
 import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached, invalidateDashboardPageBundle } from "./aggregationCache.js";
 import { chainedGroupPctResolver, fillBlankAccountRowPcts } from "./blankPctDailyChain.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
@@ -39,8 +40,8 @@ import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { buildNavCardMetricsBySlug } from "./dashboardNavCardMetrics.js";
 import { buildNavValueMapPayload } from "./navValueMap.js";
 import { getLiabilitiesNavRootNode, getNetWorthNavGroupNode } from "./navTree.js";
-import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { navContextScope, valueMapSubtree } from "./navContextScope.js";
+import { getDashboardLayoutCards } from "./dashboardLayout.js";
 import { withAccountValuationTsCache } from "./accountPerformanceContext.js";
 import {
   leafPortfolioGroupSlugByAccountIds,
@@ -314,7 +315,9 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
   // the expected cuota yet, our poll is current) dims its accounts only once the cuota is overdue —
   // from 18:00 Chile until it lands — never before, when the display holds all the publisher has.
   // Read by the list, not the cached rows: a source's status is not a live-quote input, so a row
-  // can outlive it; the list goes whenever any row does (as the one entry of all rows did).
+  // can outlive it. The list reports the read, and a change of the dimmed set drops it
+  // (`syncDimmingWatch.ts`); before that it went only when some row did.
+  noteSyncDimmingRead();
   const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale_dimming);
   return ctx.accounts.map((a) => {
     const row = pageBundleCachedSync(`account_row|${a.id}|${unitKey(includeUsd)}`, () =>
@@ -640,14 +643,14 @@ export function buildDashboardNavContext(
 
 async function buildDashboardNavContextInner(includeUsd: boolean, rootSlug: string) {
   const nav = await timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(includeUsd));
-  return {
-    accounts: nav.accounts.filter((a) => scope.accountIds.has(a.account_id)),
-    liabilities_breakdown: nav.liabilities_breakdown,
   const navRoot = getNetWorthNavGroupNode();
   if (!navRoot) throw new Error("nav-context: net_worth nav tree missing");
   const liabilitiesRoot = getLiabilitiesNavRootNode();
   if (!liabilitiesRoot) throw new Error("nav-context: liabilities nav tree missing");
   const scope = navContextScope(rootSlug, [liabilitiesRoot, navRoot], liabilitiesRoot);
+  return {
+    accounts: nav.accounts.filter((a) => scope.accountIds.has(a.account_id)),
+    liabilities_breakdown: nav.liabilities_breakdown,
     dashboard_layout: nav.dashboard_layout,
     nw_bucket_totals: nav.nw_bucket_totals,
     card_metrics_by_slug: Object.fromEntries(

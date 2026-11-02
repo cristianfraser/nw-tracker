@@ -68,6 +68,7 @@ import {
 } from "./syncRunLog.js";
 import {
   loadGlobalSyncState,
+  fintualValuationStateFingerprint,
   saveGlobalSyncState,
   type GlobalSyncStateFile,
 } from "./globalSyncState.js";
@@ -1280,6 +1281,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
   /** Sources stale when the run started (log must not re-check after updates). */
   let staleAtStart: GlobalSyncSource[] = [];
   let state: GlobalSyncStateFile | null = null;
+  let fintualStateAtStart: string | null = null;
   let officialSerieCheckedThisRun = false;
   let cl = chileWallClockNow();
 
@@ -1287,6 +1289,7 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
     loadRootDotenv();
     cl = chileWallClockNow();
     state = loadGlobalSyncState();
+    fintualStateAtStart = fintualValuationStateFingerprint(state);
     stale = staleSyncSources(cl, state, { force: FORCE, forceSbif: FORCE_SBIF });
     staleAtStart = [...stale];
     console.log(
@@ -1388,6 +1391,18 @@ export async function runGlobalSyncAll(opts?: { dryRun?: boolean }): Promise<num
       errors: stepErrors,
     });
     if (!syncDryRun && state) saveGlobalSyncState(state);
+    // A Fintual poll can move what the APV / Reserva values read (settled, applied, goals NAV)
+    // without writing a row: the bar landed earlier, or the NAV matched the DB. Dropped after the
+    // save, so the rebuild reads the new state.
+    if (
+      !syncDryRun &&
+      state &&
+      syncChanges.length === 0 &&
+      fintualStateAtStart != null &&
+      fintualValuationStateFingerprint(state) !== fintualStateAtStart
+    ) {
+      invalidateMarketDataAggregations();
+    }
     if (stepErrors.length > 0) {
       console.log(`sync:all — done with ${stepErrors.length} error(s).`);
       return 1;
