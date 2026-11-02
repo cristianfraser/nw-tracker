@@ -2,11 +2,25 @@ import NumberFlow, { type NumberFlowElement } from "@number-flow/react";
 import {
   forwardRef,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   type ComponentPropsWithoutRef,
   type ReactNode,
 } from "react";
 import type { NUMBER_FLOW_INT_FORMAT } from "../../format";
+import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { NUMBER_CHANGE_FLASH_ENABLED } from "../../numberChangeEffect";
+import styles from "./AnimatedNumberFlow.module.css";
+
+/** How a change shows: `dip` (opacity, for figures coloured by sign already) or `cell` (green/red background). */
+export type NumberChangeEffect = "dip" | "cell";
+
+/** Restarts the flash on the wrapper: a change before the last one finished starts it over. */
+function flash(el: HTMLElement, effect: NumberChangeEffect, up: boolean): void {
+  el.classList.remove(styles.flashDip!, styles.flashUp!, styles.flashDown!);
+  void el.offsetWidth;
+  el.classList.add(effect === "dip" ? styles.flashDip! : up ? styles.flashUp! : styles.flashDown!);
+}
 
 const DEFAULT_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
 const DEFAULT_DIGIT_DURATION_MS = 320;
@@ -41,6 +55,12 @@ export type AnimatedNumberFlowProps = NumberFlowPassthrough & {
   className?: string;
   wrapClassName?: string;
   emptyFallback?: ReactNode;
+  /**
+   * Flash instead of rolling when the value changes in the same display unit after a settled
+   * render (`numberChangeEffect.ts`). A unit switch, or a render that was a dimmed placeholder
+   * (`.is-loading` around it), keeps `animated`.
+   */
+  changeEffect?: NumberChangeEffect;
 };
 
 export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFlowProps>(
@@ -54,12 +74,37 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
       emptyFallback,
       transformTiming,
       spinTiming,
+      changeEffect,
       ...rest
     },
     ref
   ) {
     const hostRef = useRef<NumberFlowElement | null>(null);
     useImperativeHandle(ref, () => hostRef.current as NumberFlowElement);
+    const wrapRef = useRef<HTMLSpanElement | null>(null);
+    const { displayUnit } = useDisplayPreferences();
+    const last = useRef<{ shown: string; value: number; unit: string; settled: boolean } | null>(null);
+
+    const flow = value == null ? null : mapDisplayValue(value);
+    const shown = flow ? `${flow.prefix ?? ""}|${flow.value}|${flow.suffix ?? ""}` : "";
+    const prev = last.current;
+    const flashChange =
+      changeEffect != null &&
+      NUMBER_CHANGE_FLASH_ENABLED &&
+      flow != null &&
+      value != null &&
+      prev != null &&
+      prev.settled &&
+      prev.unit === displayUnit &&
+      prev.shown !== shown;
+
+    useLayoutEffect(() => {
+      const wrap = wrapRef.current;
+      if (flashChange && wrap && changeEffect && prev && value != null) flash(wrap, changeEffect, value > prev.value);
+      if (value != null) {
+        last.current = { shown, value, unit: displayUnit, settled: wrap != null && wrap.closest(".is-loading") == null };
+      }
+    });
 
     const resolvedTransform = transformTiming ?? {
       duration: DEFAULT_DIGIT_DURATION_MS,
@@ -67,20 +112,18 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
     };
     const resolvedSpin = spinTiming ?? { duration: DEFAULT_DIGIT_DURATION_MS, easing: DEFAULT_EASING };
 
-    if (value == null) {
+    if (flow == null) {
       if (emptyFallback != null) return <>{emptyFallback}</>;
       return null;
     }
 
-    const flow = mapDisplayValue(value);
-
     return (
-      <span className={wrapClassName}>
+      <span ref={wrapRef} className={wrapClassName}>
         <NumberFlow
           ref={hostRef}
           className={className}
           value={flow.value}
-          animated={animated}
+          animated={flashChange ? false : animated}
           locales={flow.locales}
           format={flow.format}
           prefix={flow.prefix}
