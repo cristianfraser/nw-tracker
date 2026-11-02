@@ -63,7 +63,7 @@ export function CreditCardUnclassifiedExpensesTable({
     <PageGridTile id="unclassified">
       <h3>
         {t("expenses.creditCard.unclassifiedTableTitle")}
-        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
           {unclassifiedGastos.length}
         </span>
       </h3>
@@ -77,7 +77,7 @@ export function CreditCardUnclassifiedExpensesTable({
           >
             {t("table.paginationPrev")}
           </Button>
-          <label className="muted" style={{ fontSize: "0.9rem" }}>
+          <label className="muted" style={{ fontSize: "var(--font-size-ui)" }}>
             {t("table.paginationPageAria")}
             <select
               value={currentPageIndex}

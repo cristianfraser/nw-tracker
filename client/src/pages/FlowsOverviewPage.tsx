@@ -196,7 +196,7 @@ export function FlowsOverviewPage() {
         </div>
         <p
           className={loadableClass(loading, "muted")}
-          style={{ fontSize: "0.85rem", margin: 0 }}
+          style={{ fontSize: "var(--font-size-prose)", margin: 0 }}
         >
           {t("flows.overview.totalsLabel")}{" "}
           {COLUMNS.map((c, i) => (
@@ -209,7 +209,7 @@ export function FlowsOverviewPage() {
           ))}
         </p>
         {timeRange !== "total" ? (
-          <p className={loadableClass(loading, "muted")} style={{ fontSize: "0.8rem", margin: 0 }}>
+          <p className={loadableClass(loading, "muted")} style={{ fontSize: "var(--font-size-prose-sm)", margin: 0 }}>
             {t("flows.rangeTotalLabel")}:{" "}
             {COLUMNS.map((c, i) => (
               <span key={c.id}>
@@ -238,7 +238,7 @@ export function FlowsOverviewPage() {
               </thead>
             }
             tableClassName="table--parallel-mobile"
-            tableStyle={{ fontSize: "0.85rem" }}
+            tableStyle={{ fontSize: "var(--font-size-prose)" }}
           >
             {pageRows.map((row) => {
               const period = flowPeriodLabel(row.period_month, tableGranularity);

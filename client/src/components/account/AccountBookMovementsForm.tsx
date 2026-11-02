@@ -117,12 +117,12 @@ export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
       <legend className="flow-section-title">
         {t("accountDetail.bookLedger.movementTitle")}
       </legend>
-      <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+      <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
         {t("accountDetail.bookLedger.movementHint")}
       </p>
 
       {movements.length === 0 ? (
-        <p className="muted" style={{ fontSize: "0.85rem" }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)" }}>
           {t("accountDetail.bookLedger.movementEmptyDraft")}
         </p>
       ) : (
@@ -228,7 +228,7 @@ export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
 
       {formError ? <p className="error" style={{ margin: 0 }}>{formError}</p> : null}
       {lastSavedCount != null ? (
-        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
           {t("accountDetail.bookLedger.movementSaved", { count: lastSavedCount })}
         </p>
       ) : null}

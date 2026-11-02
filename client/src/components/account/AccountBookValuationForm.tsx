@@ -70,7 +70,7 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
       <legend className="flow-section-title">
         {t("accountDetail.bookLedger.valuationTitle")}
       </legend>
-      <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+      <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
         {t("accountDetail.bookLedger.valuationHint")}
       </p>
 
@@ -103,14 +103,14 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
 
       {formError ? <p className="error" style={{ margin: 0 }}>{formError}</p> : null}
       {saved ? (
-        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
           {t("accountDetail.bookLedger.valuationSaved")}
         </p>
       ) : null}
 
       {recentRows.length > 0 ? (
         <>
-          <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+          <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
             {t("accountDetail.bookLedger.recentValuations")}
           </p>
           <Table

@@ -43,7 +43,7 @@ export function IncomeExcludedLinesTable({
 
   return (
     <>
-      <table className={loadableClass(loading, "data-table")} style={{ fontSize: "0.85rem" }}>
+      <table className={loadableClass(loading, "data-table")} style={{ fontSize: "var(--font-size-prose)" }}>
         <thead>
           <tr>
             <th>{t("income.colDate")}</th>

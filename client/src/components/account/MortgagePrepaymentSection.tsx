@@ -93,7 +93,7 @@ export function MortgagePrepaymentSection({
     <PageGridTile id="mortgage-prepayments" className={loadableClass(loading)} aria-busy={loading || undefined}>
       <div className="chart-panel-title-row">
         <h2>{t("accountDetail.prepayments.title")}</h2>
-        <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem" }}>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "var(--font-size-prose)" }}>
           <span className="muted">{t("accountDetail.prepayments.compareWith")}</span>
           <select value={selected} onChange={(e) => setBenchmark(e.target.value)}>
             <BenchmarkSelectOptions t={t} options={options} />
@@ -101,12 +101,12 @@ export function MortgagePrepaymentSection({
         </label>
       </div>
       {mortgage ? (
-        <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", marginTop: 0 }}>
           {t("accountDetail.prepayments.hint", { mortgage: benchmarkOptionLabel(t, mortgage) })}
         </p>
       ) : null}
       {totals && data && totals.covered_payments < data.rows.length && totals.covered_from ? (
-        <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", marginTop: 0 }}>
           {t("accountDetail.prepayments.coveredFrom", {
             date: totals.covered_from,
             covered: totals.covered_payments,
@@ -117,7 +117,7 @@ export function MortgagePrepaymentSection({
       {totals ? (
         <Table
           tableClassName="table--parallel-mobile"
-          tableStyle={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}
+          tableStyle={{ fontSize: "var(--font-size-prose)", marginBottom: "0.75rem" }}
           header={
             <thead>
               <tr>
@@ -182,7 +182,7 @@ export function MortgagePrepaymentSection({
       <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage}>
         <Table
           tableClassName="table--parallel-mobile"
-          tableStyle={{ fontSize: "0.85rem" }}
+          tableStyle={{ fontSize: "var(--font-size-prose)" }}
           header={
             <thead>
               <tr>

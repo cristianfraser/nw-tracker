@@ -243,7 +243,7 @@ export function ExpensesPage() {
             )}
             <span
               className={loadableClass(gastosLoading, "muted mono")}
-              style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}
+              style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}
             >
               {formatFlowMoney(view?.total ?? 0, displayUnit)}
               {view && view.total_real !== view.total ? (

@@ -97,7 +97,7 @@ export function AccountBrokerageMovementsForm({
         </p>
       ) : null}
       {lastSavedCount != null ? (
-        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
           {t("accountDetail.brokerageMovements.saveSuccess", { count: lastSavedCount })}
         </p>
       ) : null}

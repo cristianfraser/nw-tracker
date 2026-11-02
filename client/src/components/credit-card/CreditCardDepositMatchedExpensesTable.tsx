@@ -66,7 +66,7 @@ export function CreditCardDepositMatchedExpensesTable({
     <PageGridTile id="deposit-matched">
       <h3>
         {t("expenses.creditCard.depositMatchedTableTitle")}
-        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
           {depositMatched.length}
         </span>
       </h3>
@@ -80,7 +80,7 @@ export function CreditCardDepositMatchedExpensesTable({
           >
             {t("table.paginationPrev")}
           </Button>
-          <label className="muted" style={{ fontSize: "0.9rem" }}>
+          <label className="muted" style={{ fontSize: "var(--font-size-ui)" }}>
             {t("table.paginationPageAria")}
             <select
               value={currentPageIndex}

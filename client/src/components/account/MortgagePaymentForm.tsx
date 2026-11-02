@@ -255,7 +255,7 @@ export function MortgagePaymentForm({
             disabled={useAmortExtOverride}
             placeholder={formatNumberInput(11.0333)}
           />
-          <span className="muted" style={{ fontSize: "0.8rem" }}>
+          <span className="muted" style={{ fontSize: "var(--font-size-prose-sm)" }}>
             {t("accountDetail.mortgagePayment.minUfHint")}
           </span>
         </Field>
@@ -266,7 +266,7 @@ export function MortgagePaymentForm({
             inputMode="decimal"
             placeholder={formatNumberInput(1780.0001)}
           />
-          <span className="muted" style={{ fontSize: "0.8rem" }}>
+          <span className="muted" style={{ fontSize: "var(--font-size-prose-sm)" }}>
             {t("accountDetail.mortgagePayment.creditoRestanteUfHint")}
           </span>
         </Field>
@@ -284,7 +284,7 @@ export function MortgagePaymentForm({
               inputMode="numeric"
               disabled={!useDesgravamenOverride}
             />
-            <label style={{ fontSize: "0.85rem" }}>
+            <label style={{ fontSize: "var(--font-size-prose)" }}>
               <input
                 type="checkbox"
                 checked={useDesgravamenOverride}
@@ -303,7 +303,7 @@ export function MortgagePaymentForm({
               inputMode="numeric"
               disabled={!useAmortExtOverride}
             />
-            <label style={{ fontSize: "0.85rem" }}>
+            <label style={{ fontSize: "var(--font-size-prose)" }}>
               <input
                 type="checkbox"
                 checked={useAmortExtOverride}
@@ -350,7 +350,7 @@ export function MortgagePaymentForm({
             </div>
             {preview.credito_restante_used_override &&
             preview.credito_restante_derived_uf !== preview.sheet.credito_restante_uf ? (
-              <div className="muted" style={{ fontSize: "0.75rem" }}>
+              <div className="muted" style={{ fontSize: "var(--font-size-card-label)" }}>
                 {t("accountDetail.mortgagePayment.previewCreditoDerived", {
                   value: formatUfUnitsFine(preview.credito_restante_derived_uf),
                 })}
@@ -389,7 +389,7 @@ export function MortgagePaymentForm({
         </p>
       ) : null}
       {saved ? (
-        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
           {t("accountDetail.mortgagePayment.saveSuccess")}
         </p>
       ) : null}

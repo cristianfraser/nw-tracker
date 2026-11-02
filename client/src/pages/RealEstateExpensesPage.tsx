@@ -234,7 +234,7 @@ export function RealEstateExpensesPage() {
       <PageGridTile id="places" className="page-grid">
         <h3>
           {t("expenses.groups.real_estate")}
-          <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
             {formatClp(groupTotal)}
           </span>
           {!accountSlug ? (
@@ -249,7 +249,7 @@ export function RealEstateExpensesPage() {
           <PageGridTile key={acc.account_slug} id={`place-${acc.account_slug}`}>
             <h4>
               {acc.label}
-              <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+              <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
                 {formatClp(acc.total_clp)}
               </span>
               <Button variant="secondary"
@@ -259,7 +259,7 @@ export function RealEstateExpensesPage() {
               </Button>
             </h4>
             <Table
-              tableStyle={{ fontSize: "0.85rem" }}
+              tableStyle={{ fontSize: "var(--font-size-prose)" }}
               header={
                 <thead>
                   <tr>
@@ -335,7 +335,7 @@ export function RealEstateExpensesPage() {
                             {t("common.cancel")}
                           </Button>
                           {editingBillMonth.error ? (
-                            <span className="error" style={{ fontSize: "0.75rem" }}>
+                            <span className="error" style={{ fontSize: "var(--font-size-card-label)" }}>
                               {editingBillMonth.error}
                             </span>
                           ) : null}
@@ -360,7 +360,7 @@ export function RealEstateExpensesPage() {
                         slot.bill_month
                       )}
                       {slot.months_covered > 1 ? (
-                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                        <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
                           {t("expenses.realEstate.coversHint", {
                             from: formatYearMonthLabel(slot.covers_from),
                             to: formatYearMonthLabel(slot.bill_month),
@@ -368,7 +368,7 @@ export function RealEstateExpensesPage() {
                         </span>
                       ) : null}
                       {paidDateForSlot(slot) ? (
-                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                        <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
                           {t("expenses.realEstate.paidOnHint", { date: paidDateForSlot(slot) })}
                         </span>
                       ) : null}
@@ -377,7 +377,7 @@ export function RealEstateExpensesPage() {
                     <td className="mono">
                       {formatAmountCell(slot)}
                       {slot.mortgage_parts ? (
-                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                        <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
                           {t("expenses.realEstate.mortgagePartsHint", {
                             amortization: formatClp(slot.mortgage_parts.amortization_clp),
                             extra: formatClp(slot.mortgage_parts.extra_amortization_clp),
@@ -388,7 +388,7 @@ export function RealEstateExpensesPage() {
                       {slot.link &&
                       slot.expected_amount_clp > 0 &&
                       slot.link.amount_clp !== slot.expected_amount_clp ? (
-                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                        <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
                           {t("expenses.realEstate.expectedHint", {
                             amount: formatClp(slot.expected_amount_clp),
                           })}
@@ -434,14 +434,14 @@ export function RealEstateExpensesPage() {
                             {t("common.cancel")}
                           </Button>
                           {editing.error ? (
-                            <span className="error" style={{ fontSize: "0.75rem" }}>
+                            <span className="error" style={{ fontSize: "var(--font-size-card-label)" }}>
                               {editing.error}
                             </span>
                           ) : null}
                         </span>
                       ) : (
                         consumptionLabel(slot) && (
-                          <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                          <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
                             {consumptionLabel(slot)}
                           </span>
                         )
@@ -454,7 +454,7 @@ export function RealEstateExpensesPage() {
                       {slot.kind === "kwh" ? "—" : linkedPurchaseLabel(slot, t)}
                       {slot.broken_link ? (
                         <span
-                          style={{ display: "block", fontSize: "0.75rem", color: "var(--negative)" }}
+                          style={{ display: "block", fontSize: "var(--font-size-card-label)", color: "var(--negative)" }}
                           title={slot.broken_link.purchase_key}
                         >
                           {slot.broken_link.problem === "missing_purchase"
@@ -463,7 +463,7 @@ export function RealEstateExpensesPage() {
                         </span>
                       ) : null}
                       {slot.link ? (
-                        <span className="muted" style={{ display: "block", fontSize: "0.75rem" }}>
+                        <span className="muted" style={{ display: "block", fontSize: "var(--font-size-card-label)" }}>
                           {slot.link.link_source === "auto"
                             ? t("expenses.realEstate.linkSourceAuto")
                             : t("expenses.realEstate.linkSourceManual")}

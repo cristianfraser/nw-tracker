@@ -86,7 +86,7 @@ export function DepositsPage() {
   return (
     <>
       <h2 className="flow-section-title">{t("sidebar.flowsDeposits")}</h2>
-      <p style={{ fontSize: "0.85rem" }}>
+      <p style={{ fontSize: "var(--font-size-prose)" }}>
         <Link to="reconciliation">{t("depositsReconciliation.title")}</Link>
       </p>
 
@@ -95,7 +95,7 @@ export function DepositsPage() {
         <span className="mono" style={{ color: "var(--text)" }}>
           {formatFlowMoney(total, displayUnit)}
         </span>
-        <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}>
+        <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "var(--font-size-prose)" }}>
           ({t("flows.overview.deposits")}{" "}
           <span className="mono">{formatFlowMoney(postTaxTotal, displayUnit)}</span>
           {" · "}
@@ -103,7 +103,7 @@ export function DepositsPage() {
           <span className="mono">{formatFlowMoney(preTaxTotal, displayUnit)}</span>)
         </span>
         {timeRange !== "total" ? (
-          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}>
+          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "var(--font-size-prose)" }}>
             · {t("flows.rangeTotalLabel")}{" "}
             <span className="mono">{formatFlowMoney(rangeTotal, displayUnit)}</span>
           </span>
@@ -131,12 +131,12 @@ export function DepositsPage() {
           <PageGridTile key={cat} id={`deposits-${cat}`}>
             <h3>
               {depositFlowCategoryLabel(cat)}
-              <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+              <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
                 {formatFlowMoney(blockTotal, displayUnit)}
               </span>
             </h3>
             <Table
-              tableStyle={{ fontSize: "0.85rem" }}
+              tableStyle={{ fontSize: "var(--font-size-prose)" }}
               collapsedVisibleRows={15}
               showMoreLabel={t("notifications.showMore")}
               showLessLabel={t("table.showLess")}
@@ -171,7 +171,7 @@ export function DepositsPage() {
                       <td>
                         <Link to={`/account/${r.account_id}`}>{r.account_name}</Link>
                         {r.mortgage_carrying ? (
-                          <span className="muted" style={{ marginLeft: "0.4rem", fontSize: "0.8rem" }}>
+                          <span className="muted" style={{ marginLeft: "0.4rem", fontSize: "var(--font-size-prose-sm)" }}>
                             {t("deposits.mortgageCarryingTag")}
                           </span>
                         ) : null}

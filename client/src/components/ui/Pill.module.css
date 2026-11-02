@@ -12,18 +12,18 @@
 }
 
 .default {
-  font-size: 0.75rem;
+  font-size: var(--font-size-card-label);
   padding: 1px 6px;
 }
 
 .small {
-  font-size: 0.65rem;
+  font-size: var(--font-size-card-meta-sm);
   padding: 1px 4px;
   line-height: 12px;
 }
 
 .icon {
-  font-size: 0.7rem;
+  font-size: var(--font-size-card-meta);
   padding: 1px 4px;
   line-height: 12px;
 }

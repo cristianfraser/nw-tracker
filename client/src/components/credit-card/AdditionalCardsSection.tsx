@@ -86,7 +86,7 @@ export function AdditionalCardsSection({
       <div className="chart-panel-title-row">
         <h3>
           {t("expenses.additionalCards.title")}
-          <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
             {t("expenses.additionalCards.balanceLabel")}{" "}
             {formatFlowMoney(
               pick(
@@ -105,12 +105,12 @@ export function AdditionalCardsSection({
           periodOptions={["month", "year"]}
         />
       </div>
-      <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
+      <p className="muted" style={{ fontSize: "var(--font-size-prose)", marginTop: 0 }}>
         {t("expenses.additionalCards.hint")}
       </p>
       <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
         <Table
-          tableStyle={{ fontSize: "0.85rem" }}
+          tableStyle={{ fontSize: "var(--font-size-prose)" }}
           header={
             <thead>
               <tr>

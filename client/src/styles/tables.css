@@ -13,7 +13,7 @@
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.875rem;
+  font-size: var(--font-size-prose);
 }
 
 th,
@@ -26,7 +26,7 @@ td {
 th {
   color: var(--muted);
   font-weight: 500;
-  font-size: 0.75rem;
+  font-size: var(--font-size-card-label);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -47,7 +47,7 @@ th.table-th--sort-desc {
 }
 
 .table-sort-indicator {
-  font-size: 0.65rem;
+  font-size: var(--font-size-card-meta-sm);
   opacity: 0.85;
 }
 
@@ -81,7 +81,7 @@ tr:hover td {
 }
 
 .table--accounts-summary th {
-  font-size: 0.68rem;
+  font-size: var(--font-size-card-meta-sm);
 }
 
 /* Center the ▲/▼ against the digits (baseline-aligned reads bottom-heavy at this size). */
@@ -167,7 +167,7 @@ tr:hover td {
 
 .table--parallel-mobile .table-mobile-card__title {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.95rem;
+  font-size: var(--font-size-value-secondary);
   font-weight: 500;
   color: var(--text);
   margin-bottom: 0.55rem;
@@ -203,7 +203,7 @@ tr:hover td {
   flex: 1 1 auto;
   min-width: 0;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--font-size-caption);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -211,7 +211,7 @@ tr:hover td {
 .table--parallel-mobile .table-mobile-card__value {
   flex: 0 0 auto;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.85rem;
+  font-size: var(--font-size-prose);
   text-align: right;
   white-space: nowrap;
 }
@@ -302,7 +302,7 @@ tr:hover td {
 
 .table--parallel-mobile .table-mobile-card__note-text {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: var(--font-size-table);
   color: var(--muted);
   word-break: break-word;
   white-space: pre-wrap;
@@ -311,7 +311,7 @@ tr:hover td {
 .table--parallel-mobile .table-mobile-card__section ul {
   margin: 0.15rem 0 0;
   padding-left: 1.1rem;
-  font-size: 0.82rem;
+  font-size: var(--font-size-table);
 }
 
 /* Accounts summary: the page's «Total» first row and the opened «Liquidadas» rows. */

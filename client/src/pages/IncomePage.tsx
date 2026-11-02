@@ -106,7 +106,7 @@ export function IncomePage() {
           {formatFlowMoney(aggregates?.total ?? 0, displayUnit)}
         </span>
         {timeRange !== "total" ? (
-          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "0.85rem" }}>
+          <span className="muted" style={{ marginLeft: "0.5rem", fontSize: "var(--font-size-prose)" }}>
             · {t("flows.rangeTotalLabel")}{" "}
             <span className="mono">{formatFlowMoney(rangeTotal, displayUnit)}</span>
           </span>
@@ -164,7 +164,7 @@ export function IncomePage() {
         <h3>
           {t("income.sectionRefunds")}
         </h3>
-        <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", marginTop: 0 }}>
           {t("income.refundsHint")}
         </p>
         <IncomeRefundLinesTable rows={data?.refund_lines ?? []} displayUnit={displayUnit} loading={loading} />

@@ -28,7 +28,7 @@ export class AppErrorBoundary extends Component<Props, State> {
       <div role="alert" style={{ maxWidth: 560, margin: "4rem auto", padding: "0 1rem" }}>
         <h1>{i18n.t("app.errorBoundary.title")}</h1>
         <p>{i18n.t("app.errorBoundary.body")}</p>
-        <p style={{ color: "var(--text-muted, #888)", fontSize: "0.85rem" }}>
+        <p style={{ color: "var(--text-muted, #888)", fontSize: "var(--font-size-prose)" }}>
           {i18n.t("app.errorBoundary.detailLabel")}: {error.message}
         </p>
         <Button variant="secondary" onClick={() => window.location.reload()}>

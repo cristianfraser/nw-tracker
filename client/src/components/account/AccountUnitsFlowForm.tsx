@@ -120,12 +120,12 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
       <legend className="flow-section-title">
         {t("accountDetail.unitsFlow.title")}
       </legend>
-      <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+      <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
         {t("accountDetail.unitsFlow.hint", { unit: unitLabel })}
       </p>
 
       {movements.length === 0 ? (
-        <p className="muted" style={{ fontSize: "0.85rem" }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)" }}>
           {t("accountDetail.unitsFlow.emptyDraft")}
         </p>
       ) : (
@@ -219,7 +219,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
 
       {formError ? <p className="error" style={{ margin: 0 }}>{formError}</p> : null}
       {lastSavedCount != null ? (
-        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
           {t("accountDetail.unitsFlow.saved", { count: lastSavedCount })}
         </p>
       ) : null}

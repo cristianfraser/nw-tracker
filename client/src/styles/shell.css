@@ -133,7 +133,7 @@
   }
 
   .nav-drawer-tab__glyph {
-    font-size: 0.9rem;
+    font-size: var(--font-size-ui);
     line-height: 1;
     transform: translateX(1px);
   }

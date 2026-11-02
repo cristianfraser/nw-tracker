@@ -57,7 +57,7 @@ export function CounterpartAccountSelect({
 
   return (
     <label style={{ display: "block" }}>
-      <span style={{ display: "block", fontSize: "0.85rem" }}>{label}</span>
+      <span style={{ display: "block", fontSize: "var(--font-size-prose)" }}>{label}</span>
       <select
         value={value === "" ? "" : String(value)}
         onChange={(e) => {

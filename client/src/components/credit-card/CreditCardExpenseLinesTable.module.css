@@ -5,7 +5,7 @@
 /* The list sizes its rows by its own width (it sits in modals and pages of any width). */
 .list {
   container-type: inline-size;
-  font-size: 0.875rem;
+  font-size: var(--font-size-prose);
 }
 
 .header {
@@ -30,7 +30,7 @@
   color: var(--muted);
   font: inherit;
   font-weight: 500;
-  font-size: 0.75rem;
+  font-size: var(--font-size-card-label);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   cursor: pointer;
@@ -166,7 +166,7 @@
 
 .date {
   grid-area: date;
-  font-size: 0.8rem;
+  font-size: var(--font-size-prose-sm);
   white-space: nowrap;
 }
 
@@ -221,14 +221,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem 0.6rem;
-  font-size: 0.8rem;
+  font-size: var(--font-size-prose-sm);
 }
 
 .panelBigGroup {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.8rem;
+  font-size: var(--font-size-prose-sm);
 }
 
 .panelNote {
