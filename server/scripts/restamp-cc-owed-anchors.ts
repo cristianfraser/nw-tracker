@@ -122,7 +122,7 @@ try {
       );
     }
     if (!apply) throw new Rollback();
-  })();
+  }).immediate();
 } catch (e) {
   if (!(e instanceof Rollback)) throw e;
   console.log(`\nReport only (rolled back). ${grandChanged} valuation rows would change; --apply to write.`);
