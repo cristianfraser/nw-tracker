@@ -134,7 +134,6 @@ export function MonthlyPerfDetailTable({
     const flows: (PerfDetailFlow | null)[] = [
       ...(showIncome
         ? [
-            income ? { key: "income", direction: "in" as const, amount: amount(income), tone: "positive" as const, title: t("flows.overview.income") } : null,
             expenses
               ? {
                   key: "expenses",
@@ -144,6 +143,7 @@ export function MonthlyPerfDetailTable({
                   title: t("flows.overview.expenses"),
                 }
               : null,
+            income ? { key: "income", direction: "in" as const, amount: amount(income), tone: "positive" as const, title: t("flows.overview.income") } : null,
           ]
         : []),
       Number.isFinite(row.net_capital_flow) && row.net_capital_flow !== 0

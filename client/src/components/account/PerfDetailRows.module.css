@@ -76,8 +76,14 @@
   color: var(--negative);
 }
 
-/* Wrapped: period and closing on the first line; the flows on the left below it, the result on
-   the right, the running totals under the result. */
+/* The period and closing are one group: two columns on one line, the first line wrapped. */
+.head {
+  display: contents;
+}
+
+/* Wrapped: three lines — the period; the balance on the left and the result on the right; the
+   flows on the left and the running totals on the right. On a phone the flows and the totals
+   take a line each. */
 .wrapped {
   display: block;
 }
@@ -85,9 +91,9 @@
 .wrapped .row {
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
-    "period closing"
-    "flows  result"
-    "flows  totals";
+    "period  period"
+    "closing result"
+    "flows   totals";
   column-gap: 1rem;
   row-gap: 0.2rem;
 }
@@ -99,48 +105,40 @@
 
 .wrapped .closing {
   grid-area: closing;
-}
-
-.wrapped .flows {
-  grid-area: flows;
-  display: flex;
-  flex-wrap: wrap;
-  align-content: start;
-  column-gap: 1rem;
-  row-gap: 0.2rem;
-}
-
-.wrapped .flow:empty {
-  display: none;
+  text-align: left;
 }
 
 .wrapped .result {
   grid-area: result;
 }
 
+.wrapped .flows,
 .wrapped .totals {
-  grid-area: totals;
   display: flex;
-  justify-content: flex-end;
   flex-wrap: wrap;
   column-gap: 1rem;
+  row-gap: 0.2rem;
 }
 
-/* A phone: one thing per line — the flows, the result, then the totals spread across. */
+.wrapped .flows {
+  grid-area: flows;
+}
+
+.wrapped .totals {
+  grid-area: totals;
+  justify-content: flex-end;
+}
+
+.wrapped .flow:empty {
+  display: none;
+}
+
 @container (max-width: 30rem) {
   .wrapped .row {
     grid-template-areas:
-      "period closing"
-      "flows  flows"
-      "result result"
-      "totals totals";
-  }
-
-  .wrapped .result {
-    text-align: left;
-  }
-
-  .wrapped .totals {
-    justify-content: space-between;
+      "period  period"
+      "closing result"
+      "flows   flows"
+      "totals  totals";
   }
 }
