@@ -135,11 +135,11 @@ export type FintualSerieReconcileResult = {
 };
 
 const stmtGetBar = db.prepare(
-  `SELECT unit_value_clp, COALESCE(note, '') AS note FROM fund_unit_daily WHERE series_key = ? AND day = ?`
+  `SELECT unit_value, COALESCE(note, '') AS note FROM fund_unit_daily WHERE series_key = ? AND day = ?`
 );
 const stmtUpsertBar = db.prepare(
-  `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, ?)
-   ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+  `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, ?)
+   ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
 );
 
 /**
@@ -163,7 +163,7 @@ export function reconcileFundUnitSeriesWithOfficialPrices(opts: {
     const officialClp = Math.round(officialRaw * 10000) / 10000;
     checked += 1;
     const existing = stmtGetBar.get(opts.seriesKey, day) as
-      | { unit_value_clp: number; note: string }
+      | { unit_value: number; note: string }
       | undefined;
     let action: FintualSerieReconcileAction;
     if (!existing) {
@@ -171,7 +171,7 @@ export function reconcileFundUnitSeriesWithOfficialPrices(opts: {
     } else if (isFintualCarryForwardFundUnitNote(existing.note)) {
       action = "carry_replaced";
     } else {
-      const rel = Math.abs(existing.unit_value_clp - officialClp) / officialClp;
+      const rel = Math.abs(existing.unit_value - officialClp) / officialClp;
       if (rel <= FINTUAL_PUBLIC_SERIE_TOLERANCE_REL) {
         agreed += 1;
         continue;
@@ -181,7 +181,7 @@ export function reconcileFundUnitSeriesWithOfficialPrices(opts: {
     if (!opts.dryRun) stmtUpsertBar.run(opts.seriesKey, day, officialClp, note);
     rows.push({
       day,
-      storedClp: existing?.unit_value_clp ?? null,
+      storedClp: existing?.unit_value ?? null,
       storedNote: existing?.note ?? null,
       officialClp,
       action,

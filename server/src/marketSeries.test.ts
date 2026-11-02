@@ -56,7 +56,7 @@ beforeAll(() => {
   insEq.run(USD_TICKER, "2024-01-04", 480, "usd");
   insEq.run(CLP_TICKER, "2024-01-02", 5000, "clp");
 
-  db.prepare(`INSERT INTO fund_unit_daily (series_key, day, unit_value_clp) VALUES (?, ?, ?)`).run(
+  db.prepare(`INSERT INTO fund_unit_daily (series_key, day, unit_value) VALUES (?, ?, ?)`).run(
     FUND_KEY,
     "2024-01-04",
     1234.5

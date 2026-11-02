@@ -12,12 +12,12 @@ import {
 const alpha = [
   ["2030-03-04", 99], ["2030-03-05", 100], ["2030-03-06", 101], ["2030-03-07", 102],
   ["2030-03-08", 103], ["2030-03-11", 104], ["2030-03-12", 105], ["2030-03-13", 150],
-].map(([day, v]) => ({ day: day as string, unit_value_clp: v as number }));
+].map(([day, v]) => ({ day: day as string, unit_value: v as number }));
 const beta = [
   ["2030-03-04", 200], ["2030-03-05", 201], ["2030-03-06", 202], ["2030-03-07", 203],
   ["2030-03-08", 204], ["2030-03-11", 205], ["2030-03-12", 206], ["2030-03-13", 207],
   ["2030-03-14", 150],
-].map(([day, v]) => ({ day: day as string, unit_value_clp: v as number }));
+].map(([day, v]) => ({ day: day as string, unit_value: v as number }));
 const byAfp: OfficialSeriesByAfp = new Map([["alpha", alpha], ["beta", beta]]);
 
 function row(over: Partial<PensionMovement> & Pick<PensionMovement, "code" | "valor_cuota" | "cuotas">): PensionMovement {
@@ -103,7 +103,7 @@ describe("fundChain", () => {
   });
 
   it("refuses a row priced at a fund the chain never held", () => {
-    const stray = locateCertificateRows([contributionAlpha, egresoAlpha, ingresoBeta], new Map([...byAfp, ["gamma", [{ day: "2030-03-05", unit_value_clp: 55 }]]]));
+    const stray = locateCertificateRows([contributionAlpha, egresoAlpha, ingresoBeta], new Map([...byAfp, ["gamma", [{ day: "2030-03-05", unit_value: 55 }]]]));
     const withStray = [...stray, { ...stray[0]!, afp: "gamma", official_day: "2030-03-05" }];
     expect(() => fundChain(withStray, pairFundSwitches(withStray))).toThrow(/gamma, a fund the chain never held/);
   });

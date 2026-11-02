@@ -77,7 +77,7 @@ function fintualCertPositionMeta(
   if (!seriesKey) return null;
   const cuotas = fintualGoalUnitsFromMovementsThroughDate(accountId, asOfYmd);
   const fu = latestFundUnitRowOnOrBefore(seriesKey, asOfYmd);
-  let px = fu?.unit_value_clp;
+  let px = fu?.unit_value;
   let pxDay = fu?.day;
   const today = chileCalendarTodayYmd();
   const goalsSyncState = loadGlobalSyncState();
@@ -321,7 +321,7 @@ export function getAccountPositionMeta(
     if (!series) return null;
     let fu = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(series, asOfCuotas);
     if (fu == null) fu = latestFundUnitRowOnOrBefore(series, asOfCuotas);
-    const px = fu?.unit_value_clp;
+    const px = fu?.unit_value;
     const pxDay = fu?.day;
 
     const stored = db

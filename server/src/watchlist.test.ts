@@ -32,7 +32,7 @@ const SEED_DAY = "2026-01-02";
 /** UNO-A / RN-proxy builtins are inserted only when their backing data exists (demo lacks it). */
 function seedAfpUnoFundUnit(): void {
   db.prepare(
-    `INSERT OR IGNORE INTO fund_unit_daily (series_key, day, unit_value_clp) VALUES (?, ?, 1000)`
+    `INSERT OR IGNORE INTO fund_unit_daily (series_key, day, unit_value) VALUES (?, ?, 1000)`
   ).run(AFP_SERIES, SEED_DAY);
 }
 

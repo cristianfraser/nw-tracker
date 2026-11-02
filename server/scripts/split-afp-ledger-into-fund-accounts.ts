@@ -139,9 +139,9 @@ const afpsOnRecord = (db.prepare(`SELECT DISTINCT afp FROM pension_fund_unit_off
 const byAfp = new Map(
   afpsOnRecord.map((afp) => [
     afp,
-    db.prepare(`SELECT day, unit_value_clp FROM pension_fund_unit_official WHERE afp = ? AND fund = ? ORDER BY day`).all(afp, FUND) as {
+    db.prepare(`SELECT day, unit_value FROM pension_fund_unit_official WHERE afp = ? AND fund = ? ORDER BY day`).all(afp, FUND) as {
       day: string;
-      unit_value_clp: number;
+      unit_value: number;
     }[],
   ])
 );
@@ -175,7 +175,7 @@ console.log(`UNO's credit shows ${unoInDay}: rows of account ${unoAccount.id} be
 function oldMarkClp(d: string): number {
   const cuotas = afpCuotasCumulativeThroughDate(unoAccount.id, d);
   const series = d < unoInDay ? PRIOR_FUNDS_SERIES_KEY : AFP_UNO_CUOTA_SERIES_KEY;
-  const px = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(series, d)?.unit_value_clp;
+  const px = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(series, d)?.unit_value;
   if (px == null) throw new Error(`no ${series} value on or before ${d}`);
   return cuotas > 1e-9 ? Math.round(cuotas * px * 100) / 100 : 0;
 }
@@ -416,7 +416,7 @@ function report(): void {
 
   let todaySum = 0;
   for (const id of ids) todaySum += accountMarkClpAtYmd(id, today)?.value_clp ?? 0;
-  const newTodayLedger = afpCuotasCumulativeThroughDate(unoAccount.id, today) * (latestAfpUnoFundUnitRowOnOrBeforeForDisplay(AFP_UNO_CUOTA_SERIES_KEY, today)?.unit_value_clp ?? 0);
+  const newTodayLedger = afpCuotasCumulativeThroughDate(unoAccount.id, today) * (latestAfpUnoFundUnitRowOnOrBeforeForDisplay(AFP_UNO_CUOTA_SERIES_KEY, today)?.unit_value ?? 0);
   console.log(`today ${today}: displayed before ${fmtPesos(oldTodayDisplayed!)} after ${fmtPesos(todaySum)}; ledger × UNO before ${fmtPesos(oldTodayLedger)} after ${fmtPesos(newTodayLedger)}`);
   if (Math.abs(todaySum - oldTodayDisplayed!) > 0.5) throw new Error(`today's value changed: ${oldTodayDisplayed} → ${todaySum}`);
   if (Math.abs(newTodayLedger - oldTodayLedger) > 0.5) throw new Error(`today's ledger value changed: ${oldTodayLedger} → ${newTodayLedger}`);

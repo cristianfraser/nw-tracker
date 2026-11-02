@@ -43,7 +43,7 @@ describe("getAccountValuationTimeseries (cuota ledger without stored valuations)
     expect(db.prepare(`SELECT COUNT(*) AS n FROM valuations WHERE account_id = ?`).get(afpId)).toEqual({ n: 0 });
 
     const px = 50_000;
-    const insPx = db.prepare(`INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, 'vitest:px')`);
+    const insPx = db.prepare(`INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, 'vitest:px')`);
     insPx.run(SERIES, "2025-01-02", px);
 
     // A contribution in February, a fund switch received mid-April (a transfer leg carrying cuotas).

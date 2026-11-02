@@ -143,9 +143,9 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
 
     const testDay = "2099-06-15";
     db.prepare(
-      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note)
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value, note)
        VALUES (?, ?, ?, 'test:reconcile')
-       ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp`
+       ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value`
     ).run(seriesKey, testDay, 1000);
 
     try {

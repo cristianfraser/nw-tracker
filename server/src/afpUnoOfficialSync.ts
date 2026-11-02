@@ -124,10 +124,10 @@ export type AfpUnoOfficialSyncResult = {
   latest_display: DisplayFundUnit | null;
 };
 
-const stmtDisplayRow = db.prepare(`SELECT unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day = ?`);
+const stmtDisplayRow = db.prepare(`SELECT unit_value FROM fund_unit_daily WHERE series_key = ? AND day = ?`);
 const stmtUpsertDisplay = db.prepare(
-  `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, ?)
-   ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+  `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, ?)
+   ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
 );
 
 /** Provenance of a display row: the official day it shows and the lag it was shifted by. */
@@ -146,11 +146,11 @@ export function upsertAfpDisplayRows(
   const restated: { day: string; previous: number; next: number }[] = [];
   const run = () => {
     for (const r of rows) {
-      const prev = stmtDisplayRow.get(seriesKey, r.day) as { unit_value_clp: number } | undefined;
-      if (prev && Math.abs(prev.unit_value_clp - r.unit_value_clp) <= 0.005) continue;
-      if (prev) restated.push({ day: r.day, previous: prev.unit_value_clp, next: r.unit_value_clp });
+      const prev = stmtDisplayRow.get(seriesKey, r.day) as { unit_value: number } | undefined;
+      if (prev && Math.abs(prev.unit_value - r.unit_value) <= 0.005) continue;
+      if (prev) restated.push({ day: r.day, previous: prev.unit_value, next: r.unit_value });
       written += 1;
-      if (!dryRun) stmtUpsertDisplay.run(seriesKey, r.day, r.unit_value_clp, afpDisplayNote(afp, r));
+      if (!dryRun) stmtUpsertDisplay.run(seriesKey, r.day, r.unit_value, afpDisplayNote(afp, r));
     }
   };
   if (dryRun) run();
@@ -234,7 +234,7 @@ function applyFetchedOfficialRows(
 
   // In dry-run the stored series lacks this fetch's new days, so derive from the fetched rows.
   const series = opts.dryRun
-    ? unoFetched.map((r) => ({ day: r.day, unit_value_clp: r.unit_value_clp }))
+    ? unoFetched.map((r) => ({ day: r.day, unit_value: r.unit_value }))
     : officialPensionFundUnits(UNO, FUND);
   // Rows go only through the day the latest published value shows: while the next one is
   // pending, today has no row of its own (readers take the value on or before), so the

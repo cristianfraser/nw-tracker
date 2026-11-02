@@ -158,7 +158,7 @@ export function certificateRowPriceWindow(period: string): { fromDay: string; be
  * series does not carry it (yet); two separate runs are an ambiguity and throw.
  */
 export function firstVisibleDayOfValue(
-  series: readonly { day: string; unit_value_clp: number }[],
+  series: readonly { day: string; unit_value: number }[],
   valor: number,
   fromDay: string,
   beforeDay: string,
@@ -169,7 +169,7 @@ export function firstVisibleDayOfValue(
   let inRun = false;
   for (const s of series) {
     if (s.day < fromDay || s.day >= beforeDay) continue;
-    const hit = Math.abs(s.unit_value_clp - valor) <= toleranceClp;
+    const hit = Math.abs(s.unit_value - valor) <= toleranceClp;
     if (hit && !inRun) {
       runs += 1;
       if (first == null) first = s.day;

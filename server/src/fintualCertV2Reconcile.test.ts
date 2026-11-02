@@ -171,9 +171,9 @@ describe("fintualCertV2Reconcile", () => {
 
       // Bar present → reconciled iff the goals NAV matches cuotas × px within tolerance.
       db.prepare(
-        `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note)
+        `INSERT INTO fund_unit_daily (series_key, day, unit_value, note)
          VALUES (?, ?, 100000, 'vitest-missing-row')
-         ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+         ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
       ).run(seriesKey, day);
       expect(fintualCertV2HeldFundMissingDayRow(accountId, notes, day)).toBe(false);
       const pos = Math.round(units * 100000);
@@ -222,9 +222,9 @@ describe("fintualCertV2Reconcile", () => {
 
       // Bar lands (fund published overnight) at a px matching the polled NAV → resolved.
       db.prepare(
-        `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note)
+        `INSERT INTO fund_unit_daily (series_key, day, unit_value, note)
          VALUES (?, ?, 100000, 'vitest-morning-carry')
-         ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+         ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
       ).run(seriesKey, pollYmd);
       expect(fintualMorningCarryPerFundUnresolved(nextMorning, state)).toBe(false);
     } finally {
@@ -245,8 +245,8 @@ describe("fintualCertV2Reconcile", () => {
        VALUES (?, 1000, 'clp', ?, 'vitest-prior-pos', 10)`
     ).run(accountId, d0);
     const ins = db.prepare(
-      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, 'vitest-prior-pos')
-       ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, 'vitest-prior-pos')
+       ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
     );
     ins.run(seriesKey, d0, 100000);
     ins.run(seriesKey, d1, 101000);

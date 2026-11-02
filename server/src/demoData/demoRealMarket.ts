@@ -86,7 +86,7 @@ export const DEMO_AFP_MODELO_CSV_PATH = resolve(
 const MODELO_CSV_HEADER = "afp;fund;day;unit_value_clp";
 
 /**
- * Rows of the Modelo snapshot (`afp;fund;day;unit_value_clp`, plain dot decimals, one row per calendar
+ * Rows of the Modelo snapshot (`afp;fund;day;unit_value`, plain dot decimals, one row per calendar
  * day ascending). Throws on another header, another AFP or fund, a missing or repeated day, or a
  * value that is not positive.
  */
@@ -107,7 +107,7 @@ export function parseDemoAfpModeloCsv(text: string): SpAfpFundUnitRow[] {
     if (!/^\d+(?:\.\d+)?$/.test(raw)) throw new Error(`demo modelo csv: unreadable value «${line}»`);
     const v = Number(raw);
     if (!(v > 0)) throw new Error(`demo modelo csv: non-positive value «${line}»`);
-    rows.push({ afp, fund: "A", day, unit_value_clp: v, provisional: false });
+    rows.push({ afp, fund: "A", day, unit_value: v, provisional: false });
   }
   if (rows.length === 0) throw new Error("demo modelo csv: no rows");
   return rows;
