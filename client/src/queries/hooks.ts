@@ -94,6 +94,17 @@ export function useDashboardNavContext(unit: DisplayUnit, enabled = true) {
     queryKey: queryKeys.dashboardNav(unit),
     queryFn: async () => {
       const ctx = await fetchDashboardNavContext(unit);
+      // Nav-context carries the whole tree's card figures, as the page bundle does: store them, so
+      // a reload of a group, Pasivos or account page paints today's cards, not the ones the home
+      // page saw on its last visit. The chart shape is the home bundle's alone; keep the stored one.
+      writeDashboardNavSnapshotCache(unit, {
+        accounts: ctx.accounts,
+        liabilities_breakdown: ctx.liabilities_breakdown,
+        dashboard_layout: ctx.dashboard_layout,
+        nw_bucket_totals: ctx.nw_bucket_totals,
+        card_metrics_by_slug: ctx.card_metrics_by_slug,
+        chart_shape: readDashboardNavSnapshotCache(unit)?.chart_shape,
+      });
       return ctx;
     },
     enabled,
@@ -118,8 +129,8 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
     },
     initialData: () => (cachedStrip ? readNavSnapshotCacheForUnit(unit) : undefined),
     initialDataUpdatedAt: cachedStrip ? Date.now() : undefined,
-    // With a cached strip this query never refetches; freshness relies on DashboardPage
-    // re-writing the cache from the live page bundle (writeDashboardNavSnapshotCache there).
+    // With a cached strip this query never refetches; freshness relies on the live payloads
+    // re-writing the cache: DashboardPage from its page bundle, useDashboardNavContext from nav-context.
     enabled: enabled && !cachedStrip,
     // Keyed on the unit: a unit change holds nothing (a CLP snapshot has no USD fields; the pages
     // hold the previous unit's strip themselves, see useHeldNavStrip).
