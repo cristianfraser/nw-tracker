@@ -32,17 +32,29 @@ describe("dashboard layout", () => {
     }
   });
 
-  it("puts every big-desktop tile in the main column, the rail, or across both, without overlap", () => {
+  it("puts every big-desktop tile in the top band, the chart pairs or across all columns, without overlap", () => {
     for (const id of ids) {
       const r = DASHBOARD_LAYOUT[id].l;
       const placement =
-        r.x === 0 && r.w === 8 ? "main" : r.x === 8 && r.w === 4 ? "rail" : r.x === 0 && r.w === 12 ? "wide" : null;
+        r.x === 0 && r.w === 8
+          ? "main"
+          : r.x === 8 && r.w === 4
+            ? "rail"
+            : (r.x === 0 || r.x === 6) && r.w === 6
+              ? "pair"
+              : r.x === 0 && r.w === 12
+                ? "wide"
+                : null;
       expect(placement, id).not.toBeNull();
       expect(RAIL_TILES.includes(id)).toBe(placement === "rail");
     }
     for (const a of ids) for (const b of ids) if (a < b) expect(overlaps(DASHBOARD_LAYOUT[a].l, DASHBOARD_LAYOUT[b].l), `${a} / ${b}`).toBe(false);
-    // The wide tables come after both stacks.
-    const stacksEnd = Math.max(...ids.filter((id) => DASHBOARD_LAYOUT[id].l.w < 12).map((id) => DASHBOARD_LAYOUT[id].l.y + DASHBOARD_LAYOUT[id].l.h));
-    for (const id of ids) if (DASHBOARD_LAYOUT[id].l.w === 12 && id !== "title") expect(DASHBOARD_LAYOUT[id].l.y, id).toBeGreaterThanOrEqual(stacksEnd);
+    const bandEnd = (w: number) =>
+      Math.max(...ids.filter((id) => DASHBOARD_LAYOUT[id].l.w === w).map((id) => DASHBOARD_LAYOUT[id].l.y + DASHBOARD_LAYOUT[id].l.h));
+    const start = (w: number) =>
+      Math.min(...ids.filter((id) => DASHBOARD_LAYOUT[id].l.w === w && id !== "title").map((id) => DASHBOARD_LAYOUT[id].l.y));
+    // The pairs start below the top band; the wide tiles below the pairs.
+    expect(start(6)).toBeGreaterThanOrEqual(Math.max(bandEnd(8), bandEnd(4)));
+    expect(start(12)).toBeGreaterThanOrEqual(bandEnd(6));
   });
 });

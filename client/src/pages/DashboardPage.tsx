@@ -424,6 +424,12 @@ export function DashboardPage() {
         />
       </PageGridTile>
 
+    </>
+  );
+
+  // Below the cards, the main chart and the rail: two equal columns on the big desktop.
+  const dashboardPairedCharts = (
+    <>
       <DashboardFlowsChart displayUnit={displayUnit} />
 
       {retirementBrokerageForCharts.length > 0 ? (
@@ -581,6 +587,7 @@ export function DashboardPage() {
       }
       coldStripShape={DASHBOARD_COLD_STRIP}
       charts={dashboardCharts}
+      pairs={dashboardPairedCharts}
       tableAccounts={netWorthTableAccounts}
       serverPaginatedMonthlyDetail
       flowsTitleKey="dashboard.wealthFlowsTitle"
