@@ -24,6 +24,7 @@ function PortfolioGroupTableRows({
   node: NavTreeNodeDto;
   depth?: number;
 }) {
+  const { t } = useTranslation();
   const accountCount = countAccountsInNavSubtree(node);
   const childGroups = node.children.filter(
     (c) => c.portfolio_group_id != null && c.account_id == null
@@ -39,9 +40,9 @@ function PortfolioGroupTableRows({
           {depth > 0 ? <span className="muted mono">└─ </span> : null}
           {node.label}
           {childGroups > 0 ? (
-            <span className="muted"> ({childGroups} sub-groups)</span>
+            <span className="muted"> {t("panelAccounts.groupSubGroupsCount", { count: childGroups })}</span>
           ) : (
-            <span className="muted"> ({accountCount} accounts)</span>
+            <span className="muted"> {t("panelAccounts.groupAccountsCount", { count: accountCount })}</span>
           )}
         </span>
         <span className={cn("mono", styles.slug)}>{node.slug}</span>

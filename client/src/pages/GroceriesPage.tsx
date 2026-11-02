@@ -239,7 +239,7 @@ export function GroceriesPage() {
   if (error) {
     return (
       <div className="page-grid">
-        <h1>{t("groceries.title")}</h1>
+        <h2 className="flow-section-title">{t("groceries.title")}</h2>
         <p className="muted">{error}</p>
       </div>
     );
@@ -247,11 +247,11 @@ export function GroceriesPage() {
 
   return (
     <div className="page-grid">
-      <h1>{t("groceries.title")}</h1>
+      <h2 className="flow-section-title">{t("groceries.title")}</h2>
 
       {/* ── Cleaning workbench ─────────────────────────────────────────────── */}
       <PageGridTile id="cleaning">
-        <h2>{t("groceries.cleaning.title")}</h2>
+        <h3>{t("groceries.cleaning.title")}</h3>
         {summary && summary.unclassified.length === 0 ? (
           <p className="muted">{t("groceries.cleaning.allClassified")}</p>
         ) : (
@@ -378,7 +378,7 @@ export function GroceriesPage() {
 
       {/* ── Products + price history ───────────────────────────────────────── */}
       <PageGridTile id="products">
-        <h2>{t("groceries.products.title")}</h2>
+        <h3>{t("groceries.products.title")}</h3>
         {summary && summary.products.length === 0 ? (
           <p className="muted">{t("groceries.products.none")}</p>
         ) : (
@@ -437,10 +437,10 @@ export function GroceriesPage() {
           </table>
         )}
 
-        <h3>
+        <h4>
           {t("groceries.history.title")}
           {historyProduct ? ` — ${historyProduct.name}` : ""}
-        </h3>
+        </h4>
         {historyProductId == null ? (
           <p className="muted">{t("groceries.history.pickProduct")}</p>
         ) : historyRows == null ? null : (
@@ -620,7 +620,7 @@ export function GroceriesPage() {
 
       {/* ── Receipts ───────────────────────────────────────────────────────── */}
       <PageGridTile id="receipts">
-        <h2>{t("groceries.receipts.title")}</h2>
+        <h3>{t("groceries.receipts.title")}</h3>
         {summary && summary.receipts.length === 0 ? (
           <p className="muted">{t("groceries.receipts.none")}</p>
         ) : (

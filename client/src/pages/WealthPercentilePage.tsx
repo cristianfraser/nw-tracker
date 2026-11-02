@@ -496,7 +496,7 @@ export function WealthPercentilePage() {
       <MarkerLegend rows={rows} />
 
       <PageGridTile id="settings">
-        <h3>{t("wealthPercentile.settings.title")}</h3>
+        <h2>{t("wealthPercentile.settings.title")}</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem 1.5rem" }}>
           {BENCHMARK_COUNTRIES.map((c) => (
             <label

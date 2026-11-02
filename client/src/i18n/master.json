@@ -1093,6 +1093,14 @@
         "en": "Fill in name, ticker, category, and a date on every movement row.",
         "es": "Completa nombre, ticker, categoría y fecha en cada movimiento con fila."
       }
+    },
+    "groupSubGroupsCount": {
+      "en": "({{count}} sub-groups)",
+      "es": "({{count}} subgrupos)"
+    },
+    "groupAccountsCount": {
+      "en": "({{count}} accounts)",
+      "es": "({{count}} cuentas)"
     }
   },
   "messages": {
