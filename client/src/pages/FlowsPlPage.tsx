@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { FlowsPlChart } from "../components/charts/FlowsPlChart";
 import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
 import { Table } from "../components/ui/Table";
@@ -104,10 +105,7 @@ export function FlowsPlPage() {
     <>
       <h2 className="flow-section-title">{t("flows.pl.title")}</h2>
 
-      <div
-        className="chart-grid chart-grid--full-line chart-grid--full-width-stack"
-        style={{ marginBottom: "1.5rem" }}
-      >
+      <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack">
         <FlowsPlChart
           controls={chartControls}
           title={t("flows.pl.chartTitle")}
@@ -118,133 +116,137 @@ export function FlowsPlPage() {
         />
       </div>
 
-      <div className="chart-panel-title-row">
-        <h3 style={{ margin: 0 }}>{t("flows.overview.detailTitle")}</h3>
-        <SurfaceControls
-          period={tablePrefs.period}
-          onPeriodChange={tablePrefs.setPeriod}
-          periodOptions={["month", "year"]}
-        />
-      </div>
-      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
-        <Table
-          header={
-            <thead>
-              <tr>
-                <th className="desktop-only">{t("flows.overview.colMonth")}</th>
-                {PL_TABLE_BUCKETS.map((slug) => (
-                  <th key={slug} className="desktop-only">
-                    {flowsPlBucketLabel(slug)}
-                  </th>
-                ))}
-                <th className="desktop-only">{t("flows.pl.colTotal")}</th>
-                <th className="desktop-only">{t("flows.pl.colYtd")}</th>
-                <th className="desktop-only">{t("flows.pl.colCumulative")}</th>
-                <th className="mobile-only" aria-hidden="true" />
-              </tr>
-            </thead>
-          }
-          tableClassName="table--parallel-mobile"
-          tableStyle={{ fontSize: "0.85rem" }}
-        >
-          {pageRows.map((row) => {
-            const period = flowPeriodLabel(row.as_of_date, tableGranularity);
-            return (
-              <tr key={row.as_of_date}>
-                <td className="mono desktop-only">{period}</td>
-                {PL_TABLE_BUCKETS.map((slug) => (
-                  <td key={slug} className="mono desktop-only">
-                    {formatFlowMoney(row[slug], displayUnit)}
-                  </td>
-                ))}
-                <td className="mono desktop-only">{formatFlowMoney(row.total, displayUnit)}</td>
-                <td className="mono muted desktop-only">{formatFlowMoney(row.ytd_total, displayUnit)}</td>
-                <td className="mono muted desktop-only">{formatFlowMoney(row.cumulative_total, displayUnit)}</td>
-                <td className="mobile-only">
-                  <TableMobileCard title={period}>
-                    {PL_TABLE_BUCKETS.map((slug) => (
-                      <TableMobileCardRow
-                        key={slug}
-                        label={flowsPlBucketLabel(slug)}
-                        value={<span className="mono">{formatFlowMoney(row[slug], displayUnit)}</span>}
-                      />
-                    ))}
-                    <TableMobileCardRow
-                      label={t("flows.pl.colTotal")}
-                      value={<span className="mono">{formatFlowMoney(row.total, displayUnit)}</span>}
-                    />
-                    <TableMobileCardRow
-                      label={t("flows.pl.colYtd")}
-                      value={<span className="mono">{formatFlowMoney(row.ytd_total, displayUnit)}</span>}
-                    />
-                    <TableMobileCardRow
-                      label={t("flows.pl.colCumulative")}
-                      value={<span className="mono">{formatFlowMoney(row.cumulative_total, displayUnit)}</span>}
-                    />
-                  </TableMobileCard>
-                </td>
-              </tr>
-            );
-          })}
-        </Table>
-      </PaginatedTable>
-
-      <h3 style={{ margin: "1.5rem 0 0.35rem" }}>
-        {t("flows.pl.breakdownTitle")}
-      </h3>
-      {(data?.by_bucket ?? []).map((block) => (
-        <section key={block.slug} style={{ marginBottom: "1.5rem" }}>
-          <h4 style={{ marginBottom: "0.35rem" }}>
-            {flowsPlBucketLabel(block.slug)}
-            <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
-              {formatFlowMoney(bucketTotal(block, "total_cumulative", displayUnit), displayUnit)}
-            </span>
-          </h4>
+      <PageGridTile id="detail">
+        <div className="chart-panel-title-row">
+          <h3>{t("flows.overview.detailTitle")}</h3>
+          <SurfaceControls
+            period={tablePrefs.period}
+            onPeriodChange={tablePrefs.setPeriod}
+            periodOptions={["month", "year"]}
+          />
+        </div>
+        <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
           <Table
-            tableStyle={{ fontSize: "0.85rem" }}
-            wrapClassName={loadableClass(loading)}
             header={
               <thead>
                 <tr>
-                  <th>{t("flows.pl.colAccount")}</th>
-                  <th>{t("flows.pl.colMonthPl")}</th>
-                  <th>{t("flows.pl.colYtd")}</th>
-                  <th>{t("flows.pl.colCumulative")}</th>
+                  <th className="desktop-only">{t("flows.overview.colMonth")}</th>
+                  {PL_TABLE_BUCKETS.map((slug) => (
+                    <th key={slug} className="desktop-only">
+                      {flowsPlBucketLabel(slug)}
+                    </th>
+                  ))}
+                  <th className="desktop-only">{t("flows.pl.colTotal")}</th>
+                  <th className="desktop-only">{t("flows.pl.colYtd")}</th>
+                  <th className="desktop-only">{t("flows.pl.colCumulative")}</th>
+                  <th className="mobile-only" aria-hidden="true" />
                 </tr>
               </thead>
             }
+            tableClassName="table--parallel-mobile"
+            tableStyle={{ fontSize: "0.85rem" }}
           >
-            {block.accounts.map((row) => (
-              <tr key={row.account_id}>
-                <td>
-                  <Link to={`/account/${row.account_id}`}>{row.name}</Link>
+            {pageRows.map((row) => {
+              const period = flowPeriodLabel(row.as_of_date, tableGranularity);
+              return (
+                <tr key={row.as_of_date}>
+                  <td className="mono desktop-only">{period}</td>
+                  {PL_TABLE_BUCKETS.map((slug) => (
+                    <td key={slug} className="mono desktop-only">
+                      {formatFlowMoney(row[slug], displayUnit)}
+                    </td>
+                  ))}
+                  <td className="mono desktop-only">{formatFlowMoney(row.total, displayUnit)}</td>
+                  <td className="mono muted desktop-only">{formatFlowMoney(row.ytd_total, displayUnit)}</td>
+                  <td className="mono muted desktop-only">{formatFlowMoney(row.cumulative_total, displayUnit)}</td>
+                  <td className="mobile-only">
+                    <TableMobileCard title={period}>
+                      {PL_TABLE_BUCKETS.map((slug) => (
+                        <TableMobileCardRow
+                          key={slug}
+                          label={flowsPlBucketLabel(slug)}
+                          value={<span className="mono">{formatFlowMoney(row[slug], displayUnit)}</span>}
+                        />
+                      ))}
+                      <TableMobileCardRow
+                        label={t("flows.pl.colTotal")}
+                        value={<span className="mono">{formatFlowMoney(row.total, displayUnit)}</span>}
+                      />
+                      <TableMobileCardRow
+                        label={t("flows.pl.colYtd")}
+                        value={<span className="mono">{formatFlowMoney(row.ytd_total, displayUnit)}</span>}
+                      />
+                      <TableMobileCardRow
+                        label={t("flows.pl.colCumulative")}
+                        value={<span className="mono">{formatFlowMoney(row.cumulative_total, displayUnit)}</span>}
+                      />
+                    </TableMobileCard>
+                  </td>
+                </tr>
+              );
+            })}
+          </Table>
+        </PaginatedTable>
+      </PageGridTile>
+
+      <PageGridTile id="breakdown" className="page-grid">
+        <h3>
+          {t("flows.pl.breakdownTitle")}
+        </h3>
+        {(data?.by_bucket ?? []).map((block) => (
+          <PageGridTile key={block.slug} id={`pl-${block.slug}`}>
+            <h4>
+              {flowsPlBucketLabel(block.slug)}
+              <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+                {formatFlowMoney(bucketTotal(block, "total_cumulative", displayUnit), displayUnit)}
+              </span>
+            </h4>
+            <Table
+              tableStyle={{ fontSize: "0.85rem" }}
+              wrapClassName={loadableClass(loading)}
+              header={
+                <thead>
+                  <tr>
+                    <th>{t("flows.pl.colAccount")}</th>
+                    <th>{t("flows.pl.colMonthPl")}</th>
+                    <th>{t("flows.pl.colYtd")}</th>
+                    <th>{t("flows.pl.colCumulative")}</th>
+                  </tr>
+                </thead>
+              }
+            >
+              {block.accounts.map((row) => (
+                <tr key={row.account_id}>
+                  <td>
+                    <Link to={`/account/${row.account_id}`}>{row.name}</Link>
+                  </td>
+                  <td className="mono">
+                    {formatFlowMoney(accountRowValue(row, "pl_month", displayUnit), displayUnit)}
+                  </td>
+                  <td className="mono">
+                    {formatFlowMoney(accountRowValue(row, "pl_ytd", displayUnit), displayUnit)}
+                  </td>
+                  <td className="mono">
+                    {formatFlowMoney(accountRowValue(row, "pl_cumulative", displayUnit), displayUnit)}
+                  </td>
+                </tr>
+              ))}
+              <tr>
+                <td style={{ fontWeight: 600 }}>{t("flows.pl.totalsLabel")}</td>
+                <td className="mono" style={{ fontWeight: 600 }}>
+                  {formatFlowMoney(bucketTotal(block, "total_month", displayUnit), displayUnit)}
                 </td>
-                <td className="mono">
-                  {formatFlowMoney(accountRowValue(row, "pl_month", displayUnit), displayUnit)}
+                <td className="mono" style={{ fontWeight: 600 }}>
+                  {formatFlowMoney(bucketTotal(block, "total_ytd", displayUnit), displayUnit)}
                 </td>
-                <td className="mono">
-                  {formatFlowMoney(accountRowValue(row, "pl_ytd", displayUnit), displayUnit)}
-                </td>
-                <td className="mono">
-                  {formatFlowMoney(accountRowValue(row, "pl_cumulative", displayUnit), displayUnit)}
+                <td className="mono" style={{ fontWeight: 600 }}>
+                  {formatFlowMoney(bucketTotal(block, "total_cumulative", displayUnit), displayUnit)}
                 </td>
               </tr>
-            ))}
-            <tr>
-              <td style={{ fontWeight: 600 }}>{t("flows.pl.totalsLabel")}</td>
-              <td className="mono" style={{ fontWeight: 600 }}>
-                {formatFlowMoney(bucketTotal(block, "total_month", displayUnit), displayUnit)}
-              </td>
-              <td className="mono" style={{ fontWeight: 600 }}>
-                {formatFlowMoney(bucketTotal(block, "total_ytd", displayUnit), displayUnit)}
-              </td>
-              <td className="mono" style={{ fontWeight: 600 }}>
-                {formatFlowMoney(bucketTotal(block, "total_cumulative", displayUnit), displayUnit)}
-              </td>
-            </tr>
-          </Table>
-        </section>
-      ))}
+            </Table>
+          </PageGridTile>
+        ))}
+      </PageGridTile>
     </>
   );
 }

@@ -29,6 +29,16 @@
   margin-top: 0;
 }
 
+/* Grid items do not collapse margins, so a heading, paragraph or subnav placed straight on the
+   grid, or the last child of a tile, would add its own margin on top of the row gap. */
+.page-grid>:is(h1, h2, h3, h4, p, .flow-subnav) {
+  margin: 0;
+}
+
+.page-tile>:last-child {
+  margin-bottom: 0;
+}
+
 .chart-panel-title-row>:is(h2, h3, h4) {
   margin: 0;
 }

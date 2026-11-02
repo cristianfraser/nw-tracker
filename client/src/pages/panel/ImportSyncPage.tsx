@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { PageGridTile } from "../../components/layout/PageGridTile";
 import { MessagesTable } from "../../components/messages/MessagesTable";
 import { AvailableDocumentsTable } from "../../components/sync/AvailableDocumentsTable";
 import { GenericUniqueMerchantsPanel } from "../../components/sync/GenericUniqueMerchantsPanel";
@@ -63,40 +64,48 @@ export function ImportSyncPage() {
 
   return (
     <>
-      <h2 className="flow-section-title">{t("importSync.ingestRunsTitle")}</h2>
-      <IngestRunsPanel status={ingestRuns} loading={ingestRunsPending} />
-      <h3>{t("importSync.jobs.title")}</h3>
-      <JobQueuePanel queue={jobQueue} loading={jobQueuePending} />
+      <PageGridTile id="ingest-runs">
+        <h2 className="flow-section-title">{t("importSync.ingestRunsTitle")}</h2>
+        <IngestRunsPanel status={ingestRuns} loading={ingestRunsPending} />
+        <h3>{t("importSync.jobs.title")}</h3>
+        <JobQueuePanel queue={jobQueue} loading={jobQueuePending} />
+      </PageGridTile>
 
-      <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
-        {t("importSync.syncLogTitle")}
-      </h2>
-      <SyncLogStatusPanel status={syncStatus} loading={syncStatusPending} />
-      <MessagesTable
-        rows={logs}
-        showReadAt={false}
-        emptyLabel={t("importSync.logsEmpty")}
-        showMoreLabel={t("importSync.showMore")}
-        showLessLabel={t("importSync.showLess")}
-        colDate={t("importSync.colDate")}
-        colTitle={t("importSync.colTitle")}
-        colDetail={t("importSync.colDetail")}
-        colRead={t("importSync.colRead")}
-        loading={logsPending}
-      />
+      <PageGridTile id="sync-log">
+        <h2 className="flow-section-title">
+          {t("importSync.syncLogTitle")}
+        </h2>
+        <SyncLogStatusPanel status={syncStatus} loading={syncStatusPending} />
+        <MessagesTable
+          rows={logs}
+          showReadAt={false}
+          emptyLabel={t("importSync.logsEmpty")}
+          showMoreLabel={t("importSync.showMore")}
+          showLessLabel={t("importSync.showLess")}
+          colDate={t("importSync.colDate")}
+          colTitle={t("importSync.colTitle")}
+          colDetail={t("importSync.colDetail")}
+          colRead={t("importSync.colRead")}
+          loading={logsPending}
+        />
+      </PageGridTile>
 
-      <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
-        {t("importSync.availableDocumentsTitle")}
-      </h2>
-      <AvailableDocumentsTable data={coverage} loading={coveragePending} />
+      <PageGridTile id="documents">
+        <h2 className="flow-section-title">
+          {t("importSync.availableDocumentsTitle")}
+        </h2>
+        <AvailableDocumentsTable data={coverage} loading={coveragePending} />
+      </PageGridTile>
 
-      <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
-        {t("importSync.genericUniqueMerchantsTitle")}
-      </h2>
-      <GenericUniqueMerchantsPanel
-        merchants={genericMerchants?.merchants ?? []}
-        loading={genericMerchantsPending}
-      />
+      <PageGridTile id="unique-merchants">
+        <h2 className="flow-section-title">
+          {t("importSync.genericUniqueMerchantsTitle")}
+        </h2>
+        <GenericUniqueMerchantsPanel
+          merchants={genericMerchants?.merchants ?? []}
+          loading={genericMerchantsPending}
+        />
+      </PageGridTile>
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { PageGridTile } from "../layout/PageGridTile";
 import { useMemo } from "react";
 import { Bar, Legend, Line, XAxis, YAxis } from "recharts";
 import { useTranslation } from "../../i18n";
@@ -120,8 +121,8 @@ export function PayrollBreakdownSection({
   if (breakdown.months.length === 0 && !loading) return null;
 
   return (
-    <section style={{ marginBottom: "1.5rem" }}>
-      <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack" style={{ marginBottom: "1rem" }}>
+    <>
+      <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack">
         <section className="chart-panel">
           <ChartPanelTitleRow
             title={t("income.payroll.chartTitle")}
@@ -193,36 +194,38 @@ export function PayrollBreakdownSection({
         </section>
       </div>
 
-      <div className="chart-panel-title-row">
-        <h3 style={{ margin: 0 }}>{t("income.payroll.tableTitle")}</h3>
-        <SurfaceControls period={tablePrefs.period} onPeriodChange={tablePrefs.setPeriod} periodOptions={["month", "year"]} />
-      </div>
-      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
-        <Table
-          tableStyle={{ fontSize: "0.85rem" }}
-          header={
-            <thead>
-              <tr>
-                <th>{t("income.payroll.colPeriod")}</th>
+      <PageGridTile id="payroll-table">
+        <div className="chart-panel-title-row">
+          <h3>{t("income.payroll.tableTitle")}</h3>
+          <SurfaceControls period={tablePrefs.period} onPeriodChange={tablePrefs.setPeriod} periodOptions={["month", "year"]} />
+        </div>
+        <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
+          <Table
+            tableStyle={{ fontSize: "0.85rem" }}
+            header={
+              <thead>
+                <tr>
+                  <th>{t("income.payroll.colPeriod")}</th>
+                  {TABLE_COLUMNS.map((f) => (
+                    <th key={f}>{label(f)}</th>
+                  ))}
+                </tr>
+              </thead>
+            }
+          >
+            {pageRows.map((row) => (
+              <tr key={row.period}>
+                <td className="mono">{flowPeriodLabel(row.period, tableGranularity)}</td>
                 {TABLE_COLUMNS.map((f) => (
-                  <th key={f}>{label(f)}</th>
+                  <td key={f} className={f === "gross" || f === "net" ? "mono" : "mono muted"}>
+                    {formatFlowMoney(pick(row, f, displayUnit), displayUnit)}
+                  </td>
                 ))}
               </tr>
-            </thead>
-          }
-        >
-          {pageRows.map((row) => (
-            <tr key={row.period}>
-              <td className="mono">{flowPeriodLabel(row.period, tableGranularity)}</td>
-              {TABLE_COLUMNS.map((f) => (
-                <td key={f} className={f === "gross" || f === "net" ? "mono" : "mono muted"}>
-                  {formatFlowMoney(pick(row, f, displayUnit), displayUnit)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </Table>
-      </PaginatedTable>
-    </section>
+            ))}
+          </Table>
+        </PaginatedTable>
+      </PageGridTile>
+    </>
   );
 }

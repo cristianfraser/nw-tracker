@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useFlowsDepositsReconciliation } from "../queries/hooks";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { Table } from "../components/ui/Table";
 import { loadableClass } from "../components/ui/Loadable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -79,8 +80,8 @@ function ReconciliationSection({
   const total = displayUnit === "usd" ? (totalUsd ?? 0) : totalClp;
 
   return (
-    <section style={{ marginBottom: "1.5rem" }}>
-      <h3 style={{ marginBottom: "0.35rem" }}>
+    <PageGridTile id={`reconciliation-${status}`}>
+      <h3>
         {t(statusSectionKey(status))}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
@@ -125,7 +126,7 @@ function ReconciliationSection({
           })
         )}
       </Table>
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -148,8 +149,8 @@ function ManualAssertionsSection({
   const total = displayUnit === "usd" ? (totalUsd ?? 0) : totalClp;
 
   return (
-    <section style={{ marginBottom: "1.5rem" }}>
-      <h3 style={{ marginBottom: "0.35rem" }}>
+    <PageGridTile id="asserted">
+      <h3>
         {t("depositsReconciliation.assertedTitle")}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
@@ -201,7 +202,7 @@ function ManualAssertionsSection({
           {t("depositsReconciliation.assertedLinkedSummary", { count: linkedCount })}
         </p>
       ) : null}
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -256,8 +257,8 @@ function RedemptionSection({
   const total = displayUnit === "usd" ? (totalUsd ?? 0) : totalClp;
 
   return (
-    <section style={{ marginBottom: "1.5rem" }}>
-      <h3 style={{ marginBottom: "0.35rem" }}>
+    <PageGridTile id={`redemption-${status}`}>
+      <h3>
         {t(redemptionSectionKey(status))}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
@@ -302,7 +303,7 @@ function RedemptionSection({
           })
         )}
       </Table>
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -353,8 +354,8 @@ export function DepositsReconciliationPage() {
 
       <ManualAssertionsSection rows={data?.manual_assertions ?? []} loading={loading} />
 
-      <section style={{ marginBottom: "1.5rem" }}>
-        <h3 style={{ marginBottom: "0.35rem" }}>
+      <PageGridTile id="by-month">
+        <h3>
           {t("depositsReconciliation.byMonth")}
         </h3>
         <Table
@@ -393,24 +394,26 @@ export function DepositsReconciliationPage() {
             </tr>
           ))}
         </Table>
-      </section>
+      </PageGridTile>
 
-      <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
-        {t("depositsReconciliation.redemptionsTitle")}
-      </h2>
-      {REDEMPTION_STATUS_ORDER.map((status) => {
-        const rows = redemptionsByStatus.get(status) ?? [];
-        return (
-          <RedemptionSection
-            key={status}
-            status={status}
-            rows={rows}
-            totalClp={data ? data.redemptions_by_status[status].total_clp : 0}
-            totalUsd={data ? data.redemptions_by_status[status].total_usd : null}
-            loading={loading}
-          />
-        );
-      })}
+      <PageGridTile id="redemptions" className="page-grid">
+        <h2 className="flow-section-title">
+          {t("depositsReconciliation.redemptionsTitle")}
+        </h2>
+        {REDEMPTION_STATUS_ORDER.map((status) => {
+          const rows = redemptionsByStatus.get(status) ?? [];
+          return (
+            <RedemptionSection
+              key={status}
+              status={status}
+              rows={rows}
+              totalClp={data ? data.redemptions_by_status[status].total_clp : 0}
+              totalUsd={data ? data.redemptions_by_status[status].total_usd : null}
+              loading={loading}
+            />
+          );
+        })}
+      </PageGridTile>
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { FlowsOverviewChart } from "../components/charts/FlowsOverviewChart";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { PaginatedTable, useClientPagination } from "../components/ui/PaginatedTable";
 import { Table } from "../components/ui/Table";
 import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobileCard";
@@ -173,10 +174,7 @@ export function FlowsOverviewPage() {
     <>
       <h2 className="flow-section-title">{t("flows.overview.title")}</h2>
 
-      <div
-        className="chart-grid chart-grid--full-line chart-grid--full-width-stack"
-        style={{ marginBottom: "1.5rem" }}
-      >
+      <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack">
         <FlowsOverviewChart
           controls={chartControls}
           title={t("flows.overview.chartTitle")}
@@ -187,86 +185,88 @@ export function FlowsOverviewPage() {
         />
       </div>
 
-      <div className="chart-panel-title-row">
-        <h3 style={{ margin: 0 }}>{t("flows.overview.detailTitle")}</h3>
-        <SurfaceControls
-          period={tablePrefs.period}
-          onPeriodChange={tablePrefs.setPeriod}
-          periodOptions={["month", "year"]}
-        />
-      </div>
-      <p
-        className={loadableClass(loading, "muted")}
-        style={{ marginBottom: timeRange !== "total" ? "0.35rem" : "0.75rem", fontSize: "0.85rem" }}
-      >
-        {t("flows.overview.totalsLabel")}{" "}
-        {COLUMNS.map((c, i) => (
-          <span key={c.id}>
-            {i > 0 ? " · " : null}
-            <span className="mono" style={{ color: "var(--text)" }}>
-              {t(c.totalsLabelKey)} {formatFlowMoney(c.value(fullTotals), displayUnit)}
-            </span>
-          </span>
-        ))}
-      </p>
-      {timeRange !== "total" ? (
-        <p className={loadableClass(loading, "muted")} style={{ marginBottom: "0.75rem", fontSize: "0.8rem" }}>
-          {t("flows.rangeTotalLabel")}:{" "}
+      <PageGridTile id="detail">
+        <div className="chart-panel-title-row">
+          <h3>{t("flows.overview.detailTitle")}</h3>
+          <SurfaceControls
+            period={tablePrefs.period}
+            onPeriodChange={tablePrefs.setPeriod}
+            periodOptions={["month", "year"]}
+          />
+        </div>
+        <p
+          className={loadableClass(loading, "muted")}
+          style={{ marginBottom: timeRange !== "total" ? "0.35rem" : "0.75rem", fontSize: "0.85rem" }}
+        >
+          {t("flows.overview.totalsLabel")}{" "}
           {COLUMNS.map((c, i) => (
             <span key={c.id}>
               {i > 0 ? " · " : null}
-              <span className="mono">
-                {t(c.totalsLabelKey)} {formatFlowMoney(c.value(rangeTotals), displayUnit)}
+              <span className="mono" style={{ color: "var(--text)" }}>
+                {t(c.totalsLabelKey)} {formatFlowMoney(c.value(fullTotals), displayUnit)}
               </span>
             </span>
           ))}
         </p>
-      ) : null}
+        {timeRange !== "total" ? (
+          <p className={loadableClass(loading, "muted")} style={{ marginBottom: "0.75rem", fontSize: "0.8rem" }}>
+            {t("flows.rangeTotalLabel")}:{" "}
+            {COLUMNS.map((c, i) => (
+              <span key={c.id}>
+                {i > 0 ? " · " : null}
+                <span className="mono">
+                  {t(c.totalsLabelKey)} {formatFlowMoney(c.value(rangeTotals), displayUnit)}
+                </span>
+              </span>
+            ))}
+          </p>
+        ) : null}
 
-      <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
-        <Table
-          header={
-            <thead>
-              <tr>
-                <th className="desktop-only">{t("flows.overview.colMonth")}</th>
-                {COLUMNS.map((c) => (
-                  <th key={c.id} className="desktop-only">
-                    {t(c.labelKey)}
-                  </th>
-                ))}
-                <th className="mobile-only" aria-hidden="true" />
-              </tr>
-            </thead>
-          }
-          tableClassName="table--parallel-mobile"
-          tableStyle={{ fontSize: "0.85rem" }}
-        >
-          {pageRows.map((row) => {
-            const period = flowPeriodLabel(row.period_month, tableGranularity);
-            return (
-              <tr key={row.period_month}>
-                <td className="mono desktop-only">{period}</td>
-                {COLUMNS.map((c) => (
-                  <td key={c.id} className={c.muted ? "mono muted desktop-only" : "mono desktop-only"}>
-                    {formatFlowMoney(c.value(row), displayUnit)}
+        <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
+          <Table
+            header={
+              <thead>
+                <tr>
+                  <th className="desktop-only">{t("flows.overview.colMonth")}</th>
+                  {COLUMNS.map((c) => (
+                    <th key={c.id} className="desktop-only">
+                      {t(c.labelKey)}
+                    </th>
+                  ))}
+                  <th className="mobile-only" aria-hidden="true" />
+                </tr>
+              </thead>
+            }
+            tableClassName="table--parallel-mobile"
+            tableStyle={{ fontSize: "0.85rem" }}
+          >
+            {pageRows.map((row) => {
+              const period = flowPeriodLabel(row.period_month, tableGranularity);
+              return (
+                <tr key={row.period_month}>
+                  <td className="mono desktop-only">{period}</td>
+                  {COLUMNS.map((c) => (
+                    <td key={c.id} className={c.muted ? "mono muted desktop-only" : "mono desktop-only"}>
+                      {formatFlowMoney(c.value(row), displayUnit)}
+                    </td>
+                  ))}
+                  <td className="mobile-only">
+                    <TableMobileCard title={period}>
+                      {COLUMNS.map((c) => (
+                        <TableMobileCardRow
+                          key={c.id}
+                          label={t(c.labelKey)}
+                          value={<span className="mono">{formatFlowMoney(c.value(row), displayUnit)}</span>}
+                        />
+                      ))}
+                    </TableMobileCard>
                   </td>
-                ))}
-                <td className="mobile-only">
-                  <TableMobileCard title={period}>
-                    {COLUMNS.map((c) => (
-                      <TableMobileCardRow
-                        key={c.id}
-                        label={t(c.labelKey)}
-                        value={<span className="mono">{formatFlowMoney(c.value(row), displayUnit)}</span>}
-                      />
-                    ))}
-                  </TableMobileCard>
-                </td>
-              </tr>
-            );
-          })}
-        </Table>
-      </PaginatedTable>
+                </tr>
+              );
+            })}
+          </Table>
+        </PaginatedTable>
+      </PageGridTile>
     </>
   );
 }

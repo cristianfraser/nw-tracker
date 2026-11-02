@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { IncomeMonthlyChart } from "../components/charts/IncomeMonthlyChart";
 import { IncomeAllLinesTable } from "../components/income/IncomeAllLinesTable";
 import { IncomeRefundLinesTable } from "../components/income/IncomeRefundLinesTable";
@@ -99,7 +100,7 @@ export function IncomePage() {
     <>
       <h2 className="flow-section-title">{t("sidebar.flowsIncome")}</h2>
 
-      <p className={loadableClass(loading, "muted")} style={{ marginBottom: "1rem" }}>
+      <p className={loadableClass(loading, "muted")}>
         {t("income.totalLabel")}{" "}
         <span className="mono" style={{ color: "var(--text)" }}>
           {formatFlowMoney(aggregates?.total ?? 0, displayUnit)}
@@ -112,10 +113,7 @@ export function IncomePage() {
         ) : null}
       </p>
 
-      <div
-        className="chart-grid chart-grid--full-line chart-grid--full-width-stack"
-        style={{ marginBottom: "1.5rem" }}
-      >
+      <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack">
         <IncomeMonthlyChart
           controls={chartControls}
           title={t("income.chartTitle")}
@@ -126,9 +124,9 @@ export function IncomePage() {
         />
       </div>
 
-      <section style={{ marginBottom: "1.5rem" }}>
+      <PageGridTile id="monthly">
         <div className="chart-panel-title-row">
-          <h3 style={{ margin: 0 }}>{t("income.sectionMonthly")}</h3>
+          <h3>{t("income.sectionMonthly")}</h3>
           <SurfaceControls
             period={tablePrefs.period}
             onPeriodChange={tablePrefs.setPeriod}
@@ -141,12 +139,12 @@ export function IncomePage() {
           periodGranularity={tableGranularity}
           loading={loading}
         />
-      </section>
+      </PageGridTile>
 
       <PayrollBreakdownSection breakdown={data?.payroll_breakdown} displayUnit={displayUnit} loading={loading} />
 
-      <section style={{ marginBottom: "1.5rem" }}>
-        <h3 style={{ marginBottom: "0.35rem" }}>
+      <PageGridTile id="work-earnings">
+        <h3>
           {t("workEarnings.sectionTitle")}
         </h3>
         <WorkEarningsTable
@@ -155,36 +153,36 @@ export function IncomePage() {
           checks={data?.payslip_checks}
           loading={loading}
         />
-      </section>
+      </PageGridTile>
 
-      <section>
-        <h3 style={{ marginBottom: "0.35rem" }}>{t("income.sectionAllLines")}</h3>
+      <PageGridTile id="all-lines">
+        <h3>{t("income.sectionAllLines")}</h3>
         <IncomeAllLinesTable rows={allRows} displayUnit={displayUnit} loading={loading} />
-      </section>
+      </PageGridTile>
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h3 style={{ marginBottom: "0.35rem" }}>
+      <PageGridTile id="refunds">
+        <h3>
           {t("income.sectionRefunds")}
         </h3>
         <p className="muted" style={{ fontSize: "0.85rem", marginTop: 0 }}>
           {t("income.refundsHint")}
         </p>
         <IncomeRefundLinesTable rows={data?.refund_lines ?? []} displayUnit={displayUnit} loading={loading} />
-      </section>
+      </PageGridTile>
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h3 style={{ marginBottom: "0.35rem" }}>
+      <PageGridTile id="filtered">
+        <h3>
           {t("income.sectionFiltered")}
         </h3>
         <IncomeFilteredLinesTable rows={data?.filtered_lines ?? []} displayUnit={displayUnit} loading={loading} />
-      </section>
+      </PageGridTile>
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h3 style={{ marginBottom: "0.35rem" }}>
+      <PageGridTile id="excluded">
+        <h3>
           {t("income.sectionExcluded")}
         </h3>
         <IncomeExcludedLinesTable rows={data?.excluded_lines ?? []} displayUnit={displayUnit} loading={loading} />
-      </section>
+      </PageGridTile>
     </>
   );
 }
