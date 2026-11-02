@@ -473,16 +473,21 @@ function augmentChartDatesForCreditCardAccounts(
 }
 
 /**
- * A property's chart samples every month-end from the first depto ledger row through today (its
- * `valuations` rows are appraisals, so they give it no dates). Before migration 260 its peso
- * month-end rows gave these dates.
+ * The property's and the mortgage's charts sample every month-end from the first depto ledger row
+ * through today: their values come from the ledger, so their stored `valuations` rows (the
+ * property's appraisals; none for the mortgage since migration 261) give them no dates. Before
+ * migrations 260 / 261 their peso month-end rows gave these dates.
  */
-function augmentChartDatesForPropertyAccounts(
+function augmentChartDatesForDeptoAccounts(
   dateStrs: string[],
   allIds: number[],
   slugById: Map<number, string>
 ): string[] {
-  if (!allIds.some((id) => valuationsAreAppraisals(bucketKindFromSlugMap(slugById, id)))) return dateStrs;
+  const ledgerValued = (id: number): boolean => {
+    const kind = bucketKindFromSlugMap(slugById, id);
+    return valuationsAreAppraisals(kind) || kind === "mortgage";
+  };
+  if (!allIds.some(ledgerValued)) return dateStrs;
   const ledger = loadDeptoLedgerFromMovements();
   let first: string | null = null;
   for (const r of ledger) {
@@ -882,7 +887,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     merge
   );
   dateStrs = expandSnapshotDatesForCryptoMtm(dateStrs, allIds);
-  dateStrs = augmentChartDatesForPropertyAccounts(dateStrs, allIds, slugById);
+  dateStrs = augmentChartDatesForDeptoAccounts(dateStrs, allIds, slugById);
   const chartMetaById = accountChartMetaById(allIds);
   const depMovs = loadMergedDepositInflowEvents(allIds);
   const displayDepMovs = loadMergedDisplayDepositInflowEvents(allIds);
