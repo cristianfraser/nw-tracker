@@ -2,13 +2,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../../api";
-import { formatClp, parseNumberInputOrThrow } from "../../format";
+import { formatClp, formatUfUnits, formatUsd, parseNumberInputOrThrow } from "../../format";
 import { queryKeys, type DisplayUnit } from "../../queries/keys";
 import { Table } from "../ui/Table";
 import { Button, Field, Input } from "@crfrsr/ui";
 import {
   brokerageMovementFieldRowStyle,
 } from "../panel/BrokerageMovementsSection";
+
+/** A stored row in the currency it is stated in (a book account's rows are pesos). */
+function formatStoredValuation(value: number, currency: string): string {
+  if (currency === "clp") return formatClp(value);
+  if (currency === "usd") return formatUsd(value);
+  if (currency === "uf") return formatUfUnits(value);
+  throw new Error(`book valuation in ${currency}: no display format`);
+}
 
 type Props = {
   accountId: number;
@@ -126,7 +134,7 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
             {recentRows.map((row) => (
               <tr key={row.id}>
                 <td>{row.as_of_date}</td>
-                <td className="mono">{formatClp(row.value_clp)}</td>
+                <td className="mono">{formatStoredValuation(row.value, row.currency)}</td>
               </tr>
             ))}
           </Table>

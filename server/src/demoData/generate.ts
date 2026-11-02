@@ -327,14 +327,14 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketRea
         r4(vv)
       );
     }
-    // Month-end marks: mortgage = UF balance × UF; property = equity (value − mortgage).
+    // Month-end marks of the mortgage: UF balance × UF. The property's valuations are its UF
+    // appraisals, written with each payment above (its value is net equity, from the ledger).
     for (let mo = HOUSE.month; ; mo = addMonths(mo, 1)) {
       const end = ymd(mo, daysInMonth(mo));
       const day = end <= today ? end : today;
       const balUf = mortgageBalanceUf(m, day);
       const uf = market.uf(day);
       insVal.run(mortgageId, day, Math.round(balUf * uf));
-      insVal.run(propertyId, day, Math.round((valueUfAt(day) - balUf) * uf));
       if (day === today) break;
     }
   })();

@@ -1,4 +1,4 @@
-import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { assertValuationCurrency } from "./valuationValue.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
@@ -309,7 +309,7 @@ export function getAccountPositionMeta(
         `SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`
       )
       .get(accountId, asOfCuotas) as { value_clp: number; currency: string } | undefined;
-    if (stored) assertValuationCurrencyClp(stored.currency, "accountPosition cuota-ledger stored");
+    if (stored) assertValuationCurrency(stored.currency, "clp", "accountPosition cuota-ledger stored");
 
     // The cuota ledger IS the truth (AFP: certificate-backed, rebuilt 2026-07 from the official
     // UNO movement certs; AFC: derived from pesos ÷ valor cuota until a cartola supplies the

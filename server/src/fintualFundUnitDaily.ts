@@ -1,4 +1,4 @@
-import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { assertValuationCurrency } from "./valuationValue.js";
 /**
  * Append Fintual goal NAV polls to `fund_unit_daily` (marquee, rates charts).
  */
@@ -24,7 +24,7 @@ function latestValuationClp(accountId: number, onOrBefore: string): number | nul
        ORDER BY as_of_date DESC LIMIT 1`
     )
     .get(accountId, onOrBefore) as { value_clp: number; currency: string } | undefined;
-  if (r) assertValuationCurrencyClp(r.currency, "fintualFundUnitDaily");
+  if (r) assertValuationCurrency(r.currency, "clp", "fintualFundUnitDaily");
   const v = r?.value_clp;
   return v != null && Number.isFinite(v) && v > 0 ? v : null;
 }

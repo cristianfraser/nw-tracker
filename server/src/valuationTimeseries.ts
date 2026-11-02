@@ -1,4 +1,5 @@
-import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
+import { holdingIsDebt } from "./holdings.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
 import {
@@ -472,6 +473,29 @@ function augmentChartDatesForCreditCardAccounts(
 }
 
 /**
+ * A property's chart samples every month-end from the first depto ledger row through today (its
+ * `valuations` rows are appraisals, so they give it no dates). Before migration 260 its peso
+ * month-end rows gave these dates.
+ */
+function augmentChartDatesForPropertyAccounts(
+  dateStrs: string[],
+  allIds: number[],
+  slugById: Map<number, string>
+): string[] {
+  if (!allIds.some((id) => valuationsAreAppraisals(bucketKindFromSlugMap(slugById, id)))) return dateStrs;
+  const ledger = loadDeptoLedgerFromMovements();
+  let first: string | null = null;
+  for (const r of ledger) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(r.occurred_on) && (first == null || r.occurred_on < first)) first = r.occurred_on;
+  }
+  if (first == null) return dateStrs;
+  const today = chileCalendarTodayYmd();
+  const aug = new Set(dateStrs);
+  for (const d of monthEndsBetweenInclusive(first, today)) if (d <= today) aug.add(d);
+  return [...aug].sort();
+}
+
+/**
  * The depto-dividendos sheet is a payment ledger: a cuota paid mid-month must step the
  * sheet-driven series (pago acumulado, restante hipoteca, valor neto) on its payment date,
  * not on the next manual `valuations` row (same pattern as CC statement-close dates above).
@@ -836,22 +860,29 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
   if (allIds.length === 0) {
     return { accounts: top, points: [] as Record<string, string | number | null>[] };
   }
-  const ph = allIds.map(() => "?").join(",");
-  const dates = db
-    .prepare(
-      `SELECT DISTINCT v.as_of_date AS d
-       FROM valuations v
-       WHERE v.account_id IN (${ph})
-       ORDER BY v.as_of_date`
-    )
-    .all(...allIds) as { d: string }[];
+  const slugById = bucketSlugByAccountId(allIds);
+  // A property's `valuations` are its appraisals (UF), not chart samples or values: its chart
+  // dates and values come from the depto ledger.
+  const markIds = allIds.filter((id) => !valuationsAreAppraisals(bucketKindFromSlugMap(slugById, id)));
+  const ph = markIds.map(() => "?").join(",");
+  const dates =
+    markIds.length === 0
+      ? []
+      : (db
+          .prepare(
+            `SELECT DISTINCT v.as_of_date AS d
+             FROM valuations v
+             WHERE v.account_id IN (${ph})
+             ORDER BY v.as_of_date`
+          )
+          .all(...markIds) as { d: string }[]);
   let dateStrs = expandSnapshotDatesForEquityMtm(
     dates.map((x) => x.d),
     allIds,
     merge
   );
   dateStrs = expandSnapshotDatesForCryptoMtm(dateStrs, allIds);
-  const slugById = bucketSlugByAccountId(allIds);
+  dateStrs = augmentChartDatesForPropertyAccounts(dateStrs, allIds, slugById);
   const chartMetaById = accountChartMetaById(allIds);
   const depMovs = loadMergedDepositInflowEvents(allIds);
   const displayDepMovs = loadMergedDisplayDepositInflowEvents(allIds);
@@ -921,23 +952,29 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     }
   }
 
-  const vals = db
-    .prepare(
-      `SELECT account_id, as_of_date, value AS value_clp, currency
-       FROM valuations
-       WHERE account_id IN (${ph})
-       ORDER BY as_of_date, account_id`
-    )
-    .all(...allIds) as { account_id: number; as_of_date: string; value_clp: number; currency: string }[];
+  const vals =
+    markIds.length === 0
+      ? []
+      : (db
+          .prepare(
+            `SELECT account_id, as_of_date, value, currency
+             FROM valuations
+             WHERE account_id IN (${ph})
+             ORDER BY as_of_date, account_id`
+          )
+          .all(...markIds) as { account_id: number; as_of_date: string; value: number; currency: string }[]);
   const byDate = new Map<string, Map<number, number>>();
   for (const v of vals) {
-    assertValuationCurrencyClp(v.currency, "valuationTimeseries snapshots");
+    // The chart's raw is pesos: a row in another currency converted once, on its own date, at
+    // the account's side.
+    const side = holdingIsDebt(bucketKindFromSlugMap(slugById, v.account_id)) ? "debt" : "asset";
+    const clp = storedValuationInUnit(v, "clp", side, "valuationTimeseries snapshots");
     let m = byDate.get(v.as_of_date);
     if (!m) {
       m = new Map();
       byDate.set(v.as_of_date, m);
     }
-    m.set(v.account_id, v.value_clp);
+    m.set(v.account_id, clp);
   }
   const last = new Map<number, number>();
   let lastBtc: number | null = null;

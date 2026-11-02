@@ -323,7 +323,7 @@ export function deptoPropertyCloseClpBySnapshotDates(
   return out;
 }
 
-// ---------- loan_payments / property_appraisals (machine payload; notes are human provenance) ----------
+// ---------- loan_payments / the property's appraisals (machine payload; notes are human provenance) ----------
 
 /** The account a payment movement sits on: the property account's row or the mortgage's. */
 export type LoanPaymentLeg = "property" | "loan";
@@ -414,13 +414,14 @@ export function loanPaymentColumnsFromPaymentRow(r: DeptoDividendosPaymentRow): 
 }
 
 /**
- * The property's appraisal (UF) on a date — a valuation of the property account. The ledger
- * carries the latest one on or before each row. Writing the same date twice must state the same
- * value.
+ * The property's appraisal on a date: a `valuations` row of the property account in UF (a
+ * property's valuations are its appraisals; its value is net equity, derived by the ledger). The
+ * ledger carries the latest one on or before each row. Writing the same date twice must state the
+ * same value.
  */
 export function upsertPropertyAppraisalUf(accountId: number, asOfYmd: string, valueUf: number): void {
   const prev = db
-    .prepare(`SELECT value, currency FROM property_appraisals WHERE account_id = ? AND as_of_date = ?`)
+    .prepare(`SELECT value, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`)
     .get(accountId, asOfYmd) as { value: number; currency: string } | undefined;
   if (prev) {
     if (prev.currency !== "uf" || prev.value !== valueUf) {
@@ -431,16 +432,14 @@ export function upsertPropertyAppraisalUf(accountId: number, asOfYmd: string, va
     return;
   }
   db.prepare(
-    `INSERT INTO property_appraisals (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'uf')`
+    `INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'uf')`
   ).run(accountId, asOfYmd, valueUf);
 }
 
-/** Appraisals of a property account in UF, oldest first (a non-UF row throws). */
+/** Appraisals of a property account in UF, oldest first (a valuation in another currency throws). */
 export function propertyAppraisalsUfAsc(accountId: number): { as_of_date: string; value_uf: number }[] {
   const rows = db
-    .prepare(
-      `SELECT as_of_date, value, currency FROM property_appraisals WHERE account_id = ? ORDER BY as_of_date`
-    )
+    .prepare(`SELECT as_of_date, value, currency FROM valuations WHERE account_id = ? ORDER BY as_of_date`)
     .all(accountId) as { as_of_date: string; value: number; currency: string }[];
   return rows.map((r) => {
     if (r.currency !== "uf") {

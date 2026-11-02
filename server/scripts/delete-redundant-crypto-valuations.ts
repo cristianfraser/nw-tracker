@@ -15,7 +15,7 @@
  */
 import { db } from "../src/db.js";
 import { accountUsesCryptoMtm, requireCryptoMtmClp } from "../src/cryptoValuation.js";
-import { assertValuationCurrencyClp } from "../src/valuationValue.js";
+import { assertValuationCurrency } from "../src/valuationValue.js";
 
 const apply = process.argv.includes("--apply");
 const verbose = process.argv.includes("--verbose");
@@ -67,7 +67,7 @@ for (const accountId of ids) {
   let maxAbsDate = "";
   const off: string[] = [];
   for (const r of rows) {
-    assertValuationCurrencyClp(r.currency, "delete-redundant-crypto-valuations");
+    assertValuationCurrency(r.currency, "clp", "delete-redundant-crypto-valuations");
     const mark = requireCryptoMtmClp(accountId, r.as_of_date);
     const diff = r.value - mark;
     const rel = mark !== 0 ? diff / mark : r.value === 0 ? 0 : Infinity;

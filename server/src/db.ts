@@ -16,6 +16,7 @@ import {
   runMarkInputChangeTriggers258,
 } from "./markInputChangeTriggers211.js";
 import { runLoanPayments258 } from "./loanPayments258.js";
+import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
   SCHEMA_BASELINE_STATEMENTS,
@@ -248,6 +249,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
     runLoanPayments258(dbi);
     runMarkInputChangeTriggers258(dbi);
   },
+  "260_valuations_any_currency.sql": runValuationsAnyCurrency260,
 };
 
 /**
