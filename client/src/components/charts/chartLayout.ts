@@ -1,26 +1,23 @@
+import { DefaultZIndexes } from "recharts";
 import { formatClp, formatCompactMoney, formatUsd } from "../../format";
 import { formatDayMonthShortLabel, formatMonthYearShortLabel } from "../../formatDateLabel";
 
 export type ChartDisplayUnit = "clp" | "usd";
 
 /**
- * Recharts cartesian margins. Keep `left` small: Y-axis label room comes mainly from `rechartsMoneyYAxisWidth`
- * on `<YAxis width={…} />`; a large `left` here stacks with that and looks like an empty gutter.
+ * Recharts cartesian margins. Keep `left` small: Y-axis label room comes from the axis `width`
+ * (`moneyYAxisProps`); a large `left` here stacks with that and looks like an empty gutter.
  */
 export const RECHARTS_MONEY_CHART_MARGIN = { top: 8, right: 8, left: 2, bottom: 0 } as const;
 
-/**
- * Width reserved for Y-axis ticks (CLP `$·` + es-CL grouping is wider than Recharts’ default ~60px).
- * `compact` ticks are short notation with a bare symbol (`$10M`), so both units fit the same
- * narrow gutter — worth ~55px of plot area back on a phone.
- */
-export function rechartsMoneyYAxisWidth(unit: ChartDisplayUnit, compact = false): number {
-  if (compact) return 44;
-  return unit === "usd" ? 78 : 104;
-}
-
 /** Match default axis / tick stroke on dark charts (see YAxis/XAxis axisLine usage). */
 export const AXIS_LINE_STROKE = "#64748b";
+
+/**
+ * Layer for guides that sit under every series (the zero line, the current-period marker). Recharts 3
+ * paints by layer, not by JSX order, and draws reference lines in the line layer, over the bars.
+ */
+export const UNDER_SERIES_Z_INDEX = DefaultZIndexes.area - 1;
 
 /** Shared `tick={…}` style for X/Y axes across all charts. */
 export const CHART_TICK_STYLE = { fontSize: 11, fill: "#94a3b8" } as const;
@@ -35,26 +32,54 @@ export function formatAxisValue(v: number, unit: ChartDisplayUnit, compact = fal
   return unit === "usd" ? formatUsd(v) : formatClp(v);
 }
 
+/** Recharts' Y-axis tick line and the gap between it and the label (its `tickSize` / `tickMargin` defaults). */
+const Y_AXIS_TICK_SIZE_PX = 6;
+const Y_AXIS_TICK_MARGIN_PX = 2;
+/** Room for anti-aliasing and font rounding, so the widest label never touches the chart's left edge. */
+const Y_AXIS_LABEL_SLACK_PX = 2;
+
+let tickMeasureContext: CanvasRenderingContext2D | null | undefined;
+
+/**
+ * Rendered width of a tick label at the tick font, the font SVG text inherits from the page.
+ * Outside a browser (unit tests) it estimates from the character count.
+ */
+function tickLabelWidthPx(label: string): number {
+  const size = CHART_TICK_STYLE.fontSize;
+  if (tickMeasureContext === undefined) {
+    tickMeasureContext = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
+  }
+  if (!tickMeasureContext) return label.length * size * 0.6;
+  tickMeasureContext.font = `${size}px ${getComputedStyle(document.body).fontFamily}`;
+  return tickMeasureContext.measureText(label).width;
+}
+
+/**
+ * Y-axis gutter that fits the axis's own labels: the widest formatted tick, plus the tick line and
+ * its gap. Recharts right-aligns the labels in the gutter, so any width beyond this is empty space
+ * between the chart's left edge and the labels.
+ */
+export function yAxisWidthForTicks(ticks: readonly number[], unit: ChartDisplayUnit, compact = false): number {
+  const widest = Math.max(0, ...ticks.map((v) => tickLabelWidthPx(formatAxisValue(v, unit, compact))));
+  return Math.ceil(widest + Y_AXIS_TICK_SIZE_PX + Y_AXIS_TICK_MARGIN_PX + Y_AXIS_LABEL_SLACK_PX);
+}
+
 /**
  * Every money Y axis in the app. Charts spread this and add only what genuinely differs
  * (`domain`, `ticks`, `allowDataOverflow`) — the tick styling, axis stroke, gutter width and
  * the compact/desktop formatting rule live here, so a currency, breakpoint or style change
  * touches one function instead of eleven charts.
  *
- * Deliberately a props factory, not a `<MoneyYAxis>` component: Recharts discovers axes by
- * inspecting `child.type` against its own components, so a wrapper that returns `<YAxis>` is
- * silently dropped and the axis never renders.
+ * The gutter is sized from `ticks`, the ticks the chart passes to the axis
+ * ({@link yAxisWidthForTicks}). A chart that leaves its ticks to Recharts omits them and gets
+ * Recharts' own `width="auto"`, which measures the labels after they render.
  *
  * `compact` comes from `useIsNarrowViewport()` at the call site — this module stays hook-free
  * so it remains plain unit-testable functions.
- *
- * `width` overrides the gutter for a chart whose values are orders of magnitude off the norm
- * (Projections plots USD in the millions, where the standard USD gutter clips). Style is never
- * overridable — that is the drift this factory exists to prevent.
  */
-export function moneyYAxisProps(unit: ChartDisplayUnit, compact = false, opts?: { width?: number }) {
+export function moneyYAxisProps(unit: ChartDisplayUnit, compact = false, ticks?: readonly number[]) {
   return {
-    width: opts?.width != null && !compact ? opts.width : rechartsMoneyYAxisWidth(unit, compact),
+    width: ticks ? yAxisWidthForTicks(ticks, unit, compact) : ("auto" as const),
     tick: CHART_TICK_STYLE,
     axisLine: { stroke: AXIS_LINE_STROKE },
     tickLine: { stroke: AXIS_LINE_STROKE },

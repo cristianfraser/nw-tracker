@@ -18,9 +18,10 @@ import {
   formatTooltipValue,
   minMaxForKeys,
   moneyYAxisProps,
-  rechartsMoneyYAxisWidth,
+  yAxisWidthForTicks,
   resolvePeriodXAxis,
   type ChartDisplayUnit,
+  UNDER_SERIES_Z_INDEX,
 } from "./chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
@@ -345,7 +346,7 @@ export function MonthlyPerformanceComboChart({
           barGroup={{
             count: barSlotCount,
             maxBarSize: BAR_MAX_SIZE,
-            yAxisWidth: rechartsMoneyYAxisWidth(displayUnit, compactAxis),
+            yAxisWidth: yAxisWidthForTicks(yScale.ticks, displayUnit, compactAxis),
           }}
           tooltip={{
             formatValue: (v) => formatTooltipValue(v, displayUnit),
@@ -355,7 +356,7 @@ export function MonthlyPerformanceComboChart({
           }}
         >
             {yScale.showZeroReference ? (
-              <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
+              <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} zIndex={UNDER_SERIES_Z_INDEX} />
             ) : null}
             <XAxis
               dataKey="as_of_date"
@@ -369,12 +370,13 @@ export function MonthlyPerformanceComboChart({
             <YAxis
               domain={yScale.domain}
               ticks={yScale.ticks}
-              {...moneyYAxisProps(displayUnit, compactAxis)}
+              {...moneyYAxisProps(displayUnit, compactAxis, yScale.ticks)}
             />
             <Legend
+              itemSorter={null}
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
               formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
-              content={({ ref: _ref, ...legend }) => (
+              content={(legend) => (
                 <DefaultLegendContent
                   {...legend}
                   payload={sortBySeriesRank(legend.payload ?? [], seriesRank)}

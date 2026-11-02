@@ -1,10 +1,11 @@
 import type { ComponentProps, ReactNode } from "react";
-import { CartesianGrid, ComposedChart, Customized, ResponsiveContainer } from "recharts";
+import { CartesianGrid, ComposedChart } from "recharts";
 import { AlternatingXBands } from "./chartBands";
 import { hasBandableBarGroups } from "./chartBandEdges";
 import { RECHARTS_MONEY_CHART_MARGIN } from "./chartLayout";
 import { appTooltipElement, type AppTooltipSpec } from "./ChartTooltip";
 import { groupedBarSpacing } from "./groupedBarSpacing";
+import { useElementSize } from "./useElementSize";
 
 /** Side-by-side bars drawn per category, and what the wrapper needs to space them. */
 export type AppBarGroup = {
@@ -12,7 +13,7 @@ export type AppBarGroup = {
   count: number;
   /** The bars' own `maxBarSize`. */
   maxBarSize: number;
-  /** The Y axis gutter width (`rechartsMoneyYAxisWidth`), which takes plot width away. */
+  /** The Y axis gutter width (`yAxisWidthForTicks`), which takes plot width away. */
   yAxisWidth: number;
 };
 
@@ -37,35 +38,39 @@ export type AppComposedChartProps = ComponentProps<typeof ComposedChart> & {
 };
 
 /**
- * App wrapper around Recharts {@link ComposedChart}: owns the ResponsiveContainer, default margin, the
+ * App wrapper around Recharts {@link ComposedChart}: fills its box, owns the default margin, the
  * grid and the docked tooltip. Series/axes/legend stay composable as children; `stackOffset` etc. pass through.
+ *
+ * Measures its own box instead of using `ResponsiveContainer`: the grouped-bar spacing needs the
+ * chart width, and v3's container only hands it to the chart through a private context.
  */
 export function AppComposedChart(props: AppComposedChartProps) {
+  const { ref, width, height } = useElementSize<HTMLDivElement>();
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      {/* ResponsiveContainer passes the measured width/height to its child; the name must end in
-          "Chart" for it to pass the sizing style too. */}
-      <SizedAppComposedChart {...props} />
-    </ResponsiveContainer>
+    <div ref={ref} style={{ width: "100%", height: "100%" }}>
+      {width > 0 && height > 0 ? <SizedAppComposedChart {...props} width={width} height={height} /> : null}
+    </div>
   );
 }
 
 function SizedAppComposedChart({
+  width,
+  height,
   tooltip,
   margin,
   barGroup,
   grid = true,
   children,
   ...rest
-}: AppComposedChartProps) {
+}: AppComposedChartProps & { width: number; height: number }) {
   const gridProps = grid === false ? null : grid === true ? {} : grid;
   const chartMargin = margin ?? RECHARTS_MONEY_CHART_MARGIN;
   const categoryCount = rest.data?.length ?? 0;
   const groupedBars = barGroup != null && hasBandableBarGroups(barGroup.count, categoryCount);
   const spacing =
-    barGroup && groupedBars && rest.width != null
+    barGroup && groupedBars
       ? groupedBarSpacing({
-          chartWidth: rest.width,
+          chartWidth: width,
           marginLeft: chartMargin.left ?? 0,
           marginRight: chartMargin.right ?? 0,
           yAxisWidth: barGroup.yAxisWidth,
@@ -75,9 +80,9 @@ function SizedAppComposedChart({
         })
       : null;
   return (
-    <ComposedChart margin={chartMargin} {...spacing} {...rest}>
-      {/* First, so the bands paint under the grid and every series. */}
-      {groupedBars ? <Customized component={AlternatingXBands} /> : null}
+    <ComposedChart margin={chartMargin} {...spacing} {...rest} width={width} height={height}>
+      {/* Its own layer under the grid and every series. */}
+      {groupedBars ? <AlternatingXBands /> : null}
       {gridProps ? (
         <CartesianGrid
           strokeDasharray="3 3"
