@@ -95,7 +95,7 @@ export function PortfolioNavChildDetailCards({
                   bottomLines={br.bottomLines}
                   pinBottomToCard={br.pinBottom}
                   showUsd={showUsd}
-                  animated={animated}
+                  animated={false}
                 />
               ) : null
             }
