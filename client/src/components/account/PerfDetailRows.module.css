@@ -50,10 +50,16 @@
   text-align: right;
 }
 
-/* The flow slots and the totals are columns of the row on one line. */
+/* The flow slots and the totals are columns of the row on one line. A step below the closing
+   and the result, which lead the row. */
 .flows,
 .totals {
   display: contents;
+}
+
+.flow,
+.total {
+  font-size: var(--font-size-card-meta-sm);
 }
 
 .arrow {
