@@ -183,12 +183,12 @@ export function LiabilitiesGroupPage() {
 
   const navCtxEnabled =
     pathnameUsesDashboardNavContext(pathname) && (!hasNavSnapshotCache || bundleReady);
-  const { data: navCtx } = useDashboardNavContext(displayUnit, navCtxEnabled);
+  const { data: navCtx } = useDashboardNavContext(displayUnit, navMatchNode?.slug ?? null, navCtxEnabled);
   // The page holds the previous unit's bundle while the new unit loads (same-entity keep-previous):
   // with nothing of the new unit's on hand the strip keeps the previous unit's cards, dimmed and
   // in THEIR unit, and flips to the new values once they land — never a blank strip.
   const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
-  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx);
+  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx, navMatchNode?.slug ?? null);
   const stripShowUsd = heldStrip ? heldStrip.showUsd : displayUnit === "usd";
 
   const accounts =

@@ -7,7 +7,9 @@ export function otherDisplayUnit(unit: DisplayUnit): DisplayUnit {
 
 export const queryKeys = {
   dashboard: (unit: DisplayUnit) => ["dashboard", unit] as const,
-  dashboardNav: (unit: DisplayUnit) => ["dashboardNav", unit] as const,
+  /** Without `root`, the prefix of every page's nav-context in that unit (for invalidation). */
+  dashboardNav: (unit: DisplayUnit, root?: string) =>
+    (root == null ? ["dashboardNav", unit] : ["dashboardNav", unit, root]) as readonly unknown[],
   dashboardNavSnapshot: (unit: DisplayUnit) => ["dashboardNavSnapshot", unit] as const,
   dashboardOverview: (unit: DisplayUnit) => ["dashboardOverview", unit] as const,
   dashboardOverviewDaily: (unit: DisplayUnit, days: number) =>

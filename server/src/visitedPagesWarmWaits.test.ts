@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 /** The step under test records its calls instead of building the nav context. */
 const navContextCalls: string[] = [];
 vi.mock("./dashboardAccounts.js", () => ({
-  buildDashboardNavContext: async (_includeUsd: boolean, unit: string) => {
+  buildDashboardNavContext: async (_includeUsd: boolean, unit: string, _root: string) => {
     navContextCalls.push(unit);
     return {};
   },
@@ -27,7 +27,7 @@ describe("warmVisitedPages and requests in flight", () => {
   it("does not start a step while a request is in flight", async () => {
     const res = new EventEmitter();
     apiInFlightMiddleware()({ path: "/api/dashboard/nav-context" } as Request, res as unknown as Response, () => {});
-    const warm = warmVisitedPages({ groups: [], accounts: [], navContextUnits: ["clp"] });
+    const warm = warmVisitedPages({ groups: [], accounts: [], navContexts: [{ root: "brokerage", unit: "clp" }] });
     await sleep(100);
     expect(navContextCalls).toEqual([]);
     res.emit("finish");
@@ -39,7 +39,7 @@ describe("warmVisitedPages and requests in flight", () => {
 
   it("runs at once with nothing in flight", async () => {
     const t0 = performance.now();
-    await warmVisitedPages({ groups: [], accounts: [], navContextUnits: ["usd"] });
+    await warmVisitedPages({ groups: [], accounts: [], navContexts: [{ root: "brokerage", unit: "usd" }] });
     expect(navContextCalls).toEqual(["usd"]);
     expect(performance.now() - t0).toBeLessThan(API_IN_FLIGHT_SETTLE_MS);
   });

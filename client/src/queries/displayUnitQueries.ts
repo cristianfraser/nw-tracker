@@ -2,7 +2,6 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
   fetchAccountsByPortfolioGroup,
   fetchDashboardBundle,
-  fetchDashboardNavContext,
   fetchDashboardNavSnapshot,
   fetchPortfolioGroupBundle,
 } from "./fetchers";
@@ -55,18 +54,6 @@ export function prefetchDashboardBundle(queryClient: QueryClient, unit: DisplayU
   return queryClient.prefetchQuery({
     queryKey: queryKeys.dashboard(unit),
     queryFn: () => fetchDashboardBundle(unit),
-    staleTime: DISPLAY_UNIT_STALE_MS,
-  });
-}
-
-export function prefetchDashboardNavContext(
-  queryClient: QueryClient,
-  unit: DisplayUnit
-): Promise<void> {
-  if (hasDashboardNavSnapshotCache(unit)) return Promise.resolve();
-  return queryClient.prefetchQuery({
-    queryKey: queryKeys.dashboardNav(unit),
-    queryFn: () => fetchDashboardNavContext(unit),
     staleTime: DISPLAY_UNIT_STALE_MS,
   });
 }

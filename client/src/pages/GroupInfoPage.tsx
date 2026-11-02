@@ -162,12 +162,12 @@ export function GroupInfoPage() {
     data: navCtx,
     isPending: navCtxPending,
     isPlaceholderData: navCtxHeld,
-  } = useDashboardNavContext(displayUnit, navCtxEnabled);
+  } = useDashboardNavContext(displayUnit, navMatchNode?.slug ?? null, navCtxEnabled);
   // The page holds the previous unit's bundle while the new unit loads (same-entity keep-previous):
   // with nothing of the new unit's on hand the strip keeps the previous unit's cards, dimmed and
   // in THEIR unit, and flips to the new values once they land — never a blank strip.
   const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
-  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx);
+  const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx, navMatchNode?.slug ?? null);
   const stripShowUsd = heldStrip ? heldStrip.showUsd : displayUnit === "usd";
   // The value map replaces the composition chart when this page's node has group children;
   // only the real nav-context payload carries it (a cached snapshot's values are placeholders).

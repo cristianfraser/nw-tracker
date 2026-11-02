@@ -12,6 +12,7 @@ import {
 import {
   hasDashboardNavSnapshotCache,
   navSnapshotCoversNavTree,
+  mergeNavContextIntoSnapshotCache,
   readDashboardNavSnapshotCache,
   writeDashboardNavSnapshotCache,
 } from "./dashboardNavSnapshotCache";
@@ -88,27 +89,24 @@ export function useDailySeries(
   });
 }
 
-export function useDashboardNavContext(unit: DisplayUnit, enabled = true) {
+/**
+ * One page's nav strip (`root` = the page's nav node slug; null = not known yet, nothing fetched).
+ * Its figures are merged into the stored snapshot, so a reload of that page paints today's cards,
+ * not the ones another page saw on its last visit.
+ */
+export function useDashboardNavContext(unit: DisplayUnit, root: string | null, enabled = true) {
+  const key = queryKeys.dashboardNav(unit, root ?? "");
   return useQuery({
-    queryKey: queryKeys.dashboardNav(unit),
+    queryKey: key,
     queryFn: async () => {
-      const ctx = await fetchDashboardNavContext(unit);
-      // Nav-context carries the whole tree's card figures, as the page bundle does: store them, so
-      // a reload of a group, Pasivos or account page paints today's cards, not the ones the home
-      // page saw on its last visit. The chart shape is the home bundle's alone; keep the stored one.
-      writeDashboardNavSnapshotCache(unit, {
-        accounts: ctx.accounts,
-        liabilities_breakdown: ctx.liabilities_breakdown,
-        dashboard_layout: ctx.dashboard_layout,
-        nw_bucket_totals: ctx.nw_bucket_totals,
-        card_metrics_by_slug: ctx.card_metrics_by_slug,
-        chart_shape: readDashboardNavSnapshotCache(unit)?.chart_shape,
-      });
+      const ctx = await fetchDashboardNavContext(unit, root!);
+      mergeNavContextIntoSnapshotCache(unit, ctx);
       return ctx;
     },
-    enabled,
-    // A unit change holds nothing: the pages fall back to the unit's own nav snapshot cache, never a converted context.
-    ...displayUnitQueryBehaviorFor(queryKeys.dashboardNav(unit), 2),
+    enabled: enabled && root != null,
+    // A unit change holds nothing: the pages fall back to the unit's own nav snapshot cache, never
+    // a converted context; another page starts from its own.
+    ...displayUnitQueryBehaviorFor(key, 3),
   });
 }
 
@@ -164,9 +162,9 @@ export type HeldNavStrip = {
  * never converted; null when neither is on hand. Read only: neither query is enabled here, so
  * nothing is fetched for a unit the user left.
  */
-export function useHeldNavStrip(unit: DisplayUnit, holding: boolean): HeldNavStrip | null {
+export function useHeldNavStrip(unit: DisplayUnit, holding: boolean, root: string | null): HeldNavStrip | null {
   const other = otherDisplayUnit(unit);
-  const { data: navCtx } = useDashboardNavContext(other, false);
+  const { data: navCtx } = useDashboardNavContext(other, root, false);
   const { data: navSnapshot } = useDashboardNavSnapshot(other, false);
   return useMemo(() => {
     if (!holding) return null;

@@ -58,8 +58,8 @@ export async function fetchDashboardNavSnapshot(
   return api.dashboardNavSnapshot(unit);
 }
 
-export async function fetchDashboardNavContext(unit: DisplayUnit): Promise<DashboardNavContext> {
-  const nav = await api.dashboardNavContext(unit);
+export async function fetchDashboardNavContext(unit: DisplayUnit, root: string): Promise<DashboardNavContext> {
+  const nav = await api.dashboardNavContext(unit, root);
   return {
     accounts: nav.accounts,
     liabilities_breakdown: nav.liabilities_breakdown,

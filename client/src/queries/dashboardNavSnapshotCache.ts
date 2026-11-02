@@ -133,3 +133,32 @@ export function writeDashboardNavSnapshotCache(
     // quota / private mode
   }
 }
+
+/**
+ * Merges one page's nav-context into the stored snapshot: its card figures and account rows
+ * replace the stored ones, everything outside the page is kept, and the whole-tree totals,
+ * layout and liabilities breakdown come from the context. Nav-context covers one page only, so
+ * with no stored snapshot nothing is written (a partial snapshot would not cover the nav tree).
+ */
+export function mergeNavContextIntoSnapshotCache(
+  unit: DisplayUnit,
+  ctx: Pick<
+    DashboardNavSnapshotResponse,
+    "accounts" | "liabilities_breakdown" | "dashboard_layout" | "nw_bucket_totals" | "card_metrics_by_slug"
+  >
+): void {
+  const stored = readDashboardNavSnapshotCache(unit);
+  if (!stored) return;
+  const fresh = new Map(ctx.accounts.map((a) => [a.account_id, a]));
+  const accounts = stored.accounts.map((a) => fresh.get(a.account_id) ?? a);
+  const storedIds = new Set(stored.accounts.map((a) => a.account_id));
+  for (const a of ctx.accounts) if (!storedIds.has(a.account_id)) accounts.push(a);
+  writeDashboardNavSnapshotCache(unit, {
+    ...stored,
+    accounts,
+    liabilities_breakdown: ctx.liabilities_breakdown,
+    dashboard_layout: ctx.dashboard_layout,
+    nw_bucket_totals: ctx.nw_bucket_totals,
+    card_metrics_by_slug: { ...stored.card_metrics_by_slug, ...ctx.card_metrics_by_slug },
+  });
+}

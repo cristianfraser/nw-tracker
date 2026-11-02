@@ -65,7 +65,12 @@ app.get("/api/dashboard/nav-snapshot", asyncHandler(async (req, res) => {
 app.get("/api/dashboard/nav-context", asyncHandler(async (req, res) => {
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
-  res.json(await buildDashboardNavContext(includeUsd, unit));
+  const root = typeof req.query.root === "string" ? req.query.root.trim() : "";
+  if (!root) {
+    res.status(400).json({ error: "root (the page's nav node slug) is required" });
+    return;
+  }
+  res.json(await buildDashboardNavContext(includeUsd, unit, root));
 }));
 
 /** Home dashboard: one response (dash + valuation TS + FX + group perf). */
