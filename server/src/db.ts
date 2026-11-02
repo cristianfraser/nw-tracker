@@ -13,7 +13,9 @@ import {
   runMarkInputChangeTriggers211,
   runMarkInputChangeTriggers242,
   runMarkInputChangeTriggers243,
+  runMarkInputChangeTriggers258,
 } from "./markInputChangeTriggers211.js";
+import { runLoanPayments258 } from "./loanPayments258.js";
 import {
   SCHEMA_BASELINE_LAST_MIGRATION,
   SCHEMA_BASELINE_STATEMENTS,
@@ -242,6 +244,10 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
   "242_movements_counter_units_delta.sql": runMarkInputChangeTriggers242,
   "243_drop_movements_ticker.sql": runMarkInputChangeTriggers243,
   "252_expense_category_rules.sql": runExpenseCategoryRuleMigration252,
+  "258_loan_payments.sql": (dbi) => {
+    runLoanPayments258(dbi);
+    runMarkInputChangeTriggers258(dbi);
+  },
 };
 
 /**

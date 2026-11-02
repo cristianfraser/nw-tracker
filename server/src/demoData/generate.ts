@@ -38,10 +38,11 @@ import { payslipLineKind } from "../payslipLineKinds.js";
 import { getCcExpenseCategoryBySlug, normalizeCcExpenseMerchantKey } from "../ccExpenseCategories.js";
 import { invalidateExpenseGenericUniqueMerchantCache } from "../expenseGenericUniqueMerchants.js";
 import {
-  deptoPaymentColumnsFromPaymentRow,
   deptoPaymentHumanNote,
-  insertDeptoPaymentRow,
+  insertLoanPaymentRow,
+  loanPaymentColumnsFromPaymentRow,
   mortgageFlowKindFromCuota,
+  upsertPropertyAppraisalUf,
   type DeptoDividendosPaymentRow,
 } from "../deptoDividendosLedger.js";
 import { isChileBusinessDay } from "../marketHolidays.js";
@@ -261,35 +262,28 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketRea
   const mortgageId = ids.get("mortgage" as Acct)!;
   const insMov = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'clp', ?, ?, ?)`);
   const insVal = db.prepare(`INSERT OR REPLACE INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`);
-  const emit = (r: DeptoDividendosPaymentRow) => {
-    const cols = deptoPaymentColumnsFromPaymentRow(r);
-    const pm = insMov.run(propertyId, r.amount_clp, r.occurred_on, deptoPaymentHumanNote("dividendos", r.cuota, false), null);
-    insertDeptoPaymentRow({ movement_id: Number(pm.lastInsertRowid), kind: "dividendos", origin: "import", ...cols });
+  // Each payment row is what the bank states (pesos and their parts, balance / min / max in UF);
+  // the property's appraisal on the payment day is a valuation of the property account in UF.
+  const emit = (r: DeptoDividendosPaymentRow, appraisalUf: number) => {
+    const cols = loanPaymentColumnsFromPaymentRow(r);
+    const pm = insMov.run(propertyId, r.amount_clp, r.occurred_on, deptoPaymentHumanNote("property", r.cuota, false), null);
+    insertLoanPaymentRow({ movement_id: Number(pm.lastInsertRowid), loan_account_id: mortgageId, leg: "property", origin: "import", ...cols });
+    upsertPropertyAppraisalUf(propertyId, r.occurred_on, appraisalUf);
     if (r.cuota !== "pie") {
-      const mm = insMov.run(mortgageId, Math.abs(r.amount_clp), r.occurred_on, deptoPaymentHumanNote("mortgage", r.cuota, false), mortgageFlowKindFromCuota(r.cuota));
-      insertDeptoPaymentRow({ movement_id: Number(mm.lastInsertRowid), kind: "mortgage", origin: "import", ...cols });
+      const mm = insMov.run(mortgageId, Math.abs(r.amount_clp), r.occurred_on, deptoPaymentHumanNote("loan", r.cuota, false), mortgageFlowKindFromCuota(r.cuota));
+      insertLoanPaymentRow({ movement_id: Number(mm.lastInsertRowid), loan_account_id: mortgageId, leg: "loan", origin: "import", ...cols });
     }
   };
   const base = (over: Partial<DeptoDividendosPaymentRow>): DeptoDividendosPaymentRow => ({
     cuota: "",
     occurred_on: m.pieDate,
     amount_clp: 0,
-    amount_uf: null,
-    uf_clp_day: null,
     credito_restante_uf: null,
-    valor_vivienda_uf: null,
-    valor_neto_uf: null,
-    valor_neto_clp: null,
-    pagado_neto_uf: null,
-    pago_acumulado_clp: null,
     min_uf: null,
     max_uf: null,
     amortizacion_clp: null,
-    amortizacion_uf: null,
     amortizacion_ext_clp: null,
-    amortizacion_ext_uf: null,
     interes_clp: null,
-    interes_uf: null,
     incendio_clp: null,
     desgravamen_clp: null,
     ...over,
@@ -298,42 +292,24 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketRea
   const r5 = (v: number) => Math.round(v * 1e5) / 1e5;
   const valueUfAt = (day: Ymd) => HOUSE.valueUf * Math.pow(1 + HOUSE.monthlyAppreciation, Math.max(0, (Date.parse(day) - Date.parse(m.pieDate)) / (30.44 * 86_400_000)));
   db.transaction(() => {
-    const ufPie = market.uf(m.pieDate);
-    let pagoAcum = m.pieClp;
-    let amortAcumUf = HOUSE.pieUf;
     emit(
       base({
         cuota: "pie",
         amount_clp: m.pieClp,
-        amount_uf: r5(m.pieClp / ufPie),
-        uf_clp_day: ufPie,
         credito_restante_uf: r4(m.principalUf),
-        valor_vivienda_uf: r4(HOUSE.valueUf),
-        valor_neto_uf: r4(HOUSE.pieUf),
-        valor_neto_clp: m.pieClp,
-        pagado_neto_uf: r4(HOUSE.pieUf),
-        pago_acumulado_clp: m.pieClp,
-      })
+      }),
+      r4(HOUSE.valueUf)
     );
     for (const c of m.cuotas) {
-      pagoAcum += c.clp;
-      amortAcumUf = r4(amortAcumUf + c.amortUf + c.extUf);
       const vv = valueUfAt(c.date);
       const common = {
         occurred_on: c.date,
         amount_clp: c.clp,
-        amount_uf: r5(c.clp / c.ufDay),
-        uf_clp_day: c.ufDay,
         credito_restante_uf: r4(c.balanceAfterUf),
-        valor_vivienda_uf: r4(vv),
-        valor_neto_uf: r4(vv - c.balanceAfterUf),
-        valor_neto_clp: Math.round((vv - c.balanceAfterUf) * c.ufDay),
-        pagado_neto_uf: amortAcumUf,
-        pago_acumulado_clp: pagoAcum,
       };
       if (c.n == null) {
         // A prepago is all extra amortization.
-        emit(base({ cuota: c.label, ...common, amortizacion_ext_clp: c.clp, amortizacion_ext_uf: r5(c.extUf) }));
+        emit(base({ cuota: c.label, ...common, amortizacion_ext_clp: c.clp }), r4(vv));
         continue;
       }
       emit(
@@ -343,14 +319,12 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketRea
           min_uf: r5(c.pmtUf),
           max_uf: r5(c.pmtUf * 1.2 + c.extUf),
           amortizacion_clp: Math.round(c.amortUf * c.ufDay),
-          amortizacion_uf: r5(c.amortUf),
           amortizacion_ext_clp: Math.round(c.extUf * c.ufDay),
-          amortizacion_ext_uf: r5(c.extUf),
           interes_clp: Math.round(c.interestUf * c.ufDay),
-          interes_uf: r5(c.interestUf),
           incendio_clp: 18_000,
           desgravamen_clp: 4_500,
-        })
+        }),
+        r4(vv)
       );
     }
     // Month-end marks: mortgage = UF balance × UF; property = equity (value − mortgage).
