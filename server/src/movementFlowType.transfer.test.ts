@@ -8,8 +8,9 @@ describe("kind-less transfers are named in their own currency", () => {
   it("reads a dollar transfer as USD on both sides", () => {
     expect(typeOf("usd", "out")).toBe("withdrawal_usd");
     expect(typeOf("usd", "in")).toBe("deposit_usd");
-    expect(movementFlowTypeLabel(typeOf("usd", "out"))).toBe("Retiro USD");
-    expect(movementFlowTypeLabel(typeOf("usd", "in"))).toBe("Depósito USD");
+    const usd = { currency: "usd", counter_currency: null };
+    expect(movementFlowTypeLabel(typeOf("usd", "out"), usd)).toBe("Retiro USD");
+    expect(movementFlowTypeLabel(typeOf("usd", "in"), usd)).toBe("Depósito USD");
   });
 
   it("keeps a peso transfer as before", () => {
@@ -32,7 +33,25 @@ describe("an AFP fund switch is named by its kind on both legs", () => {
         currency: "clp",
       });
       expect(type).toBe("afp_fund_switch");
-      expect(movementFlowTypeLabel(type)).toBe("Traspaso AFP");
+      expect(movementFlowTypeLabel(type, { currency: "clp", counter_currency: null })).toBe("Traspaso AFP");
     }
+  });
+});
+
+describe("labels that name a currency take it from the movement", () => {
+  it("builds deposits, withdrawals and purchases from the row's currencies", () => {
+    expect(movementFlowTypeLabel("deposit_clp", { currency: "clp", counter_currency: null })).toBe("Depósito CLP");
+    expect(movementFlowTypeLabel("withdrawal_clp", { currency: "clp", counter_currency: null })).toBe("Retiro CLP");
+    expect(movementFlowTypeLabel("compra_usd", { currency: "usd", counter_currency: null })).toBe("Compra USD");
+    expect(movementFlowTypeLabel("compra_usd_venta_clp", { currency: "clp", counter_currency: "usd" })).toBe(
+      "Compra USD / Venta CLP"
+    );
+    expect(movementFlowTypeLabel("compra_usd_venta_clp", { currency: "clp", counter_currency: "eur" })).toBe(
+      "Compra EUR / Venta CLP"
+    );
+  });
+
+  it("refuses a currency purchase without its other currency", () => {
+    expect(() => movementFlowTypeLabel("compra_usd_venta_clp", { currency: "clp", counter_currency: null })).toThrow();
   });
 });

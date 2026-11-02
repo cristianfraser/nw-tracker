@@ -64,9 +64,13 @@
   color: var(--muted);
 }
 
-/* On an account's own page the arrow leads the cell. */
+/* An arrow at either end of the cell (an account's page, money from or to outside the app). */
 .arrow:first-child {
   margin-left: 0;
+}
+
+.arrow:last-child {
+  margin-right: 0;
 }
 
 .amount {
