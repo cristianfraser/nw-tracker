@@ -79,13 +79,7 @@ export function BrokerageMovementRowFields({
   return (
     <div
       className="panel-account-movement-row"
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(9rem, 1fr))",
-        gap: "0.5rem 0.75rem",
-        alignItems: "end",
-        marginBottom: "0.5rem",
-      }}
+      style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(9rem, 1fr))", gap: "0.5rem 0.75rem", alignItems: "end" }}
     >
       <Field label={t("panelAccounts.addAccount.movementDate")}>
         <Input
@@ -223,11 +217,11 @@ export function BrokerageMovementsSection({
   }
 
   return (
-    <fieldset style={{ border: "none", padding: 0, margin: "1.5rem 0 0" }}>
-      <legend className="flow-section-title" style={{ marginBottom: "0.5rem" }}>
+    <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
+      <legend className="flow-section-title">
         {t(resolvedTitleKey)}
       </legend>
-      <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+      <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
         {t(resolvedHintKey)}
       </p>
 
@@ -251,7 +245,7 @@ export function BrokerageMovementsSection({
         ))
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
         <Button variant="secondary" onClick={() => addMovement()}>
           {t("panelAccounts.addAccount.addMovement")}
         </Button>

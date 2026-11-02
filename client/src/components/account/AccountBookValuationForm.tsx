@@ -66,11 +66,11 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
   const recentRows = (valuationsQuery.data?.valuations ?? []).slice(0, 5);
 
   return (
-    <fieldset style={{ border: "none", padding: 0, margin: "0 0 1.25rem" }}>
-      <legend className="flow-section-title" style={{ marginBottom: "0.5rem" }}>
+    <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
+      <legend className="flow-section-title">
         {t("accountDetail.bookLedger.valuationTitle")}
       </legend>
-      <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+      <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
         {t("accountDetail.bookLedger.valuationHint")}
       </p>
 
@@ -102,16 +102,16 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
         </div>
       </div>
 
-      {formError ? <p className="error" style={{ marginTop: "0.75rem" }}>{formError}</p> : null}
+      {formError ? <p className="error" style={{ margin: 0 }}>{formError}</p> : null}
       {saved ? (
-        <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
+        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
           {t("accountDetail.bookLedger.valuationSaved")}
         </p>
       ) : null}
 
       {recentRows.length > 0 ? (
         <>
-          <p className="muted" style={{ fontSize: "0.85rem", margin: "1rem 0 0.5rem" }}>
+          <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
             {t("accountDetail.bookLedger.recentValuations")}
           </p>
           <Table

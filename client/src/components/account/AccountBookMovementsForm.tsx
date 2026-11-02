@@ -114,10 +114,10 @@ export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
 
   return (
     <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
-      <legend className="flow-section-title" style={{ marginBottom: "0.5rem" }}>
+      <legend className="flow-section-title">
         {t("accountDetail.bookLedger.movementTitle")}
       </legend>
-      <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+      <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
         {t("accountDetail.bookLedger.movementHint")}
       </p>
 
@@ -129,13 +129,7 @@ export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
         movements.map((row) => (
           <div
             key={row.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(9rem, 1fr))",
-              gap: "0.5rem 0.75rem",
-              alignItems: "end",
-              marginBottom: "0.5rem",
-            }}
+            style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(9rem, 1fr))", gap: "0.5rem 0.75rem", alignItems: "end" }}
           >
             <Field label={t("accountDetail.bookLedger.dateLabel")}>
               <Input
@@ -207,7 +201,7 @@ export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
         ))
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
         <Button
           onClick={() => {
             setMovements((prev) => [...prev, emptyRow()]);
@@ -220,7 +214,7 @@ export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
       </div>
 
       {movements.length > 0 ? (
-        <div style={{ marginTop: "0.75rem" }}>
+        <div>
           <Button
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate(movements)}
@@ -232,9 +226,9 @@ export function AccountBookMovementsForm({ accountId, displayUnit }: Props) {
         </div>
       ) : null}
 
-      {formError ? <p className="error" style={{ marginTop: "0.75rem" }}>{formError}</p> : null}
+      {formError ? <p className="error" style={{ margin: 0 }}>{formError}</p> : null}
       {lastSavedCount != null ? (
-        <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
+        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
           {t("accountDetail.bookLedger.movementSaved", { count: lastSavedCount })}
         </p>
       ) : null}

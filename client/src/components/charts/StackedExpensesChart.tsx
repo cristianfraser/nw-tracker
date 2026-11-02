@@ -234,14 +234,7 @@ export function StackedExpensesChart({
   return (
     <section className="chart-panel">
       <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "0.5rem 1rem",
-          marginBottom: "0.5rem",
-        }}
+        style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.5rem 1rem" }}
       >
         <TitleTag className="chart-panel-title" style={{ margin: 0 }}>
           {title}

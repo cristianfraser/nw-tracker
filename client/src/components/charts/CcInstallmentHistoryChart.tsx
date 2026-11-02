@@ -166,7 +166,7 @@ export function CcInstallmentHistoryChart({
       return (
         <div
           className={loadableClass(loading, "chart-box chart-box--pending")}
-          style={{ height: 280, marginTop: "0.35rem" }}
+          style={{ height: 280 }}
           aria-busy="true"
         />
       );
@@ -216,7 +216,7 @@ export function CcInstallmentHistoryChart({
   return (
     <div
       className={loadableClass(loading, "chart-box line-chart-focus-wrap")}
-      style={{ height: 280, marginTop: "0.35rem" }}
+      style={{ height: 280 }}
     >
         <AppComposedChart
           data={displayRows}

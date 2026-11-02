@@ -72,13 +72,7 @@ export function CreditCardDepositMatchedExpensesTable({
       </h3>
       {paged.length > 1 ? (
         <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.6rem",
-            marginBottom: "0.5rem",
-            flexWrap: "wrap",
-          }}
+          style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}
         >
           <Button variant="ghost"
             disabled={currentPageIndex === 0}

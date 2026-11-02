@@ -64,7 +64,7 @@ export function AccountBrokerageMovementsForm({
   });
 
   return (
-    <section style={{ marginBottom: "1.5rem" }}>
+    <section>
       <BrokerageMovementsSection
         movements={movements}
         onChange={(next) => {
@@ -79,7 +79,7 @@ export function AccountBrokerageMovementsForm({
       />
 
       {movements.length > 0 ? (
-        <div style={{ marginTop: "0.75rem" }}>
+        <div>
           <Button
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate(movements)}
@@ -92,12 +92,12 @@ export function AccountBrokerageMovementsForm({
       ) : null}
 
       {formError ? (
-        <p className="error" style={{ marginTop: "0.75rem" }}>
+        <p className="error" style={{ margin: 0 }}>
           {formError}
         </p>
       ) : null}
       {lastSavedCount != null ? (
-        <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
+        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
           {t("accountDetail.brokerageMovements.saveSuccess", { count: lastSavedCount })}
         </p>
       ) : null}

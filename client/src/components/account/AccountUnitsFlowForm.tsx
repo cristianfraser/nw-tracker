@@ -116,11 +116,11 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
   }
 
   return (
-    <fieldset style={{ border: "none", padding: 0, margin: "1.5rem 0 0" }}>
-      <legend className="flow-section-title" style={{ marginBottom: "0.5rem" }}>
+    <fieldset style={{ border: "none", padding: 0, margin: 0 }}>
+      <legend className="flow-section-title">
         {t("accountDetail.unitsFlow.title")}
       </legend>
-      <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
+      <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
         {t("accountDetail.unitsFlow.hint", { unit: unitLabel })}
       </p>
 
@@ -132,13 +132,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
         movements.map((row) => (
           <div
             key={row.id}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(9rem, 1fr))",
-              gap: "0.5rem 0.75rem",
-              alignItems: "end",
-              marginBottom: "0.5rem",
-            }}
+            style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(9rem, 1fr))", gap: "0.5rem 0.75rem", alignItems: "end" }}
           >
             <Field label={t("accountDetail.bookLedger.dateLabel")}>
               <Input
@@ -200,7 +194,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
         ))
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.5rem" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
         <Button
           onClick={() => {
             setMovements((prev) => [...prev, emptyRow()]);
@@ -213,7 +207,7 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
       </div>
 
       {movements.length > 0 ? (
-        <div style={{ marginTop: "0.75rem" }}>
+        <div>
           <Button
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate(movements)}
@@ -223,9 +217,9 @@ export function AccountUnitsFlowForm({ accountId, unitLabel, displayUnit }: Prop
         </div>
       ) : null}
 
-      {formError ? <p className="error" style={{ marginTop: "0.75rem" }}>{formError}</p> : null}
+      {formError ? <p className="error" style={{ margin: 0 }}>{formError}</p> : null}
       {lastSavedCount != null ? (
-        <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
+        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
           {t("accountDetail.unitsFlow.saved", { count: lastSavedCount })}
         </p>
       ) : null}

@@ -316,7 +316,7 @@ export function MortgagePaymentForm({
       </div>
 
       {(inputError ?? previewError) ? (
-        <p className={cn("error", styles.errorText)} style={{ marginTop: "0.75rem" }}>
+        <p className={cn("error", styles.errorText)} style={{ margin: 0 }}>
           {inputError ?? previewError}
         </p>
       ) : null}
@@ -374,7 +374,7 @@ export function MortgagePaymentForm({
         </div>
       ) : null}
 
-      <div style={{ marginTop: "0.75rem" }}>
+      <div>
         <Button
           disabled={saveMutation.isPending || !previewBody || preview == null}
           onClick={() => saveMutation.mutate()}
@@ -384,12 +384,12 @@ export function MortgagePaymentForm({
       </div>
 
       {formError ? (
-        <p className="error" style={{ marginTop: "0.75rem" }}>
+        <p className="error" style={{ margin: 0 }}>
           {formError}
         </p>
       ) : null}
       {saved ? (
-        <p className="muted" style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
+        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
           {t("accountDetail.mortgagePayment.saveSuccess")}
         </p>
       ) : null}

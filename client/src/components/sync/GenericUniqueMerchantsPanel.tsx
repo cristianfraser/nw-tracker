@@ -153,7 +153,7 @@ export function GenericUniqueMerchantsPanel({ merchants, loading }: Props) {
         )}
       </Table>
 
-      <form onSubmit={onAdd} style={{ marginTop: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+      <form onSubmit={onAdd} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
         <div style={{ width: "18rem" }}>
           <Input
             type="text"

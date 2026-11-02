@@ -102,7 +102,7 @@ export function AddAccountForm({ netWorthRoot }: Props) {
     : t("panelAccounts.addUsdAccount.displayNamePlaceholder");
 
   return (
-    <form onSubmit={onCreateSubmit} style={{ maxWidth: "52rem", marginBottom: "2rem" }}>
+    <form onSubmit={onCreateSubmit} style={{ maxWidth: "52rem" }}>
       <Field label={t("panelAccounts.addAccount.accountType")}>
         <select
           value={draft.accountType}
@@ -151,7 +151,7 @@ export function AddAccountForm({ netWorthRoot }: Props) {
         </select>
       </Field>
 
-      <label style={{ marginBottom: "0.75rem", display: "flex", alignItems: "center", gap: 8 }}>
+      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <input
           type="checkbox"
           checked={draft.excludeFromGroupTotals}
@@ -160,7 +160,7 @@ export function AddAccountForm({ netWorthRoot }: Props) {
         <span>{t("panelAccounts.addAccount.excludeFromTotals")}</span>
       </label>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "1.25rem" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
         <Button type="submit" disabled={createMutation.isPending}>
           {createMutation.isPending
             ? t("common.loading")
@@ -172,12 +172,12 @@ export function AddAccountForm({ netWorthRoot }: Props) {
       </div>
 
       {formError ? (
-        <p className="error" style={{ marginTop: "1rem" }}>
+        <p className="error" style={{ margin: 0 }}>
           {formError}
         </p>
       ) : null}
       {createdAccountId != null ? (
-        <p style={{ marginTop: "1rem" }}>
+        <p style={{ margin: 0 }}>
           {t("panelAccounts.addAccount.createSuccess", { id: createdAccountId })}
         </p>
       ) : null}

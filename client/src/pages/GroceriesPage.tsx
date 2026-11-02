@@ -257,7 +257,7 @@ export function GroceriesPage() {
         ) : (
           <>
             <div
-              style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center", margin: "0.5rem 0" }}
+              style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}
             >
               <span>{t("groceries.cleaning.assignSelected", { count: selected.size })}</span>
               <select
@@ -454,7 +454,7 @@ export function GroceriesPage() {
               />
             ) : null}
             <div
-              style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center", margin: "0.5rem 0" }}
+              style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}
             >
               {normalizedOnly ? (
                 <span className="muted">
@@ -648,7 +648,7 @@ export function GroceriesPage() {
                 );
                 const itemsRow =
                   openReceiptId === r.id && receiptItems[r.id] ? (
-                    <ul style={{ margin: "0.25rem 0 0.5rem", paddingLeft: "1.25rem" }}>
+                    <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
                       {receiptItems[r.id]!.map((item) => (
                         <li key={item.id}>
                           {item.product_name ?? item.description}
