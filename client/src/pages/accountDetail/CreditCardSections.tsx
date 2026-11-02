@@ -136,7 +136,7 @@ function CreditCardInstallmentsSection({
   );
 
   // One row per plan: the date over the vendor (`merchant · note · link ⓘ ⋯`, as its expense
-  // lines read) on the left, the progress bar on the right — under it on a narrow desktop (`.activePurchaseRow`), and on
+  // lines read) on the left, the progress bar on the right (the table shows its cards when the two do not fit), and on
   // mobile the card stacks the same pieces.
   const renderActivePurchaseRows = (rows: ReadonlyArray<CcInstallmentPurchaseComputed>) =>
     rows.map((p) => (

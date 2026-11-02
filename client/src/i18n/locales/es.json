@@ -325,7 +325,9 @@
       "resetBtn": "Limpiar",
       "createSuccess": "Cuenta creada (#{{id}}). El árbol de navegación se actualizó; ejecuta sync de NYSE si necesitas historial de valor cuota.",
       "previewInvalid": "Completa nombre, ticker, categoría y fecha en cada movimiento con fila."
-    }
+    },
+    "groupSubGroupsCount": "({{count}} subgrupos)",
+    "groupAccountsCount": "({{count}} cuentas)"
   },
   "messages": {
     "showMoreDetail": "Ver más…",

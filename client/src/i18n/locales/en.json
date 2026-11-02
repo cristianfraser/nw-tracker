@@ -325,7 +325,9 @@
       "resetBtn": "Clear",
       "createSuccess": "Account created (#{{id}}). The navigation tree was refreshed; run the NYSE sync if you need unit-value history.",
       "previewInvalid": "Fill in name, ticker, category, and a date on every movement row."
-    }
+    },
+    "groupSubGroupsCount": "({{count}} sub-groups)",
+    "groupAccountsCount": "({{count}} accounts)"
   },
   "messages": {
     "showMoreDetail": "See more…",
