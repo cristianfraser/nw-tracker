@@ -70,15 +70,15 @@ const SUMMARY_LINES: readonly SummaryLine[] = [
     delta: true,
   },
   { id: "cash_change", icon: CashChangeIcon, labelKey: "flows.overview.cashChange", value: (r) => r.cash_change, delta: true },
-  { id: "pl", icon: DeltaIcon, labelKey: "flows.overview.pl", value: (r) => r.pl, delta: false, section: true },
+  { id: "pl", icon: DeltaIcon, labelKey: "flows.overview.pl", value: (r) => r.pl, delta: true, section: true },
   {
     id: "investments_change",
     icon: TrendingUpIcon,
     labelKey: "flows.overview.investmentsChange",
     value: (r) => r.investments_change,
-    delta: true,
+    delta: false,
   },
-  { id: "net_worth_change", icon: NetWorthUpIcon, labelKey: "flows.overview.netWorthChange", value: (r) => r.net_worth_change, delta: true },
+  { id: "net_worth_change", icon: NetWorthUpIcon, labelKey: "flows.overview.netWorthChange", value: (r) => r.net_worth_change, delta: false },
 ];
 
 /**
