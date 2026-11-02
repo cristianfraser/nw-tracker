@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useFlowsDeposits } from "../queries/hooks";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { DepositsByCategoryChart } from "../components/charts/DepositsByCategoryChart";
 import { Table } from "../components/ui/Table";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -85,11 +86,11 @@ export function DepositsPage() {
   return (
     <>
       <h2 className="flow-section-title">{t("sidebar.flowsDeposits")}</h2>
-      <p style={{ marginBottom: "0.75rem", fontSize: "0.85rem" }}>
+      <p style={{ fontSize: "0.85rem" }}>
         <Link to="reconciliation">{t("depositsReconciliation.title")}</Link>
       </p>
 
-      <p className={loadableClass(loading, "muted")} style={{ marginBottom: "1rem" }}>
+      <p className={loadableClass(loading, "muted")}>
         {t("deposits.totalLabel")}{" "}
         <span className="mono" style={{ color: "var(--text)" }}>
           {formatFlowMoney(total, displayUnit)}
@@ -109,7 +110,7 @@ export function DepositsPage() {
         ) : null}
       </p>
 
-      <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack" style={{ marginBottom: "1.5rem" }}>
+      <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack">
         <DepositsByCategoryChart
           controls={chartControls}
           title={t("deposits.chartTitle")}
@@ -127,8 +128,8 @@ export function DepositsPage() {
         const blockRows = block ? block.rows : [];
         const blockTotal = block ? (displayUnit === "usd" ? block.total_usd : block.total_clp) : 0;
         return (
-          <section key={cat} style={{ marginBottom: "1.5rem" }}>
-            <h3 style={{ marginBottom: "0.35rem" }}>
+          <PageGridTile key={cat} id={`deposits-${cat}`}>
+            <h3>
               {depositFlowCategoryLabel(cat)}
               <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
                 {formatFlowMoney(blockTotal, displayUnit)}
@@ -181,7 +182,7 @@ export function DepositsPage() {
                 })
               )}
             </Table>
-          </section>
+          </PageGridTile>
         );
       })}
     </>

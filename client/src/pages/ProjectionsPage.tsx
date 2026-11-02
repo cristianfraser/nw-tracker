@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { ProjectionsChart } from "../components/charts/ProjectionsChart";
 import { Loadable, loadableClass } from "../components/ui/Loadable";
 import { useDisplayPreferences } from "../context/DisplayPreferencesContext";
@@ -129,7 +130,7 @@ export function ProjectionsPage() {
 
   if (error) {
     return (
-      <main>
+      <main className="page-grid">
         <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>
       </main>
     );
@@ -138,7 +139,7 @@ export function ProjectionsPage() {
   const s = data?.summary ?? EMPTY_SUMMARY;
 
   return (
-    <main>
+    <main className="page-grid">
       <h1>{t("projections.title")}</h1>
 
       {/* Row gap leaves room for a Field's error, which overlays rather than
@@ -189,7 +190,7 @@ export function ProjectionsPage() {
         </div>
       </Loadable>
 
-      <section className={loadableClass(resultsLoading)} style={{ margin: "1rem 0" }}>
+      <PageGridTile id="summary" className={loadableClass(resultsLoading)}>
         <p>
           <strong>{t("projections.summary.balanceAtRetire", { age: data?.retire_age ?? "—" })}:</strong>{" "}
           {t("projections.summary.investedLabel")} {money(s.invested_at_retire)} ·{" "}
@@ -233,7 +234,7 @@ export function ProjectionsPage() {
             <span className="muted">{t("projections.summary.lasts", { age: validOverrides.end_age ?? data?.params.end_age ?? "—" })}</span>
           )}
         </p>
-      </section>
+      </PageGridTile>
 
       <Loadable loading={resultsLoading} style={{ width: "100%", height: 420 }}>
         <ProjectionsChart

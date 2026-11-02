@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PageGridTile } from "../../components/layout/PageGridTile";
 import { AddAccountForm } from "../../components/panel/AddAccountForm";
 import { AccountExcludeFromTotalsToggle } from "../../components/panel/AccountExcludeFromTotalsToggle";
 import { EditAccountModal } from "../../components/panel/EditAccountModal";
@@ -109,113 +110,120 @@ export function AccountsPanelPage() {
 
   return (
     <>
+      <PageGridTile id="add-account">
+        <h2 className="flow-section-title">{t("panelAccounts.addAccountTitle")}</h2>
+        <Loadable loading={panelTreePending}>
+          <AddAccountForm netWorthRoot={netWorthNode} />
+        </Loadable>
+      </PageGridTile>
 
-      <h2 className="flow-section-title">{t("panelAccounts.addAccountTitle")}</h2>
-      <Loadable loading={panelTreePending}>
-        <AddAccountForm netWorthRoot={netWorthNode} />
-      </Loadable>
-
-      <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
-        {t("panelAccounts.accountsTitle")}
-      </h2>
-      <Table
-        wrapClassName={loadableClass(accountsPending)}
-        header={
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>{t("panelAccounts.colAccount")}</th>
-              <th>{t("panelAccounts.colBucket")}</th>
-              <th>{t("panelAccounts.colExclude")}</th>
-              <th>{t("panelAccounts.colActions")}</th>
-            </tr>
-          </thead>
-        }
-      >
-        {accounts.length === 0 ? (
-          accountsPending ? null : (
-            <tr>
-              <td colSpan={5} className="muted">
-                {t("panelAccounts.emptyAccounts")}
-              </td>
-            </tr>
-          )
-        ) : (
-          accounts.map((a) => (
-            <tr key={a.id}>
-              <td className="mono">{a.id}</td>
-              <td>{a.name}</td>
-              <td>{a.bucket_label}</td>
-              <td>
-                <AccountExcludeFromTotalsToggle
-                  accountId={a.id}
-                  excluded={a.exclude_from_group_totals === 1}
-                />
-              </td>
-              <td>
-                <span
-                  style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
-                >
-                  <EntityColorPicker
-                    colorRgb={a.color_rgb}
-                    colorTarget={{ kind: "account", accountId: a.id }}
-                    size="compact"
+      <PageGridTile id="accounts">
+        <h2 className="flow-section-title">
+          {t("panelAccounts.accountsTitle")}
+        </h2>
+        <Table
+          wrapClassName={loadableClass(accountsPending)}
+          header={
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>{t("panelAccounts.colAccount")}</th>
+                <th>{t("panelAccounts.colBucket")}</th>
+                <th>{t("panelAccounts.colExclude")}</th>
+                <th>{t("panelAccounts.colActions")}</th>
+              </tr>
+            </thead>
+          }
+        >
+          {accounts.length === 0 ? (
+            accountsPending ? null : (
+              <tr>
+                <td colSpan={5} className="muted">
+                  {t("panelAccounts.emptyAccounts")}
+                </td>
+              </tr>
+            )
+          ) : (
+            accounts.map((a) => (
+              <tr key={a.id}>
+                <td className="mono">{a.id}</td>
+                <td>{a.name}</td>
+                <td>{a.bucket_label}</td>
+                <td>
+                  <AccountExcludeFromTotalsToggle
+                    accountId={a.id}
+                    excluded={a.exclude_from_group_totals === 1}
                   />
-                  <Button variant="secondary" onClick={() => setEditingAccount(a)}>
-                    {t("panelAccounts.editBtn")}
-                  </Button>
-                  <Button variant="secondary"
-                    onClick={() => void onDeleteAccount(a.id, a.name)}
-                    disabled={deletingId === a.id}
+                </td>
+                <td>
+                  <span
+                    style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
                   >
-                    {deletingId === a.id ? t("common.loading") : t("panelAccounts.deleteBtn")}
-                  </Button>
-                </span>
-              </td>
-            </tr>
-          ))
-        )}
-      </Table>
+                    <EntityColorPicker
+                      colorRgb={a.color_rgb}
+                      colorTarget={{ kind: "account", accountId: a.id }}
+                      size="compact"
+                    />
+                    <Button variant="secondary" onClick={() => setEditingAccount(a)}>
+                      {t("panelAccounts.editBtn")}
+                    </Button>
+                    <Button variant="secondary"
+                      onClick={() => void onDeleteAccount(a.id, a.name)}
+                      disabled={deletingId === a.id}
+                    >
+                      {deletingId === a.id ? t("common.loading") : t("panelAccounts.deleteBtn")}
+                    </Button>
+                  </span>
+                </td>
+              </tr>
+            ))
+          )}
+        </Table>
+      </PageGridTile>
 
-      <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
-        {t("panelAccounts.portfolioGroupsTitle")}
-      </h2>
-      <Table
-        wrapClassName={loadableClass(panelTreePending)}
-        header={
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>{t("panelAccounts.colBucket")}</th>
-              <th>{t("panelAccounts.colSlug")}</th>
-              <th>{t("panelAccounts.colGroupKind")}</th>
-              <th>{t("panelAccounts.colAccounts")}</th>
-              <th>{t("panelAccounts.colActions")}</th>
-            </tr>
-          </thead>
-        }
-      >
-        {!netWorthNode ? (
-          panelTreePending ? null : (
-            <tr>
-              <td colSpan={6} className="muted">
-                {t("panelAccounts.emptyTree")}
-              </td>
-            </tr>
-          )
-        ) : (
-          <PortfolioGroupTableRows node={netWorthNode} />
-        )}
-      </Table>
+      <PageGridTile id="portfolio-groups">
+        <h2 className="flow-section-title">
+          {t("panelAccounts.portfolioGroupsTitle")}
+        </h2>
+        <Table
+          wrapClassName={loadableClass(panelTreePending)}
+          header={
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>{t("panelAccounts.colBucket")}</th>
+                <th>{t("panelAccounts.colSlug")}</th>
+                <th>{t("panelAccounts.colGroupKind")}</th>
+                <th>{t("panelAccounts.colAccounts")}</th>
+                <th>{t("panelAccounts.colActions")}</th>
+              </tr>
+            </thead>
+          }
+        >
+          {!netWorthNode ? (
+            panelTreePending ? null : (
+              <tr>
+                <td colSpan={6} className="muted">
+                  {t("panelAccounts.emptyTree")}
+                </td>
+              </tr>
+            )
+          ) : (
+            <PortfolioGroupTableRows node={netWorthNode} />
+          )}
+        </Table>
+      </PageGridTile>
 
-      <h2 className="flow-section-title" style={{ marginTop: "2rem" }}>
-        {t("panelAccounts.netWorthTreeTitle")}
-      </h2>
-      {netWorthNode ? (
-        <NavAccountsTree root={netWorthNode} />
-      ) : panelTreePending ? null : (
-        <p className="muted">{t("panelAccounts.emptyTree")}</p>
-      )}
+      <PageGridTile id="net-worth-tree">
+        <h2 className="flow-section-title">
+          {t("panelAccounts.netWorthTreeTitle")}
+        </h2>
+        {netWorthNode ? (
+          <NavAccountsTree root={netWorthNode} />
+        ) : panelTreePending ? null : (
+          <p className="muted">{t("panelAccounts.emptyTree")}</p>
+        )}
+      </PageGridTile>
 
       {editingAccount ? (
         <EditAccountModal

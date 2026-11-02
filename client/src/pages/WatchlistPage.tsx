@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { DeltaMetricFlow } from "../components/dashboard/DeltaMetricFlow";
 import { loadableClass } from "../components/ui/Loadable";
 import { Table } from "../components/ui/Table";
@@ -322,7 +323,7 @@ export function WatchlistPage() {
   const loading = isPending || isPlaceholderData;
   if (error) {
     return (
-      <main>
+      <main className="page-grid">
         <p className="muted">
           <Link to="/">{t("common.backToDashboard")}</Link>
         </p>
@@ -333,22 +334,22 @@ export function WatchlistPage() {
   }
 
   return (
-    <main className="watchlist-page">
+    <main className="page-grid">
       <p className="muted">
         <Link to="/">{t("common.backToDashboard")}</Link>
       </p>
       <h1>{t("watchlist.pageTitle")}</h1>
 
-      <section className="watchlist-section">
+      <PageGridTile id="app">
         <h2>{t("watchlist.appSectionTitle")}</h2>
         <WatchlistTable rows={data?.app ?? []} expandCompositeHoldings loading={loading} />
-      </section>
+      </PageGridTile>
 
-      <section className="watchlist-section">
+      <PageGridTile id="manual">
         <h2>{t("watchlist.manualSectionTitle")}</h2>
         <AddSymbolCombobox />
         <WatchlistTable rows={data?.manual ?? []} showActions loading={loading} />
-      </section>
+      </PageGridTile>
     </main>
   );
 }

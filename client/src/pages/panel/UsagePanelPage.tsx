@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Button } from "@crfrsr/ui";
+import { PageGridTile } from "../../components/layout/PageGridTile";
 import { Loadable } from "../../components/ui/Loadable";
 import { Table } from "../../components/ui/Table";
 import {
@@ -112,37 +113,39 @@ export function UsagePanelPage() {
 
   return (
     <>
-      <div className="chart-panel-title-row">
-        <p className="muted" style={{ margin: 0 }}>
-          {data
-            ? t("usage.totals", {
-                views: formatCount(data.totals.page_views),
-                requests: formatCount(data.totals.requests),
-                seconds: formatGroupedDecimal(data.totals.request_ms / 1000, 0),
-              })
-            : " "}
-        </p>
-        <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-          <span className="muted">{t("usage.windowLabel")}</span>
-          <select
-            value={days}
-            onChange={(e) => {
-              const v = Number(e.target.value);
-              const w = WINDOWS.find((x) => x === v);
-              if (w !== undefined) setDays(w);
-            }}
-          >
-            {WINDOWS.map((w) => (
-              <option key={w} value={w}>
-                {t(`usage.windowOptions.${w}`)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {data && !data.enabled ? <p className="muted">{t("usage.disabled")}</p> : null}
+      <PageGridTile id="summary">
+        <div className="chart-panel-title-row">
+          <p className="muted" style={{ margin: 0 }}>
+            {data
+              ? t("usage.totals", {
+                  views: formatCount(data.totals.page_views),
+                  requests: formatCount(data.totals.requests),
+                  seconds: formatGroupedDecimal(data.totals.request_ms / 1000, 0),
+                })
+              : " "}
+          </p>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+            <span className="muted">{t("usage.windowLabel")}</span>
+            <select
+              value={days}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                const w = WINDOWS.find((x) => x === v);
+                if (w !== undefined) setDays(w);
+              }}
+            >
+              {WINDOWS.map((w) => (
+                <option key={w} value={w}>
+                  {t(`usage.windowOptions.${w}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {data && !data.enabled ? <p className="muted">{t("usage.disabled")}</p> : null}
+      </PageGridTile>
 
-      <section style={{ marginTop: "1.5rem" }}>
+      <PageGridTile id="pages">
         <h2>{t("usage.pagesTitle")}</h2>
         <Loadable loading={loading}>
           <Table
@@ -191,9 +194,9 @@ export function UsagePanelPage() {
             )}
           </Table>
         </Loadable>
-      </section>
+      </PageGridTile>
 
-      <section style={{ marginTop: "2rem" }}>
+      <PageGridTile id="endpoints">
         <h2>{t("usage.endpointsTitle")}</h2>
         <p className="muted">{t("usage.endpointsHint")}</p>
         <Loadable loading={loading}>
@@ -256,10 +259,10 @@ export function UsagePanelPage() {
             )}
           </Table>
         </Loadable>
-      </section>
+      </PageGridTile>
 
       {selected ? (
-        <section style={{ marginTop: "2rem" }}>
+        <PageGridTile id="trend">
           <h2>{t("usage.trendTitle")}</h2>
           <p className="muted mono">{endpointLabel(selected)}</p>
           {trend.isError ? (
@@ -296,7 +299,7 @@ export function UsagePanelPage() {
               </Table>
             </Loadable>
           )}
-        </section>
+        </PageGridTile>
       ) : null}
     </>
   );

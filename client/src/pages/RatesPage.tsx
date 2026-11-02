@@ -262,7 +262,7 @@ function FxUsdClpDualChart({
 
   if (yahooData.length === 0 && bcentralData.length === 0) {
     return (
-      <section className={loadableClass(loading, "rates-chart-card")}>
+      <section className={loadableClass(loading, "rates-chart-card", "chart-grid__col")}>
         <h3 className="rates-chart-card__title">USD / CLP</h3>
         <p className="muted rates-chart-card__note">CLP per US$1</p>
         {loading ? (
@@ -276,7 +276,7 @@ function FxUsdClpDualChart({
   }
 
   return (
-    <section className={loadableClass(loading, "rates-chart-card")}>
+    <section className={loadableClass(loading, "rates-chart-card", "chart-grid__col")}>
       <h3 className="rates-chart-card__title">USD / CLP</h3>
       <p className="muted rates-chart-card__note">CLP per US$1</p>
       <div className="rates-chart-card__plot">
@@ -368,7 +368,7 @@ function MiniLineChart({
 
   if (data.length === 0) {
     return (
-      <section className={loadableClass(loading, "rates-chart-card")}>
+      <section className={loadableClass(loading, "rates-chart-card", "chart-grid__col")}>
         <h3 className="rates-chart-card__title">{title}</h3>
         {footnote ? <p className="muted rates-chart-card__note">{footnote}</p> : null}
         {loading ? (
@@ -381,7 +381,7 @@ function MiniLineChart({
     );
   }
   return (
-    <section className={loadableClass(loading, "rates-chart-card")}>
+    <section className={loadableClass(loading, "rates-chart-card", "chart-grid__col")}>
       <h3 className="rates-chart-card__title">{title}</h3>
       {footnote ? <p className="muted rates-chart-card__note">{footnote}</p> : null}
       <div className="rates-chart-card__plot">
@@ -437,21 +437,21 @@ export function RatesPage() {
 
   if (err) {
     return (
-      <main>
+      <main className="page-grid">
         <p className="error">{err}</p>
       </main>
     );
   }
 
   return (
-    <main>
+    <main className="page-grid">
       <p className="muted">
         <Link to="/">{t("common.backToDashboard")}</Link>
       </p>
       <h1>{t("rates.pageTitle")}</h1>
       <FxCoverageBanner coverage={payload?.fx_coverage} />
       {fxSyncStale ? (
-        <p className="error" role="alert" style={{ maxWidth: "58rem", marginBottom: "1rem" }}>
+        <p className="error" role="alert" style={{ maxWidth: "58rem" }}>
           {t("fxCoverage.syncStale")}
         </p>
       ) : null}
@@ -465,13 +465,13 @@ export function RatesPage() {
         </button>
       </nav>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", margin: "0.25rem 0 0.75rem" }}>
+      <div className="page-tile--end">
         <SurfaceControls range={rangePrefs.range} onRangeChange={rangePrefs.setRange} />
       </div>
 
       {tab === "fx" ? (
         <>
-          <div className="rates-fx-grid">
+          <div className="chart-grid">
             <FxUsdClpDualChart
               timeRange={rangePrefs.range}
               yahooData={fxUsdClp}
@@ -522,8 +522,7 @@ export function RatesPage() {
         </>
       ) : (
         <>
-
-          <div className="rates-instrument-stack">
+          <div className="chart-grid chart-grid--full-line">
             {instrumentSlots.map((slot) => {
               const data = seriesFromPoints(points, (p) => instrumentValue(p, slot, displayUnit));
               const axis: "clp" | "usd" = displayUnit === "clp" ? "clp" : "usd";
