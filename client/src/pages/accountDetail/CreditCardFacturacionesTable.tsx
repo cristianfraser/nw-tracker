@@ -334,7 +334,6 @@ export function CreditCardFacturacionesTable({
         pageSize={PAGE_SIZE}
         total={total}
         onPageChange={setPage}
-        wrapClassName={styles.tableWrapSpaced}
       >
         <Table
           tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}

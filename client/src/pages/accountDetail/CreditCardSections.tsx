@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Table } from "../../components/ui/Table";
 import { Loadable } from "../../components/ui/Loadable";
+import { PageGridTile } from "../../components/layout/PageGridTile";
 import { PaginatedTable } from "../../components/ui/PaginatedTable";
 import type {
   AccountCcInstallmentsResponse,
@@ -227,31 +228,33 @@ function CreditCardInstallmentsSection({
     return purchasesCompletedSorted.slice(start, start + COMPLETED_PAGE_SIZE);
   }, [purchasesCompletedSorted, completedPage]);
 
+  // A page grid of its own (styles/page-grid.css): the summary and each table are tiles, so the
+  // row gap is the only space between them; one dim marker for the whole section.
   return (
-    <Loadable loading={loading}>
-      <h2 className={styles.sectionTitle}>{t("account.creditCard.installmentsTitle")}</h2>
-      {ledger.has_installment_ledger ? (
-        <p className={cn("muted", styles.proseMuted)}>
-          {m?.installment_purchase_count != null && m?.installment_payment_count != null ? (
-            <Trans
-              i18nKey="account.creditCard.installmentsCounts"
-              values={{
-                purchases: m.installment_purchase_count,
-                payments: m.installment_payment_count,
-              }}
-              components={{ 1: <span className="mono" />, 2: <span className="mono" /> }}
-            />
-          ) : null}{" "}
-          {m?.pay_by_rule_i18n_key ? (
-            <span className={cn("muted", styles.stateNote)}>{t(m.pay_by_rule_i18n_key)}</span>
-          ) : null}
-        </p>
-      ) : null}
-      {!hasData && !loading ? (
-        <p className={cn("muted", styles.marginBottomBase)}>{t("account.creditCard.installmentsEmpty")}</p>
-      ) : (
-        <>
-          <div className={cn("cards", styles.cardsBelow)}>
+    <Loadable loading={loading} className="page-grid">
+      <PageGridTile id="cc-installments">
+        <h2>{t("account.creditCard.installmentsTitle")}</h2>
+        {ledger.has_installment_ledger ? (
+          <p className={cn("muted", styles.proseMuted)}>
+            {m?.installment_purchase_count != null && m?.installment_payment_count != null ? (
+              <Trans
+                i18nKey="account.creditCard.installmentsCounts"
+                values={{
+                  purchases: m.installment_purchase_count,
+                  payments: m.installment_payment_count,
+                }}
+                components={{ 1: <span className="mono" />, 2: <span className="mono" /> }}
+              />
+            ) : null}{" "}
+            {m?.pay_by_rule_i18n_key ? (
+              <span className={cn("muted", styles.stateNote)}>{t(m.pay_by_rule_i18n_key)}</span>
+            ) : null}
+          </p>
+        ) : null}
+        {!hasData && !loading ? (
+          <p className="muted">{t("account.creditCard.installmentsEmpty")}</p>
+        ) : (
+          <div className="cards">
             <div className="card">
               <div className="label">{t("account.creditCard.totalRemainingLabel")}</div>
               <div className="value mono">{formatClp(ledger.totals.total_remaining_principal_clp)}</div>
@@ -265,10 +268,13 @@ function CreditCardInstallmentsSection({
               </div>
             </div>
           </div>
-
+        )}
+      </PageGridTile>
+      {!hasData && !loading ? null : (
+        <>
           {(ledger.has_installment_ledger && facturaciones.length > 0) || loading ? (
-            <>
-              <h3 className={styles.subsectionTitle}>{t("accountDetail.creditCard.facturacionesTitle")}</h3>
+            <PageGridTile id="cc-facturaciones">
+              <h3>{t("accountDetail.creditCard.facturacionesTitle")}</h3>
               <CreditCardFacturacionesTable
                 rows={facturaciones}
                 accountId={accountId}
@@ -277,118 +283,122 @@ function CreditCardInstallmentsSection({
                 proxyTickers={ledger.proxy_tickers}
                 pendingCuotaPurchases={ledger.pending_cuota_purchases}
               />
-            </>
+            </PageGridTile>
           ) : null}
 
-          <h3 className={styles.subsectionTitle}>{t("account.creditCard.activePurchasesTitle")}</h3>
-          <Table
-            wrapClassName={styles.tableWrapSpaced}
-            tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
-            header={activePurchaseTableHeader}
-          >
-            {ledger.purchases.length === 0 ? (
-              loading ? null : (
-                <tr>
-                  <td colSpan={purchaseTableColSpan(hasLedger, "none")} className="muted">
-                    {t("account.creditCard.activePurchasesEmpty")}
-                  </td>
-                </tr>
-              )
-            ) : (
-              renderActivePurchaseRows(purchasesActiveSorted)
-            )}
-          </Table>
-
-          <h3 className={styles.subsectionTitle}>{t("account.creditCard.completedPurchasesTitle")}</h3>
-          <PaginatedTable
-            key={`cc-completed-${accountId}`}
-            page={completedPage}
-            pageSize={COMPLETED_PAGE_SIZE}
-            total={purchasesCompletedSorted.length}
-            onPageChange={setCompletedPage}
-            wrapClassName={styles.tableWrapSpaced}
-          >
+          <PageGridTile id="cc-active-purchases">
+            <h3>{t("account.creditCard.activePurchasesTitle")}</h3>
             <Table
               tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
-              header={completedPurchaseTableHeader}
+              header={activePurchaseTableHeader}
             >
-              {purchasesCompletedSorted.length === 0 ? (
+              {ledger.purchases.length === 0 ? (
                 loading ? null : (
                   <tr>
-                    <td colSpan={purchaseTableColSpan(hasLedger, "last")} className="muted">
-                      {t("account.creditCard.completedPurchasesEmpty")}
+                    <td colSpan={purchaseTableColSpan(hasLedger, "none")} className="muted">
+                      {t("account.creditCard.activePurchasesEmpty")}
                     </td>
                   </tr>
                 )
               ) : (
-                renderCompletedPurchaseRows(completedPageRows)
+                renderActivePurchaseRows(purchasesActiveSorted)
               )}
             </Table>
-          </PaginatedTable>
+          </PageGridTile>
 
-          <h3 className={styles.subsectionTitle}>{t("account.creditCard.monthCuotasTitle")}</h3>
-          <Table
-            tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
-            header={
-              <thead>
-                <tr>
-                  <th className="desktop-only">{t("account.creditCard.colFacturacionPayBy")}</th>
-                  <th className="desktop-only">{t("account.creditCard.colMonthCuotaTotal")}</th>
-                  <th className="desktop-only">{t("account.creditCard.colDebtAfterPayment")}</th>
-                  <th className="desktop-only">{t("account.creditCard.colMonthBreakdown")}</th>
-                  <th className="mobile-only" aria-hidden="true" />
-                </tr>
-              </thead>
-            }
-          >
-            {ledger.months.length === 0 ? (
-              loading ? null : (
-                <tr>
-                  <td colSpan={5} className="muted">
-                    {t("account.creditCard.monthCuotasEmpty")}
-                  </td>
-                </tr>
-              )
-            ) : (
-              ledger.months.map((row) => {
-                return (
-                  <tr key={row.month}>
-                    <td className="mono desktop-only">
-                      {formatYearMonthLabel(row.month)}{" "}
-                      <span className="muted">({row.pay_by_date})</span>
-                    </td>
-                    <td className="mono desktop-only">{formatClp(row.total_clp)}</td>
-                    <td className="mono muted desktop-only">{formatClp(row.debt_after_clp)}</td>
-                    <td className="desktop-only">
-                      {renderMonthCuotasBreakdown(row.breakdown, styles.nestedList)}
-                    </td>
-                    <td className="mobile-only">
-                      <TableMobileCard title={`${formatYearMonthLabel(row.month)} (${row.pay_by_date})`}>
-                        <TableMobileCardSection>
-                          <TableMobileCardRow
-                            label={t("account.creditCard.colMonthCuotaTotal")}
-                            value={formatClp(row.total_clp)}
-                          />
-                          <TableMobileCardRow
-                            label={t("account.creditCard.colDebtAfterPayment")}
-                            value={<span className="muted">{formatClp(row.debt_after_clp)}</span>}
-                          />
-                        </TableMobileCardSection>
-                        {row.breakdown.length > 0 ? (
-                          <TableMobileCardSection>
-                            <div className="table-mobile-card__label">
-                              {t("account.creditCard.colMonthBreakdown")}
-                            </div>
-                            {renderMonthCuotasBreakdown(row.breakdown, styles.nestedList)}
-                          </TableMobileCardSection>
-                        ) : null}
-                      </TableMobileCard>
+          <PageGridTile id="cc-completed-purchases">
+            <h3>{t("account.creditCard.completedPurchasesTitle")}</h3>
+            <PaginatedTable
+              key={`cc-completed-${accountId}`}
+              page={completedPage}
+              pageSize={COMPLETED_PAGE_SIZE}
+              total={purchasesCompletedSorted.length}
+              onPageChange={setCompletedPage}
+            >
+              <Table
+                tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
+                header={completedPurchaseTableHeader}
+              >
+                {purchasesCompletedSorted.length === 0 ? (
+                  loading ? null : (
+                    <tr>
+                      <td colSpan={purchaseTableColSpan(hasLedger, "last")} className="muted">
+                        {t("account.creditCard.completedPurchasesEmpty")}
+                      </td>
+                    </tr>
+                  )
+                ) : (
+                  renderCompletedPurchaseRows(completedPageRows)
+                )}
+              </Table>
+            </PaginatedTable>
+          </PageGridTile>
+
+          <PageGridTile id="cc-month-cuotas">
+            <h3>{t("account.creditCard.monthCuotasTitle")}</h3>
+            <Table
+              tableClassName={cn(styles.tableCompact, "table--parallel-mobile")}
+              header={
+                <thead>
+                  <tr>
+                    <th className="desktop-only">{t("account.creditCard.colFacturacionPayBy")}</th>
+                    <th className="desktop-only">{t("account.creditCard.colMonthCuotaTotal")}</th>
+                    <th className="desktop-only">{t("account.creditCard.colDebtAfterPayment")}</th>
+                    <th className="desktop-only">{t("account.creditCard.colMonthBreakdown")}</th>
+                    <th className="mobile-only" aria-hidden="true" />
+                  </tr>
+                </thead>
+              }
+            >
+              {ledger.months.length === 0 ? (
+                loading ? null : (
+                  <tr>
+                    <td colSpan={5} className="muted">
+                      {t("account.creditCard.monthCuotasEmpty")}
                     </td>
                   </tr>
-                );
-              })
-            )}
-          </Table>
+                )
+              ) : (
+                ledger.months.map((row) => {
+                  return (
+                    <tr key={row.month}>
+                      <td className="mono desktop-only">
+                        {formatYearMonthLabel(row.month)}{" "}
+                        <span className="muted">({row.pay_by_date})</span>
+                      </td>
+                      <td className="mono desktop-only">{formatClp(row.total_clp)}</td>
+                      <td className="mono muted desktop-only">{formatClp(row.debt_after_clp)}</td>
+                      <td className="desktop-only">
+                        {renderMonthCuotasBreakdown(row.breakdown, styles.nestedList)}
+                      </td>
+                      <td className="mobile-only">
+                        <TableMobileCard title={`${formatYearMonthLabel(row.month)} (${row.pay_by_date})`}>
+                          <TableMobileCardSection>
+                            <TableMobileCardRow
+                              label={t("account.creditCard.colMonthCuotaTotal")}
+                              value={formatClp(row.total_clp)}
+                            />
+                            <TableMobileCardRow
+                              label={t("account.creditCard.colDebtAfterPayment")}
+                              value={<span className="muted">{formatClp(row.debt_after_clp)}</span>}
+                            />
+                          </TableMobileCardSection>
+                          {row.breakdown.length > 0 ? (
+                            <TableMobileCardSection>
+                              <div className="table-mobile-card__label">
+                                {t("account.creditCard.colMonthBreakdown")}
+                              </div>
+                              {renderMonthCuotasBreakdown(row.breakdown, styles.nestedList)}
+                            </TableMobileCardSection>
+                          ) : null}
+                        </TableMobileCard>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </Table>
+          </PageGridTile>
         </>
       )}
     </Loadable>

@@ -15,6 +15,7 @@ import type {
 import { formatClp, formatUfUnits, formatUfUnitsFine } from "../../format";
 import { cn } from "../../cn";
 import i18n from "../../i18n";
+import { PageGridTile } from "../../components/layout/PageGridTile";
 import styles from "../AccountDetailPage.module.css";
 
 /** UF amount with the CLP amount as a muted sub-line (shared desktop/mobile pair cell). */
@@ -213,73 +214,85 @@ export function MortgageDividendosTable({
   // order matches chronological order.
   const { page, setPage, pageRows, total } = useClientPagination(rowsSorted, 12);
 
+  const showSheetCards = Boolean(m || loading) && !isMortgageView;
+  const heading = (
+    <h2>
+      {isMortgageView
+        ? i18n.t("accountDetail.mortgageSheet.titleMortgage")
+        : i18n.t("accountDetail.mortgageSheet.titleProperty")}
+    </h2>
+  );
+
+  // Tiles of the page grid (styles/page-grid.css): the heading rides in the first one, the
+  // sheet cards (property view) get their own tile so the row gap separates them from the table.
   return (
     <>
-      <h2 className={styles.sectionTitle}>
-        {isMortgageView
-          ? i18n.t("accountDetail.mortgageSheet.titleMortgage")
-          : i18n.t("accountDetail.mortgageSheet.titleProperty")}
-      </h2>
-      {(m || loading) && !isMortgageView && (
-        <div className={cn("cards", styles.cardsBelow)}>
-          <div className="card">
-            <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.viviendaHoja")}</div>
-            <div className="value mono">
-              {m?.valor_vivienda_uf != null ? formatUfUnits(m.valor_vivienda_uf) : "—"}
+      {showSheetCards ? (
+        <PageGridTile id="mortgage-sheet-cards">
+          {heading}
+          <div className="cards">
+            <div className="card">
+              <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.viviendaHoja")}</div>
+              <div className="value mono">
+                {m?.valor_vivienda_uf != null ? formatUfUnits(m.valor_vivienda_uf) : "—"}
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.hipotecaTrasPie")}</div>
+              <div className="value mono">
+                {m?.hipoteca_tras_pie_uf != null ? formatUfUnits(m.hipoteca_tras_pie_uf) : "—"}
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.pieClpUf")}</div>
+              <div className={cn("value", "mono", styles.cardValueSecondary)}>
+                {m?.pie_clp != null ? formatClp(m.pie_clp) : "—"} · {m ? formatUfUnitsFine(m.pie_uf) : "—"}
+              </div>
+            </div>
+            <div className="card">
+              <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.filasDePago")}</div>
+              <div className="value mono">{m?.row_count ?? "—"}</div>
             </div>
           </div>
-          <div className="card">
-            <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.hipotecaTrasPie")}</div>
-            <div className="value mono">
-              {m?.hipoteca_tras_pie_uf != null ? formatUfUnits(m.hipoteca_tras_pie_uf) : "—"}
-            </div>
-          </div>
-          <div className="card">
-            <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.pieClpUf")}</div>
-            <div className={cn("value", "mono", styles.cardValueSecondary)}>
-              {m?.pie_clp != null ? formatClp(m.pie_clp) : "—"} · {m ? formatUfUnitsFine(m.pie_uf) : "—"}
-            </div>
-          </div>
-          <div className="card">
-            <div className="label">{i18n.t("accountDetail.mortgageSheet.cards.filasDePago")}</div>
-            <div className="value mono">{m?.row_count ?? "—"}</div>
-          </div>
-        </div>
-      )}
-      {ledger.card_lines_without_payment.length > 0 && (
-        <p className="muted">
-          {i18n.t("accountDetail.mortgageSheet.cardLinesWithoutPayment")}{" "}
-          {ledger.card_lines_without_payment
-            .map((l) => `${l.date} · ${l.merchant} · ${formatClp(l.amount_clp)} · ${l.account_name}`)
-            .join(" | ")}
-        </p>
-      )}
-      <PaginatedTable page={page} pageSize={12} total={total} onPageChange={setPage}>
-        <Table
-          tableClassName={cn("mortgage-sheet", "table--parallel-mobile", styles.tableMortgage)}
-          header={
-          <thead>
-            <tr>
-              <th className="desktop-only">{colLabel("cuotaPago")}</th>
-              <th className="desktop-only">{colLabel("credito")}</th>
-              <th className="desktop-only">{colLabel("minMaxUf")}</th>
-              <th className="desktop-only">{colLabel("segurosInteres")}</th>
-              <th className="desktop-only">{colLabel("amortizaciones")}</th>
-              <th className="mobile-only" aria-hidden="true" />
-            </tr>
-          </thead>
-        }
-        >
-          {pageRows.map((row, idx) => (
-            <tr key={`${row.cuota}-${row.occurred_on}-${idx}`}>
-              <MortgageDividendosDesktopRow row={row} />
-              <td className="mobile-only">
-                <MortgageDividendosMobileCard row={row} />
-              </td>
-            </tr>
-          ))}
-        </Table>
-      </PaginatedTable>
+        </PageGridTile>
+      ) : null}
+      <PageGridTile id="mortgage-sheet">
+        {showSheetCards ? null : heading}
+        {ledger.card_lines_without_payment.length > 0 && (
+          <p className="muted">
+            {i18n.t("accountDetail.mortgageSheet.cardLinesWithoutPayment")}{" "}
+            {ledger.card_lines_without_payment
+              .map((l) => `${l.date} · ${l.merchant} · ${formatClp(l.amount_clp)} · ${l.account_name}`)
+              .join(" | ")}
+          </p>
+        )}
+        <PaginatedTable page={page} pageSize={12} total={total} onPageChange={setPage}>
+          <Table
+            tableClassName={cn("mortgage-sheet", "table--parallel-mobile", styles.tableMortgage)}
+            header={
+            <thead>
+              <tr>
+                <th className="desktop-only">{colLabel("cuotaPago")}</th>
+                <th className="desktop-only">{colLabel("credito")}</th>
+                <th className="desktop-only">{colLabel("minMaxUf")}</th>
+                <th className="desktop-only">{colLabel("segurosInteres")}</th>
+                <th className="desktop-only">{colLabel("amortizaciones")}</th>
+                <th className="mobile-only" aria-hidden="true" />
+              </tr>
+            </thead>
+          }
+          >
+            {pageRows.map((row, idx) => (
+              <tr key={`${row.cuota}-${row.occurred_on}-${idx}`}>
+                <MortgageDividendosDesktopRow row={row} />
+                <td className="mobile-only">
+                  <MortgageDividendosMobileCard row={row} />
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </PaginatedTable>
+      </PageGridTile>
     </>
   );
 }
@@ -363,8 +376,8 @@ export function DeptoPaymentScenarioTable({
   if (!rows.length && !loading) return null;
 
   return (
-    <>
-      <h3 className={styles.subsectionTitleMid}>{i18n.t("accountDetail.mortgageSheet.referenceMinMax")}</h3>
+    <PageGridTile id="mortgage-scenarios">
+      <h3>{i18n.t("accountDetail.mortgageSheet.referenceMinMax")}</h3>
       <PaginatedTable page={scenarioPage} pageSize={12} total={scenarioTotal} onPageChange={setScenarioPage}>
         <Table
           tableClassName={cn("table--parallel-mobile", styles.tableScenario)}
@@ -415,6 +428,6 @@ export function DeptoPaymentScenarioTable({
           })}
         </Table>
       </PaginatedTable>
-    </>
+    </PageGridTile>
   );
 }

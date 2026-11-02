@@ -21,6 +21,7 @@ import {
 } from "../panel/BrokerageMovementsSection";
 import styles from "../../pages/AccountDetailPage.module.css";
 import { cn } from "../../cn";
+import { PageGridTile } from "../layout/PageGridTile";
 import { Button, Field, Input } from "@crfrsr/ui";
 
 type Props = {
@@ -227,8 +228,8 @@ export function MortgagePaymentForm({
   });
 
   return (
-    <section className={styles.marginTopBase} style={{ marginBottom: "1.5rem" }}>
-      <h2 className={styles.sectionTitle}>{t("accountDetail.mortgagePayment.sectionTitle")}</h2>
+    <PageGridTile id="mortgage-payment">
+      <h2>{t("accountDetail.mortgagePayment.sectionTitle")}</h2>
       <p className={cn("muted", styles.proseMutedXs)}>
         {t("accountDetail.mortgagePayment.sectionHint")}
       </p>
@@ -392,6 +393,6 @@ export function MortgagePaymentForm({
           {t("accountDetail.mortgagePayment.saveSuccess")}
         </p>
       ) : null}
-    </section>
+    </PageGridTile>
   );
 }

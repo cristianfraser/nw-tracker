@@ -8,9 +8,9 @@ import { timeRangeToDays } from "../../timeRange";
 import type { AccountCcInstallmentsResponse } from "../../types";
 import { CcInstallmentHistoryChart } from "../charts/lazyCharts";
 import { SurfaceControls } from "../ui/SurfaceControls";
-import { Loadable, loadableClass } from "../ui/Loadable";
+import { loadableClass } from "../ui/Loadable";
+import { PageGridTile } from "../layout/PageGridTile";
 import { CreditCardDetallePorMesTable } from "../../pages/accountDetail/CreditCardDetallePorMesTable";
-import styles from "../../pages/AccountDetailPage.module.css";
 
 /**
  * The two CC ledger surfaces — historial chart and detalle-por-mes table — rendered once for
@@ -23,24 +23,19 @@ import styles from "../../pages/AccountDetailPage.module.css";
 
 type Variant = "account" | "group";
 
-type Heading = { as: "h2" | "h3"; className: string };
+/** Heading level per host (the document outline); the page grid's row gap does the spacing. */
+type Heading = "h2" | "h3";
 
 const HEADINGS: Record<Variant, { historial: Heading; detalle: Heading }> = {
-  account: {
-    historial: { as: "h2", className: styles.sectionTitle },
-    detalle: { as: "h3", className: styles.subsectionTitleMid },
-  },
-  group: {
-    historial: { as: "h3", className: styles.subsectionTitleMid },
-    detalle: { as: "h3", className: styles.subsectionTitleMid },
-  },
+  account: { historial: "h2", detalle: "h3" },
+  group: { historial: "h3", detalle: "h3" },
 };
 
 const MONTH_YEAR = ["month", "year"] as const;
 
 function SurfaceHeading({ heading, children }: { heading: Heading; children: ReactNode }) {
-  const Tag = heading.as;
-  return <Tag className={heading.className}>{children}</Tag>;
+  const Tag = heading;
+  return <Tag>{children}</Tag>;
 }
 
 /** Per-surface prefs scope: `cc.<accountId>` on a card page, `liab.cc.<slug>` on a group page. */
@@ -101,7 +96,7 @@ export function CreditCardHistorialSurface({
   if (!hasHistorial && !loading) return null;
 
   return (
-    <section className={loadableClass(loading, styles.chartBlock)}>
+    <PageGridTile id="cc-historial" className={loadableClass(loading)} aria-busy={loading || undefined}>
       <div className="chart-panel-title-row">
         <SurfaceHeading heading={heading}>{t("accountDetail.creditCard.historialTitle")}</SurfaceHeading>
         <SurfaceControls
@@ -127,7 +122,7 @@ export function CreditCardHistorialSurface({
           loading={loading || (isDaily && dailyRows == null)}
         />
       )}
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -152,7 +147,7 @@ export function CreditCardDetalleSurface({
   if (rows.length === 0 && !loading) return null;
 
   return (
-    <Loadable loading={Boolean(loading)}>
+    <PageGridTile id="cc-detalle" className={loadableClass(loading)} aria-busy={loading || undefined}>
       <div className="chart-panel-title-row">
         <SurfaceHeading heading={heading}>
           {t(isYearly ? "accountDetail.yearlyDetailTitle" : "accountDetail.monthlyDetailTitle")}
@@ -160,6 +155,6 @@ export function CreditCardDetalleSurface({
         <SurfaceControls period={period} onPeriodChange={prefs.setPeriod} periodOptions={MONTH_YEAR} />
       </div>
       <CreditCardDetallePorMesTable rows={rows} period={period} />
-    </Loadable>
+    </PageGridTile>
   );
 }

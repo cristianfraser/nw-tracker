@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
-import { cn } from "../../cn";
 import { MonthlyPerformanceComboChart } from "../charts/lazyCharts";
 import { DeptoAccountSummaryCards } from "../../pages/accountDetail/DeptoAccountSummaryCards";
 import { DeptoPaymentScenarioTable, MortgageDividendosTable } from "../../pages/accountDetail/MortgageTables";
@@ -14,6 +13,7 @@ import { clipMonthsThenRollup, timeRangeToDays } from "../../timeRange";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { loadableClass } from "../ui/Loadable";
+import { PageGridTile } from "../layout/PageGridTile";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
 import type {
   AccountMonthlyPerformanceRow,
@@ -21,7 +21,6 @@ import type {
   AccountSummaryResponse,
   DashboardAccountRow,
 } from "../../types";
-import styles from "../../pages/AccountDetailPage.module.css";
 
 type Props = {
   mortgageLedger: AccountMortgageLedgerResponse;
@@ -146,51 +145,55 @@ export function LiabilitiesMortgageGroupSection({
   const combosLoading =
     perfLoading || (isDaily && (dailySeries.isPending || dailySeries.isPlaceholderData));
 
+  // A page grid of its own inside the group page's grid (styles/page-grid.css): the summary, the
+  // charts, the detalle and the sheet tables are tiles; one dim marker for the section.
   return (
-    <section className={loadableClass(loading, styles.chartBlock)}>
-      {linkTo ? (
-        <h2 className={styles.sectionTitle}>
-          <Link to={linkTo}>{title}</Link>
-        </h2>
-      ) : (
-        <h2 className={styles.sectionTitle}>{title}</h2>
-      )}
-
-      <DeptoAccountSummaryCards
-        variant="mortgage"
-        ledger={mortgageLedger}
-        summary={summary}
-        monthlyPerfRows={monthlyPerfRows}
-        accountDashRow={accountDashRow}
-      />
+    <PageGridTile
+      id="mortgage-section"
+      className={loadableClass(loading, "page-grid")}
+      aria-busy={loading || undefined}
+    >
+      <PageGridTile id="mortgage-summary">
+        <h2>{linkTo ? <Link to={linkTo}>{title}</Link> : title}</h2>
+        <DeptoAccountSummaryCards
+          variant="mortgage"
+          ledger={mortgageLedger}
+          summary={summary}
+          monthlyPerfRows={monthlyPerfRows}
+          accountDashRow={accountDashRow}
+        />
+      </PageGridTile>
 
       {monthlyPerfRows.length > 0 || perfLoading ? (
         <>
-          <h3 className={styles.sectionTitleSpaced}>{t("groupPage.pasivos.mortgagePerfTitle")}</h3>
-          <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockFlush)}>
-            <MonthlyPerformanceComboChart
-              title={t("groupPage.pasivos.mortgageYtdChartTitle")}
-              titleAs="h3"
-              points={dailyPerfPoints ?? ytdChartPoints}
-              displayUnit={displayUnit}
-              xAxisGranularity={dailyPerfPoints ? "day" : xAxisGranularity}
-              timeRange={timeRange}
-              controls={perfControls}
-              barSeries={[
-                {
-                  dataKey: "nominal_pl",
-                  name: t("groupPage.pasivos.mortgageBarMonthlyCost"),
-                  color: accountChartTheme.bar,
-                },
-              ]}
-              areaKey="ytd_nominal_pl"
-              areaName="YTD"
-              areaFill={accountChartTheme.areaFill}
-              areaStroke={accountChartTheme.areaStroke}
-              loading={combosLoading}
-            />
-          </div>
-          <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockLoose)}>
+          {/* The subsection heading sits over the first chart row, inside the same tile. */}
+          <PageGridTile id="mortgage-perf-combo">
+            <h3>{t("groupPage.pasivos.mortgagePerfTitle")}</h3>
+            <div className="chart-grid chart-grid--full-line">
+              <MonthlyPerformanceComboChart
+                title={t("groupPage.pasivos.mortgageYtdChartTitle")}
+                titleAs="h3"
+                points={dailyPerfPoints ?? ytdChartPoints}
+                displayUnit={displayUnit}
+                xAxisGranularity={dailyPerfPoints ? "day" : xAxisGranularity}
+                timeRange={timeRange}
+                controls={perfControls}
+                barSeries={[
+                  {
+                    dataKey: "nominal_pl",
+                    name: t("groupPage.pasivos.mortgageBarMonthlyCost"),
+                    color: accountChartTheme.bar,
+                  },
+                ]}
+                areaKey="ytd_nominal_pl"
+                areaName="YTD"
+                areaFill={accountChartTheme.areaFill}
+                areaStroke={accountChartTheme.areaStroke}
+                loading={combosLoading}
+              />
+            </div>
+          </PageGridTile>
+          <PageGridTile id="mortgage-perf-accum" className="chart-grid chart-grid--full-line">
             <MonthlyPerformanceComboChart
               title={t("groupPage.pasivos.mortgageAccChartTitle")}
               titleAs="h3"
@@ -213,37 +216,39 @@ export function LiabilitiesMortgageGroupSection({
               alternateYearAreaStripes={false}
               loading={combosLoading}
             />
-          </div>
-          <div className="chart-panel-title-row">
-            <h4 className={styles.subsectionTitleMid}>
-              {t(
-                tableIsDaily
-                  ? "accountDetail.dailyDetailTitle"
-                  : detallePrefs.period === "year"
-                    ? "accountDetail.yearlyDetailTitle"
-                    : "accountDetail.monthlyDetailTitle"
-              )}
-            </h4>
-            <SurfaceControls period={detallePrefs.period} onPeriodChange={detallePrefs.setPeriod} />
-          </div>
-          {tableIsDaily ? (
-            <DailyPerfDetailTable
-              series={detalleDailySeries.data}
-              displayUnit={displayUnit}
-              dimClosedDays
-              loading={detalleDailySeries.isPending || detalleDailySeries.isPlaceholderData}
-            />
-          ) : (
-            <MonthlyPerfDetailTable
-              rows={monthlyPerfRows}
-              yearlyRows={monthlyPerfYearlyRows}
-              displayUnit={displayUnit}
-              period={detallePrefs.period === "year" ? "year" : "month"}
-              isMortgageAccount
-              showStockInflowsColumn={false}
-              loading={perfLoading}
-            />
-          )}
+          </PageGridTile>
+          <PageGridTile id="mortgage-detail">
+            <div className="chart-panel-title-row">
+              <h4>
+                {t(
+                  tableIsDaily
+                    ? "accountDetail.dailyDetailTitle"
+                    : detallePrefs.period === "year"
+                      ? "accountDetail.yearlyDetailTitle"
+                      : "accountDetail.monthlyDetailTitle"
+                )}
+              </h4>
+              <SurfaceControls period={detallePrefs.period} onPeriodChange={detallePrefs.setPeriod} />
+            </div>
+            {tableIsDaily ? (
+              <DailyPerfDetailTable
+                series={detalleDailySeries.data}
+                displayUnit={displayUnit}
+                dimClosedDays
+                loading={detalleDailySeries.isPending || detalleDailySeries.isPlaceholderData}
+              />
+            ) : (
+              <MonthlyPerfDetailTable
+                rows={monthlyPerfRows}
+                yearlyRows={monthlyPerfYearlyRows}
+                displayUnit={displayUnit}
+                period={detallePrefs.period === "year" ? "year" : "month"}
+                isMortgageAccount
+                showStockInflowsColumn={false}
+                loading={perfLoading}
+              />
+            )}
+          </PageGridTile>
         </>
       ) : null}
 
@@ -255,8 +260,10 @@ export function LiabilitiesMortgageGroupSection({
           ) : null}
         </>
       ) : loading ? null : (
-        <p className="muted">{t("account.creditCard.mortgageSheetEmpty")}</p>
+        <PageGridTile id="mortgage-sheet">
+          <p className="muted">{t("account.creditCard.mortgageSheetEmpty")}</p>
+        </PageGridTile>
       )}
-    </section>
+    </PageGridTile>
   );
 }
