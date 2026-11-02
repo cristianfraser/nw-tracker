@@ -111,11 +111,8 @@ function MetricsRow({
     <div className={cn(styles.row, dim && styles.rowDim)}>
       <span className={styles.deposited} title={depositedLabel}>
         <span className="visually-hidden">{depositedLabel}</span>
-        <DepositedMetricFlow
-          value={deposited}
-          showUsd={showUsd}
-          animated={animated}
-        />
+        {/* Only the P/L figures animate (and the card's balance); the deposits stay still. */}
+        <DepositedMetricFlow value={deposited} showUsd={showUsd} animated={false} />
       </span>
       <span className={styles.deltaWrap} title={deltaLabel}>
         <DeltaMetricFlow
