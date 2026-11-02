@@ -17,7 +17,6 @@
 .periodTitle {
   font-size: var(--font-size-card-label);
   color: var(--muted);
-  margin-bottom: var(--space-xs);
 }
 
 .lines {
@@ -46,6 +45,4 @@
 /* Savings and P/L each open a section: a divider above. */
 .lineSection {
   border-top: 1px solid var(--border);
-  margin-top: var(--space-xs);
-  padding-top: var(--space-xs);
 }
