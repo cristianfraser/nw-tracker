@@ -66,6 +66,7 @@ export function PortfolioNavChildDetailCards({
             key={child.node_id}
             title={resolveNavTreeLabel(child)}
             titleTo={rp || undefined}
+            titleColorRgb={child.color_rgb}
             showUsd={showUsd}
             clp={clp}
             apiUsd={apiUsd}
