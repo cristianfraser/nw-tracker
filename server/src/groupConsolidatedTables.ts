@@ -14,6 +14,8 @@ import { resolveGroupDailySeries } from "./groupDailySeries.js";
 import { groupHasPeriodReturns } from "./portfolioGroupTree.js";
 import { listAccountsForGroupTab, type GroupTabAccountRow } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
+import { buildFlowsOverviewPayload } from "./flowsOverview.js";
+import type { CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
 
 export type { ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
 
@@ -121,7 +123,16 @@ export function getGroupPeriodReturns(
 
 export type ConsolidatedMonthlyPeriod = "month" | "year";
 
-export type GroupConsolidatedMonthlyPageResponse = Paginated<ConsolidatedMonthlyPerfRow> & {
+/**
+ * A detalle row of the net-worth page: what came in and what was spent that month (or year), from
+ * the flows overview — the money its «net contributions» is the difference of.
+ */
+export type ConsolidatedMonthlyPageRow = ConsolidatedMonthlyPerfRow & {
+  income?: number;
+  expenses?: number;
+};
+
+export type GroupConsolidatedMonthlyPageResponse = Paginated<ConsolidatedMonthlyPageRow> & {
   unit: TsUnit;
   group_slug: string;
   period: ConsolidatedMonthlyPeriod;
@@ -134,9 +145,37 @@ export function getGroupConsolidatedMonthlyPage(
   period: ConsolidatedMonthlyPeriod,
   page: number,
   pageSize: number,
-  tabSubgroup?: string
+  tabSubgroup?: string,
+  /** Net worth: the expense mode its income and expenses are counted in (the dashboard's). */
+  installmentMode?: CcInstallmentGastosMode
 ): GroupConsolidatedMonthlyPageResponse {
   const all = getGroupConsolidatedMonthlyRows(groupSlug, unit, tabSubgroup);
   const rows = period === "year" ? rollupMonthlyPerfYearly(all) : all;
-  return { unit, group_slug: groupSlug, period, ...paginate(rows, page, pageSize) };
+  const shown =
+    groupSlug === "net_worth" && installmentMode != null && unit !== "uf"
+      ? withIncomeAndExpenses(rows, unit, installmentMode, period)
+      : rows;
+  return { unit, group_slug: groupSlug, period, ...paginate(shown, page, pageSize) };
+}
+
+/** Each row's income and expenses: the flows overview's months, summed by year on a yearly row. */
+function withIncomeAndExpenses(
+  rows: readonly ConsolidatedMonthlyPerfRow[],
+  unit: "clp" | "usd",
+  installmentMode: CcInstallmentGastosMode,
+  period: ConsolidatedMonthlyPeriod
+): ConsolidatedMonthlyPageRow[] {
+  const keyLength = period === "year" ? 4 : 7;
+  const byPeriod = new Map<string, { income: number; expenses: number }>();
+  for (const m of buildFlowsOverviewPayload(unit, installmentMode, null).months) {
+    const key = m.period_month.slice(0, keyLength);
+    const acc = byPeriod.get(key) ?? { income: 0, expenses: 0 };
+    acc.income += m.income;
+    acc.expenses += m.expenses;
+    byPeriod.set(key, acc);
+  }
+  return rows.map((row) => {
+    const flows = byPeriod.get(row.as_of_date.slice(0, keyLength));
+    return flows ? { ...row, income: flows.income, expenses: flows.expenses } : row;
+  });
 }

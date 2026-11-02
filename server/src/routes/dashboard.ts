@@ -255,8 +255,13 @@ app.get("/api/groups/:slug/consolidated-monthly", (req, res) => {
   }
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
+  const modeRaw = req.query.installment_mode;
+  if (modeRaw != null && modeRaw !== "split" && modeRaw !== "total") {
+    res.status(400).json({ error: "installment_mode must be split or total" });
+    return;
+  }
   const { page, pageSize } = parsePageParams(req.query as Record<string, unknown>, 12);
-  res.json(getGroupConsolidatedMonthlyPage(tabSlug, unit, periodRaw, page, pageSize));
+  res.json(getGroupConsolidatedMonthlyPage(tabSlug, unit, periodRaw, page, pageSize, undefined, modeRaw ?? undefined));
 });
 
 /** Paginated + filtered flows for a group (server-side). */

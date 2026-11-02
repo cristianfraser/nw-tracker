@@ -154,6 +154,9 @@ export type ConsolidatedMonthlyPerfRow = {
   pct_month: number | null;
   ytd_nominal_pl: number | null;
   cumulative_nominal_pl: number | null;
+  /** Net worth's server-paginated rows only: the month's (or year's) income and expenses. */
+  income?: number;
+  expenses?: number;
 };
 
 export interface GroupConsolidatedTablesResponse {

@@ -334,11 +334,12 @@ export const api = {
   groupConsolidatedMonthly: (
     slug: string,
     unit: "clp" | "usd",
-    opts: { page?: number; pageSize?: number; period?: "month" | "year" }
+    opts: { page?: number; pageSize?: number; period?: "month" | "year"; installmentMode?: "split" | "total" }
   ) => {
     const q = new URLSearchParams();
     if (unit === "usd") q.set("include_usd", "true");
     if (opts.period === "year") q.set("period", "year");
+    if (opts.installmentMode) q.set("installment_mode", opts.installmentMode);
     if (opts.page) q.set("page", String(opts.page));
     if (opts.pageSize) q.set("page_size", String(opts.pageSize));
     const qs = q.toString();

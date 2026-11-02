@@ -17,6 +17,7 @@ import { PlaceholderCardsStrip } from "../dashboard/PlaceholderCardsStrip";
 import { PortfolioNavEntityCardsStrip } from "../dashboard/PortfolioNavEntityCardsStrip";
 import type { ColdStripShape } from "../../coldPageShape";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
+import { useCcInstallmentGastosMode } from "../../useCcInstallmentGastosMode";
 import { useTranslation } from "../../i18n";
 import { useGroupConsolidatedMonthlyPage, useGroupPeriodReturns } from "../../queries/hooks";
 import {
@@ -126,6 +127,7 @@ export function GroupInfoBase({
 }: GroupInfoBaseProps) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
+  const { installmentMode } = useCcInstallmentGastosMode();
   // Detalle table período (persisted per page instance); tables always cover full history.
   const detallePrefs = useSurfacePrefs(
     `group.${portfolio?.groupSlug || "page"}.detalle`,
@@ -185,7 +187,8 @@ export function GroupInfoBase({
     monthYearMetricsPeriod(tablePeriod),
     monthlyPage,
     MONTHLY_PERF_DETAIL_PAGE_SIZE,
-    tablesFetchEnabled && serverPaginatedMonthlyDetail && tablePeriod !== "day"
+    tablesFetchEnabled && serverPaginatedMonthlyDetail && tablePeriod !== "day",
+    installmentMode
   );
 
   // Day view: per-day rows over FULL history (tables include all; the first build of a

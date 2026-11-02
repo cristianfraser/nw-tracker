@@ -4,7 +4,7 @@ import { formatClp, formatInstrumentUnits, formatPct, formatUfBalance, formatUsd
 import type { AccountMonthlyPerformanceRow, ConsolidatedMonthlyPerfRow } from "../../types";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { formatYearMonthLabel } from "../../formatDateLabel";
-import { PerfDetailRows, type PerfDetailColumn } from "./PerfDetailRows";
+import { PerfDetailRows, type PerfDetailFlow, type PerfDetailRow } from "./PerfDetailRows";
 
 const PAGE_SIZE = 12;
 
@@ -118,35 +118,78 @@ export function MonthlyPerfDetailTable({
   const pageRows = serverPagination ? displayRows : clientPagination.pageRows;
   const setPage = serverPagination?.onPageChange ?? clientPagination.setPage;
 
-  const periodColumnLabel = isYearly
-    ? t("accountDetail.yearColumn")
-    : t("accountDetail.monthCloseColumn");
-
-  const ufBalance = (row: PerfRow): string => {
+  const ufBalance = (row: PerfRow): string | undefined => {
     const uf = "closing_balance_uf" in row ? (row as AccountMonthlyPerformanceRow).closing_balance_uf : null;
-    return uf != null && Number.isFinite(uf) ? formatUfBalance(uf) : "—";
+    return uf != null && Number.isFinite(uf) ? formatUfBalance(uf) : undefined;
   };
 
-  const columns: PerfDetailColumn<PerfRow>[] = [
-    { key: "closing", label: t("accountDetail.closingColumn"), value: (row) => fmtPerf(row.closing_value) },
-    ...(isMortgageAccount
-      ? [{ key: "uf", label: t("accountDetail.balanceUfColumn"), value: ufBalance }]
-      : []),
-    { key: "deposits", label: t("accountDetail.netDepositsColumn"), value: (row) => fmtPerf(row.net_capital_flow) },
-    ...(showStockInflows
-      ? [
-          {
-            key: "inflow",
-            label: inflowLabel,
-            value: (row: PerfRow) => formatStockInflow(row, isAfpAccount, movementUnitsKind),
-          },
-        ]
-      : []),
-    { key: "pl", label: plLabel, value: (row) => fmtPerf(row.nominal_pl) },
-    ...(!isMortgageAccount ? [{ key: "pct", label: pctLabel, value: (row: PerfRow) => cellPct(row.pct_month) }] : []),
-    ...(!isYearly ? [{ key: "ytd", label: ytdLabel, value: (row: PerfRow) => fmtPerf(row.ytd_nominal_pl) }] : []),
-    { key: "cum", label: cumLabel, value: (row) => fmtPerf(row.cumulative_nominal_pl) },
-  ];
+  // Net worth's rows carry the period's income and spending (its contribution is their difference).
+  const showIncome = pageRows.some((row) => "income" in row && row.income != null);
+  const amount = (n: number) => fmtPerf(Math.abs(n));
+
+  const perfRows: PerfDetailRow[] = pageRows.map((row) => {
+    const income = "income" in row ? row.income : undefined;
+    const expenses = "expenses" in row ? row.expenses : undefined;
+    const units = row.stock_units_inflow ?? 0;
+    const flows: (PerfDetailFlow | null)[] = [
+      ...(showIncome
+        ? [
+            income ? { key: "income", direction: "in" as const, amount: amount(income), tone: "positive" as const, title: t("flows.overview.income") } : null,
+            expenses
+              ? {
+                  key: "expenses",
+                  direction: expenses > 0 ? ("out" as const) : ("in" as const),
+                  amount: amount(expenses),
+                  tone: "negative" as const,
+                  title: t("flows.overview.expenses"),
+                }
+              : null,
+          ]
+        : []),
+      Number.isFinite(row.net_capital_flow) && row.net_capital_flow !== 0
+        ? {
+            key: "contribution",
+            direction: row.net_capital_flow > 0 ? "in" : "out",
+            amount: amount(row.net_capital_flow),
+            title: t("accountDetail.netDepositsColumn"),
+          }
+        : null,
+      ...(showStockInflows
+        ? [
+            Number.isFinite(units) && units !== 0
+              ? {
+                  key: "units",
+                  direction: units > 0 ? ("in" as const) : ("out" as const),
+                  amount: formatStockInflow({ ...row, stock_units_inflow: Math.abs(units) }, isAfpAccount, movementUnitsKind),
+                  title: inflowLabel,
+                }
+              : null,
+          ]
+        : []),
+    ];
+    const pl = row.nominal_pl;
+    const pct = !isMortgageAccount && row.pct_month != null && Number.isFinite(row.pct_month) ? cellPct(row.pct_month) : undefined;
+    return {
+      key: row.as_of_date,
+      period: formatPerfPeriodLabel(row.as_of_date, isYearly),
+      closing: fmtPerf(row.closing_value),
+      closingNote: (() => {
+        const uf = isMortgageAccount ? ufBalance(row) : undefined;
+        return uf ? { amount: uf, title: t("accountDetail.balanceUfColumn") } : undefined;
+      })(),
+      flows,
+      result:
+        pl == null || !Number.isFinite(pl)
+          ? null
+          : { sign: pl > 0 ? 1 : pl < 0 ? -1 : 0, amount: amount(pl), pct, title: pct ? `${plLabel} · ${pctLabel}` : plLabel },
+      totals: [
+        ...(!isYearly
+          ? [{ key: "ytd", prefix: t("periodReturns.ytd"), amount: fmtPerf(row.ytd_nominal_pl), title: ytdLabel }]
+          : []),
+        { key: "cum", prefix: "Σ", amount: fmtPerf(row.cumulative_nominal_pl), title: cumLabel },
+      ],
+    };
+  });
 
   return (
     <PaginatedTable
@@ -156,13 +199,7 @@ export function MonthlyPerfDetailTable({
       onPageChange={setPage}
       loading={loading || (serverPagination?.loading ?? false)}
     >
-      <PerfDetailRows
-        rows={pageRows}
-        rowKey={(row) => row.as_of_date}
-        period={(row) => formatPerfPeriodLabel(row.as_of_date, isYearly)}
-        periodLabel={periodColumnLabel}
-        columns={columns}
-      />
+      <PerfDetailRows rows={perfRows} flowSlots={(showIncome ? 2 : 0) + 1 + (showStockInflows ? 1 : 0)} />
     </PaginatedTable>
   );
 }

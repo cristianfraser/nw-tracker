@@ -1,15 +1,17 @@
-/* The detalle rows (PerfDetailRows.tsx). On one line the list is the grid and every row a
-   subgrid of it, so the columns line up under the header like a table's: the period column as
-   wide as its content, each value column at least as wide as its widest value (a header label
-   wraps at its spaces instead of widening the column). */
+/* The detalle rows (PerfDetailRows.tsx).
+
+   One line: the list is the grid and every row a subgrid of it, so each kind of figure lines up
+   down the list — period, closing, one column per flow slot, the result, one per running total.
+   Every column is as wide as its widest figure; the gaps take what is left. */
 .list {
   display: grid;
-  grid-template-columns: max-content repeat(var(--perf-value-cols), minmax(min-content, 1fr));
+  grid-template-columns:
+    max-content max-content repeat(var(--perf-flow-slots), max-content)
+    max-content repeat(var(--perf-total-slots), max-content);
+  justify-content: space-between;
   column-gap: 1rem;
-}
-
-.body {
-  display: contents;
+  font-size: var(--font-size-table);
+  container-type: inline-size;
 }
 
 .row {
@@ -18,78 +20,127 @@
   grid-column: 1 / -1;
   align-items: baseline;
   padding: 0.4rem 0;
-  border-top: 1px solid var(--hairline);
 }
 
-.header {
-  border-top: 0;
-  align-items: end;
-  color: var(--muted);
-  font-size: var(--font-size-card-label);
+.row + .row {
+  border-top: 1px solid var(--hairline);
 }
 
 .dim {
   opacity: 0.45;
 }
 
-.period {
+.period,
+.closing,
+.flow,
+.result,
+.total {
   white-space: nowrap;
 }
 
-.cell {
+.period {
+  color: var(--muted);
+}
+
+.closing,
+.flow,
+.result,
+.total {
+  text-align: right;
+}
+
+/* The flow slots and the totals are columns of the row on one line. */
+.flows,
+.totals {
   display: contents;
 }
 
-.value {
-  text-align: right;
-  white-space: nowrap;
+.arrow {
+  margin-right: 0.3em;
+  color: var(--muted);
 }
 
-.header .value {
-  white-space: normal;
+.pct {
+  margin-left: 0.5em;
 }
 
-.row:not(.header) {
-  font-size: var(--font-size-table);
+.totalPrefix {
+  margin-right: 0.35em;
 }
 
-.label {
-  display: none;
+.positive {
+  color: var(--positive);
 }
 
-/* Wrapped: the header row goes; each row is its period over its values, every value labelled,
-   as many values per line as fit. */
+.negative {
+  color: var(--negative);
+}
+
+/* Wrapped: period and closing on the first line; the flows on the left below it, the result on
+   the right, the running totals under the result. */
 .wrapped {
   display: block;
 }
 
-.wrapped .header {
-  display: none;
-}
-
 .wrapped .row {
-  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "period closing"
+    "flows  result"
+    "flows  totals";
   column-gap: 1rem;
-  row-gap: 0.35rem;
-  align-items: start;
+  row-gap: 0.2rem;
 }
 
 .wrapped .period {
-  grid-column: 1 / -1;
+  grid-area: period;
+  color: inherit;
 }
 
-.wrapped .cell {
+.wrapped .closing {
+  grid-area: closing;
+}
+
+.wrapped .flows {
+  grid-area: flows;
   display: flex;
-  flex-direction: column;
-  min-width: 0;
+  flex-wrap: wrap;
+  align-content: start;
+  column-gap: 1rem;
+  row-gap: 0.2rem;
 }
 
-.wrapped .label {
-  display: block;
-  color: var(--muted);
-  font-size: var(--font-size-card-label);
+.wrapped .flow:empty {
+  display: none;
 }
 
-.wrapped .value {
-  text-align: left;
+.wrapped .result {
+  grid-area: result;
+}
+
+.wrapped .totals {
+  grid-area: totals;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  column-gap: 1rem;
+}
+
+/* A phone: one thing per line — the flows, the result, then the totals spread across. */
+@container (max-width: 30rem) {
+  .wrapped .row {
+    grid-template-areas:
+      "period closing"
+      "flows  flows"
+      "result result"
+      "totals totals";
+  }
+
+  .wrapped .result {
+    text-align: left;
+  }
+
+  .wrapped .totals {
+    justify-content: space-between;
+  }
 }
