@@ -140,7 +140,22 @@ export type ContractPayslip = {
 
 export type ContractorPayslip = { job: ContractorJob; month: Month; wireDate: Ymd; grossUsd: number; feeUsd: number; fx: number };
 
-export type MortgageCuota = { n: number; date: Ymd; clp: number; ufDay: number; pmtUf: number; interestUf: number; amortUf: number; balanceAfterUf: number };
+export type MortgageCuota = {
+  /** Cuota number, or null for a prepago. */
+  n: number | null;
+  /** «prepago N» for a prepago. */
+  label: string;
+  date: Ymd;
+  clp: number;
+  ufDay: number;
+  /** The minimum dividendo (0 on a prepago). */
+  pmtUf: number;
+  interestUf: number;
+  amortUf: number;
+  /** Paid above the minimum (the whole prepago). */
+  extUf: number;
+  balanceAfterUf: number;
+};
 
 export type Ledger = {
   person: Person;
@@ -829,12 +844,26 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
     if (mortgage && HOUSE && month > HOUSE.month) {
       const day = ymd(month, 10);
       if (day <= today) {
-        const n = mortgage.cuotas.length + 1;
-        const s = mortgageCuotaUf(HOUSE, mortgage.principalUf, n);
+        const n = mortgage.cuotas.filter((c) => c.n != null).length + 1;
+        const balanceUf = mortgageBalanceUf(mortgage);
+        const s = mortgageCuotaUf(HOUSE, balanceUf, HOUSE.termMonths - (n - 1));
+        const extUf = Math.min(HOUSE.monthlyExtraUf, s.balanceAfterUf);
         const ufDay = market.uf(day);
-        const clp = round(s.pmtUf * ufDay) + MORTGAGE_INCENDIO_CLP + MORTGAGE_DESGRAVAMEN_CLP;
-        mortgage.cuotas.push({ n, date: day, clp, ufDay, ...s });
+        const clp = round((s.pmtUf + extUf) * ufDay) + MORTGAGE_INCENDIO_CLP + MORTGAGE_DESGRAVAMEN_CLP;
+        mortgage.cuotas.push({ n, label: String(n), date: day, clp, ufDay, ...s, extUf, balanceAfterUf: s.balanceAfterUf - extUf });
         cardPurchase({ card: "main", date: day, merchant: MORTGAGE_MERCHANT, category: "bills", currency: "clp", amount: clp });
+      }
+      for (const pp of HOUSE.prepayments) {
+        if (monthOf(pp.date) !== month || pp.date > today) continue;
+        const ufDay = market.uf(pp.date);
+        const balanceUf = mortgageBalanceUf(mortgage);
+        const extUf = Math.min(pp.uf, balanceUf);
+        const clp = round(extUf * ufDay);
+        ensureClp(pp.date, clp);
+        catByDesc.set("TRANSF A MUTUARIA ANDES PREPAGO", "deposits");
+        book.bankRow("checking", pp.date, "TRANSF A MUTUARIA ANDES PREPAGO", -clp);
+        const k = mortgage.cuotas.filter((c) => c.n == null).length + 1;
+        mortgage.cuotas.push({ n: null, label: `prepago ${k}`, date: pp.date, clp, ufDay, pmtUf: 0, interestUf: 0, amortUf: 0, extUf, balanceAfterUf: balanceUf - extUf });
       }
     }
 
@@ -1206,6 +1235,7 @@ export function simulate(person: Person, market: MarketReader, today: Ymd): Ledg
       const m = addMonths(month, k);
       for (const c of CARS) if (c.from === m) need += c.priceClp - c.tradeInClp - (c.id === "car1" ? 2_500_000 : 0);
       if (m.endsWith("-12") && Number(m.slice(0, 4)) >= APV.from) need += APV.utm * market.utm(month);
+      if (HOUSE) for (const pp of HOUSE.prepayments) if (monthOf(pp.date) === m) need += pp.uf * market.uf(ymd(month, 1));
       if (includePlays && k <= 3) for (const p of PLAYS) if (p.kind === "buy" && monthOf(p.date) === m) need += p.usd * market.fx(ymd(month, 1));
       // Moving in: the deposit (garantía) and the first rent.
       for (const h of HOUSING) if (h.kind === "rent" && h.from === m) need += 2.2 * h.rentClp;
@@ -1325,14 +1355,22 @@ function finiquitoPayslip(job: ContractJob, month: Month, market: MarketReader):
 
 /* ------------------------------- mortgage math ----------------------------------- */
 
-/** French schedule in UF (the dividendo is a fixed UF amount). */
-export function mortgageCuotaUf(house: House, principalUf: number, n: number) {
+/**
+ * One cuota of a French schedule in UF: the minimum dividendo re-amortizes the balance
+ * over the months left, as the bank does after an extra amortization or a prepago.
+ */
+export function mortgageCuotaUf(house: House, balanceUf: number, monthsLeft: number) {
   const i = house.monthlyRate;
-  const pmtUf = (principalUf * i) / (1 - Math.pow(1 + i, -house.termMonths));
-  const g = Math.pow(1 + i, n - 1);
-  const before = principalUf * g - (pmtUf * (g - 1)) / i;
-  const interestUf = before * i;
+  const pmtUf = (balanceUf * i) / (1 - Math.pow(1 + i, -monthsLeft));
+  const interestUf = balanceUf * i;
   const amortUf = pmtUf - interestUf;
-  return { pmtUf, interestUf, amortUf, balanceAfterUf: before - amortUf };
+  return { pmtUf, interestUf, amortUf, balanceAfterUf: balanceUf - amortUf };
+}
+
+/** The UF balance after the last cuota or prepago. */
+export function mortgageBalanceUf(m: NonNullable<Ledger["mortgage"]>, through?: Ymd): number {
+  let bal = m.principalUf;
+  for (const c of m.cuotas) if (through == null || c.date <= through) bal = c.balanceAfterUf;
+  return bal;
 }
 export { MORTGAGE_INCENDIO_CLP, MORTGAGE_DESGRAVAMEN_CLP, BRANCH };
