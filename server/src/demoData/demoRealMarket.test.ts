@@ -8,8 +8,8 @@ describe("demo Modelo fund A snapshot", () => {
   it("reads rows with dot decimals", () => {
     const rows = parseDemoAfpModeloCsv(`${HEADER}\nmodelo;A;2019-12-31;100.5\r\nmodelo;A;2020-01-01;101\n`);
     expect(rows).toEqual([
-      { afp: "modelo", fund: "A", day: "2019-12-31", unit_value_clp: 100.5, provisional: false },
-      { afp: "modelo", fund: "A", day: "2020-01-01", unit_value_clp: 101, provisional: false },
+      { afp: "modelo", fund: "A", day: "2019-12-31", unit_value: 100.5, provisional: false },
+      { afp: "modelo", fund: "A", day: "2020-01-01", unit_value: 101, provisional: false },
     ]);
   });
 

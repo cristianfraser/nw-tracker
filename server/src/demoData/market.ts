@@ -133,7 +133,7 @@ function syntheticUnoRows(lastDay: Ymd): SpAfpFundUnitRow[] {
   for (let d: Ymd = "2019-10-01"; d <= lastDay; d = addDays(d, 1)) {
     const years = (daysSinceEpoch(d) - daysSinceEpoch("2019-10-01")) / 365.25;
     const v = 1_000 * Math.pow(1.035, years) * (0.55 + 0.45 * (anchorValue(spy, d) / spy0));
-    rows.push({ afp: "uno", fund: "A", day: d, unit_value_clp: Math.round(v * 100) / 100, provisional: false });
+    rows.push({ afp: "uno", fund: "A", day: d, unit_value: Math.round(v * 100) / 100, provisional: false });
   }
   return rows;
 }
@@ -205,11 +205,11 @@ export function dbMarketReader(): MarketReader {
     fundUnit(seriesKey, day) {
       let s = fundCache.get(seriesKey);
       if (!s) {
-        const rows = db.prepare(`SELECT day, unit_value_clp FROM fund_unit_daily WHERE series_key = ? ORDER BY day`).all(seriesKey) as {
+        const rows = db.prepare(`SELECT day, unit_value FROM fund_unit_daily WHERE series_key = ? ORDER BY day`).all(seriesKey) as {
           day: string;
-          unit_value_clp: number;
+          unit_value: number;
         }[];
-        s = { d: rows.map((r) => r.day), c: rows.map((r) => r.unit_value_clp) };
+        s = { d: rows.map((r) => r.day), c: rows.map((r) => r.unit_value) };
         fundCache.set(seriesKey, s);
       }
       return onOrBefore(s, day, `${seriesKey} value`);

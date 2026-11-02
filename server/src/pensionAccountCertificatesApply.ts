@@ -46,7 +46,7 @@ const CUOTA_TOLERANCE = 0.005;
 const BALANCE_TOLERANCE = 0.00005;
 
 export type PensionLedgerRow = { id: number; occurred_on: string; amount: number; units_delta: number };
-export type PensionSeriesRow = { day: string; unit_value_clp: number };
+export type PensionSeriesRow = { day: string; unit_value: number };
 
 export type PensionPlan = {
   rows: PensionExpectedRow[];
@@ -107,7 +107,7 @@ export function checkPensionStatedValue(
         app_day: null,
         app_pesos: null,
         diff_clp: null,
-        detail: `valor cuota ${stated.valor_cuota} is not in the app's series yet (latest ${last?.unit_value_clp ?? "none"} on ${last?.day ?? "—"})`,
+        detail: `valor cuota ${stated.valor_cuota} is not in the app's series yet (latest ${last?.unit_value ?? "none"} on ${last?.day ?? "—"})`,
       },
       problems,
     };
@@ -251,7 +251,7 @@ export function loadPensionLedger(accountId: number): PensionLedgerRow[] {
 
 function loadSeries(fromPeriod: string): PensionSeriesRow[] {
   return db
-    .prepare(`SELECT day, unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day >= ? ORDER BY day`)
+    .prepare(`SELECT day, unit_value FROM fund_unit_daily WHERE series_key = ? AND day >= ? ORDER BY day`)
     .all(AFP_UNO_CUOTA_SERIES_KEY, certificateRowPriceWindow(fromPeriod).fromDay) as PensionSeriesRow[];
 }
 
@@ -269,7 +269,7 @@ export function applyPensionAccountCertificates(
   const value = checkPensionStatedValue(payload.balance, series, chileCalendarTodayYmd(), (day) => {
     const mark = accountMarkClpAtYmd(accountId, day)?.value_clp;
     if (mark == null) throw new Error(`pension: account ${accountId} has no value on ${day}`);
-    const px = [...series].reverse().find((s) => s.day <= day)!.unit_value_clp;
+    const px = [...series].reverse().find((s) => s.day <= day)!.unit_value;
     const freshCuotas = fresh.filter((r) => r.occurred_on! <= day).reduce((s, r) => s + r.cuotas, 0);
     return mark + freshCuotas * px;
   });
@@ -347,7 +347,7 @@ export function applyPensionAccountBalance(payload: PensionAccountBalancePayload
   }
   const today = chileCalendarTodayYmd();
   const series = db
-    .prepare(`SELECT day, unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day >= ? ORDER BY day`)
+    .prepare(`SELECT day, unit_value FROM fund_unit_daily WHERE series_key = ? AND day >= ? ORDER BY day`)
     .all(AFP_UNO_CUOTA_SERIES_KEY, chileCalendarAddDays(today, -60)) as PensionSeriesRow[];
   const value = checkPensionStatedValue(payload.balance, series, today, (day) => {
     const mark = accountMarkClpAtYmd(accountId, day)?.value_clp;

@@ -142,16 +142,16 @@ function fxValueOnOrBefore(ymd: string, today: string, now: Date): number | null
 }
 
 /** Latest fund-unit row on or before `ymd`; the AFP series prefers quoted rows over cert scratch rows. */
-function fundUnitRowOnOrBefore(seriesKey: string, ymd: string): { day: string; unit_value_clp: number } | null {
+function fundUnitRowOnOrBefore(seriesKey: string, ymd: string): { day: string; unit_value: number } | null {
   const row =
     seriesKey === AFP_UNO_CUOTA_SERIES_KEY
       ? latestAfpUnoFundUnitRowOnOrBeforeForDisplay(seriesKey, ymd)
       : latestFundUnitRowOnOrBefore(seriesKey, ymd);
-  return row != null && Number.isFinite(row.unit_value_clp) ? row : null;
+  return row != null && Number.isFinite(row.unit_value) ? row : null;
 }
 
 function fundUnitValueOnOrBefore(seriesKey: string, ymd: string): number | null {
-  return fundUnitRowOnOrBefore(seriesKey, ymd)?.unit_value_clp ?? null;
+  return fundUnitRowOnOrBefore(seriesKey, ymd)?.unit_value ?? null;
 }
 
 /** Converts every leg of `native` into `unit` (identity when the series is quoted in it) and takes the ratios. */
@@ -262,12 +262,12 @@ function statsForFx(today: string, now: Date): WatchlistRowStats {
 function nativeForFundUnit(row: MarketDisplaySeriesRow, today: string): NativeRowStats | null {
   const seriesKey = row.series_key!;
   const fuRow = fundUnitRowOnOrBefore(seriesKey, today);
-  if (fuRow == null || fuRow.unit_value_clp <= 0) return null;
+  if (fuRow == null || fuRow.unit_value <= 0) return null;
   const asOf = fuRow.day;
   const priorDay = chileCalendarAddDays(asOf, -1);
   return {
     quote_currency: "clp",
-    value: fuRow.unit_value_clp,
+    value: fuRow.unit_value,
     as_of_date: asOf,
     day_prior: { value: fundUnitValueOnOrBefore(seriesKey, priorDay), ymd: priorDay },
     day_calendar: "chile",

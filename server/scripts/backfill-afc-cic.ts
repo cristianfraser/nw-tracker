@@ -45,7 +45,7 @@ async function main(): Promise<void> {
   }
   const latest = latestAfcCicRow();
   console.log(
-    `${dry ? "[dry-run] " : ""}afc_cic: inserted=${inserted} updated=${updated} unchanged=${unchanged}; latest row ${latest?.day ?? "—"} = ${latest?.unit_value_clp ?? "—"}`
+    `${dry ? "[dry-run] " : ""}afc_cic: inserted=${inserted} updated=${updated} unchanged=${unchanged}; latest row ${latest?.day ?? "—"} = ${latest?.unit_value ?? "—"}`
   );
 }
 

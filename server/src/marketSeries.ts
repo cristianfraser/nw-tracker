@@ -77,7 +77,7 @@ export function getMarketSeriesPayload(): {
   type IpcR = { date: string; ipc_index: number };
   type UtmR = { date: string; utm_clp: number };
   type EqR = { ticker: string; date: string; close: number };
-  type FuR = { series_key: string; day: string; unit_value_clp: number };
+  type FuR = { series_key: string; day: string; unit_value: number };
 
   const fxRows = db.prepare(`SELECT date, clp_per_usd FROM fx_daily ORDER BY date ASC`).all() as FxR[];
   const fxBcentralRows = db
@@ -99,7 +99,7 @@ export function getMarketSeriesPayload(): {
     )
     .all() as EqR[];
   const fuRows = db
-    .prepare(`SELECT series_key, day, unit_value_clp FROM fund_unit_daily ORDER BY series_key, day ASC`)
+    .prepare(`SELECT series_key, day, unit_value FROM fund_unit_daily ORDER BY series_key, day ASC`)
     .all() as FuR[];
 
   const equityTickers = sortEquityTickers(eqRows.map((r) => r.ticker));
@@ -116,7 +116,7 @@ export function getMarketSeriesPayload(): {
   for (const k of fundKeys) fuBars.set(k, []);
   for (const r of fuRows) {
     const arr = fuBars.get(r.series_key);
-    if (arr) arr.push({ date: r.day, v: r.unit_value_clp });
+    if (arr) arr.push({ date: r.day, v: r.unit_value });
   }
 
   const dateSet = new Set<string>();

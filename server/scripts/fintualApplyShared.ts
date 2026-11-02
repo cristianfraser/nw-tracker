@@ -35,10 +35,10 @@ const stmtValuationOnDay = db.prepare(
   `SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`
 );
 const stmtFundUnitOnDay = db.prepare(
-  `SELECT unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day = ?`
+  `SELECT unit_value FROM fund_unit_daily WHERE series_key = ? AND day = ?`
 );
 const stmtFundUnitBeforeDay = db.prepare(
-  `SELECT day, unit_value_clp FROM fund_unit_daily
+  `SELECT day, unit_value FROM fund_unit_daily
    WHERE series_key = ? AND day < ?
    ORDER BY day DESC LIMIT 1`
 );
@@ -87,9 +87,9 @@ function storedFintualGoalNavAt(
     if (!seriesKey) return null;
     const units = fintualGoalUnitsFromMovements(accountId);
     if (units == null || units <= 0) return null;
-    const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as { unit_value_clp: number } | undefined;
-    if (row?.unit_value_clp == null || !Number.isFinite(row.unit_value_clp)) return null;
-    return Math.round(units * row.unit_value_clp);
+    const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as { unit_value: number } | undefined;
+    if (row?.unit_value == null || !Number.isFinite(row.unit_value)) return null;
+    return Math.round(units * row.unit_value);
   }
   const row = stmtValuationOnDay.get(accountId, asOfYmd) as
     | { value_clp: number; currency: string }
@@ -110,10 +110,10 @@ function priorFintualGoalNav(
     const units = fintualGoalUnitsFromMovements(accountId);
     if (units == null || units <= 0) return null;
     const row = stmtFundUnitBeforeDay.get(seriesKey, beforeYmd) as
-      | { day: string; unit_value_clp: number }
+      | { day: string; unit_value: number }
       | undefined;
-    if (row?.unit_value_clp == null || !Number.isFinite(row.unit_value_clp)) return null;
-    return { as_of_date: row.day, value_clp: Math.round(units * row.unit_value_clp) };
+    if (row?.unit_value == null || !Number.isFinite(row.unit_value)) return null;
+    return { as_of_date: row.day, value_clp: Math.round(units * row.unit_value) };
   }
   return priorAccountValuation(accountId, beforeYmd);
 }
@@ -122,23 +122,23 @@ function storedFintualPublishUnitAt(importNotes: string, asOfYmd: string): numbe
   if (!isFintualCertV2ValuationNotes(importNotes)) return null;
   const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
   if (!seriesKey) return null;
-  const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as { unit_value_clp: number } | undefined;
-  if (row?.unit_value_clp == null || !Number.isFinite(row.unit_value_clp)) return null;
-  return Math.round(row.unit_value_clp * 10000) / 10000;
+  const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as { unit_value: number } | undefined;
+  if (row?.unit_value == null || !Number.isFinite(row.unit_value)) return null;
+  return Math.round(row.unit_value * 10000) / 10000;
 }
 
 function priorFintualPublishUnit(
   importNotes: string,
   beforeYmd: string
-): { day: string; unit_value_clp: number } | null {
+): { day: string; unit_value: number } | null {
   if (!isFintualCertV2ValuationNotes(importNotes)) return null;
   const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
   if (!seriesKey) return null;
   const row = stmtFundUnitBeforeDay.get(seriesKey, beforeYmd) as
-    | { day: string; unit_value_clp: number }
+    | { day: string; unit_value: number }
     | undefined;
-  if (row?.unit_value_clp == null || !Number.isFinite(row.unit_value_clp)) return null;
-  return { day: row.day, unit_value_clp: Math.round(row.unit_value_clp * 10000) / 10000 };
+  if (row?.unit_value == null || !Number.isFinite(row.unit_value)) return null;
+  return { day: row.day, unit_value: Math.round(row.unit_value * 10000) / 10000 };
 }
 
 function fintualPublishUnitSynced(
@@ -231,12 +231,12 @@ export function collectFintualGoalValuationChanges(
       if (
         priorUnit != null &&
         nextUnit != null &&
-        Math.abs(priorUnit.unit_value_clp - nextUnit) > 0.0005
+        Math.abs(priorUnit.unit_value - nextUnit) > 0.0005
       ) {
         changes.push({
           group: "fintual",
           label: `${g.name} (valor cuota)`,
-          oldValue: formatSyncIndex(priorUnit.unit_value_clp),
+          oldValue: formatSyncIndex(priorUnit.unit_value),
           newValue: formatSyncIndex(nextUnit),
           oldDate: priorUnit.day,
           newDate: snap.asOfDate,

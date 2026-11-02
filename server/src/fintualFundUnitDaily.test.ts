@@ -14,15 +14,15 @@ const NOTES = "import:fintual|cert|key=apv_a";
 
 function seedBar(day: string, px: number, note: string): void {
   db.prepare(
-    `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, ?)
-     ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+    `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, ?)
+     ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
   ).run(SERIES, day, px, note);
 }
 
-function readBar(day: string): { unit_value_clp: number; note: string } | undefined {
+function readBar(day: string): { unit_value: number; note: string } | undefined {
   return db
-    .prepare(`SELECT unit_value_clp, note FROM fund_unit_daily WHERE series_key = ? AND day = ?`)
-    .get(SERIES, day) as { unit_value_clp: number; note: string } | undefined;
+    .prepare(`SELECT unit_value, note FROM fund_unit_daily WHERE series_key = ? AND day = ?`)
+    .get(SERIES, day) as { unit_value: number; note: string } | undefined;
 }
 
 function wipeRange(fromYmd: string, toYmd: string): void {
@@ -116,10 +116,10 @@ describe("recordFintualGoalFundUnitDaily", () => {
       });
       expect(r).toEqual({ recorded: true, unitClp: 1003, gapDaysFilled: 2 });
       // The skipped days hold the NEW value (the observation stands in for them), marked as placeholders.
-      expect(readBar("2099-07-02")).toMatchObject({ unit_value_clp: 1003, note: "fintual:stand-in|from=2099-07-04" });
-      expect(readBar("2099-07-03")).toMatchObject({ unit_value_clp: 1003, note: "fintual:stand-in|from=2099-07-04" });
+      expect(readBar("2099-07-02")).toMatchObject({ unit_value: 1003, note: "fintual:stand-in|from=2099-07-04" });
+      expect(readBar("2099-07-03")).toMatchObject({ unit_value: 1003, note: "fintual:stand-in|from=2099-07-04" });
       expect(readBar("2099-07-04")).toMatchObject({
-        unit_value_clp: 1003,
+        unit_value: 1003,
         note: `fintual:gql:shares-publish|${NOTES}`,
       });
       // The publish day itself is restated by a later poll (Fintual revised the closure).
@@ -132,7 +132,7 @@ describe("recordFintualGoalFundUnitDaily", () => {
         units: 100,
         dryRun: false,
       });
-      expect(readBar("2099-07-04")!.unit_value_clp).toBe(1003.5);
+      expect(readBar("2099-07-04")!.unit_value).toBe(1003.5);
     } finally {
       wipeRange("2099-07-01", "2099-07-31");
     }

@@ -15,8 +15,8 @@
 import { chileCalendarAddDays } from "./chileDate.js";
 import { isChileBusinessDay, nextChileBusinessDayYmd } from "./marketHolidays.js";
 
-export type OfficialFundUnit = { day: string; unit_value_clp: number };
-export type DisplayFundUnit = { day: string; unit_value_clp: number; official_day: string };
+export type OfficialFundUnit = { day: string; unit_value: number };
+export type DisplayFundUnit = { day: string; unit_value: number; official_day: string };
 
 /** The day the official value of `officialDay` becomes visible: `lag` business days later. */
 export function afpDisplayDayForOfficialDay(officialDay: string, lagBusinessDays: number): string {
@@ -50,14 +50,14 @@ export function buildAfpDisplaySeries(
     if (r.day <= prev) throw new Error(`afp display frame: official series not ascending at ${r.day}`);
     prev = r.day;
     if (!isChileBusinessDay(r.day)) continue;
-    valued.push({ visible: afpDisplayDayForOfficialDay(r.day, lagBusinessDays), official_day: r.day, v: r.unit_value_clp });
+    valued.push({ visible: afpDisplayDayForOfficialDay(r.day, lagBusinessDays), official_day: r.day, v: r.unit_value });
   }
   const out: DisplayFundUnit[] = [];
   if (valued.length === 0) return out;
   let i = 0;
   for (let day = valued[0]!.visible; day <= throughDay; day = chileCalendarAddDays(day, 1)) {
     while (i + 1 < valued.length && valued[i + 1]!.visible <= day) i += 1;
-    out.push({ day, unit_value_clp: valued[i]!.v, official_day: valued[i]!.official_day });
+    out.push({ day, unit_value: valued[i]!.v, official_day: valued[i]!.official_day });
   }
   return out;
 }

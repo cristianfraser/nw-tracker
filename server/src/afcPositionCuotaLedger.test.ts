@@ -42,8 +42,8 @@ describe("AFC position — cuota ledger", () => {
     created.push(accountId);
 
     db.prepare(
-      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, 'vitest:px')
-       ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, 'vitest:px')
+       ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
     ).run(AFC_CIC_SERIES_KEY, asOf, px);
     db.prepare(
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)

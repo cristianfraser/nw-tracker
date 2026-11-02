@@ -5,7 +5,7 @@ import { upsertFundUnitSpotPreservingHistory } from "./fundUnitDaily.js";
 const SERIES = "vitest_fund_unit_daily_gapfill";
 
 function seedBar(day: string, px: number, note: string): void {
-  db.prepare(`INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, ?)`).run(
+  db.prepare(`INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, ?)`).run(
     SERIES,
     day,
     px,
@@ -13,10 +13,10 @@ function seedBar(day: string, px: number, note: string): void {
   );
 }
 
-function readBar(day: string): { unit_value_clp: number; note: string } | undefined {
+function readBar(day: string): { unit_value: number; note: string } | undefined {
   return db
-    .prepare(`SELECT unit_value_clp, note FROM fund_unit_daily WHERE series_key = ? AND day = ?`)
-    .get(SERIES, day) as { unit_value_clp: number; note: string } | undefined;
+    .prepare(`SELECT unit_value, note FROM fund_unit_daily WHERE series_key = ? AND day = ?`)
+    .get(SERIES, day) as { unit_value: number; note: string } | undefined;
 }
 
 afterEach(() => {
@@ -35,9 +35,9 @@ describe("upsertFundUnitSpotPreservingHistory gap fill", () => {
       dryRun: false,
     });
     expect(r.gapDaysFilled).toBe(2);
-    expect(readBar("2099-05-02")).toMatchObject({ unit_value_clp: 1000, note: "vitest-carry" });
-    expect(readBar("2099-05-03")).toMatchObject({ unit_value_clp: 1000, note: "vitest-carry" });
-    expect(readBar("2099-05-04")).toMatchObject({ unit_value_clp: 1003, note: "obs" });
+    expect(readBar("2099-05-02")).toMatchObject({ unit_value: 1000, note: "vitest-carry" });
+    expect(readBar("2099-05-03")).toMatchObject({ unit_value: 1000, note: "vitest-carry" });
+    expect(readBar("2099-05-04")).toMatchObject({ unit_value: 1003, note: "obs" });
   });
 
   it("carry_previous leaves the gap empty when the value did not move", () => {
@@ -65,10 +65,10 @@ describe("upsertFundUnitSpotPreservingHistory gap fill", () => {
       dryRun: false,
     });
     expect(r.gapDaysFilled).toBe(2);
-    expect(readBar("2099-05-01")).toMatchObject({ unit_value_clp: 1000, note: "seed" });
-    expect(readBar("2099-05-02")).toMatchObject({ unit_value_clp: 999.5, note: "vitest-stand-in" });
-    expect(readBar("2099-05-03")).toMatchObject({ unit_value_clp: 999.5, note: "vitest-stand-in" });
-    expect(readBar("2099-05-04")).toMatchObject({ unit_value_clp: 999.5, note: "obs" });
+    expect(readBar("2099-05-01")).toMatchObject({ unit_value: 1000, note: "seed" });
+    expect(readBar("2099-05-02")).toMatchObject({ unit_value: 999.5, note: "vitest-stand-in" });
+    expect(readBar("2099-05-03")).toMatchObject({ unit_value: 999.5, note: "vitest-stand-in" });
+    expect(readBar("2099-05-04")).toMatchObject({ unit_value: 999.5, note: "obs" });
 
     seedBar("2099-06-01", 1000, "seed");
     const equal = upsertFundUnitSpotPreservingHistory({
@@ -81,7 +81,7 @@ describe("upsertFundUnitSpotPreservingHistory gap fill", () => {
       dryRun: false,
     });
     expect(equal.gapDaysFilled).toBe(1);
-    expect(readBar("2099-06-02")).toMatchObject({ unit_value_clp: 1000, note: "vitest-stand-in" });
+    expect(readBar("2099-06-02")).toMatchObject({ unit_value: 1000, note: "vitest-stand-in" });
   });
 
   it("stand_in_new needs a stand-in note and writes nothing on a dry run", () => {

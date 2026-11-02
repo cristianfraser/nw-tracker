@@ -151,8 +151,8 @@ describe("AFC ledger rebuild (test DB)", () => {
         .run(groupId).lastInsertRowid
     );
     const ins = db.prepare(
-      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, 'vitest:px')
-       ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, 'vitest:px')
+       ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
     );
     for (const d of PX_DAYS) ins.run(AFC_CIC_SERIES_KEY, d, PX);
     // Excel-era rows: a contribution the certificate supersedes, and a non-contribution row.

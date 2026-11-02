@@ -49,7 +49,7 @@ export function parseUnoValorCuotaHistorico(body: unknown): SpAfpFundUnitRow[] {
     if (!(v > 0)) throw new Error(`uno_api: non-positive FONDO_A on ${day}`);
     if (prev != null && day >= prev) throw new Error(`uno_api: rows not newest first at ${day} (after ${prev})`);
     prev = day;
-    rows.push({ afp: "uno", fund: "A", day, unit_value_clp: v, provisional: false });
+    rows.push({ afp: "uno", fund: "A", day, unit_value: v, provisional: false });
   }
   return rows.reverse();
 }

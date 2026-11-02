@@ -32,19 +32,19 @@ const ROWS: { day: string; valuationClp: number; wrongStoredClp: number }[] = [
 
 const apply = process.argv.includes("--apply");
 const stmtGet = db.prepare(
-  `SELECT unit_value_clp, COALESCE(note, '') AS note FROM fund_unit_daily WHERE series_key = ? AND day = ?`
+  `SELECT unit_value, COALESCE(note, '') AS note FROM fund_unit_daily WHERE series_key = ? AND day = ?`
 );
 const stmtSet = db.prepare(
-  `UPDATE fund_unit_daily SET unit_value_clp = ?, note = ? WHERE series_key = ? AND day = ?`
+  `UPDATE fund_unit_daily SET unit_value = ?, note = ? WHERE series_key = ? AND day = ?`
 );
 const note = `${FINTUAL_GQL_SHARES_PUBLISH_NOTE_PREFIX}|${IMPORT_NOTES}`;
 
 const plan = ROWS.map((r) => {
-  const stored = stmtGet.get(SERIES_KEY, r.day) as { unit_value_clp: number; note: string } | undefined;
+  const stored = stmtGet.get(SERIES_KEY, r.day) as { unit_value: number; note: string } | undefined;
   if (!stored) throw new Error(`${r.day}: no stored bar`);
-  if (Math.abs(stored.unit_value_clp - r.wrongStoredClp) > 0.00005) {
+  if (Math.abs(stored.unit_value - r.wrongStoredClp) > 0.00005) {
     throw new Error(
-      `${r.day}: stored ${stored.unit_value_clp} is not the known-wrong ${r.wrongStoredClp} — refusing (already repaired or restated)`
+      `${r.day}: stored ${stored.unit_value} is not the known-wrong ${r.wrongStoredClp} — refusing (already repaired or restated)`
     );
   }
   const correct = Math.round((r.valuationClp / FINTUAL_SHARES) * 10000) / 10000;

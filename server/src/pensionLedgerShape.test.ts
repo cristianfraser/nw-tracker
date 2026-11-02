@@ -30,10 +30,10 @@ describe("shapePensionLedgerRows", () => {
 
 describe("firstVisibleDayOfValue", () => {
   const series = [
-    { day: "2030-05-10", unit_value_clp: 10 },
-    { day: "2030-05-11", unit_value_clp: 10 },
-    { day: "2030-05-12", unit_value_clp: 11 },
-    { day: "2030-05-20", unit_value_clp: 10 },
+    { day: "2030-05-10", unit_value: 10 },
+    { day: "2030-05-11", unit_value: 10 },
+    { day: "2030-05-12", unit_value: 11 },
+    { day: "2030-05-20", unit_value: 10 },
   ];
   it("returns the first day of the value's one run, and throws on two runs", () => {
     expect(firstVisibleDayOfValue(series, 10, "2030-05-01", "2030-05-15")).toBe("2030-05-10");

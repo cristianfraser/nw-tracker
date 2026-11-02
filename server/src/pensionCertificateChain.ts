@@ -21,7 +21,7 @@ import type { PensionMovement } from "nw-tracker-contracts";
 import { afpDisplayDayForOfficialDay } from "./afpDisplayFrame.js";
 import { TRANSFER_CODES, certificateRowPriceWindow, firstVisibleDayOfValue } from "./pensionLedgerShape.js";
 
-export type OfficialSeriesByAfp = ReadonlyMap<string, readonly { day: string; unit_value_clp: number }[]>;
+export type OfficialSeriesByAfp = ReadonlyMap<string, readonly { day: string; unit_value: number }[]>;
 
 export type LocatedCertificateRow = PensionMovement & { afp: string; official_day: string };
 

@@ -143,7 +143,7 @@ describe("fintual_official_serie schedule", () => {
 
   function seedPlaceholder(day: string): void {
     db.prepare(
-      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, 1000, 'fintual:stand-in|from=2099-04-13')
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, 1000, 'fintual:stand-in|from=2099-04-13')
        ON CONFLICT(series_key, day) DO UPDATE SET note = excluded.note`
     ).run(SERIES, day);
   }

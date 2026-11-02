@@ -25,7 +25,7 @@ import { loadGlobalSyncState } from "./globalSyncState.js";
 export const FINTUAL_CERT_V2_RECONCILE_TOLERANCE_CLP = 1000;
 
 const stmtFundUnitOnDay = db.prepare(
-  `SELECT unit_value_clp, note FROM fund_unit_daily WHERE series_key = ? AND day = ?`
+  `SELECT unit_value, note FROM fund_unit_daily WHERE series_key = ? AND day = ?`
 );
 const stmtDeleteFundUnitOnDay = db.prepare(
   `DELETE FROM fund_unit_daily WHERE series_key = ? AND day = ?`
@@ -90,12 +90,12 @@ export function fintualCertV2PositionFromCuotaClp(
   const units = fintualGoalUnitsFromMovements(accountId);
   if (units == null || units <= 0) return null;
   const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as
-    | { unit_value_clp: number; note: string }
+    | { unit_value: number; note: string }
     | undefined;
-  if (row?.unit_value_clp == null || !Number.isFinite(row.unit_value_clp) || row.unit_value_clp <= 0) {
+  if (row?.unit_value == null || !Number.isFinite(row.unit_value) || row.unit_value <= 0) {
     return null;
   }
-  return Math.round(units * row.unit_value_clp);
+  return Math.round(units * row.unit_value);
 }
 
 export function fintualCertV2GoalsCuotaReconciled(opts: {
@@ -145,7 +145,7 @@ export function fintualCertV2PreferGoalsNavDisplay(opts: {
 }
 
 const stmtRecentFundUnitsBeforeDay = db.prepare(
-  `SELECT day, unit_value_clp FROM fund_unit_daily
+  `SELECT day, unit_value FROM fund_unit_daily
    WHERE series_key = ? AND day < ?
    ORDER BY day DESC LIMIT 7`
 );
@@ -188,11 +188,11 @@ function goalsNavMatchesPriorPublishPositionUncached(
   if (!latest) return false;
   const rows = stmtRecentFundUnitsBeforeDay.all(seriesKey, latest.day) as {
     day: string;
-    unit_value_clp: number;
+    unit_value: number;
   }[];
   for (const row of rows) {
-    if (!(row.unit_value_clp > 0)) continue;
-    const pos = Math.round(units * row.unit_value_clp);
+    if (!(row.unit_value > 0)) continue;
+    const pos = Math.round(units * row.unit_value);
     if (Math.abs(goalsNavClp - pos) <= FINTUAL_CERT_V2_RECONCILE_TOLERANCE_CLP) return true;
   }
   return false;
@@ -216,9 +216,9 @@ export function fintualCertV2HeldFundMissingDayRow(
   const units = fintualGoalUnitsFromMovements(accountId);
   if (units == null || units <= 1e-9) return false;
   const row = stmtFundUnitOnDay.get(seriesKey, asOfYmd) as
-    | { unit_value_clp: number; note: string }
+    | { unit_value: number; note: string }
     | undefined;
-  if (row?.unit_value_clp != null && Number.isFinite(row.unit_value_clp) && row.unit_value_clp > 0) {
+  if (row?.unit_value != null && Number.isFinite(row.unit_value) && row.unit_value > 0) {
     return false;
   }
   const latest = latestFundUnitRow(seriesKey);
@@ -334,7 +334,7 @@ export function listFintualCertV2ReconcileRows(
     const unitRow =
       seriesKey != null
         ? (stmtFundUnitOnDay.get(seriesKey, publishYmd) as
-            | { unit_value_clp: number; note: string }
+            | { unit_value: number; note: string }
             | undefined)
         : undefined;
     const cuotaPos = fintualCertV2PositionFromCuotaClp(acc.id, importNotes, publishYmd);
@@ -345,7 +345,7 @@ export function listFintualCertV2ReconcileRows(
       accountId: acc.id,
       goalsNavClp: goalsNav,
       cuotaPositionClp: cuotaPos,
-      unitClp: unitRow?.unit_value_clp ?? null,
+      unitClp: unitRow?.unit_value ?? null,
       reconciled: fintualCertV2AccountReconciledOnDay(acc.id, importNotes, publishYmd, goalsNav),
     });
   }
@@ -370,7 +370,7 @@ export function cleanupUnreconciledFintualCertFundUnits(
     const seriesKey = fundSeriesKeyFromImportNotes(importNotes);
     if (!seriesKey) continue;
     const row = stmtFundUnitOnDay.get(seriesKey, publishYmd) as
-      | { unit_value_clp: number; note: string }
+      | { unit_value: number; note: string }
       | undefined;
     if (row == null) continue;
     if (isFintualPublishedFundUnitNote(row.note)) continue;

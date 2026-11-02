@@ -207,8 +207,8 @@ function equityLevels(b: BenchmarkRow, todayYmd: string, now: Date): BenchmarkLe
 
 function fundLevels(b: BenchmarkRow): BenchmarkLevelSeries {
   const rows = db
-    .prepare(`SELECT day, unit_value_clp FROM fund_unit_daily WHERE series_key = ? ORDER BY day`)
-    .all(b.series_key!) as { day: string; unit_value_clp: number }[];
+    .prepare(`SELECT day, unit_value FROM fund_unit_daily WHERE series_key = ? ORDER BY day`)
+    .all(b.series_key!) as { day: string; unit_value: number }[];
   if (rows.length === 0) return { currency: "clp", first_ymd: null, levelAt: () => null };
   return {
     currency: "clp",
@@ -216,7 +216,7 @@ function fundLevels(b: BenchmarkRow): BenchmarkLevelSeries {
     levelAt: stepSeries(
       b.slug,
       rows.map((r) => r.day),
-      rows.map((r) => r.unit_value_clp)
+      rows.map((r) => r.unit_value)
     ),
   };
 }

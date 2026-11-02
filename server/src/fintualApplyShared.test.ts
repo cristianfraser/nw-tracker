@@ -103,7 +103,7 @@ describe("collectFintualGoalValuationChanges v2", () => {
         .run(group.id, "import:fintual|cert|key=risky_norris", "import:fintual|cert|key=risky_norris").lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note)
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value, note)
        VALUES ('fintual_cert_risky_norris', '2026-06-23', 4100, 'test:fixture')
        ON CONFLICT(series_key, day) DO NOTHING`
     ).run();

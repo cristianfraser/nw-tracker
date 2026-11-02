@@ -42,7 +42,7 @@ export function impliedFintualUnitClpFromNav(
   if (!prevUnit) return null;
   const val = latestValuationClp(accountId, asOfYmd);
   if (val == null || val <= 0) return null;
-  const shares = val / prevUnit.unit_value_clp;
+  const shares = val / prevUnit.unit_value;
   if (!Number.isFinite(shares) || shares <= 1e-9) return null;
   return Math.round((navClp / shares) * 10000) / 10000;
 }
@@ -56,8 +56,8 @@ export const FINTUAL_INFERRED_UNIT_MAX_REL_STEP = 0.05;
 
 function inferredUnitWithinBand(seriesKey: string, candidate: number): boolean {
   const prev = latestFundUnitRow(seriesKey);
-  if (!prev || !(prev.unit_value_clp > 0)) return true; // first-ever bar: nothing to compare
-  return Math.abs(candidate / prev.unit_value_clp - 1) <= FINTUAL_INFERRED_UNIT_MAX_REL_STEP;
+  if (!prev || !(prev.unit_value > 0)) return true; // first-ever bar: nothing to compare
+  return Math.abs(candidate / prev.unit_value - 1) <= FINTUAL_INFERRED_UNIT_MAX_REL_STEP;
 }
 
 /** Resolve valor cuota: publish price (evening API) → implied from history → NAV ÷ Σ cuotas bootstrap. */
