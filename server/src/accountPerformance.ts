@@ -315,11 +315,8 @@ function accountMetaForLivePerfCloseUncached(
   return row ?? null;
 }
 
-/**
- * A live close for the current month: the CLP value today, the day it is dated and the day its
- * pesos were priced (`AccountTodayValue.priced_on`).
- */
-export type LivePerfClose = { value_clp: number; as_of_date: string; priced_on: string };
+/** A live close for the current month: the CLP value today and the day it is dated. */
+export type LivePerfClose = { value_clp: number; as_of_date: string };
 
 /** The current month's live close: the account's one today value (`accountTodayValue`). */
 export function livePerfCloseForCurrentMonth(
@@ -375,7 +372,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   const resolved = resolveLive?.() ?? livePerfCloseForCurrentMonth(accountId, categorySlug);
   const liveClose: LivePerfClose | null =
     typeof resolved === "number"
-      ? { value_clp: resolved, as_of_date: today, priced_on: today }
+      ? { value_clp: resolved, as_of_date: today }
       : resolved;
   let live: number | null = liveClose?.value_clp ?? null;
   if (live != null && unit !== "clp") {

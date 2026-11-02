@@ -1,4 +1,3 @@
-import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxSellClpPerUsdOnOrBefore } from "./fxBidAsk.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { recordFxConversionWarning } from "./fxConversionWarnings.js";
@@ -48,11 +47,4 @@ export function usdCashBalanceClpAt(accountId: number, asOfYmd: string): number 
   const clp = convertValue(usd, "usd", "clp", asOfYmd, "asset");
   if (clp == null) throw new Error(`usdCashBalanceClpAt: no USD/CLP rate on or before ${asOfYmd} (account ${accountId})`);
   return clp;
-}
-
-export function usdCashBalanceLive(accountId: number): { value_usd: number; value_clp: number; as_of_date: string } {
-  const asOf = chileCalendarTodayYmd();
-  const value_usd = usdCashBalanceUsdAt(accountId, asOf);
-  const value_clp = usdCashBalanceClpAt(accountId, asOf);
-  return { value_usd, value_clp, as_of_date: asOf };
 }

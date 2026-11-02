@@ -46,8 +46,8 @@ const FULL_HISTORY = "0000-01-01";
  * The series store quantities (`markSeriesStore.ts`): a rate row (`rateTable`: fx, bid/ask, UF)
  * moves no quantity of an account that holds shares, coins, cuotas or a non-peso ledger — only
  * the memoized rate, which lives in the history tier and goes with any change. It still trims
- * the accounts whose stored quantity is a peso figure built with rates (the card's dollar
- * lines, the depto ledger's UF marks, a book mark carried by flows): this resolver names the
+ * the accounts whose stored quantity is a peso figure built with rates (a card's sub-balances
+ * at the day's rate, the depto ledger's UF marks, a book mark carried by flows): this resolver names the
  * rate-independent ones, registered by the series cache (`accountMarkDailyCache.ts`). Without
  * one, a rate row trims every series.
  */
@@ -58,9 +58,8 @@ export function setRateIndependentAccountsResolver(resolver: (() => ReadonlySet<
 }
 
 /**
- * How far before a changed row's own date it can move a mark (days), per table:
- * - a card's dollar line is valued at the fx of its facturación's pay-by − 1, up to ~2 months
- *   after the line, so an fx row reaches back that far for card accounts;
+ * How far before a changed row's own date it can move a mark (days), per table (a rate row moves
+ * no day before its own — a card's dollar sub-balance on a day is valued at that day's rate):
  * - a statement header (pay-by, payment date) affects its whole billing period;
  * - the Risky Norris proxy reads the Banco Central observado published up to 7 days later;
  * - a fund cuota (and the sync state it comes with) can re-value a held holiday block before it;
@@ -69,12 +68,12 @@ export function setRateIndependentAccountsResolver(resolver: (() => ReadonlySet<
  */
 const SOURCE_RULES: Record<
   string,
-  { backDays?: number; cardBackDays?: number; recentDays?: number; rateTable?: boolean }
+  { backDays?: number; recentDays?: number; rateTable?: boolean }
 > = {
   cc_statements: { backDays: 45 },
   cc_traspaso_deuda_links: { backDays: 75 },
-  fx_daily: { cardBackDays: 75, rateTable: true },
-  fx_daily_bid_ask: { cardBackDays: 75, rateTable: true },
+  fx_daily: { rateTable: true },
+  fx_daily_bid_ask: { rateTable: true },
   uf_daily: { rateTable: true },
   fx_daily_bcentral: { backDays: 7 },
   fund_unit_daily: { backDays: 10 },
@@ -166,7 +165,6 @@ function applyPendingMarkInputChangesInner(today: string): boolean {
     const prev = byAccount.get(id);
     if (prev == null || from < prev) byAccount.set(id, from);
   };
-  let cardFrom: string | null = null;
   let rateFrom: string | null = null;
   for (const r of rows) {
     const rule = SOURCE_RULES[r.source] ?? {};
@@ -178,15 +176,10 @@ function applyPendingMarkInputChangesInner(today: string): boolean {
       } else if (allFrom == null || from < allFrom) {
         allFrom = from;
       }
-      if (rule.cardBackDays != null) {
-        const cf = isoMinusDays(from, rule.cardBackDays);
-        if (cardFrom == null || cf < cardFrom) cardFrom = cf;
-      }
     } else {
       lower(r.account_id, from);
     }
   }
-  if (cardFrom != null) for (const id of accountsOfKinds(new Set(["credit_card"]))) lower(id, cardFrom);
   if (rateFrom != null && rateIndependentAccounts) {
     const independent = rateIndependentAccounts();
     for (const r of accountBucketsStmt.all() as { id: number; slug: string }[]) {
