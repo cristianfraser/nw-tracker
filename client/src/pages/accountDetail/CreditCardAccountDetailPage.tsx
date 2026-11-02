@@ -7,6 +7,7 @@ import {
 import { AccountFlowsSection } from "../../components/account/AccountFlowsSection";
 import { CreditCardSummaryCards } from "../../components/liabilities/CreditCardSummaryCards";
 import { AccountDetailSharedLayout } from "./AccountDetailSharedLayout";
+import { PageGridTile } from "../../components/layout/PageGridTile";
 import { ExportToolbarButton } from "../../components/export/ExportModal";
 import { AccountImportSection } from "../../components/account/AccountImportSection";
 import { CreditCardConfigSection } from "../../components/account/CreditCardConfigSection";
@@ -56,8 +57,8 @@ export function CreditCardAccountDetailPage({ data }: Props) {
       <CreditCardConfigSection accountId={summary.account_id} />
 
       {(ccLedger.associated_card_last4s?.length ?? 0) > 0 ? (
-        <section className={styles.chartBlock}>
-          <h2 className={styles.sectionTitle}>{t("accountDetail.creditCard.associatedCardsTitle")}</h2>
+        <PageGridTile id="cc-associated-cards">
+          <h2>{t("accountDetail.creditCard.associatedCardsTitle")}</h2>
           <ul className={styles.proseSmTight}>
             {ccLedger.associated_card_last4s!.map((last4) => (
               <li key={last4} className="mono">
@@ -65,7 +66,7 @@ export function CreditCardAccountDetailPage({ data }: Props) {
               </li>
             ))}
           </ul>
-        </section>
+        </PageGridTile>
       ) : null}
 
       <CreditCardDetailSections

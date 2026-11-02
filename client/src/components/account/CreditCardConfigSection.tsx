@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { loadableClass } from "../ui/Loadable";
+import { PageGridTile } from "../layout/PageGridTile";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { formatNumberInput, parseNumberInput } from "../../format";
 import { useCreditCardConfig, usePatchCreditCardConfigMutation } from "../../queries/hooks";
@@ -52,10 +53,10 @@ export function CreditCardConfigSection({ accountId }: Props) {
 
   if (error instanceof Error) {
     return (
-      <section style={{ margin: "1.5rem 0" }}>
+      <PageGridTile id="cc-config">
         <h2 className="flow-section-title">{t("accountDetail.creditCard.configTitle")}</h2>
         <p className="error">{error.message}</p>
-      </section>
+      </PageGridTile>
     );
   }
   // The config is always present once loaded (the server defaults a missing row): `!config` only
@@ -105,7 +106,7 @@ export function CreditCardConfigSection({ accountId }: Props) {
   };
 
   return (
-    <section className={loadableClass(pending)} style={{ margin: "1.5rem 0" }}>
+    <PageGridTile id="cc-config" className={loadableClass(pending)} aria-busy={pending || undefined}>
       <h2 className="flow-section-title">{t("accountDetail.creditCard.configTitle")}</h2>
       {config?.card_last4 ? (
         <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.75rem" }}>
@@ -181,6 +182,6 @@ export function CreditCardConfigSection({ accountId }: Props) {
           {t("accountDetail.creditCard.configSaved")}
         </p>
       ) : null}
-    </section>
+    </PageGridTile>
   );
 }
