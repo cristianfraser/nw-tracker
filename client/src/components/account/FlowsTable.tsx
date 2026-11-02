@@ -5,7 +5,7 @@ import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
 import { formatClp, formatInstrumentUnits, formatUsdFine } from "../../format";
 import { PaginatedTable } from "../ui/PaginatedTable";
-import { FlowRows, type FlowRowItem } from "./FlowRows";
+import { FlowRows, flowAccountsCell, type FlowRowItem } from "./FlowRows";
 import styles from "./FlowsTable.module.css";
 
 function formatFlowUnits(
@@ -266,9 +266,7 @@ export function FlowsTable({
     key: row.key,
     date: row.occurred_on,
     type: row.flow_type_label,
-    account: showAccountColumn ? row.account_name : null,
-    counterpart: row.counterpart_account_name?.trim() ? row.counterpart_account_name : null,
-    direction: row.transfer_direction,
+    accounts: flowAccountsCell(showAccountColumn ? "group" : "account", row),
     amount: formatMovementAmount(row),
     units: showUnitsColumn ? formatFlowUnits(row, movementUnitsKind) : null,
     note: row.note?.trim() ? row.note : null,

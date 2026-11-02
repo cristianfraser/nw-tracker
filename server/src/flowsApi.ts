@@ -4,6 +4,7 @@ import {
   DEPOSIT_FLOW_KIND_TRASPASO,
 } from "./depositFlowKind.js";
 import { compareFlowRowsForDisplay } from "./brokerageFlowMovement.js";
+import { internalTransferFlowType, type MovementFlowType } from "./movementFlowType.js";
 import {
   listAccountMovementsForApi,
   listAccountMovementsForApiBulk,
@@ -33,6 +34,14 @@ export type FlowsApiRow = AccountMovementApiRow & {
   account_name: string;
   /** Portfolio bucket (nav leaf) the account files under; null when it has no tree link. */
   bucket_slug: string | null;
+  /**
+   * A transfer whose two accounts are both on the page, shown once: the origin's row, with the
+   * target's account and bucket beside it (`counterpart_*`), an unsigned amount and a type that
+   * names no side (`internalTransferFlowType`). False on every other row.
+   */
+  internal: boolean;
+  /** The target's bucket on an internal transfer; null otherwise. */
+  counterpart_bucket_slug: string | null;
 };
 
 /** Dropdown option for the portfolio-bucket filter; label resolution mirrors the sidebar. */
@@ -111,30 +120,42 @@ function assembleFlowRows(
   accountEntries: readonly { account_id: number; name: string; bucket_slug: string | null }[],
   movementsByAccount: Map<number, AccountMovementApiRow[]>
 ): FlowsApiRow[] {
+  const onPage = new Map(accountEntries.map((e) => [e.account_id, e]));
   const rows: FlowsApiRow[] = [];
   for (const entry of accountEntries) {
     const movements = movementsByAccount.get(entry.account_id) ?? [];
     for (const m of movements) {
+      const target = m.to_account_id != null ? onPage.get(m.to_account_id) : undefined;
+      const origin = m.from_account_id != null ? onPage.get(m.from_account_id) : undefined;
+      if (origin && target) {
+        // Both legs are on the page: the movement shows once, from its origin.
+        if (m.transfer_direction !== "out") continue;
+        const type = internalTransferFlowType(m.flow_type as MovementFlowType, m.currency, m.counter_currency);
+        rows.push({
+          ...m,
+          amount: Math.abs(m.amount),
+          ...type,
+          key: `movement:${m.id}`,
+          account_id: entry.account_id,
+          account_name: entry.name,
+          bucket_slug: entry.bucket_slug,
+          internal: true,
+          counterpart_bucket_slug: target.bucket_slug,
+        });
+        continue;
+      }
       rows.push({
         ...m,
         key: `${entry.account_id}:movement:${m.id}`,
         account_id: entry.account_id,
         account_name: entry.name,
         bucket_slug: entry.bucket_slug,
+        internal: false,
+        counterpart_bucket_slug: null,
       });
     }
   }
-  // Newest-first with intra-day causal rank. Both perspectives of a transfer
-  // share a movement id and land adjacent; the outflow leaves the origin
-  // before the deposit lands, so newest-first puts the target (in) row on top
-  // and the origin (out) row below it.
-  const directionOrder = (r: FlowsApiRow): number => (r.transfer_direction === "in" ? 0 : 1);
-  rows.sort(
-    (a, b) =>
-      compareFlowRowsForDisplay(a, b) ||
-      directionOrder(a) - directionOrder(b) ||
-      a.account_id - b.account_id
-  );
+  rows.sort((a, b) => compareFlowRowsForDisplay(a, b) || a.account_id - b.account_id);
   return rows;
 }
 
@@ -150,6 +171,10 @@ function buildFilterOptions(all: FlowsApiRow[], isMultiAccount: boolean): FlowsF
     if (isMultiAccount) {
       accountsMap.set(r.account_id, r.account_name);
       if (r.bucket_slug != null) bucketSlugsSet.add(r.bucket_slug);
+      if (r.internal) {
+        accountsMap.set(r.counterpart_account_id!, r.counterpart_account_name ?? "");
+        if (r.counterpart_bucket_slug != null) bucketSlugsSet.add(r.counterpart_bucket_slug);
+      }
     }
   }
 
@@ -171,8 +196,21 @@ export function applyFlowFilters(rows: FlowsApiRow[], filters: FlowsFilters): Fl
   return rows.filter((r) => {
     if (filters.year && !r.occurred_on.startsWith(filters.year)) return false;
     if (filters.type && r.flow_type !== filters.type) return false;
-    if (filters.account_id != null && r.account_id !== filters.account_id) return false;
-    if (filters.bucket && r.bucket_slug !== filters.bucket) return false;
+    // An internal transfer belongs to both its accounts (and their buckets).
+    if (
+      filters.account_id != null &&
+      r.account_id !== filters.account_id &&
+      !(r.internal && r.counterpart_account_id === filters.account_id)
+    ) {
+      return false;
+    }
+    if (
+      filters.bucket &&
+      r.bucket_slug !== filters.bucket &&
+      !(r.internal && r.counterpart_bucket_slug === filters.bucket)
+    ) {
+      return false;
+    }
     if (filters.q) {
       const q = filters.q.toLowerCase();
       const haystack = [r.note, r.account_name, r.counterpart_account_name, r.flow_type_label]

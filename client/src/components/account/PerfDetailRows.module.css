@@ -99,8 +99,8 @@
 }
 
 /* Wrapped: three lines — the period; the closing with the result beside it and the year so far
-   (`ytd`) on the right; the flows and the all-time total (`cum`) on the right. On a phone the two
-   totals take a line of their own. */
+   (`ytd`) on the right; the flows and the all-time total (`cum`) on the right. On a phone the
+   result takes the right of the closing's line and the totals move down (below). */
 .wrapped {
   display: block;
 }
@@ -155,15 +155,26 @@
 }
 
 @container (max-width: 30rem) {
+  /* The result keeps the closing's line, on the right. A yearly row (no year-so-far) puts the
+     all-time total on the flows line: three lines. A monthly row puts the year so far there,
+     under the result, and the all-time total right under it (the flows span both lines). */
   .wrapped .row {
     grid-template-areas:
       "period  period period"
       "closing result result"
-      "flows   flows  flows"
-      "ytd     ytd    cum";
+      "flows   flows  cum";
   }
 
-  .wrapped .total[data-total="ytd"] {
-    text-align: left;
+  .wrapped .row:has(.total[data-total="ytd"]) {
+    grid-template-areas:
+      "period  period period"
+      "closing result result"
+      "flows   flows  ytd"
+      "flows   flows  cum";
+  }
+
+  .wrapped .result {
+    justify-self: end;
+    text-align: right;
   }
 }

@@ -224,8 +224,19 @@ export type FlowsApiRow = {
   counterpart_account_id: number | null;
   counterpart_account_name: string | null;
   transfer_direction: "out" | "in" | null;
-  /** Bank date lies after today; today's balance already includes the row (badge it). */
+  /** A transfer's origin and target, whichever account views it; null on a single-account movement. */
+  from_account_id: number | null;
+  from_account_name: string | null;
+  to_account_id: number | null;
+  to_account_name: string | null;
+  /** Money into or out of the row's account; null only on a movement of nothing. */
+  money_direction: "in" | "out" | null;
+  /** Bank date lies after today; today's balance already includes the row. */
   forward_posted: boolean;
+  /** A transfer between two accounts of the page, shown once from its origin (group flows). */
+  internal: boolean;
+  /** The target's bucket on an internal transfer; null otherwise. */
+  counterpart_bucket_slug: string | null;
 };
 
 export type FlowsFilterOptions = {
