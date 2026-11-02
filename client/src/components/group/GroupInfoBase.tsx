@@ -89,8 +89,8 @@ export type GroupInfoBaseProps = {
   afterFlows?: ReactNode;
   /**
    * The dashboard's rail: tiles that sit beside the strip and the main charts on the big-desktop
-   * tier (styles/page-grid.css `.page-rail`) and in the one stack below it. With a rail the
-   * export row joins it; the wide tables and then the accounts tree stay below both stacks.
+   * tier (styles/page-grid.css `.page-rail`) and in the one stack below it. The wide tables, then
+   * the export row and the accounts tree, stay below both stacks.
    */
   rail?: ReactNode;
   /** A tile's place in the one-stack reading order (dashboardLayout.ts); DOM order when absent. */
@@ -267,10 +267,7 @@ export function GroupInfoBase({
               {strip}
               {charts}
             </div>
-            <div className="page-rail">
-              {rail}
-              {exportTile}
-            </div>
+            <div className="page-rail">{rail}</div>
           </>
         ) : (
           <>
@@ -364,8 +361,8 @@ export function GroupInfoBase({
             {afterFlows}
           </>
         ) : null}
-        {rail ? null : exportTile}
-        {/* Full width at the bottom on every tier, rail or not. */}
+        {/* The export row and the accounts tree close the page on every tier, rail or not. */}
+        {exportTile}
         {accountsTile}
       </Loadable>
     </main>

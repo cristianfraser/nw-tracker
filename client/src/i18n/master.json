@@ -323,10 +323,6 @@
         "en": "View liabilities →",
         "es": "Ver Pasivos →"
       },
-      "colAmount": {
-        "en": "Amount",
-        "es": "Monto"
-      },
       "totalToPay": {
         "en": "Total to pay",
         "es": "Total a pagar"

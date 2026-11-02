@@ -10,7 +10,7 @@
  * table stretches its rows, so `h` is a nominal value for the library step, not a constraint.
  *
  * Tier `l` (≥1440): the main column is 8 wide (x 0), the rail 4 wide (x 8); the wide tables, then the
- * accounts tree, span 12 below both. Tiers `s` and `m` are one stack in `y` order.
+ * export row and the accounts tree, span 12 below both. Tiers `s` and `m` are one stack in `y` order.
  */
 export type DashboardTileId =
   | "title"
@@ -101,11 +101,11 @@ const L: Record<DashboardTileId, TileRect> = {
   "flows-periods": { x: 8, y: 1, w: 4, h: 9 },
   "cc-upcoming": { x: 8, y: 10, w: 4, h: 6 },
   "latest-expenses": { x: 8, y: 16, w: 4, h: 14 },
-  export: { x: 8, y: 30, w: 4, h: 1 },
   returns: { x: 0, y: 49, w: 12, h: 6 },
   detail: { x: 0, y: 55, w: 12, h: 12 },
   "wealth-flows": { x: 0, y: 67, w: 12, h: 12 },
-  accounts: { x: 0, y: 79, w: 12, h: 10 },
+  export: { x: 0, y: 79, w: 12, h: 1 },
+  accounts: { x: 0, y: 80, w: 12, h: 10 },
 };
 
 export const DASHBOARD_LAYOUT: Record<DashboardTileId, TileLayout> = Object.fromEntries(
