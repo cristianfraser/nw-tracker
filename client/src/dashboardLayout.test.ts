@@ -49,12 +49,16 @@ describe("dashboard layout", () => {
       expect(RAIL_TILES.includes(id)).toBe(placement === "rail");
     }
     for (const a of ids) for (const b of ids) if (a < b) expect(overlaps(DASHBOARD_LAYOUT[a].l, DASHBOARD_LAYOUT[b].l), `${a} / ${b}`).toBe(false);
-    const bandEnd = (w: number) =>
-      Math.max(...ids.filter((id) => DASHBOARD_LAYOUT[id].l.w === w).map((id) => DASHBOARD_LAYOUT[id].l.y + DASHBOARD_LAYOUT[id].l.h));
-    const start = (w: number) =>
-      Math.min(...ids.filter((id) => DASHBOARD_LAYOUT[id].l.w === w && id !== "title").map((id) => DASHBOARD_LAYOUT[id].l.y));
-    // The pairs start below the top band; the wide tiles below the pairs.
-    expect(start(6)).toBeGreaterThanOrEqual(Math.max(bandEnd(8), bandEnd(4)));
-    expect(start(12)).toBeGreaterThanOrEqual(bandEnd(6));
+    const bandEnd = Math.max(...ids.filter((id) => DASHBOARD_LAYOUT[id].l.w < 6 || DASHBOARD_LAYOUT[id].l.w === 8).map((id) => DASHBOARD_LAYOUT[id].l.y + DASHBOARD_LAYOUT[id].l.h));
+    // Below the band every row is full: a pair shares its row, a 12-wide tile has it alone.
+    for (const id of ids) {
+      const r = DASHBOARD_LAYOUT[id].l;
+      if (r.w === 6) {
+        expect(r.y, id).toBeGreaterThanOrEqual(bandEnd);
+        const partner = ids.find((o) => o !== id && DASHBOARD_LAYOUT[o].l.w === 6 && DASHBOARD_LAYOUT[o].l.y === r.y);
+        expect(partner, id).toBeDefined();
+      }
+      if (r.w === 12 && id !== "title") expect(r.y, id).toBeGreaterThanOrEqual(bandEnd);
+    }
   });
 });

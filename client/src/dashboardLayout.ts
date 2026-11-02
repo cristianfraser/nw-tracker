@@ -93,8 +93,9 @@ const M = stack(READING_ORDER, 4, NOMINAL_HEIGHTS);
 
 /**
  * Big desktop: a top band of the main column (x 0, w 8: cards, net-worth chart) beside the rail
- * (x 8, w 4); below it the other charts in two equal columns (w 6), an odd last one across both;
- * then the wide tables (w 12).
+ * (x 8, w 4); below it tiles in two equal columns (w 6) or across all 12. The order of the tiles
+ * below the band (`y`) differs from the one-stack order: returns sit between the chart pair and
+ * the allocation | detail pair.
  */
 const L: Record<DashboardTileId, TileRect> = {
   title: { x: 0, y: 0, w: 12, h: 1 },
@@ -105,12 +106,12 @@ const L: Record<DashboardTileId, TileRect> = {
   "latest-expenses": { x: 8, y: 16, w: 4, h: 14 },
   "flows-chart": { x: 0, y: 30, w: 6, h: 10 },
   "perf-combo": { x: 6, y: 30, w: 6, h: 10 },
-  allocation: { x: 0, y: 40, w: 12, h: 10 },
-  returns: { x: 0, y: 50, w: 12, h: 6 },
-  detail: { x: 0, y: 56, w: 12, h: 12 },
-  "wealth-flows": { x: 0, y: 68, w: 12, h: 12 },
-  export: { x: 0, y: 80, w: 12, h: 1 },
-  accounts: { x: 0, y: 81, w: 12, h: 10 },
+  returns: { x: 0, y: 40, w: 12, h: 6 },
+  allocation: { x: 0, y: 46, w: 6, h: 14 },
+  detail: { x: 6, y: 46, w: 6, h: 14 },
+  "wealth-flows": { x: 0, y: 60, w: 12, h: 12 },
+  export: { x: 0, y: 72, w: 12, h: 1 },
+  accounts: { x: 0, y: 73, w: 12, h: 10 },
 };
 
 export const DASHBOARD_LAYOUT: Record<DashboardTileId, TileLayout> = Object.fromEntries(
@@ -128,4 +129,13 @@ export const DASHBOARD_TILE_ORDER = READING_ORDER;
 /** A tile's place in the one-stack reading order (`PageGridTile`'s `order`). */
 export function dashboardTileOrder(id: DashboardTileId): number {
   return DASHBOARD_LAYOUT[id].s.y;
+}
+
+/**
+ * A tile below the big-desktop band: its order and column span there (`PageGridTile`'s `wide`).
+ * The band's own tiles (main column, rail) are placed by their stack and get none.
+ */
+export function dashboardTileWide(id: DashboardTileId): { order: number; span: number } | undefined {
+  const r = DASHBOARD_LAYOUT[id].l;
+  return r.w === 6 || (r.w === 12 && r.y > 0) ? { order: r.y, span: r.w } : undefined;
 }

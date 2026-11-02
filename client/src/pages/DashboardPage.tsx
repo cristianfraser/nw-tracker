@@ -50,7 +50,7 @@ import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../componen
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { DashboardFlowsChart, DashboardFlowsPeriods } from "../components/dashboard/DashboardFlowsSummary";
 import { PageGridTile } from "../components/layout/PageGridTile";
-import { dashboardTileOrder } from "../dashboardLayout";
+import { dashboardTileOrder, dashboardTileWide } from "../dashboardLayout";
 import type { TimeseriesBlock } from "../types";
 
 const NET_WORTH_PORTFOLIO_GROUP = "net_worth";
@@ -437,6 +437,7 @@ export function DashboardPage() {
           <PageGridTile
             id="perf-combo"
             order={dashboardTileOrder("perf-combo")}
+            wide={dashboardTileWide("perf-combo")}
             className="chart-grid chart-grid--full-line"
           >
             <MonthlyPerformanceComboChart
@@ -525,6 +526,7 @@ export function DashboardPage() {
       <PageGridTile
         id="allocation"
         order={dashboardTileOrder("allocation")}
+            wide={dashboardTileWide("allocation")}
         className="chart-grid chart-grid--full-line"
       >
         {valueMapShown ? (
@@ -600,6 +602,7 @@ export function DashboardPage() {
         </>
       }
       tileOrder={dashboardTileOrder}
+      tileWide={dashboardTileWide}
       accountsTree={
         accountsTreeRoot ? (
           <NavAccountsTree
