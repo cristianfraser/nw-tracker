@@ -55,7 +55,7 @@ function AmountCell({ item }: { item: UpcomingPaymentItemDto }) {
   );
 }
 
-/** What the payment is: the card and its facturación, the mortgage cuota, a place's bill, a declared payment. */
+/** What the payment is (the whole label links to its page when it has one): the card and its facturación, the mortgage cuota, a place's bill, a declared payment. */
 function ItemLabel({ item }: { item: UpcomingPaymentItemDto }) {
   const { t } = useTranslation();
   switch (item.kind) {
@@ -118,14 +118,7 @@ export function UpcomingPaymentsPanel({ data, loading }: { data: UpcomingPayment
   const months = expanded ? data.months : data.months.slice(0, COLLAPSED_MONTHS);
   return (
     <PageGridTile id="cc-upcoming" order={dashboardTileOrder("cc-upcoming")}>
-      <div className="chart-panel-title-row">
-        <h2>{t("dashboard.ccUpcoming.title")}</h2>
-        {data.liabilities_route_path ? (
-          <Link to={data.liabilities_route_path} className={styles.link}>
-            {t("dashboard.ccUpcoming.viewLiabilities")}
-          </Link>
-        ) : null}
-      </div>
+      <h2>{t("dashboard.ccUpcoming.title")}</h2>
       <div className={loadableClass(loading, "cards cards--list")}>
         {months.map((month) => (
           <div key={month.pay_month} className={`card ${styles.period}`}>
@@ -137,7 +130,13 @@ export function UpcomingPaymentsPanel({ data, loading }: { data: UpcomingPayment
               {month.items.map((item) => (
                 <div key={item.key} className={styles.paymentLine}>
                   <dt className="muted">
-                    <ItemLabel item={item} />
+                    {item.route_path ? (
+                      <Link to={item.route_path}>
+                        <ItemLabel item={item} />
+                      </Link>
+                    ) : (
+                      <ItemLabel item={item} />
+                    )}
                   </dt>
                   <dd>
                     <DueCell item={item} /> <AmountCell item={item} />

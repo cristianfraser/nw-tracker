@@ -106,7 +106,6 @@
   "dashboard": {
     "ccUpcoming": {
       "title": "Upcoming payments",
-      "viewLiabilities": "View liabilities →",
       "billedOf": "of {{amount}}",
       "partlyPaidHint": "Still owed after the payments and credits since the close. The facturación billed {{amount}}.",
       "payByShort": "by",
@@ -173,8 +172,7 @@
     "flows": {
       "title": "Flows",
       "lastMonth": "Last month",
-      "last12Months": "Last 12 months",
-      "openFlows": "See flows"
+      "last12Months": "Last 12 months"
     },
     "allocation": {
       "title": "Allocation (latest valuations)"
@@ -198,7 +196,6 @@
     "wealthFlowsTitle": "Wealth flows",
     "latestExpenses": {
       "title": "Latest expenses",
-      "viewAll": "All expenses →",
       "installments": "{{count}} installments",
       "refund": "Refund",
       "empty": "No expenses yet."

@@ -10,7 +10,6 @@ import { dashboardTileOrder } from "../../dashboardLayout";
 import { Loadable } from "../ui/Loadable";
 import { ExpenseVendorLabel } from "../credit-card/ExpenseVendorLabel";
 import styles from "./LatestExpenses.module.css";
-import flowsStyles from "./DashboardFlowsSummary.module.css";
 
 const LATEST_EXPENSES_LIMIT = 15;
 
@@ -24,8 +23,8 @@ function categoryLabel(row: LatestExpenseRow): string {
 
 /**
  * Home «Últimos gastos»: the newest expense lines across every source (card, checking, manual,
- * payroll), as the server lists them (`GET /api/dashboard/latest-expenses`), with a link to the
- * Expenses page. One compact entry per expense (merchant and amount, then date · category ·
+ * payroll), as the server lists them (`GET /api/dashboard/latest-expenses`), its title linking to
+ * the Expenses page. One compact entry per expense (merchant and amount, then date · category ·
  * origin), in the type scale of the «Flujos» cards; the same rendering at every width.
  */
 export function LatestExpensesTable() {
@@ -43,12 +42,9 @@ export function LatestExpensesTable() {
 
   return (
     <PageGridTile id="latest-expenses" order={dashboardTileOrder("latest-expenses")}>
-      <div className="chart-panel-title-row">
-        <h2>{t("dashboard.latestExpenses.title")}</h2>
-        <Link to="/flows/expenses" className={flowsStyles.link}>
-          {t("dashboard.latestExpenses.viewAll")}
-        </Link>
-      </div>
+      <h2>
+        <Link to="/flows/expenses">{t("dashboard.latestExpenses.title")}</Link>
+      </h2>
       {query.isError ? (
         <p className="error">
           {query.error instanceof Error ? query.error.message : t("common.loadFailedTables")}

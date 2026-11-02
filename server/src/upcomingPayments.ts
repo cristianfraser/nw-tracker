@@ -22,7 +22,6 @@ import {
 import { buildMortgageUfReminder } from "./mortgageUfReminder.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
 import { deptoMortgageAccountId } from "./mortgagePaymentCreate.js";
-import { getLiabilitiesNavRootNode } from "./navTree.js";
 import { normalizeServiceAccount, utilityBillMonth } from "./utilityBillsApply.js";
 import { loadGastosLinesForRealEstateMatching } from "./realEstateExpenseMatching.js";
 
@@ -62,6 +61,8 @@ export type UpcomingPaymentItem = {
   card: CcUpcomingPaymentRow | null;
   /** A declared payment (the WIP table). */
   wip: boolean;
+  /** Where the payment's label links: the card's or mortgage's account page, the place's real-estate expenses; null for a declared payment. */
+  route_path: string | null;
 };
 
 export type UpcomingPaymentsMonth = {
@@ -74,12 +75,10 @@ export type UpcomingPaymentsMonth = {
 export type UpcomingPaymentsBlock = {
   /** Pay months with something due, oldest first, within the horizon; empty = nothing to show. */
   months: UpcomingPaymentsMonth[];
-  /** The Pasivos page's route, from the nav tree; null when the tree has no Pasivos root. */
-  liabilities_route_path: string | null;
 };
 
-type ItemDraft = Omit<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "wip"> &
-  Partial<Pick<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "wip">>;
+type ItemDraft = Omit<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "wip" | "route_path"> &
+  Partial<Pick<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "wip" | "route_path">>;
 
 function item(d: ItemDraft): UpcomingPaymentItem {
   return {
@@ -89,6 +88,7 @@ function item(d: ItemDraft): UpcomingPaymentItem {
     bill_month: null,
     card: null,
     wip: false,
+    route_path: null,
     ...d,
   };
 }
@@ -165,6 +165,8 @@ export function groupUpcomingByMonth(
 
 export type MortgageUpcomingInput = {
   name: string;
+  /** The mortgage account's page. */
+  route_path: string;
   /** The next cuota to pay (the last one in the ledger + 1) and its schedule day (the 11th). */
   nextCuota: number;
   nextScheduleYmd: string;
@@ -200,6 +202,7 @@ export function mortgageUpcomingItems(
         key: `mortgage|${cuota}`,
         kind: "mortgage",
         name: input.name,
+        route_path: input.route_path,
         due_iso: due,
         due_kind: "on",
         amount_clp: Math.round(input.minUf * uf),
@@ -218,6 +221,14 @@ export function mortgageUpcomingItems(
 // ---------------------------------------------------------------------------------------------
 // Gastos comunes
 
+/** A tracked place (`expense_accounts`) and its real-estate expenses page. */
+export type UpcomingPlace = { id: number; label: string; route_path: string };
+
+/** The real-estate expenses page of one place. */
+export function realEstatePlaceRoutePath(slug: string): string {
+  return `/flows/expenses/real_estate/${slug}`;
+}
+
 export type HoaStatement = { bill_month: string; due_on: string; amount: number; settled: boolean };
 
 /**
@@ -228,7 +239,7 @@ export type HoaStatement = { bill_month: string; due_on: string; amount: number;
  * statement is settled.
  */
 export function hoaUpcomingItems(
-  place: { id: number; label: string },
+  place: UpcomingPlace,
   statements: readonly HoaStatement[],
   paidBillMonths: ReadonlySet<string>,
   todayYmd: string,
@@ -253,6 +264,7 @@ export function hoaUpcomingItems(
         key: `hoa|${place.id}|${billMonth}`,
         kind: "hoa",
         name: place.label,
+        route_path: place.route_path,
         due_iso: due,
         due_kind: "by",
         amount_clp: statement?.amount ?? latest.amount,
@@ -278,7 +290,7 @@ export type ContribucionesPayment = { spent_on: string; amount: number };
  * contribuciones on record.
  */
 export function contribucionesUpcomingItems(
-  place: { id: number; label: string },
+  place: UpcomingPlace,
   payments: readonly ContribucionesPayment[],
   todayYmd: string,
   horizonEndMonth: string,
@@ -317,6 +329,7 @@ export function contribucionesUpcomingItems(
           key: `contribuciones|${place.id}|${year}|${cuota}`,
           kind: "contribuciones",
           name: place.label,
+          route_path: place.route_path,
           due_iso: due,
           due_kind: "by",
           amount_clp: amount,
@@ -434,27 +447,38 @@ function mortgageInput(todayYmd: string): MortgageUpcomingInput | null {
   const mortgageId = deptoMortgageAccountId();
   const account = db.prepare(`SELECT name FROM accounts WHERE id = ?`).get(mortgageId) as { name: string } | undefined;
   if (!account) throw new Error(`Mortgage account ${mortgageId} not found`);
-  return { name: account.name, nextCuota, nextScheduleYmd, minUf, maxUf, bestPay };
+  return { name: account.name, route_path: accountRoutePath(mortgageId), nextCuota, nextScheduleYmd, minUf, maxUf, bestPay };
 }
 
-type PlaceRow = { id: number; label: string };
+type PlaceRow = { id: number; label: string; slug: string };
 
-function hoaPlaces(): { place: PlaceRow; statements: HoaStatement[]; paid: Set<string> }[] {
+function upcomingPlace(row: PlaceRow): UpcomingPlace {
+  return { id: row.id, label: row.label, route_path: realEstatePlaceRoutePath(row.slug) };
+}
+
+/** An account's detail page. */
+function accountRoutePath(accountId: number): string {
+  return `/account/${accountId}`;
+}
+
+function hoaPlaces(): { place: UpcomingPlace; statements: HoaStatement[]; paid: Set<string> }[] {
   const mapping = db
     .prepare(
-      `SELECT u.provider, u.service_account, a.id, a.label
+      `SELECT u.provider, u.service_account, a.id, a.label, a.slug
        FROM utility_service_accounts u JOIN expense_accounts a ON a.id = u.expense_account_id
        WHERE a.active_to IS NULL`
     )
-    .all() as { provider: string; service_account: string; id: number; label: string }[];
-  const placeFor = new Map(mapping.map((m) => [`${m.provider}|${normalizeServiceAccount(m.service_account)}`, { id: m.id, label: m.label }]));
+    .all() as { provider: string; service_account: string; id: number; label: string; slug: string }[];
+  const placeFor = new Map(
+    mapping.map((m) => [`${m.provider}|${normalizeServiceAccount(m.service_account)}`, upcomingPlace(m)])
+  );
   const bills = db
     .prepare(
       `SELECT provider, service_account, issued_on, due_on, amount, period_to, settled_at
        FROM utility_bills WHERE service = 'hoa'`
     )
     .all() as { provider: string; service_account: string; issued_on: string; due_on: string; amount: number; period_to: string | null; settled_at: string | null }[];
-  const byPlace = new Map<number, { place: PlaceRow; statements: HoaStatement[]; paid: Set<string> }>();
+  const byPlace = new Map<number, { place: UpcomingPlace; statements: HoaStatement[]; paid: Set<string> }>();
   for (const b of bills) {
     const place = placeFor.get(`${b.provider}|${normalizeServiceAccount(b.service_account)}`);
     if (!place) continue;
@@ -479,14 +503,14 @@ function hoaPlaces(): { place: PlaceRow; statements: HoaStatement[]; paid: Set<s
   return [...byPlace.values()];
 }
 
-function ownedPlaces(): { place: PlaceRow; payments: ContribucionesPayment[] }[] {
+function ownedPlaces(): { place: UpcomingPlace; payments: ContribucionesPayment[] }[] {
   const places = db
-    .prepare(`SELECT id, label FROM expense_accounts WHERE property_account_id IS NOT NULL AND active_to IS NULL`)
+    .prepare(`SELECT id, label, slug FROM expense_accounts WHERE property_account_id IS NOT NULL AND active_to IS NULL`)
     .all() as PlaceRow[];
   const payments = db.prepare(
     `SELECT spent_on, amount_clp AS amount FROM expense_entries WHERE expense_account_id = ? AND category = 'contribuciones'`
   );
-  return places.map((place) => ({ place, payments: payments.all(place.id) as ContribucionesPayment[] }));
+  return places.map((row) => ({ place: upcomingPlace(row), payments: payments.all(row.id) as ContribucionesPayment[] }));
 }
 
 const recurringStmt = db.prepare(
@@ -510,6 +534,7 @@ export function buildUpcomingPayments(todayYmd: string = chileCalendarTodayYmd()
           key: `card|${p.account_id}|${p.row.billing_month}`,
           kind: "card",
           name: p.name,
+          route_path: accountRoutePath(p.account_id),
           due_iso: p.row.pay_by_iso,
           due_kind: "by",
           amount_clp: p.row.amount_clp,
@@ -537,7 +562,6 @@ export function buildUpcomingPayments(todayYmd: string = chileCalendarTodayYmd()
 
   return {
     months: groupUpcomingByMonth(items, todayYmd),
-    liabilities_route_path: getLiabilitiesNavRootNode()?.route_path ?? null,
   };
 }
 

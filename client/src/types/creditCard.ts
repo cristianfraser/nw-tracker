@@ -72,13 +72,14 @@ export type UpcomingPaymentItemDto = {
   card: CcUpcomingPaymentRowDto | null;
   /** A declared payment (work in progress). */
   wip: boolean;
+  /** Where the label links (the account page, the place's real-estate expenses); null = plain text. */
+  route_path: string | null;
 };
 
 /** `upcoming_payments` on the dashboard page bundle — pesos in both display units. */
 export type UpcomingPaymentsDto = {
   /** Pay months with something due within the server's horizon, oldest first; empty = nothing to show. */
   months: { pay_month: string; total_clp: number; items: UpcomingPaymentItemDto[] }[];
-  liabilities_route_path: string | null;
 };
 
 /** How the card feed typed a purchase in cuotas (server `ccCuotaPurchaseKinds.ts`). */
