@@ -133,9 +133,9 @@ describe("upcoming card payments", () => {
       null
     );
     // The overdue October is due now (November), beside the open November's December pay-by.
-    expect(block.totals_by_month).toEqual([
-      { pay_month: "2026-11", total_clp: 2_300_000 },
-      { pay_month: "2026-12", total_clp: 450_000 },
+    expect(block.months.map((m) => [m.pay_month, m.total_clp, m.payments.map((p) => p.row.billing_month)])).toEqual([
+      ["2026-11", 2_300_000, ["2026-10"]],
+      ["2026-12", 450_000, ["2026-11"]],
     ]);
   });
 
@@ -146,7 +146,7 @@ describe("upcoming card payments", () => {
     expect(rows.map((r) => r.billing_month)).toEqual(["2026-09"]);
   });
 
-  it("sums the listed rows per pay-by month and drops cards with nothing pending", () => {
+  it("groups the rows by pay-by month with their total, and leaves out cards with nothing pending", () => {
     const paid = { ...none, clp: [{ date_iso: "2026-10-01", amount: 900_000 }] };
     const block = ccUpcomingPaymentsFromCards(
       [
@@ -157,11 +157,13 @@ describe("upcoming card payments", () => {
       live,
       "/liabilities"
     );
-    expect(block.cards.map((c) => c.account_id)).toEqual([1]);
-    expect(block.totals_by_month).toEqual([
-      { pay_month: "2026-11", total_clp: 2_300_000 },
-      { pay_month: "2026-12", total_clp: 450_000 },
+    expect(block.months.flatMap((m) => m.payments.map((p) => p.account_id))).toEqual([1, 1]);
+    expect(block.months.map((m) => [m.pay_month, m.total_clp])).toEqual([
+      ["2026-11", 2_300_000],
+      ["2026-12", 450_000],
     ]);
+    // A month's total is the sum of its payments.
+    for (const m of block.months) expect(m.total_clp).toBe(m.payments.reduce((a, p) => a + p.row.amount_clp, 0));
     expect(block.liabilities_route_path).toBe("/liabilities");
   });
 
@@ -212,8 +214,12 @@ describe("upcoming card payments", () => {
 
     it("leaves inactive cards out", () => {
       const block = buildDashboardCcUpcomingPayments();
-      expect(block.cards.some((c) => c.account_id === accountId)).toBe(false);
-      for (const c of block.cards) expect(c.rows.length).toBeLessThanOrEqual(2);
+      const payments = block.months.flatMap((m) => m.payments);
+      expect(payments.some((p) => p.account_id === accountId)).toBe(false);
+      // At most two facturaciones per card: the latest closed one and the open one.
+      const perCard = new Map<number, number>();
+      for (const p of payments) perCard.set(p.account_id, (perCard.get(p.account_id) ?? 0) + 1);
+      for (const n of perCard.values()) expect(n).toBeLessThanOrEqual(2);
     });
   });
 });

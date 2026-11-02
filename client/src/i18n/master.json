@@ -323,10 +323,6 @@
         "en": "View liabilities →",
         "es": "Ver Pasivos →"
       },
-      "totalToPay": {
-        "en": "Total to pay",
-        "es": "Total a pagar"
-      },
       "billedOf": {
         "en": "of {{amount}}",
         "es": "de {{amount}}"

@@ -14,6 +14,11 @@
   min-width: 0;
 }
 
+/* «Próximos pagos»: a pay month and its total, over the payments due in it. */
+.monthHeading {
+  font-size: var(--font-size-card-meta);
+}
+
 .periodTitle {
   font-size: var(--font-size-card-label);
   color: var(--muted);

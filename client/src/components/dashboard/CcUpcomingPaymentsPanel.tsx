@@ -2,11 +2,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
 import { formatYearMonthLabel } from "../../formatDateLabel";
-import type {
-  CcUpcomingPaymentRowDto,
-  CcUpcomingPaymentsCardDto,
-  CcUpcomingPaymentsDto,
-} from "../../types";
+import type { CcUpcomingPaymentDto, CcUpcomingPaymentRowDto, CcUpcomingPaymentsDto } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder } from "../../dashboardLayout";
 import { loadableClass } from "../ui/Loadable";
@@ -63,38 +59,35 @@ function MonthCell({ row }: { row: CcUpcomingPaymentRowDto }) {
 }
 
 /** One facturación of one card on one line: card and month, then the pay-by and the amount. */
-function PaymentCard({ card, row }: { card: CcUpcomingPaymentsCardDto; row: CcUpcomingPaymentRowDto }) {
+function PaymentLine({ payment }: { payment: CcUpcomingPaymentDto }) {
   const { t } = useTranslation();
+  const { row } = payment;
   return (
-    <div className={`card ${styles.period}`}>
-      <dl className={styles.lines}>
-        <div className={styles.line}>
-          <dt>
-            {card.name} · <MonthCell row={row} />
-          </dt>
-          <dd>
-            <span className="muted">
-              {t("dashboard.ccUpcoming.payByShort")}{" "}
-              <span className="mono">
-                <PayByCell row={row} />
-              </span>
-            </span>{" "}
-            <span className="mono">
-              <AmountCell row={row} />
-            </span>
-          </dd>
-        </div>
-      </dl>
+    <div className={styles.line}>
+      <dt>
+        {payment.name} · <MonthCell row={row} />
+      </dt>
+      <dd>
+        <span className="muted">
+          {t("dashboard.ccUpcoming.payByShort")}{" "}
+          <span className="mono">
+            <PayByCell row={row} />
+          </span>
+        </span>{" "}
+        <span className="mono">
+          <AmountCell row={row} />
+        </span>
+      </dd>
     </div>
   );
 }
 
 /**
- * «Próximos pagos» on the home dashboard: per active card, what the latest closed facturación
- * and the open one still owe, as the server built them (`cc_upcoming_payments` on the page
- * bundle), drawn like the «Flujos» period cards (a `.cards` block of label–value lines). Pesos in
- * both display units. Renders nothing before the server has answered (`data` null on a
- * placeholder bundle) and nothing when no card has anything pending.
+ * «Próximos pagos» on the home dashboard: what each active card's latest closed facturación and
+ * open one still owe, grouped by the month they are due in — a card per pay month, its total on
+ * the heading line and its payments below — as the server built them (`cc_upcoming_payments` on
+ * the page bundle). Pesos in both display units. Renders nothing before the server has answered
+ * (`data` null on a placeholder bundle) and nothing when nothing is due.
  */
 export function CcUpcomingPaymentsPanel({
   data,
@@ -104,7 +97,7 @@ export function CcUpcomingPaymentsPanel({
   loading: boolean;
 }) {
   const { t } = useTranslation();
-  if (!data || data.cards.length === 0) return null;
+  if (!data || data.months.length === 0) return null;
   return (
     <PageGridTile id="cc-upcoming" order={dashboardTileOrder("cc-upcoming")}>
       <div className="chart-panel-title-row">
@@ -116,24 +109,19 @@ export function CcUpcomingPaymentsPanel({
         ) : null}
       </div>
       <div className={loadableClass(loading, "cards cards--list")}>
-        {data.cards.flatMap((card) =>
-          card.rows.map((row) => (
-            <PaymentCard key={`${card.account_id}|${row.billing_month}`} card={card} row={row} />
-          ))
-        )}
-        {data.totals_by_month.length > 0 ? (
-          <div className={`card ${styles.period}`}>
-            <div className={styles.periodTitle}>{t("dashboard.ccUpcoming.totalToPay")}</div>
+        {data.months.map((month) => (
+          <div key={month.pay_month} className={`card ${styles.period}`}>
+            <div className={styles.monthHeading}>
+              <span>{formatYearMonthLabel(month.pay_month)}</span>{" "}
+              <span className="mono">{formatClp(month.total_clp)}</span>
+            </div>
             <dl className={styles.lines}>
-              {data.totals_by_month.map((m) => (
-                <div key={m.pay_month} className={styles.line}>
-                  <dt>{formatYearMonthLabel(m.pay_month)}</dt>
-                  <dd className="mono">{formatClp(m.total_clp)}</dd>
-                </div>
+              {month.payments.map((payment) => (
+                <PaymentLine key={`${payment.account_id}|${payment.row.billing_month}`} payment={payment} />
               ))}
             </dl>
           </div>
-        ) : null}
+        ))}
       </div>
     </PageGridTile>
   );
