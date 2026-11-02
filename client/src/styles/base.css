@@ -76,10 +76,6 @@ h4 {
 
 .error {
   color: var(--negative);
-  padding: 1rem;
-  background: var(--surface);
-  border-radius: 8px;
-  border: 1px solid var(--border);
 }
 
 .empty {
