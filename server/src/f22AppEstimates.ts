@@ -10,7 +10,7 @@
  * redemption. Checked against DJ 1894 for 2025: redemptions 74.050.000 = the 52.450.000 redeemed +
  * 21.600.000 reinvested Fintual reported; gain 8.775.435 vs 8.700.462 reported (0,9%).
  *
- * Mortgage interest (codes 750 / 751): every `depto_payments` mortgage row's interest, prepayments
+ * Mortgage interest (codes 750 / 751): every `loan_payments` loan row's interest, prepayments
  * included (interest effectively paid). 2025: 4.892.161 vs 4.799.108 reported by the lender (+1,9%).
  */
 import { db } from "./db.js";
@@ -85,10 +85,16 @@ export function mortgageInterestForYear(incomeYear: number): number {
   const { pct, toMonth } = yearEndPct();
   const rows = db
     .prepare(
-      `SELECT m.occurred_on, p.interes_clp FROM depto_payments p JOIN movements m ON m.id = p.movement_id
-        WHERE p.kind = 'mortgage' AND p.interes_clp IS NOT NULL AND m.occurred_on LIKE ?`
+      `SELECT m.occurred_on, p.interest AS interes_clp, p.payment_currency
+         FROM loan_payments p JOIN movements m ON m.id = p.movement_id
+        WHERE p.leg = 'loan' AND p.interest IS NOT NULL AND m.occurred_on LIKE ?`
     )
-    .all(`${incomeYear}-%`) as { occurred_on: string; interes_clp: number }[];
+    .all(`${incomeYear}-%`) as { occurred_on: string; interes_clp: number; payment_currency: string }[];
+  for (const r of rows) {
+    if (r.payment_currency !== "clp") {
+      throw new Error(`mortgage interest ${r.occurred_on}: paid in ${r.payment_currency}, expected pesos`);
+    }
+  }
   return Math.round(
     rows.reduce((s, r) => s + r.interes_clp * (1 + pct(monthBeforeYmd(r.occurred_on), toMonth(incomeYear)) / 100), 0)
   );

@@ -23,7 +23,8 @@ import {
   type MovementAmountFields,
 } from "./movementAmounts.js";
 import {
-  deptoPaymentRowForMovementId,
+  assertDeptoLoanPaymentCurrencies,
+  loanPaymentRowForMovementId,
   isDeptoPieCuota,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
@@ -209,7 +210,7 @@ function findDepositMovement(
   if (exact.length === 0) return null;
   if (exact.length === 1) return exact[0]!;
 
-  const deptoRows = exact.filter((r) => deptoPaymentRowForMovementId(r.id) != null);
+  const deptoRows = exact.filter((r) => loanPaymentRowForMovementId(r.id) != null);
   if (deptoRows.length === 1) return deptoRows[0]!;
   if (deptoRows.length > 1) {
     throw new Error(
@@ -254,7 +255,7 @@ function findPropertyDepositForSheetRow(
   for (const accountId of listRealEstatePropertyAccountIds()) {
     const movement = findDepositMovement(accountId, sheet.occurred_on, sheetPago);
     if (movement == null) continue;
-    const payment = deptoPaymentRowForMovementId(movement.id);
+    const payment = loanPaymentRowForMovementId(movement.id);
     if (payment != null && payment.cuota !== sheet.cuota) continue;
     if (payment != null && isDeptoPieCuota(payment.cuota)) continue;
 
@@ -302,7 +303,7 @@ function resolveAmortizationForDepositMovement(
   movement: DepositMovementRow,
   sheetRow?: DeptoMortgageSheetRow
 ): { amortization_clp: number; depto_cuota: string | null; depto_occurred_on: string } | null {
-  const payment = deptoPaymentRowForMovementId(movement.id);
+  const payment = loanPaymentRowForMovementId(movement.id);
   if (payment != null && isDeptoPieCuota(payment.cuota)) return null;
 
   if (sheetRow != null) {
@@ -321,8 +322,9 @@ function resolveAmortizationForDepositMovement(
   }
 
   if (payment != null) {
+    assertDeptoLoanPaymentCurrencies(payment);
     const fromRow =
-      Math.round(payment.amortizacion_clp ?? 0) + Math.round(payment.amortizacion_ext_clp ?? 0);
+      Math.round(payment.principal ?? 0) + Math.round(payment.extra_principal ?? 0);
     if (fromRow > 0) {
       const paymentRef = Math.round(movementClpLegOrZero(movement));
       if (fromRow > paymentRef) {

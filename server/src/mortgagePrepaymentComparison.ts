@@ -9,7 +9,7 @@ import type { TsUnit } from "./valuationTimeseries.js";
 /**
  * The mortgage's prepayments against a benchmark: every peso paid above the minimum cuota is
  * followed to today two ways. Above the minimum is the extra amortization inside a regular payment
- * (`depto_payments.amortizacion_ext_clp`) and the WHOLE of a prepago made outside a cuota
+ * (`loan_payments.extra_principal`, in the payment's currency) and the WHOLE of a prepago made outside a cuota
  * (`flow_kind = 'prepago_parcial_hipotecario'`), interest included: it has no minimum, so all of it
  * is money that could have been invested instead.
  *
@@ -80,11 +80,11 @@ export function listMortgageExtraPayments(accountId: number): ExtraPayment[] {
   const rows = db
     .prepare(
       `SELECT m.id AS movement_id, m.occurred_on AS date, m.amount AS amount, m.flow_kind AS flow_kind,
-              d.cuota AS cuota, d.amortizacion_clp AS amortizacion_clp,
-              d.amortizacion_ext_clp AS amortizacion_ext_clp, d.interes_clp AS interes_clp,
-              d.incendio_clp AS incendio_clp, d.desgravamen_clp AS desgravamen_clp
-       FROM depto_payments d JOIN movements m ON m.id = d.movement_id
-       WHERE d.kind = 'mortgage' AND m.account_id = ?
+              d.cuota AS cuota, d.payment_currency AS payment_currency, d.principal AS amortizacion_clp,
+              d.extra_principal AS amortizacion_ext_clp, d.interest AS interes_clp,
+              d.insurance_fire AS incendio_clp, d.insurance_life AS desgravamen_clp
+       FROM loan_payments d JOIN movements m ON m.id = d.movement_id
+       WHERE d.leg = 'loan' AND m.account_id = ?
        ORDER BY m.occurred_on, m.id`
     )
     .all(accountId) as {
@@ -93,6 +93,7 @@ export function listMortgageExtraPayments(accountId: number): ExtraPayment[] {
     amount: number;
     flow_kind: string | null;
     cuota: string;
+    payment_currency: string;
     amortizacion_clp: number | null;
     amortizacion_ext_clp: number | null;
     interes_clp: number | null;
@@ -101,6 +102,9 @@ export function listMortgageExtraPayments(accountId: number): ExtraPayment[] {
   }[];
   const out: ExtraPayment[] = [];
   for (const r of rows) {
+    if (r.payment_currency !== "clp") {
+      throw new Error(`mortgage payment ${r.cuota} (movement ${r.movement_id}): parts in ${r.payment_currency}, expected pesos`);
+    }
     const amortization = r.amortizacion_ext_clp ?? 0;
     if (r.flow_kind === "prepago_parcial_hipotecario") {
       // A prepago outside a cuota has no minimum: the whole payment is above it.

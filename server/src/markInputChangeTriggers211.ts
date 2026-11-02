@@ -117,7 +117,7 @@ export const MARK_INPUT_TRIGGER_SPECS: TriggerSpec[] = [
     watch: ["transfer_movement_id", "out_occurred_on", "in_occurred_on"],
   },
   {
-    table: "depto_payments",
+    table: "loan_payments",
     targets: (r) => [
       {
         account: `(SELECT account_id FROM movements WHERE id = ${r}.movement_id)`,
@@ -125,9 +125,14 @@ export const MARK_INPUT_TRIGGER_SPECS: TriggerSpec[] = [
       },
     ],
     watch: [
-      "movement_id", "kind", "cuota", "amount_uf", "credito_restante_uf", "valor_vivienda_uf",
-      "amortizacion_uf", "amortizacion_ext_uf", "interes_uf",
+      "movement_id", "leg", "cuota", "loan_currency", "balance_after", "payment_currency",
+      "principal", "extra_principal", "interest",
     ],
+  },
+  {
+    table: "property_appraisals",
+    targets: (r) => [{ account: `${r}.account_id`, date: `${r}.as_of_date` }],
+    watch: ["account_id", "as_of_date", "value", "currency"],
   },
   { table: "fx_daily", targets: (r) => [{ account: ALL, date: `${r}.date` }], watch: ["date", "clp_per_usd"] },
   {
@@ -257,9 +262,38 @@ function installMarkInputChangeTriggers(dbi: DatabaseType, specs: readonly Trigg
   }
 }
 
+/**
+ * The depto ledger's table before migration 258 (`depto_payments`); 258 replaced it with
+ * `loan_payments` + `property_appraisals`. The hooks of 211 / 242 / 243 install this spec in
+ * their place: on a fresh DB they run while the old table is the one that exists.
+ */
+const DEPTO_PAYMENTS_SPEC_BEFORE_258: TriggerSpec = {
+  table: "depto_payments",
+  targets: (r) => [
+    {
+      account: `(SELECT account_id FROM movements WHERE id = ${r}.movement_id)`,
+      date: `(SELECT occurred_on FROM movements WHERE id = ${r}.movement_id)`,
+    },
+  ],
+  watch: [
+    "movement_id", "kind", "cuota", "amount_uf", "credito_restante_uf", "valor_vivienda_uf",
+    "amortizacion_uf", "amortizacion_ext_uf", "interes_uf",
+  ],
+};
+const TABLES_SINCE_258 = ["loan_payments", "property_appraisals"];
+
+function specsBefore258(specs: readonly TriggerSpec[]): TriggerSpec[] {
+  const out: TriggerSpec[] = [];
+  for (const spec of specs) {
+    if (spec.table === "loan_payments") out.push(DEPTO_PAYMENTS_SPEC_BEFORE_258);
+    else if (!TABLES_SINCE_258.includes(spec.table)) out.push(spec);
+  }
+  return out;
+}
+
 export function runMarkInputChangeTriggers211(dbi: DatabaseType): void {
   // A draft of these triggers may already exist (it ran as migration 210): replace them all.
-  const specsAsOf211 = MARK_INPUT_TRIGGER_SPECS.map((spec) =>
+  const specsAsOf211 = specsBefore258(MARK_INPUT_TRIGGER_SPECS).map((spec) =>
     spec.table === "movements"
       ? { ...spec, watch: spec.watch.filter((c) => !MOVEMENT_COLUMNS_SINCE_211.includes(c)) }
       : spec
@@ -269,10 +303,15 @@ export function runMarkInputChangeTriggers211(dbi: DatabaseType): void {
 
 /** Migration 242 hook: `movements.counter_units_delta` exists now — watch it on the movements triggers. */
 export function runMarkInputChangeTriggers242(dbi: DatabaseType): void {
-  installMarkInputChangeTriggers(dbi, MARK_INPUT_TRIGGER_SPECS);
+  installMarkInputChangeTriggers(dbi, specsBefore258(MARK_INPUT_TRIGGER_SPECS));
 }
 
 /** Migration 243 hook: `movements.ticker` is gone — re-create the triggers it dropped. */
 export function runMarkInputChangeTriggers243(dbi: DatabaseType): void {
+  installMarkInputChangeTriggers(dbi, specsBefore258(MARK_INPUT_TRIGGER_SPECS));
+}
+
+/** Migration 258 hook: `depto_payments` is gone — watch `loan_payments` and `property_appraisals`. */
+export function runMarkInputChangeTriggers258(dbi: DatabaseType): void {
   installMarkInputChangeTriggers(dbi, MARK_INPUT_TRIGGER_SPECS);
 }
