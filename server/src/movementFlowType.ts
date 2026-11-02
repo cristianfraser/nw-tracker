@@ -8,6 +8,7 @@ import {
 } from "./depositFlowKind.js";
 import {
   BROKERAGE_FLOW_KIND_LABELS,
+  type CurrencyNamedFlowKind,
   isBrokerageFlowKind,
   type BrokerageFlowKind,
 } from "./brokerageFlowMovement.js";
@@ -44,6 +45,31 @@ export type MovementFlowType =
   | "withdrawal_usd"
   | "deposit_usd"
   | "other";
+
+/**
+ * The type of a transfer shown once, between two accounts of the same page (group flows). A
+ * kind-less transfer has no side to call it a deposit or a withdrawal from: in one currency it
+ * is «Traspaso <CODE>» (`internal_transfer_<code>`, any currency), between two currencies a
+ * «Cambio de divisas» whatever the pair (the amount column shows it). A kind that reads the same
+ * from either side (a share purchase, a dividend, a card payment, …) keeps its type.
+ * `originLegType` is the type the origin's leg carries.
+ */
+export function internalTransferFlowType(
+  originLegType: MovementFlowType,
+  currency: string,
+  counterCurrency: string | null
+): { flow_type: string; flow_type_label: string } {
+  if (!originLegType.startsWith("withdrawal_")) {
+    return {
+      flow_type: originLegType,
+      flow_type_label: movementFlowTypeLabel(originLegType, { currency, counter_currency: counterCurrency }),
+    };
+  }
+  if (counterCurrency != null && counterCurrency !== currency) {
+    return { flow_type: "internal_fx_exchange", flow_type_label: "Cambio de divisas" };
+  }
+  return { flow_type: `internal_transfer_${currency}`, flow_type_label: `Traspaso ${currency.toUpperCase()}` };
+}
 
 function isMortgageFlowKind(flowKind: string | null | undefined): flowKind is MortgageFlowKind {
   return (
@@ -91,13 +117,38 @@ export function movementFlowTypeFromSignedClp(signedClpDelta: number): MovementF
   return DEPOSIT_FLOW_KIND_PERSONAL;
 }
 
-export function movementFlowTypeLabel(flowType: MovementFlowType): string {
+/** The currencies a movement moves: its own, and a conversion's other side. */
+export type MovementCurrencies = { currency: string; counter_currency: string | null };
+
+const currencyCode = (c: string): string => c.toUpperCase();
+
+/**
+ * A flow type's label. A label that names a currency takes it from the movement, never from the
+ * kind's name: «Depósito CLP», «Retiro USD», «Compra USD / Venta CLP» are the codes the row
+ * carries, so another currency needs no new label.
+ */
+export function movementFlowTypeLabel(flowType: MovementFlowType, currencies: MovementCurrencies): string {
+  const own = currencyCode(currencies.currency);
+  switch (flowType) {
+    case "deposit_clp":
+    case "deposit_usd":
+      return `Depósito ${own}`;
+    case "withdrawal_clp":
+    case "withdrawal_usd":
+      return `Retiro ${own}`;
+    case "compra_usd":
+      return `Compra ${currencyCode(currencies.counter_currency ?? currencies.currency)}`;
+    case "compra_usd_venta_clp": {
+      if (currencies.counter_currency == null) {
+        throw new Error(`A currency purchase without its other currency (${currencies.currency})`);
+      }
+      return `Compra ${currencyCode(currencies.counter_currency)} / Venta ${own}`;
+    }
+  }
   if (isBrokerageFlowKind(flowType)) {
-    return BROKERAGE_FLOW_KIND_LABELS[flowType];
+    return BROKERAGE_FLOW_KIND_LABELS[flowType as Exclude<typeof flowType, CurrencyNamedFlowKind>];
   }
   const label = flowType as string;
-  if (label === "withdrawal_clp") return "Retiro";
-  if (label === "deposit_usd") return "Depósito USD";
   if (label === FLOW_KIND_PAGO_CUOTA_HIPOTECARIO) return "Pago cuota hipotecario";
   if (label === FLOW_KIND_PAGO_TARJETA) return "Pago tarjeta";
   if (label === FLOW_KIND_CARGA_TARJETA) return "Carga desde tarjeta";

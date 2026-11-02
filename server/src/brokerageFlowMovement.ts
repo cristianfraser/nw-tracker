@@ -33,17 +33,15 @@ export const BROKERAGE_SHARE_UNITS_FLOW_KINDS = [
   "stock_sell",
 ] as const;
 
-export const BROKERAGE_FLOW_KIND_LABELS: Record<BrokerageFlowKind, string> = {
-  deposit_clp: "Depósito CLP",
-  withdrawal_clp: "Retiro CLP",
-  compra_usd: "Compra USD",
-  compra_usd_venta_clp: "Compra USD / Venta CLP",
+/** Kinds whose label names a currency: built from the movement's own currencies (`movementFlowTypeLabel`). */
+export type CurrencyNamedFlowKind = "deposit_clp" | "withdrawal_clp" | "withdrawal_usd" | "compra_usd" | "compra_usd_venta_clp";
+
+export const BROKERAGE_FLOW_KIND_LABELS: Record<Exclude<BrokerageFlowKind, CurrencyNamedFlowKind>, string> = {
   stock_buy: "Compra acciones",
   stock_sell: "Venta acciones",
   dividend_payout: "Dividendo",
   savings_earnings: "Interés / rentabilidad",
   cash_fee: "Comisión",
-  withdrawal_usd: "Retiro USD",
   other: "Otro",
 };
 
