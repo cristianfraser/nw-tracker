@@ -327,10 +327,6 @@
         "en": "Amount",
         "es": "Monto"
       },
-      "closeObservedHint": {
-        "en": "Close published by the bank (statement or card feed).",
-        "es": "Cierre publicado por el banco (estado de cuenta o movimientos)."
-      },
       "totalToPay": {
         "en": "Total to pay",
         "es": "Total a pagar"

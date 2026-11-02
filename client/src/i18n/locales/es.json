@@ -108,7 +108,6 @@
       "title": "Próximos pagos",
       "viewLiabilities": "Ver Pasivos →",
       "colAmount": "Monto",
-      "closeObservedHint": "Cierre publicado por el banco (estado de cuenta o movimientos).",
       "totalToPay": "Total a pagar",
       "billedOf": "de {{amount}}",
       "partlyPaidHint": "Lo que queda tras los pagos y abonos desde el cierre. La facturación fue de {{amount}}.",

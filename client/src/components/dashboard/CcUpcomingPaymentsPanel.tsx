@@ -12,27 +12,6 @@ import { dashboardTileOrder } from "../../dashboardLayout";
 import { loadableClass } from "../ui/Loadable";
 import styles from "./DashboardFlowsSummary.module.css";
 
-/** Close date with its evidence: ✓ when the bank published it, ≈ when announced or estimated. */
-function CloseCell({ row }: { row: CcUpcomingPaymentRowDto }) {
-  const { t } = useTranslation();
-  if (row.close_observed) {
-    return (
-      <span title={t("dashboard.ccUpcoming.closeObservedHint")}>
-        {row.close_date_iso} ✓
-      </span>
-    );
-  }
-  const hint =
-    row.close_date_source === "announced"
-      ? t("accountDetail.creditCard.closeDateAnnouncedHint")
-      : t("accountDetail.creditCard.closeDateEstimatedHint");
-  return (
-    <span className="muted" title={hint}>
-      {row.close_date_iso} ≈
-    </span>
-  );
-}
-
 /**
  * Pay-by with its provenance: one derived from the close (no statement prints it yet) reads «≈»;
  * one passed with something still owed is marked overdue.
@@ -83,24 +62,26 @@ function MonthCell({ row }: { row: CcUpcomingPaymentRowDto }) {
   );
 }
 
-/** One facturación of one card: title, then one line — close (by pay-by) and the amount. */
+/** One facturación of one card on one line: card and month, then the pay-by and the amount. */
 function PaymentCard({ card, row }: { card: CcUpcomingPaymentsCardDto; row: CcUpcomingPaymentRowDto }) {
   const { t } = useTranslation();
   return (
     <div className={`card ${styles.period}`}>
-      <div className={styles.periodTitle}>
-        {card.name} · <MonthCell row={row} />
-      </div>
       <dl className={styles.lines}>
         <div className={styles.line}>
-          <dt className="mono">
-            <CloseCell row={row} />{" "}
-            <span className="muted">
-              ({t("dashboard.ccUpcoming.payByShort")} <PayByCell row={row} />)
-            </span>
+          <dt>
+            {card.name} · <MonthCell row={row} />
           </dt>
-          <dd className="mono">
-            <AmountCell row={row} />
+          <dd>
+            <span className="muted">
+              {t("dashboard.ccUpcoming.payByShort")}{" "}
+              <span className="mono">
+                <PayByCell row={row} />
+              </span>
+            </span>{" "}
+            <span className="mono">
+              <AmountCell row={row} />
+            </span>
           </dd>
         </div>
       </dl>
