@@ -219,13 +219,16 @@ export function useGroupConsolidatedMonthlyPage(
   period: "month" | "year",
   page: number,
   pageSize: number,
-  enabled: boolean
+  enabled: boolean,
+  /** Net worth: the expense mode its rows' income and expenses are counted in. */
+  installmentMode: "split" | "total"
 ) {
+  const key = queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page, installmentMode);
   return useQuery({
-    queryKey: queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page),
-    queryFn: () => api.groupConsolidatedMonthly(portfolioGroup, unit, { page, pageSize, period }),
+    queryKey: key,
+    queryFn: () => api.groupConsolidatedMonthly(portfolioGroup, unit, { page, pageSize, period, installmentMode }),
     enabled: enabled && Boolean(portfolioGroup),
-    ...displayUnitQueryBehaviorFor(queryKeys.groupConsolidatedMonthlyPage(portfolioGroup, unit, period, page), 2),
+    ...displayUnitQueryBehaviorFor(key, 2),
   });
 }
 

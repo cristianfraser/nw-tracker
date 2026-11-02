@@ -7,6 +7,7 @@ import {
 } from "./groupConsolidatedTables.js";
 import { rollupMonthlyPerfYearly as rollupConsolidatedMonthlyYearly } from "./monthlyPerfRollup.js";
 import { PERIOD_RETURN_ORDER } from "./periodReturns.js";
+import { buildFlowsOverviewPayload } from "./flowsOverview.js";
 import { isInvestmentPerformanceGroupSlug } from "./portfolioGroupTree.js";
 
 function monthRow(overrides: Partial<ConsolidatedMonthlyPerfRow> & { as_of_date: string }): ConsolidatedMonthlyPerfRow {
@@ -140,6 +141,34 @@ describe("getGroupConsolidatedMonthlyPage", () => {
     expect(page1.period).toBe("year");
     expect(page1.total).toBe(yearly.length);
     expect(page1.rows).toEqual(yearly.slice(0, 12));
+  });
+
+  it("net_worth rows carry the flows overview's income and expenses, by month and by year", () => {
+    const months = buildFlowsOverviewPayload("clp", "total", null).months;
+    const byMonth = new Map(months.map((m) => [m.period_month, m]));
+    // One page of everything: other suites leave far-future fixture months at the top.
+    const page = getGroupConsolidatedMonthlyPage("net_worth", "clp", "month", 1, 100_000, undefined, "total");
+    let withFlows = 0;
+    for (const row of page.rows) {
+      const m = byMonth.get(row.as_of_date.slice(0, 7));
+      if (!m) {
+        expect(row.income).toBeUndefined();
+        continue;
+      }
+      withFlows += 1;
+      expect([row.income, row.expenses]).toEqual([m.income, m.expenses]);
+    }
+    expect(withFlows).toBeGreaterThan(0);
+
+    const year = getGroupConsolidatedMonthlyPage("net_worth", "clp", "year", 1, 100_000, undefined, "total").rows.find(
+      (r) => r.income != null
+    )!;
+    const inYear = months.filter((m) => m.period_month.startsWith(year.as_of_date.slice(0, 4)));
+    expect(year.income).toBeCloseTo(inYear.reduce((a, m) => a + m.income, 0), 6);
+    expect(year.expenses).toBeCloseTo(inYear.reduce((a, m) => a + m.expenses, 0), 6);
+
+    // No mode, or another group: the rows stay as they were.
+    expect(getGroupConsolidatedMonthlyPage("net_worth", "clp", "month", 1, 12).rows[0]).not.toHaveProperty("income");
   });
 
   it("clamps past-the-end pages to the last page", () => {

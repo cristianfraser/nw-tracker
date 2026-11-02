@@ -27,8 +27,9 @@ export const queryKeys = {
     group: string,
     unit: DisplayUnit,
     period: "month" | "year",
-    page: number
-  ) => ["groupConsolidatedMonthlyPage", group, unit, period, page] as const,
+    page: number,
+    installmentMode: "split" | "total"
+  ) => ["groupConsolidatedMonthlyPage", group, unit, period, page, installmentMode] as const,
   sidebarNav: () => ["sidebarNav"] as const,
   panelNetWorthTree: () => ["panelNetWorthTree"] as const,
   accountsAll: () => ["accountsAll"] as const,

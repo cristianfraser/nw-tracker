@@ -3,7 +3,7 @@ import { useTranslation } from "../../i18n";
 import { formatClp, formatPct, formatUsdFine } from "../../format";
 import type { DailySeriesPointDto, DailySeriesResponse } from "../../types";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
-import { PerfDetailRows, type PerfDetailColumn } from "./PerfDetailRows";
+import { PerfDetailRows, type PerfDetailRow } from "./PerfDetailRows";
 
 const PAGE_SIZE = 12;
 
@@ -58,23 +58,36 @@ export function DailyPerfDetailTable({
     return <p className="muted">{t("groupPage.dailyDetailEmpty")}</p>;
   }
 
-  const columns: PerfDetailColumn<DailySeriesPointDto>[] = [
-    { key: "closing", label: labels.closing, value: (row) => fmt(row.value) },
-    { key: "deposits", label: labels.netDeposits, value: (row) => (row.flow !== 0 ? fmt(row.flow) : "—") },
-    { key: "pl", label: labels.pl, value: (row) => fmt(row.pl) },
-    { key: "pct", label: labels.pct, value: (row) => cellPct(row.pct) },
-  ];
+  const perfRows: PerfDetailRow[] = pageRows.map((row) => ({
+    key: row.as_of_date,
+    period: row.as_of_date,
+    closing: fmt(row.value),
+    flows: [
+      row.flow !== 0 && Number.isFinite(row.flow)
+        ? {
+            key: "contribution",
+            direction: row.flow > 0 ? "in" : "out",
+            amount: fmt(Math.abs(row.flow)),
+            title: labels.netDeposits,
+          }
+        : null,
+    ],
+    result:
+      row.pl == null || !Number.isFinite(row.pl)
+        ? null
+        : {
+            sign: row.pl > 0 ? 1 : row.pl < 0 ? -1 : 0,
+            amount: fmt(Math.abs(row.pl)),
+            pct: row.pct != null && Number.isFinite(row.pct) ? cellPct(row.pct) : undefined,
+            title: `${labels.pl} · ${labels.pct}`,
+          },
+    totals: [],
+    dim: dimClosedDays && row.market_day === false,
+  }));
 
   return (
     <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
-      <PerfDetailRows
-        rows={pageRows}
-        rowKey={(row) => row.as_of_date}
-        period={(row) => row.as_of_date}
-        periodLabel={labels.date}
-        columns={columns}
-        dimRow={dimClosedDays ? (row) => row.market_day === false : undefined}
-      />
+      <PerfDetailRows rows={perfRows} flowSlots={1} />
     </PaginatedTable>
   );
 }

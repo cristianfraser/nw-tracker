@@ -1,39 +1,45 @@
-import { useLayoutEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import { cn } from "../../cn";
 import styles from "./PerfDetailRows.module.css";
 
-export type PerfDetailColumn<Row> = {
+/** Money that moved in a period: in (→) or out (←); income and spending carry their colour. */
+export type PerfDetailFlow = {
   key: string;
-  label: string;
-  value: (row: Row) => ReactNode;
+  direction: "in" | "out";
+  /** The absolute amount, formatted. */
+  amount: string;
+  tone?: "positive" | "negative";
+  /** The figure's name, shown on hover (the rows carry no column labels). */
+  title: string;
+};
+
+export type PerfDetailRow = {
+  key: string;
+  period: string;
+  closing: string;
+  /** A second figure beside the closing (the mortgage's balance in UF). */
+  closingNote?: { amount: string; title: string };
+  /** Fixed slots, the same keys on every row of a list; a slot with nothing that period is null. */
+  flows: readonly (PerfDetailFlow | null)[];
+  /** The period's result: ▲ / ▼ by sign, the absolute amount and its % when there is one. */
+  result: { sign: 1 | -1 | 0; amount: string; pct?: string; title: string } | null;
+  /** Running totals, quieter: the year so far and all time. */
+  totals: readonly { key: string; prefix: string; amount: string; title: string }[];
+  dim?: boolean;
 };
 
 /**
- * The «Detalle por mes / año / día» rows: one rendering at every width (no desktop table beside
- * mobile cards). Each row is one grid. While every row fits its list on one line, the rows share
- * their columns (a subgrid of the list) under one header row, so they read as a table; when they
- * do not, each row wraps: its period over its values, each value with its own label (the
- * header row goes). Which one applies is measured, not a breakpoint: the list's columns as wide as
- * their content, wider than the list = the rows wrap.
+ * The «Detalle por mes / año / día» rows, one rendering at every width (no desktop table beside
+ * mobile cards), read by arrows, ▲ / ▼ and colour instead of column labels (each figure names
+ * itself on hover). While every row fits its list on one line the rows share the list's columns
+ * (a subgrid of it), so each kind of figure lines up down the list; when they do not, a row is
+ * its period and closing over its flows and result, its running totals under the result — and
+ * on a phone one thing per line. One line or wrapped is measured, not a breakpoint: the
+ * columns as wide as their content, wider than the list = the rows wrap.
  */
-export function PerfDetailRows<Row>({
-  rows,
-  rowKey,
-  period,
-  periodLabel,
-  columns,
-  dimRow,
-}: {
-  rows: readonly Row[];
-  rowKey: (row: Row) => string;
-  /** The row's period (month, year or day), its first column and its heading when it wraps. */
-  period: (row: Row) => string;
-  periodLabel: string;
-  columns: readonly PerfDetailColumn<Row>[];
-  /** A row shown dimmed (a day the account's market was closed). */
-  dimRow?: (row: Row) => boolean;
-}) {
+export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailRow[]; flowSlots: number }) {
   const listRef = useRef<HTMLDivElement>(null);
+  const totalSlots = rows[0]?.totals.length ?? 0;
 
   // No deps: the rows (and so the widest value) can change on any render.
   useLayoutEffect(() => {
@@ -56,34 +62,72 @@ export function PerfDetailRows<Row>({
   return (
     <div
       ref={listRef}
+      role="list"
       className={styles.list}
-      style={{ "--perf-value-cols": columns.length } as CSSProperties}
+      style={{ "--perf-flow-slots": flowSlots, "--perf-total-slots": totalSlots } as CSSProperties}
     >
-      <div className={cn(styles.row, styles.header)} aria-hidden="true">
-        <span className={styles.period}>{periodLabel}</span>
-        {columns.map((c) => (
-          <span key={c.key} className={styles.value}>
-            {c.label}
+      {rows.map((row) => (
+        <div key={row.key} role="listitem" className={cn(styles.row, row.dim && styles.dim)}>
+          <span className={cn("mono", styles.period)}>{row.period}</span>
+          <span className={cn("mono", styles.closing)}>
+            {row.closing}
+            {row.closingNote ? (
+              <span className={cn("muted", styles.closingNote)} title={row.closingNote.title}>
+                {" "}
+                {row.closingNote.amount}
+              </span>
+            ) : null}
           </span>
-        ))}
-      </div>
-      <div role="list" className={styles.body}>
-        {rows.map((row) => (
-          <div
-            key={rowKey(row)}
-            role="listitem"
-            className={cn(styles.row, dimRow?.(row) && styles.dim)}
-          >
-            <span className={cn("mono", styles.period)}>{period(row)}</span>
-            {columns.map((c) => (
-              <span key={c.key} className={styles.cell}>
-                <span className={styles.label}>{c.label}</span>
-                <span className={cn("mono", styles.value)}>{c.value(row)}</span>
+          <span className={styles.flows}>
+            {row.flows.map((flow, i) => (
+              <span
+                key={flow?.key ?? `empty-${i}`}
+                className={cn("mono", styles.flow, flow?.tone && styles[flow.tone])}
+                title={flow?.title}
+              >
+                {flow ? (
+                  <>
+                    <span className={styles.arrow} aria-hidden="true">
+                      {flow.direction === "in" ? "→" : "←"}
+                    </span>
+                    <span className="visually-hidden">{flow.title}: </span>
+                    {flow.amount}
+                  </>
+                ) : null}
               </span>
             ))}
-          </div>
-        ))}
-      </div>
+          </span>
+          <span
+            className={cn(
+              "mono",
+              styles.result,
+              row.result?.sign === 1 && styles.positive,
+              row.result?.sign === -1 && styles.negative
+            )}
+            title={row.result?.title}
+          >
+            {row.result ? (
+              <>
+                <span aria-hidden="true">{row.result.sign === 1 ? "▲" : row.result.sign === -1 ? "▼" : "·"}</span>
+                <span className="visually-hidden">{row.result.title}: </span>
+                {row.result.amount}
+                {row.result.pct ? <span className={styles.pct}>{row.result.pct}</span> : null}
+              </>
+            ) : null}
+          </span>
+          <span className={styles.totals}>
+            {row.totals.map((total) => (
+              <span key={total.key} className={cn("mono muted", styles.total)} title={total.title}>
+                <span className={styles.totalPrefix} aria-hidden="true">
+                  {total.prefix}
+                </span>
+                <span className="visually-hidden">{total.title}: </span>
+                {total.amount}
+              </span>
+            ))}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
