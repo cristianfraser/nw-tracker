@@ -23,6 +23,7 @@ import {
   invalidateFlowsOverview,
   invalidateGroupResponses,
   invalidateKeysWithPrefix,
+  DASHBOARD_PAGE_BUNDLE_PREFIX,
 } from "./aggregationCache.js";
 import { DAILY_SERIES_RESPONSE_PREFIX } from "./groupDailySeriesResponse.js";
 import { startDbBackupScheduler } from "./dbBackupScheduler.js";
@@ -107,6 +108,10 @@ app.use((req, res, next) => {
       invalidateAccountDetailBundles();
       invalidateGroupResponses();
       invalidateKeysWithPrefix(DAILY_SERIES_RESPONSE_PREFIX);
+      // The home bundle itself (not its account rows): «Próximos pagos» reads bill rows, declared
+      // payments and expense lines, which no aggregation funnel covers.
+      invalidateKeysWithPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}clp`);
+      invalidateKeysWithPrefix(`${DASHBOARD_PAGE_BUNDLE_PREFIX}usd`);
     });
   }
   next();

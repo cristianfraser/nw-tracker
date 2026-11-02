@@ -14,9 +14,33 @@
   min-width: 0;
 }
 
-/* «Próximos pagos»: a pay month and its total, over the payments due in it. */
+/* «Próximos pagos»: a pay month and its total, over the payments due in it — what each is on
+   the left, its date and amount pushed to the right. */
 .monthHeading {
   font-size: var(--font-size-card-meta);
+}
+
+.paymentLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.paymentLine dd {
+  margin: 0;
+  text-align: right;
+}
+
+/* «Show more» / «Show less»: a link-like button under the months. */
+.toggle {
+  font: inherit;
+  font-size: var(--font-size-card-meta);
+  color: var(--accent);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
 
 .periodTitle {

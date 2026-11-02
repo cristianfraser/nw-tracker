@@ -6,7 +6,7 @@ import {
   LineChartPanel,
 } from "../components/charts/lazyCharts";
 import { NavAccountsTree } from "../components/nav/NavAccountsTree";
-import { CcUpcomingPaymentsPanel } from "../components/dashboard/CcUpcomingPaymentsPanel";
+import { UpcomingPaymentsPanel } from "../components/dashboard/UpcomingPaymentsPanel";
 import { GroupInfoBase } from "../components/group/GroupInfoBase";
 import { LatestExpensesTable } from "../components/dashboard/LatestExpensesTable";
 import { ExportToolbarButton } from "../components/export/ExportModal";
@@ -597,7 +597,7 @@ export function DashboardPage() {
       rail={
         <>
           <DashboardFlowsPeriods displayUnit={displayUnit} />
-          <CcUpcomingPaymentsPanel data={data?.ccUpcomingPayments ?? null} loading={contentLoading} />
+          <UpcomingPaymentsPanel data={data?.upcomingPayments ?? null} loading={contentLoading} />
           <LatestExpensesTable />
         </>
       }

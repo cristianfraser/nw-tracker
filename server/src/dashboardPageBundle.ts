@@ -15,7 +15,7 @@ import { attachNetWorthAth } from "./netWorthAllTimeHigh.js";
 import { buildFxCoverageWithConversionWarnings, type FxCoverage } from "./fxCoverage.js";
 import { clearFxConversionWarnings } from "./fxConversionWarnings.js";
 import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
-import { buildDashboardCcUpcomingPayments } from "./dashboardCcUpcomingPayments.js";
+import { buildUpcomingPayments } from "./upcomingPayments.js";
 
 export type { FxCoverage };
 
@@ -74,8 +74,8 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
     buildInversionesPerfMonthly(unit, depositsMonthly)
   );
   await nextMacrotask();
-  // Pesos in both units: the facturaciones rows it reads carry no USD frame.
-  const ccUpcomingPayments = buildDashboardCcUpcomingPayments();
+  // Pesos in both units: the facturaciones rows, the UF cuotas and the bills are all in pesos.
+  const upcomingPayments = buildUpcomingPayments();
 
   return {
     dash,
@@ -83,6 +83,6 @@ async function buildDashboardPageBundleInner(unit: TsUnit) {
     fx,
     fx_coverage: includeUsd ? buildFxCoverageWithConversionWarnings() : null,
     inversionesPerf,
-    cc_upcoming_payments: ccUpcomingPayments,
+    upcoming_payments: upcomingPayments,
   };
 }

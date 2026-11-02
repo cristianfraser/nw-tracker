@@ -44,6 +44,12 @@ import {
 } from "../flowsApi.js";
 import { parsePageParams } from "../pagination.js";
 import {
+  createRecurringPayment,
+  deleteRecurringPayment,
+  listRecurringPayments,
+  RecurringPaymentInputError,
+} from "../upcomingPayments.js";
+import {
   asyncHandler,
   isKnownClassTabGroup,
   accountIdFromReq,
@@ -215,6 +221,36 @@ app.get("/api/groups/:slug/period-returns", (req, res) => {
 });
 
 /** Home «Últimos gastos»: `?limit=` (default 15) newest expense lines, `?unit=clp|usd`. */
+/** Declared yearly payments for «Próximos pagos» (WIP: no screen yet). */
+app.get("/api/upcoming-payments/recurring", (_req, res) => {
+  res.json({ rows: listRecurringPayments() });
+});
+
+app.post("/api/upcoming-payments/recurring", (req, res) => {
+  try {
+    res.status(201).json(createRecurringPayment((req.body ?? {}) as Record<string, unknown>));
+  } catch (e) {
+    if (e instanceof RecurringPaymentInputError) {
+      res.status(400).json({ error: e.message });
+      return;
+    }
+    throw e;
+  }
+});
+
+app.delete("/api/upcoming-payments/recurring/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "invalid id" });
+    return;
+  }
+  if (!deleteRecurringPayment(id)) {
+    res.status(404).json({ error: "not found" });
+    return;
+  }
+  res.status(204).end();
+});
+
 app.get("/api/dashboard/latest-expenses", (req, res) => {
   const unitRaw = String(req.query.unit ?? "clp");
   if (unitRaw !== "clp" && unitRaw !== "usd") {

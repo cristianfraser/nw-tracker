@@ -1,7 +1,7 @@
 import type { AccountMonthlyPerformanceRow } from "./accounts";
 import type { PeriodReturnsPayload } from "./performance";
 import type { FxCoverage } from "./core";
-import type { CcUpcomingPaymentsDto } from "./creditCard";
+import type { UpcomingPaymentsDto } from "./creditCard";
 import type { DashboardAccountRow, DashboardResponse, FxLatest, ValuationTimeseriesResponse, ValueSeriesType } from "./dashboard";
 
 /** `GET /api/groups/:slug/performance-monthly` — derived, not stored. */
@@ -111,7 +111,7 @@ export interface DashboardPageBundleResponse {
   fx: FxLatest | null;
   fx_coverage: FxCoverage | null;
   inversionesPerf: InversionesPerfMonthlyResponse;
-  cc_upcoming_payments: CcUpcomingPaymentsDto;
+  upcoming_payments: UpcomingPaymentsDto;
 }
 
 /**

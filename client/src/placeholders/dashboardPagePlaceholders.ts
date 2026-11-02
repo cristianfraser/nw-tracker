@@ -217,7 +217,7 @@ export function buildPlaceholderDashboardBundle(
     ts: buildPlaceholderDashboardTimeseries(unit, shape),
     fx: null,
     inversionesPerf: includePerf ? zeroInversionesPerf(unit, monthEnds) : null,
-    ccUpcomingPayments: null,
+    upcomingPayments: null,
   };
 }
 

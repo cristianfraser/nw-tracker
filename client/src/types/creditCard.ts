@@ -49,20 +49,35 @@ export type CcUpcomingPaymentRowDto = {
   is_provisional_close: boolean;
 };
 
-/** One card's facturación inside a pay month. */
-export type CcUpcomingPaymentDto = {
-  account_id: number;
+export type UpcomingPaymentKind = "card" | "mortgage" | "hoa" | "contribuciones" | "recurring";
+
+/** One payment due (server `upcomingPayments.ts`). */
+export type UpcomingPaymentItemDto = {
+  key: string;
+  kind: UpcomingPaymentKind;
   name: string;
-  row: CcUpcomingPaymentRowDto;
+  due_iso: string;
+  due_kind: "by" | "on";
+  /** Counts in the month's total (the mortgage: its minimum). */
+  amount_clp: number;
+  /** The mortgage's maximum cuota. */
+  amount_max_clp: number | null;
+  /** No document states the amount yet. */
+  estimated: boolean;
+  overdue: boolean;
+  cuota: number | null;
+  cuota_count: number | null;
+  /** Gastos comunes: the month billed (YYYY-MM). */
+  bill_month: string | null;
+  card: CcUpcomingPaymentRowDto | null;
+  /** A declared payment (work in progress). */
+  wip: boolean;
 };
 
-/** `cc_upcoming_payments` on the dashboard page bundle — pesos in both display units. */
-export type CcUpcomingPaymentsDto = {
-  /**
-   * Pay months with something due, oldest first: the month's total and its payments (an overdue
-   * one is due now, in the current month). Empty = nothing to show.
-   */
-  months: { pay_month: string; total_clp: number; payments: CcUpcomingPaymentDto[] }[];
+/** `upcoming_payments` on the dashboard page bundle — pesos in both display units. */
+export type UpcomingPaymentsDto = {
+  /** Pay months with something due within the server's horizon, oldest first; empty = nothing to show. */
+  months: { pay_month: string; total_clp: number; items: UpcomingPaymentItemDto[] }[];
   liabilities_route_path: string | null;
 };
 
