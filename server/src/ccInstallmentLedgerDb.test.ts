@@ -11,6 +11,7 @@ import {
   upsertCreditCardValuationsFromLedger,
 } from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
 import {
   ensureVitestCreditCardFixtures,
   getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
@@ -89,7 +90,8 @@ describe("installment ledger cupo (synthetic)", () => {
          account_id, card_group, canonical_row_id, dedupe_key, parser_row_id_sample, source_pdf_sample,
          purchase_date, total_amount_clp, cuotas_totales, merchant, description_merged, matched_baseline_purchase_id, source
        ) VALUES (?, 'A', 'cupo-synth', NULL, NULL, NULL, ?, ?, ?, 'VITEST CUPO', 'VITEST CUPO', NULL, 'pdf')`
-    ).run(accountId, `${nowYm}-05`, 1_200_000, 3);
+    // The 1st: never after today, so the walk to today counts it whatever the date.
+    ).run(accountId, `${nowYm}-01`, 1_200_000, 3);
   }
 
   function cleanup(): void {
@@ -155,7 +157,7 @@ describe("installment ledger cupo (synthetic)", () => {
     }
   });
 
-  it("persists a today valuation equal to the live balance", () => {
+  it("persists a today valuation equal to the owed walk", () => {
     ensureVitestCreditCardFixtures();
     const id = getVitestSantanderCcMasterAccountId();
     if (id == null) return;
@@ -163,15 +165,17 @@ describe("installment ledger cupo (synthetic)", () => {
     cleanup();
     seedPurchase();
 
-    const live = liveCreditCardOutstandingClp(accountId);
-    // upsert persists the billing-detail balance when available, else the live outstanding.
-    const expected = latestCreditCardBillingBalanceTotalClp(accountId) ?? live;
-    expect(expected).not.toBeNull();
-
     const written = upsertCreditCardValuationsFromLedger(accountId);
     expect(written).toBeGreaterThan(0);
 
+    // Today's stamp is the walk (last anchor strictly before today + evidence after it), else
+    // the billing-detail balance when there is no anchor to walk from, else the live outstanding.
     const today = chileCalendarTodayYmd();
+    const expected =
+      ccOwedWalkClpAtYmd(accountId, today)?.value_clp ??
+      latestCreditCardBillingBalanceTotalClp(accountId) ??
+      liveCreditCardOutstandingClp(accountId);
+    expect(expected).not.toBeNull();
     const row = db
       .prepare(`SELECT value AS value_clp FROM valuations WHERE account_id = ? AND as_of_date = ?`)
       .get(accountId, today) as { value_clp: number } | undefined;

@@ -1,5 +1,7 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
   isCcStatementPdfSource,
@@ -26,6 +28,68 @@ import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+
+/**
+ * Coverage looks for each document on disk. The test database is synthetic, so the folders are
+ * pointed at a temporary directory holding an empty file for every cartola it imported — never at
+ * the real `cfraser/`, whose files belong to another database.
+ */
+const DOCUMENT_DIR_ENV = [
+  "CFRASER_PDFS_DIR",
+  "CFRASER_CHECKING_CARTOLAS_DIR",
+  "CFRASER_CHECKING_CARTOLA_PDFS_DIR",
+  "CFRASER_CUENTA_VISTA_PDFS_DIR",
+] as const;
+let documentRoot: string | null = null;
+
+/** A blank one-page PDF, so the coverage's `pdftotext` peek reads it without complaint. */
+function blankPdf(): string {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>",
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objects.forEach((obj, i) => {
+    offsets.push(body.length);
+    body += `${i + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+  const xref = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const o of offsets) body += `${String(o).padStart(10, "0")} 00000 n \n`;
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return body;
+}
+const savedEnv = new Map<string, string | undefined>();
+
+beforeAll(() => {
+  documentRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nw-import-sync-coverage-"));
+  for (const key of DOCUMENT_DIR_ENV) {
+    savedEnv.set(key, process.env[key]);
+    const dir = path.join(documentRoot, key);
+    fs.mkdirSync(dir);
+    process.env[key] = dir;
+  }
+  const pdf = blankPdf();
+  const rows = db
+    .prepare(`SELECT DISTINCT source_file FROM checking_cartola_imports`)
+    .all() as { source_file: string }[];
+  for (const { source_file } of rows) {
+    if (!source_file || source_file.startsWith("screenshot:")) continue;
+    for (const key of ["CFRASER_CHECKING_CARTOLA_PDFS_DIR", "CFRASER_CUENTA_VISTA_PDFS_DIR"]) {
+      fs.writeFileSync(path.join(process.env[key]!, path.basename(source_file)), pdf);
+    }
+  }
+});
+
+afterAll(() => {
+  for (const [key, value] of savedEnv) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  if (documentRoot) fs.rmSync(documentRoot, { recursive: true, force: true });
+});
 
 describe("importSyncDocumentCoverage", () => {
   it("returns matrix shape consistent with months and accounts", () => {
@@ -96,6 +160,7 @@ describe("importSyncDocumentCoverage", () => {
   it("links source_file for the same row_month as period_month / period_to", () => {
     const payload = coveragePayload();
     if (!payload) return;
+    let cartolaCellsMatched = 0;
     for (let mi = 0; mi < payload.months.length; mi += 1) {
       const rowMonth = payload.months[mi]!;
       for (let ai = 0; ai < payload.accounts.length; ai += 1) {
@@ -138,12 +203,14 @@ describe("importSyncDocumentCoverage", () => {
             if (row.source_file.startsWith("screenshot:")) continue;
             expect(path.basename(row.source_file)).toBe(base);
             expect(matrixMonthForCartolaPeriodMonth(row.period_month)).toBe(rowMonth);
+            cartolaCellsMatched += 1;
           } else {
             expect(cell.imported).toBe(true);
           }
         }
       }
     }
+    expect(cartolaCellsMatched).toBeGreaterThan(0);
   }, 20_000);
 
   it("does not mark cuenta vista multi-month cells sin-mov when PDF has imported movements", () => {

@@ -42,15 +42,24 @@ describe("getCheckingCartolaMonths", () => {
     if (!row) return;
     const payload = getCheckingCartolaMonths(row.id);
     expect(payload).not.toBeNull();
-    expect(payload!.rows.length).toBeGreaterThan(0);
-    const apr = payload!.rows.find((r) => r.period_month === "2026-04");
-    expect(apr?.has_cartola).toBe(true);
-    expect(apr?.balance_end_clp).toBe(checkingMovementBalanceAtMonthEnd(row.id, "2026-04"));
-    expect(apr!.deposits_clp).toBeGreaterThan(0);
-    expect(apr!.withdrawals_clp).toBeGreaterThan(0);
-    const months = payload!.rows.map((r) => r.period_month);
-    if (months.includes("2020-05") && months.includes("2020-07")) {
-      expect(months).toContain("2020-06");
+    const withCartola = payload!.rows.filter((r) => r.has_cartola);
+    expect(withCartola.length).toBeGreaterThan(0);
+    // Any month: the closing balance is the walk's, and the month's totals explain its change.
+    for (const r of payload!.rows) {
+      const end = checkingMovementBalanceAtMonthEnd(row.id, r.period_month);
+      const [y, m] = r.period_month.split("-").map(Number) as [number, number];
+      const priorYm = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+      expect(r.balance_end_clp).toBe(end);
+      expect(end - checkingMovementBalanceAtMonthEnd(row.id, priorYm)).toBe(
+        r.deposits_clp - r.withdrawals_clp
+      );
+    }
+    // No month is skipped between the first and the last row.
+    const months = payload!.rows.map((r) => r.period_month).sort();
+    for (let i = 1; i < months.length; i += 1) {
+      const [y, m] = months[i - 1]!.split("-").map(Number) as [number, number];
+      const next = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+      expect(months[i]).toBe(next);
     }
   });
 
