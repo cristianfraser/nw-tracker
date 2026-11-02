@@ -24,17 +24,24 @@
   font-size: var(--font-size-card-meta);
 }
 
+/* A line is its icon and its value beside it (the label is the icon's title). */
 .line,
 .lineSection {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .line dt,
 .lineSection dt {
+  display: flex;
   color: var(--muted);
+}
+
+.icon {
+  display: inline-block;
+  width: 1.4em;
+  height: 1.4em;
 }
 
 .line dd,
