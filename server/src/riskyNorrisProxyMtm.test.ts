@@ -22,6 +22,8 @@ import * as nyseSession from "./nyseSession.js";
 import * as fintualPublishDate from "./fintualPublishDate.js";
 import * as fintualCertV2Reconcile from "./fintualCertV2Reconcile.js";
 import * as globalSyncState from "./globalSyncState.js";
+import * as watchlistComposite from "./watchlistComposite.js";
+import { newCacheDepNode, runInCacheDepNode } from "./cacheDependencies.js";
 
 const TEST_BUCKET = RISKY_NORRIS_PROXY_BUCKET;
 const COMPOSITION_DATE = "2026-06-20";
@@ -113,6 +115,17 @@ describe("shouldUseRiskyNorrisProxyMtm", () => {
   function stubToday(ymd: string) {
     vi.spyOn(chileDate, "chileCalendarTodayYmd").mockReturnValue(ymd);
   }
+
+  it("reports the basket tickers and the dollar even when it decides against the proxy", () => {
+    // An APV mark cached while the gate said no (pre-open, settled) must go with the next tick.
+    vi.spyOn(watchlistComposite, "listCompositeConstituentTickers").mockReturnValue(["SPY", "VEA"]);
+    stubSettled(true);
+    stubNyseTrading(true);
+    const node = newCacheDepNode();
+    expect(runInCacheDepNode(node, () => shouldUseRiskyNorrisProxyMtm())).toBe(false);
+    expect([...node.tickers].sort()).toEqual(["SPY", "VEA"]);
+    expect(node.fx).toBe(true);
+  });
 
   it("is false when NYSE is not trading today (and the last session was a Chile business day)", () => {
     stubSettled(false);
