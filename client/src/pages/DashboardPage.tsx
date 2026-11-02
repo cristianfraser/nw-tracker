@@ -41,7 +41,6 @@ import {
   chartShapeFromLoadedDashboardBundle,
 } from "../placeholders/dashboardPagePlaceholders";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
-import { resolveNetWorthGroupLabel } from "../sidebarNavFromApi";
 import { DASHBOARD_COLD_STRIP } from "../coldPageShape";
 import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
@@ -105,7 +104,6 @@ export function DashboardPage() {
   // «Load failed» only once the nav has answered without a net-worth tree; until then the page
   // renders its shell (static title, placeholder charts), dimmed.
   const navSettled = !navPending && !navFetching;
-  const pageTitle = resolveNetWorthGroupLabel(sidebarNav);
   const netWorthNav = sidebarNav?.net_worth ?? null;
 
   const navShell = useMemo(
@@ -573,7 +571,6 @@ export function DashboardPage() {
   return (
     <GroupInfoBase
       mainClassName="page-dashboard"
-      title={pageTitle}
       loading={contentLoading}
       portfolio={
         netWorthNav && dashForStrip

@@ -650,6 +650,10 @@
     }
   },
   "sidebar": {
+    "dashboard": {
+      "en": "Dashboard",
+      "es": "Dashboard"
+    },
     "openMenu": {
       "en": "Open menu",
       "es": "Abrir menú"

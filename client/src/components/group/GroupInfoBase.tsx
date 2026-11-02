@@ -57,7 +57,8 @@ type GroupInfoTileId = "returns" | "detail" | "wealth-flows" | "export" | "accou
 
 export type GroupInfoBaseProps = {
   mainClassName?: string;
-  title: string;
+  /** Page heading; omitted on the home dashboard. */
+  title?: string;
   /** e.g. Agrupado / Aportes acumulados toggles (group pages). */
   toolbar?: ReactNode;
   /** Nav node + dashboard bundle for the two-row portfolio card strip. */
@@ -270,7 +271,7 @@ export function GroupInfoBase({
   return (
     <main className={mainClassName}>
       <Loadable loading={loading} className={cn(pageShellStyles.contentShell, "page-grid")}>
-        <PageTitleRow title={title} />
+        {title != null ? <PageTitleRow title={title} /> : null}
         {toolbar}
         {rail ? (
           <>
