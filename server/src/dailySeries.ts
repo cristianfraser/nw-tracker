@@ -2,7 +2,7 @@ import { loadMergedDisplayDepositInflowEvents } from "./accountDeposits.js";
 import { isLiabilityAccountId } from "./accountBucket.js";
 import { buildHistoryTierValue, getAggregationCached, historyTierMemo } from "./aggregationCache.js";
 import { isCreditCardAccountId } from "./ccAccountConfig.js";
-import { ccFinancingCostClpByDate } from "./ccFinancingCostDaily.js";
+import { ccFinancingCostByDateInUnit } from "./ccFinancingCostDaily.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
@@ -241,7 +241,7 @@ function gridFlows(
 
   // Mortgage cuotas/prepagos: ledger truth, positive (capital into the debt) — the depto
   // ledger is the mortgage's payment history, the same source the dashboard cards use. Cards
-  // have no cash ledger; their flows are derived from the balance in `ccDerivedFlowsClp`.
+  // have no cash ledger; their flows are derived from the balance in `ccDerivedFlows`.
   if (mortgageIds.length > 0) {
     for (const e of mortgageSheetPaymentEventsThroughDate(loadDeptoLedgerFromMovements(), last)) {
       if (e.pago_clp === 0) continue;
@@ -259,23 +259,27 @@ function gridFlows(
 }
 
 /**
- * Card flows per grid row, derived from its own daily owed marks: `−Δowed + financing`, so the
- * card's P/L comes out as exactly `−financing` (see `ccFinancingCostDaily.ts` for why the
- * balance move — anchor reframing included — is flow rather than cost). CLP; the caller
- * converts. Rows where either mark is missing carry no flow, never a fake 0.
+ * Card flows per grid row in the flow unit, derived from its own daily values in that unit:
+ * `−Δowed + cost`, the cost in the same unit (`ccFinancingCostByDateInUnit`), so the card's P/L
+ * comes out as exactly `−cost` (see `ccFinancingCostDaily.ts` for why the balance move — anchor
+ * reframing included — is flow rather than cost). In dollars the values are the card's dollar
+ * values (its pesos at the day's rate, its dollars as dollars) and the cost revalues its pesos:
+ * the same identity, never pesos converted. Rows where either mark is missing carry no flow,
+ * never a fake 0.
  */
-function ccDerivedFlowsClp(
+function ccDerivedFlows(
   accountId: number,
   grid: readonly string[],
-  marksClp: readonly (number | null)[]
+  marks: readonly (number | null)[],
+  unit: "clp" | "usd"
 ): number[] {
-  const financingByDate = ccFinancingCostClpByDate(accountId);
+  const costByDate = ccFinancingCostByDateInUnit(accountId, unit);
   const out = new Array<number>(grid.length - 1).fill(0);
   for (let i = 1; i < grid.length; i++) {
-    const cur = marksClp[i];
-    const prev = marksClp[i - 1];
+    const cur = marks[i];
+    const prev = marks[i - 1];
     if (cur == null || prev == null) continue;
-    out[i - 1] = -(cur - prev) + (financingByDate.get(grid[i]!) ?? 0);
+    out[i - 1] = -(cur - prev) + (costByDate.get(grid[i]!) ?? 0);
   }
   return out;
 }
@@ -415,7 +419,7 @@ export function getBucketDailySeries(
   // Debt marks are positive amounts owed: they sum into `value` as displayed, and into
   // `wealth` with the opposite sign so P/L and % read as gains and losses either way.
   const isLiability = included.map((a) => isLiabilityAccountId(a.account_id));
-  // Cards derive their flows from their own owed marks (see `ccDerivedFlowsClp`).
+  // Cards derive their flows from their own owed marks (see `ccDerivedFlows`).
   const ccMarksClp = new Map<number, (number | null)[]>(
     included.filter((a) => isCreditCardAccountId(a.account_id)).map((a) => [a.account_id, []])
   );
@@ -522,12 +526,15 @@ export function getBucketDailySeries(
   const flows = past.flows.flows.slice();
   const liabilityFlows = past.flows.liabilityFlows.slice();
   const flowsByAccount = new Map([...past.flows.byAccount].map(([id, arr]) => [id, arr.slice()]));
-  for (const [accountId, marks] of ccMarksClp) {
-    const derived = ccDerivedFlowsClp(accountId, grid, marks);
+  for (const [accountId, marksClp] of ccMarksClp) {
+    // In dollars the card's own dollar values; in pesos (and UF, converted per row below) its
+    // peso marks.
+    const ai = included.findIndex((a) => a.account_id === accountId);
+    const marks = flowUnit === "usd" ? unitByAccount[ai]! : marksClp;
+    const derived = ccDerivedFlows(accountId, grid, marks, flowUnit);
     for (let i = 1; i < grid.length; i++) {
-      const clp = derived[i - 1]!;
-      if (clp === 0) continue;
-      const amt = flowEventInUnit({ occurred_on: grid[i]!, amt: clp }, flowUnit);
+      const amt = derived[i - 1]!;
+      if (amt === 0) continue;
       liabilityFlows[i - 1] += amt;
       const arr = flowsByAccount.get(accountId) ?? new Array<number>(grid.length - 1).fill(0);
       arr[i - 1] += amt;

@@ -190,14 +190,22 @@ Each phase lands on its own, with the app working and the parity check below gre
   balance) must hold per currency, and `verify-cc-billed-cuotas.ts` /
   `verify-cc-financing-identity.ts` / the bank cupo check must stay green.
 
-### Phase 6 — cleanup
+### Phase 6 — cleanup (done 2026-11-02)
 
-- Delete what nothing calls: `usdCashUsdToClpAt`, `usdCashClpRateOnOrBefore`, `usdCashBalanceClpAt`,
-  `accountValueClpToUnitAt`, `usdFromClpAtLiveFrame`, `priced_on`, the CLP-only names in
-  `rates`. `isUsdCashAccount` / `isClpCashKindSlug` callers that only meant «holds dollars /
-  pesos» read the holding.
-- AGENTS.md: replace «Today's value and its USD», the dollar-cash bullets and «Card dollars in
-  pesos» with the holdings model; add the spread-side rule.
+- `valuations` takes any currency (migration 260). The property's appraisals are its `valuations`
+  rows in UF (the stopgap `property_appraisals` of 258 is gone, and so are the property's old peso
+  month-end rows: nothing read them as its value — the depto ledger values every date they cover —
+  and its chart derives its month-ends from the ledger). Readers convert a stored row once at the
+  account's side, or assert the currency where they are kind-specific; the property's rows are
+  appraisals and stay out of the mark readers.
+- Deleted: `usdFromClpAtLiveFrame`, `computeEquityMtmClpCachedLive`, `usdCashBalanceLive`,
+  `LivePerfClose.priced_on`, the card's 75-day fx back-trim. Kept, because flows read them:
+  `convertTs`, `usdCashUsdToClpAt` / `usdCashClpRateOnOrBefore` (cash interest, dollar deposit
+  pricing). `priced_on` stays on `accountTodayValue` for the row's informational `fx_*` fields.
+  The remaining `isUsdCashAccount` call sites say how an account records its value (a dollar
+  ledger), validate movements or pick flow accounts, not a currency branch for a value.
+- A card's P/L in any unit (`docs/holdings-cards-plan.md`), with dollar payments at the pesos
+  actually paid.
 
 ## Verification
 
@@ -227,15 +235,11 @@ ledgers, mortgage) in CLP and USD with the old and the new code at a frozen cloc
 - **Flows are not changed by this plan** (`flowEventInUnit` already converts each event's own
   legs; CLP → USD at the buy rate, which matches decision 4).
 
-## Open question
+## Open question (settled)
 
-- **Property: gross or net.** The property account today is valued at net equity
-  (`deptoNetEquityUfBySnapshotDates`: appraisal − crédito restante), and the mortgage account
-  carries the same balance as a debt. Under «value = what the account holds» the property would
-  hold its appraisal (gross UF) and the mortgage the debt, net worth subtracting it once.
-  Settle before phase 4: either keep net equity as the property's quantity (a derived UF figure,
-  numbers unchanged), or switch to gross and check how net worth and the Pasivos totals count
-  the mortgage today so it is subtracted exactly once.
+- **Property: gross or net.** The property holds UF; its stored valuations are its appraisals (gross)
+  and its value stays net equity (appraisal − loan balance, derived by the depto ledger), the
+  mortgage carrying the debt. Numbers unchanged.
 
 ## Out of scope
 

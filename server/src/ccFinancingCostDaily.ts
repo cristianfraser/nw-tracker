@@ -24,7 +24,9 @@
  */
 import { normalizedPostCloseLines } from "./ccBillingBalances.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
-import { ccUsdRevaluationCostClpByDate } from "./ccOwedWalk.js";
+import { ccRevaluationCostByDate } from "./ccOwedWalk.js";
+import type { CurrencyCode } from "./rates.js";
+import { convertValue } from "./valueConvert.js";
 
 /**
  * CLP financing cost per transaction date (positive = cost), deduped by the owed walk's keys
@@ -49,30 +51,70 @@ export function ccSection3FinancingClpByDate(accountId: number): Map<string, num
 }
 
 /**
- * The card's whole P/L as a cost per day (positive = loss): the bank's charges and plan interest
- * ({@link ccSection3FinancingClpByDate}) plus the fx revaluation of the dollars owed
- * (`ccUsdRevaluationCostClpByDate`: a dollar debt revalued at the day's rate is an fx loss when the
- * peso falls, a gain when it rises). With this cost the derived flow `−Δowed + cost` is the
- * evidence at each event's day rate.
+ * The bank's charges and plan interest per day in `unit`: in pesos as
+ * {@link ccSection3FinancingClpByDate} states them; in another unit each charge in the currency it
+ * was billed in, converted once at its own day's rate at the debt side (a charge adds to what is
+ * owed), so with the card's value in that unit the derived flow is the evidence at each day's rate.
  */
-export function ccFinancingCostClpByDate(accountId: number): Map<string, number> {
-  const byDate = ccSection3FinancingClpByDate(accountId);
-  for (const [iso, clp] of ccUsdRevaluationCostClpByDate(accountId)) {
-    byDate.set(iso, (byDate.get(iso) ?? 0) + clp);
+function ccChargesByDateInUnit(accountId: number, unit: CurrencyCode): Map<string, number> {
+  if (unit === "clp") return ccSection3FinancingClpByDate(accountId);
+  const seen = new Set<string>();
+  const byDate = new Map<string, number>();
+  const add = (iso: string, qty: number, from: CurrencyCode) => {
+    const v = from === unit ? qty : convertValue(qty, from, unit, iso, "debt");
+    if (v == null || !Number.isFinite(v)) {
+      throw new Error(`card ${accountId}: no ${from}→${unit} rate on or before ${iso} for a financing charge`);
+    }
+    byDate.set(iso, (byDate.get(iso) ?? 0) + v);
+  };
+  for (const l of normalizedPostCloseLines(accountId)) {
+    if (seen.has(l.key)) continue;
+    seen.add(l.key);
+    if (!l.financing) continue;
+    if (l.amount == null || !Number.isFinite(l.amount) || l.amount === 0) continue;
+    add(l.iso, l.amount, l.currency);
+  }
+  for (const plan of ccInstallmentInterestForAccount(accountId)) add(plan.iso, plan.interest_clp, "clp");
+  return byDate;
+}
+
+/**
+ * The card's whole P/L as a cost per day (positive = loss) in `unit`: the bank's charges and plan
+ * interest plus the fx revaluation of the sub-balances owed in another currency
+ * (`ccRevaluationCostByDate`: in pesos the dollars owed — a loss when the peso falls — with each
+ * dollar payment at the pesos actually paid; in dollars the pesos owed). With this cost the
+ * derived flow `−Δowed + cost`, both in `unit`, is the evidence at each event's day rate, and
+ * Σ of the days of a month is the month (the monthly rows read the same map).
+ */
+export function ccFinancingCostByDateInUnit(accountId: number, unit: CurrencyCode): Map<string, number> {
+  const byDate = new Map(ccChargesByDateInUnit(accountId, unit));
+  for (const [iso, cost] of ccRevaluationCostByDate(accountId, unit)) {
+    byDate.set(iso, (byDate.get(iso) ?? 0) + cost);
   }
   return byDate;
 }
 
-/** Σ card cost (CLP, positive) in the window `(fromYmd, toYmd]`: charges, plan interest and fx revaluation. */
-export function ccFinancingCostClpBetween(
+/** {@link ccFinancingCostByDateInUnit} in pesos. */
+export function ccFinancingCostClpByDate(accountId: number): Map<string, number> {
+  return ccFinancingCostByDateInUnit(accountId, "clp");
+}
+
+/** Σ card cost (positive) in `unit` in the window `(fromYmd, toYmd]`: charges, plan interest and fx revaluation. */
+export function ccFinancingCostBetweenInUnit(
   accountId: number,
   fromYmd: string,
-  toYmd: string
+  toYmd: string,
+  unit: CurrencyCode
 ): number {
   let sum = 0;
-  for (const [iso, clp] of ccFinancingCostClpByDate(accountId)) {
+  for (const [iso, v] of ccFinancingCostByDateInUnit(accountId, unit)) {
     if (iso <= fromYmd || iso > toYmd) continue;
-    sum += clp;
+    sum += v;
   }
   return sum;
+}
+
+/** {@link ccFinancingCostBetweenInUnit} in pesos. */
+export function ccFinancingCostClpBetween(accountId: number, fromYmd: string, toYmd: string): number {
+  return ccFinancingCostBetweenInUnit(accountId, fromYmd, toYmd, "clp");
 }

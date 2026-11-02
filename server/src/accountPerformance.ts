@@ -21,7 +21,7 @@ import {
   mortgageSheetPaymentEventsThroughDate,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
-import { ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
+import { ccFinancingCostBetweenInUnit } from "./ccFinancingCostDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
@@ -80,7 +80,7 @@ function numCell(v: unknown): number | null {
   return null;
 }
 
-/** A CLP amount in the performance series unit at `asOf` (the card's financing cost). */
+/** A CLP amount in the performance series unit at `asOf` (a UF window flow). */
 function perfSheetClpFlowInUnit(clpFlow: number, asOf: string, unit: TsUnit): number {
   if (unit === "clp") return clpFlow;
   const converted = convertTs(clpFlow, asOf, unit);
@@ -559,11 +559,10 @@ function creditCardMonthPerf(
   toYmd: string,
   unit: TsUnit
 ): { netFlow: number; nominal: number; pct: number | null } {
-  const financing = perfSheetClpFlowInUnit(
-    ccFinancingCostClpBetween(accountId, fromYmdExclusive ?? "", toYmd),
-    toYmd,
-    unit
-  );
+  // The cost in the series unit, day by day (`ccFinancingCostByDateInUnit`): in dollars the
+  // charges at their own day's rate and the revaluation of the pesos owed, so the month is Σ of
+  // the daily series' days and P/L = Δvalue − flow in the unit.
+  const financing = ccFinancingCostBetweenInUnit(accountId, fromYmdExclusive ?? "", toYmd, unit);
   const prior = priorClosing != null && Number.isFinite(priorClosing) ? priorClosing : 0;
   return {
     netFlow: -(closing - prior) + financing,

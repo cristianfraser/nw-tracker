@@ -77,30 +77,36 @@
 The USD abono (−US$x on the dollar statement) and the CLP cargo (+$y on the peso statement) are
 dated the same day (checked on all 9 links in the real DB). Natively they move x dollars out of the
 USD sub-balance and y pesos into the CLP one; no pairing is needed for value. On that day the value
-moves by y − x·buy(d): the bank's conversion against the market buy rate. That step is debt that
-really changed (the bank fixed the pesos), and by the P/L rule below it is flow, not P/L. The link
-table stays (the facturación's paid rate reads it).
+moves by y − x·buy(d): the bank's conversion against the market buy rate. Since the real-rate rule
+below (2026-11-02) a traspaso is a dollar payment at the bank's rate y/x: its two legs net to zero
+flow and that step is fx P/L. The link table stays (the facturación's paid rate reads it).
 
 ## P/L (user decision 2026-11-02: the fx move on dollar debt is P/L)
 
 Book treatment: a foreign-currency liability revalued at the date's rate is an fx gain or loss,
-loss-negative like the rest of the card's P/L. Per day:
+loss-negative like the rest of the card's P/L. Per day, in display unit u:
 
-- P/L = −(section-3 charges + plan interest) − usd(d−1) · (R(d) − R(d−1)), where usd(d−1) is the
-  dollars owed at the end of the previous day and R the debt-side rate (buy; sell for a dollar
-  credit; a day the side flips takes each day's own). `ccUsdRevaluationCostClpByDate` sweeps the
-  dollar walk day by day (past days memoized with the card's satellites, today at the live rate);
-  `ccFinancingCostClpByDate` adds it to the charges (`ccSection3FinancingClpByDate`, which the
-  financing identity script checks alone).
-- Flow stays derived as −Δowed + cost in the modules that build it (`dailySeries`,
-  `accountPerformance`). With V(d) = clp(d) + usd(d) · R(d) that equals the evidence at each
-  event's own day rate (Δclp + Δusd · R(d)) — what the decision asks — with no edit to those
-  modules. The peso side keeps today's rule (anchor re-framing is flow).
-- Σ days = month by construction: the month reads `ccFinancingCostClpBetween`, the sum of the same
-  daily map, and Δowed over a month is the sum of the daily Δ.
-- Unit: the cost is in pesos and the USD P/L converts it (`perfSheetClpFlowInUnit`). In USD the
-  revaluation belongs to the PESO sub-balance instead (a dollar debt does not move in dollars); a
-  unit-aware leg needs phase 2 (open question 2).
+- cost_u(d) = charges_u(d) + Σ_{c ≠ u} owed_c(d−1) · (R_c→u(d) − R_c→u(d−1)), R at the side the
+  sub-balance is valued at (debt while owed, asset while in credit; a day the side flips takes each
+  day's own). In pesos: the charges as `ccSection3FinancingClpByDate` states them and the dollars
+  owed × the change in the buy rate. In dollars: each charge in its billed currency at its own
+  day's debt-side rate and the pesos owed × the change in the sell rate (the dollars are dollars).
+  `ccRevaluationCostByDate(card, unit)` sweeps both sub-balances day by day (past days memoized with
+  the card's satellites, today at the live rate); `ccFinancingCostByDateInUnit` adds the charges.
+- **A dollar payment counts at the pesos actually paid** (user decision 2026-11-02; pesos only).
+  Where the payment has its real rate on file — `usdDebtPaymentsForAccount`: the divisas purchase
+  paired with its ABONO DE DIVISAS (`pago_tarjeta` with a USD counter leg), a traspaso's peso leg,
+  the traced cost of dollars paid from a USD cash account (`usdCashCostLots.ts`) — the payment day's
+  term adds `pesos paid − dollars paid · R(d)`. The paid dollars' fx P/L that day is then
+  `dollars · (real rate − R(d−1))` instead of the day's rate change, the dollars still owed revalue
+  as before, and the payment's flow is the pesos paid. Over a facturación the currency P/L is the
+  pesos paid less its charges' pesos when made. A payment with no real rate on file keeps the day's.
+- Flow stays derived as −Δowed + cost, both in the unit, in the modules that build it (`dailySeries`
+  `ccDerivedFlows`, `accountPerformance` `creditCardMonthPerf`, the dashboard day cell). With
+  V_u(d) = Σ_c owed_c(d) · R_c→u(d) that equals the evidence at each event's own day rate (a payment
+  with a real rate at its pesos), so P/L = −cost = Δvalue − flow in the unit.
+- Σ days = month by construction: the month reads `ccFinancingCostBetweenInUnit`, the sum of the
+  same daily map, and Δowed over a month is the sum of the daily Δ.
 
 ## Migration and re-stamp
 
@@ -134,13 +140,13 @@ card (every month-end since 2017 + the last 120 days):
 
 ## Open questions
 
-1. Phase 2 must consume `ccOwedByCurrencyAtYmd` for a card shown in USD (the CLP entry points stay
-   right for CLP display only).
-2. Card P/L in USD display: the fx revaluation is computed in pesos and converted, so in USD it
-   still describes the dollar sub-balance's peso move; the right USD figure (the peso sub-balance
-   revalued at the sell rate) needs a unit-aware cost leg in `dailySeries` / `accountPerformance`.
+1. Phase 2 consumes `ccOwedByCurrencyAtYmd` for a card shown in USD (`cardValueInUnit.ts`). Done.
+2. Card P/L in USD display: done in phase 6 (the unit-aware cost above).
 3. `balance_statement_clp` (statement frame, internal) still converts at the debt frame: the Cupo
    card's «used» figure and the stored snapshot read it. Move them to the per-currency figure when
    the Cupo card shows each currency apart.
-4. The mark-input rule that trims a card 75 days back on an fx row (`markInputChanges.ts`, phase 3)
-   over-trims now: a card's past value reads only its own day's rate.
+4. The mark-input rule that trimmed a card 75 days back on an fx row is gone (phase 6): a card's
+   past value reads only its own day's rate, so a rate row trims it from the row's own day.
+5. A dollar payment's traced cost depends on the USD cash account's lots; a later change to that
+   account's movements does not drop the card's cached revaluation (the facturación paid rate has
+   the same reach). Rebuilt on the next card write or rate change.

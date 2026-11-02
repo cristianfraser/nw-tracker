@@ -25,11 +25,10 @@ import { getAccountPositionMeta, positionSnapshotFromMeta } from "./accountPosit
 import { flowAdjustedPct } from "./periodReturns.js";
 import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
-import { ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
+import { ccFinancingCostBetweenInUnit, ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
 import { flowEventInUnit } from "./flowsDeposits.js";
 import { timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 import {
-  convertTs,
   getDashboardChartShape,
   liabilitiesBreakdownClpAsOf,
   type TsUnit,
@@ -205,19 +204,6 @@ function dashboardRowPeriodPcts(
         }
       : {}),
   };
-}
-
-/**
- * A card's financing cost in dollars at `asOf`, the conversion its monthly rows apply to the
- * month's financing (`perfSheetClpFlowInUnit` → `convertTs`): the stored USD/CLP row on or
- * before the date. A missing rate throws, as it does for the rows.
- */
-function ccFinancingClpInUsd(clp: number, asOf: string, accountId: number): number {
-  const usd = convertTs(clp, asOf, "usd");
-  if (!Number.isFinite(usd)) {
-    throw new Error(`Account ${accountId}: no USD/CLP rate on or before ${asOf} for the card's day financing`);
-  }
-  return usd;
 }
 
 /**
@@ -449,8 +435,9 @@ function buildDashboardAccountRow(
   // nominal_pl): a UF uptick is a daily financing loss on the mortgage, an amortizing
   // cuota nets interest+seguros. A card's day cost is the intereses/comisiones charged
   // that day (`ccFinancingCostDaily.ts`) — its purchases and PAGOs are flows, so they
-  // cancel out and most days read 0 — in dollars at the rate its monthly rows convert the
-  // month's financing at (`convertTs` at today), so the day and the month share one frame.
+  // cancel out and most days read 0 — and the fx revaluation of what it owes in another
+  // currency; in dollars the same cost in dollars (`ccFinancingCostByDateInUnit`), the map its
+  // monthly rows sum, so the day and the month share one frame.
   const isMortgageRow = kindSlug === "mortgage";
   const isCcRow = kindSlug === "credit_card";
   const ccDayFinancingClp = isCcRow ? ccFinancingCostClpBetween(a.id, priorDayYmd, today) : 0;
@@ -463,7 +450,7 @@ function buildDashboardAccountRow(
       : null;
   const delta_day_usd = isCcRow
     ? includeUsd
-      ? ccFinancingClpInUsd(-ccDayFinancingClp, today, a.id)
+      ? -ccFinancingCostBetweenInUnit(a.id, priorDayYmd, today, "usd")
       : null
     : includeUsd && current_value_usd != null && prior_day_close_usd != null
       ? isMortgageRow
