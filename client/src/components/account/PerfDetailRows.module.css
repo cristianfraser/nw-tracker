@@ -60,6 +60,7 @@
 .flow,
 .total {
   font-size: var(--font-size-card-meta-sm);
+  color: var(--muted);
 }
 
 .arrow {
