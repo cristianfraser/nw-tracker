@@ -57,7 +57,7 @@ import {
   renderPayslips,
   DEMO_CHECKING_NUMBER,
 } from "./render.js";
-import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, mortgageCuotaUf, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
+import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, mortgageBalanceUf, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 
 export type GenerateDemoDbOptions = { person: Person; market: "synthetic" | "real"; today?: Ymd };
@@ -317,27 +317,35 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketRea
     );
     for (const c of m.cuotas) {
       pagoAcum += c.clp;
-      amortAcumUf = r4(amortAcumUf + c.amortUf);
+      amortAcumUf = r4(amortAcumUf + c.amortUf + c.extUf);
       const vv = valueUfAt(c.date);
+      const common = {
+        occurred_on: c.date,
+        amount_clp: c.clp,
+        amount_uf: r5(c.clp / c.ufDay),
+        uf_clp_day: c.ufDay,
+        credito_restante_uf: r4(c.balanceAfterUf),
+        valor_vivienda_uf: r4(vv),
+        valor_neto_uf: r4(vv - c.balanceAfterUf),
+        valor_neto_clp: Math.round((vv - c.balanceAfterUf) * c.ufDay),
+        pagado_neto_uf: amortAcumUf,
+        pago_acumulado_clp: pagoAcum,
+      };
+      if (c.n == null) {
+        // A prepago is all extra amortization.
+        emit(base({ cuota: c.label, ...common, amortizacion_ext_clp: c.clp, amortizacion_ext_uf: r5(c.extUf) }));
+        continue;
+      }
       emit(
         base({
-          cuota: String(c.n),
-          occurred_on: c.date,
-          amount_clp: c.clp,
-          amount_uf: r5(c.clp / c.ufDay),
-          uf_clp_day: c.ufDay,
-          credito_restante_uf: r4(c.balanceAfterUf),
-          valor_vivienda_uf: r4(vv),
-          valor_neto_uf: r4(vv - c.balanceAfterUf),
-          valor_neto_clp: Math.round((vv - c.balanceAfterUf) * c.ufDay),
-          pagado_neto_uf: amortAcumUf,
-          pago_acumulado_clp: pagoAcum,
+          cuota: c.label,
+          ...common,
           min_uf: r5(c.pmtUf),
-          max_uf: r5(c.pmtUf * 1.2),
+          max_uf: r5(c.pmtUf * 1.2 + c.extUf),
           amortizacion_clp: Math.round(c.amortUf * c.ufDay),
           amortizacion_uf: r5(c.amortUf),
-          amortizacion_ext_clp: 0,
-          amortizacion_ext_uf: 0,
+          amortizacion_ext_clp: Math.round(c.extUf * c.ufDay),
+          amortizacion_ext_uf: r5(c.extUf),
           interes_clp: Math.round(c.interestUf * c.ufDay),
           interes_uf: r5(c.interestUf),
           incendio_clp: 18_000,
@@ -349,8 +357,7 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketRea
     for (let mo = HOUSE.month; ; mo = addMonths(mo, 1)) {
       const end = ymd(mo, daysInMonth(mo));
       const day = end <= today ? end : today;
-      const paid = m.cuotas.filter((c) => c.date <= day).length;
-      const balUf = paid > 0 ? mortgageCuotaUf(HOUSE, m.principalUf, paid).balanceAfterUf : m.principalUf;
+      const balUf = mortgageBalanceUf(m, day);
       const uf = market.uf(day);
       insVal.run(mortgageId, day, Math.round(balUf * uf));
       insVal.run(propertyId, day, Math.round((valueUfAt(day) - balUf) * uf));

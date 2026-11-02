@@ -132,6 +132,10 @@ export type House = {
   gastosOperacionalesUf: number;
   termMonths: number;
   monthlyRate: number;
+  /** Paid above the minimum dividendo every month (amortización extraordinaria), UF. */
+  monthlyExtraUf: number;
+  /** Partial prepayments (prepagos), paid by transfer from checking. */
+  prepayments: { date: Ymd; uf: number }[];
   gcClp: number;
   contribucionesMonths: number[];
   contribucionesClp: number;
@@ -154,6 +158,12 @@ const HOUSE: House = {
   termMonths: 300,
   /** Monthly rate of the UF credit (≈ 4,4 %/yr). */
   monthlyRate: 0.0036,
+  /** Enough above the minimum that the balance falls faster than the UF rises. */
+  monthlyExtraUf: 12,
+  prepayments: [
+    { date: "2025-07-22", uf: 150 },
+    { date: "2026-05-20", uf: 120 },
+  ],
   gcClp: 150_000,
   /** Contribuciones paid in these months (real CLP). */
   contribucionesMonths: [4, 6, 9, 11],
