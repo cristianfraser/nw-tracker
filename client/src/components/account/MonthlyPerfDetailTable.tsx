@@ -137,18 +137,17 @@ export function MonthlyPerfDetailTable({
     const flows: (PerfDetailFlow | null)[] = [
       ...(showIncome
         ? [
-            expenses ? { key: "expenses", icon: ShoppingBagIcon, amount: fmtPerf(expenses), title: t("flows.overview.expenses") } : null,
-            income ? { key: "income", icon: BanknoteIcon, amount: fmtPerf(income), title: t("flows.overview.income") } : null,
+            { key: "expenses", icon: ShoppingBagIcon, amount: fmtPerf(expenses ?? 0), title: t("flows.overview.expenses") },
+            { key: "income", icon: BanknoteIcon, amount: fmtPerf(income ?? 0), title: t("flows.overview.income") },
           ]
         : []),
-      Number.isFinite(row.net_capital_flow) && row.net_capital_flow !== 0
-        ? {
-            key: "contribution",
-            icon: PiggyBankIcon,
-            amount: fmtPerf(row.net_capital_flow),
-            title: t("accountDetail.netDepositsColumn"),
-          }
-        : null,
+      // Shown every period, $0 included: an empty month is information too.
+      {
+        key: "contribution",
+        icon: PiggyBankIcon,
+        amount: fmtPerf(Number.isFinite(row.net_capital_flow) ? row.net_capital_flow : 0),
+        title: t("accountDetail.netDepositsColumn"),
+      },
       ...(showStockInflows
         ? [
             Number.isFinite(units) && units !== 0

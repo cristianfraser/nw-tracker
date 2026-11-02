@@ -64,14 +64,12 @@ export function DailyPerfDetailTable({
     period: row.as_of_date,
     closing: fmt(row.value),
     flows: [
-      row.flow !== 0 && Number.isFinite(row.flow)
-        ? {
-            key: "contribution",
-            icon: PiggyBankIcon,
-            amount: fmt(row.flow),
-            title: labels.netDeposits,
-          }
-        : null,
+      {
+        key: "contribution",
+        icon: PiggyBankIcon,
+        amount: fmt(Number.isFinite(row.flow) ? row.flow : 0),
+        title: labels.netDeposits,
+      },
     ],
     result:
       row.pl == null || !Number.isFinite(row.pl)
