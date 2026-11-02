@@ -80,7 +80,6 @@ export function AccountBookValuationForm({ accountId, displayUnit }: Props) {
           gridTemplateColumns: "repeat(auto-fill, minmax(9rem, 1fr))",
           gap: "0.5rem 0.75rem",
           alignItems: "end",
-          maxWidth: "28rem",
         }}
       >
         <Field label={t("accountDetail.bookLedger.dateLabel")}>

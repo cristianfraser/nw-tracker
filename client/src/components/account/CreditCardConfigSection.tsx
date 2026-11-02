@@ -120,7 +120,6 @@ export function CreditCardConfigSection({ accountId }: Props) {
           gridTemplateColumns: "repeat(auto-fill, minmax(9rem, 1fr))",
           gap: "0.5rem 0.75rem",
           alignItems: "end",
-          maxWidth: "40rem",
         }}
       >
         <Field label={t("accountDetail.creditCard.configCupoClpLabel")}>
