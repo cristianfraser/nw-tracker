@@ -1,14 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import {
-  equitySessionYmdForTicker,
-  shouldUseLiveEquityQuote,
-} from "./equityQuote.js";
 import { nyseDisplaySessionYmd } from "./nyseSession.js";
-import { clearLiveMarketQuotesForTest, insertLiveMarketQuote } from "./liveMarketQuotesDb.js";
+import { clearLiveMarketQuotesForTest } from "./liveMarketQuotesDb.js";
 import {
   computeEquityMtmClp,
-  computeEquityMtmClpCachedLive,
   computeEquityMtmClpDisplaySync,
   computeLatestDisplayedEquityClp,
   equityTickerForAccount,
@@ -34,18 +29,6 @@ function firstAccionesAccountWithTicker(): { account_id: number; ticker: string 
     if (hasUnits) return { account_id: r.account_id, ticker };
   }
   return null;
-}
-
-function seedLiveQuote(ticker: string, session: string, priceUsd: number): void {
-  insertLiveMarketQuote({
-    symbol: ticker,
-    kind: "equity",
-    currency: "usd",
-    value: priceUsd,
-    session_ymd: session,
-    previous_value: null,
-    fetched_at: new Date().toISOString(),
-  });
 }
 
 describe("equityTickerForAccount", () => {
@@ -76,34 +59,6 @@ describe("computeLatestDisplayedEquityClp", () => {
     const acct = firstAccionesAccountWithTicker();
     if (!acct) return;
     expect(() => computeLatestDisplayedEquityClp(acct.account_id)).not.toThrow();
-  });
-});
-
-describe("computeEquityMtmClpCachedLive session gate", () => {
-  it("returns null after NYSE close even when live row exists", () => {
-    const acct = firstAccionesAccountWithTicker();
-    if (!acct) return;
-
-    const afterClose = new Date("2026-05-19T17:00:00-04:00");
-    const session = equitySessionYmdForTicker(acct.ticker, afterClose);
-    expect(shouldUseLiveEquityQuote(acct.ticker, session, afterClose)).toBe(false);
-
-    seedLiveQuote(acct.ticker, session, 999);
-    expect(computeEquityMtmClpCachedLive(acct.account_id, afterClose)).toBeNull();
-  });
-
-  it("uses DB live quote during regular session", () => {
-    const acct = firstAccionesAccountWithTicker();
-    if (!acct) return;
-
-    const midSession = new Date("2026-05-19T11:00:00-04:00");
-    const session = equitySessionYmdForTicker(acct.ticker, midSession);
-    expect(shouldUseLiveEquityQuote(acct.ticker, session, midSession)).toBe(true);
-
-    seedLiveQuote(acct.ticker, session, 500);
-    const clp = computeEquityMtmClpCachedLive(acct.account_id, midSession);
-    expect(clp).not.toBeNull();
-    expect(clp!).toBeGreaterThan(0);
   });
 });
 

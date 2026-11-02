@@ -18,9 +18,6 @@ import {
   equityDisplaySessionYmd,
   equityQuoteCurrency,
   marketQuoteCurrency,
-  equitySessionYmdForTicker,
-  getLiveEquityQuoteFromDb,
-  shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import type { EodCloseSeries } from "./equityYahooEod.js";
 import { chileWallClockAt } from "./chileDate.js";
@@ -150,20 +147,6 @@ function computeEquityMtmClpUncached(
   // Shares × the quote-currency price, converted once at what selling them would get
   // (`valueConvert.ts`): the date's rate, live while today's fx day is open.
   return convertValue(units * close, equityQuoteCurrency(ticker), "clp", asOfYmd, "asset", now);
-}
-
-/** Sync MTM using a fresh cached live quote only during NYSE regular session. */
-export function computeEquityMtmClpCachedLive(
-  accountId: number,
-  now: Date = new Date()
-): number | null {
-  if (!accountUsesEquityMtm(accountId)) return null;
-  const ticker = requireEquityTicker(accountId);
-  const session = equitySessionYmdForTicker(ticker, now);
-  if (!shouldUseLiveEquityQuote(ticker, session, now)) return null;
-  const cached = getLiveEquityQuoteFromDb(ticker);
-  if (!cached) return null;
-  return computeEquityMtmClp(accountId, session, cached.price, now);
 }
 
 /**
