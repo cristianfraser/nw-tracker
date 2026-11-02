@@ -1,5 +1,5 @@
 import { dbStateMemo } from "./dbStateMemo.js";
-import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { valuationCurrency, valuationsAreAppraisals } from "./valuationValue.js";
 import { hasCuotaLedgerUnitsEvents } from "./accountPosition.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { accountUsesEquityMtm, equityShareUnitsThroughYmd } from "./brokerageEquityMtm.js";
@@ -216,23 +216,34 @@ function historicalQtyMarkUncached(
     }
   }
 
+  // A property's valuations are its appraisals, not its value (the depto ledger above values it).
+  if (valuationsAreAppraisals(kind)) return null;
   const stored = db
     .prepare(
-      `SELECT as_of_date, value AS value_clp, currency FROM valuations
+      `SELECT as_of_date, value, currency FROM valuations
        WHERE account_id = ? AND as_of_date <= ?
        ORDER BY as_of_date DESC LIMIT 1`
     )
-    .get(accountId, asOfYmd) as { as_of_date: string; value_clp: number; currency: string } | undefined;
-  if (stored) assertValuationCurrencyClp(stored.currency, "accountMarkClpAtYmd");
-  if (stored?.value_clp != null && Number.isFinite(stored.value_clp)) {
+    .get(accountId, asOfYmd) as { as_of_date: string; value: number; currency: string } | undefined;
+  if (stored?.value != null && Number.isFinite(stored.value)) {
+    const code = valuationCurrency(stored.currency, "accountMarkClpAtYmd");
     // Book-value carry: a stale mark forward-fills plus net flows since its date, so a
     // deposit day moves the value (daily pl 0) instead of booking −flow until the next mark.
-    // Never for CC/mortgage balances (own branches above; flows ≠ balance deltas there).
-    const value_clp =
-      kind === "credit_card" || kind === "mortgage"
-        ? stored.value_clp
-        : storedMarkValueWithFlowCarry(accountId, stored.value_clp, stored.as_of_date, asOfYmd);
-    return currency("clp", value_clp, stored.as_of_date);
+    // Never for CC/mortgage balances (own branches above; flows ≠ balance deltas there). The
+    // carried flows are pesos: a mark stored in another currency has no carry to add.
+    if (kind === "credit_card" || kind === "mortgage" || stored.as_of_date === asOfYmd) {
+      return currency(code, stored.value, stored.as_of_date);
+    }
+    if (code !== "clp") {
+      throw new Error(
+        `accountMarkClpAtYmd: account ${accountId} has a ${code} book mark on ${stored.as_of_date}; the flow carry to ${asOfYmd} is in pesos`
+      );
+    }
+    return currency(
+      "clp",
+      storedMarkValueWithFlowCarry(accountId, stored.value, stored.as_of_date, asOfYmd),
+      stored.as_of_date
+    );
   }
 
   return null;

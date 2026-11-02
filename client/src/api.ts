@@ -460,7 +460,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   accountValuations: (id: string | number) =>
-    j<{ valuations: { id: number; as_of_date: string; value_clp: number }[] }>(
+    j<{ valuations: { id: number; as_of_date: string; value: number; currency: string }[] }>(
       `/api/accounts/${id}/valuations`
     ),
   createAccountValuation: (

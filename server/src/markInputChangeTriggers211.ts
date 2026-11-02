@@ -129,11 +129,6 @@ export const MARK_INPUT_TRIGGER_SPECS: TriggerSpec[] = [
       "principal", "extra_principal", "interest",
     ],
   },
-  {
-    table: "property_appraisals",
-    targets: (r) => [{ account: `${r}.account_id`, date: `${r}.as_of_date` }],
-    watch: ["account_id", "as_of_date", "value", "currency"],
-  },
   { table: "fx_daily", targets: (r) => [{ account: ALL, date: `${r}.date` }], watch: ["date", "clp_per_usd"] },
   {
     table: "fx_daily_bid_ask",
@@ -280,7 +275,15 @@ const DEPTO_PAYMENTS_SPEC_BEFORE_258: TriggerSpec = {
     "amortizacion_uf", "amortizacion_ext_uf", "interes_uf",
   ],
 };
-const TABLES_SINCE_258 = ["loan_payments", "property_appraisals"];
+/**
+ * The property's appraisals between migrations 258 and 260 (`property_appraisals`, UF); 260 moved
+ * them into `valuations` and dropped the table. Only the 258 hook installs this spec.
+ */
+const PROPERTY_APPRAISALS_SPEC_258_TO_260: TriggerSpec = {
+  table: "property_appraisals",
+  targets: (r) => [{ account: `${r}.account_id`, date: `${r}.as_of_date` }],
+  watch: ["account_id", "as_of_date", "value", "currency"],
+};
 
 /**
  * The specs as the schema stood before migration 257: `fund_unit_daily` named its price
@@ -299,7 +302,7 @@ function specsBefore258(specs: readonly TriggerSpec[]): TriggerSpec[] {
   for (const spec of specs) {
     if (spec.table === "loan_payments") out.push(DEPTO_PAYMENTS_SPEC_BEFORE_258);
     else if (spec.table === "fund_unit_daily") out.push(fundUnitSpecBefore257(spec));
-    else if (!TABLES_SINCE_258.includes(spec.table)) out.push(spec);
+    else out.push(spec);
   }
   return out;
 }
@@ -326,5 +329,13 @@ export function runMarkInputChangeTriggers243(dbi: DatabaseType): void {
 
 /** Migration 258 hook: `depto_payments` is gone — watch `loan_payments` and `property_appraisals`. */
 export function runMarkInputChangeTriggers258(dbi: DatabaseType): void {
+  installMarkInputChangeTriggers(dbi, [...MARK_INPUT_TRIGGER_SPECS, PROPERTY_APPRAISALS_SPEC_258_TO_260]);
+}
+
+/**
+ * Migration 260 hook: `valuations` was rebuilt (its triggers went with the old table) and
+ * `property_appraisals` is gone (the appraisals are `valuations` rows now).
+ */
+export function runMarkInputChangeTriggers260(dbi: DatabaseType): void {
   installMarkInputChangeTriggers(dbi, MARK_INPUT_TRIGGER_SPECS);
 }

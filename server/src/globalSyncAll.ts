@@ -1,4 +1,4 @@
-import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { assertValuationCurrency } from "./valuationValue.js";
 import { invalidateMarketDataAggregations } from "./aggregationCache.js";
 /**
  * Orchestrates external syncs with Chile-time rules:
@@ -312,7 +312,7 @@ async function runAfpUno(
   const prevVal = db
     .prepare(`SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`)
     .get(row.id, cl.ymd) as { value_clp: number; currency: string } | undefined;
-  if (prevVal) assertValuationCurrencyClp(prevVal.currency, "globalSyncAll afp valuation");
+  if (prevVal) assertValuationCurrency(prevVal.currency, "clp", "globalSyncAll afp valuation");
   const marked = upsertAfpSpotValuationWithExplicitPx({
     accountId: row.id,
     asOfYmd: cl.ymd,

@@ -1,4 +1,5 @@
-import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
+import { holdingIsDebt } from "./holdings.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
@@ -26,21 +27,33 @@ const stmtFallback = db.prepare(
    ORDER BY as_of_date DESC LIMIT 1`
 );
 
-/** Phase-1 currency guard for stored rows; strips `currency` so DTO shapes stay unchanged. */
-function guardStoredValuation(
-  row: (LatestValuationRow & { currency: string }) | undefined,
-  ctx: string
-): LatestValuationRow | undefined {
-  if (!row) return undefined;
-  assertValuationCurrencyClp(row.currency, ctx);
-  return { value_clp: row.value_clp, as_of_date: row.as_of_date };
-}
-
 const stmtCategorySlug = db.prepare(
   `SELECT g.slug AS bucket_slug FROM accounts a
    JOIN asset_groups g ON g.id = a.asset_group_id
    WHERE a.id = ?`
 );
+
+/**
+ * A stored row as the account's value in pesos, converted once at the account's side. A
+ * property's rows are its appraisals, not its value: none.
+ */
+function storedValueClp(
+  accountId: number,
+  row: { value_clp: number; currency: string; as_of_date: string } | undefined,
+  ctx: string
+): LatestValuationRow | undefined {
+  if (!row) return undefined;
+  const cat = stmtCategorySlug.get(accountId) as { bucket_slug: string } | undefined;
+  const kind = cat ? accountBucketKindSlug(cat.bucket_slug) : "";
+  if (valuationsAreAppraisals(kind)) return undefined;
+  const value_clp = storedValuationInUnit(
+    { value: row.value_clp, currency: row.currency, as_of_date: row.as_of_date },
+    "clp",
+    holdingIsDebt(kind) ? "debt" : "asset",
+    ctx
+  );
+  return { value_clp, as_of_date: row.as_of_date };
+}
 
 /** Latest valuation on or before `asOfYmd`. Returns `undefined` when the account has no history yet. */
 export function latestValuationRowOnOrBefore(
@@ -48,7 +61,8 @@ export function latestValuationRowOnOrBefore(
   asOfYmd: string
 ): LatestValuationRow | undefined {
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
-  return guardStoredValuation(
+  return storedValueClp(
+    accountId,
     stmtOnOrBefore.get(accountId, asOfYmd) as (LatestValuationRow & { currency: string }) | undefined,
     "valuationLatest onOrBefore"
   );
@@ -61,12 +75,14 @@ export function latestValuationRowOnOrBefore(
 export function latestValuationRowOnOrBeforeChileToday(accountId: number): LatestValuationRow | undefined {
   if (!Number.isFinite(accountId) || accountId <= 0) return undefined;
   const today = chileCalendarTodayYmd();
-  const row = guardStoredValuation(
+  const row = storedValueClp(
+    accountId,
     stmtOnOrBefore.get(accountId, today) as (LatestValuationRow & { currency: string }) | undefined,
     "valuationLatest today"
   );
   if (row) return row;
-  return guardStoredValuation(
+  return storedValueClp(
+    accountId,
     stmtFallback.get(accountId) as (LatestValuationRow & { currency: string }) | undefined,
     "valuationLatest fallback"
   );

@@ -1,4 +1,4 @@
-import { assertValuationCurrencyClp } from "../src/valuationValue.js";
+import { assertValuationCurrency } from "../src/valuationValue.js";
 import { type ChileWallClock } from "../src/chileDate.js";
 import {
   fintualPublishLagsPollCalendarDay,
@@ -51,7 +51,7 @@ export function priorAccountValuation(
   const row = stmtPriorValuation.get(accountId, beforeYmd) as
     | { as_of_date: string; value_clp: number; currency: string }
     | undefined;
-  if (row) assertValuationCurrencyClp(row.currency, "fintualApplyShared prior");
+  if (row) assertValuationCurrency(row.currency, "clp", "fintualApplyShared prior");
   if (row?.value_clp == null || !Number.isFinite(row.value_clp)) return null;
   return row;
 }
@@ -94,7 +94,7 @@ function storedFintualGoalNavAt(
   const row = stmtValuationOnDay.get(accountId, asOfYmd) as
     | { value_clp: number; currency: string }
     | undefined;
-  if (row) assertValuationCurrencyClp(row.currency, "fintualApplyShared onDay");
+  if (row) assertValuationCurrency(row.currency, "clp", "fintualApplyShared onDay");
   if (row?.value_clp == null || !Number.isFinite(row.value_clp)) return null;
   return Math.round(row.value_clp);
 }

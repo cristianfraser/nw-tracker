@@ -1,4 +1,4 @@
-import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { assertValuationCurrency } from "./valuationValue.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { getCreditCardGroupNavChildren } from "./creditCardTree.js";
@@ -325,7 +325,7 @@ function linkedCreditCardClpForCashCardByDatesUncached(
       value_clp: number;
       currency: string;
     }[];
-    for (const r of rows) assertValuationCurrencyClp(r.currency, "liabilityTree cc byDates");
+    for (const r of rows) assertValuationCurrency(r.currency, "clp", "liabilityTree cc byDates");
     return { master, rows };
   });
 
@@ -350,7 +350,7 @@ export function creditCardLiabilityLinkRowsForCashCard(asOfYmd: string): CreditC
       value_clp: number;
       currency: string;
     }[];
-    for (const r of rows) assertValuationCurrencyClp(r.currency, "liabilityTree cc links");
+    for (const r of rows) assertValuationCurrency(r.currency, "clp", "liabilityTree cc links");
     const clp = linkedCreditCardBalanceTotalClpAsOf(master, rows, asOfYmd, today);
     if (clp == null || !Number.isFinite(clp)) continue;
     out.push({

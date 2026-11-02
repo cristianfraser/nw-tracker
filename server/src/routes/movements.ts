@@ -1,4 +1,5 @@
-import { assertValuationCurrencyClp } from "../valuationValue.js";
+import { valuationCurrency, valuationsAreAppraisals } from "../valuationValue.js";
+import { accountKindSlugForAccountId } from "../accountBucket.js";
 /** Manual movement create, valuations upsert, aggregation cache clear. Split verbatim from index.ts; paths unchanged. */
 import express from "express";
 import { accountRowForId } from "../accountRowForMovement.js";
@@ -112,12 +113,11 @@ app.post("/api/accounts/:id/movements", (req, res) => {
 app.get("/api/accounts/:id/valuations", (req, res) => {
   const id = accountIdFromReq(req);
   const rows = db
-    .prepare(
-      `SELECT id, as_of_date, value AS value_clp, currency FROM valuations WHERE account_id = ? ORDER BY as_of_date DESC`
-    )
-    .all(id) as { id: number; as_of_date: string; value_clp: number; currency: string }[];
-  for (const r of rows) assertValuationCurrencyClp(r.currency, "GET /valuations");
-  res.json({ valuations: rows.map(({ currency, ...r }) => r) });
+    .prepare(`SELECT id, as_of_date, value, currency FROM valuations WHERE account_id = ? ORDER BY as_of_date DESC`)
+    .all(id) as { id: number; as_of_date: string; value: number; currency: string }[];
+  // Each row in the currency it is stated in (a property's appraisals in UF).
+  for (const r of rows) valuationCurrency(r.currency, "GET /valuations");
+  res.json({ valuations: rows });
 });
 
 app.post("/api/accounts/:id/valuations", (req, res) => {
@@ -131,6 +131,11 @@ app.post("/api/accounts/:id/valuations", (req, res) => {
   }
   if (!isFiniteNumber(value_clp)) {
     res.status(400).json({ error: "value_clp must be a finite number" });
+    return;
+  }
+  // A property's valuations are its appraisals in UF (written with its payments), never pesos.
+  if (valuationsAreAppraisals(accountKindSlugForAccountId(accountId) ?? "")) {
+    res.status(400).json({ error: "a property's valuations are its UF appraisals; no peso valuations" });
     return;
   }
   // Crypto is marked from units × close × fx only; a stored row would be read by nothing and

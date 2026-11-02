@@ -1,4 +1,4 @@
-import { assertValuationCurrencyClp } from "../src/valuationValue.js";
+import { assertValuationCurrency } from "../src/valuationValue.js";
 /**
  * Writes month-end `valuations` for a credit-card account from the parsed PDF ledger
  * (`cc_installment_purchases` / `cc_installment_payments`), same series as historial de cuotas.
@@ -93,7 +93,7 @@ function main() {
     const ex = valOne.get(accountId, asOf) as
       | { as_of_date: string; value_clp: number; currency: string }
       | undefined;
-    if (ex) assertValuationCurrencyClp(ex.currency, "backfill-cc-valuations");
+    if (ex) assertValuationCurrency(ex.currency, "clp", "backfill-cc-valuations");
     const curVal = ex != null ? Number(ex.value_clp) : null;
     const diff = curVal != null ? ledger - curVal : null;
     console.log(

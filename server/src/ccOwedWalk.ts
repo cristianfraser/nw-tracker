@@ -29,7 +29,7 @@ import { cacheKeyCcBillingDetail, getAggregationCached } from "./aggregationCach
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { convertCurrency } from "./rates.js";
-import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { assertValuationCurrency } from "./valuationValue.js";
 
 export type CcOwedWalkMark = { value_clp: number; as_of_date: string };
 
@@ -100,7 +100,7 @@ export function ccOwedByCurrencyAtYmd(
     | { as_of_date: string; value_clp: number; currency: string }
     | undefined;
   if (!row) return null;
-  assertValuationCurrencyClp(row.currency, "ccOwedByCurrencyAtYmd");
+  assertValuationCurrency(row.currency, "clp", "ccOwedByCurrencyAtYmd");
   if (!Number.isFinite(row.value_clp)) return null;
   const adj = postCloseNativeAdjustment(accountId, row.as_of_date, asOfYmd, {
     includeInstallmentPurchases: true,

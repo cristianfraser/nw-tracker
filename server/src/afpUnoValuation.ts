@@ -1,4 +1,4 @@
-import { assertValuationCurrencyClp } from "./valuationValue.js";
+import { assertValuationCurrency } from "./valuationValue.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -129,7 +129,7 @@ export function revalueAfpAccountFromCuotas(opts: {
        WHERE account_id = ? ORDER BY as_of_date ASC`
     )
     .all(opts.accountId) as { as_of_date: string; value_clp: number; currency: string; units_snapshot: number | null }[];
-  for (const v of vals) assertValuationCurrencyClp(v.currency, "afpUnoValuation rebuild");
+  for (const v of vals) assertValuationCurrency(v.currency, "clp", "afpUnoValuation rebuild");
 
   const upsert = db.prepare(`
     INSERT INTO valuations (account_id, as_of_date, value, currency, units_snapshot)

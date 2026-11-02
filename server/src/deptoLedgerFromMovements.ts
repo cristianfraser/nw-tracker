@@ -3,7 +3,7 @@
  * account's movements (pie + cuotas + prepagos — the mortgage account is the non-pie
  * subset) joined with `loan_payments` (what the bank states: the balance after each payment and
  * the min / max cuota in UF, the parts of the charge in pesos) and the property's appraisals
- * (`property_appraisals`, UF). Movement notes are human provenance only.
+ * (the property account's `valuations`, UF). Movement notes are human provenance only.
  *
  * This is the ONLY runtime ledger source.
  *
@@ -111,7 +111,7 @@ function loadDeptoLedgerFromMovementsUncached(): DeptoMortgageSheetRow[] {
   const appraisals = propertyAppraisalsUfAsc(propertyId);
   if (appraisals.length === 0) {
     throw new Error(
-      `depto ledger: the property account ${propertyId} has no appraisal (property_appraisals) — net equity cannot be derived`
+      `depto ledger: the property account ${propertyId} has no appraisal (no UF valuations row) — net equity cannot be derived`
     );
   }
   const appraisalUfOnOrBefore = (ymd: string): number | null => {
