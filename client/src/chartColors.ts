@@ -9,9 +9,9 @@ export function parseRgbTriplet(raw: string | null | undefined): [number, number
 }
 
 /**
- * Text on a background of this colour, in the colour's own hue: a light tint of it on a dark
- * colour, a dark shade of it on a light one (white net worth, pale cyan cash), where a light
- * tint would not read. Relative luminance (sRGB) against a mid threshold.
+ * Text on a background of this colour, in the same colour: its hue and chroma kept, only its
+ * lightness moved (OKLCH) — dark on a light colour (white net worth, pale cyan cash), light on a
+ * dark one. Relative luminance (sRGB) decides which side.
  */
 export function tintedTextOnRgb([r, g, b]: [number, number, number]): string {
   const channel = (c: number) => {
@@ -20,9 +20,7 @@ export function tintedTextOnRgb([r, g, b]: [number, number, number]): string {
   };
   const luminance = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
   const color = `rgb(${r},${g},${b})`;
-  return luminance > 0.4
-    ? `color-mix(in srgb, ${color} 30%, black)`
-    : `color-mix(in srgb, ${color} 25%, white)`;
+  return luminance > 0.3 ? `oklch(from ${color} 0.32 c h)` : `oklch(from ${color} 0.93 calc(c * 0.6) h)`;
 }
 
 function rgbTripletToCss(raw: string | null | undefined, fallback = "#94a3b8"): string {
