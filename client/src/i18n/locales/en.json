@@ -107,7 +107,6 @@
     "ccUpcoming": {
       "title": "Upcoming payments",
       "viewLiabilities": "View liabilities →",
-      "colAmount": "Amount",
       "totalToPay": "Total to pay",
       "billedOf": "of {{amount}}",
       "partlyPaidHint": "Still owed after the payments and credits since the close. The facturación billed {{amount}}.",
