@@ -5,6 +5,7 @@ import {
   firstEquityShareActivityYmd,
 } from "./brokerageEquityMtm.js";
 import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
+import { holdingFixtures } from "./test/holdingParityFixtures.js";
 
 describe("getGroupValuationTimeseries equity zero position", () => {
   it("OILK chart drops to 0 after stock_sell (no forward-fill of prior MTM)", () => {
@@ -52,5 +53,26 @@ describe("getGroupValuationTimeseries equity zero position", () => {
       expect(afterSell[afterSell.length - 1]![dk]).toBeNull();
       expect(ts!.accounts_in_group!.tail_clipped_keys).toContain(dk);
     }
+  });
+});
+describe("firstEquityShareActivityYmd", () => {
+  const fixtures = holdingFixtures();
+
+  it("follows a backdated buy and its deletion (no process-lifetime memo)", () => {
+    const id = fixtures.account("first buy", "brokerage_acciones__%", "VFIRST");
+    fixtures.singleLeg(id, "2024-03-01", 1000, 10, "stock_buy", "usd");
+    expect(firstEquityShareActivityYmd(id)).toBe("2024-03-01");
+
+    const backdated = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, flow_kind, units_delta)
+           VALUES (?, 500, 'usd', '2023-06-01', 'stock_buy', 5)`
+        )
+        .run(id).lastInsertRowid
+    );
+    expect(firstEquityShareActivityYmd(id)).toBe("2023-06-01");
+    db.prepare(`DELETE FROM movements WHERE id = ?`).run(backdated);
+    expect(firstEquityShareActivityYmd(id)).toBe("2024-03-01");
   });
 });

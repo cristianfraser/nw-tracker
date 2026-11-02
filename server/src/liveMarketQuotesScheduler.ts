@@ -15,6 +15,7 @@
  * `liveMarketQuotesSchedulerPolicy.ts` for the decisions and the incident.
  */
 import { demoMarketAwake, onDemoMarketWake } from "./demoMarketActivity.js";
+import { checkSyncDimmingChanged } from "./syncDimmingWatch.js";
 import { loadRootDotenv } from "./rootDotenv.js";
 import {
   liveQuotesIntervalMs,
@@ -95,6 +96,13 @@ async function schedulerTick(trigger: TickTrigger): Promise<void> {
     );
   } finally {
     inFlight = false;
+  }
+  try {
+    // The dashboard's sync dimming turns with the clock (a publish hour); every tick sits on the
+    // wall clock, so a change is seen within one interval (`syncDimmingWatch.ts`).
+    checkSyncDimmingChanged();
+  } catch (e) {
+    console.error(`live-quotes:scheduler — sync dimming check error: ${e instanceof Error ? e.message : e}`);
   }
   if (result == null) return; // a thrown sync is a bug, not the network — no retry storm on it
   const plan = planAfterTick(retryBudget, tickFailedWholesale(result));

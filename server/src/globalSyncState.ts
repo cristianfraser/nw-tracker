@@ -86,6 +86,23 @@ function migrateLoadedState(state: GlobalSyncStateFile): GlobalSyncStateFile {
  */
 let parsedState: { stamp: string; state: GlobalSyncStateFile } | null = null;
 
+/**
+ * The Fintual fields valuation reads (the APV proxy gate and its per-date hold, the goals-NAV
+ * display choice, the settled check). A sync run that changes them without writing a row must
+ * still drop the cached values built on the old ones (`runGlobalSyncAll`).
+ */
+export function fintualValuationStateFingerprint(state: GlobalSyncStateFile): string {
+  return JSON.stringify([
+    state.fintualLastAppliedYmd ?? null,
+    state.fintualLastAppliedPublishYmd ?? null,
+    state.fintualLastAppliedSig ?? null,
+    state.fintualLastCheckYmd ?? null,
+    state.fintualLastPublishYmd ?? null,
+    state.fintualLastCheckSig ?? null,
+    state.fintualEveningSettledYmd ?? null,
+  ]);
+}
+
 export function loadGlobalSyncState(): GlobalSyncStateFile {
   const p = globalSyncStatePath();
   let stat: fs.Stats;

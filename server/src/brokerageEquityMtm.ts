@@ -10,6 +10,7 @@ import {
 import { isUsdCashAccount } from "./usdCashAccounts.js";
 import { isClpCashAccount } from "./clpCashAccounts.js";
 import { db } from "./db.js";
+import { dbStateMemo } from "./dbStateMemo.js";
 import { equityTickerForAccount, requireEquityTicker } from "./accountEquityTicker.js";
 export { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
@@ -77,13 +78,14 @@ export function equityShareUnitsThroughYmd(accountId: number, asOfYmd: string): 
   return sumUnitsThroughDate(accountId, asOfYmd, BROKERAGE_SHARE_UNITS_FLOW_KINDS);
 }
 
-const firstShareActivityYmdCache = new Map<number, string | null>();
-
 /** First calendar day a positive share inflow hit this equity account (buy, DRIP, transfer in). */
 export function firstEquityShareActivityYmd(accountId: number): string | null {
   if (!accountUsesEquityMtm(accountId)) return null;
-  const cached = firstShareActivityYmdCache.get(accountId);
-  if (cached !== undefined) return cached;
+  // Memoized until the next database write: a backdated or deleted first buy moves it.
+  return dbStateMemo("first_equity_share_activity_ymd", accountId, () => firstEquityShareActivityYmdUncached(accountId));
+}
+
+function firstEquityShareActivityYmdUncached(accountId: number): string | null {
   let min: string | null = null;
   for (const r of listMovementRowsForAccount(accountId)) {
     const fk = r.flow_kind;
@@ -93,7 +95,6 @@ export function firstEquityShareActivityYmd(accountId: number): string | null {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) continue;
     if (min == null || ymd < min) min = ymd;
   }
-  firstShareActivityYmdCache.set(accountId, min);
   return min;
 }
 
