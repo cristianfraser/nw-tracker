@@ -65,6 +65,37 @@ describe("latestExpensesFromLines", () => {
     expect(latestExpensesFromLines(lines, parents, "usd", 2, "2026-09-30").rows.map((r) => r.amount)).toEqual([-2, 30]);
   });
 
+  it("carries the vendor fields the shared label shows: display name, note, link label", () => {
+    const res = latestExpensesFromLines(
+      [
+        line({
+          statement_line_id: 1,
+          purchase_on: "2026-09-01",
+          merchant: "PAYU *UBER EA",
+          display_merchant: "Uber Eats",
+          merchant_processor: "PAYU",
+          purchase_notes: "lunch",
+          link_label: { arrow: "→", text: "Burger place", nights: null, inline: true },
+        }),
+        line({ statement_line_id: 2, purchase_on: "2026-09-02" }),
+      ],
+      parents,
+      "clp",
+      5,
+      "2026-09-30"
+    );
+    expect(res.rows[1]).toMatchObject({
+      merchant: "PAYU *UBER EA",
+      display_merchant: "Uber Eats",
+      merchant_processor: "PAYU",
+      purchase_notes: "lunch",
+      link_label: { text: "Burger place", inline: true },
+    });
+    // A line the server derived nothing for carries none of the optional fields.
+    expect(res.rows[0]).not.toHaveProperty("display_merchant");
+    expect(res.rows[0]).not.toHaveProperty("link_label");
+  });
+
   it("throws on a category the catalog does not know", () => {
     expect(() =>
       latestExpensesFromLines([line({ category_slug: "nope" })], parents, "clp", 5, "2026-09-30")

@@ -889,7 +889,19 @@ export interface RealEstateLinkCandidateDto {
 }
 
 /** One row of `GET /api/dashboard/latest-expenses` (home «Últimos gastos»), newest first. */
-export interface LatestExpenseRow {
+/** The vendor fields the shared label (`ExpenseVendorLabel`) reads, as an expense line has them. */
+export type LatestExpenseVendorFields = Pick<
+  FlowCcExpenseLineRow,
+  | "purchase_notes"
+  | "display_merchant"
+  | "merchant_processor"
+  | "link_label"
+  | "payment_receipt"
+  | "transfer_counterparty"
+  | "expense_deposit_links"
+>;
+
+export interface LatestExpenseRow extends LatestExpenseVendorFields {
   key: string;
   date: string;
   merchant: string | null;

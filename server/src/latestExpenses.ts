@@ -18,7 +18,22 @@ import { countsTowardGastosMes, expenseLineGastosAmount, type GastosUnit } from 
 export const LATEST_EXPENSES_DEFAULT_LIMIT = 15;
 export const LATEST_EXPENSES_MAX_LIMIT = 100;
 
-export type LatestExpenseRow = {
+/**
+ * The vendor fields an expense row shows through the shared label (`ExpenseVendorLabel`): the
+ * display name, the processor, the link label and what it links to, and the user's note.
+ */
+type LatestExpenseVendorFields = Pick<
+  FlowCcExpenseLineRow,
+  | "purchase_notes"
+  | "display_merchant"
+  | "merchant_processor"
+  | "link_label"
+  | "payment_receipt"
+  | "transfer_counterparty"
+  | "expense_deposit_links"
+>;
+
+export type LatestExpenseRow = LatestExpenseVendorFields & {
   key: string;
   /** ISO day the money was spent. */
   date: string;
@@ -74,6 +89,13 @@ export function latestExpensesFromLines(
       origin_label: l.origin_label,
       amount: expenseLineGastosAmount(l, unit),
       installments: l.line_role === "installment_purchase_total" ? l.nro_cuota_total : null,
+      purchase_notes: l.purchase_notes,
+      ...(l.display_merchant != null ? { display_merchant: l.display_merchant } : {}),
+      ...(l.merchant_processor != null ? { merchant_processor: l.merchant_processor } : {}),
+      ...(l.link_label != null ? { link_label: l.link_label } : {}),
+      ...(l.payment_receipt != null ? { payment_receipt: l.payment_receipt } : {}),
+      ...(l.transfer_counterparty != null ? { transfer_counterparty: l.transfer_counterparty } : {}),
+      ...(l.expense_deposit_links != null ? { expense_deposit_links: l.expense_deposit_links } : {}),
     };
   });
   return { unit, rows };
