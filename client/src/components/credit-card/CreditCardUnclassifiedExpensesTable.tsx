@@ -1,3 +1,4 @@
+import { PageGridTile } from "../layout/PageGridTile";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import type {
@@ -59,8 +60,8 @@ export function CreditCardUnclassifiedExpensesTable({
   const currentLines = paged[currentPageIndex] ?? [];
 
   return (
-    <section style={{ marginTop: "2rem" }}>
-      <h3 style={{ marginBottom: "0.35rem" }}>
+    <PageGridTile id="unclassified">
+      <h3>
         {t("expenses.creditCard.unclassifiedTableTitle")}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {unclassifiedGastos.length}
@@ -117,6 +118,6 @@ export function CreditCardUnclassifiedExpensesTable({
         />
         <CreditCardExpenseLinesSelectionPageFooter categories={categories} />
       </CreditCardExpenseLinesSelectionProvider>
-    </section>
+    </PageGridTile>
   );
 }

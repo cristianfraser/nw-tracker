@@ -11,7 +11,6 @@ export function SettingsPage() {
         className="toggle-row"
         role="radiogroup"
         aria-label={t("settings.language")}
-        style={{ marginBottom: "0.75rem" }}
       >
         <span className="muted">{t("settings.language")}</span>
         <label>

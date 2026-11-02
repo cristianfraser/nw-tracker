@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../../api";
 import { formatClp, formatGroupedDecimalTrimmed } from "../../format";
 import { useMovementMirrorCandidates } from "../../queries/hooks";
+import { PageGridTile } from "../../components/layout/PageGridTile";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { loadableClass } from "../../components/ui/Loadable";
 import { Table } from "../../components/ui/Table";
@@ -225,7 +226,7 @@ export function MirrorPairsPanelPage() {
   );
 
   return (
-    <section className={loadableClass(isPending)}>
+    <PageGridTile id="mirror-pairs" className={loadableClass(isPending)}>
       <h2>{t("mirrorPairs.title")}</h2>
       {actionError ? <p className="error">{actionError}</p> : null}
 
@@ -569,6 +570,6 @@ export function MirrorPairsPanelPage() {
         }}
         onCancel={() => setConfirmSingle(null)}
       />
-    </section>
+    </PageGridTile>
   );
 }

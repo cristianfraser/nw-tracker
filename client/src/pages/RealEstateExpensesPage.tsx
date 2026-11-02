@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { RealEstateExpensesChart } from "../components/charts/RealEstateExpensesChart";
 import { RealEstateAddPlaceModal } from "../components/real-estate/RealEstateAddPlaceModal";
 import { RealEstateAssignPurchaseModal } from "../components/real-estate/RealEstateAssignPurchaseModal";
@@ -217,10 +218,7 @@ export function RealEstateExpensesPage() {
         {titleSuffix ? ` — ${titleSuffix}` : ""}
       </h2>
 
-      <div
-        className="chart-grid chart-grid--full-line chart-grid--full-width-stack"
-        style={{ marginBottom: "1.5rem" }}
-      >
+      <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack">
         <RealEstateExpensesChart
           controls={chartControls}
           title={t("expenses.chartTitle")}
@@ -233,8 +231,8 @@ export function RealEstateExpensesPage() {
         />
       </div>
 
-      <section style={{ marginBottom: "1.75rem" }}>
-        <h3 style={{ marginBottom: "0.75rem" }}>
+      <PageGridTile id="places" className="page-grid">
+        <h3>
           {t("expenses.groups.real_estate")}
           <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
             {formatClp(groupTotal)}
@@ -248,8 +246,8 @@ export function RealEstateExpensesPage() {
           ) : null}
         </h3>
         {sections.map((acc) => (
-          <div key={acc.account_slug} style={{ marginBottom: "1.25rem" }}>
-            <h4 style={{ marginBottom: "0.35rem" }}>
+          <PageGridTile key={acc.account_slug} id={`place-${acc.account_slug}`}>
+            <h4>
               {acc.label}
               <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
                 {formatClp(acc.total_clp)}
@@ -532,12 +530,12 @@ export function RealEstateExpensesPage() {
                 ))
               )}
             </Table>
-          </div>
+          </PageGridTile>
         ))}
         {sections.length === 0 && !loading ? (
           <p className="muted">{t("expenses.emptyAccount")}</p>
         ) : null}
-      </section>
+      </PageGridTile>
 
       <RealEstateExpenseLinkModal
         slot={linkSlot}

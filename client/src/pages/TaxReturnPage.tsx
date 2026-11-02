@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { Loadable, loadableClass } from "../components/ui/Loadable";
 import { Pill } from "../components/ui/Pill";
 import { Table } from "../components/ui/Table";
@@ -146,7 +147,7 @@ function CryptoSection({ data }: { data: TaxReturnResponse }) {
     </thead>
   );
   return (
-    <section style={{ margin: "1.5rem 0" }}>
+    <PageGridTile id="crypto">
       <h2>{t("taxReturn.crypto.title")}</h2>
       {c.provisional ? <p className="muted">{t("taxReturn.crypto.provisional", { month: c.reajuste_to_month.slice(0, 7) })}</p> : null}
       <p className="muted">
@@ -191,7 +192,7 @@ function CryptoSection({ data }: { data: TaxReturnResponse }) {
           : ""}
       </p>
       <LossOffsetHint data={data} kind="pool" />
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -213,7 +214,7 @@ function DividendsSection({ data }: { data: TaxReturnResponse }) {
     </thead>
   );
   return (
-    <section style={{ margin: "1.5rem 0" }}>
+    <PageGridTile id="dividends">
       <h2>{t("taxReturn.dividends.title")}</h2>
       <p className="muted">
         {t(data.provisional ? "taxReturn.dividends.explainProvisional" : "taxReturn.dividends.explain", {
@@ -242,7 +243,7 @@ function DividendsSection({ data }: { data: TaxReturnResponse }) {
         ))}
       </Table>
       <LossOffsetHint data={data} kind="pool" />
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -263,7 +264,7 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
     </thead>
   );
   return (
-    <section style={{ margin: "1.5rem 0" }}>
+    <PageGridTile id="foreign-shares">
       <h2>{t("taxReturn.foreign.title")}</h2>
       <p className="muted">
         {t("taxReturn.foreign.explain", { mode: t(`taxReturn.foreign.mode.${f.default_mode}`) })}
@@ -288,7 +289,7 @@ function ForeignSharesSection({ data }: { data: TaxReturnResponse }) {
         ))}
       </Table>
       <LossOffsetHint data={data} kind="foreign" />
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -334,7 +335,7 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
     </thead>
   );
   return (
-    <section style={{ margin: "1.5rem 0" }}>
+    <PageGridTile id="art107">
       <h2>{t("taxReturn.art107.title")}</h2>
       {a.provisional ? <p className="muted">{t("taxReturn.art107.provisional")}</p> : null}
       <p className="muted">
@@ -413,7 +414,7 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
       ) : null}
       {a.distributions.length > 0 ? (
         <>
-          <h3 style={{ marginBottom: "0.35rem" }}>{t("taxReturn.art107.distributionsTitle")}</h3>
+          <h3>{t("taxReturn.art107.distributionsTitle")}</h3>
           <p className="muted">{t("taxReturn.art107.distributionsExplain")}</p>
           <Table header={distributionsHeader} tableClassName="table--parallel-mobile">
             {a.distributions.map((d, i) => (
@@ -432,7 +433,7 @@ function Art107Section({ data }: { data: TaxReturnResponse }) {
           <p>{t("taxReturn.art107.distributionsTotal", { amount: formatClp(a.distributions_clp) })}</p>
         </>
       ) : null}
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -488,7 +489,7 @@ function UsdFxSection({ data }: { data: TaxReturnResponse }) {
       <p>{t("taxReturn.usdFx.loss169", { amount: formatClp(f.codes.loss169) })}</p>
     ) : null;
   return (
-    <section style={{ margin: "1.5rem 0" }}>
+    <PageGridTile id="usd-fx">
       <h2>{t("taxReturn.usdFx.title")}</h2>
       <p className="muted">
         {t("taxReturn.usdFx.explain", {
@@ -541,7 +542,7 @@ function UsdFxSection({ data }: { data: TaxReturnResponse }) {
       {codes}
       {f.fees.length > 0 ? (
         <>
-          <h3 style={{ marginBottom: "0.35rem" }}>{t("taxReturn.usdFx.feesTitle")}</h3>
+          <h3>{t("taxReturn.usdFx.feesTitle")}</h3>
           <p className="muted">{t("taxReturn.usdFx.feesExplain")}</p>
           <Table header={feesHeader} tableClassName="table--parallel-mobile">
             {f.fees.map((x, i) => (
@@ -567,7 +568,7 @@ function UsdFxSection({ data }: { data: TaxReturnResponse }) {
           {t("taxReturn.usdFx.deferredTotal", { count: f.deferred.length, amount: formatClp(f.deferred_clp) })}
         </p>
       ) : null}
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -596,7 +597,7 @@ function SettlementSection({ data }: { data: TaxReturnResponse }) {
     </thead>
   );
   return (
-    <section style={{ margin: "1.5rem 0" }}>
+    <PageGridTile id="settlement">
       <h2>{t("taxReturn.settlement.title")}</h2>
       <p>
         {t(`taxReturn.settlement.expected.${s.expected.kind}`, { amount: formatClp(s.expected.amount) })}
@@ -630,7 +631,7 @@ function SettlementSection({ data }: { data: TaxReturnResponse }) {
           ))}
         </Table>
       ) : null}
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -651,7 +652,7 @@ function PayrollWithholdingSection({ data }: { data: TaxReturnResponse }) {
   );
   const differs = (d: number) => Math.abs(d) > 1;
   return (
-    <section style={{ margin: "1.5rem 0" }}>
+    <PageGridTile id="payroll-withholding">
       <h2>{t("taxReturn.payroll.title")}</h2>
       <p className="muted">{t("taxReturn.payroll.explain")}</p>
       <p>
@@ -687,7 +688,7 @@ function PayrollWithholdingSection({ data }: { data: TaxReturnResponse }) {
           );
         })}
       </Table>
-    </section>
+    </PageGridTile>
   );
 }
 
@@ -700,43 +701,45 @@ export function TaxReturnPage() {
   const loading = q.isPending || q.isPlaceholderData;
 
   return (
-    <div className="page">
+    <main className="page-grid">
       <h1>{t("taxReturn.title")}</h1>
       <p className="muted">{t("taxReturn.subtitle")}</p>
       {q.isError ? <p className="error">{(q.error as Error).message}</p> : null}
       {q.isError && !data ? null : (
-        <Loadable loading={loading}>
-          <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", margin: "1rem 0" }}>
-            <span>{t("taxReturn.taxYearLabel")}</span>
-            <select
-              value={taxYear ?? data?.tax_year ?? ""}
-              disabled={loading}
-              onChange={(e) => setTaxYear(Number(e.target.value))}
-            >
-              {(data?.available_tax_years ?? []).map((y) => (
-                <option key={y} value={y}>
-                  {t("taxReturn.taxYearOption", { year: y, income: y - 1 })}
-                </option>
-              ))}
-            </select>
-          </label>
-          {data ? <p className="muted">{t(`taxReturn.base.${data.base}`, { months: data.salary.months })}</p> : null}
-          {data?.provisional ? <p className="muted">{t("taxReturn.provisionalYear", { year: data.income_year })}</p> : null}
-          {data && data.salary.incomplete_months.length > 0 ? (
-            <p style={{ color: "var(--negative)" }}>
-              {t("taxReturn.salaryIncomplete", { months: data.salary.incomplete_months.join(", ") })}
+        <Loadable loading={loading} className="page-grid">
+          <PageGridTile id="f22">
+            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <span>{t("taxReturn.taxYearLabel")}</span>
+              <select
+                value={taxYear ?? data?.tax_year ?? ""}
+                disabled={loading}
+                onChange={(e) => setTaxYear(Number(e.target.value))}
+              >
+                {(data?.available_tax_years ?? []).map((y) => (
+                  <option key={y} value={y}>
+                    {t("taxReturn.taxYearOption", { year: y, income: y - 1 })}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {data ? <p className="muted">{t(`taxReturn.base.${data.base}`, { months: data.salary.months })}</p> : null}
+            {data?.provisional ? <p className="muted">{t("taxReturn.provisionalYear", { year: data.income_year })}</p> : null}
+            {data && data.salary.incomplete_months.length > 0 ? (
+              <p style={{ color: "var(--negative)" }}>
+                {t("taxReturn.salaryIncomplete", { months: data.salary.incomplete_months.join(", ") })}
+              </p>
+            ) : null}
+            <p>
+              {t("taxReturn.summaryFiled", { amount: money(data?.tax_filed ?? null) })} ·{" "}
+              {t("taxReturn.summaryDraft", { amount: money(data?.tax_draft ?? null) })}
+              {data && data.tax_filed != null && data.tax_draft != null
+                ? ` · ${t("taxReturn.summaryDiff", { amount: formatClp(data.tax_draft - data.tax_filed) })}`
+                : ""}
             </p>
-          ) : null}
-          <p>
-            {t("taxReturn.summaryFiled", { amount: money(data?.tax_filed ?? null) })} ·{" "}
-            {t("taxReturn.summaryDraft", { amount: money(data?.tax_draft ?? null) })}
-            {data && data.tax_filed != null && data.tax_draft != null
-              ? ` · ${t("taxReturn.summaryDiff", { amount: formatClp(data.tax_draft - data.tax_filed) })}`
-              : ""}
-          </p>
-          <F22Table rows={data?.rows ?? []} loading={loading} />
-          {data?.rows.some((r) => r.estimated) ? <p className="muted">{t("taxReturn.estimatedNote")}</p> : null}
-          <p className="muted">{t("taxReturn.paymentNote")}</p>
+            <F22Table rows={data?.rows ?? []} loading={loading} />
+            {data?.rows.some((r) => r.estimated) ? <p className="muted">{t("taxReturn.estimatedNote")}</p> : null}
+            <p className="muted">{t("taxReturn.paymentNote")}</p>
+          </PageGridTile>
           {/* The sections below are server-decided absences; they wait for the response so no
               explanatory copy shows up for a year that has not loaded. */}
           {data ? (
@@ -755,6 +758,6 @@ export function TaxReturnPage() {
           ) : null}
         </Loadable>
       )}
-    </div>
+    </main>
   );
 }

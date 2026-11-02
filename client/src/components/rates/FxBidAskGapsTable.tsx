@@ -1,3 +1,4 @@
+import { PageGridTile } from "../layout/PageGridTile";
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../../api";
@@ -120,11 +121,8 @@ export function FxBidAskGapsTable() {
   }
 
   return (
-    <section
-      className={loadableClass(loading, "rates-bid-ask-gaps")}
-      style={{ marginTop: "1.5rem", maxWidth: "58rem" }}
-    >
-      <h2 style={{ fontSize: "1.05rem", marginBottom: "0.35rem" }}>{t("rates.fx.gapsTitle")}</h2>
+    <PageGridTile id="fx-gaps" className={loadableClass(loading, "rates-bid-ask-gaps")}>
+      <h2>{t("rates.fx.gapsTitle")}</h2>
       <Table
         header={
           <thead>
@@ -211,6 +209,6 @@ export function FxBidAskGapsTable() {
           );
         })}
       </Table>
-    </section>
+    </PageGridTile>
   );
 }

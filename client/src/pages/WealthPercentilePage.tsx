@@ -1,6 +1,7 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { CartesianGrid, Legend, Line, XAxis, YAxis } from "recharts";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { AppLineChart } from "../components/charts/AppLineChart";
 import { ChartEmptyState } from "../components/charts/ChartEmptyState";
 import { minMaxForKeys } from "../components/charts/chartLayout";
@@ -372,7 +373,7 @@ export function WealthPercentilePage() {
 
   if (error) {
     return (
-      <main>
+      <main className="page-grid">
         <p className="error">{error instanceof Error ? error.message : t("common.loadFailed")}</p>
       </main>
     );
@@ -390,109 +391,111 @@ export function WealthPercentilePage() {
     : enabledBenchmarks;
 
   return (
-    <main>
+    <main className="page-grid">
       <h1>{t("wealthPercentile.title")}</h1>
 
-      <label
-        style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}
-      >
-        <span className="muted" style={{ fontSize: "0.85em" }}>
-          {t("wealthPercentile.chart.scaleLabel")}
-        </span>
-        <select value={scaleMode} onChange={(e) => setScaleMode(e.target.value as ScaleMode)}>
-          {SCALE_MODES.map((m) => (
-            <option key={m} value={m}>
-              {m === "log" ? t("wealthPercentile.chart.scaleLog") : t("wealthPercentile.chart.scaleLinear")}
-            </option>
-          ))}
-        </select>
-      </label>
+      <PageGridTile id="chart">
+        <label
+          style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}
+        >
+          <span className="muted" style={{ fontSize: "0.85em" }}>
+            {t("wealthPercentile.chart.scaleLabel")}
+          </span>
+          <select value={scaleMode} onChange={(e) => setScaleMode(e.target.value as ScaleMode)}>
+            {SCALE_MODES.map((m) => (
+              <option key={m} value={m}>
+                {m === "log" ? t("wealthPercentile.chart.scaleLog") : t("wealthPercentile.chart.scaleLinear")}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      {chartPoints.length === 0 ? (
-        <ChartEmptyState loading={loading} message={t("wealthPercentile.empty")} />
-      ) : (
-        <Loadable loading={loading} style={{ width: "100%", height: 320 }}>
-          <AppLineChart
-            data={scaleMode === "log" ? logChartPoints : chartPoints}
-            tooltip={{
-              formatValue: (v) =>
-                formatGroupedDecimal(scaleMode === "log" ? 100 - Number(v) : Number(v), 1),
-              formatLabel: (l) => String(l),
-            }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis dataKey="year" tick={{ fill: "var(--muted)", fontSize: 10 }} minTickGap={20} />
-            {scaleMode === "log" ? (
-              <YAxis
-                scale="log"
-                reversed
-                domain={logAxis.domain}
-                ticks={logAxis.ticks}
-                allowDataOverflow
-                tickFormatter={(v: number) => {
-                  const p = 100 - v;
-                  return formatGroupedDecimal(p, Number.isInteger(p) ? 0 : 1);
-                }}
-                tick={{ fill: "var(--muted)", fontSize: 10 }}
-                width={34}
-              />
-            ) : (
-              <YAxis
-                domain={[0, 100]}
-                ticks={[0, 25, 50, 75, 100]}
-                tick={{ fill: "var(--muted)", fontSize: 10 }}
-                width={30}
-              />
-            )}
-            <Legend />
-            <Line
-              type="monotone"
-              dataKey="total"
-              name={t("wealthPercentile.chart.seriesTotal")}
-              stroke={CL_TOTAL_STROKE}
-              strokeWidth={2}
-              dot={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="financial"
-              name={t("wealthPercentile.chart.seriesFinancial")}
-              stroke={CL_FINANCIAL_STROKE}
-              strokeWidth={2}
-              dot={false}
-            />
-            {benchmarkOrder.map((c) => (
+        {chartPoints.length === 0 ? (
+          <ChartEmptyState loading={loading} message={t("wealthPercentile.empty")} />
+        ) : (
+          <Loadable loading={loading} style={{ width: "100%", height: 320 }}>
+            <AppLineChart
+              data={scaleMode === "log" ? logChartPoints : chartPoints}
+              tooltip={{
+                formatValue: (v) =>
+                  formatGroupedDecimal(scaleMode === "log" ? 100 - Number(v) : Number(v), 1),
+                formatLabel: (l) => String(l),
+              }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis dataKey="year" tick={{ fill: "var(--muted)", fontSize: 10 }} minTickGap={20} />
+              {scaleMode === "log" ? (
+                <YAxis
+                  scale="log"
+                  reversed
+                  domain={logAxis.domain}
+                  ticks={logAxis.ticks}
+                  allowDataOverflow
+                  tickFormatter={(v: number) => {
+                    const p = 100 - v;
+                    return formatGroupedDecimal(p, Number.isInteger(p) ? 0 : 1);
+                  }}
+                  tick={{ fill: "var(--muted)", fontSize: 10 }}
+                  width={34}
+                />
+              ) : (
+                <YAxis
+                  domain={[0, 100]}
+                  ticks={[0, 25, 50, 75, 100]}
+                  tick={{ fill: "var(--muted)", fontSize: 10 }}
+                  width={30}
+                />
+              )}
+              <Legend />
               <Line
-                key={c}
                 type="monotone"
-                dataKey={c.toLowerCase()}
-                name={t("wealthPercentile.chart.seriesBenchmark", { country: c })}
-                stroke={BENCHMARK_STROKE[c]}
-                strokeWidth={1.5}
+                dataKey="total"
+                name={t("wealthPercentile.chart.seriesTotal")}
+                stroke={CL_TOTAL_STROKE}
+                strokeWidth={2}
                 dot={false}
               />
-            ))}
-          </AppLineChart>
-        </Loadable>
-      )}
+              <Line
+                type="monotone"
+                dataKey="financial"
+                name={t("wealthPercentile.chart.seriesFinancial")}
+                stroke={CL_FINANCIAL_STROKE}
+                strokeWidth={2}
+                dot={false}
+              />
+              {benchmarkOrder.map((c) => (
+                <Line
+                  key={c}
+                  type="monotone"
+                  dataKey={c.toLowerCase()}
+                  name={t("wealthPercentile.chart.seriesBenchmark", { country: c })}
+                  stroke={BENCHMARK_STROKE[c]}
+                  strokeWidth={1.5}
+                  dot={false}
+                />
+              ))}
+            </AppLineChart>
+          </Loadable>
+        )}
+      </PageGridTile>
 
-      <section style={{ margin: "1.5rem 0" }}>
+      <PageGridTile id="my-data">
         <h2>{t("wealthPercentile.tables.myData")}</h2>
         <MyDataTable rows={rows} countries={benchmarkOrder} loading={loading} />
-      </section>
+      </PageGridTile>
 
-      <section style={{ margin: "1.5rem 0" }}>
+      <PageGridTile id="country-data">
         <h2>{t("wealthPercentile.tables.countryData")}</h2>
         <CountryDataTable
           rows={rows}
           countries={benchmarkOrder}
           loading={loading}
         />
-      </section>
+      </PageGridTile>
 
       <MarkerLegend rows={rows} />
 
-      <section style={{ margin: "1.5rem 0" }}>
+      <PageGridTile id="settings">
         <h3>{t("wealthPercentile.settings.title")}</h3>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem 1.5rem" }}>
           {BENCHMARK_COUNTRIES.map((c) => (
@@ -509,7 +512,7 @@ export function WealthPercentilePage() {
             </label>
           ))}
         </div>
-      </section>
+      </PageGridTile>
     </main>
   );
 }

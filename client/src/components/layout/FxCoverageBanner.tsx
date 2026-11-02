@@ -67,7 +67,6 @@ export function FxCoverageBanner({
       className="error"
       role="alert"
       style={{
-        margin: "0 0 1rem",
         lineHeight: 1.45,
         maxWidth: "58rem",
       }}

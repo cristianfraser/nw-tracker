@@ -1,3 +1,4 @@
+import { PageGridTile } from "../layout/PageGridTile";
 import { useTranslation } from "../../i18n";
 import {
   flowChartGranularityFromMetricsPeriod,
@@ -81,9 +82,9 @@ export function AdditionalCardsSection({
   };
 
   return (
-    <section style={{ marginTop: "1.5rem" }}>
-      <div className="chart-panel-title-row" style={{ marginBottom: "0.35rem" }}>
-        <h3 style={{ margin: 0 }}>
+    <PageGridTile id="additional-cards">
+      <div className="chart-panel-title-row">
+        <h3>
           {t("expenses.additionalCards.title")}
           <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
             {t("expenses.additionalCards.balanceLabel")}{" "}
@@ -160,6 +161,6 @@ export function AdditionalCardsSection({
           })}
         </Table>
       </PaginatedTable>
-    </section>
+    </PageGridTile>
   );
 }

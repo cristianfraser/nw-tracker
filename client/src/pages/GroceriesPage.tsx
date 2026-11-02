@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button, Input } from "@crfrsr/ui";
 import { CartesianGrid, Line, XAxis, YAxis } from "recharts";
 import { api } from "../api";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { AppLineChart } from "../components/charts/AppLineChart";
 import { buildNiceYAxis, minMaxForKeys } from "../components/charts/chartLayout";
 import { ProductConfigPanel } from "../components/groceries/ProductConfigPanel";
@@ -237,7 +238,7 @@ export function GroceriesPage() {
 
   if (error) {
     return (
-      <div className="page">
+      <div className="page-grid">
         <h1>{t("groceries.title")}</h1>
         <p className="muted">{error}</p>
       </div>
@@ -245,11 +246,11 @@ export function GroceriesPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page-grid">
       <h1>{t("groceries.title")}</h1>
 
       {/* ── Cleaning workbench ─────────────────────────────────────────────── */}
-      <section style={{ margin: "1.5rem 0" }}>
+      <PageGridTile id="cleaning">
         <h2>{t("groceries.cleaning.title")}</h2>
         {summary && summary.unclassified.length === 0 ? (
           <p className="muted">{t("groceries.cleaning.allClassified")}</p>
@@ -373,10 +374,10 @@ export function GroceriesPage() {
             </table>
           </>
         )}
-      </section>
+      </PageGridTile>
 
       {/* ── Products + price history ───────────────────────────────────────── */}
-      <section style={{ margin: "1.5rem 0" }}>
+      <PageGridTile id="products">
         <h2>{t("groceries.products.title")}</h2>
         {summary && summary.products.length === 0 ? (
           <p className="muted">{t("groceries.products.none")}</p>
@@ -436,7 +437,7 @@ export function GroceriesPage() {
           </table>
         )}
 
-        <h3 style={{ marginTop: "1rem" }}>
+        <h3>
           {t("groceries.history.title")}
           {historyProduct ? ` — ${historyProduct.name}` : ""}
         </h3>
@@ -615,10 +616,10 @@ export function GroceriesPage() {
             </table>
           </>
         )}
-      </section>
+      </PageGridTile>
 
       {/* ── Receipts ───────────────────────────────────────────────────────── */}
-      <section style={{ margin: "1.5rem 0" }}>
+      <PageGridTile id="receipts">
         <h2>{t("groceries.receipts.title")}</h2>
         {summary && summary.receipts.length === 0 ? (
           <p className="muted">{t("groceries.receipts.none")}</p>
@@ -733,7 +734,7 @@ export function GroceriesPage() {
             </tbody>
           </table>
         )}
-      </section>
+      </PageGridTile>
     </div>
   );
 }
