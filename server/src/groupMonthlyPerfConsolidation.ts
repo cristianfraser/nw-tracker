@@ -25,7 +25,7 @@ import { accountValueClpToUnitAt, convertTs } from "./clpToUnitAt.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { netDepositFlowWindows } from "./flowsDeposits.js";
 import { isUsdCashKindSlug } from "./movementTransfer.js";
-import { usdCashBalanceClpAt, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { accountValueAt } from "./accountValue.js";
 import { isClpCashKindSlug, clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountTodayValue } from "./accountTodayValue.js";
@@ -219,8 +219,8 @@ function usdCashMonthlyPerfRows(
     unit,
     monthEndsAsc,
     "usd_cash",
-    // In USD the account's ledger dollars, never its sell-rate pesos ÷ the mid rate.
-    (asOf) => (unit === "usd" ? usdCashBalanceUsdAt(accountId, asOf) : usdCashBalanceClpAt(accountId, asOf)),
+    // Its value in the unit (`accountValueAt`): its ledger dollars, converted once from them.
+    (asOf) => accountValueAt(accountId, asOf, unit, { categorySlug })?.value ?? Number.NaN,
     ledgerCashNetFlowBetween(accountId, unit)
   );
   return [...asc].reverse();

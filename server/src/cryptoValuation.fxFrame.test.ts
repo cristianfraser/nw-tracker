@@ -10,6 +10,10 @@ import { insertLiveMarketQuote } from "./liveMarketQuotesDb.js";
  * bar of US$40,000 with that day's stored fx at 900, and live CLP=X at 950 during Wednesday
  * 2099-01-07's fx day (open until 17:05 New York).
  */
+
+/** Values convert at the sell rate: the stored mid less the inferred half spread (`rates.ts`). */
+const SELL = (mid: number): number => mid - 2;
+
 describe("computeCryptoMtmClp fx frame", () => {
   const TICKER = "BTC-USD";
   const TODAY = "2099-01-07";
@@ -71,14 +75,14 @@ describe("computeCryptoMtmClp fx frame", () => {
 
     const withLivePrice = computeCryptoMtmClp(accountId!, TODAY, 41_000, now);
     const eodFallback = computeCryptoMtmClp(accountId!, TODAY, null, now);
-    expect(withLivePrice).toBeCloseTo(UNITS * 41_000 * 950, 2);
+    expect(withLivePrice).toBeCloseTo(UNITS * 41_000 * SELL(950), 2);
     // Tuesday's close at the live rate — not at Tuesday's stored fx (40,000 × 900).
-    expect(eodFallback).toBeCloseTo(UNITS * 40_000 * 950, 2);
+    expect(eodFallback).toBeCloseTo(UNITS * 40_000 * SELL(950), 2);
     expect(withLivePrice! / (UNITS * 41_000)).toBeCloseTo(eodFallback! / (UNITS * 40_000), 9);
 
     // A historical date never matches the live row's session: it keeps the stored close.
     expect(computeCryptoMtmClp(accountId!, "2099-01-06", null, now)).toBeCloseTo(
-      UNITS * 40_000 * 900,
+      UNITS * 40_000 * SELL(900),
       2
     );
   });
@@ -92,7 +96,7 @@ describe("computeCryptoMtmClp fx frame", () => {
     vi.useFakeTimers();
     vi.setSystemTime(now);
 
-    expect(computeCryptoMtmClp(accountId!, TODAY, 41_000, now)).toBeCloseTo(UNITS * 41_000 * 940, 2);
-    expect(computeCryptoMtmClp(accountId!, TODAY, null, now)).toBeCloseTo(UNITS * 40_000 * 940, 2);
+    expect(computeCryptoMtmClp(accountId!, TODAY, 41_000, now)).toBeCloseTo(UNITS * 41_000 * SELL(940), 2);
+    expect(computeCryptoMtmClp(accountId!, TODAY, null, now)).toBeCloseTo(UNITS * 40_000 * SELL(940), 2);
   });
 });

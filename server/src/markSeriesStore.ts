@@ -1,5 +1,7 @@
+import type { QtyMark } from "./accountMarkClpAtYmd.js";
+
 /**
- * The per-account daily mark series (`accountMarkDailyCache.ts`), kept apart from the
+ * The per-account daily QUANTITY series (`accountMarkDailyCache.ts`), kept apart from the
  * aggregation cache so they survive what does not move a past day's mark: the Chile day
  * rollover and writes that do not touch an account's valuation inputs. What does move them is
  * named by the database itself (`mark_input_changes`, filled by triggers on every table a
@@ -10,13 +12,20 @@
  * Every cached day is strictly before the Chile day it was computed on; today is never stored.
  */
 
+/**
+ * One day of a series: what the account held (a quantity and its asset — `QtyMark` without the
+ * evidence date). Values in a display unit are built from it at read, with the day's price and
+ * rate (`docs/holdings-currency-plan.md`), so a rate or price row never invalidates it.
+ */
+export type MarkSeriesCell = Pick<QtyMark, "qty" | "asset">;
+
 export type CachedMarkSeries = {
   /** First cached day (inclusive). */
   start_ymd: string;
   /** Last cached day (inclusive). */
   end_ymd: string;
-  /** CLP marks indexed from `start_ymd`; null where the account has no valid mark. */
-  values: (number | null)[];
+  /** Quantities indexed from `start_ymd`; null where the account has no valid mark. */
+  values: (MarkSeriesCell | null)[];
 };
 
 const store = new Map<string, CachedMarkSeries>();

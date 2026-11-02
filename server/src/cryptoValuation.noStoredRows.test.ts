@@ -12,6 +12,10 @@ import { db } from "./db.js";
  * (2099-03-14) with stored fx 900 / 1000 / 1100 on those days, and one bar dated after today
  * (2099-04-02) that must not push the grid past the current month-end.
  */
+
+/** Values convert at the sell rate: the stored mid less the inferred half spread (`rates.ts`). */
+const SELL = (mid: number): number => mid - 2;
+
 describe("crypto valuation without stored rows", () => {
   const TICKER = "BTC-USD";
   const UNITS = 0.5;
@@ -100,15 +104,15 @@ describe("crypto valuation without stored rows", () => {
     ).run(id);
     atChileMidMarch();
 
-    expect(accountMarkClpAtYmd(id, "2099-01-31")?.value_clp).toBeCloseTo(UNITS * 40_000 * 900, 2);
-    expect(accountMarkClpAtYmd(id, "2099-02-28")?.value_clp).toBeCloseTo(UNITS * 50_000 * 1000, 2);
+    expect(accountMarkClpAtYmd(id, "2099-01-31")?.value_clp).toBeCloseTo(UNITS * 40_000 * SELL(900), 2);
+    expect(accountMarkClpAtYmd(id, "2099-02-28")?.value_clp).toBeCloseTo(UNITS * 50_000 * SELL(1000), 2);
     // Before the purchase the account holds nothing.
     expect(accountMarkClpAtYmd(id, "2099-01-05")?.value_clp).toBe(0);
 
     const perf = valuationSeriesMonthlyPerformance(id, "clp");
     const byDate = new Map(perf!.monthly.map((r) => [r.as_of_date, r.closing_value]));
-    expect(byDate.get("2099-01-31")).toBeCloseTo(UNITS * 40_000 * 900, 2);
-    expect(byDate.get("2099-02-28")).toBeCloseTo(UNITS * 50_000 * 1000, 2);
+    expect(byDate.get("2099-01-31")).toBeCloseTo(UNITS * 40_000 * SELL(900), 2);
+    expect(byDate.get("2099-02-28")).toBeCloseTo(UNITS * 50_000 * SELL(1000), 2);
   });
 
   it("throws on a held date with no coin close on or before it", () => {

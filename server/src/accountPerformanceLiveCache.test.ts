@@ -17,8 +17,8 @@ describe("valuationSeriesMonthlyPerformance live patch vs cache", () => {
     if (!row) return;
 
     const spy = vi.spyOn(todayValue, "accountTodayValue");
-    spy.mockReturnValueOnce({ value_clp: 3_004_764, as_of_date: "2026-06-03", priced_on: "2026-06-03" });
-    spy.mockReturnValueOnce({ value_clp: 3_051_857, as_of_date: "2026-06-03", priced_on: "2026-06-03" });
+    spy.mockReturnValueOnce({ value_clp: 3_004_764, as_of_date: "2026-06-03", priced_on: "2026-06-03", native_value: 3_004_764, native_currency: "clp", side: "asset" });
+    spy.mockReturnValueOnce({ value_clp: 3_051_857, as_of_date: "2026-06-03", priced_on: "2026-06-03", native_value: 3_051_857, native_currency: "clp", side: "asset" });
 
     const first = valuationSeriesMonthlyPerformance(row.id, "clp");
     const second = valuationSeriesMonthlyPerformance(row.id, "clp");

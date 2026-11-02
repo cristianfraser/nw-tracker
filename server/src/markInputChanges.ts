@@ -43,6 +43,21 @@ export function setMarkInputsChangedListener(listener: ((change: MarkInputsChang
 const FULL_HISTORY = "0000-01-01";
 
 /**
+ * The series store quantities (`markSeriesStore.ts`): a rate row (`rateTable`: fx, bid/ask, UF)
+ * moves no quantity of an account that holds shares, coins, cuotas or a non-peso ledger — only
+ * the memoized rate, which lives in the history tier and goes with any change. It still trims
+ * the accounts whose stored quantity is a peso figure built with rates (the card's dollar
+ * lines, the depto ledger's UF marks, a book mark carried by flows): this resolver names the
+ * rate-independent ones, registered by the series cache (`accountMarkDailyCache.ts`). Without
+ * one, a rate row trims every series.
+ */
+let rateIndependentAccounts: (() => ReadonlySet<number>) | null = null;
+
+export function setRateIndependentAccountsResolver(resolver: (() => ReadonlySet<number>) | null): void {
+  rateIndependentAccounts = resolver;
+}
+
+/**
  * How far before a changed row's own date it can move a mark (days), per table:
  * - a card's dollar line is valued at the fx of its facturación's pay-by − 1, up to ~2 months
  *   after the line, so an fx row reaches back that far for card accounts;
@@ -52,10 +67,15 @@ const FULL_HISTORY = "0000-01-01";
  * - the proxy basket (meta / holdings) is a snapshot: it re-values every proxy-held day, which
  *   are recent — 30 days before the change.
  */
-const SOURCE_RULES: Record<string, { backDays?: number; cardBackDays?: number; recentDays?: number }> = {
+const SOURCE_RULES: Record<
+  string,
+  { backDays?: number; cardBackDays?: number; recentDays?: number; rateTable?: boolean }
+> = {
   cc_statements: { backDays: 45 },
   cc_traspaso_deuda_links: { backDays: 75 },
-  fx_daily: { cardBackDays: 75 },
+  fx_daily: { cardBackDays: 75, rateTable: true },
+  fx_daily_bid_ask: { cardBackDays: 75, rateTable: true },
+  uf_daily: { rateTable: true },
   fx_daily_bcentral: { backDays: 7 },
   fund_unit_daily: { backDays: 10 },
   watchlist_composite_meta: { recentDays: 30 },
@@ -102,7 +122,21 @@ function accountsOfKinds(kinds: ReadonlySet<string>): number[] {
  * Apply every change logged since the last call. Returns true when anything was trimmed.
  * Cheap when nothing changed: one indexed MAX(id).
  */
+let applying = false;
+
 export function applyPendingMarkInputChanges(today: string = chileCalendarTodayYmd()): boolean {
+  // The rate-independence resolver reads memoized account facts, whose freshness check calls
+  // back here: the outer call is already applying the rows.
+  if (applying) return false;
+  applying = true;
+  try {
+    return applyPendingMarkInputChangesInner(today);
+  } finally {
+    applying = false;
+  }
+}
+
+function applyPendingMarkInputChangesInner(today: string): boolean {
   const maxId = (maxIdStmt.get() as { id: number }).id;
   if (lastAppliedId == null) {
     // First use in this process: the store is empty, nothing to trim.
@@ -133,12 +167,17 @@ export function applyPendingMarkInputChanges(today: string = chileCalendarTodayY
     if (prev == null || from < prev) byAccount.set(id, from);
   };
   let cardFrom: string | null = null;
+  let rateFrom: string | null = null;
   for (const r of rows) {
     const rule = SOURCE_RULES[r.source] ?? {};
     let from = isoMinusDays(markChangeIso(r.raw_date), rule.backDays ?? 0);
     if (rule.recentDays != null) from = isoMinusDays(today, rule.recentDays);
     if (r.account_id == null) {
-      if (allFrom == null || from < allFrom) allFrom = from;
+      if (rule.rateTable && rateIndependentAccounts) {
+        if (rateFrom == null || from < rateFrom) rateFrom = from;
+      } else if (allFrom == null || from < allFrom) {
+        allFrom = from;
+      }
       if (rule.cardBackDays != null) {
         const cf = isoMinusDays(from, rule.cardBackDays);
         if (cardFrom == null || cf < cardFrom) cardFrom = cf;
@@ -148,6 +187,12 @@ export function applyPendingMarkInputChanges(today: string = chileCalendarTodayY
     }
   }
   if (cardFrom != null) for (const id of accountsOfKinds(new Set(["credit_card"]))) lower(id, cardFrom);
+  if (rateFrom != null && rateIndependentAccounts) {
+    const independent = rateIndependentAccounts();
+    for (const r of accountBucketsStmt.all() as { id: number; slug: string }[]) {
+      if (!independent.has(r.id)) lower(r.id, rateFrom);
+    }
+  }
   const dependents = accountsOfKinds(DEPENDENT_KINDS);
   let dependentFrom: string | null = null;
   for (const id of dependents) {
@@ -159,7 +204,9 @@ export function applyPendingMarkInputChanges(today: string = chileCalendarTodayY
   if (allFrom != null) trimAllMarkSeries(allFrom);
   for (const [id, from] of byAccount) trimAccountMarkSeries(id, from);
   lastAppliedId = rows.length ? rows[rows.length - 1]!.id : maxId;
-  onChanged?.({ all: allFrom != null, accountIds: [...byAccount.keys()] });
+  // A rate row reaches every account's VALUES even when it trims no quantity: the history tier
+  // (its memoized rates) and what was built on it go, as for any change.
+  onChanged?.({ all: allFrom != null || rateFrom != null, accountIds: [...byAccount.keys()] });
   return true;
 }
 

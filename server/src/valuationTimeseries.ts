@@ -1,6 +1,6 @@
 import { assertValuationCurrencyClp } from "./valuationValue.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { accountTodayValue } from "./accountTodayValue.js";
+import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
 import {
   loadMergedDepositInflowEvents,
   loadMergedDisplayDepositInflowEvents,
@@ -74,6 +74,7 @@ import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc } from "./fxRates.js";
 import { accountValueClpToUnitAt, clpToUnitAt, convertTs } from "./clpToUnitAt.js";
+import type { ValueSide } from "./valueConvert.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
@@ -92,7 +93,7 @@ import {
   compositionLineSpecsFromNavTree,
   compositionValuesAtDatesClp,
 } from "./dashboardComposition.js";
-import { slugMarkTotalsAtDatesClp, slugValueInUnitToday } from "./dashboardChartMarkTotals.js";
+import { slugMarkTotalsAtDatesClp, slugValueInUnitAt } from "./dashboardChartMarkTotals.js";
 import {
   applyConsolidatedTotalToGroupTabBlock,
   consolidatedClosingRawByDate,
@@ -109,30 +110,30 @@ export type TimeseriesGranularity = "monthly" | "daily";
 export { convertTs };
 
 /**
- * A chart VALUE in `unit` at `d`: today (and the current month's future month-end point) in the
- * live frame (`clpToUnitAt`), any earlier day the historical rule; NaN without a rate, as
- * `convertTs` plots it.
+ * A chart VALUE in pesos at `d`, in `unit` (`clpToUnitAt`): converted once at its side — an
+ * asset (default) at what selling it would get, a debt (`side: "debt"`) at what buying it back
+ * would cost; today's rate today and on a later date. NaN without a rate, as `convertTs` plots it.
+ * Only for an amount that is not one account's value (a legacy total, the depto lines); an
+ * account's line goes through {@link accountChartValueInUnit}.
  */
-function chartValueInUnit(clp: number, d: string, unit: TsUnit): number {
-  return clpToUnitAt(clp, d, unit) ?? Number.NaN;
+function chartValueInUnit(clp: number, d: string, unit: TsUnit, side: ValueSide = "asset"): number {
+  return clpToUnitAt(clp, d, unit, { side }) ?? Number.NaN;
 }
 
 /**
- * One account's chart value in `unit` at `d`: {@link chartValueInUnit}, except a USD cash
- * account in USD, which plots its ledger dollars on every date (never its sell-rate pesos ÷
- * the mid rate).
+ * One account's chart value in `unit` at `d`, given its pesos that day
+ * (`accountValueClpToUnitAt`): a value natively in another currency (dollar cash, a dollar
+ * stock, a coin) is re-read in it and converted from there, a peso value converts at the
+ * account's side.
  */
 function accountChartValueInUnit(
   accountId: number,
-  kindSlug: string,
+  _kindSlug: string,
   clp: number,
   d: string,
   unit: TsUnit
 ): number {
-  if (unit === "usd" && isUsdCashKindSlug(kindSlug)) {
-    return accountValueClpToUnitAt(accountId, clp, d, unit) ?? Number.NaN;
-  }
-  return chartValueInUnit(clp, d, unit);
+  return accountValueClpToUnitAt(accountId, clp, d, unit) ?? Number.NaN;
 }
 
 type AccountLine = {
@@ -774,10 +775,8 @@ function patchAccountLiveLastPoint(
   });
   if (live == null || !Number.isFinite(live.value_clp)) return points;
   const today = chileCalendarTodayYmd();
-  // The pesos framed on the day they were priced (a USD cash account: its ledger dollars).
-  const plotValue = accountValueClpToUnitAt(row.account_id, live.value_clp, today, unit, {
-    markAsOf: live.priced_on,
-  });
+  // The account's value converted once at today's rate (a USD cash account: its ledger dollars).
+  const plotValue = todayValueInUnit(row.account_id, live, unit);
   const dk = String(row.account_id);
   return isCreditCard
     ? patchLiveLastPointOnOrBeforeToday(points, dk, today, plotValue)
@@ -1077,7 +1076,10 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         if (re != null) lastEth = re;
       }
       if (lastBtc != null || lastEth != null) {
-        row.crypto_total = chartValueInUnit((lastBtc ?? 0) + (lastEth ?? 0), d, unit);
+        // Σ of each coin account's value in the unit (dollar holdings never round-trip pesos).
+        row.crypto_total =
+          (btcId != null && lastBtc != null ? accountChartValueInUnit(btcId, "", lastBtc, d, unit) : 0) +
+          (ethId != null && lastEth != null ? accountChartValueInUnit(ethId, "", lastEth, d, unit) : 0);
       } else {
         row.crypto_total = null;
       }
@@ -1092,7 +1094,9 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         if (rv != null) lastVea = rv;
       }
       if (lastSpy != null || lastVea != null) {
-        row.stocks_total = chartValueInUnit((lastSpy ?? 0) + (lastVea ?? 0), d, unit);
+        row.stocks_total =
+          (spyId != null && lastSpy != null ? accountChartValueInUnit(spyId, "", lastSpy, d, unit) : 0) +
+          (veaId != null && lastVea != null ? accountChartValueInUnit(veaId, "", lastVea, d, unit) : 0);
       } else {
         row.stocks_total = null;
       }
@@ -1677,10 +1681,10 @@ function buildDashboardPortfolioGroupTotalsClp(): {
 }
 
 /**
- * The per-slug totals in `unit`. Past dates convert the CLP total (the historical rule is one
- * stored rate per day, so Σ converts as one); TODAY in USD re-sums the slug's accounts in
- * dollars (`slugValueInUnitToday`), each framed on the day its pesos were priced — the
- * headline's rule, so the overview's and «Cuentas principales»' today points equal the cards.
+ * The dashboard portfolio-group totals in `unit`: pesos as built; any other unit re-sums each
+ * slug's accounts in that unit on every date (`slugValueInUnitAt`: each account's value
+ * converted once at its side, the cash netting at the debt side) — the headline's rule, so the
+ * overview's points equal the cards and no dollar holding round-trips through pesos.
  */
 function convertDashboardPortfolioGroupTotals(
   clp: {
@@ -1690,24 +1694,23 @@ function convertDashboardPortfolioGroupTotals(
   },
   unit: TsUnit
 ): { datesAsc: string[]; totalsBySlug: Map<string, Map<string, number>> } {
-  const today = chileCalendarTodayYmd();
   const now = new Date();
   const totalsBySlug = new Map<string, Map<string, number>>();
   for (const [slug, byDate] of clp.totalsBySlug) {
     const converted = new Map<string, number>();
     for (const [d, v] of byDate) {
-      if (unit === "usd" && d === today) {
-        const rows = clp.rowsBySlug.get(slug);
-        if (!rows) throw new Error(`dashboard totals: no account rows for ${slug}`);
-        const u = slugValueInUnitToday(rows, "usd", {
-          netLinkedCreditCard: slug === DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
-          now,
-        });
-        if (u != null && Number.isFinite(u)) converted.set(d, u);
+      if (unit === "clp") {
+        converted.set(d, v);
         continue;
       }
-      const u = chartValueInUnit(v, d, unit);
-      if (Number.isFinite(u)) converted.set(d, u);
+      // Σ of each account's own value in the unit on every date (never the pesos ÷ one rate).
+      const rows = clp.rowsBySlug.get(slug);
+      if (!rows) throw new Error(`dashboard totals: no account rows for ${slug}`);
+      const u = slugValueInUnitAt(rows, d, unit, {
+        netLinkedCreditCard: slug === DASHBOARD_NW_CASH_PORTFOLIO_SLUG,
+        now,
+      });
+      if (u != null && Number.isFinite(u)) converted.set(d, u);
     }
     totalsBySlug.set(slug, converted);
   }
@@ -2349,7 +2352,7 @@ function getGroupValuationTimeseriesInnerUncached(
           points: accounts_in_group.points.map((row) => {
             const d = String(row.as_of_date);
             const raw = mortgageClpByDate.get(d);
-            const hipoteca = raw != null && Number.isFinite(raw) ? chartValueInUnit(raw, d, unit) : null;
+            const hipoteca = raw != null && Number.isFinite(raw) ? chartValueInUnit(raw, d, unit, "debt") : null;
             const eq = row[propDk];
             return {
               ...row,
@@ -2404,7 +2407,7 @@ function buildDailyEquityPointsForAccount(
     if (clp == null) continue;
     points.push({
       as_of_date: r.trade_date,
-      [dk]: chartValueInUnit(clp, r.trade_date, unit),
+      [dk]: accountChartValueInUnit(accountId, "", clp, r.trade_date, unit),
     });
   }
   return { accounts: top, points };
@@ -2459,7 +2462,7 @@ export function getAccountValuationTimeseries(
           const d = String(pt.as_of_date);
           const raw = closeByDate.get(d);
           if (raw == null || !Number.isFinite(raw)) return pt;
-          return { ...pt, [dk]: chartValueInUnit(raw, d, unit) };
+          return { ...pt, [dk]: chartValueInUnit(raw, d, unit, "debt") };
         }),
       };
     }
@@ -2494,7 +2497,7 @@ export function getAccountValuationTimeseries(
             ...pt,
             ...(close != null && Number.isFinite(close) ? { [dk]: chartValueInUnit(close, d, unit) } : {}),
             [hipotecaDk]:
-              hipoteca != null && Number.isFinite(hipoteca) ? chartValueInUnit(hipoteca, d, unit) : null,
+              hipoteca != null && Number.isFinite(hipoteca) ? chartValueInUnit(hipoteca, d, unit, "debt") : null,
           };
         }),
       };

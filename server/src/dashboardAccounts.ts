@@ -11,7 +11,7 @@ import {
 } from "./accountPeriodMetrics.js";
 import { monthlyPerfRowsForAccount } from "./groupMonthlyPerfConsolidation.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { accountTodayValue } from "./accountTodayValue.js";
+import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 import { priorCloseFromPerfRows, priorPeriodEndYmd } from "./accountPeriodMarks.js";
 import { fxForLiveMtm } from "./fxRates.js";
@@ -411,7 +411,7 @@ function buildDashboardAccountRow(
   // Stored fx of the prior day (a USD cash account: its ledger dollars that day).
   const prior_day_close_usd =
     includeUsd && prior_day_close_clp != null
-      ? accountValueClpToUnitAt(a.id, prior_day_close_clp, priorDayYmd, "usd")
+      ? accountValueClpToUnitAt(a.id, prior_day_close_clp, priorDayYmd, "usd", { categorySlug: markCategorySlug })
       : null;
   const deposits_day_clp = mortgagePayments
     ? mortgagePayments.day_clp
@@ -432,20 +432,16 @@ function buildDashboardAccountRow(
   const position = positionSnapshotFromMeta(kindSlug, positionMeta, deposits, v);
   const current_value_clp = v?.value_clp ?? null;
   const valuation_as_of = v?.as_of_date ?? null;
-  // The USD frame of the row is the pesos ÷ the fx of the day they were priced
-  // (`priced_on`): the live CLP=X while that fx day is open, the stored close after. A
-  // USD cash account reads its ledger dollars. The perf live row and the charts' live
-  // point read the same helper, so the card, its table and its chart agree.
+  // The USD frame of the row is the account's value converted once at today's rate and its
+  // side (`todayValueInUnit`): a USD cash account reads its ledger dollars, a dollar stock its
+  // shares × dollar price, a peso value its pesos at the buy rate (a debt at the sell rate).
+  // The perf live row and the charts' live point read the same value, so the card, its table
+  // and its chart agree. `fx_*` below only report the rate of the day the price was observed.
   const fxRow = includeUsd ? fxForLiveMtm(v?.priced_on ?? null) : null;
-  const current_value_usd =
-    includeUsd && current_value_clp != null
-      ? accountValueClpToUnitAt(a.id, current_value_clp, today, "usd", {
-          markAsOf: v!.priced_on,
-        })
-      : null;
+  const current_value_usd = includeUsd && v != null ? todayValueInUnit(a.id, v, "usd") : null;
   const fx_missing =
     includeUsd &&
-    ((current_value_clp != null && fxRow == null) ||
+    ((current_value_clp != null && current_value_usd == null) ||
       (deposits !== 0 && deposits_usd == null));
   // Day Δ = live value vs day-anchor close net of day flows — same identity the daily
   // series uses (pl = delta − flow), so cards and the daily view agree. Both liabilities
@@ -589,8 +585,8 @@ async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
     credit_card_clp: liabilitiesClp.credit_card_clp,
     // Balances owed today, at today's mid (live while the fx day is open), as every USD value
     // on the page — never the buy rate deposit events use.
-    mortgage_usd: clpToUnitAt(liabilitiesClp.mortgage_clp, asOfToday, "usd"),
-    credit_card_usd: clpToUnitAt(liabilitiesClp.credit_card_clp, asOfToday, "usd"),
+    mortgage_usd: clpToUnitAt(liabilitiesClp.mortgage_clp, asOfToday, "usd", { side: "debt" }),
+    credit_card_usd: clpToUnitAt(liabilitiesClp.credit_card_clp, asOfToday, "usd", { side: "debt" }),
   };
   const dashboard_layout = getDashboardLayoutCards().map((card) =>
     card.slug === "cash_eqs"
