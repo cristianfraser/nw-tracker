@@ -343,6 +343,10 @@
         "en": "Still owed after the payments and credits since the close. The facturación billed {{amount}}.",
         "es": "Lo que queda tras los pagos y abonos desde el cierre. La facturación fue de {{amount}}."
       },
+      "payByShort": {
+        "en": "by",
+        "es": "hasta"
+      },
       "overdue": {
         "en": "overdue",
         "es": "vencida"

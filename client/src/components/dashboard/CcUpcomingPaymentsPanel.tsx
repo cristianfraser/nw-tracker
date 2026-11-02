@@ -83,26 +83,26 @@ function MonthCell({ row }: { row: CcUpcomingPaymentRowDto }) {
   );
 }
 
-/** One facturación of one card: title, then close / pay-by / amount as label–value lines. */
+/** One facturación of one card: title, then one line — close (by pay-by) and the amount. */
 function PaymentCard({ card, row }: { card: CcUpcomingPaymentsCardDto; row: CcUpcomingPaymentRowDto }) {
   const { t } = useTranslation();
-  const lines = [
-    { id: "close", label: t("accountDetail.creditCard.colCloseDate"), value: <CloseCell row={row} /> },
-    { id: "payBy", label: t("accountDetail.creditCard.colPayBy"), value: <PayByCell row={row} /> },
-    { id: "amount", label: t("dashboard.ccUpcoming.colAmount"), value: <AmountCell row={row} /> },
-  ];
   return (
     <div className={`card ${styles.period}`}>
       <div className={styles.periodTitle}>
         {card.name} · <MonthCell row={row} />
       </div>
       <dl className={styles.lines}>
-        {lines.map((line) => (
-          <div key={line.id} className={styles.line}>
-            <dt>{line.label}</dt>
-            <dd className="mono">{line.value}</dd>
-          </div>
-        ))}
+        <div className={styles.line}>
+          <dt className="mono">
+            <CloseCell row={row} />{" "}
+            <span className="muted">
+              ({t("dashboard.ccUpcoming.payByShort")} <PayByCell row={row} />)
+            </span>
+          </dt>
+          <dd className="mono">
+            <AmountCell row={row} />
+          </dd>
+        </div>
       </dl>
     </div>
   );

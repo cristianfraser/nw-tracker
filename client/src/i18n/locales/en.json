@@ -112,6 +112,7 @@
       "totalToPay": "Total to pay",
       "billedOf": "of {{amount}}",
       "partlyPaidHint": "Still owed after the payments and credits since the close. The facturación billed {{amount}}.",
+      "payByShort": "by",
       "overdue": "overdue",
       "overdueHint": "The pay-by date passed with this amount still owed."
     },

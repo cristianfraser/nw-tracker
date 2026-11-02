@@ -112,6 +112,7 @@
       "totalToPay": "Total a pagar",
       "billedOf": "de {{amount}}",
       "partlyPaidHint": "Lo que queda tras los pagos y abonos desde el cierre. La facturación fue de {{amount}}.",
+      "payByShort": "hasta",
       "overdue": "vencida",
       "overdueHint": "Pasó la fecha de pago y queda este monto por pagar."
     },
