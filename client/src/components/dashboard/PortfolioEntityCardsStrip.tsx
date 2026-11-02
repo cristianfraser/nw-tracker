@@ -20,13 +20,7 @@ export type PortfolioEntityCardsStripProps = {
 };
 
 /** Shell of the row-1 summary cards (a `CompactEntityCard` renders inside). */
-const SUMMARY_SHELL = cn(
-  "portfolio-strip-compact",
-  "card",
-  "card--detail",
-  "card--detail-compact",
-  "card--detail-stretch",
-);
+const SUMMARY_SHELL = cn("card", "card--detail", "card--detail-stretch");
 
 /**
  * Dashboard-style card strip: one `.cards-strip` holding the summary block (row 1) over the

@@ -30,7 +30,5 @@
   bottom: 0;
   z-index: 20;
   margin-top: var(--space-sm);
-  border: 1px solid var(--border);
-  border-radius: var(--card-radius);
   box-shadow: 0 -0.35rem 1rem rgb(0 0 0 / 0.25);
 }

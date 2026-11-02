@@ -84,10 +84,7 @@ export function BrokerageMovementRowFields({
         gridTemplateColumns: "repeat(auto-fill, minmax(9rem, 1fr))",
         gap: "0.5rem 0.75rem",
         alignItems: "end",
-        padding: "0.65rem 0.75rem",
         marginBottom: "0.5rem",
-        border: "1px solid var(--border-subtle, #333)",
-        borderRadius: 6,
       }}
     >
       <Field label={t("panelAccounts.addAccount.movementDate")}>

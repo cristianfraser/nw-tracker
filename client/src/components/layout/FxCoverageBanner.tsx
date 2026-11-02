@@ -68,10 +68,6 @@ export function FxCoverageBanner({
       role="alert"
       style={{
         margin: "0 0 1rem",
-        padding: "0.65rem 0.85rem",
-        borderRadius: 8,
-        border: "1px solid var(--error-border, #c44)",
-        background: "var(--error-bg, rgba(180, 40, 40, 0.12))",
         lineHeight: 1.45,
         maxWidth: "58rem",
       }}

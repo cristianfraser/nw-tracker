@@ -5,9 +5,6 @@
 /* The list sizes its rows by its own width (it sits in modals and pages of any width). */
 .list {
   container-type: inline-size;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
   font-size: 0.875rem;
 }
 
@@ -17,7 +14,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   /* Left: the origin column (1.5rem) + gap; right: the ⋯ column (1.75rem) + gap. */
-  padding: 0.5rem calc(0.7rem + 1.75rem + 0.6rem) 0.5rem calc(0.7rem + 1.5rem + 0.6rem);
+  padding: 0.5rem calc(1.75rem + 0.6rem) 0.5rem calc(1.5rem + 0.6rem);
   border-bottom: 1px solid var(--border);
 }
 
@@ -61,7 +58,7 @@
   align-items: center;
   column-gap: 0.6rem;
   row-gap: 0.25rem;
-  padding: 0.55rem 0.7rem;
+  padding: 0.55rem 0;
 }
 
 .row + .row {
