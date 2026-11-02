@@ -113,6 +113,19 @@
   }
 }
 
+/* A list of cards (the home «Próximos pagos»): never 2-up — one card per row wherever the
+   block is narrow (the 600–879 band here, the dashboard rail in page-grid.css). */
+@media (min-width: 600px) and (max-width: 879px) {
+  .cards.cards--list>.card {
+    grid-column: 1 / -1;
+    border-left: 0;
+  }
+
+  .cards.cards--list>:where(.card + .card) {
+    border-top: 1px solid var(--hairline);
+  }
+}
+
 .card .label {
   font-size: var(--font-size-card-label);
   text-transform: uppercase;
