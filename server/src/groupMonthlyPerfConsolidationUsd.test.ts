@@ -39,7 +39,7 @@ beforeAll(() => {
      VALUES (?, 100000, 'clp', '2025-06-05', 'vitest-group-usd', 100)`
   ).run(accountId);
   const insPx = db.prepare(
-    `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, 'vitest')`
+    `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, 'vitest')`
   );
   insPx.run(SERIES_KEY, "2025-06-05", 1000);
   insPx.run(SERIES_KEY, "2025-06-30", 1010);

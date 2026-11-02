@@ -44,13 +44,13 @@ const MOVEMENTS = [
 // The display series, one row per calendar day: 1010 first shows on Monday 2030-05-13 and is
 // carried over Friday's close into the weekend (a repeated value is one run, not an ambiguity).
 const SERIES = [
-  { day: "2030-04-12", unit_value_clp: 1000 },
-  { day: "2030-04-13", unit_value_clp: 1000 },
-  { day: "2030-04-14", unit_value_clp: 1001 },
-  { day: "2030-05-13", unit_value_clp: 1010 },
-  { day: "2030-05-14", unit_value_clp: 1010 },
-  { day: "2030-05-15", unit_value_clp: 1010 },
-  { day: "2030-05-22", unit_value_clp: 1020 },
+  { day: "2030-04-12", unit_value: 1000 },
+  { day: "2030-04-13", unit_value: 1000 },
+  { day: "2030-04-14", unit_value: 1001 },
+  { day: "2030-05-13", unit_value: 1010 },
+  { day: "2030-05-14", unit_value: 1010 },
+  { day: "2030-05-15", unit_value: 1010 },
+  { day: "2030-05-22", unit_value: 1020 },
 ];
 const LEDGER: PensionLedgerRow[] = [
   { id: 1, occurred_on: "2029-12-10", amount: 100_000, units_delta: 100 },
@@ -121,9 +121,9 @@ describe("planPensionCertificates", () => {
 
 describe("checkPensionStatedValue", () => {
   const series = [
-    { day: "2030-07-15", unit_value_clp: 1000 },
-    { day: "2030-07-16", unit_value_clp: 1010.5 },
-    { day: "2030-07-17", unit_value_clp: 1020.25 },
+    { day: "2030-07-15", unit_value: 1000 },
+    { day: "2030-07-16", unit_value: 1010.5 },
+    { day: "2030-07-17", unit_value: 1020.25 },
   ];
   const stated = { cuotas: 200, valor_cuota: 1010.5, pesos: 202_100 };
 
@@ -140,7 +140,7 @@ describe("checkPensionStatedValue", () => {
 
   it("pairs the website's value with the app's on the day it shows, whatever the read's hour", () => {
     // 2030-07-17 22:00: the app already shows 07-17's price, the website still 07-16's.
-    const appValue = (day: string) => 200 * series.find((s) => s.day === day)!.unit_value_clp;
+    const appValue = (day: string) => 200 * series.find((s) => s.day === day)!.unit_value;
     const evening = checkPensionStatedValue(stated, series, "2030-07-17", appValue);
     expect(evening.check).toMatchObject({ status: "match", app_day: "2030-07-16" });
     // 2030-07-18 00:01: the website has caught up to 07-17's price.

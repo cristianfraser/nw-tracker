@@ -25,9 +25,9 @@ describe("UNO valor cuota API answer", () => {
       ],
     });
     expect(rows).toEqual([
-      { afp: "uno", fund: "A", day: "2026-10-26", unit_value_clp: 50000, provisional: false },
-      { afp: "uno", fund: "A", day: "2026-10-27", unit_value_clp: 1050100.5, provisional: false },
-      { afp: "uno", fund: "A", day: "2026-10-28", unit_value_clp: 50123.45, provisional: false },
+      { afp: "uno", fund: "A", day: "2026-10-26", unit_value: 50000, provisional: false },
+      { afp: "uno", fund: "A", day: "2026-10-27", unit_value: 1050100.5, provisional: false },
+      { afp: "uno", fund: "A", day: "2026-10-28", unit_value: 50123.45, provisional: false },
     ]);
   });
 

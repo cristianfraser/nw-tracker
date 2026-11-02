@@ -30,8 +30,8 @@ const OPTS = { seriesKeys: [RN_KEY], apvSeriesKeys: [APV_KEY] };
 
 function seedUnit(seriesKey: string, day: string, value: number, note = PUBLISHED): void {
   db.prepare(
-    `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, ?)
-     ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+    `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, ?)
+     ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
   ).run(seriesKey, day, value, note);
 }
 

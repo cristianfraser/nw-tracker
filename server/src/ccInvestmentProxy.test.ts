@@ -516,7 +516,7 @@ describe("facturación proxy on a card ledger", () => {
        VALUES (?, 21, 20, ?)`
     ).run(accountId, LAST4);
     const insPrice = db.prepare(
-      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, 'vitest')`
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, 'vitest')`
     );
     for (const [day, px] of [
       ["2026-07-01", 1000],

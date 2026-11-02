@@ -15,15 +15,15 @@ const SERIE_ID = 999;
 
 function seedBar(day: string, px: number, note: string): void {
   db.prepare(
-    `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, ?)
-     ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+    `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, ?)
+     ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
   ).run(SERIES, day, px, note);
 }
 
-function readBar(day: string): { unit_value_clp: number; note: string } | undefined {
+function readBar(day: string): { unit_value: number; note: string } | undefined {
   return db
-    .prepare(`SELECT unit_value_clp, note FROM fund_unit_daily WHERE series_key = ? AND day = ?`)
-    .get(SERIES, day) as { unit_value_clp: number; note: string } | undefined;
+    .prepare(`SELECT unit_value, note FROM fund_unit_daily WHERE series_key = ? AND day = ?`)
+    .get(SERIES, day) as { unit_value: number; note: string } | undefined;
 }
 
 afterEach(() => {
@@ -115,16 +115,16 @@ describe("reconcileFundUnitSeriesWithOfficialPrices", () => {
       ["2099-01-05", "corrected"],
     ]);
     expect(readBar("2099-01-04")).toBeUndefined(); // dry run wrote nothing
-    expect(readBar("2099-01-05")!.unit_value_clp).toBe(1016);
+    expect(readBar("2099-01-05")!.unit_value).toBe(1016);
 
     const res = reconcileFundUnitSeriesWithOfficialPrices({ seriesKey: SERIES, serieId: SERIE_ID, official, dryRun: false });
     expect(res.checked).toBe(5);
     expect(res.agreed).toBe(2);
-    expect(readBar("2099-01-01")).toMatchObject({ unit_value_clp: 1000, note: "fintual:gql:shares-publish|vitest" });
-    expect(readBar("2099-01-02")).toMatchObject({ unit_value_clp: 1000.02 }); // within tolerance: untouched
-    expect(readBar("2099-01-03")).toMatchObject({ unit_value_clp: 1000.5, note: "fintual:public-serie:publish|serie=999" });
-    expect(readBar("2099-01-04")).toMatchObject({ unit_value_clp: 1001, note: "fintual:public-serie:publish|serie=999" });
-    expect(readBar("2099-01-05")).toMatchObject({ unit_value_clp: 1000, note: "fintual:public-serie:publish|serie=999" });
+    expect(readBar("2099-01-01")).toMatchObject({ unit_value: 1000, note: "fintual:gql:shares-publish|vitest" });
+    expect(readBar("2099-01-02")).toMatchObject({ unit_value: 1000.02 }); // within tolerance: untouched
+    expect(readBar("2099-01-03")).toMatchObject({ unit_value: 1000.5, note: "fintual:public-serie:publish|serie=999" });
+    expect(readBar("2099-01-04")).toMatchObject({ unit_value: 1001, note: "fintual:public-serie:publish|serie=999" });
+    expect(readBar("2099-01-05")).toMatchObject({ unit_value: 1000, note: "fintual:public-serie:publish|serie=999" });
 
     const changes = fintualOfficialSerieSyncChanges([res]);
     expect(changes.map((c) => c.newDate)).toEqual(["2099-01-03", "2099-01-04", "2099-01-05"]);
@@ -171,8 +171,8 @@ describe("reconcileFundUnitSeriesWithOfficialPrices", () => {
       ["2099-03-02", "carry_replaced"],
       ["2099-03-03", "carry_replaced"],
     ]);
-    expect(readBar("2099-03-02")).toMatchObject({ unit_value_clp: 1000.3, note: "fintual:public-serie:publish|serie=999" });
-    expect(readBar("2099-03-03")).toMatchObject({ unit_value_clp: 1000.1, note: "fintual:public-serie:publish|serie=999" });
+    expect(readBar("2099-03-02")).toMatchObject({ unit_value: 1000.3, note: "fintual:public-serie:publish|serie=999" });
+    expect(readBar("2099-03-03")).toMatchObject({ unit_value: 1000.1, note: "fintual:public-serie:publish|serie=999" });
     expect(readBar("2099-03-04")!.note).toBe("fintual:gql:shares-publish|vitest"); // agrees: untouched
     // A stand-in whose value differs is a visible change line.
     expect(fintualOfficialSerieSyncChanges([res])).toHaveLength(2);

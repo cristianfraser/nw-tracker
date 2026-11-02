@@ -316,7 +316,7 @@ async function runAfpUno(
   const marked = upsertAfpSpotValuationWithExplicitPx({
     accountId: row.id,
     asOfYmd: cl.ymd,
-    px: shown.unit_value_clp,
+    px: shown.unit_value,
     dryRun: syncDryRun,
   });
   const prevRounded = prevVal?.value_clp != null ? Math.round(prevVal.value_clp) : null;
@@ -333,7 +333,7 @@ async function runAfpUno(
     });
   }
   console.log(
-    `sync: AFP UNO — years=[${r.years.join(", ")}] published=${r.published_ymd ?? "—"} shown=${shown.unit_value_clp} display_written=${r.display_written} (${syncDryRun ? "dry-run" : "ok"})`
+    `sync: AFP UNO — years=[${r.years.join(", ")}] published=${r.published_ymd ?? "—"} shown=${shown.unit_value} display_written=${r.display_written} (${syncDryRun ? "dry-run" : "ok"})`
   );
 }
 
@@ -721,12 +721,12 @@ async function runAfcCic(
   }
   const before = r.latest_before;
   const after = r.latest_after;
-  if (after && (before == null || after.day !== before.day || Math.abs(after.unit_value_clp - before.unit_value_clp) > 0.00005)) {
+  if (after && (before == null || after.day !== before.day || Math.abs(after.unit_value - before.unit_value) > 0.00005)) {
     changes.push({
       group: "afc",
       label: "AFC CIC valor cuota",
-      oldValue: before ? formatSyncClose(before.unit_value_clp) : "—",
-      newValue: formatSyncClose(after.unit_value_clp),
+      oldValue: before ? formatSyncClose(before.unit_value) : "—",
+      newValue: formatSyncClose(after.unit_value),
       oldDate: before?.day ?? null,
       newDate: after.day,
     });

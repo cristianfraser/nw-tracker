@@ -134,7 +134,7 @@ function createAccounts(person: Person): Map<Acct, number> {
 
 /** The APV fund: a balanced fund (65 % SPY in pesos, 35 % a steady 3 %/yr sleeve), valued daily. */
 function writeFundSeries(seriesKey: string, equityShare: number, market: MarketReader, from: Ymd, today: Ymd): void {
-  const ins = db.prepare(`INSERT OR REPLACE INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, 'demo')`);
+  const ins = db.prepare(`INSERT OR REPLACE INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, 'demo')`);
   const spy0 = market.close("SPY", from) * market.fx(from);
   db.transaction(() => {
     for (let d = from; d <= today; d = addDays(d, 1)) {

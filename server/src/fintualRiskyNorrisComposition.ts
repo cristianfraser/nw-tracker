@@ -79,7 +79,7 @@ export type FintualManagedFundPositionsResponse = {
 };
 
 const stmtFundUnitOnDate = db.prepare(
-  `SELECT unit_value_clp, note FROM fund_unit_daily
+  `SELECT unit_value, note FROM fund_unit_daily
    WHERE series_key = ? AND day = ? LIMIT 1`
 );
 const stmtSeriesHasRowOnOrBefore = db.prepare(
@@ -263,24 +263,24 @@ export type CompositionAnchor = {
   positions_ymd: string;
 };
 
-type FundUnitRow = { unit_value_clp: number; note: string | null };
+type FundUnitRow = { unit_value: number; note: string | null };
 
 function publishedFundUnitOnDay(
   seriesKeys: readonly string[],
   ymd: string
-): { series_key: string; unit_value_clp: number } | null {
+): { series_key: string; unit_value: number } | null {
   for (const seriesKey of seriesKeys) {
     const row = stmtFundUnitOnDate.get(seriesKey, ymd) as FundUnitRow | undefined;
-    if (row == null || !Number.isFinite(row.unit_value_clp) || row.unit_value_clp <= 0) continue;
+    if (row == null || !Number.isFinite(row.unit_value) || row.unit_value <= 0) continue;
     if (isFintualCarryForwardFundUnitNote(row.note)) continue;
-    return { series_key: seriesKey, unit_value_clp: row.unit_value_clp };
+    return { series_key: seriesKey, unit_value: row.unit_value };
   }
   return null;
 }
 
 function apvFundUnitOnAnchorDay(apvSeriesKeys: readonly string[], anchorYmd: string): number | null {
   const exact = publishedFundUnitOnDay(apvSeriesKeys, anchorYmd);
-  if (exact != null) return exact.unit_value_clp;
+  if (exact != null) return exact.unit_value;
   for (const seriesKey of apvSeriesKeys) {
     if (stmtSeriesHasRowOnOrBefore.get(seriesKey, anchorYmd) != null) {
       throw new Error(
@@ -322,7 +322,7 @@ export function resolveCompositionAnchor(
         return {
           anchor_ymd: ymd,
           series_key: rn.series_key,
-          fund_unit_clp: rn.unit_value_clp,
+          fund_unit_clp: rn.unit_value,
           apv_fund_unit_clp: apvFundUnitOnAnchorDay(apvSeriesKeys, ymd),
           positions_ymd: positionsYmd,
         };
