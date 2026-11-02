@@ -396,13 +396,7 @@ export function RealEstateExpensesPage() {
                       ) : null}
                       {editing != null && editing.id === slot.expense_entry_id ? (
                         <span
-                          style={{
-                            display: "flex",
-                            gap: "0.35rem",
-                            alignItems: "center",
-                            flexWrap: "wrap",
-                            marginTop: "0.25rem",
-                          }}
+                          style={{ display: "flex", gap: "0.35rem", alignItems: "center", flexWrap: "wrap" }}
                         >
                           {slot.kind !== "gas" ? (
                             <span style={{ width: "6rem" }}>

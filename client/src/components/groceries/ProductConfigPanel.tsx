@@ -225,8 +225,8 @@ export function ProductConfigPanel({
   };
 
   return (
-    <div style={{ margin: "0.75rem 0" }}>
-      <h4 style={{ margin: "0 0 0.25rem" }}>{t("groceries.config.title")}</h4>
+    <div>
+      <h4 style={{ margin: 0 }}>{t("groceries.config.title")}</h4>
       <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "center" }}>
         <label>
           {t("groceries.config.baseUnit")}{" "}
@@ -258,7 +258,7 @@ export function ProductConfigPanel({
         </Button>
         {note ? <span className="muted">{note}</span> : null}
       </div>
-      <p className="muted" style={{ margin: "0.25rem 0 0.5rem" }}>
+      <p className="muted" style={{ margin: 0 }}>
         {t("groceries.config.baseUnitHint")}
       </p>
       <table className="data-table">

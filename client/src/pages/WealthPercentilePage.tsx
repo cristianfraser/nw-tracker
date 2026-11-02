@@ -396,7 +396,7 @@ export function WealthPercentilePage() {
 
       <PageGridTile id="chart">
         <label
-          style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}
+          style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
         >
           <span className="muted" style={{ fontSize: "0.85em" }}>
             {t("wealthPercentile.chart.scaleLabel")}

@@ -56,7 +56,7 @@ export function AccountUsdCashMovementsForm({ accountId, displayUnit }: Props) {
   });
 
   return (
-    <section style={{ marginBottom: "1.5rem" }}>
+    <section>
       <BrokerageMovementsSection
         movements={movements}
         onChange={(next) => {
@@ -74,7 +74,7 @@ export function AccountUsdCashMovementsForm({ accountId, displayUnit }: Props) {
       />
 
       {movements.length > 0 ? (
-        <div style={{ marginTop: "0.75rem" }}>
+        <div>
           <Button
             disabled={saveMutation.isPending}
             onClick={() => saveMutation.mutate(movements)}
