@@ -1,3 +1,4 @@
+import { PageGridTile } from "../layout/PageGridTile";
 import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
@@ -143,8 +144,8 @@ export function BigExpenseGroupsSection({
   }
 
   return (
-    <section className={loadableClass(loading)} style={{ marginTop: "2rem", marginBottom: "1.5rem" }}>
-      <h3 style={{ marginBottom: "0.35rem" }}>
+    <PageGridTile id="big-groups" className={loadableClass(loading)}>
+      <h3>
         {t("expenses.creditCard.bigGroups.sectionTitle")}
       </h3>
       {usage.map((g) => (
@@ -161,6 +162,6 @@ export function BigExpenseGroupsSection({
           onToggleExcluded={() => toggleExcluded(g.slug)}
         />
       ))}
-    </section>
+    </PageGridTile>
   );
 }

@@ -1,3 +1,4 @@
+import { PageGridTile } from "../layout/PageGridTile";
 import { useEffect, useMemo, useState } from "react";
 import { isAutoDepositMatchedPurchaseNote } from "../../ccExpenseDepositMatchNotes";
 import { useTranslation } from "../../i18n";
@@ -62,8 +63,8 @@ export function CreditCardDepositMatchedExpensesTable({
   const currentLines = paged[currentPageIndex] ?? [];
 
   return (
-    <section style={{ marginTop: "2rem" }}>
-      <h3 style={{ marginBottom: "0.35rem" }}>
+    <PageGridTile id="deposit-matched">
+      <h3>
         {t("expenses.creditCard.depositMatchedTableTitle")}
         <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
           {depositMatched.length}
@@ -118,6 +119,6 @@ export function CreditCardDepositMatchedExpensesTable({
         />
         <CreditCardExpenseLinesSelectionPageFooter categories={categories} />
       </CreditCardExpenseLinesSelectionProvider>
-    </section>
+    </PageGridTile>
   );
 }

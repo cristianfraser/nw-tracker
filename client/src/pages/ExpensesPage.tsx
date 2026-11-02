@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Button } from "@crfrsr/ui";
+import { PageGridTile } from "../components/layout/PageGridTile";
 import { ManualExpenseDialog } from "../components/credit-card/ManualExpenseDialog";
 import { useFlowsExpenses, useFlowsExpensesGastos } from "../queries/hooks";
 import { CreditCardGroupExpensesChart } from "../components/charts/CreditCardGroupExpensesChart";
@@ -149,7 +150,6 @@ export function ExpensesPage() {
           flexWrap: "wrap",
           alignItems: "center",
           gap: "0.5rem 1rem",
-          marginBottom: "1rem",
         }}
       >
         <span className="label-inline">{t("expenses.creditCard.installmentModeLabel")}</span>
@@ -204,10 +204,7 @@ export function ExpensesPage() {
         />
       </div>
 
-      <div
-        className="chart-grid chart-grid--full-line chart-grid--full-width-stack"
-        style={{ marginBottom: chartFilterActive ? "0.35rem" : "1.5rem" }}
-      >
+      <div className="chart-grid chart-grid--full-line chart-grid--full-width-stack">
         <CreditCardGroupExpensesChart
           controls={chartControls}
           title={t("expenses.creditCard.chartTitle")}
@@ -221,7 +218,7 @@ export function ExpensesPage() {
         />
       </div>
       {chartFilterActive ? (
-        <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "1.5rem" }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-ui)" }}>
           {t("expenses.creditCard.bigGroups.chartFilterHint")}
         </p>
       ) : null}
@@ -236,49 +233,51 @@ export function ExpensesPage() {
         loading={gastosLoading}
       />
 
-      <div className="chart-panel-title-row" style={{ marginBottom: "0.5rem" }}>
-      <h3 style={{ margin: 0 }}>
-        {t(
-          tableGranularity === "year"
-            ? "accountDetail.yearlyDetailTitle"
-            : "accountDetail.monthlyDetailTitle"
-        )}
-        <span
-          className={loadableClass(gastosLoading, "muted mono")}
-          style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}
-        >
-          {formatFlowMoney(view?.total ?? 0, displayUnit)}
-          {view && view.total_real !== view.total ? (
-            <>
-              {" · "}
-              {t("expenses.creditCard.colMonthExpenseReal")}:{" "}
-              {formatFlowMoney(view.total_real, displayUnit)}
-            </>
-          ) : null}
-          {timeRange !== "total" ? (
-            <>
-              {" · "}
-              {t("flows.rangeTotalLabel")}: {formatFlowMoney(rangeTotals.total, displayUnit)}
-            </>
-          ) : null}
-        </span>
-      </h3>
-      <SurfaceControls
-        period={tablePrefs.period}
-        onPeriodChange={tablePrefs.setPeriod}
-        periodOptions={["month", "year"]}
-      />
-      </div>
-      <GroupExpensesMonthTable
-        rows={monthTableRows}
-        lines={data?.lines ?? []}
-        categories={data?.categories ?? []}
-        bigGroups={data?.big_groups ?? []}
-        installmentMode={installmentMode}
-        displayUnit={displayUnit}
-        periodGranularity={tableGranularity}
-        loading={gastosLoading}
-      />
+      <PageGridTile id="detail">
+        <div className="chart-panel-title-row">
+          <h3>
+            {t(
+              tableGranularity === "year"
+                ? "accountDetail.yearlyDetailTitle"
+                : "accountDetail.monthlyDetailTitle"
+            )}
+            <span
+              className={loadableClass(gastosLoading, "muted mono")}
+              style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}
+            >
+              {formatFlowMoney(view?.total ?? 0, displayUnit)}
+              {view && view.total_real !== view.total ? (
+                <>
+                  {" · "}
+                  {t("expenses.creditCard.colMonthExpenseReal")}:{" "}
+                  {formatFlowMoney(view.total_real, displayUnit)}
+                </>
+              ) : null}
+              {timeRange !== "total" ? (
+                <>
+                  {" · "}
+                  {t("flows.rangeTotalLabel")}: {formatFlowMoney(rangeTotals.total, displayUnit)}
+                </>
+              ) : null}
+            </span>
+          </h3>
+          <SurfaceControls
+            period={tablePrefs.period}
+            onPeriodChange={tablePrefs.setPeriod}
+            periodOptions={["month", "year"]}
+          />
+        </div>
+        <GroupExpensesMonthTable
+          rows={monthTableRows}
+          lines={data?.lines ?? []}
+          categories={data?.categories ?? []}
+          bigGroups={data?.big_groups ?? []}
+          installmentMode={installmentMode}
+          displayUnit={displayUnit}
+          periodGranularity={tableGranularity}
+          loading={gastosLoading}
+        />
+      </PageGridTile>
 
       <AdditionalCardsSection
         summary={data?.additional_cards}

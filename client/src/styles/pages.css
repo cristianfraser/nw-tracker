@@ -2,7 +2,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  margin-bottom: 1rem;
 }
 
 .flow-subnav a {
@@ -30,25 +29,6 @@
 
 h2.flow-section-title {
   margin-top: 0;
-}
-
-
-.rates-fx-grid {
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: 1fr;
-}
-
-@media (min-width: 880px) {
-  .rates-fx-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-.rates-instrument-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
 }
 
 .rates-chart-card {
@@ -82,18 +62,6 @@ h2.flow-section-title {
 
 .rates-chart-card__table {
   margin-top: 0.65rem;
-}
-
-.watchlist-page {
-  max-width: none;
-}
-
-.watchlist-section {
-  margin-top: 1.5rem;
-}
-
-.watchlist-section + .watchlist-section {
-  margin-top: 2rem;
 }
 
 .watchlist-add-form {

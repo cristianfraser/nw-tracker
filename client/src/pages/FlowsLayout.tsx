@@ -13,7 +13,7 @@ export function FlowsLayout() {
   const flowTabs = visibleNavChildren(nav?.flows?.children ?? []);
 
   return (
-    <main>
+    <main className="page-grid">
       <h1>{t("flows.layoutTitle")}</h1>
       <nav className="flow-subnav" aria-label={t("flows.subnavAria")}>
         <NavLink to="." end className={({ isActive }) => cn(isActive && "active")}>
