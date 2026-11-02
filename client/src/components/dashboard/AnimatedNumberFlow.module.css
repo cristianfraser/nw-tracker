@@ -1,0 +1,44 @@
+/* The change flash (`changeEffect`): instant on, a short hold, then a fade — tick-flash timing. */
+.flashDip {
+  animation: number-change-dip 600ms ease-out;
+}
+
+@keyframes number-change-dip {
+  0% {
+    opacity: 0.2;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+.flashUp {
+  animation: number-change-up 800ms ease-out;
+}
+
+.flashDown {
+  animation: number-change-down 800ms ease-out;
+}
+
+@keyframes number-change-up {
+  0%,
+  20% {
+    background-color: color-mix(in srgb, var(--positive) 35%, transparent);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes number-change-down {
+  0%,
+  20% {
+    background-color: color-mix(in srgb, var(--negative) 35%, transparent);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}

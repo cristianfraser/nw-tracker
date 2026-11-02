@@ -40,6 +40,7 @@ function BreakdownAmount({
         animated={animated}
         variant="breakdown"
         usdFractionDigits={usdFractionDigits}
+        changeEffect="cell"
       />
     </span>
   );
