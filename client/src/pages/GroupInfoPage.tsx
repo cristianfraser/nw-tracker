@@ -31,7 +31,6 @@ import { buildPlaceholderPortfolioGroupBundle } from "../placeholders/groupPageC
 import { buildPlaceholderNavStripDash } from "../placeholders/dashboardPagePlaceholders";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
-import { hasDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCache";
 import { queryKeys } from "../queries/keys";
 import { isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import {
@@ -60,7 +59,6 @@ export function GroupInfoPage() {
   // «Not found» only once the nav has answered without this route; until then the page renders
   // its shell (empty title, placeholder charts), dimmed.
   const navSettled = !navPending && !navFetching;
-  const hasNavSnapshotCache = hasDashboardNavSnapshotCache(displayUnit);
 
   const navMatchNode = useMemo(
     () => findBestNavNodeForPathname(sidebarNav?.main, pathname),
@@ -156,8 +154,8 @@ export function GroupInfoPage() {
     bundleReady,
   });
 
-  const navCtxEnabled =
-    pathnameUsesDashboardNavContext(pathname) && (!hasNavSnapshotCache || bundleReady);
+  // The strip's own request, beside the page's: it waits for nothing the page loads.
+  const navCtxEnabled = pathnameUsesDashboardNavContext(pathname);
   const {
     data: navCtx,
     isPending: navCtxPending,
@@ -221,7 +219,7 @@ export function GroupInfoPage() {
     if (!navMatchNode) return null;
     if (heldStrip) return heldStrip.dash;
     if (!navSnapshot) return navCtx ? dashPickForNavStrip(navCtx) : placeholderStripDash;
-    const accountsForDash = useRealBundle && navCtx ? navCtx.accounts : navSnapshot.accounts;
+    const accountsForDash = navCtx ? navCtx.accounts : navSnapshot.accounts;
     return dashPickForNavStrip(
       {
         accounts: accountsForDash,
@@ -232,7 +230,7 @@ export function GroupInfoPage() {
         card_metrics_by_slug: navCtx?.card_metrics_by_slug ?? navSnapshot.card_metrics_by_slug,
       }
     );
-  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, placeholderStripDash, heldStrip]);
+  }, [navMatchNode, navCtx, navSnapshot, placeholderStripDash, heldStrip]);
 
   const resolved = useRealBundle && data ? data : placeholderBundle;
 
@@ -394,7 +392,8 @@ export function GroupInfoPage() {
             dash: dashForStrip,
             showUsd: stripShowUsd,
             animated: true,
-            placeholderPhase: stripIsPlaceholder || undefined,
+            // Dimmed until the strip's own live figures land, whatever the rest of the page is doing.
+            placeholderPhase: stripIsPlaceholder || navCtx == null,
             linkedCardNavChildren,
           }
           : null

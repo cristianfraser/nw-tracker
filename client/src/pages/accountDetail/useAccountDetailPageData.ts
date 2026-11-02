@@ -12,7 +12,6 @@ import {
   useSidebarNav,
 } from "../../queries/hooks";
 import { otherDisplayUnit } from "../../queries/keys";
-import { hasDashboardNavSnapshotCache } from "../../queries/dashboardNavSnapshotCache";
 import { dashPickForNavStrip } from "../../queries/fetchers";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { rollupPerfPointsYearly, rollupTimeseriesBlockYearEnd } from "../../dashboardTimeseriesYearly";
@@ -148,11 +147,10 @@ export function useAccountDetailPageData(): AccountDetailPageData {
   const needsNavChildCards =
     (navSelfEarly?.children?.filter((c) => c.route_path?.trim()).length ?? 0) > 0;
 
-  const hasNavSnapshotCache = hasDashboardNavSnapshotCache(displayUnit);
   const { data: navCtx } = useDashboardNavContext(
     displayUnit,
     navSelfEarly?.slug ?? null,
-    needsNavChildCards && (!hasNavSnapshotCache || bundleReady)
+    needsNavChildCards
   );
   // The page holds the previous unit's detail while the new unit loads (same-entity keep-previous):
   // the whole strip stays in that unit, so the hero (held detail row) and the nav-child cards (the

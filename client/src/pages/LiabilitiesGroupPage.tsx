@@ -34,7 +34,6 @@ import { buildPlaceholderNavStripDash } from "../placeholders/dashboardPagePlace
 import { emptyCcLedger, emptyMortgageLedger } from "../placeholders/accountDetailPlaceholders";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
-import { hasDashboardNavSnapshotCache } from "../queries/dashboardNavSnapshotCache";
 import { queryKeys } from "../queries/keys";
 import { isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
 import { buildDailyValuationBlock } from "../dailySeriesChart";
@@ -70,7 +69,6 @@ export function LiabilitiesGroupPage() {
   // Redirect away only once the nav has answered without this route; until then the page
   // renders its shell (empty title, placeholder charts), dimmed.
   const navSettled = !navPending && !navFetching;
-  const hasNavSnapshotCache = hasDashboardNavSnapshotCache(displayUnit);
 
   const navMatchNode = useMemo(() => {
     const best = findBestNavNodeForPathname(sidebarNav?.main, pathname);
@@ -181,8 +179,8 @@ export function LiabilitiesGroupPage() {
     bundleReady,
   });
 
-  const navCtxEnabled =
-    pathnameUsesDashboardNavContext(pathname) && (!hasNavSnapshotCache || bundleReady);
+  // The strip's own request, beside the page's: it waits for nothing the page loads.
+  const navCtxEnabled = pathnameUsesDashboardNavContext(pathname);
   const { data: navCtx } = useDashboardNavContext(displayUnit, navMatchNode?.slug ?? null, navCtxEnabled);
   // The page holds the previous unit's bundle while the new unit loads (same-entity keep-previous):
   // with nothing of the new unit's on hand the strip keeps the previous unit's cards, dimmed and
@@ -216,7 +214,7 @@ export function LiabilitiesGroupPage() {
     if (!navMatchNode) return null;
     if (heldStrip) return heldStrip.dash;
     if (!navSnapshot) return navCtx ? dashPickForNavStrip(navCtx) : placeholderStripDash;
-    const accountsForDash = useRealBundle && navCtx ? navCtx.accounts : navSnapshot.accounts;
+    const accountsForDash = navCtx ? navCtx.accounts : navSnapshot.accounts;
     return dashPickForNavStrip(
       {
         accounts: accountsForDash,
@@ -227,7 +225,7 @@ export function LiabilitiesGroupPage() {
         card_metrics_by_slug: navCtx?.card_metrics_by_slug ?? navSnapshot.card_metrics_by_slug,
       }
     );
-  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, placeholderStripDash, heldStrip]);
+  }, [navMatchNode, navCtx, navSnapshot, placeholderStripDash, heldStrip]);
 
   const resolved = useRealBundle && data ? data : placeholderBundle;
 
@@ -559,7 +557,8 @@ export function LiabilitiesGroupPage() {
               dash: dashForStrip,
               showUsd: stripShowUsd,
               animated: true,
-              placeholderPhase: stripIsPlaceholder || undefined,
+              // Dimmed until the strip's own live figures land, whatever the rest of the page is doing.
+              placeholderPhase: stripIsPlaceholder || navCtx == null,
               linkedCardNavChildren,
             }
           : null
