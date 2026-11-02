@@ -83,12 +83,12 @@ function ReconciliationSection({
     <PageGridTile id={`reconciliation-${status}`}>
       <h3>
         {t(statusSectionKey(status))}
-        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
         </span>
       </h3>
       <Table
-        tableStyle={{ fontSize: "0.85rem" }}
+        tableStyle={{ fontSize: "var(--font-size-prose)" }}
         collapsedVisibleRows={20}
         showMoreLabel={t("notifications.showMore")}
         showLessLabel={t("table.showLess")}
@@ -152,12 +152,12 @@ function ManualAssertionsSection({
     <PageGridTile id="asserted">
       <h3>
         {t("depositsReconciliation.assertedTitle")}
-        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
         </span>
       </h3>
       <Table
-        tableStyle={{ fontSize: "0.85rem" }}
+        tableStyle={{ fontSize: "var(--font-size-prose)" }}
         collapsedVisibleRows={20}
         showMoreLabel={t("notifications.showMore")}
         showLessLabel={t("table.showLess")}
@@ -198,7 +198,7 @@ function ManualAssertionsSection({
         )}
       </Table>
       {linkedCount > 0 ? (
-        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
           {t("depositsReconciliation.assertedLinkedSummary", { count: linkedCount })}
         </p>
       ) : null}
@@ -260,12 +260,12 @@ function RedemptionSection({
     <PageGridTile id={`redemption-${status}`}>
       <h3>
         {t(redemptionSectionKey(status))}
-        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+        <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
           {formatFlowMoney(total, displayUnit)}
         </span>
       </h3>
       <Table
-        tableStyle={{ fontSize: "0.85rem" }}
+        tableStyle={{ fontSize: "var(--font-size-prose)" }}
         collapsedVisibleRows={20}
         showMoreLabel={t("notifications.showMore")}
         showLessLabel={t("table.showLess")}
@@ -359,7 +359,7 @@ export function DepositsReconciliationPage() {
           {t("depositsReconciliation.byMonth")}
         </h3>
         <Table
-          tableStyle={{ fontSize: "0.85rem" }}
+          tableStyle={{ fontSize: "var(--font-size-prose)" }}
           collapsedVisibleRows={24}
           showMoreLabel={t("notifications.showMore")}
           showLessLabel={t("table.showLess")}

@@ -109,7 +109,7 @@ export function CreditCardConfigSection({ accountId }: Props) {
     <PageGridTile id="cc-config" className={loadableClass(pending)} aria-busy={pending || undefined}>
       <h2 className="flow-section-title">{t("accountDetail.creditCard.configTitle")}</h2>
       {config?.card_last4 ? (
-        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
           {t("accountDetail.creditCard.configCardLabel")} <span className="mono">·{config.card_last4}</span>
         </p>
       ) : null}
@@ -177,7 +177,7 @@ export function CreditCardConfigSection({ accountId }: Props) {
         </p>
       ) : null}
       {saved ? (
-        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
           {t("accountDetail.creditCard.configSaved")}
         </p>
       ) : null}

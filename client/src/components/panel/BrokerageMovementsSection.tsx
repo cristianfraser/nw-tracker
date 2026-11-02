@@ -29,7 +29,7 @@ import { formatNumberInput } from "../../format";
 import { Button, Field, Input } from "@crfrsr/ui";
 
 export function brokerageMovementFieldLabelStyle(): CSSProperties {
-  return { display: "block", fontSize: "0.85rem", marginBottom: "0.25rem" };
+  return { display: "block", fontSize: "var(--font-size-prose)", marginBottom: "0.25rem" };
 }
 
 export function brokerageMovementFieldRowStyle(): CSSProperties {
@@ -221,12 +221,12 @@ export function BrokerageMovementsSection({
       <legend className="flow-section-title">
         {t(resolvedTitleKey)}
       </legend>
-      <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+      <p className="muted" style={{ fontSize: "var(--font-size-prose)", margin: 0 }}>
         {t(resolvedHintKey)}
       </p>
 
       {movements.length === 0 ? (
-        <p className="muted" style={{ fontSize: "0.85rem" }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-prose)" }}>
           {t(emptyTextKey)}
         </p>
       ) : (

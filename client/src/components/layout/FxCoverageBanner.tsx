@@ -70,10 +70,10 @@ export function FxCoverageBanner({
     >
       <strong>{t("fxCoverage.title")}</strong>
       {conversionError ? (
-        <p style={{ margin: 0, fontSize: "0.92rem" }}>{t("fxCoverage.depositConversionError")}</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>{t("fxCoverage.depositConversionError")}</p>
       ) : null}
       {uniqueWarnings.map((w) => (
-        <p key={`${w.code}-${w.date}`} style={{ margin: 0, fontSize: "0.92rem" }}>
+        <p key={`${w.code}-${w.date}`} style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>
           {warningMessage(t, w)}
           {w.date ? (
             <span className="mono muted" style={{ marginLeft: "0.35rem" }}>
@@ -83,12 +83,12 @@ export function FxCoverageBanner({
         </p>
       ))}
       {detail ? (
-        <p style={{ margin: 0, fontSize: "0.92rem" }}>{detail}</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>{detail}</p>
       ) : null}
       {rejectedDetail ? (
-        <p style={{ margin: 0, fontSize: "0.92rem" }}>{rejectedDetail}</p>
+        <p style={{ margin: 0, fontSize: "var(--font-size-ui)" }}>{rejectedDetail}</p>
       ) : null}
-      <p style={{ margin: 0, fontSize: "0.85rem" }}>
+      <p style={{ margin: 0, fontSize: "var(--font-size-prose)" }}>
         {t("fxCoverage.hint")}{" "}
         <Link to="/panel/import-sync">{t("panel.importSyncTitle")}</Link>
         {" · "}

@@ -64,7 +64,7 @@ export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
         <p className="muted">{t("expenses.realEstate.noCandidates")}</p>
       ) : (
         <Table
-          tableStyle={{ fontSize: "0.85rem" }}
+          tableStyle={{ fontSize: "var(--font-size-prose)" }}
           wrapClassName={loadableClass(isLoading)}
           header={
             <thead>
@@ -83,7 +83,7 @@ export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
                 <td>
                   {c.merchant ?? "—"}
                   {c.merchant_matches ? (
-                    <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.75rem" }}>
+                    <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "var(--font-size-card-label)" }}>
                       ({t("expenses.realEstate.merchantMatchHint")})
                     </span>
                   ) : null}
@@ -91,7 +91,7 @@ export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
                 <td className="mono">
                   {c.purchase_on ?? "—"}
                   {c.purchase_month_offset <= 2 ? (
-                    <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "0.75rem" }}>
+                    <span className="muted" style={{ marginLeft: "0.35rem", fontSize: "var(--font-size-card-label)" }}>
                       (
                       {c.purchase_month_offset === 0
                         ? t("expenses.realEstate.paymentMonthOffsetSame")
@@ -102,7 +102,7 @@ export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
                     </span>
                   ) : null}
                 </td>
-                <td className="muted" style={{ fontSize: "0.8rem" }}>
+                <td className="muted" style={{ fontSize: "var(--font-size-prose-sm)" }}>
                   {c.origin_label}
                   {c.source === "checking"
                     ? ` · ${t("expenses.creditCard.sourceChecking")}`

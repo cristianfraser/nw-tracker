@@ -4,7 +4,7 @@
   flex-wrap: wrap;
   gap: var(--space-xs);
   align-items: center;
-  font-size: 0.875rem;
+  font-size: var(--font-size-ui);
 }
 
 /* Inputs fill their container, so each control is sized by the wrapper it sits in —

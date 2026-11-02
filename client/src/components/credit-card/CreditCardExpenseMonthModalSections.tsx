@@ -146,7 +146,7 @@ export function CreditCardExpenseMonthModalSections({
       <h3 style={{ marginBottom: "0.35rem" }}>
         {t("expenses.creditCard.modalSectionPurchases")}
         {bucket.purchases.length > 0 ? (
-          <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
             {formatClp(purchasesSum)}
           </span>
         ) : null}
@@ -173,7 +173,7 @@ export function CreditCardExpenseMonthModalSections({
       <h3 style={{ margin: "1.25rem 0 0.35rem" }}>
         {t("expenses.creditCard.modalSectionInstallments")}
         {bucket.installments.length > 0 ? (
-          <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
             {formatClp(installmentsSum)}
           </span>
         ) : null}
@@ -191,7 +191,7 @@ export function CreditCardExpenseMonthModalSections({
       <h3 style={{ margin: "1.25rem 0 0.35rem" }}>
         {t("expenses.creditCard.modalSectionAbonos")}
         {bucket.abonos.length > 0 || abonosSumClp != null ? (
-          <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
             {formatClp(abonosDisplaySum)}
           </span>
         ) : null}
@@ -209,7 +209,7 @@ export function CreditCardExpenseMonthModalSections({
       <h3 style={{ margin: "1.25rem 0 0.35rem" }}>
         {t("expenses.creditCard.modalSectionExcluded")}
         {bucket.excluded.length > 0 ? (
-          <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
             {formatClp(excludedSum)}
           </span>
         ) : null}

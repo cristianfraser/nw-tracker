@@ -201,7 +201,7 @@ export function PayrollBreakdownSection({
         </div>
         <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
           <Table
-            tableStyle={{ fontSize: "0.85rem" }}
+            tableStyle={{ fontSize: "var(--font-size-prose)" }}
             header={
               <thead>
                 <tr>

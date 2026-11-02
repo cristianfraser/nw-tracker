@@ -4,7 +4,7 @@
 
 .scheduleLine {
   margin: 0 0 0.35rem;
-  font-size: 0.88rem;
+  font-size: var(--font-size-ui);
   line-height: 1.45;
 }
 
@@ -17,7 +17,7 @@
 }
 
 .tableWrap table {
-  font-size: 0.88rem;
+  font-size: var(--font-size-ui);
 }
 
 .colActions {

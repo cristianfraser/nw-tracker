@@ -106,7 +106,7 @@ export function CreditCardFacturacionModalSections({
       <h3 style={{ marginBottom: "0.35rem" }}>
         {t("expenses.creditCard.modalSectionGastos")}
         {bucket.gastos.length > 0 ? (
-          <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
             {formatClp(gastosSum)}
           </span>
         ) : null}
@@ -122,7 +122,7 @@ export function CreditCardFacturacionModalSections({
       <h3 style={{ margin: "1.25rem 0 0.35rem" }}>
         {t("accountDetail.creditCard.facturacionModalSectionFinancing")}
         {bucket.costeFinanciero.length > 0 ? (
-          <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
             {formatClp(costeFinancieroSum)}
           </span>
         ) : null}
@@ -138,7 +138,7 @@ export function CreditCardFacturacionModalSections({
       <h3 style={{ margin: "1.25rem 0 0.35rem" }}>
         {t("expenses.creditCard.modalSectionAbonos")}
         {bucket.abonos.length > 0 ? (
-          <span className="muted mono" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className="muted mono" style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
             {formatClp(abonosSum)}
           </span>
         ) : null}
@@ -193,7 +193,7 @@ export function CreditCardFacturacionModalSections({
               </p>
             ) : null}
             <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              <span style={{ fontSize: "0.9rem" }}>
+              <span style={{ fontSize: "var(--font-size-ui)" }}>
                 {t("accountDetail.creditCard.makeInstallmentDialogCuotasLabel")}
               </span>
               <Input
@@ -209,7 +209,7 @@ export function CreditCardFacturacionModalSections({
                 }}
               />
               {!cuotasParsed.ok ? (
-                <span className="error" style={{ fontSize: "0.85rem" }}>
+                <span className="error" style={{ fontSize: "var(--font-size-prose)" }}>
                   {cuotasParsed.message}
                 </span>
               ) : null}

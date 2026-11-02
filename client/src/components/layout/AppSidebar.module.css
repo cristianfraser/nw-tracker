@@ -1,7 +1,7 @@
 .brand {
   border-bottom: 1px solid var(--border);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: var(--font-size-value-secondary);
   letter-spacing: -0.02em;
 }
 
@@ -182,7 +182,7 @@
   min-width: 0;
   max-width: 100%;
   color: var(--muted);
-  font-size: 0.8125rem;
+  font-size: var(--font-size-table);
   font-weight: 500;
   text-decoration: none;
 }
@@ -239,7 +239,7 @@
   border-radius: 999px;
   background: #c62828;
   color: #fff;
-  font-size: 0.65rem;
+  font-size: var(--font-size-card-meta-sm);
   font-weight: 700;
   line-height: 1.15rem;
   text-align: center;

@@ -46,7 +46,7 @@ export function WorkEarningsTable({
     <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
       <Table
         tableClassName="work-earnings-table"
-        tableStyle={{ fontSize: "0.8rem" }}
+        tableStyle={{ fontSize: "var(--font-size-prose-sm)" }}
         header={
           <thead>
             <tr>

@@ -144,7 +144,7 @@ export function FlowsPlPage() {
               </thead>
             }
             tableClassName="table--parallel-mobile"
-            tableStyle={{ fontSize: "0.85rem" }}
+            tableStyle={{ fontSize: "var(--font-size-prose)" }}
           >
             {pageRows.map((row) => {
               const period = flowPeriodLabel(row.as_of_date, tableGranularity);
@@ -197,12 +197,12 @@ export function FlowsPlPage() {
           <PageGridTile key={block.slug} id={`pl-${block.slug}`}>
             <h4>
               {flowsPlBucketLabel(block.slug)}
-              <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+              <span className={loadableClass(loading, "muted mono")} style={{ fontSize: "var(--font-size-prose)", marginLeft: "0.5rem" }}>
                 {formatFlowMoney(bucketTotal(block, "total_cumulative", displayUnit), displayUnit)}
               </span>
             </h4>
             <Table
-              tableStyle={{ fontSize: "0.85rem" }}
+              tableStyle={{ fontSize: "var(--font-size-prose)" }}
               wrapClassName={loadableClass(loading)}
               header={
                 <thead>

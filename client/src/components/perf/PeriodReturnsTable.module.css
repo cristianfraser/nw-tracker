@@ -24,7 +24,7 @@
 }
 
 .table th {
-  font-size: 0.68rem;
+  font-size: var(--font-size-card-meta-sm);
 }
 
 .head {
@@ -32,7 +32,7 @@
 }
 
 .pct {
-  font-size: 0.85rem;
+  font-size: var(--font-size-prose);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -77,7 +77,7 @@
 }
 
 .rowHead {
-  font-size: 0.75rem;
+  font-size: var(--font-size-card-label);
   font-weight: 600;
   text-align: left;
   white-space: nowrap;
@@ -85,7 +85,7 @@
 
 .benchmarkSelect {
   max-width: 100%;
-  font-size: 0.75rem;
+  font-size: var(--font-size-card-label);
 }
 
 .up {

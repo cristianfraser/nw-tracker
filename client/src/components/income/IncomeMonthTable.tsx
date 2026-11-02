@@ -49,7 +49,7 @@ export function IncomeMonthTable({
             </tr>
           </thead>
         }
-        tableStyle={{ fontSize: "0.85rem" }}
+        tableStyle={{ fontSize: "var(--font-size-prose)" }}
       >
         {pageRows.map((row) => (
           <tr key={row.period_month}>

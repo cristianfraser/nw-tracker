@@ -35,20 +35,20 @@
 }
 
 .title {
-  font-size: 0.9rem;
+  font-size: var(--font-size-ui);
   color: var(--text);
 }
 
 .message {
   margin: 0.4rem 0 0;
-  font-size: 0.85rem;
+  font-size: var(--font-size-prose);
   line-height: 1.4;
   color: var(--text);
 }
 
 .horizon {
   margin: 0.35rem 0 0;
-  font-size: 0.78rem;
+  font-size: var(--font-size-caption);
   line-height: 1.35;
   color: var(--muted);
 }

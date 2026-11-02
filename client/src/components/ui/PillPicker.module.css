@@ -40,7 +40,7 @@
   padding: 0;
   border: none;
   border-radius: 50%;
-  font-size: 0.65rem;
+  font-size: var(--font-size-card-meta-sm);
   font-weight: 700;
   line-height: 1;
   color: var(--text);
@@ -79,7 +79,7 @@
 }
 
 .options .option {
-  font-size: 0.75rem;
+  font-size: var(--font-size-card-label);
   padding: 2px 6px;
 }
 

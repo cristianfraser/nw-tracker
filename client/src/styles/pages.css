@@ -6,7 +6,7 @@
 
 .flow-subnav a {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: var(--font-size-ui);
   font-weight: 500;
   padding: 0.35rem 0.75rem;
   border: none;
@@ -38,13 +38,13 @@ h2.flow-section-title {
 }
 
 .rates-chart-card__note {
-  font-size: 0.8rem;
+  font-size: var(--font-size-prose-sm);
   margin: 0 0 0.5rem;
 }
 
 .rates-chart-card__empty {
   margin: 0.5rem 0 0.35rem;
-  font-size: 0.875rem;
+  font-size: var(--font-size-prose);
 }
 
 .rates-chart-card__plot {
@@ -88,14 +88,14 @@ h2.flow-section-title {
 }
 
 .watchlist-symbol-option__meta {
-  font-size: 0.75rem;
+  font-size: var(--font-size-card-label);
 }
 
 .watchlist-table__fetch-error {
   display: block;
   min-width: 16rem;
   max-width: 28rem;
-  font-size: 0.75rem;
+  font-size: var(--font-size-card-label);
   color: var(--negative);
   white-space: normal;
 }
