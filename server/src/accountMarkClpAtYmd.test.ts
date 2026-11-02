@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import {
-  deptoPaymentColumnsFromPaymentRow,
   deptoPaymentHumanNote,
   deptoNetEquityUfBySnapshotDates,
-  insertDeptoPaymentRow,
+  insertLoanPaymentRow,
+  loanPaymentColumnsFromPaymentRow,
   mortgageSheetPaymentEventsThroughDate,
-  sheetRowToPaymentRow,
+  upsertPropertyAppraisalUf,
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
@@ -38,55 +38,19 @@ function ymdDaysAgo(days: number): string {
 }
 
 function paymentRow(): DeptoDividendosPaymentRow {
-  return sheetRowToPaymentRow({
+  return {
     cuota: "1",
     occurred_on: "2000-01-01",
-    pago_clp: 0,
-    pago_uf: null,
-    pct_dividendo: null,
-    uf_clp_day: null,
-    mm_pct: null,
-    yy_pct: null,
-    tasa_plus: null,
+    amount_clp: 0,
     credito_restante_uf: null,
-    pct_credito_uf: null,
-    restante_clp: null,
-    pct_de_total: null,
-    delta_credito_clp: null,
-    valor_neto_uf: null,
-    valor_neto_clp: null,
-    pagado_neto_uf: null,
-    delta_valor_neto_clp: null,
-    valor_vivienda_uf: null,
-    valor_vivienda_clp: null,
     min_uf: null,
     max_uf: null,
-    incendio_clp: null,
-    incendio_uf: null,
-    desgravamen_clp: null,
-    desgravamen_uf: null,
-    total_seguros_uf: null,
-    total_seguros_clp: null,
-    seguros_interes_uf: null,
-    seguros_interes_clp: null,
-    amortizacion_total_uf: null,
-    amortizacion_total_clp: null,
     amortizacion_clp: null,
-    amortizacion_uf: null,
     amortizacion_ext_clp: null,
-    amortizacion_ext_uf: null,
     interes_clp: null,
-    interes_uf: null,
-    delta_credito_amort_clp: null,
-    interes_oculto_clp: null,
-    interes_oculto_b_clp: null,
-    interes_real_clp: null,
-    interes_calculado_uf: null,
-    amort_interes_text: null,
-    pago_acumulado_clp: null,
-    amort_acum_clp: null,
-    interes_acum_clp: null,
-  });
+    incendio_clp: null,
+    desgravamen_clp: null,
+  };
 }
 
 let fixturePropertyId: number | null = null;
@@ -136,12 +100,7 @@ beforeAll(() => {
         cuota: "pie",
         occurred_on: ymdDaysAgo(75),
         amount_clp: 58_000_000,
-        amount_uf: 1450,
         credito_restante_uf: 3950,
-        valor_vivienda_uf: 5400,
-        valor_neto_uf: 1450,
-        valor_neto_clp: 58_000_000,
-        pago_acumulado_clp: 58_000_000,
       },
       onMortgage: false,
     },
@@ -151,20 +110,12 @@ beforeAll(() => {
         cuota: "1",
         occurred_on: ymdDaysAgo(45),
         amount_clp: 1_200_000,
-        amount_uf: 30,
         credito_restante_uf: 3936,
-        valor_vivienda_uf: 5400,
-        valor_neto_uf: 1464,
-        valor_neto_clp: 58_700_000,
-        pago_acumulado_clp: 59_200_000,
         amortizacion_clp: 560_000,
-        amortizacion_uf: 14,
         interes_clp: 600_000,
-        interes_uf: 15,
         incendio_clp: 20_000,
         desgravamen_clp: 20_000,
         min_uf: 30,
-        pagado_neto_uf: 1464,
       },
       onMortgage: true,
     },
@@ -174,20 +125,12 @@ beforeAll(() => {
         cuota: "2",
         occurred_on: ymdDaysAgo(15),
         amount_clp: 1_205_000,
-        amount_uf: 30,
         credito_restante_uf: 3921.8,
-        valor_vivienda_uf: 5400,
-        valor_neto_uf: 1478.2,
-        valor_neto_clp: 59_400_000,
-        pago_acumulado_clp: 60_405_000,
         amortizacion_clp: 565_000,
-        amortizacion_uf: 14.2,
         interes_clp: 596_000,
-        interes_uf: 14.8,
         incendio_clp: 22_000,
         desgravamen_clp: 22_000,
         min_uf: 30,
-        pagado_neto_uf: 1478.2,
       },
       onMortgage: true,
     },
@@ -196,16 +139,18 @@ beforeAll(() => {
     `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
   );
   for (const { r, onMortgage } of rows) {
-    const cols = deptoPaymentColumnsFromPaymentRow(r);
+    const cols = loanPaymentColumnsFromPaymentRow(r);
     const prop = ins.run(
       fixturePropertyId,
       r.amount_clp,
       r.occurred_on,
-      deptoPaymentHumanNote("dividendos", r.cuota, false)
+      deptoPaymentHumanNote("property", r.cuota, false)
     );
-    insertDeptoPaymentRow({
+    if (r.cuota === "pie") upsertPropertyAppraisalUf(fixturePropertyId!, r.occurred_on, 5400);
+    insertLoanPaymentRow({
       movement_id: Number(prop.lastInsertRowid),
-      kind: "dividendos",
+      loan_account_id: mortgageId,
+      leg: "property",
       origin: "import",
       ...cols,
     });
@@ -214,11 +159,12 @@ beforeAll(() => {
         mortgageId,
         Math.abs(r.amount_clp),
         r.occurred_on,
-        deptoPaymentHumanNote("mortgage", r.cuota, false)
+        deptoPaymentHumanNote("loan", r.cuota, false)
       );
-      insertDeptoPaymentRow({
+      insertLoanPaymentRow({
         movement_id: Number(mort.lastInsertRowid),
-        kind: "mortgage",
+        loan_account_id: mortgageId,
+        leg: "loan",
         origin: "import",
         ...cols,
       });

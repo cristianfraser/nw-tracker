@@ -4,9 +4,9 @@ import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountRowForId } from "./accountRowForMovement.js";
 import {
-  deptoPaymentColumnsFromPaymentRow,
   deptoPaymentHumanNote,
-  insertDeptoPaymentRow,
+  insertLoanPaymentRow,
+  loanPaymentColumnsFromPaymentRow,
   mortgageFlowKindFromCuota,
   sheetRowToPaymentRow,
   type DeptoMortgageSheetRow,
@@ -78,7 +78,7 @@ export function deptoMortgageAccountId(): number {
 function deptoPaymentExists(cuota: string, occurredOn: string): boolean {
   const row = db
     .prepare(
-      `SELECT 1 AS o FROM depto_payments p JOIN movements m ON m.id = p.movement_id
+      `SELECT 1 AS o FROM loan_payments p JOIN movements m ON m.id = p.movement_id
        WHERE p.cuota = ? AND m.occurred_on = ? LIMIT 1`
     )
     .get(cuota, occurredOn) as { o: number } | undefined;
@@ -106,7 +106,8 @@ export type CommitMortgagePaymentResult = {
 };
 
 /**
- * Writes the cuota's two movements (mortgage + property) and their `depto_payments` rows.
+ * Writes the cuota's two movements (mortgage + property) and their `loan_payments` rows. The
+ * property's appraisal is not written: the ledger carries the latest one forward.
  * `origin` names the writer — `manual` for the form, `import` for the mortgage sheet — and the
  * human note follows it.
  */
@@ -137,7 +138,7 @@ export function commitMortgagePayment(
   }
 
   const paymentRow = sheetRowToPaymentRow(sheet);
-  const paymentCols = deptoPaymentColumnsFromPaymentRow(paymentRow);
+  const paymentCols = loanPaymentColumnsFromPaymentRow(paymentRow);
   const mortgageFlowKind = mortgageFlowKindFromCuota(cuota);
 
   const tx = db.transaction(() => {
@@ -150,7 +151,7 @@ export function commitMortgagePayment(
         mortgageId,
         Math.abs(sheet.pago_clp),
         occurred_on,
-        deptoPaymentHumanNote("mortgage", cuota, manual),
+        deptoPaymentHumanNote("loan", cuota, manual),
         mortgageFlowKind
       );
     const propertyMov = db
@@ -158,16 +159,18 @@ export function commitMortgagePayment(
         `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta)
          VALUES (?, ?, 'clp', ?, ?, NULL)`
       )
-      .run(propertyId, sheet.pago_clp, occurred_on, deptoPaymentHumanNote("dividendos", cuota, manual));
-    insertDeptoPaymentRow({
+      .run(propertyId, sheet.pago_clp, occurred_on, deptoPaymentHumanNote("property", cuota, manual));
+    insertLoanPaymentRow({
       movement_id: Number(mortgageMov.lastInsertRowid),
-      kind: "mortgage",
+      loan_account_id: mortgageId,
+      leg: "loan",
       origin: opts.origin,
       ...paymentCols,
     });
-    insertDeptoPaymentRow({
+    insertLoanPaymentRow({
       movement_id: Number(propertyMov.lastInsertRowid),
-      kind: "dividendos",
+      loan_account_id: mortgageId,
+      leg: "property",
       origin: opts.origin,
       ...paymentCols,
     });

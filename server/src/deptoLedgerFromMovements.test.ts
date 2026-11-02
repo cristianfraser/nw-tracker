@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
-  deptoPaymentColumnsFromPaymentRow,
   deptoPaymentHumanNote,
-  insertDeptoPaymentRow,
+  insertLoanPaymentRow,
+  loanPaymentColumnsFromPaymentRow,
+  upsertPropertyAppraisalUf,
   type DeptoDividendosPaymentRow,
 } from "./deptoDividendosLedger.js";
 import {
@@ -13,7 +14,7 @@ import {
 } from "./deptoLedgerFromMovements.js";
 
 /**
- * Synthetic fixture: a property master + movements + depto_payments rows written with the
+ * Synthetic fixture: a property master + movements + loan_payments rows written with the
  * REAL table helpers (the same write shape manual payments produce). Far-future dates so
  * the fixture never collides with generated demo/test data; own uf_daily rows so
  * UF-derived fields are deterministic.
@@ -30,22 +31,12 @@ function paymentRow(overrides: Partial<DeptoDividendosPaymentRow>): DeptoDividen
     cuota: "1",
     occurred_on: "2099-02-10",
     amount_clp: 0,
-    amount_uf: null,
-    uf_clp_day: null,
     credito_restante_uf: null,
-    valor_vivienda_uf: null,
-    valor_neto_uf: null,
-    valor_neto_clp: null,
-    pagado_neto_uf: null,
-    pago_acumulado_clp: null,
     min_uf: null,
     max_uf: null,
     amortizacion_clp: null,
-    amortizacion_uf: null,
     amortizacion_ext_clp: null,
-    amortizacion_ext_uf: null,
     interes_clp: null,
-    interes_uf: null,
     incendio_clp: null,
     desgravamen_clp: null,
     ...overrides,
@@ -54,6 +45,7 @@ function paymentRow(overrides: Partial<DeptoDividendosPaymentRow>): DeptoDividen
 
 describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
   let accountId: number | null = null;
+  let loanAccountId: number | null = null;
   const insertedUfDates: string[] = [];
   let preexistingProperty = false;
 
@@ -92,80 +84,62 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
         cuota: "pie",
         occurred_on: "2099-01-10",
         amount_clp: 58_000_000,
-        amount_uf: 1450,
         credito_restante_uf: 3950,
-        valor_vivienda_uf: 5400,
-        valor_neto_uf: 1450,
-        valor_neto_clp: 58_000_000,
-        pago_acumulado_clp: 58_000_000,
       }),
       paymentRow({
         cuota: "1",
         occurred_on: "2099-02-10",
         amount_clp: 1_203_000,
-        amount_uf: 30,
         credito_restante_uf: 3936,
-        valor_vivienda_uf: 5400,
-        valor_neto_uf: 1464,
-        valor_neto_clp: 58_706_400,
-        pago_acumulado_clp: 59_203_000,
         amortizacion_clp: 561_400,
-        amortizacion_uf: 14,
         interes_clp: 601_500,
-        interes_uf: 15,
         incendio_clp: 20_050,
         desgravamen_clp: 20_050,
         min_uf: 30,
-        pagado_neto_uf: 1464,
       }),
       paymentRow({
         cuota: "2",
         occurred_on: "2099-03-10",
         amount_clp: 1_206_000,
-        amount_uf: 30,
         credito_restante_uf: 3921.8,
-        valor_vivienda_uf: 5400,
-        valor_neto_uf: 1478.2,
-        valor_neto_clp: 59_423_640,
-        pago_acumulado_clp: 60_409_000,
         amortizacion_clp: 570_840,
-        amortizacion_uf: 14.2,
         interes_clp: 594_960,
-        interes_uf: 14.8,
         incendio_clp: 20_100,
         desgravamen_clp: 20_100,
         min_uf: 30,
-        pagado_neto_uf: 1478.2,
       }),
       // Prepago with the space-in-cuota label (URL-encoded in the note).
       paymentRow({
         cuota: "prepago 3",
         occurred_on: "2099-03-20",
         amount_clp: 4_025_000,
-        amount_uf: 100,
         credito_restante_uf: 3821.8,
-        valor_vivienda_uf: 5400,
-        valor_neto_uf: 1578.2,
         amortizacion_ext_clp: 4_025_000,
-        amortizacion_ext_uf: 100,
-        pago_acumulado_clp: 64_434_000,
       }),
     ];
     const ins = db.prepare(
       `INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`
     );
+    loanAccountId = Number(
+      db
+        .prepare(`INSERT INTO accounts (asset_group_id, name, notes) VALUES (?, 'Depto loan fixture', 'vitest')`)
+        .run(group.id).lastInsertRowid
+    );
+    // The appraisal is stated once (at the pie); the ledger carries it to later rows.
+    upsertPropertyAppraisalUf(accountId, "2099-01-10", 5400);
     for (const r of rows) {
       const mov = ins.run(
         accountId,
         r.amount_clp,
         r.occurred_on,
-        deptoPaymentHumanNote("dividendos", r.cuota, false)
+        deptoPaymentHumanNote("property", r.cuota, false)
       );
-      insertDeptoPaymentRow({
+      insertLoanPaymentRow({
         movement_id: Number(mov.lastInsertRowid),
-        kind: "dividendos",
+        loan_account_id: loanAccountId,
+        leg: "property",
         origin: "import",
-        ...deptoPaymentColumnsFromPaymentRow(r),
+        ...loanPaymentColumnsFromPaymentRow(r),
       });
     }
   });
@@ -175,6 +149,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
       db.prepare(`DELETE FROM movements WHERE account_id = ?`).run(accountId);
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(accountId);
     }
+    if (loanAccountId != null) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(loanAccountId);
     for (const date of insertedUfDates) {
       db.prepare(`DELETE FROM uf_daily WHERE date = ?`).run(date);
     }
@@ -198,6 +173,12 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
     expect(c1.valor_vivienda_clp).toBe(Math.round(5400 * 40_100));
     expect(c1.incendio_uf).toBeCloseTo(20_050 / 40_100, 5);
     expect(c1.total_seguros_clp).toBe(40_100);
+    // Derived from what the bank stated: parts in UF at the payment day's UF, cumulative figures.
+    expect(c1.amortizacion_uf).toBe(14);
+    expect(c1.interes_uf).toBe(15);
+    expect(c1.amortizacion_ext_uf).toBeNull();
+    expect(c1.pago_acumulado_clp).toBe(59_203_000);
+    expect(c1.pagado_neto_uf).toBe(14);
 
     const c2 = ledger[2]!;
     // consecutive deltas + cumsums
@@ -234,7 +215,7 @@ describe("loadDeptoLedgerFromMovements (synthetic fixture)", () => {
     // temporarily orphan the fixture account's notes
     db.prepare(`UPDATE accounts SET import_key = 'depto-fixture-parked' WHERE id = ?`).run(accountId);
     try {
-      expect(() => loadDeptoLedgerFromMovements()).toThrow(/depto_payments rows exist/);
+      expect(() => loadDeptoLedgerFromMovements()).toThrow(/loan_payments rows exist/);
     } finally {
       db.prepare(`UPDATE accounts SET import_key = ? WHERE id = ?`).run(
         DEPTO_PROPERTY_ACCOUNT_IMPORT_KEY,

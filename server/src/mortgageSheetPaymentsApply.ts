@@ -4,10 +4,11 @@
  * the prepagos and each cuota once the bank posted it and the user paid it.
  *
  * Per sheet row, by label («pie», «prepago 2», «32»):
- * - already in `depto_payments` → every figure is cross-checked against the stored row (pesos to
- *   the peso, UF to `UF_TOLERANCE`); a difference is DRIFT and the whole import is refused —
- *   the two are records of the same payment, and neither is rewritten from the other. The one
- *   write on a stored row is filling `max_uf` the ledger never had (the sheet's cuota máxima).
+ * - already in `loan_payments` → every figure is cross-checked against the stored row (the
+ *   balance, min and max in UF to `UF_TOLERANCE`, the parts in pesos to the peso, the payment's UF
+ *   as the ledger derives it); a difference is DRIFT and the whole import is refused — the two
+ *   are records of the same payment, and neither is rewritten from the other. The one write on a
+ *   stored row is filling the max payment the ledger never had (the sheet's cuota máxima).
  * - a cuota the ledger lacks, dated today or earlier → written through `commitMortgagePayment`
  *   exactly as the form would (the sheet's interés, seguros, min UF and posted crédito restante;
  *   the pesos and date are the sheet's), after checking that the app's UF for that day is the
@@ -82,11 +83,13 @@ function compareStored(sheet: MortgageSheetPaymentRow, stored: DeptoMortgageShee
 }
 
 function fillMaxUf(cuota: string, maxUf: number): void {
-  db.prepare(`UPDATE depto_payments SET max_uf = ? WHERE cuota = ? AND max_uf IS NULL`).run(maxUf, cuota);
+  db.prepare(
+    `UPDATE loan_payments SET max_payment = ? WHERE cuota = ? AND max_payment IS NULL`
+  ).run(maxUf, cuota);
 }
 
 function mortgageMovementIdForCuota(cuota: string): number | null {
-  const row = db.prepare(`SELECT movement_id FROM depto_payments WHERE kind = 'mortgage' AND cuota = ?`).get(cuota) as
+  const row = db.prepare(`SELECT movement_id FROM loan_payments WHERE leg = 'loan' AND cuota = ?`).get(cuota) as
     | { movement_id: number }
     | undefined;
   return row?.movement_id ?? null;
@@ -140,8 +143,8 @@ function checkDerivedSplit(r: MortgageSheetPaymentRow, ledger: readonly DeptoMor
 export function latestRegularMortgageCuotaPaidOn(): string | null {
   const row = db
     .prepare(
-      `SELECT MAX(m.occurred_on) AS d FROM depto_payments p JOIN movements m ON m.id = p.movement_id
-       WHERE p.kind = 'mortgage' AND p.cuota GLOB '[0-9]*'`
+      `SELECT MAX(m.occurred_on) AS d FROM loan_payments p JOIN movements m ON m.id = p.movement_id
+       WHERE p.leg = 'loan' AND p.cuota GLOB '[0-9]*'`
     )
     .get() as { d: string | null };
   return row.d ?? null;

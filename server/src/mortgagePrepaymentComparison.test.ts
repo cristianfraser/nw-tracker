@@ -22,7 +22,7 @@ function seed(): number {
     date: string,
     cuota: string,
     extra: number | null,
-    opts: { kind?: string; prepagoInterest?: number } = {}
+    opts: { leg?: string; prepagoInterest?: number } = {}
   ) => {
     const prepago = opts.prepagoInterest != null;
     const amount = prepago ? (extra ?? 0) + opts.prepagoInterest! : 1;
@@ -34,15 +34,15 @@ function seed(): number {
         .run(accountId, amount, date, prepago ? "prepago_parcial_hipotecario" : null).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO depto_payments (movement_id, kind, origin, cuota, amortizacion_ext_clp, interes_clp)
-       VALUES (?, ?, 'manual', ?, ?, ?)`
-    ).run(mid, opts.kind ?? "mortgage", cuota, extra, opts.prepagoInterest ?? null);
+      `INSERT INTO loan_payments (movement_id, loan_account_id, leg, origin, cuota, loan_currency, payment_currency, extra_principal, interest)
+       VALUES (?, ?, ?, 'manual', ?, 'uf', 'clp', ?, ?)`
+    ).run(mid, accountId, opts.leg ?? "loan", cuota, extra, opts.prepagoInterest ?? null);
   };
   // The synthetic test DB prints the UF on the 1st of each month only.
   pay("2025-06-01", "1", 1_000_000);
   pay("2025-07-01", "2", 0);
   pay("2025-08-01", "prepago 1", 5_000_000, { prepagoInterest: 40_000 });
-  pay("2025-08-01", "x", 9_000_000, { kind: "dividendos" });
+  pay("2025-08-01", "x", 9_000_000, { leg: "property" });
   return accountId;
 }
 
@@ -85,7 +85,7 @@ describe("mortgage prepayment comparison", () => {
   it("without prepago interest, prepaying beats the UF alone by the mortgage rate", () => {
     const id = seed();
     db.prepare(
-      `UPDATE depto_payments SET interes_clp = 0 WHERE cuota = 'prepago 1'
+      `UPDATE loan_payments SET interest = 0 WHERE cuota = 'prepago 1'
          AND movement_id IN (SELECT id FROM movements WHERE account_id = ?)`
     ).run(id);
     db.prepare(`UPDATE movements SET amount = 5000000 WHERE account_id = ? AND flow_kind = 'prepago_parcial_hipotecario'`).run(id);

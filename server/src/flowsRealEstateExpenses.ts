@@ -432,7 +432,7 @@ export type MortgageCuotaPaymentRow = { occurred_on: string; cuota: string };
  * of month(occurred_on) − cuotaN across rows — maps cuota N to anchor + N. A
  * skipped-then-caught-up payment shifts individual rows off the anchor without
  * moving the mode. Inconsistent evidence (non-numeric cuota, ambiguous anchor, a
- * payment > 3 months off schedule) throws — fix the depto_payments rows instead.
+ * payment > 3 months off schedule) throws — fix the loan_payments rows instead.
  */
 export function mortgageCuotaBillMonths(rows: readonly MortgageCuotaPaymentRow[]): string[] {
   const cuotaNs = rows.map((r) => {
@@ -494,28 +494,33 @@ function mortgageLedgerSlots(places: readonly RealEstatePlaceRow[]): RealEstateB
 
   const slots: RealEstateBillSlot[] = [];
   const stmt = db.prepare(
-    `SELECT m.occurred_on, p.cuota,
-            COALESCE(p.amortizacion_clp, 0) AS amortization_clp,
-            COALESCE(p.amortizacion_ext_clp, 0) AS extra_amortization_clp,
-            COALESCE(p.interes_clp, 0) + COALESCE(p.incendio_clp, 0) + COALESCE(p.desgravamen_clp, 0) AS carrying_clp
+    `SELECT m.occurred_on, p.cuota, p.payment_currency,
+            COALESCE(p.principal, 0) AS amortization_clp,
+            COALESCE(p.extra_principal, 0) AS extra_amortization_clp,
+            COALESCE(p.interest, 0) + COALESCE(p.insurance_fire, 0) + COALESCE(p.insurance_life, 0) AS carrying_clp
      FROM movements m
-     JOIN depto_payments p ON p.movement_id = m.id
+     JOIN loan_payments p ON p.movement_id = m.id
      WHERE m.account_id = ?
-       AND p.kind = 'dividendos'
+       AND p.leg = 'property'
        AND LOWER(TRIM(p.cuota)) != 'pie'
        AND p.cuota NOT LIKE 'prepago%'
      ORDER BY m.occurred_on DESC`
   );
   for (const place of linked) {
-    const rows = (
-      stmt.all(place.property_account_id) as {
-        occurred_on: string;
-        cuota: string;
-        amortization_clp: number;
-        extra_amortization_clp: number;
-        carrying_clp: number;
-      }[]
-    ).filter((r) => r.amortization_clp + r.extra_amortization_clp + r.carrying_clp > 0);
+    const fetched = stmt.all(place.property_account_id) as {
+      occurred_on: string;
+      cuota: string;
+      payment_currency: string;
+      amortization_clp: number;
+      extra_amortization_clp: number;
+      carrying_clp: number;
+    }[];
+    for (const r of fetched) {
+      if (r.payment_currency !== "clp") {
+        throw new Error(`mortgage cuota ${r.cuota} (${r.occurred_on}): parts in ${r.payment_currency}, expected pesos`);
+      }
+    }
+    const rows = fetched.filter((r) => r.amortization_clp + r.extra_amortization_clp + r.carrying_clp > 0);
     const billMonths = mortgageCuotaBillMonths(rows);
     rows.forEach((r, i) => {
       const amortization = Math.round(r.amortization_clp);
