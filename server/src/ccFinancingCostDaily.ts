@@ -24,6 +24,7 @@
  */
 import { normalizedPostCloseLines } from "./ccBillingBalances.js";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
+import { ccUsdRevaluationCostClpByDate } from "./ccOwedWalk.js";
 
 /**
  * CLP financing cost per transaction date (positive = cost), deduped by the owed walk's keys
@@ -31,7 +32,7 @@ import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
  * with no statements. The underlying stream is memoized per account in the aggregation cache,
  * so this is a cheap in-memory fold.
  */
-export function ccFinancingCostClpByDate(accountId: number): Map<string, number> {
+export function ccSection3FinancingClpByDate(accountId: number): Map<string, number> {
   const seen = new Set<string>();
   const byDate = new Map<string, number>();
   for (const l of normalizedPostCloseLines(accountId)) {
@@ -47,7 +48,22 @@ export function ccFinancingCostClpByDate(accountId: number): Map<string, number>
   return byDate;
 }
 
-/** Σ financing cost (CLP, positive) charged in the window `(fromYmd, toYmd]`. */
+/**
+ * The card's whole P/L as a cost per day (positive = loss): the bank's charges and plan interest
+ * ({@link ccSection3FinancingClpByDate}) plus the fx revaluation of the dollars owed
+ * (`ccUsdRevaluationCostClpByDate`: a dollar debt revalued at the day's rate is an fx loss when the
+ * peso falls, a gain when it rises). With this cost the derived flow `−Δowed + cost` is the
+ * evidence at each event's day rate.
+ */
+export function ccFinancingCostClpByDate(accountId: number): Map<string, number> {
+  const byDate = ccSection3FinancingClpByDate(accountId);
+  for (const [iso, clp] of ccUsdRevaluationCostClpByDate(accountId)) {
+    byDate.set(iso, (byDate.get(iso) ?? 0) + clp);
+  }
+  return byDate;
+}
+
+/** Σ card cost (CLP, positive) in the window `(fromYmd, toYmd]`: charges, plan interest and fx revaluation. */
 export function ccFinancingCostClpBetween(
   accountId: number,
   fromYmd: string,

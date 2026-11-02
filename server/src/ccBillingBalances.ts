@@ -6,8 +6,11 @@ import {
 } from "./aggregationCache.js";
 import { ddMmYyyyFromIso } from "./ccBillingCloses.js";
 import {
+  debtCcExpenseLineAmountClp,
+  debtFrameClpPerUsd,
   effectiveCcExpenseLineAmountClp,
   effectiveCcExpenseLineAmountUsd,
+  uniformDebtUsdRateInEffect,
 } from "./ccExpenseAmountClp.js";
 import { oneShotStatementLineIdsSupersededByInstallmentPurchases } from "./ccCrossImportDedupe.js";
 import {
@@ -160,7 +163,7 @@ function sumRevolvingLinesForAccountStatementDateClp(
     ) {
       continue;
     }
-    const clp = effectiveCcExpenseLineAmountClp(
+    const clp = debtCcExpenseLineAmountClp(
       { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
       fxDateIso
     );
@@ -264,7 +267,15 @@ export function postCloseLiveBalanceAdjustmentClp(
 export type PostCloseStreamEntry = {
   iso: string;
   key: string;
+  /**
+   * Debt-frame pesos (a dollar amount at its facturación's pay-by − 1): what the evidence showed it
+   * cost — the financing P/L reads it. Values read {@link amount} in {@link currency} instead.
+   */
   clp: number | null;
+  /** The currency the evidence is stated in: a dollar line, payment, header leg or traspaso leg is `usd`. */
+  currency: "clp" | "usd";
+  /** Signed debt-positive amount in {@link currency} (dollars to the cent); null when unreadable. */
+  amount: number | null;
   financing?: boolean;
   /**
    * `statement_date` (dd/mm/yyyy) of the statement row it sits on — a statement, an open bucket,
@@ -360,10 +371,20 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
               { ...r, installment_flag: 0, valor_cuota_mensual_clp: null, valor_cuota_mensual_usd: null },
               fxDateFor(paidStatementDate ?? r.statement_date)
             );
+      const usdNative = effectiveCcExpenseLineAmountUsd({
+        ...r,
+        installment_flag: 0,
+        valor_cuota_mensual_clp: null,
+        valor_cuota_mensual_usd: null,
+      });
+      const finiteClp = clp != null && Number.isFinite(clp) ? clp : null;
       lines.push({
         iso,
         key,
-        clp: clp != null && Number.isFinite(clp) ? clp : null,
+        clp: finiteClp,
+        ...(usdNative != null
+          ? { currency: "usd" as const, amount: usdNative }
+          : { currency: "clp" as const, amount: finiteClp }),
         ...(isFinancingChargeLine(r) ? { financing: true } : {}),
         statement_date: r.statement_date,
       });
@@ -397,6 +418,8 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
         iso: pagoIso,
         key: `hdr-pago|${pagoIso}|${amtAbs}`,
         clp: -amtAbs,
+        currency: "clp",
+        amount: -amtAbs,
         statement_date: s.statement_date,
       });
     }
@@ -421,6 +444,8 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
         iso: g.paid_on,
         key: `hdr-leg|${g.statement_close_iso}|${g.currency === "usd" ? "usd|" : ""}${g.paid_on}|${g.amount}`,
         clp: clp != null ? -clp : null,
+        currency: g.currency,
+        amount: -g.amount,
         statement_date: statementDate,
       });
     }
@@ -439,7 +464,7 @@ export function normalizedPostCloseLines(accountId: number): PostCloseStreamEntr
  */
 export function normalizedInstallmentPurchaseEvents(
   accountId: number
-): { iso: string; key: string; clp: number; statement_date: null }[] {
+): { iso: string; key: string; clp: number; currency: "clp"; amount: number; statement_date: null }[] {
   return getAggregationCached(
     `${cacheKeyCcBillingDetail(accountId)}|instpurchase_events`,
     () => {
@@ -449,13 +474,13 @@ export function normalizedInstallmentPurchaseEvents(
            WHERE account_id = ? AND purchase_date IS NOT NULL AND total_amount_clp IS NOT NULL`
         )
         .all(accountId) as { id: number; purchase_date: string; total_amount_clp: number }[];
-      const events: { iso: string; key: string; clp: number; statement_date: null }[] = [];
+      const events: { iso: string; key: string; clp: number; currency: "clp"; amount: number; statement_date: null }[] = [];
       for (const pu of purchases) {
         const iso = normalizeTransactionDateIso(pu.purchase_date);
         if (!iso) continue;
         const amt = Math.round(pu.total_amount_clp);
         if (!Number.isFinite(amt) || amt === 0) continue;
-        events.push({ iso, key: `inst-purchase|${pu.id}`, clp: amt, statement_date: null });
+        events.push({ iso, key: `inst-purchase|${pu.id}`, clp: amt, currency: "clp", amount: amt, statement_date: null });
       }
       return events;
     }
@@ -490,10 +515,53 @@ export function postCloseLiveBalanceAdjustmentsClp(
       if (l.iso <= w.closeIso || l.iso > w.monthEndIso) continue;
       if (seen.has(l.key)) continue;
       seen.add(l.key);
-      if (l.clp != null) sum += l.clp;
+      const clp = statementFrameEntryClp(l);
+      if (clp != null) sum += clp;
     }
     return sum;
   });
+}
+
+/**
+ * An entry's pesos in the statement frame: its debt-frame `clp`, or — inside a uniform-rate split
+ * pass (`withUniformDebtUsdRate`) — its native amount at that rate, so the cached stream (built at
+ * the real rates) can serve the pass.
+ */
+function statementFrameEntryClp(e: PostCloseStreamEntry): number | null {
+  const uniform = uniformDebtUsdRateInEffect();
+  if (uniform == null) return e.clp;
+  if (e.amount == null) return null;
+  return e.currency === "usd" ? Math.round(e.amount * uniform) : e.amount;
+}
+
+/** Owed per currency: pesos and dollars (dollars to the cent). */
+export type CcOwedNative = { clp: number; usd: number };
+
+/**
+ * The native change of what a card owes in `(fromIso, toIso]`, per currency: the same evidence and
+ * dedupe as {@link postCloseLiveBalanceAdjustmentsClp}, each entry in the currency it is stated in.
+ * `includeInstallmentPurchases` as there (the walk passes it).
+ */
+export function postCloseNativeAdjustment(
+  accountId: number,
+  fromIso: string,
+  toIso: string,
+  opts?: { includeInstallmentPurchases?: boolean }
+): CcOwedNative {
+  const out: CcOwedNative = { clp: 0, usd: 0 };
+  if (!fromIso || !toIso || fromIso >= toIso) return out;
+  const lines: readonly PostCloseStreamEntry[] = opts?.includeInstallmentPurchases
+    ? [...normalizedPostCloseLines(accountId), ...normalizedInstallmentPurchaseEvents(accountId)]
+    : normalizedPostCloseLines(accountId);
+  const seen = new Set<string>();
+  for (const l of lines) {
+    if (l.iso <= fromIso || l.iso > toIso) continue;
+    if (seen.has(l.key)) continue;
+    seen.add(l.key);
+    if (l.amount == null) continue;
+    out[l.currency] += l.amount;
+  }
+  return { clp: Math.round(out.clp), usd: Math.round(out.usd * 100) / 100 };
 }
 
 /**
@@ -535,7 +603,8 @@ export function unbilledAtMonthEndAdjustmentsClp(
       const billed = firstBilled.get(e.key) ?? null;
       if (billed != null && billed <= w.billingMonth) continue;
       seen.add(e.key);
-      if (e.clp != null) sum += e.clp;
+      const clp = statementFrameEntryClp(e);
+      if (clp != null) sum += clp;
     }
     return sum;
   });
@@ -616,7 +685,7 @@ export function openMonthUsdFacturado(
       const u = effectiveCcExpenseLineAmountUsd(oneShot);
       if (u == null) continue; // CLP-denominated line — not part of the US$ split
       usd += u;
-      const c = effectiveCcExpenseLineAmountClp(oneShot, fxDateIso);
+      const c = debtCcExpenseLineAmountClp(oneShot, fxDateIso);
       if (c != null && Number.isFinite(c)) clp += c;
     }
   };
@@ -700,7 +769,7 @@ function installmentCuotaDueForAccountStatementDateClp(
   for (const r of rows) {
     if (redundant.has(r.id)) continue;
     if (r.installment_flag !== 1) continue;
-    const cuota = effectiveCcExpenseLineAmountClp(
+    const cuota = debtCcExpenseLineAmountClp(
       { ...r, installment_flag: 1 },
       fxDateIso
     );
@@ -732,8 +801,8 @@ export function facturadoFromStatement(
     // A dollar statement that prints no total (the Santander international JSON) bills what its
     // own lines bill: summing peso lines for it had left a facturación's dollars out of its total.
     const usd = headerMonto ?? usdBilledFromStatementLines(stmt.id);
-    const fx = fxMonthEndForBalanceUsd(balanceUsdFxDateIso(accountId, statementDate))?.clp_per_usd;
-    const clp = fx != null && fx > 0 ? Math.round(usd * fx) : null;
+    const fx = debtFrameClpPerUsd(balanceUsdFxDateIso(accountId, statementDate));
+    const clp = fx != null ? Math.round(usd * fx) : null;
     return { facturado_clp: clp, facturado_usd: usd };
   }
   if (headerMonto != null) {

@@ -3,18 +3,74 @@ import {
   invalidateCcBillingDetail,
 } from "./aggregationCache.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
+import { ccOwedByCurrencyAtYmd, ccOwedNativeValueClp } from "./ccOwedWalk.js";
+import type { CcOwedNative } from "./ccBillingBalances.js";
 import { db } from "./db.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { billingDetailCacheForAccount, planScheduleMonths } from "./ccBillingDetailCache.js";
-import { ccCupoFrame, type CcCupoFrame } from "./ccBillingViews.js";
+import { ccCupoFrame, ccStatementOwedByCurrencyByMonth, type CcCupoFrame } from "./ccBillingViews.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   ccInstallmentLedgerRowCount,
   ccLedgerMonthEndIso,
   liveCreditCardOutstandingClp,
 } from "./ccInstallmentLedgerDb.js";
+
+const deleteNativeAnchor = db.prepare(`DELETE FROM cc_owed_anchors WHERE account_id = ? AND as_of_date = ?`);
+const insertNativeAnchor = db.prepare(
+  `INSERT INTO cc_owed_anchors (account_id, as_of_date, currency, amount) VALUES (?, ?, ?, ?)`
+);
+
+/** Replace a card's per-currency anchor on a date (a peso row always; a dollar row when it owes dollars). */
+export function writeCcOwedAnchor(accountId: number, asOfDate: string, owed: CcOwedNative): void {
+  deleteNativeAnchor.run(accountId, asOfDate);
+  insertNativeAnchor.run(accountId, asOfDate, "clp", owed.clp);
+  if (owed.usd !== 0) insertNativeAnchor.run(accountId, asOfDate, "usd", owed.usd);
+}
+
+/** The pesos an owed is valued at on its date; throws when a dollar sub-balance has no rate. */
+export function ccOwedValueClpOrThrow(accountId: number, asOfDate: string, owed: CcOwedNative): number {
+  const v = ccOwedNativeValueClp(owed, asOfDate);
+  if (v == null) {
+    throw new Error(`Account ${accountId} ${asOfDate}: no USD/CLP rate to value US$${owed.usd} of card debt`);
+  }
+  return v;
+}
+
+/**
+ * Rewrites each `valuations` row of a card that has a per-currency anchor on its date to the pesos
+ * that anchor is worth on that date. Returns the rows whose value changed.
+ */
+export function revalueCcOwedAnchorValuations(accountId: number): number {
+  const rows = db
+    .prepare(
+      `SELECT as_of_date, currency, amount FROM cc_owed_anchors WHERE account_id = ? ORDER BY as_of_date`
+    )
+    .all(accountId) as { as_of_date: string; currency: "clp" | "usd"; amount: number }[];
+  const byDate = new Map<string, CcOwedNative>();
+  for (const r of rows) {
+    const o = byDate.get(r.as_of_date) ?? { clp: 0, usd: 0 };
+    o[r.currency] += r.amount;
+    byDate.set(r.as_of_date, o);
+  }
+  const stored = new Map(
+    (
+      db.prepare(`SELECT as_of_date, value FROM valuations WHERE account_id = ?`).all(accountId) as {
+        as_of_date: string;
+        value: number;
+      }[]
+    ).map((r) => [r.as_of_date, r.value])
+  );
+  let changed = 0;
+  for (const [date, owed] of byDate) {
+    const v = ccOwedValueClpOrThrow(accountId, date, owed);
+    if (stored.get(date) === v) continue;
+    upsertValuationMonth.run({ account_id: accountId, as_of_date: date, value_clp: v });
+    changed += 1;
+  }
+  return changed;
+}
 
 const upsertValuationMonth = db.prepare(`
   INSERT INTO valuations (account_id, as_of_date, value, currency)
@@ -112,6 +168,34 @@ export function ccLedgerStatementClosingPointsClp(
   }));
 }
 
+/**
+ * {@link ccLedgerStatementClosingPointsClp} per currency: the same months and the same statement
+ * frame, split into its pesos and dollars (`ccStatementOwedByCurrencyByMonth`). The month-end
+ * anchors the owed walk starts from.
+ */
+export function ccLedgerStatementClosingPointsNative(
+  accountId: number
+): { as_of_date: string; owed: CcOwedNative }[] | null {
+  if (ccInstallmentLedgerRowCount(accountId) === 0) return null;
+  const { payload, detail } = billingDetailCacheForAccount(accountId);
+  if (payload == null) {
+    throw new Error(`account ${accountId}: ledger rows exist but cached bundle has no payload`);
+  }
+  const scheduleMonths = planScheduleMonths(payload);
+  const owedByMonth = ccStatementOwedByCurrencyByMonth(accountId, scheduleMonths);
+  const months = [
+    ...new Set([...payload.months.map((h) => h.month), ...detail.map((d) => d.billing_month)]),
+  ].sort((a, b) => a.localeCompare(b));
+  if (months.length === 0) return null;
+  let frame: CcCupoFrame | null = null;
+  return months.map((ym) => ({
+    as_of_date: ccLedgerMonthEndIso(ym),
+    owed:
+      owedByMonth.get(ym) ??
+      { clp: Math.round((frame ??= ccCupoFrame(accountId, scheduleMonths)).cupoEnCuotasClp(ym)), usd: 0 },
+  }));
+}
+
 /** Ledger month-end closes for many CC accounts (one billing-detail cache pass per account). */
 export function ccLedgerStatementClosingPointsClpForAccounts(
   accountIds: readonly number[]
@@ -161,7 +245,10 @@ function purgeContradictedDailyStamps(
   const stale = rows.map((r) => r.as_of_date).filter((d) => !isMonthEndIso(d));
   if (stale.length === 0) return [];
   const del = db.prepare(`DELETE FROM valuations WHERE account_id = ? AND as_of_date = ?`);
-  for (const d of stale) del.run(accountId, d);
+  for (const d of stale) {
+    del.run(accountId, d);
+    deleteNativeAnchor.run(accountId, d);
+  }
   invalidateAggregationForAccountDate(accountId, stale[0]!);
   return stale;
 }
@@ -193,14 +280,17 @@ export function upsertCreditCardValuationsFromLedger(
   if (opts?.affectedEvidenceFromYmd) {
     purgeContradictedDailyStamps(accountId, opts.affectedEvidenceFromYmd, chileCalendarTodayYmd());
   }
-  const pts = ccLedgerStatementClosingPointsClp(accountId);
+  const pts = ccLedgerStatementClosingPointsNative(accountId);
   if (!pts || pts.length === 0) return 0;
+  // The anchors are per currency (`cc_owed_anchors`); `valuations` keeps the pesos they are worth
+  // on their date, for the readers of stored values (group charts, the liabilities overview).
   let n = 0;
   for (const p of pts) {
+    writeCcOwedAnchor(accountId, p.as_of_date, p.owed);
     upsertValuationMonth.run({
       account_id: accountId,
       as_of_date: p.as_of_date,
-      value_clp: p.value_clp,
+      value_clp: ccOwedValueClpOrThrow(accountId, p.as_of_date, p.owed),
     });
     n += 1;
   }
@@ -208,25 +298,27 @@ export function upsertCreditCardValuationsFromLedger(
   // series uses for every other day — see `ccOwedWalk.ts`. Stamping the live billing formula
   // here instead made tomorrow's anchor a different frame from the walk that leads into it, so
   // the gap surfaced as a phantom move on a day with no transactions. Falls back to the live
-  // number only when there is no anchor to walk from.
+  // number (as pesos) only when there is no anchor to walk from.
   const today = chileCalendarTodayYmd();
-  const walkedToday = ccOwedWalkClpAtYmd(accountId, today)?.value_clp;
-  const liveBalance = latestCreditCardBillingBalanceTotalClp(accountId);
-  const valueToday =
-    walkedToday != null && Number.isFinite(walkedToday)
-      ? walkedToday
-      : liveBalance != null && Number.isFinite(liveBalance)
-        ? liveBalance
-        : liveCreditCardOutstandingClp(accountId);
-  if (valueToday != null && Number.isFinite(valueToday)) {
+  const walkedToday = ccOwedByCurrencyAtYmd(accountId, today, { strictlyBefore: true });
+  let owedToday: CcOwedNative | null = walkedToday ? { clp: walkedToday.clp, usd: walkedToday.usd } : null;
+  if (!owedToday) {
+    const liveBalance = latestCreditCardBillingBalanceTotalClp(accountId) ?? liveCreditCardOutstandingClp(accountId);
+    if (liveBalance != null && Number.isFinite(liveBalance)) owedToday = { clp: Math.round(liveBalance), usd: 0 };
+  }
+  if (owedToday) {
+    writeCcOwedAnchor(accountId, today, owedToday);
     upsertValuationMonth.run({
       account_id: accountId,
       as_of_date: today,
-      value_clp: valueToday,
+      value_clp: ccOwedValueClpOrThrow(accountId, today, owedToday),
     });
     n += 1;
     invalidateAggregationForAccountDate(accountId, today);
   }
+  // The pesos of every other anchor (earlier daily stamps) at its own date's rate: a stamp written
+  // during a live day carries that moment's rate until the day's close is on file.
+  revalueCcOwedAnchorValuations(accountId);
   if (pts.length > 0) {
     invalidateAggregationForAccountDate(accountId, pts[0]!.as_of_date);
   }
