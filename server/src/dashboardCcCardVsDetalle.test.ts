@@ -5,7 +5,8 @@ import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { monthlyPerfRowsForAccount } from "./groupMonthlyPerfConsolidation.js";
 import { accountPeriodMetricsFromMonthlyRows } from "./accountPeriodMetrics.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { convertTs, type TsUnit } from "./valuationTimeseries.js";
+import type { TsUnit } from "./valuationTimeseries.js";
+import { convertValue } from "./valueConvert.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { addCalendarMonths } from "./ccYearMonth.js";
@@ -13,7 +14,7 @@ import { addCalendarMonths } from "./ccYearMonth.js";
 /**
  * A credit card's dashboard row reads its month / year / lifetime P/L (the cost of financing,
  * loss-negative) from the calendar-month rows its account page's «Detalle por mes» shows, in
- * both units, and its day P/L converts to dollars at the rate those rows use for today. The
+ * both units, and its day P/L in dollars is that day's cost in dollars, which the rows sum. The
  * row used to sum billing-month windows of its own (where «this month» could be a past
  * facturación) and convert them at today's rate.
  *
@@ -140,16 +141,18 @@ describe("dashboard credit-card row vs its «Detalle por mes» rows", () => {
     }, 120_000);
   }
 
-  it("the day P/L converts to dollars at the rate the rows use for today", async () => {
+  it("the day P/L in dollars is the day's cost in dollars, the map the month rows sum", async () => {
     const rows = await buildDashboardAccountRows(true);
     const cards = rows.filter((r) => accountBucketKindSlug(r.bucket_slug) === "credit_card");
     for (const r of cards) {
       expect(r.delta_day_clp, r.name).not.toBeNull();
-      expect(r.delta_day_usd, r.name).toBeCloseTo(convertTs(r.delta_day_clp!, today, "usd"), 9);
+      expect(Number.isFinite(r.delta_day_usd), r.name).toBe(true);
     }
     const mine = cards.find((r) => r.account_id === cardId)!;
     expect(mine.delta_day_clp).toBe(-CHARGE_TODAY);
-    // The month row converts the same charge, the month's only one, at the same rate.
+    // A peso charge adds to the peso debt: in dollars at today's debt side (the sell rate).
+    expect(mine.delta_day_usd).toBeCloseTo(-convertValue(CHARGE_TODAY, "clp", "usd", today, "debt")!, 9);
+    // The month row sums the same day, the month's only charge.
     expect(mine.delta_month_usd).toBeCloseTo(mine.delta_day_usd!, 9);
   }, 120_000);
 });

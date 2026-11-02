@@ -3,9 +3,11 @@ import { clearAggregationCache } from "./aggregationCache.js";
 import {
   ccOwedByCurrencyAtYmd,
   ccOwedClpAtYmd,
+  ccRevaluationCostByDate,
   ccUsdOwedRateClp,
   ccUsdRevaluationCostClpByDate,
 } from "./ccOwedWalk.js";
+import { convertValue } from "./valueConvert.js";
 import { writeCcOwedAnchor } from "./ccCreditCardValuations.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
@@ -31,7 +33,12 @@ const CLP_CHARGE_DATE = addDaysIso(TODAY, -20);
 const END = addDaysIso(TODAY, -1);
 
 let ccId: number | null = null;
+let payCardId: number | null = null;
+let payMovementId: number | null = null;
 const statementIds: number[] = [];
+const PAY_DATE = addDaysIso(TODAY, -15);
+/** The pesos the divisas purchase actually cost for the US$100 payment. */
+const PAID_CLP = 91_234;
 
 beforeAll(() => {
   const leaf = db
@@ -73,6 +80,46 @@ beforeAll(() => {
      VALUES (?, ?, 'TIENDA VITEST', 30000, 0, 'vitest-native-owed-clp')`
   ).run(statementIds[0], ddmmyyyy(CLP_CHARGE_DATE));
   writeCcOwedAnchor(ccId, ANCHOR, { clp: 100_000, usd: 100 });
+
+  // A second card: US$100 owed, paid on PAY_DATE by a divisas purchase whose pesos are on file.
+  payCardId = Number(
+    db
+      .prepare(
+        `INSERT INTO accounts (asset_group_id, name, notes, import_key)
+         VALUES (?, 'Vitest · real-rate card', 'vitest-real-rate', 'credit_card_master|santander|vitest-real-rate')`
+      )
+      .run(leaf.id).lastInsertRowid
+  );
+  db.prepare(
+    `INSERT INTO credit_card_account_config (account_id, card_last4, billing_cycle_start_day, billing_cycle_end_day)
+     VALUES (?, '7779', 21, 20)`
+  ).run(payCardId);
+  const payStmt = Number(
+    db
+      .prepare(
+        `INSERT INTO cc_statements (account_id, card_group, source_pdf, statement_date, period_from, period_to, currency)
+         VALUES (?, 'santander', 'vitest-real-rate-usd.pdf', ?, ?, ?, 'usd')`
+      )
+      .run(payCardId, stmtDate, ddmmyyyy(addDaysIso(TODAY, -40)), stmtDate)
+      .lastInsertRowid
+  );
+  statementIds.push(payStmt);
+  db.prepare(
+    `INSERT INTO cc_statement_lines (statement_id, transaction_date, merchant, amount_clp, amount_usd, installment_flag, dedupe_key)
+     VALUES (?, ?, 'ABONO DE DIVISAS', 0, -100, 0, 'vitest-real-rate-abono')`
+  ).run(payStmt, ddmmyyyy(PAY_DATE));
+  const from = db
+    .prepare(`SELECT id FROM accounts WHERE id NOT IN (?, ?) AND asset_group_id IS NOT NULL ORDER BY id LIMIT 1`)
+    .get(ccId, payCardId) as { id: number };
+  payMovementId = Number(
+    db
+      .prepare(
+        `INSERT INTO movements (from_account_id, to_account_id, amount, currency, counter_amount, counter_currency, occurred_on, note, flow_kind)
+         VALUES (?, ?, ?, 'clp', 100, 'usd', ?, 'vitest real-rate divisas', 'pago_tarjeta')`
+      )
+      .run(from.id, payCardId, PAID_CLP, PAY_DATE).lastInsertRowid
+  );
+  writeCcOwedAnchor(payCardId, ANCHOR, { clp: 0, usd: 100 });
   clearAggregationCache();
 });
 
@@ -81,11 +128,13 @@ afterAll(() => {
     db.prepare(`DELETE FROM cc_statement_lines WHERE statement_id = ?`).run(id);
     db.prepare(`DELETE FROM cc_statements WHERE id = ?`).run(id);
   }
-  if (ccId != null) {
-    db.prepare(`DELETE FROM cc_owed_anchors WHERE account_id = ?`).run(ccId);
-    db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(ccId);
-    db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(ccId);
-    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(ccId);
+  if (payMovementId != null) db.prepare(`DELETE FROM movements WHERE id = ?`).run(payMovementId);
+  for (const id of [ccId, payCardId]) {
+    if (id == null) continue;
+    db.prepare(`DELETE FROM cc_owed_anchors WHERE account_id = ?`).run(id);
+    db.prepare(`DELETE FROM credit_card_account_config WHERE account_id = ?`).run(id);
+    db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(id);
+    db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
   }
   clearAggregationCache();
 });
@@ -113,5 +162,34 @@ describe("per-currency owed walk", () => {
     const v1 = 150 * ccUsdOwedRateClp(150, END)!;
     const evidence = 50 * ccUsdOwedRateClp(150, USD_CHARGE_DATE)!;
     expect(sumCost + evidence).toBeCloseTo(v1 - v0, 6);
+  });
+
+  it("in dollars, the pesos owed are what revalues: cost plus evidence is the change in dollars", () => {
+    if (ccId == null) return;
+    const r = (d: string) => convertValue(1, "clp", "usd", d, "debt")!;
+    let sumCost = 0;
+    for (const [d, c] of ccRevaluationCostByDate(ccId, "usd")) if (d > ANCHOR && d <= END) sumCost += c;
+    const v0 = 100_000 * r(ANCHOR) + 100;
+    const v1 = 130_000 * r(END) + 150;
+    const evidence = 30_000 * r(CLP_CHARGE_DATE) + 50;
+    expect(sumCost + evidence).toBeCloseTo(v1 - v0, 9);
+  });
+
+  it("a dollar payment with its divisas purchase on file counts at the pesos paid", () => {
+    if (payCardId == null) return;
+    const cost = ccUsdRevaluationCostClpByDate(payCardId);
+    const before = addDaysIso(PAY_DATE, -1);
+    // The paid dollars' fx P/L that day: from the previous day's debt rate to the real rate.
+    expect(cost.get(PAY_DATE)).toBeCloseTo(PAID_CLP - 100 * ccUsdOwedRateClp(100, before)!, 6);
+    // Nothing is owed afterwards, so nothing revalues.
+    for (const [d] of cost) expect(d <= PAY_DATE).toBe(true);
+    // The whole currency P/L of the debt is the pesos paid less its pesos at the anchor.
+    let sum = 0;
+    for (const [d, c] of cost) if (d > ANCHOR) sum += c;
+    expect(sum).toBeCloseTo(PAID_CLP - 100 * ccUsdOwedRateClp(100, ANCHOR)!, 6);
+    // The payment day's derived flow (−Δvalue + cost) is the pesos paid.
+    const vBefore = ccOwedClpAtYmd(payCardId, before)!.value_clp;
+    const vPay = ccOwedClpAtYmd(payCardId, PAY_DATE)!.value_clp;
+    expect(-(vPay - vBefore) + cost.get(PAY_DATE)!).toBeCloseTo(PAID_CLP, 0);
   });
 });
