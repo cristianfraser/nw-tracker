@@ -10,23 +10,50 @@ export type FlowRowItem = {
   key: string;
   date: string;
   type: string;
-  /** The row's own account; null on a single-account page, where the page names it. */
-  account: string | null;
-  counterpart: string | null;
-  /** The money's direction from the row's account: → it left, ← it arrived. */
-  direction: "out" | "in" | null;
+  /** The accounts cell: names either side of the arrow; null when the page or the outside world is that side. */
+  accounts: FlowAccountsCell;
   amount: string;
   /** Units moved («12,4 acciones»), drawn small after the amount. */
   units: string | null;
   note: string | null;
 };
 
-const ARROW = { out: "→", in: "←" } as const;
+export type FlowAccountsCell = { left: string | null; arrow: "→" | "←" | null; right: string | null };
+
+/**
+ * What the accounts cell reads. On an account's page (`account`) the page's account is not
+ * named: the arrow says whether money left (→) or arrived (←), then the other account when
+ * there is one. On a group or the dashboard (`group`) it always reads origin → target: a
+ * transfer from → to (shown once when both are on the page), money arriving from outside
+ * «→ account», money leaving «account →».
+ */
+export function flowAccountsCell(
+  mode: "account" | "group",
+  row: {
+    account_name: string;
+    from_account_name: string | null;
+    to_account_name: string | null;
+    counterpart_account_name: string | null;
+    money_direction: "in" | "out" | null;
+  }
+): FlowAccountsCell {
+  if (row.money_direction == null) return { left: mode === "group" ? row.account_name : null, arrow: null, right: null };
+  if (mode === "account") {
+    return { left: null, arrow: row.money_direction === "out" ? "→" : "←", right: row.counterpart_account_name };
+  }
+  if (row.from_account_name != null && row.to_account_name != null) {
+    return { left: row.from_account_name, arrow: "→", right: row.to_account_name };
+  }
+  return row.money_direction === "in"
+    ? { left: null, arrow: "→", right: row.account_name }
+    : { left: row.account_name, arrow: "→", right: null };
+}
 
 /**
  * The flows list, one rendering at every width (no desktop table beside mobile cards), styled
  * like the detalle and expense rows. While every row fits on one line the rows share the list's
- * columns (a subgrid of it) under a header line: date, type, accounts, amount, note. When they do
+ * columns (a subgrid of it) under a header line: date, type, accounts (`flowAccountsCell`),
+ * amount, note. When they do
  * not (measured), a row is three lines: date and type with the amount on the right; the accounts;
  * the note.
  */
@@ -72,7 +99,7 @@ export function FlowRows({
             />
           </span>
           <span className={styles.accounts}>
-            <FlowAccounts row={row} />
+            <FlowAccounts cell={row.accounts} />
           </span>
           <span className={cn("mono", styles.amount)}>
             {row.amount}
@@ -91,17 +118,17 @@ export function FlowRows({
   );
 }
 
-/** «Cuenta corriente → santander ·0781», «Fintual USD ← SPY»; the arrow alone leads on an account's own page. */
-function FlowAccounts({ row }: { row: FlowRowItem }) {
-  const arrow = row.direction ? ARROW[row.direction] : null;
-  if (!row.counterpart) return row.account ? <>{row.account}</> : null;
+/** The two sides of the accounts cell and the arrow between them; an unnamed side is left out. */
+function FlowAccounts({ cell }: { cell: FlowAccountsCell }) {
   return (
     <>
-      {row.account ? <span className={styles.account}>{row.account}</span> : null}
-      <span className={styles.arrow} aria-hidden={arrow ? undefined : true}>
-        {arrow ?? "·"}
-      </span>
-      <span className={styles.counterpart}>{row.counterpart}</span>
+      {cell.left ? <span>{cell.left}</span> : null}
+      {cell.arrow ? (
+        <span className={styles.arrow} aria-hidden="true">
+          {cell.arrow}
+        </span>
+      ) : null}
+      {cell.right ? <span>{cell.right}</span> : null}
     </>
   );
 }
