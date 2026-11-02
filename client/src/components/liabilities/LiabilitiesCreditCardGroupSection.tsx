@@ -8,6 +8,7 @@ import {
 } from "./CreditCardLedgerSurfaces";
 import { CreditCardSummaryCards } from "./CreditCardSummaryCards";
 import { loadableClass } from "../ui/Loadable";
+import { PageGridTile } from "../layout/PageGridTile";
 import styles from "../../pages/AccountDetailPage.module.css";
 
 type Props = {
@@ -34,21 +35,22 @@ export function LiabilitiesCreditCardGroupSection({
 
   const title = t("groupPage.pasivos.creditCardSectionTitle");
 
+  // A page grid of its own inside the group page's grid (styles/page-grid.css): the summary, the
+  // associated cards and the two ledger surfaces are tiles; one dim marker for the section.
   return (
-    <section className={loadableClass(loading, styles.chartBlock)}>
-      {linkTo ? (
-        <h2 className={styles.sectionTitle}>
-          <Link to={linkTo}>{title}</Link>
-        </h2>
-      ) : (
-        <h2 className={styles.sectionTitle}>{title}</h2>
-      )}
-
-      <CreditCardSummaryCards ccLedger={ccLedger} />
+    <PageGridTile
+      id="cc-section"
+      className={loadableClass(loading, "page-grid")}
+      aria-busy={loading || undefined}
+    >
+      <PageGridTile id="cc-summary">
+        <h2>{linkTo ? <Link to={linkTo}>{title}</Link> : title}</h2>
+        <CreditCardSummaryCards ccLedger={ccLedger} />
+      </PageGridTile>
 
       {(ccLedger.associated_card_last4s?.length ?? 0) > 0 ? (
-        <section className={styles.chartBlock}>
-          <h3 className={styles.subsectionTitleMid}>{t("accountDetail.creditCard.associatedCardsTitle")}</h3>
+        <PageGridTile id="cc-associated-cards">
+          <h3>{t("accountDetail.creditCard.associatedCardsTitle")}</h3>
           <ul className={styles.proseSmTight}>
             {ccLedger.associated_card_last4s!.map((last4) => (
               <li key={last4} className="mono">
@@ -56,12 +58,12 @@ export function LiabilitiesCreditCardGroupSection({
               </li>
             ))}
           </ul>
-        </section>
+        </PageGridTile>
       ) : null}
 
       <CreditCardHistorialSurface ccLedger={ccLedger} scope={ccScope} loading={loading} />
 
       <CreditCardDetalleSurface ccLedger={ccLedger} scope={ccScope} loading={loading} />
-    </section>
+    </PageGridTile>
   );
 }

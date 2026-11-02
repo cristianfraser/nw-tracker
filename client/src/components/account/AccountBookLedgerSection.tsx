@@ -4,6 +4,7 @@ import { AccountBookValuationForm } from "./AccountBookValuationForm";
 import type { DisplayUnit } from "../../queries/keys";
 import styles from "../../pages/AccountDetailPage.module.css";
 import { cn } from "../../cn";
+import { PageGridTile } from "../layout/PageGridTile";
 
 type Props = {
   accountId: number;
@@ -14,7 +15,7 @@ export function AccountBookLedgerSection({ accountId, displayUnit }: Props) {
   const { t } = useTranslation();
 
   return (
-    <section className={styles.sectionTitleSpaced}>
+    <PageGridTile id="book-ledger">
       <h2>{t("accountDetail.bookLedger.sectionTitle")}</h2>
       <p className={cn("muted", styles.proseMutedXs)}>{t("accountDetail.bookLedger.sectionHint")}</p>
       <AccountBookValuationForm
@@ -25,6 +26,6 @@ export function AccountBookLedgerSection({ accountId, displayUnit }: Props) {
         accountId={accountId}
         displayUnit={displayUnit}
       />
-    </section>
+    </PageGridTile>
   );
 }
