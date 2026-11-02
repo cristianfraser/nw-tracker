@@ -3,12 +3,7 @@ import { useTranslation } from "../../i18n";
 import { formatClp, formatPct, formatUsdFine } from "../../format";
 import type { DailySeriesPointDto, DailySeriesResponse } from "../../types";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
-import { Table } from "../ui/Table";
-import {
-  TableMobileCard,
-  TableMobileCardRow,
-  TableMobileCardSection,
-} from "../ui/TableMobileCard";
+import { PerfDetailRows, type PerfDetailColumn } from "./PerfDetailRows";
 
 const PAGE_SIZE = 12;
 
@@ -23,7 +18,7 @@ function cellPct(p: number | null | undefined) {
  * one market calendar), rows with `market_day: false` (weekend/shared holiday) render dimmed;
  * bucket pages mix calendars, so their weekend rows carry real crypto/UF P/L and stay normal.
  * Dates render as ISO YYYY-MM-DD per the repo date convention.
- * Parallel desktop `<td>` / mobile `<TableMobileCard>` renderings (keep in sync).
+ * One rendering at every width (`PerfDetailRows`).
  */
 export function DailyPerfDetailTable({
   series,
@@ -63,54 +58,23 @@ export function DailyPerfDetailTable({
     return <p className="muted">{t("groupPage.dailyDetailEmpty")}</p>;
   }
 
-  const header = (
-    <thead>
-      <tr>
-        <th className="desktop-only">{labels.date}</th>
-        <th className="desktop-only">{labels.closing}</th>
-        <th className="desktop-only">{labels.netDeposits}</th>
-        <th className="desktop-only">{labels.pl}</th>
-        <th className="desktop-only">{labels.pct}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
+  const columns: PerfDetailColumn<DailySeriesPointDto>[] = [
+    { key: "closing", label: labels.closing, value: (row) => fmt(row.value) },
+    { key: "deposits", label: labels.netDeposits, value: (row) => (row.flow !== 0 ? fmt(row.flow) : "—") },
+    { key: "pl", label: labels.pl, value: (row) => fmt(row.pl) },
+    { key: "pct", label: labels.pct, value: (row) => cellPct(row.pct) },
+  ];
 
   return (
     <PaginatedTable page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} loading={loading}>
-      <Table
-        key={`daily-detail-page-${page}`}
-        header={header}
-        tableClassName="table--parallel-mobile"
-      >
-        {pageRows.map((row) => (
-          <tr
-            key={row.as_of_date}
-            style={dimClosedDays && row.market_day === false ? { opacity: 0.45 } : undefined}
-          >
-            <td className="mono desktop-only">{row.as_of_date}</td>
-            <td className="mono desktop-only">{fmt(row.value)}</td>
-            <td className="mono desktop-only">{row.flow !== 0 ? fmt(row.flow) : "—"}</td>
-            <td className="mono desktop-only">{fmt(row.pl)}</td>
-            <td className="mono desktop-only">{cellPct(row.pct)}</td>
-            <td className="mobile-only">
-              <TableMobileCard title={row.as_of_date}>
-                <TableMobileCardSection>
-                  <TableMobileCardRow label={labels.closing} value={fmt(row.value)} />
-                  <TableMobileCardRow
-                    label={labels.netDeposits}
-                    value={row.flow !== 0 ? fmt(row.flow) : "—"}
-                  />
-                </TableMobileCardSection>
-                <TableMobileCardSection>
-                  <TableMobileCardRow label={labels.pl} value={fmt(row.pl)} />
-                  <TableMobileCardRow label={labels.pct} value={cellPct(row.pct)} />
-                </TableMobileCardSection>
-              </TableMobileCard>
-            </td>
-          </tr>
-        ))}
-      </Table>
+      <PerfDetailRows
+        rows={pageRows}
+        rowKey={(row) => row.as_of_date}
+        period={(row) => row.as_of_date}
+        periodLabel={labels.date}
+        columns={columns}
+        dimRow={dimClosedDays ? (row) => row.market_day === false : undefined}
+      />
     </PaginatedTable>
   );
 }

@@ -61,16 +61,14 @@
    rows, so a long rail never opens whitespace inside the main stack. The wide tables follow
    below both, spanning every column. */
 .page-main,
-.page-rail,
-.page-pairs {
+.page-rail {
   display: contents;
 }
 
 /* Flattened or not, a stack's tiles span their grid (the page grid below 1440, the stack's own
    columns from it). */
 .page-main>*,
-.page-rail>*,
-.page-pairs>* {
+.page-rail>* {
   grid-column: 1 / -1;
   min-width: 0;
 }
@@ -102,23 +100,15 @@
     container-name: rail;
   }
 
-  /* Below the band of the main stack and the rail: the other tiles in two equal columns, an odd
-     last one across both. */
-  .page-pairs {
-    display: grid;
-    grid-template-columns: subgrid;
-    grid-column: 1 / -1;
-    row-gap: var(--row-gap);
-    align-items: start;
-    min-width: 0;
+  /* Below the band of the main stack and the rail, the dashboard's tiles take the order and
+     span of its layout table (`PageGridTile` `wide`): two equal columns or all twelve. */
+  .page-tile--wide {
+    order: var(--tile-order-l);
   }
 
-  .page-pairs>* {
-    grid-column: span 6;
-  }
-
-  .page-pairs>:last-child:nth-child(odd) {
-    grid-column: 1 / -1;
+  :where(.layout-main>.content>*)>.page-tile--wide,
+  .page-grid>.page-tile--wide {
+    grid-column: span var(--tile-span-l);
   }
 
   /* The strip in the main stack: 8 columns, so a 4-up card spans 2. */

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { FlowsOverviewChart } from "../charts/lazyCharts";
 import { PageGridTile } from "../layout/PageGridTile";
-import { dashboardTileOrder } from "../../dashboardLayout";
+import { dashboardTileOrder, dashboardTileWide } from "../../dashboardLayout";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { loadableClass } from "../ui/Loadable";
 import { flowChartGranularityFromMetricsPeriod, formatFlowMoney } from "../../flowsDisplay";
@@ -165,6 +165,7 @@ export function DashboardFlowsChart({ displayUnit }: { displayUnit: DisplayUnit 
     <PageGridTile
       id="flows-chart"
       order={dashboardTileOrder("flows-chart")}
+      wide={dashboardTileWide("flows-chart")}
       className="chart-grid chart-grid--full-line"
     >
       <FlowsOverviewChart

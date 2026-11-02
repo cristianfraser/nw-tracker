@@ -8,10 +8,12 @@ import { cn } from "../../cn";
  * reading order (the dashboard reads it from its layout table, `dashboardLayout.ts`): on the
  * big-desktop tier the dashboard's tiles sit in two stacks (main and rail) by DOM membership,
  * and below it the stacks flatten into the page grid, where `order` restores the reading order.
+ * `wide` places a tile below that band on the big desktop: its own order and span there.
  */
 export function PageGridTile({
   id,
   order,
+  wide,
   className,
   style,
   children,
@@ -19,13 +21,19 @@ export function PageGridTile({
 }: {
   id: string;
   order?: number;
+  /** Big desktop, below the dashboard's band: the tile's order and column span there. */
+  wide?: { order: number; span: number };
   className?: string;
   style?: CSSProperties;
   children?: ReactNode;
 } & Omit<HTMLAttributes<HTMLElement>, "className" | "children" | "id" | "style">) {
-  const vars = order == null ? style : ({ ...style, "--tile-order": order } as CSSProperties);
+  const vars = {
+    ...style,
+    ...(order == null ? null : { "--tile-order": order }),
+    ...(wide ? { "--tile-order-l": wide.order, "--tile-span-l": wide.span } : null),
+  } as CSSProperties;
   return (
-    <section data-tile={id} className={cn("page-tile", className)} style={vars} {...rest}>
+    <section data-tile={id} className={cn("page-tile", wide && "page-tile--wide", className)} style={vars} {...rest}>
       {children}
     </section>
   );

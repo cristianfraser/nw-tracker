@@ -52,6 +52,8 @@ export type GroupInfoPortfolioStrip = {
   linkedCardNavChildren?: NavTreeNodeDto[];
 };
 
+type GroupInfoTileId = "returns" | "detail" | "wealth-flows" | "export" | "accounts";
+
 export type GroupInfoBaseProps = {
   mainClassName?: string;
   title: string;
@@ -93,13 +95,12 @@ export type GroupInfoBaseProps = {
    * the export row and the accounts tree, stay below both stacks.
    */
   rail?: ReactNode;
-  /**
-   * Below the main column and the rail (big desktop): tiles in two equal columns, an odd last one
-   * across both (styles/page-grid.css `.page-pairs`); in the one stack below it.
-   */
+  /** Tiles after the band of the main column and the rail (dashboard: the other charts). */
   pairs?: ReactNode;
   /** A tile's place in the one-stack reading order (dashboardLayout.ts); DOM order when absent. */
-  tileOrder?: (id: "returns" | "detail" | "wealth-flows" | "export" | "accounts") => number;
+  tileOrder?: (id: GroupInfoTileId) => number;
+  /** Big desktop: a tile's order and span below the band (dashboardLayout.ts). */
+  tileWide?: (id: GroupInfoTileId) => { order: number; span: number } | undefined;
 };
 
 export function GroupInfoBase({
@@ -121,6 +122,7 @@ export function GroupInfoBase({
   rail,
   pairs,
   tileOrder,
+  tileWide,
 }: GroupInfoBaseProps) {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
@@ -252,12 +254,12 @@ export function GroupInfoBase({
     </Loadable>
   ) : null;
   const exportTile = exportSlot ? (
-    <PageGridTile id="export" className="page-tile--end" order={tileOrder?.("export")}>
+    <PageGridTile id="export" className="page-tile--end" order={tileOrder?.("export")} wide={tileWide?.("export")}>
       {exportSlot}
     </PageGridTile>
   ) : null;
   const accountsTile = accountsTree ? (
-    <PageGridTile id="accounts" order={tileOrder?.("accounts")}>
+    <PageGridTile id="accounts" order={tileOrder?.("accounts")} wide={tileWide?.("accounts")}>
       {accountsTree}
     </PageGridTile>
   ) : null;
@@ -274,7 +276,7 @@ export function GroupInfoBase({
               {charts}
             </div>
             <div className="page-rail">{rail}</div>
-            {pairs ? <div className="page-pairs">{pairs}</div> : null}
+            {pairs}
           </>
         ) : (
           <>
@@ -287,7 +289,7 @@ export function GroupInfoBase({
           <>
             {/* undefined = still loading (frame, dimmed — also before the nav names the group); null = the server sends none. */}
             {shownPeriodReturns !== null ? (
-              <PageGridTile id="returns" order={tileOrder?.("returns")}>
+              <PageGridTile id="returns" order={tileOrder?.("returns")} wide={tileWide?.("returns")}>
                 <h2>{t("periodReturns.title")}</h2>
                 <PeriodReturnsWithBenchmark
                   data={shownPeriodReturns ?? null}
@@ -298,7 +300,7 @@ export function GroupInfoBase({
                 />
               </PageGridTile>
             ) : null}
-            <PageGridTile id="detail" order={tileOrder?.("detail")}>
+            <PageGridTile id="detail" order={tileOrder?.("detail")} wide={tileWide?.("detail")}>
             <div className="chart-panel-title-row">
               <h2>
                 {t(
@@ -352,7 +354,7 @@ export function GroupInfoBase({
             )}
             </PageGridTile>
 
-            <PageGridTile id="wealth-flows" order={tileOrder?.("wealth-flows")}>
+            <PageGridTile id="wealth-flows" order={tileOrder?.("wealth-flows")} wide={tileWide?.("wealth-flows")}>
               <h2>{t(flowsTitleKey)}</h2>
               {tablesError ? (
                 <p className="error">{tablesError}</p>
