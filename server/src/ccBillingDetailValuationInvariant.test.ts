@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
-import { ccLedgerStatementClosingPointsClp } from "./ccCreditCardValuations.js";
+import { ccLedgerStatementClosingPointsNative } from "./ccCreditCardValuations.js";
+import { ccOwedNativeValueClp } from "./ccOwedWalk.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -15,7 +16,7 @@ import { chileCalendarTodayYmd } from "./chileDate.js";
  * inflating closed-month balances by one cuota each.
  */
 describe("CC billing detail / valuation path invariant", () => {
-  it("ccLedgerStatementClosingPointsClp matches creditCardInstallmentsResponse billing_detail balance per month", () => {
+  it("the month-end anchors, valued at their date, match creditCardInstallmentsResponse billing_detail balance per month", () => {
     const ccAccounts = db
       .prepare(
         `SELECT a.id FROM accounts a
@@ -29,7 +30,12 @@ describe("CC billing detail / valuation path invariant", () => {
     if (ccAccounts.length === 0) return;
 
     for (const { id } of ccAccounts) {
-      const pts = ccLedgerStatementClosingPointsClp(id);
+      // The anchors are per currency; the detalle samples the walk at the month-end, which starts at
+      // the anchor and values it at that date's rate.
+      const pts = (ccLedgerStatementClosingPointsNative(id) ?? []).map((p) => ({
+        as_of_date: p.as_of_date,
+        value_clp: ccOwedNativeValueClp(p.owed, p.as_of_date)!,
+      }));
       if (!pts || pts.length === 0) continue;
 
       const response = creditCardInstallmentsResponse(id);

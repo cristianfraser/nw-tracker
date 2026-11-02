@@ -9,6 +9,7 @@ import { historyTierMemo } from "./aggregationCache.js";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
+import { ccHasNativeOwedAnchors, ccOwedClpAtYmd } from "./ccOwedWalk.js";
 import { latestLiabilityValuationRowForSnapshot } from "./valuationLatest.js";
 
 export type { NavTreeNodeDto };
@@ -237,6 +238,11 @@ function linkedCreditCardBalanceTotalClpAsOf(
     return (
       latestLiabilityValuationRowForSnapshot(masterId, "credit_card", asOfYmd)?.value_clp ?? null
     );
+  }
+  // The per-currency walk valued at the day's rate (`ccOwedWalk.ts`), the card's own value.
+  if (ccHasNativeOwedAnchors(masterId)) {
+    const walked = ccOwedClpAtYmd(masterId, asOfYmd);
+    if (walked) return walked.value_clp;
   }
   const anchor = latestValuationRowFromAscRows(valuationRowsAsc, asOfYmd);
   if (anchor != null) {
