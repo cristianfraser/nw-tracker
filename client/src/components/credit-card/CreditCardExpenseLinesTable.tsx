@@ -575,7 +575,7 @@ export function CreditCardExpenseLinesTable({
   );
 
   if (lines.length === 0 && !loading) {
-    return <p className="muted" style={{ marginBottom: "1rem" }}>{emptyLabel}</p>;
+    return <p className="muted" style={{ margin: 0 }}>{emptyLabel}</p>;
   }
 
   const onSort = (key: SortKey) =>

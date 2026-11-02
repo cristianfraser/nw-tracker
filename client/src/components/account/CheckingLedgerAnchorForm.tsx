@@ -75,22 +75,22 @@ export function CheckingLedgerAnchorForm({
 
   if (!cartolaDerivedAnchor && !ledgerAnchor) {
     return (
-      <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.75rem" }}>
+      <p className="muted" style={{ fontSize: "var(--font-size-ui)", margin: 0 }}>
         {t("accountDetail.checking.ledgerAnchorNoCartola")}
       </p>
     );
   }
 
   return (
-    <section style={{ marginBottom: "1rem" }}>
-      <h3 style={{ fontSize: "var(--font-size-ui)", margin: "0 0 0.35rem" }}>
+    <section>
+      <h3 style={{ fontSize: "var(--font-size-ui)", margin: 0 }}>
         {t("accountDetail.checking.ledgerAnchorTitle")}
       </h3>
-      <p className="muted" style={{ fontSize: "var(--font-size-ui)", margin: "0 0 0.75rem" }}>
+      <p className="muted" style={{ fontSize: "var(--font-size-ui)", margin: 0 }}>
         {t("accountDetail.checking.ledgerAnchorHint")}
       </p>
       {cartolaDerivedAnchor ? (
-        <p className="muted" style={{ fontSize: "var(--font-size-ui)", margin: "0 0 0.75rem" }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-ui)", margin: 0 }}>
           {t("accountDetail.checking.ledgerAnchorDerived", {
             month: formatYearMonthLabel(cartolaDerivedAnchor.period_month),
             amount: formatClp(cartolaDerivedAnchor.amount_clp),
@@ -148,7 +148,7 @@ export function CheckingLedgerAnchorForm({
         ) : null}
       </div>
       {status ? (
-        <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginTop: "0.5rem" }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-ui)", margin: 0 }}>
           {status}
         </p>
       ) : null}

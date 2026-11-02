@@ -190,7 +190,7 @@ export function CheckingCartolaMonthTable({
   return (
     <>
       {rows.length === 0 ? null : (
-        <p className="muted" style={{ fontSize: "var(--font-size-ui)", marginBottom: "0.5rem" }}>
+        <p className="muted" style={{ fontSize: "var(--font-size-ui)", margin: 0 }}>
           {t("accountDetail.checking.cartolaMonthImportedCount", {
             imported: importedMonthCount,
             total: rows.length,
