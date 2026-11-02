@@ -32,6 +32,11 @@
   text-align: right;
 }
 
+/* An amount no document states yet: dimmed (the `muted` class) and in italics. */
+.estimate {
+  font-style: italic;
+}
+
 /* «Show more» / «Show less»: a link-like button under the months. */
 .toggle {
   font: inherit;
