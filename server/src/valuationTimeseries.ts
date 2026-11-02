@@ -1453,6 +1453,9 @@ const OVERVIEW_LINE_PORTFOLIO_SLUG: Record<string, string> = {
   real_estate: "real_estate",
   retirement: "retirement",
   brokerage: "brokerage",
+  // The invested line is the Inversiones hub (retirement + brokerage): its node's colour, the one
+  // its card pill shows — it had none, so the client drew a fixed gold.
+  invested: "inversiones",
   cash: "cash_eqs",
   liabilities: "liabilities",
   total_nw: "net_worth",
