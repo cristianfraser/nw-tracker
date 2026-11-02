@@ -33,20 +33,25 @@ export type CcUpcomingPaymentRow = {
   is_provisional_close: boolean;
 };
 
-export type CcUpcomingPaymentsCard = {
+/** One card's facturación inside a pay month. */
+export type CcUpcomingPayment = {
   account_id: number;
   name: string;
-  rows: CcUpcomingPaymentRow[];
+  row: CcUpcomingPaymentRow;
+};
+
+/** What is due in one pay month: its total and the payments that make it up. */
+export type CcUpcomingPaymentsMonth = {
+  /** YYYY-MM of the pay-by; an overdue row is due now, so it falls in the current month. */
+  pay_month: string;
+  total_clp: number;
+  /** In card order (the cards' own order), each card's rows in facturación order. */
+  payments: CcUpcomingPayment[];
 };
 
 export type CcUpcomingPaymentsBlock = {
-  /** Active cards with something pending; empty = nothing to show (the panel hides). */
-  cards: CcUpcomingPaymentsCard[];
-  /**
-   * Σ of the listed rows per pay-by month (YYYY-MM of `pay_by_iso`), oldest first: what is due each
-   * month. An overdue row is due now, so it counts in the current month.
-   */
-  totals_by_month: { pay_month: string; total_clp: number }[];
+  /** Pay months with something due, oldest first; empty = nothing to show (the panel hides). */
+  months: CcUpcomingPaymentsMonth[];
   /** The Pasivos page's route, from the nav tree; null when the tree has no Pasivos root. */
   liabilities_route_path: string | null;
 };
@@ -167,22 +172,19 @@ export function ccUpcomingPaymentsFromCards(
   liveUsdRate: () => number,
   liabilitiesRoutePath: string | null
 ): CcUpcomingPaymentsBlock {
-  const outCards: CcUpcomingPaymentsCard[] = [];
-  const totals = new Map<string, number>();
+  const byMonth = new Map<string, CcUpcomingPaymentsMonth>();
   const todayMonth = todayYmd.slice(0, 7);
   for (const card of cards) {
-    const rows = upcomingPaymentRows(card.facturaciones, card.payments, todayYmd, liveUsdRate);
-    if (rows.length === 0) continue;
-    for (const r of rows) {
-      const payMonth = r.overdue ? todayMonth : r.pay_by_iso.slice(0, 7);
-      totals.set(payMonth, (totals.get(payMonth) ?? 0) + r.amount_clp);
+    for (const row of upcomingPaymentRows(card.facturaciones, card.payments, todayYmd, liveUsdRate)) {
+      const payMonth = row.overdue ? todayMonth : row.pay_by_iso.slice(0, 7);
+      const month = byMonth.get(payMonth) ?? { pay_month: payMonth, total_clp: 0, payments: [] };
+      month.total_clp += row.amount_clp;
+      month.payments.push({ account_id: card.account_id, name: card.name, row });
+      byMonth.set(payMonth, month);
     }
-    outCards.push({ account_id: card.account_id, name: card.name, rows });
   }
-  const totals_by_month = [...totals.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([pay_month, total_clp]) => ({ pay_month, total_clp }));
-  return { cards: outCards, totals_by_month, liabilities_route_path: liabilitiesRoutePath };
+  const months = [...byMonth.values()].sort((a, b) => a.pay_month.localeCompare(b.pay_month));
+  return { months, liabilities_route_path: liabilitiesRoutePath };
 }
 
 /**

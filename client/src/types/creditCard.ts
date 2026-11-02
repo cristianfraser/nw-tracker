@@ -49,17 +49,20 @@ export type CcUpcomingPaymentRowDto = {
   is_provisional_close: boolean;
 };
 
-export type CcUpcomingPaymentsCardDto = {
+/** One card's facturación inside a pay month. */
+export type CcUpcomingPaymentDto = {
   account_id: number;
   name: string;
-  rows: CcUpcomingPaymentRowDto[];
+  row: CcUpcomingPaymentRowDto;
 };
 
 /** `cc_upcoming_payments` on the dashboard page bundle — pesos in both display units. */
 export type CcUpcomingPaymentsDto = {
-  cards: CcUpcomingPaymentsCardDto[];
-  /** Σ of the listed rows per pay-by month (YYYY-MM), oldest first; an overdue row counts in the current month. */
-  totals_by_month: { pay_month: string; total_clp: number }[];
+  /**
+   * Pay months with something due, oldest first: the month's total and its payments (an overdue
+   * one is due now, in the current month). Empty = nothing to show.
+   */
+  months: { pay_month: string; total_clp: number; payments: CcUpcomingPaymentDto[] }[];
   liabilities_route_path: string | null;
 };
 
