@@ -10,7 +10,8 @@
     max-content repeat(var(--perf-total-slots), max-content);
   justify-content: space-between;
   column-gap: 1rem;
-  font-size: var(--font-size-table);
+  /* The dashboard panels' size (Flujos, Próximos pagos, Últimos gastos). */
+  font-size: var(--font-size-card-meta);
   container-type: inline-size;
 }
 
@@ -63,6 +64,8 @@
 /* Icons a size above the figures, with thick strokes: small shapes need rough ones. */
 .icon {
   display: inline-block;
+  width: 1.4em;
+  height: 1.4em;
   margin-right: 0.35em;
   vertical-align: -0.3em;
 }
