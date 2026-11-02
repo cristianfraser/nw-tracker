@@ -17,12 +17,25 @@ import type { FlowsOverviewRow } from "../../types";
 import { useCcInstallmentGastosMode } from "../../useCcInstallmentGastosMode";
 import { DeltaMetricFlow } from "./DeltaMetricFlow";
 import styles from "./DashboardFlowsSummary.module.css";
+import type { ComponentType } from "react";
+import type { IconProps } from "../icons/iconProps";
+import { BanknoteIcon } from "../icons/BanknoteIcon";
+import { CashChangeIcon } from "../icons/CashChangeIcon";
+import { CoinsIcon } from "../icons/CoinsIcon";
+import { CreditCardIcon } from "../icons/CreditCardIcon";
+import { DeltaIcon } from "../icons/DeltaIcon";
+import { NetWorthUpIcon } from "../icons/NetWorthUpIcon";
+import { PiggyBankIcon } from "../icons/PiggyBankIcon";
+import { ShoppingBagIcon } from "../icons/ShoppingBagIcon";
+import { TrendingUpIcon } from "../icons/TrendingUpIcon";
 
 const ZERO_ROW: FlowsOverviewRow = { period_month: "", as_of_date: "", ...ZERO_FLOWS_OVERVIEW_TOTALS };
 
 type SummaryLine = {
   id: string;
   labelKey: string;
+  /** Stands for the label on the line; the label stays as its title (hover) and for screen readers. */
+  icon: ComponentType<IconProps>;
   value: (row: FlowsOverviewRow) => number;
   /** Drawn as a signed ▲/▼ delta, like the cards' P/L. */
   delta: boolean;
@@ -37,25 +50,27 @@ type SummaryLine = {
  * in investments and net worth.
  */
 const SUMMARY_LINES: readonly SummaryLine[] = [
-  { id: "income", labelKey: "flows.overview.income", value: (r) => r.income, delta: false },
-  { id: "expenses", labelKey: "flows.overview.expenses", value: (r) => r.expenses, delta: false },
-  { id: "savings", labelKey: "flows.overview.savings", value: (r) => r.savings, delta: true, section: true },
-  { id: "deposits", labelKey: "flows.overview.deposits", value: (r) => r.deposits, delta: false },
+  { id: "income", icon: BanknoteIcon, labelKey: "flows.overview.income", value: (r) => r.income, delta: false },
+  { id: "expenses", icon: ShoppingBagIcon, labelKey: "flows.overview.expenses", value: (r) => r.expenses, delta: false },
+  { id: "savings", icon: PiggyBankIcon, labelKey: "flows.overview.savings", value: (r) => r.savings, delta: true, section: true },
+  { id: "deposits", icon: CoinsIcon, labelKey: "flows.overview.deposits", value: (r) => r.deposits, delta: false },
   {
     id: "cards",
+    icon: CreditCardIcon,
     labelKey: "flows.overview.cardSpentMinusPaid",
     value: (r) => r.card_net,
     delta: true,
   },
-  { id: "cash_change", labelKey: "flows.overview.cashChange", value: (r) => r.cash_change, delta: true },
-  { id: "pl", labelKey: "flows.overview.pl", value: (r) => r.pl, delta: false, section: true },
+  { id: "cash_change", icon: CashChangeIcon, labelKey: "flows.overview.cashChange", value: (r) => r.cash_change, delta: true },
+  { id: "pl", icon: DeltaIcon, labelKey: "flows.overview.pl", value: (r) => r.pl, delta: false, section: true },
   {
     id: "investments_change",
+    icon: TrendingUpIcon,
     labelKey: "flows.overview.investmentsChange",
     value: (r) => r.investments_change,
     delta: true,
   },
-  { id: "net_worth_change", labelKey: "flows.overview.netWorthChange", value: (r) => r.net_worth_change, delta: true },
+  { id: "net_worth_change", icon: NetWorthUpIcon, labelKey: "flows.overview.netWorthChange", value: (r) => r.net_worth_change, delta: true },
 ];
 
 /**
@@ -95,7 +110,10 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
                 const value = line.value(row);
                 return (
                   <div key={line.id} className={line.section ? styles.lineSection : styles.line}>
-                    <dt>{t(line.labelKey)}</dt>
+                    <dt title={t(line.labelKey)}>
+                      <line.icon size={18} strokeWidth={2.25} className={styles.icon} />
+                      <span className="visually-hidden">{t(line.labelKey)}</span>
+                    </dt>
                     <dd className={line.delta ? undefined : "mono"}>
                       {line.delta ? (
                         <DeltaMetricFlow

@@ -4,7 +4,7 @@ import { formatClp, formatPct, formatUsdFine } from "../../format";
 import type { DailySeriesPointDto, DailySeriesResponse } from "../../types";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { PerfDetailRows, type PerfDetailRow } from "./PerfDetailRows";
-import { PiggyBankIcon } from "../icons/PiggyBankIcon";
+import { CoinsIcon } from "../icons/CoinsIcon";
 
 const PAGE_SIZE = 12;
 
@@ -66,7 +66,7 @@ export function DailyPerfDetailTable({
     flows: [
       {
         key: "contribution",
-        icon: PiggyBankIcon,
+        icon: CoinsIcon,
         amount: fmt(Number.isFinite(row.flow) ? row.flow : 0),
         title: labels.netDeposits,
       },
