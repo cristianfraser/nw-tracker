@@ -15,6 +15,7 @@ import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { clipMonthsThenRollup, clipPointsToTimeRange, timeRangeToDays } from "../../timeRange";
 import type { FlowsOverviewRow } from "../../types";
 import { useCcInstallmentGastosMode } from "../../useCcInstallmentGastosMode";
+import { usePanelCache } from "../../queries/panelCache";
 import { DeltaMetricFlow } from "./DeltaMetricFlow";
 import styles from "./DashboardFlowsSummary.module.css";
 import type { ComponentType } from "react";
@@ -30,6 +31,13 @@ import { ShoppingBagIcon } from "../icons/ShoppingBagIcon";
 import { TrendingUpIcon } from "../icons/TrendingUpIcon";
 
 const ZERO_ROW: FlowsOverviewRow = { period_month: "", as_of_date: "", ...ZERO_FLOWS_OVERVIEW_TOTALS };
+
+/** A stored «Flujos» entry the panel can draw: both periods, every line's figure a number. */
+function isFlowsClosed(v: unknown): v is { last_month: FlowsOverviewRow; last_12_months: FlowsOverviewRow } {
+  const ok = (row: unknown) =>
+    row != null && typeof row === "object" && SUMMARY_LINES.every((l) => Number.isFinite(l.value(row as FlowsOverviewRow)));
+  return v != null && typeof v === "object" && ok((v as Record<string, unknown>).last_month) && ok((v as Record<string, unknown>).last_12_months);
+}
 
 type SummaryLine = {
   id: string;
@@ -85,12 +93,17 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
   const { t } = useTranslation();
   const { installmentMode } = useCcInstallmentGastosMode();
   const overview = useFlowsOverview(displayUnit, installmentMode, undefined);
-  const data = overview.data;
-  const loading = !data || overview.isPlaceholderData;
+  // A held payload of the other unit is never stored; until live data is here, the last stored one.
+  const { value: closed } = usePanelCache(
+    `flows-closed-v1|${displayUnit}|${installmentMode}`,
+    overview.isPlaceholderData ? null : overview.data?.closed,
+    isFlowsClosed
+  );
+  const loading = closed == null;
 
   const periods = [
-    { labelKey: "dashboard.flows.lastMonth", row: data?.closed.last_month ?? ZERO_ROW },
-    { labelKey: "dashboard.flows.last12Months", row: data?.closed.last_12_months ?? ZERO_ROW },
+    { labelKey: "dashboard.flows.lastMonth", row: closed?.last_month ?? ZERO_ROW },
+    { labelKey: "dashboard.flows.last12Months", row: closed?.last_12_months ?? ZERO_ROW },
   ] as const;
 
   return (

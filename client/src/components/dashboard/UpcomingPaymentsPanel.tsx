@@ -5,9 +5,27 @@ import { formatClp } from "../../format";
 import { formatDayOfMonthLabel, formatYearMonthLabel } from "../../formatDateLabel";
 import type { CcUpcomingPaymentRowDto, UpcomingPaymentItemDto, UpcomingPaymentsDto } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
+import { usePanelCache } from "../../queries/panelCache";
 import { dashboardTileOrder } from "../../dashboardLayout";
 import { loadableClass } from "../ui/Loadable";
 import styles from "./DashboardFlowsSummary.module.css";
+
+/** A stored «Próximos pagos» entry the panel can draw. */
+function isUpcomingPayments(v: unknown): v is UpcomingPaymentsDto {
+  if (v == null || typeof v !== "object") return false;
+  const months = (v as { months?: unknown }).months;
+  return (
+    Array.isArray(months) &&
+    months.every(
+      (m) =>
+        m != null &&
+        typeof m.pay_month === "string" &&
+        Number.isFinite(m.total_clp) &&
+        Array.isArray(m.items) &&
+        m.items.every((i: { kind?: unknown; due_iso?: unknown; amount_clp?: unknown }) => typeof i.kind === "string" && typeof i.due_iso === "string" && Number.isFinite(i.amount_clp))
+    )
+  );
+}
 
 /** Pay months shown before «Show more» (the server sends its whole horizon). */
 const COLLAPSED_MONTHS = 2;
@@ -116,9 +134,12 @@ function ItemLabel({ item }: { item: UpcomingPaymentItemDto }) {
  * nothing before the server has answered (`data` null on a placeholder bundle) and nothing when
  * nothing is due.
  */
-export function UpcomingPaymentsPanel({ data, loading }: { data: UpcomingPaymentsDto | null; loading: boolean }) {
+export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { data: UpcomingPaymentsDto | null; loading: boolean }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  // Pesos in both units, so one stored entry; until the bundle answers, the last stored one.
+  const { value: data, cached } = usePanelCache("upcoming-v1", live, isUpcomingPayments);
+  const loading = liveLoading && !cached;
   if (!data || data.months.length === 0) return null;
   const months = expanded ? data.months : data.months.slice(0, COLLAPSED_MONTHS);
   return (
