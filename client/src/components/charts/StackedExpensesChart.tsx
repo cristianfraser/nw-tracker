@@ -21,6 +21,7 @@ import {
   extractSortedAsOfDates,
   moneyYAxisProps,
   resolvePeriodXAxis,
+  UNDER_SERIES_Z_INDEX,
 } from "./chartLayout";
 import { useIsNarrowViewport } from "../../useIsNarrowViewport";
 
@@ -315,11 +316,12 @@ export function StackedExpensesChart({
             domain={yScale.domain}
             ticks={yScale.ticks}
             allowDataOverflow
-            {...moneyYAxisProps(displayUnit, compactAxis)}
+            {...moneyYAxisProps(displayUnit, compactAxis, yScale.ticks)}
           />
-          <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} />
+          <ReferenceLine y={0} stroke={AXIS_LINE_STROKE} strokeWidth={1} zIndex={UNDER_SERIES_Z_INDEX} />
           {currentPeriodX != null ? renderPeriodRefLine({ x: currentPeriodX }) : null}
           <Legend
+            itemSorter={null}
             content={() => (
               <div
                 style={{

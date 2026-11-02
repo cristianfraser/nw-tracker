@@ -1,22 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { buildNiceYAxis, moneyYAxisProps, rechartsMoneyYAxisWidth } from "./chartLayout";
+import { buildNiceYAxis, moneyYAxisProps, yAxisWidthForTicks } from "./chartLayout";
 
 describe("moneyYAxisProps", () => {
-  it("pairs the narrow gutter with compact ticks, and the wide one with full ticks", () => {
-    const desktop = moneyYAxisProps("usd");
-    expect(desktop.width).toBe(rechartsMoneyYAxisWidth("usd"));
+  it("pairs the compact formatter with a narrower gutter than the full one", () => {
+    const ticks = [0, 100_000, 200_000, 300_000, 400_000];
+    const desktop = moneyYAxisProps("usd", false, ticks);
     expect(desktop.tickFormatter(350_000)).toBe("US$350.000");
 
-    const mobile = moneyYAxisProps("usd", true);
+    const mobile = moneyYAxisProps("usd", true, ticks);
     expect(mobile.tickFormatter(350_000)).toBe("$350k");
-    // Short notation with a bare symbol is what earns the narrow gutter — the two
-    // must move together, or ticks clip (or the axis wastes plot area).
-    expect(mobile.width).toBeLessThan(desktop.width);
+    expect(mobile.width).toBeLessThan(desktop.width as number);
   });
 
-  it("gives both units the same compact width (the `US$` qualifier is gone)", () => {
-    expect(moneyYAxisProps("clp", true).width).toBe(moneyYAxisProps("usd", true).width);
-    expect(rechartsMoneyYAxisWidth("clp")).toBeGreaterThan(rechartsMoneyYAxisWidth("usd"));
+  it("sizes the gutter from the chart's own labels", () => {
+    // The widest label decides, so a larger range takes a wider gutter and a negative tick
+    // (formatted in parentheses) widens it too.
+    const small = yAxisWidthForTicks([0, 50_000_000, 100_000_000], "clp");
+    const large = yAxisWidthForTicks([0, 500_000_000, 1_000_000_000], "clp");
+    const signed = yAxisWidthForTicks([-50_000_000, 0, 100_000_000], "clp");
+    expect(large).toBeGreaterThan(small);
+    expect(signed).toBeGreaterThan(small);
+  });
+
+  it("leaves the gutter to Recharts when the chart does not pass its ticks", () => {
+    expect(moneyYAxisProps("clp").width).toBe("auto");
   });
 });
 

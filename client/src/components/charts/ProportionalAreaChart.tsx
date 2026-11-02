@@ -136,6 +136,7 @@ export function ProportionalAreaChart({
             tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
           />
           <Legend
+            itemSorter={null}
             wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
             formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
           />

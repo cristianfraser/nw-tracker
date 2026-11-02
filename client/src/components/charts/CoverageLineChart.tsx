@@ -167,6 +167,7 @@ export function CoverageLineChart({
           />
           <ReferenceLine y={100} stroke="var(--muted, #94a3b8)" strokeDasharray="4 4" strokeWidth={1} />
           <Legend
+            itemSorter={null}
             wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}
             formatter={(value) => <span style={{ color: "var(--muted, #94a3b8)" }}>{value}</span>}
           />

@@ -2,7 +2,7 @@
  * Geometry for the alternating x-axis bands drawn behind grouped bars (see chartBands.tsx).
  */
 
-/** The slice of the chart props+state Recharts injects into a `Customized` child that we read. */
+/** The x scale as `bandEdges` reads it (adapted from the v3 axis scale in chartBands.tsx). */
 export type BandScale = ((value: unknown) => number | undefined) & {
   domain?: () => unknown[];
   bandwidth?: () => number;
