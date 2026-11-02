@@ -1,18 +1,4 @@
-/* The change flash (`changeEffect`): instant on, a short hold, then a fade — tick-flash timing. */
-.flashDip {
-  animation: number-change-dip 600ms ease-out;
-}
-
-@keyframes number-change-dip {
-  0% {
-    opacity: 0.2;
-  }
-
-  100% {
-    opacity: 1;
-  }
-}
-
+/* The change flash (`flashOnChange`): instant on, a short hold, then a fade — tick-flash timing. */
 .flashUp {
   animation: number-change-up 2000ms ease-out;
 }

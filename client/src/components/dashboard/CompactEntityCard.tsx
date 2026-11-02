@@ -57,7 +57,7 @@ export function CompactEntityCard({
       {subtitle ? <span className={cn("muted", styles.subtitle)}>{subtitle}</span> : null}
       <div className="value mono">
         <DashboardCardValue
-          changeEffect="cell"
+          flashOnChange
           clp={clp}
           apiUsd={apiUsd}
           showUsd={showUsd}

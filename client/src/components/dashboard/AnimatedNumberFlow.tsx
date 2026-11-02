@@ -12,14 +12,11 @@ import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { NUMBER_CHANGE_FLASH_ENABLED } from "../../numberChangeEffect";
 import styles from "./AnimatedNumberFlow.module.css";
 
-/** How a change shows: `dip` (opacity, for figures coloured by sign already) or `cell` (green/red background). */
-export type NumberChangeEffect = "dip" | "cell";
-
-/** Restarts the flash on the wrapper: a change before the last one finished starts it over. */
-function flash(el: HTMLElement, effect: NumberChangeEffect, up: boolean): void {
-  el.classList.remove(styles.flashDip!, styles.flashUp!, styles.flashDown!);
+/** Restarts the green/red flash on the wrapper: a change before the last one finished starts it over. */
+function flash(el: HTMLElement, up: boolean): void {
+  el.classList.remove(styles.flashUp!, styles.flashDown!);
   void el.offsetWidth;
-  el.classList.add(effect === "dip" ? styles.flashDip! : up ? styles.flashUp! : styles.flashDown!);
+  el.classList.add(up ? styles.flashUp! : styles.flashDown!);
 }
 
 const DEFAULT_EASING = "cubic-bezier(0.33, 1, 0.68, 1)";
@@ -60,7 +57,7 @@ export type AnimatedNumberFlowProps = NumberFlowPassthrough & {
    * render (`numberChangeEffect.ts`). A unit switch, or a render that was a dimmed placeholder
    * (`.is-loading` around it), keeps `animated`.
    */
-  changeEffect?: NumberChangeEffect;
+  flashOnChange?: boolean;
 };
 
 export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFlowProps>(
@@ -74,7 +71,7 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
       emptyFallback,
       transformTiming,
       spinTiming,
-      changeEffect,
+      flashOnChange = false,
       ...rest
     },
     ref
@@ -89,7 +86,7 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
     const shown = flow ? `${flow.prefix ?? ""}|${flow.value}|${flow.suffix ?? ""}` : "";
     const prev = last.current;
     const flashChange =
-      changeEffect != null &&
+      flashOnChange &&
       NUMBER_CHANGE_FLASH_ENABLED &&
       flow != null &&
       value != null &&
@@ -100,7 +97,7 @@ export const AnimatedNumberFlow = forwardRef<NumberFlowElement, AnimatedNumberFl
 
     useLayoutEffect(() => {
       const wrap = wrapRef.current;
-      if (flashChange && wrap && changeEffect && prev && value != null) flash(wrap, changeEffect, value > prev.value);
+      if (flashChange && wrap && prev && value != null) flash(wrap, value > prev.value);
       if (value != null) {
         last.current = { shown, value, unit: displayUnit, settled: wrap != null && wrap.closest(".is-loading") == null };
       }

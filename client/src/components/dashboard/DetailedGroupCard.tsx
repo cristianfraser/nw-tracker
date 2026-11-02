@@ -52,7 +52,7 @@ export function DetailedGroupCard({
       <DashboardCardTitleRow label={title} titleTo={titleTo} colorRgb={titleColorRgb} />
       <div className="value">
         <DashboardCardValue
-          changeEffect="cell"
+          flashOnChange
           clp={clp}
           apiUsd={apiUsd}
           showUsd={showUsd}
