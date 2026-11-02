@@ -1,0 +1,33 @@
+.block {
+  margin-bottom: 1.25rem;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.barOpen {
+  margin-bottom: 0.5rem;
+}
+
+/* The toggle carries the group's label and totals: on a narrow page it wraps inside its own width
+   (the totals move under the label) instead of growing past the section. */
+.bar .toggle {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  text-align: start;
+}
+
+.totals {
+  font-size: 0.85rem;
+}
+
+.filter {
+  cursor: pointer;
+}

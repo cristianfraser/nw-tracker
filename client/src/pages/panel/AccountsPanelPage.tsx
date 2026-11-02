@@ -7,7 +7,8 @@ import { AccountExcludeFromTotalsToggle } from "../../components/panel/AccountEx
 import { EditAccountModal } from "../../components/panel/EditAccountModal";
 import { EntityColorPicker } from "../../components/dashboard/EntityColorPicker";
 import { Loadable, loadableClass } from "../../components/ui/Loadable";
-import { Table } from "../../components/ui/Table";
+import { cn } from "../../cn";
+import styles from "./AccountsPanelPage.module.css";
 import { api } from "../../api";
 import { queryKeys } from "../../queries/keys";
 import { useAccountsAll, usePanelNetWorthTree } from "../../queries/hooks";
@@ -23,16 +24,18 @@ function PortfolioGroupTableRows({
   node: NavTreeNodeDto;
   depth?: number;
 }) {
-  const indent = depth * 16;
   const accountCount = countAccountsInNavSubtree(node);
   const childGroups = node.children.filter(
     (c) => c.portfolio_group_id != null && c.account_id == null
   ).length;
   return (
     <>
-      <tr>
-        <td className="mono">{node.portfolio_group_id}</td>
-        <td style={{ paddingLeft: indent }}>
+      <div role="listitem" className={cn(styles.row, styles.groupRow)}>
+        <span className={cn("mono", styles.id)}>{node.portfolio_group_id}</span>
+        <span className={styles.label}>
+          {Array.from({ length: depth }, (_, i) => (
+            <span key={i} className={styles.indent} aria-hidden />
+          ))}
           {depth > 0 ? <span className="muted mono">└─ </span> : null}
           {node.label}
           {childGroups > 0 ? (
@@ -40,18 +43,18 @@ function PortfolioGroupTableRows({
           ) : (
             <span className="muted"> ({accountCount} accounts)</span>
           )}
-        </td>
-        <td className="mono">{node.slug}</td>
-        <td className="mono">{node.group_kind}</td>
-        <td className="mono">{accountCount}</td>
-        <td>
+        </span>
+        <span className={cn("mono", styles.slug)}>{node.slug}</span>
+        <span className={cn("mono", styles.kind)}>{node.group_kind}</span>
+        <span className={cn("mono", styles.count)}>{accountCount}</span>
+        <span className={styles.actions}>
           <EntityColorPicker
             colorRgb={node.color_rgb}
             colorTarget={{ kind: "portfolio_group", slug: node.slug }}
             size="compact"
           />
-        </td>
-      </tr>
+        </span>
+      </div>
       {node.children
         .filter((c) => c.portfolio_group_id != null && c.account_id == null)
         .map((child) => (
@@ -121,44 +124,32 @@ export function AccountsPanelPage() {
         <h2 className="flow-section-title">
           {t("panelAccounts.accountsTitle")}
         </h2>
-        <Table
-          wrapClassName={loadableClass(accountsPending)}
-          header={
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>{t("panelAccounts.colAccount")}</th>
-                <th>{t("panelAccounts.colBucket")}</th>
-                <th>{t("panelAccounts.colExclude")}</th>
-                <th>{t("panelAccounts.colActions")}</th>
-              </tr>
-            </thead>
-          }
-        >
+        <div className={cn(styles.list, loadableClass(accountsPending))}>
+          <div className={cn(styles.row, styles.accountRow, styles.header)}>
+            <span className={styles.id}>ID</span>
+            <span className={styles.name}>{t("panelAccounts.colAccount")}</span>
+            <span className={styles.bucket}>{t("panelAccounts.colBucket")}</span>
+            <span className={styles.exclude}>{t("panelAccounts.colExclude")}</span>
+            <span className={styles.actions}>{t("panelAccounts.colActions")}</span>
+          </div>
           {accounts.length === 0 ? (
             accountsPending ? null : (
-              <tr>
-                <td colSpan={5} className="muted">
-                  {t("panelAccounts.emptyAccounts")}
-                </td>
-              </tr>
+              <p className="muted">{t("panelAccounts.emptyAccounts")}</p>
             )
           ) : (
-            accounts.map((a) => (
-              <tr key={a.id}>
-                <td className="mono">{a.id}</td>
-                <td>{a.name}</td>
-                <td>{a.bucket_label}</td>
-                <td>
-                  <AccountExcludeFromTotalsToggle
-                    accountId={a.id}
-                    excluded={a.exclude_from_group_totals === 1}
-                  />
-                </td>
-                <td>
-                  <span
-                    style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}
-                  >
+            <div role="list">
+              {accounts.map((a) => (
+                <div key={a.id} role="listitem" className={cn(styles.row, styles.accountRow)}>
+                  <span className={cn("mono", styles.id)}>{a.id}</span>
+                  <span className={styles.name}>{a.name}</span>
+                  <span className={styles.bucket}>{a.bucket_label}</span>
+                  <span className={styles.exclude}>
+                    <AccountExcludeFromTotalsToggle
+                      accountId={a.id}
+                      excluded={a.exclude_from_group_totals === 1}
+                    />
+                  </span>
+                  <span className={styles.actions}>
                     <EntityColorPicker
                       colorRgb={a.color_rgb}
                       colorTarget={{ kind: "account", accountId: a.id }}
@@ -174,44 +165,34 @@ export function AccountsPanelPage() {
                       {deletingId === a.id ? t("common.loading") : t("panelAccounts.deleteBtn")}
                     </Button>
                   </span>
-                </td>
-              </tr>
-            ))
+                </div>
+              ))}
+            </div>
           )}
-        </Table>
+        </div>
       </PageGridTile>
 
       <PageGridTile id="portfolio-groups">
         <h2 className="flow-section-title">
           {t("panelAccounts.portfolioGroupsTitle")}
         </h2>
-        <Table
-          wrapClassName={loadableClass(panelTreePending)}
-          header={
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>{t("panelAccounts.colBucket")}</th>
-                <th>{t("panelAccounts.colSlug")}</th>
-                <th>{t("panelAccounts.colGroupKind")}</th>
-                <th>{t("panelAccounts.colAccounts")}</th>
-                <th>{t("panelAccounts.colActions")}</th>
-              </tr>
-            </thead>
-          }
-        >
+        <div className={cn(styles.list, loadableClass(panelTreePending))}>
+          <div className={cn(styles.row, styles.groupRow, styles.header)}>
+            <span className={styles.id}>ID</span>
+            <span className={styles.label}>{t("panelAccounts.colBucket")}</span>
+            <span className={styles.slug}>{t("panelAccounts.colSlug")}</span>
+            <span className={styles.kind}>{t("panelAccounts.colGroupKind")}</span>
+            <span className={styles.count}>{t("panelAccounts.colAccounts")}</span>
+            <span className={styles.actions}>{t("panelAccounts.colActions")}</span>
+          </div>
           {!netWorthNode ? (
-            panelTreePending ? null : (
-              <tr>
-                <td colSpan={6} className="muted">
-                  {t("panelAccounts.emptyTree")}
-                </td>
-              </tr>
-            )
+            panelTreePending ? null : <p className="muted">{t("panelAccounts.emptyTree")}</p>
           ) : (
-            <PortfolioGroupTableRows node={netWorthNode} />
+            <div role="list">
+              <PortfolioGroupTableRows node={netWorthNode} />
+            </div>
           )}
-        </Table>
+        </div>
       </PageGridTile>
 
       <PageGridTile id="net-worth-tree">
