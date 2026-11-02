@@ -263,7 +263,8 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
 
   it("prior-day close nets the USD leg at the same date", () => {
     const yesterday = chileCalendarAddDays(chileCalendarTodayYmd(), -1);
-    const creditUsd = clpToUnitAt(CREDIT, yesterday, "usd");
+    // The linked total is a debt: netted in dollars at the debt side of the spread.
+    const creditUsd = clpToUnitAt(CREDIT, yesterday, "usd", { side: "debt" });
     expect(creditUsd).not.toBeNull();
     expect(credit.priorDay.usd.cash_eqs - base.priorDay.usd.cash_eqs).toBeCloseTo(creditUsd!, 6);
     expect(credit.priorDay.clp.cash_eqs - base.priorDay.clp.cash_eqs).toBe(CREDIT);

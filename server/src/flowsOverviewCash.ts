@@ -14,7 +14,7 @@ import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
-import { accountValueClpToUnitAt, clpToUnitAt } from "./clpToUnitAt.js";
+import { accountValueClpToUnitAt, clpToUnitAtMid } from "./clpToUnitAt.js";
 import type { GastosUnit } from "./flowsExpensesGastos.js";
 
 /** Ascending contiguous Chile calendar days `fromYmd..toYmd` inclusive. */
@@ -129,7 +129,7 @@ export function loadCardPaymentsFromChecking(
 export function cardPaymentInUnit(p: CardPaymentFromChecking, unit: GastosUnit, now: Date = new Date()): number {
   if (unit === "usd" && p.amount_usd != null) return p.amount_usd;
   if (unit === "clp") return p.amount_clp;
-  const v = clpToUnitAt(p.amount_clp, p.occurred_on, unit, { now });
+  const v = clpToUnitAtMid(p.amount_clp, p.occurred_on, unit, now);
   if (v == null || !Number.isFinite(v)) {
     throw new Error(`card payment ${p.movement_id}: no ${unit} rate on or before ${p.occurred_on}`);
   }

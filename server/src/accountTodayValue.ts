@@ -8,23 +8,27 @@ import {
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
   accountUsesEquityMtm,
-  computeEquityMtmClpDisplaySync,
   equityChartZeroClpAtYmd,
+  equityTodayNativeValue,
 } from "./brokerageEquityMtm.js";
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
+import { holdingIsDebt, isCardAccount } from "./holdings.js";
+import { cardValueInUnit } from "./cardValueInUnit.js";
+import type { CurrencyCode } from "./rates.js";
+import { convertValue, type ValueSide } from "./valueConvert.js";
 import { accountBucketKindSlug, accountKindSlugForAccountId } from "./accountBucket.js";
 import { storedMarkValueWithFlowCarry } from "./storedMarkFlowCarry.js";
 import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
 import {
   accountUsesCryptoMtm,
-  computeCryptoMtmClpDisplaySync,
+  cryptoTodayNativeValue,
 } from "./cryptoValuation.js";
 import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { isUsdCashKindSlug } from "./movementTransfer.js";
-import { usdCashBalanceLive } from "./usdCashAccounts.js";
+import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { isClpCashKindSlug, clpCashBalanceLive } from "./clpCashAccounts.js";
 import { latestCreditCardBillingBalanceTotalClpAndAsOfDate } from "./ccCreditCardValuations.js";
 import { db } from "./db.js";
@@ -38,17 +42,33 @@ import {
 
 /**
  * An account's value today.
+ * - `value_clp`: the value in pesos (the native value converted at today's rate).
+ * - `native_value` / `native_currency`: the value in what it is priced in — dollars for a
+ *   dollar ledger, a dollar stock or a coin; pesos for everything else (`docs/holdings-currency-plan.md`).
+ *   A reader that wants another unit converts THIS once (`todayValueInUnit`), never the pesos.
+ * - `side`: the side of the spread the value converts at (a liability's balance is a debt).
  * - `as_of_date`: the day the figure is dated (the bar / valor cuota day of a market mark, the
  *   stored row's day of a book mark, Chile today for a ledger balance).
- * - `priced_on`: the day its pesos were priced — the `as_of_date` of a mark priced from a
- *   market observation (cuota ledgers, Fintual cert funds, equity MTM, crypto: units × price),
- *   Chile today for everything else (ledger balances, depto UF marks, the card's owed walk,
- *   book marks carried by later flows: pesos carried to today are today's pesos). A reader that
- *   frames the pesos in another unit frames them on this day.
+ * - `priced_on`: the day its price was observed (`as_of_date` of a market mark, Chile today for
+ *   everything else). Information only: no conversion reads it.
  */
-export type AccountTodayValue = { value_clp: number; as_of_date: string; priced_on: string };
+export type AccountTodayValue = {
+  value_clp: number;
+  as_of_date: string;
+  priced_on: string;
+  native_value: number;
+  native_currency: CurrencyCode;
+  side: ValueSide;
+};
 
-type RawTodayValue = { value_clp: number; as_of_date: string; market: boolean };
+type RawTodayValue = { value: number; currency: CurrencyCode; as_of_date: string; market: boolean };
+
+const clpRaw = (v: { value_clp: number; as_of_date: string }, market: boolean): RawTodayValue => ({
+  value: v.value_clp,
+  currency: "clp",
+  as_of_date: v.as_of_date,
+  market,
+});
 
 const stmtAccountMeta = db.prepare(
   `SELECT a.name, a.import_key, g.slug AS bucket_slug
@@ -75,52 +95,53 @@ function rawTodayValue(
   // Depto UF marks first: a stale property valuation must not shadow the live ledger mark.
   if (bucketKind === "property" || bucketKind === "mortgage") {
     const depto = deptoAccountMarkClpAtYmd(bucketKind, today);
-    if (depto) return { ...depto, market: false };
+    if (depto) return clpRaw(depto, false);
     if (bucketKind === "mortgage") {
       const v = latestMortgageDisplayedBalance(accountId);
       if (v?.value_clp != null && v.as_of_date) {
-        return { value_clp: v.value_clp, as_of_date: v.as_of_date, market: false };
+        return clpRaw({ value_clp: v.value_clp, as_of_date: v.as_of_date }, false);
       }
     }
   }
   if (importKey && isFintualCertV2ValuationNotes(importKey)) {
     const live = liveFintualCertDisplayValueClp(accountId, importKey, name, today, now);
-    if (live) return { ...live, market: true };
+    if (live) return clpRaw(live, true);
   }
   if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {
-    return { ...checkingMovementBalanceLive(accountId), market: false };
+    return clpRaw(checkingMovementBalanceLive(accountId), false);
   }
   if (bucketKind && isUsdCashKindSlug(bucketKind)) {
-    const live = usdCashBalanceLive(accountId);
-    return { value_clp: live.value_clp, as_of_date: live.as_of_date, market: false };
+    // Its dollars: converted into a display unit once, at today's rate (live while the fx day
+    // is open), so its day P/L in pesos moves with the peso.
+    return { value: usdCashBalanceUsdAt(accountId, today), currency: "usd", as_of_date: today, market: false };
   }
   if (bucketKind && isClpCashKindSlug(bucketKind)) {
-    return { ...clpCashBalanceLive(accountId), market: false };
+    return clpRaw(clpCashBalanceLive(accountId), false);
   }
   if (accountUsesEquityMtm(accountId)) {
-    const eq = computeEquityMtmClpDisplaySync(accountId, now);
-    if (eq != null) return { ...eq, market: true };
+    const eq = equityTodayNativeValue(accountId, now);
+    if (eq != null) return { value: eq.value, currency: eq.currency, as_of_date: eq.as_of_date, market: true };
     // Sold out after holding shares: 0, as every historical mark of the account reads.
     if (equityChartZeroClpAtYmd(accountId, today)) {
-      return { value_clp: 0, as_of_date: today, market: true };
+      return { value: 0, currency: "clp", as_of_date: today, market: true };
     }
   }
   if (accountUsesCryptoMtm(accountId)) {
-    // Units × close × fx is crypto's only value source — no stored-row fallback below.
-    const crypto = computeCryptoMtmClpDisplaySync(accountId, now);
+    // Units × close is crypto's only value source — no stored-row fallback below.
+    const crypto = cryptoTodayNativeValue(accountId, now);
     if (crypto == null) {
       throw new Error(
         `crypto account ${accountId}: no coin close to mark today; crypto is valued from units × close × fx only — backfill equity_daily`
       );
     }
-    return { ...crypto, market: true };
+    return { value: crypto.value, currency: crypto.currency, as_of_date: crypto.as_of_date, market: true };
   }
   // AFC values from its cuota ledger first — the stored monthly rows are the pre-ledger
   // benchmark, not a mark (AFP keeps its stored-first order below: its sync stamps a today
   // row from the same cuotas × px, so the two agree).
   if (bucketKind === "afc") {
     const live = liveCuotaLedgerDisplayValueClp(accountId, bucketKind, today);
-    if (live) return { ...live, market: true };
+    if (live) return clpRaw(live, true);
   }
   if (bucketKind === "credit_card") {
     // Owed on the day: the evidence walk (`ccOwedWalkClpAtYmd`), signed — negative when the
@@ -128,11 +149,11 @@ function rawTodayValue(
     // framing of the same debt and stays the fallback for a card with no walk.
     const owed = latestCreditCardDisplayedBalance(accountId, today);
     if (owed && Number.isFinite(owed.value_clp)) {
-      return { value_clp: owed.value_clp, as_of_date: owed.as_of_date, market: false };
+      return clpRaw(owed, false);
     }
     const billing = latestCreditCardBillingBalanceTotalClpAndAsOfDate(accountId);
     if (billing?.value_clp != null && billing.as_of_date) {
-      return { value_clp: billing.value_clp, as_of_date: billing.as_of_date, market: false };
+      return clpRaw({ value_clp: billing.value_clp, as_of_date: billing.as_of_date }, false);
     }
   }
   const stored = latestDisplayedBalanceForAccount(accountId);
@@ -145,11 +166,11 @@ function rawTodayValue(
       kind === "credit_card" || kind === "mortgage"
         ? stored.value_clp
         : storedMarkValueWithFlowCarry(accountId, stored.value_clp, stored.as_of_date, today);
-    return { value_clp, as_of_date: stored.as_of_date, market: false };
+    return clpRaw({ value_clp, as_of_date: stored.as_of_date }, false);
   }
   if (bucketKind === "afp") {
     const live = liveCuotaLedgerDisplayValueClp(accountId, bucketKind, today);
-    if (live) return { ...live, market: true };
+    if (live) return clpRaw(live, true);
   }
   const vrow = latestValuationRowOnOrBeforeChileToday(accountId);
   if (vrow?.value_clp != null && vrow.as_of_date) {
@@ -158,7 +179,7 @@ function rawTodayValue(
       kind === "credit_card" || kind === "mortgage"
         ? vrow.value_clp
         : storedMarkValueWithFlowCarry(accountId, vrow.value_clp, vrow.as_of_date, today);
-    return { value_clp, as_of_date: vrow.as_of_date, market: false };
+    return clpRaw({ value_clp, as_of_date: vrow.as_of_date }, false);
   }
   return null;
 }
@@ -219,15 +240,31 @@ function accountTodayValueFor(
   const kindSlug = slug ? accountBucketKindSlug(slug) : "";
   const today = chileCalendarTodayYmd();
 
-  const unitsPriced =
-    isCuotaLedgerKindSlug(kindSlug) ||
-    isFintualCertV2ValuationNotes(importKey) ||
-    accountUsesCryptoMtm(accountId);
+  const side: ValueSide = holdingIsDebt(kindSlug) ? "debt" : "asset";
+  const done = (raw: RawTodayValue): AccountTodayValue | null => {
+    const value_clp = convertValue(raw.value, raw.currency, "clp", today, side, now);
+    if (value_clp == null) return null;
+    return {
+      value_clp,
+      as_of_date: raw.as_of_date,
+      priced_on: raw.market ? raw.as_of_date : today,
+      native_value: raw.value,
+      native_currency: raw.currency,
+      side,
+    };
+  };
+
   const equityMtm = equityTickerForAccount(accountId) != null && accountUsesEquityMtm(accountId);
+  if (!equityMtm && accountUsesCryptoMtm(accountId)) {
+    // The coins × today's dollar price, the figure the position card prints converted.
+    const crypto = cryptoTodayNativeValue(accountId, now);
+    if (crypto) return done({ value: crypto.value, currency: "usd", as_of_date: crypto.as_of_date, market: true });
+  }
+  const unitsPriced = isCuotaLedgerKindSlug(kindSlug) || isFintualCertV2ValuationNotes(importKey);
   if (unitsPriced && !equityMtm) {
     // The position as of TODAY, never as of the mark's date: an AFC whose valor cuota lags
     // counted its cuotas through the price day, and a fund account right after a switch read
-    // the position before the cuotas arrived.
+    // the position before the cuotas arrived. Cuotas are priced in pesos.
     const meta =
       positionMeta !== undefined
         ? positionMeta
@@ -239,16 +276,23 @@ function accountTodayValueFor(
           });
     const mark = positionMarkFromMeta(kindSlug, meta);
     if (mark) {
-      const asOf = mark.as_of_date ?? today;
-      return { value_clp: mark.value_clp, as_of_date: asOf, priced_on: asOf };
+      return done({ value: mark.value_clp, currency: "clp", as_of_date: mark.as_of_date ?? today, market: true });
     }
   }
 
   const raw = rawTodayValue(accountId, slug, importKey, name, today, now);
-  if (raw == null) return null;
-  return {
-    value_clp: raw.value_clp,
-    as_of_date: raw.as_of_date,
-    priced_on: raw.market ? raw.as_of_date : today,
-  };
+  return raw == null ? null : done(raw);
+}
+
+/** Today's value in `unit`: the native value converted once at today's rate and its side. */
+export function todayValueInUnit(
+  accountId: number,
+  v: AccountTodayValue,
+  unit: CurrencyCode,
+  now?: Date
+): number | null {
+  if (unit === "clp") return v.value_clp;
+  const today = now ? chileWallClockAt(now).ymd : chileCalendarTodayYmd();
+  if (isCardAccount(accountId)) return cardValueInUnit(accountId, v.native_value, today, unit, now);
+  return convertValue(v.native_value, v.native_currency, unit, today, v.side, now);
 }

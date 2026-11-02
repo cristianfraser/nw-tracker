@@ -113,7 +113,7 @@ describe("accountTodayValue — one figure per account today (USD)", () => {
       }
       if (slug === "cash_eqs") {
         const cc = linkedCreditCardClpForCashCardAsOf(today);
-        sumRows -= cc === 0 ? 0 : clpToUnitAt(cc, today, "usd")!;
+        sumRows -= cc === 0 ? 0 : clpToUnitAt(cc, today, "usd", { side: "debt" })!;
       }
       if (Math.abs(sumRows - card!) > TOL_USD) mismatches.push(`${slug}: rows ${sumRows} vs card ${card}`);
     }

@@ -4,40 +4,46 @@
  * at several instants, and no live quote read for an empty account.
  */
 import { describe, expect, it } from "vitest";
-import { db } from "./db.js";
 import {
   accountUsesCryptoMtm,
-  computeCryptoMtmClp,
-  computeCryptoMtmClpCachedLive,
   computeCryptoMtmClpDisplaySync,
+  cryptoCoinCumulativeThroughDate,
   cryptoEquityTickerForAccount,
 } from "./cryptoValuation.js";
-import { cryptoDisplaySessionYmd, equitySessionYmdForTicker, shouldUseLiveEquityQuote } from "./equityQuote.js";
+import {
+  equityCloseEod,
+  equitySessionYmdForTicker,
+  getLiveEquityQuoteFromDb,
+  shouldUseLiveEquityQuote,
+} from "./equityQuote.js";
+import { chileWallClockAt } from "./chileDate.js";
+import { convertValue } from "./valueConvert.js";
 import { PARITY_INSTANTS, allAccountIds, holdingFixtures, observeLiveReads } from "./test/holdingParityFixtures.js";
 
 const fixtures = holdingFixtures();
 
-/** The rule as it was: live quote first, the coins inside each pricing. */
+/**
+ * The rule as it was, the coins inside each pricing — in today's frame: the live quote of the
+ * UTC session, else the newest close on or before today, × the coins held today, converted
+ * once at today's sell rate.
+ */
 function priorCryptoDisplaySync(accountId: number, now: Date): { value_clp: number; as_of_date: string } | null {
   const ticker = cryptoEquityTickerForAccount(accountId);
   if (!ticker || !accountUsesCryptoMtm(accountId)) return null;
+  const today = chileWallClockAt(now).ymd;
+  const units = cryptoCoinCumulativeThroughDate(accountId, today);
   const session = equitySessionYmdForTicker(ticker, now);
-  if (shouldUseLiveEquityQuote(ticker, session, now)) {
-    const cached = computeCryptoMtmClpCachedLive(accountId, now);
-    if (cached != null && Number.isFinite(cached)) return { value_clp: cached, as_of_date: session };
-    const fromSession = computeCryptoMtmClp(accountId, session, null, now);
-    if (fromSession != null && Number.isFinite(fromSession)) return { value_clp: fromSession, as_of_date: session };
-  }
-  const displayYmd = cryptoDisplaySessionYmd(ticker, now);
-  const fromDisplay = computeCryptoMtmClp(accountId, displayYmd, null, now);
-  if (fromDisplay != null && Number.isFinite(fromDisplay)) return { value_clp: fromDisplay, as_of_date: displayYmd };
-  const md = (db.prepare(`SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`).get(ticker) as
-    | { md: string | null }
-    | undefined)?.md;
-  if (!md) return null;
-  const c = computeCryptoMtmClp(accountId, md, null, now);
-  if (c == null || !Number.isFinite(c)) return null;
-  return { value_clp: c, as_of_date: md };
+  // No coins: 0 on the session even with no price on file (the units decide, like a sold-out stock).
+  if (!(units > 1e-12)) return { value_clp: 0, as_of_date: session };
+  const priced = (price: number | null | undefined, asOf: string) => {
+    if (price == null || !(price > 0)) return null;
+    const usd = units > 1e-12 ? units * price : 0;
+    const clp = convertValue(usd, "usd", "clp", today, "asset", now);
+    return clp != null ? { value_clp: clp, as_of_date: usd === 0 ? session : asOf } : null;
+  };
+  let out: { value_clp: number; as_of_date: string } | null = null;
+  if (shouldUseLiveEquityQuote(ticker, session, now)) out = priced(getLiveEquityQuoteFromDb(ticker)?.price, session);
+  return out ?? priced(equityCloseEod(ticker, today), today);
 }
 
 describe("today's mark of a coin account with no coins reads no price", () => {
@@ -64,6 +70,5 @@ describe("today's mark of a coin account with no coins reads no price", () => {
     expect(compared).toBeGreaterThanOrEqual(2 * PARITY_INSTANTS.length);
     const now = PARITY_INSTANTS[1]!;
     expect(observeLiveReads(() => computeCryptoMtmClpDisplaySync(soldOut, now)).out).toMatchObject({ value_clp: 0 });
-    expect(observeLiveReads(() => priorCryptoDisplaySync(soldOut, now)).tickers).toEqual(["BTC-USD"]);
   });
 });

@@ -28,11 +28,11 @@ export function cashNetOfLinkedCreditCards(rawCash: number, linkedCreditCardsOwe
   return rawCash - linkedCreditCardsOwed;
 }
 
-/** The linked cards' owed in the unit at that day (today: today's live mid). NaN without a rate. */
+/** The linked cards' owed in the unit at that day, at the debt side (today: the live rate). NaN without a rate. */
 function convertLinkedCc(clp: number, asOf: string, unit: TsUnit): number {
   if (unit === "clp") return clp;
   if (unit === "usd") {
-    const usd = clpToUnitAt(clp, asOf, "usd");
+    const usd = clpToUnitAt(clp, asOf, "usd", { side: "debt" });
     return usd != null && Number.isFinite(usd) ? usd : Number.NaN;
   }
   return clp;
@@ -59,7 +59,7 @@ export function cashSavingsLinkedBalances(
 ): DashboardLinkedBalanceDto[] {
   const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
   if (cc === 0) return [];
-  const usd = includeUsd ? clpToUnitAt(cc, asOfYmd, "usd") : null;
+  const usd = includeUsd ? clpToUnitAt(cc, asOfYmd, "usd", { side: "debt" }) : null;
   const node = db
     .prepare(`SELECT route_path FROM portfolio_groups WHERE slug = 'liabilities_credit_card'`)
     .get() as { route_path: string | null } | undefined;

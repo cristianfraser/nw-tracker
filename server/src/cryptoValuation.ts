@@ -6,17 +6,17 @@ import {
 } from "./calendarMonth.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
 import { db } from "./db.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { historyTierMemo } from "./aggregationCache.js";
 import {
-  cryptoDisplaySessionYmd,
   equityCloseEod,
   equitySessionYmdForTicker,
   getLiveEquityQuoteFromDb,
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
-import { fxForLiveMtm } from "./fxRates.js";
+import { holdingPriceAt } from "./holdingPrices.js";
+import { convertValue } from "./valueConvert.js";
 import { transferLegUnitsThroughDate } from "./movementTransfer.js";
 
 export type CryptoAsset = "BTC" | "ETH";
@@ -118,15 +118,9 @@ function computeCryptoMtmClpUncached(
   if (!Number.isFinite(units) || units <= 1e-12) return 0;
   const closeUsd = priceUsd ?? equityCloseEod(ticker, asOfYmd);
   if (closeUsd == null || !Number.isFinite(closeUsd)) return null;
-  // The fx is `asOfYmd`'s frame whatever the price source: live CLP=X while that date's fx day
-  // is open, the stored close after it. A historical date never matches the live row's
-  // session, so it reads the stored close as before. Gating the live rate on a live PRICE
-  // valued a today mark with no fresh coin quote (the EOD-close fallback) at the previous
-  // day's stored fx while the live-quote branch used the live rate.
-  const fx = fxForLiveMtm(asOfYmd, now);
-  if (!fx || fx.clp_per_usd <= 0) return null;
-  const clp = units * closeUsd * fx.clp_per_usd;
-  return Number.isFinite(clp) ? clp : null;
+  // Coins × the dollar price, converted once at what selling them would get
+  // (`valueConvert.ts`): the date's rate, live while today's fx day is open.
+  return convertValue(units * closeUsd, "usd", "clp", asOfYmd, "asset", now);
 }
 
 /**
@@ -163,47 +157,40 @@ export function computeCryptoMtmClpCachedLive(
   return computeCryptoMtmClp(accountId, session, cached.price, now);
 }
 
-/** Synchronous display mark: live when allowed, else last EOD for display session. */
+/**
+ * Today's value of a coin position in dollars: the coins held today × today's price
+ * (`holdingPriceAt`: the live quote of the UTC session while fresh, else the newest close on
+ * or before Chile today). No coins: 0 on the session, read from the units alone (no quote).
+ * Null without a close on file (the today value throws: crypto has no other value source).
+ */
+export function cryptoTodayNativeValue(
+  accountId: number,
+  now: Date = new Date()
+): { value: number; currency: "usd"; as_of_date: string } | null {
+  const ticker = cryptoEquityTickerForAccount(accountId);
+  if (!ticker || !accountUsesCryptoMtm(accountId)) return null;
+  const today = chileWallClockAt(now).ymd;
+  const units = cryptoCoinCumulativeThroughDate(accountId, today);
+  if (!Number.isFinite(units) || units <= 1e-12) {
+    return { value: 0, currency: "usd", as_of_date: equitySessionYmdForTicker(ticker, now) };
+  }
+  const px = holdingPriceAt(
+    { kind: "coin", coin: ticker.replace(/-USD$/i, ""), priceTicker: ticker, quote: "usd" },
+    today,
+    { now }
+  );
+  return px ? { value: units * px.price, currency: "usd", as_of_date: px.as_of } : null;
+}
+
+/** {@link cryptoTodayNativeValue} in pesos, at today's sell rate. */
 export function computeCryptoMtmClpDisplaySync(
   accountId: number,
   now: Date = new Date()
 ): { value_clp: number; as_of_date: string } | null {
-  const ticker = cryptoEquityTickerForAccount(accountId);
-  if (!ticker || !accountUsesCryptoMtm(accountId)) return null;
-
-  const session = equitySessionYmdForTicker(ticker, now);
-  // The session is always today's UTC day, which the live gate always takes: with no coins
-  // that day both live branches read 0 whatever the price (`computeCryptoMtmClpUncached`).
-  // Answering from the units reads no quote, so a sold-out coin records no live dependency.
-  const unitsOnSession = cryptoCoinCumulativeThroughDate(accountId, session);
-  if (!Number.isFinite(unitsOnSession) || unitsOnSession <= 1e-12) {
-    return { value_clp: 0, as_of_date: session };
-  }
-  if (shouldUseLiveEquityQuote(ticker, session, now)) {
-    const cached = computeCryptoMtmClpCachedLive(accountId, now);
-    if (cached != null && Number.isFinite(cached)) {
-      return { value_clp: cached, as_of_date: session };
-    }
-    const fromSession = computeCryptoMtmClp(accountId, session, null, now);
-    if (fromSession != null && Number.isFinite(fromSession)) {
-      return { value_clp: fromSession, as_of_date: session };
-    }
-  }
-
-  const displayYmd = cryptoDisplaySessionYmd(ticker, now);
-  const fromDisplay = computeCryptoMtmClp(accountId, displayYmd, null, now);
-  if (fromDisplay != null && Number.isFinite(fromDisplay)) {
-    return { value_clp: fromDisplay, as_of_date: displayYmd };
-  }
-
-  const mdRow = db
-    .prepare(`SELECT max(trade_date) AS md FROM equity_daily WHERE ticker = ?`)
-    .get(ticker) as { md: string | null } | undefined;
-  const md = mdRow?.md;
-  if (!md) return null;
-  const c = computeCryptoMtmClp(accountId, md, null, now);
-  if (c == null || !Number.isFinite(c)) return null;
-  return { value_clp: c, as_of_date: md };
+  const native = cryptoTodayNativeValue(accountId, now);
+  if (!native) return null;
+  const clp = convertValue(native.value, "usd", "clp", chileWallClockAt(now).ymd, "asset", now);
+  return clp != null && Number.isFinite(clp) ? { value_clp: clp, as_of_date: native.as_of_date } : null;
 }
 
 /**

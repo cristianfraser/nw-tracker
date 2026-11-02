@@ -62,7 +62,16 @@ function usdClpStored(ymd: string): PairQuote | null {
   const midRow = fxMonthEndForBalanceUsd(ymd);
   if (!midRow || !(midRow.clp_per_usd > 0)) return null;
   const ba = fxBidAskRowOnOrBefore(ymd);
-  if (ba && ba.date >= midRow.date && ba.buy_clp_per_usd > 0 && ba.sell_clp_per_usd > 0) {
+  // An inferred row is a cached mid ± the half spread, not an observation: some were
+  // materialized from a mid since restated (a dated month-end inferred from an older or
+  // deleted weekend mid sat up to 6 % off its day's `fx_daily` row), so the day's own mid decides.
+  if (
+    ba &&
+    ba.source !== "mid_spread_inferred" &&
+    ba.date >= midRow.date &&
+    ba.buy_clp_per_usd > 0 &&
+    ba.sell_clp_per_usd > 0
+  ) {
     return { mid: midRow.clp_per_usd, bid: ba.sell_clp_per_usd, ask: ba.buy_clp_per_usd };
   }
   return usdClpFromMid(midRow.clp_per_usd);

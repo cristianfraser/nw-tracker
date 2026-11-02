@@ -3,6 +3,7 @@ import { fxSellClpPerUsdOnOrBefore } from "./fxBidAsk.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
 import { recordFxConversionWarning } from "./fxConversionWarnings.js";
 import { isUsdCashAccount, sumUsdThroughDisplayDate } from "./movementTransfer.js";
+import { convertValue } from "./valueConvert.js";
 
 export { isUsdCashAccount, isUsdCashKindSlug } from "./movementTransfer.js";
 
@@ -35,13 +36,18 @@ export function usdCashUsdToClpAt(usd: number, asOfYmd: string, context: string)
   return Math.round(usd * usdCashClpRateOnOrBefore(asOfYmd, context));
 }
 
+/**
+ * The account's dollars in pesos at `asOfYmd`, at what selling them would get (`valueConvert.ts`):
+ * the stored sell rate on a past day, the live rate today while the fx day is open. A zero
+ * balance needs no rate (consolidation baselines mark every account at every month-end,
+ * including dates before fx history starts). Throws without a rate on file.
+ */
 export function usdCashBalanceClpAt(accountId: number, asOfYmd: string): number {
   const usd = usdCashBalanceUsdAt(accountId, asOfYmd);
-  // A zero balance needs no rate: consolidation baselines mark every account at every
-  // month-end, including dates before the account existed (and before fx_daily history
-  // starts at portfolioStartYmd). CLP cash returns 0 there; USD cash must match.
   if (usd === 0) return 0;
-  return usdCashUsdToClpAt(usd, asOfYmd, `usdCashBalanceClpAt:${accountId}`);
+  const clp = convertValue(usd, "usd", "clp", asOfYmd, "asset");
+  if (clp == null) throw new Error(`usdCashBalanceClpAt: no USD/CLP rate on or before ${asOfYmd} (account ${accountId})`);
+  return clp;
 }
 
 export function usdCashBalanceLive(accountId: number): { value_usd: number; value_clp: number; as_of_date: string } {
