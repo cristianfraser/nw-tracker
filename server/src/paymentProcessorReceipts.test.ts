@@ -288,6 +288,33 @@ describe("matchPaymentReceipts: stays", () => {
   });
 });
 
+describe("matchPaymentReceipts: tickets", () => {
+  it("pairs Paylogic's first mail of an order, the one sent when it was paid", () => {
+    const paylogic = (id: string, sent: string): StoredPaymentReceipt => ({
+      ...receipt(id, sent, 276.08, "paylogic"),
+      currency: "eur",
+      order_ref: "99000001",
+      sent_at_chile: sent,
+    });
+    const { byPurchaseKey, unpaired } = matchPaymentReceipts(
+      [paylogic("later", "2037-02-19 15:40"), paylogic("first", "2036-12-03 20:13"), paylogic("tickets", "2037-07-08 18:18")],
+      [line("k", "2036-12-04", 300000, "PAYLOGIC", { amount_usd: 290.1, amount_orig: 276.08, amount_orig_currency: null })]
+    );
+    expect(byPurchaseKey.get("k")?.message_id).toBe("first");
+    expect(unpaired).toEqual({});
+  });
+
+  it("pairs a Ticketplus purchase, which states no amount, with the charge named after it that day", () => {
+    const ticketplus: StoredPaymentReceipt = { ...receipt("tp", "2036-12-29 22:07", 0, "ticketplus"), amount: null };
+    const { byPurchaseKey } = matchPaymentReceipts(
+      [ticketplus],
+      [line("other", "2036-12-29", 36000, "SUPERMERCADO UNO"), line("tp-line", "2036-12-29", 36000, "TICKETPLUS WEB")]
+    );
+    expect(byPurchaseKey.get("tp-line")?.message_id).toBe("tp");
+    expect(byPurchaseKey.has("other")).toBe(false);
+  });
+});
+
 describe("storePaymentProcessorReceipts", () => {
   const ID = "<vitest-ml-split@test>";
   afterEach(() => {
@@ -330,6 +357,13 @@ describe("storePaymentProcessorReceipts", () => {
       subscription: true,
       trip: { from: "Calle Uno 100, Providencia", to: "Calle Dos 200, Maipú", started_at_chile: "2036-04-10 11:30", ended_at_chile: "2036-04-10 12:00", distance_km: 12.5 },
     });
+  });
+
+  it("stores a ticket's event and reads it back", () => {
+    const base = payload([{ amount: 8865, installments: null }, { amount: 6860, installments: null }]).receipts[0]!;
+    const event = { name: "Festival Uno", starts_on: "2036-07-11", starts_at: null, ends_on: "2036-07-13", venue: "Campo Prueba" };
+    storePaymentProcessorReceipts({ receipts: [{ ...base, processor: "paylogic", currency: "eur", amount: 24.95, charges: null, event }] });
+    expect(loadPaymentProcessorReceipts().find((r) => r.message_id === ID)?.event).toEqual(event);
   });
 
   it("stores a split payment's charges and refuses a resend that states other charges", () => {

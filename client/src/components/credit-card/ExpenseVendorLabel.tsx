@@ -101,7 +101,7 @@ export function useExpenseVendorInfo(source: ExpenseVendorSource): ReactNode[] {
 
 /**
  * The short label of what the source is linked to, as parts the row separates — «Streat Burger
- * (Isidora)», «Lisboa» + «3 nights», «← Ana Perez» — or the deposit it pairs with; null when it has none.
+ * (Isidora)», «Lisboa» + «3 nights», «DAME» + «2026-09-12», «← Ana Perez» — or the deposit it pairs with; null when it has none.
  */
 export function useExpenseVendorLinkLabel(source: ExpenseVendorSource): ExpenseVendorLinkLabel | null {
   const { t } = useTranslation();
@@ -116,6 +116,7 @@ export function useExpenseVendorLinkLabel(source: ExpenseVendorSource): ExpenseV
         })
       );
     }
+    if (l.event_on) parts.push(l.event_on);
     return { parts, inline: l.inline };
   }
   const mortgageLink = source.expense_deposit_links?.find((d) => d.depto_cuota != null);

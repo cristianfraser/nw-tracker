@@ -14,6 +14,7 @@ import { LATAM_PROCESSORS } from "./latamMails.js";
 import { UBER_PROCESSORS } from "./uberMails.js";
 import { DESPEGAR_PROCESSORS } from "./despegarMails.js";
 import { STAY_PROCESSORS } from "./stayMails.js";
+import { TICKET_PROCESSORS } from "./ticketMails.js";
 
 export type PaymentProcessor = {
   slug: string;
@@ -721,6 +722,7 @@ export const PAYMENT_PROCESSORS: readonly PaymentProcessor[] = [
   ...UBER_PROCESSORS,
   ...DESPEGAR_PROCESSORS,
   ...STAY_PROCESSORS,
+  ...TICKET_PROCESSORS,
 ];
 
 export function decodePaymentReceiptMail(processor: PaymentProcessor, mail: ArchivedMail): ProcessorReceipt | null {

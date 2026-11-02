@@ -313,6 +313,23 @@ describe("expenseLineDisplayNames", () => {
     expect(names.link_label).toEqual({ arrow: "→", text: "Uber", nights: null, inline: false });
   });
 
+  it("a ticket receipt links the event and its day; the vendor stays the merchant, and no category rule per event", () => {
+    const event = { name: "Banda Uno en Vivo", starts_on: "2035-03-15", starts_at: "21:00", ends_on: null, venue: "Teatro Prueba" };
+    const names = expenseLineDisplayNames(
+      { source: "cc", merchant: "PUNTO TICKET WEB", account_id: 1, payment_receipt: receipt("puntoticket", "PuntoTicket", { event, concept: "GENERAL" }) },
+      ctx
+    );
+    expect(names.link_label).toEqual({ arrow: "→", text: "Banda Uno en Vivo", nights: null, event_on: "2035-03-15", inline: true });
+    expect(names.category_link).toBeUndefined();
+  });
+
+  it("a ticket vendor's receipt with no event links what was bought", () => {
+    expect(receiptLabel(receipt("puntoticket", "PuntoTicket", { event: null, concept: "Estacionamiento General" }), catalog, [])).toEqual({
+      text: "Estacionamiento General",
+      nights: null,
+    });
+  });
+
   it("a checking transfer reads «Transf a <label>», label not repeated", () => {
     const names = expenseLineDisplayNames(
       {
