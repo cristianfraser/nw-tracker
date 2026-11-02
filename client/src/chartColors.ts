@@ -13,6 +13,15 @@ export function parseRgbTriplet(raw: string | null | undefined): [number, number
  * lightness moved (OKLCH) — dark on a light colour (white net worth, pale cyan cash), light on a
  * dark one. Relative luminance (sRGB) decides which side.
  */
+/**
+ * A pill's background in the bucket's colour, muted: the same hue, its chroma and lightness a
+ * step down (OKLCH), so a saturated chart colour does not glare as a filled shape. The chart lines
+ * keep the full colour.
+ */
+export function mutedPillBackgroundRgb([r, g, b]: [number, number, number]): string {
+  return `oklch(from rgb(${r},${g},${b}) calc(l * 0.9) calc(c * 0.8) h)`;
+}
+
 export function tintedTextOnRgb([r, g, b]: [number, number, number]): string {
   const channel = (c: number) => {
     const v = c / 255;

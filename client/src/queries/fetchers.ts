@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import type {
   AccountListRow,
-  CcUpcomingPaymentsDto,
+  UpcomingPaymentsDto,
   DashboardAccountRow,
   DashboardNavContextResponse,
   DashboardResponse,
@@ -22,7 +22,7 @@ export type DashboardBundle = {
   /** The P/L + deposits combo; null on a placeholder bundle without perf sections. */
   inversionesPerf: InversionesPerfMonthlyResponse | null;
   /** Null only on a placeholder bundle: unknown until the server answers (pesos in both units). */
-  ccUpcomingPayments: CcUpcomingPaymentsDto | null;
+  upcomingPayments: UpcomingPaymentsDto | null;
 };
 
 export async function fetchDashboardBundle(unit: DisplayUnit): Promise<DashboardBundle> {
@@ -32,7 +32,7 @@ export async function fetchDashboardBundle(unit: DisplayUnit): Promise<Dashboard
     fx: bundle.fx,
     ts: bundle.ts,
     inversionesPerf: bundle.inversionesPerf,
-    ccUpcomingPayments: bundle.cc_upcoming_payments,
+    upcomingPayments: bundle.upcoming_payments,
   };
 }
 

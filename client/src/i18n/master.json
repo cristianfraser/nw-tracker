@@ -342,6 +342,50 @@
       "overdueHint": {
         "en": "The pay-by date passed with this amount still owed.",
         "es": "Pasó la fecha de pago y queda este monto por pagar."
+      },
+      "payOnShort": {
+        "en": "on",
+        "es": "el"
+      },
+      "cuota": {
+        "en": "cuota {{n}}",
+        "es": "cuota {{n}}"
+      },
+      "cuotaOf": {
+        "en": "cuota {{n}}/{{count}}",
+        "es": "cuota {{n}}/{{count}}"
+      },
+      "mortgageRangeHint": {
+        "en": "Minimum to maximum cuota, at the UF of that day (projected past the last published one). The date is the cheapest day to pay for the UF.",
+        "es": "Cuota mínima a máxima, a la UF de ese día (proyectada después de la última publicada). La fecha es el día más barato para pagar según la UF."
+      },
+      "estimatedHint": {
+        "en": "Estimated: no document states this amount yet.",
+        "es": "Estimado: ningún documento indica aún este monto."
+      },
+      "wipHint": {
+        "en": "A payment you declared (work in progress).",
+        "es": "Un pago que declaraste (en desarrollo)."
+      },
+      "kindHoa": {
+        "en": "Gastos comunes",
+        "es": "Gastos comunes"
+      },
+      "kindContribuciones": {
+        "en": "Contribuciones",
+        "es": "Contribuciones"
+      },
+      "showMore": {
+        "en": "Show more",
+        "es": "Ver más"
+      },
+      "showLess": {
+        "en": "Show less",
+        "es": "Ver menos"
+      },
+      "kindMortgage": {
+        "en": "Mortgage",
+        "es": "Dividendo"
       }
     },
     "chartGranularityLabel": {

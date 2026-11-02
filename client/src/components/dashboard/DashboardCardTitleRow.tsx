@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { cn } from "../../cn";
-import { parseRgbTriplet, tintedTextOnRgb } from "../../chartColors";
+import { mutedPillBackgroundRgb, parseRgbTriplet, tintedTextOnRgb } from "../../chartColors";
 import { Pill } from "../ui/Pill";
 
 type Props = {
@@ -9,7 +9,8 @@ type Props = {
   titleTo?: string;
   /**
    * The bucket's own colour (`color_rgb` of its nav node, as `r,g,b`): the title is then a pill in
-   * that colour, the same pill the expense categories use. No colour = plain text.
+   * that colour (muted: `mutedPillBackgroundRgb`), the same pill the expense categories use. No
+   * colour = plain text.
    */
   colorRgb?: string | null;
 };
@@ -25,7 +26,7 @@ export function DashboardCardTitleRow({ label, titleTo, colorRgb }: Props) {
       // The card title uppercases its text; the pill keeps the label as written.
       style={{ textTransform: "none" }}
       label={label}
-      backgroundColor={`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`}
+      backgroundColor={mutedPillBackgroundRgb(rgb)}
       textColor={tintedTextOnRgb(rgb)}
     />
   ) : (
