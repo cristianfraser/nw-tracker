@@ -48,7 +48,7 @@ import {
 import { isChileBusinessDay } from "../marketHolidays.js";
 import { DEMO_AFP_MODELO_CSV_PATH, parseDemoAfpModeloCsv } from "./demoRealMarket.js";
 import { dbMarketReader, writeSyntheticMarket, type MarketReader } from "./market.js";
-import { addDays, addMonths, daysInMonth, type Month, type Person, type Ymd, ymd } from "./person.js";
+import { addDays, addMonths, type Month, type Person, type Ymd } from "./person.js";
 import {
   renderCardStatementRecords,
   renderCartolas,
@@ -58,7 +58,7 @@ import {
   renderPayslips,
   DEMO_CHECKING_NUMBER,
 } from "./render.js";
-import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, mortgageBalanceUf, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
+import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 
 export type GenerateDemoDbOptions = { person: Person; market: "synthetic" | "real"; today?: Ymd };
@@ -261,7 +261,6 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketRea
   const propertyId = ids.get("property")!;
   const mortgageId = ids.get("mortgage" as Acct)!;
   const insMov = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'clp', ?, ?, ?)`);
-  const insVal = db.prepare(`INSERT OR REPLACE INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`);
   // Each payment row is what the bank states (pesos and their parts, balance / min / max in UF);
   // the property's appraisal on the payment day is a valuation of the property account in UF.
   const emit = (r: DeptoDividendosPaymentRow, appraisalUf: number) => {
@@ -326,16 +325,6 @@ function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketRea
         }),
         r4(vv)
       );
-    }
-    // Month-end marks of the mortgage: UF balance × UF. The property's valuations are its UF
-    // appraisals, written with each payment above (its value is net equity, from the ledger).
-    for (let mo = HOUSE.month; ; mo = addMonths(mo, 1)) {
-      const end = ymd(mo, daysInMonth(mo));
-      const day = end <= today ? end : today;
-      const balUf = mortgageBalanceUf(m, day);
-      const uf = market.uf(day);
-      insVal.run(mortgageId, day, Math.round(balUf * uf));
-      if (day === today) break;
     }
   })();
 }
