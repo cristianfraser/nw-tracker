@@ -27,6 +27,8 @@ import type { RunOptions } from "../runTypes.js";
 
 const BANK = "afc" as const;
 const START_URL = "https://personas.afc.cl/auth/login";
+/** The tour navigates only within the sucursal virtual, whatever a link on the page points at. */
+const SITE_ORIGIN = "https://personas.afc.cl";
 const CAPTURE_MINUTES = 25;
 const POLL_MS = 3_000;
 /**
@@ -136,6 +138,10 @@ export async function runAfcCapture(opts: RunOptions, extras: AfcCaptureExtras =
       const link = links.find((l) => l.text === item) ?? links.find((l) => l.text.toLowerCase().includes(item.toLowerCase()));
       if (!link?.href) {
         log(`tour: no link for «${item}»`);
+        continue;
+      }
+      if (new URL(link.href).origin !== SITE_ORIGIN) {
+        log(`tour: «${item}» points off the site (${link.href}); skipped`);
         continue;
       }
       const slug = item.toLowerCase().replace(/\s+/g, "-");
