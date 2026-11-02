@@ -7,6 +7,8 @@ export type DetailedGroupCardProps = {
   title: string;
   /** When set, title is rendered as a `Link` (see `DashboardCardTitleRow`). */
   titleTo?: string;
+  /** The bucket's colour (`r,g,b`): the title becomes a pill in it. */
+  titleColorRgb?: string | null;
   showUsd: boolean;
   clp: number;
   apiUsd?: number | null;
@@ -32,6 +34,7 @@ export type DetailedGroupCardProps = {
 export function DetailedGroupCard({
   title,
   titleTo,
+  titleColorRgb,
   showUsd,
   clp,
   apiUsd,
@@ -46,7 +49,7 @@ export function DetailedGroupCard({
 }: DetailedGroupCardProps) {
   return (
     <div className={cn(outerClassName, className)}>
-      <DashboardCardTitleRow label={title} titleTo={titleTo} />
+      <DashboardCardTitleRow label={title} titleTo={titleTo} colorRgb={titleColorRgb} />
       <div className="value">
         <DashboardCardValue
           clp={clp}

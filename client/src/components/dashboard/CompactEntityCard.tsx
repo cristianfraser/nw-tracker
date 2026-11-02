@@ -10,6 +10,8 @@ export type CompactEntityCardProps = {
   label?: string;
   /** When set, label is rendered as a `Link`. */
   to?: string;
+  /** The bucket's colour (`r,g,b`): the label becomes a pill in it. */
+  labelColorRgb?: string | null;
   showUsd: boolean;
   clp: number;
   apiUsd?: number | null;
@@ -34,6 +36,7 @@ export type CompactEntityCardProps = {
 export function CompactEntityCard({
   label,
   to,
+  labelColorRgb,
   showUsd,
   clp,
   apiUsd,
@@ -50,7 +53,7 @@ export function CompactEntityCard({
     <div
       className={cn(styles.root, breakdown != null && breakdown !== false && styles.rootWithBreakdown)}
     >
-      {label != null ? <DashboardCardTitleRow label={label} titleTo={to} /> : null}
+      {label != null ? <DashboardCardTitleRow label={label} titleTo={to} colorRgb={labelColorRgb} /> : null}
       {subtitle ? <span className={cn("muted", styles.subtitle)}>{subtitle}</span> : null}
       <div className="value mono">
         <DashboardCardValue

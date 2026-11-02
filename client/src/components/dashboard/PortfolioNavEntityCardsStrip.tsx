@@ -60,6 +60,7 @@ function NavSummaryCard({
     <CompactEntityCard
       label={label}
       to={to}
+      labelColorRgb={node.color_rgb}
       showUsd={showUsd}
       clp={totals.clp}
       apiUsd={totals.apiUsd}
