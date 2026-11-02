@@ -21,10 +21,10 @@ describe("AFP position units", () => {
     const px = 100;
 
     db.prepare(
-      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note)
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value, note)
        VALUES (?, ?, ?, ?)
        ON CONFLICT(series_key, day) DO UPDATE SET
-         unit_value_clp = excluded.unit_value_clp,
+         unit_value = excluded.unit_value,
          note = excluded.note`
     ).run(AFP_UNO_CUOTA_SERIES_KEY, asOf, px, "vitest:px");
 

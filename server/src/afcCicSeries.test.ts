@@ -151,9 +151,9 @@ describe("afc_cic — upsert + stale rule (test DB)", () => {
     expect(second.unchanged).toBe(1);
     expect(second.restated).toEqual([{ day: DAYS[1], previous: 4001, next: 4001.5 }]);
     const stored = db
-      .prepare(`SELECT unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day = ?`)
-      .get(AFC_CIC_SERIES_KEY, DAYS[1]) as { unit_value_clp: number };
-    expect(stored.unit_value_clp).toBe(4001.5);
+      .prepare(`SELECT unit_value FROM fund_unit_daily WHERE series_key = ? AND day = ?`)
+      .get(AFC_CIC_SERIES_KEY, DAYS[1]) as { unit_value: number };
+    expect(stored.unit_value).toBe(4001.5);
   });
 
   it("is never stale without an account on the series, then follows the expected-row rule", () => {

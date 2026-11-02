@@ -39,10 +39,10 @@ export function getCcProxyTickers(): string[] {
 // ─── Price helper ─────────────────────────────────────────────────────────────
 
 const stmtFundUnitOnOrBefore = db.prepare(
-  `SELECT day, unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day <= ? ORDER BY day DESC LIMIT 1`
+  `SELECT day, unit_value FROM fund_unit_daily WHERE series_key = ? AND day <= ? ORDER BY day DESC LIMIT 1`
 );
 const stmtFundUnitLatest = db.prepare(
-  `SELECT day, unit_value_clp FROM fund_unit_daily WHERE series_key = ? ORDER BY day DESC LIMIT 1`
+  `SELECT day, unit_value FROM fund_unit_daily WHERE series_key = ? ORDER BY day DESC LIMIT 1`
 );
 const stmtEquityLatest = db.prepare(
   `SELECT trade_date, close, currency FROM equity_daily WHERE ticker = ? ORDER BY trade_date DESC LIMIT 1`
@@ -63,8 +63,8 @@ function isFundSeriesTicker(ticker: string): boolean {
  */
 export function tickerHasAnyPriceData(ticker: string): boolean {
   if (isFundSeriesTicker(ticker)) {
-    const row = stmtFundUnitLatest.get(ticker) as { unit_value_clp: number } | undefined;
-    return row != null && Number.isFinite(row.unit_value_clp) && row.unit_value_clp > 0;
+    const row = stmtFundUnitLatest.get(ticker) as { unit_value: number } | undefined;
+    return row != null && Number.isFinite(row.unit_value) && row.unit_value > 0;
   }
   const eq = stmtEquityLatest.get(ticker) as { close: number; currency: string } | undefined;
   if (eq == null || !Number.isFinite(eq.close) || eq.close <= 0) return false;
@@ -80,7 +80,7 @@ export function tickersWithData(tickers: string[]): string[] {
 
 /**
  * Price in CLP for a ticker at or before `ymd`.
- * - Fund series (e.g. fintual_cert_reserva2): fund_unit_daily.unit_value_clp
+ * - Fund series (e.g. fintual_cert_reserva2): fund_unit_daily.unit_value
  * - Equity (SPY, VEA, etc.): equity_daily.close × fx_daily.clp_per_usd (CLP-quoted tickers use close directly)
  *
  * If no real price exists at/before `ymd`, projects forward from the last known
@@ -95,20 +95,20 @@ export function priceClpForTickerAt(
 ): { priceClp: number; projected: boolean; lastRealDate: string } {
   if (isFundSeriesTicker(ticker)) {
     const row = stmtFundUnitOnOrBefore.get(ticker, ymd) as
-      | { day: string; unit_value_clp: number }
+      | { day: string; unit_value: number }
       | undefined;
-    if (row != null && Number.isFinite(row.unit_value_clp) && row.unit_value_clp > 0) {
-      return { priceClp: row.unit_value_clp, projected: false, lastRealDate: row.day };
+    if (row != null && Number.isFinite(row.unit_value) && row.unit_value > 0) {
+      return { priceClp: row.unit_value, projected: false, lastRealDate: row.day };
     }
     // Project forward
     const latest = stmtFundUnitLatest.get(ticker) as
-      | { day: string; unit_value_clp: number }
+      | { day: string; unit_value: number }
       | undefined;
-    if (latest == null || !Number.isFinite(latest.unit_value_clp) || latest.unit_value_clp <= 0) {
+    if (latest == null || !Number.isFinite(latest.unit_value) || latest.unit_value <= 0) {
       throw new Error(`ccInvestmentProxy: no price data for fund series "${ticker}"`);
     }
     return {
-      priceClp: projectPrice(latest.unit_value_clp, latest.day, ymd),
+      priceClp: projectPrice(latest.unit_value, latest.day, ymd),
       projected: true,
       lastRealDate: latest.day,
     };

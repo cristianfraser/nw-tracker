@@ -28,7 +28,7 @@ export type SpAfpFundUnitRow = {
   afp: string;
   fund: PensionFund;
   day: string;
-  unit_value_clp: number;
+  unit_value: number;
   provisional: boolean;
 };
 
@@ -125,7 +125,7 @@ export function parseSpAfpCsv(text: string, fund: PensionFund): SpAfpFundUnitRow
         return;
       }
       seen.set(`${afp}|${day}`, v);
-      rows.push({ afp, fund, day, unit_value_clp: v, provisional: blockProvisional });
+      rows.push({ afp, fund, day, unit_value: v, provisional: blockProvisional });
     });
   }
   if (expectSubheader) throw new Error("sp_afp: file ends inside a header");
@@ -163,13 +163,13 @@ export type SpAfpUpsertResult = {
 };
 
 const stmtSelect = db.prepare(
-  `SELECT unit_value_clp, provisional FROM pension_fund_unit_official WHERE afp = ? AND fund = ? AND day = ?`
+  `SELECT unit_value, provisional FROM pension_fund_unit_official WHERE afp = ? AND fund = ? AND day = ?`
 );
 const stmtUpsert = db.prepare(
-  `INSERT INTO pension_fund_unit_official (afp, fund, day, unit_value_clp, provisional, fetched_at)
+  `INSERT INTO pension_fund_unit_official (afp, fund, day, unit_value, provisional, fetched_at)
    VALUES (?, ?, ?, ?, ?, ?)
    ON CONFLICT(afp, fund, day) DO UPDATE SET
-     unit_value_clp = excluded.unit_value_clp,
+     unit_value = excluded.unit_value,
      provisional = excluded.provisional,
      fetched_at = excluded.fetched_at`
 );
@@ -179,19 +179,19 @@ export function upsertSpAfpFundUnits(rows: readonly SpAfpFundUnitRow[], opts: { 
   const now = new Date().toISOString();
   const run = () => {
     for (const r of rows) {
-      const prev = stmtSelect.get(r.afp, r.fund, r.day) as { unit_value_clp: number; provisional: number } | undefined;
+      const prev = stmtSelect.get(r.afp, r.fund, r.day) as { unit_value: number; provisional: number } | undefined;
       if (prev == null) {
         out.inserted += 1;
-      } else if (Math.abs(prev.unit_value_clp - r.unit_value_clp) > 0.005 || prev.provisional !== (r.provisional ? 1 : 0)) {
+      } else if (Math.abs(prev.unit_value - r.unit_value) > 0.005 || prev.provisional !== (r.provisional ? 1 : 0)) {
         out.updated += 1;
-        if (Math.abs(prev.unit_value_clp - r.unit_value_clp) > 0.005) {
-          out.restated.push({ afp: r.afp, fund: r.fund, day: r.day, previous: prev.unit_value_clp, next: r.unit_value_clp });
+        if (Math.abs(prev.unit_value - r.unit_value) > 0.005) {
+          out.restated.push({ afp: r.afp, fund: r.fund, day: r.day, previous: prev.unit_value, next: r.unit_value });
         }
       } else {
         out.unchanged += 1;
         continue;
       }
-      if (!opts.dryRun) stmtUpsert.run(r.afp, r.fund, r.day, r.unit_value_clp, r.provisional ? 1 : 0, now);
+      if (!opts.dryRun) stmtUpsert.run(r.afp, r.fund, r.day, r.unit_value, r.provisional ? 1 : 0, now);
     }
   };
   if (opts.dryRun) run();
@@ -200,10 +200,10 @@ export function upsertSpAfpFundUnits(rows: readonly SpAfpFundUnitRow[], opts: { 
 }
 
 /** One AFP's stored official series, ascending. */
-export function officialPensionFundUnits(afp: string, fund: PensionFund): { day: string; unit_value_clp: number }[] {
+export function officialPensionFundUnits(afp: string, fund: PensionFund): { day: string; unit_value: number }[] {
   return db
     .prepare(
-      `SELECT day, unit_value_clp FROM pension_fund_unit_official WHERE afp = ? AND fund = ? ORDER BY day`
+      `SELECT day, unit_value FROM pension_fund_unit_official WHERE afp = ? AND fund = ? ORDER BY day`
     )
-    .all(afp, fund) as { day: string; unit_value_clp: number }[];
+    .all(afp, fund) as { day: string; unit_value: number }[];
 }

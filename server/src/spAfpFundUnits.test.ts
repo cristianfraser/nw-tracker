@@ -27,7 +27,7 @@ const CSV = [
 describe("parseSpAfpCsv", () => {
   it("reads every block with its own AFP set, skips unpublished cells and flags provisional values", () => {
     const rows = parseSpAfpCsv(CSV, "A");
-    expect(rows.map((r) => [r.afp, r.day, r.unit_value_clp, r.provisional])).toEqual([
+    expect(rows.map((r) => [r.afp, r.day, r.unit_value, r.provisional])).toEqual([
       ["capital", "2019-09-30", 46117.95, false],
       ["modelo", "2019-09-30", 47489.98, false],
       ["capital", "2019-10-01", 46102.88, false],

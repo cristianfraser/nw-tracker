@@ -160,11 +160,11 @@ export type AfcCicUpsertResult = {
 };
 
 const stmtSelectValue = db.prepare(
-  `SELECT unit_value_clp FROM fund_unit_daily WHERE series_key = ? AND day = ?`
+  `SELECT unit_value FROM fund_unit_daily WHERE series_key = ? AND day = ?`
 );
 const stmtUpsert = db.prepare(
-  `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?, ?, ?, ?)
-   ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+  `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?, ?, ?, ?)
+   ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
 );
 
 /** Upsert the CIC column; the SP value always wins, and a changed stored value is reported. */
@@ -176,12 +176,12 @@ export function upsertAfcCicRows(
   const run = () => {
     for (const r of rows) {
       const px = Math.round(r.cic_valor_cuota * 10000) / 10000;
-      const prev = stmtSelectValue.get(AFC_CIC_SERIES_KEY, r.day) as { unit_value_clp: number } | undefined;
+      const prev = stmtSelectValue.get(AFC_CIC_SERIES_KEY, r.day) as { unit_value: number } | undefined;
       if (prev == null) {
         out.inserted += 1;
-      } else if (Math.abs(prev.unit_value_clp - px) > 0.00005) {
+      } else if (Math.abs(prev.unit_value - px) > 0.00005) {
         out.updated += 1;
-        out.restated.push({ day: r.day, previous: prev.unit_value_clp, next: px });
+        out.restated.push({ day: r.day, previous: prev.unit_value, next: px });
       } else {
         out.unchanged += 1;
         continue;
@@ -195,11 +195,11 @@ export function upsertAfcCicRows(
 }
 
 const stmtLatestDay = db.prepare(
-  `SELECT day, unit_value_clp FROM fund_unit_daily WHERE series_key = ? ORDER BY day DESC LIMIT 1`
+  `SELECT day, unit_value FROM fund_unit_daily WHERE series_key = ? ORDER BY day DESC LIMIT 1`
 );
 
-export function latestAfcCicRow(): { day: string; unit_value_clp: number } | null {
-  const r = stmtLatestDay.get(AFC_CIC_SERIES_KEY) as { day: string; unit_value_clp: number } | undefined;
+export function latestAfcCicRow(): { day: string; unit_value: number } | null {
+  const r = stmtLatestDay.get(AFC_CIC_SERIES_KEY) as { day: string; unit_value: number } | undefined;
   return r ?? null;
 }
 
@@ -270,8 +270,8 @@ export type AfcCicSyncResult = AfcCicUpsertResult & {
   years: number[];
   /** Latest day the fetched CSVs print — the SP's own publication frontier (null: none printed). */
   published_ymd: string | null;
-  latest_before: { day: string; unit_value_clp: number } | null;
-  latest_after: { day: string; unit_value_clp: number } | null;
+  latest_before: { day: string; unit_value: number } | null;
+  latest_after: { day: string; unit_value: number } | null;
 };
 
 /**

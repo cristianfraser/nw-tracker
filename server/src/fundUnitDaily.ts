@@ -13,14 +13,14 @@ export function ymdAddDays(ymd: string, deltaDays: number): string {
 
 export function latestFundUnitRow(
   seriesKey: string
-): { day: string; unit_value_clp: number; note: string } | null {
+): { day: string; unit_value: number; note: string } | null {
   const r = db
     .prepare(
-      `SELECT day, unit_value_clp, COALESCE(note, '') AS note FROM fund_unit_daily
+      `SELECT day, unit_value, COALESCE(note, '') AS note FROM fund_unit_daily
        WHERE series_key = ? ORDER BY day DESC LIMIT 1`
     )
-    .get(seriesKey) as { day: string; unit_value_clp: number; note: string } | undefined;
-  if (r == null || !Number.isFinite(r.unit_value_clp) || r.unit_value_clp <= 0) return null;
+    .get(seriesKey) as { day: string; unit_value: number; note: string } | undefined;
+  if (r == null || !Number.isFinite(r.unit_value) || r.unit_value <= 0) return null;
   return r;
 }
 
@@ -28,12 +28,12 @@ export function latestFundUnitRow(
 export function fundUnitClpOnOrBefore(seriesKey: string, ymd: string): number | null {
   const r = db
     .prepare(
-      `SELECT unit_value_clp FROM fund_unit_daily
-       WHERE series_key = ? AND day <= ? AND unit_value_clp > 0
+      `SELECT unit_value FROM fund_unit_daily
+       WHERE series_key = ? AND day <= ? AND unit_value > 0
        ORDER BY day DESC LIMIT 1`
     )
-    .get(seriesKey, ymd) as { unit_value_clp: number } | undefined;
-  const v = r?.unit_value_clp;
+    .get(seriesKey, ymd) as { unit_value: number } | undefined;
+  const v = r?.unit_value;
   return v != null && Number.isFinite(v) && v > 0 ? v : null;
 }
 
@@ -48,7 +48,7 @@ export function fillFundUnitDailyCalendarGap(opts: {
 }): number {
   if (opts.fromDayExclusive >= opts.toDayExclusive) return 0;
   const ins = db.prepare(
-    `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?,?,?,?)
+    `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?,?,?,?)
      ON CONFLICT(series_key, day) DO NOTHING`
   );
   let n = 0;
@@ -106,12 +106,12 @@ export function upsertFundUnitSpotPreservingHistory(opts: {
         note: opts.standInNote!,
         dryRun: opts.dryRun,
       });
-    } else if (Math.abs(prev.unit_value_clp - px) > 0.005) {
+    } else if (Math.abs(prev.unit_value - px) > 0.005) {
       gapDaysFilled = fillFundUnitDailyCalendarGap({
         seriesKey: opts.seriesKey,
         fromDayExclusive: prev.day,
         toDayExclusive: opts.observationDay,
-        unitValueClp: prev.unit_value_clp,
+        unitValueClp: prev.unit_value,
         note: opts.carryNote ?? "spot:carry-forward",
         dryRun: opts.dryRun,
       });
@@ -120,8 +120,8 @@ export function upsertFundUnitSpotPreservingHistory(opts: {
 
   if (!opts.dryRun) {
     db.prepare(
-      `INSERT INTO fund_unit_daily (series_key, day, unit_value_clp, note) VALUES (?,?,?,?)
-       ON CONFLICT(series_key, day) DO UPDATE SET unit_value_clp = excluded.unit_value_clp, note = excluded.note`
+      `INSERT INTO fund_unit_daily (series_key, day, unit_value, note) VALUES (?,?,?,?)
+       ON CONFLICT(series_key, day) DO UPDATE SET unit_value = excluded.unit_value, note = excluded.note`
     ).run(opts.seriesKey, opts.observationDay, px, opts.note);
   }
 

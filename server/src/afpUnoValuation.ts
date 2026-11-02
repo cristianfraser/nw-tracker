@@ -27,17 +27,17 @@ export function afpCuotasCumulativeThroughDate(accountId: number, asOfYmd: strin
 export function latestFundUnitRowOnOrBefore(
   seriesKey: string,
   asOfYmd: string
-): { day: string; unit_value_clp: number } | null {
+): { day: string; unit_value: number } | null {
   const r = db
     .prepare(
-      `SELECT day, unit_value_clp FROM fund_unit_daily
+      `SELECT day, unit_value FROM fund_unit_daily
        WHERE series_key = ? AND day <= ?
        ORDER BY day DESC LIMIT 1`
     )
-    .get(seriesKey, asOfYmd) as { day: string; unit_value_clp: number } | undefined;
-  const v = r?.unit_value_clp;
+    .get(seriesKey, asOfYmd) as { day: string; unit_value: number } | undefined;
+  const v = r?.unit_value;
   if (v == null || !Number.isFinite(v) || v <= 0 || !r?.day) return null;
-  return { day: r.day, unit_value_clp: v };
+  return { day: r.day, unit_value: v };
 }
 
 const AFP_CERT_FUND_UNIT_SCRATCH = "afp-cert:monto/cuotas_delta";
@@ -49,20 +49,20 @@ const AFP_CERT_FUND_UNIT_SCRATCH = "afp-cert:monto/cuotas_delta";
 export function latestAfpUnoFundUnitRowOnOrBeforeForDisplay(
   seriesKey: string,
   asOfYmd: string
-): { day: string; unit_value_clp: number } | null {
+): { day: string; unit_value: number } | null {
   const rows = db
     .prepare(
-      `SELECT day, unit_value_clp, COALESCE(note, '') AS note FROM fund_unit_daily
+      `SELECT day, unit_value, COALESCE(note, '') AS note FROM fund_unit_daily
        WHERE series_key = ? AND day <= ?
        ORDER BY day DESC
        LIMIT 60`
     )
-    .all(seriesKey, asOfYmd) as { day: string; unit_value_clp: number; note: string }[];
+    .all(seriesKey, asOfYmd) as { day: string; unit_value: number; note: string }[];
   for (const r of rows) {
     if (!r.note.includes(AFP_CERT_FUND_UNIT_SCRATCH)) {
-      const v = r.unit_value_clp;
+      const v = r.unit_value;
       if (v != null && Number.isFinite(v) && v > 0 && r.day) {
-        return { day: r.day, unit_value_clp: v };
+        return { day: r.day, unit_value: v };
       }
     }
   }
@@ -73,20 +73,20 @@ export function latestAfpUnoFundUnitRowOnOrBeforeForDisplay(
 export function priorAfpUnoFundUnitRowBeforeForDisplay(
   seriesKey: string,
   beforeDay: string
-): { day: string; unit_value_clp: number } | null {
+): { day: string; unit_value: number } | null {
   const rows = db
     .prepare(
-      `SELECT day, unit_value_clp, COALESCE(note, '') AS note FROM fund_unit_daily
+      `SELECT day, unit_value, COALESCE(note, '') AS note FROM fund_unit_daily
        WHERE series_key = ? AND day < ?
        ORDER BY day DESC
        LIMIT 60`
     )
-    .all(seriesKey, beforeDay) as { day: string; unit_value_clp: number; note: string }[];
+    .all(seriesKey, beforeDay) as { day: string; unit_value: number; note: string }[];
   for (const r of rows) {
     if (!r.note.includes(AFP_CERT_FUND_UNIT_SCRATCH)) {
-      const v = r.unit_value_clp;
+      const v = r.unit_value;
       if (v != null && Number.isFinite(v) && v > 0 && r.day) {
-        return { day: r.day, unit_value_clp: v };
+        return { day: r.day, unit_value: v };
       }
     }
   }
@@ -94,7 +94,7 @@ export function priorAfpUnoFundUnitRowBeforeForDisplay(
 }
 
 export function latestFundUnitClpOnOrBefore(seriesKey: string, asOfYmd: string): number | null {
-  return latestFundUnitRowOnOrBefore(seriesKey, asOfYmd)?.unit_value_clp ?? null;
+  return latestFundUnitRowOnOrBefore(seriesKey, asOfYmd)?.unit_value ?? null;
 }
 
 export function revalueAfpAccountFromCuotas(opts: {
