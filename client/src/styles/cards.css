@@ -94,6 +94,17 @@
   .cards>:where(.card + .card) {
     border-top: 1px solid var(--hairline);
   }
+
+  /* A pair of cards (the home «Flujos» periods) stays side by side on a phone too, two of the
+     four columns each: each line is an icon and one figure, so half a phone's width holds it. */
+  .cards.cards--pair>.card {
+    grid-column: span 2;
+    border-top: 0;
+  }
+
+  .cards.cards--pair>.card:nth-child(2n) {
+    border-left: 1px solid var(--hairline);
+  }
 }
 
 /* A wide phone or a tablet in the drawer layout: 2-up (two of the four columns each). A media
