@@ -134,7 +134,7 @@ export function CcUpcomingPaymentsPanel({
           </Link>
         ) : null}
       </div>
-      <div className={loadableClass(loading, "cards")}>
+      <div className={loadableClass(loading, "cards cards--list")}>
         {data.cards.flatMap((card) =>
           card.rows.map((row) => (
             <PaymentCard key={`${card.account_id}|${row.billing_month}`} card={card} row={row} />

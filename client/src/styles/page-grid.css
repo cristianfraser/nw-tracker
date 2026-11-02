@@ -102,6 +102,19 @@
     border-top: 1px solid var(--hairline);
   }
 
+  /* A list block stays one card per row in the rail. */
+  .page-rail .cards.cards--list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .page-rail .cards.cards--list>.card {
+    border-left: 0;
+  }
+
+  .page-rail .cards.cards--list>:where(.card + .card) {
+    border-top: 1px solid var(--hairline);
+  }
+
   /* A rail narrower than a table's desktop columns shows the table's mobile rendering
      (the same rule tables.css applies below 880, keyed on the rail's own width). */
   @container rail (max-width: 40rem) {
