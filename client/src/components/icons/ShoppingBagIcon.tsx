@@ -1,11 +1,11 @@
 import { iconSvgProps, type IconProps } from "./iconProps";
 
-/** A shopping bag: money spent. */
+/** A shopping bag: money spent. Two strokes, so it reads at row size. */
 export function ShoppingBagIcon(props: IconProps) {
   return (
     <svg {...iconSvgProps(props)}>
-      <path d="M5 8h14l-1 12.5H6L5 8Z" />
-      <path d="M9 10.5V6.5a3 3 0 0 1 6 0v4" />
+      <path d="M4.5 8.5h15V20h-15Z" />
+      <path d="M8.5 8.5V7a3.5 3.5 0 0 1 7 0v1.5" />
     </svg>
   );
 }
