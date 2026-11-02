@@ -1,6 +1,7 @@
-import { useLayoutEffect, useRef, type ComponentType, type CSSProperties } from "react";
+import { useRef, type ComponentType, type CSSProperties } from "react";
 import type { IconProps } from "../icons/iconProps";
 import { cn } from "../../cn";
+import { useWrapWhenOverflowing } from "../ui/useWrapWhenOverflowing";
 import styles from "./PerfDetailRows.module.css";
 
 /**
@@ -46,23 +47,7 @@ export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailR
   const listRef = useRef<HTMLDivElement>(null);
   const totalSlots = rows[0]?.totals.length ?? 0;
 
-  // No deps: the rows (and so the widest value) can change on any render.
-  useLayoutEffect(() => {
-    fitRows(listRef.current);
-  });
-
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    if (!list || typeof ResizeObserver === "undefined") return;
-    let lastWidth = list.clientWidth;
-    const ro = new ResizeObserver(() => {
-      if (list.clientWidth === lastWidth) return;
-      lastWidth = list.clientWidth;
-      fitRows(list);
-    });
-    ro.observe(list);
-    return () => ro.disconnect();
-  }, []);
+  useWrapWhenOverflowing(listRef, styles.wrapped!);
 
   return (
     <div
@@ -142,11 +127,4 @@ export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailR
       ))}
     </div>
   );
-}
-
-/** One line per row while the columns fit the list; wrapped rows otherwise. */
-function fitRows(list: HTMLDivElement | null): void {
-  if (!list) return;
-  list.classList.remove(styles.wrapped!);
-  if (list.scrollWidth > list.clientWidth + 0.5) list.classList.add(styles.wrapped!);
 }

@@ -569,9 +569,7 @@
       "counterpartAccount": "Cuenta contraparte",
       "dividendOriginAccount": "Acción que paga el dividendo",
       "dividendCashAccount": "Cuenta USD que recibe el dividendo",
-      "compraSourceAccount": "Cuenta CLP de origen (opcional)",
-      "forwardPostedBadge": "ya en el saldo",
-      "forwardPostedTitle": "El banco contabiliza este movimiento en una fecha posterior; el saldo de hoy ya lo incluye. Pasa a esa fecha cuando llega."
+      "compraSourceAccount": "Cuenta CLP de origen (opcional)"
     },
     "flowDirection": {
       "label": "Ingreso / Retiro",
@@ -662,6 +660,7 @@
     "flowAmountColumn": "Monto",
     "flowUnitsColumn": "Unidades",
     "flowNoteColumn": "Nota",
+    "flowAccountsColumn": "Cuentas",
     "flowsEmpty": "No hay flujos.",
     "flowsFilteredEmpty": "Ningún flujo coincide con el filtro.",
     "flowsPersonalOnly": "Solo aportes propios",
@@ -926,7 +925,6 @@
     "yearlyDetailTitle": "Detalle por año",
     "dailyDetailTitle": "Detalle por día",
     "flowsTitle": "Flujos",
-    "flowsAccountColumn": "Cuenta",
     "dailyDetailEmpty": "Sin datos diarios para las cuentas de este grupo.",
     "monthlyDetailEmpty": "Sin datos de rendimiento mensual para las cuentas de este grupo.",
     "accountsTreeTitle": "Cuentas en esta vista",
