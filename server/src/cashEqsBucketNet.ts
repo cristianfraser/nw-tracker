@@ -1,3 +1,4 @@
+import { db } from "./db.js";
 import { clpToUnitAt } from "./clpToUnitAt.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
@@ -59,6 +60,11 @@ export function cashSavingsLinkedBalances(
   const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
   if (cc === 0) return [];
   const usd = includeUsd ? clpToUnitAt(cc, asOfYmd, "usd") : null;
+  const node = db
+    .prepare(`SELECT route_path FROM portfolio_groups WHERE slug = 'liabilities_credit_card'`)
+    .get() as { route_path: string | null } | undefined;
+  const routePath = node?.route_path?.trim();
+  if (!routePath) throw new Error("nav node liabilities_credit_card has no route_path (run the nav seed)");
   return [
     {
       slug: "credit_card",
@@ -66,7 +72,7 @@ export function cashSavingsLinkedBalances(
       label_i18n_key: "liabilities.creditCard",
       clp: cc,
       usd: usd != null && Number.isFinite(usd) ? usd : null,
-      route_path: "/liabilities/credit_card",
+      route_path: routePath,
     },
   ];
 }
