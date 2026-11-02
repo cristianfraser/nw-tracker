@@ -4,7 +4,8 @@ import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { formatClp, formatUsdFine } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useLatestExpenses } from "../../queries/hooks";
-import type { LatestExpenseRow } from "../../types";
+import type { LatestExpenseRow, LatestExpensesResponse } from "../../types";
+import { usePanelCache } from "../../queries/panelCache";
 import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder } from "../../dashboardLayout";
 import { Loadable } from "../ui/Loadable";
@@ -12,6 +13,17 @@ import { ExpenseVendorLabel } from "../credit-card/ExpenseVendorLabel";
 import styles from "./LatestExpenses.module.css";
 
 const LATEST_EXPENSES_LIMIT = 15;
+
+/** A stored «Últimos gastos» entry the panel can draw. */
+function isLatestExpenses(v: unknown): v is LatestExpensesResponse {
+  if (v == null || typeof v !== "object") return false;
+  const { rows, unit } = v as { rows?: unknown; unit?: unknown };
+  return (
+    (unit === "clp" || unit === "usd") &&
+    Array.isArray(rows) &&
+    rows.every((r) => r != null && typeof r.key === "string" && typeof r.date === "string" && Number.isFinite(r.amount))
+  );
+}
 
 function formatAmount(amount: number, unit: "clp" | "usd"): string {
   return unit === "usd" ? formatUsdFine(amount) : formatClp(amount);
@@ -31,9 +43,15 @@ export function LatestExpensesTable() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
   const query = useLatestExpenses(displayUnit, LATEST_EXPENSES_LIMIT);
-  const rows = query.data?.rows ?? [];
-  const unit = query.data?.unit ?? displayUnit;
-  const loading = query.isPending;
+  // A held payload of the other unit is never stored; until live data is here, the last stored one.
+  const { value: data } = usePanelCache(
+    `latest-expenses-v1|${displayUnit}`,
+    query.isPlaceholderData ? null : query.data,
+    isLatestExpenses
+  );
+  const rows = data?.rows ?? [];
+  const unit = data?.unit ?? displayUnit;
+  const loading = data == null;
 
   const amountCell = (row: LatestExpenseRow): string =>
     row.amount < 0
