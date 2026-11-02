@@ -1,14 +1,19 @@
-import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import { useLayoutEffect, useRef, type ComponentType, type CSSProperties } from "react";
+import type { IconProps } from "../icons/iconProps";
 import { cn } from "../../cn";
 import styles from "./PerfDetailRows.module.css";
 
-/** Money that moved in a period: in (→) or out (←); income and spending carry their colour. */
+/**
+ * Money that moved in a period: an icon says what it is (spending, income, contributions), the
+ * signed amount which way it went (negatives in parentheses). A figure with no icon of its own
+ * (an account's units) takes an arrow for its direction.
+ */
 export type PerfDetailFlow = {
   key: string;
-  direction: "in" | "out";
-  /** The absolute amount, formatted. */
+  icon?: ComponentType<IconProps>;
+  /** Only for a flow without an icon. */
+  direction?: "in" | "out";
   amount: string;
-  tone?: "positive" | "negative";
   /** The figure's name, shown on hover (the rows carry no column labels). */
   title: string;
 };
@@ -31,7 +36,7 @@ export type PerfDetailRow = {
 /**
  * The «Detalle por mes / año / día» rows, one rendering at every width (no desktop table beside
  * mobile cards), read by arrows, ▲ / ▼ and colour instead of column labels (each figure names
- * itself on hover). While every row fits its list on one line the rows share the list's columns
+ * itself on hover; flows by an icon each). While every row fits its list on one line the rows share the list's columns
  * (a subgrid of it), so each kind of figure lines up down the list; when they do not, a row is
  * three lines: its period; its closing with its result beside it, the year so far on the right;
  * its flows, the all-time total on the right. One line or wrapped is measured, not a breakpoint: the
@@ -82,16 +87,16 @@ export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailR
           </span>
           <span className={styles.flows}>
             {row.flows.map((flow, i) => (
-              <span
-                key={flow?.key ?? `empty-${i}`}
-                className={cn("mono", styles.flow, flow?.tone && styles[flow.tone])}
-                title={flow?.title}
-              >
+              <span key={flow?.key ?? `empty-${i}`} className={cn("mono", styles.flow)} title={flow?.title}>
                 {flow ? (
                   <>
-                    <span className={styles.arrow} aria-hidden="true">
-                      {flow.direction === "in" ? "→" : "←"}
-                    </span>
+                    {flow.icon ? (
+                      <flow.icon size={14} className={styles.icon} />
+                    ) : (
+                      <span className={styles.arrow} aria-hidden="true">
+                        {flow.direction === "out" ? "←" : "→"}
+                      </span>
+                    )}
                     <span className="visually-hidden">{flow.title}: </span>
                     {flow.amount}
                   </>
