@@ -1,13 +1,13 @@
 import { iconSvgProps, type IconProps } from "./iconProps";
 
-/** A line going up with a peso sign below its end: the change in net worth. */
+/** A line going up, its end over a peso sign: the change in net worth. */
 export function NetWorthUpIcon(props: IconProps) {
   return (
     <svg {...iconSvgProps(props)}>
-      <path d="m2 12 4-4 3 3 4.5-4.5" />
-      <path d="M10.5 6.5h3V9.5" />
-      <path d="M20.75 14.25c-.4-.9-1.35-1.5-2.5-1.5-1.5 0-2.5.8-2.5 1.9 0 2.6 5 1.4 5 4.1 0 1.1-1.1 2-2.5 2-1.2 0-2.2-.6-2.6-1.5" />
-      <path d="M18.25 11.25v11" />
+      <path d="m1.5 13 5-5 3.5 3.5 6-6" />
+      <path d="M11.5 5.5h4.5V10" />
+      <path d="M21.25 12.25c-.5-1.1-1.75-1.9-3.25-1.9-1.9 0-3.25 1-3.25 2.5 0 3.4 6.5 1.8 6.5 5.3 0 1.4-1.4 2.6-3.25 2.6-1.55 0-2.85-.75-3.4-1.95" />
+      <path d="M18 8.75v13.75" />
     </svg>
   );
 }
