@@ -203,6 +203,7 @@
     }
   },
   "sidebar": {
+    "dashboard": "Dashboard",
     "openMenu": "Abrir menú",
     "closeMenu": "Cerrar menú",
     "inversiones": "Inversiones",

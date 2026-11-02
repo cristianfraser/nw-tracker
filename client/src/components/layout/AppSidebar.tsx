@@ -14,7 +14,7 @@ import { queryKeys } from "../../queries/keys";
 import { prefetchPageShapeForPath } from "../../queries/prefetchPageShape";
 import { useMessagesUnreadCount, useSidebarNav } from "../../queries/hooks";
 import type { SidebarNavResponse } from "../../types";
-import { buildSidebarNavFromApi, resolveNetWorthGroupLabel } from "../../sidebarNavFromApi";
+import { buildSidebarNavFromApi } from "../../sidebarNavFromApi";
 import {
   collectAncestorIdsToExpand,
   sidebarNodeMatchesPath,
@@ -214,7 +214,7 @@ export function AppSidebar() {
   const coldDashboardNode = useMemo(
     (): SidebarNavNode => ({
       id: "dashboard",
-      label: resolveNetWorthGroupLabel(null),
+      label: t("sidebar.dashboard"),
       to: "/",
       end: true,
       showLeafHyphen: false,

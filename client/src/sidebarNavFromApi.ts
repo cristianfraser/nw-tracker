@@ -83,19 +83,11 @@ function mapNode(dto: NavTreeNodeDto, asLeaf = false): SidebarNavNode {
   };
 }
 
-/** Home page / sidebar root label from `net_worth` portfolio group (falls back to dashboard link node). */
-export function resolveNetWorthGroupLabel(payload: SidebarNavResponse | null | undefined): string {
-  if (payload?.net_worth) return resolveNavTreeLabel(payload.net_worth);
-  if (payload?.dashboard) return resolveNavTreeLabel(payload.dashboard);
-  return i18n.t("dashboard.cards.netWorth");
-}
-
 /** Build sidebar nodes from `GET /api/meta/sidebar-nav` (same layout sections as legacy builder). */
 export function buildSidebarNavFromApi(payload: SidebarNavResponse): SidebarNavNode[] {
   const out: SidebarNavNode[] = [];
   if (payload.dashboard) {
-    const homeLabel = resolveNetWorthGroupLabel(payload);
-    out.push({ ...mapNode(payload.dashboard), label: homeLabel });
+    out.push({ ...mapNode(payload.dashboard), label: i18n.t("sidebar.dashboard") });
   }
   for (const n of visibleNavChildren(payload.main)) out.push(mapNode(n));
   if (payload.projections) out.push(mapNode(payload.projections));
