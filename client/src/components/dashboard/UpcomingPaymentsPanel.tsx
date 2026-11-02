@@ -23,12 +23,12 @@ function DueCell({ item }: { item: UpcomingPaymentItemDto }) {
       </span>
     );
   }
-  // A card's pay-by that no statement prints yet is derived from its close: «≈».
+  // A card's pay-by that no statement prints yet is derived from its close; the dates read dimmed
+  // already, so it says so on hover only.
   const derived = item.card?.pay_by_source === "derived";
   return (
     <span className="muted" title={derived ? t("accountDetail.creditCard.payByDerivedHint") : undefined}>
       {word} <span className="mono">{item.due_iso}</span>
-      {derived ? " ≈" : ""}
     </span>
   );
 }
@@ -45,11 +45,10 @@ function AmountCell({ item }: { item: UpcomingPaymentItemDto }) {
       </span>
     );
   }
-  const approx = item.estimated ? "≈ " : "";
+  // An estimate reads dimmed (no «≈»), its reason on hover.
   const hint = item.kind === "mortgage" ? t("dashboard.ccUpcoming.mortgageRangeHint") : item.estimated ? t("dashboard.ccUpcoming.estimatedHint") : undefined;
   return (
-    <span className="mono" title={hint}>
-      {approx}
+    <span className={item.estimated ? "mono muted" : "mono"} title={hint}>
       {formatClp(item.amount_clp)}
       {item.amount_max_clp != null ? ` – ${formatClp(item.amount_max_clp)}` : ""}
     </span>
