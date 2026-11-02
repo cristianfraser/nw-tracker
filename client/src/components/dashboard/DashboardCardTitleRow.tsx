@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { cn } from "../../cn";
-import { parseRgbTriplet, readableTextOnRgb } from "../../chartColors";
+import { parseRgbTriplet, tintedTextOnRgb } from "../../chartColors";
 import { Pill } from "../ui/Pill";
 
 type Props = {
@@ -20,9 +20,13 @@ export function DashboardCardTitleRow({ label, titleTo, colorRgb }: Props) {
   const rgb = parseRgbTriplet(colorRgb);
   const text = rgb ? (
     <Pill
+      size="small"
+      uppercase={false}
+      // The card title uppercases its text; the pill keeps the label as written.
+      style={{ textTransform: "none" }}
       label={label}
       backgroundColor={`rgb(${rgb[0]},${rgb[1]},${rgb[2]})`}
-      textColor={readableTextOnRgb(rgb)}
+      textColor={tintedTextOnRgb(rgb)}
     />
   ) : (
     label

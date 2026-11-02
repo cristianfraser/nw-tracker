@@ -9,16 +9,20 @@ export function parseRgbTriplet(raw: string | null | undefined): [number, number
 }
 
 /**
- * Text that reads on a background of this colour: dark on light colours (white net worth, pale
- * cyan cash), white on dark ones. Relative luminance (sRGB) against a mid threshold.
+ * Text on a background of this colour, in the colour's own hue: a light tint of it on a dark
+ * colour, a dark shade of it on a light one (white net worth, pale cyan cash), where a light
+ * tint would not read. Relative luminance (sRGB) against a mid threshold.
  */
-export function readableTextOnRgb([r, g, b]: [number, number, number]): string {
+export function tintedTextOnRgb([r, g, b]: [number, number, number]): string {
   const channel = (c: number) => {
     const v = c / 255;
     return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
   };
   const luminance = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
-  return luminance > 0.4 ? "var(--bg)" : "#fff";
+  const color = `rgb(${r},${g},${b})`;
+  return luminance > 0.4
+    ? `color-mix(in srgb, ${color} 30%, black)`
+    : `color-mix(in srgb, ${color} 25%, white)`;
 }
 
 function rgbTripletToCss(raw: string | null | undefined, fallback = "#94a3b8"): string {
