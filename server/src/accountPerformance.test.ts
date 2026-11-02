@@ -124,7 +124,7 @@ describe("valuationSeriesMonthlyPerformance", () => {
     expect(perf?.monthly).toEqual([]);
   });
 
-  it("credit_card rows are loss-negative financing cost: nominal_pl = prior − closing − net_flow", () => {
+  it("credit_card rows are loss-negative cost (charges + fx): nominal_pl = prior − closing − net_flow", () => {
     const cc = db
       .prepare(
         `SELECT a.id FROM accounts a
@@ -142,11 +142,11 @@ describe("valuationSeriesMonthlyPerformance", () => {
     const perf = valuationSeriesMonthlyPerformance(row.id, "clp");
     expect(perf?.monthly.length).toBeGreaterThan(0);
     for (const m of perf!.monthly) {
-      // A card's P/L is what the bank charged (never a gain), and the rest of the balance
-      // move is capital flow — the liability identity the daily series shares.
+      // A card's P/L is what the bank charged plus the fx revaluation of the dollars it owed (a
+      // gain when the peso rose), and the rest of the balance move is capital flow — the
+      // liability identity the daily series shares.
       const prior = m.prior_closing ?? 0;
       expect(m.nominal_pl).not.toBeNull();
-      expect(m.nominal_pl!).toBeLessThanOrEqual(0);
       expect(m.nominal_pl!).toBeCloseTo(prior - m.closing_value - m.net_capital_flow, 6);
     }
   });

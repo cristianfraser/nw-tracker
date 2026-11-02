@@ -7,7 +7,7 @@
  * Run: npx tsx scripts/verify-cc-financing-identity.ts [accountId ...]
  */
 import { billingMonthContainingPurchase } from "../src/ccManualBillingMonth.js";
-import { ccFinancingCostClpByDate } from "../src/ccFinancingCostDaily.js";
+import { ccSection3FinancingClpByDate } from "../src/ccFinancingCostDaily.js";
 import { ccInstallmentInterestForAccount } from "../src/ccInstallmentInterest.js";
 import { listCreditCardMasterAccountIds } from "../src/creditCardTree.js";
 import { statementSection3ChargesClpForBillingMonth } from "../src/creditCardPerformancePl.js";
@@ -18,7 +18,7 @@ const accountIds = argIds.length ? argIds : listCreditCardMasterAccountIds();
 let worst = 0;
 for (const accountId of accountIds) {
   const byMonth = new Map<string, number>();
-  for (const [iso, clp] of ccFinancingCostClpByDate(accountId)) {
+  for (const [iso, clp] of ccSection3FinancingClpByDate(accountId)) {
     const bm = billingMonthContainingPurchase(accountId, iso);
     byMonth.set(bm, (byMonth.get(bm) ?? 0) + clp);
   }

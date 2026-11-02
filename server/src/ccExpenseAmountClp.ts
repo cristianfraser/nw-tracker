@@ -1,5 +1,40 @@
 import { fxMonthEndForBalanceUsd } from "./fxRates.js";
 
+/**
+ * One uniform CLP/USD rate in place of every debt-frame rate, while set: the anchor writer builds
+ * the statement frame with it to split a balance into its peso and dollar parts (the balance is
+ * affine in the rate — `ccOwedByCurrencyForStatementFrame` in `ccBillingViews.ts`). Synchronous
+ * scope only; never set outside {@link withUniformDebtUsdRate}.
+ */
+let uniformDebtUsdRate: number | null = null;
+
+export function withUniformDebtUsdRate<T>(rate: number, fn: () => T): T {
+  if (uniformDebtUsdRate != null) throw new Error("withUniformDebtUsdRate: already inside a uniform-rate pass");
+  if (!(rate > 0)) throw new Error(`withUniformDebtUsdRate: bad rate ${rate}`);
+  uniformDebtUsdRate = rate;
+  try {
+    return fn();
+  } finally {
+    uniformDebtUsdRate = null;
+  }
+}
+
+/** The uniform rate of the pass in progress, else null. */
+export function uniformDebtUsdRateInEffect(): number | null {
+  return uniformDebtUsdRate;
+}
+
+/**
+ * CLP per USD for valuing dollars as card debt in the statement frame: the `fx_daily` row on or
+ * before `fxDateIso` (the facturación's pay-by − 1, `balanceUsdFxDateIso`), or the uniform rate of
+ * a split pass. Null when no row is on file.
+ */
+export function debtFrameClpPerUsd(fxDateIso: string | null): number | null {
+  if (uniformDebtUsdRate != null) return uniformDebtUsdRate;
+  const fx = fxMonthEndForBalanceUsd(fxDateIso)?.clp_per_usd;
+  return fx != null && fx > 0 ? fx : null;
+}
+
 export type CcExpenseLineAmountInput = {
   installment_flag: number;
   amount_clp: number | null;
@@ -59,6 +94,22 @@ export function effectiveCcExpenseLineAmountClp(
     const fx = fxMonthEndForBalanceUsd(fxDateIso);
     if (!fx?.clp_per_usd || fx.clp_per_usd <= 0) return null;
     return Math.round(usd * fx.clp_per_usd);
+  });
+}
+
+/**
+ * {@link effectiveCcExpenseLineAmountClp} for a statement-frame DEBT sum: dollars at
+ * {@link debtFrameClpPerUsd} (the facturación's pay-by − 1, or a split pass's uniform rate). Import
+ * dedupe and line matching keep {@link effectiveCcExpenseLineAmountClp}: a split pass must not
+ * change which lines match.
+ */
+export function debtCcExpenseLineAmountClp(
+  row: CcExpenseLineAmountInput,
+  fxDateIso: string | null
+): number | null {
+  return effectiveCcExpenseLineAmountClpWith(row, (usd) => {
+    const fx = debtFrameClpPerUsd(fxDateIso);
+    return fx == null ? null : Math.round(usd * fx);
   });
 }
 

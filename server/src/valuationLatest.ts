@@ -2,7 +2,7 @@ import { assertValuationCurrencyClp } from "./valuationValue.js";
 import { ccInstallmentLedgerRowCount } from "./ccInstallmentLedgerDb.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { creditCardBillingBalanceTotalClpAsOf } from "./ccCreditCardValuations.js";
-import { ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
+import { ccOwedClpAtYmd, ccOwedWalkClpAtYmd } from "./ccOwedWalk.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
   deptoMortgageCloseClpBySnapshotDates,
@@ -103,12 +103,18 @@ export function latestCreditCardDisplayedBalance(
 }
 
 /**
- * Credit-card valuation as of a date: on-or-before stored rows only; current dates use live ledger.
+ * Credit-card owed on a date: the per-currency walk (`ccOwedWalk.ts`) valued at that date's rate,
+ * `as_of_date` = the date itself — the walk is complete, so a caller adds nothing on top. Today:
+ * walked from the anchor strictly before it. Before the card's first anchor: the stored row, as
+ * {@link latestCreditCardDisplayedBalance} gives it.
  */
 export function latestCreditCardValuationRowAsOf(
   accountId: number,
   asOfYmd: string
 ): LatestValuationRow | undefined {
+  if (asOfYmd >= chileCalendarTodayYmd()) return latestCreditCardDisplayedBalance(accountId, asOfYmd);
+  const walked = ccOwedClpAtYmd(accountId, asOfYmd);
+  if (walked) return { value_clp: walked.value_clp, as_of_date: asOfYmd };
   return latestCreditCardDisplayedBalance(accountId, asOfYmd);
 }
 
