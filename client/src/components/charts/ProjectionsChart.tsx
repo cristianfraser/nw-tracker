@@ -60,11 +60,9 @@ export function ProjectionsChart({
         tickFormatter={(d) => String(d).slice(0, 4)}
         minTickGap={40}
       />
-      {/* Retirement balances run to seven USD figures — `(US$2.500.000)` overflows the
-          standard USD gutter (this axis was already clipping by ~2px before the shared
-          styling). Compact mobile ticks need no extra room. */}
-      <YAxis {...moneyYAxisProps(displayUnit, compactAxis, { width: 104 })} />
-      <Legend />
+      {/* Recharts picks these ticks, so the gutter is measured from the rendered labels. */}
+      <YAxis {...moneyYAxisProps(displayUnit, compactAxis)} />
+      <Legend itemSorter={null} />
       {namedLines.map((l) => {
         const style = LINE_STYLE[l.dataKey] ?? { stroke: "var(--muted)", width: 1 };
         return (

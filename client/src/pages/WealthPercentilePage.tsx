@@ -446,7 +446,7 @@ export function WealthPercentilePage() {
                   width={30}
                 />
               )}
-              <Legend />
+              <Legend itemSorter={null} />
               <Line
                 type="monotone"
                 dataKey="total"

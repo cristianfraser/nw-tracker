@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { ReferenceDot } from "recharts";
+import { DefaultZIndexes, ReferenceDot } from "recharts";
 
 /** The marker's tint: a deep gold, clearly apart from the white net-worth line it marks. */
 export const ATH_MARKER_STROKE = "#c9971c";
@@ -13,9 +13,7 @@ const ATH_MARKER_HEIGHT = 12;
  * The ATH marker: a short translucent vertical tick on the peak point, nothing else — the
  * docked tooltip already names that point's date and value on hover, so the marker carries no
  * label of its own.
- * A plain function (not a component): Recharts only honors children whose element type it
- * knows, so this must return a `ReferenceDot` element directly — same rule as
- * `renderPeriodRefLine`. Placement (which grid row) is `athMarkerPlacement.ts`.
+Placement (which grid row) is `athMarkerPlacement.ts`.
  */
 export function renderAthMarker({
   x,
@@ -37,12 +35,12 @@ export function renderAthMarker({
       x={x}
       y={y}
       r={h / 2}
-      isFront
+      zIndex={DefaultZIndexes.activeDot}
       ifOverflow="discard"
-      shape={(p: { cx: number; cy: number }) => (
+      shape={(p: { cx?: number; cy?: number }) => (
         <rect
-          x={p.cx - w / 2}
-          y={p.cy - h / 2}
+          x={(p.cx ?? 0) - w / 2}
+          y={(p.cy ?? 0) - h / 2}
           width={w}
           height={h}
           fill={ATH_MARKER_STROKE}
