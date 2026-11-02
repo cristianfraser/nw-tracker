@@ -33,8 +33,8 @@ export type PerfDetailRow = {
  * mobile cards), read by arrows, ▲ / ▼ and colour instead of column labels (each figure names
  * itself on hover). While every row fits its list on one line the rows share the list's columns
  * (a subgrid of it), so each kind of figure lines up down the list; when they do not, a row is
- * its period and closing over its flows and result, its running totals under the result — and
- * on a phone one thing per line. One line or wrapped is measured, not a breakpoint: the
+ * three lines: its period; its closing on the left and its result on the right; its flows on
+ * the left and its running totals on the right (a line each on a phone). One line or wrapped is measured, not a breakpoint: the
  * columns as wide as their content, wider than the list = the rows wrap.
  */
 export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailRow[]; flowSlots: number }) {
@@ -68,15 +68,17 @@ export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailR
     >
       {rows.map((row) => (
         <div key={row.key} role="listitem" className={cn(styles.row, row.dim && styles.dim)}>
-          <span className={cn("mono", styles.period)}>{row.period}</span>
-          <span className={cn("mono", styles.closing)}>
-            {row.closing}
-            {row.closingNote ? (
-              <span className={cn("muted", styles.closingNote)} title={row.closingNote.title}>
-                {" "}
-                {row.closingNote.amount}
-              </span>
-            ) : null}
+          <span className={styles.head}>
+            <span className={cn("mono", styles.period)}>{row.period}</span>
+            <span className={cn("mono", styles.closing)}>
+              {row.closing}
+              {row.closingNote ? (
+                <span className={cn("muted", styles.closingNote)} title={row.closingNote.title}>
+                  {" "}
+                  {row.closingNote.amount}
+                </span>
+              ) : null}
+            </span>
           </span>
           <span className={styles.flows}>
             {row.flows.map((flow, i) => (
@@ -111,7 +113,7 @@ export function PerfDetailRows({ rows, flowSlots }: { rows: readonly PerfDetailR
                 <span aria-hidden="true">{row.result.sign === 1 ? "▲" : row.result.sign === -1 ? "▼" : "·"}</span>
                 <span className="visually-hidden">{row.result.title}: </span>
                 {row.result.amount}
-                {row.result.pct ? <span className={styles.pct}>{row.result.pct}</span> : null}
+                {row.result.pct ? <span className={styles.pct}>({row.result.pct})</span> : null}
               </>
             ) : null}
           </span>
