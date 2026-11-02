@@ -90,7 +90,7 @@ export type GroupInfoBaseProps = {
   /**
    * The dashboard's rail: tiles that sit beside the strip and the main charts on the big-desktop
    * tier (styles/page-grid.css `.page-rail`) and in the one stack below it. With a rail the
-   * export row and the accounts tree join it; the wide tables stay below both stacks.
+   * export row joins it; the wide tables and then the accounts tree stay below both stacks.
    */
   rail?: ReactNode;
   /** A tile's place in the one-stack reading order (dashboardLayout.ts); DOM order when absent. */
@@ -270,7 +270,6 @@ export function GroupInfoBase({
             <div className="page-rail">
               {rail}
               {exportTile}
-              {accountsTile}
             </div>
           </>
         ) : (
@@ -366,7 +365,8 @@ export function GroupInfoBase({
           </>
         ) : null}
         {rail ? null : exportTile}
-        {rail ? null : accountsTile}
+        {/* Full width at the bottom on every tier, rail or not. */}
+        {accountsTile}
       </Loadable>
     </main>
   );
