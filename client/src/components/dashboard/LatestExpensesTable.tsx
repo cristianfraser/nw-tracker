@@ -8,6 +8,7 @@ import type { LatestExpenseRow } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder } from "../../dashboardLayout";
 import { Loadable } from "../ui/Loadable";
+import { ExpenseVendorLabel } from "../credit-card/ExpenseVendorLabel";
 import styles from "./LatestExpenses.module.css";
 import flowsStyles from "./DashboardFlowsSummary.module.css";
 
@@ -35,12 +36,6 @@ export function LatestExpensesTable() {
   const unit = query.data?.unit ?? displayUnit;
   const loading = query.isPending;
 
-  const description = (row: LatestExpenseRow): string => {
-    const name = row.merchant ?? "—";
-    return row.installments != null
-      ? `${name} · ${t("dashboard.latestExpenses.installments", { count: row.installments })}`
-      : name;
-  };
   const amountCell = (row: LatestExpenseRow): string =>
     row.amount < 0
       ? `${formatAmount(row.amount, unit)} · ${t("dashboard.latestExpenses.refund")}`
@@ -67,13 +62,14 @@ export function LatestExpensesTable() {
               {rows.map((row) => (
                 <li key={row.key} className={styles.item}>
                   <div className={styles.main}>
-                    <span className={styles.merchant} title={description(row)}>
-                      {description(row)}
-                    </span>
+                    <ExpenseVendorLabel source={row} note={row.purchase_notes} className={styles.merchant} />
                     <span className={`mono ${styles.amount}`}>{amountCell(row)}</span>
                   </div>
                   <div className={styles.meta}>
                     <span className="mono">{row.date}</span> · {categoryLabel(row)} · {row.origin_label}
+                    {row.installments != null
+                      ? ` · ${t("dashboard.latestExpenses.installments", { count: row.installments })}`
+                      : null}
                   </div>
                 </li>
               ))}
