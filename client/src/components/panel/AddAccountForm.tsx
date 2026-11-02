@@ -102,7 +102,7 @@ export function AddAccountForm({ netWorthRoot }: Props) {
     : t("panelAccounts.addUsdAccount.displayNamePlaceholder");
 
   return (
-    <form onSubmit={onCreateSubmit} style={{ maxWidth: "52rem" }}>
+    <form onSubmit={onCreateSubmit}>
       <Field label={t("panelAccounts.addAccount.accountType")}>
         <select
           value={draft.accountType}
