@@ -13,7 +13,9 @@ import {
   isNyseRegularSessionOpen,
   nyseWallClock,
 } from "./nyseSession.js";
+import { noteLiveFxRead, noteLiveTickerRead } from "./cacheDependencies.js";
 import {
+  listCompositeConstituentTickers,
   loadCompositeHoldings,
   loadCompositeMeta,
   proxyClpFromMeta,
@@ -172,6 +174,13 @@ export function inChileHolidayProxyHold(now = new Date()): boolean {
  *   before the Fintual evening sync settles.
  */
 export function shouldUseRiskyNorrisProxyMtm(now = new Date()): boolean {
+  // The gate reports the basket whatever it decides, like `shouldUseLiveEquityQuote`: an APV
+  // mark cached before the open read the official cuota and no live input, so without this the
+  // session's ticks never dropped it and the accounts read 0 day P/L all session (2026-11-02).
+  for (const ticker of listCompositeConstituentTickers(RISKY_NORRIS_PROXY_BUCKET)) {
+    noteLiveTickerRead(ticker);
+  }
+  noteLiveFxRead();
   if (inChileHolidayProxyHold(now)) return true;
 
   const sessionYmd = nyseWallClock(now).ymd;
