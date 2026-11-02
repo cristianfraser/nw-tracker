@@ -14,7 +14,7 @@
  * where a private values-only build would pay for identical marks twice (marks dominate the
  * cost of a daily series; the flow legs this would skip are the cheap part).
  */
-import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
+import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { getAggregationCached } from "./aggregationCache.js";
 import { isCashEqsNwValuationGroupSlug } from "./assetGroupTree.js";
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
@@ -78,7 +78,7 @@ function sourceGroupDailyValues(
     for (const p of series.points) {
       if (p.value == null || !Number.isFinite(p.value)) continue;
       const ccClp = ccByDate?.get(p.as_of_date) ?? 0;
-      const cc = ccClp !== 0 ? clpToUnitAt(ccClp, p.as_of_date, unit, { now }) : 0;
+      const cc = ccClp !== 0 ? clpToUnitAt(ccClp, p.as_of_date, unit, { now, side: "debt" }) : 0;
       out.set(
         p.as_of_date,
         cc != null && Number.isFinite(cc) ? cashNetOfLinkedCreditCards(p.value, cc) : p.value
@@ -112,23 +112,23 @@ export function deptoPropertyChartOverlayDailyLines(
   if (!datesAsc.length) return [];
   const mortgageRows = listLiabilitiesTabAccountRows("mortgage");
   if (mortgageRows.length !== 1) return [];
-  const now = new Date();
+  // Each account's own value in the unit per day (converted once at its side: the mortgage
+  // as a debt), the same figures its line plots.
   const markValues = (r: {
     account_id: number;
     bucket_slug: string;
     import_key?: string | null;
     name?: string | null;
   }): (number | null)[] =>
-    accountMarkClpSeriesOnGrid(
+    accountValueSeriesOnGrid(
       {
         account_id: r.account_id,
         bucket_slug: r.bucket_slug,
         import_key: r.import_key ?? null,
         name: r.name ?? null,
       },
-      datesAsc
-    ).map((clp, i) =>
-      clp != null && Number.isFinite(clp) ? clpToUnitAt(clp, datesAsc[i]!, unit, { now }) : null
+      datesAsc,
+      unit
     );
 
   const hipoteca = markValues(mortgageRows[0]!);

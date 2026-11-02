@@ -1,7 +1,25 @@
-import { accountHistoricalMarkClpAtYmdUncached, accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { applyPendingMarkInputChanges } from "./markInputChanges.js";
-import { getMarkSeries, markSeriesKey, setMarkSeries, type CachedMarkSeries } from "./markSeriesStore.js";
+import {
+  accountHistoricalQtyMarkUncached,
+  accountMarkClpAtYmd,
+  accountValueSide,
+  type QtyMark,
+} from "./accountMarkClpAtYmd.js";
+import { accountValueAt } from "./accountValue.js";
+import { applyPendingMarkInputChanges, setRateIndependentAccountsResolver } from "./markInputChanges.js";
+import { accountHolding, isCardAccount } from "./holdings.js";
+import { cardValueInUnit } from "./cardValueInUnit.js";
+import { db } from "./db.js";
+import {
+  getMarkSeries,
+  markSeriesKey,
+  setMarkSeries,
+  type CachedMarkSeries,
+  type MarkSeriesCell,
+} from "./markSeriesStore.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
+import { instrumentPriceKey, pastHoldingPriceLookup, type HoldingPrice } from "./holdingPrices.js";
+import type { CurrencyCode } from "./rates.js";
+import { pastValueRateLookup } from "./valueConvert.js";
 
 /**
  * Per-account CLP mark series on the Chile calendar-day grid, cached so the daily views stop
@@ -23,10 +41,30 @@ import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
  * directions as wider windows are requested (a 90-day view pays 90 days; a later "total" view
  * pays only the missing prefix; the day after a rollover pays only the new day).
  *
- * Values are `value_clp` only — `accountMarkClpAtYmd` also returns the evidence date
- * (`as_of_date`, which can predate the requested day), and callers that need it must keep
- * calling the mark function directly.
+ * **The series store what the account HELD each day, not pesos** (`docs/holdings-currency-plan.md`):
+ * a quantity and its asset (`QtyMark` — dollars of a dollar ledger, shares, coins, cuotas, the
+ * pesos of a peso ledger). A value in a unit is built at read from the day's price and rate,
+ * both memoized in the history tier (`holdingPrices.ts`, `valueConvert.ts`), so one series serves
+ * every display unit and a rate row never trims one. Values carry no evidence date — callers
+ * that need `as_of_date` keep calling the mark function directly.
  */
+
+const stmtAllAccountIds = db.prepare(`SELECT id FROM accounts WHERE asset_group_id IS NOT NULL`);
+
+/**
+ * Accounts whose stored quantity no rate row can move: shares, coins, cuotas, a ledger in a
+ * currency other than pesos. Every other quantity is a peso figure (a ledger, a book mark, and
+ * until their own phases the card and the depto ledger), some of which read rates to build.
+ */
+setRateIndependentAccountsResolver(() => {
+  const out = new Set<number>();
+  for (const { id } of stmtAllAccountIds.all() as { id: number }[]) {
+    const h = accountHolding(id);
+    if (h.kind === "stock" || h.kind === "coin" || h.kind === "fund") out.add(id);
+    else if (h.kind === "currency" && h.code !== "clp" && h.code !== "uf") out.add(id);
+  }
+  return out;
+});
 
 export type MarkSeriesAccountRef = {
   account_id: number;
@@ -57,24 +95,135 @@ function markClpAt(account: MarkSeriesAccountRef, ymd: string): number | null {
   return clp != null && Number.isFinite(clp) ? clp : null;
 }
 
+/** A day on or after Chile today: computed on every call (live quotes, the live rate). */
+function liveValueAt(account: MarkSeriesAccountRef, ymd: string, unit: CurrencyCode): number | null {
+  if (unit === "clp") return markClpAt(account, ymd);
+  const v = accountValueAt(account.account_id, ymd, unit, {
+    categorySlug: account.bucket_slug,
+    import_key: account.import_key ?? null,
+    name: account.name ?? null,
+  })?.value;
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
 /**
- * Marks for the inclusive day range (all before Chile today), computed one by one — this store
- * is their cache, so the history tier's point-mark memo is bypassed.
+ * Quantities for the inclusive day range (all before Chile today), computed one by one — this
+ * store is their cache, so the history tier's point-mark memo is bypassed. Assets are shared
+ * objects per series, so a read prices each asset with one lookup.
  */
 function buildRange(
   account: MarkSeriesAccountRef,
   startYmd: string,
-  endYmd: string
-): (number | null)[] {
+  endYmd: string,
+  intern: Map<string, QtyMark["asset"]>
+): (MarkSeriesCell | null)[] {
   const count = dayOffset(startYmd, endYmd) + 1;
-  const out = new Array<number | null>(count);
+  const out = new Array<MarkSeriesCell | null>(count);
   for (let i = 0; i < count; i++) {
     const ymd = i === 0 ? startYmd : chileCalendarAddDays(startYmd, i);
-    const clp = accountHistoricalMarkClpAtYmdUncached(account.account_id, ymd, account.bucket_slug, {
+    const m = accountHistoricalQtyMarkUncached(account.account_id, ymd, account.bucket_slug, {
       import_key: account.import_key ?? null,
       name: account.name ?? null,
-    })?.value_clp;
-    out[i] = clp != null && Number.isFinite(clp) ? clp : null;
+    });
+    if (!m || !Number.isFinite(m.qty)) {
+      out[i] = null;
+      continue;
+    }
+    const key = assetKey(m.asset);
+    let asset = intern.get(key);
+    if (!asset) {
+      asset = m.asset;
+      intern.set(key, asset);
+    }
+    out[i] = { qty: m.qty, asset };
+  }
+  return out;
+}
+
+function assetKey(a: QtyMark["asset"]): string {
+  return a.kind === "currency" ? `currency:${a.code}` : instrumentPriceKey(a);
+}
+
+function internFor(series: CachedMarkSeries | undefined): Map<string, QtyMark["asset"]> {
+  const m = new Map<string, QtyMark["asset"]>();
+  for (const c of series?.values ?? []) if (c) m.set(assetKey(c.asset), c.asset);
+  return m;
+}
+
+/**
+ * The cells' values in `unit` (index-aligned with `grid`, every day before Chile today): the
+ * quantity, priced when it is an instrument (a fund to the cent, as its position card prints),
+ * converted once at the account's side — exactly what `accountMarkClpAtYmd` reads for the day.
+ */
+function cellsInUnit(
+  account: MarkSeriesAccountRef,
+  cells: readonly (MarkSeriesCell | null)[],
+  grid: readonly string[],
+  unit: CurrencyCode
+): (number | null)[] {
+  const side = accountValueSide(account.account_id, account.bucket_slug);
+  const isCard = isCardAccount(account.account_id);
+  const prices = new Map<object, (ymd: string) => HoldingPrice | null>();
+  const rates = new Map<CurrencyCode, (ymd: string) => number | null>();
+  const out = new Array<number | null>(cells.length);
+  for (let i = 0; i < cells.length; i++) {
+    const cell = cells[i];
+    if (!cell) {
+      out[i] = null;
+      continue;
+    }
+    const ymd = grid[i]!;
+    const a = cell.asset;
+    let native: number;
+    let currency: CurrencyCode;
+    if (a.kind === "currency") {
+      native = cell.qty;
+      currency = a.code;
+    } else if (cell.qty === 0) {
+      native = 0;
+      currency = a.quote;
+    } else {
+      let lookup = prices.get(a);
+      if (!lookup) {
+        lookup = pastHoldingPriceLookup(a);
+        prices.set(a, lookup);
+      }
+      const px = lookup(ymd);
+      if (!px) {
+        out[i] = null;
+        continue;
+      }
+      const raw = cell.qty * px.price;
+      native = a.kind === "fund" ? Math.round(raw * 100) / 100 : raw;
+      currency = px.currency;
+    }
+    if (isCard) {
+      // The one seam for a card's value in a unit (`cardValueInUnit.ts`).
+      const v = cardValueInUnit(account.account_id, native, ymd, unit);
+      out[i] = v != null && Number.isFinite(v) ? v : null;
+      continue;
+    }
+    if (currency === unit || native === 0) {
+      out[i] = Number.isFinite(native) ? native : null;
+      continue;
+    }
+    let rate = rates.get(currency);
+    if (!rate) {
+      rate = pastValueRateLookup(currency, unit, side);
+      rates.set(currency, rate);
+    }
+    const r = rate(ymd);
+    if (r == null) {
+      if (a.kind === "coin") {
+        throw new Error(
+          `crypto account ${account.account_id}: cannot mark ${ymd} (no ${currency.toUpperCase()}/${unit.toUpperCase()} rate); crypto is valued from units × close × fx only — backfill the missing series`
+        );
+      }
+      out[i] = null;
+      continue;
+    }
+    const v = native * r;
+    out[i] = Number.isFinite(v) ? v : null;
   }
   return out;
 }
@@ -111,8 +260,9 @@ function cachedSeriesCovering(
 ): CachedMarkSeries {
   const key = cacheKey(account);
   let cached = getMarkSeries(key);
+  const intern = internFor(cached);
   if (!cached) {
-    cached = { start_ymd: startYmd, end_ymd: endYmd, values: buildRange(account, startYmd, endYmd) };
+    cached = { start_ymd: startYmd, end_ymd: endYmd, values: buildRange(account, startYmd, endYmd, intern) };
     setMarkSeries(key, cached);
   }
   assertSeriesAligned(cached, account);
@@ -121,10 +271,10 @@ function cachedSeriesCovering(
   if (!needsPrefix && !needsSuffix) return cached;
 
   const prefix = needsPrefix
-    ? buildRange(account, startYmd, chileCalendarAddDays(cached.start_ymd, -1))
+    ? buildRange(account, startYmd, chileCalendarAddDays(cached.start_ymd, -1), intern)
     : [];
   const suffix = needsSuffix
-    ? buildRange(account, chileCalendarAddDays(cached.end_ymd, 1), endYmd)
+    ? buildRange(account, chileCalendarAddDays(cached.end_ymd, 1), endYmd, intern)
     : [];
   const extended: CachedMarkSeries = {
     start_ymd: needsPrefix ? startYmd : cached.start_ymd,
@@ -137,15 +287,16 @@ function cachedSeriesCovering(
 }
 
 /**
- * CLP marks for `account` at each day of `grid`, index-aligned with it.
+ * The account's values in `unit` at each day of `grid`, index-aligned with it.
  *
  * `grid` must be a contiguous ascending run of Chile calendar days — the shape every daily
- * consumer builds. Days before Chile today are served from (and folded into) the cached
- * series; today and anything later are computed live on every call.
+ * consumer builds. Days before Chile today are built from the cached quantity series (folded
+ * into it when missing); today and anything later are computed live on every call.
  */
-export function accountMarkClpSeriesOnGrid(
+export function accountValueSeriesOnGrid(
   account: MarkSeriesAccountRef,
-  grid: readonly string[]
+  grid: readonly string[],
+  unit: CurrencyCode
 ): (number | null)[] {
   if (grid.length === 0) return [];
   const first = grid[0]!;
@@ -153,7 +304,7 @@ export function accountMarkClpSeriesOnGrid(
   // O(1) contiguity check: any gap, duplicate or out-of-order day breaks this identity.
   if (dayOffset(first, last) !== grid.length - 1) {
     throw new Error(
-      `accountMarkClpSeriesOnGrid: grid must be contiguous ascending calendar days (${first}..${last}, ${grid.length} days)`
+      `accountValueSeriesOnGrid: grid must be contiguous ascending calendar days (${first}..${last}, ${grid.length} days)`
     );
   }
 
@@ -166,12 +317,26 @@ export function accountMarkClpSeriesOnGrid(
     const series = cachedSeriesCovering(account, first, cacheableEnd);
     const base = dayOffset(series.start_ymd, first);
     const cachedCount = dayOffset(first, cacheableEnd) + 1;
-    for (let i = 0; i < cachedCount; i++) out[i] = series.values[base + i] ?? null;
+    const values = cellsInUnit(
+      account,
+      series.values.slice(base, base + cachedCount),
+      grid.slice(0, cachedCount),
+      unit
+    );
+    for (let i = 0; i < cachedCount; i++) out[i] = values[i] ?? null;
   }
   for (let i = Math.max(0, dayOffset(first, cacheableEnd) + 1); i < grid.length; i++) {
-    out[i] = markClpAt(account, grid[i]!);
+    out[i] = liveValueAt(account, grid[i]!, unit);
   }
   return out;
+}
+
+/** {@link accountValueSeriesOnGrid} in pesos. */
+export function accountMarkClpSeriesOnGrid(
+  account: MarkSeriesAccountRef,
+  grid: readonly string[]
+): (number | null)[] {
+  return accountValueSeriesOnGrid(account, grid, "clp");
 }
 
 /**

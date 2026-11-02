@@ -108,3 +108,8 @@ export function accountHolding(accountId: number): Holding {
 export function holdingIsDebt(kindSlug: string): boolean {
   return kindSlug === "mortgage" || kindSlug === "credit_card";
 }
+
+/** True when the account is a credit card (no lookup that throws for a bare id). */
+export function isCardAccount(accountId: number): boolean {
+  return accountKindSlugForAccountId(accountId) === "credit_card";
+}

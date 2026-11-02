@@ -1,8 +1,6 @@
-import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
+import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
-import { accountTodayValue } from "./accountTodayValue.js";
-import { accountValueClpToUnitAt } from "./clpToUnitAt.js";
+import { accountValueAt } from "./accountValue.js";
 import {
   endChargedFlow,
   flowAdjustedPct,
@@ -41,12 +39,10 @@ export function includeShortHorizonAccount(a: ShortHorizonAccountRef): boolean {
 }
 
 /**
- * One account's value at `ymd` in `unit`: its mark (`accountMarkClpAtYmd`), framed per account
- * (`accountValueClpToUnitAt`). Today in USD the pesos are framed on the day they were priced
- * (`accountTodayValue().priced_on`: a market mark's own day, else today) — the dashboard row's
- * `current_value_usd`; a USD cash account is its ledger dollars on every day. Earlier days read
- * the stored fx on or before. Null when the account has no mark, or no rate is on file.
- * Shared with the daily series builder (`dailySeries.ts`), so both derive identical legs.
+ * One account's value at `ymd` in `unit` (`accountValueAt`): what it held that day, converted
+ * once into the unit at its side — today at today's rate. Null when the account has no value,
+ * or no rate is on file. Shared with the daily series builder (`dailySeries.ts`), so both derive
+ * identical legs.
  */
 export function accountValueInUnitAt(
   a: ShortHorizonAccountRef,
@@ -54,18 +50,14 @@ export function accountValueInUnitAt(
   unit: TsUnit,
   now: Date
 ): number | null {
-  const markOpts = { import_key: a.import_key ?? null, name: a.name ?? null };
-  if (unit === "usd" && ymd === chileCalendarTodayYmd()) {
-    const live = accountTodayValue(a.account_id, a.bucket_slug, markOpts);
-    if (live?.value_clp == null || !Number.isFinite(live.value_clp)) return null;
-    return accountValueClpToUnitAt(a.account_id, live.value_clp, ymd, unit, {
-      markAsOf: live.priced_on,
+  return (
+    accountValueAt(a.account_id, ymd, unit, {
       now,
-    });
-  }
-  const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, markOpts);
-  if (mark?.value_clp == null || !Number.isFinite(mark.value_clp)) return null;
-  return accountValueClpToUnitAt(a.account_id, mark.value_clp, ymd, unit, { now });
+      categorySlug: a.bucket_slug,
+      import_key: a.import_key ?? null,
+      name: a.name ?? null,
+    })?.value ?? null
+  );
 }
 
 /**

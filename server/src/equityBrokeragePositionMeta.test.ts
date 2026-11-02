@@ -9,6 +9,10 @@ afterEach(() => {
   clearLiveMarketQuotesForTest();
 });
 
+
+/** Values convert at the sell rate: the stored mid less the inferred half spread (`rates.ts`). */
+const SELL = (mid: number): number => mid - 2;
+
 describe("equityBrokeragePositionMeta", () => {
   it("uses live_market_quotes for Chile today during NYSE session", () => {
     const row = db
@@ -138,8 +142,8 @@ describe("equityBrokeragePositionMeta after the close (hold + fx frame)", () => 
     const meta = equityBrokeragePositionMeta(accountId!, TICKER, TODAY, now);
     expect(meta?.units).toBeCloseTo(UNITS, 9);
     expect(meta?.afp_override_value_as_of).toBe(TODAY);
-    expect(meta?.afp_override_valor_cuota_clp).toBeCloseTo(510 * 950, 4);
-    expect(meta?.afp_override_value_clp).toBeCloseTo(UNITS * 510 * 950, 2);
+    expect(meta?.afp_override_valor_cuota_clp).toBeCloseTo(510 * SELL(950), 4);
+    expect(meta?.afp_override_value_clp).toBeCloseTo(UNITS * 510 * SELL(950), 2);
   });
 
   it("prices today's bar at the live fx while the fx day is open, the stored close after", () => {
@@ -154,13 +158,13 @@ describe("equityBrokeragePositionMeta after the close (hold + fx frame)", () => 
     const open = equityBrokeragePositionMeta(accountId!, TICKER, TODAY, fxDayOpen);
     expect(open?.afp_override_value_as_of).toBe(TODAY);
     // Not 512 × 900 (Tuesday's stored close): the bar landed while the fx day was still open.
-    expect(open?.afp_override_value_clp).toBeCloseTo(UNITS * 512 * 950, 2);
+    expect(open?.afp_override_value_clp).toBeCloseTo(UNITS * 512 * SELL(950), 2);
 
     // 17:30 New York: the fx day has ended and its close is stored.
     db.prepare(`INSERT INTO fx_daily (date, clp_per_usd) VALUES (?, 940)`).run(TODAY);
     const fxDayClosed = new Date("2099-01-07T22:30:00.000Z");
     vi.setSystemTime(fxDayClosed);
     const closed = equityBrokeragePositionMeta(accountId!, TICKER, TODAY, fxDayClosed);
-    expect(closed?.afp_override_value_clp).toBeCloseTo(UNITS * 512 * 940, 2);
+    expect(closed?.afp_override_value_clp).toBeCloseTo(UNITS * 512 * SELL(940), 2);
   });
 });

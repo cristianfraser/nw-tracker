@@ -1,6 +1,6 @@
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
+import { accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { mapMonthlyClosingToChartDates } from "./accountPerformance.js";
 import { cashNetOfLinkedCreditCards } from "./cashEqsBucketNet.js";
 import { accountValueClpToUnitAt, clpToUnitAt } from "./clpToUnitAt.js";
@@ -11,7 +11,7 @@ import {
 } from "./groupMonthlyPerfConsolidation.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
 import { accountIdsInPortfolioGroupForTotals } from "./portfolioGroupTree.js";
-import { listAccountsForGroupTab } from "./valuationTimeseries.js";
+import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 import { db } from "./db.js";
 
 /** Top-level NW dashboard bucket slugs (`totals.*_clp` keys). */
@@ -126,7 +126,7 @@ function portfolioGroupValueUsdAtRaw(bucket: NwDashboardBucketSlug, asOfYmd: str
   }
   if (bucket !== "cash_eqs") return raw;
   const cc = linkedCreditCardClpForCashCardAsOf(asOfYmd);
-  const ccUsd = cc === 0 ? 0 : clpToUnitAt(cc, asOfYmd, "usd", { now });
+  const ccUsd = cc === 0 ? 0 : clpToUnitAt(cc, asOfYmd, "usd", { now, side: "debt" });
   return ccUsd == null || !Number.isFinite(ccUsd) ? null : cashNetOfLinkedCreditCards(raw, ccUsd);
 }
 
@@ -209,45 +209,60 @@ export type DashboardBucketValueTotals = {
 export function buildDashboardBucketDailySeriesClp(
   sessionsAsc: readonly string[]
 ): Map<string, Record<NwDashboardBucketSlug, number> & { net_worth: number }> {
+  return buildDashboardBucketDailySeriesInUnit(sessionsAsc, "clp");
+}
+
+/**
+ * {@link buildDashboardBucketDailySeriesClp} in `unit`: Σ of each account's own value in the
+ * unit per day (`accountValueSeriesOnGrid` — what it held, converted once at its side), the
+ * linked cards netted from cash at the debt side. Pesos are rounded like every bucket Σ; other
+ * units are not. A day an account has no rate for leaves it out, like a missing mark.
+ */
+export function buildDashboardBucketDailySeriesInUnit(
+  sessionsAsc: readonly string[],
+  unit: TsUnit
+): Map<string, Record<NwDashboardBucketSlug, number> & { net_worth: number }> {
   const accountsByBucket = new Map(
     NW_DASHBOARD_BUCKET_SLUGS.map((slug) => [
       slug,
       listAccountsForDashboardBucket(slug).filter((a) => a.exclude_from_group_totals !== 1),
     ] as const)
   );
-  // One cached mark series per account for the whole grid, instead of a mark lookup per
-  // account per day (see `accountMarkDailyCache.ts`).
-  const marksByBucket = new Map(
+  // One cached series per account for the whole grid, instead of a value lookup per account
+  // per day (see `accountMarkDailyCache.ts`).
+  const valuesByBucket = new Map(
     NW_DASHBOARD_BUCKET_SLUGS.map((slug) => [
       slug,
-      accountsByBucket
-        .get(slug)!
-        .map((a) =>
-          accountMarkClpSeriesOnGrid(
-            {
-              account_id: a.account_id,
-              bucket_slug: a.bucket_slug,
-              import_key: a.import_key,
-              name: a.name,
-            },
-            sessionsAsc
-          )
-        ),
+      accountsByBucket.get(slug)!.map((a) =>
+        accountValueSeriesOnGrid(
+          {
+            account_id: a.account_id,
+            bucket_slug: a.bucket_slug,
+            import_key: a.import_key,
+            name: a.name,
+          },
+          sessionsAsc,
+          unit
+        )
+      ),
     ] as const)
   );
+  const round = (v: number) => (unit === "clp" ? Math.round(v) : v);
   const out = new Map<string, Record<NwDashboardBucketSlug, number> & { net_worth: number }>();
   sessionsAsc.forEach((ymd, gi) => {
     const row = { real_estate: 0, retirement: 0, brokerage: 0, cash_eqs: 0, net_worth: 0 };
     for (const slug of NW_DASHBOARD_BUCKET_SLUGS) {
       let raw = 0;
-      for (const marks of marksByBucket.get(slug)!) {
-        const clp = marks[gi];
-        if (clp != null && Number.isFinite(clp)) raw += clp;
+      for (const values of valuesByBucket.get(slug)!) {
+        const v = values[gi];
+        if (v != null && Number.isFinite(v)) raw += v;
       }
       if (slug === "cash_eqs") {
-        raw = cashNetOfLinkedCreditCards(raw, linkedCreditCardClpForCashCardAsOf(ymd));
+        const ccClp = linkedCreditCardClpForCashCardAsOf(ymd);
+        const cc = ccClp === 0 ? 0 : clpToUnitAt(ccClp, ymd, unit, { side: "debt" });
+        if (cc != null && Number.isFinite(cc)) raw = cashNetOfLinkedCreditCards(raw, cc);
       }
-      row[slug] = Math.round(raw);
+      row[slug] = round(raw);
     }
     row.net_worth = row.real_estate + row.retirement + row.brokerage + row.cash_eqs;
     out.set(ymd, row);
@@ -279,7 +294,7 @@ export function dashboardBucketDayPriorCloses(priorDayYmd: string): {
       if (mark?.value_clp == null || !Number.isFinite(mark.value_clp)) continue;
       rawClp += mark.value_clp;
       // The stored fx of that day (a USD cash account: its ledger dollars that day).
-      const u = accountValueClpToUnitAt(a.account_id, mark.value_clp, priorDayYmd, "usd");
+      const u = accountValueClpToUnitAt(a.account_id, mark.value_clp, priorDayYmd, "usd", { categorySlug: a.bucket_slug });
       if (u != null && Number.isFinite(u)) rawUsd += u;
     }
     if (slug === "cash_eqs") {
@@ -287,7 +302,7 @@ export function dashboardBucketDayPriorCloses(priorDayYmd: string): {
       // on both sides of the day delta, so it can't show up as a day change.
       const ccClp = linkedCreditCardClpForCashCardAsOf(priorDayYmd);
       rawClp = cashNetOfLinkedCreditCards(rawClp, ccClp);
-      const ccUsd = clpToUnitAt(ccClp, priorDayYmd, "usd");
+      const ccUsd = clpToUnitAt(ccClp, priorDayYmd, "usd", { side: "debt" });
       if (ccUsd != null && Number.isFinite(ccUsd)) {
         rawUsd = cashNetOfLinkedCreditCards(rawUsd, ccUsd);
       }

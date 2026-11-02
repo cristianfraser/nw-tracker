@@ -101,15 +101,29 @@ export function slugValueInUnitToday(
   unit: Exclude<TsUnit, "clp">,
   opts?: SlugMarkTotalsOpts & { now?: Date }
 ): number | null {
+  return slugValueInUnitAt(accounts, chileCalendarTodayYmd(), unit, opts);
+}
+
+/**
+ * A bucket's value on `ymd` in a non-peso unit: Σ of each account's own value in the unit
+ * (`bucketValueInUnitAt`: what it held, converted once at its side), the linked cards netted
+ * from cash at the debt side. Never the bucket's pesos ÷ one rate, which would convert a
+ * dollar holding to pesos and back across the spread.
+ */
+export function slugValueInUnitAt(
+  accounts: readonly ChartMarkTotalAccountRow[],
+  ymd: string,
+  unit: Exclude<TsUnit, "clp">,
+  opts?: SlugMarkTotalsOpts & { now?: Date }
+): number | null {
   const now = opts?.now ?? new Date();
-  const today = chileCalendarTodayYmd();
   const rows = accounts.filter((a) => a.account_id > 0);
-  const sum = bucketValueInUnitAt(rows, today, unit, now);
+  const sum = bucketValueInUnitAt(rows, ymd, unit, now);
   if (!opts?.netLinkedCreditCard) return sum;
-  const cc = linkedCreditCardClpForCashCardAsOf(today);
-  const ccInUnit = cc === 0 ? 0 : clpToUnitAt(cc, today, unit, { now });
+  const cc = linkedCreditCardClpForCashCardAsOf(ymd);
+  const ccInUnit = cc === 0 ? 0 : clpToUnitAt(cc, ymd, unit, { now, side: "debt" });
   if (ccInUnit == null) {
-    throw new Error(`slugValueInUnitToday: no ${unit} rate for the linked credit cards on ${today}`);
+    throw new Error(`slugValueInUnitAt: no ${unit} rate for the linked credit cards on ${ymd}`);
   }
   return cashNetOfLinkedCreditCards(sum ?? 0, ccInUnit);
 }

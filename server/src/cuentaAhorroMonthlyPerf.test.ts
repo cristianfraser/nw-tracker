@@ -98,8 +98,9 @@ describe("cuenta de ahorro monthly performance", () => {
     const m1 = rowFor(usd, M1);
     const m2 = rowFor(usd, M2);
     expect(m2.net_capital_flow).toBe(0);
-    expect(m2.closing_value).toBeCloseTo(1_000_000 / 950, 6);
-    expect(m2.nominal_pl).toBeCloseTo(1_000_000 / 950 - 1_000_000 / 900, 6);
+    // Pesos held, shown in dollars at the buy rate: the stored mid plus the inferred half spread.
+    expect(m2.closing_value).toBeCloseTo(1_000_000 / (950 + 2), 6);
+    expect(m2.nominal_pl).toBeCloseTo(1_000_000 / (950 + 2) - 1_000_000 / (900 + 2), 6);
     expect(m2.nominal_pl).toBeCloseTo(m2.closing_value - m1.closing_value, 8);
   });
 

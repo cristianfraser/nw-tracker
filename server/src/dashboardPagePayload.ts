@@ -97,8 +97,8 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     const liabilities_breakdown = {
       mortgage_clp: liabilitiesClp.mortgage_clp,
       credit_card_clp: liabilitiesClp.credit_card_clp,
-      mortgage_usd: clpToUnitAt(liabilitiesClp.mortgage_clp, asOfToday, "usd"),
-      credit_card_usd: clpToUnitAt(liabilitiesClp.credit_card_clp, asOfToday, "usd"),
+      mortgage_usd: clpToUnitAt(liabilitiesClp.mortgage_clp, asOfToday, "usd", { side: "debt" }),
+      credit_card_usd: clpToUnitAt(liabilitiesClp.credit_card_clp, asOfToday, "usd", { side: "debt" }),
     };
     return {
       totals: {

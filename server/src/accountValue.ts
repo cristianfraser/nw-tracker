@@ -1,0 +1,153 @@
+/**
+ * An account's VALUE in a display unit (`docs/holdings-currency-plan.md`): a quantity of what it
+ * holds (`accountHoldingQtyAt`), priced when it is an instrument (`holdingPriceAt`), converted
+ * once into the unit at the side of the spread that closes it (`valueConvert.ts`: an asset at
+ * what selling it would get, a liability at what buying it back would cost). Nothing is built in
+ * pesos first and converted back: a dollar stock in dollars is shares × its dollar price, dollar
+ * cash in dollars is its ledger, a peso fund in dollars is cuotas × its peso price at the day's
+ * rate.
+ *
+ * Today reads the account's one today value (`accountTodayValue`, whose native value carries the
+ * live price) at today's rate; any other day reads what the account held that day
+ * (`accountHistoricalQtyMark`). Until their own phases the card's owed walk and the depto
+ * ledger's figures are peso quantities.
+ */
+import {
+  accountHistoricalQtyMark,
+  accountValueSide,
+  bucketSlugForAccount,
+  qtyMarkValueIn,
+  type QtyMark,
+} from "./accountMarkClpAtYmd.js";
+import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
+import { accountBucketKindSlug, accountKindSlugForAccountId } from "./accountBucket.js";
+import { equityShareUnitsThroughYmd } from "./brokerageEquityMtm.js";
+import { chileCalendarTodayYmd } from "./chileDate.js";
+import { cryptoCoinCumulativeThroughDate } from "./cryptoValuation.js";
+import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
+import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
+import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
+import { accountHolding, isCardAccount, type Holding } from "./holdings.js";
+import type { CurrencyCode } from "./rates.js";
+import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { convertValue } from "./valueConvert.js";
+import { cardValueInUnit } from "./cardValueInUnit.js";
+
+export type AccountValueOpts = {
+  now?: Date;
+  /** The account's asset-group slug (selects the valuation branch); read from the account when left out. */
+  categorySlug?: string | null;
+  import_key?: string | null;
+  name?: string | null;
+};
+
+/**
+ * Which day is "today" for choosing the valuation stack: Chile today on the real clock, as
+ * `accountMarkClpAtYmd` chooses it (`now` reaches the quote-driven pieces and the conversion).
+ */
+function todayFor(_now: Date | undefined): string {
+  return chileCalendarTodayYmd();
+}
+
+/**
+ * The currency an account's value is natively expressed in: dollars for a dollar ledger, a
+ * dollar-quoted stock or a coin; pesos for everything else — peso ledgers, funds (cuotas priced
+ * in pesos) and, until their own phases, the card and the depto ledger.
+ */
+export function accountValueCurrency(accountId: number): CurrencyCode {
+  // An id with no account row behind it (a synthetic chart line) holds pesos.
+  if (accountKindSlugForAccountId(accountId) == null) return "clp";
+  const h = accountHolding(accountId);
+  if (h.kind === "currency") return h.code === "usd" || h.code === "eur" ? h.code : "clp";
+  if (h.kind === "stock") return h.quote;
+  if (h.kind === "coin") return h.quote;
+  return "clp";
+}
+
+/**
+ * What `accountId` held on `ymd`: a quantity and what it is of. A day other than today is the
+ * quantity the valuation stack reads (falling through to a peso mark where it always has, e.g.
+ * before a fund's price series starts). Today: the shares, coins or cuotas held, the dollar
+ * ledger's dollars, and for every other account its today value as a peso quantity.
+ */
+export function accountHoldingQtyAt(
+  accountId: number,
+  ymd: string,
+  opts?: AccountValueOpts
+): { qty: number; holding: Holding; as_of: string } | null {
+  const now = opts?.now;
+  const today = todayFor(now);
+  if (ymd !== today) {
+    const m: QtyMark | null = accountHistoricalQtyMark(accountId, ymd, opts?.categorySlug, opts);
+    return m ? { qty: m.qty, holding: m.asset, as_of: m.as_of_date } : null;
+  }
+  const holding = accountHolding(accountId);
+  if (holding.kind === "currency" && holding.code === "usd") {
+    return { qty: usdCashBalanceUsdAt(accountId, today), holding, as_of: today };
+  }
+  if (holding.kind === "stock") return { qty: equityShareUnitsThroughYmd(accountId, today), holding, as_of: today };
+  if (holding.kind === "coin") return { qty: cryptoCoinCumulativeThroughDate(accountId, today), holding, as_of: today };
+  if (holding.kind === "fund") {
+    const slug = opts?.categorySlug ?? bucketSlugForAccount(accountId) ?? "";
+    const cuotas = isCuotaLedgerKindSlug(accountBucketKindSlug(slug))
+      ? afpCuotasCumulativeThroughDate(accountId, today)
+      : fintualGoalUnitsFromMovementsThroughDate(accountId, today) ?? 0;
+    return { qty: cuotas, holding, as_of: today };
+  }
+  const v = accountTodayValue(accountId, opts?.categorySlug, opts, now);
+  if (!v) return null;
+  return { qty: v.native_value, holding: { kind: "currency", code: v.native_currency }, as_of: v.as_of_date };
+}
+
+/**
+ * The account's value on `ymd` in `unit`, converted once at its side. Null without a value or a
+ * rate on file.
+ */
+export function accountValueAt(
+  accountId: number,
+  ymd: string,
+  unit: CurrencyCode,
+  opts?: AccountValueOpts
+): { value: number; as_of_date: string } | null {
+  const now = opts?.now;
+  const slug = opts?.categorySlug ?? bucketSlugForAccount(accountId) ?? "";
+  if (ymd === todayFor(now)) {
+    const v = accountTodayValue(accountId, slug, { import_key: opts?.import_key, name: opts?.name }, now);
+    if (!v) return null;
+    const value = todayValueInUnit(accountId, v, unit, now);
+    return value != null && Number.isFinite(value) ? { value, as_of_date: v.as_of_date } : null;
+  }
+  const mark = accountHistoricalQtyMark(accountId, ymd, slug, opts);
+  if (!mark) return null;
+  // A past day reads stored prices and rates only (memoized); `now` matters from today on.
+  const value = qtyMarkValueIn(
+    accountId,
+    mark,
+    ymd,
+    unit,
+    accountValueSide(accountId, slug),
+    ymd < chileCalendarTodayYmd() ? undefined : now
+  );
+  return value != null && Number.isFinite(value) ? { value, as_of_date: mark.as_of_date } : null;
+}
+
+/**
+ * An account's value in `unit`, given its pesos `clp` at `ymd`. A value natively in pesos is
+ * those pesos converted once at the account's side; one natively in another currency (dollar
+ * cash, a dollar stock, a coin) is re-read in that currency and converted from it — never from
+ * the pesos, which would read the spread or another day's rate as a P/L.
+ */
+export function accountValueInUnitFromClp(
+  accountId: number,
+  clp: number,
+  ymd: string,
+  unit: CurrencyCode,
+  opts?: { now?: Date; categorySlug?: string | null }
+): number | null {
+  if (unit === "clp") return clp;
+  if (isCardAccount(accountId)) return cardValueInUnit(accountId, clp, ymd, unit, opts?.now);
+  if (accountValueCurrency(accountId) === "clp") {
+    return convertValue(clp, "clp", unit, ymd, accountValueSide(accountId, opts?.categorySlug), opts?.now);
+  }
+  return accountValueAt(accountId, ymd, unit, opts)?.value ?? null;
+}

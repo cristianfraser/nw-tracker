@@ -8,8 +8,8 @@ import { accountUsesCryptoMtm, cryptoCoinCumulativeThroughDate } from "./cryptoV
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
-import { isUsdCashAccount } from "./movementTransfer.js";
-import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { accountHolding } from "./holdings.js";
+import { accountHoldingQtyAt, accountValueCurrency } from "./accountValue.js";
 import { clpCashBalanceClpAt, isClpCashKindSlug } from "./clpCashAccounts.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
@@ -73,7 +73,11 @@ function holdingTodayWithoutPrice(accountId: number): number | null {
   if ((cuotaLedger || isFintualCertV2ValuationNotes(importKey)) && stmtHasUnits.get(accountId, accountId, accountId)) {
     return fintualGoalUnitsFromMovementsThroughDate(accountId, today) ?? 0;
   }
-  if (isUsdCashAccount(accountId)) return usdCashBalanceUsdAt(accountId, today);
+  // A ledger held in another currency (dollar cash): its own quantity, no price.
+  const holding = accountHolding(accountId);
+  if (holding.kind === "currency" && accountValueCurrency(accountId) !== "clp") {
+    return accountHoldingQtyAt(accountId, today)?.qty ?? null;
+  }
   // A peso ledger (checking, a broker's peso balance, a portfolio caja) holds its balance: the
   // last month close of its balance walk is that same balance (the current month-end, or a
   // later one a forward-posted row opened, reads every known movement). Without movements

@@ -13,12 +13,12 @@ import {
 } from "./cuotaLedgerAccounts.js";
 import {
   accountUsesCryptoMtm,
-  computeCryptoMtmClp,
   requireCryptoMtmClp,
   cryptoCoinCumulativeThroughDate,
+  cryptoTodayNativeValue,
   type CryptoAsset,
 } from "./cryptoValuation.js";
-import { fxForLiveMtm } from "./fxRates.js";
+import { convertValue } from "./valueConvert.js";
 import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
@@ -199,26 +199,16 @@ export function equityBrokeragePositionMeta(
   const u = out.units;
   if (u == null) return out;
 
-  if (equityQuoteCurrency(ticker) === "clp") {
-    out.afp_override_value_clp = Math.round(u * close * 100) / 100;
-    out.afp_override_value_as_of = markDate;
-    out.afp_override_valor_cuota_clp = Math.round(close * 10000) / 10000;
-    return out;
-  }
-
-  // The fx is the MARK DATE's frame: live CLP=X while that day's fx day is still open
-  // (today's live/held/EOD-bar price until 17:05 New York), the stored close after it, and
-  // the stored row for a historical bar. Pricing today's bar at `fxRowOnOrBefore(today)` —
-  // which is FRIDAY's close until the day's fx row lands at 17:05 NY — re-framed every USD
-  // holding for an hour after the NYSE close (VEA read +1,27% instead of +0,05% while the
-  // marquee showed the live rate, 2026-09-21).
-  const fx = fxForLiveMtm(markDate, now);
-  if (!fx || fx.clp_per_usd <= 0) return out;
-
-  const mtm = Math.round(u * close * fx.clp_per_usd * 100) / 100;
-  out.afp_override_value_clp = mtm;
+  // The shares' value in their quote currency, converted once into pesos at the date asked —
+  // the value's date, not the bar's: today at today's rate (live while the fx day is open),
+  // at what selling them would get (`valueConvert.ts`).
+  const quote = equityQuoteCurrency(ticker);
+  const mtm = convertValue(u * close, quote, "clp", asOfYmd, "asset", now);
+  const perUnit = convertValue(close, quote, "clp", asOfYmd, "asset", now);
+  if (mtm == null || perUnit == null) return out;
+  out.afp_override_value_clp = Math.round(mtm * 100) / 100;
   out.afp_override_value_as_of = markDate;
-  out.afp_override_valor_cuota_clp = Math.round(close * fx.clp_per_usd * 10000) / 10000;
+  out.afp_override_valor_cuota_clp = Math.round(perUnit * 10000) / 10000;
   return out;
 }
 
@@ -259,32 +249,22 @@ export function getAccountPositionMeta(
         units: units > 1e-12 && Number.isFinite(units) ? units : null,
       };
 
-      // Live-first, like `equityBrokeragePositionMeta`: crypto trades 24/7, so a today
-      // valuation uses the cached live quote (intraday fx) — a raw EOD close here pinned
-      // dashboard crypto rows at yesterday's close and zeroed their day delta (the day
-      // anchor mark IS that same close).
+      // Today: the coins × today's dollar price (`cryptoTodayNativeValue`: the live quote of the
+      // UTC session while fresh), converted once into pesos at today's sell rate — the same
+      // figure the account's today value carries.
       const today = chileCalendarTodayYmd();
-      const session = equitySessionYmdForTicker(equityTickerRow, now);
-      const useLive =
-        asOf === today && shouldUseLiveEquityQuote(equityTickerRow, session, now);
-      const liveQuote = useLive ? getLiveEquityQuoteFromDb(equityTickerRow) : null;
-
-      if (liveQuote != null) {
-        const mtm = computeCryptoMtmClp(accountId, session, liveQuote.price, now);
-        if (mtm != null && Number.isFinite(mtm)) {
+      if (asOf === today) {
+        const native = cryptoTodayNativeValue(accountId, now);
+        const mtm = native ? convertValue(native.value, "usd", "clp", today, "asset", now) : null;
+        if (native && mtm != null && Number.isFinite(mtm)) {
           out.afp_override_value_clp = Math.round(mtm * 100) / 100;
-          // Dated on the session the pesos were framed on (`computeCryptoMtmClp` reads that
-          // date's fx), so a USD reader divides by the same rate and gets units × price back.
-          // The live quote's `trade_date` is the coin's last completed UTC day, two days
-          // behind the session at night: the card read the crypto rows 7,91 USD apart from
-          // their own table row (2026-10-27 23:00).
-          out.afp_override_value_as_of = session;
+          out.afp_override_value_as_of = native.as_of_date;
           const u = out.units;
           if (u != null && u > 1e-12) {
             out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
           }
-          return out;
         }
+        return out;
       }
 
       const mtm = requireCryptoMtmClp(accountId, asOf);
@@ -394,7 +374,7 @@ export function liveFintualCertDisplayValueClp(
 
 /** Live cuota-ledger mark (AFP UNO / AFC CIC): Σ cuotas × valor cuota on or before `asOfYmd`. */
 /** Whether the account has ever carried units — a units movement or a transfer leg with units. */
-function hasCuotaLedgerUnitsEvents(accountId: number): boolean {
+export function hasCuotaLedgerUnitsEvents(accountId: number): boolean {
   const row = db
     .prepare(
       `SELECT 1 AS hit FROM movements

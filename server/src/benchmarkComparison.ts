@@ -26,7 +26,7 @@ import {
 import { windowIrr } from "./irr.js";
 import { isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
-import { clpToUnitAt } from "./clpToUnitAt.js";
+import { clpToUnitAtMid } from "./clpToUnitAt.js";
 
 /**
  * The Rentabilidad table's comparison row: for each window, a shadow portfolio that starts with
@@ -146,7 +146,7 @@ export function levelInUnit(
           if (fx == null || !(fx.clp_per_usd > 0)) throw new Error(`benchmark: no USD/CLP on or before ${ymd}`);
           clp = native * fx.clp_per_usd;
         }
-        out = clpToUnitAt(clp, ymd, unit, { now });
+        out = clpToUnitAtMid(clp, ymd, unit, now);
         if (out == null || !Number.isFinite(out)) {
           throw new Error(`benchmark: no ${unit} rate on or before ${ymd}`);
         }

@@ -27,7 +27,7 @@ import { db } from "./db.js";
 import { loadBookValuationsAsc } from "./bookValuations.js";
 export { loadBookValuationsAsc } from "./bookValuations.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
-import { accountValueClpToUnitAt } from "./clpToUnitAt.js";
+import { accountValueClpToUnitAt, clpToUnitAt } from "./clpToUnitAt.js";
 import { accountUsesEquityMtm, computeEquityMtmClp } from "./brokerageEquityMtm.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import {
@@ -379,12 +379,9 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
       : resolved;
   let live: number | null = liveClose?.value_clp ?? null;
   if (live != null && unit !== "clp") {
-    // The dashboard row's frame (`current_value_usd`): the pesos at the fx of the day they
-    // were priced, live while that fx day is open; a USD cash account's ledger dollars. In UF,
-    // today's UF (the live row used to stay in pesos).
-    live = accountValueClpToUnitAt(accountId, live, today, unit, {
-      markAsOf: liveClose!.priced_on,
-    });
+    // The dashboard row's frame (`current_value_usd`): the account's value converted once at
+    // today's rate (a USD cash account's ledger dollars, a dollar stock's shares × price).
+    live = accountValueClpToUnitAt(accountId, live, today, unit, { categorySlug: categorySlug || null });
   }
   if (live == null || !Number.isFinite(live)) {
     if (row?.closing_value != null && Number.isFinite(row.closing_value)) live = row.closing_value;
@@ -544,8 +541,9 @@ function monthEndCloseForPerformance(
       ex != null && Number.isFinite(ex) ? ex : lastStoredBookClpOnOrBefore(asOf, bookAsc);
   }
   if (rawClp == null) return null;
-  const converted = convertTs(rawClp, asOf, unit);
-  return Number.isFinite(converted) ? converted : null;
+  // The account's value in the unit, converted once from what it holds at its side.
+  const converted = accountValueClpToUnitAt(accountId, rawClp, asOf, unit);
+  return converted != null && Number.isFinite(converted) ? converted : null;
 }
 
 /**
@@ -608,8 +606,9 @@ function monthEndCloseForMortgagePerformance(
 ): number | null {
   const fromSheet = closeClpByDate?.get(asOf);
   if (fromSheet != null && Number.isFinite(fromSheet)) {
-    const converted = convertTs(fromSheet, asOf, unit);
-    return Number.isFinite(converted) ? converted : null;
+    // The mortgage balance is a debt: converted at the debt side of the spread.
+    const converted = clpToUnitAt(fromSheet, asOf, unit, { side: "debt" });
+    return converted != null && Number.isFinite(converted) ? converted : null;
   }
   return monthEndCloseForPerformance(
     accountId,
