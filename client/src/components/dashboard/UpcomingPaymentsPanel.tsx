@@ -45,10 +45,10 @@ function AmountCell({ item }: { item: UpcomingPaymentItemDto }) {
       </span>
     );
   }
-  // An estimate reads dimmed (no «≈»), its reason on hover.
+  // An estimate reads dimmed and in italics (no «≈»), its reason on hover.
   const hint = item.kind === "mortgage" ? t("dashboard.ccUpcoming.mortgageRangeHint") : item.estimated ? t("dashboard.ccUpcoming.estimatedHint") : undefined;
   return (
-    <span className={item.estimated ? "mono muted" : "mono"} title={hint}>
+    <span className={item.estimated ? `mono muted ${styles.estimate}` : "mono"} title={hint}>
       {formatClp(item.amount_clp)}
       {item.amount_max_clp != null ? ` – ${formatClp(item.amount_max_clp)}` : ""}
     </span>
