@@ -20,6 +20,7 @@
     "dev:client": "npm run dev -w nw-tracker-client",
     "dev:client:host": "npm run dev -w nw-tracker-client -- --host",
     "demo:visits": "npm run demo:visits -w nw-tracker-server",
+    "release:demo": "scripts/release-demo.sh",
     "migrate": "npm run migrate -w nw-tracker-server",
     "import:cfraser-inbox": "npm run import:cfraser-inbox -w nw-tracker-ingest --",
     "repair:cc-metadata": "npm run repair:cc-metadata -w nw-tracker-server",
