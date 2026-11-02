@@ -115,6 +115,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
                       {line.delta ? (
                         <DeltaMetricFlow
                           delta={value}
+                          animated={false}
                           fractionDigits={
                             displayUnit === "usd"
                               ? minAdaptiveUsdFractionDigits(SUMMARY_LINES.filter((l) => l.delta).map((l) => l.value(row)))
