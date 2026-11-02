@@ -331,9 +331,9 @@
         "en": "by",
         "es": "hasta"
       },
-      "overdue": {
-        "en": "overdue",
-        "es": "vencida"
+      "payByDay": {
+        "en": "by the {{day}}",
+        "es": "hasta el {{day}}"
       },
       "overdueHint": {
         "en": "The pay-by date passed with this amount still owed.",
@@ -342,6 +342,10 @@
       "payOnShort": {
         "en": "on",
         "es": "el"
+      },
+      "payOnDay": {
+        "en": "on the {{day}}",
+        "es": "el {{day}}"
       },
       "cuota": {
         "en": "cuota {{n}}",

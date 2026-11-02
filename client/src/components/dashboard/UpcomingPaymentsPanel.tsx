@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
-import { formatYearMonthLabel } from "../../formatDateLabel";
+import { formatDayOfMonthLabel, formatYearMonthLabel } from "../../formatDateLabel";
 import type { CcUpcomingPaymentRowDto, UpcomingPaymentItemDto, UpcomingPaymentsDto } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder } from "../../dashboardLayout";
@@ -12,23 +12,28 @@ import styles from "./DashboardFlowsSummary.module.css";
 /** Pay months shown before «Show more» (the server sends its whole horizon). */
 const COLLAPSED_MONTHS = 2;
 
-/** The due date and how it reads: «by» a deadline or «on» a day; overdue in red. */
+/**
+ * The due date and how it reads: «by» a deadline or «on» a day. The row sits under its month, so
+ * only the day shows; an overdue row (counted in the current month) keeps its full date, in red.
+ */
 function DueCell({ item }: { item: UpcomingPaymentItemDto }) {
   const { t } = useTranslation();
-  const word = item.due_kind === "on" ? t("dashboard.ccUpcoming.payOnShort") : t("dashboard.ccUpcoming.payByShort");
   if (item.overdue) {
+    const word = item.due_kind === "on" ? t("dashboard.ccUpcoming.payOnShort") : t("dashboard.ccUpcoming.payByShort");
     return (
       <span style={{ color: "var(--negative)" }} title={t("dashboard.ccUpcoming.overdueHint")}>
-        {word} <span className="mono">{item.due_iso}</span> · {t("dashboard.ccUpcoming.overdue")}
+        {word} <span className="mono">{item.due_iso}</span>
       </span>
     );
   }
+  const day = formatDayOfMonthLabel(item.due_iso);
   // A card's pay-by that no statement prints yet is derived from its close; the dates read dimmed
   // already, so it says so on hover only.
   const derived = item.card?.pay_by_source === "derived";
+  const hint = derived ? `${item.due_iso} · ${t("accountDetail.creditCard.payByDerivedHint")}` : item.due_iso;
   return (
-    <span className="muted" title={derived ? t("accountDetail.creditCard.payByDerivedHint") : undefined}>
-      {word} <span className="mono">{item.due_iso}</span>
+    <span className="muted" title={hint}>
+      {item.due_kind === "on" ? t("dashboard.ccUpcoming.payOnDay", { day }) : t("dashboard.ccUpcoming.payByDay", { day })}
     </span>
   );
 }
