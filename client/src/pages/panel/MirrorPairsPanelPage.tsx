@@ -109,7 +109,7 @@ function AlternativesCell({
   return (
     <>
       {alts.map(({ alt, side }) => (
-        <div key={`${side}|${alt.leg.movement_id}`} style={{ marginBottom: "0.4em" }}>
+        <div key={`${side}|${alt.leg.movement_id}`}>
           <span className="muted">{t(side === "out" ? "mirrorPairs.altOut" : "mirrorPairs.altIn")}:</span>{" "}
           {alt.leg.occurred_on} <AccountCell leg={alt.leg} />{" "}
           <span className="muted" style={{ fontSize: "0.85em", overflowWrap: "anywhere" }}>

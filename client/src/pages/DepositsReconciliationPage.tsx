@@ -198,7 +198,7 @@ function ManualAssertionsSection({
         )}
       </Table>
       {linkedCount > 0 ? (
-        <p className="muted" style={{ marginTop: "0.35rem", fontSize: "0.85rem" }}>
+        <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
           {t("depositsReconciliation.assertedLinkedSummary", { count: linkedCount })}
         </p>
       ) : null}

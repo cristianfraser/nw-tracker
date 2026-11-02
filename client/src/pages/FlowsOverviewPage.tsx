@@ -196,7 +196,7 @@ export function FlowsOverviewPage() {
         </div>
         <p
           className={loadableClass(loading, "muted")}
-          style={{ marginBottom: timeRange !== "total" ? "0.35rem" : "0.75rem", fontSize: "0.85rem" }}
+          style={{ fontSize: "0.85rem", margin: 0 }}
         >
           {t("flows.overview.totalsLabel")}{" "}
           {COLUMNS.map((c, i) => (
@@ -209,7 +209,7 @@ export function FlowsOverviewPage() {
           ))}
         </p>
         {timeRange !== "total" ? (
-          <p className={loadableClass(loading, "muted")} style={{ marginBottom: "0.75rem", fontSize: "0.8rem" }}>
+          <p className={loadableClass(loading, "muted")} style={{ fontSize: "0.8rem", margin: 0 }}>
             {t("flows.rangeTotalLabel")}:{" "}
             {COLUMNS.map((c, i) => (
               <span key={c.id}>
