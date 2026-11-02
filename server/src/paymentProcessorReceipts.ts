@@ -7,7 +7,7 @@
  * keys on the line's purchase key and the receipt's pesos and payment day; see `matchPaymentReceipts`.
  */
 import { createHash } from "node:crypto";
-import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptStay, ReceiptTrip } from "nw-tracker-contracts";
+import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptEvent, ReceiptStay, ReceiptTrip } from "nw-tracker-contracts";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
@@ -37,6 +37,11 @@ const COLUMNS = [
   "stay_check_in",
   "stay_check_out",
   "stay_city",
+  "event_name",
+  "event_starts_on",
+  "event_starts_at",
+  "event_ends_on",
+  "event_venue",
 ] as const;
 
 type ReceiptRow = Record<(typeof COLUMNS)[number], string | number | null>;
@@ -66,6 +71,11 @@ function receiptRow(r: ProcessorReceipt): ReceiptRow {
     stay_check_in: r.stay?.check_in ?? null,
     stay_check_out: r.stay?.check_out ?? null,
     stay_city: r.stay?.city ?? null,
+    event_name: r.event?.name ?? null,
+    event_starts_on: r.event?.starts_on ?? null,
+    event_starts_at: r.event?.starts_at ?? null,
+    event_ends_on: r.event?.ends_on ?? null,
+    event_venue: r.event?.venue ?? null,
   };
 }
 
@@ -139,10 +149,13 @@ export type PaymentReceiptDto = {
   subscription: boolean;
   /** A lodging receipt's stay (check-in, check-out, city); null for anything else. */
   stay: ReceiptStay | null;
+  /** A ticket receipt's event (name, day, time, venue); null for anything else. */
+  event: ReceiptEvent | null;
 };
 
-export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge" | "trip" | "trip_label" | "subscription" | "stay"> & {
+export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge" | "trip" | "trip_label" | "subscription" | "stay" | "event"> & {
   trip?: ReceiptTrip | null;
+  event?: ReceiptEvent | null;
   subscription?: boolean;
   /** A lodging receipt's stay: a stay the property charges pairs within its window. */
   stay?: ReceiptStay | null;
@@ -201,6 +214,16 @@ export function loadPaymentProcessorReceipts(): StoredPaymentReceipt[] {
       r.stay_check_in == null
         ? null
         : { check_in: String(r.stay_check_in), check_out: String(r.stay_check_out), city: (r.stay_city as string | null) ?? null },
+    event:
+      r.event_name == null
+        ? null
+        : {
+            name: String(r.event_name),
+            starts_on: String(r.event_starts_on),
+            starts_at: (r.event_starts_at as string | null) ?? null,
+            ends_on: (r.event_ends_on as string | null) ?? null,
+            venue: (r.event_venue as string | null) ?? null,
+          },
   }));
 }
 
@@ -248,6 +271,13 @@ const PROCESSOR_MERCHANT_HINT: Record<string, RegExp> = {
   booking: /BOOKING/i,
   airbnb: /AIRBNB/i,
   accor: /ACCOR|IBIS|NOVOTEL|MERCURE|PULLMAN|SOFITEL/i,
+  puntoticket: /PUNTO\s*(?:TICKET|PAGOS)/i,
+  toliv: /TOLIV/i,
+  ticketmaster_cl: /TICKET\s*MASTER/i,
+  ticketmaster_nz: /TICKET\s*MASTER/i,
+  paylogic: /PAYLOGIC|AWAKENINGS/i,
+  aitickets: /AI\s*TICKETS/i,
+  ticketplus: /TICKETP/i,
 };
 
 /**
@@ -258,6 +288,8 @@ const PROCESSOR_MERCHANT_HINT: Record<string, RegExp> = {
  */
 const STATEMENT_NAME_FOR_AMOUNTLESS: Record<string, RegExp> = {
   mercadolibre: /MERCADO\s*LIBRE|\*\s*\d+\s*PRODUCTOS\b/i,
+  // Ticketplus's purchase mail prints the event and not what was paid.
+  ticketplus: /TICKETPLUS|TICKETP\b/i,
 };
 
 /**
@@ -338,25 +370,28 @@ const ORDER_SUMMARY_OF: Record<string, { of: string; daysAfter: number }> = {
 };
 
 /**
- * Senders whose later mail about a reservation restates it whole («Your updated booking at …»):
- * only the latest mail of a reservation is paired, or every update would claim the same charge.
+ * Senders that mail the same order more than once, and which of its mails is paired (the others
+ * would claim the same charge): Booking's «Your updated booking at …» restates the reservation
+ * whole, so the latest; Paylogic mails the confirmation again whenever the tickets change state
+ * (personalized, downloadable), months after the payment, so the first — the one sent when it paid.
  */
-const SUPERSEDED_BY_LATER_MAIL = new Set(["booking"]);
+const ONE_MAIL_PER_ORDER: Record<string, "latest" | "first"> = { booking: "latest", paylogic: "first" };
 
 function withoutSupersededReceipts(receipts: readonly StoredPaymentReceipt[]): StoredPaymentReceipt[] {
-  const latest = new Map<string, StoredPaymentReceipt>();
+  const kept = new Map<string, StoredPaymentReceipt>();
+  const sent = (x: StoredPaymentReceipt) => `${x.sent_at_chile ?? x.paid_at_chile}|${x.message_id}`;
   for (const r of receipts) {
-    if (!SUPERSEDED_BY_LATER_MAIL.has(r.processor) || r.order_ref == null) continue;
+    const rule = ONE_MAIL_PER_ORDER[r.processor];
+    if (!rule || r.order_ref == null) continue;
     const key = `${r.processor}|${r.order_ref}`;
-    const prev = latest.get(key);
-    const sent = (x: StoredPaymentReceipt) => x.sent_at_chile ?? x.paid_at_chile;
-    if (!prev || sent(r) > sent(prev) || (sent(r) === sent(prev) && r.message_id > prev.message_id)) latest.set(key, r);
+    const prev = kept.get(key);
+    if (!prev || (rule === "latest" ? sent(r) > sent(prev) : sent(r) < sent(prev))) kept.set(key, r);
   }
-  return receipts.filter((r) => !SUPERSEDED_BY_LATER_MAIL.has(r.processor) || r.order_ref == null || latest.get(`${r.processor}|${r.order_ref}`) === r);
+  return receipts.filter((r) => !ONE_MAIL_PER_ORDER[r.processor] || r.order_ref == null || kept.get(`${r.processor}|${r.order_ref}`) === r);
 }
 
 /** Lodging sources whose unmatched stays may link by the property's name within the stay. */
-const STAY_NAME_GUESS_SOURCES = new Set(["booking", "airbnb", "accor"]);
+const STAY_NAME_GUESS_SOURCES = new Set(["booking", "airbnb", "accor", "puntoticket", "toliv", "ticketmaster_cl", "ticketmaster_nz", "paylogic", "aitickets", "ticketplus"]);
 
 /** Words too common in lodging names to tell two properties apart. */
 const LODGING_NAME_STOPWORDS = new Set([
@@ -658,10 +693,17 @@ const PROCESSOR_NAMES: Record<string, string> = {
   airbnb: "Airbnb",
   accor: "Accor",
   stripe: "Stripe",
+  puntoticket: "PuntoTicket",
+  toliv: "Toliv",
+  ticketmaster_cl: "Ticketmaster",
+  ticketmaster_nz: "Ticketmaster",
+  paylogic: "Paylogic",
+  aitickets: "AI Tickets",
+  ticketplus: "Ticketplus",
 };
 
 /** Sources that are the shop's own order confirmation rather than a processor's receipt. */
-const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre", "amazon", "amazon_order", "uber", "uber_trip_summary", "uber_eats", "uber_eats_summary", "uber_one", "latam", "latam_change", "despegar", "booking", "airbnb", "accor"]);
+const ORDER_CONFIRMATION_SOURCES = new Set(["shopify", "calvin_klein", "adidas", "club_domino", "eventbrite", "micoca_cola", "dynavap", "mercadolibre", "amazon", "amazon_order", "uber", "uber_trip_summary", "uber_eats", "uber_eats_summary", "uber_one", "latam", "latam_change", "despegar", "booking", "airbnb", "accor", "puntoticket", "toliv", "ticketmaster_cl", "ticketmaster_nz", "paylogic", "aitickets", "ticketplus"]);
 
 function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: number } | null = null): PaymentReceiptDto {
   const name = PROCESSOR_NAMES[r.processor];
@@ -684,6 +726,7 @@ function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: num
     trip_label: r.trip ? `${shortAddress(r.trip.from)} → ${shortAddress(r.trip.to)}` : null,
     subscription: r.subscription ?? false,
     stay: r.stay ?? null,
+    event: r.event ?? null,
   };
 }
 
@@ -744,6 +787,7 @@ export function withPaymentReceipts<L extends ReceiptCandidateLine & { account_i
       trip_label: null,
       subscription: link.subscription,
       stay: null,
+      event: null,
     });
   }
   const named = lines.map((l) => {

@@ -1,11 +1,20 @@
 import type { PaymentReceipt } from "../../types/flows";
 
-/** The full receipt, one fact per line (processor, ride, concept, RUT, e-mail, order, when, basis). */
+/** An event's day(s) and time as ISO: «2026-09-12 18:00», «2025-07-11 → 2025-07-13». */
+function eventWhen(e: NonNullable<PaymentReceipt["event"]>): string {
+  const start = e.starts_at ? `${e.starts_on} ${e.starts_at}` : e.starts_on;
+  return e.ends_on && e.ends_on !== e.starts_on ? `${start} → ${e.ends_on}` : start;
+}
+
+/** The full receipt, one fact per line (processor, ride, event, concept, RUT, e-mail, order, when, basis). */
 export function paymentReceiptDetailLines(r: PaymentReceipt): string[] {
   return [
-    `${r.payee} (${r.processor_name})`,
+    r.payee === r.processor_name ? r.payee : `${r.payee} (${r.processor_name})`,
     r.trip ? `${r.trip.started_at_chile ?? ""} ${r.trip.from}`.trim() : null,
     r.trip ? `${r.trip.ended_at_chile ?? ""} ${r.trip.to}`.trim() : null,
+    r.event?.name ?? null,
+    r.event ? eventWhen(r.event) : null,
+    r.event?.venue ?? null,
     r.concept ? `«${r.concept}»` : null,
     r.payee_rut ? `RUT ${r.payee_rut}` : null,
     r.payee_email,

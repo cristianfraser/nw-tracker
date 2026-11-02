@@ -19,7 +19,8 @@
  *   - a receipt: the payee, never the processor («Streat Burger (Isidora)», not «… (Uber Eats)»);
  *     the catalog first; « - X» and a known brand followed by a branch read «Brand (X)»; legal
  *     suffixes off; MercadoLibre sellers title-cased, the first one + «+N»; a URL its host; an
- *     e-mail or a processor placeholder nothing; a stay its city (+ nights)
+ *     e-mail or a processor placeholder nothing; a stay its city (+ nights); a ticket its event
+ *     (+ its day), or what was bought when it names no event (a parking add-on)
  *   - an App Store app: the name before its tagline («Grindr - Gay Dating & Chat» → «Grindr»)
  *   - a transfer: the catalog by RUT, else the name the RUT is known by (one written in lower or
  *     mixed case — a contact the user named — over the bank's capitals, then the most frequent),
@@ -55,6 +56,8 @@ export type ExpenseLinkLabel = {
   text: string;
   /** A stay's nights (lodging receipts); the client words it. */
   nights: number | null;
+  /** A ticket's event day (ISO), when the label is the event. */
+  event_on?: string;
   /** Show it on the row beside the merchant (false when the merchant already says it). */
   inline: boolean;
 };
@@ -120,6 +123,9 @@ export function brandsFromPayees(payees: Iterable<string>): string[] {
 
 const LODGING_PROCESSORS = new Set(["booking", "airbnb", "stripe", "accor"]);
 
+/** Ticket vendors: the merchant stays the vendor, the link is the event. */
+const TICKET_PROCESSORS = new Set(["puntoticket", "toliv", "ticketmaster_cl", "ticketmaster_nz", "paylogic", "aitickets", "ticketplus"]);
+
 function nightsBetween(checkIn: string, checkOut: string): number | null {
   const a = Date.parse(`${checkIn}T00:00:00Z`);
   const b = Date.parse(`${checkOut}T00:00:00Z`);
@@ -129,13 +135,16 @@ function nightsBetween(checkIn: string, checkOut: string): number | null {
 
 /** The short label of a receipt's payee; null when it names nobody. */
 export function receiptLabel(
-  r: Pick<PaymentReceiptDto, "processor" | "payee" | "stay">,
+  r: Pick<PaymentReceiptDto, "processor" | "payee" | "stay"> & Partial<Pick<PaymentReceiptDto, "event" | "concept">>,
   catalog: VendorCatalog,
   brands: readonly string[]
-): { text: string; nights: number | null } | null {
+): { text: string; nights: number | null; event_on?: string } | null {
   if (LODGING_PROCESSORS.has(r.processor) && r.stay?.city) {
     return { text: r.stay.city, nights: nightsBetween(r.stay.check_in, r.stay.check_out) };
   }
+  if (r.event) return { text: r.event.name, nights: null, event_on: r.event.starts_on };
+  // A ticket vendor's receipt for something that is no event (parking bought apart): what it was.
+  if (TICKET_PROCESSORS.has(r.processor) && r.concept) return { text: r.concept, nights: null };
   if (r.processor === "app_store") return { text: appStoreLabel(r.payee, catalog), nights: null };
   const payee = repairMojibake(r.payee).trim();
   if (!payee || isEmailAddress(payee) || isPlaceholderPayee(payee)) return null;
@@ -348,9 +357,15 @@ export function expenseLineDisplayNames(
   if (r) {
     const label = receiptLabel(r, ctx.catalog, ctx.brands);
     if (label) {
-      out.link_label = { arrow: r.guess ? "≈" : "→", text: label.text, nights: label.nights, inline: !contains(shown, label.text) };
-      // A stay's label is its city: no rule per city.
-      if (label.nights == null && !LODGING_PROCESSORS.has(r.processor)) {
+      out.link_label = {
+        arrow: r.guess ? "≈" : "→",
+        text: label.text,
+        nights: label.nights,
+        ...(label.event_on ? { event_on: label.event_on } : {}),
+        inline: !contains(shown, label.text),
+      };
+      // A stay's label is its city, a ticket's its event: no rule per city or per event.
+      if (label.nights == null && !LODGING_PROCESSORS.has(r.processor) && !TICKET_PROCESSORS.has(r.processor)) {
         const app = r.processor === "app_store";
         const key = linkKeyForName(label.text);
         if (key) {

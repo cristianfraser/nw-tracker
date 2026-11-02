@@ -44,6 +44,23 @@ export const receiptStaySchema = z
 
 export type ReceiptStay = z.infer<typeof receiptStaySchema>;
 
+/** The event a ticket receipt is for (PuntoTicket, Toliv, Ticketmaster, Paylogic…): what, when, where. */
+export const receiptEventSchema = z
+  .object({
+    name: text,
+    starts_on: isoDay,
+    /** `HH:MM` on the event's own clock, when printed. */
+    starts_at: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+    /** The last day of an event of several days (a festival); null for one of one day. */
+    ends_on: isoDay.nullable(),
+    /** The venue or its address, as printed. */
+    venue: text.nullable(),
+  })
+  .strict()
+  .refine((e) => e.ends_on == null || e.ends_on >= e.starts_on, { message: "the event ends before it starts" });
+
+export type ReceiptEvent = z.infer<typeof receiptEventSchema>;
+
 export const processorReceiptSchema = z
   .object({
     /** The mail's Message-ID: the receipt's identity. */
@@ -93,6 +110,8 @@ export const processorReceiptSchema = z
      * platform's own) may land at booking or at check-in, so it pairs within the stay's window.
      */
     stay: receiptStaySchema.nullable().optional(),
+    /** The event, for a ticket receipt. */
+    event: receiptEventSchema.nullable().optional(),
     /** The document states the payment is a subscription's (Uber One's monthly charge). */
     subscription: z.boolean().optional(),
   })

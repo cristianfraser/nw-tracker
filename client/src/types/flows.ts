@@ -273,6 +273,14 @@ export interface PaymentReceipt {
   subscription: boolean;
   /** A lodging receipt's stay; null for anything else. */
   stay: { check_in: string; check_out: string; city: string | null } | null;
+  /** A ticket receipt's event; null for anything else. */
+  event: {
+    name: string;
+    starts_on: string;
+    starts_at: string | null;
+    ends_on: string | null;
+    venue: string | null;
+  } | null;
 }
 
 /** Server `ExpenseLinkLabel` (`expenseDisplayNames.ts`): the short label of what a line is linked to. */
@@ -281,6 +289,8 @@ export interface ExpenseLinkLabel {
   text: string;
   /** A stay's nights; the client words it. */
   nights: number | null;
+  /** A ticket's event day (ISO), when the label is the event. */
+  event_on?: string;
   /** Show it on the row beside the merchant (false when the merchant already says it). */
   inline: boolean;
 }
