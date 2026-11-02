@@ -319,10 +319,6 @@
         "en": "Upcoming payments",
         "es": "Próximos pagos"
       },
-      "viewLiabilities": {
-        "en": "View liabilities →",
-        "es": "Ver Pasivos →"
-      },
       "billedOf": {
         "en": "of {{amount}}",
         "es": "de {{amount}}"
@@ -560,10 +556,6 @@
       "last12Months": {
         "en": "Last 12 months",
         "es": "Últimos 12 meses"
-      },
-      "openFlows": {
-        "en": "See flows",
-        "es": "Ver flujos"
       }
     },
     "allocation": {
@@ -638,10 +630,6 @@
       "title": {
         "en": "Latest expenses",
         "es": "Últimos gastos"
-      },
-      "viewAll": {
-        "en": "All expenses →",
-        "es": "Todos los gastos →"
       },
       "installments": {
         "en": "{{count}} installments",

@@ -45,7 +45,7 @@ describe("dayInMonth", () => {
 });
 
 describe("mortgageUpcomingItems", () => {
-  const base = { name: "Hipotecario", nextCuota: 33, nextScheduleYmd: "2026-11-11", minUf: 20, maxUf: 30, bestPay: null };
+  const base = { name: "Hipotecario", route_path: "/account/9", nextCuota: 33, nextScheduleYmd: "2026-11-11", minUf: 20, maxUf: 30, bestPay: null };
 
   it("lists every cuota from the next one to the horizon, on the 11th, min and max at the UF", () => {
     const items = mortgageUpcomingItems(base, TODAY, "2027-01", flatUf);
@@ -69,7 +69,7 @@ describe("mortgageUpcomingItems", () => {
 });
 
 describe("hoaUpcomingItems", () => {
-  const place = { id: 3, label: "Suecia" };
+  const place = { id: 3, label: "Suecia", route_path: "/flows/expenses/real_estate/suecia" };
   const statements = [
     { bill_month: "2026-09", due_on: "2026-10-20", amount: 90_000, settled: true },
     { bill_month: "2026-10", due_on: "2026-11-20", amount: 95_000, settled: false },
@@ -96,7 +96,7 @@ describe("hoaUpcomingItems", () => {
 });
 
 describe("contribucionesUpcomingItems", () => {
-  const place = { id: 3, label: "Suecia" };
+  const place = { id: 3, label: "Suecia", route_path: "/flows/expenses/real_estate/suecia" };
   const lastYear = [
     { spent_on: "2025-04-30", amount: 90_000 },
     { spent_on: "2025-06-30", amount: 90_000 },
@@ -177,6 +177,7 @@ describe("groupUpcomingByMonth", () => {
     bill_month: null,
     card: null,
     wip: false,
+    route_path: null,
   });
 
   it("groups by due month, overdue in the current month first, drops what is past the horizon", () => {

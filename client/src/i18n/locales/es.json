@@ -106,7 +106,6 @@
   "dashboard": {
     "ccUpcoming": {
       "title": "Próximos pagos",
-      "viewLiabilities": "Ver Pasivos →",
       "billedOf": "de {{amount}}",
       "partlyPaidHint": "Lo que queda tras los pagos y abonos desde el cierre. La facturación fue de {{amount}}.",
       "payByShort": "hasta",
@@ -173,8 +172,7 @@
     "flows": {
       "title": "Flujos",
       "lastMonth": "Último mes",
-      "last12Months": "Últimos 12 meses",
-      "openFlows": "Ver flujos"
+      "last12Months": "Últimos 12 meses"
     },
     "allocation": {
       "title": "Asignación (últimas valorizaciones)"
@@ -198,7 +196,6 @@
     "wealthFlowsTitle": "Flujos de patrimonio",
     "latestExpenses": {
       "title": "Últimos gastos",
-      "viewAll": "Todos los gastos →",
       "installments": "{{count}} cuotas",
       "refund": "Reembolso",
       "empty": "Aún no hay gastos."

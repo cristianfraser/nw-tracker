@@ -95,12 +95,9 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
 
   return (
     <PageGridTile id="flows-periods" order={dashboardTileOrder("flows-periods")}>
-      <div className="chart-panel-title-row">
-        <h2>{t("dashboard.flows.title")}</h2>
-        <Link to="/flows" className={styles.link}>
-          {t("dashboard.flows.openFlows")}
-        </Link>
-      </div>
+      <h2>
+        <Link to="/flows">{t("dashboard.flows.title")}</Link>
+      </h2>
       <div className={loadableClass(loading, "cards", styles.periods)}>
         {periods.map(({ labelKey, row }) => (
           <div key={labelKey} className={`card ${styles.period}`}>
