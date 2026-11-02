@@ -1,0 +1,86 @@
+/* The gap list sizes its rows by its own width: a row of six fields (two of them inputs) stops
+   fitting at ~40rem, below which each row takes three lines (and its error a fourth). */
+.list {
+  container-type: inline-size;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(4.5rem, auto) 7rem 7rem minmax(0, 1fr) auto;
+  grid-template-areas:
+    "date  mid   buy   sell  source save"
+    "error error error error error  error";
+  align-items: center;
+  column-gap: 0.75rem;
+  row-gap: 0.25rem;
+  padding: 0.55rem 0;
+}
+
+.row + .row {
+  border-top: 1px solid var(--border);
+}
+
+/* The header is a row of column labels; its bottom hairline separates it from the first row. */
+.header {
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@container (max-width: 40rem) {
+  .row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "date   mid"
+      "buy    sell"
+      "source save"
+      "error  error";
+  }
+}
+
+.date {
+  grid-area: date;
+}
+
+.mid {
+  grid-area: mid;
+  justify-self: end;
+  text-align: right;
+}
+
+.buy {
+  grid-area: buy;
+  text-align: right;
+}
+
+.sell {
+  grid-area: sell;
+  text-align: right;
+}
+
+.source {
+  grid-area: source;
+  min-width: 0;
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.sourceRates {
+  display: block;
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+}
+
+.save {
+  grid-area: save;
+  justify-self: end;
+}
+
+.error {
+  grid-area: error;
+  justify-self: end;
+  font-size: 0.8rem;
+}

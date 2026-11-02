@@ -7,7 +7,8 @@ import { useTranslation } from "../../i18n";
 import { queryKeys } from "../../queries/keys";
 import type { FxBidAskGapRow } from "../../types";
 import { loadableClass } from "../ui/Loadable";
-import { Table } from "../ui/Table";
+import { cn } from "../../cn";
+import styles from "./FxBidAskGapsTable.module.css";
 import { Button, Input } from "@crfrsr/ui";
 
 type RowDraft = {
@@ -123,92 +124,82 @@ export function FxBidAskGapsTable() {
   return (
     <PageGridTile id="fx-gaps" className={loadableClass(loading, "rates-bid-ask-gaps")}>
       <h2>{t("rates.fx.gapsTitle")}</h2>
-      <Table
-        header={
-          <thead>
-            <tr>
-              <th>{t("rates.recentColDate")}</th>
-              <th className="mono" style={{ textAlign: "right" }}>
-                {t("rates.fx.gapsColMid")}
-              </th>
-              <th className="mono" style={{ textAlign: "right" }}>
-                {t("rates.fx.buy")}
-              </th>
-              <th className="mono" style={{ textAlign: "right" }}>
-                {t("rates.fx.sell")}
-              </th>
-              <th>{t("rates.fx.gapsColSource")}</th>
-              <th />
-            </tr>
-          </thead>
-        }
-      >
-        {gaps.map((gap) => {
-          const draft = drafts[gap.date] ?? emptyDraft();
-          return (
-            <tr key={gap.date}>
-              <td className="mono">{gap.date}</td>
-              <td className="mono" style={{ textAlign: "right" }}>
-                {gap.mid_clp_per_usd != null ? formatClp(gap.mid_clp_per_usd) : "—"}
-              </td>
-              <td style={{ textAlign: "right" }}>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={draft.buy}
-                  placeholder={
-                    gap.suggested_buy != null
-                      ? formatNumberInput(Math.round(gap.suggested_buy * 100) / 100)
-                      : ""
-                  }
-                  onChange={(e) =>
-                    setDrafts((prev) => ({
-                      ...prev,
-                      [gap.date]: { ...draft, buy: e.target.value, error: null },
-                    }))
-                  }
-                />
-              </td>
-              <td style={{ textAlign: "right" }}>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={draft.sell}
-                  placeholder={
-                    gap.suggested_sell != null
-                      ? formatNumberInput(Math.round(gap.suggested_sell * 100) / 100)
-                      : ""
-                  }
-                  onChange={(e) =>
-                    setDrafts((prev) => ({
-                      ...prev,
-                      [gap.date]: { ...draft, sell: e.target.value, error: null },
-                    }))
-                  }
-                />
-              </td>
-              <td className="muted" style={{ fontSize: "0.85rem" }}>
-                {gap.source ?? "—"}
-                {gap.buy_clp_per_usd != null && gap.sell_clp_per_usd != null ? (
-                  <div className="mono muted" style={{ fontSize: "0.8rem", marginTop: "0.15rem" }}>
-                    {formatClp(gap.buy_clp_per_usd)} / {formatClp(gap.sell_clp_per_usd)}
-                  </div>
-                ) : null}
-              </td>
-              <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                <Button disabled={draft.saving} onClick={() => void saveRow(gap)}>
-                  {draft.saving ? t("common.saving") : t("common.save")}
-                </Button>
+      <div className={styles.list}>
+        <div className={cn(styles.row, styles.header)}>
+          <span className={styles.date}>{t("rates.recentColDate")}</span>
+          <span className={cn("mono", styles.mid)}>{t("rates.fx.gapsColMid")}</span>
+          <span className={cn("mono", styles.buy)}>{t("rates.fx.buy")}</span>
+          <span className={cn("mono", styles.sell)}>{t("rates.fx.sell")}</span>
+          <span className={styles.source}>{t("rates.fx.gapsColSource")}</span>
+        </div>
+        <div role="list">
+          {gaps.map((gap) => {
+            const draft = drafts[gap.date] ?? emptyDraft();
+            return (
+              <div key={gap.date} role="listitem" className={styles.row}>
+                <span className={cn("mono", styles.date)}>{gap.date}</span>
+                <span className={cn("mono", styles.mid)}>
+                  {gap.mid_clp_per_usd != null ? formatClp(gap.mid_clp_per_usd) : "—"}
+                </span>
+                <span className={styles.buy}>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    aria-label={t("rates.fx.buy")}
+                    value={draft.buy}
+                    placeholder={
+                      gap.suggested_buy != null
+                        ? formatNumberInput(Math.round(gap.suggested_buy * 100) / 100)
+                        : ""
+                    }
+                    onChange={(e) =>
+                      setDrafts((prev) => ({
+                        ...prev,
+                        [gap.date]: { ...draft, buy: e.target.value, error: null },
+                      }))
+                    }
+                  />
+                </span>
+                <span className={styles.sell}>
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    aria-label={t("rates.fx.sell")}
+                    value={draft.sell}
+                    placeholder={
+                      gap.suggested_sell != null
+                        ? formatNumberInput(Math.round(gap.suggested_sell * 100) / 100)
+                        : ""
+                    }
+                    onChange={(e) =>
+                      setDrafts((prev) => ({
+                        ...prev,
+                        [gap.date]: { ...draft, sell: e.target.value, error: null },
+                      }))
+                    }
+                  />
+                </span>
+                <span className={cn("muted", styles.source)}>
+                  {gap.source ?? "—"}
+                  {gap.buy_clp_per_usd != null && gap.sell_clp_per_usd != null ? (
+                    <span className={cn("mono muted", styles.sourceRates)}>
+                      {formatClp(gap.buy_clp_per_usd)} / {formatClp(gap.sell_clp_per_usd)}
+                    </span>
+                  ) : null}
+                </span>
+                <span className={styles.save}>
+                  <Button disabled={draft.saving} onClick={() => void saveRow(gap)}>
+                    {draft.saving ? t("common.saving") : t("common.save")}
+                  </Button>
+                </span>
                 {draft.error ? (
-                  <div className="error" style={{ fontSize: "0.8rem", marginTop: "0.25rem" }}>
-                    {draft.error}
-                  </div>
+                  <span className={cn("error", styles.error)}>{draft.error}</span>
                 ) : null}
-              </td>
-            </tr>
-          );
-        })}
-      </Table>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </PageGridTile>
   );
 }

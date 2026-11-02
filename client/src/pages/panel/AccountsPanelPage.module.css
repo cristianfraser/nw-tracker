@@ -1,0 +1,114 @@
+/* Both panel lists size their rows by their own width and reflow onto more lines when the wide
+   row stops fitting, so they never scroll sideways. */
+.list {
+  container-type: inline-size;
+}
+
+.row {
+  display: grid;
+  align-items: center;
+  column-gap: 0.75rem;
+  row-gap: 0.25rem;
+  padding: 0.55rem 0;
+}
+
+.row + .row {
+  border-top: 1px solid var(--border);
+}
+
+/* The header is a row of column labels in the same areas; its bottom hairline separates it. */
+.header {
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.id {
+  grid-area: id;
+  align-self: start;
+}
+
+.actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Accounts: the wide row (id · name · bucket · exclude · color + edit + delete) needs ~36rem —
+   the actions alone take ~14rem; below that, each field takes its own line beside the id. */
+.accountRow {
+  grid-template-columns: 2.5rem minmax(0, 1.2fr) minmax(0, 1fr) auto auto;
+  grid-template-areas: "id name bucket exclude actions";
+}
+
+.name {
+  grid-area: name;
+  overflow-wrap: anywhere;
+}
+
+.bucket {
+  grid-area: bucket;
+  overflow-wrap: anywhere;
+}
+
+.exclude {
+  grid-area: exclude;
+}
+
+@container (max-width: 36rem) {
+  .accountRow {
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+    grid-template-areas:
+      "id name"
+      "id bucket"
+      "id exclude"
+      "id actions";
+  }
+}
+
+/* Portfolio groups: the wide row (id · indented label · slug · kind · count · color) needs ~48rem
+   for the deep labels and long slugs; below that, slug and kind/count/color move under the label. */
+.groupRow {
+  grid-template-columns: 2.5rem minmax(0, 1.4fr) minmax(0, 1fr) auto 4rem auto;
+  grid-template-areas: "id label slug kind count actions";
+}
+
+.label {
+  grid-area: label;
+  overflow-wrap: anywhere;
+}
+
+.slug {
+  grid-area: slug;
+  overflow-wrap: anywhere;
+}
+
+.kind {
+  grid-area: kind;
+}
+
+.count {
+  grid-area: count;
+  text-align: right;
+}
+
+/* One step of tree depth before a sub-group's label. */
+.indent {
+  display: inline-block;
+  width: 1rem;
+}
+
+@container (max-width: 48rem) {
+  .groupRow {
+    grid-template-columns: 2.5rem minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "id label label label"
+      "id slug  slug  slug"
+      "id kind  count actions";
+  }
+}

@@ -15,6 +15,8 @@ import {
 import { CreditCardExpenseLinesTable } from "./CreditCardExpenseLinesTable";
 import { Button } from "@crfrsr/ui";
 import { loadableClass } from "../ui/Loadable";
+import { cn } from "../../cn";
+import styles from "./BigExpenseGroupsSection.module.css";
 
 function BigGroupBlock({
   slug,
@@ -67,22 +69,15 @@ function BigGroupBlock({
   };
 
   return (
-    <section style={{ marginBottom: "1.25rem" }}>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: "0.5rem 1rem",
-          marginBottom: open ? "0.5rem" : 0,
-        }}
-      >
+    <section className={styles.block}>
+      <div className={cn(styles.bar, open && styles.barOpen)}>
         <Button variant="ghost"
+          className={styles.toggle}
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
         >
           {open ? "▾" : "▸"} {label}
-          <span className="mono muted" style={{ fontSize: "0.85rem", marginLeft: "0.5rem" }}>
+          <span className={cn("mono muted", styles.totals)}>
             {formatClp(totalClp)} · {t("expenses.creditCard.bigGroups.purchaseCount", { count: purchaseCount })}
           </span>
         </Button>
@@ -100,7 +95,7 @@ function BigGroupBlock({
         >
           {t("expenses.creditCard.bigGroups.deleteAction")}
         </Button>
-        <label className="radio-pill" style={{ cursor: "pointer" }}>
+        <label className={cn("radio-pill", styles.filter)}>
           <input type="checkbox" checked={excludedFromChart} onChange={onToggleExcluded} />
           {t("expenses.creditCard.bigGroups.chartFilterLabel")}
         </label>
