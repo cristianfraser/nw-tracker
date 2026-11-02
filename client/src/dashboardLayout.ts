@@ -9,8 +9,9 @@
  * `Responsive` props are `GRID` below, verbatim. Rows are measured, never fixed: an auto-height
  * table stretches its rows, so `h` is a nominal value for the library step, not a constraint.
  *
- * Tier `l` (≥1440): the main column is 8 wide (x 0), the rail 4 wide (x 8); the wide tables, then the
- * export row and the accounts tree, span 12 below both. Tiers `s` and `m` are one stack in `y` order.
+ * Tier `l` (≥1440): a top band of the main column (8 wide, x 0) beside the rail (4 wide, x 8),
+ * then the other charts in two equal columns (6 wide), then the wide tables, the export row and
+ * the accounts tree across all 12. Tiers `s` and `m` are one stack in `y` order.
  */
 export type DashboardTileId =
   | "title"
@@ -90,22 +91,26 @@ const NOMINAL_HEIGHTS: Partial<Record<DashboardTileId, number>> = {
 const S = stack(READING_ORDER, 12, NOMINAL_HEIGHTS);
 const M = stack(READING_ORDER, 4, NOMINAL_HEIGHTS);
 
-/** Big desktop: main column (x 0, w 8), rail (x 8, w 4), wide tables below (w 12). */
+/**
+ * Big desktop: a top band of the main column (x 0, w 8: cards, net-worth chart) beside the rail
+ * (x 8, w 4); below it the other charts in two equal columns (w 6), an odd last one across both;
+ * then the wide tables (w 12).
+ */
 const L: Record<DashboardTileId, TileRect> = {
   title: { x: 0, y: 0, w: 12, h: 1 },
   strip: { x: 0, y: 1, w: 8, h: 8 },
-  "net-worth-chart": { x: 0, y: 9, w: 8, h: 10 },
-  "flows-chart": { x: 0, y: 19, w: 8, h: 10 },
-  "perf-combo": { x: 0, y: 29, w: 8, h: 10 },
-  allocation: { x: 0, y: 39, w: 8, h: 10 },
+  "net-worth-chart": { x: 0, y: 9, w: 8, h: 21 },
   "flows-periods": { x: 8, y: 1, w: 4, h: 9 },
   "cc-upcoming": { x: 8, y: 10, w: 4, h: 6 },
   "latest-expenses": { x: 8, y: 16, w: 4, h: 14 },
-  returns: { x: 0, y: 49, w: 12, h: 6 },
-  detail: { x: 0, y: 55, w: 12, h: 12 },
-  "wealth-flows": { x: 0, y: 67, w: 12, h: 12 },
-  export: { x: 0, y: 79, w: 12, h: 1 },
-  accounts: { x: 0, y: 80, w: 12, h: 10 },
+  "flows-chart": { x: 0, y: 30, w: 6, h: 10 },
+  "perf-combo": { x: 6, y: 30, w: 6, h: 10 },
+  allocation: { x: 0, y: 40, w: 12, h: 10 },
+  returns: { x: 0, y: 50, w: 12, h: 6 },
+  detail: { x: 0, y: 56, w: 12, h: 12 },
+  "wealth-flows": { x: 0, y: 68, w: 12, h: 12 },
+  export: { x: 0, y: 80, w: 12, h: 1 },
+  accounts: { x: 0, y: 81, w: 12, h: 10 },
 };
 
 export const DASHBOARD_LAYOUT: Record<DashboardTileId, TileLayout> = Object.fromEntries(
@@ -114,7 +119,7 @@ export const DASHBOARD_LAYOUT: Record<DashboardTileId, TileLayout> = Object.from
 
 /** The tiles of the big-desktop rail, in their `y` order. */
 export const RAIL_TILES: readonly DashboardTileId[] = READING_ORDER.filter(
-  (id) => L[id].x > 0
+  (id) => L[id].x === 8
 ).sort((a, b) => L[a].y - L[b].y);
 
 /** Render order on the one-stack tiers equals the layout's `y` order (asserted by a unit test). */

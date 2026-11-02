@@ -278,6 +278,11 @@ broken; re-express later).
 
 ## E. Bento readiness
 
+**2026-11-02, the user's call: adaptive, not movable.** No react-grid-layout and no dragging. On
+the big desktop the rail sits beside the cards and the main chart only; below that band the other
+charts sit in two equal columns (`.page-pairs`, w 6 each, an odd last one across both), then the
+wide tables. The rectangles below stay as the layout table, without the library step.
+
 `client/src/dashboardLayout.ts`: `type TileRect = {x,y,w,h}`, `type TileLayout = {l: TileRect;
 s: TileRect; m: TileRect}`, `DASHBOARD_LAYOUT: Record<TileId, TileLayout>`, plus `GRID = { cols:
 {l: 12, s: 12, m: 4}, breakpoints: {l: 1440, s: 880, m: 0}, rowHeight: 24, margin: {l:

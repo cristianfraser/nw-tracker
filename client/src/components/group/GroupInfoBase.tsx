@@ -93,6 +93,11 @@ export type GroupInfoBaseProps = {
    * the export row and the accounts tree, stay below both stacks.
    */
   rail?: ReactNode;
+  /**
+   * Below the main column and the rail (big desktop): tiles in two equal columns, an odd last one
+   * across both (styles/page-grid.css `.page-pairs`); in the one stack below it.
+   */
+  pairs?: ReactNode;
   /** A tile's place in the one-stack reading order (dashboardLayout.ts); DOM order when absent. */
   tileOrder?: (id: "returns" | "detail" | "wealth-flows" | "export" | "accounts") => number;
 };
@@ -114,6 +119,7 @@ export function GroupInfoBase({
   flowsExcludeSpending = false,
   afterFlows,
   rail,
+  pairs,
   tileOrder,
 }: GroupInfoBaseProps) {
   const { t } = useTranslation();
@@ -268,11 +274,13 @@ export function GroupInfoBase({
               {charts}
             </div>
             <div className="page-rail">{rail}</div>
+            {pairs ? <div className="page-pairs">{pairs}</div> : null}
           </>
         ) : (
           <>
             {strip}
             {charts}
+            {pairs}
           </>
         )}
         {tablesEnabled ? (
