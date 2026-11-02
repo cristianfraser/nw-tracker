@@ -99,7 +99,10 @@ async function readPayslipTable(page: Page): Promise<PayslipRow[]> {
   }
   return raw.map((r) => {
     if (r.pdf.length !== 1) throw new Error(`Buk: row ${r.month} has ${r.pdf.length} PDF links`);
-    return { period: periodFromBukMonth(r.month), pdfUrl: r.pdf[0]! };
+    // The browser session's cookies ride on every request: only ever send them to Buk itself.
+    const pdfUrl = r.pdf[0]!;
+    if (new URL(pdfUrl).origin !== BASE_URL) throw new Error(`Buk: row ${r.month} PDF link is not on ${BASE_URL}: ${pdfUrl}`);
+    return { period: periodFromBukMonth(r.month), pdfUrl };
   });
 }
 
