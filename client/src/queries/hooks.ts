@@ -8,7 +8,6 @@ import {
   fetchDashboardNavContext,
   fetchDashboardNavSnapshot,
   fetchPortfolioGroupBundle,
-  type DashboardNavContext,
 } from "./fetchers";
 import {
   hasDashboardNavSnapshotCache,
@@ -156,7 +155,6 @@ export function useDashboardNavSnapshot(unit: DisplayUnit, enabled = true) {
 /** What a nav strip renders while the page holds the previous unit: cards in THAT unit. */
 export type HeldNavStrip = {
   dash: ReturnType<typeof dashPickForNavStrip>;
-  overviewPoints: DashboardNavContext["overviewPoints"];
   showUsd: boolean;
 };
 
@@ -173,7 +171,7 @@ export function useHeldNavStrip(unit: DisplayUnit, holding: boolean): HeldNavStr
   return useMemo(() => {
     if (!holding) return null;
     if (navCtx) {
-      return { dash: dashPickForNavStrip(navCtx), overviewPoints: navCtx.overviewPoints, showUsd: other === "usd" };
+      return { dash: dashPickForNavStrip(navCtx), showUsd: other === "usd" };
     }
     if (!navSnapshot) return null;
     return {
@@ -183,9 +181,7 @@ export function useHeldNavStrip(unit: DisplayUnit, holding: boolean): HeldNavStr
         dashboard_layout: navSnapshot.dashboard_layout,
         nw_bucket_totals: navSnapshot.nw_bucket_totals,
         card_metrics_by_slug: navSnapshot.card_metrics_by_slug,
-        overviewPoints: [],
       }),
-      overviewPoints: [],
       showUsd: other === "usd",
     };
   }, [holding, navCtx, navSnapshot, other]);

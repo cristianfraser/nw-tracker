@@ -50,7 +50,6 @@ export type DashboardNavContext = {
   card_metrics_by_slug: DashboardResponse["card_metrics_by_slug"];
   value_map?: DashboardResponse["value_map"];
   value_map_color_bounds?: DashboardResponse["value_map_color_bounds"];
-  overviewPoints: Record<string, string | number | null>[];
 };
 
 export async function fetchDashboardNavSnapshot(
@@ -69,7 +68,6 @@ export async function fetchDashboardNavContext(unit: DisplayUnit): Promise<Dashb
     card_metrics_by_slug: nav.card_metrics_by_slug,
     value_map: nav.value_map,
     value_map_color_bounds: nav.value_map_color_bounds,
-    overviewPoints: nav.overview?.points ?? [],
   };
 }
 

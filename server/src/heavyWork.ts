@@ -8,7 +8,6 @@ export const HeavyWork = {
   dashboardAccountRows: "dashboard.account_rows",
   dashboardPayload: "dashboard.payload",
   dashboardValuationTimeseries: "dashboard.valuation_timeseries",
-  dashboardOverviewBlock: "dashboard.overview_block",
   dashboardPrimaryPortfolioGroups: "dashboard.primary_portfolio_groups",
   groupValuationTimeseries: "group.valuation_timeseries",
   accountMonthlyPerformance: "account.monthly_performance",

@@ -119,7 +119,6 @@ export function buildPlaceholderAccountDetailBundle(
     depositInflows: emptyDepositInflows(accountId),
     mortgageLedger: emptyMortgageLedger(accountId),
     ccLedger: emptyCcLedger(accountId),
-    invNavAccounts: { accounts: [] },
     checkingCartolaMonths: null,
     monthly_performance: {
       account_id: accountId,

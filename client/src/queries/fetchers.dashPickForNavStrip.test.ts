@@ -63,7 +63,6 @@ describe("dashPickForNavStrip bucket totals", () => {
       card_metrics_by_slug: {},
       // Rows that don't add up to the server totals: the totals must not be re-summed.
       accounts: [dashRow({ account_id: 1, name: "Brk", group_slug: "brokerage", current_value_clp: 1 })],
-      overviewPoints: [],
       nw_bucket_totals: nwBucketTotals,
     });
 
@@ -77,7 +76,6 @@ describe("dashPickForNavStrip bucket totals", () => {
     const dash = dashPickForNavStrip({
       card_metrics_by_slug: {},
       accounts: [brokerageRow, cashRow],
-      overviewPoints: [],
       nw_bucket_totals: {
         ...clpOnlyBucketTotals({
           real_estate_clp: 0,
@@ -102,7 +100,6 @@ describe("dashPickForNavStrip bucket totals", () => {
     const dash = dashPickForNavStrip({
       card_metrics_by_slug: {},
       accounts: [brokerageRow, cashRow],
-      overviewPoints: [],
       nw_bucket_totals: clpOnlyBucketTotals({
         real_estate_clp: 0,
         retirement_clp: 0,

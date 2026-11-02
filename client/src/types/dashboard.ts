@@ -1,6 +1,5 @@
 import type { AccountPositionSnapshot, FxConversionWarning } from "./core";
 import type { CcFacturadoBarSegments } from "./creditCard";
-import type { DepositFlowCategory, FlowDepositRow } from "./flows";
 
 export interface DashboardAccountRow {
   account_id: number;
@@ -258,10 +257,6 @@ export interface DashboardResponse {
     clp: number;
     usd?: number | null;
   }[];
-  deposits_by_category?: Record<
-    DepositFlowCategory,
-    { label: string; rows: FlowDepositRow[]; total_clp: number; total_usd: number | null }
-  >;
   /**
    * Retiro and brokerage net deposits per month, by class (flows chart aggregation); the yearly
    * combos roll them up after their Rango cut.

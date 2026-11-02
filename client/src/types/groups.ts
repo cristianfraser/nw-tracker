@@ -100,8 +100,6 @@ export interface DashboardNavContextResponse {
   card_metrics_by_slug: DashboardResponse["card_metrics_by_slug"];
   value_map?: DashboardResponse["value_map"];
   value_map_color_bounds?: DashboardResponse["value_map_color_bounds"];
-  overview: ValuationTimeseriesResponse["overview"];
-  fx_coverage: FxCoverage | null;
 }
 
 /** `GET /api/dashboard/page-bundle` — home dashboard in one response. */

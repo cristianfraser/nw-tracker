@@ -40,7 +40,6 @@ export type GroupInfoPortfolioStrip = {
     DashboardResponse,
     "accounts" | "totals" | "liabilities_breakdown" | "dashboard_layout" | "card_metrics_by_slug"
   >;
-  overviewPoints: Record<string, string | number | null>[];
   showUsd: boolean;
   animated?: boolean;
   /**

@@ -28,7 +28,6 @@ import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { movementCreateSchemaForAccount } from "./movementUnitsPolicy.js";
 import { getAccountPositionMeta, positionSnapshotFromMeta } from "./accountPosition.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
-import { leafAssetGroupIdsUnder } from "./assetGroupTree.js";
 import { dashboardBucketSlugForAccountId, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import { computePeriodReturns } from "./periodReturns.js";
 import { withShortHorizonCells } from "./periodReturnsShortHorizon.js";
@@ -251,23 +250,6 @@ export async function buildAccountDetailBundle(
     };
   }
 
-  const retirementBucketIds = leafAssetGroupIdsUnder("retirement");
-  const retPh = retirementBucketIds.map(() => "?").join(",");
-  const invNavAccounts =
-    retirementBucketIds.length === 0
-      ? []
-      : db
-          .prepare(
-            `SELECT a.id, a.name, a.notes, a.color_rgb, a.exclude_from_group_totals,
-                    g.slug AS bucket_slug, g.label AS bucket_label
-             FROM accounts a
-             JOIN asset_groups g ON g.id = a.asset_group_id
-             WHERE a.asset_group_id IN (${retPh})
-               AND (a.import_key IS NULL OR a.import_key != ?)
-             ORDER BY g.sort_order, a.name`
-          )
-          .all(...retirementBucketIds, NOTE_STOCKS_LEGACY);
-
   const checkingCartolaMonths = MOVEMENT_CARTOLA_SLUGS.has(category_slug)
     ? getCheckingCartolaMonths(accountId)
     : null;
@@ -319,7 +301,6 @@ export async function buildAccountDetailBundle(
     depositInflows,
     mortgageLedger,
     ccLedger,
-    invNavAccounts: { accounts: invNavAccounts },
     checkingCartolaMonths,
     monthly_performance,
     period_returns,

@@ -26,12 +26,10 @@ import { accountIdsWithAnyStaleSyncSource } from "./accountSyncSources.js";
 import { syncStatusPayload } from "./globalSyncStale.js";
 import { ccFinancingCostClpBetween } from "./ccFinancingCostDaily.js";
 import { flowEventInUnit } from "./flowsDeposits.js";
-import { buildFxCoverageWithConversionWarnings } from "./fxCoverage.js";
-import { timeHeavy, timeHeavyAsync, HeavyWork } from "./heavyWork.js";
+import { timeHeavyAsync, HeavyWork } from "./heavyWork.js";
 import {
   convertTs,
   getDashboardChartShape,
-  getDashboardOverviewBlock,
   liabilitiesBreakdownClpAsOf,
   type TsUnit,
 } from "./valuationTimeseries.js";
@@ -623,23 +621,15 @@ async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
   };
 }
 
-/**
- * Nav strip + overview chart in one response (single HTTP round-trip).
- * Runs account rows and full dashboard valuation TS in parallel on the server.
- */
+/** The nav strip's payload for group, Pasivos and account pages (`GET /api/dashboard/nav-context`). */
 export function buildDashboardNavContext(includeUsd: boolean, unit: TsUnit): ReturnType<typeof buildDashboardNavContextInner> {
   return cachedWithPageBundleLifetime(`nav_context|${includeUsd ? "usd" : "clp"}|${unit}`, () =>
-    withPortfolioGroupIndex(() => buildDashboardNavContextInner(includeUsd, unit))
+    withPortfolioGroupIndex(() => buildDashboardNavContextInner(includeUsd))
   );
 }
 
-async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) {
-  const [nav, ts] = await Promise.all([
-    timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(includeUsd)),
-    Promise.resolve().then(() =>
-      timeHeavy(HeavyWork.dashboardOverviewBlock, () => getDashboardOverviewBlock(unit))
-    ),
-  ]);
+async function buildDashboardNavContextInner(includeUsd: boolean) {
+  const nav = await timeHeavyAsync(HeavyWork.navContext, () => buildDashboardNavSnapshot(includeUsd));
   return {
     accounts: nav.accounts,
     liabilities_breakdown: nav.liabilities_breakdown,
@@ -648,7 +638,5 @@ async function buildDashboardNavContextInner(includeUsd: boolean, unit: TsUnit) 
     card_metrics_by_slug: nav.card_metrics_by_slug,
     value_map: nav.value_map,
     value_map_color_bounds: nav.value_map_color_bounds,
-    overview: ts,
-    fx_coverage: includeUsd ? buildFxCoverageWithConversionWarnings() : null,
   };
 }

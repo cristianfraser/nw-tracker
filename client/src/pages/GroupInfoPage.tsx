@@ -168,7 +168,6 @@ export function GroupInfoPage() {
   // in THEIR unit, and flips to the new values once they land — never a blank strip.
   const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
   const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx);
-  const overviewPoints = heldStrip?.overviewPoints ?? navCtx?.overviewPoints ?? [];
   const stripShowUsd = heldStrip ? heldStrip.showUsd : displayUnit === "usd";
   // The value map replaces the composition chart when this page's node has group children;
   // only the real nav-context payload carries it (a cached snapshot's values are placeholders).
@@ -231,10 +230,9 @@ export function GroupInfoPage() {
         dashboard_layout: navCtx?.dashboard_layout ?? navSnapshot.dashboard_layout,
         nw_bucket_totals: navCtx?.nw_bucket_totals ?? navSnapshot.nw_bucket_totals,
         card_metrics_by_slug: navCtx?.card_metrics_by_slug ?? navSnapshot.card_metrics_by_slug,
-        overviewPoints,
       }
     );
-  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, overviewPoints, placeholderStripDash, heldStrip]);
+  }, [navMatchNode, useRealBundle, navCtx, navSnapshot, placeholderStripDash, heldStrip]);
 
   const resolved = useRealBundle && data ? data : placeholderBundle;
 
@@ -394,7 +392,6 @@ export function GroupInfoPage() {
             navNode: navMatchNode,
             groupSlug: portfolioGroup,
             dash: dashForStrip,
-            overviewPoints,
             showUsd: stripShowUsd,
             animated: true,
             placeholderPhase: stripIsPlaceholder || undefined,
