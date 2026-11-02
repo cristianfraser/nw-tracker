@@ -226,7 +226,7 @@
   min-width: 0;
   white-space: nowrap;
   overflow-x: hidden;
-  padding: 0.3rem 0;
+  padding: .15rem 0;
   text-overflow: ellipsis;
   transform: translate(0, 0.1px);
 }
