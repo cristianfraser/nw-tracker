@@ -243,16 +243,6 @@ tr:hover td {
   font-family: inherit;
 }
 
-.flows-table {
-  table-layout: auto;
-  width: 100%;
-}
-
-.flows-table th.flows-table__account,
-.flows-table td.flows-table__account {
-  width: auto;
-}
-
 /* Work earnings: twelve columns on one row — denser cells, the employer truncated, the linked
    credit's source on its own line — so the table fits the page instead of spilling. */
 .work-earnings-table th,
@@ -260,7 +250,7 @@ tr:hover td {
   padding: 0.5rem 0.45rem;
 }
 
-/* `max-width: 0` takes the name out of the column's minimum width (the flows note column's
+/* `max-width: 0` takes the name out of the column's minimum width (a note column's
    trick), so the table can shrink; the th width is what the column then gets. */
 .work-earnings-table th.work-earnings-table__employer {
   width: 8rem;
@@ -275,37 +265,6 @@ tr:hover td {
 
 .work-earnings-table .work-earnings-table__link-source {
   display: block;
-}
-
-/* Note column absorbs all leftover space; td truncates with ellipsis */
-.flows-table th.flows-table__note {
-  width: 99%;
-}
-
-.flows-table__forward-posted {
-  font-size: 0.85em;
-  white-space: nowrap;
-}
-
-.flows-table td.flows-table__note {
-  max-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.table--parallel-mobile .table-mobile-card__note {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.table--parallel-mobile .table-mobile-card__note-text {
-  margin: 0;
-  font-size: var(--font-size-table);
-  color: var(--muted);
-  word-break: break-word;
-  white-space: pre-wrap;
 }
 
 .table--parallel-mobile .table-mobile-card__section ul {

@@ -1,0 +1,152 @@
+/* The flows list (FlowRows.tsx).
+
+   One line: the list is the grid and every row (the header too) a subgrid of it, so each field
+   lines up down the list — date, type, accounts, amount, note. Every column but the note is as
+   wide as its widest value; the note takes the rest and cuts with an ellipsis. Wider than the
+   list (the note under its minimum) = the rows wrap. */
+.list {
+  display: grid;
+  grid-template-columns: max-content max-content max-content max-content minmax(8rem, 1fr);
+  column-gap: 1.25rem;
+  font-size: var(--font-size-prose);
+  container-type: inline-size;
+}
+
+.header,
+.row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: baseline;
+}
+
+.header {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-weight: 500;
+  font-size: var(--font-size-card-label);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.headerAmount {
+  text-align: right;
+}
+
+.row {
+  padding: 0.55rem 0;
+}
+
+.row + .row {
+  border-top: 1px solid var(--hairline);
+}
+
+.empty {
+  grid-column: 1 / -1;
+  padding: 0.55rem 0;
+}
+
+.date {
+  color: var(--muted);
+  font-size: var(--font-size-prose-sm);
+  white-space: nowrap;
+}
+
+.type,
+.accounts {
+  white-space: nowrap;
+}
+
+.arrow {
+  margin: 0 0.4em;
+  color: var(--muted);
+}
+
+/* On an account's own page the arrow leads the cell. */
+.arrow:first-child {
+  margin-left: 0;
+}
+
+.amount {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.units {
+  margin-left: 0.3em;
+  font-size: 0.7em;
+  opacity: 0.65;
+  line-height: 0;
+}
+
+.note {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-prose-sm);
+}
+
+/* Wrapped: three lines — the date and the type with the amount on the right; the accounts; the
+   note, which wraps in full. No header: the rows read without it. */
+.wrapped {
+  display: block;
+}
+
+.wrapped .header {
+  display: none;
+}
+
+.wrapped .row {
+  grid-template-columns: max-content minmax(0, 1fr) auto;
+  grid-template-areas:
+    "date     type     amount"
+    "accounts accounts accounts"
+    "note     note     note";
+  column-gap: 0.75rem;
+  row-gap: 0.2rem;
+}
+
+.wrapped .date {
+  grid-area: date;
+}
+
+.wrapped .type {
+  grid-area: type;
+}
+
+.wrapped .accounts {
+  grid-area: accounts;
+  white-space: normal;
+}
+
+.wrapped .amount {
+  grid-area: amount;
+}
+
+.wrapped .note {
+  grid-area: note;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.wrapped .note:empty {
+  display: none;
+}
+
+/* A phone: the amount beside the date (a conversion may break before its second leg), the type
+   on the note's line. */
+@container (max-width: 30rem) {
+  .wrapped .row {
+    grid-template-areas:
+      "date     amount   amount"
+      "accounts accounts accounts"
+      "type     note     note";
+  }
+
+  .wrapped .amount {
+    white-space: normal;
+  }
+}

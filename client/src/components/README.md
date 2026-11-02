@@ -36,7 +36,7 @@ Shared sections for brokerage, liabilities, and group info routes.
 
 Tables and import UI used on account detail pages.
 
-- **FlowsTable**, **AccountFlowsSection**, **AccountImportPanel**, **AccountImportSection**, **MonthlyPerfDetailTable**
+- **FlowsTable** (filters + pagination around **FlowRows**, the flows list), **AccountFlowsSection**, **AccountImportPanel**, **AccountImportSection**, **MonthlyPerfDetailTable**
 
 ## `credit-card/` — credit card expenses UI
 

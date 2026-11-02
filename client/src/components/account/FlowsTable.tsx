@@ -5,24 +5,19 @@ import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { FlowsApiRow, FlowsFilterOptions } from "../../types";
 import { formatClp, formatInstrumentUnits, formatUsdFine } from "../../format";
 import { PaginatedTable } from "../ui/PaginatedTable";
-import { Table } from "../ui/Table";
-import {
-  TableMobileCard,
-  TableMobileCardRow,
-  TableMobileCardSection,
-} from "../ui/TableMobileCard";
+import { FlowRows, type FlowRowItem } from "./FlowRows";
 import styles from "./FlowsTable.module.css";
 
 function formatFlowUnits(
   row: FlowsApiRow,
   movementUnitsKind?: (slug: string) => "shares" | "coin"
-): string {
+): string | null {
   if (
     row.units_delta == null ||
     !Number.isFinite(row.units_delta) ||
     Math.abs(row.units_delta) <= 1e-12
   ) {
-    return "—";
+    return null;
   }
   return formatInstrumentUnits(
     row.units_delta,
@@ -30,10 +25,6 @@ function formatFlowUnits(
   );
 }
 
-
-function showCounterpartColumn(rows: readonly FlowsApiRow[]): boolean {
-  return rows.some((r) => r.counterpart_account_name != null && r.counterpart_account_name.trim() !== "");
-}
 
 function formatMovementLeg(amount: number, currency: string): string {
   if (currency === "usd") return formatUsdFine(amount);
@@ -49,101 +40,6 @@ function formatMovementAmount(row: FlowsApiRow): string {
     return `${primary} → ${formatMovementLeg(row.counter_amount, row.counter_currency)}`;
   }
   return primary;
-}
-
-function flowsColumnCount(
-  showAccountColumn: boolean,
-  showUnitsColumn: boolean,
-  showCounterpartCol: boolean
-): number {
-  return (
-    4 +
-    (showAccountColumn ? 1 : 0) +
-    (showUnitsColumn ? 1 : 0) +
-    (showCounterpartCol ? 1 : 0) +
-    1
-  );
-}
-
-/**
- * The movement's bank date, badged when that date is still ahead: the bank posts an
- * after-cutoff transfer on the next workday, and the server already counts such a row in
- * today's balance (`forward_posted`). Shared by the desktop cell and the mobile card so the
- * two renderings cannot drift.
- */
-function FlowDateCell({ row }: { row: { occurred_on: string; forward_posted: boolean } }) {
-  const { t } = useTranslation();
-  if (!row.forward_posted) return <>{row.occurred_on}</>;
-  return (
-    <>
-      {row.occurred_on}
-      <span
-        className="muted flows-table__forward-posted"
-        title={t("accountDetail.movements.forwardPostedTitle")}
-      >
-        {" · "}
-        {t("accountDetail.movements.forwardPostedBadge")}
-      </span>
-    </>
-  );
-}
-
-function FlowsMobileCard({
-  row,
-  labels,
-  showAccountColumn,
-  showUnitsColumn,
-  movementUnitsKind,
-}: {
-  row: FlowsApiRow;
-  labels: {
-    account: string;
-    type: string;
-    date: string;
-    amount: string;
-    units: string;
-    note: string;
-  };
-  showAccountColumn: boolean;
-  showUnitsColumn: boolean;
-  movementUnitsKind?: (slug: string) => "shares" | "coin";
-}) {
-  const note = row.note?.trim() ? row.note : null;
-
-  return (
-    <TableMobileCard title={row.flow_type_label}>
-      <TableMobileCardSection>
-        <TableMobileCardRow label={labels.date} value={<FlowDateCell row={row} />} />
-        {showAccountColumn ? (
-          <TableMobileCardRow
-            label={labels.account}
-            value={row.account_name ?? "—"}
-            truncateValue
-            valueTitle={row.account_name ?? undefined}
-          />
-        ) : null}
-      </TableMobileCardSection>
-
-      <TableMobileCardSection>
-        <TableMobileCardRow label={labels.amount} value={formatMovementAmount(row)} />
-        {showUnitsColumn ? (
-          <TableMobileCardRow
-            label={labels.units}
-            value={formatFlowUnits(row, movementUnitsKind)}
-          />
-        ) : null}
-      </TableMobileCardSection>
-
-      {note ? (
-        <TableMobileCardSection>
-          <div className="table-mobile-card__note">
-            <span className="table-mobile-card__label">{labels.note}</span>
-            <p className="table-mobile-card__note-text">{note}</p>
-          </div>
-        </TableMobileCardSection>
-      ) : null}
-    </TableMobileCard>
-  );
 }
 
 export type FlowsFilterState = {
@@ -216,24 +112,6 @@ export function FlowsTable({
   amountFilterError?: string | null;
 }) {
   const { t } = useTranslation();
-  const showCounterpartCol = showCounterpartColumn(rows);
-
-  const mobileLabels = {
-    account: t("groupPage.flowsAccountColumn"),
-    type: t("accountDetail.flowTypeColumn"),
-    date: t("accountDetail.flowDateColumn"),
-    amount: t("accountDetail.flowAmountColumn"),
-    units: t("accountDetail.flowUnitsColumn"),
-    note: t("accountDetail.flowNoteColumn"),
-    counterpart: t("accountDetail.movements.counterpartAccount"),
-  };
-
-  const colSpan = flowsColumnCount(
-    showAccountColumn,
-    showUnitsColumn,
-    showCounterpartCol
-  );
-
   const hasActiveFilter = filterState
     ? filterState.year || filterState.type || filterState.account_id || filterState.bucket ||
       filterState.q || filterState.personal_only || filterState.date_from || filterState.date_to ||
@@ -384,28 +262,21 @@ export function FlowsTable({
       </div>
     ) : null;
 
-  const header = (
-    <thead>
-      <tr>
-        {showAccountColumn ? (
-          <th className="desktop-only flows-table__account">
-            {t("groupPage.flowsAccountColumn")}
-          </th>
-        ) : null}
-        <th className="desktop-only">{t("accountDetail.flowTypeColumn")}</th>
-        <th className="desktop-only">{t("accountDetail.flowDateColumn")}</th>
-        <th className="desktop-only">{t("accountDetail.flowAmountColumn")}</th>
-        {showUnitsColumn ? (
-          <th className="desktop-only">{t("accountDetail.flowUnitsColumn")}</th>
-        ) : null}
-        {showCounterpartCol ? (
-          <th className="desktop-only">{t("accountDetail.movements.counterpartAccount")}</th>
-        ) : null}
-        <th className="desktop-only flows-table__note">{t("accountDetail.flowNoteColumn")}</th>
-        <th className="mobile-only" aria-hidden="true" />
-      </tr>
-    </thead>
-  );
+  const items: FlowRowItem[] = rows.map((row) => ({
+    key: row.key,
+    date: row.occurred_on,
+    type: row.flow_type_label,
+    account: showAccountColumn ? row.account_name : null,
+    counterpart: row.counterpart_account_name?.trim() ? row.counterpart_account_name : null,
+    direction: row.transfer_direction,
+    amount: formatMovementAmount(row),
+    units: showUnitsColumn ? formatFlowUnits(row, movementUnitsKind) : null,
+    note: row.note?.trim() ? row.note : null,
+  }));
+
+  const emptyText = hasActiveFilter
+    ? (filteredEmptyMessage ?? t("accountDetail.flowsFilteredEmpty"))
+    : (emptyMessage ?? t("accountDetail.flowsEmpty"));
 
   return (
     <PaginatedTable
@@ -416,65 +287,15 @@ export function FlowsTable({
       filters={filterBar}
       loading={loading}
     >
-      <Table
-        key={`flows-table-page-${page}`}
-        header={header}
-        tableClassName="table--parallel-mobile flows-table"
-        tableStyle={{ whiteSpace: "nowrap" }}
-      >
-        {rows.length === 0 && loading ? null : rows.length === 0 ? (
-          <tr>
-            <td colSpan={colSpan} className="muted">
-              {hasActiveFilter
-                ? (filteredEmptyMessage ?? t("accountDetail.flowsFilteredEmpty"))
-                : (emptyMessage ?? t("accountDetail.flowsEmpty"))}
-            </td>
-          </tr>
-        ) : (
-          rows.map((row) => (
-            <tr key={row.key}>
-              {showAccountColumn ? (
-                <td
-                  className="desktop-only flows-table__account"
-                  title={row.account_name ?? undefined}
-                >
-                  {row.account_name ?? "—"}
-                </td>
-              ) : null}
-              <td className="desktop-only">{row.flow_type_label}</td>
-              <td className="desktop-only">
-                <FlowDateCell row={row} />
-              </td>
-              <td className="mono desktop-only">{formatMovementAmount(row)}</td>
-              {showUnitsColumn ? (
-                <td className="mono desktop-only">
-                  {formatFlowUnits(row, movementUnitsKind)}
-                </td>
-              ) : null}
-              {showCounterpartCol ? (
-                <td className="desktop-only">
-                  {row.counterpart_account_name
-                    ? `${row.transfer_direction === "out" ? "→" : row.transfer_direction === "in" ? "←" : ""} ${row.counterpart_account_name}`.trim()
-                    : "—"}
-                </td>
-              ) : null}
-              <td
-                className="muted desktop-only flows-table__note"
-                title={row.note ?? undefined}
-              >{row.note ?? "—"}</td>
-              <td className="mobile-only">
-                <FlowsMobileCard
-                  row={row}
-                  labels={mobileLabels}
-                  showAccountColumn={showAccountColumn}
-                  showUnitsColumn={showUnitsColumn}
-                  movementUnitsKind={movementUnitsKind}
-                />
-              </td>
-            </tr>
-          ))
-        )}
-      </Table>
+      <FlowRows
+        rows={items}
+        accountsLabel={
+          showAccountColumn
+            ? t("accountDetail.flowAccountsColumn")
+            : t("accountDetail.movements.counterpartAccount")
+        }
+        emptyMessage={loading ? null : emptyText}
+      />
     </PaginatedTable>
   );
 }
