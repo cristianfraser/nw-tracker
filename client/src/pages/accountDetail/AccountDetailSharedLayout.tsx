@@ -4,6 +4,7 @@ import { CardValueDayPl, DashboardCardGroupMetrics } from "../../components/dash
 import { PortfolioEntityCardsStrip } from "../../components/dashboard/PortfolioEntityCardsStrip";
 import { PortfolioNavChildDetailCards } from "../../components/dashboard/PortfolioNavChildDetailCards";
 import { PageTitleRow } from "../../components/layout/PageTitleRow";
+import { PageGridTile } from "../../components/layout/PageGridTile";
 import { loadableClass } from "../../components/ui/Loadable";
 import type { cardMetricsByPeriodForAccountRow } from "../../dashboardCardBreakdown";
 import type { dashPickForNavStrip } from "../../queries/fetchers";
@@ -63,41 +64,47 @@ export function AccountDetailSharedLayout({
       </>
     ) : null;
 
+  // The page sits on the column grid (styles/page-grid.css): <main> and the content shell are
+  // page grids, every section below is a tile with its heading inside, and the row gap is the
+  // only space between them.
   return (
-    <main>
+    <main className="page-grid">
       <PageTitleRow title={title} />
-      <div className={loadableClass(loading, styles.contentShell)}>
-        <PortfolioEntityCardsStrip
-          compactSlot={
-            <CompactEntityCard
-              showUsd={stripUnit === "usd"}
-              clp={stripUnit === "usd" ? 0 : heroClp}
-              apiUsd={stripUnit === "usd" ? heroApiUsd : null}
-              animated
-              valueVariant="main"
-              valueDelta={
-                <CardValueDayPl
-                  metricsByPeriod={accountMetricsAgg}
-                  showUsd={stripUnit === "usd"}
-                  animated
-                />
-              }
-              metrics={
-                <DashboardCardGroupMetrics
-                  metricsByPeriod={accountMetricsAgg}
-                  showUsd={stripUnit === "usd"}
-                  animated
-                />
-              }
-            />
-          }
-          detailSlots={detailSlots}
-        />
+      <div className={loadableClass(loading, styles.contentShell, "page-grid")}>
+        {/* The strip is a grid of its own (its card blocks are subgrids), so the tile passes the columns through. */}
+        <PageGridTile id="strip" className="page-grid">
+          <PortfolioEntityCardsStrip
+            compactSlot={
+              <CompactEntityCard
+                showUsd={stripUnit === "usd"}
+                clp={stripUnit === "usd" ? 0 : heroClp}
+                apiUsd={stripUnit === "usd" ? heroApiUsd : null}
+                animated
+                valueVariant="main"
+                valueDelta={
+                  <CardValueDayPl
+                    metricsByPeriod={accountMetricsAgg}
+                    showUsd={stripUnit === "usd"}
+                    animated
+                  />
+                }
+                metrics={
+                  <DashboardCardGroupMetrics
+                    metricsByPeriod={accountMetricsAgg}
+                    showUsd={stripUnit === "usd"}
+                    animated
+                  />
+                }
+              />
+            }
+            detailSlots={detailSlots}
+          />
+        </PageGridTile>
         {children}
         {toolbar ? (
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "1.25rem" }}>
+          <PageGridTile id="export" className="page-tile--end">
             {toolbar}
-          </div>
+          </PageGridTile>
         ) : null}
       </div>
     </main>

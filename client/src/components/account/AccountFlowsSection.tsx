@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "../../i18n";
 import { FlowsPanel } from "./FlowsPanel";
+import { PageGridTile } from "../layout/PageGridTile";
 
 export function AccountFlowsSection({
   addMovementsForm,
@@ -15,10 +16,10 @@ export function AccountFlowsSection({
   const { t } = useTranslation();
 
   return (
-    <>
+    <PageGridTile id="flows">
       <h2>{t("accountDetail.flowsTitle")}</h2>
       {addMovementsForm}
       <FlowsPanel kind="account" accountId={accountId} movementUnitsKind={movementUnitsKind} showPersonalOnlyFilter />
-    </>
+    </PageGridTile>
   );
 }

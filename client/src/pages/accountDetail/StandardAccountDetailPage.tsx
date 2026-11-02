@@ -14,9 +14,9 @@ import { PeriodReturnsWithBenchmark } from "../../components/perf/PeriodReturnsT
 import { CheckingCartolaMonthTable } from "./CheckingCartolaMonthTable";
 import { CheckingLedgerAnchorForm } from "../../components/account/CheckingLedgerAnchorForm";
 import { Table } from "../../components/ui/Table";
-import { Loadable } from "../../components/ui/Loadable";
+import { Loadable, loadableClass } from "../../components/ui/Loadable";
+import { PageGridTile } from "../../components/layout/PageGridTile";
 import { formatClp, formatGroupedDecimal, formatInstrumentUnits, formatPct } from "../../format";
-import { cn } from "../../cn";
 import { AccountBrokerageMovementsForm } from "../../components/account/AccountBrokerageMovementsForm";
 import { AccountUsdCashMovementsForm } from "../../components/account/AccountUsdCashMovementsForm";
 import { AccountClpCashMovementsForm } from "../../components/account/AccountClpCashMovementsForm";
@@ -45,7 +45,6 @@ import {
   movementUnitsKind,
   tickerLabelFromCategory,
 } from "./shared";
-import styles from "../AccountDetailPage.module.css";
 
 type Props = {
   data: AccountDetailPageData;
@@ -205,19 +204,21 @@ export function StandardAccountDetailPage({ data }: Props) {
       <AccountImportSection accountId={summary.account_id} displayUnit={displayUnit} />
 
       {isDeptoAccount ? (
-        <DeptoAccountSummaryCards
-          variant={isMortgageAccount ? "mortgage" : "property"}
-          ledger={mortgageLedger}
-          summary={summary}
-          monthlyPerfRows={monthlyPerfRows}
-          accountDashRow={data.accountDashRow}
-          loading={loading}
-        />
+        <PageGridTile id="depto-summary">
+          <DeptoAccountSummaryCards
+            variant={isMortgageAccount ? "mortgage" : "property"}
+            ledger={mortgageLedger}
+            summary={summary}
+            monthlyPerfRows={monthlyPerfRows}
+            accountDashRow={data.accountDashRow}
+            loading={loading}
+          />
+        </PageGridTile>
       ) : null}
 
       {showPositionBlock ? (
-        <Loadable loading={loading} className={styles.positionBlock}>
-          <h2 className={styles.sectionTitleCompact}>{t("accountDetail.position.title")}</h2>
+        <PageGridTile id="position" className={loadableClass(loading)} aria-busy={loading || undefined}>
+          <h2>{t("accountDetail.position.title")}</h2>
           <Table
             header={
               <thead>
@@ -293,9 +294,7 @@ export function StandardAccountDetailPage({ data }: Props) {
           </Table>
           {brokerHoldings.length >= 2 ? (
             <>
-              <h3 className={cn(styles.sectionTitleCompact, styles.marginTopBase)}>
-                {t("accountDetail.brokerHoldings.title")}
-              </h3>
+              <h3>{t("accountDetail.brokerHoldings.title")}</h3>
               <p className="muted">{t("accountDetail.brokerHoldings.hint")}</p>
               <Table
                 header={
@@ -322,12 +321,12 @@ export function StandardAccountDetailPage({ data }: Props) {
               </Table>
             </>
           ) : null}
-        </Loadable>
+        </PageGridTile>
       ) : null}
 
       {isUsdCashAccount ? (
-        <Loadable loading={loading} className={styles.positionBlock}>
-          <h2 className={styles.sectionTitleCompact}>{t("accountDetail.usdCash.positionTitle")}</h2>
+        <PageGridTile id="usd-cash" className={loadableClass(loading)} aria-busy={loading || undefined}>
+          <h2>{t("accountDetail.usdCash.positionTitle")}</h2>
           <Table
             header={
               <thead>
@@ -355,10 +354,10 @@ export function StandardAccountDetailPage({ data }: Props) {
               </td>
             </tr>
           </Table>
-        </Loadable>
+        </PageGridTile>
       ) : null}
 
-      <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
+      <PageGridTile id="valuation" className="chart-grid chart-grid--full-line">
         <LineChartPanel
           title={t("charts.valuationAndDeposits")}
           block={dailyValuationBlock ?? valuationBlockForChart ?? ts.accounts}
@@ -371,11 +370,11 @@ export function StandardAccountDetailPage({ data }: Props) {
           trimLeadingInactive={!isMovementCartolaAccount}
           loading={valuationLoading}
         />
-      </div>
+      </PageGridTile>
 
       {isMovementCartolaAccount ? (
-        <>
-          <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.monthlyDetailTitle")}</h2>
+        <PageGridTile id="cartola-months">
+          <h2>{t("accountDetail.monthlyDetailTitle")}</h2>
           {/* An edit form whose copy reads «no cartola» on empty anchors: hidden until they are known. */}
           {loading && checkingCartolaMonths == null ? null : (
             <CheckingLedgerAnchorForm
@@ -392,30 +391,33 @@ export function StandardAccountDetailPage({ data }: Props) {
             collapsedVisibleRows={MONTHLY_PERF_COLLAPSED}
             loading={loading}
           />
-        </>
+        </PageGridTile>
       ) : null}
 
       {showMonthlyPerformance ? (
         <>
-          <h2 className={styles.sectionTitleSpaced}>{t("accountDetail.monthlyPerfComputedTitle")}</h2>
-          {/* undefined = still loading (the table frames itself unless the card row's bucket rules it out); null = the server states none. */}
-          {showPeriodReturns ? (
+          <PageGridTile id="returns">
+            <h2>{t("accountDetail.monthlyPerfComputedTitle")}</h2>
+            {/* undefined = still loading (the table frames itself unless the card row's bucket rules it out); null = the server states none. */}
+            {showPeriodReturns ? (
+              <>
+                <h3>{t("periodReturns.title")}</h3>
+                <PeriodReturnsWithBenchmark
+                  data={periodReturns ?? null}
+                  displayUnit={displayUnit}
+                  scope={{ accountId: summary.account_id }}
+                  surfaceId={`account.${summary.account_id}.returns`}
+                  loading={loading}
+                />
+              </>
+            ) : null}
+            {monthlyPerfRows.length === 0 && !loading ? (
+              <p className="muted">{t("accountDetail.monthlyPerfNotEnough")}</p>
+            ) : null}
+          </PageGridTile>
+          {monthlyPerfRows.length === 0 && !loading ? null : (
             <>
-              <h3 className={styles.subsectionTitleTight}>{t("periodReturns.title")}</h3>
-              <PeriodReturnsWithBenchmark
-                data={periodReturns ?? null}
-                displayUnit={displayUnit}
-                scope={{ accountId: summary.account_id }}
-                surfaceId={`account.${summary.account_id}.returns`}
-                loading={loading}
-              />
-            </>
-          ) : null}
-          {monthlyPerfRows.length === 0 && !loading ? (
-            <p className="muted">{t("accountDetail.monthlyPerfNotEnough")}</p>
-          ) : (
-            <>
-              <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlock)}>
+              <PageGridTile id="perf-combo" className="chart-grid chart-grid--full-line">
                 <MonthlyPerformanceComboChart
                   title={t("accountDetail.plMonthlyVsYtdTitle")}
                   titleAs="h3"
@@ -441,8 +443,8 @@ export function StandardAccountDetailPage({ data }: Props) {
                   areaStroke={accountChartTheme.areaStroke}
                   loading={perfLoading}
                 />
-              </div>
-              <div className={cn("chart-grid", "chart-grid--full-line", styles.chartBlockLoose)}>
+              </PageGridTile>
+              <PageGridTile id="perf-accum" className="chart-grid chart-grid--full-line">
                 <MonthlyPerformanceComboChart
                   title={t("accountDetail.monthlyDeltaAndAccumTitle")}
                   titleAs="h3"
@@ -469,42 +471,44 @@ export function StandardAccountDetailPage({ data }: Props) {
                   alternateYearAreaStripes={false}
                   loading={perfLoading}
                 />
-              </div>
-              <div className="chart-panel-title-row">
-                <h3 className={styles.subsectionTitleMid} style={{ marginBottom: 0 }}>
-                  {t(
-                    isDaily
-                      ? "accountDetail.dailyDetailTitle"
-                      : detallePrefs.period === "year"
-                        ? "accountDetail.yearlyDetailTitle"
-                        : "accountDetail.monthlyDetailTitle"
-                  )}
-                </h3>
-                <SurfaceControls
-                  period={detallePrefs.period}
-                  onPeriodChange={detallePrefs.setPeriod}
-                />
-              </div>
-              {isDaily ? (
-                <DailyPerfDetailTable
-                  series={detalleDailySeries.data}
-                  displayUnit={displayUnit}
-                  dimClosedDays
-                  loading={detalleDailyLoading}
-                />
-              ) : (
-                <MonthlyPerfDetailTable
-                  key={`${id}-${displayUnit}-mp-detail`}
-                  rows={monthlyPerfRows}
-                  yearlyRows={monthlyPerfYearlyRows}
-                  displayUnit={displayUnit}
-                  period={detallePrefs.period === "year" ? "year" : "month"}
-                  isMortgageAccount={isMortgageAccount}
-                  isAfpAccount={isCuotaLedgerAccount}
-                  movementUnitsKind={movementUnitsKind}
-                  loading={loading}
-                />
-              )}
+              </PageGridTile>
+              <PageGridTile id="detail">
+                <div className="chart-panel-title-row">
+                  <h3>
+                    {t(
+                      isDaily
+                        ? "accountDetail.dailyDetailTitle"
+                        : detallePrefs.period === "year"
+                          ? "accountDetail.yearlyDetailTitle"
+                          : "accountDetail.monthlyDetailTitle"
+                    )}
+                  </h3>
+                  <SurfaceControls
+                    period={detallePrefs.period}
+                    onPeriodChange={detallePrefs.setPeriod}
+                  />
+                </div>
+                {isDaily ? (
+                  <DailyPerfDetailTable
+                    series={detalleDailySeries.data}
+                    displayUnit={displayUnit}
+                    dimClosedDays
+                    loading={detalleDailyLoading}
+                  />
+                ) : (
+                  <MonthlyPerfDetailTable
+                    key={`${id}-${displayUnit}-mp-detail`}
+                    rows={monthlyPerfRows}
+                    yearlyRows={monthlyPerfYearlyRows}
+                    displayUnit={displayUnit}
+                    period={detallePrefs.period === "year" ? "year" : "month"}
+                    isMortgageAccount={isMortgageAccount}
+                    isAfpAccount={isCuotaLedgerAccount}
+                    movementUnitsKind={movementUnitsKind}
+                    loading={loading}
+                  />
+                )}
+              </PageGridTile>
             </>
           )}
         </>
@@ -513,7 +517,8 @@ export function StandardAccountDetailPage({ data }: Props) {
       {/* While the ledger loads a depto account shows its tables' frame (no «sheet empty» copy). */}
       {(mortgageLedger.has_sheet_rows && mortgageLedger.rows.length > 0) ||
       (loading && isDeptoAccount) ? (
-        <Loadable loading={loading}>
+        // A page grid of its own: the form, the sheet, the scenarios and the prepayments are tiles.
+        <Loadable loading={loading} className="page-grid">
           {showMortgagePaymentForm && summary.mortgage_payment_create ? (
             <MortgagePaymentForm
               accountId={summary.account_id}
@@ -536,17 +541,17 @@ export function StandardAccountDetailPage({ data }: Props) {
         </Loadable>
       ) : isDeptoAccount ? (
         !mortgageLedger.has_sheet_rows ? (
-          <p className={cn("muted", styles.marginTopBase)}>
-            {t("account.creditCard.mortgageSheetEmpty")}
-          </p>
+          <PageGridTile id="mortgage-sheet">
+            <p className="muted">{t("account.creditCard.mortgageSheetEmpty")}</p>
+          </PageGridTile>
         ) : null
       ) : null}
 
       {/* The state bonus only exists on APV accounts: while loading they show the table's frame. */}
       {depositInflows.state_contribution_events.length > 0 ||
       (loading && summary.category_slug === "apv") ? (
-        <Loadable loading={loading}>
-          <h2 className={styles.sectionTitle}>{t("accountDetail.stateContribution.title")}</h2>
+        <PageGridTile id="state-contribution" className={loadableClass(loading)} aria-busy={loading || undefined}>
+          <h2>{t("accountDetail.stateContribution.title")}</h2>
           <Table
             header={
               <thead>
@@ -566,7 +571,7 @@ export function StandardAccountDetailPage({ data }: Props) {
               </tr>
             ))}
           </Table>
-        </Loadable>
+        </PageGridTile>
       ) : null}
 
       {showBookLedgerEdit ? (

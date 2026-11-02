@@ -13,7 +13,6 @@ import {
   buildMortgageSummaryCardsData,
   buildPropertySummaryCardsData,
 } from "./deptoAccountSummary";
-import styles from "../AccountDetailPage.module.css";
 
 function formatPlClp(value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "—";
@@ -83,7 +82,7 @@ export function DeptoAccountSummaryCards({
 
   if (variant === "mortgage" && mortgageData) {
     return (
-      <div className={loadableClass(loading, "cards", styles.cardsBelow, styles.positionBlock)}>
+      <div className={loadableClass(loading, "cards")}>
         <div className="card">
           <div className="label">{t("accountDetail.deptoSummary.mortgage.currentBalance")}</div>
           <div className="value">
@@ -113,7 +112,7 @@ export function DeptoAccountSummaryCards({
 
   if (variant === "property" && propertyData) {
     return (
-      <div className={loadableClass(loading, "cards", styles.cardsBelow, styles.positionBlock)}>
+      <div className={loadableClass(loading, "cards")}>
         <div className="card">
           <div className="label">{t("accountDetail.deptoSummary.property.value")}</div>
           <div className="value">

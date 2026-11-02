@@ -6,6 +6,7 @@ import { useBenchmarks, useMortgagePrepaymentComparison } from "../../queries/ho
 import { useSurfaceBenchmark } from "../../surfaceDisplayPrefs";
 import { PaginatedTable, useClientPagination } from "../ui/PaginatedTable";
 import { loadableClass } from "../ui/Loadable";
+import { PageGridTile } from "../layout/PageGridTile";
 import { Table } from "../ui/Table";
 import { TableMobileCard, TableMobileCardRow, TableMobileCardSection } from "../ui/TableMobileCard";
 
@@ -89,9 +90,9 @@ export function MortgagePrepaymentSection({
   const totals = data?.totals;
 
   return (
-    <section className={loadableClass(loading)} style={{ marginTop: "2rem" }}>
-      <div className="chart-panel-title-row" style={{ marginBottom: "0.35rem" }}>
-        <h2 style={{ margin: 0, fontSize: "1.15rem" }}>{t("accountDetail.prepayments.title")}</h2>
+    <PageGridTile id="mortgage-prepayments" className={loadableClass(loading)} aria-busy={loading || undefined}>
+      <div className="chart-panel-title-row">
+        <h2>{t("accountDetail.prepayments.title")}</h2>
         <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", fontSize: "0.85rem" }}>
           <span className="muted">{t("accountDetail.prepayments.compareWith")}</span>
           <select value={selected} onChange={(e) => setBenchmark(e.target.value)}>
@@ -221,6 +222,6 @@ export function MortgagePrepaymentSection({
           ))}
         </Table>
       </PaginatedTable>
-    </section>
+    </PageGridTile>
   );
 }
