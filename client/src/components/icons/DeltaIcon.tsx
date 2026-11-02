@@ -4,7 +4,7 @@ import { iconSvgProps, type IconProps } from "./iconProps";
 export function DeltaIcon(props: IconProps) {
   return (
     <svg {...iconSvgProps(props)}>
-      <path d="M12 4 21 20H3Z" />
+      <path d="M12 4 19.5 20h-15Z" />
     </svg>
   );
 }
