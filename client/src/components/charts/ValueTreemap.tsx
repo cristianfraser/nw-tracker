@@ -119,6 +119,8 @@ function slugSeed(slug: string): number {
 
 /** The map is read by its colours: tiles are hatched about twice as densely as a chart bar. */
 const MAP_FILL_STRENGTH = 1.9;
+/** The hatch stops this far inside each outline, so the outline reads clean over the dark ground. */
+const MAP_FILL_INSET = 1.6;
 
 const LAYOUT_OPTS = { headerHeight: 20, minHeaderWidth: 72, minHeaderHeight: 46, framePadding: 3 };
 /**
@@ -285,15 +287,16 @@ export function ValueTreemap({
                 if (p.node.children != null) {
                   return (
                     <g key={`sf:${dto.slug}`}>
-                      <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={null} stroke={palette.outline} pen={sketchPen} seed={seed} />
+                      {/* The header strip first, so the frame's border is drawn over it. */}
                       {p.header > 0 ? (
-                        <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.header - inset} fill={color} stroke={color} pen={sketchPen} seed={seed + 1} fillStrength={MAP_FILL_STRENGTH} />
+                        <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.header - inset} fill={color} stroke={color} pen={sketchPen} seed={seed + 1} fillStrength={MAP_FILL_STRENGTH} fillInset={MAP_FILL_INSET} />
                       ) : null}
+                      <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={null} stroke={palette.outline} pen={sketchPen} seed={seed} />
                     </g>
                   );
                 }
                 return (
-                  <RoughRect key={`st:${dto.slug}`} x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={color} stroke={palette.outline} pen={sketchPen} seed={seed} fillStrength={MAP_FILL_STRENGTH} />
+                  <RoughRect key={`st:${dto.slug}`} x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={color} stroke={palette.outline} pen={sketchPen} seed={seed} fillStrength={MAP_FILL_STRENGTH} fillInset={MAP_FILL_INSET} />
                 );
               })}
               {(() => {
