@@ -42,11 +42,12 @@
      mobile 2-up below is a media query, not a container query. */
 }
 
-/* A subgrid of a subgrid with its own zero gap: the difference is split across each gutter,
-   so adjacent cards meet on the gutter's centre line. */
+/* Four equal columns of its own across the strip, not a subgrid of the page columns: with no gap
+   the page's gutters were split across the cards, so the outer ones came out narrower and the
+   rows' card edges disagreed. */
 .cards-strip>.cards {
   grid-column: 1 / -1;
-  grid-template-columns: subgrid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 /* The one line between the summary row and the detail rows (full width, under the empty cells). */
@@ -64,12 +65,8 @@
   margin-top: 0;
 }
 
-/* Desktop: 4-up — three of the twelve page columns each in a strip, one column each in the
-   plain grid. */
+/* Desktop: 4-up, one column each. */
 @media (min-width: 880px) {
-  .cards-strip>.cards>.card {
-    grid-column: span 3;
-  }
 
   .cards>.card {
     border-left: 1px solid var(--hairline);
@@ -85,7 +82,8 @@
 
   /* A row the cards do not fill (the summary row's two cards) closes with a line after its last. */
   .cards-strip>.cards>.card:last-child:not(:nth-child(4n)) {
-    border-right: 1px solid var(--hairline);
+    /* Outside the card, on the pixel the next row's card draws its left border on. */
+    box-shadow: 1px 0 0 var(--hairline);
   }
 }
 
@@ -129,7 +127,7 @@
   }
 
   .cards-strip>.cards>.card:last-child:nth-child(2n+1) {
-    border-right: 1px solid var(--hairline);
+    box-shadow: 1px 0 0 var(--hairline);
   }
 }
 
