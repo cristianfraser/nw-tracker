@@ -25,7 +25,7 @@
    * Layout grid (docs/layout-grid-plan.md). The shell is two tracks: the sidebar, a fixed
    * `--sidebar-w`, and the content region, which alone carries the column grid —
    * `--content-cols` columns (12 on both desktop tiers, so a tile's {x, w} never changes between
-   * them; 4 on a phone) with `--gutter` between them and `--margin-inline` on both sides (0 for now). Media
+   * them; 4 on a phone) with `--gutter` between them and `--margin-inline` on both sides. Media
    * queries cannot read these, so the tier lines (880, 1440) are literals below and in every
    * stylesheet that needs them; the values live here.
    */
@@ -38,9 +38,9 @@
   --card-pad-x: 0.35rem;
   /** One UI line: the row unit tiles are measured in (react-grid-layout `rowHeight`). */
   --row-unit: 1.5rem;
-  /** No content padding (raw layout step): the content's text sits on its columns' outer edges.
-      The bottom keeps only the space the fixed prefs dock covers, so the last row stays visible. */
-  --margin-inline: 0px;
+  /** The content's side padding: narrowest on a phone, wider on each desktop tier. The bottom keeps
+      only the space the fixed prefs dock covers, so the last row stays visible. */
+  --margin-inline: 0.75rem;
   --margin-top: 0px;
   --margin-bottom: calc(var(--display-prefs-bar-reserve) + env(safe-area-inset-bottom, 0px));
   --page-max: 100vw;
@@ -93,6 +93,7 @@
 @media (min-width: 880px) {
   :root {
     --content-cols: 12;
+    --margin-inline: 1rem;
     --margin-bottom: var(--display-prefs-stack-height);
   }
 }
@@ -102,6 +103,7 @@
 @media (min-width: 1440px) {
   :root {
     --gutter: 1.5rem;
+    --margin-inline: 1.5rem;
     --page-max: 105rem;
   }
 }
