@@ -1,5 +1,8 @@
 .brand {
   border-bottom: 1px solid var(--border);
+  /* The line reaches back out to the sidebar's edges, past its inset. */
+  margin-inline: calc(-1 * var(--card-pad-x));
+  padding-inline: var(--card-pad-x);
   font-weight: 600;
   font-size: var(--font-size-value-secondary);
   letter-spacing: -0.02em;
