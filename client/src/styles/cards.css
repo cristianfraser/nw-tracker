@@ -311,9 +311,3 @@
 .card .value:first-child {
   padding-top: var(--card-section-pad-y, 0px);
 }
-
-/* The title pill is pulled left so its text lines up with the figures below it. The label clips
-   its overflow, so it is the label's box that moves, not the pill's. */
-.card-title-row.title-container>.title.card-title-row__label:has(.card-title-pill) {
-  margin-left: -0.2rem;
-}
