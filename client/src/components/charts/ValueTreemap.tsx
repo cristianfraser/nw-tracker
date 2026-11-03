@@ -311,6 +311,7 @@ export function ValueTreemap({
                     stroke={palette.accent}
                     pen={sketchPen}
                     seed={slugSeed(String(slug)) + 77}
+                    loose
                   />
                 );
               })()}

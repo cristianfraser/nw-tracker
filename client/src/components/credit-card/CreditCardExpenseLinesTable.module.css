@@ -110,6 +110,11 @@
   transition: opacity 0.15s ease;
 }
 
+/* The icon is a quiet hint of where the line came from: dimmer than the row's text. */
+.originIcon :is(button, svg) {
+  color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
 .select {
   width: 0.95rem;
   height: 0.95rem;

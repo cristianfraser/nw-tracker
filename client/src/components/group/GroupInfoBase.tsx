@@ -267,6 +267,23 @@ export function GroupInfoBase({
     </PageGridTile>
   ) : null;
 
+  // undefined = still loading (frame, dimmed — also before the nav names the group); null = the
+  // server sends none. With a rail (the dashboard) the table sits in the main stack right under
+  // the charts, untitled: the net-worth chart above it names what it measures.
+  const returnsTile =
+    tablesEnabled && shownPeriodReturns !== null ? (
+      <PageGridTile id="returns" order={tileOrder?.("returns")} wide={tileWide?.("returns")}>
+        {rail ? null : <h2>{t("periodReturns.title")}</h2>}
+        <PeriodReturnsWithBenchmark
+          data={shownPeriodReturns ?? null}
+          displayUnit={displayUnit}
+          scope={{ portfolioGroup: portfolio?.groupSlug ?? "" }}
+          surfaceId={`group.${portfolio?.groupSlug || "pending"}.returns`}
+          loading={shownPeriodReturns === undefined || periodReturnsHeld}
+        />
+      </PageGridTile>
+    ) : null;
+
   return (
     <main className={mainClassName}>
       <Loadable loading={loading} className={cn(pageShellStyles.contentShell, "page-grid")}>
@@ -277,6 +294,7 @@ export function GroupInfoBase({
             <div className="page-main">
               {strip}
               {charts}
+              {returnsTile}
             </div>
             <div className="page-rail">{rail}</div>
             {pairs}
@@ -286,23 +304,11 @@ export function GroupInfoBase({
             {strip}
             {charts}
             {pairs}
+            {returnsTile}
           </>
         )}
         {tablesEnabled ? (
           <>
-            {/* undefined = still loading (frame, dimmed — also before the nav names the group); null = the server sends none. */}
-            {shownPeriodReturns !== null ? (
-              <PageGridTile id="returns" order={tileOrder?.("returns")} wide={tileWide?.("returns")}>
-                <h2>{t("periodReturns.title")}</h2>
-                <PeriodReturnsWithBenchmark
-                  data={shownPeriodReturns ?? null}
-                  displayUnit={displayUnit}
-                  scope={{ portfolioGroup: portfolio?.groupSlug ?? "" }}
-                  surfaceId={`group.${portfolio?.groupSlug || "pending"}.returns`}
-                  loading={shownPeriodReturns === undefined || periodReturnsHeld}
-                />
-              </PageGridTile>
-            ) : null}
             <PageGridTile id="detail" order={tileOrder?.("detail")} wide={tileWide?.("detail")}>
             <div className="chart-panel-title-row">
               <h2>

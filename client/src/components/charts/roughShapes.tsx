@@ -584,6 +584,62 @@ function carefulPenOptions(pen: RoughPen, width: number): Options {
   };
 }
 
+/**
+ * A pass along its {@link handPath}: no bow of its own (the path carries the bow) and a small
+ * wobble.
+ */
+function tracingPenOptions(pen: RoughPen, width: number): Options {
+  return {
+    ...passOptions(pen, width),
+    roughness: pen.roughness * 0.45,
+    bowing: 0,
+    maxRandomnessOffset: Math.min(pen.maxOffset * 0.35, 0.9),
+  };
+}
+
+/**
+ * Where a hand means to take each side of a stroke: a bow to one side of up to about 1,2% of its
+ * length × the pen's bow (6 px at most). Decided once per stroke, shared by every pass.
+ */
+function sideBows(stroke: readonly Point[], pen: RoughPen, rnd: () => number): number[] {
+  return stroke.slice(1).map((b, i) => {
+    const a = stroke[i]!;
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    return Math.max(-6, Math.min(6, (rnd() * 2 - 1) * len * 0.012 * pen.bowing));
+  });
+}
+
+/**
+ * One pass's path along a stroke of straight sides: it goes the way the hand meant
+ * ({@link sideBows}) but on its own line — the bow scaled by 0,6–1,2 and nudged by up to
+ * 1,5 px, the whole side shifted up to 1,2 px off, a little wobble, the corners up to 0,8 px
+ * apart — so later passes run near the first, in its direction, without retracing it.
+ */
+function handPath(stroke: readonly Point[], pen: RoughPen, bows: readonly number[], rnd: () => number): Point[] {
+  const jitter = (v: number) => (rnd() * 2 - 1) * v;
+  const corner = (pt: Point): Point => [pt[0] + jitter(0.8), pt[1] + jitter(0.8)];
+  const out: Point[] = [corner(stroke[0]!)];
+  for (let i = 1; i < stroke.length; i++) {
+    const [ax, ay] = stroke[i - 1]!;
+    const [bx, by] = stroke[i]!;
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len < 0.5) continue;
+    const nx = -(by - ay) / len;
+    const ny = (bx - ax) / len;
+    const bow = bows[i - 1]! * (0.6 + rnd() * 0.6) + jitter(1.5);
+    const shift = jitter(1.2);
+    const wobble = Math.min(pen.maxOffset * 0.25, 0.6);
+    const n = Math.max(2, Math.ceil(len / 14));
+    for (let j = 1; j < n; j++) {
+      const t = j / n;
+      const off = bow * 4 * t * (1 - t) + shift * Math.min(1, 4 * t * (1 - t) * 2) + jitter(wobble);
+      out.push([ax + (bx - ax) * t + nx * off, ay + (by - ay) * t + ny * off]);
+    }
+    out.push(corner([bx, by]));
+  }
+  return out;
+}
+
 /** The pass width for a series drawn at `seriesWidth` (its own `strokeWidth`). */
 function passWidth(pass: PenPass, seriesWidth: number): number {
   const scale = Math.min(1.6, Math.max(0.75, seriesWidth / REFERENCE_SERIES_WIDTH));
@@ -1651,10 +1707,16 @@ export function roughAreaShape(seed: number, pen: RoughPen, grainFilterId?: stri
 // ---------------------------------------------------------------------------------------------
 // Bar
 
-type RoughBarProps = BarShapeProps & { seed: number; pen: RoughPen; grainFilterId?: string };
+type RoughBarProps = BarShapeProps & {
+  seed: number;
+  pen: RoughPen;
+  grainFilterId?: string;
+  /** The outline with the pen as it is, not used with care (still in 1–3 strokes): a looser shape. */
+  loose?: boolean;
+};
 
 function RoughBarShapeImpl(props: RoughBarProps) {
-  const { x, y, width, height, fill, stroke, strokeWidth, fillOpacity, index, seed, pen, grainFilterId } = props;
+  const { x, y, width, height, fill, stroke, strokeWidth, fillOpacity, index, seed, pen, grainFilterId, loose } = props;
   // A negative height or width is a bar drawn the other way (stackOffset="sign").
   const rx = width < 0 ? x + width : x;
   const ry = height < 0 ? y + height : y;
@@ -1726,12 +1788,21 @@ function RoughBarShapeImpl(props: RoughBarProps) {
       if (piece.length >= 2) sides.push(piece);
     }
     const pinned = sides.map(() => true);
+    // Loose: the way each side bows is decided once and every pass follows it on a line of its
+    // own ({@link handPath}), so a later pass heads where the first one went instead of bowing
+    // its own way, without retracing it.
+    const bowRnd = prng(subSeed(barSeed, 53));
+    const bows = loose ? sides.map((st) => sideBows(st, pen, bowRnd)) : [];
     const outline: PassPath[] = pen.passes.map((pass, p) => {
       const width = passWidth(pass, sw);
-      return { d: drawStrokes(sides, carefulPenOptions(pen, width), subSeed(barSeed + 1, p), pinned), pass, width, strokes: sides.length };
+      const outlinePen = loose ? tracingPenOptions(pen, width) : carefulPenOptions(pen, width);
+      const passRnd = prng(subSeed(barSeed, 59 + p));
+      const traced = loose ? sides.map((st, i) => handPath(st, pen, bows[i]!, passRnd)) : sides;
+      // A tracing pass's points may wander (up to 0,9 px), so it lies near the path, not on it.
+      return { d: drawStrokes(traced, outlinePen, subSeed(barSeed + 1, p), loose ? undefined : pinned), pass, width, strokes: sides.length };
     });
     return { fills, outline };
-  }, [rx, ry, rw, rh, barSeed, fillColor, sw, pen]);
+  }, [rx, ry, rw, rh, barSeed, fillColor, sw, pen, loose]);
   if (!sketch) return null;
   const c = carried(props as CarriedProps);
   return (
@@ -1767,6 +1838,7 @@ export function RoughRect({
   stroke,
   pen,
   seed,
+  loose,
 }: {
   x: number;
   y: number;
@@ -1776,9 +1848,11 @@ export function RoughRect({
   stroke: string;
   pen: RoughPen;
   seed: number;
+  loose?: boolean;
 }) {
   return (
     <RoughBarShapeImpl
+      loose={loose}
       {...({} as BarShapeProps)}
       x={x}
       y={y}

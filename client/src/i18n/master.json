@@ -3148,8 +3148,12 @@
       "es": "Total"
     },
     "annualized": {
-      "en": "annualized",
-      "es": "anualizado"
+      "en": "p.a.",
+      "es": "a.a."
+    },
+    "annualizedTitle": {
+      "en": "Annualized",
+      "es": "Anualizado"
     },
     "insufficientHistory": {
       "en": "Not enough history for this period",
