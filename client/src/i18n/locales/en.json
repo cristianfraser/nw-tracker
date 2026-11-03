@@ -198,8 +198,6 @@
     "wealthFlowsTitle": "Wealth flows",
     "latestExpenses": {
       "title": "Latest expenses",
-      "installments": "{{count}} installments",
-      "refund": "Refund",
       "empty": "No expenses yet."
     }
   },

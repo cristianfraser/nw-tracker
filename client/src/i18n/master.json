@@ -639,14 +639,6 @@
         "en": "Latest expenses",
         "es": "Últimos gastos"
       },
-      "installments": {
-        "en": "{{count}} installments",
-        "es": "{{count}} cuotas"
-      },
-      "refund": {
-        "en": "Refund",
-        "es": "Reembolso"
-      },
       "empty": {
         "en": "No expenses yet.",
         "es": "Aún no hay gastos."

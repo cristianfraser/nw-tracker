@@ -158,6 +158,7 @@ export function usePatchCcExpenseLineCategoryMutation() {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
     },
   });
 }
@@ -251,6 +252,9 @@ export function usePatchCcExpensePurchaseNoteMutation() {
         (old) => applyCcPurchaseNotePatchToDetail(old, result.purchase_key, result.notes)
       );
     },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
+    },
     onError: (_err, _vars, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKey, context.previous);
@@ -292,6 +296,7 @@ export function usePostVendorBranchChoiceMutation() {
     mutationFn: (vars: { key: string; display: string }) => api.postVendorBranchChoice(vars),
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses(), exact: true });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
     },
   });
 }
@@ -324,6 +329,7 @@ export function usePutCcExpensePurchaseBigGroupMutation() {
       // usage; the lines payload lists the active groups: recompute both.
       void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpensesGastosAll() });
       void queryClient.invalidateQueries({ queryKey, exact: true });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.latestExpensesAll() });
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) {

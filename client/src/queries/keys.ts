@@ -24,7 +24,8 @@ export const queryKeys = {
     ["groupConsolidatedTables", group, subgroup ?? null, unit] as const,
   groupPeriodReturns: (group: string, unit: DisplayUnit) =>
     ["groupPeriodReturns", group, unit] as const,
-  latestExpenses: (unit: DisplayUnit, limit: number) => ["latestExpenses", unit, limit] as const,
+  latestExpenses: (limit: number) => ["latestExpenses", limit] as const,
+  latestExpensesAll: () => ["latestExpenses"] as const,
   groupConsolidatedMonthlyPage: (
     group: string,
     unit: DisplayUnit,
