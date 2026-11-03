@@ -82,6 +82,11 @@
   .cards>.card:nth-child(n+5) {
     border-top: 1px solid var(--hairline);
   }
+
+  /* A row the cards do not fill (the summary row's two cards) closes with a line after its last. */
+  .cards-strip>.cards>.card:last-child:not(:nth-child(4n)) {
+    border-right: 1px solid var(--hairline);
+  }
 }
 
 /* Mobile: 1-up on the page's four columns. */
@@ -121,6 +126,10 @@
 
   .cards>.card:nth-child(n+3) {
     border-top: 1px solid var(--hairline);
+  }
+
+  .cards-strip>.cards>.card:last-child:nth-child(2n+1) {
+    border-right: 1px solid var(--hairline);
   }
 }
 
@@ -280,13 +289,31 @@
   flex-shrink: 0;
   text-align: right;
 }
-/* Strip cards carry an inset; their inner separators reach back out to the card's edges, and
-   the title pill is pulled left so its text lines up with the figures below it. */
+/* Strip cards carry a side inset only. Their content is sections split by one divider element
+   (`.card-divider`), which reaches back out to the card's edges; every section has the same
+   vertical padding: the head (title, balance, month and year rows), the lifetime row, each
+   breakdown list. */
 .cards-strip .card {
   --card-pad-x: 0.5rem;
-  padding: 0.25rem var(--card-pad-x);
+  --card-section-pad-y: 0.25rem;
+  padding: 0 var(--card-pad-x);
 }
 
-.card-title-pill {
+.card-divider {
+  display: block;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  margin-inline: calc(-1 * var(--card-pad-x, 0px));
+}
+
+/* The head section opens at the card's first row: the title, or the balance when untitled. */
+.card .card-title-row:first-child,
+.card .value:first-child {
+  padding-top: var(--card-section-pad-y, 0px);
+}
+
+/* The title pill is pulled left so its text lines up with the figures below it. The label clips
+   its overflow, so it is the label's box that moves, not the pill's. */
+.card-title-row.title-container>.title.card-title-row__label:has(.card-title-pill) {
   margin-left: -0.2rem;
 }

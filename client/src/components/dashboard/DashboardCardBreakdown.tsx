@@ -120,6 +120,7 @@ function BreakdownList({
   showUsd,
   animated,
   className,
+  dividerClassName,
   rowKeyPrefix,
   usdFractionDigits,
 }: {
@@ -127,12 +128,16 @@ function BreakdownList({
   showUsd: boolean;
   animated: boolean;
   className?: string;
+  /** The divider above the list (each list opens a section). */
+  dividerClassName?: string;
   rowKeyPrefix: string;
   usdFractionDigits: 0 | 1 | 2;
 }) {
   const items = nestCardBreakdownLines(lines);
   if (items.length === 0) return null;
   return (
+    <>
+    <span className={cn("card-divider", dividerClassName)} aria-hidden="true" />
     <ul className={cn("card-breakdown-root", styles.root, className)}>
       {items.map((node, i) => (
         <BreakdownNodeRow
@@ -146,6 +151,7 @@ function BreakdownList({
         />
       ))}
     </ul>
+    </>
   );
 }
 
@@ -197,6 +203,7 @@ export function DashboardCardBreakdown({
           showUsd={showUsd}
           animated={animated}
           className="card-breakdown-bottom"
+          dividerClassName="card-breakdown-bottom"
           rowKeyPrefix="bottom"
           usdFractionDigits={usdFractionDigits}
         />
@@ -213,11 +220,11 @@ export function DashboardCardBreakdown({
         rowKeyPrefix="main"
         usdFractionDigits={usdFractionDigits}
       />
+      <div className={styles.push} aria-hidden />
       <BreakdownList
         lines={bottomLines!}
         showUsd={showUsd}
         animated={animated}
-        className={styles.bottom}
         rowKeyPrefix="bottom"
         usdFractionDigits={usdFractionDigits}
       />

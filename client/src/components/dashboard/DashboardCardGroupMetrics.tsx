@@ -147,6 +147,7 @@ export function DashboardCardGroupMetrics({
   return (
     <div className={styles.root} aria-label={t("dashboard.cardBreakdown.summaryAria")}>
       <DashboardCardsValueGroup>
+        <div className={styles.periodRows}>
         <MetricsRow
           {...shared}
           deposited={roundedMetricDeposits(metricsByPeriod.month, showUsd, "period")}
@@ -161,7 +162,9 @@ export function DashboardCardGroupMetrics({
           delta={roundedMetricDelta(metricsByPeriod.year, showUsd, "period")}
           deltaLabel={t("dashboard.cardBreakdown.periodDeltaYear")}
         />
-        <span className={styles.divider} aria-hidden="true" />
+        </div>
+        <span className="card-divider" aria-hidden="true" />
+        <div className={styles.lifetime}>
         <MetricsRow
           {...shared}
           deposited={roundedMetricDeposits(lifetime, showUsd, "total")}
@@ -170,6 +173,7 @@ export function DashboardCardGroupMetrics({
           deltaLabel={t("dashboard.cardBreakdown.totalDelta")}
           dim
         />
+        </div>
       </DashboardCardsValueGroup>
     </div>
   );

@@ -30,10 +30,14 @@ function BlankCardRows({ titled }: { titled: boolean }) {
       </div>
       <div>
         <div className={metricStyles.root}>
-          <BlankMetricRow />
-          <BlankMetricRow />
-          <span className={metricStyles.divider} aria-hidden="true" />
-          <BlankMetricRow />
+          <div className={metricStyles.periodRows}>
+            <BlankMetricRow />
+            <BlankMetricRow />
+          </div>
+          <span className="card-divider" aria-hidden="true" />
+          <div className={metricStyles.lifetime}>
+            <BlankMetricRow />
+          </div>
         </div>
       </div>
     </>
