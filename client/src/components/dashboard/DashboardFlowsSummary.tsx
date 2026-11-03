@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { HeadingLink } from "../ui/HeadingLink";
 import { FlowsOverviewChart } from "../charts/lazyCharts";
 import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder, dashboardTileSmallSpan, dashboardTileWide } from "../../dashboardLayout";
@@ -110,7 +110,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
   return (
     <PageGridTile id="flows-periods" order={dashboardTileOrder("flows-periods")} smallSpan={dashboardTileSmallSpan("flows-periods")}>
       <h2>
-        <Link to="/flows">{t("dashboard.flows.title")}</Link>
+        <HeadingLink to="/flows">{t("dashboard.flows.title")}</HeadingLink>
       </h2>
       <div className={loadableClass(loading, "cards cards--pair", styles.periods)}>
         {periods.map(({ labelKey, row }) => (

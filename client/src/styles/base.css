@@ -34,6 +34,36 @@ a:hover {
   text-decoration: underline;
 }
 
+/* A link that reads as the text around it: same colour, underline on hover only. */
+a.text-link {
+  color: inherit;
+}
+
+/* A heading that opens its page (HeadingLink): the heading's own look, the arrow after it. */
+a.heading-link {
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
+a.heading-link:hover {
+  text-decoration: none;
+}
+
+a.heading-link:hover .heading-link__text {
+  text-decoration: underline;
+}
+
+.heading-link__icon {
+  flex: none;
+  opacity: 0.55;
+}
+
+a.heading-link:hover .heading-link__icon {
+  opacity: 1;
+}
+
 .mono {
   font-family: "JetBrains Mono", ui-monospace, monospace;
   font-variant-numeric: tabular-nums;

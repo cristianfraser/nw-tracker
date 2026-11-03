@@ -10,6 +10,13 @@
   flex-wrap: wrap;
 }
 
+/* The «‹» button is a 2rem square with its glyph centred: pulled left so the glyph, not the
+   button's empty side, lines up with the tile's title and rows (its hover fill reaches into the
+   gutter). */
+.pager>:first-child {
+  margin-left: -0.85rem;
+}
+
 .pageLabel {
   display: flex;
   align-items: center;

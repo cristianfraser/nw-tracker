@@ -158,7 +158,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
                 <div key={item.key} className={styles.paymentLine}>
                   <dt className="muted">
                     {item.route_path ? (
-                      <Link to={item.route_path}>
+                      <Link to={item.route_path} className="text-link">
                         <ItemLabel item={item} />
                       </Link>
                     ) : (

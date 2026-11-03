@@ -131,15 +131,16 @@
   }
 }
 
-/* A list of cards (the home «Próximos pagos»): one card per row at every width, a line
-   between rows. */
+/* A list of cards (the home «Próximos pagos»): one card per row at every width, a small gap
+   and no lines between them (past the grid's per-card dividers above, same specificity, later). */
 .cards.cards--list>.card {
   grid-column: 1 / -1;
   border-left: 0;
+  border-top: 0;
 }
 
-.cards.cards--list>:where(.card + .card) {
-  border-top: 1px solid var(--hairline);
+.cards.cards--list>.card+.card {
+  margin-top: 0.35rem;
 }
 
 .card .label {
