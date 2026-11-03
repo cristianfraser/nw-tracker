@@ -2,7 +2,7 @@ import { useTranslation } from "../../i18n";
 import type { ExpenseLineOrigin } from "../../types";
 import { BankIcon } from "../icons/BankIcon";
 import { CreditCardIcon } from "../icons/CreditCardIcon";
-import { DocumentIcon } from "../icons/DocumentIcon";
+import { BriefcaseIcon } from "../icons/BriefcaseIcon";
 import { PencilIcon } from "../icons/PencilIcon";
 import { HoverPopover } from "../ui/HoverPopover";
 
@@ -10,7 +10,7 @@ const ICON = {
   card: CreditCardIcon,
   checking: BankIcon,
   manual: PencilIcon,
-  payslip: DocumentIcon,
+  payslip: BriefcaseIcon,
 } as const;
 
 /** The words for where an expense line came from (the origin icon's tooltip). */
