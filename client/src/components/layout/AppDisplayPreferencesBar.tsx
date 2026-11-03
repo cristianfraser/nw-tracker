@@ -2,6 +2,7 @@ import { useTranslation } from "../../i18n";
 import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { cn } from "../../cn";
 import type { DisplayUnit } from "../../queries/keys";
+import { CHART_STYLES, type ChartStyle } from "../../chartStylePreference";
 import styles from "./AppDisplayPreferencesBar.module.css";
 
 /**
@@ -12,7 +13,7 @@ import styles from "./AppDisplayPreferencesBar.module.css";
  */
 export function AppDisplayPreferencesBar() {
   const { t } = useTranslation();
-  const { displayUnit, setDisplayUnit } = useDisplayPreferences();
+  const { displayUnit, setDisplayUnit, chartStyle, setChartStyle } = useDisplayPreferences();
 
   return (
     <div className={styles.host} data-app-display-prefs-host>
@@ -32,6 +33,21 @@ export function AppDisplayPreferencesBar() {
               >
                 <option value="clp">CLP</option>
                 <option value="usd">USD</option>
+              </select>
+            </label>
+            {/* Rehearsal (2026-11-03): hand-drawn chart renderings, compared at /panel/chart-styles. */}
+            <label className={styles.field}>
+              <span className="muted">{t("app.displayPreferences.chartStyle")}</span>
+              <select
+                name="nw-global-chart-style"
+                value={chartStyle}
+                onChange={(e) => setChartStyle(e.target.value as ChartStyle)}
+              >
+                {CHART_STYLES.map((s) => (
+                  <option key={s} value={s}>
+                    {t(`app.displayPreferences.chartStyles.${s}`)}
+                  </option>
+                ))}
               </select>
             </label>
           </div>

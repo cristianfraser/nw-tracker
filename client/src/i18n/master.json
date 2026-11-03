@@ -12,6 +12,18 @@
       "numberFormat": {
         "en": "Format: ",
         "es": "Formato: "
+      },
+      "chartStyle": {
+        "en": "Charts: ",
+        "es": "Gráficos: "
+      },
+      "chartStyles": {
+        "plain": { "en": "Normal", "es": "Normal" },
+        "pen": { "en": "Hand-drawn: pen", "es": "A mano: lápiz pasta" },
+        "pencil": { "en": "Hand-drawn: pencil", "es": "A mano: lápiz grafito" },
+        "marker": { "en": "Hand-drawn: marker", "es": "A mano: plumón" },
+        "watercolor": { "en": "Hand-drawn: watercolor", "es": "A mano: acuarela" },
+        "crayon": { "en": "Hand-drawn: crayon", "es": "A mano: crayón" }
       }
     },
     "errorBoundary": {
@@ -755,6 +767,33 @@
     "usageTitle": {
       "en": "Usage",
       "es": "Uso"
+    },
+    "chartStylesTitle": {
+      "en": "Chart styles",
+      "es": "Estilos de gráficos"
+    }
+  },
+  "chartStylesLab": {
+    "intro": {
+      "en": "The same two charts under each style (all rough.js). The toolbar's «Charts» select applies a style to every page.",
+      "es": "Los mismos dos gráficos bajo cada estilo (todos rough.js). El selector «Gráficos» de la barra aplica un estilo a todas las páginas."
+    },
+    "lineTitle": {
+      "en": "Net worth (sample)",
+      "es": "Patrimonio neto (muestra)"
+    },
+    "comboTitle": {
+      "en": "Monthly Δ and deposits (sample)",
+      "es": "Δ mensual y depósitos (muestra)"
+    },
+    "series": {
+      "total": { "en": "Total", "es": "Total" },
+      "brokerage": { "en": "Brokerage", "es": "Brokerage" },
+      "retirement": { "en": "Retirement", "es": "Retiro" },
+      "cash": { "en": "Cash", "es": "Efectivo" },
+      "pl": { "en": "Monthly Δ", "es": "Δ mensual" },
+      "deposits": { "en": "Deposits", "es": "Depósitos" },
+      "ytd": { "en": "YTD", "es": "YTD" }
     }
   },
   "settings": {

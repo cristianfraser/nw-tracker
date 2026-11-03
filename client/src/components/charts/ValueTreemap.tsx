@@ -7,6 +7,8 @@ import type { NavValueMapColorBounds, NavValueMapNodeDto } from "../../types";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { loadableClass } from "../ui/Loadable";
 import { layoutTreemap, type Placed } from "./treemapLayout";
+import { useChartStyle } from "./chartStyle";
+import { RoughRect, roughPenFor } from "./roughShapes";
 
 type Unit = "clp" | "usd";
 
@@ -72,6 +74,49 @@ function colorStyle(t: number): { className: string; style: CSSProperties } {
   };
 }
 
+/**
+ * The hand-drawn styles draw the map with the chart's pen (an SVG layer under the tiles, which
+ * keep their labels and clicks but lose their own fill and border). SVG needs concrete
+ * colours, so the treemap tokens are resolved from the element and blended here exactly as the
+ * CSS `color-mix` blends them for the plain tiles.
+ */
+type Rgb = [number, number, number];
+function cssColorToRgb(value: string): Rgb | null {
+  if (typeof document === "undefined") return null;
+  const ctx = document.createElement("canvas").getContext("2d");
+  if (!ctx) return null;
+  ctx.fillStyle = "#000";
+  ctx.fillStyle = value.trim();
+  const hex = String(ctx.fillStyle);
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (m) {
+    const h = m[1]!;
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  const r = /rgba?\(([^)]+)\)/.exec(hex);
+  if (!r) return null;
+  const [a, b, c] = r[1]!.split(",").map((x) => parseFloat(x));
+  return [a!, b!, c!];
+}
+function mixRgb(a: Rgb, b: Rgb, t: number): string {
+  const c = a.map((v, i) => Math.round(v * t + b[i]! * (1 - t)));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
+type SketchPalette = { up: Rgb; down: Rgb; neutral: Rgb; outline: string; accent: string };
+function sketchTileColor(pal: SketchPalette, t: number): string {
+  if (t === 0) return mixRgb(pal.neutral, pal.neutral, 1);
+  return mixRgb(t > 0 ? pal.up : pal.down, pal.neutral, Math.abs(t));
+}
+/** FNV-1a of a slug: each tile keeps its sketch across re-renders. */
+function slugSeed(slug: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < slug.length; i++) {
+    h ^= slug.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0) % 2147483647 || 1;
+}
+
 const LAYOUT_OPTS = { headerHeight: 20, minHeaderWidth: 72, minHeaderHeight: 46, framePadding: 3 };
 /**
  * Labels: name over % when the tile fits two lines, one row when it fits one — and only when
@@ -121,6 +166,23 @@ export function ValueTreemap({
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [hover, setHover] = useState<Hover | null>(null);
+  const chartStyle = useChartStyle();
+  const sketchPen = roughPenFor(chartStyle);
+  const [palette, setPalette] = useState<SketchPalette | null>(null);
+  const [focusSlug, setFocusSlug] = useState<string | null>(null);
+
+  // Resolve the treemap tokens once the box is in the DOM (they may differ per theme).
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el || !sketchPen) return;
+    const cs = getComputedStyle(el);
+    const up = cssColorToRgb(cs.getPropertyValue("--treemap-up"));
+    const down = cssColorToRgb(cs.getPropertyValue("--treemap-down"));
+    const neutral = cssColorToRgb(cs.getPropertyValue("--treemap-neutral"));
+    const outline = cs.getPropertyValue("--treemap-label").trim() || "#f8fafc";
+    const accent = cs.getPropertyValue("--accent").trim() || "#3d9cf9";
+    if (up && down && neutral) setPalette({ up, down, neutral, outline, accent });
+  }, [sketchPen]);
 
   useLayoutEffect(() => {
     const el = boxRef.current;
@@ -204,11 +266,56 @@ export function ValueTreemap({
       <div className="chart-box">
         <div
           ref={boxRef}
-          className="value-treemap"
+          className={`value-treemap${sketchPen && palette ? " value-treemap--sketch" : ""}`}
           role="group"
           aria-label={i18n.t("valueMap.ariaLabel")}
           onMouseLeave={() => setHover(null)}
         >
+          {sketchPen && palette ? (
+            <svg className="value-treemap__sketch" width={size.w} height={size.h} aria-hidden="true">
+              {flat.map((p) => {
+                const dto = p.node.dto;
+                const t = treemapIntensity(pctOf(dto), bound);
+                const color = sketchTileColor(palette, t);
+                const seed = slugSeed(dto.slug);
+                const inset = 1.5;
+                if (p.node.children != null) {
+                  return (
+                    <g key={`sf:${dto.slug}`}>
+                      <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={null} stroke={palette.outline} pen={sketchPen} seed={seed} />
+                      {p.header > 0 ? (
+                        <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.header - inset} fill={color} stroke={color} pen={sketchPen} seed={seed + 1} />
+                      ) : null}
+                    </g>
+                  );
+                }
+                return (
+                  <RoughRect key={`st:${dto.slug}`} x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={color} stroke={palette.outline} pen={sketchPen} seed={seed} />
+                );
+              })}
+              {(() => {
+                // The hover / keyboard-focus outline, hand-drawn in the accent colour (the CSS
+                // outline is off in this mode). A frame highlights its header strip.
+                const slug = focusSlug ?? hover?.node.slug ?? null;
+                const p = slug ? flat.find((q) => q.node.dto.slug === slug) : null;
+                if (!p) return null;
+                const h = p.node.children != null && p.header > 0 ? p.header : p.rect.h;
+                return (
+                  <RoughRect
+                    key={`sh:${slug}`}
+                    x={p.rect.x + 1}
+                    y={p.rect.y + 1}
+                    width={p.rect.w - 2}
+                    height={h - 2}
+                    fill={null}
+                    stroke={palette.accent}
+                    pen={sketchPen}
+                    seed={slugSeed(String(slug)) + 77}
+                  />
+                );
+              })()}
+            </svg>
+          ) : null}
           {flat.map((p) => {
             const dto = p.node.dto;
             const pct = pctOf(dto);
@@ -239,6 +346,8 @@ export function ValueTreemap({
                 }
               },
               onMouseMove: onMove,
+              onFocus: () => setFocusSlug(dto.slug),
+              onBlur: () => setFocusSlug(null),
             };
             if (isFrame) {
               return (

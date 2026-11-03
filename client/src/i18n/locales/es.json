@@ -3,7 +3,16 @@
     "displayPreferences": {
       "toolbarAria": "Divisa (CLP o USD) y período MTD/YTD",
       "displayCurrency": "Divisa: ",
-      "numberFormat": "Formato: "
+      "numberFormat": "Formato: ",
+      "chartStyle": "Gráficos: ",
+      "chartStyles": {
+        "plain": "Normal",
+        "pen": "A mano: lápiz pasta",
+        "pencil": "A mano: lápiz grafito",
+        "marker": "A mano: plumón",
+        "watercolor": "A mano: acuarela",
+        "crayon": "A mano: crayón"
+      }
     },
     "errorBoundary": {
       "title": "Algo salió mal",
@@ -230,7 +239,22 @@
     "importSyncTitle": "Import sync",
     "settingsTitle": "Ajustes",
     "mirrorPairsTitle": "Mirrors históricos",
-    "usageTitle": "Uso"
+    "usageTitle": "Uso",
+    "chartStylesTitle": "Estilos de gráficos"
+  },
+  "chartStylesLab": {
+    "intro": "Los mismos dos gráficos bajo cada estilo (todos rough.js). El selector «Gráficos» de la barra aplica un estilo a todas las páginas.",
+    "lineTitle": "Patrimonio neto (muestra)",
+    "comboTitle": "Δ mensual y depósitos (muestra)",
+    "series": {
+      "total": "Total",
+      "brokerage": "Brokerage",
+      "retirement": "Retiro",
+      "cash": "Efectivo",
+      "pl": "Δ mensual",
+      "deposits": "Depósitos",
+      "ytd": "YTD"
+    }
   },
   "settings": {
     "language": "Idioma: ",

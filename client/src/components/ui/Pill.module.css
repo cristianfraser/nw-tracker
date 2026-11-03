@@ -79,3 +79,26 @@
 .pill:focus-visible .clearAction {
   opacity: 1;
 }
+/* Hand-drawn chart styles: no flat fill and no border; the scribble (PillScribble, behind) colours
+   the pill in, the text sits above it. !important: callers pass their own background / border
+   classes (the «Unclassified» outline pill). */
+.sketched {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  /* The scribble overshoots the pill a little, as a hand would; callers that clip long labels
+     (the category picker) set overflow hidden on the pill, so the label clips itself instead. */
+  overflow: visible !important;
+}
+
+.sketched > span:not(.clearAction) {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.sketched > :not(svg):not(.clearAction) {
+  position: relative;
+}

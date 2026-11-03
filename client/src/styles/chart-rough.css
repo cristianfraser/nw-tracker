@@ -1,0 +1,14 @@
+/*
+ * The hand-drawn chart styles (components/charts/roughShapes.tsx): pen, pencil, marker, watercolor,
+ * crayon. All of them hand-draw the axis lines, which XAxis / YAxis draw from props with no shape hook: the
+ * originals are hidden here and `RoughAxisLines` redraws them along the plot edges. Tick lines
+ * stay. `@scope` with a lower boundary: the nearest `[data-chart-style]` decides, so a `plain`
+ * scope nested inside one of these (the lab page's columns) keeps its axis lines.
+ */
+@scope ([data-chart-style="pen"], [data-chart-style="pencil"], [data-chart-style="marker"],
+  [data-chart-style="watercolor"], [data-chart-style="crayon"])
+  to ([data-chart-style="plain"]) {
+  .recharts-cartesian-axis-line {
+    display: none;
+  }
+}

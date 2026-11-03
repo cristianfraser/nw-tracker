@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useId, useMemo, type ComponentProps, type ReactNode } from "react";
 import { CartesianGrid, ComposedChart } from "recharts";
 import { AlternatingXBands } from "./chartBands";
 import { hasBandableBarGroups } from "./chartBandEdges";
@@ -6,6 +6,17 @@ import { RECHARTS_MONEY_CHART_MARGIN } from "./chartLayout";
 import { appTooltipElement, type AppTooltipSpec } from "./ChartTooltip";
 import { groupedBarSpacing } from "./groupedBarSpacing";
 import { useElementSize } from "./useElementSize";
+import { useChartStyle } from "./chartStyle";
+import {
+  RoughAxisLines,
+  RoughChartDefs,
+  injectRoughShapes,
+  roughAxisSides,
+  roughGrainFilterId,
+  roughGridProps,
+  roughModeFor,
+  roughSeed,
+} from "./roughShapes";
 
 /** Side-by-side bars drawn per category, and what the wrapper needs to space them. */
 export type AppBarGroup = {
@@ -64,6 +75,14 @@ function SizedAppComposedChart({
   ...rest
 }: AppComposedChartProps & { width: number; height: number }) {
   const gridProps = grid === false ? null : grid === true ? {} : grid;
+  const rough = roughModeFor(useChartStyle());
+  const grainFilterId = roughGrainFilterId(useId());
+  // The hand-drawn chart styles (roughShapes.tsx): every series drawn by rough.js; `plain` never clones.
+  const series = useMemo(
+    () => (rough ? injectRoughShapes(children, rough, grainFilterId) : children),
+    [children, rough, grainFilterId]
+  );
+  const axisSides = useMemo(() => (rough?.extras ? roughAxisSides(children) : []), [children, rough]);
   const chartMargin = margin ?? RECHARTS_MONEY_CHART_MARGIN;
   const categoryCount = rest.data?.length ?? 0;
   const groupedBars = barGroup != null && hasBandableBarGroups(barGroup.count, categoryCount);
@@ -90,10 +109,15 @@ function SizedAppComposedChart({
           opacity={0.35}
           vertical={!groupedBars}
           {...gridProps}
+          {...((rough?.extras
+            ? roughGridProps({ vertical: !groupedBars, ...gridProps }, rough)
+            : null) as Partial<ComponentProps<typeof CartesianGrid>> | null)}
         />
       ) : null}
       {tooltip ? appTooltipElement(tooltip) : null}
-      {children}
+      {rough ? <RoughChartDefs mode={rough} grainFilterId={grainFilterId} /> : null}
+      {series}
+      {axisSides.length ? <RoughAxisLines sides={axisSides} seed={roughSeed("axis", rough?.seedSalt)} multiStroke={rough?.multiStrokeExtras ?? true} /> : null}
     </ComposedChart>
   );
 }
