@@ -59,8 +59,8 @@ const READING_ORDER: readonly DashboardTileId[] = [
   "strip",
   "net-worth-chart",
   "flows-periods",
-  "flows-chart",
   "cc-upcoming",
+  "flows-chart",
   "perf-combo",
   "allocation",
   "returns",
@@ -88,7 +88,20 @@ const NOMINAL_HEIGHTS: Partial<Record<DashboardTileId, number>> = {
   accounts: 8,
 };
 
-const S = stack(READING_ORDER, 12, NOMINAL_HEIGHTS);
+/** Small desktop: tiles that share a row, half the width each (the second takes the first's row). */
+const SMALL_PAIRS: readonly (readonly [DashboardTileId, DashboardTileId])[] = [["flows-periods", "cc-upcoming"]];
+
+const pairUp = (rects: Record<DashboardTileId, TileRect>, cols: number) => {
+  const out = { ...rects };
+  for (const [a, b] of SMALL_PAIRS) {
+    const half = cols / 2;
+    out[a] = { ...out[a], w: half };
+    out[b] = { ...out[b], x: half, y: out[a].y, w: half };
+  }
+  return out;
+};
+
+const S = pairUp(stack(READING_ORDER, 12, NOMINAL_HEIGHTS), 12);
 const M = stack(READING_ORDER, 4, NOMINAL_HEIGHTS);
 
 /**
@@ -123,12 +136,18 @@ export const RAIL_TILES: readonly DashboardTileId[] = READING_ORDER.filter(
   (id) => L[id].x === 8
 ).sort((a, b) => L[a].y - L[b].y);
 
-/** Render order on the one-stack tiers equals the layout's `y` order (asserted by a unit test). */
+/** Render order below the big desktop: the reading order, which follows the layouts' `y` (asserted by a unit test). */
 export const DASHBOARD_TILE_ORDER = READING_ORDER;
 
-/** A tile's place in the one-stack reading order (`PageGridTile`'s `order`). */
+/** A tile's place in the reading order below the big desktop (`PageGridTile`'s `order`). */
 export function dashboardTileOrder(id: DashboardTileId): number {
-  return DASHBOARD_LAYOUT[id].s.y;
+  return READING_ORDER.indexOf(id);
+}
+
+/** Small desktop: the columns a tile spans when it shares its row (`PageGridTile`'s `smallSpan`). */
+export function dashboardTileSmallSpan(id: DashboardTileId): number | undefined {
+  const w = DASHBOARD_LAYOUT[id].s.w;
+  return w < GRID.cols.s ? w : undefined;
 }
 
 /**

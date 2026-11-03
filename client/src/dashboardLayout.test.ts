@@ -5,6 +5,7 @@ import {
   GRID,
   RAIL_TILES,
   dashboardTileOrder,
+  dashboardTileSmallSpan,
   type DashboardTileId,
   type TileRect,
 } from "./dashboardLayout";
@@ -18,17 +19,27 @@ function overlaps(a: TileRect, b: TileRect): boolean {
 describe("dashboard layout", () => {
   it("lists every tile once, in the one-stack reading order", () => {
     expect([...DASHBOARD_TILE_ORDER].sort()).toEqual([...ids].sort());
-    // The render order below 1440 is the layout's `y` order: PageGridTile's `order` is `s.y`.
-    const ys = DASHBOARD_TILE_ORDER.map((id) => dashboardTileOrder(id));
-    expect(ys).toEqual([...ys].sort((a, b) => a - b));
-    expect(new Set(ys).size).toBe(ys.length);
-    for (const id of ids) expect(DASHBOARD_LAYOUT[id].m.y).toBe(DASHBOARD_LAYOUT[id].s.y);
+    // The render order below 1440 is the reading order, which follows both stacked tiers' `y`.
+    expect(DASHBOARD_TILE_ORDER.map((id) => dashboardTileOrder(id))).toEqual(DASHBOARD_TILE_ORDER.map((_, i) => i));
+    for (const tier of ["s", "m"] as const) {
+      const ys = DASHBOARD_TILE_ORDER.map((id) => DASHBOARD_LAYOUT[id][tier].y);
+      expect(ys, tier).toEqual([...ys].sort((a, b) => a - b));
+    }
   });
 
-  it("spans the whole content width on the one-stack tiers", () => {
+  it("spans the whole content width on the phone, and on the small desktop but for half-width pairs", () => {
     for (const id of ids) {
-      expect(DASHBOARD_LAYOUT[id].s).toMatchObject({ x: 0, w: GRID.cols.s });
       expect(DASHBOARD_LAYOUT[id].m).toMatchObject({ x: 0, w: GRID.cols.m });
+      const r = DASHBOARD_LAYOUT[id].s;
+      if (r.w === GRID.cols.s) {
+        expect(r.x, id).toBe(0);
+        continue;
+      }
+      expect(r.w, id).toBe(GRID.cols.s / 2);
+      const partner = ids.find((o) => o !== id && DASHBOARD_LAYOUT[o].s.y === r.y);
+      expect(partner, id).toBeDefined();
+      expect(DASHBOARD_LAYOUT[partner!].s.x + r.x, id).toBe(GRID.cols.s / 2);
+      expect(dashboardTileSmallSpan(id)).toBe(GRID.cols.s / 2);
     }
   });
 

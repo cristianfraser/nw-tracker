@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { FlowsOverviewChart } from "../charts/lazyCharts";
 import { PageGridTile } from "../layout/PageGridTile";
-import { dashboardTileOrder, dashboardTileWide } from "../../dashboardLayout";
+import { dashboardTileOrder, dashboardTileSmallSpan, dashboardTileWide } from "../../dashboardLayout";
 import { SurfaceControls } from "../ui/SurfaceControls";
 import { loadableClass } from "../ui/Loadable";
 import { flowChartGranularityFromMetricsPeriod, formatFlowMoney } from "../../flowsDisplay";
@@ -108,7 +108,7 @@ export function DashboardFlowsPeriods({ displayUnit }: { displayUnit: DisplayUni
   ] as const;
 
   return (
-    <PageGridTile id="flows-periods" order={dashboardTileOrder("flows-periods")}>
+    <PageGridTile id="flows-periods" order={dashboardTileOrder("flows-periods")} smallSpan={dashboardTileSmallSpan("flows-periods")}>
       <h2>
         <Link to="/flows">{t("dashboard.flows.title")}</Link>
       </h2>

@@ -6,7 +6,7 @@ import { formatDayOfMonthLabel, formatYearMonthLabel } from "../../formatDateLab
 import type { CcUpcomingPaymentRowDto, UpcomingPaymentItemDto, UpcomingPaymentsDto } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
 import { usePanelCache } from "../../queries/panelCache";
-import { dashboardTileOrder } from "../../dashboardLayout";
+import { dashboardTileOrder, dashboardTileSmallSpan } from "../../dashboardLayout";
 import { loadableClass } from "../ui/Loadable";
 import styles from "./DashboardFlowsSummary.module.css";
 
@@ -143,7 +143,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
   if (!data || data.months.length === 0) return null;
   const months = expanded ? data.months : data.months.slice(0, COLLAPSED_MONTHS);
   return (
-    <PageGridTile id="cc-upcoming" order={dashboardTileOrder("cc-upcoming")}>
+    <PageGridTile id="cc-upcoming" order={dashboardTileOrder("cc-upcoming")} smallSpan={dashboardTileSmallSpan("cc-upcoming")}>
       <h2>{t("dashboard.ccUpcoming.title")}</h2>
       <div className={loadableClass(loading, "cards cards--list")}>
         {months.map((month) => (
