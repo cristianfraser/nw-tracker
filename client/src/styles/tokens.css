@@ -34,6 +34,8 @@
   --content-cols: 4;
   --gutter: 1rem;
   --row-gap: var(--gutter);
+  /** The side inset of a dashboard card (the strip cards, the «Flujos» periods); its dividers reach back out by it. */
+  --card-pad-x: 0.35rem;
   /** One UI line: the row unit tiles are measured in (react-grid-layout `rowHeight`). */
   --row-unit: 1.5rem;
   /** No content padding (raw layout step): the content's text sits on its columns' outer edges.
