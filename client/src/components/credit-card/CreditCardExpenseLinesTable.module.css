@@ -69,7 +69,11 @@
 @container (max-width: 34rem) {
   .row {
     row-gap: 0.15rem;
-    padding: 0.2rem 0;
+    padding: 0.2rem 0 0.15rem;
+  }
+
+  .vendor {
+    font-size: var(--font-size-caption);
   }
 
   /* A dual-currency amount («$13.881 (US$15,00)») may break before the dollars. */
@@ -171,8 +175,36 @@
   min-width: 0;
 }
 
+/* One line: the merchant, note and link label shrink with an ellipsis (the link label first);
+   the separators and the ⓘ stay whole. */
 .vendor {
   grid-area: vendor;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.vendor > span {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vendor > span:first-child {
+  flex-shrink: 0.25;
+}
+
+.vendor > span[aria-hidden],
+.vendor > span:has(> svg),
+.vendor > :not(span) {
+  flex: none;
+}
+
+/* The ⓘ button must not make the line taller than the text (it read as bottom padding). */
+.vendor > button {
+  margin-block: -0.3rem;
 }
 
 .amountCell {
