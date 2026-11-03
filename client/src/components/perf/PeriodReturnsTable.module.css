@@ -10,17 +10,18 @@
 
 /*
  * Equal-width period columns. The floor is what 8 columns need to stay readable; narrower than
- * that (34rem, 46rem with the benchmark row) the flipped layout below takes over.
+ * that (34rem, 42rem with the benchmark row) the flipped layout below takes over.
  */
 .table {
   table-layout: fixed;
   min-width: 34rem;
 }
 
-/* Compact like the accounts summary table: minimal padding, smaller headers/values. */
+/* Compact like the redesigned row lists (detalle, flows): tight cells, card-sized figures. */
 .table th,
 .table td {
-  padding: 0.3rem 0.55rem;
+  padding: 0.15rem 0.4rem;
+  line-height: 1.25;
 }
 
 .table th {
@@ -32,13 +33,13 @@
 }
 
 .pct {
-  font-size: var(--font-size-prose);
+  font-size: var(--font-size-card-label);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .nominal {
-  font-size: var(--font-size-card-meta);
+  font-size: var(--font-size-card-meta-sm);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -69,23 +70,25 @@
 
 /* Comparison mode: a leading row-label column (Real / the benchmark select). */
 .compare {
-  min-width: 46rem;
+  min-width: 42rem;
 }
 
 .corner {
-  width: 11.5rem;
+  width: 5.5rem;
 }
 
 .rowHead {
-  font-size: var(--font-size-card-label);
+  font-size: var(--font-size-card-meta-sm);
   font-weight: 600;
   text-align: left;
   white-space: nowrap;
 }
 
 .benchmarkSelect {
+  width: 100%;
   max-width: 100%;
-  font-size: var(--font-size-card-label);
+  font-size: var(--font-size-card-meta-sm);
+  text-overflow: ellipsis;
 }
 
 .up {
@@ -102,10 +105,10 @@
  * cell is a grid item placed by its own `--r` / `--c` (set inline by the component): header
  * cells in column 1, the real row in column 2, the benchmark row (comparison mode) in column 3,
  * the comparison's row labels in row 1. The flip happens when the table's floor no longer fits
- * its container: 34rem plain, 46rem with the benchmark row. The two blocks are the same rules
+ * its container: 34rem plain, 42rem with the benchmark row. The two blocks are the same rules
  * for the two floors; keep them together.
  */
-@container period-returns (max-width: 46rem) {
+@container period-returns (max-width: 42rem) {
   .table.compare {
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr);

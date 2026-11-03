@@ -149,7 +149,7 @@ export function PeriodReturnsTable({
               benchByPeriod.get(cell.period)?.irr_annualized
             )}
             {cell.annualized_pct != null ? (
-              <div className={styles.annualized}>
+              <div className={styles.annualized} title={t("periodReturns.annualizedTitle")}>
                 {formatPct(cell.annualized_pct * 100)} {t("periodReturns.annualized")}
               </div>
             ) : null}
@@ -192,7 +192,7 @@ export function PeriodReturnsTable({
                 ) : null}
                 {irr(b?.shadow_irr_pct, b?.irr_annualized)}
                 {b?.benchmark_annualized_pct != null ? (
-                  <div className={styles.annualized}>
+                  <div className={styles.annualized} title={t("periodReturns.annualizedTitle")}>
                     {formatPct(b.benchmark_annualized_pct * 100)} {t("periodReturns.annualized")}
                   </div>
                 ) : null}
