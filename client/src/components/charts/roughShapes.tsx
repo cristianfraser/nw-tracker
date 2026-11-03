@@ -1713,10 +1713,16 @@ type RoughBarProps = BarShapeProps & {
   grainFilterId?: string;
   /** The outline with the pen as it is, not used with care (still in 1–3 strokes): a looser shape. */
   loose?: boolean;
+  /**
+   * How strongly the hatch colours the shape in (1 = the pen's own): above 1 the lines sit closer
+   * together, a little heavier and more opaque (capped at fully opaque).
+   */
+  fillStrength?: number;
 };
 
 function RoughBarShapeImpl(props: RoughBarProps) {
   const { x, y, width, height, fill, stroke, strokeWidth, fillOpacity, index, seed, pen, grainFilterId, loose } = props;
+  const strength = Math.max(1, props.fillStrength ?? 1);
   // A negative height or width is a bar drawn the other way (stackOffset="sign").
   const rx = width < 0 ? x + width : x;
   const ry = height < 0 ? y + height : y;
@@ -1738,9 +1744,9 @@ function RoughBarShapeImpl(props: RoughBarProps) {
       stroke: "none",
       fill: fillColor,
       fillStyle: "hachure",
-      hachureGap: Math.max(3, Math.min(pen.fillGap, rw / 3)),
+      hachureGap: Math.max(2, Math.min(pen.fillGap, rw / 3) / strength),
       hachureAngle: -41,
-      fillWeight: pen.fillWeight,
+      fillWeight: pen.fillWeight * Math.sqrt(strength),
       disableMultiStrokeFill: true,
     });
     const fills = generator.toPaths(fillDrawable).filter((p) => p.d);
@@ -1802,7 +1808,7 @@ function RoughBarShapeImpl(props: RoughBarProps) {
       return { d: drawStrokes(traced, outlinePen, subSeed(barSeed + 1, p), loose ? undefined : pinned), pass, width, strokes: sides.length };
     });
     return { fills, outline };
-  }, [rx, ry, rw, rh, barSeed, fillColor, sw, pen, loose]);
+  }, [rx, ry, rw, rh, barSeed, fillColor, sw, pen, loose, strength]);
   if (!sketch) return null;
   const c = carried(props as CarriedProps);
   return (
@@ -1815,7 +1821,7 @@ function RoughBarShapeImpl(props: RoughBarProps) {
       <clipPath id={fillClipId}>
         <rect x={rx - 1.2} y={ry - 1.2} width={rw + 2.4} height={rh + 2.4} />
       </clipPath>
-      <g opacity={numberOr(fillOpacity, 1) * pen.fillOpacity} clipPath={`url(#${fillClipId})`}>
+      <g opacity={numberOr(fillOpacity, 1) * Math.min(1, pen.fillOpacity * strength)} clipPath={`url(#${fillClipId})`}>
         {sketch.fills.map((p, i) => (
           <path key={`f${i}`} d={p.d} fill="none" stroke={fillColor} strokeWidth={p.strokeWidth} strokeLinecap="round" />
         ))}
@@ -1839,6 +1845,7 @@ export function RoughRect({
   pen,
   seed,
   loose,
+  fillStrength,
 }: {
   x: number;
   y: number;
@@ -1849,10 +1856,12 @@ export function RoughRect({
   pen: RoughPen;
   seed: number;
   loose?: boolean;
+  fillStrength?: number;
 }) {
   return (
     <RoughBarShapeImpl
       loose={loose}
+      fillStrength={fillStrength}
       {...({} as BarShapeProps)}
       x={x}
       y={y}

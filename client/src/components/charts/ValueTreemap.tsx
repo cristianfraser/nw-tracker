@@ -117,6 +117,9 @@ function slugSeed(slug: string): number {
   return (h >>> 0) % 2147483647 || 1;
 }
 
+/** The map is read by its colours: tiles are hatched about twice as densely as a chart bar. */
+const MAP_FILL_STRENGTH = 1.9;
+
 const LAYOUT_OPTS = { headerHeight: 20, minHeaderWidth: 72, minHeaderHeight: 46, framePadding: 3 };
 /**
  * Labels: name over % when the tile fits two lines, one row when it fits one — and only when
@@ -284,13 +287,13 @@ export function ValueTreemap({
                     <g key={`sf:${dto.slug}`}>
                       <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={null} stroke={palette.outline} pen={sketchPen} seed={seed} />
                       {p.header > 0 ? (
-                        <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.header - inset} fill={color} stroke={color} pen={sketchPen} seed={seed + 1} />
+                        <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.header - inset} fill={color} stroke={color} pen={sketchPen} seed={seed + 1} fillStrength={MAP_FILL_STRENGTH} />
                       ) : null}
                     </g>
                   );
                 }
                 return (
-                  <RoughRect key={`st:${dto.slug}`} x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={color} stroke={palette.outline} pen={sketchPen} seed={seed} />
+                  <RoughRect key={`st:${dto.slug}`} x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={color} stroke={palette.outline} pen={sketchPen} seed={seed} fillStrength={MAP_FILL_STRENGTH} />
                 );
               })}
               {(() => {
