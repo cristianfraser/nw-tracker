@@ -17,14 +17,6 @@
   opacity: 0.72;
 }
 
-.periodRows {
-  padding-bottom: var(--card-section-pad-y, 0px);
-}
-
-.lifetime {
-  padding-block: var(--card-section-pad-y, 0px);
-}
-
 /* Day Δ on the card's balance row (`.card .value` is a baseline flex row). Reset the
  * value container's primary font sizing/weight — only the balance renders bold. */
 .valueDayPl {

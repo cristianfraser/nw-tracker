@@ -289,14 +289,11 @@
   flex-shrink: 0;
   text-align: right;
 }
-/* Strip cards carry a side inset only. Their content is sections split by one divider element
-   (`.card-divider`), which reaches back out to the card's edges; every section has the same
-   vertical padding: the head (title, balance, month and year rows), the lifetime row, each
-   breakdown list. */
+/* Strip cards carry an inset. Their content is split by one divider element (`.card-divider`),
+   which reaches back out to the card's edges. */
 .cards-strip .card {
-  --card-pad-x: 0.5rem;
-  --card-section-pad-y: 0.25rem;
-  padding: 0 var(--card-pad-x);
+  --card-pad-x: 0.35rem;
+  padding: 0.25rem var(--card-pad-x);
 }
 
 .card-divider {
@@ -304,10 +301,4 @@
   flex-shrink: 0;
   border-top: 1px solid var(--border);
   margin-inline: calc(-1 * var(--card-pad-x, 0px));
-}
-
-/* The head section opens at the card's first row: the title, or the balance when untitled. */
-.card .card-title-row:first-child,
-.card .value:first-child {
-  padding-top: var(--card-section-pad-y, 0px);
 }
