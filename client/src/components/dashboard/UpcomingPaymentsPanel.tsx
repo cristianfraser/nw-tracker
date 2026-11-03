@@ -130,9 +130,9 @@ function ItemLabel({ item }: { item: UpcomingPaymentItemDto }) {
  * cards' facturaciones, the mortgage cuota, gastos comunes, contribuciones and declared payments —
  * as the server built it (`upcoming_payments` on the page bundle). A card per month, its total
  * beside its name, its payments below with the date and amount on the right. The first two months
- * show; «Show more» opens the rest of the server's horizon. Pesos in both display units. Renders
- * nothing before the server has answered (`data` null on a placeholder bundle) and nothing when
- * nothing is due.
+ * show; «Show more» opens the rest of the server's horizon. Pesos in both display units. The
+ * panel is always there: dimmed and empty before the server has answered (`data` null on a
+ * placeholder bundle, no stored copy), an empty state when nothing is due.
  */
 export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { data: UpcomingPaymentsDto | null; loading: boolean }) {
   const { t } = useTranslation();
@@ -140,12 +140,13 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
   // Pesos in both units, so one stored entry; until the bundle answers, the last stored one.
   const { value: data, cached } = usePanelCache("upcoming-v1", live, isUpcomingPayments);
   const loading = liveLoading && !cached;
-  if (!data || data.months.length === 0) return null;
-  const months = expanded ? data.months : data.months.slice(0, COLLAPSED_MONTHS);
+  const allMonths = data?.months ?? [];
+  const months = expanded ? allMonths : allMonths.slice(0, COLLAPSED_MONTHS);
   return (
     <PageGridTile id="cc-upcoming" order={dashboardTileOrder("cc-upcoming")} smallSpan={dashboardTileSmallSpan("cc-upcoming")}>
       <h2>{t("dashboard.ccUpcoming.title")}</h2>
-      <div className={loadableClass(loading, "cards cards--list")}>
+      {data != null && allMonths.length === 0 ? <p className="muted">{t("dashboard.ccUpcoming.empty")}</p> : null}
+      <div className={loadableClass(loading || data == null, "cards cards--list")}>
         {months.map((month) => (
           <div key={month.pay_month} className={`card ${styles.period}`}>
             <div className={styles.monthHeading}>
@@ -173,7 +174,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
           </div>
         ))}
       </div>
-      {data.months.length > COLLAPSED_MONTHS ? (
+      {allMonths.length > COLLAPSED_MONTHS ? (
         <button type="button" className={styles.toggle} onClick={() => setExpanded((v) => !v)}>
           {expanded ? t("dashboard.ccUpcoming.showLess") : t("dashboard.ccUpcoming.showMore")}
         </button>
