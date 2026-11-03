@@ -5,6 +5,8 @@
   min-height: 0;
   margin-top: var(--space-sm);
   border-top: 1px solid var(--border);
+  margin-inline: calc(-1 * var(--card-pad-x, 0px));
+  padding-inline: var(--card-pad-x, 0px);
   padding-top: 0.5rem;
 }
 
@@ -17,6 +19,8 @@
 .bottom {
   margin-top: auto;
   border-top: 1px solid var(--border);
+  margin-inline: calc(-1 * var(--card-pad-x, 0px));
+  padding-inline: var(--card-pad-x, 0px);
   padding-top: 0.5rem;
 }
 
@@ -25,6 +29,8 @@
   padding: 0;
   font-size: var(--font-size-card-meta);
   border-top: 1px solid var(--border);
+  margin-inline: calc(-1 * var(--card-pad-x, 0px));
+  padding-inline: var(--card-pad-x, 0px);
 }
 
 .row {

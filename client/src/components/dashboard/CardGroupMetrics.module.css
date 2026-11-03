@@ -19,6 +19,7 @@
 
 .divider {
   border-top: 1px solid var(--border);
+  margin-inline: calc(-1 * var(--card-pad-x, 0px));
 }
 
 /* Day Δ on the card's balance row (`.card .value` is a baseline flex row). Reset the
