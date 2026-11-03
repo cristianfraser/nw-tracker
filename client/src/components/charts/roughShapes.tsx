@@ -1718,11 +1718,17 @@ type RoughBarProps = BarShapeProps & {
    * together, a little heavier and more opaque (capped at fully opaque).
    */
   fillStrength?: number;
+  /**
+   * Keeps the hatch this many px inside the outline (clipped there, never past it), so the
+   * outline's translucent passes are not crossed by the fill. Unset: the hatch may run 1,2 px out.
+   */
+  fillInset?: number;
 };
 
 function RoughBarShapeImpl(props: RoughBarProps) {
   const { x, y, width, height, fill, stroke, strokeWidth, fillOpacity, index, seed, pen, grainFilterId, loose } = props;
   const strength = Math.max(1, props.fillStrength ?? 1);
+  const fillInset = props.fillInset;
   // A negative height or width is a bar drawn the other way (stackOffset="sign").
   const rx = width < 0 ? x + width : x;
   const ry = height < 0 ? y + height : y;
@@ -1735,7 +1741,8 @@ function RoughBarShapeImpl(props: RoughBarProps) {
   const fillClipId = `nw-barclip-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const sketch = useMemo(() => {
     if (!(rw > 0.5 && rh > 0.5) || !Number.isFinite(rx) || !Number.isFinite(ry)) return null;
-    const fillDrawable = generator.rectangle(rx, ry, rw, rh, {
+    const fi = Math.min(fillInset ?? 0, rw / 3, rh / 3);
+    const fillDrawable = generator.rectangle(rx + fi, ry + fi, rw - 2 * fi, rh - 2 * fi, {
       roughness: Math.min(pen.roughness, 1.4),
       bowing: Math.min(pen.bowing, 1),
       // Hatch ends wander less (fewer overshoots); the clip below caps the rest at ~1 px.
@@ -1808,7 +1815,7 @@ function RoughBarShapeImpl(props: RoughBarProps) {
       return { d: drawStrokes(traced, outlinePen, subSeed(barSeed + 1, p), loose ? undefined : pinned), pass, width, strokes: sides.length };
     });
     return { fills, outline };
-  }, [rx, ry, rw, rh, barSeed, fillColor, sw, pen, loose, strength]);
+  }, [rx, ry, rw, rh, barSeed, fillColor, sw, pen, loose, strength, fillInset]);
   if (!sketch) return null;
   const c = carried(props as CarriedProps);
   return (
@@ -1817,9 +1824,19 @@ function RoughBarShapeImpl(props: RoughBarProps) {
       style={groupStyle(pen, grainFilterId, c.style)}
       opacity={c.opacity}
     >
-      {/* The hatch may leave the bar only barely: clipped to the bar plus 1,2 px. */}
+      {/* The hatch may leave the bar only barely: clipped to the bar plus 1,2 px (or, with an
+          inset, to that far inside it). */}
       <clipPath id={fillClipId}>
-        <rect x={rx - 1.2} y={ry - 1.2} width={rw + 2.4} height={rh + 2.4} />
+        {fillInset != null ? (
+          <rect
+            x={rx + Math.min(fillInset, rw / 3)}
+            y={ry + Math.min(fillInset, rh / 3)}
+            width={Math.max(0, rw - 2 * Math.min(fillInset, rw / 3))}
+            height={Math.max(0, rh - 2 * Math.min(fillInset, rh / 3))}
+          />
+        ) : (
+          <rect x={rx - 1.2} y={ry - 1.2} width={rw + 2.4} height={rh + 2.4} />
+        )}
       </clipPath>
       <g opacity={numberOr(fillOpacity, 1) * Math.min(1, pen.fillOpacity * strength)} clipPath={`url(#${fillClipId})`}>
         {sketch.fills.map((p, i) => (
@@ -1846,6 +1863,7 @@ export function RoughRect({
   seed,
   loose,
   fillStrength,
+  fillInset,
 }: {
   x: number;
   y: number;
@@ -1857,11 +1875,13 @@ export function RoughRect({
   seed: number;
   loose?: boolean;
   fillStrength?: number;
+  fillInset?: number;
 }) {
   return (
     <RoughBarShapeImpl
       loose={loose}
       fillStrength={fillStrength}
+      fillInset={fillInset}
       {...({} as BarShapeProps)}
       x={x}
       y={y}
