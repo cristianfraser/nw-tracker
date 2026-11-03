@@ -289,16 +289,17 @@
   flex-shrink: 0;
   text-align: right;
 }
-/* Strip cards carry an inset. Their content is split by one divider element (`.card-divider`),
-   which reaches back out to the card's edges. */
+/* Strip cards carry an inset (`--card-inset`, the shared `--card-pad-x`; 0 on other cards). Their
+   content is split by one divider element (`.card-divider`), which reaches back out to the
+   card's edges. */
 .cards-strip .card {
-  --card-pad-x: 0.35rem;
-  padding: 0.25rem var(--card-pad-x);
+  --card-inset: var(--card-pad-x);
+  padding: 0.25rem var(--card-inset);
 }
 
 .card-divider {
   display: block;
   flex-shrink: 0;
   border-top: 1px solid var(--border);
-  margin-inline: calc(-1 * var(--card-pad-x, 0px));
+  margin-inline: calc(-1 * var(--card-inset, 0px));
 }

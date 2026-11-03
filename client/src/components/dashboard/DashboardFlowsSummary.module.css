@@ -8,7 +8,13 @@
 }
 
 .period {
+  --card-inset: var(--card-pad-x);
   min-width: 0;
+}
+
+/* Past cards.css's `.card` reset (same specificity, loaded after this module). */
+:global(.cards)>.period {
+  padding-inline: var(--card-inset);
 }
 
 /* «Próximos pagos»: a pay month and its total, over the payments due in it — what each is on
@@ -80,7 +86,9 @@
   margin: 0;
 }
 
-/* Savings and P/L each open a section: a divider above. */
+/* Savings and P/L each open a section: a divider above, reaching out to the card's edges. */
 .lineSection {
   border-top: 1px solid var(--border);
+  margin-inline: calc(-1 * var(--card-inset, 0px));
+  padding-inline: var(--card-inset, 0px);
 }
