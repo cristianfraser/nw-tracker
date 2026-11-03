@@ -209,11 +209,10 @@ export function useGroupPeriodReturns(portfolioGroup: string, unit: DisplayUnit,
 }
 
 /** Home «Últimos gastos»: the newest expense lines across every source. */
-export function useLatestExpenses(unit: DisplayUnit, limit: number) {
+export function useLatestExpenses(limit: number) {
   return useQuery({
-    queryKey: queryKeys.latestExpenses(unit, limit),
-    queryFn: () => api.latestExpenses(unit, limit),
-    ...displayUnitQueryBehaviorFor(queryKeys.latestExpenses(unit, limit), 3),
+    queryKey: queryKeys.latestExpenses(limit),
+    queryFn: () => api.latestExpenses(limit),
   });
 }
 

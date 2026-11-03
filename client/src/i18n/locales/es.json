@@ -198,8 +198,6 @@
     "wealthFlowsTitle": "Flujos de patrimonio",
     "latestExpenses": {
       "title": "Últimos gastos",
-      "installments": "{{count}} cuotas",
-      "refund": "Reembolso",
       "empty": "Aún no hay gastos."
     }
   },

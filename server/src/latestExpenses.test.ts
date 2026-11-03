@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
-import { latestExpensesFromLines } from "./latestExpenses.js";
+import { latestExpenseLines } from "./latestExpenses.js";
 
 function line(over: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   return {
@@ -34,14 +34,10 @@ function line(over: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   } as FlowCcExpenseLineRow;
 }
 
-const parents = new Map<string, string | null>([
-  ["food", null],
-  ["taxes", "bills"],
-  ["deposits", null],
-]);
+const known = new Set(["food", "taxes", "deposits"]);
 
-describe("latestExpensesFromLines", () => {
-  it("lists the newest gastos lines in «Total» mode, refunds negative, excluded categories out", () => {
+describe("latestExpenseLines", () => {
+  it("lists the newest gastos lines in «Total» mode, refunds included, excluded categories out", () => {
     const lines = [
       line({ statement_line_id: 1, purchase_on: "2026-09-01" }),
       line({ statement_line_id: 2, purchase_on: "2026-09-05", category_slug: "taxes", source: "payslip" }),
@@ -54,51 +50,13 @@ describe("latestExpensesFromLines", () => {
       // After today: left out.
       line({ statement_line_id: 7, purchase_on: "2026-10-01" }),
     ];
-    const res = latestExpensesFromLines(lines, parents, "clp", 10, "2026-09-30");
-    expect(res.rows.map((r) => [r.date, r.amount, r.installments])).toEqual([
-      ["2026-09-08", -2_000, null],
-      ["2026-09-07", 30_000, 3],
-      ["2026-09-05", 10_000, null],
-      ["2026-09-01", 10_000, null],
-    ]);
-    expect(res.rows[2]!.category_parent_slug).toBe("bills");
-    expect(latestExpensesFromLines(lines, parents, "usd", 2, "2026-09-30").rows.map((r) => r.amount)).toEqual([-2, 30]);
-  });
-
-  it("carries the vendor fields the shared label shows: display name, note, link label", () => {
-    const res = latestExpensesFromLines(
-      [
-        line({
-          statement_line_id: 1,
-          purchase_on: "2026-09-01",
-          merchant: "PAYU *UBER EA",
-          display_merchant: "Uber Eats",
-          merchant_processor: "PAYU",
-          purchase_notes: "lunch",
-          link_label: { arrow: "→", text: "Burger place", nights: null, inline: true },
-        }),
-        line({ statement_line_id: 2, purchase_on: "2026-09-02" }),
-      ],
-      parents,
-      "clp",
-      5,
-      "2026-09-30"
-    );
-    expect(res.rows[1]).toMatchObject({
-      merchant: "PAYU *UBER EA",
-      display_merchant: "Uber Eats",
-      merchant_processor: "PAYU",
-      purchase_notes: "lunch",
-      link_label: { text: "Burger place", inline: true },
-    });
-    // A line the server derived nothing for carries none of the optional fields.
-    expect(res.rows[0]).not.toHaveProperty("display_merchant");
-    expect(res.rows[0]).not.toHaveProperty("link_label");
+    expect(latestExpenseLines(lines, known, 10, "2026-09-30").map((l) => l.statement_line_id)).toEqual([6, 5, 2, 1]);
+    expect(latestExpenseLines(lines, known, 2, "2026-09-30").map((l) => l.statement_line_id)).toEqual([6, 5]);
   });
 
   it("throws on a category the catalog does not know", () => {
-    expect(() =>
-      latestExpensesFromLines([line({ category_slug: "nope" })], parents, "clp", 5, "2026-09-30")
-    ).toThrow(/unknown category/);
+    expect(() => latestExpenseLines([line({ category_slug: "nope" })], known, 5, "2026-09-30")).toThrow(
+      /unknown category/
+    );
   });
 });

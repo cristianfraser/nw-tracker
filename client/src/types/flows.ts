@@ -898,37 +898,12 @@ export interface RealEstateLinkCandidateDto {
   purchase_month_offset: number;
 }
 
-/** One row of `GET /api/dashboard/latest-expenses` (home «Últimos gastos»), newest first. */
-/** The vendor fields the shared label (`ExpenseVendorLabel`) reads, as an expense line has them. */
-export type LatestExpenseVendorFields = Pick<
-  FlowCcExpenseLineRow,
-  | "purchase_notes"
-  | "display_merchant"
-  | "merchant_processor"
-  | "link_label"
-  | "payment_receipt"
-  | "transfer_counterparty"
-  | "expense_deposit_links"
->;
-
-export interface LatestExpenseRow extends LatestExpenseVendorFields {
-  key: string;
-  date: string;
-  merchant: string | null;
-  category_slug: string;
-  /** The parent of a subcategory (labelled «Parent › Child»); null for a top-level category. */
-  category_parent_slug: string | null;
-  source: "cc" | "checking" | "manual" | "payslip";
-  origin_label: string;
-  /** In the response unit; negative for a refund. */
-  amount: number;
-  /** Cuota count of a purchase in cuotas, else null. */
-  installments: number | null;
-}
-
+/** `GET /api/dashboard/latest-expenses` (home «Últimos gastos»): the newest gastos lines, whole. */
 export interface LatestExpensesResponse {
-  unit: "clp" | "usd";
-  rows: LatestExpenseRow[];
+  /** Newest first. */
+  lines: FlowCcExpenseLineRow[];
+  categories: CcExpenseCategoryDto[];
+  big_groups: CcExpenseBigGroupDto[];
 }
 
 /**

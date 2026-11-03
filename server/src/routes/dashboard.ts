@@ -257,17 +257,12 @@ app.delete("/api/upcoming-payments/recurring/:id", (req, res) => {
 });
 
 app.get("/api/dashboard/latest-expenses", (req, res) => {
-  const unitRaw = String(req.query.unit ?? "clp");
-  if (unitRaw !== "clp" && unitRaw !== "usd") {
-    res.status(400).json({ error: `unit must be clp or usd, got ${unitRaw}` });
-    return;
-  }
   const limitRaw = req.query.limit == null ? LATEST_EXPENSES_DEFAULT_LIMIT : Number(req.query.limit);
   if (!Number.isInteger(limitRaw) || limitRaw <= 0 || limitRaw > LATEST_EXPENSES_MAX_LIMIT) {
     res.status(400).json({ error: `limit must be an integer 1..${LATEST_EXPENSES_MAX_LIMIT}` });
     return;
   }
-  res.json(buildLatestExpenses(unitRaw, limitRaw));
+  res.json(buildLatestExpenses(limitRaw));
 });
 
 /** Server-paginated consolidated detalle-por-mes rows (dashboard net_worth table). */

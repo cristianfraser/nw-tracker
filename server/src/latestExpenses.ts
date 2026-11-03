@@ -2,7 +2,8 @@
  * The home dashboard's «Últimos gastos» table (`GET /api/dashboard/latest-expenses`): the newest
  * expense lines across every source (card, checking, manual, payroll), read from the same lines
  * the Expenses page builds (`buildFlowsExpenseLines`, held by the flows overview's cached inputs:
- * `cachedFlowsExpenseLines`) — no second pipeline.
+ * `cachedFlowsExpenseLines`) — no second pipeline. The lines go out whole, with the categories
+ * and big groups, so the panel draws them with the Expenses page's own row.
  *
  * A line is listed when it counts toward gasto del mes in «Total» mode (`countsTowardGastosMes`):
  * a purchase in cuotas shows once, at its whole price on its purchase day, and a refund shows as
@@ -10,62 +11,32 @@
  * never after Chile today.
  */
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { listCcExpenseCategories } from "./ccExpenseCategories.js";
-import type { FlowCcExpenseLineRow, FlowCcExpenseLineSource } from "./flowsExpenses.js";
+import { listCcExpenseBigGroups, type CcExpenseBigGroupRow } from "./ccExpenseBigGroups.js";
+import { listCcExpenseCategories, type CcExpenseCategoryRow } from "./ccExpenseCategories.js";
+import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import { cachedFlowsExpenseLines } from "./flowsOverview.js";
-import { countsTowardGastosMes, expenseLineGastosAmount, type GastosUnit } from "./flowsExpensesGastos.js";
+import { countsTowardGastosMes } from "./flowsExpensesGastos.js";
 
 export const LATEST_EXPENSES_DEFAULT_LIMIT = 15;
 export const LATEST_EXPENSES_MAX_LIMIT = 100;
 
-/**
- * The vendor fields an expense row shows through the shared label (`ExpenseVendorLabel`): the
- * display name, the processor, the link label and what it links to, and the user's note.
- */
-type LatestExpenseVendorFields = Pick<
-  FlowCcExpenseLineRow,
-  | "purchase_notes"
-  | "display_merchant"
-  | "merchant_processor"
-  | "link_label"
-  | "payment_receipt"
-  | "transfer_counterparty"
-  | "expense_deposit_links"
->;
-
-export type LatestExpenseRow = LatestExpenseVendorFields & {
-  key: string;
-  /** ISO day the money was spent. */
-  date: string;
-  merchant: string | null;
-  category_slug: string;
-  /** The parent of a subcategory (the client labels «Parent › Child»); null for a top-level one. */
-  category_parent_slug: string | null;
-  source: FlowCcExpenseLineSource;
-  /** Card last4 or account name, as the Expenses page's origin column shows it. */
-  origin_label: string;
-  /** In the response unit; negative for a refund. */
-  amount: number;
-  /** Cuota count of a purchase in cuotas, else null. */
-  installments: number | null;
-};
-
 export type LatestExpensesResponse = {
-  unit: GastosUnit;
-  rows: LatestExpenseRow[];
+  /** Newest first. */
+  lines: FlowCcExpenseLineRow[];
+  categories: CcExpenseCategoryRow[];
+  big_groups: CcExpenseBigGroupRow[];
 };
 
 function lineDate(line: FlowCcExpenseLineRow): string {
   return line.purchase_on ?? line.occurred_on;
 }
 
-export function latestExpensesFromLines(
+export function latestExpenseLines(
   lines: readonly FlowCcExpenseLineRow[],
-  parentSlugByCategory: ReadonlyMap<string, string | null>,
-  unit: GastosUnit,
+  knownCategories: ReadonlySet<string>,
   limit: number,
   todayYmd: string
-): LatestExpensesResponse {
+): FlowCcExpenseLineRow[] {
   const listed = lines
     .filter((l) => countsTowardGastosMes(l, "total") && lineDate(l) <= todayYmd)
     .sort(
@@ -75,39 +46,24 @@ export function latestExpensesFromLines(
         (b.piece_seq ?? 0) - (a.piece_seq ?? 0)
     )
     .slice(0, limit);
-  const rows = listed.map((l, i): LatestExpenseRow => {
-    if (!parentSlugByCategory.has(l.category_slug)) {
+  for (const l of listed) {
+    if (!knownCategories.has(l.category_slug)) {
       throw new Error(`latest expenses: line ${l.source}:${l.statement_line_id} has unknown category ${l.category_slug}`);
     }
-    return {
-      key: `${i}:${l.source}:${l.statement_line_id}:${l.purchase_key}`,
-      date: lineDate(l),
-      merchant: l.merchant,
-      category_slug: l.category_slug,
-      category_parent_slug: parentSlugByCategory.get(l.category_slug) ?? null,
-      source: l.source,
-      origin_label: l.origin_label,
-      amount: expenseLineGastosAmount(l, unit),
-      installments: l.line_role === "installment_purchase_total" ? l.nro_cuota_total : null,
-      purchase_notes: l.purchase_notes,
-      ...(l.display_merchant != null ? { display_merchant: l.display_merchant } : {}),
-      ...(l.merchant_processor != null ? { merchant_processor: l.merchant_processor } : {}),
-      ...(l.link_label != null ? { link_label: l.link_label } : {}),
-      ...(l.payment_receipt != null ? { payment_receipt: l.payment_receipt } : {}),
-      ...(l.transfer_counterparty != null ? { transfer_counterparty: l.transfer_counterparty } : {}),
-      ...(l.expense_deposit_links != null ? { expense_deposit_links: l.expense_deposit_links } : {}),
-    };
-  });
-  return { unit, rows };
+  }
+  return listed;
 }
 
-export function buildLatestExpenses(unit: GastosUnit, limit: number): LatestExpensesResponse {
-  const parentSlugByCategory = new Map(listCcExpenseCategories().map((c) => [c.slug, c.parent_slug]));
-  return latestExpensesFromLines(
-    cachedFlowsExpenseLines(),
-    parentSlugByCategory,
-    unit,
-    limit,
-    chileCalendarTodayYmd()
-  );
+export function buildLatestExpenses(limit: number): LatestExpensesResponse {
+  const categories = listCcExpenseCategories();
+  return {
+    lines: latestExpenseLines(
+      cachedFlowsExpenseLines(),
+      new Set(categories.map((c) => c.slug)),
+      limit,
+      chileCalendarTodayYmd()
+    ),
+    categories,
+    big_groups: listCcExpenseBigGroups(),
+  };
 }
