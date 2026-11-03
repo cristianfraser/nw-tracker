@@ -58,30 +58,21 @@
   align-items: center;
   column-gap: 0.6rem;
   row-gap: 0.25rem;
-  padding: 0.55rem 0;
+  padding: 0.35rem 0;
 }
 
 .row + .row {
   border-top: 1px solid var(--border);
 }
 
-/* Narrow lists: amount up beside the date, the pills on their own line under the merchant. */
+/* Narrow lists keep the same layout (the pills over the amount); only the amount may wrap. */
 @container (max-width: 34rem) {
   .row {
-    /* The date keeps its width; a dual-currency amount wraps beside it instead of overlapping. */
-    grid-template-columns: 1.5rem auto minmax(0, 1fr) 1.75rem;
-    grid-template-areas:
-      "origin date   amount more"
-      "origin vendor vendor more"
-      "origin pills  pills  more"
-      "panel  panel  panel  panel";
+    row-gap: 0.15rem;
+    padding: 0.2rem 0;
   }
 
-  .row .pills {
-    justify-content: flex-start;
-  }
-
-  /* A dual-currency amount («$13.881 (US$15,00)») may break before the dollars; the date never does. */
+  /* A dual-currency amount («$13.881 (US$15,00)») may break before the dollars. */
   .amountCell .amount {
     white-space: normal;
   }
@@ -166,7 +157,7 @@
 
 .date {
   grid-area: date;
-  font-size: var(--font-size-prose-sm);
+  font-size: var(--font-size-card-meta);
   white-space: nowrap;
 }
 
@@ -192,6 +183,7 @@
 
 .amount {
   white-space: nowrap;
+  font-size: var(--font-size-card-label);
 }
 
 .amountSup {
