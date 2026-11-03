@@ -106,6 +106,7 @@
   "dashboard": {
     "ccUpcoming": {
       "title": "Upcoming payments",
+      "empty": "Nothing due in the coming months.",
       "billedOf": "of {{amount}}",
       "partlyPaidHint": "Still owed after the payments and credits since the close. The facturación billed {{amount}}.",
       "payByShort": "by",

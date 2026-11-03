@@ -319,6 +319,10 @@
         "en": "Upcoming payments",
         "es": "Próximos pagos"
       },
+      "empty": {
+        "en": "Nothing due in the coming months.",
+        "es": "Nada por pagar en los próximos meses."
+      },
       "billedOf": {
         "en": "of {{amount}}",
         "es": "de {{amount}}"

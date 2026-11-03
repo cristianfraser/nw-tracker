@@ -106,6 +106,7 @@
   "dashboard": {
     "ccUpcoming": {
       "title": "Próximos pagos",
+      "empty": "Nada por pagar en los próximos meses.",
       "billedOf": "de {{amount}}",
       "partlyPaidHint": "Lo que queda tras los pagos y abonos desde el cierre. La facturación fue de {{amount}}.",
       "payByShort": "hasta",
