@@ -40,7 +40,9 @@ describe("latestExpenseLines", () => {
   it("lists the newest gastos lines in «Total» mode, refunds included, excluded categories out", () => {
     const lines = [
       line({ statement_line_id: 1, purchase_on: "2026-09-01" }),
-      line({ statement_line_id: 2, purchase_on: "2026-09-05", category_slug: "taxes", source: "payslip" }),
+      line({ statement_line_id: 2, purchase_on: "2026-09-05", category_slug: "taxes", source: "checking" }),
+      // Deducted from a payslip: the panel lists spending from net pay only.
+      line({ statement_line_id: 8, purchase_on: "2026-09-06", category_slug: "taxes", source: "payslip", pre_tax: true }),
       // Excluded category: never listed.
       line({ statement_line_id: 3, purchase_on: "2026-09-09", category_slug: "deposits" }),
       // A cuota line is the «Por cuota» view's; the purchase total is listed once.

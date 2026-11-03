@@ -71,8 +71,8 @@ export const queryKeys = {
   flowsExpenses: () => ["flowsExpenses"] as const,
   /** Nested under `flowsExpenses()`: every invalidation of the lines refetches the gastos views too. */
   flowsExpensesGastosAll: () => ["flowsExpenses", "gastos"] as const,
-  flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[]) =>
-    ["flowsExpenses", "gastos", unit, [...excludedBigGroups].sort().join(",")] as const,
+  flowsExpensesGastos: (unit: DisplayUnit, excludedBigGroups: readonly string[], includePreTax: boolean) =>
+    ["flowsExpenses", "gastos", unit, [...excludedBigGroups].sort().join(","), includePreTax] as const,
   /** Nested under `flowsExpenses()` too: a line edit refetches the overview. Entity = up to the unit. */
   flowsOverview: (unit: DisplayUnit, installmentMode: "split" | "total", days?: number) =>
     ["flowsExpenses", "overview", unit, installmentMode, days ?? null] as const,

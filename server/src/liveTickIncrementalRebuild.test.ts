@@ -106,7 +106,7 @@ async function snapshotPayloads(): Promise<Map<string, string>> {
   for (const unit of ["clp", "usd"] as const) {
     out.set(`bundle|${unit}`, JSON.stringify(await buildDashboardPageBundle(unit)));
     out.set(`flows|${unit}`, JSON.stringify(buildFlowsOverviewPayload(unit, "split", null)));
-    out.set(`gastos|${unit}`, JSON.stringify(cachedFlowsExpensesGastosPayload(unit, new Set())));
+    out.set(`gastos|${unit}`, JSON.stringify(cachedFlowsExpensesGastosPayload(unit, new Set(), false)));
     out.set(`overview_daily|${unit}`, JSON.stringify(getDashboardOverviewDaily(unit, 0)));
     for (const slug of groups) {
       out.set(`daily|${slug}|${unit}`, JSON.stringify(resolveGroupDailySeries(slug, unit, 0)));

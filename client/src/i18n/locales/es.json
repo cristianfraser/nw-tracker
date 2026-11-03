@@ -1402,6 +1402,8 @@
       "categoryLevelLabel": "Agrupar por",
       "categoryLevelCategory": "Categorías",
       "categoryLevelSubcategory": "Subcategorías",
+      "includePreTax": "Incluir gastos antes de impuestos",
+      "includePreTaxHint": "Descuentos de la liquidación antes de que el sueldo llegue a la cuenta: salud, comisión AFP, impuesto retenido, comisiones de transferencia. El resumen de flujos siempre los cuenta.",
       "pieces": {
         "action": "Desglosar",
         "actionEdit": "Piezas",

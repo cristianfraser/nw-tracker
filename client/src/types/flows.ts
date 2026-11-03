@@ -375,6 +375,8 @@ export interface FlowCcExpenseLineRow {
   card_refund?: true;
   /** A card line the bank charged as financing (section 3), as the card's P/L counts it. */
   is_financing_cost?: true;
+  /** Deducted from a payslip before the pay reached the account: the Expenses page shows it only when asked. */
+  pre_tax?: true;
   /** One piece of a line broken down into pieces. */
   piece_seq?: number;
   /** What a line's pieces leave of it, on the line's own day. */
@@ -550,9 +552,11 @@ export interface FlowsExpensesGastosView {
   year_averages: Record<string, ExpenseYearMonthlyAverage>;
 }
 
-/** `GET /api/flows/expenses/credit-card/gastos?unit=&exclude_big_groups=`. */
+/** `GET /api/flows/expenses/credit-card/gastos?unit=&exclude_big_groups=&include_pre_tax=`. */
 export interface FlowsExpensesGastosResponse {
   unit: "clp" | "usd";
+  /** Whether the payslip deductions (pre-tax expenses) are counted; off by default. */
+  include_pre_tax: boolean;
   excluded_big_groups: string[];
   /** Keyed `<split|total>|<category|subcategory>`. */
   views: Record<string, FlowsExpensesGastosView>;

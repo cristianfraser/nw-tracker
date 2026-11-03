@@ -1402,6 +1402,8 @@
       "categoryLevelLabel": "Group by",
       "categoryLevelCategory": "Categories",
       "categoryLevelSubcategory": "Subcategories",
+      "includePreTax": "Include pre-tax expenses",
+      "includePreTaxHint": "Deductions taken from the payslip before the pay reaches the account: health, the AFP commission, income tax withheld, transfer fees. The flows overview always counts them.",
       "pieces": {
         "action": "Break down",
         "actionEdit": "Pieces",

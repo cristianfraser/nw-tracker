@@ -606,8 +606,9 @@ export const api = {
     j<void>(`/api/flows/expenses/real-estate/entries/${expenseEntryId}`, { method: "DELETE" }),
   flowsExpenses: () =>
     j<import("./types").FlowsExpensesResponse>("/api/flows/expenses/credit-card"),
-  flowsExpensesGastos: (unit: "clp" | "usd", excludedBigGroups: readonly string[]) => {
+  flowsExpensesGastos: (unit: "clp" | "usd", excludedBigGroups: readonly string[], includePreTax: boolean) => {
     const q = new URLSearchParams({ unit });
+    if (includePreTax) q.set("include_pre_tax", "1");
     if (excludedBigGroups.length > 0) q.set("exclude_big_groups", [...excludedBigGroups].sort().join(","));
     return j<import("./types").FlowsExpensesGastosResponse>(
       `/api/flows/expenses/credit-card/gastos?${q.toString()}`

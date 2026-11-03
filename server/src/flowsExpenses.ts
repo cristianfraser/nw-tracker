@@ -291,6 +291,13 @@ export type FlowCcExpenseLineRow = {
    * The facturación modal lists them under «Coste financiero», never under Gastos.
    */
   is_financing_cost?: true;
+  /**
+   * A deduction taken from a payslip before the pay reached the account (health, the AFP
+   * commission, income tax withheld, the USD contract's transfer fee; {@link isPreTaxExpenseLine}).
+   * The Expenses page tracks spending from net pay and leaves these out unless asked; the flows
+   * overview counts them.
+   */
+  pre_tax?: true;
   /** The payment processor's receipt for this charge: who it paid, for what (`paymentProcessorReceipts.ts`). */
   payment_receipt?: PaymentReceiptDto;
   /** One piece of a line split into pieces (`cc_expense_line_splits.seq`). */
@@ -1133,6 +1140,11 @@ function isFinancingCostLine(
   const usd = l.amount_usd;
   if (usd != null && usd > 0) return isUsdSection3FinancingChargeMerchant(l.merchant, usd);
   return isClpSection3FinancingChargeMerchant(l.merchant);
+}
+
+/** Whether a line was deducted from a payslip before the pay reached the account (the `pre_tax` flag). */
+export function isPreTaxExpenseLine(line: Pick<FlowCcExpenseLineRow, "source">): boolean {
+  return line.source === "payslip";
 }
 
 /** Every gastos line the Expenses page lists: card, checking, manual, mirror and payslip lines. */
