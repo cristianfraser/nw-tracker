@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { HeadingLink } from "../ui/HeadingLink";
 import { useTranslation } from "../../i18n";
 import { useLatestExpenses } from "../../queries/hooks";
 import type { LatestExpensesResponse } from "../../types";
@@ -36,7 +36,7 @@ export function LatestExpensesTable() {
   return (
     <PageGridTile id="latest-expenses" order={dashboardTileOrder("latest-expenses")}>
       <h2>
-        <Link to="/flows/expenses">{t("dashboard.latestExpenses.title")}</Link>
+        <HeadingLink to="/flows/expenses">{t("dashboard.latestExpenses.title")}</HeadingLink>
       </h2>
       {query.isError ? (
         <p className="error">

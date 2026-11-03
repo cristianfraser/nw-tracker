@@ -7,14 +7,31 @@
   overflow-x: clip;
 }
 
+/* The inset sits only where a card meets a divider: a card's outer edge lines up with the
+   tile's title, like the rest of the tile. A pair keeps it beside the line between its two
+   cards; a list has no lines, so none. */
 .period {
-  --card-inset: var(--card-pad-x);
+  --inset-start: var(--card-pad-x);
+  --inset-end: var(--card-pad-x);
   min-width: 0;
+}
+
+:global(.cards--pair)>.period:nth-child(odd) {
+  --inset-start: 0px;
+}
+
+:global(.cards--pair)>.period:nth-child(even) {
+  --inset-end: 0px;
+}
+
+:global(.cards--list)>.period {
+  --inset-start: 0px;
+  --inset-end: 0px;
 }
 
 /* Past cards.css's `.card` reset (same specificity, loaded after this module). */
 :global(.cards)>.period {
-  padding-inline: var(--card-inset);
+  padding-inline: var(--inset-start) var(--inset-end);
 }
 
 /* «Próximos pagos»: a pay month and its total, over the payments due in it — what each is on
@@ -26,11 +43,22 @@
 .paymentLine {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.2rem;
+}
+
+/* A faint leader from the payment's name to its date and amount. An empty box's baseline is
+   its bottom edge, so the line sits on the text's baseline, lifted a little to its middle. */
+.paymentLine::before {
+  content: "";
+  order: 1;
+  flex: 1 1 1rem;
+  min-width: 1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  transform: translateY(-0.3em);
 }
 
 .paymentLine dd {
+  order: 2;
   margin: 0;
   text-align: right;
 }
@@ -40,15 +68,19 @@
   font-style: italic;
 }
 
-/* «Show more» / «Show less»: a link-like button under the months. */
+/* «Show more» / «Show less»: a button under the months that reads as text, underlined on hover. */
 .toggle {
   font: inherit;
   font-size: var(--font-size-card-meta);
-  color: var(--accent);
+  color: var(--muted);
   background: none;
   border: 0;
   padding: 0;
   cursor: pointer;
+}
+
+.toggle:hover {
+  text-decoration: underline;
 }
 
 .periodTitle {
@@ -89,6 +121,6 @@
 /* Savings and P/L each open a section: a divider above, reaching out to the card's edges. */
 .lineSection {
   border-top: 1px solid var(--border);
-  margin-inline: calc(-1 * var(--card-inset, 0px));
-  padding-inline: var(--card-inset, 0px);
+  margin-inline: calc(-1 * var(--inset-start, 0px)) calc(-1 * var(--inset-end, 0px));
+  padding-inline: var(--inset-start, 0px) var(--inset-end, 0px);
 }
