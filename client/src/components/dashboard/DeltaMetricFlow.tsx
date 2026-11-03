@@ -15,8 +15,6 @@ type Props = {
   className?: string;
   fractionDigits?: number;
   deltaFormat?: "absolute" | "percent";
-  /** Flash green/red when the value changes while the page is open (`AnimatedNumberFlow`); off = rolling digits. */
-  flashOnChange?: boolean;
 };
 
 export function DeltaMetricFlow({
@@ -25,7 +23,6 @@ export function DeltaMetricFlow({
   className = "",
   fractionDigits = 0,
   deltaFormat = "absolute",
-  flashOnChange,
 }: Props) {
   if (delta == null) {
     return (
@@ -48,7 +45,6 @@ export function DeltaMetricFlow({
       <AnimatedNumberFlow
         value={delta}
         animated={animated}
-        flashOnChange={flashOnChange}
         mapDisplayValue={(n) =>
           deltaFormat === "percent"
             ? plainPercentNumberFlowParts(n, fractionDigits)
