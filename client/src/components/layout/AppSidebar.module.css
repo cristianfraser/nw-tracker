@@ -2,15 +2,25 @@
   border-bottom: 1px solid var(--border);
   /* The line reaches back out to the sidebar's edges, past its inset. */
   margin-inline: calc(-1 * var(--card-pad-x));
-  padding-inline: var(--card-pad-x);
+  /* The text lines up with the top-level links'. */
+  padding: 0.5rem var(--card-pad-x) 0.6rem var(--sidebar-top-inset);
   font-weight: 600;
   font-size: var(--font-size-value-secondary);
   letter-spacing: -0.02em;
 }
 
 .brand a {
+  display: inline-block;
   color: var(--text);
   text-decoration: none;
+  transition: transform 0.15s ease;
+}
+
+/* «NW Tracker» stays aligned with the first top-level link (one with no children): when that link
+   is active its text moves by the active nudge, and so does this. */
+:global(.app-sidebar):has(.navScroll>.list:first-of-type>.item:first-child>.itemBody>.leafMark:empty+.itemContent .linkActive) .brand a {
+  transform: translateX(var(--sidebar-active-nudge));
+  transition: transform 0.3s ease;
 }
 
 .brand a:hover {
@@ -21,6 +31,9 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* The scroll box spans the sidebar's full width, so rows reaching out to its edges stay inside it. */
+  margin-inline: calc(-1 * var(--card-pad-x));
+  padding: 0.8rem var(--card-pad-x) 0;
 }
 
 .navInner {
@@ -160,6 +173,12 @@
   pointer-events: none;
 }
 
+/* A top-level link with no children (no hyphen) has no mark: its label starts on the sidebar's
+   inset, where a parent's caret does (the mark's margins would pull it left of it). */
+.leafMark:empty {
+  margin: 0;
+}
+
 .leafHyphen {
   display: block;
   width: 0.5rem;
@@ -171,6 +190,16 @@
 .row {
   display: flex;
   align-items: center;
+  /* A row reaches out past the sidebar's inset to its right edge, so the active highlight does. */
+  margin-right: calc(-1 * var(--card-pad-x));
+  padding-right: var(--card-pad-x);
+}
+
+/* A top-level link with no mark before it reaches the left edge too, its text at the top-level
+   inset (the active nudge adds to it). */
+.leafMark:empty+.itemContent .row {
+  margin-left: calc(-1 * var(--card-pad-x));
+  padding-left: var(--sidebar-top-inset);
 }
 
 .rowActive {
@@ -199,7 +228,7 @@
   color: var(--text);
 
   .linkLabel {
-    transform: translate(5px, -0.2px);
+    transform: translate(var(--sidebar-active-nudge), -0.2px);
     transition: transform 0.3s ease;
   }
 }

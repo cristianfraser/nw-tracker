@@ -67,6 +67,10 @@
    slides over the page. */
 .app-sidebar {
   --sidebar-rail-space-base: 32px;
+  /* Where a top-level link's text starts (one with no children: a caret's link starts at the
+     inset) and «NW Tracker» with it: the inset plus the active nudge links had. */
+  --sidebar-active-nudge: 5px;
+  --sidebar-top-inset: calc(var(--card-pad-x) + var(--sidebar-active-nudge));
   padding: 0.25rem var(--card-pad-x);
   grid-column: 1;
   display: flex;
@@ -193,23 +197,23 @@
     display: none;
   }
 
-  /* The ticker covers the content's last 8 columns plus the right margin, so its left edge
-     sits on a grid line (content column 5). Beyond the page cap it follows the layout, not the
-     viewport. */
+  /* Small desktop: the ticker is a bar across the content region (the phone's style), not the
+     viewport: from the sidebar's edge to the page's, through the content's side padding. */
   .market-ticker-panel {
-    left: auto;
-    right: calc(100vw - var(--page-w));
-    width: calc(8 * var(--col-w) + 7 * var(--gutter) + var(--margin-inline));
-    background-color: var(--bg);
+    left: var(--sidebar-w);
+    right: auto;
+    width: calc(var(--page-w) - var(--sidebar-w));
   }
 
+  /* Both desktop tiers: the ticker fades in from its left edge, over the bottom border's start.
+     Narrower on the small desktop, where the bar starts at the sidebar. */
   .market-ticker-panel::before {
     content: "";
     position: absolute;
     left: -1px;
     top: 0;
     bottom: -1px;
-    width: calc(min(6.5rem, 10%) + 1.25rem);
+    width: calc(min(1rem, 2%) + 0.5rem);
     z-index: 2;
     pointer-events: none;
     background: linear-gradient(to right, var(--bg) 0%, var(--bg) 10%, transparent 100%);
@@ -221,5 +225,24 @@
     flex: 0 0 0;
     overflow: visible;
     pointer-events: none;
+  }
+}
+
+/* Big desktop: the ticker covers the content's last 8 columns (its left edge on content column 5)
+   and the right padding, to the page's edge, and the content starts at the top:
+   no strip is reserved for it. Beyond the page cap it follows the layout, not the viewport. */
+@media (min-width: 1440px) {
+  .layout-main {
+    padding-top: 0;
+  }
+
+  .market-ticker-panel {
+    left: auto;
+    right: calc(100vw - var(--page-w));
+    width: calc(8 * var(--col-w) + 7 * var(--gutter) + var(--margin-inline));
+  }
+
+  .market-ticker-panel::before {
+    width: calc(min(6.5rem, 10%) + 1.25rem);
   }
 }
