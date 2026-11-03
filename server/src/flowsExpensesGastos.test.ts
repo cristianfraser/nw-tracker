@@ -10,6 +10,7 @@ import { enrichLinesWithNotaDeCreditoPairing } from "./ccNotaDeCreditoPairing.js
 import {
   aggregateGastosFromLines,
   bigGroupUsageByMode,
+  buildFlowsExpensesGastosPayload,
   buildFlowsExpensesGastosViews,
   countsTowardGastosMes,
   expenseYearMonthlyAverages,
@@ -460,6 +461,28 @@ describe("buildFlowsExpensesGastosViews", () => {
     expect(nov(v.chart_monthly_by_category).bills).toBe(0);
     expect(nov(v.chart_sort_monthly_by_category!).bills).toBe(20_000);
     expect(v.by_month.find((r) => r.period_month === "2025-11")!.gastos_mes_clp).toBe(20_000);
+  });
+});
+
+describe("buildFlowsExpensesGastosPayload — pre-tax deductions", () => {
+  const card = ccLine({
+    statement_line_id: 1, line_role: "purchase", installment_flag: 0, nro_cuota_current: null, nro_cuota_total: null,
+    expense_month: "2025-10", billing_month: "2025-10", purchase_month: "2025-10", purchase_on: "2025-10-05",
+    amount_clp: 10_000, category_slug: "bills", purchase_key: "line-pr:1",
+  });
+  const payslip = ccLine({
+    source: "payslip", pre_tax: true, statement_line_id: 7001, account_id: 0, line_role: "purchase", installment_flag: 0,
+    nro_cuota_current: null, nro_cuota_total: null, expense_month: "2025-10", billing_month: "2025-10",
+    purchase_month: "2025-10", purchase_on: "2025-10-31", amount_clp: 4_000, category_slug: "taxes",
+    purchase_key: "payslip:7001",
+  });
+  const octGastos = (includePreTax: boolean) =>
+    buildFlowsExpensesGastosPayload("clp", new Set(), includePreTax, [card, payslip])
+      .views[gastosViewKey("split", "subcategory")]!.by_month.find((r) => r.period_month === "2025-10")!.gastos_mes_clp;
+
+  it("tracks spending from net pay: payslip deductions only when asked", () => {
+    expect(octGastos(false)).toBe(10_000);
+    expect(octGastos(true)).toBe(14_000);
   });
 });
 

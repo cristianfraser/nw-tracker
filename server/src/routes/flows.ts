@@ -337,7 +337,12 @@ app.get("/api/flows/expenses/credit-card/gastos", (req, res) => {
       .map((s) => s.trim())
       .filter((s) => s.length > 0)
   );
-  res.json(cachedFlowsExpensesGastosPayload(unitRaw, excluded));
+  const preTaxRaw = String(req.query.include_pre_tax ?? "0");
+  if (preTaxRaw !== "0" && preTaxRaw !== "1") {
+    res.status(400).json({ error: `include_pre_tax must be 0 or 1, got ${preTaxRaw}` });
+    return;
+  }
+  res.json(cachedFlowsExpensesGastosPayload(unitRaw, excluded, preTaxRaw === "1"));
 });
 
 function piecesLineRef(source: unknown, lineId: unknown): { source: ExpenseLinePieceSource; lineId: number } {

@@ -23,6 +23,7 @@ import {
 } from "../flowsDisplay";
 import { clipMonthsThenRollup, clipPointsToTimeRange, type TimeRange } from "../timeRange";
 import { useCcInstallmentGastosMode } from "../useCcInstallmentGastosMode";
+import { useExpensesIncludePreTax } from "../useExpensesIncludePreTax";
 import { useCcExpenseCategoryLevel } from "../useCcExpenseCategoryLevel";
 import { ccExpenseCategoriesAtLevel } from "../ccExpenseCategories";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
@@ -60,6 +61,13 @@ export function ExpensesPage() {
   const { data, error } = useFlowsExpenses();
   const { installmentMode, setInstallmentMode } = useCcInstallmentGastosMode();
   const { categoryLevel, setCategoryLevel } = useCcExpenseCategoryLevel();
+  const { includePreTax, setIncludePreTax } = useExpensesIncludePreTax();
+
+  /** The lines the sections list: payslip deductions (server `pre_tax`) only when asked, like the views. */
+  const pageLines = useMemo(() => {
+    const lines = data?.lines ?? [];
+    return includePreTax ? lines : lines.filter((l) => !l.pre_tax);
+  }, [data?.lines, includePreTax]);
 
   /** The chart's categories at the chosen level: at «Categorías» a subcategory folds into its parent. */
   const chartCategories = useMemo(
@@ -73,7 +81,7 @@ export function ExpensesPage() {
     useCcExpenseExcludedBigGroups(activeBigGroups);
   const excludedBigGroupList = useMemo(() => [...excludedBigGroups], [excludedBigGroups]);
   // The default exclusion is every big group the lines carry: wait for them before asking.
-  const gastos = useFlowsExpensesGastos(displayUnit, excludedBigGroupList, data != null);
+  const gastos = useFlowsExpensesGastos(displayUnit, excludedBigGroupList, includePreTax, data != null);
   const loadError = error ?? gastos.error;
   const err =
     loadError instanceof Error ? loadError.message : loadError ? t("common.loadFailed") : null;
@@ -190,6 +198,14 @@ export function ExpensesPage() {
           />
           {t("expenses.creditCard.categoryLevelSubcategory")}
         </label>
+        <label className="radio-pill" title={t("expenses.creditCard.includePreTaxHint")}>
+          <input
+            type="checkbox"
+            checked={includePreTax}
+            onChange={(e) => setIncludePreTax(e.target.checked)}
+          />
+          {t("expenses.creditCard.includePreTax")}
+        </label>
         <span style={{ marginLeft: "auto", display: "flex", gap: "0.5rem", alignItems: "center" }}>
           <Button variant="secondary" onClick={() => setManualOpen(true)}>
             {t("expenses.creditCard.manualExpense.add")}
@@ -224,7 +240,7 @@ export function ExpensesPage() {
       ) : null}
 
       <BigExpenseGroupsSection
-        lines={data?.lines ?? []}
+        lines={pageLines}
         categories={data?.categories ?? []}
         bigGroups={data?.big_groups ?? []}
         usage={bigGroupUsage}
@@ -269,7 +285,7 @@ export function ExpensesPage() {
         </div>
         <GroupExpensesMonthTable
           rows={monthTableRows}
-          lines={data?.lines ?? []}
+          lines={pageLines}
           categories={data?.categories ?? []}
           bigGroups={data?.big_groups ?? []}
           installmentMode={installmentMode}
@@ -286,14 +302,14 @@ export function ExpensesPage() {
       />
 
       <CreditCardUnclassifiedExpensesTable
-        lines={data?.lines ?? []}
+        lines={pageLines}
         categories={data?.categories ?? []}
         bigGroups={data?.big_groups ?? []}
         loading={linesLoading}
       />
 
       <CreditCardDepositMatchedExpensesTable
-        lines={data?.lines ?? []}
+        lines={pageLines}
         categories={data?.categories ?? []}
         loading={linesLoading}
       />

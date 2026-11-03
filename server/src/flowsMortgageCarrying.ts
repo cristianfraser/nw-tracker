@@ -141,13 +141,15 @@ export function cachedFlowsExpensesPayload(): FlowsExpensesPayload {
 /** The Expenses page's gastos view (`GET /api/flows/expenses/credit-card/gastos`), cached the same way. */
 export function cachedFlowsExpensesGastosPayload(
   unit: GastosUnit,
-  excludedBigGroupSlugs: ReadonlySet<string>
+  excludedBigGroupSlugs: ReadonlySet<string>,
+  includePreTax: boolean
 ): ReturnType<typeof buildFlowsExpensesGastosPayload> {
-  if (dbInTransaction()) return buildFlowsExpensesGastosPayload(unit, excludedBigGroupSlugs);
+  if (dbInTransaction()) return buildFlowsExpensesGastosPayload(unit, excludedBigGroupSlugs, includePreTax);
   syncFlowsInputsWithLiveUsdRates();
   const excludedKey = [...excludedBigGroupSlugs].sort().join(",");
-  return getAggregationCached(`flows.overview.inputs|gastos|${unit}|${excludedKey}`, () =>
-    buildFlowsExpensesGastosPayload(unit, excludedBigGroupSlugs, cachedFlowsExpenseLines())
+  const preTaxKey = includePreTax ? "pre_tax" : "net";
+  return getAggregationCached(`flows.overview.inputs|gastos|${unit}|${preTaxKey}|${excludedKey}`, () =>
+    buildFlowsExpensesGastosPayload(unit, excludedBigGroupSlugs, includePreTax, cachedFlowsExpenseLines())
   );
 }
 

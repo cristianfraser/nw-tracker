@@ -94,6 +94,7 @@ export function loadPayslipExpenseLineDrafts(): FlowCcExpenseLineRowDraft[] {
       const merchant = `${label} · ${p.employer_name}`;
       out.push({
         source: "payslip",
+        pre_tax: true,
         statement_line_id: p.id * PAYSLIP_EXPENSE_LINE_ID_FACTOR + l.position,
         account_id: 0,
         expense_month: p.period_month,

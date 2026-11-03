@@ -666,11 +666,12 @@ export function useFlowsExpenses() {
 export function useFlowsExpensesGastos(
   unit: DisplayUnit,
   excludedBigGroups: readonly string[],
+  includePreTax: boolean,
   enabled = true
 ) {
   return useQuery({
-    queryKey: queryKeys.flowsExpensesGastos(unit, excludedBigGroups),
-    queryFn: () => api.flowsExpensesGastos(unit, excludedBigGroups),
+    queryKey: queryKeys.flowsExpensesGastos(unit, excludedBigGroups, includePreTax),
+    queryFn: () => api.flowsExpensesGastos(unit, excludedBigGroups, includePreTax),
     placeholderData: keepPreviousData,
     enabled,
   });

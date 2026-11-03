@@ -30,6 +30,7 @@ import {
 import { listCcExpenseBigGroups, type CcExpenseBigGroupRow } from "./ccExpenseBigGroups.js";
 import {
   buildFlowsExpenseLines,
+  isPreTaxExpenseLine,
   type FlowCcExpenseCategoryChartPoint,
   type FlowCcExpenseChartPoint,
   type FlowCcExpenseLineRow,
@@ -520,12 +521,23 @@ export function bigGroupUsageByMode(
   return { split: usageFor("split"), total: usageFor("total") };
 }
 
+/**
+ * The Expenses page's gastos: spending from net pay, so the deductions taken from a payslip
+ * ({@link isPreTaxExpenseLine}) are left out unless `includePreTax`. The flows overview builds its
+ * own views over every line (`flowsOverview.ts`), where they count.
+ */
 export function buildFlowsExpensesGastosPayload(
   unit: GastosUnit,
   excludedBigGroupSlugs: ReadonlySet<string>,
-  lines: FlowCcExpenseLineRow[] = buildFlowsExpenseLines()
-): FlowsExpensesGastosPayload & { big_group_usage: Record<CcInstallmentGastosMode, BigGroupUsage[]> } {
+  includePreTax: boolean,
+  allLines: FlowCcExpenseLineRow[] = buildFlowsExpenseLines()
+): FlowsExpensesGastosPayload & {
+  include_pre_tax: boolean;
+  big_group_usage: Record<CcInstallmentGastosMode, BigGroupUsage[]>;
+} {
+  const lines = includePreTax ? allLines : allLines.filter((l) => !isPreTaxExpenseLine(l));
   return {
+    include_pre_tax: includePreTax,
     ...buildFlowsExpensesGastosViews(
       lines,
       listCcExpenseCategories(),

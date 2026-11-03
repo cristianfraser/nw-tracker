@@ -205,7 +205,7 @@ async function requestPathPayloads(): Promise<Map<string, string>> {
     out.set(`nav_snapshot|${unit}`, JSON.stringify(await buildDashboardNavSnapshot(includeUsd)));
     out.set(`nav_context|${unit}`, JSON.stringify(await buildDashboardNavContext(includeUsd, unit, "net_worth")));
     out.set(`overview|${unit}`, JSON.stringify(getDashboardOverviewBlock(unit)));
-    out.set(`gastos|${unit}`, JSON.stringify(cachedFlowsExpensesGastosPayload(unit, new Set())));
+    out.set(`gastos|${unit}`, JSON.stringify(cachedFlowsExpensesGastosPayload(unit, new Set(), false)));
   }
   out.set("expenses", JSON.stringify(cachedFlowsExpensesPayload()));
   return out;
@@ -217,7 +217,7 @@ describe("request-path caches", () => {
     const first = await requestPathPayloads();
     // The cached expense payloads are the uncached builds.
     expect(first.get("expenses")).toBe(JSON.stringify(buildFlowsExpensesPayload()));
-    expect(first.get("gastos|clp")).toBe(JSON.stringify(buildFlowsExpensesGastosPayload("clp", new Set())));
+    expect(first.get("gastos|clp")).toBe(JSON.stringify(buildFlowsExpensesGastosPayload("clp", new Set(), false)));
 
     const accountId = (
       db.prepare(`SELECT account_id AS id FROM movements WHERE account_id IS NOT NULL AND currency = 'clp' LIMIT 1`).get() as {
