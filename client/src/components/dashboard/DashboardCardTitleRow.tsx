@@ -25,7 +25,6 @@ export function DashboardCardTitleRow({ label, titleTo, colorRgb }: Props) {
       uppercase={false}
       // The card title uppercases its text; the pill keeps the label as written.
       style={{ textTransform: "none" }}
-      className="card-title-pill"
       label={label}
       backgroundColor={mutedPillBackgroundRgb(rgb)}
       textColor={tintedTextOnRgb(rgb)}
