@@ -111,11 +111,6 @@
     grid-column: span var(--tile-span-l);
   }
 
-  /* The strip in the main stack: 8 columns, so a 4-up card spans 2. */
-  .page-main .cards-strip>.cards>.card {
-    grid-column: span 2;
-  }
-
   /* A 4-up block in the rail is 2-up (the flows periods). */
   .page-rail .cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
