@@ -180,7 +180,8 @@
 .vendor {
   grid-area: vendor;
   display: flex;
-  align-items: baseline;
+  /* Centered, not baseline: a baseline-aligned ⓘ sits its icon's bottom on the text baseline. */
+  align-items: center;
   min-width: 0;
   white-space: nowrap;
 }
