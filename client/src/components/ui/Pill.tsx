@@ -1,11 +1,24 @@
 import {
+  lazy,
+  Suspense,
+  useLayoutEffect,
+  useRef,
+  useState,
   type CSSProperties,
   type HTMLAttributes,
   type MouseEvent,
   type ReactNode,
 } from "react";
 import { cn } from "../../cn";
+import { useChartStyle } from "../charts/chartStyle";
 import styles from "./Pill.module.css";
+
+/**
+ * The hand-drawn chart styles colour a pill in with a scribble instead of a flat fill. Lazy: it
+ * pulls in the chart engine, which the first page load leaves out, and only loads once a
+ * hand-drawn style is on.
+ */
+const PillScribble = lazy(() => import("../charts/PillScribble"));
 
 export type PillSize = "default" | "small" | "icon";
 
@@ -48,6 +61,32 @@ export function Pill({
   onMouseLeave,
   ...rest
 }: PillProps) {
+  const sketched = useChartStyle() !== "plain";
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [sketch, setSketch] = useState<{ w: number; h: number; color: string } | null>(null);
+
+  // Measure the pill and take its colour (the prop, else the CSS --pill-bg it would paint).
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!sketched || !el) {
+      setSketch(null);
+      return;
+    }
+    const read = () => {
+      const color =
+        backgroundColor ||
+        getComputedStyle(el).getPropertyValue("--pill-bg").trim() ||
+        getComputedStyle(document.documentElement).getPropertyValue("--surface2").trim() ||
+        "#475569";
+      setSketch({ w: el.offsetWidth, h: el.offsetHeight, color });
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sketched, backgroundColor]);
+
   const hoverable = Boolean(onMouseEnter || hoverBackgroundColor || onClick);
   const showLeading = leading != null && size !== "small";
   const showLabel = size !== "icon" && (children != null || label != null);
@@ -55,15 +94,17 @@ export function Pill({
 
   const baseStyle: CSSProperties = {
     ...style,
-    ...(backgroundColor ? { backgroundColor } : null),
+    ...(backgroundColor && !sketched ? { backgroundColor } : null),
     ...(textColor ? { color: textColor } : null),
   };
 
   return (
     <span
       {...rest}
+      ref={ref}
       className={cn(
         styles.pill,
+        sketched && styles.sketched,
         styles[size],
         isUppercase && styles.uppercase,
         hoverable && styles.hoverable,
@@ -85,18 +126,23 @@ export function Pill({
       }}
       onClick={onClick}
       onMouseEnter={(e) => {
-        if (hoverBackgroundColor) {
+        if (hoverBackgroundColor && !sketched) {
           e.currentTarget.style.backgroundColor = hoverBackgroundColor;
         }
         onMouseEnter?.(e);
       }}
       onMouseLeave={(e) => {
-        if (hoverBackgroundColor && backgroundColor) {
+        if (hoverBackgroundColor && backgroundColor && !sketched) {
           e.currentTarget.style.backgroundColor = backgroundColor;
         }
         onMouseLeave?.(e);
       }}
     >
+      {sketched && sketch ? (
+        <Suspense fallback={null}>
+          <PillScribble w={sketch.w} h={sketch.h} color={sketch.color} />
+        </Suspense>
+      ) : null}
       {showLeading ? (
         <span className={cn(styles.leading, showLabel && styles.leadingWithLabel)}>{leading}</span>
       ) : null}

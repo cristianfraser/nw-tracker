@@ -2,6 +2,7 @@ import {
   Children,
   cloneElement,
   isValidElement,
+  useId,
   useMemo,
   type ComponentProps,
   type ReactElement,
@@ -10,6 +11,16 @@ import {
 import { Line, LineChart, ResponsiveContainer } from "recharts";
 import { RECHARTS_MONEY_CHART_MARGIN } from "./chartLayout";
 import { appTooltipElement, type AppTooltipSpec } from "./ChartTooltip";
+import { useChartStyle } from "./chartStyle";
+import {
+  RoughAxisLines,
+  RoughChartDefs,
+  injectRoughShapes,
+  roughAxisSides,
+  roughGrainFilterId,
+  roughModeFor,
+  roughSeed,
+} from "./roughShapes";
 
 function tailClipKeySet(tailClippedKeys: ReadonlySet<string> | readonly string[] | null | undefined): Set<string> {
   if (tailClippedKeys == null) return new Set();
@@ -53,15 +64,21 @@ export type AppLineChartProps = Omit<ComponentProps<typeof LineChart>, "data"> &
  */
 export function AppLineChart({ data, tailClippedKeys, tooltip, margin, children, ...rest }: AppLineChartProps) {
   const clipSet = useMemo(() => tailClipKeySet(tailClippedKeys), [tailClippedKeys]);
-  const mappedChildren = useMemo(
-    () => (clipSet.size === 0 ? children : injectLineConnectNullsForTailClip(children, clipSet)),
-    [children, clipSet]
-  );
+  const rough = roughModeFor(useChartStyle());
+  const grainFilterId = roughGrainFilterId(useId());
+  const mappedChildren = useMemo(() => {
+    const clipped = clipSet.size === 0 ? children : injectLineConnectNullsForTailClip(children, clipSet);
+    // The hand-drawn chart styles (roughShapes.tsx): every series drawn by rough.js; `plain` never clones.
+    return rough ? injectRoughShapes(clipped, rough, grainFilterId) : clipped;
+  }, [children, clipSet, rough, grainFilterId]);
+  const axisSides = useMemo(() => (rough?.extras ? roughAxisSides(children) : []), [children, rough]);
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={data} margin={margin ?? RECHARTS_MONEY_CHART_MARGIN} {...rest}>
         {tooltip ? appTooltipElement(tooltip) : null}
+        {rough ? <RoughChartDefs mode={rough} grainFilterId={grainFilterId} /> : null}
         {mappedChildren}
+        {axisSides.length ? <RoughAxisLines sides={axisSides} seed={roughSeed("axis", rough?.seedSalt)} multiStroke={rough?.multiStrokeExtras ?? true} /> : null}
       </LineChart>
     </ResponsiveContainer>
   );

@@ -196,7 +196,34 @@
   gap: 0.35rem;
 }
 
-.value-treemap__tile--row .value-treemap__name {
+.value-treemap__tile--row /* Hand-drawn chart styles: the pen draws the tiles in the SVG layer underneath; the HTML tiles
+   keep their labels, hover and clicks but drop their own fill and border. */
+.value-treemap__sketch {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.value-treemap--sketch .value-treemap__tile,
+.value-treemap--sketch .value-treemap__header,
+.value-treemap--sketch .value-treemap__frame {
+  background: transparent;
+  border-color: transparent;
+}
+
+.value-treemap--sketch .value-treemap__tile:hover,
+.value-treemap--sketch .value-treemap__header:hover,
+.value-treemap--sketch .value-treemap__tile:focus-visible,
+.value-treemap--sketch .value-treemap__header:focus-visible {
+  outline: none;
+}
+
+.value-treemap--sketch .value-treemap__name,
+.value-treemap--sketch .value-treemap__pct {
+  text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg);
+}
+
+.value-treemap__name {
   min-width: 0;
 }
 

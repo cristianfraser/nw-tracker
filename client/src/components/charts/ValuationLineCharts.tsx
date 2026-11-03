@@ -8,6 +8,8 @@ import type { NetWorthAthDto, TimeseriesBlock } from "../../types";
 import { clipChartDataToYDomain } from "../../chartTailClip";
 import { AppLineChart } from "./AppLineChart";
 import { ATH_MARKER_STROKE, renderAthMarker } from "./AthMarker";
+import { useChartStyle } from "./chartStyle";
+import { LegendSquiggle } from "./roughShapes";
 import { isNearAthRow, resolveAthMarkerRow } from "./athMarkerPlacement";
 import {
   carryForwardTrailingPendingRows,
@@ -361,6 +363,8 @@ function InteractiveLegend({
 }) {
   // Faint references (USD milestones) stay out of the legend: they are context, named in the tooltip.
   const visible = series.filter((s) => !s.isDeposit && !s.isFaintReference);
+  // Hand-drawn chart styles: the swatch is a squiggle in the chart's pen.
+  const sketched = useChartStyle() !== "plain";
   if (visible.length === 0) return null;
   const dim = focusColorIndex != null;
   return (
@@ -383,6 +387,9 @@ function InteractiveLegend({
             style={{ opacity: faded ? DIM_LEGEND_OPACITY : 1 }}
           >
             <svg width={18} height={10} aria-hidden className={styles.legendSwatch}>
+              {sketched ? (
+                <LegendSquiggle color={color} w={18} h={10} width={isHi ? 2.2 : 1.6} opacity={faded ? 0.5 : 1} />
+              ) : (
               <line
                 x1={0}
                 y1={5}
@@ -400,6 +407,7 @@ function InteractiveLegend({
                         : 1
                 }
               />
+              )}
             </svg>
             <span
               className={cn(

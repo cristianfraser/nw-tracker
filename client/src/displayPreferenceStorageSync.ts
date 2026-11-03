@@ -11,6 +11,7 @@
  * a cleared key keeps the tab's current in-memory state; the next write
  * re-seeds it).
  */
+import { CHART_STYLE_LS_KEY, isChartStyle, type ChartStyle } from "./chartStylePreference";
 import { LANGUAGE_LS_KEY, type AppLanguage } from "./languagePreference";
 import { DECIMAL_SEPARATOR_LS_KEY, type DecimalSeparator } from "./numberFormatPreference";
 import type { DisplayUnit } from "./queries/keys";
@@ -20,7 +21,8 @@ export const DISPLAY_UNIT_LS_KEY = "nw-tracker.displayUnit";
 export type DisplayPreferenceStorageChange =
   | { pref: "displayUnit"; value: DisplayUnit }
   | { pref: "decimalSeparator"; value: DecimalSeparator }
-  | { pref: "language"; value: AppLanguage };
+  | { pref: "language"; value: AppLanguage }
+  | { pref: "chartStyle"; value: ChartStyle };
 
 export function parsePreferenceStorageChange(
   key: string | null,
@@ -41,6 +43,11 @@ export function parsePreferenceStorageChange(
     case LANGUAGE_LS_KEY:
       if (newValue === "es" || newValue === "en") {
         return { pref: "language", value: newValue };
+      }
+      return null;
+    case CHART_STYLE_LS_KEY:
+      if (isChartStyle(newValue)) {
+        return { pref: "chartStyle", value: newValue };
       }
       return null;
     default:

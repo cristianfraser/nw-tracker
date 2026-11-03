@@ -3,7 +3,16 @@
     "displayPreferences": {
       "toolbarAria": "Currency (CLP or USD) and MTD/YTD period",
       "displayCurrency": "Currency: ",
-      "numberFormat": "Format: "
+      "numberFormat": "Format: ",
+      "chartStyle": "Charts: ",
+      "chartStyles": {
+        "plain": "Normal",
+        "pen": "Hand-drawn: pen",
+        "pencil": "Hand-drawn: pencil",
+        "marker": "Hand-drawn: marker",
+        "watercolor": "Hand-drawn: watercolor",
+        "crayon": "Hand-drawn: crayon"
+      }
     },
     "errorBoundary": {
       "title": "Something went wrong",
@@ -230,7 +239,22 @@
     "importSyncTitle": "Import sync",
     "settingsTitle": "Settings",
     "mirrorPairsTitle": "Historical mirrors",
-    "usageTitle": "Usage"
+    "usageTitle": "Usage",
+    "chartStylesTitle": "Chart styles"
+  },
+  "chartStylesLab": {
+    "intro": "The same two charts under each style (all rough.js). The toolbar's «Charts» select applies a style to every page.",
+    "lineTitle": "Net worth (sample)",
+    "comboTitle": "Monthly Δ and deposits (sample)",
+    "series": {
+      "total": "Total",
+      "brokerage": "Brokerage",
+      "retirement": "Retirement",
+      "cash": "Cash",
+      "pl": "Monthly Δ",
+      "deposits": "Deposits",
+      "ytd": "YTD"
+    }
   },
   "settings": {
     "language": "Language: ",

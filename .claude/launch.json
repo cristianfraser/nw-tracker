@@ -4,13 +4,25 @@
     {
       "name": "client",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "-w", "nw-tracker-client", "--", "--port", "5199", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "-w",
+        "nw-tracker-client",
+        "--",
+        "--port",
+        "5199",
+        "--strictPort"
+      ],
       "port": 5199
     },
     {
       "name": "server",
       "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"],
+      "runtimeArgs": [
+        "-c",
+        "BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"
+      ],
       "port": 3001
     },
     {
@@ -102,6 +114,24 @@
         "VITE_DEMO_MODE=1 NW_TRACKER_API_PROXY_TARGET=http://localhost:3210 npm run dev -w nw-tracker-client -- --port 5210 --strictPort"
       ],
       "port": 5210
+    },
+    {
+      "name": "server-sketch",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "PORT=3699 NW_TRACKER_TEST_DB=sketch-rehearsal.db BACKGROUND_JOBS_ENABLED=0 npm run dev -w nw-tracker-server"
+      ],
+      "port": 3699
+    },
+    {
+      "name": "client-sketch",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "NW_TRACKER_API_PROXY_TARGET=http://localhost:3699 npm run dev -w nw-tracker-client -- --port 5699 --strictPort"
+      ],
+      "port": 5699
     }
   ]
 }

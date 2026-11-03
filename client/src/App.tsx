@@ -55,6 +55,10 @@ const MirrorPairsPanelPage = lazyPage(
   "MirrorPairsPanelPage"
 );
 const UsagePanelPage = lazyPage(() => import("./pages/panel/UsagePanelPage"), "UsagePanelPage");
+const ChartStylesLabPage = lazyPage(
+  () => import("./pages/panel/ChartStylesLabPage"),
+  "ChartStylesLabPage"
+);
 /** One element per master panel subroute — TS errors here when panelSubroutes.ts grows. */
 const PANEL_SUBROUTE_ELEMENTS: Record<PanelSubrouteSlug, ReactElement> = {
   notifications: <NotificationsPage />,
@@ -63,6 +67,7 @@ const PANEL_SUBROUTE_ELEMENTS: Record<PanelSubrouteSlug, ReactElement> = {
   "mirror-pairs": <MirrorPairsPanelPage />,
   usage: <UsagePanelPage />,
   settings: <SettingsPage />,
+  "chart-styles": <ChartStylesLabPage />,
 };
 
 const RatesPage = lazyPage(() => import("./pages/RatesPage"), "RatesPage");

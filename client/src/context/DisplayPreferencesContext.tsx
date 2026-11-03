@@ -11,6 +11,7 @@ import {
   DISPLAY_UNIT_LS_KEY,
   parsePreferenceStorageChange,
 } from "../displayPreferenceStorageSync";
+import { persistChartStyle, readInitialChartStyle, type ChartStyle } from "../chartStylePreference";
 import { setDecimalSeparatorForFormatting } from "../format";
 import i18n from "../i18n";
 import {
@@ -70,6 +71,9 @@ type DisplayPreferencesContextValue = {
   /** UI language (es | en); dates and the decimal separator are independent of it. */
   language: AppLanguage;
   setLanguage: (l: AppLanguage) => void;
+  /** Chart rendering style (plain | chalk | chalk-sketch | rough); see chartStylePreference.ts. */
+  chartStyle: ChartStyle;
+  setChartStyle: (s: ChartStyle) => void;
 };
 
 const DisplayPreferencesContext = createContext<DisplayPreferencesContextValue | null>(null);
@@ -80,6 +84,7 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
     readInitialDecimalSeparator
   );
   const [language, setLanguageState] = useState<AppLanguage>(readInitialLanguage);
+  const [chartStyle, setChartStyleState] = useState<ChartStyle>(readInitialChartStyle);
 
   // Each preference splits into apply (side effects + state, shared with the
   // cross-tab storage handler below) and set (apply + persist; user-initiated).
@@ -121,6 +126,17 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
     [applyLanguage]
   );
 
+  const setChartStyle = useCallback((s: ChartStyle) => {
+    setChartStyleState(s);
+    persistChartStyle(s);
+  }, []);
+
+  // The chart CSS keys on `<html data-chart-style>`; a ChartStyleScope sets the same attribute
+  // on a subtree to override it there.
+  useEffect(() => {
+    document.documentElement.dataset.chartStyle = chartStyle;
+  }, [chartStyle]);
+
   // Cross-tab sync: another tab's preference write lands here as a `storage`
   // event (other tabs only, value actually changed) — apply without persisting.
   useEffect(() => {
@@ -141,6 +157,9 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
         case "language":
           applyLanguage(change.value);
           break;
+        case "chartStyle":
+          setChartStyleState(change.value);
+          break;
       }
     };
     window.addEventListener("storage", onStorage);
@@ -155,8 +174,19 @@ export function DisplayPreferencesProvider({ children }: { children: ReactNode }
       setDecimalSeparator,
       language,
       setLanguage,
+      chartStyle,
+      setChartStyle,
     }),
-    [displayUnit, setDisplayUnit, decimalSeparator, setDecimalSeparator, language, setLanguage]
+    [
+      displayUnit,
+      setDisplayUnit,
+      decimalSeparator,
+      setDecimalSeparator,
+      language,
+      setLanguage,
+      chartStyle,
+      setChartStyle,
+    ]
   );
 
   return (
