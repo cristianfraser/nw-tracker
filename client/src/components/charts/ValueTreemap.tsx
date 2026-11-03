@@ -107,6 +107,18 @@ function sketchTileColor(pal: SketchPalette, t: number): string {
   if (t === 0) return mixRgb(pal.neutral, pal.neutral, 1);
   return mixRgb(t > 0 ? pal.up : pal.down, pal.neutral, Math.abs(t));
 }
+/** A node's colour as numbers (the same mix as {@link sketchTileColor}). */
+function sketchTileRgb(pal: SketchPalette, t: number): Rgb {
+  const a = t > 0 ? pal.up : t < 0 ? pal.down : pal.neutral;
+  const k = Math.abs(t);
+  return a.map((v, i) => v * k + pal.neutral[i]! * (1 - k)) as unknown as Rgb;
+}
+/** A near-white tinted by the node's colour: its hand-drawn border. */
+const BORDER_WHITE: Rgb = [241, 245, 249];
+const BORDER_TINT = 0.28;
+function sketchBorderColor(pal: SketchPalette, t: number): string {
+  return mixRgb(sketchTileRgb(pal, t), BORDER_WHITE, BORDER_TINT);
+}
 /** FNV-1a of a slug: each tile keeps its sketch across re-renders. */
 function slugSeed(slug: string): number {
   let h = 0x811c9dc5;
@@ -282,6 +294,7 @@ export function ValueTreemap({
                 const dto = p.node.dto;
                 const t = treemapIntensity(pctOf(dto), bound);
                 const color = sketchTileColor(palette, t);
+                const border = sketchBorderColor(palette, t);
                 const seed = slugSeed(dto.slug);
                 const inset = 1.5;
                 if (p.node.children != null) {
@@ -291,12 +304,12 @@ export function ValueTreemap({
                       {p.header > 0 ? (
                         <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.header - inset} fill={color} stroke={color} pen={sketchPen} seed={seed + 1} fillStrength={MAP_FILL_STRENGTH} fillInset={MAP_FILL_INSET} />
                       ) : null}
-                      <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={null} stroke={palette.outline} pen={sketchPen} seed={seed} />
+                      <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={null} stroke={border} pen={sketchPen} seed={seed} />
                     </g>
                   );
                 }
                 return (
-                  <RoughRect key={`st:${dto.slug}`} x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={color} stroke={palette.outline} pen={sketchPen} seed={seed} fillStrength={MAP_FILL_STRENGTH} fillInset={MAP_FILL_INSET} />
+                  <RoughRect key={`st:${dto.slug}`} x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={color} stroke={border} pen={sketchPen} seed={seed} fillStrength={MAP_FILL_STRENGTH} fillInset={MAP_FILL_INSET} />
                 );
               })}
               {(() => {
