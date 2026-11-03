@@ -141,3 +141,15 @@
     }
   }
 }
+
+/* Small desktop: a dashboard tile that shares its row (`PageGridTile` `smallSpan`) spans half the
+   columns; a 4-up card block inside it (the «Flujos» periods) is 2-up. */
+@media (min-width: 880px) and (max-width: 1439px) {
+  .page-tile.page-tile--small-span {
+    grid-column: span var(--tile-span-s);
+  }
+
+  .page-tile--small-span .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
