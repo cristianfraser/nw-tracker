@@ -49,6 +49,7 @@ export function LatestExpensesTable() {
           bigGroups={data?.big_groups ?? []}
           showBigGroupControls
           enableCheckingNotes
+          hideHeader
           emptyLabel={t("dashboard.latestExpenses.empty")}
           loading={data == null}
         />

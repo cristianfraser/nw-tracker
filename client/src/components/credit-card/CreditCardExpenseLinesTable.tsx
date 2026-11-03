@@ -528,6 +528,7 @@ export function CreditCardExpenseLinesTable({
   onEditPieces,
   onEditManual,
   enableCheckingNotes = false,
+  hideHeader = false,
   loading,
 }: {
   lines: readonly FlowCcExpenseLineRow[];
@@ -552,6 +553,8 @@ export function CreditCardExpenseLinesTable({
   onEditManual?: (line: FlowCcExpenseLineRow) => void;
   /** Show note inputs for cuenta corriente (checking) rows — expenses tab only. */
   enableCheckingNotes?: boolean;
+  /** No sort header: the rows keep the order they come in (a short list such as «Últimos gastos»). */
+  hideHeader?: boolean;
   /** Lines still loading: the header renders with no rows (not the empty label), dimmed. */
   loading?: boolean;
 }) {
@@ -617,6 +620,7 @@ export function CreditCardExpenseLinesTable({
           anySelected && styles.listHasSelection
         )}
       >
+        {hideHeader ? null : (
         <div className={styles.header}>
           <SortButton sortKey="date" label={t("expenses.creditCard.lineRow.sortDate")} sort={sort} onSort={onSort} />
           <span className={styles.headerRight}>
@@ -634,6 +638,7 @@ export function CreditCardExpenseLinesTable({
             />
           </span>
         </div>
+        )}
         <div role="list">
           {visible.map((ln) => {
             const key = expenseLineRowKey(ln);
