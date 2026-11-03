@@ -571,6 +571,19 @@ function passOptions(pen: RoughPen, width: number): Options {
   };
 }
 
+/**
+ * A pen used with care, for a shape's outline (a bar's sides): about two thirds of the line
+ * pen's roughness, bow and wobble, so the sides come out straighter than a free line.
+ */
+function carefulPenOptions(pen: RoughPen, width: number): Options {
+  return {
+    ...passOptions(pen, width),
+    roughness: pen.roughness * 0.65,
+    bowing: pen.bowing * 0.6,
+    maxRandomnessOffset: pen.maxOffset * 0.65,
+  };
+}
+
 /** The pass width for a series drawn at `seriesWidth` (its own `strokeWidth`). */
 function passWidth(pass: PenPass, seriesWidth: number): number {
   const scale = Math.min(1.6, Math.max(0.75, seriesWidth / REFERENCE_SERIES_WIDTH));
@@ -1456,6 +1469,41 @@ function LegendSquiggleIcon(props: { color?: string }) {
   );
 }
 
+/**
+ * A box legend icon (a bar series: the plain legend draws a filled square) in the hand-drawn
+ * styles: a small hand-drawn box, the bar's hatched fill and careful outline, in the series
+ * colour. Same nested 14-unit box as {@link LegendSquiggleIcon}.
+ */
+function LegendBoxIcon(props: { color?: string }) {
+  const color = typeof props.color === "string" ? props.color : "#94a3b8";
+  const pen = roughPenFor(useChartStyle());
+  const grainId = roughGrainFilterId(useId());
+  // A different box for every instance, drawn once per mount.
+  const [seed] = useState(() => Math.floor(Math.random() * 2147483646) + 1);
+  if (!pen) return null;
+  const grain = pen.grain === "filter" ? grainId : undefined;
+  return (
+    <svg x={0} y={0} width={32} height={32} viewBox="0 0 14 14" overflow="visible">
+      {grain ? <RoughChartDefs mode={pen as RoughMode} grainFilterId={grain} /> : null}
+      <g style={grain ? { filter: `url(#${grain})` } : undefined}>
+        <RoughBarShapeImpl
+          {...({} as BarShapeProps)}
+          x={2}
+          y={2}
+          width={10}
+          height={10}
+          fill={color}
+          stroke={color}
+          strokeWidth={1.2}
+          index={0}
+          seed={seed}
+          pen={pen}
+        />
+      </g>
+    </svg>
+  );
+}
+
 type LegendContentProps = { payload?: readonly { color?: string; type?: string }[] } & Record<string, unknown>;
 
 /** A `<Legend>`'s `content` that hands every entry the squiggle icon, keeping the chart's own content. */
@@ -1464,8 +1512,17 @@ function roughLegendContent(original: unknown) {
     // Recharts draws its built-in line / plainline / rect icons before it looks at `legendIcon`,
     // so each entry (except hidden ones) is re-typed to a symbol type that falls through to it,
     // and the legend's own `iconType` override is dropped.
+    // A box entry (the plain legend's filled square, a bar series) gets a hand-drawn box; every
+    // other entry a hand-drawn line.
     const payload = (lp.payload ?? []).map((e) =>
-      e.type === "none" ? e : { ...e, type: "square", legendIcon: <LegendSquiggleIcon color={e.color} /> }
+      e.type === "none"
+        ? e
+        : {
+            ...e,
+            type: "square",
+            legendIcon:
+              e.type === "rect" || e.type === "square" ? <LegendBoxIcon color={e.color} /> : <LegendSquiggleIcon color={e.color} />,
+          }
     );
     const next = { ...lp, payload, iconType: undefined };
     if (typeof original === "function") return (original as (p: LegendContentProps) => ReactNode)(next);
@@ -1607,11 +1664,14 @@ function RoughBarShapeImpl(props: RoughBarProps) {
   const strokeColor = typeof stroke === "string" && stroke !== "none" ? stroke : fillColor;
   const sw = strokeWidthNumber(strokeWidth, REFERENCE_SERIES_WIDTH);
   const barSeed = seed + (typeof index === "number" ? index * 7919 : 0);
+  const fillClipId = `nw-barclip-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const sketch = useMemo(() => {
     if (!(rw > 0.5 && rh > 0.5) || !Number.isFinite(rx) || !Number.isFinite(ry)) return null;
     const fillDrawable = generator.rectangle(rx, ry, rw, rh, {
       roughness: Math.min(pen.roughness, 1.4),
       bowing: Math.min(pen.bowing, 1),
+      // Hatch ends wander less (fewer overshoots); the clip below caps the rest at ~1 px.
+      maxRandomnessOffset: Math.min(pen.maxOffset, 1),
       seed: barSeed,
       stroke: "none",
       fill: fillColor,
@@ -1622,16 +1682,53 @@ function RoughBarShapeImpl(props: RoughBarProps) {
       disableMultiStrokeFill: true,
     });
     const fills = generator.toPaths(fillDrawable).filter((p) => p.d);
-    // The outline: each side its own stroke (what rough's `rectangle` does), per pass of the pen.
-    const sides: Point[][] = [
-      [[rx, ry], [rx + rw, ry]],
-      [[rx + rw, ry], [rx + rw, ry + rh]],
-      [[rx + rw, ry + rh], [rx, ry + rh]],
-      [[rx, ry + rh], [rx, ry]],
+    // The outline, drawn the way a hand boxes a shape: 1, 2 or 3 strokes going round from a
+    // random corner, each able to turn corners, breaking mostly at corners, every stroke running
+    // 1,5–3 px past where the next one starts (and the last past where the first began, closing
+    // the box). Small bars mostly take 1–2 strokes, big ones 2–3. Drawn with a careful pen
+    // ({@link carefulPenOptions}); the fill keeps the pen as is.
+    const crnd = prng(subSeed(barSeed, 31));
+    const corners: Point[] = [
+      [rx, ry],
+      [rx + rw, ry],
+      [rx + rw, ry + rh],
+      [rx, ry + rh],
     ];
+    const s0 = Math.floor(crnd() * 4);
+    // Twice round from the start corner, so a stroke can run past the closing corner.
+    const loop: Point[] = Array.from({ length: 9 }, (_, i) => corners[(s0 + i) % 4]!);
+    const perim = 2 * (rw + rh);
+    const size = rw + rh;
+    const u = crnd();
+    const k =
+      size < 40 ? (u < 0.55 ? 1 : 2) : size < 150 ? (u < 0.2 ? 1 : u < 0.7 ? 2 : 3) : u < 0.4 ? 2 : 3;
+    // Where strokes break: at the corners after the start one (arc position = the sides walked
+    // so far), sometimes part-way along a side.
+    const lens = [rw, rh, rw, rh].map((_, i) => [rw, rh, rw, rh][(s0 + i) % 4]!);
+    const cum = [0, lens[0]!, lens[0]! + lens[1]!, lens[0]! + lens[1]! + lens[2]!];
+    const cuts: number[] = [];
+    const pool = [1, 2, 3];
+    while (cuts.length < k - 1 && pool.length) {
+      const j = pool.splice(Math.floor(crnd() * pool.length), 1)[0]!;
+      const atCorner = crnd() < 0.7;
+      const base = cum[j]!;
+      const along = atCorner ? 0 : (crnd() - 0.5) * 0.5 * lens[j]!;
+      cuts.push(Math.max(2, Math.min(perim - 2, base + along)));
+    }
+    cuts.sort((a, b) => a - b);
+    const ov = () => 1.5 + crnd() * 1.5;
+    const bounds = [0, ...cuts, perim];
+    const sides: Point[][] = [];
+    for (let i = 0; i < bounds.length - 1; i++) {
+      const from = i === 0 ? 0 : bounds[i]! - ov() / 2;
+      const to = bounds[i + 1]! + ov();
+      const piece = sliceArc(loop, Math.max(0, from), to);
+      if (piece.length >= 2) sides.push(piece);
+    }
+    const pinned = sides.map(() => true);
     const outline: PassPath[] = pen.passes.map((pass, p) => {
       const width = passWidth(pass, sw);
-      return { d: drawStrokes(sides, passOptions(pen, width), subSeed(barSeed + 1, p)), pass, width, strokes: 4 };
+      return { d: drawStrokes(sides, carefulPenOptions(pen, width), subSeed(barSeed + 1, p), pinned), pass, width, strokes: sides.length };
     });
     return { fills, outline };
   }, [rx, ry, rw, rh, barSeed, fillColor, sw, pen]);
@@ -1643,7 +1740,11 @@ function RoughBarShapeImpl(props: RoughBarProps) {
       style={groupStyle(pen, grainFilterId, c.style)}
       opacity={c.opacity}
     >
-      <g opacity={numberOr(fillOpacity, 1) * pen.fillOpacity}>
+      {/* The hatch may leave the bar only barely: clipped to the bar plus 1,2 px. */}
+      <clipPath id={fillClipId}>
+        <rect x={rx - 1.2} y={ry - 1.2} width={rw + 2.4} height={rh + 2.4} />
+      </clipPath>
+      <g opacity={numberOr(fillOpacity, 1) * pen.fillOpacity} clipPath={`url(#${fillClipId})`}>
         {sketch.fills.map((p, i) => (
           <path key={`f${i}`} d={p.d} fill="none" stroke={fillColor} strokeWidth={p.strokeWidth} strokeLinecap="round" />
         ))}
