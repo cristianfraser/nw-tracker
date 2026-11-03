@@ -283,10 +283,10 @@
 /* Strip cards carry an inset; their inner separators reach back out to the card's edges, and
    the title pill is pulled left so its text lines up with the figures below it. */
 .cards-strip .card {
-  --card-pad-x: 0.75rem;
-  padding: 0.5rem var(--card-pad-x);
+  --card-pad-x: 0.5rem;
+  padding: 0.25rem var(--card-pad-x);
 }
 
 .card-title-pill {
-  margin-left: -0.35rem;
+  margin-left: -0.2rem;
 }
