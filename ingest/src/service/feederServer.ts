@@ -89,24 +89,30 @@ export function createFeederServer(deps: FeederDeps): { server: http.Server; cur
     let completion: IngestRunCompletion;
     const stopHeartbeat = heartbeatWhileRunning(request);
     try {
-      completion = await deps.run(request);
-    } catch (err) {
-      const now = new Date().toISOString();
-      deps.log(`run ${request.run_id} could not start: ${err instanceof Error ? err.message : String(err)}`);
-      completion = {
-        started_at: current?.started_at ?? now,
-        finished_at: now,
-        exit_code: 127,
-        steps: null,
-        dry_run: false,
-        activity: false,
-        santander: null,
-        santander_state: deps.santanderState(),
-      };
+      try {
+        completion = await deps.run(request);
+      } catch (err) {
+        const now = new Date().toISOString();
+        deps.log(`run ${request.run_id} could not start: ${err instanceof Error ? err.message : String(err)}`);
+        // May throw too (an unreadable marker): then no report goes out, the job's lease runs out
+        // and the server records the run as lost — but this service stays free for the next run.
+        completion = {
+          started_at: current?.started_at ?? now,
+          finished_at: now,
+          exit_code: 127,
+          steps: null,
+          dry_run: false,
+          activity: false,
+          santander: null,
+          santander_state: deps.santanderState(),
+        };
+      }
     } finally {
       stopHeartbeat();
+      // Whatever failed above, the run is over: a `current` left set answers every later request
+      // «busy» until the service is restarted.
+      current = null;
     }
-    current = null;
     deps.log(`run ${request.run_id} (${request.kind}) finished — exit ${completion.exit_code}`);
     await deps.report(request.run_id, completion);
   }

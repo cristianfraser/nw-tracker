@@ -5,7 +5,7 @@ import { loadBankConfig } from "../config.js";
 import { readKeychainSecret } from "../keychain.js";
 import { launchBrowser, firstPage } from "../browser.js";
 import { Recorder, SANTANDER_API_HOST_FRAGMENTS, runStampNow } from "../capture.js";
-import { ensureDir, resolveInboxDir, resolveMovementsDir, resolveStatementJsonDir } from "../paths.js";
+import { ensureDir, resolveInboxDir, resolveMovementsDir, resolveStatementJsonDir, writeFileAtomic } from "../paths.js";
 import { log } from "../log.js";
 import { waitForHosts } from "../network.js";
 import { assertRunAllowed } from "../runGuard.js";
@@ -196,7 +196,7 @@ export async function runSantander(opts: RunOptions): Promise<number> {
       const movements = await fetchCardMovements(page, recorder);
       const outDir = ensureDir(opts.capture ? (recorder.captureDir ?? destDir) : resolveMovementsDir("santander"));
       const outFile = path.join(outDir, `card-movements-${stamp}.json`);
-      fs.writeFileSync(outFile, JSON.stringify(movements, null, 2));
+      writeFileAtomic(outFile, JSON.stringify(movements, null, 2));
       const total = movements.slides.reduce((sum, s) => sum + s.rows.length, 0);
       return `${movements.slides.length} slides, ${total} movements → ${path.basename(outFile)}`;
     });

@@ -59,3 +59,13 @@ export function ensureDir(dir: string): string {
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
+
+/**
+ * Writes `file` through a hidden temp file beside it and a rename, so a crash mid-write leaves the
+ * previous content (or nothing), never a truncated file a later read chokes on.
+ */
+export function writeFileAtomic(file: string, data: string | Buffer): void {
+  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.tmp`);
+  fs.writeFileSync(tmp, data);
+  fs.renameSync(tmp, file);
+}

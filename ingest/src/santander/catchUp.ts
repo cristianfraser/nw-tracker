@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { resolveCfraserDir, resolveMovementsDir } from "../paths.js";
+import { resolveCfraserDir, resolveMovementsDir, writeFileAtomic } from "../paths.js";
 import { lastRunAt } from "../runGuard.js";
 
 /**
@@ -100,11 +100,11 @@ export function lastPaydayAttemptYmd(): string | null {
 }
 
 export function recordPaydayAttempt(now: Date = new Date()): void {
-  fs.writeFileSync(paydayStateFile(), JSON.stringify({ last_attempt_ymd: chileWallClock(now).slice(0, 10) }, null, 2));
+  writeFileAtomic(paydayStateFile(), JSON.stringify({ last_attempt_ymd: chileWallClock(now).slice(0, 10) }, null, 2));
 }
 
 export function recordCatchUpAttempt(now: Date = new Date()): void {
-  fs.writeFileSync(catchUpStateFile(), JSON.stringify({ last_attempt_at: now.toISOString() }, null, 2));
+  writeFileAtomic(catchUpStateFile(), JSON.stringify({ last_attempt_at: now.toISOString() }, null, 2));
 }
 
 export type CatchUpDecision = { due: boolean; reason: string };
