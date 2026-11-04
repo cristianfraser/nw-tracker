@@ -16,7 +16,7 @@ import { formatMonthYearShortLabel } from "../../formatDateLabel";
 import { useTranslation } from "../../i18n";
 
 /**
- * Rehearsal (2026-11-03): the two sample charts the chart-styles lab page (/panel/chart-styles)
+ * Rehearsal (2026-11-03): the two sample charts the chart styles preview modal (`ChartStylesPreviewModal`)
  * renders under each style — a line chart like the valuation panels and a bars + line combo
  * like the monthly P/L one. Fixed synthetic data (a seeded walk), no server call.
  */

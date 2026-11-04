@@ -767,16 +767,20 @@
     "usageTitle": {
       "en": "Usage",
       "es": "Uso"
-    },
-    "chartStylesTitle": {
-      "en": "Chart styles",
-      "es": "Estilos de gráficos"
     }
   },
   "chartStylesLab": {
+    "title": {
+      "en": "Chart styles",
+      "es": "Estilos de gráficos"
+    },
+    "previewButton": {
+      "en": "Preview styles",
+      "es": "Ver estilos"
+    },
     "intro": {
-      "en": "The same two charts under each style (all rough.js). The toolbar's «Charts» select applies a style to every page.",
-      "es": "Los mismos dos gráficos bajo cada estilo (todos rough.js). El selector «Gráficos» de la barra aplica un estilo a todas las páginas."
+      "en": "The same two charts under each style (all rough.js). The «Charts» setting applies a style to every page.",
+      "es": "Los mismos dos gráficos bajo cada estilo (todos rough.js). El ajuste «Gráficos» aplica un estilo a todas las páginas."
     },
     "lineTitle": {
       "en": "Net worth (sample)",

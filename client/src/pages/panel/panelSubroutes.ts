@@ -11,8 +11,6 @@ export const PANEL_SUBROUTES = [
   // Refused by the public demo's server (`npm run demo:visits` reads it there).
   { slug: "usage", labelKey: "panel.usageTitle", hiddenOnDemo: true },
   { slug: "settings", labelKey: "panel.settingsTitle" },
-  // Rehearsal (2026-11-03): the four chart styles side by side.
-  { slug: "chart-styles", labelKey: "panel.chartStylesTitle" },
 ] as const;
 
 export type PanelSubrouteSlug = (typeof PANEL_SUBROUTES)[number]["slug"];

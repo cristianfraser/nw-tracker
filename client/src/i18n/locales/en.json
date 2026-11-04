@@ -239,11 +239,12 @@
     "importSyncTitle": "Import sync",
     "settingsTitle": "Settings",
     "mirrorPairsTitle": "Historical mirrors",
-    "usageTitle": "Usage",
-    "chartStylesTitle": "Chart styles"
+    "usageTitle": "Usage"
   },
   "chartStylesLab": {
-    "intro": "The same two charts under each style (all rough.js). The toolbar's «Charts» select applies a style to every page.",
+    "title": "Chart styles",
+    "previewButton": "Preview styles",
+    "intro": "The same two charts under each style (all rough.js). The «Charts» setting applies a style to every page.",
     "lineTitle": "Net worth (sample)",
     "comboTitle": "Monthly Δ and deposits (sample)",
     "series": {

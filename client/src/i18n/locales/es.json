@@ -239,11 +239,12 @@
     "importSyncTitle": "Import sync",
     "settingsTitle": "Ajustes",
     "mirrorPairsTitle": "Mirrors históricos",
-    "usageTitle": "Uso",
-    "chartStylesTitle": "Estilos de gráficos"
+    "usageTitle": "Uso"
   },
   "chartStylesLab": {
-    "intro": "Los mismos dos gráficos bajo cada estilo (todos rough.js). El selector «Gráficos» de la barra aplica un estilo a todas las páginas.",
+    "title": "Estilos de gráficos",
+    "previewButton": "Ver estilos",
+    "intro": "Los mismos dos gráficos bajo cada estilo (todos rough.js). El ajuste «Gráficos» aplica un estilo a todas las páginas.",
     "lineTitle": "Patrimonio neto (muestra)",
     "comboTitle": "Δ mensual y depósitos (muestra)",
     "series": {
