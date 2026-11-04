@@ -1,7 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -21,16 +19,16 @@ import {
   collectAncestorIdsToExpand,
   sidebarNodeMatchesPath,
   sidebarNodeSubtreeContainsPath,
+  type SidebarNavMarker,
   type SidebarNavNode,
 } from "../../sidebarNavTree";
-import { mutedPillBackgroundRgb } from "../../chartColors";
 import { useChartStyle } from "../charts/chartStyle";
+// The hand-drawn marks, imported directly: a lazy load painted the flat marks first on every page
+// load and swapped them when its chunk arrived (the sketch code ships with the first load anyway).
+import SketchMarker from "../charts/SketchMarker";
 import { VISIBLE_PANEL_SUBROUTES } from "../../pages/panel/panelSubroutes";
 import { cn } from "../../cn";
 import styles from "./AppSidebar.module.css";
-
-// The hand-drawn square lives with the chart shapes (the charts chunk), as the pill's scribble does.
-const SketchSquare = lazy(() => import("../charts/SketchSquare"));
 
 const COLLAPSE_STORAGE_KEY = "nw-sidebar-collapsed";
 
@@ -66,21 +64,20 @@ function ChevronIcon() {
 }
 
 /**
- * A group's colour square, in its card pill's colour: a flat square in the plain chart style, a
- * hand-drawn box (the box legend's) in the others — the flat one until the sketch has loaded.
+ * A row's mark (a group's colour square, the expenses triangle): flat in the plain chart style,
+ * hand-drawn in the others (the box legend's square, the triangle in the same hand).
  */
-function GroupMarker({ rgb, swap }: { rgb: [number, number, number]; swap: boolean }) {
-  const color = mutedPillBackgroundRgb(rgb);
+function RowMarker({ marker, swap }: { marker: SidebarNavMarker; swap: boolean }) {
   const sketched = useChartStyle() !== "plain";
-  const flat = <span className={styles.markerFlat} style={{ backgroundColor: color }} />;
   return (
     <span className={cn(styles.marker, swap && styles.markerSwap)} aria-hidden>
       {sketched ? (
-        <Suspense fallback={flat}>
-          <SketchSquare color={color} className={styles.markerSketch} />
-        </Suspense>
+        <SketchMarker color={marker.color} shape={marker.shape} className={styles.markerSketch} />
       ) : (
-        flat
+        <span
+          className={cn(styles.markerFlat, marker.shape === "triangle-down" && styles.markerFlatTriangle)}
+          style={{ backgroundColor: marker.color }}
+        />
       )}
     </span>
   );
@@ -131,18 +128,18 @@ function SidebarNavItem({
 
   return (
     <li
-      className={cn(styles.item, depth === 0 && node.markerRgb && styles.itemSection)}
+      className={cn(styles.item, depth === 0 && node.marker?.shape === "square" && styles.itemSection)}
       style={{ "--depth": depth } as CSSProperties}
     >
       <div className={cn(styles.row, isActive && styles.rowActive)}>
-        {node.markerRgb ? <GroupMarker rgb={node.markerRgb} swap={hasChildren} /> : null}
+        {node.marker ? <RowMarker marker={node.marker} swap={hasChildren} /> : null}
         {hasChildren ? (
           <button
             type="button"
             className={cn(
               styles.toggle,
               isCollapsed && styles.toggleCollapsed,
-              node.markerRgb && styles.toggleOverMarker
+              node.marker && styles.toggleOverMarker
             )}
             aria-label={t(isCollapsed ? "sidebar.expandGroup" : "sidebar.collapseGroup", {
               label: node.label,

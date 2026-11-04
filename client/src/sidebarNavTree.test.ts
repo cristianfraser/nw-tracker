@@ -90,7 +90,7 @@ describe("buildSidebarNavFromApi", () => {
     expect(flows?.children?.map((c) => c.id)).toEqual(["ingresos", "depositos", "gastos"]);
   });
 
-  it("gives a square to the net-worth groups with rows under them, never to accounts or a group shown as a leaf", () => {
+  it("marks net-worth groups with rows under them with a square and the expenses row with a triangle", () => {
     const leaf = (id: number) => ({ ...navNode(`acc.${id}`, `account_${id}`), account_id: id, color_rgb: "1,2,3" });
     const group = (id: string, children: NavTreeNodeDto[]) => ({ ...navNode(id, id, children), color_rgb: "10,20,30" });
     // SOXX: a sub-bucket listed beside Acciones' stocks, shown as one leaf row.
@@ -99,7 +99,7 @@ describe("buildSidebarNavFromApi", () => {
     const payload: SidebarNavResponse = {
       dashboard: null,
       main: [group("inversiones", [group("brokerage", [acciones])])],
-      flows: group("flows", [navNode("ingresos", "ingresos")]),
+      flows: group("flows", [navNode("ingresos", "ingresos"), { ...navNode("gastos", "flows_expenses"), route_path: "/flows/expenses" }]),
       projections: null,
       wealth_percentile: null,
       tax_return: null,
@@ -109,13 +109,19 @@ describe("buildSidebarNavFromApi", () => {
     const tree = buildSidebarNavFromApi(payload);
     const inversiones = tree.find((n) => n.id === "inversiones")!;
     const accionesRow = inversiones.children![0]!.children![0]!;
-    expect(inversiones.markerRgb).toEqual([10, 20, 30]);
-    expect(accionesRow.markerRgb).toEqual([10, 20, 30]);
-    expect(accionesRow.children!.map((c) => [c.id, c.markerRgb ?? null])).toEqual([
+    expect(inversiones.marker?.shape).toBe("square");
+    expect(accionesRow.marker?.shape).toBe("square");
+    expect(accionesRow.children!.map((c) => [c.id, c.marker ?? null])).toEqual([
       ["acc.1", null],
       ["soxx", null],
     ]);
-    expect(tree.find((n) => n.id === "flows")!.markerRgb).toBeUndefined();
+    const flows = tree.find((n) => n.id === "flows")!;
+    expect(flows.marker).toBeUndefined();
+    // The expenses row shows its favicon's triangle, in the favicon's red.
+    expect(flows.children!.map((c) => [c.id, c.marker ?? null])).toEqual([
+      ["ingresos", null],
+      ["gastos", { shape: "triangle-down", color: "#ef4444" }],
+    ]);
   });
 
   it("hides chart_inactive buckets from the sidebar at any depth", () => {

@@ -16,6 +16,10 @@ export type FaviconSpec =
   /** Centered circle (settings). */
   | { kind: "circle"; color: string };
 
+/** The expenses pages' icon (a red down-pointing triangle); the sidebar's «Gastos» row shows it too. */
+export const EXPENSES_ROUTE = "/flows/expenses";
+export const EXPENSES_FAVICON_SPEC = { kind: "triangle", direction: "down", color: "#ef4444" } as const satisfies FaviconSpec;
+
 function overlayShape(spec: FaviconSpec): string {
   switch (spec.kind) {
     case "plain":

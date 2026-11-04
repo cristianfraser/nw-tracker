@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { applyFavicon, type FaviconSpec } from "./favicon";
+import { applyFavicon, EXPENSES_FAVICON_SPEC, EXPENSES_ROUTE, type FaviconSpec } from "./favicon";
 import { rgbTripletToHex } from "./chartColors";
 import { findBestNavNodeForPathname } from "./portfolioNavFromApi";
 import { useSidebarNav } from "./queries/hooks";
@@ -8,7 +8,6 @@ import type { NavTreeNodeDto } from "./types";
 
 const WHITE = "#ffffff";
 const DEPOSITS_LIGHT_BLUE = "#38bdf8";
-const EXPENSES_RED = "#ef4444";
 const FLOWS_GREEN = "#22c55e";
 const SETTINGS_GRAY = "#94a3b8";
 
@@ -19,7 +18,7 @@ const SETTINGS_GRAY = "#94a3b8";
  */
 const STATIC_ROUTE_SPECS: [prefix: string, spec: FaviconSpec][] = [
   ["/flows/deposits", { kind: "triangle", direction: "up", color: DEPOSITS_LIGHT_BLUE }],
-  ["/flows/expenses", { kind: "triangle", direction: "down", color: EXPENSES_RED }],
+  [EXPENSES_ROUTE, EXPENSES_FAVICON_SPEC],
   ["/flows/income", { kind: "triangle", direction: "down", color: FLOWS_GREEN }],
   ["/flows/pl", { kind: "triangle", direction: "up", color: FLOWS_GREEN }],
   ["/flows", { kind: "triangle", direction: "up", color: WHITE }],

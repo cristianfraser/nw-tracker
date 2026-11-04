@@ -8,6 +8,8 @@ export function sortNavTreeLeavesFirst<T extends { children?: readonly unknown[]
   });
 }
 
+export type SidebarNavMarker = { shape: "square" | "triangle-down"; color: string };
+
 export type SidebarNavNode = {
   id: string;
   label: string;
@@ -15,8 +17,11 @@ export type SidebarNavNode = {
   end?: boolean;
   activePrefix?: string;
   children?: SidebarNavNode[];
-  /** A net-worth group with rows under it: its colour, shown as the square left of its label. */
-  markerRgb?: [number, number, number];
+  /**
+   * The mark hung left of the label: a net-worth group with rows under it shows a square in its
+   * card pill's colour; the expenses row, its favicon's down-pointing triangle.
+   */
+  marker?: SidebarNavMarker;
   /** Optional badge (e.g. unread count) shown beside the link label. */
   badge?: string;
   badgeAriaLabel?: string;

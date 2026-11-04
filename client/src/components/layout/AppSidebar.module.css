@@ -91,6 +91,12 @@
   border-radius: 1.5px;
 }
 
+/* The expenses favicon's down-pointing triangle (its 20×18 shape in the favicon's 32 box). */
+.markerFlatTriangle {
+  border-radius: 0;
+  clip-path: polygon(0 5%, 100% 5%, 50% 95%);
+}
+
 /* The hand-drawn box is drawn 10 units wide in a 14-unit view: the view overhangs the square by
    2/10 of its side on each side, so the box itself is the square's size. */
 .markerSketch {
