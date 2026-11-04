@@ -5,10 +5,11 @@ import { formatDayMonthShortLabel, formatMonthYearShortLabel } from "../../forma
 export type ChartDisplayUnit = "clp" | "usd";
 
 /**
- * Recharts cartesian margins. Keep `left` small: Y-axis label room comes from the axis `width`
- * (`moneyYAxisProps`); a large `left` here stacks with that and looks like an empty gutter.
+ * Recharts cartesian margins. `left` and `right` are 0: the chart spans its columns edge to edge. Y-axis
+ * label room comes from the axis `width` (`moneyYAxisProps`), so the widest label starts at the content
+ * edge, flush with the chart title.
  */
-export const RECHARTS_MONEY_CHART_MARGIN = { top: 8, right: 8, left: 2, bottom: 0 } as const;
+export const RECHARTS_MONEY_CHART_MARGIN = { top: 8, right: 0, left: 0, bottom: 0 } as const;
 
 /** Match default axis / tick stroke on dark charts (see YAxis/XAxis axisLine usage). */
 export const AXIS_LINE_STROKE = "#64748b";
@@ -35,13 +36,11 @@ export function formatAxisValue(v: number, unit: ChartDisplayUnit, compact = fal
 /** Recharts' Y-axis tick line and the gap between it and the label (its `tickSize` / `tickMargin` defaults). */
 const Y_AXIS_TICK_SIZE_PX = 6;
 const Y_AXIS_TICK_MARGIN_PX = 2;
-/** Room for anti-aliasing and font rounding, so the widest label never touches the chart's left edge. */
-const Y_AXIS_LABEL_SLACK_PX = 2;
 
 let tickMeasureContext: CanvasRenderingContext2D | null | undefined;
 
 /**
- * Rendered width of a tick label at the tick font, the font SVG text inherits from the page.
+ * Rendered width of a tick label at the tick font (`--font-mono`, set on axis labels in charts.css).
  * Outside a browser (unit tests) it estimates from the character count.
  */
 function tickLabelWidthPx(label: string): number {
@@ -50,7 +49,7 @@ function tickLabelWidthPx(label: string): number {
     tickMeasureContext = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
   }
   if (!tickMeasureContext) return label.length * size * 0.6;
-  tickMeasureContext.font = `${size}px ${getComputedStyle(document.body).fontFamily}`;
+  tickMeasureContext.font = `${size}px ${getComputedStyle(document.documentElement).getPropertyValue("--font-mono")}`;
   return tickMeasureContext.measureText(label).width;
 }
 
@@ -61,7 +60,7 @@ function tickLabelWidthPx(label: string): number {
  */
 export function yAxisWidthForTicks(ticks: readonly number[], unit: ChartDisplayUnit, compact = false): number {
   const widest = Math.max(0, ...ticks.map((v) => tickLabelWidthPx(formatAxisValue(v, unit, compact))));
-  return Math.ceil(widest + Y_AXIS_TICK_SIZE_PX + Y_AXIS_TICK_MARGIN_PX + Y_AXIS_LABEL_SLACK_PX);
+  return Math.ceil(widest + Y_AXIS_TICK_SIZE_PX + Y_AXIS_TICK_MARGIN_PX);
 }
 
 /**

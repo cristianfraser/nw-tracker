@@ -9,6 +9,21 @@
   height: var(--chart-panel-height);
 }
 
+/* Axis labels are numbers and dates: the numbers' font, as on the cards and tables. */
+.recharts-wrapper .recharts-cartesian-axis-tick-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The plot runs to the chart's edges (no left/right margin, chartLayout.ts), so a tick label on the
+ * last point, a line's stroke or a marker on the edge reaches a pixel or two past them. Series are
+ * clipped to the plot by Recharts' own clip path; only those edge pieces show.
+ */
+.recharts-wrapper .recharts-surface {
+  overflow: visible;
+}
+
 .recharts-wrapper .recharts-active-dot {
   pointer-events: none;
 }

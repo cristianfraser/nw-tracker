@@ -233,7 +233,7 @@ export function CcInstallmentHistoryChart({
     >
         <AppComposedChart
           data={displayRows}
-          margin={{ ...RECHARTS_MONEY_CHART_MARGIN, left: 4, right: 8, bottom: 4 }}
+          margin={{ ...RECHARTS_MONEY_CHART_MARGIN, bottom: 4 }}
           stackOffset="sign"
           tooltip={{
             formatValue: (v) => formatClp(v),

@@ -65,7 +65,7 @@ a.heading-link:hover .heading-link__icon {
 }
 
 .mono {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
