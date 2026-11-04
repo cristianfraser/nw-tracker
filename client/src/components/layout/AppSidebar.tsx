@@ -1,5 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -22,9 +24,13 @@ import {
   type SidebarNavNode,
 } from "../../sidebarNavTree";
 import { mutedPillBackgroundRgb } from "../../chartColors";
+import { useChartStyle } from "../charts/chartStyle";
 import { VISIBLE_PANEL_SUBROUTES } from "../../pages/panel/panelSubroutes";
 import { cn } from "../../cn";
 import styles from "./AppSidebar.module.css";
+
+// The hand-drawn square lives with the chart shapes (the charts chunk), as the pill's scribble does.
+const SketchSquare = lazy(() => import("../charts/SketchSquare"));
 
 const COLLAPSE_STORAGE_KEY = "nw-sidebar-collapsed";
 
@@ -56,6 +62,27 @@ function ChevronIcon() {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+/**
+ * A group's colour square, in its card pill's colour: a flat square in the plain chart style, a
+ * hand-drawn box (the box legend's) in the others — the flat one until the sketch has loaded.
+ */
+function GroupMarker({ rgb, swap }: { rgb: [number, number, number]; swap: boolean }) {
+  const color = mutedPillBackgroundRgb(rgb);
+  const sketched = useChartStyle() !== "plain";
+  const flat = <span className={styles.markerFlat} style={{ backgroundColor: color }} />;
+  return (
+    <span className={cn(styles.marker, swap && styles.markerSwap)} aria-hidden>
+      {sketched ? (
+        <Suspense fallback={flat}>
+          <SketchSquare color={color} className={styles.markerSketch} />
+        </Suspense>
+      ) : (
+        flat
+      )}
+    </span>
   );
 }
 
@@ -108,17 +135,7 @@ function SidebarNavItem({
       style={{ "--depth": depth } as CSSProperties}
     >
       <div className={cn(styles.row, isActive && styles.rowActive)}>
-        {node.markerRgb ? (
-          <span
-            className={cn(
-              styles.marker,
-              depth > 0 && styles.markerInner,
-              hasChildren && styles.markerSwap
-            )}
-            style={{ backgroundColor: mutedPillBackgroundRgb(node.markerRgb) }}
-            aria-hidden
-          />
-        ) : null}
+        {node.markerRgb ? <GroupMarker rgb={node.markerRgb} swap={hasChildren} /> : null}
         {hasChildren ? (
           <button
             type="button"

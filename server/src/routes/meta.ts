@@ -3,7 +3,7 @@ import express from "express";
 import { getAppVersion } from "../appVersion.js";
 import { demoModeEnabled } from "../demoMode.js";
 import { listRatesInstrumentSeries } from "../marketDisplaySeries.js";
-import { getNetWorthNavGroupNode } from "../navTree.js";
+import { getNetWorthNavGroupNodeWithLiabilities } from "../navTree.js";
 import { cachedSidebarNavPayload } from "../sidebarNavChartBuckets.js";
 
 export function registerMetaRoutes(app: express.Express): void {
@@ -23,9 +23,9 @@ app.get("/api/meta/sidebar-nav", (_req, res) => {
   });
 });
 
-/** Control panel account tree — all portfolio-linked accounts (includes chart-inactive). */
+/** Control panel account tree — all portfolio-linked accounts (includes chart-inactive) and the Pasivos groups. */
 app.get("/api/meta/panel-net-worth-tree", (_req, res) => {
-  res.json({ net_worth: getNetWorthNavGroupNode({ includeChartInactiveAccounts: true }) });
+  res.json({ net_worth: getNetWorthNavGroupNodeWithLiabilities({ includeChartInactiveAccounts: true }) });
 });
 
 /** Market instruments for rates charts and marquee configuration. */

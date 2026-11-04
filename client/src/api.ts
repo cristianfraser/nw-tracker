@@ -142,6 +142,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ color_rgb }),
     }),
+  updateLiabilityGroupColor: (slug: string, color_rgb: string | null) =>
+    j<{ color_rgb: string | null; color: string }>(`/api/liability-groups/${slug}/color`, {
+      method: "PATCH",
+      body: JSON.stringify({ color_rgb }),
+    }),
   ratesInstruments: () => j<import("./types").RatesInstrumentsResponse>("/api/meta/rates-instruments"),
   dashboardNavSnapshot: (unit: "clp" | "usd") => {
     const q = new URLSearchParams();

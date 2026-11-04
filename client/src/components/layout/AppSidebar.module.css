@@ -74,23 +74,30 @@
   background: color-mix(in srgb, var(--surface2) 70%, var(--sidebar-bg));
 }
 
-/* A group's colour (its card's title pill): a square hung left of the text, out of its column. */
+/* A group's colour (its card's title pill): a 6px square hung left of the text, out of its column. */
 .marker {
   position: absolute;
   top: 50%;
-  left: calc(var(--row-text-x) - var(--sidebar-highlight-inset) - 13px);
-  width: 8px;
-  height: 8px;
-  border-radius: 2px;
+  left: calc(var(--row-text-x) - var(--sidebar-highlight-inset) - 11px);
+  width: 6px;
+  height: 6px;
   transform: translateY(-50%);
   pointer-events: none;
 }
 
-/* Below the top level (Brokerage, Retirement) the square is a step smaller. */
-.markerInner {
-  left: calc(var(--row-text-x) - var(--sidebar-highlight-inset) - 11px);
-  width: 6px;
-  height: 6px;
+.markerFlat {
+  position: absolute;
+  inset: 0;
+  border-radius: 1.5px;
+}
+
+/* The hand-drawn box is drawn 10 units wide in a 14-unit view: the view overhangs the square by
+   2/10 of its side on each side, so the box itself is the square's size. */
+.markerSketch {
+  position: absolute;
+  inset: -20%;
+  width: 140%;
+  height: 140%;
 }
 
 .link {
@@ -129,7 +136,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: calc(var(--row-text-x) - var(--sidebar-highlight-inset) - 16px);
+  left: calc(var(--row-text-x) - var(--sidebar-highlight-inset) - 15px);
   width: 14px;
   display: flex;
   align-items: center;

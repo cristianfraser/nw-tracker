@@ -1526,12 +1526,11 @@ function LegendSquiggleIcon(props: { color?: string }) {
 }
 
 /**
- * A box legend icon (a bar series: the plain legend draws a filled square) in the hand-drawn
- * styles: a small hand-drawn box, the bar's hatched fill and careful outline, in the series
- * colour. Same nested 14-unit box as {@link LegendSquiggleIcon}.
+ * A small hand-drawn box in a colour — the bar's hatched fill and careful outline — drawn in a
+ * 14-unit box (SVG content; the caller supplies the `<svg>`). Null in the plain style. The box
+ * legend icon and the sidebar's group squares draw it.
  */
-function LegendBoxIcon(props: { color?: string }) {
-  const color = typeof props.color === "string" ? props.color : "#94a3b8";
+export function RoughSwatchBox({ color }: { color: string }) {
   const pen = roughPenFor(useChartStyle());
   const grainId = roughGrainFilterId(useId());
   // A different box for every instance, drawn once per mount.
@@ -1539,7 +1538,7 @@ function LegendBoxIcon(props: { color?: string }) {
   if (!pen) return null;
   const grain = pen.grain === "filter" ? grainId : undefined;
   return (
-    <svg x={0} y={0} width={32} height={32} viewBox="0 0 14 14" overflow="visible">
+    <>
       {grain ? <RoughChartDefs mode={pen as RoughMode} grainFilterId={grain} /> : null}
       <g style={grain ? { filter: `url(#${grain})` } : undefined}>
         <RoughBarShapeImpl
@@ -1556,6 +1555,19 @@ function LegendBoxIcon(props: { color?: string }) {
           pen={pen}
         />
       </g>
+    </>
+  );
+}
+
+/**
+ * A box legend icon (a bar series: the plain legend draws a filled square) in the hand-drawn
+ * styles, in the series colour. Same nested 14-unit box as {@link LegendSquiggleIcon}.
+ */
+function LegendBoxIcon(props: { color?: string }) {
+  const color = typeof props.color === "string" ? props.color : "#94a3b8";
+  return (
+    <svg x={0} y={0} width={32} height={32} viewBox="0 0 14 14" overflow="visible">
+      <RoughSwatchBox color={color} />
     </svg>
   );
 }

@@ -15,7 +15,7 @@ import {
 } from "../createPanelAccount.js";
 import { NOTE_STOCKS_LEGACY } from "../brokerageAcciones.js";
 import { prettyRgbTripletForAccountId } from "../chartColorRgb.js";
-import { updateAccountColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
+import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGroupColorRgb } from "../entityColors.js";
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
 import { db } from "../db.js";
 import { listAccountsForGroupTab, type TsUnit } from "../valuationTimeseries.js";
@@ -236,6 +236,22 @@ app.patch("/api/portfolio-groups/:slug/color", (req, res) => {
       res.status(404).json({ error: "portfolio group not found" });
       return;
     }
+    res.status(400).json({ error: "invalid color_rgb" });
+    return;
+  }
+  res.json(updated);
+});
+
+app.patch("/api/liability-groups/:slug/color", (req, res) => {
+  const slug = String(req.params.slug ?? "").trim();
+  const body = req.body as { color_rgb?: unknown };
+  const exists = db.prepare(`SELECT 1 AS o FROM liability_groups WHERE slug = ?`).get(slug) as { o: number } | undefined;
+  if (!exists) {
+    res.status(404).json({ error: "liability group not found" });
+    return;
+  }
+  const updated = updateLiabilityGroupColorRgb(slug, body.color_rgb);
+  if (!updated) {
     res.status(400).json({ error: "invalid color_rgb" });
     return;
   }

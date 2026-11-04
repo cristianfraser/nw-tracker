@@ -58,8 +58,10 @@ export function visibleNavChildren(dtos: NavTreeNodeDto[]): NavTreeNodeDto[] {
 /**
  * `asLeaf`: a sub-bucket listed beside accounts (Portafolio IPSA among Acciones' stocks) shows
  * as one entry in the seeded order, not expanded — its accounts are on its own page.
+ * `markers`: under the net-worth sections, a group with rows under it (the rows that show a chevron)
+ * carries its colour square; a sub-bucket shown as a leaf does not.
  */
-function mapNode(dto: NavTreeNodeDto, asLeaf = false, topLevelGroup = false): SidebarNavNode {
+function mapNode(dto: NavTreeNodeDto, asLeaf = false, markers = false): SidebarNavNode {
   const visible = asLeaf ? [] : visibleNavChildren(dto.children);
   const mixed =
     visible.some((c) => c.account_id != null) && visible.some((c) => c.account_id == null);
@@ -67,8 +69,8 @@ function mapNode(dto: NavTreeNodeDto, asLeaf = false, topLevelGroup = false): Si
     visible.length === 0
       ? undefined
       : mixed
-        ? visible.map((c) => mapNode(c, c.account_id == null))
-        : sortNavTreeLeavesFirst(visible).map((c) => mapNode(c));
+        ? visible.map((c) => mapNode(c, c.account_id == null, markers))
+        : sortNavTreeLeavesFirst(visible).map((c) => mapNode(c, false, markers));
   const children = childDtos && childDtos.length > 0 ? childDtos : undefined;
   return {
     id: dto.node_id,
@@ -77,7 +79,7 @@ function mapNode(dto: NavTreeNodeDto, asLeaf = false, topLevelGroup = false): Si
     end: dto.nav_end ? true : undefined,
     activePrefix: dto.active_prefix ?? undefined,
     markerRgb:
-      topLevelGroup || dto.dashboard_bucket_slug != null
+      markers && children && dto.account_id == null && dto.expense_account_id == null
         ? (parseRgbTriplet(dto.color_rgb) ?? undefined)
         : undefined,
     children,

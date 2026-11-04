@@ -4,7 +4,8 @@ import { rgbTripletToHex } from "./chartColors";
 
 export type EntityColorTarget =
   | { kind: "account"; accountId: number }
-  | { kind: "portfolio_group"; slug: string };
+  | { kind: "portfolio_group"; slug: string }
+  | { kind: "liability_group"; slug: string };
 
 export function parseEntityColorRgb(colorRgb: string | null | undefined) {
   return parseColor(rgbTripletToHex(colorRgb));
@@ -27,6 +28,9 @@ export async function persistEntityColor(
   if (target.kind === "account") {
     return api.updateAccountColor(target.accountId, colorRgb);
   }
+  if (target.kind === "liability_group") {
+    return api.updateLiabilityGroupColor(target.slug, colorRgb);
+  }
   return api.updatePortfolioGroupColor(target.slug, colorRgb);
 }
 
@@ -34,6 +38,9 @@ export async function persistEntityColor(
 export async function clearEntityColor(target: EntityColorTarget): Promise<EntityColorPatchResult> {
   if (target.kind === "account") {
     return api.updateAccountColor(target.accountId, null);
+  }
+  if (target.kind === "liability_group") {
+    return api.updateLiabilityGroupColor(target.slug, null);
   }
   return api.updatePortfolioGroupColor(target.slug, null);
 }
