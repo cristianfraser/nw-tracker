@@ -1,0 +1,66 @@
+diff --git a/node_modules/recharts/es6/cartesian/Line.js b/node_modules/recharts/es6/cartesian/Line.js
+index 4544510..8f3b84e 100644
+--- a/node_modules/recharts/es6/cartesian/Line.js
++++ b/node_modules/recharts/es6/cartesian/Line.js
+@@ -332,7 +332,11 @@ function CurveWithAnimation(_ref5) {
+     layout: layout
+   }, (stepData, animationElapsedTime, isEntrance) => {
+     var animationActive = isAnimating || animationElapsedTime < 1;
+-    var visibleLength = animationActive ? getVisibleLength(animationElapsedTime, totalLength) : null;
++    // nw-tracker patch: the completed frame (elapsed 1) arrives once `isAnimating` is false, so
++    // it never reached getVisibleLength and the line was never marked fully drawn; the next data
++    // update then drew it in again from the last in-between length (the right edge redrawn).
++    var lineLength = animationActive || animationElapsedTime >= 1 ? getVisibleLength(animationElapsedTime, totalLength) : null;
++    var visibleLength = animationActive ? lineLength : null;
+     return /*#__PURE__*/React.createElement(StaticCurve, {
+       props: props,
+       points: stepData,
+diff --git a/node_modules/recharts/es6/cartesian/useAnimatedLineLength.js b/node_modules/recharts/es6/cartesian/useAnimatedLineLength.js
+index cb7d44e..1798908 100644
+--- a/node_modules/recharts/es6/cartesian/useAnimatedLineLength.js
++++ b/node_modules/recharts/es6/cartesian/useAnimatedLineLength.js
+@@ -38,7 +38,10 @@ export function useAnimatedLineLength(points) {
+     var visibleLength = Math.min(round(startingLengthRef.current + animationElapsedTime * totalLength), totalLength);
+     if (animationElapsedTime > 0 && totalLength > 0) {
+       maxAnimatedLengthRef.current = Math.max(maxAnimatedLengthRef.current, visibleLength);
+-      if (visibleLength >= totalLength) {
++      // nw-tracker patch: the last frame (elapsed 1) is the full line. `visibleLength` is rounded
++      // to 4 decimals and getTotalLength() carries more, so the comparison alone missed it about
++      // half the time; the next data update then drew the line in again from that length.
++      if (animationElapsedTime >= 1 || visibleLength >= totalLength) {
+         reachedFullRef.current = true;
+         return null;
+       }
+diff --git a/node_modules/recharts/lib/cartesian/Line.js b/node_modules/recharts/lib/cartesian/Line.js
+index 3ddb154..9e2c34e 100644
+--- a/node_modules/recharts/lib/cartesian/Line.js
++++ b/node_modules/recharts/lib/cartesian/Line.js
+@@ -340,7 +340,11 @@ function CurveWithAnimation(_ref5) {
+     layout: layout
+   }, (stepData, animationElapsedTime, isEntrance) => {
+     var animationActive = isAnimating || animationElapsedTime < 1;
+-    var visibleLength = animationActive ? getVisibleLength(animationElapsedTime, totalLength) : null;
++    // nw-tracker patch: the completed frame (elapsed 1) arrives once `isAnimating` is false, so
++    // it never reached getVisibleLength and the line was never marked fully drawn; the next data
++    // update then drew it in again from the last in-between length (the right edge redrawn).
++    var lineLength = animationActive || animationElapsedTime >= 1 ? getVisibleLength(animationElapsedTime, totalLength) : null;
++    var visibleLength = animationActive ? lineLength : null;
+     return /*#__PURE__*/React.createElement(StaticCurve, {
+       props: props,
+       points: stepData,
+diff --git a/node_modules/recharts/lib/cartesian/useAnimatedLineLength.js b/node_modules/recharts/lib/cartesian/useAnimatedLineLength.js
+index cb461e7..6344049 100644
+--- a/node_modules/recharts/lib/cartesian/useAnimatedLineLength.js
++++ b/node_modules/recharts/lib/cartesian/useAnimatedLineLength.js
+@@ -43,7 +43,10 @@ function useAnimatedLineLength(points) {
+     var visibleLength = Math.min((0, _round.round)(startingLengthRef.current + animationElapsedTime * totalLength), totalLength);
+     if (animationElapsedTime > 0 && totalLength > 0) {
+       maxAnimatedLengthRef.current = Math.max(maxAnimatedLengthRef.current, visibleLength);
+-      if (visibleLength >= totalLength) {
++      // nw-tracker patch: the last frame (elapsed 1) is the full line. `visibleLength` is rounded
++      // to 4 decimals and getTotalLength() carries more, so the comparison alone missed it about
++      // half the time; the next data update then drew the line in again from that length.
++      if (animationElapsedTime >= 1 || visibleLength >= totalLength) {
+         reachedFullRef.current = true;
+         return null;
+       }
