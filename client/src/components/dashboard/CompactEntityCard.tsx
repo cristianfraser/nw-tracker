@@ -56,8 +56,9 @@ export function CompactEntityCard({
       {label != null ? <DashboardCardTitleRow label={label} titleTo={to} colorRgb={labelColorRgb} /> : null}
       {subtitle ? <span className={cn("muted", styles.subtitle)}>{subtitle}</span> : null}
       <div className="value mono">
+        {/* No change flash on a summary card (the page's own total, an account's hero): only the
+            detail cards and breakdown lines below it flash (2026-11-04). */}
         <DashboardCardValue
-          flashOnChange
           clp={clp}
           apiUsd={apiUsd}
           showUsd={showUsd}
