@@ -53,6 +53,9 @@ server_listening() { lsof -nP -iTCP:"${PORT:-3001}" -sTCP:LISTEN >/dev/null 2>&1
 TOKEN="${INGEST_TOKEN:-}"
 if [[ -z "$TOKEN" && -f "$REPO/.env" ]]; then TOKEN="$(sed -n 's/^INGEST_TOKEN=//p' "$REPO/.env" | tail -1)"; fi
 JOB_ID=""
+JOB_DONE=0
+# "" until the deploy proper starts, "deploying" after, "finished" once it reached an outcome.
+STAGE=""
 
 jobs_api() { # path json [timeout s] → response body on stdout; non-zero on a failed request
   local args=(-sS -m "${3:-30}" -X POST -H 'content-type: application/json' -d "$2" -w '\n%{http_code}')
@@ -76,6 +79,7 @@ job_heartbeat() { [[ -n "$JOB_ID" ]] && jobs_api "/api/jobs/$JOB_ID/heartbeat" '
 
 job_complete() { # ok(true|false) error-or-empty
   [[ -z "$JOB_ID" ]] && return 0
+  JOB_DONE=1
   local err="null"
   [[ -n "$2" ]] && err="$(/usr/bin/python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$2")"
   # Right after the restart the new server is busy rebuilding its caches and can take minutes to
@@ -90,8 +94,39 @@ job_complete() { # ok(true|false) error-or-empty
   log "could not complete deploy job $JOB_ID (its lease will run out)"
 }
 
-mkdir "$LOCK" 2>/dev/null || exit 0
-trap 'rmdir "$LOCK"' EXIT
+# A run that is SIGKILLed or loses power leaves the lock behind; without this check every later
+# run would exit here, silently, for good. A lock with no pid file (written by an older version
+# of this script) only counts as stale after an hour, longer than any deploy.
+if ! mkdir "$LOCK" 2>/dev/null; then
+  holder="$(cat "$LOCK/pid" 2>/dev/null || true)"
+  if [[ -n "$holder" ]]; then
+    kill -0 "$holder" 2>/dev/null && exit 0
+  elif [[ -z "$(find "$LOCK" -maxdepth 0 -mmin +60)" ]]; then
+    exit 0
+  fi
+  log "Removing a stale deploy lock (pid ${holder:-unknown} is not running)"
+  rm -rf "$LOCK"
+  mkdir "$LOCK" 2>/dev/null || exit 0
+fi
+echo $$ > "$LOCK/pid"
+
+# Whatever stops this run once it holds a job or has started deploying (a failed snapshot, a
+# fast-forward refused by an untracked file, any `set -e` exit): complete the job, so it stops
+# holding `server-restart` (no ingest run starts while it does), and do not retry this commit.
+on_exit() {
+  local rc=$?
+  set +e
+  if [[ "$STAGE" == "deploying" ]]; then
+    log "Deploy of $short stopped (exit $rc) before it finished; not retrying this commit"
+    echo "$new:failed" > "$STATE"
+    message notification "Deploy failed: $short" "$(printf 'The deploy agent stopped (exit %s) before finishing %s; HEAD is %s. Details in cfraser/deploy.log.' "$rc" "$short" "$(git rev-parse --short=8 HEAD)")"
+  fi
+  if [[ -n "$JOB_ID" ]] && (( ! JOB_DONE )); then
+    job_complete false "the deploy agent stopped (exit $rc) before finishing; see cfraser/deploy.log"
+  fi
+  rm -rf "$LOCK"
+}
+trap on_exit EXIT
 cd "$REPO"
 
 git fetch --quiet origin main
@@ -193,12 +228,14 @@ healthy_at() { # sha → 0 when /api/health reports it, within 4 minutes
   return 1
 }
 
+STAGE=deploying
 log "Deploying $(git rev-parse --short=8 "$old") → $short"
 echo "$commits" | sed 's/^/    /' | tee -a "$LOG"
 (cd server && npm run -s db:snapshot -- --label="before-deploy-$short") >>"$LOG" 2>&1
 git merge --ff-only --quiet "$new"
 
 if job_heartbeat && install_and_build "$changed" && job_heartbeat && restart "$changed" && healthy_at "$new"; then
+  STAGE=finished
   log "Deployed $short"
   message log "Deploy $short" "$(printf 'Deployed %s.\n%s' "$short" "$commits")"
   job_complete true ""
@@ -206,6 +243,7 @@ if job_heartbeat && install_and_build "$changed" && job_heartbeat && restart "$c
   exit 0
 fi
 
+STAGE=finished
 log "Deploy of $short failed; rolling back to $(git rev-parse --short=8 "$old")"
 git reset --hard --quiet "$old"
 install_and_build "$changed" || true

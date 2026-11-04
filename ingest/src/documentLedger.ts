@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureDir, resolveCfraserDir } from "./paths.js";
+import { ensureDir, resolveCfraserDir, writeFileAtomic } from "./paths.js";
 import type { BankName } from "./config.js";
 
 /**
@@ -60,6 +60,6 @@ export function recordDocument(bank: DocumentSource, kind: string, key: string):
   const forBank = (ledger[bank] ??= {});
   const keys = (forBank[kind] ??= []);
   if (!keys.includes(key)) keys.push(key);
-  fs.writeFileSync(ledgerFile(), JSON.stringify(ledger, null, 2));
+  writeFileAtomic(ledgerFile(), JSON.stringify(ledger, null, 2));
 }
 

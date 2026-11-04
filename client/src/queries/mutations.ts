@@ -686,6 +686,7 @@ export function useSaveExpenseLinePiecesMutation() {
     mutationFn: (vars: Parameters<typeof api.putExpenseLinePieces>[0]) => api.putExpenseLinePieces(vars),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.flowsExpenses() });
+      void queryClient.invalidateQueries({ queryKey: ["expenseLinePieces"] });
     },
   });
 }

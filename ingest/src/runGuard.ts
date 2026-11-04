@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { ensureDir, resolveCfraserDir } from "./paths.js";
+import { ensureDir, resolveCfraserDir, writeFileAtomic } from "./paths.js";
 import type { BankName } from "./config.js";
 import { log } from "./log.js";
 
@@ -65,5 +65,5 @@ export function assertRunAllowed(bank: BankName, minIntervalMinutes: number, for
 function recordRun(bank: BankName): void {
   const state = readState();
   state[bank] = new Date().toISOString();
-  fs.writeFileSync(stateFile(), JSON.stringify(state, null, 2));
+  writeFileAtomic(stateFile(), JSON.stringify(state, null, 2));
 }

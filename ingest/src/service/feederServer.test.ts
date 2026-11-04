@@ -68,6 +68,20 @@ describe("feeder server", () => {
     expect((await s.post({ run_id: 8, kind: "hourly", reason: ":30 slot", santander_fetch: null })).status).toBe(202);
   });
 
+  it("stays free for the next run when a crashed run's bank facts cannot be read", async () => {
+    const s = await start({
+      run: () => Promise.reject(new Error("runner crashed")),
+      santanderState: () => {
+        throw new Error("unreadable .santander-catchup.json");
+      },
+    });
+    expect((await s.post({ run_id: 9, kind: "hourly", reason: ":30 slot", santander_fetch: null })).status).toBe(202);
+    await s.feeder.idle();
+    expect(s.feeder.current()).toBeNull();
+    expect(s.reports).toEqual([]);
+    expect((await s.post({ run_id: 10, kind: "hourly", reason: ":30 slot", santander_fetch: null })).status).toBe(202);
+  });
+
   it("never runs a run id twice: a repeated request is answered, not run again", async () => {
     const s = await start();
     const request = { run_id: 50, kind: "nightly", reason: "22:00 slot", santander_fetch: null };
