@@ -98,83 +98,100 @@
   display: contents;
 }
 
+/* The list's frame is the container its layout switches on (a container query can restyle only
+   what is inside the container, and the list itself changes). The breakpoint depends on how many
+   columns the list has: each is the measured one-line width of the widest list of that kind on
+   2026-11-04 data (the dashboard's, 3 flows + 2 totals: 837 px; any other: at most 679 px) plus a
+   margin, rem-based so it follows the font size. It replaced measuring the list after every render
+   (`useWrapWhenOverflowing`), which switched the rows to one line and back on every refetch and made
+   Firefox show the page's scrollbar. */
+.frameWide {
+  container: perf-rows-wide / inline-size;
+}
+
+.frameNarrow {
+  container: perf-rows-narrow / inline-size;
+}
+
 /* Wrapped: three lines — the period; the closing with the result beside it and the year so far
    (`ytd`) on the right; the flows and the all-time total (`cum`) on the right. On a phone the
    result takes the right of the closing's line and the totals move down (below). */
-.wrapped {
-  display: block;
-}
-
-.wrapped .row {
-  grid-template-columns: max-content minmax(0, 1fr) auto;
-  grid-template-areas:
-    "period  period period"
-    "closing result ytd"
-    "flows   flows  cum";
-  column-gap: 1rem;
-  row-gap: 0.2rem;
-}
-
-.wrapped .period {
-  grid-area: period;
-  color: inherit;
-}
-
-.wrapped .closing {
-  grid-area: closing;
-  text-align: left;
-}
-
-.wrapped .result {
-  grid-area: result;
-  text-align: left;
-}
-
-.wrapped .flows {
-  grid-area: flows;
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 1rem;
-  row-gap: 0.2rem;
-}
-
-.wrapped .flow:empty {
-  display: none;
-}
-
-.wrapped .totals {
-  display: contents;
-}
-
-.wrapped .total[data-total="ytd"] {
-  grid-area: ytd;
-}
-
-.wrapped .total[data-total="cum"] {
-  grid-area: cum;
-}
-
-@container (max-width: 30rem) {
-  /* The result keeps the closing's line, on the right. A yearly row (no year-so-far) puts the
-     all-time total on the flows line: three lines. A monthly row puts the year so far there,
-     under the result, and the all-time total right under it (the flows span both lines). */
-  .wrapped .row {
-    grid-template-areas:
-      "period  period period"
-      "closing result result"
-      "flows   flows  cum";
+@container perf-rows-wide (max-width: 58rem), perf-rows-narrow (max-width: 46rem) {
+  .list {
+    display: block;
   }
 
-  .wrapped .row:has(.total[data-total="ytd"]) {
+  .row {
+    grid-template-columns: max-content minmax(0, 1fr) auto;
     grid-template-areas:
       "period  period period"
-      "closing result result"
-      "flows   flows  ytd"
+      "closing result ytd"
       "flows   flows  cum";
+    column-gap: 1rem;
+    row-gap: 0.2rem;
   }
 
-  .wrapped .result {
-    justify-self: end;
-    text-align: right;
+  .period {
+    grid-area: period;
+    color: inherit;
+  }
+
+  .closing {
+    grid-area: closing;
+    text-align: left;
+  }
+
+  .result {
+    grid-area: result;
+    text-align: left;
+  }
+
+  .flows {
+    grid-area: flows;
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 1rem;
+    row-gap: 0.2rem;
+  }
+
+  .flow:empty {
+    display: none;
+  }
+
+  .totals {
+    display: contents;
+  }
+
+  .total[data-total="ytd"] {
+    grid-area: ytd;
+  }
+
+  .total[data-total="cum"] {
+    grid-area: cum;
+  }
+
+  @container (max-width: 30rem) {
+    /* The result keeps the closing's line, on the right. A yearly row (no year-so-far) puts the
+       all-time total on the flows line: three lines. A monthly row puts the year so far there,
+       under the result, and the all-time total right under it (the flows span both lines). */
+    .row {
+      grid-template-areas:
+        "period  period period"
+        "closing result result"
+        "flows   flows  cum";
+    }
+
+    .row:has(.total[data-total="ytd"]) {
+      grid-template-areas:
+        "period  period period"
+        "closing result result"
+        "flows   flows  ytd"
+        "flows   flows  cum";
+    }
+
+    .result {
+      justify-self: end;
+      text-align: right;
+    }
   }
 }

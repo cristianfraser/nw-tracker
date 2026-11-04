@@ -287,6 +287,7 @@ export function FlowsTable({
     >
       <FlowRows
         rows={items}
+        bothAccounts={showAccountColumn}
         accountsLabel={
           showAccountColumn
             ? t("accountDetail.flowAccountsColumn")

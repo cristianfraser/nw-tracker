@@ -27,6 +27,7 @@ import { useExpensesIncludePreTax } from "../useExpensesIncludePreTax";
 import { useCcExpenseCategoryLevel } from "../useCcExpenseCategoryLevel";
 import { ccExpenseCategoriesAtLevel } from "../ccExpenseCategories";
 import { useCcExpenseExcludedBigGroups } from "../useCcExpenseExcludedBigGroups";
+import { queryLoadError } from "../queries/pageShapeReady";
 
 /** Chart Período choices: Diario is not offered on this page. */
 const EXPENSES_CHART_PERIODS = ["month", "year"] as const;
@@ -82,7 +83,7 @@ export function ExpensesPage() {
   const excludedBigGroupList = useMemo(() => [...excludedBigGroups], [excludedBigGroups]);
   // The default exclusion is every big group the lines carry: wait for them before asking.
   const gastos = useFlowsExpensesGastos(displayUnit, excludedBigGroupList, includePreTax, data != null);
-  const loadError = error ?? gastos.error;
+  const loadError = queryLoadError({ data, error }) ?? queryLoadError(gastos);
   const err =
     loadError instanceof Error ? loadError.message : loadError ? t("common.loadFailed") : null;
 

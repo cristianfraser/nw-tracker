@@ -15,6 +15,7 @@ import { SurfaceControls } from "../ui/SurfaceControls";
 import { loadableClass } from "../ui/Loadable";
 import { PageGridTile } from "../layout/PageGridTile";
 import { chartStrokeFromRgbTriplet } from "../../chartColors";
+import { queryShowsLoading } from "../../queries/pageShapeReady";
 import type {
   AccountMonthlyPerformanceRow,
   AccountMortgageLedgerResponse,
@@ -94,8 +95,12 @@ export function LiabilitiesMortgageGroupSection({
     isDaily && summary.account_id > 0,
     { perfLevels: true }
   );
+  // A Diario combo draws only its own daily series: until it is this unit's (not pending, not a
+  // held placeholder) it gets no points and shows its pending frame, never the monthly points.
+  const dailyPending = isDaily && queryShowsLoading(dailySeries);
   const dailyPerfPoints = useMemo(() => {
-    if (!isDaily || !dailySeries.data?.points.length || !monthlyPerfRows.length) return null;
+    if (!isDaily || dailyPending) return null;
+    if (!dailySeries.data?.points.length || !monthlyPerfRows.length) return null;
     const line = dailySeries.data.accounts?.find((l) => l.account_id === summary.account_id);
     if (!line?.pl) return null;
     return servedDailyPerfComboPoints({
@@ -105,7 +110,7 @@ export function LiabilitiesMortgageGroupSection({
       ytdKey: "ytd_nominal_pl",
       totalKey: "delta_month",
     });
-  }, [isDaily, dailySeries.data, monthlyPerfRows, summary.account_id]);
+  }, [isDaily, dailyPending, dailySeries.data, monthlyPerfRows, summary.account_id]);
 
   // Yearly combos: months cut at the combos' Rango first, then rolled up (a partial first year).
   const ytdChartPoints = useMemo(() => {
@@ -141,9 +146,7 @@ export function LiabilitiesMortgageGroupSection({
   }, [monthlyPerfRows, isYearly, timeRange]);
 
   const title = t("groupPage.pasivos.mortgageSectionTitle");
-  // Diario combos show the monthly points, dimmed, until the daily series is this unit's.
-  const combosLoading =
-    perfLoading || (isDaily && (dailySeries.isPending || dailySeries.isPlaceholderData));
+  const combosLoading = perfLoading || dailyPending;
 
   // A page grid of its own inside the group page's grid (styles/page-grid.css): the summary, the
   // charts, the detalle and the sheet tables are tiles; one dim marker for the section.
@@ -173,9 +176,9 @@ export function LiabilitiesMortgageGroupSection({
               <MonthlyPerformanceComboChart
                 title={t("groupPage.pasivos.mortgageYtdChartTitle")}
                 titleAs="h3"
-                points={dailyPerfPoints ?? ytdChartPoints}
+                points={isDaily ? (dailyPerfPoints ?? []) : ytdChartPoints}
                 displayUnit={displayUnit}
-                xAxisGranularity={dailyPerfPoints ? "day" : xAxisGranularity}
+                xAxisGranularity={isDaily ? "day" : xAxisGranularity}
                 timeRange={timeRange}
                 controls={perfControls}
                 barSeries={[
@@ -197,9 +200,9 @@ export function LiabilitiesMortgageGroupSection({
             <MonthlyPerformanceComboChart
               title={t("groupPage.pasivos.mortgageAccChartTitle")}
               titleAs="h3"
-              points={dailyPerfPoints ?? accChartPoints}
+              points={isDaily ? (dailyPerfPoints ?? []) : accChartPoints}
               displayUnit={displayUnit}
-              xAxisGranularity={dailyPerfPoints ? "day" : xAxisGranularity}
+              xAxisGranularity={isDaily ? "day" : xAxisGranularity}
               timeRange={timeRange}
               controls={perfControls}
               barSeries={[

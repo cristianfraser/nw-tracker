@@ -58,7 +58,7 @@ export type AppComposedChartProps = ComponentProps<typeof ComposedChart> & {
 export function AppComposedChart(props: AppComposedChartProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   return (
-    <div ref={ref} style={{ width: "100%", height: "100%" }}>
+    <div ref={ref} className="app-chart-frame" style={{ width: "100%", height: "100%" }}>
       {width > 0 && height > 0 ? <SizedAppComposedChart {...props} width={width} height={height} /> : null}
     </div>
   );

@@ -52,6 +52,7 @@ import {
   usePortfolioGroupMortgageLedger,
   useSidebarNav,
 } from "../queries/hooks";
+import { queryLoadError, queryShowsLoading } from "../queries/pageShapeReady";
 
 /** Pasivos root and subgroups (`/liabilities`, `/liabilities/credit-card`, `/liabilities/mortgage`). */
 export function LiabilitiesGroupPage() {
@@ -120,7 +121,7 @@ export function LiabilitiesGroupPage() {
 
   const {
     data,
-    error,
+    error: queryError,
     isPending: groupPending,
     isPlaceholderData,
   } = usePortfolioGroupBundle({
@@ -297,35 +298,45 @@ export function LiabilitiesGroupPage() {
     timeRangeToDays(proportionalPrefs.range),
     proportionalIsDaily && portfolioGroup !== ""
   );
+  // A Diario chart draws only its own daily series: until it is this unit's (not pending, not a
+  // held placeholder) the chart gets no data and shows its pending frame — title row and
+  // controls over an empty box — never the monthly block.
+  const valuationDailyPending = valuationIsDaily && queryShowsLoading(dailySeries);
+  const proportionalDailyPending = proportionalIsDaily && queryShowsLoading(proportionalDailySeries);
   const dailyProportionalBlock = useMemo(() => {
-    if (!proportionalIsDaily) return null;
+    if (!proportionalIsDaily || proportionalDailyPending) return null;
     const daily = proportionalDailySeries.data;
     if (!daily) return null;
     if (chartCtx?.liabilitiesGrouped && daily.grouped_proportional?.series.length) {
       return daily.grouped_proportional;
     }
     return daily.proportional ?? null;
-  }, [proportionalIsDaily, proportionalDailySeries.data, chartCtx?.liabilitiesGrouped]);
+  }, [
+    proportionalIsDaily,
+    proportionalDailyPending,
+    proportionalDailySeries.data,
+    chartCtx?.liabilitiesGrouped,
+  ]);
   // Pasivos root: the composition chart's slot shows the liabilities coverage instead, on the
   // same controls. The nav node says so (`chart_coverage`) before any payload lands, so the
   // coverage chart mounts from first paint (pending frame) instead of swapping the composition
   // chart out; the payload's block (present only where the page has liability accounts and
   // reference lines) is the fallback for a nav tree that predates the hint.
   const showCoverage = Boolean(navMatchNode?.chart_coverage || ts?.reference_coverage);
-  // In Diario the chart keeps the monthly block, dimmed, until its daily series lands — the
-  // valuation chart's rule (`dailyValuationBlock ?? …`), so the two never show one chart drawn
-  // and the other an empty pending box over the same wait.
-  const dailyCoverageBlock = proportionalIsDaily
-    ? (proportionalDailySeries.data?.reference_coverage ?? null)
-    : null;
-  const coverageBlock = dailyCoverageBlock ?? ts?.reference_coverage ?? null;
-  const coverageXAxisGranularity: "day" | "month" | "year" = dailyCoverageBlock
+  // In Diario it follows the same rule as the other charts: its pending frame until the daily
+  // series is this unit's, never the monthly block.
+  const coverageBlock = proportionalIsDaily
+    ? proportionalDailyPending
+      ? null
+      : (proportionalDailySeries.data?.reference_coverage ?? null)
+    : (ts?.reference_coverage ?? null);
+  const coverageXAxisGranularity: "day" | "month" | "year" = proportionalIsDaily
     ? "day"
     : proportionalPrefs.period === "year"
       ? "year"
       : "month";
   const dailyValuationBlock = useMemo(() => {
-    if (!valuationIsDaily) return null;
+    if (!valuationIsDaily || valuationDailyPending) return null;
     const daily = dailySeries.data;
     if (!daily || !displayValuationBlock) return null;
     const useGrouped = Boolean(chartCtx?.liabilitiesGrouped && daily.grouped_accounts?.length);
@@ -333,7 +344,13 @@ export function LiabilitiesGroupPage() {
       useGrouped ? { ...daily, accounts: daily.grouped_accounts } : daily,
       displayValuationBlock
     );
-  }, [valuationIsDaily, dailySeries.data, displayValuationBlock, chartCtx?.liabilitiesGrouped]);
+  }, [
+    valuationIsDaily,
+    valuationDailyPending,
+    dailySeries.data,
+    displayValuationBlock,
+    chartCtx?.liabilitiesGrouped,
+  ]);
 
   const mortgageAccount = useMemo(() => {
     if (pageKind !== "mortgage" && pageKind !== "pasivos_root") return null;
@@ -389,25 +406,23 @@ export function LiabilitiesGroupPage() {
     );
   }, [mortgageAccount, ts?.accounts_in_group?.accounts, navMatchNode?.color_rgb]);
 
-  // A Diario chart shows the monthly block, dimmed, until its daily series is this unit's.
-  const dailyLoading = (q: { isPending: boolean; isPlaceholderData: boolean }) =>
-    q.isPending || q.isPlaceholderData;
-  const proportionalLoading =
-    contentLoading || (proportionalIsDaily && dailyLoading(proportionalDailySeries));
+  const proportionalLoading = contentLoading || proportionalDailyPending;
 
   const chartsSection = (
     <>
       <PortfolioGroupChartsSection
         loading={contentLoading}
-        valuationLoading={contentLoading || (valuationIsDaily && dailyLoading(dailySeries))}
+        valuationLoading={contentLoading || valuationDailyPending}
         proportionalLoading={proportionalLoading}
         accountsEmpty={accounts.length === 0}
         accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
         chartSeriesCount={chartSeriesCount}
-        valuationBlockForChart={dailyValuationBlock ?? charts.valuationBlockForChart}
-        proportionalBlock={dailyProportionalBlock ?? displayProportional}
+        valuationBlockForChart={
+          valuationIsDaily ? dailyValuationBlock : charts.valuationBlockForChart
+        }
+        proportionalBlock={proportionalIsDaily ? dailyProportionalBlock : displayProportional}
         proportionalXAxisGranularity={
-          dailyProportionalBlock ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
+          proportionalIsDaily ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
         }
         proportionalTimeRange={proportionalPrefs.range}
         proportionalReplacement={
@@ -440,7 +455,7 @@ export function LiabilitiesGroupPage() {
         displayUnit={displayUnit}
         xAxisGranularity={valuationPrefs.period === "year" ? "year" : "month"}
         valuationXAxisGranularity={
-          dailyValuationBlock ? "day" : valuationPrefs.period === "year" ? "year" : "month"
+          valuationIsDaily ? "day" : valuationPrefs.period === "year" ? "year" : "month"
         }
         valuationTimeRange={valuationPrefs.range}
         valuationControls={
@@ -512,6 +527,7 @@ export function LiabilitiesGroupPage() {
   );
 
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
+  const error = queryLoadError({ data, error: queryError });
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   if (liabilitiesSubgroupParam != null && liabilitiesSubgroupParam !== "" && categoryFilter === null) {

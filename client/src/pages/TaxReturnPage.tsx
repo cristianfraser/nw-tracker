@@ -9,6 +9,7 @@ import { TableMobileCard, TableMobileCardRow } from "../components/ui/TableMobil
 import { formatClp, formatGroupedDecimal, formatPct, formatUsdFine } from "../format";
 import { useTaxReturn } from "../queries/hooks";
 import type { TaxReturnResponse, TaxReturnRow } from "../types";
+import { queryLoadError } from "../queries/pageShapeReady";
 
 /** Codes with a label in master.json (`taxReturn.codes.<code>`); others show «Código N». */
 const LABELLED_CODES = new Set([
@@ -704,8 +705,8 @@ export function TaxReturnPage() {
     <main>
       <h1>{t("taxReturn.title")}</h1>
       <p className="muted">{t("taxReturn.subtitle")}</p>
-      {q.isError ? <p className="error">{(q.error as Error).message}</p> : null}
-      {q.isError && !data ? null : (
+      {queryLoadError(q) ? <p className="error">{(q.error as Error).message}</p> : null}
+      {queryLoadError(q) ? null : (
         <Loadable loading={loading} className="page-grid">
           <PageGridTile id="f22">
             <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>

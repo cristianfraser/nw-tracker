@@ -32,7 +32,11 @@ import { buildPlaceholderNavStripDash } from "../placeholders/dashboardPagePlace
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { writeGroupPageShellCache } from "../queries/groupPageShellCache";
 import { queryKeys } from "../queries/keys";
-import { isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
+import {
+  isBundleContentLoading,
+  queryShowsLoading,
+  useRealBundleForContent,
+} from "../queries/pageShapeReady";
 import {
   useAccountsByPortfolioGroup,
   useDailySeries,
@@ -286,17 +290,23 @@ export function GroupInfoPage() {
     timeRangeToDays(proportionalPrefs.range),
     proportionalIsDaily && !valueMapShown && portfolioGroup !== ""
   );
+  // A Diario chart draws only its own daily series: until it is this unit's (not pending, not a
+  // held placeholder) the chart gets no data and shows its pending frame — title row and
+  // controls over an empty box — never the monthly block.
+  const valuationDailyPending = valuationIsDaily && queryShowsLoading(dailySeries);
+  const perfDailyPending = perfIsDaily && queryShowsLoading(perfDailySeries);
+  const proportionalDailyPending = proportionalIsDaily && queryShowsLoading(proportionalDailySeries);
   const dailyProportionalBlock = useMemo(() => {
-    if (!proportionalIsDaily) return null;
+    if (!proportionalIsDaily || proportionalDailyPending) return null;
     const daily = proportionalDailySeries.data;
     if (!daily) return null;
     // Composition is always the page's direct children (the grouped buckets), whatever the
     // Agrupado toggle says; leaf pages carry no bucket block and fall back to their accounts.
     if (daily.grouped_proportional?.series.length) return daily.grouped_proportional;
     return daily.proportional ?? null;
-  }, [proportionalIsDaily, proportionalDailySeries.data]);
+  }, [proportionalIsDaily, proportionalDailyPending, proportionalDailySeries.data]);
   const dailyValuationBlock = useMemo(() => {
-    if (!valuationIsDaily) return null;
+    if (!valuationIsDaily || valuationDailyPending) return null;
     const daily = dailySeries.data;
     if (!daily) return null;
     // Bucket lines share synthetic ids with the matching monthly grouped block, so the
@@ -311,7 +321,7 @@ export function GroupInfoPage() {
       return buildDailyValuationBlock({ ...daily, accounts: bucketLines }, bucketBlock);
     }
     return buildDailyValuationBlock(daily, ts?.accounts_in_group ?? null);
-  }, [valuationIsDaily, dailySeries.data, groupedToggleOn, ts?.nav_grouped_blocks, ts?.accounts_in_group]);
+  }, [valuationIsDaily, valuationDailyPending, dailySeries.data, groupedToggleOn, ts?.nav_grouped_blocks, ts?.accounts_in_group]);
 
   const displayProportional = useMemo(() => {
     if (!ts?.group_allocation_proportional || !chartCtx) return null;
@@ -326,7 +336,7 @@ export function GroupInfoPage() {
   // Day view: per-day P/L bars keyed by the monthly block's bar metadata; the total and the
   // cumulative areas are the server's (anchored on the group consolidation).
   const dailyGroupPerfPoints = useMemo(() => {
-    if (!perfIsDaily) return null;
+    if (!perfIsDaily || perfDailyPending) return null;
     const daily = perfDailySeries.data;
     if (!daily || !displayGroupPerf?.bar_accounts.length) return null;
     // Same absence-means-identical rule as the valuation block above; the bucket lines'
@@ -341,7 +351,7 @@ export function GroupInfoPage() {
       lines,
       barAccounts: displayGroupPerf.bar_accounts,
     });
-  }, [perfIsDaily, perfDailySeries.data, displayGroupPerf, groupedToggleOn]);
+  }, [perfIsDaily, perfDailyPending, perfDailySeries.data, displayGroupPerf, groupedToggleOn]);
 
   const chartSeriesCount = accounts.length;
   const chartColorSlug = (chartCtx?.chartColorSlug ?? portfolioGroup) as AssetGroupSlug | "crypto";
@@ -361,9 +371,6 @@ export function GroupInfoPage() {
 
   const title = navMatchNode ? resolveNavTreeLabel(navMatchNode) : "";
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
-  // A Diario chart shows the monthly block, dimmed, until its daily series is this unit's.
-  const dailyLoading = (q: { isPending: boolean; isPlaceholderData: boolean }) =>
-    q.isPending || q.isPlaceholderData;
 
   if (navSettled && (!navMatchNode || !portfolioGroup)) {
     return <GroupNotFound />;
@@ -399,18 +406,18 @@ export function GroupInfoPage() {
       charts={
         <PortfolioGroupChartsSection
           loading={contentLoading}
-          valuationLoading={contentLoading || (valuationIsDaily && dailyLoading(dailySeries))}
-          proportionalLoading={
-            contentLoading || (proportionalIsDaily && dailyLoading(proportionalDailySeries))
-          }
-          perfLoading={contentLoading || (perfIsDaily && dailyLoading(perfDailySeries))}
+          valuationLoading={contentLoading || valuationDailyPending}
+          proportionalLoading={contentLoading || proportionalDailyPending}
+          perfLoading={contentLoading || perfDailyPending}
           accountsEmpty={accounts.length === 0}
           accountsEmptyMessage={t("groupPage.accountsTreeEmpty")}
           chartSeriesCount={chartSeriesCount}
-          valuationBlockForChart={dailyValuationBlock ?? charts.valuationBlockForChart}
-          proportionalBlock={dailyProportionalBlock ?? displayProportional}
+          valuationBlockForChart={
+            valuationIsDaily ? dailyValuationBlock : charts.valuationBlockForChart
+          }
+          proportionalBlock={proportionalIsDaily ? dailyProportionalBlock : displayProportional}
           proportionalXAxisGranularity={
-            dailyProportionalBlock ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
+            proportionalIsDaily ? "day" : proportionalPrefs.period === "year" ? "year" : "month"
           }
           proportionalTimeRange={proportionalPrefs.range}
           proportionalReplacement={
@@ -440,7 +447,7 @@ export function GroupInfoPage() {
           displayUnit={displayUnit}
           xAxisGranularity={valuationPrefs.period === "year" ? "year" : "month"}
           valuationXAxisGranularity={
-            dailyValuationBlock ? "day" : valuationPrefs.period === "year" ? "year" : "month"
+            valuationIsDaily ? "day" : valuationPrefs.period === "year" ? "year" : "month"
           }
           valuationTimeRange={valuationPrefs.range}
           perfTimeRange={perfPrefs.range}
@@ -465,11 +472,11 @@ export function GroupInfoPage() {
           colorPlanGroupSlug={charts.colorPlanGroupSlug}
           groupColorMaps={charts.groupColorMaps}
           groupPerfForChart={
-            dailyGroupPerfPoints ? { points: dailyGroupPerfPoints } : charts.groupPerfForChart
+            perfIsDaily ? { points: dailyGroupPerfPoints ?? [] } : charts.groupPerfForChart
           }
           groupPerfBarSeries={charts.groupPerfBarSeries}
           perfXAxisGranularity={
-            dailyGroupPerfPoints ? "day" : perfPrefs.period === "year" ? "year" : "month"
+            perfIsDaily ? "day" : perfPrefs.period === "year" ? "year" : "month"
           }
           groupTotalStroke={charts.groupTotalStroke}
           groupColorRgb={navMatchNode?.color_rgb}

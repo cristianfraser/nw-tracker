@@ -20,6 +20,7 @@ import { rollupFlowsPlChartPointsByYear } from "../flowsPlAggregate";
 import { flowsPlBucketLabel, useTranslation } from "../i18n";
 import { useFlowsPl } from "../queries/hooks";
 import type { FlowsPlAccountRow, FlowsPlBucketBlock, FlowsPlBucketSlug } from "../types";
+import { queryLoadError } from "../queries/pageShapeReady";
 
 const PAGE_SIZE = 12;
 
@@ -65,9 +66,10 @@ export function FlowsPlPage() {
   );
   const isDaily = chartGranularity === "day";
   // Day mode fetches the server-windowed per-day P/L; M/Y keep the days-less payload.
-  const { data, error, isPending, isPlaceholderData } = useFlowsPl(
+  const { data, error: queryError, isPending, isPlaceholderData } = useFlowsPl(
     isDaily ? timeRangeToDays(timeRange) : undefined
   );
+  const error = queryLoadError({ data, error: queryError });
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
   // Pending, or holding the prior Diario window while the new one loads: dimmed.
   const loading = isPending || isPlaceholderData;

@@ -26,3 +26,13 @@ export function useRealBundleForContent(
 export function queryShowsLoading(q: { isPending: boolean; isPlaceholderData: boolean }): boolean {
   return q.isPending || q.isPlaceholderData;
 }
+
+/**
+ * The error a query-backed view shows instead of its content: only when it has no data. A failed
+ * background refetch keeps the last data in the query and sets `error`; the view keeps showing
+ * that data, and the next refetch recovers. On 2026-11-04 a deploy restarted the server, one
+ * refetch failed and «Últimos gastos» was replaced by an error until the next one succeeded.
+ */
+export function queryLoadError(q: { data: unknown; error: unknown }): unknown {
+  return q.data === undefined ? q.error : null;
+}

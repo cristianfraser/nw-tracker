@@ -7,6 +7,7 @@ import { MonthlyPerfDetailTable } from "../../components/account/MonthlyPerfDeta
 import { buildDailyValuationBlock } from "../../dailySeriesChart";
 import { servedDailyPerfComboPoints } from "../../servedDailyPerfCombo";
 import { useDailySeries } from "../../queries/hooks";
+import { queryShowsLoading } from "../../queries/pageShapeReady";
 import { timeRangeToDays } from "../../timeRange";
 import { useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { SurfaceControls } from "../../components/ui/SurfaceControls";
@@ -46,9 +47,14 @@ import {
   tickerLabelFromCategory,
 } from "./shared";
 
+import type { TimeseriesBlock } from "../../types";
+
 type Props = {
   data: AccountDetailPageData;
 };
+
+/** A Diario valuation chart whose daily series has not arrived: no lines, the pending frame. */
+const EMPTY_VALUATION_BLOCK: TimeseriesBlock = { accounts: [], points: [] };
 
 export function StandardAccountDetailPage({ data }: Props) {
   const { t } = useTranslation();
@@ -117,15 +123,17 @@ export function StandardAccountDetailPage({ data }: Props) {
     perfIsDaily,
     { perfLevels: true }
   );
+  // A Diario chart draws only its own daily series: until it is this unit's (not pending, not a
+  // held placeholder) it gets no data and shows its pending frame — title row and controls over
+  // an empty box — never the monthly block.
+  const valuationDailyPending = valuationIsDaily && queryShowsLoading(dailySeries);
+  const perfDailyPending = perfIsDaily && queryShowsLoading(perfDailySeries);
   const dailyValuationBlock = useMemo(() => {
-    if (!valuationIsDaily) return null;
+    if (!valuationIsDaily || valuationDailyPending) return null;
     return buildDailyValuationBlock(dailySeries.data, valuationBlockForChart ?? ts.accounts);
-  }, [valuationIsDaily, dailySeries.data, valuationBlockForChart, ts.accounts]);
-  // A Diario surface also waits on its own daily series (first fetch or a held prior one).
-  const valuationLoading =
-    loading || (valuationIsDaily && (dailySeries.isPending || dailySeries.isPlaceholderData));
-  const perfLoading =
-    loading || (perfIsDaily && (perfDailySeries.isPending || perfDailySeries.isPlaceholderData));
+  }, [valuationIsDaily, valuationDailyPending, dailySeries.data, valuationBlockForChart, ts.accounts]);
+  const valuationLoading = loading || valuationDailyPending;
+  const perfLoading = loading || perfDailyPending;
   const detalleDailyLoading = detalleDailySeries.isPending || detalleDailySeries.isPlaceholderData;
   const valuationControls = (
     <SurfaceControls
@@ -147,7 +155,8 @@ export function StandardAccountDetailPage({ data }: Props) {
   // Day view P/L bars: one bar account (this account), so a single pick serves both combos —
   // `nominal_pl`/`delta_month` are the same daily P/L and the server's two levels ride along.
   const dailyPerfPoints = useMemo(() => {
-    if (!perfIsDaily || !perfDailySeries.data?.points.length || !monthlyPerfRows.length) return null;
+    if (!perfIsDaily || perfDailyPending) return null;
+    if (!perfDailySeries.data?.points.length || !monthlyPerfRows.length) return null;
     const line = perfDailySeries.data.accounts?.find((l) => l.account_id === summary.account_id);
     if (!line?.pl) return null;
     return servedDailyPerfComboPoints({
@@ -157,7 +166,7 @@ export function StandardAccountDetailPage({ data }: Props) {
       ytdKey: "ytd_nominal_pl",
       totalKey: "delta_month",
     });
-  }, [perfIsDaily, perfDailySeries.data, monthlyPerfRows, summary.account_id]);
+  }, [perfIsDaily, perfDailyPending, perfDailySeries.data, monthlyPerfRows, summary.account_id]);
 
   const isMovementCartolaAccount = summary.category_slug === "cuenta_corriente" || summary.category_slug === "cuenta_vista";
   const showMonthlyPerformance =
@@ -360,10 +369,14 @@ export function StandardAccountDetailPage({ data }: Props) {
       <PageGridTile id="valuation" className="chart-grid chart-grid--full-line">
         <LineChartPanel
           title={t("charts.valuationAndDeposits")}
-          block={dailyValuationBlock ?? valuationBlockForChart ?? ts.accounts}
+          block={
+            valuationIsDaily
+              ? (dailyValuationBlock ?? EMPTY_VALUATION_BLOCK)
+              : (valuationBlockForChart ?? ts.accounts)
+          }
           displayUnit={displayUnit}
           xAxisGranularity={
-            dailyValuationBlock ? "day" : valuationPrefs.period === "year" ? "year" : "month"
+            valuationIsDaily ? "day" : valuationPrefs.period === "year" ? "year" : "month"
           }
           timeRange={valuationPrefs.range}
           controls={valuationControls}
@@ -421,10 +434,10 @@ export function StandardAccountDetailPage({ data }: Props) {
                 <MonthlyPerformanceComboChart
                   title={t("accountDetail.plMonthlyVsYtdTitle")}
                   titleAs="h3"
-                  points={dailyPerfPoints ?? ytdChartPoints}
+                  points={perfIsDaily ? (dailyPerfPoints ?? []) : ytdChartPoints}
                   displayUnit={displayUnit}
                   xAxisGranularity={
-                    dailyPerfPoints ? "day" : perfPrefs.period === "year" ? "year" : "month"
+                    perfIsDaily ? "day" : perfPrefs.period === "year" ? "year" : "month"
                   }
                   timeRange={perfPrefs.range}
                   controls={perfControls}
@@ -448,10 +461,10 @@ export function StandardAccountDetailPage({ data }: Props) {
                 <MonthlyPerformanceComboChart
                   title={t("accountDetail.monthlyDeltaAndAccumTitle")}
                   titleAs="h3"
-                  points={dailyPerfPoints ?? accChartPoints}
+                  points={perfIsDaily ? (dailyPerfPoints ?? []) : accChartPoints}
                   displayUnit={displayUnit}
                   xAxisGranularity={
-                    dailyPerfPoints ? "day" : perfPrefs.period === "year" ? "year" : "month"
+                    perfIsDaily ? "day" : perfPrefs.period === "year" ? "year" : "month"
                   }
                   timeRange={perfPrefs.range}
                   controls={perfControls}

@@ -93,64 +93,80 @@
   font-size: var(--font-size-prose-sm);
 }
 
+/* The list's frame is the container its layout switches on (a container query can restyle only
+   what is inside the container, and the list itself changes). A group's list names both accounts
+   and needs more room: each breakpoint is the measured one-line width of the widest list of that
+   kind on 2026-11-04 data (net worth's: 887 px; an account page's: 629 px) plus a margin. It
+   replaced measuring the list after every render (`useWrapWhenOverflowing`), which switched the
+   rows to one line and back on every refetch and made Firefox show the page's scrollbar. */
+.frameWide {
+  container: flow-rows-wide / inline-size;
+}
+
+.frameNarrow {
+  container: flow-rows-narrow / inline-size;
+}
+
 /* Wrapped: three lines — the date and the type with the amount on the right; the accounts; the
    note, which wraps in full. No header: the rows read without it. */
-.wrapped {
-  display: block;
-}
-
-.wrapped .header {
-  display: none;
-}
-
-.wrapped .row {
-  grid-template-columns: max-content minmax(0, 1fr) auto;
-  grid-template-areas:
-    "date     type     amount"
-    "accounts accounts accounts"
-    "note     note     note";
-  column-gap: 0.75rem;
-  row-gap: 0.2rem;
-}
-
-.wrapped .date {
-  grid-area: date;
-}
-
-.wrapped .type {
-  grid-area: type;
-}
-
-.wrapped .accounts {
-  grid-area: accounts;
-  white-space: normal;
-}
-
-.wrapped .amount {
-  grid-area: amount;
-}
-
-.wrapped .note {
-  grid-area: note;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.wrapped .note:empty {
-  display: none;
-}
-
-/* A phone: the amount beside the date (a conversion may break before its second leg), the type
-   on the note's line. */
-@container (max-width: 30rem) {
-  .wrapped .row {
-    grid-template-areas:
-      "date     amount   amount"
-      "accounts accounts accounts"
-      "type     note     note";
+@container flow-rows-wide (max-width: 58rem), flow-rows-narrow (max-width: 44rem) {
+  .list {
+    display: block;
   }
 
-  .wrapped .amount {
+  .header {
+    display: none;
+  }
+
+  .row {
+    grid-template-columns: max-content minmax(0, 1fr) auto;
+    grid-template-areas:
+      "date     type     amount"
+      "accounts accounts accounts"
+      "note     note     note";
+    column-gap: 0.75rem;
+    row-gap: 0.2rem;
+  }
+
+  .date {
+    grid-area: date;
+  }
+
+  .type {
+    grid-area: type;
+  }
+
+  .accounts {
+    grid-area: accounts;
     white-space: normal;
+  }
+
+  .amount {
+    grid-area: amount;
+  }
+
+  .note {
+    grid-area: note;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .note:empty {
+    display: none;
+  }
+
+  /* A phone: the amount beside the date (a conversion may break before its second leg), the type
+     on the note's line. */
+  @container (max-width: 30rem) {
+    .row {
+      grid-template-areas:
+        "date     amount   amount"
+        "accounts accounts accounts"
+        "type     note     note";
+    }
+
+    .amount {
+      white-space: normal;
+    }
   }
 }

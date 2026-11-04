@@ -8,6 +8,7 @@ import { useRealEstateLinkCandidates } from "../../queries/hooks";
 import { useLinkRealEstateExpenseMutation } from "../../queries/mutations";
 import type { RealEstateBillSlot } from "../../types";
 import { Button } from "@crfrsr/ui";
+import { queryLoadError } from "../../queries/pageShapeReady";
 
 type Props = {
   slot: RealEstateBillSlot | null;
@@ -18,7 +19,8 @@ type Props = {
 export function RealEstateExpenseLinkModal({ slot, open, onClose }: Props) {
   const { t } = useTranslation();
   const entryId = slot?.expense_entry_id ?? null;
-  const { data, isLoading, error } = useRealEstateLinkCandidates(entryId, open);
+  const { data, isLoading, error: queryError } = useRealEstateLinkCandidates(entryId, open);
+  const error = queryLoadError({ data, error: queryError });
   const linkMutation = useLinkRealEstateExpenseMutation();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 

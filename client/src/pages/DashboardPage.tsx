@@ -17,7 +17,11 @@ import {
 } from "../queries/displayUnitQueries";
 import { dashPickForNavStrip } from "../queries/fetchers";
 import { otherDisplayUnit } from "../queries/keys";
-import { isBundleContentLoading, useRealBundleForContent } from "../queries/pageShapeReady";
+import {
+  isBundleContentLoading,
+  queryShowsLoading,
+  useRealBundleForContent,
+} from "../queries/pageShapeReady";
 import {
   nwBucketTotalsFromDashTotals,
   writeDashboardNavSnapshotCache,
@@ -229,16 +233,18 @@ export function DashboardPage() {
     allocationIsDaily && !valueMapShown
   );
   const allocationDailyData = allocationDaily.data;
-  // A Diario chart shows the monthly block (or its frame), dimmed, until its daily payload is
-  // this unit's; the bundle's own loading dims every chart.
-  const dailyLoading = (on: boolean, q: { isPending: boolean; isPlaceholderData: boolean }) =>
-    on && (q.isPending || q.isPlaceholderData);
-  const valuationChartsLoading =
-    contentLoading ||
-    dailyLoading(overviewIsDaily, overviewDaily);
-  const allocationLoading = contentLoading || dailyLoading(allocationIsDaily, allocationDaily);
+  // A Diario chart draws only its own daily payload: until that payload is this unit's (not
+  // pending, not a held placeholder) the chart shows its pending frame — title row and controls
+  // over an empty box — never the monthly block. The bundle's own loading dims every chart.
+  const dailyPending = (on: boolean, q: { isPending: boolean; isPlaceholderData: boolean }) =>
+    on && queryShowsLoading(q);
+  const overviewDailyPending = dailyPending(overviewIsDaily, overviewDaily);
+  const allocationDailyPending = dailyPending(allocationIsDaily, allocationDaily);
+  const valuationChartsLoading = contentLoading || overviewDailyPending;
+  const allocationLoading = contentLoading || allocationDailyPending;
   const dailyOverviewBlock = useMemo(() => {
-    if (!overviewIsDaily || !overviewDailyData?.points.length || !ts?.overview) return null;
+    if (!overviewIsDaily || overviewDailyPending) return null;
+    if (!overviewDailyData?.points.length || !ts?.overview) return null;
     const lines = ts.overview.lines.filter(
       (l) => DAILY_OVERVIEW_LINE_KEYS.has(String(l.dataKey)) || l.level_currency != null
     );
@@ -261,7 +267,7 @@ export function DashboardPage() {
         ? { referenceMilestoneByDate: ts.overview.referenceMilestoneByDate }
         : {}),
     };
-  }, [overviewIsDaily, overviewDailyData, ts?.overview, ts?.unit]);
+  }, [overviewIsDaily, overviewDailyPending, overviewDailyData, ts?.overview, ts?.unit]);
 
   // The P/L + deposits combo arrives built (`inversionesPerf`: the inversiones consolidation's
   // months, deposits joined); the client only cuts it to the Rango and rolls years up.
@@ -286,12 +292,14 @@ export function DashboardPage() {
     timeRangeToDays(combosPrefs.range),
     combosIsDaily
   );
-  const combosLoading = contentLoading || dailyLoading(combosIsDaily, inversionesDaily);
+  const combosDailyPending = dailyPending(combosIsDaily, inversionesDaily);
+  const combosLoading = contentLoading || combosDailyPending;
+  // Diario: the day combo once it is this unit's, else no points (the pending frame).
   const dailyRetirementBrokeragePoints = useMemo((): ComboRow[] | null => {
     if (!combosIsDaily) return null;
-    const pts = inversionesDaily.data?.points;
-    return pts?.length ? pts.map((p) => ({ ...p })) : null;
-  }, [combosIsDaily, inversionesDaily.data]);
+    if (combosDailyPending) return [];
+    return (inversionesDaily.data?.points ?? []).map((p) => ({ ...p }));
+  }, [combosIsDaily, combosDailyPending, inversionesDaily.data]);
 
   // Each valuation chart rolls up (or not) per its OWN period control.
   const overviewBlock = useMemo((): TimeseriesBlock | null => {
@@ -350,13 +358,16 @@ export function DashboardPage() {
   }
 
   // Composition chart (pie replacement): shares served with the bundle (monthly) or from
-  // the overview-daily payload; overview line dataKey `cash` maps to the cash_eqs bucket color.
+  // the overview-daily payload (none while it is pending: the pending frame); overview line
+  // dataKey `cash` maps to the cash_eqs bucket color.
   const allocationBlock = allocationIsDaily
-    ? (allocationDailyData?.allocation_proportional ?? null)
+    ? allocationDailyPending
+      ? null
+      : (allocationDailyData?.allocation_proportional ?? null)
     : (ts.allocation_proportional ?? null);
 
   // The P/L + deposits combo keeps its `home.combos` control (period + range).
-  const combosXAxis = dailyRetirementBrokeragePoints
+  const combosXAxis = combosIsDaily
     ? ("day" as const)
     : combosIsYearly
       ? ("year" as const)
@@ -392,18 +403,24 @@ export function DashboardPage() {
       >
         <LineChartPanel
           title={t("dashboard.sections.overviewTitle")}
-          block={dailyOverviewBlock ?? overviewBlock}
+          block={
+            overviewIsDaily
+              ? (dailyOverviewBlock ?? { lines: overviewBlock.lines, points: [] })
+              : overviewBlock
+          }
           displayUnit={displayUnit}
           thickKey="total_nw"
           includeAccumulatedLines={false}
           colorPlan={{ kind: "dashboard-overview" }}
           xAxisGranularity={
-            dailyOverviewBlock ? "day" : overviewPrefs.period === "year" ? "year" : "month"
+            overviewIsDaily ? "day" : overviewPrefs.period === "year" ? "year" : "month"
           }
           timeRange={overviewPrefs.range}
           athMarker={
-            dailyOverviewBlock
-              ? (overviewDailyData?.ath ?? null)
+            overviewIsDaily
+              ? dailyOverviewBlock
+                ? (overviewDailyData?.ath ?? null)
+                : null
               : overviewPrefs.period === "year"
                 ? (ts.overview?.ath?.year ?? null)
                 : (ts.overview?.ath?.month ?? null)

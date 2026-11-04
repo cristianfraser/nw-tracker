@@ -17,6 +17,7 @@ import { NavAccountsTree } from "../../components/nav/NavAccountsTree";
 import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { AccountListRow, NavTreeNodeDto } from "../../types";
 import { Button } from "@crfrsr/ui";
+import { queryLoadError } from "../../queries/pageShapeReady";
 
 /** A group row of the panel's groups table: a portfolio group, or a Pasivos group (own colour too). */
 function isPanelGroupRow(n: NavTreeNodeDto): boolean {
@@ -85,12 +86,15 @@ export function AccountsPanelPage() {
     isPending: panelTreePending,
   } = usePanelNetWorthTree();
 
+  // A failed background refetch keeps the data on screen (`queryLoadError`).
+  const accountsLoadError = queryLoadError({ data: accountsData, error: accountsError });
+  const panelTreeLoadError = queryLoadError({ data: panelTreeData, error: panelTreeError });
   const err =
-    accountsError instanceof Error
-      ? accountsError.message
-      : panelTreeError instanceof Error
-        ? panelTreeError.message
-        : accountsError || panelTreeError
+    accountsLoadError instanceof Error
+      ? accountsLoadError.message
+      : panelTreeLoadError instanceof Error
+        ? panelTreeLoadError.message
+        : accountsLoadError || panelTreeLoadError
           ? t("common.loadFailed")
           : null;
 
