@@ -14,7 +14,7 @@
  * Same model as the decimal-separator preference: the stored value is authoritative, the
  * default is `plain`. The value is written to `<html data-chart-style>` by the preferences
  * provider, which is what the CSS keys on; a `ChartStyleScope` (`components/charts/chartStyle.tsx`)
- * can override it for a subtree, which the lab page (/panel/chart-styles) uses to show the
+ * can override it for a subtree, which the preview modal (settings panel) uses to show the
  * styles side by side.
  */
 export const CHART_STYLES = ["plain", "pen", "pencil", "marker", "watercolor", "crayon"] as const;

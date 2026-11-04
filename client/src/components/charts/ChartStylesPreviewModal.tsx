@@ -1,11 +1,13 @@
-import { ChartStylesLabCharts } from "../../components/charts/ChartStylesLabCharts";
-import { ChartStyleScope } from "../../components/charts/chartStyle";
+import { ChartStylesLabCharts } from "./ChartStylesLabCharts";
+import { ChartStyleScope } from "./chartStyle";
 import { CHART_STYLES, type ChartStyle } from "../../chartStylePreference";
 import { useTranslation } from "../../i18n";
+import { Modal } from "../ui/Modal";
+import styles from "./ChartStylesPreviewModal.module.css";
 
 /**
  * Rehearsal (2026-11-03): the same two sample charts under each chart style, side by side
- * (`ChartStylesLabCharts`). The toolbar's «Charts» select applies a style to the real pages.
+ * (`ChartStylesLabCharts`), opened from the «Charts» select in the settings panel.
  */
 const STYLE_LABEL_KEY: Record<ChartStyle, string> = {
   plain: "app.displayPreferences.chartStyles.plain",
@@ -16,28 +18,25 @@ const STYLE_LABEL_KEY: Record<ChartStyle, string> = {
   crayon: "app.displayPreferences.chartStyles.crayon",
 };
 
-export function ChartStylesLabPage() {
+export function ChartStylesPreviewModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation();
   return (
-    <div className="page-grid" style={{ rowGap: "var(--row-gap)" }}>
-      <p className="muted" style={{ gridColumn: "1 / -1", margin: 0 }}>
-        {t("chartStylesLab.intro")}
-      </p>
-      <div
-        style={{
-          gridColumn: "1 / -1",
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(20rem, 1fr))",
-          gap: "var(--gutter)",
-        }}
-      >
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={t("chartStylesLab.title")}
+      className={styles.dialog}
+      closeAriaLabel={t("common.close")}
+    >
+      <p className={`muted ${styles.intro}`}>{t("chartStylesLab.intro")}</p>
+      <div className={styles.grid}>
         {CHART_STYLES.map((style) => (
           <ChartStyleScope key={style} style={style} cssStyle={{ minWidth: 0 }}>
-            <h2 style={{ marginTop: 0 }}>{t(STYLE_LABEL_KEY[style])}</h2>
+            <h3 style={{ marginTop: 0 }}>{t(STYLE_LABEL_KEY[style])}</h3>
             <ChartStylesLabCharts />
           </ChartStyleScope>
         ))}
       </div>
-    </div>
+    </Modal>
   );
 }

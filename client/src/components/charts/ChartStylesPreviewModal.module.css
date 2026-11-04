@@ -1,0 +1,14 @@
+.dialog {
+  width: min(90rem, calc(100vw - 2rem));
+  max-width: min(90rem, calc(100vw - 2rem));
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--gutter);
+}
+
+.intro {
+  margin: 0 0 var(--row-gap);
+}
