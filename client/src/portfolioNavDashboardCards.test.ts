@@ -23,7 +23,7 @@ function leafAccount(id: number): NavTreeNodeDto {
   return navNodeFixture({
     slug: `acc-${id}`,
     label: `Account ${id}`,
-    route_path: `/accounts/${id}`,
+    route_path: `/account/${id}`,
     account_id: id,
     children: [],
   });
