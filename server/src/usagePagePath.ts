@@ -5,6 +5,9 @@ export const USAGE_PAGE_VIEW_PATH = "/api/usage/page-view";
 
 const MAX_PATH = 200;
 
+/** The route a view of a page that found nothing is recorded under; `path` keeps where it was. */
+export const USAGE_NOT_FOUND_ROUTE = "/404";
+
 /** A client route for grouping page views: numeric path segments become `:id`. */
 export function usagePageRoute(path: string): string {
   return path

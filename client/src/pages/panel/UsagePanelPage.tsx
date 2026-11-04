@@ -12,6 +12,7 @@ import { formatDateTimeLabel } from "../../formatDateLabel";
 import { formatGroupedDecimal, formatOrDash, formatPct } from "../../format";
 import { useTranslation } from "../../i18n";
 import { useUsageEndpointTrend, useUsageReport } from "../../queries/hooks";
+import type { UsageNotFoundPath } from "../../types/usage";
 import type { UsageEndpointRow, UsageReportWindow } from "../../types";
 
 const WINDOWS: UsageReportWindow[] = [1, 7, 30, 90];
@@ -162,7 +163,10 @@ export function UsagePanelPage() {
             ) : (
               pages.map((row) => (
                 <tr key={row.route}>
-                  <td className="desktop-only mono">{row.route}</td>
+                  <td className="desktop-only mono">
+                    {row.route}
+                    <NotFoundPaths paths={row.not_found_paths} />
+                  </td>
                   <td className="desktop-only mono">{formatCount(row.views)}</td>
                   <td className="desktop-only mono">{formatMs(row.settle_p50_ms)}</td>
                   <td className="desktop-only mono">{formatMs(row.settle_p95_ms)}</td>
@@ -172,6 +176,7 @@ export function UsagePanelPage() {
                   <td className="desktop-only mono">{formatDateTimeLabel(new Date(row.last_viewed_at))}</td>
                   <td className="mobile-only">
                     <TableMobileCard title={<span className="mono">{row.route}</span>}>
+                      <NotFoundPaths paths={row.not_found_paths} />
                       <TableMobileCardSection>
                         <TableMobileCardRow label={t("usage.colViews")} value={formatCount(row.views)} />
                         <TableMobileCardRow label={t("usage.colSettleP50")} value={formatMs(row.settle_p50_ms)} />
@@ -302,5 +307,20 @@ export function UsagePanelPage() {
         </PageGridTile>
       ) : null}
     </>
+  );
+}
+
+/** Under the `/404` row: the paths that led there, with how often. */
+function NotFoundPaths({ paths }: { paths: UsageNotFoundPath[] | null }) {
+  const { t } = useTranslation();
+  if (!paths || paths.length === 0) return null;
+  return (
+    <ul className="muted" style={{ margin: "0.25rem 0 0", paddingLeft: "1rem" }}>
+      {paths.map((p) => (
+        <li key={p.path} title={t("usage.notFoundPathTitle", { last: formatDateTimeLabel(new Date(p.last_viewed_at)) })}>
+          {p.path} ×{formatCount(p.views)}
+        </li>
+      ))}
+    </ul>
   );
 }

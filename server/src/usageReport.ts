@@ -6,6 +6,7 @@ import {
   usageLogEnabled,
 } from "./usageLog.js";
 import { usageDb } from "./usageDb.js";
+import { USAGE_NOT_FOUND_ROUTE } from "./usagePagePath.js";
 
 /**
  * Display shapes of the usage log (`/panel/usage`): most visited pages, slowest endpoints and
@@ -65,7 +66,11 @@ export type UsagePageRow = {
   /** Mean number of queries a view fetched (0 = everything came from the client cache). */
   avg_fetched_queries: number;
   last_viewed_at: string;
+  /** The `/404` row only: the paths whose page found nothing, most viewed first; null elsewhere. */
+  not_found_paths: UsageNotFoundPath[] | null;
 };
+
+export type UsageNotFoundPath = { path: string; views: number; last_viewed_at: string };
 
 export type UsageEndpointRow = {
   key: string;
@@ -128,17 +133,30 @@ function windowStart(now: Date, days: number): string {
   return new Date(now.getTime() - days * 86_400_000).toISOString();
 }
 
+/** Rows in viewed order, so the last one of a path is its latest view. */
+function notFoundPaths(rows: readonly { path: string; viewed_at: string }[]): UsageNotFoundPath[] {
+  const byPath = new Map<string, UsageNotFoundPath>();
+  for (const row of rows) {
+    const entry = byPath.get(row.path) ?? { path: row.path, views: 0, last_viewed_at: row.viewed_at };
+    entry.views += 1;
+    entry.last_viewed_at = row.viewed_at;
+    byPath.set(row.path, entry);
+  }
+  return [...byPath.values()].sort((a, b) => b.views - a.views || a.path.localeCompare(b.path));
+}
+
 export function buildUsageReport(days: UsageReportWindow, now: Date = new Date()): UsageReport {
   const from = windowStart(now, days);
   const to = now.toISOString();
 
   const viewRows = usageDb()
     .prepare(
-      `SELECT route, viewed_at, outcome, settle_ms, fetched_queries
+      `SELECT route, path, viewed_at, outcome, settle_ms, fetched_queries
        FROM usage_page_views WHERE viewed_at >= ? ORDER BY viewed_at`
     )
     .all(from) as {
     route: string;
+    path: string;
     viewed_at: string;
     outcome: string;
     settle_ms: number | null;
@@ -165,6 +183,7 @@ export function buildUsageReport(days: UsageReportWindow, now: Date = new Date()
       settle_max_ms: settled.length ? settled[settled.length - 1]! : null,
       avg_fetched_queries: rows.reduce((a, r) => a + r.fetched_queries, 0) / rows.length,
       last_viewed_at: rows[rows.length - 1]!.viewed_at,
+      not_found_paths: route === USAGE_NOT_FOUND_ROUTE ? notFoundPaths(rows) : null,
     };
   });
   pages.sort((a, b) => b.views - a.views || a.route.localeCompare(b.route));
