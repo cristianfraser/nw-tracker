@@ -160,6 +160,24 @@ function resolvePortfolioGroupColorRgbInner(groupId: number, visiting: Set<numbe
   return groupColorFromLargestBalanceChild(groupId, visiting);
 }
 
+/**
+ * Colour of a group without a colour of its own whose members are accounts (the Pasivos groups:
+ * tarjeta de crédito, hipoteca): the member with the largest latest balance, the rule portfolio
+ * groups without an explicit colour follow. Null for a group with no members.
+ */
+export function colorRgbOfLargestBalanceAccount(accountIds: readonly number[]): string | null {
+  let bestBalance = -Infinity;
+  let bestColor: string | null = null;
+  for (const id of accountIds) {
+    const balance = accountBalanceClp(id);
+    if (balance > bestBalance) {
+      bestBalance = balance;
+      bestColor = getAccountColorRgb(id);
+    }
+  }
+  return bestColor;
+}
+
 /** Explicit group color, else color of the child group/account with the largest total balance (recursive). */
 export function resolvePortfolioGroupColorRgb(groupId: number): string {
   const cached = resolvedGroupColorCache.get(groupId);

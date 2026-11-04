@@ -281,6 +281,8 @@ export interface NavTreeNodeDto {
   show_leaf_hyphen: boolean;
   account_id: number | null;
   portfolio_group_id: number | null;
+  /** A Pasivos group's `liability_groups.id` (its colour target); absent elsewhere. */
+  liability_group_id?: number;
   /** Master account when `account_id` is a liability-view leaf (CC purchases, cupo, ledger). */
   expense_account_id: number | null;
   expense_account_slug: string | null;

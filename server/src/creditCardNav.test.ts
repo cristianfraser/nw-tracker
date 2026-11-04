@@ -3,6 +3,8 @@ import { listCreditCardMasterAccountIdsInNavOrder } from "./creditCardTree.js";
 import { getLiabilitiesNavChildren } from "./liabilityTree.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { db } from "./db.js";
+import { updateLiabilityGroupColorRgb } from "./entityColors.js";
+import { colorRgbOfLargestBalanceAccount } from "./chartColorRgb.js";
 import { ensureVitestCreditCardFixtures, getVitestSantanderCcMasterAccountId } from "./test/vitestDbSeed.js";
 
 function creditCardNode() {
@@ -35,5 +37,21 @@ describe("Pasivos › tarjeta de crédito", () => {
     } finally {
       setRetired.run(0, id);
     }
+  });
+
+  it("takes a colour like a portfolio group: an explicit one, else its largest member's", () => {
+    ensureVitestCreditCardFixtures();
+    const before = creditCardNode();
+    const fallback = colorRgbOfLargestBalanceAccount(before.member_account_ids ?? []);
+    expect(before.liability_group_id).toBeTypeOf("number");
+    try {
+      expect(updateLiabilityGroupColorRgb("liabilities_credit_card", "12,34,56")?.color_rgb).toBe("12,34,56");
+      expect(creditCardNode().color_rgb).toBe("12,34,56");
+      expect(updateLiabilityGroupColorRgb("liabilities_credit_card", "not a colour")).toBeNull();
+    } finally {
+      updateLiabilityGroupColorRgb("liabilities_credit_card", null);
+    }
+    expect(creditCardNode().color_rgb).toBe(fallback);
+    expect(updateLiabilityGroupColorRgb("no_such_group", "1,2,3")).toBeNull();
   });
 });

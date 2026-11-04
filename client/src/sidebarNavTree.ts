@@ -15,10 +15,7 @@ export type SidebarNavNode = {
   end?: boolean;
   activePrefix?: string;
   children?: SidebarNavNode[];
-  /**
-   * A net-worth group the dashboard draws as a card (a top-level group, or a node with a
-   * `dashboard_bucket_slug`): its colour, shown as the square that hangs left of its label.
-   */
+  /** A net-worth group with rows under it: its colour, shown as the square left of its label. */
   markerRgb?: [number, number, number];
   /** Optional badge (e.g. unread count) shown beside the link label. */
   badge?: string;

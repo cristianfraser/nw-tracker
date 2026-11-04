@@ -90,6 +90,34 @@ describe("buildSidebarNavFromApi", () => {
     expect(flows?.children?.map((c) => c.id)).toEqual(["ingresos", "depositos", "gastos"]);
   });
 
+  it("gives a square to the net-worth groups with rows under them, never to accounts or a group shown as a leaf", () => {
+    const leaf = (id: number) => ({ ...navNode(`acc.${id}`, `account_${id}`), account_id: id, color_rgb: "1,2,3" });
+    const group = (id: string, children: NavTreeNodeDto[]) => ({ ...navNode(id, id, children), color_rgb: "10,20,30" });
+    // SOXX: a sub-bucket listed beside Acciones' stocks, shown as one leaf row.
+    const soxx = group("soxx", [leaf(3)]);
+    const acciones = group("acciones", [leaf(1), soxx]);
+    const payload: SidebarNavResponse = {
+      dashboard: null,
+      main: [group("inversiones", [group("brokerage", [acciones])])],
+      flows: group("flows", [navNode("ingresos", "ingresos")]),
+      projections: null,
+      wealth_percentile: null,
+      tax_return: null,
+      rates: null,
+      net_worth: null,
+    };
+    const tree = buildSidebarNavFromApi(payload);
+    const inversiones = tree.find((n) => n.id === "inversiones")!;
+    const accionesRow = inversiones.children![0]!.children![0]!;
+    expect(inversiones.markerRgb).toEqual([10, 20, 30]);
+    expect(accionesRow.markerRgb).toEqual([10, 20, 30]);
+    expect(accionesRow.children!.map((c) => [c.id, c.markerRgb ?? null])).toEqual([
+      ["acc.1", null],
+      ["soxx", null],
+    ]);
+    expect(tree.find((n) => n.id === "flows")!.markerRgb).toBeUndefined();
+  });
+
   it("hides chart_inactive buckets from the sidebar at any depth", () => {
     const mutualFunds = { ...navNode("mutual_funds", "brokerage_mutual_funds"), chart_inactive: true };
     const acciones = navNode("acciones", "brokerage_acciones", [navNode("acc.1", "account_1")]);

@@ -1,6 +1,6 @@
 import { assertValuationCurrency } from "./valuationValue.js";
 import { accountChartInactive } from "./accountChartInactive.js";
-import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
+import { colorRgbOfLargestBalanceAccount, getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
 import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 import { db } from "./db.js";
 import type { NavTreeNodeDto } from "./navTree.js";
@@ -23,6 +23,7 @@ type LiabilityGroupRow = {
   label_i18n_key: string | null;
   route_path: string | null;
   liability_kind: string | null;
+  color_rgb: string | null;
 };
 
 type LiabilityItemRow = {
@@ -36,7 +37,7 @@ type LiabilityItemRow = {
 function loadLiabilityGroups(): LiabilityGroupRow[] {
   return db
     .prepare(
-      `SELECT id, parent_id, slug, label, sort_order, label_i18n_key, route_path, liability_kind
+      `SELECT id, parent_id, slug, label, sort_order, label_i18n_key, route_path, liability_kind, color_rgb
        FROM liability_groups
        ORDER BY sort_order, id`
     )
@@ -112,6 +113,9 @@ function buildLiabilityNode(
     }
   }
 
+  // An explicit colour wins; otherwise the largest member's, as for a portfolio group.
+  const groupColor = group.color_rgb ?? colorRgbOfLargestBalanceAccount([...memberIds]);
+
   return {
     node_id: group.slug,
     slug: group.slug,
@@ -123,6 +127,7 @@ function buildLiabilityNode(
     show_leaf_hyphen: true,
     account_id: null,
     portfolio_group_id: null,
+    liability_group_id: group.id,
     expense_account_id: null,
     expense_account_slug: null,
     asset_group_slug: "liabilities",
@@ -131,8 +136,8 @@ function buildLiabilityNode(
     exclude_from_parent_total: false,
     api_group: null,
     api_subgroup: group.liability_kind,
-    color_rgb: null,
-    color: null,
+    color_rgb: groupColor,
+    color: groupColor ? rgbTripletToCss(groupColor) : null,
     group_kind: "bucket",
     member_account_ids: [...memberIds].sort((a, b) => a - b),
     children: pruneEmptyLiabilityNavGroups(children),

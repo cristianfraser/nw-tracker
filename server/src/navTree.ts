@@ -23,6 +23,8 @@ export type NavTreeNodeDto = {
   account_id: number | null;
   /** Operational account when `account_id` is a liability snapshot row. */
   portfolio_group_id: number | null;
+  /** A Pasivos group's `liability_groups.id` (its colour target); absent elsewhere. */
+  liability_group_id?: number;
   expense_account_id: number | null;
   expense_account_slug: string | null;
   asset_group_slug: string | null;
@@ -435,6 +437,20 @@ function withLiabilitiesChildren(node: NavTreeNodeDto): NavTreeNodeDto {
   const memberIds = new Set(node.member_account_ids ?? []);
   for (const child of children) for (const id of child.member_account_ids ?? []) memberIds.add(id);
   return { ...node, children, member_account_ids: [...memberIds].sort((a, b) => a - b) };
+}
+
+/**
+ * The net-worth tree with its Pasivos node holding its subtree (the sidebar's `net_worth` keeps a
+ * childless stub): the panel's groups table and tree, where the Pasivos groups' colours are set.
+ */
+export function getNetWorthNavGroupNodeWithLiabilities(options: NavTreeBuildOptions = {}): NavTreeNodeDto | null {
+  const nw = getNetWorthNavGroupNode(options);
+  if (!nw) return null;
+  const visit = (node: NavTreeNodeDto): NavTreeNodeDto =>
+    node.slug === "liabilities" && node.account_id == null
+      ? withLiabilitiesChildren(node)
+      : { ...node, children: node.children.map(visit) };
+  return visit(nw);
 }
 
 function buildLiabilitiesNavRootNode(): NavTreeNodeDto | null {

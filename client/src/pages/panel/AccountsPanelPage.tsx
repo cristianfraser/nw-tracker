@@ -14,8 +14,14 @@ import { queryKeys } from "../../queries/keys";
 import { useAccountsAll, usePanelNetWorthTree } from "../../queries/hooks";
 import { countAccountsInNavSubtree } from "../../panelAccounts/portfolioNavBuckets";
 import { NavAccountsTree } from "../../components/nav/NavAccountsTree";
+import { resolveNavTreeLabel } from "../../sidebarNavFromApi";
 import type { AccountListRow, NavTreeNodeDto } from "../../types";
 import { Button } from "@crfrsr/ui";
+
+/** A group row of the panel's groups table: a portfolio group, or a Pasivos group (own colour too). */
+function isPanelGroupRow(n: NavTreeNodeDto): boolean {
+  return n.account_id == null && (n.portfolio_group_id != null || n.liability_group_id != null);
+}
 
 function PortfolioGroupTableRows({
   node,
@@ -26,19 +32,17 @@ function PortfolioGroupTableRows({
 }) {
   const { t } = useTranslation();
   const accountCount = countAccountsInNavSubtree(node);
-  const childGroups = node.children.filter(
-    (c) => c.portfolio_group_id != null && c.account_id == null
-  ).length;
+  const childGroups = node.children.filter(isPanelGroupRow).length;
   return (
     <>
       <div role="listitem" className={cn(styles.row, styles.groupRow)}>
-        <span className={cn("mono", styles.id)}>{node.portfolio_group_id}</span>
+        <span className={cn("mono", styles.id)}>{node.portfolio_group_id ?? node.liability_group_id}</span>
         <span className={styles.label}>
           {Array.from({ length: depth }, (_, i) => (
             <span key={i} className={styles.indent} aria-hidden />
           ))}
           {depth > 0 ? <span className="muted mono">└─ </span> : null}
-          {node.label}
+          {resolveNavTreeLabel(node)}
           {childGroups > 0 ? (
             <span className="muted"> {t("panelAccounts.groupSubGroupsCount", { count: childGroups })}</span>
           ) : (
@@ -51,13 +55,17 @@ function PortfolioGroupTableRows({
         <span className={styles.actions}>
           <EntityColorPicker
             colorRgb={node.color_rgb}
-            colorTarget={{ kind: "portfolio_group", slug: node.slug }}
+            colorTarget={
+              node.liability_group_id != null
+                ? { kind: "liability_group", slug: node.slug }
+                : { kind: "portfolio_group", slug: node.slug }
+            }
             size="compact"
           />
         </span>
       </div>
       {node.children
-        .filter((c) => c.portfolio_group_id != null && c.account_id == null)
+        .filter(isPanelGroupRow)
         .map((child) => (
           <PortfolioGroupTableRows key={child.node_id} node={child} depth={depth + 1} />
         ))}
