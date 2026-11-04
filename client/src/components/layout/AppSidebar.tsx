@@ -18,8 +18,10 @@ import { buildSidebarNavFromApi } from "../../sidebarNavFromApi";
 import {
   collectAncestorIdsToExpand,
   sidebarNodeMatchesPath,
+  sidebarNodeSubtreeContainsPath,
   type SidebarNavNode,
 } from "../../sidebarNavTree";
+import { mutedPillBackgroundRgb } from "../../chartColors";
 import { VISIBLE_PANEL_SUBROUTES } from "../../pages/panel/panelSubroutes";
 import { cn } from "../../cn";
 import styles from "./AppSidebar.module.css";
@@ -42,17 +44,11 @@ function writeCollapsedIds(ids: Set<string>) {
   localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify([...ids]));
 }
 
-function CaretIcon({ expanded }: { expanded: boolean }) {
+function ChevronIcon() {
   return (
-    <svg
-      className={cn(styles.caretIcon, expanded && styles.caretIconExpanded)}
-      width="14"
-      height="14"
-      viewBox="0 0 14 14"
-      aria-hidden
-    >
+    <svg className={styles.chevron} width="11" height="11" viewBox="0 0 12 12" aria-hidden>
       <path
-        d="M5 3.5 9 7l-4 3.5"
+        d="M3 4.5 6 7.5l3-3"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"
@@ -63,6 +59,11 @@ function CaretIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
+/**
+ * One row: its text starts at its depth's column (`--depth`), whatever precedes it — a group's
+ * colour square and its open / close chevron hang in the margin left of the text, the chevron in
+ * the square's place on hover.
+ */
 function SidebarNavItem({
   node,
   depth,
@@ -82,10 +83,12 @@ function SidebarNavItem({
   displayUnit: "clp" | "usd";
   onPrefetchShape: (targetPath: string) => void;
 }) {
-  const leafHyphen = node.showLeafHyphen !== false;
+  const { t } = useTranslation();
   const hasChildren = (node.children?.length ?? 0) > 0;
   const isCollapsed = collapsed.has(node.id);
   const isActive = sidebarNodeMatchesPath(pathname, node);
+  /** A group above the open page: its label reads bright, like the page's own. */
+  const onActivePath = hasChildren && sidebarNodeSubtreeContainsPath(pathname, node);
   const showChildren = hasChildren && !isCollapsed;
 
   const prefetchShape = () => {
@@ -93,78 +96,80 @@ function SidebarNavItem({
     onPrefetchShape(node.to);
   };
 
-  const collapse = (e: MouseEvent) => {
+  const toggle = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     onToggleCollapse(node.id);
   };
 
   return (
-    <li className={styles.item} style={{ "--sidebar-depth": depth } as CSSProperties}>
-      <div className={styles.itemBody}>
+    <li
+      className={cn(styles.item, depth === 0 && node.markerRgb && styles.itemSection)}
+      style={{ "--depth": depth } as CSSProperties}
+    >
+      <div className={cn(styles.row, isActive && styles.rowActive)}>
+        {node.markerRgb ? (
+          <span
+            className={cn(
+              styles.marker,
+              depth > 0 && styles.markerInner,
+              hasChildren && styles.markerSwap
+            )}
+            style={{ backgroundColor: mutedPillBackgroundRgb(node.markerRgb) }}
+            aria-hidden
+          />
+        ) : null}
         {hasChildren ? (
-          // Intentionally custom-styled: bespoke tree-disclosure control (caret + rail)
-          // with no @crfrsr/ui counterpart — exempt from the plain-button/Button rule.
           <button
             type="button"
-            className={styles.expand}
-            aria-label={isCollapsed ? `Expand ${node.label}` : `Collapse ${node.label}`}
+            className={cn(
+              styles.toggle,
+              isCollapsed && styles.toggleCollapsed,
+              node.markerRgb && styles.toggleOverMarker
+            )}
+            aria-label={t(isCollapsed ? "sidebar.expandGroup" : "sidebar.collapseGroup", {
+              label: node.label,
+            })}
             aria-expanded={!isCollapsed}
-            onClick={collapse}
+            onClick={toggle}
           >
-            <span className={styles.expandCaret}>
-              <CaretIcon expanded={!isCollapsed} />
-            </span>
-            {showChildren ? (
-              <>
-                <span className={styles.expandRail} aria-hidden />
-                <span className={styles.expandRailSpace} aria-hidden />
-              </>
-            ) : null}
+            <ChevronIcon />
           </button>
-        ) : (
-          <span className={styles.leafMark} aria-hidden>
-            {leafHyphen ? <span className={styles.leafHyphen} /> : null}
-          </span>
-        )}
-        <div className={styles.itemContent}>
-          <div className={cn(styles.row, isActive && styles.rowActive)}>
-            <NavLink
-              to={node.to}
-              end={node.end !== false}
-              className={({ isActive: linkActive }) =>
-                cn(styles.link, (linkActive || isActive) && styles.linkActive)
-              }
-              onMouseEnter={prefetchShape}
-              onFocus={prefetchShape}
-            >
-              <span className={styles.linkLabel}>{node.label}</span>
-              {node.badge ? (
-                <span className={styles.unreadPill} aria-label={node.badgeAriaLabel}>
-                  {node.badge}
-                </span>
-              ) : null}
-            </NavLink>
-          </div>
-          {showChildren ? (
-            <ul className={styles.sublist}>
-              {node.children!.map((child) => (
-                <SidebarNavItem
-                  key={child.id}
-                  node={child}
-                  depth={depth + 1}
-                  collapsed={collapsed}
-                  onToggleCollapse={onToggleCollapse}
-                  pathname={pathname}
-                  navPayload={navPayload}
-                  displayUnit={displayUnit}
-                  onPrefetchShape={onPrefetchShape}
-                />
-              ))}
-            </ul>
+        ) : null}
+        <NavLink
+          to={node.to}
+          end={node.end !== false}
+          className={({ isActive: linkActive }) =>
+            cn(styles.link, (linkActive || isActive || onActivePath) && styles.linkActive)
+          }
+          onMouseEnter={prefetchShape}
+          onFocus={prefetchShape}
+        >
+          <span className={styles.linkLabel}>{node.label}</span>
+          {node.badge ? (
+            <span className={styles.unreadPill} aria-label={node.badgeAriaLabel}>
+              {node.badge}
+            </span>
           ) : null}
-        </div>
+        </NavLink>
       </div>
+      {showChildren ? (
+        <ul className={styles.sublist}>
+          {node.children!.map((child) => (
+            <SidebarNavItem
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              collapsed={collapsed}
+              onToggleCollapse={onToggleCollapse}
+              pathname={pathname}
+              navPayload={navPayload}
+              displayUnit={displayUnit}
+              onPrefetchShape={onPrefetchShape}
+            />
+          ))}
+        </ul>
+      ) : null}
     </li>
   );
 }
@@ -217,7 +222,6 @@ export function AppSidebar() {
       label: t("sidebar.dashboard"),
       to: "/",
       end: true,
-      showLeafHyphen: false,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [language]
@@ -280,7 +284,6 @@ export function AppSidebar() {
       label: t("sidebar.controlPanel"),
       to: "/panel",
       activePrefix: "/panel",
-      showLeafHyphen: false,
       children: VISIBLE_PANEL_SUBROUTES.map((route) => ({
         id: `panel.${route.slug}`,
         label: t(route.labelKey),
@@ -339,7 +342,6 @@ export function AppSidebar() {
                     onPrefetchShape={onPrefetchShape}
                   />
                 </ul>
-                <div className={styles.separator} role="separator" />
               </>
             ) : (
               <>
@@ -358,7 +360,6 @@ export function AppSidebar() {
                     />
                   ) : null}
                 </ul>
-                <div className={styles.separator} role="separator" />
                 <ul className={styles.list}>
                   {mainNavNodes.map((node) => (
                     <SidebarNavItem

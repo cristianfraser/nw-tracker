@@ -229,7 +229,9 @@
     "rates": "Exchange rates",
     "watchlist": "Watchlist",
     "flowsExpensesGroceries": "Groceries",
-    "taxReturn": "Tax return"
+    "taxReturn": "Tax return",
+    "expandGroup": "Expand {{label}}",
+    "collapseGroup": "Collapse {{label}}"
   },
   "panel": {
     "layoutTitle": "Control panel",

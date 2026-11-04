@@ -62,16 +62,17 @@
   display: none;
 }
 
-/* Its own background, no border: the background is the separation. The same inset as a dashboard
-   card (`--card-pad-x`, 0.25rem above and below). The phone drawer below adds a border, since it
-   slides over the page. */
+/* Its own background, no border: the background is the separation. The phone drawer below adds a
+   border, since it slides over the page. Rows reach its edges; their text sits on one column per
+   depth (AppSidebar.module.css), the groups' colour squares hanging in the margin left of it. */
 .app-sidebar {
-  --sidebar-rail-space-base: 32px;
-  /* Where a top-level link's text starts (one with no children: a caret's link starts at the
-     inset) and «NW Tracker» with it: the inset plus the active nudge links had. */
-  --sidebar-active-nudge: 5px;
-  --sidebar-top-inset: calc(var(--card-pad-x) + var(--sidebar-active-nudge));
-  padding: 0.25rem var(--card-pad-x);
+  /* Where a top-level row's text starts, room for its square to its left. */
+  --sidebar-text-x: 1.4rem;
+  /* One depth: the next column of text. */
+  --sidebar-indent: 8px;
+  /* The active row's highlight stops this far short of the sidebar's edges. */
+  --sidebar-highlight-inset: 0.35rem;
+  padding: 0.25rem 0;
   grid-column: 1;
   display: flex;
   flex-direction: column;

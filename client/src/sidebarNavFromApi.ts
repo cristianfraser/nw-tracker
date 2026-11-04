@@ -1,4 +1,5 @@
 import i18n from "./i18n";
+import { parseRgbTriplet } from "./chartColors";
 import type { NavTreeNodeDto, SidebarNavResponse } from "./types";
 import { sortNavTreeLeavesFirst, type SidebarNavNode } from "./sidebarNavTree";
 
@@ -61,7 +62,7 @@ export function visibleNavChildren(dtos: NavTreeNodeDto[]): NavTreeNodeDto[] {
  * `asLeaf`: a sub-bucket listed beside accounts (Portafolio IPSA among Acciones' stocks) shows
  * as one entry in the seeded order, not expanded — its accounts are on its own page.
  */
-function mapNode(dto: NavTreeNodeDto, asLeaf = false): SidebarNavNode {
+function mapNode(dto: NavTreeNodeDto, asLeaf = false, topLevelGroup = false): SidebarNavNode {
   const visible = asLeaf ? [] : visibleNavChildren(dto.children);
   const mixed =
     visible.some((c) => c.account_id != null) && visible.some((c) => c.account_id == null);
@@ -78,7 +79,10 @@ function mapNode(dto: NavTreeNodeDto, asLeaf = false): SidebarNavNode {
     to: dto.route_path,
     end: dto.nav_end ? true : undefined,
     activePrefix: dto.active_prefix ?? undefined,
-    showLeafHyphen: dto.show_leaf_hyphen,
+    markerRgb:
+      topLevelGroup || dto.dashboard_bucket_slug != null
+        ? (parseRgbTriplet(dto.color_rgb) ?? undefined)
+        : undefined,
     children,
   };
 }
@@ -89,7 +93,7 @@ export function buildSidebarNavFromApi(payload: SidebarNavResponse): SidebarNavN
   if (payload.dashboard) {
     out.push({ ...mapNode(payload.dashboard), label: i18n.t("sidebar.dashboard") });
   }
-  for (const n of visibleNavChildren(payload.main)) out.push(mapNode(n));
+  for (const n of visibleNavChildren(payload.main)) out.push(mapNode(n, false, true));
   if (payload.projections) out.push(mapNode(payload.projections));
   if (payload.wealth_percentile) out.push(mapNode(payload.wealth_percentile));
   if (payload.tax_return) out.push(mapNode(payload.tax_return));

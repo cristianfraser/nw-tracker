@@ -229,7 +229,9 @@
     "rates": "Tipos de cambio",
     "watchlist": "Watchlist",
     "flowsExpensesGroceries": "Supermercado",
-    "taxReturn": "Declaración de renta"
+    "taxReturn": "Declaración de renta",
+    "expandGroup": "Abrir {{label}}",
+    "collapseGroup": "Cerrar {{label}}"
   },
   "panel": {
     "layoutTitle": "Panel de control",
