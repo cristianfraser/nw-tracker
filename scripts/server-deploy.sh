@@ -184,7 +184,8 @@ else
   log "The server is not listening: deploying $short without the job queue."
 fi
 
-needs_ci() { grep -qE '(^|/)package(-lock)?\.json$' <<<"$1"; }
+# patches/ holds patch-package's fixes to dependencies, applied by the root postinstall.
+needs_ci() { grep -qE '(^|/)package(-lock)?\.json$|^patches/' <<<"$1"; }
 ingest_changed() { grep -qE '^(ingest/|server/contracts/)|(^|/)package(-lock)?\.json$' <<<"$1"; }
 
 install_and_build() {
