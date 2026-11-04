@@ -1559,6 +1559,82 @@ export function RoughSwatchBox({ color }: { color: string }) {
   );
 }
 
+/** The expenses favicon's down-pointing triangle (`favicon.ts`), in the swatches' 14-unit box. */
+const SWATCH_TRIANGLE_DOWN: readonly Point[] = [
+  [2, 2.5],
+  [12, 2.5],
+  [7, 11.5],
+];
+
+/**
+ * {@link RoughSwatchBox}'s triangle: the expenses favicon's down-pointing triangle, hand-drawn
+ * with the same hatch and careful outline (one stroke round from a random corner, running past
+ * where it began). Null in the plain style.
+ */
+export function RoughSwatchTriangleDown({ color }: { color: string }) {
+  const pen = roughPenFor(useChartStyle());
+  const reactId = useId();
+  const grainId = roughGrainFilterId(reactId);
+  const clipId = `nw-triclip-${reactId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  // A different triangle for every instance, drawn once per mount.
+  const [seed] = useState(() => Math.floor(Math.random() * 2147483646) + 1);
+  const sketch = useMemo(() => {
+    if (!pen) return null;
+    const pts = SWATCH_TRIANGLE_DOWN;
+    const fills = generator
+      .toPaths(
+        generator.polygon(pts as Point[], {
+          roughness: Math.min(pen.roughness, 1.4),
+          bowing: Math.min(pen.bowing, 1),
+          maxRandomnessOffset: Math.min(pen.maxOffset, 1),
+          seed,
+          stroke: "none",
+          fill: color,
+          fillStyle: "hachure",
+          hachureGap: Math.max(2, Math.min(pen.fillGap, 10 / 3)),
+          hachureAngle: -41,
+          fillWeight: pen.fillWeight,
+          disableMultiStrokeFill: true,
+        })
+      )
+      .filter((p) => p.d);
+    const rnd = prng(subSeed(seed, 31));
+    const s0 = Math.floor(rnd() * 3);
+    const loop: Point[] = Array.from({ length: 4 }, (_, i) => pts[(s0 + i) % 3]!);
+    const sideLen = Math.hypot(loop[1]![0] - loop[0]![0], loop[1]![1] - loop[0]![1]);
+    const perim = SWATCH_TRIANGLE_DOWN.reduce((t, p, i) => {
+      const q = SWATCH_TRIANGLE_DOWN[(i + 1) % 3]!;
+      return t + Math.hypot(q[0] - p[0], q[1] - p[1]);
+    }, 0);
+    // Round once and on past the start corner by 1,5–3 units, along the first side.
+    const stroke = sliceArc([...loop, loop[1]!], 0, perim + Math.min(sideLen, 1.5 + rnd() * 1.5));
+    const outline: PassPath[] = pen.passes.map((pass, p) => {
+      const width = passWidth(pass, 1.2);
+      return { d: drawStrokes([stroke], carefulPenOptions(pen, width), subSeed(seed + 1, p), [true]), pass, width, strokes: 1 };
+    });
+    return { fills, outline };
+  }, [pen, seed, color]);
+  if (!pen || !sketch) return null;
+  const grain = pen.grain === "filter" ? grainId : undefined;
+  return (
+    <>
+      {grain ? <RoughChartDefs mode={pen as RoughMode} grainFilterId={grain} /> : null}
+      <g className="nw-rough nw-rough--bar" style={groupStyle(pen, grain, undefined)}>
+        {/* The hatch may leave the triangle only barely, as a bar's leaves its bar. */}
+        <clipPath id={clipId}>
+          <path d="M0.6 1.3 L13.4 1.3 L7 12.9 Z" />
+        </clipPath>
+        <g opacity={Math.min(1, pen.fillOpacity)} clipPath={`url(#${clipId})`}>
+          {sketch.fills.map((p, i) => (
+            <path key={`f${i}`} d={p.d} fill="none" stroke={color} strokeWidth={p.strokeWidth} strokeLinecap="round" />
+          ))}
+        </g>
+        {renderPasses(sketch.outline, color, pen, {}, "o")}
+      </g>
+    </>
+  );
+}
+
 /**
  * A box legend icon (a bar series: the plain legend draws a filled square) in the hand-drawn
  * styles, in the series colour. Same nested 14-unit box as {@link LegendSquiggleIcon}.

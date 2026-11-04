@@ -1,7 +1,8 @@
 import i18n from "./i18n";
-import { parseRgbTriplet } from "./chartColors";
+import { mutedPillBackgroundRgb, parseRgbTriplet } from "./chartColors";
+import { EXPENSES_FAVICON_SPEC, EXPENSES_ROUTE } from "./favicon";
 import type { NavTreeNodeDto, SidebarNavResponse } from "./types";
-import { sortNavTreeLeavesFirst, type SidebarNavNode } from "./sidebarNavTree";
+import { sortNavTreeLeavesFirst, type SidebarNavMarker, type SidebarNavNode } from "./sidebarNavTree";
 
 /**
  * Label keys the SERVER emits via `label_i18n_key` (seedNavTree.ts and friends),
@@ -56,6 +57,17 @@ export function visibleNavChildren(dtos: NavTreeNodeDto[]): NavTreeNodeDto[] {
 }
 
 /**
+ * A row's mark: the expenses row shows its favicon's triangle; under the net-worth sections a group
+ * with rows under it (`group`) its colour square, in its card pill's colour.
+ */
+function navNodeMarker(dto: NavTreeNodeDto, group: boolean): SidebarNavMarker | undefined {
+  if (dto.route_path === EXPENSES_ROUTE) return { shape: "triangle-down", color: EXPENSES_FAVICON_SPEC.color };
+  if (!group || dto.account_id != null || dto.expense_account_id != null) return undefined;
+  const rgb = parseRgbTriplet(dto.color_rgb);
+  return rgb ? { shape: "square", color: mutedPillBackgroundRgb(rgb) } : undefined;
+}
+
+/**
  * `asLeaf`: a sub-bucket listed beside accounts (Portafolio IPSA among Acciones' stocks) shows
  * as one entry in the seeded order, not expanded — its accounts are on its own page.
  * `markers`: under the net-worth sections, a group with rows under it (the rows that show a chevron)
@@ -78,10 +90,7 @@ function mapNode(dto: NavTreeNodeDto, asLeaf = false, markers = false): SidebarN
     to: dto.route_path,
     end: dto.nav_end ? true : undefined,
     activePrefix: dto.active_prefix ?? undefined,
-    markerRgb:
-      markers && children && dto.account_id == null && dto.expense_account_id == null
-        ? (parseRgbTriplet(dto.color_rgb) ?? undefined)
-        : undefined,
+    marker: navNodeMarker(dto, markers && children != null),
     children,
   };
 }

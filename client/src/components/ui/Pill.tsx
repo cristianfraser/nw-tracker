@@ -1,6 +1,4 @@
 import {
-  lazy,
-  Suspense,
   useLayoutEffect,
   useRef,
   useState,
@@ -11,14 +9,11 @@ import {
 } from "react";
 import { cn } from "../../cn";
 import { useChartStyle } from "../charts/chartStyle";
+// The hand-drawn chart styles colour a pill in with a scribble instead of a flat fill. Imported
+// directly, not lazily: a lazy load painted every pill bare on a page load until its chunk
+// arrived (the sketch code it needs already ships with the first page load).
+import PillScribble from "../charts/PillScribble";
 import styles from "./Pill.module.css";
-
-/**
- * The hand-drawn chart styles colour a pill in with a scribble instead of a flat fill. Lazy: it
- * pulls in the chart engine, which the first page load leaves out, and only loads once a
- * hand-drawn style is on.
- */
-const PillScribble = lazy(() => import("../charts/PillScribble"));
 
 export type PillSize = "default" | "small" | "icon";
 
@@ -139,9 +134,7 @@ export function Pill({
       }}
     >
       {sketched && sketch ? (
-        <Suspense fallback={null}>
-          <PillScribble w={sketch.w} h={sketch.h} color={sketch.color} />
-        </Suspense>
+        <PillScribble w={sketch.w} h={sketch.h} color={sketch.color} />
       ) : null}
       {showLeading ? (
         <span className={cn(styles.leading, showLabel && styles.leadingWithLabel)}>{leading}</span>
