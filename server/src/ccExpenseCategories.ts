@@ -19,7 +19,7 @@ import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants
 import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
 import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
 
-/** Asset group slug for `GET /api/flows/expenses/credit-card` (all issuers, not one `credit_card_groups` row). */
+/** Asset group slug for `GET /api/flows/expenses/credit-card` (every card). */
 export function primaryCreditCardExpensesGroupSlug(): string {
   return "credit_cards";
 }

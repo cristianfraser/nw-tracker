@@ -80,6 +80,7 @@ describe("normalizedPostCloseLines", () => {
         .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
         .run(group.id, "Vitest · post-close line dates", "credit_card_master|santander|vitest-cc-post-close-line-dates").lastInsertRowid
     );
+    db.prepare(`INSERT INTO credit_card_account_config (account_id, card_last4, issuer) VALUES (?, NULL, 'santander')`).run(accountId);
     const statementId = Number(
       db
         .prepare(
@@ -109,6 +110,7 @@ describe("normalizedPostCloseLines", () => {
         .prepare(`INSERT INTO accounts (asset_group_id, name, import_key) VALUES (?, ?, ?)`)
         .run(group.id, "Vitest · backdated nota", "credit_card_master|santander|vitest-cc-backdated-nota").lastInsertRowid
     );
+    db.prepare(`INSERT INTO credit_card_account_config (account_id, card_last4, issuer) VALUES (?, NULL, 'santander')`).run(accountId);
     const statementId = Number(
       db
         .prepare(

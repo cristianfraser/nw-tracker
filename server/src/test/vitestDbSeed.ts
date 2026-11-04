@@ -1,5 +1,5 @@
 import { db } from "../db.js";
-import { seedCreditCardTree } from "../seedCreditCardTree.js";
+import { seedLiabilitiesTree } from "../seedLiabilitiesTree.js";
 
 /** Isolated master account for Vitest (not used by real imports). */
 export const VITEST_SANTANDER_CC_MASTER_NOTES = "credit_card_master|santander|vitest-fixture";
@@ -50,12 +50,12 @@ export function ensureVitestCreditCardFixtures(): void {
     .get(accountId) as { 1: number } | undefined;
   if (!hasConfig) {
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, 21, 20, '0000')`
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, '0000', 'santander')`
     ).run(accountId);
   }
 
-  seedCreditCardTree();
+  seedLiabilitiesTree();
   vitestCreditCardFixturesApplied = true;
 }
 

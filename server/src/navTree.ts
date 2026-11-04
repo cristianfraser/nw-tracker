@@ -396,7 +396,7 @@ export function getSidebarNavPayload(): {
 } {
   const linkRoots = buildNavForest("link");
   const mainRoots = buildNavForest("main").map((node) =>
-    node.slug === "liabilities" ? { ...node, children: getLiabilitiesNavChildren() } : node
+    node.slug === "liabilities" ? withLiabilitiesChildren(node) : node
   );
   const flowRoots = buildNavForest("flows");
 
@@ -426,10 +426,21 @@ export function getLiabilitiesNavRootNode(): NavTreeNodeDto | null {
   return dbStateMemo("nav.liabilities_root", 0, buildLiabilitiesNavRootNode);
 }
 
+/**
+ * The Pasivos root with its subtree (`liability_groups`, not portfolio items): its members are its
+ * children's, retired cards included.
+ */
+function withLiabilitiesChildren(node: NavTreeNodeDto): NavTreeNodeDto {
+  const children = getLiabilitiesNavChildren();
+  const memberIds = new Set(node.member_account_ids ?? []);
+  for (const child of children) for (const id of child.member_account_ids ?? []) memberIds.add(id);
+  return { ...node, children, member_account_ids: [...memberIds].sort((a, b) => a - b) };
+}
+
 function buildLiabilitiesNavRootNode(): NavTreeNodeDto | null {
   const liab = buildNavForest("main").find((n) => n.slug === "liabilities");
   if (!liab) return null;
-  return { ...liab, children: getLiabilitiesNavChildren() };
+  return withLiabilitiesChildren(liab);
 }
 
 /**

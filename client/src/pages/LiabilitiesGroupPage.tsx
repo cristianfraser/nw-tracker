@@ -18,7 +18,6 @@ import { resolveLiabilitiesPageKind } from "../liabilitiesPageKind";
 import { parseLiabilitiesSubgroupParam } from "../liabilitiesPath";
 import {
   findBestNavNodeForPathname,
-  findNavNodeBySlug,
   resolveLinkedCardNavChildren,
 } from "../portfolioNavFromApi";
 import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
@@ -58,7 +57,7 @@ import {
 export function LiabilitiesGroupPage() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
-  const { subgroup: liabilitiesSubgroupParam, issuer: issuerParam } = useParams();
+  const { subgroup: liabilitiesSubgroupParam } = useParams();
   const categoryFilter = useMemo(
     () => parseLiabilitiesSubgroupParam(liabilitiesSubgroupParam),
     [liabilitiesSubgroupParam]
@@ -70,13 +69,10 @@ export function LiabilitiesGroupPage() {
   // renders its shell (empty title, placeholder charts), dimmed.
   const navSettled = !navPending && !navFetching;
 
-  const navMatchNode = useMemo(() => {
-    const best = findBestNavNodeForPathname(sidebarNav?.main, pathname);
-    if (!issuerParam) return best;
-    const issuerNode = findNavNodeBySlug(sidebarNav?.main, issuerParam);
-    if (issuerNode?.asset_group_slug === "credit_cards") return issuerNode;
-    return best;
-  }, [sidebarNav, pathname, issuerParam]);
+  const navMatchNode = useMemo(
+    () => findBestNavNodeForPathname(sidebarNav?.main, pathname),
+    [sidebarNav, pathname]
+  );
 
   const linkedCardNavChildren = useMemo(
     () => resolveLinkedCardNavChildren(navMatchNode, sidebarNav?.main),
@@ -287,7 +283,7 @@ export function LiabilitiesGroupPage() {
     navGroupSlug: navMatchNode?.slug,
   });
 
-  // Day view: per-session lines (CC per-day owed / mortgage UF drift). Grouped issuer lines
+  // Day view: per-session lines (CC per-day owed / mortgage UF drift). Grouped lines
   // share synthetic ids with the displayed liab grouped block, so the builder maps onto it.
   const dailySeries = useDailySeries(
     { portfolioGroup: portfolioGroup || undefined },
@@ -524,15 +520,6 @@ export function LiabilitiesGroupPage() {
 
   if (!navMatchNode && navSettled) {
     return <Navigate to="/" replace />;
-  }
-
-  if (
-    navMatchNode &&
-    issuerParam != null &&
-    issuerParam !== "" &&
-    (navMatchNode.slug !== issuerParam || navMatchNode.asset_group_slug !== "credit_cards")
-  ) {
-    return <Navigate to="/liabilities" replace />;
   }
 
   if (err) {

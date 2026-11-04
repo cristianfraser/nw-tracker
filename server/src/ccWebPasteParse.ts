@@ -9,6 +9,7 @@ import { ccOneShotDedupeKey, normCcMerchant } from "./ccDedupeKey.js";
 import { webPasteAmountClpForDb, webPasteAmountUsdForDb } from "./ccPaymentLines.js";
 import { activeAdditionalCardLast4ForAccount } from "./ccAdditionalCardExpenseMatch.js";
 import { db } from "./db.js";
+import { ccIssuerSlugForMasterAccount } from "./ccIssuerForAccount.js";
 import {
   ccImportFlowItemFromRow,
   ccStatementLabel,
@@ -254,32 +255,20 @@ const WEB_PASTE_CARD_GROUP_BY_ISSUER: Readonly<Record<string, string>> = {
 };
 
 /**
- * Web-paste card group + card last4 of a credit-card master, from structured identity only: the
- * issuer from `accounts.import_key` (`credit_card_master|<issuer>|<key>`) and the last4 from
- * `credit_card_account_config.card_last4` — the card identity; the import_key suffix is a stable
- * dedupe key, not the plastic, so it is not read. Throws for an account that is not a master, an
- * issuer with no web-paste card group, or a master without a config last4: all data problems,
- * never "not a card".
+ * Web-paste card group + card last4 of a credit-card master, from its config only: the issuer
+ * (`credit_card_account_config.issuer`) and the card identity (`card_last4`); the import_key
+ * suffix is a stable dedupe key, not the plastic, so it is not read. Throws for an account that is
+ * not a master, an issuer with no web-paste card group, or a master without a config last4: all
+ * data problems, never "not a card".
  */
 export function creditCardMasterMetaForAccount(accountId: number): {
   cardGroup: string;
   cardLast4: string;
 } {
+  const issuer = ccIssuerSlugForMasterAccount(accountId);
   const row = db
-    .prepare(
-      `SELECT a.import_key, c.card_last4
-       FROM accounts a
-       LEFT JOIN credit_card_account_config c ON c.account_id = a.id
-       WHERE a.id = ?`
-    )
-    .get(accountId) as { import_key: string | null; card_last4: string | null } | undefined;
-  if (!row) throw new Error(`Account ${accountId} does not exist`);
-  const issuer = /^credit_card_master\|([^|]+)\|[^|]+$/.exec(String(row.import_key ?? "").trim())?.[1];
-  if (!issuer) {
-    throw new Error(
-      `Account ${accountId} is not a credit card master (import_key ${JSON.stringify(row.import_key)})`
-    );
-  }
+    .prepare(`SELECT card_last4 FROM credit_card_account_config WHERE account_id = ?`)
+    .get(accountId) as { card_last4: string | null };
   const cardGroup = WEB_PASTE_CARD_GROUP_BY_ISSUER[issuer];
   if (!cardGroup) {
     throw new Error(`Credit card master ${accountId}: issuer "${issuer}" has no web-paste card group`);

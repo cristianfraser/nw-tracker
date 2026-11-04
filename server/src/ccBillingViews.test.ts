@@ -353,8 +353,8 @@ describe("buildBillingDetailByMonth", () => {
         .run(bucket.id, importKey, importKey).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, 21, 20, '0000')`
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, '0000', 'santander')`
     ).run(acctId);
     const insStmt = db.prepare(
       `INSERT INTO cc_statements

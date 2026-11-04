@@ -1,21 +1,18 @@
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { isSupersededSantanderCcMaster } from "./ccConsolidatedCards.js";
-import {
-  getCreditCardGroupBySlug,
-  listCreditCardGroupMasterAccountIds,
-} from "./creditCardTree.js";
 import { db } from "./db.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import type { GroupTabAccountRow } from "./groupMonthlyPerfConsolidation.js";
 
-/** CC masters in `credit_card_group_items` — single id for Gastos and Pasivos. */
+/** CC masters under Pasivos › tarjeta de crédito (`liability_group_items`) — single id for Gastos and Pasivos. */
 function listCreditCardPasivosTabAccountRows(): GroupTabAccountRow[] {
   const rows = db
     .prepare(
       `SELECT DISTINCT m.id AS account_id, m.name, g.slug AS bucket_slug,
               m.notes AS notes, m.import_key, m.exclude_from_group_totals AS exclude_from_group_totals
        FROM accounts m
-       JOIN credit_card_group_items i ON i.account_id = m.id AND i.item_kind = 'account'
+       JOIN liability_group_items i ON i.account_id = m.id AND i.item_kind = 'account'
+       JOIN liability_groups lg ON lg.id = i.group_id AND lg.slug = 'liabilities_credit_card'
        JOIN asset_groups g ON g.id = m.asset_group_id
        WHERE m.import_key LIKE 'credit_card_master|%'
          AND (m.import_key IS NULL OR m.import_key != ?)
@@ -24,26 +21,6 @@ function listCreditCardPasivosTabAccountRows(): GroupTabAccountRow[] {
     .all(NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
 
   return rows.filter((r) => !isSupersededSantanderCcMaster(r.account_id));
-}
-
-/** One `credit_card_groups` issuer page (e.g. Santander, BCI) — master rows for that issuer. */
-export function listCreditCardIssuerTabAccountRows(issuerSlug: string): GroupTabAccountRow[] | null {
-  if (!getCreditCardGroupBySlug(issuerSlug)) return null;
-  const masterIds = listCreditCardGroupMasterAccountIds(issuerSlug);
-  if (!masterIds.length) return [];
-
-  const ph = masterIds.map(() => "?").join(",");
-  return db
-    .prepare(
-      `SELECT a.id AS account_id, a.name, g.slug AS bucket_slug,
-              a.notes AS notes, a.import_key, a.exclude_from_group_totals AS exclude_from_group_totals
-       FROM accounts a
-       JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE a.id IN (${ph})
-         AND (a.import_key IS NULL OR a.import_key != ?)
-       ORDER BY a.id, a.name`
-    )
-    .all(...masterIds, NOTE_STOCKS_LEGACY) as GroupTabAccountRow[];
 }
 
 /** Pasivos tab: CC masters + mortgage masters (liability_view rows were retired, migration 175). */

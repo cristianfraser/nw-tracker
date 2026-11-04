@@ -214,28 +214,22 @@ describe("findBestNavNodeForPathname", () => {
     expect(hit?.slug).toBe("cash_savings");
   });
 
-  it("resolves credit-card issuer on its own route, not the parent subgroup", () => {
+  it("resolves the credit-card group on its route; its cards sit directly under it", () => {
     const creditCard = navNode({
       slug: "liabilities_credit_card",
       route_path: "/liabilities/credit-card",
       active_prefix: "/liabilities/credit-card",
       asset_group_slug: "liabilities",
-    });
-    const santander = navNode({
-      slug: "santander",
-      route_path: "/liabilities/credit-card/santander",
-      active_prefix: "/liabilities/credit-card/santander",
-      asset_group_slug: "credit_cards",
       children: [
         navNode({
-          slug: "cc_4242",
+          slug: "liability_account_1",
           route_path: "/account/1",
           account_id: 1,
+          asset_group_slug: "credit_cards",
           nav_end: true,
         }),
       ],
     });
-    creditCard.children = [santander];
     const tree = [
       navNode({
         slug: "liabilities",
@@ -244,7 +238,7 @@ describe("findBestNavNodeForPathname", () => {
         children: [creditCard],
       }),
     ];
-    const hit = findBestNavNodeForPathname(tree, "/liabilities/credit-card/santander");
-    expect(hit?.slug).toBe("santander");
+    expect(findBestNavNodeForPathname(tree, "/liabilities/credit-card")?.slug).toBe("liabilities_credit_card");
+    expect(findBestNavNodeForPathname(tree, "/account/1")?.slug).toBe("liability_account_1");
   });
 });

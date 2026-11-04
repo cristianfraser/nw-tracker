@@ -1,4 +1,5 @@
 import type { CardParsedStatementsApplyDetails } from "nw-tracker-contracts";
+import type { CcIssuerSlug } from "./ccIssuers.js";
 import { groupInstallmentLoanChains, mergeCcAccountFromParsedRows, replaceStatementKeysFromRecords } from "./ccInstallmentLedgerMerge.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { cardLast4FromParsedRow, resolveImportAccountIds } from "./ccParsedImportAccounts.js";
@@ -25,8 +26,8 @@ export type ApplyParsedCcStatementsOptions = {
   full: boolean;
   /** Restrict to one card account (maintenance runs). */
   accountId?: number;
-  /** Restrict to the cards of one credit-card group (maintenance runs). */
-  groupSlug?: string;
+  /** Restrict to the cards of one issuer (maintenance runs). */
+  issuer?: CcIssuerSlug;
 };
 
 function accountLabelForId(accountId: number): string {
@@ -60,7 +61,7 @@ export function applyParsedCcStatements(
   const { accountIds, discovery } = resolveImportAccountIds({
     records: [...records],
     accountId: opts.accountId,
-    groupSlug: opts.groupSlug,
+    issuer: opts.issuer,
   });
   if (accountIds.length === 0) {
     problems.push(

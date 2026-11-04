@@ -1,7 +1,7 @@
 import { assertValuationCurrency } from "./valuationValue.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { getAccountColorRgb, rgbTripletToCss } from "./chartColorRgb.js";
-import { getCreditCardGroupNavChildren } from "./creditCardTree.js";
+import { isNavRetiredCcMaster } from "./ccNavRetired.js";
 import { db } from "./db.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
@@ -27,9 +27,8 @@ type LiabilityGroupRow = {
 
 type LiabilityItemRow = {
   group_id: number;
-  item_kind: "group" | "account" | "credit_card_group";
+  item_kind: "group" | "account";
   child_group_id: number | null;
-  child_credit_card_group_id: number | null;
   account_id: number | null;
   sort_order: number;
 };
@@ -47,7 +46,7 @@ function loadLiabilityGroups(): LiabilityGroupRow[] {
 function loadLiabilityItems(): LiabilityItemRow[] {
   return db
     .prepare(
-      `SELECT group_id, item_kind, child_group_id, child_credit_card_group_id, account_id, sort_order
+      `SELECT group_id, item_kind, child_group_id, account_id, sort_order
        FROM liability_group_items
        ORDER BY sort_order, id`
     )
@@ -78,14 +77,11 @@ function buildLiabilityNode(
     if (item.item_kind === "group" && item.child_group_id != null) {
       const child = groupsById.get(item.child_group_id);
       if (child) pushGroupChild(buildLiabilityNode(child, itemsByGroup, groupsById, accountMeta));
-    } else if (item.item_kind === "credit_card_group" && item.child_credit_card_group_id != null) {
-      const ccGroup = db
-        .prepare(`SELECT slug FROM credit_card_groups WHERE id = ?`)
-        .get(item.child_credit_card_group_id) as { slug: string } | undefined;
-      if (ccGroup) getCreditCardGroupNavChildren(ccGroup.slug).forEach(pushGroupChild);
     } else if (item.item_kind === "account" && item.account_id != null) {
       memberIds.add(item.account_id);
       if (accountChartInactive(item.account_id)) continue;
+      // A retired card stays a member (group charts and totals keep its history) but leaves the nav.
+      if (isNavRetiredCcMaster(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
       children.push({
@@ -101,7 +97,8 @@ function buildLiabilityNode(
         portfolio_group_id: null,
         expense_account_id: null,
         expense_account_slug: null,
-        asset_group_slug: "liabilities",
+        // A card leaf names its asset group, as card leaves always have (placeholder pages read it).
+        asset_group_slug: group.liability_kind === "credit_card" ? "credit_cards" : "liabilities",
         kind_slug: null,
         dashboard_bucket_slug: null,
         exclude_from_parent_total: false,
@@ -198,16 +195,13 @@ type LinkedCreditCardMasterRow = {
   name: string;
 };
 
-/** CC masters under Pasivos → tarjeta de crédito (all linked issuers). */
+/** CC masters under Pasivos → tarjeta de crédito. */
 function linkedCreditCardMasters(): LinkedCreditCardMasterRow[] {
   return db
     .prepare(
       `SELECT m.id AS account_id, m.name
        FROM accounts m
-       JOIN credit_card_group_items i ON i.account_id = m.id AND i.item_kind = 'account'
-       JOIN credit_card_groups g ON g.id = i.group_id
-       JOIN liability_group_items lgi
-         ON lgi.child_credit_card_group_id = g.id AND lgi.item_kind = 'credit_card_group'
+       JOIN liability_group_items lgi ON lgi.account_id = m.id AND lgi.item_kind = 'account'
        JOIN liability_groups lg ON lg.id = lgi.group_id AND lg.slug = 'liabilities_credit_card'
        WHERE m.exclude_from_group_totals = 0
        ORDER BY m.name, m.id`

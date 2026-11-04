@@ -1,5 +1,4 @@
 import { assetGroupBySlug, CHECKING_ACCOUNTS_KIND, leafAssetGroupIdForKindSlug } from "./assetGroupTree.js";
-import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 import { db } from "./db.js";
 import { getPortfolioGroupIndex } from "./portfolioGroupIndex.js";
@@ -44,13 +43,9 @@ export function portfolioGroupBySlug(slug: string): PortfolioGroupRow | null {
   return (groupBySlugStmt.get(slug) as PortfolioGroupRow | undefined) ?? null;
 }
 
-/** Portfolio group tab or `credit_card_groups` issuer slug (Santander, BCI, …). */
+/** A portfolio group tab's slug. */
 export function isResolvablePortfolioGroupSlug(slug: string): boolean {
-  return portfolioGroupBySlug(slug) != null || getCreditCardGroupBySlug(slug) != null;
-}
-
-function accountIdsInCreditCardIssuerGroup(issuerSlug: string): number[] {
-  return listCreditCardGroupMasterAccountIds(issuerSlug);
+  return portfolioGroupBySlug(slug) != null;
 }
 
 export function portfolioGroupById(id: number): PortfolioGroupRow | null {
@@ -88,9 +83,6 @@ export { withPortfolioGroupIndex } from "./portfolioGroupIndex.js";
 
 /** Account ids in this portfolio group subtree (direct + nested groups). */
 export function accountIdsInPortfolioGroup(slugOrId: string | number): number[] {
-  if (typeof slugOrId === "string" && getCreditCardGroupBySlug(slugOrId)) {
-    return accountIdsInCreditCardIssuerGroup(slugOrId);
-  }
   if (slugOrId === "liabilities_credit_card") {
     return listLiabilitiesTabAccountRows("credit_card").map((r) => r.account_id);
   }
@@ -389,15 +381,9 @@ export function portfolioGroupHasAccountItems(groupId: number): boolean {
 
 const HOMOGENEITY_CHECKS = [
   {
-    table: "credit_card_group_items",
-    groupTable: "credit_card_groups",
-    groupKinds: ["group"],
-    leafKinds: ["account"],
-  },
-  {
     table: "liability_group_items",
     groupTable: "liability_groups",
-    groupKinds: ["group", "credit_card_group"],
+    groupKinds: ["group"],
     leafKinds: ["account"],
   },
 ] as const;

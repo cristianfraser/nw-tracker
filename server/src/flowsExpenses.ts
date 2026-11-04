@@ -372,7 +372,7 @@ export type FlowCcExpenseCategoryChartPoint = {
 
 export type FlowsExpensesPayload = {
 
-  /** `credit_card_groups.slug` (e.g. santander). */
+  /** The expenses scope's asset group slug (`credit_cards`: every card). */
 
   group_slug: string;
 

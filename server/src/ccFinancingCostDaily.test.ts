@@ -28,6 +28,7 @@ beforeAll(() => {
       )
       .run(ccLeaf.id).lastInsertRowid
   );
+  db.prepare(`INSERT INTO credit_card_account_config (account_id, card_last4, issuer) VALUES (?, NULL, 'santander')`).run(ccId);
   statementId = Number(
     db
       .prepare(

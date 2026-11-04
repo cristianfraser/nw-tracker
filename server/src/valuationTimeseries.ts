@@ -2007,10 +2007,7 @@ import {
   listAccountsForBucketSlug,
 } from "./assetGroupTree.js";
 
-import {
-  listCreditCardIssuerTabAccountRows,
-  listLiabilitiesTabAccountRows,
-} from "./liabilityTabAccounts.js";
+import { listLiabilitiesTabAccountRows } from "./liabilityTabAccounts.js";
 export { listLiabilitiesTabAccountRows };
 
 /** Dashboard home + `GET …/consolidated-tables?group=net_worth` (same scope as dashboard bucket cards). */
@@ -2036,9 +2033,6 @@ function finishGroupTabRows(rows: GroupTabAccountRow[]): GroupTabAccountRow[] {
 }
 
 function listAccountsForPortfolioGroupSlug(portfolioGroupSlug: string): GroupTabAccountRow[] {
-  const ccIssuer = listCreditCardIssuerTabAccountRows(portfolioGroupSlug);
-  if (ccIssuer !== null) return ccIssuer;
-
   if (portfolioGroupSlug === "liabilities_credit_card") {
     return listLiabilitiesTabAccountRows("credit_card");
   }
@@ -2085,8 +2079,6 @@ function resolveGroupTabChildSlug(groupSlug: string, tabSubgroup: string): strin
 }
 
 function listAccountsForGroupTabInner(groupSlug: string, tabSubgroup?: string): GroupTabAccountRow[] {
-  const ccIssuer = listCreditCardIssuerTabAccountRows(groupSlug);
-  if (ccIssuer !== null && tabSubgroup == null) return ccIssuer;
   if (groupSlug === "liabilities") {
     return listLiabilitiesTabAccountRows(tabSubgroup);
   }

@@ -3,7 +3,6 @@ import { assetGroupBySlug, assetGroupIdsInSubtree, leafAssetGroupIdsUnder } from
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { clearAggregationCache } from "./aggregationCache.js";
 import { assertNavGroupItemsShape } from "./portfolioGroupTree.js";
-import { seedCreditCardTree } from "./seedCreditCardTree.js";
 import { seedLiabilitiesTree } from "./seedLiabilitiesTree.js";
 
 type GroupUpsert = {
@@ -770,7 +769,6 @@ export function seedNavTree(): void {
   // seed back instead of leaving it committed behind a failed boot.
   db.transaction(() => {
     tx();
-    seedCreditCardTree();
     seedLiabilitiesTree();
     assertNavGroupItemsShape();
   })();

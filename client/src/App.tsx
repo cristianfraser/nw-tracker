@@ -126,7 +126,6 @@ function AppTree() {
             <Route path="/cash_eqs/*" element={<GroupInfoPage />} />
             <Route path="/real_estate" element={<GroupInfoPage />} />
             <Route path="/liabilities" element={<LiabilitiesGroupPage />} />
-            <Route path="/liabilities/:subgroup/:issuer" element={<LiabilitiesGroupPage />} />
             <Route path="/liabilities/:subgroup" element={<LiabilitiesGroupPage />} />
             <Route path="/flows" element={<FlowsLayout />}>
               <Route index element={<FlowsOverviewPage />} />

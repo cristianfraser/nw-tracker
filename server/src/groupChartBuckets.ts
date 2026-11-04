@@ -1,6 +1,5 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 
 /**
@@ -60,7 +59,6 @@ export function isChartBucketCardNode(n: NavTreeNodeDto): boolean {
   if (n.account_id != null || n.expense_account_id != null) return false;
   if (resolveDashboardBucketFromNavNode(n) != null) return true;
   if (n.asset_group_slug === "liabilities") return true;
-  if (n.asset_group_slug === "credit_cards" && (n.children?.length ?? 0) > 0) return true;
   if (n.portfolio_group_id != null && (n.api_group || n.api_subgroup)) return true;
   if (n.portfolio_group_id != null && n.kind_slug) return true;
   return false;
@@ -191,7 +189,6 @@ export function isLiabilitiesChartNavNode(navNode: NavTreeNodeDto): boolean {
   return (
     navNode.asset_group_slug === "liabilities" ||
     navNode.slug.startsWith("liabilities_") ||
-    navNode.asset_group_slug === "credit_cards" ||
     isLiabilityGroupNavNode(navNode)
   );
 }
@@ -213,34 +210,13 @@ function collectSubtreeAccountIds(node: NavTreeNodeDto): number[] {
   return ids;
 }
 
-/** Credit-card issuer child slugs (`santander`, `bci`) under a CC-parent bucket node. */
-function creditCardIssuerChildSlugs(node: NavTreeNodeDto): string[] {
-  const out: string[] = [];
-  for (const c of node.children ?? []) {
-    if (getCreditCardGroupBySlug(c.slug)) out.push(c.slug);
-  }
-  return out;
-}
-
 /**
- * Members of a liability bucket. CC issuer groups and the CC parent resolve via `credit_card_groups`
- * config (catches inactive/superseded masters the nav tree omits — e.g. santander ·0161); other
- * buckets (mortgage) use nav-subtree membership. No account-name heuristics.
+ * Members of a liability bucket: a liability group's own member list (`member_account_ids`, which
+ * keeps the cards the nav tree hides — retired masters); an account bucket is itself. No
+ * account-name heuristics.
  */
 function liabilityBucketAccountIds(node: NavTreeNodeDto): number[] {
-  if (getCreditCardGroupBySlug(node.slug)) {
-    return listCreditCardGroupMasterAccountIds(node.slug);
-  }
-  if (node.slug === "liabilities_credit_card" || node.api_subgroup === "credit_card") {
-    const issuers = creditCardIssuerChildSlugs(node);
-    if (issuers.length > 0) {
-      const ids = new Set<number>();
-      for (const issuer of issuers) {
-        for (const id of listCreditCardGroupMasterAccountIds(issuer)) ids.add(id);
-      }
-      return [...ids];
-    }
-  }
+  if (node.account_id == null && node.member_account_ids) return [...node.member_account_ids];
   return collectSubtreeAccountIds(node);
 }
 

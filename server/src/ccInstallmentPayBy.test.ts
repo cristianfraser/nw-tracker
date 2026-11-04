@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { derivedPayByIso, resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
-import { CC_ISSUERS, ccIssuerBySlug, ccIssuerSlugFromImportKey } from "./ccIssuers.js";
+import { CC_ISSUERS, ccIssuerBySlug, requireCcIssuerSlug } from "./ccIssuers.js";
 
 const santander = ccIssuerBySlug("santander")!.derived_pay_by;
 const bci = ccIssuerBySlug("bci")!.derived_pay_by;
@@ -48,13 +48,12 @@ describe("derived pay-by per issuer", () => {
   });
 });
 
-describe("issuer from a master's import key", () => {
-  it("reads the slug and refuses anything else", () => {
-    expect(ccIssuerSlugFromImportKey("credit_card_master|santander|vitest-fixture")).toBe("santander");
-    expect(ccIssuerSlugFromImportKey("credit_card_master|bci|1234")).toBe("bci");
-    expect(ccIssuerSlugFromImportKey("credit_card_master|unknown|1234")).toBeNull();
-    expect(ccIssuerSlugFromImportKey("import:panel|kind=clp|key=clp")).toBeNull();
-    expect(ccIssuerSlugFromImportKey(null)).toBeNull();
+describe("a stored card issuer", () => {
+  it("is one of the known issuers, else it throws", () => {
+    expect(requireCcIssuerSlug("santander", "test")).toBe("santander");
+    expect(requireCcIssuerSlug("bci", "test")).toBe("bci");
+    expect(() => requireCcIssuerSlug("unknown", "test")).toThrow(/unknown card issuer/);
+    expect(() => requireCcIssuerSlug(null, "test")).toThrow(/unknown card issuer/);
   });
 
   it("every issuer carries a derived pay-by rule", () => {

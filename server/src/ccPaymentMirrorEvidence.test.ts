@@ -33,8 +33,8 @@ describe("converted card payments across statement writes", () => {
         .run(cardBucket.id, importKey, importKey).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, 23, 22, ?)`
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 23, 22, ?, 'santander')`
     ).run(cardId, LAST4);
     checkingId = Number(
       db

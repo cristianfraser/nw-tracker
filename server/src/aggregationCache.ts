@@ -16,8 +16,7 @@ import { dbWriteCount } from "./dbWriteCounter.js";
 import { clearDbStateMemos, setDbStateMemoFreshnessCheck } from "./dbStateMemo.js";
 import { applyPendingMarkInputChanges, setMarkInputsChangedListener } from "./markInputChanges.js";
 import { clearMarkSeries } from "./markSeriesStore.js";
-import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
-import { CC_ISSUER_SLUGS } from "./ccIssuers.js";
+import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { db, dbInTransaction } from "./db.js";
 import { buildPortfolioGroupIndex } from "./portfolioGroupIndex.js";
 import type { TsUnit } from "./valuationTimeseries.js";
@@ -497,12 +496,8 @@ function buildRollupSlugsByAccountId(): Map<number, Set<string>> {
     }
   }
 
-  for (const issuer of CC_ISSUER_SLUGS) {
-    if (!getCreditCardGroupBySlug(issuer)) continue;
-    const masterIds = listCreditCardGroupMasterAccountIds(issuer);
-    for (const masterId of masterIds) {
-      addSlugs(masterId, [issuer, "liabilities_credit_card", "liabilities"]);
-    }
+  for (const masterId of listCreditCardMasterAccountIds()) {
+    addSlugs(masterId, ["liabilities_credit_card", "liabilities"]);
   }
 
   return out;
@@ -674,7 +669,6 @@ const LINKED_CC_AGGREGATION_GROUP_SLUGS = [
   "net_worth",
   "liabilities",
   "liabilities_credit_card",
-  ...CC_ISSUER_SLUGS,
 ];
 
 /**

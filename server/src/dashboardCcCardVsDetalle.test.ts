@@ -48,8 +48,8 @@ beforeAll(() => {
       .run(leaf.id, KEY, KEY).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-     VALUES (?, 21, 20, '0002')`
+    `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+     VALUES (?, 21, 20, '0002', 'santander')`
   ).run(cardId);
 
   // Month-end owed balances give the card its calendar-month rows.
