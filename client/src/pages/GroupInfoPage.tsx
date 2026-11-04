@@ -56,7 +56,7 @@ export function GroupInfoPage() {
   const { pathname } = useLocation();
 
   const { displayUnit } = useDisplayPreferences();
-  const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
+  const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav(); // convention-ok: nav refetch gates «not found» only, no dim
   // «Not found» only once the nav has answered without this route; until then the page renders
   // its shell (empty title, placeholder charts), dimmed.
   const navSettled = !navPending && !navFetching;

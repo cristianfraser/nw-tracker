@@ -20,6 +20,7 @@ import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { useCcInstallmentGastosMode } from "../../useCcInstallmentGastosMode";
 import { useTranslation } from "../../i18n";
 import { useGroupConsolidatedMonthlyPage, useGroupPeriodReturns } from "../../queries/hooks";
+import { queryShowsLoading } from "../../queries/pageShapeReady";
 import {
   consolidatedRowsForDisplay,
   periodReturnsForDisplay,
@@ -353,7 +354,7 @@ export function GroupInfoBase({
                         page: serverMonthly.data?.page ?? monthlyPage,
                         total: serverMonthly.data?.total ?? 0,
                         onPageChange: setMonthlyPage,
-                        loading: serverMonthly.isFetching,
+                        loading: queryShowsLoading(serverMonthly),
                       }
                     : undefined
                 }

@@ -100,7 +100,7 @@ export function DashboardPage() {
   const perfArea = useSurfaceAreaMode("home.perf");
   const allocationPrefs = useSurfacePrefs("home.proportional", "month", "total");
   const compositionView = useSurfaceCompositionView("home.proportional");
-  const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
+  const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav(); // convention-ok: nav refetch gates «not found» only, no dim
   // «Load failed» only once the nav has answered without a net-worth tree; until then the page
   // renders its shell (static title, placeholder charts), dimmed.
   const navSettled = !navPending && !navFetching;
