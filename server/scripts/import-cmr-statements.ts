@@ -41,7 +41,7 @@ import { checkingGastosMovementPurchaseKey } from "../src/flowsCheckingGastos.js
 import { assignFlowExpenseLineCategory } from "../src/assignFlowExpenseLineCategory.js";
 import { getCcExpenseCategoryBySlug } from "../src/ccExpenseCategories.js";
 import { FLOW_KIND_CARGA_TARJETA } from "../src/movementFlowType.js";
-import { seedCreditCardTree } from "../src/seedCreditCardTree.js";
+import { seedLiabilitiesTree } from "../src/seedLiabilitiesTree.js";
 import { clearAggregationCache } from "../src/aggregationCache.js";
 import { clearCheckingBalanceCache } from "../src/checkingCartolaBalances.js";
 import { ccMasterImportKeyPrefix } from "../src/ccIssuers.js";
@@ -171,8 +171,8 @@ const tx = db.transaction(() => {
       .run(assetGroup.id, `cmr ·${plan.last4}`, importKey, importKey).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, nav_retired)
-     VALUES (?, 15, 14, ?, 1)`
+    `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, nav_retired, issuer)
+     VALUES (?, 15, 14, ?, 1, 'cmr')`
   ).run(card, plan.last4);
   say(`card master: account ${card}`);
 
@@ -290,7 +290,7 @@ const tx = db.transaction(() => {
   }
 
   // 7. Derived state.
-  seedCreditCardTree();
+  seedLiabilitiesTree();
   clearCheckingBalanceCache();
   // The card's balance on a day is the running sum of its lines: the statements chain from 0 with
   // nothing missing, and CMR's payments settle the same period's purchases, which the billing

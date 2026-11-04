@@ -194,8 +194,8 @@ describe("upcoming card payments", () => {
           .run(bucket.id, importKey, importKey).lastInsertRowid
       );
       db.prepare(
-        `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-         VALUES (?, 21, 20, '9922')`
+        `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+         VALUES (?, 21, 20, '9922', 'santander')`
       ).run(accountId);
       // A statements-only card that stopped billing months ago, settled: inactive.
       db.prepare(

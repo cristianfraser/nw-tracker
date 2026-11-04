@@ -45,8 +45,8 @@ beforeAll(() => {
       .run(leaf.id).lastInsertRowid
   );
   db.prepare(
-    `INSERT INTO credit_card_account_config (account_id, card_last4, billing_cycle_start_day, billing_cycle_end_day)
-     VALUES (?, '7777', 21, 20)`
+    `INSERT INTO credit_card_account_config (account_id, card_last4, billing_cycle_start_day, billing_cycle_end_day, issuer)
+     VALUES (?, '7777', 21, 20, 'santander')`
   ).run(ccId);
 
   const stmtDate = addDaysIso(TODAY, -20);

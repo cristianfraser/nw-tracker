@@ -1,5 +1,3 @@
-import { getCreditCardGroupBySlug } from "./creditCardTree.js";
-
 /** Pasivos liability leaves resolve to master account ids. */
 export function seriesAccountIdForGroupTab(
   row: { account_id: number },
@@ -8,8 +6,7 @@ export function seriesAccountIdForGroupTab(
   if (
     groupSlug === "liabilities" ||
     groupSlug === "liabilities_credit_card" ||
-    groupSlug === "liabilities_mortgage" ||
-    getCreditCardGroupBySlug(groupSlug)
+    groupSlug === "liabilities_mortgage"
   ) {
     return row.account_id;
   }

@@ -32,6 +32,7 @@ beforeAll(() => {
       )
       .run(leaf.id).lastInsertRowid
   );
+  db.prepare(`INSERT INTO credit_card_account_config (account_id, card_last4, issuer) VALUES (?, NULL, 'santander')`).run(accountId);
   db.prepare(
     `INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, '2026-03-31', 500000, 'clp')`
   ).run(accountId);

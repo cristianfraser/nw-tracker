@@ -1,23 +1,21 @@
 /**
- * A card master's issuer, read from its `accounts.import_key` (`credit_card_master|<slug>|<last4>`),
- * and the issuer-level rules that hang off it. Throws for an account that is not a card master of a
- * known issuer: every caller is a card-ledger reader, so any other account is a routing bug.
+ * A card master's issuer, read from its config (`credit_card_account_config.issuer`), and the
+ * issuer-level rules that hang off it. Throws for an account without a config row or with an
+ * issuer the code does not know: every caller is a card-ledger reader, so any other account is a
+ * routing bug.
  */
 import { db } from "./db.js";
-import { ccIssuerBySlug, ccIssuerSlugFromImportKey, type CcDerivedPayByRule, type CcIssuerSlug } from "./ccIssuers.js";
+import { dbStateMemo } from "./dbStateMemo.js";
+import { ccIssuerBySlug, requireCcIssuerSlug, type CcDerivedPayByRule, type CcIssuerSlug } from "./ccIssuers.js";
+
+const stmtIssuer = db.prepare(`SELECT issuer FROM credit_card_account_config WHERE account_id = ?`);
 
 export function ccIssuerSlugForMasterAccount(accountId: number): CcIssuerSlug {
-  const row = db.prepare(`SELECT import_key FROM accounts WHERE id = ?`).get(accountId) as
-    | { import_key: string | null }
-    | undefined;
-  if (!row) throw new Error(`Account ${accountId} does not exist`);
-  const slug = ccIssuerSlugFromImportKey(row.import_key);
-  if (!slug) {
-    throw new Error(
-      `Account ${accountId} is not a card master of a known issuer (import_key ${JSON.stringify(row.import_key)})`
-    );
-  }
-  return slug;
+  return dbStateMemo("cc_issuer_for_master", accountId, () => {
+    const row = stmtIssuer.get(accountId) as { issuer: string | null } | undefined;
+    if (!row) throw new Error(`Account ${accountId} is not a card master (no credit_card_account_config row)`);
+    return requireCcIssuerSlug(row.issuer, `Card account ${accountId}`);
+  });
 }
 
 /** The rule that derives a facturación's pay-by from its close when no statement printed one. */

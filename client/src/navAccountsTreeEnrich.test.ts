@@ -3,7 +3,7 @@ import { collectNavAccountDataKeys } from "./portfolioNavFromApi";
 import { enrichNavTreeWithAllAccounts } from "./navAccountsTreeEnrich";
 import type { AccountListRow, NavTreeNodeDto } from "./types";
 
-function groupNode(slug: string, children: NavTreeNodeDto[] = []): NavTreeNodeDto {
+function groupNode(slug: string, members: number[], children: NavTreeNodeDto[] = []): NavTreeNodeDto {
   return {
     node_id: slug,
     slug,
@@ -25,6 +25,7 @@ function groupNode(slug: string, children: NavTreeNodeDto[] = []): NavTreeNodeDt
     kind_slug: null,
     dashboard_bucket_slug: null,
     group_kind: "bucket",
+    member_account_ids: members,
     children,
   };
 }
@@ -88,26 +89,40 @@ function childAccountIdsOf(root: NavTreeNodeDto, slug: string): number[] {
 }
 
 describe("enrichNavTreeWithAllAccounts", () => {
-  it("appends chart-inactive accounts missing from sidebar nav", () => {
-    const root = groupNode("brokerage_acciones", [accountLeaf(85), accountLeaf(86)]);
+  it("adds an account the nav left out under the deepest group that has it as a member", () => {
+    // cash_eqs > cash_savings; #80 is a member of cash_savings (so of cash_eqs too), whatever its
+    // asset bucket says.
+    const root = groupNode("cash_eqs", [44, 80], [groupNode("cash_savings", [44, 80], [accountLeaf(44)])]);
     const enriched = enrichNavTreeWithAllAccounts(root, [
-      listRow(85, "brokerage_acciones__spy"),
-      listRow(60, "brokerage_acciones__oilk"),
+      listRow(44, "cash_eqs__cash_savings__usd"),
+      listRow(80, "cash_eqs__cuenta_ahorro_vivienda"),
     ]);
-    const ids = collectNavAccountDataKeys(enriched).map(Number);
-    expect(ids).toContain(85);
-    expect(ids).toContain(60);
+    expect(childAccountIdsOf(enriched, "cash_savings")).toEqual([44, 80]);
+    expect(childAccountIdsOf(enriched, "cash_eqs")).toEqual([]);
   });
 
-  it("places a chart-inactive account in its portfolio sub-bucket via group_slug", () => {
-    // cash_eqs > cash_savings; account #80 lives under cash_savings (portfolio group slug),
-    // but its asset bucket is cash_eqs__cuenta_ahorro_vivienda. It must land under cash_savings,
-    // not directly under cash_eqs.
-    const root = groupNode("cash_eqs", [groupNode("cash_savings", [accountLeaf(44)])]);
+  it("files retired cards under the group that has them, never by bucket slug", () => {
+    // The old slug match put every hidden card under the last card group it visited.
+    const root = groupNode("liabilities_credit_card", [32, 35, 42, 110], [accountLeaf(32), accountLeaf(42)]);
     const enriched = enrichNavTreeWithAllAccounts(root, [
-      listRow(80, "cash_eqs__cuenta_ahorro_vivienda", { groupSlug: "cash_savings" }),
+      listRow(32, "credit_cards__credit_card"),
+      listRow(35, "credit_cards__credit_card"),
+      listRow(42, "credit_cards__credit_card"),
+      listRow(110, "credit_cards__credit_card"),
     ]);
-    expect(childAccountIdsOf(enriched, "cash_savings")).toContain(80);
-    expect(childAccountIdsOf(enriched, "cash_eqs")).not.toContain(80);
+    expect(childAccountIdsOf(enriched, "liabilities_credit_card")).toEqual([32, 42, 35, 110]);
+  });
+
+  it("throws for an account no group of the tree has as a member", () => {
+    const root = groupNode("brokerage_acciones", [85], [accountLeaf(85)]);
+    expect(() => enrichNavTreeWithAllAccounts(root, [listRow(60, "brokerage_acciones__oilk")])).toThrow(
+      /no group of its nav tree has it as a member/
+    );
+  });
+
+  it("keeps every account already in the tree", () => {
+    const root = groupNode("brokerage_acciones", [85, 86], [accountLeaf(85), accountLeaf(86)]);
+    const ids = collectNavAccountDataKeys(enrichNavTreeWithAllAccounts(root, [listRow(85, "x")])).map(Number);
+    expect(ids).toEqual([85, 86]);
   });
 });

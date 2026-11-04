@@ -7,11 +7,7 @@ export function resolveLiabilitiesPageKind(navNode: NavTreeNodeDto): Liabilities
   if (navNode.slug === "liabilities_mortgage" || navNode.api_subgroup === "mortgage") {
     return "mortgage";
   }
-  if (
-    navNode.slug === "liabilities_credit_card" ||
-    navNode.asset_group_slug === "credit_cards" ||
-    navNode.api_subgroup === "credit_card"
-  ) {
+  if (navNode.slug === "liabilities_credit_card" || navNode.api_subgroup === "credit_card") {
     return "credit_card";
   }
   return "pasivos_root";

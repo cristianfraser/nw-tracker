@@ -20,7 +20,7 @@ describe("accountDetailBundle credit-card ledger", () => {
     );
     created.push(id);
     if (cardLast4 != null) {
-      db.prepare(`INSERT INTO credit_card_account_config (account_id, card_last4) VALUES (?, ?)`).run(id, cardLast4);
+      db.prepare(`INSERT INTO credit_card_account_config (account_id, card_last4, issuer) VALUES (?, ?, 'santander')`).run(id, cardLast4);
     }
     return id;
   }

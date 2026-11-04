@@ -43,8 +43,8 @@ describe("creditCardInstallmentsResponse runtime", () => {
         .run(bucket.id, "credit_card_master|santander|9977", "credit_card_master|santander|9977").lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, 21, 20, '9977')`
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, '9977', 'santander')`
     ).run(masterId);
     const insStmt = db.prepare(
       `INSERT INTO cc_statements (

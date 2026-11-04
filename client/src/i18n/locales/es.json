@@ -80,11 +80,6 @@
     "propertyValue": "valor",
     "mortgage": "hipoteca"
   },
-  "creditCardGroup": {
-    "santander": "Santander",
-    "bci": "BCI",
-    "cmr": "CMR Falabella"
-  },
   "liabilities": {
     "mortgage": "hipoteca",
     "creditCard": "tarjeta de crédito",

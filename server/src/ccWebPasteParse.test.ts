@@ -113,7 +113,11 @@ describe("creditCardMasterMetaForAccount", () => {
     for (const id of created.splice(0)) db.prepare(`DELETE FROM accounts WHERE id = ?`).run(id);
   });
 
-  function makeAccount(opts: { importKey: string; notes: string | null; cardLast4: string | null }): number {
+  function makeAccount(opts: {
+    importKey: string;
+    notes: string | null;
+    config: { issuer: string | null; cardLast4: string | null } | null;
+  }): number {
     const bucket = db
       .prepare(`SELECT id FROM asset_groups WHERE slug IN ('credit_card', 'credit_cards__credit_card') LIMIT 1`)
       .get() as { id: number };
@@ -123,49 +127,56 @@ describe("creditCardMasterMetaForAccount", () => {
         .run(bucket.id, opts.notes, opts.importKey).lastInsertRowid
     );
     created.push(id);
-    if (opts.cardLast4 != null) {
-      db.prepare(`INSERT INTO credit_card_account_config (account_id, card_last4) VALUES (?, ?)`).run(
+    if (opts.config) {
+      db.prepare(`INSERT INTO credit_card_account_config (account_id, card_last4, issuer) VALUES (?, ?, ?)`).run(
         id,
-        opts.cardLast4
+        opts.config.cardLast4,
+        opts.config.issuer
       );
     }
     return id;
   }
 
-  it("reads the issuer from import_key and the last4 from the config row, never notes", () => {
+  it("reads the issuer and the last4 from the config row, never the import_key or notes", () => {
     const id = makeAccount({
-      importKey: "credit_card_master|bci|vitest-meta-structured",
+      importKey: "credit_card_master|santander|vitest-meta-structured",
       notes: "credit_card_master|santander|1111",
-      cardLast4: "9933",
+      config: { issuer: "bci", cardLast4: "9933" },
     });
     expect(creditCardMasterMetaForAccount(id)).toEqual({ cardGroup: "BCI", cardLast4: "9933" });
   });
 
-  it("throws for an account whose import_key is not a credit card master, whatever its notes say", () => {
+  it("throws for an account without a card config row, whatever its import_key says", () => {
     const id = makeAccount({
-      importKey: "vitest-meta-not-a-master",
-      notes: "credit_card_master|santander|9934",
-      cardLast4: "9934",
+      importKey: "credit_card_master|santander|vitest-meta-no-config",
+      notes: null,
+      config: null,
     });
-    expect(() => creditCardMasterMetaForAccount(id)).toThrow(/is not a credit card master/);
+    expect(() => creditCardMasterMetaForAccount(id)).toThrow(/is not a card master/);
   });
 
   it("throws for a master without a config last4", () => {
     const id = makeAccount({
-      importKey: "credit_card_master|santander|vitest-meta-no-config",
+      importKey: "credit_card_master|santander|vitest-meta-no-last4",
       notes: null,
-      cardLast4: null,
+      config: { issuer: "santander", cardLast4: null },
     });
     expect(() => creditCardMasterMetaForAccount(id)).toThrow(/credit_card_account_config\.card_last4/);
   });
 
-  it("throws for an issuer with no web-paste card group", () => {
-    const id = makeAccount({
-      importKey: "credit_card_master|vitestbank|vitest-meta-issuer",
+  it("throws for an issuer with no web-paste card group, and for an unknown issuer", () => {
+    const cmr = makeAccount({
+      importKey: "credit_card_master|cmr|vitest-meta-issuer",
       notes: null,
-      cardLast4: "9935",
+      config: { issuer: "cmr", cardLast4: "9935" },
     });
-    expect(() => creditCardMasterMetaForAccount(id)).toThrow(/issuer "vitestbank"/);
+    expect(() => creditCardMasterMetaForAccount(cmr)).toThrow(/issuer "cmr"/);
+    const unknown = makeAccount({
+      importKey: "credit_card_master|vitestbank|vitest-meta-unknown",
+      notes: null,
+      config: { issuer: "vitestbank", cardLast4: "9936" },
+    });
+    expect(() => creditCardMasterMetaForAccount(unknown)).toThrow(/unknown card issuer/);
   });
 });
 

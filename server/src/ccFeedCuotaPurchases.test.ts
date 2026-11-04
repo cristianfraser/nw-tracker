@@ -182,8 +182,8 @@ describe("feed cuota purchases, type-aware nudge and the feed mirror", () => {
         .run(bucket.id, importKey, importKey).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, 21, 20, ?)`
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, ?, 'santander')`
     ).run(accountId, LAST4);
     insertStatement({
       source: "vitest 2026-08-25 clp.pdf",

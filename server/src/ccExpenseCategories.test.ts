@@ -23,7 +23,7 @@ import {
   isGenericTransferMerchantKey,
   registerGenericUniquePurchaseMode,
 } from "./ccExpenseCategories.js";
-import { listCreditCardGroupMasterAccountIds, listCreditCardMasterAccountIds } from "./creditCardTree.js";
+import { listCreditCardMasterAccountIds, listCreditCardMasterAccountIdsForIssuer } from "./creditCardTree.js";
 import { db } from "./db.js";
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 import { buildFlowsExpensesPayload } from "./flowsExpenses.js";
@@ -33,10 +33,10 @@ import {
 } from "./ccInstallmentManual.js";
 
 describe("ccExpenseCategories", () => {
-  it("listCreditCardMasterAccountIds includes active masters from every issuer group", () => {
+  it("listCreditCardMasterAccountIds includes active masters from every issuer", () => {
     const gastos = new Set(listCreditCardMasterAccountIds());
-    const santander = listCreditCardGroupMasterAccountIds("santander");
-    const bci = listCreditCardGroupMasterAccountIds("bci");
+    const santander = listCreditCardMasterAccountIdsForIssuer("santander");
+    const bci = listCreditCardMasterAccountIdsForIssuer("bci");
     for (const id of [...santander, ...bci]) {
       expect(gastos.has(id)).toBe(true);
     }

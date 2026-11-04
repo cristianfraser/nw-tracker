@@ -20,7 +20,6 @@ import { readFileSync } from "node:fs";
 import { db } from "../db.js";
 import { chileCalendarTodayYmd } from "../chileDate.js";
 import { seedNavTree } from "../seedNavTree.js";
-import { seedCreditCardTree } from "../seedCreditCardTree.js";
 import { ensureAccountSyncSourcesSeeded } from "../accountSyncSources.js";
 import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
 import { afpDisplaySeriesKey, AFP_UNO_CUOTA_SERIES_KEY } from "../afpUnoSeries.js";
@@ -121,9 +120,9 @@ function createAccounts(person: Person): Map<Acct, number> {
   for (const c of person.cards) {
     const id = createAccount(g("credit_cards__credit_card"), c.displayName, { key: `credit_card_master|${c.issuer}|${c.last4}` });
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, cupo_clp, cupo_usd, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, ?, ?, 21, 20, ?)`
-    ).run(id, c.key === "main" ? 8_000_000 : 12_000_000, c.key === "main" ? 3_000 : 6_000, c.last4);
+      `INSERT INTO credit_card_account_config (account_id, cupo_clp, cupo_usd, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, ?, ?, 21, 20, ?, ?)`
+    ).run(id, c.key === "main" ? 8_000_000 : 12_000_000, c.key === "main" ? 3_000 : 6_000, c.last4, c.issuer);
     ids.set(`card:${c.key}` as Acct, id);
   }
   db.prepare(`INSERT INTO bank_account_numbers (account_id, issuer, number, currency) VALUES (?, 'santander', ?, 'clp')`).run(ids.get("checking")!, DEMO_CHECKING_NUMBER);
@@ -456,7 +455,6 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   if (n > 0) throw new Error(`demo: target DB already has ${n} accounts — point NW_TRACKER_TEST_DB at a fresh file`);
 
   const ids = createAccounts(person);
-  seedCreditCardTree();
   seedNavTree();
   renameTreesCategoryToHobbies();
 

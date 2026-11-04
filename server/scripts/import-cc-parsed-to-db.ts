@@ -155,7 +155,7 @@ function main() {
       dryRun: dry,
       full: fullReimport,
       accountId: accountIdFilter,
-      groupSlug: santander ? "santander" : undefined,
+      issuer: santander ? "santander" : undefined,
     });
     for (const line of details.report) console.log(line);
     for (const problem of details.problems) console.error(`# FAIL: ${problem}`);
@@ -165,7 +165,7 @@ function main() {
   const { accountIds, discovery } = resolveImportAccountIds({
     records,
     accountId: accountIdFilter,
-    groupSlug: santander ? "santander" : undefined,
+    issuer: santander ? "santander" : undefined,
   });
 
   if (accountIds.length === 0) {

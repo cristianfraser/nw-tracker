@@ -147,8 +147,6 @@ export function isPortfolioStripCardNode(node: NavTreeNodeDto): boolean {
   if (node.account_id != null || node.expense_account_id != null) return false;
   if (resolveDashboardBucketFromNavNode(node) != null) return true;
   if (node.asset_group_slug === "liabilities") return true;
-  /** Credit card issuer groups (e.g. Santander) under Pasivos → tarjeta de crédito. */
-  if (node.asset_group_slug === "credit_cards" && (node.children?.length ?? 0) > 0) return true;
   /** e.g. brokerage_mutual_funds, retirement_apv — `api_group` without top-level bucket slug. */
   if (node.portfolio_group_id != null && (node.api_group || node.api_subgroup)) return true;
   /** Leaf asset buckets carrying a behavior id (cash_savings, checking_accounts). */

@@ -227,20 +227,6 @@
       "es": "hipoteca"
     }
   },
-  "creditCardGroup": {
-    "santander": {
-      "en": "Santander",
-      "es": "Santander"
-    },
-    "bci": {
-      "en": "BCI",
-      "es": "BCI"
-    },
-    "cmr": {
-      "en": "CMR Falabella",
-      "es": "CMR Falabella"
-    }
-  },
   "liabilities": {
     "mortgage": {
       "en": "mortgage",

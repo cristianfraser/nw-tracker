@@ -60,6 +60,22 @@ function ymdSlash(iso: string): string {
   return `${Number(d)}/${Number(m)}/${y}`;
 }
 
+
+/** Pasivos › tarjeta de crédito's liability group id. */
+function creditCardLiabilityGroupId(): number {
+  return (db.prepare(`SELECT id FROM liability_groups WHERE slug = 'liabilities_credit_card'`).get() as { id: number }).id;
+}
+
+/** File a card under Pasivos › tarjeta de crédito while the test runs. */
+function fileUnderCreditCardGroup(cardId: number): void {
+  db.prepare(
+    `INSERT INTO liability_group_items (group_id, item_kind, account_id, sort_order) VALUES (?, 'account', ?, 99)`
+  ).run(creditCardLiabilityGroupId(), cardId);
+  onTestFinished(() => {
+    db.prepare(`DELETE FROM liability_group_items WHERE account_id = ?`).run(cardId);
+  });
+}
+
 describe("credit-card close evidence", () => {
   let accountId = 0;
   let tmpDir = "";
@@ -163,8 +179,8 @@ describe("credit-card close evidence", () => {
         .run(bucket.id, importKey, importKey).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, 21, 20, ?)`
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, ?, 'santander')`
     ).run(accountId, LAST4);
     // August, closed by its statements; the CLP one announces September's close.
     insertStatement({
@@ -709,16 +725,9 @@ describe("credit-card close evidence", () => {
   it("a group's merged detalle rows show the group chart's lines", () => {
     insertSeptemberPlan();
     insertOctoberBucket();
-    // File the card under the Santander issuer so the Pasivos group pages sum it with the vitest master.
-    const santander = db.prepare(`SELECT id FROM credit_card_groups WHERE slug = 'santander'`).get() as { id: number };
-    db.prepare(
-      `INSERT INTO credit_card_group_items (group_id, item_kind, account_id, sort_order) VALUES (?, 'account', ?, 99)`
-    ).run(santander.id, accountId);
-    onTestFinished(() => {
-      db.prepare(`DELETE FROM credit_card_group_items WHERE account_id = ?`).run(accountId);
-    });
-    // The Santander issuer group: this card is its only member while the test runs.
-    const group = creditCardGroupLedgerResponse("santander");
+    // File the card under Pasivos › tarjeta de crédito so the group page sums it with the other masters.
+    fileUnderCreditCardGroup(accountId);
+    const group = creditCardGroupLedgerResponse("liabilities_credit_card");
     expect(group.account_id).toBe(0);
     expectDetalleShowsChart(group);
     // The merged September row carries this card's three unpaid cuotas on top of the other masters'.
@@ -910,25 +919,20 @@ describe("credit-card close evidence", () => {
     insertSeptemberPlanBeforeTheClose();
     // The test person's own cards hold statements through today, after this test's clock: the
     // issuer group is this card alone while it runs.
+    const groupId = creditCardLiabilityGroupId();
     const others = db
-      .prepare(`SELECT * FROM credit_card_group_items WHERE item_kind = 'account' AND account_id != ?`)
-      .all(accountId) as Record<string, unknown>[];
-    db.prepare(`DELETE FROM credit_card_group_items WHERE item_kind = 'account' AND account_id != ?`).run(accountId);
+      .prepare(`SELECT * FROM liability_group_items WHERE group_id = ? AND item_kind = 'account'`)
+      .all(groupId) as Record<string, unknown>[];
+    db.prepare(`DELETE FROM liability_group_items WHERE group_id = ? AND item_kind = 'account'`).run(groupId);
     onTestFinished(() => {
       for (const r of others) {
         const cols = Object.keys(r);
-        db.prepare(`INSERT INTO credit_card_group_items (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).run(
+        db.prepare(`INSERT INTO liability_group_items (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).run(
           ...cols.map((c) => r[c])
         );
       }
     });
-    const santander = db.prepare(`SELECT id FROM credit_card_groups WHERE slug = 'santander'`).get() as { id: number };
-    db.prepare(
-      `INSERT INTO credit_card_group_items (group_id, item_kind, account_id, sort_order) VALUES (?, 'account', ?, 99)`
-    ).run(santander.id, accountId);
-    onTestFinished(() => {
-      db.prepare(`DELETE FROM credit_card_group_items WHERE account_id = ?`).run(accountId);
-    });
+    fileUnderCreditCardGroup(accountId);
     const group = creditCardGroupLedgerResponse("liabilities_credit_card");
     expectDetalleShowsChart(group);
     const october = group.facturaciones!.find((f) => f.billing_month === "2026-10")!;

@@ -1,17 +1,6 @@
 import { collectNavAccountDataKeys } from "./portfolioNavFromApi";
 import type { AccountListRow, NavTreeNodeDto } from "./types";
 
-function leafBucketGroupSlug(account: AccountListRow): string {
-  // Portfolio group slugs use single underscores (e.g. "cash_savings"); asset group slugs
-  // use double underscores as level separators (e.g. "cash_eqs__cash_savings__usd").
-  // When group_slug is a portfolio slug, use it directly so chart-inactive accounts that
-  // are missing from the sidebar nav tree get inserted into the correct sub-bucket.
-  if (account.group_slug && !account.group_slug.includes("__")) return account.group_slug;
-  const slug = account.bucket_slug ?? account.group_slug;
-  const idx = slug.indexOf("__");
-  return idx >= 0 ? slug.slice(0, idx) : slug;
-}
-
 function accountNavLeafFromListRow(acc: AccountListRow): NavTreeNodeDto {
   return {
     node_id: `acc.${acc.id}`,
@@ -39,19 +28,13 @@ function accountNavLeafFromListRow(acc: AccountListRow): NavTreeNodeDto {
   };
 }
 
-/** Deepest portfolio group node matching the account leaf bucket (fallback: `root`). */
-function findPlacementGroup(root: NavTreeNodeDto, account: AccountListRow): NavTreeNodeDto {
-  const target = leafBucketGroupSlug(account);
-  const bucket = account.bucket_slug ?? account.group_slug;
-  let match: NavTreeNodeDto = root;
+/** The deepest group of the tree whose server-stated members (`member_account_ids`) name the account. */
+function deepestGroupClaiming(root: NavTreeNodeDto, accountId: number): NavTreeNodeDto | null {
+  let match: NavTreeNodeDto | null = null;
   let matchDepth = -1;
-
   const visit = (node: NavTreeNodeDto, depth: number) => {
     if (node.account_id != null) return;
-    const slug = node.slug;
-    const asset = node.asset_group_slug ?? "";
-    const hit = slug === target || asset === target || slug === bucket || asset === bucket;
-    if (hit && depth >= matchDepth) {
+    if (node.member_account_ids?.includes(accountId) && depth > matchDepth) {
       match = node;
       matchDepth = depth;
     }
@@ -62,8 +45,11 @@ function findPlacementGroup(root: NavTreeNodeDto, account: AccountListRow): NavT
 }
 
 /**
- * Sidebar nav omits `chart_inactive` leaves; group-page “Cuentas en esta vista” should list
- * every portfolio-group member from `GET /api/accounts?portfolio_group=…`.
+ * The sidebar nav leaves out accounts that hold nothing today and retired cards; a page's accounts
+ * tree («Cuentas en esta vista») lists every account of `GET /api/accounts?portfolio_group=…`. Each
+ * missing one goes under the deepest group whose `member_account_ids` — the server's membership,
+ * hidden accounts included — names it. An account no group names is a mismatch between the two
+ * server answers, and throws.
  */
 export function enrichNavTreeWithAllAccounts(
   root: NavTreeNodeDto,
@@ -80,7 +66,12 @@ export function enrichNavTreeWithAllAccounts(
   if (!missing.length) return tree;
 
   for (const acc of [...missing].sort((a, b) => a.id - b.id)) {
-    const parent = findPlacementGroup(tree, acc);
+    const parent = deepestGroupClaiming(tree, acc.id);
+    if (!parent) {
+      throw new Error(
+        `Account ${acc.id} (${acc.name}) is listed for «${root.slug}» but no group of its nav tree has it as a member`
+      );
+    }
     parent.children = [...parent.children, accountNavLeafFromListRow(acc)];
   }
   return tree;

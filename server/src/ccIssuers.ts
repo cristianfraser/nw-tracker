@@ -1,7 +1,8 @@
 /**
- * Card issuers: each is a credit-card group (`credit_card_groups`, its Pasivos page) holding the
- * card masters whose `accounts.import_key` starts with `credit_card_master|<slug>|`. A leaf module
- * so the tree seed and the aggregation cache read one list.
+ * Card issuers: a card master's issuer is `credit_card_account_config.issuer` (one of these slugs;
+ * its `accounts.import_key`, `credit_card_master|<slug>|<last4>`, is the card's identity only). An
+ * issuer carries the rules a statement does not state; its `sort_order` orders the cards under
+ * Pasivos › tarjeta de crédito. A leaf module.
  */
 /**
  * How an issuer sets a facturación's PAGAR HASTA when no statement has printed it yet (an open,
@@ -17,32 +18,24 @@ export type CcDerivedPayByRule =
 
 type CcIssuerDef = {
   slug: string;
-  label: string;
   sort_order: number;
-  label_i18n_key: string;
   derived_pay_by: CcDerivedPayByRule;
 };
 
 export const CC_ISSUERS = [
   {
     slug: "santander",
-    label: "Santander",
     sort_order: 0,
-    label_i18n_key: "creditCardGroup.santander",
     derived_pay_by: { kind: "next_month_day", day: 10, prior_business_day: true },
   },
   {
     slug: "bci",
-    label: "BCI",
     sort_order: 10,
-    label_i18n_key: "creditCardGroup.bci",
     derived_pay_by: { kind: "next_month_day", day: 10, prior_business_day: false },
   },
   {
     slug: "cmr",
-    label: "CMR Falabella",
     sort_order: 20,
-    label_i18n_key: "creditCardGroup.cmr",
     derived_pay_by: { kind: "close_plus_days", days: 16 },
   },
 ] as const satisfies readonly CcIssuerDef[];
@@ -59,10 +52,9 @@ export function ccIssuerBySlug(slug: string): (typeof CC_ISSUERS)[number] | null
   return CC_ISSUERS.find((i) => i.slug === slug) ?? null;
 }
 
-/** The issuer slug of a card master's `import_key` (`credit_card_master|<slug>|<last4>`), else null. */
-export function ccIssuerSlugFromImportKey(importKey: string | null | undefined): CcIssuerSlug | null {
-  const m = /^credit_card_master\|([^|]+)\|/.exec(String(importKey ?? ""));
-  if (!m) return null;
-  const issuer = ccIssuerBySlug(m[1]!);
-  return issuer ? issuer.slug : null;
+/** A stored issuer: one of `CC_ISSUERS`, else it throws (an issuer the code has no rules for). */
+export function requireCcIssuerSlug(value: string | null | undefined, context: string): CcIssuerSlug {
+  const issuer = value != null ? ccIssuerBySlug(value) : null;
+  if (!issuer) throw new Error(`${context}: unknown card issuer ${JSON.stringify(value ?? null)}`);
+  return issuer.slug;
 }

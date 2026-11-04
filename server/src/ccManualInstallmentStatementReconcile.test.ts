@@ -201,8 +201,8 @@ describe("reconcileManualInstallmentPurchasesForStatements — web-paste twins",
     );
     accountIds.push(accountId);
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, 21, 20, '4747')`
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, '4747', 'santander')`
     ).run(accountId);
 
     const statementId = Number(
@@ -380,8 +380,8 @@ describe("reconcile against a «compras en cuotas en el período» row (00/N, e-
     );
     accountIds.push(accountId);
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, 21, 20, '4848')`
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, '4848', 'santander')`
     ).run(accountId);
 
     const statementId = Number(

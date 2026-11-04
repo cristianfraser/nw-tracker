@@ -7,7 +7,6 @@ import type {
   CcBillingDetailStatementRow,
   CcFacturacionRow,
 } from "./ccBillingViews.js";
-import { getCreditCardGroupBySlug, listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
 import {
   creditCardInstallmentsResponse,
   type CcInstallmentsTotals,
@@ -32,14 +31,11 @@ function sumNullable(a: number | null | undefined, b: number | null | undefined)
 }
 
 /**
- * CC masters a Pasivos-side group page sums: an issuer page's config members, or every
- * operational master for the credit-card group / Pasivos root. The daily historial block
- * (`ccDailyHistorialBlock.ts`) reads the same list so the D↔M toggle keeps one membership.
+ * CC masters a Pasivos-side group page sums: every operational master for the credit-card group
+ * and the Pasivos root. The daily historial block (`ccDailyHistorialBlock.ts`) reads the same
+ * list so the D↔M toggle keeps one membership.
  */
 export function resolveCcMasterAccountIds(portfolioGroupSlug: string): number[] {
-  if (getCreditCardGroupBySlug(portfolioGroupSlug)) {
-    return listCreditCardGroupMasterAccountIds(portfolioGroupSlug);
-  }
   if (portfolioGroupSlug === "liabilities_credit_card" || portfolioGroupSlug === "liabilities") {
     return listLiabilitiesTabAccountRows("credit_card").map((r) =>
       r.account_id

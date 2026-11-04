@@ -1,5 +1,6 @@
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
-import { listCreditCardGroupMasterAccountIds } from "./creditCardTree.js";
+import type { CcIssuerSlug } from "./ccIssuers.js";
+import { listCreditCardMasterAccountIdsForIssuer } from "./creditCardTree.js";
 
 /** Last4 from CSV `card_last4` or `source_pdf` filename (e.g. `… tarjeta <last4>.pdf`). */
 export function cardLast4FromParsedRow(row: Record<string, string>): string {
@@ -55,12 +56,12 @@ export type ResolveImportAccountIdsOpts = {
   records: Record<string, string>[];
   /** Restrict to one master account (still requires matching card rows in CSV). */
   accountId?: number;
-  /** Restrict discovered ids to masters under this credit_card_group slug. */
-  groupSlug?: string;
+  /** Restrict discovered ids to the masters of this issuer. */
+  issuer?: CcIssuerSlug;
 };
 
 /**
- * Default: every card last4 in the CSV. Optional filters: `--account-id`, `--santander` (group slug).
+ * Default: every card last4 in the CSV. Optional filters: `--account-id`, `--santander` (issuer).
  */
 export function resolveImportAccountIds(
   opts: ResolveImportAccountIdsOpts
@@ -68,8 +69,8 @@ export function resolveImportAccountIds(
   const discovery = discoverMasterAccountIdsFromParsedRows(opts.records);
   let accountIds = discovery.accountIds;
 
-  if (opts.groupSlug) {
-    const allowed = new Set(listCreditCardGroupMasterAccountIds(opts.groupSlug));
+  if (opts.issuer) {
+    const allowed = new Set(listCreditCardMasterAccountIdsForIssuer(opts.issuer));
     accountIds = accountIds.filter((id) => allowed.has(id));
   }
 

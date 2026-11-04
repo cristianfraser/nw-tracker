@@ -10,9 +10,6 @@ import { sortNavTreeLeavesFirst, type SidebarNavNode } from "./sidebarNavTree";
  * Keep in sync with `grep -rh 'label_i18n_key: "' server/src`.
  */
 export const SERVER_NAV_LABEL_I18N_KEYS = [
-  "creditCardGroup.bci",
-  "creditCardGroup.cmr",
-  "creditCardGroup.santander",
   "dashboard.buckets.cash_eqs",
   "dashboard.buckets.cash_savings",
   "dashboard.buckets.real_estate",

@@ -131,20 +131,14 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
 
   beforeAll(() => {
     const ccGroup = db
-      .prepare(
-        `SELECT g.id FROM credit_card_groups g
-         JOIN liability_group_items lgi
-           ON lgi.child_credit_card_group_id = g.id AND lgi.item_kind = 'credit_card_group'
-         JOIN liability_groups lg ON lg.id = lgi.group_id AND lg.slug = 'liabilities_credit_card'
-         ORDER BY g.id LIMIT 1`
-      )
+      .prepare(`SELECT id FROM liability_groups WHERE slug = 'liabilities_credit_card'`)
       .get() as { id: number } | undefined;
     const ccLeaf = db
       .prepare(`SELECT id FROM asset_groups WHERE slug = 'credit_cards__credit_card'`)
       .get() as { id: number } | undefined;
     if (!ccGroup || !ccLeaf) {
       throw new Error(
-        "test DB has no credit-card group under liabilities_credit_card / credit_cards__credit_card leaf"
+        "test DB has no liabilities_credit_card group / credit_cards__credit_card leaf"
       );
     }
 
@@ -152,9 +146,7 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
       .prepare(
         `SELECT m.id, m.exclude_from_group_totals AS excl
          FROM accounts m
-         JOIN credit_card_group_items i ON i.account_id = m.id AND i.item_kind = 'account'
-         JOIN liability_group_items lgi
-           ON lgi.child_credit_card_group_id = i.group_id AND lgi.item_kind = 'credit_card_group'
+         JOIN liability_group_items lgi ON lgi.account_id = m.id AND lgi.item_kind = 'account'
          JOIN liability_groups lg ON lg.id = lgi.group_id AND lg.slug = 'liabilities_credit_card'`
       )
       .all() as { id: number; excl: number }[];
@@ -173,7 +165,7 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
         .run(ccLeaf.id, key, key).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO credit_card_group_items (group_id, item_kind, account_id, sort_order)
+      `INSERT INTO liability_group_items (group_id, item_kind, account_id, sort_order)
        VALUES (?, 'account', ?, 999)`
     ).run(ccGroup.id, cardId);
     db.prepare(
@@ -188,7 +180,7 @@ describe("cash_eqs net of linked cards — every path, one signed rule", () => {
   afterAll(() => {
     if (cardId != null) {
       db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(cardId);
-      db.prepare(`DELETE FROM credit_card_group_items WHERE account_id = ?`).run(cardId);
+      db.prepare(`DELETE FROM liability_group_items WHERE account_id = ?`).run(cardId);
       db.prepare(`DELETE FROM accounts WHERE id = ?`).run(cardId);
     }
     for (const [id, excl] of setAsideFlags) {

@@ -1,4 +1,6 @@
 import { db } from "./db.js";
+import { invalidateLinkedCreditCardAggregationCache } from "./aggregationCache.js";
+import { listCreditCardMasterAccountIdsInNavOrder } from "./creditCardTree.js";
 
 const upsertGroup = db.prepare(`
   INSERT INTO liability_groups (parent_id, slug, label, sort_order, label_i18n_key, route_path, liability_kind)
@@ -22,13 +24,11 @@ const insertAccountChild = db.prepare(`
   ON CONFLICT(group_id, account_id) DO UPDATE SET sort_order = excluded.sort_order
 `);
 
-const insertCreditCardGroupChild = db.prepare(`
-  INSERT INTO liability_group_items (group_id, item_kind, child_credit_card_group_id, sort_order)
-  VALUES (?, 'credit_card_group', ?, ?)
-  ON CONFLICT(group_id, child_credit_card_group_id) DO UPDATE SET sort_order = excluded.sort_order
-`);
-
-/** Idempotent Pasivos subtree: CC issuer groups; mortgage leaf → the mortgage master account. */
+/**
+ * Idempotent Pasivos subtree: tarjeta de crédito → every operational card master (superseded ones
+ * left out; a nav-retired card stays a member, the nav tree hides it); hipoteca → the mortgage
+ * master account.
+ */
 export function seedLiabilitiesTree(): void {
   const tx = db.transaction(() => {
     upsertGroup.run({
@@ -55,12 +55,9 @@ export function seedLiabilitiesTree(): void {
     deleteGroupItems.run(ccGroupId);
     deleteGroupItems.run(mtgGroupId);
 
-    const ccIssuerGroups = db
-      .prepare(`SELECT id, slug FROM credit_card_groups ORDER BY sort_order, id`)
-      .all() as { id: number; slug: string }[];
     let ccSort = 0;
-    for (const g of ccIssuerGroups) {
-      insertCreditCardGroupChild.run(ccGroupId, g.id, ccSort++);
+    for (const id of listCreditCardMasterAccountIdsInNavOrder()) {
+      insertAccountChild.run(ccGroupId, id, ccSort++);
     }
 
     const mtgMaster = db
@@ -71,4 +68,5 @@ export function seedLiabilitiesTree(): void {
     }
   });
   tx();
+  invalidateLinkedCreditCardAggregationCache();
 }

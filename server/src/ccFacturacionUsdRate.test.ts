@@ -102,8 +102,8 @@ describe("facturación dollars at the rate actually paid", () => {
         .run(bucket.id).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, 21, 20, ?)`
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, ?, 'santander')`
     ).run(accountId, LAST4);
     insertStatement("23/07/2026", "23/06/2026", "23/07/2026", "clp", 100_000, "10/08/2026");
     insertStatement("23/07/2026", "23/06/2026", "23/07/2026", "usd", 705.5, "10/08/2026");
@@ -259,8 +259,8 @@ describe("dollar payment lines show the pesos actually paid for them", () => {
         .run(bucket.id).lastInsertRowid
     );
     db.prepare(
-      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4)
-       VALUES (?, 21, 20, ?)`
+      `INSERT INTO credit_card_account_config (account_id, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
+       VALUES (?, 21, 20, ?, 'santander')`
     ).run(accountId, LAST4);
     insertStatement("23/07/2026", "23/06/2026", "23/07/2026", "clp", 100_000, "10/08/2026");
     insertStatement("23/07/2026", "23/06/2026", "23/07/2026", "usd", 700, "10/08/2026");
