@@ -1,5 +1,5 @@
 import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import type { NavTreeNodeDto } from "./navTree.js";
 
 /**
@@ -85,13 +85,13 @@ function chartBucketAccountChildren(root: NavTreeNodeDto): NavTreeNodeDto[] {
   return (root.children ?? []).filter(isChartBucketAccountNode);
 }
 
-/** Today's CLP mark of a nav node: its account, or the sum over a group's subtree. */
-function navNodeMarkClp(n: NavTreeNodeDto, today: string): number {
+/** A nav node's CLP mark on a day: its account, or the sum over a group's subtree. */
+function navNodeMarkClp(n: NavTreeNodeDto, ymd: string): number {
   const ids = n.account_id != null && n.account_id > 0 ? [n.account_id] : collectSubtreeAccountIds(n);
   let sum = 0;
   let any = false;
   for (const id of ids) {
-    const mark = accountMarkClpAtYmd(id, today);
+    const mark = accountMarkClpAtYmd(id, ymd);
     if (mark != null && Number.isFinite(mark.value_clp)) {
       sum += mark.value_clp;
       any = true;
@@ -102,14 +102,16 @@ function navNodeMarkClp(n: NavTreeNodeDto, today: string): number {
 
 /**
  * Graph ordering for account-node buckets, and for the first-level children of a bucket that
- * holds accounts beside sub-buckets: current valuation (today's CLP mark; a group's is its
- * subtree's) descending, then label. A group-only bucket keeps the hand-set nav order —
- * matching the per-account row ordering (see groupTabOrdering.ts).
+ * holds accounts beside sub-buckets: yesterday's close (CLP mark; a group's is its subtree's)
+ * descending, then label. A group-only bucket keeps the hand-set nav order — matching the
+ * per-account row ordering (see groupTabOrdering.ts). Yesterday's, not today's (2026-11-04): an
+ * order read from live prices made the sidebar and every page using it depend on every price,
+ * so each move refetched them (`X-Live-Inputs`); the order now holds for the day.
  */
 function sortNavNodesByMarkDesc(nodes: NavTreeNodeDto[]): NavTreeNodeDto[] {
-  const today = chileCalendarTodayYmd();
+  const yesterday = chileCalendarAddDays(chileCalendarTodayYmd(), -1);
   const value = new Map<NavTreeNodeDto, number>();
-  for (const n of nodes) value.set(n, navNodeMarkClp(n, today));
+  for (const n of nodes) value.set(n, navNodeMarkClp(n, yesterday));
   return [...nodes].sort((a, b) => {
     const va = value.get(a)!;
     const vb = value.get(b)!;

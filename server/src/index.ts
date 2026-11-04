@@ -50,6 +50,7 @@ import { startJobQueueExecutor } from "./jobQueueExecutor.js";
 import { registerUsageRoutes } from "./routes/usage.js";
 import { startUsageLogFlusher, usageLogEnabled, usageLogMiddleware } from "./usageLog.js";
 import { jsonResponseMiddleware } from "./jsonResponse.js";
+import { LIVE_INPUTS_HEADER, liveInputsMiddleware } from "./liveInputsHeader.js";
 
 seedNavTree();
 
@@ -71,13 +72,14 @@ process.on("unhandledRejection", (reason) => {
   );
 });
 
-app.use(cors({ origin: resolveCorsOrigins() }));
+app.use(cors({ origin: resolveCorsOrigins(), exposedHeaders: [LIVE_INPUTS_HEADER] }));
 // The cache warmer steps aside while a request is in flight (apiRequestsInFlight.ts).
 app.use(apiInFlightMiddleware());
 app.use(httpRequestLogMiddleware);
 if (usageLogEnabled()) app.use(usageLogMiddleware());
 // `res.json` on /api: serialized once per cached payload, gzip/brotli above 1 KB (jsonResponse.ts).
 app.use(jsonResponseMiddleware());
+app.use(liveInputsMiddleware());
 if (demoModeEnabled()) {
   // Render terminates TLS: without this every visitor's req.ip is the proxy's, so the
   // analytics visitor hash would collapse to a single id.

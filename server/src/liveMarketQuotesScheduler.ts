@@ -2,6 +2,10 @@
  * Polls Yahoo equities/crypto + CLP=X (while the fx day is open, `forexDay.ts`) or mirrors the
  * stored `fx_daily` close after it ends. HTTP reads DB only.
  *
+ * Since 2026-11-04 Yahoo's price stream (`yahooPriceStream.ts`, started here) carries the live
+ * prices while it is connected: a tick fetches only the symbols the stream does not cover now
+ * (a closed market, a quiet symbol, a dead socket), and keeps the base cadence in session.
+ *
  * Env: `LIVE_QUOTES_SYNC_ENABLED`, `LIVE_QUOTES_INTERVAL_MS` (default 5 min),
  * `LIVE_QUOTES_SESSION_INTERVAL_MS` (default 2 min, while a priced market is open).
  *
@@ -34,6 +38,7 @@ import {
   tickFailedWholesale,
 } from "./liveMarketQuotesSchedulerPolicy.js";
 import { ensureWatchlistEquityHistoryDepth, listWatchlistEquitySeriesKeys } from "./watchlist.js";
+import { liveStreamConnected, liveStreamCoverage, startYahooPriceStream } from "./yahooPriceStream.js";
 
 let inFlight = false;
 let schedulerEnabled = false;
@@ -78,7 +83,9 @@ async function schedulerTick(trigger: TickTrigger): Promise<void> {
     }
     lastTickStartedAtMs = Date.now();
     loadRootDotenv();
-    result = await syncAllLiveMarketQuotes();
+    // Symbols the price stream carries now are its own; the poll fetches the rest.
+    const coverage = liveStreamCoverage();
+    result = await syncAllLiveMarketQuotes(new Date(), { skipTickers: coverage.tickers, skipLiveFx: coverage.fx });
   } catch (e) {
     console.error(`live-quotes:scheduler — error: ${e instanceof Error ? e.message : e}`);
   }
@@ -138,6 +145,7 @@ export function startLiveMarketQuotesScheduler(): void {
   onDemoMarketWake(() => void schedulerTick("wake"));
   void schedulerTick("boot");
   scheduleNextTick();
+  startYahooPriceStream();
 }
 
 /**
@@ -156,7 +164,9 @@ function scheduleNextTick(): void {
   const now = Date.now();
   let at: number;
   try {
-    at = nextLiveQuotesTickAtMs(now, intervalMs, sessionIntervalMs, pricedSessionOpenPredicate());
+    // With the stream up, the poll is only the backstop: no faster cadence in session.
+    const sessionStep = liveStreamConnected() ? intervalMs : sessionIntervalMs;
+    at = nextLiveQuotesTickAtMs(now, intervalMs, sessionStep, pricedSessionOpenPredicate());
   } catch (e) {
     console.error(`live-quotes:scheduler — next tick error: ${e instanceof Error ? e.message : e}`);
     at = now + intervalMs;

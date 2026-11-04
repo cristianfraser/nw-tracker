@@ -18,8 +18,8 @@ export function checkSyncDimmingChanged(): boolean {
   lastDimmed = dimmed;
   if (changed) {
     invalidateMarketDataAggregations("live_tail", { tickers: new Set(), fx: false, syncDimming: true });
-    // The stamp tells the browser what it shows has changed; it refetches once the warm lands.
-    noteLiveQuotesChanged(new Date().toISOString());
+    // The stamp tells the browser the dimming changed; it refetches what read it.
+    noteLiveQuotesChanged(new Date().toISOString(), { dimming: true });
   }
   return changed;
 }

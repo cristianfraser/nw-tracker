@@ -1,5 +1,6 @@
 import zlib from "node:zlib";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { setLiveInputsHeader } from "./liveInputsHeader.js";
 
 /**
  * JSON responses: serialized once per cached payload, and compressed on the wire.
@@ -106,6 +107,7 @@ export function preferredEncoding(header: string | undefined): Encoding | null {
 
 /** `res.json(payload)` with the cached serialization and compression described above. */
 export function sendJson(req: Request, res: Response, payload: unknown, originalJson: Response["json"]): Response {
+  setLiveInputsHeader(res);
   if (payload === null || typeof payload !== "object" || res.getHeader("Content-Type") !== undefined) {
     // Scalars and a preset Content-Type: Express's own path (rare, small).
     return originalJson.call(res, payload);

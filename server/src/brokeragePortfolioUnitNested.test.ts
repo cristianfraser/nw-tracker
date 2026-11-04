@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { clearAggregationCache } from "./aggregationCache.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import { navChartBucketNavNodes } from "./groupChartBuckets.js";
 import { getNavChartGroupNodeBySlug, getSidebarNavPayload, type NavTreeNodeDto } from "./navTree.js";
@@ -49,11 +49,12 @@ describe("brokerage portfolio unit nested under Acciones", () => {
     stockId = Number(insAcc.run(agId(STOCK_LEAF), "Vitest PFN stock", `${NOTE}|stock`).lastInsertRowid);
     holdId = Number(insAcc.run(agId(HOLD_LEAF), "Vitest PFN holding", `${NOTE}|hold`).lastInsertRowid);
     cajaId = Number(insAcc.run(agId(CAJA_LEAF), "Vitest PFN caja", `${NOTE}|caja`).lastInsertRowid);
-    const today = chileCalendarTodayYmd();
+    // Chart order reads yesterday's close (`sortNavNodesByMarkDesc`).
+    const yesterday = chileCalendarAddDays(chileCalendarTodayYmd(), -1);
     const val = db.prepare(`INSERT INTO valuations (account_id, as_of_date, value, currency) VALUES (?, ?, ?, 'clp')`);
-    val.run(stockId, today, 1_000);
-    val.run(holdId, today, 900_000_000);
-    val.run(cajaId, today, 50_000);
+    val.run(stockId, yesterday, 1_000);
+    val.run(holdId, yesterday, 900_000_000);
+    val.run(cajaId, yesterday, 50_000);
 
     db.prepare(
       `INSERT INTO portfolio_groups (
