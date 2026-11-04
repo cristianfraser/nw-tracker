@@ -733,6 +733,14 @@
     "taxReturn": {
       "en": "Tax return",
       "es": "Declaración de renta"
+    },
+    "expandGroup": {
+      "en": "Expand {{label}}",
+      "es": "Abrir {{label}}"
+    },
+    "collapseGroup": {
+      "en": "Collapse {{label}}",
+      "es": "Cerrar {{label}}"
     }
   },
   "panel": {

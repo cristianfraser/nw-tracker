@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accountChartInactive } from "./accountChartInactive.js";
-import { db } from "./db.js";
 import { getNetWorthNavGroupNode, navGroupChartInactive, type NavTreeNodeDto } from "./navTree.js";
-import { isUsdCashAccount } from "./usdCashAccounts.js";
 
 function countNavAccounts(node: NavTreeNodeDto): number {
   let n = node.account_id != null ? 1 : 0;
@@ -109,20 +107,16 @@ describe("getNetWorthNavGroupNode", () => {
     expect(checked).toBeGreaterThan(0);
   });
 
-  it("keeps USD cash in sidebar nav when chart-inactive", () => {
-    const row = db
-      .prepare(
-        `SELECT a.id
-         FROM accounts a
-         JOIN asset_groups g ON g.id = a.asset_group_id
-         WHERE a.notes LIKE '%kind=usd%'
-         LIMIT 1`
-      )
-      .get() as { id: number } | undefined;
-    if (!row || !isUsdCashAccount(row.id) || !accountChartInactive(row.id)) return;
-
+  it("leaves out every account that holds nothing today, dollar cash included", () => {
     const filtered = getNetWorthNavGroupNode();
-    if (!filtered) return;
-    expect(navTreeHasAccountId(filtered, row.id)).toBe(true);
+    const full = getNetWorthNavGroupNode({ includeChartInactiveAccounts: true });
+    if (!filtered || !full) return;
+    const accountIds = (n: NavTreeNodeDto): number[] => [
+      ...(n.account_id != null ? [n.account_id] : []),
+      ...n.children.flatMap(accountIds),
+    ];
+    for (const id of accountIds(full)) {
+      expect(navTreeHasAccountId(filtered, id), `account ${id}`).toBe(!accountChartInactive(id));
+    }
   });
 });

@@ -5,7 +5,6 @@ import { db } from "./db.js";
 import type { NavNodeChartBucketsDto } from "./groupChartBuckets.js";
 import { getLiabilitiesNavChildren } from "./liabilityTree.js";
 import { listSingleSourceReferenceSlugsByChartHost } from "./portfolioGroupReference.js";
-import { isUsdCashAccount } from "./usdCashAccounts.js";
 
 export type NavTreeBuildOptions = {
   /** Panel / admin views: keep accounts with long zero valuation tails in the tree. */
@@ -185,13 +184,10 @@ function buildNode(
       }
     } else if (item.item_kind === "account" && item.account_id != null) {
       memberIds.add(item.account_id);
-      if (
-        !options.includeChartInactiveAccounts &&
-        accountChartInactive(item.account_id) &&
-        !isUsdCashAccount(item.account_id)
-      ) {
-        continue;
-      }
+      // An account that holds nothing today leaves the tree (the sidebar; group pages list it
+      // under «Liquidated»): a dollar account too, now that inactive means an empty ledger, not a
+      // long zero tail that a new account would also have shown.
+      if (!options.includeChartInactiveAccounts && accountChartInactive(item.account_id)) continue;
       const meta = accountMeta.get(item.account_id);
       const color_rgb = meta?.color_rgb ?? getAccountColorRgb(item.account_id);
       children.push({
