@@ -3,7 +3,12 @@ import { chileCalendarTodayYmd } from "../chileDate.js";
 import { demoVisitorForRequest, noteDemoVisitSrc } from "../demoAnalytics.js";
 import { demoModeEnabled } from "../demoMode.js";
 import { recordUsagePageView, usageLogEnabled, type UsagePageViewSample } from "../usageLog.js";
-import { normalizeUsagePagePath, USAGE_PAGE_VIEW_PATH, usagePageRoute } from "../usagePagePath.js";
+import {
+  normalizeUsagePagePath,
+  USAGE_NOT_FOUND_ROUTE,
+  USAGE_PAGE_VIEW_PATH,
+  usagePageRoute,
+} from "../usagePagePath.js";
 import { buildUsageEndpointTrend, buildUsageReport, parseUsageReportWindow } from "../usageReport.js";
 
 type BeaconOutcome = Exclude<UsagePageViewSample["outcome"], "untimed">;
@@ -33,11 +38,15 @@ export function parseUsagePageViewBody(
     return { ok: false, error: "fetched_queries must be a non-negative integer" };
   }
   if (typeof b.initial !== "boolean") return { ok: false, error: "initial must be a boolean" };
+  // Absent from a client built before the flag: a page view, as before.
+  if (b.not_found !== undefined && typeof b.not_found !== "boolean") {
+    return { ok: false, error: "not_found must be a boolean" };
+  }
   return {
     ok: true,
     sample: {
       viewed_at: now.toISOString(),
-      route: usagePageRoute(path),
+      route: b.not_found === true ? USAGE_NOT_FOUND_ROUTE : usagePageRoute(path),
       path,
       visitor,
       initial: b.initial,

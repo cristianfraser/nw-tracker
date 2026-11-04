@@ -120,6 +120,45 @@ describe("usage log over HTTP", () => {
     expect(trend.points[0]?.count).toBe(0);
   });
 
+  it("records a page that found nothing under /404, keeping the paths that led there", async () => {
+    const view = (path: string, notFound?: boolean) =>
+      fetch(`${base}/api/usage/page-view`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          path,
+          initial: true,
+          outcome: "settled",
+          settle_ms: 100,
+          fetched_queries: 0,
+          ...(notFound === undefined ? {} : { not_found: notFound }),
+        }),
+      });
+    expect((await view("/accounts/32", true)).status).toBe(204);
+    await view("/accounts/32", true);
+    await view("/nowhere", true);
+    await view("/account/32", false);
+    await view("/account/33");
+    const bad = await fetch(`${base}/api/usage/page-view`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "/x", initial: true, outcome: "left", settle_ms: null, fetched_queries: 0, not_found: "yes" }),
+    });
+    expect(bad.status).toBe(400);
+    flushUsageLog();
+
+    const pages = buildUsageReport(7).pages;
+    expect(pages.map((p) => [p.route, p.views])).toEqual([
+      ["/404", 3],
+      ["/account/:id", 2],
+    ]);
+    expect(pages[0]!.not_found_paths?.map((p) => [p.path, p.views])).toEqual([
+      ["/accounts/32", 2],
+      ["/nowhere", 1],
+    ]);
+    expect(pages[1]!.not_found_paths).toBeNull();
+  });
+
   it("adds a second flush of the same hour onto the stored row", async () => {
     await fetch(`${base}/api/boom`);
     flushUsageLog();

@@ -11,7 +11,11 @@ export type UsagePageRow = {
   settle_max_ms: number | null;
   avg_fetched_queries: number;
   last_viewed_at: string;
+  /** The `/404` row only: the paths whose page found nothing, most viewed first. */
+  not_found_paths: UsageNotFoundPath[] | null;
 };
+
+export type UsageNotFoundPath = { path: string; views: number; last_viewed_at: string };
 
 export type UsageEndpointRow = {
   key: string;

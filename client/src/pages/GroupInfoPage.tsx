@@ -49,6 +49,7 @@ import { timeRangeToDays } from "../timeRange";
 import { useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPrefs";
 import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
+import { useMarkUsagePageNotFound } from "../usagePageTiming";
 /** Portfolio / asset-class group page: shared shell via {@link GroupInfoBase}, group-specific charts. */
 export function GroupInfoPage() {
   const { t } = useTranslation();
@@ -365,11 +366,7 @@ export function GroupInfoPage() {
     q.isPending || q.isPlaceholderData;
 
   if (navSettled && (!navMatchNode || !portfolioGroup)) {
-    return (
-      <main>
-        <p className="error">{t("groupPage.notFound")}</p>
-      </main>
-    );
+    return <GroupNotFound />;
   }
 
   if (err) {
@@ -498,5 +495,16 @@ export function GroupInfoPage() {
       }
       exportSlot={<ExportToolbarButton exportPath={`/api/groups/${portfolioGroup}/export.xlsx`} />}
     />
+  );
+}
+
+/** An unknown group slug: says so, and counts the view under `/404` in the usage log. */
+function GroupNotFound() {
+  const { t } = useTranslation();
+  useMarkUsagePageNotFound();
+  return (
+    <main>
+      <p className="error">{t("groupPage.notFound")}</p>
+    </main>
   );
 }

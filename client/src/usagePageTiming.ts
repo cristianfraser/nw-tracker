@@ -25,6 +25,19 @@ const TIMEOUT_MS = 60_000;
 
 type Outcome = "settled" | "left" | "hidden" | "timeout";
 
+/** The pathname whose page said it found nothing to show (`useMarkUsagePageNotFound`). */
+let notFoundPathname: string | null = null;
+
+/**
+ * Called by a page that renders «not found» (the catch-all route, an unknown group): its view is
+ * recorded under `/404`, with the path that led there. Set while rendering, not in an effect: a
+ * view can be reported in the commit's own effects (a hidden tab finishes at once), and a child
+ * renders before any effect of that commit runs. Idempotent, so a repeated render is harmless.
+ */
+export function useMarkUsagePageNotFound(): void {
+  notFoundPathname = useLocation().pathname;
+}
+
 function captureSrcTag(): string | null {
   try {
     const fromUrl = new URLSearchParams(window.location.search).get("src");
@@ -42,6 +55,7 @@ function sendPageView(body: {
   outcome: Outcome;
   settle_ms: number | null;
   fetched_queries: number;
+  not_found: boolean;
 }): void {
   const payload = JSON.stringify({ ...body, src: captureSrcTag() });
   const blob = new Blob([payload], { type: "application/json" });
@@ -84,12 +98,15 @@ export function useUsagePageTiming(): void {
     const finish = (outcome: Outcome) => {
       if (done) return;
       stop();
+      const notFound = notFoundPathname === pathname;
+      if (notFound) notFoundPathname = null;
       sendPageView({
         path: pathname,
         initial,
         outcome,
         settle_ms: outcome === "settled" ? Math.max(0, lastIdleAt - t0) : null,
         fetched_queries: fetched.size,
+        not_found: notFound,
       });
     };
     const armQuiet = () => {

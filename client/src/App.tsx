@@ -19,6 +19,8 @@ import { LiabilitiesGroupPage } from "./pages/LiabilitiesGroupPage";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
 import { FlowsLayout } from "./pages/FlowsLayout";
 import { ControlPanelLayout } from "./pages/panel/ControlPanelLayout";
+// Eager: a «not found» view marks itself in the usage log while rendering (usagePageTiming.ts).
+import { NotFoundPage } from "./pages/NotFoundPage";
 import { lazyChunk, lazyComponent, useIdleChunkPrefetch } from "./lazyChunks";
 
 // Code splitting. The pages a session opens first — dashboard, group, liabilities and account
@@ -73,7 +75,6 @@ const WealthPercentilePage = lazyPage(
   "WealthPercentilePage"
 );
 const WatchlistPage = lazyPage(() => import("./pages/WatchlistPage"), "WatchlistPage");
-const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage"), "NotFoundPage");
 
 export default function App() {
   return (

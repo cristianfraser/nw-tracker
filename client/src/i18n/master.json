@@ -7233,6 +7233,10 @@
     }
   },
   "usage": {
+    "notFoundPathTitle": {
+      "en": "Last viewed {{last}}",
+      "es": "Última visita {{last}}"
+    },
     "windowLabel": {
       "en": "Window",
       "es": "Período"
