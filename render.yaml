@@ -85,6 +85,10 @@ services:
         value: nw-tracker.demo.db
       - key: DEMO_ANALYTICS_DB
         value: /var/data/demo-analytics.db
+      # Streamed prices: at most one cache rebuild per 15 s on the small instance (the home
+      # server writes every 5 s; server/src/yahooPriceStream.ts).
+      - key: LIVE_QUOTES_FLUSH_GAP_MS
+        value: "15000"
       # Cloudflare Web Analytics site token, read by the client build (Vite substitutes
       # %VITE_*% in client/index.html). Public by design — it names the site, not the
       # account — so it lives here rather than as a dashboard secret. Unset in any other

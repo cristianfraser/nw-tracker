@@ -1,4 +1,5 @@
 import i18n from "./i18n";
+import { attachLiveInputs, LIVE_INPUTS_HEADER, parseLiveInputs, type LiveQuoteMoves } from "./liveInputs";
 
 const base = () => import.meta.env.VITE_API_URL ?? "";
 
@@ -97,13 +98,15 @@ async function j<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(API_HINT);
   }
 
+  let parsed: T;
   try {
-    return JSON.parse(text) as T;
+    parsed = JSON.parse(text) as T;
   } catch {
     throw new Error(
       `${API_HINT} Response was not JSON (starts with: ${trimmed.slice(0, 60).replace(/\s+/g, " ")}…)`
     );
   }
+  return attachLiveInputs(parsed, parseLiveInputs(res.headers.get(LIVE_INPUTS_HEADER)));
 }
 
 export const api = {
@@ -712,7 +715,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ date, buy_clp_per_usd, sell_clp_per_usd }),
     }),
-  liveQuotesStamp: () => j<{ stamp: string | null }>("/api/live-quotes/stamp"),
+  liveQuotesStamp: (since: string | null) =>
+    j<{ stamp: string | null; moves: LiveQuoteMoves | null }>(
+      since == null ? "/api/live-quotes/stamp" : `/api/live-quotes/stamp?since=${encodeURIComponent(since)}`
+    ),
   // Values come back in the display unit (server-side conversion); CLP is the default.
   marketTicker: (unit: "clp" | "usd") =>
     j<import("./types").MarketTickerResponse>(

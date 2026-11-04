@@ -1,9 +1,9 @@
 import { listWatchlistEquitySeriesKeys, syncWatchlistFromApp } from "./watchlist.js";
-import { chileCalendarTodayYmd } from "./chileDate.js";
+import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { equityMarketKind, marketQuoteCurrency } from "./equityQuote.js";
-import { fetchYahooLiveQuote } from "./equityYahooEod.js";
-import { fetchYahooLiveUsdClpPerUsd, shouldUseLiveFxQuote } from "./fxLive.js";
+import { fetchYahooLiveQuote, yahooBarYmdFromUnix } from "./equityYahooEod.js";
+import { fetchYahooLiveUsdClpPerUsd, LIVE_FX_YAHOO_SYMBOL, shouldUseLiveFxQuote } from "./fxLive.js";
 import { syncYahooFxUsdFromYahoo, yahooFxUsdSyncDue } from "./fxYahooEodSync.js";
 import { priorNyseSessionYmd } from "./marketHolidays.js";
 import { invalidateMarketDataAggregations } from "./aggregationCache.js";
@@ -13,7 +13,6 @@ import {
   getLatestLiveFxQuoteRow,
   insertLiveMarketQuote,
   pruneLiveMarketQuotes,
-  type LiveMarketQuoteRow,
 } from "./liveMarketQuotesDb.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
 import { maxFxDateOnOrBefore } from "./sbifSyncDb.js";
@@ -83,26 +82,38 @@ function priorCloseForLiveNonSession(
   return (stmtEodPrior.get(ticker, sessionYmd) as { close: number } | undefined)?.close ?? null;
 }
 
+type LiveEquityObservation = {
+  price: number;
+  /** The source's previous close, or null to read it from the stored closes. */
+  previous_close: number | null;
+  session_ymd: string;
+};
+
+/** Stores one equity observation; true when it changed the effective quote. */
+function writeEquityLiveQuote(ticker: string, live: LiveEquityObservation, fetchedAt: string): boolean {
+  const kind = equityMarketKind(ticker);
+  const prior =
+    kind === "nyse"
+      ? priorCloseForLiveNyse(ticker, live.session_ymd, live.previous_close)
+      : priorCloseForLiveNonSession(ticker, live.session_ymd, live.previous_close);
+  const changed = quoteValueChanged(getLatestLiveEquityQuoteRow(ticker), live.price);
+  insertLiveMarketQuote({
+    symbol: ticker.toUpperCase(),
+    kind: "equity",
+    value: live.price,
+    currency: marketQuoteCurrency(ticker),
+    session_ymd: live.session_ymd,
+    previous_value: prior,
+    fetched_at: fetchedAt,
+  });
+  clearMarketSymbolFetchError(ticker, "live");
+  return changed;
+}
+
 async function syncOneEquityLiveQuote(ticker: string, fetchedAt: string): Promise<LiveQuoteSyncTickerResult> {
   try {
     const live = await fetchYahooLiveQuote(ticker);
-    const kind = equityMarketKind(ticker);
-    const prior =
-      kind === "nyse"
-        ? priorCloseForLiveNyse(ticker, live.session_ymd, live.previous_close)
-        : priorCloseForLiveNonSession(ticker, live.session_ymd, live.previous_close);
-    const changed = quoteValueChanged(getLatestLiveEquityQuoteRow(ticker), live.price);
-    const row: LiveMarketQuoteRow = {
-      symbol: ticker.toUpperCase(),
-      kind: "equity",
-      value: live.price,
-      currency: marketQuoteCurrency(ticker),
-      session_ymd: live.session_ymd,
-      previous_value: prior,
-      fetched_at: fetchedAt,
-    };
-    insertLiveMarketQuote(row);
-    clearMarketSymbolFetchError(ticker, "live");
+    const changed = writeEquityLiveQuote(ticker, live, fetchedAt);
     return { ticker, ok: true, changed };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -184,25 +195,36 @@ async function mirrorFxDailyWithCatchUp(now: Date, fetchedAt: string): Promise<F
   }
 }
 
-async function syncLiveFxQuote(now: Date, fetchedAt: string): Promise<FxSyncOutcome> {
+/** Stores one live USD/CLP observation; true when it changed the effective rate. */
+function writeLiveFxQuote(
+  live: { clp_per_usd: number; session_ymd: string; previous_clp_per_usd: number | null },
+  fetchedAt: string
+): boolean {
+  const prior =
+    live.previous_clp_per_usd ??
+    priorFxDailyClpPerUsd(live.session_ymd) ??
+    fxRowOnOrBefore(live.session_ymd)?.clp_per_usd ??
+    null;
+  const changed = quoteValueChanged(getLatestLiveFxQuoteRow(), live.clp_per_usd);
+  insertLiveMarketQuote({
+    symbol: LIVE_FX_SYMBOL,
+    kind: "fx_clp_per_usd",
+    value: live.clp_per_usd,
+    currency: null,
+    session_ymd: live.session_ymd,
+    previous_value: prior,
+    fetched_at: fetchedAt,
+  });
+  return changed;
+}
+
+async function syncLiveFxQuote(now: Date, fetchedAt: string, skipLiveFetch: boolean): Promise<FxSyncOutcome> {
   if (shouldUseLiveFxQuote(now)) {
+    // The price stream carries the live rate: nothing to fetch (the stream keeps its row fresh).
+    if (skipLiveFetch) return { rows: 0, changed: false };
     try {
       const live = await fetchYahooLiveUsdClpPerUsd(now);
-      const prior =
-        live.previous_clp_per_usd ??
-        priorFxDailyClpPerUsd(live.session_ymd) ??
-        fxRowOnOrBefore(live.session_ymd)?.clp_per_usd ??
-        null;
-      const changed = quoteValueChanged(getLatestLiveFxQuoteRow(), live.clp_per_usd);
-      insertLiveMarketQuote({
-        symbol: LIVE_FX_SYMBOL,
-        kind: "fx_clp_per_usd",
-        value: live.clp_per_usd,
-        currency: null,
-        session_ymd: live.session_ymd,
-        previous_value: prior,
-        fetched_at: fetchedAt,
-      });
+      const changed = writeLiveFxQuote(live, fetchedAt);
       return { rows: 1, changed };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -216,20 +238,108 @@ async function syncLiveFxQuote(now: Date, fetchedAt: string): Promise<FxSyncOutc
 }
 
 /**
+ * A write moved a price: publish the change for the client's stamp and drop the aggregates that
+ * read it. Same-connection quote writes don't bump `data_version`, so cached aggregations that
+ * baked today's live marks (bucket totals, overview live point, current-month perf rows) would
+ * keep serving the old price.
+ * `live_tail`: only `live_market_quotes` was written, which no historical mark reads, so the
+ * cached per-account daily mark series survive — a rebuilt daily view re-prices just today.
+ * Only the aggregates that read a moved price go (`cacheDependencies.ts`): a crypto move at
+ * night leaves the card ledger, the mortgage and the liabilities' consolidation cached. A write
+ * of the day's `fx_daily` close drops everything a tick can reach.
+ */
+function publishLiveQuoteChanges(
+  fetchedAt: string,
+  changedTickers: readonly string[],
+  fxChanged: boolean,
+  wroteFxDaily: boolean
+): void {
+  noteLiveQuotesChanged(
+    fetchedAt,
+    wroteFxDaily ? { all: true } : { tickers: changedTickers.map((t) => t.toUpperCase()), fx: fxChanged }
+  );
+  invalidateMarketDataAggregations(
+    "live_tail",
+    wroteFxDaily
+      ? undefined
+      : { tickers: new Set(changedTickers.map((t) => t.toUpperCase())), fx: fxChanged }
+  );
+}
+
+/** One price from the stream (`yahooPriceStream.ts`), already in its session. */
+export type StreamQuote = {
+  symbol: string;
+  price: number;
+  timeMs: number;
+  previousClose: number | null;
+};
+
+/**
+ * Writes prices the stream delivered — the same rows, change test and invalidation as a poll.
+ * A quote equal to the stored one only refreshes its row (it stays live for readers) and
+ * invalidates nothing. `CLP=X` is the live dollar.
+ */
+export function writeStreamQuotes(
+  quotes: readonly StreamQuote[],
+  now = new Date()
+): { changedTickers: string[]; fxChanged: boolean } {
+  const fetchedAt = now.toISOString();
+  const changedTickers: string[] = [];
+  let fxChanged = false;
+  for (const q of quotes) {
+    if (q.symbol === LIVE_FX_YAHOO_SYMBOL) {
+      // A poll dates the live dollar by the Chile day it was read on (`fetchYahooLiveUsdClpPerUsd`).
+      fxChanged =
+        writeLiveFxQuote(
+          { clp_per_usd: q.price, session_ymd: chileWallClockAt(now).ymd, previous_clp_per_usd: q.previousClose },
+          fetchedAt
+        ) || fxChanged;
+      continue;
+    }
+    const changed = writeEquityLiveQuote(
+      q.symbol,
+      {
+        price: q.price,
+        previous_close: q.previousClose,
+        session_ymd: yahooBarYmdFromUnix(q.symbol, Math.floor(q.timeMs / 1000)),
+      },
+      fetchedAt
+    );
+    if (changed) changedTickers.push(q.symbol);
+  }
+  if (changedTickers.length > 0 || fxChanged) {
+    publishLiveQuoteChanges(fetchedAt, changedTickers, fxChanged, false);
+  }
+  return { changedTickers, fxChanged };
+}
+
+export type LiveMarketQuotesSyncOptions = {
+  /** Tickers the price stream covers right now: not fetched (`yahooPriceStream.ts`). */
+  skipTickers?: ReadonlySet<string>;
+  /** The stream covers the live dollar: no CLP=X fetch while the fx day is open. */
+  skipLiveFx?: boolean;
+};
+
+/**
  * Fetch Yahoo live quotes for all equity/crypto symbols, catch up Yahoo FX EOD if needed, mirror FX, prune old rows.
  * Only the scheduler and `npm run live-quotes:sync` should call this.
  */
-export async function syncAllLiveMarketQuotes(now = new Date()): Promise<LiveMarketQuotesSyncResult> {
+export async function syncAllLiveMarketQuotes(
+  now = new Date(),
+  options: LiveMarketQuotesSyncOptions = {}
+): Promise<LiveMarketQuotesSyncResult> {
   const fetchedAt = now.toISOString();
   // A symbol added through another process (the primary server vs a script) must quote in its registered currency.
   reloadMarketSymbols();
-  const tickers = equityTickersForLiveSync();
+  const allTickers = equityTickersForLiveSync();
+  const tickers = allTickers.filter((t) => !options.skipTickers?.has(t.toUpperCase()));
+  const streamed = allTickers.length - tickers.length;
   const equities: LiveQuoteSyncTickerResult[] = [];
   for (const ticker of tickers) {
     equities.push(await syncOneEquityLiveQuote(ticker, fetchedAt));
   }
 
-  const fxSync = await syncLiveFxQuote(now, fetchedAt);
+  const fxSync = await syncLiveFxQuote(now, fetchedAt, options.skipLiveFx === true);
   const fxRows = fxSync.rows;
   const fxError = fxSync.error;
 
@@ -242,32 +352,18 @@ export async function syncAllLiveMarketQuotes(now = new Date()): Promise<LiveMar
   }
   const okCount = equities.filter((r) => r.ok).length;
 
-  // Same-connection quote writes don't bump `data_version`, so cached aggregations that
-  // baked today's live marks (bucket totals, overview live point, current-month perf rows)
-  // would keep serving the old price. Invalidate only when a value actually changed —
-  // closed-market no-op polls must not churn the cache.
-  // `live_tail`: this poll only writes `live_market_quotes`, which no historical mark reads,
-  // so the cached per-account daily mark series survive — a rebuilt daily view re-prices just
-  // today (the one day never cached) instead of re-walking all of history every 5 minutes.
-  // Only the aggregates that read a moved price go (`cacheDependencies.ts`): a crypto move at
-  // night leaves the card ledger, the mortgage and the liabilities' consolidation cached. A poll
-  // that also wrote the day's `fx_daily` close drops everything a tick can reach, as before.
   const valuesChanged = equities.some((r) => r.changed === true) || fxSync.changed;
   if (valuesChanged) {
-    noteLiveQuotesChanged(fetchedAt);
-    invalidateMarketDataAggregations(
-      "live_tail",
-      fxSync.wroteFxDaily
-        ? undefined
-        : {
-            tickers: new Set(equities.filter((r) => r.changed === true).map((r) => r.ticker.toUpperCase())),
-            fx: fxSync.changed,
-          }
+    publishLiveQuoteChanges(
+      fetchedAt,
+      equities.filter((r) => r.changed === true).map((r) => r.ticker),
+      fxSync.changed,
+      fxSync.wroteFxDaily === true
     );
   }
 
   console.log(
-    `live-quotes:sync — equities ${okCount}/${equities.length}, fx ${fxRows} row(s)${shouldUseLiveFxQuote(now) ? " (Yahoo CLP=X)" : " (Yahoo EOD fx_daily)"}, pruned ${pruned}${valuesChanged ? ", aggregations invalidated" : ""}`
+    `live-quotes:sync — equities ${okCount}/${equities.length}${streamed > 0 ? ` (${streamed} on the stream)` : ""}, fx ${fxRows} row(s)${shouldUseLiveFxQuote(now) ? (options.skipLiveFx ? " (on the stream)" : " (Yahoo CLP=X)") : " (Yahoo EOD fx_daily)"}, pruned ${pruned}${valuesChanged ? ", aggregations invalidated" : ""}`
   );
 
   return {

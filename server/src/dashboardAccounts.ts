@@ -224,6 +224,28 @@ export function buildDashboardAccountRows(includeUsd: boolean): Promise<Dashboar
   );
 }
 
+/**
+ * One account's dashboard row, the same object the full listing holds (shared cache entry), for a
+ * page that shows only its own account: building the whole listing read every account's live
+ * price, so the account page refetched on every move (`X-Live-Inputs`). Null when the account is
+ * not a dashboard source account.
+ */
+export function buildDashboardAccountRow(accountId: number, includeUsd: boolean): DashboardAccountStats | null {
+  return withPortfolioGroupIndex(() =>
+    withAccountValuationTsCache(() => {
+      const ctx = dashboardAccountRowsContext(includeUsd);
+      const a = ctx.accounts.find((x) => x.id === accountId);
+      if (!a) return null;
+      noteSyncDimmingRead();
+      const stale = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale_dimming).has(a.id);
+      const row = pageBundleCachedSync(`account_row|${a.id}|${unitKey(includeUsd)}`, () =>
+        buildDashboardAccountRowFor(ctx, a, includeUsd)
+      );
+      return { ...row, sync_stale: stale };
+    })
+  );
+}
+
 function unitKey(includeUsd: boolean): "usd" | "clp" {
   return includeUsd ? "usd" : "clp";
 }
@@ -307,7 +329,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
   const staleAccountIds = accountIdsWithAnyStaleSyncSource(syncStatusPayload().stale_dimming);
   return ctx.accounts.map((a) => {
     const row = pageBundleCachedSync(`account_row|${a.id}|${unitKey(includeUsd)}`, () =>
-      buildDashboardAccountRow(ctx, a, includeUsd)
+      buildDashboardAccountRowFor(ctx, a, includeUsd)
     );
     // Overwrites the placeholder in place, so the row's keys keep their order.
     return { ...row, sync_stale: staleAccountIds.has(a.id) };
@@ -315,7 +337,7 @@ async function buildDashboardAccountRowsInner(includeUsd: boolean): Promise<Dash
 }
 
 /** One account's dashboard row; `sync_stale` is a placeholder the list sets. */
-function buildDashboardAccountRow(
+function buildDashboardAccountRowFor(
   ctx: DashboardAccountRowsContext,
   a: DashboardSourceAccount,
   includeUsd: boolean

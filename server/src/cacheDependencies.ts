@@ -124,3 +124,25 @@ const EVERY_LIVE_INPUT: LiveQuoteMoves = {
 export function cacheDepNodeReadsLiveInput(node: CacheDepNode): boolean {
   return cacheDepNodeAffected(node, EVERY_LIVE_INPUT, new Map());
 }
+
+export type CacheDepLiveInputs = { tickers: Set<string>; fx: boolean; syncDimming: boolean };
+
+/**
+ * Every live input `node` (or anything linked under it) read — what an HTTP response depended on
+ * (`liveInputsHeader.ts`), so the client refetches it only when one of them moves.
+ */
+export function cacheDepNodeLiveInputs(node: CacheDepNode): CacheDepLiveInputs {
+  const out: CacheDepLiveInputs = { tickers: new Set(), fx: false, syncDimming: false };
+  const seen = new Set<CacheDepNode>();
+  const stack = [node];
+  while (stack.length > 0) {
+    const n = stack.pop()!;
+    if (seen.has(n)) continue;
+    seen.add(n);
+    for (const t of n.tickers) out.tickers.add(t);
+    if (n.fx) out.fx = true;
+    if (n.syncDimming) out.syncDimming = true;
+    for (const c of n.children) if (!seen.has(c)) stack.push(c);
+  }
+  return out;
+}

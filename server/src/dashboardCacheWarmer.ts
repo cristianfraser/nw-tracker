@@ -6,11 +6,6 @@ import { buildDashboardPageBundle } from "./dashboardPageBundle.js";
 import { db } from "./db.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
 import { pruneMarkInputChanges } from "./markInputChanges.js";
-import {
-  pendingLiveQuotesChange,
-  publishLiveQuotesStamp,
-  setLiveQuotesStampPublishedByWarmer,
-} from "./liveQuotesStamp.js";
 import { warmRentabilidadDailySeries } from "./rentabilidadDailyWarm.js";
 import { warmVisitedPages } from "./visitedPagesWarm.js";
 
@@ -28,10 +23,13 @@ import { warmVisitedPages } from "./visitedPagesWarm.js";
  * - `PRAGMA data_version` change (another process wrote the DB, e.g. a CLI import — the
  *   aggregation cache would clear on next read; polled every minute);
  * - debounced in-process invalidations (panel edits / HTTP imports), so caches are warm
- *   again shortly after a write burst finishes;
- * - a live-quote poll that moved a price, after `LIVE_TAIL_DELAY_MS` instead of the write
- *   debounce (polls are minutes apart, nothing to coalesce), and once warm the poll's change is
- *   published to the client (`liveQuotesStamp.ts`).
+ *   again shortly after a write burst finishes.
+ *
+ * Not a live price change (2026-11-04): with Yahoo's stream a price moves every few seconds, and
+ * rebuilding every page in both currencies each time built mostly what nobody was looking at.
+ * A price change drops only the responses that read it (`cacheDependencies.ts`); the first
+ * request that needs one rebuilds it on top of the cached history, and the stamp is published at
+ * once (`liveQuotesStamp.ts`).
  *
  * Requests go first: each step starts only once no API request is in flight
  * (`apiRequestsInFlight.ts`).
@@ -41,7 +39,6 @@ import { warmVisitedPages } from "./visitedPagesWarm.js";
 
 const BOOT_DELAY_MS = 2_000;
 const INVALIDATION_DEBOUNCE_MS = 30_000;
-const LIVE_TAIL_DELAY_MS = 2_000;
 const DATA_VERSION_POLL_MS = 60_000;
 /** Warm at 00:05 Chile — clear of midnight and of the 23:55 crypto-EOD sync window. */
 const MIDNIGHT_WARM_MINUTE = 5;
@@ -67,7 +64,6 @@ async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Prom
     return;
   }
   warming = true;
-  const liveChange = pendingLiveQuotesChange();
   try {
     // Every step waits until no API request is in flight: a page being opened builds what it
     // needs itself (each step is a cache lookup, so the warm then finds it built) instead of
@@ -79,8 +75,6 @@ async function runWarm(reason: string, delayMs = INVALIDATION_DEBOUNCE_MS): Prom
     await whenNoApiRequestsInFlight();
     await buildDashboardPageBundle("usd");
     const tBundles = performance.now();
-    // The bundles carry the live marks; the Rentabilidad series below are not worth the wait.
-    publishLiveQuotesStamp(liveChange);
     // The home dashboard's flows section (Por cuota, month rows).
     await whenNoApiRequestsInFlight();
     buildFlowsOverviewPayload("clp", "split", null);
@@ -141,12 +135,11 @@ export function startDashboardCacheWarmer(): void {
   // The mark-change log only needs to outlive the slowest reader's gap; older rows go.
   const pruned = pruneMarkInputChanges();
   if (pruned > 0) console.log(`cache-warm: pruned ${pruned} mark-input change rows older than 7 days`);
-  setLiveQuotesStampPublishedByWarmer(true);
-  setAggregationInvalidationListener((scope) =>
-    scope === "live_tail"
-      ? scheduleWarm("live-quotes", LIVE_TAIL_DELAY_MS)
-      : scheduleWarm("invalidation")
-  );
+  setAggregationInvalidationListener((scope) => {
+    // A live price change is rebuilt on demand (see the header).
+    if (scope === "live_tail") return;
+    scheduleWarm("invalidation");
+  });
   scheduleMidnightWarm();
   pollTimer = setInterval(() => {
     if (warming || debounceTimer != null) return;

@@ -47,9 +47,8 @@ import {
   getAccountValuationTimeseries,
   type TsUnit,
 } from "./valuationTimeseries.js";
-import { buildDashboardAccountRows } from "./dashboardAccounts.js";
+import { buildDashboardAccountRow } from "./dashboardAccounts.js";
 import { accountTodayValue } from "./accountTodayValue.js";
-import { withPortfolioGroupIndex } from "./portfolioGroupTree.js";
 
 const MOVEMENT_CARTOLA_SLUGS = new Set(["cuenta_corriente", "cuenta_vista"]);
 
@@ -286,14 +285,13 @@ export async function buildAccountDetailBundle(
         )
       : null;
 
-  const dashboard_account_row = await withPortfolioGroupIndex(async () => {
-    const includeUsd = unit === "usd";
-    const rows = await buildDashboardAccountRows(includeUsd);
-    const row = rows.find((r) => r.account_id === accountId);
+  // Only this account's row: the full listing reads every account's live price.
+  const dashboard_account_row = (() => {
+    const row = buildDashboardAccountRow(accountId, unit === "usd");
     if (!row) return null;
     const { notes, ...rest } = row;
     return { ...rest, notes: notes ?? null };
-  });
+  })();
 
   return {
     summary,

@@ -6,10 +6,12 @@ import {
   getLatestLiveFxQuoteRow,
 } from "./liveMarketQuotesDb.js";
 import { LIVE_FX_SYMBOL } from "./liveMarketQuotesConfig.js";
-import { syncAllLiveMarketQuotes } from "./liveMarketQuotesSync.js";
+import { syncAllLiveMarketQuotes, writeStreamQuotes } from "./liveMarketQuotesSync.js";
+import { fetchYahooLiveQuote } from "./equityYahooEod.js";
 import { snapshotTables } from "./test/snapshotTables.js";
 
-vi.mock("./equityYahooEod.js", () => ({
+vi.mock("./equityYahooEod.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./equityYahooEod.js")>()),
   fetchYahooLiveQuote: vi.fn(async (symbol: string) => ({
     price: symbol === "CLP=X" ? 950 : symbol === "SPY" ? 600 : 42,
     previous_close: symbol === "CLP=X" ? 945 : symbol === "SPY" ? 590 : 40,
@@ -114,6 +116,66 @@ describe("syncAllLiveMarketQuotes", () => {
       expect(second.values_changed).toBe(false);
       expect(second.equities.filter((r) => r.ok).every((r) => r.changed === false)).toBe(true);
       expect(second.fx.changed).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves the symbols and the dollar the stream covers to the stream", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-19T15:00:00.000Z"));
+    try {
+      vi.mocked(fetchYahooLiveQuote).mockClear();
+      const result = await syncAllLiveMarketQuotes(new Date("2026-05-19T15:00:00.000Z"), {
+        skipTickers: new Set(["SPY"]),
+        skipLiveFx: true,
+      });
+      const fetched = vi.mocked(fetchYahooLiveQuote).mock.calls.map((c) => c[0]);
+      expect(fetched).not.toContain("SPY");
+      expect(result.equities.some((r) => r.ticker === "SPY")).toBe(false);
+      expect(result.fx.rows).toBe(0);
+      expect(getLatestLiveFxQuoteRow(600_000)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("writeStreamQuotes", () => {
+  it("writes streamed prices as live rows, the dollar as the live rate", () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-06-01T16:00:00Z");
+    vi.setSystemTime(now);
+    try {
+      const result = writeStreamQuotes(
+        [
+          { symbol: "SPY", price: 601.25, timeMs: now.getTime(), previousClose: 590 },
+          { symbol: "CLP=X", price: 951.5, timeMs: now.getTime(), previousClose: 945 },
+        ],
+        now
+      );
+      expect(result).toEqual({ changedTickers: ["SPY"], fxChanged: true });
+      const row = getLatestLiveEquityQuoteRow("SPY", 600_000);
+      expect(row?.value).toBe(601.25);
+      expect(row?.previous_value).toBe(590);
+      expect(row?.session_ymd).toBe("2026-06-01");
+      expect(getLatestLiveFxQuoteRow(600_000)?.value).toBe(951.5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("re-stamps an unchanged price without reporting a change", () => {
+    vi.useFakeTimers();
+    const t0 = new Date("2026-06-01T16:00:00Z");
+    vi.setSystemTime(t0);
+    try {
+      writeStreamQuotes([{ symbol: "SPY", price: 601.25, timeMs: t0.getTime(), previousClose: 590 }], t0);
+      const t1 = new Date("2026-06-01T16:03:00Z");
+      vi.setSystemTime(t1);
+      const again = writeStreamQuotes([{ symbol: "SPY", price: 601.25, timeMs: t0.getTime(), previousClose: 590 }], t1);
+      expect(again).toEqual({ changedTickers: [], fxChanged: false });
+      expect(getLatestLiveEquityQuoteRow("SPY", 600_000)?.fetched_at).toBe(t1.toISOString());
     } finally {
       vi.useRealTimers();
     }
