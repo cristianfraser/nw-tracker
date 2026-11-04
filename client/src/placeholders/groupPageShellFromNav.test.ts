@@ -11,7 +11,7 @@ function navLeaf(partial: Partial<NavTreeNodeDto> & { account_id: number; slug: 
     node_id: `n-${partial.account_id}`,
     label: partial.label ?? partial.slug,
     label_i18n_key: null,
-    route_path: `/accounts/${partial.account_id}`,
+    route_path: `/account/${partial.account_id}`,
     active_prefix: null,
     nav_end: true,
     show_leaf_hyphen: false,
