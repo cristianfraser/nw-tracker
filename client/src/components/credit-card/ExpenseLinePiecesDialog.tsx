@@ -9,6 +9,7 @@ import { useTranslation } from "../../i18n";
 import { useSaveExpenseLinePiecesMutation } from "../../queries/hooks";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import { Modal } from "../ui/Modal";
+import { queryLoadError } from "../../queries/pageShapeReady";
 
 type PieceRow = {
   /** Kept so a saved piece keeps its big group and note. */
@@ -44,19 +45,24 @@ export function ExpenseLinePiecesDialog({
     enabled: open,
     staleTime: 0,
   });
+  const loadError = queryLoadError(query);
   const save = useSaveExpenseLinePiecesMutation();
   const [rows, setRows] = useState<PieceRow[] | null>(null);
+  // When this line was opened: the editor is seeded only from pieces fetched after it. The dialog
+  // stays mounted between opens, so the cache can hold a copy from before the last save, and saving
+  // that copy back would delete the pieces added since.
+  const [openedAt, setOpenedAt] = useState(0);
+  const openKey = open ? `${source}:${lineId}` : null;
 
   useEffect(() => {
-    if (!open) {
-      setRows(null);
-      save.reset();
-    }
+    setRows(null);
+    save.reset();
+    setOpenedAt(openKey == null ? 0 : Date.now());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [openKey]);
 
   useEffect(() => {
-    if (!open || !query.data || rows != null) return;
+    if (!open || !query.data || rows != null || openedAt === 0 || query.dataUpdatedAt < openedAt) return;
     setRows(
       query.data.pieces.map((p) => ({
         seq: p.seq,
@@ -65,8 +71,10 @@ export function ExpenseLinePiecesDialog({
         categorySlug: p.category_slug,
       }))
     );
-  }, [open, query.data, rows]);
+  }, [open, query.data, query.dataUpdatedAt, openedAt, rows]);
 
+  // Until the editor is seeded, cached data is a copy it must not use, so a failed fetch shows.
+  const shownError = rows == null ? query.error : loadError;
   const pickable = assignableCcExpenseCategories(categories).filter((c) => !isCcExpenseTotalsExcludedSlug(c.slug));
   const data = query.data;
   const parsed = (rows ?? []).map((r) => parseNumberInput(r.amountText));
@@ -106,7 +114,7 @@ export function ExpenseLinePiecesDialog({
       title={t("expenses.creditCard.pieces.title", { merchant: data?.merchant ?? line?.merchant ?? "" })}
       closeAriaLabel={t("common.close")}
     >
-      {query.error instanceof Error ? <p className="error">{query.error.message}</p> : null}
+      {shownError instanceof Error ? <p className="error">{shownError.message}</p> : null}
       {data && rows ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", maxWidth: "40rem" }}>
           <p className="muted">{t("expenses.creditCard.pieces.intro", { date: data.line_date })}</p>

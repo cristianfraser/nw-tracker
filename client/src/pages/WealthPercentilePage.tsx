@@ -17,6 +17,7 @@ import type {
   WealthPercentileCell,
   WealthPercentileYearRow,
 } from "../types";
+import { queryLoadError } from "../queries/pageShapeReady";
 
 const BENCHMARK_COUNTRIES: readonly WealthBenchmarkCountry[] = [
   "US",
@@ -318,7 +319,8 @@ export function WealthPercentilePage() {
   const [enabledBenchmarks, setEnabledBenchmarks] = useState<WealthBenchmarkCountry[]>(
     loadEnabledBenchmarks
   );
-  const { data, error, isPending } = useWealthPercentile();
+  const { data, error: queryError, isPending } = useWealthPercentile();
+  const error = queryLoadError({ data, error: queryError });
   const loading = isPending;
 
   const toggleBenchmark = (country: WealthBenchmarkCountry) => {

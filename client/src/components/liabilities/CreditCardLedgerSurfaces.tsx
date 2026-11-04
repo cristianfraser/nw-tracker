@@ -3,6 +3,7 @@ import { useTranslation } from "../../i18n";
 import { buildCcDailyHistorialRows } from "../../ccDailyHistorial";
 import { windowCcHistorialRows } from "../../chartRangeWindow";
 import { useDailySeries } from "../../queries/hooks";
+import { queryShowsLoading } from "../../queries/pageShapeReady";
 import { monthYearSurfacePeriod, useSurfacePrefs } from "../../surfaceDisplayPrefs";
 import { timeRangeToDays } from "../../timeRange";
 import type { AccountCcInstallmentsResponse } from "../../types";
@@ -81,9 +82,15 @@ export function CreditCardHistorialSurface({
     timeRangeToDays(timeRange),
     isDaily && hasHistorial
   );
+  // Day mode draws only its own daily series: until it is here (not pending, not a held
+  // placeholder) the chart gets no rows and shows its pending frame, never the monthly rows.
+  const dailyPending = isDaily && queryShowsLoading(daily);
   const dailyRows = useMemo(
-    () => (isDaily && daily.data ? buildCcDailyHistorialRows(daily.data, timeRange) : null),
-    [isDaily, daily.data, timeRange]
+    () =>
+      isDaily && !dailyPending && daily.data
+        ? buildCcDailyHistorialRows(daily.data, timeRange)
+        : null,
+    [isDaily, dailyPending, daily.data, timeRange]
   );
   // Monthly/yearly: the same range window as the daily grid (left-clip + pad the empty 20 %
   // lead so the left edge matches across D/M/Y; the right edge keeps the projected plan
@@ -115,7 +122,7 @@ export function CreditCardHistorialSurface({
         <p className="muted">{t("accountDetail.creditCard.historialEmpty")}</p>
       ) : (
         <CcInstallmentHistoryChart
-          rows={windowedRows}
+          rows={isDaily && !dailyRows?.length ? [] : windowedRows}
           openBillingMonth={ccLedger.open_billing_month}
           dailyRows={dailyRows}
           period={prefs.period}

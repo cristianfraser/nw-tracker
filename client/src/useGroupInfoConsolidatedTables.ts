@@ -3,6 +3,7 @@ import i18n from "./i18n";
 import { useGroupConsolidatedTables } from "./queries/hooks";
 import type { DisplayUnit } from "./queries/keys";
 import type { ConsolidatedMonthlyPerfRow, PeriodReturnsPayload } from "./types";
+import { queryLoadError } from "./queries/pageShapeReady";
 
 export type GroupInfoTableAccount = {
   id: number;
@@ -90,7 +91,7 @@ export function useGroupInfoConsolidatedTables(
     tablesLoading,
     /** The payload on hand is the previous unit's (held while the new one loads). */
     tablesHeld: isPlaceholderData,
-    tablesError: isError
+    tablesError: queryLoadError({ data, error })
       ? error instanceof Error
         ? error.message
         : i18n.t("common.loadFailedTables")

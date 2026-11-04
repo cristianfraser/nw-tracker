@@ -13,6 +13,7 @@ import type {
   DepositRedemptionRow,
   DepositRedemptionStatus,
 } from "../types";
+import { queryLoadError } from "../queries/pageShapeReady";
 
 const STATUS_ORDER: DepositReconciliationStatus[] = [
   "unlinked_checking_present",
@@ -310,7 +311,8 @@ function RedemptionSection({
 export function DepositsReconciliationPage() {
   const { t } = useTranslation();
   const { displayUnit } = useDisplayPreferences();
-  const { data, error } = useFlowsDepositsReconciliation();
+  const { data, error: queryError } = useFlowsDepositsReconciliation();
+  const error = queryLoadError({ data, error: queryError });
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
 
   if (err) {

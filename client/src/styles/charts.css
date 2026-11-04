@@ -7,6 +7,19 @@
   border-radius: 0;
   min-height: var(--chart-panel-min-height);
   height: var(--chart-panel-height);
+  position: relative;
+}
+
+/* The chart's ResponsiveContainer takes the box's size, never its own content's (2026-11-04). As an
+   in-flow `height: 100%` child of a `flex: 1` box in an auto-height column, its height resolved to
+   the chart drawn inside it; a re-render that shrank that chart for a moment measured 0, and
+   Recharts swapped its wrapper to the no-size variant and back, remounting the whole chart twice on
+   every refetch. `AppComposedChart` measures its own frame (`.app-chart-frame`) and draws nothing while
+   it measures 0: the same loop, the same fix. */
+.chart-box > .recharts-responsive-container,
+.chart-box > .app-chart-frame {
+  position: absolute;
+  inset: 0;
 }
 
 /* Axis labels are numbers and dates: the numbers' font, as on the cards and tables. */

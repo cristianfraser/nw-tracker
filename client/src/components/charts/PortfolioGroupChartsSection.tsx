@@ -109,8 +109,12 @@ export function PortfolioGroupChartsSection({
 
   const valuationBlock = valuationBlockForChart ?? EMPTY_VALUATION_BLOCK;
   // Only the loaded bundle can say the group has no P/L; a placeholder keeps the combos' frames.
+  // A Diario combo with no points is its daily series still loading (or a window without
+  // days), never «no P/L»: it stays mounted with its controls.
   const perfAbsent =
-    !loading && (!groupPerfForChart?.points.length || groupPerfBarSeries.length === 0);
+    !loading &&
+    (groupPerfBarSeries.length === 0 ||
+      ((perfXAxisGranularity ?? xAxisGranularity) !== "day" && !groupPerfForChart?.points.length));
   const includeDeposits = chartCtx?.showGroupedToggle ? showValuationDeposits : true;
 
   return (

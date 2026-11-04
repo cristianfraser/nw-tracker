@@ -14,6 +14,7 @@ import {
   useMessages,
   useSyncStatus,
 } from "../../queries/hooks";
+import { queryLoadError } from "../../queries/pageShapeReady";
 
 export function ImportSyncPage() {
   const { t } = useTranslation();
@@ -41,20 +42,27 @@ export function ImportSyncPage() {
   } = useGenericUniqueMerchants();
 
   const logs = logsData?.messages ?? [];
+  // A failed background refetch (these poll) keeps the data on screen (`queryLoadError`).
+  const logsLoadError = queryLoadError({ data: logsData, error: logsError });
+  const syncStatusLoadError = queryLoadError({ data: syncStatus, error: syncStatusError });
+  const ingestRunsLoadError = queryLoadError({ data: ingestRuns, error: ingestRunsError });
+  const jobQueueLoadError = queryLoadError({ data: jobQueue, error: jobQueueError });
+  const coverageLoadError = queryLoadError({ data: coverage, error: coverageError });
+  const genericMerchantsLoadError = queryLoadError({ data: genericMerchants, error: genericMerchantsError });
   const err =
-    logsError instanceof Error
-      ? logsError.message
-      : syncStatusError instanceof Error
-        ? syncStatusError.message
-        : ingestRunsError instanceof Error
-          ? ingestRunsError.message
-          : jobQueueError instanceof Error
-            ? jobQueueError.message
-            : coverageError instanceof Error
-            ? coverageError.message
-            : genericMerchantsError instanceof Error
-              ? genericMerchantsError.message
-              : logsError || syncStatusError || ingestRunsError || jobQueueError || coverageError || genericMerchantsError
+    logsLoadError instanceof Error
+      ? logsLoadError.message
+      : syncStatusLoadError instanceof Error
+        ? syncStatusLoadError.message
+        : ingestRunsLoadError instanceof Error
+          ? ingestRunsLoadError.message
+          : jobQueueLoadError instanceof Error
+            ? jobQueueLoadError.message
+            : coverageLoadError instanceof Error
+            ? coverageLoadError.message
+            : genericMerchantsLoadError instanceof Error
+              ? genericMerchantsLoadError.message
+              : logsLoadError || syncStatusLoadError || ingestRunsLoadError || jobQueueLoadError || coverageLoadError || genericMerchantsLoadError
                 ? t("common.loadFailed")
                 : null;
 

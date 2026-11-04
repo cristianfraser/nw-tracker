@@ -17,6 +17,7 @@ import {
 import { clipMonthsThenRollup, clipPointsToTimeRange } from "../timeRange";
 import { rollupDepositChartPointsByYear } from "../flowsDepositsAggregate";
 import type { DepositFlowCategory } from "../types";
+import { queryLoadError } from "../queries/pageShapeReady";
 
 const CATEGORY_ORDER: DepositFlowCategory[] = ["real_estate", "cash", "brokerage", "inversiones"];
 
@@ -35,7 +36,8 @@ export function DepositsPage() {
     />
   );
   const chartGranularity = flowChartGranularityFromMetricsPeriod(metricsPeriod);
-  const { data, error } = useFlowsDeposits();
+  const { data, error: queryError } = useFlowsDeposits();
+  const error = queryLoadError({ data, error: queryError });
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;
   // The frame renders with a zero total and empty category tables until the payload arrives.
   const loading = !data;

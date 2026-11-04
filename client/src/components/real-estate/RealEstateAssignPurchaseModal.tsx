@@ -8,6 +8,7 @@ import { expenseKindLabel, useTranslation } from "../../i18n";
 import { useRealEstateUnlinkedPurchases } from "../../queries/hooks";
 import { useAssignRealEstatePurchaseMutation } from "../../queries/mutations";
 import { Button, Input } from "@crfrsr/ui";
+import { queryLoadError } from "../../queries/pageShapeReady";
 
 /** Kinds a purchase can be assigned to (mirrors REAL_ESTATE_LINKABLE_KINDS server-side). */
 const ASSIGNABLE_KINDS = [
@@ -43,7 +44,7 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
   const [billPreviousMonth, setBillPreviousMonth] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const { data, isLoading, error } = useRealEstateUnlinkedPurchases(
+  const { data, isLoading, error: queryError } = useRealEstateUnlinkedPurchases(
     {
       q: q.trim(),
       place: place?.slug,
@@ -52,6 +53,7 @@ export function RealEstateAssignPurchaseModal({ place, open, onClose }: Props) {
     },
     open && place != null
   );
+  const error = queryLoadError({ data, error: queryError });
   const assignMutation = useAssignRealEstatePurchaseMutation();
 
   const err =

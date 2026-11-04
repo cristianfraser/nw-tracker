@@ -32,6 +32,7 @@ import { monthYearMetricsPeriod } from "../../dashboardCardBreakdown";
 import { buildPlaceholderConsolidatedMonthlyRows } from "../../placeholders/groupPageTablePlaceholders";
 import type { DashboardResponse, NavTreeNodeDto, PeriodReturnsPayload } from "../../types";
 import pageShellStyles from "../../pages/AccountDetailPage.module.css";
+import { queryLoadError } from "../../queries/pageShapeReady";
 
 export type GroupInfoPortfolioStrip = {
   navNode: NavTreeNodeDto;
@@ -231,7 +232,7 @@ export function GroupInfoBase({
     (serverPaginatedMonthlyDetail ? serverMonthly.isPlaceholderData : tablesHeld);
 
   const monthlyError = serverPaginatedMonthlyDetail
-    ? serverMonthly.isError
+    ? queryLoadError(serverMonthly)
       ? serverMonthly.error instanceof Error
         ? serverMonthly.error.message
         : t("common.loadFailedTables")
@@ -324,7 +325,7 @@ export function GroupInfoBase({
               <SurfaceControls period={tablePeriod} onPeriodChange={detallePrefs.setPeriod} />
             </div>
             {isDaily ? (
-              dailySeries.isError ? (
+              queryLoadError(dailySeries) ? (
                 <p className="error">
                   {dailySeries.error instanceof Error
                     ? dailySeries.error.message

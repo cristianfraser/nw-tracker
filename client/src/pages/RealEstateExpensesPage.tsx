@@ -30,6 +30,7 @@ import {
 } from "../queries/mutations";
 import type { RealEstateBillSlot } from "../types";
 import { Button, Input } from "@crfrsr/ui";
+import { queryLoadError } from "../queries/pageShapeReady";
 
 /** Kinds where a kWh / m³ reading makes sense (edit affordance shown). */
 const CONSUMPTION_KINDS = new Set(["electricidad", "gas", "kwh"]);
@@ -108,7 +109,8 @@ export function RealEstateExpensesPage() {
     initialMonthsCovered: number;
     error: string | null;
   } | null>(null);
-  const { data, error } = useRealEstateExpenses();
+  const { data, error: queryError } = useRealEstateExpenses();
+  const error = queryLoadError({ data, error: queryError });
   const unmatchMutation = useUnmatchRealEstateExpenseMutation();
   const consumptionMutation = useUpdateRealEstateConsumptionMutation();
   const billMonthMutation = useUpdateRealEstateBillMonthMutation();

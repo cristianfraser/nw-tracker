@@ -21,6 +21,7 @@ import { formatClp, formatGroupedDecimal, formatUsdFine } from "../format";
 import type { MarketSeriesPoint } from "../types";
 import { buildNiceYAxisPositiveBand } from "../components/charts/chartLayout";
 import { useTranslation } from "../i18n";
+import { queryLoadError } from "../queries/pageShapeReady";
 
 type RatesTab = "fx" | "tickers";
 
@@ -405,7 +406,8 @@ export function RatesPage() {
   const { displayUnit } = useDisplayPreferences();
   // Range-only per-surface control (rates are daily-native): one Rango for every panel.
   const rangePrefs = useSurfacePrefs("rates.range", "month", "1y");
-  const { data: payload, error, isPending: seriesPending } = useMarketSeries();
+  const { data: payload, error: queryError, isPending: seriesPending } = useMarketSeries();
+  const error = queryLoadError({ data: payload, error: queryError });
   const { data: syncStatus } = useSyncStatus();
   const { data: ratesInstruments } = useRatesInstruments();
   const err = error instanceof Error ? error.message : error ? t("common.loadFailed") : null;

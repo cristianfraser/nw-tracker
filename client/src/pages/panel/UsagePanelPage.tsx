@@ -14,6 +14,7 @@ import { useTranslation } from "../../i18n";
 import { useUsageEndpointTrend, useUsageReport } from "../../queries/hooks";
 import type { UsageNotFoundPath } from "../../types/usage";
 import type { UsageEndpointRow, UsageReportWindow } from "../../types";
+import { queryLoadError } from "../../queries/pageShapeReady";
 
 const WINDOWS: UsageReportWindow[] = [1, 7, 30, 90];
 const COLLAPSED_ROWS = 20;
@@ -52,7 +53,7 @@ export function UsagePanelPage() {
   const data = report.data;
   const loading = report.isPending || report.isPlaceholderData;
 
-  if (report.isError) {
+  if (queryLoadError(report)) {
     return (
       <p className="error">
         {report.error instanceof Error ? report.error.message : t("common.loadFailed")}
@@ -270,7 +271,7 @@ export function UsagePanelPage() {
         <PageGridTile id="trend">
           <h2>{t("usage.trendTitle")}</h2>
           <p className="muted mono">{endpointLabel(selected)}</p>
-          {trend.isError ? (
+          {queryLoadError(trend) ? (
             <p className="error">
               {trend.error instanceof Error ? trend.error.message : t("common.loadFailed")}
             </p>

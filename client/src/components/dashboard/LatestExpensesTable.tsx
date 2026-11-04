@@ -6,6 +6,7 @@ import { usePanelCache } from "../../queries/panelCache";
 import { PageGridTile } from "../layout/PageGridTile";
 import { dashboardTileOrder } from "../../dashboardLayout";
 import { CreditCardExpenseLinesTable } from "../credit-card/CreditCardExpenseLinesTable";
+import { queryLoadError } from "../../queries/pageShapeReady";
 
 const LATEST_EXPENSES_LIMIT = 15;
 
@@ -32,15 +33,16 @@ export function LatestExpensesTable() {
   const query = useLatestExpenses(LATEST_EXPENSES_LIMIT);
   // Until live data is here, the last stored one.
   const { value: data } = usePanelCache("latest-expenses-v2", query.data, isLatestExpenses);
+  const loadError = queryLoadError(query);
 
   return (
     <PageGridTile id="latest-expenses" order={dashboardTileOrder("latest-expenses")}>
       <h2>
         <HeadingLink to="/flows/expenses">{t("dashboard.latestExpenses.title")}</HeadingLink>
       </h2>
-      {query.isError ? (
+      {loadError ? (
         <p className="error">
-          {query.error instanceof Error ? query.error.message : t("common.loadFailedTables")}
+          {loadError instanceof Error ? loadError.message : t("common.loadFailedTables")}
         </p>
       ) : (
         <CreditCardExpenseLinesTable
