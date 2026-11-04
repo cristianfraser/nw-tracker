@@ -8,6 +8,7 @@ import { Modal } from "../../components/ui/Modal";
 import { Button } from "@crfrsr/ui";
 import { FlowsTable } from "../../components/account/FlowsTable";
 import { useAccountFlows, type FlowsQueryFilters } from "../../queries/hooks";
+import { queryShowsLoading } from "../../queries/pageShapeReady";
 import { useModalPeriodNav } from "../../periodModalNav";
 import { monthEndUtcYmd } from "../../calendarMonth";
 import {
@@ -163,11 +164,12 @@ export function CheckingCartolaMonthTable({
     }),
     [modalPage, selected]
   );
-  const { data: flows, isFetching: flowsFetching } = useAccountFlows(
+  const flowsQuery = useAccountFlows(
     String(accountId),
     flowFilters,
     modalOpen && selected != null && accountId > 0
   );
+  const flows = flowsQuery.data;
 
   const selectedDiff = selected ? cartolaBalanceDiff(selected) : null;
 
@@ -306,7 +308,7 @@ export function CheckingCartolaMonthTable({
           page={flows?.page ?? modalPage}
           pageSize={MODAL_PAGE_SIZE}
           onPageChange={setModalPage}
-          loading={flowsFetching}
+          loading={queryShowsLoading(flowsQuery)}
           showUnitsColumn={false}
         />
       </Modal>

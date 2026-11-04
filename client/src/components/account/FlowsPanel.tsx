@@ -3,6 +3,7 @@ import { useDisplayPreferences } from "../../context/DisplayPreferencesContext";
 import { parseFlowsAmountFilter } from "../../flowsAmountFilter";
 import { useTranslation } from "../../i18n";
 import { useGroupFlows, useAccountFlows, type FlowsQueryFilters } from "../../queries/hooks";
+import { queryShowsLoading } from "../../queries/pageShapeReady";
 import { DEFAULT_FLOWS_FILTER_STATE, FlowsTable, type FlowsFilterState } from "./FlowsTable";
 
 const PAGE_SIZE = 20;
@@ -87,7 +88,8 @@ function GroupFlowsPanel({
     [page, filterState, extra, excludeSpending]
   );
 
-  const { data, isFetching, isPending } = useGroupFlows(groupSlug, filters, enabled);
+  const flows = useGroupFlows(groupSlug, filters, enabled);
+  const { data } = flows;
 
   const handleFilterChange = useCallback((patch: Partial<FlowsFilterState>) => {
     setFilterState((prev) => ({ ...prev, ...patch }));
@@ -102,7 +104,7 @@ function GroupFlowsPanel({
       page={data?.page ?? page}
       pageSize={PAGE_SIZE}
       onPageChange={setPage}
-      loading={isPending || isFetching}
+      loading={queryShowsLoading(flows)}
       showAccountColumn
       showUnitsColumn={showUnitsColumn}
       emptyMessage={t("accountDetail.flowsEmpty")}
@@ -147,7 +149,8 @@ function AccountFlowsPanel({
     [page, filterState, extra]
   );
 
-  const { data, isFetching } = useAccountFlows(id, filters, enabled);
+  const flows = useAccountFlows(id, filters, enabled);
+  const { data } = flows;
 
   const handleFilterChange = useCallback((patch: Partial<FlowsFilterState>) => {
     setFilterState((prev) => ({ ...prev, ...patch }));
@@ -166,7 +169,7 @@ function AccountFlowsPanel({
       page={data?.page ?? page}
       pageSize={PAGE_SIZE}
       onPageChange={setPage}
-      loading={isFetching}
+      loading={queryShowsLoading(flows)}
       showAccountColumn={false}
       movementUnitsKind={movementUnitsKind}
       emptyMessage={t("accountDetail.flowsEmpty")}

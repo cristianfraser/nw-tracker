@@ -58,7 +58,7 @@ function AddSymbolCombobox() {
   }, [search]);
   const results = useWatchlistSymbolSearch(debounced);
   const options = debounced ? (results.data?.results ?? []) : [];
-  const waiting = search.trim() !== debounced || results.isFetching;
+  const waiting = search.trim() !== debounced || results.isFetching; // convention-ok: search results follow the typed query
 
   const emptyMessage = !search.trim()
     ? t("watchlist.searchPrompt")

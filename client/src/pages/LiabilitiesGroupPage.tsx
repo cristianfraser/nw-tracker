@@ -64,7 +64,7 @@ export function LiabilitiesGroupPage() {
   );
 
   const { displayUnit } = useDisplayPreferences();
-  const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav();
+  const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav(); // convention-ok: nav refetch gates «not found» only, no dim
   // Redirect away only once the nav has answered without this route; until then the page
   // renders its shell (empty title, placeholder charts), dimmed.
   const navSettled = !navPending && !navFetching;

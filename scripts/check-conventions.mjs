@@ -19,6 +19,10 @@
  *    single-quoted literals, or unterminated literals — use a POST_MIGRATION_HOOKS entry
  *    in db.ts for those data transforms.
  *
+ * 6. No `isFetching` / `isRefetching` in client/src/components or client/src/pages — a view
+ *    dims on `queryShowsLoading(q)` (queries/pageShapeReady.ts: `isPending || isPlaceholderData`),
+ *    never on a background refetch (the live-quotes stamp refetches every query on each tick).
+ *
  * Escape hatch: append `// convention-ok: <reason>` to a line to exempt it.
  * Run: `npm run check:conventions` (root) — part of `npm run typecheck`.
  */
@@ -32,6 +36,7 @@ const FORMAT_DATE_LABEL_TS = path.join(CLIENT_SRC, "formatDateLabel.ts");
 const SPANISH_CHARS = /[áéíóúñÁÉÍÓÚÑ¿¡]/;
 /** The January entry of a month-name table, Spanish or English, short or full. */
 const MONTH_TABLE_ENTRY = /["'`](ene|enero|jan|january)["'`]/i;
+const VIEW_DIRS = [path.join(CLIENT_SRC, "components"), path.join(CLIENT_SRC, "pages")];
 const DATE_OPTION_HINT = /dateStyle|timeStyle|weekday|year|month|day|hour|minute|second/;
 
 /** Blank out comments while preserving line structure (naive; good enough for a guard). */
@@ -75,6 +80,10 @@ for (const file of walk(CLIENT_SRC)) {
 
     if (file !== FORMAT_DATE_LABEL_TS && MONTH_TABLE_ENTRY.test(line)) {
       problems.push(`${loc}: month-name table outside formatDateLabel.ts — use its helpers so the label follows the UI language`);
+    }
+
+    if (VIEW_DIRS.some((d) => file.startsWith(d + path.sep)) && /\bis(Re)?[Ff]etching\b/.test(line)) {
+      problems.push(`${loc}: isFetching in a view — dim on queryShowsLoading(q) (isPending || isPlaceholderData), never on a background refetch`);
     }
 
     if (file !== FORMAT_TS && /toLocaleString\(\s*["']/.test(line)) {
