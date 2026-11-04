@@ -1899,8 +1899,34 @@ export function RoughRect({
 }
 
 /** A `shape` for `<Bar>`: the bar's index salts the series seed, so every bar sketches differently. */
-export function roughBarShape(seed: number, pen: RoughPen, grainFilterId?: string) {
-  return (props: BarShapeProps) => <RoughBarShapeImpl {...props} seed={seed} pen={pen} grainFilterId={grainFilterId} />;
+export function roughBarShape(
+  seed: number,
+  pen: RoughPen,
+  grainFilterId?: string,
+  geometry?: BarShapeGeometry
+) {
+  return (props: BarShapeProps) => {
+    const placed = geometry ? geometry(props) : props;
+    if (placed == null) return <g />;
+    return <RoughBarShapeImpl {...placed} seed={seed} pen={pen} grainFilterId={grainFilterId} />;
+  };
+}
+
+/** Moves or resizes a bar before it is drawn; null draws nothing. */
+export type BarShapeGeometry = (props: BarShapeProps) => BarShapeProps | null;
+
+type GeometryBarShape = ((props: BarShapeProps) => ReactNode) & { roughGeometry: BarShapeGeometry };
+
+/**
+ * A custom `<Bar>` shape that only places the bar (a fixed width, a centring): the plain style
+ * draws `render`, the hand-drawn styles sketch the bar at the same `geometry` instead of leaving
+ * a custom shape alone.
+ */
+export function placedBarShape(
+  geometry: BarShapeGeometry,
+  render: (props: BarShapeProps) => ReactNode
+): GeometryBarShape {
+  return Object.assign((props: BarShapeProps) => render(props), { roughGeometry: geometry });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2203,7 +2229,11 @@ export function injectRoughShapes(node: ReactNode, mode: RoughMode, grainFilterI
       return mode.extras ? cloneElement(el, roughGridProps(props, mode) as Partial<typeof props>) : child;
     }
     if (el.type === Line || el.type === Bar || el.type === Area) {
-      if (props.shape != null) return child;
+      const geometry =
+        el.type === Bar && typeof props.shape === "function"
+          ? (props.shape as Partial<GeometryBarShape>).roughGeometry
+          : undefined;
+      if (props.shape != null && !geometry) return child;
       if (el.type !== Bar && (props.stroke === "transparent" || props.stroke === "none")) return child;
       const seed = roughSeed(dataKeyString(props.dataKey), mode.seedSalt);
       const grain = mode.grain === "filter" ? grainFilterId : undefined;
@@ -2211,7 +2241,7 @@ export function injectRoughShapes(node: ReactNode, mode: RoughMode, grainFilterI
         el.type === Line
           ? roughLineShape(seed, mode, grain)
           : el.type === Bar
-            ? roughBarShape(seed, mode, grain)
+            ? roughBarShape(seed, mode, grain, geometry)
             : roughAreaShape(seed, mode, grain);
       return cloneElement(el, { shape, isAnimationActive: false } as Partial<typeof props>);
     }

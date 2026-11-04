@@ -9,6 +9,7 @@ import { formatYearMonthLabel } from "../../formatDateLabel";
 import { AppComposedChart } from "./AppComposedChart";
 import { athTooltipIndexTolerance } from "./athMarkerPlacement";
 import { renderPeriodRefLine } from "./PeriodRefLine";
+import { placedBarShape } from "./roughShapes";
 import {
   buildNiceYAxis,
   computeRegularMonthXAxisTicks,
@@ -72,7 +73,7 @@ function unifiedMinMax(points: CcHistorialChartRow[]) {
 /** Day-mode bar width: a day's band is a fraction of a pixel at wide ranges. */
 const DAILY_BAR_PX = 6;
 
-type BarShapeProps = { x?: number; y?: number; width?: number; height?: number; fill?: string };
+type BarShapeProps = Parameters<Parameters<typeof placedBarShape>[0]>[0];
 
 /**
  * Day mode: each segment drawn at a fixed width centred on its day. Recharts shrinks a fixed
@@ -80,19 +81,31 @@ type BarShapeProps = { x?: number; y?: number; width?: number; height?: number; 
  * every day, bar or not — an empty day draws nothing (its stroked zero-height rect would paint
  * the gap colour along the baseline).
  */
-function DailyBarSegment({ x = 0, y = 0, width = 0, height = 0, fill }: BarShapeProps) {
+function dailyBarGeometry({ x = 0, y = 0, width = 0, height = 0, ...rest }: BarShapeProps): BarShapeProps | null {
   if (height === 0) return null;
+  return {
+    ...rest,
+    x: x + width / 2 - DAILY_BAR_PX / 2,
+    y: Math.min(y, y + height),
+    width: DAILY_BAR_PX,
+    height: Math.abs(height),
+  };
+}
+
+const dailyBarSegment = placedBarShape(dailyBarGeometry, (props) => {
+  const placed = dailyBarGeometry(props);
+  if (placed == null) return null;
   return (
     <rect
       className="recharts-rectangle"
-      x={x + width / 2 - DAILY_BAR_PX / 2}
-      y={Math.min(y, y + height)}
-      width={DAILY_BAR_PX}
-      height={Math.abs(height)}
-      fill={fill}
+      x={placed.x}
+      y={placed.y}
+      width={placed.width}
+      height={placed.height}
+      fill={placed.fill}
     />
   );
-}
+});
 
 export function CcInstallmentHistoryChart({
   rows,
@@ -303,7 +316,7 @@ export function CcInstallmentHistoryChart({
               stackId="facturado"
               className="cc-facturado-segment"
               {...(isDailyMode
-                ? { shape: (props: BarShapeProps) => <DailyBarSegment {...props} /> }
+                ? { shape: dailyBarSegment }
                 : { maxBarSize: 32 })}
             />
           ))}
