@@ -1,4 +1,5 @@
 import { assertValuationCurrency } from "./valuationValue.js";
+import { equityAsTradedClose, equitySplitFactorAfter } from "./equitySplits.js";
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import {
@@ -23,7 +24,6 @@ import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
 import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
-  equityCloseEod,
   equityHeldSessionQuote,
   equityQuoteCurrency,
   equitySessionYmdForTicker,
@@ -190,7 +190,9 @@ export function equityBrokeragePositionMeta(
          WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
       )
       .get(ticker, asOfYmd) as { trade_date: string; close: number } | undefined;
-    close = closeRow?.close ?? equityCloseEod(ticker, asOfYmd);
+    // The shares held on `asOfYmd` at that day's traded price (`equitySplits.ts`).
+    close =
+      closeRow != null ? closeRow.close * equitySplitFactorAfter(ticker, asOfYmd) : equityAsTradedClose(ticker, asOfYmd);
     markDate = closeRow?.trade_date ?? asOfYmd;
   }
 

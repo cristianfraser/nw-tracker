@@ -14,6 +14,8 @@ export type EodCloseSeries = { dates: string[]; closes: number[] };
 export type YahooLiveQuote = {
   /** Price in the symbol's exchange quote currency (see `equityQuoteCurrency`). */
   price: number;
+  /** Splits Yahoo lists in the quote's range (the session itself): an ex-date split shows here. */
+  splits: YahooSplit[];
   previous_close: number | null;
   /** Exchange session date for the quote (America/New_York for US listings). */
   session_ymd: string;
@@ -41,9 +43,15 @@ export type YahooChartResult = {
   meta?: YahooChartMeta;
   timestamp?: number[];
   indicators?: { quote?: Array<{ close?: (number | null)[] }> };
-  /** Present when the query asks for `events=div`. */
-  events?: { dividends?: Record<string, { amount?: number; date?: number }> };
+  /** Present when the query asks for `events=div` / `events=split`. */
+  events?: {
+    dividends?: Record<string, { amount?: number; date?: number }>;
+    splits?: Record<string, { date?: number; numerator?: number; denominator?: number }>;
+  };
 };
+
+/** A stock split as Yahoo lists it: every share became numerator / denominator shares on the ex-date. */
+export type YahooSplit = { ex_date: string; numerator: number; denominator: number };
 
 /** One cash dividend per share, keyed by its ex-date, in the symbol's quote currency. */
 export type YahooDividend = { ex_date: string; amount: number };
@@ -57,6 +65,7 @@ export type YahooDailyCloseParse = {
 export type YahooNyseEodFetch = {
   series: EodCloseSeries;
   dividends: YahooDividend[];
+  splits: YahooSplit[];
   yahooLatestDate: string | null;
   dueSessionYmd: string;
   usedMetaClose: boolean;
@@ -94,7 +103,7 @@ export async function fetchYahooChartMeta(symbol: string): Promise<YahooChartMet
 
 /** Intraday / regular-hours quote from chart `meta` (same API as EOD history). */
 export async function fetchYahooLiveQuote(symbol: string): Promise<YahooLiveQuote> {
-  const result = await fetchYahooChart(symbol, "interval=1d&range=1d");
+  const result = await fetchYahooChart(symbol, "interval=1d&range=1d&events=split");
   const meta = result.meta;
   const price = meta?.regularMarketPrice;
   if (price == null || !Number.isFinite(price) || price <= 0) {
@@ -108,7 +117,7 @@ export async function fetchYahooLiveQuote(symbol: string): Promise<YahooLiveQuot
     rt != null && Number.isFinite(rt)
       ? yahooBarYmdFromUnix(symbol, rt)
       : yahooBarYmdFromUnix(symbol, Math.floor(Date.now() / 1000));
-  return { price, previous_close, session_ymd };
+  return { price, previous_close, session_ymd, splits: parseYahooSplits(symbol, result) };
 }
 
 /** Unix `period1` / `period2` for Yahoo chart (seconds), padded around [firstMk, lastMk]. */
@@ -183,6 +192,30 @@ export function parseYahooDividends(symbol: string, result: YahooChartResult): Y
   return out;
 }
 
+/** Splits from a chart result fetched with `events=split` (ascending by ex-date). */
+export function parseYahooSplits(symbol: string, result: YahooChartResult): YahooSplit[] {
+  const raw = result.events?.splits;
+  if (raw == null) return [];
+  const out: YahooSplit[] = [];
+  for (const [key, s] of Object.entries(raw)) {
+    const sec = s.date ?? Number(key);
+    const { numerator, denominator } = s;
+    if (
+      !Number.isFinite(sec) ||
+      numerator == null ||
+      denominator == null ||
+      !(numerator > 0) ||
+      !(denominator > 0) ||
+      numerator === denominator
+    ) {
+      throw new Error(`Yahoo split for ${symbol}: unreadable entry ${JSON.stringify({ key, s })}`);
+    }
+    out.push({ ex_date: yahooBarYmdFromUnix(symbol, sec), numerator, denominator });
+  }
+  out.sort((a, b) => a.ex_date.localeCompare(b.ex_date));
+  return out;
+}
+
 /** Daily closes and dividends over [period1, period2] in one chart request. */
 export async function fetchYahooDailyClosesAndDividends(
   symbol: string,
@@ -254,10 +287,11 @@ export async function fetchYahooNyseEodForSync(
   const period1 = period2 - days * 86400;
   const result = await fetchYahooChart(
     symbol,
-    `interval=1d&events=div&period1=${period1}&period2=${period2}`
+    `interval=1d&events=div,split&period1=${period1}&period2=${period2}`
   );
   const parsed = parseYahooDailyCloseSeries(symbol, result);
   const dividends = parseYahooDividends(symbol, result);
+  const splits = parseYahooSplits(symbol, result);
   const enriched = enrichNyseEodSeriesFromMeta(parsed.series, result.meta, opts.dueSessionYmd);
   const yahooLatestDate = enriched.series.dates[enriched.series.dates.length - 1] ?? null;
   const stillMissingDueSession =
@@ -265,6 +299,7 @@ export async function fetchYahooNyseEodForSync(
   return {
     series: enriched.series,
     dividends,
+    splits,
     yahooLatestDate,
     dueSessionYmd: opts.dueSessionYmd,
     usedMetaClose: enriched.usedMetaClose,
@@ -281,10 +316,14 @@ export async function fetchYahooRecentDailyCloses(symbol: string, days = 14): Pr
 export async function fetchYahooRecentDailyClosesWithMeta(
   symbol: string,
   days = 14
-): Promise<{ series: EodCloseSeries; meta: YahooChartMeta | undefined }> {
+): Promise<{ series: EodCloseSeries; meta: YahooChartMeta | undefined; splits: YahooSplit[] }> {
   const period2 = Math.floor(Date.now() / 1000);
   const period1 = period2 - days * 86400;
-  const result = await fetchYahooChart(symbol, `interval=1d&period1=${period1}&period2=${period2}`);
-  return { series: parseYahooDailyCloseSeries(symbol, result).series, meta: result.meta };
+  const result = await fetchYahooChart(symbol, `interval=1d&events=split&period1=${period1}&period2=${period2}`);
+  return {
+    series: parseYahooDailyCloseSeries(symbol, result).series,
+    meta: result.meta,
+    splits: parseYahooSplits(symbol, result),
+  };
 }
 

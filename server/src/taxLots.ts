@@ -48,6 +48,11 @@ export type TaxLotMethod = keyof typeof TAX_LOT_SELECTORS;
 
 export type TaxLotEvent =
   | { kind: "acquire"; date: string; movementId: number; units: number; cost: number }
+  /**
+   * A stock split: every open lot's units × `ratio`, its cost and purchase date unchanged (a
+   * split realizes nothing). `units` is the shares it added, for the ledger check.
+   */
+  | { kind: "split"; date: string; movementId: number; units: number; ratio: number }
   | {
       kind: "dispose";
       date: string;
@@ -102,6 +107,11 @@ export function realizeTaxLots(
       throw new Error(`Tax lots: movement ${e.movementId} dated ${e.date} comes after ${previousDate}`);
     }
     previousDate = e.date;
+    if (e.kind === "split") {
+      if (!(e.ratio > 0)) throw new Error(`Tax lots: split ${e.movementId} has ratio ${e.ratio}`);
+      for (const l of lots) l.units *= e.ratio;
+      continue;
+    }
     if (!(e.units > 0)) throw new Error(`Tax lots: movement ${e.movementId} has ${e.units} units`);
     if (e.kind === "acquire") {
       if (!(e.cost >= 0)) throw new Error(`Tax lots: purchase ${e.movementId} costs ${e.cost}`);

@@ -39,6 +39,7 @@
     "sync:all": "tsx scripts/global-sync.ts",
     "sync:fintual-rn-composition": "tsx scripts/sync-fintual-rn-composition.ts",
     "live-quotes:sync": "tsx scripts/sync-live-quotes.ts",
+    "equity:record-split": "tsx scripts/record-equity-split.ts",
     "backfill:sbif-utm-ipc": "tsx scripts/backfill-sbif-utm-ipc.ts",
     "backfill:sbif-fx-eur": "tsx scripts/backfill-sbif-fx-eur-daily.ts",
     "backfill:yahoo-fx-usd": "tsx scripts/backfill-yahoo-fx-usd.ts",

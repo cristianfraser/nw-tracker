@@ -14,6 +14,7 @@ import {
   runMarkInputChangeTriggers242,
   runMarkInputChangeTriggers243,
   runMarkInputChangeTriggers258,
+  runMarkInputChangeTriggers265,
 } from "./markInputChangeTriggers211.js";
 import { runLoanPayments258 } from "./loanPayments258.js";
 import { runValuationsAnyCurrency260 } from "./valuationsAnyCurrency260.js";
@@ -250,6 +251,7 @@ const POST_MIGRATION_HOOKS: Record<string, (dbi: DatabaseType) => void> = {
     runMarkInputChangeTriggers258(dbi);
   },
   "260_valuations_any_currency.sql": runValuationsAnyCurrency260,
+  "265_equity_splits.sql": runMarkInputChangeTriggers265,
 };
 
 /**

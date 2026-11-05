@@ -58,7 +58,7 @@ describe("cryptoTaxLotEventsFromRows", () => {
       [2, detail(2, 0.0001, "btc")],
     ]);
     const events = cryptoTaxLotEventsFromRows(rows, kinds, { policy: "excluded", details });
-    expect(events.map((e) => (e.kind === "acquire" ? e.cost : e.proceeds))).toEqual([98_800, 303_000]);
+    expect(events.map((e) => (e.kind === "acquire" ? e.cost : e.kind === "dispose" ? e.proceeds : null))).toEqual([98_800, 303_000]);
     expect(() => cryptoTaxLotEventsFromRows(rows, kinds, { policy: "excluded", details: new Map() })).toThrow(
       /no exchange record/
     );

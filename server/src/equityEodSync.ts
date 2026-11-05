@@ -14,7 +14,13 @@ import { db } from "./db.js";
 import { equityMarketKind } from "./equityQuote.js";
 import { insertEquityDividendsIfMissing } from "./equityDividends.js";
 import { fetchCoinGeckoRecentDailyCloses } from "./equityCoinGeckoEod.js";
-import { fetchYahooNyseEodForSync, fetchYahooRecentDailyCloses, type EodCloseSeries } from "./equityYahooEod.js";
+import {
+  fetchYahooNyseEodForSync,
+  fetchYahooRecentDailyCloses,
+  fetchYahooRecentDailyClosesWithMeta,
+  type EodCloseSeries,
+} from "./equityYahooEod.js";
+import { recordYahooSplits } from "./equitySplitsSync.js";
 import { isChileBusinessDay, isNyseTradingDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { isAfterNyseRegularClose, nyseSessionYmd, nyseWallClock, utcTodayYmd } from "./nyseSession.js";
 import { clearEquityLiveQuoteCache } from "./equityQuote.js";
@@ -230,6 +236,8 @@ export async function syncEquityEodFromYahoo(
       }
       try {
         const fetch = await fetchYahooNyseEodForSync(ticker, { dueSessionYmd, now, days: 21 });
+        // A split first: the bars below are post-split, and the stored ones must be too.
+        if (!dryRun) recordYahooSplits(ticker, fetch.splits, now);
         const rows = dryRun ? fetch.series.dates.length : upsertEquityDailySeries(ticker, fetch.series);
         let dividendError: string | undefined;
         if (!dryRun) {
@@ -270,10 +278,9 @@ export async function syncEquityEodFromYahoo(
         continue;
       }
       try {
-        const series = capEodSeriesToMaxTradeDate(
-          await fetchYahooRecentDailyCloses(ticker, 21),
-          dueSessionYmd
-        );
+        const fetched = await fetchYahooRecentDailyClosesWithMeta(ticker, 21);
+        if (!dryRun) recordYahooSplits(ticker, fetched.splits, now);
+        const series = capEodSeriesToMaxTradeDate(fetched.series, dueSessionYmd);
         const rows = dryRun ? series.dates.length : upsertEquityDailySeries(ticker, series);
         const dbLatestDate = latestEquityEodTradeDate(ticker);
         out.push({

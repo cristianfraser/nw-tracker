@@ -2,6 +2,7 @@ import { historyTierMemo } from "./aggregationCache.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndsBetweenInclusive } from "./calendarMonth.js";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
+import { equityAsTradedClose, healIncomingEquityClose } from "./equitySplits.js";
 import {
   sumUnitsThroughDate,
   listMovementRowsForAccount,
@@ -14,7 +15,6 @@ import { dbStateMemo } from "./dbStateMemo.js";
 import { equityTickerForAccount, requireEquityTicker } from "./accountEquityTicker.js";
 export { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
-  equityCloseEod,
   equityDisplaySessionYmd,
   equityQuoteCurrency,
   marketQuoteCurrency,
@@ -40,7 +40,9 @@ export function upsertEquityDailySeries(ticker: string, series: EodCloseSeries):
     const d = series.dates[i]!;
     const c = series.closes[i]!;
     if (!Number.isFinite(c)) continue;
-    insEod.run(ticker, d, c, currency);
+    // The table is split-adjusted: a close sent as traded is re-framed, and one that moves like
+    // an unrecorded split throws before anything of this ticker is stored over it.
+    insEod.run(ticker, d, healIncomingEquityClose(ticker, d, c), currency);
     n += 1;
   }
   return n;
@@ -142,7 +144,8 @@ function computeEquityMtmClpUncached(
   const ticker = requireEquityTicker(accountId);
   const units = equityShareUnitsThroughYmd(accountId, asOfYmd);
   if (units <= 0 || !Number.isFinite(units)) return null;
-  const close = price ?? equityCloseEod(ticker, asOfYmd);
+  // The shares held on `asOfYmd` are valued at that day's traded price (`equitySplits.ts`).
+  const close = price ?? equityAsTradedClose(ticker, asOfYmd);
   if (close == null || !Number.isFinite(close)) return null;
   // Shares × the quote-currency price, converted once at what selling them would get
   // (`valueConvert.ts`): the date's rate, live while today's fx day is open.

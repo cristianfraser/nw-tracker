@@ -76,6 +76,8 @@ const BROKERAGE_NON_CASH_FLOW_KINDS = new Set([
   "stock_buy",
   "stock_sell",
   "dividend_payout",
+  // A split moves shares, never money (`equitySplits.ts`).
+  "stock_split",
 ]);
 
 /** Bank-paid yield (Abonos / Intereses) on cuenta_ahorro_vivienda — P/L, not personal capital. */

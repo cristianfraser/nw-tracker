@@ -29,6 +29,8 @@ export const FLOW_KIND_CARGA_TARJETA = "carga_tarjeta" as const;
  * sender, a deposit into the receiver; inside the AFP group they cancel).
  */
 export const FLOW_KIND_AFP_FUND_SWITCH = "afp_fund_switch" as const;
+/** A stock split's new shares on the holder (`equitySplits.ts`): units only, no money. */
+export const FLOW_KIND_STOCK_SPLIT = "stock_split" as const;
 
 export type MortgageFlowKind =
   | typeof FLOW_KIND_PAGO_CUOTA_HIPOTECARIO
@@ -41,6 +43,7 @@ export type MovementFlowType =
   | typeof FLOW_KIND_PAGO_TARJETA
   | typeof FLOW_KIND_CARGA_TARJETA
   | typeof FLOW_KIND_AFP_FUND_SWITCH
+  | typeof FLOW_KIND_STOCK_SPLIT
   | "withdrawal_clp"
   | "withdrawal_usd"
   | "deposit_usd"
@@ -104,6 +107,7 @@ export function movementFlowTypeFromRow(row: {
     return row.transfer_direction === "out" ? "withdrawal_clp" : "deposit_clp";
   }
   if (isBrokerageFlowKind(row.flow_kind)) return row.flow_kind;
+  if (row.flow_kind === FLOW_KIND_STOCK_SPLIT) return FLOW_KIND_STOCK_SPLIT;
   // Flow kind is resolved at write time and stored in the column (never parsed from the note).
   if (isMortgageFlowKind(row.flow_kind)) return row.flow_kind;
   if (isDepositFlowKind(row.flow_kind)) return row.flow_kind;
@@ -153,6 +157,7 @@ export function movementFlowTypeLabel(flowType: MovementFlowType, currencies: Mo
   if (label === FLOW_KIND_PAGO_TARJETA) return "Pago tarjeta";
   if (label === FLOW_KIND_CARGA_TARJETA) return "Carga desde tarjeta";
   if (label === FLOW_KIND_AFP_FUND_SWITCH) return "Traspaso AFP";
+  if (label === FLOW_KIND_STOCK_SPLIT) return "División de acciones";
   if (label === FLOW_KIND_PREPAGO_PARCIAL_HIPOTECARIO) return "Prepago parcial hipotecario";
   if (isDepositMovementFlowType(flowType)) {
     return depositFlowKindLabel(flowType);
