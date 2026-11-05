@@ -70,6 +70,8 @@ export type UpcomingPaymentItemDto = {
   /** Gastos comunes: the month billed (YYYY-MM). */
   bill_month: string | null;
   card: CcUpcomingPaymentRowDto | null;
+  /** The place a mortgage pays for; null otherwise. */
+  place_label: string | null;
   /** A declared payment (work in progress). */
   wip: boolean;
   /** Where the label links (the account page, the place's real-estate expenses); null = plain text. */

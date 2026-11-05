@@ -78,42 +78,42 @@ function AmountCell({ item }: { item: UpcomingPaymentItemDto }) {
   );
 }
 
-/** What the payment is (the whole label links to its page when it has one): the card and its facturación, the mortgage cuota, a place's bill, a declared payment. */
+/**
+ * What the payment is, short (the whole label links to its page when it has one): the card, the
+ * mortgage or a bill by its place. The detail — the facturación, the cuota, the month billed —
+ * is on hover.
+ */
 function ItemLabel({ item }: { item: UpcomingPaymentItemDto }) {
   const { t } = useTranslation();
   switch (item.kind) {
     case "card": {
       const row = item.card!;
+      const hint = t("dashboard.ccUpcoming.billingMonthHint", { month: formatYearMonthLabel(row.billing_month) });
       return (
-        <>
-          {item.name} · {formatYearMonthLabel(row.billing_month)}
-          {row.is_provisional_close ? (
-            <span className="muted" title={t("accountDetail.creditCard.provisionalCloseHint")}>
-              *
-            </span>
-          ) : null}
-        </>
+        <span title={row.is_provisional_close ? `${hint} · ${t("accountDetail.creditCard.provisionalCloseHint")}` : hint}>
+          {item.name}
+          {row.is_provisional_close ? <span className="muted">*</span> : null}
+        </span>
       );
     }
     case "mortgage":
       return (
-        <>
-          <span title={item.name}>{t("dashboard.ccUpcoming.kindMortgage")}</span> ·{" "}
-          {t("dashboard.ccUpcoming.cuota", { n: item.cuota })}
-        </>
+        <span title={`${item.name} · ${t("dashboard.ccUpcoming.cuota", { n: item.cuota })}`}>
+          {t("dashboard.ccUpcoming.kindMortgage")}
+          {item.place_label ? ` · ${item.place_label}` : ""}
+        </span>
       );
     case "hoa":
       return (
-        <>
-          {t("dashboard.ccUpcoming.kindHoa")} · {item.name} · {formatYearMonthLabel(item.bill_month!)}
-        </>
+        <span title={`${t("dashboard.ccUpcoming.kindHoa")} · ${formatYearMonthLabel(item.bill_month!)}`}>
+          {t("dashboard.ccUpcoming.kindHoaShort")} · {item.name}
+        </span>
       );
     case "contribuciones":
       return (
-        <>
-          {t("dashboard.ccUpcoming.kindContribuciones")} · {item.name} ·{" "}
-          {t("dashboard.ccUpcoming.cuotaOf", { n: item.cuota, count: item.cuota_count })}
-        </>
+        <span title={t("dashboard.ccUpcoming.cuotaOf", { n: item.cuota, count: item.cuota_count })}>
+          {t("dashboard.ccUpcoming.kindContribuciones")} · {item.name}
+        </span>
       );
     case "recurring":
       return (
@@ -138,7 +138,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   // Pesos in both units, so one stored entry; until the bundle answers, the last stored one.
-  const { value: data, cached } = usePanelCache("upcoming-v1", live, isUpcomingPayments);
+  const { value: data, cached } = usePanelCache("upcoming-v2", live, isUpcomingPayments);
   const loading = liveLoading && !cached;
   const allMonths = data?.months ?? [];
   const months = expanded ? allMonths : allMonths.slice(0, COLLAPSED_MONTHS);

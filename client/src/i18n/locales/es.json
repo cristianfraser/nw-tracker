@@ -124,6 +124,8 @@
       "estimatedHint": "Estimado: ningún documento indica aún este monto.",
       "wipHint": "Un pago que declaraste (en desarrollo).",
       "kindHoa": "Gastos comunes",
+      "kindHoaShort": "GG. CC.",
+      "billingMonthHint": "Facturación {{month}}",
       "kindContribuciones": "Contribuciones",
       "showMore": "Ver más",
       "showLess": "Ver menos",
