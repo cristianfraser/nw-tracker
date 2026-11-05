@@ -8,7 +8,7 @@ import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { loadableClass } from "../ui/Loadable";
 import { layoutTreemap, type Placed } from "./treemapLayout";
 import { useChartStyle } from "./chartStyle";
-import { useHatchTuning } from "./hatchTuning";
+import { HATCH_TUNING } from "./hatchTuning";
 import { RoughRect, roughPenFor, tileHatchAngle } from "./roughShapes";
 
 type Unit = "clp" | "usd";
@@ -214,7 +214,6 @@ export function ValueTreemap({
     return () => ro.disconnect();
   }, []);
 
-  const hatchTuning = useHatchTuning();
   const mapRoot = useMemo(() => (root ? toMapNode(root, unit) : null), [root, unit]);
 
   const placed = useMemo(() => {
@@ -303,7 +302,7 @@ export function ValueTreemap({
                 // each tile somewhere within the series spread (its tilt on top when drawn).
                 const shownPct = pctOf(dto);
                 const falling = shownPct != null && Math.round(shownPct * 10000) < 0;
-                const hatchAngle = tileHatchAngle(falling, seed, hatchTuning.range);
+                const hatchAngle = tileHatchAngle(falling, seed, HATCH_TUNING.range);
                 const inset = 1.5;
                 if (p.node.children != null) {
                   return (
