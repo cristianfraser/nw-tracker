@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { noteServedClientBuild } from "../clientBuild";
 import { queryReadsMovedPrice } from "../liveInputs";
 import { queryKeys } from "./keys";
 
@@ -30,6 +31,8 @@ export function useLiveQuotesStampInvalidation() {
   });
   const stamp = data?.stamp;
   const moves = data?.moves ?? null;
+  const clientBuild = data?.client_build;
+  useEffect(() => noteServedClientBuild(clientBuild), [clientBuild]);
   useEffect(() => {
     if (stamp === undefined) return;
     const previous = seen.current;

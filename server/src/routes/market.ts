@@ -6,6 +6,7 @@ import { chileCalendarTodayYmd } from "../chileDate.js";
 import { getMarketSeriesPayload } from "../marketSeries.js";
 import { getMarketTickerPayload } from "../marketTicker.js";
 import { liveQuoteMovesSince, liveQuotesStamp } from "../liveQuotesStamp.js";
+import { servedClientBuildId } from "../clientBuild.js";
 import {
   addManualWatchlistTickerFromYahoo,
   deleteManualWatchlistRow,
@@ -96,9 +97,15 @@ app.get("/api/market-series", (_req, res) => {
 // When the live prices last moved (published once the dashboard caches carry them); the client
 // polls it and refetches on change. In-process state only — `null` until a poll moves a price.
 // `?since=<stamp the client saw>`: also what moved since then (null when nothing did).
+// `client_build`: the client build this server serves (null when it serves none), so an open
+// tab running an older one reloads (client/src/clientBuild.ts).
 app.get("/api/live-quotes/stamp", (req, res) => {
   const since = typeof req.query.since === "string" ? req.query.since : null;
-  res.json({ stamp: liveQuotesStamp(), moves: liveQuoteMovesSince(since) });
+  res.json({
+    stamp: liveQuotesStamp(),
+    moves: liveQuoteMovesSince(since),
+    client_build: servedClientBuildId(),
+  });
 });
 
 // `?unit=usd` returns values and changes in USD (the app's CLP/USD toggle); default CLP.

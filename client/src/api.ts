@@ -716,7 +716,7 @@ export const api = {
       body: JSON.stringify({ date, buy_clp_per_usd, sell_clp_per_usd }),
     }),
   liveQuotesStamp: (since: string | null) =>
-    j<{ stamp: string | null; moves: LiveQuoteMoves | null }>(
+    j<{ stamp: string | null; moves: LiveQuoteMoves | null; client_build: string | null }>(
       since == null ? "/api/live-quotes/stamp" : `/api/live-quotes/stamp?since=${encodeURIComponent(since)}`
     ),
   // Values come back in the display unit (server-side conversion); CLP is the default.
