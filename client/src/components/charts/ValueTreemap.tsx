@@ -8,7 +8,8 @@ import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { loadableClass } from "../ui/Loadable";
 import { layoutTreemap, type Placed } from "./treemapLayout";
 import { useChartStyle } from "./chartStyle";
-import { RoughRect, roughPenFor } from "./roughShapes";
+import { useHatchTuning } from "./hatchTuning";
+import { RoughRect, roughPenFor, tileHatchAngle } from "./roughShapes";
 
 type Unit = "clp" | "usd";
 
@@ -25,13 +26,14 @@ function unitValue(n: NavValueMapNodeDto, unit: Unit): number | null {
 }
 
 /**
- * `depth` is relative to the page root: its first-level children (depth 1) always show what is
- * inside — a leaf group opens into its accounts (`leaf_accounts`) even with one; deeper, a leaf
- * group opens when it holds two or more, and a single account stays the group's own tile.
+ * `depth` is relative to the page root: the root (a leaf group's own page) and its first-level
+ * children (depth 1) always show what is inside — a leaf group opens into its accounts
+ * (`leaf_accounts`) even with one; deeper, a leaf group opens when it holds two or more, and a
+ * single account stays the group's own tile.
  */
 function toMapNode(dto: NavValueMapNodeDto, unit: Unit, depth = 0): MapNode | null {
   const leafAccounts = dto.leaf_accounts ?? [];
-  const opensLeaf = leafAccounts.length >= (depth === 1 ? 1 : 2);
+  const opensLeaf = leafAccounts.length >= (depth <= 1 ? 1 : 2);
   const inner = dto.children ?? (opensLeaf ? leafAccounts : null);
   if (inner) {
     const children = inner.flatMap((c) => {
@@ -212,6 +214,7 @@ export function ValueTreemap({
     return () => ro.disconnect();
   }, []);
 
+  const hatchTuning = useHatchTuning();
   const mapRoot = useMemo(() => (root ? toMapNode(root, unit) : null), [root, unit]);
 
   const placed = useMemo(() => {
@@ -296,20 +299,25 @@ export function ValueTreemap({
                 const color = sketchTileColor(palette, t);
                 const border = sketchBorderColor(palette, t);
                 const seed = slugSeed(dto.slug);
+                // The hatch leans with the move as shown: rising «/» for up or flat, falling «\» for down,
+                // each tile somewhere within the series spread (its tilt on top when drawn).
+                const shownPct = pctOf(dto);
+                const falling = shownPct != null && Math.round(shownPct * 10000) < 0;
+                const hatchAngle = tileHatchAngle(falling, seed, hatchTuning.range);
                 const inset = 1.5;
                 if (p.node.children != null) {
                   return (
                     <g key={`sf:${dto.slug}`}>
                       {/* The header strip first, so the frame's border is drawn over it. */}
                       {p.header > 0 ? (
-                        <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.header - inset} fill={color} stroke={color} pen={sketchPen} seed={seed + 1} fillStrength={MAP_FILL_STRENGTH} fillInset={MAP_FILL_INSET} />
+                        <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.header - inset} fill={color} stroke={color} pen={sketchPen} seed={seed + 1} fillStrength={MAP_FILL_STRENGTH} fillInset={MAP_FILL_INSET} hatchAngle={hatchAngle} />
                       ) : null}
                       <RoughRect x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={null} stroke={border} pen={sketchPen} seed={seed} />
                     </g>
                   );
                 }
                 return (
-                  <RoughRect key={`st:${dto.slug}`} x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={color} stroke={border} pen={sketchPen} seed={seed} fillStrength={MAP_FILL_STRENGTH} fillInset={MAP_FILL_INSET} />
+                  <RoughRect key={`st:${dto.slug}`} x={p.rect.x + inset} y={p.rect.y + inset} width={p.rect.w - 2 * inset} height={p.rect.h - 2 * inset} fill={color} stroke={border} pen={sketchPen} seed={seed} fillStrength={MAP_FILL_STRENGTH} fillInset={MAP_FILL_INSET} hatchAngle={hatchAngle} />
                 );
               })}
               {(() => {

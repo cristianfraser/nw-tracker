@@ -172,17 +172,17 @@ export function GroupInfoPage() {
   const holdingPrevUnit = isPlaceholderData && bundleReady && data != null;
   const heldStrip = useHeldNavStrip(displayUnit, holdingPrevUnit && !navSnapshot && !navCtx, navMatchNode?.slug ?? null);
   const stripShowUsd = heldStrip ? heldStrip.showUsd : displayUnit === "usd";
-  // The value map replaces the composition chart when this page's node has group children;
-  // only the real nav-context payload carries it (a cached snapshot's values are placeholders).
+  // The value map replaces the composition chart when this page's node has something to tile
+  // (sub-groups or its own accounts); only the real nav-context payload carries it (a cached
+  // snapshot's values are placeholders).
   const valueMapRoot = useMemo(
     () => valueMapRootForPage(navCtx?.value_map, portfolioGroup, displayUnit),
     [navCtx?.value_map, portfolioGroup, displayUnit]
   );
-  // A page whose nav node has group children offers the map (leaf groups do not); the
-  // selected view is shown whatever is loading, holding the last data it drew (old unit).
-  const valueMapEligible = Boolean(
-    navMatchNode?.children?.some((c) => c.account_id == null && c.expense_account_id == null)
-  );
+  // A page whose nav node has sub-groups or accounts offers the map (a leaf group's tiles are
+  // its accounts); the selected view is shown whatever is loading, holding the last data it
+  // drew (old unit).
+  const valueMapEligible = Boolean(navMatchNode?.children?.some((c) => c.expense_account_id == null));
   const heldValueMap = useHeldValueMap(
     portfolioGroup,
     valueMapRoot,

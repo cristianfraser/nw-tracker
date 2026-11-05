@@ -89,6 +89,12 @@
     }
   },
   "charts": {
+    "hatchTuning": {
+      "title": "Ángulos del achurado",
+      "range": "Abanico de series (°)",
+      "noise": "Ruido (± °)",
+      "reset": "Restablecer"
+    },
     "groupAccumulatedDeposits": "Total aportes acum.",
     "accumulatedDeposits": "aportes acum.",
     "valuationAndDeposits": "Valorización y aportes",
