@@ -248,6 +248,12 @@
     }
   },
   "charts": {
+    "hatchTuning": {
+      "title": { "en": "Hatch angles", "es": "Ángulos del achurado" },
+      "range": { "en": "Series spread (°)", "es": "Abanico de series (°)" },
+      "noise": { "en": "Noise (± °)", "es": "Ruido (± °)" },
+      "reset": { "en": "Reset", "es": "Restablecer" }
+    },
     "groupAccumulatedDeposits": {
       "en": "Total accum. contributions",
       "es": "Total aportes acum."

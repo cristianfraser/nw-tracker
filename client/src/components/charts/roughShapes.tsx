@@ -32,6 +32,7 @@ import type { Point } from "roughjs/bin/geometry";
 import { AXIS_LINE_STROKE } from "./chartLayout";
 import type { ChartStyle } from "../../chartStylePreference";
 import { useChartStyle } from "./chartStyle";
+import { useHatchTuning } from "./hatchTuning";
 
 /**
  * The hand-drawn chart styles (rehearsal 2026-11-03): the series drawn by rough.js as if by a
@@ -433,6 +434,57 @@ function prng(seed: number): () => number {
 /** A seed derived from `seed` and an index, kept in rough's [1, 2^31) (0 means «random»). */
 function subSeed(seed: number, i: number): number {
   return ((seed + i * 104729) % 2147483646) + 1;
+}
+
+/**
+ * The hatch's base angle in rough's frame: negative leans the lines rising to the right («/»),
+ * positive falling («\»). Areas keep this one; bar series spread around −45° (`useHatchTuning`).
+ */
+export const HATCH_ANGLE = -41;
+
+/**
+ * `base` tilted by a seeded draw anywhere in [−noise, +noise] degrees, the same on every render.
+ * The noise amplitude salts the seed, so a new amplitude is a new draw for every shape rather than
+ * the same offsets scaled (which reads as the hatch turning as a slider moves).
+ */
+function noisyHatchAngle(base: number, seed: number, noise: number): number {
+  return base + (prng(subSeed(seed, 6151 + Math.round(noise * 100)))() * 2 - 1) * noise;
+}
+
+/**
+ * A bar series' place among a chart's bar series, which decides its base hatch angle: its slot in
+ * the spread and whether it leans the other way.
+ */
+export type BarHatchSlot = { index: number; count: number; flip: boolean };
+
+/**
+ * The base hatch angle of a chart's bar series: evenly spread over `range` degrees around −45°
+ * («/»), mirrored to lean «\» when `flip`.
+ */
+export function barSeriesHatchAngle({ index, count, flip }: BarHatchSlot, range: number): number {
+  const angle = count > 1 ? -45 - range / 2 + (range * index) / (count - 1) : -45;
+  return flip ? -angle : angle;
+}
+
+/**
+ * A value-map tile's base hatch angle: ±45° by its sign (`falling` leans «\»), moved by a seeded
+ * draw within `range` degrees, as a bar series sits somewhere in the spread. Its own tilt (the
+ * noise) is added when the tile is drawn.
+ */
+export function tileHatchAngle(falling: boolean, seed: number, range: number): number {
+  const angle = -45 + (prng(subSeed(seed, 3313))() - 0.5) * range;
+  return falling ? -angle : angle;
+}
+
+/**
+ * Hands each of a chart's bar series a slot: the slots in a seeded order rather than the series'
+ * own (so a chart does not run 35° → 55° left to right in its legend), and a seeded flip.
+ */
+function barHatchSlots(keys: readonly string[]): Map<string, BarHatchSlot> {
+  const shuffled = [...keys].sort((a, b) => roughSeed(a, 3301) - roughSeed(b, 3301));
+  return new Map(
+    shuffled.map((k, index) => [k, { index, count: keys.length, flip: prng(roughSeed(k, 3307))() < 0.5 }])
+  );
 }
 
 const between = (rnd: () => number, [lo, hi]: readonly [number, number]) => lo + rnd() * (hi - lo);
@@ -1530,7 +1582,7 @@ function LegendSquiggleIcon(props: { color?: string }) {
  * 14-unit box (SVG content; the caller supplies the `<svg>`). Null in the plain style. The box
  * legend icon and the sidebar's group squares draw it.
  */
-export function RoughSwatchBox({ color }: { color: string }) {
+export function RoughSwatchBox({ color, hatchSlot }: { color: string; hatchSlot?: BarHatchSlot }) {
   const pen = roughPenFor(useChartStyle());
   const grainId = roughGrainFilterId(useId());
   // A different box for every instance, drawn once per mount.
@@ -1553,6 +1605,8 @@ export function RoughSwatchBox({ color }: { color: string }) {
           index={0}
           seed={seed}
           pen={pen}
+          hatchSlot={hatchSlot}
+          hatchExact={hatchSlot != null}
         />
       </g>
     </>
@@ -1639,19 +1693,19 @@ export function RoughSwatchTriangleDown({ color }: { color: string }) {
  * A box legend icon (a bar series: the plain legend draws a filled square) in the hand-drawn
  * styles, in the series colour. Same nested 14-unit box as {@link LegendSquiggleIcon}.
  */
-function LegendBoxIcon(props: { color?: string }) {
+function LegendBoxIcon(props: { color?: string; hatchSlot?: BarHatchSlot }) {
   const color = typeof props.color === "string" ? props.color : "#94a3b8";
   return (
     <svg x={0} y={0} width={32} height={32} viewBox="0 0 14 14" overflow="visible">
-      <RoughSwatchBox color={color} />
+      <RoughSwatchBox color={color} hatchSlot={props.hatchSlot} />
     </svg>
   );
 }
 
-type LegendContentProps = { payload?: readonly { color?: string; type?: string }[] } & Record<string, unknown>;
+type LegendContentProps = { payload?: readonly { color?: string; type?: string; dataKey?: unknown }[] } & Record<string, unknown>;
 
 /** A `<Legend>`'s `content` that hands every entry the squiggle icon, keeping the chart's own content. */
-function roughLegendContent(original: unknown) {
+function roughLegendContent(original: unknown, barSlots: ReadonlyMap<string, BarHatchSlot>) {
   return (lp: LegendContentProps) => {
     // Recharts draws its built-in line / plainline / rect icons before it looks at `legendIcon`,
     // so each entry (except hidden ones) is re-typed to a symbol type that falls through to it,
@@ -1665,7 +1719,12 @@ function roughLegendContent(original: unknown) {
             ...e,
             type: "square",
             legendIcon:
-              e.type === "rect" || e.type === "square" ? <LegendBoxIcon color={e.color} /> : <LegendSquiggleIcon color={e.color} />,
+              e.type === "rect" || e.type === "square" ? (
+                // A bar series' box leans the way its bars do.
+                <LegendBoxIcon color={e.color} hatchSlot={barSlots.get(dataKeyString(e.dataKey))} />
+              ) : (
+                <LegendSquiggleIcon color={e.color} />
+              ),
           }
     );
     const next = { ...lp, payload, iconType: undefined };
@@ -1691,7 +1750,8 @@ function areaSketch(
   stroke: string | undefined,
   width: number,
   seed: number,
-  pen: RoughPen
+  pen: RoughPen,
+  noise: number
 ): AreaSketch {
   const vertical = layout === "vertical";
   // Pair each point with its baseline coordinate, then split into runs where either is missing.
@@ -1711,7 +1771,7 @@ function areaSketch(
     fill,
     fillStyle: "hachure",
     hachureGap: pen.fillGap,
-    hachureAngle: -41,
+    hachureAngle: HATCH_ANGLE,
     fillWeight: pen.fillWeight,
     disableMultiStroke: true,
     disableMultiStrokeFill: true,
@@ -1734,7 +1794,11 @@ function areaSketch(
       const top = run.filter((p) => keep.has(p));
       const bottom = base.filter((_, i) => keep.has(run[i]!));
       const polygon = [...top, ...bottom.reverse()];
-      const drawable = generator.polygon(polygon, fillOpts);
+      // Every run of the area (a YTD year, a stretch between gaps) tilts its hatch a little.
+      const drawable = generator.polygon(polygon, {
+        ...fillOpts,
+        hachureAngle: noisyHatchAngle(HATCH_ANGLE, seed + cursor * 7919, noise),
+      });
       for (const p of generator.toPaths(drawable)) {
         if (p.d) fills.push({ d: p.d, strokeWidth: p.strokeWidth });
       }
@@ -1746,6 +1810,7 @@ function areaSketch(
 }
 
 function RoughAreaShapeImpl(props: RoughAreaProps) {
+  const { noise } = useHatchTuning();
   const { points, baseLine, layout, connectNulls, fill, stroke, strokeWidth, fillOpacity, seed, pen, grainFilterId } =
     props;
   const width = strokeWidthNumber(strokeWidth, 1);
@@ -1761,9 +1826,10 @@ function RoughAreaShapeImpl(props: RoughAreaProps) {
         stroke,
         width,
         seed,
-        pen
+        pen,
+        noise
       ),
-    [points, baseLine, layout, connectNulls, fillColor, stroke, width, seed, pen]
+    [points, baseLine, layout, connectNulls, fillColor, stroke, width, seed, pen, noise]
   );
   if (!sketch.fills.length && !sketch.edges?.passes.length) return null;
   const c = carried(props as CarriedProps);
@@ -1811,12 +1877,23 @@ type RoughBarProps = BarShapeProps & {
    * outline's translucent passes are not crossed by the fill. Unset: the hatch may run 1,2 px out.
    */
   fillInset?: number;
+  /** The hatch's base angle (rough's frame, see {@link HATCH_ANGLE}); each bar tilts it a little. */
+  hatchAngle?: number;
+  /** A chart bar series' place, which sets its base angle instead of `hatchAngle`. */
+  hatchSlot?: BarHatchSlot;
+  /** Draw the base angle itself, without the per-shape tilt (a legend swatch shows its series'). */
+  hatchExact?: boolean;
 };
 
 function RoughBarShapeImpl(props: RoughBarProps) {
   const { x, y, width, height, fill, stroke, strokeWidth, fillOpacity, index, seed, pen, grainFilterId, loose } = props;
   const strength = Math.max(1, props.fillStrength ?? 1);
   const fillInset = props.fillInset;
+  const tuning = useHatchTuning();
+  const hatchAngle = props.hatchSlot
+    ? barSeriesHatchAngle(props.hatchSlot, tuning.range)
+    : (props.hatchAngle ?? HATCH_ANGLE);
+  const hatchNoise = props.hatchExact ? 0 : tuning.noise;
   // A negative height or width is a bar drawn the other way (stackOffset="sign").
   const rx = width < 0 ? x + width : x;
   const ry = height < 0 ? y + height : y;
@@ -1840,7 +1917,7 @@ function RoughBarShapeImpl(props: RoughBarProps) {
       fill: fillColor,
       fillStyle: "hachure",
       hachureGap: Math.max(2, Math.min(pen.fillGap, rw / 3) / strength),
-      hachureAngle: -41,
+      hachureAngle: noisyHatchAngle(hatchAngle, barSeed, hatchNoise),
       fillWeight: pen.fillWeight * Math.sqrt(strength),
       disableMultiStrokeFill: true,
     });
@@ -1903,7 +1980,7 @@ function RoughBarShapeImpl(props: RoughBarProps) {
       return { d: drawStrokes(traced, outlinePen, subSeed(barSeed + 1, p), loose ? undefined : pinned), pass, width, strokes: sides.length };
     });
     return { fills, outline };
-  }, [rx, ry, rw, rh, barSeed, fillColor, sw, pen, loose, strength, fillInset]);
+  }, [rx, ry, rw, rh, barSeed, fillColor, sw, pen, loose, strength, fillInset, hatchAngle, hatchNoise]);
   if (!sketch) return null;
   const c = carried(props as CarriedProps);
   return (
@@ -1952,6 +2029,7 @@ export function RoughRect({
   loose,
   fillStrength,
   fillInset,
+  hatchAngle,
 }: {
   x: number;
   y: number;
@@ -1964,9 +2042,11 @@ export function RoughRect({
   loose?: boolean;
   fillStrength?: number;
   fillInset?: number;
+  hatchAngle?: number;
 }) {
   return (
     <RoughBarShapeImpl
+      hatchAngle={hatchAngle}
       loose={loose}
       fillStrength={fillStrength}
       fillInset={fillInset}
@@ -1991,12 +2071,15 @@ export function roughBarShape(
   seed: number,
   pen: RoughPen,
   grainFilterId?: string,
-  geometry?: BarShapeGeometry
+  geometry?: BarShapeGeometry,
+  hatchSlot?: BarHatchSlot
 ) {
   return (props: BarShapeProps) => {
     const placed = geometry ? geometry(props) : props;
     if (placed == null) return <g />;
-    return <RoughBarShapeImpl {...placed} seed={seed} pen={pen} grainFilterId={grainFilterId} />;
+    return (
+      <RoughBarShapeImpl {...placed} seed={seed} pen={pen} grainFilterId={grainFilterId} hatchSlot={hatchSlot} />
+    );
   };
 }
 
@@ -2298,13 +2381,40 @@ function dataKeyString(dk: unknown): string {
  * pen with grain.
  */
 export function injectRoughShapes(node: ReactNode, mode: RoughMode, grainFilterId?: string): ReactNode {
+  // Each bar series of the chart gets its own hatch angle, spread evenly over the tuned range.
+  const barKeys: string[] = [];
+  collectBarSeriesKeys(node, barKeys);
+  const barAngles = barHatchSlots(barKeys);
+  return injectRoughShapesInner(node, mode, grainFilterId, barAngles);
+}
+
+/** The `dataKey`s of the `<Bar>`s in `node` (recursively), in drawing order, each once. */
+function collectBarSeriesKeys(node: ReactNode, out: string[]): void {
+  Children.forEach(node, (child) => {
+    if (!isValidElement(child)) return;
+    const el = child as SeriesElement;
+    if (el.type === Bar) {
+      const key = dataKeyString(el.props.dataKey);
+      if (!out.includes(key)) out.push(key);
+      return;
+    }
+    if (el.props?.children != null) collectBarSeriesKeys(el.props.children, out);
+  });
+}
+
+function injectRoughShapesInner(
+  node: ReactNode,
+  mode: RoughMode,
+  grainFilterId: string | undefined,
+  barAngles: ReadonlyMap<string, BarHatchSlot>
+): ReactNode {
   return Children.map(node, (child) => {
     if (!isValidElement(child)) return child;
     const el = child as SeriesElement;
     const props = el.props;
     if (el.type === Legend) {
       const legendContent = (props as { content?: unknown }).content;
-      return cloneElement(el, { content: roughLegendContent(legendContent) } as Partial<typeof props>);
+      return cloneElement(el, { content: roughLegendContent(legendContent, barAngles) } as Partial<typeof props>);
     }
     if (el.type === ReferenceLine) {
       if (!mode.extras || props.shape != null) return child;
@@ -2329,13 +2439,13 @@ export function injectRoughShapes(node: ReactNode, mode: RoughMode, grainFilterI
         el.type === Line
           ? roughLineShape(seed, mode, grain)
           : el.type === Bar
-            ? roughBarShape(seed, mode, grain, geometry)
+            ? roughBarShape(seed, mode, grain, geometry, barAngles.get(dataKeyString(props.dataKey)))
             : roughAreaShape(seed, mode, grain);
       return cloneElement(el, { shape, isAnimationActive: false } as Partial<typeof props>);
     }
     const ch = props?.children;
     if (ch != null) {
-      const mapped = injectRoughShapes(ch, mode, grainFilterId);
+      const mapped = injectRoughShapesInner(ch, mode, grainFilterId, barAngles);
       if (mapped !== ch) return cloneElement(el, { children: mapped } as { children: ReactNode });
     }
     return child;

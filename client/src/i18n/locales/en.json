@@ -89,6 +89,12 @@
     }
   },
   "charts": {
+    "hatchTuning": {
+      "title": "Hatch angles",
+      "range": "Series spread (°)",
+      "noise": "Noise (± °)",
+      "reset": "Reset"
+    },
     "groupAccumulatedDeposits": "Total accum. contributions",
     "accumulatedDeposits": "accum. contributions",
     "valuationAndDeposits": "Valuation and contributions",

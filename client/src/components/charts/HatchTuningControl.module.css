@@ -1,0 +1,54 @@
+.panel {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 50;
+  display: grid;
+  gap: 6px;
+  width: 15rem;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  font-size: var(--font-size-ui, 0.8rem);
+  color: var(--muted);
+}
+
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+}
+
+.reset {
+  font: inherit;
+  font-weight: 400;
+  color: inherit;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  padding: 0 6px;
+  cursor: pointer;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 5rem 2rem;
+  align-items: center;
+  gap: 6px;
+}
+
+.label {
+  white-space: nowrap;
+}
+
+.row input {
+  width: 100%;
+}
+
+.value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, inherit);
+}

@@ -57,8 +57,9 @@ export function ValueMapPanel({
 }
 
 /**
- * The subtree the page at `slug` draws, when it has one worth drawing: the page node must be a
- * frame (group children) with tiles left, and the payload must carry the display unit's values.
+ * The subtree the page at `slug` draws, when it has one worth drawing: the page node must have
+ * something to tile — sub-groups, or accounts of its own (a leaf group: Acciones holding only
+ * stocks, Crypto holding one coin) — and the payload must carry the display unit's values.
  */
 export function valueMapRootForPage(
   valueMap: NavValueMapNodeDto | undefined,
@@ -75,7 +76,7 @@ export function valueMapRootForPage(
     return null;
   };
   const node = find(valueMap);
-  if (!node || !node.frame || !node.children?.length) return null;
+  if (!node || !(node.children?.length || node.leaf_accounts?.length)) return null;
   if ((unit === "usd" ? node.value_usd : node.value_clp) == null) return null;
   return node;
 }
