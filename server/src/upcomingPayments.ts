@@ -36,10 +36,20 @@ export const CONTRIBUCIONES_DUE_MONTHS = [4, 6, 9, 11] as const;
 
 export type UpcomingPaymentKind = "card" | "mortgage" | "hoa" | "contribuciones" | "recurring";
 
+/**
+ * The detail of one occurrence, apart from its name: a card's facturación, a mortgage or
+ * contribuciones cuota, the month a gastos comunes statement bills, a declared payment's own text.
+ */
+export type UpcomingPaymentDetail =
+  | { kind: "billing_month"; month: string }
+  | { kind: "cuota"; n: number; count: number | null }
+  | { kind: "bill_month"; month: string }
+  | { kind: "text"; text: string };
+
 export type UpcomingPaymentItem = {
   key: string;
   kind: UpcomingPaymentKind;
-  /** The card, the mortgage account, the place, or the declared payment's name. */
+  /** What the row names: the card, the place a mortgage or bill is for, or the declared payment's name. */
   name: string;
   due_iso: string;
   /** «by» a deadline, or «on» the day to pay (the mortgage: its best day for the UF). */
@@ -59,8 +69,8 @@ export type UpcomingPaymentItem = {
   bill_month: string | null;
   /** A card's facturación, as the card panel showed it. */
   card: CcUpcomingPaymentRow | null;
-  /** The tracked place a mortgage pays for (its property's expense place); null otherwise. */
-  place_label: string | null;
+  /** What the occurrence is beyond its name, shown on hover; null = nothing more to say. */
+  detail: UpcomingPaymentDetail | null;
   /** A declared payment (the WIP table). */
   wip: boolean;
   /** Where the payment's label links: the card's or mortgage's account page, the place's real-estate expenses; null for a declared payment. */
@@ -79,8 +89,8 @@ export type UpcomingPaymentsBlock = {
   months: UpcomingPaymentsMonth[];
 };
 
-type ItemDraft = Omit<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "place_label" | "wip" | "route_path"> &
-  Partial<Pick<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "place_label" | "wip" | "route_path">>;
+type ItemDraft = Omit<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "detail" | "wip" | "route_path"> &
+  Partial<Pick<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "detail" | "wip" | "route_path">>;
 
 function item(d: ItemDraft): UpcomingPaymentItem {
   return {
@@ -89,7 +99,7 @@ function item(d: ItemDraft): UpcomingPaymentItem {
     cuota_count: null,
     bill_month: null,
     card: null,
-    place_label: null,
+    detail: null,
     wip: false,
     route_path: null,
     ...d,
@@ -167,9 +177,8 @@ export function groupUpcomingByMonth(
 // Mortgage
 
 export type MortgageUpcomingInput = {
+  /** The tracked place whose property the mortgage pays for, else the mortgage account's name. */
   name: string;
-  /** The tracked place whose property the mortgage pays for; null when none is tracked. */
-  place_label: string | null;
   /** The mortgage account's page. */
   route_path: string;
   /** The next cuota to pay (the last one in the ledger + 1) and its schedule day (the 11th). */
@@ -207,7 +216,7 @@ export function mortgageUpcomingItems(
         key: `mortgage|${cuota}`,
         kind: "mortgage",
         name: input.name,
-        place_label: input.place_label,
+        detail: { kind: "cuota", n: cuota, count: null },
         route_path: input.route_path,
         due_iso: due,
         due_kind: "on",
@@ -277,6 +286,7 @@ export function hoaUpcomingItems(
         estimated: !statement,
         overdue: due < todayYmd,
         bill_month: billMonth,
+        detail: { kind: "bill_month", month: billMonth },
       })
     );
   }
@@ -343,6 +353,7 @@ export function contribucionesUpcomingItems(
           overdue: due < todayYmd,
           cuota,
           cuota_count: CONTRIBUCIONES_DUE_MONTHS.length,
+          detail: { kind: "cuota", n: cuota, count: CONTRIBUCIONES_DUE_MONTHS.length },
         })
       );
     });
@@ -356,6 +367,8 @@ export function contribucionesUpcomingItems(
 export type RecurringPayment = {
   id: number;
   name: string;
+  /** What the occurrence is beyond its name («1ª cuota»), shown on hover; null = none. */
+  detail: string | null;
   due_month: number;
   due_day: number;
   amount_clp: number;
@@ -405,6 +418,7 @@ export function recurringUpcomingItems(
         key: `recurring|${rp.id}|${year}`,
         kind: "recurring",
         name: rp.name,
+        detail: rp.detail == null ? null : { kind: "text", text: rp.detail },
         due_iso: due,
         due_kind: "by",
         amount_clp: rp.amount_clp,
@@ -456,7 +470,7 @@ function mortgageInput(todayYmd: string): MortgageUpcomingInput | null {
   const place = db
     .prepare(`SELECT label FROM expense_accounts WHERE property_account_id = ? ORDER BY active_to IS NOT NULL, id LIMIT 1`)
     .get(deptoPropertyAccountId()) as { label: string } | undefined;
-  return { name: account.name, place_label: place?.label ?? null, route_path: accountRoutePath(mortgageId), nextCuota, nextScheduleYmd, minUf, maxUf, bestPay };
+  return { name: place?.label ?? account.name, route_path: accountRoutePath(mortgageId), nextCuota, nextScheduleYmd, minUf, maxUf, bestPay };
 }
 
 type PlaceRow = { id: number; label: string; slug: string };
@@ -523,7 +537,7 @@ function ownedPlaces(): { place: UpcomingPlace; payments: ContribucionesPayment[
 }
 
 const recurringStmt = db.prepare(
-  `SELECT id, name, due_month, due_day, amount_clp, paid_merchant_pattern, created_at FROM recurring_payments ORDER BY id`
+  `SELECT id, name, detail, due_month, due_day, amount_clp, paid_merchant_pattern, created_at FROM recurring_payments ORDER BY id`
 );
 
 export function listRecurringPayments(): RecurringPayment[] {
@@ -551,6 +565,7 @@ export function buildUpcomingPayments(todayYmd: string = chileCalendarTodayYmd()
           estimated: false,
           overdue: p.row.overdue,
           card: p.row,
+          detail: { kind: "billing_month", month: p.row.billing_month },
         })
       );
     }
@@ -580,6 +595,8 @@ export function buildUpcomingPayments(todayYmd: string = chileCalendarTodayYmd()
  */
 export function createRecurringPayment(body: Record<string, unknown>): RecurringPayment {
   const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (body.detail != null && typeof body.detail !== "string") throw new RecurringPaymentInputError("detail must be text");
+  const detail = typeof body.detail === "string" && body.detail.trim() !== "" ? body.detail.trim() : null;
   const pattern = typeof body.paid_merchant_pattern === "string" ? body.paid_merchant_pattern.trim() : "";
   const dueMonth = Number(body.due_month);
   const dueDay = Number(body.due_day);
@@ -592,9 +609,9 @@ export function createRecurringPayment(body: Record<string, unknown>): Recurring
   const id = Number(
     db
       .prepare(
-        `INSERT INTO recurring_payments (name, due_month, due_day, amount_clp, paid_merchant_pattern) VALUES (?, ?, ?, ?, ?)`
+        `INSERT INTO recurring_payments (name, detail, due_month, due_day, amount_clp, paid_merchant_pattern) VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(name, dueMonth, dueDay, amount, pattern).lastInsertRowid
+      .run(name, detail, dueMonth, dueDay, amount, pattern).lastInsertRowid
   );
   const row = recurringStmt.all().find((r) => (r as RecurringPayment).id === id) as RecurringPayment | undefined;
   if (!row) throw new Error(`recurring payment ${id} not found after insert`);
