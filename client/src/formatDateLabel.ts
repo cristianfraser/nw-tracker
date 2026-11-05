@@ -78,14 +78,17 @@ export function formatDayMonthShortLabel(ymd: string): string {
   return `${monthShort(mo)} ${Number(m[3])}`;
 }
 
-/** `2026-12-10` → `10` / `10th` (a day under a month heading: «hasta el 10», «by the 10th»). */
-export function formatDayOfMonthLabel(ymd: string): string {
+/**
+ * `2026-12-10` → `{ day: "10", suffix: "" }` / `{ day: "10", suffix: "th" }` (a day under a month
+ * heading: «hasta el 10», «by the 10th»), apart so the number can be set in its own font.
+ */
+export function dayOfMonthLabelParts(ymd: string): { day: string; suffix: string } {
   const m = /^\d{4}-\d{2}-(\d{2})/.exec(ymd.trim());
-  if (!m) throw new Error(`formatDayOfMonthLabel: not an ISO date: ${ymd}`);
+  if (!m) throw new Error(`dayOfMonthLabelParts: not an ISO date: ${ymd}`);
   const day = Number(m[1]);
-  if (!i18n.language.startsWith("en")) return String(day);
+  if (!i18n.language.startsWith("en")) return { day: String(day), suffix: "" };
   const suffix = day % 10 === 1 && day !== 11 ? "st" : day % 10 === 2 && day !== 12 ? "nd" : day % 10 === 3 && day !== 13 ? "rd" : "th";
-  return `${day}${suffix}`;
+  return { day: String(day), suffix };
 }
 
 /** Local-time `YYYY-MM-DD HH:MM` for timestamps (notifications, sync log). Language-independent. */

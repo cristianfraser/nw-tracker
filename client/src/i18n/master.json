@@ -334,8 +334,8 @@
         "es": "hasta"
       },
       "payByDay": {
-        "en": "by the {{day}}",
-        "es": "hasta el {{day}}"
+        "en": "by the",
+        "es": "hasta el"
       },
       "overdueHint": {
         "en": "The pay-by date passed with this amount still owed.",
@@ -346,8 +346,8 @@
         "es": "el"
       },
       "payOnDay": {
-        "en": "on the {{day}}",
-        "es": "el {{day}}"
+        "en": "on the",
+        "es": "el"
       },
       "cuota": {
         "en": "cuota {{n}}",
@@ -372,10 +372,6 @@
       "kindHoa": {
         "en": "Gastos comunes",
         "es": "Gastos comunes"
-      },
-      "mortgageMin": {
-        "en": "min.",
-        "es": "mín."
       },
       "mortgageMaxHint": {
         "en": "Maximum {{amount}}",
