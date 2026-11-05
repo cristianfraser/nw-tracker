@@ -52,6 +52,12 @@ export type CcUpcomingPaymentRowDto = {
 export type UpcomingPaymentKind = "card" | "mortgage" | "hoa" | "contribuciones" | "recurring";
 
 /** One payment due (server `upcomingPayments.ts`). */
+export type UpcomingPaymentDetailDto =
+  | { kind: "billing_month"; month: string }
+  | { kind: "cuota"; n: number; count: number | null }
+  | { kind: "bill_month"; month: string }
+  | { kind: "text"; text: string };
+
 export type UpcomingPaymentItemDto = {
   key: string;
   kind: UpcomingPaymentKind;
@@ -70,8 +76,8 @@ export type UpcomingPaymentItemDto = {
   /** Gastos comunes: the month billed (YYYY-MM). */
   bill_month: string | null;
   card: CcUpcomingPaymentRowDto | null;
-  /** The place a mortgage pays for; null otherwise. */
-  place_label: string | null;
+  /** What the occurrence is beyond its name, shown on hover (server `UpcomingPaymentDetail`). */
+  detail: UpcomingPaymentDetailDto | null;
   /** A declared payment (work in progress). */
   wip: boolean;
   /** Where the label links (the account page, the place's real-estate expenses); null = plain text. */
