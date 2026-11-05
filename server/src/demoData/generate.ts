@@ -115,7 +115,7 @@ function createAccounts(person: Person): Map<Acct, number> {
   ids.set("afc", createAccount(g("retirement_afp_afc__afc"), "AFC"));
   if (person.house) {
     ids.set("property", createAccount(g("real_estate__property"), "Vitacura", { key: "import:excel|key=property" }));
-    ids.set("mortgage" as Acct, createAccount(g("liabilities__mortgage"), "Hipoteca depto", { key: "import:excel|key=mortgage" }));
+    ids.set("mortgage" as Acct, createAccount(g("liabilities__mortgage"), "Vitacura", { key: "import:excel|key=mortgage" }));
   }
   for (const c of person.cards) {
     const id = createAccount(g("credit_cards__credit_card"), c.displayName, { key: `credit_card_master|${c.issuer}|${c.last4}` });
