@@ -7,6 +7,7 @@ import { rollupCcHistorialChartYearly } from "../../ccYearlyRollup";
 import { formatClp, formatUsdFine } from "../../format";
 import { formatYearMonthLabel } from "../../formatDateLabel";
 import { AppComposedChart } from "./AppComposedChart";
+import { ChartEmptyState } from "./ChartEmptyState";
 import { athTooltipIndexTolerance } from "./athMarkerPlacement";
 import { renderPeriodRefLine } from "./PeriodRefLine";
 import { placedBarShape } from "./roughShapes";
@@ -176,13 +177,7 @@ export function CcInstallmentHistoryChart({
   if (rows.length === 0) {
     // Same box (size and margin) as the real chart, so nothing jumps when the rows arrive.
     if (loading) {
-      return (
-        <div
-          className={loadableClass(loading, "chart-box chart-box--pending")}
-          style={{ height: 280 }}
-          aria-busy="true"
-        />
-      );
+      return <ChartEmptyState loading message="" boxStyle={{ height: 280 }} />;
     }
     return <p className="muted empty">{t("accountDetail.creditCard.historialEmpty")}</p>;
   }
