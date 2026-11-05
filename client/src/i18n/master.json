@@ -373,6 +373,14 @@
         "en": "Gastos comunes",
         "es": "Gastos comunes"
       },
+      "kindHoaShort": {
+        "en": "HOA",
+        "es": "GG. CC."
+      },
+      "billingMonthHint": {
+        "en": "Statement {{month}}",
+        "es": "Facturación {{month}}"
+      },
       "kindContribuciones": {
         "en": "Contribuciones",
         "es": "Contribuciones"

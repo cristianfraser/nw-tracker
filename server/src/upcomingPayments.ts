@@ -21,7 +21,7 @@ import {
 } from "./mortgageScenarioPayments.js";
 import { buildMortgageUfReminder } from "./mortgageUfReminder.js";
 import { numericCuota } from "./mortgagePaymentCompute.js";
-import { deptoMortgageAccountId } from "./mortgagePaymentCreate.js";
+import { deptoMortgageAccountId, deptoPropertyAccountId } from "./mortgagePaymentCreate.js";
 import { normalizeServiceAccount, utilityBillMonth } from "./utilityBillsApply.js";
 import { loadGastosLinesForRealEstateMatching } from "./realEstateExpenseMatching.js";
 
@@ -59,6 +59,8 @@ export type UpcomingPaymentItem = {
   bill_month: string | null;
   /** A card's facturación, as the card panel showed it. */
   card: CcUpcomingPaymentRow | null;
+  /** The tracked place a mortgage pays for (its property's expense place); null otherwise. */
+  place_label: string | null;
   /** A declared payment (the WIP table). */
   wip: boolean;
   /** Where the payment's label links: the card's or mortgage's account page, the place's real-estate expenses; null for a declared payment. */
@@ -77,8 +79,8 @@ export type UpcomingPaymentsBlock = {
   months: UpcomingPaymentsMonth[];
 };
 
-type ItemDraft = Omit<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "wip" | "route_path"> &
-  Partial<Pick<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "wip" | "route_path">>;
+type ItemDraft = Omit<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "place_label" | "wip" | "route_path"> &
+  Partial<Pick<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "place_label" | "wip" | "route_path">>;
 
 function item(d: ItemDraft): UpcomingPaymentItem {
   return {
@@ -87,6 +89,7 @@ function item(d: ItemDraft): UpcomingPaymentItem {
     cuota_count: null,
     bill_month: null,
     card: null,
+    place_label: null,
     wip: false,
     route_path: null,
     ...d,
@@ -165,6 +168,8 @@ export function groupUpcomingByMonth(
 
 export type MortgageUpcomingInput = {
   name: string;
+  /** The tracked place whose property the mortgage pays for; null when none is tracked. */
+  place_label: string | null;
   /** The mortgage account's page. */
   route_path: string;
   /** The next cuota to pay (the last one in the ledger + 1) and its schedule day (the 11th). */
@@ -202,6 +207,7 @@ export function mortgageUpcomingItems(
         key: `mortgage|${cuota}`,
         kind: "mortgage",
         name: input.name,
+        place_label: input.place_label,
         route_path: input.route_path,
         due_iso: due,
         due_kind: "on",
@@ -447,7 +453,10 @@ function mortgageInput(todayYmd: string): MortgageUpcomingInput | null {
   const mortgageId = deptoMortgageAccountId();
   const account = db.prepare(`SELECT name FROM accounts WHERE id = ?`).get(mortgageId) as { name: string } | undefined;
   if (!account) throw new Error(`Mortgage account ${mortgageId} not found`);
-  return { name: account.name, route_path: accountRoutePath(mortgageId), nextCuota, nextScheduleYmd, minUf, maxUf, bestPay };
+  const place = db
+    .prepare(`SELECT label FROM expense_accounts WHERE property_account_id = ? ORDER BY active_to IS NOT NULL, id LIMIT 1`)
+    .get(deptoPropertyAccountId()) as { label: string } | undefined;
+  return { name: account.name, place_label: place?.label ?? null, route_path: accountRoutePath(mortgageId), nextCuota, nextScheduleYmd, minUf, maxUf, bestPay };
 }
 
 type PlaceRow = { id: number; label: string; slug: string };

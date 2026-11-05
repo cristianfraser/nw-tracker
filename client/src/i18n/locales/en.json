@@ -124,6 +124,8 @@
       "estimatedHint": "Estimated: no document states this amount yet.",
       "wipHint": "A payment you declared (work in progress).",
       "kindHoa": "Gastos comunes",
+      "kindHoaShort": "HOA",
+      "billingMonthHint": "Statement {{month}}",
       "kindContribuciones": "Contribuciones",
       "showMore": "Show more",
       "showLess": "Show less",

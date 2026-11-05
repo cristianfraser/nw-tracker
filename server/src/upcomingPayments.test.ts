@@ -45,7 +45,7 @@ describe("dayInMonth", () => {
 });
 
 describe("mortgageUpcomingItems", () => {
-  const base = { name: "Hipotecario", route_path: "/account/9", nextCuota: 33, nextScheduleYmd: "2026-11-11", minUf: 20, maxUf: 30, bestPay: null };
+  const base = { name: "Hipotecario", place_label: "Depto", route_path: "/account/9", nextCuota: 33, nextScheduleYmd: "2026-11-11", minUf: 20, maxUf: 30, bestPay: null };
 
   it("lists every cuota from the next one to the horizon, on the 11th, min and max at the UF", () => {
     const items = mortgageUpcomingItems(base, TODAY, "2027-01", flatUf);
@@ -176,6 +176,7 @@ describe("groupUpcomingByMonth", () => {
     cuota_count: null,
     bill_month: null,
     card: null,
+    place_label: null,
     wip: false,
     route_path: null,
   });
