@@ -95,6 +95,8 @@
     /* No gutter between the stacks: the rail reaches back to the main stack's edge, the
        way cards touch inside a strip. */
     margin-left: calc(-1 * var(--gutter));
+    /* Inside, the rail keeps the content's own side margin before its tiles. */
+    padding-left: var(--margin-inline);
     /* The ticker covers the content's last 8 columns at the top (shell.css) and the content
        reserves no strip for it on this tier: the rail starts below it and its bottom border. */
     padding-top: calc(var(--market-ticker-height) + 1px + var(--space-xs));
