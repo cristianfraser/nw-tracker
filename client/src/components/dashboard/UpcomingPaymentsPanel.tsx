@@ -115,13 +115,17 @@ function ItemLabel({ item }: { item: UpcomingPaymentItemDto }) {
           {t("dashboard.ccUpcoming.kindContribuciones")} · {item.name}
         </span>
       );
-    case "recurring":
+    case "recurring": {
+      // A declared name may carry its detail after « · » («Permiso de circulación · 1ª cuota»):
+      // the row shows the payment, the whole name is on hover.
+      const short = item.name.split(" · ")[0]!;
       return (
-        <span title={t("dashboard.ccUpcoming.wipHint")}>
-          {item.name}
+        <span title={`${item.name} · ${t("dashboard.ccUpcoming.wipHint")}`}>
+          {short}
           <span className="muted">*</span>
         </span>
       );
+    }
   }
 }
 
