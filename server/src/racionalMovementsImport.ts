@@ -150,6 +150,12 @@ const findTransfersOnDay = db.prepare(
  * inventing the transfer here would double-count it. The mirror-pairs tool is what links the
  * two legs afterwards, exactly as it does for every other historical transfer.
  */
+/** Holders' split rows within three days of a day (a list row's day vs the ex-date). */
+const stmtSplitRowsNear = db.prepare(
+  `SELECT id FROM movements WHERE flow_kind = 'stock_split'
+     AND ABS(julianday(occurred_on) - julianday(?)) <= 3 ORDER BY id`
+);
+
 export function planRacionalMovement(movement: RacionalMovement): RacionalPlannedMovement {
   const note = [
     `Racional ${movement.title}`,
@@ -277,11 +283,21 @@ export function planRacionalMovement(movement: RacionalMovement): RacionalPlanne
       }
       return { ...base, from_account_id: caja, to_account_id: racionalCashAccountId("clp") };
     }
-    case "corporate_action":
-      throw new Error(
-        `Racional «Evento Corporativo» (${movement.occurred_on}, ${movement.title}) has no ` +
-          `ledger mapping yet — decide how to model it before importing`
-      );
+    case "corporate_action": {
+      // The list row names no instrument. The only corporate event Racional has listed is a
+      // split, which its mail or Yahoo records with each holder's `stock_split` row
+      // (`equitySplits.ts`): the row is that split when exactly one is on the ledger near its day.
+      const splits = stmtSplitRowsNear.all(movement.occurred_on) as { id: number }[];
+      if (splits.length === 1) return { ...base, duplicate_of: splits[0]!.id };
+      return {
+        ...base,
+        blocked:
+          splits.length === 0
+            ? "a corporate event with no split recorded near its day — record the split " +
+              "(npm run equity:record-split) or check what Racional did"
+            : `${splits.length} split rows near its day (movements ${splits.map((s) => s.id).join(", ")}) — which one is it?`,
+      };
+    }
   }
 }
 
@@ -402,12 +418,12 @@ function newestFirst(movements: readonly RacionalMovement[]): RacionalMovement[]
  * Plan a read's movements (no writes). Duplicate detection runs BEFORE anything is judged
  * incomplete: a trade listed without its share count that the ledger already holds is simply
  * present, and only one that would be written is `blocked`. Throws on a movement that cannot be
- * mapped at all (a corporate event, a ticker no account holds).
+ * mapped at all (a ticker no account holds).
  */
 export function planRacionalMovements(movements: readonly RacionalMovement[]): RacionalImportResult {
   const planned = markDuplicates(newestFirst(movements).map(planRacionalMovement)).map((p) => ({
     ...p,
-    blocked: blockedReason(p),
+    blocked: p.blocked ?? blockedReason(p),
   }));
   return { planned, inserted: 0, duplicates: planned.filter((p) => p.duplicate_of != null).length, details: [] };
 }

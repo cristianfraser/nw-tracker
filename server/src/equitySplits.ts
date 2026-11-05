@@ -172,9 +172,16 @@ export type RecordEquitySplitResult = {
   ledger: StockSplitLedgerRow[];
 };
 
-const stmtGetSplit = db.prepare(
+/**
+ * Sources date one split differently (a broker's notice is dated the day it was mailed, Yahoo's
+ * event the session): a split of the ticker within this many days is the same split.
+ */
+const SAME_SPLIT_WINDOW_DAYS = 7;
+
+const stmtNearSplits = db.prepare(
   `SELECT ticker, ex_date, numerator, denominator, source FROM equity_splits
-   WHERE UPPER(ticker) = UPPER(?) AND ex_date = ?`
+   WHERE UPPER(ticker) = UPPER(?) AND ABS(julianday(ex_date) - julianday(?)) <= ${SAME_SPLIT_WINDOW_DAYS}
+   ORDER BY ABS(julianday(ex_date) - julianday(?))`
 );
 const stmtInsertSplit = db.prepare(
   `INSERT INTO equity_splits (ticker, ex_date, numerator, denominator, source, recorded_at) VALUES (?, ?, ?, ?, ?, ?)`
@@ -289,8 +296,9 @@ function rescalePricesBefore(split: EquitySplit): RecordEquitySplitResult["resca
 
 /**
  * Record a split and bring prices and holders into its frame, all in one transaction. Idempotent:
- * the same split again is `unchanged` (its ledger rows are checked, and written for a holder that
- * has none yet); a different ratio for the same ex-date throws. A split dated after Chile today
+ * the same split again — the ticker's split within {@link SAME_SPLIT_WINDOW_DAYS} days, which
+ * keeps its own ex-date — is `unchanged` (its ledger rows are checked, and written for a holder
+ * that has none yet); a different ratio there throws. A split dated after Chile today
  * is refused — the stored prices only turn post-split on the ex-date.
  */
 export function recordEquitySplit(
@@ -315,11 +323,11 @@ export function recordEquitySplit(
   };
   return db
     .transaction((): RecordEquitySplitResult => {
-      const stored = stmtGetSplit.get(ticker, input.ex_date) as EquitySplit | undefined;
+      const stored = stmtNearSplits.get(ticker, input.ex_date, input.ex_date) as EquitySplit | undefined;
       if (stored) {
         if (Math.abs(splitRatio(stored) - splitRatio(split)) > RATIO_EPS) {
           throw new Error(
-            `Split ${ticker} ${input.ex_date}: recorded ${stored.numerator}:${stored.denominator} (${stored.source}), ` +
+            `Split ${ticker} ${input.ex_date}: recorded ${stored.numerator}:${stored.denominator} on ${stored.ex_date} (${stored.source}), ` +
               `${input.source} says ${input.numerator}:${input.denominator}`
           );
         }

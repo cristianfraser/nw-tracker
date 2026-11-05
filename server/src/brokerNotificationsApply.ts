@@ -21,6 +21,7 @@ import { brokerCleanThrough } from "./brokerReadCoverage.js";
 import { bookIncomingWires, storeWithdrawalRequests, withdrawalRequestFromNotification } from "./incomingWires.js";
 import { racionalComisionCrawlDue } from "./racionalMovementsImport.js";
 import { recordMovementEventTime } from "./movementEventTimes.js";
+import { applyBrokerSplitNotifications } from "./brokerSplitNotifications.js";
 
 /**
  * `broker.notifications`: every money notification a broker sent, planned against the ledger
@@ -113,7 +114,9 @@ export function applyBrokerNotifications(payload: BrokerNotificationsPayload): B
   const { broker, apply, notifications } = payload;
   if (broker === "fintual") {
     // A requested withdrawal is not a movement: it is kept until the wire's own mail arrives.
-    const planned = planFintualEmailBatch(notifications.filter((n) => n.kind !== "withdrawal_requested"));
+    const planned = planFintualEmailBatch(
+      notifications.filter((n) => n.kind !== "withdrawal_requested" && n.kind !== "stock_split")
+    );
     const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
     let written = 0;
     let eventTimesStamped = 0;
@@ -160,10 +163,12 @@ export function applyBrokerNotifications(payload: BrokerNotificationsPayload): B
   const writable = planned.filter((p) => p.duplicate_of == null && p.requires_manual == null);
   const written = apply ? applyRacionalEmailMovements(planned).inserted : 0;
   if (apply) invalidateWritten(writable);
+  // A split notice records the split itself (`brokerSplitNotifications.ts`), not a movement.
+  const splits = applyBrokerSplitNotifications(broker, notifications, apply);
   return {
     broker,
     applied: apply,
-    planned: planned.map(racionalRow),
+    planned: [...planned.map(racionalRow), ...splits.rows],
     written,
     // A Racional notification the server cannot book is the crawl's to describe, not a human's.
     incomplete: [],

@@ -194,6 +194,28 @@ describe("brokerEmail", () => {
     expect(buy.units).toBe("24.74186066");
   });
 
+  it("reads a split notice's share counts before and after", () => {
+    const split = classifyBrokerEmail({
+      sender: RACIONAL,
+      message_id: "<vitest-split@test>",
+      subject: "VTSPL tuvo una divisi\u00f3n de acciones, y vari\u00f3 tu cantidad de Stocks \u{1F916}",
+      snippet:
+        "Tus acciones de VTSPL se convirtieron en 3 ***** Hola, VTSPL realiz\u00f3 una divisi\u00f3n de acciones ( https://x.example/l ) " +
+        "(o stock split ), en la que cada acci\u00f3n se convirti\u00f3 en 3 acciones. Esto significa que las 12.34567891 acciones " +
+        "que ten\u00edas de VTSPL pre split , ahora se convirtieron en 37.03703673 acciones post split.",
+      date: "2026-11-05T05:35:54Z",
+    });
+    expect(split).toMatchObject({
+      kind: "stock_split",
+      is_transaction: true,
+      is_complete: true,
+      ticker: "VTSPL",
+      units: "12.34567891",
+      units_after: "37.03703673",
+    });
+    expect(toBrokerNotification(split)).toMatchObject({ kind: "stock_split", units: "12.34567891", units_after: "37.03703673" });
+  });
+
   it("captures the wallet funding the app's movement list never shows", () => {
     const funded = classifyBrokerEmail({
       sender: RACIONAL,

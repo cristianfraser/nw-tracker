@@ -510,9 +510,25 @@ describe("racional reads — incomplete rows, read isolation, coverage", () => {
       interest("2097-07-06", 0.02),
       brokerMovement({ kind: "corporate_action", title: "Evento Corporativo", occurred_on: "2097-07-06", amount: 1, currency: "usd" }),
     ]);
-    expect(out.problems[0]).toMatch(/no ledger mapping yet/);
+    expect(out.problems[0]).toMatch(/no split recorded near its day/);
     expect(out.clean).toBe(false);
     expect(interestOn("2097-07-06")).toEqual([]);
+  });
+
+  it("recognises a corporate event as the split recorded on the ledger near its day", () => {
+    const split = Number(
+      db
+        .prepare(
+          `INSERT INTO movements (account_id, amount, currency, occurred_on, note, units_delta, flow_kind)
+           VALUES (?, 0, 'usd', '2097-07-05', 'vitest-racional-import', 7, 'stock_split')`
+        )
+        .run(equity).lastInsertRowid
+    );
+    const event = brokerMovement({ kind: "corporate_action", title: "Evento Corporativo", occurred_on: "2097-07-06", amount: 1, currency: "usd" });
+    expect(planRacionalMovements([event]).planned[0]).toMatchObject({ duplicate_of: split, blocked: null });
+    const out = read("2097-07-06T01:00:00.000Z", [interest("2097-07-06", 0.02), event]);
+    expect(out.problems).toEqual([]);
+    expect(interestOn("2097-07-06")).toHaveLength(1);
   });
 
   it("recognises a row without its instrument by the cash leg alone, and never guesses between two", () => {
