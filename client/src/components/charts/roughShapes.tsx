@@ -32,7 +32,7 @@ import type { Point } from "roughjs/bin/geometry";
 import { AXIS_LINE_STROKE } from "./chartLayout";
 import type { ChartStyle } from "../../chartStylePreference";
 import { useChartStyle } from "./chartStyle";
-import { useHatchTuning } from "./hatchTuning";
+import { HATCH_TUNING } from "./hatchTuning";
 
 /**
  * The hand-drawn chart styles (rehearsal 2026-11-03): the series drawn by rough.js as if by a
@@ -438,7 +438,7 @@ function subSeed(seed: number, i: number): number {
 
 /**
  * The hatch's base angle in rough's frame: negative leans the lines rising to the right («/»),
- * positive falling («\»). Areas keep this one; bar series spread around −45° (`useHatchTuning`).
+ * positive falling («\»). Areas keep this one; bar series spread around −45° (`HATCH_TUNING`).
  */
 export const HATCH_ANGLE = -41;
 
@@ -1810,7 +1810,7 @@ function areaSketch(
 }
 
 function RoughAreaShapeImpl(props: RoughAreaProps) {
-  const { noise } = useHatchTuning();
+  const { noise } = HATCH_TUNING;
   const { points, baseLine, layout, connectNulls, fill, stroke, strokeWidth, fillOpacity, seed, pen, grainFilterId } =
     props;
   const width = strokeWidthNumber(strokeWidth, 1);
@@ -1889,7 +1889,7 @@ function RoughBarShapeImpl(props: RoughBarProps) {
   const { x, y, width, height, fill, stroke, strokeWidth, fillOpacity, index, seed, pen, grainFilterId, loose } = props;
   const strength = Math.max(1, props.fillStrength ?? 1);
   const fillInset = props.fillInset;
-  const tuning = useHatchTuning();
+  const tuning = HATCH_TUNING;
   const hatchAngle = props.hatchSlot
     ? barSeriesHatchAngle(props.hatchSlot, tuning.range)
     : (props.hatchAngle ?? HATCH_ANGLE);

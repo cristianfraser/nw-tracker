@@ -1,6 +1,5 @@
 import { Suspense, type ComponentType, type ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { HatchTuningControl } from "./components/charts/HatchTuningControl";
 import { AppSidebar } from "./components/layout/AppSidebar";
 import { MobileNavDrawer } from "./components/layout/MobileNavDrawer";
 import { AppDisplayPreferencesBar } from "./components/layout/AppDisplayPreferencesBar";
@@ -116,7 +115,6 @@ function AppTree() {
         </MobileNavDrawer>
         <MarketTickerPanel />
         <MortgageUfReminderToast />
-        <HatchTuningControl />
         <div className="layout-main">
           <AppDisplayPreferencesBar />
           <div className="content">
