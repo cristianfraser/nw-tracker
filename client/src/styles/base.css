@@ -78,6 +78,10 @@ h1 {
 
 h2 {
   font-size: 1.1rem;
+  /* A whole pixel (18px at the 16px root; the font's 17.6 is not), like the card rows below
+     it, so lines in columns built from different blocks land on the same pixel — the strip and
+     the dashboard rail (page-grid.css `.page-main`). */
+  line-height: 1.125rem;
   font-weight: 600;
   margin: 1.5rem 0 0.75rem;
   color: var(--muted);

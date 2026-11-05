@@ -193,6 +193,8 @@
   display: flex;
   justify-content: flex-start;
   align-items: baseline;
+  /* A whole pixel, past number-flow's 21.1 (see base.css `h2`). */
+  min-height: 1.375rem;
   font-size: var(--dashboard-card-primary-value-font-size);
   font-weight: var(--dashboard-card-primary-value-font-weight);
   text-align: left;
