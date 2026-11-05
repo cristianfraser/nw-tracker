@@ -97,6 +97,9 @@ export function wipeVitestCcFixtureData(): void {
   db.prepare(`DELETE FROM cc_installment_purchases WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM cc_billing_month_balances WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(id);
+  // The owed walk's anchors (migration 259): left behind, they kept valuing the fixture card
+  // after its valuations were wiped, and the group charts read it.
+  db.prepare(`DELETE FROM cc_owed_anchors WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM cc_expense_unique_purchases WHERE account_id = ?`).run(id);
   db.prepare(`DELETE FROM cc_expense_purchase_notes WHERE account_id = ?`).run(id);
 }

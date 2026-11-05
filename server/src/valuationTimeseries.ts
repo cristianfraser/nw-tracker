@@ -1049,14 +1049,14 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
       }
       let raw = valuationRawClpForAccount(aid, d, byDate, slugById);
       if (aidKind === "credit_card") {
-        // Historical points read stored `valuations` (owed on that date — same source as the
-        // Saldo pasivos line); only the live/trailing point uses the billing ledger. Billing-month
-        // "balance total" closings understate month-end debt (they subtract the next-month
-        // payment before it happens) — facturaciones keep their own views.
-        if (useLiveAfpOnDate) {
-          const cc = latestCreditCardValuationRowAsOf(aid, d > todayYmd ? d : todayYmd);
-          if (cc?.value_clp != null && Number.isFinite(cc.value_clp)) raw = cc.value_clp;
-        }
+        // Owed on that date (`latestCreditCardValuationRowAsOf`: the owed walk for a past date,
+        // the displayed balance from today) — what the group Total and the daily series sum, so
+        // the card's line and the Total cannot drift. The stored `valuations` rows are a cache of
+        // it written at stamp time, stale once the anchors or rates change (a test DB built before
+        // the per-currency anchors read 12–1.008 pesos off). Billing-month "balance total"
+        // closings understate month-end debt — facturaciones keep their own views.
+        const cc = latestCreditCardValuationRowAsOf(aid, useLiveAfpOnDate && d < todayYmd ? todayYmd : d);
+        if (cc?.value_clp != null && Number.isFinite(cc.value_clp)) raw = cc.value_clp;
       }
       if (aidKind === "mortgage") {
         const mtgClose = mtgCloseByAccAndDate.get(aid)?.get(d);
