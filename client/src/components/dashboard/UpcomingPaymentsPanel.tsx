@@ -69,12 +69,22 @@ function AmountCell({ item }: { item: UpcomingPaymentItemDto }) {
       </span>
     );
   }
+  const className = item.estimated ? `mono muted ${styles.estimate}` : "mono";
+  // A range (the mortgage) shows its minimum, what counts in the month's total; the maximum is on hover.
+  if (item.amount_max_clp != null) {
+    const hint = `${t("dashboard.ccUpcoming.mortgageMaxHint", { amount: formatClp(item.amount_max_clp) })} · ${t("dashboard.ccUpcoming.mortgageRangeHint")}`;
+    // «min.» in the text font, like the due date beside it; the amount in mono.
+    return (
+      <span title={hint}>
+        <span className="muted">{t("dashboard.ccUpcoming.mortgageMin")}</span>{" "}
+        <span className={className}>{formatClp(item.amount_clp)}</span>
+      </span>
+    );
+  }
   // An estimate reads dimmed and in italics (no «≈»), its reason on hover.
-  const hint = item.kind === "mortgage" ? t("dashboard.ccUpcoming.mortgageRangeHint") : item.estimated ? t("dashboard.ccUpcoming.estimatedHint") : undefined;
   return (
-    <span className={item.estimated ? `mono muted ${styles.estimate}` : "mono"} title={hint}>
+    <span className={className} title={item.estimated ? t("dashboard.ccUpcoming.estimatedHint") : undefined}>
       {formatClp(item.amount_clp)}
-      {item.amount_max_clp != null ? ` – ${formatClp(item.amount_max_clp)}` : ""}
     </span>
   );
 }
