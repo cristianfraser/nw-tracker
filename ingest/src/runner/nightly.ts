@@ -50,7 +50,7 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
   if (o.dryRun) {
     x.note("=== (dry run) skipping fetch:santander");
   } else {
-    const fetched = await x.step("fetch Santander", npmRun("fetch:santander", "--background"));
+    const fetched = await x.step("fetch Santander", npmRun("fetch:santander"));
     santander = { mode: "nightly", outcome: fetched.ok ? "ok" : "failed", note: null };
   }
 
@@ -137,7 +137,7 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     await x.step(dry("Racional movements"), npmRun("import:racional-movements"));
   } else if (o.racionalNeeded()) {
     x.note("e-mail reported new Racional activity — fetching");
-    await x.step("fetch Racional", npmRun("fetch:racional", "--background"));
+    await x.step("fetch Racional", npmRun("fetch:racional"));
     await applyOrReport(x, "Racional movements", "import:racional-movements", o.racionalApply);
   } else {
     x.note("=== Racional (skipped — no e-mail said anything moved)");
@@ -150,8 +150,8 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     x.note(`=== (dry run) skipping fetch:afp-uno (${o.afpUnoFetch.reason})`);
   } else {
     x.note(`AFP UNO: ${o.afpUnoFetch.reason}`);
-    if (o.afpUnoApply) await x.step("AFP UNO (apply)", npmRun("fetch:afp-uno", "--background", "--apply"));
-    else await x.step("AFP UNO (report only)", npmRun("fetch:afp-uno", "--background"));
+    if (o.afpUnoApply) await x.step("AFP UNO (apply)", npmRun("fetch:afp-uno", "--apply"));
+    else await x.step("AFP UNO (report only)", npmRun("fetch:afp-uno"));
   }
 
   // 5b′. The AFC, when the server expects a contribution (from the 14th after a payroll month
@@ -165,7 +165,7 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     x.note(`=== (dry run) skipping fetch:afc (${afcFetch.reason})`);
   } else {
     x.note(`AFC: ${afcFetch.reason}`);
-    const args = ["--background", ...(o.afcApply ? ["--apply"] : [])];
+    const args = [...(o.afcApply ? ["--apply"] : [])];
     if (afcFetch.expected_period) args.push(`--expect=${afcFetch.expected_period}`);
     if (afcFetch.overdue) args.push("--overdue");
     await x.step(o.afcApply ? "AFC (apply)" : "AFC (report only)", npmRun("fetch:afc", ...args));
@@ -179,7 +179,7 @@ export async function runNightly(x: StepRunner, o: NightlyOptions): Promise<Nigh
     x.note(`=== (dry run) skipping payslips (${o.payslips.reason})`);
   } else {
     x.note(`payslips: ${o.payslips.reason}`);
-    if (o.payslips.fetch) await x.step("fetch Buk payslips", npmRun("fetch:buk-payslips", "--background"));
+    if (o.payslips.fetch) await x.step("fetch Buk payslips", npmRun("fetch:buk-payslips"));
     await x.step("parse payslips", npmRun("parse:payroll-liquidaciones"));
     // The months' legal parameters the payslip checks read (Previred; only new months are fetched).
     await x.step("payroll parameters", npmRun("import:previred-indicators"));

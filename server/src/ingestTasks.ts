@@ -8,7 +8,7 @@
 import type { IngestTaskName, IngestTaskResult } from "nw-tracker-contracts";
 import { insertAppMessage } from "./appMessages.js";
 import { formatBankBalanceReport, judgeLatestBankAccountBalances } from "./bankAccountBalances.js";
-import { formatBankCupoReport, judgeLatestBankCupoCapture } from "./ccBankCupoCheck.js";
+import { formatBankCupoReport, judgeLatestBankCupoCapture, previousBankCupoVerdict } from "./ccBankCupoCheck.js";
 import { convertCcPaymentMirrors, listCcPaymentMirrorCandidates } from "./ccPaymentMirrors.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
@@ -83,13 +83,24 @@ function syntheticCcPaymentsCheck(): TaskOutcome {
 }
 
 const CUPO_TITLE = "Credit card bank cupo";
+/** The notification a balance that stays off after its movements were read raises. */
+const DIFFERS_TITLE = "Bank balance differs from the app";
 
 /**
- * The bank's own cupo utilizado per card and currency (the latest feed's product summary) against
- * what the app says each card owes. Fails on a fresh mismatch, or when the latest feed carried no
- * summary; records its report as a log (import sync) — the alert is the run record, which names
- * the failed step like any other, so the check never writes a notification of its own. A capture
- * an earlier run already judged is reported again but raises nothing.
+ * A fresh mismatch is a new one when the latest earlier observation of the same product agreed, or
+ * disagreed by another amount: one notification per difference, not one per hour it lasts.
+ */
+function isNewMismatch(diff: number | null, previous: { status: string; diff: number | null } | null): boolean {
+  return previous == null || previous.status !== "mismatch" || previous.diff !== diff;
+}
+
+/**
+ * The bank's own cupo utilizado per card and currency (the latest product summary) against what
+ * the app says each card owes. Runs after the movements were read (nightly, and an hourly balance
+ * poll that found a difference), so a mismatch here is one the bank's listing did not explain: it
+ * raises a notification — once per difference — and the report goes to the log (import sync). The
+ * step fails only when the latest feed carried no summary. A capture an earlier run already judged
+ * is reported again but raises nothing.
  */
 function ccBankCupoCheck(o: TaskOptions): TaskOutcome {
   const accountName = (accountId: number): string =>
@@ -105,10 +116,13 @@ function ccBankCupoCheck(o: TaskOptions): TaskOutcome {
   }
   const report = formatBankCupoReport(run.verdicts, accountName);
   const fresh = run.verdicts.some((v) => v.fresh);
-  const mismatches = run.verdicts.filter((v) => v.status === "mismatch");
   if (fresh) insertAppMessage("log", CUPO_TITLE, report);
+  const newMismatches = run.verdicts.filter(
+    (v) => v.fresh && v.status === "mismatch" && isNewMismatch(v.diff, previousBankCupoVerdict(v.snapshot))
+  );
+  if (newMismatches.length > 0) insertAppMessage("notification", DIFFERS_TITLE, formatBankCupoReport(newMismatches, accountName));
   return {
-    ok: !(fresh && mismatches.length > 0),
+    ok: true,
     report: [report, ...(fresh ? [] : [`\n(${run.capture.source_file} was already judged — nothing new to report)`])],
   };
 }
@@ -118,15 +132,16 @@ const BALANCE_TITLE = "Bank account balance";
 /**
  * The balance the bank states for each declared deposit account (`bankAccountBalances.ts`) against
  * its ledger. Runs inside the cupo check step: both read the same product summary of the same
- * session. Fails on a fresh mismatch; the report is a log, the run record carries the alert.
+ * session. A mismatch notifies once per difference, like the cupo check; the report is a log.
  */
 function bankAccountBalanceCheck(o: TaskOptions): TaskOutcome {
   const verdicts = judgeLatestBankAccountBalances({ recheck: o.recheck });
   const report = formatBankBalanceReport(verdicts);
   const fresh = verdicts.some((v) => v.fresh);
   if (fresh) insertAppMessage("log", BALANCE_TITLE, report);
-  const failed = verdicts.some((v) => v.fresh && v.status === "mismatch");
-  return { ok: !failed, report: [report, ...(fresh || verdicts.length === 0 ? [] : ["(already judged — nothing new)"])] };
+  const newMismatches = verdicts.filter((v) => v.fresh && v.status === "mismatch" && isNewMismatch(v.diff, v.previous));
+  if (newMismatches.length > 0) insertAppMessage("notification", DIFFERS_TITLE, formatBankBalanceReport(newMismatches));
+  return { ok: true, report: [report, ...(fresh || verdicts.length === 0 ? [] : ["(already judged — nothing new)"])] };
 }
 
 /** The card cupo check and the deposit-account balance check: one product summary, one step. */

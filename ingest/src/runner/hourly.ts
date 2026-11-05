@@ -1,12 +1,14 @@
-import type { IngestRunRequest, SantanderFetchOutcome } from "nw-tracker-contracts";
+import type { BankProductSummaryFetchStep, IngestRunRequest, SantanderFetchOutcome } from "nw-tracker-contracts";
+import { parseBalancePollResult } from "../santander/balancePoll.js";
 import { applyOrReport } from "./nightly.js";
 import { npmRun, savedCount, type StepRunner } from "./steps.js";
 
 /**
- * The hourly e-mail poll — `email-run.sh`'s sequence (same labels, same commands, same gates),
- * except that the bank fetch is the server's call now: it asks for a catch-up (the nightly fetch
- * failed or never ran) or a payday fetch in the request, and this poll only declines one it
- * cannot safely make (the login is latched, or the bank was tried moments ago).
+ * The hourly poll — the e-mail fetches and imports of `email-run.sh`, plus the Santander balance
+ * poll when the server asks for it: log in, send the product summary, read the movements of only
+ * the products whose balance disagrees with the app, import them, and judge again (the check
+ * notifies a difference the movements did not explain). This poll only declines a bank session it
+ * cannot safely open (the login is latched, or the bank was tried moments ago).
  */
 
 export type HourlyOptions = {
@@ -16,8 +18,6 @@ export type HourlyOptions = {
   santanderFetch: IngestRunRequest["santander_fetch"];
   /** A reason to decline the requested bank fetch, or null to go ahead (`santanderVeto`). */
   santanderVeto: () => string | null;
-  /** Called before a bank fetch this poll makes (not one it declines): the attempt markers. */
-  onSantanderAttempt: (mode: "catch-up" | "payday") => void;
   /** Photos waiting in `cfraser/grocery-receipts/inbox` — the one input no fetch stages. */
   groceryInboxCount: () => number;
   /** The server's request to read the mortgage sheet (stale from the 11th until the cuota is in). */
@@ -76,7 +76,8 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
 
   // The one bank session a poll may open — only when the server asked for it.
   let santander: SantanderFetchOutcome | null = null;
-  let caughtUp = false;
+  let listings: BankProductSummaryFetchStep[] = [];
+  let differs = false;
   if (!o.dryRun && o.santanderFetch) {
     const { mode, reason } = o.santanderFetch;
     const veto = o.santanderVeto();
@@ -84,18 +85,23 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
       x.note(`=== Santander ${mode} (declined — ${veto})`);
       santander = { mode, outcome: "vetoed", note: veto };
     } else {
-      x.note(`${mode} fetch — ${reason}`);
-      // Recorded before the fetch: one that fails still used its attempt.
-      o.onSantanderAttempt(mode);
-      const args = mode === "payday" ? ["--background", "--movements-only"] : ["--background"];
-      const fetched = await x.step(`fetch Santander (${mode})`, npmRun("fetch:santander", ...args));
-      santander = { mode, outcome: fetched.ok ? "ok" : "failed", note: null };
-      if (fetched.ok) {
-        caughtUp = true;
-        await x.step(`Santander movements (${mode})`, npmRun("import:santander-movements"));
-        await x.step(`Santander USD movements (${mode})`, npmRun("import:checking-usd-movements"));
-        await x.step(`Convert CC payment mirrors (${mode})`, npmRun("convert:cc-payment-mirrors"));
-        await x.step(`CC bank cupo check (${mode})`, npmRun("check:cc-bank-cupo"));
+      x.note(`${mode} — ${reason}`);
+      const poll = await x.step("Santander balance poll", npmRun("fetch:santander", "--balance-poll"), capture);
+      const read = parseBalancePollResult(poll.output);
+      listings = read ?? [];
+      differs = /\bdiffers: /.test(poll.output);
+      santander = {
+        mode,
+        outcome: poll.ok ? "ok" : "failed",
+        note: read == null ? "the server never answered" : read.length > 0 ? `read ${read.join(", ")}` : "every product agrees",
+      };
+      // What the session staged is imported even when a later listing failed.
+      if (listings.includes("card-movements")) {
+        await x.step("Santander movements (balance poll)", npmRun("import:santander-movements"));
+        await x.step("Convert CC payment mirrors (balance poll)", npmRun("convert:cc-payment-mirrors"));
+      }
+      if (listings.includes("checking-usd-movements")) {
+        await x.step("Santander USD movements (balance poll)", npmRun("import:checking-usd-movements"));
       }
     }
   }
@@ -104,12 +110,15 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
   // the gate misses is retried by the nightly, whose pipeline runs unconditionally.
   if (!o.dryRun) {
     const grocery = o.groceryInboxCount();
-    // A bank fetch drops the checking «últimos movimientos» xlsx in the inbox too.
-    if (sdSaved > 0 || lsSaved > 0 || lbSaved > 0 || grocery > 0 || caughtUp) {
+    // A balance poll that read the checking account drops its «últimos movimientos» xlsx in the inbox.
+    const checkingRead = listings.includes("checking-movements");
+    if (sdSaved > 0 || lsSaved > 0 || lbSaved > 0 || grocery > 0 || checkingRead) {
       await x.step("inbox pipeline", npmRun("import:cfraser-inbox"));
     } else {
       x.note("=== inbox pipeline (skipped — nothing new staged)");
     }
+    // After every import: a difference the bank's movements did not explain is notified.
+    if (differs) await x.step("CC bank cupo check (balance poll)", npmRun("check:cc-bank-cupo", "--recheck"));
     if (beMsgs > 0) {
       await applyOrReport(x, "Fintual e-mail movements", "import:fintual-emails", o.fintualApply);
       await applyOrReport(x, "Racional e-mail movements", "import:racional-emails", o.racionalApply);
@@ -164,7 +173,7 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     fdSaved > 0 ||
     amSaved > 0 ||
     beMsgs > 0 ||
-    caughtUp ||
+    listings.length > 0 ||
     mailMovements > 0 ||
     sheetRows > 0 ||
     walletInterest > 0;
@@ -172,7 +181,7 @@ export async function runHourly(x: StepRunner, o: HourlyOptions): Promise<Hourly
     x.note(
       `activity this hour: santander-docs saved=${sdSaved}, lider statement saved=${lsSaved}, ` +
         `boletas saved=${lbSaved}, fintual docs saved=${fdSaved}, apple mail saved=${amSaved}, broker mail=${beMsgs}, ` +
-        `santander fetch=${caughtUp ? 1 : 0}, movements from transfer mails=${mailMovements}, mortgage sheet rows=${sheetRows}, ` +
+        `santander listings read=${listings.length}, movements from transfer mails=${mailMovements}, mortgage sheet rows=${sheetRows}, ` +
         `fintual wallet interest=${walletInterest}`
     );
   }

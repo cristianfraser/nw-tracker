@@ -43,7 +43,7 @@ import { readKeychainSecret } from "../keychain.js";
 import { log } from "../log.js";
 import { ensureDir, resolveCfraserDir } from "../paths.js";
 import { assertRunAllowed, DEFAULT_MIN_INTERVAL_MINUTES } from "../runGuard.js";
-import { chileWallClock } from "../santander/catchUp.js";
+import { chileWallClock } from "../santander/fetchHistory.js";
 import { describeIngestFailure, ingestClient } from "../serverApi.js";
 import { parseContributionsCertificate, parseMovementsCertificate, pdfLayoutText } from "./certificates.js";
 import { tryLogin } from "./login.js";

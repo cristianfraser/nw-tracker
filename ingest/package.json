@@ -27,7 +27,6 @@
     "fetch:lider-statements": "tsx src/email/liderStatementsMain.ts",
     "fetch:fintual-docs": "tsx src/email/fintualDocsMain.ts",
     "fetch:apple-mail": "tsx src/email/appleMailMain.ts",
-    "check:santander-catchup": "tsx src/santanderCatchUpMain.ts",
     "test": "vitest run",
     "import:santander-movements": "tsx src/santander/importCardMovementsMain.ts",
     "import:santander-statements": "tsx src/santander/importStatementsMain.ts",

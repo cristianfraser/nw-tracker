@@ -88,7 +88,10 @@ export type BankBalanceVerdict = {
   status: "ok" | "mismatch";
   /** Judged by this run (false: an earlier run's verdict on the same snapshot). */
   fresh: boolean;
-  /** The previous snapshot's verdict for the same account (the report marks a cleared mismatch). */
+  /**
+   * The verdict at the latest earlier observation of the same account (the report marks a cleared
+   * mismatch; the check notifies a new one) — not the same observation sent twice in one session.
+   */
   previous: { status: "ok" | "mismatch"; diff: number } | null;
 };
 
@@ -121,8 +124,8 @@ export function judgeLatestBankAccountBalances(opts: { recheck?: boolean } = {})
   const previousOf = db.prepare(
     `SELECT c.status, c.diff FROM bank_account_balance_checks c
      JOIN bank_account_balance_snapshots s ON s.id = c.snapshot_id
-     WHERE s.account_id = ? AND s.currency = ? AND s.id < ?
-     ORDER BY s.id DESC LIMIT 1`
+     WHERE s.account_id = ? AND s.currency = ? AND s.observed_at < ?
+     ORDER BY s.observed_at DESC, s.id DESC LIMIT 1`
   );
   const upsert = db.prepare(
     `INSERT INTO bank_account_balance_checks (snapshot_id, status, ledger_balance, diff)
@@ -133,7 +136,7 @@ export function judgeLatestBankAccountBalances(opts: { recheck?: boolean } = {})
   );
   const verdicts: BankBalanceVerdict[] = [];
   for (const r of rows) {
-    const previous = (previousOf.get(r.account_id, r.currency, r.id) as BankBalanceVerdict["previous"]) ?? null;
+    const previous = (previousOf.get(r.account_id, r.currency, r.observed_at) as BankBalanceVerdict["previous"]) ?? null;
     if (r.checked_status != null && !opts.recheck) {
       verdicts.push({
         snapshot_id: r.id,

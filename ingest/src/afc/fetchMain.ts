@@ -32,7 +32,7 @@ async function main(): Promise<number> {
   }
   const minutesRaw = Number(argv.find((a) => a.startsWith("--minutes="))?.split("=")[1]);
   return runAfcCapture(
-    { capture: true, background, movementsOnly: false, minIntervalMinutes, force, only: [] },
+    { capture: true, background, movementsOnly: false, balancePoll: false, minIntervalMinutes, force, only: [] },
     { claveUnica: login === "clave_unica", codeFromStdin: argv.includes("--code-from-stdin"), captureMinutes: Number.isFinite(minutesRaw) && minutesRaw > 0 ? minutesRaw : undefined }
   );
 }

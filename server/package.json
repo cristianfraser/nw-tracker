@@ -60,7 +60,6 @@
     "profile:dashboard": "tsx scripts/profile-dashboard.ts",
     "db:verify-backup": "tsx scripts/verify-db-backup.ts",
     "match:app-store-notes": "tsx scripts/match-app-store-notes.ts",
-    "check:santander-payday-fetch": "tsx scripts/check-santander-payday-fetch.ts",
     "record:daily-run": "tsx scripts/record-daily-run.ts",
     "record:email-run": "tsx scripts/record-email-run.ts",
     "check:daily-run-recent": "tsx scripts/daily-run-ran-recently.ts"

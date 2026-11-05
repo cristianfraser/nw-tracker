@@ -3,6 +3,11 @@ export type RunOptions = {
   capture: boolean;
   /** Run off-screen instead of in a visible window. Headless is blocked by Santander — see browser.ts. */
   background: boolean;
+  /**
+   * Santander: send the login's product summary to the server and read only the movement listings
+   * it names (the hourly balance poll); no statements.
+   */
+  balancePoll: boolean;
   /** Skip statement/cartola downloads (movements only). */
   movementsOnly: boolean;
   /** Minimum minutes since the previous run against this bank. */

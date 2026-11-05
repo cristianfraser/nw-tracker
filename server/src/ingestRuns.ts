@@ -5,7 +5,6 @@ import {
   type IngestRunRequest,
   type SantanderState,
 } from "nw-tracker-contracts";
-import { chileWallClockAt } from "./chileDate.js";
 import { recordDailyRun, recordHourlyEmailRun, type DailyRunStep } from "./dailyRunLog.js";
 import { db } from "./db.js";
 import { completeJob, jobById } from "./jobQueue.js";
@@ -30,7 +29,7 @@ export type IngestRunRow = {
   failed_steps: number | null;
   steps_json: string | null;
   error: string | null;
-  santander_request: "catch-up" | "payday" | null;
+  santander_request: "balance-poll" | "catch-up" | "payday" | null;
   santander_request_reason: string | null;
   santander_outcome: "ok" | "failed" | "vetoed" | null;
   santander_note: string | null;
@@ -149,31 +148,6 @@ export function latestSantanderState(): SantanderState | null {
     )
     .get() as { j: string } | undefined;
   return row ? santanderStateSchema.parse(JSON.parse(row.j)) : null;
-}
-
-/**
- * Bank fetches this scheduler asked an hourly poll for that count as attempted: the poll took the
- * run and did not decline the fetch (a run still in flight, or lost, counts — one bank login per
- * slot is the point, and an unknown outcome may have been one).
- */
-function attemptedFetchRequests(mode: "catch-up" | "payday"): { requested_at: string }[] {
-  return db
-    .prepare(
-      `SELECT requested_at FROM ingest_runs
-       WHERE santander_request = ? AND status IN ('requested', 'done', 'failed', 'lost')
-         AND (santander_outcome IS NULL OR santander_outcome <> 'vetoed')
-       ORDER BY requested_at DESC LIMIT 1`
-    )
-    .all(mode) as { requested_at: string }[];
-}
-
-export function lastCatchUpAttemptAt(): Date | null {
-  return parseInstant(attemptedFetchRequests("catch-up")[0]?.requested_at);
-}
-
-export function lastPaydayAttemptYmd(): string | null {
-  const at = parseInstant(attemptedFetchRequests("payday")[0]?.requested_at);
-  return at ? chileWallClockAt(at).ymd : null;
 }
 
 /** The run's app message, as `record:daily-run` / `record:email-run` wrote it for the shell runners. */

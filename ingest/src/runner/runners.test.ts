@@ -42,7 +42,7 @@ describe("runNightly", () => {
     const { x, calls } = fakeRunner();
     const result = await runNightly(x, NIGHTLY);
     expect(calls).toEqual([
-      "run fetch:santander -- --background",
+      "run fetch:santander",
       "run fetch:santander-docs",
       "run fetch:lider-boletas",
       "run fetch:lider-statements",
@@ -75,7 +75,7 @@ describe("runNightly", () => {
     const result = await runNightly(x, { ...NIGHTLY, racionalApply: false, racionalNeeded: () => true });
     expect(calls.slice(-4)).toEqual([
       "run import:racional-emails",
-      "run fetch:racional -- --background",
+      "run fetch:racional",
       "run import:racional-movements",
       "run import:santander-statements -- --apply",
     ]);
@@ -88,11 +88,11 @@ describe("runNightly", () => {
     const asked = { reason: "no clean import since 2030-10-10" };
     const { x, calls } = fakeRunner();
     await runNightly(x, { ...NIGHTLY, afpUnoFetch: asked });
-    expect(calls).toContain("run fetch:afp-uno -- --background --apply");
+    expect(calls).toContain("run fetch:afp-uno -- --apply");
     const report = fakeRunner();
     await runNightly(report.x, { ...NIGHTLY, afpUnoFetch: asked, afpUnoApply: false });
     expect(report.x.steps.map((s) => s.label)).toContain("AFP UNO (report only)");
-    expect(report.calls).toContain("run fetch:afp-uno -- --background");
+    expect(report.calls).toContain("run fetch:afp-uno");
     const quiet = fakeRunner();
     await runNightly(quiet.x, NIGHTLY);
     expect(quiet.calls.some((c) => c.includes("fetch:afp-uno"))).toBe(false);
@@ -102,27 +102,27 @@ describe("runNightly", () => {
     const asked = { reason: "no AFC contribution for 2026-09 in the ledger yet", expected_period: "2026-09", overdue: false };
     const { x, calls } = fakeRunner();
     await runNightly(x, { ...NIGHTLY, afcFetch: asked });
-    expect(calls).toContain("run fetch:afc -- --background --apply --expect=2026-09");
+    expect(calls).toContain("run fetch:afc -- --apply --expect=2026-09");
     const overdue = fakeRunner();
     await runNightly(overdue.x, { ...NIGHTLY, afcFetch: { ...asked, overdue: true } });
-    expect(overdue.calls).toContain("run fetch:afc -- --background --apply --expect=2026-09 --overdue");
+    expect(overdue.calls).toContain("run fetch:afc -- --apply --expect=2026-09 --overdue");
     const cartola = fakeRunner({ "fetch:afc-cartolas": "Summary: 1 saved, 0 skipped" });
     await runNightly(cartola.x, NIGHTLY);
-    expect(cartola.calls).toContain("run fetch:afc -- --background --apply");
+    expect(cartola.calls).toContain("run fetch:afc -- --apply");
     const report = fakeRunner();
     await runNightly(report.x, { ...NIGHTLY, afcFetch: asked, afcApply: false });
     expect(report.x.steps.map((s) => s.label)).toContain("AFC (report only)");
-    expect(report.calls).toContain("run fetch:afc -- --background --expect=2026-09");
+    expect(report.calls).toContain("run fetch:afc -- --expect=2026-09");
     const quiet = fakeRunner();
     await runNightly(quiet.x, NIGHTLY);
-    expect(quiet.calls.some((c) => c === "run fetch:afc -- --background" || c.includes("fetch:afc --"))).toBe(false);
+    expect(quiet.calls.some((c) => c === "run fetch:afc" || c.includes("fetch:afc --"))).toBe(false);
   });
 
   it("imports payslips when the server asks, reading the portal only when told to fetch", async () => {
     const fetched = fakeRunner();
     await runNightly(fetched.x, { ...NIGHTLY, payslips: { fetch: true, reason: "no payslip for 2030-09 yet" } });
     expect(fetched.calls.filter((c) => /buk|payroll|previred/.test(c))).toEqual([
-      "run fetch:buk-payslips -- --background",
+      "run fetch:buk-payslips",
       "run parse:payroll-liquidaciones",
       "run import:previred-indicators",
       "run import:payroll-liquidaciones -- --no-strict",
@@ -160,7 +160,6 @@ const HOURLY: HourlyOptions = {
   racionalApply: true,
   santanderFetch: null,
   santanderVeto: () => null,
-  onSantanderAttempt: () => {},
   groceryInboxCount: () => 0,
   mortgageSheet: null,
 };
@@ -231,45 +230,61 @@ describe("runHourly", () => {
     expect(calls).toContain("run import:cfraser-inbox");
   });
 
-  it("makes the bank fetch the server asked for, and imports after it", async () => {
-    const { x, calls } = fakeRunner();
-    const attempts: string[] = [];
-    const result = await runHourly(x, {
-      ...HOURLY,
-      santanderFetch: { mode: "payday", reason: "payday (2026-09-30)" },
-      onSantanderAttempt: (mode) => void attempts.push(mode),
-    });
-    expect(attempts).toEqual(["payday"]);
-    expect(result).toEqual({ santander: { mode: "payday", outcome: "ok", note: null }, activity: true });
+  it("reads nothing more when every balance agrees", async () => {
+    const { x, calls } = fakeRunner({ "fetch:santander": "[15:30:12] balance poll fetch: none" });
+    const result = await runHourly(x, { ...HOURLY, santanderFetch: { mode: "balance-poll", reason: "hourly" } });
+    expect(result.santander).toEqual({ mode: "balance-poll", outcome: "ok", note: "every product agrees" });
     expect(calls.slice(6)).toEqual([
-      "run fetch:santander -- --background --movements-only",
-      "run import:santander-movements",
-      "run import:checking-usd-movements",
-      "run convert:cc-payment-mirrors",
-      "run check:cc-bank-cupo",
-      "run import:cfraser-inbox",
+      "run fetch:santander -- --balance-poll",
       "run import:transfer-mails -- --days=2",
       "run import:fintual-wallet -- --apply",
     ]);
   });
 
-  it("declines a requested fetch it cannot safely make", async () => {
+  it("imports the listings the poll read, then judges again", async () => {
+    const { x, calls } = fakeRunner({
+      "fetch:santander": "  differs: card 32 CLP: app − bank -5000 — reading the card feed\nbalance poll fetch: card-movements,checking-movements,checking-usd-movements",
+    });
+    const result = await runHourly(x, { ...HOURLY, santanderFetch: { mode: "balance-poll", reason: "hourly" } });
+    expect(result).toEqual({
+      santander: { mode: "balance-poll", outcome: "ok", note: "read card-movements, checking-movements, checking-usd-movements" },
+      activity: true,
+    });
+    expect(calls.slice(6)).toEqual([
+      "run fetch:santander -- --balance-poll",
+      "run import:santander-movements",
+      "run convert:cc-payment-mirrors",
+      "run import:checking-usd-movements",
+      "run import:cfraser-inbox",
+      "run check:cc-bank-cupo -- --recheck",
+      "run import:transfer-mails -- --days=2",
+      "run import:fintual-wallet -- --apply",
+    ]);
+  });
+
+  it("judges again a difference no listing can explain (the cuenta vista)", async () => {
+    const { x, calls } = fakeRunner({
+      "fetch:santander": "  differs: Cuenta vista CLP: app − bank 100 — no movement listing to read\nbalance poll fetch: none",
+    });
+    await runHourly(x, { ...HOURLY, santanderFetch: { mode: "balance-poll", reason: "hourly" } });
+    expect(calls).toContain("run check:cc-bank-cupo -- --recheck");
+    expect(calls).not.toContain("run import:cfraser-inbox");
+  });
+
+  it("declines a requested poll it cannot safely make", async () => {
     const { x, calls, notes } = fakeRunner();
-    const attempts: string[] = [];
     const result = await runHourly(x, {
       ...HOURLY,
-      santanderFetch: { mode: "catch-up", reason: "no fetch since the 22:00 slot" },
+      santanderFetch: { mode: "balance-poll", reason: "hourly" },
       santanderVeto: () => "login latched off after a credentials rejection",
-      onSantanderAttempt: (mode) => void attempts.push(mode),
     });
-    expect(attempts).toEqual([]);
     expect(result.santander).toEqual({
-      mode: "catch-up",
+      mode: "balance-poll",
       outcome: "vetoed",
       note: "login latched off after a credentials rejection",
     });
-    expect(calls.some((c) => c.includes("fetch:santander --"))).toBe(false);
-    expect(notes).toContain("=== Santander catch-up (declined — login latched off after a credentials rejection)");
+    expect(calls).not.toContain("run fetch:santander -- --balance-poll");
+    expect(notes).toContain("=== Santander balance-poll (declined — login latched off after a credentials rejection)");
   });
 });
 
@@ -283,7 +298,7 @@ describe("output counts", () => {
 
 describe("santanderVeto", () => {
   const now = new Date("2026-09-30T15:00:00Z");
-  const markers = { last_catch_up_attempt_at: null, last_payday_attempt_ymd: null };
+  const markers = {};
   it("declines when latched or tried less than 35 min ago", () => {
     expect(santanderVeto({ last_attempt_at: null, last_success_at: null, login_latched: true, ...markers }, now)).toMatch(/latched/);
     expect(

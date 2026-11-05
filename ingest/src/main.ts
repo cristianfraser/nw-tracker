@@ -28,6 +28,8 @@ Options:
   --background       Park the Chrome window off-screen — the run is invisible but not headless.
                      Use this for scheduled runs; true headless is blocked by Santander.
   --movements-only   Skip statement and cartola downloads.
+  --balance-poll     Santander: send the login's balances to the server and read only the
+                     movements of the products that disagree with the app (the hourly poll).
   --only=a,b         Run only these steps, so a re-test costs no extra requests.
                      santander: card-movements, checking-movements, checking-usd-movements, card-statements
                      racional:  movements, positions
@@ -77,6 +79,7 @@ async function main(): Promise<void> {
     capture: argv.includes("--capture"),
     background: argv.includes("--background"),
     movementsOnly: argv.includes("--movements-only"),
+    balancePoll: argv.includes("--balance-poll"),
     minIntervalMinutes: numericFlag(argv, "min-interval", DEFAULT_MIN_INTERVAL_MINUTES),
     force: argv.includes("--force"),
     only: listFlag(argv, "only"),
