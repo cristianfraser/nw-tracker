@@ -3,7 +3,7 @@ import type { TFunction } from "i18next";
 import { Link } from "react-router-dom";
 import { useTranslation } from "../../i18n";
 import { formatClp } from "../../format";
-import { formatDayOfMonthLabel, formatYearMonthLabel } from "../../formatDateLabel";
+import { dayOfMonthLabelParts, formatYearMonthLabel } from "../../formatDateLabel";
 import type { CcUpcomingPaymentRowDto, UpcomingPaymentDetailDto, UpcomingPaymentItemDto, UpcomingPaymentsDto } from "../../types";
 import { PageGridTile } from "../layout/PageGridTile";
 import { usePanelCache } from "../../queries/panelCache";
@@ -45,14 +45,18 @@ function DueCell({ item }: { item: UpcomingPaymentItemDto }) {
       </span>
     );
   }
-  const day = formatDayOfMonthLabel(item.due_iso);
+  const { day, suffix } = dayOfMonthLabelParts(item.due_iso);
   // A card's pay-by that no statement prints yet is derived from its close; the dates read dimmed
   // already, so it says so on hover only.
   const derived = item.card?.pay_by_source === "derived";
   const hint = derived ? `${item.due_iso} · ${t("accountDetail.creditCard.payByDerivedHint")}` : item.due_iso;
   return (
     <span className="muted" title={hint}>
-      {item.due_kind === "on" ? t("dashboard.ccUpcoming.payOnDay", { day }) : t("dashboard.ccUpcoming.payByDay", { day })}
+      <span className={styles.dueWord}>
+        {item.due_kind === "on" ? t("dashboard.ccUpcoming.payOnDay") : t("dashboard.ccUpcoming.payByDay")}
+      </span>{" "}
+      <span className="mono">{day}</span>
+      {suffix}
     </span>
   );
 }
@@ -69,19 +73,17 @@ function AmountCell({ item }: { item: UpcomingPaymentItemDto }) {
       </span>
     );
   }
-  const className = item.estimated ? `mono muted ${styles.estimate}` : "mono";
+  const className = item.estimated ? `mono ${styles.estimate}` : "mono";
   // A range (the mortgage) shows its minimum, what counts in the month's total; the maximum is on hover.
   if (item.amount_max_clp != null) {
     const hint = `${t("dashboard.ccUpcoming.mortgageMaxHint", { amount: formatClp(item.amount_max_clp) })} · ${t("dashboard.ccUpcoming.mortgageRangeHint")}`;
-    // «min.» in the text font, like the due date beside it; the amount in mono.
     return (
-      <span title={hint}>
-        <span className="muted">{t("dashboard.ccUpcoming.mortgageMin")}</span>{" "}
-        <span className={className}>{formatClp(item.amount_clp)}</span>
+      <span className={className} title={hint}>
+        {formatClp(item.amount_clp)}
       </span>
     );
   }
-  // An estimate reads dimmed and in italics (no «≈»), its reason on hover.
+  // An estimate reads in italics (no «≈»), its reason on hover.
   return (
     <span className={className} title={item.estimated ? t("dashboard.ccUpcoming.estimatedHint") : undefined}>
       {formatClp(item.amount_clp)}
@@ -165,7 +167,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
     <PageGridTile id="cc-upcoming" order={dashboardTileOrder("cc-upcoming")} smallSpan={dashboardTileSmallSpan("cc-upcoming")}>
       <h2>{t("dashboard.ccUpcoming.title")}</h2>
       {data != null && allMonths.length === 0 ? <p className="muted">{t("dashboard.ccUpcoming.empty")}</p> : null}
-      <div className={loadableClass(loading || data == null, "cards cards--list")}>
+      <div className={loadableClass(loading || data == null, "cards cards--list", styles.upcoming)}>
         {months.map((month) => (
           <div key={month.pay_month} className={`card ${styles.period}`}>
             <div className={styles.monthHeading}>
@@ -184,8 +186,11 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
                       <ItemLabel item={item} />
                     )}
                   </dt>
-                  <dd>
-                    <DueCell item={item} /> <AmountCell item={item} />
+                  <dd className={styles.due}>
+                    <DueCell item={item} />
+                  </dd>
+                  <dd className={styles.amount}>
+                    <AmountCell item={item} />
                   </dd>
                 </div>
               ))}
