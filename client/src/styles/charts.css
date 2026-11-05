@@ -315,8 +315,26 @@
   font-weight: 600;
 }
 
-/* A chart's loading frame (ChartEmptyState): the box at chart size with nothing drawn in it —
-   fully transparent, the frame is the title row plus the reserved height. */
+/* A chart's loading frame (ChartEmptyState): the box at chart size with an empty plot — axes and
+   the grid as AppComposedChart draws them (dashed #334155 at .35), inset by the chart margin top,
+   a Y-axis gutter left and the X-axis band below, so the frame reads as the chart without data. */
 .chart-box--pending {
   background: none;
+}
+
+.chart-box__pending-plot {
+  position: absolute;
+  top: 8px;
+  left: 3.5rem;
+  right: 0;
+  bottom: 30px;
+  width: calc(100% - 3.5rem);
+  height: calc(100% - 38px);
+  overflow: visible;
+}
+
+.chart-box__pending-grid {
+  stroke: #334155;
+  stroke-dasharray: 3 3;
+  opacity: 0.35;
 }
