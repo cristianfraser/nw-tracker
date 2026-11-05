@@ -9,7 +9,7 @@
  * longer makes the step due. With no national statement staged at all the step is always due —
  * nothing announces a close yet. `--force`, `--capture` and `--only=card-statements` fetch anyway.
  */
-import { chileWallClock } from "./catchUp.js";
+import { chileWallClock } from "./fetchHistory.js";
 import { listSantanderStatementFiles, parseSantanderStatementFile } from "./statementJson.js";
 
 /** Days past an announced close the step keeps trying before reading the card as dormant. */

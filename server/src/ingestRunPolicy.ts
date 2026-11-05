@@ -1,5 +1,4 @@
 import type { IngestRunKind, SantanderFetchMode, SantanderState } from "nw-tracker-contracts";
-import { santanderPaydayFetchDecision } from "./santanderPaydayFetch.js";
 import { chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { DAILY_RUN_REPEAT_WINDOW_MINUTES } from "./dailyRunLog.js";
 
@@ -93,60 +92,33 @@ export function decideIngestRun(inputs: IngestSchedulerInputs): IngestSchedulerD
   return { action: "idle" };
 }
 
-/** A catch-up slot counts as passed 30 minutes after 22:00, once the nightly has had its chance. */
-const CATCH_UP_GRACE_MS = 30 * 60_000;
 export const SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES = 35;
+/**
+ * No balance poll this close to the 22:00 slot: the nightly logs in anyway, and a poll at :30 would
+ * leave the nightly's own fetch inside the scraper's 30-minute run guard.
+ */
+export const BALANCE_POLL_NIGHTLY_CLEARANCE_MINUTES = 45;
 
-export type SantanderFetchInputs = {
+export type SantanderBalancePollInputs = {
   now: Date;
   /** The feeder's bank facts from its latest report; null before the first report. */
   state: SantanderState | null;
-  /** When the latest catch-up this scheduler asked for was attempted (not declined); the feeder's
-   * own marker in `state` counts too. */
-  lastCatchUpAttemptAt: Date | null;
-  /** Chile day of the latest payday fetch attempted. */
-  lastPaydayAttemptYmd: string | null;
 };
 
 /**
- * The bank fetch an hourly poll should make, if any — the rules `email-run.sh` asked
- * `check:santander-catchup` and `check:santander-payday-fetch` for, now decided here from the
- * feeder's reported facts and this scheduler's own history. Catch-up first: it retries a nightly
- * fetch that failed or never ran, once per 22:00 slot — the nightly fetch is the only reader of
- * the card's unbilled movements, and a day it misses across a facturación close is lost until
- * the statement. Otherwise the payday morning fetch (`santanderPaydayFetch.ts`).
+ * Whether an hourly poll opens the bank for a balance poll: every hour, except when the login is
+ * latched off after a credentials rejection, when the bank was tried moments ago (the nightly's
+ * own fetch, a manual run) or when the 22:00 slot is near. The poll compares every product's
+ * stated balance with the app and reads only the movements of the ones that disagree — a movement
+ * made anywhere (by the user or not) shows within the hour.
  */
-export function decideSantanderFetch(i: SantanderFetchInputs): { mode: SantanderFetchMode; reason: string } | null {
-  if (!i.state) return null;
-  // An attempt counts whoever made it: this scheduler, or the shell runners before the switch.
-  const markerCatchUp = i.state.last_catch_up_attempt_at ? new Date(i.state.last_catch_up_attempt_at) : null;
-  const lastCatchUp =
-    markerCatchUp && (!i.lastCatchUpAttemptAt || markerCatchUp > i.lastCatchUpAttemptAt) ? markerCatchUp : i.lastCatchUpAttemptAt;
-  const markerPayday = i.state.last_payday_attempt_ymd;
-  const lastPayday =
-    markerPayday && (!i.lastPaydayAttemptYmd || markerPayday > i.lastPaydayAttemptYmd) ? markerPayday : i.lastPaydayAttemptYmd;
-  const lastAttempt = i.state.last_attempt_at ? new Date(i.state.last_attempt_at) : null;
-  const lastSuccess = i.state.last_success_at ? new Date(i.state.last_success_at) : null;
-  const slot = nightlySlotAtOrBefore(new Date(i.now.getTime() - CATCH_UP_GRACE_MS));
-  const recentAttempt =
-    lastAttempt != null && i.now.getTime() - lastAttempt.getTime() < SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES * 60_000;
-  const catchUpDue =
-    !(lastSuccess && lastSuccess.getTime() >= slot.getTime()) &&
-    !(lastCatchUp && lastCatchUp.getTime() >= slot.getTime()) &&
-    !i.state.login_latched &&
-    !recentAttempt;
-  if (catchUpDue) {
-    const since = lastSuccess ? ` (last: ${lastSuccess.toISOString()})` : "";
-    return { mode: "catch-up", reason: `no Santander fetch has succeeded since the ${slot.toISOString()} slot${since}` };
-  }
-  const payday = santanderPaydayFetchDecision({
-    now: i.now,
-    lastPaydayAttemptYmd: lastPayday,
-    lastSuccessfulFetchAt: lastSuccess,
-    lastBankAttemptAt: lastAttempt,
-    loginLatched: i.state.login_latched,
-  });
-  return payday.due ? { mode: "payday", reason: payday.reason } : null;
+export function decideSantanderBalancePoll(i: SantanderBalancePollInputs): { mode: SantanderFetchMode; reason: string } | null {
+  if (i.state?.login_latched) return null;
+  const lastAttempt = i.state?.last_attempt_at ? new Date(i.state.last_attempt_at) : null;
+  if (lastAttempt && i.now.getTime() - lastAttempt.getTime() < SANTANDER_MIN_GAP_AFTER_ATTEMPT_MINUTES * 60_000) return null;
+  const nextNightly = nightlySlotAtOrBefore(new Date(i.now.getTime() + 24 * HOUR_MS));
+  if (nextNightly.getTime() - i.now.getTime() < BALANCE_POLL_NIGHTLY_CLEARANCE_MINUTES * 60_000) return null;
+  return { mode: "balance-poll", reason: "hourly: the bank's balances against the app" };
 }
 
 /**

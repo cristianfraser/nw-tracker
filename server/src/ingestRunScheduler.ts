@@ -16,7 +16,7 @@ import {
   decideIngestRun,
   decideMortgageSheetRun,
   decidePayslipsRun,
-  decideSantanderFetch,
+  decideSantanderBalancePoll,
   type IngestSchedulerDecision,
 } from "./ingestRunPolicy.js";
 import { latestRegularMortgageCuotaPaidOn } from "./mortgageSheetPaymentsApply.js";
@@ -24,9 +24,7 @@ import { latestPayslip, latestSalaryPayslipPeriod } from "./payslipsApply.js";
 import { latestUnemploymentFundContributionPeriod } from "./unemploymentFundBalanceApply.js";
 import {
   lastAnsweredSlot,
-  lastCatchUpAttemptAt,
   lastJobSlot,
-  lastPaydayAttemptYmd,
   latestSantanderState,
   markIngestRunNotStarted,
   markIngestRunRequested,
@@ -121,16 +119,8 @@ type RunRequestExtras = {
 /** What a run of `kind` requested now carries besides its kind: the same rules for a slot and a manual run. */
 function runRequestExtras(kind: IngestRunKind, now: Date): RunRequestExtras {
   return {
-    // An hourly poll may carry the one bank fetch the rules allow (catch-up, else payday).
-    santanderFetch:
-      kind === "hourly"
-        ? decideSantanderFetch({
-            now,
-            state: latestSantanderState(),
-            lastCatchUpAttemptAt: lastCatchUpAttemptAt(),
-            lastPaydayAttemptYmd: lastPaydayAttemptYmd(),
-          })
-        : null,
+    // An hourly poll opens the bank to compare its balances with the app (`decideSantanderBalancePoll`).
+    santanderFetch: kind === "hourly" ? decideSantanderBalancePoll({ now, state: latestSantanderState() }) : null,
     // Every nightly reads AFP UNO's balance; the read fetches the certificates when its cuotas moved.
     afpUnoFetch: kind === "nightly" ? decideAfpUnoFetch() : null,
     // A nightly reads the AFC from the 14th after a payroll month until its contribution is in.

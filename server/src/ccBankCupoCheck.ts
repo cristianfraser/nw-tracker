@@ -180,6 +180,27 @@ export function judgeLatestBankCupoCapture(opts?: {
   return { capture: header, capture_error: null, verdicts };
 }
 
+const selPreviousVerdict = db.prepare(
+  `SELECT k.status, k.diff FROM cc_bank_cupo_checks k
+   JOIN cc_bank_cupo_snapshots s ON s.id = k.snapshot_id
+   JOIN cc_bank_cupo_captures c ON c.id = s.capture_id
+   WHERE s.account_id = ? AND s.currency = ? AND c.observed_at < ?
+   ORDER BY c.observed_at DESC, s.id DESC LIMIT 1`
+);
+
+/**
+ * The verdict on the same card and currency at the latest earlier observation — not the same
+ * observation recorded twice (the balance poll's summary and the card feed of the same session
+ * share their `observed_at`).
+ */
+export function previousBankCupoVerdict(snapshot: BankCupoSnapshot): { status: BankCupoCheckStatus; diff: number | null } | null {
+  return (
+    (selPreviousVerdict.get(snapshot.account_id, snapshot.currency, snapshot.observed_at) as
+      | { status: BankCupoCheckStatus; diff: number | null }
+      | undefined) ?? null
+  );
+}
+
 function fmtAmount(n: number, currency: "clp" | "usd"): string {
   return currency === "clp"
     ? `$${Math.round(n).toLocaleString("es-CL")}`

@@ -6,7 +6,7 @@ import {
   decideMortgageSheetRun,
   decidePayslipsRun,
   decideIngestRun,
-  decideSantanderFetch,
+  decideSantanderBalancePoll,
   hourlySlotAtOrBefore,
   nightlySlotAtOrBefore,
   type IngestSchedulerInputs,
@@ -99,61 +99,32 @@ describe("decideIngestRun", () => {
   });
 });
 
-describe("decideSantanderFetch", () => {
-  // 2026-09-29 (Tuesday) 22:00 Chile = 2026-09-30T01:00Z; 2026-09-30 is the month's last business day.
+describe("decideSantanderBalancePoll", () => {
+  // 2026-09-30 is UTC−3 in Chile: 22:00 Chile = 01:00Z next day.
   const state = (over: Partial<SantanderState> = {}): SantanderState => ({
-    last_attempt_at: "2026-09-30T01:00:30.000Z",
-    last_success_at: "2026-09-29T01:01:00.000Z",
+    last_attempt_at: "2026-09-30T14:30:30.000Z",
+    last_success_at: "2026-09-30T01:01:00.000Z",
     login_latched: false,
-    last_catch_up_attempt_at: null,
-    last_payday_attempt_ymd: null,
     ...over,
   });
-  const base = { lastCatchUpAttemptAt: null, lastPaydayAttemptYmd: null };
 
-  it("waits for the first report before deciding anything", () => {
-    expect(decideSantanderFetch({ ...base, now: at("2026-09-30T02:30:00Z"), state: null })).toBeNull();
+  it("polls every hour, before the first report too", () => {
+    expect(decideSantanderBalancePoll({ now: at("2026-09-30T15:30:00Z"), state: state() })).toMatchObject({ mode: "balance-poll" });
+    expect(decideSantanderBalancePoll({ now: at("2026-09-30T15:30:00Z"), state: null })).toMatchObject({ mode: "balance-poll" });
   });
 
-  it("retries a failed nightly fetch once the slot's grace has passed, once", () => {
-    // 22:20 Chile: the nightly still has its chance.
-    expect(decideSantanderFetch({ ...base, now: at("2026-09-30T01:20:00Z"), state: state() })).toBeNull();
-    expect(decideSantanderFetch({ ...base, now: at("2026-09-30T01:40:00Z"), state: state() })).toMatchObject({
-      mode: "catch-up",
-    });
-    expect(
-      decideSantanderFetch({ ...base, now: at("2026-09-30T02:40:00Z"), state: state(), lastCatchUpAttemptAt: at("2026-09-30T01:40:00Z") })
-    ).toBeNull();
-    expect(
-      decideSantanderFetch({ ...base, now: at("2026-09-30T02:40:00Z"), state: state({ last_catch_up_attempt_at: "2026-09-30T01:40:00.000Z" }) })
-    ).toBeNull();
+  it("skips a latched login and an attempt minutes ago", () => {
+    const now = at("2026-09-30T15:30:00Z");
+    expect(decideSantanderBalancePoll({ now, state: state({ login_latched: true }) })).toBeNull();
+    expect(decideSantanderBalancePoll({ now, state: state({ last_attempt_at: "2026-09-30T15:00:00.000Z" }) })).toBeNull();
   });
 
-  it("does not retry after a successful fetch, a latched login, or an attempt minutes ago", () => {
-    const now = at("2026-09-30T01:40:00Z");
-    expect(decideSantanderFetch({ ...base, now, state: state({ last_success_at: "2026-09-30T01:02:00.000Z" }) })).toBeNull();
-    expect(decideSantanderFetch({ ...base, now, state: state({ login_latched: true }) })).toBeNull();
-    expect(decideSantanderFetch({ ...base, now, state: state({ last_attempt_at: "2026-09-30T01:20:00.000Z" }) })).toBeNull();
-  });
-
-  it("fetches on payday morning from 09:00, once", () => {
-    const fetchedLastNight = state({ last_success_at: "2026-09-30T01:02:00.000Z" });
-    // 08:30 Chile: too early; 09:30: due; tried already today: not again.
-    expect(decideSantanderFetch({ ...base, now: at("2026-09-30T11:30:00Z"), state: fetchedLastNight })).toBeNull();
-    expect(decideSantanderFetch({ ...base, now: at("2026-09-30T12:30:00Z"), state: fetchedLastNight })).toMatchObject({
-      mode: "payday",
-    });
-    expect(
-      decideSantanderFetch({ ...base, now: at("2026-09-30T13:30:00Z"), state: fetchedLastNight, lastPaydayAttemptYmd: "2026-09-30" })
-    ).toBeNull();
-    // Tried by the shell poll before the switch: its marker counts.
-    expect(
-      decideSantanderFetch({ ...base, now: at("2026-09-30T13:30:00Z"), state: { ...fetchedLastNight, last_payday_attempt_ymd: "2026-09-30" } })
-    ).toBeNull();
-    // Any other day: nothing.
-    expect(
-      decideSantanderFetch({ ...base, now: at("2026-09-29T12:30:00Z"), state: state({ last_success_at: "2026-09-29T01:02:00.000Z" }) })
-    ).toBeNull();
+  it("leaves the 22:00 slot clear: no poll at 21:30, none at 22:30 behind the nightly's own login", () => {
+    expect(decideSantanderBalancePoll({ now: at("2026-10-01T00:30:00Z"), state: state() })).toBeNull();
+    expect(decideSantanderBalancePoll({ now: at("2026-09-30T23:30:00Z"), state: state() })).toMatchObject({ mode: "balance-poll" });
+    const nightly = state({ last_attempt_at: "2026-10-01T01:00:40.000Z" });
+    expect(decideSantanderBalancePoll({ now: at("2026-10-01T01:30:00Z"), state: nightly })).toBeNull();
+    expect(decideSantanderBalancePoll({ now: at("2026-10-01T02:30:00Z"), state: nightly })).toMatchObject({ mode: "balance-poll" });
   });
 });
 

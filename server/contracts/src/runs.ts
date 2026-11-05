@@ -22,11 +22,11 @@ export const INGEST_RUNS_API_PATH = "/api/ingest/runs";
 export const FEEDER_RUNS_PATH = "/runs";
 
 /**
- * An hourly poll may also fetch the bank: `catch-up` retries a nightly fetch that failed or never
- * ran (once per nightly slot), `payday` fetches movements on the month's last business day so the
- * salary shows the same morning. The nightly always fetches.
+ * An hourly poll may also open the bank: `balance-poll` logs in, sends the product summary
+ * (`bank.product_summary`) and reads the movements of only the products whose balance the server
+ * says disagrees with the app. The nightly always fetches everything.
  */
-export const SANTANDER_FETCH_MODES = ["catch-up", "payday"] as const;
+export const SANTANDER_FETCH_MODES = ["balance-poll"] as const;
 export type SantanderFetchMode = (typeof SANTANDER_FETCH_MODES)[number];
 
 export const ingestRunRequestSchema = z
@@ -40,7 +40,7 @@ export const ingestRunRequestSchema = z
     kind: z.enum(INGEST_RUN_KINDS),
     /** Why the server asked now (the slot, a wake after a missed slot…), for the feeder's log. */
     reason: z.string().min(1),
-    /** Hourly only: a bank fetch the server wants in this poll, and why. */
+    /** Hourly only: the balance poll the server wants in this poll, and why. */
     santander_fetch: z
       .object({ mode: z.enum(SANTANDER_FETCH_MODES), reason: z.string().min(1) })
       .strict()
@@ -115,22 +115,16 @@ export type IngestRunStep = z.infer<typeof ingestRunStepSchema>;
 
 /**
  * The feeder's own facts about the bank, read when the run ends; the server decides the next
- * catch-up / payday fetch from them. `last_attempt_at`: the newest login attempt (any outcome);
+ * balance poll from them. `last_attempt_at`: the newest login attempt (any outcome);
  * `last_success_at`: the newest successful card-feed fetch; `login_latched`: the stored password
- * was rejected and logins are off until it is replaced; `last_catch_up_attempt_at` /
- * `last_payday_attempt_ymd`: the feeder's own markers of the latest catch-up and payday fetch
- * (written by every runner that makes one, the shell fallback included), so attempts made
- * outside this server's run history still count.
+ * was rejected and logins are off until it is replaced. Unknown keys are dropped, not refused:
+ * runs recorded before the catch-up and payday fetches were retired carry their markers.
  */
-export const santanderStateSchema = z
-  .object({
-    last_attempt_at: z.iso.datetime({ offset: true }).nullable(),
-    last_success_at: z.iso.datetime({ offset: true }).nullable(),
-    login_latched: z.boolean(),
-    last_catch_up_attempt_at: z.iso.datetime({ offset: true }).nullable(),
-    last_payday_attempt_ymd: z.iso.date().nullable(),
-  })
-  .strict();
+export const santanderStateSchema = z.object({
+  last_attempt_at: z.iso.datetime({ offset: true }).nullable(),
+  last_success_at: z.iso.datetime({ offset: true }).nullable(),
+  login_latched: z.boolean(),
+});
 
 export type SantanderState = z.infer<typeof santanderStateSchema>;
 

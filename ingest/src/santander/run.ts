@@ -21,6 +21,7 @@ import { fetchCheckingUsdMovements } from "./checkingUsd.js";
 import { BROWSER_GONE_PATTERN, errorMessage, saveStepDiagnostics } from "./stepSupport.js";
 import { keepSessionAlive, type SessionKeepAlive } from "./sessionKeepAlive.js";
 import { statementsDueToday } from "./statementSchedule.js";
+import { formatBalancePollResult, requestBalancePoll } from "./balancePoll.js";
 
 /**
  * How many times one run may relaunch Chrome after it dies mid-session.
@@ -191,8 +192,25 @@ export async function runSantander(opts: RunOptions): Promise<number> {
     }
   };
 
+  /**
+   * A balance poll asks the server first and reads only the listings it names (no statements);
+   * any other run reads every listing. A poll that got no answer reads nothing.
+   */
+  let pollSteps: Set<string> | null = null;
+  const listingWanted = (stepName: string): boolean => pollSteps == null || pollSteps.has(stepName);
+
   try {
-    await step("card movements", "card-movements", async (page) => {
+    if (opts.balancePoll) {
+      await step("balance poll", "balance-poll", async () => {
+        const fetch = await requestBalancePoll(recorder, stamp);
+        pollSteps = new Set(fetch);
+        log(formatBalancePollResult(fetch));
+        return fetch.length > 0 ? `reading ${fetch.join(", ")}` : "every product agrees with the app";
+      });
+      pollSteps ??= new Set();
+    }
+
+    if (listingWanted("card-movements")) await step("card movements", "card-movements", async (page) => {
       const movements = await fetchCardMovements(page, recorder);
       const outDir = ensureDir(opts.capture ? (recorder.captureDir ?? destDir) : resolveMovementsDir("santander"));
       const outFile = path.join(outDir, `card-movements-${stamp}.json`);
@@ -201,7 +219,7 @@ export async function runSantander(opts: RunOptions): Promise<number> {
       return `${movements.slides.length} slides, ${total} movements → ${path.basename(outFile)}`;
     });
 
-    await step("checking movements", "checking-movements", async (page) => {
+    if (listingWanted("checking-movements")) await step("checking movements", "checking-movements", async (page) => {
       const file = await fetchCheckingMovements(page, recorder, destDir);
       return path.basename(file);
     });
@@ -209,16 +227,19 @@ export async function runSantander(opts: RunOptions): Promise<number> {
     // Capture only, after the peso download so it cannot disturb it: the dollar account's
     // transactions call, verbatim, for a decoder to be written from. Report-only by design — the
     // function answers «USD account not reached: …» instead of throwing (a dead browser excepted).
-    await step("checking USD movements", "checking-usd-movements", (page) => fetchCheckingUsdMovements(page, config, stamp));
+    if (listingWanted("checking-usd-movements")) {
+      await step("checking USD movements", "checking-usd-movements", (page) => fetchCheckingUsdMovements(page, config, stamp));
+    }
 
     // A facturación's statement only exists after its close: skip the tabs until one is due.
     const statementsSchedule = statementsDueToday(resolveStatementJsonDir("santander"));
-    const statementsForced = opts.force || opts.capture || opts.only.includes("card-statements");
-    if (!opts.movementsOnly && !statementsSchedule.due && !statementsForced && shouldRunStep(opts.only, "card-statements")) {
+    const statementsForced = !opts.balancePoll && (opts.force || opts.capture || opts.only.includes("card-statements"));
+    const movementsOnly = opts.movementsOnly || opts.balancePoll;
+    if (!movementsOnly && !statementsSchedule.due && !statementsForced && shouldRunStep(opts.only, "card-statements")) {
       log(`card statements skipped — ${statementsSchedule.reason}`);
       results.push({ name: "card statements", ok: true, detail: `skipped — ${statementsSchedule.reason}` });
     }
-    if (!opts.movementsOnly && (statementsSchedule.due || statementsForced)) {
+    if (!movementsOnly && (statementsSchedule.due || statementsForced)) {
       await step("card statements", "card-statements", async (page) => {
         const jsonDir = opts.capture ? (recorder.captureDir ?? destDir) : resolveStatementJsonDir("santander");
         const saved = await fetchCardStatements(page, recorder, jsonDir);

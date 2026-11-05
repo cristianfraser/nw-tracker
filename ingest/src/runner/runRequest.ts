@@ -4,13 +4,7 @@ import path from "node:path";
 import type { IngestRunCompletion, IngestRunRequest, SantanderState } from "nw-tracker-contracts";
 import { resolveCfraserDir, resolveRepoRoot } from "../paths.js";
 import { lastRunAt } from "../runGuard.js";
-import {
-  lastCatchUpAt,
-  lastPaydayAttemptYmd,
-  lastSuccessfulSantanderFetchAt,
-  recordCatchUpAttempt,
-  recordPaydayAttempt,
-} from "../santander/catchUp.js";
+import { lastSuccessfulSantanderFetchAt } from "../santander/fetchHistory.js";
 import { runHourly } from "./hourly.js";
 import { runNightly } from "./nightly.js";
 import { logStamp, processStepRunner, type StepRunner } from "./steps.js";
@@ -36,14 +30,12 @@ function loginLatchFile(): string {
   return path.join(resolveCfraserDir(), ".santander-login-rejected.json");
 }
 
-/** The bank facts the server decides the next catch-up / payday fetch from. */
+/** The bank facts the server decides the next balance poll from. */
 export function readSantanderState(): SantanderState {
   return {
     last_attempt_at: lastRunAt("santander")?.toISOString() ?? null,
     last_success_at: lastSuccessfulSantanderFetchAt()?.toISOString() ?? null,
     login_latched: fs.existsSync(loginLatchFile()),
-    last_catch_up_attempt_at: lastCatchUpAt()?.toISOString() ?? null,
-    last_payday_attempt_ymd: lastPaydayAttemptYmd(),
   };
 }
 
@@ -118,8 +110,6 @@ export async function runRequestedRun(
             ...shared,
             santanderFetch: request.santander_fetch,
             santanderVeto: () => santanderVeto(readSantanderState()),
-            // The shell fallback's markers too, so a switch back to launchd sees this attempt.
-            onSantanderAttempt: (mode) => (mode === "catch-up" ? recordCatchUpAttempt() : recordPaydayAttempt()),
             groceryInboxCount,
             mortgageSheet: request.mortgage_sheet,
           });

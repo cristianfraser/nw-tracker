@@ -66,8 +66,6 @@ const STATE = {
   last_attempt_at: null,
   last_success_at: null,
   login_latched: false,
-  last_catch_up_attempt_at: null,
-  last_payday_attempt_ymd: null,
 };
 
 /** A report as the runner sends it. */
@@ -216,41 +214,18 @@ describe("scheduler + executor", () => {
     expect(feeder.calls.filter((c) => c.kind === "nightly")).toHaveLength(1);
   });
 
-  it("asks an hourly poll for a catch-up when the nightly fetch failed, once per slot", async () => {
+  it("asks each hourly poll for a balance poll, but not right behind the nightly's own login", async () => {
     const ok = fakeFeeder({ status: "accepted" });
     await step("2099-06-11T02:00:10Z", ok);
-    // The nightly's fetch failed; its report carries the bank facts (last success yesterday).
-    completeIngestRun(
-      lastRunId(ok),
-      report({
-        exit_code: 1,
-        steps: [{ label: "fetch Santander", ok: false, seconds: 98 }],
-        santander: { mode: "nightly", outcome: "failed", note: null },
-        santander_state: { ...STATE, last_attempt_at: "2099-06-11T02:00:15.000Z", last_success_at: "2099-06-10T02:01:00.000Z" },
-      })
-    );
-    // The hour's poll queued at 02:00:40 waited; it starts at 02:40 with the catch-up decided then.
+    const bankFacts = { ...STATE, last_attempt_at: "2099-06-11T02:00:15.000Z", last_success_at: "2099-06-11T02:01:00.000Z" };
+    completeIngestRun(lastRunId(ok), report({ santander_state: bankFacts }));
+    // The hour's poll queued at 02:00:40 starts once the nightly is done: the bank was tried 25 s ago.
     await step("2099-06-11T02:00:40Z", ok);
-    expect(ok.calls.at(-1)?.kind).toBe("hourly");
-    expect(ok.calls.at(-1)?.santanderFetch).toBeNull(); // the bank was tried 25 s ago
-    completeIngestRun(lastRunId(ok), report({ santander: null, santander_state: { ...STATE, last_attempt_at: "2099-06-11T02:00:15.000Z", last_success_at: "2099-06-10T02:01:00.000Z" } }));
-    await step("2099-06-11T02:40:00Z", ok);
-    expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", santanderFetch: { mode: "catch-up" } });
-    const hourly = lastRunId(ok);
-    expect(ingestRunById(hourly)).toMatchObject({ santander_request: "catch-up" });
-    completeIngestRun(
-      hourly,
-      report({
-        exit_code: 1,
-        steps: [{ label: "fetch Santander (catch-up)", ok: false, seconds: 60 }],
-        activity: true,
-        santander: { mode: "catch-up", outcome: "failed", note: null },
-        santander_state: { ...STATE, last_attempt_at: "2099-06-11T02:40:05.000Z", last_success_at: "2099-06-10T02:01:00.000Z" },
-      })
-    );
-    // The slot's one retry is used: the next hour polls mail only.
-    await step("2099-06-11T03:30:05Z", ok);
     expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", santanderFetch: null });
+    completeIngestRun(lastRunId(ok), report({ santander: null, santander_state: bankFacts }));
+    await step("2099-06-11T03:30:05Z", ok);
+    expect(ok.calls.at(-1)).toMatchObject({ kind: "hourly", santanderFetch: { mode: "balance-poll" } });
+    expect(ingestRunById(lastRunId(ok))).toMatchObject({ santander_request: "balance-poll" });
   });
 });
 
@@ -276,7 +251,7 @@ describe("startManualIngestRun", () => {
     const out = startManualIngestRun("hourly", AT, ON);
     expect(out).toMatchObject({ status: "queued", coalesced: false });
     await jobQueueTick(AT, { request: feeder.request, notified: new Set() });
-    expect(feeder.calls).toEqual([{ runId: expect.any(Number), jobId: (out as { job_id: number }).job_id, kind: "hourly", reason: MANUAL_RUN_REASON, santanderFetch: null }]);
+    expect(feeder.calls).toEqual([{ runId: expect.any(Number), jobId: (out as { job_id: number }).job_id, kind: "hourly", reason: MANUAL_RUN_REASON, santanderFetch: { mode: "balance-poll", reason: expect.any(String) } }]);
     const runId = lastRunId(feeder);
     expect(ingestRunById(runId)).toMatchObject({ kind: "hourly", status: "requested", slot_at: AT.toISOString() });
 
