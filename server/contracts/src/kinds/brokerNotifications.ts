@@ -28,6 +28,9 @@ export const brokerNotificationSchema = z
       // confirmado»): not money moving yet. The server keeps it until the wire's own mail
       // arrives (`bank_account.incoming_wires`) and books both together.
       "withdrawal_requested",
+      // A stock split the broker applied to the holder's shares: `units` before, `units_after`
+      // after; the server records the split (`equitySplits.ts`).
+      "stock_split",
     ]),
     ticker: z.string().regex(/^[A-Z][A-Z0-9.]{0,9}$/).nullable(),
     /** The fund a buy names when it names no ticker («… acciones de <fund name>»). */
@@ -50,6 +53,8 @@ export const brokerNotificationSchema = z
     destination_account: z.string().regex(/^\d+$/).nullable().optional(),
     /** The day the broker says it will pay a requested withdrawal. */
     due_on: z.iso.date().nullable().optional(),
+    /** A split's share count after it (`units` is the count before). */
+    units_after: z.string().regex(/^\d+(?:\.\d+)?$/).nullable().optional(),
   })
   .strict();
 

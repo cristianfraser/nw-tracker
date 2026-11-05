@@ -34,6 +34,7 @@ export type BrokerEmailKind =
   | "cash_returned"
   | "wallet_funded"
   | "portfolio_buy"
+  | "stock_split"
   | "statement"
   | "certificate"
   | "other";
@@ -81,6 +82,8 @@ export type BrokerEmailEvent = {
   currency: "clp" | "usd" | null;
   /** Decimal string — share counts run to 9 decimals and must not touch a float. */
   units: string | null;
+  /** A split's share count after it (`units` is the count before), as a decimal string. */
+  units_after: string | null;
   price: number | null;
   /**
    * CLP leg of a USD event, when the mail states it — Racional's «Agregaste USD … a tu
@@ -116,6 +119,7 @@ const REQUIRED_FIELDS: Partial<Record<BrokerEmailKind, (keyof BrokerEmailEvent)[
   withdrawal_paid: ["amount"],
   cash_returned: ["amount"],
   withdrawal_requested: ["amount", "gross_amount", "destination_account", "due_on"],
+  stock_split: ["ticker", "units", "units_after"],
 };
 
 function isComplete(event: BrokerEmailEvent): boolean {
@@ -474,6 +478,29 @@ const RACIONAL_MATCHERS: Matcher[] = [
     re: /^Invertiste \$\s*([\d.,]+) en tu Portafolio/i,
     read: (m) => ({ amount: parseChileanNumber(m[1]!), currency: "clp" }),
   },
+  {
+    // "SOXX tuvo una división de acciones, y varió tu cantidad de Stocks 🤖" (2026-11-05, sent
+    // before the ex-date's open). The body states both counts: «las 12.34567891 acciones que
+    // tenías de SOXX pre split , ahora se convirtieron en 37.03703673 acciones post split».
+    kind: "stock_split",
+    is_transaction: true,
+    re: /^([A-Z][A-Z0-9.]{0,9}) tuvo una divisi[óo]n de acciones/i,
+    read: (m, snippet) => {
+      const counts =
+        /las\s+([\d.,]+)\s+acciones que ten[ií]as de\s+([A-Z][A-Z0-9.]{0,9})\s+pre\s*split\s*,?\s*ahora se convirtieron en\s+([\d.,]+)\s+acciones/i.exec(
+          snippet
+        );
+      const ticker = m[1]!.toUpperCase();
+      if (counts && counts[2]!.toUpperCase() !== ticker) {
+        throw new Error(`Racional split mail names ${ticker} in the subject and ${counts[2]} in the body`);
+      }
+      return {
+        ticker,
+        units: counts ? decimalString(counts[1]!) : null,
+        units_after: counts ? decimalString(counts[3]!) : null,
+      };
+    },
+  },
   { kind: "statement", is_transaction: false, re: /^(Tus Inversiones por Racional|Transacciones Racional Stocks)/i },
 ];
 
@@ -513,6 +540,7 @@ export function classifyBrokerEmail(input: BrokerEmailInput): BrokerEmailEvent {
     gross_amount: null,
     currency: null,
     units: null,
+    units_after: null,
     price: null,
     clp_amount: null,
     paid_to: null,
@@ -608,6 +636,7 @@ const NOTIFICATION_KINDS = new Set<BrokerNotification["kind"]>([
   "wallet_funded",
   "portfolio_buy",
   "withdrawal_requested",
+  "stock_split",
 ]);
 
 /** One money mail as the server's canonical notification. */
@@ -633,6 +662,7 @@ export function toBrokerNotification(e: BrokerEmailEvent): BrokerNotification {
     clp_amount: e.clp_amount,
     paid_to: e.paid_to === "fintual" ? "broker_balance" : e.paid_to,
     ...(kind === "withdrawal_requested" ? { destination_account: e.destination_account, due_on: e.due_on } : {}),
+    ...(kind === "stock_split" ? { units_after: e.units_after } : {}),
   };
 }
 

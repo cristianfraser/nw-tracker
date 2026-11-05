@@ -18,6 +18,7 @@ const REQUIRED_FIELDS: Record<BrokerNotification["kind"], (keyof BrokerNotificat
   withdrawal_paid: ["amount"],
   cash_returned: ["amount"],
   withdrawal_requested: ["amount", "gross_amount", "currency", "destination_account", "due_on"],
+  stock_split: ["ticker", "units", "units_after"],
 };
 
 /**

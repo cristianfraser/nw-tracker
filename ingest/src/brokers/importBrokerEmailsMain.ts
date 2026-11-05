@@ -104,7 +104,9 @@ async function main(): Promise<number> {
   }
   // Dollar withdrawals Fintual confirmed, and the wires that paid them (`bank_account.incoming_wires`).
   const overdueWithdrawal = details.usd_withdrawals ? logWireBookings(details.usd_withdrawals, details.applied) : false;
-  return details.overdue_synthetic_retiros.length > 0 || overdueWithdrawal ? 1 : 0;
+  // A notice that disagrees with the ledger (a split's share counts) wrote nothing: a human looks.
+  const conflicts = details.planned.filter((r) => r.state === "conflict").length;
+  return details.overdue_synthetic_retiros.length > 0 || overdueWithdrawal || conflicts > 0 ? 1 : 0;
 }
 
 process.exitCode = await main();
