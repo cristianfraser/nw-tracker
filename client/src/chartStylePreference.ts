@@ -12,7 +12,7 @@
  * series colours; the knobs are in `components/charts/roughShapes.tsx` (`ROUGH_MODES`).
  *
  * Same model as the decimal-separator preference: the stored value is authoritative, the
- * default is `plain`. The value is written to `<html data-chart-style>` by the preferences
+ * default is `plain` — `pen` on the hosted demo (`VITE_DEMO_MODE`), which shows it off. The value is written to `<html data-chart-style>` by the preferences
  * provider, which is what the CSS keys on; a `ChartStyleScope` (`components/charts/chartStyle.tsx`)
  * can override it for a subtree, which the preview modal (settings panel) uses to show the
  * styles side by side.
@@ -34,7 +34,10 @@ export function persistChartStyle(style: ChartStyle): void {
   }
 }
 
-/** Stored value if valid; otherwise `plain`. */
+/** The style a browser with nothing stored gets: `pen` on the hosted demo, else `plain`. */
+const DEFAULT_CHART_STYLE: ChartStyle = import.meta.env.VITE_DEMO_MODE === "1" ? "pen" : "plain";
+
+/** Stored value if valid; otherwise the default. */
 export function readInitialChartStyle(): ChartStyle {
   if (typeof window === "undefined") return "plain";
   try {
@@ -43,5 +46,5 @@ export function readInitialChartStyle(): ChartStyle {
   } catch {
     /* ignore */
   }
-  return "plain";
+  return DEFAULT_CHART_STYLE;
 }
