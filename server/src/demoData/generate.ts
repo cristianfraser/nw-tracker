@@ -114,7 +114,7 @@ function createAccounts(person: Person): Map<Acct, number> {
   ids.set("afpUno", afp("uno", "UNO-A"));
   ids.set("afc", createAccount(g("retirement_afp_afc__afc"), "AFC"));
   if (person.house) {
-    ids.set("property", createAccount(g("real_estate__property"), "Depto propio", { key: "import:excel|key=property" }));
+    ids.set("property", createAccount(g("real_estate__property"), "Vitacura", { key: "import:excel|key=property" }));
     ids.set("mortgage" as Acct, createAccount(g("liabilities__mortgage"), "Hipoteca depto", { key: "import:excel|key=mortgage" }));
   }
   for (const c of person.cards) {
