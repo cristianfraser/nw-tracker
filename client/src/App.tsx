@@ -10,6 +10,7 @@ import { RouteErrorBoundary } from "./components/ui/RouteErrorBoundary";
 import { useUsagePageTiming } from "./usagePageTiming";
 import { useChileDayRolloverInvalidation } from "./queries/useChileDayRolloverInvalidation";
 import { useLiveQuotesStampInvalidation } from "./queries/useLiveQuotesStampInvalidation";
+import { useReloadOnNewClientBuild } from "./clientBuild";
 import { useDocumentTitleFromH1 } from "./useDocumentTitleFromH1";
 import { useFaviconFromRoute } from "./useFaviconFromRoute";
 import { VISIBLE_PANEL_SUBROUTES, type PanelSubrouteSlug } from "./pages/panel/panelSubroutes";
@@ -102,6 +103,8 @@ function AppTree() {
   useChileDayRolloverInvalidation();
   // Refetch as soon as the server's caches carry new live prices.
   useLiveQuotesStampInvalidation();
+  // After a deploy, reload onto the new client build at the next navigation (or when hidden).
+  useReloadOnNewClientBuild();
   // Import the lazy chunks (charts first, then the other pages) once the browser is idle.
   useIdleChunkPrefetch();
 

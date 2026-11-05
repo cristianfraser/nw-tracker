@@ -1,0 +1,22 @@
+[
+  {
+    "note": "entry script and stylesheet, joined in sorted order",
+    "urls": ["/assets/index-CR_o_f3B.js", "/assets/index-BpjlLTSx.css"],
+    "id": "/assets/index-BpjlLTSx.css /assets/index-CR_o_f3B.js"
+  },
+  {
+    "note": "anything outside /assets/ is not part of the build",
+    "urls": ["/favicon.svg", "https://fonts.googleapis.com/css2?family=DM+Sans", "/assets/index-a1.js"],
+    "id": "/assets/index-a1.js"
+  },
+  {
+    "note": "a repeated URL counts once",
+    "urls": ["/assets/index-a1.js", "/assets/index-a1.js"],
+    "id": "/assets/index-a1.js"
+  },
+  {
+    "note": "no built asset (the Vite dev server) is no build",
+    "urls": ["/src/main.tsx"],
+    "id": null
+  }
+]
