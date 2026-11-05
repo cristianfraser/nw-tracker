@@ -373,6 +373,14 @@
         "en": "Gastos comunes",
         "es": "Gastos comunes"
       },
+      "mortgageMin": {
+        "en": "min.",
+        "es": "mín."
+      },
+      "mortgageMaxHint": {
+        "en": "Maximum {{amount}}",
+        "es": "Máximo {{amount}}"
+      },
       "kindHoaShort": {
         "en": "HOA",
         "es": "GG. CC."
