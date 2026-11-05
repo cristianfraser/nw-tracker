@@ -3,7 +3,8 @@
  * buy and a Fintual buy of the same symbol both land on it. The broker is only on the cash
  * leg of each trade, so the per-broker split is the stock's share units grouped by the cash
  * account on the other side — the `from` of a buy, the `to` of a sale. A single-leg units row
- * (no cash leg) is its own group with no account.
+ * (no cash leg) is its own group with no account, except a split (`stock_split`), which
+ * multiplies every group's shares by its ratio.
  *
  * Same rows and per-row units as `brokerageShareUnitsThroughDate`, so the groups add up to
  * the position; a difference throws.
@@ -33,7 +34,7 @@ const UNITS_EPS = 1e-9;
 const shareKindsPh = BROKERAGE_SHARE_UNITS_FLOW_KINDS.map(() => "?").join(", ");
 
 const stmtShareRows = db.prepare(
-  `SELECT account_id, from_account_id, to_account_id, units_delta, counter_units_delta, flow_kind
+  `SELECT id, occurred_on, account_id, from_account_id, to_account_id, units_delta, counter_units_delta, flow_kind
    FROM movements
    WHERE (account_id = ? OR from_account_id = ? OR to_account_id = ?)
      AND occurred_on <= ?
@@ -66,12 +67,21 @@ export function equityBrokerHoldings(
     accountId,
     asOfYmd,
     ...BROKERAGE_SHARE_UNITS_FLOW_KINDS
-  ) as MovementTransferRow[];
+  ) as (MovementTransferRow & { id: number; occurred_on: string })[];
+  // A split scales what each broker held before it, so the rows are replayed in date order.
+  rows.sort((a, b) => a.occurred_on.localeCompare(b.occurred_on) || a.id - b.id);
 
   const unitsByCash = new Map<number | null, number>();
   for (const r of rows) {
     const units = unitsDeltaForAccountMovement(r, accountId);
     if (units === 0) continue;
+    if (r.flow_kind === "stock_split") {
+      const held = [...unitsByCash.values()].reduce((a, b) => a + b, 0);
+      if (!(held > UNITS_EPS)) throw new Error(`equityBrokerHoldings: split ${r.id} on account ${accountId} with no shares held`);
+      const ratio = (held + units) / held;
+      for (const [k, v] of unitsByCash) unitsByCash.set(k, v * ratio);
+      continue;
+    }
     const key = cashCounterpartId(r, accountId);
     unitsByCash.set(key, (unitsByCash.get(key) ?? 0) + units);
   }

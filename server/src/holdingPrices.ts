@@ -24,6 +24,7 @@ import {
   getLiveEquityQuoteFromDb,
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
+import { equityAsTradedClose } from "./equitySplits.js";
 import type { Holding } from "./holdings.js";
 import type { CurrencyCode } from "./rates.js";
 import {
@@ -73,7 +74,9 @@ function fundPriceAt(seriesKey: string, ymd: string, isToday: boolean, now: Date
 function pastPriceUncached(h: InstrumentHolding, ymd: string): HoldingPrice | null {
   if (h.kind === "fund") return fundPriceAt(h.seriesKey, ymd, false, new Date());
   const ticker = tickerOf(h)!;
-  const close = equityCloseEod(ticker, ymd);
+  // A stock's shares on `ymd` are counted as held then: its price as traded then
+  // (`equitySplits.ts`). Today's price needs none — no split is recorded before its ex-date.
+  const close = h.kind === "stock" ? equityAsTradedClose(ticker, ymd) : equityCloseEod(ticker, ymd);
   return validPrice(close) ? { price: close, currency: h.quote, as_of: ymd } : null;
 }
 

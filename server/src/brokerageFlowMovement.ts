@@ -31,6 +31,8 @@ export const BROKERAGE_SHARE_UNITS_FLOW_KINDS = [
   "compra_usd",
   "stock_buy",
   "stock_sell",
+  // A split's new shares (`equitySplits.ts`): a single-leg units row, amount 0.
+  "stock_split",
 ] as const;
 
 /** Kinds whose label names a currency: built from the movement's own currencies (`movementFlowTypeLabel`). */

@@ -16,6 +16,8 @@ import {
   watchlistDisplayUnitParam,
 } from "../watchlist.js";
 import { asyncHandler } from "./shared.js";
+import { invalidateMarketDataAggregations } from "../aggregationCache.js";
+import { listEquitySplits, recordEquitySplit } from "../equitySplits.js";
 import { isPositiveFiniteNumber, isYmdString } from "../requestValidation.js";
 
 export function registerMarketRoutes(app: express.Express): void {
@@ -114,6 +116,47 @@ app.get("/api/market-ticker", (req, res) => {
     res.json(getMarketTickerPayload(new Date(), watchlistDisplayUnitParam(req.query.unit)));
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "market_ticker_failed" });
+  }
+});
+
+app.get("/api/equity-splits", (req, res) => {
+  const ticker = typeof req.query.ticker === "string" ? req.query.ticker.trim() : "";
+  if (!ticker) {
+    res.status(400).json({ error: "ticker required" });
+    return;
+  }
+  res.json({ splits: listEquitySplits(ticker) });
+});
+
+/**
+ * Record a split by hand (`equitySplits.ts`): the prices before the ex-date are re-framed and
+ * every holder gets its `stock_split` row, in one transaction. Body: ticker, ex_date,
+ * numerator, denominator (3 and 1 for a 3-for-1).
+ */
+app.post("/api/equity-splits", (req, res) => {
+  const b = (req.body ?? {}) as { ticker?: unknown; ex_date?: unknown; numerator?: unknown; denominator?: unknown };
+  if (typeof b.ticker !== "string" || !b.ticker.trim() || !isYmdString(b.ex_date)) {
+    res.status(400).json({ error: "ticker and ex_date (YYYY-MM-DD) required" });
+    return;
+  }
+  if (!isPositiveFiniteNumber(b.numerator) || !isPositiveFiniteNumber(b.denominator)) {
+    res.status(400).json({ error: "numerator and denominator must be positive numbers" });
+    return;
+  }
+  try {
+    const out = recordEquitySplit({
+      ticker: b.ticker,
+      ex_date: b.ex_date,
+      numerator: b.numerator,
+      denominator: b.denominator,
+      source: "manual",
+    });
+    if (out.status === "recorded" || out.ledger.some((r) => r.status === "written")) {
+      invalidateMarketDataAggregations("historical");
+    }
+    res.status(out.status === "recorded" ? 201 : 200).json(out);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "equity_split_failed" });
   }
 });
 

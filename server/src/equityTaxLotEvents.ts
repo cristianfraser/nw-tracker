@@ -30,6 +30,7 @@ export type EquityTaxLotEvents = { currency: string | null; events: TaxLotEvent[
 export function equityTaxLotEventsFromRows(accountId: number, rows: readonly EquityTaxLotRow[]): EquityTaxLotEvents {
   const currencies = new Set<string>();
   const events: TaxLotEvent[] = [];
+  const splits: EquityTaxLotRow[] = [];
   for (const r of rows) {
     const units = r.units_delta == null ? null : Math.abs(r.units_delta);
     if (r.flow_kind === "stock_buy" && r.to_account_id === accountId) {
@@ -44,6 +45,9 @@ export function equityTaxLotEventsFromRows(accountId: number, rows: readonly Equ
       events.push({ kind: "dispose", date: r.occurred_on, movementId: r.id, units, proceeds: r.amount });
     } else if (r.flow_kind === "dividend_payout" && r.from_account_id === accountId && units == null) {
       continue;
+    } else if (r.flow_kind === "stock_split" && r.account_id === accountId) {
+      if (r.units_delta == null || r.units_delta === 0) throw new Error(`Tax lots: split ${r.id} adds no shares`);
+      splits.push(r);
     } else {
       throw new Error(
         `Tax lots: account ${accountId} movement ${r.id} (${r.flow_kind ?? "no flow kind"}) is neither a purchase, a sale nor a dividend`
@@ -53,9 +57,30 @@ export function equityTaxLotEventsFromRows(accountId: number, rows: readonly Equ
   if (currencies.size > 1) {
     throw new Error(`Tax lots: account ${accountId} trades in ${[...currencies].join(" and ")}`);
   }
-  const rank = (e: TaxLotEvent) => (e.kind === "acquire" ? 0 : 1);
+  // A split takes effect at the open of its ex-date: before that day's trades.
+  const rank = (e: TaxLotEvent) => (e.kind === "split" ? 0 : e.kind === "acquire" ? 1 : 2);
   events.sort((a, b) => a.date.localeCompare(b.date) || rank(a) - rank(b) || a.movementId - b.movementId);
-  return { currency: [...currencies][0] ?? null, events };
+  // A split's ratio is the shares it added over those held before it.
+  let held = 0;
+  const withSplits: TaxLotEvent[] = [];
+  const pending = [...splits].sort((a, b) => a.occurred_on.localeCompare(b.occurred_on) || a.id - b.id);
+  const flushSplitsThrough = (date: string, inclusive: boolean) => {
+    while (pending.length > 0 && (inclusive ? pending[0]!.occurred_on <= date : pending[0]!.occurred_on < date)) {
+      const s = pending.shift()!;
+      if (!(held > 0)) throw new Error(`Tax lots: split ${s.id} on account ${accountId} with no shares held`);
+      const ratio = (held + s.units_delta!) / held;
+      withSplits.push({ kind: "split", date: s.occurred_on, movementId: s.id, units: s.units_delta!, ratio });
+      held *= ratio;
+    }
+  };
+  for (const e of events) {
+    flushSplitsThrough(e.date, true);
+    withSplits.push(e);
+    if (e.kind === "acquire") held += e.units;
+    else if (e.kind === "dispose") held -= e.units;
+  }
+  flushSplitsThrough("9999-12-31", true);
+  return { currency: [...currencies][0] ?? null, events: withSplits };
 }
 
 export function loadEquityTaxLotEvents(accountId: number): EquityTaxLotEvents {

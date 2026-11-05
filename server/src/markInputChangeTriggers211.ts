@@ -162,6 +162,19 @@ export const MARK_INPUT_TRIGGER_SPECS: TriggerSpec[] = [
   },
   { table: "uf_daily", targets: (r) => [{ account: ALL, date: `${r}.date` }], watch: ["date", "clp_per_uf"] },
   {
+    // A split re-frames every price of its ticker before the ex-date (`equitySplits.ts`): the
+    // holders' whole history.
+    table: "equity_splits",
+    targets: (r) => [
+      {
+        account: "a.id",
+        date: FULL_HISTORY,
+        from: `accounts a WHERE UPPER(a.equity_ticker) = UPPER(${r}.ticker)`,
+      },
+    ],
+    watch: ["ticker", "ex_date", "numerator", "denominator"],
+  },
+  {
     table: "watchlist_composite_meta",
     targets: () => [{ account: ALL, date: "NULL" }],
     watch: [
@@ -296,10 +309,17 @@ function fundUnitSpecBefore257(spec: TriggerSpec): TriggerSpec {
   };
 }
 
+/** Tables created by migrations after 260: the earlier hooks run before they exist. */
+const TABLES_SINCE_260 = ["equity_splits"];
+
+function specsBefore265(specs: readonly TriggerSpec[]): TriggerSpec[] {
+  return specs.filter((s) => !TABLES_SINCE_260.includes(s.table));
+}
+
 /** The specs as the schema stood for the hooks of 211 / 242 / 243 (before 257 and 258). */
 function specsBefore258(specs: readonly TriggerSpec[]): TriggerSpec[] {
   const out: TriggerSpec[] = [];
-  for (const spec of specs) {
+  for (const spec of specsBefore265(specs)) {
     if (spec.table === "loan_payments") out.push(DEPTO_PAYMENTS_SPEC_BEFORE_258);
     else if (spec.table === "fund_unit_daily") out.push(fundUnitSpecBefore257(spec));
     else out.push(spec);
@@ -329,7 +349,7 @@ export function runMarkInputChangeTriggers243(dbi: DatabaseType): void {
 
 /** Migration 258 hook: `depto_payments` is gone — watch `loan_payments` and `property_appraisals`. */
 export function runMarkInputChangeTriggers258(dbi: DatabaseType): void {
-  installMarkInputChangeTriggers(dbi, [...MARK_INPUT_TRIGGER_SPECS, PROPERTY_APPRAISALS_SPEC_258_TO_260]);
+  installMarkInputChangeTriggers(dbi, [...specsBefore265(MARK_INPUT_TRIGGER_SPECS), PROPERTY_APPRAISALS_SPEC_258_TO_260]);
 }
 
 /**
@@ -337,5 +357,10 @@ export function runMarkInputChangeTriggers258(dbi: DatabaseType): void {
  * `property_appraisals` is gone (the appraisals are `valuations` rows now).
  */
 export function runMarkInputChangeTriggers260(dbi: DatabaseType): void {
+  installMarkInputChangeTriggers(dbi, specsBefore265(MARK_INPUT_TRIGGER_SPECS));
+}
+
+/** Migration 265 hook: watch `equity_splits`. */
+export function runMarkInputChangeTriggers265(dbi: DatabaseType): void {
   installMarkInputChangeTriggers(dbi, MARK_INPUT_TRIGGER_SPECS);
 }

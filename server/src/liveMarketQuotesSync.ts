@@ -7,6 +7,8 @@ import { fetchYahooLiveUsdClpPerUsd, LIVE_FX_YAHOO_SYMBOL, shouldUseLiveFxQuote 
 import { syncYahooFxUsdFromYahoo, yahooFxUsdSyncDue } from "./fxYahooEodSync.js";
 import { priorNyseSessionYmd } from "./marketHolidays.js";
 import { invalidateMarketDataAggregations } from "./aggregationCache.js";
+import { recordYahooSplits } from "./equitySplitsSync.js";
+import { listEquitySplits, splitLikeMoveError } from "./equitySplits.js";
 import { noteLiveQuotesChanged } from "./liveQuotesStamp.js";
 import {
   getLatestLiveEquityQuoteRow,
@@ -89,13 +91,29 @@ type LiveEquityObservation = {
   session_ymd: string;
 };
 
-/** Stores one equity observation; true when it changed the effective quote. */
+const stmtEodPriorRow = db.prepare(
+  `SELECT trade_date, close FROM equity_daily WHERE ticker = ? AND trade_date < ? ORDER BY trade_date DESC LIMIT 1`
+);
+
+/**
+ * Stores one equity observation; true when it changed the effective quote. A price that moves
+ * like a split nobody recorded (×1.6 or more from the previous stored close, which is
+ * split-adjusted) throws instead: valued against the old share count it would read as a crash
+ * (SOXX 2026-11-05, a 3-for-1 Yahoo did not list). The readers keep the previous close.
+ */
 function writeEquityLiveQuote(ticker: string, live: LiveEquityObservation, fetchedAt: string): boolean {
   const kind = equityMarketKind(ticker);
+  const ref = stmtEodPriorRow.get(ticker, live.session_ymd) as { trade_date: string; close: number } | undefined;
+  if (ref) {
+    const err = splitLikeMoveError(ticker, live.session_ymd, live.price, { ymd: ref.trade_date, close: ref.close });
+    if (err) throw new Error(err);
+  }
+  // On a split's ex-date the source's previous close may still be pre-split: read the stored one.
+  const yahooPrior = listEquitySplits(ticker).some((s) => s.ex_date === live.session_ymd) ? null : live.previous_close;
   const prior =
     kind === "nyse"
-      ? priorCloseForLiveNyse(ticker, live.session_ymd, live.previous_close)
-      : priorCloseForLiveNonSession(ticker, live.session_ymd, live.previous_close);
+      ? priorCloseForLiveNyse(ticker, live.session_ymd, yahooPrior)
+      : priorCloseForLiveNonSession(ticker, live.session_ymd, yahooPrior);
   const changed = quoteValueChanged(getLatestLiveEquityQuoteRow(ticker), live.price);
   insertLiveMarketQuote({
     symbol: ticker.toUpperCase(),
@@ -113,6 +131,7 @@ function writeEquityLiveQuote(ticker: string, live: LiveEquityObservation, fetch
 async function syncOneEquityLiveQuote(ticker: string, fetchedAt: string): Promise<LiveQuoteSyncTickerResult> {
   try {
     const live = await fetchYahooLiveQuote(ticker);
+    recordYahooSplits(ticker, live.splits);
     const changed = writeEquityLiveQuote(ticker, live, fetchedAt);
     return { ticker, ok: true, changed };
   } catch (e) {
@@ -296,15 +315,21 @@ export function writeStreamQuotes(
         ) || fxChanged;
       continue;
     }
-    const changed = writeEquityLiveQuote(
-      q.symbol,
-      {
-        price: q.price,
-        previous_close: q.previousClose,
-        session_ymd: yahooBarYmdFromUnix(q.symbol, Math.floor(q.timeMs / 1000)),
-      },
-      fetchedAt
-    );
+    let changed: boolean;
+    try {
+      changed = writeEquityLiveQuote(
+        q.symbol,
+        {
+          price: q.price,
+          previous_close: q.previousClose,
+          session_ymd: yahooBarYmdFromUnix(q.symbol, Math.floor(q.timeMs / 1000)),
+        },
+        fetchedAt
+      );
+    } catch (e) {
+      recordMarketSymbolFetchError(q.symbol, "live", e instanceof Error ? e.message : String(e));
+      continue;
+    }
     if (changed) changedTickers.push(q.symbol);
   }
   if (changedTickers.length > 0 || fxChanged) {
