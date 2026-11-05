@@ -84,8 +84,14 @@
     min-width: 0;
   }
 
+  /* Down so the strip's line between its summary and detail rows meets the «Flujos» period
+     cards' first section line exactly: every height on both sides is a whole pixel, the rail's
+     line at 18 (heading) + 12 (margin) + 12 (period title) + 2 × 16 (lines) = 74px below its
+     top, the strip's at 21 + 92 (summary card: 4 + 13 title + 22 value + 16 + 16 + 1 + 16 rows
+     + 4) = 113px — the rail starts 39px lower, below the ticker. */
   .page-main {
     grid-column: 1 / span 8;
+    padding-top: 1.3125rem;
   }
 
   /* The rail is one column of full-width tiles, not a subgrid: it is the size container the

@@ -10,6 +10,8 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 0.5rem;
+  /* A whole pixel, past its numbers' 15.5 (see base.css `h2`). */
+  min-height: 1rem;
 }
 
 /* Lifetime total row: present but visually secondary to the period rows above it. */

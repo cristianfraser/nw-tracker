@@ -7,6 +7,42 @@
   overflow-x: clip;
 }
 
+/* The two period cards sit in the two `1fr` columns of `1fr 1rem 1rem 1fr`, the line between
+   them on the middle of the two 1rem columns. The block takes its content's width, so both `1fr`
+   columns resolve to the wider card's width. Past cards.css's 4-up and phone `span 2` placement
+   and its divider on the second card (one class more than `.cards.cards--pair>.card`). On a
+   narrow screen the block is capped at the tile and the `1fr` columns share what is left. */
+:global(.cards.cards--pair).periods {
+  grid-template-columns: minmax(0, 1fr) 1rem 1rem minmax(0, 1fr);
+  width: max-content;
+  max-width: 100%;
+}
+
+:global(.cards.cards--pair).periods>.period {
+  grid-row: 1;
+  border: 0;
+  /* The 1rem columns are the space beside the line; a section's divider still reaches it
+     (`--inset-*` below, through `.lineSection`'s margin). */
+  padding-inline: 0;
+}
+
+:global(.cards.cards--pair).periods>.period:nth-child(1) {
+  grid-column: 1;
+  --inset-end: 1rem;
+}
+
+:global(.cards.cards--pair).periods>.period:nth-child(2) {
+  grid-column: 4;
+  --inset-start: 1rem;
+}
+
+:global(.cards.cards--pair).periods::after {
+  content: "";
+  grid-row: 1;
+  grid-column: 3;
+  border-left: 1px solid var(--hairline);
+}
+
 /* The inset sits only where a card meets a divider: a card's outer edge lines up with the
    tile's title, like the rest of the tile. A pair keeps it beside the line between its two
    cards; a list has no lines, so none. */
@@ -107,15 +143,28 @@
   color: var(--muted);
 }
 
+/* 1rem, a whole pixel (the 1.4em it replaced was 16.1px); it sets each line's height (see
+   base.css `h2`). */
 .icon {
   display: inline-block;
-  width: 1.4em;
-  height: 1.4em;
+  width: 1rem;
+  height: 1rem;
 }
 
 .line dd,
 .lineSection dd {
   margin: 0;
+}
+
+/* Big desktop, where the period cards sit in the rail beside the strip: the space under the first
+   section's second line (deposits, below savings) brings the next section line down to the strip cards' divider
+   (page-grid.css `.page-main`: the section line meets the strip's row line at 113px, the strip's
+   divider is 72px below it — 1 + 4 + 13 + 22 + 16 + 16 — and this section's four lines take
+   17 + 16 + 16 + 16 = 65). */
+@media (min-width: 1440px) {
+  .lineSection:not(.lineSection ~ .lineSection)+.line {
+    margin-bottom: 0.4375rem;
+  }
 }
 
 /* Savings and P/L each open a section: a divider above, reaching out to the card's edges. */
