@@ -7,7 +7,7 @@
  * keys on the line's purchase key and the receipt's pesos and payment day; see `matchPaymentReceipts`.
  */
 import { createHash } from "node:crypto";
-import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptEvent, ReceiptStay, ReceiptTrip } from "nw-tracker-contracts";
+import type { PaymentProcessorReceiptsPayload, ProcessorReceipt, ReceiptEvent, ReceiptStay, ReceiptTrip, ReceiptVehiclePermit } from "nw-tracker-contracts";
 import { ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
@@ -42,6 +42,11 @@ const COLUMNS = [
   "event_starts_at",
   "event_ends_on",
   "event_venue",
+  "permit_year",
+  "permit_plate",
+  "permit_cuota",
+  "permit_cuotas",
+  "permit_expires_on",
 ] as const;
 
 type ReceiptRow = Record<(typeof COLUMNS)[number], string | number | null>;
@@ -76,6 +81,11 @@ function receiptRow(r: ProcessorReceipt): ReceiptRow {
     event_starts_at: r.event?.starts_at ?? null,
     event_ends_on: r.event?.ends_on ?? null,
     event_venue: r.event?.venue ?? null,
+    permit_year: r.vehicle_permit?.permit_year ?? null,
+    permit_plate: r.vehicle_permit?.plate ?? null,
+    permit_cuota: r.vehicle_permit?.cuota ?? null,
+    permit_cuotas: r.vehicle_permit?.cuotas ?? null,
+    permit_expires_on: r.vehicle_permit?.expires_on ?? null,
   };
 }
 
@@ -151,11 +161,14 @@ export type PaymentReceiptDto = {
   stay: ReceiptStay | null;
   /** A ticket receipt's event (name, day, time, venue); null for anything else. */
   event: ReceiptEvent | null;
+  /** A municipality's vehicle permit (year, plate, cuota, expiry); null for anything else. */
+  vehicle_permit: ReceiptVehiclePermit | null;
 };
 
-export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge" | "trip" | "trip_label" | "subscription" | "stay" | "event"> & {
+export type StoredPaymentReceipt = Omit<PaymentReceiptDto, "processor_name" | "guess" | "basis" | "charge" | "trip" | "trip_label" | "subscription" | "stay" | "event" | "vehicle_permit"> & {
   trip?: ReceiptTrip | null;
   event?: ReceiptEvent | null;
+  vehicle_permit?: ReceiptVehiclePermit | null;
   subscription?: boolean;
   /** A lodging receipt's stay: a stay the property charges pairs within its window. */
   stay?: ReceiptStay | null;
@@ -224,6 +237,16 @@ export function loadPaymentProcessorReceipts(): StoredPaymentReceipt[] {
             ends_on: (r.event_ends_on as string | null) ?? null,
             venue: (r.event_venue as string | null) ?? null,
           },
+    vehicle_permit:
+      r.permit_year == null
+        ? null
+        : {
+            permit_year: Number(r.permit_year),
+            plate: String(r.permit_plate),
+            cuota: Number(r.permit_cuota),
+            cuotas: Number(r.permit_cuotas),
+            expires_on: String(r.permit_expires_on),
+          },
   }));
 }
 
@@ -278,6 +301,7 @@ const PROCESSOR_MERCHANT_HINT: Record<string, RegExp> = {
   paylogic: /PAYLOGIC|AWAKENINGS/i,
   aitickets: /AI\s*TICKETS/i,
   ticketplus: /TICKETP/i,
+  municipalidad_maipu: /MUNICIPALIDAD\s*(?:DE\s*)?MAIPU/i,
 };
 
 /**
@@ -700,6 +724,7 @@ const PROCESSOR_NAMES: Record<string, string> = {
   paylogic: "Paylogic",
   aitickets: "AI Tickets",
   ticketplus: "Ticketplus",
+  municipalidad_maipu: "Municipalidad de Maipú",
 };
 
 /** Sources that are the shop's own order confirmation rather than a processor's receipt. */
@@ -727,6 +752,7 @@ function receiptDto(r: StoredPaymentReceipt, charge: { position: number; of: num
     subscription: r.subscription ?? false,
     stay: r.stay ?? null,
     event: r.event ?? null,
+    vehicle_permit: r.vehicle_permit ?? null,
   };
 }
 
@@ -788,6 +814,7 @@ export function withPaymentReceipts<L extends ReceiptCandidateLine & { account_i
       subscription: link.subscription,
       stay: null,
       event: null,
+      vehicle_permit: null,
     });
   }
   const named = lines.map((l) => {

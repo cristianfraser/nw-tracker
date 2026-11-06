@@ -14,6 +14,7 @@ import { mergeCcAccountFromParsedRows } from "./ccInstallmentLedgerMerge.js";
 import { applyWebPasteInstallmentFirstDueNudges } from "./ccWebPasteInstallmentNudge.js";
 import { removeTruncatedMerchantDuplicateLines } from "./ccTruncatedMerchantDedupe.js";
 import { replacePlantedPaymentLinesFromImport, type PlantedPaymentMatchResult } from "./ccPlantedPayments.js";
+import { replaceRecurringPendingLines } from "./ccRecurringPendingLines.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import {
@@ -102,10 +103,13 @@ export function importCcWebPasteLines(
   // A payment the app planted before the bank listed it (receipt mail, entered by hand): the
   // bank's own line for the same money replaces it, whatever its wording (ccPlantedPayments.ts).
   const plantedPayments = replacePlantedPaymentLinesFromImport(accountId, records, batchKind);
-  const removedFrom = [truncatedDedupe.removed_from_date, plantedPayments.removed_from_date]
+  // An automatic declared payment the bank first lists under another name (the car insurance as
+  // «CONVENIO P.A.T.»): its posted line replaces the pending one (ccRecurringPendingLines.ts).
+  const recurringPending = replaceRecurringPendingLines(accountId);
+  const removedFrom = [truncatedDedupe.removed_from_date, plantedPayments.removed_from_date, recurringPending.removed_from_date]
     .filter((d): d is string => d != null)
     .sort()[0];
-  if (truncatedDedupe.removed_count > 0 || plantedPayments.replaced.length > 0) {
+  if (truncatedDedupe.removed_count > 0 || plantedPayments.replaced.length > 0 || recurringPending.replaced.length > 0) {
     upsertCreditCardValuationsFromLedger(accountId, {
       affectedEvidenceFromYmd: removedFrom ?? null,
     });
@@ -124,6 +128,7 @@ export function importCcWebPasteLines(
     installment_first_due_nudges: firstDueNudges,
     truncated_merchant_dedupe: truncatedDedupe.removed_pairs,
     planted_payments: plantedPayments,
+    recurring_pending: recurringPending,
     grocery_branch_learning: merged.grocery_branch_learning,
     parse_errors: parsed.errors,
   });
@@ -141,6 +146,7 @@ export function importCcWebPasteLines(
     installment_first_due_nudges: firstDueNudges,
     truncated_merchant_dedupe: truncatedDedupe.removed_pairs,
     planted_payments: plantedPayments,
+    recurring_pending: recurringPending,
     grocery_branch_learning: merged.grocery_branch_learning,
     inserted_flows,
     skipped_flows: [

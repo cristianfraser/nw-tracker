@@ -84,10 +84,26 @@ export type UpcomingPaymentItemDto = {
   route_path: string | null;
 };
 
+/** An automatic declared payment's occurrence (server `AutomaticRecurringOccurrence`); not drawn by the panel. */
+export type AutomaticRecurringDto = {
+  key: string;
+  recurring_payment_id: number;
+  name: string;
+  detail: string | null;
+  frequency: "yearly" | "monthly";
+  due_iso: string;
+  status: "paid" | "covered" | "overdue" | "upcoming";
+  amount_clp: number;
+  estimated: boolean;
+  matched_line: { ref: string; purchase_on: string; merchant: string | null; amount_clp: number; covers_through: string | null } | null;
+};
+
 /** `upcoming_payments` on the dashboard page bundle — pesos in both display units. */
 export type UpcomingPaymentsDto = {
   /** Pay months with something due within the server's horizon, oldest first; empty = nothing to show. */
   months: { pay_month: string; total_clp: number; items: UpcomingPaymentItemDto[] }[];
+  /** Automatic declared payments and their occurrences in the window (never in `months`). */
+  automatic_recurring: AutomaticRecurringDto[];
 };
 
 /** How the card feed typed a purchase in cuotas (server `ccCuotaPurchaseKinds.ts`). */

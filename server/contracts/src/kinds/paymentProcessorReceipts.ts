@@ -61,6 +61,24 @@ export const receiptEventSchema = z
 
 export type ReceiptEvent = z.infer<typeof receiptEventSchema>;
 
+/**
+ * The vehicle permit (permiso de circulación) a municipality's receipt is for: the year, the plate,
+ * which cuota of how many this payment is, and the day the permit it issues expires.
+ */
+export const receiptVehiclePermitSchema = z
+  .object({
+    permit_year: z.number().int().min(2000).max(2100),
+    plate: text,
+    cuota: z.number().int().min(1).max(2),
+    /** 1 = this payment is the whole year. */
+    cuotas: z.number().int().min(1).max(2),
+    expires_on: isoDay,
+  })
+  .strict()
+  .refine((p) => p.cuota <= p.cuotas, { message: "the cuota is not past the cuotas" });
+
+export type ReceiptVehiclePermit = z.infer<typeof receiptVehiclePermitSchema>;
+
 export const processorReceiptSchema = z
   .object({
     /** The mail's Message-ID: the receipt's identity. */
@@ -112,6 +130,8 @@ export const processorReceiptSchema = z
     stay: receiptStaySchema.nullable().optional(),
     /** The event, for a ticket receipt. */
     event: receiptEventSchema.nullable().optional(),
+    /** The vehicle permit, for a municipality's permiso de circulación. */
+    vehicle_permit: receiptVehiclePermitSchema.nullable().optional(),
     /** The document states the payment is a subscription's (Uber One's monthly charge). */
     subscription: z.boolean().optional(),
   })

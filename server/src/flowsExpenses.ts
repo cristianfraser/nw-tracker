@@ -80,6 +80,7 @@ import { db } from "./db.js";
 
 import { enrichFlowLinesWithOriginLabels, type ExpenseLineOrigin } from "./ccExpenseOriginLabel.js";
 import { withExpenseDisplayNames, type CategoryRuleLinkDto, type ExpenseLinkLabel } from "./expenseDisplayNames.js";
+import { withRecurringPaymentNames } from "./recurringLineNames.js";
 import { loadExpenseCategoryRules, specificRuleCategory, type CategoryRuleLink } from "./expenseCategoryRules.js";
 import { enrichFlowLinesWithPurchaseNotes } from "./ccExpensePurchaseNotes.js";
 import {
@@ -300,6 +301,11 @@ export type FlowCcExpenseLineRow = {
   pre_tax?: true;
   /** The payment processor's receipt for this charge: who it paid, for what (`paymentProcessorReceipts.ts`). */
   payment_receipt?: PaymentReceiptDto;
+  /**
+   * The automatic declared payment (`recurring_payments`) a card charge fits by name, day and amount:
+   * a pending listing the bank names otherwise («CONVENIO P.A.T.» for the car insurance).
+   */
+  recurring_payment?: { id: number; name: string };
   /** One piece of a line split into pieces (`cc_expense_line_splits.seq`). */
   piece_seq?: number;
   /** What a line's pieces leave of it: the line's own expense, on its own day. */
@@ -1032,7 +1038,9 @@ function finalizeFlowExpenseLines(drafts: readonly FlowCcExpenseLineRowDraft[]):
   return withSpecificCategoryRules(
     withExpenseDisplayNames(
       withSubscriptionCategory(
-        withPaymentReceipts(enrichFlowLinesWithTransferCounterparties(enrichFlowLinesWithExpenseDepositLinks(withOrigin)))
+        withRecurringPaymentNames(
+          withPaymentReceipts(enrichFlowLinesWithTransferCounterparties(enrichFlowLinesWithExpenseDepositLinks(withOrigin)))
+        )
       )
     )
   );

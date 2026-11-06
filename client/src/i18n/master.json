@@ -366,8 +366,8 @@
         "es": "Estimado: ningún documento indica aún este monto."
       },
       "wipHint": {
-        "en": "A payment you declared (work in progress).",
-        "es": "Un pago que declaraste (en desarrollo)."
+        "en": "A payment you declared.",
+        "es": "Un pago que declaraste."
       },
       "kindHoa": {
         "en": "Gastos comunes",

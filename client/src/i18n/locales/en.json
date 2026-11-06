@@ -122,7 +122,7 @@
       "cuotaOf": "cuota {{n}}/{{count}}",
       "mortgageRangeHint": "Minimum to maximum cuota, at the UF of that day (projected past the last published one). The date is the cheapest day to pay for the UF.",
       "estimatedHint": "Estimated: no document states this amount yet.",
-      "wipHint": "A payment you declared (work in progress).",
+      "wipHint": "A payment you declared.",
       "kindHoa": "Gastos comunes",
       "mortgageMaxHint": "Maximum {{amount}}",
       "kindHoaShort": "HOA",

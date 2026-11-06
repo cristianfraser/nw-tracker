@@ -2,7 +2,8 @@
  * «Próximos pagos» on the home dashboard: everything due in the coming months, grouped by the
  * month it is due — the credit cards' facturaciones (`dashboardCcUpcomingPayments.ts`), the
  * mortgage cuota, each place's gastos comunes, each owned property's contribuciones and the
- * payments the user declared (`recurring_payments`, WIP). An item leaves the list once it is
+ * payments the user declared (`recurring_payments`, matched in `recurringPaymentMatch.ts`; the
+ * automatic ones are listed apart in `automatic_recurring`). An item leaves the list once it is
  * paid; an unpaid one past its due date is overdue and counts in the current month.
  *
  * The server sends `UPCOMING_PAYMENTS_HORIZON_MONTHS` months from the current one; the panel shows
@@ -24,6 +25,22 @@ import { numericCuota } from "./mortgagePaymentCompute.js";
 import { deptoMortgageAccountId, deptoPropertyAccountId } from "./mortgagePaymentCreate.js";
 import { normalizeServiceAccount, utilityBillMonth } from "./utilityBillsApply.js";
 import { loadGastosLinesForRealEstateMatching } from "./realEstateExpenseMatching.js";
+import { listRecurringPayments } from "./recurringPaymentsStore.js";
+import { projectedUfClp, ufProjector, type UfLookup } from "./ufProjection.js";
+import {
+  automaticRecurringMatchForLine,
+  dayInMonth,
+  matchRecurringPayments,
+  type RecurringEntry,
+  type RecurringFrequency,
+  type RecurringLine,
+  type RecurringOccurrence,
+  type RecurringStatus,
+} from "./recurringPaymentMatch.js";
+
+export { automaticRecurringMatchForLine, dayInMonth, listRecurringPayments, matchRecurringPayments, projectedUfClp };
+export type { UfLookup };
+export type { RecurringEntry, RecurringLine, RecurringOccurrence } from "./recurringPaymentMatch.js";
 
 /** Months the block covers, the current one included («Show more» shows them all). */
 export const UPCOMING_PAYMENTS_HORIZON_MONTHS = 6;
@@ -71,7 +88,7 @@ export type UpcomingPaymentItem = {
   card: CcUpcomingPaymentRow | null;
   /** What the occurrence is beyond its name, shown on hover; null = nothing more to say. */
   detail: UpcomingPaymentDetail | null;
-  /** A declared payment (the WIP table). */
+  /** A declared payment (`recurring_payments`, manual). */
   wip: boolean;
   /** Where the payment's label links: the card's or mortgage's account page, the place's real-estate expenses; null for a declared payment. */
   route_path: string | null;
@@ -84,9 +101,26 @@ export type UpcomingPaymentsMonth = {
   items: UpcomingPaymentItem[];
 };
 
+/** An automatic declared payment's occurrence (charged to the card; never listed in `months`). */
+export type AutomaticRecurringOccurrence = {
+  key: string;
+  recurring_payment_id: number;
+  name: string;
+  detail: string | null;
+  frequency: RecurringFrequency;
+  due_iso: string;
+  status: RecurringStatus;
+  amount_clp: number;
+  estimated: boolean;
+  /** The line that paid it; null while unpaid. */
+  matched_line: { ref: string; purchase_on: string; merchant: string | null; amount_clp: number } | null;
+};
+
 export type UpcomingPaymentsBlock = {
   /** Pay months with something due, oldest first, within the horizon; empty = nothing to show. */
   months: UpcomingPaymentsMonth[];
+  /** Automatic declared payments in their window, every occurrence with its status (not listed in `months`). */
+  automatic_recurring: AutomaticRecurringOccurrence[];
 };
 
 type ItemDraft = Omit<UpcomingPaymentItem, "amount_max_clp" | "cuota" | "cuota_count" | "bill_month" | "card" | "detail" | "wip" | "route_path"> &
@@ -106,45 +140,6 @@ function item(d: ItemDraft): UpcomingPaymentItem {
   };
 }
 
-function lastDayOfMonth(ym: string): number {
-  const [y, m] = ym.split("-").map(Number) as [number, number];
-  return new Date(Date.UTC(y, m, 0)).getUTCDate();
-}
-
-/** `YYYY-MM-DD` for a day of a month, clamped to the month's length. */
-export function dayInMonth(ym: string, day: number): string {
-  return `${ym}-${String(Math.min(day, lastDayOfMonth(ym))).padStart(2, "0")}`;
-}
-
-function daysBetween(fromYmd: string, toYmd: string): number {
-  return Math.round((Date.parse(`${toYmd}T00:00:00Z`) - Date.parse(`${fromYmd}T00:00:00Z`)) / 86_400_000);
-}
-
-function addDays(ymd: string, days: number): string {
-  return new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-}
-
-// ---------------------------------------------------------------------------------------------
-// UF ahead of its publication
-
-export type UfLookup = (ymd: string) => { date: string; clp_per_uf: number } | null;
-
-/**
- * The UF on a day: the published value on or before it, or — past the last published day — the
- * last value grown at the last twelve months' rate (a rough estimate the user asked for). Throws
- * when the series has no year of history to take the rate from.
- */
-export function projectedUfClp(ymd: string, latest: { date: string; clp_per_uf: number }, lookup: UfLookup): number {
-  if (ymd <= latest.date) {
-    const row = lookup(ymd);
-    if (!row) throw new Error(`No UF on or before ${ymd}`);
-    return row.clp_per_uf;
-  }
-  const yearAgo = lookup(addDays(latest.date, -365));
-  if (!yearAgo) throw new Error(`No UF a year before ${latest.date} to project from`);
-  const growth = latest.clp_per_uf / yearAgo.clp_per_uf;
-  return latest.clp_per_uf * growth ** (daysBetween(latest.date, ymd) / 365);
-}
 
 // ---------------------------------------------------------------------------------------------
 // Grouping
@@ -362,87 +357,8 @@ export function contribucionesUpcomingItems(
 }
 
 // ---------------------------------------------------------------------------------------------
-// Declared recurring payments (WIP)
-
-export type RecurringPayment = {
-  id: number;
-  name: string;
-  /** What the occurrence is beyond its name («1ª cuota»), shown on hover; null = none. */
-  detail: string | null;
-  due_month: number;
-  due_day: number;
-  amount_clp: number;
-  paid_merchant_pattern: string;
-  /** When it was declared (ISO): an occurrence due before then is not asked for. */
-  created_at: string;
-};
-
-/** Days before a due date a matching charge counts as its payment (an early payment), and after. */
-const RECURRING_PAID_WINDOW = { before: 120, after: 31 } as const;
-
-function foldUpper(s: string): string {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
-}
-
-/**
- * A declared yearly payment through the horizon (and this year's, if still unpaid past its due
- * date — unless it was due before the payment was declared). Paid when an expense line whose merchant or shown name contains the pattern was bought
- * from `RECURRING_PAID_WINDOW.before` days before the due date to `.after` days past it.
- */
-export function recurringUpcomingItems(
-  rp: RecurringPayment,
-  lines: readonly { purchase_on: string | null; merchant: string | null; display_merchant?: string }[],
-  todayYmd: string,
-  horizonEndMonth: string
-): UpcomingPaymentItem[] {
-  const pattern = foldUpper(rp.paid_merchant_pattern.trim());
-  const out: UpcomingPaymentItem[] = [];
-  const thisYear = Number(todayYmd.slice(0, 4));
-  for (let year = thisYear; `${year}-01` <= horizonEndMonth; year += 1) {
-    const dueMonth = `${year}-${String(rp.due_month).padStart(2, "0")}`;
-    if (dueMonth > horizonEndMonth) continue;
-    const due = dayInMonth(dueMonth, rp.due_day);
-    if (due < rp.created_at.slice(0, 10)) continue;
-    const from = addDays(due, -RECURRING_PAID_WINDOW.before);
-    const to = addDays(due, RECURRING_PAID_WINDOW.after);
-    const paid = lines.some(
-      (l) =>
-        l.purchase_on != null &&
-        l.purchase_on >= from &&
-        l.purchase_on <= to &&
-        [l.merchant, l.display_merchant].some((m) => m != null && foldUpper(m).includes(pattern))
-    );
-    if (paid) continue;
-    out.push(
-      item({
-        key: `recurring|${rp.id}|${year}`,
-        kind: "recurring",
-        name: rp.name,
-        detail: rp.detail == null ? null : { kind: "text", text: rp.detail },
-        due_iso: due,
-        due_kind: "by",
-        amount_clp: rp.amount_clp,
-        estimated: true,
-        overdue: due < todayYmd,
-        wip: true,
-      })
-    );
-  }
-  return out;
-}
-
-// ---------------------------------------------------------------------------------------------
 // Assembly from the database
 
-const latestUfStmt = db.prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date DESC LIMIT 1`);
-const ufOnOrBeforeStmt = db.prepare(`SELECT date, clp_per_uf FROM uf_daily WHERE date <= ? ORDER BY date DESC LIMIT 1`);
-
-function ufProjector(): (ymd: string) => number {
-  const latest = latestUfStmt.get() as { date: string; clp_per_uf: number } | undefined;
-  if (!latest) throw new Error("uf_daily is empty");
-  const lookup: UfLookup = (ymd) => (ufOnOrBeforeStmt.get(ymd) as { date: string; clp_per_uf: number } | undefined) ?? null;
-  return (ymd) => projectedUfClp(ymd, latest, lookup);
-}
 
 function mortgageInput(todayYmd: string): MortgageUpcomingInput | null {
   const ledger = loadDeptoLedgerFromMovements();
@@ -536,18 +452,101 @@ function ownedPlaces(): { place: UpcomingPlace; payments: ContribucionesPayment[
   return places.map((row) => ({ place: upcomingPlace(row), payments: payments.all(row.id) as ContribucionesPayment[] }));
 }
 
-const recurringStmt = db.prepare(
-  `SELECT id, name, detail, due_month, due_day, amount_clp, paid_merchant_pattern, created_at FROM recurring_payments ORDER BY id`
-);
+// ---------------------------------------------------------------------------------------------
+// Declared recurring payments (`recurring_payments`, matched in `recurringPaymentMatch.ts`)
 
-export function listRecurringPayments(): RecurringPayment[] {
-  return recurringStmt.all() as RecurringPayment[];
+export class RecurringPaymentInputError extends Error {}
+
+function fail(message: string): never {
+  throw new RecurringPaymentInputError(message);
+}
+
+const insertRecurringStmt = db.prepare(
+  `INSERT INTO recurring_payments (name, detail, manual, frequency, due_month, due_day, amount, currency,
+                                   match_days_before, match_days_after, amount_tolerance_pct)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+);
+const insertPatternStmt = db.prepare(`INSERT INTO recurring_payment_patterns (recurring_payment_id, pattern) VALUES (?, ?)`);
+const deletePatternsStmt = db.prepare(`DELETE FROM recurring_payment_patterns WHERE recurring_payment_id = ?`);
+const deleteRecurringStmt = db.prepare(`DELETE FROM recurring_payments WHERE id = ?`);
+
+
+/** The expense lines the matcher reads, each named by its source and statement line id. */
+function recurringLines(): RecurringLine[] {
+  return loadGastosLinesForRealEstateMatching().map((l) => ({
+    ref: `${l.source}|${l.statement_line_id}`,
+    purchase_on: l.purchase_on,
+    merchant: l.merchant,
+    display_merchant: l.display_merchant ?? null,
+    amount_clp: l.amount_clp,
+    covers_through: l.payment_receipt?.vehicle_permit?.expires_on ?? null,
+  }));
+}
+
+/** A manual occurrence as a «Próximos pagos» row (its own name; the detail on hover). */
+function recurringItem(o: RecurringOccurrence): UpcomingPaymentItem {
+  return item({
+    key: `recurring|${o.entry.id}|${o.due_iso}`,
+    kind: "recurring",
+    name: o.entry.name,
+    detail: o.entry.detail == null ? null : { kind: "text", text: o.entry.detail },
+    due_iso: o.due_iso,
+    due_kind: "by",
+    amount_clp: o.amount_clp,
+    estimated: o.estimated,
+    overdue: o.status === "overdue",
+    wip: true,
+  });
+}
+
+function automaticRecurringItem(o: RecurringOccurrence): AutomaticRecurringOccurrence {
+  return {
+    key: `recurring|${o.entry.id}|${o.due_iso}`,
+    recurring_payment_id: o.entry.id,
+    name: o.entry.name,
+    detail: o.entry.detail,
+    frequency: o.entry.frequency,
+    due_iso: o.due_iso,
+    status: o.status,
+    amount_clp: o.amount_clp,
+    estimated: o.estimated,
+    matched_line: o.matched,
+  };
+}
+
+/** Declared payments: the manual unpaid occurrences as «Próximos pagos» items, the automatic ones apart. */
+function recurringSection(
+  todayYmd: string,
+  horizonEndYmd: string,
+  uf: { ufOn: (ymd: string) => number; knownThrough: string }
+): { items: UpcomingPaymentItem[]; automatic: AutomaticRecurringOccurrence[] } {
+  const entries = listRecurringPayments();
+  if (entries.length === 0) return { items: [], automatic: [] };
+  const occurrences = matchRecurringPayments({
+    entries,
+    lines: recurringLines(),
+    todayYmd,
+    horizonEndYmd,
+    ufOn: uf.ufOn,
+    ufKnownThrough: uf.knownThrough,
+  });
+  const items: UpcomingPaymentItem[] = [];
+  const automatic: AutomaticRecurringOccurrence[] = [];
+  for (const o of occurrences) {
+    if (!o.exposed) continue;
+    if (o.entry.manual) {
+      if (o.status === "overdue" || o.status === "upcoming") items.push(recurringItem(o));
+    } else {
+      automatic.push(automaticRecurringItem(o));
+    }
+  }
+  return { items, automatic };
 }
 
 /** The dashboard's «Próximos pagos»: every source's items, grouped by pay month within the horizon. */
 export function buildUpcomingPayments(todayYmd: string = chileCalendarTodayYmd()): UpcomingPaymentsBlock {
   const horizonEnd = addCalendarMonths(todayYmd.slice(0, 7), UPCOMING_PAYMENTS_HORIZON_MONTHS - 1);
-  const ufOn = ufProjector();
+  const uf = ufProjector();
   const items: UpcomingPaymentItem[] = [];
 
   for (const m of buildDashboardCcUpcomingPayments().months) {
@@ -572,54 +571,107 @@ export function buildUpcomingPayments(todayYmd: string = chileCalendarTodayYmd()
   }
 
   const mortgage = mortgageInput(todayYmd);
-  if (mortgage) items.push(...mortgageUpcomingItems(mortgage, todayYmd, horizonEnd, ufOn));
+  if (mortgage) items.push(...mortgageUpcomingItems(mortgage, todayYmd, horizonEnd, uf.ufOn));
 
   for (const h of hoaPlaces()) items.push(...hoaUpcomingItems(h.place, h.statements, h.paid, todayYmd, horizonEnd));
 
-  for (const o of ownedPlaces()) items.push(...contribucionesUpcomingItems(o.place, o.payments, todayYmd, horizonEnd, ufOn));
+  for (const o of ownedPlaces()) items.push(...contribucionesUpcomingItems(o.place, o.payments, todayYmd, horizonEnd, uf.ufOn));
 
-  const recurring = listRecurringPayments();
-  if (recurring.length > 0) {
-    const lines = loadGastosLinesForRealEstateMatching();
-    for (const rp of recurring) items.push(...recurringUpcomingItems(rp, lines, todayYmd, horizonEnd));
-  }
+  const recurring = recurringSection(todayYmd, dayInMonth(horizonEnd, 31), uf);
+  items.push(...recurring.items);
 
   return {
     months: groupUpcomingByMonth(items, todayYmd),
+    automatic_recurring: recurring.automatic,
   };
 }
 
+function requiredText(body: Record<string, unknown>, key: string): string {
+  const v = body[key];
+  if (typeof v !== "string") fail(`${key} must be text`);
+  const t = v.trim();
+  if (t === "") fail(`${key} is required`);
+  return t;
+}
+
+function optionalText(body: Record<string, unknown>, key: string): string | null {
+  const v = body[key];
+  if (v == null) return null;
+  if (typeof v !== "string") fail(`${key} must be text`);
+  const t = v.trim();
+  return t === "" ? null : t;
+}
+
+function integerInRange(body: Record<string, unknown>, key: string, min: number, max: number, fallback?: number): number {
+  const v = body[key];
+  if (v === undefined && fallback !== undefined) return fallback;
+  if (typeof v !== "number" || !Number.isInteger(v) || v < min || v > max) fail(`${key} must be a whole number ${min}–${max}`);
+  return v;
+}
+
 /**
- * Declares a yearly payment (WIP: no screen yet, the endpoints are the way in). Throws with the
- * reason on a field out of range, so the route answers 400.
+ * Declares a payment (`recurring_payments` + its patterns). Throws `RecurringPaymentInputError`
+ * with the reason on any field out of range, so the route answers 400. Yearly entries need their
+ * due month; monthly ones store none. CLP amounts are whole pesos, UF amounts any positive figure.
  */
-export function createRecurringPayment(body: Record<string, unknown>): RecurringPayment {
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (body.detail != null && typeof body.detail !== "string") throw new RecurringPaymentInputError("detail must be text");
-  const detail = typeof body.detail === "string" && body.detail.trim() !== "" ? body.detail.trim() : null;
-  const pattern = typeof body.paid_merchant_pattern === "string" ? body.paid_merchant_pattern.trim() : "";
-  const dueMonth = Number(body.due_month);
-  const dueDay = Number(body.due_day);
-  const amount = Number(body.amount_clp);
-  if (!name) throw new RecurringPaymentInputError("name is required");
-  if (!pattern) throw new RecurringPaymentInputError("paid_merchant_pattern is required");
-  if (!Number.isInteger(dueMonth) || dueMonth < 1 || dueMonth > 12) throw new RecurringPaymentInputError("due_month must be 1–12");
-  if (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31) throw new RecurringPaymentInputError("due_day must be 1–31");
-  if (!Number.isInteger(amount) || amount <= 0) throw new RecurringPaymentInputError("amount_clp must be a positive integer");
-  const id = Number(
-    db
-      .prepare(
-        `INSERT INTO recurring_payments (name, detail, due_month, due_day, amount_clp, paid_merchant_pattern) VALUES (?, ?, ?, ?, ?, ?)`
-      )
-      .run(name, detail, dueMonth, dueDay, amount, pattern).lastInsertRowid
-  );
-  const row = recurringStmt.all().find((r) => (r as RecurringPayment).id === id) as RecurringPayment | undefined;
+export function createRecurringPayment(body: Record<string, unknown>): RecurringEntry {
+  const name = requiredText(body, "name");
+  const detail = optionalText(body, "detail");
+  const manual = body.manual === undefined ? true : body.manual;
+  if (typeof manual !== "boolean") fail("manual must be true or false");
+  const frequency = body.frequency === undefined ? "yearly" : body.frequency;
+  if (frequency !== "yearly" && frequency !== "monthly") fail("frequency must be yearly or monthly");
+  const currency = body.currency === undefined ? "clp" : body.currency;
+  if (currency !== "clp" && currency !== "uf") fail("currency must be clp or uf");
+  const dueDay = integerInRange(body, "due_day", 1, 31);
+  const dueMonth = frequency === "yearly" ? integerInRange(body, "due_month", 1, 12) : null;
+  const amount = body.amount;
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) fail("amount must be a positive number");
+  if (currency === "clp" && !Number.isInteger(amount)) fail("amount must be whole pesos for a CLP payment");
+  const rawPatterns = body.patterns;
+  if (!Array.isArray(rawPatterns)) fail("patterns must be a list of merchant patterns");
+  const patterns: string[] = [];
+  for (const p of rawPatterns) {
+    if (typeof p !== "string") fail("patterns must be text");
+    const t = p.trim();
+    if (t !== "" && !patterns.includes(t)) patterns.push(t);
+  }
+  if (patterns.length === 0) fail("at least one merchant pattern is required");
+  const matchBefore = integerInRange(body, "match_days_before", 0, 60, 14);
+  const matchAfter = integerInRange(body, "match_days_after", 0, 60, 7);
+  let tolerance: number | null = null;
+  if (body.amount_tolerance_pct != null) {
+    const t = body.amount_tolerance_pct;
+    if (typeof t !== "number" || !Number.isFinite(t) || t <= 0 || t > 100) fail("amount_tolerance_pct must be above 0 and at most 100");
+    tolerance = t;
+  }
+  const id = db.transaction(() => {
+    const newId = Number(
+      insertRecurringStmt.run(
+        name,
+        detail,
+        manual ? 1 : 0,
+        frequency,
+        dueMonth,
+        dueDay,
+        amount,
+        currency,
+        matchBefore,
+        matchAfter,
+        tolerance
+      ).lastInsertRowid
+    );
+    for (const p of patterns) insertPatternStmt.run(newId, p);
+    return newId;
+  })();
+  const row = listRecurringPayments().find((r) => r.id === id);
   if (!row) throw new Error(`recurring payment ${id} not found after insert`);
   return row;
 }
 
 export function deleteRecurringPayment(id: number): boolean {
-  return db.prepare(`DELETE FROM recurring_payments WHERE id = ?`).run(id).changes > 0;
+  return db.transaction(() => {
+    deletePatternsStmt.run(id);
+    return deleteRecurringStmt.run(id).changes > 0;
+  })();
 }
-
-export class RecurringPaymentInputError extends Error {}

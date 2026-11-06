@@ -7,7 +7,10 @@ import {
   hoaUpcomingItems,
   mortgageUpcomingItems,
   projectedUfClp,
-  recurringUpcomingItems,
+  automaticRecurringMatchForLine,
+  matchRecurringPayments,
+  type RecurringEntry,
+  type RecurringLine,
   type UpcomingPaymentItem,
 } from "./upcomingPayments.js";
 
@@ -135,30 +138,141 @@ describe("contribucionesUpcomingItems", () => {
   });
 });
 
-describe("recurringUpcomingItems", () => {
-  const permiso = {
+describe("declared payments: matching", () => {
+  // The UF is 40.000 until 2026-09-05 and 40.500 from the 6th; the 0,5 UF insurance costs 20.250 from then on.
+  const ufOn = (ymd: string) => (ymd >= "2026-09-06" ? 40_500 : 40_000);
+  const UF_KNOWN_THROUGH = "2026-10-31";
+  const HORIZON_END = "2027-03-31";
+
+  const insurance: RecurringEntry = {
     id: 1,
-    name: "Permiso de circulación",
-    detail: "1ª cuota",
-    due_month: 3,
-    due_day: 31,
-    amount_clp: 180_000,
-    paid_merchant_pattern: "municipalidad",
-    created_at: "2026-11-02 12:00:00",
+    name: "Seguro auto",
+    detail: null,
+    manual: false,
+    frequency: "monthly",
+    due_month: null,
+    due_day: 6,
+    amount: 0.5,
+    currency: "uf",
+    patterns: ["PENDING NAME", "SETTLED NAME"],
+    match_days_before: 14,
+    match_days_after: 7,
+    amount_tolerance_pct: 1,
+    created_at: "2026-01-01 00:00:00",
+  };
+  const line = (ref: string, purchase_on: string, merchant: string, amount_clp: number): RecurringLine => ({
+    ref,
+    purchase_on,
+    merchant,
+    display_merchant: null,
+    amount_clp,
+  });
+  const model = (entries: RecurringEntry[], lines: RecurringLine[], todayYmd: string) =>
+    matchRecurringPayments({ entries, lines, todayYmd, horizonEndYmd: HORIZON_END, ufOn, ufKnownThrough: UF_KNOWN_THROUGH });
+  const occurrenceDue = (occs: ReturnType<typeof matchRecurringPayments>, due: string) => {
+    const found = occs.find((o) => o.entry.id === 1 && o.due_iso === due);
+    if (!found) throw new Error(`no occurrence due ${due}`);
+    return found;
   };
 
-  it("is due each year until a matching charge lands near its date, never before it was declared", () => {
-    expect(recurringUpcomingItems(permiso, [], TODAY, HORIZON_END)).toMatchObject([
-      { due_iso: "2027-03-31", amount_clp: 180_000, estimated: true, wip: true },
-    ]);
-    const paid = [{ purchase_on: "2027-02-20", merchant: "MUNICIPALIDAD DE MAIPU", display_merchant: "Permiso de circulación (Maipú)" }];
-    expect(recurringUpcomingItems(permiso, paid, TODAY, HORIZON_END)).toEqual([]);
-    expect(recurringUpcomingItems({ ...permiso, paid_merchant_pattern: "permiso de circulacion" }, paid, TODAY, HORIZON_END)).toEqual([]);
-    // Declared before March: this year's, unpaid, is overdue.
-    expect(recurringUpcomingItems({ ...permiso, created_at: "2026-01-01 00:00:00" }, [], TODAY, HORIZON_END).map((i) => [i.due_iso, i.overdue])).toEqual([
-      ["2026-03-31", true],
-      ["2027-03-31", false],
-    ]);
+  it("a UF entry is paid by its pending listing three days before the posting, priced at the posting day's UF", () => {
+    const occs = model([insurance], [line("cc|pending", "2026-09-03", "PENDING NAME 1234", 20_250)], "2026-09-04");
+    expect(occurrenceDue(occs, "2026-09-06")).toMatchObject({
+      status: "paid",
+      amount_clp: 20_250,
+      estimated: false,
+      matched: { ref: "cc|pending", purchase_on: "2026-09-03" },
+    });
+  });
+
+  it("the settled posting, nearer the due day, is the line that pays when both are listed", () => {
+    const occs = model(
+      [insurance],
+      [line("cc|pending", "2026-09-03", "PENDING NAME 1234", 20_250), line("cc|settled", "2026-09-06", "SETTLED NAME", 20_250)],
+      "2026-09-20"
+    );
+    expect(occurrenceDue(occs, "2026-09-06").matched?.ref).toBe("cc|settled");
+  });
+
+  it("a line with the wrong amount does not pay the occurrence; the unpaid UF cuota is overdue at the UF of its day", () => {
+    const occs = model([insurance], [line("cc|wrong", "2026-10-03", "PENDING NAME", 12_345)], "2026-10-20");
+    expect(occurrenceDue(occs, "2026-10-06")).toMatchObject({ status: "overdue", matched: null, amount_clp: 20_250, estimated: false });
+  });
+
+  describe("yearly two-cuota entry (same name, same merchant)", () => {
+    const cuota = (id: number, detail: string, due_month: number): RecurringEntry => ({
+      id,
+      name: "Permiso de circulación",
+      detail,
+      manual: true,
+      frequency: "yearly",
+      due_month,
+      due_day: 31,
+      amount: 180_000,
+      currency: "clp",
+      patterns: ["MUNICIPALIDAD DE MAIPU"],
+      match_days_before: 14,
+      match_days_after: 7,
+      amount_tolerance_pct: 10,
+      created_at: "2025-01-01 00:00:00",
+    });
+    const cuota1 = cuota(10, "1ª cuota", 3);
+    const cuota2 = cuota(11, "2ª cuota", 8);
+    const muni = (purchase_on: string, amount_clp: number) =>
+      line(`cc|${purchase_on}`, purchase_on, "MUNICIPALIDAD DE MAIPU", amount_clp);
+    const due = (occs: ReturnType<typeof matchRecurringPayments>, id: number, iso: string) => {
+      const found = occs.find((o) => o.entry.id === id && o.due_iso === iso);
+      if (!found) throw new Error(`no occurrence ${id} due ${iso}`);
+      return found;
+    };
+
+    it("cuota 2 takes the amount cuota 1 was paid, the same year; before any payment the stated amount", () => {
+      const unpaid = model([cuota1, cuota2], [], "2026-07-01");
+      expect(due(unpaid, 10, "2026-03-31")).toMatchObject({ status: "overdue", amount_clp: 180_000, estimated: true });
+      expect(due(unpaid, 11, "2026-08-31")).toMatchObject({ status: "upcoming", amount_clp: 180_000, estimated: true });
+
+      const cuota1Paid = model([cuota1, cuota2], [muni("2026-03-25", 195_000)], "2026-07-01");
+      expect(due(cuota1Paid, 10, "2026-03-31")).toMatchObject({ status: "paid", amount_clp: 195_000, estimated: false });
+      expect(due(cuota1Paid, 11, "2026-08-31")).toMatchObject({ status: "upcoming", amount_clp: 195_000, estimated: true });
+      // Next year's cuota 1 is priced from this year's cuota 1, its own last payment.
+      expect(due(cuota1Paid, 10, "2027-03-31")).toMatchObject({ amount_clp: 195_000 });
+    });
+
+    it("a payment in cuota 2's window pays it when its amount is within the tolerance", () => {
+      const occs = model([cuota1, cuota2], [muni("2026-03-25", 195_000), muni("2026-08-28", 197_000)], "2026-09-01");
+      expect(due(occs, 11, "2026-08-31")).toMatchObject({ status: "paid", amount_clp: 197_000, matched: { ref: "cc|2026-08-28" } });
+    });
+
+    it("a whole-year permit paid in March pays cuota 1 and covers cuota 2; a first cuota does not", () => {
+      const permit = (purchase_on: string, amount_clp: number, covers_through: string): RecurringLine => ({
+        ...muni(purchase_on, amount_clp),
+        covers_through,
+      });
+      const whole = model([cuota1, cuota2], [permit("2026-03-25", 390_000, "2027-03-31")], "2026-07-01");
+      expect(due(whole, 10, "2026-03-31")).toMatchObject({ status: "paid", amount_clp: 390_000 });
+      expect(due(whole, 11, "2026-08-31")).toMatchObject({ status: "covered", matched: null });
+      // Next year's cuota 1 is due again: the permit expires on its due day.
+      expect(due(whole, 10, "2027-03-31").status).toBe("upcoming");
+
+      const first = model([cuota1, cuota2], [permit("2026-03-25", 195_000, "2026-08-31")], "2026-07-01");
+      expect(due(first, 11, "2026-08-31")).toMatchObject({ status: "upcoming", amount_clp: 195_000 });
+    });
+
+    it("a sibling paid in another year does not set the amount; a charge outside the window does not match", () => {
+      const otherYear = model([cuota1, cuota2], [muni("2025-03-25", 170_000)], "2026-07-01");
+      expect(due(otherYear, 11, "2026-08-31")).toMatchObject({ amount_clp: 180_000, estimated: true, status: "upcoming" });
+
+      // 21 days before the 31st of March: outside the 14-day window before.
+      const early = model([cuota1, cuota2], [muni("2026-03-10", 180_000)], "2026-07-01");
+      expect(due(early, 10, "2026-03-31")).toMatchObject({ status: "overdue", matched: null });
+    });
+  });
+
+  it("automaticRecurringMatchForLine names the automatic entry a line fits, and nothing else", () => {
+    const occs = model([insurance], [], "2026-10-20");
+    expect(automaticRecurringMatchForLine(line("x", "2026-09-03", "PENDING NAME 1234", 20_250), occs, ufOn)?.entry.id).toBe(1);
+    expect(automaticRecurringMatchForLine(line("x", "2026-09-03", "CONVENIO OTRO", 20_250), occs, ufOn)).toBeNull();
+    expect(automaticRecurringMatchForLine(line("x", "2026-09-03", "PENDING NAME 1234", 40_000), occs, ufOn)).toBeNull();
   });
 });
 
