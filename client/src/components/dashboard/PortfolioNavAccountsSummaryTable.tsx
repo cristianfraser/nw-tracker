@@ -60,6 +60,8 @@ type AccountTableRow = {
   metricsByPeriod: CardGroupMetricsByPeriod;
   /** Per-slice % (server: the account row's pct fields, or a group's server pct). */
   pct: (slice: PeriodSlice, showUsd: boolean) => number | null;
+  /** The total cell's old figure: P/L acumulado ÷ net deposits (tooltip on the total %). */
+  pctOnDeposits: (showUsd: boolean) => number | null;
   fxMissing: boolean;
   syncStale: boolean;
   inactive: boolean;
@@ -87,9 +89,24 @@ function accountRowPct(
   return v != null && Number.isFinite(v) ? v : null;
 }
 
+function accountRowOnDeposits(row: DashboardAccountRow | null, showUsd: boolean): number | null {
+  if (!row) return null;
+  const v = showUsd ? row.pct_total_on_deposits_usd : row.pct_total_on_deposits_clp;
+  return v != null && Number.isFinite(v) ? v : null;
+}
+
 function serverPct(pct: PctBySlice) {
   return (slice: PeriodSlice, usd: boolean): number | null => {
     const v = pct[slice][usd ? "usd" : "clp"];
+    return v != null && Number.isFinite(v) ? v : null;
+  };
+}
+
+/** The server's total cell carries the on-deposits figure; other cells do not. */
+function serverPctOnDeposits(pct: PctBySlice) {
+  return (usd: boolean): number | null => {
+    const cell = pct.total;
+    const v = usd ? cell.on_deposits_usd : cell.on_deposits_clp;
     return v != null && Number.isFinite(v) ? v : null;
   };
 }
@@ -161,6 +178,7 @@ export function PortfolioNavAccountsSummaryTable({
         ...navCardAmount(entry.value.child, showUsd),
         metricsByPeriod: entry.child,
         pct: serverPct(entry.row_pct),
+        pctOnDeposits: serverPctOnDeposits(entry.row_pct),
         fxMissing: showUsd && entry.value.fx_missing,
         syncStale: entry.value.sync_stale,
       };
@@ -176,6 +194,7 @@ export function PortfolioNavAccountsSummaryTable({
           : null,
       metricsByPeriod: cardMetricsByPeriodForAccountRow(row),
       pct: (slice, usd) => accountRowPct(row, slice, usd),
+      pctOnDeposits: (usd) => accountRowOnDeposits(row, usd),
       fxMissing: showUsd && row?.fx_missing === true,
       syncStale: row?.sync_stale === true,
     };
@@ -201,6 +220,7 @@ export function PortfolioNavAccountsSummaryTable({
         ...navCardAmount(metrics.value.parent, showUsd),
         metricsByPeriod: metrics.parent,
         pct: serverPct(metrics.parent_pct),
+        pctOnDeposits: serverPctOnDeposits(metrics.parent_pct),
         fxMissing: showUsd && metrics.value.fx_missing,
         syncStale: metrics.value.sync_stale,
         inactive: false,
@@ -220,6 +240,7 @@ export function PortfolioNavAccountsSummaryTable({
         ...navCardAmount(liquidated.value, showUsd),
         metricsByPeriod: liquidated.metrics,
         pct: serverPct(liquidated.row_pct),
+        pctOnDeposits: serverPctOnDeposits(liquidated.row_pct),
         fxMissing: showUsd && liquidated.value.fx_missing,
         syncStale: false,
         inactive: true,
@@ -344,6 +365,8 @@ export function PortfolioNavAccountsSummaryTable({
         /** `▲1xx.xxx (2,68%)` — P/L with the flow-adjusted period % as a parenthetical. */
         const plLine = (slice: PeriodSlice, variant: CellVariant) => {
           const pct = row.pct(slice, showUsd);
+          // The total %: the compounded return; its hover names the old figure on net deposits.
+          const onDeposits = slice === "total" ? row.pctOnDeposits(showUsd) : null;
           return (
             <span className={styles.plLine}>
               <span title={labels.pl[slice]}>
@@ -359,7 +382,14 @@ export function PortfolioNavAccountsSummaryTable({
                 />
               </span>
               {pct != null ? (
-                <span className={cn("mono muted", styles.pct)} title={labels.pct}>
+                <span
+                  className={cn("mono muted", styles.pct)}
+                  title={
+                    onDeposits != null
+                      ? t("groupPage.accountsTable.pctOnDeposits", { pct: formatPct(onDeposits * 100) })
+                      : labels.pct
+                  }
+                >
                   ({formatPct(pct * 100)})
                 </span>
               ) : null}

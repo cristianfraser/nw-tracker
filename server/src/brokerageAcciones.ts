@@ -84,4 +84,7 @@ export interface DashboardAccountStats {
   pct_month_usd?: number | null;
   pct_year_usd?: number | null;
   pct_total_usd?: number | null;
+  /** The one-step Total: P/L acumulado ÷ net deposits (the `pct_total_*` cells compound daily). */
+  pct_total_on_deposits_clp?: number | null;
+  pct_total_on_deposits_usd?: number | null;
 }

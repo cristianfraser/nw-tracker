@@ -369,10 +369,6 @@
         "en": "A payment you declared.",
         "es": "Un pago que declaraste."
       },
-      "kindHoa": {
-        "en": "Gastos comunes",
-        "es": "Gastos comunes"
-      },
       "mortgageMaxHint": {
         "en": "Maximum {{amount}}",
         "es": "Máximo {{amount}}"
@@ -517,6 +513,10 @@
         "en": "All-time total",
         "es": "Total acumulado"
       },
+      "percentToggle": {
+        "en": "%",
+        "es": "%"
+      },
       "deltaRetirementMonthly": {
         "en": "Monthly retirement Δ",
         "es": "Δ mensual retiro"
@@ -589,6 +589,18 @@
     "accountsTreeEmpty": {
       "en": "No accounts yet. Open an asset tab and note the category IDs for POST /api/accounts.",
       "es": "No hay cuentas aún. Abre una pestaña de activos y anota los IDs de categoría para POST /api/accounts."
+    },
+    "percentMode": {
+      "retirementMonthly": { "en": "Monthly retirement %", "es": "% retiro mensual" },
+      "retirementYearly": { "en": "Annual retirement %", "es": "% retiro anual" },
+      "retirementDaily": { "en": "Daily retirement %", "es": "% retiro diario" },
+      "brokerageMonthly": { "en": "Monthly brokerage %", "es": "% brokerage mensual" },
+      "brokerageYearly": { "en": "Annual brokerage %", "es": "% brokerage anual" },
+      "brokerageDaily": { "en": "Daily brokerage %", "es": "% brokerage diario" },
+      "combinedMonthly": { "en": "Monthly investments %", "es": "% inversiones mensual" },
+      "combinedYearly": { "en": "Annual investments %", "es": "% inversiones anual" },
+      "combinedDaily": { "en": "Daily investments %", "es": "% inversiones diario" },
+      "accumulated": { "en": "All-time total %", "es": "Total acumulado %" }
     },
     "combinedMonthlyDelta": {
       "en": "Σ monthly Δ",
@@ -3335,6 +3347,10 @@
       "total": {
         "en": "Total",
         "es": "Total"
+      },
+      "pctOnDeposits": {
+        "en": "On net deposits: {{pct}}",
+        "es": "Sobre aportes netos: {{pct}}"
       },
       "pctTooltip": {
         "en": "Period % (flow-adjusted)",

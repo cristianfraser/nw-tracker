@@ -7,7 +7,7 @@ import {
   totalDisplayDepositsClpForAccount,
   totalStateContributionsClpForAccount,
 } from "./accountDeposits.js";
-import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
+import { monthlyPerfForAccountDisplay } from "./detalleDailyChainedPct.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import { getCheckingCartolaMonths } from "./checkingCartolaMonthSummary.js";
 import { creditCardInstallmentsResponse } from "./creditCardInstallments.js";
@@ -253,35 +253,35 @@ export async function buildAccountDetailBundle(
     ? getCheckingCartolaMonths(accountId)
     : null;
 
-  const monthly_performance = monthlyPerfForAccountId(accountId, unit);
+  const monthly_performance = monthlyPerfForAccountDisplay(accountId, unit);
   const period_returns =
     monthly_performance != null &&
     monthly_performance.monthly.length > 0 &&
     isInvestmentPerformanceAccount(accountId)
-      ? withShortHorizonCells(
-          withDailyChainedReturns(
+      ? withDailyChainedReturns(
+          withShortHorizonCells(
             computePeriodReturns(monthly_performance.monthly, unit),
-            resolveAccountDailySeries(
+            [
               {
                 account_id: accountId,
                 name: cat.account_name,
                 bucket_slug: cat.bucket_slug,
                 import_key: cat.account_import_key,
+                exclude_from_group_totals: 0,
               },
-              unit,
-              0
-            ).points
+            ],
+            unit
           ),
-          [
+          resolveAccountDailySeries(
             {
               account_id: accountId,
               name: cat.account_name,
               bucket_slug: cat.bucket_slug,
               import_key: cat.account_import_key,
-              exclude_from_group_totals: 0,
             },
-          ],
-          unit
+            unit,
+            0
+          ).points
         )
       : null;
 

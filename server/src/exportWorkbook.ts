@@ -5,13 +5,15 @@
  * numeric cells — the decimal-separator preference is a display concern.
  *
  * Sections reuse the existing aggregation surface:
- * - closings / pl → monthlyPerfForAccountId (per account; groups iterate members)
+ * - closings / pl → monthlyPerfForAccountId / monthlyPerfForAccountDisplay (P/L: the page's
+ *   compounded %; per account; groups iterate members)
  * - aportes      → getMergedDisplayDepositInflowEventsForAccount (cumulative over full
  *                  history, then range-filtered, so `acumulado` stays a true running total)
  * - movements    → listAccountMovementsForApi(Bulk)
  */
 import XLSX from "xlsx";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
+import { monthlyPerfForAccountDisplay } from "./detalleDailyChainedPct.js";
 import { getMergedDisplayDepositInflowEventsForAccount } from "./accountDeposits.js";
 import {
   listAccountMovementsForApi,
@@ -76,7 +78,7 @@ function closingsRows(accounts: readonly MemberAccount[], opts: ExportOptions, w
 function plRows(accounts: readonly MemberAccount[], opts: ExportOptions, withAccount: boolean): SheetRow[] {
   const rows: SheetRow[] = [];
   for (const a of accounts) {
-    const perf = monthlyPerfForAccountId(a.account_id, opts.unit);
+    const perf = monthlyPerfForAccountDisplay(a.account_id, opts.unit);
     if (!perf) continue;
     for (const m of [...perf.monthly].reverse()) {
       if (!monthInRange(m.as_of_date, opts)) continue;

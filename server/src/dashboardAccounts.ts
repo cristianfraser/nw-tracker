@@ -1,7 +1,7 @@
 import { markJsonResponseCacheable } from "./jsonResponse.js";
 import { noteSyncDimmingRead } from "./cacheDependencies.js";
 import { DASHBOARD_PAGE_BUNDLE_PREFIX, getAggregationCached, invalidateDashboardPageBundle } from "./aggregationCache.js";
-import { chainedGroupPctResolver, fillBlankAccountRowPcts } from "./blankPctDailyChain.js";
+import { chainedGroupPctResolver, withDailyChainedAccountRowPcts } from "./periodPctDailyChain.js";
 import { NOTE_STOCKS_LEGACY, type DashboardAccountStats } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountBucketKindSlug, isLiabilityAccountId } from "./accountBucket.js";
@@ -554,10 +554,10 @@ function buildDashboardAccountRowFor(
   };
   const row = baseRow as DashboardAccountStats;
   const withPcts = { ...row, ...dashboardRowPeriodPcts(row, includeUsd) };
-  // A position bought and sold inside a period has no capital base for the one-step rule:
-  // its blank % reads the period's daily-chained return instead (see blankPctDailyChain.ts).
-  // Row by row: each row's fill reads only that row and its own account's daily series.
-  return fillBlankAccountRowPcts([withPcts], includeUsd, isLiabilityAccountId)[0]!;
+  // Every period % is the account's daily returns compounded (periodPctDailyChain.ts); the
+  // one-step Total stays as `pct_total_on_deposits_*`. Row by row: each reads only its own
+  // account's daily series.
+  return withDailyChainedAccountRowPcts([withPcts], includeUsd, isLiabilityAccountId)[0]!;
 }
 
 /**
@@ -613,11 +613,12 @@ async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
   if (!navRoot) throw new Error("nav snapshot: net_worth nav tree missing");
   const liabilitiesRoot = getLiabilitiesNavRootNode();
   if (!liabilitiesRoot) throw new Error("nav snapshot: liabilities nav tree missing");
+  const chainedGroupPct = chainedGroupPctResolver(rowsBuilt, includeUsd, isLiabilityAccountId);
   const card_metrics_by_slug = buildNavCardMetricsBySlug({
     navRoots: [navRoot, liabilitiesRoot],
     rows: rowsBuilt,
     bucketTotals: nw_bucket_totals,
-    chainedGroupPct: chainedGroupPctResolver(rowsBuilt, includeUsd, isLiabilityAccountId),
+    chainedGroupPct,
   });
   return {
     accounts: clientAccounts,
@@ -625,7 +626,7 @@ async function buildDashboardNavSnapshotUncached(includeUsd: boolean) {
     dashboard_layout,
     nw_bucket_totals,
     card_metrics_by_slug,
-    ...buildNavValueMapPayload(rowsBuilt, includeUsd),
+    ...buildNavValueMapPayload(rowsBuilt, includeUsd, chainedGroupPct),
     chart_shape: getDashboardChartShape(),
   };
 }

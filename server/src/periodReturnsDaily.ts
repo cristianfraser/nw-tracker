@@ -1,6 +1,7 @@
 import { monthEndUtcYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { addMonths, annualize, monthSpanInclusive, type PeriodReturnsPayload } from "./periodReturns.js";
+import { chainDailyPct } from "./periodPctDailyChain.js";
 
 /**
  * The Rentabilidad month windows (MTD, YTD, 1A, 3A, 5A, TOTAL) chained from DAILY returns: each
@@ -9,8 +10,10 @@ import { addMonths, annualize, monthSpanInclusive, type PeriodReturnsPayload } f
  * deposits as if they arrived on its first day, which misstates a month with large mid-month
  * flows (Acciones: 7,6% monthly vs 12,6% daily over its history). A day without a return (nothing
  * held) is flat; a window with none at all is null. The pesos (`nominal_pl`) and the window
- * bounds stay the monthly ones; 1D/1W are daily already and are left alone. Annualized on the
- * same windows as before (more than 12 calendar months). Pure.
+ * bounds stay the monthly ones. The 1D/1W cells (`window_start_date`, from
+ * `withShortHorizonCells`, so apply this after it) compound the days after their anchor date
+ * too: 1D is the last day's return, 1W the last seven compounded. Annualized on the same
+ * windows as before (more than 12 calendar months). Pure; one rule with `periodPctDailyChain.ts`.
  */
 export function withDailyChainedReturns(
   payload: PeriodReturnsPayload | null,
@@ -22,17 +25,12 @@ export function withDailyChainedReturns(
   return {
     ...payload,
     periods: payload.periods.map((cell) => {
-      if (cell.window_start_date || !cell.window_start_month) return cell;
-      const startYmd = monthEndUtcYmd(addMonths(cell.window_start_month, -1));
-      let prod = 1;
-      let any = false;
-      for (const p of points) {
-        if (p.as_of_date <= startYmd || p.as_of_date > todayYmd) continue;
-        if (p.pct == null || !Number.isFinite(p.pct)) continue;
-        prod *= 1 + p.pct;
-        any = true;
+      if (cell.window_start_date) {
+        return { ...cell, pct: chainDailyPct(points, cell.window_start_date, todayYmd) };
       }
-      const pct = any ? prod - 1 : null;
+      if (!cell.window_start_month) return cell;
+      const startYmd = monthEndUtcYmd(addMonths(cell.window_start_month, -1));
+      const pct = chainDailyPct(points, startYmd, todayYmd);
       return {
         ...cell,
         pct,

@@ -60,7 +60,14 @@ function zeroInversionesPerf(unit: DisplayUnit, monthEnds: string[]): Inversione
       deposits_retirement: 0,
       deposits_brokerage: 0,
       deposits_inversiones: 0,
+      // No return is known while loading: a gap, not a zero.
+      pct_retirement: null,
+      pct_brokerage: null,
+      pct_combined: null,
+      ytd_pct: null,
+      accumulated_pct: null,
     })),
+    yearly_pct: [],
   };
 }
 

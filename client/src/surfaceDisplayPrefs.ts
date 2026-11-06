@@ -32,6 +32,8 @@ export type StoredSurfacePrefs = {
   view?: SurfaceCompositionView;
   /** P/L combo charts with a cumulative area: this year's running sum or the full-history one. */
   area?: SurfaceAreaMode;
+  /** P/L combo charts that can show returns instead of money: `true` = the % view. */
+  percent?: boolean;
 };
 
 export type SurfaceCompositionView = "composition" | "map";
@@ -70,6 +72,7 @@ export function parseStoredSurfacePrefs(raw: string | null): StoredSurfacePrefs 
   if (typeof rec.benchmark === "string" && rec.benchmark !== "") out.benchmark = rec.benchmark;
   if (rec.view === "composition" || rec.view === "map") out.view = rec.view;
   if (rec.area === "ytd" || rec.area === "total") out.area = rec.area;
+  if (typeof rec.percent === "boolean") out.percent = rec.percent;
   return out;
 }
 
@@ -183,6 +186,34 @@ export function useSurfaceBenchmark(
   );
 
   return { benchmark: stored.benchmark ?? defaultBenchmark, setBenchmark };
+}
+
+/**
+ * Money or % view of a return combo (`<pageKey>.perf`-style surface). Default money (`false`).
+ */
+export function useSurfacePercentMode(surfaceId: string): {
+  percent: boolean;
+  setPercent: (on: boolean) => void;
+} {
+  const [state, setState] = useState(() => ({
+    surfaceId,
+    stored: readStoredSurfacePrefs(surfaceId),
+  }));
+
+  let stored = state.stored;
+  if (state.surfaceId !== surfaceId) {
+    stored = readStoredSurfacePrefs(surfaceId);
+    setState({ surfaceId, stored });
+  }
+
+  const setPercent = useCallback(
+    (on: boolean) => {
+      setState({ surfaceId, stored: writeStoredSurfacePref(surfaceId, { percent: on }) });
+    },
+    [surfaceId]
+  );
+
+  return { percent: stored.percent ?? false, setPercent };
 }
 
 /**

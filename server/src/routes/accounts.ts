@@ -19,7 +19,7 @@ import { updateAccountColorRgb, updateLiabilityGroupColorRgb, updatePortfolioGro
 import { updateAccountExcludeFromGroupTotals } from "../accountExcludeFromGroupTotals.js";
 import { db } from "../db.js";
 import { listAccountsForGroupTab, type TsUnit } from "../valuationTimeseries.js";
-import { monthlyPerfForAccountId } from "../groupMonthlyPerfConsolidation.js";
+import { monthlyPerfForAccountDisplay } from "../detalleDailyChainedPct.js";
 import { listPortfolioGroupAccountsForApi } from "../portfolioGroupAccountsApi.js";
 import { cachedAccountDetailBundle } from "../accountDetailBundle.js";
 import { HeavyWork, timeHeavy, timeHeavyAsync } from "../heavyWork.js";
@@ -295,7 +295,7 @@ app.get("/api/accounts/:id/detail-bundle", asyncHandler(async (req, res) => {
   res.json(payload);
 }));
 
-/** The account's monthly performance rows (`monthlyPerfForAccountId`, the series its dashboard card sums; not persisted). */
+/** The account's monthly performance rows (`monthlyPerfForAccountDisplay`: the series its dashboard card sums, each month's % compounded from the daily returns; not persisted). */
 app.get("/api/accounts/:id/performance-monthly", (req, res) => {
   const id = accountIdFromReq(req);
   if (!Number.isFinite(id) || id <= 0) {
@@ -304,7 +304,7 @@ app.get("/api/accounts/:id/performance-monthly", (req, res) => {
   }
   const includeUsd = req.query.include_usd === "1" || req.query.include_usd === "true";
   const unit: TsUnit = includeUsd ? "usd" : "clp";
-  const payload = monthlyPerfForAccountId(id, unit);
+  const payload = monthlyPerfForAccountDisplay(id, unit);
   if (!payload) {
     res.status(404).json({ error: "account not found" });
     return;
