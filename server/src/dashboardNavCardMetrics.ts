@@ -21,7 +21,7 @@ import {
   resolveDashboardBucketFromNavNode as resolveDashboardBucketSlugFromNavNode,
 } from "./groupChartBuckets.js";
 import type { NavTreeNodeDto } from "./navTree.js";
-import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow, ZERO_CLOSE_EPS } from "./periodReturns.js";
+import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 export type CardMetricsPeriod = "day" | "month" | "year";
@@ -45,7 +45,13 @@ export type NavCardMetricsVariantDto = {
 };
 
 /** A flow-adjusted % in both units (null = no capital base, or the unit's legs are missing). */
-export type NavCardPctDto = { clp: number | null; usd: number | null };
+export type NavCardPctDto = {
+  clp: number | null;
+  usd: number | null;
+  /** Total cell only: the one-step P/L acumulado ÷ net deposits beside the compounded Total. */
+  on_deposits_clp?: number | null;
+  on_deposits_usd?: number | null;
+};
 
 /** A balance in both units (usd null = no member carries a dollar value in this payload). */
 export type NavCardAmountDto = { clp: number; usd: number | null };
@@ -576,10 +582,8 @@ export function liquidatedRowsForNode(
       ...sumRowValues(metricsRows),
       fx_missing: metricsRows.some((r) => r.fx_missing === true),
     },
-    row_pct: fillBlankGroupPct(
+    row_pct: withChainedGroupPct(
       rowPctForRows(metricsRows),
-      metrics,
-      metricsRows,
       { kind: "liquidated", parentSlug: node.slug, accountIds },
       chainedGroupPct
     ),
@@ -689,74 +693,50 @@ export type NavCardMetricsBuildInput = {
   /** The dashboard bucket totals the payload carries: a bucket node's balance reads them. */
   bucketTotals: NavCardBucketTotals;
   /**
-   * Daily-chained % for a group cell the one-step rule leaves blank (a position bought and
-   * sold inside the period: see `blankPctDailyChain.ts`) — the group's own daily series, or
-   * the series over a page's liquidated rows. Absent (tests, pure callers): left blank.
+   * A group's period % compounded from its daily returns (`periodPctDailyChain.ts`) — the
+   * group's own daily series, or the series over a page's liquidated rows. Absent (tests, pure
+   * callers): the one-step cells stay.
    */
   chainedGroupPct?: ChainedGroupPct;
 };
 
 export type ChainedGroupScope =
   | { kind: "group"; slug: string }
-  | { kind: "liquidated"; parentSlug: string; accountIds: readonly number[] };
+  | { kind: "liquidated"; parentSlug: string; accountIds: readonly number[] }
+  | { kind: "account"; accountId: number };
 
+/** `undefined`: the scope keeps its one-step cell (liabilities only). */
 export type ChainedGroupPct = (
   scope: ChainedGroupScope,
   period: CardMetricsPeriod | "total",
   unit: TsUnit
-) => number | null;
-
-/** Σ value of `rows` at the period's close and at its start (null start for Total). */
-function scopeEnds(
-  rows: readonly CardMetricsAccountRow[],
-  period: CardMetricsPeriod | "total",
-  unit: TsUnit
-): { close: number; prior: number | null } {
-  let close = 0;
-  let prior = 0;
-  for (const r of rows) {
-    const c = unit === "clp" ? r.current_value_clp : r.current_value_usd;
-    if (c != null && Number.isFinite(c)) close += c;
-    if (period === "total") continue;
-    const p =
-      period === "day"
-        ? unit === "clp" ? r.prior_day_close_clp : r.prior_day_close_usd
-        : period === "month"
-          ? unit === "clp" ? r.prior_month_close_clp : r.prior_month_close_usd
-          : unit === "clp" ? r.prior_year_close_clp : r.prior_year_close_usd;
-    if (p != null && Number.isFinite(p)) prior += p;
-  }
-  return { close, prior: period === "total" ? null : prior };
-}
+) => number | null | undefined;
 
 /**
- * `pct` with each blank cell filled by `chained` when the period's P/L is material and the
- * scope is empty at both ends (bought and sold inside the period: no capital base for the
- * one-step rule). A blank for any other reason, and every answered cell, is left alone.
+ * `pct` with every cell read from `chained` — the scope's daily returns compounded over the
+ * period (`periodPctDailyChain.ts`). The one-step Total (P/L ÷ net deposits) moves to the total
+ * cell's `on_deposits_*`. A cell `chained` answers `undefined` for (a scope of liabilities only)
+ * keeps the one-step value; without a resolver (tests, pure callers) `pct` is returned as is.
  */
-export function fillBlankGroupPct(
+export function withChainedGroupPct(
   pct: NavCardMetricsDto["row_pct"],
-  metrics: NavCardMetricsVariantDto,
-  scopeRows: readonly CardMetricsAccountRow[],
   scope: ChainedGroupScope,
   chained: ChainedGroupPct | undefined
 ): NavCardMetricsDto["row_pct"] {
   if (!chained) return pct;
   const out = { ...pct };
   for (const period of ["day", "month", "year", "total"] as const) {
-    const cell = { ...pct[period] };
+    const cell: NavCardPctDto = { ...pct[period] };
+    let replaced = false;
     for (const unit of ["clp", "usd"] as const) {
-      if (cell[unit] != null) continue;
-      const m = period === "total" ? metrics.month : metrics[period];
-      const delta =
-        period === "total"
-          ? unit === "clp" ? m.delta_total_clp : m.delta_total_usd
-          : unit === "clp" ? m.delta_period_clp : m.delta_period_usd;
-      if (delta == null || !Number.isFinite(delta) || Math.abs(delta) < 0.5) continue;
-      const ends = scopeEnds(scopeRows, period, unit);
-      const eps = ZERO_CLOSE_EPS[unit];
-      if (Math.abs(ends.close) > eps || (ends.prior != null && Math.abs(ends.prior) > eps)) continue;
-      cell[unit] = chained(scope, period, unit);
+      const v = chained(scope, period, unit);
+      if (v === undefined) continue;
+      cell[unit] = v;
+      replaced = true;
+    }
+    if (period === "total" && replaced) {
+      cell.on_deposits_clp = pct.total.clp;
+      cell.on_deposits_usd = pct.total.usd;
     }
     out[period] = cell;
   }
@@ -870,14 +850,8 @@ export function buildNavCardMetricsBySlug(
         value: nodeValue(node, input),
         child,
         parent,
-        row_pct: fillBlankGroupPct(rowPctForRows(childRows), child, childRows, scope, input.chainedGroupPct),
-        parent_pct: fillBlankGroupPct(
-          rowPctForRows(parentRows),
-          parent,
-          parentRows,
-          scope,
-          input.chainedGroupPct
-        ),
+        row_pct: withChainedGroupPct(rowPctForRows(childRows), scope, input.chainedGroupPct),
+        parent_pct: withChainedGroupPct(rowPctForRows(parentRows), scope, input.chainedGroupPct),
         ...(liquidated ? { liquidated } : {}),
       };
     }

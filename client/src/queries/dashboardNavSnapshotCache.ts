@@ -59,9 +59,10 @@ export function hasDashboardNavSnapshotCache(unit: DisplayUnit): boolean {
  * value map breaks a proxied fund down into `holding` tiles; v13 adds `parent_pct` and the
  * `liquidated` table rows; v14 drops v13 snapshots saved from a server still on v12's
  * payload, with no `parent_pct`; v15 adds each node's server balance `value` and the
- * liquidated row's `value` — the client no longer sums a nav node's rows).
+ * liquidated row's `value` — the client no longer sums a nav node's rows); v16: the % cells are
+ * compounded daily returns and the total cell carries `on_deposits_*`, the old figure on net deposits).
  */
-const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v15";
+const STORAGE_PREFIX = "nw:dashboard-nav-snapshot-v16";
 const LEGACY_STORAGE_PREFIXES = [
   "nw:dashboard-nav-snapshot-v3",
   "nw:dashboard-nav-snapshot-v4",
@@ -75,6 +76,7 @@ const LEGACY_STORAGE_PREFIXES = [
   "nw:dashboard-nav-snapshot-v12",
   "nw:dashboard-nav-snapshot-v13",
   "nw:dashboard-nav-snapshot-v14",
+  "nw:dashboard-nav-snapshot-v15",
 ];
 
 /** Strip full dashboard totals to nav-snapshot bucket fields (server canonical card headers). */

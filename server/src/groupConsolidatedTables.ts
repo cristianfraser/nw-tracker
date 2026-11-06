@@ -15,6 +15,7 @@ import { groupHasPeriodReturns } from "./portfolioGroupTree.js";
 import { listAccountsForGroupTab, type GroupTabAccountRow } from "./valuationTimeseries.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 import { buildFlowsOverviewPayload } from "./flowsOverview.js";
+import { withGroupDailyChainedMonthPct } from "./detalleDailyChainedPct.js";
 import type { CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
 
 export type { ConsolidatedMonthlyPerfRow } from "./groupMonthlyPerfConsolidation.js";
@@ -56,12 +57,16 @@ export function getGroupConsolidatedTables(
 ): GroupConsolidatedTablesResponse {
   const rows = listAccountsForGroupTab(groupSlug, tabSubgroup);
   const account_monthly = getGroupConsolidationAccountMonthly(rows, groupSlug, unit);
-  const consolidated_monthly =
+  const consolidated_monthly = withGroupDailyChainedMonthPct(
+    groupSlug,
+    unit,
     groupSlug === "net_worth"
       ? buildNetWorthConsolidatedMonthly(unit)
       : groupSlug === "inversiones" && tabSubgroup == null
         ? buildInversionesConsolidatedMonthly(unit)
-        : groupConsolidatedMonthlyRaw(rows, groupSlug, unit);
+        : groupConsolidatedMonthlyRaw(rows, groupSlug, unit),
+    tabSubgroup
+  );
 
   const period_returns = groupPeriodReturnsFromMonthly(groupSlug, unit, consolidated_monthly, rows);
 
@@ -86,13 +91,9 @@ function groupPeriodReturnsFromMonthly(
   rows: readonly GroupTabAccountRow[]
 ): PeriodReturnsPayload | null {
   if (!groupHasPeriodReturns(groupSlug)) return null;
-  return withShortHorizonCells(
-    withDailyChainedReturns(
-      computePeriodReturns(consolidated_monthly, unit),
-      resolveGroupDailySeries(groupSlug, unit, 0)?.points ?? []
-    ),
-    rows,
-    unit
+  return withDailyChainedReturns(
+    withShortHorizonCells(computePeriodReturns(consolidated_monthly, unit), rows, unit),
+    resolveGroupDailySeries(groupSlug, unit, 0)?.points ?? []
   );
 }
 
@@ -111,7 +112,11 @@ export function getGroupPeriodReturns(
   groupSlug: string,
   unit: TsUnit = "clp"
 ): GroupPeriodReturnsResponse & { consolidated_monthly: ConsolidatedMonthlyPerfRow[] } {
-  const consolidated_monthly = getGroupConsolidatedMonthlyRows(groupSlug, unit);
+  const consolidated_monthly = withGroupDailyChainedMonthPct(
+    groupSlug,
+    unit,
+    getGroupConsolidatedMonthlyRows(groupSlug, unit)
+  );
   const period_returns = groupPeriodReturnsFromMonthly(
     groupSlug,
     unit,
@@ -149,7 +154,12 @@ export function getGroupConsolidatedMonthlyPage(
   /** Net worth: the expense mode its income and expenses are counted in (the dashboard's). */
   installmentMode?: CcInstallmentGastosMode
 ): GroupConsolidatedMonthlyPageResponse {
-  const all = getGroupConsolidatedMonthlyRows(groupSlug, unit, tabSubgroup);
+  const all = withGroupDailyChainedMonthPct(
+    groupSlug,
+    unit,
+    getGroupConsolidatedMonthlyRows(groupSlug, unit, tabSubgroup),
+    tabSubgroup
+  );
   const rows = period === "year" ? rollupMonthlyPerfYearly(all) : all;
   const shown =
     groupSlug === "net_worth" && installmentMode != null && unit !== "uf"

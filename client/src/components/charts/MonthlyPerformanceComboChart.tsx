@@ -3,6 +3,7 @@ import { useMemo, type ReactNode } from "react";
 import { lightenStrokeForAccumulated } from "../../chartColors";
 import { densifyRecordsByCalendarPeriod } from "../../chartDensifyTimeSeries";
 import { clipPointsToTimeRange, type TimeRange } from "../../timeRange";
+import { formatPct } from "../../format";
 import { seriesWithWindowData } from "../../chartSeriesWindowPresence";
 import { ChartPanelTitleRow } from "./ChartPanelTitleRow";
 import { ChartEmptyState } from "./ChartEmptyState";
@@ -18,6 +19,7 @@ import {
   formatTooltipValue,
   minMaxForKeys,
   moneyYAxisProps,
+  percentYAxisProps,
   yAxisWidthForTicks,
   resolvePeriodXAxis,
   type ChartDisplayUnit,
@@ -204,6 +206,7 @@ export function MonthlyPerformanceComboChart({
   timeRange: timeRangeProp,
   controls,
   loading,
+  valueFormat = "money",
 }: {
   title: string;
   titleAs?: "h2" | "h3";
@@ -228,8 +231,14 @@ export function MonthlyPerformanceComboChart({
    * draws an empty chart box instead of the «no monthly P/L» copy.
    */
   loading?: boolean;
+  /**
+   * `money` (default) formats values in `displayUnit`. `percent` takes fraction values (0.05 = 5%)
+   * and shows ticks and tooltips as percents; a missing period is a gap, never a zero.
+   */
+  valueFormat?: "money" | "percent";
 }) {
   const compactAxis = useIsNarrowViewport();
+  const isPercent = valueFormat === "percent";
   const timeRange = timeRangeProp ?? "total";
 
   // Day mode arrives server-windowed to the range (like the daily valuation charts), so the
@@ -270,9 +279,9 @@ export function MonthlyPerformanceComboChart({
       densifyRecordsByCalendarPeriod(rangedPoints, {
         granularity: xAxisGranularity,
         dateKey: "as_of_date",
-        fillMissing: { zeroKeys: visibleBarSeries.map((b) => b.dataKey) },
+        fillMissing: { zeroKeys: isPercent ? [] : visibleBarSeries.map((b) => b.dataKey) },
       }),
-    [rangedPoints, xAxisGranularity, visibleBarSeries]
+    [rangedPoints, xAxisGranularity, visibleBarSeries, isPercent]
   );
 
   const hasStacks = visibleBarSeries.some((b) => b.stackId);
@@ -306,6 +315,14 @@ export function MonthlyPerformanceComboChart({
     () => pairAlternatingYearAreaFills(areaFill ?? "rgba(148, 163, 184, 0.22)"),
     [areaFill]
   );
+
+  // The gutter and the tick labels of the value axis: money in the display unit, or percents.
+  const valueAxis = isPercent
+    ? percentYAxisProps(yScale.ticks)
+    : moneyYAxisProps(displayUnit, compactAxis, yScale.ticks);
+  const valueGutter = isPercent
+    ? percentYAxisProps(yScale.ticks).width
+    : yAxisWidthForTicks(yScale.ticks, displayUnit, compactAxis);
 
   if (!points.length) {
     return (
@@ -346,10 +363,10 @@ export function MonthlyPerformanceComboChart({
           barGroup={{
             count: barSlotCount,
             maxBarSize: BAR_MAX_SIZE,
-            yAxisWidth: yAxisWidthForTicks(yScale.ticks, displayUnit, compactAxis),
+            yAxisWidth: valueGutter,
           }}
           tooltip={{
-            formatValue: (v) => formatTooltipValue(v, displayUnit),
+            formatValue: (v) => (isPercent ? formatPct(v * 100) : formatTooltipValue(v, displayUnit)),
             formatLabel: (d) => xAxis.formatTooltipTitle(String(d)),
             mapPayload: (payload) => sortBySeriesRank(mergeAreaStripes(payload), seriesRank),
             cursor: true,
@@ -367,11 +384,7 @@ export function MonthlyPerformanceComboChart({
               tickLine={{ stroke: AXIS_LINE_STROKE }}
               tickFormatter={(d: string) => xAxis.formatTick(String(d))}
             />
-            <YAxis
-              domain={yScale.domain}
-              ticks={yScale.ticks}
-              {...moneyYAxisProps(displayUnit, compactAxis, yScale.ticks)}
-            />
+            <YAxis domain={yScale.domain} ticks={yScale.ticks} {...valueAxis} />
             <Legend
               itemSorter={null}
               wrapperStyle={{ fontSize: 12, color: "var(--muted, #94a3b8)", paddingTop: 8 }}

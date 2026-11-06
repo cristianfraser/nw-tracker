@@ -127,12 +127,31 @@ export interface InversionesPerfPoint {
   deposits_retirement: number;
   deposits_brokerage: number;
   deposits_inversiones: number;
+  /** Fractions (0.05 = 5%), null where the period has no return. Compounded by the server. */
+  pct_retirement: number | null;
+  pct_brokerage: number | null;
+  /** Inversiones' return over the period, its YTD and its all-time return through the point. */
+  pct_combined: number | null;
+  ytd_pct: number | null;
+  accumulated_pct: number | null;
+}
+
+/** One calendar year of the «%» view: each return is compounded from the months by the server. */
+export interface InversionesYearlyPctPoint {
+  as_of_date: string;
+  pct_retirement: number | null;
+  pct_brokerage: number | null;
+  pct_combined: number | null;
+  ytd_pct: number | null;
+  accumulated_pct: number | null;
 }
 
 /** The page bundle's `inversionesPerf`: one point per month of the inversiones consolidation. */
 export interface InversionesPerfMonthlyResponse {
   unit: "clp" | "usd" | "uf";
   points: InversionesPerfPoint[];
+  /** One point per calendar year (a year's % is not a sum of its months' %). */
+  yearly_pct: InversionesYearlyPctPoint[];
 }
 
 /** `GET /api/dashboard/inversiones-perf-daily` — the same combo, one point per day. */

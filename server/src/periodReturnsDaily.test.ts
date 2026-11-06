@@ -21,6 +21,7 @@ describe("withDailyChainedReturns", () => {
     first_month: "2024-01",
     periods: [
       cell("d1", { date: "2026-03-09" }),
+      cell("w1", { date: "2026-03-01" }),
       cell("mtd", { month: "2026-03" }),
       cell("total", { month: "2024-01" }),
     ],
@@ -30,24 +31,27 @@ describe("withDailyChainedReturns", () => {
     { as_of_date: "2024-01-15", pct: 0.1 },
     { as_of_date: "2026-02-28", pct: null }, // nothing held: flat
     { as_of_date: "2026-03-02", pct: 0.2 },
+    { as_of_date: "2026-03-10", pct: 0.05 },
     { as_of_date: "2026-03-11", pct: 5 }, // after today: ignored
   ];
 
-  it("chains the daily returns over each month window, keeping pesos and 1D/1W", () => {
+  it("chains the daily returns over every window, 1D/1W included, keeping the pesos", () => {
     const out = withDailyChainedReturns(payload, points, "2026-03-10")!;
-    const [d1, mtd, total] = out.periods;
-    expect(d1).toEqual(payload.periods[0]);
-    expect(mtd!.pct).toBeCloseTo(0.2);
+    const [d1, w1, mtd, total] = out.periods;
+    expect(d1!.pct).toBeCloseTo(0.05);
+    expect(d1!.nominal_pl).toBe(123);
+    expect(w1!.pct).toBeCloseTo(1.2 * 1.05 - 1);
+    expect(mtd!.pct).toBeCloseTo(1.2 * 1.05 - 1);
     expect(mtd!.nominal_pl).toBe(123);
-    expect(total!.pct).toBeCloseTo(1.1 * 1.2 - 1);
+    expect(total!.pct).toBeCloseTo(1.1 * 1.2 * 1.05 - 1);
     // 27 calendar months (2024-01 … 2026-03): annualized.
-    expect(total!.annualized_pct).toBeCloseTo(Math.pow(1.32, 12 / 27) - 1);
+    expect(total!.annualized_pct).toBeCloseTo(Math.pow(1.1 * 1.2 * 1.05, 12 / 27) - 1);
     expect(mtd!.annualized_pct).toBeNull();
   });
 
   it("a window with no daily return at all is null", () => {
     const out = withDailyChainedReturns(payload, [{ as_of_date: "2026-03-05", pct: null }], "2026-03-10")!;
-    expect(out.periods[1]!.pct).toBeNull();
+    expect(out.periods[2]!.pct).toBeNull();
   });
 });
 

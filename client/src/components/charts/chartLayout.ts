@@ -1,5 +1,5 @@
 import { DefaultZIndexes } from "recharts";
-import { formatClp, formatCompactMoney, formatUsd } from "../../format";
+import { formatClp, formatCompactMoney, formatPct, formatUsd } from "../../format";
 import { formatDayMonthShortLabel, formatMonthYearShortLabel } from "../../formatDateLabel";
 
 export type ChartDisplayUnit = "clp" | "usd";
@@ -61,6 +61,36 @@ function tickLabelWidthPx(label: string): number {
 export function yAxisWidthForTicks(ticks: readonly number[], unit: ChartDisplayUnit, compact = false): number {
   const widest = Math.max(0, ...ticks.map((v) => tickLabelWidthPx(formatAxisValue(v, unit, compact))));
   return Math.ceil(widest + Y_AXIS_TICK_SIZE_PX + Y_AXIS_TICK_MARGIN_PX);
+}
+
+/** Y-axis gutter for already-formatted labels: the widest label, plus the tick line and its gap. */
+export function yAxisWidthForLabels(labels: readonly string[]): number {
+  const widest = Math.max(0, ...labels.map((l) => tickLabelWidthPx(l)));
+  return Math.ceil(widest + Y_AXIS_TICK_SIZE_PX + Y_AXIS_TICK_MARGIN_PX);
+}
+
+/** Decimals of a percent tick label, from the tick step (fractions: 0.05 = 5%). */
+function percentTickFractionDigits(ticks: readonly number[]): 0 | 1 | 2 {
+  if (ticks.length < 2) return 1;
+  const stepPct = Math.abs(ticks[1] - ticks[0]) * 100;
+  if (stepPct >= 1) return 0;
+  return stepPct >= 0.1 ? 1 : 2;
+}
+
+/**
+ * Y axis of a return chart whose values are fractions (0.05 = 5%): the ticks are fractions from
+ * {@link buildNiceYAxis}, shown as percents. The percent counterpart of {@link moneyYAxisProps}.
+ */
+export function percentYAxisProps(ticks: readonly number[]) {
+  const digits = percentTickFractionDigits(ticks);
+  const label = (v: number) => formatPct(v * 100, digits);
+  return {
+    width: yAxisWidthForLabels(ticks.map(label)),
+    tick: CHART_TICK_STYLE,
+    axisLine: { stroke: AXIS_LINE_STROKE },
+    tickLine: { stroke: AXIS_LINE_STROKE },
+    tickFormatter: (v: number) => label(v),
+  } as const;
 }
 
 /**

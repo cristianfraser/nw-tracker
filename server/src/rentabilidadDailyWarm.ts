@@ -1,12 +1,13 @@
 import { whenNoApiRequestsInFlight } from "./apiRequestsInFlight.js";
 import { db } from "./db.js";
 import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
-import { groupHasPeriodReturns, isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
+import { isLiabilityAccountId } from "./accountBucket.js";
 
 /**
- * The full-history daily series every Rentabilidad table chains (`periodReturnsDaily.ts`) and the
- * own-portfolio benchmarks read: each investment group page, net worth (the home page) and each
- * investment account, in CLP
+ * The full-history daily series every Rentabilidad table chains (`periodReturnsDaily.ts`), the
+ * own-portfolio benchmarks read and every period % compounds (`periodPctDailyChain.ts`: the
+ * dashboard account rows and nav groups, the detalle tables): every portfolio group page, net
+ * worth (the home page) and every account that is not a liability, in CLP
  * and USD (the per-account marks are shared by both units, so USD adds only its own sums and
  * conversions). Each scope waits until no API request is in flight (`apiRequestsInFlight.ts`), so
  * requests run ahead of the warm instead of waiting behind it. A scope already cached
@@ -18,8 +19,7 @@ export async function warmRentabilidadDailySeries(): Promise<number> {
       .prepare(`SELECT slug FROM portfolio_groups WHERE group_kind IN ('bucket', 'nav_bucket') ORDER BY id`)
       .all() as { slug: string }[]
   )
-    .map((r) => r.slug)
-    .filter((slug) => groupHasPeriodReturns(slug));
+    .map((r) => r.slug);
   for (const slug of ["inversiones", "net_worth"]) if (!groups.includes(slug)) groups.push(slug);
   const accounts = (
     db
@@ -28,7 +28,7 @@ export async function warmRentabilidadDailySeries(): Promise<number> {
          FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id ORDER BY a.id`
       )
       .all() as { account_id: number; name: string | null; bucket_slug: string; import_key: string | null }[]
-  ).filter((a) => isInvestmentPerformanceAccount(a.account_id));
+  ).filter((a) => !isLiabilityAccountId(a.account_id));
 
   let scopes = 0;
   const yieldToRequests = () => whenNoApiRequestsInFlight();

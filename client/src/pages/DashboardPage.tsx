@@ -48,7 +48,12 @@ import { enrichNavTreeWithAllAccounts } from "../navAccountsTreeEnrich";
 import { DASHBOARD_COLD_STRIP } from "../coldPageShape";
 import { netWorthTableAccountsFromDash } from "../portfolioDashboardBuckets";
 import { clipMonthsThenRollup, timeRangeToDays } from "../timeRange";
-import { useSurfaceAreaMode, useSurfaceCompositionView, useSurfacePrefs } from "../surfaceDisplayPrefs";
+import {
+  useSurfaceAreaMode,
+  useSurfaceCompositionView,
+  useSurfacePercentMode,
+  useSurfacePrefs,
+} from "../surfaceDisplayPrefs";
 import { useHeldValueMap, ValueMapPanel, valueMapRootForPage } from "../components/charts/ValueMapPanel";
 import { SurfaceControls } from "../components/ui/SurfaceControls";
 import { DashboardFlowsChart, DashboardFlowsPeriods } from "../components/dashboard/DashboardFlowsSummary";
@@ -102,6 +107,7 @@ export function DashboardPage() {
   const overviewPrefs = useSurfacePrefs("home.overview", "day", "3y");
   const combosPrefs = useSurfacePrefs("home.combos", "month", "3y");
   const perfArea = useSurfaceAreaMode("home.perf");
+  const perfPercent = useSurfacePercentMode("home.perf");
   const allocationPrefs = useSurfacePrefs("home.proportional", "month", "total");
   const compositionView = useSurfaceCompositionView("home.proportional");
   const { data: sidebarNav, isPending: navPending, isFetching: navFetching } = useSidebarNav(); // convention-ok: nav refetch gates «not found» only, no dim
@@ -276,6 +282,13 @@ export function DashboardPage() {
     [inversionesPerf]
   );
 
+  // The «%» view's yearly rows: the server compounds each year's return, so the client only
+  // cuts them to the Rango (the chart does) and never rolls months up.
+  const yearlyPctPoints = useMemo(
+    (): ComboRow[] => (inversionesPerf?.yearly_pct ?? []).map((p) => ({ ...p })),
+    [inversionesPerf]
+  );
+
   const retirementBrokerageForCharts = useMemo(() => {
     if (!inversionesPerfPoints.length) return [];
     if (!isYearly) return inversionesPerfPoints;
@@ -390,9 +403,42 @@ export function DashboardPage() {
         />
         {t("dashboard.sections.areaTotalToggle")}
       </label>
+      <label className="surface-controls__label">
+        <input
+          type="checkbox"
+          checked={perfPercent.percent}
+          onChange={(e) => perfPercent.setPercent(e.target.checked)}
+        />
+        {t("dashboard.sections.percentToggle")}
+      </label>
       {combosControls}
     </span>
   );
+
+  // The «%» view: the same granularity, the server's return fields in place of the money ones.
+  const perfPctView = perfPercent.percent;
+  const perfChartPoints: ComboRow[] = perfPctView
+    ? combosIsDaily
+      ? (dailyRetirementBrokeragePoints ?? [])
+      : isYearly
+        ? yearlyPctPoints
+        : retirementBrokerageForCharts
+    : (dailyRetirementBrokeragePoints ?? retirementBrokerageForCharts);
+  const pctRetirementName = combosIsDaily
+    ? t("dashboard.percentMode.retirementDaily")
+    : isYearly
+      ? t("dashboard.percentMode.retirementYearly")
+      : t("dashboard.percentMode.retirementMonthly");
+  const pctBrokerageName = combosIsDaily
+    ? t("dashboard.percentMode.brokerageDaily")
+    : isYearly
+      ? t("dashboard.percentMode.brokerageYearly")
+      : t("dashboard.percentMode.brokerageMonthly");
+  const pctCombinedName = combosIsDaily
+    ? t("dashboard.percentMode.combinedDaily")
+    : isYearly
+      ? t("dashboard.percentMode.combinedYearly")
+      : t("dashboard.percentMode.combinedMonthly");
 
   const dashboardCharts = (
     <>
@@ -457,12 +503,17 @@ export function DashboardPage() {
               title={
                 isYearly ? t("dashboard.sections.perfChartTitleYearly") : t("dashboard.sections.perfChartTitleMonthly")
               }
-              points={dailyRetirementBrokeragePoints ?? retirementBrokerageForCharts}
+              points={perfChartPoints}
               displayUnit={displayUnit}
+              valueFormat={perfPctView ? "percent" : "money"}
               xAxisGranularity={combosXAxis}
               timeRange={combosPrefs.range}
               controls={perfControls}
-              barSeries={[
+              barSeries={perfPctView ? [
+                // Each class's own return, side by side (no stack, no deposit bars).
+                { dataKey: "pct_retirement", name: pctRetirementName, color: retirementColor },
+                { dataKey: "pct_brokerage", name: pctBrokerageName, color: brokerageColor },
+              ] : [
                 {
                   dataKey: "delta_retirement",
                   name: isYearly
@@ -498,14 +549,28 @@ export function DashboardPage() {
                 },
               ]}
               // The YTD area always shows; «Total acumulado» adds the all-time P/L as a line.
-              areaKey="ytd_combined"
+              areaKey={perfPctView ? "ytd_pct" : "ytd_combined"}
               areaName={
                 isYearly ? t("dashboard.sections.yearTotalCombined") : t("dashboard.sections.ytdCombined")
               }
               areaFill="rgba(148, 163, 184, 0.22)"
               areaStroke="#64748b"
               alternateYearAreaStripes
-              lineSeries={[
+              lineSeries={perfPctView ? [
+                ...(perfArea.area === "total"
+                  ? [
+                      {
+                        dataKey: "accumulated_pct",
+                        name: t("dashboard.percentMode.accumulated"),
+                        stroke: "#e2e8f0",
+                        strokeWidth: 2,
+                        strokeDasharray: "",
+                      },
+                    ]
+                  : []),
+                // The deposits line has no % counterpart: hidden in the % view.
+                { dataKey: "pct_combined", name: pctCombinedName, stroke: "#38bdf8" },
+              ] : [
                 ...(perfArea.area === "total"
                   ? [
                       {

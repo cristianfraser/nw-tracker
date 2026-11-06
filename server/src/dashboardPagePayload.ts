@@ -1,4 +1,4 @@
-import { chainedGroupPctResolver } from "./blankPctDailyChain.js";
+import { chainedGroupPctResolver } from "./periodPctDailyChain.js";
 import { isLiabilityAccountId } from "./accountBucket.js";
 import { buildDashboardAccountRows } from "./dashboardAccounts.js";
 import { getDashboardLayoutCards } from "./dashboardLayout.js";
@@ -86,11 +86,12 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
     if (!navRoot) throw new Error("dashboard payload: net_worth nav tree missing");
     const liabilitiesRoot = getLiabilitiesNavRootNode();
     if (!liabilitiesRoot) throw new Error("dashboard payload: liabilities nav tree missing");
+    const chainedGroupPct = chainedGroupPctResolver(rowsBuilt, includeUsd, isLiabilityAccountId);
     const card_metrics_by_slug = buildNavCardMetricsBySlug({
       navRoots: [navRoot, liabilitiesRoot],
       rows: rowsBuilt,
       bucketTotals,
-      chainedGroupPct: chainedGroupPctResolver(rowsBuilt, includeUsd, isLiabilityAccountId),
+      chainedGroupPct,
     });
     const liabilitiesClp = liabilitiesBreakdownClpAsOf(asOfToday);
     const liabilities_clp_aligned = liabilitiesClp.mortgage_clp + liabilitiesClp.credit_card_clp;
@@ -124,7 +125,7 @@ export async function buildDashboardPagePayload(includeUsd: boolean) {
       },
       dashboard_layout: layoutCards,
       card_metrics_by_slug,
-      ...buildNavValueMapPayload(rowsBuilt, includeUsd),
+      ...buildNavValueMapPayload(rowsBuilt, includeUsd, chainedGroupPct),
       allocation: [...byGroup.entries()]
         .filter(([slug]) => DASHBOARD_ASSET_METRIC_GROUPS.has(slug))
         .map(([slug, v]) => ({

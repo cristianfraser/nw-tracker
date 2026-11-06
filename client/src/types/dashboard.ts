@@ -61,6 +61,9 @@ export interface DashboardAccountRow {
   pct_month_usd?: number | null;
   pct_year_usd?: number | null;
   pct_total_usd?: number | null;
+  /** The old all-time figure: P/L acumulado ÷ net deposits (`pct_total_*` is the compounded return). */
+  pct_total_on_deposits_clp?: number | null;
+  pct_total_on_deposits_usd?: number | null;
 }
 
 export interface DashboardLinkedBalanceRow {
@@ -147,6 +150,19 @@ export interface NavCardValueDto {
  * `child` = the node as a strip detail card; `parent` = the node as its page's compact card.
  * The client renders these — it never re-sums account rows for a group's balance or metrics.
  */
+/**
+ * One period's flow-adjusted return cell per unit. Only the `total` cell carries the
+ * `on_deposits_*` figure (P/L acumulado ÷ net deposits, the pre-compounding framing).
+ */
+export interface NavPctCell {
+  clp: number | null;
+  usd: number | null;
+  on_deposits_clp?: number | null;
+  on_deposits_usd?: number | null;
+}
+
+export type NavPctByPeriod = Record<"day" | "month" | "year" | "total", NavPctCell>;
+
 export interface NavCardMetricsDto {
   value: NavCardValueDto;
   child: NavCardMetricsVariantDto;
@@ -155,9 +171,9 @@ export interface NavCardMetricsDto {
    * The node's flow-adjusted return as one row of its parent's accounts table (a bucket
    * listed beside accounts — Portafolio IPSA among Acciones' stocks), per period and unit.
    */
-  row_pct: Record<"day" | "month" | "year" | "total", { clp: number | null; usd: number | null }>;
+  row_pct: NavPctByPeriod;
   /** The node's own return over the `parent` scope — its page's «Total» row. */
-  parent_pct: Record<"day" | "month" | "year" | "total", { clp: number | null; usd: number | null }>;
+  parent_pct: NavPctByPeriod;
   /** The liquidated rows of the node's accounts table, grouped as one row (absent: none). */
   liquidated?: NavLiquidatedRowsDto;
 }
@@ -171,7 +187,7 @@ export interface NavLiquidatedRowsDto {
   metrics: NavCardMetricsVariantDto;
   /** Σ balance over the same rows. */
   value: NavCardAmountDto & { fx_missing: boolean };
-  row_pct: Record<"day" | "month" | "year" | "total", { clp: number | null; usd: number | null }>;
+  row_pct: NavPctByPeriod;
 }
 
 /** One tile / frame of the server-built value map (`value_map`). Mirror of server `NavValueMapNodeDto`. */
