@@ -257,6 +257,23 @@ export function planFintualEmailMovement(
       }
       return { ...buyBase, create_account: { ticker, bucket_slug: bucket } };
     }
+    case "sell": {
+      // «Vendiste US $X dólares de N acciones de <fund>»: the shares leave the holding and the
+      // proceeds land in the Fintual dollar wallet (the mirror of the buy).
+      const ticker = event.ticker ?? (event.fund_name ? tickerFromFundName(event.fund_name) : null);
+      if (!ticker) {
+        return {
+          ...base,
+          requires_manual: `cannot tell which holding "${event.subject}" sold — add its fund name (${event.fund_name ?? "none stated"}) to FUND_NAME_TICKERS`,
+        };
+      }
+      const sellBase = { ...base, to_account_id: fintualUsdAccountId(), units_delta: event.units, flow_kind: "stock_sell" };
+      const holders = accountsWithEquityTicker(ticker);
+      if (holders.length !== 1) {
+        return { ...sellBase, requires_manual: `ticker ${ticker} matches ${holders.length} accounts — cannot sell from it` };
+      }
+      return { ...sellBase, from_account_id: holders[0]! };
+    }
     case "deposit": {
       // «Recibimos tu depósito»: a wire from checking landed in the Fintual balance, to be
       // invested from there (or returned after 7 days). Written from the mail, like Racional's

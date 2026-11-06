@@ -68,6 +68,23 @@ describe("brokerEmail", () => {
     expect(buy.units).toBe("0.002152366");
   });
 
+  it("parses a Fintual sale («Vendiste US $X dólares de N acciones de <fund>»)", () => {
+    const sell = classifyBrokerEmail({
+      sender: FINTUAL,
+      subject: "Vendiste US $1.963,51 dólares de 28,438160398 acciones de Cameco Corporation",
+      date: "2026-11-06T15:00:00Z",
+    });
+    expect(sell).toMatchObject({
+      kind: "sell",
+      is_transaction: true,
+      is_complete: true,
+      amount: 1963.51,
+      currency: "usd",
+      fund_name: "Cameco Corporation",
+      units: "28.438160398",
+    });
+  });
+
   it("parses the 2026-09-17 LIN dividend whose subject dropped the amount (it moved to the body)", () => {
     const dividend = classifyBrokerEmail({
       sender: FINTUAL,
