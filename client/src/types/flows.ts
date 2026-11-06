@@ -281,6 +281,14 @@ export interface PaymentReceipt {
     ends_on: string | null;
     venue: string | null;
   } | null;
+  /** A municipality's vehicle permit (permiso de circulación); null for anything else. */
+  vehicle_permit: {
+    permit_year: number;
+    plate: string;
+    cuota: number;
+    cuotas: number;
+    expires_on: string;
+  } | null;
 }
 
 /** Server `ExpenseLinkLabel` (`expenseDisplayNames.ts`): the short label of what a line is linked to. */

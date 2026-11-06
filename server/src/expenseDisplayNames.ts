@@ -135,7 +135,7 @@ function nightsBetween(checkIn: string, checkOut: string): number | null {
 
 /** The short label of a receipt's payee; null when it names nobody. */
 export function receiptLabel(
-  r: Pick<PaymentReceiptDto, "processor" | "payee" | "stay"> & Partial<Pick<PaymentReceiptDto, "event" | "concept">>,
+  r: Pick<PaymentReceiptDto, "processor" | "payee" | "stay"> & Partial<Pick<PaymentReceiptDto, "event" | "concept" | "vehicle_permit">>,
   catalog: VendorCatalog,
   brands: readonly string[]
 ): { text: string; nights: number | null; event_on?: string } | null {
@@ -143,6 +143,8 @@ export function receiptLabel(
     return { text: r.stay.city, nights: nightsBetween(r.stay.check_in, r.stay.check_out) };
   }
   if (r.event) return { text: r.event.name, nights: null, event_on: r.event.starts_on };
+  // A municipality's vehicle permit: what was paid («Permiso de circulación 2026 · 1ª cuota»).
+  if (r.vehicle_permit && r.concept) return { text: r.concept, nights: null };
   // A ticket vendor's receipt for something that is no event (parking bought apart): what it was.
   if (TICKET_PROCESSORS.has(r.processor) && r.concept) return { text: r.concept, nights: null };
   if (r.processor === "app_store") return { text: appStoreLabel(r.payee, catalog), nights: null };
@@ -325,7 +327,8 @@ function cutMerchantListed(raw: string, accountId: number, ctx: DisplayNameConte
 
 /** The names one line shows. */
 export function expenseLineDisplayNames(
-  line: Pick<FlowCcExpenseLineRow, "source" | "merchant" | "account_id" | "payment_receipt" | "transfer_counterparty">,
+  line: Pick<FlowCcExpenseLineRow, "source" | "merchant" | "account_id" | "payment_receipt" | "transfer_counterparty"> &
+    Partial<Pick<FlowCcExpenseLineRow, "recurring_payment">>,
   ctx: DisplayNameContext
 ): ExpenseDisplayNames {
   const out: ExpenseDisplayNames = {};
@@ -365,7 +368,7 @@ export function expenseLineDisplayNames(
         inline: !contains(shown, label.text),
       };
       // A stay's label is its city, a ticket's its event: no rule per city or per event.
-      if (label.nights == null && !LODGING_PROCESSORS.has(r.processor) && !TICKET_PROCESSORS.has(r.processor)) {
+      if (label.nights == null && !LODGING_PROCESSORS.has(r.processor) && !TICKET_PROCESSORS.has(r.processor) && !r.vehicle_permit) {
         const app = r.processor === "app_store";
         const key = linkKeyForName(label.text);
         if (key) {
@@ -385,6 +388,10 @@ export function expenseLineDisplayNames(
       const key = cp.rut ? normalizeRut(cp.rut) : `N:${foldVendorName(cp.name ?? cpLabel)}`;
       out.category_link = { kind: "recipient", key, label: cpLabel, specific_default: true };
     }
+  } else if (line.recurring_payment) {
+    // A charge only a declared payment's day and amount identify (a pending listing under another name).
+    const name = line.recurring_payment.name;
+    out.link_label = { arrow: "≈", text: name, nights: null, inline: !contains(shown, name) };
   }
   return out;
 }

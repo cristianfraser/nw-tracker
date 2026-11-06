@@ -15,6 +15,7 @@ import { UBER_PROCESSORS } from "./uberMails.js";
 import { DESPEGAR_PROCESSORS } from "./despegarMails.js";
 import { STAY_PROCESSORS } from "./stayMails.js";
 import { TICKET_PROCESSORS } from "./ticketMails.js";
+import { VEHICLE_PERMIT_PROCESSORS } from "./vehiclePermitMails.js";
 
 export type PaymentProcessor = {
   slug: string;
@@ -24,6 +25,8 @@ export type PaymentProcessor = {
   gmraw?: string;
   /** The subjects that may be a receipt (envelope filter). */
   wantSubject: (subject: string) => boolean;
+  /** PDF attachments to stage with the mail (the receipt is in the PDF), by file name. */
+  pdfAttachment?: (filename: string) => boolean;
   decode: (mail: ArchivedMail) => ProcessorReceipt | null;
 };
 
@@ -723,6 +726,7 @@ export const PAYMENT_PROCESSORS: readonly PaymentProcessor[] = [
   ...DESPEGAR_PROCESSORS,
   ...STAY_PROCESSORS,
   ...TICKET_PROCESSORS,
+  ...VEHICLE_PERMIT_PROCESSORS,
 ];
 
 export function decodePaymentReceiptMail(processor: PaymentProcessor, mail: ArchivedMail): ProcessorReceipt | null {

@@ -159,7 +159,7 @@ export function UpcomingPaymentsPanel({ data: live, loading: liveLoading }: { da
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   // Pesos in both units, so one stored entry; until the bundle answers, the last stored one.
-  const { value: data, cached } = usePanelCache("upcoming-v3", live, isUpcomingPayments);
+  const { value: data, cached } = usePanelCache("upcoming-v4", live, isUpcomingPayments);
   const loading = liveLoading && !cached;
   const allMonths = data?.months ?? [];
   const months = expanded ? allMonths : allMonths.slice(0, COLLAPSED_MONTHS);
