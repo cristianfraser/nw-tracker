@@ -308,6 +308,25 @@ export function payslipLineName(raw: string): string {
 }
 
 /**
+ * The name a pending listing of an automatic declared payment posts under: the vendor catalog's name
+ * for the entry's first pattern the line's own merchant does not carry («SEG AUTO SANTANDER» for the
+ * car insurance listed as «CONVENIO P.A.T.»). Null when the entry has no such pattern, or none the
+ * catalog knows — the caller then falls back to the entry's own name.
+ */
+function recurringPostedListed(
+  merchant: string,
+  patterns: readonly string[],
+  ctx: DisplayNameContext
+): { listed: string | null; hasOther: boolean } {
+  const others = patterns.filter((p) => !contains(merchant, p));
+  for (const p of others) {
+    const listed = catalogMerchant(p, ctx.catalog).listed;
+    if (listed) return { listed, hasOther: true };
+  }
+  return { listed: null, hasOther: others.length > 0 };
+}
+
+/**
  * A card merchant the bank's listing cut («PAYU *UBER EA»: the web table and the feed's pending
  * rows cut at 15 characters, and the bank collapses spaces before sending it, so the stored length
  * says nothing) shows as the longer merchant it starts — when the same account's lines print one —
@@ -337,6 +356,8 @@ export function expenseLineDisplayNames(
   const cpLabel = cp ? counterpartyLabel(cp, ctx.catalog, ctx.counterparties) : null;
 
   let shown = raw;
+  // The catalog's name for the line's own merchant (null when it does not know it).
+  let ownListed: string | null = null;
   if (line.source === "checking" && cp && cpLabel && cp.direction !== "own") {
     shown = cp.direction === "out" ? `Transf a ${cpLabel}` : `Transf. de ${cpLabel}`;
   } else if (line.source === "payslip" && raw) {
@@ -344,6 +365,7 @@ export function expenseLineDisplayNames(
   } else if (raw) {
     const { name, processor, listed, choices } = catalogMerchant(raw, ctx.catalog);
     const known = listed ?? (line.source === "cc" ? cutMerchantListed(raw, line.account_id, ctx) : null);
+    ownListed = known;
     shown = known ?? name;
     if (processor) out.merchant_processor = processor;
     if (choices) out.branch_choices = choices;
@@ -390,8 +412,17 @@ export function expenseLineDisplayNames(
     }
   } else if (line.recurring_payment) {
     // A charge only a declared payment's day and amount identify (a pending listing under another name).
-    const name = line.recurring_payment.name;
-    out.link_label = { arrow: "≈", text: name, nights: null, inline: !contains(shown, name) };
+    // The line shows the name the bank posts it under (the entry's other pattern; the entry's own name
+    // when the catalog knows none), with no link. A line whose own name the catalog knows, or that
+    // carries only the entry's patterns itself, keeps the «≈» link with the entry's name.
+    const { name, patterns } = line.recurring_payment;
+    const posted = raw && ownListed == null ? recurringPostedListed(raw, patterns, ctx) : null;
+    if (posted?.hasOther) {
+      shown = posted.listed ?? name;
+      out.display_merchant = shown;
+    } else {
+      out.link_label = { arrow: "≈", text: name, nights: null, inline: !contains(shown, name) };
+    }
   }
   return out;
 }

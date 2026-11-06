@@ -375,4 +375,35 @@ describe("expenseLineDisplayNames", () => {
     );
     expect(stay.category_link).toBeUndefined();
   });
+
+  it("a pending listing of an automatic declared payment shows the name the bank posts it under", () => {
+    // Its own name unknown to the catalog: the entry's other pattern, as the catalog names it, no link.
+    const vitest: DisplayNameContext = {
+      catalog: vendorCatalogFromEntries([seed("exact", "VITEST SEGURO", "Vitest Seguro"), seed("exact", "VITEST OTRO", "Vitest Otro")]),
+      counterparties: new Map(),
+      brands: [],
+      cardMerchantsByAccount: new Map(),
+    };
+    const entry = { id: 1, name: "Seguro auto", patterns: ["VITEST CONVENIO", "VITEST SEGURO"] };
+    const listing = { source: "cc" as const, merchant: "VITEST CONVENIO", account_id: 1, recurring_payment: entry };
+    expect(expenseLineDisplayNames(listing, vitest)).toEqual({ display_merchant: "Vitest Seguro" });
+    // The posted line itself: its own name is known, so it keeps the «≈» link with the entry's name.
+    expect(expenseLineDisplayNames({ ...listing, merchant: "VITEST SEGURO" }, vitest)).toEqual({
+      display_merchant: "Vitest Seguro",
+      link_label: { arrow: "≈", text: "Seguro auto", nights: null, inline: true },
+    });
+    // A line whose own name the catalog knows keeps the «≈» link, whatever the other pattern is.
+    expect(expenseLineDisplayNames({ ...listing, merchant: "VITEST OTRO" }, vitest)).toEqual({
+      display_merchant: "Vitest Otro",
+      link_label: { arrow: "≈", text: "Seguro auto", nights: null, inline: true },
+    });
+    // No other pattern the catalog knows: the entry's own name, no link repeating it.
+    const unknown = { ...listing, recurring_payment: { id: 1, name: "Seguro auto", patterns: ["VITEST CONVENIO", "VITEST SIN CATALOGO"] } };
+    expect(expenseLineDisplayNames(unknown, vitest)).toEqual({ display_merchant: "Seguro auto" });
+    // A single pattern only: the line is itself the posted name, so nothing is renamed.
+    const alone = { ...listing, recurring_payment: { id: 1, name: "Seguro auto", patterns: ["VITEST CONVENIO"] } };
+    expect(expenseLineDisplayNames(alone, vitest)).toEqual({
+      link_label: { arrow: "≈", text: "Seguro auto", nights: null, inline: true },
+    });
+  });
 });
