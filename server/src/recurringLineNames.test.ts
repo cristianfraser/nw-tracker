@@ -48,6 +48,9 @@ describe("withRecurringPaymentNames", () => {
       line(3, pendingOn, "VITEST PENDING", UNCLASSIFIED_CC_EXPENSE_SLUG, true, pesos + 5_000),
     ]);
     expect(out[1]).toMatchObject({ recurring_payment: { id: entryId, name: NAME }, category_slug: "transportation" });
+    // Listed before its due date (today the 4th, due the 6th), before the posted line exists.
+    const early = withRecurringPaymentNames([line(4, pendingOn, "VITEST PENDING", UNCLASSIFIED_CC_EXPENSE_SLUG, true)], addDays(pendingOn, 1));
+    expect(early[0]).toMatchObject({ recurring_payment: { id: entryId, name: NAME } });
     // Same name, another amount: some other charge.
     expect(out[2]!.recurring_payment).toBeUndefined();
     expect(out[2]!.category_slug).toBe(UNCLASSIFIED_CC_EXPENSE_SLUG);

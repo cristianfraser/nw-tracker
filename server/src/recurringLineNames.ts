@@ -8,7 +8,7 @@
  */
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { UNCLASSIFIED_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
-import { automaticRecurringMatchForLine, matchRecurringPayments, type RecurringLine } from "./recurringPaymentMatch.js";
+import { addDays, automaticRecurringMatchForLine, matchRecurringPayments, type RecurringLine } from "./recurringPaymentMatch.js";
 import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { ufProjector } from "./ufProjection.js";
 
@@ -27,10 +27,9 @@ type NamedLine = {
 
 const lineRef = (l: NamedLine) => `${l.source}|${l.statement_line_id}|${l.purchase_key ?? ""}`;
 
-export function withRecurringPaymentNames<L extends NamedLine>(lines: L[]): L[] {
+export function withRecurringPaymentNames<L extends NamedLine>(lines: L[], today: string = chileCalendarTodayYmd()): L[] {
   const entries = listRecurringPayments().filter((e) => !e.manual);
   if (entries.length === 0) return lines;
-  const today = chileCalendarTodayYmd();
   const uf = ufProjector();
   const candidates = lines.filter((l) => l.source === "cc" && l.amount_clp > 0 && l.purchase_on != null);
   const recurringLines: RecurringLine[] = candidates.map((l) => ({
@@ -44,7 +43,8 @@ export function withRecurringPaymentNames<L extends NamedLine>(lines: L[]): L[] 
     entries,
     lines: recurringLines,
     todayYmd: today,
-    horizonEndYmd: today,
+    // A pending listing lands days before its due date: occurrences due after today must exist too.
+    horizonEndYmd: addDays(today, Math.max(...entries.map((e) => e.match_days_before))),
     ufOn: uf.ufOn,
     ufKnownThrough: uf.knownThrough,
   });
