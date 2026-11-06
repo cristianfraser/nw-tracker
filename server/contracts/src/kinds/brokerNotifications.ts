@@ -19,6 +19,7 @@ export const brokerNotificationSchema = z
     kind: z.enum([
       "dividend",
       "buy",
+      "sell",
       "deposit",
       "withdrawal_paid",
       "cash_returned",

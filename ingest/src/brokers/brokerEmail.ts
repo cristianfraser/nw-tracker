@@ -27,6 +27,7 @@ export type BrokerName = "fintual" | "racional";
 export type BrokerEmailKind =
   | "dividend"
   | "buy"
+  | "sell"
   | "order_placed"
   | "deposit"
   | "withdrawal_requested"
@@ -113,6 +114,7 @@ export type BrokerEmailEvent = {
 const REQUIRED_FIELDS: Partial<Record<BrokerEmailKind, (keyof BrokerEmailEvent)[]>> = {
   dividend: ["ticker", "amount"],
   buy: ["amount", "units"],
+  sell: ["amount", "units"],
   wallet_funded: ["amount"],
   deposit: ["amount"],
   portfolio_buy: ["amount"],
@@ -249,6 +251,19 @@ const FINTUAL_MATCHERS: Matcher[] = [
     kind: "buy",
     is_transaction: true,
     re: /^Invertiste US \$\s*([\d.,]+) d[óo]lares en ([\d.,]+) acciones de (.+)$/i,
+    read: (m) => ({
+      amount: parseChileanNumber(m[1]!),
+      units: decimalString(m[2]!),
+      fund_name: m[3]!.trim(),
+      currency: "usd",
+    }),
+  },
+  {
+    // "Vendiste US $1.963,51 dólares de 28,438160398 acciones de Cameco Corporation" — a sale:
+    // the proceeds go to the Fintual dollar wallet. Same shape as the «Invertiste …» buy.
+    kind: "sell",
+    is_transaction: true,
+    re: /^Vendiste US \$\s*([\d.,]+) d[óo]lares de ([\d.,]+) acciones de (.+)$/i,
     read: (m) => ({
       amount: parseChileanNumber(m[1]!),
       units: decimalString(m[2]!),
@@ -630,6 +645,7 @@ export function scanBrokerEmails(inputs: readonly BrokerEmailInput[]): BrokerEma
 const NOTIFICATION_KINDS = new Set<BrokerNotification["kind"]>([
   "dividend",
   "buy",
+  "sell",
   "deposit",
   "withdrawal_paid",
   "cash_returned",

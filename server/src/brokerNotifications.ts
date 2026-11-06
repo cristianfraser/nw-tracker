@@ -12,6 +12,7 @@ import { chileWallClockAt } from "./chileDate.js";
 const REQUIRED_FIELDS: Record<BrokerNotification["kind"], (keyof BrokerNotification)[]> = {
   dividend: ["ticker", "amount"],
   buy: ["amount", "units"],
+  sell: ["amount", "units"],
   wallet_funded: ["amount"],
   deposit: ["amount"],
   portfolio_buy: ["amount"],
