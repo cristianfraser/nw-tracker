@@ -40,14 +40,17 @@ describe("withRecurringPaymentNames", () => {
       amount_clp: amount,
       category_slug,
       ...(fromBank ? { category_from_bank_name: true as const } : {}),
-      recurring_payment: undefined as { id: number; name: string } | undefined,
+      recurring_payment: undefined as { id: number; name: string; patterns: string[] } | undefined,
     });
     const out = withRecurringPaymentNames([
       line(1, settledOn, "VITEST SETTLED", "transportation", true),
       line(2, pendingOn, "VITEST PENDING", UNCLASSIFIED_CC_EXPENSE_SLUG, true),
       line(3, pendingOn, "VITEST PENDING", UNCLASSIFIED_CC_EXPENSE_SLUG, true, pesos + 5_000),
     ]);
-    expect(out[1]).toMatchObject({ recurring_payment: { id: entryId, name: NAME }, category_slug: "transportation" });
+    expect(out[1]).toMatchObject({
+      recurring_payment: { id: entryId, name: NAME, patterns: ["VITEST PENDING", "VITEST SETTLED"] },
+      category_slug: "transportation",
+    });
     // Listed before its due date (today the 4th, due the 6th), before the posted line exists.
     const early = withRecurringPaymentNames([line(4, pendingOn, "VITEST PENDING", UNCLASSIFIED_CC_EXPENSE_SLUG, true)], addDays(pendingOn, 1));
     expect(early[0]).toMatchObject({ recurring_payment: { id: entryId, name: NAME } });

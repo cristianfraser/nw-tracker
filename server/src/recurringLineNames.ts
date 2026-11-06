@@ -2,9 +2,11 @@
  * Card charges an automatic declared payment explains (`recurring_payments`, `manual = 0`): the
  * bank may first list a charge under another name (the car insurance as «CONVENIO P.A.T.» a few
  * days before it posts as «SEG AUTO SANTANDER»). A line that fits an automatic entry's pattern,
- * day window and amount carries the entry (`recurring_payment`), shown as its link; when only the
- * bank's name decided its category and none was found, it takes the category of the entry's most
- * recent charge that has one. A line with its own category, or a rule for its name, keeps it.
+ * day window and amount carries the entry with its patterns (`recurring_payment`): it shows under
+ * the name the bank posts it as, the catalog's name for a pattern its own merchant does not carry
+ * (`expenseDisplayNames.ts`). When only the bank's name decided its category and none was found, it
+ * takes the category of the entry's most recent charge that has one. A line with its own category,
+ * or a rule for its name, keeps it.
  */
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { UNCLASSIFIED_CC_EXPENSE_SLUG } from "./ccExpenseCategories.js";
@@ -22,8 +24,11 @@ type NamedLine = {
   amount_clp: number;
   category_slug: string;
   category_from_bank_name?: true;
-  recurring_payment?: { id: number; name: string };
+  recurring_payment?: RecurringLineEntry;
 };
+
+/** The automatic entry a line pays: its name and every merchant pattern (the display rule reads the others). */
+export type RecurringLineEntry = { id: number; name: string; patterns: string[] };
 
 const lineRef = (l: NamedLine) => `${l.source}|${l.statement_line_id}|${l.purchase_key ?? ""}`;
 
@@ -59,10 +64,10 @@ export function withRecurringPaymentNames<L extends NamedLine>(lines: L[], today
     if (!prev || o.matched!.purchase_on > prev.on) categoryByEntry.set(o.entry.id, { on: o.matched!.purchase_on, slug: line.category_slug });
   }
 
-  const byLine = new Map<string, { id: number; name: string }>();
+  const byLine = new Map<string, RecurringLineEntry>();
   for (const r of recurringLines) {
     const occ = automaticRecurringMatchForLine(r, occurrences, uf.ufOn);
-    if (occ) byLine.set(r.ref, { id: occ.entry.id, name: occ.entry.name });
+    if (occ) byLine.set(r.ref, { id: occ.entry.id, name: occ.entry.name, patterns: occ.entry.patterns });
   }
   if (byLine.size === 0) return lines;
   return lines.map((l) => {

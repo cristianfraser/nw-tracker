@@ -305,7 +305,7 @@ export type FlowCcExpenseLineRow = {
    * The automatic declared payment (`recurring_payments`) a card charge fits by name, day and amount:
    * a pending listing the bank names otherwise («CONVENIO P.A.T.» for the car insurance).
    */
-  recurring_payment?: { id: number; name: string };
+  recurring_payment?: { id: number; name: string; patterns: string[] };
   /** One piece of a line split into pieces (`cc_expense_line_splits.seq`). */
   piece_seq?: number;
   /** What a line's pieces leave of it: the line's own expense, on its own day. */
