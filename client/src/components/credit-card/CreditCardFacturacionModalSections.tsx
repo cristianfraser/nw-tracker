@@ -1,20 +1,15 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "../../i18n";
-import { formatCcExpenseLineAmount, parseNumberInput } from "../../format";
+import { formatCcExpenseLineAmount } from "../../format";
 import type { CcExpenseCategoryDto, FlowCcExpenseLineRow } from "../../types";
 import type { DisplayUnit } from "../../queries/keys";
 import { sumLineAmountsClp } from "../../ccExpenseLineBuckets";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
-import { Modal } from "../ui/Modal";
-import {
-  useDeleteCcStatementLineMutation,
-  useMakeStatementLineInstallmentMutation,
-} from "../../queries/hooks";
+import { useDeleteCcStatementLineMutation } from "../../queries/hooks";
 import { CreditCardExpenseLinesTable } from "./CreditCardExpenseLinesTable";
 import type { FacturacionModalBucket } from "./buildFacturacionModalBucket";
 import { isFacturacionModalBucketEmpty } from "./buildFacturacionModalBucket";
 import { formatClp } from "../../format";
-import { Button, Input } from "@crfrsr/ui";
 
 export function CreditCardFacturacionModalSections({
   bucket,
@@ -31,12 +26,8 @@ export function CreditCardFacturacionModalSections({
 }) {
   const { t } = useTranslation();
   const [pendingDelete, setPendingDelete] = useState<FlowCcExpenseLineRow | null>(null);
-  const [pendingMakeInstallment, setPendingMakeInstallment] =
-    useState<FlowCcExpenseLineRow | null>(null);
-  const [cuotasInput, setCuotasInput] = useState("");
 
   const deleteLine = useDeleteCcStatementLineMutation({ accountId, displayUnit });
-  const makeInstallment = useMakeStatementLineInstallmentMutation({ accountId, displayUnit });
 
   const gastosSum = useMemo(() => sumLineAmountsClp(bucket.gastos), [bucket.gastos]);
   const costeFinancieroSum = useMemo(
@@ -53,13 +44,6 @@ export function CreditCardFacturacionModalSections({
         onDeleteLine: setPendingDelete,
         deletePendingLineId: deleteLine.isPending ? deleteLine.variables : undefined,
         makeInstallmentLineIds: deletableLineIds,
-        onMakeInstallmentLine: (ln: FlowCcExpenseLineRow) => {
-          setPendingMakeInstallment(ln);
-          setCuotasInput("");
-        },
-        makeInstallmentBusyLineId: makeInstallment.isPending
-          ? makeInstallment.variables?.lineId
-          : undefined,
       }
     : {};
 
@@ -76,25 +60,6 @@ export function CreditCardFacturacionModalSections({
         window.alert(msg);
       },
     });
-  };
-
-  // A whole count of at least 2; a malformed entry names itself under the field.
-  const cuotasParsed = parseNumberInput(cuotasInput);
-  const cuotasValue = cuotasParsed.ok ? cuotasParsed.value : null;
-  const cuotasValid = cuotasValue != null && Number.isInteger(cuotasValue) && cuotasValue >= 2;
-
-  const handleConfirmMakeInstallment = () => {
-    if (!pendingMakeInstallment || !cuotasValid || cuotasValue == null) return;
-    makeInstallment.mutate(
-      { lineId: pendingMakeInstallment.statement_line_id, cuotas_totales: cuotasValue },
-      {
-        onSuccess: () => setPendingMakeInstallment(null),
-        onError: (err) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          window.alert(msg);
-        },
-      }
-    );
   };
 
   if (isFacturacionModalBucketEmpty(bucket)) {
@@ -168,69 +133,6 @@ export function CreditCardFacturacionModalSections({
         onConfirm={handleConfirmDelete}
         onCancel={() => setPendingDelete(null)}
       />
-
-      <Modal
-        open={pendingMakeInstallment != null}
-        onClose={() => setPendingMakeInstallment(null)}
-        title={t("accountDetail.creditCard.makeInstallmentDialogTitle")}
-      >
-        {pendingMakeInstallment ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-            <p className="muted" style={{ margin: 0 }}>
-              {t("accountDetail.creditCard.makeInstallmentDialogBody", {
-                merchant: pendingMakeInstallment.merchant ?? "—",
-                amount: formatCcExpenseLineAmount(
-                  pendingMakeInstallment.amount_clp,
-                  pendingMakeInstallment.amount_usd
-                ),
-              })}
-            </p>
-            {pendingMakeInstallment.cuota_purchase_kind ? (
-              <p style={{ margin: 0 }}>
-                {t(
-                  `accountDetail.creditCard.makeInstallmentDialogPendingBody.${pendingMakeInstallment.cuota_purchase_kind}`
-                )}
-              </p>
-            ) : null}
-            <label style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              <span style={{ fontSize: "var(--font-size-ui)" }}>
-                {t("accountDetail.creditCard.makeInstallmentDialogCuotasLabel")}
-              </span>
-              <Input
-                type="text"
-                inputMode="numeric"
-                value={cuotasInput}
-                onChange={(e) => setCuotasInput(e.target.value)}
-                disabled={makeInstallment.isPending}
-                aria-invalid={!cuotasParsed.ok || undefined}
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && cuotasValid) handleConfirmMakeInstallment();
-                }}
-              />
-              {!cuotasParsed.ok ? (
-                <span className="error" style={{ fontSize: "var(--font-size-prose)" }}>
-                  {cuotasParsed.message}
-                </span>
-              ) : null}
-            </label>
-            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-              <Button variant="secondary"
-                onClick={() => setPendingMakeInstallment(null)}
-                disabled={makeInstallment.isPending}
-              >
-                {t("accountDetail.creditCard.makeInstallmentDialogCancel")}
-              </Button>
-              <Button
-                onClick={handleConfirmMakeInstallment}
-                disabled={!cuotasValid || makeInstallment.isPending}
-              >
-                {t("accountDetail.creditCard.makeInstallmentDialogConfirm")}
-              </Button>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
     </>
   );
 }

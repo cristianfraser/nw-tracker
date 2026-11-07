@@ -2950,39 +2950,17 @@
         "en": "To installments",
         "es": "En cuotas"
       },
-      "makeInstallmentDialogTitle": {
-        "en": "Convert to installments",
-        "es": "Convertir en cuotas"
-      },
       "makeInstallmentDialogCuotasLabel": {
         "en": "Number of installments",
         "es": "Número de cuotas"
-      },
-      "makeInstallmentDialogBody": {
-        "en": "{{merchant}} · {{amount}}",
-        "es": "{{merchant}} · {{amount}}"
       },
       "makeInstallmentDialogConfirm": {
         "en": "Confirm",
         "es": "Confirmar"
       },
-      "makeInstallmentDialogCancel": {
-        "en": "Cancel",
-        "es": "Cancelar"
-      },
       "makeInstallmentActionPending": {
         "en": "How many installments?",
         "es": "¿Cuántas cuotas?"
-      },
-      "makeInstallmentDialogPendingBody": {
-        "cuota_comercio": {
-          "en": "The bank lists this as a «cuota comercio» purchase at its full amount without saying how many installments. The first one bills at the close after its own; the statement confirms the count either way.",
-          "es": "El banco la lista como compra en «cuota comercio» por su monto total, sin decir en cuántas cuotas. La primera se factura en el cierre siguiente al suyo; el estado de cuenta confirma el número de todas formas."
-        },
-        "precio_contado": {
-          "en": "The bank lists this as a «precio contado» installment purchase at its full amount without saying how many installments. The first one bills at its own close; the statement confirms the count either way.",
-          "es": "El banco la lista como compra en cuotas «precio contado» por su monto total, sin decir en cuántas cuotas. La primera se factura en su propio cierre; el estado de cuenta confirma el número de todas formas."
-        }
       },
       "pendingCuotaPurchasesTitle": {
         "en": "Installment purchases without a count",
