@@ -1396,6 +1396,26 @@ Left by wave-1 streams for the owner of the file; pick them up in the wave that 
   rejected 1.17 before). Verify on the first server deploy that the balance checks still pair.
 - A Fintual deposit mail whose account cannot be resolved is a reported `requires_manual` row
   (Racional's convention), no longer a throw.
+- F13 left: `ingestRunPolicy.ts` and `index.ts` should import the Santander gap and the default
+  port from contracts; `applyBrokerSplitNotifications(…, apply)` is always `true` now (drop the
+  parameter); `applyParsedCcStatements` keeps `dryRun` for `import-cc-parsed-to-db.ts` and the demo
+  (F13 canonical lines); `claveUnica/codeMail.ts` still reads INBOX (fine: it polls a code mailed
+  seconds earlier); Racional and statement archiving keep their own multi-file moves; the 44 root
+  pass-through npm scripts stay (runners no longer use them). **Formats checklist for the ingest
+  copies** (F7 follow-up, wave 2 or 3): `ingest/src/formats/*`, `brokers/brokerEmail.ts`,
+  `racional/{movements,steps}.ts`, `cards/webPaste.ts`, `fintual/certificado.ts`,
+  `santander/{checkingCartolaXlsx,checkingUsdFeed,paymentReceipts,transferMails,cardFeed}.ts`,
+  `afc/documents.ts`, `afpUno/certificates.ts`, `apple/appStoreMail.ts`, `wires/incomingWireMails.ts`,
+  `payroll/previredIndicators.ts`, `utilities/utilityBillMails.ts`, `bancochile/transferMails.ts`,
+  `payments/*Mails.ts`.
+- **Deploy note (F13):** migration `269_ingest_documents.sql` (the receiver's document ledger);
+  `dry_run` is now an envelope field and `apply` left 13 payloads with a `schema_version` bump,
+  so the ingest service and the server deploy together (same commit — the deploy script restarts
+  both when `ingest/` or contracts changed). The shell runners, `run-lib.sh`, the two timed plists
+  and the server `record:*` scripts are deleted: check the server's `~/Library/LaunchAgents` holds
+  no `com.user.nw-tracker-daily` / `-email-hourly` any more. A handler fault now rolls back the
+  whole document; a transfer-notices or utility-bill send with nothing new answers `applied`
+  (`new_* = 0`) instead of `duplicate`.
 - **Fragile tests** (fail or flake on a freshly generated test DB on unmodified `main`, so not
   caused by any stream): `dashboardCcCardVsDetalle.test.ts` «the day P/L in dollars …» fails
   every time; `ccGroupTotalMatchesCardsInvariant.test.ts` flakes (2026-11-30 total vs Σ cards).
