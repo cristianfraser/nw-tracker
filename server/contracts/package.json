@@ -16,6 +16,10 @@
     "./dto/*": {
       "types": "./src/dto/*.ts",
       "default": "./src/dto/*.ts"
+    },
+    "./liveInputs": {
+      "types": "./src/liveInputs.ts",
+      "default": "./src/liveInputs.ts"
     }
   },
   "scripts": {

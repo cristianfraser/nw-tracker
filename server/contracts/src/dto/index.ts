@@ -1,5 +1,6 @@
 /** API DTOs the server sends and the client reads, split by domain (docs/untangle-plan.md F8). */
 export * from "./schemaVersions.js";
+export * from "./apiConstants.js";
 export * from "./core.js";
 export * from "./ledgerSchemas.js";
 export * from "./dashboard.js";
