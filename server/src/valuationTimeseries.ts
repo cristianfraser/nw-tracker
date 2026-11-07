@@ -1267,7 +1267,12 @@ export function milestoneFieldsForDate(
   return out;
 }
 
-/** FX-backed milestone levels for month/year anchor dates before the first overview point. */
+/**
+ * FX-backed milestone levels for month/year anchor dates before the first overview point: the
+ * levels at the anchor's own rate. An anchor before the fx series starts has no rate of its own
+ * (no rate dated after a day is read), so the line extends flat from the first point: that
+ * point's levels.
+ */
 function buildReferenceMilestoneAnchorsByDate(
   firstOverviewYmd: string,
   unit: TsUnit
@@ -1276,7 +1281,8 @@ function buildReferenceMilestoneAnchorsByDate(
   for (const granularity of ["month", "year"] as const) {
     const anchorDate = priorCalendarPeriodEndYmdChart(firstOverviewYmd, granularity);
     if (!anchorDate || anchorDate >= firstOverviewYmd) continue;
-    out[anchorDate] = milestoneFieldsForDate(anchorDate, unit);
+    const before = fxMonthEndForBalanceUsd(anchorDate) == null;
+    out[anchorDate] = milestoneFieldsForDate(before ? firstOverviewYmd : anchorDate, unit);
   }
   return out;
 }
