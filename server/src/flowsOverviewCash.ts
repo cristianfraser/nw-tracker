@@ -14,7 +14,8 @@ import { accountMarkClpSeriesOnGrid } from "./accountMarkDailyCache.js";
 import { chileCalendarAddDays } from "./chileDate.js";
 import { db } from "./db.js";
 import { fxRowOnOrBefore } from "./fxRates.js";
-import { accountValueClpToUnitAt, clpToUnitAtMid } from "./clpToUnitAt.js";
+import { accountValueInUnitFromClp } from "./accountValue.js";
+import { convertFlow } from "./rates.js";
 import type { GastosUnit } from "./flowsExpensesGastos.js";
 
 /** Ascending contiguous Chile calendar days `fromYmd..toYmd` inclusive. */
@@ -52,7 +53,7 @@ export function checkingValueByDay(
     );
     for (let i = 0; i < grid.length; i++) {
       const clp = series[i] ?? 0;
-      const v = accountValueClpToUnitAt(accountId, clp, grid[i]!, unit, { now });
+      const v = accountValueInUnitFromClp(accountId, clp, grid[i]!, unit, { now });
       if (v == null || !Number.isFinite(v)) {
         throw new Error(`checking account ${accountId}: no ${unit} rate on or before ${grid[i]}`);
       }
@@ -125,13 +126,11 @@ export function loadCardPaymentsFromChecking(
   return out;
 }
 
-/** A card payment in the unit: its dollars when the leg is in dollars, else its pesos at that day's rate. */
-export function cardPaymentInUnit(p: CardPaymentFromChecking, unit: GastosUnit, now: Date = new Date()): number {
+/**
+ * A card payment in the unit: a FLOW, so its dollars when the leg is in dollars, else its pesos
+ * at its own day's flow rate (`convertFlow`: the buy rate, as every deposit and flow reader).
+ */
+export function cardPaymentInUnit(p: CardPaymentFromChecking, unit: GastosUnit): number {
   if (unit === "usd" && p.amount_usd != null) return p.amount_usd;
-  if (unit === "clp") return p.amount_clp;
-  const v = clpToUnitAtMid(p.amount_clp, p.occurred_on, unit, now);
-  if (v == null || !Number.isFinite(v)) {
-    throw new Error(`card payment ${p.movement_id}: no ${unit} rate on or before ${p.occurred_on}`);
-  }
-  return v;
+  return convertFlow(p.amount_clp, "clp", unit, p.occurred_on);
 }

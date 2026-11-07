@@ -1,6 +1,6 @@
 import { storedValuationInUnit, valuationsAreAppraisals } from "./valuationValue.js";
 import { accountIsDebt, accountProfileOptional, CUOTA_LEDGER_KINDS } from "./accountProfile.js";
-import { accountMarkClpAtYmd } from "./accountMarkClpAtYmd.js";
+import { accountValueAt } from "./accountValue.js";
 import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
 import {
   loadMergedDepositInflowEvents,
@@ -13,22 +13,17 @@ import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import {
   accountUsesEquityMtm,
   computeEquityMtmClp,
-  equityChartZeroClpAtYmd,
   equityTickerForAccount,
+  equityHeldByYmd,
   expandSnapshotDatesForEquityMtm,
 } from "./brokerageEquityMtm.js";
-import {
-  requireCryptoMtmClp,
-  expandSnapshotDatesForCryptoMtm,
-} from "./cryptoValuation.js";
+import { expandSnapshotDatesForCryptoMtm } from "./cryptoValuation.js";
 import { NOTE_STOCKS_LEGACY } from "./brokerageAcciones.js";
 import { accountChartInactive } from "./accountChartInactive.js";
 import { accountIdsInPortfolioGroup, withPortfolioGroupIndex } from "./portfolioGroupTree.js";
-import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { isUsdCashKindSlug } from "./movementTransfer.js";
-import { usdCashBalanceClpAt } from "./usdCashAccounts.js";
-import { isClpCashKindSlug, clpCashBalanceClpAt } from "./clpCashAccounts.js";
+import { isClpCashKindSlug } from "./clpCashAccounts.js";
 import {
   expandYearMonthsInclusive,
   monthEndUtcYmd,
@@ -65,9 +60,9 @@ import { db } from "./db.js";
 import { groupNetsLinkedCards } from "./cashEqsBucketNet.js";
 import { groupHasPropertyOverlay, investmentRootSlugs, navGroup } from "./navTreeModel.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc } from "./fxRates.js";
-import { accountValueClpToUnitAt, clpToUnitAt, convertTs } from "./clpToUnitAt.js";
-import type { ValueSide } from "./valueConvert.js";
+import { fxMonthEndForBalanceUsd, ufClpBySnapshotDatesAsc, ufRowOnOrBefore } from "./fxRates.js";
+import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
+import { clpToUnitAt, type ValueSide } from "./valueConvert.js";
 import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
@@ -96,16 +91,16 @@ import { seriesAccountIdForGroupTab } from "./groupTabAccounts.js";
 import { buildReferenceCoverage, sumKeysPerRow } from "./referenceCoverage.js";
 import { applyTrailingZeroTailClipToBlock } from "./timeseriesTailClip.js";
 
-export type TsUnit = "clp" | "usd" | "uf";
+/** Re-exported for one release: `rates.ts` owns it (F8/F12 drop this re-export). */
+export type { TsUnit } from "./rates.js";
+import type { TsUnit } from "./rates.js";
 
 export type TimeseriesGranularity = "monthly" | "daily";
-
-export { convertTs };
 
 /**
  * A chart VALUE in pesos at `d`, in `unit` (`clpToUnitAt`): converted once at its side — an
  * asset (default) at what selling it would get, a debt (`side: "debt"`) at what buying it back
- * would cost; today's rate today and on a later date. NaN without a rate, as `convertTs` plots it.
+ * would cost; today's rate today and on a later date. NaN without a rate.
  * Only for an amount that is not one account's value (a legacy total, the depto lines); an
  * account's line goes through {@link accountChartValueInUnit}.
  */
@@ -388,41 +383,6 @@ function attachDepositSeriesKeys(
     }
     return { ...t };
   });
-}
-
-function valuationRawClpForAccount(
-  accountId: number,
-  asOf: string,
-  byDate: Map<string, Map<number, number>>
-): number | null {
-  switch (accountProfileOptional(accountId)?.quantity.kind) {
-    case "checking_ledger":
-      return checkingMovementBalanceClpAtCached(accountId, asOf);
-    case "usd_ledger":
-      return usdCashBalanceClpAt(accountId, asOf);
-    case "clp_ledger":
-      return clpCashBalanceClpAt(accountId, asOf);
-    case "stock": {
-      const clp = computeEquityMtmClp(accountId, asOf);
-      if (clp != null) return clp;
-      if (equityChartZeroClpAtYmd(accountId, asOf)) return 0;
-      return null;
-    }
-    case "coin":
-      return requireCryptoMtmClp(accountId, asOf);
-    default:
-      return byDate.get(asOf)?.get(accountId) ?? null;
-  }
-}
-
-/**
- * Accounts whose chart value is their mark (`accountMarkClpAtYmd`): the cuota ledgers, the
- * Fintual goals and the book marks. The ledgers, positions, card and depto lines keep the raw
- * their own branches compute (see the note in {@link buildPointsForAccounts}).
- */
-function chartValueIsMark(accountId: number): boolean {
-  const q = accountProfileOptional(accountId)?.quantity.kind;
-  return q === "cuota_ledger" || q === "fintual_goal" || q === "book_mark";
 }
 
 function augmentChartDatesForCheckingAccounts(
@@ -808,18 +768,6 @@ function patchLiveAfpMarksOnPoints(
   return next;
 }
 
-/**
- * A chart account's raw CLP mark on `d` for every kind but the card, mortgage and property lines:
- * the stored / MTM raw, replaced by `accountMarkClpAtYmd` for the mark-valued accounts (see the
- * long note in {@link buildPointsForAccounts}). Null when the account has no value that day.
- */
-function plainAccountChartRawClp(aid: number, d: string, byDate: Map<string, Map<number, number>>): number | null {
-  const raw = valuationRawClpForAccount(aid, d, byDate);
-  if (!chartValueIsMark(aid)) return raw;
-  const mark = accountMarkClpAtYmd(aid, d);
-  return mark?.value_clp != null && Number.isFinite(mark.value_clp) ? mark.value_clp : null;
-}
-
 function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: TsUnit, merge?: MergePairOpts) {
   const mergeIds = [
     merge?.btcId,
@@ -948,12 +896,10 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     }
     m.set(v.account_id, clp);
   }
+  /** Raw pesos of the card, mortgage and property lines (their own per-build sources). */
   const last = new Map<number, number>();
-  let lastBtc: number | null = null;
-  let lastEth: number | null = null;
-  let lastSpy: number | null = null;
-  let lastVea: number | null = null;
-  const lastMutualFundsById = new Map<number, number>();
+  /** Every other account's value in the unit (forward-filled over a date it has none). */
+  const lastInUnit = new Map<number, number>();
   const btcId = merge?.btcId;
   const ethId = merge?.ethId;
   const spyId = merge?.spyId;
@@ -983,12 +929,27 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
     }
   }
 
-  // A plain account's raw mark on a past chart date reads evidence only — an equity's past MTM
-  // consults the live-dollar gate but reads the stored close for any day before today, as the
-  // `equity_mtm_clp` history memo relies on — so it is kept in the history tier and the rebuild
-  // after a live tick recomputes the trailing / today point alone. The card, mortgage and property
-  // lines keep their own per-build sources below.
-  const pastRawMemo = historyTierMemo<string, number | null>("valuation_chart_past_raw_clp");
+  // A plain account's chart value is its value in the unit (`accountValueAt`): what it held that
+  // day, converted once at its side — never pesos re-converted. A past chart date reads evidence
+  // only, so it is kept in the history tier and the rebuild after a live tick recomputes the
+  // trailing / today point alone. The card, mortgage and property lines keep their own per-build
+  // sources below.
+  const pastValueMemo = historyTierMemo<string, number | null>("valuation_chart_past_value");
+  const plainValueAt = (aid: number, d: string): number | null => {
+    // A stock's line starts at its first shares (before them it holds nothing yet, not 0).
+    if (accountProfileOptional(aid)?.quantity.kind === "stock" && !equityHeldByYmd(aid, d)) return null;
+    return accountValueAt(aid, d, unit)?.value ?? null;
+  };
+  const plainValueForChart = (aid: number, d: string, memoize: boolean): number | null => {
+    if (!memoize) return plainValueAt(aid, d);
+    const key = `${aid}|${unit}|${d}`;
+    let v = pastValueMemo.get(key);
+    if (v === undefined) {
+      v = plainValueAt(aid, d);
+      pastValueMemo.set(key, v);
+    }
+    return v;
+  };
   const points = dateStrs.map((d) => {
     const row: Record<string, string | number | null> = { as_of_date: d };
     const useLiveAfpOnDate = d === trailingChartDate || d === todayYmd;
@@ -997,22 +958,13 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         continue;
       const aid = t.account_id;
       const aidKind = bucketKindFromSlugMap(slugById, aid);
-      const pastKey =
-        !useLiveAfpOnDate && d < todayYmd && aidKind !== "credit_card" && aidKind !== "mortgage" && aidKind !== "property"
-          ? `${aid}|${d}`
-          : null;
-      if (pastKey != null) {
-        let raw = pastRawMemo.get(pastKey);
-        if (raw === undefined) {
-          raw = plainAccountChartRawClp(aid, d, byDate);
-          pastRawMemo.set(pastKey, raw);
-        }
-        if (raw != null) last.set(aid, raw);
-        const v = last.get(aid);
-        row[t.dataKey] = v === undefined ? null : accountChartValueInUnit(aid, aidKind, v, d, unit);
+      if (aidKind !== "credit_card" && aidKind !== "mortgage" && aidKind !== "property") {
+        const v = plainValueForChart(aid, d, !useLiveAfpOnDate && d < todayYmd);
+        if (v != null) lastInUnit.set(aid, v);
+        row[t.dataKey] = lastInUnit.get(aid) ?? null;
         continue;
       }
-      let raw = valuationRawClpForAccount(aid, d, byDate);
+      let raw: number | null = byDate.get(d)?.get(aid) ?? null;
       if (aidKind === "credit_card") {
         // Owed on that date (`latestCreditCardValuationRowAsOf`: the owed walk for a past date,
         // the displayed balance from today) — what the group Total and the daily series sum, so
@@ -1035,80 +987,30 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
           raw = fromDepto;
         }
       }
-      // Mark-valued accounts value each chart date through `accountMarkClpAtYmd`, so the
-      // group-page line matches the daily one:
-      //  - Plain stored-valuation accounts (manual marks, DAP, cuenta ahorro, the pre-Fintual
-      //    Principal) — previously forward-filled the last stored value with no flow carry, so a
-      //    later deposit/liquidation left the line stale; the mark carries stored + net flows.
-      //  - Fintual cert accounts — previously PREFERRED the stored `valuations` snapshot on
-      //    historical dates (`fintualCertValuationRawClpForChart`), which lagged the true fund
-      //    value whenever the snapshot sync was stale; the mark is cuotas × fund-unit price
-      //    (the certificado value), fresh at every date.
-      //  - AFP — same shape: it read the stored snapshot for history and the live mark only on
-      //    the trailing point. Those historical rows are a **write-once cache no scheduled job
-      //    refreshes** (the `afp_uno` sync only upserts a today spot row), so they went stale
-      //    against the 2026-07-10 cert-backed ledger rebuild. The mark is ledger×px where
-      //    `fund_unit_daily` has prices (from 2019-10) and falls back to the stored row before
-      //    that — the AFP px series starts after the ledger does, and those ~28 pre-price
-      //    month-ends are the sole source for 2017-06…2019-09 (verified: mark == stored there).
-      // The remaining special-branch kinds (equity/crypto/cash MTM, CC, mortgage, property)
-      // keep the raw they computed above — those framings are intentional.
-      if (chartValueIsMark(aid)) {
-        const mark = accountMarkClpAtYmd(aid, d);
-        raw = mark?.value_clp != null && Number.isFinite(mark.value_clp) ? mark.value_clp : null;
-      }
       if (raw != null) last.set(aid, raw);
       const v = last.get(aid);
       row[t.dataKey] = v === undefined ? null : accountChartValueInUnit(aid, aidKind, v, d, unit);
     }
-    if (needsCrypto && merge) {
-      if (btcId != null) {
-        const rb = valuationRawClpForAccount(btcId, d, byDate);
-        if (rb != null) lastBtc = rb;
-      }
-      if (ethId != null) {
-        const re = valuationRawClpForAccount(ethId, d, byDate);
-        if (re != null) lastEth = re;
-      }
-      if (lastBtc != null || lastEth != null) {
-        // Σ of each coin account's value in the unit (dollar holdings never round-trip pesos).
-        row.crypto_total =
-          (btcId != null && lastBtc != null ? accountChartValueInUnit(btcId, "", lastBtc, d, unit) : 0) +
-          (ethId != null && lastEth != null ? accountChartValueInUnit(ethId, "", lastEth, d, unit) : 0);
-      } else {
-        row.crypto_total = null;
-      }
-    }
-    if (needsStocks && merge) {
-      if (spyId != null) {
-        const rs = valuationRawClpForAccount(spyId, d, byDate);
-        if (rs != null) lastSpy = rs;
-      }
-      if (veaId != null) {
-        const rv = valuationRawClpForAccount(veaId, d, byDate);
-        if (rv != null) lastVea = rv;
-      }
-      if (lastSpy != null || lastVea != null) {
-        row.stocks_total =
-          (spyId != null && lastSpy != null ? accountChartValueInUnit(spyId, "", lastSpy, d, unit) : 0) +
-          (veaId != null && lastVea != null ? accountChartValueInUnit(veaId, "", lastVea, d, unit) : 0);
-      } else {
-        row.stocks_total = null;
-      }
-    }
-    if (needsMutualFunds && merge?.mutualFundsIds && merge.mutualFundsIds.length > 0) {
-      for (const id of merge.mutualFundsIds) {
-        const raw = valuationRawClpForAccount(id, d, byDate);
-        if (raw != null) lastMutualFundsById.set(id, raw);
-      }
-      let sumClp = 0;
+    // The legacy merged lines (no caller passes `merge` today): Σ of each member's value in the unit.
+    const mergedValue = (ids: readonly (number | undefined)[]): number | null => {
+      let sum = 0;
       let any = false;
-      for (const id of merge.mutualFundsIds) {
-        const v = lastMutualFundsById.get(id);
-        if (v != null) any = true;
-        sumClp += v ?? 0;
+      for (const id of ids) {
+        if (id == null) continue;
+        const v = plainValueAt(id, d);
+        if (v != null) lastInUnit.set(id, v);
+        const held = lastInUnit.get(id);
+        if (held != null) {
+          sum += held;
+          any = true;
+        }
       }
-      row.mutual_funds_total = any ? chartValueInUnit(sumClp, d, unit) : null;
+      return any ? sum : null;
+    };
+    if (needsCrypto && merge) row.crypto_total = mergedValue([btcId, ethId]);
+    if (needsStocks && merge) row.stocks_total = mergedValue([spyId, veaId]);
+    if (needsMutualFunds && merge?.mutualFundsIds && merge.mutualFundsIds.length > 0) {
+      row.mutual_funds_total = mergedValue(merge.mutualFundsIds);
     }
     for (const t of topOut) {
       if (!t.depositDataKey) continue;
@@ -1291,10 +1193,13 @@ function usdMilestoneDataKey(usd: number): string {
  */
 function usdMilestoneLevelInUnit(usd: number, asOfYmd: string, unit: TsUnit): number | null {
   if (unit === "usd") return usd;
+  // A reference level at the stored rates on or before the day (the mid): pesos, then UF.
   const fx = fxMonthEndForBalanceUsd(asOfYmd);
   if (!fx || fx.clp_per_usd <= 0) return null;
-  const v = convertTs(usd * fx.clp_per_usd, asOfYmd, unit);
-  return Number.isFinite(v) ? v : null;
+  const clp = usd * fx.clp_per_usd;
+  if (unit === "clp") return clp;
+  const uf = ufRowOnOrBefore(asOfYmd);
+  return uf && uf.clp_per_uf > 0 ? clp / uf.clp_per_uf : null;
 }
 
 function appendUsdMilestoneFields(
@@ -1360,7 +1265,12 @@ export function milestoneFieldsForDate(
   return out;
 }
 
-/** FX-backed milestone levels for month/year anchor dates before the first overview point. */
+/**
+ * FX-backed milestone levels for month/year anchor dates before the first overview point: the
+ * levels at the anchor's own rate. An anchor before the fx series starts has no rate of its own
+ * (no rate dated after a day is read), so the line extends flat from the first point: that
+ * point's levels.
+ */
 function buildReferenceMilestoneAnchorsByDate(
   firstOverviewYmd: string,
   unit: TsUnit
@@ -1369,7 +1279,8 @@ function buildReferenceMilestoneAnchorsByDate(
   for (const granularity of ["month", "year"] as const) {
     const anchorDate = priorCalendarPeriodEndYmdChart(firstOverviewYmd, granularity);
     if (!anchorDate || anchorDate >= firstOverviewYmd) continue;
-    out[anchorDate] = milestoneFieldsForDate(anchorDate, unit);
+    const before = fxMonthEndForBalanceUsd(anchorDate) == null;
+    out[anchorDate] = milestoneFieldsForDate(before ? firstOverviewYmd : anchorDate, unit);
   }
   return out;
 }

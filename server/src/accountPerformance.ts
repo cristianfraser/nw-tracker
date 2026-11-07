@@ -3,44 +3,38 @@ import { cacheKeyAccountMonthlyPerf } from "./cacheFamilies.js";
 import { getAggregationCached } from "./cacheRegistry.js";
 import { getAccountValuationTimeseriesForPerf } from "./accountPerformanceContext.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import {
-  getAccountValuationTimeseries,
-  convertTs,
-} from "./valuationTimeseries.js";
-import type { TsUnit } from "./valuationTimeseries.js";
-import { pickRepresentativeMonthlyPerfRow } from "./accountPerformanceMonthPick.js";
-import { flowAdjustedPct } from "./periodReturns.js";
+import { getAccountValuationTimeseries } from "./valuationTimeseries.js";
+import type { TsUnit } from "./rates.js";
+import { pickMonthlyPerfRowsByMonth } from "./accountPeriodMetrics.js";
 import { withRunningPlTotals } from "./monthlyPerfRollup.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { flowEventInUnit, netDepositFlowCurrentMonthThroughToday } from "./flowsDeposits.js";
+import { deptoPaymentFlowsInUnit, netDepositFlowCurrentMonthThroughToday } from "./flowsDeposits.js";
+import { cardPeriodLegs, flowAdjustedPct, periodPl } from "./perfKernel.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import {
   deptoCreditoRestanteUfBySnapshotDates,
   deptoMortgageCloseClpBySnapshotDates,
-  deptoPropertyPaymentEventsThroughDate,
   deptoPropertyCloseClpBySnapshotDates,
-  mortgageSheetPaymentEventsThroughDate,
   type DeptoMortgageSheetRow,
 } from "./deptoDividendosLedger.js";
 import { ccFinancingCostBetweenInUnit } from "./ccFinancingCostDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
-import { loadBookValuationsAsc } from "./bookValuations.js";
 export { loadBookValuationsAsc } from "./bookValuations.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
-import { accountValueClpToUnitAt, clpToUnitAt } from "./clpToUnitAt.js";
-import { accountUsesEquityMtm, computeEquityMtmClp } from "./brokerageEquityMtm.js";
+import { accountValueAt, accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
+import { clpToUnitAt } from "./valueConvert.js";
+import { accountUsesEquityMtm, equityHeldByYmd } from "./brokerageEquityMtm.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import {
-  accountUsesCryptoMtm,
-  requireCryptoMtmClp,
   cryptoAssetFromCategorySlug,
   cryptoCoinCumulativeThroughDate,
 } from "./cryptoValuation.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { accountProfileOptional } from "./accountProfile.js";
 import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
-import { transferToLegUnits } from "./movementTransfer.js";
+import { listMovementRowsForAccount, unitsDeltaForAccountMovement } from "./movementTransfer.js";
+import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./shareUnitsFlowKinds.js";
 import {
   monthEndCloseFromPerfRows,
   monthEndMarkClpForAccount,
@@ -82,36 +76,25 @@ function numCell(v: unknown): number | null {
   return null;
 }
 
-/** A CLP amount in the performance series unit at `asOf` (a UF window flow). */
-function perfSheetClpFlowInUnit(clpFlow: number, asOf: string, unit: TsUnit): number {
-  if (unit === "clp") return clpFlow;
-  const converted = convertTs(clpFlow, asOf, unit);
-  if (!Number.isFinite(converted)) {
-    throw new Error(
-      `perfSheetClpFlowInUnit: missing FX for ${asOf} (${clpFlow} CLP → ${unit})`
-    );
-  }
-  return converted;
-}
-
 /**
  * Depto ledger payments in the calendar month of `asOf` (through `asOf`; only those after
  * `afterExclusive` when set, for same-month snapshots), in the series unit — each payment at
- * its own date's rate (`flowEventInUnit`), the same events and conversion as the mortgage card
- * and the daily series.
+ * its own date's rate (`deptoPaymentFlowsInUnit`), the same events and conversion as the mortgage
+ * card and the daily series.
  */
-function perfLedgerPaymentsInUnit(
-  events: readonly { occurred_on: string; pago_clp: number }[],
+function perfDeptoPaymentsInUnit(
+  ledger: readonly DeptoMortgageSheetRow[],
   asOf: string,
   afterExclusive: string | null,
+  leg: "loan" | "property",
   unit: TsUnit
 ): number {
   const mk = asOf.slice(0, 7);
   let sum = 0;
-  for (const e of events) {
+  for (const e of deptoPaymentFlowsInUnit(ledger, asOf, leg, unit)) {
     if (e.occurred_on.slice(0, 7) !== mk) continue;
     if (afterExclusive != null && e.occurred_on <= afterExclusive) continue;
-    sum += flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, unit);
+    sum += e.amount;
   }
   return sum;
 }
@@ -122,12 +105,7 @@ function perfDeptoPropertyPaymentsInUnit(
   afterExclusive: string | null,
   unit: TsUnit
 ): number {
-  return perfLedgerPaymentsInUnit(
-    deptoPropertyPaymentEventsThroughDate(ledger, asOf),
-    asOf,
-    afterExclusive,
-    unit
-  );
+  return perfDeptoPaymentsInUnit(ledger, asOf, afterExclusive, "property", unit);
 }
 
 function perfMortgagePaymentsInUnit(
@@ -136,12 +114,7 @@ function perfMortgagePaymentsInUnit(
   afterExclusive: string | null,
   unit: TsUnit
 ): number {
-  return perfLedgerPaymentsInUnit(
-    mortgageSheetPaymentEventsThroughDate(ledger, asOf),
-    asOf,
-    afterExclusive,
-    unit
-  );
+  return perfDeptoPaymentsInUnit(ledger, asOf, afterExclusive, "loan", unit);
 }
 
 export type ReanchorMonthlyPerfOpts = {
@@ -239,7 +212,7 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
 
     if (prior == null || !Number.isFinite(prior)) {
       prior_closing = null;
-      nominal_pl = isMortgage ? 0 : ccPerf ? ccPerf.nominal : close - netFlow;
+      nominal_pl = isMortgage ? 0 : ccPerf ? ccPerf.nominal : periodPl({ valueStart: 0, valueEnd: close, flow: netFlow, side: "asset" });
       // No prior close: the capital at work is the month's own net inflow, by the shared rule —
       // a first month of net withdrawals has none and reads null, not a sign-flipped %.
       pct_month = ccPerf
@@ -250,10 +223,10 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
     } else {
       prior_closing = prior;
       nominal_pl = isMortgage
-        ? mortgageMonthlyNominalPl(prior, close, netFlow)
+        ? periodPl({ valueStart: prior, valueEnd: close, flow: netFlow, side: "debt" })
         : ccPerf
           ? ccPerf.nominal
-          : close - prior - netFlow;
+          : periodPl({ valueStart: prior, valueEnd: close, flow: netFlow, side: "asset" });
       pct_month = isMortgage
         ? liabilityPctMonth(nominal_pl, prior)
         : ccPerf
@@ -274,27 +247,13 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
   return withRunningPlTotals(out);
 }
 
+/** One row per calendar month (`pickMonthlyPerfRowsByMonth`), re-anchored on the calendar month ends. */
 function collapseMonthlyPerfDuplicateCalendarMonths(
   outAsc: AccountMonthlyPerformanceRow[],
   opts: ReanchorMonthlyPerfOpts
 ): AccountMonthlyPerformanceRow[] {
   if (outAsc.length === 0) return outAsc;
-  const byMonth = new Map<string, AccountMonthlyPerformanceRow[]>();
-  for (const r of outAsc) {
-    const mk = monthKeyFromYmd(r.as_of_date);
-    const arr = byMonth.get(mk) ?? [];
-    arr.push(r);
-    byMonth.set(mk, arr);
-  }
-  const monthsAsc = [...byMonth.keys()].sort((a, b) => a.localeCompare(b));
-  const picked = monthsAsc.map((mk) => {
-    const monthRows = byMonth.get(mk)!;
-    const row = pickRepresentativeMonthlyPerfRow(monthRows, mk);
-    /** Sum flows across every snapshot in the month (mid-month + month-end book row). */
-    const totalFlow = monthRows.reduce((s, r) => s + r.net_capital_flow, 0);
-    return { ...row, net_capital_flow: totalFlow };
-  });
-  return reanchorMonthlyPerfToCalendarMonthEnds(picked, opts);
+  return reanchorMonthlyPerfToCalendarMonthEnds([...pickMonthlyPerfRowsByMonth(outAsc).values()], opts);
 }
 
 function accountMetaForLivePerfClose(
@@ -405,22 +364,12 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
     // Live close is as-of-today, so the flow must be too: the base row sums the whole
     // calendar month. Both legs read forward-posted rows as today (`displayLedgerCutoffYmd`
     // for the balance, the display-dated events for the flow), so such a row never reads
-    // as phantom P/L in either direction.
-    if (unit === "uf") {
-      // UF window flows convert at the window end, as the closed months' do.
-      return perfSheetClpFlowInUnit(
-        netDepositFlowCurrentMonthThroughToday(accountId, "clp"),
-        today,
-        "uf"
-      );
-    }
+    // as phantom P/L in either direction. Each event at its own day's rate, UF included.
     return netDepositFlowCurrentMonthThroughToday(accountId, unit);
   })();
   const nominal = ccPerf
     ? ccPerf.nominal
-    : bucketKind === "mortgage"
-      ? mortgageMonthlyNominalPl(priorClose, live, netFlow)
-      : live - priorClose - netFlow;
+    : periodPl({ valueStart: priorClose, valueEnd: live, flow: netFlow, side: bucketKind === "mortgage" ? "debt" : "asset" });
   // The closed months' rule (`reanchorMonthlyPerfToCalendarMonthEnds`): a running month that
   // ends at zero, or whose withdrawals exceed the prior close — a liquidation — charges its
   // flows at month end instead of reading exactly −100% (or null) and poisoning every
@@ -487,57 +436,23 @@ function applyLiveCloseToCurrentMonthPerfRows(
   return patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, sortedAsc, unit);
 }
 
-function lastStoredBookClpOnOrBefore(
-  asOf: string,
-  sortedAsc: { as_of_date: string; value_clp: number }[]
-): number | null {
-  let last: number | null = null;
-  for (const r of sortedAsc) {
-    if (r.as_of_date > asOf) break;
-    last = r.value_clp;
-  }
-  return last;
-}
-
 /**
- * Month-end close for monthly P/L must match the **account valuation chart** (`buildPointsForAccounts`):
- * that series is `p[accountId]` (MTM where applicable, then forward-fill). Using a different source
- * (e.g. exact `valuations` before live crypto MTM) desyncs the bar chart from the line and can pin May to $0.
- *
- * When the chart cell is null (edge of series), mirror {@link valuationTimeseries.valuationRawClpForAccount}
- * in CLP, then {@link convertTs}.
+ * Month-end close for monthly P/L must match the **account valuation chart**
+ * (`buildPointsForAccounts`): the chart's cell, which is the account's value in the unit
+ * (`accountValueAt`), forward-filled. Where the chart has no cell (the series edge) the value
+ * itself, read the same way — none for a stock before its first shares, as its chart line.
  */
 function monthEndCloseForPerformance(
   accountId: number,
   asOf: string,
   pointRow: Record<string, string | number | null>,
   dataKey: string,
-  bookAsc: { as_of_date: string; value_clp: number }[],
-  exactClpByDate: Map<string, number>,
   unit: TsUnit
 ): number | null {
   const chart = numCell(pointRow[dataKey]);
   if (chart != null) return chart;
-
-  let rawClp: number | null = null;
-  if (accountUsesEquityMtm(accountId)) {
-    rawClp = computeEquityMtmClp(accountId, asOf);
-    if (rawClp == null) {
-      const ex = exactClpByDate.get(asOf);
-      rawClp =
-        ex != null && Number.isFinite(ex) ? ex : lastStoredBookClpOnOrBefore(asOf, bookAsc);
-    }
-  } else if (accountUsesCryptoMtm(accountId)) {
-    rawClp = requireCryptoMtmClp(accountId, asOf);
-  } else {
-    const ex = exactClpByDate.get(asOf);
-    rawClp =
-      ex != null && Number.isFinite(ex) ? ex : lastStoredBookClpOnOrBefore(asOf, bookAsc);
-  }
-  if (rawClp == null) return null;
-  // The account's value in the unit, converted once from what it holds at its side.
-  const converted = accountValueClpToUnitAt(accountId, rawClp, asOf, unit);
-  return converted != null && Number.isFinite(converted) ? converted : null;
+  if (accountProfileOptional(accountId)?.quantity.kind === "stock" && !equityHeldByYmd(accountId, asOf)) return null;
+  return accountValueAt(accountId, asOf, unit)?.value ?? null;
 }
 
 /**
@@ -561,23 +476,8 @@ function creditCardMonthPerf(
   // the daily series' days and P/L = Δvalue − flow in the unit.
   const financing = ccFinancingCostBetweenInUnit(accountId, fromYmdExclusive ?? "", toYmd, unit);
   const prior = priorClosing != null && Number.isFinite(priorClosing) ? priorClosing : 0;
-  return {
-    netFlow: -(closing - prior) + financing,
-    nominal: -financing,
-    pct: liabilityPctMonth(-financing, prior),
-  };
-}
-
-/**
- * Mortgage month P/L (in the series unit): CLP amortization on the balance minus payments.
- * Negative = the debt fell less than you paid — the financing cost (interest/fees + UF revaluation).
- */
-function mortgageMonthlyNominalPl(
-  priorClosing: number,
-  closing: number,
-  netCapitalFlow: number
-): number {
-  return priorClosing - closing - netCapitalFlow;
+  const legs = cardPeriodLegs({ owedStart: prior, owedEnd: closing, cost: financing });
+  return { netFlow: legs.flow, nominal: legs.pl, pct: liabilityPctMonth(legs.pl, prior) };
 }
 
 /** Debt cost as a rate on the balance carried (both liability kinds). */
@@ -592,8 +492,6 @@ function monthEndCloseForMortgagePerformance(
   asOf: string,
   pointRow: Record<string, string | number | null>,
   dataKey: string,
-  bookAsc: { as_of_date: string; value_clp: number }[],
-  exactClpByDate: Map<string, number>,
   unit: TsUnit,
   closeClpByDate: Map<string, number> | null
 ): number | null {
@@ -603,89 +501,54 @@ function monthEndCloseForMortgagePerformance(
     const converted = clpToUnitAt(fromSheet, asOf, unit, { side: "debt" });
     return converted != null && Number.isFinite(converted) ? converted : null;
   }
-  return monthEndCloseForPerformance(
-    accountId,
-    asOf,
-    pointRow,
-    dataKey,
-    bookAsc,
-    exactClpByDate,
-    unit
-  );
+  return monthEndCloseForPerformance(accountId, asOf, pointRow, dataKey, unit);
 }
 
-/** Month-end `YYYY-MM-DD` → Σ positive units_delta on equity brokerage movements in that calendar month. */
+/**
+ * The units each movement brought INTO the account (its own leg: a transfer's to-leg count —
+ * `unitsDeltaForAccountMovement`, so a fund switch credits what it bought — or a single-leg row's
+ * units), positive ones only, optionally restricted to some flow kinds.
+ */
+function positiveUnitsInflows(
+  accountId: number,
+  flowKinds?: readonly string[]
+): { occurred_on: string; units: number }[] {
+  const out: { occurred_on: string; units: number }[] = [];
+  for (const r of listMovementRowsForAccount(accountId)) {
+    if (flowKinds && !(r.flow_kind != null && flowKinds.includes(r.flow_kind))) continue;
+    const units = unitsDeltaForAccountMovement(r, accountId);
+    if (units > 0) out.push({ occurred_on: r.occurred_on, units });
+  }
+  return out;
+}
+
+function sumUnitsBy(rows: readonly { occurred_on: string; units: number }[], key: (ymd: string) => string): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const r of rows) {
+    const k = key(r.occurred_on);
+    m.set(k, (m.get(k) ?? 0) + r.units);
+  }
+  return m;
+}
+
+const monthEndOf = (ymd: string): string => monthEndUtcYmd(monthKeyFromYmd(ymd));
+
+/** Month-end `YYYY-MM-DD` → Σ share units bought in that calendar month (buys, DRIP, transfers in, splits). */
 function stockUnitsInflowByMonthEnd(accountId: number): Map<string, number> {
   // Only an equity account holds share units; the cash wallet a sell's proceeds land in is the
   // to-account of a `stock_sell` row with units, and must not read them as an inflow.
   if (!accountUsesEquityMtm(accountId)) return new Map();
-  const shareKinds = ["compra_usd", "stock_buy", "stock_sell"];
-  const ph = shareKinds.map(() => "?").join(", ");
-  const rows = db
-    .prepare(
-      `SELECT occurred_on, from_account_id, to_account_id, account_id, units_delta, counter_units_delta
-       FROM movements
-       WHERE (account_id = ? OR to_account_id = ?)
-         AND flow_kind IN (${ph})
-         AND COALESCE(units_delta, 0) > 0`
-    )
-    .all(accountId, accountId, ...shareKinds) as {
-    occurred_on: string;
-    from_account_id: number | null;
-    to_account_id: number | null;
-    account_id: number | null;
-    units_delta: number | null;
-    counter_units_delta: number | null;
-  }[];
-  const m = new Map<string, number>();
-  for (const r of rows) {
-    // The to-leg's own count (`transferToLegUnits`): a fund switch credits what it bought.
-    const units =
-      r.to_account_id === accountId
-        ? (transferToLegUnits(r) ?? 0)
-        : r.account_id === accountId
-          ? (r.units_delta ?? 0)
-          : 0;
-    if (units <= 0) continue;
-    const me = monthEndUtcYmd(monthKeyFromYmd(r.occurred_on));
-    m.set(me, (m.get(me) ?? 0) + units);
-  }
-  return m;
+  return sumUnitsBy(positiveUnitsInflows(accountId, BROKERAGE_SHARE_UNITS_FLOW_KINDS), monthEndOf);
 }
 
-/** `YYYY-MM` → Σ positive `units_delta` on AFP import rows in that calendar month (matches chart rows keyed by snapshot month). */
-/** Month-end `YYYY-MM-DD` → Σ positive `units_delta` on crypto account in that calendar month. */
+/** Month-end `YYYY-MM-DD` → Σ coins brought into a crypto account in that calendar month. */
 function cryptoCoinInflowByMonthEnd(accountId: number): Map<string, number> {
-  const rows = db
-    .prepare(
-      `SELECT occurred_on, COALESCE(units_delta, 0) AS ud
-       FROM movements
-       WHERE account_id = ? AND COALESCE(units_delta, 0) > 0`
-    )
-    .all(accountId) as { occurred_on: string; ud: number }[];
-  const m = new Map<string, number>();
-  for (const r of rows) {
-    const me = monthEndUtcYmd(monthKeyFromYmd(r.occurred_on));
-    m.set(me, (m.get(me) ?? 0) + r.ud);
-  }
-  return m;
+  return sumUnitsBy(positiveUnitsInflows(accountId), monthEndOf);
 }
 
+/** `YYYY-MM` → Σ cuotas brought into a cuota-ledger account in that calendar month (a fund switch's credit included). */
 function afpPositiveCuotasInflowByMonthKey(accountId: number): Map<string, number> {
-  const rows = db
-    .prepare(
-      `SELECT occurred_on, COALESCE(units_delta, 0) AS ud
-       FROM movements
-       WHERE account_id = ?
-         AND COALESCE(units_delta, 0) > 0`
-    )
-    .all(accountId) as { occurred_on: string; ud: number }[];
-  const m = new Map<string, number>();
-  for (const r of rows) {
-    const mk = monthKeyFromYmd(r.occurred_on);
-    m.set(mk, (m.get(mk) ?? 0) + r.ud);
-  }
-  return m;
+  return sumUnitsBy(positiveUnitsInflows(accountId), monthKeyFromYmd);
 }
 
 /**
@@ -753,9 +616,6 @@ function buildAccountMonthlyPerformanceUncached(
   let pts = [...ts.accounts.points].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
   const depKey = depKeyFull;
 
-  const bookAsc = loadBookValuationsAsc(accountId);
-  const exactClpByDate = new Map(bookAsc.map((r) => [r.as_of_date, r.value_clp]));
-
   let prevClose: number | null = null;
   let prevCumDep: number | null = null;
   let prevPerfAsOf: string | null = null;
@@ -808,17 +668,8 @@ function buildAccountMonthlyPerformanceUncached(
     const asOf = String(p.as_of_date);
     const close =
       deptoCloseClpByDate != null
-        ? monthEndCloseForMortgagePerformance(
-            accountId,
-            asOf,
-            p,
-            dk,
-            bookAsc,
-            exactClpByDate,
-            unit,
-            deptoCloseClpByDate
-          )
-        : monthEndCloseForPerformance(accountId, asOf, p, dk, bookAsc, exactClpByDate, unit);
+        ? monthEndCloseForMortgagePerformance(accountId, asOf, p, dk, unit, deptoCloseClpByDate)
+        : monthEndCloseForPerformance(accountId, asOf, p, dk, unit);
     if (close == null) continue;
     // A null deposit cell is a densified filler month (no valuation row, and — since the chart
     // grid adds the month-end of every deposit event — no flow either): cumulative deposits carry.
@@ -846,7 +697,11 @@ function buildAccountMonthlyPerformanceUncached(
               ? ccFirst.netFlow
               : cumDep;
       /** Mortgage: opening balance after pie is not P/L (only cuota-driven changes count). */
-      const nominalFirst = isMortgage ? 0 : ccFirst ? ccFirst.nominal : close - netFlowFirst;
+      const nominalFirst = isMortgage
+        ? 0
+        : ccFirst
+          ? ccFirst.nominal
+          : periodPl({ valueStart: 0, valueEnd: close, flow: netFlowFirst, side: "asset" });
       const pctFirst = ccFirst
         ? ccFirst.pct
         : isMortgage
@@ -895,11 +750,10 @@ function buildAccountMonthlyPerformanceUncached(
       ? creditCardMonthPerf(accountId, prevClose, close, prevPerfAsOf, asOf, unit)
       : null;
     if (ccPerf) netFlow = ccPerf.netFlow;
-    const nominal = isMortgage
-      ? mortgageMonthlyNominalPl(prevClose, close, netFlow)
-      : ccPerf
-        ? ccPerf.nominal
-        : close - prevClose - netFlow;
+    // Mortgage: the debt falling less than it was paid is the financing cost (debt rule).
+    const nominal = ccPerf
+      ? ccPerf.nominal
+      : periodPl({ valueStart: prevClose, valueEnd: close, flow: netFlow, side: isMortgage ? "debt" : "asset" });
     const pct = isMortgage
       ? liabilityPctMonth(nominal, prevClose)
       : ccPerf

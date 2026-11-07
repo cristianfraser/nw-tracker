@@ -194,7 +194,7 @@ function loadPositiveInflowMovements(
       `SELECT m.id, m.account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind, m.note
        FROM movements m
        WHERE m.account_id IN (${ph})
-         AND (CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END) > 0
+         AND ${MOVEMENT_CLP_LEG_SQL} > 0
          ${budaFilter}
        ORDER BY m.occurred_on, m.id`
     )
@@ -269,7 +269,7 @@ export function loadInternalNetWorthTransferOutflowKeys(
        WHERE m.account_id IS NULL
          AND m.from_account_id IS NOT NULL
          AND m.to_account_id IS NOT NULL
-         AND (CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END) != 0`
+         AND ${MOVEMENT_CLP_LEG_SQL} != 0`
     )
     .all() as (MovementAmountFields & {
     id: number;

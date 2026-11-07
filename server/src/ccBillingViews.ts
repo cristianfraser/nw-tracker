@@ -272,27 +272,24 @@ export function ccCupoFrame(accountId: number, ledgerMonths: readonly CcInstallm
 export type { CcStatementSlotByCurrency } from "./ccBillingStatementSlots.js";
 export { statementSlotsByBillingMonth } from "./ccBillingStatementSlots.js";
 
+type DerivedFacturado = { facturado_clp: number | null; facturado_usd: number | null };
+
+/** Each currency statement of a slot through `facturadoFromStatement` (none: both null). */
+function slotFacturado(
+  accountId: number,
+  slot: CcStatementSlotByCurrency
+): { clpDerived: DerivedFacturado; usdDerived: DerivedFacturado } {
+  const derive = (st: CcStatementSlotByCurrency["clp"]): DerivedFacturado =>
+    st ? facturadoFromStatement(accountId, st.statement_date, st, st.statement_date_iso) : { facturado_clp: null, facturado_usd: null };
+  return { clpDerived: derive(slot.clp), usdDerived: derive(slot.usd) };
+}
+
 /** CLP and USD facturado headers for a billing-month statement slot (matches buildFacturaciones). */
 export function facturadoClpUsdForStatementSlot(
   accountId: number,
   slot: CcStatementSlotByCurrency
 ): { facturado_clp: number; facturado_usd: number } {
-  const clpDerived = slot.clp
-    ? facturadoFromStatement(
-        accountId,
-        slot.clp.statement_date,
-        slot.clp,
-        slot.clp.statement_date_iso
-      )
-    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
-  const usdDerived = slot.usd
-    ? facturadoFromStatement(
-        accountId,
-        slot.usd.statement_date,
-        slot.usd,
-        slot.usd.statement_date_iso
-      )
-    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+  const { clpDerived, usdDerived } = slotFacturado(accountId, slot);
 
   return { facturado_clp: clpDerived.facturado_clp ?? 0, facturado_usd: usdDerived.facturado_usd ?? 0 };
 }
@@ -305,22 +302,7 @@ export function facturadoTotalClpForStatementSlot(
   const primary = slot.clp ?? slot.usd;
   if (!primary) return null;
 
-  const clpDerived = slot.clp
-    ? facturadoFromStatement(
-        accountId,
-        slot.clp.statement_date,
-        slot.clp,
-        slot.clp.statement_date_iso
-      )
-    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
-  const usdDerived = slot.usd
-    ? facturadoFromStatement(
-        accountId,
-        slot.usd.statement_date,
-        slot.usd,
-        slot.usd.statement_date_iso
-      )
-    : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+  const { clpDerived, usdDerived } = slotFacturado(accountId, slot);
 
   const facturadoClp = clpDerived.facturado_clp;
   const facturadoUsd = usdDerived.facturado_usd;
@@ -1051,22 +1033,7 @@ function buildFacturacionesInner(
     const primary = slot.clp ?? slot.usd;
     if (!primary) continue;
 
-    const clpDerived = slot.clp
-      ? facturadoFromStatement(
-          accountId,
-          slot.clp.statement_date,
-          slot.clp,
-          slot.clp.statement_date_iso
-        )
-      : { facturado_clp: null as number | null, facturado_usd: null as number | null };
-    const usdDerived = slot.usd
-      ? facturadoFromStatement(
-          accountId,
-          slot.usd.statement_date,
-          slot.usd,
-          slot.usd.statement_date_iso
-        )
-      : { facturado_clp: null as number | null, facturado_usd: null as number | null };
+    const { clpDerived, usdDerived } = slotFacturado(accountId, slot);
 
     const facturadoClp = clpDerived.facturado_clp;
     const facturadoUsd = usdDerived.facturado_usd;

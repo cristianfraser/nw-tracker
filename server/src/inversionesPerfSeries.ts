@@ -21,6 +21,7 @@
  */
 
 import { monthKeyFromYmd } from "./calendarMonth.js";
+import { runningGrowth } from "./perfKernel.js";
 import { chainDailyPct, withDailyChainedMonthPct, type DailyPctPoint } from "./periodPctDailyChain.js";
 import { dailyPerfLevelsFromMonthly } from "./dailyPerfLevels.js";
 import type { BucketDailySeries } from "./dailySeries.js";
@@ -211,25 +212,20 @@ export function buildInversionesPerfDaily(unit: TsUnit, days: number): Inversion
   // Running compounds over the full history, read at each grid day.
   const ytdByDate = new Map<string, number | null>();
   const accByDate = new Map<string, number | null>();
-  let acc = 1;
-  let accAny = false;
-  let ytd = 1;
-  let ytdAny = false;
-  let year = "";
-  for (const p of daily.combined) {
-    if (p.as_of_date.slice(0, 4) !== year) {
-      year = p.as_of_date.slice(0, 4);
-      ytd = 1;
-      ytdAny = false;
+  const combined = daily.combined;
+  const acc = runningGrowth(combined.map((p) => p.pct));
+  for (let i = 0; i < combined.length; ) {
+    // The YTD compound restarts each calendar year.
+    const year = combined[i]!.as_of_date.slice(0, 4);
+    let j = i;
+    while (j < combined.length && combined[j]!.as_of_date.slice(0, 4) === year) j += 1;
+    const ytd = runningGrowth(combined.slice(i, j).map((p) => p.pct));
+    for (let k = i; k < j; k++) {
+      const d = combined[k]!.as_of_date;
+      accByDate.set(d, acc[k]!.any ? acc[k]!.factor - 1 : null);
+      ytdByDate.set(d, ytd[k - i]!.any ? ytd[k - i]!.factor - 1 : null);
     }
-    if (p.pct != null && Number.isFinite(p.pct)) {
-      acc *= 1 + p.pct;
-      ytd *= 1 + p.pct;
-      accAny = true;
-      ytdAny = true;
-    }
-    accByDate.set(p.as_of_date, accAny ? acc - 1 : null);
-    ytdByDate.set(p.as_of_date, ytdAny ? ytd - 1 : null);
+    i = j;
   }
   const at = (m: Map<string, number | null>, d: string): number | null => m.get(d) ?? null;
   const points: InversionesPerfPoint[] = grid.map((d, i) => ({

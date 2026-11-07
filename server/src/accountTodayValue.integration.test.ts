@@ -10,7 +10,7 @@ import { accountIsDebt as isLiabilityAccountId } from "./accountProfile.js";
 import { buildDashboardNwBucketTotals } from "./dashboardNwBucketTotals.js";
 import { nwBucketSlugs } from "./navTreeModel.js";
 import { linkedCreditCardClpForCashCardAsOf } from "./liabilityTree.js";
-import { clpToUnitAt } from "./clpToUnitAt.js";
+import { clpToUnitAt } from "./valueConvert.js";
 import { getDashboardOverviewBlock } from "./valuationTimeseries.js";
 import { getDashboardOverviewDaily } from "./dashboardOverviewDaily.js";
 

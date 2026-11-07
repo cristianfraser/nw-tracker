@@ -39,7 +39,7 @@ import {
   listCcPaymentPairings,
 } from "./ccPaymentMirrorEvidence.js";
 import { db } from "./db.js";
-import { movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
+import { MOVEMENT_CLP_LEG_SQL, movementClpLegOrZero, type MovementAmountFields } from "./movementAmounts.js";
 import { FLOW_KIND_PAGO_TARJETA } from "./movementFlowType.js";
 import { PLANTED_PAYMENT_WINDOW_DAYS } from "./ccPlantedPayments.js";
 
@@ -168,7 +168,7 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
        JOIN accounts a ON a.id = m.account_id
        WHERE m.account_id IS NOT NULL AND m.from_account_id IS NULL AND m.to_account_id IS NULL
          AND m.flow_kind IS NULL
-         AND (CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END) < 0
+         AND ${MOVEMENT_CLP_LEG_SQL} < 0
        ORDER BY m.occurred_on, m.id`
     )
     .all() as ({

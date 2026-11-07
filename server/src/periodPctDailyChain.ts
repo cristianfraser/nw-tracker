@@ -4,6 +4,7 @@ import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import type { ChainedGroupPct } from "./dashboardNavCardMetrics.js";
 import { getBucketDailySeriesCached, type BucketDailySeries } from "./dailySeries.js";
 import { db } from "./db.js";
+import { compound } from "./perfKernel.js";
 import { resolveAccountDailySeries, resolveGroupDailySeries } from "./groupDailySeries.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
 
@@ -38,16 +39,9 @@ export function chainDailyPct(
   startYmd: string | null,
   todayYmd: string
 ): number | null {
-  let prod = 1;
-  let any = false;
-  for (const p of points) {
-    if (startYmd != null && p.as_of_date <= startYmd) continue;
-    if (p.as_of_date > todayYmd) continue;
-    if (p.pct == null || !Number.isFinite(p.pct)) continue;
-    prod *= 1 + p.pct;
-    any = true;
-  }
-  return any ? prod - 1 : null;
+  return compound(
+    points.filter((p) => (startYmd == null || p.as_of_date > startYmd) && p.as_of_date <= todayYmd).map((p) => p.pct)
+  );
 }
 
 /** A daily point of a scope's own series: its date and its flow-adjusted return of the day. */

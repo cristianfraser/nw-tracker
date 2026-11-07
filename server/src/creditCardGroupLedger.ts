@@ -67,43 +67,74 @@ function mergedUsdRate(
     : { usd_rate_clp: null, usd_rate_source: null };
 }
 
+/** Every field of a facturación row, each merged by its own rule in {@link mergeFacturacionRow}. */
+const FACTURACION_ROW_FIELDS = new Set<string>([
+  "billing_month",
+  "close_date",
+  "close_date_iso",
+  "pay_by",
+  "pay_by_iso",
+  "pay_by_source",
+  "facturado_clp",
+  "facturado_usd",
+  "facturado_usd_clp",
+  "facturado_total_clp",
+  "cuota_a_pagar_clp",
+  "deuda_en_cuotas_clp",
+  "is_open_month",
+  "is_provisional_close",
+  "close_date_source",
+  "provisional_estimate_total_clp",
+  "usd_rate_clp",
+  "usd_rate_source",
+] satisfies (keyof CcFacturacionRow)[]);
+
+/** A member's row as the merge sees it: a field without a merge rule throws, never takes the first member's value. */
+function checkedFacturacionRow(row: CcFacturacionRow): CcFacturacionRow {
+  for (const k of Object.keys(row)) {
+    if (!FACTURACION_ROW_FIELDS.has(k)) throw new Error(`credit-card group ledger: no merge rule for facturación field «${k}»`);
+  }
+  return row;
+}
+
+/** Two members' rows of one billing month, field by field (every field listed: no spread). */
+function mergeFacturacionRow(prev: CcFacturacionRow, row: CcFacturacionRow): CcFacturacionRow {
+  return {
+    billing_month: prev.billing_month,
+    close_date: prev.billing_month >= row.billing_month ? prev.close_date : row.close_date,
+    close_date_iso: prev.billing_month >= row.billing_month ? prev.close_date_iso : row.close_date_iso,
+    pay_by: prev.pay_by ?? row.pay_by,
+    pay_by_iso: prev.pay_by_iso ?? row.pay_by_iso,
+    pay_by_source: prev.pay_by != null ? prev.pay_by_source : row.pay_by_source,
+    facturado_clp: sumNullable(prev.facturado_clp, row.facturado_clp),
+    facturado_usd: sumNullable(prev.facturado_usd, row.facturado_usd),
+    facturado_usd_clp: sumNullable(prev.facturado_usd_clp, row.facturado_usd_clp),
+    facturado_total_clp: sumNullable(prev.facturado_total_clp, row.facturado_total_clp),
+    cuota_a_pagar_clp: sumNullable(prev.cuota_a_pagar_clp, row.cuota_a_pagar_clp),
+    deuda_en_cuotas_clp: sumNullable(prev.deuda_en_cuotas_clp, row.deuda_en_cuotas_clp),
+    is_open_month: prev.is_open_month || row.is_open_month,
+    // Provisional while any member still awaits its statement; its estimate is only
+    // meaningful per card, so a merged month carries the Σ when every member has one.
+    is_provisional_close: prev.is_provisional_close || row.is_provisional_close,
+    // The weaker evidence wins, so a merged row never claims more certainty than a member.
+    close_date_source: weakerCloseSource(prev.close_date_source, row.close_date_source),
+    provisional_estimate_total_clp:
+      prev.provisional_estimate_total_clp != null && row.provisional_estimate_total_clp != null
+        ? prev.provisional_estimate_total_clp + row.provisional_estimate_total_clp
+        : null,
+    // Each card's dollars are already in pesos at its own rate; a merged row names a rate only
+    // when the members agree (or just one bills in dollars).
+    ...mergedUsdRate(prev, row),
+  };
+}
+
 function mergeFacturaciones(ledgers: CcLedgerResponse[]): CcFacturacionRow[] {
   const byMonth = new Map<string, CcFacturacionRow>();
   for (const ledger of ledgers) {
-    for (const row of ledger.facturaciones ?? []) {
+    for (const member of ledger.facturaciones ?? []) {
+      const row = checkedFacturacionRow(member);
       const prev = byMonth.get(row.billing_month);
-      if (!prev) {
-        byMonth.set(row.billing_month, { ...row });
-        continue;
-      }
-      byMonth.set(row.billing_month, {
-        ...prev,
-        facturado_clp: sumNullable(prev.facturado_clp, row.facturado_clp),
-        facturado_usd: sumNullable(prev.facturado_usd, row.facturado_usd),
-        facturado_usd_clp: sumNullable(prev.facturado_usd_clp, row.facturado_usd_clp),
-        facturado_total_clp: sumNullable(prev.facturado_total_clp, row.facturado_total_clp),
-        cuota_a_pagar_clp: sumNullable(prev.cuota_a_pagar_clp, row.cuota_a_pagar_clp),
-        deuda_en_cuotas_clp: sumNullable(prev.deuda_en_cuotas_clp, row.deuda_en_cuotas_clp),
-        is_open_month: prev.is_open_month || row.is_open_month,
-        // Provisional while any member still awaits its statement; its estimate is only
-        // meaningful per card, so a merged month carries the Σ when every member has one.
-        is_provisional_close: prev.is_provisional_close || row.is_provisional_close,
-        provisional_estimate_total_clp:
-          prev.provisional_estimate_total_clp != null && row.provisional_estimate_total_clp != null
-            ? prev.provisional_estimate_total_clp + row.provisional_estimate_total_clp
-            : null,
-        // The weaker evidence wins, so a merged row never claims more certainty than a member.
-        close_date_source: weakerCloseSource(prev.close_date_source, row.close_date_source),
-        close_date: prev.billing_month >= row.billing_month ? prev.close_date : row.close_date,
-        close_date_iso:
-          prev.billing_month >= row.billing_month ? prev.close_date_iso : row.close_date_iso,
-        pay_by: prev.pay_by ?? row.pay_by,
-        pay_by_iso: prev.pay_by_iso ?? row.pay_by_iso,
-        pay_by_source: prev.pay_by != null ? prev.pay_by_source : row.pay_by_source,
-        // Each card's dollars are already in pesos at its own rate; a merged row names a rate only
-        // when the members agree (or just one bills in dollars).
-        ...mergedUsdRate(prev, row),
-      });
+      byMonth.set(row.billing_month, prev ? mergeFacturacionRow(prev, row) : { ...row });
     }
   }
   return [...byMonth.values()].sort((a, b) => b.billing_month.localeCompare(a.billing_month));

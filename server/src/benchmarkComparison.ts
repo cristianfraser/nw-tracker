@@ -4,7 +4,6 @@ import { monthEndUtcYmd } from "./calendarMonth.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
 import { flowEventInUnit } from "./flowsDeposits.js";
-import { fxForLiveMtm } from "./fxLive.js";
 import {
   benchmarkLevelSeries,
   type BenchmarkLevelSeries,
@@ -26,7 +25,7 @@ import {
 import { windowIrr } from "./irr.js";
 import { isInvestmentPerformanceAccount } from "./portfolioGroupTree.js";
 import { listAccountsForGroupTab, type TsUnit } from "./valuationTimeseries.js";
-import { clpToUnitAtMid } from "./clpToUnitAt.js";
+import { convertCurrency } from "./rates.js";
 
 /**
  * The Rentabilidad table's comparison row: for each window, a shadow portfolio that starts with
@@ -140,15 +139,10 @@ export function levelInUnit(
         if (series.currency !== "clp" && series.currency !== "usd") {
           throw new Error(`benchmark: a level in ${series.currency} cannot be shown in ${unit}`);
         }
-        let clp = native;
-        if (series.currency === "usd") {
-          const fx = fxForLiveMtm(ymd, now);
-          if (fx == null || !(fx.clp_per_usd > 0)) throw new Error(`benchmark: no USD/CLP on or before ${ymd}`);
-          clp = native * fx.clp_per_usd;
-        }
-        out = clpToUnitAtMid(clp, ymd, unit, now);
+        // A level is a reference, never a held value: the mid, live today (`rates.ts`).
+        out = convertCurrency(native, series.currency, unit, ymd, { side: "mid", now });
         if (out == null || !Number.isFinite(out)) {
-          throw new Error(`benchmark: no ${unit} rate on or before ${ymd}`);
+          throw new Error(`benchmark: no ${series.currency}→${unit} rate on or before ${ymd}`);
         }
       }
     }

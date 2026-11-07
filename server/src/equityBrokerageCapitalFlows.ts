@@ -36,12 +36,6 @@ import {
 
 const FX_WIRE_USD_TOLERANCE = 0.02;
 
-// Alias-qualified legs for the queries below that alias movements as `m`.
-const M_CLP_LEG_SQL =
-  "(CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END)";
-const M_USD_LEG_SQL =
-  "(CASE WHEN m.currency = 'usd' THEN m.amount WHEN m.counter_currency = 'usd' THEN m.counter_amount END)";
-
 export type EquityCapitalKind = "clp_wire" | "usd_reference";
 
 export type EquityCapitalSortFlow = {
@@ -76,13 +70,13 @@ function loadStockBuyCapitalRows(accountIds: number[]): TransferCapitalRow[] {
        WHERE m.account_id IS NULL
          AND m.to_account_id IN (${ph})
          AND m.flow_kind = 'stock_buy'
-         AND ((${M_USD_LEG_SQL} IS NOT NULL AND ${M_USD_LEG_SQL} != 0) OR COALESCE(${M_CLP_LEG_SQL}, 0) != 0)
+         AND ((${MOVEMENT_USD_LEG_SQL} IS NOT NULL AND ${MOVEMENT_USD_LEG_SQL} != 0) OR COALESCE(${MOVEMENT_CLP_LEG_SQL}, 0) != 0)
        UNION ALL
        SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND m.flow_kind = 'stock_buy'
-         AND ((${M_USD_LEG_SQL} IS NOT NULL AND ${M_USD_LEG_SQL} != 0) OR COALESCE(${M_CLP_LEG_SQL}, 0) != 0)
+         AND ((${MOVEMENT_USD_LEG_SQL} IS NOT NULL AND ${MOVEMENT_USD_LEG_SQL} != 0) OR COALESCE(${MOVEMENT_CLP_LEG_SQL}, 0) != 0)
        ORDER BY occurred_on, id`
     )
     .all(...accountIds, ...accountIds) as TransferCapitalRow[];
@@ -98,13 +92,13 @@ function loadStockSellCapitalRows(accountIds: number[]): TransferCapitalRow[] {
        WHERE m.account_id IS NULL
          AND m.from_account_id IN (${ph})
          AND m.flow_kind = 'stock_sell'
-         AND ((${M_USD_LEG_SQL} IS NOT NULL AND ${M_USD_LEG_SQL} != 0) OR COALESCE(${M_CLP_LEG_SQL}, 0) != 0)
+         AND ((${MOVEMENT_USD_LEG_SQL} IS NOT NULL AND ${MOVEMENT_USD_LEG_SQL} != 0) OR COALESCE(${MOVEMENT_CLP_LEG_SQL}, 0) != 0)
        UNION ALL
        SELECT m.id AS id, m.account_id AS account_id, m.from_account_id, m.occurred_on, m.amount, m.currency, m.counter_amount, m.counter_currency, m.flow_kind
        FROM movements m
        WHERE m.account_id IN (${ph})
          AND m.flow_kind = 'stock_sell'
-         AND ((${M_USD_LEG_SQL} IS NOT NULL AND ${M_USD_LEG_SQL} != 0) OR COALESCE(${M_CLP_LEG_SQL}, 0) != 0)
+         AND ((${MOVEMENT_USD_LEG_SQL} IS NOT NULL AND ${MOVEMENT_USD_LEG_SQL} != 0) OR COALESCE(${MOVEMENT_CLP_LEG_SQL}, 0) != 0)
        ORDER BY occurred_on, id`
     )
     .all(...accountIds, ...accountIds) as TransferCapitalRow[];
@@ -125,8 +119,8 @@ function loadDividendPayoutRows(accountIds: number[]): TransferCapitalRow[] {
        WHERE m.account_id IS NULL
          AND m.from_account_id IN (${ph})
          AND m.flow_kind = 'dividend_payout'
-         AND ${M_USD_LEG_SQL} IS NOT NULL
-         AND ${M_USD_LEG_SQL} != 0
+         AND ${MOVEMENT_USD_LEG_SQL} IS NOT NULL
+         AND ${MOVEMENT_USD_LEG_SQL} != 0
        ORDER BY m.occurred_on, m.id`
     )
     .all(...accountIds) as TransferCapitalRow[];

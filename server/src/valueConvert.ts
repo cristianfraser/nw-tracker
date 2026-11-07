@@ -5,11 +5,11 @@
  * day) in the history tier (`cacheRegistry.ts`; every rate table is a mark input, so a write
  * drops the tier); today and later read `convertCurrency` directly (the live rate).
  *
- * Flows never come here: they keep their own per-event rule (`flowEventInUnit`, `convertTs`).
+ * Flows never come here: they convert per event at their own day's flow rate (`convertFlow`).
  */
 import { historyTierMemo } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
-import { convertCurrency, type ConvertSide, type CurrencyCode } from "./rates.js";
+import { convertCurrency, type ConvertSide, type CurrencyCode, type TsUnit } from "./rates.js";
 
 export type ValueSide = Exclude<ConvertSide, "mid">;
 
@@ -68,4 +68,22 @@ export function pastValueRateLookup(
     }
     return r;
   };
+}
+
+/**
+ * A VALUE in pesos at `ymd`, in `unit`, converted once at its side: the stored rate on a past
+ * day, today's rate (live while the fx day is open) today and on a later date (the current
+ * month's month-end point). For an amount that is not one account's value (a card total netted
+ * from cash, a reference line); an account's value goes through `accountValueAt` (or, given its
+ * pesos, `accountValueInUnitFromClp`). Null when no rate is on file.
+ */
+export function clpToUnitAt(
+  clp: number,
+  ymd: string,
+  unit: TsUnit,
+  opts?: { now?: Date; side?: ValueSide }
+): number | null {
+  if (unit === "clp") return clp;
+  const out = convertValue(clp, "clp", unit, ymd, opts?.side ?? "asset", opts?.now);
+  return out != null && Number.isFinite(out) ? out : null;
 }

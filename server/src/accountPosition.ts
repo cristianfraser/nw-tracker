@@ -226,7 +226,7 @@ export function getAccountPositionMeta(
     case "fintual_goal":
       return fintualCertPositionMeta(accountId, profile.importKey!, profile.name.trim() || "Fintual", asOf, now);
     case "stock":
-      return equityBrokeragePositionMeta(accountId, q.ticker, asOf);
+      return equityBrokeragePositionMeta(accountId, q.ticker, asOf, now);
     case "coin":
       return coinPositionMeta(accountId, q.priceTicker, asOf, now);
     case "cuota_ledger":

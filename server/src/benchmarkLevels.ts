@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import { resolveEquityQuote } from "./equityQuote.js";
 import { resolveGroupDailySeries } from "./groupDailySeries.js";
+import { runningGrowth } from "./perfKernel.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 
 /**
@@ -255,18 +256,16 @@ export function chainDailyReturns(
 ): { dates: string[]; levels: number[] } {
   const dates: string[] = [];
   const levels: number[] = [];
-  let level = 1;
+  const growth = runningGrowth(points.map((p) => p.pct));
   for (let i = 0; i < points.length; i++) {
-    const p = points[i]!;
-    const has = p.pct != null && Number.isFinite(p.pct);
     if (dates.length === 0) {
-      if (!has || i === 0) continue;
+      // The level starts at 1 on the day before the first return (a first-day return has none).
+      if (!growth[i]!.any || i === 0) continue;
       dates.push(points[i - 1]!.as_of_date);
-      levels.push(level);
+      levels.push(1);
     }
-    if (has) level *= 1 + p.pct!;
-    dates.push(p.as_of_date);
-    levels.push(level);
+    dates.push(points[i]!.as_of_date);
+    levels.push(growth[i]!.factor);
   }
   return { dates, levels };
 }

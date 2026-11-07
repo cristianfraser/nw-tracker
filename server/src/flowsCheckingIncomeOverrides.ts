@@ -1,3 +1,4 @@
+import { MOVEMENT_CLP_LEG_SQL } from "./movementAmounts.js";
 import { db } from "./db.js";
 import { isCheckingCredit } from "./checkingCartolaLoaders.js";
 import {
@@ -214,7 +215,7 @@ export function loadExcludedCheckingIncomeLines(): FlowExcludedCheckingIncomeLin
          m.id AS movement_id,
          m.account_id,
          m.occurred_on AS received_on,
-         (CASE WHEN m.currency = 'clp' THEN m.amount WHEN m.counter_currency = 'clp' THEN m.counter_amount ELSE 0 END) AS amount_clp,
+         ${MOVEMENT_CLP_LEG_SQL} AS amount_clp,
          m.note AS cartola_note,
          o.note AS override_note,
          a.name AS account_label
