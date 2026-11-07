@@ -3,7 +3,6 @@ import { db } from "./db.js";
 import { ensureChildAssetGroupId } from "./assetGroupTree.js";
 import { accountUsesEquityMtm, computeEquityMtmClp, computeEquityMtmClpDisplaySync } from "./brokerageEquityMtm.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
-import { accountBucketKindSlug } from "./accountBucket.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -50,11 +49,7 @@ describe("CLP-quoted equity MTM (.SN)", () => {
       expect(mtm).not.toBeNull();
       expect(mtm!).toBeCloseTo(2282 * 1300, 6);
 
-      const meta = getAccountPositionMeta(accountId, accountBucketKindSlug(leaf.slug), {
-        accountImportKey: "import:panel|ticker=VITEST.SN|key=vitest-clp-equity",
-        accountName: "Vitest · clp equity fixture",
-        afpCuotasAsOfYmd: "2026-01-30",
-      });
+      const meta = getAccountPositionMeta(accountId, { asOfYmd: "2026-01-30" });
       expect(meta).not.toBeNull();
       expect(meta!.units!).toBeCloseTo(2282, 9);
       expect(meta!.afp_override_value_clp!).toBeCloseTo(2282 * 1300, 2);

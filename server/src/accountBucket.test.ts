@@ -28,7 +28,7 @@ describe("accountKindSlugForAccountId", () => {
 
     expect(accountKindSlugForAccountId(row.id)).toBe("afp");
 
-    const meta = getAccountPositionMeta(row.id, "afp");
+    const meta = getAccountPositionMeta(row.id);
     expect(meta?.ticker).toBe("UNO-A");
     expect(meta?.units_kind).toBe("shares");
   });

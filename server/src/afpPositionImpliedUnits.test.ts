@@ -40,7 +40,7 @@ describe("AFP position units", () => {
        ON CONFLICT(account_id, as_of_date) DO UPDATE SET value = excluded.value`
     ).run(accountId, asOf, 29300);
 
-    const meta = getAccountPositionMeta(accountId, "afp", { afpCuotasAsOfYmd: asOf });
+    const meta = getAccountPositionMeta(accountId, { asOfYmd: asOf });
     expect(meta?.units).toBe(500);
     expect(meta?.afp_override_value_clp).toBe(500 * px);
 

@@ -26,14 +26,9 @@ export type BrokerageFlowKind = (typeof BROKERAGE_FLOW_KINDS)[number];
 
 export const BROKERAGE_UNITS_REQUIRED_FLOW_KINDS = ["stock_buy"] as const;
 
-/** Flow kinds whose `units_delta` counts toward SPY/VEA share MTM (excludes CLP wires). */
-export const BROKERAGE_SHARE_UNITS_FLOW_KINDS = [
-  "compra_usd",
-  "stock_buy",
-  "stock_sell",
-  // A split's new shares (`equitySplits.ts`): a single-leg units row, amount 0.
-  "stock_split",
-] as const;
+import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./shareUnitsFlowKinds.js";
+
+export { BROKERAGE_SHARE_UNITS_FLOW_KINDS };
 
 /** Kinds whose label names a currency: built from the movement's own currencies (`movementFlowTypeLabel`). */
 export type CurrencyNamedFlowKind = "deposit_clp" | "withdrawal_clp" | "withdrawal_usd" | "compra_usd" | "compra_usd_venta_clp";

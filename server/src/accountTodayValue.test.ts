@@ -51,10 +51,7 @@ afterAll(() => {
 describe("account value today", () => {
   it("the page header and the dashboard row both show the mark carried by later deposits", async () => {
     if (accountId == null || leafSlug == null) return;
-    const mark = accountMarkClpAtYmd(accountId, chileCalendarTodayYmd(), leafSlug, {
-      import_key: IMPORT_KEY,
-      name: NAME,
-    });
+    const mark = accountMarkClpAtYmd(accountId, chileCalendarTodayYmd());
     expect(mark?.value_clp).toBe(550_000);
 
     const bundle = await buildAccountDetailBundle(accountId, "clp", "monthly");

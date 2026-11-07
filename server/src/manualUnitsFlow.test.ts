@@ -194,7 +194,7 @@ describe("manual units flow (Fintual/crypto/AFP transfers)", () => {
 
     try {
       expect(fintualGoalUnitsFromMovementsThroughDate(fund, today)).toBeNull();
-      const live = liveFintualCertDisplayValueClp(fund, notes, null, today);
+      const live = liveFintualCertDisplayValueClp(fund, today);
       expect(live).not.toBeNull();
       expect(live!.value_clp).toBe(0);
     } finally {

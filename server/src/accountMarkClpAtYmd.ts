@@ -1,33 +1,22 @@
-import { dbStateMemo } from "./dbStateMemo.js";
-import { valuationCurrency, valuationsAreAppraisals } from "./valuationValue.js";
+import { valuationCurrency } from "./valuationValue.js";
 import { hasCuotaLedgerUnitsEvents } from "./accountPosition.js";
-import { cuotaLedgerSeriesKeyForAccount, isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
-import { accountUsesEquityMtm, equityShareUnitsThroughYmd } from "./brokerageEquityMtm.js";
+import { equityShareUnitsThroughYmd } from "./brokerageEquityMtm.js";
 import { checkingMovementBalanceClpAtCached } from "./checkingCartolaBalances.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { accountBucketKindSlug } from "./accountBucket.js";
 import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
-import {
-  accountUsesCryptoMtm,
-  cryptoCoinCumulativeThroughDate,
-  cryptoEquityTickerForAccount,
-} from "./cryptoValuation.js";
-import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
+import { cryptoCoinCumulativeThroughDate } from "./cryptoValuation.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
-import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
 import { afpCuotasCumulativeThroughDate as afpCuotas } from "./afpUnoValuation.js";
-import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { postCloseLiveBalanceAdjustmentClp } from "./ccBillingBalances.js";
 import { storedMarkValueWithFlowCarry } from "./storedMarkFlowCarry.js";
-import { isUsdCashAccount, usdCashBalanceUsdAt } from "./usdCashAccounts.js";
-import { isClpCashAccount, clpCashBalanceClpAt } from "./clpCashAccounts.js";
+import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
+import { clpCashBalanceClpAt } from "./clpCashAccounts.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import { db } from "./db.js";
 import { historyTierMemo } from "./cacheRegistry.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
-import { requireEquityTicker } from "./accountEquityTicker.js";
 import { holdingPriceAt, type InstrumentHolding } from "./holdingPrices.js";
-import { holdingIsDebt, isCardAccount, type Holding } from "./holdings.js";
+import { accountProfileOptional, type AccountProfile, type Holding } from "./accountProfile.js";
 import { cardValueInUnit } from "./cardValueInUnit.js";
 import type { CurrencyCode } from "./rates.js";
 import { convertValue, type ValueSide } from "./valueConvert.js";
@@ -52,45 +41,9 @@ export type QtyMark = {
   as_of_date: string;
 };
 
-type MarkOpts = { import_key?: string | null; name?: string | null };
-
-function deptoKindForBucketSlug(bucketSlug: string): "property" | "mortgage" | null {
-  const kind = accountBucketKindSlug(bucketSlug);
-  if (kind === "property" || kind === "mortgage") return kind;
-  return null;
-}
-
-export function bucketSlugForAccount(accountId: number): string | null {
-  return dbStateMemo("account_bucket_slug", accountId, () => bucketSlugForAccountUncached(accountId));
-}
-
-function bucketSlugForAccountUncached(accountId: number): string | null {
-  const row = db
-    .prepare(
-      `SELECT g.slug AS bucket_slug
-       FROM accounts a
-       INNER JOIN asset_groups g ON g.id = a.asset_group_id
-       WHERE a.id = ?`
-    )
-    .get(accountId) as { bucket_slug: string } | undefined;
-  return row?.bucket_slug ?? null;
-}
-
-const stmtImportKey = db.prepare(`SELECT import_key FROM accounts WHERE id = ?`);
-
-/** The account's import key: the caller's when it passed one (null included), else the row's. */
-function importKeyFor(accountId: number, opts?: MarkOpts): string | null {
-  if (opts?.import_key !== undefined) return opts.import_key;
-  return dbStateMemo("account_import_key", accountId, () => {
-    const r = stmtImportKey.get(accountId) as { import_key: string | null } | undefined;
-    return r?.import_key ?? null;
-  });
-}
-
 /** The side a value of this account converts at: a liability's balance is a debt. */
-export function accountValueSide(accountId: number, categorySlug?: string | null): ValueSide {
-  const slug = categorySlug ?? bucketSlugForAccount(accountId) ?? "";
-  return holdingIsDebt(accountBucketKindSlug(slug)) ? "debt" : "asset";
+export function accountValueSide(accountId: number): ValueSide {
+  return accountProfileOptional(accountId)?.side ?? "asset";
 }
 
 const currency = (code: CurrencyCode, qty: number, as_of_date: string): QtyMark => ({
@@ -107,146 +60,149 @@ function fundMark(seriesKey: string, ymd: string, cuotas: number | null): QtyMar
   return { qty: cuotas, asset, as_of_date: px.as_of };
 }
 
-function historicalQtyMarkUncached(
-  accountId: number,
-  asOfYmd: string,
-  categorySlug: string,
-  importKey: string | null
-): QtyMark | null {
-  const kind = accountBucketKindSlug(categorySlug);
-  if (isCuotaLedgerKindSlug(kind)) {
-    // Σ cuotas × the series' valor cuota on or before the date. Emptied (or switched out of)
-    // after holding cuotas: an explicit 0 dated the day asked. An `afc` account with no series
-    // is not modeled in cuotas and keeps the stored-mark path below.
-    const series = cuotaLedgerSeriesKeyForAccount(accountId, kind, asOfYmd);
-    if (series) {
-      const m = fundMark(series, asOfYmd, fintualOrLedgerCuotas(accountId, asOfYmd, "ledger"));
+/**
+ * What the account held on `asOfYmd`, by its profile's quantity source. A source that has no
+ * figure that day (an instrument before its price series, a ledger with no balance) falls back to
+ * the account's stored marks ({@link bookMark}), as it always has.
+ */
+function historicalQtyMarkUncached(profile: AccountProfile, asOfYmd: string): QtyMark | null {
+  const accountId = profile.id;
+  const q = profile.quantity;
+  switch (q.kind) {
+    case "cuota_ledger": {
+      // Σ cuotas × the series' valor cuota on or before the date. Emptied (or switched out of)
+      // after holding cuotas: an explicit 0 dated the day asked.
+      const m = fundMark(q.seriesKey, asOfYmd, fintualOrLedgerCuotas(accountId, asOfYmd, "ledger"));
       if (m === "zero_needs_events") {
         if (hasCuotaLedgerUnitsEvents(accountId)) {
-          return { qty: 0, asset: { kind: "fund", seriesKey: series, quote: "clp" }, as_of_date: asOfYmd };
+          return { qty: 0, asset: { kind: "fund", seriesKey: q.seriesKey, quote: "clp" }, as_of_date: asOfYmd };
         }
       } else if (m) {
         return m;
       }
+      return bookMark(profile, asOfYmd);
     }
-  }
-  if (importKey && isFintualCertV2ValuationNotes(importKey)) {
-    const series = fundSeriesKeyForAccount(accountId);
-    if (series) {
-      const m = fundMark(series, asOfYmd, fintualOrLedgerCuotas(accountId, asOfYmd, "fintual"));
+    case "fintual_goal": {
+      const m = fundMark(q.seriesKey, asOfYmd, fintualOrLedgerCuotas(accountId, asOfYmd, "fintual"));
       if (m === "zero_needs_events") {
         // Fully withdrawn (or never funded): an explicit 0, dated on the price day.
-        const px = holdingPriceAt({ kind: "fund", seriesKey: series, quote: "clp" }, asOfYmd);
+        const px = holdingPriceAt({ kind: "fund", seriesKey: q.seriesKey, quote: "clp" }, asOfYmd);
         return {
           qty: 0,
-          asset: { kind: "fund", seriesKey: series, quote: "clp" },
+          asset: { kind: "fund", seriesKey: q.seriesKey, quote: "clp" },
           as_of_date: px?.as_of ?? chileCalendarTodayYmd(),
         };
       }
-      if (m) return m;
+      return m ?? bookMark(profile, asOfYmd);
     }
-  }
-  if (isMovementBalanceCashCategory(categorySlug)) {
-    const clp = checkingMovementBalanceClpAtCached(accountId, asOfYmd);
-    if (Number.isFinite(clp)) return currency("clp", clp, asOfYmd);
-  }
-  if (isUsdCashAccount(accountId)) {
-    const usd = usdCashBalanceUsdAt(accountId, asOfYmd);
-    if (Number.isFinite(usd)) return currency("usd", usd, asOfYmd);
-  }
-  if (isClpCashAccount(accountId)) {
-    const clp = clpCashBalanceClpAt(accountId, asOfYmd);
-    if (Number.isFinite(clp)) return currency("clp", clp, asOfYmd);
-  }
-  if (accountUsesEquityMtm(accountId)) {
-    const ticker = requireEquityTicker(accountId);
-    const asset: InstrumentHolding = { kind: "stock", ticker, quote: equityQuoteCurrency(ticker) };
-    const units = equityShareUnitsThroughYmd(accountId, asOfYmd);
-    if (!(units > 0) || !Number.isFinite(units)) return { qty: 0, asset, as_of_date: asOfYmd };
-    if (holdingPriceAt(asset, asOfYmd)) return { qty: units, asset, as_of_date: asOfYmd };
-  }
-  if (accountUsesCryptoMtm(accountId)) {
-    // Units × close × fx is crypto's only value source — no stored-row fallback.
-    const priceTicker = cryptoEquityTickerForAccount(accountId)!;
-    const asset: InstrumentHolding = {
-      kind: "coin",
-      coin: priceTicker.replace(/-USD$/i, ""),
-      priceTicker,
-      quote: "usd",
-    };
-    const units = cryptoCoinCumulativeThroughDate(accountId, asOfYmd);
-    if (!Number.isFinite(units) || units <= 1e-12) return { qty: 0, asset, as_of_date: asOfYmd };
-    if (!holdingPriceAt(asset, asOfYmd)) {
-      throw new Error(
-        `crypto account ${accountId}: cannot mark ${asOfYmd} (no ${priceTicker} close in equity_daily on or before ${asOfYmd}); crypto is valued from units × close × fx only — backfill the missing series`
-      );
+    case "checking_ledger": {
+      const clp = checkingMovementBalanceClpAtCached(accountId, asOfYmd);
+      return Number.isFinite(clp) ? currency("clp", clp, asOfYmd) : bookMark(profile, asOfYmd);
     }
-    return { qty: units, asset, as_of_date: asOfYmd };
-  }
-  const deptoKind = deptoKindForBucketSlug(categorySlug);
-  if (deptoKind) {
-    const depto = deptoAccountMarkClpAtYmd(deptoKind, asOfYmd);
-    if (depto) return currency("clp", depto.value_clp, depto.as_of_date);
-    if (deptoKind === "mortgage") {
+    case "usd_ledger": {
+      const usd = usdCashBalanceUsdAt(accountId, asOfYmd);
+      return Number.isFinite(usd) ? currency("usd", usd, asOfYmd) : bookMark(profile, asOfYmd);
+    }
+    case "clp_ledger": {
+      const clp = clpCashBalanceClpAt(accountId, asOfYmd);
+      return Number.isFinite(clp) ? currency("clp", clp, asOfYmd) : bookMark(profile, asOfYmd);
+    }
+    case "stock": {
+      const asset: InstrumentHolding = { kind: "stock", ticker: q.ticker, quote: equityQuoteCurrency(q.ticker) };
+      const units = equityShareUnitsThroughYmd(accountId, asOfYmd);
+      if (!(units > 0) || !Number.isFinite(units)) return { qty: 0, asset, as_of_date: asOfYmd };
+      if (holdingPriceAt(asset, asOfYmd)) return { qty: units, asset, as_of_date: asOfYmd };
+      return bookMark(profile, asOfYmd);
+    }
+    case "coin": {
+      // Units × close × fx is crypto's only value source — no stored-row fallback.
+      const asset: InstrumentHolding = {
+        kind: "coin",
+        coin: q.priceTicker.replace(/-USD$/i, ""),
+        priceTicker: q.priceTicker,
+        quote: "usd",
+      };
+      const units = cryptoCoinCumulativeThroughDate(accountId, asOfYmd);
+      if (!Number.isFinite(units) || units <= 1e-12) return { qty: 0, asset, as_of_date: asOfYmd };
+      if (!holdingPriceAt(asset, asOfYmd)) {
+        throw new Error(
+          `crypto account ${accountId}: cannot mark ${asOfYmd} (no ${q.priceTicker} close in equity_daily on or before ${asOfYmd}); crypto is valued from units × close × fx only — backfill the missing series`
+        );
+      }
+      return { qty: units, asset, as_of_date: asOfYmd };
+    }
+    case "depto_property": {
+      const depto = deptoAccountMarkClpAtYmd("property", asOfYmd);
+      // A property's valuations are its appraisals, not its value: nothing to fall back to.
+      return depto ? currency("clp", depto.value_clp, depto.as_of_date) : null;
+    }
+    case "depto_loan": {
+      const depto = deptoAccountMarkClpAtYmd("mortgage", asOfYmd);
+      if (depto) return currency("clp", depto.value_clp, depto.as_of_date);
       const v = latestMortgageDisplayedBalance(accountId, asOfYmd);
       if (v?.value_clp != null && v.as_of_date && v.as_of_date <= asOfYmd) {
         return currency("clp", v.value_clp, v.as_of_date);
       }
+      return bookMark(profile, asOfYmd);
     }
-  }
-  if (kind === "credit_card") {
-    // Owed-on-date convention (Saldo pasivos / chart lines): stored `valuations` for
-    // historical dates, live billing balance for today+ — not the billing-month "balance
-    // total", which subtracts the next-month payment before it happens. Between anchors,
-    // per-day owed carries the anchor plus post-anchor signed line activity (charges +,
-    // PAGOs −) — the same evidence stream the month-end writer applies post-cierre.
-    // Installments enter at anchors (cupo-based), matching the billing module.
-    const cc = latestCreditCardValuationRowAsOf(accountId, asOfYmd);
-    if (cc?.value_clp != null && Number.isFinite(cc.value_clp)) {
-      const value_clp =
-        cc.as_of_date < asOfYmd
-          ? Math.round(
-              cc.value_clp +
-                postCloseLiveBalanceAdjustmentClp(accountId, cc.as_of_date, asOfYmd, {
-                  includeInstallmentPurchases: true,
-                })
-            )
-          : cc.value_clp;
-      return currency("clp", value_clp, cc.as_of_date);
+    case "card": {
+      // Owed-on-date convention (Saldo pasivos / chart lines): stored `valuations` for
+      // historical dates, live billing balance for today+ — not the billing-month "balance
+      // total", which subtracts the next-month payment before it happens. Between anchors,
+      // per-day owed carries the anchor plus post-anchor signed line activity (charges +,
+      // PAGOs −) — the same evidence stream the month-end writer applies post-cierre.
+      // Installments enter at anchors (cupo-based), matching the billing module.
+      const cc = latestCreditCardValuationRowAsOf(accountId, asOfYmd);
+      if (cc?.value_clp != null && Number.isFinite(cc.value_clp)) {
+        const value_clp =
+          cc.as_of_date < asOfYmd
+            ? Math.round(
+                cc.value_clp +
+                  postCloseLiveBalanceAdjustmentClp(accountId, cc.as_of_date, asOfYmd, {
+                    includeInstallmentPurchases: true,
+                  })
+              )
+            : cc.value_clp;
+        return currency("clp", value_clp, cc.as_of_date);
+      }
+      return bookMark(profile, asOfYmd);
     }
+    case "book_mark":
+      return bookMark(profile, asOfYmd);
   }
+}
 
-  // A property's valuations are its appraisals, not its value (the depto ledger above values it).
-  if (valuationsAreAppraisals(kind)) return null;
-  const stored = db
-    .prepare(
-      `SELECT as_of_date, value, currency FROM valuations
-       WHERE account_id = ? AND as_of_date <= ?
-       ORDER BY as_of_date DESC LIMIT 1`
-    )
-    .get(accountId, asOfYmd) as { as_of_date: string; value: number; currency: string } | undefined;
-  if (stored?.value != null && Number.isFinite(stored.value)) {
-    const code = valuationCurrency(stored.currency, "accountMarkClpAtYmd");
-    // Book-value carry: a stale mark forward-fills plus net flows since its date, so a
-    // deposit day moves the value (daily pl 0) instead of booking −flow until the next mark.
-    // Never for CC/mortgage balances (own branches above; flows ≠ balance deltas there). The
-    // carried flows are pesos: a mark stored in another currency has no carry to add.
-    if (kind === "credit_card" || kind === "mortgage" || stored.as_of_date === asOfYmd) {
-      return currency(code, stored.value, stored.as_of_date);
-    }
-    if (code !== "clp") {
-      throw new Error(
-        `accountMarkClpAtYmd: account ${accountId} has a ${code} book mark on ${stored.as_of_date}; the flow carry to ${asOfYmd} is in pesos`
-      );
-    }
-    return currency(
-      "clp",
-      storedMarkValueWithFlowCarry(accountId, stored.value, stored.as_of_date, asOfYmd),
-      stored.as_of_date
+const stmtStoredMarkOnOrBefore = db.prepare(
+  `SELECT as_of_date, value, currency FROM valuations
+   WHERE account_id = ? AND as_of_date <= ?
+   ORDER BY as_of_date DESC LIMIT 1`
+);
+
+/**
+ * The account's stored mark on or before the date. Book-value carry (`profile.flowCarry`): a
+ * stale mark forward-fills plus net flows since its date, so a deposit day moves the value (daily
+ * pl 0) instead of booking −flow until the next mark. The carried flows are pesos: a mark stored
+ * in another currency has no carry to add.
+ */
+function bookMark(profile: AccountProfile, asOfYmd: string): QtyMark | null {
+  const stored = stmtStoredMarkOnOrBefore.get(profile.id, asOfYmd) as
+    | { as_of_date: string; value: number; currency: string }
+    | undefined;
+  if (stored?.value == null || !Number.isFinite(stored.value)) return null;
+  const code = valuationCurrency(stored.currency, "accountMarkClpAtYmd");
+  if (!profile.flowCarry || stored.as_of_date === asOfYmd) {
+    return currency(code, stored.value, stored.as_of_date);
+  }
+  if (code !== "clp") {
+    throw new Error(
+      `accountMarkClpAtYmd: account ${profile.id} has a ${code} book mark on ${stored.as_of_date}; the flow carry to ${asOfYmd} is in pesos`
     );
   }
-
-  return null;
+  return currency(
+    "clp",
+    storedMarkValueWithFlowCarry(profile, stored.value, stored.as_of_date, asOfYmd),
+    stored.as_of_date
+  );
 }
 
 function fintualOrLedgerCuotas(accountId: number, ymd: string, which: "ledger" | "fintual"): number | null {
@@ -277,24 +233,18 @@ export function qtyMarkNativeValue(
 
 /**
  * {@link historicalQtyMarkUncached} for a day other than Chile today. A past day reads no live
- * input, so it is kept in the history tier (`cacheRegistry.ts`).
+ * input, so it is kept in the history tier (`cacheRegistry.ts`). An id with no account row (a
+ * synthetic chart line) holds nothing.
  */
-export function accountHistoricalQtyMark(
-  accountId: number,
-  asOfYmd: string,
-  categorySlug?: string | null,
-  opts?: MarkOpts
-): QtyMark | null {
-  const slug = categorySlug ?? bucketSlugForAccount(accountId) ?? "";
-  const importKey = importKeyFor(accountId, opts);
-  if (asOfYmd >= chileCalendarTodayYmd()) {
-    return historicalQtyMarkUncached(accountId, asOfYmd, slug, importKey);
-  }
+export function accountHistoricalQtyMark(accountId: number, asOfYmd: string): QtyMark | null {
+  const profile = accountProfileOptional(accountId);
+  if (!profile) return null;
+  if (asOfYmd >= chileCalendarTodayYmd()) return historicalQtyMarkUncached(profile, asOfYmd);
   const memo = historyTierMemo<string, QtyMark | null>("account_qty_marks");
-  const key = `${accountId}|${slug}|${importKey ?? ""}|${asOfYmd}`;
+  const key = `${accountId}|${asOfYmd}`;
   let mark = memo.get(key);
   if (mark === undefined) {
-    mark = historicalQtyMarkUncached(accountId, asOfYmd, slug, importKey);
+    mark = historicalQtyMarkUncached(profile, asOfYmd);
     memo.set(key, mark);
   }
   return mark;
@@ -304,16 +254,12 @@ export function accountHistoricalQtyMark(
  * The quantity mark for a day before Chile today, never memoized: for the per-account daily
  * quantity series (`accountMarkDailyCache.ts`), which keep their own store.
  */
-export function accountHistoricalQtyMarkUncached(
-  accountId: number,
-  asOfYmd: string,
-  categorySlug: string,
-  opts?: MarkOpts
-): QtyMark | null {
+export function accountHistoricalQtyMarkUncached(accountId: number, asOfYmd: string): QtyMark | null {
   if (asOfYmd >= chileCalendarTodayYmd()) {
     throw new Error(`accountHistoricalQtyMarkUncached: ${asOfYmd} is not before Chile today`);
   }
-  return historicalQtyMarkUncached(accountId, asOfYmd, categorySlug, importKeyFor(accountId, opts));
+  const profile = accountProfileOptional(accountId);
+  return profile ? historicalQtyMarkUncached(profile, asOfYmd) : null;
 }
 
 /** A quantity mark's value in `unit` on `ymd`: priced, then converted once at `side`. */
@@ -327,7 +273,7 @@ export function qtyMarkValueIn(
 ): number | null {
   const native = qtyMarkNativeValue(mark, ymd, now);
   if (!native) return null;
-  if (isCardAccount(accountId)) return cardValueInUnit(accountId, native.value, ymd, unit, now);
+  if (accountProfileOptional(accountId)?.quantity.kind === "card") return cardValueInUnit(accountId, native.value, ymd, unit, now);
   const out = convertValue(native.value, native.currency, unit, ymd, side, now);
   if (out == null && mark.asset.kind === "coin") {
     throw new Error(
@@ -342,24 +288,16 @@ export function qtyMarkValueIn(
  * today, else what it held that day (UF día, cuotas × valor, shares × close, the cartola
  * balance, the depto ledger) valued in pesos — not "latest on file".
  */
-export function accountMarkClpAtYmd(
-  accountId: number,
-  asOfYmd: string,
-  categorySlug?: string | null,
-  opts?: MarkOpts
-): AccountMarkAtYmd | null {
-  const slug = categorySlug ?? bucketSlugForAccount(accountId) ?? "";
-  const today = chileCalendarTodayYmd();
-
-  if (asOfYmd === today) {
+export function accountMarkClpAtYmd(accountId: number, asOfYmd: string): AccountMarkAtYmd | null {
+  if (asOfYmd === chileCalendarTodayYmd()) {
     // Today is the account's one today value (`accountTodayValue`): the same figure the
     // dashboard row, the account page and the charts' live last point show.
-    const live = accountTodayValue(accountId, slug, opts);
+    const live = accountTodayValue(accountId);
     return live ? { value_clp: live.value_clp, as_of_date: live.as_of_date } : null;
   }
-  const mark = accountHistoricalQtyMark(accountId, asOfYmd, slug, opts);
+  const mark = accountHistoricalQtyMark(accountId, asOfYmd);
   if (!mark) return null;
-  const clp = qtyMarkValueIn(accountId, mark, asOfYmd, "clp", accountValueSide(accountId, slug));
+  const clp = qtyMarkValueIn(accountId, mark, asOfYmd, "clp", accountValueSide(accountId));
   return clp != null && Number.isFinite(clp) ? { value_clp: clp, as_of_date: mark.as_of_date } : null;
 }
 
@@ -367,14 +305,9 @@ export function accountMarkClpAtYmd(
  * {@link accountMarkClpAtYmd} for a day before Chile today, never memoized (tests and the
  * identity check of the daily quantity series).
  */
-export function accountHistoricalMarkClpAtYmdUncached(
-  accountId: number,
-  asOfYmd: string,
-  categorySlug: string,
-  opts?: MarkOpts
-): AccountMarkAtYmd | null {
-  const mark = accountHistoricalQtyMarkUncached(accountId, asOfYmd, categorySlug, opts);
+export function accountHistoricalMarkClpAtYmdUncached(accountId: number, asOfYmd: string): AccountMarkAtYmd | null {
+  const mark = accountHistoricalQtyMarkUncached(accountId, asOfYmd);
   if (!mark) return null;
-  const clp = qtyMarkValueIn(accountId, mark, asOfYmd, "clp", accountValueSide(accountId, categorySlug));
+  const clp = qtyMarkValueIn(accountId, mark, asOfYmd, "clp", accountValueSide(accountId));
   return clp != null && Number.isFinite(clp) ? { value_clp: clp, as_of_date: mark.as_of_date } : null;
 }

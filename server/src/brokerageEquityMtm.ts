@@ -8,8 +8,7 @@ import {
   listMovementRowsForAccount,
   unitsDeltaForAccountMovement,
 } from "./movementTransfer.js";
-import { isUsdCashAccount } from "./usdCashAccounts.js";
-import { isClpCashAccount } from "./clpCashAccounts.js";
+import { accountProfileOptional } from "./accountProfile.js";
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
 import { equityTickerForAccount, requireEquityTicker } from "./accountEquityTicker.js";
@@ -48,29 +47,10 @@ export function upsertEquityDailySeries(ticker: string, series: EodCloseSeries):
   return n;
 }
 
-const shareUnitsFlowPh = BROKERAGE_SHARE_UNITS_FLOW_KINDS.map(() => "?").join(", ");
 
-const stmtHasUnits = db.prepare(
-  `SELECT 1 FROM movements
-   WHERE (account_id = ? OR to_account_id = ?)
-     AND flow_kind IN (${shareUnitsFlowPh})
-     AND COALESCE(units_delta, 0) != 0
-   LIMIT 1`
-);
-
+/** True when the account is valued from share units (its profile's quantity is a stock). */
 export function accountUsesEquityMtm(accountId: number): boolean {
-  // A share flow's cash leg is never the equity side: a buy's from-account and a sell's
-  // to-account are the wallet the proceeds move through (USD cash for USD-quoted stocks, CLP
-  // cash for `.SN` ones — the first CLP sale, 2026-10-20, made Racional CLP read as a stock).
-  if (isUsdCashAccount(accountId) || isClpCashAccount(accountId)) return false;
-  // Movements are mark-input tables: the history tier drops this the moment one is written.
-  const memo = historyTierMemo<number, boolean>("account_uses_equity_mtm");
-  let uses = memo.get(accountId);
-  if (uses === undefined) {
-    uses = stmtHasUnits.get(accountId, accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null;
-    memo.set(accountId, uses);
-  }
-  return uses;
+  return accountProfileOptional(accountId)?.quantity.kind === "stock";
 }
 
 /** Share units held on or before `asOfYmd` (brokerage acciones / crypto with unit flows). */

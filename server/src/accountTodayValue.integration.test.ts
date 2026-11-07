@@ -25,7 +25,7 @@ describe("accountTodayValue — one figure per account today (CLP)", () => {
     const mismatches: string[] = [];
     let checked = 0;
     for (const r of rows) {
-      const tv = accountTodayValue(r.account_id, r.bucket_slug);
+      const tv = accountTodayValue(r.account_id);
       if (tv == null) continue;
       checked += 1;
       const close = (label: string, got: number | null | undefined) => {
@@ -34,7 +34,7 @@ describe("accountTodayValue — one figure per account today (CLP)", () => {
         }
       };
       close("dashboard row", r.current_value_clp);
-      close("today mark", accountMarkClpAtYmd(r.account_id, today, r.bucket_slug)?.value_clp);
+      close("today mark", accountMarkClpAtYmd(r.account_id, today)?.value_clp);
 
       const perf = monthlyPerfRowsForAccount(r.account_id, r.bucket_slug, "clp");
       const cur = perf.find((p) => monthKeyFromYmd(p.as_of_date) === monthKeyFromYmd(today));

@@ -178,7 +178,7 @@ function balanceOnlyMonthlyRowsAsc(
 
   if (isMovementBalanceCashCategory(categorySlug)) {
     return patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, withTotals, unit, () =>
-      accountTodayValue(accountId, categorySlug)
+      accountTodayValue(accountId)
     );
   }
 
@@ -221,7 +221,7 @@ function usdCashMonthlyPerfRows(
     monthEndsAsc,
     "usd_cash",
     // Its value in the unit (`accountValueAt`): its ledger dollars, converted once from them.
-    (asOf) => accountValueAt(accountId, asOf, unit, { categorySlug })?.value ?? Number.NaN,
+    (asOf) => accountValueAt(accountId, asOf, unit)?.value ?? Number.NaN,
     ledgerCashNetFlowBetween(accountId, unit)
   );
   return [...asc].reverse();
@@ -306,8 +306,7 @@ function bookValuationMonthlyPerfRows(
   );
 
   const patched = patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, asc, unit, () => {
-    // The account's one today value, with its real import key and name (read from the account).
-    const live = accountTodayValue(accountId, categorySlug);
+    const live = accountTodayValue(accountId);
     return live ?? bookAsc[bookAsc.length - 1]!.value_clp;
   });
 

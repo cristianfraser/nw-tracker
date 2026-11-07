@@ -236,7 +236,7 @@ describe("deptoKindForBucketSlug via accountMarkClpAtYmd", () => {
   it("resolves real_estate__property leaf slug to depto UF mark", () => {
     const today = chileCalendarTodayYmd();
     const depto = deptoAccountMarkClpAtYmd("property", today);
-    const viaLeaf = accountMarkClpAtYmd(0, today, "real_estate__property");
+    const viaLeaf = accountMarkClpAtYmd(0, today);
     if (!depto || !viaLeaf) return;
     expect(viaLeaf.value_clp).toBe(depto.value_clp);
   });
@@ -252,8 +252,8 @@ describe("accountMarkClpAtYmd property", () => {
     const deptoToday = deptoAccountMarkClpAtYmd("property", today);
     if (!deptoToday) return;
 
-    const markToday = accountMarkClpAtYmd(row.id, today, "real_estate__property");
-    const markPrior = accountMarkClpAtYmd(row.id, priorEnd, "property");
+    const markToday = accountMarkClpAtYmd(row.id, today);
+    const markPrior = accountMarkClpAtYmd(row.id, priorEnd);
     expect(markToday?.value_clp).toBe(deptoToday.value_clp);
     expect(markPrior?.value_clp).toBeDefined();
 
@@ -310,14 +310,8 @@ describe("accountMarkClpAtYmd property", () => {
 
     const today = chileCalendarTodayYmd();
     const priorEnd = priorPeriodEndYmd("mtd", today);
-    const current = accountMarkClpAtYmd(row.id, today, row.bucket_slug, {
-      import_key: row.notes,
-      name: row.name,
-    });
-    const prior = accountMarkClpAtYmd(row.id, priorEnd, row.bucket_slug, {
-      import_key: row.notes,
-      name: row.name,
-    });
+    const current = accountMarkClpAtYmd(row.id, today);
+    const prior = accountMarkClpAtYmd(row.id, priorEnd);
     if (!current || !prior || current.value_clp === prior.value_clp) return;
 
     // The marks the dashboard row's prior-close fields carry: a UF move between the month-end

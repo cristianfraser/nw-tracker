@@ -7,7 +7,8 @@ import {
 } from "./assetGroupTree.js";
 import { db } from "./db.js";
 
-import { accountsWithRole, CARTOLA_CHECKING_KIND_SLUGS } from "./accountRoles.js";
+import { CARTOLA_CHECKING_KIND_SLUGS } from "./accountRoles.js";
+import { dbStateMemo } from "./dbStateMemo.js";
 
 /**
  * Behavior kinds for cartola checking (corriente + vista), not the `checking_accounts` nav bucket.
@@ -55,10 +56,24 @@ export function cuentaVistaAccountId(): number {
 }
 
 /**
- * The checking members (`accountRoles.ts` `checking_member`): the cartola checking accounts and the
+ * The checking members: the cartola checking accounts (wherever they are filed) and the
  * peso accounts filed under Checking accounts — whose movements the gastos / income / deposit
  * readers read as bank movements.
  */
 export function listMovementBalanceCashAccountIds(): number[] {
-  return accountsWithRole("checking_member");
+  return [
+    ...dbStateMemo("checking_members", 0, () => {
+      const checkingLeaves = new Set(leafAssetGroupIdsUnder(CHECKING_ACCOUNTS_BUCKET));
+      const rows = db.prepare(`SELECT id, asset_group_id FROM accounts ORDER BY id`).all() as {
+        id: number;
+        asset_group_id: number;
+      }[];
+      return rows
+        .filter((r) => {
+          const kind = kindSlugForAccount(r.id);
+          return kind != null && (CARTOLA_CHECKING_KIND_SLUGS.has(kind) || (kind === "clp" && checkingLeaves.has(r.asset_group_id)));
+        })
+        .map((r) => r.id);
+    }),
+  ];
 }

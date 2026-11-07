@@ -68,10 +68,7 @@ export function slugMarkTotalsAtDatesClp(
     let raw = 0;
     let any = false;
     for (const a of rows) {
-      const mark = accountMarkClpAtYmd(a.account_id, ymd, a.bucket_slug, {
-        import_key: a.import_key ?? null,
-        name: a.name ?? null,
-      });
+      const mark = accountMarkClpAtYmd(a.account_id, ymd);
       const clp = mark?.value_clp;
       if (clp != null && Number.isFinite(clp)) {
         raw += clp;

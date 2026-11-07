@@ -1,3 +1,4 @@
+import { FINTUAL_GOALS } from "./fintualGoals.js";
 import { chileCalendarAddDays, chileWallClockNow, type ChileWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { ensureEquityDailyHistoryForWatchlistTickers } from "./equityDailyWatchlistBackfill.js";
@@ -241,11 +242,9 @@ export const RN_COMPOSITION_SELF_CHECK_ERROR_BP = 40;
  * (serie 6, the anchor — the empty RN goal never publishes in the evening poll, so this is its
  * only source) and the APV serie (serie 7) the APV/RN ratio needs on the same day.
  */
-export const RN_COMPOSITION_REFRESH_SERIES_KEYS: readonly string[] = [
-  "fintual_cert_risky_norris",
-  "fintual_cert_apv_a",
-  "fintual_cert_apv_b",
-];
+export const RN_COMPOSITION_REFRESH_SERIES_KEYS: readonly string[] = FINTUAL_GOALS.filter((g) => g.rnProxy).map(
+  (g) => g.seriesKey
+);
 
 export type CompositionAnchor = {
   /**

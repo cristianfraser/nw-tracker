@@ -109,18 +109,10 @@ export async function buildAccountDetailBundle(
   // The account's one today value and its position asked at Chile today — the same pair the
   // dashboard row reads, so the header and the card cannot disagree.
   const today = chileCalendarTodayYmd();
-  const positionMeta = getAccountPositionMeta(accountId, category_slug, {
-    afpCuotasAsOfYmd: today,
-    accountImportKey: cat.account_import_key,
-    accountName: cat.account_name,
-  });
-  const latest = accountTodayValue(accountId, cat.bucket_slug, {
-    import_key: cat.account_import_key,
-    name: cat.account_name,
-    positionMeta,
-  });
+  const positionMeta = getAccountPositionMeta(accountId, { asOfYmd: today });
+  const latest = accountTodayValue(accountId, { positionMeta });
   const position = positionSnapshotFromMeta(
-    category_slug,
+    accountId,
     positionMeta,
     deposits_clp,
     latest,

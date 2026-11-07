@@ -8,9 +8,7 @@
  * `profileFromFacts` is pure (tested on synthetic facts); `accountProfile` gathers the facts from
  * the database and memoizes the profile until the next write (`dbStateMemo`).
  */
-import { accountBucketKindSlug } from "./accountBucket.js";
 import { equityTickerForAccount } from "./accountEquityTicker.js";
-import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
 import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
 import {
   accountHasRole,
@@ -18,14 +16,13 @@ import {
   CARTOLA_CHECKING_KIND_SLUGS,
   type StoredAccountRole,
 } from "./accountRoles.js";
-import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
 import { deploymentProfile } from "./config.js";
-import { accountUsesCryptoMtm, cryptoEquityTickerForAccount } from "./cryptoValuation.js";
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
-import { equityQuoteCurrency } from "./equityQuote.js";
-import { isFintualCertV2AccountNotes } from "./fintualCertV2.js";
+import { equityMarketKind, equityQuoteCurrency } from "./equityQuote.js";
+import { isFintualGoalImportKey } from "./fintualGoals.js";
 import { MONTH_PRECISION_ACCOUNT_KIND_SLUGS } from "./monthPrecisionAccountKinds.js";
+import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./shareUnitsFlowKinds.js";
 import type { CurrencyCode } from "./rates.js";
 
 export type Holding =
@@ -166,7 +163,7 @@ function quantityFromFacts(f: AccountProfileFacts, roles: AccountRoles): Quantit
     }
     return { kind: "cuota_ledger", seriesKey: AFP_UNO_CUOTA_SERIES_KEY };
   }
-  if (isFintualCertV2AccountNotes(f.importKey)) {
+  if (isFintualGoalImportKey(f.importKey)) {
     if (!f.fundSeriesKey) throw new Error(`account profile: Fintual fund account ${f.id} has no fund_series_key`);
     return { kind: "fintual_goal", seriesKey: f.fundSeriesKey, goalId: roles.fintualGoalId };
   }
@@ -235,10 +232,46 @@ export function profileFromFacts(f: AccountProfileFacts): AccountProfile {
 }
 
 const stmtAccount = db.prepare(
-  `SELECT a.name, a.import_key, g.slug AS leaf_slug
-   FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id
+  `SELECT a.name, a.import_key, a.fund_series_key, g.slug AS leaf_slug, pg.kind_slug AS leaf_kind
+   FROM accounts a
+   JOIN asset_groups g ON g.id = a.asset_group_id
+   LEFT JOIN portfolio_groups pg ON pg.slug = g.slug
    WHERE a.id = ?`
 );
+
+const shareUnitsFlowPh = BROKERAGE_SHARE_UNITS_FLOW_KINDS.map(() => "?").join(", ");
+const stmtHasShareUnits = db.prepare(
+  `SELECT 1 FROM movements
+   WHERE (account_id = ? OR to_account_id = ?)
+     AND flow_kind IN (${shareUnitsFlowPh})
+     AND COALESCE(units_delta, 0) != 0
+   LIMIT 1`
+);
+const stmtHasOwnUnits = db.prepare(`SELECT 1 FROM movements WHERE account_id = ? AND units_delta IS NOT NULL LIMIT 1`);
+
+/**
+ * The account's behaviour kind from its leaf: the leaf portfolio group's kind, else the legacy
+ * `parent__kind` segment (`accountBucketKindSlug`'s rule).
+ */
+function leafKind(leafSlug: string, portfolioKind: string | null): string {
+  if (portfolioKind) return portfolioKind;
+  const sep = leafSlug.lastIndexOf("__");
+  return sep >= 0 ? leafSlug.slice(sep + 2) : leafSlug;
+}
+
+/** Coin kinds whose price series is implied by the leaf when the account names no ticker. */
+const COIN_TICKER_BY_KIND: Readonly<Record<string, string>> = { bitcoin: "BTC-USD", eth: "ETH-USD" };
+
+/**
+ * The coin's price ticker when the account is valued from coin units: a ticker on a 24h crypto
+ * market (`equityMarketKind`, `market_symbols`), else the leaf's coin; null without coin units.
+ */
+function coinPriceTicker(accountId: number, kind: string, equityTicker: string | null): string | null {
+  const ticker =
+    equityTicker != null ? (equityMarketKind(equityTicker) === "crypto24" ? equityTicker : null) : COIN_TICKER_BY_KIND[kind] ?? null;
+  if (!ticker) return null;
+  return stmtHasOwnUnits.get(accountId) != null ? ticker : null;
+}
 
 function isDemoOrTest(): boolean {
   return deploymentProfile().demo || Boolean(process.env.VITEST);
@@ -255,19 +288,25 @@ export function accountProfile(accountId: number): AccountProfile {
 export function accountProfileOptional(accountId: number): AccountProfile | null {
   if (!(accountId > 0)) return null;
   return dbStateMemo("account_profile", accountId, () => {
-    const row = stmtAccount.get(accountId) as { name: string; import_key: string | null; leaf_slug: string } | undefined;
+    const row = stmtAccount.get(accountId) as
+      | { name: string; import_key: string | null; fund_series_key: string | null; leaf_slug: string; leaf_kind: string | null }
+      | undefined;
     if (!row) return null;
+    const kind = leafKind(row.leaf_slug, row.leaf_kind);
     const equityTicker = equityTickerForAccount(accountId);
+    // A share flow's cash leg is never the equity side: a buy's from-account and a sell's
+    // to-account are the wallet the proceeds move through (`usd` / `clp` ledgers).
+    const usesEquityMtm = kind !== "usd" && kind !== "clp" && stmtHasShareUnits.get(accountId, accountId, ...BROKERAGE_SHARE_UNITS_FLOW_KINDS) != null;
     return profileFromFacts({
       id: accountId,
       name: row.name,
       importKey: row.import_key,
       leafSlug: row.leaf_slug,
-      kind: accountBucketKindSlug(row.leaf_slug),
+      kind,
       equityTicker,
-      coinPriceTicker: accountUsesCryptoMtm(accountId) ? cryptoEquityTickerForAccount(accountId) : null,
-      usesEquityMtm: accountUsesEquityMtm(accountId),
-      fundSeriesKey: fundSeriesKeyForAccount(accountId),
+      coinPriceTicker: coinPriceTicker(accountId, kind, equityTicker),
+      usesEquityMtm,
+      fundSeriesKey: row.fund_series_key?.trim() || null,
       quoteCurrencyOf: (t) => equityQuoteCurrency(t),
       roles: storedRolesOfAccount(accountId),
       demoOrTest: isDemoOrTest(),

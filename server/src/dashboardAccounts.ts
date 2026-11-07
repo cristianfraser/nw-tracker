@@ -387,37 +387,29 @@ function buildDashboardAccountRowFor(
     : trackAssetMetrics
       ? perfUsd?.deposits_total ?? null
       : depositsNetUsdByAccount?.get(a.id) ?? null;
-  const markOpts = { import_key: a.import_key, name: a.name };
-
-  /** Asset-group leaf slug (`real_estate__property`), not nav bucket (`real_estate`) — required for depto UF marks. */
-  const markCategorySlug = leafSlug;
 
   // Today's value is the account's one today value for every row, liabilities included —
   // the today mark (`accountMarkClpAtYmd` at today reads it too), the account page header,
   // the current month's performance row and the charts' live last point. The position is
   // asked at Chile today and shared with it, so units-priced accounts (cuota ledgers,
   // Fintual cert funds, crypto) are valued by the same position the row shows.
-  const positionMeta = getAccountPositionMeta(a.id, kindSlug, {
-    afpCuotasAsOfYmd: today,
-    accountImportKey: a.import_key,
-    accountName: a.name,
-  });
-  const v = accountTodayValue(a.id, markCategorySlug, { ...markOpts, positionMeta });
+  const positionMeta = getAccountPositionMeta(a.id, { asOfYmd: today });
+  const v = accountTodayValue(a.id, { positionMeta });
 
-  const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd, markCategorySlug, markOpts);
-  const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd, markCategorySlug, markOpts);
+  const priorMonthMark = accountMarkClpAtYmd(a.id, priorMonthEnd);
+  const priorYearMark = accountMarkClpAtYmd(a.id, priorYearEnd);
   // Mortgage and CC track day marks too (daily UF cost; per-day owed) — their title
   // deltas move daily, P/L stays their own convention.
   const rowTracksDayMetrics =
     trackAssetMetrics || kindSlug === "mortgage" || kindSlug === "credit_card";
   const priorDayMark = rowTracksDayMetrics
-    ? accountMarkClpAtYmd(a.id, priorDayYmd, markCategorySlug, markOpts)
+    ? accountMarkClpAtYmd(a.id, priorDayYmd)
     : null;
   const prior_day_close_clp = priorDayMark?.value_clp ?? null;
   // Stored fx of the prior day (a USD cash account: its ledger dollars that day).
   const prior_day_close_usd =
     includeUsd && prior_day_close_clp != null
-      ? accountValueClpToUnitAt(a.id, prior_day_close_clp, priorDayYmd, "usd", { categorySlug: markCategorySlug })
+      ? accountValueClpToUnitAt(a.id, prior_day_close_clp, priorDayYmd, "usd")
       : null;
   const deposits_day_clp = mortgagePayments
     ? mortgagePayments.day_clp
@@ -435,7 +427,7 @@ function buildDashboardAccountRowFor(
   const prior_year_close_clp =
     priorYearMark?.value_clp ??
     (trackAssetMetrics ? priorCloseFromPerfRows(rowsClp, "ytd", today) ?? undefined : undefined);
-  const position = positionSnapshotFromMeta(kindSlug, positionMeta, deposits, v);
+  const position = positionSnapshotFromMeta(a.id, positionMeta, deposits, v);
   const current_value_clp = v?.value_clp ?? null;
   const valuation_as_of = v?.as_of_date ?? null;
   // The USD frame of the row is the account's value converted once at today's rate and its

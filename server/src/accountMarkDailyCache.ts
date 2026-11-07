@@ -87,10 +87,7 @@ function dayOffset(fromYmd: string, toYmd: string): number {
 }
 
 function markClpAt(account: MarkSeriesAccountRef, ymd: string): number | null {
-  const mark = accountMarkClpAtYmd(account.account_id, ymd, account.bucket_slug, {
-    import_key: account.import_key ?? null,
-    name: account.name ?? null,
-  });
+  const mark = accountMarkClpAtYmd(account.account_id, ymd);
   const clp = mark?.value_clp;
   return clp != null && Number.isFinite(clp) ? clp : null;
 }
@@ -98,11 +95,7 @@ function markClpAt(account: MarkSeriesAccountRef, ymd: string): number | null {
 /** A day on or after Chile today: computed on every call (live quotes, the live rate). */
 function liveValueAt(account: MarkSeriesAccountRef, ymd: string, unit: CurrencyCode): number | null {
   if (unit === "clp") return markClpAt(account, ymd);
-  const v = accountValueAt(account.account_id, ymd, unit, {
-    categorySlug: account.bucket_slug,
-    import_key: account.import_key ?? null,
-    name: account.name ?? null,
-  })?.value;
+  const v = accountValueAt(account.account_id, ymd, unit)?.value;
   return v != null && Number.isFinite(v) ? v : null;
 }
 
@@ -121,10 +114,7 @@ function buildRange(
   const out = new Array<MarkSeriesCell | null>(count);
   for (let i = 0; i < count; i++) {
     const ymd = i === 0 ? startYmd : chileCalendarAddDays(startYmd, i);
-    const m = accountHistoricalQtyMarkUncached(account.account_id, ymd, account.bucket_slug, {
-      import_key: account.import_key ?? null,
-      name: account.name ?? null,
-    });
+    const m = accountHistoricalQtyMarkUncached(account.account_id, ymd);
     if (!m || !Number.isFinite(m.qty)) {
       out[i] = null;
       continue;
@@ -161,7 +151,7 @@ function cellsInUnit(
   grid: readonly string[],
   unit: CurrencyCode
 ): (number | null)[] {
-  const side = accountValueSide(account.account_id, account.bucket_slug);
+  const side = accountValueSide(account.account_id);
   const isCard = isCardAccount(account.account_id);
   const prices = new Map<object, (ymd: string) => HoldingPrice | null>();
   const rates = new Map<CurrencyCode, (ymd: string) => number | null>();

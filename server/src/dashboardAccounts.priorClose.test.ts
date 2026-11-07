@@ -70,7 +70,7 @@ describe("buildDashboardAccountRows prior closes", () => {
     const today = chileCalendarTodayYmd();
     const priorYearEnd = priorPeriodEndYmd("ytd", today);
     const markSpy = vi.spyOn(accountMarkModule, "accountMarkClpAtYmd");
-    markSpy.mockImplementation((accountId, ymd, _kind, _opts) => {
+    markSpy.mockImplementation((accountId, ymd) => {
       if (ymd === priorYearEnd && accountId === 1) {
         return { value_clp: 11_610_000, as_of_date: priorYearEnd };
       }

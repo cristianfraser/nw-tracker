@@ -7,46 +7,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { assetGroupBySlug } from "./assetGroupTree.js";
 import { assetGroupIdForImportKind } from "./portfolioGroupTree.js";
+import { FINTUAL_GOALS, fintualGoalByImportKey, isFintualGoalImportKey, type FintualGoal } from "./fintualGoals.js";
 
-export const FINTUAL_CERT_V2_GOAL_IDS: Record<string, string> = {
-  "2859": "import:fintual|cert|key=risky_norris",
-  "16749": "import:fintual|cert|key=apv_a",
-  "78515": "import:fintual|cert|key=apv_b",
-  "1164983": "import:fintual|cert|key=reserva2",
-};
+const byKey = <T,>(f: (g: FintualGoal) => T): Record<string, T> =>
+  Object.fromEntries(FINTUAL_GOALS.map((g) => [g.importKey, f(g)]));
 
-export const FINTUAL_CERT_V2_ACCOUNT_NAMES: Record<string, string> = {
-  "import:fintual|cert|key=reserva2": "Reserva2",
-  "import:fintual|cert|key=risky_norris": "caca daca",
-  "import:fintual|cert|key=apv_a": "mega caca",
-  "import:fintual|cert|key=apv_b": "mega cbcb",
-};
-
-export const FINTUAL_CERT_V2_CATEGORY_SLUG: Record<string, string> = {
-  "import:fintual|cert|key=reserva2": "fondo_reserva",
-  "import:fintual|cert|key=risky_norris": "fintual_risky_norris",
-  /** Distinct kind slugs — `apv` alone matches both `retirement_apv_a__apv` and `retirement_apv_b__apv` (tie → apv-b). */
-  "import:fintual|cert|key=apv_a": "apv_a",
-  "import:fintual|cert|key=apv_b": "apv_b",
-};
-
-export const FINTUAL_CERT_V2_SERIES_KEY: Record<string, string> = {
-  "import:fintual|cert|key=reserva2": "fintual_cert_reserva2",
-  "import:fintual|cert|key=risky_norris": "fintual_cert_risky_norris",
-  "import:fintual|cert|key=apv_a": "fintual_cert_apv_a",
-  "import:fintual|cert|key=apv_b": "fintual_cert_apv_b",
-};
+/** Goal id → import key (`fintualGoals.ts` is the table). */
+export const FINTUAL_CERT_V2_GOAL_IDS: Record<string, string> = Object.fromEntries(
+  FINTUAL_GOALS.map((g) => [g.goalId, g.importKey])
+);
+export const FINTUAL_CERT_V2_ACCOUNT_NAMES: Record<string, string> = byKey((g) => g.name);
+export const FINTUAL_CERT_V2_CATEGORY_SLUG: Record<string, string> = byKey((g) => g.categorySlug);
+export const FINTUAL_CERT_V2_SERIES_KEY: Record<string, string> = byKey((g) => g.seriesKey);
 
 export const FINTUAL_CERT_V2_TRACKED_NOTES = new Set(Object.keys(FINTUAL_CERT_V2_ACCOUNT_NAMES));
 
-/** Leaf `asset_groups` for APV régimen — not `leafAssetGroupIdForKindSlug('apv')` (ties to apv-b). */
-const FINTUAL_CERT_V2_APV_LEAF_ASSET_GROUP_SLUG: Partial<Record<string, string>> = {
-  "import:fintual|cert|key=apv_a": "retirement_apv_a__apv",
-  "import:fintual|cert|key=apv_b": "retirement_apv_b__apv",
-};
-
 export function assetGroupIdForFintualCertV2Notes(importNotes: string): number {
-  const leafSlug = FINTUAL_CERT_V2_APV_LEAF_ASSET_GROUP_SLUG[importNotes];
+  const leafSlug = fintualGoalByImportKey(importNotes)?.apvLeafSlug;
   if (leafSlug) {
     const g = assetGroupBySlug(leafSlug);
     if (!g) throw new Error(`missing asset group ${leafSlug} for ${importNotes}`);
@@ -60,7 +37,7 @@ export function assetGroupIdForFintualCertV2Notes(importNotes: string): number {
 export const FINTUAL_CERT_MOVEMENT_NOTE_PREFIX = "import:fintual|cert|movement";
 
 export function isFintualCertV2AccountNotes(notes: string | null | undefined): boolean {
-  return typeof notes === "string" && notes.startsWith("import:fintual|cert|key=");
+  return isFintualGoalImportKey(notes);
 }
 
 export function fintualCertV2SeriesKeyFromImportNotes(importNotes: string): string | null {

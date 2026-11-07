@@ -69,7 +69,7 @@ describe("crypto position meta — per-unit price", () => {
     vi.useFakeTimers();
     vi.setSystemTime(now);
 
-    const meta = getAccountPositionMeta(accountId, "bitcoin", { afpCuotasAsOfYmd: TODAY, now });
+    const meta = getAccountPositionMeta(accountId, { asOfYmd: TODAY, now });
     expect(meta?.units).toBe(UNITS);
     expect(meta?.afp_override_value_clp).toBeCloseTo(UNITS * 40_000 * SELL(950), 2);
     // Dated on the day its pesos were framed on (the asked date), not the stale bar's day, so a

@@ -5,33 +5,19 @@ import {
   positionMarkFromMeta,
   type AccountPositionMeta,
 } from "./accountPosition.js";
-import { equityTickerForAccount } from "./accountEquityTicker.js";
-import {
-  accountUsesEquityMtm,
-  equityChartZeroClpAtYmd,
-  equityTodayNativeValue,
-} from "./brokerageEquityMtm.js";
+import { accountProfileOptional, type AccountProfile } from "./accountProfile.js";
+import { equityChartZeroClpAtYmd, equityTodayNativeValue } from "./brokerageEquityMtm.js";
 import { checkingMovementBalanceLive } from "./checkingCartolaBalances.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
-import { holdingIsDebt, isCardAccount } from "./holdings.js";
 import { cardValueInUnit } from "./cardValueInUnit.js";
 import type { CurrencyCode } from "./rates.js";
 import { convertValue, type ValueSide } from "./valueConvert.js";
-import { accountBucketKindSlug, accountKindSlugForAccountId } from "./accountBucket.js";
 import { storedMarkValueWithFlowCarry } from "./storedMarkFlowCarry.js";
 import { deptoAccountMarkClpAtYmd } from "./deptoLedgerFromMovements.js";
-import {
-  accountUsesCryptoMtm,
-  cryptoTodayNativeValue,
-} from "./cryptoValuation.js";
-import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
-import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
-import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
-import { isUsdCashKindSlug } from "./movementTransfer.js";
+import { cryptoTodayNativeValue } from "./cryptoValuation.js";
 import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
-import { isClpCashKindSlug, clpCashBalanceLive } from "./clpCashAccounts.js";
+import { clpCashBalanceLive } from "./clpCashAccounts.js";
 import { latestCreditCardBillingBalanceTotalClpAndAsOfDate } from "./ccCreditCardValuations.js";
-import { db } from "./db.js";
 import { liveTierCached } from "./cacheRegistry.js";
 import {
   latestCreditCardDisplayedBalance,
@@ -70,118 +56,109 @@ const clpRaw = (v: { value_clp: number; as_of_date: string }, market: boolean): 
   market,
 });
 
-const stmtAccountMeta = db.prepare(
-  `SELECT a.name, a.import_key, g.slug AS bucket_slug
-   FROM accounts a
-   INNER JOIN asset_groups g ON g.id = a.asset_group_id
-   WHERE a.id = ?`
-);
+/**
+ * The stored marks on or before today (the generic tail of every ladder that has no figure of its
+ * own today): the latest displayed balance when positive, then — for an AFP cuota ledger — the
+ * ledger's position, then the latest valuation row. Book-value carry for manual-marked accounts:
+ * stale mark + net personal flows since its date, so a deposit entered today moves today's value
+ * (daily/monthly pl 0, not −flow). A liability's balance is never carried.
+ */
+function storedTodayTail(p: AccountProfile, today: string): RawTodayValue | null {
+  const carried = (value_clp: number, as_of_date: string) =>
+    p.flowCarry ? storedMarkValueWithFlowCarry(p, value_clp, as_of_date, today) : value_clp;
+  const stored = latestDisplayedBalanceForAccount(p.id);
+  if (stored?.value_clp != null && stored.value_clp > 0 && stored.as_of_date) {
+    return clpRaw({ value_clp: carried(stored.value_clp, stored.as_of_date), as_of_date: stored.as_of_date }, false);
+  }
+  if (p.quantity.kind === "cuota_ledger" && p.kind === "afp") {
+    const live = liveCuotaLedgerDisplayValueClp(p.id, today);
+    if (live) return clpRaw(live, true);
+  }
+  const vrow = latestValuationRowOnOrBeforeChileToday(p.id);
+  if (vrow?.value_clp != null && vrow.as_of_date) {
+    return clpRaw({ value_clp: carried(vrow.value_clp, vrow.as_of_date), as_of_date: vrow.as_of_date }, false);
+  }
+  return null;
+}
 
 /**
- * The raw today stack (formerly `syncLatestDisplayValueClp`), in order: depto UF marks
- * (property / mortgage) → Fintual cert live → checking → USD cash → CLP cash → equity MTM →
- * crypto (throws) → AFC ledger-first → the card's owed walk → stored (with flow carry) → AFP
- * ledger → CC billing formula → valuation row.
+ * Today's value by the profile's quantity source (formerly the ladder of
+ * `syncLatestDisplayValueClp`). A source with no figure today falls back to the stored marks
+ * ({@link storedTodayTail}).
  */
-function rawTodayValue(
-  accountId: number,
-  categorySlug: string,
-  importKey: string | null,
-  name: string | null,
-  today: string,
-  now: Date | undefined
-): RawTodayValue | null {
-  const bucketKind = categorySlug ? accountBucketKindSlug(categorySlug) : "";
-  // Depto UF marks first: a stale property valuation must not shadow the live ledger mark.
-  if (bucketKind === "property" || bucketKind === "mortgage") {
-    const depto = deptoAccountMarkClpAtYmd(bucketKind, today);
-    if (depto) return clpRaw(depto, false);
-    if (bucketKind === "mortgage") {
+function rawTodayValue(p: AccountProfile, today: string, now: Date | undefined): RawTodayValue | null {
+  const accountId = p.id;
+  switch (p.quantity.kind) {
+    case "depto_property": {
+      // The depto ledger first: a stale property valuation must not shadow the live ledger mark.
+      const depto = deptoAccountMarkClpAtYmd("property", today);
+      return depto ? clpRaw(depto, false) : storedTodayTail(p, today);
+    }
+    case "depto_loan": {
+      const depto = deptoAccountMarkClpAtYmd("mortgage", today);
+      if (depto) return clpRaw(depto, false);
       const v = latestMortgageDisplayedBalance(accountId);
       if (v?.value_clp != null && v.as_of_date) {
         return clpRaw({ value_clp: v.value_clp, as_of_date: v.as_of_date }, false);
       }
+      return storedTodayTail(p, today);
     }
-  }
-  if (importKey && isFintualCertV2ValuationNotes(importKey)) {
-    const live = liveFintualCertDisplayValueClp(accountId, importKey, name, today, now);
-    if (live) return clpRaw(live, true);
-  }
-  if (categorySlug && isMovementBalanceCashCategory(categorySlug)) {
-    return clpRaw(checkingMovementBalanceLive(accountId), false);
-  }
-  if (bucketKind && isUsdCashKindSlug(bucketKind)) {
-    // Its dollars: converted into a display unit once, at today's rate (live while the fx day
-    // is open), so its day P/L in pesos moves with the peso.
-    return { value: usdCashBalanceUsdAt(accountId, today), currency: "usd", as_of_date: today, market: false };
-  }
-  if (bucketKind && isClpCashKindSlug(bucketKind)) {
-    return clpRaw(clpCashBalanceLive(accountId), false);
-  }
-  if (accountUsesEquityMtm(accountId)) {
-    const eq = equityTodayNativeValue(accountId, now);
-    if (eq != null) return { value: eq.value, currency: eq.currency, as_of_date: eq.as_of_date, market: true };
-    // Sold out after holding shares: 0, as every historical mark of the account reads.
-    if (equityChartZeroClpAtYmd(accountId, today)) {
-      return { value: 0, currency: "clp", as_of_date: today, market: true };
+    case "fintual_goal": {
+      const live = liveFintualCertDisplayValueClp(accountId, today, now);
+      return live ? clpRaw(live, true) : storedTodayTail(p, today);
     }
-  }
-  if (accountUsesCryptoMtm(accountId)) {
-    // Units × close is crypto's only value source — no stored-row fallback below.
-    const crypto = cryptoTodayNativeValue(accountId, now);
-    if (crypto == null) {
-      throw new Error(
-        `crypto account ${accountId}: no coin close to mark today; crypto is valued from units × close × fx only — backfill equity_daily`
-      );
+    case "checking_ledger":
+      return clpRaw(checkingMovementBalanceLive(accountId), false);
+    case "usd_ledger":
+      // Its dollars: converted into a display unit once, at today's rate (live while the fx day
+      // is open), so its day P/L in pesos moves with the peso.
+      return { value: usdCashBalanceUsdAt(accountId, today), currency: "usd", as_of_date: today, market: false };
+    case "clp_ledger":
+      return clpRaw(clpCashBalanceLive(accountId), false);
+    case "stock": {
+      const eq = equityTodayNativeValue(accountId, now);
+      if (eq != null) return { value: eq.value, currency: eq.currency, as_of_date: eq.as_of_date, market: true };
+      // Sold out after holding shares: 0, as every historical mark of the account reads.
+      if (equityChartZeroClpAtYmd(accountId, today)) {
+        return { value: 0, currency: "clp", as_of_date: today, market: true };
+      }
+      return storedTodayTail(p, today);
     }
-    return { value: crypto.value, currency: crypto.currency, as_of_date: crypto.as_of_date, market: true };
-  }
-  // AFC values from its cuota ledger first — the stored monthly rows are the pre-ledger
-  // benchmark, not a mark (AFP keeps its stored-first order below: its sync stamps a today
-  // row from the same cuotas × px, so the two agree).
-  if (bucketKind === "afc") {
-    const live = liveCuotaLedgerDisplayValueClp(accountId, bucketKind, today);
-    if (live) return clpRaw(live, true);
-  }
-  if (bucketKind === "credit_card") {
-    // Owed on the day: the evidence walk (`ccOwedWalkClpAtYmd`), signed — negative when the
-    // card is in credit — the same frame as every past day. The billing formula is a different
-    // framing of the same debt and stays the fallback for a card with no walk.
-    const owed = latestCreditCardDisplayedBalance(accountId, today);
-    if (owed && Number.isFinite(owed.value_clp)) {
-      return clpRaw(owed, false);
+    case "coin": {
+      // Units × close is crypto's only value source — no stored-row fallback.
+      const crypto = cryptoTodayNativeValue(accountId, now);
+      if (crypto == null) {
+        throw new Error(
+          `crypto account ${accountId}: no coin close to mark today; crypto is valued from units × close × fx only — backfill equity_daily`
+        );
+      }
+      return { value: crypto.value, currency: crypto.currency, as_of_date: crypto.as_of_date, market: true };
     }
-    const billing = latestCreditCardBillingBalanceTotalClpAndAsOfDate(accountId);
-    if (billing?.value_clp != null && billing.as_of_date) {
-      return clpRaw({ value_clp: billing.value_clp, as_of_date: billing.as_of_date }, false);
+    case "cuota_ledger": {
+      // AFC values from its cuota ledger first — the stored monthly rows are the pre-ledger
+      // benchmark, not a mark (AFP keeps its stored-first order in the tail: its sync stamps a
+      // today row from the same cuotas × px, so the two agree).
+      if (p.kind === "afc") {
+        const live = liveCuotaLedgerDisplayValueClp(accountId, today);
+        if (live) return clpRaw(live, true);
+      }
+      return storedTodayTail(p, today);
     }
+    case "card": {
+      // Owed on the day: the evidence walk (`ccOwedWalkClpAtYmd`), signed — negative when the
+      // card is in credit — the same frame as every past day. The billing formula is a different
+      // framing of the same debt and stays the fallback for a card with no walk.
+      const owed = latestCreditCardDisplayedBalance(accountId, today);
+      if (owed && Number.isFinite(owed.value_clp)) return clpRaw(owed, false);
+      const billing = latestCreditCardBillingBalanceTotalClpAndAsOfDate(accountId);
+      if (billing?.value_clp != null && billing.as_of_date) {
+        return clpRaw({ value_clp: billing.value_clp, as_of_date: billing.as_of_date }, false);
+      }
+      return storedTodayTail(p, today);
+    }
+    case "book_mark":
+      return storedTodayTail(p, today);
   }
-  const stored = latestDisplayedBalanceForAccount(accountId);
-  if (stored?.value_clp != null && stored.value_clp > 0 && stored.as_of_date) {
-    // Book-value carry for manual-marked accounts: stale mark + net personal flows since its
-    // date, so a deposit entered today moves today's value (daily/monthly pl 0, not −flow).
-    // Mortgage displayed balances are their own derivation — never carried.
-    const kind = accountKindSlugForAccountId(accountId) ?? "";
-    const value_clp =
-      kind === "credit_card" || kind === "mortgage"
-        ? stored.value_clp
-        : storedMarkValueWithFlowCarry(accountId, stored.value_clp, stored.as_of_date, today);
-    return clpRaw({ value_clp, as_of_date: stored.as_of_date }, false);
-  }
-  if (bucketKind === "afp") {
-    const live = liveCuotaLedgerDisplayValueClp(accountId, bucketKind, today);
-    if (live) return clpRaw(live, true);
-  }
-  const vrow = latestValuationRowOnOrBeforeChileToday(accountId);
-  if (vrow?.value_clp != null && vrow.as_of_date) {
-    const kind = accountKindSlugForAccountId(accountId) ?? "";
-    const value_clp =
-      kind === "credit_card" || kind === "mortgage"
-        ? vrow.value_clp
-        : storedMarkValueWithFlowCarry(accountId, vrow.value_clp, vrow.as_of_date, today);
-    return clpRaw({ value_clp, as_of_date: vrow.as_of_date }, false);
-  }
-  return null;
 }
 
 /**
@@ -189,58 +166,37 @@ function rawTodayValue(
  * header, the today mark (`accountMarkClpAtYmd` at Chile today, so the daily series and the
  * prior-day deltas), the current month's performance row and every chart's live last point.
  *
- * Units-priced accounts — cuota ledgers (AFP / AFC), Fintual cert funds, crypto — that are not
- * equity MTM are valued by their position (units through today × price): `positionMeta` when
- * the caller already asked for it, at Chile today, else asked here. Everything else takes the
- * raw today stack. `categorySlug` / `import_key` / `name` left out are read from the account.
- * `now` reaches the quote-driven pieces (equity, crypto, the position); the calendar day is
- * Chile today.
+ * Units-priced accounts — cuota ledgers (AFP / AFC), Fintual cert funds, crypto — are valued by
+ * their position (units through today × price): `positionMeta` when the caller already asked for
+ * it, at Chile today, else asked here. Everything else takes the raw today stack. `now` reaches
+ * the quote-driven pieces (equity, crypto, the position); the calendar day is Chile today.
  */
 export function accountTodayValue(
   accountId: number,
-  categorySlug?: string | null,
-  opts?: {
-    import_key?: string | null;
-    name?: string | null;
-    positionMeta?: AccountPositionMeta | null;
-  },
-  now?: Date
+  opts?: { positionMeta?: AccountPositionMeta | null; now?: Date }
 ): AccountTodayValue | null {
-  const needsLookup =
-    !categorySlug || opts?.import_key === undefined || opts?.name === undefined;
-  const row = needsLookup
-    ? (stmtAccountMeta.get(accountId) as
-        | { name: string; import_key: string | null; bucket_slug: string }
-        | undefined)
-    : undefined;
-  const slug = categorySlug || row?.bucket_slug || "";
-  const importKey = opts?.import_key !== undefined ? opts.import_key : row?.import_key ?? null;
-  const name = opts?.name !== undefined ? opts.name : row?.name ?? null;
+  const now = opts?.now;
   // Asked by every reader of today (rows, perf rows, daily points, bucket totals): computed once
   // per live tier (`cacheRegistry.ts`) on the real clock, unless the caller hands its own
   // position (then the figure is built from it).
   if (now === undefined && opts?.positionMeta === undefined) {
-    const key = `${accountId}|${slug}|${importKey ?? ""}|${name ?? ""}`;
-    const value = liveTierCached("account_today_values", key, () =>
-      accountTodayValueFor(accountId, slug, importKey, name, opts?.positionMeta, now)
+    const value = liveTierCached("account_today_values", String(accountId), () =>
+      accountTodayValueFor(accountId, undefined, undefined)
     );
     return value ? { ...value } : null;
   }
-  return accountTodayValueFor(accountId, slug, importKey, name, opts?.positionMeta, now);
+  return accountTodayValueFor(accountId, opts?.positionMeta, now);
 }
 
 function accountTodayValueFor(
   accountId: number,
-  slug: string,
-  importKey: string | null,
-  name: string | null,
   positionMeta: AccountPositionMeta | null | undefined,
   now: Date | undefined
 ): AccountTodayValue | null {
-  const kindSlug = slug ? accountBucketKindSlug(slug) : "";
+  const p = accountProfileOptional(accountId);
+  if (!p) return null;
   const today = chileCalendarTodayYmd();
-
-  const side: ValueSide = holdingIsDebt(kindSlug) ? "debt" : "asset";
+  const side: ValueSide = p.side;
   const done = (raw: RawTodayValue): AccountTodayValue | null => {
     const value_clp = convertValue(raw.value, raw.currency, "clp", today, side, now);
     if (value_clp == null) return null;
@@ -254,33 +210,24 @@ function accountTodayValueFor(
     };
   };
 
-  const equityMtm = equityTickerForAccount(accountId) != null && accountUsesEquityMtm(accountId);
-  if (!equityMtm && accountUsesCryptoMtm(accountId)) {
+  if (p.quantity.kind === "coin") {
     // The coins × today's dollar price, the figure the position card prints converted.
     const crypto = cryptoTodayNativeValue(accountId, now);
     if (crypto) return done({ value: crypto.value, currency: "usd", as_of_date: crypto.as_of_date, market: true });
   }
-  const unitsPriced = isCuotaLedgerKindSlug(kindSlug) || isFintualCertV2ValuationNotes(importKey);
-  if (unitsPriced && !equityMtm) {
+  if (p.quantity.kind === "cuota_ledger" || p.quantity.kind === "fintual_goal") {
     // The position as of TODAY, never as of the mark's date: an AFC whose valor cuota lags
     // counted its cuotas through the price day, and a fund account right after a switch read
     // the position before the cuotas arrived. Cuotas are priced in pesos.
     const meta =
-      positionMeta !== undefined
-        ? positionMeta
-        : getAccountPositionMeta(accountId, kindSlug, {
-            afpCuotasAsOfYmd: today,
-            accountImportKey: importKey,
-            accountName: name,
-            now,
-          });
-    const mark = positionMarkFromMeta(kindSlug, meta);
+      positionMeta !== undefined ? positionMeta : getAccountPositionMeta(accountId, { asOfYmd: today, now });
+    const mark = positionMarkFromMeta(accountId, meta);
     if (mark) {
       return done({ value: mark.value_clp, currency: "clp", as_of_date: mark.as_of_date ?? today, market: true });
     }
   }
 
-  const raw = rawTodayValue(accountId, slug, importKey, name, today, now);
+  const raw = rawTodayValue(p, today, now);
   return raw == null ? null : done(raw);
 }
 
@@ -293,6 +240,8 @@ export function todayValueInUnit(
 ): number | null {
   if (unit === "clp") return v.value_clp;
   const today = now ? chileWallClockAt(now).ymd : chileCalendarTodayYmd();
-  if (isCardAccount(accountId)) return cardValueInUnit(accountId, v.native_value, today, unit, now);
+  if (accountProfileOptional(accountId)?.quantity.kind === "card") {
+    return cardValueInUnit(accountId, v.native_value, today, unit, now);
+  }
   return convertValue(v.native_value, v.native_currency, unit, today, v.side, now);
 }

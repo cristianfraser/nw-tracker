@@ -69,7 +69,7 @@ afterAll(() => {
 
 function markAt(ymd: string): number | null {
   if (accountId == null || leafSlug == null) return null;
-  return accountMarkClpAtYmd(accountId, ymd, leafSlug)?.value_clp ?? null;
+  return accountMarkClpAtYmd(accountId, ymd)?.value_clp ?? null;
 }
 
 describe("CC per-day owed-on-date", () => {

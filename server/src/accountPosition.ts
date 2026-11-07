@@ -7,13 +7,9 @@ import {
   latestAfpUnoFundUnitRowOnOrBeforeForDisplay,
   latestFundUnitRowOnOrBefore,
 } from "./afpUnoValuation.js";
+import { cuotaLedgerDisplayTicker } from "./cuotaLedgerAccounts.js";
+import { accountProfile, accountProfileOptional } from "./accountProfile.js";
 import {
-  cuotaLedgerDisplayTicker,
-  cuotaLedgerSeriesKeyForAccount,
-  isCuotaLedgerKindSlug,
-} from "./cuotaLedgerAccounts.js";
-import {
-  accountUsesCryptoMtm,
   requireCryptoMtmClp,
   cryptoCoinCumulativeThroughDate,
   cryptoTodayNativeValue,
@@ -21,8 +17,6 @@ import {
 } from "./cryptoValuation.js";
 import { convertValue } from "./valueConvert.js";
 import { brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
-import { accountUsesEquityMtm } from "./brokerageEquityMtm.js";
-import { equityTickerForAccount } from "./accountEquityTicker.js";
 import {
   equityHeldSessionQuote,
   equityQuoteCurrency,
@@ -31,7 +25,6 @@ import {
   shouldUseLiveEquityQuote,
 } from "./equityQuote.js";
 import { fundSeriesKeyForAccount } from "./accountFundSeriesKey.js";
-import { isFintualCertV2ValuationNotes } from "./fintualFundUnitDaily.js";
 import {
   fintualGoalUnitsFromMovementsThroughDate,
   newestCuotaMovementYmdForAccount,
@@ -214,158 +207,142 @@ export function equityBrokeragePositionMeta(
   return out;
 }
 
+/**
+ * The account's position (units, mark, price per unit) as of `asOfYmd` (default Chile today), by
+ * its profile: a Fintual goal's cuotas, share units, coins, or a cuota ledger's cuotas. Null for
+ * every other account (its value is not units × a price).
+ */
 export function getAccountPositionMeta(
   accountId: number,
-  categorySlug: string,
-  opts?: {
-    afpCuotasAsOfYmd?: string;
-    accountImportKey?: string | null;
-    accountName?: string | null;
-    now?: Date;
-  }
+  opts?: { asOfYmd?: string; now?: Date }
 ): AccountPositionMeta | null {
+  const profile = accountProfileOptional(accountId);
+  if (!profile) return null;
   const now = opts?.now ?? new Date();
   const asOf =
-    opts?.afpCuotasAsOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.afpCuotasAsOfYmd.trim())
-      ? opts.afpCuotasAsOfYmd.trim()
-      : chileCalendarTodayYmd();
-  if (opts?.accountImportKey && isFintualCertV2ValuationNotes(opts.accountImportKey)) {
-    const ticker = (opts.accountName ?? "Fintual").trim() || "Fintual";
-    return fintualCertPositionMeta(accountId, opts.accountImportKey, ticker, asOf, now);
+    opts?.asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.asOfYmd.trim()) ? opts.asOfYmd.trim() : chileCalendarTodayYmd();
+  const q = profile.quantity;
+  switch (q.kind) {
+    case "fintual_goal":
+      return fintualCertPositionMeta(accountId, profile.importKey!, profile.name.trim() || "Fintual", asOf, now);
+    case "stock":
+      return equityBrokeragePositionMeta(accountId, q.ticker, asOf);
+    case "coin":
+      return coinPositionMeta(accountId, q.priceTicker, asOf, now);
+    case "cuota_ledger":
+      return cuotaLedgerPositionMeta(accountId, profile.kind, q.seriesKey, asOf);
+    default:
+      return null;
   }
+}
 
-  const equityTicker = equityTickerForAccount(accountId);
-  if (equityTicker && accountUsesEquityMtm(accountId)) {
-    return equityBrokeragePositionMeta(accountId, equityTicker, asOf);
-  }
+function coinPositionMeta(accountId: number, priceTicker: string, asOf: string, now: Date): AccountPositionMeta {
+  const asset: CryptoAsset = priceTicker === "BTC-USD" ? "BTC" : "ETH";
+  const units = cryptoCoinCumulativeThroughDate(accountId, asOf, asset);
+  const out: AccountPositionMeta = {
+    ticker: asset,
+    units_kind: "coin",
+    units: units > 1e-12 && Number.isFinite(units) ? units : null,
+  };
 
-  if (equityTicker && accountUsesCryptoMtm(accountId)) {
-    const asset: CryptoAsset | null =
-      equityTicker === "BTC-USD" ? "BTC" : equityTicker === "ETH-USD" ? "ETH" : null;
-    if (asset) {
-      const units = cryptoCoinCumulativeThroughDate(accountId, asOf, asset);
-      const equityTickerRow = equityTicker;
-      const out: AccountPositionMeta = {
-        ticker: asset === "BTC" ? "BTC" : "ETH",
-        units_kind: "coin",
-        units: units > 1e-12 && Number.isFinite(units) ? units : null,
-      };
-
-      // Today: the coins × today's dollar price (`cryptoTodayNativeValue`: the live quote of the
-      // UTC session while fresh), converted once into pesos at today's sell rate — the same
-      // figure the account's today value carries.
-      const today = chileCalendarTodayYmd();
-      if (asOf === today) {
-        const native = cryptoTodayNativeValue(accountId, now);
-        const mtm = native ? convertValue(native.value, "usd", "clp", today, "asset", now) : null;
-        if (native && mtm != null && Number.isFinite(mtm)) {
-          out.afp_override_value_clp = Math.round(mtm * 100) / 100;
-          out.afp_override_value_as_of = native.as_of_date;
-          const u = out.units;
-          if (u != null && u > 1e-12) {
-            out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
-          }
-        }
-        return out;
+  // Today: the coins × today's dollar price (`cryptoTodayNativeValue`: the live quote of the
+  // UTC session while fresh), converted once into pesos at today's sell rate — the same
+  // figure the account's today value carries.
+  const today = chileCalendarTodayYmd();
+  if (asOf === today) {
+    const native = cryptoTodayNativeValue(accountId, now);
+    const mtm = native ? convertValue(native.value, "usd", "clp", today, "asset", now) : null;
+    if (native && mtm != null && Number.isFinite(mtm)) {
+      out.afp_override_value_clp = Math.round(mtm * 100) / 100;
+      out.afp_override_value_as_of = native.as_of_date;
+      const u = out.units;
+      if (u != null && u > 1e-12) {
+        out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
       }
-
-      const mtm = requireCryptoMtmClp(accountId, asOf);
-      const closeRow = db
-        .prepare(
-          `SELECT trade_date, close FROM equity_daily
-           WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
-        )
-        .get(equityTickerRow, asOf) as { trade_date: string; close: number } | undefined;
-      if (mtm != null && Number.isFinite(mtm) && closeRow?.trade_date) {
-        out.afp_override_value_clp = Math.round(mtm * 100) / 100;
-        // `asOf`, the fx frame of these pesos (the bar may be older) — see the live branch.
-        out.afp_override_value_as_of = asOf;
-        const u = out.units;
-        // Per-unit price from the value itself — the same close at the same rate
-        // (`computeCryptoMtmClp` reads the date's fx frame, live while that fx day is open), so
-        // units × price is the value even when the coin quote is older than the date.
-        if (u != null && u > 1e-12) {
-          out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
-        }
-      }
-      return out;
-    }
-  }
-  if (isCuotaLedgerKindSlug(categorySlug)) {
-    // AFP UNO (Fondo A) and AFC (Fondo CIC): Σ cuotas × the series' valor cuota on or before
-    // the date. An `afc` account with no declared series is not modeled in cuotas yet and
-    // keeps the stored-mark path (null here).
-    const asOfCuotas =
-      opts?.afpCuotasAsOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.afpCuotasAsOfYmd.trim())
-        ? opts.afpCuotasAsOfYmd.trim()
-        : chileCalendarTodayYmd();
-    const series = cuotaLedgerSeriesKeyForAccount(accountId, categorySlug, asOfCuotas);
-    if (!series) return null;
-    let fu = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(series, asOfCuotas);
-    if (fu == null) fu = latestFundUnitRowOnOrBefore(series, asOfCuotas);
-    const px = fu?.unit_value;
-    const pxDay = fu?.day;
-
-    const stored = db
-      .prepare(
-        `SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`
-      )
-      .get(accountId, asOfCuotas) as { value_clp: number; currency: string } | undefined;
-    if (stored) assertValuationCurrency(stored.currency, "clp", "accountPosition cuota-ledger stored");
-
-    // The cuota ledger IS the truth (AFP: certificate-backed, rebuilt 2026-07 from the official
-    // UNO movement certs; AFC: derived from pesos ÷ valor cuota until a cartola supplies the
-    // exact cuotas) — no stored-valuation drift substitution.
-    const cuotas = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
-
-    const out: AccountPositionMeta = {
-      ticker: cuotaLedgerDisplayTicker(categorySlug, series),
-      units_kind: "shares",
-      units: cuotas > 1e-9 && Number.isFinite(cuotas) ? cuotas : null,
-    };
-    // Fully withdrawn or switched out of (a fund account the chain left), or not funded yet:
-    // Σ cuotas × valor cuota = 0. An explicit 0 mark, like the Fintual and equity branches —
-    // a null would forward-fill the last value on the monthly chart and never read as sold out.
-    // Dated the day it is read, never the series' last row: a fund the chain left has its
-    // series ending on its sale day, and a reader that re-asks the position «as of» the mark's
-    // date would land before the switch and find the sold cuotas again.
-    // Only for an account modeled in cuotas (one units event anywhere in its history): an
-    // AFP account valued by stored month-ends alone (demo / CI presets) keeps the stored path.
-    if (!(cuotas > 1e-9) || !Number.isFinite(cuotas)) {
-      if (!hasCuotaLedgerUnitsEvents(accountId)) return out;
-      out.units = 0;
-      out.afp_override_value_clp = 0;
-      out.afp_override_value_as_of = asOfCuotas;
-      if (px != null && px > 0) out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
-      return out;
-    }
-    if (px != null && px > 0 && pxDay) {
-      out.afp_override_value_clp = Math.round(cuotas * px * 100) / 100;
-      out.afp_override_value_as_of = pxDay;
-      out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
     }
     return out;
   }
-  return null;
+
+  const mtm = requireCryptoMtmClp(accountId, asOf);
+  const closeRow = db
+    .prepare(
+      `SELECT trade_date, close FROM equity_daily
+       WHERE ticker = ? AND trade_date <= ? ORDER BY trade_date DESC LIMIT 1`
+    )
+    .get(priceTicker, asOf) as { trade_date: string; close: number } | undefined;
+  if (mtm != null && Number.isFinite(mtm) && closeRow?.trade_date) {
+    out.afp_override_value_clp = Math.round(mtm * 100) / 100;
+    // `asOf`, the fx frame of these pesos (the bar may be older) — see the live branch.
+    out.afp_override_value_as_of = asOf;
+    const u = out.units;
+    // Per-unit price from the value itself — the same close at the same rate
+    // (`computeCryptoMtmClp` reads the date's fx frame, live while that fx day is open), so
+    // units × price is the value even when the coin quote is older than the date.
+    if (u != null && u > 1e-12) {
+      out.afp_override_valor_cuota_clp = Math.round((mtm / u) * 10000) / 10000;
+    }
+  }
+  return out;
 }
 
-/** Live AFP mark: Σ cuotas × latest valor cuota (same as dashboard / account summary). */
+/**
+ * AFP and AFC (Fondo CIC): Σ cuotas × the series' valor cuota on or before the date. The cuota
+ * ledger IS the truth (AFP: certificate-backed, rebuilt 2026-07 from the official UNO movement
+ * certs; AFC: rebuilt from its certificate and cartolas) — no stored-valuation drift substitution.
+ */
+function cuotaLedgerPositionMeta(accountId: number, kind: string, series: string, asOfCuotas: string): AccountPositionMeta {
+  let fu = latestAfpUnoFundUnitRowOnOrBeforeForDisplay(series, asOfCuotas);
+  if (fu == null) fu = latestFundUnitRowOnOrBefore(series, asOfCuotas);
+  const px = fu?.unit_value;
+  const pxDay = fu?.day;
+
+  const stored = db
+    .prepare(`SELECT value AS value_clp, currency FROM valuations WHERE account_id = ? AND as_of_date = ?`)
+    .get(accountId, asOfCuotas) as { value_clp: number; currency: string } | undefined;
+  if (stored) assertValuationCurrency(stored.currency, "clp", "accountPosition cuota-ledger stored");
+
+  const cuotas = afpCuotasCumulativeThroughDate(accountId, asOfCuotas);
+
+  const out: AccountPositionMeta = {
+    ticker: cuotaLedgerDisplayTicker(kind, series),
+    units_kind: "shares",
+    units: cuotas > 1e-9 && Number.isFinite(cuotas) ? cuotas : null,
+  };
+  // Fully withdrawn or switched out of (a fund account the chain left), or not funded yet:
+  // Σ cuotas × valor cuota = 0. An explicit 0 mark, like the Fintual and equity branches —
+  // a null would forward-fill the last value on the monthly chart and never read as sold out.
+  // Dated the day it is read, never the series' last row: a fund the chain left has its
+  // series ending on its sale day, and a reader that re-asks the position «as of» the mark's
+  // date would land before the switch and find the sold cuotas again.
+  // Only for an account modeled in cuotas (one units event anywhere in its history): an
+  // AFP account valued by stored month-ends alone (demo / CI presets) keeps the stored path.
+  if (!(cuotas > 1e-9) || !Number.isFinite(cuotas)) {
+    if (!hasCuotaLedgerUnitsEvents(accountId)) return out;
+    out.units = 0;
+    out.afp_override_value_clp = 0;
+    out.afp_override_value_as_of = asOfCuotas;
+    if (px != null && px > 0) out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
+    return out;
+  }
+  if (px != null && px > 0 && pxDay) {
+    out.afp_override_value_clp = Math.round(cuotas * px * 100) / 100;
+    out.afp_override_value_as_of = pxDay;
+    out.afp_override_valor_cuota_clp = Math.round(px * 10000) / 10000;
+  }
+  return out;
+}
+
+/** A Fintual goal's live mark: Σ cuotas × valor cuota (the dashboard / account summary figure). */
 export function liveFintualCertDisplayValueClp(
   accountId: number,
-  importNotes: string,
-  accountName: string | null | undefined,
   asOfYmd?: string,
   now?: Date
 ): { value_clp: number; as_of_date: string } | null {
+  const profile = accountProfile(accountId);
+  if (profile.quantity.kind !== "fintual_goal") throw new Error(`account ${accountId} is not a Fintual goal`);
   const asOf =
     asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd.trim()) ? asOfYmd.trim() : chileCalendarTodayYmd();
-  const meta = fintualCertPositionMeta(
-    accountId,
-    importNotes,
-    (accountName ?? "Fintual").trim() || "Fintual",
-    asOf,
-    now ?? new Date()
-  );
+  const meta = fintualCertPositionMeta(accountId, profile.importKey!, profile.name.trim() || "Fintual", asOf, now ?? new Date());
   const clp = meta?.afp_override_value_clp;
   const date = meta?.afp_override_value_as_of;
   if (clp != null && Number.isFinite(clp) && date) {
@@ -389,12 +366,11 @@ export function hasCuotaLedgerUnitsEvents(accountId: number): boolean {
 
 export function liveCuotaLedgerDisplayValueClp(
   accountId: number,
-  kindSlug: string,
   asOfYmd?: string
 ): { value_clp: number; as_of_date: string } | null {
   const asOf =
     asOfYmd && /^\d{4}-\d{2}-\d{2}$/.test(asOfYmd.trim()) ? asOfYmd.trim() : chileCalendarTodayYmd();
-  const meta = getAccountPositionMeta(accountId, kindSlug, { afpCuotasAsOfYmd: asOf });
+  const meta = getAccountPositionMeta(accountId, { asOfYmd: asOf });
   const clp = meta?.afp_override_value_clp;
   const date = meta?.afp_override_value_as_of;
   if (clp != null && Number.isFinite(clp) && date) {
@@ -411,12 +387,13 @@ export function liveCuotaLedgerDisplayValueClp(
  * marks 0 (never the stale stored row).
  */
 export function positionMarkFromMeta(
-  kindSlug: string | null | undefined,
+  accountId: number,
   meta: AccountPositionMeta | null | undefined
 ): { value_clp: number; as_of_date: string | null } | null {
   if (meta == null) return null;
-  const afp = isCuotaLedgerKindSlug(kindSlug);
-  const crypto = kindSlug === "bitcoin" || kindSlug === "eth";
+  const q = accountProfileOptional(accountId)?.quantity.kind;
+  const afp = q === "cuota_ledger";
+  const crypto = q === "coin";
   const units = meta.units;
   const ovc = meta.afp_override_value_clp;
   const fundUnitMark =
@@ -452,17 +429,17 @@ export type AccountPositionSnapshot = {
  * account page's equity returns).
  */
 export function positionSnapshotFromMeta<E extends object = Record<never, never>>(
-  kindSlug: string | null | undefined,
+  accountId: number,
   meta: AccountPositionMeta | null,
   deposits_clp: number,
   today: { value_clp: number; as_of_date: string } | null | undefined,
   extra?: (value_clp: number | null) => E | null
 ): (AccountPositionSnapshot & Partial<E>) | null {
   if (meta == null) return null;
-  const afp = isCuotaLedgerKindSlug(kindSlug);
+  const afp = accountProfileOptional(accountId)?.quantity.kind === "cuota_ledger";
   const v = today?.value_clp;
   const units = meta.units;
-  const mark = positionMarkFromMeta(kindSlug, meta);
+  const mark = positionMarkFromMeta(accountId, meta);
   const fundUnitMark =
     mark != null &&
     mark.value_clp > 0 &&

@@ -793,10 +793,7 @@ function patchAccountLiveLastPoint(
     accountUsesEquityMtm(row.account_id) ||
     accountUsesCryptoMtm(row.account_id);
   if (!patched) return points;
-  const live = accountTodayValue(row.account_id, row.bucket_slug, {
-    import_key: importKey,
-    ...(row.name !== undefined ? { name: row.name } : {}),
-  });
+  const live = accountTodayValue(row.account_id);
   if (live == null || !Number.isFinite(live.value_clp)) return points;
   const today = chileCalendarTodayYmd();
   // The account's value converted once at today's rate (a USD cash account: its ledger dollars).
@@ -841,10 +838,7 @@ function plainAccountChartRawClp(
     !isUsdCashKindSlug(aidKind) &&
     !isClpCashKindSlug(aidKind);
   if (!isMarkValued) return raw;
-  const mark = accountMarkClpAtYmd(aid, d, aidSlug, {
-    import_key: chartMeta?.import_key ?? null,
-    name: chartMeta?.name ?? null,
-  });
+  const mark = accountMarkClpAtYmd(aid, d);
   return mark?.value_clp != null && Number.isFinite(mark.value_clp) ? mark.value_clp : null;
 }
 
@@ -1093,10 +1087,7 @@ function buildPointsForAccounts(top: AccountLine[], extraIds: number[], unit: Ts
         aidKind !== "mortgage" &&
         aidKind !== "property";
       if (isMarkValued) {
-        const mark = accountMarkClpAtYmd(aid, d, aidSlug, {
-          import_key: chartMeta?.import_key ?? null,
-          name: chartMeta?.name ?? null,
-        });
+        const mark = accountMarkClpAtYmd(aid, d);
         raw = mark?.value_clp != null && Number.isFinite(mark.value_clp) ? mark.value_clp : null;
       }
       if (raw != null) last.set(aid, raw);

@@ -53,14 +53,14 @@ describe("AFC position — cuota ledger", () => {
       `INSERT INTO valuations (account_id, as_of_date, value, units_snapshot) VALUES (?, ?, ?, null)`
     ).run(accountId, asOf, 1_234_567);
 
-    const meta = getAccountPositionMeta(accountId, "afc", { afpCuotasAsOfYmd: asOf });
+    const meta = getAccountPositionMeta(accountId, { asOfYmd: asOf });
     expect(meta?.ticker).toBe("AFC CIC");
     expect(meta?.units).toBe(500);
     expect(meta?.afp_override_value_clp).toBe(500 * px);
     expect(meta?.afp_override_value_as_of).toBe(asOf);
 
     // Historical mark reads the same ledger (not the stored 1.xxx.xxx).
-    const mark = accountMarkClpAtYmd(accountId, asOf, g.slug);
+    const mark = accountMarkClpAtYmd(accountId, asOf);
     expect(mark).toEqual({ value_clp: 500 * px, as_of_date: asOf });
   });
 
@@ -78,8 +78,8 @@ describe("AFC position — cuota ledger", () => {
       `INSERT INTO valuations (account_id, as_of_date, value, units_snapshot) VALUES (?, ?, ?, null)`
     ).run(accountId, asOf, 777_000);
 
-    expect(getAccountPositionMeta(accountId, "afc", { afpCuotasAsOfYmd: asOf })).toBeNull();
-    const mark = accountMarkClpAtYmd(accountId, asOf, g.slug);
+    expect(getAccountPositionMeta(accountId, { asOfYmd: asOf })).toBeNull();
+    const mark = accountMarkClpAtYmd(accountId, asOf);
     expect(mark?.value_clp).toBe(777_000);
   });
 });

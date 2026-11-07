@@ -11,57 +11,26 @@
  * - `lender_pattern` param words — on the loan: the merchant as its card statements name the
  *   lender, every word required (one row per pattern).
  *
- * Tree roles, read from where the account is filed (a stored copy would go stale when an account
- * is created or moved):
- * - `checking_member` — a cartola checking account (cuenta corriente / vista, wherever it is
- *   filed) or a peso account filed under Checking accounts (its movements are bank movements).
- * - `portfolio_caja` — a managed portfolio's peso caja (`brokerage_cash__caja_*` leaf).
+ * Roles of tree placement are read where the tree is (a stored copy would go stale when an account
+ * is created or moved): the checking members (`listMovementBalanceCashAccountIds`) and a managed
+ * portfolio's caja (`portfolioCajaClpAccountId`).
+ *
+ * A leaf of the valuation core: database reads only, so the account profile can depend on it.
  */
 import { db } from "./db.js";
 import { dbStateMemo } from "./dbStateMemo.js";
-import { CHECKING_ACCOUNTS_BUCKET, leafAssetGroupIdsUnder } from "./assetGroupTree.js";
-import { kindSlugForAccount } from "./portfolioGroupTree.js";
 
 export type StoredAccountRole = "broker_cash" | "buda_wallet" | "fintual_goal" | "property" | "loan_of" | "lender_pattern";
-export type TreeAccountRole = "checking_member" | "portfolio_caja";
-export type AccountRole = StoredAccountRole | TreeAccountRole;
+export type AccountRole = StoredAccountRole;
 
 /** Cartola checking kinds (the bank's monthly statement is the account's ledger). */
 export const CARTOLA_CHECKING_KIND_SLUGS: ReadonlySet<string> = new Set(["cuenta_corriente", "cuenta_vista"]);
 
 const stmtByRole = db.prepare(`SELECT account_id, param FROM account_roles WHERE role = ? ORDER BY account_id, param`);
 const stmtByAccount = db.prepare(`SELECT role, param FROM account_roles WHERE account_id = ? ORDER BY role, param`);
-const stmtLeaves = db.prepare(
-  `SELECT a.id AS id, a.asset_group_id AS group_id, g.slug AS slug
-   FROM accounts a JOIN asset_groups g ON g.id = a.asset_group_id ORDER BY a.id`
-);
-
-function treeRoleAccountIds(role: TreeAccountRole): number[] {
-  return dbStateMemo("account_tree_role", role, () => {
-    const leaves = stmtLeaves.all() as { id: number; group_id: number; slug: string }[];
-    if (role === "portfolio_caja") {
-      return leaves.filter((r) => r.slug.startsWith("brokerage_cash__caja_")).map((r) => r.id);
-    }
-    const checkingLeaves = new Set(leafAssetGroupIdsUnder(CHECKING_ACCOUNTS_BUCKET));
-    return leaves
-      .filter((r) => {
-        const kind = kindSlugForAccount(r.id);
-        return kind != null && (CARTOLA_CHECKING_KIND_SLUGS.has(kind) || (kind === "clp" && checkingLeaves.has(r.group_id)));
-      })
-      .map((r) => r.id);
-  });
-}
-
-function isTreeRole(role: AccountRole): role is TreeAccountRole {
-  return role === "checking_member" || role === "portfolio_caja";
-}
 
 /** Every account holding `role` (with `param` when given), ascending by id. */
 export function accountsWithRole(role: AccountRole, param?: string): number[] {
-  if (isTreeRole(role)) {
-    if (param !== undefined) throw new Error(`account role ${role} takes no param`);
-    return [...treeRoleAccountIds(role)];
-  }
   const rows = dbStateMemo("account_role_rows", role, () => stmtByRole.all(role) as { account_id: number; param: string }[]);
   const ids = rows.filter((r) => param === undefined || r.param === param).map((r) => r.account_id);
   return [...new Set(ids)];
@@ -92,7 +61,6 @@ export function storedRolesOfAccount(accountId: number): { role: StoredAccountRo
 
 /** True when `accountId` holds `role` (with `param` when given). */
 export function accountHasRole(accountId: number, role: AccountRole, param?: string): boolean {
-  if (isTreeRole(role)) return accountsWithRole(role).includes(accountId);
   return storedRolesOfAccount(accountId).some((r) => r.role === role && (param === undefined || r.param === param));
 }
 

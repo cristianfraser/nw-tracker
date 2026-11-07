@@ -324,12 +324,7 @@ export function livePerfCloseForCurrentMonth(
   accountId: number,
   categorySlug: string
 ): LivePerfClose | null {
-  const meta = accountMetaForLivePerfClose(accountId);
-  const slug = categorySlug || meta?.bucket_slug || "";
-  const live = accountTodayValue(accountId, slug, {
-    import_key: meta?.import_key ?? null,
-    name: meta?.name ?? null,
-  });
+  const live = accountTodayValue(accountId);
   if (live?.value_clp != null && Number.isFinite(live.value_clp)) return live;
   return null;
 }
@@ -379,7 +374,7 @@ export function patchOrInsertLiveCurrentMonthPerfRows(
   if (live != null && unit !== "clp") {
     // The dashboard row's frame (`current_value_usd`): the account's value converted once at
     // today's rate (a USD cash account's ledger dollars, a dollar stock's shares × price).
-    live = accountValueClpToUnitAt(accountId, live, today, unit, { categorySlug: categorySlug || null });
+    live = accountValueClpToUnitAt(accountId, live, today, unit);
   }
   if (live == null || !Number.isFinite(live)) {
     if (row?.closing_value != null && Number.isFinite(row.closing_value)) live = row.closing_value;

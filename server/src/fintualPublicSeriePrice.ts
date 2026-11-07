@@ -21,6 +21,7 @@ import { fetchOutboundText } from "./outboundFetch.js";
 import { type ChileWallClock, chileCalendarAddDays, chileWallClockAt, dateAtTimeZoneWallClock } from "./chileDate.js";
 import { db } from "./db.js";
 import { FINTUAL_CERT_V2_ACCOUNT_NAMES, fintualCertV2SeriesKeyFromImportNotes } from "./fintualCertV2.js";
+import { FINTUAL_PUBLIC_SERIE_BY_SERIES_KEY } from "./fintualGoals.js";
 import { fintualPlaceholderDaysPending, isFintualCarryForwardFundUnitNote } from "./fintualFundUnitDaily.js";
 import type { GlobalSyncStateFile } from "./globalSyncState.js";
 import { formatSyncIndex, type SyncFieldChange, type SyncStepError } from "./syncRunLog.js";
@@ -28,16 +29,8 @@ import { formatSyncIndex, type SyncFieldChange, type SyncStepError } from "./syn
 export const FINTUAL_PUBLIC_SERIE_PRICE_URL =
   "https://inversiones.fintual.com/api/managed_funds/serie/share_price";
 
-/** `fund_unit_daily.series_key` → public `managed_fund_serie` id. */
-export const FINTUAL_PUBLIC_SERIE_BY_SERIES_KEY: Readonly<Record<string, number>> = {
-  /** Very Conservative Streep, serie A. */
-  fintual_cert_reserva2: 1,
-  /** Risky Norris, serie APV — the fund both APV goals hold. */
-  fintual_cert_apv_a: 7,
-  fintual_cert_apv_b: 7,
-  /** Risky Norris, serie A. */
-  fintual_cert_risky_norris: 6,
-};
+/** `fund_unit_daily.series_key` → public `managed_fund_serie` id (`fintualGoals.ts`). */
+export { FINTUAL_PUBLIC_SERIE_BY_SERIES_KEY };
 
 /** Max |stored − official| ÷ official before a stored bar counts as wrong (noise tops at 6,4e-5). */
 export const FINTUAL_PUBLIC_SERIE_TOLERANCE_REL = 1e-4;

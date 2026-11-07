@@ -15,31 +15,23 @@
 import {
   accountHistoricalQtyMark,
   accountValueSide,
-  bucketSlugForAccount,
   qtyMarkValueIn,
   type QtyMark,
 } from "./accountMarkClpAtYmd.js";
+import { accountProfileOptional } from "./accountProfile.js";
 import { accountTodayValue, todayValueInUnit } from "./accountTodayValue.js";
-import { accountBucketKindSlug, accountKindSlugForAccountId } from "./accountBucket.js";
 import { equityShareUnitsThroughYmd } from "./brokerageEquityMtm.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { cryptoCoinCumulativeThroughDate } from "./cryptoValuation.js";
-import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { afpCuotasCumulativeThroughDate } from "./afpUnoValuation.js";
 import { fintualGoalUnitsFromMovementsThroughDate } from "./fintualGoalUnits.js";
-import { accountHolding, isCardAccount, type Holding } from "./holdings.js";
+import type { Holding } from "./holdings.js";
 import type { CurrencyCode } from "./rates.js";
 import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 import { convertValue } from "./valueConvert.js";
 import { cardValueInUnit } from "./cardValueInUnit.js";
 
-export type AccountValueOpts = {
-  now?: Date;
-  /** The account's asset-group slug (selects the valuation branch); read from the account when left out. */
-  categorySlug?: string | null;
-  import_key?: string | null;
-  name?: string | null;
-};
+export type AccountValueOpts = { now?: Date };
 
 /**
  * Which day is "today" for choosing the valuation stack: Chile today on the real clock, as
@@ -56,8 +48,8 @@ function todayFor(_now: Date | undefined): string {
  */
 export function accountValueCurrency(accountId: number): CurrencyCode {
   // An id with no account row behind it (a synthetic chart line) holds pesos.
-  if (accountKindSlugForAccountId(accountId) == null) return "clp";
-  const h = accountHolding(accountId);
+  const h = accountProfileOptional(accountId)?.holding;
+  if (!h) return "clp";
   if (h.kind === "currency") return h.code === "usd" || h.code === "eur" ? h.code : "clp";
   if (h.kind === "stock") return h.quote;
   if (h.kind === "coin") return h.quote;
@@ -78,23 +70,24 @@ export function accountHoldingQtyAt(
   const now = opts?.now;
   const today = todayFor(now);
   if (ymd !== today) {
-    const m: QtyMark | null = accountHistoricalQtyMark(accountId, ymd, opts?.categorySlug, opts);
+    const m: QtyMark | null = accountHistoricalQtyMark(accountId, ymd);
     return m ? { qty: m.qty, holding: m.asset, as_of: m.as_of_date } : null;
   }
-  const holding = accountHolding(accountId);
+  const profile = accountProfileOptional(accountId);
+  if (!profile) return null;
+  const holding = profile.holding;
   if (holding.kind === "currency" && holding.code === "usd") {
     return { qty: usdCashBalanceUsdAt(accountId, today), holding, as_of: today };
   }
   if (holding.kind === "stock") return { qty: equityShareUnitsThroughYmd(accountId, today), holding, as_of: today };
   if (holding.kind === "coin") return { qty: cryptoCoinCumulativeThroughDate(accountId, today), holding, as_of: today };
   if (holding.kind === "fund") {
-    const slug = opts?.categorySlug ?? bucketSlugForAccount(accountId) ?? "";
-    const cuotas = isCuotaLedgerKindSlug(accountBucketKindSlug(slug))
+    const cuotas = profile.quantity.kind === "cuota_ledger"
       ? afpCuotasCumulativeThroughDate(accountId, today)
       : fintualGoalUnitsFromMovementsThroughDate(accountId, today) ?? 0;
     return { qty: cuotas, holding, as_of: today };
   }
-  const v = accountTodayValue(accountId, opts?.categorySlug, opts, now);
+  const v = accountTodayValue(accountId, { now });
   if (!v) return null;
   return { qty: v.native_value, holding: { kind: "currency", code: v.native_currency }, as_of: v.as_of_date };
 }
@@ -110,14 +103,13 @@ export function accountValueAt(
   opts?: AccountValueOpts
 ): { value: number; as_of_date: string } | null {
   const now = opts?.now;
-  const slug = opts?.categorySlug ?? bucketSlugForAccount(accountId) ?? "";
   if (ymd === todayFor(now)) {
-    const v = accountTodayValue(accountId, slug, { import_key: opts?.import_key, name: opts?.name }, now);
+    const v = accountTodayValue(accountId, { now });
     if (!v) return null;
     const value = todayValueInUnit(accountId, v, unit, now);
     return value != null && Number.isFinite(value) ? { value, as_of_date: v.as_of_date } : null;
   }
-  const mark = accountHistoricalQtyMark(accountId, ymd, slug, opts);
+  const mark = accountHistoricalQtyMark(accountId, ymd);
   if (!mark) return null;
   // A past day reads stored prices and rates only (memoized); `now` matters from today on.
   const value = qtyMarkValueIn(
@@ -125,7 +117,7 @@ export function accountValueAt(
     mark,
     ymd,
     unit,
-    accountValueSide(accountId, slug),
+    accountValueSide(accountId),
     ymd < chileCalendarTodayYmd() ? undefined : now
   );
   return value != null && Number.isFinite(value) ? { value, as_of_date: mark.as_of_date } : null;
@@ -142,12 +134,12 @@ export function accountValueInUnitFromClp(
   clp: number,
   ymd: string,
   unit: CurrencyCode,
-  opts?: { now?: Date; categorySlug?: string | null }
+  opts?: { now?: Date }
 ): number | null {
   if (unit === "clp") return clp;
-  if (isCardAccount(accountId)) return cardValueInUnit(accountId, clp, ymd, unit, opts?.now);
+  if (accountProfileOptional(accountId)?.quantity.kind === "card") return cardValueInUnit(accountId, clp, ymd, unit, opts?.now);
   if (accountValueCurrency(accountId) === "clp") {
-    return convertValue(clp, "clp", unit, ymd, accountValueSide(accountId, opts?.categorySlug), opts?.now);
+    return convertValue(clp, "clp", unit, ymd, accountValueSide(accountId), opts?.now);
   }
   return accountValueAt(accountId, ymd, unit, opts)?.value ?? null;
 }

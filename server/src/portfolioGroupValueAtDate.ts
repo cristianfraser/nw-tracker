@@ -64,10 +64,7 @@ function rawPortfolioGroupAccountsClpAt(
   let raw = 0;
   for (const a of listAccountsForDashboardBucket(bucket)) {
     if (a.exclude_from_group_totals === 1) continue;
-    const mark = accountMarkClpAtYmd(a.account_id, asOfYmd, a.bucket_slug, {
-      import_key: a.import_key,
-      name: a.name,
-    });
+    const mark = accountMarkClpAtYmd(a.account_id, asOfYmd);
     if (mark?.value_clp != null && Number.isFinite(mark.value_clp)) {
       raw += mark.value_clp;
     }
@@ -287,14 +284,11 @@ export function dashboardBucketDayPriorCloses(priorDayYmd: string): {
     let rawUsd = 0;
     for (const a of listAccountsForDashboardBucket(slug)) {
       if (a.exclude_from_group_totals === 1) continue;
-      const mark = accountMarkClpAtYmd(a.account_id, priorDayYmd, a.bucket_slug, {
-        import_key: a.import_key,
-        name: a.name,
-      });
+      const mark = accountMarkClpAtYmd(a.account_id, priorDayYmd);
       if (mark?.value_clp == null || !Number.isFinite(mark.value_clp)) continue;
       rawClp += mark.value_clp;
       // The stored fx of that day (a USD cash account: its ledger dollars that day).
-      const u = accountValueClpToUnitAt(a.account_id, mark.value_clp, priorDayYmd, "usd", { categorySlug: a.bucket_slug });
+      const u = accountValueClpToUnitAt(a.account_id, mark.value_clp, priorDayYmd, "usd");
       if (u != null && Number.isFinite(u)) rawUsd += u;
     }
     if (slug === "cash_eqs") {

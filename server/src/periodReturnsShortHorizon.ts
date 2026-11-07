@@ -51,12 +51,7 @@ export function accountValueInUnitAt(
   now: Date
 ): number | null {
   return (
-    accountValueAt(a.account_id, ymd, unit, {
-      now,
-      categorySlug: a.bucket_slug,
-      import_key: a.import_key ?? null,
-      name: a.name ?? null,
-    })?.value ?? null
+    accountValueAt(a.account_id, ymd, unit, { now })?.value ?? null
   );
 }
 

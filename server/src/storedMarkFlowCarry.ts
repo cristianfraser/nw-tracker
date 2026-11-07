@@ -1,3 +1,4 @@
+import type { AccountProfile } from "./accountProfile.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 
 /**
@@ -13,11 +14,14 @@ import { netDepositFlowBetween } from "./flowsDeposits.js";
  * its own derivation, and a mortgage payment's balance effect is amortization only.
  */
 export function storedMarkValueWithFlowCarry(
-  accountId: number,
+  profile: AccountProfile,
   storedValueClp: number,
   storedAsOfYmd: string,
   asOfYmd: string
 ): number {
+  if (!profile.flowCarry) {
+    throw new Error(`book-value carry: account ${profile.id} (${profile.kind}) is a liability; its balance carries no flows`);
+  }
   if (storedAsOfYmd >= asOfYmd) return storedValueClp;
-  return storedValueClp + netDepositFlowBetween(accountId, storedAsOfYmd, asOfYmd, "clp");
+  return storedValueClp + netDepositFlowBetween(profile.id, storedAsOfYmd, asOfYmd, "clp");
 }

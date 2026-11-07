@@ -1,4 +1,4 @@
-import { dbStateMemo } from "./dbStateMemo.js";
+import { accountProfileOptional } from "./accountProfile.js";
 import {
   monthEndsBetweenInclusive,
   monthEndUtcYmd,
@@ -45,15 +45,9 @@ export function cryptoEquityTickerForAccount(accountId: number): "BTC-USD" | "ET
   return slug ? cryptoEquityTickerForCategorySlug(slug) : null;
 }
 
-const stmtHasCryptoUnits = db.prepare(
-  `SELECT 1 FROM movements WHERE account_id = ? AND units_delta IS NOT NULL LIMIT 1`
-);
-
+/** True when the account is valued from coin units (its profile's quantity is a coin). */
 export function accountUsesCryptoMtm(accountId: number): boolean {
-  return dbStateMemo("account_uses_crypto_mtm", accountId, () => {
-    if (!cryptoEquityTickerForAccount(accountId)) return false;
-    return stmtHasCryptoUnits.get(accountId) != null;
-  });
+  return accountProfileOptional(accountId)?.quantity.kind === "coin";
 }
 
 /**

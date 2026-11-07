@@ -18,10 +18,7 @@ describe("accountTodayValue raw stack", () => {
       )
       .get() as { account_id: number; bucket_slug: string; notes: string | null; name: string } | undefined;
     if (!row) return;
-    const v = accountTodayValue(row.account_id, row.bucket_slug, {
-      import_key: row.notes,
-      name: row.name,
-    });
+    const v = accountTodayValue(row.account_id);
     expect(v).not.toBeNull();
     // Resolvability is the point (bucket slug, not kind slug); the balance itself can be
     // legitimately ~0 (e.g. USD cash fully rotated into stocks).
@@ -36,10 +33,7 @@ describe("accountTodayValue raw stack", () => {
     if (mtmRows.length < 2) return;
 
     const withValue = mtmRows.filter((r) => {
-      const v = accountTodayValue(r.account_id, r.bucket_slug, {
-        import_key: r.notes,
-        name: r.name,
-      });
+      const v = accountTodayValue(r.account_id);
       return v != null && v.value_clp > 0;
     });
     expect(withValue.length).toBeGreaterThanOrEqual(2);
@@ -60,10 +54,7 @@ describe("getGroupValuationTimeseries acciones composition shares", () => {
     );
     let matched = 0;
     for (const r of mtmRows) {
-      const v = accountTodayValue(r.account_id, r.bucket_slug, {
-        import_key: r.notes,
-        name: r.name,
-      });
+      const v = accountTodayValue(r.account_id);
       if (v != null && v.value_clp > 0) {
         expect(shareIds.has(r.account_id)).toBe(true);
         matched += 1;

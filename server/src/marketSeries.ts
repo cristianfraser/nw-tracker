@@ -1,4 +1,6 @@
 import { db } from "./db.js";
+import { AFP_UNO_CUOTA_SERIES_KEY } from "./afpUnoSeries.js";
+import { FINTUAL_GOALS, LEGACY_FINTUAL_SERIES } from "./fintualGoals.js";
 import { equityQuoteCurrency } from "./equityQuote.js";
 import { buildFxCoverageWithConversionWarnings, type FxCoverage } from "./fxCoverage.js";
 import { clearFxConversionWarnings } from "./fxConversionWarnings.js";
@@ -8,16 +10,12 @@ const MAX_POINTS = 25_000;
 
 const EQUITY_TICKER_ORDER = ["SPY", "VEA", "BTC-USD", "ETH-USD"] as const;
 
-const FUND_SERIES_ORDER = [
-  "fintual_cert_reserva2",
-  "fintual_cert_risky_norris",
-  "fintual_cert_apv_a",
-  "fintual_cert_apv_b",
-  "fintual_risky_norris",
-  "fintual_risky_norris_apv",
-  "afp_uno_cuota_a",
+const FUND_SERIES_ORDER: readonly string[] = [
+  ...FINTUAL_GOALS.map((g) => g.seriesKey),
+  ...LEGACY_FINTUAL_SERIES.map((g) => g.seriesKey),
+  AFP_UNO_CUOTA_SERIES_KEY,
   "afc_cic",
-] as const;
+];
 
 function sortEquityTickers(tickers: string[]): string[] {
   const uniq = [...new Set(tickers)];

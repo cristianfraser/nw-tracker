@@ -101,10 +101,7 @@ export function monthEndMarkClpForAccount(
   const monthEnd = monthEndUtcYmd(monthKey);
   const today = chileCalendarTodayYmd();
   const ymd = monthEnd > today ? today : monthEnd;
-  const mark = accountMarkClpAtYmd(accountId, ymd, bucketSlug, {
-    import_key: opts?.import_key ?? null,
-    name: opts?.name ?? null,
-  });
+  const mark = accountMarkClpAtYmd(accountId, ymd);
   return mark?.value_clp != null && Number.isFinite(mark.value_clp) ? mark.value_clp : null;
 }
 

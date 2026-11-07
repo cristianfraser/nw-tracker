@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { getAccountPositionMeta } from "./accountPosition.js";
 import { equityTickerForAccount } from "./brokerageEquityMtm.js";
-import { accountBucketKindSlug } from "./accountBucket.js";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
 
 const shareUnitsPh = BROKERAGE_SHARE_UNITS_FLOW_KINDS.map(() => "?").join(", ");
@@ -55,10 +54,7 @@ describe("equity brokerage position meta", () => {
     try {
       expect(equityTickerForAccount(accountId)).toBe(ticker);
 
-      const meta = getAccountPositionMeta(accountId, accountBucketKindSlug(leaf.slug), {
-        accountImportKey: "import:panel|ticker=VTEST|key=vitest-equity",
-        accountName: "Vitest · panel equity fixture",
-      });
+      const meta = getAccountPositionMeta(accountId);
 
       expect(meta).not.toBeNull();
       expect(meta!.ticker).toBe(ticker);
@@ -94,11 +90,7 @@ describe("equity brokerage position meta", () => {
 
     expect(equityTickerForAccount(row.id)).toBe(row.equity_ticker);
 
-    const slug = accountBucketKindSlug(row.slug);
-    const meta = getAccountPositionMeta(row.id, slug, {
-      accountImportKey: row.notes,
-      accountName: row.name,
-    });
+    const meta = getAccountPositionMeta(row.id);
 
     expect(meta).not.toBeNull();
     expect(meta!.ticker).toBe(row.equity_ticker);

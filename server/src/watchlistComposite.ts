@@ -1,3 +1,4 @@
+import { FINTUAL_GOALS, LEGACY_FINTUAL_SERIES } from "./fintualGoals.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import {
@@ -17,8 +18,8 @@ export const APV_PROXY_NEGLIGIBLE_REL_DIFF = 0.005;
 
 /** Risky Norris (serie A) valor cuota series, in lookup order — the proxy's anchor cuota. */
 export const OFFICIAL_RISKY_NORRIS_FUND_UNIT_SERIES_KEYS: readonly string[] = [
-  "fintual_risky_norris",
-  "fintual_cert_risky_norris",
+  ...LEGACY_FINTUAL_SERIES.filter((g) => g.rnProxy && !g.apv).map((g) => g.seriesKey),
+  ...FINTUAL_GOALS.filter((g) => g.rnProxy && !g.apv).map((g) => g.seriesKey),
 ];
 
 export type CompositeMeta = {
@@ -48,9 +49,8 @@ export type CompositeMeta = {
 
 /** APV régimen valor cuota series, in lookup order — the APV/RN ratio's numerator on the anchor day. */
 export const OFFICIAL_APV_FUND_UNIT_SERIES_KEYS: readonly string[] = [
-  "fintual_cert_apv_a",
-  "fintual_cert_apv_b",
-  "fintual_risky_norris_apv",
+  ...FINTUAL_GOALS.filter((g) => g.rnProxy && g.apv).map((g) => g.seriesKey),
+  ...LEGACY_FINTUAL_SERIES.filter((g) => g.rnProxy && g.apv).map((g) => g.seriesKey),
 ];
 
 export type CompositeHolding = {

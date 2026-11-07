@@ -62,7 +62,7 @@ export function accountValueClpToUnitAt(
   clp: number,
   ymd: string,
   unit: TsUnit,
-  opts?: { now?: Date; categorySlug?: string | null }
+  opts?: { now?: Date }
 ): number | null {
   return accountValueInUnitFromClp(accountId, clp, ymd, unit, opts);
 }

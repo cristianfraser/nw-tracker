@@ -76,7 +76,7 @@ afterAll(() => {
 describe("crypto position meta — live vs EOD", () => {
   it("without a live quote, values at the last completed EOD close", () => {
     if (accountId == null) return;
-    const meta = getAccountPositionMeta(accountId, "bitcoin");
+    const meta = getAccountPositionMeta(accountId);
     if (meta?.afp_override_value_clp == null) return; // fx row missing in this DB — nothing to assert
     // The value is the last completed close (not the live price) at the rate of the date it is
     // dated on — the date its pesos were framed on (2f4172f9), not the bar's trade date.
@@ -93,7 +93,7 @@ describe("crypto position meta — live vs EOD", () => {
 
   it("with a fresh live quote, values live and dates the mark today (UTC session)", () => {
     if (accountId == null) return;
-    const eodMeta = getAccountPositionMeta(accountId, "bitcoin");
+    const eodMeta = getAccountPositionMeta(accountId);
     insertLiveMarketQuote({
       symbol: TICKER,
       kind: "equity",
@@ -103,7 +103,7 @@ describe("crypto position meta — live vs EOD", () => {
       previous_value: EOD_CLOSE_USD,
       fetched_at: new Date().toISOString(),
     });
-    const liveMeta = getAccountPositionMeta(accountId, "bitcoin");
+    const liveMeta = getAccountPositionMeta(accountId);
     if (liveMeta?.afp_override_value_clp == null) return;
 
     expect(liveMeta.afp_override_value_as_of).toBe(utcTodayYmd());

@@ -1,4 +1,5 @@
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { RISKY_NORRIS_APV_SERIES_KEYS, RISKY_NORRIS_PROXY_SERIES_KEYS } from "./fintualGoals.js";
 import { fintualPollDayCaughtUp } from "./fintualPublishDate.js";
 import { fintualCertV2PollReconciled } from "./fintualCertV2Reconcile.js";
 import { loadGlobalSyncState } from "./globalSyncState.js";
@@ -23,20 +24,10 @@ import {
   APV_PROXY_NEGLIGIBLE_REL_DIFF,
 } from "./watchlistComposite.js";
 
-/** Fintual cert / legacy series that use RN proxy for intraday MTM. */
-export const RISKY_NORRIS_MTM_SERIES_KEYS = new Set([
-  "fintual_cert_risky_norris",
-  "fintual_cert_apv_a",
-  "fintual_cert_apv_b",
-  "fintual_risky_norris",
-  "fintual_risky_norris_apv",
-]);
+/** Fintual cert / legacy series that use RN proxy for intraday MTM (`fintualGoals.ts`). */
+export const RISKY_NORRIS_MTM_SERIES_KEYS: ReadonlySet<string> = RISKY_NORRIS_PROXY_SERIES_KEYS;
 
-export const RISKY_NORRIS_APV_MTM_SERIES_KEYS = new Set([
-  "fintual_cert_apv_a",
-  "fintual_cert_apv_b",
-  "fintual_risky_norris_apv",
-]);
+export const RISKY_NORRIS_APV_MTM_SERIES_KEYS: ReadonlySet<string> = RISKY_NORRIS_APV_SERIES_KEYS;
 
 /** |APV−RN|/RN at composition anchor below this → one shared proxy cuota for all RN accounts. */
 export { APV_PROXY_NEGLIGIBLE_REL_DIFF } from "./watchlistComposite.js";

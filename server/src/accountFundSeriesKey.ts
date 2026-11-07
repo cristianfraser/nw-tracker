@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 import { fintualCertV2SeriesKeyFromImportNotes } from "./fintualCertV2.js";
+import { LEGACY_FINTUAL_SERIES } from "./fintualGoals.js";
 
 /** `import:excel|key=…` or `import:fintual|cert|key=…` identity string → rates chart series key. */
 export function fundSeriesKeyFromImportNotes(importNotes: string): string | null {
@@ -7,14 +8,7 @@ export function fundSeriesKeyFromImportNotes(importNotes: string): string | null
   if (v2) return v2;
   const key = importNotes.match(/import:excel\|key=([\w_]+)/)?.[1];
   if (!key) return null;
-  switch (key) {
-    case "fintual_rn":
-      return "fintual_risky_norris";
-    case "apv_a":
-      return "fintual_risky_norris_apv";
-    default:
-      return null;
-  }
+  return LEGACY_FINTUAL_SERIES.find((g) => g.excelKey === key)?.seriesKey ?? null;
 }
 
 /**

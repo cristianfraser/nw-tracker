@@ -32,11 +32,7 @@ describe("fintual cert v2 position", () => {
         carryNote: "vitest-carry",
         dryRun: false,
       });
-      const meta = getAccountPositionMeta(accountId, "fintual_risky_norris", {
-        accountImportKey: notes,
-        accountName: "caca daca test",
-        afpCuotasAsOfYmd: "2025-01-10",
-      });
+      const meta = getAccountPositionMeta(accountId, { asOfYmd: "2025-01-10" });
       expect(meta?.units).toBe(10);
       expect(meta?.afp_override_value_clp).toBe(1000);
       expect(meta?.afp_override_valor_cuota_clp).toBe(100);
@@ -78,11 +74,7 @@ describe("fintual cert v2 position", () => {
       db.prepare(
         `INSERT INTO valuations (account_id, as_of_date, value) VALUES (?, '2025-01-10', ?)`
       ).run(accountId, 1005);
-      const meta = getAccountPositionMeta(accountId, "fintual_risky_norris", {
-        accountImportKey: notes,
-        accountName: "caca daca test",
-        afpCuotasAsOfYmd: "2025-01-10",
-      });
+      const meta = getAccountPositionMeta(accountId, { asOfYmd: "2025-01-10" });
       expect(meta?.afp_override_value_clp).toBe(1000);
     } finally {
       db.prepare(`DELETE FROM valuations WHERE account_id = ?`).run(accountId);
