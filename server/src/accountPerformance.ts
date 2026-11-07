@@ -22,16 +22,13 @@ import {
 import { ccFinancingCostBetweenInUnit } from "./ccFinancingCostDaily.js";
 import { isMovementBalanceCashCategory } from "./movementBalanceCashAccounts.js";
 import { db } from "./db.js";
-import { loadBookValuationsAsc } from "./bookValuations.js";
 export { loadBookValuationsAsc } from "./bookValuations.js";
 import { ufClpBySnapshotDatesAsc } from "./fxRates.js";
-import { accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
+import { accountValueAt, accountValueInUnitFromClp as accountValueClpToUnitAt } from "./accountValue.js";
 import { clpToUnitAt } from "./valueConvert.js";
-import { accountUsesEquityMtm, computeEquityMtmClp } from "./brokerageEquityMtm.js";
+import { accountUsesEquityMtm, equityHeldByYmd } from "./brokerageEquityMtm.js";
 import { accountTodayValue } from "./accountTodayValue.js";
 import {
-  accountUsesCryptoMtm,
-  requireCryptoMtmClp,
   cryptoAssetFromCategorySlug,
   cryptoCoinCumulativeThroughDate,
 } from "./cryptoValuation.js";
@@ -465,57 +462,23 @@ function applyLiveCloseToCurrentMonthPerfRows(
   return patchOrInsertLiveCurrentMonthPerfRows(accountId, categorySlug, sortedAsc, unit);
 }
 
-function lastStoredBookClpOnOrBefore(
-  asOf: string,
-  sortedAsc: { as_of_date: string; value_clp: number }[]
-): number | null {
-  let last: number | null = null;
-  for (const r of sortedAsc) {
-    if (r.as_of_date > asOf) break;
-    last = r.value_clp;
-  }
-  return last;
-}
-
 /**
- * Month-end close for monthly P/L must match the **account valuation chart** (`buildPointsForAccounts`):
- * that series is `p[accountId]` (MTM where applicable, then forward-fill). Using a different source
- * (e.g. exact `valuations` before live crypto MTM) desyncs the bar chart from the line and can pin May to $0.
- *
- * When the chart cell is null (edge of series), mirror {@link valuationTimeseries.valuationRawClpForAccount}
- * in CLP, then {@link convertTs}.
+ * Month-end close for monthly P/L must match the **account valuation chart**
+ * (`buildPointsForAccounts`): the chart's cell, which is the account's value in the unit
+ * (`accountValueAt`), forward-filled. Where the chart has no cell (the series edge) the value
+ * itself, read the same way — none for a stock before its first shares, as its chart line.
  */
 function monthEndCloseForPerformance(
   accountId: number,
   asOf: string,
   pointRow: Record<string, string | number | null>,
   dataKey: string,
-  bookAsc: { as_of_date: string; value_clp: number }[],
-  exactClpByDate: Map<string, number>,
   unit: TsUnit
 ): number | null {
   const chart = numCell(pointRow[dataKey]);
   if (chart != null) return chart;
-
-  let rawClp: number | null = null;
-  if (accountUsesEquityMtm(accountId)) {
-    rawClp = computeEquityMtmClp(accountId, asOf);
-    if (rawClp == null) {
-      const ex = exactClpByDate.get(asOf);
-      rawClp =
-        ex != null && Number.isFinite(ex) ? ex : lastStoredBookClpOnOrBefore(asOf, bookAsc);
-    }
-  } else if (accountUsesCryptoMtm(accountId)) {
-    rawClp = requireCryptoMtmClp(accountId, asOf);
-  } else {
-    const ex = exactClpByDate.get(asOf);
-    rawClp =
-      ex != null && Number.isFinite(ex) ? ex : lastStoredBookClpOnOrBefore(asOf, bookAsc);
-  }
-  if (rawClp == null) return null;
-  // The account's value in the unit, converted once from what it holds at its side.
-  const converted = accountValueClpToUnitAt(accountId, rawClp, asOf, unit);
-  return converted != null && Number.isFinite(converted) ? converted : null;
+  if (accountProfileOptional(accountId)?.quantity.kind === "stock" && !equityHeldByYmd(accountId, asOf)) return null;
+  return accountValueAt(accountId, asOf, unit)?.value ?? null;
 }
 
 /**
@@ -570,8 +533,6 @@ function monthEndCloseForMortgagePerformance(
   asOf: string,
   pointRow: Record<string, string | number | null>,
   dataKey: string,
-  bookAsc: { as_of_date: string; value_clp: number }[],
-  exactClpByDate: Map<string, number>,
   unit: TsUnit,
   closeClpByDate: Map<string, number> | null
 ): number | null {
@@ -581,15 +542,7 @@ function monthEndCloseForMortgagePerformance(
     const converted = clpToUnitAt(fromSheet, asOf, unit, { side: "debt" });
     return converted != null && Number.isFinite(converted) ? converted : null;
   }
-  return monthEndCloseForPerformance(
-    accountId,
-    asOf,
-    pointRow,
-    dataKey,
-    bookAsc,
-    exactClpByDate,
-    unit
-  );
+  return monthEndCloseForPerformance(accountId, asOf, pointRow, dataKey, unit);
 }
 
 /** Month-end `YYYY-MM-DD` → Σ positive units_delta on equity brokerage movements in that calendar month. */
@@ -731,9 +684,6 @@ function buildAccountMonthlyPerformanceUncached(
   let pts = [...ts.accounts.points].sort((a, b) => String(a.as_of_date).localeCompare(String(b.as_of_date)));
   const depKey = depKeyFull;
 
-  const bookAsc = loadBookValuationsAsc(accountId);
-  const exactClpByDate = new Map(bookAsc.map((r) => [r.as_of_date, r.value_clp]));
-
   let prevClose: number | null = null;
   let prevCumDep: number | null = null;
   let prevPerfAsOf: string | null = null;
@@ -786,17 +736,8 @@ function buildAccountMonthlyPerformanceUncached(
     const asOf = String(p.as_of_date);
     const close =
       deptoCloseClpByDate != null
-        ? monthEndCloseForMortgagePerformance(
-            accountId,
-            asOf,
-            p,
-            dk,
-            bookAsc,
-            exactClpByDate,
-            unit,
-            deptoCloseClpByDate
-          )
-        : monthEndCloseForPerformance(accountId, asOf, p, dk, bookAsc, exactClpByDate, unit);
+        ? monthEndCloseForMortgagePerformance(accountId, asOf, p, dk, unit, deptoCloseClpByDate)
+        : monthEndCloseForPerformance(accountId, asOf, p, dk, unit);
     if (close == null) continue;
     // A null deposit cell is a densified filler month (no valuation row, and — since the chart
     // grid adds the month-end of every deposit event — no flow either): cumulative deposits carry.

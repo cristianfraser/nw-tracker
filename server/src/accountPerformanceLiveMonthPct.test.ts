@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import type { AccountMonthlyPerformanceRow } from "./accountPerformance.js";
 
 const chileToday = vi.hoisted(() => ({ ymd: "2037-05-20" }));
-const monthToDateFlow = vi.hoisted(() => ({ clp: 0 }));
+const monthToDateFlow = vi.hoisted(() => ({ clp: 0, uf: 0 }));
 
 vi.mock("./chileDate.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./chileDate.js")>();
@@ -16,7 +16,9 @@ vi.mock("./flowsDeposits.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./flowsDeposits.js")>();
   return {
     ...actual,
-    netDepositFlowCurrentMonthThroughToday: () => monthToDateFlow.clp,
+    // The month's flow in the unit asked (each event at its own day's rate, `flowEventInUnit`).
+    netDepositFlowCurrentMonthThroughToday: (_id: number, unit: string) =>
+      unit === "uf" ? monthToDateFlow.uf : monthToDateFlow.clp,
   };
 });
 
@@ -118,13 +120,14 @@ describe("live current-month row in UF", () => {
   const restoreUf = snapshotTables(["uf_daily"]);
   afterAll(() => restoreUf());
 
-  it("is in UF, with the month's flow in UF at today's value", () => {
+  it("is in UF, with the month's flow asked in UF", () => {
     db.prepare(`INSERT OR REPLACE INTO uf_daily (date, clp_per_uf) VALUES (?, ?)`).run(
       "2037-05-20",
       40_000
     );
     chileToday.ymd = "2037-05-20";
-    monthToDateFlow.clp = 200_000; // 5 UF
+    monthToDateFlow.clp = 200_000;
+    monthToDateFlow.uf = 5;
     const aprilUf = perfRow({ as_of_date: "2037-04-30", closing_value: 25, unit: "uf" });
     const rows = patchOrInsertLiveCurrentMonthPerfRows(
       ACCOUNT_ID,

@@ -80,6 +80,15 @@ function firstEquityShareActivityYmdUncached(accountId: number): string | null {
 }
 
 /**
+ * Whether an equity account had held shares by `asOfYmd`: before its first share inflow its
+ * chart line and monthly rows have no value yet (not 0); after it, an emptied position reads 0.
+ */
+export function equityHeldByYmd(accountId: number, asOfYmd: string): boolean {
+  const first = firstEquityShareActivityYmd(accountId);
+  return first != null && asOfYmd >= first;
+}
+
+/**
  * Chart valuation = 0 when flat only **after** the account has held shares (sold out).
  * Before first share activity, return null so the line does not backfill zeros.
  */
