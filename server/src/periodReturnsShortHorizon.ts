@@ -1,13 +1,8 @@
 import { chileCalendarAddDays, chileWallClockAt } from "./chileDate.js";
 import { netDepositFlowBetween } from "./flowsDeposits.js";
 import { accountValueAt } from "./accountValue.js";
-import {
-  endChargedFlow,
-  flowAdjustedPct,
-  groupStartFrameFlow,
-  type PeriodReturnCell,
-  type PeriodReturnsPayload,
-} from "./periodReturns.js";
+import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow, periodPl } from "./perfKernel.js";
+import type { PeriodReturnCell, PeriodReturnsPayload } from "./periodReturns.js";
 import type { TsUnit } from "./rates.js";
 
 /**
@@ -113,7 +108,7 @@ export function shortHorizonCellFromLegs(
   if (vEnd == null || vStart == null || !Number.isFinite(vEnd) || !Number.isFinite(vStart)) {
     return emptyCell(period, startYmd);
   }
-  const nominal = vEnd - vStart - flow;
+  const nominal = periodPl({ valueStart: vStart, valueEnd: vEnd, flow, side: "asset" });
   return {
     period,
     pct: flowAdjustedPct(nominal, vStart, groupStartFrameFlow(flow, endCharged), vEnd, unit),

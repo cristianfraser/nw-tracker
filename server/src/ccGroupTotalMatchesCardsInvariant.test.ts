@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { chileCalendarTodayYmd } from "./chileDate.js";
 import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
 
 /**
@@ -10,6 +11,10 @@ import { getGroupValuationTimeseries } from "./valuationTimeseries.js";
  * so the guard was false and the total fell back to (possibly stale) stored `valuations` instead of the live
  * billing ledger — while the per-card lines used the live ledger. Result: Total ≠ Σ(cards) after a payment
  * that changed the ledger without a re-import of that account.
+ *
+ * Points dated up to Chile today: the current month's point after today is the live tail, whose
+ * Total is today's consolidated row while a card line reads its walk to the month end — on a test
+ * database generated around the real clock, synthetic lines dated after today made it flake.
  */
 describe("CC group total matches sum of per-card lines", () => {
   it("__group_val_total equals the sum of per-account data lines at every point", () => {
@@ -23,7 +28,9 @@ describe("CC group total matches sum of per-card lines", () => {
     if (cardKeys.length === 0) return;
 
     const mismatches: { as_of_date: string; total: number; sumCards: number; diff: number }[] = [];
+    const today = chileCalendarTodayYmd();
     for (const p of ts.accounts_in_group.points) {
+      if (String(p.as_of_date) > today) continue;
       const t = p["__group_val_total"];
       if (typeof t !== "number" || !Number.isFinite(t)) continue;
       let sum = 0;

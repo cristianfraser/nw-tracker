@@ -14,7 +14,13 @@ import {
 } from "./fxConversionWarnings.js";
 import { accountIdsUnderCheckingAccounts } from "./movementBalanceCashAccounts.js";
 import type { MortgageCarryingEvent } from "./flowsMortgageCarrying.js";
+import {
+  deptoPropertyPaymentEventsThroughDate,
+  mortgageSheetPaymentEventsThroughDate,
+  type DeptoMortgageSheetRow,
+} from "./deptoDividendosLedger.js";
 import { convertFlow, type TsUnit } from "./rates.js";
+import { windowIndexOf } from "./perfKernel.js";
 
 /**
  * A deposit/flow event: every one carries its CLP leg (`amt`); USD-cash and equity capital
@@ -39,6 +45,30 @@ export function flowEventInUnit(e: FlowEvent, unit: TsUnit): number {
     return Math.sign(e.amt) * Math.abs(e.amt_usd);
   }
   return convertFlow(e.amt, "clp", unit, e.occurred_on);
+}
+
+/**
+ * The depto ledger's payments as flows in `unit` through `throughYmd`, each at its own day's rate
+ * (`flowEventInUnit`), zero payments left out: the mortgage's cuotas and prepagos (`loan`), or
+ * every payment into the property (`property`). The one place both the daily series and the
+ * monthly rows read them.
+ */
+export function deptoPaymentFlowsInUnit(
+  ledger: readonly DeptoMortgageSheetRow[],
+  throughYmd: string,
+  leg: "loan" | "property",
+  unit: TsUnit
+): { occurred_on: string; amount: number }[] {
+  const events =
+    leg === "loan"
+      ? mortgageSheetPaymentEventsThroughDate(ledger, throughYmd)
+      : deptoPropertyPaymentEventsThroughDate(ledger, throughYmd);
+  const out: { occurred_on: string; amount: number }[] = [];
+  for (const e of events) {
+    if (e.pago_clp === 0) continue;
+    out.push({ occurred_on: e.occurred_on, amount: flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, unit) });
+  }
+  return out;
 }
 
 /** Big-category buckets for the flows → deposits page (matches sidebar groupings). */
@@ -259,10 +289,11 @@ export function netDepositFlowWindows(
 ): (startYmd: string, endYmd: string) => number {
   const events = loadMergedDisplayDepositInflowEvents([accountId]).get(accountId) ?? [];
   return (startYmd, endYmd) => {
+    const window = [startYmd, endYmd];
     let sum = 0;
     for (const e of events) {
       if (e.amt === 0) continue;
-      if (e.occurred_on <= startYmd || e.occurred_on > endYmd) continue;
+      if (windowIndexOf(window, e.occurred_on) !== 0) continue;
       sum += flowEventInUnit(e, unit);
     }
     return sum;

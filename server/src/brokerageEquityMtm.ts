@@ -1,10 +1,9 @@
 import { historyTierMemo } from "./cacheRegistry.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndsBetweenInclusive } from "./calendarMonth.js";
-import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
+import { BROKERAGE_SHARE_UNITS_FLOW_KINDS, brokerageShareUnitsThroughDate } from "./brokerageFlowMovement.js";
 import { equityAsTradedClose, healIncomingEquityClose } from "./equitySplits.js";
 import {
-  sumUnitsThroughDate,
   listMovementRowsForAccount,
   unitsDeltaForAccountMovement,
 } from "./movementTransfer.js";
@@ -53,10 +52,10 @@ export function accountUsesEquityMtm(accountId: number): boolean {
   return accountProfileOptional(accountId)?.quantity.kind === "stock";
 }
 
-/** Share units held on or before `asOfYmd` (brokerage acciones / crypto with unit flows). */
+/** Share units held on or before `asOfYmd` by an equity account (`brokerageShareUnitsThroughDate`); 0 for any other. */
 export function equityShareUnitsThroughYmd(accountId: number, asOfYmd: string): number {
   if (!accountUsesEquityMtm(accountId)) return 0;
-  return sumUnitsThroughDate(accountId, asOfYmd, BROKERAGE_SHARE_UNITS_FLOW_KINDS);
+  return brokerageShareUnitsThroughDate(accountId, asOfYmd);
 }
 
 /** First calendar day a positive share inflow hit this equity account (buy, DRIP, transfer in). */

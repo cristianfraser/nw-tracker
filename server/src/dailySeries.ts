@@ -6,8 +6,7 @@ import { isCreditCardAccountId } from "./ccAccountConfig.js";
 import { ccFinancingCostByDateInUnit } from "./ccFinancingCostDaily.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
-import { mortgageSheetPaymentEventsThroughDate } from "./deptoDividendosLedger.js";
-import { flowEventInUnit } from "./flowsDeposits.js";
+import { deptoPaymentFlowsInUnit, flowEventInUnit } from "./flowsDeposits.js";
 import { isChileBusinessDay, isNyseTradingDay } from "./marketHolidays.js";
 import { accountMarkClpSeriesOnGrid, accountValueSeriesOnGrid } from "./accountMarkDailyCache.js";
 import type { ChartBucketPlan } from "./groupChartBuckets.js";
@@ -15,7 +14,14 @@ import {
   includeShortHorizonAccount,
   type ShortHorizonAccountRef,
 } from "./periodReturnsShortHorizon.js";
-import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
+import {
+  cardPeriodLegs,
+  endChargedFlow,
+  flowAdjustedPct,
+  groupStartFrameFlow,
+  periodPl,
+  windowIndexOf,
+} from "./perfKernel.js";
 import { portfolioStartYmd } from "./portfolioStart.js";
 import { trailingZeroRunClipStartIndex } from "./timeseriesTailClip.js";
 import { dbInTransaction } from "./db.js";
@@ -202,7 +208,6 @@ function gridFlows(
     }
     arr[row] += amt;
   };
-  const first = sessions[0]!;
   const last = sessions[sessions.length - 1]!;
 
   const regularIds: number[] = [];
@@ -218,23 +223,13 @@ function gridFlows(
   }
 
   const eventsById = loadMergedDisplayDepositInflowEvents(regularIds);
-  const rowIndexForEvent = (occurredOn: string): number => {
-    // First i ≥ 1 with sessions[i] ≥ occurredOn → row i − 1 (window (sessions[i−1], sessions[i]]).
-    let lo = 1;
-    let hi = sessions.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (sessions[mid]! >= occurredOn) hi = mid;
-      else lo = mid + 1;
-    }
-    return lo - 1;
-  };
+  // Row i is the window (sessions[i], sessions[i + 1]].
   for (const id of regularIds) {
     for (const e of eventsById.get(id) ?? []) {
       if (e.amt === 0) continue;
-      if (e.occurred_on <= first || e.occurred_on > last) continue;
+      const row = windowIndexOf(sessions, e.occurred_on);
+      if (row < 0) continue;
       const amt = flowEventInUnit(e, flowUnit);
-      const row = rowIndexForEvent(e.occurred_on);
       flows[row] += amt;
       addFor(id, row, amt);
     }
@@ -244,11 +239,10 @@ function gridFlows(
   // ledger is the mortgage's payment history, the same source the dashboard cards use. Cards
   // have no cash ledger; their flows are derived from the balance in `ccDerivedFlows`.
   if (mortgageIds.length > 0) {
-    for (const e of mortgageSheetPaymentEventsThroughDate(loadDeptoLedgerFromMovements(), last)) {
-      if (e.pago_clp === 0) continue;
-      if (e.occurred_on <= first || e.occurred_on > last) continue;
-      const amt = flowEventInUnit({ occurred_on: e.occurred_on, amt: e.pago_clp }, flowUnit);
-      const row = rowIndexForEvent(e.occurred_on);
+    for (const e of deptoPaymentFlowsInUnit(loadDeptoLedgerFromMovements(), last, "loan", flowUnit)) {
+      const row = windowIndexOf(sessions, e.occurred_on);
+      if (row < 0) continue;
+      const amt = e.amount;
       liabilityFlows[row] += amt;
       // The depto ledger is one mortgage's payment history (the loop above is gated on there
       // being any mortgage account), so attribute it to that account.
@@ -280,7 +274,7 @@ function ccDerivedFlows(
     const cur = marks[i];
     const prev = marks[i - 1];
     if (cur == null || prev == null) continue;
-    out[i - 1] = -(cur - prev) + (costByDate.get(grid[i]!) ?? 0);
+    out[i - 1] = cardPeriodLegs({ owedStart: prev, owedEnd: cur, cost: costByDate.get(grid[i]!) ?? 0 }).flow;
   }
   return out;
 }
@@ -580,7 +574,7 @@ export function getBucketDailySeries(
         const cur = w[i];
         const prev = w[i - 1];
         if (cur == null || prev == null) continue;
-        pl[i - 1] = cur - prev - (accFlows?.[i - 1] ?? 0);
+        pl[i - 1] = periodPl({ valueStart: prev, valueEnd: cur, flow: accFlows?.[i - 1] ?? 0, side: "asset" });
       }
       line.pl = pl;
     });
@@ -645,7 +639,7 @@ export function getBucketDailySeries(
     const wealthPrev = wealth[i - 1]!;
     const pl =
       wealthNow != null && wealthPrev != null && !unvalued[i]
-        ? wealthNow - wealthPrev - flow
+        ? periodPl({ valueStart: wealthPrev, valueEnd: wealthNow, flow, side: "asset" })
         : null;
     // Capital base = what was at work before today's P/L: assets grow with their flows, debt
     // grows with borrowing (the negated liability flow) — both are positive exposures. The

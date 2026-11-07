@@ -15,7 +15,7 @@ import {
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { pickMonthlyPerfRowsByMonth } from "./accountPeriodMetrics.js";
 import { rollupMonthlyPerfYearly, withRunningPlTotals } from "./monthlyPerfRollup.js";
-import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow } from "./periodReturns.js";
+import { endChargedFlow, flowAdjustedPct, groupStartFrameFlow, periodPl } from "./perfKernel.js";
 import {
   monthEndCloseFromPerfRows,
   priorCalendarMonthKey,
@@ -139,7 +139,7 @@ function balanceOnlyMonthlyRowsAsc(
     // month's fx move on an event-based flow, so the lifetime P/L missed part of what the
     // dashboard card's value − deposits counts.
     const netFlow = netFlowBetween(prevEvalAt, evalAt);
-    const nominal = close - (prevClose ?? 0) - netFlow;
+    const nominal = periodPl({ valueStart: prevClose ?? 0, valueEnd: close, flow: netFlow, side: "asset" });
 
     outAsc.push({
       as_of_date: asOf,

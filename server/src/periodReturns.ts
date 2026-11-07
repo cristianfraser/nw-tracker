@@ -1,6 +1,6 @@
 import { monthKeyFromYmd } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import type { TsUnit } from "./valuationTimeseries.js";
+import type { TsUnit } from "./rates.js";
 
 /**
  * Chained, flow-adjusted period returns (Rentabilidad). Pure / db-free.
@@ -17,107 +17,9 @@ import type { TsUnit } from "./valuationTimeseries.js";
 
 export type PeriodReturnKey = "d1" | "w1" | "mtd" | "ytd" | "y1" | "y3" | "y5" | "total";
 
-/**
- * The zero test of the return rules, one per unit: a value at or below the unit's smallest coin
- * (one peso, one US cent, 0,0001 UF) is no capital. It decides whether a period ENDS AT ZERO and
- * whether a capital base exists at all, on every grain — month rows, the dashboard, the daily
- * series, the 1D/1W cells. Until 2026-09-27 each caller passed its own eps (0.01 in either unit
- * for the monthly rows and the dashboard, 1e-9 for the daily series and 1D/1W), so an account
- * left holding a peso of dust after a withdrawal divided the day's fx move by that peso in USD
- * and read close to −100%, and a day that STARTED on dust read a return on a one-peso base.
- */
-export const ZERO_CLOSE_EPS: Readonly<Record<TsUnit, number>> = {
-  clp: 1,
-  usd: 0.01,
-  uf: 0.0001,
-};
-
-export function zeroCloseEps(unit: TsUnit): number {
-  const eps = ZERO_CLOSE_EPS[unit];
-  if (eps == null) throw new Error(`zeroCloseEps: unknown unit ${JSON.stringify(unit)}`);
-  return eps;
-}
-
-/**
- * Flow-adjusted return over any period — a month row, a day of the daily series, the 1D/1W
- * cells, the dashboard's day/month/year/total, an equity position's return on deposited:
- * nominal P/L over the capital at work. The default frame charges flows at the period START
- * (`denom = prior + netFlow`). Zero is the unit's coin ({@link ZERO_CLOSE_EPS}).
- *
- * A period that ENDS AT ZERO (`|close| ≤ coin`: a position sold off, a deposit matured, an
- * account emptied, dust left behind) was emptied by a withdrawal at its end, so it charges
- * that withdrawal at the period END and divides by the prior close: in the start frame
- * `prior + netFlow` is then exactly `−nominal`, so a loss read −100% however small and a gain
- * had no positive base. With nothing at work before it (no prior close, or dust: bought and
- * sold inside the period) there is no base → null. A period that ends at zero on a net DEPOSIT
- * keeps the start frame: that money was at work too and all of it was lost, exactly −100% (the
- * prior close alone would read a loss beyond that).
- *
- * A period that does not end at zero but whose net withdrawal exceeds the prior close (a
- * partial liquidation that takes the period's gains too) also divides by the prior close,
- * the start denominator being ≤ 0. Null when no positive capital base exists in either
- * frame — among them a first period (no prior close) whose flows are net withdrawals — and
- * when the close is unknown (the frame cannot be chosen).
- *
- * `netFlow` is the flow charged at the period START: an account's whole net flow; a group's
- * {@link groupStartFrameFlow}.
- */
-export function flowAdjustedPct(
-  nominal: number | null,
-  prior: number | null,
-  netFlow: number,
-  close: number | null,
-  unit: TsUnit
-): number | null {
-  if (nominal == null || !Number.isFinite(nominal)) return null;
-  if (close == null || !Number.isFinite(close)) return null;
-  const eps = zeroCloseEps(unit);
-  const priorBase = prior != null && Number.isFinite(prior) ? prior : 0;
-  const endsAtZero = Math.abs(close) <= eps;
-  if (endsAtZero && !(priorBase > eps)) return null;
-  const startFrameDenom = priorBase + netFlow;
-  const denom =
-    endsAtZero && netFlow <= 0
-      ? priorBase
-      : startFrameDenom > eps
-        ? startFrameDenom
-        : priorBase > eps
-          ? priorBase
-          : null;
-  if (denom == null) return null;
-  const pct = nominal / denom;
-  return Number.isFinite(pct) ? pct : null;
-}
-
-/**
- * The part of one member's net flow a group return may charge at the period end: all of it
- * when the member ends at zero on a net withdrawal (the rule {@link flowAdjustedPct} applies to
- * that member alone), else 0. Summed over the members and passed to {@link groupStartFrameFlow}.
- */
-export function endChargedFlow(netFlow: number, close: number | null, unit: TsUnit): number {
-  if (close == null || !Number.isFinite(close) || !Number.isFinite(netFlow)) return 0;
-  return Math.abs(close) <= zeroCloseEps(unit) && netFlow <= 0 ? netFlow : 0;
-}
-
-/**
- * The flow a GROUP return charges at the period start (the `netFlow` argument of
- * {@link flowAdjustedPct}): its net flow minus what its emptied members withdrew
- * (`endChargedSum`, Σ {@link endChargedFlow}), so each member's zero close carries into the
- * group — a large member sold off at a small loss beside a small one still open used to leave
- * the group base at about the small member's size, so the group read a loss of tens of percent
- * while the member it came from read a fraction of one.
- *
- * Only money that LEFT the group is charged at the end: the end charge is capped at the group's
- * own net withdrawal. A member emptied into another member of the group is a transfer the group
- * net already cancels, and the receiving member counts that money at the start — charging the
- * emptied side at the end as well would count the same capital twice.
- *
- * No member empties → `netFlow` unchanged, the start frame as before. A single account → its
- * whole withdrawal when it empties, the account's own rule.
- */
-export function groupStartFrameFlow(netFlow: number, endChargedSum: number): number {
-  return netFlow - Math.max(endChargedSum, Math.min(netFlow, 0));
-}
+// The return rules live in the P/L kernel; re-exported for the readers that still import them here.
+export { ZERO_CLOSE_EPS, endChargedFlow, flowAdjustedPct, groupStartFrameFlow, zeroCloseEps } from "./perfKernel.js";
+import { compound } from "./perfKernel.js";
 
 export const PERIOD_RETURN_ORDER: readonly PeriodReturnKey[] = [
   "mtd",
@@ -203,8 +105,7 @@ function chainWindow(
   startMk: string,
   endMk: string
 ): WindowResult {
-  let prod = 1;
-  let sawPct = false;
+  const pcts: (number | null)[] = [];
   let nominal = 0;
   let sawNominal = false;
   let months = 0;
@@ -215,11 +116,7 @@ function chainWindow(
     const row = byMonth.get(mk)!;
     if (windowStart == null) windowStart = mk;
     months += 1;
-    const p = row.pct_month;
-    if (p != null && Number.isFinite(p)) {
-      prod *= 1 + p;
-      sawPct = true;
-    }
+    pcts.push(row.pct_month);
     const n = row.nominal_pl;
     if (n != null && Number.isFinite(n)) {
       nominal += n;
@@ -229,7 +126,7 @@ function chainWindow(
 
   if (months === 0) return EMPTY_WINDOW;
   return {
-    pct: sawPct ? prod - 1 : null,
+    pct: compound(pcts),
     nominal_pl: sawNominal ? nominal : null,
     months,
     window_start_month: windowStart,

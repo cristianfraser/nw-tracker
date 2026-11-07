@@ -7,6 +7,8 @@ import { accountPeriodMetricsFromMonthlyRows } from "./accountPeriodMetrics.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import type { TsUnit } from "./valuationTimeseries.js";
 import { convertValue } from "./valueConvert.js";
+import { ccFinancingCostByDateInUnit } from "./ccFinancingCostDaily.js";
+import { ccRevaluationCostByDate } from "./ccOwedWalk.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { monthEndUtcYmd, monthKeyFromYmd } from "./calendarMonth.js";
 import { addCalendarMonths } from "nw-tracker-contracts";
@@ -150,9 +152,20 @@ describe("dashboard credit-card row vs its «Detalle por mes» rows", () => {
     }
     const mine = cards.find((r) => r.account_id === cardId)!;
     expect(mine.delta_day_clp).toBe(-CHARGE_TODAY);
-    // A peso charge adds to the peso debt: in dollars at today's debt side (the sell rate).
-    expect(mine.delta_day_usd).toBeCloseTo(-convertValue(CHARGE_TODAY, "clp", "usd", today, "debt")!, 9);
-    // The month row sums the same day, the month's only charge.
-    expect(mine.delta_month_usd).toBeCloseTo(mine.delta_day_usd!, 9);
+    // The card's cost in dollars per day (`ccFinancingCostByDateInUnit`): its charges at their own
+    // day's debt side plus the dollar revaluation of the pesos it owes — whatever the fx did on
+    // the days of this month, the row and the day read the same map.
+    const costUsd = ccFinancingCostByDateInUnit(cardId!, "usd");
+    const revalUsd = ccRevaluationCostByDate(cardId!, "usd");
+    expect(mine.delta_day_usd).toBeCloseTo(-(costUsd.get(today) ?? 0), 9);
+    // Today's charge is in it: a peso charge adds to the peso debt, in dollars at today's debt side.
+    expect((costUsd.get(today) ?? 0) - (revalUsd.get(today) ?? 0)).toBeCloseTo(
+      convertValue(CHARGE_TODAY, "clp", "usd", today, "debt")!,
+      9
+    );
+    // The month row sums the map over the month so far.
+    let monthCost = 0;
+    for (const [d, v] of costUsd) if (d.slice(0, 7) === currentYm && d <= today) monthCost += v;
+    expect(mine.delta_month_usd).toBeCloseTo(-monthCost, 9);
   }, 120_000);
 });
