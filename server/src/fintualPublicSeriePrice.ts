@@ -5,7 +5,7 @@
  * each serie's inception, weekend/holiday days included).
  *
  * The endpoint publishes day D on D+1 — never on the evening of D — so it cannot serve the
- * evening write (`scripts/fintualRealAssetNav.ts` prices that from Fintual's own share count).
+ * evening write (`src/fintualRealAssetNav.ts` prices that from Fintual's own share count).
  * It is the next-day verifier and healer: every poll re-reads the last
  * `FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS`, fills days no poll wrote, replaces carry-forward / stand-in
  * placeholders, and CORRECTS a stored bar that disagrees beyond `FINTUAL_PUBLIC_SERIE_TOLERANCE_REL`

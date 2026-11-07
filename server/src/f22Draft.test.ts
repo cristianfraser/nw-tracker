@@ -5,11 +5,10 @@ import {
   capCapitalLosses,
   capitalLossPoolClp,
   computeF22Tax,
-  IDPC_RATE,
-  igcTax,
   informedDj1922Codes,
   type F22Codes,
 } from "./f22Draft.js";
+import { IDPC_RATE, igcTax } from "./legalParameters.js";
 import type { UsdFxDisposalLoader } from "./usdFxTaxGains.js";
 
 const UTA = 800_000;

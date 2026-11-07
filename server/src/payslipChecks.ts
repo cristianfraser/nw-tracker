@@ -18,9 +18,9 @@
  */
 import { db } from "./db.js";
 import { accountKindSlugForAccountId } from "./accountBucket.js";
-import { igcTax } from "./f22Draft.js";
+import { iuscTax, MANDATORY_PENSION_RATE } from "./legalParameters.js";
 import { loadPayrollParameters } from "./payrollParametersApply.js";
-import type { PayslipLineKind } from "./payslipLineKinds.js";
+import { iuscTaxableClp, legalHealthClp, payslipHaberIsTaxable, type PayslipLineKind } from "./payslipLineKinds.js";
 
 export const PAYSLIP_CHECKS = ["taxable_base", "pension", "health_minimum", "unemployment", "income_tax", "pension_credited"] as const;
 export type PayslipCheckName = (typeof PAYSLIP_CHECKS)[number];
@@ -39,9 +39,6 @@ export type PayslipChecksRow = {
   pending: boolean;
 };
 
-const TAXABLE_KINDS = new Set<PayslipLineKind>(["base_salary", "gratification", "bonus", "life_insurance_benefit", "absence"]);
-const LEGAL_HEALTH_RATE = 0.07;
-const MANDATORY_PENSION_RATE = 10;
 
 type PayslipRow = {
   id: number;
@@ -52,14 +49,6 @@ type PayslipRow = {
 };
 
 type LineRow = { payslip_id: number; side: "haber" | "descuento"; section: string | null; kind: PayslipLineKind | null; amount: number };
-
-/** Taxable pay: the haberes the payslip prints as imponible, or by kind when it prints no section. */
-function isTaxableHaber(l: LineRow): boolean {
-  if (l.side !== "haber") return false;
-  if (l.section === "imponible") return true;
-  if (l.section === "no_imponible") return false;
-  return l.kind != null && TAXABLE_KINDS.has(l.kind);
-}
 
 export function buildPayslipChecks(): PayslipChecksRow[] {
   const params = loadPayrollParameters();
@@ -103,7 +92,7 @@ export function buildPayslipChecks(): PayslipChecksRow[] {
     const lines = linesBy.get(p.id) ?? [];
     const sum = (side: "haber" | "descuento", kinds: readonly PayslipLineKind[]) =>
       lines.filter((l) => l.side === side && l.kind != null && kinds.includes(l.kind)).reduce((s, l) => s + l.amount, 0);
-    const taxablePay = lines.filter(isTaxableHaber).reduce((s, l) => s + l.amount, 0);
+    const taxablePay = lines.filter(payslipHaberIsTaxable).reduce((s, l) => s + l.amount, 0);
     const base = Math.min(taxablePay, Math.round(m.pension_cap_uf * m.uf));
     const pensionLine = sum("descuento", ["pension"]);
     const healthLines = sum("descuento", ["health", "health_additional"]);
@@ -120,17 +109,17 @@ export function buildPayslipChecks(): PayslipChecksRow[] {
       if (rate == null) throw new Error(`payslip checks: no ${p.pension_fund} rate for ${p.period_month}`);
       add("pension", Math.round((base * rate) / 100), pensionLine);
     }
-    const healthMin = Math.round(base * LEGAL_HEALTH_RATE);
+    const healthMin = legalHealthClp(base);
     add("health_minimum", healthMin, healthLines < healthMin ? healthLines : healthMin);
     if (unemploymentLine > 0) {
       const afcBase = Math.min(taxablePay, Math.round(m.unemployment_cap_uf * m.uf));
       add("unemployment", Math.round((afcBase * m.afc_worker_rate) / 100), unemploymentLine);
     }
-    const taxable = taxablePay - pensionLine - Math.min(healthLines, healthMin) - unemploymentLine;
+    const taxable = iuscTaxableClp({ taxablePay, pension: pensionLine, healthPaid: healthLines, unemployment: unemploymentLine, taxableBase: base });
     const incomeYear = Number(p.period_month.slice(0, 4));
-    add("income_tax", Math.round(igcTax(taxable, m.utm, incomeYear + 1)), taxLine);
+    add("income_tax", Math.round(iuscTax(taxable, m.utm, incomeYear)), taxLine);
     const credited = creditedByMonth.get(p.period_month);
-    if (credited != null) add("pension_credited", Math.round((base * (MANDATORY_PENSION_RATE + m.afp_employer_rate)) / 100), credited);
+    if (credited != null) add("pension_credited", Math.round((base * (MANDATORY_PENSION_RATE * 100 + m.afp_employer_rate)) / 100), credited);
 
     out.push({
       payslip_id: p.id,

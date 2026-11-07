@@ -86,7 +86,7 @@ import {
   matchGoalToImportNotes,
   parseGoalsFromResponse,
   writeGoalsSnapshot,
-} from "../scripts/fintualApiLib.js";
+} from "./fintualApiLib.js";
 import {
   applyFintualGoalsSnapshotToDb,
   cleanupUnreconciledFintualCertFundUnitsForPoll,
@@ -101,7 +101,7 @@ import {
   pickFintualApplySnapshot,
   priorAccountValuation,
   syncFintualFundUnitsFromResolutions,
-} from "../scripts/fintualApplyShared.js";
+} from "./fintualApplyShared.js";
 import { matchFintualCertGoalV2 } from "./fintualCertV2.js";
 import {
   fintualCertV2AnyHeldFundMissingDayRow,
@@ -112,7 +112,7 @@ import {
   clearFintualRealAssetNavCaches,
   describeFintualGoalResolution,
   resolveFintualGoalNavs,
-} from "../scripts/fintualRealAssetNav.js";
+} from "./fintualRealAssetNav.js";
 import {
   FINTUAL_PUBLIC_SERIE_VERIFY_WINDOW_DAYS,
   fintualOfficialSerieCorrectionErrors,

@@ -36,7 +36,7 @@
  */
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
-import { fintualUsdAccountId } from "./fintualEmailImport.js";
+import { fintualUsdAccountId } from "./brokerAdapter.js";
 import { movementEventTimesMs } from "./movementEventTimes.js";
 import { isMovementTransferRow, signedUsdDeltaForAccountMovement, type MovementTransferRow } from "./movementTransfer.js";
 

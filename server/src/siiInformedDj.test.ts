@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { informedDjAmount, informedDjFileKey, informedDjSectionAmounts, parseInformedDjSheet } from "./siiInformedDj.js";
-import { parseF22CompactoText, assertF22Identities } from "./siiF22Compacto.js";
+import { parseF22CompactoText, assertF22Identities } from "../scripts/lib/siiF22Compacto.js";
 
 describe("parseInformedDjSheet", () => {
   it("carries a spanning title rightward in upper header rows only", () => {

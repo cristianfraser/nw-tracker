@@ -29,7 +29,7 @@ import type {
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
-import { fintualUsdAccountId } from "./fintualEmailImport.js";
+import { fintualUsdAccountId } from "./brokerAdapter.js";
 
 /** How long after its pay day a request waits for its wire before it is reported overdue. */
 const OVERDUE_AFTER_DUE_DAYS = 3;

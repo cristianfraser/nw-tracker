@@ -12,6 +12,7 @@
  */
 import { db } from "./db.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
+import { MORTGAGE_WINDOW_END_DAY } from "./mortgageCuotaDay.js";
 import { buildDashboardCcUpcomingPayments, type CcUpcomingPaymentRow } from "./dashboardCcUpcomingPayments.js";
 import { loadDeptoLedgerFromMovements } from "./deptoLedgerFromMovements.js";
 import {
@@ -45,8 +46,6 @@ export type { RecurringEntry, RecurringLine, RecurringOccurrence } from "./recur
 /** Months the block covers, the current one included («Show more» shows them all). */
 export const UPCOMING_PAYMENTS_HORIZON_MONTHS = 6;
 
-/** Day-of-month window of a mortgage cuota: payable from the 11th through the 10th of the next month. */
-const MORTGAGE_WINDOW_END_DAY = 10;
 
 /** Contribuciones cuotas: due on the last day of April, June, September and November (Tesorería). */
 export const CONTRIBUCIONES_DUE_MONTHS = [4, 6, 9, 11] as const;

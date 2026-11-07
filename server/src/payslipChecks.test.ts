@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { employmentPayslipsKind, payrollParametersKind, type Payslip } from "nw-tracker-contracts";
 import { db } from "./db.js";
-import { igcTax } from "./f22Draft.js";
+import { igcTax } from "./legalParameters.js";
 import { applyPayrollParameters } from "./payrollParametersApply.js";
 import { buildPayslipChecks, payrollWithholdingYear } from "./payslipChecks.js";
 import { applyEmploymentPayslips } from "./payslipsApply.js";

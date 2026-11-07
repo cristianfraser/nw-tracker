@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OfficialIpcLookup } from "./siiOfficialIpc.js";
+import { IDPC_RATE } from "./legalParameters.js";
 import {
-  USD_FX_IDPC_RATE,
   usdFxF22Codes,
   usdFxTaxGainsForYear,
   type UsdFxDisposalLoader,
@@ -82,7 +82,7 @@ describe("usdFxTaxGainsForYear", () => {
   it("under idpc_1901 a gain is code 1901 with its IDPC; under igc_1032 it is code 1032", () => {
     const gain = usdFxTaxGainsForYear(2024, base, loaderOf(DISPOSALS_2024));
     const result = Math.round(gain.resultDecemberClp);
-    expect(gain.codes).toEqual({ 1901: result, idpcClp: Math.round(result * USD_FX_IDPC_RATE) });
+    expect(gain.codes).toEqual({ 1901: result, idpcClp: Math.round(result * IDPC_RATE) });
     const igc = usdFxTaxGainsForYear(2024, { ...base, route: "igc_1032" }, loaderOf(DISPOSALS_2024));
     expect(igc.codes).toEqual({ 1032: result });
     expect(igc.resultDecemberClp).toBe(gain.resultDecemberClp);
@@ -143,10 +143,5 @@ describe("usdFxTaxGainsForYear", () => {
     expect(usdFxF22Codes("idpc_1901", -3)).toEqual({});
     expect(usdFxF22Codes("igc_1032", 0.2)).toEqual({});
     expect(usdFxF22Codes("igc_1032", -1000.6)).toEqual({ loss169: 1001 });
-  });
-
-  it("applies the same IDPC rate as the F22 draft", async () => {
-    const { IDPC_RATE } = await import("./f22Draft.js");
-    expect(USD_FX_IDPC_RATE).toBe(IDPC_RATE);
   });
 });

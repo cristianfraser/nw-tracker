@@ -25,7 +25,7 @@ import { recomputeCcBillingMonthBalances } from "../ccBillingBalances.js";
 import { afpDisplaySeriesKey, AFP_UNO_CUOTA_SERIES_KEY } from "../afpUnoSeries.js";
 import { afpDisplayThroughDay, buildAfpDisplayRowsForFund, upsertAfpDisplayRows } from "../afpUnoOfficialSync.js";
 import { officialPensionFundUnits } from "../spAfpFundUnits.js";
-import { ufWindowForIpcMonth, writeOfficialIpcMonths } from "../siiOfficialIpc.js";
+import { loadUfLookup, ufImpliedIpcVariationPct, writeOfficialIpcMonths } from "../siiOfficialIpc.js";
 import { applyBankAccountStatements } from "../bankAccountStatementsApply.js";
 import { applyBankAccountMovements } from "../bankAccountMovementsApply.js";
 import { applyParsedCcStatements } from "../ccParsedStatementsApply.js";
@@ -40,11 +40,14 @@ import {
   deptoPaymentHumanNote,
   insertLoanPaymentRow,
   loanPaymentColumnsFromPaymentRow,
-  mortgageFlowKindFromCuota,
   upsertPropertyAppraisalUf,
   type DeptoDividendosPaymentRow,
 } from "../deptoDividendosLedger.js";
+import { commitMortgagePayment, MORTGAGE_ACCOUNT_IMPORT_KEY, PROPERTY_ACCOUNT_IMPORT_KEY } from "../mortgagePaymentCreate.js";
 import { isChileBusinessDay } from "../marketHolidays.js";
+import { ccMasterImportKeyPrefix } from "../ccIssuers.js";
+import { isMortgageCcExpenseMerchant } from "../expenseDepositLinks.js";
+import { buildPanelAccountNotes, buildPanelCashAccountNotes } from "../panelAccountNotes.js";
 import { DEMO_AFP_MODELO_CSV_PATH, parseDemoAfpModeloCsv } from "./demoRealMarket.js";
 import { dbMarketReader, writeSyntheticMarket, type MarketReader } from "./market.js";
 import { addDays, addMonths, type Month, type Person, type Ymd } from "./person.js";
@@ -57,7 +60,7 @@ import {
   renderPayslips,
   DEMO_CHECKING_NUMBER,
 } from "./render.js";
-import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
+import { AFP_SWITCH_MONTH, APV_FUND_SERIES_KEY, MORTGAGE_DESGRAVAMEN_CLP, MORTGAGE_INCENDIO_CLP, MORTGAGE_MERCHANT, MUTUAL_FUND_SERIES_KEY, simulate, type Acct, type Ledger } from "./simulate.js";
 import { assertDemoInvariants, type DemoDbReport } from "./invariants.js";
 
 export type GenerateDemoDbOptions = { person: Person; market: "synthetic" | "real"; today?: Ymd };
@@ -71,6 +74,9 @@ function ensureAssetGroup(slug: string, label: string, parentSlug: string): numb
   if (!parent) throw new Error(`demo: asset group ${parentSlug} missing (schema seed incomplete?)`);
   return Number(db.prepare(`INSERT INTO asset_groups (slug, label, sort_order, parent_id) VALUES (?, ?, 90, ?)`).run(slug, label, parent.id).lastInsertRowid);
 }
+
+/** The crypto exchange's peso wallet, under the key `budaWallet.ts` finds it by. */
+const BUDA_ACCOUNT_IMPORT_KEY = "import:buda|key=buda_clp";
 
 function createAccount(groupId: number, name: string, opts: { key?: string; ticker?: string; series?: string } = {}): number {
   return Number(
@@ -90,15 +96,15 @@ function createAccounts(person: Person): Map<Acct, number> {
   ids.set("vista", createAccount(g("cash_eqs__cuenta_vista"), "Cuenta vista"));
   ids.set("checking", createAccount(g("cash_eqs__cuenta_corriente"), "Cuenta corriente"));
   ids.set("checkingUsd", createAccount(ensureAssetGroup("cash_eqs__cuenta_usd__usd", "Cuenta corriente USD", "cash_eqs__checking_accounts"), "Cuenta corriente USD"));
-  ids.set("brokerClp", createAccount(ensureAssetGroup("cash_eqs__cash_savings__broker_clp__clp", "Broker CLP", "cash_eqs__cash_savings"), "Broker CLP", { key: "import:panel|kind=clp|key=broker_clp" }));
-  ids.set("brokerUsd", createAccount(ensureAssetGroup("cash_eqs__cash_savings__broker_usd__usd", "Broker USD", "cash_eqs__cash_savings"), "Broker USD", { key: "import:panel|kind=usd|key=broker_usd" }));
+  ids.set("brokerClp", createAccount(ensureAssetGroup("cash_eqs__cash_savings__broker_clp__clp", "Broker CLP", "cash_eqs__cash_savings"), "Broker CLP", { key: buildPanelCashAccountNotes("clp", "broker_clp") }));
+  ids.set("brokerUsd", createAccount(ensureAssetGroup("cash_eqs__cash_savings__broker_usd__usd", "Broker USD", "cash_eqs__cash_savings"), "Broker USD", { key: buildPanelCashAccountNotes("usd", "broker_usd") }));
   if (person.btc) {
-    ids.set("exchangeClp", createAccount(ensureAssetGroup("brokerage_crypto__buda_clp", "Exchange CLP", "brokerage_crypto"), "Exchange CLP"));
+    ids.set("exchangeClp", createAccount(ensureAssetGroup("brokerage_crypto__buda_clp", "Exchange CLP", "brokerage_crypto"), "Exchange CLP", { key: BUDA_ACCOUNT_IMPORT_KEY }));
     ids.set("btc", createAccount(g("brokerage_crypto__bitcoin"), "Bitcoin", { ticker: "BTC-USD" }));
   }
   for (const t of person.brokerTickers) {
     const leaf = ensureAssetGroup(`brokerage_acciones__${t.toLowerCase()}`, t, "brokerage_acciones");
-    ids.set(`stock:${t}`, createAccount(leaf, t, { key: `import:panel|ticker=${t}|key=demo_${t.toLowerCase()}`, ticker: t }));
+    ids.set(`stock:${t}`, createAccount(leaf, t, { key: buildPanelAccountNotes(t, `demo_${t}`), ticker: t }));
   }
   if (person.fund) {
     ids.set("fund", createAccount(g("brokerage_mutual_funds__fintual_risky_norris"), person.fund.name, { key: "import:panel|kind=fund|key=demo_fondo", series: MUTUAL_FUND_SERIES_KEY }));
@@ -114,11 +120,11 @@ function createAccounts(person: Person): Map<Acct, number> {
   ids.set("afpUno", afp("uno", "UNO-A"));
   ids.set("afc", createAccount(g("retirement_afp_afc__afc"), "AFC"));
   if (person.house) {
-    ids.set("property", createAccount(g("real_estate__property"), "Vitacura", { key: "import:excel|key=property" }));
-    ids.set("mortgage" as Acct, createAccount(g("liabilities__mortgage"), "Vitacura", { key: "import:excel|key=mortgage" }));
+    ids.set("property", createAccount(g("real_estate__property"), "Vitacura", { key: PROPERTY_ACCOUNT_IMPORT_KEY }));
+    ids.set("mortgage" as Acct, createAccount(g("liabilities__mortgage"), "Vitacura", { key: MORTGAGE_ACCOUNT_IMPORT_KEY }));
   }
   for (const c of person.cards) {
-    const id = createAccount(g("credit_cards__credit_card"), c.displayName, { key: `credit_card_master|${c.issuer}|${c.last4}` });
+    const id = createAccount(g("credit_cards__credit_card"), c.displayName, { key: `${ccMasterImportKeyPrefix(c.issuer)}${c.last4}` });
     db.prepare(
       `INSERT INTO credit_card_account_config (account_id, cupo_clp, cupo_usd, billing_cycle_start_day, billing_cycle_end_day, card_last4, issuer)
        VALUES (?, ?, ?, 21, 20, ?, ?)`
@@ -164,16 +170,13 @@ function writeAfpDisplaySeries(person: Person, today: Ymd): void {
  * variation is the UF's growth over the window the UF applies it (`ufWindowForIpcMonth`) — the
  * identity `writeOfficialIpcMonths` verifies. One base, so the printed index chains from 100.
  */
-function writeOfficialIpcFromUf(market: MarketReader, fromMonth: Month, today: Ymd): void {
+function writeOfficialIpcFromUf(fromMonth: Month): void {
+  const ufOn = loadUfLookup();
   const months: { month: string; variationPct: number; indexPoints: number }[] = [];
   let index = 100;
   for (let m = fromMonth; ; m = addMonths(m, 1)) {
-    const w = ufWindowForIpcMonth(`${m}-01`);
-    const exact = (d: string) => (db.prepare(`SELECT clp_per_uf AS v FROM uf_daily WHERE date = ?`).get(d) as { v: number } | undefined)?.v;
-    const a = exact(w.from);
-    const b = exact(w.to);
-    if (a == null || b == null) break;
-    const pct = Math.round((b / a - 1) * 1000) / 10;
+    const pct = ufImpliedIpcVariationPct(`${m}-01`, ufOn);
+    if (pct == null) break;
     index = Math.round(index * (1 + pct / 100) * 100) / 100;
     months.push({ month: `${m}-01`, variationPct: pct, indexPoints: index });
   }
@@ -253,77 +256,62 @@ function writeContractorPayslips(ledger: Ledger): void {
   })();
 }
 
-function writeMortgage(ledger: Ledger, ids: Map<Acct, number>, market: MarketReader, today: Ymd): void {
+/**
+ * The mortgage ledger: the pie is written as the bank states it (no prior balance to compute it
+ * from), every cuota and prepago through the app's own writer (`commitMortgagePayment`, as the
+ * mortgage sheet import writes them) with the bank's figures. The property's appraisal on each
+ * payment day is a valuation of the property account in UF.
+ */
+function writeMortgage(ledger: Ledger, ids: Map<Acct, number>): void {
   const m = ledger.mortgage;
   const HOUSE = ledger.person.house;
   if (!m || !HOUSE) return;
+  // The card line that pays a cuota must be one the app recognizes as the mortgage's.
+  if (!isMortgageCcExpenseMerchant(MORTGAGE_MERCHANT)) throw new Error(`demo: ${MORTGAGE_MERCHANT} is not a known mortgage lender`);
   const propertyId = ids.get("property")!;
   const mortgageId = ids.get("mortgage" as Acct)!;
-  const insMov = db.prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note, flow_kind) VALUES (?, ?, 'clp', ?, ?, ?)`);
-  // Each payment row is what the bank states (pesos and their parts, balance / min / max in UF);
-  // the property's appraisal on the payment day is a valuation of the property account in UF.
-  const emit = (r: DeptoDividendosPaymentRow, appraisalUf: number) => {
-    const cols = loanPaymentColumnsFromPaymentRow(r);
-    const pm = insMov.run(propertyId, r.amount_clp, r.occurred_on, deptoPaymentHumanNote("property", r.cuota, false), null);
-    insertLoanPaymentRow({ movement_id: Number(pm.lastInsertRowid), loan_account_id: mortgageId, leg: "property", origin: "import", ...cols });
-    upsertPropertyAppraisalUf(propertyId, r.occurred_on, appraisalUf);
-    if (r.cuota !== "pie") {
-      const mm = insMov.run(mortgageId, Math.abs(r.amount_clp), r.occurred_on, deptoPaymentHumanNote("loan", r.cuota, false), mortgageFlowKindFromCuota(r.cuota));
-      insertLoanPaymentRow({ movement_id: Number(mm.lastInsertRowid), loan_account_id: mortgageId, leg: "loan", origin: "import", ...cols });
-    }
-  };
-  const base = (over: Partial<DeptoDividendosPaymentRow>): DeptoDividendosPaymentRow => ({
-    cuota: "",
-    occurred_on: m.pieDate,
-    amount_clp: 0,
-    credito_restante_uf: null,
-    min_uf: null,
-    max_uf: null,
-    amortizacion_clp: null,
-    amortizacion_ext_clp: null,
-    interes_clp: null,
-    incendio_clp: null,
-    desgravamen_clp: null,
-    ...over,
-  });
   const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
   const r5 = (v: number) => Math.round(v * 1e5) / 1e5;
   const valueUfAt = (day: Ymd) => HOUSE.valueUf * Math.pow(1 + HOUSE.monthlyAppreciation, Math.max(0, (Date.parse(day) - Date.parse(m.pieDate)) / (30.44 * 86_400_000)));
   db.transaction(() => {
-    emit(
-      base({
-        cuota: "pie",
-        amount_clp: m.pieClp,
-        credito_restante_uf: r4(m.principalUf),
-      }),
-      r4(HOUSE.valueUf)
-    );
-    for (const c of m.cuotas) {
-      const vv = valueUfAt(c.date);
-      const common = {
-        occurred_on: c.date,
-        amount_clp: c.clp,
-        credito_restante_uf: r4(c.balanceAfterUf),
-      };
-      if (c.n == null) {
-        // A prepago is all extra amortization.
-        emit(base({ cuota: c.label, ...common, amortizacion_ext_clp: c.clp }), r4(vv));
-        continue;
-      }
-      emit(
-        base({
+    const pie: DeptoDividendosPaymentRow = {
+      cuota: "pie",
+      occurred_on: m.pieDate,
+      amount_clp: m.pieClp,
+      credito_restante_uf: r4(m.principalUf),
+      min_uf: null,
+      max_uf: null,
+      amortizacion_clp: null,
+      amortizacion_ext_clp: null,
+      interes_clp: null,
+      incendio_clp: null,
+      desgravamen_clp: null,
+    };
+    const pm = db
+      .prepare(`INSERT INTO movements (account_id, amount, currency, occurred_on, note) VALUES (?, ?, 'clp', ?, ?)`)
+      .run(propertyId, pie.amount_clp, pie.occurred_on, deptoPaymentHumanNote("property", "pie", false));
+    insertLoanPaymentRow({ movement_id: Number(pm.lastInsertRowid), loan_account_id: mortgageId, leg: "property", origin: "import", ...loanPaymentColumnsFromPaymentRow(pie) });
+    upsertPropertyAppraisalUf(propertyId, m.pieDate, r4(HOUSE.valueUf));
+    for (const c of [...m.cuotas].sort((a, b) => a.date.localeCompare(b.date))) {
+      // A prepago is all extra amortization, with no interest or insurance.
+      const regular = c.n != null;
+      commitMortgagePayment(
+        mortgageId,
+        {
+          occurred_on: c.date,
           cuota: c.label,
-          ...common,
-          min_uf: r5(c.pmtUf),
-          max_uf: r5(c.pmtUf * 1.2 + c.extUf),
-          amortizacion_clp: Math.round(c.amortUf * c.ufDay),
-          amortizacion_ext_clp: Math.round(c.extUf * c.ufDay),
-          interes_clp: Math.round(c.interestUf * c.ufDay),
-          incendio_clp: 18_000,
-          desgravamen_clp: 4_500,
-        }),
-        r4(vv)
+          pago_clp: c.clp,
+          interes_clp: regular ? Math.round(c.interestUf * c.ufDay) : 0,
+          incendio_clp: regular ? MORTGAGE_INCENDIO_CLP : 0,
+          desgravamen_clp: regular ? MORTGAGE_DESGRAVAMEN_CLP : 0,
+          amortizacion_ext_clp: regular ? Math.round(c.extUf * c.ufDay) : c.clp,
+          min_uf: regular ? r5(c.pmtUf) : null,
+          max_uf: regular ? r5(c.pmtUf * 1.2 + c.extUf) : null,
+          credito_restante_uf: r4(c.balanceAfterUf),
+        },
+        { origin: "import" }
       );
+      upsertPropertyAppraisalUf(propertyId, c.date, r4(valueUfAt(c.date)));
     }
   })();
 }
@@ -471,7 +459,7 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   // The APV fund is balanced (65 % equities); the mutual fund is the risky one (90 %).
   writeFundSeries(APV_FUND_SERIES_KEY, 0.65, prices, fundFrom, today);
   if (person.fund) writeFundSeries(MUTUAL_FUND_SERIES_KEY, 0.9, prices, fundFrom, today);
-  writeOfficialIpcFromUf(prices, person.marketFromMonth(today), today);
+  writeOfficialIpcFromUf(person.marketFromMonth(today));
   const market = dbMarketReader();
 
   const ledger = simulate(person, market, today);
@@ -499,7 +487,7 @@ export function generateDemoDb(opts: GenerateDemoDbOptions): DemoDbReport {
   const payslips = renderPayslips(ledger);
   const payslipResult = payslips ? applyEmploymentPayslips(payslips) : null;
   writeContractorPayslips(ledger);
-  writeMortgage(ledger, ids, market, today);
+  writeMortgage(ledger, ids);
   writeFundValuations(ids, market, today);
   writeAfc(ledger, ids.get("afc")!, today);
 
