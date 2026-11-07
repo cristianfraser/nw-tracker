@@ -51,6 +51,11 @@ const SPECIFIER = /(?:\bimport|\bexport)\s+(?:type\s+)?(?:[^"';]*?\sfrom\s+)?["'
 
 function resolve(fromFile, spec) {
   if (spec === "nw-tracker-contracts") return CONTRACTS_ENTRY;
+  if (spec.startsWith("nw-tracker-contracts/")) {
+    const sub = `server/contracts/src/${spec.slice("nw-tracker-contracts/".length)}`;
+    for (const c of [`${sub}.ts`, `${sub}/index.ts`]) if (files.has(c)) return c;
+    return null;
+  }
   if (!spec.startsWith(".")) return null;
   const base = path.posix.normalize(path.posix.join(path.posix.dirname(fromFile), spec));
   const stem = base.replace(/\.(js|jsx|ts|tsx|mjs)$/, "");

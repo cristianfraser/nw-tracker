@@ -8,6 +8,14 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./dto": {
+      "types": "./src/dto/index.ts",
+      "default": "./src/dto/index.ts"
+    },
+    "./dto/*": {
+      "types": "./src/dto/*.ts",
+      "default": "./src/dto/*.ts"
     }
   },
   "scripts": {

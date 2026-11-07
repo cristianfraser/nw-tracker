@@ -1,8 +1,6 @@
-/** Mirrors server `bookLedgerEditSchemaForAccount` on account summary / detail bundle. */
-export type BookLedgerEditSchema = {
-  valuations: true;
-  movements: { units_delta: "optional" };
-};
+import type { BookLedgerEditSchema } from "nw-tracker-contracts/dto/ledgerSchemas";
+
+export type { BookLedgerEditSchema };
 
 export function supportsBookLedgerEdit(schema: unknown): schema is BookLedgerEditSchema {
   if (typeof schema !== "object" || schema == null) return false;
