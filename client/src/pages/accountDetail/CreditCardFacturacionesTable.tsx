@@ -21,7 +21,6 @@ import {
   emptyFacturacionModalBucket,
 } from "../../components/credit-card/buildFacturacionModalBucket";
 import { flowLinesForFacturacionMonth } from "../../components/credit-card/flowLinesForStatementMonth";
-import type { DisplayUnit } from "../../queries/keys";
 import {
   TableMobileCard,
   TableMobileCardRow,
@@ -217,14 +216,12 @@ function PendingCuotaPurchasesNotice({
 export function CreditCardFacturacionesTable({
   rows,
   accountId,
-  displayUnit,
   facturacionProxy,
   proxyTickers,
   pendingCuotaPurchases = [],
 }: {
   rows: readonly CcFacturacionDto[];
   accountId: number;
-  displayUnit: DisplayUnit;
   facturacionProxy?: readonly CcProxyFacturacionAggregate[];
   proxyTickers?: readonly string[];
   pendingCuotaPurchases?: readonly CcPendingCuotaPurchaseDto[];
@@ -275,12 +272,6 @@ export function CreditCardFacturacionesTable({
     if (!selected) return emptyFacturacionModalBucket();
     return buildFacturacionModalBucket(scopedLines);
   }, [scopedLines, selected]);
-
-  // Web-paste / card-feed lines are the only ones the server lets the modal delete.
-  const deletableLineIds = useMemo(
-    () => new Set(scopedLines.filter((ln) => ln.web_paste).map((ln) => ln.statement_line_id)),
-    [scopedLines]
-  );
 
   const modalSubtitle = selected ? (
     <>
@@ -421,9 +412,6 @@ export function CreditCardFacturacionesTable({
           <CreditCardFacturacionModalSections
             bucket={facturacionBucket}
             categories={categories}
-            accountId={accountId}
-            displayUnit={displayUnit}
-            deletableLineIds={deletableLineIds}
           />
         )}
       </Modal>
