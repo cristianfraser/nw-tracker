@@ -6,7 +6,7 @@ import { CC_STATEMENT_LINE_RULES_PATH } from "nw-tracker-contracts";
  * `ccStatementLineRules.json` (in `server/contracts/data/`), read here and by `ingest/python/cc_statement_line_rules.py`, so
  * the import-time reconcile (`ccStatementImportReconcile.ts`) and the parse-time reconcile
  * (`cc_statement_reconcile.py`) sum a statement the same way. Both test suites assert
- * `test/ccStatementLineSectionCases.json`. The predicates built on these rules live in
+ * `server/contracts/data/ccStatementLineSectionCases.json`. The predicates built on these rules live in
  * `ccPaymentLines.ts` and `ccStatementSection3.ts`.
  *
  * The file is committed, so a missing file or an unknown / missing key throws.

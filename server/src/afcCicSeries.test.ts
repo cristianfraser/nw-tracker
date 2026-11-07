@@ -59,7 +59,7 @@ describe("afc_cic — Superintendencia de Pensiones CSV", () => {
     const gap = SAMPLE_CSV.replace("2026-01-02;4.051,04;10811508015009;4.940,42;3506064659931", "2026-01-02;;;;");
     expect(() => parseSpCesantiaCsv(gap)).toThrow(/before a published one/);
     const partial = SAMPLE_CSV.replace("2026-01-03;4.051,04;10811508015009", "2026-01-03;;");
-    expect(() => parseSpCesantiaCsv(partial)).toThrow(/unparsable/);
+    expect(() => parseSpCesantiaCsv(partial)).toThrow(/Unparseable/);
   });
 
   it("fails fast on a changed header, a short row, or non-ascending dates", () => {
