@@ -7,15 +7,14 @@
  *
  * The server re-dates the matching checking debit, or synthesizes the payment when no bank feed
  * has listed the debit yet. A resolved receipt (re-dated, already dated, synthesized) is archived
- * to `processed/`; an ambiguous one stays staged and retries on the next run. A receipt that does
+ * to `imported/`; an ambiguous one stays staged and retries on the next run. A receipt that does
  * not parse fails the step. The server-side alarm for synthesized payments no bank ever listed
  * runs separately (`check:synthetic-cc-payments`).
  */
 import fs from "node:fs";
-import path from "node:path";
 import { cardPaymentReceiptKind, type CardPaymentReceiptApplyDetails, type CardPaymentReceiptPayload } from "nw-tracker-contracts";
-import { log } from "../log.js";
-import { describeIngestFailure, ingestClient } from "../serverApi.js";
+import { ingestClient } from "../serverApi.js";
+import { sendStaged } from "../stagedFiles.js";
 import { listStagedReceiptFiles, santanderPaymentReceiptPayload, type StagedPaymentReceipt } from "./paymentReceipts.js";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -31,38 +30,32 @@ async function main(): Promise<number> {
     console.log("No staged Santander payment receipts.");
     return 0;
   }
-  const client = dryRun ? null : ingestClient();
-  for (const file of files) {
+  // Decoded before anything is sent: a receipt that does not parse fails the step.
+  const docs = files.map((file) => {
     const staged = JSON.parse(fs.readFileSync(file, "utf8")) as StagedPaymentReceipt;
-    const payload = cardPaymentReceiptKind.payload.parse(santanderPaymentReceiptPayload(staged));
-    if (!client) {
-      console.log(line(payload, "dry run", "not sent"));
-      continue;
-    }
-    let details: CardPaymentReceiptApplyDetails;
-    let retry: boolean;
-    try {
-      const result = await client.send(cardPaymentReceiptKind, payload, {
-        channel: "email",
-        ref: staged.message_id,
-        label: staged.subject,
-        ...(Number.isNaN(Date.parse(staged.date)) ? {} : { fetched_at: staged.date }),
-      });
-      details = result.details as CardPaymentReceiptApplyDetails;
-      retry = result.retry;
-    } catch (err) {
-      log(`FAILED ${path.basename(file)}: ${describeIngestFailure(err)}`);
-      return 1;
-    }
-    console.log(line(payload, details.status, details.detail));
-    // `retry` (an ambiguous match): kept staged and sent again next run.
-    if (!retry) {
-      const processed = path.join(path.dirname(file), "processed");
-      fs.mkdirSync(processed, { recursive: true });
-      fs.renameSync(file, path.join(processed, path.basename(file)));
-    }
+    return { file, staged, payload: cardPaymentReceiptKind.payload.parse(santanderPaymentReceiptPayload(staged)) };
+  });
+  if (dryRun) {
+    for (const d of docs) console.log(line(d.payload, "dry run", "not sent"));
+    return 0;
   }
-  return 0;
+  const client = ingestClient();
+  // An ambiguous receipt comes back with `retry`: it stays staged and is sent again next run.
+  const { exitCode } = await sendStaged(docs, {
+    path: (d) => d.file,
+    send: (d) =>
+      client.send(cardPaymentReceiptKind, d.payload, {
+        channel: "email",
+        ref: d.staged.message_id,
+        label: d.staged.subject,
+        ...(Number.isNaN(Date.parse(d.staged.date)) ? {} : { fetched_at: d.staged.date }),
+      }),
+    report(d, result) {
+      const details = result.details as CardPaymentReceiptApplyDetails;
+      console.log(line(d.payload, details.status, details.detail));
+    },
+  });
+  return exitCode;
 }
 
 process.exitCode = await main();

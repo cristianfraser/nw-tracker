@@ -13,9 +13,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { bankAccountMovementsKind, type BankAccountMovementsApplyDetails } from "nw-tracker-contracts";
-import { log } from "../log.js";
-import { ensureDir, resolveCfraserDir } from "../paths.js";
-import { describeIngestFailure, ingestClient } from "../serverApi.js";
+import { resolveCfraserDir } from "../paths.js";
+import { ingestClient } from "../serverApi.js";
+import { sendStaged } from "../stagedFiles.js";
 import {
   formatCheckingFileSummary,
   santanderCheckingMovementsPayload,
@@ -31,37 +31,34 @@ async function main(): Promise<number> {
     return 0;
   }
   console.log(`=== Import checking ultimos movimientos xlsx${dryRun ? " (dry run)" : ""} ===`);
-  const client = dryRun ? null : ingestClient();
-  const archiveDir = path.join(resolveCfraserDir(), "checking-ultimos-movimientos", "imported");
-  for (const file of files) {
-    const name = path.basename(file);
-    const payload = bankAccountMovementsKind.payload.parse(santanderCheckingMovementsPayload(fs.readFileSync(file)));
-    const mtime = fs.statSync(file).mtime;
-    if (!client) {
-      console.log(`  ${name}: ${payload.movements.length} row(s) parsed`);
-    } else {
-      let details: BankAccountMovementsApplyDetails;
-      try {
-        const result = await client.send(bankAccountMovementsKind, payload, {
-          channel: "file",
-          ref: name,
-          label: name,
-          fetched_at: mtime.toISOString(),
-        });
-        details = result.details as BankAccountMovementsApplyDetails;
-      } catch (err) {
-        log(`FAILED ${name}: ${describeIngestFailure(err)}`);
-        return 1;
-      }
-      const archivedTo = path.join(ensureDir(archiveDir), `${mtime.toISOString().slice(0, 10)} ${name}`);
-      if (fs.existsSync(archivedTo)) fs.unlinkSync(archivedTo);
-      fs.renameSync(file, archivedTo);
-      console.log(`  ${formatCheckingFileSummary(name, details, archivedTo)}`);
-    }
-    if (payload.rejected_rows.length > 0) {
-      console.error(payload.rejected_rows.map((e) => `  ${name}: ${e}`).join("\n"));
-      return 1;
-    }
+  const docs = files.map((file) => ({
+    file,
+    name: path.basename(file),
+    mtime: fs.statSync(file).mtime,
+    payload: bankAccountMovementsKind.payload.parse(santanderCheckingMovementsPayload(fs.readFileSync(file))),
+  }));
+  const rejected = (d: (typeof docs)[number]) => d.payload.rejected_rows.map((e) => `  ${d.name}: ${e}`);
+  if (dryRun) {
+    for (const d of docs) console.log(`  ${d.name}: ${d.payload.movements.length} row(s) parsed`);
+  } else {
+    const client = ingestClient();
+    const archiveDir = path.join(resolveCfraserDir(), "checking-ultimos-movimientos", "imported");
+    const { exitCode } = await sendStaged(docs, {
+      path: (d) => d.file,
+      send: (d) =>
+        client.send(bankAccountMovementsKind, d.payload, { channel: "file", ref: d.name, label: d.name, fetched_at: d.mtime.toISOString() }),
+      // The download's name is constant: the archived copy is dated by the fetch day.
+      archive: (d) => ({ dir: archiveDir, name: `${d.mtime.toISOString().slice(0, 10)} ${d.name}` }),
+      report: (d, result, archivedTo) =>
+        console.log(`  ${formatCheckingFileSummary(d.name, result.details as BankAccountMovementsApplyDetails, archivedTo)}`),
+    });
+    if (exitCode !== 0) return exitCode;
+  }
+  // Rows the parser could not read fail the step once their file is applied and archived.
+  const unread = docs.flatMap(rejected);
+  if (unread.length > 0) {
+    console.error(unread.join("\n"));
+    return 1;
   }
   return 0;
 }

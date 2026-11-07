@@ -16,9 +16,9 @@ import {
   type BankAccountBalancesApplyDetails,
   type CardUnbilledMovementsApplyDetails,
 } from "nw-tracker-contracts";
-import { log } from "../log.js";
 import { resolveMovementsDir } from "../paths.js";
-import { describeIngestFailure, ingestClient } from "../serverApi.js";
+import { sendStaged } from "../stagedFiles.js";
+import { ingestClient } from "../serverApi.js";
 import { santanderAccountBalances, santanderCardFeedPayload, type SantanderMovementsFile } from "./cardFeed.js";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -109,19 +109,14 @@ async function main(): Promise<number> {
     console.log(`No fetched movement files in ${dir}. Run: npm run fetch:santander`);
     return 0;
   }
-  if (dryRun) console.log(`Dry run — ${files.length} file(s) in ${dir}\n`);
-  const client = dryRun ? null : ingestClient();
-  let sent = 0;
-  for (const file of files) {
-    const name = path.basename(file);
-    const raw = JSON.parse(fs.readFileSync(file, "utf8")) as SantanderMovementsFile;
-    // Validated here too, so a decoding problem names the file before any request.
-    const payload = cardUnbilledMovementsKind.payload.parse(santanderCardFeedPayload(raw));
-    const balances = santanderAccountBalances(raw);
-    const balancesPayload = balances.payload ? bankAccountBalancesKind.payload.parse(balances.payload) : null;
-    console.log(name);
-    if (!balancesPayload) console.log(`  bank balances: none — ${balances.reason}`);
-    if (!client) {
+  if (dryRun) {
+    console.log(`Dry run — ${files.length} file(s) in ${dir}\n`);
+    for (const file of files) {
+      const raw = JSON.parse(fs.readFileSync(file, "utf8")) as SantanderMovementsFile;
+      const payload = cardUnbilledMovementsKind.payload.parse(santanderCardFeedPayload(raw));
+      console.log(path.basename(file));
+      const balances = santanderAccountBalances(raw);
+      if (!balances.payload) console.log(`  bank balances: none — ${balances.reason}`);
       for (const card of payload.cards) {
         const byCurrency = card.lines.reduce<Record<string, number>>((acc, line) => {
           acc[line.currency] = (acc[line.currency] ?? 0) + 1;
@@ -130,9 +125,22 @@ async function main(): Promise<number> {
         const close = card.close ? `, close ${card.close.date}` : "";
         console.log(`  account ${card.account.number}: ${card.lines.length} lines`, byCurrency, close);
       }
-      continue;
     }
-    try {
+    console.log("\nNothing sent. Re-run without --dry-run to import.");
+    return 0;
+  }
+  const client = ingestClient();
+  const { exitCode, sent } = await sendStaged(files, {
+    path: (file) => file,
+    async send(file) {
+      const name = path.basename(file);
+      const raw = JSON.parse(fs.readFileSync(file, "utf8")) as SantanderMovementsFile;
+      // Validated here too, so a decoding problem names the file before any request.
+      const payload = cardUnbilledMovementsKind.payload.parse(santanderCardFeedPayload(raw));
+      const balances = santanderAccountBalances(raw);
+      const balancesPayload = balances.payload ? bankAccountBalancesKind.payload.parse(balances.payload) : null;
+      console.log(name);
+      if (!balancesPayload) console.log(`  bank balances: none — ${balances.reason}`);
       const result = await client.send(cardUnbilledMovementsKind, payload, {
         channel: "web_session",
         ref: name,
@@ -155,17 +163,12 @@ async function main(): Promise<number> {
           console.log(`  bank balances not declared on any account: ${d.unknown.map((u) => `${u.label} (${u.currency})`).join(", ")}`);
         }
       }
-    } catch (err) {
-      log(`FAILED ${name}: ${describeIngestFailure(err)}`);
-      return 1;
-    }
-    const archive = path.join(dir, "imported");
-    fs.mkdirSync(archive, { recursive: true });
-    fs.renameSync(file, path.join(archive, name));
-    sent++;
-  }
-  console.log(dryRun ? "\nNothing sent. Re-run without --dry-run to import." : `\nImported ${sent} file(s); originals moved to ${dir}/imported/`);
-  return 0;
+      return result;
+    },
+    report: () => undefined,
+  });
+  if (exitCode === 0) console.log(`\nImported ${sent} file(s); originals moved to ${dir}/imported/`);
+  return exitCode;
 }
 
 process.exitCode = await main();

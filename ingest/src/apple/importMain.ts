@@ -6,15 +6,16 @@
  *   npm run import:apple-mail -w nw-tracker-ingest              # send
  *   npm run import:apple-mail -w nw-tracker-ingest -- --dry-run # decode + report only
  *
- * A sent mail (applied, or a duplicate of one already stored) moves to `processed/`. One that
+ * A sent mail (applied, or a duplicate of one already stored) moves to `imported/`. One that
  * does not decode, or that the server refuses as a conflict, stays staged and fails the step —
  * the other mails still go.
  */
 import fs from "node:fs";
 import path from "node:path";
-import { merchantPurchaseDocumentKind, type MerchantPurchaseDocumentApplyDetails } from "nw-tracker-contracts";
+import { merchantPurchaseDocumentKind, type MerchantPurchaseDocumentApplyDetails, type MerchantPurchaseDocumentPayload } from "nw-tracker-contracts";
 import { log } from "../log.js";
-import { describeIngestFailure, ingestClient } from "../serverApi.js";
+import { ingestClient } from "../serverApi.js";
+import { sendStaged } from "../stagedFiles.js";
 import { appleMailPayload, listStagedAppleMailFiles, type StagedAppleMail } from "./appStoreMail.js";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -25,22 +26,22 @@ async function main(): Promise<number> {
     console.log("No staged Apple mail.");
     return 0;
   }
-  const client = dryRun ? null : ingestClient();
   let failed = 0;
   let paired = 0;
   let waiting = 0;
   const unresolved = new Map<string, MerchantPurchaseDocumentApplyDetails["unresolved"][number]>();
+  const docs: { file: string; staged: StagedAppleMail; payload: MerchantPurchaseDocumentPayload }[] = [];
   for (const file of files) {
     const staged = JSON.parse(fs.readFileSync(file, "utf8")) as StagedAppleMail;
-    let payload;
     try {
-      payload = merchantPurchaseDocumentKind.payload.parse(appleMailPayload(staged));
+      docs.push({ file, staged, payload: merchantPurchaseDocumentKind.payload.parse(appleMailPayload(staged)) });
     } catch (err) {
       log(`UNDECODABLE ${path.basename(file)} («${staged.subject}»): ${err instanceof Error ? err.message : String(err)}`);
       failed++;
-      continue;
     }
-    if (!client) {
+  }
+  if (dryRun) {
+    for (const { payload } of docs) {
       for (const d of payload.documents) {
         console.log(
           d.type === "receipt"
@@ -48,39 +49,33 @@ async function main(): Promise<number> {
             : `  ${d.notice.padEnd(14)} ${d.mailed_on}  ${d.price.amount} ${d.price.currency}/${d.period}  ${d.app}`
         );
       }
-      continue;
     }
-    let status: string;
-    try {
-      const result = await client.send(merchantPurchaseDocumentKind, payload, {
+    return failed > 0 ? 1 : 0;
+  }
+  const client = ingestClient();
+  const sent = await sendStaged(docs, {
+    path: (d) => d.file,
+    send: (d) =>
+      client.send(merchantPurchaseDocumentKind, d.payload, {
         channel: "email",
-        ref: staged.message_id,
-        label: staged.subject,
-        ...(Number.isNaN(Date.parse(staged.date)) ? {} : { fetched_at: staged.date }),
-      });
-      status = result.status;
-      if (result.status === "conflict") {
-        log(`CONFLICT ${path.basename(file)}: ${result.message ?? ""}`);
-        failed++;
-        continue;
-      }
+        ref: d.staged.message_id,
+        label: d.staged.subject,
+        ...(Number.isNaN(Date.parse(d.staged.date)) ? {} : { fetched_at: d.staged.date }),
+      }),
+    report(d, result) {
       const details = result.details as MerchantPurchaseDocumentApplyDetails | undefined;
-      if (details) {
+      if (result.status !== "conflict" && details) {
         for (const l of details.receipt_lines) {
           if (l) paired++;
           else waiting++;
         }
         for (const u of details.unresolved) unresolved.set(`${u.issued_on}|${u.products.join("|")}`, u);
       }
-    } catch (err) {
-      log(`FAILED ${path.basename(file)}: ${describeIngestFailure(err)}`);
-      return 1;
-    }
-    const processed = path.join(path.dirname(file), "processed");
-    fs.mkdirSync(processed, { recursive: true });
-    fs.renameSync(file, path.join(processed, path.basename(file)));
-    log(`  ${status.padEnd(9)} ${staged.date.slice(0, 10)}  ${staged.subject}`);
-  }
+      log(`  ${result.status.padEnd(9)} ${d.staged.date.slice(0, 10)}  ${d.staged.subject}`);
+    },
+  });
+  if (sent.exitCode !== 0) return sent.exitCode;
+  failed += sent.conflicts;
   if (paired + waiting > 0) console.log(`  receipts: ${paired} paired with their charge, ${waiting} waiting for one`);
   for (const u of unresolved.values()) console.log(`  app not named: receipt ${u.issued_on} — ${u.products.join(", ")}`);
   console.log(`Summary: ${files.length - failed} sent, ${failed} failed`);
