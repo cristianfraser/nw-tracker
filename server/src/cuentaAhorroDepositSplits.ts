@@ -89,17 +89,38 @@ export function syncCuentaAhorroDepositSplitMirrors(): void {
   if (splits.length === 0) return;
 
   const corrienteId = cartolaCashAccountId("cuenta_corriente");
+  const existing = db.prepare(
+    `SELECT account_id, amount_clp, occurred_on, note FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`
+  );
   const del = db.prepare(`DELETE FROM checking_gap_deposit_mirrors WHERE deposit_movement_id = ?`);
+  const upd = db.prepare(
+    `UPDATE checking_gap_deposit_mirrors SET account_id = ?, amount_clp = ?, occurred_on = ?, note = ?
+     WHERE deposit_movement_id = ?`
+  );
   const ins = db.prepare(
     `INSERT INTO checking_gap_deposit_mirrors (account_id, deposit_movement_id, amount_clp, occurred_on, note)
      VALUES (?, ?, ?, ?, ?)`
   );
+  const note = "ahorro-split|self_funded";
+  // A mirror that stays keeps its row (and id: a mirror's purchase key carries it); runs on every
+  // read of the expense lines, so an unchanged mirror is never rewritten.
   const tx = db.transaction(() => {
     for (const s of splits) {
-      del.run(s.deposit_movement_id);
       const unexplained = Math.round(s.self_funded_clp) - Math.round(s.real_linked_clp);
-      if (unexplained > 0) {
-        ins.run(corrienteId, s.deposit_movement_id, unexplained, s.occurred_on, "ahorro-split|self_funded");
+      const row = existing.get(s.deposit_movement_id) as
+        | { account_id: number; amount_clp: number; occurred_on: string; note: string | null }
+        | undefined;
+      if (unexplained <= 0) {
+        if (row) del.run(s.deposit_movement_id);
+      } else if (row == null) {
+        ins.run(corrienteId, s.deposit_movement_id, unexplained, s.occurred_on, note);
+      } else if (
+        row.account_id !== corrienteId ||
+        row.amount_clp !== unexplained ||
+        row.occurred_on !== s.occurred_on ||
+        row.note !== note
+      ) {
+        upd.run(corrienteId, unexplained, s.occurred_on, note, s.deposit_movement_id);
       }
     }
   });
