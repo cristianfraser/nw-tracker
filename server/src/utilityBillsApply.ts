@@ -38,7 +38,6 @@ import type {
   UtilityBillPayload,
   UtilityService,
 } from "nw-tracker-contracts";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
@@ -50,6 +49,7 @@ import {
   updateRealEstateExpenseMonthsCovered,
 } from "./realEstateExpenseMatching.js";
 import { merchantMatchesExpectation, type RealEstateBillKind } from "./realEstateExpenseMerchants.js";
+import { addCalendarMonths, normalizeCheckDigitId, daysBetweenIso } from "nw-tracker-contracts";
 
 /** How long after its due day a bill's charge may still be dated. */
 export const UTILITY_BILL_CHARGE_GRACE_DAYS = 20;
@@ -68,11 +68,6 @@ export const UTILITY_SERVICE_KIND: Record<UtilityService, RealEstateBillKind> = 
   internet: "internet",
   hoa: "gastos_comunes",
 };
-
-/** An account number as printed, for comparison: digits and the check letter, no leading zeros. */
-export function normalizeServiceAccount(raw: string): string {
-  return raw.replace(/[^0-9kK]/g, "").toUpperCase().replace(/^0+/, "");
-}
 
 /**
  * The bill's month on the page: the month it charges consumption for. Bills are issued just after
@@ -97,8 +92,8 @@ const DAYS_PER_MONTH = 365.25 / 12;
  */
 export function utilityBillMonthsCovered(b: Pick<UtilityBill, "period_from" | "period_to">): number {
   if (b.period_from == null || b.period_to == null) return 1;
-  const days = (Date.parse(`${b.period_to}T00:00:00Z`) - Date.parse(`${b.period_from}T00:00:00Z`)) / 86_400_000 + 1;
-  if (!Number.isFinite(days) || days < 1) {
+  const days = daysBetweenIso(b.period_from, b.period_to) + 1;
+  if (days < 1) {
     throw new Error(`utility bill period ${b.period_from}..${b.period_to} is not a period`);
   }
   return Math.max(1, Math.round(days / DAYS_PER_MONTH));
@@ -223,7 +218,7 @@ function loadServicePlaces(): Map<string, Place> {
     .all() as ({ provider: string; service_account: string } & Place)[];
   const out = new Map<string, Place>();
   for (const r of rows) {
-    const key = `${r.provider}|${normalizeServiceAccount(r.service_account)}`;
+    const key = `${r.provider}|${normalizeCheckDigitId(r.service_account)}`;
     const prev = out.get(key);
     if (prev && prev.id !== r.id) throw new Error(`utility account ${r.provider} ${r.service_account} names two places`);
     out.set(key, { id: r.id, slug: r.slug, comunidad_patterns: r.comunidad_patterns });
@@ -322,7 +317,7 @@ export function applyUtilityBills(
   for (const row of pending) {
     const bill = storedAsBill(row);
     const kind = UTILITY_SERVICE_KIND[bill.service];
-    const place = places.get(`${bill.provider}|${normalizeServiceAccount(bill.service_account)}`) ?? null;
+    const place = places.get(`${bill.provider}|${normalizeCheckDigitId(bill.service_account)}`) ?? null;
     const report = (
       outcome: UtilityBillOutcome,
       extra: { expense_entry_id?: number | null; purchase_key?: string | null; message?: string | null } = {}
@@ -439,7 +434,7 @@ function firstHoaStatementByPlace(places: ReadonlyMap<string, Place>): Map<numbe
     .all() as { provider: string; service_account: string; since: string }[];
   const out = new Map<number, { place: Place; since: string }>();
   for (const r of rows) {
-    const place = places.get(`${r.provider}|${normalizeServiceAccount(r.service_account)}`);
+    const place = places.get(`${r.provider}|${normalizeCheckDigitId(r.service_account)}`);
     if (!place) continue;
     const prev = out.get(place.id);
     if (!prev || r.since < prev.since) out.set(place.id, { place, since: r.since });

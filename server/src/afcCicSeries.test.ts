@@ -4,7 +4,6 @@ import { db } from "./db.js";
 import {
   AFC_CIC_SERIES_KEY,
   isAfcCicStale,
-  parseChileanDecimal,
   parseSpCesantiaCsv,
   spCesantiaCsvUrl,
   upsertAfcCicRows,
@@ -34,14 +33,6 @@ const SAMPLE_CSV = [
 ].join("\r\n");
 
 describe("afc_cic — Superintendencia de Pensiones CSV", () => {
-  it("parses Chilean numbers", () => {
-    expect(parseChileanDecimal("4.221,76")).toBe(4221.76);
-    expect(parseChileanDecimal("10811508015009")).toBe(10811508015009);
-    expect(parseChileanDecimal("352977228622")).toBe(352977228622);
-    expect(() => parseChileanDecimal("4,221.76")).toThrow(/unparsable/);
-    expect(() => parseChileanDecimal("")).toThrow(/unparsable/);
-  });
-
   it("parses the yearly CSV into dated CIC/FCS rows (weekend carries included)", () => {
     const rows = parseSpCesantiaCsv(SAMPLE_CSV);
     expect(rows.map((r) => r.day)).toEqual(["2026-01-01", "2026-01-02", "2026-01-03"]);
@@ -66,7 +57,7 @@ describe("afc_cic — Superintendencia de Pensiones CSV", () => {
     const gap = SAMPLE_CSV.replace("2026-01-02;4.051,04;10811508015009;4.940,42;3506064659931", "2026-01-02;;;;");
     expect(() => parseSpCesantiaCsv(gap)).toThrow(/before a published one/);
     const partial = SAMPLE_CSV.replace("2026-01-03;4.051,04;10811508015009", "2026-01-03;;");
-    expect(() => parseSpCesantiaCsv(partial)).toThrow(/unparsable/);
+    expect(() => parseSpCesantiaCsv(partial)).toThrow(/Unparseable/);
   });
 
   it("fails fast on a changed header, a short row, or non-ascending dates", () => {

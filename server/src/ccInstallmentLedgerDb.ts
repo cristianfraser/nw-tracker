@@ -1,6 +1,5 @@
 import { historyTierMemo } from "./aggregationCache.js";
 import { db } from "./db.js";
-import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
 import { sortActivePurchases, sortCuotaLinesInActiveOrder } from "./ccActivePurchaseOrder.js";
 import {
   clpFacturadoByCloseIso,
@@ -40,6 +39,7 @@ import {
   dataOriginFromCcPurchaseSource,
 } from "./dataOrigin.js";
 import { ccInstallmentInterestBillingEvents, ccInstallmentInterestForAccount } from "./ccInstallmentInterest.js";
+import { addCalendarMonths, parseYearMonth } from "nw-tracker-contracts";
 
 type PurchaseRow = {
   id: number;

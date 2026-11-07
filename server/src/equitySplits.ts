@@ -20,6 +20,7 @@
  * 3-for-1 before the open — a price that moves like a split with none recorded is refused
  * ({@link splitLikeMoveError}), never valued against the old share count.
  */
+import { addDaysIso, daysBetweenIso } from "nw-tracker-contracts";
 import { BROKERAGE_SHARE_UNITS_FLOW_KINDS } from "./brokerageFlowMovement.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
@@ -79,14 +80,6 @@ export function equityAsTradedClose(ticker: string, ymd: string): number | null 
   return close * equitySplitFactorAfter(ticker, ymd);
 }
 
-function addDays(ymd: string, days: number): string {
-  return new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-}
-
-function daysBetween(a: string, b: string): number {
-  return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
-}
-
 /** Splits guard only listed shares: a coin trades round the clock and can move that far in a day. */
 function guardsSplits(ticker: string): boolean {
   return equityMarketKind(ticker) !== "crypto24";
@@ -132,7 +125,7 @@ export function healIncomingEquityClose(ticker: string, ymd: string, close: numb
   const before = stmtCloseBefore.get(ticker, ymd) as { trade_date: string; close: number } | undefined;
   const after = stmtCloseAfter.get(ticker, ymd) as { trade_date: string; close: number } | undefined;
   const near = (r: { trade_date: string } | undefined) =>
-    r != null && daysBetween(r.trade_date, ymd) <= SPLIT_GUARD_MAX_GAP_DAYS ? r : undefined;
+    r != null && Math.abs(daysBetweenIso(r.trade_date, ymd)) <= SPLIT_GUARD_MAX_GAP_DAYS ? r : undefined;
   const ref: { ymd: string; close: number } | null = same
     ? { ymd, close: same.close }
     : near(before)
@@ -202,7 +195,7 @@ const stmtInsertSplitRow = db.prepare(
  */
 function writeSplitLedgerRows(split: EquitySplit): StockSplitLedgerRow[] {
   const ratio = splitRatio(split);
-  const dayBefore = addDays(split.ex_date, -1);
+  const dayBefore = addDaysIso(split.ex_date, -1);
   const currency = equityQuoteCurrency(split.ticker);
   const out: StockSplitLedgerRow[] = [];
   for (const { id } of stmtHolders.all(split.ticker) as { id: number }[]) {

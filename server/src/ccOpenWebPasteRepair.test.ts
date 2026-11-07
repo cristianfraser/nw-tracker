@@ -1,7 +1,6 @@
 import { describe, expect, it, afterEach } from "vitest";
 import { db } from "./db.js";
 import { ymCompare } from "./calendarMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   billingMonthForManualLedgerPurchase,
   lastPdfBillingMonthForAccount,
@@ -13,6 +12,7 @@ import {
   repairMisplacedOpenWebPasteBuckets,
 } from "./ccOpenWebPasteRepair.js";
 import { buildProjectedReconcileRows, reconcileBillingMonthMovements } from "./ccStatementImportReconcile.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 describe("repairMisplacedOpenWebPasteBuckets", () => {
   let lineId: number | null = null;

@@ -8,10 +8,10 @@ import {
 } from "./ccCrossImportDedupe.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import { applyFacturadoFinancingLinks } from "./ccFacturadoFinancingAuto.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { stableInstallmentHPurchaseKeyFromLedgerArgs } from "./ccExpenseCategories.js";
 import { firstCuotaBillingMonth, type CcCuotaPurchaseKind } from "./ccCuotaPurchaseKinds.js";
 import { billingMonthContainingPurchase } from "./ccManualBillingMonth.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export type ManualCcPurchaseInput = {
   purchase_date: string;

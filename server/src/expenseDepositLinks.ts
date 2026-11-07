@@ -1,3 +1,4 @@
+import { daysBetweenIso } from "nw-tracker-contracts";
 import { accountBucketKindSlug } from "./accountBucket.js";
 import { dashboardBucketForAssetGroupSlug } from "./assetGroupTree.js";
 import {
@@ -144,13 +145,6 @@ export function amortizationClpFromSheetRow(row: DeptoMortgageSheetRow): number 
   return amort;
 }
 
-function signedDaysFromTo(fromYmd: string, toYmd: string): number {
-  const from = Date.parse(`${fromYmd}T12:00:00Z`);
-  const to = Date.parse(`${toYmd}T12:00:00Z`);
-  if (!Number.isFinite(from) || !Number.isFinite(to)) return 999;
-  return Math.round((to - from) / 86_400_000);
-}
-
 function purchaseDateForGastosLine(line: GastosLineForExpenseDepositLink): string {
   return String(line.purchase_on ?? line.occurred_on ?? "").trim();
 }
@@ -284,7 +278,7 @@ export function findUniqueCcLineForMortgageSheetRow(
     const purchaseDate = purchaseDateForGastosLine(line);
     if (!purchaseDate) return false;
     return (
-      Math.abs(signedDaysFromTo(purchaseDate, sheet.occurred_on)) <= MORTGAGE_CC_PURCHASE_DAY_GAP
+      Math.abs(daysBetweenIso(purchaseDate, sheet.occurred_on)) <= MORTGAGE_CC_PURCHASE_DAY_GAP
     );
   });
 
@@ -736,7 +730,7 @@ export function computeManualDepositAssertions(
     for (const d of pool) {
       if (Math.round(d.amount_clp) !== base.amount_clp) continue;
       if (
-        Math.abs(signedDaysFromTo(base.occurred_on, d.occurred_on)) >
+        Math.abs(daysBetweenIso(base.occurred_on, d.occurred_on)) >
         MANUAL_DEPOSIT_ASSERTION_MAX_DAY_GAP
       ) {
         continue;

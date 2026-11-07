@@ -3,7 +3,7 @@
  * («Próximos pagos», declared UF payments, the expense lines' declared-payment names).
  */
 import { db } from "./db.js";
-import { addDays, daysBetween } from "./recurringPaymentMatch.js";
+import { addDaysIso, daysBetweenIso } from "nw-tracker-contracts";
 
 export type UfLookup = (ymd: string) => { date: string; clp_per_uf: number } | null;
 
@@ -18,10 +18,10 @@ export function projectedUfClp(ymd: string, latest: { date: string; clp_per_uf: 
     if (!row) throw new Error(`No UF on or before ${ymd}`);
     return row.clp_per_uf;
   }
-  const yearAgo = lookup(addDays(latest.date, -365));
+  const yearAgo = lookup(addDaysIso(latest.date, -365));
   if (!yearAgo) throw new Error(`No UF a year before ${latest.date} to project from`);
   const growth = latest.clp_per_uf / yearAgo.clp_per_uf;
-  return latest.clp_per_uf * growth ** (daysBetween(latest.date, ymd) / 365);
+  return latest.clp_per_uf * growth ** (daysBetweenIso(latest.date, ymd) / 365);
 }
 
 const latestUfStmt = db.prepare(`SELECT date, clp_per_uf FROM uf_daily ORDER BY date DESC LIMIT 1`);

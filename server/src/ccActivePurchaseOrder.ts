@@ -1,4 +1,4 @@
-import { addCalendarMonths, parseYearMonth } from "./ccYearMonth.js";
+import { addCalendarMonths, parseYearMonth } from "nw-tracker-contracts";
 
 /**
  * The fields of an active installment purchase the «Compras activas» order reads. Kept as a

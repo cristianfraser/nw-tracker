@@ -38,6 +38,8 @@
  */
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
+import { f22Code170, f22Code305 } from "./f22Identities.js";
+import { APV_ANNUAL_CAP_UF, FOREIGN_TAX_CREDIT_CAP, IDPC_RATE, igcTax } from "./legalParameters.js";
 import {
   art107DistributionsForYear,
   art107ForTaxYear,
@@ -51,33 +53,12 @@ import { fundRedemptionGainsForYear, mortgageInterestDeduction, mortgageInterest
 import { payrollTaxYear, type PayrollTaxYear } from "./payrollTaxYear.js";
 import { observadoOnOrBefore, type UsdFxPosture, type UsdPurchaseCost } from "./usdCashTaxLotEvents.js";
 import {
-  USD_FX_IDPC_RATE,
   usdFxTaxGainsForYear,
   type UsdFxDisposalLoader,
   type UsdFxRoute,
   type UsdFxYearTaxResult,
 } from "./usdFxTaxGains.js";
 
-type IgcBracket = { upTo: number; rate: number; rebajaUta: number };
-
-/** IGC table in UTA (Ley 21.210, AT2021 onward): up to `upTo` → rate and deduction («cantidad a rebajar»). */
-export const IGC_TABLE_UTA: readonly IgcBracket[] = [
-  { upTo: 13.5, rate: 0, rebajaUta: 0 },
-  { upTo: 30, rate: 0.04, rebajaUta: 0.54 },
-  { upTo: 50, rate: 0.08, rebajaUta: 1.74 },
-  { upTo: 70, rate: 0.135, rebajaUta: 4.49 },
-  { upTo: 90, rate: 0.23, rebajaUta: 11.14 },
-  { upTo: 120, rate: 0.304, rebajaUta: 17.8 },
-  { upTo: 310, rate: 0.35, rebajaUta: 23.32 },
-  { upTo: Infinity, rate: 0.4, rebajaUta: 38.82 },
-];
-export const IGC_TABLE_FIRST_TAX_YEAR = 2021;
-/** AT2018–AT2020 (Ley 20.780): the same brackets up to 120 UTA, 35% above. */
-export const IGC_TABLE_UTA_AT2018: readonly IgcBracket[] = [...IGC_TABLE_UTA.slice(0, 6), { upTo: Infinity, rate: 0.35, rebajaUta: 23.32 }];
-export const IGC_TABLE_AT2018_FIRST_TAX_YEAR = 2018;
-/** Foreign tax credit cap: 35% of the foreign income's gross amount (art. 41 A). */
-export const FOREIGN_TAX_CREDIT_CAP = 0.35;
-export const IDPC_RATE = 0.25;
 /**
  * How the exchange result on dollars bought with pesos is drafted (`usdFxTaxGains`): the route it
  * takes on the form (art. 20 N°5 income in line 58 d), code 1901, IDPC credited back — the AT2026
@@ -92,15 +73,6 @@ export const USD_FX_DEFAULT_PURCHASE_COST: UsdPurchaseCost = "observado";
 /** Codes of the payment section, which the draft leaves to the SII. */
 export const PAYMENT_SECTION_CODES: readonly number[] = [39, 85, 86, 87, 90, 91, 92, 93, 94, 795];
 
-export function igcTax(baseClp: number, utaClp: number, taxYear: number): number {
-  if (taxYear < IGC_TABLE_AT2018_FIRST_TAX_YEAR) throw new Error(`IGC table: no table for AT${taxYear}`);
-  const table = taxYear >= IGC_TABLE_FIRST_TAX_YEAR ? IGC_TABLE_UTA : IGC_TABLE_UTA_AT2018;
-  if (baseClp <= 0) return 0;
-  const uta = baseClp / utaClp;
-  const row = table.find((r) => uta <= r.upTo)!;
-  return Math.max(0, baseClp * row.rate - row.rebajaUta * utaClp);
-}
-
 export type F22Codes = Record<number, number>;
 
 /** The chain above, from income codes to 304; everything rounded to whole pesos as the form does. */
@@ -108,7 +80,7 @@ export function computeF22Tax(codes: F22Codes, utaClp: number, taxYear: number):
   const v = (c: number) => codes[c] ?? 0;
   const out: F22Codes = { ...codes };
   out[158] = Math.round(v(1098) + v(110) + v(105) + v(155) + v(152) + v(1032) + v(1104) + v(748) + v(1901) - v(169));
-  out[170] = Math.max(0, out[158] - v(750) - v(765));
+  out[170] = Math.max(0, f22Code170(out));
   out[157] = Math.round(igcTax(out[170], utaClp, taxYear));
   out[136] = out[158] > 0 ? Math.round((out[157] * v(152)) / out[158]) : 0;
   out[304] = out[157] - out[136] - v(162) - v(1018) - v(610);
@@ -289,9 +261,6 @@ function informedWithDetailCodes(informed: Record<number, number>): F22Codes {
   return out;
 }
 
-/** Annual cap of the APV régimen B rebate, in UF at 31 December (art. 42 bis). */
-export const APV_ANNUAL_CAP_UF = 600;
-
 /**
  * The APV régimen B deposits DJ 1899 reports (UF; all of its deposit columns — Fintual reports an
  * employee's direct deposits under «trabajador independiente», which belongs in «dependiente /
@@ -408,7 +377,6 @@ export function buildF22Draft(
   const usdFxRoute = options.usdFx?.route ?? USD_FX_DEFAULT_ROUTE;
   const usdFxPosture = options.usdFx?.posture ?? USD_FX_DEFAULT_POSTURE;
   const usdFxPurchaseCost = options.usdFx?.purchaseCost ?? USD_FX_DEFAULT_PURCHASE_COST;
-  if (USD_FX_IDPC_RATE !== IDPC_RATE) throw new Error("usdFxTaxGains: its IDPC rate differs from the draft's");
   const provisional = todayYmd <= `${incomeYear}-12-31`;
   const decemberUta = utaDecember(incomeYear);
   const utaProvisional = decemberUta == null;
@@ -545,7 +513,7 @@ export function buildF22Draft(
   const taxComputed = base !== "none" || estimatedCodes.length > 0;
   const draft = taxComputed ? computeF22Tax(finish(draftInput), utaClp, taxYear) : finish(draftInput);
   if (taxComputed) {
-    draft[305] = draft[304]! + (draft[1830] ?? 0) - (draft[198] ?? 0) + (draft[900] ?? 0);
+    draft[305] = f22Code305(draft);
     // Code 31 is the IGC to pay; a return with a refund does not print it.
     if (draft[304]! > 0) draft[31] = draft[304]!;
   }

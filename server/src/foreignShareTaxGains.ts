@@ -18,7 +18,7 @@ import { art107InstrumentKind } from "./art107Instruments.js";
 import { chileWallClockNow } from "./chileDate.js";
 import { db } from "./db.js";
 import { loadEquityTaxLotEvents } from "./equityTaxLotEvents.js";
-import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctWithStandIn } from "./siiOfficialIpc.js";
+import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
 import { realizeTaxLots, type TaxLotDisposal, type TaxLotMethod } from "./taxLots.js";
 import { observadoOnOrBefore } from "./usdCashTaxLotEvents.js";
 
@@ -50,13 +50,6 @@ export type ForeignShareYearResult = {
   provisional: boolean;
   yearEndObservadoDate: string;
 };
-
-/** First of the month before `ymd`'s month. */
-export function monthBeforeYmd(ymd: string): string {
-  const y = Number(ymd.slice(0, 4));
-  const m = Number(ymd.slice(5, 7)) - 1;
-  return m === 0 ? `${y - 1}-12-01` : `${y}-${String(m).padStart(2, "0")}-01`;
-}
 
 /** Both frames for one disposal; `observadoOn` and `ipcBetween` are injected so the rule is testable. */
 export function foreignShareDisposalClp(
@@ -114,7 +107,7 @@ export function foreignShareGainsForYear(
   const provisional = todayYmd <= yearEnd;
   const yearEndObservadoDate = provisional ? latestObservadoDate() : yearEnd;
   const yearEndObservado = observadoOnOrBefore(yearEndObservadoDate);
-  const ipcBetween = officialIpcVariationPctWithStandIn(loadOfficialIpcLookup(), latestOfficialIpcMonth());
+  const ipcBetween = ipcReajuste({ round: false }).pct;
   const disposals: ForeignShareDisposalResult[] = [];
   for (const a of foreignEquityAccounts()) {
     const { events } = loadEquityTaxLotEvents(a.id);

@@ -6,7 +6,6 @@ import {
   billingMonthForManualLedgerPurchase,
   lastPdfBillingMonthForAccount,
 } from "./ccManualBillingMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { ymCompare } from "./calendarMonth.js";
 import { openWebPasteSourcePdf } from "./ccOpenWebPasteRepair.js";
 import {
@@ -15,6 +14,7 @@ import {
 } from "./ccOpenWebPastePdfReconcile.js";
 import { ccInstallmentsDbApiPayload } from "./ccInstallmentLedgerDb.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 describe("reconcileOpenWebPasteAfterPdfClose", () => {
   const cleanup: Array<() => void> = [];

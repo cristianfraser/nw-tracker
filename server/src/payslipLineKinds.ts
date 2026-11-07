@@ -5,6 +5,7 @@
  * and without Talana's « (LQ)» suffix, first match wins. A label no rule covers fails the import,
  * so a new layout or a new line is looked at, never guessed.
  */
+import { LEGAL_HEALTH_RATE, MANDATORY_PENSION_RATE } from "./legalParameters.js";
 
 export const PAYSLIP_HABER_KINDS = [
   "base_salary",
@@ -88,14 +89,43 @@ export function payslipLineKind(side: "haber" | "descuento", label: string): Pay
   return rule.kind;
 }
 
-/** The legal mandatory pension rate of the worker; the rest of the printed AFP line is the AFP's commission. */
-export const PENSION_MANDATORY_RATE = 0.1;
+/** Haber kinds that are taxable pay when the payslip prints no section. */
+const TAXABLE_HABER_KINDS = new Set<PayslipLineKind>(["base_salary", "gratification", "bonus", "life_insurance_benefit", "absence"]);
+
+/**
+ * Whether a haber is taxable pay («imponible»): as the payslip prints its section (Talana's
+ * teletrabajo allowance is taxable), else by its kind.
+ */
+export function payslipHaberIsTaxable(l: { side: "haber" | "descuento"; section: string | null; kind: PayslipLineKind | null }): boolean {
+  if (l.side !== "haber") return false;
+  if (l.section === "imponible") return true;
+  if (l.section === "no_imponible") return false;
+  return l.kind != null && TAXABLE_HABER_KINDS.has(l.kind);
+}
+
+/** The legal health contribution: 7 % of the (capped) taxable base. */
+export function legalHealthClp(taxableBase: number): number {
+  return Math.round(LEGAL_HEALTH_RATE * taxableBase);
+}
+
+/** Health paid that counts against the impuesto único: up to the legal contribution. */
+export function deductibleHealthClp(healthPaid: number, taxableBase: number): number {
+  return Math.min(healthPaid, legalHealthClp(taxableBase));
+}
+
+/**
+ * The month's amount the impuesto único is computed on: taxable pay less the AFP line, health up
+ * to the legal 7 % and the unemployment line (the worker's social-security contributions).
+ */
+export function iuscTaxableClp(p: { taxablePay: number; pension: number; healthPaid: number; unemployment: number; taxableBase: number }): number {
+  return p.taxablePay - p.pension - deductibleHealthClp(p.healthPaid, p.taxableBase) - p.unemployment;
+}
 
 /**
  * The printed AFP line split into the mandatory contribution (10 % of the payslip's taxable base,
  * already capped on the payslip) and the AFP's commission (the rest).
  */
 export function splitPensionLine(pensionAmount: number, taxableBase: number): { mandatory: number; commission: number } {
-  const mandatory = Math.round(taxableBase * PENSION_MANDATORY_RATE);
+  const mandatory = Math.round(taxableBase * MANDATORY_PENSION_RATE);
   return { mandatory, commission: pensionAmount - mandatory };
 }

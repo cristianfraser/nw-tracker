@@ -10,7 +10,7 @@ import "../src/db.js";
 import { chileCalendarAddDays, chileWallClockNow } from "../src/chileDate.js";
 import { upsertEquityDailySeries } from "../src/brokerageEquityMtm.js";
 import { COINGECKO_CRYPTO_TICKERS, fetchCoinGeckoMaxDailyCloses } from "../src/equityCoinGeckoEod.js";
-import { loadRootDotenv } from "./fintualApiLib.js";
+import { loadRootDotenv } from "../src/fintualApiLib.js";
 
 const DRY = process.argv.includes("--dry-run");
 

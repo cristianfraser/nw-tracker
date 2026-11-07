@@ -6,7 +6,7 @@ import {
   merchantStemForInstallmentDedupe,
 } from "./ccInstallmentLineDedupe.js";
 import { backfillMissingInstallmentPaymentsForAccount } from "./ccInstallmentPaymentBackfill.js";
-import { resolveInstallmentPayByIso, parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { resolveInstallmentPayByIso } from "./ccInstallmentPayBy.js";
 import { ccDerivedPayByRuleForAccount } from "./ccIssuerForAccount.js";
 import { upsertCreditCardValuationsFromLedger } from "./ccCreditCardValuations.js";
 import {
@@ -43,7 +43,7 @@ import {
 import { assertCcPaymentEvidenceKept, ccPaymentPairingIdsWithEvidence } from "./ccPaymentMirrorEvidence.js";
 import { installmentPurchaseLedgerDedupeKey } from "./ccInstallmentLedgerDb.js";
 import { statementPeriodMonthFromParsedRow } from "./ccInstallmentStatementMonth.js";
-import { parseOptionalChileanInteger } from "./chileanNumber.js";
+import { parseOptionalChileanInteger, parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function installmentContractAmountClp(row: CcStatementCsvRecord): number {
   const a = parseOptionalChileanInteger(String(row.amount_clp ?? "")) ?? 0;

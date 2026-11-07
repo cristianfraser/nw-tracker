@@ -1,11 +1,9 @@
+import { normalizeMerchantText } from "nw-tracker-contracts";
 import crypto from "node:crypto";
 
 /** Align with `norm_merchant` in parse-cc-statement-pdfs.py */
 export function normCcMerchant(merchant: string): string {
-  return String(merchant ?? "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, " ");
+  return normalizeMerchantText(merchant);
 }
 
 function sha1Hex16(payload: string): string {

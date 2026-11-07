@@ -1254,7 +1254,7 @@ series). Tests use synthetic fixtures only (`cd server && npm run test`).
 ### Where the work runs
 
 - **Integration branch `untangle`**, cut from `main` at the commit that adds this file. Each
-  stream works in its own git worktree on `untangle/<stream>`, branched from `untangle`, and
+  stream works in its own git worktree on `ut-<stream>`, branched from `untangle`, and
   is merged back into `untangle` once its checks pass. `main` only moves at wave boundaries:
   a wave is merged to `main` when `untangle` is green and a real-DB rehearsal (where the wave
   needs one) shows only the changes the wave intended. Pushing `main` deploys to the home
@@ -1298,8 +1298,18 @@ series). Tests use synthetic fixtures only (`cd server && npm run test`).
 
 **Wave 3 — flows and cards, serial with one parallel audit.** Starts after wave 2.
 
-1. `audit` (read-only, sonnet): every reader of lines and plans, what each needs; writes the
-   table into this file. Runs during wave 2.
+1. `audit` (read-only, sonnet): every reader of lines and plans, what each needs. **Done
+   2026-11-07: `docs/untangle-audit-line-readers.md`** — 109 readers (63 card-line, 13 plan,
+   9 loader consumers, 24 checking/income/deposit). The module must offer nine views: debt
+   events; billed/open-cycle lines with a `source_kind` stamp; expense lines (Total and Por
+   cuota, checking without the plan overlay); plan schedule; payment evidence; financing and
+   proxy filters; a `findLines` merchant/amount search for the matchers; checking bank
+   movements plus capital events; and the write funnels. About 40 of the 63 line readers need
+   only a flow view plus an id. Raw-table readers: the importer and the
+   dedupe/reconcile/re-key family, the plan writers and the payment↔line join on
+   `parser_row_id`, the payment-evidence and traspaso-link readers, and the checking importers.
+   Only three plan readers want a plan with no line. Some rows were classified from SQL
+   snippets rather than function bodies (marked in the Src column) — verify before building.
 2. `flow-identity-1` (opus): F9 steps 1–2 — typed key module, provenance columns.
 3. `cards-rules` (opus): F10 — purchases module, line classifier with the stored kind,
    facturación module, issuer rules as data.

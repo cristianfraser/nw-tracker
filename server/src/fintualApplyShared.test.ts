@@ -4,9 +4,9 @@ import {
   fintualMappedGoalsApiSignature,
   shouldRecordFintualCertFundUnit,
   syncFintualFundUnitsFromResolutions,
-} from "../scripts/fintualApplyShared.js";
-import type { FintualGoalSnapshot } from "../scripts/fintualApiLib.js";
-import type { FintualGoalNavResolution } from "../scripts/fintualRealAssetNav.js";
+} from "./fintualApplyShared.js";
+import type { FintualGoalSnapshot } from "./fintualApiLib.js";
+import type { FintualGoalNavResolution } from "./fintualRealAssetNav.js";
 import { db } from "./db.js";
 import { upsertFundUnitSpotPreservingHistory } from "./fundUnitDaily.js";
 

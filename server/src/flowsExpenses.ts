@@ -74,7 +74,6 @@ import { expenseGastosAmountUsdAtDate } from "./flowMoneyAtDate.js";
 import { loadCheckingExpenseRefunds } from "./checkingExpenseRefunds.js";
 import { cartolaDescriptionFromNote } from "./checkingDescriptionPredicates.js";
 
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 
 import { db } from "./db.js";
 
@@ -102,6 +101,7 @@ import {
   type CcExpenseGastosScope,
   purchaseMonthFromLine,
 } from "./ccExpensePeriodMonth.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export type {
   CcExpenseLineRole,

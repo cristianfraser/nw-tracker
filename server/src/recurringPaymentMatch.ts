@@ -12,7 +12,11 @@
  * (`placeholderPesos`). Occurrences are settled in due-date order and a line pays at most one, the
  * nearest in days, so an earlier occurrence never leaves a line to a later one.
  */
-import { addCalendarMonths } from "./ccYearMonth.js";
+import { addCalendarMonths, addDaysIso, daysBetweenIso, foldAccents } from "nw-tracker-contracts";
+
+function foldUpperAccents(s: string): string {
+  return foldAccents(s).toUpperCase();
+}
 
 export type RecurringFrequency = "yearly" | "monthly";
 export type RecurringCurrency = "clp" | "uf";
@@ -107,18 +111,6 @@ export function dayInMonth(ym: string, day: number): string {
   return `${ym}-${String(Math.min(day, lastDayOfMonth(ym))).padStart(2, "0")}`;
 }
 
-export function daysBetween(fromYmd: string, toYmd: string): number {
-  return Math.round((Date.parse(`${toYmd}T00:00:00Z`) - Date.parse(`${fromYmd}T00:00:00Z`)) / 86_400_000);
-}
-
-export function addDays(ymd: string, days: number): string {
-  return new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-}
-
-function foldUpper(s: string): string {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
-}
-
 function exposeFrom(entry: RecurringEntry, todayYmd: string): string {
   return entry.frequency === "monthly"
     ? `${addCalendarMonths(todayYmd.slice(0, 7), -1)}-01`
@@ -143,7 +135,7 @@ function dueDatesBetween(entry: RecurringEntry, fromYmd: string, toYmd: string):
 
 function merchantMatches(line: RecurringLine, foldedPatterns: readonly string[]): boolean {
   return [line.merchant, line.display_merchant].some(
-    (m) => m != null && foldedPatterns.some((p) => foldUpper(m).includes(p))
+    (m) => m != null && foldedPatterns.some((p) => foldUpperAccents(m).includes(p))
   );
 }
 
@@ -158,7 +150,7 @@ function amountFits(entry: RecurringEntry, line: DatedLine, expectedClp: number 
     return Math.abs(line.amount_clp - expectedClp) <= tolerance * expectedClp;
   }
   for (let k = 0; k <= RECURRING_UF_LINE_DAYS; k += 1) {
-    const want = Math.round(entry.amount * ufOn(addDays(line.purchase_on, k)));
+    const want = Math.round(entry.amount * ufOn(addDaysIso(line.purchase_on, k)));
     if (Math.abs(line.amount_clp - want) <= tolerance * want) return true;
   }
   return false;
@@ -172,9 +164,9 @@ function lineFitsOccurrence(
   line: DatedLine,
   ufOn: (ymd: string) => number
 ): boolean {
-  if (line.purchase_on < addDays(dueYmd, -entry.match_days_before)) return false;
-  if (line.purchase_on > addDays(dueYmd, entry.match_days_after)) return false;
-  if (!merchantMatches(line, entry.patterns.map(foldUpper))) return false;
+  if (line.purchase_on < addDaysIso(dueYmd, -entry.match_days_before)) return false;
+  if (line.purchase_on > addDaysIso(dueYmd, entry.match_days_after)) return false;
+  if (!merchantMatches(line, entry.patterns.map(foldUpperAccents))) return false;
   return amountFits(entry, line, expectedClp, ufOn);
 }
 
@@ -207,16 +199,16 @@ function nearestFittingLine(
   claimed: ReadonlySet<string>,
   ufOn: (ymd: string) => number
 ): DatedLine | null {
-  const foldedPatterns = entry.patterns.map(foldUpper);
+  const foldedPatterns = entry.patterns.map(foldUpperAccents);
   let best: DatedLine | null = null;
   let bestGap = Infinity;
   for (const line of lines) {
     if (claimed.has(line.ref)) continue;
-    if (line.purchase_on < addDays(dueYmd, -entry.match_days_before)) continue;
-    if (line.purchase_on > addDays(dueYmd, entry.match_days_after)) continue;
+    if (line.purchase_on < addDaysIso(dueYmd, -entry.match_days_before)) continue;
+    if (line.purchase_on > addDaysIso(dueYmd, entry.match_days_after)) continue;
     if (!merchantMatches(line, foldedPatterns)) continue;
     if (!amountFits(entry, line, expectedClp, ufOn)) continue;
-    const gap = Math.abs(daysBetween(dueYmd, line.purchase_on));
+    const gap = Math.abs(daysBetweenIso(dueYmd, line.purchase_on));
     if (best == null || gap < bestGap || (gap === bestGap && line.ref < best.ref)) {
       best = line;
       bestGap = gap;
@@ -248,7 +240,7 @@ function coveredBy(entry: RecurringEntry, dueYmd: string, decided: readonly Recu
 export function matchRecurringPayments(input: RecurringModelInput): RecurringOccurrence[] {
   const pending: { entry: RecurringEntry; due: string }[] = [];
   for (const entry of input.entries) {
-    const from = addDays(entry.created_at.slice(0, 10), -LOOKBACK_DAYS);
+    const from = addDaysIso(entry.created_at.slice(0, 10), -LOOKBACK_DAYS);
     for (const due of dueDatesBetween(entry, from, input.horizonEndYmd)) pending.push({ entry, due });
   }
   pending.sort((a, b) => a.due.localeCompare(b.due) || a.entry.id - b.entry.id);
@@ -313,7 +305,7 @@ export function automaticRecurringMatchForLine(
   for (const occ of occurrences) {
     if (occ.entry.manual) continue;
     if (!lineFitsOccurrence(occ.entry, occ.due_iso, occ.expected_clp, dated, ufOn)) continue;
-    const gap = Math.abs(daysBetween(occ.due_iso, dated.purchase_on));
+    const gap = Math.abs(daysBetweenIso(occ.due_iso, dated.purchase_on));
     if (best == null || gap < bestGap) {
       best = occ;
       bestGap = gap;

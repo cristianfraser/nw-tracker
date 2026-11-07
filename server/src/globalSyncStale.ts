@@ -60,7 +60,7 @@ import {
   fintualMorningCarryPerFundUnresolved,
 } from "./fintualCertV2Reconcile.js";
 import fs from "node:fs";
-import { fintualGoalsSnapshotPath } from "../scripts/fintualApiLib.js";
+import { fintualGoalsSnapshotPath } from "./fintualApiLib.js";
 import { isChileBusinessDay, priorChileBusinessDayYmd } from "./marketHolidays.js";
 import { isBcentralConfigured } from "./bcentralApi.js";
 import { isYahooFxUsdStale } from "./fxYahooEodSync.js";

@@ -1,5 +1,4 @@
 import { ymCompare, monthKeyFromYmd } from "./calendarMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
 import { assertCcStatementsHavePeriodTo } from "./ccStatementMetadata.js";
@@ -13,6 +12,7 @@ import {
 } from "./importSyncDocumentFilePath.js";
 import { importSyncCartolaSinMovimientosForMonth } from "./importSyncCartolaSinMovimientos.js";
 import { cartolaCashAccountIdOptional } from "./movementBalanceCashAccounts.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 export type ImportSyncDocumentKind =
   | "checking_cartola"

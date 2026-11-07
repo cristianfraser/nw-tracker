@@ -1,7 +1,7 @@
 import { historyTierMemo } from "./aggregationCache.js";
 import { db } from "./db.js";
 import { billingMonthForCcStatement } from "./ccBillingMonth.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export type CcStatementRow = {
   id: number;

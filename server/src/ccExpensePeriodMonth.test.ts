@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
   gastosPeriodMonthForLine,
   gastosSumMonthForLine,
@@ -10,6 +9,7 @@ import {
 } from "./ccExpensePeriodMonth.js";
 import { aggregateGastosFromLines } from "./flowsExpensesGastos.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function ccLine(partial: Partial<FlowCcExpenseLineRow>): FlowCcExpenseLineRow {
   const expenseMonth = partial.expense_month ?? "2024-03";

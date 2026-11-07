@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chileMinuteSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 const text = z.string().trim().min(1);
@@ -22,7 +23,7 @@ export const transferNoticeSchema = z
     /** The mail's Message-ID: the notice's identity. */
     message_id: text,
     /** When the bank sent it, on the Chile clock: `YYYY-MM-DD HH:MM`. */
-    sent_at_chile: z.string().regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/),
+    sent_at_chile: chileMinuteSchema,
     subject: z.string(),
     /**
      * `outgoing`: the client sent money (to a third party or an own account elsewhere);

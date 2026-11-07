@@ -14,10 +14,8 @@
  * whose totals were not parsed at all (left out: the scanned 2018-08).
  */
 import { db } from "./db.js";
-import { monthBeforeYmd } from "./foreignShareTaxGains.js";
-import { latestOfficialIpcMonth, loadOfficialIpcLookup, officialIpcVariationPctBetween } from "./siiOfficialIpc.js";
-
-export const LEGAL_HEALTH_RATE = 0.07;
+import { iuscTaxableClp } from "./payslipLineKinds.js";
+import { ipcReajuste, monthBeforeYmd } from "./siiOfficialIpc.js";
 
 export type PayrollTaxYear = {
   incomeYear: number;
@@ -53,11 +51,12 @@ export function monthTaxablePay(r: Row): number | null {
       : null);
   if (haberes == null) return null;
   const noImponible = r.total_no_imponible_clp ?? (r.colacion_clp ?? 0) + (r.movilizacion_clp ?? 0);
-  const health =
-    r.total_imponible_clp != null && r.desc_health_clp != null
-      ? Math.min(r.desc_health_clp, Math.round(LEGAL_HEALTH_RATE * r.total_imponible_clp))
-      : (r.desc_health_clp ?? 0);
-  return haberes - noImponible - (r.desc_afp_clp ?? 0) - health - (r.desc_cesantia_clp ?? 0);
+  const contributions = { taxablePay: haberes - noImponible, pension: r.desc_afp_clp ?? 0, unemployment: r.desc_cesantia_clp ?? 0 };
+  if (r.total_imponible_clp != null && r.desc_health_clp != null) {
+    return iuscTaxableClp({ ...contributions, healthPaid: r.desc_health_clp, taxableBase: r.total_imponible_clp });
+  }
+  // No base to cap health against: the health line as printed.
+  return contributions.taxablePay - contributions.pension - (r.desc_health_clp ?? 0) - contributions.unemployment;
 }
 
 export function payrollTaxYear(incomeYear: number): PayrollTaxYear {
@@ -70,16 +69,14 @@ export function payrollTaxYear(incomeYear: number): PayrollTaxYear {
         ORDER BY period_month`
     )
     .all(`${incomeYear}-%`) as Row[];
-  const ipc = loadOfficialIpcLookup();
-  const latest = latestOfficialIpcMonth();
-  const provisional = latest < `${incomeYear}-11-01`;
-  const toMonth = provisional ? latest : `${incomeYear}-11-01`;
+  const ipc = ipcReajuste({ round: true, floorAtZero: true });
+  const { toMonth, provisional } = ipc.december(incomeYear);
   let taxable = 0;
   let withheld = 0;
   const incompleteMonths: string[] = [];
   for (const r of rows) {
     const from = monthBeforeYmd(`${r.period_month}-01`);
-    const pct = from >= toMonth ? 0 : Math.max(0, Math.round(officialIpcVariationPctBetween(from, toMonth, ipc) * 10) / 10);
+    const pct = ipc.pct(from, toMonth);
     const factor = 1 + pct / 100;
     const pay = monthTaxablePay(r);
     if (pay == null) {

@@ -14,7 +14,7 @@ import { chileWallClockNow } from "../src/chileDate.js";
 import { fetchUfYear, loadBcentralCredentials } from "../src/bcentralApi.js";
 import { portfolioStartYmd } from "../src/portfolioStart.js";
 import { upsertUfRows } from "../src/sbifSyncDb.js";
-import { loadRootDotenv } from "./fintualApiLib.js";
+import { loadRootDotenv } from "../src/fintualApiLib.js";
 
 const DRY = process.argv.includes("--dry-run");
 

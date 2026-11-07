@@ -2,7 +2,7 @@ import {
   cartolaStatementMonths,
   monthKeyFromYmd,
 } from "./calendarMonth.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function isoFromPeriodField(raw: string | null | undefined): string | null {
   const t = String(raw ?? "").trim();

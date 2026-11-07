@@ -296,7 +296,7 @@ def cartola_row_date(
     """The cartola year rule: a row printed as DD/MM (no year) is the one date of the statement
     period [DESDE, HASTA] it can be. Both bounds are required; no candidate is an error, and so
     are several (a period longer than a year). The TypeScript XLSX reader applies the same rule;
-    `server/src/test/cartolaMovementYearCases.json` is asserted by both."""
+    `server/contracts/data/cartolaMovementYearCases.json` is asserted by both."""
     candidates = cartola_row_date_candidates(day, month, desde_iso, hasta_iso)
     if len(candidates) != 1:
         raise CartolaRowDateError(

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import { ymCompare } from "./calendarMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   billingMonthContainingPurchase,
   billingMonthForLedgerPurchase,
@@ -9,6 +8,7 @@ import {
   lastPdfBillingMonthForAccount,
   targetBillingMonthForManualImports,
 } from "./ccManualBillingMonth.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 describe("lastPdfBillingMonthForAccount", () => {
   const accountIds: number[] = [];

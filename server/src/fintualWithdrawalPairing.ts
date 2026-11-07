@@ -1,3 +1,4 @@
+import { BROKER_SETTLEMENT_WINDOW_DAYS } from "./brokerAdapter.js";
 import { recordBankPosting } from "./movementBankPostings.js";
 import { db } from "./db.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
@@ -27,7 +28,7 @@ import { chileCalendarAddDays } from "./chileDate.js";
  * $5x.xxx retiro hijack an unrelated $5x.xxx credit dated 2026-08-28 — the real Fintual leg
  * was not imported yet, so the earlier row was the only candidate and got rewritten in place.
  */
-export const WITHDRAWAL_PAIR_WINDOW_DAYS = 5;
+export const WITHDRAWAL_PAIR_WINDOW_DAYS = BROKER_SETTLEMENT_WINDOW_DAYS;
 
 /** Fintual goal account by its display name (the goals are the `import:fintual|cert|` accounts). */
 export function fintualGoalAccountId(goalName: string): number | null {

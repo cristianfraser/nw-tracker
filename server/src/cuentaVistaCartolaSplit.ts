@@ -3,8 +3,8 @@ import {
   isCartolaDesdeBoundaryPhantomMonth,
   monthKeyFromYmd,
 } from "./calendarMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import type { ParsedCheckingCartola } from "./checkingCartolaParse.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 /** Calendar months covered by a cartola's movements and statement month. */
 export function cartolaCalendarMonths(cartola: ParsedCheckingCartola): string[] {

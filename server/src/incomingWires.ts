@@ -18,6 +18,7 @@
  * on the broker cash account (gross − net). Every apply re-pairs everything stored; a booking is
  * recorded per request and never repeated, even after its movements are deleted.
  */
+import { addDaysIso, daysBetweenIso, normalizeAccountNumber } from "nw-tracker-contracts";
 import type {
   BankAccountIncomingWiresApplyDetails,
   BankAccountIncomingWiresPayload,
@@ -28,7 +29,7 @@ import type {
 import { invalidateAggregationForAccountDate } from "./aggregationCache.js";
 import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
-import { fintualUsdAccountId } from "./fintualEmailImport.js";
+import { fintualUsdAccountId } from "./brokerAdapter.js";
 
 /** How long after its pay day a request waits for its wire before it is reported overdue. */
 const OVERDUE_AFTER_DUE_DAYS = 3;
@@ -52,19 +53,6 @@ export type WithdrawalRequest = {
 };
 
 const cents = (n: number) => Math.round(n * 100);
-
-function isoAddDays(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function dayDistance(a: string, b: string): number {
-  return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
-}
-
-/** Account numbers compare without leading zeros: the bank prints 005105313120, an MT103 5105313120. */
-const bareNumber = (n: string) => n.replace(/^0+/, "");
 
 /** The broker notification as a request, or a throw when it lacks what a request needs. */
 export function withdrawalRequestFromNotification(n: BrokerNotification, broker: "fintual"): WithdrawalRequest {
@@ -201,7 +189,7 @@ function accountForNumber(number: string, currency: string, issuer: string | nul
   const rows = db
     .prepare(`SELECT account_id, issuer, number FROM bank_account_numbers WHERE currency = ?`)
     .all(currency) as { account_id: number; issuer: string; number: string }[];
-  const hits = rows.filter((r) => bareNumber(r.number) === bareNumber(number) && (issuer == null || r.issuer === issuer));
+  const hits = rows.filter((r) => normalizeAccountNumber(r.number) === normalizeAccountNumber(number) && (issuer == null || r.issuer === issuer));
   if (hits.length > 1) throw new Error(`account number ${number} (${currency}) is declared ${hits.length} times`);
   return hits[0]?.account_id ?? null;
 }
@@ -243,7 +231,7 @@ export function groupWireNotices(notices: readonly IncomingWireNotice[], account
         w.account_id === account_id &&
         w.amount_cents === cents(n.amount) &&
         !w.notices.some((x) => x.reported_by === n.reported_by) &&
-        w.notices.every((x) => dayDistance(x.value_date, n.value_date) <= NOTICES_OF_ONE_WIRE_DAYS)
+        w.notices.every((x) => Math.abs(daysBetweenIso(x.value_date, n.value_date)) <= NOTICES_OF_ONE_WIRE_DAYS)
     );
     if (wire) {
       wire.notices.push(n);
@@ -327,7 +315,7 @@ export function bookIncomingWires(opts: {
         w.account_id === toAccount &&
         w.amount_cents === cents(r.net_amount) &&
         w.value_date >= requestedDay &&
-        w.value_date <= isoAddDays(r.due_on, WIRE_AFTER_DUE_DAYS) &&
+        w.value_date <= addDaysIso(r.due_on, WIRE_AFTER_DUE_DAYS) &&
         orderedBy(w, r.broker)
     );
     if (candidates.length === 0) {
@@ -335,7 +323,7 @@ export function bookIncomingWires(opts: {
         request_message_id: r.message_id,
         due_on: r.due_on,
         net_amount: r.net_amount,
-        overdue: today > isoAddDays(r.due_on, OVERDUE_AFTER_DUE_DAYS),
+        overdue: today > addDaysIso(r.due_on, OVERDUE_AFTER_DUE_DAYS),
       });
       continue;
     }
@@ -352,16 +340,16 @@ export function bookIncomingWires(opts: {
       from,
       toAccount,
       r.net_amount,
-      isoAddDays(wire.value_date, -EXISTING_TRANSFER_WINDOW_DAYS),
-      isoAddDays(wire.value_date, EXISTING_TRANSFER_WINDOW_DAYS)
+      addDaysIso(wire.value_date, -EXISTING_TRANSFER_WINDOW_DAYS),
+      addDaysIso(wire.value_date, EXISTING_TRANSFER_WINDOW_DAYS)
     ) as { id: number } | undefined;
     // A transfer entered by hand before this ran is the booked one; so is its fee, when entered too.
     const existingFee = existing
       ? (findExistingFee.get(
           from,
           (cents(r.gross_amount) - cents(r.net_amount)) / 100,
-          isoAddDays(wire.value_date, -EXISTING_TRANSFER_WINDOW_DAYS),
-          isoAddDays(wire.value_date, EXISTING_TRANSFER_WINDOW_DAYS)
+          addDaysIso(wire.value_date, -EXISTING_TRANSFER_WINDOW_DAYS),
+          addDaysIso(wire.value_date, EXISTING_TRANSFER_WINDOW_DAYS)
         ) as { id: number } | undefined)
       : undefined;
     report.booked.push({

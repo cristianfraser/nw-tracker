@@ -5,7 +5,7 @@
  *
  * Run (from server/): npx tsx scripts/verify-cc-billed-cuotas.ts [accountId ...]
  */
-import { ccBilledCuotasIdentity } from "../src/ccBilledCuotasIdentity.js";
+import { ccBilledCuotasIdentity } from "./lib/ccBilledCuotasIdentity.js";
 import { db } from "../src/db.js";
 
 const argIds = process.argv.slice(2).map(Number).filter((n) => Number.isFinite(n) && n > 0);

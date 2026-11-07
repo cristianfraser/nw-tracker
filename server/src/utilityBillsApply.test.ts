@@ -7,7 +7,6 @@ import { assignPurchaseToRealEstateExpense, loadGastosLinesForRealEstateMatching
 import { getVitestSantanderCcMasterAccountId, wipeVitestCcFixtureData } from "./test/vitestDbSeed.js";
 import {
   applyUtilityBills,
-  normalizeServiceAccount,
   pickUtilityBillCharge,
   utilityBillMonth,
   utilityBillMonthsCovered,
@@ -115,13 +114,6 @@ describe("utilityBillMonthsCovered", () => {
     expect(utilityBillMonthsCovered({ period_from: "2036-06-26", period_to: "2036-08-23" })).toBe(2);
     expect(utilityBillMonthsCovered({ period_from: "2036-09-02", period_to: "2036-10-01" })).toBe(1);
     expect(utilityBillMonthsCovered({ period_from: null, period_to: null })).toBe(1);
-  });
-});
-
-describe("normalizeServiceAccount", () => {
-  it("compares account numbers without punctuation or leading zeros", () => {
-    expect(normalizeServiceAccount("000123456-7")).toBe("1234567");
-    expect(normalizeServiceAccount("123456-k")).toBe("123456K");
   });
 });
 

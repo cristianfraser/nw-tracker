@@ -24,10 +24,11 @@ import type {
   BrokerMovementsPayload,
 } from "nw-tracker-contracts";
 import { accountsWithEquityTicker } from "./accountEquityTicker.js";
-import { chileCalendarAddDays, chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
+import { chileCalendarTodayYmd, chileWallClockAt } from "./chileDate.js";
 import { clpCashBalanceLive } from "./clpCashAccounts.js";
 import { brokerCleanThrough, recordBrokerCleanRead } from "./brokerReadCoverage.js";
 import { db } from "./db.js";
+import { brokerAdapter, pairDividendPayout, racionalCashAccountId, racionalEquityAccountId } from "./brokerAdapter.js";
 import {
   getMovementDividendDetail,
   upsertMovementDividendDetail,
@@ -38,47 +39,10 @@ import {
 type RacionalMovement = BrokerMovement;
 type RacionalScrapedDividend = BrokerDividend;
 
-/** Racional's own cash accounts, by the import keys the panel created them with. */
-const RACIONAL_CASH_IMPORT_KEYS = {
-  clp: "import:panel|kind=clp|key=clp",
-  usd: "import:panel|kind=usd|key=usd",
-} as const;
-
-function accountIdByImportKey(importKey: string): number {
-  const row = db.prepare(`SELECT id FROM accounts WHERE import_key = ?`).get(importKey) as
-    | { id: number }
-    | undefined;
-  if (!row) throw new Error(`No account with import_key "${importKey}"`);
-  return row.id;
-}
-
-export function racionalCashAccountId(currency: "clp" | "usd"): number {
-  return accountIdByImportKey(RACIONAL_CASH_IMPORT_KEYS[currency]);
-}
-
 /**
  * The CLP portafolio caja (`brokerage_cash__caja_*` leaf) — where Racional charges portfolio
  * commissions. Exactly one such account, else null (never guess which caja to charge).
  */
-/**
- * The account holding a ticker as Racional prints it. Racional lists a Chilean instrument by its
- * bare Bolsa symbol («CFIETFIPSA»), while the app keys the account on the Yahoo symbol with the
- * exchange suffix (`CFIETFIPSA.SN`, see «Quote currency / Santiago (`.SN`) tickers»): the exact
- * symbol first, else its `.SN` form — never both (that is two accounts claiming one symbol).
- */
-export function racionalEquityAccountId(ticker: string): number {
-  const symbol = String(ticker ?? "").trim().toUpperCase();
-  const exact = accountsWithEquityTicker(symbol);
-  const santiago = symbol.includes(".") ? [] : accountsWithEquityTicker(`${symbol}.SN`);
-  if (exact.length + santiago.length !== 1) {
-    throw new Error(
-      `Expected exactly one account with equity_ticker "${symbol}" or "${symbol}.SN", found ${exact.length + santiago.length}. ` +
-        `Create the position in the panel first (it sets accounts.equity_ticker).`
-    );
-  }
-  return (exact[0] ?? santiago[0])!;
-}
-
 export function portfolioCajaClpAccountId(): number | null {
   const rows = db
     .prepare(
@@ -513,9 +477,6 @@ export function applyRacionalMovements(result: RacionalImportResult, sourceRef: 
 // Dividend breakdowns from the dividends API file (`dividends-<stamp>.json`)
 // ---------------------------------------------------------------------------------------------
 
-/** How far the ledger row may sit from the API's Chile day: the list and the mail date rows the same day. */
-const DIVIDEND_MATCH_WINDOW_DAYS = 2;
-
 export type RacionalDividendDetailPlan = {
   dividend: RacionalScrapedDividend;
   chile_ymd: string;
@@ -528,14 +489,6 @@ export type RacionalDividendDetailPlan = {
   /** No ledger row, or several — a data error that fails the step. */
   conflict: string | null;
 };
-
-const findDividendPayouts = db.prepare(
-  `SELECT id, amount, occurred_on FROM movements
-   WHERE from_account_id = ? AND to_account_id = ? AND currency = 'usd'
-     AND flow_kind = 'dividend_payout'
-     AND occurred_on BETWEEN ? AND ?
-   ORDER BY occurred_on, id`
-);
 
 /**
  * Pair each API dividend with the ledger's `dividend_payout` row: same holder → Racional USD
@@ -572,36 +525,16 @@ export function planRacionalDividendDetails(
             : `several accounts hold ${dividend.asset_id}`,
       };
     }
-    const from = chileCalendarAddDays(chileYmd, -DIVIDEND_MATCH_WINDOW_DAYS);
-    const to = chileCalendarAddDays(chileYmd, DIVIDEND_MATCH_WINDOW_DAYS);
-    const rows = findDividendPayouts.all(holders[0]!, racionalUsd, from, to) as {
-      id: number;
-      amount: number;
-      occurred_on: string;
-    }[];
-    const byAmount = rows.filter((r) => Math.abs(Number(r.amount) - dividend.net) <= AMOUNT_TOLERANCE);
-    const sameDay = byAmount.filter((r) => r.occurred_on === chileYmd);
-    const candidates = sameDay.length > 0 ? sameDay : byAmount;
-    if (candidates.length === 0) {
-      return {
-        ...base,
-        conflict:
-          rows.length === 0
-            ? `no dividend_payout of ${dividend.asset_id} → Racional USD in the ledger around ${chileYmd}`
-            : `ledger dividend(s) of ${dividend.asset_id} around ${chileYmd} read ${rows
-                .map((r) => `${r.amount} (movement ${r.id}, ${r.occurred_on})`)
-                .join(", ")} but Racional credited ${dividend.net} — reconcile before importing`,
-      };
-    }
-    if (candidates.length > 1) {
-      return {
-        ...base,
-        conflict: `several ledger dividends of ${dividend.asset_id} match ${dividend.net} around ${chileYmd} (movements ${candidates
-          .map((r) => r.id)
-          .join(", ")})`,
-      };
-    }
-    const movementId = candidates[0]!.id;
+    const paired = pairDividendPayout(brokerAdapter("racional"), {
+      symbol: dividend.asset_id,
+      ymd: chileYmd,
+      net: dividend.net,
+      holderId: holders[0]!,
+      brokerUsdId: racionalUsd,
+      printedAs: "Racional credited",
+    });
+    if (paired.conflict != null) return { ...base, conflict: paired.conflict };
+    const movementId = paired.movement_id;
     const existing = getMovementDividendDetail(movementId);
     const alreadyRecorded =
       existing != null &&

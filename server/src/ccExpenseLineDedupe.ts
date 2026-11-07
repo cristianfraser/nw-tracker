@@ -1,7 +1,7 @@
 import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
 import { db } from "./db.js";
 import { ccOneShotDedupeKey } from "./ccDedupeKey.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 export type CcExpenseLineForDedupe = {
   account_id: number;

@@ -4,7 +4,7 @@
  * (one key for every Jumbo branch), else the cleaned name itself. Pure (no database access): the
  * category-rule migration hook runs it while `db.ts` is loading.
  */
-import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "./ccWebMerchantTruncation.js";
+import { stripBciTerminalSuffix, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "nw-tracker-contracts";
 import { foldVendorName, type VendorCatalog } from "./vendorCatalogMatch.js";
 
 const PROCESSOR_PREFIXES: readonly [RegExp, string][] = [
@@ -31,9 +31,7 @@ const PROCESSOR_PREFIXES: readonly [RegExp, string][] = [
 
 /** The bank's clutter around a merchant name. */
 export function cleanBankMerchant(raw: string): string {
-  return raw
-    .replace(/\s+COMPRAS P\.A\.T\.\s*$/i, "")
-    .replace(/\s*\(T\)\s*$/, "")
+  return stripBciTerminalSuffix(raw.replace(/\s+COMPRAS P\.A\.T\.\s*$/i, ""))
     .replace(/,\s*SANTIAGO\s*$/i, "")
     .replace(/^\d{6,}\s+/, "")
     .replace(/^Agustinas\s+/i, "")

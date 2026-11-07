@@ -1,3 +1,4 @@
+import { normalizeAccountNumber } from "nw-tracker-contracts";
 import type {
   BankAccountMovementsApplyDetails,
   BankAccountMovementsPayload,
@@ -8,8 +9,6 @@ import { checkingAccountId } from "./checkingCartolaImport.js";
 import { importCheckingPartialMovements } from "./checkingPartialMovementsImport.js";
 import { createImportBatch } from "./importBatches.js";
 import { confirmUsdAccountMovements } from "./usdAccountMovementsConfirm.js";
-
-const bareNumber = (n: string) => n.replace(/^0+/, "");
 
 type DeclaredNumber = { account_id: number; number: string };
 
@@ -34,7 +33,7 @@ export function accountIdForIssuerBankAccount(account: BankAccountMovementsPaylo
   if (account.number === undefined) {
     throw new Error(`A dollar ${account.issuer} ${account.product} listing must name its account number — refused`);
   }
-  const named = declaredNumbers(account.issuer, "usd").filter((r) => bareNumber(r.number) === bareNumber(account.number!));
+  const named = declaredNumbers(account.issuer, "usd").filter((r) => normalizeAccountNumber(r.number) === normalizeAccountNumber(account.number!));
   if (named.length === 0) {
     throw new Error(
       `No ledger account declares the ${account.issuer} dollar account number ending …${account.number.slice(-4)} (bank_account_numbers) — refused`
@@ -58,8 +57,8 @@ export function assertListingNamesAccount(accountId: number, account: BankAccoun
   if (account.number === undefined) return;
   const rows = declaredNumbers(account.issuer, account.currency);
   const own = rows.find((r) => r.account_id === accountId);
-  const named = rows.filter((r) => bareNumber(r.number) === bareNumber(account.number!));
-  if (own && bareNumber(own.number) !== bareNumber(account.number)) {
+  const named = rows.filter((r) => normalizeAccountNumber(r.number) === normalizeAccountNumber(account.number!));
+  if (own && normalizeAccountNumber(own.number) !== normalizeAccountNumber(account.number)) {
     throw new Error(
       `bank_account.movements names ${account.issuer} ${account.product} account number ending …${account.number.slice(-4)}, ` +
         `which is not the number declared for ledger account ${accountId} (…${own.number.slice(-4)}) — refused`

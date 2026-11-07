@@ -8,7 +8,6 @@
  */
 import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarTodayYmd } from "./chileDate.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import {
   isCcExpenseTotalsExcludedSlug,
   isInstallmentCuotaZeroLine,
@@ -36,6 +35,7 @@ import {
   type FlowCcExpenseLineRow,
   type FlowCcExpenseMonthRow,
 } from "./flowsExpenses.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 export type GastosUnit = "clp" | "usd";
 

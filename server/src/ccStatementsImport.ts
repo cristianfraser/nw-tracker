@@ -11,10 +11,9 @@ import {
   ccLineDedupeKeyExistsOnAccount,
   patchCcLineOriginCardOnDedupeHit,
 } from "./ccExpenseLineDedupe.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
-import { parseOptionalChileanInteger } from "./chileanNumber.js";
 import { ccLineOriginCurrency, parseCcOriginAmount } from "./ccOriginCurrency.js";
 import { ccStatementRecordsFingerprint } from "./ccStatementFingerprint.js";
+import { parseOptionalChileanInteger, parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function parseUsdAmount(s: string): number | null {
   let t = String(s ?? "").trim().replace(/US\$/gi, "").replace(/\$/g, "").trim();

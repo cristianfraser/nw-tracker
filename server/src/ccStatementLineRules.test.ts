@@ -20,7 +20,9 @@ type SectionCase = {
 
 const casesPath = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
-  "test",
+  "..",
+  "contracts",
+  "data",
   "ccStatementLineSectionCases.json"
 );
 const cases = JSON.parse(fs.readFileSync(casesPath, "utf-8")) as SectionCase[];

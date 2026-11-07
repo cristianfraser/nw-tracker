@@ -29,8 +29,8 @@ export type MortgagePaymentPreviewResponse = MortgagePaymentComputeResult & {
   mortgage_balance_clp: number;
 };
 
-const PROPERTY_ACCOUNT_IMPORT_KEY = "import:excel|key=property";
-const MORTGAGE_ACCOUNT_IMPORT_KEY = "import:excel|key=mortgage";
+export const PROPERTY_ACCOUNT_IMPORT_KEY = "import:excel|key=property";
+export const MORTGAGE_ACCOUNT_IMPORT_KEY = "import:excel|key=mortgage";
 
 export function mortgagePaymentCreateSchemaForAccount(
   accountId: number

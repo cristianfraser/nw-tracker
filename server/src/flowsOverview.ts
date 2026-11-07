@@ -30,7 +30,6 @@
  */
 import { monthEndUtcYmd, ymCompare } from "./calendarMonth.js";
 import { chileCalendarAddDays, chileCalendarTodayYmd } from "./chileDate.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { gastosSumMonthForLine, type CcInstallmentGastosMode } from "./ccExpensePeriodMonth.js";
 import { hasSplittableMortgageExpenseDepositLink } from "./expenseDepositLinks.js";
 import { buildFlowsCheckingIncomePayload, type FlowsCheckingIncomePayload } from "./flowsCheckingInflows.js";
@@ -67,6 +66,7 @@ import {
   mortgageLinkCarryingAmount,
   sumMortgageCarryingBy,
 } from "./flowsMortgageCarrying.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 export type FlowsOverviewRow = {
   /** YYYY-MM (month rows) or YYYY-MM-DD (day rows). */

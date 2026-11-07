@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chileSecondSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -52,10 +53,7 @@ export const storeReceiptSchema = z
     branch: z.string().min(1).max(200),
     city: z.string().min(1).max(200).nullable(),
     /** The printed local datetime `YYYY-MM-DD HH:MM:SS`; null when the receipt prints none. */
-    purchased_at: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
-      .nullable(),
+    purchased_at: chileSecondSchema.nullable(),
     /** `declared`: written into the OCR correction by hand, because the receipt lost it. */
     purchase_date_source: z.enum(["printed", "declared"]).nullable(),
     items: z.array(storeReceiptItemSchema).min(1),

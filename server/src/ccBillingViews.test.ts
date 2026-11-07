@@ -30,11 +30,11 @@ import {
   billingMonthForManualLedgerPurchase,
   lastPdfBillingMonthForAccount,
 } from "./ccManualBillingMonth.js";
-import { addCalendarMonths } from "./ccYearMonth.js";
 import { ymCompare } from "./calendarMonth.js";
 import { listCcStatementsForAccount } from "./ccStatementsDb.js";
 import * as chileDate from "./chileDate.js";
 import { snapshotTables } from "./test/snapshotTables.js";
+import { addCalendarMonths } from "nw-tracker-contracts";
 
 // The manual-purchase cases run createManualCcInstallmentPurchase on the real 4242 CC master,
 // which upserts valuations (a today-dated row + restated month-ends) via

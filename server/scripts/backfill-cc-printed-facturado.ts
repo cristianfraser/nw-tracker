@@ -12,7 +12,7 @@
 import path from "node:path";
 import { db } from "../src/db.js";
 import { resolveCfraserCsvDir } from "../src/cfraserPaths.js";
-import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
+import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { currencyFromRow } from "../src/ccStatementsImport.js";
 import { parseOptionalChileanInteger, parseChileanNumber } from "../src/chileanNumber.js";
 

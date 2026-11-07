@@ -39,7 +39,6 @@ import type {
 
 import { importCcWebPasteLines } from "./accountImports.js";
 import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
-import { ddMmYyyyFromIso } from "./ccBillingCloses.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { checkingAccountId } from "./checkingCartolaImport.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
@@ -55,6 +54,7 @@ import {
   recordSyntheticCcPaymentTransfer,
   syntheticCcPaymentMovementIdForMessageId,
 } from "./santanderSyntheticCcPayments.js";
+import { ddMmYyyyFromIso } from "nw-tracker-contracts";
 
 export type ParsedPaymentReceipt = {
   kind: "clp" | "usd";

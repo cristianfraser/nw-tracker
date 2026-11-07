@@ -4,10 +4,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parseChileanNumber } from "./chileanNumber.js";
 
-/** The server's copy reads the same table (`server/src/chileanDecimalCases.test.ts`): the two cannot drift. */
+/** The server's copy reads the same table (`server/contracts/src/formats/numbers.test.ts`): the two cannot drift. */
 const cases = JSON.parse(
   fs.readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../server/src/test/chileanDecimalCases.json"),
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../server/contracts/data/chileanDecimalCases.json"),
     "utf-8"
   )
 ) as { raw: string; expect: number | null }[];

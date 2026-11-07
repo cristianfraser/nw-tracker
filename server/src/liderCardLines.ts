@@ -8,11 +8,11 @@
 import { ccCardRegistry } from "./ccCardRegistry.js";
 import { resolveMasterAccountIdForImportCardLast4 } from "./ccConsolidatedCards.js";
 import { merchantsMatchForCrossDedupe } from "./ccCrossImportDedupe.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { webPasteAmountClpForDb } from "./ccPaymentLines.js";
 import { creditCardMasterMetaForAccount } from "./ccWebPasteParse.js";
 import { db } from "./db.js";
 import type { CcWebPasteLine } from "./ccWebPasteParse.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 /**
  * The BCI Lider master account. The registry lists the Lider card's last4s

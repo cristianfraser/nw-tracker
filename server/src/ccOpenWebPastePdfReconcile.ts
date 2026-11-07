@@ -2,7 +2,6 @@ import { billingMonthForCcStatement } from "./ccBillingMonth.js";
 import { recomputeCcBillingMonthBalances } from "./ccBillingBalances.js";
 import { deleteStatementLinesByIds } from "./ccCrossImportDedupe.js";
 import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import {
   hasEveryStatementTwinForBillingMonth,
   statementSlotsByBillingMonth,
@@ -31,6 +30,7 @@ import {
   type CcStatementLineRow,
   type CcStatementRow,
 } from "./ccStatementsDb.js";
+import { parseDdMmYyToIso } from "nw-tracker-contracts";
 
 function fieldToIso(raw: string | null | undefined): string | null {
   const t = String(raw ?? "").trim();

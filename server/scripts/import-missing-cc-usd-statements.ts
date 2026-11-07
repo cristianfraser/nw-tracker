@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { db } from "../src/db.js";
-import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
+import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import {
   cardLast4FromParsedRow,
   resolveImportAccountIds,

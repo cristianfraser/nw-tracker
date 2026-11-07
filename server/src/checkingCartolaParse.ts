@@ -1,4 +1,4 @@
-import { isChileanNumber, parseChileanNumber } from "./chileanNumber.js";
+import { isChileanNumber, parseChileanNumber } from "nw-tracker-contracts";
 
 /**
  * A Santander cartola as the cartola import reads it, and the ledger's own keys for its movements

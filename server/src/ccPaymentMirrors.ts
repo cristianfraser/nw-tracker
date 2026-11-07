@@ -26,6 +26,7 @@
  * A converted pair stays tied to its evidence by the payment's card, date and amount, never by the
  * statement row it was paired with — re-imports replace those rows (`ccPaymentMirrorEvidence.ts`).
  */
+import { daysBetweenIso } from "nw-tracker-contracts";
 import { recordBankPosting } from "./movementBankPostings.js";
 import { invalidateAggregationForAccountDate, invalidateCcBillingDetail } from "./aggregationCache.js";
 import { clearCheckingBalanceCache } from "./checkingCartolaBalances.js";
@@ -101,12 +102,6 @@ export type CcPaymentMirrorRef = {
   statement_line_id?: number | null;
   statement_id?: number | null;
 };
-
-function dayDiff(aIso: string, bIso: string): number {
-  const a = Date.parse(`${aIso}T00:00:00Z`);
-  const b = Date.parse(`${bIso}T00:00:00Z`);
-  return Math.round((a - b) / 86_400_000);
-}
 
 /**
  * Payment evidence across every CC master (`listCcPaymentEvidenceRows`), one entry per real-world
@@ -243,7 +238,7 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
         })
       : byAmount.get(amount) ?? [];
     const near = pool
-      .map((e) => ({ e, d: Math.abs(dayDiff(out.occurred_on, e.pago_iso)) }))
+      .map((e) => ({ e, d: Math.abs(daysBetweenIso(e.pago_iso, out.occurred_on)) }))
       .filter((x) => x.d <= MATCH_WINDOW_DAYS)
       .sort((a, b) => a.d - b.d);
     if (near.length === 0) continue;
@@ -275,7 +270,7 @@ export function listCcPaymentMirrorCandidates(): CcPaymentMirrorCandidate[] {
         note: p.out.note,
       },
       evidence: p.ev,
-      skew_days: dayDiff(p.out.occurred_on, p.ev.pago_iso),
+      skew_days: daysBetweenIso(p.ev.pago_iso, p.out.occurred_on),
       blocked: isAmbiguous,
       blocked_reason: isAmbiguous ? "ambiguous match (multiple pairs at equal distance)" : null,
     };

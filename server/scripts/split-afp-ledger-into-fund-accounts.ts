@@ -70,7 +70,7 @@ const { recordContributionPeriods } = await import("../src/pensionContributionPe
 const { accountMarkClpAtYmd } = await import("../src/accountMarkClpAtYmd.js");
 const { pensionLedgerNote, shapePensionLedgerRows } = await import("../src/pensionLedgerShape.js");
 const { fundChain, fundHeldWindows, locateCertificateRows, pairFundSwitches, visibleDayOfRow } = await import(
-  "../src/pensionCertificateChain.js"
+  "./lib/pensionCertificateChain.js"
 );
 const { FLOW_KIND_AFP_FUND_SWITCH } = await import("../src/movementFlowType.js");
 const { validateTransferCreate } = await import("../src/movementTransfer.js");
@@ -79,8 +79,8 @@ const { reseedAccountSyncSources } = await import("../src/accountSyncSources.js"
 const { clearAggregationCache, invalidateAggregationForAccountDate } = await import("../src/aggregationCache.js");
 const { prettyRgbTripletForAccountId } = await import("../src/chartColorRgb.js");
 type DatedCertificateRow = import("../src/pensionLedgerShape.js").DatedCertificateRow;
-type LocatedCertificateRow = import("../src/pensionCertificateChain.js").LocatedCertificateRow;
-type FundSwitch = import("../src/pensionCertificateChain.js").FundSwitch;
+type LocatedCertificateRow = import("./lib/pensionCertificateChain.js").LocatedCertificateRow;
+type FundSwitch = import("./lib/pensionCertificateChain.js").FundSwitch;
 
 const PRIOR_FUNDS_SERIES_KEY = "afp_prior_funds_a";
 const FUND = "A" as const;

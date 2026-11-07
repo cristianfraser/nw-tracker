@@ -7,7 +7,6 @@ import {
   type CategoryRuleLink,
   type ExpenseCategoryRules,
 } from "./expenseCategoryRules.js";
-import { parseDdMmYyToIso } from "./ccInstallmentPayBy.js";
 import { cancelledInstallmentPurchaseIdsForAccount } from "./ccInstallmentLedgerDb.js";
 import {
   clearUserDeclinedAutoCategory,
@@ -18,6 +17,7 @@ import { listCreditCardMasterAccountIds } from "./creditCardTree.js";
 import { isExactGenericUniqueMerchantKey } from "./expenseGenericUniqueMerchants.js";
 import { isCcTraspasoDeudaMerchant } from "./ccStatementSection3.js";
 import { legacyCheckingGastosPurchaseKey } from "./checkingGastosCategoryPersist.js";
+import { parseDdMmYyToIso, normalizeMerchantText } from "nw-tracker-contracts";
 
 /** Asset group slug for `GET /api/flows/expenses/credit-card` (every card). */
 export function primaryCreditCardExpensesGroupSlug(): string {
@@ -102,8 +102,7 @@ function categoryRow(r: CcExpenseCategoryRow & { parent_parent_id: number | null
 }
 
 export function normalizeCcExpenseMerchantKey(merchant: string | null | undefined): string {
-  const t = String(merchant ?? "").trim().replace(/\s+/g, " ");
-  return t ? t.toUpperCase() : "";
+  return normalizeMerchantText(merchant);
 }
 
 /** Words in Santander transfer templates — not treated as a payee name. */

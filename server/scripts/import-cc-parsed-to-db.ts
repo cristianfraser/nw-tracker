@@ -31,7 +31,7 @@
 import path from "node:path";
 
 import { db } from "../src/db.js";
-import { readCommaCsvRecords } from "../src/ccParsedCommaCsv.js";
+import { readCommaCsvRecords } from "./lib/ccParsedCommaCsv.js";
 import { applyParsedCcStatements } from "../src/ccParsedStatementsApply.js";
 import { importCcStatementsFromCsvRecords } from "../src/ccStatementsImport.js";
 import {
