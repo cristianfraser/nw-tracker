@@ -459,20 +459,27 @@ export const WRITE_LOGGED_TABLES_270: readonly string[] = [
 ];
 
 /**
- * A table's write triggers: one row naming the table on every insert, update and delete. On a
- * table with mark triggers only the updates those leave out (no watched column changed) — the
- * mark rows already name the table for the rest.
+ * A table's write triggers: one row naming the table on every insert, delete and update that
+ * changes a column (an upsert writing the same values logs nothing). On a table with mark triggers
+ * only the updates those leave out (no watched column changed) — the mark rows already name the
+ * table for the rest. `columns`: the table's columns when the migration ran.
  */
-function writeLogTriggerSql(table: string, markWatch: readonly string[] | null): string[] {
+function writeLogTriggerSql(table: string, columns: readonly string[], markWatch: readonly string[] | null): string[] {
   const insert = `INSERT INTO mark_input_changes (source, account_id, raw_date, kind) VALUES ('${table}', NULL, NULL, 'write');`;
-  if (markWatch) {
-    const unchanged = markWatch.map((c) => `OLD.${c} IS NEW.${c}`).join(" AND ");
-    return [`CREATE TRIGGER write_log_${table}_au AFTER UPDATE ON ${table} WHEN ${unchanged} BEGIN\n  ${insert}\nEND`];
-  }
-  return ["ai", "ad", "au"].map(
-    (k) =>
-      `CREATE TRIGGER write_log_${table}_${k} AFTER ${k === "ai" ? "INSERT" : k === "ad" ? "DELETE" : "UPDATE"} ON ${table} BEGIN\n  ${insert}\nEND`
-  );
+  const watched = new Set(markWatch ?? []);
+  const changed = columns
+    .filter((c) => !watched.has(c))
+    .map((c) => `OLD."${c}" IS NOT NEW."${c}"`)
+    .join(" OR ");
+  const unchanged = [...watched].map((c) => `OLD.${c} IS NEW.${c}`);
+  const updateWhen = [...unchanged, changed ? `(${changed})` : "0"].join(" AND ");
+  const update = `CREATE TRIGGER write_log_${table}_au AFTER UPDATE ON ${table} WHEN ${updateWhen} BEGIN\n  ${insert}\nEND`;
+  if (markWatch) return [update];
+  return [
+    `CREATE TRIGGER write_log_${table}_ai AFTER INSERT ON ${table} BEGIN\n  ${insert}\nEND`,
+    `CREATE TRIGGER write_log_${table}_ad AFTER DELETE ON ${table} BEGIN\n  ${insert}\nEND`,
+    update,
+  ];
 }
 
 /** Every trigger name the newest lists install (tests and the schema check). */
@@ -532,6 +539,8 @@ export function runMarkInputChangeTriggers270(dbi: DatabaseType): void {
   for (const { name } of existing) dbi.exec(`DROP TRIGGER "${name}"`);
   const watchByTable = new Map(SPECS_270.map((s) => [s.table, s.watch]));
   for (const table of WRITE_LOGGED_TABLES_270) {
-    for (const sql of writeLogTriggerSql(table, watchByTable.get(table) ?? null)) dbi.exec(sql);
+    const columns = (dbi.prepare(`SELECT name FROM pragma_table_info(?)`).all(table) as { name: string }[]).map((c) => c.name);
+    if (columns.length === 0) throw new Error(`migration 270: table ${table} does not exist`);
+    for (const sql of writeLogTriggerSql(table, columns, watchByTable.get(table) ?? null)) dbi.exec(sql);
   }
 }

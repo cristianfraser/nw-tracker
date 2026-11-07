@@ -112,20 +112,45 @@ let transactionSeen = false;
 
 /**
  * A transaction that cached lookups saw has ended: drop what was built inside it (it may hold rows a
- * rollback took back) and what its logged changes reached (`endTransactionChanges`).
+ * rollback took back) and replay the mark trims its rows caused (`endTransactionChanges`).
  */
-function noteTransactionState(): boolean {
+function noteTransactionState(): void {
+  if (mutedSavepoints > 0) return;
   if (dbInTransaction()) {
     transactionSeen = true;
-    return true;
+    return;
   }
   if (transactionSeen) {
     transactionSeen = false;
-    const summary = endTransactionChanges();
+    endTransactionChanges();
     dropWhere((entry) => entry.builtInTransaction);
-    if (summary) dropForChanges(summary);
   }
-  return false;
+}
+
+/**
+ * Inside {@link withChangeLogMuted}: a savepoint whose writes are either rolled back or kept whole,
+ * and leave what is read inside it valid either way (`rederivation.ts`).
+ */
+let mutedSavepoints = 0;
+let mutedOuterTransaction = false;
+
+/**
+ * Run `fn` without applying the change log or treating its savepoint as a transaction: the caller
+ * guarantees that what is read inside it is what the database holds after it, whether the
+ * savepoint is rolled back (nothing changed) or released (its rows are applied by the next lookup).
+ */
+export function withChangeLogMuted<T>(fn: () => T): T {
+  if (mutedSavepoints === 0) mutedOuterTransaction = dbInTransaction();
+  mutedSavepoints += 1;
+  try {
+    return fn();
+  } finally {
+    mutedSavepoints -= 1;
+  }
+}
+
+function lookupInTransaction(): boolean {
+  return mutedSavepoints > 0 ? mutedOuterTransaction : dbInTransaction();
 }
 
 /** Drop what the day rollover and any change the log reports have made stale; run before every cached read. */
@@ -146,7 +171,7 @@ export function ensureCacheFresh(): void {
     cacheDayYmd = today;
   }
   const dataVersion = currentDbDataVersion();
-  if (writeCount !== appliedAtWriteCount || dataVersion !== appliedAtDataVersion) {
+  if (mutedSavepoints === 0 && (writeCount !== appliedAtWriteCount || dataVersion !== appliedAtDataVersion)) {
     const summary = applyChangeLog(today);
     appliedAtWriteCount = dbWriteCount();
     appliedAtDataVersion = dataVersion;
@@ -216,7 +241,7 @@ export function clearAggregationCache(): void {
  */
 export function getAggregationCached<T>(key: string, build: () => T): T {
   const [name, family] = familyOfKey(key);
-  if (family.bypassInTransaction && dbInTransaction()) return build();
+  if (family.bypassInTransaction && lookupInTransaction()) return build();
   ensureCacheFresh();
   const hit = cache.get(key);
   if (hit) {
@@ -241,7 +266,7 @@ export function getAggregationCached<T>(key: string, build: () => T): T {
     family: name,
     accountId: accountIdOfKey(key, family),
     node,
-    builtInTransaction: dbInTransaction(),
+    builtInTransaction: lookupInTransaction(),
   });
   if (node) linkCacheDepNode(node);
   return value as T;

@@ -38,7 +38,7 @@ let lastAppliedId: number | null = null;
  * inside it from rows a rollback took back is rebuilt; a commit's rows are then applied again.
  */
 let txAppliedThrough: number | null = null;
-let txTrims: { all: string | null; rate: string | null; byAccount: Map<number, string>; tables: Set<string> } | null = null;
+let txTrims: { all: string | null; rate: string | null; byAccount: Map<number, string> } | null = null;
 
 export type ChangeLogSummary = {
   /** A mark row every account reads (or a missed stretch of the log). */
@@ -162,14 +162,13 @@ function applyChangeLogInner(today: string, inTransaction: boolean): ChangeLogSu
   const lastId = rows.length ? rows[rows.length - 1]!.id : maxId;
   if (inTransaction) {
     txAppliedThrough = lastId;
-    txTrims ??= { all: null, rate: null, byAccount: new Map(), tables: new Set() };
+    txTrims ??= { all: null, rate: null, byAccount: new Map() };
     if (allFrom != null && (txTrims.all == null || allFrom < txTrims.all)) txTrims.all = allFrom;
     if (rateFrom != null && (txTrims.rate == null || rateFrom < txTrims.rate)) txTrims.rate = rateFrom;
     for (const [id, from] of byAccount) {
       const prev = txTrims.byAccount.get(id);
       if (prev == null || from < prev) txTrims.byAccount.set(id, from);
     }
-    for (const t of writtenTables) txTrims.tables.add(t);
   } else {
     lastAppliedId = lastId;
     pruneChangeLogHourly();
@@ -184,18 +183,18 @@ function applyChangeLogInner(today: string, inTransaction: boolean): ChangeLogSu
 }
 
 /**
- * The transaction the rows were applied in is over (committed or rolled back): replay its trims,
- * and say what they covered so the registry drops it again.
+ * The transaction the rows were applied in is over: replay its trims, since a series rebuilt inside
+ * it may hold rows a rollback took back. A commit's rows are then applied again (they are past
+ * `lastAppliedId`), which drops what they reach as for any write.
  */
-export function endTransactionChanges(): ChangeLogSummary | null {
+export function endTransactionChanges(): void {
   txAppliedThrough = null;
   const t = txTrims;
   txTrims = null;
-  if (!t) return null;
+  if (!t) return;
   if (t.all != null) trimAllMarkSeries(t.all);
   if (t.rate != null) trimRateDependentMarkSeries(t.rate);
   for (const [id, from] of t.byAccount) trimAccountMarkSeries(id, from);
-  return { marksAll: t.all != null || t.rate != null, markAccountIds: [...t.byAccount.keys()], writtenTables: t.tables };
 }
 
 const PRUNE_KEEP_DAYS = 7;

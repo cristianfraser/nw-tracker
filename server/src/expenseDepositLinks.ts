@@ -12,6 +12,7 @@ import {
   normalizeCcExpenseMerchantKey,
 } from "./ccExpenseCategories.js";
 import { db } from "./db.js";
+import { withoutChurn } from "./rederivation.js";
 import {
   loadDepositMatchCandidates,
   type DepositMatchCandidate,
@@ -784,9 +785,21 @@ function syncManualDepositAssertionLinks(
   }
 }
 
+/**
+ * Rebuilt on every read of the expense lines; a rebuild that changes nothing writes nothing
+ * (`withoutChurn`), so it reports no change to the caches.
+ */
 export function syncExpenseDepositLinksFromGastosLines(
   lines: readonly GastosLineForExpenseDepositLink[]
 ): void {
+  withoutChurn(
+    ["expense_deposit_links", "checking_gap_deposit_mirrors", "cc_expense_line_categories"],
+    ["created_at"],
+    () => syncExpenseDepositLinksFromGastosLinesChurning(lines)
+  );
+}
+
+function syncExpenseDepositLinksFromGastosLinesChurning(lines: readonly GastosLineForExpenseDepositLink[]): void {
   clearAutoExpenseDepositLinks();
   syncMortgageExpenseDepositLinksFromSheet(lines);
   for (const line of lines) {
