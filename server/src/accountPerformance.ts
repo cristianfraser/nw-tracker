@@ -38,6 +38,7 @@ import {
   cryptoCoinCumulativeThroughDate,
 } from "./cryptoValuation.js";
 import { accountBucketKindSlug } from "./accountBucket.js";
+import { accountProfileOptional } from "./accountProfile.js";
 import { isCuotaLedgerKindSlug } from "./cuotaLedgerAccounts.js";
 import { transferToLegUnits } from "./movementTransfer.js";
 import {
@@ -182,10 +183,10 @@ export function reanchorMonthlyPerfToCalendarMonthEnds(
   opts: ReanchorMonthlyPerfOpts
 ): AccountMonthlyPerformanceRow[] {
   if (!pickedAsc.length) return pickedAsc;
-  const kind = accountBucketKindSlug(opts.bucketSlug);
-  const isMortgage = kind === "mortgage";
-  const isDeptoProperty = kind === "property";
-  const isCreditCard = kind === "credit_card";
+  const q = accountProfileOptional(opts.accountId)?.quantity.kind;
+  const isMortgage = q === "depto_loan";
+  const isDeptoProperty = q === "depto_property";
+  const isCreditCard = q === "card";
   const deptoLedger =
     isMortgage || isDeptoProperty ? loadDeptoLedgerFromMovements() : [];
 
@@ -772,9 +773,10 @@ function buildAccountMonthlyPerformanceUncached(
     bucketKind === "mortgage" || bucketKind === "property"
       ? loadDeptoLedgerFromMovements()
       : null;
-  const isMortgage = bucketKind === "mortgage";
-  const isDeptoProperty = bucketKind === "property";
-  const isCreditCard = bucketKind === "credit_card";
+  const quantityKind = accountProfileOptional(accountId)?.quantity.kind;
+  const isMortgage = quantityKind === "depto_loan";
+  const isDeptoProperty = quantityKind === "depto_property";
+  const isCreditCard = quantityKind === "card";
   const deptoSnapshotDates = deptoLedger ? pts.map((p) => String(p.as_of_date)) : [];
   const mortgageUfByDate =
     deptoLedger && isMortgage
