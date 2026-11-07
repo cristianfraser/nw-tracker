@@ -51,10 +51,8 @@ import { db } from "./db.js";
 import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
 import { carryCcExpenseAssignments } from "./ccExpenseLineRekey.js";
 
-import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "./ccWebMerchantTruncation.js";
-import { parseDdMmYyToIso } from "nw-tracker-contracts";
+import { parseDdMmYyToIso, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "nw-tracker-contracts";
 
-export { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH };
 
 /** How far the bank may restate a transaction's date when it settles. */
 export const RESTATEMENT_WINDOW_DAYS = 4;

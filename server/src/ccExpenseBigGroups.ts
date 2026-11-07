@@ -1,3 +1,4 @@
+import { foldAccents } from "nw-tracker-contracts";
 import { db } from "./db.js";
 
 export type CcExpenseBigGroupRow = {
@@ -8,9 +9,7 @@ export type CcExpenseBigGroupRow = {
 
 
 export function slugFromBigGroupLabel(label: string): string {
-  const base = label
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+  const base = foldAccents(label)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")

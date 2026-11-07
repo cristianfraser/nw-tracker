@@ -1,8 +1,7 @@
 import { z } from "zod";
+import { isoDateSchema, yearMonthSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
-const isoDate = z.iso.date();
-const periodMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const pesos = z.number().int();
 
 /** A bank account as the issuer names its product; the server maps it to its own account. */
@@ -17,7 +16,7 @@ export const bankStatementAccountSchema = z
 /** One movement as the statement prints it. Its printed fields key the ledger row (the movement note). */
 export const bankStatementMovementSchema = z
   .object({
-    date: isoDate,
+    date: isoDateSchema,
     branch: z.string(),
     description: z.string(),
     document_no: z.string(),
@@ -45,13 +44,13 @@ export const bankAccountStatementSchema = z
   .object({
     /** The document it came from (a file name): provenance, and the import log's label. */
     document: z.string().min(1).max(512),
-    period_month: periodMonth,
-    period_from: isoDate.nullable(),
-    period_to: isoDate.nullable(),
+    period_month: yearMonthSchema,
+    period_from: isoDateSchema.nullable(),
+    period_to: isoDateSchema.nullable(),
     opening_balance: pesos.nullable(),
     closing_balance: pesos.nullable(),
     /** The closing balance of each calendar month the period spans, when the statement prints a daily balance. */
-    month_closing_balances: z.record(periodMonth, pesos).nullable(),
+    month_closing_balances: z.record(yearMonthSchema, pesos).nullable(),
     movements: z.array(bankStatementMovementSchema),
     skipped_rows: z.array(bankStatementSkippedRowSchema),
     /** What the parser inferred while reading (an amount taken from the balance column…), for the import log. */

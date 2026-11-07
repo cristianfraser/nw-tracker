@@ -1,7 +1,7 @@
 import { z } from "zod";
+import { isoDateSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
-const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const clp = z.number().int();
 const uf = z.number().finite();
 
@@ -15,7 +15,7 @@ export const mortgageSheetPaymentRowSchema = z
     kind: z.enum(["pie", "prepago", "cuota"]),
     /** The sheet's own label: «pie», «prepago 2», or the cuota number («32»). */
     label: z.string().trim().min(1),
-    paid_on: ymd,
+    paid_on: isoDateSchema,
     uf_day: z.number().positive(),
     pago_clp: clp.positive(),
     pago_uf: uf.positive(),

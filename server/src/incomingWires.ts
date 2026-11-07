@@ -18,7 +18,7 @@
  * on the broker cash account (gross − net). Every apply re-pairs everything stored; a booking is
  * recorded per request and never repeated, even after its movements are deleted.
  */
-import { addDaysIso, daysBetweenIso } from "nw-tracker-contracts";
+import { addDaysIso, daysBetweenIso, normalizeAccountNumber } from "nw-tracker-contracts";
 import type {
   BankAccountIncomingWiresApplyDetails,
   BankAccountIncomingWiresPayload,
@@ -53,9 +53,6 @@ export type WithdrawalRequest = {
 };
 
 const cents = (n: number) => Math.round(n * 100);
-
-/** Account numbers compare without leading zeros: the bank prints 005105313120, an MT103 5105313120. */
-const bareNumber = (n: string) => n.replace(/^0+/, "");
 
 /** The broker notification as a request, or a throw when it lacks what a request needs. */
 export function withdrawalRequestFromNotification(n: BrokerNotification, broker: "fintual"): WithdrawalRequest {
@@ -192,7 +189,7 @@ function accountForNumber(number: string, currency: string, issuer: string | nul
   const rows = db
     .prepare(`SELECT account_id, issuer, number FROM bank_account_numbers WHERE currency = ?`)
     .all(currency) as { account_id: number; issuer: string; number: string }[];
-  const hits = rows.filter((r) => bareNumber(r.number) === bareNumber(number) && (issuer == null || r.issuer === issuer));
+  const hits = rows.filter((r) => normalizeAccountNumber(r.number) === normalizeAccountNumber(number) && (issuer == null || r.issuer === issuer));
   if (hits.length > 1) throw new Error(`account number ${number} (${currency}) is declared ${hits.length} times`);
   return hits[0]?.account_id ?? null;
 }

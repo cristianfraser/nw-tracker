@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { grossLessWithholdingIsNet } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -21,7 +22,7 @@ export const brokerDividendSchema = z
     is_interest: z.boolean(),
   })
   .strict()
-  .refine((d) => Math.abs(d.gross - d.withholding - d.net) <= 0.015, {
+  .refine(grossLessWithholdingIsNet, {
     message: "gross − withholding must be the net",
   });
 

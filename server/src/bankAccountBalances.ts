@@ -10,7 +10,7 @@
  * the one at login: equal to the cent, else a mismatch — a movement the ledger is missing or holds
  * twice. Each snapshot is judged once.
  */
-import type { BankAccountBalancesApplyDetails, BankAccountBalancesPayload } from "nw-tracker-contracts";
+import { normalizeAccountNumber, type BankAccountBalancesApplyDetails, type BankAccountBalancesPayload } from "nw-tracker-contracts";
 import { checkingMovementBalanceClpAt } from "./checkingCartolaBalances.js";
 import { chileWallClockAt } from "./chileDate.js";
 import { db } from "./db.js";
@@ -19,11 +19,15 @@ import { usdCashBalanceUsdAt } from "./usdCashAccounts.js";
 
 type Currency = "clp" | "usd";
 
+/** The account declared for `number`, compared as account numbers compare everywhere (digits, no leading zeros). */
 function declaredAccountId(issuer: string, number: string, currency: Currency): number | null {
-  const row = db
-    .prepare(`SELECT account_id FROM bank_account_numbers WHERE issuer = ? AND number = ? AND currency = ?`)
-    .get(issuer, number, currency) as { account_id: number } | undefined;
-  return row?.account_id ?? null;
+  const rows = db
+    .prepare(`SELECT account_id, number FROM bank_account_numbers WHERE issuer = ? AND currency = ?`)
+    .all(issuer, currency) as { account_id: number; number: string }[];
+  const key = normalizeAccountNumber(number);
+  const hits = rows.filter((r) => normalizeAccountNumber(r.number) === key);
+  if (hits.length > 1) throw new Error(`bank_account_numbers declares ${issuer} ${currency} ${number} more than once`);
+  return hits[0]?.account_id ?? null;
 }
 
 /** Records one observation (idempotent per source: a resend of the same file records nothing). */

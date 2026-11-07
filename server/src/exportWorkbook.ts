@@ -11,6 +11,7 @@
  *                  history, then range-filtered, so `acumulado` stays a true running total)
  * - movements    → listAccountMovementsForApi(Bulk)
  */
+import { foldAccents } from "nw-tracker-contracts";
 import XLSX from "xlsx";
 import { monthlyPerfForAccountId } from "./groupMonthlyPerfConsolidation.js";
 import { monthlyPerfForAccountDisplay } from "./detalleDailyChainedPct.js";
@@ -188,10 +189,7 @@ function buildWorkbook(
 
 function filenameFor(name: string, opts: ExportOptions): string {
   const slug =
-    name
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
+    foldAccents(name.toLowerCase())
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 60) || "export";

@@ -14,7 +14,7 @@ import { earliestTransactionDateForLineIds } from "./ccCrossImportDedupe.js";
 import { type RecurringEntry } from "./recurringPaymentMatch.js";
 import { listRecurringPayments } from "./recurringPaymentsStore.js";
 import { ufProjector } from "./ufProjection.js";
-import { parseDdMmYyToIso, daysBetweenIso } from "nw-tracker-contracts";
+import { parseDdMmYyToIso, daysBetweenIso, foldAccents } from "nw-tracker-contracts";
 
 /** How many days after the pending listing the posted line may be dated. */
 export const PENDING_RESTATEMENT_DAYS = 7;
@@ -30,7 +30,7 @@ export type RecurringPendingResult = {
 
 type CardLine = { id: number; merchant: string | null; amount_clp: number | null; amount_usd: number | null; transaction_date: string | null; bucket: number };
 
-const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+const fold = (s: string) => foldAccents(s).toUpperCase();
 
 function patternIndex(entry: RecurringEntry, merchant: string | null): number {
   if (!merchant) return -1;

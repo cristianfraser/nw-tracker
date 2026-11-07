@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { grossLessWithholdingIsNet, isoDateSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -9,20 +10,19 @@ import { defineIngestKind } from "../defineKind.js";
  * never creates or changes a movement.
  */
 
-const isoDate = z.iso.date();
 const cents = z.number().nonnegative();
 
 export const statementDividendSchema = z
   .object({
     /** The date the document prints for the dividend (its payment date). */
-    date: isoDate,
+    date: isoDateSchema,
     symbol: z.string().regex(/^[A-Z][A-Z0-9.]{0,9}$/),
     gross: cents,
     withholding: cents,
     net: cents,
     per_share: z.number().positive().nullable(),
     position_qty: z.number().positive().nullable(),
-    record_date: isoDate.nullable(),
+    record_date: isoDateSchema.nullable(),
     withholding_rate_pct: z.number().nonnegative().nullable(),
     /** Who withheld the tax, when the document names it (`US`: IRS nonresident-alien withholding). */
     withholding_jurisdiction: z.string().regex(/^[A-Z]{2}$/).nullable(),
@@ -30,7 +30,7 @@ export const statementDividendSchema = z
     tax_country: z.string().regex(/^[A-Z]{2,3}$/).nullable(),
   })
   .strict()
-  .refine((d) => Math.abs(d.gross - d.withholding - d.net) <= 0.015, { message: "gross − withholding must be the net" });
+  .refine(grossLessWithholdingIsNet, { message: "gross − withholding must be the net" });
 
 export type StatementDividend = z.infer<typeof statementDividendSchema>;
 
@@ -55,7 +55,7 @@ export const brokerDividendStatementKind = defineIngestKind({
         .strict(),
       dividends: z.array(statementDividendSchema),
       /** Interest on the cash sweep — reported, never booked. */
-      interest: z.array(z.object({ date: isoDate, amount: cents, description: z.string().min(1).max(200) }).strict()),
+      interest: z.array(z.object({ date: isoDateSchema, amount: cents, description: z.string().min(1).max(200) }).strict()),
     })
     .strict(),
 });

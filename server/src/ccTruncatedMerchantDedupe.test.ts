@@ -1,3 +1,4 @@
+import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "nw-tracker-contracts";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db } from "./db.js";
 import {
@@ -5,7 +6,6 @@ import {
   isTruncatedMerchantOf,
   planTruncatedMerchantDuplicateLines,
   removeTruncatedMerchantDuplicateLines,
-  WEB_PASTE_MERCHANT_TRUNCATION_WIDTH,
 } from "./ccTruncatedMerchantDedupe.js";
 import {
   ensureVitestCreditCardFixtures,

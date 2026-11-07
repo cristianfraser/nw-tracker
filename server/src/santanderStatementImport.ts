@@ -42,14 +42,10 @@ import type { CcStatementCsvRecord } from "./ccStatementsImport.js";
 import { db } from "./db.js";
 import { invalidateCcBillingDetail } from "./aggregationCache.js";
 import crypto from "node:crypto";
-import { parseDdMmYyToIso } from "nw-tracker-contracts";
+import { parseDdMmYyToIso, normalizeMerchantText } from "nw-tracker-contracts";
 
 function sha1Hex16(payload: string): string {
   return crypto.createHash("sha1").update(payload).digest("hex").slice(0, 16);
-}
-
-function normMerchantForKey(merchant: string): string {
-  return String(merchant ?? "").trim().toUpperCase().replace(/\s+/g, " ");
 }
 
 const findContractCanonical = db.prepare(
@@ -164,7 +160,7 @@ export function buildSantanderStatementRecords(
     const dateIso = line.transaction_date;
     const amountKey = currency === "usd" ? (amountUsd ?? 0).toFixed(2) : String(amountClp ?? 0);
     const base = `json|${sha1Hex16(
-      `${ctx.cardGroup}|${currency}|${dateIso}|${normMerchantForKey(line.merchant)}|${amountKey}`
+      `${ctx.cardGroup}|${currency}|${dateIso}|${normalizeMerchantText(line.merchant)}|${amountKey}`
     )}`;
     const n = occurrence.get(base) ?? 0;
     occurrence.set(base, n + 1);
@@ -333,12 +329,12 @@ export function usdStatementIsStaleEcho(
   const seen = new Set(
     existing.map(
       (l) =>
-        `${parseDdMmYyToIso(String(l.transaction_date ?? ""))}|${normMerchantForKey(String(l.merchant ?? ""))}|${Math.abs(l.amount_usd).toFixed(2)}`
+        `${parseDdMmYyToIso(String(l.transaction_date ?? ""))}|${normalizeMerchantText(String(l.merchant ?? ""))}|${Math.abs(l.amount_usd).toFixed(2)}`
     )
   );
   return lines.every((line) =>
     seen.has(
-      `${line.transaction_date}|${normMerchantForKey(line.merchant)}|${Math.abs(line.amount).toFixed(2)}`
+      `${line.transaction_date}|${normalizeMerchantText(line.merchant)}|${Math.abs(line.amount).toFixed(2)}`
     )
   );
 }

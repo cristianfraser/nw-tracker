@@ -17,7 +17,7 @@ import {
   statementKeyFromRow,
   type CcStatementCsvRecord,
 } from "./ccStatementsImport.js";
-import { parseOptionalChileanInteger } from "nw-tracker-contracts";
+import { parseOptionalChileanInteger, parseChileanNumber } from "nw-tracker-contracts";
 
 const TOL_CLP = 1;
 const TOL_USD = 0.02;
@@ -81,9 +81,10 @@ export class CcStatementImportReconcileError extends Error {
   }
 }
 
+/** A parsed-statement CSV header amount (Chilean style): an empty cell reads 0, text that is not a number throws. */
 function parseAmountNumber(s: string): number {
-  const n = Number(String(s ?? "").replace(/\s+/g, "").replace(/\./g, "").replace(",", "."));
-  return Number.isFinite(n) ? n : 0;
+  const t = String(s ?? "").trim();
+  return t ? parseChileanNumber(t) : 0;
 }
 
 /** Parsed-statement CSV integer cell: empty reads 0; text that is not a number throws. */

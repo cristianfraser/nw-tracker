@@ -28,6 +28,7 @@
  *     first surname, title-cased
  *   - `inline`: false when the shown merchant already contains the label (no repeating it on the row)
  */
+import { normalizeRut, WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "nw-tracker-contracts";
 import { db } from "./db.js";
 import type { FlowCcExpenseLineRow } from "./flowsExpenses.js";
 import type { TransferCounterpartyDto } from "./bankTransferNotices.js";
@@ -43,12 +44,11 @@ import {
   trimNameEdges,
 } from "./expenseNameText.js";
 import { repairMojibake } from "./textRepair.js";
-import { WEB_PASTE_MERCHANT_TRUNCATION_WIDTH } from "./ccWebMerchantTruncation.js";
 import { cleanBankMerchant, splitProcessorPrefix } from "./bankMerchantName.js";
 import { linkKeyForName, type CategoryRuleLink } from "./expenseCategoryRules.js";
 
 export { cleanBankMerchant, splitProcessorPrefix };
-import { foldVendorName, loadVendorCatalog, normalizeRut, type VendorCatalog } from "./vendorCatalog.js";
+import { foldVendorName, loadVendorCatalog, type VendorCatalog } from "./vendorCatalog.js";
 
 export type ExpenseLinkLabel = {
   /** «→» paid to, «≈» an inferred link, «←» received from, «⇄» between own products. */

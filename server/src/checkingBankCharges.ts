@@ -8,6 +8,7 @@
  *
  * Decided at import from the bank's own description — never from the stored note at runtime.
  */
+import { foldUpper } from "nw-tracker-contracts";
 
 /** Bank descriptions (normalized: upper case, no accents, single spaces). */
 const CHECKING_BANK_CHARGE_DESCRIPTIONS: ReadonlySet<string> = new Set([
@@ -18,12 +19,7 @@ const CHECKING_BANK_CHARGE_DESCRIPTIONS: ReadonlySet<string> = new Set([
 ]);
 
 function normalizeBankDescription(raw: string): string {
-  return raw
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toUpperCase()
-    .replace(/\s+/g, " ")
-    .trim();
+  return foldUpper(raw);
 }
 
 export function isCheckingBankChargeDescription(description: string): boolean {

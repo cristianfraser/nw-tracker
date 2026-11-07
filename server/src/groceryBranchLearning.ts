@@ -25,7 +25,7 @@
  * nothing that leads back to the funnel.
  */
 import { db } from "./db.js";
-import { parseDdMmYyToIso } from "nw-tracker-contracts";
+import { parseDdMmYyToIso, stripBciTerminalSuffix } from "nw-tracker-contracts";
 
 export type GroceryCardLineStatus = "created" | "covered" | "pending_branch" | "matched";
 
@@ -36,7 +36,7 @@ export function receiptCardLineRawLinePrefix(chain: string): string {
 
 /** The bank's merchant string as the map stores it: the statement's « (T)» suffix stripped. */
 export function bankMerchantForBranchMap(merchant: string): string {
-  return merchant.replace(/\s*\(T\)\s*$/i, "").trim();
+  return stripBciTerminalSuffix(merchant).trim();
 }
 
 const selectLearned = db.prepare(

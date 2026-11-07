@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { yearMonthSchema } from "../formats/index.js";
 import { defineIngestKind } from "../defineKind.js";
 
 /**
@@ -39,7 +40,7 @@ export const fundAccountTransactionsKind = defineIngestKind({
       /** The certificate file: provenance for the report. */
       document: z.string().min(1).max(256),
       /** Ignore transactions after this month (`YYYY-MM`); the server's current month when null. */
-      max_month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).nullable(),
+      max_month: yearMonthSchema.nullable(),
       transactions: z.array(fundTransactionSchema),
     })
     .strict(),
